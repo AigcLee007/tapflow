@@ -4,19 +4,19 @@ import {
   createWorkflowRun,
   streamWorkflowRun,
 } from './v2WorkflowRunsApi';
-
-vi.mock('./accountIdentity', () => ({
-  getAuthorizedV2Headers: vi.fn(async () => ({
-    Authorization: 'Bearer test-token',
-  })),
-}));
+import { clearStoredAuth, setStoredTokens } from './v2HttpClient';
 
 describe('v2WorkflowRunsApi', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    setStoredTokens({
+      accessToken: 'test-token',
+      refreshToken: 'refresh-token',
+    });
   });
 
   afterEach(() => {
+    clearStoredAuth();
     vi.unstubAllGlobals();
   });
 

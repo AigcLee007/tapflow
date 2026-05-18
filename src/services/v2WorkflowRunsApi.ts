@@ -1,6 +1,6 @@
-import { getAuthorizedV2Headers } from './accountIdentity';
+import { apiGet, apiPost, getStoredAccessToken } from './v2HttpClient';
 
-const API_BASE_URL = '/api';
+const API_BASE_URL = '/api/v2';
 
 const cleanUrl = (url: string) => url.replace(/\/$/, '');
 
@@ -227,31 +227,14 @@ export async function createWorkflowRun(
     input?: Record<string, unknown>;
   },
 ): Promise<CreateWorkflowRunResponse> {
-  const response = await fetch(`${cleanUrl(API_BASE_URL)}/v2/flows/${flowId}/runs`, {
-    method: 'POST',
-    headers: {
-      ...(await getAuthorizedV2Headers()),
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      idempotencyKey: input?.idempotencyKey,
-      input: input?.input || {},
-    }),
+  return apiPost<CreateWorkflowRunResponse>(`/flows/${flowId}/runs`, {
+    idempotencyKey: input?.idempotencyKey,
+    input: input?.input || {},
   });
-
-  return parseJsonResponse<CreateWorkflowRunResponse>(response);
 }
 
 export async function getWorkflowRun(runId: string): Promise<GetWorkflowRunResponse> {
-  const response = await fetch(`${cleanUrl(API_BASE_URL)}/v2/workflow-runs/${runId}`, {
-    method: 'GET',
-    headers: {
-      ...(await getAuthorizedV2Headers()),
-      'Content-Type': 'application/json',
-    },
-  });
-
-  return parseJsonResponse<GetWorkflowRunResponse>(response);
+  return apiGet<GetWorkflowRunResponse>(`/workflow-runs/${runId}`);
 }
 
 export async function getWorkflowRunEvents(
@@ -263,18 +246,9 @@ export async function getWorkflowRunEvents(
     params.set('afterSequence', String(afterSequence));
   }
 
-  const response = await fetch(
-    `${cleanUrl(API_BASE_URL)}/v2/workflow-runs/${runId}/events${params.toString() ? `?${params.toString()}` : ''}`,
-    {
-      method: 'GET',
-      headers: {
-        ...(await getAuthorizedV2Headers()),
-        'Content-Type': 'application/json',
-      },
-    },
+  return apiGet<V2WorkflowRunEventView[]>(
+    `/workflow-runs/${runId}/events${params.toString() ? `?${params.toString()}` : ''}`,
   );
-
-  return parseJsonResponse<V2WorkflowRunEventView[]>(response);
 }
 
 export function streamWorkflowRun(
@@ -309,16 +283,19 @@ export function streamWorkflowRun(
       }
 
       const headers: Record<string, string> = {
-        ...(await getAuthorizedV2Headers()),
         Accept: 'text/event-stream',
       };
+      const token = getStoredAccessToken();
+      if (token) {
+        headers.Authorization = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
+      }
 
       if (options.afterSequence === undefined && options.lastEventId !== undefined) {
         headers['Last-Event-ID'] = String(options.lastEventId);
       }
 
       const response = await fetch(
-        `${cleanUrl(API_BASE_URL)}/v2/workflow-runs/${runId}/stream${params.toString() ? `?${params.toString()}` : ''}`,
+        `${cleanUrl(API_BASE_URL)}/workflow-runs/${runId}/stream${params.toString() ? `?${params.toString()}` : ''}`,
         {
           method: 'GET',
           headers,

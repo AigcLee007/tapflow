@@ -8,8 +8,14 @@ import {
 } from "../../http/auth-middleware.js";
 import { BillingApiError } from "./billing.service.js";
 import {
+  adminAdjustBillingSchema,
   billingListQuerySchema,
+  createPaymentCheckoutSchema,
+  redeemBillingCodeSchema,
+  type AdminAdjustBillingInput,
   type BillingListQuery,
+  type CreatePaymentCheckoutInput,
+  type RedeemBillingCodeInput,
 } from "./billing.schemas.js";
 
 function sendError(
@@ -32,6 +38,10 @@ function sendError(
 
 function parseQuery<T>(request: FastifyRequest, schema: { parse: (value: unknown) => T }): T {
   return schema.parse(request.query);
+}
+
+function parseBody<T>(request: FastifyRequest, schema: { parse: (value: unknown) => T }): T {
+  return schema.parse(request.body);
 }
 
 function getBillingContext(request: FastifyRequest) {
@@ -115,6 +125,73 @@ export function registerBillingRoutes(app: FastifyInstance): void {
         const query = parseQuery<BillingListQuery>(request, billingListQuerySchema);
         return reply.send(
           await app.billingService.listLedgerEntries(getBillingContext(request), query),
+        );
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.post(
+    "/api/v2/billing/redeem",
+    {
+      preHandler: [requireAuth, requireTenant, requirePermission("billing:read")],
+    },
+    async (request, reply) => {
+      try {
+        const body = parseBody<RedeemBillingCodeInput>(request, redeemBillingCodeSchema);
+        return reply.code(201).send(
+          await app.billingService.redeemCode(getBillingContext(request), body),
+        );
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.post(
+    "/api/v2/billing/payment/create-checkout",
+    {
+      preHandler: [requireAuth, requireTenant, requirePermission("billing:manage")],
+    },
+    async (request, reply) => {
+      try {
+        const body = parseBody<CreatePaymentCheckoutInput>(request, createPaymentCheckoutSchema);
+        return reply.code(201).send(
+          await app.billingService.createPaymentCheckout(getBillingContext(request), body),
+        );
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.post(
+    "/api/v2/billing/admin/adjust",
+    {
+      preHandler: [requireAuth, requireTenant, requirePermission("billing:manage")],
+    },
+    async (request, reply) => {
+      try {
+        const body = parseBody<AdminAdjustBillingInput>(request, adminAdjustBillingSchema);
+        return reply.code(201).send(
+          await app.billingService.adjustBillingAccount(getBillingContext(request), body),
+        );
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.get(
+    "/api/v2/billing/pricing",
+    {
+      preHandler: [requireAuth, requireTenant, requirePermission("billing:read")],
+    },
+    async (request, reply) => {
+      try {
+        return reply.send(
+          await app.billingService.listPricing(getBillingContext(request)),
         );
       } catch (error) {
         return handleRouteError(error, request, reply);

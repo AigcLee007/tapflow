@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import type { Pool, PoolClient } from "pg";
 
 import { createPgPool } from "./db.js";
@@ -119,6 +121,60 @@ export type BillingSummaryView = {
   };
 };
 
+export type BillingRedeemResultView = {
+  account: BillingAccountView;
+  credits: number;
+  ledgerEntry: BillingLedgerView;
+  redemptionId: string;
+};
+
+export type BillingPaymentView = {
+  amountCents: number;
+  billingLedgerId: string | null;
+  createdAt: string;
+  credits: number;
+  currency: string;
+  id: string;
+  idempotencyKey: string;
+  metadata: Record<string, unknown>;
+  provider: string;
+  providerPaymentId: string | null;
+  status: string;
+  tenantId: string;
+  updatedAt: string;
+  userId: string | null;
+};
+
+export type ModelPricingView = {
+  active: boolean;
+  createdAt: string;
+  id: string;
+  metadata: Record<string, unknown>;
+  minChargeCredits: number;
+  model: string;
+  provider: string;
+  route: string;
+  unit: string;
+  unitCredits: number;
+};
+
+type BillingPaymentRecord = {
+  amount_cents: string;
+  billing_ledger_id: string | null;
+  created_at: string;
+  credits: string;
+  currency: string;
+  id: string;
+  idempotency_key: string;
+  metadata: Record<string, unknown>;
+  provider: string;
+  provider_payment_id: string | null;
+  status: string;
+  tenant_id: string;
+  updated_at: string;
+  user_id: string | null;
+};
+
 export type UsageEventInput = {
   billableCents?: number;
   eventType: string;
@@ -167,6 +223,33 @@ export type RefundUsageInput = {
   usageEventId?: string | null;
 };
 
+export type RedeemCodeInput = {
+  code: string;
+  idempotencyKey?: string;
+  metadata?: Record<string, unknown>;
+};
+
+export type CreditAccountInput = {
+  amountCents: number;
+  description?: string | null;
+  entryType: string;
+  idempotencyKey: string;
+  metadata?: Record<string, unknown>;
+};
+
+export type DebitAccountInput = CreditAccountInput;
+
+export type CreatePaymentInput = {
+  amountCents: number;
+  credits: number;
+  currency?: string | null;
+  idempotencyKey: string;
+  metadata?: Record<string, unknown>;
+  provider: string;
+  providerPaymentId?: string | null;
+  status?: string;
+};
+
 export type BillingListOptions = {
   limit?: number;
   page?: number;
@@ -199,6 +282,10 @@ function normalizeDecimalValue(value: string | number | null | undefined): strin
 
   const normalized = value.trim();
   return normalized ? normalized : null;
+}
+
+export function hashBillingRedeemCode(code: string): string {
+  return createHash("sha256").update(code.trim().toUpperCase()).digest("hex");
 }
 
 function mapBillingAccount(row: BillingAccountRecord): BillingAccountView {
@@ -257,6 +344,66 @@ function mapLedgerEntry(row: BillingLedgerRecord): BillingLedgerView {
   };
 }
 
+function mapPayment(row: {
+  amount_cents: string;
+  billing_ledger_id: string | null;
+  created_at: string;
+  credits: string;
+  currency: string;
+  id: string;
+  idempotency_key: string;
+  metadata: Record<string, unknown>;
+  provider: string;
+  provider_payment_id: string | null;
+  status: string;
+  tenant_id: string;
+  updated_at: string;
+  user_id: string | null;
+}): BillingPaymentView {
+  return {
+    amountCents: parseBigIntString(row.amount_cents),
+    billingLedgerId: row.billing_ledger_id,
+    createdAt: row.created_at,
+    credits: parseBigIntString(row.credits),
+    currency: row.currency,
+    id: row.id,
+    idempotencyKey: row.idempotency_key,
+    metadata: row.metadata ?? {},
+    provider: row.provider,
+    providerPaymentId: row.provider_payment_id,
+    status: row.status,
+    tenantId: row.tenant_id,
+    updatedAt: row.updated_at,
+    userId: row.user_id,
+  };
+}
+
+function mapPricing(row: {
+  active: boolean;
+  created_at: string;
+  id: string;
+  metadata: Record<string, unknown>;
+  min_charge_credits: string;
+  model: string;
+  provider: string;
+  route: string;
+  unit: string;
+  unit_credits: string;
+}): ModelPricingView {
+  return {
+    active: row.active,
+    createdAt: row.created_at,
+    id: row.id,
+    metadata: row.metadata ?? {},
+    minChargeCredits: parseBigIntString(row.min_charge_credits),
+    model: row.model,
+    provider: row.provider,
+    route: row.route,
+    unit: row.unit,
+    unitCredits: parseBigIntString(row.unit_credits),
+  };
+}
+
 type UsageEventConflictComparable = Pick<
   UsageEventInput,
   "billableCents" | "eventType" | "modality" | "nodeRunId" | "workflowRunId"
@@ -300,6 +447,25 @@ function assertLedgerConflictSafe(
       409,
       "LEDGER_IDEMPOTENCY_CONFLICT",
       "The billing ledger idempotency key was reused with different settlement data",
+    );
+  }
+}
+
+function assertPaymentConflictSafe(
+  existing: BillingPaymentView,
+  input: CreatePaymentInput,
+): void {
+  if (
+    existing.amountCents !== input.amountCents ||
+    existing.credits !== input.credits ||
+    existing.provider !== input.provider ||
+    existing.providerPaymentId !== (input.providerPaymentId ?? null) ||
+    existing.status !== (input.status ?? "pending")
+  ) {
+    throw new BillingServiceError(
+      409,
+      "PAYMENT_IDEMPOTENCY_CONFLICT",
+      "The payment idempotency key was reused with different payment data",
     );
   }
 }
@@ -349,7 +515,8 @@ export class BillingService {
     input: ReserveUsageInput,
   ): Promise<BillingLedgerView> {
     return withTenantTransaction(context, async (client) => {
-      const account = await this.getOrCreateBillingAccountInTransaction(client, context.tenantId);
+      const account = await this.getOrCreateBillingAccountForUpdateInTransaction(client, context.tenantId);
+      this.assertAvailableBalance(account, input.amountCents);
       return this.createLedgerEntryInTransaction(client, {
         amountCents: input.amountCents,
         applyAccountMutation: async () => {
@@ -381,7 +548,8 @@ export class BillingService {
     tenantId: string,
     input: ReserveUsageInput,
   ): Promise<BillingLedgerView> {
-    const account = await this.getOrCreateBillingAccountInTransaction(client, tenantId);
+    const account = await this.getOrCreateBillingAccountForUpdateInTransaction(client, tenantId);
+    this.assertAvailableBalance(account, input.amountCents);
     return this.createLedgerEntryInTransaction(client, {
       amountCents: input.amountCents,
       applyAccountMutation: async () => {
@@ -630,6 +798,272 @@ export class BillingService {
     }, this.pool);
   }
 
+  async redeemCode(
+    context: TenantDbContext,
+    input: RedeemCodeInput,
+  ): Promise<BillingRedeemResultView> {
+    return withTenantTransaction(context, async (client) => {
+      const normalizedCode = input.code.trim().toUpperCase();
+      if (!normalizedCode) {
+        throw new BillingServiceError(400, "REDEEM_CODE_REQUIRED", "Redeem code is required");
+      }
+
+      const codeHash = hashBillingRedeemCode(normalizedCode);
+      const idempotencyKey = input.idempotencyKey ?? `redeem:${context.tenantId}:${codeHash}`;
+      const existingRedemption = await client.query<{
+        billing_ledger_id: string;
+        credits: string;
+        id: string;
+      }>(
+        `
+          SELECT
+            billing_redeem_code_redemptions.id::text AS id,
+            billing_redeem_code_redemptions.billing_ledger_id::text AS billing_ledger_id,
+            billing_redeem_codes.credits::text AS credits
+          FROM billing_redeem_code_redemptions
+          JOIN billing_redeem_codes
+            ON billing_redeem_codes.id = billing_redeem_code_redemptions.redeem_code_id
+          WHERE billing_redeem_code_redemptions.tenant_id = $1::uuid
+            AND billing_redeem_code_redemptions.idempotency_key = $2
+          LIMIT 1
+        `,
+        [context.tenantId, idempotencyKey],
+      );
+
+      if (existingRedemption.rows[0]) {
+        const ledgerEntry = await this.getLedgerEntryOrThrow(client, existingRedemption.rows[0].billing_ledger_id);
+        const account = await this.getOrCreateBillingAccountInTransaction(client, context.tenantId);
+        return {
+          account,
+          credits: parseBigIntString(existingRedemption.rows[0].credits),
+          ledgerEntry,
+          redemptionId: existingRedemption.rows[0].id,
+        };
+      }
+
+      const codeResult = await client.query<{
+        credits: string;
+        expires_at: string | null;
+        id: string;
+        max_redemptions: number;
+        redeemed_count: number;
+        status: string;
+        tenant_id: string | null;
+      }>(
+        `
+          SELECT
+            id::text AS id,
+            tenant_id::text AS tenant_id,
+            credits::text AS credits,
+            status,
+            max_redemptions,
+            redeemed_count,
+            expires_at::text AS expires_at
+          FROM billing_redeem_codes
+          WHERE code_hash = $1
+            AND (tenant_id IS NULL OR tenant_id = $2::uuid)
+          FOR UPDATE
+          LIMIT 1
+        `,
+        [codeHash, context.tenantId],
+      );
+      const redeemCode = codeResult.rows[0];
+      if (!redeemCode) {
+        throw new BillingServiceError(404, "REDEEM_CODE_NOT_FOUND", "Redeem code not found");
+      }
+      if (redeemCode.status !== "active") {
+        throw new BillingServiceError(409, "REDEEM_CODE_INACTIVE", "Redeem code is not active");
+      }
+      if (redeemCode.expires_at && new Date(redeemCode.expires_at).getTime() < Date.now()) {
+        throw new BillingServiceError(409, "REDEEM_CODE_EXPIRED", "Redeem code has expired");
+      }
+      if (redeemCode.redeemed_count >= redeemCode.max_redemptions) {
+        throw new BillingServiceError(409, "REDEEM_CODE_EXHAUSTED", "Redeem code has already been fully redeemed");
+      }
+      if (context.userId) {
+        const priorRedemption = await client.query<{ id: string }>(
+          `
+            SELECT id::text AS id
+            FROM billing_redeem_code_redemptions
+            WHERE tenant_id = $1::uuid
+              AND redeem_code_id = $2::uuid
+              AND user_id = $3::uuid
+            LIMIT 1
+          `,
+          [context.tenantId, redeemCode.id, context.userId],
+        );
+        if (priorRedemption.rows[0]) {
+          throw new BillingServiceError(409, "REDEEM_CODE_ALREADY_REDEEMED", "Redeem code has already been redeemed by this user");
+        }
+      }
+
+      const credits = parseBigIntString(redeemCode.credits);
+      const ledgerEntry = await this.creditAccountWithClient(client, context.tenantId, {
+        amountCents: credits,
+        description: "Redeem code credit",
+        entryType: "redeem",
+        idempotencyKey,
+        metadata: {
+          ...(input.metadata ?? {}),
+          codeHash,
+          redeemCodeId: redeemCode.id,
+        },
+      });
+
+      const redemption = await client.query<{ id: string }>(
+        `
+          INSERT INTO billing_redeem_code_redemptions (
+            redeem_code_id,
+            tenant_id,
+            user_id,
+            billing_ledger_id,
+            idempotency_key
+          )
+          VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5)
+          RETURNING id::text AS id
+        `,
+        [
+          redeemCode.id,
+          context.tenantId,
+          context.userId,
+          ledgerEntry.id,
+          idempotencyKey,
+        ],
+      );
+
+      await client.query(
+        `
+          UPDATE billing_redeem_codes
+          SET redeemed_count = redeemed_count + 1
+          WHERE id = $1::uuid
+        `,
+        [redeemCode.id],
+      );
+
+      const account = await this.getOrCreateBillingAccountInTransaction(client, context.tenantId);
+      return {
+        account,
+        credits,
+        ledgerEntry,
+        redemptionId: redemption.rows[0].id,
+      };
+    }, this.pool);
+  }
+
+  async creditAccount(
+    context: TenantDbContext,
+    input: CreditAccountInput,
+  ): Promise<BillingLedgerView> {
+    return withTenantTransaction(context, async (client) => {
+      return this.creditAccountWithClient(client, context.tenantId, input);
+    }, this.pool);
+  }
+
+  async debitAccount(
+    context: TenantDbContext,
+    input: DebitAccountInput,
+  ): Promise<BillingLedgerView> {
+    return withTenantTransaction(context, async (client) => {
+      return this.debitAccountWithClient(client, context.tenantId, input);
+    }, this.pool);
+  }
+
+  async createPayment(
+    context: TenantDbContext,
+    input: CreatePaymentInput,
+  ): Promise<BillingPaymentView> {
+    return withTenantTransaction(context, async (client) => {
+      const inserted = await client.query<BillingPaymentRecord>(
+        `
+          INSERT INTO billing_payments (
+            tenant_id,
+            user_id,
+            provider,
+            provider_payment_id,
+            amount_cents,
+            credits,
+            currency,
+            status,
+            idempotency_key,
+            metadata,
+            updated_at
+          )
+          VALUES (
+            $1::uuid,
+            $2::uuid,
+            $3,
+            $4,
+            $5::bigint,
+            $6::bigint,
+            COALESCE($7, 'USD'),
+            COALESCE($8, 'pending'),
+            $9,
+            $10::jsonb,
+            now()
+          )
+          ON CONFLICT (tenant_id, idempotency_key) DO UPDATE
+          SET updated_at = billing_payments.updated_at
+          RETURNING
+            id::text AS id,
+            tenant_id::text AS tenant_id,
+            user_id::text AS user_id,
+            provider,
+            provider_payment_id,
+            amount_cents::text AS amount_cents,
+            credits::text AS credits,
+            currency,
+            status,
+            billing_ledger_id::text AS billing_ledger_id,
+            idempotency_key,
+            metadata,
+            created_at::text AS created_at,
+            updated_at::text AS updated_at
+        `,
+        [
+          context.tenantId,
+          context.userId,
+          input.provider,
+          input.providerPaymentId ?? null,
+          input.amountCents,
+          input.credits,
+          input.currency ?? null,
+          input.status ?? "pending",
+          input.idempotencyKey,
+          JSON.stringify(input.metadata ?? {}),
+        ],
+      );
+
+      const payment = mapPayment(inserted.rows[0]);
+      assertPaymentConflictSafe(payment, input);
+      return payment;
+    }, this.pool);
+  }
+
+  async listModelPricing(context: TenantDbContext): Promise<ModelPricingView[]> {
+    return withTenantTransaction(context, async (client) => {
+      const result = await client.query(
+        `
+          SELECT
+            id::text AS id,
+            provider,
+            model,
+            route,
+            unit,
+            unit_credits::text AS unit_credits,
+            min_charge_credits::text AS min_charge_credits,
+            metadata,
+            active,
+            created_at::text AS created_at
+          FROM model_pricing
+          WHERE active = true
+          ORDER BY provider ASC, model ASC, route ASC, unit ASC
+        `,
+      );
+
+      return result.rows.map(mapPricing);
+    }, this.pool);
+  }
+
   async listUsageEvents(
     context: TenantDbContext,
     options?: BillingListOptions,
@@ -778,6 +1212,112 @@ export class BillingService {
     return mapBillingAccount(row);
   }
 
+  private async getOrCreateBillingAccountForUpdateInTransaction(
+    client: PoolClient,
+    tenantId: string,
+  ): Promise<BillingAccountView> {
+    await this.getOrCreateBillingAccountInTransaction(client, tenantId);
+    const locked = await client.query<BillingAccountRecord>(
+      `
+        SELECT
+          id::text AS id,
+          tenant_id::text AS tenant_id,
+          currency,
+          balance_cents::text AS balance_cents,
+          reserved_cents::text AS reserved_cents,
+          status,
+          metadata,
+          created_at::text AS created_at,
+          updated_at::text AS updated_at
+        FROM billing_accounts
+        WHERE tenant_id = $1::uuid
+        LIMIT 1
+        FOR UPDATE
+      `,
+      [tenantId],
+    );
+
+    if (!locked.rows[0]) {
+      throw new BillingServiceError(500, "BILLING_ACCOUNT_CREATE_FAILED", "Unable to lock billing account");
+    }
+
+    return mapBillingAccount(locked.rows[0]);
+  }
+
+  private assertAvailableBalance(account: BillingAccountView, amountCents: number): void {
+    const available = account.balanceCents - account.reservedCents;
+    if (amountCents > available) {
+      throw new BillingServiceError(
+        402,
+        "INSUFFICIENT_BALANCE",
+        "Insufficient billing balance for this operation",
+      );
+    }
+  }
+
+  private async creditAccountWithClient(
+    client: PoolClient,
+    tenantId: string,
+    input: CreditAccountInput,
+  ): Promise<BillingLedgerView> {
+    const account = await this.getOrCreateBillingAccountForUpdateInTransaction(client, tenantId);
+    return this.createLedgerEntryInTransaction(client, {
+      amountCents: input.amountCents,
+      applyAccountMutation: async () => {
+        await client.query(
+          `
+            UPDATE billing_accounts
+            SET
+              balance_cents = balance_cents + $2::bigint,
+              updated_at = now()
+            WHERE id = $1::uuid
+          `,
+          [account.id, input.amountCents],
+        );
+      },
+      billingAccountId: account.id,
+      currency: account.currency,
+      description: input.description ?? null,
+      entryType: input.entryType,
+      idempotencyKey: input.idempotencyKey,
+      metadata: input.metadata ?? {},
+      tenantId,
+      usageEventId: null,
+    });
+  }
+
+  private async debitAccountWithClient(
+    client: PoolClient,
+    tenantId: string,
+    input: DebitAccountInput,
+  ): Promise<BillingLedgerView> {
+    const account = await this.getOrCreateBillingAccountForUpdateInTransaction(client, tenantId);
+    this.assertAvailableBalance(account, input.amountCents);
+    return this.createLedgerEntryInTransaction(client, {
+      amountCents: input.amountCents,
+      applyAccountMutation: async () => {
+        await client.query(
+          `
+            UPDATE billing_accounts
+            SET
+              balance_cents = balance_cents - $2::bigint,
+              updated_at = now()
+            WHERE id = $1::uuid
+          `,
+          [account.id, input.amountCents],
+        );
+      },
+      billingAccountId: account.id,
+      currency: account.currency,
+      description: input.description ?? null,
+      entryType: input.entryType,
+      idempotencyKey: input.idempotencyKey,
+      metadata: input.metadata ?? {},
+      tenantId,
+      usageEventId: null,
+    });
+  }
+
   private async recordUsageEventInTransaction(
     client: PoolClient,
     tenantId: string,
@@ -878,7 +1418,7 @@ export class BillingService {
       return mapUsageEvent(inserted.rows[0]);
     }
 
-    const existing = await this.getUsageEventByIdempotencyKey(client, input.idempotencyKey);
+    const existing = await this.getUsageEventByIdempotencyKey(client, tenantId, input.idempotencyKey);
     if (!existing) {
       throw new BillingServiceError(500, "USAGE_EVENT_CREATE_FAILED", "Unable to load usage event");
     }
@@ -954,7 +1494,7 @@ export class BillingService {
     );
 
     if (!inserted.rows[0]) {
-      const existing = await this.getLedgerEntryByIdempotencyKey(client, input.idempotencyKey);
+      const existing = await this.getLedgerEntryByIdempotencyKey(client, input.tenantId, input.idempotencyKey);
       if (!existing) {
         throw new BillingServiceError(500, "BILLING_LEDGER_CREATE_FAILED", "Unable to load ledger entry");
       }
@@ -1014,8 +1554,41 @@ export class BillingService {
     return mapUsageEvent(row);
   }
 
+  private async getLedgerEntryOrThrow(
+    client: PoolClient,
+    ledgerEntryId: string,
+  ): Promise<BillingLedgerView> {
+    const result = await client.query<BillingLedgerRecord>(
+      `
+        SELECT
+          id::text AS id,
+          tenant_id::text AS tenant_id,
+          billing_account_id::text AS billing_account_id,
+          usage_event_id::text AS usage_event_id,
+          entry_type,
+          amount_cents::text AS amount_cents,
+          currency,
+          idempotency_key,
+          description,
+          metadata,
+          created_at::text AS created_at
+        FROM billing_ledger
+        WHERE id = $1::uuid
+        LIMIT 1
+      `,
+      [ledgerEntryId],
+    );
+
+    if (!result.rows[0]) {
+      throw new BillingServiceError(404, "BILLING_LEDGER_NOT_FOUND", "Billing ledger entry not found");
+    }
+
+    return mapLedgerEntry(result.rows[0]);
+  }
+
   private async getUsageEventByIdempotencyKey(
     client: PoolClient,
+    tenantId: string,
     idempotencyKey: string,
   ): Promise<UsageEventView | null> {
     const result = await client.query<UsageEventRecord>(
@@ -1043,10 +1616,11 @@ export class BillingService {
           occurred_at::text AS occurred_at,
           created_at::text AS created_at
         FROM usage_events
-        WHERE idempotency_key = $1
+        WHERE tenant_id = $1::uuid
+          AND idempotency_key = $2
         LIMIT 1
       `,
-      [idempotencyKey],
+      [tenantId, idempotencyKey],
     );
 
     return result.rows[0] ? mapUsageEvent(result.rows[0]) : null;
@@ -1054,6 +1628,7 @@ export class BillingService {
 
   private async getLedgerEntryByIdempotencyKey(
     client: PoolClient,
+    tenantId: string,
     idempotencyKey: string,
   ): Promise<BillingLedgerView | null> {
     const result = await client.query<BillingLedgerRecord>(
@@ -1071,10 +1646,11 @@ export class BillingService {
           metadata,
           created_at::text AS created_at
         FROM billing_ledger
-        WHERE idempotency_key = $1
+        WHERE tenant_id = $1::uuid
+          AND idempotency_key = $2
         LIMIT 1
       `,
-      [idempotencyKey],
+      [tenantId, idempotencyKey],
     );
 
     return result.rows[0] ? mapLedgerEntry(result.rows[0]) : null;

@@ -1,6 +1,12 @@
 import { randomUUID } from "node:crypto";
 
-import { createPgPool, safeRecordAuditLog, withTenantTransaction } from "@aigc-flow/db";
+import {
+  BillingService,
+  BillingServiceError,
+  createPgPool,
+  safeRecordAuditLog,
+  withTenantTransaction,
+} from "@aigc-flow/db";
 import {
   QUEUE_NAMES,
   assertLightweightJobPayload,
@@ -206,15 +212,18 @@ function isTerminalRunStatus(status: string): boolean {
 }
 
 export class WorkflowRunsService {
+  readonly billingService: BillingService;
   readonly nodeExecuteQueue: NodeExecuteQueueLike;
   readonly pool: PgPool;
 
   constructor(options: {
+    billingService?: BillingService;
     nodeExecuteQueue: NodeExecuteQueueLike;
     pool?: PgPool;
   }) {
     this.nodeExecuteQueue = options.nodeExecuteQueue;
     this.pool = options.pool ?? createPgPool();
+    this.billingService = options.billingService ?? new BillingService({ pool: this.pool });
   }
 
   async createWorkflowRun(
@@ -230,11 +239,14 @@ export class WorkflowRunsService {
   }> {
     const payloadsToEnqueue: NodeExecuteJobPayload[] = [];
 
-    const createdRun = await withTenantTransaction(context, async (client) => {
+    let createdRun: WorkflowRunView;
+    try {
+      createdRun = await withTenantTransaction(context, async (client) => {
       const runtimeFlow = await this.getCurrentFlowRuntimeOrThrow(client, flowId);
       if (!runtimeFlow.current_version_id) {
         throw new WorkflowRunsApiError(400, "FLOW_NOT_PUBLISHED", "Flow does not have a published version");
       }
+      const pricing = await this.loadActivePricing(client);
 
       if (input.idempotencyKey) {
         const existing = await client.query<WorkflowRunRecord>(
@@ -337,6 +349,7 @@ export class WorkflowRunsService {
       for (const node of runtimeFlow.compiled_graph_json.nodes) {
         const isEntryNode = runtimeFlow.compiled_graph_json.entryNodeIds.includes(node.id);
         const nodeRunId = randomUUID();
+        const estimatedCost = this.estimateNodeReserveCents(node.type, pricing);
 
         await client.query(
           `
@@ -348,6 +361,7 @@ export class WorkflowRunsService {
               node_type,
               status,
               input_json,
+              cost_json,
               updated_at
             )
             VALUES (
@@ -358,6 +372,7 @@ export class WorkflowRunsService {
               $5,
               $6,
               $7::jsonb,
+              $8::jsonb,
               now()
             )
           `,
@@ -369,8 +384,48 @@ export class WorkflowRunsService {
             node.type,
             isEntryNode ? "runnable" : "pending",
             JSON.stringify(node.config ?? {}),
+            JSON.stringify({
+              estimatedCents: estimatedCost.amountCents,
+              pricingUnit: estimatedCost.unit,
+              reservedCents: 0,
+              reserveLedgerId: null,
+              reserveStatus: estimatedCost.amountCents > 0 ? "pending" : "not_required",
+            }),
           ],
         );
+
+        if (estimatedCost.amountCents > 0) {
+          const reserve = await this.billingService.reserveUsageWithClient(client, context.tenantId, {
+            amountCents: estimatedCost.amountCents,
+            description: `${node.type} reserved`,
+            idempotencyKey: `reserve:${context.tenantId}:${run.id}:${nodeRunId}`,
+            metadata: {
+              flowId: runtimeFlow.flow_id,
+              flowVersionId: runtimeFlow.current_version_id,
+              nodeId: node.id,
+              nodeRunId,
+              nodeType: node.type,
+              pricingUnit: estimatedCost.unit,
+              workflowRunId: run.id,
+            },
+          });
+
+          await client.query(
+            `
+              UPDATE node_runs
+              SET cost_json = cost_json || $2::jsonb
+              WHERE id = $1::uuid
+            `,
+            [
+              nodeRunId,
+              JSON.stringify({
+                reservedCents: estimatedCost.amountCents,
+                reserveLedgerId: reserve.id,
+                reserveStatus: "reserved",
+              }),
+            ],
+          );
+        }
 
         if (isEntryNode) {
           await this.appendWorkflowRunEvent(client, {
@@ -397,7 +452,13 @@ export class WorkflowRunsService {
       }
 
       return run;
-    }, this.pool);
+      }, this.pool);
+    } catch (error) {
+      if (error instanceof BillingServiceError) {
+        throw new WorkflowRunsApiError(error.statusCode, error.code, error.message);
+      }
+      throw error;
+    }
 
     for (const payload of payloadsToEnqueue) {
       await this.nodeExecuteQueue.add(QUEUE_NAMES.nodeExecute, payload);
@@ -520,6 +581,8 @@ export class WorkflowRunsService {
           workflowRun: current,
         };
       }
+
+      await this.refundOpenReservations(client, runId, context.tenantId);
 
       const updated = await client.query<WorkflowRunRecord>(
         `
@@ -660,6 +723,52 @@ export class WorkflowRunsService {
     );
   }
 
+  private async loadActivePricing(client: PoolClient): Promise<Map<string, number>> {
+    const result = await client.query<{ min_charge_credits: string; unit: string }>(
+      `
+        SELECT unit, min_charge_credits::text AS min_charge_credits
+        FROM model_pricing
+        WHERE active = true
+          AND provider = 'default'
+          AND model = 'default'
+          AND route = 'default'
+      `,
+    );
+
+    return new Map(
+      result.rows.map((row) => [
+        row.unit,
+        Number.parseInt(row.min_charge_credits, 10) || 0,
+      ]),
+    );
+  }
+
+  private estimateNodeReserveCents(
+    nodeType: string,
+    pricing: Map<string, number>,
+  ): {
+    amountCents: number;
+    unit: string | null;
+  } {
+    const unitByNodeType: Record<string, string> = {
+      "image.generate": "image_generation",
+      "text.generate": "text_generation",
+      "video.generate": "video_generation",
+    };
+    const unit = unitByNodeType[nodeType] ?? null;
+    if (!unit) {
+      return {
+        amountCents: 0,
+        unit: null,
+      };
+    }
+
+    return {
+      amountCents: pricing.get(unit) ?? 0,
+      unit,
+    };
+  }
+
   private async getCurrentFlowRuntimeOrThrow(
     client: PoolClient,
     flowId: string,
@@ -687,6 +796,61 @@ export class WorkflowRunsService {
     }
 
     return row;
+  }
+
+  private async refundOpenReservations(
+    client: PoolClient,
+    workflowRunId: string,
+    tenantId: string,
+  ): Promise<void> {
+    const result = await client.query<{
+      cost_json: Record<string, unknown>;
+      id: string;
+      node_id: string;
+    }>(
+      `
+        SELECT id::text AS id, node_id, cost_json
+        FROM node_runs
+        WHERE workflow_run_id = $1::uuid
+          AND COALESCE(cost_json->>'reserveStatus', '') = 'reserved'
+      `,
+      [workflowRunId],
+    );
+
+    for (const row of result.rows) {
+      const reservedCents = typeof row.cost_json?.reservedCents === "number"
+        ? row.cost_json.reservedCents
+        : 0;
+      if (reservedCents <= 0) {
+        continue;
+      }
+
+      const ledgerEntry = await this.billingService.refundUsageWithClient(client, tenantId, {
+        amountCents: reservedCents,
+        description: "Workflow node reservation released after cancellation",
+        idempotencyKey: `refund:${tenantId}:${workflowRunId}:${row.id}`,
+        metadata: {
+          nodeId: row.node_id,
+          nodeRunId: row.id,
+          workflowRunId,
+        },
+      });
+
+      await client.query(
+        `
+          UPDATE node_runs
+          SET cost_json = cost_json || $2::jsonb
+          WHERE id = $1::uuid
+        `,
+        [
+          row.id,
+          JSON.stringify({
+            refundLedgerId: ledgerEntry.id,
+            reserveStatus: "refunded",
+          }),
+        ],
+      );
+    }
   }
 
   private async getWorkflowRunOrThrow(

@@ -4,8 +4,8 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Bell, CheckCheck, Megaphone, Sparkles, X } from 'lucide-react';
 import { useFlowCanvasStore } from '../store/flowCanvasStore';
-import { AUTH_SESSION_CHANGE_EVENT, getStoredAuthSessionToken } from '../../services/accountIdentity';
-import { fetchBillingAccount } from '../../services/accountService';
+import { getStoredAccessToken, V2_AUTH_CHANGE_EVENT } from '../../services/v2HttpClient';
+import { getBillingSummary } from '../../billing/billingApi';
 import { formatPoint } from '../../utils/pointFormat';
 
 const LogoMark: React.FC = () => <img src="/logo.png" alt="艾特智绘" style={logoImageStyle} />;
@@ -62,7 +62,7 @@ export const FlowTopToolbar: React.FC<{
   const notificationRef = useRef<HTMLDivElement | null>(null);
 
   const refreshPoints = useCallback(async () => {
-    if (!getStoredAuthSessionToken()) {
+    if (!getStoredAccessToken()) {
       setPoints(0);
       setPointsLoading(false);
       return;
@@ -70,8 +70,8 @@ export const FlowTopToolbar: React.FC<{
 
     setPointsLoading(true);
     try {
-      const data = await fetchBillingAccount({ ledgerPageSize: 1 });
-      setPoints(data?.account?.points ?? 0);
+      const data = await getBillingSummary();
+      setPoints(data.account.balanceCents);
     } catch {
       setPoints(0);
     } finally {
@@ -83,10 +83,10 @@ export const FlowTopToolbar: React.FC<{
     void refreshPoints();
 
     if (typeof window === 'undefined') return;
-    window.addEventListener(AUTH_SESSION_CHANGE_EVENT, refreshPoints);
+    window.addEventListener(V2_AUTH_CHANGE_EVENT, refreshPoints);
     window.addEventListener('storage', refreshPoints);
     return () => {
-      window.removeEventListener(AUTH_SESSION_CHANGE_EVENT, refreshPoints);
+      window.removeEventListener(V2_AUTH_CHANGE_EVENT, refreshPoints);
       window.removeEventListener('storage', refreshPoints);
     };
   }, [refreshPoints]);

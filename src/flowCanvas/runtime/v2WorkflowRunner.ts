@@ -14,6 +14,7 @@ import {
   type WorkflowRunStreamHandle,
 } from '../../services/v2WorkflowRunsApi';
 import { getAssetDownloadUrl } from '../../services/v2AssetsApi';
+import { V2HttpError } from '../../services/v2HttpClient';
 
 const RUNNER_ENABLED = String(import.meta.env.VITE_USE_V2_WORKFLOW_RUNNER ?? 'true').toLowerCase() !== 'false';
 
@@ -288,7 +289,11 @@ export async function runBackendWorkflow(): Promise<void> {
       },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : '启动后端工作流失败';
+    const message = error instanceof V2HttpError && error.code === 'INSUFFICIENT_BALANCE'
+      ? 'Insufficient balance. Redeem or recharge credits before starting this workflow.'
+      : error instanceof Error
+        ? error.message
+        : '启动后端工作流失败';
     setRunError(message);
     throw error instanceof Error ? error : new Error(message);
   }

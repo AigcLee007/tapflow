@@ -4,6 +4,7 @@ import { AuthGate } from "../auth/AuthGate";
 import { LoginPage } from "../auth/LoginPage";
 import { RegisterPage } from "../auth/RegisterPage";
 import { AssetLibraryPage } from "../assets/AssetLibraryPage";
+import { BillingCenterPage } from "../billing/BillingCenterPage";
 import { useAuth } from "../auth/useAuth";
 import { FlowProjectPage } from "../flowCanvas/FlowProjectPage";
 import { WorkspacePage } from "../workspace/WorkspacePage";
@@ -56,34 +57,6 @@ function Redirect({ to }: { to: string }) {
   return null;
 }
 
-function PlaceholderPage({
-  description,
-  eyebrow,
-  title,
-}: {
-  description: string;
-  eyebrow: string;
-  title: string;
-}) {
-  return (
-    <section className="rounded border border-white/10 bg-white/[0.04] p-6">
-      <div className="text-xs uppercase tracking-[0.24em] text-sky-300">{eyebrow}</div>
-      <h1 className="mt-3 text-2xl font-semibold text-white">{title}</h1>
-      <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">{description}</p>
-    </section>
-  );
-}
-
-function BillingPage() {
-  return (
-    <PlaceholderPage
-      description="Billing UI will be rebuilt on /api/v2/billing in a later sprint. This placeholder avoids wiring the legacy billing center into the new root shell."
-      eyebrow="Billing"
-      title="Billing Center"
-    />
-  );
-}
-
 function AccountPage() {
   const { permissions, roles, tenant, user } = useAuth();
 
@@ -129,7 +102,7 @@ function ProtectedRoutes({ pathname }: { pathname: string }) {
   }
 
   if (pathname === BILLING_ROUTE || pathname.startsWith(`${BILLING_ROUTE}/`)) {
-    return <BillingPage />;
+    return <BillingCenterPage />;
   }
 
   if (pathname === ACCOUNT_ROUTE || pathname.startsWith(`${ACCOUNT_ROUTE}/`)) {
