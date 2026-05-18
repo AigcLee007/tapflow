@@ -6,6 +6,9 @@
 - Remote URL: `https://github.com/AigcLee007/tapflow.git`
 - Current branch before Sprint 6: `main`
 - Latest main commits:
+  - `bd584bb merge sprint-6: account page and legacy cleanup docs`
+  - `9b86e66 sprint-6: add account page and cleanup legacy entrypoints`
+  - `f88eeda docs: update handoff after sprint 5`
   - `23c7b09 merge sprint-5: billing workflow reserve settle refund`
   - `5169372 sprint-5: add billing workflow reserve settle refund`
   - `9944a4f merge sprint-4: cloud asset library`
@@ -199,21 +202,24 @@ Key files:
 
 ### Sprint 6: Account + Legacy Cleanup + Docs
 
-Implemented on local review branch `sprint-6-account-cleanup-docs`:
+Completed and merged to `main`:
 
 - `/account` now uses the v2 auth session from `GET /api/v2/auth/me`.
 - `/account` shows current user email, display name, tenant/workspace details, roles, permissions, and logout.
 - `/account` logout uses `POST /api/v2/auth/logout` through the centralized v2 auth client.
-- Normal user-facing routes remain limited to `/login`, `/register`, `/workspace`, `/projects/:projectId`, `/assets`, `/billing`, and `/account`.
-- `/create/classic`, `/create/flow`, `/admin`, and `/model-mapping` remain redirected or excluded from normal product navigation.
+- Normal user-facing routes are limited to `/login`, `/register`, `/workspace`, `/projects/:projectId`, `/assets`, `/billing`, and `/account`.
+- `/create/classic`, `/create/flow`, `/admin`, and `/model-mapping` are no longer normal product entry points.
 - The root app path does not mount `InfiniteCanvas`, `ControlPanel`, or `MobileView`.
-- The authenticated project canvas no longer uses local autosave through `localStorage` or IndexedDB as the authoritative draft store.
+- `FlowCanvasPage` no longer uses local autosave or autoload through `localStorage` or IndexedDB as the authoritative draft flow.
+- Remote project canvases still use `flow_drafts` as the authoritative server-side draft store.
+- The asset library still uses `/api/v2/assets` as the authoritative data source.
+- Billing still uses `/api/v2/billing/*` plus workflow `reserve` / `settle` / `refund` as the primary path.
 - The authenticated project canvas no longer depends on legacy `accountIdentity` auth/session helpers.
 - The authenticated project canvas no longer uses `imageFolderStore` or `assetStorage` as active new-path dependencies.
 - The new main `/account` and `/billing` paths do not use legacy `/api/auth/*`, `/api/account/billing-center`, `/api/account/redeem`, or legacy `accountService` calls.
-- `README.md` now documents the v2 startup flow, route structure, persistence rules, and billing/workflow model.
+- `README.md` now documents the current v2 startup flow, route structure, persistence rules, asset model, and billing/workflow model.
 - Legacy files were not deleted when they are still useful for migration/debug or have standalone references outside the main product path.
-- Sprint 6 work has not been committed or pushed yet at this stage of the handoff.
+- Sprint 6 was completed on `sprint-6-account-cleanup-docs`, reviewed, merged to `main`, and pushed to `origin/main`.
 
 Key files:
 
@@ -231,6 +237,9 @@ Key files:
 
 Key commits currently on `main`:
 
+- `bd584bb merge sprint-6: account page and legacy cleanup docs`
+- `9b86e66 sprint-6: add account page and cleanup legacy entrypoints`
+- `f88eeda docs: update handoff after sprint 5`
 - `23c7b09 merge sprint-5: billing workflow reserve settle refund`
 - `5169372 sprint-5: add billing workflow reserve settle refund`
 - `9944a4f merge sprint-4: cloud asset library`
@@ -268,16 +277,16 @@ Key commits currently on `main`:
 
 ## Next Planned Sprint
 
-### Post-Sprint 6 Review
+### Post-sprint stabilization / manual QA
 
 Planned goals:
 
-- Review Sprint 6 account and legacy-cleanup changes.
-- Merge the Sprint 6 branch after validation.
-- Decide the next cleanup or product sprint after Sprint 6 is accepted.
+- Run the full local user path manually: login, workspace, create project, open project canvas, autosave draft, upload assets, insert assets into the canvas, redeem billing code, and execute the generation billing flow.
+- Verify the final `main` path matches the intended v2 product routing and does not regress into legacy account, billing, or canvas entry points.
+- Capture any remaining polish, documentation gaps, or manual QA issues as follow-up tasks rather than starting a new sprint blindly.
 
 ## Suggested Next User Prompt
 
 Copy this prompt in the next session:
 
-> 请先读取 AGENTS.md、docs/DEVELOPMENT_PLAN.md、docs/CODEX_HANDOFF.md，然后确认当前 Sprint 6 分支状态和测试结果，再等待我进行 review。
+> 请先读取 AGENTS.md、docs/DEVELOPMENT_PLAN.md、docs/CODEX_HANDOFF.md，然后在当前 main 分支上做一次完整本地手工验证：登录、工作空间、新建项目、画布保存、素材上传、素材插入画布、账单兑换、生成扣费链路，并记录结果。
