@@ -6,9 +6,11 @@
 - Remote URL: `https://github.com/AigcLee007/tapflow.git`
 - Current branch: `main`
 - Latest main commits:
+  - `9944a4f merge sprint-4: cloud asset library`
+  - `a562513 sprint-4: add cloud asset library`
+  - `382a9a1 docs: add codex handoff summary`
   - `9fc9ccd merge sprint-3: remote flow draft persistence`
   - `327f8d5 sprint-3: add remote flow draft persistence`
-  - `abbd3d9 initial tapflow baseline with auth shell and workspace`
 - Current status: clean working tree, `main` is up to date with `origin/main`
 
 ## Product Goal
@@ -107,24 +109,63 @@ Key files:
 - `src/flowCanvas/hooks/useRemoteFlowAutosave.ts`
 - `src/flowCanvas/services/flowProjectApi.ts`
 
+### Sprint 4: Cloud Asset Library
+
+Completed:
+
+- Added `packages/db/migrations/000011_asset_library.sql`.
+- Added asset metadata columns: `title`, `description`, `tags`, `source`, `favorite`, and `updated_at`.
+- Added `projects.cover_asset_id`.
+- Added `asset_folders` and `asset_folder_items`.
+- Added or completed `GET /api/v2/assets`.
+- Added `PATCH /api/v2/assets/:assetId/metadata`.
+- Added asset folder CRUD APIs.
+- Kept uploads on the existing `presigned-upload + complete-upload` flow.
+- Added the `/assets` cloud asset library page.
+- `/assets` uses server APIs and does not use `localStorage`, IndexedDB, Zustand persist, or `assetStorage` as the authoritative data source.
+- Added support for inserting assets from the asset library into a project canvas.
+- Canvas nodes save structured asset fields including `assetId`, `assetIds`, `mimeType`, `width`, `height`, `durationMs`, `naturalWidth`, `naturalHeight`, and `source`.
+- Rendering resolves temporary signed URLs from `assetId`.
+- Signed URLs, base64, blob URLs, `File`, and `Blob` payloads are not written into `graph_json`.
+- Added `projects.cover_asset_id` support and constrained it with a same-tenant composite foreign key.
+- Did not enter Sprint 5 billing work.
+
+Key files:
+
+- `packages/db/migrations/000011_asset_library.sql`
+- `apps/api/src/modules/assets/assets.routes.ts`
+- `apps/api/src/modules/assets/assets.schemas.ts`
+- `apps/api/src/modules/assets/assets.service.ts`
+- `apps/api/src/modules/projects/projects.schemas.ts`
+- `apps/api/src/modules/projects/projects.service.ts`
+- `src/assets/*`
+- `src/app/AppRouter.tsx`
+- `src/flowCanvas/FlowProjectPage.tsx`
+- `src/flowCanvas/nodes/FlowNodes.tsx`
+- `src/flowCanvas/types.ts`
+- `src/workspace/workspaceApi.ts`
+
 ## Git History
 
 Key commits currently on `main`:
 
+- `9944a4f merge sprint-4: cloud asset library`
+- `a562513 sprint-4: add cloud asset library`
+- `382a9a1 docs: add codex handoff summary`
 - `abbd3d9 initial tapflow baseline with auth shell and workspace`
 - `327f8d5 sprint-3: add remote flow draft persistence`
 - `9fc9ccd merge sprint-3: remote flow draft persistence`
 
 ## Known Test Status
 
-- `npm run build` passes.
+- `npm run build` passes, with only the existing Vite chunk size warning.
 - `npm run build --workspace @aigc-flow/api` passes.
 - `npm test` currently fails only in `scripts/migrate-legacy-v2/test/migrate.test.ts`.
 - The known failures are legacy migration asset count / storage upload assertions:
   - `dry-run does not write DB or S3`
   - `missing asset files record a warning without crashing the batch`
   - `asset migration writes object content to storage but not to the DB writer payload, and includes tenant scope`
-- These failures are recorded as non-blocking for Sprint 1, Sprint 2, and Sprint 3.
+- These failures are recorded as non-blocking for Sprint 1, Sprint 2, Sprint 3, and Sprint 4.
 - DB integration tests may be skipped locally when no database environment is configured.
 
 ## Important Constraints for Future Codex Sessions
@@ -140,22 +181,21 @@ Key commits currently on `main`:
 
 ## Next Planned Sprint
 
-### Sprint 4: Cloud Asset Library
+### Sprint 5: Billing + Workflow Reserve/Settle/Refund
 
 Planned goals:
 
-- Create a new `sprint-4-asset-library` branch.
-- Add or complete `GET /api/v2/assets`.
-- Add `PATCH /api/v2/assets/:assetId/metadata`.
-- Add `asset_folders` and `asset_folder_items`.
-- Build the `/assets` cloud asset library page.
-- Route uploads through `presigned-upload + complete-upload`.
-- Flow canvas nodes should store structured asset references such as `assetId`, `thumbnailAssetId`, `mimeType`, `width`, `height`, and `durationMs`.
-- Do not write asset contents, base64, or blob URLs into `graph_json`.
-- Do not enter Sprint 5 billing work during Sprint 4.
+- Rebuild the frontend Billing page on `/api/v2/billing/summary`, `/api/v2/billing/usage-events`, and `/api/v2/billing/ledger`.
+- Add or complete redeem code, recharge, and admin adjustment foundations.
+- Reserve credits before a generation task starts.
+- Settle credits when a task succeeds.
+- Refund or release reserved credits when a task fails.
+- Use idempotency keys for all billing mutation flows.
+- Block generation for insufficient balance in both frontend and backend paths.
+- Do not enter Sprint 6 cleanup work.
 
 ## Suggested Next User Prompt
 
 Copy this prompt in the next session:
 
-> 请先读取 AGENTS.md、docs/DEVELOPMENT_PLAN.md、docs/CODEX_HANDOFF.md，然后确认当前 main 分支 clean，再等待我下达 Sprint 4 指令。
+> 请先读取 AGENTS.md、docs/DEVELOPMENT_PLAN.md、docs/CODEX_HANDOFF.md，然后确认当前 main 分支 clean，再等待我下达 Sprint 5 指令。
