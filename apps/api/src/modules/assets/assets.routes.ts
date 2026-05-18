@@ -8,11 +8,23 @@ import {
 } from "../../http/auth-middleware.js";
 import {
   type AssetIdParams,
+  type AssetListQuery,
   type CompleteUploadInput,
+  type CreateAssetFolderInput,
+  type FolderAssetParams,
+  type FolderIdParams,
   type PresignedUploadInput,
+  type UpdateAssetFolderInput,
+  type UpdateAssetMetadataInput,
   assetIdParamsSchema,
+  assetListQuerySchema,
   completeUploadSchema,
+  createAssetFolderSchema,
+  folderAssetParamsSchema,
+  folderIdParamsSchema,
   presignedUploadSchema,
+  updateAssetFolderSchema,
+  updateAssetMetadataSchema,
 } from "./assets.schemas.js";
 import { AssetsApiError } from "./assets.service.js";
 
@@ -40,6 +52,10 @@ function parseBody<T>(request: FastifyRequest, schema: { parse: (value: unknown)
 
 function parseParams<T>(request: FastifyRequest, schema: { parse: (value: unknown) => T }): T {
   return schema.parse(request.params);
+}
+
+function parseQuery<T>(request: FastifyRequest, schema: { parse: (value: unknown) => T }): T {
+  return schema.parse(request.query);
 }
 
 function getAssetContext(request: FastifyRequest) {
@@ -93,6 +109,131 @@ function handleRouteError(
 export function registerAssetRoutes(app: FastifyInstance): void {
   const authHandlers = [requireAuth, requireTenant];
 
+  app.get(
+    "/api/v2/assets",
+    {
+      preHandler: [...authHandlers, requirePermission("asset:read")],
+    },
+    async (request, reply) => {
+      try {
+        const query = parseQuery<AssetListQuery>(request, assetListQuerySchema);
+        const result = await app.assetsService.listAssets(getAssetContext(request), query);
+        return reply.send(result);
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.get(
+    "/api/v2/assets/folders",
+    {
+      preHandler: [...authHandlers, requirePermission("asset:read")],
+    },
+    async (request, reply) => {
+      try {
+        const result = await app.assetsService.listFolders(getAssetContext(request));
+        return reply.send(result);
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.post(
+    "/api/v2/assets/folders",
+    {
+      preHandler: [...authHandlers, requirePermission("asset:create")],
+    },
+    async (request, reply) => {
+      try {
+        const body = parseBody<CreateAssetFolderInput>(request, createAssetFolderSchema);
+        const result = await app.assetsService.createFolder(getAssetContext(request), body);
+        return reply.code(201).send(result);
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.patch(
+    "/api/v2/assets/folders/:folderId",
+    {
+      preHandler: [...authHandlers, requirePermission("asset:update")],
+    },
+    async (request, reply) => {
+      try {
+        const params = parseParams<FolderIdParams>(request, folderIdParamsSchema);
+        const body = parseBody<UpdateAssetFolderInput>(request, updateAssetFolderSchema);
+        const result = await app.assetsService.updateFolder(
+          getAssetContext(request),
+          params.folderId,
+          body,
+        );
+        return reply.send(result);
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.delete(
+    "/api/v2/assets/folders/:folderId",
+    {
+      preHandler: [...authHandlers, requirePermission("asset:delete")],
+    },
+    async (request, reply) => {
+      try {
+        const params = parseParams<FolderIdParams>(request, folderIdParamsSchema);
+        const result = await app.assetsService.deleteFolder(getAssetContext(request), params.folderId);
+        return reply.send(result);
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.post(
+    "/api/v2/assets/folders/:folderId/items",
+    {
+      preHandler: [...authHandlers, requirePermission("asset:create")],
+    },
+    async (request, reply) => {
+      try {
+        const params = parseParams<FolderIdParams>(request, folderIdParamsSchema);
+        const body = parseBody<AssetIdParams>(request, assetIdParamsSchema);
+        const result = await app.assetsService.addAssetToFolder(
+          getAssetContext(request),
+          params.folderId,
+          body.assetId,
+        );
+        return reply.code(201).send(result);
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.delete(
+    "/api/v2/assets/folders/:folderId/items/:assetId",
+    {
+      preHandler: [...authHandlers, requirePermission("asset:delete")],
+    },
+    async (request, reply) => {
+      try {
+        const params = parseParams<FolderAssetParams>(request, folderAssetParamsSchema);
+        const result = await app.assetsService.removeAssetFromFolder(
+          getAssetContext(request),
+          params.folderId,
+          params.assetId,
+        );
+        return reply.send(result);
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
   app.post(
     "/api/v2/assets/presigned-upload",
     {
@@ -139,6 +280,27 @@ export function registerAssetRoutes(app: FastifyInstance): void {
       try {
         const params = parseParams<AssetIdParams>(request, assetIdParamsSchema);
         const result = await app.assetsService.getAsset(getAssetContext(request), params.assetId);
+        return reply.send(result);
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.patch(
+    "/api/v2/assets/:assetId/metadata",
+    {
+      preHandler: [...authHandlers, requirePermission("asset:update")],
+    },
+    async (request, reply) => {
+      try {
+        const params = parseParams<AssetIdParams>(request, assetIdParamsSchema);
+        const body = parseBody<UpdateAssetMetadataInput>(request, updateAssetMetadataSchema);
+        const result = await app.assetsService.updateAssetMetadata(
+          getAssetContext(request),
+          params.assetId,
+          body,
+        );
         return reply.send(result);
       } catch (error) {
         return handleRouteError(error, request, reply);

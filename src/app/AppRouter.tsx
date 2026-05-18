@@ -3,6 +3,7 @@ import React, { useEffect, useState } from "react";
 import { AuthGate } from "../auth/AuthGate";
 import { LoginPage } from "../auth/LoginPage";
 import { RegisterPage } from "../auth/RegisterPage";
+import { AssetLibraryPage } from "../assets/AssetLibraryPage";
 import { useAuth } from "../auth/useAuth";
 import { FlowProjectPage } from "../flowCanvas/FlowProjectPage";
 import { WorkspacePage } from "../workspace/WorkspacePage";
@@ -73,16 +74,6 @@ function PlaceholderPage({
   );
 }
 
-function AssetsPage() {
-  return (
-    <PlaceholderPage
-      description="The cloud asset library remains a follow-up. This route is now protected by v2 auth and no longer exposes the old local IndexedDB library from App.tsx."
-      eyebrow="Assets"
-      title="Asset Library"
-    />
-  );
-}
-
 function BillingPage() {
   return (
     <PlaceholderPage
@@ -134,7 +125,7 @@ function ProtectedRoutes({ pathname }: { pathname: string }) {
   }
 
   if (pathname === ASSETS_ROUTE || pathname.startsWith(`${ASSETS_ROUTE}/`)) {
-    return <AssetsPage />;
+    return <AssetLibraryPage />;
   }
 
   if (pathname === BILLING_ROUTE || pathname.startsWith(`${BILLING_ROUTE}/`)) {

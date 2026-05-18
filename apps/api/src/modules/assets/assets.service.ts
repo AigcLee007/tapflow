@@ -7,7 +7,14 @@ import {
 } from "@aigc-flow/storage";
 import type { Pool, PoolClient } from "pg";
 
-import type { CompleteUploadInput, PresignedUploadInput } from "./assets.schemas.js";
+import type {
+  AssetListQuery,
+  CompleteUploadInput,
+  CreateAssetFolderInput,
+  PresignedUploadInput,
+  UpdateAssetFolderInput,
+  UpdateAssetMetadataInput,
+} from "./assets.schemas.js";
 
 type PgPool = Pool;
 
@@ -25,7 +32,9 @@ type AssetRecord = {
   checksum_sha256: string | null;
   created_at: string;
   deleted_at: string | null;
+  description: string | null;
   duration_ms: number | null;
+  favorite: boolean;
   height: number | null;
   id: string;
   kind: string;
@@ -36,9 +45,13 @@ type AssetRecord = {
   owner_user_id: string | null;
   project_id: string | null;
   size_bytes: string | null;
+  source: string;
   status: string;
   storage_provider: string;
+  tags: string[];
   tenant_id: string;
+  title: string | null;
+  updated_at: string;
   width: number | null;
 };
 
@@ -71,7 +84,9 @@ export type AssetView = {
   checksumSha256: string | null;
   createdAt: string;
   deletedAt: string | null;
+  description: string | null;
   durationMs: number | null;
+  favorite: boolean;
   height: number | null;
   id: string;
   kind: string;
@@ -82,9 +97,13 @@ export type AssetView = {
   ownerUserId: string | null;
   projectId: string | null;
   sizeBytes: number | null;
+  source: string;
   status: string;
   storageProvider: string;
+  tags: string[];
   tenantId: string;
+  title: string | null;
+  updatedAt: string;
   variants: AssetVariantView[];
   width: number | null;
 };
@@ -96,6 +115,30 @@ type AssetForStorage = {
   objectKey: string;
   originalFilename: string | null;
   status: string;
+};
+
+type AssetFolderRecord = {
+  created_at: string;
+  created_by: string | null;
+  deleted_at: string | null;
+  description: string | null;
+  id: string;
+  name: string;
+  parent_folder_id: string | null;
+  tenant_id: string;
+  updated_at: string;
+};
+
+export type AssetFolderView = {
+  createdAt: string;
+  createdBy: string | null;
+  deletedAt: string | null;
+  description: string | null;
+  id: string;
+  name: string;
+  parentFolderId: string | null;
+  tenantId: string;
+  updatedAt: string;
 };
 
 export class AssetsApiError extends Error {
@@ -139,7 +182,9 @@ function mapAsset(row: AssetRecord, variants: AssetVariantView[]): AssetView {
     checksumSha256: row.checksum_sha256,
     createdAt: row.created_at,
     deletedAt: row.deleted_at,
+    description: row.description,
     durationMs: row.duration_ms,
+    favorite: row.favorite,
     height: row.height,
     id: row.id,
     kind: row.kind,
@@ -150,11 +195,29 @@ function mapAsset(row: AssetRecord, variants: AssetVariantView[]): AssetView {
     ownerUserId: row.owner_user_id,
     projectId: row.project_id,
     sizeBytes: toNumberOrNull(row.size_bytes),
+    source: row.source,
     status: row.status,
     storageProvider: row.storage_provider,
+    tags: row.tags ?? [],
     tenantId: row.tenant_id,
+    title: row.title,
+    updatedAt: row.updated_at,
     variants,
     width: row.width,
+  };
+}
+
+function mapFolder(row: AssetFolderRecord): AssetFolderView {
+  return {
+    createdAt: row.created_at,
+    createdBy: row.created_by,
+    deletedAt: row.deleted_at,
+    description: row.description,
+    id: row.id,
+    name: row.name,
+    parentFolderId: row.parent_folder_id,
+    tenantId: row.tenant_id,
+    updatedAt: row.updated_at,
   };
 }
 
@@ -175,6 +238,115 @@ export class AssetsService {
     this.bucket = options.bucket;
     this.pool = options.pool ?? createPgPool();
     this.storageProvider = options.storageProvider;
+  }
+
+  async listAssets(
+    context: AssetContext,
+    query: AssetListQuery,
+  ): Promise<{
+    items: AssetView[];
+    page: number;
+    pageSize: number;
+    total: number;
+  }> {
+    return withTenantTransaction(context, async (client) => {
+      const page = query.page ?? 1;
+      const pageSize = query.pageSize ?? 40;
+      const where = ["a.deleted_at IS NULL"];
+      const values: unknown[] = [];
+
+      const add = (value: unknown) => {
+        values.push(value);
+        return `$${values.length}`;
+      };
+
+      if (query.projectId) {
+        where.push(`a.project_id = ${add(query.projectId)}::uuid`);
+      }
+      if (query.kind) {
+        where.push(`a.kind = ${add(query.kind.trim())}`);
+      }
+      if (query.source) {
+        where.push(`a.source = ${add(query.source.trim())}`);
+      }
+      if (query.favorite !== undefined) {
+        where.push(`a.favorite = ${add(query.favorite)}::boolean`);
+      }
+      if (query.query) {
+        const term = `%${query.query.trim()}%`;
+        where.push(`(
+          a.title ILIKE ${add(term)}
+          OR a.original_filename ILIKE ${add(term)}
+          OR a.description ILIKE ${add(term)}
+        )`);
+      }
+      if (query.folderId) {
+        where.push(`EXISTS (
+          SELECT 1
+          FROM asset_folder_items afi
+          JOIN asset_folders af ON af.id = afi.folder_id
+          WHERE afi.asset_id = a.id
+            AND afi.folder_id = ${add(query.folderId)}::uuid
+            AND af.deleted_at IS NULL
+        )`);
+      }
+
+      const whereSql = where.join(" AND ");
+      const total = await client.query<{ total: number }>(
+        `SELECT COUNT(*)::int AS total FROM assets a WHERE ${whereSql}`,
+        values,
+      );
+
+      const pageValues = [...values, pageSize, (page - 1) * pageSize];
+      const result = await client.query<AssetRecord>(
+        `
+          SELECT
+            a.id::text AS id,
+            a.tenant_id::text AS tenant_id,
+            a.project_id::text AS project_id,
+            a.owner_user_id::text AS owner_user_id,
+            a.kind,
+            a.mime_type,
+            a.storage_provider,
+            a.bucket,
+            a.object_key,
+            a.original_filename,
+            a.size_bytes::text AS size_bytes,
+            a.checksum_sha256,
+            a.width,
+            a.height,
+            a.duration_ms,
+            a.metadata,
+            a.status,
+            a.title,
+            a.description,
+            a.tags,
+            a.source,
+            a.favorite,
+            a.created_at::text AS created_at,
+            a.updated_at::text AS updated_at,
+            a.deleted_at::text AS deleted_at
+          FROM assets a
+          WHERE ${whereSql}
+          ORDER BY a.updated_at DESC, a.created_at DESC, a.id DESC
+          LIMIT $${values.length + 1}
+          OFFSET $${values.length + 2}
+        `,
+        pageValues,
+      );
+
+      const items: AssetView[] = [];
+      for (const row of result.rows) {
+        items.push(mapAsset(row, await this.listVariants(client, row.id)));
+      }
+
+      return {
+        items,
+        page,
+        pageSize,
+        total: total.rows[0]?.total ?? 0,
+      };
+    }, this.pool);
   }
 
   async createPresignedUpload(
@@ -271,7 +443,13 @@ export class AssetsService {
             duration_ms,
             metadata,
             status,
+            title,
+            description,
+            tags,
+            source,
+            favorite,
             created_at::text AS created_at,
+            updated_at::text AS updated_at,
             deleted_at::text AS deleted_at
         `,
         [
@@ -365,7 +543,8 @@ export class AssetsService {
             width = COALESCE($5::int, width),
             height = COALESCE($6::int, height),
             duration_ms = COALESCE($7::int, duration_ms),
-            status = 'available'
+            status = 'available',
+            updated_at = now()
           WHERE id = $1::uuid
           RETURNING
             id::text AS id,
@@ -385,7 +564,13 @@ export class AssetsService {
             duration_ms,
             metadata,
             status,
+            title,
+            description,
+            tags,
+            source,
+            favorite,
             created_at::text AS created_at,
+            updated_at::text AS updated_at,
             deleted_at::text AS deleted_at
         `,
         [
@@ -438,6 +623,260 @@ export class AssetsService {
     }, this.pool);
   }
 
+  async updateAssetMetadata(
+    context: AssetContext,
+    assetId: string,
+    input: UpdateAssetMetadataInput,
+  ): Promise<AssetView> {
+    return withTenantTransaction(context, async (client) => {
+      const asset = await this.getAssetRowForUpdate(client, assetId);
+      if (asset.deleted_at) {
+        throw new AssetsApiError(404, "ASSET_NOT_FOUND", "Asset not found");
+      }
+      const updated = await client.query<AssetRecord>(
+        `
+          UPDATE assets
+          SET
+            title = CASE WHEN $2::boolean THEN $3 ELSE title END,
+            description = CASE WHEN $4::boolean THEN $5 ELSE description END,
+            tags = CASE WHEN $6::boolean THEN $7::text[] ELSE tags END,
+            source = COALESCE($8, source),
+            favorite = COALESCE($9::boolean, favorite),
+            metadata = CASE WHEN $10::boolean THEN $11::jsonb ELSE metadata END,
+            updated_at = now()
+          WHERE id = $1::uuid
+          RETURNING
+            id::text AS id,
+            tenant_id::text AS tenant_id,
+            project_id::text AS project_id,
+            owner_user_id::text AS owner_user_id,
+            kind,
+            mime_type,
+            storage_provider,
+            bucket,
+            object_key,
+            original_filename,
+            size_bytes::text AS size_bytes,
+            checksum_sha256,
+            width,
+            height,
+            duration_ms,
+            metadata,
+            status,
+            title,
+            description,
+            tags,
+            source,
+            favorite,
+            created_at::text AS created_at,
+            updated_at::text AS updated_at,
+            deleted_at::text AS deleted_at
+        `,
+        [
+          assetId,
+          input.title !== undefined,
+          input.title ?? null,
+          input.description !== undefined,
+          input.description ?? null,
+          input.tags !== undefined,
+          input.tags ?? [],
+          input.source?.trim() ?? null,
+          input.favorite ?? null,
+          input.metadata !== undefined,
+          JSON.stringify(input.metadata ?? {}),
+        ],
+      );
+
+      return mapAsset(updated.rows[0], await this.listVariants(client, assetId));
+    }, this.pool);
+  }
+
+  async listFolders(context: AssetContext): Promise<AssetFolderView[]> {
+    return withTenantTransaction(context, async (client) => {
+      const result = await client.query<AssetFolderRecord>(
+        `
+          SELECT
+            id::text AS id,
+            tenant_id::text AS tenant_id,
+            parent_folder_id::text AS parent_folder_id,
+            name,
+            description,
+            created_by::text AS created_by,
+            created_at::text AS created_at,
+            updated_at::text AS updated_at,
+            deleted_at::text AS deleted_at
+          FROM asset_folders
+          WHERE deleted_at IS NULL
+          ORDER BY name ASC, created_at ASC
+        `,
+      );
+
+      return result.rows.map(mapFolder);
+    }, this.pool);
+  }
+
+  async createFolder(
+    context: AssetContext,
+    input: CreateAssetFolderInput,
+  ): Promise<AssetFolderView> {
+    return withTenantTransaction(context, async (client) => {
+      if (input.parentFolderId) {
+        await this.ensureFolderExists(client, input.parentFolderId);
+      }
+
+      const result = await client.query<AssetFolderRecord>(
+        `
+          INSERT INTO asset_folders (
+            tenant_id,
+            parent_folder_id,
+            name,
+            description,
+            created_by,
+            updated_at
+          )
+          VALUES ($1::uuid, $2::uuid, $3, $4, $5::uuid, now())
+          RETURNING
+            id::text AS id,
+            tenant_id::text AS tenant_id,
+            parent_folder_id::text AS parent_folder_id,
+            name,
+            description,
+            created_by::text AS created_by,
+            created_at::text AS created_at,
+            updated_at::text AS updated_at,
+            deleted_at::text AS deleted_at
+        `,
+        [
+          context.tenantId,
+          input.parentFolderId ?? null,
+          input.name.trim(),
+          input.description?.trim() ?? null,
+          context.userId,
+        ],
+      );
+
+      return mapFolder(result.rows[0]);
+    }, this.pool);
+  }
+
+  async updateFolder(
+    context: AssetContext,
+    folderId: string,
+    input: UpdateAssetFolderInput,
+  ): Promise<AssetFolderView> {
+    return withTenantTransaction(context, async (client) => {
+      await this.ensureFolderExists(client, folderId);
+      if (input.parentFolderId) {
+        if (input.parentFolderId === folderId) {
+          throw new AssetsApiError(400, "INVALID_FOLDER_PARENT", "A folder cannot be its own parent");
+        }
+        await this.ensureFolderExists(client, input.parentFolderId);
+      }
+
+      const result = await client.query<AssetFolderRecord>(
+        `
+          UPDATE asset_folders
+          SET
+            name = COALESCE($2, name),
+            description = CASE WHEN $3::boolean THEN $4 ELSE description END,
+            parent_folder_id = CASE WHEN $5::boolean THEN $6::uuid ELSE parent_folder_id END,
+            updated_at = now()
+          WHERE id = $1::uuid
+            AND deleted_at IS NULL
+          RETURNING
+            id::text AS id,
+            tenant_id::text AS tenant_id,
+            parent_folder_id::text AS parent_folder_id,
+            name,
+            description,
+            created_by::text AS created_by,
+            created_at::text AS created_at,
+            updated_at::text AS updated_at,
+            deleted_at::text AS deleted_at
+        `,
+        [
+          folderId,
+          input.name?.trim() ?? null,
+          input.description !== undefined,
+          input.description?.trim() ?? null,
+          input.parentFolderId !== undefined,
+          input.parentFolderId ?? null,
+        ],
+      );
+
+      return mapFolder(result.rows[0]);
+    }, this.pool);
+  }
+
+  async deleteFolder(context: AssetContext, folderId: string): Promise<{ ok: true }> {
+    return withTenantTransaction(context, async (client) => {
+      const result = await client.query<{ id: string }>(
+        `
+          UPDATE asset_folders
+          SET deleted_at = now(), updated_at = now()
+          WHERE id = $1::uuid
+            AND deleted_at IS NULL
+          RETURNING id::text AS id
+        `,
+        [folderId],
+      );
+      if (!result.rows[0]?.id) {
+        throw new AssetsApiError(404, "FOLDER_NOT_FOUND", "Asset folder not found");
+      }
+      await client.query(
+        `
+          DELETE FROM asset_folder_items
+          WHERE folder_id = $1::uuid
+        `,
+        [folderId],
+      );
+
+      return { ok: true as const };
+    }, this.pool);
+  }
+
+  async addAssetToFolder(
+    context: AssetContext,
+    folderId: string,
+    assetId: string,
+  ): Promise<{ ok: true }> {
+    return withTenantTransaction(context, async (client) => {
+      await this.ensureFolderExists(client, folderId);
+      await this.ensureAssetExists(client, assetId);
+
+      await client.query(
+        `
+          INSERT INTO asset_folder_items (tenant_id, folder_id, asset_id, added_by)
+          VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid)
+          ON CONFLICT (folder_id, asset_id) DO NOTHING
+        `,
+        [context.tenantId, folderId, assetId, context.userId],
+      );
+
+      return { ok: true as const };
+    }, this.pool);
+  }
+
+  async removeAssetFromFolder(
+    context: AssetContext,
+    folderId: string,
+    assetId: string,
+  ): Promise<{ ok: true }> {
+    return withTenantTransaction(context, async (client) => {
+      await this.ensureFolderExists(client, folderId);
+      await client.query(
+        `
+          DELETE FROM asset_folder_items
+          WHERE folder_id = $1::uuid
+            AND asset_id = $2::uuid
+        `,
+        [folderId, assetId],
+      );
+
+      return { ok: true as const };
+    }, this.pool);
+  }
+
   async createDownloadUrl(
     context: AssetContext,
     assetId: string,
@@ -483,7 +922,7 @@ export class AssetsService {
       const result = await client.query<{ id: string }>(
         `
           UPDATE assets
-          SET deleted_at = now()
+          SET deleted_at = now(), updated_at = now()
           WHERE id = $1::uuid
             AND deleted_at IS NULL
           RETURNING id::text AS id
@@ -544,7 +983,13 @@ export class AssetsService {
           duration_ms,
           metadata,
           status,
+          title,
+          description,
+          tags,
+          source,
+          favorite,
           created_at::text AS created_at,
+          updated_at::text AS updated_at,
           deleted_at::text AS deleted_at
         FROM assets
         WHERE id = $1::uuid
@@ -585,7 +1030,13 @@ export class AssetsService {
           duration_ms,
           metadata,
           status,
+          title,
+          description,
+          tags,
+          source,
+          favorite,
           created_at::text AS created_at,
+          updated_at::text AS updated_at,
           deleted_at::text AS deleted_at
         FROM assets
         WHERE id = $1::uuid
@@ -601,6 +1052,40 @@ export class AssetsService {
     }
 
     return row;
+  }
+
+  private async ensureAssetExists(client: PoolClient, assetId: string): Promise<void> {
+    const result = await client.query<{ id: string }>(
+      `
+        SELECT id::text AS id
+        FROM assets
+        WHERE id = $1::uuid
+          AND deleted_at IS NULL
+        LIMIT 1
+      `,
+      [assetId],
+    );
+
+    if (!result.rows[0]) {
+      throw new AssetsApiError(404, "ASSET_NOT_FOUND", "Asset not found");
+    }
+  }
+
+  private async ensureFolderExists(client: PoolClient, folderId: string): Promise<void> {
+    const result = await client.query<{ id: string }>(
+      `
+        SELECT id::text AS id
+        FROM asset_folders
+        WHERE id = $1::uuid
+          AND deleted_at IS NULL
+        LIMIT 1
+      `,
+      [folderId],
+    );
+
+    if (!result.rows[0]) {
+      throw new AssetsApiError(404, "FOLDER_NOT_FOUND", "Asset folder not found");
+    }
   }
 
   private async listVariants(
