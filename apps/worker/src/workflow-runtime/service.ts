@@ -50,10 +50,12 @@ type WorkflowRunRecord = {
 
 type NodeRunRecord = {
   attempt: number;
+  cost_json: Record<string, unknown>;
   error_json: Record<string, unknown> | null;
   finished_at: string | null;
   id: string;
   input_json: Record<string, unknown>;
+  max_attempts: number;
   node_id: string;
   node_type: string;
   output_json: Record<string, unknown> | null;
@@ -744,7 +746,7 @@ export class WorkflowNodeExecutionService {
           pollResult,
         );
         const usageRecord = this.buildUsageRecord({
-          billableCents: 0,
+          billableCents: this.getReservedCents(currentNodeRun),
           eventType: currentNode.type === "video.generate" ? "ai.video.generate" : "ai.image.generate",
           idempotencyKey: this.buildUsageIdempotencyKey(
             context.tenantId,
@@ -924,7 +926,7 @@ export class WorkflowNodeExecutionService {
 
       return {
         usageRecord: this.buildUsageRecord({
-          billableCents: 0,
+          billableCents: this.getReservedCents(nodeRun),
           eventType: "ai.text.generate",
           idempotencyKey: this.buildUsageIdempotencyKey(context.tenantId, workflowRun.id, nodeRun.id, "text"),
           inputTokens: result.usage.inputTokens,
@@ -1035,7 +1037,7 @@ export class WorkflowNodeExecutionService {
 
     return {
       usageRecord: this.buildUsageRecord({
-        billableCents: 0,
+        billableCents: this.getReservedCents(nodeRun),
         eventType: kind === "image" ? "ai.image.generate" : "ai.video.generate",
         idempotencyKey: this.buildUsageIdempotencyKey(
           context.tenantId,
@@ -1223,10 +1225,12 @@ export class WorkflowNodeExecutionService {
           node_type,
           status,
           attempt,
+          max_attempts,
           input_json,
           output_json,
           error_json,
           provider_task_id,
+          cost_json,
           started_at::text AS started_at,
           finished_at::text AS finished_at
         FROM node_runs
@@ -1294,6 +1298,11 @@ export class WorkflowNodeExecutionService {
     return input;
   }
 
+  private getReservedCents(nodeRun: NodeRunRecord): number {
+    const reserved = nodeRun.cost_json?.reservedCents;
+    return typeof reserved === "number" && Number.isFinite(reserved) ? Math.max(0, reserved) : 0;
+  }
+
   private async recordUsageForNode(
     client: PoolClient,
     tenantId: string,
@@ -1325,14 +1334,31 @@ export class WorkflowNodeExecutionService {
     const ledgerEntry = await this.billingService.settleUsageWithClient(client, tenantId, {
       amountCents: input.billableCents,
       description: `${input.eventType} settled`,
-      idempotencyKey: `settle:${usageEvent.id}`,
+      idempotencyKey: `settle:${tenantId}:${input.workflowRunId}:${input.nodeRunId}`,
       metadata: {
         modality: input.modality,
         nodeRunId: input.nodeRunId,
         workflowRunId: input.workflowRunId,
       },
+      reservedAmountCents: input.billableCents,
       usageEventId: usageEvent.id,
     });
+
+    await client.query(
+      `
+        UPDATE node_runs
+        SET cost_json = cost_json || $2::jsonb
+        WHERE id = $1::uuid
+      `,
+      [
+        input.nodeRunId,
+        JSON.stringify({
+          settledCents: input.billableCents,
+          settleLedgerId: ledgerEntry.id,
+          reserveStatus: "settled",
+        }),
+      ],
+    );
 
     return [
       {
@@ -1539,6 +1565,8 @@ export class WorkflowNodeExecutionService {
       message: string;
     },
   ): Promise<void> {
+    await this.refundOpenReservations(client, workflowRunId, tenantId);
+
     await client.query(
       `
         UPDATE node_runs
@@ -1576,6 +1604,64 @@ export class WorkflowNodeExecutionService {
       tenantId,
       workflowRunId,
     });
+  }
+
+  private async refundOpenReservations(
+    client: PoolClient,
+    workflowRunId: string,
+    tenantId: string,
+  ): Promise<void> {
+    const result = await client.query<{
+      id: string;
+      node_id: string;
+      cost_json: Record<string, unknown>;
+    }>(
+      `
+        SELECT
+          id::text AS id,
+          node_id,
+          cost_json
+        FROM node_runs
+        WHERE workflow_run_id = $1::uuid
+          AND COALESCE(cost_json->>'reserveStatus', '') = 'reserved'
+      `,
+      [workflowRunId],
+    );
+
+    for (const row of result.rows) {
+      const reservedCents = typeof row.cost_json?.reservedCents === "number"
+        ? row.cost_json.reservedCents
+        : 0;
+      if (reservedCents <= 0) {
+        continue;
+      }
+
+      const ledgerEntry = await this.billingService.refundUsageWithClient(client, tenantId, {
+        amountCents: reservedCents,
+        description: "Workflow node reservation released after failure",
+        idempotencyKey: `refund:${tenantId}:${workflowRunId}:${row.id}`,
+        metadata: {
+          nodeId: row.node_id,
+          nodeRunId: row.id,
+          workflowRunId,
+        },
+      });
+
+      await client.query(
+        `
+          UPDATE node_runs
+          SET cost_json = cost_json || $2::jsonb
+          WHERE id = $1::uuid
+        `,
+        [
+          row.id,
+          JSON.stringify({
+            refundLedgerId: ledgerEntry.id,
+            reserveStatus: "refunded",
+          }),
+        ],
+      );
+    }
   }
 
   private async markNodeRunRunning(client: PoolClient, nodeRunId: string): Promise<void> {

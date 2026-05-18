@@ -3,7 +3,9 @@ import {
   BillingServiceError,
   createPgPool,
   type BillingSummaryView,
+  type BillingRedeemResultView,
   type BillingLedgerView,
+  type BillingPaymentView,
   type UsageEventView,
 } from "@aigc-flow/db";
 import type { Pool } from "pg";
@@ -69,6 +71,95 @@ export class BillingApiService {
     pageSize: number;
   }> {
     return this.call(() => this.billingService.listLedgerEntries(context, input));
+  }
+
+  async redeemCode(
+    context: BillingContext,
+    input: {
+      code: string;
+      idempotencyKey?: string;
+    },
+  ): Promise<BillingRedeemResultView> {
+    return this.call(() => this.billingService.redeemCode(context, input));
+  }
+
+  async createPaymentCheckout(
+    context: BillingContext,
+    input: {
+      amountCents: number;
+      credits: number;
+      idempotencyKey: string;
+      provider: string;
+    },
+  ): Promise<{
+    checkoutUrl: null;
+    payment: BillingPaymentView;
+  }> {
+    const payment = await this.call(() => this.billingService.createPayment(context, {
+      amountCents: input.amountCents,
+      credits: input.credits,
+      idempotencyKey: input.idempotencyKey,
+      metadata: {
+        note: "Payment provider integration is not configured in Sprint 5",
+      },
+      provider: input.provider,
+      status: "pending",
+    }));
+
+    return {
+      checkoutUrl: null,
+      payment,
+    };
+  }
+
+  async adjustBillingAccount(
+    context: BillingContext,
+    input: {
+      amountCents: number;
+      direction: "credit" | "debit";
+      idempotencyKey: string;
+      note?: string;
+    },
+  ): Promise<BillingLedgerView> {
+    const payload = {
+      amountCents: input.amountCents,
+      description: input.note ?? `Admin ${input.direction}`,
+      entryType: input.direction === "credit" ? "admin_credit" : "admin_debit",
+      idempotencyKey: input.idempotencyKey,
+      metadata: {
+        adjustedByUserId: context.userId,
+        note: input.note ?? null,
+      },
+    };
+
+    return this.call(() => (
+      input.direction === "credit"
+        ? this.billingService.creditAccount(context, payload)
+        : this.billingService.debitAccount(context, payload)
+    ));
+  }
+
+  async listPricing(context: BillingContext): Promise<Array<{
+    active: boolean;
+    id: string;
+    minChargeCredits: number;
+    model: string;
+    provider: string;
+    route: string;
+    unit: string;
+    unitCredits: number;
+  }>> {
+    const pricing = await this.call(() => this.billingService.listModelPricing(context));
+    return pricing.map((item) => ({
+      active: item.active,
+      id: item.id,
+      minChargeCredits: item.minChargeCredits,
+      model: item.model,
+      provider: item.provider,
+      route: item.route,
+      unit: item.unit,
+      unitCredits: item.unitCredits,
+    }));
   }
 
   private async call<T>(fn: () => Promise<T>): Promise<T> {
