@@ -20,6 +20,18 @@ export const flowGraphSchema = z.object({
   viewport: z.record(z.string(), z.unknown()).optional(),
 });
 
+const draftViewportSchema = z.object({
+  x: z.number().finite(),
+  y: z.number().finite(),
+  zoom: z.number().finite().positive(),
+});
+
+const draftGraphSchema = z.object({
+  edges: z.array(z.record(z.string(), z.unknown())),
+  nodes: z.array(z.record(z.string(), z.unknown())),
+  viewport: draftViewportSchema,
+});
+
 export const projectIdParamsSchema = z.object({
   projectId: z.string().uuid(),
 });
@@ -47,9 +59,19 @@ export const publishFlowSchema = z.object({
   graph: flowGraphSchema,
 });
 
+export const saveFlowDraftSchema = z.object({
+  expectedRevision: z.number().int().positive().optional(),
+  graph: draftGraphSchema.optional(),
+  graphJson: draftGraphSchema.optional(),
+  graph_json: draftGraphSchema.optional(),
+}).refine((value) => value.graph || value.graphJson || value.graph_json, {
+  message: "A graph payload is required",
+});
+
 export type CreateFlowInput = z.infer<typeof createFlowSchema>;
 export type FlowGraphInput = z.infer<typeof flowGraphSchema>;
 export type FlowIdParams = z.infer<typeof flowIdParamsSchema>;
 export type ProjectIdParams = z.infer<typeof projectIdParamsSchema>;
 export type PublishFlowInput = z.infer<typeof publishFlowSchema>;
+export type SaveFlowDraftInput = z.infer<typeof saveFlowDraftSchema>;
 export type UpdateFlowInput = z.infer<typeof updateFlowSchema>;

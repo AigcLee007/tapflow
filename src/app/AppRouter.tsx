@@ -4,19 +4,13 @@ import { AuthGate } from "../auth/AuthGate";
 import { LoginPage } from "../auth/LoginPage";
 import { RegisterPage } from "../auth/RegisterPage";
 import { useAuth } from "../auth/useAuth";
+import { FlowProjectPage } from "../flowCanvas/FlowProjectPage";
 import { WorkspacePage } from "../workspace/WorkspacePage";
-import {
-  getWorkspaceProject,
-  listProjectFlows,
-  type WorkspaceFlow,
-  type WorkspaceProject,
-} from "../workspace/workspaceApi";
 import { WorkspaceShell } from "./WorkspaceShell";
 import {
   ACCOUNT_ROUTE,
   ASSETS_ROUTE,
   BILLING_ROUTE,
-  getProjectId,
   isCompatibilityRoute,
   isNonUserFacingRoute,
   isProjectRoute,
@@ -79,73 +73,6 @@ function PlaceholderPage({
   );
 }
 
-function ProjectPage({ projectId }: { projectId: string }) {
-  const [project, setProject] = useState<WorkspaceProject | null>(null);
-  const [flows, setFlows] = useState<WorkspaceFlow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    const load = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const [nextProject, nextFlows] = await Promise.all([
-          getWorkspaceProject(projectId),
-          listProjectFlows(projectId),
-        ]);
-        if (!active) return;
-        setProject(nextProject);
-        setFlows(nextFlows);
-      } catch (loadError) {
-        if (!active) return;
-        setError(loadError instanceof Error ? loadError.message : "Unable to load project");
-      } finally {
-        if (active) setLoading(false);
-      }
-    };
-
-    void load();
-    return () => {
-      active = false;
-    };
-  }, [projectId]);
-
-  if (loading) {
-    return (
-      <div className="grid min-h-64 place-items-center rounded-lg border border-white/10 bg-white/[0.04] text-sm text-slate-400">
-        Loading project...
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <PlaceholderPage
-        description={error}
-        eyebrow="Project Canvas"
-        title="Unable to load project"
-      />
-    );
-  }
-
-  return (
-    <section className="rounded-lg border border-white/10 bg-white/[0.04] p-6">
-      <div className="text-xs uppercase tracking-[0.24em] text-sky-300">Project Canvas</div>
-      <h1 className="mt-3 text-2xl font-semibold text-white">
-        {project?.name || "Project Flow"}
-      </h1>
-      <div className="mt-5 grid gap-3 md:grid-cols-3">
-        <Info label="Project ID" value={projectId} wide />
-        <Info label="Default flow" value={flows[0]?.title || "Not created"} />
-        <Info label="Flow ID" value={flows[0]?.id || "-"} />
-        <Info label="Updated" value={project?.updatedAt ? new Date(project.updatedAt).toLocaleString() : "-"} />
-      </div>
-    </section>
-  );
-}
-
 function AssetsPage() {
   return (
     <PlaceholderPage
@@ -203,7 +130,7 @@ function ProtectedRoutes({ pathname }: { pathname: string }) {
   }
 
   if (isProjectRoute(pathname)) {
-    return <ProjectPage projectId={getProjectId(pathname) || ""} />;
+    return <FlowProjectPage />;
   }
 
   if (pathname === ASSETS_ROUTE || pathname.startsWith(`${ASSETS_ROUTE}/`)) {

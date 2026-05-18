@@ -122,13 +122,14 @@ const loadFlowSnapshot = async () => {
   return null;
 };
 
-const useAutoSave = () => {
+const useAutoSave = (enabled: boolean) => {
   const isDirty = useFlowCanvasStore((s) => s.isDirty);
   const isNodeDragging = useFlowCanvasStore((s) => s.isNodeDragging);
   const getProjectSnapshot = useFlowCanvasStore((s) => s.getProjectSnapshot);
   const markClean = useFlowCanvasStore((s) => s.markClean);
 
   useEffect(() => {
+    if (!enabled) return;
     const handlePageHide = () => {
       void saveFlowSnapshot(getProjectSnapshot()).catch((err) => {
         console.warn('[FlowCanvas] Auto-save on pagehide failed:', err);
@@ -138,9 +139,10 @@ const useAutoSave = () => {
     return () => {
       window.removeEventListener('pagehide', handlePageHide);
     };
-  }, [getProjectSnapshot]);
+  }, [enabled, getProjectSnapshot]);
 
   useEffect(() => {
+    if (!enabled) return;
     if (!isDirty || isNodeDragging) return;
     let cancelled = false;
     const persist = async () => {
@@ -161,14 +163,15 @@ const useAutoSave = () => {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [isDirty, isNodeDragging, getProjectSnapshot, markClean]);
+  }, [enabled, isDirty, isNodeDragging, getProjectSnapshot, markClean]);
 };
 
-const useAutoLoad = () => {
+const useAutoLoad = (enabled: boolean) => {
   const loadProject = useFlowCanvasStore((s) => s.loadProject);
   const nodeCount = useFlowCanvasStore((s) => s.nodes.length);
 
   useEffect(() => {
+    if (!enabled) return;
     if (nodeCount > 0) return;
     let cancelled = false;
     void loadFlowSnapshot()
@@ -183,7 +186,7 @@ const useAutoLoad = () => {
     return () => {
       cancelled = true;
     };
-  }, [loadProject, nodeCount]);
+  }, [enabled, loadProject, nodeCount]);
 };
 
 const useBackendFlowBinding = () => {
@@ -293,14 +296,16 @@ const EmptyState: React.FC = React.memo(() => {
   );
 });
 
-const FlowCanvasPage: React.FC = () => {
+const FlowCanvasPage: React.FC<{ enableLocalPersistence?: boolean }> = ({
+  enableLocalPersistence = true,
+}) => {
   const [cullingEnabled, setCullingEnabled] = useState(true);
   const toggleCulling = useCallback(() => setCullingEnabled((v) => !v), []);
 
   useFlowShortcuts();
   useFlowViewportLock();
-  useAutoSave();
-  useAutoLoad();
+  useAutoSave(enableLocalPersistence);
+  useAutoLoad(enableLocalPersistence);
   useBackendFlowBinding();
   useBackendRunCleanup();
 

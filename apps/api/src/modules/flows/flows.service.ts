@@ -46,6 +46,28 @@ type FlowVersionRecord = {
   version: number;
 };
 
+type FlowDraftGraph = {
+  edges: Record<string, unknown>[];
+  nodes: Record<string, unknown>[];
+  viewport: {
+    x: number;
+    y: number;
+    zoom: number;
+  };
+};
+
+type FlowDraftRecord = {
+  created_at: string;
+  flow_id: string;
+  graph_json: FlowDraftGraph;
+  id: string;
+  last_saved_by: string | null;
+  project_id: string;
+  revision: number;
+  tenant_id: string;
+  updated_at: string;
+};
+
 export type FlowView = {
   createdAt: string;
   createdBy: string | null;
@@ -72,6 +94,18 @@ export type FlowVersionView = {
   publishedBy: string | null;
   tenantId: string;
   version: number;
+};
+
+export type FlowDraftView = {
+  createdAt: string;
+  flowId: string;
+  graph: FlowDraftGraph;
+  id: string;
+  lastSavedBy: string | null;
+  projectId: string;
+  revision: number;
+  tenantId: string;
+  updatedAt: string;
 };
 
 export class FlowsApiError extends Error {
@@ -116,6 +150,86 @@ function mapFlowVersion(row: FlowVersionRecord): FlowVersionView {
     tenantId: row.tenant_id,
     version: row.version,
   };
+}
+
+function mapFlowDraft(row: FlowDraftRecord): FlowDraftView {
+  return {
+    createdAt: row.created_at,
+    flowId: row.flow_id,
+    graph: normalizeDraftGraph(row.graph_json),
+    id: row.id,
+    lastSavedBy: row.last_saved_by,
+    projectId: row.project_id,
+    revision: row.revision,
+    tenantId: row.tenant_id,
+    updatedAt: row.updated_at,
+  };
+}
+
+const EMPTY_DRAFT_GRAPH: FlowDraftGraph = {
+  edges: [],
+  nodes: [],
+  viewport: { x: 0, y: 0, zoom: 1 },
+};
+
+const LOCAL_PAYLOAD_FIELD_RE = /(?:^|_)(?:base64|blob|file|dataUrl|data_url|imageUrl|image_url|thumbnailUrl|thumbnail_url|originalImageUrl|original_image_url|src)$/i;
+const BASE64_VALUE_RE = /^[A-Za-z0-9+/]+={0,2}$/;
+
+function looksLikeBase64Payload(value: string): boolean {
+  const compact = value.replace(/\s/g, "");
+  return compact.length > 256 && compact.length % 4 === 0 && BASE64_VALUE_RE.test(compact);
+}
+
+function containsLocalPayloadReference(value: unknown, keyPath: string[] = []): boolean {
+  if (typeof value === "string") {
+    const trimmed = value.trim().toLowerCase();
+    const currentKey = keyPath[keyPath.length - 1] ?? "";
+    return (
+      trimmed.startsWith("data:") ||
+      trimmed.startsWith("blob:") ||
+      (LOCAL_PAYLOAD_FIELD_RE.test(currentKey) && looksLikeBase64Payload(value))
+    );
+  }
+
+  if (Array.isArray(value)) {
+    return value.some((item, index) => containsLocalPayloadReference(item, [...keyPath, String(index)]));
+  }
+
+  if (value && typeof value === "object") {
+    const currentKey = keyPath[keyPath.length - 1] ?? "";
+    if (/^(?:blob|file)$/i.test(currentKey)) {
+      return true;
+    }
+    return Object.entries(value).some(([key, item]) =>
+      containsLocalPayloadReference(item, [...keyPath, key]),
+    );
+  }
+
+  return false;
+}
+
+function normalizeDraftGraph(graph: unknown): FlowDraftGraph {
+  const input = graph && typeof graph === "object" ? graph as Partial<FlowDraftGraph> : {};
+  const viewport = input.viewport && typeof input.viewport === "object" ? input.viewport : EMPTY_DRAFT_GRAPH.viewport;
+  return {
+    edges: Array.isArray(input.edges) ? input.edges : [],
+    nodes: Array.isArray(input.nodes) ? input.nodes : [],
+    viewport: {
+      x: Number.isFinite(viewport.x) ? Number(viewport.x) : 0,
+      y: Number.isFinite(viewport.y) ? Number(viewport.y) : 0,
+      zoom: Number.isFinite(viewport.zoom) && Number(viewport.zoom) > 0 ? Number(viewport.zoom) : 1,
+    },
+  };
+}
+
+function assertDraftGraphSafe(graph: FlowDraftGraph): void {
+  if (containsLocalPayloadReference(graph)) {
+    throw new FlowsApiError(
+      400,
+      "UNSUPPORTED_LOCAL_PAYLOAD",
+      "Draft graph cannot contain data:, blob:, or embedded base64 payloads. Upload assets first and store assetId references.",
+    );
+  }
 }
 
 function mapWorkflowError(error: unknown): never {
@@ -461,6 +575,66 @@ export class FlowsService {
     }, this.pool);
   }
 
+  async getFlowDraft(context: FlowContext, flowId: string): Promise<FlowDraftView> {
+    return withTenantTransaction(context, async (client) => {
+      const flow = await this.getFlowOrThrow(client, flowId);
+      return this.getOrCreateFlowDraft(client, context, flow);
+    }, this.pool);
+  }
+
+  async saveFlowDraft(
+    context: FlowContext,
+    flowId: string,
+    input: {
+      expectedRevision?: number;
+      graph: FlowDraftGraph;
+    },
+  ): Promise<FlowDraftView> {
+    const graph = normalizeDraftGraph(input.graph);
+    assertDraftGraphSafe(graph);
+
+    return withTenantTransaction(context, async (client) => {
+      const flow = await this.getFlowOrThrow(client, flowId);
+      const draft = await this.getOrCreateFlowDraft(client, context, flow);
+
+      if (
+        input.expectedRevision !== undefined &&
+        input.expectedRevision !== draft.revision
+      ) {
+        throw new FlowsApiError(
+          409,
+          "FLOW_DRAFT_REVISION_CONFLICT",
+          "Flow draft has changed since it was loaded",
+        );
+      }
+
+      const result = await client.query<FlowDraftRecord>(
+        `
+          UPDATE flow_drafts
+          SET
+            graph_json = $2::jsonb,
+            revision = revision + 1,
+            last_saved_by = $3::uuid,
+            updated_at = now()
+          WHERE id = $1::uuid
+          RETURNING
+            id::text AS id,
+            tenant_id::text AS tenant_id,
+            project_id::text AS project_id,
+            flow_id::text AS flow_id,
+            graph_json,
+            revision,
+            last_saved_by::text AS last_saved_by,
+            created_at::text AS created_at,
+            updated_at::text AS updated_at
+        `,
+        [draft.id, JSON.stringify(graph), context.userId],
+      );
+
+      return mapFlowDraft(result.rows[0]);
+    }, this.pool);
+  }
+
   private async getProjectOrThrow(
     client: PoolClient,
     projectId: string,
@@ -516,5 +690,78 @@ export class FlowsService {
     }
 
     return mapFlow(row);
+  }
+
+  private async getOrCreateFlowDraft(
+    client: PoolClient,
+    context: FlowContext,
+    flow: FlowView,
+  ): Promise<FlowDraftView> {
+    const existing = await client.query<FlowDraftRecord>(
+      `
+        SELECT
+          id::text AS id,
+          tenant_id::text AS tenant_id,
+          project_id::text AS project_id,
+          flow_id::text AS flow_id,
+          graph_json,
+          revision,
+          last_saved_by::text AS last_saved_by,
+          created_at::text AS created_at,
+          updated_at::text AS updated_at
+        FROM flow_drafts
+        WHERE flow_id = $1::uuid
+        LIMIT 1
+      `,
+      [flow.id],
+    );
+
+    if (existing.rows[0]) {
+      return mapFlowDraft(existing.rows[0]);
+    }
+
+    const result = await client.query<FlowDraftRecord>(
+      `
+        INSERT INTO flow_drafts (
+          tenant_id,
+          project_id,
+          flow_id,
+          graph_json,
+          revision,
+          last_saved_by,
+          updated_at
+        )
+        VALUES (
+          $1::uuid,
+          $2::uuid,
+          $3::uuid,
+          $4::jsonb,
+          1,
+          $5::uuid,
+          now()
+        )
+        ON CONFLICT (flow_id) DO UPDATE
+        SET flow_id = EXCLUDED.flow_id
+        RETURNING
+          id::text AS id,
+          tenant_id::text AS tenant_id,
+          project_id::text AS project_id,
+          flow_id::text AS flow_id,
+          graph_json,
+          revision,
+          last_saved_by::text AS last_saved_by,
+          created_at::text AS created_at,
+          updated_at::text AS updated_at
+      `,
+      [
+        context.tenantId,
+        flow.projectId,
+        flow.id,
+        JSON.stringify(EMPTY_DRAFT_GRAPH),
+        context.userId,
+      ],
+    );
+
+    return mapFlowDraft(result.rows[0]);
   }
 }

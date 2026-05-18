@@ -194,6 +194,114 @@ describeWithDatabase("projects and flows v2", () => {
         expect(flow.statusCode).toBe(201);
         const flowBody = flow.json();
 
+        const emptyDraft = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "GET",
+          url: `/api/v2/flows/${flowBody.id}/draft`,
+        });
+        expect(emptyDraft.statusCode).toBe(200);
+        expect(emptyDraft.json()).toMatchObject({
+          flowId: flowBody.id,
+          graph: {
+            edges: [],
+            nodes: [],
+            viewport: { x: 0, y: 0, zoom: 1 },
+          },
+          projectId: projectBody.id,
+          revision: 1,
+        });
+
+        const savedDraft = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "PUT",
+          payload: {
+            expectedRevision: emptyDraft.json().revision,
+            graph: {
+              edges: [{ id: "edge-1", source: "input", target: "output" }],
+              nodes: [
+                { id: "input", type: "input", position: { x: 10, y: 20 }, data: { prompt: "hello" } },
+                { id: "output", type: "output", position: { x: 320, y: 20 } },
+              ],
+              viewport: { x: 12, y: 24, zoom: 0.8 },
+            },
+          },
+          url: `/api/v2/flows/${flowBody.id}/draft`,
+        });
+        expect(savedDraft.statusCode).toBe(200);
+        expect(savedDraft.json()).toMatchObject({
+          flowId: flowBody.id,
+          graph: {
+            viewport: { x: 12, y: 24, zoom: 0.8 },
+          },
+          revision: 2,
+        });
+
+        const staleDraft = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "PUT",
+          payload: {
+            expectedRevision: 1,
+            graph: {
+              edges: [],
+              nodes: [],
+              viewport: { x: 0, y: 0, zoom: 1 },
+            },
+          },
+          url: `/api/v2/flows/${flowBody.id}/draft`,
+        });
+        expect(staleDraft.statusCode).toBe(409);
+
+        const localPayloadDraft = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "PUT",
+          payload: {
+            expectedRevision: savedDraft.json().revision,
+            graph: {
+              edges: [],
+              nodes: [
+                { id: "image", type: "image", data: { thumbnailUrl: "data:image/png;base64,abc" } },
+              ],
+              viewport: { x: 0, y: 0, zoom: 1 },
+            },
+          },
+          url: `/api/v2/flows/${flowBody.id}/draft`,
+        });
+        expect(localPayloadDraft.statusCode).toBe(400);
+
+        const embeddedBase64Draft = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "PUT",
+          payload: {
+            expectedRevision: savedDraft.json().revision,
+            graph: {
+              edges: [],
+              nodes: [
+                {
+                  id: "image",
+                  type: "image",
+                  data: {
+                    assetId: randomUUID(),
+                    thumbnailUrl: "a".repeat(260),
+                  },
+                },
+              ],
+              viewport: { x: 0, y: 0, zoom: 1 },
+            },
+          },
+          url: `/api/v2/flows/${flowBody.id}/draft`,
+        });
+        expect(embeddedBase64Draft.statusCode).toBe(400);
+
         const firstPublish = await api.inject({
           headers: {
             authorization: `Bearer ${owner.accessToken}`,
@@ -399,6 +507,15 @@ describeWithDatabase("projects and flows v2", () => {
           url: `/api/v2/flows/${flowBBody.id}`,
         });
         expect(getFlowBFromA.statusCode).toBe(404);
+
+        const getDraftBFromA = await api.inject({
+          headers: {
+            authorization: `Bearer ${tenantAOwner.accessToken}`,
+          },
+          method: "GET",
+          url: `/api/v2/flows/${flowBBody.id}/draft`,
+        });
+        expect(getDraftBFromA.statusCode).toBe(404);
 
         const getVersionsFromA = await api.inject({
           headers: {
