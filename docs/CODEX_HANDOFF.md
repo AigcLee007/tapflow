@@ -1,0 +1,161 @@
+# Codex Handoff
+
+## Current Repository
+
+- Local path: `D:\tapnow-flow`
+- Remote URL: `https://github.com/AigcLee007/tapflow.git`
+- Current branch: `main`
+- Latest main commits:
+  - `9fc9ccd merge sprint-3: remote flow draft persistence`
+  - `327f8d5 sprint-3: add remote flow draft persistence`
+  - `abbd3d9 initial tapflow baseline with auth shell and workspace`
+- Current status: clean working tree, `main` is up to date with `origin/main`
+
+## Product Goal
+
+This repository is being refactored into a single authenticated AI Flow workspace product.
+
+- Provide one unified workspace after login.
+- Show a TapNow-style project list in `/workspace`.
+- Treat each user-facing project as one Flow canvas.
+- Persist Flow canvas drafts on the server.
+- Add a cloud asset library.
+- Add server-side billing, credits, reserve/settle/refund, and ledger records.
+- Continue removing legacy product paths and disconnected frontend shells.
+
+## Completed Work
+
+### Sprint 1: Auth Shell and App Routing
+
+Completed:
+
+- `App.tsx` was reduced to `AuthProvider + AppRouter`.
+- Added the unified app shell under `src/app/*`.
+- Added auth provider, gate, hook, login, and register pages under `src/auth/*`.
+- Added centralized v2 clients: `v2HttpClient` and `v2AuthClient`.
+- Added `/login` and `/register`.
+- Added `AuthGate` for protected app routes.
+- Disconnected old primary entries for classic canvas, `/admin`, `/model-mapping`, `/create/flow`, and `/create/classic`.
+
+Key files:
+
+- `App.tsx`
+- `src/app/AppRouter.tsx`
+- `src/app/WorkspaceShell.tsx`
+- `src/app/routes.ts`
+- `src/auth/AuthProvider.tsx`
+- `src/auth/AuthGate.tsx`
+- `src/auth/LoginPage.tsx`
+- `src/auth/RegisterPage.tsx`
+- `src/auth/useAuth.ts`
+- `src/services/v2HttpClient.ts`
+- `src/services/v2AuthClient.ts`
+
+### Sprint 2: Workspace Projects
+
+Completed:
+
+- Implemented the `/workspace` page.
+- Added TapNow-style project list UI.
+- Connected project listing to `GET /api/v2/projects`.
+- Connected project creation to `POST /api/v2/projects`.
+- After creating a project, the frontend creates a default flow via `POST /api/v2/projects/:projectId/flows`.
+- Project cards navigate to `/projects/:projectId`.
+
+Key files:
+
+- `src/app/AppRouter.tsx`
+- `src/workspace/WorkspacePage.tsx`
+- `src/workspace/WorkspaceHeader.tsx`
+- `src/workspace/ProjectTabs.tsx`
+- `src/workspace/ProjectToolbar.tsx`
+- `src/workspace/ProjectGrid.tsx`
+- `src/workspace/ProjectCard.tsx`
+- `src/workspace/CreateProjectCard.tsx`
+- `src/workspace/useWorkspaceProjects.ts`
+- `src/workspace/workspaceApi.ts`
+
+### Sprint 3: Remote Flow Draft Persistence
+
+Completed:
+
+- Added `packages/db/migrations/000010_flow_drafts.sql`.
+- Added the `flow_drafts` table with tenant-scoped RLS.
+- Added `GET /api/v2/flows/:flowId/draft`.
+- Added `PUT /api/v2/flows/:flowId/draft`.
+- Added `expectedRevision` conflict handling with `409`.
+- Draft autosave stores only `nodes`, `edges`, and `viewport`.
+- Backend rejects `data:`, `blob:`, embedded base64 payloads, and local `File`/`Blob`-like objects in `graph_json`.
+- `/projects/:projectId` now renders `FlowProjectPage`.
+- Remote draft data hydrates into the existing `FlowCanvasPage`.
+- `FlowProjectPage` renders `FlowCanvasPage enableLocalPersistence={false}`.
+- Added 1200ms debounce autosave for remote drafts.
+- `localStorage` and IndexedDB are no longer authority for remote project pages.
+- `flow_versions` remains for publish/manual snapshots, not high-frequency autosave.
+
+Key files:
+
+- `packages/db/migrations/000010_flow_drafts.sql`
+- `apps/api/src/modules/flows/flows.routes.ts`
+- `apps/api/src/modules/flows/flows.schemas.ts`
+- `apps/api/src/modules/flows/flows.service.ts`
+- `apps/api/test/projects-flows.test.ts`
+- `src/app/AppRouter.tsx`
+- `src/flowCanvas/FlowProjectPage.tsx`
+- `src/flowCanvas/FlowCanvasPage.tsx`
+- `src/flowCanvas/hooks/useRemoteFlowProject.ts`
+- `src/flowCanvas/hooks/useRemoteFlowAutosave.ts`
+- `src/flowCanvas/services/flowProjectApi.ts`
+
+## Git History
+
+Key commits currently on `main`:
+
+- `abbd3d9 initial tapflow baseline with auth shell and workspace`
+- `327f8d5 sprint-3: add remote flow draft persistence`
+- `9fc9ccd merge sprint-3: remote flow draft persistence`
+
+## Known Test Status
+
+- `npm run build` passes.
+- `npm run build --workspace @aigc-flow/api` passes.
+- `npm test` currently fails only in `scripts/migrate-legacy-v2/test/migrate.test.ts`.
+- The known failures are legacy migration asset count / storage upload assertions:
+  - `dry-run does not write DB or S3`
+  - `missing asset files record a warning without crashing the batch`
+  - `asset migration writes object content to storage but not to the DB writer payload, and includes tenant scope`
+- These failures are recorded as non-blocking for Sprint 1, Sprint 2, and Sprint 3.
+- DB integration tests may be skipped locally when no database environment is configured.
+
+## Important Constraints for Future Codex Sessions
+
+- Do not restore old `InfiniteCanvas` as a primary product entry.
+- Do not restore `/create/classic` or `/create/flow` as primary entries.
+- Do not use browser `localStorage` or IndexedDB as authoritative Flow canvas storage.
+- Do not write base64, `blob:`, `data:`, `File`, or `Blob` payloads into `flow_drafts.graph_json`.
+- `flow_versions` is for publish/manual snapshots only, not autosave.
+- Every new Sprint must start from a clean `main` and create a new branch.
+- Each Sprint should be reviewed before commit, pushed as its own branch, then merged to `main` after review.
+- Do not implement multiple Sprints in one pass.
+
+## Next Planned Sprint
+
+### Sprint 4: Cloud Asset Library
+
+Planned goals:
+
+- Create a new `sprint-4-asset-library` branch.
+- Add or complete `GET /api/v2/assets`.
+- Add `PATCH /api/v2/assets/:assetId/metadata`.
+- Add `asset_folders` and `asset_folder_items`.
+- Build the `/assets` cloud asset library page.
+- Route uploads through `presigned-upload + complete-upload`.
+- Flow canvas nodes should store structured asset references such as `assetId`, `thumbnailAssetId`, `mimeType`, `width`, `height`, and `durationMs`.
+- Do not write asset contents, base64, or blob URLs into `graph_json`.
+- Do not enter Sprint 5 billing work during Sprint 4.
+
+## Suggested Next User Prompt
+
+Copy this prompt in the next session:
+
+> 请先读取 AGENTS.md、docs/DEVELOPMENT_PLAN.md、docs/CODEX_HANDOFF.md，然后确认当前 main 分支 clean，再等待我下达 Sprint 4 指令。
