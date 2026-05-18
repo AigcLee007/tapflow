@@ -6,6 +6,8 @@
 - Remote URL: `https://github.com/AigcLee007/tapflow.git`
 - Current branch: `main`
 - Latest main commits:
+  - `23c7b09 merge sprint-5: billing workflow reserve settle refund`
+  - `5169372 sprint-5: add billing workflow reserve settle refund`
   - `9944a4f merge sprint-4: cloud asset library`
   - `a562513 sprint-4: add cloud asset library`
   - `382a9a1 docs: add codex handoff summary`
@@ -145,10 +147,62 @@ Key files:
 - `src/flowCanvas/types.ts`
 - `src/workspace/workspaceApi.ts`
 
+### Sprint 5: Billing + Workflow Reserve/Settle/Refund
+
+Completed:
+
+- The frontend `/billing` page was rebuilt onto the v2 billing APIs.
+- `/billing` now uses:
+  - `GET /api/v2/billing/summary`
+  - `GET /api/v2/billing/usage-events`
+  - `GET /api/v2/billing/ledger`
+  - `POST /api/v2/billing/redeem`
+  - `POST /api/v2/billing/payment/create-checkout`
+- Added `packages/db/migrations/000012_billing_redeem_payments.sql`.
+- Added `billing_redeem_codes`.
+- Added `billing_redeem_code_redemptions`.
+- Added `billing_payments`.
+- Added `billing_plans`.
+- Added `model_pricing`.
+- Added `POST /api/v2/billing/redeem`.
+- Added `POST /api/v2/billing/payment/create-checkout`.
+- Added `POST /api/v2/billing/admin/adjust`.
+- Added `GET /api/v2/billing/pricing`.
+- Workflow creation reserves credits before enqueueing worker execution.
+- The worker settles reserved usage after successful execution.
+- The worker refunds or releases reserved usage after failure or cancellation.
+- `reserve`, `settle`, `refund`, `redeem`, `payment`, and `admin adjust` are protected by idempotency keys or unique constraints.
+- When balance is insufficient, the backend returns `402 INSUFFICIENT_BALANCE` and does not enqueue free execution.
+- The frontend only shows a friendly insufficient-balance hint; the backend remains the final enforcement point.
+- The new main path no longer uses legacy billing APIs:
+  - `/api/account/billing-center`
+  - `/api/account/redeem`
+  - legacy `accountService` billing calls
+- Did not enter Sprint 6 cleanup.
+
+Key files:
+
+- `packages/db/migrations/000012_billing_redeem_payments.sql`
+- `packages/db/src/billing.ts`
+- `packages/db/src/index.ts`
+- `apps/api/src/modules/billing/billing.routes.ts`
+- `apps/api/src/modules/billing/billing.schemas.ts`
+- `apps/api/src/modules/billing/billing.service.ts`
+- `apps/api/src/modules/workflow-runs/workflow-runs.service.ts`
+- `apps/worker/src/workflow-runtime/service.ts`
+- `src/billing/*`
+- `src/app/AppRouter.tsx`
+- `src/flowCanvas/canvas/FlowTopToolbar.tsx`
+- `src/flowCanvas/runtime/v2WorkflowRunner.ts`
+- `src/services/v2WorkflowRunsApi.ts`
+- `src/services/v2WorkflowRunsApi.test.ts`
+
 ## Git History
 
 Key commits currently on `main`:
 
+- `23c7b09 merge sprint-5: billing workflow reserve settle refund`
+- `5169372 sprint-5: add billing workflow reserve settle refund`
 - `9944a4f merge sprint-4: cloud asset library`
 - `a562513 sprint-4: add cloud asset library`
 - `382a9a1 docs: add codex handoff summary`
@@ -160,12 +214,15 @@ Key commits currently on `main`:
 
 - `npm run build` passes, with only the existing Vite chunk size warning.
 - `npm run build --workspace @aigc-flow/api` passes.
+- `npm run build --workspace @aigc-flow/db` passes.
+- `npm run build --workspace @aigc-flow/worker` passes.
+- `npx vitest run src/services/v2WorkflowRunsApi.test.ts` passes.
 - `npm test` currently fails only in `scripts/migrate-legacy-v2/test/migrate.test.ts`.
 - The known failures are legacy migration asset count / storage upload assertions:
   - `dry-run does not write DB or S3`
   - `missing asset files record a warning without crashing the batch`
   - `asset migration writes object content to storage but not to the DB writer payload, and includes tenant scope`
-- These failures are recorded as non-blocking for Sprint 1, Sprint 2, Sprint 3, and Sprint 4.
+- These failures are recorded as non-blocking for Sprint 1, Sprint 2, Sprint 3, Sprint 4, and Sprint 5.
 - DB integration tests may be skipped locally when no database environment is configured.
 
 ## Important Constraints for Future Codex Sessions
@@ -181,21 +238,21 @@ Key commits currently on `main`:
 
 ## Next Planned Sprint
 
-### Sprint 5: Billing + Workflow Reserve/Settle/Refund
+### Sprint 6: Account + Legacy Cleanup + Docs
 
 Planned goals:
 
-- Rebuild the frontend Billing page on `/api/v2/billing/summary`, `/api/v2/billing/usage-events`, and `/api/v2/billing/ledger`.
-- Add or complete redeem code, recharge, and admin adjustment foundations.
-- Reserve credits before a generation task starts.
-- Settle credits when a task succeeds.
-- Refund or release reserved credits when a task fails.
-- Use idempotency keys for all billing mutation flows.
-- Block generation for insufficient balance in both frontend and backend paths.
-- Do not enter Sprint 6 cleanup work.
+- Connect the account center to `v2 auth/me` and `logout`.
+- Clean up legacy pages from normal user-facing entry points.
+- Confirm `/create/classic`, `/create/flow`, `/admin`, and `/model-mapping` are no longer normal product entry points.
+- Delete or disconnect the old `InfiniteCanvas` main path.
+- Delete or disconnect new main-path references to local `canvasStore`, `assetStorage`, and `imageFolderStore`.
+- Clean up legacy billing and account main-path calls.
+- Update `README` and docs with the new startup flow, routing structure, and development workflow.
+- Do not delete `v2 auth`, `projects`, `flows`, `assets`, `billing`, `worker`, or `db` capabilities.
 
 ## Suggested Next User Prompt
 
 Copy this prompt in the next session:
 
-> 请先读取 AGENTS.md、docs/DEVELOPMENT_PLAN.md、docs/CODEX_HANDOFF.md，然后确认当前 main 分支 clean，再等待我下达 Sprint 5 指令。
+> 请先读取 AGENTS.md、docs/DEVELOPMENT_PLAN.md、docs/CODEX_HANDOFF.md，然后确认当前 main 分支 clean，再等待我下达 Sprint 6 指令。
