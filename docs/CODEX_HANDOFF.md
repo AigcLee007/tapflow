@@ -4,7 +4,7 @@
 
 - Local path: `D:\tapnow-flow`
 - Remote URL: `https://github.com/AigcLee007/tapflow.git`
-- Current branch: `main`
+- Current branch before Sprint 6: `main`
 - Latest main commits:
   - `23c7b09 merge sprint-5: billing workflow reserve settle refund`
   - `5169372 sprint-5: add billing workflow reserve settle refund`
@@ -197,6 +197,36 @@ Key files:
 - `src/services/v2WorkflowRunsApi.ts`
 - `src/services/v2WorkflowRunsApi.test.ts`
 
+### Sprint 6: Account + Legacy Cleanup + Docs
+
+Implemented on local review branch `sprint-6-account-cleanup-docs`:
+
+- `/account` now uses the v2 auth session from `GET /api/v2/auth/me`.
+- `/account` shows current user email, display name, tenant/workspace details, roles, permissions, and logout.
+- `/account` logout uses `POST /api/v2/auth/logout` through the centralized v2 auth client.
+- Normal user-facing routes remain limited to `/login`, `/register`, `/workspace`, `/projects/:projectId`, `/assets`, `/billing`, and `/account`.
+- `/create/classic`, `/create/flow`, `/admin`, and `/model-mapping` remain redirected or excluded from normal product navigation.
+- The root app path does not mount `InfiniteCanvas`, `ControlPanel`, or `MobileView`.
+- The authenticated project canvas no longer uses local autosave through `localStorage` or IndexedDB as the authoritative draft store.
+- The authenticated project canvas no longer depends on legacy `accountIdentity` auth/session helpers.
+- The authenticated project canvas no longer uses `imageFolderStore` or `assetStorage` as active new-path dependencies.
+- The new main `/account` and `/billing` paths do not use legacy `/api/auth/*`, `/api/account/billing-center`, `/api/account/redeem`, or legacy `accountService` calls.
+- `README.md` now documents the v2 startup flow, route structure, persistence rules, and billing/workflow model.
+- Legacy files were not deleted when they are still useful for migration/debug or have standalone references outside the main product path.
+- Sprint 6 work has not been committed or pushed yet at this stage of the handoff.
+
+Key files:
+
+- `App.tsx`
+- `src/app/AppRouter.tsx`
+- `src/account/AccountPage.tsx`
+- `src/app/WorkspaceShell.tsx`
+- `src/flowCanvas/FlowCanvasPage.tsx`
+- `src/flowCanvas/canvas/FlowLeftAddPanel.tsx`
+- `src/flowCanvas/nodes/FlowNodes.tsx`
+- `README.md`
+- `docs/CODEX_HANDOFF.md`
+
 ## Git History
 
 Key commits currently on `main`:
@@ -222,7 +252,7 @@ Key commits currently on `main`:
   - `dry-run does not write DB or S3`
   - `missing asset files record a warning without crashing the batch`
   - `asset migration writes object content to storage but not to the DB writer payload, and includes tenant scope`
-- These failures are recorded as non-blocking for Sprint 1, Sprint 2, Sprint 3, Sprint 4, and Sprint 5.
+- These failures are recorded as non-blocking for Sprint 1, Sprint 2, Sprint 3, Sprint 4, Sprint 5, and Sprint 6.
 - DB integration tests may be skipped locally when no database environment is configured.
 
 ## Important Constraints for Future Codex Sessions
@@ -238,21 +268,16 @@ Key commits currently on `main`:
 
 ## Next Planned Sprint
 
-### Sprint 6: Account + Legacy Cleanup + Docs
+### Post-Sprint 6 Review
 
 Planned goals:
 
-- Connect the account center to `v2 auth/me` and `logout`.
-- Clean up legacy pages from normal user-facing entry points.
-- Confirm `/create/classic`, `/create/flow`, `/admin`, and `/model-mapping` are no longer normal product entry points.
-- Delete or disconnect the old `InfiniteCanvas` main path.
-- Delete or disconnect new main-path references to local `canvasStore`, `assetStorage`, and `imageFolderStore`.
-- Clean up legacy billing and account main-path calls.
-- Update `README` and docs with the new startup flow, routing structure, and development workflow.
-- Do not delete `v2 auth`, `projects`, `flows`, `assets`, `billing`, `worker`, or `db` capabilities.
+- Review Sprint 6 account and legacy-cleanup changes.
+- Merge the Sprint 6 branch after validation.
+- Decide the next cleanup or product sprint after Sprint 6 is accepted.
 
 ## Suggested Next User Prompt
 
 Copy this prompt in the next session:
 
-> 请先读取 AGENTS.md、docs/DEVELOPMENT_PLAN.md、docs/CODEX_HANDOFF.md，然后确认当前 main 分支 clean，再等待我下达 Sprint 6 指令。
+> 请先读取 AGENTS.md、docs/DEVELOPMENT_PLAN.md、docs/CODEX_HANDOFF.md，然后确认当前 Sprint 6 分支状态和测试结果，再等待我进行 review。

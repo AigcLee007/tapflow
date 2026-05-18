@@ -13,26 +13,19 @@ import {
   List,
   LogOut,
   MessageCircle,
+  Music,
   PlaySquare,
   Plus,
-  Settings,
   Upload,
   User,
   Wallet,
-  X,
   Wand2,
-  Music,
+  X,
 } from 'lucide-react';
 import { useReactFlow } from '@xyflow/react';
+import { useAuth } from '../../auth/useAuth';
 import { useFlowCanvasStore } from '../store/flowCanvasStore';
 import type { FlowNodeKind } from '../types';
-import {
-  AUTH_SESSION_CHANGE_EVENT,
-  fetchCurrentAuthSession,
-  getStoredAuthSessionToken,
-  logoutAuthSession,
-  type AuthUserProfile,
-} from '../../services/accountIdentity';
 
 type AddEntry = {
   kind: FlowNodeKind | 'world3d' | 'playlist';
@@ -44,70 +37,27 @@ type AddEntry = {
 };
 
 const PRIMARY_ITEMS: AddEntry[] = [
-  { kind: 'text', label: '文本', desc: '脚本、广告词、品牌文案', icon: <List size={26} strokeWidth={1.75} /> },
-  { kind: 'image', label: '图片', icon: <ImageIcon size={26} strokeWidth={1.75} /> },
-  { kind: 'video', label: '视频', icon: <PlaySquare size={25} strokeWidth={1.8} /> },
-  { kind: 'audio', label: '音频', icon: <Music size={25} strokeWidth={1.8} /> },
-  { kind: 'world3d', label: '3D 世界', icon: <Box size={25} strokeWidth={1.75} />, beta: true, disabled: true },
+  { kind: 'text', label: 'Text', desc: 'Scripts, prompts, and copy', icon: <List size={26} strokeWidth={1.75} /> },
+  { kind: 'image', label: 'Image', icon: <ImageIcon size={26} strokeWidth={1.75} /> },
+  { kind: 'video', label: 'Video', icon: <PlaySquare size={25} strokeWidth={1.8} /> },
+  { kind: 'audio', label: 'Audio', icon: <Music size={25} strokeWidth={1.8} /> },
+  { kind: 'world3d', label: '3D World', icon: <Box size={25} strokeWidth={1.75} />, beta: true, disabled: true },
 ];
 
 const TOOL_ITEMS: AddEntry[] = [
-  { kind: 'playlist', label: '播放列表', icon: <LayoutList size={25} strokeWidth={1.75} />, beta: true, disabled: true },
-  { kind: 'image_editor', label: '图片编辑器节点', icon: <Wand2 size={25} strokeWidth={1.8} /> },
+  { kind: 'playlist', label: 'Playlist', icon: <LayoutList size={25} strokeWidth={1.75} />, beta: true, disabled: true },
+  { kind: 'image_editor', label: 'Image Editor Node', icon: <Wand2 size={25} strokeWidth={1.8} /> },
 ];
 
 const RESOURCE_ITEMS: AddEntry[] = [
-  { kind: 'upload', label: '上传', icon: <Upload size={25} strokeWidth={1.85} /> },
+  { kind: 'upload', label: 'Upload', icon: <Upload size={25} strokeWidth={1.85} /> },
 ];
 
 const isFlowNodeKind = (kind: AddEntry['kind']): kind is FlowNodeKind =>
   ['text', 'image', 'video', 'audio', 'upload', 'image_editor', 'group'].includes(kind);
 
-const useCurrentFlowUser = () => {
-  const [user, setUser] = useState<AuthUserProfile | null>(null);
-  const [loading, setLoading] = useState(() => Boolean(getStoredAuthSessionToken()));
-
-  useEffect(() => {
-    let disposed = false;
-    const refresh = async () => {
-      const hasToken = Boolean(getStoredAuthSessionToken());
-      if (!hasToken) {
-        if (!disposed) {
-          setUser(null);
-          setLoading(false);
-        }
-        return;
-      }
-
-      if (!disposed) setLoading(true);
-      try {
-        const session = await fetchCurrentAuthSession();
-        if (!disposed) setUser(session?.authenticated && session.user ? session.user : null);
-      } catch {
-        if (!disposed) setUser(null);
-      } finally {
-        if (!disposed) setLoading(false);
-      }
-    };
-
-    void refresh();
-
-    if (typeof window === 'undefined') {
-      return () => {
-        disposed = true;
-      };
-    }
-
-    window.addEventListener(AUTH_SESSION_CHANGE_EVENT, refresh);
-    window.addEventListener('storage', refresh);
-    return () => {
-      disposed = true;
-      window.removeEventListener(AUTH_SESSION_CHANGE_EVENT, refresh);
-      window.removeEventListener('storage', refresh);
-    };
-  }, []);
-
-  return { user, loading };
+const navigateTo = (path: string) => {
+  window.location.href = path;
 };
 
 const DockTooltip: React.FC<{ label: string; visible: boolean }> = ({ label, visible }) => {
@@ -129,7 +79,17 @@ const DockButton: React.FC<{
   const showTooltip = hovered && !active && !large;
 
   return (
-    <div style={{ position: 'relative' }} onMouseEnter={() => { setHovered(true); onMouseEnter?.(); }} onMouseLeave={() => { setHovered(false); onMouseLeave?.(); }}>
+    <div
+      style={{ position: 'relative' }}
+      onMouseEnter={() => {
+        setHovered(true);
+        onMouseEnter?.();
+      }}
+      onMouseLeave={() => {
+        setHovered(false);
+        onMouseLeave?.();
+      }}
+    >
       <button
         type="button"
         className="nodrag nopan"
@@ -175,36 +135,31 @@ const AddNodeFlyout: React.FC<{
 
   return (
     <div className="nodrag nopan nowheel" style={flyoutStyle}>
-      <div style={flyoutSectionTitleStyle}>添加节点</div>
+      <div style={flyoutSectionTitleStyle}>Add Nodes</div>
       {PRIMARY_ITEMS.map(renderItem)}
-      <div style={flyoutSectionTitleStyle}>辅助工具</div>
+      <div style={flyoutSectionTitleStyle}>Tools</div>
       {TOOL_ITEMS.map(renderItem)}
-      <div style={flyoutSectionTitleStyle}>添加资源</div>
+      <div style={flyoutSectionTitleStyle}>Resources</div>
       {RESOURCE_ITEMS.map(renderItem)}
     </div>
   );
 };
 
-const navigateToAccount = (tab: 'profile' | 'security' | 'wallet' | 'notifications' = 'profile') => {
-  window.location.href = `/account?tab=${tab}`;
-};
-
-const UserFlyout: React.FC<{ user: AuthUserProfile | null; loading: boolean }> = ({ user, loading }) => {
+const UserFlyout: React.FC<{
+  authenticated: boolean;
+  loading: boolean;
+  onLogout: () => void;
+  user: { displayName: string | null; email: string } | null;
+}> = ({ authenticated, loading, onLogout, user }) => {
   const displayName = loading
-    ? '加载中'
-    : user?.displayName || user?.email?.split('@')[0] || '未登录用户';
-  const email = loading ? '正在同步账号信息' : user?.email || '登录后同步你的用户资料';
+    ? 'Loading...'
+    : user?.displayName || user?.email?.split('@')[0] || 'Guest';
+  const email = loading ? 'Syncing account data' : user?.email || 'Log in to view account details';
   const initial = user
     ? (displayName.trim().charAt(0).toUpperCase() || 'U')
     : loading
       ? '...'
       : 'L';
-
-  const handleLogout = () => {
-    void logoutAuthSession().finally(() => {
-      window.location.href = '/';
-    });
-  };
 
   return (
     <div className="nodrag nopan nowheel" style={userMenuStyle}>
@@ -216,19 +171,15 @@ const UserFlyout: React.FC<{ user: AuthUserProfile | null; loading: boolean }> =
         </div>
       </div>
       <div style={userDividerStyle} />
-      <UserMenuItem icon={<Bell size={22} />} label="我的通知" onClick={() => navigateToAccount('notifications')} />
-      <UserMenuItem icon={<User size={22} />} label={user ? '账号资料' : '登录 / 注册'} onClick={() => navigateToAccount('profile')} />
-      <UserMenuItem icon={<Settings size={22} />} label="安全设置" onClick={() => navigateToAccount('security')} />
-      <UserMenuItem icon={<Wallet size={22} />} label="金币账户" onClick={() => navigateToAccount('wallet')} />
-      {user?.isAdmin && (
-        <UserMenuItem icon={<Settings size={22} />} label="管理后台" onClick={() => { window.location.href = '/admin'; }} />
-      )}
+      <UserMenuItem icon={<User size={22} />} label={authenticated ? 'Account' : 'Log In'} onClick={() => navigateTo(authenticated ? '/account' : '/login')} />
+      <UserMenuItem icon={<Wallet size={22} />} label="Billing" onClick={() => navigateTo('/billing')} />
+      <UserMenuItem icon={<Bell size={22} />} label="Workspace" onClick={() => navigateTo('/workspace')} />
       <div style={userDividerStyle} />
-      <UserMenuItem icon={<CircleHelp size={22} />} label="使用教程" />
-      {user ? (
-        <UserMenuItem icon={<LogOut size={22} />} label="登出账号" onClick={handleLogout} />
+      <UserMenuItem icon={<CircleHelp size={22} />} label="Help" />
+      {authenticated ? (
+        <UserMenuItem icon={<LogOut size={22} />} label="Log Out" onClick={onLogout} />
       ) : (
-        <UserMenuItem icon={<LogOut size={22} />} label="进入账号中心" onClick={() => navigateToAccount('profile')} />
+        <UserMenuItem icon={<LogOut size={22} />} label="Go to Login" onClick={() => navigateTo('/login')} />
       )}
     </div>
   );
@@ -244,7 +195,7 @@ const UserMenuItem: React.FC<{ icon: React.ReactNode; label: string; onClick?: (
 export const FlowLeftAddPanel: React.FC = memo(function FlowLeftAddPanel() {
   const addNode = useFlowCanvasStore((s) => s.addNode);
   const undo = useFlowCanvasStore((s) => s.undo);
-  const { user, loading: userLoading } = useCurrentFlowUser();
+  const { authenticated, loading: userLoading, logout, user } = useAuth();
   const reactFlow = useReactFlow();
   const [addOpen, setAddOpen] = useState(false);
   const [userOpen, setUserOpen] = useState(false);
@@ -265,6 +216,12 @@ export const FlowLeftAddPanel: React.FC = memo(function FlowLeftAddPanel() {
     if (closeTimerRef.current !== null) window.clearTimeout(closeTimerRef.current);
   }, []);
 
+  const handleLogout = useCallback(() => {
+    void logout().finally(() => {
+      window.location.href = '/login';
+    });
+  }, [logout]);
+
   const handleAdd = useCallback(
     (kind: FlowNodeKind) => {
       const rect = document.querySelector('.react-flow')?.getBoundingClientRect();
@@ -283,20 +240,20 @@ export const FlowLeftAddPanel: React.FC = memo(function FlowLeftAddPanel() {
       <div style={dockStyle}>
         <DockButton
           icon={addOpen ? <X size={31} strokeWidth={1.7} /> : <Plus size={38} strokeWidth={1.75} />}
-          label="添加节点"
+          label="Add Nodes"
           large
           active={addOpen}
           onMouseEnter={openAdd}
           onClick={() => (addOpen ? setAddOpen(false) : openAdd())}
         />
-        <DockButton icon={<Folder size={25} strokeWidth={1.8} />} label="模板" badge />
-        <DockButton icon={<LayoutList size={25} strokeWidth={1.85} />} label="模板列表" />
-        <DockButton icon={<MessageCircle size={26} strokeWidth={1.85} />} label="评论" />
-        <DockButton icon={<Clock3 size={26} strokeWidth={1.85} />} label="历史记录" onClick={undo} />
+        <DockButton icon={<Folder size={25} strokeWidth={1.8} />} label="Templates" badge />
+        <DockButton icon={<LayoutList size={25} strokeWidth={1.85} />} label="Template List" />
+        <DockButton icon={<MessageCircle size={26} strokeWidth={1.85} />} label="Comments" />
+        <DockButton icon={<Clock3 size={26} strokeWidth={1.85} />} label="History" onClick={undo} />
         <div style={dockDividerStyle} />
         <DockButton
           icon={<span style={userAvatarSmallStyle}>{(user?.displayName || user?.email || 'L').charAt(0).toUpperCase()}</span>}
-          label="用户"
+          label="User"
           active={userOpen}
           onClick={() => {
             setAddOpen(false);
@@ -310,7 +267,14 @@ export const FlowLeftAddPanel: React.FC = memo(function FlowLeftAddPanel() {
           <AddNodeFlyout onAdd={handleAdd} />
         </div>
       )}
-      {userOpen && <UserFlyout user={user} loading={userLoading} />}
+      {userOpen && (
+        <UserFlyout
+          authenticated={authenticated}
+          loading={userLoading}
+          onLogout={handleLogout}
+          user={user}
+        />
+      )}
     </div>
   );
 });

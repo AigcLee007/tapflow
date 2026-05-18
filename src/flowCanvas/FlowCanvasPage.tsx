@@ -1,10 +1,9 @@
 ﻿/**
- * Entry point for /create/flow.
+ * Flow canvas surface used by the authenticated project route.
  */
 import React, { useCallback, useEffect, useState } from 'react';
 import { Image as ImageIcon, LayoutList, MousePointerClick, Music, Sparkles, Video } from 'lucide-react';
 import { ReactFlowProvider, useReactFlow } from '@xyflow/react';
-import { get as idbGet, set as idbSet } from 'idb-keyval';
 import { AiFlowCanvas } from './canvas/AiFlowCanvas';
 import { FlowTopToolbar } from './canvas/FlowTopToolbar';
 import { useFlowCanvasStore } from './store/flowCanvasStore';
@@ -84,109 +83,6 @@ const useFlowViewportLock = () => {
       }
     };
   }, []);
-};
-
-const STORAGE_KEY = 'flow-canvas-autosave';
-const IDB_STORAGE_KEY = 'flow-canvas-autosave-v2';
-
-const saveFlowSnapshot = async (snapshot: ReturnType<typeof useFlowCanvasStore.getState>['getProjectSnapshot'] extends () => infer T ? T : never) => {
-  await idbSet(IDB_STORAGE_KEY, snapshot);
-  try {
-    const compact = {
-      id: snapshot.id,
-      title: snapshot.title,
-      version: snapshot.version,
-      updatedAt: snapshot.updatedAt,
-      nodeCount: snapshot.nodes.length,
-      edgeCount: snapshot.edges.length,
-      storedIn: 'indexeddb',
-    };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(compact));
-  } catch {
-    // The IndexedDB copy is authoritative; localStorage is only a small hint.
-  }
-};
-
-const loadFlowSnapshot = async () => {
-  const indexed = await idbGet(IDB_STORAGE_KEY).catch(() => null);
-  if (indexed?.nodes?.length > 0) return indexed;
-
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const project = JSON.parse(raw);
-    if (project?.nodes?.length > 0) return project;
-  } catch (err) {
-    console.warn('[FlowCanvas] Legacy auto-load failed:', err);
-  }
-  return null;
-};
-
-const useAutoSave = (enabled: boolean) => {
-  const isDirty = useFlowCanvasStore((s) => s.isDirty);
-  const isNodeDragging = useFlowCanvasStore((s) => s.isNodeDragging);
-  const getProjectSnapshot = useFlowCanvasStore((s) => s.getProjectSnapshot);
-  const markClean = useFlowCanvasStore((s) => s.markClean);
-
-  useEffect(() => {
-    if (!enabled) return;
-    const handlePageHide = () => {
-      void saveFlowSnapshot(getProjectSnapshot()).catch((err) => {
-        console.warn('[FlowCanvas] Auto-save on pagehide failed:', err);
-      });
-    };
-    window.addEventListener('pagehide', handlePageHide);
-    return () => {
-      window.removeEventListener('pagehide', handlePageHide);
-    };
-  }, [enabled, getProjectSnapshot]);
-
-  useEffect(() => {
-    if (!enabled) return;
-    if (!isDirty || isNodeDragging) return;
-    let cancelled = false;
-    const persist = async () => {
-      try {
-        const snapshot = getProjectSnapshot();
-        await saveFlowSnapshot(snapshot);
-        if (!cancelled) markClean();
-      } catch (err) {
-        console.warn('[FlowCanvas] Auto-save failed:', err);
-      }
-    };
-
-    const timer = setTimeout(() => {
-      void persist();
-    }, 800);
-
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [enabled, isDirty, isNodeDragging, getProjectSnapshot, markClean]);
-};
-
-const useAutoLoad = (enabled: boolean) => {
-  const loadProject = useFlowCanvasStore((s) => s.loadProject);
-  const nodeCount = useFlowCanvasStore((s) => s.nodes.length);
-
-  useEffect(() => {
-    if (!enabled) return;
-    if (nodeCount > 0) return;
-    let cancelled = false;
-    void loadFlowSnapshot()
-      .then((project) => {
-        if (!cancelled && project?.nodes?.length > 0 && useFlowCanvasStore.getState().nodes.length === 0) {
-          loadProject(project);
-        }
-      })
-      .catch((err) => {
-        console.warn('[FlowCanvas] Auto-load failed:', err);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [enabled, loadProject, nodeCount]);
 };
 
 const useBackendFlowBinding = () => {
@@ -296,16 +192,12 @@ const EmptyState: React.FC = React.memo(() => {
   );
 });
 
-const FlowCanvasPage: React.FC<{ enableLocalPersistence?: boolean }> = ({
-  enableLocalPersistence = true,
-}) => {
+const FlowCanvasPage: React.FC<{ enableLocalPersistence?: boolean }> = () => {
   const [cullingEnabled, setCullingEnabled] = useState(true);
   const toggleCulling = useCallback(() => setCullingEnabled((v) => !v), []);
 
   useFlowShortcuts();
   useFlowViewportLock();
-  useAutoSave(enableLocalPersistence);
-  useAutoLoad(enableLocalPersistence);
   useBackendFlowBinding();
   useBackendRunCleanup();
 

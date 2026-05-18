@@ -1,109 +1,180 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# AI Flow Workspace
 
-# Run and deploy your AI Studio app
+This repository is being refactored into a single authenticated AI Flow workspace product.
 
-This repository now has two runtime tracks:
+The v2 product path keeps:
 
-- v2 production runtime:
-  - `apps/api`
-  - `apps/worker`
-  - PostgreSQL + Redis/BullMQ + S3-compatible storage
-- legacy fallback runtime:
-  - `server.cjs`
-  - old MySQL / file-backed stores
-  - retained only for migration support and explicit rollback/debug use
+- login and tenant-aware auth
+- one unified workspace shell
+- one primary Flow canvas per project
+- server-backed draft persistence
+- cloud asset library
+- server-side billing with reserve / settle / refund
 
-View your app in AI Studio: https://ai.studio/apps/drive/1MB-T6-X8pVklMaEwAk7UBHpKmeGDrBJi
+Legacy UI and legacy APIs are still present in the repo for migration support, but they are no longer the normal user-facing product path.
 
-## Run locally
+## Current Product Routes
 
-### v2 development and production-path startup
+Normal user-facing routes:
 
-Use the v2 services for all current production-path work:
+- `/login`
+- `/register`
+- `/workspace`
+- `/projects/:projectId`
+- `/assets`
+- `/billing`
+- `/account`
+
+Compatibility redirects:
+
+- `/` -> anonymous users go to `/login`; authenticated users go to `/workspace`
+- `/create/flow` -> redirects to `/workspace`
+- `/create/classic` -> redirects to `/workspace`
+
+Not normal user-facing entry points:
+
+- `/admin`
+- `/model-mapping`
+
+## Runtime Layout
+
+Primary v2 runtime:
+
+- frontend: Vite + React
+- API: `apps/api`
+- worker: `apps/worker`
+- database: `packages/db`
+- object storage helpers: `packages/storage`
+- queue/redis helpers: `packages/redis`
+
+Legacy runtime retained for migration/debug only:
+
+- `server.cjs`
+- legacy account / billing / classic canvas flows
+
+## Local Development
 
 1. Install dependencies:
-   `npm install`
-2. Start local infra:
-   `npm run dev:infra`
+
+   ```bash
+   npm install
+   ```
+
+2. Start local infrastructure:
+
+   ```bash
+   npm run dev:infra
+   ```
+
 3. Start the v2 API:
-   `npm run dev:api`
+
+   ```bash
+   npm run dev:api
+   ```
+
 4. Start the v2 worker:
-   `npm run dev:worker`
-5. For the combined v2 production-style entry locally:
-   `npm run start:v2`
 
-Current root scripts:
+   ```bash
+   npm run dev:worker
+   ```
 
-- `npm start` -> v2 combined entry
-- `npm run start:v2` -> v2 API + v2 worker
-- `npm run start:api` -> v2 API only
-- `npm run start:worker` -> v2 worker only
+5. Start the frontend:
 
-See [docs/v2-local-development.md](./docs/v2-local-development.md) for the
-current v2 setup and endpoints.
+   ```bash
+   npm run dev
+   ```
 
-### Legacy fallback runtime
+Useful scripts:
 
-The legacy runtime is no longer the default production path.
+- `npm run build`
+- `npm run build --workspace @aigc-flow/api`
+- `npm run build --workspace @aigc-flow/db`
+- `npm run build --workspace @aigc-flow/worker`
+- `npm test`
+- `npm run db:migrate`
+
+Combined v2 entry:
+
+```bash
+npm run start:v2
+```
+
+Use legacy commands only when you explicitly need migration or rollback support:
 
 - `npm run legacy:server`
 - `npm run legacy:start`
 
-Use legacy runtime commands only for migration support, rollback drills, or
-explicit debugging of the old stack.
+## Product Flow
 
-### Legacy local setup
+1. User logs in through `/api/v2/auth/*`.
+2. User lands in `/workspace`.
+3. Creating a project creates one project and one primary Flow canvas.
+4. Opening `/projects/:projectId` loads the server-backed draft for that project flow.
+5. Uploads and generated outputs become `assets` records backed by object storage.
+6. Billing and workflow execution run through v2 billing and workflow APIs.
 
-**Prerequisites:** Node.js
+## Persistence Rules
 
-1. Install dependencies:
-   `npm install`
-2. Copy [.env.example](./.env.example) to `.env`
-3. Fill in your image route keys, SMTP settings, and either:
-   `MYSQL_URL`
-   or `MYSQL_HOST` / `MYSQL_PORT` / `MYSQL_USER` / `MYSQL_PASSWORD` / `MYSQL_DATABASE`
-   If you use docker-compose, the default host-side ports are:
-   `PORT=3365`
-   `MYSQL_HOST_PORT=3310`
-4. Start the legacy app only if you explicitly need it:
-   `npm run legacy:start`
+### Projects and canvas
 
-### Resend email
+- Each user-facing project maps to one primary Flow canvas.
+- High-frequency draft persistence goes to `flow_drafts`.
+- `flow_versions` is for snapshots/history, not autosave.
+- New main paths do not use browser `localStorage` or IndexedDB as the authoritative canvas store.
 
-This project uses SMTP for email login codes, so Resend works out of the box through its SMTP gateway:
+### Assets
 
-- `SMTP_HOST=smtp.resend.com`
-- `SMTP_PORT=465`
-- `SMTP_SECURE=true`
-- `SMTP_USER=resend`
-- `SMTP_PASS=<your Resend API key>`
-- `SMTP_FROM=Nano Banana Pro <noreply@yourdomain.com>`
+- Authoritative asset data lives in `assets` and object storage.
+- Canvas node data should reference `assetId`.
+- Signed URLs and preview URLs are UI conveniences, not the source of truth.
 
-### Default ports
+### Billing
 
-- `5188` - Vite frontend dev server
-- `3365` - Node.js backend / BaoTa reverse proxy target
-- `3310` - Host-side MySQL bind for docker-compose
+- Billing UI reads:
+  - `GET /api/v2/billing/summary`
+  - `GET /api/v2/billing/usage-events`
+  - `GET /api/v2/billing/ledger`
+- Billing mutations use v2 APIs such as redeem and payment checkout placeholders.
+- Workflow billing follows:
+  1. reserve
+  2. enqueue/run
+  3. settle on success
+  4. refund/release on failure
 
-## MySQL migration
+The frontend never directly mutates balances.
 
-If you already have `auth-data.json` and `billing-data.json`, you can import them into MySQL after configuring the database variables in `.env`:
+## Authentication
 
-`npm run migrate:mysql`
+The main auth flow uses:
 
-The legacy server will use MySQL automatically when MySQL env vars are present.
-If MySQL is not configured, it falls back to the legacy JSON stores for local
-development. This is not part of the v2 production runtime.
+- `POST /api/v2/auth/register`
+- `POST /api/v2/auth/login`
+- `POST /api/v2/auth/refresh`
+- `POST /api/v2/auth/logout`
+- `GET /api/v2/auth/me`
 
-## v2 runtime
+Auth state is centralized in:
 
-The v2 production entry is now:
+- `src/auth/AuthProvider.tsx`
+- `src/auth/useAuth.ts`
+- `src/services/v2HttpClient.ts`
+- `src/services/v2AuthClient.ts`
 
-- `apps/api`
-- `apps/worker`
+## Billing and Workflow Notes
 
-The legacy frontend and `graphExecutor` remain in the repository for migration
-compatibility, but backend production execution belongs to the v2 API and
-worker stack.
+- Billing state changes happen on the server only.
+- Reserve / settle / refund actions are idempotent.
+- Insufficient balance returns `402 INSUFFICIENT_BALANCE`.
+- Failed workflow retries must not duplicate charges.
+
+## Documentation
+
+Project instructions and handoff docs:
+
+- [docs/AGENTS.md](./docs/AGENTS.md)
+- [docs/DEVELOPMENT_PLAN.md](./docs/DEVELOPMENT_PLAN.md)
+- [docs/CODEX_HANDOFF.md](./docs/CODEX_HANDOFF.md)
+
+For v2 local setup details, see:
+
+- [docs/v2-local-development.md](./docs/v2-local-development.md)

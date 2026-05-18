@@ -4,8 +4,8 @@ import { AuthGate } from "../auth/AuthGate";
 import { LoginPage } from "../auth/LoginPage";
 import { RegisterPage } from "../auth/RegisterPage";
 import { AssetLibraryPage } from "../assets/AssetLibraryPage";
+import { AccountPage } from "../account/AccountPage";
 import { BillingCenterPage } from "../billing/BillingCenterPage";
-import { useAuth } from "../auth/useAuth";
 import { FlowProjectPage } from "../flowCanvas/FlowProjectPage";
 import { WorkspacePage } from "../workspace/WorkspacePage";
 import { WorkspaceShell } from "./WorkspaceShell";
@@ -55,33 +55,6 @@ function Redirect({ to }: { to: string }) {
   }, [to]);
 
   return null;
-}
-
-function AccountPage() {
-  const { permissions, roles, tenant, user } = useAuth();
-
-  return (
-    <section className="rounded border border-white/10 bg-white/[0.04] p-6">
-      <div className="text-xs uppercase tracking-[0.24em] text-sky-300">Account</div>
-      <h1 className="mt-3 text-2xl font-semibold text-white">Account Center</h1>
-      <div className="mt-5 grid gap-3 md:grid-cols-2">
-        <Info label="Email" value={user?.email || "-"} />
-        <Info label="Display name" value={user?.displayName || "-"} />
-        <Info label="Tenant" value={tenant?.name || "-"} />
-        <Info label="Roles" value={roles.join(", ") || "-"} />
-        <Info label="Permissions" value={permissions.join(", ") || "-"} wide />
-      </div>
-    </section>
-  );
-}
-
-function Info({ label, value, wide }: { label: string; value: string; wide?: boolean }) {
-  return (
-    <div className={`rounded border border-white/10 bg-black/20 p-4 ${wide ? "md:col-span-2" : ""}`}>
-      <div className="text-xs text-slate-500">{label}</div>
-      <div className="mt-2 break-words text-sm font-medium text-slate-100">{value}</div>
-    </div>
-  );
 }
 
 function ProtectedRoutes({ pathname }: { pathname: string }) {
