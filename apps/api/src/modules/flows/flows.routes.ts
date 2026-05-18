@@ -11,11 +11,13 @@ import {
   type FlowIdParams,
   type ProjectIdParams,
   type PublishFlowInput,
+  type SaveFlowDraftInput,
   type UpdateFlowInput,
   createFlowSchema,
   flowIdParamsSchema,
   projectIdParamsSchema,
   publishFlowSchema,
+  saveFlowDraftSchema,
   updateFlowSchema,
 } from "./flows.schemas.js";
 import { FlowsApiError } from "./flows.service.js";
@@ -184,6 +186,46 @@ export function registerFlowRoutes(app: FastifyInstance): void {
       try {
         const params = parseParams<FlowIdParams>(request, flowIdParamsSchema);
         const result = await app.flowsService.listFlowVersions(getFlowContext(request), params.flowId);
+        return reply.send(result);
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.get(
+    "/api/v2/flows/:flowId/draft",
+    {
+      preHandler: [...authHandlers, requirePermission("flow:read")],
+    },
+    async (request, reply) => {
+      try {
+        const params = parseParams<FlowIdParams>(request, flowIdParamsSchema);
+        const result = await app.flowsService.getFlowDraft(getFlowContext(request), params.flowId);
+        return reply.send(result);
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.put(
+    "/api/v2/flows/:flowId/draft",
+    {
+      preHandler: [...authHandlers, requirePermission("flow:update")],
+    },
+    async (request, reply) => {
+      try {
+        const params = parseParams<FlowIdParams>(request, flowIdParamsSchema);
+        const body = parseBody<SaveFlowDraftInput>(request, saveFlowDraftSchema);
+        const graph = body.graph ?? body.graphJson ?? body.graph_json;
+        if (!graph) {
+          return sendError(request, reply, 400, "VALIDATION_ERROR", "A graph payload is required");
+        }
+        const result = await app.flowsService.saveFlowDraft(getFlowContext(request), params.flowId, {
+          expectedRevision: body.expectedRevision,
+          graph,
+        });
         return reply.send(result);
       } catch (error) {
         return handleRouteError(error, request, reply);
