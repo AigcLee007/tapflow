@@ -42,7 +42,6 @@ import {
   Box,
   Wand2,
   Flashlight,
-  FolderPlus,
   LayoutGrid,
   Rows3,
   Play,
@@ -85,7 +84,6 @@ import { ImageMoreMenu, type ImageMoreMenuAction } from './ImageMoreMenu';
 import type { OutpaintDirection } from './ImageOutpaintOverlay';
 import type { ImageSplitPiece } from './ImageSplitOverlay';
 import { PromptLexicalEditor, type PromptLexicalEditorHandle, type PromptReference } from './PromptLexicalEditor';
-import { useImageFolderStore, type FlowImageFolder, type FlowImageFolderItem } from '../store/imageFolderStore';
 import {
   applySlashCommandToPrompt,
   extractMentionQuery,
@@ -99,7 +97,7 @@ import {
   parseAspectRatio,
 } from '../utils/nodeSizing';
 import { GoogleLogo, OpenAILogo } from '../../../components/Logos';
-import { fetchCurrentAuthSession } from '../../services/accountIdentity';
+import { useAuth } from '../../auth/useAuth';
 import { normalizeBackendAssetUrl } from '../../utils/generatedImageStorage';
 import { canNodeReceiveIncoming } from '../rules/connectionRules';
 import { getAssetDownloadUrl } from '../../assets/assetApi';
@@ -114,9 +112,6 @@ const ImageAnnotateOverlay = React.lazy(() =>
 );
 const ImageCropOverlay = React.lazy(() =>
   import('./ImageCropOverlay').then((module) => ({ default: module.ImageCropOverlay })),
-);
-const ImageFolderOverlay = React.lazy(() =>
-  import('./ImageFolderOverlay').then((module) => ({ default: module.ImageFolderOverlay })),
 );
 const ImageLightingOverlay = React.lazy(() =>
   import('./ImageLightingOverlay').then((module) => ({ default: module.ImageLightingOverlay })),
@@ -158,8 +153,8 @@ const EMPTY_DERIVED_EDIT_COUNTS: FlowDerivedEditCounts = {
   split: 0,
   annotate: 0,
 };
-const EMPTY_IMAGE_FOLDERS: FlowImageFolder[] = [];
-const EMPTY_IMAGE_FOLDER_ITEMS: FlowImageFolderItem[] = [];
+const EMPTY_IMAGE_FOLDERS: Array<{ id: string; name: string }> = [];
+const EMPTY_IMAGE_FOLDER_ITEMS: Array<{ id: string; imageUrl: string; notes?: string; title: string }> = [];
 
 const useSingleNodeSelection = (selected?: boolean) => {
   return !!selected;
@@ -796,10 +791,11 @@ const ImageFullscreenOverlay: React.FC<ImageFullscreenOverlayProps> = ({
   isGenerated,
   snapshot,
 }) => {
+  const { user } = useAuth();
   const [fileSize, setFileSize] = React.useState<string>(formatImageViewerBytes(estimateDataUrlBytes(imageUrl)));
-  const [creator, setCreator] = React.useState('当前用户');
   const [copiedVisible, setCopiedVisible] = React.useState(false);
   const [promptHovered, setPromptHovered] = React.useState(false);
+  const creator = user?.displayName || user?.email || '当前用户';
   const cleanPrompt = String(prompt || '').trim();
   const displayPrompt = cleanPrompt || '暂无提示词';
   const infoRows = [
@@ -837,19 +833,6 @@ const ImageFullscreenOverlay: React.FC<ImageFullscreenOverlayProps> = ({
       disposed = true;
     };
   }, [imageUrl]);
-
-  React.useEffect(() => {
-    let disposed = false;
-    void fetchCurrentAuthSession()
-      .then((session) => {
-        if (disposed || !session?.user) return;
-        setCreator(session.user.displayName || session.user.email || session.user.userId || '当前用户');
-      })
-      .catch(() => undefined);
-    return () => {
-      disposed = true;
-    };
-  }, []);
 
   const handleCopyPrompt = useCallback(() => {
     void navigator.clipboard?.writeText(cleanPrompt || displayPrompt).catch(() => undefined);
@@ -3047,8 +3030,6 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const closeImageTool = useFlowCanvasStore((s) => s.closeImageTool);
   const setCanvasViewport = useFlowCanvasStore((s) => s.setViewport);
   const pushHistory = useFlowCanvasStore((s) => s.pushHistory);
-  const projectId = useFlowCanvasStore((s) => s.projectId);
-  const projectTitle = useFlowCanvasStore((s) => s.projectTitle);
   const leftPanelOpen = useFlowCanvasStore((s) => s.leftPanelOpen);
   const upstreamImageRefs = useFlowCanvasStore(
     (s) => s.graphIndex.upstreamImageRefsByNodeId[id] || EMPTY_UPSTREAM_IMAGE_REFS,
@@ -3093,8 +3074,8 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const showNodeEditor = useSingleNodeSelection(selected || selectedInStore);
   const shouldLoadEditorResources = showNodeEditor || activeImageTool?.nodeId === id || fullscreenOpen || assetMenuOpen || slashMenuOpen;
   const models = useImageModelCatalogWhenNeeded(shouldLoadEditorResources);
-  const folders = useImageFolderStore((state) => (shouldLoadEditorResources ? state.folders : EMPTY_IMAGE_FOLDERS));
-  const folderItems = useImageFolderStore((state) => (shouldLoadEditorResources ? state.items : EMPTY_IMAGE_FOLDER_ITEMS));
+  const folders = EMPTY_IMAGE_FOLDERS;
+  const folderItems = EMPTY_IMAGE_FOLDER_ITEMS;
 
   const [splitInitialGridSize, setSplitInitialGridSize] = useState(2);
 
@@ -4193,13 +4174,6 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     }
   }, [d.editHistory, d.lastEditType, id, pushHistory, updateNodeData]);
 
-  const handleFolderAdded = useCallback((folderId: string) => {
-    const current = Array.isArray(d.imageFolderIds) ? (d.imageFolderIds as string[]) : [];
-    updateNodeData(id, {
-      imageFolderIds: Array.from(new Set([...current, folderId])),
-    });
-  }, [d.imageFolderIds, id, updateNodeData]);
-
   const getDerivedNodeBase = useCallback(() => {
     const currentNode = useFlowCanvasStore.getState().nodes.find((node) => node.id === id);
     const sourceWidth = Number(d.width || currentNode?.measured?.width || FLOW_NODE_DEFAULT_SIZES.image.width);
@@ -4566,10 +4540,6 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
         void handleStepBack();
         return;
       }
-      if (toolId === 'folder') {
-        openImageTool(id, 'folder');
-        return;
-      }
       if (toolId === 'fullscreen') {
         setFullscreenOpen(true);
         return;
@@ -4671,7 +4641,6 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
         const hasEditHistory = Array.isArray(d.editHistory) && d.editHistory.length > 0;
         const actions = [
           { id: 'historyBack', icon: <RotateCcw size={22} strokeWidth={1.5} />, label: '回退上一步', disabled: !hasEditHistory },
-          { id: 'folder', icon: <FolderPlus size={22} strokeWidth={1.5} />, label: '添加到文件夹' },
           { id: 'download', icon: <Download size={22} strokeWidth={1.5} />, label: '下载' },
           { id: 'fullscreen', icon: <Expand size={22} strokeWidth={1.5} />, label: '全屏查看' },
         ];
@@ -4873,22 +4842,6 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
             imageUrl={String(effectiveThumbnailUrl)}
             anchorRect={imageCardRef.current?.getBoundingClientRect() || imageNodeRef.current?.getBoundingClientRect()}
             onConfirm={handleMultiAngleConfirm}
-            onCancel={closeImageTool}
-          />
-        )}
-
-        {isImageToolOpen('folder') && effectiveThumbnailUrl && (
-          <ImageFolderOverlay
-            imageUrl={String(effectiveThumbnailUrl)}
-            nodeId={id}
-            title={String(d.title || '图片素材')}
-            projectId={projectId}
-            projectTitle={projectTitle}
-            originalImageUrl={typeof d.originalImageUrl === 'string' ? d.originalImageUrl : undefined}
-            lastEditType={typeof d.lastEditType === 'string' ? d.lastEditType : undefined}
-            naturalWidth={typeof d.naturalWidth === 'number' ? d.naturalWidth : undefined}
-            naturalHeight={typeof d.naturalHeight === 'number' ? d.naturalHeight : undefined}
-            onAdded={handleFolderAdded}
             onCancel={closeImageTool}
           />
         )}
