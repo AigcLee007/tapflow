@@ -92,7 +92,11 @@ export interface FlowNodeData {
   errorMessage?: string;
 
   // Assets
+  assetId?: string;
   assetIds?: string[];
+  thumbnailAssetId?: string;
+  mimeType?: string;
+  durationMs?: number;
   thumbnailUrl?: string;
   posterUrl?: string;
   originalImageUrl?: string;

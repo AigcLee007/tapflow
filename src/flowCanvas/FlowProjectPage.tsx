@@ -1,9 +1,12 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { AlertTriangle, CheckCircle2, Cloud, Loader2, RefreshCw } from "lucide-react";
 
 import FlowCanvasPage from "./FlowCanvasPage";
+import { getAsset } from "../assets/assetApi";
 import { useRemoteFlowAutosave, type RemoteFlowSaveStatus } from "./hooks/useRemoteFlowAutosave";
 import { useRemoteFlowProject } from "./hooks/useRemoteFlowProject";
+import { useFlowCanvasStore } from "./store/flowCanvasStore";
+import type { FlowNodeKind } from "./types";
 
 function getProjectIdFromLocation() {
   if (typeof window === "undefined") return "";
@@ -65,14 +68,63 @@ function ErrorState({
   );
 }
 
+function kindForAsset(assetKind: string): FlowNodeKind {
+  if (assetKind === "video") return "video";
+  if (assetKind === "audio") return "audio";
+  if (assetKind === "image") return "image";
+  return "upload";
+}
+
 export function FlowProjectPage() {
   const projectId = getProjectIdFromLocation();
   const projectState = useRemoteFlowProject(projectId);
+  const addNode = useFlowCanvasStore((state) => state.addNode);
+  const nodes = useFlowCanvasStore((state) => state.nodes);
+  const viewport = useFlowCanvasStore((state) => state.viewport);
+  const insertedAssetIdRef = useRef<string | null>(null);
   const autosave = useRemoteFlowAutosave({
     draft: projectState.draft,
     enabled: !projectState.loading && !projectState.error,
     flowId: projectState.flow?.id ?? null,
   });
+
+  useEffect(() => {
+    if (projectState.loading || projectState.error) return;
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const insertAssetId = params.get("insertAssetId");
+    if (!insertAssetId || insertedAssetIdRef.current === insertAssetId) return;
+    insertedAssetIdRef.current = insertAssetId;
+
+    void getAsset(insertAssetId)
+      .then((asset) => {
+        const zoom = viewport.zoom || 1;
+        const center = {
+          x: (window.innerWidth / 2 - viewport.x) / zoom + nodes.length * 24,
+          y: (window.innerHeight / 2 - viewport.y) / zoom + nodes.length * 24,
+        };
+        const assetData = {
+          assetId: asset.id,
+          assetIds: [asset.id],
+          mimeType: asset.mimeType,
+          source: "asset-library",
+          title: asset.title || asset.originalFilename || "Cloud asset",
+          ...(asset.durationMs !== null ? { durationMs: asset.durationMs } : {}),
+          ...(asset.height !== null ? { height: asset.height, naturalHeight: asset.height } : {}),
+          ...(asset.width !== null ? { naturalWidth: asset.width, width: asset.width } : {}),
+        };
+        addNode(kindForAsset(asset.kind), center, {
+          ...assetData,
+        }, { selected: true });
+      })
+      .finally(() => {
+        const nextParams = new URLSearchParams(window.location.search);
+        nextParams.delete("insertAssetId");
+        const nextQuery = nextParams.toString();
+        const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}`;
+        window.history.replaceState(null, "", nextUrl);
+      });
+  }, [addNode, nodes.length, projectState.error, projectState.loading, viewport]);
 
   if (!projectId) {
     return <ErrorState error="Project ID is missing from the URL." onRetry={() => window.location.assign("/workspace")} />;

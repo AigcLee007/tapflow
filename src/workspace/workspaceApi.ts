@@ -1,6 +1,7 @@
-import { apiGet, apiPost } from "../services/v2HttpClient";
+import { apiGet, apiPatch, apiPost } from "../services/v2HttpClient";
 
 export type WorkspaceProject = {
+  coverAssetId: string | null;
   createdAt: string;
   createdBy: string | null;
   description: string | null;
@@ -51,6 +52,17 @@ export async function createProjectFlow(
   },
 ): Promise<WorkspaceFlow> {
   return apiPost<WorkspaceFlow>(`/projects/${projectId}/flows`, input);
+}
+
+export async function updateWorkspaceProject(
+  projectId: string,
+  input: {
+    coverAssetId?: string | null;
+    description?: string | null;
+    name?: string;
+  },
+): Promise<WorkspaceProject> {
+  return apiPatch<WorkspaceProject>(`/projects/${projectId}`, input);
 }
 
 export async function createWorkspaceProject(input: {

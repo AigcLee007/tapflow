@@ -4,6 +4,7 @@ import type { Pool } from "pg";
 type PgPool = Pool;
 
 type ProjectRecord = {
+  cover_asset_id: string | null;
   created_at: string;
   created_by: string | null;
   description: string | null;
@@ -14,6 +15,7 @@ type ProjectRecord = {
 };
 
 export type ProjectView = {
+  coverAssetId: string | null;
   createdAt: string;
   createdBy: string | null;
   description: string | null;
@@ -42,6 +44,7 @@ export class ProjectsApiError extends Error {
 
 function mapProject(row: ProjectRecord): ProjectView {
   return {
+    coverAssetId: row.cover_asset_id,
     createdAt: row.created_at,
     createdBy: row.created_by,
     description: row.description,
@@ -68,6 +71,7 @@ export class ProjectsService {
             tenant_id::text AS tenant_id,
             name,
             description,
+            cover_asset_id::text AS cover_asset_id,
             created_by::text AS created_by,
             created_at::text AS created_at,
             updated_at::text AS updated_at
@@ -104,6 +108,7 @@ export class ProjectsService {
             tenant_id::text AS tenant_id,
             name,
             description,
+            cover_asset_id::text AS cover_asset_id,
             created_by::text AS created_by,
             created_at::text AS created_at,
             updated_at::text AS updated_at
@@ -129,6 +134,7 @@ export class ProjectsService {
             tenant_id::text AS tenant_id,
             name,
             description,
+            cover_asset_id::text AS cover_asset_id,
             created_by::text AS created_by,
             created_at::text AS created_at,
             updated_at::text AS updated_at
@@ -153,6 +159,7 @@ export class ProjectsService {
     context: ProjectContext,
     projectId: string,
     input: {
+      coverAssetId?: string | null;
       description?: string | null;
       name?: string;
     },
@@ -165,6 +172,7 @@ export class ProjectsService {
             tenant_id::text AS tenant_id,
             name,
             description,
+            cover_asset_id::text AS cover_asset_id,
             created_by::text AS created_by,
             created_at::text AS created_at,
             updated_at::text AS updated_at
@@ -181,12 +189,30 @@ export class ProjectsService {
         throw new ProjectsApiError(404, "PROJECT_NOT_FOUND", "Project not found");
       }
 
+      if (input.coverAssetId) {
+        const cover = await client.query<{ id: string }>(
+          `
+            SELECT id::text AS id
+            FROM assets
+            WHERE id = $1::uuid
+              AND deleted_at IS NULL
+            LIMIT 1
+          `,
+          [input.coverAssetId],
+        );
+
+        if (!cover.rows[0]) {
+          throw new ProjectsApiError(404, "ASSET_NOT_FOUND", "Cover asset not found");
+        }
+      }
+
       const updated = await client.query<ProjectRecord>(
         `
           UPDATE projects
           SET
             name = $2,
             description = $3,
+            cover_asset_id = CASE WHEN $4::boolean THEN $5::uuid ELSE cover_asset_id END,
             updated_at = now()
           WHERE id = $1::uuid
           RETURNING
@@ -194,6 +220,7 @@ export class ProjectsService {
             tenant_id::text AS tenant_id,
             name,
             description,
+            cover_asset_id::text AS cover_asset_id,
             created_by::text AS created_by,
             created_at::text AS created_at,
             updated_at::text AS updated_at
@@ -202,6 +229,8 @@ export class ProjectsService {
           projectId,
           input.name?.trim() ?? row.name,
           input.description !== undefined ? input.description?.trim() ?? null : row.description,
+          input.coverAssetId !== undefined,
+          input.coverAssetId ?? null,
         ],
       );
 

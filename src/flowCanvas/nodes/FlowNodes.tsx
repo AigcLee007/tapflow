@@ -102,6 +102,7 @@ import { GoogleLogo, OpenAILogo } from '../../../components/Logos';
 import { fetchCurrentAuthSession } from '../../services/accountIdentity';
 import { normalizeBackendAssetUrl } from '../../utils/generatedImageStorage';
 import { canNodeReceiveIncoming } from '../rules/connectionRules';
+import { getAssetDownloadUrl } from '../../assets/assetApi';
 
 type FlowNode = Node<FlowNodeData>;
 
@@ -3105,7 +3106,23 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     ? runtimeNodeOutput.assets.filter((asset) => asset.kind === 'image' && asset.downloadUrl)
     : [];
   const runtimeThumbnailUrl = runtimeImageAssets[0]?.downloadUrl || '';
-  const effectiveThumbnailUrl = runtimeThumbnailUrl || String(d.thumbnailUrl || '');
+  const [assetPreviewUrl, setAssetPreviewUrl] = useState('');
+  const assetId = typeof d.assetId === 'string' ? d.assetId : '';
+  useEffect(() => {
+    if (!assetId || runtimeThumbnailUrl || d.thumbnailUrl) return;
+    let cancelled = false;
+    void getAssetDownloadUrl(assetId)
+      .then((download) => {
+        if (!cancelled) setAssetPreviewUrl(download.url);
+      })
+      .catch(() => {
+        if (!cancelled) setAssetPreviewUrl('');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [assetId, d.thumbnailUrl, runtimeThumbnailUrl]);
+  const effectiveThumbnailUrl = runtimeThumbnailUrl || String(d.thumbnailUrl || '') || assetPreviewUrl;
   const hasImage = !!effectiveThumbnailUrl;
   const isGenerating = runtimeNodeStatus === 'pending'
     || runtimeNodeStatus === 'runnable'
@@ -6098,5 +6115,4 @@ const groupPopupButtonStyle: React.CSSProperties = {
   borderRadius: 10,
   background: 'transparent',
 };
-
 

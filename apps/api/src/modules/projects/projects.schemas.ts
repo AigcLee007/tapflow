@@ -11,10 +11,11 @@ export const createProjectSchema = z.object({
 
 export const updateProjectSchema = z
   .object({
+    coverAssetId: z.string().uuid().nullable().optional(),
     description: z.string().trim().max(2000).nullable().optional(),
     name: z.string().trim().min(1).max(255).optional(),
   })
-  .refine((value) => value.name !== undefined || value.description !== undefined, {
+  .refine((value) => value.name !== undefined || value.description !== undefined || value.coverAssetId !== undefined, {
     message: "At least one field must be provided",
   });
 
