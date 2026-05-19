@@ -1,5 +1,6 @@
 import { useFlowCanvasStore } from '../store/flowCanvasStore';
 import type {
+  FlowNodeData,
   FlowRuntimeAssetRef,
   FlowRuntimeNodeOutput,
 } from '../types';
@@ -28,6 +29,8 @@ type AssetLike = {
   width?: number | null;
   height?: number | null;
 };
+
+type PersistableNodeRun = Pick<V2NodeRunView, 'nodeId' | 'nodeType' | 'status' | 'outputJson'>;
 
 function closeActiveStream(): void {
   activeStreamHandle?.close();
@@ -75,6 +78,48 @@ function buildNodeOutput(outputJson: Record<string, unknown> | null, assetRefs: 
   };
 }
 
+function buildGeneratedAssetNodePatch(
+  nodeRun: PersistableNodeRun,
+  assetRefs: FlowRuntimeAssetRef[],
+): Partial<FlowNodeData> | null {
+  if (nodeRun.status !== 'succeeded' || assetRefs.length === 0) {
+    return null;
+  }
+  const primaryAsset = assetRefs[0];
+  if (!primaryAsset?.assetId) {
+    return null;
+  }
+  const isImageNode = nodeRun.nodeType === 'image.generate';
+  const isVideoNode = nodeRun.nodeType === 'video.generate';
+  if (!isImageNode && !isVideoNode) {
+    return null;
+  }
+
+  return {
+    assetId: primaryAsset.assetId,
+    assetIds: assetRefs.map((asset) => asset.assetId),
+    errorMessage: undefined,
+    generationStatus: 'done',
+    mimeType: primaryAsset.mimeType,
+    naturalHeight: primaryAsset.height ?? undefined,
+    naturalWidth: primaryAsset.width ?? undefined,
+    progress: 100,
+    source: 'generated',
+    status: 'success',
+  };
+}
+
+function persistNodeOutputsFromRun(nodeRuns: PersistableNodeRun[], assetRefsByNodeId: Record<string, FlowRuntimeAssetRef[]>): void {
+  const { updateNodeData } = useFlowCanvasStore.getState();
+  for (const nodeRun of nodeRuns) {
+    const nodePatch = buildGeneratedAssetNodePatch(nodeRun, assetRefsByNodeId[nodeRun.nodeId] ?? []);
+    if (!nodePatch) {
+      continue;
+    }
+    updateNodeData(nodeRun.nodeId, nodePatch);
+  }
+}
+
 async function resolveAssetRefs(outputJson: Record<string, unknown> | null): Promise<FlowRuntimeAssetRef[]> {
   const assets = Array.isArray(outputJson?.assets) ? outputJson.assets : [];
   const result = await Promise.all(
@@ -102,12 +147,14 @@ async function applyWorkflowRunSnapshot(snapshot: GetWorkflowRunResponse): Promi
   const nodeRunIdByNodeId: Record<string, string> = {};
   const nodeRunStatusByNodeId: Record<string, V2WorkflowRunStatus> = {};
   const nodeOutputByNodeId: Record<string, FlowRuntimeNodeOutput> = {};
+  const assetRefsByNodeId: Record<string, FlowRuntimeAssetRef[]> = {};
 
   for (const nodeRun of snapshot.nodeRuns) {
     nodeIdByNodeRunId[nodeRun.id] = nodeRun.nodeId;
     nodeRunIdByNodeId[nodeRun.nodeId] = nodeRun.id;
     nodeRunStatusByNodeId[nodeRun.nodeId] = nodeRun.status;
     const assets = await resolveAssetRefs(nodeRun.outputJson);
+    assetRefsByNodeId[nodeRun.nodeId] = assets;
     nodeOutputByNodeId[nodeRun.nodeId] = buildNodeOutput(nodeRun.outputJson, assets);
   }
 
@@ -127,6 +174,8 @@ async function applyWorkflowRunSnapshot(snapshot: GetWorkflowRunResponse): Promi
         : state.runError,
     runStatus: snapshot.workflowRun.status,
   }));
+
+  persistNodeOutputsFromRun(snapshot.nodeRuns, assetRefsByNodeId);
 }
 
 function appendRunEvent(event: V2WorkflowRunEventView): void {

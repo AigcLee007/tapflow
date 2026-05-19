@@ -152,6 +152,71 @@ async function createPublishedFlow(api: ReturnType<typeof buildTestApp>["api"], 
   return flow.json();
 }
 
+async function createDraftOnlyFlow(api: ReturnType<typeof buildTestApp>["api"], accessToken: string) {
+  const project = await api.inject({
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+    },
+    method: "POST",
+    payload: {
+      name: "Workflow Draft Project",
+    },
+    url: "/api/v2/projects",
+  });
+  expect(project.statusCode).toBe(201);
+
+  const flow = await api.inject({
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+    },
+    method: "POST",
+    payload: {
+      title: "Workflow Draft Flow",
+    },
+    url: `/api/v2/projects/${project.json().id}/flows`,
+  });
+  expect(flow.statusCode).toBe(201);
+
+  const saveDraft = await api.inject({
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+    },
+    method: "PUT",
+    payload: {
+      graph: {
+        edges: [
+          { source: "input", target: "image" },
+          { source: "image", target: "output" },
+        ],
+        nodes: [
+          {
+            data: {
+              inputKey: "prompt",
+            },
+            id: "input",
+            type: "input",
+          },
+          {
+            data: {
+              routeKey: "image.default",
+            },
+            id: "image",
+            type: "image.generate",
+          },
+          {
+            id: "output",
+            type: "output",
+          },
+        ],
+      },
+    },
+    url: `/api/v2/flows/${flow.json().id}/draft`,
+  });
+  expect(saveDraft.statusCode).toBe(200);
+
+  return flow.json();
+}
+
 function parseSseEvents(body: string) {
   return body
     .trim()
@@ -183,6 +248,69 @@ function parseSseEvents(body: string) {
 }
 
 describeWithDatabase("workflow runs api", () => {
+  test("auto-creates runnable snapshot from server-side draft when no published version exists", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({
+          connectionString: await createAppDatabaseUrl(),
+        });
+
+        const { api, fakeQueue } = buildTestApp(appPool);
+        const owner = await registerOwner(api, "workflow-draft-run@example.com", "Workflow Draft Run");
+        const flow = await createDraftOnlyFlow(api, owner.accessToken);
+
+        const createRun = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "POST",
+          payload: {
+            input: {
+              prompt: "run from draft",
+            },
+          },
+          url: `/api/v2/flows/${flow.id}/runs`,
+        });
+
+        expect(createRun.statusCode).toBe(201);
+        expect(createRun.json().status).toBe("pending");
+        expect(fakeQueue.jobs).toHaveLength(1);
+
+        const runDetails = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "GET",
+          url: `/api/v2/workflow-runs/${createRun.json().runId}`,
+        });
+        expect(runDetails.statusCode).toBe(200);
+        expect(runDetails.json().workflowRun.flowVersionId).toBeTruthy();
+        expect(runDetails.json().nodeRuns).toHaveLength(3);
+
+        const versions = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "GET",
+          url: `/api/v2/flows/${flow.id}/versions`,
+        });
+        expect(versions.statusCode).toBe(200);
+        expect(versions.json().length).toBeGreaterThanOrEqual(1);
+        expect(versions.json()[0].changelog).toBe("auto_run_snapshot");
+
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
   test("tenant_owner can create a run and viewer cannot", async () => {
     await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
       process.env.DATABASE_URL = databaseUrl;

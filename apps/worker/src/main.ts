@@ -5,6 +5,7 @@ import {
   CredentialVault,
   DatabaseMediaRuntime,
   DatabaseTextGenerationRuntime,
+  MockProviderAdapter,
   OpenAiCompatibleTextAdapter,
 } from "@aigc-flow/ai-gateway-core";
 import { createPgPool } from "@aigc-flow/db";
@@ -78,6 +79,7 @@ export function createWorkerRuntime(options?: {
     masterKey: env.credentialMasterKey,
   });
   const aiGateway = new AiGateway({
+    mock: new MockProviderAdapter(),
     openai: new OpenAiCompatibleTextAdapter(),
     "openai-compatible": new OpenAiCompatibleTextAdapter(),
   });

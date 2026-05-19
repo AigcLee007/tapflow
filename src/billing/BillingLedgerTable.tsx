@@ -2,7 +2,14 @@ import React from "react";
 
 import type { BillingLedgerEntry } from "./billingApi";
 
-const creditTypes = new Set(["redeem", "admin_credit", "payment"]);
+const CREDIT_ENTRY_TYPES = new Set(["refund", "redeem", "admin_credit", "payment"]);
+const DEBIT_ENTRY_TYPES = new Set(["reserve", "settle", "admin_debit"]);
+
+function getLedgerDisplayDirection(entryType: string): "credit" | "debit" {
+  if (CREDIT_ENTRY_TYPES.has(entryType)) return "credit";
+  if (DEBIT_ENTRY_TYPES.has(entryType)) return "debit";
+  return "debit";
+}
 
 export function BillingLedgerTable({ items }: { items: BillingLedgerEntry[] }) {
   return (
@@ -21,7 +28,8 @@ export function BillingLedgerTable({ items }: { items: BillingLedgerEntry[] }) {
           </thead>
           <tbody className="divide-y divide-white/10">
             {items.map((item) => {
-              const positive = creditTypes.has(item.entryType);
+              const direction = getLedgerDisplayDirection(item.entryType);
+              const positive = direction === "credit";
               return (
                 <tr key={item.id} className="text-slate-300">
                   <td className="py-3 pr-3">{new Date(item.createdAt).toLocaleString()}</td>

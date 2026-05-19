@@ -288,12 +288,15 @@ function buildImageRequest(
   upstreamOutputs: Array<Record<string, unknown> | null>,
   config: Record<string, unknown>,
 ): ImageGenerationRequest {
+  const routeKey = typeof config.routeKey === "string" && config.routeKey.trim()
+    ? config.routeKey.trim()
+    : "image.default";
   return {
     inputAssets: extractAssetInputs(upstreamOutputs),
     metadata: isPlainObject(config.metadata) ? config.metadata : null,
     model: typeof config.model === "string" ? config.model : null,
     prompt: extractPromptFromUpstreamOutputs(upstreamOutputs, typeof config.prompt === "string" ? config.prompt : ""),
-    routeKey: typeof config.routeKey === "string" ? config.routeKey : null,
+    routeKey,
   };
 }
 

@@ -160,4 +160,22 @@ describe("@aigc-flow/workflow-core", () => {
 
     expect(checksumGraph(first)).toBe(checksumGraph(second));
   });
+
+  test("normalizes frontend simplified node types to runtime generation types", () => {
+    const graph: FlowGraph = {
+      edges: [
+        { source: "input", target: "imageNode" },
+        { source: "imageNode", target: "output" },
+      ],
+      nodes: [
+        { id: "input", type: "input", data: { inputKey: "prompt" } },
+        { id: "imageNode", type: "image", data: {} },
+        { id: "output", type: "output" },
+      ],
+    };
+
+    const compiled = compileGraph(graph);
+    const imageNode = compiled.nodes.find((node) => node.id === "imageNode");
+    expect(imageNode?.type).toBe("image.generate");
+  });
 });

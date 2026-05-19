@@ -192,7 +192,21 @@ Preparation requirements:
 
 AI provider/model/route/credential setup notes (local QA):
 
-- This repository currently provides billing seed (`npm run dev:seed-billing`) but does not yet provide a dedicated AI gateway seed script.
+- Use local AI seed for tenant-scoped mock provider baseline:
+
+  ```powershell
+  $env:NODE_ENV="development"
+  npm run dev:seed-ai -- --email your-user@example.com
+  ```
+
+- This seed creates a local mock provider/model/credential/route baseline:
+  - provider key: `mock-local-dev`
+  - route keys: `image.default`, `image.fail`, `video.default`
+  - encrypted credential stored in `api_credentials` (server-side only)
+  - mock route pricing rows in `model_pricing`
+  - `default/default/default` fallback pricing rows in `model_pricing` for current reserve estimator compatibility
+- `dev:seed-ai` is idempotent by upsert on existing unique keys (provider key, provider+model key, tenant+provider+credential name, tenant+route key, provider+model+route+unit pricing key).
+- Next step after this phase: move workflow reserve pricing from temporary `default/default/default` lookup to route/model/provider-specific pricing resolution.
 - For local QA, configure tenant-scoped AI gateway records through v2 admin endpoints:
   - `POST /api/v2/admin/ai/providers`
   - `POST /api/v2/admin/ai/models`
@@ -200,6 +214,21 @@ AI provider/model/route/credential setup notes (local QA):
   - `POST /api/v2/admin/ai/routes`
 - Keep provider secrets server-side only. Do not put API keys in frontend env variables.
 - Ensure route keys used by workflow node config match active tenant routes before starting workflow runs.
+
+Mock provider behavior:
+
+- `image.default`: mock success image output (stored through existing worker asset pipeline)
+- `image.fail`: mock failure path for refund/release verification
+
+Local failure-path QA toggle (when UI does not expose route switching yet):
+
+- Temporarily set tenant route `image.default` request config to fail mode:
+  - `{"mockMode":"fail","localDevOnly":true}`
+- Run one generation from `/projects/:projectId` and verify failure + refund behavior.
+- Restore `image.default` back to success mode after verification:
+  - `{"mockMode":"success","localDevOnly":true}`
+- Keep dedicated `image.fail` route as fail mode for explicit backend-side route testing:
+  - `{"mockMode":"fail","localDevOnly":true}`
 
 Validation points:
 
