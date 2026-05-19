@@ -40,11 +40,14 @@ export function useRemoteFlowAutosave(input: {
   const syncedGraphKeyRef = useRef<string | null>(input.draft ? toGraphKey(input.draft.graph) : null);
   const [saveTick, setSaveTick] = useState(0);
 
-  const graph = useMemo<FlowDraftGraph>(() => ({
-    edges: edges as unknown as Record<string, unknown>[],
-    nodes: nodes as unknown as Record<string, unknown>[],
-    viewport,
-  }), [edges, nodes, viewport]);
+  const graph = useMemo<FlowDraftGraph>(
+    () => ({
+      edges: edges as unknown as Record<string, unknown>[],
+      nodes: nodes as unknown as Record<string, unknown>[],
+      viewport,
+    }),
+    [edges, nodes, viewport],
+  );
 
   const graphKey = useMemo(() => toGraphKey(graph), [graph]);
 
@@ -89,14 +92,8 @@ export function useRemoteFlowAutosave(input: {
         })
         .catch((saveError) => {
           if (cancelled) return;
-          const conflictMessage =
-            saveError instanceof V2HttpError && saveError.status === 409
-              ? "画布已在其他位置更新，请刷新后再继续编辑。"
-              : saveError instanceof Error
-                ? saveError.message
-                : "远程草稿保存失败";
           setStatus("error");
-          setError(conflictMessage);
+          setError(getAutosaveErrorMessage(saveError));
         });
     }, AUTOSAVE_DELAY_MS);
 
@@ -121,4 +118,34 @@ export function useRemoteFlowAutosave(input: {
     status,
     updatedAt,
   };
+}
+
+function getAutosaveErrorMessage(error: unknown) {
+  if (error instanceof V2HttpError) {
+    if (error.status === 400) {
+      return error.code === "UNSUPPORTED_LOCAL_PAYLOAD"
+        ? "Save failed because the canvas still contains local-only image data. Please re-upload the asset and try again."
+        : "Save failed because the draft payload did not pass validation.";
+    }
+    if (error.status === 401) {
+      return "Save failed because your session expired. Please log in again.";
+    }
+    if (error.status === 409) {
+      return "Save failed because this canvas was updated elsewhere. Refresh before continuing.";
+    }
+    if (error.status >= 500) {
+      return "Save failed because the server is temporarily unavailable.";
+    }
+    return error.message || "Remote draft save failed.";
+  }
+
+  if (error instanceof Error && /failed to fetch/i.test(error.message)) {
+    return "Save failed because the app could not reach the draft API. Check the local API server or proxy.";
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return "Remote draft save failed.";
 }
