@@ -204,9 +204,14 @@ AI provider/model/route/credential setup notes (local QA):
   - route keys: `image.default`, `image.fail`, `video.default`
   - encrypted credential stored in `api_credentials` (server-side only)
   - mock route pricing rows in `model_pricing`
-  - `default/default/default` fallback pricing rows in `model_pricing` for current reserve estimator compatibility
+  - `default/default/default` fallback pricing rows in `model_pricing`
 - `dev:seed-ai` is idempotent by upsert on existing unique keys (provider key, provider+model key, tenant+provider+credential name, tenant+route key, provider+model+route+unit pricing key).
-- Next step after this phase: move workflow reserve pricing from temporary `default/default/default` lookup to route/model/provider-specific pricing resolution.
+- Workflow reserve pricing now resolves by provider/model/route/unit with fallback order:
+  1. `provider + model + route + unit`
+  2. `provider + model + default + unit`
+  3. `provider + default + default + unit`
+  4. `default + default + default + unit`
+- If pricing is still missing after fallback, run creation returns `PRICING_NOT_FOUND` and does not enqueue worker execution.
 - For local QA, configure tenant-scoped AI gateway records through v2 admin endpoints:
   - `POST /api/v2/admin/ai/providers`
   - `POST /api/v2/admin/ai/models`
@@ -237,6 +242,49 @@ Validation points:
 - A failed run refunds or releases the reserved amount
 - Worker retry does not duplicate charges
 - Insufficient balance returns `402 INSUFFICIENT_BALANCE` and does not enqueue free execution
+- Provider/model/route pricing match can be audited after each run:
+  - check latest `node_runs.cost_json` for:
+    - `pricingMatch.provider`
+    - `pricingMatch.model`
+    - `pricingMatch.route`
+    - `pricingMatch.unit`
+    - `pricingFallbackLevel`
+    - `estimatedCredits`
+    - `reservedCredits`
+  - check latest reserve `billing_ledger.metadata` for matching `pricingMatch` + `pricingFallbackLevel`
+- Local SQL example (`<tenant-id>` must be replaced):
+
+```sql
+SELECT
+  nr.id,
+  nr.node_type,
+  nr.cost_json->'pricingMatch' AS pricing_match,
+  nr.cost_json->>'pricingFallbackLevel' AS pricing_fallback_level,
+  nr.cost_json->>'estimatedCredits' AS estimated_credits,
+  nr.cost_json->>'reservedCredits' AS reserved_credits,
+  nr.created_at
+FROM node_runs nr
+JOIN workflow_runs wr ON wr.id = nr.workflow_run_id
+WHERE wr.tenant_id = '<tenant-id>'::uuid
+  AND nr.node_type = 'image.generate'
+ORDER BY nr.created_at DESC
+LIMIT 5;
+```
+
+```sql
+SELECT
+  bl.id,
+  bl.entry_type,
+  bl.amount_cents,
+  bl.metadata->'pricingMatch' AS pricing_match,
+  bl.metadata->>'pricingFallbackLevel' AS pricing_fallback_level,
+  bl.created_at
+FROM billing_ledger bl
+WHERE bl.tenant_id = '<tenant-id>'::uuid
+  AND bl.entry_type = 'reserve'
+ORDER BY bl.created_at DESC
+LIMIT 5;
+```
 
 ## 8. Known Non-blocking Issues
 

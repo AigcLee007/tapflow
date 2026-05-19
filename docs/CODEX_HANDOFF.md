@@ -1,5 +1,55 @@
 # Codex Handoff
 
+## Current Sprint Handoff (pricing-route-model-match)
+
+Branch:
+
+- `pricing-route-model-match`
+
+Implemented:
+
+- Workflow run reserve pricing is now matched per runnable node using provider/model/route/unit metadata.
+- Added pricing fallback order:
+  1. `provider + model + route + unit`
+  2. `provider + model + default + unit`
+  3. `provider + default + default + unit`
+  4. `default + default + default + unit`
+- Route runtime context is resolved from active tenant/system `ai_routes` (tenant route has priority over system route for the same key).
+- Reserve now stores pricing match metadata in node cost and ledger metadata (`provider`, `model`, `route`, `unit`, fallback level).
+- Run creation now rejects unroutable priced generation nodes with `PRICING_NOT_FOUND` and does not enqueue worker jobs.
+- Added API integration tests for:
+  - exact route/provider/model pricing hit
+  - provider fallback hit
+  - missing pricing rejection
+
+Manual QA - provider/model/route pricing match: PASSED
+
+Validated:
+
+- UI succeeded and returned to `Saved`.
+- Latest `node_runs.cost_json` hit exact pricing:
+  - `pricingMatch.provider = mock-local-dev`
+  - `pricingMatch.model = mock-image-v1`
+  - `pricingMatch.route = image.default`
+  - `pricingMatch.unit = image_generation`
+  - `pricingFallbackLevel = 1`
+  - `estimatedCredits = 10`
+  - `reservedCredits = 10`
+- Latest reserve row in `billing_ledger.metadata` matches `node_runs.cost_json`:
+  - `pricingMatch.provider = mock-local-dev`
+  - `pricingMatch.model = mock-image-v1`
+  - `pricingMatch.route = image.default`
+  - `pricingMatch.unit = image_generation`
+  - `pricingFallbackLevel = 1`
+- Earlier `default/default/default` entries were from pre-fix runs; latest runs now match exact pricing rows.
+
+Known follow-ups:
+
+- Frontend still has no formal model/route selector.
+- `image.fail` remains a backend/local QA route (UI has no direct selector yet).
+- Real providers and real payment integrations remain out of scope.
+- Legacy migration 3 failing tests remain known non-blocking.
+
 ## Current Sprint Handoff (ai-provider-dev-seed-mock-e2e)
 
 Branch:

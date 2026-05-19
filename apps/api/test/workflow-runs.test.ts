@@ -217,6 +217,181 @@ async function createDraftOnlyFlow(api: ReturnType<typeof buildTestApp>["api"], 
   return flow.json();
 }
 
+async function createDraftOnlyFlowWithRoute(
+  api: ReturnType<typeof buildTestApp>["api"],
+  accessToken: string,
+  routeKey: string,
+) {
+  const project = await api.inject({
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+    },
+    method: "POST",
+    payload: {
+      name: `Workflow Draft Project ${routeKey}`,
+    },
+    url: "/api/v2/projects",
+  });
+  expect(project.statusCode).toBe(201);
+
+  const flow = await api.inject({
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+    },
+    method: "POST",
+    payload: {
+      title: `Workflow Draft Flow ${routeKey}`,
+    },
+    url: `/api/v2/projects/${project.json().id}/flows`,
+  });
+  expect(flow.statusCode).toBe(201);
+
+  const saveDraft = await api.inject({
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+    },
+    method: "PUT",
+    payload: {
+      graph: {
+        edges: [
+          { source: "input", target: "image" },
+          { source: "image", target: "output" },
+        ],
+        nodes: [
+          {
+            data: {
+              inputKey: "prompt",
+            },
+            id: "input",
+            type: "input",
+          },
+          {
+            data: {
+              routeKey,
+            },
+            id: "image",
+            type: "image.generate",
+          },
+          {
+            id: "output",
+            type: "output",
+          },
+        ],
+      },
+    },
+    url: `/api/v2/flows/${flow.json().id}/draft`,
+  });
+  expect(saveDraft.statusCode).toBe(200);
+
+  return flow.json();
+}
+
+async function seedRouteAndPricing(
+  pool: ReturnType<typeof createPgPool>,
+  input: {
+    modelKey: string;
+    providerKey: string;
+    routeKey: string;
+    tenantId: string;
+    userId: string;
+    withExactPricing?: boolean;
+    withProviderDefaultPricing?: boolean;
+  },
+) {
+  await withTenantTransaction(
+    { tenantId: input.tenantId, userId: input.userId },
+    async (client) => {
+      const provider = await client.query<{ id: string }>(
+        `
+          INSERT INTO ai_providers (key, name, kind, status, default_base_url, capabilities, updated_at)
+          VALUES ($1, $2, 'mock', 'active', 'mock://tests', '{}'::jsonb, now())
+          ON CONFLICT (key) DO UPDATE
+          SET name = EXCLUDED.name, kind = EXCLUDED.kind, status = 'active', updated_at = now()
+          RETURNING id::text AS id
+        `,
+        [input.providerKey, `${input.providerKey} provider`],
+      );
+
+      const providerId = provider.rows[0]?.id;
+      if (!providerId) {
+        throw new Error("Provider seed failed");
+      }
+
+      const model = await client.query<{ id: string }>(
+        `
+          INSERT INTO ai_models (provider_id, model_key, display_name, modality, capabilities, status, updated_at)
+          VALUES ($1::uuid, $2, $3, 'image', '{}'::jsonb, 'active', now())
+          ON CONFLICT (provider_id, model_key) DO UPDATE
+          SET display_name = EXCLUDED.display_name, modality = EXCLUDED.modality, status = 'active', updated_at = now()
+          RETURNING id::text AS id
+        `,
+        [providerId, input.modelKey, `${input.modelKey} model`],
+      );
+      const modelId = model.rows[0]?.id;
+      if (!modelId) {
+        throw new Error("Model seed failed");
+      }
+
+      await client.query(
+        `
+          INSERT INTO ai_routes (tenant_id, provider_id, model_id, route_key, modality, status, request_config, pricing, rate_limit, updated_at)
+          VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 'image', 'active', '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, now())
+          ON CONFLICT (tenant_id, route_key)
+          WHERE tenant_id IS NOT NULL
+          DO UPDATE
+          SET provider_id = EXCLUDED.provider_id, model_id = EXCLUDED.model_id, modality = EXCLUDED.modality, status = 'active', updated_at = now()
+        `,
+        [input.tenantId, providerId, modelId, input.routeKey],
+      );
+
+      if (input.withExactPricing) {
+        await client.query(
+          `
+            INSERT INTO model_pricing (provider, model, route, unit, unit_credits, min_charge_credits, metadata, active)
+            VALUES ($1, $2, $3, 'image_generation', 17, 17, '{"source":"workflow-runs.test"}'::jsonb, true)
+            ON CONFLICT (provider, model, route, unit) DO UPDATE
+            SET min_charge_credits = EXCLUDED.min_charge_credits, unit_credits = EXCLUDED.unit_credits, active = true
+          `,
+          [input.providerKey, input.modelKey, input.routeKey],
+        );
+      }
+
+      if (input.withProviderDefaultPricing) {
+        await client.query(
+          `
+            INSERT INTO model_pricing (provider, model, route, unit, unit_credits, min_charge_credits, metadata, active)
+            VALUES ($1, 'default', 'default', 'image_generation', 13, 13, '{"source":"workflow-runs.test"}'::jsonb, true)
+            ON CONFLICT (provider, model, route, unit) DO UPDATE
+            SET min_charge_credits = EXCLUDED.min_charge_credits, unit_credits = EXCLUDED.unit_credits, active = true
+          `,
+          [input.providerKey],
+        );
+      }
+    },
+    pool,
+  );
+}
+
+async function lookupUserIdByEmail(
+  pool: ReturnType<typeof createPgPool>,
+  email: string,
+): Promise<string> {
+  const result = await pool.query<{ id: string }>(
+    `
+      SELECT id::text AS id
+      FROM users
+      WHERE lower(email) = lower($1)
+      LIMIT 1
+    `,
+    [email],
+  );
+  const userId = result.rows[0]?.id;
+  if (!userId) {
+    throw new Error(`Unable to resolve user id for ${email}`);
+  }
+  return userId;
+}
+
 function parseSseEvents(body: string) {
   return body
     .trim()
@@ -248,6 +423,211 @@ function parseSseEvents(body: string) {
 }
 
 describeWithDatabase("workflow runs api", () => {
+  test("reserve prefers exact provider/model/route pricing and stores fallback metadata", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({
+          connectionString: await createAppDatabaseUrl(),
+        });
+
+        const { api, fakeQueue } = buildTestApp(appPool);
+        const ownerEmail = "workflow-pricing-exact@example.com";
+        const owner = await registerOwner(api, ownerEmail, "Workflow Pricing Exact");
+        const ownerUserId = await lookupUserIdByEmail(appPool, ownerEmail);
+
+        await seedRouteAndPricing(appPool, {
+          modelKey: "mock-image-v1",
+          providerKey: "mock-local-dev",
+          routeKey: "image.default",
+          tenantId: owner.currentTenant.id,
+          userId: ownerUserId,
+          withExactPricing: true,
+        });
+
+        const flow = await createDraftOnlyFlowWithRoute(api, owner.accessToken, "image.default");
+        const createRun = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "POST",
+          payload: {
+            input: {
+              prompt: "exact pricing",
+            },
+          },
+          url: `/api/v2/flows/${flow.id}/runs`,
+        });
+        expect(createRun.statusCode).toBe(201);
+
+        const runDetails = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "GET",
+          url: `/api/v2/workflow-runs/${createRun.json().runId}`,
+        });
+        expect(runDetails.statusCode).toBe(200);
+        const imageNode = runDetails.json().nodeRuns.find((row: { nodeType: string }) => row.nodeType === "image.generate");
+        expect(imageNode.costJson.estimatedCents).toBe(17);
+        expect(imageNode.costJson.pricingFallbackLevel).toBe(1);
+        expect(imageNode.costJson.pricingMatch).toMatchObject({
+          model: "mock-image-v1",
+          provider: "mock-local-dev",
+          route: "image.default",
+          unit: "image_generation",
+        });
+
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("reserve falls back to provider default pricing when route-specific pricing is missing", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({
+          connectionString: await createAppDatabaseUrl(),
+        });
+
+        const { api } = buildTestApp(appPool);
+        const ownerEmail = "workflow-pricing-fallback@example.com";
+        const owner = await registerOwner(api, ownerEmail, "Workflow Pricing Fallback");
+        const ownerUserId = await lookupUserIdByEmail(appPool, ownerEmail);
+
+        await seedRouteAndPricing(appPool, {
+          modelKey: "mock-image-v2",
+          providerKey: "mock-local-dev-fallback",
+          routeKey: "image.tenant.fallback",
+          tenantId: owner.currentTenant.id,
+          userId: ownerUserId,
+          withProviderDefaultPricing: true,
+        });
+
+        const flow = await createDraftOnlyFlowWithRoute(api, owner.accessToken, "image.tenant.fallback");
+        const createRun = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "POST",
+          payload: {
+            input: {
+              prompt: "fallback pricing",
+            },
+          },
+          url: `/api/v2/flows/${flow.id}/runs`,
+        });
+        expect(createRun.statusCode).toBe(201);
+
+        const runDetails = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "GET",
+          url: `/api/v2/workflow-runs/${createRun.json().runId}`,
+        });
+        expect(runDetails.statusCode).toBe(200);
+        const imageNode = runDetails.json().nodeRuns.find((row: { nodeType: string }) => row.nodeType === "image.generate");
+        expect(imageNode.costJson.estimatedCents).toBe(13);
+        expect(imageNode.costJson.pricingFallbackLevel).toBe(3);
+        expect(imageNode.costJson.pricingMatch).toMatchObject({
+          model: "default",
+          provider: "mock-local-dev-fallback",
+          route: "default",
+          unit: "image_generation",
+        });
+
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("returns PRICING_NOT_FOUND when no pricing row matches node unit", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({
+          connectionString: await createAppDatabaseUrl(),
+        });
+
+        const { api } = buildTestApp(appPool);
+        const ownerEmail = "workflow-pricing-missing@example.com";
+        const owner = await registerOwner(api, ownerEmail, "Workflow Pricing Missing");
+        const ownerUserId = await lookupUserIdByEmail(appPool, ownerEmail);
+
+        await withTenantTransaction(
+          { tenantId: owner.currentTenant.id, userId: ownerUserId },
+          async (client) => {
+            await client.query("DELETE FROM model_pricing WHERE unit = 'image_generation'");
+          },
+          appPool,
+        );
+
+        const flow = await createDraftOnlyFlowWithRoute(api, owner.accessToken, "image.default");
+        const createRun = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "POST",
+          payload: {
+            input: {
+              prompt: "missing pricing",
+            },
+          },
+          url: `/api/v2/flows/${flow.id}/runs`,
+        });
+        expect(createRun.statusCode).toBe(422);
+        expect(createRun.json()).toMatchObject({
+          error: {
+            code: "PRICING_NOT_FOUND",
+          },
+        });
+        expect(fakeQueue.jobs).toHaveLength(0);
+
+        const runCount = await withTenantTransaction(
+          { tenantId: owner.currentTenant.id, userId: ownerUserId },
+          async (client) => {
+            const result = await client.query<{ count: string }>(
+              `
+                SELECT COUNT(*)::text AS count
+                FROM workflow_runs
+                WHERE tenant_id = $1::uuid
+              `,
+              [owner.currentTenant.id],
+            );
+            return Number(result.rows[0]?.count ?? "0");
+          },
+          appPool,
+        );
+        expect(runCount).toBe(0);
+
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
   test("auto-creates runnable snapshot from server-side draft when no published version exists", async () => {
     await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
       process.env.DATABASE_URL = databaseUrl;

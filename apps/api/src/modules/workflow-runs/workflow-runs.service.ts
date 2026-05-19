@@ -65,6 +65,34 @@ type FlowVersionRecord = {
   id: string;
 };
 
+type PricingRow = {
+  min_charge_credits: string;
+  model: string;
+  provider: string;
+  route: string;
+  unit: string;
+};
+
+export type PricingMatchInfo = {
+  model: string;
+  provider: string;
+  route: string;
+  unit: string;
+};
+
+export type ResolvedNodePricing = {
+  amountCents: number;
+  fallbackLevel: 1 | 2 | 3 | 4 | null;
+  pricingMatch: PricingMatchInfo | null;
+  unit: string | null;
+};
+
+type RouteRuntimeContext = {
+  modelKey: string;
+  providerKey: string;
+  routeKey: string;
+};
+
 type WorkflowRunRecord = {
   canceled_at: string | null;
   created_at: string;
@@ -181,6 +209,86 @@ export class WorkflowRunsApiError extends Error {
 }
 
 const AUTO_RUN_SNAPSHOT_CHANGELOG = "auto_run_snapshot";
+const DEFAULT_ROUTE_BY_NODE_TYPE: Record<string, string> = {
+  "image.generate": "image.default",
+  "text.generate": "text.default",
+  "video.generate": "video.default",
+};
+const UNIT_BY_NODE_TYPE: Record<string, string> = {
+  "image.generate": "image_generation",
+  "text.generate": "text_generation",
+  "video.generate": "video_generation",
+};
+
+export function resolveNodePricing(input: {
+  configuredRouteKey: string | null;
+  nodeType: string;
+  pricingRows: PricingRow[];
+  routeContext: RouteRuntimeContext | null;
+}): ResolvedNodePricing {
+  const unit = UNIT_BY_NODE_TYPE[input.nodeType] ?? null;
+  if (!unit) {
+    return {
+      amountCents: 0,
+      fallbackLevel: null,
+      pricingMatch: null,
+      unit: null,
+    };
+  }
+
+  const configuredRoute = input.configuredRouteKey?.trim() ?? "";
+  const effectiveRoute = configuredRoute || DEFAULT_ROUTE_BY_NODE_TYPE[input.nodeType] || "default";
+  const provider = input.routeContext?.providerKey ?? "default";
+  const model = input.routeContext?.modelKey ?? "default";
+  const rawCandidates: Array<{ fallbackLevel: 1 | 2 | 3 | 4; model: string; provider: string; route: string }> = [
+    { fallbackLevel: 1, model, provider, route: effectiveRoute },
+    { fallbackLevel: 2, model, provider, route: "default" },
+    { fallbackLevel: 3, model: "default", provider, route: "default" },
+    { fallbackLevel: 4, model: "default", provider: "default", route: "default" },
+  ];
+  const dedupedCandidates = new Map<string, { fallbackLevel: 1 | 2 | 3 | 4; model: string; provider: string; route: string }>();
+  for (const candidate of rawCandidates) {
+    const key = `${candidate.provider}::${candidate.model}::${candidate.route}`;
+    const existing = dedupedCandidates.get(key);
+    if (!existing || candidate.fallbackLevel > existing.fallbackLevel) {
+      dedupedCandidates.set(key, candidate);
+    }
+  }
+  const candidates = Array.from(dedupedCandidates.values())
+    .sort((left, right) => left.fallbackLevel - right.fallbackLevel);
+
+  const matched = candidates
+    .map((candidate) => ({
+      candidate,
+      row: input.pricingRows.find((pricing) =>
+        pricing.unit === unit &&
+        pricing.provider === candidate.provider &&
+        pricing.model === candidate.model &&
+        pricing.route === candidate.route),
+    }))
+    .find((entry) => entry.row);
+
+  if (!matched || !matched.row) {
+    return {
+      amountCents: 0,
+      fallbackLevel: null,
+      pricingMatch: null,
+      unit,
+    };
+  }
+
+  return {
+    amountCents: Number.parseInt(matched.row.min_charge_credits, 10) || 0,
+    fallbackLevel: matched.candidate.fallbackLevel,
+    pricingMatch: {
+      model: matched.row.model,
+      provider: matched.row.provider,
+      route: matched.row.route,
+      unit,
+    },
+    unit,
+  };
+}
 
 function normalizeNodeTypeForRuntime(type: string): string {
   if (type === "text") {
@@ -305,7 +413,12 @@ export class WorkflowRunsService {
     try {
       createdRun = await withTenantTransaction(context, async (client) => {
         const runtimeFlow = await this.getCurrentFlowRuntimeOrCreateSnapshot(client, context, flowId);
-        const pricing = await this.loadActivePricing(client);
+        const pricingRows = await this.loadActivePricing(client);
+        const routeContexts = await this.loadRouteRuntimeContexts(
+          client,
+          context.tenantId,
+          runtimeFlow.compiled_graph_json.nodes,
+        );
 
         if (input.idempotencyKey) {
           const existing = await client.query<WorkflowRunRecord>(
@@ -408,7 +521,14 @@ export class WorkflowRunsService {
         for (const node of runtimeFlow.compiled_graph_json.nodes) {
           const isEntryNode = runtimeFlow.compiled_graph_json.entryNodeIds.includes(node.id);
           const nodeRunId = randomUUID();
-          const estimatedCost = this.estimateNodeReserveCents(node.type, pricing);
+          const estimatedCost = this.estimateNodeReserveCents(node, routeContexts, pricingRows);
+          if (estimatedCost.unit && estimatedCost.amountCents <= 0) {
+            throw new WorkflowRunsApiError(
+              422,
+              "PRICING_NOT_FOUND",
+              `No active pricing found for node ${node.id} (${node.type})`,
+            );
+          }
 
           await client.query(
           `
@@ -444,8 +564,12 @@ export class WorkflowRunsService {
             isEntryNode ? "runnable" : "pending",
             JSON.stringify(node.config ?? {}),
             JSON.stringify({
+              estimatedCredits: estimatedCost.amountCents,
               estimatedCents: estimatedCost.amountCents,
+              pricingFallbackLevel: estimatedCost.fallbackLevel,
+              pricingMatch: estimatedCost.pricingMatch,
               pricingUnit: estimatedCost.unit,
+              reservedCredits: 0,
               reservedCents: 0,
               reserveLedgerId: null,
               reserveStatus: estimatedCost.amountCents > 0 ? "pending" : "not_required",
@@ -464,6 +588,8 @@ export class WorkflowRunsService {
                 nodeId: node.id,
                 nodeRunId,
                 nodeType: node.type,
+                pricingFallbackLevel: estimatedCost.fallbackLevel,
+                pricingMatch: estimatedCost.pricingMatch,
                 pricingUnit: estimatedCost.unit,
                 workflowRunId: run.id,
               },
@@ -478,6 +604,7 @@ export class WorkflowRunsService {
             [
               nodeRunId,
               JSON.stringify({
+                reservedCredits: estimatedCost.amountCents,
                 reservedCents: estimatedCost.amountCents,
                 reserveLedgerId: reserve.id,
                 reserveStatus: "reserved",
@@ -782,50 +909,97 @@ export class WorkflowRunsService {
     );
   }
 
-  private async loadActivePricing(client: PoolClient): Promise<Map<string, number>> {
-    const result = await client.query<{ min_charge_credits: string; unit: string }>(
+  private async loadActivePricing(client: PoolClient): Promise<PricingRow[]> {
+    const result = await client.query<PricingRow>(
       `
-        SELECT unit, min_charge_credits::text AS min_charge_credits
+        SELECT
+          provider,
+          model,
+          route,
+          unit,
+          min_charge_credits::text AS min_charge_credits
         FROM model_pricing
         WHERE active = true
-          AND provider = 'default'
-          AND model = 'default'
-          AND route = 'default'
       `,
     );
+    return result.rows;
+  }
 
-    return new Map(
-      result.rows.map((row) => [
-        row.unit,
-        Number.parseInt(row.min_charge_credits, 10) || 0,
-      ]),
+  private async loadRouteRuntimeContexts(
+    client: PoolClient,
+    tenantId: string,
+    nodes: CompiledWorkflow["nodes"],
+  ): Promise<Map<string, RouteRuntimeContext>> {
+    const routeKeys = Array.from(new Set(nodes
+      .map((node) => {
+        if (typeof node.config?.routeKey === "string" && node.config.routeKey.trim().length > 0) {
+          return node.config.routeKey.trim();
+        }
+        const defaultRoute = DEFAULT_ROUTE_BY_NODE_TYPE[node.type];
+        return defaultRoute ?? "";
+      })
+      .filter((routeKey) => routeKey.length > 0)));
+
+    if (routeKeys.length === 0) {
+      return new Map();
+    }
+
+    const result = await client.query<{
+      model_key: string;
+      provider_key: string;
+      route_key: string;
+      tenant_id: string | null;
+    }>(
+      `
+        SELECT DISTINCT ON (route.route_key)
+          route.route_key,
+          provider.key AS provider_key,
+          model.model_key,
+          route.tenant_id::text AS tenant_id
+        FROM ai_routes AS route
+        JOIN ai_providers AS provider
+          ON provider.id = route.provider_id
+        LEFT JOIN ai_models AS model
+          ON model.id = route.model_id
+        WHERE route.status = 'active'
+          AND route.route_key = ANY($1::text[])
+          AND (route.tenant_id = $2::uuid OR route.tenant_id IS NULL)
+        ORDER BY
+          route.route_key ASC,
+          CASE WHEN route.tenant_id = $2::uuid THEN 0 ELSE 1 END ASC,
+          route.updated_at DESC
+      `,
+      [routeKeys, tenantId],
     );
+
+    const contexts = new Map<string, RouteRuntimeContext>();
+    for (const row of result.rows) {
+      contexts.set(row.route_key, {
+        modelKey: row.model_key || "default",
+        providerKey: row.provider_key || "default",
+        routeKey: row.route_key,
+      });
+    }
+
+    return contexts;
   }
 
   private estimateNodeReserveCents(
-    nodeType: string,
-    pricing: Map<string, number>,
-  ): {
-    amountCents: number;
-    unit: string | null;
-  } {
-    const unitByNodeType: Record<string, string> = {
-      "image.generate": "image_generation",
-      "text.generate": "text_generation",
-      "video.generate": "video_generation",
-    };
-    const unit = unitByNodeType[nodeType] ?? null;
-    if (!unit) {
-      return {
-        amountCents: 0,
-        unit: null,
-      };
-    }
-
-    return {
-      amountCents: pricing.get(unit) ?? 0,
-      unit,
-    };
+    node: CompiledWorkflow["nodes"][number],
+    routeContexts: Map<string, RouteRuntimeContext>,
+    pricingRows: PricingRow[],
+  ): ResolvedNodePricing {
+    const configuredRoute = typeof node.config?.routeKey === "string"
+      ? node.config.routeKey
+      : null;
+    const effectiveRoute = configuredRoute?.trim() || DEFAULT_ROUTE_BY_NODE_TYPE[node.type] || "default";
+    const routeContext = routeContexts.get(effectiveRoute) ?? null;
+    return resolveNodePricing({
+      configuredRouteKey: configuredRoute,
+      nodeType: node.type,
+      pricingRows,
+      routeContext,
+    });
   }
 
   private async getCurrentFlowRuntimeOrThrow(
