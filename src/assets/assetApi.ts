@@ -172,7 +172,10 @@ export async function uploadAssetFile(input: {
   });
 
   if (!upload.ok) {
-    throw new Error(`Upload failed with status ${upload.status}`);
+    const message = (await upload.text().catch(() => "")).trim();
+    throw new Error(
+      message ? `Upload failed with status ${upload.status}: ${message}` : `Upload failed with status ${upload.status}`,
+    );
   }
 
   const completed = await apiPost<AssetItem>(`/assets/${presigned.asset.id}/complete-upload`, {

@@ -160,8 +160,26 @@ Recommended validation order is listed below.
 
 - Open `/billing`
 - Verify `summary`, `usage`, and `ledger` load correctly
-- Run the redeem code flow
+- Seed local QA billing data when the page is empty:
+
+  ```powershell
+  $env:NODE_ENV="development"
+  npm run dev:seed-billing -- --email your-user@example.com --code QA-REDEEM-1000
+  ```
+
+- Refresh `/billing` and verify:
+  - balance is non-zero
+  - ledger includes `admin_credit`, `settle`, `reserve`, and `refund`
+  - usage includes the seeded usage event
+- Run the redeem code flow with the seeded code (for example `QA-REDEEM-1000`)
 - Verify duplicate redemption attempts for the same code are blocked
+
+Local seed notes:
+
+- `npm run dev:seed-billing` is intended for local development QA only.
+- The script is guarded so it only runs when `NODE_ENV=development` or `DEV_SEED_ENABLED=true`.
+- It does not register any production API and does not simulate a completed real payment.
+- It creates a development redeem code, sample balance, sample usage, and sample ledger activity for the target tenant.
 
 ### Workflow Billing
 

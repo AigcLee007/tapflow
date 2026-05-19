@@ -369,4 +369,143 @@ describeWithDatabase("assets v2", () => {
       }
     });
   });
+
+  test("tenant asset listings, folders, and folder assignments stay isolated", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({
+          connectionString: await createAppDatabaseUrl(),
+        });
+        const storageProvider = new MemoryStorageProvider();
+        const api = buildTestApp(appPool, storageProvider);
+
+        const tenantAOwner = await registerOwner(api, "tenant-a-list-assets@example.com", "Tenant A List Assets");
+        const tenantBOwner = await registerOwner(api, "tenant-b-list-assets@example.com", "Tenant B List Assets");
+
+        const tenantAUpload = await api.inject({
+          headers: {
+            authorization: `Bearer ${tenantAOwner.accessToken}`,
+          },
+          method: "POST",
+          payload: {
+            kind: "image",
+            mimeType: "image/png",
+            originalFilename: "tenant-a.png",
+            sizeBytes: 128,
+          },
+          url: "/api/v2/assets/presigned-upload",
+        });
+        expect(tenantAUpload.statusCode).toBe(201);
+        const tenantAAssetId = tenantAUpload.json().asset.id as string;
+
+        await api.inject({
+          headers: {
+            authorization: `Bearer ${tenantAOwner.accessToken}`,
+          },
+          method: "POST",
+          payload: {
+            width: 512,
+          },
+          url: `/api/v2/assets/${tenantAAssetId}/complete-upload`,
+        });
+
+        const tenantBUpload = await api.inject({
+          headers: {
+            authorization: `Bearer ${tenantBOwner.accessToken}`,
+          },
+          method: "POST",
+          payload: {
+            kind: "image",
+            mimeType: "image/png",
+            originalFilename: "tenant-b.png",
+            sizeBytes: 128,
+          },
+          url: "/api/v2/assets/presigned-upload",
+        });
+        expect(tenantBUpload.statusCode).toBe(201);
+        const tenantBAssetId = tenantBUpload.json().asset.id as string;
+
+        await api.inject({
+          headers: {
+            authorization: `Bearer ${tenantBOwner.accessToken}`,
+          },
+          method: "POST",
+          payload: {
+            width: 256,
+          },
+          url: `/api/v2/assets/${tenantBAssetId}/complete-upload`,
+        });
+
+        const folderA = await api.inject({
+          headers: {
+            authorization: `Bearer ${tenantAOwner.accessToken}`,
+          },
+          method: "POST",
+          payload: {
+            name: "Tenant A Folder",
+          },
+          url: "/api/v2/assets/folders",
+        });
+        expect(folderA.statusCode).toBe(201);
+        const folderAId = folderA.json().id as string;
+
+        const folderB = await api.inject({
+          headers: {
+            authorization: `Bearer ${tenantBOwner.accessToken}`,
+          },
+          method: "POST",
+          payload: {
+            name: "Tenant B Folder",
+          },
+          url: "/api/v2/assets/folders",
+        });
+        expect(folderB.statusCode).toBe(201);
+        const folderBId = folderB.json().id as string;
+
+        const tenantAList = await api.inject({
+          headers: {
+            authorization: `Bearer ${tenantAOwner.accessToken}`,
+          },
+          method: "GET",
+          url: "/api/v2/assets",
+        });
+        expect(tenantAList.statusCode).toBe(200);
+        expect(JSON.stringify(tenantAList.json())).toContain(tenantAAssetId);
+        expect(JSON.stringify(tenantAList.json())).not.toContain(tenantBAssetId);
+
+        const tenantAFolders = await api.inject({
+          headers: {
+            authorization: `Bearer ${tenantAOwner.accessToken}`,
+          },
+          method: "GET",
+          url: "/api/v2/assets/folders",
+        });
+        expect(tenantAFolders.statusCode).toBe(200);
+        expect(JSON.stringify(tenantAFolders.json())).toContain(folderAId);
+        expect(JSON.stringify(tenantAFolders.json())).not.toContain(folderBId);
+
+        const crossTenantFolderAssignment = await api.inject({
+          headers: {
+            authorization: `Bearer ${tenantAOwner.accessToken}`,
+          },
+          method: "POST",
+          payload: {
+            assetId: tenantBAssetId,
+          },
+          url: `/api/v2/assets/folders/${folderAId}/items`,
+        });
+        expect(crossTenantFolderAssignment.statusCode).toBe(404);
+
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
 });

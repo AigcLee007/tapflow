@@ -1,0 +1,108 @@
+import React from "react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { AssetPreviewModal } from "./AssetPreviewModal";
+import type { AssetItem } from "./assetApi";
+
+const listWorkspaceProjectsMock = vi.fn();
+const updateWorkspaceProjectMock = vi.fn();
+const getAssetDownloadUrlMock = vi.fn();
+const updateAssetMetadataMock = vi.fn();
+
+vi.mock("../workspace/workspaceApi", () => ({
+  listWorkspaceProjects: (...args: unknown[]) => listWorkspaceProjectsMock(...args),
+  updateWorkspaceProject: (...args: unknown[]) => updateWorkspaceProjectMock(...args),
+}));
+
+vi.mock("./assetApi", () => ({
+  getAssetDownloadUrl: (...args: unknown[]) => getAssetDownloadUrlMock(...args),
+  updateAssetMetadata: (...args: unknown[]) => updateAssetMetadataMock(...args),
+}));
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, reject, resolve };
+}
+
+const asset: AssetItem = {
+  bucket: "bucket",
+  checksumSha256: null,
+  createdAt: "2026-05-19T00:00:00.000Z",
+  deletedAt: null,
+  description: null,
+  durationMs: null,
+  favorite: false,
+  height: 512,
+  id: "asset-1",
+  kind: "image",
+  metadata: {},
+  mimeType: "image/png",
+  objectKey: "asset-1.png",
+  originalFilename: "asset-1.png",
+  ownerUserId: "user-1",
+  previewUrl: "https://example.test/asset-1.png",
+  projectId: null,
+  sizeBytes: 1200,
+  source: "upload",
+  status: "available",
+  storageProvider: "s3",
+  tags: [],
+  tenantId: "tenant-1",
+  title: "Asset 1",
+  updatedAt: "2026-05-19T00:00:00.000Z",
+  variants: [],
+  width: 512,
+};
+
+describe("AssetPreviewModal", () => {
+  beforeEach(() => {
+    listWorkspaceProjectsMock.mockReset();
+    updateWorkspaceProjectMock.mockReset();
+    getAssetDownloadUrlMock.mockReset();
+    updateAssetMetadataMock.mockReset();
+  });
+
+  it("keeps the close button available while setting a project cover", async () => {
+    listWorkspaceProjectsMock.mockResolvedValue([
+      {
+        coverAssetId: null,
+        createdAt: "2026-05-19T00:00:00.000Z",
+        createdBy: "user-1",
+        description: null,
+        id: "project-1",
+        name: "Project One",
+        tenantId: "tenant-1",
+        updatedAt: "2026-05-19T00:00:00.000Z",
+      },
+    ]);
+
+    const saveRequest = deferred<{ coverAssetId: string }>();
+    updateWorkspaceProjectMock.mockReturnValue(saveRequest.promise);
+
+    const onClose = vi.fn();
+    render(<AssetPreviewModal asset={asset} onClose={onClose} onUpdated={() => undefined} />);
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue("Project One")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /set as project cover/i }));
+
+    const closeButton = screen.getByRole("button", { name: /close preview/i });
+    expect(closeButton).toBeTruthy();
+
+    fireEvent.click(closeButton);
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      saveRequest.resolve({ coverAssetId: asset.id });
+      await saveRequest.promise;
+    });
+  });
+});

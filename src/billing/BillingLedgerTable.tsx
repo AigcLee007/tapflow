@@ -38,7 +38,7 @@ export function BillingLedgerTable({ items }: { items: BillingLedgerEntry[] }) {
             {items.length === 0 && (
               <tr>
                 <td className="py-8 text-center text-slate-500" colSpan={5}>
-                  No ledger entries yet.
+                  No ledger entries yet. Redeem a test code or run the local billing seed flow to create activity.
                 </td>
               </tr>
             )}

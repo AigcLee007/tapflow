@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { RefreshCw, Search } from "lucide-react";
 
+import { useAuth } from "../auth/useAuth";
 import type { AssetItem } from "./assetApi";
 import { AssetFolderSidebar } from "./AssetFolderSidebar";
 import { AssetGrid } from "./AssetGrid";
@@ -9,8 +10,29 @@ import { UploadAssetButton } from "./UploadAssetButton";
 import { useAssetLibrary } from "./useAssetLibrary";
 
 export function AssetLibraryPage() {
+  const { authenticated, sessionId, tenant, user } = useAuth();
   const library = useAssetLibrary();
   const [previewAsset, setPreviewAsset] = useState<AssetItem | null>(null);
+
+  const identityKey =
+    authenticated && tenant && user ? `${user.id}:${tenant.id}:${sessionId ?? "none"}` : "anonymous";
+
+  React.useEffect(() => {
+    setPreviewAsset(null);
+  }, [identityKey]);
+
+  React.useEffect(() => {
+    if (!previewAsset) return;
+    const currentAsset = library.assets.find((item) => item.id === previewAsset.id);
+    if (!currentAsset) {
+      setPreviewAsset(null);
+      return;
+    }
+
+    if (currentAsset !== previewAsset) {
+      setPreviewAsset(currentAsset);
+    }
+  }, [library.assets, previewAsset]);
 
   const refresh = () => {
     void library.refresh();
@@ -50,7 +72,7 @@ export function AssetLibraryPage() {
                 <RefreshCw size={16} />
                 Refresh
               </button>
-              <UploadAssetButton onUploaded={refresh} />
+              <UploadAssetButton key={identityKey} onUploaded={refresh} />
             </div>
           </div>
           {library.error && (
@@ -69,7 +91,6 @@ export function AssetLibraryPage() {
           onClose={() => setPreviewAsset(null)}
           onUpdated={() => {
             refresh();
-            setPreviewAsset(null);
           }}
         />
       )}

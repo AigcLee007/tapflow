@@ -44,6 +44,7 @@ export async function register(input: {
   password: string;
   tenantName?: string;
 }): Promise<AuthSession> {
+  clearStoredAuth();
   const response = await apiPost<AuthTokensResponse>("/auth/register", input, {
     auth: false,
     retryOnUnauthorized: false,
@@ -64,6 +65,7 @@ export async function login(input: {
   password: string;
   tenantId?: string;
 }): Promise<AuthSession> {
+  clearStoredAuth();
   const response = await apiPost<AuthTokensResponse>("/auth/login", input, {
     auth: false,
     retryOnUnauthorized: false,
