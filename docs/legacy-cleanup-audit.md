@@ -58,16 +58,22 @@ All required audit targets exist in repo:
 | `flowProjectStore.cjs` | Yes | Required by `server.cjs` | No | `keep as migration reference` |
 | `generatedAssetService.cjs` | Yes | Required by `server.cjs` | No | `keep as migration reference` |
 
-## 3) New Main Path Misreferences (Must fix later)
+## 3) New Main Path Misreferences (Status)
 
 The current `AppRouter` main path is correct (`/login`, `/register`, `/workspace`, `/projects/:projectId`, `/assets`, `/billing`, `/account`) and compatibility routes redirect.
 
-But one cleanup gap remains:
+Sprint 7.1 audit found one cleanup gap:
 
-1. `src/services/v2AssetsApi.ts` imports `getAuthorizedV2Headers` from `src/services/accountIdentity.ts`.
+1. `src/services/v2AssetsApi.ts` imported `getAuthorizedV2Headers` from `src/services/accountIdentity.ts`.
    - Evidence: `src/services/v2AssetsApi.ts:1`
    - Impact: New flow/runtime path (`src/flowCanvas/runtime/v2WorkflowRunner.ts`) depends on a legacy-anchored identity module.
-   - Required follow-up type: `replace import`.
+   - Follow-up type: `replace import`.
+
+Sprint 7.2 status update:
+
+- Fixed: `src/services/v2AssetsApi.ts` now uses `apiGet` from `src/services/v2HttpClient.ts`.
+- Result: new main path flow-runtime asset URL fetch no longer depends on `accountIdentity`.
+- `accountIdentity.ts` is retained for legacy/admin/debug paths (no deletion in Sprint 7.2).
 
 ## 4) Legacy Scripts / Docs Audit
 
@@ -111,7 +117,7 @@ Recommendation: `update docs only` (no runtime change needed in Sprint 7.1).
 ## 6) Sprint 7.2 Safe Deletion Plan (Recommended)
 
 1. Replace new-path identity dependency:
-   - Decouple `v2AssetsApi` from `accountIdentity` and use a v2-native auth header provider.
+   - Done in Sprint 7.2: `v2AssetsApi` decoupled from `accountIdentity` and switched to `v2HttpClient`.
 
 2. Move clearly legacy UI files into `legacy/` namespace first (no behavior change):
    - `components/InfiniteCanvas.tsx`
@@ -139,4 +145,3 @@ Recommendation: `update docs only` (no runtime change needed in Sprint 7.1).
 - `rg "accountService|accountIdentity|/api/account|/api/auth|billing-center" .`
 - `rg "server.cjs|authStore|billingStore|generationRecordStore|flowProjectStore|generatedAssetService" .`
 - `rg "legacy|classic|model-mapping|create/classic|create/flow" .`
-
