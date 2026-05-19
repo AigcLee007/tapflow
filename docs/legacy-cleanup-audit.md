@@ -233,3 +233,55 @@ Sprint 7.5 recommendation:
 - Continue with remaining local image-folder legacy files (`ImageLibraryPage`, `ImageFolderOverlay`, `imageFolderStore`) as a separate scoped move/removal.
 - Optionally separate CJS legacy server/store retirement plan.
 - Keep known legacy migration test failures tracked independently.
+
+## 10) Sprint 7.5 Status (Local Asset Library Legacy Cleanup)
+
+Completed in Sprint 7.5:
+
+- Moved old local asset library subtree to `legacy/ui/local-asset-library/`:
+  - `src/flowCanvas/pages/ImageLibraryPage.tsx` -> `legacy/ui/local-asset-library/pages/ImageLibraryPage.tsx`
+  - `src/flowCanvas/nodes/ImageFolderOverlay.tsx` -> `legacy/ui/local-asset-library/nodes/ImageFolderOverlay.tsx`
+  - `src/flowCanvas/store/imageFolderStore.ts` -> `legacy/ui/local-asset-library/store/imageFolderStore.ts`
+
+Compatibility shims kept in place (explicitly non-v2):
+
+- `src/flowCanvas/pages/ImageLibraryPage.tsx`
+- `src/flowCanvas/nodes/ImageFolderOverlay.tsx`
+- `src/flowCanvas/store/imageFolderStore.ts`
+
+Each shim is a pure re-export with:
+
+- `Legacy compatibility shim. Do not use in v2 product path.`
+
+Route/path verification:
+
+- `/assets` main path remains on:
+  - `src/assets/AssetLibraryPage.tsx`
+  - `src/assets/useAssetLibrary.ts`
+  - `src/assets/assetApi.ts`
+  - `/api/v2/assets`
+- `/projects/:projectId` main path remains on:
+  - `src/flowCanvas/FlowProjectPage.tsx`
+  - `src/flowCanvas/FlowCanvasPage.tsx`
+  - `src/flowCanvas/nodes/FlowNodes.tsx`
+  - asset-backed node data + v2 assets API
+- No new-path imports to local asset legacy subtree were found in:
+  - `src/app`
+  - `src/auth`
+  - `src/workspace`
+  - `src/assets`
+  - `src/billing`
+  - `src/account`
+  - `FlowProjectPage` / `FlowCanvasPage` / `FlowNodes`
+
+Retention notes:
+
+- `src/services/assetStorage.ts` remains as a legacy compatibility shim to `legacy/ui/classic-canvas/services/assetStorage.ts`, because legacy chains still reference it.
+- Legacy CJS server/store stack is unchanged in Sprint 7.5.
+
+Sprint 7.6 suggestions:
+
+- Reduce/remove remaining flowCanvas local-asset shims when legacy/debug/test references are retired.
+- Plan retirement of CJS legacy server/store stack in one scoped cleanup.
+- Keep migration test triage separate (`scripts/migrate-legacy-v2/test/migrate.test.ts` known 3 failures).
+- Continue v2 runtime hardening for real provider/route/credential rollout.
