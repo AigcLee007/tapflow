@@ -208,7 +208,7 @@ function containsLocalPayloadReference(value: unknown, keyPath: string[] = []): 
   return false;
 }
 
-function normalizeDraftGraph(graph: unknown): FlowDraftGraph {
+export function normalizeDraftGraph(graph: unknown): FlowDraftGraph {
   const input = graph && typeof graph === "object" ? graph as Partial<FlowDraftGraph> : {};
   const viewport = input.viewport && typeof input.viewport === "object" ? input.viewport : EMPTY_DRAFT_GRAPH.viewport;
   return {
@@ -222,7 +222,7 @@ function normalizeDraftGraph(graph: unknown): FlowDraftGraph {
   };
 }
 
-function assertDraftGraphSafe(graph: FlowDraftGraph): void {
+export function assertDraftGraphSafe(graph: FlowDraftGraph): void {
   if (containsLocalPayloadReference(graph)) {
     throw new FlowsApiError(
       400,

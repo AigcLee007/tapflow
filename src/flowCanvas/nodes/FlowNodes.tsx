@@ -77,7 +77,7 @@ import {
   getVideoModelSupportsHd,
 } from '../../config/videoModels';
 import { DEFAULT_TEXT_MODEL_ID, getTextModelOption, TEXT_MODEL_OPTIONS } from '../../config/textModels';
-import { downloadImage, fileToDataUrl, getImageNaturalSize, imageUrlToBlob } from '../utils/imageUtils';
+import { downloadImage, getImageNaturalSize, imageUrlToBlob } from '../utils/imageUtils';
 import type { LightDirection } from './ImageLightingOverlay';
 import type { MultiAngleId } from './ImageMultiAngleOverlay';
 import { ImageMoreMenu, type ImageMoreMenuAction } from './ImageMoreMenu';
@@ -100,7 +100,8 @@ import { GoogleLogo, OpenAILogo } from '../../../components/Logos';
 import { useAuth } from '../../auth/useAuth';
 import { normalizeBackendAssetUrl } from '../../utils/generatedImageStorage';
 import { canNodeReceiveIncoming } from '../rules/connectionRules';
-import { getAssetDownloadUrl } from '../../assets/assetApi';
+import { getAssetDownloadUrl, uploadAssetFile } from '../../assets/assetApi';
+import { buildAssetBackedNodeData } from '../utils/assetNodeData';
 
 type FlowNode = Node<FlowNodeData>;
 
@@ -3025,6 +3026,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const updateNodeData = useFlowCanvasStore((s) => s.updateNodeData);
   const addNodeAndEdge = useFlowCanvasStore((s) => s.addNodeAndEdge);
   const removeEdgesByIds = useFlowCanvasStore((s) => s.removeEdgesByIds);
+  const backendProjectId = useFlowCanvasStore((s) => s.backendProjectId);
   const activeImageTool = useFlowCanvasStore((s) => s.activeImageTool);
   const openImageTool = useFlowCanvasStore((s) => s.openImageTool);
   const closeImageTool = useFlowCanvasStore((s) => s.closeImageTool);
@@ -4098,37 +4100,33 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const previewUrl = URL.createObjectURL(file);
 
-    const url = await fileToDataUrl(file);
-
-    const img = new Image();
-    img.onload = () => {
-      const naturalWidth = img.naturalWidth || img.width;
-      const naturalHeight = img.naturalHeight || img.height;
-      const { width, height } = fitMediaNodeToShortSide(naturalWidth, naturalHeight);
-
-      updateNodeData(id, { 
-        thumbnailUrl: url,
-        width,
-        height,
-        naturalWidth,
-        naturalHeight,
-        aspectRatio: naturalWidth / naturalHeight,
-        originalImageUrl: url,
-        editHistory: [],
-        lastEditType: undefined,
-        imageFolderIds: [],
-        errorMessage: undefined,
-        generationStatus: 'done',
-        status: 'success',
-        generatedResults: undefined,
-        activeResultIndex: undefined,
-        coverResultId: undefined,
-        favoriteResultIds: undefined,
-        lastGenerationSnapshot: undefined,
+    try {
+      const natural = await getImageNaturalSize(previewUrl);
+      const asset = await uploadAssetFile({
+        file,
+        kind: 'image',
+        projectId: backendProjectId,
       });
-    };
-    img.src = url;
+      updateNodeData(id, buildAssetBackedNodeData(asset, {
+        naturalHeight: natural.h,
+        naturalWidth: natural.w,
+        source: 'node-upload',
+        title: file.name.replace(/\.[^.]+$/, '') || d.title,
+      }));
+    } catch (error) {
+      updateNodeData(id, {
+        errorMessage: error instanceof Error ? error.message : '图片上传失败',
+        generationStatus: 'error',
+        status: 'error',
+      });
+    } finally {
+      URL.revokeObjectURL(previewUrl);
+      if (e.target) {
+        e.target.value = '';
+      }
+    }
   };
 
   const handleDownload = useCallback(() => {

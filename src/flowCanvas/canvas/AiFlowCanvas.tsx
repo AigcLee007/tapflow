@@ -34,8 +34,9 @@ import { FlowContextMenu } from './FlowContextMenu';
 import { FlowLeftAddPanel } from './FlowLeftAddPanel';
 import type { FlowNodeData } from '../types';
 import { fitMediaNodeToShortSide } from '../utils/nodeSizing';
-import { fileToDataUrl } from '../utils/imageUtils';
 import { canConnectFlowNodes } from '../rules/connectionRules';
+import { uploadAssetFile } from '../../assets/assetApi';
+import { buildAssetBackedNodeData } from '../utils/assetNodeData';
 
 const CANVAS_MIN_ZOOM = 0.3;
 const CANVAS_MAX_ZOOM = 2.35;
@@ -202,6 +203,7 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled }) =>
   const pushHistory = useFlowCanvasStore((s) => s.pushHistory);
   const setNodeDragging = useFlowCanvasStore((s) => s.setNodeDragging);
   const addNode = useFlowCanvasStore((s) => s.addNode);
+  const backendProjectId = useFlowCanvasStore((s) => s.backendProjectId);
   const groupSelectedNodes = useFlowCanvasStore((s) => s.groupSelectedNodes);
   const deleteSelectedNodes = useFlowCanvasStore((s) => s.deleteSelectedNodes);
   const deleteSelectedEdges = useFlowCanvasStore((s) => s.deleteSelectedEdges);
@@ -396,15 +398,23 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled }) =>
       const loaded = await Promise.all(
         sources.map(async (source) => {
           try {
-            const stableUrl = source.file ? await fileToDataUrl(source.file) : source.url;
-            const natural = await getImportedImageSize(stableUrl);
+            const previewUrl = source.url;
+            const natural = await getImportedImageSize(previewUrl);
             const displaySize = fitMediaNodeToShortSide(natural.naturalWidth, natural.naturalHeight);
+            const asset = source.file
+              ? await uploadAssetFile({
+                  file: source.file,
+                  kind: "image",
+                  projectId: backendProjectId,
+                })
+              : null;
             return {
               source: {
                 ...source,
-                url: stableUrl,
-                originalImageUrl: source.file ? stableUrl : (source.originalImageUrl || stableUrl),
+                originalImageUrl: source.file ? undefined : (source.originalImageUrl || previewUrl),
+                url: previewUrl,
               },
+              asset,
               natural,
               displaySize,
             };
@@ -434,31 +444,41 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled }) =>
         addNode(
           'image',
           { x, y },
-          {
-            title: item.source.title || '图片',
-            thumbnailUrl: item.source.url,
-            originalImageUrl: item.source.originalImageUrl || item.source.url,
-            width: item.displaySize.width,
-            height: item.displaySize.height,
-            naturalWidth: item.natural.naturalWidth,
-            naturalHeight: item.natural.naturalHeight,
-            aspectRatio: item.natural.naturalWidth / item.natural.naturalHeight,
-            editHistory: [],
-            imageFolderIds: [],
-            status: 'success',
-            generationStatus: 'done',
-            generatedResults: undefined,
-            activeResultIndex: undefined,
-            coverResultId: undefined,
-            favoriteResultIds: undefined,
-            lastGenerationSnapshot: undefined,
-            errorMessage: undefined,
-          },
+          item.asset
+            ? buildAssetBackedNodeData(item.asset, {
+                naturalHeight: item.natural.naturalHeight,
+                naturalWidth: item.natural.naturalWidth,
+                source: 'canvas-upload',
+                title: item.source.title || '图片',
+              })
+            : {
+                title: item.source.title || '图片',
+                thumbnailUrl: item.source.url,
+                originalImageUrl: item.source.originalImageUrl || item.source.url,
+                width: item.displaySize.width,
+                height: item.displaySize.height,
+                naturalWidth: item.natural.naturalWidth,
+                naturalHeight: item.natural.naturalHeight,
+                aspectRatio: item.natural.naturalWidth / item.natural.naturalHeight,
+                editHistory: [],
+                imageFolderIds: [],
+                status: 'success',
+                generationStatus: 'done',
+                generatedResults: undefined,
+                activeResultIndex: undefined,
+                coverResultId: undefined,
+                favoriteResultIds: undefined,
+                lastGenerationSnapshot: undefined,
+                errorMessage: undefined,
+              },
           { selected: true, preserveSelection: index > 0 },
         );
+        if (item.source.file) {
+          URL.revokeObjectURL(item.source.url);
+        }
       });
     },
-    [addNode],
+    [addNode, backendProjectId],
   );
 
   const getCanvasCenterFlowPosition = useCallback(() => {

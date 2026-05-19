@@ -56,8 +56,9 @@ export function AssetPreviewModal({
 
   const insertIntoCanvas = () => {
     if (!selectedProjectId) return;
-    window.history.pushState(null, "", `/projects/${selectedProjectId}?insertAssetId=${asset.id}`);
+    window.history.pushState(null, "", `/projects/${selectedProjectId}?insertAssetId=${encodeURIComponent(asset.id)}`);
     window.dispatchEvent(new PopStateEvent("popstate"));
+    onClose();
   };
 
   return (

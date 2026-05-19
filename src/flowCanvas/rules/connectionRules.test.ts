@@ -54,7 +54,7 @@ describe('connectionRules', () => {
 
   it('hides incoming connections for uploaded image nodes while preserving image downstream actions', () => {
     const uploadedImage = node('image', {
-      thumbnailUrl: 'blob:http://localhost/uploaded-image',
+      assetId: 'asset-1',
     });
     const generatedImage = node('image', {
       thumbnailUrl: 'https://example.com/generated.png',

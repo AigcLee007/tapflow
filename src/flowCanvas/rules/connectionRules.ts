@@ -20,7 +20,7 @@ export const isUploadedImageNode = (node?: FlowNodeLike | null) => {
   const data = node.data || {};
   return (
     getFlowNodeKind(node) === 'image' &&
-    !!data.thumbnailUrl &&
+    (!!data.thumbnailUrl || !!data.assetId || (Array.isArray(data.assetIds) && data.assetIds.length > 0)) &&
     !data.lastGenerationSnapshot &&
     !data.editSourceNodeId &&
     !data.lastEditType
