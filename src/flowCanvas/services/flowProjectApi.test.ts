@@ -78,4 +78,44 @@ describe("sanitizeFlowDraftGraph", () => {
       type: "image",
     });
   });
+
+  it("keeps sourceAssetId with crop/grid metadata while stripping transient urls", () => {
+    const graph: FlowDraftGraph = {
+      edges: [],
+      nodes: [
+        {
+          data: {
+            sourceAssetId: "asset-source-1",
+            crop: { x: 10, y: 12, width: 320, height: 180 },
+            grid: { rows: 2, cols: 2 },
+            row: 0,
+            col: 1,
+            rows: 2,
+            cols: 2,
+            slice: true,
+            previewUrl: "https://example.test/image.png?X-Amz-Signature=secret",
+            thumbnailUrl: "blob:http://localhost/preview",
+          },
+          id: "node-2",
+          type: "image",
+        },
+      ],
+      viewport: { x: 0, y: 0, zoom: 1 },
+    };
+
+    expect(sanitizeFlowDraftGraph(graph).nodes[0]).toEqual({
+      data: {
+        sourceAssetId: "asset-source-1",
+        crop: { x: 10, y: 12, width: 320, height: 180 },
+        grid: { rows: 2, cols: 2 },
+        row: 0,
+        col: 1,
+        rows: 2,
+        cols: 2,
+        slice: true,
+      },
+      id: "node-2",
+      type: "image",
+    });
+  });
 });

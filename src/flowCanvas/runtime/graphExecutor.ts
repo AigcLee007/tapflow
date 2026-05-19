@@ -13,6 +13,7 @@ import { DEFAULT_TEXT_MODEL_ID } from '../../config/textModels';
 import { getImageNaturalSize, imageUrlToBase64 } from '../utils/imageUtils';
 import { getImageEditErrorMessage } from '../utils/imageEditStatus';
 import { buildImageEditModelMapping } from '../utils/imageEditModelMapping';
+import { persistDerivedImageAsset } from '../utils/persistDerivedImageAsset';
 import {
   FLOW_NODE_DEFAULT_SIZES,
   fitMediaNodeToShortSide,
@@ -92,6 +93,13 @@ const buildImageResultItems = (urls: string[]) => {
       url,
       createdAt: now,
     }));
+};
+
+const SIGNED_URL_RE = /[?&](?:x-amz-signature|x-amz-credential|signature|expires)=/i;
+
+const isTransientDraftUrl = (value: string) => {
+  const trimmed = value.trim().toLowerCase();
+  return trimmed.startsWith('blob:') || trimmed.startsWith('data:') || SIGNED_URL_RE.test(value);
 };
 
 const normalizeTaskStatus = (taskStatus: any): string => {
@@ -498,11 +506,27 @@ function findReusableFailedEditNode(sourceNodeId: string, editType: ImageEditTyp
 async function applyImageEditResult(nodeId: string, imageUrl: string, editType: ImageEditType) {
   const store = useFlowCanvasStore.getState();
   const node = store.nodes.find((n) => n.id === nodeId);
+  const sourceNodeId = typeof node?.data?.editSourceNodeId === "string" ? node.data.editSourceNodeId : "";
+  const sourceNode = sourceNodeId ? store.nodes.find((item) => item.id === sourceNodeId) : undefined;
   const displaySize = await resolveImageDisplaySize(imageUrl, node?.data || {});
   const resultItems = buildImageResultItems([imageUrl]);
 
+  const persisted = await persistDerivedImageAsset({
+    imageUrl,
+    naturalHeight: displaySize.naturalHeight,
+    naturalWidth: displaySize.naturalWidth,
+    projectId: store.backendProjectId,
+    source: "image-edit",
+    sourceAssetId: typeof sourceNode?.data?.assetId === "string" ? sourceNode.data.assetId : undefined,
+    title: String(node?.data?.title || IMAGE_EDIT_TITLES[editType]),
+    metadata: {
+      editType,
+    },
+  });
+  const persistedNodeData = persisted.nodeData as Record<string, unknown>;
+
   store.updateNodeData(nodeId, {
-    thumbnailUrl: imageUrl,
+    ...persistedNodeData,
     ...displaySize,
     generationStatus: 'done',
     status: 'success',
@@ -543,7 +567,9 @@ export async function runImageEdit(
 
   const prompt = String(editParams.prompt || IMAGE_EDIT_DEFAULT_PROMPTS[editType]).trim();
   const previousUrl = String(sourceData.thumbnailUrl || '');
-  const history = Array.isArray(sourceData.editHistory) ? (sourceData.editHistory as string[]) : [];
+  const history = Array.isArray(sourceData.editHistory)
+    ? (sourceData.editHistory as string[]).filter((item) => typeof item === "string" && !isTransientDraftUrl(item))
+    : [];
   const mappedEdit = buildImageEditModelMapping({
     editType,
     modelId,
@@ -571,7 +597,7 @@ export async function runImageEdit(
     width: Number(sourceData.width || FLOW_NODE_DEFAULT_SIZES.image.width),
     height: Number(sourceData.height || FLOW_NODE_DEFAULT_SIZES.image.height),
     originalImageUrl: String(sourceData.originalImageUrl || previousUrl),
-    editHistory: previousUrl ? [...history, previousUrl] : history,
+    editHistory: previousUrl && !isTransientDraftUrl(previousUrl) ? [...history, previousUrl] : history,
     lastEditType: editType,
     editSourceNodeId: sourceNodeId,
     editPrompt: prompt,
@@ -702,5 +728,3 @@ async function runVideoGeneration(
  * @deprecated Use runNodeGeneration instead
  */
 export const runSingleNode = runNodeGeneration;
-
-
