@@ -2,6 +2,7 @@ import { apiGet, apiPatch, apiPost } from "../services/v2HttpClient";
 
 export type WorkspaceProject = {
   coverAssetId: string | null;
+  coverUrl?: string;
   createdAt: string;
   createdBy: string | null;
   description: string | null;

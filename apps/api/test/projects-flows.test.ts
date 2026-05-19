@@ -533,4 +533,175 @@ describeWithDatabase("projects and flows v2", () => {
       }
     });
   });
+
+  test("project coverAssetId is persisted and cross-tenant cover assets are rejected", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({
+          connectionString: await createAppDatabaseUrl(),
+        });
+        const api = buildTestApp(appPool);
+
+        const owner = await registerOwner(api, "owner-cover@example.com", "Owner Cover");
+        const foreign = await registerOwner(api, "foreign-cover@example.com", "Foreign Cover");
+
+        const projectResponse = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "POST",
+          payload: {
+            name: "Cover Project",
+          },
+          url: "/api/v2/projects",
+        });
+        expect(projectResponse.statusCode).toBe(201);
+        const projectBody = projectResponse.json();
+
+        const ownerAssetId = randomUUID();
+        const foreignAssetId = randomUUID();
+
+        await withTenantTransaction(
+          { tenantId: owner.currentTenant.id, userId: owner.user.id },
+          async (client) => {
+            await client.query(
+              `
+                INSERT INTO assets (
+                  id,
+                  tenant_id,
+                  owner_user_id,
+                  kind,
+                  mime_type,
+                  bucket,
+                  object_key,
+                  original_filename,
+                  status
+                )
+                VALUES (
+                  $1::uuid,
+                  $2::uuid,
+                  $3::uuid,
+                  'image',
+                  'image/png',
+                  'bucket-owner',
+                  'tenants/owner/assets/cover.png',
+                  'cover.png',
+                  'available'
+                )
+              `,
+              [ownerAssetId, owner.currentTenant.id, owner.user.id],
+            );
+          },
+          adminPool,
+        );
+
+        await withTenantTransaction(
+          { tenantId: foreign.currentTenant.id, userId: foreign.user.id },
+          async (client) => {
+            await client.query(
+              `
+                INSERT INTO assets (
+                  id,
+                  tenant_id,
+                  owner_user_id,
+                  kind,
+                  mime_type,
+                  bucket,
+                  object_key,
+                  original_filename,
+                  status
+                )
+                VALUES (
+                  $1::uuid,
+                  $2::uuid,
+                  $3::uuid,
+                  'image',
+                  'image/png',
+                  'bucket-foreign',
+                  'tenants/foreign/assets/cover.png',
+                  'cover.png',
+                  'available'
+                )
+              `,
+              [foreignAssetId, foreign.currentTenant.id, foreign.user.id],
+            );
+          },
+          adminPool,
+        );
+
+        const setCover = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "PATCH",
+          payload: {
+            coverAssetId: ownerAssetId,
+          },
+          url: `/api/v2/projects/${projectBody.id}`,
+        });
+        expect(setCover.statusCode).toBe(200);
+        expect(setCover.json()).toMatchObject({
+          coverAssetId: ownerAssetId,
+          id: projectBody.id,
+        });
+
+        const listedProjects = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "GET",
+          url: "/api/v2/projects",
+        });
+        expect(listedProjects.statusCode).toBe(200);
+        expect(listedProjects.json()).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              coverAssetId: ownerAssetId,
+              id: projectBody.id,
+            }),
+          ]),
+        );
+
+        const projectDetail = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "GET",
+          url: `/api/v2/projects/${projectBody.id}`,
+        });
+        expect(projectDetail.statusCode).toBe(200);
+        expect(projectDetail.json()).toMatchObject({
+          coverAssetId: ownerAssetId,
+          id: projectBody.id,
+        });
+
+        const rejectForeignCover = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "PATCH",
+          payload: {
+            coverAssetId: foreignAssetId,
+          },
+          url: `/api/v2/projects/${projectBody.id}`,
+        });
+        expect(rejectForeignCover.statusCode).toBe(404);
+        expect(rejectForeignCover.json()).toMatchObject({
+          error: {
+            code: "ASSET_NOT_FOUND",
+          },
+        });
+
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
 });

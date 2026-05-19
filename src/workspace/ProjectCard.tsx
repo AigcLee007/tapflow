@@ -1,6 +1,7 @@
-import React from "react";
-import { CalendarDays, GitBranch, MoreHorizontal } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { CalendarDays, GitBranch, ImageOff, MoreHorizontal } from "lucide-react";
 
+import { getAssetDownloadUrl } from "../assets/assetApi";
 import type { WorkspaceProject } from "./workspaceApi";
 
 function formatRelativeTime(input: string) {
@@ -25,6 +26,8 @@ export function ProjectCard({
   project: WorkspaceProject;
   viewMode: "grid" | "list";
 }) {
+  const cover = useProjectCover(project);
+
   if (viewMode === "list") {
     return (
       <button
@@ -50,8 +53,22 @@ export function ProjectCard({
       onClick={() => onOpen(project)}
       type="button"
     >
-      <div className="aspect-[16/10] bg-[linear-gradient(135deg,#0ea5e9_0%,#22c55e_48%,#111827_100%)] p-4">
-        <div className="flex justify-end">
+      <div className="relative aspect-[16/10] overflow-hidden bg-[linear-gradient(135deg,#0ea5e9_0%,#22c55e_48%,#111827_100%)] p-4">
+        {cover.url ? (
+          <img
+            alt=""
+            className="absolute inset-0 h-full w-full object-cover"
+            src={cover.url}
+          />
+        ) : cover.failed ? (
+          <div className="absolute inset-0 grid place-items-center bg-[linear-gradient(135deg,#111827_0%,#0f172a_42%,#1e293b_100%)] text-slate-400">
+            <div className="flex flex-col items-center gap-2 text-xs">
+              <ImageOff size={20} />
+              Cover unavailable
+            </div>
+          </div>
+        ) : null}
+        <div className="relative z-10 flex justify-end">
           <span className="grid h-8 w-8 place-items-center rounded-md bg-black/25 text-white/80">
             <MoreHorizontal size={16} />
           </span>
@@ -72,4 +89,46 @@ export function ProjectCard({
       </div>
     </button>
   );
+}
+
+function useProjectCover(project: WorkspaceProject) {
+  const [coverUrl, setCoverUrl] = useState(project.coverUrl || "");
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    if (project.coverUrl) {
+      setCoverUrl(project.coverUrl);
+      setFailed(false);
+      return;
+    }
+
+    if (!project.coverAssetId) {
+      setCoverUrl("");
+      setFailed(false);
+      return;
+    }
+
+    let cancelled = false;
+    setCoverUrl("");
+    setFailed(false);
+
+    void getAssetDownloadUrl(project.coverAssetId)
+      .then((download) => {
+        if (cancelled) return;
+        setCoverUrl(download.url);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setFailed(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [project.coverAssetId, project.coverUrl]);
+
+  return {
+    failed,
+    url: coverUrl,
+  };
 }
