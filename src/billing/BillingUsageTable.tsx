@@ -32,7 +32,7 @@ export function BillingUsageTable({ items }: { items: BillingUsageEvent[] }) {
             {items.length === 0 && (
               <tr>
                 <td className="py-8 text-center text-slate-500" colSpan={6}>
-                  No usage events yet.
+                  No usage events yet. For local QA, seed billing data or complete a test workflow run.
                 </td>
               </tr>
             )}

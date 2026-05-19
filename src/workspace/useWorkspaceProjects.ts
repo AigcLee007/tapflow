@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { useAuth } from "../auth/useAuth";
 import {
   createWorkspaceProject,
   listWorkspaceProjects,
@@ -10,6 +11,7 @@ type Scope = "personal" | "team";
 type SortMode = "updated_desc" | "created_desc" | "name_asc";
 
 export function useWorkspaceProjects() {
+  const { authenticated, sessionId, tenant, user } = useAuth();
   const [projects, setProjects] = useState<WorkspaceProject[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -18,25 +20,61 @@ export function useWorkspaceProjects() {
   const [scope, setScope] = useState<Scope>("personal");
   const [sortMode, setSortMode] = useState<SortMode>("updated_desc");
   const [showAll, setShowAll] = useState(true);
+  const requestSequenceRef = useRef(0);
+
+  const identityKey = useMemo(
+    () => (authenticated && tenant && user ? `${user.id}:${tenant.id}:${sessionId ?? "none"}` : "anonymous"),
+    [authenticated, sessionId, tenant, user],
+  );
+
+  useEffect(() => {
+    requestSequenceRef.current += 1;
+    setProjects([]);
+    setError(null);
+    setLoading(Boolean(authenticated && tenant && user));
+  }, [authenticated, identityKey, tenant, user]);
 
   const refresh = useCallback(async () => {
+    if (!authenticated || !tenant || !user) {
+      requestSequenceRef.current += 1;
+      setProjects([]);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
+    const requestId = requestSequenceRef.current + 1;
+    requestSequenceRef.current = requestId;
     setLoading(true);
     setError(null);
     try {
-      setProjects(await listWorkspaceProjects());
+      const nextProjects = await listWorkspaceProjects();
+      if (requestSequenceRef.current !== requestId) {
+        return;
+      }
+      setProjects(nextProjects);
     } catch (loadError) {
+      if (requestSequenceRef.current !== requestId) {
+        return;
+      }
+      setProjects([]);
       setError(loadError instanceof Error ? loadError.message : "Unable to load projects");
     } finally {
-      setLoading(false);
+      if (requestSequenceRef.current === requestId) {
+        setLoading(false);
+      }
     }
-  }, []);
+  }, [authenticated, tenant, user]);
 
   useEffect(() => {
     void refresh();
-  }, [refresh]);
+  }, [identityKey, refresh]);
 
   const createProject = useCallback(
     async (input: { description?: string | null; name: string }) => {
+      if (!authenticated || !tenant || !user) {
+        throw new Error("Sign in again to create a project.");
+      }
       setCreating(true);
       setError(null);
       try {
@@ -50,7 +88,7 @@ export function useWorkspaceProjects() {
         setCreating(false);
       }
     },
-    [],
+    [authenticated, tenant, user],
   );
 
   const filteredProjects = useMemo(() => {

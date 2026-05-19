@@ -76,9 +76,13 @@ export function setStoredTokens(tokens: {
   if (!canUseStorage()) return;
   if (tokens.accessToken) {
     window.localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, tokens.accessToken);
+  } else if (tokens.accessToken !== undefined) {
+    window.localStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
   }
   if (tokens.refreshToken) {
     window.localStorage.setItem(REFRESH_TOKEN_STORAGE_KEY, tokens.refreshToken);
+  } else if (tokens.refreshToken !== undefined) {
+    window.localStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
   }
   emitAuthChange();
 }
@@ -119,6 +123,7 @@ export async function refreshAccessToken(): Promise<RefreshResponse> {
   try {
     const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
       body: JSON.stringify({ refreshToken }),
+      cache: "no-store",
       headers: {
         "Content-Type": "application/json",
       },
@@ -152,6 +157,7 @@ async function request<T>(
 
   const response = await fetch(`${API_BASE_URL}${cleanPath(path)}`, {
     body: body === undefined ? undefined : JSON.stringify(body),
+    cache: "no-store",
     headers,
     method,
   });
@@ -170,6 +176,7 @@ async function request<T>(
       };
       const retryResponse = await fetch(`${API_BASE_URL}${cleanPath(path)}`, {
         body: body === undefined ? undefined : JSON.stringify(body),
+        cache: "no-store",
         headers: retryHeaders,
         method,
       });

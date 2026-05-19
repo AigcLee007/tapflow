@@ -76,9 +76,11 @@ export class ProjectsService {
             created_at::text AS created_at,
             updated_at::text AS updated_at
           FROM projects
-          WHERE deleted_at IS NULL
+          WHERE tenant_id = $1::uuid
+            AND deleted_at IS NULL
           ORDER BY created_at ASC, id ASC
         `,
+        [context.tenantId],
       );
 
       return result.rows.map(mapProject);
@@ -140,10 +142,11 @@ export class ProjectsService {
             updated_at::text AS updated_at
           FROM projects
           WHERE id = $1::uuid
+            AND tenant_id = $2::uuid
             AND deleted_at IS NULL
           LIMIT 1
         `,
-        [projectId],
+        [projectId, context.tenantId],
       );
 
       const row = result.rows[0];
@@ -178,10 +181,11 @@ export class ProjectsService {
             updated_at::text AS updated_at
           FROM projects
           WHERE id = $1::uuid
+            AND tenant_id = $2::uuid
             AND deleted_at IS NULL
           LIMIT 1
         `,
-        [projectId],
+        [projectId, context.tenantId],
       );
 
       const row = existing.rows[0];
@@ -211,11 +215,12 @@ export class ProjectsService {
         `
           UPDATE projects
           SET
-            name = $2,
-            description = $3,
-            cover_asset_id = CASE WHEN $4::boolean THEN $5::uuid ELSE cover_asset_id END,
+            name = $3,
+            description = $4,
+            cover_asset_id = CASE WHEN $5::boolean THEN $6::uuid ELSE cover_asset_id END,
             updated_at = now()
           WHERE id = $1::uuid
+            AND tenant_id = $2::uuid
           RETURNING
             id::text AS id,
             tenant_id::text AS tenant_id,
@@ -228,6 +233,7 @@ export class ProjectsService {
         `,
         [
           projectId,
+          context.tenantId,
           input.name?.trim() ?? row.name,
           input.description !== undefined ? input.description?.trim() ?? null : row.description,
           input.coverAssetId !== undefined,
@@ -246,10 +252,11 @@ export class ProjectsService {
           UPDATE projects
           SET deleted_at = now(), updated_at = now()
           WHERE id = $1::uuid
+            AND tenant_id = $2::uuid
             AND deleted_at IS NULL
           RETURNING id::text AS id
         `,
-        [projectId],
+        [projectId, context.tenantId],
       );
 
       if (!deleted.rows[0]?.id) {

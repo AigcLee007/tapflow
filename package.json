@@ -16,6 +16,7 @@
     "dev:infra": "docker compose -f infra/docker-compose.dev.yml up -d",
     "dev:api": "npm run dev --workspace @aigc-flow/api",
     "dev:worker": "npm run dev --workspace @aigc-flow/worker",
+    "dev:seed-billing": "tsx scripts/dev-seed-billing.ts",
     "start:api": "npm run start --workspace @aigc-flow/api",
     "start:worker": "npm run start --workspace @aigc-flow/worker",
     "start:v2": "concurrently \"npm run start:api\" \"npm run start:worker\"",

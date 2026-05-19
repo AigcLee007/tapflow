@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   clearStoredAuth,
@@ -15,8 +15,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<AuthSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const requestSequenceRef = useRef(0);
 
   const loadCurrentSession = useCallback(async () => {
+    const requestId = requestSequenceRef.current + 1;
+    requestSequenceRef.current = requestId;
     setLoading(true);
     setError(null);
     try {
@@ -25,19 +28,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (!getStoredAccessToken()) {
-        setSession(null);
+        if (requestSequenceRef.current === requestId) {
+          setSession(null);
+        }
         return;
       }
 
-      setSession(await v2AuthClient.getMe());
+      const nextSession = await v2AuthClient.getMe();
+      if (requestSequenceRef.current === requestId) {
+        setSession(nextSession);
+      }
     } catch (loadError) {
       clearStoredAuth();
-      setSession(null);
-      if (!(loadError instanceof V2HttpError && loadError.status === 401)) {
+      if (requestSequenceRef.current === requestId) {
+        setSession(null);
+      }
+      if (
+        requestSequenceRef.current === requestId &&
+        !(loadError instanceof V2HttpError && loadError.status === 401)
+      ) {
         setError(loadError instanceof Error ? loadError.message : "Unable to load session");
       }
     } finally {
-      setLoading(false);
+      if (requestSequenceRef.current === requestId) {
+        setLoading(false);
+      }
     }
   }, []);
 
@@ -73,6 +88,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }) => {
         setError(null);
         setLoading(true);
+        requestSequenceRef.current += 1;
+        setSession(null);
         try {
           setSession(await v2AuthClient.register(input));
           await loadCurrentSession();
@@ -90,6 +107,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }) => {
         setError(null);
         setLoading(true);
+        requestSequenceRef.current += 1;
+        setSession(null);
         try {
           setSession(await v2AuthClient.login(input));
           await loadCurrentSession();
@@ -102,8 +121,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       },
       logout: async () => {
         setError(null);
+        requestSequenceRef.current += 1;
         await v2AuthClient.logout();
         setSession(null);
+        setLoading(false);
       },
     }),
     [error, loadCurrentSession, loading, session],

@@ -260,6 +260,8 @@ export class AssetsService {
         return `$${values.length}`;
       };
 
+      where.push(`a.tenant_id = ${add(context.tenantId)}::uuid`);
+
       if (query.projectId) {
         where.push(`a.project_id = ${add(query.projectId)}::uuid`);
       }
@@ -281,13 +283,16 @@ export class AssetsService {
         )`);
       }
       if (query.folderId) {
+        await this.ensureFolderExists(client, context.tenantId, query.folderId);
         where.push(`EXISTS (
           SELECT 1
           FROM asset_folder_items afi
           JOIN asset_folders af ON af.id = afi.folder_id
           WHERE afi.asset_id = a.id
             AND afi.folder_id = ${add(query.folderId)}::uuid
+            AND afi.tenant_id = ${add(context.tenantId)}::uuid
             AND af.deleted_at IS NULL
+            AND af.tenant_id = ${add(context.tenantId)}::uuid
         )`);
       }
 
@@ -370,10 +375,11 @@ export class AssetsService {
             SELECT id::text AS id
             FROM projects
             WHERE id = $1::uuid
+              AND tenant_id = $2::uuid
               AND deleted_at IS NULL
             LIMIT 1
           `,
-          [input.projectId],
+          [input.projectId, context.tenantId],
         );
 
         if (!project.rows[0]) {
@@ -523,7 +529,7 @@ export class AssetsService {
     input: CompleteUploadInput,
   ): Promise<AssetView> {
     return withTenantTransaction(context, async (client) => {
-      const asset = await this.getAssetRowForUpdate(client, assetId);
+      const asset = await this.getAssetRowForUpdate(client, context.tenantId, assetId);
       if (asset.deleted_at) {
         throw new AssetsApiError(404, "ASSET_NOT_FOUND", "Asset not found");
       }
@@ -614,7 +620,7 @@ export class AssetsService {
 
   async getAsset(context: AssetContext, assetId: string): Promise<AssetView> {
     return withTenantTransaction(context, async (client) => {
-      const asset = await this.getAssetRow(client, assetId);
+      const asset = await this.getAssetRow(client, context.tenantId, assetId);
       if (asset.deleted_at) {
         throw new AssetsApiError(404, "ASSET_NOT_FOUND", "Asset not found");
       }
@@ -629,7 +635,7 @@ export class AssetsService {
     input: UpdateAssetMetadataInput,
   ): Promise<AssetView> {
     return withTenantTransaction(context, async (client) => {
-      const asset = await this.getAssetRowForUpdate(client, assetId);
+      const asset = await this.getAssetRowForUpdate(client, context.tenantId, assetId);
       if (asset.deleted_at) {
         throw new AssetsApiError(404, "ASSET_NOT_FOUND", "Asset not found");
       }
@@ -706,9 +712,11 @@ export class AssetsService {
             updated_at::text AS updated_at,
             deleted_at::text AS deleted_at
           FROM asset_folders
-          WHERE deleted_at IS NULL
+          WHERE tenant_id = $1::uuid
+            AND deleted_at IS NULL
           ORDER BY name ASC, created_at ASC
         `,
+        [context.tenantId],
       );
 
       return result.rows.map(mapFolder);
@@ -721,7 +729,7 @@ export class AssetsService {
   ): Promise<AssetFolderView> {
     return withTenantTransaction(context, async (client) => {
       if (input.parentFolderId) {
-        await this.ensureFolderExists(client, input.parentFolderId);
+        await this.ensureFolderExists(client, context.tenantId, input.parentFolderId);
       }
 
       const result = await client.query<AssetFolderRecord>(
@@ -765,12 +773,12 @@ export class AssetsService {
     input: UpdateAssetFolderInput,
   ): Promise<AssetFolderView> {
     return withTenantTransaction(context, async (client) => {
-      await this.ensureFolderExists(client, folderId);
+      await this.ensureFolderExists(client, context.tenantId, folderId);
       if (input.parentFolderId) {
         if (input.parentFolderId === folderId) {
           throw new AssetsApiError(400, "INVALID_FOLDER_PARENT", "A folder cannot be its own parent");
         }
-        await this.ensureFolderExists(client, input.parentFolderId);
+        await this.ensureFolderExists(client, context.tenantId, input.parentFolderId);
       }
 
       const result = await client.query<AssetFolderRecord>(
@@ -782,6 +790,7 @@ export class AssetsService {
             parent_folder_id = CASE WHEN $5::boolean THEN $6::uuid ELSE parent_folder_id END,
             updated_at = now()
           WHERE id = $1::uuid
+            AND tenant_id = $2::uuid
             AND deleted_at IS NULL
           RETURNING
             id::text AS id,
@@ -796,6 +805,7 @@ export class AssetsService {
         `,
         [
           folderId,
+          context.tenantId,
           input.name?.trim() ?? null,
           input.description !== undefined,
           input.description?.trim() ?? null,
@@ -815,10 +825,11 @@ export class AssetsService {
           UPDATE asset_folders
           SET deleted_at = now(), updated_at = now()
           WHERE id = $1::uuid
+            AND tenant_id = $2::uuid
             AND deleted_at IS NULL
           RETURNING id::text AS id
         `,
-        [folderId],
+        [folderId, context.tenantId],
       );
       if (!result.rows[0]?.id) {
         throw new AssetsApiError(404, "FOLDER_NOT_FOUND", "Asset folder not found");
@@ -827,8 +838,9 @@ export class AssetsService {
         `
           DELETE FROM asset_folder_items
           WHERE folder_id = $1::uuid
+            AND tenant_id = $2::uuid
         `,
-        [folderId],
+        [folderId, context.tenantId],
       );
 
       return { ok: true as const };
@@ -841,8 +853,8 @@ export class AssetsService {
     assetId: string,
   ): Promise<{ ok: true }> {
     return withTenantTransaction(context, async (client) => {
-      await this.ensureFolderExists(client, folderId);
-      await this.ensureAssetExists(client, assetId);
+      await this.ensureFolderExists(client, context.tenantId, folderId);
+      await this.ensureAssetExists(client, context.tenantId, assetId);
 
       await client.query(
         `
@@ -863,14 +875,16 @@ export class AssetsService {
     assetId: string,
   ): Promise<{ ok: true }> {
     return withTenantTransaction(context, async (client) => {
-      await this.ensureFolderExists(client, folderId);
+      await this.ensureFolderExists(client, context.tenantId, folderId);
+      await this.ensureAssetExists(client, context.tenantId, assetId);
       await client.query(
         `
           DELETE FROM asset_folder_items
           WHERE folder_id = $1::uuid
             AND asset_id = $2::uuid
+            AND tenant_id = $3::uuid
         `,
-        [folderId, assetId],
+        [folderId, assetId, context.tenantId],
       );
 
       return { ok: true as const };
@@ -886,7 +900,7 @@ export class AssetsService {
     url: string;
   }> {
     return withTenantTransaction(context, async (client) => {
-      const asset = await this.getAssetRow(client, assetId);
+      const asset = await this.getAssetRow(client, context.tenantId, assetId);
       if (asset.deleted_at) {
         throw new AssetsApiError(404, "ASSET_NOT_FOUND", "Asset not found");
       }
@@ -924,10 +938,11 @@ export class AssetsService {
           UPDATE assets
           SET deleted_at = now(), updated_at = now()
           WHERE id = $1::uuid
+            AND tenant_id = $2::uuid
             AND deleted_at IS NULL
           RETURNING id::text AS id
         `,
-        [assetId],
+        [assetId, context.tenantId],
       );
 
       if (!result.rows[0]?.id) {
@@ -961,6 +976,7 @@ export class AssetsService {
 
   private async getAssetRow(
     client: PoolClient,
+    tenantId: string,
     assetId: string,
   ): Promise<AssetRecord> {
     const result = await client.query<AssetRecord>(
@@ -993,9 +1009,10 @@ export class AssetsService {
           deleted_at::text AS deleted_at
         FROM assets
         WHERE id = $1::uuid
+          AND tenant_id = $2::uuid
         LIMIT 1
       `,
-      [assetId],
+      [assetId, tenantId],
     );
 
     const row = result.rows[0];
@@ -1008,6 +1025,7 @@ export class AssetsService {
 
   private async getAssetRowForUpdate(
     client: PoolClient,
+    tenantId: string,
     assetId: string,
   ): Promise<AssetRecord> {
     const result = await client.query<AssetRecord>(
@@ -1040,10 +1058,11 @@ export class AssetsService {
           deleted_at::text AS deleted_at
         FROM assets
         WHERE id = $1::uuid
+          AND tenant_id = $2::uuid
         LIMIT 1
         FOR UPDATE
       `,
-      [assetId],
+      [assetId, tenantId],
     );
 
     const row = result.rows[0];
@@ -1054,16 +1073,21 @@ export class AssetsService {
     return row;
   }
 
-  private async ensureAssetExists(client: PoolClient, assetId: string): Promise<void> {
+  private async ensureAssetExists(
+    client: PoolClient,
+    tenantId: string,
+    assetId: string,
+  ): Promise<void> {
     const result = await client.query<{ id: string }>(
       `
         SELECT id::text AS id
         FROM assets
         WHERE id = $1::uuid
+          AND tenant_id = $2::uuid
           AND deleted_at IS NULL
         LIMIT 1
       `,
-      [assetId],
+      [assetId, tenantId],
     );
 
     if (!result.rows[0]) {
@@ -1071,16 +1095,21 @@ export class AssetsService {
     }
   }
 
-  private async ensureFolderExists(client: PoolClient, folderId: string): Promise<void> {
+  private async ensureFolderExists(
+    client: PoolClient,
+    tenantId: string,
+    folderId: string,
+  ): Promise<void> {
     const result = await client.query<{ id: string }>(
       `
         SELECT id::text AS id
         FROM asset_folders
         WHERE id = $1::uuid
+          AND tenant_id = $2::uuid
           AND deleted_at IS NULL
         LIMIT 1
       `,
-      [folderId],
+      [folderId, tenantId],
     );
 
     if (!result.rows[0]) {

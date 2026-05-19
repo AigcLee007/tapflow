@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { useAuth } from "../auth/useAuth";
 import {
   getAssetDownloadUrl,
   listAssetFolders,
@@ -25,6 +26,7 @@ export type AssetLibraryState = {
 };
 
 export function useAssetLibrary(): AssetLibraryState {
+  const { authenticated, sessionId, tenant, user } = useAuth();
   const [assets, setAssets] = useState<AssetItem[]>([]);
   const [folders, setFolders] = useState<AssetFolder[]>([]);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
@@ -34,6 +36,12 @@ export function useAssetLibrary(): AssetLibraryState {
   const [page] = useState(1);
   const [pageSize] = useState(60);
   const [total, setTotal] = useState(0);
+  const requestSequenceRef = useRef(0);
+
+  const identityKey = useMemo(
+    () => (authenticated && tenant && user ? `${user.id}:${tenant.id}:${sessionId ?? "none"}` : "anonymous"),
+    [authenticated, sessionId, tenant, user],
+  );
 
   const params = useMemo<AssetListParams>(() => ({
     folderId: selectedFolderId,
@@ -43,6 +51,18 @@ export function useAssetLibrary(): AssetLibraryState {
   }), [page, pageSize, query, selectedFolderId]);
 
   const refresh = useCallback(async () => {
+    if (!authenticated || !tenant || !user) {
+      requestSequenceRef.current += 1;
+      setAssets([]);
+      setFolders([]);
+      setTotal(0);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
+    const requestId = requestSequenceRef.current + 1;
+    requestSequenceRef.current = requestId;
     setLoading(true);
     setError(null);
     try {
@@ -58,19 +78,41 @@ export function useAssetLibrary(): AssetLibraryState {
           return download ? { ...asset, previewUrl: download.url } : asset;
         }),
       );
+      if (requestSequenceRef.current !== requestId) {
+        return;
+      }
       setAssets(withPreview);
       setFolders(folderResult);
       setTotal(assetResult.total);
     } catch (err) {
+      if (requestSequenceRef.current !== requestId) {
+        return;
+      }
+      setAssets([]);
+      setFolders([]);
+      setTotal(0);
       setError(err instanceof Error ? err.message : "Failed to load asset library");
     } finally {
-      setLoading(false);
+      if (requestSequenceRef.current === requestId) {
+        setLoading(false);
+      }
     }
-  }, [params]);
+  }, [authenticated, params, tenant, user]);
+
+  useEffect(() => {
+    requestSequenceRef.current += 1;
+    setAssets([]);
+    setFolders([]);
+    setSelectedFolderId(null);
+    setQuery("");
+    setTotal(0);
+    setError(null);
+    setLoading(Boolean(authenticated && tenant && user));
+  }, [authenticated, identityKey, tenant, user]);
 
   useEffect(() => {
     void refresh();
-  }, [refresh]);
+  }, [identityKey, refresh]);
 
   return {
     assets,
