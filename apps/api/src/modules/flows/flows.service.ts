@@ -173,6 +173,8 @@ const EMPTY_DRAFT_GRAPH: FlowDraftGraph = {
 };
 
 const LOCAL_PAYLOAD_FIELD_RE = /(?:^|_)(?:base64|blob|file|dataUrl|data_url|imageUrl|image_url|thumbnailUrl|thumbnail_url|originalImageUrl|original_image_url|src)$/i;
+const TRANSIENT_SIGNED_URL_FIELD_RE =
+  /(?:thumbnailUrl|thumbnail_url|posterUrl|poster_url|originalImageUrl|original_image_url|previewUrl|preview_url|downloadUrl|download_url|imageUrl|image_url|src)$/i;
 const BASE64_VALUE_RE = /^[A-Za-z0-9+/]+={0,2}$/;
 
 function looksLikeBase64Payload(value: string): boolean {
@@ -187,6 +189,8 @@ function containsLocalPayloadReference(value: unknown, keyPath: string[] = []): 
     return (
       trimmed.startsWith("data:") ||
       trimmed.startsWith("blob:") ||
+      (TRANSIENT_SIGNED_URL_FIELD_RE.test(currentKey) &&
+        /[?&](?:x-amz-signature|x-amz-credential|signature|expires)=/i.test(value)) ||
       (LOCAL_PAYLOAD_FIELD_RE.test(currentKey) && looksLikeBase64Payload(value))
     );
   }

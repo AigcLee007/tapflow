@@ -94,6 +94,7 @@ export interface FlowNodeData {
   // Assets
   assetId?: string;
   assetIds?: string[];
+  sourceAssetId?: string;
   thumbnailAssetId?: string;
   mimeType?: string;
   durationMs?: number;
@@ -108,6 +109,14 @@ export interface FlowNodeData {
   naturalWidth?: number;
   naturalHeight?: number;
   aspectRatio?: number;
+  crop?: { x: number; y: number; width: number; height: number };
+  grid?: { rows: number; cols: number };
+  row?: number;
+  col?: number;
+  rows?: number;
+  cols?: number;
+  slice?: boolean;
+  metadata?: Record<string, string>;
 
   // Embedded generation (TapNow-style)
   generationPrompt?: string;

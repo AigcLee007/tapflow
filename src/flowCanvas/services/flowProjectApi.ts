@@ -102,6 +102,9 @@ function sanitizeGraphValue(value: unknown, assetBacked: boolean): unknown {
       if (assetBacked && TRANSIENT_MEDIA_FIELD_RE.test(key)) {
         continue;
       }
+      if (TRANSIENT_MEDIA_FIELD_RE.test(key) && isSignedAssetUrl(item)) {
+        continue;
+      }
       if (TRANSIENT_MEDIA_FIELD_RE.test(key) && isLocalPayloadString(item)) {
         continue;
       }
@@ -119,6 +122,7 @@ function sanitizeGraphValue(value: unknown, assetBacked: boolean): unknown {
 function isAssetBackedNodeData(value: Record<string, unknown>) {
   return (
     typeof value.assetId === "string" ||
+    typeof value.sourceAssetId === "string" ||
     typeof value.thumbnailAssetId === "string" ||
     (Array.isArray(value.assetIds) && value.assetIds.some((item) => typeof item === "string" && item.trim()))
   );
@@ -126,6 +130,11 @@ function isAssetBackedNodeData(value: Record<string, unknown>) {
 
 function isLocalPayloadString(value: unknown) {
   return typeof value === "string" && /^(?:data:|blob:)/i.test(value.trim());
+}
+
+function isSignedAssetUrl(value: unknown) {
+  if (typeof value !== "string") return false;
+  return /[?&](?:x-amz-signature|x-amz-credential|signature|expires)=/i.test(value);
 }
 
 function isFileLike(value: unknown) {
