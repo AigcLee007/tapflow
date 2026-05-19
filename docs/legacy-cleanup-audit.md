@@ -145,3 +145,42 @@ Recommendation: `update docs only` (no runtime change needed in Sprint 7.1).
 - `rg "accountService|accountIdentity|/api/account|/api/auth|billing-center" .`
 - `rg "server.cjs|authStore|billingStore|generationRecordStore|flowProjectStore|generatedAssetService" .`
 - `rg "legacy|classic|model-mapping|create/classic|create/flow" .`
+
+## 8) Sprint 7.3 Status (Safe Legacy UI Move / Cleanup)
+
+Completed in Sprint 7.3:
+
+- Moved clear legacy-only UI files to `legacy/ui/components/`:
+  - `components/InfiniteCanvas.tsx` -> `legacy/ui/components/InfiniteCanvas.tsx`
+  - `components/Toolbar.tsx` -> `legacy/ui/components/Toolbar.tsx`
+  - `components/MobileView.tsx` -> `legacy/ui/components/MobileView.tsx`
+  - `components/AccountCenterPage.tsx` -> `legacy/ui/components/AccountCenterPage.tsx`
+  - `components/BillingCenterPage.tsx` -> `legacy/ui/components/BillingCenterPage.tsx`
+
+Not moved/deleted in Sprint 7.3 (intentionally retained in-place):
+
+- `components/ControlPanel.tsx`
+- `components/ContextMenu.tsx`
+- `components/CanvasNode.tsx`
+- `components/MultiSelectToolbar.tsx`
+- `src/store/canvasStore.ts`
+- `src/hooks/useCanvasOperations.ts`
+- `src/services/assetStorage.ts`
+- `src/flowCanvas/store/imageFolderStore.ts`
+- `src/services/accountService.ts`
+- `src/services/accountIdentity.ts`
+- `server.cjs`
+- `authStore*.cjs`, `billingStore*.cjs`, `generationRecordStore*.cjs`
+- `flowProjectStore.cjs`
+- `generatedAssetService.cjs`
+
+Reason: these still have legacy/debug/test/migration references; not safe for deletion in this stage.
+
+Verification summary:
+
+- New main route runtime (`/login`, `/register`, `/workspace`, `/projects/:projectId`, `/assets`, `/billing`, `/account`) does not import the moved legacy UI files.
+- Compatibility routes remain redirect/non-normal-entry behavior (`/create/flow`, `/create/classic`, `/admin`, `/model-mapping`); no restoration of classic entrypoints.
+
+Next-step note for Sprint 7.4:
+
+- Consider isolating/removing deeper legacy dependency chains (`ControlPanel` + `canvasStore` + `assetStorage`) only after a full import-graph validation and scoped cleanup PR.
