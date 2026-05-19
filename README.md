@@ -52,6 +52,8 @@ Legacy runtime retained for migration/debug only:
 - `server.cjs`
 - legacy account / billing / classic canvas flows
 - legacy UI archive under `legacy/ui/components/`
+- legacy classic canvas subtree under `legacy/ui/classic-canvas/`
+- compatibility shims in `src/{hooks,store,services}` are temporary legacy bridges and must not be used by the v2 product path
 
 ## Local Development
 

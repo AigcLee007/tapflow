@@ -184,3 +184,52 @@ Verification summary:
 Next-step note for Sprint 7.4:
 
 - Consider isolating/removing deeper legacy dependency chains (`ControlPanel` + `canvasStore` + `assetStorage`) only after a full import-graph validation and scoped cleanup PR.
+
+## 9) Sprint 7.4 Status (Classic Canvas Subtree Audit / Safe Move)
+
+Completed in Sprint 7.4:
+
+- Moved classic-canvas legacy subtree files to `legacy/ui/classic-canvas/`:
+  - `components/ControlPanel.tsx` -> `legacy/ui/classic-canvas/components/ControlPanel.tsx`
+  - `components/ContextMenu.tsx` -> `legacy/ui/classic-canvas/components/ContextMenu.tsx`
+  - `components/CanvasNode.tsx` -> `legacy/ui/classic-canvas/components/CanvasNode.tsx`
+  - `components/MultiSelectToolbar.tsx` -> `legacy/ui/classic-canvas/components/MultiSelectToolbar.tsx`
+  - `components/BillingPanel.tsx` -> `legacy/ui/classic-canvas/components/BillingPanel.tsx`
+  - `components/SettingsModal.tsx` -> `legacy/ui/classic-canvas/components/SettingsModal.tsx`
+  - `components/ContextSatellite/*` -> `legacy/ui/classic-canvas/components/ContextSatellite/*`
+  - `src/hooks/useCanvasOperations.ts` -> `legacy/ui/classic-canvas/hooks/useCanvasOperations.ts`
+  - `src/store/canvasStore.ts` -> `legacy/ui/classic-canvas/store/canvasStore.ts`
+  - `src/services/assetStorage.ts` -> `legacy/ui/classic-canvas/services/assetStorage.ts`
+
+Compatibility shims added (non-business, import-safe only):
+
+- `src/hooks/useCanvasOperations.ts` re-exports from legacy subtree.
+- `src/store/canvasStore.ts` re-exports from legacy subtree.
+- `src/services/assetStorage.ts` re-exports from legacy subtree.
+
+Retained in original location (not moved in Sprint 7.4):
+
+- `src/flowCanvas/pages/ImageLibraryPage.tsx`
+- `src/flowCanvas/nodes/ImageFolderOverlay.tsx`
+- `src/flowCanvas/store/imageFolderStore.ts`
+
+Reason:
+
+- These files are under `src/flowCanvas` and still connected to legacy/local asset flows and tests; moving them in this step would increase blast radius without direct value to v2 user routes.
+
+New main path status:
+
+- No normal v2 product route depends on classic-canvas subtree as primary UI path:
+  - `/login`
+  - `/register`
+  - `/workspace`
+  - `/projects/:projectId`
+  - `/assets`
+  - `/billing`
+  - `/account`
+
+Sprint 7.5 recommendation:
+
+- Continue with remaining local image-folder legacy files (`ImageLibraryPage`, `ImageFolderOverlay`, `imageFolderStore`) as a separate scoped move/removal.
+- Optionally separate CJS legacy server/store retirement plan.
+- Keep known legacy migration test failures tracked independently.
