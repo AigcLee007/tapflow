@@ -41,6 +41,14 @@ export function createFlowNode(
     status: 'idle',
     generationStatus: 'idle',
     modelId: kind === 'text' ? DEFAULT_TEXT_MODEL_ID : undefined,
+    routeKey:
+      kind === 'image'
+        ? 'image.default'
+        : kind === 'video'
+          ? 'video.default'
+          : kind === 'text'
+            ? 'text.default'
+            : undefined,
     createdAt: now,
     updatedAt: now,
   };

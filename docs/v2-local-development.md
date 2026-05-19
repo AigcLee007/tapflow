@@ -225,15 +225,16 @@ Mock provider behavior:
 - `image.default`: mock success image output (stored through existing worker asset pipeline)
 - `image.fail`: mock failure path for refund/release verification
 
-Local failure-path QA toggle (when UI does not expose route switching yet):
+Local route selection QA:
 
-- Temporarily set tenant route `image.default` request config to fail mode:
-  - `{"mockMode":"fail","localDevOnly":true}`
-- Run one generation from `/projects/:projectId` and verify failure + refund behavior.
-- Restore `image.default` back to success mode after verification:
-  - `{"mockMode":"success","localDevOnly":true}`
-- Keep dedicated `image.fail` route as fail mode for explicit backend-side route testing:
-  - `{"mockMode":"fail","localDevOnly":true}`
+- Image generation node UI now supports route selection via `/api/v2/ai/routes?modality=image`.
+- Use `image.default` for success path verification.
+- Use `image.fail` for failure/refund verification.
+- `image.default` and `image.fail` are separate selectable route options in the node route selector even when they share the same provider/model.
+- Preferred QA path is direct UI route selection; no DB-side route mutation is required for normal fail-path validation.
+- If you temporarily override `image.default` to fail mode for backend-only diagnostics, always restore it:
+  - fail: `{"mockMode":"fail","localDevOnly":true}`
+  - success: `{"mockMode":"success","localDevOnly":true}`
 
 Validation points:
 

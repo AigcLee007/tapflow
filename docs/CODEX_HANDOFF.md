@@ -1,5 +1,69 @@
 # Codex Handoff
 
+## Current Sprint Handoff (model-route-selection-ui)
+
+Branch:
+
+- `model-route-selection-ui`
+
+Implemented:
+
+- Added minimal image node route selection UI backed by runtime route metadata.
+- Added authenticated read-only route list API for UI route/model display:
+  - `GET /api/v2/ai/routes?modality=image`
+  - returns safe fields only (`routeKey`, `modality`, provider/model display metadata).
+  - does not return credential secret/encrypted payload/raw API key.
+- Image node route selector now supports direct selection of:
+  - `image.default`
+  - `image.fail`
+- Node route selection persists as `node.data.routeKey` and is saved via existing remote autosave into server-side `flow_drafts.graph_json`.
+- Added node factory defaults for generation routes:
+  - image -> `image.default`
+  - video -> `video.default`
+  - text -> `text.default`
+- Existing route-aware pricing path is preserved and consumes selected `routeKey` during reserve estimation.
+
+Manual QA:
+
+- `image.default` success path: PASSED
+  - `dev:seed-billing` passed
+  - `dev:seed-ai` passed
+  - image node route selector supports direct `image.default` selection
+  - workflow run succeeded
+  - `/assets` contains generated asset and preview is available
+  - billing shows `reserve` + `settle`
+  - pricing metadata for reserve matches selected route
+  - refresh/reopen keeps node route selection and generated result
+- `image.fail` refund path: PASSED
+  - image node route selector supports direct `image.fail` selection (no temporary DB toggle required)
+  - workflow run failed with mock intentional failure
+  - billing shows `reserve` + `refund`
+  - `Reserved` returns to `0`
+  - no new settled usage event on failed run
+
+Manual QA - model-route-selection-ui: PASSED
+
+Validated:
+
+- Route selector shows both `image.default` and `image.fail`.
+- `image.default` success path: PASSED.
+- `image.fail` refund path: PASSED.
+- `image.fail` no longer needs temporary DB toggle.
+- `image.fail` single-node project check:
+  - UI status `failed`
+  - worker log: `Mock provider image generation failed intentionally`
+  - Billing ledger includes `reserve -10`
+  - Billing ledger includes `refund +10`
+  - Reserved returns to `0`
+  - Usage Events has no new settled record
+
+Known follow-ups:
+
+- UI currently focuses on image route selection; text/video selector surfaces can be expanded in a later sprint.
+- Real provider integrations remain out of scope.
+- Real payment integrations remain out of scope.
+- Legacy migration 3 failing tests remain known non-blocking.
+
 ## Current Sprint Handoff (pricing-route-model-match)
 
 Branch:

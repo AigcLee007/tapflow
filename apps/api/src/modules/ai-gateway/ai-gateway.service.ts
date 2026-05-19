@@ -15,6 +15,7 @@ import type {
   CreateModelInput,
   CreateProviderInput,
   CreateRouteInput,
+  ListRuntimeRoutesQuery,
   UpdateCredentialInput,
   UpdateRouteInput,
 } from "./ai-gateway.schemas.js";
@@ -96,6 +97,15 @@ type RuntimeRouteRecord = {
   base_url_override: string | null;
 };
 
+type RuntimeRouteListRecord = {
+  modality: string;
+  model_display_name: string | null;
+  model_key: string | null;
+  provider_key: string;
+  provider_name: string;
+  route_key: string;
+};
+
 type CredentialRecord = {
   auth_tag: Buffer;
   created_at: string;
@@ -173,6 +183,15 @@ export type RouteView = {
   tenantId: string | null;
   updatedAt: string;
   weight: number;
+};
+
+export type RuntimeRouteListItemView = {
+  modality: string;
+  modelDisplayName: string | null;
+  modelKey: string | null;
+  providerKey: string;
+  providerName: string;
+  routeKey: string;
 };
 
 export type GenerateTextResultView = {
@@ -472,6 +491,49 @@ export class AiGatewayAdminService {
       );
 
       return result.rows.map(mapRoute);
+    }, this.pool);
+  }
+
+  async listRuntimeRoutesForUi(
+    context: TenantContext,
+    query: ListRuntimeRoutesQuery,
+  ): Promise<RuntimeRouteListItemView[]> {
+    return withTenantTransaction(context, async (client) => {
+      const result = await client.query<RuntimeRouteListRecord>(
+        `
+          SELECT DISTINCT ON (route.route_key)
+            route.route_key,
+            route.modality,
+            provider.key AS provider_key,
+            provider.name AS provider_name,
+            model.model_key,
+            model.display_name AS model_display_name
+          FROM ai_routes AS route
+          JOIN ai_providers AS provider
+            ON provider.id = route.provider_id
+          LEFT JOIN ai_models AS model
+            ON model.id = route.model_id
+          WHERE route.status = 'active'
+            AND provider.status = 'active'
+            AND (route.model_id IS NULL OR model.status = 'active')
+            AND route.modality = COALESCE($1::text, route.modality)
+            AND (route.tenant_id = $2::uuid OR route.tenant_id IS NULL)
+          ORDER BY
+            route.route_key ASC,
+            CASE WHEN route.tenant_id = $2::uuid THEN 0 ELSE 1 END ASC,
+            route.updated_at DESC
+        `,
+        [query.modality?.trim() || null, context.tenantId],
+      );
+
+      return result.rows.map((row) => ({
+        modality: row.modality,
+        modelDisplayName: row.model_display_name ?? null,
+        modelKey: row.model_key ?? null,
+        providerKey: row.provider_key,
+        providerName: row.provider_name,
+        routeKey: row.route_key,
+      }));
     }, this.pool);
   }
 

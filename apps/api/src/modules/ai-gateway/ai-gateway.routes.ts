@@ -17,6 +17,7 @@ import {
   type GenerateTextInput,
   type RotateCredentialInput,
   type RouteIdParams,
+  type ListRuntimeRoutesQuery,
   type UpdateCredentialInput,
   type UpdateRouteInput,
   createCredentialSchema,
@@ -27,6 +28,7 @@ import {
   credentialIdParamsSchema,
   rotateCredentialSchema,
   routeIdParamsSchema,
+  listRuntimeRoutesQuerySchema,
   updateCredentialSchema,
   updateRouteSchema,
 } from "./ai-gateway.schemas.js";
@@ -122,6 +124,21 @@ export function registerAiGatewayAdminRoutes(app: FastifyInstance): void {
       try {
         const body = parseBody<GenerateTextInput>(request, generateTextSchema);
         return reply.send(await app.aiGatewayService.generateText(getTenantContext(request), body));
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.get(
+    "/api/v2/ai/routes",
+    {
+      preHandler: [...authHandlers, requirePermission("flow:run")],
+    },
+    async (request, reply) => {
+      try {
+        const query = listRuntimeRoutesQuerySchema.parse(request.query) as ListRuntimeRoutesQuery;
+        return reply.send(await app.aiGatewayService.listRuntimeRoutesForUi(getTenantContext(request), query));
       } catch (error) {
         return handleRouteError(error, request, reply);
       }

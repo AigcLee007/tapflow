@@ -101,8 +101,10 @@ import { useAuth } from '../../auth/useAuth';
 import { normalizeBackendAssetUrl } from '../../utils/generatedImageStorage';
 import { canNodeReceiveIncoming } from '../rules/connectionRules';
 import { getAssetDownloadUrl, uploadAssetFile } from '../../assets/assetApi';
+import { listRuntimeRoutes, type V2RuntimeRouteItem } from '../../services/v2AiRoutesApi';
 import { buildAssetBackedNodeData } from '../utils/assetNodeData';
 import { persistDerivedImageAsset, type DerivedImageSourceType } from '../utils/persistDerivedImageAsset';
+import { mapImageRuntimeRouteOptions, type RuntimeRouteOption } from '../utils/runtimeRouteOptions';
 
 type FlowNode = Node<FlowNodeData>;
 
@@ -187,6 +189,28 @@ const useImageModelCatalogWhenNeeded = (enabled: boolean) => {
   }, [enabled]);
 
   return catalog.models;
+};
+
+const useRuntimeImageRoutes = (enabled: boolean) => {
+  const [routes, setRoutes] = useState<RuntimeRouteOption[]>([]);
+
+  useEffect(() => {
+    if (!enabled) return undefined;
+    let active = true;
+    void listRuntimeRoutes('image')
+      .then((items: V2RuntimeRouteItem[]) => {
+        if (!active) return;
+        setRoutes(mapImageRuntimeRouteOptions(items));
+      })
+      .catch(() => {
+        if (active) setRoutes([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [enabled]);
+
+  return routes;
 };
 
 /* Section */
@@ -1758,17 +1782,17 @@ const ratioPreviewStyle = (ratioValue: string, active: boolean): React.CSSProper
 interface ImageModelRouteDropupProps {
   modelOptions: Array<{ id: string; label: string }>;
   currentModelId: string;
-  currentRoute: ImageRouteConfig | null;
-  size: string;
+  currentRouteKey: string;
+  runtimeRoutes: RuntimeRouteOption[];
   onChangeModel: (modelId: string) => void;
-  onChangeRoute: (routeId: string) => void;
+  onChangeRoute: (routeKey: string) => void;
 }
 
 const ImageModelRouteDropup: React.FC<ImageModelRouteDropupProps> = ({
   modelOptions,
   currentModelId,
-  currentRoute,
-  size,
+  currentRouteKey,
+  runtimeRoutes,
   onChangeModel,
   onChangeRoute,
 }) => {
@@ -1777,9 +1801,6 @@ const ImageModelRouteDropup: React.FC<ImageModelRouteDropupProps> = ({
   const [hoveredRouteId, setHoveredRouteId] = useState<string | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const currentModel = modelOptions.find((option) => option.id === currentModelId) || modelOptions[0];
-  const currentModelMeta = getImageModelById(currentModel?.id);
-  const routeFamily = String(currentModelMeta?.routeFamily || 'default').trim() || 'default';
-  const routes = getImageRoutesByModelFamily(routeFamily).filter((route) => route.isActive !== false);
 
   useEffect(() => {
     if (!open) return;
@@ -1803,7 +1824,7 @@ const ImageModelRouteDropup: React.FC<ImageModelRouteDropupProps> = ({
       >
         {IMAGE_MODEL_ICON_BY_ID[currentModelId] || <GoogleLogo />}
         <span>{currentModel?.label || currentModelId}</span>
-        {currentRoute ? <span style={{ color: '#94a3b8', fontSize: 12 }}>· {String(currentRoute.label || currentRoute.line)}</span> : null}
+        {currentRouteKey ? <span style={{ color: '#94a3b8', fontSize: 12 }}>· {currentRouteKey}</span> : null}
         <ChevronDown size={14} color="#a1a1aa" />
       </button>
 
@@ -1838,32 +1859,32 @@ const ImageModelRouteDropup: React.FC<ImageModelRouteDropupProps> = ({
             );
           })}
 
-          {routes.length > 1 && (
+          {runtimeRoutes.length > 0 && (
             <>
-              <div style={imageMenuSubHeader}>线路</div>
-              {routes.map((route) => {
-                const active = currentRoute?.id === route.id;
-                const hovered = hoveredRouteId === route.id;
-                const pointCost = getImageRoutePointCost(route, size);
+              <div style={imageMenuSubHeader}>运行路由</div>
+              {runtimeRoutes.map((route) => {
+                const active = currentRouteKey === route.routeKey;
+                const hovered = hoveredRouteId === route.routeKey;
                 return (
                   <button
-                    key={route.id}
+                    key={route.routeKey}
                     type="button"
                     className="nodrag nopan"
-                    onMouseEnter={() => setHoveredRouteId(route.id)}
+                    onMouseEnter={() => setHoveredRouteId(route.routeKey)}
                     onMouseLeave={() => setHoveredRouteId(null)}
                     onClick={() => {
-                      onChangeRoute(route.id);
+                      onChangeRoute(route.routeKey);
                       setOpen(false);
                     }}
                     style={imageMenuItem(active, hovered)}
                   >
                     <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}>
-                      <span style={{ fontWeight: 650 }}>{String(route.label || route.line)}</span>
-                      <span style={{ color: '#94a3b8', fontSize: 11 }}>{route.transport} · {route.mode}</span>
+                      <span style={{ fontWeight: 650 }}>{route.label}</span>
+                      <span style={{ color: '#94a3b8', fontSize: 11 }}>
+                        {route.providerName} · {route.modelDisplayName || route.modelKey || '--'}
+                      </span>
                     </span>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ color: '#facc15', fontSize: 12 }}>{pointCost.toFixed(1)}点</span>
                       {active ? <Check size={15} /> : null}
                     </span>
                   </button>
@@ -3150,6 +3171,14 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   }
 
   const currentModelId = String(d.modelId || modelOptions[0]?.id || 'nano-banana');
+  const runtimeRoutes = useRuntimeImageRoutes(showNodeEditor);
+  const currentRouteKey = String(
+    d.routeKey
+    || (runtimeRoutes.some((route) => route.routeKey === 'image.default')
+      ? 'image.default'
+      : runtimeRoutes[0]?.routeKey
+        || 'image.default'),
+  );
 
   const sizeOptions = ['1k', '2k', '4k'];
   const showSize = shouldShowImageSizeSelector(currentModelId) && sizeOptions.length > 0;
@@ -3170,6 +3199,11 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     null;
 
   const currentPointCost = getImageRoutePointCost(selectedRoute, currentSize);
+  const selectedRuntimeRoute =
+    runtimeRoutes.find((route) => route.routeKey === currentRouteKey)
+    || runtimeRoutes.find((route) => route.routeKey === 'image.default')
+    || runtimeRoutes[0]
+    || null;
   const referencedAssetItemIds = Array.isArray(d.referenceAssetItemIds)
     ? (d.referenceAssetItemIds as string[])
     : [];
@@ -3359,6 +3393,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       updateNodeData(id, {
         modelId,
         routeId: fallbackRoute?.id,
+        routeKey: d.routeKey || 'image.default',
         params: {
           ...p,
           size: nextSize,
@@ -3369,11 +3404,21 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   );
 
   const applyRouteSelection = useCallback(
-    (routeId: string) => {
-      updateNodeData(id, { routeId });
+    (routeKey: string) => {
+      updateNodeData(id, { routeKey });
     },
     [id, updateNodeData],
   );
+
+  useEffect(() => {
+    if (!runtimeRoutes.length) return;
+    if (d.routeKey) return;
+    const defaultRouteKey = runtimeRoutes.some((route) => route.routeKey === 'image.default')
+      ? 'image.default'
+      : runtimeRoutes[0]?.routeKey;
+    if (!defaultRouteKey) return;
+    updateNodeData(id, { routeKey: defaultRouteKey });
+  }, [d.routeKey, id, runtimeRoutes, updateNodeData]);
 
   useEffect(() => {
     if (!selectedRoute) return;
@@ -5254,8 +5299,8 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
               <ImageModelRouteDropup
                 modelOptions={modelOptions}
                 currentModelId={currentModelId}
-                currentRoute={selectedRoute}
-                size={currentSize}
+                currentRouteKey={currentRouteKey}
+                runtimeRoutes={runtimeRoutes}
                 onChangeModel={applyModelSelection}
                 onChangeRoute={applyRouteSelection}
               />

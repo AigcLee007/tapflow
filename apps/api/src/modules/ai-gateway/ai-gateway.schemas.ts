@@ -95,12 +95,17 @@ export const generateTextSchema = z.object({
   temperature: z.number().min(0).max(2).nullable().optional(),
 });
 
+export const listRuntimeRoutesQuerySchema = z.object({
+  modality: z.enum(["image", "text", "video"]).optional(),
+});
+
 export type CreateCredentialInput = z.infer<typeof createCredentialSchema>;
 export type CreateModelInput = z.infer<typeof createModelSchema>;
 export type CreateProviderInput = z.infer<typeof createProviderSchema>;
 export type CreateRouteInput = z.infer<typeof createRouteSchema>;
 export type CredentialIdParams = z.infer<typeof credentialIdParamsSchema>;
 export type GenerateTextInput = z.infer<typeof generateTextSchema>;
+export type ListRuntimeRoutesQuery = z.infer<typeof listRuntimeRoutesQuerySchema>;
 export type RotateCredentialInput = z.infer<typeof rotateCredentialSchema>;
 export type RouteIdParams = z.infer<typeof routeIdParamsSchema>;
 export type UpdateCredentialInput = z.infer<typeof updateCredentialSchema>;

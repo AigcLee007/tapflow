@@ -122,6 +122,7 @@ export interface FlowNodeData {
   generationPrompt?: string;
   generationStatus?: FlowGenerationStatus;
   modelId?: string;
+  routeKey?: string;
   routeId?: string;
   referenceAssetItemIds?: string[];
   referenceOrder?: string[];
