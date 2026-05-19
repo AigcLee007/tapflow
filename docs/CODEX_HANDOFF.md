@@ -237,6 +237,10 @@ Key files:
 
 Key commits currently on `main`:
 
+- `8d8512f merge fix: persist derived image nodes as assets`
+- `5224eec merge fix: tenant assets isolation and billing qa seed`
+- `69d60df merge fix: show project cover images`
+- `ef444c7 merge fix: persist asset-backed canvas nodes`
 - `bd584bb merge sprint-6: account page and legacy cleanup docs`
 - `9b86e66 sprint-6: add account page and cleanup legacy entrypoints`
 - `f88eeda docs: update handoff after sprint 5`
@@ -263,6 +267,61 @@ Key commits currently on `main`:
   - `asset migration writes object content to storage but not to the DB writer payload, and includes tenant scope`
 - These failures are recorded as non-blocking for Sprint 1, Sprint 2, Sprint 3, Sprint 4, Sprint 5, and Sprint 6.
 - DB integration tests may be skipped locally when no database environment is configured.
+
+## Current QA Status
+
+Status:
+
+TapFlow v2 local core loop: PASSED
+
+Pass date:
+
+2026-05-19
+
+Validated local core flows:
+
+1. Auth
+   - Register
+   - Login
+   - Logout
+   - `/account` user profile visibility
+2. Workspace
+   - `/workspace` project list load
+   - Create project
+   - Auto-create default flow
+   - A/B account project isolation passed
+3. Flow Canvas
+   - Regular node remote draft save
+   - Direct uploaded image node remote draft save
+   - `/assets` inserted image node remote draft save
+   - Split/slice nodes remain visible after refresh
+   - Crop nodes remain visible after refresh
+   - Annotation nodes remain visible after refresh
+   - Nodes remain visible after returning to `/workspace` and reopening project
+   - Edges remain saved and restored
+4. Assets
+   - `/assets` single image upload
+   - `/assets` batch image upload
+   - Assets remain after refresh
+   - A/B account asset isolation passed
+   - Asset preview modal close button remains usable
+   - Insert-from-library to canvas passed
+   - Set project cover passed
+   - `/workspace` project cover remains visible after refresh
+5. Billing
+   - `/billing` page load
+   - Dev seed makes balance/usage/ledger visible
+   - Redeem base flow testable
+
+Not yet included in this pass scope:
+
+1. Real AI provider/model/route/credential production configuration.
+2. Production-grade end-to-end reserve/settle/refund validation with real generation workloads.
+3. Real payment integration.
+4. Redeem-code operations backend/admin workflows.
+5. The three known legacy migration test failures.
+6. Vite chunk-size warning optimization.
+7. Production deployment hardening and security controls.
 
 ## Important Constraints for Future Codex Sessions
 
