@@ -195,10 +195,11 @@ export class ProjectsService {
             SELECT id::text AS id
             FROM assets
             WHERE id = $1::uuid
+              AND tenant_id = $2::uuid
               AND deleted_at IS NULL
             LIMIT 1
           `,
-          [input.coverAssetId],
+          [input.coverAssetId, context.tenantId],
         );
 
         if (!cover.rows[0]) {
