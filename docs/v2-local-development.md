@@ -190,6 +190,17 @@ Preparation requirements:
 - `model_pricing` contains matching pricing data
 - The worker is running
 
+AI provider/model/route/credential setup notes (local QA):
+
+- This repository currently provides billing seed (`npm run dev:seed-billing`) but does not yet provide a dedicated AI gateway seed script.
+- For local QA, configure tenant-scoped AI gateway records through v2 admin endpoints:
+  - `POST /api/v2/admin/ai/providers`
+  - `POST /api/v2/admin/ai/models`
+  - `POST /api/v2/admin/credentials`
+  - `POST /api/v2/admin/ai/routes`
+- Keep provider secrets server-side only. Do not put API keys in frontend env variables.
+- Ensure route keys used by workflow node config match active tenant routes before starting workflow runs.
+
 Validation points:
 
 - A generation request reserves credits before execution
