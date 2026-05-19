@@ -1,5 +1,72 @@
 # Codex Handoff
 
+## Current Sprint Handoff (ai-provider-dev-seed-mock-e2e)
+
+Branch:
+
+- `ai-provider-dev-seed-mock-e2e`
+
+Implemented:
+
+- Added `npm run dev:seed-ai`.
+- Added tenant-scoped local AI baseline seed for mock provider/model/routes/credential/pricing.
+- Seeded routes:
+  - `image.default`
+  - `image.fail`
+  - `video.default`
+- Added mock provider adapter in AI gateway core.
+- Worker now registers mock adapter explicitly; mock execution applies only to mock provider path.
+- `createWorkflowRun` now supports auto run snapshot creation from server-side `flow_drafts` without manual publish.
+- Added stale auto snapshot guard to prevent reusing outdated compiled graphs.
+- Workflow compiler node type normalization added:
+  - `text -> text.generate`
+  - `image -> image.generate`
+  - `video -> video.generate`
+- Worker image request route fallback:
+  - missing route key defaults to `image.default`.
+- Generated asset references are written back to node data (`assetId` and related fields) and persisted by remote autosave to `flow_drafts.graph_json`.
+- Billing UI ledger display fixed so `refund` is shown as positive amount.
+
+Manual QA:
+
+- `image.default` success path: PASSED
+  - `dev:seed-billing` passed
+  - `dev:seed-ai` passed
+  - draft status was `Saved`
+  - generate click worked directly without manual publish
+  - auto run snapshot worked
+  - worker node execution succeeded
+  - UI status `succeeded`
+  - `/assets` shows generated image asset and preview
+  - `/billing` usage event: `ai.image.generate settled image 10`
+  - `/billing` ledger: `reserve -10`, `settle -10`
+  - reserved returned to `0`
+  - `Ctrl+R` refresh still shows generated result
+  - returning from Workspace and reopening project still shows generated result
+
+- `image.fail` / mock failure refund path: PASSED
+  - UI currently has no direct `image.fail` route selector
+  - test used temporary route config override:
+    - `image.default` set to `{"mockMode":"fail","localDevOnly":true}`
+    - restored to `{"mockMode":"success","localDevOnly":true}` after test
+    - `image.fail` kept as `{"mockMode":"fail","localDevOnly":true}`
+  - UI status `failed`
+  - worker log: `Mock provider image generation failed intentionally`
+  - billing ledger shows reserve/refund pair
+  - `billing_accounts`: `balance_cents = 5720`, `reserved_cents = 0`
+  - billing UI shows `refund +10`, `reserve -10`
+  - failed run does not add settled usage event
+  - no `Save failed` or canvas draft save regression observed
+
+Known follow-ups:
+
+- Reserve pricing is still not fully provider/model/route precise in workflow reserve path; default fallback pricing remains in place.
+- Frontend still lacks formal model/route selection UI for production-like selection.
+- `image.fail` still has no direct UI entry and is currently validated through temporary route config.
+- Real providers (OpenAI/Gemini/Replicate/Fal) are intentionally not connected yet.
+- Existing legacy migration `npm test` failures remain non-blocking for this sprint.
+- Existing Vite chunk size warning remains non-blocking.
+
 ## Current Repository
 
 - Local path: `D:\tapnow-flow`

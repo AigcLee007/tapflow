@@ -76,6 +76,11 @@ describe('v2WorkflowRunner', () => {
   });
 
   test('asset refs trigger download-url resolution and stay in runtime state', async () => {
+    useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, { title: 'Generated Image' });
+    const nodeId = useFlowCanvasStore.getState().nodes[0]?.id;
+    expect(nodeId).toBeTruthy();
+    const imageNodeId = nodeId as string;
+
     createWorkflowRunMock.mockResolvedValue({
       runId: 'run-asset',
       status: 'pending',
@@ -96,7 +101,7 @@ describe('v2WorkflowRunner', () => {
           id: 'node-run-1',
           inputJson: {},
           maxAttempts: 3,
-          nodeId: 'node-1',
+          nodeId: imageNodeId,
           nodeType: 'image.generate',
           outputJson: {
             assets: [
@@ -141,7 +146,7 @@ describe('v2WorkflowRunner', () => {
     await runBackendWorkflow();
 
     expect(getAssetDownloadUrlMock).toHaveBeenCalledWith('asset-1');
-    expect(useFlowCanvasStore.getState().nodeOutputByNodeId['node-1']).toMatchObject({
+    expect(useFlowCanvasStore.getState().nodeOutputByNodeId[imageNodeId]).toMatchObject({
       assets: [
         expect.objectContaining({
           assetId: 'asset-1',
@@ -149,6 +154,17 @@ describe('v2WorkflowRunner', () => {
         }),
       ],
     });
+    const updatedNode = useFlowCanvasStore.getState().nodes.find((node) => node.id === imageNodeId);
+    expect(updatedNode?.data).toMatchObject({
+      assetId: 'asset-1',
+      assetIds: ['asset-1'],
+      generationStatus: 'done',
+      mimeType: 'image/png',
+      naturalWidth: 512,
+      source: 'generated',
+      status: 'success',
+    });
+    expect(updatedNode?.data.thumbnailUrl).toBeUndefined();
   });
 
   test('unbound backend flows fail with a clear error', async () => {

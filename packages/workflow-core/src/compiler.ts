@@ -11,6 +11,19 @@ function sortStrings(values: Iterable<string>): string[] {
   return [...values].sort((left, right) => left.localeCompare(right));
 }
 
+function normalizeNodeType(type: string): string {
+  if (type === "text") {
+    return "text.generate";
+  }
+  if (type === "image") {
+    return "image.generate";
+  }
+  if (type === "video") {
+    return "video.generate";
+  }
+  return type;
+}
+
 export function compileGraph(graph: FlowGraph): CompiledWorkflow {
   validateGraph(graph);
   const orderedNodeIds = topologicalSort(graph);
@@ -47,7 +60,7 @@ export function compileGraph(graph: FlowGraph): CompiledWorkflow {
       dependencies: sortStrings(dependencies.get(nodeId) ?? []),
       dependents: sortStrings(dependents.get(nodeId) ?? []),
       id: node.id,
-      type: node.type,
+      type: normalizeNodeType(node.type),
     };
   });
 

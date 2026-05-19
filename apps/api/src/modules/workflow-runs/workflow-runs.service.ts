@@ -12,8 +12,16 @@ import {
   assertLightweightJobPayload,
   type NodeExecuteJobPayload,
 } from "@aigc-flow/redis";
-import type { CompiledWorkflow } from "@aigc-flow/workflow-core";
+import {
+  checksumGraph,
+  compileGraph,
+  type CompiledWorkflow,
+  type FlowGraph,
+  validateGraph,
+  WorkflowGraphValidationError,
+} from "@aigc-flow/workflow-core";
 import type { Pool, PoolClient } from "pg";
+import { assertDraftGraphSafe, normalizeDraftGraph } from "../flows/flows.service.js";
 
 type PgPool = Pool;
 
@@ -35,6 +43,26 @@ type FlowRuntimeRecord = {
   current_version_id: string | null;
   flow_id: string;
   flow_status: string;
+};
+
+type FlowDraftGraph = {
+  edges: Record<string, unknown>[];
+  nodes: Record<string, unknown>[];
+  viewport: {
+    x: number;
+    y: number;
+    zoom: number;
+  };
+};
+
+type FlowDraftRecord = {
+  graph_json: FlowDraftGraph;
+};
+
+type FlowVersionRecord = {
+  checksum?: string;
+  compiled_graph_json?: CompiledWorkflow;
+  id: string;
 };
 
 type WorkflowRunRecord = {
@@ -152,6 +180,40 @@ export class WorkflowRunsApiError extends Error {
   }
 }
 
+const AUTO_RUN_SNAPSHOT_CHANGELOG = "auto_run_snapshot";
+
+function normalizeNodeTypeForRuntime(type: string): string {
+  if (type === "text") {
+    return "text.generate";
+  }
+  if (type === "image") {
+    return "image.generate";
+  }
+  if (type === "video") {
+    return "video.generate";
+  }
+  return type;
+}
+
+function normalizeGraphForRuntime(graph: FlowGraph): FlowGraph {
+  return {
+    ...graph,
+    nodes: graph.nodes.map((node) => ({
+      ...node,
+      type: normalizeNodeTypeForRuntime(node.type),
+    })),
+  };
+}
+
+function hasLegacySimplifiedNodeType(compiled: CompiledWorkflow | null | undefined): boolean {
+  if (!compiled?.nodes?.length) {
+    return false;
+  }
+  return compiled.nodes.some((node) =>
+    node.type === "image" || node.type === "text" || node.type === "video"
+  );
+}
+
 function mapWorkflowRun(row: WorkflowRunRecord): WorkflowRunView {
   return {
     canceledAt: row.canceled_at,
@@ -242,14 +304,11 @@ export class WorkflowRunsService {
     let createdRun: WorkflowRunView;
     try {
       createdRun = await withTenantTransaction(context, async (client) => {
-      const runtimeFlow = await this.getCurrentFlowRuntimeOrThrow(client, flowId);
-      if (!runtimeFlow.current_version_id) {
-        throw new WorkflowRunsApiError(400, "FLOW_NOT_PUBLISHED", "Flow does not have a published version");
-      }
-      const pricing = await this.loadActivePricing(client);
+        const runtimeFlow = await this.getCurrentFlowRuntimeOrCreateSnapshot(client, context, flowId);
+        const pricing = await this.loadActivePricing(client);
 
-      if (input.idempotencyKey) {
-        const existing = await client.query<WorkflowRunRecord>(
+        if (input.idempotencyKey) {
+          const existing = await client.query<WorkflowRunRecord>(
           `
             SELECT
               id::text AS id,
@@ -275,13 +334,13 @@ export class WorkflowRunsService {
           [context.tenantId, input.idempotencyKey],
         );
 
-        if (existing.rows[0]) {
-          return mapWorkflowRun(existing.rows[0]);
+          if (existing.rows[0]) {
+            return mapWorkflowRun(existing.rows[0]);
+          }
         }
-      }
 
-      const runId = randomUUID();
-      const runInsert = await client.query<WorkflowRunRecord>(
+        const runId = randomUUID();
+        const runInsert = await client.query<WorkflowRunRecord>(
         `
           INSERT INTO workflow_runs (
             id,
@@ -333,25 +392,25 @@ export class WorkflowRunsService {
         ],
       );
 
-      const run = mapWorkflowRun(runInsert.rows[0]);
+        const run = mapWorkflowRun(runInsert.rows[0]);
 
-      await this.appendWorkflowRunEvent(client, {
-        eventType: "workflow.run.created",
-        payload: {
-          flowId: runtimeFlow.flow_id,
-          flowVersionId: runtimeFlow.current_version_id,
-          status: run.status,
-        },
-        tenantId: context.tenantId,
-        workflowRunId: run.id,
-      });
+        await this.appendWorkflowRunEvent(client, {
+          eventType: "workflow.run.created",
+          payload: {
+            flowId: runtimeFlow.flow_id,
+            flowVersionId: runtimeFlow.current_version_id,
+            status: run.status,
+          },
+          tenantId: context.tenantId,
+          workflowRunId: run.id,
+        });
 
-      for (const node of runtimeFlow.compiled_graph_json.nodes) {
-        const isEntryNode = runtimeFlow.compiled_graph_json.entryNodeIds.includes(node.id);
-        const nodeRunId = randomUUID();
-        const estimatedCost = this.estimateNodeReserveCents(node.type, pricing);
+        for (const node of runtimeFlow.compiled_graph_json.nodes) {
+          const isEntryNode = runtimeFlow.compiled_graph_json.entryNodeIds.includes(node.id);
+          const nodeRunId = randomUUID();
+          const estimatedCost = this.estimateNodeReserveCents(node.type, pricing);
 
-        await client.query(
+          await client.query(
           `
             INSERT INTO node_runs (
               id,
@@ -394,23 +453,23 @@ export class WorkflowRunsService {
           ],
         );
 
-        if (estimatedCost.amountCents > 0) {
-          const reserve = await this.billingService.reserveUsageWithClient(client, context.tenantId, {
-            amountCents: estimatedCost.amountCents,
-            description: `${node.type} reserved`,
-            idempotencyKey: `reserve:${context.tenantId}:${run.id}:${nodeRunId}`,
-            metadata: {
-              flowId: runtimeFlow.flow_id,
-              flowVersionId: runtimeFlow.current_version_id,
-              nodeId: node.id,
-              nodeRunId,
-              nodeType: node.type,
-              pricingUnit: estimatedCost.unit,
-              workflowRunId: run.id,
-            },
-          });
+          if (estimatedCost.amountCents > 0) {
+            const reserve = await this.billingService.reserveUsageWithClient(client, context.tenantId, {
+              amountCents: estimatedCost.amountCents,
+              description: `${node.type} reserved`,
+              idempotencyKey: `reserve:${context.tenantId}:${run.id}:${nodeRunId}`,
+              metadata: {
+                flowId: runtimeFlow.flow_id,
+                flowVersionId: runtimeFlow.current_version_id,
+                nodeId: node.id,
+                nodeRunId,
+                nodeType: node.type,
+                pricingUnit: estimatedCost.unit,
+                workflowRunId: run.id,
+              },
+            });
 
-          await client.query(
+            await client.query(
             `
               UPDATE node_runs
               SET cost_json = cost_json || $2::jsonb
@@ -425,33 +484,33 @@ export class WorkflowRunsService {
               }),
             ],
           );
+          }
+
+          if (isEntryNode) {
+            await this.appendWorkflowRunEvent(client, {
+              eventType: "node.run.runnable",
+              nodeRunId,
+              payload: {
+                nodeId: node.id,
+                nodeType: node.type,
+                status: "runnable",
+              },
+              tenantId: context.tenantId,
+              workflowRunId: run.id,
+            });
+
+            const queuePayload: NodeExecuteJobPayload = {
+              nodeRunId,
+              tenantId: context.tenantId,
+              traceId: context.traceId ?? undefined,
+              workflowRunId: run.id,
+            };
+            assertLightweightJobPayload(queuePayload);
+            payloadsToEnqueue.push(queuePayload);
+          }
         }
 
-        if (isEntryNode) {
-          await this.appendWorkflowRunEvent(client, {
-            eventType: "node.run.runnable",
-            nodeRunId,
-            payload: {
-              nodeId: node.id,
-              nodeType: node.type,
-              status: "runnable",
-            },
-            tenantId: context.tenantId,
-            workflowRunId: run.id,
-          });
-
-          const queuePayload: NodeExecuteJobPayload = {
-            nodeRunId,
-            tenantId: context.tenantId,
-            traceId: context.traceId ?? undefined,
-            workflowRunId: run.id,
-          };
-          assertLightweightJobPayload(queuePayload);
-          payloadsToEnqueue.push(queuePayload);
-        }
-      }
-
-      return run;
+        return run;
       }, this.pool);
     } catch (error) {
       if (error instanceof BillingServiceError) {
@@ -796,6 +855,192 @@ export class WorkflowRunsService {
     }
 
     return row;
+  }
+
+  private async getCurrentFlowRuntimeOrCreateSnapshot(
+    client: PoolClient,
+    context: WorkflowRunContext,
+    flowId: string,
+  ): Promise<FlowRuntimeRecord> {
+    const flowRow = await client.query<{
+      current_version_id: string | null;
+      id: string;
+      status: string;
+    }>(
+      `
+        SELECT
+          id::text AS id,
+          status,
+          current_version_id::text AS current_version_id
+        FROM flows
+        WHERE id = $1::uuid
+          AND deleted_at IS NULL
+        LIMIT 1
+        FOR UPDATE
+      `,
+      [flowId],
+    );
+
+    const flow = flowRow.rows[0];
+    if (!flow) {
+      throw new WorkflowRunsApiError(404, "FLOW_NOT_FOUND", "Flow not found");
+    }
+
+    await this.createRunSnapshotFromDraft(client, context, flow.id, flow.current_version_id);
+
+    const runtimeFlow = await this.getCurrentFlowRuntimeOrThrow(client, flowId);
+    if (!runtimeFlow.current_version_id) {
+      throw new WorkflowRunsApiError(400, "FLOW_NOT_PUBLISHED", "Flow does not have a runnable version");
+    }
+    return runtimeFlow;
+  }
+
+  private async createRunSnapshotFromDraft(
+    client: PoolClient,
+    context: WorkflowRunContext,
+    flowId: string,
+    currentVersionId: string | null,
+  ): Promise<void> {
+    const draftResult = await client.query<FlowDraftRecord>(
+      `
+        SELECT graph_json
+        FROM flow_drafts
+        WHERE flow_id = $1::uuid
+        LIMIT 1
+      `,
+      [flowId],
+    );
+
+    const draft = draftResult.rows[0];
+    if (!draft) {
+      throw new WorkflowRunsApiError(400, "FLOW_DRAFT_MISSING", "Flow draft is missing");
+    }
+
+    const normalizedDraft = normalizeDraftGraph(draft.graph_json);
+    assertDraftGraphSafe(normalizedDraft);
+    const rawGraph = {
+      edges: normalizedDraft.edges,
+      nodes: normalizedDraft.nodes,
+      viewport: normalizedDraft.viewport,
+    } as unknown as FlowGraph;
+    const graph = normalizeGraphForRuntime(rawGraph);
+
+    let compiledGraph: CompiledWorkflow;
+    let checksum: string;
+    try {
+      validateGraph(graph);
+      compiledGraph = compileGraph(graph);
+      checksum = checksumGraph(graph);
+    } catch (error) {
+      if (error instanceof WorkflowGraphValidationError) {
+        throw new WorkflowRunsApiError(400, "INVALID_GRAPH", error.message);
+      }
+      throw error;
+    }
+
+    if (currentVersionId) {
+      const currentVersion = await client.query<FlowVersionRecord>(
+        `
+          SELECT
+            id::text AS id,
+            checksum,
+            compiled_graph_json
+          FROM flow_versions
+          WHERE id = $1::uuid
+          LIMIT 1
+        `,
+        [currentVersionId],
+      );
+      const current = currentVersion.rows[0];
+      if (
+        current?.id &&
+        current.checksum === checksum &&
+        !hasLegacySimplifiedNodeType(current.compiled_graph_json)
+      ) {
+        return;
+      }
+    }
+
+    const existingVersion = await client.query<FlowVersionRecord>(
+      `
+        SELECT
+          id::text AS id,
+          compiled_graph_json
+        FROM flow_versions
+        WHERE flow_id = $1::uuid
+          AND checksum = $2
+        LIMIT 1
+      `,
+      [flowId, checksum],
+    );
+    const reusableVersion = existingVersion.rows[0] && !hasLegacySimplifiedNodeType(existingVersion.rows[0].compiled_graph_json)
+      ? existingVersion.rows[0]
+      : null;
+    const versionId = reusableVersion?.id ?? randomUUID();
+    if (!reusableVersion) {
+      const nextVersionResult = await client.query<{ next_version: number }>(
+        `
+          SELECT COALESCE(MAX(version), 0) + 1 AS next_version
+          FROM flow_versions
+          WHERE flow_id = $1::uuid
+        `,
+        [flowId],
+      );
+      const nextVersion = Number(nextVersionResult.rows[0]?.next_version ?? 1);
+
+      await client.query(
+        `
+          INSERT INTO flow_versions (
+            id,
+            tenant_id,
+            flow_id,
+            version,
+            graph_json,
+            compiled_graph_json,
+            checksum,
+            changelog,
+            published_by,
+            published_at
+          )
+          VALUES (
+            $1::uuid,
+            $2::uuid,
+            $3::uuid,
+            $4::int,
+            $5::jsonb,
+            $6::jsonb,
+            $7,
+            $8,
+            $9::uuid,
+            now()
+          )
+        `,
+        [
+          versionId,
+          context.tenantId,
+          flowId,
+          nextVersion,
+          JSON.stringify(graph),
+          JSON.stringify(compiledGraph),
+          checksum,
+          AUTO_RUN_SNAPSHOT_CHANGELOG,
+          context.userId,
+        ],
+      );
+    }
+
+    await client.query(
+      `
+        UPDATE flows
+        SET
+          current_version_id = $2::uuid,
+          status = 'published',
+          updated_by = $3::uuid,
+          updated_at = now()
+        WHERE id = $1::uuid
+      `,
+      [flowId, versionId, context.userId],
+    );
   }
 
   private async refundOpenReservations(
