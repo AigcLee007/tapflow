@@ -51,6 +51,7 @@ Legacy runtime retained for migration/debug only:
 
 - `server.cjs`
 - legacy account / billing / classic canvas flows
+- legacy UI archive under `legacy/ui/components/`
 
 ## Local Development
 
