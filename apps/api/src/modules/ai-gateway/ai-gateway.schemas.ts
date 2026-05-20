@@ -1,7 +1,19 @@
 import { z } from "zod";
 
 const jsonRecordSchema = z.record(z.string(), z.unknown());
+const aiModalitySchema = z.enum(["text", "image", "video"]);
 const routeStatusSchema = z.enum(["active", "inactive"]);
+const resourceStatusSchema = z.enum(["active", "inactive"]);
+const pricingUnitSchema = z.enum(["text_generation", "image_generation", "video_generation"]);
+const routeKeySchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(255)
+  .regex(
+    /^[a-z0-9](?:[a-z0-9._-]{0,253}[a-z0-9])?$/i,
+    "routeKey must contain only letters, numbers, dot, underscore, or hyphen",
+  );
 
 function normalizeHttpUrl(value: string): string {
   const url = new URL(value.trim());
@@ -25,31 +37,31 @@ export const createProviderSchema = z.object({
   key: z.string().trim().min(1).max(100),
   kind: z.string().trim().min(1).max(100),
   name: z.string().trim().min(1).max(255),
-  status: z.string().trim().min(1).max(50).optional(),
+  status: resourceStatusSchema.optional(),
 });
 
 export const createModelSchema = z.object({
   capabilities: jsonRecordSchema.optional(),
   contextWindow: z.number().int().positive().nullable().optional(),
   displayName: z.string().trim().min(1).max(255),
-  modality: z.string().trim().min(1).max(100),
+  modality: aiModalitySchema,
   modelKey: z.string().trim().min(1).max(255),
   providerId: z.string().uuid(),
-  status: z.string().trim().min(1).max(50).optional(),
+  status: resourceStatusSchema.optional(),
 });
 
 export const createRouteSchema = z.object({
   baseUrlOverride: z.string().trim().url().transform(normalizeHttpUrl).nullable().optional(),
   credentialId: z.string().uuid().nullable().optional(),
   fallbackGroup: z.string().trim().min(1).max(255).nullable().optional(),
-  modality: z.string().trim().min(1).max(100),
+  modality: aiModalitySchema,
   modelId: z.string().uuid().nullable().optional(),
   pricing: jsonRecordSchema.optional(),
   priority: z.number().int().min(0).optional(),
   providerId: z.string().uuid(),
   rateLimit: jsonRecordSchema.optional(),
   requestConfig: jsonRecordSchema.optional(),
-  routeKey: z.string().trim().min(1).max(255),
+  routeKey: routeKeySchema,
   status: routeStatusSchema.optional(),
   weight: z.number().int().min(0).optional(),
 });
@@ -75,13 +87,13 @@ export const createCredentialSchema = z.object({
   name: z.string().trim().min(1).max(255),
   providerId: z.string().uuid(),
   secret: z.string().trim().min(1).max(4000),
-  status: z.string().trim().min(1).max(50).optional(),
+  status: resourceStatusSchema.optional(),
 });
 
 export const updateCredentialSchema = z
   .object({
     name: z.string().trim().min(1).max(255).optional(),
-    status: z.string().trim().min(1).max(50).optional(),
+    status: resourceStatusSchema.optional(),
   })
   .refine((value) => Object.keys(value).length > 0, {
     message: "At least one credential field must be provided",
@@ -117,8 +129,8 @@ export const upsertPricingSchema = z.object({
   minChargeCredits: z.number().int().min(1).max(1_000_000_000),
   model: z.string().trim().min(1).max(255),
   provider: z.string().trim().min(1).max(255),
-  route: z.string().trim().min(1).max(255),
-  unit: z.string().trim().min(1).max(100),
+  route: routeKeySchema,
+  unit: pricingUnitSchema,
   unitCredits: z.number().int().min(1).max(1_000_000_000).optional(),
 });
 

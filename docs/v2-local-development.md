@@ -408,3 +408,25 @@ Use the following module map when a validation step fails.
 - `apps/api/src/modules/workflow-runs/workflow-runs.service.ts`
 - `apps/worker/src/workflow-runtime/service.ts`
 - `packages/db/src/billing.ts`
+
+## Production Pre-Launch Notes (2026-05-20)
+
+This local dev guide does not authorize production launch by itself.
+
+Before staging or production rollout, follow:
+
+- `docs/PRODUCTION_READINESS.md`
+- `docs/PRODUCTION_DEPLOYMENT.md`
+- `docs/PRODUCTION_RUNBOOK.md`
+
+Mandatory launch posture:
+
+- Real payment is not integrated.
+- If launching before payment, product must operate as internal/manual-credit beta.
+- No public paid production launch until payment integration is complete.
+
+Secret and credential policy:
+
+- No real API keys may be committed to repository files.
+- Provider credentials are server-side only (CredentialVault).
+- Frontend responses must not contain raw secret or credential encryption material.

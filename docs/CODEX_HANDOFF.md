@@ -656,3 +656,39 @@ Planned goals:
 Copy this prompt in the next session:
 
 > 请先读取 AGENTS.md、docs/DEVELOPMENT_PLAN.md、docs/CODEX_HANDOFF.md，然后在当前 main 分支上做一次完整本地手工验证：登录、工作空间、新建项目、画布保存、素材上传、素材插入画布、账单兑换、生成扣费链路，并记录结果。
+
+## Production Readiness Update (2026-05-20)
+
+Branch:
+
+- `production-readiness`
+
+P0 scope executed:
+
+- Tightened ai-gateway request validation (schema-level only, no architecture change):
+  - `modality` enum: `text | image | video`
+  - `unit` enum: `text_generation | image_generation | video_generation`
+  - `status` enum: `active | inactive`
+  - `routeKey` format validation tightened
+  - `baseUrlOverride` remains limited to `http/https`
+  - `timeoutMs` remains bounded in service validation: `1000..300000`
+  - `minChargeCredits` / `unitCredits` remain positive integer with upper bound
+  - invalid request payloads return `400` via zod route validation path
+
+Production launch posture:
+
+- Real payment is not integrated.
+- If launching before payment, product must operate as internal/manual-credit beta.
+- Public paid production launch is not allowed in this state.
+
+Security posture (P0 declaration):
+
+- No real API keys are committed.
+- Provider credentials are server-side only via CredentialVault.
+- Frontend must not receive credential material (`encrypted_secret`, `nonce`, `auth_tag`, raw key).
+
+New production docs added:
+
+- `docs/PRODUCTION_READINESS.md`
+- `docs/PRODUCTION_DEPLOYMENT.md`
+- `docs/PRODUCTION_RUNBOOK.md`
