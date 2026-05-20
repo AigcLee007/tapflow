@@ -5,6 +5,7 @@ export const WORKSPACE_ROUTE = "/workspace";
 export const ASSETS_ROUTE = "/assets";
 export const BILLING_ROUTE = "/billing";
 export const ACCOUNT_ROUTE = "/account";
+export const ACCOUNT_PROVIDER_SETTINGS_ROUTE = "/account/provider-settings";
 
 export const PRODUCT_ROUTES = [
   LOGIN_ROUTE,

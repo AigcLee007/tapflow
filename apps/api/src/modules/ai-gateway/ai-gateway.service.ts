@@ -16,6 +16,8 @@ import type {
   CreateProviderInput,
   CreateRouteInput,
   ListRuntimeRoutesQuery,
+  ListPricingQuery,
+  UpsertPricingInput,
   UpdateCredentialInput,
   UpdateRouteInput,
 } from "./ai-gateway.schemas.js";
@@ -104,6 +106,18 @@ type RuntimeRouteListRecord = {
   provider_key: string;
   provider_name: string;
   route_key: string;
+};
+
+type PricingRecord = {
+  active: boolean;
+  created_at: string;
+  metadata: Record<string, unknown>;
+  min_charge_credits: string;
+  model: string;
+  provider: string;
+  route: string;
+  unit: string;
+  unit_credits: string;
 };
 
 type CredentialRecord = {
@@ -206,6 +220,18 @@ export type GenerateTextResultView = {
   };
 };
 
+export type PricingView = {
+  active: boolean;
+  metadata: Record<string, unknown>;
+  minChargeCredits: number;
+  model: string;
+  provider: string;
+  route: string;
+  unit: string;
+  unitCredits: number;
+  updatedAt: string;
+};
+
 export class AiGatewayApiError extends Error {
   readonly code: string;
   readonly statusCode: number;
@@ -266,6 +292,20 @@ function mapRoute(row: RouteRecord): RouteView {
     tenantId: row.tenant_id,
     updatedAt: row.updated_at,
     weight: row.weight,
+  };
+}
+
+function mapPricing(row: PricingRecord): PricingView {
+  return {
+    active: row.active,
+    metadata: row.metadata ?? {},
+    minChargeCredits: Number(row.min_charge_credits),
+    model: row.model,
+    provider: row.provider,
+    route: row.route,
+    unit: row.unit,
+    unitCredits: Number(row.unit_credits),
+    updatedAt: row.created_at,
   };
 }
 
@@ -482,12 +522,14 @@ export class AiGatewayAdminService {
             request_config,
             pricing,
             rate_limit,
-            status,
-            created_at::text AS created_at,
-            updated_at::text AS updated_at
+          status,
+          created_at::text AS created_at,
+          updated_at::text AS updated_at
           FROM ai_routes
+          WHERE tenant_id = $1::uuid OR tenant_id IS NULL
           ORDER BY route_key ASC, created_at ASC
         `,
+        [context.tenantId],
       );
 
       return result.rows.map(mapRoute);
@@ -537,6 +579,124 @@ export class AiGatewayAdminService {
     }, this.pool);
   }
 
+  async listPricing(context: TenantContext, query: ListPricingQuery): Promise<PricingView[]> {
+    return withTenantTransaction(context, async (client) => {
+      const result = await client.query<PricingRecord>(
+        `
+          SELECT
+            mp.provider,
+            mp.model,
+            mp.route,
+            mp.unit,
+            mp.unit_credits::text AS unit_credits,
+            mp.min_charge_credits::text AS min_charge_credits,
+            mp.metadata,
+            mp.active,
+            mp.created_at::text AS created_at
+          FROM model_pricing mp
+          WHERE ($1::text IS NULL OR mp.unit = $1::text)
+            AND (
+              mp.route = 'default'
+              OR EXISTS (
+                SELECT 1
+                FROM ai_routes r
+                JOIN ai_providers p ON p.id = r.provider_id
+                LEFT JOIN ai_models m ON m.id = r.model_id
+                WHERE r.tenant_id = $2::uuid
+                  AND r.route_key = mp.route
+                  AND p.key = mp.provider
+                  AND (m.model_key = mp.model OR mp.model = 'default')
+              )
+            )
+          ORDER BY mp.provider ASC, mp.model ASC, mp.route ASC, mp.unit ASC
+        `,
+        [query.unit?.trim() || null, context.tenantId],
+      );
+
+      return result.rows.map(mapPricing);
+    }, this.pool);
+  }
+
+  async upsertPricing(context: TenantContext, input: UpsertPricingInput): Promise<PricingView> {
+    return withTenantTransaction(context, async (client) => {
+      const provider = input.provider.trim();
+      const model = input.model.trim();
+      const route = input.route.trim();
+      const unit = input.unit.trim();
+
+      const editableRoute = await client.query<{ route_key: string }>(
+        `
+          SELECT r.route_key
+          FROM ai_routes r
+          JOIN ai_providers p ON p.id = r.provider_id
+          JOIN ai_models m ON m.id = r.model_id
+          WHERE r.tenant_id = $1::uuid
+            AND r.route_key = $2::text
+            AND p.key = $3::text
+            AND m.model_key = $4::text
+          LIMIT 1
+        `,
+        [context.tenantId, route, provider, model],
+      );
+
+      if (!editableRoute.rows[0]?.route_key) {
+        throw new AiGatewayApiError(403, "PRICING_SCOPE_FORBIDDEN", "Pricing update is not allowed for this route");
+      }
+
+      const result = await client.query<PricingRecord>(
+        `
+          INSERT INTO model_pricing (
+            provider,
+            model,
+            route,
+            unit,
+            unit_credits,
+            min_charge_credits,
+            metadata,
+            active
+          )
+          VALUES ($1, $2, $3, $4, $5::bigint, $6::bigint, $7::jsonb, $8::boolean)
+          ON CONFLICT (provider, model, route, unit)
+          DO UPDATE SET
+            unit_credits = EXCLUDED.unit_credits,
+            min_charge_credits = EXCLUDED.min_charge_credits,
+            metadata = EXCLUDED.metadata,
+            active = EXCLUDED.active
+          RETURNING
+            provider,
+            model,
+            route,
+            unit,
+            unit_credits::text AS unit_credits,
+            min_charge_credits::text AS min_charge_credits,
+            metadata,
+            active,
+            created_at::text AS created_at
+        `,
+        [
+          provider,
+          model,
+          route,
+          unit,
+          input.unitCredits ?? input.minChargeCredits,
+          input.minChargeCredits,
+          JSON.stringify({
+            source: "provider-settings-admin-ui",
+            updatedByUserId: context.userId,
+          }),
+          input.active ?? true,
+        ],
+      );
+
+      const row = result.rows[0];
+      if (!row) {
+        throw new AiGatewayApiError(500, "PRICING_UPSERT_FAILED", "Failed to upsert model pricing");
+      }
+
+      return mapPricing(row);
+    }, this.pool);
+  }
+
   async createRoute(context: TenantContext, input: CreateRouteInput): Promise<RouteView> {
     return withTenantTransaction(context, async (client) => {
       await this.ensureProviderExists(input.providerId, client);
@@ -544,8 +704,9 @@ export class AiGatewayAdminService {
         await this.ensureModelExists(input.modelId, client);
       }
       if (input.credentialId) {
-        await this.ensureCredentialExists(input.credentialId, client);
+        await this.ensureCredentialExists(input.credentialId, client, context.tenantId);
       }
+      this.validateRouteConfig(input.requestConfig ?? {});
 
       try {
         const result = await client.query<RouteRecord>(
@@ -661,12 +822,15 @@ export class AiGatewayAdminService {
   ): Promise<RouteView> {
     return withTenantTransaction(context, async (client) => {
       const existing = await this.getRouteRow(client, routeId);
+      this.assertTenantOwnedRoute(existing, context.tenantId);
       if (input.modelId) {
         await this.ensureModelExists(input.modelId, client);
       }
       if (input.credentialId) {
-        await this.ensureCredentialExists(input.credentialId, client);
+        await this.ensureCredentialExists(input.credentialId, client, context.tenantId);
       }
+      const nextRequestConfig = input.requestConfig ?? existing.request_config ?? {};
+      this.validateRouteConfig(nextRequestConfig);
 
       const result = await client.query<RouteRecord>(
         `
@@ -711,7 +875,7 @@ export class AiGatewayAdminService {
           input.weight ?? existing.weight,
           input.fallbackGroup !== undefined ? input.fallbackGroup?.trim() ?? null : existing.fallback_group,
           input.baseUrlOverride !== undefined ? input.baseUrlOverride?.trim() ?? null : existing.base_url_override,
-          JSON.stringify(input.requestConfig ?? existing.request_config),
+          JSON.stringify(nextRequestConfig),
           JSON.stringify(input.pricing ?? existing.pricing),
           JSON.stringify(input.rateLimit ?? existing.rate_limit),
           input.status?.trim() ?? existing.status,
@@ -776,8 +940,10 @@ export class AiGatewayAdminService {
             updated_at::text AS updated_at
           FROM api_credentials
           WHERE status <> 'deleted'
+            AND tenant_id = $1::uuid
           ORDER BY created_at ASC, id ASC
         `,
+        [context.tenantId],
       );
 
       return result.rows.map((row) => this.mapCredential(row));
@@ -890,6 +1056,7 @@ export class AiGatewayAdminService {
   ): Promise<CredentialResponseView> {
     return withTenantTransaction(context, async (client) => {
       const existing = await this.getCredentialRow(client, credentialId);
+      this.assertTenantOwnedCredential(existing, context.tenantId);
       const result = await client.query<CredentialRecord>(
         `
           UPDATE api_credentials
@@ -932,7 +1099,8 @@ export class AiGatewayAdminService {
     secret: string,
   ): Promise<CredentialResponseView> {
     return withTenantTransaction(context, async (client) => {
-      await this.getCredentialRow(client, credentialId);
+      const existing = await this.getCredentialRow(client, credentialId);
+      this.assertTenantOwnedCredential(existing, context.tenantId);
       const encrypted = this.credentialVault.rotateCredential(secret);
       const result = await client.query<CredentialRecord>(
         `
@@ -1005,6 +1173,8 @@ export class AiGatewayAdminService {
 
   async deleteCredential(context: TenantContext, credentialId: string): Promise<{ ok: true }> {
     return withTenantTransaction(context, async (client) => {
+      const existing = await this.getCredentialRow(client, credentialId);
+      this.assertTenantOwnedCredential(existing, context.tenantId);
       const result = await client.query<{ id: string }>(
         `
           UPDATE api_credentials
@@ -1084,16 +1254,21 @@ export class AiGatewayAdminService {
     }
   }
 
-  private async ensureCredentialExists(credentialId: string, client: PoolClient): Promise<void> {
+  private async ensureCredentialExists(
+    credentialId: string,
+    client: PoolClient,
+    tenantId?: string,
+  ): Promise<void> {
     const result = await client.query<{ id: string }>(
       `
         SELECT id::text AS id
         FROM api_credentials
         WHERE id = $1::uuid
           AND status <> 'deleted'
+          AND ($2::uuid IS NULL OR tenant_id = $2::uuid)
         LIMIT 1
       `,
-      [credentialId],
+      [credentialId, tenantId ?? null],
     );
 
     if (!result.rows[0]?.id) {
@@ -1202,6 +1377,40 @@ export class AiGatewayAdminService {
       status: result.status,
       usage: result.usage,
     };
+  }
+
+  private assertTenantOwnedRoute(route: RouteRecord, tenantId: string): void {
+    if (!route.tenant_id || route.tenant_id !== tenantId) {
+      throw new AiGatewayApiError(404, "ROUTE_NOT_FOUND", "Route not found");
+    }
+  }
+
+  private assertTenantOwnedCredential(row: CredentialRecord, tenantId: string): void {
+    if (!row.tenant_id || row.tenant_id !== tenantId) {
+      throw new AiGatewayApiError(404, "CREDENTIAL_NOT_FOUND", "Credential not found");
+    }
+  }
+
+  private validateRouteConfig(config: Record<string, unknown>): void {
+    const timeoutCandidate = config.timeoutMs;
+    if (timeoutCandidate === undefined || timeoutCandidate === null) {
+      return;
+    }
+
+    const timeoutMs =
+      typeof timeoutCandidate === "number"
+        ? timeoutCandidate
+        : typeof timeoutCandidate === "string"
+          ? Number(timeoutCandidate)
+          : Number.NaN;
+
+    if (!Number.isInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 300000) {
+      throw new AiGatewayApiError(
+        400,
+        "VALIDATION_ERROR",
+        "requestConfig.timeoutMs must be an integer between 1000 and 300000",
+      );
+    }
   }
 
   private async listRuntimeRoutes(

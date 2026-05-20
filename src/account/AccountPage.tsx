@@ -2,6 +2,7 @@ import React from "react";
 import { Loader2, LogOut, RefreshCw } from "lucide-react";
 
 import { useAuth } from "../auth/useAuth";
+import { ACCOUNT_PROVIDER_SETTINGS_ROUTE } from "../app/routes";
 
 function InfoCard({
   label,
@@ -22,6 +23,10 @@ function InfoCard({
 
 export function AccountPage() {
   const { loading, logout, permissions, refreshMe, roles, tenant, user } = useAuth();
+  const canManageProviderSettings =
+    permissions.includes("provider:read") ||
+    permissions.includes("provider:manage") ||
+    permissions.includes("credential:manage");
 
   if (loading && !user) {
     return (
@@ -46,6 +51,17 @@ export function AccountPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {canManageProviderSettings ? (
+            <button
+              className="inline-flex h-10 items-center gap-2 rounded border border-sky-300/25 bg-sky-500/10 px-4 text-sm text-sky-100 hover:bg-sky-500/20"
+              onClick={() => {
+                window.location.assign(ACCOUNT_PROVIDER_SETTINGS_ROUTE);
+              }}
+              type="button"
+            >
+              Provider Settings
+            </button>
+          ) : null}
           <button
             className="inline-flex h-10 items-center gap-2 rounded border border-white/10 bg-white/10 px-4 text-sm text-white hover:bg-white/15"
             onClick={() => void refreshMe()}

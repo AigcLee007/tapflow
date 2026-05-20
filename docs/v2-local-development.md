@@ -116,6 +116,23 @@ Runtime URLs:
 - Frontend: `http://localhost:5188`
 - API health check: `http://localhost:3366/health`
 
+Provider settings UI (local/dev):
+
+- Route: `/account/provider-settings`
+- This UI is intended for local/dev maintenance of AI route/provider settings.
+- The page requires authenticated user + tenant context.
+- The API still enforces admin permissions (`provider:read` / `provider:manage` / `credential:manage`);
+  ordinary viewer/basic users are blocked with `403`.
+- This page supports editing:
+  - `baseUrlOverride`
+  - model binding (`modelId`)
+  - `requestConfig.timeoutMs`
+  - route `status`
+  - route pricing (`min_charge_credits` for `image_generation`)
+- Credential updates are write-only; existing secret is never returned.
+- Never screenshot or commit real API keys.
+- Pricing changes here affect subsequent workflow run billing.
+
 ## 7. Manual QA Checklist
 
 Recommended validation order is listed below.
@@ -266,6 +283,13 @@ Local route selection QA:
 - Use `image.fail` for failure/refund verification.
 - `image.default` and `image.fail` are separate selectable route options in the node route selector even when they share the same provider/model.
 - Preferred QA path is direct UI route selection; no DB-side route mutation is required for normal fail-path validation.
+- For OpenAI-compatible relay config changes, use `/account/provider-settings` to update:
+  - `image.openai` base URL override
+  - image model binding
+  - route `timeoutMs`
+  - route status
+  - image generation `min_charge_credits` pricing
+  - credential rotation (write-only key input)
 - If you temporarily override `image.default` to fail mode for backend-only diagnostics, always restore it:
   - fail: `{"mockMode":"fail","localDevOnly":true}`
   - success: `{"mockMode":"success","localDevOnly":true}`

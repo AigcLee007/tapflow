@@ -18,6 +18,8 @@ import {
   type RotateCredentialInput,
   type RouteIdParams,
   type ListRuntimeRoutesQuery,
+  type ListPricingQuery,
+  type UpsertPricingInput,
   type UpdateCredentialInput,
   type UpdateRouteInput,
   createCredentialSchema,
@@ -29,7 +31,9 @@ import {
   rotateCredentialSchema,
   routeIdParamsSchema,
   listRuntimeRoutesQuerySchema,
+  listPricingQuerySchema,
   updateCredentialSchema,
+  upsertPricingSchema,
   updateRouteSchema,
 } from "./ai-gateway.schemas.js";
 import { AiGatewayApiError } from "./ai-gateway.service.js";
@@ -114,6 +118,12 @@ function handleRouteError(
 
 export function registerAiGatewayAdminRoutes(app: FastifyInstance): void {
   const authHandlers = [requireAuth, requireTenant];
+  const requirePermissionForAdmin = (permissionKey: string) => {
+    const permissionGuard = requirePermission(permissionKey);
+    return async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
+      await permissionGuard(request, reply);
+    };
+  };
 
   app.post(
     "/api/v2/ai/text/generate",
@@ -148,7 +158,7 @@ export function registerAiGatewayAdminRoutes(app: FastifyInstance): void {
   app.get(
     "/api/v2/admin/ai/providers",
     {
-      preHandler: [...authHandlers, requirePermission("provider:read")],
+      preHandler: [...authHandlers, requirePermissionForAdmin("provider:read")],
     },
     async (request, reply) => {
       try {
@@ -162,7 +172,7 @@ export function registerAiGatewayAdminRoutes(app: FastifyInstance): void {
   app.post(
     "/api/v2/admin/ai/providers",
     {
-      preHandler: [...authHandlers, requirePermission("provider:manage")],
+      preHandler: [...authHandlers, requirePermissionForAdmin("provider:manage")],
     },
     async (request, reply) => {
       try {
@@ -177,7 +187,7 @@ export function registerAiGatewayAdminRoutes(app: FastifyInstance): void {
   app.get(
     "/api/v2/admin/ai/models",
     {
-      preHandler: [...authHandlers, requirePermission("provider:read")],
+      preHandler: [...authHandlers, requirePermissionForAdmin("provider:read")],
     },
     async (request, reply) => {
       try {
@@ -191,7 +201,7 @@ export function registerAiGatewayAdminRoutes(app: FastifyInstance): void {
   app.post(
     "/api/v2/admin/ai/models",
     {
-      preHandler: [...authHandlers, requirePermission("provider:manage")],
+      preHandler: [...authHandlers, requirePermissionForAdmin("provider:manage")],
     },
     async (request, reply) => {
       try {
@@ -206,7 +216,7 @@ export function registerAiGatewayAdminRoutes(app: FastifyInstance): void {
   app.get(
     "/api/v2/admin/ai/routes",
     {
-      preHandler: [...authHandlers, requirePermission("provider:read")],
+      preHandler: [...authHandlers, requirePermissionForAdmin("provider:read")],
     },
     async (request, reply) => {
       try {
@@ -220,7 +230,7 @@ export function registerAiGatewayAdminRoutes(app: FastifyInstance): void {
   app.post(
     "/api/v2/admin/ai/routes",
     {
-      preHandler: [...authHandlers, requirePermission("provider:manage")],
+      preHandler: [...authHandlers, requirePermissionForAdmin("provider:manage")],
     },
     async (request, reply) => {
       try {
@@ -235,7 +245,7 @@ export function registerAiGatewayAdminRoutes(app: FastifyInstance): void {
   app.patch(
     "/api/v2/admin/ai/routes/:routeId",
     {
-      preHandler: [...authHandlers, requirePermission("provider:manage")],
+      preHandler: [...authHandlers, requirePermissionForAdmin("provider:manage")],
     },
     async (request, reply) => {
       try {
@@ -253,7 +263,7 @@ export function registerAiGatewayAdminRoutes(app: FastifyInstance): void {
   app.get(
     "/api/v2/admin/credentials",
     {
-      preHandler: [...authHandlers, requirePermission("credential:manage")],
+      preHandler: [...authHandlers, requirePermissionForAdmin("credential:manage")],
     },
     async (request, reply) => {
       try {
@@ -267,7 +277,7 @@ export function registerAiGatewayAdminRoutes(app: FastifyInstance): void {
   app.post(
     "/api/v2/admin/credentials",
     {
-      preHandler: [...authHandlers, requirePermission("credential:manage")],
+      preHandler: [...authHandlers, requirePermissionForAdmin("credential:manage")],
     },
     async (request, reply) => {
       try {
@@ -284,7 +294,7 @@ export function registerAiGatewayAdminRoutes(app: FastifyInstance): void {
   app.patch(
     "/api/v2/admin/credentials/:credentialId",
     {
-      preHandler: [...authHandlers, requirePermission("credential:manage")],
+      preHandler: [...authHandlers, requirePermissionForAdmin("credential:manage")],
     },
     async (request, reply) => {
       try {
@@ -306,7 +316,7 @@ export function registerAiGatewayAdminRoutes(app: FastifyInstance): void {
   app.post(
     "/api/v2/admin/credentials/:credentialId/rotate",
     {
-      preHandler: [...authHandlers, requirePermission("credential:manage")],
+      preHandler: [...authHandlers, requirePermissionForAdmin("credential:manage")],
     },
     async (request, reply) => {
       try {
@@ -328,7 +338,7 @@ export function registerAiGatewayAdminRoutes(app: FastifyInstance): void {
   app.delete(
     "/api/v2/admin/credentials/:credentialId",
     {
-      preHandler: [...authHandlers, requirePermission("credential:manage")],
+      preHandler: [...authHandlers, requirePermissionForAdmin("credential:manage")],
     },
     async (request, reply) => {
       try {
@@ -339,6 +349,36 @@ export function registerAiGatewayAdminRoutes(app: FastifyInstance): void {
             params.credentialId,
           ),
         );
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.get(
+    "/api/v2/admin/ai/pricing",
+    {
+      preHandler: [...authHandlers, requirePermissionForAdmin("provider:read")],
+    },
+    async (request, reply) => {
+      try {
+        const query = listPricingQuerySchema.parse(request.query) as ListPricingQuery;
+        return reply.send(await app.aiGatewayService.listPricing(getTenantContext(request), query));
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.patch(
+    "/api/v2/admin/ai/pricing",
+    {
+      preHandler: [...authHandlers, requirePermissionForAdmin("provider:manage")],
+    },
+    async (request, reply) => {
+      try {
+        const body = parseBody<UpsertPricingInput>(request, upsertPricingSchema);
+        return reply.send(await app.aiGatewayService.upsertPricing(getTenantContext(request), body));
       } catch (error) {
         return handleRouteError(error, request, reply);
       }

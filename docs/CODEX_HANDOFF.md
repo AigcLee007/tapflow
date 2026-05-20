@@ -1,5 +1,71 @@
 # Codex Handoff
 
+## Current Sprint Handoff (provider-settings-admin-ui)
+
+Branch:
+
+- `provider-settings-admin-ui`
+
+Scope:
+
+- Added a minimal local/dev provider settings UI for OpenAI-compatible route management.
+- No real payment integration changes.
+- No new external provider integrations (Gemini/Replicate/Fal) in this sprint.
+
+Implemented:
+
+- New frontend page: `/account/provider-settings`
+  - lists image routes with provider/model/status context
+  - supports updating `image.openai` route fields:
+    - `baseUrlOverride`
+    - `modelId` binding
+    - `requestConfig.timeoutMs`
+    - `status`
+  - supports pricing upsert for `model_pricing` (`image_generation`):
+    - `min_charge_credits`
+  - supports credential rotation with write-only key input
+    - key is sent to rotate endpoint and never re-shown as plaintext
+- New frontend API client for admin ai settings:
+  - `src/services/v2AiGatewayAdminApi.ts`
+- Backend API additions:
+  - `GET /api/v2/admin/ai/pricing?unit=...`
+  - `PATCH /api/v2/admin/ai/pricing`
+- Backend admin permission guard for AI admin endpoints:
+  - always requires `requireAuth` + `requireTenant`
+  - always enforces permission checks (`provider:*` / `credential:manage`)
+  - no dev-mode permission bypass for viewer/basic users
+
+Security model:
+
+- API key material remains server-side only via `CredentialVault`.
+- No plaintext key returned by API responses.
+- No `encrypted_secret`/`nonce`/`auth_tag` exposed in UI API responses.
+- No key material stored in node data or draft graph payloads.
+
+Manual QA:
+
+- Provider Settings UI load/save path: PASSED
+  - `/account/provider-settings` opens successfully
+  - `GET /api/v2/admin/ai/pricing?unit=image_generation` returns `200`
+  - `image.openai` is visible and editable
+- `image.openai` settings update affects runtime pricing: PASSED
+  - updated pricing from `100` to `200`
+  - subsequent run billed at `reserve -200` and `settle -200`
+  - `Reserved` returns to `0`
+  - usage event shows settled `ai.image.generate 200`
+- `image.openai` generation after settings save: PASSED
+  - generation succeeds after route/pricing save
+  - generated output remains after workspace/project refresh
+  - generated output remains visible in `/assets` after refresh
+- Credential masked display: PASSED
+  - masked value visible (example: `sk-****3e97`)
+  - no plaintext key shown in UI or API response
+  - credential rotation was intentionally not performed with real key in this pass (safety note / follow-up)
+
+Notes:
+
+- Real payment integration remains out of scope (not connected).
+
 ## Current Sprint Handoff (real-provider-openai-image)
 
 Branch:

@@ -607,6 +607,73 @@ describeWithDatabase("ai gateway admin API", () => {
         });
         expect(forbiddenCredentialManage.statusCode).toBe(403);
 
+        const forbiddenProviderRead = await api.inject({
+          headers: {
+            authorization: `Bearer ${viewerLogin.json().accessToken}`,
+          },
+          method: "GET",
+          url: "/api/v2/admin/ai/routes",
+        });
+        expect(forbiddenProviderRead.statusCode).toBe(403);
+
+        const invalidTimeoutUpdate = await api.inject({
+          headers: {
+            authorization: `Bearer ${tenantAOwner.accessToken}`,
+          },
+          method: "PATCH",
+          payload: {
+            requestConfig: {
+              timeoutMs: 999999,
+            },
+          },
+          url: `/api/v2/admin/ai/routes/${routeABody.id}`,
+        });
+        expect(invalidTimeoutUpdate.statusCode).toBe(400);
+
+        const invalidBaseUrlUpdate = await api.inject({
+          headers: {
+            authorization: `Bearer ${tenantAOwner.accessToken}`,
+          },
+          method: "PATCH",
+          payload: {
+            baseUrlOverride: "file:///tmp/unsafe",
+          },
+          url: `/api/v2/admin/ai/routes/${routeABody.id}`,
+        });
+        expect(invalidBaseUrlUpdate.statusCode).toBe(400);
+
+        const invalidPricingUpdate = await api.inject({
+          headers: {
+            authorization: `Bearer ${tenantAOwner.accessToken}`,
+          },
+          method: "PATCH",
+          payload: {
+            minChargeCredits: 0,
+            model: "model-a",
+            provider: "provider-a",
+            route: "tenant-a-route",
+            unit: "image_generation",
+          },
+          url: "/api/v2/admin/ai/pricing",
+        });
+        expect(invalidPricingUpdate.statusCode).toBe(400);
+
+        const crossTenantPricingUpdate = await api.inject({
+          headers: {
+            authorization: `Bearer ${tenantAOwner.accessToken}`,
+          },
+          method: "PATCH",
+          payload: {
+            minChargeCredits: 10,
+            model: "model-a",
+            provider: "provider-a",
+            route: "tenant-b-route",
+            unit: "image_generation",
+          },
+          url: "/api/v2/admin/ai/pricing",
+        });
+        expect(crossTenantPricingUpdate.statusCode).toBe(403);
+
         await api.close();
       } finally {
         await appPool.end();

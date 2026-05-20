@@ -5,12 +5,14 @@ import { LoginPage } from "../auth/LoginPage";
 import { RegisterPage } from "../auth/RegisterPage";
 import { AssetLibraryPage } from "../assets/AssetLibraryPage";
 import { AccountPage } from "../account/AccountPage";
+import { ProviderSettingsPage } from "../account/ProviderSettingsPage";
 import { BillingCenterPage } from "../billing/BillingCenterPage";
 import { FlowProjectPage } from "../flowCanvas/FlowProjectPage";
 import { WorkspacePage } from "../workspace/WorkspacePage";
 import { WorkspaceShell } from "./WorkspaceShell";
 import {
   ACCOUNT_ROUTE,
+  ACCOUNT_PROVIDER_SETTINGS_ROUTE,
   ASSETS_ROUTE,
   BILLING_ROUTE,
   isCompatibilityRoute,
@@ -76,6 +78,13 @@ function ProtectedRoutes({ pathname }: { pathname: string }) {
 
   if (pathname === BILLING_ROUTE || pathname.startsWith(`${BILLING_ROUTE}/`)) {
     return <BillingCenterPage />;
+  }
+
+  if (
+    pathname === ACCOUNT_PROVIDER_SETTINGS_ROUTE ||
+    pathname.startsWith(`${ACCOUNT_PROVIDER_SETTINGS_ROUTE}/`)
+  ) {
+    return <ProviderSettingsPage />;
   }
 
   if (pathname === ACCOUNT_ROUTE || pathname.startsWith(`${ACCOUNT_ROUTE}/`)) {
