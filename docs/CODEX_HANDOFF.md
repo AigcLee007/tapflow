@@ -1,5 +1,65 @@
 # Codex Handoff
 
+## Current Sprint Handoff (real-provider-openai-image)
+
+Branch:
+
+- `real-provider-openai-image`
+
+Implemented:
+
+- Added minimal real OpenAI-compatible provider support for image generation in `ai-gateway-core`.
+- Worker `AiGateway` now registers:
+  - `openai` -> `OpenAiCompatibleTextAdapter` (alias)
+  - `openai-compatible` -> `OpenAiCompatibleTextAdapter`
+  - `mock` -> `MockProviderAdapter` (existing behavior unchanged)
+- OpenAI-compatible image calls are server/worker-side only and still flow through:
+  - route-aware pricing
+  - reserve
+  - worker execute
+  - media asset store persistence
+  - assetId writeback
+  - settle/refund
+- Added optional local seed path in `dev:seed-ai`:
+  - supports `OPENAI_API_KEY` env or `--openai-api-key`
+  - supports `OPENAI_COMPAT_BASE_URL` / `OPENAI_BASE_URL` env or `--openai-base-url`
+  - supports `--openai-image-model` (default `gpt-image-1`)
+  - seeds `openai-compatible / <model> / image.openai` and matching pricing row
+  - stores credential using server-side `CredentialVault` encryption only.
+
+Tests:
+
+- Extended `packages/ai-gateway-core/test/runtime.test.ts` for OpenAI-compatible image:
+  - successful b64_json response parsing
+  - auth failure mapping
+  - rate-limit mapping
+  - bad-request mapping
+  - timeout mapping
+  - malformed-response mapping
+
+Status:
+
+- Implementation complete and ready for manual QA.
+- Real payment integration remains out of scope.
+- OpenAI-compatible timeout refund path: PASSED (reserve/refund behavior correct under timeout).
+- OpenAI-compatible success path was blocked by 10s timeout in relay calls; image timeout config updated for retest (`request_config.timeoutMs` + env/provider fallback chain).
+- OpenAI-compatible image success path: PASSED.
+  - Relay base URL: `https://sub.siphonlab.cn/v1`
+  - Model: `gpt-image-2`
+  - Route: `image.openai`
+  - Node save status returns to `Saved`; generated result persists after refresh/reopen.
+  - `/assets` keeps generated asset after refresh.
+  - Billing success path: `reserve 100`, `settle 100`, `Reserved -> 0`, usage event includes settled `ai.image.generate 100`.
+  - SQL exact pricing match (`node_runs.cost_json` and `billing_ledger.metadata`):
+    - `pricingMatch.provider = openai-compatible`
+    - `pricingMatch.model = gpt-image-2`
+    - `pricingMatch.route = image.openai`
+    - `pricingMatch.unit = image_generation`
+    - `pricingFallbackLevel = 1`
+    - `estimatedCredits = 100`
+    - `reservedCredits = 100`
+  - Timeout failure path remains PASSED: provider timeout -> `reserve 100` + `refund 100`, `Reserved -> 0`, no new settled usage event.
+
 ## Current Sprint Handoff (model-route-selection-ui)
 
 Branch:

@@ -6,6 +6,9 @@ import { createPgPool, withTenantTransaction } from "@aigc-flow/db";
 type Args = {
   email: string | null;
   mockCredentialSecret: string;
+  openAiApiKey: string | null;
+  openAiBaseUrl: string | null;
+  openAiImageModel: string;
   tenantId: string | null;
   userId: string | null;
 };
@@ -19,16 +22,25 @@ type SeedTarget = {
 const DEV_CREDENTIAL_KEY_VERSION = "v1";
 const DEV_CREDENTIAL_MASTER_KEY = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
 const PROVIDER_KEY = "mock-local-dev";
+const OPENAI_PROVIDER_KEY = "openai-compatible";
 const IMAGE_MODEL_KEY = "mock-image-v1";
 const VIDEO_MODEL_KEY = "mock-video-v1";
+const DEFAULT_OPENAI_IMAGE_MODEL_KEY = "gpt-image-1";
 const IMAGE_ROUTE_KEY = "image.default";
 const IMAGE_FAIL_ROUTE_KEY = "image.fail";
 const VIDEO_ROUTE_KEY = "video.default";
+const OPENAI_IMAGE_ROUTE_KEY = "image.openai";
 
 function parseArgs(argv: string[]): Args {
   const args: Args = {
     email: null,
     mockCredentialSecret: "mock-local-dev-secret",
+    openAiApiKey: process.env.OPENAI_API_KEY?.trim() || null,
+    openAiBaseUrl:
+      process.env.OPENAI_COMPAT_BASE_URL?.trim() ||
+      process.env.OPENAI_BASE_URL?.trim() ||
+      null,
+    openAiImageModel: DEFAULT_OPENAI_IMAGE_MODEL_KEY,
     tenantId: null,
     userId: null,
   };
@@ -53,6 +65,18 @@ function parseArgs(argv: string[]): Args {
         break;
       case "--mock-secret":
         args.mockCredentialSecret = next?.trim() || args.mockCredentialSecret;
+        index += 1;
+        break;
+      case "--openai-api-key":
+        args.openAiApiKey = next?.trim() || null;
+        index += 1;
+        break;
+      case "--openai-base-url":
+        args.openAiBaseUrl = next?.trim() || null;
+        index += 1;
+        break;
+      case "--openai-image-model":
+        args.openAiImageModel = next?.trim() || DEFAULT_OPENAI_IMAGE_MODEL_KEY;
         index += 1;
         break;
       default:
@@ -267,6 +291,106 @@ async function upsertProviderAndModels(pool: ReturnType<typeof createPgPool>) {
   };
 }
 
+async function upsertOpenAiProviderAndModel(
+  pool: ReturnType<typeof createPgPool>,
+  input: {
+    baseUrl: string;
+    modelKey: string;
+  },
+) {
+  const providerResult = await pool.query<{ id: string }>(
+    `
+      INSERT INTO ai_providers (
+        key,
+        name,
+        kind,
+        status,
+        default_base_url,
+        capabilities,
+        updated_at
+      )
+      VALUES (
+        $1,
+        $2,
+        $3,
+        'active',
+        $4,
+        $5::jsonb,
+        now()
+      )
+      ON CONFLICT (key) DO UPDATE
+      SET
+        name = EXCLUDED.name,
+        kind = EXCLUDED.kind,
+        status = 'active',
+        default_base_url = EXCLUDED.default_base_url,
+        capabilities = EXCLUDED.capabilities,
+        updated_at = now()
+      RETURNING id::text AS id
+    `,
+    [
+      OPENAI_PROVIDER_KEY,
+      "OpenAI-compatible",
+      "openai-compatible",
+      input.baseUrl,
+      JSON.stringify({
+        localDevOnly: true,
+        supportsImageGeneration: true,
+      }),
+    ],
+  );
+  const providerId = providerResult.rows[0]?.id;
+  if (!providerId) {
+    throw new Error("Failed to seed OpenAI provider.");
+  }
+
+  const imageModelResult = await pool.query<{ id: string }>(
+    `
+      INSERT INTO ai_models (
+        provider_id,
+        model_key,
+        display_name,
+        modality,
+        capabilities,
+        context_window,
+        status,
+        updated_at
+      )
+      VALUES (
+        $1::uuid,
+        $2,
+        $3,
+        'image',
+        $4::jsonb,
+        NULL,
+        'active',
+        now()
+      )
+      ON CONFLICT (provider_id, model_key) DO UPDATE
+      SET
+        display_name = EXCLUDED.display_name,
+        modality = EXCLUDED.modality,
+        capabilities = EXCLUDED.capabilities,
+        status = 'active',
+        updated_at = now()
+      RETURNING id::text AS id
+    `,
+    [
+      providerId,
+      input.modelKey,
+      `OpenAI-compatible ${input.modelKey}`,
+      JSON.stringify({
+        localDevOnly: true,
+      }),
+    ],
+  );
+
+  return {
+    imageModelId: imageModelResult.rows[0]?.id,
+    providerId,
+  };
+}
+
 async function upsertTenantCredentialAndRoutes(
   pool: ReturnType<typeof createPgPool>,
   target: SeedTarget,
@@ -442,7 +566,166 @@ async function upsertTenantCredentialAndRoutes(
   );
 }
 
-async function upsertModelPricing(pool: ReturnType<typeof createPgPool>) {
+async function upsertOpenAiTenantRoute(
+  pool: ReturnType<typeof createPgPool>,
+  target: SeedTarget,
+  input: {
+    baseUrl: string;
+    imageModelId: string;
+    providerId: string;
+  },
+  vault: CredentialVault,
+  secret: string,
+) {
+  return withTenantTransaction(
+    { tenantId: target.tenantId, userId: target.userId },
+    async (client) => {
+      const encrypted = vault.createCredential(secret);
+
+      const credentialResult = await client.query<{ id: string }>(
+        `
+          INSERT INTO api_credentials (
+            tenant_id,
+            provider_id,
+            name,
+            encrypted_secret,
+            nonce,
+            auth_tag,
+            key_version,
+            secret_fingerprint,
+            status,
+            created_by,
+            updated_at
+          )
+          VALUES (
+            $1::uuid,
+            $2::uuid,
+            $3,
+            $4::bytea,
+            $5::bytea,
+            $6::bytea,
+            $7,
+            $8,
+            'active',
+            $9::uuid,
+            now()
+          )
+          ON CONFLICT (tenant_id, provider_id, name)
+          WHERE tenant_id IS NOT NULL
+          DO UPDATE
+          SET
+            encrypted_secret = EXCLUDED.encrypted_secret,
+            nonce = EXCLUDED.nonce,
+            auth_tag = EXCLUDED.auth_tag,
+            key_version = EXCLUDED.key_version,
+            secret_fingerprint = EXCLUDED.secret_fingerprint,
+            status = 'active',
+            created_by = EXCLUDED.created_by,
+            updated_at = now()
+          RETURNING id::text AS id
+        `,
+        [
+          target.tenantId,
+          input.providerId,
+          "openai-image-dev-credential",
+          encrypted.encryptedSecret,
+          encrypted.nonce,
+          encrypted.authTag,
+          encrypted.keyVersion,
+          encrypted.secretFingerprint,
+          target.userId,
+        ],
+      );
+
+      const credentialId = credentialResult.rows[0]?.id;
+      if (!credentialId) {
+        throw new Error("Failed to seed OpenAI credential.");
+      }
+
+      await client.query(
+        `
+          INSERT INTO ai_routes (
+            tenant_id,
+            provider_id,
+            model_id,
+            credential_id,
+            route_key,
+            modality,
+            priority,
+            weight,
+            base_url_override,
+            request_config,
+            pricing,
+            rate_limit,
+            status,
+            updated_at
+          )
+          VALUES (
+            $1::uuid,
+            $2::uuid,
+            $3::uuid,
+            $4::uuid,
+            $5::text,
+            'image',
+            20,
+            100,
+            $6::text,
+            $7::jsonb,
+            '{}'::jsonb,
+            '{}'::jsonb,
+            'active',
+            now()
+          )
+          ON CONFLICT (tenant_id, route_key)
+          WHERE tenant_id IS NOT NULL
+          DO UPDATE
+          SET
+            provider_id = EXCLUDED.provider_id,
+            model_id = EXCLUDED.model_id,
+            credential_id = EXCLUDED.credential_id,
+            modality = EXCLUDED.modality,
+            priority = EXCLUDED.priority,
+            weight = EXCLUDED.weight,
+            base_url_override = EXCLUDED.base_url_override,
+            request_config = EXCLUDED.request_config,
+            pricing = EXCLUDED.pricing,
+            rate_limit = EXCLUDED.rate_limit,
+            status = 'active',
+            updated_at = now()
+        `,
+        [
+          target.tenantId,
+          input.providerId,
+          input.imageModelId,
+          credentialId,
+          OPENAI_IMAGE_ROUTE_KEY,
+          input.baseUrl,
+          JSON.stringify({
+            localDevOnly: true,
+            n: 1,
+            outputFormat: "png",
+            quality: "high",
+            size: "1024x1024",
+            timeoutMs: 120000,
+          }),
+        ],
+      );
+
+      return {
+        credentialId,
+      };
+    },
+    pool,
+  );
+}
+
+async function upsertModelPricing(
+  pool: ReturnType<typeof createPgPool>,
+  options: {
+    openAiImageModelKey: string | null;
+    seedOpenAiPricing: boolean;
+  },
+) {
   const rows: Array<{
     metadata: Record<string, unknown>;
     minChargeCredits: number;
@@ -480,6 +763,18 @@ async function upsertModelPricing(pool: ReturnType<typeof createPgPool>) {
       unitCredits: 50,
     },
   ];
+
+  if (options.seedOpenAiPricing && options.openAiImageModelKey) {
+    rows.push({
+      metadata: { label: "OpenAI-compatible image route pricing (local dev)" },
+      minChargeCredits: 100,
+      model: options.openAiImageModelKey,
+      provider: OPENAI_PROVIDER_KEY,
+      route: OPENAI_IMAGE_ROUTE_KEY,
+      unit: "image_generation",
+      unitCredits: 100,
+    });
+  }
 
   for (const row of rows) {
     await pool.query(
@@ -600,7 +895,41 @@ async function main() {
       args.mockCredentialSecret,
     );
 
-    await upsertModelPricing(pool);
+    let openAiSeedResult: { credentialId: string } | null = null;
+    let openAiModelKey: string | null = null;
+    if (args.openAiApiKey) {
+      const openAiBaseUrl = args.openAiBaseUrl?.trim();
+      if (!openAiBaseUrl) {
+        throw new Error(
+          "OpenAI-compatible seed requires base URL. Use --openai-base-url or set OPENAI_COMPAT_BASE_URL / OPENAI_BASE_URL.",
+        );
+      }
+
+      const openAi = await upsertOpenAiProviderAndModel(pool, {
+        baseUrl: openAiBaseUrl,
+        modelKey: args.openAiImageModel.trim() || DEFAULT_OPENAI_IMAGE_MODEL_KEY,
+      });
+      if (!openAi.imageModelId) {
+        throw new Error("Failed to seed OpenAI image model.");
+      }
+      openAiModelKey = args.openAiImageModel.trim() || DEFAULT_OPENAI_IMAGE_MODEL_KEY;
+      openAiSeedResult = await upsertOpenAiTenantRoute(
+        pool,
+        target,
+        {
+          baseUrl: openAiBaseUrl,
+          imageModelId: openAi.imageModelId,
+          providerId: openAi.providerId,
+        },
+        vault,
+        args.openAiApiKey,
+      );
+    }
+
+    await upsertModelPricing(pool, {
+      openAiImageModelKey: openAiModelKey,
+      seedOpenAiPricing: Boolean(args.openAiApiKey),
+    });
     await ensureDefaultPricingExists(pool);
 
     const secretFingerprint = createHash("sha256")
@@ -613,10 +942,16 @@ async function main() {
         {
           credentialId: seededTenant.credentialId,
           email: target.email,
-          note: "Routes seeded for local dev mock provider. Current reserve estimator still uses default/default/default pricing.",
+          note: "Routes seeded for local dev providers. OpenAI-compatible route is included only when API key and base URL are provided.",
+          openAiBaseUrl: args.openAiApiKey ? args.openAiBaseUrl : null,
+          openAiCredentialId: openAiSeedResult?.credentialId ?? null,
+          openAiImageModel: openAiModelKey,
+          openAiRouteKey: args.openAiApiKey ? OPENAI_IMAGE_ROUTE_KEY : null,
           providerId: seededProvider.providerId,
           providerKey: PROVIDER_KEY,
-          routeKeys: [IMAGE_ROUTE_KEY, IMAGE_FAIL_ROUTE_KEY, VIDEO_ROUTE_KEY],
+          routeKeys: args.openAiApiKey
+            ? [IMAGE_ROUTE_KEY, IMAGE_FAIL_ROUTE_KEY, VIDEO_ROUTE_KEY, OPENAI_IMAGE_ROUTE_KEY]
+            : [IMAGE_ROUTE_KEY, IMAGE_FAIL_ROUTE_KEY, VIDEO_ROUTE_KEY],
           secretFingerprintPrefix: secretFingerprint,
           tenantId: target.tenantId,
           userId: target.userId,

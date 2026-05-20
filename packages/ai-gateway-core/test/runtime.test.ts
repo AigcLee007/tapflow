@@ -242,6 +242,259 @@ describe("openai-compatible text adapter", () => {
 
     await server.close();
   });
+
+  test("generateImage parses b64_json outputs from OpenAI images API", async () => {
+    const server = await withHttpServer(async (request, response) => {
+      expect(request.url).toBe("/images/generations");
+      expect(request.headers.authorization).toBe("Bearer sk-test-secret");
+
+      response.setHeader("content-type", "application/json");
+      response.end(
+        JSON.stringify({
+          data: [
+            {
+              b64_json:
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9MbugAAAAASUVORK5CYII=",
+            },
+          ],
+        }),
+      );
+    });
+
+    const adapter = new OpenAiCompatibleTextAdapter();
+    const result = await adapter.generateImage(
+      {
+        apiKey: "sk-test-secret",
+        baseUrl: server.url,
+        modelKey: "gpt-image-1",
+        providerKey: "openai",
+        requestConfig: {},
+        routeId: "route-1",
+        routeKey: "image.openai",
+        timeoutMs: 5_000,
+      },
+      {
+        prompt: "a tiny pig",
+      },
+    );
+
+    expect(result.status).toBe("succeeded");
+    expect(result.outputs?.[0]?.base64).toBeTruthy();
+    expect(result.outputs?.[0]?.mimeType).toBe("image/png");
+
+    await server.close();
+  });
+
+  test("generateImage maps auth failure to PROVIDER_AUTH_FAILED", async () => {
+    const server = await withHttpServer((_request, response) => {
+      response.statusCode = 401;
+      response.setHeader("content-type", "application/json");
+      response.end(JSON.stringify({ error: { message: "bad key" } }));
+    });
+
+    const adapter = new OpenAiCompatibleTextAdapter();
+    await expect(
+      adapter.generateImage(
+        {
+          apiKey: "sk-test-secret",
+          baseUrl: server.url,
+          modelKey: "gpt-image-1",
+          providerKey: "openai",
+          requestConfig: {},
+          routeId: "route-1",
+          routeKey: "image.openai",
+          timeoutMs: 5_000,
+        },
+        {
+          prompt: "this should fail",
+        },
+      ),
+    ).rejects.toMatchObject<Partial<AiGatewayError>>({
+      code: "PROVIDER_AUTH_FAILED",
+    });
+
+    await server.close();
+  });
+
+  test("generateImage maps 429 to PROVIDER_RATE_LIMIT", async () => {
+    const server = await withHttpServer((_request, response) => {
+      response.statusCode = 429;
+      response.setHeader("content-type", "application/json");
+      response.end(JSON.stringify({ error: { message: "slow down" } }));
+    });
+
+    const adapter = new OpenAiCompatibleTextAdapter();
+    await expect(
+      adapter.generateImage(
+        {
+          apiKey: "sk-test-secret",
+          baseUrl: server.url,
+          modelKey: "gpt-image-1",
+          providerKey: "openai",
+          requestConfig: {},
+          routeId: "route-1",
+          routeKey: "image.openai",
+          timeoutMs: 5_000,
+        },
+        {
+          prompt: "this should rate limit",
+        },
+      ),
+    ).rejects.toMatchObject<Partial<AiGatewayError>>({
+      code: "PROVIDER_RATE_LIMIT",
+    });
+
+    await server.close();
+  });
+
+  test("generateImage maps 400 to PROVIDER_BAD_REQUEST", async () => {
+    const server = await withHttpServer((_request, response) => {
+      response.statusCode = 400;
+      response.setHeader("content-type", "application/json");
+      response.end(JSON.stringify({ error: { message: "bad prompt" } }));
+    });
+
+    const adapter = new OpenAiCompatibleTextAdapter();
+    await expect(
+      adapter.generateImage(
+        {
+          apiKey: "sk-test-secret",
+          baseUrl: server.url,
+          modelKey: "gpt-image-1",
+          providerKey: "openai",
+          requestConfig: {},
+          routeId: "route-1",
+          routeKey: "image.openai",
+          timeoutMs: 5_000,
+        },
+        {
+          prompt: "this should be bad request",
+        },
+      ),
+    ).rejects.toMatchObject<Partial<AiGatewayError>>({
+      code: "PROVIDER_BAD_REQUEST",
+    });
+
+    await server.close();
+  });
+
+  test("generateImage maps timeout to PROVIDER_TIMEOUT", async () => {
+    const server = await withHttpServer(async (_request, _response) => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    const adapter = new OpenAiCompatibleTextAdapter();
+    await expect(
+      adapter.generateImage(
+        {
+          apiKey: "sk-test-secret",
+          baseUrl: server.url,
+          modelKey: "gpt-image-1",
+          providerKey: "openai",
+          requestConfig: {},
+          routeId: "route-1",
+          routeKey: "image.openai",
+          timeoutMs: 10,
+        },
+        {
+          prompt: "this should timeout",
+        },
+      ),
+    ).rejects.toMatchObject<Partial<AiGatewayError>>({
+      code: "PROVIDER_TIMEOUT",
+    });
+
+    await server.close();
+  });
+
+  test("generateImage throws PROVIDER_INVALID_RESPONSE for empty data", async () => {
+    const server = await withHttpServer((_request, response) => {
+      response.setHeader("content-type", "application/json");
+      response.end(JSON.stringify({ data: [] }));
+    });
+
+    const adapter = new OpenAiCompatibleTextAdapter();
+    await expect(
+      adapter.generateImage(
+        {
+          apiKey: "sk-test-secret",
+          baseUrl: server.url,
+          modelKey: "gpt-image-1",
+          providerKey: "openai",
+          requestConfig: {},
+          routeId: "route-1",
+          routeKey: "image.openai",
+          timeoutMs: 5_000,
+        },
+        {
+          prompt: "malformed",
+        },
+      ),
+    ).rejects.toMatchObject<Partial<AiGatewayError>>({
+      code: "PROVIDER_INVALID_RESPONSE",
+    });
+
+    await server.close();
+  });
+
+  test("generateImage respects custom baseUrl and does not duplicate /v1", async () => {
+    const responses = [
+      new Response(
+        JSON.stringify({
+          data: [{ b64_json: "aGVsbG8=" }],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+      new Response(
+        JSON.stringify({
+          data: [{ b64_json: "d29ybGQ=" }],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    ];
+    const calledUrls: string[] = [];
+    const fetchMock = async (input: string | URL | Request): Promise<Response> => {
+      calledUrls.push(String(input));
+      return responses.shift() as Response;
+    };
+
+    const adapter = new OpenAiCompatibleTextAdapter({
+      fetchImplementation: fetchMock as unknown as typeof fetch,
+    });
+
+    await adapter.generateImage(
+      {
+        apiKey: "sk-test-secret",
+        baseUrl: "https://sub.siphonlab.cn",
+        modelKey: "gpt-image-1",
+        providerKey: "openai-compatible",
+        requestConfig: {},
+        routeId: "route-1",
+        routeKey: "image.openai",
+        timeoutMs: 5_000,
+      },
+      { prompt: "first" },
+    );
+
+    await adapter.generateImage(
+      {
+        apiKey: "sk-test-secret",
+        baseUrl: "https://sub.siphonlab.cn/v1/",
+        modelKey: "gpt-image-1",
+        providerKey: "openai-compatible",
+        requestConfig: {},
+        routeId: "route-1",
+        routeKey: "image.openai",
+        timeoutMs: 5_000,
+      },
+      { prompt: "second" },
+    );
+
+    expect(calledUrls).toEqual([
+      "https://sub.siphonlab.cn/images/generations",
+      "https://sub.siphonlab.cn/v1/images/generations",
+    ]);
+  });
 });
 
 describe("redaction", () => {
@@ -374,6 +627,125 @@ describe("route resolver and ai gateway", () => {
       providerKey: "openai-compatible",
       status: "succeeded",
     });
+  });
+
+  test("ai gateway image timeout prefers route request_config timeoutMs", async () => {
+    let capturedTimeout: number | null = null;
+    const gateway = new AiGateway({
+      "openai-compatible": {
+        async generateImage(context) {
+          capturedTimeout = context.timeoutMs;
+          return {
+            modelKey: "image-test",
+            outputs: [{ mimeType: "image/png", url: "https://example.com/a.png" }],
+            providerRequest: {},
+            providerResponse: {},
+            status: "succeeded" as const,
+            usage: { inputTokens: null, outputTokens: null, totalTokens: null },
+          };
+        },
+      },
+    });
+
+    await gateway.generateImage({
+      apiKey: "sk-test-secret",
+      request: { prompt: "timeout-route" },
+      route: makeRoute({
+        requestConfig: { timeoutMs: 23456 },
+      }),
+    });
+
+    expect(capturedTimeout).toBe(23456);
+  });
+
+  test("ai gateway image timeout falls back to provider capabilities timeoutMs", async () => {
+    let capturedTimeout: number | null = null;
+    const gateway = new AiGateway({
+      "openai-compatible": {
+        async generateImage(context) {
+          capturedTimeout = context.timeoutMs;
+          return {
+            modelKey: "image-test",
+            outputs: [{ mimeType: "image/png", url: "https://example.com/b.png" }],
+            providerRequest: {},
+            providerResponse: {},
+            status: "succeeded" as const,
+            usage: { inputTokens: null, outputTokens: null, totalTokens: null },
+          };
+        },
+      },
+    });
+
+    await gateway.generateImage({
+      apiKey: "sk-test-secret",
+      request: { prompt: "timeout-provider" },
+      route: makeRoute({
+        provider: {
+          defaultBaseUrl: "http://localhost:1234",
+          id: "provider-1",
+          key: "openai-compatible",
+          kind: "openai-compatible",
+          capabilities: {
+            timeoutMs: 34567,
+          },
+        },
+        requestConfig: {},
+      }),
+    });
+
+    expect(capturedTimeout).toBe(34567);
+  });
+
+  test("ai gateway image timeout falls back to env then 120000 default", async () => {
+    const originalCompat = process.env.OPENAI_COMPAT_IMAGE_TIMEOUT_MS;
+    const originalOpenAi = process.env.OPENAI_IMAGE_TIMEOUT_MS;
+    let capturedTimeout: number | null = null;
+    const gateway = new AiGateway({
+      "openai-compatible": {
+        async generateImage(context) {
+          capturedTimeout = context.timeoutMs;
+          return {
+            modelKey: "image-test",
+            outputs: [{ mimeType: "image/png", url: "https://example.com/c.png" }],
+            providerRequest: {},
+            providerResponse: {},
+            status: "succeeded" as const,
+            usage: { inputTokens: null, outputTokens: null, totalTokens: null },
+          };
+        },
+      },
+    });
+
+    try {
+      process.env.OPENAI_COMPAT_IMAGE_TIMEOUT_MS = "45678";
+      delete process.env.OPENAI_IMAGE_TIMEOUT_MS;
+      await gateway.generateImage({
+        apiKey: "sk-test-secret",
+        request: { prompt: "timeout-env" },
+        route: makeRoute({ requestConfig: {} }),
+      });
+      expect(capturedTimeout).toBe(45678);
+
+      delete process.env.OPENAI_COMPAT_IMAGE_TIMEOUT_MS;
+      delete process.env.OPENAI_IMAGE_TIMEOUT_MS;
+      await gateway.generateImage({
+        apiKey: "sk-test-secret",
+        request: { prompt: "timeout-default" },
+        route: makeRoute({ requestConfig: {} }),
+      });
+      expect(capturedTimeout).toBe(120000);
+    } finally {
+      if (originalCompat === undefined) {
+        delete process.env.OPENAI_COMPAT_IMAGE_TIMEOUT_MS;
+      } else {
+        process.env.OPENAI_COMPAT_IMAGE_TIMEOUT_MS = originalCompat;
+      }
+      if (originalOpenAi === undefined) {
+        delete process.env.OPENAI_IMAGE_TIMEOUT_MS;
+      } else {
+        process.env.OPENAI_IMAGE_TIMEOUT_MS = originalOpenAi;
+      }
+    }
   });
 
   test("ai gateway generateVideo delegates async provider task creation", async () => {

@@ -150,6 +150,7 @@ export type ResolvedRoute = {
   };
   priority: number;
   provider: {
+    capabilities?: Record<string, unknown> | null;
     defaultBaseUrl: string | null;
     id: string;
     key: string;

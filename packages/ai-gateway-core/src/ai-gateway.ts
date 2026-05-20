@@ -173,14 +173,46 @@ export class AiGateway {
         requestConfig: route.requestConfig,
         routeId: route.routeId,
         routeKey: route.routeKey,
-        timeoutMs: this.resolveTimeout(route.requestConfig),
+        timeoutMs: this.resolveTimeout(route, operationLabel),
       },
     };
   }
 
-  private resolveTimeout(requestConfig: Record<string, unknown>): number {
-    const raw = requestConfig.timeoutMs;
-    return typeof raw === "number" && Number.isFinite(raw) && raw > 0 ? raw : 10_000;
+  private resolveTimeout(route: ResolvedRoute, operationLabel: string): number {
+    const routeTimeout = this.parseTimeout(route.requestConfig.timeoutMs);
+    if (routeTimeout !== null) {
+      return routeTimeout;
+    }
+
+    const providerTimeout = this.parseTimeout(route.provider.capabilities?.timeoutMs);
+    if (providerTimeout !== null) {
+      return providerTimeout;
+    }
+
+    if (operationLabel === "image generation") {
+      const envTimeout = this.parseTimeout(
+        process.env.OPENAI_COMPAT_IMAGE_TIMEOUT_MS ?? process.env.OPENAI_IMAGE_TIMEOUT_MS,
+      );
+      if (envTimeout !== null) {
+        return envTimeout;
+      }
+      return 120_000;
+    }
+
+    return 10_000;
+  }
+
+  private parseTimeout(value: unknown): number | null {
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+      return Math.floor(value);
+    }
+    if (typeof value === "string") {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        return Math.floor(parsed);
+      }
+    }
+    return null;
   }
 
   private unsupportedOperationError(providerKind: string, operationLabel: string): AiGatewayError {

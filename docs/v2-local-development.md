@@ -205,6 +205,40 @@ AI provider/model/route/credential setup notes (local QA):
   - encrypted credential stored in `api_credentials` (server-side only)
   - mock route pricing rows in `model_pricing`
   - `default/default/default` fallback pricing rows in `model_pricing`
+- Optional OpenAI-compatible image seed (requires a real key in local env, still server-side encrypted):
+
+  ```powershell
+  $env:NODE_ENV="development"
+  $env:OPENAI_COMPAT_BASE_URL="https://sub.siphonlab.cn/v1"
+  $env:OPENAI_API_KEY="sk-..."
+  npm run dev:seed-ai -- --email your-user@example.com
+  ```
+
+  Or pass key/baseUrl/model explicitly:
+
+  ```powershell
+  $env:NODE_ENV="development"
+  npm run dev:seed-ai -- --email your-user@example.com --openai-api-key sk-... --openai-base-url https://sub.siphonlab.cn/v1 --openai-image-model gpt-image-2
+  ```
+
+  This additionally seeds:
+  - provider key: `openai-compatible` (kind: `openai-compatible`)
+  - model key: configurable via `--openai-image-model` (default `gpt-image-1`)
+  - route key: `image.openai`
+  - route-aware pricing row: `openai-compatible/<model>/image.openai/image_generation`
+  - route `request_config.timeoutMs`: `120000` (image generation default for relay calls)
+
+  The key is stored only via server-side `CredentialVault` encryption. It is not returned to frontend route APIs, node data, or draft graph JSON.
+  Never commit or screenshot real API keys.
+  If your relay does not expose `/v1` by default, set base URL accordingly. If you see `404`, re-check whether the relay requires `/v1`.
+  If you see `401/403`, verify relay key and account permissions.
+  If model is rejected, pass a relay-supported model name with `--openai-image-model`.
+  OpenAI-compatible image generation can exceed 10s on some relays/models. Timeout resolution for image route calls is:
+  1. route `request_config.timeoutMs`
+  2. provider `capabilities.timeoutMs`
+  3. `OPENAI_COMPAT_IMAGE_TIMEOUT_MS` or `OPENAI_IMAGE_TIMEOUT_MS`
+  4. fallback `120000`
+  If timeout persists, verify relay model availability and real generation latency first.
 - `dev:seed-ai` is idempotent by upsert on existing unique keys (provider key, provider+model key, tenant+provider+credential name, tenant+route key, provider+model+route+unit pricing key).
 - Workflow reserve pricing now resolves by provider/model/route/unit with fallback order:
   1. `provider + model + route + unit`

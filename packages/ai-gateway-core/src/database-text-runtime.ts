@@ -29,6 +29,7 @@ type RuntimeRouteRecord = {
   nonce: Buffer | null;
   priority: number;
   provider_id: string;
+  provider_capabilities: Record<string, unknown> | null;
   provider_key: string;
   provider_kind: string;
   request_config: Record<string, unknown>;
@@ -177,6 +178,7 @@ export class DatabaseTextGenerationRuntime {
             p.id::text AS provider_id,
             p.key AS provider_key,
             p.kind AS provider_kind,
+            p.capabilities AS provider_capabilities,
             p.default_base_url,
             m.id::text AS model_id,
             m.model_key,
@@ -231,6 +233,7 @@ export class DatabaseTextGenerationRuntime {
           },
           priority: row.priority,
           provider: {
+            capabilities: row.provider_capabilities ?? null,
             defaultBaseUrl: row.default_base_url,
             id: row.provider_id,
             key: row.provider_key,

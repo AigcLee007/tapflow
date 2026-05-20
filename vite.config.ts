@@ -4,7 +4,13 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
-  const backendPort = Number.parseInt(String(env.PORT || '3355'), 10) || 3355;
+  const backendPort = Number.parseInt(String(env.PORT || '3366'), 10) || 3366;
+  const explicitProxyTarget =
+    env.VITE_API_PROXY_TARGET?.trim() ||
+    env.API_PROXY_TARGET?.trim() ||
+    env.VITE_API_BASE_URL?.trim() ||
+    '';
+  const proxyTarget = explicitProxyTarget || `http://127.0.0.1:${backendPort}`;
   
   return {
     server: {
@@ -12,7 +18,7 @@ export default defineConfig(({ mode }) => {
       host: '0.0.0.0',
       proxy: {
         '/api': {
-          target: `http://localhost:${backendPort}`,
+          target: proxyTarget,
           changeOrigin: true,
           secure: false,
         }
