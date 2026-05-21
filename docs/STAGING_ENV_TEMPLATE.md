@@ -2,7 +2,7 @@
 
 Project: TapFlow / aigc-flow  
 Branch baseline: `main`  
-Latest main: `818e210`  
+Latest main: `b54e593`  
 
 Use this document to collect all human-provided staging deployment inputs before execution.
 Do not commit real secrets into repository files.
@@ -11,121 +11,220 @@ Do not commit real secrets into repository files.
 
 ## 1. Domain and Access
 
-- `PUBLIC_APP_URL =`
-- `API_BASE_URL =`
-- `CORS_ALLOWED_ORIGINS =`
-- `COOKIE_DOMAIN =`
-- `HTTPS configured =` (Yes/No)
-- `Certificate / CDN / Reverse proxy notes =`
+- `PUBLIC_APP_URL =https://art.aittco.com`
+- `API_BASE_URL =https://api-art.aittco.com`
+- `CORS_ALLOWED_ORIGINS =https://art.aittco.com`
+- `COOKIE_DOMAIN =.aittco.com`
+- `HTTPS configured =Yes`
+- `Certificate / CDN / Reverse proxy notes =TBD: configure HTTPS via hosting platform / reverse proxy. Planned domains: art.aittco.com and api-art.aittco.com.`
 
 ---
 
 ## 2. Postgres Database
 
-- `DATABASE_URL =`
-- `DB_POOL_MIN =`
-- `DB_POOL_MAX =`
-- `DB_SSL =`
-- `Database provider =`
-- `Backup method =`
-- `pg_dump tested =` (Yes/No)
-- `Restore tested =` (Yes/No)
+- `DATABASE_URL =<secret: Supabase pooled Postgres connection string>`
+- `DB_POOL_MIN =1`
+- `DB_POOL_MAX =5`
+- `DB_SSL =true`
+- `Database provider =Supabase Postgres`
+- `Backup method =Supabase scheduled backup + manual pg_dump before migration`
+- `pg_dump tested =No`
+- `Restore tested =No`
 
 ---
 
 ## 3. Redis / Queue
 
-- `REDIS_URL =`
-- `QUEUE_PREFIX = aigc-flow:staging`
-- `WORKER_CONCURRENCY =`
-- `Redis provider =`
-- `Password/TLS enabled =` (Yes/No)
-- `Isolated from prod =` (Yes/No)
 
+- `REDIS_URL = <secret: Upstash Redis TCP connection string>`
+- `QUEUE_PREFIX = aigc-flow:staging`
+- `WORKER_CONCURRENCY = 1`
+- `Redis provider = Upstash Redis`
+- `Password/TLS enabled = Yes`
+- `Isolated from prod = Yes`
 ---
 
 ## 4. Object Storage / S3
 
-- `S3_ENDPOINT =`
-- `S3_REGION =`
-- `S3_BUCKET =`
-- `S3_ACCESS_KEY_ID =`
-- `S3_SECRET_ACCESS_KEY =`
-- `S3_FORCE_PATH_STYLE =`
-- `Bucket private =` (Yes/No)
-- `Upload tested =` (Yes/No)
-- `Read/Download tested =` (Yes/No)
+- `S3_ENDPOINT = https://oss-ap-northeast-1.aliyuncs.com`
+- `S3_REGION = ap-northeast-1`
+- `S3_BUCKET = tapflow-staging-assets`
+- `S3_ACCESS_KEY_ID = <secret: Alibaba Cloud RAM access key id>`
+- `S3_SECRET_ACCESS_KEY = <secret: Alibaba Cloud RAM access key secret>`
+- `S3_FORCE_PATH_STYLE = false`
+- `Bucket private = Yes`
+- `Upload tested = No`
+- `Read/Download tested = No`
 
 ---
 
 ## 5. Auth / JWT / Cookie
 
-- `JWT_ACCESS_SECRET =`
-- `JWT_REFRESH_SECRET =`
-- `COOKIE_SECURE =`
-- `COOKIE_DOMAIN =`
-- `Token expiry strategy =`
-- `Confirmed no dev secret usage =` (Yes/No)
+- `JWT_ACCESS_SECRET = <secret: strong random JWT access secret>`
+- `JWT_REFRESH_SECRET = <secret: strong random JWT refresh secret>`
+- `COOKIE_SECURE = true`
+- `COOKIE_DOMAIN = .aittco.com`
+- `Token expiry strategy = Use application default expiry; verify in staging`
+- `Confirmed no dev secret usage = No`
 
 ---
 
 ## 6. Credential Vault
 
-- `CREDENTIAL_MASTER_KEY =`
-- `CREDENTIAL_KEY_VERSION =`
-- `Master key storage location =`
-- `Master key backup confirmed =` (Yes/No)
-- `Key rotation plan =`
+
+- `CREDENTIAL_MASTER_KEY = <secret: base64 32-byte credential master key>`
+- `CREDENTIAL_KEY_VERSION = v1`
+- `Master key storage location = Password manager + staging secret/env panel`
+- `Master key backup confirmed = No`
+- `Key rotation plan = Manual rotation requires decrypt-and-reencrypt migration plan`
 
 ---
 
-## 7. OpenAI-Compatible Relay
 
-- `OPENAI_COMPAT_BASE_URL = https://sub.siphonlab.cn/v1`
+## 7. AI Relays / Providers
+
+### Staging first route
+
+- `Relay provider = SiphonLab`
+- `OpenAI-compatible base URL = https://sub.siphonlab.cn/v1`
+- `OpenAI image model = gpt-image-2`
+- `OpenAI routeKey = image.openai`
 - `OPENAI_COMPAT_IMAGE_TIMEOUT_MS = 120000`
-- `Relay provider =`
-- `Relay account =`
-- `Relay API key storage location =`
-- `Image model = gpt-image-2`
-- `routeKey = image.openai`
-- `Credential written in provider settings =` (Yes/No)
-- `Generate success tested =` (Yes/No)
-- `Failure refund tested =` (Yes/No)
+- `Credential storage = CredentialVault / staging secret only`
+- `Credential written in provider settings = No`
+- `Generate success tested = No`
+- `Failure refund tested = No`
+
+### Current staging scope
+
+For staging/private beta, only the following route is required:
+
+- `image.openai`
+  - Provider kind: `openai-compatible`
+  - Model: `gpt-image-2`
+  - API protocol: OpenAI-compatible image API
+  - Credential: server-side only, stored in CredentialVault
+
+Gemini native routes are documented as a future plan only. They are not required for the first staging deployment.
+
+### Future multi-relay / multi-protocol plan
+
+Relay A:
+
+- `relay-a-openai`
+  - Provider kind: `openai-compatible`
+  - Models:
+    - `gpt-image-2`
+  - Route keys:
+    - `image.relaya.openai.gpt-image-2`
+  - Credential: `CredentialVault`
+
+- `relay-a-gemini`
+  - Provider kind: `gemini-native`
+  - Models:
+    - `gemini-3-pro-image-preview`
+    - `gemini-3.1-flash-image-preview`
+  - Route keys:
+    - `image.relaya.gemini.gemini-3-pro-image-preview`
+    - `image.relaya.gemini.gemini-3-1-flash-image-preview`
+  - Credential: `CredentialVault`
+
+Relay B:
+
+- `relay-b-openai`
+  - Provider kind: `openai-compatible`
+  - Models:
+    - `gpt-image-2`
+  - Route keys:
+    - `image.relayb.openai.gpt-image-2`
+  - Credential: `CredentialVault`
+
+- `relay-b-gemini`
+  - Provider kind: `gemini-native`
+  - Models:
+    - `gemini-3-pro-image-preview`
+    - `gemini-3.1-flash-image-preview`
+  - Route keys:
+    - `image.relayb.gemini.gemini-3-pro-image-preview`
+    - `image.relayb.gemini.gemini-3-1-flash-image-preview`
+  - Credential: `CredentialVault`
+
+Relay C:
+
+- `relay-c-openai`
+  - Provider kind: `openai-compatible`
+  - Models:
+    - `gpt-image-2`
+  - Route keys:
+    - `image.relayc.openai.gpt-image-2`
+  - Credential: `CredentialVault`
+
+Relay D:
+
+- `relay-d-openai`
+  - Provider kind: `openai-compatible`
+  - Models:
+    - `TBD`
+  - Route keys:
+    - `TBD`
+  - Credential: `CredentialVault`
+
+- `relay-d-gemini`
+  - Provider kind: `gemini-native`
+  - Models:
+    - `TBD`
+  - Route keys:
+    - `TBD`
+  - Credential: `CredentialVault`
+
+### Rules
+
+- `gpt-image-2` uses the OpenAI-compatible image API.
+- `gemini-*` image models use the Gemini native API.
+- Do not route Gemini native models through the OpenAI-compatible adapter.
+- Each provider kind must have its own adapter.
+- `openai-compatible` and `gemini-native` should be treated as separate provider kinds.
+- Each relay/provider/model/route combination must have independent pricing.
+- Each route must be tested for success and refund behavior.
+- No real relay API keys are committed.
+- Provider credentials are server-side only.
 
 ---
+
 
 ## 8. Admin / Permissions
 
-- `ADMIN_EMAILS =`
-- `Staging admin user =`
-- `Viewer test user =`
-- `Admin permission bootstrap method =`
-- `Viewer 403 verified =` (Yes/No)
-- `Provider settings page admin-only verified =` (Yes/No)
+
+- `ADMIN_EMAILS = aigclee@sina.com,lb20060807@gmail.com`
+- `Staging admin user = aigclee@sina.com`
+- `Viewer test user = lb20060807@126.com`
+- `Admin permission bootstrap method = TBD: confirm production-safe admin bootstrap before staging deploy`
+- `Viewer 403 verified = No`
+- `Provider settings page admin-only verified = No`
 
 ---
 
 ## 9. Observability
 
-- `LOG_LEVEL =`
-- `SENTRY_DSN =`
-- `REQUEST_ID_HEADER =`
-- `Log storage location =`
-- `Log redaction enabled =` (Yes/No)
-- `Worker error alerting method =`
-- `Provider timeout/429 alerting method =`
+- `LOG_LEVEL = info`
+- `SENTRY_DSN = <optional secret: not configured yet>`
+- `REQUEST_ID_HEADER = x-request-id`
+- `Log storage location = deployment platform logs`
+- `Log redaction enabled = Yes`
+- `Worker error alerting method = manual log review for staging`
+- `Provider timeout/429 alerting method = manual log review for staging; P1 to add alerting`
 
 ---
 
 ## 10. Deployment
 
-- `Deployment platform =`
-- `API deployment method =`
-- `Frontend deployment method =`
-- `Worker deployment method =`
-- `Migration execution method =`
-- `Health check available =` (Yes/No)
-- `Rollback method available =` (Yes/No)
+- `Deployment platform = ÓêÔÆÔÆ·þÎñÆ÷ + Docker Compose`
+- `API deployment method = Docker service running API behind reverse proxy at https://api-art.aittco.com`
+- `Frontend deployment method = Vite static build served by reverse proxy at https://art.aittco.com`
+- `Worker deployment method = Docker service / background worker process with no public port`
+- `Migration execution method = One-off migration command before API/worker start; run only once per deploy`
+- `Health check available = TBD: confirm API health endpoint before staging deploy`
+- `Rollback method available = Redeploy previous git commit / Docker image; DB restore only if explicitly required`
 
 ---
 
