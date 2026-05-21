@@ -163,3 +163,4 @@ Launch posture declarations:
 - Real payment is not integrated.
 - Private beta must operate as internal/manual-credit beta.
 - Public production launch remains NO.
+- Provider credentials are server-side only.
