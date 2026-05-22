@@ -821,8 +821,14 @@ describeWithDatabase("workflow runs api", () => {
         const runRows = await withTenantTransaction(
           { tenantId: owner.currentTenant.id, userId: ownerUserId },
           async (client) => {
-            const runs = await client.query<{ count: number }>(
-              "SELECT COUNT(*)::int AS count FROM workflow_runs WHERE flow_id = $1::uuid",
+            const runs = await client.query<{ count: number; version_count: number }>(
+              `
+                SELECT
+                  COUNT(*)::int AS count,
+                  COUNT(DISTINCT flow_version_id)::int AS version_count
+                FROM workflow_runs
+                WHERE flow_id = $1::uuid
+              `,
               [flow.id],
             );
             const nodeRuns = await client.query<{ count: number; nodes: string[] }>(
@@ -837,11 +843,21 @@ describeWithDatabase("workflow runs api", () => {
               "SELECT current_version_id::text AS current_version_id FROM flows WHERE id = $1::uuid",
               [flow.id],
             );
+            const versions = await client.query<{ count: number }>(
+              `
+                SELECT COUNT(*)::int AS count
+                FROM flow_versions
+                WHERE flow_id = $1::uuid
+              `,
+              [flow.id],
+            );
             return {
               currentVersionId: flowRow.rows[0]?.current_version_id ?? null,
+              flowVersionCount: versions.rows[0]?.count ?? 0,
               nodeRunCount: nodeRuns.rows[0]?.count ?? 0,
               nodeRunNodes: nodeRuns.rows[0]?.nodes ?? [],
               runCount: runs.rows[0]?.count ?? 0,
+              workflowRunVersionCount: runs.rows[0]?.version_count ?? 0,
             };
           },
           appPool,
@@ -851,6 +867,8 @@ describeWithDatabase("workflow runs api", () => {
         expect(runRows.nodeRunCount).toBe(3);
         expect(runRows.nodeRunNodes).toEqual(targetNodeIds);
         expect(runRows.currentVersionId).toBeNull();
+        expect(runRows.flowVersionCount).toBe(1);
+        expect(runRows.workflowRunVersionCount).toBe(1);
 
         await api.close();
       } finally {

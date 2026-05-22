@@ -407,6 +407,10 @@ function getRequestedTargetNodeId(input: Record<string, unknown> | undefined): s
     : null;
 }
 
+function isUniqueViolation(error: unknown): boolean {
+  return Boolean(error && typeof error === "object" && (error as { code?: unknown }).code === "23505");
+}
+
 export class WorkflowRunsService {
   readonly billingService: BillingService;
   readonly nodeExecuteQueue: NodeExecuteQueueLike;
@@ -1362,6 +1366,19 @@ export class WorkflowRunsService {
       };
     }
 
+    const existingSnapshot = await this.findReusableFlowVersionByChecksum(client, flow.id, checksum);
+    if (existingSnapshot) {
+      return {
+        compiled_graph_json: existingSnapshot.compiled_graph_json ?? compiledGraph,
+        current_version_id: existingSnapshot.id,
+        draft_revision: draft.revision ?? null,
+        flow_id: flow.id,
+        flow_status: flow.status,
+        graph_checksum: checksum,
+        graph_source: "flow_version",
+      };
+    }
+
     const version = await this.createUnlockedRunSnapshotVersion(
       client,
       context,
@@ -1411,6 +1428,31 @@ export class WorkflowRunsService {
     }
   }
 
+  private async findReusableFlowVersionByChecksum(
+    client: PoolClient,
+    flowId: string,
+    checksum: string,
+  ): Promise<FlowVersionRecord | null> {
+    const existingVersion = await client.query<FlowVersionRecord>(
+      `
+        SELECT
+          id::text AS id,
+          checksum,
+          compiled_graph_json
+        FROM flow_versions
+        WHERE flow_id = $1::uuid
+          AND checksum = $2
+        LIMIT 1
+      `,
+      [flowId, checksum],
+    );
+    const existing = existingVersion.rows[0];
+    if (!existing?.id || hasLegacySimplifiedNodeType(existing.compiled_graph_json)) {
+      return null;
+    }
+    return existing;
+  }
+
   private async createUnlockedRunSnapshotVersion(
     client: PoolClient,
     context: WorkflowRunContext,
@@ -1419,59 +1461,108 @@ export class WorkflowRunsService {
     compiledGraph: CompiledWorkflow,
     checksum: string,
   ): Promise<FlowVersionRecord> {
-    const versionId = randomUUID();
-    const inserted = await client.query<FlowVersionRecord>(
-      `
-        WITH next_version AS (
-          SELECT COALESCE(MAX(version), 0) + 1 AS version
-          FROM flow_versions
-          WHERE flow_id = $3::uuid
-        )
-        INSERT INTO flow_versions (
-          id,
-          tenant_id,
-          flow_id,
-          version,
-          graph_json,
-          compiled_graph_json,
-          checksum,
-          changelog,
-          published_by,
-          published_at
-        )
-        SELECT
-          $1::uuid,
-          $2::uuid,
-          $3::uuid,
-          next_version.version::int,
-          $4::jsonb,
-          $5::jsonb,
-          $6,
-          $7,
-          $8::uuid,
-          now()
-        FROM next_version
-        ON CONFLICT (flow_id, checksum) DO UPDATE
-        SET checksum = EXCLUDED.checksum
-        RETURNING id::text AS id, checksum, compiled_graph_json
-      `,
-      [
-        versionId,
-        context.tenantId,
-        flowId,
-        JSON.stringify(graph),
-        JSON.stringify(compiledGraph),
-        checksum,
-        AUTO_RUN_SNAPSHOT_CHANGELOG,
-        context.userId,
-      ],
-    );
-
-    const version = inserted.rows[0];
-    if (!version?.id) {
-      throw new WorkflowRunsApiError(500, "FLOW_SNAPSHOT_FAILED", "Could not create a runnable flow snapshot");
+    const existing = await this.findReusableFlowVersionByChecksum(client, flowId, checksum);
+    if (existing) {
+      return existing;
     }
-    return version;
+
+    const maxAttempts = 5;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const savepoint = `flow_version_insert_${attempt}`;
+      await client.query(`SAVEPOINT ${savepoint}`);
+      try {
+        const versionId = randomUUID();
+        const inserted = await client.query<FlowVersionRecord>(
+          `
+            WITH next_version AS (
+              SELECT COALESCE(MAX(version), 0) + 1 AS version
+              FROM flow_versions
+              WHERE flow_id = $3::uuid
+            )
+            INSERT INTO flow_versions (
+              id,
+              tenant_id,
+              flow_id,
+              version,
+              graph_json,
+              compiled_graph_json,
+              checksum,
+              changelog,
+              published_by,
+              published_at
+            )
+            SELECT
+              $1::uuid,
+              $2::uuid,
+              $3::uuid,
+              next_version.version::int,
+              $4::jsonb,
+              $5::jsonb,
+              $6,
+              $7,
+              $8::uuid,
+              now()
+            FROM next_version
+            RETURNING id::text AS id, checksum, compiled_graph_json
+          `,
+          [
+            versionId,
+            context.tenantId,
+            flowId,
+            JSON.stringify(graph),
+            JSON.stringify(compiledGraph),
+            checksum,
+            AUTO_RUN_SNAPSHOT_CHANGELOG,
+            context.userId,
+          ],
+        );
+        await client.query(`RELEASE SAVEPOINT ${savepoint}`);
+
+        const version = inserted.rows[0];
+        if (version?.id) {
+          return version;
+        }
+      } catch (error) {
+        await client.query(`ROLLBACK TO SAVEPOINT ${savepoint}`);
+        await client.query(`RELEASE SAVEPOINT ${savepoint}`);
+        if (!isUniqueViolation(error)) {
+          throw error;
+        }
+
+        const reusable = await this.findReusableFlowVersionByChecksum(client, flowId, checksum);
+        if (reusable) {
+          this.logCreateRunDiagnostic(
+            {
+              attempt: attempt + 1,
+              flowId,
+              graphChecksum: checksum,
+              recoveredFlowVersionId: reusable.id,
+              tenantId: context.tenantId,
+              traceId: context.traceId ?? null,
+            },
+            "workflow target-node snapshot reused after unique conflict",
+          );
+          return reusable;
+        }
+
+        this.logCreateRunDiagnostic(
+          {
+            attempt: attempt + 1,
+            flowId,
+            graphChecksum: checksum,
+            tenantId: context.tenantId,
+            traceId: context.traceId ?? null,
+          },
+          "workflow target-node snapshot version conflict retrying",
+        );
+      }
+    }
+
+    const reusable = await this.findReusableFlowVersionByChecksum(client, flowId, checksum);
+    if (reusable) {
+      return reusable;
+    }
+    throw new WorkflowRunsApiError(409, "FLOW_SNAPSHOT_CONFLICT", "Could not create a runnable flow snapshot due to concurrent edits. Please retry.");
   }
 
   private async getCurrentFlowRuntimeOrCreateSnapshot(
