@@ -59,6 +59,8 @@ type FlowDraftRecord = {
   graph_json: FlowDraftGraph;
 };
 
+type WorkflowRunMode = "flow" | "target_node";
+
 type FlowVersionRecord = {
   checksum?: string;
   compiled_graph_json?: CompiledWorkflow;
@@ -381,6 +383,16 @@ function isTerminalRunStatus(status: string): boolean {
   return status === "failed" || status === "canceled" || status === "succeeded";
 }
 
+function getRequestedRunMode(input: Record<string, unknown> | undefined): WorkflowRunMode {
+  return input?.runMode === "target_node" ? "target_node" : "flow";
+}
+
+function getRequestedTargetNodeId(input: Record<string, unknown> | undefined): string | null {
+  return typeof input?.targetNodeId === "string" && input.targetNodeId.trim()
+    ? input.targetNodeId.trim()
+    : null;
+}
+
 export class WorkflowRunsService {
   readonly billingService: BillingService;
   readonly nodeExecuteQueue: NodeExecuteQueueLike;
@@ -419,6 +431,17 @@ export class WorkflowRunsService {
           context.tenantId,
           runtimeFlow.compiled_graph_json.nodes,
         );
+        const runInput = input.input ?? {};
+        const runMode = getRequestedRunMode(runInput);
+        const targetNodeId = getRequestedTargetNodeId(runInput);
+        const targetNode =
+          runMode === "target_node"
+            ? runtimeFlow.compiled_graph_json.nodes.find((node) => node.id === targetNodeId)
+            : null;
+
+        if (runMode === "target_node" && !targetNode) {
+          throw new WorkflowRunsApiError(400, "TARGET_NODE_NOT_FOUND", "Target node could not be found in the compiled flow");
+        }
 
         if (input.idempotencyKey) {
           const existing = await client.query<WorkflowRunRecord>(
@@ -494,12 +517,12 @@ export class WorkflowRunsService {
             created_at::text AS created_at,
             updated_at::text AS updated_at
         `,
-        [
-          runId,
-          context.tenantId,
-          runtimeFlow.flow_id,
-          runtimeFlow.current_version_id,
-          JSON.stringify(input.input ?? {}),
+          [
+            runId,
+            context.tenantId,
+            runtimeFlow.flow_id,
+            runtimeFlow.current_version_id,
+          JSON.stringify(runInput),
           input.idempotencyKey ?? null,
           context.userId,
         ],
@@ -518,8 +541,16 @@ export class WorkflowRunsService {
           workflowRunId: run.id,
         });
 
-        for (const node of runtimeFlow.compiled_graph_json.nodes) {
-          const isEntryNode = runtimeFlow.compiled_graph_json.entryNodeIds.includes(node.id);
+        const nodesToRun =
+          runMode === "target_node" && targetNode
+            ? [targetNode]
+            : runtimeFlow.compiled_graph_json.nodes;
+
+        for (const node of nodesToRun) {
+          const isEntryNode =
+            runMode === "target_node"
+              ? node.id === targetNode?.id
+              : runtimeFlow.compiled_graph_json.entryNodeIds.includes(node.id);
           const nodeRunId = randomUUID();
           const estimatedCost = this.estimateNodeReserveCents(node, routeContexts, pricingRows);
           if (estimatedCost.unit && estimatedCost.amountCents <= 0) {

@@ -42,6 +42,8 @@ describe('v2WorkflowRunsApi', () => {
       input: {
         prompt: 'hello',
       },
+      runMode: 'target_node',
+      targetNodeId: 'node-42',
     });
 
     expect(result).toEqual({
@@ -55,6 +57,8 @@ describe('v2WorkflowRunsApi', () => {
           idempotencyKey: 'key-1',
           input: {
             prompt: 'hello',
+            runMode: 'target_node',
+            targetNodeId: 'node-42',
           },
         }),
         headers: expect.objectContaining({

@@ -8,6 +8,7 @@ import {
   createWorkflowRun,
   getWorkflowRun,
   streamWorkflowRun,
+  type CreateWorkflowRunInput,
   type GetWorkflowRunResponse,
   type V2NodeRunView,
   type V2WorkflowRunEventView,
@@ -21,6 +22,13 @@ const RUNNER_ENABLED = String(import.meta.env.VITE_USE_V2_WORKFLOW_RUNNER ?? 'tr
 
 let activeStreamHandle: WorkflowRunStreamHandle | null = null;
 let activeRunToken = 0;
+let activeRunScope: {
+  runMode: 'flow' | 'target_node';
+  targetNodeId: string | null;
+} = {
+  runMode: 'flow',
+  targetNodeId: null,
+};
 
 type AssetLike = {
   assetId: string;
@@ -32,9 +40,33 @@ type AssetLike = {
 
 type PersistableNodeRun = Pick<V2NodeRunView, 'nodeId' | 'nodeType' | 'status' | 'outputJson'>;
 
+type RunScope = {
+  runMode: 'flow' | 'target_node';
+  targetNodeId: string | null;
+};
+
 function closeActiveStream(): void {
   activeStreamHandle?.close();
   activeStreamHandle = null;
+}
+
+function resolveRunScope(inputJson: Record<string, unknown> | null | undefined): RunScope {
+  const runMode = inputJson?.runMode === 'target_node' ? 'target_node' : 'flow';
+  const targetNodeId =
+    typeof inputJson?.targetNodeId === 'string' && inputJson.targetNodeId.trim()
+      ? inputJson.targetNodeId.trim()
+      : null;
+  return {
+    runMode,
+    targetNodeId,
+  };
+}
+
+function filterNodeRunsForScope(nodeRuns: V2NodeRunView[], scope: RunScope): V2NodeRunView[] {
+  if (scope.runMode !== 'target_node' || !scope.targetNodeId) {
+    return nodeRuns;
+  }
+  return nodeRuns.filter((nodeRun) => nodeRun.nodeId === scope.targetNodeId);
 }
 
 function setRunError(message: string): void {
@@ -143,13 +175,16 @@ async function resolveAssetRefs(outputJson: Record<string, unknown> | null): Pro
 }
 
 async function applyWorkflowRunSnapshot(snapshot: GetWorkflowRunResponse): Promise<void> {
+  const scope = resolveRunScope(snapshot.workflowRun.inputJson);
+  activeRunScope = scope;
+  const scopedNodeRuns = filterNodeRunsForScope(snapshot.nodeRuns, scope);
   const nodeIdByNodeRunId: Record<string, string> = {};
   const nodeRunIdByNodeId: Record<string, string> = {};
   const nodeRunStatusByNodeId: Record<string, V2WorkflowRunStatus> = {};
   const nodeOutputByNodeId: Record<string, FlowRuntimeNodeOutput> = {};
   const assetRefsByNodeId: Record<string, FlowRuntimeAssetRef[]> = {};
 
-  for (const nodeRun of snapshot.nodeRuns) {
+  for (const nodeRun of scopedNodeRuns) {
     nodeIdByNodeRunId[nodeRun.id] = nodeRun.nodeId;
     nodeRunIdByNodeId[nodeRun.nodeId] = nodeRun.id;
     nodeRunStatusByNodeId[nodeRun.nodeId] = nodeRun.status;
@@ -165,9 +200,21 @@ async function applyWorkflowRunSnapshot(snapshot: GetWorkflowRunResponse): Promi
       && snapshot.workflowRun.status !== 'failed'
       && snapshot.workflowRun.status !== 'canceled',
     nodeIdByNodeRunId,
-    nodeOutputByNodeId,
+    nodeOutputByNodeId:
+      scope.runMode === 'target_node' && scope.targetNodeId
+        ? {
+            ...state.nodeOutputByNodeId,
+            ...nodeOutputByNodeId,
+          }
+        : nodeOutputByNodeId,
     nodeRunIdByNodeId,
-    nodeRunStatusByNodeId,
+    nodeRunStatusByNodeId:
+      scope.runMode === 'target_node' && scope.targetNodeId
+        ? {
+            ...state.nodeRunStatusByNodeId,
+            ...nodeRunStatusByNodeId,
+          }
+        : nodeRunStatusByNodeId,
     runError:
       snapshot.workflowRun.errorJson && typeof snapshot.workflowRun.errorJson.message === 'string'
         ? snapshot.workflowRun.errorJson.message
@@ -175,7 +222,7 @@ async function applyWorkflowRunSnapshot(snapshot: GetWorkflowRunResponse): Promi
     runStatus: snapshot.workflowRun.status,
   }));
 
-  persistNodeOutputsFromRun(snapshot.nodeRuns, assetRefsByNodeId);
+  persistNodeOutputsFromRun(scopedNodeRuns, assetRefsByNodeId);
 }
 
 function appendRunEvent(event: V2WorkflowRunEventView): void {
@@ -204,6 +251,14 @@ function applyRunEvent(event: V2WorkflowRunEventView): void {
   appendRunEvent(event);
 
   const nodeId = deriveNodeId(event);
+  if (
+    activeRunScope.runMode === 'target_node' &&
+    activeRunScope.targetNodeId &&
+    nodeId &&
+    nodeId !== activeRunScope.targetNodeId
+  ) {
+    return;
+  }
   const payloadStatus = typeof event.payload.status === 'string'
     ? event.payload.status as V2WorkflowRunStatus
     : null;
@@ -268,7 +323,10 @@ function buildRunLaunchError(message: string): Error {
   return new Error(message);
 }
 
-export async function runBackendWorkflow(): Promise<void> {
+export async function runBackendWorkflow(options?: {
+  runMode?: 'flow' | 'target_node';
+  targetNodeId?: string;
+}): Promise<void> {
   if (!RUNNER_ENABLED) {
     throw buildRunLaunchError('当前环境已关闭 v2 workflow runner');
   }
@@ -281,6 +339,10 @@ export async function runBackendWorkflow(): Promise<void> {
   activeRunToken += 1;
   const currentRunToken = activeRunToken;
   closeActiveStream();
+  activeRunScope = {
+    runMode: options?.runMode ?? 'flow',
+    targetNodeId: options?.targetNodeId ?? null,
+  };
 
   useFlowCanvasStore.setState({
     currentRunId: null,
@@ -295,10 +357,16 @@ export async function runBackendWorkflow(): Promise<void> {
   });
 
   try {
-    const created = await createWorkflowRun(state.backendFlowId, {
+    const request: CreateWorkflowRunInput = {
       idempotencyKey: `flow-canvas:${state.backendFlowId}:${Date.now()}`,
       input: {},
-    });
+    };
+    if (options?.runMode === 'target_node' && options.targetNodeId) {
+      request.runMode = 'target_node';
+      request.targetNodeId = options.targetNodeId;
+    }
+
+    const created = await createWorkflowRun(state.backendFlowId, request);
 
     if (currentRunToken !== activeRunToken) {
       return;
@@ -351,6 +419,10 @@ export async function runBackendWorkflow(): Promise<void> {
 export function disposeBackendWorkflowRunStream(): void {
   activeRunToken += 1;
   closeActiveStream();
+  activeRunScope = {
+    runMode: 'flow',
+    targetNodeId: null,
+  };
 }
 
 export function isBackendWorkflowRunnerEnabled(): boolean {

@@ -67,6 +67,13 @@ export interface CreateWorkflowRunResponse {
   status: V2WorkflowRunStatus;
 }
 
+export type CreateWorkflowRunInput = {
+  idempotencyKey?: string;
+  input?: Record<string, unknown>;
+  runMode?: "flow" | "target_node";
+  targetNodeId?: string;
+};
+
 export interface GetWorkflowRunResponse {
   nodeRuns: V2NodeRunView[];
   workflowRun: V2WorkflowRunView;
@@ -222,14 +229,17 @@ function decodeWorkflowRunEvent(envelope: SseEnvelope): V2WorkflowRunEventView |
 
 export async function createWorkflowRun(
   flowId: string,
-  input?: {
-    idempotencyKey?: string;
-    input?: Record<string, unknown>;
-  },
+  input?: CreateWorkflowRunInput,
 ): Promise<CreateWorkflowRunResponse> {
+  const runInput = {
+    ...(input?.input || {}),
+    ...(input?.runMode ? { runMode: input.runMode } : {}),
+    ...(input?.targetNodeId ? { targetNodeId: input.targetNodeId } : {}),
+  };
+
   return apiPost<CreateWorkflowRunResponse>(`/flows/${flowId}/runs`, {
     idempotencyKey: input?.idempotencyKey,
-    input: input?.input || {},
+    input: runInput,
   });
 }
 

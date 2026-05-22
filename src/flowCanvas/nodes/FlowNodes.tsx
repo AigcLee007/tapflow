@@ -2102,7 +2102,7 @@ export const TextNodeComponent = memo(function TextNode({
 
   const handleGenerate = () => {
     if (isGenerating) return;
-    void runBackendWorkflow().catch(() => undefined);
+    void runBackendWorkflow({ runMode: 'target_node', targetNodeId: id }).catch(() => undefined);
   };
 
   const handleCopyText = useCallback(async () => {
@@ -3507,7 +3507,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     if (isGenerating) return;
     const referenceImages = referenceChips.map((item) => item.imageUrl);
     updateNodeData(id, { referenceImages });
-    void runBackendWorkflow().catch(() => undefined);
+    void runBackendWorkflow({ runMode: 'target_node', targetNodeId: id }).catch(() => undefined);
   };
 
   const handleSelectGeneratedResult = useCallback(
@@ -5474,7 +5474,7 @@ export const VideoNodeComponent = memo(function VideoNode({
 
   const handleGenerate = () => {
     if (isGenerating) return;
-    void runBackendWorkflow().catch(() => undefined);
+    void runBackendWorkflow({ runMode: 'target_node', targetNodeId: id }).catch(() => undefined);
   };
 
   return (

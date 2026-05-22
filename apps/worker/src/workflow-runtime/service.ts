@@ -79,6 +79,8 @@ type WorkflowExecutionContext = {
   userId: string | null;
 };
 
+type WorkflowRunMode = "flow" | "target_node";
+
 type TextGenerationRuntimeLike = Pick<DatabaseTextGenerationRuntime, "generateText">;
 type MediaGenerationRuntimeLike = Pick<DatabaseMediaRuntime, "generateImage" | "generateVideo" | "pollTask">;
 
@@ -150,6 +152,10 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 function isTerminalStatus(status: string): boolean {
   return status === "failed" || status === "canceled" || status === "succeeded";
+}
+
+function getWorkflowRunMode(workflowRun: WorkflowRunRecord): WorkflowRunMode {
+  return workflowRun.input_json?.runMode === "target_node" ? "target_node" : "flow";
 }
 
 function normalizeError(error: unknown): {
@@ -486,7 +492,7 @@ export class WorkflowNodeExecutionService {
         return this.noOpResult(QUEUE_NAMES.nodeExecute, input);
       }
 
-      if (!this.areDependenciesSatisfied(currentNode, nodeRuns)) {
+      if (getWorkflowRunMode(workflowRun) !== "target_node" && !this.areDependenciesSatisfied(currentNode, nodeRuns)) {
         return this.noOpResult(QUEUE_NAMES.nodeExecute, input);
       }
 
@@ -506,7 +512,10 @@ export class WorkflowNodeExecutionService {
       });
 
       try {
-        const upstreamOutputs = this.getDependencyOutputs(currentNode, nodeRuns);
+        const upstreamOutputs =
+          getWorkflowRunMode(workflowRun) === "target_node"
+            ? []
+            : this.getDependencyOutputs(currentNode, nodeRuns);
         const outcome = await this.executeNodeByType(
           client,
           currentNode,
