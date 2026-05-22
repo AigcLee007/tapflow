@@ -29,6 +29,14 @@ function deferred<T>() {
   return { promise, reject, resolve };
 }
 
+function createConflictError() {
+  return new V2HttpError({
+    code: "FLOW_DRAFT_REVISION_CONFLICT",
+    message: "revision conflict",
+    status: 409,
+  });
+}
+
 function createDraft(revision: number, nodeIds: string[] = []): FlowDraft {
   const nodes = nodeIds.map((id) => ({
     id,
@@ -50,7 +58,7 @@ function createDraft(revision: number, nodeIds: string[] = []): FlowDraft {
     projectId: "project-1",
     revision,
     tenantId: "tenant-1",
-    updatedAt: `2026-05-22T00:00:0${revision}.000Z`,
+    updatedAt: `2026-05-22T00:00:${String(revision).padStart(2, "0")}.000Z`,
   };
 }
 
@@ -90,6 +98,7 @@ async function advanceTimers(ms: number) {
 
 async function flushPromises() {
   await act(async () => {
+    await Promise.resolve();
     await Promise.resolve();
     await Promise.resolve();
     await Promise.resolve();
@@ -134,10 +143,7 @@ describe("useRemoteFlowAutosave", () => {
       setNodeIds(["node-a", "node-b"]);
     });
 
-    await advanceTimers(1199);
-    expect(saveFlowDraftMock).not.toHaveBeenCalled();
-
-    await advanceTimers(1);
+    await advanceTimers(1200);
     expect(saveFlowDraftMock).toHaveBeenCalledTimes(1);
     expect(saveFlowDraftMock.mock.calls[0]?.[1]).toMatchObject({
       expectedRevision: 1,
@@ -155,7 +161,6 @@ describe("useRemoteFlowAutosave", () => {
       firstSave.resolve(createDraft(2, ["node-a", "node-b"]));
       await Promise.resolve();
     });
-
     await flushPromises();
 
     expect(saveFlowDraftMock).toHaveBeenCalledTimes(2);
@@ -170,20 +175,13 @@ describe("useRemoteFlowAutosave", () => {
     });
   });
 
-  it("fetches the latest draft revision after a 409 and retries once without surfacing a fatal error", async () => {
-    const recoveredDraft = createDraft(8, ["node-a"]);
+  it("uses only the latest revision after a 409 and never overwrites the local graph with the server graph", async () => {
     const initialDraft = createDraft(1);
 
     saveFlowDraftMock
-      .mockRejectedValueOnce(
-        new V2HttpError({
-          code: "FLOW_DRAFT_REVISION_CONFLICT",
-          message: "revision conflict",
-          status: 409,
-        }),
-      )
-      .mockResolvedValueOnce(recoveredDraft);
-    getFlowDraftMock.mockResolvedValueOnce(createDraft(7));
+      .mockRejectedValueOnce(createConflictError())
+      .mockResolvedValueOnce(createDraft(8, ["local-a"]));
+    getFlowDraftMock.mockResolvedValueOnce(createDraft(7, ["server-a", "server-b"]));
 
     const { result } = renderHook(() =>
       useRemoteFlowAutosave({
@@ -194,23 +192,127 @@ describe("useRemoteFlowAutosave", () => {
     );
 
     act(() => {
-      setNodeIds(["node-a"]);
+      setNodeIds(["local-a"]);
     });
 
     await advanceTimers(1200);
+    await flushPromises();
+    expect(saveFlowDraftMock).toHaveBeenCalledTimes(1);
 
+    await advanceTimers(150);
     await flushPromises();
 
-    expect(saveFlowDraftMock).toHaveBeenCalledTimes(2);
     expect(getFlowDraftMock).toHaveBeenCalledTimes(1);
-    expect(saveFlowDraftMock.mock.calls[0]?.[1]).toMatchObject({
-      expectedRevision: 1,
-    });
+    expect(saveFlowDraftMock).toHaveBeenCalledTimes(2);
     expect(saveFlowDraftMock.mock.calls[1]?.[1]).toMatchObject({
       expectedRevision: 7,
-      graph: { nodes: [{ id: "node-a" }] },
+      graph: { nodes: [{ id: "local-a" }] },
+    });
+    expect(saveFlowDraftMock.mock.calls[1]?.[1].graph).not.toEqual(createDraft(7, ["server-a", "server-b"]).graph);
+    expect(result.current.status).toBe("saved");
+    expect(result.current.error).toBeNull();
+  });
+
+  it("retries conflict saves up to the retry budget and keeps using the newest local graph while retrying", async () => {
+    const initialDraft = createDraft(1);
+
+    saveFlowDraftMock
+      .mockRejectedValueOnce(createConflictError())
+      .mockRejectedValueOnce(createConflictError())
+      .mockResolvedValueOnce(createDraft(12, ["local-a", "local-b"]));
+    getFlowDraftMock
+      .mockResolvedValueOnce(createDraft(10, ["server-a"]))
+      .mockResolvedValueOnce(createDraft(11, ["server-b"]));
+
+    const { result } = renderHook(() =>
+      useRemoteFlowAutosave({
+        draft: initialDraft,
+        enabled: true,
+        flowId: "flow-1",
+      }),
+    );
+
+    act(() => {
+      setNodeIds(["local-a"]);
+    });
+
+    await advanceTimers(1200);
+    await flushPromises();
+
+    expect(result.current.status).toBe("retrying");
+
+    act(() => {
+      setNodeIds(["local-a", "local-b"]);
+    });
+
+    await advanceTimers(150);
+    await flushPromises();
+    expect(saveFlowDraftMock).toHaveBeenCalledTimes(2);
+    expect(saveFlowDraftMock.mock.calls[1]?.[1]).toMatchObject({
+      expectedRevision: 10,
+      graph: { nodes: [{ id: "local-a" }, { id: "local-b" }] },
+    });
+
+    await advanceTimers(300);
+    await flushPromises();
+
+    expect(saveFlowDraftMock).toHaveBeenCalledTimes(3);
+    expect(saveFlowDraftMock.mock.calls[2]?.[1]).toMatchObject({
+      expectedRevision: 11,
+      graph: { nodes: [{ id: "local-a" }, { id: "local-b" }] },
     });
     expect(result.current.status).toBe("saved");
     expect(result.current.error).toBeNull();
+  });
+
+  it("keeps editing nonblocking after retry exhaustion and saves again on the next user change", async () => {
+    const initialDraft = createDraft(1);
+
+    saveFlowDraftMock
+      .mockRejectedValueOnce(createConflictError())
+      .mockRejectedValueOnce(createConflictError())
+      .mockRejectedValueOnce(createConflictError())
+      .mockResolvedValueOnce(createDraft(15, ["local-a", "local-b"]));
+    getFlowDraftMock
+      .mockResolvedValueOnce(createDraft(10))
+      .mockResolvedValueOnce(createDraft(11))
+      .mockResolvedValueOnce(createDraft(14));
+
+    const { result } = renderHook(() =>
+      useRemoteFlowAutosave({
+        draft: initialDraft,
+        enabled: true,
+        flowId: "flow-1",
+      }),
+    );
+
+    act(() => {
+      setNodeIds(["local-a"]);
+    });
+
+    await advanceTimers(1200);
+    await flushPromises();
+    await advanceTimers(150);
+    await flushPromises();
+    await advanceTimers(300);
+    await flushPromises();
+
+    expect(saveFlowDraftMock).toHaveBeenCalledTimes(3);
+    expect(result.current.status).toBe("failed");
+    expect(result.current.error).toContain("Editing can continue");
+
+    act(() => {
+      setNodeIds(["local-a", "local-b"]);
+    });
+
+    await advanceTimers(1200);
+    await flushPromises();
+
+    expect(saveFlowDraftMock).toHaveBeenCalledTimes(4);
+    expect(saveFlowDraftMock.mock.calls[3]?.[1]).toMatchObject({
+      expectedRevision: 14,
+      graph: { nodes: [{ id: "local-a" }, { id: "local-b" }] },
+    });
+    expect(result.current.status).toBe("saved");
   });
 });

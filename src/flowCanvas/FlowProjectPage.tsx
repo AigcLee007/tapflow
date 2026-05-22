@@ -202,11 +202,6 @@ export function FlowProjectPage() {
           </button>
         )}
       </div>
-      {autosave.error && (
-        <div className="fixed right-4 top-16 z-[1200] max-w-sm rounded border border-red-300/20 bg-red-950/90 px-4 py-3 text-sm text-red-100 shadow-xl">
-          {autosave.error}
-        </div>
-      )}
       {insertError && (
         <div className="fixed right-4 top-32 z-[1200] max-w-sm rounded border border-amber-300/20 bg-amber-950/90 px-4 py-3 text-sm text-amber-100 shadow-xl">
           <div>{insertError}</div>

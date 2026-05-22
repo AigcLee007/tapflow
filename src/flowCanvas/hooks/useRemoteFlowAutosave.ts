@@ -25,6 +25,7 @@ type RemoteFlowAutosaveState = {
 };
 
 const AUTOSAVE_DELAY_MS = 1200;
+const CONFLICT_RETRY_DELAYS_MS = [150, 300];
 
 function toGraphKey(graph: FlowDraftGraph): string {
   try {
@@ -79,6 +80,12 @@ export function useRemoteFlowAutosave(input: {
     timerRef.current = null;
   }, []);
 
+  const waitForRetryDelay = useCallback((delayMs: number) => {
+    return new Promise<void>((resolve) => {
+      window.setTimeout(resolve, delayMs);
+    });
+  }, []);
+
   const flushSaveQueue = useCallback(
     async (mode: "saving" | "retrying" = "saving"): Promise<void> => {
       if (!input.enabled || !input.flowId || !input.draft || inFlightRef.current) {
@@ -98,31 +105,38 @@ export function useRemoteFlowAutosave(input: {
       setStatus(mode);
       setError(null);
 
-      const graphSnapshot = latestGraphRef.current;
       let saveSucceeded = false;
 
       try {
-        let nextDraft: FlowDraft;
+        let nextDraft: FlowDraft | null = null;
 
-        try {
-          nextDraft = await saveFlowDraft(input.flowId, {
-            expectedRevision: revisionRef.current ?? undefined,
-            graph: graphSnapshot,
-          });
-        } catch (saveError) {
-          if (!isRevisionConflict(saveError)) {
-            throw saveError;
+        for (let attempt = 0; attempt <= CONFLICT_RETRY_DELAYS_MS.length; attempt += 1) {
+          try {
+            nextDraft = await saveFlowDraft(input.flowId, {
+              expectedRevision: revisionRef.current ?? undefined,
+              graph: latestGraphRef.current,
+            });
+            break;
+          } catch (saveError) {
+            if (!isRevisionConflict(saveError)) {
+              throw saveError;
+            }
+
+            const latestDraft = await getFlowDraft(input.flowId);
+            revisionRef.current = latestDraft.revision;
+            setUpdatedAt(latestDraft.updatedAt);
+
+            if (attempt >= CONFLICT_RETRY_DELAYS_MS.length) {
+              throw saveError;
+            }
+
+            setStatus("retrying");
+            await waitForRetryDelay(CONFLICT_RETRY_DELAYS_MS[attempt] ?? 150);
           }
+        }
 
-          setStatus("retrying");
-          const latestDraft = await getFlowDraft(input.flowId);
-          revisionRef.current = latestDraft.revision;
-          setUpdatedAt(latestDraft.updatedAt);
-
-          nextDraft = await saveFlowDraft(input.flowId, {
-            expectedRevision: latestDraft.revision,
-            graph: latestGraphRef.current,
-          });
+        if (!nextDraft) {
+          throw new Error("Autosave retry exhausted before receiving a saved draft.");
         }
 
         revisionRef.current = nextDraft.revision;
@@ -159,7 +173,7 @@ export function useRemoteFlowAutosave(input: {
         }
       }
     },
-    [clearScheduledSave, input.draft, input.enabled, input.flowId, markClean, markDirty],
+    [clearScheduledSave, input.draft, input.enabled, input.flowId, markClean, markDirty, waitForRetryDelay],
   );
 
   const scheduleSave = useCallback(
@@ -245,7 +259,7 @@ function getAutosaveErrorMessage(error: unknown) {
       return "Save failed because your session expired. Please log in again.";
     }
     if (error.status === 409) {
-      return "Save failed because the canvas could not be reconciled with the latest server revision. Refresh before continuing.";
+      return "Save failed because autosave could not claim the latest revision yet. Editing can continue.";
     }
     if (error.status >= 500) {
       return "Save failed because the server is temporarily unavailable.";
