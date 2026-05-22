@@ -5,6 +5,13 @@ WORKDIR /app
 
 # Copy package files
 COPY package.json package-lock.json ./
+COPY apps/api/package.json ./apps/api/package.json
+COPY apps/worker/package.json ./apps/worker/package.json
+COPY packages/ai-gateway-core/package.json ./packages/ai-gateway-core/package.json
+COPY packages/db/package.json ./packages/db/package.json
+COPY packages/redis/package.json ./packages/redis/package.json
+COPY packages/storage/package.json ./packages/storage/package.json
+COPY packages/workflow-core/package.json ./packages/workflow-core/package.json
 
 # Install dependencies
 RUN npm ci

@@ -117,8 +117,6 @@ export class S3StorageProvider implements StorageProvider {
     const command = new GetObjectCommand({
       Bucket: input.bucket,
       Key: input.key,
-      ResponseContentDisposition: input.responseContentDisposition ?? undefined,
-      ResponseContentType: input.responseContentType ?? undefined,
     });
     const url = await getSignedUrl(this.client as unknown as Parameters<typeof getSignedUrl>[0], command, {
       expiresIn: input.expiresInSeconds,

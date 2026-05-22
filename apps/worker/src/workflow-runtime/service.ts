@@ -291,11 +291,18 @@ function buildImageRequest(
   const routeKey = typeof config.routeKey === "string" && config.routeKey.trim()
     ? config.routeKey.trim()
     : "image.default";
+  const prompt =
+    typeof config.generationPrompt === "string" && config.generationPrompt.trim()
+      ? config.generationPrompt
+      : typeof config.prompt === "string"
+        ? config.prompt
+        : "";
+
   return {
     inputAssets: extractAssetInputs(upstreamOutputs),
     metadata: isPlainObject(config.metadata) ? config.metadata : null,
     model: typeof config.model === "string" ? config.model : null,
-    prompt: extractPromptFromUpstreamOutputs(upstreamOutputs, typeof config.prompt === "string" ? config.prompt : ""),
+    prompt: extractPromptFromUpstreamOutputs(upstreamOutputs, prompt),
     routeKey,
   };
 }
