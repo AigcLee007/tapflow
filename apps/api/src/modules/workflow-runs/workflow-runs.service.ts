@@ -41,6 +41,9 @@ type NodeExecuteQueueLike = {
 type FlowRuntimeRecord = {
   compiled_graph_json: CompiledWorkflow;
   current_version_id: string | null;
+  draft_revision?: number | null;
+  graph_checksum?: string | null;
+  graph_source?: "draft" | "flow_version" | "snapshot";
   flow_id: string;
   flow_status: string;
 };
@@ -57,6 +60,7 @@ type FlowDraftGraph = {
 
 type FlowDraftRecord = {
   graph_json: FlowDraftGraph;
+  revision?: number;
 };
 
 type WorkflowRunMode = "flow" | "target_node";
@@ -65,6 +69,16 @@ type FlowVersionRecord = {
   checksum?: string;
   compiled_graph_json?: CompiledWorkflow;
   id: string;
+};
+
+type CreatedRunTransactionResult = {
+  enqueuePayloads: NodeExecuteJobPayload[];
+  flowRowLockUsed: boolean;
+  graphChecksum: string | null;
+  graphRevision: number | null;
+  graphSource: string;
+  nodeRunIds: string[];
+  run: WorkflowRunView;
 };
 
 type PricingRow = {
@@ -419,21 +433,51 @@ export class WorkflowRunsService {
     runId: string;
     status: string;
   }> {
-    const payloadsToEnqueue: NodeExecuteJobPayload[] = [];
+    const startedAt = Date.now();
+    const runInput = input.input ?? {};
+    const runMode = getRequestedRunMode(runInput);
+    const targetNodeId = getRequestedTargetNodeId(runInput);
+    this.logCreateRunDiagnostic(
+      {
+        flowId,
+        flowRowLockUsed: runMode !== "target_node",
+        runMode,
+        startTimestamp: new Date(startedAt).toISOString(),
+        targetNodeId,
+        tenantId: context.tenantId,
+        traceId: context.traceId ?? null,
+      },
+      "workflow run creation started",
+    );
 
-    let createdRun: WorkflowRunView;
+    let createdRun: CreatedRunTransactionResult;
     try {
       createdRun = await withTenantTransaction(context, async (client) => {
-        const runtimeFlow = await this.getCurrentFlowRuntimeOrCreateSnapshot(client, context, flowId);
+        const runtimeStartedAt = Date.now();
+        const runtimeFlow = runMode === "target_node"
+          ? await this.getTargetNodeFlowRuntimeWithoutFlowRowLock(client, context, flowId, targetNodeId)
+          : await this.getCurrentFlowRuntimeOrCreateSnapshot(client, context, flowId);
+        this.logCreateRunDiagnostic(
+          {
+            flowId,
+            flowRowLockUsed: runMode !== "target_node",
+            graphChecksum: runtimeFlow.graph_checksum ?? null,
+            graphRevision: runtimeFlow.draft_revision ?? null,
+            graphSource: runtimeFlow.graph_source ?? (runMode === "target_node" ? "draft" : "snapshot"),
+            runMode,
+            targetNodeId,
+            timeBeforeDbInsertMs: Date.now() - runtimeStartedAt,
+            tenantId: context.tenantId,
+            traceId: context.traceId ?? null,
+          },
+          "workflow run runtime graph loaded",
+        );
         const pricingRows = await this.loadActivePricing(client);
         const routeContexts = await this.loadRouteRuntimeContexts(
           client,
           context.tenantId,
           runtimeFlow.compiled_graph_json.nodes,
         );
-        const runInput = input.input ?? {};
-        const runMode = getRequestedRunMode(runInput);
-        const targetNodeId = getRequestedTargetNodeId(runInput);
         const targetNode =
           runMode === "target_node"
             ? runtimeFlow.compiled_graph_json.nodes.find((node) => node.id === targetNodeId)
@@ -471,7 +515,15 @@ export class WorkflowRunsService {
         );
 
           if (existing.rows[0]) {
-            return mapWorkflowRun(existing.rows[0]);
+            return {
+              enqueuePayloads: [],
+              flowRowLockUsed: runMode !== "target_node",
+              graphChecksum: runtimeFlow.graph_checksum ?? null,
+              graphRevision: runtimeFlow.draft_revision ?? null,
+              graphSource: runtimeFlow.graph_source ?? (runMode === "target_node" ? "draft" : "snapshot"),
+              nodeRunIds: [],
+              run: mapWorkflowRun(existing.rows[0]),
+            } satisfies CreatedRunTransactionResult;
           }
         }
 
@@ -545,6 +597,8 @@ export class WorkflowRunsService {
           runMode === "target_node" && targetNode
             ? [targetNode]
             : runtimeFlow.compiled_graph_json.nodes;
+        const payloadsToEnqueue: NodeExecuteJobPayload[] = [];
+        const nodeRunIds: string[] = [];
 
         for (const node of nodesToRun) {
           const isEntryNode =
@@ -552,6 +606,7 @@ export class WorkflowRunsService {
               ? node.id === targetNode?.id
               : runtimeFlow.compiled_graph_json.entryNodeIds.includes(node.id);
           const nodeRunId = randomUUID();
+          nodeRunIds.push(nodeRunId);
           const estimatedCost = this.estimateNodeReserveCents(node, routeContexts, pricingRows);
           if (estimatedCost.unit && estimatedCost.amountCents <= 0) {
             throw new WorkflowRunsApiError(
@@ -668,7 +723,15 @@ export class WorkflowRunsService {
           }
         }
 
-        return run;
+        return {
+          enqueuePayloads: payloadsToEnqueue,
+          flowRowLockUsed: runMode !== "target_node",
+          graphChecksum: runtimeFlow.graph_checksum ?? null,
+          graphRevision: runtimeFlow.draft_revision ?? null,
+          graphSource: runtimeFlow.graph_source ?? (runMode === "target_node" ? "draft" : "snapshot"),
+          nodeRunIds,
+          run,
+        } satisfies CreatedRunTransactionResult;
       }, this.pool);
     } catch (error) {
       if (error instanceof BillingServiceError) {
@@ -677,8 +740,26 @@ export class WorkflowRunsService {
       throw error;
     }
 
-    for (const payload of payloadsToEnqueue) {
-      await this.nodeExecuteQueue.add(QUEUE_NAMES.nodeExecute, payload);
+    try {
+      for (const payload of createdRun.enqueuePayloads) {
+        const queuedJob = await this.nodeExecuteQueue.add(QUEUE_NAMES.nodeExecute, payload);
+        this.logCreateRunDiagnostic(
+          {
+            enqueueJobId: this.extractQueueJobId(queuedJob),
+            flowId,
+            nodeRunId: payload.nodeRunId,
+            runMode,
+            targetNodeId,
+            tenantId: context.tenantId,
+            traceId: context.traceId ?? null,
+            workflowRunId: payload.workflowRunId,
+          },
+          "workflow run node.execute job enqueued",
+        );
+      }
+    } catch (error) {
+      await this.markWorkflowRunQueueUnavailable(context, createdRun.run.id, error);
+      throw new WorkflowRunsApiError(503, "QUEUE_UNAVAILABLE", "Workflow run could not be enqueued. Please try again.");
     }
 
     await safeRecordAuditLog(
@@ -690,10 +771,10 @@ export class WorkflowRunsService {
         metadata: {
           flowId,
           idempotencyKey: input.idempotencyKey ?? null,
-          status: createdRun.status,
+          status: createdRun.run.status,
         },
         requestId: context.requestId,
-        resourceId: createdRun.id,
+        resourceId: createdRun.run.id,
         resourceType: "workflow_run",
         tenantId: context.tenantId,
         traceId: context.traceId,
@@ -704,9 +785,27 @@ export class WorkflowRunsService {
       },
     );
 
+    this.logCreateRunDiagnostic(
+      {
+        flowId,
+        flowRowLockUsed: createdRun.flowRowLockUsed,
+        graphChecksum: createdRun.graphChecksum,
+        graphRevision: createdRun.graphRevision,
+        graphSource: createdRun.graphSource,
+        nodeRunIds: createdRun.nodeRunIds,
+        runMode,
+        targetNodeId,
+        tenantId: context.tenantId,
+        totalCreateRunLatencyMs: Date.now() - startedAt,
+        traceId: context.traceId ?? null,
+        workflowRunId: createdRun.run.id,
+      },
+      "workflow run creation completed",
+    );
+
     return {
-      runId: createdRun.id,
-      status: createdRun.status,
+      runId: createdRun.run.id,
+      status: createdRun.run.status,
     };
   }
 
@@ -1152,11 +1251,235 @@ export class WorkflowRunsService {
     return row;
   }
 
+  private logCreateRunDiagnostic(fields: Record<string, unknown>, message: string): void {
+    console.info(JSON.stringify({
+      ...fields,
+      message,
+      service: "workflow-runs",
+    }));
+  }
+
+  private extractQueueJobId(job: unknown): string | null {
+    if (job && typeof job === "object" && "id" in job) {
+      const id = (job as { id?: unknown }).id;
+      return typeof id === "string" || typeof id === "number" ? String(id) : null;
+    }
+    return null;
+  }
+
+  private async getTargetNodeFlowRuntimeWithoutFlowRowLock(
+    client: PoolClient,
+    context: WorkflowRunContext,
+    flowId: string,
+    targetNodeId: string | null,
+  ): Promise<FlowRuntimeRecord> {
+    if (!targetNodeId) {
+      throw new WorkflowRunsApiError(400, "TARGET_NODE_REQUIRED", "targetNodeId is required for target_node runs");
+    }
+
+    const flowRow = await client.query<{
+      current_version_id: string | null;
+      id: string;
+      status: string;
+    }>(
+      `
+        SELECT
+          id::text AS id,
+          status,
+          current_version_id::text AS current_version_id
+        FROM flows
+        WHERE id = $1::uuid
+          AND deleted_at IS NULL
+        LIMIT 1
+      `,
+      [flowId],
+    );
+
+    const flow = flowRow.rows[0];
+    if (!flow) {
+      throw new WorkflowRunsApiError(404, "FLOW_NOT_FOUND", "Flow not found");
+    }
+    this.logCreateRunDiagnostic(
+      {
+        flowId,
+        flowRowLockUsed: false,
+        selectForUpdateUsed: false,
+        targetNodeId,
+        tenantId: context.tenantId,
+        traceId: context.traceId ?? null,
+      },
+      "workflow run target-node flow metadata read without row lock",
+    );
+
+    const draftResult = await client.query<FlowDraftRecord>(
+      `
+        SELECT graph_json, revision
+        FROM flow_drafts
+        WHERE flow_id = $1::uuid
+        LIMIT 1
+      `,
+      [flowId],
+    );
+    const draft = draftResult.rows[0];
+    if (!draft) {
+      throw new WorkflowRunsApiError(400, "FLOW_DRAFT_MISSING", "Flow draft is missing");
+    }
+
+    const { checksum, compiledGraph, graph } = this.compileDraftGraph(draft.graph_json);
+    const targetNode = compiledGraph.nodes.find((node) => node.id === targetNodeId);
+    if (!targetNode) {
+      throw new WorkflowRunsApiError(400, "TARGET_NODE_NOT_FOUND", "Target node could not be found in the current draft");
+    }
+
+    const currentVersion = flow.current_version_id
+      ? await client.query<FlowVersionRecord>(
+          `
+            SELECT
+              id::text AS id,
+              checksum,
+              compiled_graph_json
+            FROM flow_versions
+            WHERE id = $1::uuid
+            LIMIT 1
+          `,
+          [flow.current_version_id],
+        )
+      : null;
+    const current = currentVersion?.rows[0];
+    if (
+      current?.id &&
+      current.checksum === checksum &&
+      !hasLegacySimplifiedNodeType(current.compiled_graph_json)
+    ) {
+      return {
+        compiled_graph_json: current.compiled_graph_json ?? compiledGraph,
+        current_version_id: current.id,
+        draft_revision: draft.revision ?? null,
+        flow_id: flow.id,
+        flow_status: flow.status,
+        graph_checksum: checksum,
+        graph_source: "flow_version",
+      };
+    }
+
+    const version = await this.createUnlockedRunSnapshotVersion(
+      client,
+      context,
+      flow.id,
+      graph,
+      compiledGraph,
+      checksum,
+    );
+
+    return {
+      compiled_graph_json: version.compiled_graph_json ?? compiledGraph,
+      current_version_id: version.id,
+      draft_revision: draft.revision ?? null,
+      flow_id: flow.id,
+      flow_status: flow.status,
+      graph_checksum: checksum,
+      graph_source: "draft",
+    };
+  }
+
+  private compileDraftGraph(draftGraph: FlowDraftGraph): {
+    checksum: string;
+    compiledGraph: CompiledWorkflow;
+    graph: FlowGraph;
+  } {
+    const normalizedDraft = normalizeDraftGraph(draftGraph);
+    assertDraftGraphSafe(normalizedDraft);
+    const rawGraph = {
+      edges: normalizedDraft.edges,
+      nodes: normalizedDraft.nodes,
+      viewport: normalizedDraft.viewport,
+    } as unknown as FlowGraph;
+    const graph = normalizeGraphForRuntime(rawGraph);
+
+    try {
+      validateGraph(graph);
+      return {
+        checksum: checksumGraph(graph),
+        compiledGraph: compileGraph(graph),
+        graph,
+      };
+    } catch (error) {
+      if (error instanceof WorkflowGraphValidationError) {
+        throw new WorkflowRunsApiError(400, "INVALID_GRAPH", error.message);
+      }
+      throw error;
+    }
+  }
+
+  private async createUnlockedRunSnapshotVersion(
+    client: PoolClient,
+    context: WorkflowRunContext,
+    flowId: string,
+    graph: FlowGraph,
+    compiledGraph: CompiledWorkflow,
+    checksum: string,
+  ): Promise<FlowVersionRecord> {
+    const versionId = randomUUID();
+    const inserted = await client.query<FlowVersionRecord>(
+      `
+        WITH next_version AS (
+          SELECT COALESCE(MAX(version), 0) + 1 AS version
+          FROM flow_versions
+          WHERE flow_id = $3::uuid
+        )
+        INSERT INTO flow_versions (
+          id,
+          tenant_id,
+          flow_id,
+          version,
+          graph_json,
+          compiled_graph_json,
+          checksum,
+          changelog,
+          published_by,
+          published_at
+        )
+        SELECT
+          $1::uuid,
+          $2::uuid,
+          $3::uuid,
+          next_version.version::int,
+          $4::jsonb,
+          $5::jsonb,
+          $6,
+          $7,
+          $8::uuid,
+          now()
+        FROM next_version
+        ON CONFLICT (flow_id, checksum) DO UPDATE
+        SET checksum = EXCLUDED.checksum
+        RETURNING id::text AS id, checksum, compiled_graph_json
+      `,
+      [
+        versionId,
+        context.tenantId,
+        flowId,
+        JSON.stringify(graph),
+        JSON.stringify(compiledGraph),
+        checksum,
+        AUTO_RUN_SNAPSHOT_CHANGELOG,
+        context.userId,
+      ],
+    );
+
+    const version = inserted.rows[0];
+    if (!version?.id) {
+      throw new WorkflowRunsApiError(500, "FLOW_SNAPSHOT_FAILED", "Could not create a runnable flow snapshot");
+    }
+    return version;
+  }
+
   private async getCurrentFlowRuntimeOrCreateSnapshot(
     client: PoolClient,
     context: WorkflowRunContext,
     flowId: string,
   ): Promise<FlowRuntimeRecord> {
+    const lockStartedAt = Date.now();
     const flowRow = await client.query<{
       current_version_id: string | null;
       id: string;
@@ -1174,6 +1497,17 @@ export class WorkflowRunsService {
         FOR UPDATE
       `,
       [flowId],
+    );
+    this.logCreateRunDiagnostic(
+      {
+        flowId,
+        flowRowLockUsed: true,
+        lockWaitDurationMs: Date.now() - lockStartedAt,
+        selectForUpdateUsed: true,
+        tenantId: context.tenantId,
+        traceId: context.traceId ?? null,
+      },
+      "workflow run full-flow snapshot lock acquired",
     );
 
     const flow = flowRow.rows[0];
@@ -1391,6 +1725,53 @@ export class WorkflowRunsService {
         ],
       );
     }
+  }
+
+  private async markWorkflowRunQueueUnavailable(
+    context: WorkflowRunContext,
+    workflowRunId: string,
+    error: unknown,
+  ): Promise<void> {
+    const normalized = {
+      code: "QUEUE_UNAVAILABLE",
+      message: "Workflow run could not be enqueued",
+      details: error instanceof Error ? error.message : String(error),
+    };
+
+    await withTenantTransaction(context, async (client) => {
+      await this.refundOpenReservations(client, workflowRunId, context.tenantId);
+      await client.query(
+        `
+          UPDATE node_runs
+          SET
+            status = 'failed',
+            error_json = $2::jsonb,
+            finished_at = now(),
+            updated_at = now()
+          WHERE workflow_run_id = $1::uuid
+            AND status IN ('pending', 'runnable')
+        `,
+        [workflowRunId, JSON.stringify(normalized)],
+      );
+      await client.query(
+        `
+          UPDATE workflow_runs
+          SET
+            status = 'failed',
+            error_json = $2::jsonb,
+            finished_at = now(),
+            updated_at = now()
+          WHERE id = $1::uuid
+        `,
+        [workflowRunId, JSON.stringify(normalized)],
+      );
+      await this.appendWorkflowRunEvent(client, {
+        eventType: "workflow.run.failed",
+        payload: normalized,
+        tenantId: context.tenantId,
+        workflowRunId,
+      });
+    }, this.pool);
   }
 
   private async getWorkflowRunOrThrow(

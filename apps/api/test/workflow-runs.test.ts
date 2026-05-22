@@ -286,6 +286,64 @@ async function createDraftOnlyFlowWithRoute(
   return flow.json();
 }
 
+async function createDraftOnlyFlowWithImageNodes(
+  api: ReturnType<typeof buildTestApp>["api"],
+  accessToken: string,
+  nodeIds: string[],
+) {
+  const project = await api.inject({
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+    },
+    method: "POST",
+    payload: {
+      name: "Workflow Concurrent Target Project",
+    },
+    url: "/api/v2/projects",
+  });
+  expect(project.statusCode).toBe(201);
+
+  const flow = await api.inject({
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+    },
+    method: "POST",
+    payload: {
+      title: "Workflow Concurrent Target Flow",
+    },
+    url: `/api/v2/projects/${project.json().id}/flows`,
+  });
+  expect(flow.statusCode).toBe(201);
+
+  const saveDraft = await api.inject({
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+    },
+    method: "PUT",
+    payload: {
+      graph: {
+        edges: [],
+        nodes: nodeIds.map((nodeId, index) => ({
+          data: {
+            generationPrompt: `prompt ${index + 1}`,
+            routeKey: "image.default",
+          },
+          id: nodeId,
+          position: {
+            x: index * 320,
+            y: 0,
+          },
+          type: "image.generate",
+        })),
+      },
+    },
+    url: `/api/v2/flows/${flow.json().id}/draft`,
+  });
+  expect(saveDraft.statusCode).toBe(200);
+
+  return flow.json();
+}
+
 async function seedRouteAndPricing(
   pool: ReturnType<typeof createPgPool>,
   input: {
@@ -682,6 +740,117 @@ describeWithDatabase("workflow runs api", () => {
         expect(versions.statusCode).toBe(200);
         expect(versions.json().length).toBeGreaterThanOrEqual(1);
         expect(versions.json()[0].changelog).toBe("auto_run_snapshot");
+
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("concurrent target_node runs for the same flow bypass flow current-version updates and all enqueue", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({
+          connectionString: await createAppDatabaseUrl(),
+        });
+
+        const { api, fakeQueue } = buildTestApp(appPool);
+        const ownerEmail = "workflow-target-node-concurrent@example.com";
+        const owner = await registerOwner(api, ownerEmail, "Workflow Target Concurrent");
+        const ownerUserId = await lookupUserIdByEmail(appPool, ownerEmail);
+        await seedRouteAndPricing(appPool, {
+          modelKey: "mock-image-concurrent",
+          providerKey: "mock-local-concurrent",
+          routeKey: "image.default",
+          tenantId: owner.currentTenant.id,
+          userId: ownerUserId,
+          withExactPricing: true,
+        });
+
+        const targetNodeIds = ["image-a", "image-b", "image-c"];
+        const flow = await createDraftOnlyFlowWithImageNodes(api, owner.accessToken, targetNodeIds);
+
+        const beforeCurrentVersion = await withTenantTransaction(
+          { tenantId: owner.currentTenant.id, userId: ownerUserId },
+          async (client) => {
+            const result = await client.query<{ current_version_id: string | null }>(
+              "SELECT current_version_id::text AS current_version_id FROM flows WHERE id = $1::uuid",
+              [flow.id],
+            );
+            return result.rows[0]?.current_version_id ?? null;
+          },
+          appPool,
+        );
+        expect(beforeCurrentVersion).toBeNull();
+
+        const responses = await Promise.all(targetNodeIds.map((targetNodeId) =>
+          api.inject({
+            headers: {
+              authorization: `Bearer ${owner.accessToken}`,
+            },
+            method: "POST",
+            payload: {
+              input: {
+                prompt: `run ${targetNodeId}`,
+                runMode: "target_node",
+                targetNodeId,
+              },
+            },
+            url: `/api/v2/flows/${flow.id}/runs`,
+          }),
+        ));
+
+        expect(responses.map((response) => response.statusCode)).toEqual([201, 201, 201]);
+        expect(fakeQueue.jobs).toHaveLength(3);
+        expect(fakeQueue.jobs.map((job) => job.name)).toEqual([
+          "node.execute",
+          "node.execute",
+          "node.execute",
+        ]);
+
+        const runIds = responses.map((response) => response.json().runId);
+        expect(new Set(runIds).size).toBe(3);
+
+        const runRows = await withTenantTransaction(
+          { tenantId: owner.currentTenant.id, userId: ownerUserId },
+          async (client) => {
+            const runs = await client.query<{ count: number }>(
+              "SELECT COUNT(*)::int AS count FROM workflow_runs WHERE flow_id = $1::uuid",
+              [flow.id],
+            );
+            const nodeRuns = await client.query<{ count: number; nodes: string[] }>(
+              `
+                SELECT COUNT(*)::int AS count, array_agg(node_id ORDER BY node_id) AS nodes
+                FROM node_runs
+                WHERE workflow_run_id = ANY($1::uuid[])
+              `,
+              [runIds],
+            );
+            const flowRow = await client.query<{ current_version_id: string | null }>(
+              "SELECT current_version_id::text AS current_version_id FROM flows WHERE id = $1::uuid",
+              [flow.id],
+            );
+            return {
+              currentVersionId: flowRow.rows[0]?.current_version_id ?? null,
+              nodeRunCount: nodeRuns.rows[0]?.count ?? 0,
+              nodeRunNodes: nodeRuns.rows[0]?.nodes ?? [],
+              runCount: runs.rows[0]?.count ?? 0,
+            };
+          },
+          appPool,
+        );
+
+        expect(runRows.runCount).toBe(3);
+        expect(runRows.nodeRunCount).toBe(3);
+        expect(runRows.nodeRunNodes).toEqual(targetNodeIds);
+        expect(runRows.currentVersionId).toBeNull();
 
         await api.close();
       } finally {
