@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { V2HttpError } from "../../services/v2HttpClient";
 import type { FlowDraft } from "../services/flowProjectApi";
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
+import { hashGraph } from "../utils/canonicalGraph";
 import { useRemoteFlowAutosave } from "./useRemoteFlowAutosave";
 
 const saveFlowDraftMock = vi.fn();
@@ -108,6 +109,7 @@ async function flushPromises() {
 describe("useRemoteFlowAutosave", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    window.localStorage.clear();
     saveFlowDraftMock.mockReset();
     getFlowDraftMock.mockReset();
     loadStoreFromDraft(createDraft(1));
@@ -115,6 +117,7 @@ describe("useRemoteFlowAutosave", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    window.localStorage.clear();
   });
 
   it("serializes saves and reuses the latest server revision for follow-up changes", async () => {
@@ -312,6 +315,163 @@ describe("useRemoteFlowAutosave", () => {
     expect(saveFlowDraftMock.mock.calls[3]?.[1]).toMatchObject({
       expectedRevision: 14,
       graph: { nodes: [{ id: "local-a" }, { id: "local-b" }] },
+    });
+    expect(result.current.status).toBe("saved");
+  });
+
+  it("ignores runtime fields and expiring signed URLs when hashing the canonical graph", () => {
+    const base = {
+      edges: [],
+      nodes: [
+        {
+          id: "image-a",
+          position: { x: 1, y: 2 },
+          type: "image",
+          selected: false,
+          data: {
+            assetId: "asset-a",
+            generationPrompt: "hello",
+            progress: 0,
+            status: "pending",
+            thumbnailUrl: "https://cdn.test/a.png?X-Amz-Signature=one",
+            updatedAt: 1,
+          },
+        },
+      ],
+      viewport: { x: 0, y: 0, zoom: 1 },
+    };
+    const runtimeOnlyChanged = {
+      ...base,
+      nodes: [
+        {
+          ...base.nodes[0],
+          selected: true,
+          data: {
+            ...base.nodes[0].data,
+            progress: 67,
+            status: "running",
+            thumbnailUrl: "https://cdn.test/a.png?X-Amz-Signature=two",
+            updatedAt: 2,
+          },
+        },
+      ],
+    };
+
+    expect(hashGraph(base)).toBe(hashGraph(runtimeOnlyChanged));
+  });
+
+  it("does not enqueue cloud sync for runtime-only node changes", async () => {
+    const initialDraft = createDraft(1);
+    initialDraft.graph.nodes = [
+      {
+        id: "image-a",
+        position: { x: 0, y: 0 },
+        type: "image",
+        data: {
+          assetId: "asset-a",
+          generationPrompt: "hello",
+          thumbnailUrl: "https://cdn.test/a.png?X-Amz-Signature=one",
+        },
+      },
+    ];
+    loadStoreFromDraft(initialDraft);
+
+    renderHook(() =>
+      useRemoteFlowAutosave({
+        draft: initialDraft,
+        enabled: true,
+        flowId: "flow-1",
+      }),
+    );
+
+    act(() => {
+      useFlowCanvasStore.setState({
+        nodes: [
+          {
+            id: "image-a",
+            position: { x: 0, y: 0 },
+            type: "image",
+            data: {
+              assetId: "asset-a",
+              generationPrompt: "hello",
+              progress: 90,
+              status: "running",
+              thumbnailUrl: "https://cdn.test/a.png?X-Amz-Signature=two",
+              updatedAt: Date.now(),
+            },
+          },
+        ] as never[],
+      });
+    });
+
+    await advanceTimers(1500);
+    expect(saveFlowDraftMock).not.toHaveBeenCalled();
+  });
+
+  it("syncs once when generation completion writes durable output to the target node", async () => {
+    const initialDraft = createDraft(1);
+    initialDraft.graph.nodes = [
+      {
+        id: "image-a",
+        position: { x: 0, y: 0 },
+        type: "image",
+        data: {
+          generationPrompt: "hello",
+        },
+      },
+    ];
+    loadStoreFromDraft(initialDraft);
+    saveFlowDraftMock.mockResolvedValueOnce({
+      ...initialDraft,
+      graph: {
+        ...initialDraft.graph,
+        nodes: [
+          {
+            id: "image-a",
+            position: { x: 0, y: 0 },
+            type: "image",
+            data: {
+              assetId: "asset-a",
+              generationPrompt: "hello",
+            },
+          },
+        ],
+      },
+      revision: 2,
+      updatedAt: "2026-05-22T00:00:02.000Z",
+    });
+
+    const { result } = renderHook(() =>
+      useRemoteFlowAutosave({
+        draft: initialDraft,
+        enabled: true,
+        flowId: "flow-1",
+      }),
+    );
+
+    act(() => {
+      useFlowCanvasStore.getState().updateNodeData("image-a", {
+        assetId: "asset-a",
+        progress: 100,
+        status: "success",
+      } as never);
+    });
+
+    await advanceTimers(1200);
+    await flushPromises();
+
+    expect(saveFlowDraftMock).toHaveBeenCalledTimes(1);
+    expect(saveFlowDraftMock.mock.calls[0]?.[1]).toMatchObject({
+      graph: {
+        nodes: [
+          {
+            data: {
+              assetId: "asset-a",
+              generationPrompt: "hello",
+            },
+          },
+        ],
+      },
     });
     expect(result.current.status).toBe("saved");
   });

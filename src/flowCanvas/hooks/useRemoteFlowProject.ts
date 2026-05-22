@@ -8,6 +8,7 @@ import {
   listProjectFlows,
   type FlowDraft,
 } from "../services/flowProjectApi";
+import { isLocalDraftNewer, readLocalFlowDraft } from "../services/localFlowDraft";
 import type { WorkspaceFlow, WorkspaceProject } from "../../workspace/workspaceApi";
 
 type RemoteFlowProjectState = {
@@ -33,6 +34,29 @@ async function getOrCreateDefaultFlow(project: WorkspaceProject): Promise<Worksp
   return defaultFlow;
 }
 
+function resolveDraftForCanvas(serverDraft: FlowDraft): FlowDraft {
+  const localDraft = readLocalFlowDraft({
+    flowId: serverDraft.flowId,
+    tenantId: serverDraft.tenantId,
+  });
+
+  if (!isLocalDraftNewer({
+    localDraft,
+    serverGraph: serverDraft.graph,
+    serverUpdatedAt: serverDraft.updatedAt,
+  }) || !localDraft) {
+    return serverDraft;
+  }
+
+  return {
+    ...serverDraft,
+    graph: localDraft.canonicalGraph,
+    revision: localDraft.lastServerRevision ?? serverDraft.revision,
+    needsCloudSync: true,
+    updatedAt: localDraft.updatedAt,
+  };
+}
+
 export function useRemoteFlowProject(projectId: string): RemoteFlowProjectState {
   const loadProject = useFlowCanvasStore((state) => state.loadProject);
   const [project, setProject] = useState<WorkspaceProject | null>(null);
@@ -54,23 +78,24 @@ export function useRemoteFlowProject(projectId: string): RemoteFlowProjectState 
       const nextProject = await getProject(projectId);
       const nextFlow = await getOrCreateDefaultFlow(nextProject);
       const nextDraft = await getFlowDraft(nextFlow.id);
+      const canvasDraft = resolveDraftForCanvas(nextDraft);
 
       loadProject({
         backendCurrentVersionId: nextFlow.currentVersionId,
         backendFlowId: nextFlow.id,
         backendProjectId: nextProject.id,
-        edges: nextDraft.graph.edges,
+        edges: canvasDraft.graph.edges,
         id: nextProject.id,
-        nodes: nextDraft.graph.nodes,
+        nodes: canvasDraft.graph.nodes,
         title: nextProject.name,
-        updatedAt: Date.parse(nextDraft.updatedAt) || Date.now(),
-        version: nextDraft.revision,
-        viewport: nextDraft.graph.viewport,
+        updatedAt: Date.parse(canvasDraft.updatedAt) || Date.now(),
+        version: canvasDraft.revision,
+        viewport: canvasDraft.graph.viewport,
       });
 
       setProject(nextProject);
       setFlow(nextFlow);
-      setDraft(nextDraft);
+      setDraft(canvasDraft);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Unable to load Flow project");
     } finally {
@@ -100,23 +125,24 @@ export function useRemoteFlowProject(projectId: string): RemoteFlowProjectState 
         const nextProject = await getProject(projectId);
         const nextFlow = await getOrCreateDefaultFlow(nextProject);
         const nextDraft = await getFlowDraft(nextFlow.id);
+        const canvasDraft = resolveDraftForCanvas(nextDraft);
 
         if (!active) return;
         loadProject({
           backendCurrentVersionId: nextFlow.currentVersionId,
           backendFlowId: nextFlow.id,
           backendProjectId: nextProject.id,
-          edges: nextDraft.graph.edges,
+          edges: canvasDraft.graph.edges,
           id: nextProject.id,
-          nodes: nextDraft.graph.nodes,
+          nodes: canvasDraft.graph.nodes,
           title: nextProject.name,
-          updatedAt: Date.parse(nextDraft.updatedAt) || Date.now(),
-          version: nextDraft.revision,
-          viewport: nextDraft.graph.viewport,
+          updatedAt: Date.parse(canvasDraft.updatedAt) || Date.now(),
+          version: canvasDraft.revision,
+          viewport: canvasDraft.graph.viewport,
         });
         setProject(nextProject);
         setFlow(nextFlow);
-        setDraft(nextDraft);
+        setDraft(canvasDraft);
       } catch (loadError) {
         if (active) {
           setError(loadError instanceof Error ? loadError.message : "Unable to load Flow project");

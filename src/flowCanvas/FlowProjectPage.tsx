@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { AlertTriangle, CheckCircle2, Cloud, Loader2, RefreshCw } from "lucide-react";
+import { CheckCircle2, Cloud, Loader2, RefreshCw } from "lucide-react";
 
 import { getAsset } from "../assets/assetApi";
 import { V2HttpError } from "../services/v2HttpClient";
@@ -17,19 +17,18 @@ function getProjectIdFromLocation() {
 }
 
 function statusLabel(status: RemoteFlowSaveStatus) {
-  if (status === "saving") return "Saving...";
-  if (status === "retrying") return "Retrying save...";
+  if (status === "syncing") return "Syncing";
+  if (status === "retrying") return "Syncing";
   if (status === "saved") return "Saved";
-  if (status === "dirty") return "Pending save";
-  if (status === "failed") return "Save failed";
+  if (status === "dirty" || status === "pending_sync") return "Pending sync";
+  if (status === "failed") return "Offline changes";
   return "Ready";
 }
 
 function StatusIcon({ status }: { status: RemoteFlowSaveStatus }) {
-  if (status === "saving" || status === "retrying") return <Loader2 className="animate-spin" size={15} />;
-  if (status === "dirty") return <Cloud size={15} />;
+  if (status === "syncing" || status === "retrying") return <Loader2 className="animate-spin" size={15} />;
+  if (status === "dirty" || status === "pending_sync" || status === "failed") return <Cloud size={15} />;
   if (status === "saved") return <CheckCircle2 size={15} />;
-  if (status === "failed") return <AlertTriangle size={15} />;
   return <Cloud size={15} />;
 }
 
@@ -179,10 +178,10 @@ export function FlowProjectPage() {
         <span
           className={`inline-flex items-center gap-1.5 ${
             autosave.status === "failed"
-              ? "text-red-200"
+              ? "text-amber-200"
               : autosave.status === "saved"
                 ? "text-emerald-200"
-                : autosave.status === "retrying"
+                : autosave.status === "retrying" || autosave.status === "pending_sync"
                   ? "text-amber-200"
                 : "text-sky-200"
           }`}
@@ -192,9 +191,9 @@ export function FlowProjectPage() {
         </span>
         {autosave.status === "failed" && (
           <button
-            className="inline-flex h-7 items-center gap-1 rounded-full border border-red-300/20 px-2 text-red-100 hover:bg-red-400/10"
+            className="inline-flex h-7 items-center gap-1 rounded-full border border-amber-300/20 px-2 text-amber-100 hover:bg-amber-400/10"
             onClick={autosave.saveNow}
-            title={autosave.error || "Retry save"}
+            title={autosave.error || "Retry cloud sync"}
             type="button"
           >
             <RefreshCw size={13} />

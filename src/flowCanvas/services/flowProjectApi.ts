@@ -17,6 +17,7 @@ export type FlowDraft = {
   graph: FlowDraftGraph;
   id: string;
   lastSavedBy: string | null;
+  needsCloudSync?: boolean;
   projectId: string;
   revision: number;
   tenantId: string;
