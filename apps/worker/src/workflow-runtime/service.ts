@@ -111,6 +111,7 @@ type RuntimeExecutionResult = {
 
 type RuntimeFlowRecord = {
   compiled_graph_json: CompiledWorkflow;
+  flow_id: string;
   flow_version_id: string;
   project_id: string | null;
   workflow_run_id: string;
@@ -156,6 +157,12 @@ function isTerminalStatus(status: string): boolean {
 
 function getWorkflowRunMode(workflowRun: WorkflowRunRecord): WorkflowRunMode {
   return workflowRun.input_json?.runMode === "target_node" ? "target_node" : "flow";
+}
+
+function getWorkflowRunTargetNodeId(workflowRun: WorkflowRunRecord): string | null {
+  return typeof workflowRun.input_json?.targetNodeId === "string" && workflowRun.input_json.targetNodeId.trim()
+    ? workflowRun.input_json.targetNodeId.trim()
+    : null;
 }
 
 function normalizeError(error: unknown): {
@@ -1189,7 +1196,151 @@ export class WorkflowNodeExecutionService {
 
     return {
       assets,
+      flowId: runtimeFlow.flow_id,
+      nodeId: nodeRun.node_id,
+      nodeRunId: nodeRun.id,
+      projectId: runtimeFlow.project_id,
+      targetNodeId: nodeRun.node_id,
+      workflowRunId: workflowRun.id,
     };
+  }
+
+  private buildDraftOutputPatch(
+    currentNode: CompiledWorkflowNode,
+    workflowRun: WorkflowRunRecord,
+    runtimeFlow: RuntimeFlowRecord,
+    nodeRun: NodeRunRecord,
+    outputJson: Record<string, unknown>,
+  ): Record<string, unknown> | null {
+    const assets = Array.isArray(outputJson.assets) ? outputJson.assets : [];
+    const primaryAsset = assets.find((asset): asset is Record<string, unknown> => isPlainObject(asset) && typeof asset.assetId === "string");
+    if (!primaryAsset) {
+      return null;
+    }
+    if (currentNode.type !== "image.generate" && currentNode.type !== "video.generate") {
+      return null;
+    }
+
+    return {
+      assetId: primaryAsset.assetId,
+      assetIds: assets
+        .filter((asset): asset is Record<string, unknown> => isPlainObject(asset) && typeof asset.assetId === "string")
+        .map((asset) => asset.assetId),
+      errorMessage: null,
+      generationStatus: "done",
+      latestNodeRunId: nodeRun.id,
+      latestWorkflowRunId: workflowRun.id,
+      mimeType: typeof primaryAsset.mimeType === "string" ? primaryAsset.mimeType : undefined,
+      naturalHeight: typeof primaryAsset.height === "number" ? primaryAsset.height : undefined,
+      naturalWidth: typeof primaryAsset.width === "number" ? primaryAsset.width : undefined,
+      progress: 100,
+      projectId: runtimeFlow.project_id,
+      source: "generated",
+      status: "success",
+      targetNodeId: currentNode.id,
+      workflowRunId: workflowRun.id,
+    };
+  }
+
+  private async isLatestTargetNodeRun(
+    client: PoolClient,
+    workflowRun: WorkflowRunRecord,
+    nodeId: string,
+  ): Promise<boolean> {
+    if (getWorkflowRunMode(workflowRun) !== "target_node" || getWorkflowRunTargetNodeId(workflowRun) !== nodeId) {
+      return true;
+    }
+
+    const newer = await client.query<{ id: string }>(
+      `
+        SELECT newer.id::text AS id
+        FROM workflow_runs AS current
+        JOIN workflow_runs AS newer
+          ON newer.tenant_id = current.tenant_id
+         AND newer.flow_id = current.flow_id
+         AND newer.input_json->>'runMode' = 'target_node'
+         AND newer.input_json->>'targetNodeId' = $2
+         AND newer.created_at > current.created_at
+        WHERE current.id = $1::uuid
+        LIMIT 1
+      `,
+      [workflowRun.id, nodeId],
+    );
+
+    return newer.rowCount === 0;
+  }
+
+  private async patchTargetNodeOutputIntoDraft(
+    client: PoolClient,
+    currentNode: CompiledWorkflowNode,
+    runtimeFlow: RuntimeFlowRecord,
+    workflowRun: WorkflowRunRecord,
+    currentNodeRun: NodeRunRecord,
+    outputJson: Record<string, unknown>,
+  ): Promise<void> {
+    const patch = this.buildDraftOutputPatch(currentNode, workflowRun, runtimeFlow, currentNodeRun, outputJson);
+    if (!patch) {
+      return;
+    }
+    if (!(await this.isLatestTargetNodeRun(client, workflowRun, currentNode.id))) {
+      return;
+    }
+
+    const draft = await client.query<{ graph_json: { edges: unknown[]; nodes: Array<Record<string, unknown>>; viewport: unknown } }>(
+      `
+        SELECT graph_json
+        FROM flow_drafts
+        WHERE tenant_id = $1::uuid
+          AND flow_id = $2::uuid
+        LIMIT 1
+        FOR UPDATE
+      `,
+      [workflowRun.tenant_id, runtimeFlow.flow_id],
+    );
+    const graph = draft.rows[0]?.graph_json;
+    if (!graph || !Array.isArray(graph.nodes)) {
+      return;
+    }
+
+    let changed = false;
+    const nodes = graph.nodes.map((node) => {
+      if (node.id !== currentNode.id || !isPlainObject(node.data)) {
+        return node;
+      }
+      changed = true;
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          ...patch,
+          updatedAt: Date.now(),
+        },
+      };
+    });
+
+    if (!changed) {
+      return;
+    }
+
+    await client.query(
+      `
+        UPDATE flow_drafts
+        SET
+          graph_json = $3::jsonb,
+          revision = revision + 1,
+          updated_at = now()
+        WHERE tenant_id = $1::uuid
+          AND flow_id = $2::uuid
+      `,
+      [
+        workflowRun.tenant_id,
+        runtimeFlow.flow_id,
+        JSON.stringify({
+          ...graph,
+          nodes,
+        }),
+      ],
+    );
   }
 
   private getDependencyOutputs(
@@ -1210,6 +1361,7 @@ export class WorkflowNodeExecutionService {
       `
         SELECT
           workflow_runs.id::text AS workflow_run_id,
+          workflow_runs.flow_id::text AS flow_id,
           workflow_runs.flow_version_id::text AS flow_version_id,
           flows.project_id::text AS project_id,
           flow_versions.compiled_graph_json
@@ -1448,6 +1600,15 @@ export class WorkflowNodeExecutionService {
         WHERE id = $1::uuid
       `,
       [currentNodeRun.id, JSON.stringify(outputJson)],
+    );
+
+    await this.patchTargetNodeOutputIntoDraft(
+      client,
+      currentNode,
+      runtimeFlow,
+      workflowRun,
+      currentNodeRun,
+      outputJson,
     );
 
     await this.appendWorkflowRunEvent(client, {

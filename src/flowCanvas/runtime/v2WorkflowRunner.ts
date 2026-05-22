@@ -1,12 +1,9 @@
-import { useFlowCanvasStore } from '../store/flowCanvasStore';
-import type {
-  FlowNodeData,
-  FlowRuntimeAssetRef,
-  FlowRuntimeNodeOutput,
-} from '../types';
+import { getAssetDownloadUrl } from '../../services/v2AssetsApi';
+import { V2HttpError } from '../../services/v2HttpClient';
 import {
   createWorkflowRun,
   getWorkflowRun,
+  listFlowWorkflowRuns,
   streamWorkflowRun,
   type CreateWorkflowRunInput,
   type GetWorkflowRunResponse,
@@ -15,20 +12,17 @@ import {
   type V2WorkflowRunStatus,
   type WorkflowRunStreamHandle,
 } from '../../services/v2WorkflowRunsApi';
-import { getAssetDownloadUrl } from '../../services/v2AssetsApi';
-import { V2HttpError } from '../../services/v2HttpClient';
+import { useFlowCanvasStore } from '../store/flowCanvasStore';
+import type {
+  FlowNodeData,
+  FlowRuntimeAssetRef,
+  FlowRuntimeNodeOutput,
+} from '../types';
 
 const RUNNER_ENABLED = String(import.meta.env.VITE_USE_V2_WORKFLOW_RUNNER ?? 'true').toLowerCase() !== 'false';
 
-let activeStreamHandle: WorkflowRunStreamHandle | null = null;
-let activeRunToken = 0;
-let activeRunScope: {
-  runMode: 'flow' | 'target_node';
-  targetNodeId: string | null;
-} = {
-  runMode: 'flow',
-  targetNodeId: null,
-};
+const activeStreamsByRunId = new Map<string, WorkflowRunStreamHandle>();
+const disposedRunIds = new Set<string>();
 
 type AssetLike = {
   assetId: string;
@@ -38,16 +32,26 @@ type AssetLike = {
   height?: number | null;
 };
 
-type PersistableNodeRun = Pick<V2NodeRunView, 'nodeId' | 'nodeType' | 'status' | 'outputJson'>;
+type PersistableNodeRun = Pick<V2NodeRunView, 'id' | 'nodeId' | 'nodeType' | 'status' | 'outputJson' | 'workflowRunId'>;
 
 type RunScope = {
   runMode: 'flow' | 'target_node';
   targetNodeId: string | null;
 };
 
-function closeActiveStream(): void {
-  activeStreamHandle?.close();
-  activeStreamHandle = null;
+function isTerminalStatus(status: V2WorkflowRunStatus): boolean {
+  return status === 'succeeded' || status === 'failed' || status === 'canceled';
+}
+
+function closeRunStream(runId: string): void {
+  activeStreamsByRunId.get(runId)?.close();
+  activeStreamsByRunId.delete(runId);
+}
+
+function closeAllStreams(): void {
+  for (const runId of Array.from(activeStreamsByRunId.keys())) {
+    closeRunStream(runId);
+  }
 }
 
 function resolveRunScope(inputJson: Record<string, unknown> | null | undefined): RunScope {
@@ -110,11 +114,16 @@ function buildNodeOutput(outputJson: Record<string, unknown> | null, assetRefs: 
   };
 }
 
+function shouldApplyNodeRun(nodeRun: PersistableNodeRun): boolean {
+  const latestRunId = useFlowCanvasStore.getState().workflowRunIdByNodeId[nodeRun.nodeId];
+  return !latestRunId || latestRunId === nodeRun.workflowRunId;
+}
+
 function buildGeneratedAssetNodePatch(
   nodeRun: PersistableNodeRun,
   assetRefs: FlowRuntimeAssetRef[],
 ): Partial<FlowNodeData> | null {
-  if (nodeRun.status !== 'succeeded' || assetRefs.length === 0) {
+  if (nodeRun.status !== 'succeeded' || assetRefs.length === 0 || !shouldApplyNodeRun(nodeRun)) {
     return null;
   }
   const primaryAsset = assetRefs[0];
@@ -132,6 +141,8 @@ function buildGeneratedAssetNodePatch(
     assetIds: assetRefs.map((asset) => asset.assetId),
     errorMessage: undefined,
     generationStatus: 'done',
+    latestNodeRunId: nodeRun.id,
+    latestWorkflowRunId: nodeRun.workflowRunId,
     mimeType: primaryAsset.mimeType,
     naturalHeight: primaryAsset.height ?? undefined,
     naturalWidth: primaryAsset.width ?? undefined,
@@ -176,18 +187,22 @@ async function resolveAssetRefs(outputJson: Record<string, unknown> | null): Pro
 
 async function applyWorkflowRunSnapshot(snapshot: GetWorkflowRunResponse): Promise<void> {
   const scope = resolveRunScope(snapshot.workflowRun.inputJson);
-  activeRunScope = scope;
   const scopedNodeRuns = filterNodeRunsForScope(snapshot.nodeRuns, scope);
   const nodeIdByNodeRunId: Record<string, string> = {};
   const nodeRunIdByNodeId: Record<string, string> = {};
   const nodeRunStatusByNodeId: Record<string, V2WorkflowRunStatus> = {};
   const nodeOutputByNodeId: Record<string, FlowRuntimeNodeOutput> = {};
+  const workflowRunIdByNodeId: Record<string, string> = {};
   const assetRefsByNodeId: Record<string, FlowRuntimeAssetRef[]> = {};
 
   for (const nodeRun of scopedNodeRuns) {
+    if (!shouldApplyNodeRun(nodeRun)) {
+      continue;
+    }
     nodeIdByNodeRunId[nodeRun.id] = nodeRun.nodeId;
     nodeRunIdByNodeId[nodeRun.nodeId] = nodeRun.id;
     nodeRunStatusByNodeId[nodeRun.nodeId] = nodeRun.status;
+    workflowRunIdByNodeId[nodeRun.nodeId] = nodeRun.workflowRunId;
     const assets = await resolveAssetRefs(nodeRun.outputJson);
     assetRefsByNodeId[nodeRun.nodeId] = assets;
     nodeOutputByNodeId[nodeRun.nodeId] = buildNodeOutput(nodeRun.outputJson, assets);
@@ -196,25 +211,30 @@ async function applyWorkflowRunSnapshot(snapshot: GetWorkflowRunResponse): Promi
   useFlowCanvasStore.setState((state) => ({
     currentRunId: snapshot.workflowRun.id,
     isRunningBackendWorkflow:
-      snapshot.workflowRun.status !== 'succeeded'
-      && snapshot.workflowRun.status !== 'failed'
-      && snapshot.workflowRun.status !== 'canceled',
-    nodeIdByNodeRunId,
-    nodeOutputByNodeId:
-      scope.runMode === 'target_node' && scope.targetNodeId
-        ? {
-            ...state.nodeOutputByNodeId,
-            ...nodeOutputByNodeId,
-          }
-        : nodeOutputByNodeId,
-    nodeRunIdByNodeId,
-    nodeRunStatusByNodeId:
-      scope.runMode === 'target_node' && scope.targetNodeId
-        ? {
-            ...state.nodeRunStatusByNodeId,
-            ...nodeRunStatusByNodeId,
-          }
-        : nodeRunStatusByNodeId,
+      Object.values({
+        ...state.nodeRunStatusByNodeId,
+        ...nodeRunStatusByNodeId,
+      }).some((status) => !isTerminalStatus(status)),
+    nodeIdByNodeRunId: {
+      ...state.nodeIdByNodeRunId,
+      ...nodeIdByNodeRunId,
+    },
+    nodeOutputByNodeId: {
+      ...state.nodeOutputByNodeId,
+      ...nodeOutputByNodeId,
+    },
+    nodeRunIdByNodeId: {
+      ...state.nodeRunIdByNodeId,
+      ...nodeRunIdByNodeId,
+    },
+    nodeRunStatusByNodeId: {
+      ...state.nodeRunStatusByNodeId,
+      ...nodeRunStatusByNodeId,
+    },
+    workflowRunIdByNodeId: {
+      ...state.workflowRunIdByNodeId,
+      ...workflowRunIdByNodeId,
+    },
     runError:
       snapshot.workflowRun.errorJson && typeof snapshot.workflowRun.errorJson.message === 'string'
         ? snapshot.workflowRun.errorJson.message
@@ -251,17 +271,16 @@ function applyRunEvent(event: V2WorkflowRunEventView): void {
   appendRunEvent(event);
 
   const nodeId = deriveNodeId(event);
-  if (
-    activeRunScope.runMode === 'target_node' &&
-    activeRunScope.targetNodeId &&
-    nodeId &&
-    nodeId !== activeRunScope.targetNodeId
-  ) {
-    return;
-  }
   const payloadStatus = typeof event.payload.status === 'string'
     ? event.payload.status as V2WorkflowRunStatus
     : null;
+
+  if (nodeId) {
+    const latestRunId = useFlowCanvasStore.getState().workflowRunIdByNodeId[nodeId];
+    if (latestRunId && event.workflowRunId && latestRunId !== event.workflowRunId) {
+      return;
+    }
+  }
 
   if (nodeId && payloadStatus) {
     useFlowCanvasStore.setState((state) => ({
@@ -269,11 +288,15 @@ function applyRunEvent(event: V2WorkflowRunEventView): void {
         ...state.nodeRunStatusByNodeId,
         [nodeId]: payloadStatus,
       },
+      workflowRunIdByNodeId: {
+        ...state.workflowRunIdByNodeId,
+        [nodeId]: event.workflowRunId,
+      },
     }));
   }
 
   if (event.eventType === 'node.run.failed') {
-    const message = typeof event.payload.message === 'string' ? event.payload.message : '节点执行失败';
+    const message = typeof event.payload.message === 'string' ? event.payload.message : 'Node generation failed';
     useFlowCanvasStore.setState((state) => ({
       nodeOutputByNodeId: nodeId
         ? {
@@ -287,40 +310,79 @@ function applyRunEvent(event: V2WorkflowRunEventView): void {
     }));
   }
 
-  if (event.eventType === 'workflow.run.succeeded') {
+  if (event.eventType === 'workflow.run.failed') {
     useFlowCanvasStore.setState({
-      isRunningBackendWorkflow: false,
-      runStatus: 'succeeded',
-    });
-  } else if (event.eventType === 'workflow.run.failed') {
-    useFlowCanvasStore.setState({
-      isRunningBackendWorkflow: false,
-      runError: typeof event.payload.message === 'string' ? event.payload.message : '工作流执行失败',
+      runError: typeof event.payload.message === 'string' ? event.payload.message : 'Workflow run failed',
       runStatus: 'failed',
     });
   } else if (event.eventType === 'workflow.run.canceled') {
     useFlowCanvasStore.setState({
-      isRunningBackendWorkflow: false,
       runStatus: 'canceled',
+    });
+  } else if (event.eventType === 'workflow.run.succeeded') {
+    useFlowCanvasStore.setState({
+      runStatus: 'succeeded',
     });
   }
 }
 
-async function finalizeRun(runId: string, runToken: number): Promise<void> {
-  if (runToken !== activeRunToken) {
+async function finalizeRun(runId: string): Promise<void> {
+  if (disposedRunIds.has(runId)) {
     return;
   }
-
   const snapshot = await getWorkflowRun(runId);
-  if (runToken !== activeRunToken) {
+  if (disposedRunIds.has(runId)) {
     return;
   }
-
   await applyWorkflowRunSnapshot(snapshot);
+  activeStreamsByRunId.delete(runId);
 }
 
 function buildRunLaunchError(message: string): Error {
   return new Error(message);
+}
+
+function startRunStream(runId: string): void {
+  if (activeStreamsByRunId.has(runId)) {
+    return;
+  }
+  const handle = streamWorkflowRun(runId, {
+    onClose: () => {
+      void finalizeRun(runId);
+    },
+    onError: (error) => {
+      setRunError(error.message || 'Workflow run stream failed');
+    },
+    onEvent: (event) => {
+      applyRunEvent(event);
+    },
+  });
+  activeStreamsByRunId.set(runId, handle);
+}
+
+export async function recoverFlowTargetNodeRuns(flowId: string): Promise<void> {
+  if (!RUNNER_ENABLED) {
+    return;
+  }
+  const snapshots = await listFlowWorkflowRuns(flowId, {
+    limit: 50,
+    runMode: 'target_node',
+  });
+
+  const recoveredNodeIds = new Set<string>();
+  for (const snapshot of snapshots) {
+    const scope = resolveRunScope(snapshot.workflowRun.inputJson);
+    if (scope.runMode === 'target_node' && scope.targetNodeId) {
+      if (recoveredNodeIds.has(scope.targetNodeId)) {
+        continue;
+      }
+      recoveredNodeIds.add(scope.targetNodeId);
+    }
+    await applyWorkflowRunSnapshot(snapshot);
+    if (!isTerminalStatus(snapshot.workflowRun.status)) {
+      startRunStream(snapshot.workflowRun.id);
+    }
+  }
 }
 
 export async function runBackendWorkflow(options?: {
@@ -328,101 +390,85 @@ export async function runBackendWorkflow(options?: {
   targetNodeId?: string;
 }): Promise<void> {
   if (!RUNNER_ENABLED) {
-    throw buildRunLaunchError('当前环境已关闭 v2 workflow runner');
+    throw buildRunLaunchError('The v2 workflow runner is disabled in this environment.');
   }
 
   const state = useFlowCanvasStore.getState();
   if (!state.backendFlowId) {
-    throw buildRunLaunchError('当前画布未绑定 v2 flowId，无法使用后端运行。请先打开已绑定并已发布的流程。');
+    throw buildRunLaunchError('The current canvas is not bound to a v2 flowId, so backend workflow execution cannot start.');
   }
 
-  activeRunToken += 1;
-  const currentRunToken = activeRunToken;
-  closeActiveStream();
-  activeRunScope = {
-    runMode: options?.runMode ?? 'flow',
-    targetNodeId: options?.targetNodeId ?? null,
-  };
-
-  useFlowCanvasStore.setState({
-    currentRunId: null,
-    isRunningBackendWorkflow: true,
-    nodeOutputByNodeId: {},
-    nodeRunIdByNodeId: {},
-    nodeRunStatusByNodeId: {},
-    nodeIdByNodeRunId: {},
-    runError: null,
-    runEvents: [],
-    runStatus: 'pending',
-  });
+  const isTargetNodeRun = options?.runMode === 'target_node' && !!options.targetNodeId;
+  if (!isTargetNodeRun) {
+    closeAllStreams();
+    useFlowCanvasStore.getState().resetBackendRunState();
+  } else {
+    useFlowCanvasStore.setState((currentState) => ({
+      currentRunId: null,
+      isRunningBackendWorkflow: true,
+      nodeRunStatusByNodeId: {
+        ...currentState.nodeRunStatusByNodeId,
+        [options.targetNodeId as string]: 'pending',
+      },
+      runError: null,
+      runStatus: 'pending',
+    }));
+  }
 
   try {
     const request: CreateWorkflowRunInput = {
-      idempotencyKey: `flow-canvas:${state.backendFlowId}:${Date.now()}`,
+      idempotencyKey: `flow-canvas:${state.backendFlowId}:${options?.targetNodeId ?? 'flow'}:${Date.now()}`,
       input: {},
     };
-    if (options?.runMode === 'target_node' && options.targetNodeId) {
+    if (isTargetNodeRun) {
       request.runMode = 'target_node';
       request.targetNodeId = options.targetNodeId;
     }
 
     const created = await createWorkflowRun(state.backendFlowId, request);
+    disposedRunIds.delete(created.runId);
 
-    if (currentRunToken !== activeRunToken) {
-      return;
-    }
-
-    useFlowCanvasStore.setState({
+    useFlowCanvasStore.setState((currentState) => ({
       currentRunId: created.runId,
       runStatus: created.status,
-    });
+      workflowRunIdByNodeId: isTargetNodeRun
+        ? {
+            ...currentState.workflowRunIdByNodeId,
+            [options.targetNodeId as string]: created.runId,
+          }
+        : currentState.workflowRunIdByNodeId,
+    }));
 
     const snapshot = await getWorkflowRun(created.runId);
-    if (currentRunToken !== activeRunToken) {
-      return;
-    }
     await applyWorkflowRunSnapshot(snapshot);
 
-    const lastSequence = useFlowCanvasStore.getState().runEvents.at(-1)?.sequence;
-    activeStreamHandle = streamWorkflowRun(created.runId, {
-      afterSequence: lastSequence,
-      onClose: () => {
-        if (currentRunToken !== activeRunToken) {
-          return;
-        }
-        void finalizeRun(created.runId, currentRunToken);
-      },
-      onError: (error) => {
-        if (currentRunToken !== activeRunToken) {
-          return;
-        }
-        setRunError(error.message || '工作流事件流连接失败');
-      },
-      onEvent: (event) => {
-        if (currentRunToken !== activeRunToken) {
-          return;
-        }
-        applyRunEvent(event);
-      },
-    });
+    if (!isTerminalStatus(snapshot.workflowRun.status)) {
+      startRunStream(created.runId);
+    }
   } catch (error) {
     const message = error instanceof V2HttpError && error.code === 'INSUFFICIENT_BALANCE'
       ? 'Insufficient balance. Redeem or recharge credits before starting this workflow.'
       : error instanceof Error
         ? error.message
-        : '启动后端工作流失败';
+        : 'Failed to start backend workflow.';
     setRunError(message);
+    if (isTargetNodeRun) {
+      useFlowCanvasStore.setState((currentState) => ({
+        nodeRunStatusByNodeId: {
+          ...currentState.nodeRunStatusByNodeId,
+          [options.targetNodeId as string]: 'failed',
+        },
+      }));
+    }
     throw error instanceof Error ? error : new Error(message);
   }
 }
 
 export function disposeBackendWorkflowRunStream(): void {
-  activeRunToken += 1;
-  closeActiveStream();
-  activeRunScope = {
-    runMode: 'flow',
-    targetNodeId: null,
-  };
+  for (const runId of activeStreamsByRunId.keys()) {
+    disposedRunIds.add(runId);
+  }
+  closeAllStreams();
 }
 
 export function isBackendWorkflowRunnerEnabled(): boolean {

@@ -9,11 +9,13 @@ import {
 import {
   type CreateWorkflowRunInput,
   type FlowIdParams,
+  type FlowRunsQuery,
   type RunIdParams,
   type WorkflowRunEventsQuery,
   type WorkflowRunStreamQuery,
   createWorkflowRunSchema,
   flowIdParamsSchema,
+  flowRunsQuerySchema,
   runIdParamsSchema,
   workflowRunEventsQuerySchema,
   workflowRunStreamQuerySchema,
@@ -155,6 +157,28 @@ export function registerWorkflowRunRoutes(app: FastifyInstance): void {
           body,
         );
         return reply.code(201).send(result);
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.get(
+    "/api/v2/flows/:flowId/runs",
+    {
+      preHandler: [...authHandlers, requirePermission("run:read")],
+    },
+    async (request, reply) => {
+      try {
+        const params = parseParams<FlowIdParams>(request, flowIdParamsSchema);
+        const query = parseQuery<FlowRunsQuery>(request, flowRunsQuerySchema);
+        return reply.send(
+          await app.workflowRunsService.listFlowWorkflowRuns(
+            getWorkflowRunContext(request),
+            params.flowId,
+            query,
+          ),
+        );
       } catch (error) {
         return handleRouteError(error, request, reply);
       }

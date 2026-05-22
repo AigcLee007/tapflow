@@ -13,6 +13,11 @@ export const createWorkflowRunSchema = z.object({
   input: z.record(z.string(), z.unknown()).optional(),
 });
 
+export const flowRunsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+  runMode: z.enum(["flow", "target_node"]).optional(),
+});
+
 export const workflowRunEventsQuerySchema = z.object({
   afterSequence: z.coerce.number().int().nonnegative().optional(),
 });
@@ -23,6 +28,7 @@ export const workflowRunStreamQuerySchema = z.object({
 
 export type CreateWorkflowRunInput = z.infer<typeof createWorkflowRunSchema>;
 export type FlowIdParams = z.infer<typeof flowIdParamsSchema>;
+export type FlowRunsQuery = z.infer<typeof flowRunsQuerySchema>;
 export type RunIdParams = z.infer<typeof runIdParamsSchema>;
 export type WorkflowRunEventsQuery = z.infer<typeof workflowRunEventsQuerySchema>;
 export type WorkflowRunStreamQuery = z.infer<typeof workflowRunStreamQuerySchema>;

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import {
   createWorkflowRun,
+  listFlowWorkflowRuns,
   streamWorkflowRun,
 } from './v2WorkflowRunsApi';
 import { clearStoredAuth, setStoredTokens } from './v2HttpClient';
@@ -13,6 +14,33 @@ describe('v2WorkflowRunsApi', () => {
       accessToken: 'test-token',
       refreshToken: 'refresh-token',
     });
+  });
+
+  test('listFlowWorkflowRuns fetches recent target-node runs for a flow', async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify([]), {
+        status: 200,
+        headers: {
+          'content-type': 'application/json',
+        },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await listFlowWorkflowRuns('flow-123', {
+      limit: 25,
+      runMode: 'target_node',
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v2/flows/flow-123/runs?runMode=target_node&limit=25',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'Bearer test-token',
+        }),
+        method: 'GET',
+      }),
+    );
   });
 
   afterEach(() => {

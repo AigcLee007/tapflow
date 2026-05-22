@@ -109,6 +109,7 @@ interface FlowCanvasState {
   nodeOutputByNodeId: Record<string, FlowRuntimeNodeOutput>;
   nodeRunIdByNodeId: Record<string, string>;
   nodeRunStatusByNodeId: Record<string, V2WorkflowRunStatus>;
+  workflowRunIdByNodeId: Record<string, string>;
   nodeIdByNodeRunId: Record<string, string>;
   runError: string | null;
   runEvents: V2WorkflowRunEventView[];
@@ -302,6 +303,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
   nodeOutputByNodeId: {},
   nodeRunIdByNodeId: {},
   nodeRunStatusByNodeId: {},
+  workflowRunIdByNodeId: {},
   nodeIdByNodeRunId: {},
   runError: null,
   runEvents: [],
@@ -815,6 +817,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
       nodeOutputByNodeId: {},
       nodeRunIdByNodeId: {},
       nodeRunStatusByNodeId: {},
+      workflowRunIdByNodeId: {},
       nodeIdByNodeRunId: {},
       runError: null,
       runEvents: [],
@@ -872,6 +875,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
       nodeOutputByNodeId: {},
       nodeRunIdByNodeId: {},
       nodeRunStatusByNodeId: {},
+      workflowRunIdByNodeId: {},
       nodeIdByNodeRunId: {},
       runError: null,
       runEvents: [],
@@ -896,6 +900,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
       nodeOutputByNodeId: {},
       nodeRunIdByNodeId: {},
       nodeRunStatusByNodeId: {},
+      workflowRunIdByNodeId: {},
       nodeIdByNodeRunId: {},
       runError: null,
       runEvents: [],

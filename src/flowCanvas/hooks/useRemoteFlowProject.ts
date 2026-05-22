@@ -9,6 +9,7 @@ import {
   type FlowDraft,
 } from "../services/flowProjectApi";
 import { isLocalDraftNewer, readLocalFlowDraft } from "../services/localFlowDraft";
+import { recoverFlowTargetNodeRuns } from "../runtime/v2WorkflowRunner";
 import type { WorkspaceFlow, WorkspaceProject } from "../../workspace/workspaceApi";
 
 type RemoteFlowProjectState = {
@@ -96,6 +97,7 @@ export function useRemoteFlowProject(projectId: string): RemoteFlowProjectState 
       setProject(nextProject);
       setFlow(nextFlow);
       setDraft(canvasDraft);
+      void recoverFlowTargetNodeRuns(nextFlow.id);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Unable to load Flow project");
     } finally {
@@ -143,6 +145,7 @@ export function useRemoteFlowProject(projectId: string): RemoteFlowProjectState 
         setProject(nextProject);
         setFlow(nextFlow);
         setDraft(canvasDraft);
+        void recoverFlowTargetNodeRuns(nextFlow.id);
       } catch (loadError) {
         if (active) {
           setError(loadError instanceof Error ? loadError.message : "Unable to load Flow project");

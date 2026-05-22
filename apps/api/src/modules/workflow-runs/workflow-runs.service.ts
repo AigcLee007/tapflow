@@ -753,6 +753,96 @@ export class WorkflowRunsService {
     }, this.pool);
   }
 
+  async listFlowWorkflowRuns(
+    context: WorkflowRunContext,
+    flowId: string,
+    options?: {
+      limit?: number;
+      runMode?: WorkflowRunMode;
+    },
+  ): Promise<Array<{
+    nodeRuns: NodeRunView[];
+    workflowRun: WorkflowRunView;
+  }>> {
+    return withTenantTransaction(context, async (client) => {
+      await this.getCurrentFlowRuntimeOrThrow(client, flowId);
+      const limit = Math.min(Math.max(options?.limit ?? 50, 1), 100);
+      const runModeFilter = options?.runMode ?? null;
+      const runsResult = await client.query<WorkflowRunRecord>(
+        `
+          SELECT
+            id::text AS id,
+            tenant_id::text AS tenant_id,
+            flow_id::text AS flow_id,
+            flow_version_id::text AS flow_version_id,
+            status,
+            input_json,
+            output_json,
+            error_json,
+            idempotency_key,
+            created_by::text AS created_by,
+            started_at::text AS started_at,
+            finished_at::text AS finished_at,
+            canceled_at::text AS canceled_at,
+            created_at::text AS created_at,
+            updated_at::text AS updated_at
+          FROM workflow_runs
+          WHERE tenant_id = $1::uuid
+            AND flow_id = $2::uuid
+            AND ($3::text IS NULL OR input_json->>'runMode' = $3::text)
+          ORDER BY created_at DESC, id DESC
+          LIMIT $4::int
+        `,
+        [context.tenantId, flowId, runModeFilter, limit],
+      );
+
+      const workflowRuns = runsResult.rows.map(mapWorkflowRun);
+      if (workflowRuns.length === 0) {
+        return [];
+      }
+
+      const nodeRunsResult = await client.query<NodeRunRecord>(
+        `
+          SELECT
+            id::text AS id,
+            tenant_id::text AS tenant_id,
+            workflow_run_id::text AS workflow_run_id,
+            node_id,
+            node_type,
+            status,
+            attempt,
+            max_attempts,
+            input_json,
+            output_json,
+            error_json,
+            provider_task_id,
+            cost_json,
+            started_at::text AS started_at,
+            finished_at::text AS finished_at,
+            created_at::text AS created_at,
+            updated_at::text AS updated_at
+          FROM node_runs
+          WHERE tenant_id = $1::uuid
+            AND workflow_run_id = ANY($2::uuid[])
+          ORDER BY created_at ASC, id ASC
+        `,
+        [context.tenantId, workflowRuns.map((run) => run.id)],
+      );
+
+      const nodeRunsByRunId = new Map<string, NodeRunView[]>();
+      for (const nodeRun of nodeRunsResult.rows.map(mapNodeRun)) {
+        const list = nodeRunsByRunId.get(nodeRun.workflowRunId) ?? [];
+        list.push(nodeRun);
+        nodeRunsByRunId.set(nodeRun.workflowRunId, list);
+      }
+
+      return workflowRuns.map((workflowRun) => ({
+        nodeRuns: nodeRunsByRunId.get(workflowRun.id) ?? [],
+        workflowRun,
+      }));
+    }, this.pool);
+  }
+
   async listWorkflowRunEvents(
     context: WorkflowRunContext,
     runId: string,

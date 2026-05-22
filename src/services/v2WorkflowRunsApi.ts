@@ -79,6 +79,8 @@ export interface GetWorkflowRunResponse {
   workflowRun: V2WorkflowRunView;
 }
 
+export type ListFlowWorkflowRunsResponse = GetWorkflowRunResponse[];
+
 export interface StreamWorkflowRunOptions {
   afterSequence?: number;
   lastEventId?: number | string;
@@ -245,6 +247,21 @@ export async function createWorkflowRun(
 
 export async function getWorkflowRun(runId: string): Promise<GetWorkflowRunResponse> {
   return apiGet<GetWorkflowRunResponse>(`/workflow-runs/${runId}`);
+}
+
+export async function listFlowWorkflowRuns(
+  flowId: string,
+  input?: {
+    limit?: number;
+    runMode?: "flow" | "target_node";
+  },
+): Promise<ListFlowWorkflowRunsResponse> {
+  const params = new URLSearchParams();
+  if (input?.runMode) params.set('runMode', input.runMode);
+  if (typeof input?.limit === 'number') params.set('limit', String(input.limit));
+  return apiGet<ListFlowWorkflowRunsResponse>(
+    `/flows/${flowId}/runs${params.toString() ? `?${params.toString()}` : ''}`,
+  );
 }
 
 export async function getWorkflowRunEvents(
