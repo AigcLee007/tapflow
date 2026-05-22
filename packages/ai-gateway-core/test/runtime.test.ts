@@ -696,7 +696,7 @@ describe("route resolver and ai gateway", () => {
     expect(capturedTimeout).toBe(34567);
   });
 
-  test("ai gateway image timeout falls back to env then 120000 default", async () => {
+  test("ai gateway image timeout falls back to env then 300000 default", async () => {
     const originalCompat = process.env.OPENAI_COMPAT_IMAGE_TIMEOUT_MS;
     const originalOpenAi = process.env.OPENAI_IMAGE_TIMEOUT_MS;
     let capturedTimeout: number | null = null;
@@ -733,7 +733,7 @@ describe("route resolver and ai gateway", () => {
         request: { prompt: "timeout-default" },
         route: makeRoute({ requestConfig: {} }),
       });
-      expect(capturedTimeout).toBe(120000);
+      expect(capturedTimeout).toBe(300000);
     } finally {
       if (originalCompat === undefined) {
         delete process.env.OPENAI_COMPAT_IMAGE_TIMEOUT_MS;

@@ -6,6 +6,7 @@ import type {
   AiGatewayMediaResult,
   ProviderTaskResult,
 } from "@aigc-flow/ai-gateway-core";
+import { AiGatewayError } from "@aigc-flow/ai-gateway-core";
 import { QUEUE_NAMES, type NodeExecuteJobPayload, type ProviderPollJobPayload } from "@aigc-flow/redis";
 import type { StorageProvider } from "@aigc-flow/storage";
 
@@ -1080,6 +1081,107 @@ describeWithDatabase("workflow node execution", () => {
           ledgerEntries: 1,
           usageEvents: 1,
         });
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("image.generate provider timeout keeps node recoverable instead of failing immediately", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({
+          connectionString: await createAppDatabaseUrl(),
+        });
+        const seeded = await seedWorkflowRuntime(appPool, {
+          inputNodeStatus: "succeeded",
+          inputOutputJson: { prompt: "draw a slow sheep" },
+          middleNodeConfig: {
+            prompt: "draw a slow sheep",
+            routeKey: "default-image",
+          },
+          middleNodeStatus: "runnable",
+          middleNodeType: "image.generate",
+        });
+        const pollQueue = createFakeProviderPollQueue();
+        const service = createWorkflowService({
+          mediaGenerationRuntime: {
+            async generateImage() {
+              throw new AiGatewayError({
+                code: "PROVIDER_TIMEOUT",
+                message: "The provider request timed out",
+                providerRequest: { prompt: "draw a slow sheep" },
+                statusCode: 504,
+              });
+            },
+            async generateVideo() {
+              throw new Error("not used");
+            },
+            async pollTask() {
+              throw new Error("not used");
+            },
+          },
+          nodeQueue: createFakeNodeExecuteQueue(),
+          pollQueue,
+          pool: appPool,
+          storageProvider: new MemoryStorageProvider(),
+        });
+
+        await processNodeExecuteJob(
+          {
+            data: {
+              nodeRunId: seeded.middleNodeRunId,
+              tenantId: seeded.tenantId,
+              traceId: "trace-timeout",
+              workflowRunId: seeded.workflowRunId,
+            },
+            id: "job-timeout",
+            queueName: QUEUE_NAMES.nodeExecute,
+          } as never,
+          createTestLogger(),
+          { executionService: service },
+        );
+
+        const state = await withTenantTransaction(
+          { tenantId: seeded.tenantId, userId: seeded.userId },
+          async (client) => {
+            const nodeRun = await client.query<{
+              error_json: Record<string, unknown> | null;
+              output_json: Record<string, unknown>;
+              provider_task_id: string;
+              status: string;
+            }>(
+              "SELECT status, output_json, provider_task_id, error_json FROM node_runs WHERE id = $1::uuid",
+              [seeded.middleNodeRunId],
+            );
+            const workflowRun = await client.query<{ status: string }>(
+              "SELECT status FROM workflow_runs WHERE id = $1::uuid",
+              [seeded.workflowRunId],
+            );
+            return {
+              nodeRun: nodeRun.rows[0],
+              workflowRun: workflowRun.rows[0],
+            };
+          },
+          appPool,
+        );
+
+        expect(state.nodeRun.status).toBe("waiting_provider");
+        expect(state.workflowRun.status).toBe("running");
+        expect(state.nodeRun.provider_task_id).toMatch(/^timeout-unknown:/);
+        expect(state.nodeRun.error_json?.code).toBe("PROVIDER_RESULT_UNKNOWN");
+        expect(state.nodeRun.output_json.providerTask).toMatchObject({
+          reconcileReason: "provider_result_unknown",
+          status: "provider_result_unknown",
+        });
+        expect(pollQueue.jobs).toHaveLength(1);
+        expect(pollQueue.jobs[0].data.providerTaskId).toMatch(/^timeout-unknown:/);
       } finally {
         await appPool.end();
         await adminPool.end();

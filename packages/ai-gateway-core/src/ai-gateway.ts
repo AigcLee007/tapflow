@@ -196,7 +196,7 @@ export class AiGateway {
       if (envTimeout !== null) {
         return envTimeout;
       }
-      return 120_000;
+      return 300_000;
     }
 
     return 10_000;

@@ -181,7 +181,7 @@ export class DatabaseMediaRuntime {
         nodeRunId: metadata?.nodeRunId ?? null,
         providerId: selectedRoute.provider.id,
         routeId: selectedRoute.routeId,
-        status: "failed",
+        status: normalizedError.code === "PROVIDER_TIMEOUT" ? "provider_result_unknown" : "failed",
         tenantId: context.tenantId,
         workflowRunId: metadata?.workflowRunId ?? null,
       });
@@ -235,7 +235,7 @@ export class DatabaseMediaRuntime {
         nodeRunId: metadata?.nodeRunId ?? null,
         providerId: selectedRoute.provider.id,
         routeId: selectedRoute.routeId,
-        status: "failed",
+        status: normalizedError.code === "PROVIDER_TIMEOUT" ? "provider_result_unknown" : "failed",
         tenantId: context.tenantId,
         workflowRunId: metadata?.workflowRunId ?? null,
       });

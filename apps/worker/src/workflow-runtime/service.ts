@@ -5,6 +5,7 @@ import {
   type AuditLogInput,
   withTenantTransaction,
 } from "@aigc-flow/db";
+import { AiGatewayError } from "@aigc-flow/ai-gateway-core";
 import type {
   AiGatewayMediaResult,
   AiGatewayTextResult,
@@ -80,6 +81,8 @@ type WorkflowExecutionContext = {
 };
 
 type WorkflowRunMode = "flow" | "target_node";
+const UNKNOWN_PROVIDER_RECONCILE_PREFIX = "timeout-unknown:";
+const UNKNOWN_PROVIDER_RECONCILE_WINDOW_MS = 10 * 60 * 1000;
 
 type TextGenerationRuntimeLike = Pick<DatabaseTextGenerationRuntime, "generateText">;
 type MediaGenerationRuntimeLike = Pick<DatabaseMediaRuntime, "generateImage" | "generateVideo" | "pollTask">;
@@ -189,6 +192,16 @@ function normalizeError(error: unknown): {
     code: "WORKFLOW_NODE_FAILED",
     message: String(error),
   };
+}
+
+function isProviderResultUnknownError(error: unknown): boolean {
+  if (error instanceof AiGatewayError) {
+    return error.code === "PROVIDER_TIMEOUT";
+  }
+  if (error instanceof Error) {
+    return error.name === "AbortError" || error.name === "TimeoutError" || /aborted due to timeout|timed out/i.test(error.message);
+  }
+  return false;
 }
 
 function buildTextMessages(
@@ -617,6 +630,62 @@ export class WorkflowNodeExecutionService {
           },
         };
       } catch (error) {
+        if (isProviderResultUnknownError(error)) {
+          const unknownOutput = this.buildProviderResultUnknownOutput(error, currentNode, workflowRun, currentNodeRun);
+          const providerTaskId = `${UNKNOWN_PROVIDER_RECONCILE_PREFIX}${currentNodeRun.id}`;
+          await client.query(
+            `
+              UPDATE node_runs
+              SET
+                status = 'waiting_provider',
+                output_json = $2::jsonb,
+                provider_task_id = $3,
+                error_json = $4::jsonb,
+                updated_at = now()
+              WHERE id = $1::uuid
+            `,
+            [
+              currentNodeRun.id,
+              JSON.stringify(unknownOutput),
+              providerTaskId,
+              JSON.stringify({
+                code: "PROVIDER_RESULT_UNKNOWN",
+                message: "Provider request timed out locally after it was sent; keeping reservation open while checking for a recoverable result.",
+              }),
+            ],
+          );
+          await this.appendWorkflowRunEvent(client, {
+            eventType: "node.run.waiting_provider",
+            nodeRunId: currentNodeRun.id,
+            payload: unknownOutput,
+            tenantId: input.tenantId,
+            workflowRunId: workflowRun.id,
+          });
+          return {
+            auditLogs: [],
+            nodeEnqueuePayloads: [],
+            pollEnqueuePayloads: [
+              {
+                delayMs: this.pollDelayMs,
+                payload: {
+                  nodeRunId: currentNodeRun.id,
+                  providerTaskId,
+                  tenantId: input.tenantId,
+                  traceId: input.traceId ?? undefined,
+                  workflowRunId: workflowRun.id,
+                },
+              },
+            ],
+            processorResult: {
+              jobId: null,
+              queueName: QUEUE_NAMES.nodeExecute,
+              status: "ok",
+              tenantId: input.tenantId,
+              traceId: input.traceId ?? null,
+            },
+          };
+        }
+
         const normalized = normalizeError(error);
         await this.failNodeAndWorkflow(client, workflowRun.id, currentNodeRun.id, input.tenantId, normalized);
 
@@ -665,6 +734,61 @@ export class WorkflowNodeExecutionService {
       );
       if (!currentNode) {
         throw new Error(`Compiled node not found: ${currentNodeRun.node_id}`);
+      }
+
+      if (input.providerTaskId.startsWith(UNKNOWN_PROVIDER_RECONCILE_PREFIX)) {
+        const providerState = isPlainObject(currentNodeRun.output_json?.providerTask)
+          ? currentNodeRun.output_json?.providerTask
+          : {};
+        const reconcileUntil =
+          typeof providerState.reconcileUntil === "string"
+            ? Date.parse(providerState.reconcileUntil)
+            : 0;
+
+        if (Number.isFinite(reconcileUntil) && Date.now() < reconcileUntil) {
+          return {
+            auditLogs: [],
+            nodeEnqueuePayloads: [],
+            pollEnqueuePayloads: [
+              {
+                delayMs: this.pollDelayMs,
+                payload: {
+                  nodeRunId: input.nodeRunId,
+                  providerTaskId: input.providerTaskId,
+                  tenantId: input.tenantId,
+                  traceId: input.traceId ?? undefined,
+                  workflowRunId: input.workflowRunId,
+                },
+              },
+            ],
+            processorResult: {
+              jobId: null,
+              queueName: QUEUE_NAMES.providerPoll,
+              status: "ok",
+              tenantId: input.tenantId,
+              traceId: input.traceId ?? null,
+            },
+          };
+        }
+
+        const normalized = {
+          code: "PROVIDER_RESULT_UNKNOWN_EXPIRED",
+          details: currentNodeRun.output_json ?? {},
+          message: "Provider result could not be recovered before the reconciliation window expired.",
+        };
+        await this.failNodeAndWorkflow(client, workflowRun.id, currentNodeRun.id, input.tenantId, normalized);
+        return {
+          auditLogs: [],
+          nodeEnqueuePayloads: [],
+          pollEnqueuePayloads: [],
+          processorResult: {
+            jobId: null,
+            queueName: QUEUE_NAMES.providerPoll,
+            status: "ok",
+            tenantId: input.tenantId,
+            traceId: input.traceId ?? null,
+          },
+        };
       }
 
       try {
@@ -1109,6 +1233,27 @@ export class WorkflowNodeExecutionService {
         routeId: input.routeId,
         routeKey: input.routeKey,
         status: input.status,
+      },
+    };
+  }
+
+  private buildProviderResultUnknownOutput(
+    error: unknown,
+    node: CompiledWorkflowNode,
+    workflowRun: WorkflowRunRecord,
+    nodeRun: NodeRunRecord,
+  ): Record<string, unknown> {
+    const providerRequest = error instanceof AiGatewayError ? error.providerRequest : null;
+    return {
+      providerTask: {
+        nodeId: node.id,
+        nodeRunId: nodeRun.id,
+        providerRequest,
+        providerTaskId: `${UNKNOWN_PROVIDER_RECONCILE_PREFIX}${nodeRun.id}`,
+        reconcileReason: "provider_result_unknown",
+        reconcileUntil: new Date(Date.now() + UNKNOWN_PROVIDER_RECONCILE_WINDOW_MS).toISOString(),
+        status: "provider_result_unknown",
+        workflowRunId: workflowRun.id,
       },
     };
   }

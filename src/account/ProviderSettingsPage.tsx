@@ -60,7 +60,7 @@ export function ProviderSettingsPage() {
   const [selectedRouteId, setSelectedRouteId] = useState("");
   const [baseUrlOverride, setBaseUrlOverride] = useState("");
   const [selectedModelId, setSelectedModelId] = useState("");
-  const [timeoutMs, setTimeoutMs] = useState(120000);
+  const [timeoutMs, setTimeoutMs] = useState(300000);
   const [status, setStatus] = useState("active");
   const [minChargeCredits, setMinChargeCredits] = useState(100);
 
@@ -177,7 +177,7 @@ export function ProviderSettingsPage() {
         modelId: model.id,
         requestConfig: {
           ...selectedRoute.requestConfig,
-          timeoutMs: Math.max(1000, Math.floor(timeoutMs || 120000)),
+          timeoutMs: Math.max(1000, Math.floor(timeoutMs || 300000)),
         },
         status,
       });
