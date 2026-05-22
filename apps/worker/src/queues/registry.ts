@@ -31,6 +31,22 @@ export const WORKER_QUEUE_NAMES = [
   QUEUE_NAMES.billingSettle,
 ] as const;
 
+export type WorkerQueueConcurrency = {
+  default: number;
+  nodeExecute: number;
+  providerPoll: number;
+};
+
+function resolveQueueConcurrency(queueName: QueueName, concurrency: WorkerQueueConcurrency): number {
+  if (queueName === QUEUE_NAMES.nodeExecute) {
+    return concurrency.nodeExecute;
+  }
+  if (queueName === QUEUE_NAMES.providerPoll) {
+    return concurrency.providerPoll;
+  }
+  return concurrency.default;
+}
+
 function withWorkerErrorLogging(
   queueName: QueueName,
   logger: WorkerLogger,
@@ -63,7 +79,7 @@ function withWorkerErrorLogging(
 }
 
 export function registerWorkerQueues(options: {
-  concurrency: number;
+  concurrency: WorkerQueueConcurrency;
   logger: WorkerLogger;
   queueFactory: QueueFactoryLike;
   workflowNodeExecutionService?: WorkflowNodeExecutionService;
@@ -96,7 +112,7 @@ export function registerWorkerQueues(options: {
       queueName,
       withWorkerErrorLogging(queueName, options.logger, processor),
       {
-        concurrency: options.concurrency,
+        concurrency: resolveQueueConcurrency(queueName, options.concurrency),
       },
     );
 

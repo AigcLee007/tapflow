@@ -89,6 +89,8 @@ export const DEFAULT_QUEUE_JOB_OPTIONS: DefaultJobOptions = {
   },
 };
 
+export const DEFAULT_WORKER_CONCURRENCY = 16;
+
 const DISALLOWED_PAYLOAD_KEYS = [
   "base64",
   "compiledGraph",
@@ -180,10 +182,10 @@ export function createQueueFactory(options: QueueFactoryOptions) {
     ): Worker<QueuePayloadMap[Name], unknown, string> {
       return new Worker<QueuePayloadMap[Name], unknown, string>(name, processor, {
         autorun: workerOptions?.autorun ?? true,
-        concurrency: workerOptions?.concurrency ?? 1,
         connection: options.connection.duplicate(),
         prefix,
         ...workerOptions,
+        concurrency: workerOptions?.concurrency ?? DEFAULT_WORKER_CONCURRENCY,
       });
     },
 

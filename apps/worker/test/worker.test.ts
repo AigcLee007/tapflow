@@ -13,6 +13,7 @@ import type { StorageProvider } from "@aigc-flow/storage";
 import type { ApiEnv } from "../../api/src/config/env.js";
 import { buildApp } from "../../api/src/app.js";
 import { WorkflowRunsService } from "../../api/src/modules/workflow-runs/workflow-runs.service.js";
+import { getWorkerEnv } from "../src/config/env.js";
 import { createWorkerRuntime } from "../src/main.js";
 import type { WorkerLogger } from "../src/logger.js";
 import { processNodeExecuteJob } from "../src/processors/node-execute.processor.js";
@@ -511,6 +512,8 @@ describe("worker skeleton", () => {
         s3ForcePathStyle: true,
         s3Region: "us-east-1",
         s3SecretAccessKey: "test-secret",
+        nodeExecuteConcurrency: 16,
+        providerPollConcurrency: 16,
         workerConcurrency: 2,
         workerName: "test-worker",
       },
@@ -536,6 +539,109 @@ describe("worker skeleton", () => {
     expect(runtime.queueNames).toEqual([...WORKER_QUEUE_NAMES]);
     expect(createdQueues).toContain(`worker:${QUEUE_NAMES.nodeExecute}`);
     expect(createdQueues).toContain(`worker:${QUEUE_NAMES.providerPoll}`);
+  });
+
+  test("registers node.execute and provider.poll with independent concurrent workers", () => {
+    const workerClose = vi.fn(async () => {});
+    const eventsClose = vi.fn(async () => {});
+    const queueClose = vi.fn(async () => {});
+    const workerOptions = new Map<string, { concurrency: number }>();
+
+    createWorkerRuntime({
+      env: {
+        credentialKeyVersion: "v1",
+        credentialMasterKey: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+        nodeEnv: "test",
+        queuePrefix: "test-prefix",
+        redisUrl: "redis://localhost:6379",
+        s3AccessKeyId: "test-access",
+        s3Bucket: "test-bucket",
+        s3Endpoint: "http://localhost:9000",
+        s3ForcePathStyle: true,
+        s3Region: "us-east-1",
+        s3SecretAccessKey: "test-secret",
+        nodeExecuteConcurrency: 32,
+        providerPollConcurrency: 24,
+        workerConcurrency: 8,
+        workerName: "test-worker",
+      },
+      logger: createTestLogger(),
+      pool: {} as never,
+      queueFactory: {
+        createQueue() {
+          return { close: queueClose };
+        },
+        createQueueEvents() {
+          return { close: eventsClose };
+        },
+        createWorker(name: string, _processor: unknown, options: { concurrency: number }) {
+          workerOptions.set(name, options);
+          return { close: workerClose };
+        },
+      } as never,
+      workflowNodeExecutionService: {} as never,
+    });
+
+    expect(workerOptions.get(QUEUE_NAMES.nodeExecute)?.concurrency).toBe(32);
+    expect(workerOptions.get(QUEUE_NAMES.providerPoll)?.concurrency).toBe(24);
+    expect(workerOptions.get(QUEUE_NAMES.workflowStart)?.concurrency).toBe(8);
+    expect(workerOptions.get(QUEUE_NAMES.assetIngest)?.concurrency).toBe(8);
+    expect(workerOptions.get(QUEUE_NAMES.billingSettle)?.concurrency).toBe(8);
+  });
+
+  test("worker env defaults node.execute concurrency above single-flight and supports override", () => {
+    const previous = {
+      credential: process.env.CREDENTIAL_MASTER_KEY,
+      nodeExecuteConcurrency: process.env.NODE_EXECUTE_CONCURRENCY,
+      nodeEnv: process.env.NODE_ENV,
+      providerPollConcurrency: process.env.PROVIDER_POLL_CONCURRENCY,
+      s3AccessKeyId: process.env.S3_ACCESS_KEY_ID,
+      s3Bucket: process.env.S3_BUCKET,
+      s3Endpoint: process.env.S3_ENDPOINT,
+      s3ForcePathStyle: process.env.S3_FORCE_PATH_STYLE,
+      s3Region: process.env.S3_REGION,
+      s3SecretAccessKey: process.env.S3_SECRET_ACCESS_KEY,
+      workerConcurrency: process.env.WORKER_CONCURRENCY,
+    };
+
+    try {
+      process.env.NODE_ENV = "test";
+      delete process.env.WORKER_CONCURRENCY;
+      delete process.env.NODE_EXECUTE_CONCURRENCY;
+      delete process.env.PROVIDER_POLL_CONCURRENCY;
+      const defaultEnv = getWorkerEnv();
+      expect(defaultEnv.nodeExecuteConcurrency).toBeGreaterThan(1);
+      expect(defaultEnv.providerPollConcurrency).toBeGreaterThan(1);
+
+      process.env.NODE_EXECUTE_CONCURRENCY = "37";
+      process.env.PROVIDER_POLL_CONCURRENCY = "19";
+      const overriddenEnv = getWorkerEnv();
+      expect(overriddenEnv.nodeExecuteConcurrency).toBe(37);
+      expect(overriddenEnv.providerPollConcurrency).toBe(19);
+    } finally {
+      if (previous.credential === undefined) delete process.env.CREDENTIAL_MASTER_KEY;
+      else process.env.CREDENTIAL_MASTER_KEY = previous.credential;
+      if (previous.nodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = previous.nodeEnv;
+      if (previous.workerConcurrency === undefined) delete process.env.WORKER_CONCURRENCY;
+      else process.env.WORKER_CONCURRENCY = previous.workerConcurrency;
+      if (previous.nodeExecuteConcurrency === undefined) delete process.env.NODE_EXECUTE_CONCURRENCY;
+      else process.env.NODE_EXECUTE_CONCURRENCY = previous.nodeExecuteConcurrency;
+      if (previous.providerPollConcurrency === undefined) delete process.env.PROVIDER_POLL_CONCURRENCY;
+      else process.env.PROVIDER_POLL_CONCURRENCY = previous.providerPollConcurrency;
+      if (previous.s3Endpoint === undefined) delete process.env.S3_ENDPOINT;
+      else process.env.S3_ENDPOINT = previous.s3Endpoint;
+      if (previous.s3Region === undefined) delete process.env.S3_REGION;
+      else process.env.S3_REGION = previous.s3Region;
+      if (previous.s3Bucket === undefined) delete process.env.S3_BUCKET;
+      else process.env.S3_BUCKET = previous.s3Bucket;
+      if (previous.s3AccessKeyId === undefined) delete process.env.S3_ACCESS_KEY_ID;
+      else process.env.S3_ACCESS_KEY_ID = previous.s3AccessKeyId;
+      if (previous.s3SecretAccessKey === undefined) delete process.env.S3_SECRET_ACCESS_KEY;
+      else process.env.S3_SECRET_ACCESS_KEY = previous.s3SecretAccessKey;
+      if (previous.s3ForcePathStyle === undefined) delete process.env.S3_FORCE_PATH_STYLE;
+      else process.env.S3_FORCE_PATH_STYLE = previous.s3ForcePathStyle;
+    }
   });
 
   test("processor skeleton returns a no-op result with tenantId and traceId", async () => {
@@ -634,6 +740,8 @@ describe("worker skeleton", () => {
         s3ForcePathStyle: true,
         s3Region: "us-east-1",
         s3SecretAccessKey: "test-secret",
+        nodeExecuteConcurrency: 16,
+        providerPollConcurrency: 16,
         workerConcurrency: 2,
         workerName: "test-worker",
       },

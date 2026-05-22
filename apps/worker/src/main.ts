@@ -113,7 +113,11 @@ export function createWorkerRuntime(options?: {
     });
 
   const registration = registerWorkerQueues({
-    concurrency: env.workerConcurrency,
+    concurrency: {
+      default: env.workerConcurrency,
+      nodeExecute: env.nodeExecuteConcurrency,
+      providerPoll: env.providerPollConcurrency,
+    },
     logger,
     queueFactory,
     workflowNodeExecutionService,
@@ -166,6 +170,8 @@ async function main() {
     {
       queueNames: runtime.queueNames,
       queuePrefix: env.queuePrefix,
+      nodeExecuteConcurrency: env.nodeExecuteConcurrency,
+      providerPollConcurrency: env.providerPollConcurrency,
       s3Bucket: env.s3Bucket,
       workerConcurrency: env.workerConcurrency,
       workerName: env.workerName,

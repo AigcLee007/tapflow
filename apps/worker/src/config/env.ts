@@ -12,6 +12,8 @@ export type WorkerEnv = {
   s3ForcePathStyle: boolean;
   s3Region: string;
   s3SecretAccessKey: string;
+  providerPollConcurrency: number;
+  nodeExecuteConcurrency: number;
   workerConcurrency: number;
   workerName: string;
 };
@@ -23,8 +25,19 @@ const DEV_S3_BUCKET = "aigc-flow-dev";
 const DEV_S3_ENDPOINT = "http://localhost:9000";
 const DEV_S3_REGION = "us-east-1";
 const DEV_S3_SECRET_ACCESS_KEY = "minio123456";
-const DEFAULT_WORKER_CONCURRENCY = 2;
+const DEFAULT_NODE_EXECUTE_CONCURRENCY = 16;
+const DEFAULT_PROVIDER_POLL_CONCURRENCY = 16;
+const DEFAULT_WORKER_CONCURRENCY = 16;
 const DEFAULT_WORKER_NAME = "aigc-flow-v2-worker";
+
+function parsePositiveIntegerEnv(name: string, value: string | undefined, fallback: number): number {
+  const raw = value?.trim() ?? "";
+  const parsed = raw ? Number(raw) : fallback;
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`${name} must be a positive integer when provided`);
+  }
+  return parsed;
+}
 
 export function getWorkerEnv(): WorkerEnv {
   const nodeEnv = process.env.NODE_ENV?.trim() || "development";
@@ -51,12 +64,21 @@ export function getWorkerEnv(): WorkerEnv {
     process.env.S3_SECRET_ACCESS_KEY?.trim() ||
     (isProduction ? "" : DEV_S3_SECRET_ACCESS_KEY);
   const s3ForcePathStyleRaw = process.env.S3_FORCE_PATH_STYLE?.trim();
-  const workerConcurrencyRaw = process.env.WORKER_CONCURRENCY?.trim() || "";
-  const workerConcurrency = workerConcurrencyRaw ? Number(workerConcurrencyRaw) : DEFAULT_WORKER_CONCURRENCY;
-
-  if (!Number.isInteger(workerConcurrency) || workerConcurrency <= 0) {
-    throw new Error("WORKER_CONCURRENCY must be a positive integer when provided");
-  }
+  const workerConcurrency = parsePositiveIntegerEnv(
+    "WORKER_CONCURRENCY",
+    process.env.WORKER_CONCURRENCY,
+    DEFAULT_WORKER_CONCURRENCY,
+  );
+  const nodeExecuteConcurrency = parsePositiveIntegerEnv(
+    "NODE_EXECUTE_CONCURRENCY",
+    process.env.NODE_EXECUTE_CONCURRENCY,
+    process.env.WORKER_CONCURRENCY ? workerConcurrency : DEFAULT_NODE_EXECUTE_CONCURRENCY,
+  );
+  const providerPollConcurrency = parsePositiveIntegerEnv(
+    "PROVIDER_POLL_CONCURRENCY",
+    process.env.PROVIDER_POLL_CONCURRENCY,
+    process.env.WORKER_CONCURRENCY ? workerConcurrency : DEFAULT_PROVIDER_POLL_CONCURRENCY,
+  );
 
   if (!credentialMasterKey) {
     throw new Error("CREDENTIAL_MASTER_KEY is required to start the v2 worker");
@@ -94,6 +116,8 @@ export function getWorkerEnv(): WorkerEnv {
       : s3ForcePathStyleRaw.toLowerCase() === "true",
     s3Region,
     s3SecretAccessKey,
+    providerPollConcurrency,
+    nodeExecuteConcurrency,
     workerConcurrency,
     workerName: process.env.WORKER_NAME?.trim() || DEFAULT_WORKER_NAME,
   };

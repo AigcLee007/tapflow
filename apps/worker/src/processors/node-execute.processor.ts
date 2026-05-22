@@ -14,11 +14,16 @@ export async function processNodeExecuteJob(
   },
 ): Promise<ProcessorResult> {
   if (options?.executionService) {
+    const dequeuedAt = Date.now();
+    const submittedAt = typeof job.timestamp === "number" ? job.timestamp : dequeuedAt;
     logger.info(
       {
+        dequeued_at: new Date(dequeuedAt).toISOString(),
         jobId: job.id ?? null,
         nodeRunId: job.data.nodeRunId,
         queueName: job.queueName,
+        queue_wait_ms: Math.max(0, dequeuedAt - submittedAt),
+        submitted_at: new Date(submittedAt).toISOString(),
         tenantId: job.data.tenantId,
         traceId: job.data.traceId ?? null,
         workflowRunId: job.data.workflowRunId,
@@ -28,6 +33,7 @@ export async function processNodeExecuteJob(
     const result = await options.executionService.executeNode(job.data, logger);
     logger.info(
       {
+        end_to_end_ms: Math.max(0, Date.now() - submittedAt),
         jobId: job.id ?? null,
         nodeRunId: job.data.nodeRunId,
         queueName: job.queueName,

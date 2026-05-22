@@ -544,6 +544,7 @@ export class WorkflowNodeExecutionService {
           runtimeFlow,
           currentNodeRun,
           context,
+          logger,
         );
 
         if (outcome.type === "waiting_provider") {
@@ -606,6 +607,7 @@ export class WorkflowNodeExecutionService {
           context,
           outcome.outputJson,
           outcome.type === "succeeded" ? outcome.usageRecord : undefined,
+          logger,
         );
 
         logger.info(
@@ -926,6 +928,7 @@ export class WorkflowNodeExecutionService {
           context,
           outputJson,
           usageRecord,
+          logger,
         );
 
         logger.info(
@@ -1052,6 +1055,7 @@ export class WorkflowNodeExecutionService {
     runtimeFlow: RuntimeFlowRecord,
     nodeRun: NodeRunRecord,
     context: WorkflowExecutionContext,
+    logger: WorkerLogger,
   ): Promise<NodeExecutionOutcome> {
     if (node.type === "input") {
       return {
@@ -1097,36 +1101,88 @@ export class WorkflowNodeExecutionService {
 
     if (node.type === "image.generate") {
       const request = buildImageRequest(upstreamOutputs, node.config ?? {});
-      const result = await this.mediaGenerationRuntime.generateImage(
-        {
-          tenantId: context.tenantId,
-          userId: context.userId,
-        },
-        request,
+      const providerStartedAt = Date.now();
+      logger.info(
         {
           nodeRunId: nodeRun.id,
+          provider_started_at: new Date(providerStartedAt).toISOString(),
+          targetNodeId: node.id,
+          tenantId: context.tenantId,
           workflowRunId: workflowRun.id,
         },
+        "provider image generation request started",
       );
+      let result: AiGatewayMediaResult;
+      try {
+        result = await this.mediaGenerationRuntime.generateImage(
+          {
+            tenantId: context.tenantId,
+            userId: context.userId,
+          },
+          request,
+          {
+            nodeRunId: nodeRun.id,
+            workflowRunId: workflowRun.id,
+          },
+        );
+      } finally {
+        logger.info(
+          {
+            nodeRunId: nodeRun.id,
+            provider_finished_at: new Date().toISOString(),
+            provider_latency_ms: Math.max(0, Date.now() - providerStartedAt),
+            targetNodeId: node.id,
+            tenantId: context.tenantId,
+            workflowRunId: workflowRun.id,
+          },
+          "provider image generation request finished",
+        );
+      }
 
-      return this.mapMediaOutcome(client, node, workflowRun, runtimeFlow, nodeRun, context, result, "image");
+      return this.mapMediaOutcome(client, node, workflowRun, runtimeFlow, nodeRun, context, result, "image", logger);
     }
 
     if (node.type === "video.generate") {
       const request = buildVideoRequest(upstreamOutputs, node.config ?? {});
-      const result = await this.mediaGenerationRuntime.generateVideo(
-        {
-          tenantId: context.tenantId,
-          userId: context.userId,
-        },
-        request,
+      const providerStartedAt = Date.now();
+      logger.info(
         {
           nodeRunId: nodeRun.id,
+          provider_started_at: new Date(providerStartedAt).toISOString(),
+          targetNodeId: node.id,
+          tenantId: context.tenantId,
           workflowRunId: workflowRun.id,
         },
+        "provider video generation request started",
       );
+      let result: AiGatewayMediaResult;
+      try {
+        result = await this.mediaGenerationRuntime.generateVideo(
+          {
+            tenantId: context.tenantId,
+            userId: context.userId,
+          },
+          request,
+          {
+            nodeRunId: nodeRun.id,
+            workflowRunId: workflowRun.id,
+          },
+        );
+      } finally {
+        logger.info(
+          {
+            nodeRunId: nodeRun.id,
+            provider_finished_at: new Date().toISOString(),
+            provider_latency_ms: Math.max(0, Date.now() - providerStartedAt),
+            targetNodeId: node.id,
+            tenantId: context.tenantId,
+            workflowRunId: workflowRun.id,
+          },
+          "provider video generation request finished",
+        );
+      }
 
-      return this.mapMediaOutcome(client, node, workflowRun, runtimeFlow, nodeRun, context, result, "video");
+      return this.mapMediaOutcome(client, node, workflowRun, runtimeFlow, nodeRun, context, result, "video", logger);
     }
 
     if (node.type === "output") {
@@ -1148,6 +1204,7 @@ export class WorkflowNodeExecutionService {
     context: WorkflowExecutionContext,
     result: AiGatewayMediaResult,
     kind: "image" | "video",
+    logger: WorkerLogger,
   ): Promise<NodeExecutionOutcome> {
     if (result.status === "waiting_provider") {
       if (!result.providerTaskId) {
@@ -1183,6 +1240,17 @@ export class WorkflowNodeExecutionService {
       runtimeFlow,
       nodeRun,
       this.normalizeMediaOutputs(result.outputs ?? []),
+    );
+    logger.info(
+      {
+        asset_persisted_at: new Date().toISOString(),
+        nodeRunId: nodeRun.id,
+        outputCount: Array.isArray(outputJson.assets) ? outputJson.assets.length : 0,
+        targetNodeId: node.id,
+        tenantId: context.tenantId,
+        workflowRunId: workflowRun.id,
+      },
+      "workflow media assets persisted",
     );
 
     return {
@@ -1718,6 +1786,7 @@ export class WorkflowNodeExecutionService {
     context: WorkflowExecutionContext,
     outputJson: Record<string, unknown>,
     usageRecord?: UsageRecordInput,
+    logger?: WorkerLogger,
   ): Promise<{
     auditLogs: AuditLogInput[];
     nodeEnqueuePayloads: NodeExecuteJobPayload[];
@@ -1729,6 +1798,16 @@ export class WorkflowNodeExecutionService {
         context.tenantId,
         context.traceId,
         usageRecord,
+      );
+      logger?.info(
+        {
+          nodeRunId: currentNodeRun.id,
+          settled_at: new Date().toISOString(),
+          targetNodeId: currentNode.id,
+          tenantId: context.tenantId,
+          workflowRunId: workflowRun.id,
+        },
+        "workflow node billing settled",
       );
     }
 
@@ -1754,6 +1833,17 @@ export class WorkflowNodeExecutionService {
       workflowRun,
       currentNodeRun,
       outputJson,
+    );
+    logger?.info(
+      {
+        draft_patched_at: new Date().toISOString(),
+        flowId: runtimeFlow.flow_id,
+        nodeRunId: currentNodeRun.id,
+        targetNodeId: currentNode.id,
+        tenantId: context.tenantId,
+        workflowRunId: workflowRun.id,
+      },
+      "workflow target node draft patch completed",
     );
 
     await this.appendWorkflowRunEvent(client, {
