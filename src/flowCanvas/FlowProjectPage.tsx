@@ -18,16 +18,18 @@ function getProjectIdFromLocation() {
 
 function statusLabel(status: RemoteFlowSaveStatus) {
   if (status === "saving") return "Saving...";
+  if (status === "retrying") return "Retrying save...";
   if (status === "saved") return "Saved";
   if (status === "dirty") return "Pending save";
-  if (status === "error") return "Save failed";
-  return "Idle";
+  if (status === "failed") return "Save failed";
+  return "Ready";
 }
 
 function StatusIcon({ status }: { status: RemoteFlowSaveStatus }) {
-  if (status === "saving" || status === "dirty") return <Loader2 className="animate-spin" size={15} />;
+  if (status === "saving" || status === "retrying") return <Loader2 className="animate-spin" size={15} />;
+  if (status === "dirty") return <Cloud size={15} />;
   if (status === "saved") return <CheckCircle2 size={15} />;
-  if (status === "error") return <AlertTriangle size={15} />;
+  if (status === "failed") return <AlertTriangle size={15} />;
   return <Cloud size={15} />;
 }
 
@@ -176,17 +178,19 @@ export function FlowProjectPage() {
         </span>
         <span
           className={`inline-flex items-center gap-1.5 ${
-            autosave.status === "error"
+            autosave.status === "failed"
               ? "text-red-200"
               : autosave.status === "saved"
                 ? "text-emerald-200"
+                : autosave.status === "retrying"
+                  ? "text-amber-200"
                 : "text-sky-200"
           }`}
         >
           <StatusIcon status={autosave.status} />
           {statusLabel(autosave.status)}
         </span>
-        {autosave.status === "error" && (
+        {autosave.status === "failed" && (
           <button
             className="inline-flex h-7 items-center gap-1 rounded-full border border-red-300/20 px-2 text-red-100 hover:bg-red-400/10"
             onClick={autosave.saveNow}

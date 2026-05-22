@@ -1,10 +1,21 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { V2HttpError } from "../../services/v2HttpClient";
-import { saveFlowDraft, type FlowDraft, type FlowDraftGraph } from "../services/flowProjectApi";
+import {
+  getFlowDraft,
+  saveFlowDraft,
+  type FlowDraft,
+  type FlowDraftGraph,
+} from "../services/flowProjectApi";
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
 
-export type RemoteFlowSaveStatus = "idle" | "dirty" | "saving" | "saved" | "error";
+export type RemoteFlowSaveStatus =
+  | "idle"
+  | "dirty"
+  | "saving"
+  | "saved"
+  | "retrying"
+  | "failed";
 
 type RemoteFlowAutosaveState = {
   error: string | null;
@@ -32,13 +43,19 @@ export function useRemoteFlowAutosave(input: {
   const edges = useFlowCanvasStore((state) => state.edges);
   const viewport = useFlowCanvasStore((state) => state.viewport);
   const isNodeDragging = useFlowCanvasStore((state) => state.isNodeDragging);
+  const markDirty = useFlowCanvasStore((state) => state.markDirty);
   const markClean = useFlowCanvasStore((state) => state.markClean);
   const [status, setStatus] = useState<RemoteFlowSaveStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState<string | null>(input.draft?.updatedAt ?? null);
   const revisionRef = useRef<number | null>(input.draft?.revision ?? null);
   const syncedGraphKeyRef = useRef<string | null>(input.draft ? toGraphKey(input.draft.graph) : null);
-  const [saveTick, setSaveTick] = useState(0);
+  const latestGraphRef = useRef<FlowDraftGraph>(input.draft?.graph ?? { nodes: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } });
+  const latestGraphKeyRef = useRef<string>(input.draft ? toGraphKey(input.draft.graph) : "");
+  const inFlightRef = useRef(false);
+  const dirtyAgainRef = useRef(false);
+  const retryingRef = useRef(false);
+  const timerRef = useRef<number | null>(null);
 
   const graph = useMemo<FlowDraftGraph>(
     () => ({
@@ -52,65 +69,158 @@ export function useRemoteFlowAutosave(input: {
   const graphKey = useMemo(() => toGraphKey(graph), [graph]);
 
   useEffect(() => {
+    latestGraphRef.current = graph;
+    latestGraphKeyRef.current = graphKey;
+  }, [graph, graphKey]);
+
+  const clearScheduledSave = useCallback(() => {
+    if (timerRef.current === null) return;
+    window.clearTimeout(timerRef.current);
+    timerRef.current = null;
+  }, []);
+
+  const flushSaveQueue = useCallback(
+    async (mode: "saving" | "retrying" = "saving"): Promise<void> => {
+      if (!input.enabled || !input.flowId || !input.draft || inFlightRef.current) {
+        return;
+      }
+
+      const currentGraphKey = latestGraphKeyRef.current;
+      if (currentGraphKey === syncedGraphKeyRef.current) {
+        setStatus((currentStatus) => (currentStatus === "saved" ? currentStatus : "saved"));
+        return;
+      }
+
+      clearScheduledSave();
+      inFlightRef.current = true;
+      dirtyAgainRef.current = false;
+      retryingRef.current = mode === "retrying";
+      setStatus(mode);
+      setError(null);
+
+      const graphSnapshot = latestGraphRef.current;
+      let saveSucceeded = false;
+
+      try {
+        let nextDraft: FlowDraft;
+
+        try {
+          nextDraft = await saveFlowDraft(input.flowId, {
+            expectedRevision: revisionRef.current ?? undefined,
+            graph: graphSnapshot,
+          });
+        } catch (saveError) {
+          if (!isRevisionConflict(saveError)) {
+            throw saveError;
+          }
+
+          setStatus("retrying");
+          const latestDraft = await getFlowDraft(input.flowId);
+          revisionRef.current = latestDraft.revision;
+          setUpdatedAt(latestDraft.updatedAt);
+
+          nextDraft = await saveFlowDraft(input.flowId, {
+            expectedRevision: latestDraft.revision,
+            graph: latestGraphRef.current,
+          });
+        }
+
+        revisionRef.current = nextDraft.revision;
+        syncedGraphKeyRef.current = toGraphKey(nextDraft.graph);
+        setUpdatedAt(nextDraft.updatedAt);
+        setError(null);
+
+        const hasPendingChanges =
+          dirtyAgainRef.current || latestGraphKeyRef.current !== syncedGraphKeyRef.current;
+
+        if (hasPendingChanges) {
+          markDirty();
+          setStatus("dirty");
+        } else {
+          markClean();
+          setStatus("saved");
+        }
+        saveSucceeded = true;
+      } catch (saveError) {
+        setStatus("failed");
+        setError(getAutosaveErrorMessage(saveError));
+      } finally {
+        inFlightRef.current = false;
+        retryingRef.current = false;
+
+        if (
+          saveSucceeded &&
+          input.enabled &&
+          input.flowId &&
+          input.draft &&
+          (dirtyAgainRef.current || latestGraphKeyRef.current !== syncedGraphKeyRef.current)
+        ) {
+          void flushSaveQueue("saving");
+        }
+      }
+    },
+    [clearScheduledSave, input.draft, input.enabled, input.flowId, markClean, markDirty],
+  );
+
+  const scheduleSave = useCallback(
+    (delayMs: number) => {
+      if (!input.enabled || !input.flowId || !input.draft) return;
+      if (latestGraphKeyRef.current === syncedGraphKeyRef.current) return;
+
+      if (inFlightRef.current) {
+        dirtyAgainRef.current = true;
+        return;
+      }
+
+      clearScheduledSave();
+      timerRef.current = window.setTimeout(() => {
+        timerRef.current = null;
+        void flushSaveQueue(retryingRef.current ? "retrying" : "saving");
+      }, delayMs);
+      setStatus("dirty");
+      setError(null);
+    },
+    [clearScheduledSave, flushSaveQueue, input.draft, input.enabled, input.flowId],
+  );
+
+  useEffect(() => {
     if (!input.draft) return;
+    clearScheduledSave();
+    inFlightRef.current = false;
+    dirtyAgainRef.current = false;
+    retryingRef.current = false;
     revisionRef.current = input.draft.revision;
     syncedGraphKeyRef.current = toGraphKey(input.draft.graph);
+    latestGraphRef.current = input.draft.graph;
+    latestGraphKeyRef.current = toGraphKey(input.draft.graph);
     setUpdatedAt(input.draft.updatedAt);
-    setStatus("idle");
+    setStatus("saved");
     setError(null);
-  }, [input.draft]);
+  }, [clearScheduledSave, input.draft]);
 
   const saveNow = () => {
-    setSaveTick((tick) => tick + 1);
-    setStatus("dirty");
+    dirtyAgainRef.current = true;
+    scheduleSave(0);
   };
 
   useEffect(() => {
-    if (!input.enabled || !input.flowId || !input.draft) return;
-    if (isNodeDragging) return;
-    if (syncedGraphKeyRef.current === graphKey && saveTick === 0) return;
+    if (!input.enabled || !input.flowId || !input.draft || isNodeDragging) return;
+    if (syncedGraphKeyRef.current === graphKey) return;
+    scheduleSave(AUTOSAVE_DELAY_MS);
+  }, [graphKey, input.draft, input.enabled, input.flowId, isNodeDragging, scheduleSave]);
 
-    setStatus("dirty");
-    setError(null);
+  useEffect(() => {
+    if (!input.enabled || !input.flowId || !input.draft || isNodeDragging) return;
+    if (latestGraphKeyRef.current === syncedGraphKeyRef.current || inFlightRef.current) return;
+    scheduleSave(AUTOSAVE_DELAY_MS);
+  }, [input.draft, input.enabled, input.flowId, isNodeDragging, scheduleSave]);
 
-    let cancelled = false;
-    const timer = window.setTimeout(() => {
-      setStatus("saving");
-      void saveFlowDraft(input.flowId!, {
-        expectedRevision: revisionRef.current ?? undefined,
-        graph,
-      })
-        .then((nextDraft) => {
-          if (cancelled) return;
-          revisionRef.current = nextDraft.revision;
-          syncedGraphKeyRef.current = toGraphKey(nextDraft.graph);
-          setSaveTick(0);
-          setUpdatedAt(nextDraft.updatedAt);
-          setStatus("saved");
-          setError(null);
-          markClean();
-        })
-        .catch((saveError) => {
-          if (cancelled) return;
-          setStatus("error");
-          setError(getAutosaveErrorMessage(saveError));
-        });
-    }, AUTOSAVE_DELAY_MS);
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [
-    graph,
-    graphKey,
-    input.draft,
-    input.enabled,
-    input.flowId,
-    isNodeDragging,
-    markClean,
-    saveTick,
-  ]);
+  useEffect(
+    () => () => {
+      clearScheduledSave();
+    },
+    [clearScheduledSave],
+  );
 
   return {
     error,
@@ -118,6 +228,10 @@ export function useRemoteFlowAutosave(input: {
     status,
     updatedAt,
   };
+}
+
+function isRevisionConflict(error: unknown) {
+  return error instanceof V2HttpError && error.status === 409;
 }
 
 function getAutosaveErrorMessage(error: unknown) {
@@ -131,7 +245,7 @@ function getAutosaveErrorMessage(error: unknown) {
       return "Save failed because your session expired. Please log in again.";
     }
     if (error.status === 409) {
-      return "Save failed because this canvas was updated elsewhere. Refresh before continuing.";
+      return "Save failed because the canvas could not be reconciled with the latest server revision. Refresh before continuing.";
     }
     if (error.status >= 500) {
       return "Save failed because the server is temporarily unavailable.";
