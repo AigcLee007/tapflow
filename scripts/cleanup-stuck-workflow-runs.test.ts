@@ -2,10 +2,16 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildCleanupError,
+  NODE_RUN_APPLY_UPDATE_SQL,
   parseCleanupArgs,
   readReservedCents,
   shouldRefund,
+  WORKFLOW_RUN_APPLY_UPDATE_SQL,
 } from "./cleanup-stuck-workflow-runs.js";
+
+function referencedParameterNumbers(sql: string): number[] {
+  return Array.from(sql.matchAll(/\$(\d+)/g), (match) => Number(match[1]));
+}
 
 describe("cleanup-stuck-workflow-runs helpers", () => {
   it("defaults to dry-run and parses bounded cleanup args", () => {
@@ -42,5 +48,18 @@ describe("cleanup-stuck-workflow-runs helpers", () => {
     expect(shouldRefund({ reservedCents: 120, reserveStatus: "reserved" })).toBe(true);
     expect(shouldRefund({ reservedCents: 120, reserveStatus: "settled" })).toBe(false);
     expect(shouldRefund({ reservedCents: 0, reserveStatus: "reserved" })).toBe(false);
+  });
+
+  it("apply update SQL uses only provided typed parameters", () => {
+    expect(referencedParameterNumbers(NODE_RUN_APPLY_UPDATE_SQL).sort()).toEqual([1, 2, 3]);
+    expect(NODE_RUN_APPLY_UPDATE_SQL).toContain("$1::uuid[]");
+    expect(NODE_RUN_APPLY_UPDATE_SQL).toContain("$2::uuid");
+    expect(NODE_RUN_APPLY_UPDATE_SQL).toContain("$3::jsonb");
+    expect(NODE_RUN_APPLY_UPDATE_SQL).not.toContain("$4");
+
+    expect(referencedParameterNumbers(WORKFLOW_RUN_APPLY_UPDATE_SQL).sort()).toEqual([1, 2, 3]);
+    expect(WORKFLOW_RUN_APPLY_UPDATE_SQL).toContain("$1::uuid[]");
+    expect(WORKFLOW_RUN_APPLY_UPDATE_SQL).toContain("$2::uuid");
+    expect(WORKFLOW_RUN_APPLY_UPDATE_SQL).toContain("$3::jsonb");
   });
 });

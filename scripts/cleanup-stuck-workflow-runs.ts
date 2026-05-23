@@ -19,6 +19,38 @@ type CandidateNode = {
 const DEFAULT_REASON = "cleanup stuck pending/runnable run after queue outage";
 const ERROR_CODE = "QUEUE_ENQUEUE_FAILED_OR_STALE_RUN";
 
+export const NODE_RUN_APPLY_UPDATE_SQL = `
+            UPDATE node_runs
+            SET
+              status = 'failed',
+              error_json = $3::jsonb,
+              finished_at = now(),
+              updated_at = now(),
+              cost_json = CASE
+                WHEN COALESCE(cost_json->>'reserveStatus', '') = 'reserved'
+                  THEN cost_json || '{"reserveStatus":"refunded"}'::jsonb
+                ELSE cost_json
+              END
+            WHERE id = ANY($1::uuid[])
+              AND tenant_id = $2::uuid
+              AND status = 'runnable'
+              AND started_at IS NULL
+              AND finished_at IS NULL
+              AND error_json IS NULL
+          `;
+
+export const WORKFLOW_RUN_APPLY_UPDATE_SQL = `
+            UPDATE workflow_runs
+            SET
+              status = 'failed',
+              error_json = $3::jsonb,
+              finished_at = now(),
+              updated_at = now()
+            WHERE id = ANY($1::uuid[])
+              AND tenant_id = $2::uuid
+              AND status = 'pending'
+          `;
+
 export function parseCleanupArgs(argv: string[]): CleanupArgs {
   const args: CleanupArgs = {
     after: null,
@@ -159,7 +191,7 @@ async function main() {
                 SELECT id::text AS id
                 FROM billing_ledger
                 WHERE tenant_id = $1::uuid
-                  AND idempotency_key = $2
+                  AND idempotency_key = $2::text
                 LIMIT 1
               `,
               [args.tenantId, idempotencyKey],
@@ -181,25 +213,7 @@ async function main() {
         }
 
         const nodeUpdate = await client.query(
-          `
-            UPDATE node_runs
-            SET
-              status = 'failed',
-              error_json = $4::jsonb,
-              finished_at = now(),
-              updated_at = now(),
-              cost_json = CASE
-                WHEN COALESCE(cost_json->>'reserveStatus', '') = 'reserved'
-                  THEN cost_json || '{"reserveStatus":"refunded"}'::jsonb
-                ELSE cost_json
-              END
-            WHERE id = ANY($1::uuid[])
-              AND tenant_id = $2::uuid
-              AND status = 'runnable'
-              AND started_at IS NULL
-              AND finished_at IS NULL
-              AND error_json IS NULL
-          `,
+          NODE_RUN_APPLY_UPDATE_SQL,
           [
             candidates.rows.map((row) => row.node_run_id),
             args.tenantId,
@@ -209,17 +223,7 @@ async function main() {
         summary.updatedNodeCount = nodeUpdate.rowCount ?? 0;
 
         const workflowUpdate = await client.query(
-          `
-            UPDATE workflow_runs
-            SET
-              status = 'failed',
-              error_json = $3::jsonb,
-              finished_at = now(),
-              updated_at = now()
-            WHERE id = ANY($1::uuid[])
-              AND tenant_id = $2::uuid
-              AND status = 'pending'
-          `,
+          WORKFLOW_RUN_APPLY_UPDATE_SQL,
           [
             Array.from(new Set(candidates.rows.map((row) => row.workflow_run_id))),
             args.tenantId,
