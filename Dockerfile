@@ -62,6 +62,7 @@ COPY --from=builder /app/packages/workflow-core/dist ./packages/workflow-core/di
 
 # Copy docs for runtime operators
 COPY docs ./docs
+COPY scripts ./scripts
 
 # Expose the v2 API port
 EXPOSE 3366
