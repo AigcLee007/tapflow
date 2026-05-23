@@ -1,11 +1,14 @@
 import { apiGet } from "./v2HttpClient";
 
 export type V2RuntimeRouteItem = {
+  estimatedCredits: number | null;
+  minChargeCredits: number | null;
   modality: string;
   modelDisplayName: string | null;
   modelKey: string | null;
   providerKey: string;
   providerName: string;
+  pricingUnit: string | null;
   routeKey: string;
 };
 

@@ -4,6 +4,7 @@ const TRANSIENT_NODE_DATA_KEYS = new Set([
   "activeNodeRunId",
   "activeRunId",
   "downloadUrl",
+  "errorCode",
   "errorMessage",
   "expiresAt",
   "generationStatus",

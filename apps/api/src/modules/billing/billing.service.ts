@@ -41,8 +41,20 @@ export class BillingApiService {
     this.billingService = options?.billingService ?? new BillingService({ pool: this.pool });
   }
 
-  async getBillingSummary(context: BillingContext): Promise<BillingSummaryView> {
-    return this.call(() => this.billingService.getBillingSummary(context));
+  async getBillingSummary(context: BillingContext): Promise<BillingSummaryView & {
+    availableCredits: number;
+    balanceCredits: number;
+    reservedCredits: number;
+    thisMonthUsageCredits: number;
+  }> {
+    const summary = await this.call(() => this.billingService.getBillingSummary(context));
+    return {
+      ...summary,
+      availableCredits: Math.max(summary.account.balanceCents - summary.account.reservedCents, 0),
+      balanceCredits: summary.account.balanceCents,
+      reservedCredits: summary.account.reservedCents,
+      thisMonthUsageCredits: summary.usageTotals.totalBillableCents,
+    };
   }
 
   async listUsageEvents(

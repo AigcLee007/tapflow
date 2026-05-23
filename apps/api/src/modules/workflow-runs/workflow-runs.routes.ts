@@ -123,7 +123,7 @@ function handleRouteError(
   }
 
   if (error instanceof WorkflowRunsApiError) {
-    return sendError(request, reply, error.statusCode, error.code, error.message);
+    return sendError(request, reply, error.statusCode, error.code, error.message, error.details);
   }
 
   request.log.error(

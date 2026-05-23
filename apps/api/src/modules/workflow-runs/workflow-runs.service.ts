@@ -214,11 +214,13 @@ export type WorkflowRunEventView = {
 
 export class WorkflowRunsApiError extends Error {
   readonly code: string;
+  readonly details?: unknown;
   readonly statusCode: number;
 
-  constructor(statusCode: number, code: string, message: string) {
+  constructor(statusCode: number, code: string, message: string, details?: unknown) {
     super(message);
     this.code = code;
+    this.details = details;
     this.name = "WorkflowRunsApiError";
     this.statusCode = statusCode;
   }
@@ -732,22 +734,58 @@ export class WorkflowRunsService {
 
           if (estimatedCost.amountCents > 0) {
             const reserveStartedAt = Date.now();
-            const reserve = await this.billingService.reserveUsageWithClient(client, context.tenantId, {
-              amountCents: estimatedCost.amountCents,
-              description: `${node.type} reserved`,
-              idempotencyKey: `reserve:${context.tenantId}:${run.id}:${nodeRunId}`,
-              metadata: {
-                flowId: runtimeFlow.flow_id,
-                flowVersionId: runtimeFlow.current_version_id,
-                nodeId: node.id,
-                nodeRunId,
-                nodeType: node.type,
-                pricingFallbackLevel: estimatedCost.fallbackLevel,
-                pricingMatch: estimatedCost.pricingMatch,
-                pricingUnit: estimatedCost.unit,
-                workflowRunId: run.id,
-              },
-            });
+            let reserve;
+            try {
+              reserve = await this.billingService.reserveUsageWithClient(client, context.tenantId, {
+                amountCents: estimatedCost.amountCents,
+                description: `${node.type} reserved`,
+                idempotencyKey: `reserve:${context.tenantId}:${run.id}:${nodeRunId}`,
+                metadata: {
+                  flowId: runtimeFlow.flow_id,
+                  flowVersionId: runtimeFlow.current_version_id,
+                  nodeId: node.id,
+                  nodeRunId,
+                  nodeType: node.type,
+                  pricingFallbackLevel: estimatedCost.fallbackLevel,
+                  pricingMatch: estimatedCost.pricingMatch,
+                  pricingUnit: estimatedCost.unit,
+                  workflowRunId: run.id,
+                },
+              });
+            } catch (error) {
+              if (error instanceof BillingServiceError && error.code === "INSUFFICIENT_BALANCE") {
+                const account = await client.query<{
+                  balance_cents: string;
+                  reserved_cents: string;
+                }>(
+                  `
+                    SELECT balance_cents::text AS balance_cents, reserved_cents::text AS reserved_cents
+                    FROM billing_accounts
+                    WHERE tenant_id = $1::uuid
+                    LIMIT 1
+                  `,
+                  [context.tenantId],
+                );
+                const balanceCredits = Number.parseInt(account.rows[0]?.balance_cents ?? "0", 10) || 0;
+                const reservedCredits = Number.parseInt(account.rows[0]?.reserved_cents ?? "0", 10) || 0;
+                const availableCredits = Math.max(balanceCredits - reservedCredits, 0);
+                throw new WorkflowRunsApiError(
+                  402,
+                  "INSUFFICIENT_CREDITS",
+                  "Insufficient balance. Redeem or recharge credits before starting this workflow.",
+                  {
+                    availableCredits,
+                    balanceCredits,
+                    nodeId: node.id,
+                    nodeRunId,
+                    requiredCredits: estimatedCost.amountCents,
+                    reservedCredits,
+                    workflowRunId: run.id,
+                  },
+                );
+              }
+              throw error;
+            }
 
             await client.query(
             `

@@ -22,9 +22,12 @@ describe('v2AiRoutesApi', () => {
       new Response(
         JSON.stringify([
           {
+            estimatedCredits: 100,
+            minChargeCredits: 100,
             modality: 'image',
             modelDisplayName: 'Mock Image Model',
             modelKey: 'mock-image-v1',
+            pricingUnit: 'image_generation',
             providerKey: 'mock-local-dev',
             providerName: 'Mock Local Provider',
             routeKey: 'image.default',
@@ -44,9 +47,12 @@ describe('v2AiRoutesApi', () => {
 
     expect(response).toEqual([
       {
+        estimatedCredits: 100,
+        minChargeCredits: 100,
         modality: 'image',
         modelDisplayName: 'Mock Image Model',
         modelKey: 'mock-image-v1',
+        pricingUnit: 'image_generation',
         providerKey: 'mock-local-dev',
         providerName: 'Mock Local Provider',
         routeKey: 'image.default',

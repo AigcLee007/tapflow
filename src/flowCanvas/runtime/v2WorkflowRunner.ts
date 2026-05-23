@@ -1,5 +1,6 @@
 import { getAssetDownloadUrl } from '../../services/v2AssetsApi';
 import { V2HttpError } from '../../services/v2HttpClient';
+import { listRuntimeRoutes, type V2RuntimeRouteItem } from '../../services/v2AiRoutesApi';
 import {
   createWorkflowRun,
   getWorkflowRun,
@@ -12,6 +13,7 @@ import {
   type V2WorkflowRunStatus,
   type WorkflowRunStreamHandle,
 } from '../../services/v2WorkflowRunsApi';
+import { getBillingSummary, listBillingPricing, type BillingPricingRow } from '../../billing/billingApi';
 import { useFlowCanvasStore } from '../store/flowCanvasStore';
 import type {
   FlowNodeData,
@@ -23,6 +25,10 @@ const RUNNER_ENABLED = String(import.meta.env.VITE_USE_V2_WORKFLOW_RUNNER ?? 'tr
 
 const activeStreamsByRunId = new Map<string, WorkflowRunStreamHandle>();
 const disposedRunIds = new Set<string>();
+const optimisticCreditReservationsByNodeId = new Map<string, number>();
+let creditPreflightQueue: Promise<void> = Promise.resolve();
+let runtimeRoutesCache: Promise<V2RuntimeRouteItem[]> | null = null;
+let billingPricingCache: Promise<BillingPricingRow[]> | null = null;
 
 type AssetLike = {
   assetId: string;
@@ -37,6 +43,31 @@ type PersistableNodeRun = Pick<V2NodeRunView, 'id' | 'nodeId' | 'nodeType' | 'st
 type RunScope = {
   runMode: 'flow' | 'target_node';
   targetNodeId: string | null;
+};
+
+type CreditPreflightReservation = {
+  amountCredits: number;
+  nodeId: string;
+};
+
+type InsufficientCreditsDetails = {
+  availableCredits: number;
+  balanceCredits?: number;
+  localReservedCredits: number;
+  requiredCredits: number;
+  reservedCredits?: number;
+};
+
+const DEFAULT_ROUTE_BY_NODE_KIND: Record<string, string> = {
+  image: 'image.default',
+  text: 'text.default',
+  video: 'video.default',
+};
+
+const UNIT_BY_NODE_KIND: Record<string, string> = {
+  image: 'image_generation',
+  text: 'text_generation',
+  video: 'video_generation',
 };
 
 function isTerminalStatus(status: V2WorkflowRunStatus): boolean {
@@ -78,6 +109,213 @@ function setRunError(message: string): void {
     isRunningBackendWorkflow: false,
     runError: message,
   });
+}
+
+function getOptimisticReservedCredits(): number {
+  return Array.from(optimisticCreditReservationsByNodeId.values())
+    .reduce((total, amount) => total + amount, 0);
+}
+
+function releaseOptimisticCreditReservation(nodeId: string | null | undefined): void {
+  if (!nodeId) return;
+  optimisticCreditReservationsByNodeId.delete(nodeId);
+}
+
+function getNodeKindForPricing(node: { data?: Partial<FlowNodeData>; type?: string }): 'image' | 'text' | 'video' | null {
+  const rawKind = String(node.data?.kind || node.type || '').trim();
+  if (rawKind === 'image' || rawKind === 'text' || rawKind === 'video') {
+    return rawKind;
+  }
+  if (rawKind === 'image.generate') return 'image';
+  if (rawKind === 'text.generate') return 'text';
+  if (rawKind === 'video.generate') return 'video';
+  return null;
+}
+
+function getRouteKeyForPricing(node: { data?: Partial<FlowNodeData>; type?: string }): string | null {
+  const kind = getNodeKindForPricing(node);
+  if (!kind) return null;
+  const configuredRoute = typeof node.data?.routeKey === 'string' ? node.data.routeKey.trim() : '';
+  return configuredRoute || DEFAULT_ROUTE_BY_NODE_KIND[kind] || null;
+}
+
+function getBillingAvailableCredits(summary: Awaited<ReturnType<typeof getBillingSummary>>): number {
+  if (typeof summary.availableCredits === 'number') {
+    return Math.max(summary.availableCredits, 0);
+  }
+  return Math.max((summary.account?.balanceCents ?? 0) - (summary.account?.reservedCents ?? 0), 0);
+}
+
+function getBillingBalanceCredits(summary: Awaited<ReturnType<typeof getBillingSummary>>): number {
+  return typeof summary.balanceCredits === 'number'
+    ? summary.balanceCredits
+    : summary.account?.balanceCents ?? 0;
+}
+
+function getBillingReservedCredits(summary: Awaited<ReturnType<typeof getBillingSummary>>): number {
+  return typeof summary.reservedCredits === 'number'
+    ? summary.reservedCredits
+    : summary.account?.reservedCents ?? 0;
+}
+
+function getRuntimeRoutes(): Promise<V2RuntimeRouteItem[]> {
+  runtimeRoutesCache ??= listRuntimeRoutes();
+  return runtimeRoutesCache;
+}
+
+function getBillingPricingRows(): Promise<BillingPricingRow[]> {
+  billingPricingCache ??= listBillingPricing();
+  return billingPricingCache;
+}
+
+function resolveEstimatedCredits(input: {
+  node: { data?: Partial<FlowNodeData>; type?: string };
+  pricingRows: BillingPricingRow[];
+  routes: V2RuntimeRouteItem[];
+}): number | null {
+  const kind = getNodeKindForPricing(input.node);
+  if (!kind) return null;
+
+  const unit = UNIT_BY_NODE_KIND[kind];
+  const routeKey = getRouteKeyForPricing(input.node);
+  if (!unit || !routeKey) return null;
+
+  const route = input.routes.find((item) => item.modality === kind && item.routeKey === routeKey) ?? null;
+  if (typeof route?.estimatedCredits === 'number' && route.estimatedCredits > 0) {
+    return route.estimatedCredits;
+  }
+  if (typeof route?.minChargeCredits === 'number' && route.minChargeCredits > 0) {
+    return route.minChargeCredits;
+  }
+
+  const provider = route?.providerKey ?? 'default';
+  const model = route?.modelKey ?? 'default';
+  const candidates = [
+    { provider, model, route: routeKey },
+    { provider, model, route: 'default' },
+    { provider, model: 'default', route: 'default' },
+    { provider: 'default', model: 'default', route: 'default' },
+  ];
+
+  for (const candidate of candidates) {
+    const row = input.pricingRows.find((item) =>
+      item.active &&
+      item.unit === unit &&
+      item.provider === candidate.provider &&
+      item.model === candidate.model &&
+      item.route === candidate.route);
+    if (row && row.minChargeCredits > 0) {
+      return row.minChargeCredits;
+    }
+  }
+
+  return null;
+}
+
+function formatCredits(value: number): string {
+  return `${Math.max(0, Math.floor(value))} pts`;
+}
+
+function buildInsufficientCreditsMessage(details: InsufficientCreditsDetails): string {
+  const remaining = Math.max(details.availableCredits - details.localReservedCredits, 0);
+  if (details.localReservedCredits > 0) {
+    return `余额不足：当前可用 ${formatCredits(details.availableCredits)}，已开始任务占用 ${formatCredits(details.localReservedCredits)}，剩余 ${formatCredits(remaining)}，本次需要 ${formatCredits(details.requiredCredits)}。请充值后继续生成。`;
+  }
+  return `余额不足：当前可用 ${formatCredits(details.availableCredits)}，本次需要 ${formatCredits(details.requiredCredits)}。请充值后重试。`;
+}
+
+function readNumberDetail(details: unknown, key: string): number | null {
+  if (!details || typeof details !== 'object') return null;
+  const value = (details as Record<string, unknown>)[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function isInsufficientCreditsError(error: unknown): boolean {
+  if (error instanceof V2HttpError) {
+    return error.code === 'INSUFFICIENT_CREDITS'
+      || error.code === 'INSUFFICIENT_BALANCE'
+      || /insufficient balance/i.test(error.message);
+  }
+  return error instanceof Error && /insufficient balance/i.test(error.message);
+}
+
+function buildInsufficientCreditsMessageFromError(error: V2HttpError): string {
+  const requiredCredits = readNumberDetail(error.details, 'requiredCredits') ?? 0;
+  const availableCredits = readNumberDetail(error.details, 'availableCredits') ?? 0;
+  const reservedCredits = readNumberDetail(error.details, 'reservedCredits') ?? undefined;
+  return buildInsufficientCreditsMessage({
+    availableCredits,
+    localReservedCredits: 0,
+    requiredCredits,
+    reservedCredits,
+  });
+}
+
+function markNodeBlockedByCredits(nodeId: string, message: string): void {
+  useFlowCanvasStore.getState().updateNodeData(nodeId, {
+    errorCode: 'INSUFFICIENT_CREDITS',
+    errorMessage: message,
+    generationStatus: 'error',
+    status: 'failed',
+  } as Partial<FlowNodeData>);
+  useFlowCanvasStore.setState((currentState) => ({
+    nodeRunStatusByNodeId: {
+      ...currentState.nodeRunStatusByNodeId,
+      [nodeId]: 'failed',
+    },
+    nodeOutputByNodeId: {
+      ...currentState.nodeOutputByNodeId,
+      [nodeId]: {
+        ...currentState.nodeOutputByNodeId[nodeId],
+        errorMessage: message,
+      },
+    },
+    runError: message,
+  }));
+}
+
+async function reserveCreditsForTargetNode(nodeId: string): Promise<CreditPreflightReservation | null> {
+  const run = async () => {
+    const node = useFlowCanvasStore.getState().nodes.find((item) => item.id === nodeId);
+    if (!node) return null;
+
+    const [summary, routes, pricingRows] = await Promise.all([
+      getBillingSummary(),
+      getRuntimeRoutes(),
+      getBillingPricingRows(),
+    ]);
+    const estimatedCredits = resolveEstimatedCredits({ node, pricingRows, routes });
+    if (!estimatedCredits || estimatedCredits <= 0) {
+      return null;
+    }
+
+    const availableCredits = getBillingAvailableCredits(summary);
+    const balanceCredits = getBillingBalanceCredits(summary);
+    const reservedCredits = getBillingReservedCredits(summary);
+    const localReservedCredits = getOptimisticReservedCredits();
+    const effectiveAvailable = Math.max(availableCredits - localReservedCredits, 0);
+    if (effectiveAvailable < estimatedCredits) {
+      const message = buildInsufficientCreditsMessage({
+        availableCredits,
+        balanceCredits,
+        localReservedCredits,
+        requiredCredits: estimatedCredits,
+        reservedCredits,
+      });
+      markNodeBlockedByCredits(nodeId, message);
+      throw buildRunLaunchError(message);
+    }
+
+    optimisticCreditReservationsByNodeId.set(nodeId, estimatedCredits);
+    return {
+      amountCredits: estimatedCredits,
+      nodeId,
+    };
+  };
+
+  const result = creditPreflightQueue.then(run, run);
+  creditPreflightQueue = result.then(() => undefined, () => undefined);
+  return result;
 }
 
 function isAssetLike(value: unknown): value is AssetLike {
@@ -199,6 +437,9 @@ async function applyWorkflowRunSnapshot(snapshot: GetWorkflowRunResponse): Promi
     if (!shouldApplyNodeRun(nodeRun)) {
       continue;
     }
+    if (isTerminalStatus(nodeRun.status)) {
+      releaseOptimisticCreditReservation(nodeRun.nodeId);
+    }
     nodeIdByNodeRunId[nodeRun.id] = nodeRun.nodeId;
     nodeRunIdByNodeId[nodeRun.nodeId] = nodeRun.id;
     nodeRunStatusByNodeId[nodeRun.nodeId] = nodeRun.status;
@@ -283,6 +524,9 @@ function applyRunEvent(event: V2WorkflowRunEventView): void {
   }
 
   if (nodeId && payloadStatus) {
+    if (isTerminalStatus(payloadStatus)) {
+      releaseOptimisticCreditReservation(nodeId);
+    }
     useFlowCanvasStore.setState((state) => ({
       nodeRunStatusByNodeId: {
         ...state.nodeRunStatusByNodeId,
@@ -399,23 +643,39 @@ export async function runBackendWorkflow(options?: {
   }
 
   const isTargetNodeRun = options?.runMode === 'target_node' && !!options.targetNodeId;
-  if (!isTargetNodeRun) {
-    closeAllStreams();
-    useFlowCanvasStore.getState().resetBackendRunState();
-  } else {
-    useFlowCanvasStore.setState((currentState) => ({
-      currentRunId: null,
-      isRunningBackendWorkflow: true,
-      nodeRunStatusByNodeId: {
-        ...currentState.nodeRunStatusByNodeId,
-        [options.targetNodeId as string]: 'pending',
-      },
-      runError: null,
-      runStatus: 'pending',
-    }));
-  }
+  let creditReservation: CreditPreflightReservation | null = null;
 
   try {
+    if (!isTargetNodeRun) {
+      closeAllStreams();
+      useFlowCanvasStore.getState().resetBackendRunState();
+    } else {
+      creditReservation = await reserveCreditsForTargetNode(options.targetNodeId as string);
+      useFlowCanvasStore.getState().updateNodeData(options.targetNodeId as string, {
+        errorCode: undefined,
+        errorMessage: undefined,
+        generationStatus: 'generating',
+        status: 'pending',
+      } as Partial<FlowNodeData>);
+      useFlowCanvasStore.setState((currentState) => ({
+        currentRunId: null,
+        isRunningBackendWorkflow: true,
+        nodeRunStatusByNodeId: {
+          ...currentState.nodeRunStatusByNodeId,
+          [options.targetNodeId as string]: 'pending',
+        },
+        nodeOutputByNodeId: {
+          ...currentState.nodeOutputByNodeId,
+          [options.targetNodeId as string]: {
+            ...currentState.nodeOutputByNodeId[options.targetNodeId as string],
+            errorMessage: null,
+          },
+        },
+        runError: null,
+        runStatus: 'pending',
+      }));
+    }
+
     const request: CreateWorkflowRunInput = {
       idempotencyKey: `flow-canvas:${state.backendFlowId}:${options?.targetNodeId ?? 'flow'}:${Date.now()}`,
       input: {},
@@ -446,13 +706,19 @@ export async function runBackendWorkflow(options?: {
       startRunStream(created.runId);
     }
   } catch (error) {
-    const message = error instanceof V2HttpError && error.code === 'INSUFFICIENT_BALANCE'
-      ? 'Insufficient balance. Redeem or recharge credits before starting this workflow.'
+    if (creditReservation) {
+      releaseOptimisticCreditReservation(creditReservation.nodeId);
+    }
+    const message = error instanceof V2HttpError && isInsufficientCreditsError(error)
+      ? buildInsufficientCreditsMessageFromError(error)
       : error instanceof Error
         ? error.message
         : 'Failed to start backend workflow.';
     setRunError(message);
     if (isTargetNodeRun) {
+      if (isInsufficientCreditsError(error)) {
+        markNodeBlockedByCredits(options.targetNodeId as string, message);
+      }
       useFlowCanvasStore.setState((currentState) => ({
         nodeRunStatusByNodeId: {
           ...currentState.nodeRunStatusByNodeId,
@@ -478,4 +744,11 @@ export function isBackendWorkflowRunnerEnabled(): boolean {
 export function getRuntimeNodeStatus(nodeId: string, fallbackStatus: string): string {
   const status = useFlowCanvasStore.getState().nodeRunStatusByNodeId[nodeId];
   return status ? mapNodeRunStatusToNodeStatus(status) : fallbackStatus;
+}
+
+export function resetCreditPreflightStateForTests(): void {
+  optimisticCreditReservationsByNodeId.clear();
+  creditPreflightQueue = Promise.resolve();
+  runtimeRoutesCache = null;
+  billingPricingCache = null;
 }

@@ -1,9 +1,12 @@
 import type { V2RuntimeRouteItem } from '../../services/v2AiRoutesApi';
 
 export type RuntimeRouteOption = {
+  estimatedCredits: number | null;
   label: string;
+  minChargeCredits: number | null;
   modelDisplayName: string | null;
   modelKey: string | null;
+  pricingUnit: string | null;
   providerKey: string;
   providerName: string;
   routeKey: string;
@@ -26,9 +29,12 @@ export function mapImageRuntimeRouteOptions(items: V2RuntimeRouteItem[]): Runtim
 
     const modelLabel = item.modelDisplayName || item.modelKey || '--';
     result.push({
-      label: `${modelLabel} · ${routeKey}`,
+      estimatedCredits: item.estimatedCredits ?? item.minChargeCredits ?? null,
+      label: `${modelLabel} - ${routeKey}`,
+      minChargeCredits: item.minChargeCredits ?? item.estimatedCredits ?? null,
       modelDisplayName: item.modelDisplayName,
       modelKey: item.modelKey,
+      pricingUnit: item.pricingUnit ?? null,
       providerKey: item.providerKey,
       providerName: item.providerName,
       routeKey,
@@ -37,4 +43,3 @@ export function mapImageRuntimeRouteOptions(items: V2RuntimeRouteItem[]): Runtim
 
   return result;
 }
-

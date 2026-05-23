@@ -13,11 +13,15 @@ export type BillingAccount = {
 
 export type BillingSummary = {
   account: BillingAccount;
+  availableCredits?: number;
+  balanceCredits?: number;
   ledgerTotals: {
     refundCents: number;
     reserveCents: number;
     settleCents: number;
   };
+  reservedCredits?: number;
+  thisMonthUsageCredits?: number;
   usageTotals: {
     eventCount: number;
     pendingCount: number;
@@ -25,6 +29,17 @@ export type BillingSummary = {
     settledCount: number;
     totalBillableCents: number;
   };
+};
+
+export type BillingPricingRow = {
+  active: boolean;
+  id: string;
+  minChargeCredits: number;
+  model: string;
+  provider: string;
+  route: string;
+  unit: string;
+  unitCredits: number;
 };
 
 export type BillingLedgerEntry = {
@@ -82,6 +97,10 @@ export type PaymentCheckoutResponse = {
 
 export function getBillingSummary() {
   return apiGet<BillingSummary>("/billing/summary");
+}
+
+export function listBillingPricing() {
+  return apiGet<BillingPricingRow[]>("/billing/pricing");
 }
 
 export function listBillingUsageEvents(page = 1, limit = 20) {

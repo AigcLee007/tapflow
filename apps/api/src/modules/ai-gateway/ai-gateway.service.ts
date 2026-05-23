@@ -200,11 +200,14 @@ export type RouteView = {
 };
 
 export type RuntimeRouteListItemView = {
+  estimatedCredits: number | null;
+  minChargeCredits: number | null;
   modality: string;
   modelDisplayName: string | null;
   modelKey: string | null;
   providerKey: string;
   providerName: string;
+  pricingUnit: string | null;
   routeKey: string;
 };
 
@@ -541,7 +544,10 @@ export class AiGatewayAdminService {
     query: ListRuntimeRoutesQuery,
   ): Promise<RuntimeRouteListItemView[]> {
     return withTenantTransaction(context, async (client) => {
-      const result = await client.query<RuntimeRouteListRecord>(
+      const result = await client.query<RuntimeRouteListRecord & {
+        min_charge_credits: string | null;
+        pricing_unit: string | null;
+      }>(
         `
           SELECT DISTINCT ON (route.route_key)
             route.route_key,
@@ -549,12 +555,39 @@ export class AiGatewayAdminService {
             provider.key AS provider_key,
             provider.name AS provider_name,
             model.model_key,
-            model.display_name AS model_display_name
+            model.display_name AS model_display_name,
+            pricing.min_charge_credits::text AS min_charge_credits,
+            pricing.unit AS pricing_unit
           FROM ai_routes AS route
           JOIN ai_providers AS provider
             ON provider.id = route.provider_id
           LEFT JOIN ai_models AS model
             ON model.id = route.model_id
+          LEFT JOIN LATERAL (
+            SELECT mp.min_charge_credits, mp.unit
+            FROM model_pricing AS mp
+            WHERE mp.active = true
+              AND mp.unit = CASE route.modality
+                WHEN 'image' THEN 'image_generation'
+                WHEN 'video' THEN 'video_generation'
+                WHEN 'text' THEN 'text_generation'
+                ELSE route.modality || '_generation'
+              END
+              AND (
+                (mp.provider = provider.key AND mp.model = COALESCE(model.model_key, 'default') AND mp.route = route.route_key)
+                OR (mp.provider = provider.key AND mp.model = COALESCE(model.model_key, 'default') AND mp.route = 'default')
+                OR (mp.provider = provider.key AND mp.model = 'default' AND mp.route = 'default')
+                OR (mp.provider = 'default' AND mp.model = 'default' AND mp.route = 'default')
+              )
+            ORDER BY
+              CASE
+                WHEN mp.provider = provider.key AND mp.model = COALESCE(model.model_key, 'default') AND mp.route = route.route_key THEN 1
+                WHEN mp.provider = provider.key AND mp.model = COALESCE(model.model_key, 'default') AND mp.route = 'default' THEN 2
+                WHEN mp.provider = provider.key AND mp.model = 'default' AND mp.route = 'default' THEN 3
+                ELSE 4
+              END ASC
+            LIMIT 1
+          ) AS pricing ON true
           WHERE route.status = 'active'
             AND provider.status = 'active'
             AND (route.model_id IS NULL OR model.status = 'active')
@@ -569,11 +602,14 @@ export class AiGatewayAdminService {
       );
 
       return result.rows.map((row) => ({
+        estimatedCredits: row.min_charge_credits === null ? null : Number(row.min_charge_credits),
+        minChargeCredits: row.min_charge_credits === null ? null : Number(row.min_charge_credits),
         modality: row.modality,
         modelDisplayName: row.model_display_name ?? null,
         modelKey: row.model_key ?? null,
         providerKey: row.provider_key,
         providerName: row.provider_name,
+        pricingUnit: row.pricing_unit ?? null,
         routeKey: row.route_key,
       }));
     }, this.pool);
