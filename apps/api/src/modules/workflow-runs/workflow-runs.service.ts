@@ -476,11 +476,35 @@ export class WorkflowRunsService {
           },
           "workflow run runtime graph loaded",
         );
+        const pricingStartedAt = Date.now();
         const pricingRows = await this.loadActivePricing(client);
+        this.logCreateRunDiagnostic(
+          {
+            flowId,
+            pricingLoadMs: Date.now() - pricingStartedAt,
+            runMode,
+            targetNodeId,
+            tenantId: context.tenantId,
+            traceId: context.traceId ?? null,
+          },
+          "workflow run pricing loaded",
+        );
+        const routeContextStartedAt = Date.now();
         const routeContexts = await this.loadRouteRuntimeContexts(
           client,
           context.tenantId,
           runtimeFlow.compiled_graph_json.nodes,
+        );
+        this.logCreateRunDiagnostic(
+          {
+            flowId,
+            routeContextLoadMs: Date.now() - routeContextStartedAt,
+            runMode,
+            targetNodeId,
+            tenantId: context.tenantId,
+            traceId: context.traceId ?? null,
+          },
+          "workflow run route contexts loaded",
         );
         const targetNode =
           runMode === "target_node"
@@ -492,6 +516,7 @@ export class WorkflowRunsService {
         }
 
         if (input.idempotencyKey) {
+          const idempotencyStartedAt = Date.now();
           const existing = await client.query<WorkflowRunRecord>(
           `
             SELECT
@@ -517,6 +542,17 @@ export class WorkflowRunsService {
           `,
           [context.tenantId, input.idempotencyKey],
         );
+          this.logCreateRunDiagnostic(
+            {
+              flowId,
+              idempotencyLookupMs: Date.now() - idempotencyStartedAt,
+              runMode,
+              targetNodeId,
+              tenantId: context.tenantId,
+              traceId: context.traceId ?? null,
+            },
+            "workflow run idempotency checked",
+          );
 
           if (existing.rows[0]) {
             return {
@@ -532,6 +568,7 @@ export class WorkflowRunsService {
         }
 
         const runId = randomUUID();
+        const runInsertStartedAt = Date.now();
         const runInsert = await client.query<WorkflowRunRecord>(
         `
           INSERT INTO workflow_runs (
@@ -583,6 +620,18 @@ export class WorkflowRunsService {
           context.userId,
         ],
       );
+        this.logCreateRunDiagnostic(
+          {
+            flowId,
+            runInsertMs: Date.now() - runInsertStartedAt,
+            runMode,
+            targetNodeId,
+            tenantId: context.tenantId,
+            traceId: context.traceId ?? null,
+            workflowRunId: runId,
+          },
+          "workflow run row inserted",
+        );
 
         const run = mapWorkflowRun(runInsert.rows[0]);
 
@@ -620,6 +669,7 @@ export class WorkflowRunsService {
             );
           }
 
+          const nodeRunInsertStartedAt = Date.now();
           await client.query(
           `
             INSERT INTO node_runs (
@@ -666,8 +716,22 @@ export class WorkflowRunsService {
             }),
           ],
         );
+          this.logCreateRunDiagnostic(
+            {
+              flowId,
+              nodeRunId,
+              nodeRunInsertMs: Date.now() - nodeRunInsertStartedAt,
+              runMode,
+              targetNodeId,
+              tenantId: context.tenantId,
+              traceId: context.traceId ?? null,
+              workflowRunId: run.id,
+            },
+            "workflow node_run row inserted",
+          );
 
           if (estimatedCost.amountCents > 0) {
+            const reserveStartedAt = Date.now();
             const reserve = await this.billingService.reserveUsageWithClient(client, context.tenantId, {
               amountCents: estimatedCost.amountCents,
               description: `${node.type} reserved`,
@@ -701,6 +765,20 @@ export class WorkflowRunsService {
               }),
             ],
           );
+            this.logCreateRunDiagnostic(
+              {
+                billingReserveMs: Date.now() - reserveStartedAt,
+                flowId,
+                nodeRunId,
+                reservedCents: estimatedCost.amountCents,
+                runMode,
+                targetNodeId,
+                tenantId: context.tenantId,
+                traceId: context.traceId ?? null,
+                workflowRunId: run.id,
+              },
+              "workflow node billing reserved",
+            );
           }
 
           if (isEntryNode) {
@@ -746,10 +824,12 @@ export class WorkflowRunsService {
 
     try {
       for (const payload of createdRun.enqueuePayloads) {
+        const enqueueStartedAt = Date.now();
         const queuedJob = await this.nodeExecuteQueue.add(QUEUE_NAMES.nodeExecute, payload);
         this.logCreateRunDiagnostic(
           {
             enqueueJobId: this.extractQueueJobId(queuedJob),
+            enqueueMs: Date.now() - enqueueStartedAt,
             flowId,
             nodeRunId: payload.nodeRunId,
             runMode,

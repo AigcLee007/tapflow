@@ -132,6 +132,38 @@ type NodeExecutionOutcome =
       type: "waiting_provider";
     };
 
+type MediaProviderOutcome = {
+  kind: "image" | "video";
+  node: CompiledWorkflowNode;
+  nodeRun: NodeRunRecord;
+  result: AiGatewayMediaResult;
+  runtimeFlow: RuntimeFlowRecord;
+  type: "media_provider_succeeded";
+  workflowRun: WorkflowRunRecord;
+};
+
+type PreparedNodeExecution = {
+  currentNode: CompiledWorkflowNode;
+  currentNodeRun: NodeRunRecord;
+  input: NodeExecuteJobPayload;
+  processorResult: ProcessorResult;
+  runtimeFlow: RuntimeFlowRecord;
+  upstreamOutputs: Array<Record<string, unknown> | null>;
+  workflowRun: WorkflowRunRecord;
+};
+
+type PreparedNodeExecutionResult =
+  | {
+      prepared: PreparedNodeExecution;
+      type: "prepared";
+    }
+  | {
+      result: RuntimeExecutionResult;
+      type: "done";
+    };
+
+type ProviderExecutionOutcome = NodeExecutionOutcome | MediaProviderOutcome;
+
 type UsageRecordInput = {
   billableCents: number;
   eventType: string;
@@ -412,7 +444,7 @@ export class WorkflowNodeExecutionService {
     input: NodeExecuteJobPayload,
     logger: WorkerLogger,
   ): Promise<ProcessorResult> {
-    const execution = await this.executeNodeInTransaction(
+    const preparedResult = await this.prepareNodeExecutionInTransaction(
       {
         tenantId: input.tenantId,
         traceId: input.traceId ?? null,
@@ -421,6 +453,17 @@ export class WorkflowNodeExecutionService {
       input,
       logger,
     );
+    const execution = preparedResult.type === "done"
+      ? preparedResult.result
+      : await this.executePreparedNode(
+          {
+            tenantId: input.tenantId,
+            traceId: input.traceId ?? null,
+            userId: null,
+          },
+          preparedResult.prepared,
+          logger,
+        );
 
     await this.flushEnqueues(execution);
     await this.flushAuditLogs(execution.auditLogs);
@@ -478,19 +521,41 @@ export class WorkflowNodeExecutionService {
     }
   }
 
-  private async executeNodeInTransaction(
+  private async prepareNodeExecutionInTransaction(
     context: WorkflowExecutionContext,
     input: NodeExecuteJobPayload,
     logger: WorkerLogger,
-  ): Promise<RuntimeExecutionResult> {
+  ): Promise<PreparedNodeExecutionResult> {
     return withTenantTransaction(context, async (client) => {
+      const transactionStartedAt = Date.now();
       const workflowRun = await this.lockWorkflowRun(client, input.workflowRunId);
+      logger.info(
+        {
+          nodeRunId: input.nodeRunId,
+          transaction_started_at: new Date(transactionStartedAt).toISOString(),
+          workflowRunId: input.workflowRunId,
+        },
+        "node.execute prepare transaction started",
+      );
       if (isTerminalStatus(workflowRun.status)) {
-        return this.noOpResult(QUEUE_NAMES.nodeExecute, input);
+        return {
+          result: this.noOpResult(QUEUE_NAMES.nodeExecute, input),
+          type: "done",
+        };
       }
 
+      const runtimeLoadStartedAt = Date.now();
       const runtimeFlow = await this.getRuntimeFlow(client, input.workflowRunId);
       const nodeRuns = await this.listNodeRuns(client, input.workflowRunId);
+      logger.info(
+        {
+          nodeRunId: input.nodeRunId,
+          runtime_graph_loaded_at: new Date().toISOString(),
+          runtime_graph_load_ms: Date.now() - runtimeLoadStartedAt,
+          workflowRunId: input.workflowRunId,
+        },
+        "node.execute runtime graph loaded",
+      );
       const currentNodeRun = nodeRuns.find((nodeRun) => nodeRun.id === input.nodeRunId);
 
       if (!currentNodeRun) {
@@ -509,13 +574,20 @@ export class WorkflowNodeExecutionService {
         currentNodeRun.status === "running" ||
         currentNodeRun.status === "waiting_provider"
       ) {
-        return this.noOpResult(QUEUE_NAMES.nodeExecute, input);
+        return {
+          result: this.noOpResult(QUEUE_NAMES.nodeExecute, input),
+          type: "done",
+        };
       }
 
       if (getWorkflowRunMode(workflowRun) !== "target_node" && !this.areDependenciesSatisfied(currentNode, nodeRuns)) {
-        return this.noOpResult(QUEUE_NAMES.nodeExecute, input);
+        return {
+          result: this.noOpResult(QUEUE_NAMES.nodeExecute, input),
+          type: "done",
+        };
       }
 
+      const markRunningStartedAt = Date.now();
       await this.markNodeRunRunning(client, currentNodeRun.id);
       await this.markWorkflowRunRunning(client, workflowRun.id);
       await this.appendWorkflowRunEvent(client, {
@@ -530,181 +602,261 @@ export class WorkflowNodeExecutionService {
         tenantId: input.tenantId,
         workflowRunId: workflowRun.id,
       });
+      logger.info(
+        {
+          marked_running_at: new Date().toISOString(),
+          marked_running_ms: Date.now() - markRunningStartedAt,
+          nodeRunId: currentNodeRun.id,
+          targetNodeId: currentNode.id,
+          workflowRunId: workflowRun.id,
+        },
+        "node.execute marked node running",
+      );
 
-      try {
-        const upstreamOutputs =
-          getWorkflowRunMode(workflowRun) === "target_node"
-            ? []
-            : this.getDependencyOutputs(currentNode, nodeRuns);
-        const outcome = await this.executeNodeByType(
-          client,
+      const upstreamOutputs =
+        getWorkflowRunMode(workflowRun) === "target_node"
+          ? []
+          : this.getDependencyOutputs(currentNode, nodeRuns);
+
+      return {
+        prepared: {
           currentNode,
+          currentNodeRun,
+          input,
+          processorResult: {
+            jobId: null,
+            queueName: QUEUE_NAMES.nodeExecute,
+            status: "ok",
+            tenantId: input.tenantId,
+            traceId: input.traceId ?? null,
+          },
+          runtimeFlow,
           upstreamOutputs,
           workflowRun,
-          runtimeFlow,
-          currentNodeRun,
-          context,
-          logger,
+        },
+        type: "prepared",
+      };
+    }, this.pool);
+  }
+
+  private async executePreparedNode(
+    context: WorkflowExecutionContext,
+    prepared: PreparedNodeExecution,
+    logger: WorkerLogger,
+  ): Promise<RuntimeExecutionResult> {
+    try {
+      const outcome = await this.executeNodeByType(
+        prepared.currentNode,
+        prepared.upstreamOutputs,
+        prepared.workflowRun,
+        prepared.runtimeFlow,
+        prepared.currentNodeRun,
+        context,
+        logger,
+      );
+
+      return await this.finalizeNodeExecutionInTransaction(
+        context,
+        prepared,
+        outcome,
+        logger,
+      );
+    } catch (error) {
+      return await this.finalizeNodeExecutionErrorInTransaction(
+        context,
+        prepared,
+        error,
+      );
+    }
+  }
+
+  private async finalizeNodeExecutionInTransaction(
+    context: WorkflowExecutionContext,
+    prepared: PreparedNodeExecution,
+    outcome: ProviderExecutionOutcome,
+    logger: WorkerLogger,
+  ): Promise<RuntimeExecutionResult> {
+    return withTenantTransaction(context, async (client) => {
+      const workflowRun = await this.lockWorkflowRun(client, prepared.workflowRun.id);
+      if (isTerminalStatus(workflowRun.status)) {
+        return this.noOpResult(QUEUE_NAMES.nodeExecute, prepared.input);
+      }
+      const runtimeFlow = await this.getRuntimeFlow(client, prepared.workflowRun.id);
+      const nodeRuns = await this.listNodeRuns(client, prepared.workflowRun.id);
+      const currentNodeRun = nodeRuns.find((nodeRun) => nodeRun.id === prepared.currentNodeRun.id);
+      const currentNode = runtimeFlow.compiled_graph_json.nodes.find((node) => node.id === prepared.currentNode.id);
+      if (!currentNodeRun || !currentNode) {
+        throw new Error(`Node run or node not found while finalizing: ${prepared.currentNodeRun.id}`);
+      }
+      if (isTerminalStatus(currentNodeRun.status)) {
+        return this.noOpResult(QUEUE_NAMES.nodeExecute, prepared.input);
+      }
+
+      const resolvedOutcome = outcome.type === "media_provider_succeeded"
+        ? await this.mapMediaOutcome(
+            client,
+            currentNode,
+            workflowRun,
+            runtimeFlow,
+            currentNodeRun,
+            context,
+            outcome.result,
+            outcome.kind,
+            logger,
+          )
+        : outcome;
+
+      if (resolvedOutcome.type === "waiting_provider") {
+        await client.query(
+          `
+            UPDATE node_runs
+            SET
+              status = 'waiting_provider',
+              output_json = $2::jsonb,
+              provider_task_id = $3,
+              error_json = NULL,
+              updated_at = now()
+            WHERE id = $1::uuid
+          `,
+          [currentNodeRun.id, JSON.stringify(resolvedOutcome.outputJson), resolvedOutcome.pollPayload.providerTaskId],
         );
 
-        if (outcome.type === "waiting_provider") {
-          await client.query(
-            `
-              UPDATE node_runs
-              SET
-                status = 'waiting_provider',
-                output_json = $2::jsonb,
-                provider_task_id = $3,
-                error_json = NULL,
-                updated_at = now()
-              WHERE id = $1::uuid
-            `,
-            [currentNodeRun.id, JSON.stringify(outcome.outputJson), outcome.pollPayload.providerTaskId],
-          );
-
-          await this.appendWorkflowRunEvent(client, {
-            eventType: "node.run.waiting_provider",
-            nodeRunId: currentNodeRun.id,
-            payload: outcome.outputJson,
-            tenantId: input.tenantId,
-            workflowRunId: workflowRun.id,
-          });
-
-          logger.info(
-            {
-              nodeRunId: currentNodeRun.id,
-              providerTaskId: outcome.pollPayload.providerTaskId,
-              workflowRunId: workflowRun.id,
-            },
-            "workflow node waiting on provider task",
-          );
-
-          return {
-            auditLogs: [],
-            nodeEnqueuePayloads: [],
-            pollEnqueuePayloads: [
-              {
-                delayMs: this.pollDelayMs,
-                payload: outcome.pollPayload,
-              },
-            ],
-            processorResult: {
-              jobId: null,
-              queueName: QUEUE_NAMES.nodeExecute,
-              status: "ok",
-              tenantId: input.tenantId,
-              traceId: input.traceId ?? null,
-            },
-          };
-        }
-
-        const successResult = await this.markNodeSucceededAndUnlockDependents(
-          client,
-          currentNode,
-          runtimeFlow,
-          workflowRun,
-          currentNodeRun,
-          context,
-          outcome.outputJson,
-          outcome.type === "succeeded" ? outcome.usageRecord : undefined,
-          logger,
-        );
+        await this.appendWorkflowRunEvent(client, {
+          eventType: "node.run.waiting_provider",
+          nodeRunId: currentNodeRun.id,
+          payload: resolvedOutcome.outputJson,
+          tenantId: prepared.input.tenantId,
+          workflowRunId: workflowRun.id,
+        });
 
         logger.info(
           {
-            enqueuedNodeCount: successResult.nodeEnqueuePayloads.length,
             nodeRunId: currentNodeRun.id,
+            providerTaskId: resolvedOutcome.pollPayload.providerTaskId,
             workflowRunId: workflowRun.id,
           },
-          "workflow node execution succeeded",
+          "workflow node waiting on provider task",
         );
 
         return {
-          auditLogs: successResult.auditLogs,
-          nodeEnqueuePayloads: successResult.nodeEnqueuePayloads,
-          pollEnqueuePayloads: [],
-          processorResult: {
-            jobId: null,
-            queueName: QUEUE_NAMES.nodeExecute,
-            status: "ok",
-            tenantId: input.tenantId,
-            traceId: input.traceId ?? null,
-          },
-        };
-      } catch (error) {
-        if (isProviderResultUnknownError(error)) {
-          const unknownOutput = this.buildProviderResultUnknownOutput(error, currentNode, workflowRun, currentNodeRun);
-          const providerTaskId = `${UNKNOWN_PROVIDER_RECONCILE_PREFIX}${currentNodeRun.id}`;
-          await client.query(
-            `
-              UPDATE node_runs
-              SET
-                status = 'waiting_provider',
-                output_json = $2::jsonb,
-                provider_task_id = $3,
-                error_json = $4::jsonb,
-                updated_at = now()
-              WHERE id = $1::uuid
-            `,
-            [
-              currentNodeRun.id,
-              JSON.stringify(unknownOutput),
-              providerTaskId,
-              JSON.stringify({
-                code: "PROVIDER_RESULT_UNKNOWN",
-                message: "Provider request timed out locally after it was sent; keeping reservation open while checking for a recoverable result.",
-              }),
-            ],
-          );
-          await this.appendWorkflowRunEvent(client, {
-            eventType: "node.run.waiting_provider",
-            nodeRunId: currentNodeRun.id,
-            payload: unknownOutput,
-            tenantId: input.tenantId,
-            workflowRunId: workflowRun.id,
-          });
-          return {
-            auditLogs: [],
-            nodeEnqueuePayloads: [],
-            pollEnqueuePayloads: [
-              {
-                delayMs: this.pollDelayMs,
-                payload: {
-                  nodeRunId: currentNodeRun.id,
-                  providerTaskId,
-                  tenantId: input.tenantId,
-                  traceId: input.traceId ?? undefined,
-                  workflowRunId: workflowRun.id,
-                },
-              },
-            ],
-            processorResult: {
-              jobId: null,
-              queueName: QUEUE_NAMES.nodeExecute,
-              status: "ok",
-              tenantId: input.tenantId,
-              traceId: input.traceId ?? null,
-            },
-          };
-        }
-
-        const normalized = normalizeError(error);
-        await this.failNodeAndWorkflow(client, workflowRun.id, currentNodeRun.id, input.tenantId, normalized);
-
-        return {
           auditLogs: [],
-          errorToThrow: error instanceof Error ? error : new Error(String(error)),
           nodeEnqueuePayloads: [],
-          pollEnqueuePayloads: [],
-          processorResult: {
-            jobId: null,
-            queueName: QUEUE_NAMES.nodeExecute,
-            status: "ok",
-            tenantId: input.tenantId,
-            traceId: input.traceId ?? null,
-          },
+          pollEnqueuePayloads: [
+            {
+              delayMs: this.pollDelayMs,
+              payload: resolvedOutcome.pollPayload,
+            },
+          ],
+          processorResult: prepared.processorResult,
         };
       }
+
+      const successResult = await this.markNodeSucceededAndUnlockDependents(
+        client,
+        currentNode,
+        runtimeFlow,
+        workflowRun,
+        currentNodeRun,
+        context,
+        resolvedOutcome.outputJson,
+        resolvedOutcome.type === "succeeded" ? resolvedOutcome.usageRecord : undefined,
+        logger,
+      );
+
+      logger.info(
+        {
+          enqueuedNodeCount: successResult.nodeEnqueuePayloads.length,
+          nodeRunId: currentNodeRun.id,
+          workflowRunId: workflowRun.id,
+        },
+        "workflow node execution succeeded",
+      );
+
+      return {
+        auditLogs: successResult.auditLogs,
+        nodeEnqueuePayloads: successResult.nodeEnqueuePayloads,
+        pollEnqueuePayloads: [],
+        processorResult: prepared.processorResult,
+      };
+    }, this.pool);
+  }
+
+  private async finalizeNodeExecutionErrorInTransaction(
+    context: WorkflowExecutionContext,
+    prepared: PreparedNodeExecution,
+    error: unknown,
+  ): Promise<RuntimeExecutionResult> {
+    return withTenantTransaction(context, async (client) => {
+      const workflowRun = await this.lockWorkflowRun(client, prepared.workflowRun.id);
+      if (isTerminalStatus(workflowRun.status)) {
+        return this.noOpResult(QUEUE_NAMES.nodeExecute, prepared.input);
+      }
+      const nodeRuns = await this.listNodeRuns(client, prepared.workflowRun.id);
+      const currentNodeRun = nodeRuns.find((nodeRun) => nodeRun.id === prepared.currentNodeRun.id);
+      if (!currentNodeRun) {
+        throw new Error(`Node run not found while finalizing error: ${prepared.currentNodeRun.id}`);
+      }
+
+      if (isProviderResultUnknownError(error)) {
+        const unknownOutput = this.buildProviderResultUnknownOutput(error, prepared.currentNode, workflowRun, currentNodeRun);
+        const providerTaskId = `${UNKNOWN_PROVIDER_RECONCILE_PREFIX}${currentNodeRun.id}`;
+        await client.query(
+          `
+            UPDATE node_runs
+            SET
+              status = 'waiting_provider',
+              output_json = $2::jsonb,
+              provider_task_id = $3,
+              error_json = $4::jsonb,
+              updated_at = now()
+            WHERE id = $1::uuid
+          `,
+          [
+            currentNodeRun.id,
+            JSON.stringify(unknownOutput),
+            providerTaskId,
+            JSON.stringify({
+              code: "PROVIDER_RESULT_UNKNOWN",
+              message: "Provider request timed out locally after it was sent; keeping reservation open while checking for a recoverable result.",
+            }),
+          ],
+        );
+        await this.appendWorkflowRunEvent(client, {
+          eventType: "node.run.waiting_provider",
+          nodeRunId: currentNodeRun.id,
+          payload: unknownOutput,
+          tenantId: prepared.input.tenantId,
+          workflowRunId: workflowRun.id,
+        });
+        return {
+          auditLogs: [],
+          nodeEnqueuePayloads: [],
+          pollEnqueuePayloads: [
+            {
+              delayMs: this.pollDelayMs,
+              payload: {
+                nodeRunId: currentNodeRun.id,
+                providerTaskId,
+                tenantId: prepared.input.tenantId,
+                traceId: prepared.input.traceId ?? undefined,
+                workflowRunId: workflowRun.id,
+              },
+            },
+          ],
+          processorResult: prepared.processorResult,
+        };
+      }
+
+      const normalized = normalizeError(error);
+      await this.failNodeAndWorkflow(client, workflowRun.id, currentNodeRun.id, prepared.input.tenantId, normalized);
+
+      return {
+        auditLogs: [],
+        errorToThrow: error instanceof Error ? error : new Error(String(error)),
+        nodeEnqueuePayloads: [],
+        pollEnqueuePayloads: [],
+        processorResult: prepared.processorResult,
+      };
     }, this.pool);
   }
 
@@ -1048,7 +1200,6 @@ export class WorkflowNodeExecutionService {
   }
 
   private async executeNodeByType(
-    client: PoolClient,
     node: CompiledWorkflowNode,
     upstreamOutputs: Array<Record<string, unknown> | null>,
     workflowRun: WorkflowRunRecord,
@@ -1056,7 +1207,7 @@ export class WorkflowNodeExecutionService {
     nodeRun: NodeRunRecord,
     context: WorkflowExecutionContext,
     logger: WorkerLogger,
-  ): Promise<NodeExecutionOutcome> {
+  ): Promise<ProviderExecutionOutcome> {
     if (node.type === "input") {
       return {
         outputJson: resolveInputNodeOutput(workflowRun.input_json ?? {}, node.config ?? {}),
@@ -1139,7 +1290,15 @@ export class WorkflowNodeExecutionService {
         );
       }
 
-      return this.mapMediaOutcome(client, node, workflowRun, runtimeFlow, nodeRun, context, result, "image", logger);
+      return {
+        kind: "image",
+        node,
+        nodeRun,
+        result,
+        runtimeFlow,
+        type: "media_provider_succeeded",
+        workflowRun,
+      };
     }
 
     if (node.type === "video.generate") {
@@ -1182,7 +1341,15 @@ export class WorkflowNodeExecutionService {
         );
       }
 
-      return this.mapMediaOutcome(client, node, workflowRun, runtimeFlow, nodeRun, context, result, "video", logger);
+      return {
+        kind: "video",
+        node,
+        nodeRun,
+        result,
+        runtimeFlow,
+        type: "media_provider_succeeded",
+        workflowRun,
+      };
     }
 
     if (node.type === "output") {
