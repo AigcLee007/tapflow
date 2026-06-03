@@ -361,7 +361,7 @@ export function streamWorkflowRun(
       }
 
       options.onError?.(
-        error instanceof Error ? error : new Error('Workflow run stream failed'),
+        error instanceof Error ? error : new Error('工作流运行连接中断，请刷新后重试。'),
       );
       close();
     }

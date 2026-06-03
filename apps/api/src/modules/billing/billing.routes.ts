@@ -46,7 +46,7 @@ function parseBody<T>(request: FastifyRequest, schema: { parse: (value: unknown)
 
 function getBillingContext(request: FastifyRequest) {
   if (!request.ctx.tenantId) {
-    throw new BillingApiError(400, "TENANT_REQUIRED", "A tenant context is required");
+    throw new BillingApiError(400, "TENANT_REQUIRED", "当前请求缺少工作区上下文");
   }
 
   return {
@@ -76,7 +76,7 @@ function handleRouteError(
   }
 
   request.log.error({ err: error }, "billing route failed");
-  return sendError(request, reply, 500, "INTERNAL_ERROR", "Internal server error");
+  return sendError(request, reply, 500, "INTERNAL_ERROR", "服务暂时不可用，请稍后重试。");
 }
 
 export function registerBillingRoutes(app: FastifyInstance): void {

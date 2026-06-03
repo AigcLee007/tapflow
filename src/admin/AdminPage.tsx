@@ -37,14 +37,14 @@ export function AdminPage() {
   const [error, setError] = useState<string | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
-  const [grantReason, setGrantReason] = useState("staging test credits");
+  const [grantReason, setGrantReason] = useState("staging 测试点数");
   const [grantCreditsValue, setGrantCreditsValue] = useState("1000");
   const [grantTenantId, setGrantTenantId] = useState("");
   const [grantMessage, setGrantMessage] = useState<string | null>(null);
   const [redeemCreditsValue, setRedeemCreditsValue] = useState("1000");
   const [redeemMaxRedemptions, setRedeemMaxRedemptions] = useState("1");
   const [redeemTenantId, setRedeemTenantId] = useState("");
-  const [redeemReason, setRedeemReason] = useState("admin generated test code");
+  const [redeemReason, setRedeemReason] = useState("管理员创建测试兑换码");
   const [redeemMessage, setRedeemMessage] = useState<string | null>(null);
   const [passwordMessage, setPasswordMessage] = useState<string | null>(null);
   const [workflowRuns, setWorkflowRuns] = useState<AdminWorkflowRun[]>([]);
@@ -72,7 +72,7 @@ export function AdminPage() {
       setUsers(response.items);
       setSelectedUserId((current) => current ?? response.items[0]?.id ?? null);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Unable to load users.");
+      setError(loadError instanceof Error ? loadError.message : "用户列表加载失败。");
     } finally {
       setLoading(false);
     }
@@ -93,7 +93,7 @@ export function AdminPage() {
       setWorkflowRuns(response.items);
       setSelectedRunId((current) => current ?? response.items[0]?.id ?? null);
     } catch (loadError) {
-      setWorkflowError(loadError instanceof Error ? loadError.message : "Unable to load workflow runs.");
+      setWorkflowError(loadError instanceof Error ? loadError.message : "任务列表加载失败。");
     } finally {
       setWorkflowLoading(false);
     }
@@ -122,7 +122,7 @@ export function AdminPage() {
       })
       .catch((detailError) => {
         if (!cancelled) {
-          setWorkflowError(detailError instanceof Error ? detailError.message : "Unable to load workflow run detail.");
+          setWorkflowError(detailError instanceof Error ? detailError.message : "任务详情加载失败。");
           setSelectedRunDetail(null);
         }
       })
@@ -146,7 +146,7 @@ export function AdminPage() {
   if (!isAdmin) {
     return (
       <section className="rounded border border-amber-400/20 bg-amber-400/10 p-5 text-sm text-amber-100">
-        This internal admin console is only available to emails listed in <code>ADMIN_EMAILS</code>.
+        当前管理后台仅对配置在 <code>ADMIN_EMAILS</code> 中的邮箱开放。
       </section>
     );
   }
@@ -162,11 +162,11 @@ export function AdminPage() {
         tenantId: grantTenantId.trim(),
       });
       setGrantMessage(
-        `Granted successfully. Available ${response.account.availableCredits} pts, reserved ${response.account.reservedCredits} pts.`,
+        `发放成功。当前可用 ${response.account.availableCredits} 点，已占用 ${response.account.reservedCredits} 点。`,
       );
       await loadUsers();
     } catch (grantError) {
-      setGrantMessage(grantError instanceof Error ? grantError.message : "Grant credits failed.");
+      setGrantMessage(grantError instanceof Error ? grantError.message : "发放点数失败。");
     }
   }
 
@@ -179,9 +179,9 @@ export function AdminPage() {
         reason: redeemReason,
         tenantId: redeemTenantId.trim() || undefined,
       });
-      setRedeemMessage(`Redeem code created. Copy now: ${response.code}`);
+      setRedeemMessage(`兑换码已创建，请及时复制：${response.code}`);
     } catch (redeemError) {
-      setRedeemMessage(redeemError instanceof Error ? redeemError.message : "Create redeem code failed.");
+      setRedeemMessage(redeemError instanceof Error ? redeemError.message : "创建兑换码失败。");
     }
   }
 
@@ -190,9 +190,9 @@ export function AdminPage() {
     setPasswordMessage(null);
     try {
       const response = await resetAdminPassword({ userId: selectedUser.id });
-      setPasswordMessage(`Temporary password for ${response.user.email}: ${response.passwordShownOnce}`);
+      setPasswordMessage(`已为 ${response.user.email} 生成一次性临时密码：${response.passwordShownOnce}`);
     } catch (resetError) {
-      setPasswordMessage(resetError instanceof Error ? resetError.message : "Reset password failed.");
+      setPasswordMessage(resetError instanceof Error ? resetError.message : "重置密码失败。");
     }
   }
 
@@ -203,11 +203,10 @@ export function AdminPage() {
     <div className="space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="text-xs uppercase tracking-[0.24em] text-rose-300">Admin</div>
-          <h1 className="mt-2 text-2xl font-semibold text-white">Operations Console</h1>
+          <div className="text-xs uppercase tracking-[0.24em] text-rose-300">管理后台</div>
+          <h1 className="mt-2 text-2xl font-semibold text-white">运营管理台</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
-            Search users, inspect balances, grant test credits, create redeem codes, reset passwords,
-            and inspect recent workflow failures without leaving the authenticated workspace shell.
+            你可以在这里搜索用户、查看余额、发放测试点数、创建兑换码、重置密码，以及排查最近失败的工作流任务。
           </p>
         </div>
         <div className="flex gap-2">
@@ -219,7 +218,7 @@ export function AdminPage() {
             type="button"
           >
             <RefreshCw size={15} />
-            Refresh
+            刷新
           </button>
         </div>
       </header>
@@ -238,7 +237,7 @@ export function AdminPage() {
               <input
                 className="h-10 w-full rounded border border-white/10 bg-black/25 pl-9 pr-3 text-sm text-white outline-none ring-0 placeholder:text-slate-500"
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search email or display name"
+                placeholder="搜索邮箱或显示名称"
                 value={query}
               />
             </div>
@@ -248,7 +247,7 @@ export function AdminPage() {
               type="button"
             >
               {loading ? <Loader2 className="animate-spin" size={15} /> : <Search size={15} />}
-              Search
+              搜索
             </button>
           </div>
 
@@ -273,7 +272,7 @@ export function AdminPage() {
                     </div>
                     <div className="text-right text-xs text-slate-400">
                       <div>{user.status}</div>
-                      <div>{user.memberships.length} tenant(s)</div>
+                      <div>{user.memberships.length} 个工作区</div>
                     </div>
                   </div>
                 </button>
@@ -281,7 +280,7 @@ export function AdminPage() {
             })}
             {!loading && users.length === 0 ? (
               <div className="rounded border border-dashed border-white/10 px-4 py-6 text-sm text-slate-400">
-                No users matched the current query.
+                当前搜索条件下没有匹配用户。
               </div>
             ) : null}
           </div>
@@ -289,16 +288,16 @@ export function AdminPage() {
 
         <section className="space-y-4">
           <div className="rounded border border-white/10 bg-white/[0.04] p-5">
-            <h2 className="text-lg font-semibold text-white">Selected User</h2>
+            <h2 className="text-lg font-semibold text-white">已选用户</h2>
             {selectedUser ? (
               <div className="mt-4 space-y-4">
                 <div className="grid gap-3 md:grid-cols-2">
                   <div className="rounded border border-white/10 bg-black/20 p-4 text-sm text-slate-200">
-                    <div className="text-xs uppercase tracking-[0.18em] text-slate-500">Email</div>
+                    <div className="text-xs uppercase tracking-[0.18em] text-slate-500">邮箱</div>
                     <div className="mt-2 break-all">{selectedUser.email}</div>
                   </div>
                   <div className="rounded border border-white/10 bg-black/20 p-4 text-sm text-slate-200">
-                    <div className="text-xs uppercase tracking-[0.18em] text-slate-500">Status</div>
+                    <div className="text-xs uppercase tracking-[0.18em] text-slate-500">状态</div>
                     <div className="mt-2">{selectedUser.status}</div>
                   </div>
                 </div>
@@ -313,16 +312,16 @@ export function AdminPage() {
                         </div>
                         <div className="grid grid-cols-3 gap-3 text-right text-sm text-slate-200">
                           <div>
-                            <div className="text-xs uppercase tracking-[0.16em] text-slate-500">Balance</div>
-                            <div className="mt-1">{membership.balanceCredits} pts</div>
+                            <div className="text-xs uppercase tracking-[0.16em] text-slate-500">余额</div>
+                            <div className="mt-1">{membership.balanceCredits} 点</div>
                           </div>
                           <div>
-                            <div className="text-xs uppercase tracking-[0.16em] text-slate-500">Reserved</div>
-                            <div className="mt-1">{membership.reservedCredits} pts</div>
+                            <div className="text-xs uppercase tracking-[0.16em] text-slate-500">已占用</div>
+                            <div className="mt-1">{membership.reservedCredits} 点</div>
                           </div>
                           <div>
-                            <div className="text-xs uppercase tracking-[0.16em] text-slate-500">Available</div>
-                            <div className="mt-1">{membership.availableCredits} pts</div>
+                            <div className="text-xs uppercase tracking-[0.16em] text-slate-500">可用</div>
+                            <div className="mt-1">{membership.availableCredits} 点</div>
                           </div>
                         </div>
                       </div>
@@ -332,24 +331,24 @@ export function AdminPage() {
 
                 <div className="grid gap-4 xl:grid-cols-2">
                   <div className="rounded border border-white/10 bg-black/20 p-4">
-                    <h3 className="font-medium text-white">Grant Test Credits</h3>
+                    <h3 className="font-medium text-white">发放测试点数</h3>
                     <div className="mt-3 space-y-3">
                       <input
                         className="h-10 w-full rounded border border-white/10 bg-black/25 px-3 text-sm text-white"
                         onChange={(event) => setGrantTenantId(event.target.value)}
-                        placeholder="Tenant ID"
+                        placeholder="工作区 ID"
                         value={grantTenantId}
                       />
                       <input
                         className="h-10 w-full rounded border border-white/10 bg-black/25 px-3 text-sm text-white"
                         onChange={(event) => setGrantCreditsValue(event.target.value)}
-                        placeholder="Credits"
+                        placeholder="点数"
                         value={grantCreditsValue}
                       />
                       <input
                         className="h-10 w-full rounded border border-white/10 bg-black/25 px-3 text-sm text-white"
                         onChange={(event) => setGrantReason(event.target.value)}
-                        placeholder="Reason"
+                        placeholder="原因"
                         value={grantReason}
                       />
                       <button
@@ -357,23 +356,23 @@ export function AdminPage() {
                         onClick={() => void handleGrantCredits()}
                         type="button"
                       >
-                        Grant credits
+                        发放点数
                       </button>
                       {grantMessage ? <div className="text-sm text-slate-300">{grantMessage}</div> : null}
                     </div>
                   </div>
 
                   <div className="rounded border border-white/10 bg-black/20 p-4">
-                    <h3 className="font-medium text-white">Reset Password</h3>
+                    <h3 className="font-medium text-white">重置密码</h3>
                     <p className="mt-2 text-sm text-slate-400">
-                      Generates a temporary password, activates the user, and marks email verified if needed.
+                      这会生成一个临时密码，并在需要时自动激活用户、标记邮箱已验证。请仅在确认身份后执行。
                     </p>
                     <button
                       className="mt-3 inline-flex h-10 items-center justify-center rounded border border-amber-300/25 bg-amber-500/10 px-4 text-sm text-amber-100 hover:bg-amber-500/20"
                       onClick={() => void handleResetPassword()}
                       type="button"
                     >
-                      Reset password
+                      重置密码
                     </button>
                     {passwordMessage ? (
                       <div className="mt-3 rounded border border-white/10 bg-black/30 p-3 text-sm text-slate-200">
@@ -384,35 +383,35 @@ export function AdminPage() {
                 </div>
               </div>
             ) : (
-              <div className="mt-4 text-sm text-slate-400">Select a user to inspect balances and run actions.</div>
+              <div className="mt-4 text-sm text-slate-400">请选择一位用户以查看余额并执行操作。</div>
             )}
           </div>
 
           <div className="rounded border border-white/10 bg-white/[0.04] p-5">
-            <h2 className="text-lg font-semibold text-white">Create Redeem Code</h2>
+            <h2 className="text-lg font-semibold text-white">创建兑换码</h2>
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               <input
                 className="h-10 rounded border border-white/10 bg-black/25 px-3 text-sm text-white"
                 onChange={(event) => setRedeemTenantId(event.target.value)}
-                placeholder="Tenant ID (optional)"
+                placeholder="工作区 ID（可选）"
                 value={redeemTenantId}
               />
               <input
                 className="h-10 rounded border border-white/10 bg-black/25 px-3 text-sm text-white"
                 onChange={(event) => setRedeemCreditsValue(event.target.value)}
-                placeholder="Credits"
+                placeholder="点数"
                 value={redeemCreditsValue}
               />
               <input
                 className="h-10 rounded border border-white/10 bg-black/25 px-3 text-sm text-white"
                 onChange={(event) => setRedeemMaxRedemptions(event.target.value)}
-                placeholder="Max redemptions"
+                placeholder="最大兑换次数"
                 value={redeemMaxRedemptions}
               />
               <input
                 className="h-10 rounded border border-white/10 bg-black/25 px-3 text-sm text-white md:col-span-2"
                 onChange={(event) => setRedeemReason(event.target.value)}
-                placeholder="Reason"
+                placeholder="原因"
                 value={redeemReason}
               />
             </div>
@@ -421,7 +420,7 @@ export function AdminPage() {
               onClick={() => void handleCreateRedeemCode()}
               type="button"
             >
-              Create redeem code
+              创建兑换码
             </button>
             {redeemMessage ? (
               <div className="mt-3 rounded border border-white/10 bg-black/30 p-3 text-sm text-slate-200">
@@ -435,12 +434,12 @@ export function AdminPage() {
       <section className="grid gap-4 xl:grid-cols-[minmax(360px,0.9fr)_minmax(0,1.1fr)]">
         <div className="rounded border border-white/10 bg-white/[0.04] p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold text-white">Recent Workflow Runs</h2>
+            <h2 className="text-lg font-semibold text-white">最近失败任务</h2>
             <div className="flex gap-2">
               <input
                 className="h-10 rounded border border-white/10 bg-black/25 px-3 text-sm text-white"
                 onChange={(event) => setWorkflowStatusFilter(event.target.value)}
-                placeholder="Status filter"
+                placeholder="状态筛选"
                 value={workflowStatusFilter}
               />
               <button
@@ -449,7 +448,7 @@ export function AdminPage() {
                 type="button"
               >
                 {workflowLoading ? <Loader2 className="animate-spin" size={15} /> : <RefreshCw size={15} />}
-                Refresh
+                刷新
               </button>
             </div>
           </div>
@@ -480,7 +479,7 @@ export function AdminPage() {
                     </div>
                     <div className="text-right text-xs text-slate-400">
                       <div>{formatDate(run.createdAt)}</div>
-                      <div>{run.failedNodeRunCount} failed node(s)</div>
+                      <div>{run.failedNodeRunCount} 个失败节点</div>
                     </div>
                   </div>
                 </button>
@@ -488,35 +487,35 @@ export function AdminPage() {
             })}
             {!workflowLoading && workflowRuns.length === 0 ? (
               <div className="rounded border border-dashed border-white/10 px-4 py-6 text-sm text-slate-400">
-                No workflow runs matched the current filter.
+                当前筛选条件下没有任务记录。
               </div>
             ) : null}
           </div>
         </div>
 
         <div className="rounded border border-white/10 bg-white/[0.04] p-5">
-          <h2 className="text-lg font-semibold text-white">Run Detail</h2>
+          <h2 className="text-lg font-semibold text-white">任务详情</h2>
           {selectedRunLoading ? (
             <div className="mt-4 inline-flex items-center gap-3 text-sm text-slate-300">
               <Loader2 className="animate-spin" size={16} />
-              Loading workflow run detail...
+              正在加载任务详情...
             </div>
           ) : selectedRunDetail ? (
             <div className="mt-4 space-y-4">
               <div className="grid gap-3 md:grid-cols-2">
                 <div className="rounded border border-white/10 bg-black/20 p-4 text-sm text-slate-200">
-                  <div className="text-xs uppercase tracking-[0.18em] text-slate-500">Status</div>
+                  <div className="text-xs uppercase tracking-[0.18em] text-slate-500">状态</div>
                   <div className="mt-2">{selectedRunDetail.workflowRun.status}</div>
                 </div>
                 <div className="rounded border border-white/10 bg-black/20 p-4 text-sm text-slate-200">
-                  <div className="text-xs uppercase tracking-[0.18em] text-slate-500">Target node</div>
+                  <div className="text-xs uppercase tracking-[0.18em] text-slate-500">目标节点</div>
                   <div className="mt-2 break-all">{selectedRunDetail.workflowRun.targetNodeId || "-"}</div>
                 </div>
               </div>
 
               {selectedRunError ? (
                 <div>
-                  <div className="mb-2 text-sm font-medium text-white">Workflow error_json</div>
+                  <div className="mb-2 text-sm font-medium text-white">工作流错误信息</div>
                   <JsonBlock value={selectedRunError} />
                 </div>
               ) : null}
@@ -530,7 +529,7 @@ export function AdminPage() {
                           {nodeRun.nodeType} / {nodeRun.nodeId}
                         </div>
                         <div className="mt-1 text-xs text-slate-400">
-                          {nodeRun.status} / started {formatDate(nodeRun.startedAt)} / finished {formatDate(nodeRun.finishedAt)}
+                          {nodeRun.status} / 开始 {formatDate(nodeRun.startedAt)} / 结束 {formatDate(nodeRun.finishedAt)}
                         </div>
                       </div>
                     </div>
@@ -542,7 +541,7 @@ export function AdminPage() {
                     ) : null}
                     {nodeRun.outputSummary ? (
                       <div className="mt-3">
-                        <div className="mb-2 text-xs uppercase tracking-[0.16em] text-slate-500">output summary</div>
+                        <div className="mb-2 text-xs uppercase tracking-[0.16em] text-slate-500">输出摘要</div>
                         <pre className="overflow-x-auto rounded border border-white/10 bg-black/30 p-3 text-xs text-slate-300">
                           {nodeRun.outputSummary}
                         </pre>
@@ -553,7 +552,7 @@ export function AdminPage() {
               </div>
             </div>
           ) : (
-            <div className="mt-4 text-sm text-slate-400">Select a workflow run to inspect failure details.</div>
+            <div className="mt-4 text-sm text-slate-400">请选择一条任务记录以查看失败详情。</div>
           )}
         </div>
       </section>

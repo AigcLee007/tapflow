@@ -69,12 +69,12 @@ function handleRouteError(
   }
 
   request.log.error({ err: error }, "flows route failed");
-  return sendError(request, reply, 500, "INTERNAL_ERROR", "Internal server error");
+  return sendError(request, reply, 500, "INTERNAL_ERROR", "服务暂时不可用，请稍后重试。");
 }
 
 function getFlowContext(request: FastifyRequest) {
   if (!request.ctx.tenantId) {
-    throw new FlowsApiError(400, "TENANT_REQUIRED", "A tenant context is required");
+    throw new FlowsApiError(400, "TENANT_REQUIRED", "当前请求缺少工作区上下文");
   }
 
   return {
@@ -220,7 +220,7 @@ export function registerFlowRoutes(app: FastifyInstance): void {
         const body = parseBody<SaveFlowDraftInput>(request, saveFlowDraftSchema);
         const graph = body.graph ?? body.graphJson ?? body.graph_json;
         if (!graph) {
-          return sendError(request, reply, 400, "VALIDATION_ERROR", "A graph payload is required");
+          return sendError(request, reply, 400, "VALIDATION_ERROR", "缺少画布图数据");
         }
         const result = await app.flowsService.saveFlowDraft(getFlowContext(request), params.flowId, {
           expectedRevision: body.expectedRevision,

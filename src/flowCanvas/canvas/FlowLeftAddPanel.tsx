@@ -37,20 +37,20 @@ type AddEntry = {
 };
 
 const PRIMARY_ITEMS: AddEntry[] = [
-  { kind: 'text', label: 'Text', desc: 'Scripts, prompts, and copy', icon: <List size={26} strokeWidth={1.75} /> },
-  { kind: 'image', label: 'Image', icon: <ImageIcon size={26} strokeWidth={1.75} /> },
-  { kind: 'video', label: 'Video', icon: <PlaySquare size={25} strokeWidth={1.8} /> },
-  { kind: 'audio', label: 'Audio', icon: <Music size={25} strokeWidth={1.8} /> },
-  { kind: 'world3d', label: '3D World', icon: <Box size={25} strokeWidth={1.75} />, beta: true, disabled: true },
+  { kind: 'text', label: '文本', desc: '脚本、提示词和文案', icon: <List size={26} strokeWidth={1.75} /> },
+  { kind: 'image', label: '图片', icon: <ImageIcon size={26} strokeWidth={1.75} /> },
+  { kind: 'video', label: '视频', icon: <PlaySquare size={25} strokeWidth={1.8} /> },
+  { kind: 'audio', label: '音频', icon: <Music size={25} strokeWidth={1.8} /> },
+  { kind: 'world3d', label: '3D 世界', icon: <Box size={25} strokeWidth={1.75} />, beta: true, disabled: true },
 ];
 
 const TOOL_ITEMS: AddEntry[] = [
-  { kind: 'playlist', label: 'Playlist', icon: <LayoutList size={25} strokeWidth={1.75} />, beta: true, disabled: true },
-  { kind: 'image_editor', label: 'Image Editor Node', icon: <Wand2 size={25} strokeWidth={1.8} /> },
+  { kind: 'playlist', label: '播放列表', icon: <LayoutList size={25} strokeWidth={1.75} />, beta: true, disabled: true },
+  { kind: 'image_editor', label: '图片编辑节点', icon: <Wand2 size={25} strokeWidth={1.8} /> },
 ];
 
 const RESOURCE_ITEMS: AddEntry[] = [
-  { kind: 'upload', label: 'Upload', icon: <Upload size={25} strokeWidth={1.85} /> },
+  { kind: 'upload', label: '上传', icon: <Upload size={25} strokeWidth={1.85} /> },
 ];
 
 const isFlowNodeKind = (kind: AddEntry['kind']): kind is FlowNodeKind =>
@@ -135,11 +135,11 @@ const AddNodeFlyout: React.FC<{
 
   return (
     <div className="nodrag nopan nowheel" style={flyoutStyle}>
-      <div style={flyoutSectionTitleStyle}>Add Nodes</div>
+      <div style={flyoutSectionTitleStyle}>添加节点</div>
       {PRIMARY_ITEMS.map(renderItem)}
-      <div style={flyoutSectionTitleStyle}>Tools</div>
+      <div style={flyoutSectionTitleStyle}>工具</div>
       {TOOL_ITEMS.map(renderItem)}
-      <div style={flyoutSectionTitleStyle}>Resources</div>
+      <div style={flyoutSectionTitleStyle}>资源</div>
       {RESOURCE_ITEMS.map(renderItem)}
     </div>
   );
@@ -152,9 +152,9 @@ const UserFlyout: React.FC<{
   user: { displayName: string | null; email: string } | null;
 }> = ({ authenticated, loading, onLogout, user }) => {
   const displayName = loading
-    ? 'Loading...'
-    : user?.displayName || user?.email?.split('@')[0] || 'Guest';
-  const email = loading ? 'Syncing account data' : user?.email || 'Log in to view account details';
+    ? '加载中...'
+    : user?.displayName || user?.email?.split('@')[0] || '访客';
+  const email = loading ? '正在同步账号信息' : user?.email || '登录后查看账号信息';
   const initial = user
     ? (displayName.trim().charAt(0).toUpperCase() || 'U')
     : loading
@@ -171,15 +171,15 @@ const UserFlyout: React.FC<{
         </div>
       </div>
       <div style={userDividerStyle} />
-      <UserMenuItem icon={<User size={22} />} label={authenticated ? 'Account' : 'Log In'} onClick={() => navigateTo(authenticated ? '/account' : '/login')} />
-      <UserMenuItem icon={<Wallet size={22} />} label="Billing" onClick={() => navigateTo('/billing')} />
-      <UserMenuItem icon={<Bell size={22} />} label="Workspace" onClick={() => navigateTo('/workspace')} />
+      <UserMenuItem icon={<User size={22} />} label={authenticated ? '账号' : '登录'} onClick={() => navigateTo(authenticated ? '/account' : '/login')} />
+      <UserMenuItem icon={<Wallet size={22} />} label="计费" onClick={() => navigateTo('/billing')} />
+      <UserMenuItem icon={<Bell size={22} />} label="工作区" onClick={() => navigateTo('/workspace')} />
       <div style={userDividerStyle} />
-      <UserMenuItem icon={<CircleHelp size={22} />} label="Help" />
+      <UserMenuItem icon={<CircleHelp size={22} />} label="帮助" />
       {authenticated ? (
-        <UserMenuItem icon={<LogOut size={22} />} label="Log Out" onClick={onLogout} />
+        <UserMenuItem icon={<LogOut size={22} />} label="退出登录" onClick={onLogout} />
       ) : (
-        <UserMenuItem icon={<LogOut size={22} />} label="Go to Login" onClick={() => navigateTo('/login')} />
+        <UserMenuItem icon={<LogOut size={22} />} label="前往登录" onClick={() => navigateTo('/login')} />
       )}
     </div>
   );
@@ -240,20 +240,20 @@ export const FlowLeftAddPanel: React.FC = memo(function FlowLeftAddPanel() {
       <div style={dockStyle}>
         <DockButton
           icon={addOpen ? <X size={31} strokeWidth={1.7} /> : <Plus size={38} strokeWidth={1.75} />}
-          label="Add Nodes"
+          label="添加节点"
           large
           active={addOpen}
           onMouseEnter={openAdd}
           onClick={() => (addOpen ? setAddOpen(false) : openAdd())}
         />
-        <DockButton icon={<Folder size={25} strokeWidth={1.8} />} label="Templates" badge />
-        <DockButton icon={<LayoutList size={25} strokeWidth={1.85} />} label="Template List" />
-        <DockButton icon={<MessageCircle size={26} strokeWidth={1.85} />} label="Comments" />
-        <DockButton icon={<Clock3 size={26} strokeWidth={1.85} />} label="History" onClick={undo} />
+        <DockButton icon={<Folder size={25} strokeWidth={1.8} />} label="模板" badge />
+        <DockButton icon={<LayoutList size={25} strokeWidth={1.85} />} label="模板列表" />
+        <DockButton icon={<MessageCircle size={26} strokeWidth={1.85} />} label="评论" />
+        <DockButton icon={<Clock3 size={26} strokeWidth={1.85} />} label="历史记录" onClick={undo} />
         <div style={dockDividerStyle} />
         <DockButton
           icon={<span style={userAvatarSmallStyle}>{(user?.displayName || user?.email || 'L').charAt(0).toUpperCase()}</span>}
-          label="User"
+          label="用户"
           active={userOpen}
           onClick={() => {
             setAddOpen(false);

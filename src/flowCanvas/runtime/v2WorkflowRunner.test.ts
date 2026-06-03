@@ -486,12 +486,12 @@ describe('v2WorkflowRunner', () => {
         availableCredits: 40,
         requiredCredits: 100,
       },
-      message: 'Insufficient balance. Redeem or recharge credits before starting this workflow.',
+      message: '余额不足，请充值或兑换点数后继续生成。',
       status: 402,
     }));
 
     await expect(runBackendWorkflow({ runMode: 'target_node', targetNodeId: nodeId }))
-      .rejects.toThrow('Insufficient balance');
+      .rejects.toThrow('余额不足');
 
     expect(useFlowCanvasStore.getState().nodes[0]?.data.errorMessage).toContain('余额不足');
     expect(useFlowCanvasStore.getState().runError).toContain('余额不足');

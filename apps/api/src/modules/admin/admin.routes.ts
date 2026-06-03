@@ -80,7 +80,7 @@ function handleRouteError(error: unknown, request: FastifyRequest, reply: Fastif
     },
     "admin route failed",
   );
-  return sendError(request, reply, 500, "INTERNAL_ERROR", "Internal server error");
+  return sendError(request, reply, 500, "INTERNAL_ERROR", "服务暂时不可用，请稍后重试。");
 }
 
 export function registerAdminRoutes(app: FastifyInstance): void {

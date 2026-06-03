@@ -514,7 +514,7 @@ export class WorkflowRunsService {
             : null;
 
         if (runMode === "target_node" && !targetNode) {
-          throw new WorkflowRunsApiError(400, "TARGET_NODE_NOT_FOUND", "Target node could not be found in the compiled flow");
+          throw new WorkflowRunsApiError(400, "TARGET_NODE_NOT_FOUND", "未在当前画布中找到目标节点");
         }
 
         if (input.idempotencyKey) {
@@ -772,7 +772,7 @@ export class WorkflowRunsService {
                 throw new WorkflowRunsApiError(
                   402,
                   "INSUFFICIENT_CREDITS",
-                  "Insufficient balance. Redeem or recharge credits before starting this workflow.",
+                  "余额不足，请充值或兑换点数后继续生成。",
                   {
                     availableCredits,
                     balanceCredits,
@@ -881,7 +881,7 @@ export class WorkflowRunsService {
       }
     } catch (error) {
       await this.markWorkflowRunQueueUnavailable(context, createdRun.run.id, error);
-      throw new WorkflowRunsApiError(503, "QUEUE_UNAVAILABLE", "Workflow run could not be enqueued. Please try again.");
+      throw new WorkflowRunsApiError(503, "QUEUE_UNAVAILABLE", "任务暂时无法加入执行队列，请稍后重试。");
     }
 
     await safeRecordAuditLog(
@@ -1367,7 +1367,7 @@ export class WorkflowRunsService {
 
     const row = result.rows[0];
     if (!row) {
-      throw new WorkflowRunsApiError(404, "FLOW_NOT_FOUND", "Flow not found");
+      throw new WorkflowRunsApiError(404, "FLOW_NOT_FOUND", "未找到对应画布");
     }
 
     return row;
@@ -1396,7 +1396,7 @@ export class WorkflowRunsService {
     targetNodeId: string | null,
   ): Promise<FlowRuntimeRecord> {
     if (!targetNodeId) {
-      throw new WorkflowRunsApiError(400, "TARGET_NODE_REQUIRED", "targetNodeId is required for target_node runs");
+      throw new WorkflowRunsApiError(400, "TARGET_NODE_REQUIRED", "当前运行方式缺少目标节点 ID");
     }
 
     const flowRow = await client.query<{
@@ -1419,7 +1419,7 @@ export class WorkflowRunsService {
 
     const flow = flowRow.rows[0];
     if (!flow) {
-      throw new WorkflowRunsApiError(404, "FLOW_NOT_FOUND", "Flow not found");
+      throw new WorkflowRunsApiError(404, "FLOW_NOT_FOUND", "未找到对应画布");
     }
     this.logCreateRunDiagnostic(
       {
@@ -1444,13 +1444,13 @@ export class WorkflowRunsService {
     );
     const draft = draftResult.rows[0];
     if (!draft) {
-      throw new WorkflowRunsApiError(400, "FLOW_DRAFT_MISSING", "Flow draft is missing");
+      throw new WorkflowRunsApiError(400, "FLOW_DRAFT_MISSING", "当前画布还没有可运行的草稿");
     }
 
     const { checksum, compiledGraph, graph } = this.compileDraftGraph(draft.graph_json);
     const targetNode = compiledGraph.nodes.find((node) => node.id === targetNodeId);
     if (!targetNode) {
-      throw new WorkflowRunsApiError(400, "TARGET_NODE_NOT_FOUND", "Target node could not be found in the current draft");
+      throw new WorkflowRunsApiError(400, "TARGET_NODE_NOT_FOUND", "未在当前草稿中找到目标节点");
     }
 
     const currentVersion = flow.current_version_id
@@ -1680,7 +1680,7 @@ export class WorkflowRunsService {
     if (reusable) {
       return reusable;
     }
-    throw new WorkflowRunsApiError(409, "FLOW_SNAPSHOT_CONFLICT", "Could not create a runnable flow snapshot due to concurrent edits. Please retry.");
+    throw new WorkflowRunsApiError(409, "FLOW_SNAPSHOT_CONFLICT", "当前画布正在被其他修改影响，暂时无法创建可运行快照，请稍后重试。");
   }
 
   private async getCurrentFlowRuntimeOrCreateSnapshot(
@@ -1721,14 +1721,14 @@ export class WorkflowRunsService {
 
     const flow = flowRow.rows[0];
     if (!flow) {
-      throw new WorkflowRunsApiError(404, "FLOW_NOT_FOUND", "Flow not found");
+      throw new WorkflowRunsApiError(404, "FLOW_NOT_FOUND", "未找到对应画布");
     }
 
     await this.createRunSnapshotFromDraft(client, context, flow.id, flow.current_version_id);
 
     const runtimeFlow = await this.getCurrentFlowRuntimeOrThrow(client, flowId);
     if (!runtimeFlow.current_version_id) {
-      throw new WorkflowRunsApiError(400, "FLOW_NOT_PUBLISHED", "Flow does not have a runnable version");
+      throw new WorkflowRunsApiError(400, "FLOW_NOT_PUBLISHED", "当前画布还没有可运行版本");
     }
     return runtimeFlow;
   }
@@ -1751,7 +1751,7 @@ export class WorkflowRunsService {
 
     const draft = draftResult.rows[0];
     if (!draft) {
-      throw new WorkflowRunsApiError(400, "FLOW_DRAFT_MISSING", "Flow draft is missing");
+      throw new WorkflowRunsApiError(400, "FLOW_DRAFT_MISSING", "当前画布还没有可运行的草稿");
     }
 
     const normalizedDraft = normalizeDraftGraph(draft.graph_json);
@@ -1943,7 +1943,7 @@ export class WorkflowRunsService {
   ): Promise<void> {
     const normalized = {
       code: "QUEUE_UNAVAILABLE",
-      message: "Workflow run could not be enqueued",
+      message: "任务暂时无法加入执行队列",
       details: error instanceof Error ? error.message : String(error),
     };
 
@@ -2014,7 +2014,7 @@ export class WorkflowRunsService {
     );
 
     if (!result.rows[0]) {
-      throw new WorkflowRunsApiError(404, "WORKFLOW_RUN_NOT_FOUND", "Workflow run not found");
+      throw new WorkflowRunsApiError(404, "WORKFLOW_RUN_NOT_FOUND", "未找到对应任务记录");
     }
 
     return mapWorkflowRun(result.rows[0]);

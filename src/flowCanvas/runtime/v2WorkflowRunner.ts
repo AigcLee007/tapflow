@@ -219,9 +219,9 @@ function formatCredits(value: number): string {
 function buildInsufficientCreditsMessage(details: InsufficientCreditsDetails): string {
   const remaining = Math.max(details.availableCredits - details.localReservedCredits, 0);
   if (details.localReservedCredits > 0) {
-    return `余额不足：当前可用 ${formatCredits(details.availableCredits)}，已开始任务占用 ${formatCredits(details.localReservedCredits)}，剩余 ${formatCredits(remaining)}，本次需要 ${formatCredits(details.requiredCredits)}。请充值后继续生成。`;
+    return `余额不足：当前可用 ${formatCredits(details.availableCredits)}，已开始任务占用 ${formatCredits(details.localReservedCredits)}，剩余 ${formatCredits(remaining)}，本次需要 ${formatCredits(details.requiredCredits)}。请充值或兑换点数后继续生成。`;
   }
-  return `余额不足：当前可用 ${formatCredits(details.availableCredits)}，本次需要 ${formatCredits(details.requiredCredits)}。请充值后重试。`;
+  return `余额不足：当前可用 ${formatCredits(details.availableCredits)}，本次需要 ${formatCredits(details.requiredCredits)}。请充值或兑换点数后重试。`;
 }
 
 function readNumberDetail(details: unknown, key: string): number | null {
@@ -540,7 +540,7 @@ function applyRunEvent(event: V2WorkflowRunEventView): void {
   }
 
   if (event.eventType === 'node.run.failed') {
-    const message = typeof event.payload.message === 'string' ? event.payload.message : 'Node generation failed';
+    const message = typeof event.payload.message === 'string' ? event.payload.message : '节点生成失败，请稍后重试。';
     useFlowCanvasStore.setState((state) => ({
       nodeOutputByNodeId: nodeId
         ? {
@@ -556,7 +556,7 @@ function applyRunEvent(event: V2WorkflowRunEventView): void {
 
   if (event.eventType === 'workflow.run.failed') {
     useFlowCanvasStore.setState({
-      runError: typeof event.payload.message === 'string' ? event.payload.message : 'Workflow run failed',
+      runError: typeof event.payload.message === 'string' ? event.payload.message : '工作流运行失败，请稍后重试。',
       runStatus: 'failed',
     });
   } else if (event.eventType === 'workflow.run.canceled') {
@@ -595,7 +595,7 @@ function startRunStream(runId: string): void {
       void finalizeRun(runId);
     },
     onError: (error) => {
-      setRunError(error.message || 'Workflow run stream failed');
+      setRunError(error.message || '工作流运行连接中断，请刷新后重试。');
     },
     onEvent: (event) => {
       applyRunEvent(event);
