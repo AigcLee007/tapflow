@@ -14,6 +14,8 @@ import { getApiEnv, type ApiEnv } from "./config/env.js";
 import { registerRequestContext } from "./http/request-context.js";
 import { registerAuditRoutes } from "./modules/audit/audit.routes.js";
 import { AuditApiService } from "./modules/audit/audit.service.js";
+import { registerAdminRoutes } from "./modules/admin/admin.routes.js";
+import { AdminApiService } from "./modules/admin/admin.service.js";
 import { registerAiGatewayAdminRoutes } from "./modules/ai-gateway/ai-gateway.routes.js";
 import { AiGatewayAdminService } from "./modules/ai-gateway/ai-gateway.service.js";
 import { registerAuthRoutes } from "./modules/auth/auth.routes.js";
@@ -79,6 +81,7 @@ export function buildApp(options?: {
     env,
     pool,
   });
+  const adminService = new AdminApiService({ pool });
   const aiGatewayService = new AiGatewayAdminService({
     credentialVault,
     pool,
@@ -122,6 +125,7 @@ export function buildApp(options?: {
     logger: options?.logger === false ? false : (createApiLoggerOptions() as never),
   });
 
+  app.decorate("adminService", adminService);
   app.decorate("aiGatewayService", aiGatewayService);
   app.decorate("auditService", auditService);
   app.decorate("authService", authService);
@@ -164,6 +168,7 @@ export function buildApp(options?: {
     return { status: "ok" };
   });
 
+  registerAdminRoutes(app);
   registerAuditRoutes(app);
   registerAiGatewayAdminRoutes(app);
   registerAuthRoutes(app);

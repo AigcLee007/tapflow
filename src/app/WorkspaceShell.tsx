@@ -1,5 +1,6 @@
 import React from "react";
 import {
+  Shield,
   Box,
   CreditCard,
   FolderKanban,
@@ -10,6 +11,7 @@ import {
 
 import {
   ACCOUNT_ROUTE,
+  ADMIN_ROUTE,
   ASSETS_ROUTE,
   BILLING_ROUTE,
   WORKSPACE_ROUTE,
@@ -29,8 +31,11 @@ const navItems = [
 ];
 
 export function WorkspaceShell({ children }: { children: React.ReactNode }) {
-  const { logout, tenant, user } = useAuth();
+  const { logout, permissions, tenant, user } = useAuth();
   const currentPath = typeof window === "undefined" ? WORKSPACE_ROUTE : window.location.pathname;
+  const shellNavItems = permissions.includes("admin:system")
+    ? [...navItems, { icon: Shield, label: "Admin", path: ADMIN_ROUTE }]
+    : navItems;
 
   return (
     <div className="min-h-screen bg-[#0a0b10] text-slate-100">
@@ -53,7 +58,7 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
           </button>
 
           <nav className="hidden items-center gap-1 md:flex">
-            {navItems.map((item) => {
+            {shellNavItems.map((item) => {
               const active = currentPath === item.path || currentPath.startsWith(`${item.path}/`);
               const Icon = item.icon;
               return (
@@ -91,8 +96,12 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
 
-        <nav className="grid grid-cols-4 border-t border-white/8 md:hidden">
-          {navItems.map((item) => {
+        <nav
+          className={`grid border-t border-white/8 md:hidden ${
+            shellNavItems.length > 4 ? "grid-cols-5" : "grid-cols-4"
+          }`}
+        >
+          {shellNavItems.map((item) => {
             const Icon = item.icon;
             return (
               <button

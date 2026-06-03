@@ -33,6 +33,8 @@ type AuthenticatedIdentity = {
   userId: string;
 };
 
+const ADMIN_PERMISSION = "admin:system";
+
 type PublicTenant = {
   id: string;
   name: string;
@@ -179,6 +181,7 @@ export class AuthService {
     }
 
     const result = await this.pool.query<{
+      email: string;
       session_id: string;
       tenant_id: string | null;
       user_id: string;
@@ -187,7 +190,8 @@ export class AuthService {
         SELECT
           auth_sessions.id::text AS session_id,
           auth_sessions.tenant_id::text AS tenant_id,
-          auth_sessions.user_id::text AS user_id
+          auth_sessions.user_id::text AS user_id,
+          users.email
         FROM auth_sessions
         JOIN users
           ON users.id = auth_sessions.user_id
@@ -218,9 +222,18 @@ export class AuthService {
       this.pool,
     );
 
+    const normalizedEmail = session.email.trim().toLowerCase();
+    const isAdminEmail = this.env.adminEmails.includes(normalizedEmail);
+    const permissions = isAdminEmail
+      ? Array.from(new Set([...resolved.permissions, ADMIN_PERMISSION]))
+      : resolved.permissions;
+    const roles = isAdminEmail
+      ? Array.from(new Set([...resolved.roles, "admin_email"]))
+      : resolved.roles;
+
     return {
-      permissions: resolved.permissions,
-      roles: resolved.roles,
+      permissions,
+      roles,
       sessionId: session.session_id,
       tenantId: session.tenant_id,
       userId: session.user_id,

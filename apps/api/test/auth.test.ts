@@ -20,6 +20,7 @@ const describeWithDatabase = hasDatabaseEnv() ? describe : describe.skip;
 
 const testEnv: ApiEnv = {
   accessTokenTtlSeconds: 60 * 15,
+  adminEmails: [],
   credentialKeyVersion: "v1",
   credentialMasterKey: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
   jwtAccessSecret: "test_access_secret_1234567890",

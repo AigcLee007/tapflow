@@ -5,6 +5,7 @@ import { LoginPage } from "../auth/LoginPage";
 import { RegisterPage } from "../auth/RegisterPage";
 import { AssetLibraryPage } from "../assets/AssetLibraryPage";
 import { AccountPage } from "../account/AccountPage";
+import { AdminPage } from "../admin/AdminPage";
 import { ProviderSettingsPage } from "../account/ProviderSettingsPage";
 import { BillingCenterPage } from "../billing/BillingCenterPage";
 import { FlowProjectPage } from "../flowCanvas/FlowProjectPage";
@@ -13,6 +14,7 @@ import { WorkspaceShell } from "./WorkspaceShell";
 import {
   ACCOUNT_ROUTE,
   ACCOUNT_PROVIDER_SETTINGS_ROUTE,
+  ADMIN_ROUTE,
   ASSETS_ROUTE,
   BILLING_ROUTE,
   isCompatibilityRoute,
@@ -62,6 +64,10 @@ function Redirect({ to }: { to: string }) {
 function ProtectedRoutes({ pathname }: { pathname: string }) {
   if (pathname === ROOT_ROUTE || isCompatibilityRoute(pathname) || isNonUserFacingRoute(pathname)) {
     return <Redirect to={WORKSPACE_ROUTE} />;
+  }
+
+  if (pathname === ADMIN_ROUTE || pathname.startsWith(`${ADMIN_ROUTE}/`)) {
+    return <AdminPage />;
   }
 
   if (pathname === WORKSPACE_ROUTE || pathname.startsWith(`${WORKSPACE_ROUTE}/`)) {

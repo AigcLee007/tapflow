@@ -5,6 +5,7 @@ export const WORKSPACE_ROUTE = "/workspace";
 export const ASSETS_ROUTE = "/assets";
 export const BILLING_ROUTE = "/billing";
 export const ACCOUNT_ROUTE = "/account";
+export const ADMIN_ROUTE = "/admin";
 export const ACCOUNT_PROVIDER_SETTINGS_ROUTE = "/account/provider-settings";
 
 export const PRODUCT_ROUTES = [
@@ -31,5 +32,5 @@ export function isCompatibilityRoute(pathname: string): boolean {
 }
 
 export function isNonUserFacingRoute(pathname: string): boolean {
-  return pathname.startsWith("/admin") || pathname.startsWith("/model-mapping");
+  return pathname.startsWith("/model-mapping");
 }

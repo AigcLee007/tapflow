@@ -1,5 +1,6 @@
 export type ApiEnv = {
   accessTokenTtlSeconds: number;
+  adminEmails: string[];
   credentialKeyVersion: string;
   credentialMasterKey: string;
   jwtAccessSecret: string;
@@ -17,6 +18,7 @@ export type ApiEnv = {
 };
 
 const DEV_ACCESS_SECRET = "dev_access_secret_change_me";
+const DEV_ADMIN_EMAILS = "";
 const DEV_CREDENTIAL_KEY_VERSION = "v1";
 const DEV_CREDENTIAL_MASTER_KEY = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
 const DEV_QUEUE_PREFIX = "aigc-flow:v2";
@@ -32,6 +34,10 @@ const DEV_S3_SECRET_ACCESS_KEY = "minio123456";
 export function getApiEnv(): ApiEnv {
   const nodeEnv = process.env.NODE_ENV?.trim() || "development";
   const isProduction = nodeEnv === "production";
+  const adminEmails = (process.env.ADMIN_EMAILS?.trim() || DEV_ADMIN_EMAILS)
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter((value) => value.length > 0);
   const jwtAccessSecret =
     process.env.JWT_ACCESS_SECRET?.trim() ||
     (isProduction ? "" : DEV_ACCESS_SECRET);
@@ -108,6 +114,7 @@ export function getApiEnv(): ApiEnv {
 
   return {
     accessTokenTtlSeconds: 60 * 15,
+    adminEmails,
     credentialKeyVersion,
     credentialMasterKey,
     jwtAccessSecret,
