@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { CheckCircle2, Cloud, Loader2, RefreshCw } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Cloud, Loader2, RefreshCw } from "lucide-react";
 
 import { getAsset } from "../assets/assetApi";
 import { V2HttpError } from "../services/v2HttpClient";
@@ -17,12 +17,12 @@ function getProjectIdFromLocation() {
 }
 
 function statusLabel(status: RemoteFlowSaveStatus) {
-  if (status === "syncing") return "Syncing";
-  if (status === "retrying") return "Syncing";
-  if (status === "saved") return "Saved";
-  if (status === "dirty" || status === "pending_sync") return "Pending sync";
-  if (status === "failed") return "Offline changes";
-  return "Ready";
+  if (status === "syncing") return "正在保存";
+  if (status === "retrying") return "正在重试同步";
+  if (status === "saved") return "已保存到云端";
+  if (status === "dirty" || status === "pending_sync") return "等待同步";
+  if (status === "failed") return "同步异常";
+  return "就绪";
 }
 
 function StatusIcon({ status }: { status: RemoteFlowSaveStatus }) {
@@ -37,7 +37,7 @@ function LoadingState() {
     <div className="fixed inset-0 z-50 grid place-items-center bg-[#09090f] text-slate-200">
       <div className="flex items-center gap-3 rounded border border-white/10 bg-white/[0.04] px-5 py-4 text-sm">
         <Loader2 className="animate-spin text-sky-300" size={18} />
-        Loading project canvas...
+        正在加载项目画布...
       </div>
     </div>
   );
@@ -55,7 +55,7 @@ function ErrorState({
       <section className="w-full max-w-xl rounded border border-red-400/20 bg-red-500/10 p-6">
         <div className="flex items-center gap-2 text-sm font-semibold text-red-200">
           <AlertTriangle size={18} />
-          Unable to load project canvas
+          项目画布加载失败
         </div>
         <p className="mt-3 text-sm leading-6 text-red-100/80">{error}</p>
         <button
@@ -64,7 +64,7 @@ function ErrorState({
           type="button"
         >
           <RefreshCw size={16} />
-          Retry
+          重试
         </button>
       </section>
     </div>
@@ -126,7 +126,7 @@ export function FlowProjectPage() {
           center,
           buildAssetBackedNodeData(asset, {
             source: "asset-library",
-            title: asset.title || asset.originalFilename || "Cloud asset",
+            title: asset.title || asset.originalFilename || "云端素材",
           }),
           { selected: true },
         );
@@ -153,7 +153,7 @@ export function FlowProjectPage() {
   ]);
 
   if (!projectId) {
-    return <ErrorState error="Project ID is missing from the URL." onRetry={() => window.location.assign("/workspace")} />;
+    return <ErrorState error="链接中缺少项目 ID。" onRetry={() => window.location.assign("/workspace")} />;
   }
 
   if (projectState.loading) {
@@ -166,41 +166,16 @@ export function FlowProjectPage() {
 
   return (
     <>
-      <FlowCanvasPage enableLocalPersistence={false} />
-      <div className="fixed left-1/2 top-4 z-[1200] flex max-w-[calc(100vw-32px)] -translate-x-1/2 items-center gap-3 rounded-full border border-white/10 bg-zinc-950/88 px-4 py-2 text-xs text-slate-300 shadow-2xl backdrop-blur">
-        <span className="max-w-[220px] truncate font-medium text-white">
-          {projectState.project?.name || "Project Flow"}
-        </span>
-        <span className="hidden h-4 w-px bg-white/12 sm:block" />
-        <span className="hidden max-w-[180px] truncate text-slate-500 sm:block">
-          {projectState.flow?.title || projectState.flow?.id}
-        </span>
-        <span
-          className={`inline-flex items-center gap-1.5 ${
-            autosave.status === "failed"
-              ? "text-amber-200"
-              : autosave.status === "saved"
-                ? "text-emerald-200"
-                : autosave.status === "retrying" || autosave.status === "pending_sync"
-                  ? "text-amber-200"
-                : "text-sky-200"
-          }`}
-        >
-          <StatusIcon status={autosave.status} />
-          {statusLabel(autosave.status)}
-        </span>
-        {autosave.status === "failed" && (
-          <button
-            className="inline-flex h-7 items-center gap-1 rounded-full border border-amber-300/20 px-2 text-amber-100 hover:bg-amber-400/10"
-            onClick={autosave.saveNow}
-            title={autosave.error || "Retry cloud sync"}
-            type="button"
-          >
-            <RefreshCw size={13} />
-            Retry
-          </button>
-        )}
-      </div>
+      <FlowCanvasPage
+        enableLocalPersistence={false}
+        saveStatus={{
+          error: autosave.error,
+          icon: <StatusIcon status={autosave.status} />,
+          label: statusLabel(autosave.status),
+          onRetry: autosave.saveNow,
+          status: autosave.status,
+        }}
+      />
       {insertError && (
         <div className="fixed right-4 top-32 z-[1200] max-w-sm rounded border border-amber-300/20 bg-amber-950/90 px-4 py-3 text-sm text-amber-100 shadow-xl">
           <div>{insertError}</div>
@@ -210,7 +185,7 @@ export function FlowProjectPage() {
             type="button"
           >
             <RefreshCw size={13} />
-            Retry insert
+            重试插入
           </button>
         </div>
       )}
@@ -220,16 +195,16 @@ export function FlowProjectPage() {
 
 function getAssetInsertErrorMessage(error: unknown) {
   if (error instanceof V2HttpError) {
-    if (error.status === 401) return "Asset insert failed because your session expired. Please log in again.";
-    if (error.status === 404) return "Asset insert failed because the selected asset could not be found.";
-    if (error.status >= 500) return "Asset insert failed because the server could not load the asset right now.";
-    return error.message || "Asset insert failed.";
+    if (error.status === 401) return "素材插入失败，登录状态已失效，请重新登录。";
+    if (error.status === 404) return "素材插入失败，未找到所选素材。";
+    if (error.status >= 500) return "素材插入失败，服务暂时无法读取该素材，请稍后重试。";
+    return error.message || "素材插入失败。";
   }
   if (error instanceof Error && /failed to fetch/i.test(error.message)) {
-    return "Asset insert failed because the app could not reach the API.";
+    return "素材插入失败，当前无法连接 API。";
   }
   if (error instanceof Error) {
     return error.message;
   }
-  return "Asset insert failed.";
+  return "素材插入失败。";
 }

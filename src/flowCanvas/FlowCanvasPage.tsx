@@ -54,6 +54,11 @@ const useFlowShortcuts = () => {
 
 const FLOW_VIEWPORT_META = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover';
 
+function isDebugOverlayEnabled() {
+  if (typeof window === 'undefined') return false;
+  return import.meta.env.DEV || new URLSearchParams(window.location.search).get('debug') === '1';
+}
+
 const useFlowViewportLock = () => {
   useEffect(() => {
     const html = document.documentElement;
@@ -141,9 +146,9 @@ const BackendRunOverlay: React.FC = React.memo(() => {
   return (
     <div style={backendRunOverlayStyle}>
       <span>
-        {backendFlowId ? `v2 Flow ${backendFlowId}` : '未绑定 v2 Flow'}
+        {backendFlowId ? `v2 画布 ${backendFlowId}` : '未绑定 v2 画布'}
       </span>
-      {currentRunId && <span>Run {currentRunId}</span>}
+      {currentRunId && <span>任务 {currentRunId}</span>}
       {runStatus && <span>状态 {runStatus}</span>}
       {isRunningBackendWorkflow && <span>后端运行中</span>}
       {runError && <span style={{ color: '#fca5a5' }}>{runError}</span>}
@@ -192,7 +197,18 @@ const EmptyState: React.FC = React.memo(() => {
   );
 });
 
-const FlowCanvasPage: React.FC<{ enableLocalPersistence?: boolean }> = () => {
+export type CanvasSaveStatusView = {
+  error?: string | null;
+  icon?: React.ReactNode;
+  label: string;
+  onRetry?: () => void;
+  status: string;
+};
+
+const FlowCanvasPage: React.FC<{
+  enableLocalPersistence?: boolean;
+  saveStatus?: CanvasSaveStatusView;
+}> = ({ saveStatus }) => {
   const [cullingEnabled, setCullingEnabled] = useState(true);
   const toggleCulling = useCallback(() => setCullingEnabled((v) => !v), []);
 
@@ -203,12 +219,16 @@ const FlowCanvasPage: React.FC<{ enableLocalPersistence?: boolean }> = () => {
 
   return (
     <div style={pageStyle}>
-      <FlowTopToolbar onToggleCulling={toggleCulling} cullingEnabled={cullingEnabled} />
+      <FlowTopToolbar
+        onToggleCulling={toggleCulling}
+        cullingEnabled={cullingEnabled}
+        saveStatus={saveStatus}
+      />
       <div style={{ flex: 1, position: 'relative' }}>
         <ReactFlowProvider>
           <AiFlowCanvas cullingEnabled={cullingEnabled} />
-          <StatsOverlay />
-          <BackendRunOverlay />
+          {isDebugOverlayEnabled() && <StatsOverlay />}
+          {isDebugOverlayEnabled() && <BackendRunOverlay />}
           <EmptyState />
         </ReactFlowProvider>
       </div>

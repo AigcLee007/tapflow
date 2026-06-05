@@ -2,11 +2,12 @@
  * TapNow-style minimal canvas chrome.
  */
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Bell, CheckCheck, Megaphone, Sparkles, X } from 'lucide-react';
+import { Bell, CheckCheck, Megaphone, RefreshCw, Share2, Sparkles, X } from 'lucide-react';
 import { useFlowCanvasStore } from '../store/flowCanvasStore';
 import { getStoredAccessToken, V2_AUTH_CHANGE_EVENT } from '../../services/v2HttpClient';
 import { getBillingSummary } from '../../billing/billingApi';
 import { formatPoint } from '../../utils/pointFormat';
+import type { CanvasSaveStatusView } from '../FlowCanvasPage';
 
 const LogoMark: React.FC = () => <img src="/logo.png" alt="艾特智绘" style={logoImageStyle} />;
 const formatToolbarPoint = (value: number) => formatPoint(value).replace(/\.0$/, '');
@@ -50,7 +51,8 @@ const formatAnnouncementDate = (input?: string) => {
 export const FlowTopToolbar: React.FC<{
   onToggleCulling: () => void;
   cullingEnabled: boolean;
-}> = memo(function FlowTopToolbar() {
+  saveStatus?: CanvasSaveStatusView;
+}> = memo(function FlowTopToolbar({ saveStatus }) {
   const projectTitle = useFlowCanvasStore((s) => s.projectTitle);
   const setProjectTitle = useFlowCanvasStore((s) => s.setProjectTitle);
   const [points, setPoints] = useState(0);
@@ -60,6 +62,7 @@ export const FlowTopToolbar: React.FC<{
   const [notificationOpen, setNotificationOpen] = useState(false);
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<Announcement | null>(null);
   const notificationRef = useRef<HTMLDivElement | null>(null);
+  const [shareCopied, setShareCopied] = useState(false);
 
   const refreshPoints = useCallback(async () => {
     if (!getStoredAccessToken()) {
@@ -155,21 +158,45 @@ export const FlowTopToolbar: React.FC<{
     markAnnouncementsRead(announcements.map((item) => item.id));
   };
 
+  const copyShareLink = () => {
+    if (typeof window === 'undefined') return;
+    const url = window.location.href;
+    void navigator.clipboard?.writeText(url).catch(() => undefined);
+    setShareCopied(true);
+    window.setTimeout(() => setShareCopied(false), 1500);
+  };
+
   return (
     <div className="nodrag nopan nowheel" style={topChromeStyle}>
       <div style={titleClusterStyle}>
         <LogoMark />
-        <input
-          value={projectTitle || '未命名项目'}
-          onChange={(event) => setProjectTitle(event.target.value)}
-          style={titleInputStyle}
-          spellCheck={false}
-          aria-label="项目名称"
-        />
+        <div style={titleTextWrapStyle}>
+          <input
+            value={projectTitle || '未命名项目'}
+            onChange={(event) => setProjectTitle(event.target.value)}
+            style={titleInputStyle}
+            spellCheck={false}
+            aria-label="项目名称"
+          />
+          <div style={saveStatusStyle(saveStatus?.status)}>
+            {saveStatus?.icon}
+            <span>{saveStatus?.label || '已保存到云端'}</span>
+            {saveStatus?.status === 'failed' && saveStatus.onRetry && (
+              <button
+                type="button"
+                style={saveRetryButtonStyle}
+                title={saveStatus.error || '重试同步'}
+                onClick={saveStatus.onRetry}
+              >
+                <RefreshCw size={12} />
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       <div style={rightClusterStyle}>
-        <button type="button" style={topPillStyle} title="当前金币">
+        <button type="button" style={topPillStyle} title="当前点数">
           <Sparkles size={23} />
           <span>{pointsLoading ? '...' : formatToolbarPoint(points)}</span>
         </button>
@@ -237,6 +264,9 @@ export const FlowTopToolbar: React.FC<{
             </div>
           )}
         </div>
+        <button type="button" style={shareButtonStyle} title={shareCopied ? '已复制链接' : '分享'} onClick={copyShareLink}>
+          <Share2 size={23} />
+        </button>
       </div>
 
       {selectedAnnouncement && (
@@ -278,12 +308,12 @@ export const FlowTopToolbar: React.FC<{
 
 const topChromeStyle: React.CSSProperties = {
   position: 'fixed',
-  left: 29,
-  right: 29,
-  top: 8,
+  left: 32,
+  right: 32,
+  top: 28,
   zIndex: 900,
   display: 'flex',
-  alignItems: 'center',
+  alignItems: 'flex-start',
   justifyContent: 'space-between',
   pointerEvents: 'none',
 };
@@ -291,29 +321,66 @@ const topChromeStyle: React.CSSProperties = {
 const titleClusterStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  gap: 22,
+  gap: 14,
   pointerEvents: 'auto',
+  minWidth: 0,
 };
 
 const logoImageStyle: React.CSSProperties = {
-  width: 100,
-  height: 100,
+  width: 54,
+  height: 54,
   objectFit: 'contain',
   display: 'block',
   filter: 'drop-shadow(0 8px 14px rgba(0,0,0,0.34))',
 };
 
+const titleTextWrapStyle: React.CSSProperties = {
+  minWidth: 0,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 6,
+};
+
 const titleInputStyle: React.CSSProperties = {
-  width: 240,
+  width: 'min(320px, calc(100vw - 560px))',
+  minWidth: 150,
   border: 'none',
   outline: 'none',
   background: 'transparent',
   color: '#fff',
-  fontSize: 27,
-  fontWeight: 800,
+  fontSize: 26,
+  fontWeight: 760,
   lineHeight: 1,
   padding: 0,
   textShadow: '0 2px 12px rgba(0,0,0,0.35)',
+};
+
+const saveStatusStyle = (status?: string): React.CSSProperties => ({
+  display: 'flex',
+  alignItems: 'center',
+  gap: 7,
+  color:
+    status === 'failed'
+      ? 'rgba(251,191,36,0.86)'
+      : status === 'saved'
+        ? 'rgba(156,163,175,0.78)'
+        : 'rgba(125,211,252,0.86)',
+  fontSize: 17,
+  fontWeight: 520,
+  lineHeight: 1,
+});
+
+const saveRetryButtonStyle: React.CSSProperties = {
+  width: 22,
+  height: 22,
+  borderRadius: '50%',
+  border: '1px solid rgba(251,191,36,0.28)',
+  background: 'rgba(251,191,36,0.1)',
+  color: '#fde68a',
+  display: 'grid',
+  placeItems: 'center',
+  cursor: 'pointer',
+  padding: 0,
 };
 
 const rightClusterStyle: React.CSSProperties = {
@@ -326,7 +393,7 @@ const rightClusterStyle: React.CSSProperties = {
 const topPillStyle: React.CSSProperties = {
   height: 60,
   border: 'none',
-  borderRadius: 18,
+  borderRadius: 20,
   padding: '0 22px',
   display: 'flex',
   alignItems: 'center',
@@ -335,6 +402,19 @@ const topPillStyle: React.CSSProperties = {
   color: '#fff',
   fontSize: 20,
   fontWeight: 820,
+  cursor: 'pointer',
+  boxShadow: '0 12px 34px rgba(0,0,0,0.34), inset 0 1px 0 rgba(255,255,255,0.06)',
+};
+
+const shareButtonStyle: React.CSSProperties = {
+  width: 60,
+  height: 60,
+  border: 'none',
+  borderRadius: '50%',
+  display: 'grid',
+  placeItems: 'center',
+  background: 'rgba(43,43,49,0.96)',
+  color: '#fff',
   cursor: 'pointer',
   boxShadow: '0 12px 34px rgba(0,0,0,0.34), inset 0 1px 0 rgba(255,255,255,0.06)',
 };

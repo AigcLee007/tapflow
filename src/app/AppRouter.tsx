@@ -113,9 +113,13 @@ export function AppRouter() {
 
   return (
     <AuthGate>
-      <WorkspaceShell>
-        <ProtectedRoutes pathname={pathname} />
-      </WorkspaceShell>
+      {isProjectRoute(pathname) ? (
+        <FlowProjectPage />
+      ) : (
+        <WorkspaceShell>
+          <ProtectedRoutes pathname={pathname} />
+        </WorkspaceShell>
+      )}
     </AuthGate>
   );
 }

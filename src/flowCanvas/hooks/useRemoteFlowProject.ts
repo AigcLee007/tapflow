@@ -30,7 +30,7 @@ async function getOrCreateDefaultFlow(project: WorkspaceProject): Promise<Worksp
   const refreshedFlows = await listProjectFlows(project.id);
   const defaultFlow = refreshedFlows[0];
   if (!defaultFlow) {
-    throw new Error("Default Flow could not be created for this project");
+    throw new Error("当前项目的默认画布创建失败。");
   }
   return defaultFlow;
 }
@@ -41,11 +41,14 @@ function resolveDraftForCanvas(serverDraft: FlowDraft): FlowDraft {
     tenantId: serverDraft.tenantId,
   });
 
-  if (!isLocalDraftNewer({
-    localDraft,
-    serverGraph: serverDraft.graph,
-    serverUpdatedAt: serverDraft.updatedAt,
-  }) || !localDraft) {
+  if (
+    !isLocalDraftNewer({
+      localDraft,
+      serverGraph: serverDraft.graph,
+      serverUpdatedAt: serverDraft.updatedAt,
+    }) ||
+    !localDraft
+  ) {
     return serverDraft;
   }
 
@@ -69,7 +72,7 @@ export function useRemoteFlowProject(projectId: string): RemoteFlowProjectState 
   const load = useCallback(async () => {
     if (!projectId) {
       setLoading(false);
-      setError("Project ID is missing from the URL.");
+      setError("链接中缺少项目 ID。");
       return;
     }
 
@@ -99,7 +102,7 @@ export function useRemoteFlowProject(projectId: string): RemoteFlowProjectState 
       setDraft(canvasDraft);
       void recoverFlowTargetNodeRuns(nextFlow.id);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Unable to load Flow project");
+      setError(loadError instanceof Error ? loadError.message : "项目画布加载失败。");
     } finally {
       setLoading(false);
     }
@@ -113,7 +116,7 @@ export function useRemoteFlowProject(projectId: string): RemoteFlowProjectState 
       setFlow(null);
       setDraft(null);
       setLoading(false);
-      setError("Project ID is missing from the URL.");
+      setError("链接中缺少项目 ID。");
       return () => {
         active = false;
       };
@@ -148,7 +151,7 @@ export function useRemoteFlowProject(projectId: string): RemoteFlowProjectState 
         void recoverFlowTargetNodeRuns(nextFlow.id);
       } catch (loadError) {
         if (active) {
-          setError(loadError instanceof Error ? loadError.message : "Unable to load Flow project");
+          setError(loadError instanceof Error ? loadError.message : "项目画布加载失败。");
         }
       } finally {
         if (active) setLoading(false);

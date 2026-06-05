@@ -1,11 +1,11 @@
-export const FLOW_NODE_BASE_SIZE = 220;
+export const FLOW_NODE_BASE_SIZE = 170;
 
 export const FLOW_NODE_DEFAULT_SIZES = {
   text: { width: FLOW_NODE_BASE_SIZE, height: FLOW_NODE_BASE_SIZE },
-  image: { width: Math.round(FLOW_NODE_BASE_SIZE * (4 / 3)), height: FLOW_NODE_BASE_SIZE },
-  video: { width: Math.round(FLOW_NODE_BASE_SIZE * (16 / 9)), height: FLOW_NODE_BASE_SIZE },
-  audio: { width: Math.round(FLOW_NODE_BASE_SIZE * (16 / 9)), height: FLOW_NODE_BASE_SIZE },
-  upload: { width: Math.round(FLOW_NODE_BASE_SIZE * (4 / 3)), height: FLOW_NODE_BASE_SIZE },
+  image: { width: 260, height: 210 },
+  video: { width: 302, height: 170 },
+  audio: { width: 302, height: 170 },
+  upload: { width: 260, height: 210 },
   imageEditor: { width: FLOW_NODE_BASE_SIZE, height: FLOW_NODE_BASE_SIZE },
 };
 

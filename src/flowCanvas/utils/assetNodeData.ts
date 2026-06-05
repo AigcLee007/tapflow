@@ -38,7 +38,7 @@ export function buildAssetBackedNodeData(
     mimeType: asset.mimeType,
     source: options.source ?? asset.source ?? "asset-library",
     status: "success",
-    title: options.title ?? asset.title ?? asset.originalFilename ?? "Cloud asset",
+    title: options.title ?? asset.title ?? asset.originalFilename ?? "云端素材",
     ...(asset.durationMs !== null ? { durationMs: asset.durationMs } : {}),
     ...(naturalWidth ? { naturalWidth } : {}),
     ...(naturalHeight ? { naturalHeight } : {}),

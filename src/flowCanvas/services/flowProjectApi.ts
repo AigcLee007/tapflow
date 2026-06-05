@@ -34,8 +34,8 @@ export async function listProjectFlows(projectId: string): Promise<WorkspaceFlow
 
 export async function createDefaultFlow(project: WorkspaceProject): Promise<WorkspaceFlow> {
   return apiPost<WorkspaceFlow>(`/projects/${project.id}/flows`, {
-    description: "Default project canvas",
-    title: `${project.name} Flow`,
+    description: "项目默认画布",
+    title: `${project.name} 画布`,
   });
 }
 

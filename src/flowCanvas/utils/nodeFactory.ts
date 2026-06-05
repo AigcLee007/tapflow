@@ -1,6 +1,5 @@
 /**
  * Node Factory - Creates new node instances with default data.
- * TapNow-style: simplified node types.
  */
 import { nanoid } from 'nanoid';
 import type { Node } from '@xyflow/react';
@@ -82,7 +81,7 @@ export function duplicateFlowNode(
     selected: false,
     data: {
       ...original.data,
-      title: `${original.data.title} (copy)`,
+      title: `${original.data.title} 副本`,
       status: 'idle',
       generationStatus: 'idle',
       createdAt: now,
