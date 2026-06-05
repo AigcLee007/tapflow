@@ -1,25 +1,45 @@
 {
-  "defaultModelId": "nano-banana",
+  "defaultModelId": "nano-banana-pro",
   "models": [
     {
-      "id": "nano-banana",
+      "id": "nano-banana-pro",
       "label": "Nano Banana Pro",
-      "description": "Route-driven Nano Banana image generation",
+      "description": "Visionary Nano Banana Pro image generation",
       "modelFamily": "nano-banana",
-      "routeFamily": "nano-banana",
-      "requestModel": "",
-      "selectorCost": 5,
+      "routeFamily": "nano-banana-pro",
+      "requestModel": "nano-banana-pro",
+      "selectorCost": 24,
       "iconKind": "banana",
       "panelLayout": "nano-banana",
       "sizeBehavior": "passthrough",
       "defaultSize": "2k",
-      "sizeOptions": ["1k", "2k", "4k"],
+      "sizeOptions": ["2k", "4k"],
       "extraAspectRatios": [],
       "showSizeSelector": true,
       "supportsCustomRatio": true,
       "isActive": true,
       "isDefaultModel": true,
       "sortOrder": 0
+    },
+    {
+      "id": "nano-banana-pro-fast",
+      "label": "Nano Banana Pro Fast",
+      "description": "Visionary Nano Banana Pro Fast image generation",
+      "modelFamily": "nano-banana",
+      "routeFamily": "nano-banana-pro-fast",
+      "requestModel": "nano-banana-pro-fast",
+      "selectorCost": 48,
+      "iconKind": "banana-zap",
+      "panelLayout": "nano-banana",
+      "sizeBehavior": "passthrough",
+      "defaultSize": "2k",
+      "sizeOptions": ["2k", "4k"],
+      "extraAspectRatios": [],
+      "showSizeSelector": true,
+      "supportsCustomRatio": true,
+      "isActive": true,
+      "isDefaultModel": false,
+      "sortOrder": 1
     },
     {
       "id": "gemini-flash",
@@ -39,7 +59,7 @@
       "supportsCustomRatio": true,
       "isActive": true,
       "isDefaultModel": false,
-      "sortOrder": 1
+      "sortOrder": 2
     },
     {
       "id": "doubao-seedream-5-0-260128",
@@ -59,7 +79,7 @@
       "supportsCustomRatio": true,
       "isActive": true,
       "isDefaultModel": false,
-      "sortOrder": 2
+      "sortOrder": 3
     },
     {
       "id": "doubao-seedream-4-5-251128",
@@ -79,7 +99,7 @@
       "supportsCustomRatio": true,
       "isActive": true,
       "isDefaultModel": false,
-      "sortOrder": 3
+      "sortOrder": 4
     },
     {
       "id": "z-image-turbo",
@@ -99,7 +119,7 @@
       "supportsCustomRatio": true,
       "isActive": true,
       "isDefaultModel": false,
-      "sortOrder": 4
+      "sortOrder": 5
     },
     {
       "id": "gpt-image-2",
@@ -119,7 +139,7 @@
       "supportsCustomRatio": true,
       "isActive": true,
       "isDefaultModel": false,
-      "sortOrder": 5
+      "sortOrder": 6
     }
   ]
 }

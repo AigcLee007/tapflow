@@ -8,6 +8,7 @@ import { AiGatewayError } from "../src/errors.js";
 import { OpenAiCompatibleTextAdapter } from "../src/openai-compatible-text-adapter.js";
 import { redactString, redactValue } from "../src/redaction.js";
 import { RouteResolver } from "../src/route-resolver.js";
+import { VisionaryNanoBananaAdapter } from "../src/visionary-nano-banana-adapter.js";
 import type { ResolvedRoute } from "../src/types.js";
 
 const openServers = new Set<ReturnType<typeof createServer>>();
@@ -494,6 +495,105 @@ describe("openai-compatible text adapter", () => {
       "https://sub.siphonlab.cn/images/generations",
       "https://sub.siphonlab.cn/v1/images/generations",
     ]);
+  });
+});
+
+describe("visionary nano banana adapter", () => {
+  test("posts Nano Banana Pro payload and parses result URLs", async () => {
+    const calls: Array<{ body: Record<string, unknown>; headers: HeadersInit | undefined; url: string }> = [];
+    const fetchMock = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+      calls.push({
+        body: JSON.parse(String(init?.body || "{}")) as Record<string, unknown>,
+        headers: init?.headers,
+        url: String(input),
+      });
+      return new Response(
+        JSON.stringify({
+          id: "nb-1",
+          results: [{ url: "https://visionary.beer/api/generations/nb-1/display" }],
+          status: "succeeded",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    };
+    const adapter = new VisionaryNanoBananaAdapter({
+      fetchImplementation: fetchMock as unknown as typeof fetch,
+    });
+
+    const result = await adapter.generateImage(
+      {
+        apiKey: "sk-visionary",
+        baseUrl: "https://visionary.beer",
+        modelKey: "nano-banana-pro",
+        providerKey: "visionary",
+        requestConfig: { path: "/v1/api/nano-banana" },
+        routeId: "route-1",
+        routeKey: "image.nano-banana-pro",
+        timeoutMs: 5_000,
+      },
+      {
+        metadata: {
+          aspect_ratio: "16:9",
+          images: ["https://cdn.example/a.png"],
+          size: "4k",
+          optimizeChineseText: true,
+        },
+        prompt: "merge reference images",
+      },
+    );
+
+    expect(calls[0]?.url).toBe("https://visionary.beer/v1/api/nano-banana");
+    expect(calls[0]?.headers).toMatchObject({
+      Authorization: "Bearer sk-visionary",
+      "Content-Type": "application/json",
+    });
+    expect(calls[0]?.body).toMatchObject({
+      aspectRatio: "16:9",
+      imageSize: "4K",
+      images: ["https://cdn.example/a.png"],
+      model: "nano-banana-pro",
+      optimizeChineseText: true,
+      prompt: "merge reference images",
+      replyType: "json",
+    });
+    expect(result).toMatchObject({
+      modelKey: "nano-banana-pro",
+      outputs: [
+        {
+          mimeType: "image/png",
+          url: "https://visionary.beer/api/generations/nb-1/display",
+        },
+      ],
+      status: "succeeded",
+    });
+  });
+
+  test("rejects unsupported Nano Banana model names", async () => {
+    const adapter = new VisionaryNanoBananaAdapter({
+      fetchImplementation: (async () => {
+        throw new Error("fetch should not be called");
+      }) as unknown as typeof fetch,
+    });
+
+    await expect(
+      adapter.generateImage(
+        {
+          apiKey: "sk-visionary",
+          baseUrl: "https://visionary.beer",
+          modelKey: "not-supported",
+          providerKey: "visionary",
+          requestConfig: {},
+          routeId: "route-1",
+          routeKey: "image.nano-banana-pro",
+          timeoutMs: 5_000,
+        },
+        {
+          prompt: "test",
+        },
+      ),
+    ).rejects.toMatchObject<Partial<AiGatewayError>>({
+      code: "PROVIDER_BAD_REQUEST",
+    });
   });
 });
 

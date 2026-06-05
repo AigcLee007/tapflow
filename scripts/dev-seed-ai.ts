@@ -11,6 +11,8 @@ type Args = {
   openAiImageModel: string;
   tenantId: string | null;
   userId: string | null;
+  visionaryApiKey: string | null;
+  visionaryBaseUrl: string;
 };
 
 type SeedTarget = {
@@ -23,13 +25,18 @@ const DEV_CREDENTIAL_KEY_VERSION = "v1";
 const DEV_CREDENTIAL_MASTER_KEY = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
 const PROVIDER_KEY = "mock-local-dev";
 const OPENAI_PROVIDER_KEY = "openai-compatible";
+const VISIONARY_PROVIDER_KEY = "visionary";
 const IMAGE_MODEL_KEY = "mock-image-v1";
 const VIDEO_MODEL_KEY = "mock-video-v1";
 const DEFAULT_OPENAI_IMAGE_MODEL_KEY = "gpt-image-1";
+const VISIONARY_NANO_BANANA_PRO_MODEL_KEY = "nano-banana-pro";
+const VISIONARY_NANO_BANANA_PRO_FAST_MODEL_KEY = "nano-banana-pro-fast";
 const IMAGE_ROUTE_KEY = "image.default";
 const IMAGE_FAIL_ROUTE_KEY = "image.fail";
 const VIDEO_ROUTE_KEY = "video.default";
 const OPENAI_IMAGE_ROUTE_KEY = "image.openai";
+const VISIONARY_NANO_BANANA_PRO_ROUTE_KEY = "image.nano-banana-pro";
+const VISIONARY_NANO_BANANA_PRO_FAST_ROUTE_KEY = "image.nano-banana-pro-fast";
 
 function parseArgs(argv: string[]): Args {
   const args: Args = {
@@ -43,6 +50,8 @@ function parseArgs(argv: string[]): Args {
     openAiImageModel: DEFAULT_OPENAI_IMAGE_MODEL_KEY,
     tenantId: null,
     userId: null,
+    visionaryApiKey: process.env.VISIONARY_API_KEY?.trim() || null,
+    visionaryBaseUrl: process.env.VISIONARY_BASE_URL?.trim() || "https://visionary.beer",
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -77,6 +86,14 @@ function parseArgs(argv: string[]): Args {
         break;
       case "--openai-image-model":
         args.openAiImageModel = next?.trim() || DEFAULT_OPENAI_IMAGE_MODEL_KEY;
+        index += 1;
+        break;
+      case "--visionary-api-key":
+        args.visionaryApiKey = next?.trim() || null;
+        index += 1;
+        break;
+      case "--visionary-base-url":
+        args.visionaryBaseUrl = next?.trim() || args.visionaryBaseUrl;
         index += 1;
         break;
       default:
@@ -387,6 +404,136 @@ async function upsertOpenAiProviderAndModel(
 
   return {
     imageModelId: imageModelResult.rows[0]?.id,
+    providerId,
+  };
+}
+
+async function upsertVisionaryProviderAndModels(
+  pool: ReturnType<typeof createPgPool>,
+  input: {
+    baseUrl: string;
+  },
+) {
+  const providerResult = await pool.query<{ id: string }>(
+    `
+      INSERT INTO ai_providers (
+        key,
+        name,
+        kind,
+        status,
+        default_base_url,
+        capabilities,
+        updated_at
+      )
+      VALUES (
+        $1,
+        $2,
+        $3,
+        'active',
+        $4,
+        $5::jsonb,
+        now()
+      )
+      ON CONFLICT (key) DO UPDATE
+      SET
+        name = EXCLUDED.name,
+        kind = EXCLUDED.kind,
+        status = 'active',
+        default_base_url = EXCLUDED.default_base_url,
+        capabilities = EXCLUDED.capabilities,
+        updated_at = now()
+      RETURNING id::text AS id
+    `,
+    [
+      VISIONARY_PROVIDER_KEY,
+      "Visionary",
+      "visionary-nano-banana",
+      input.baseUrl,
+      JSON.stringify({
+        supportsImageGeneration: true,
+        supportsReferenceImages: true,
+        supportedModels: [
+          VISIONARY_NANO_BANANA_PRO_MODEL_KEY,
+          VISIONARY_NANO_BANANA_PRO_FAST_MODEL_KEY,
+        ],
+        timeoutMs: 300000,
+      }),
+    ],
+  );
+  const providerId = providerResult.rows[0]?.id;
+  if (!providerId) {
+    throw new Error("Failed to seed Visionary provider.");
+  }
+
+  const upsertModel = async (params: {
+    displayName: string;
+    modelKey: string;
+    unitCredits: number;
+  }) => {
+    const result = await pool.query<{ id: string }>(
+      `
+        INSERT INTO ai_models (
+          provider_id,
+          model_key,
+          display_name,
+          modality,
+          capabilities,
+          context_window,
+          status,
+          updated_at
+        )
+        VALUES (
+          $1::uuid,
+          $2,
+          $3,
+          'image',
+          $4::jsonb,
+          NULL,
+          'active',
+          now()
+        )
+        ON CONFLICT (provider_id, model_key) DO UPDATE
+        SET
+          display_name = EXCLUDED.display_name,
+          modality = EXCLUDED.modality,
+          capabilities = EXCLUDED.capabilities,
+          status = 'active',
+          updated_at = now()
+        RETURNING id::text AS id
+      `,
+      [
+        providerId,
+        params.modelKey,
+        params.displayName,
+        JSON.stringify({
+          aspectRatios: ["1:1", "16:9", "9:16", "21:9", "4:3", "3:4", "3:2", "2:3"],
+          fixedCreditCost: params.unitCredits,
+          imageSizes: ["2K", "4K"],
+          supportsReferenceImages: true,
+        }),
+      ],
+    );
+    const modelId = result.rows[0]?.id;
+    if (!modelId) {
+      throw new Error(`Failed to seed Visionary model ${params.modelKey}.`);
+    }
+    return modelId;
+  };
+
+  const proModelId = await upsertModel({
+    displayName: "Nano Banana Pro",
+    modelKey: VISIONARY_NANO_BANANA_PRO_MODEL_KEY,
+    unitCredits: 24,
+  });
+  const fastModelId = await upsertModel({
+    displayName: "Nano Banana Pro Fast",
+    modelKey: VISIONARY_NANO_BANANA_PRO_FAST_MODEL_KEY,
+    unitCredits: 48,
+  });
+
+  return {
+    fastModelId,
+    proModelId,
     providerId,
   };
 }
@@ -719,11 +866,177 @@ async function upsertOpenAiTenantRoute(
   );
 }
 
+async function upsertVisionaryTenantRoutes(
+  pool: ReturnType<typeof createPgPool>,
+  target: SeedTarget,
+  input: {
+    baseUrl: string;
+    fastModelId: string;
+    proModelId: string;
+    providerId: string;
+  },
+  vault: CredentialVault,
+  secret: string,
+) {
+  return withTenantTransaction(
+    { tenantId: target.tenantId, userId: target.userId },
+    async (client) => {
+      const encrypted = vault.createCredential(secret);
+
+      const credentialResult = await client.query<{ id: string }>(
+        `
+          INSERT INTO api_credentials (
+            tenant_id,
+            provider_id,
+            name,
+            encrypted_secret,
+            nonce,
+            auth_tag,
+            key_version,
+            secret_fingerprint,
+            status,
+            created_by,
+            updated_at
+          )
+          VALUES (
+            $1::uuid,
+            $2::uuid,
+            $3,
+            $4::bytea,
+            $5::bytea,
+            $6::bytea,
+            $7,
+            $8,
+            'active',
+            $9::uuid,
+            now()
+          )
+          ON CONFLICT (tenant_id, provider_id, name)
+          WHERE tenant_id IS NOT NULL
+          DO UPDATE
+          SET
+            encrypted_secret = EXCLUDED.encrypted_secret,
+            nonce = EXCLUDED.nonce,
+            auth_tag = EXCLUDED.auth_tag,
+            key_version = EXCLUDED.key_version,
+            secret_fingerprint = EXCLUDED.secret_fingerprint,
+            status = 'active',
+            created_by = EXCLUDED.created_by,
+            updated_at = now()
+          RETURNING id::text AS id
+        `,
+        [
+          target.tenantId,
+          input.providerId,
+          "visionary-nano-banana-credential",
+          encrypted.encryptedSecret,
+          encrypted.nonce,
+          encrypted.authTag,
+          encrypted.keyVersion,
+          encrypted.secretFingerprint,
+          target.userId,
+        ],
+      );
+
+      const credentialId = credentialResult.rows[0]?.id;
+      if (!credentialId) {
+        throw new Error("Failed to seed Visionary credential.");
+      }
+
+      const upsertRoute = async (params: {
+        modelId: string;
+        routeKey: string;
+      }) => {
+        await client.query(
+          `
+            INSERT INTO ai_routes (
+              tenant_id,
+              provider_id,
+              model_id,
+              credential_id,
+              route_key,
+              modality,
+              priority,
+              weight,
+              base_url_override,
+              request_config,
+              pricing,
+              rate_limit,
+              status,
+              updated_at
+            )
+            VALUES (
+              $1::uuid,
+              $2::uuid,
+              $3::uuid,
+              $4::uuid,
+              $5::text,
+              'image',
+              15,
+              100,
+              $6::text,
+              $7::jsonb,
+              '{}'::jsonb,
+              '{}'::jsonb,
+              'active',
+              now()
+            )
+            ON CONFLICT (tenant_id, route_key)
+            WHERE tenant_id IS NOT NULL
+            DO UPDATE
+            SET
+              provider_id = EXCLUDED.provider_id,
+              model_id = EXCLUDED.model_id,
+              credential_id = EXCLUDED.credential_id,
+              modality = EXCLUDED.modality,
+              priority = EXCLUDED.priority,
+              weight = EXCLUDED.weight,
+              base_url_override = EXCLUDED.base_url_override,
+              request_config = EXCLUDED.request_config,
+              pricing = EXCLUDED.pricing,
+              rate_limit = EXCLUDED.rate_limit,
+              status = 'active',
+              updated_at = now()
+          `,
+          [
+            target.tenantId,
+            input.providerId,
+            params.modelId,
+            credentialId,
+            params.routeKey,
+            input.baseUrl,
+            JSON.stringify({
+              path: "/v1/api/nano-banana",
+              replyType: "json",
+              timeoutMs: 300000,
+            }),
+          ],
+        );
+      };
+
+      await upsertRoute({
+        modelId: input.proModelId,
+        routeKey: VISIONARY_NANO_BANANA_PRO_ROUTE_KEY,
+      });
+      await upsertRoute({
+        modelId: input.fastModelId,
+        routeKey: VISIONARY_NANO_BANANA_PRO_FAST_ROUTE_KEY,
+      });
+
+      return {
+        credentialId,
+      };
+    },
+    pool,
+  );
+}
+
 async function upsertModelPricing(
   pool: ReturnType<typeof createPgPool>,
   options: {
     openAiImageModelKey: string | null;
     seedOpenAiPricing: boolean;
+    seedVisionaryPricing: boolean;
   },
 ) {
   const rows: Array<{
@@ -774,6 +1087,36 @@ async function upsertModelPricing(
       unit: "image_generation",
       unitCredits: 100,
     });
+  }
+
+  if (options.seedVisionaryPricing) {
+    rows.push(
+      {
+        metadata: {
+          label: "Nano Banana Pro fixed successful generation pricing",
+          optimizeChineseTextExtraCredits: 8,
+          source: "visionary-nano-banana",
+        },
+        minChargeCredits: 24,
+        model: VISIONARY_NANO_BANANA_PRO_MODEL_KEY,
+        provider: VISIONARY_PROVIDER_KEY,
+        route: VISIONARY_NANO_BANANA_PRO_ROUTE_KEY,
+        unit: "image_generation",
+        unitCredits: 24,
+      },
+      {
+        metadata: {
+          label: "Nano Banana Pro Fast fixed successful generation pricing",
+          source: "visionary-nano-banana",
+        },
+        minChargeCredits: 48,
+        model: VISIONARY_NANO_BANANA_PRO_FAST_MODEL_KEY,
+        provider: VISIONARY_PROVIDER_KEY,
+        route: VISIONARY_NANO_BANANA_PRO_FAST_ROUTE_KEY,
+        unit: "image_generation",
+        unitCredits: 48,
+      },
+    );
   }
 
   for (const row of rows) {
@@ -897,6 +1240,7 @@ async function main() {
 
     let openAiSeedResult: { credentialId: string } | null = null;
     let openAiModelKey: string | null = null;
+    let visionarySeedResult: { credentialId: string } | null = null;
     if (args.openAiApiKey) {
       const openAiBaseUrl = args.openAiBaseUrl?.trim();
       if (!openAiBaseUrl) {
@@ -926,9 +1270,28 @@ async function main() {
       );
     }
 
+    if (args.visionaryApiKey) {
+      const visionary = await upsertVisionaryProviderAndModels(pool, {
+        baseUrl: args.visionaryBaseUrl,
+      });
+      visionarySeedResult = await upsertVisionaryTenantRoutes(
+        pool,
+        target,
+        {
+          baseUrl: args.visionaryBaseUrl,
+          fastModelId: visionary.fastModelId,
+          proModelId: visionary.proModelId,
+          providerId: visionary.providerId,
+        },
+        vault,
+        args.visionaryApiKey,
+      );
+    }
+
     await upsertModelPricing(pool, {
       openAiImageModelKey: openAiModelKey,
       seedOpenAiPricing: Boolean(args.openAiApiKey),
+      seedVisionaryPricing: Boolean(args.visionaryApiKey),
     });
     await ensureDefaultPricingExists(pool);
 
@@ -949,12 +1312,29 @@ async function main() {
           openAiRouteKey: args.openAiApiKey ? OPENAI_IMAGE_ROUTE_KEY : null,
           providerId: seededProvider.providerId,
           providerKey: PROVIDER_KEY,
-          routeKeys: args.openAiApiKey
-            ? [IMAGE_ROUTE_KEY, IMAGE_FAIL_ROUTE_KEY, VIDEO_ROUTE_KEY, OPENAI_IMAGE_ROUTE_KEY]
-            : [IMAGE_ROUTE_KEY, IMAGE_FAIL_ROUTE_KEY, VIDEO_ROUTE_KEY],
+          routeKeys: [
+            IMAGE_ROUTE_KEY,
+            IMAGE_FAIL_ROUTE_KEY,
+            VIDEO_ROUTE_KEY,
+            ...(args.openAiApiKey ? [OPENAI_IMAGE_ROUTE_KEY] : []),
+            ...(args.visionaryApiKey
+              ? [
+                  VISIONARY_NANO_BANANA_PRO_ROUTE_KEY,
+                  VISIONARY_NANO_BANANA_PRO_FAST_ROUTE_KEY,
+                ]
+              : []),
+          ],
           secretFingerprintPrefix: secretFingerprint,
           tenantId: target.tenantId,
           userId: target.userId,
+          visionaryBaseUrl: args.visionaryApiKey ? args.visionaryBaseUrl : null,
+          visionaryCredentialId: visionarySeedResult?.credentialId ?? null,
+          visionaryRouteKeys: args.visionaryApiKey
+            ? [
+                VISIONARY_NANO_BANANA_PRO_ROUTE_KEY,
+                VISIONARY_NANO_BANANA_PRO_FAST_ROUTE_KEY,
+              ]
+            : [],
         },
         null,
         2,

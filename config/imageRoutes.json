@@ -48,35 +48,58 @@
       "pointCost": 20
     },
     {
-      "id": "nano-banana-pro-line4",
-      "label": "Line 4",
-      "description": "Visionary openai-image sync generation",
-      "modelFamily": "nano-banana",
-      "line": "line4",
+      "id": "nano-banana-pro-visionary",
+      "label": "Visionary",
+      "description": "Visionary Nano Banana Pro sync generation",
+      "modelFamily": "nano-banana-pro",
+      "line": "visionary",
       "transport": "openai-image",
       "mode": "sync",
       "baseUrl": "https://visionary.beer",
-      "generatePath": "/openapi/v1/images/generations",
-      "upstreamModel": "Nano_Banana_Pro",
-      "useRequestModel": false,
+      "generatePath": "/v1/api/nano-banana",
+      "upstreamModel": "nano-banana-pro",
+      "useRequestModel": true,
       "allowUserApiKeyWithoutLogin": false,
-      "apiKeyEnv": "IMAGE_ROUTE_VISIONARY_NANO_BANANA_PRO_LINE4_KEY",
-      "pointCost": 5,
+      "apiKeyEnv": "VISIONARY_API_KEY",
+      "pointCost": 24,
       "sizeOverrides": {
-        "1k": {
-          "upstreamModel": "Nano_Banana_Pro",
-          "pointCost": 4
-        },
         "2k": {
-          "upstreamModel": "Nano_Banana_Pro",
-          "pointCost": 4.5
+          "upstreamModel": "nano-banana-pro",
+          "pointCost": 24
         },
         "4k": {
-          "upstreamModel": "Nano_Banana_Pro",
-          "pointCost": 5
+          "upstreamModel": "nano-banana-pro",
+          "pointCost": 24
         }
       },
       "sortOrder": 40
+    },
+    {
+      "id": "nano-banana-pro-fast-visionary",
+      "label": "Visionary Fast",
+      "description": "Visionary Nano Banana Pro Fast sync generation",
+      "modelFamily": "nano-banana-pro-fast",
+      "line": "visionary-fast",
+      "transport": "openai-image",
+      "mode": "sync",
+      "baseUrl": "https://visionary.beer",
+      "generatePath": "/v1/api/nano-banana",
+      "upstreamModel": "nano-banana-pro-fast",
+      "useRequestModel": true,
+      "allowUserApiKeyWithoutLogin": false,
+      "apiKeyEnv": "VISIONARY_API_KEY",
+      "pointCost": 48,
+      "sizeOverrides": {
+        "2k": {
+          "upstreamModel": "nano-banana-pro-fast",
+          "pointCost": 48
+        },
+        "4k": {
+          "upstreamModel": "nano-banana-pro-fast",
+          "pointCost": 48
+        }
+      },
+      "sortOrder": 41
     },
     {
       "id": "openai-image-default",

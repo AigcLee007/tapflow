@@ -1701,12 +1701,21 @@ const ParamSelect: React.FC<{
 
 const ParamDivider = () => <span style={{ color: 'rgba(255,255,255,0.1)', margin: '0 2px' }}>·</span>;
 
-const IMAGE_NODE_MODEL_IDS = ['nano-banana', 'gemini-flash', 'gpt-image-2'] as const;
+const IMAGE_NODE_MODEL_IDS = ['nano-banana-pro', 'nano-banana-pro-fast', 'gemini-flash', 'gpt-image-2'] as const;
 const IMAGE_MODEL_ICON_BY_ID: Record<string, React.ReactNode> = {
-  'nano-banana': <GoogleLogo />,
+  'nano-banana-pro': <GoogleLogo />,
+  'nano-banana-pro-fast': <GoogleLogo />,
   'gemini-flash': <GoogleLogo />,
   'gpt-image-2': <OpenAILogo />,
 };
+const IMAGE_RUNTIME_ROUTE_BY_MODEL_ID: Record<string, string> = {
+  'nano-banana': 'image.nano-banana-pro',
+  'nano-banana-pro': 'image.nano-banana-pro',
+  'nano-banana-pro-fast': 'image.nano-banana-pro-fast',
+  'gpt-image-2': 'image.openai',
+};
+const normalizeImageModelId = (modelId: string) =>
+  modelId === 'nano-banana' ? 'nano-banana-pro' : modelId;
 
 const imageMenuSurface: React.CSSProperties = {
   position: 'absolute',
@@ -3164,13 +3173,14 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   ).map((m) => ({ id: m.id, label: m.label }));
   if (modelOptions.length === 0) {
     modelOptions.push(
-      { id: 'nano-banana', label: 'Nano Banana Pro' },
+      { id: 'nano-banana-pro', label: 'Nano Banana Pro' },
+      { id: 'nano-banana-pro-fast', label: 'Nano Banana Pro Fast' },
       { id: 'gemini-flash', label: 'Nano Banana 2' },
       { id: 'gpt-image-2', label: 'GPT-image-2' },
     );
   }
 
-  const currentModelId = String(d.modelId || modelOptions[0]?.id || 'nano-banana');
+  const currentModelId = normalizeImageModelId(String(d.modelId || modelOptions[0]?.id || 'nano-banana-pro'));
   const runtimeRoutes = useRuntimeImageRoutes(showNodeEditor);
   const currentRouteKey = String(
     d.routeKey
@@ -3204,6 +3214,11 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     || runtimeRoutes.find((route) => route.routeKey === 'image.default')
     || runtimeRoutes[0]
     || null;
+  const preferredRuntimeRouteKey = IMAGE_RUNTIME_ROUTE_BY_MODEL_ID[currentModelId] || '';
+  const modelRuntimeRoutes = preferredRuntimeRouteKey
+    ? runtimeRoutes.filter((route) => route.routeKey === preferredRuntimeRouteKey)
+    : runtimeRoutes;
+  const visibleRuntimeRoutes = modelRuntimeRoutes.length > 0 ? modelRuntimeRoutes : runtimeRoutes;
   const referencedAssetItemIds = Array.isArray(d.referenceAssetItemIds)
     ? (d.referenceAssetItemIds as string[])
     : [];
@@ -3387,13 +3402,14 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     (modelId: string) => {
       const nextSizes = getImageModelSizeOptions(modelId)
         .map((value) => String(value || '').toLowerCase())
-        .filter((value) => ['1k', '2k', '4k'].includes(value));
+        .filter((value) => ['auto', '1k', '2k', '4k'].includes(value));
       const nextSize = nextSizes.includes(currentSize) ? currentSize : (nextSizes[0] || '1k');
       const fallbackRoute = getLowestCostImageRouteForModel(modelId, nextSize) || getSelectedImageRoute(modelId);
+      const runtimeRouteKey = IMAGE_RUNTIME_ROUTE_BY_MODEL_ID[modelId] || d.routeKey || 'image.default';
       updateNodeData(id, {
         modelId,
         routeId: fallbackRoute?.id,
-        routeKey: d.routeKey || 'image.default',
+        routeKey: runtimeRouteKey,
         params: {
           ...p,
           size: nextSize,
@@ -3413,12 +3429,22 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   useEffect(() => {
     if (!runtimeRoutes.length) return;
     if (d.routeKey) return;
-    const defaultRouteKey = runtimeRoutes.some((route) => route.routeKey === 'image.default')
+    const preferredRouteKey = IMAGE_RUNTIME_ROUTE_BY_MODEL_ID[currentModelId];
+    const defaultRouteKey = preferredRouteKey && runtimeRoutes.some((route) => route.routeKey === preferredRouteKey)
+      ? preferredRouteKey
+      : runtimeRoutes.some((route) => route.routeKey === 'image.default')
       ? 'image.default'
       : runtimeRoutes[0]?.routeKey;
     if (!defaultRouteKey) return;
     updateNodeData(id, { routeKey: defaultRouteKey });
-  }, [d.routeKey, id, runtimeRoutes, updateNodeData]);
+  }, [currentModelId, d.routeKey, id, runtimeRoutes, updateNodeData]);
+
+  useEffect(() => {
+    const preferredRouteKey = IMAGE_RUNTIME_ROUTE_BY_MODEL_ID[currentModelId];
+    if (!preferredRouteKey || d.routeKey === preferredRouteKey) return;
+    if (!runtimeRoutes.some((route) => route.routeKey === preferredRouteKey)) return;
+    updateNodeData(id, { routeKey: preferredRouteKey });
+  }, [currentModelId, d.routeKey, id, runtimeRoutes, updateNodeData]);
 
   useEffect(() => {
     if (!selectedRoute) return;
@@ -5300,7 +5326,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
                 modelOptions={modelOptions}
                 currentModelId={currentModelId}
                 currentRouteKey={currentRouteKey}
-                runtimeRoutes={runtimeRoutes}
+                runtimeRoutes={visibleRuntimeRoutes}
                 onChangeModel={applyModelSelection}
                 onChangeRoute={applyRouteSelection}
               />

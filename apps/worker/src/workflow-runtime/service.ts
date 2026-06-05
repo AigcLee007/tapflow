@@ -346,6 +346,31 @@ function buildImageRequest(
   upstreamOutputs: Array<Record<string, unknown> | null>,
   config: Record<string, unknown>,
 ): ImageGenerationRequest {
+  const params = isPlainObject(config.params) ? config.params : {};
+  const metadata = {
+    ...(isPlainObject(config.metadata) ? config.metadata : {}),
+    aspectRatio:
+      typeof params.aspectRatio === "string"
+        ? params.aspectRatio
+        : typeof params.aspect_ratio === "string"
+          ? params.aspect_ratio
+          : undefined,
+    imageSize:
+      typeof params.imageSize === "string"
+        ? params.imageSize
+        : typeof params.image_size === "string"
+          ? params.image_size
+          : typeof params.size === "string"
+            ? params.size
+            : undefined,
+    optimizeChineseText:
+      typeof params.optimizeChineseText === "boolean"
+        ? params.optimizeChineseText
+        : typeof params.optimize_chinese_text === "boolean"
+          ? params.optimize_chinese_text
+          : undefined,
+    params,
+  };
   const routeKey = typeof config.routeKey === "string" && config.routeKey.trim()
     ? config.routeKey.trim()
     : "image.default";
@@ -358,8 +383,15 @@ function buildImageRequest(
 
   return {
     inputAssets: extractAssetInputs(upstreamOutputs),
-    metadata: isPlainObject(config.metadata) ? config.metadata : null,
-    model: typeof config.model === "string" ? config.model : null,
+    metadata,
+    model:
+      typeof config.model === "string"
+        ? config.model
+        : typeof config.modelId === "string"
+          ? config.modelId === "nano-banana"
+            ? "nano-banana-pro"
+            : config.modelId
+          : null,
     prompt: extractPromptFromUpstreamOutputs(upstreamOutputs, prompt),
     routeKey,
   };

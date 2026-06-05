@@ -282,7 +282,9 @@ async function runImageGeneration(
   data: any,
 ) {
   const store = useFlowCanvasStore.getState();
-  const modelId = data.modelId || 'nano-banana';
+  const modelId = String(data.modelId || 'nano-banana-pro') === 'nano-banana'
+    ? 'nano-banana-pro'
+    : data.modelId || 'nano-banana-pro';
   const params = data.params || {};
   const allReferenceImages = mergeImageReferences(upstreamImages, data);
 
@@ -306,7 +308,9 @@ async function runImageGeneration(
 
   const payload: any = {
     modelId,
+    model: modelId,
     routeId,
+    routeKey: data.routeKey,
     prompt: prompt || '一张精美的 AI 生成图片',
     uiMode: 'flow',
     ...params,
@@ -346,6 +350,15 @@ async function runImageGeneration(
     payload.images = resolvedReferenceImages;
     payload.reference_images = resolvedReferenceImages;
   }
+
+  payload.metadata = {
+    ...((data.metadata || {}) as Record<string, unknown>),
+    aspectRatio: params.aspectRatio || params.aspect_ratio || '1:1',
+    imageSize: params.imageSize || params.image_size || params.size || '2k',
+    images: Array.isArray(payload.images) ? payload.images : [],
+    optimizeChineseText: Boolean(params.optimizeChineseText || params.optimize_chinese_text),
+    params,
+  };
 
   const res = isGptImage2Model && hasReferenceImages
     ? await editImageApi(undefined, payload)

@@ -7,6 +7,7 @@ import {
   DatabaseTextGenerationRuntime,
   MockProviderAdapter,
   OpenAiCompatibleTextAdapter,
+  VisionaryNanoBananaAdapter,
 } from "@aigc-flow/ai-gateway-core";
 import { createPgPool } from "@aigc-flow/db";
 import {
@@ -82,6 +83,7 @@ export function createWorkerRuntime(options?: {
     mock: new MockProviderAdapter(),
     openai: new OpenAiCompatibleTextAdapter(),
     "openai-compatible": new OpenAiCompatibleTextAdapter(),
+    "visionary-nano-banana": new VisionaryNanoBananaAdapter(),
   });
   const nodeExecuteQueue = queueFactory.createQueue(QUEUE_NAMES.nodeExecute);
   const providerPollQueue = queueFactory.createQueue(QUEUE_NAMES.providerPoll);
