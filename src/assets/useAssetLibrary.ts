@@ -78,20 +78,16 @@ export function useAssetLibrary(): AssetLibraryState {
           return download ? { ...asset, previewUrl: download.url } : asset;
         }),
       );
-      if (requestSequenceRef.current !== requestId) {
-        return;
-      }
+      if (requestSequenceRef.current !== requestId) return;
       setAssets(withPreview);
       setFolders(folderResult);
       setTotal(assetResult.total);
     } catch (err) {
-      if (requestSequenceRef.current !== requestId) {
-        return;
-      }
+      if (requestSequenceRef.current !== requestId) return;
       setAssets([]);
       setFolders([]);
       setTotal(0);
-      setError(err instanceof Error ? err.message : "Failed to load asset library");
+      setError(err instanceof Error ? err.message : "素材库加载失败，请稍后重试。");
     } finally {
       if (requestSequenceRef.current === requestId) {
         setLoading(false);

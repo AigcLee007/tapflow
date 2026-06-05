@@ -15,10 +15,21 @@ function InfoCard({
 }) {
   return (
     <div className={`rounded border border-white/10 bg-black/20 p-4 ${wide ? "md:col-span-2" : ""}`}>
-      <div className="text-xs uppercase tracking-[0.18em] text-slate-500">{label}</div>
+      <div className="text-xs tracking-[0.18em] text-slate-500">{label}</div>
       <div className="mt-2 break-words text-sm font-medium text-slate-100">{value}</div>
     </div>
   );
+}
+
+function displayTenantName(name?: string | null) {
+  if (!name) return "-";
+  return name.replace(/'s Workspace$/i, " 的工作区");
+}
+
+function statusLabel(status?: string | null) {
+  if (status === "active") return "正常";
+  if (status === "disabled") return "已停用";
+  return status || "-";
 }
 
 export function AccountPage() {
@@ -33,7 +44,7 @@ export function AccountPage() {
       <section className="flex min-h-[320px] items-center justify-center rounded border border-white/10 bg-white/[0.04]">
         <div className="inline-flex items-center gap-3 text-sm text-slate-300">
           <Loader2 className="animate-spin" size={16} />
-          Loading account data...
+          正在加载账号信息...
         </div>
       </section>
     );
@@ -43,11 +54,10 @@ export function AccountPage() {
     <section className="space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="text-xs uppercase tracking-[0.24em] text-sky-300">Account</div>
-          <h1 className="mt-2 text-2xl font-semibold text-white">Account Center</h1>
+          <div className="text-xs uppercase tracking-[0.24em] text-sky-300">账号</div>
+          <h1 className="mt-2 text-2xl font-semibold text-white">账号中心</h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-            This page is backed by `GET /api/v2/auth/me` and shows the current identity, tenant,
-            roles, permissions, and sign-out controls for the unified workspace product.
+            这里显示当前登录身份、所属工作区、角色权限和退出登录等账号信息。
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -59,7 +69,7 @@ export function AccountPage() {
               }}
               type="button"
             >
-              Provider Settings
+              服务商设置
             </button>
           ) : null}
           <button
@@ -68,7 +78,7 @@ export function AccountPage() {
             type="button"
           >
             <RefreshCw size={15} />
-            Refresh
+            刷新
           </button>
           <button
             className="inline-flex h-10 items-center gap-2 rounded border border-red-400/20 bg-red-500/10 px-4 text-sm text-red-100 hover:bg-red-500/15"
@@ -80,32 +90,32 @@ export function AccountPage() {
             type="button"
           >
             <LogOut size={15} />
-            Log out
+            退出登录
           </button>
         </div>
       </header>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
         <div className="rounded border border-white/10 bg-white/[0.04] p-5">
-          <h2 className="text-lg font-semibold text-white">Current Identity</h2>
+          <h2 className="text-lg font-semibold text-white">当前身份</h2>
           <div className="mt-4 grid gap-3 md:grid-cols-2">
-            <InfoCard label="Email" value={user?.email || "-"} />
-            <InfoCard label="Display name" value={user?.displayName || "-"} />
-            <InfoCard label="User ID" value={user?.id || "-"} />
-            <InfoCard label="Status" value={user?.status || "-"} />
-            <InfoCard label="Roles" value={roles.join(", ") || "-"} wide />
-            <InfoCard label="Permissions" value={permissions.join(", ") || "-"} wide />
+            <InfoCard label="邮箱" value={user?.email || "-"} />
+            <InfoCard label="显示名称" value={user?.displayName || "-"} />
+            <InfoCard label="用户 ID" value={user?.id || "-"} />
+            <InfoCard label="状态" value={statusLabel(user?.status)} />
+            <InfoCard label="角色" value={roles.join(", ") || "-"} wide />
+            <InfoCard label="权限" value={permissions.join(", ") || "-"} wide />
           </div>
         </div>
 
         <div className="rounded border border-white/10 bg-white/[0.04] p-5">
-          <h2 className="text-lg font-semibold text-white">Workspace Context</h2>
+          <h2 className="text-lg font-semibold text-white">工作区信息</h2>
           <div className="mt-4 grid gap-3">
-            <InfoCard label="Tenant / workspace" value={tenant?.name || "-"} />
-            <InfoCard label="Tenant ID" value={tenant?.id || "-"} />
-            <InfoCard label="Slug" value={tenant?.slug || "-"} />
-            <InfoCard label="Plan" value={tenant?.plan || "-"} />
-            <InfoCard label="Status" value={tenant?.status || "-"} />
+            <InfoCard label="工作区" value={displayTenantName(tenant?.name)} />
+            <InfoCard label="工作区 ID" value={tenant?.id || "-"} />
+            <InfoCard label="标识" value={tenant?.slug || "-"} />
+            <InfoCard label="套餐" value={tenant?.plan || "-"} />
+            <InfoCard label="状态" value={statusLabel(tenant?.status)} />
           </div>
         </div>
       </div>

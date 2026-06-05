@@ -51,20 +51,16 @@ export function BillingCenterPage() {
         listBillingUsageEvents(1, 20),
         listBillingLedger(1, 20),
       ]);
-      if (requestSequenceRef.current !== requestId) {
-        return;
-      }
+      if (requestSequenceRef.current !== requestId) return;
       setSummary(nextSummary);
       setUsage(nextUsage.items);
       setLedger(nextLedger.items);
     } catch (err) {
-      if (requestSequenceRef.current !== requestId) {
-        return;
-      }
+      if (requestSequenceRef.current !== requestId) return;
       setSummary(null);
       setUsage([]);
       setLedger([]);
-      setError(err instanceof Error ? err.message : "Unable to load billing data.");
+      setError(err instanceof Error ? err.message : "计费数据加载失败，请稍后重试。");
     } finally {
       if (requestSequenceRef.current === requestId) {
         setLoading(false);
@@ -98,10 +94,10 @@ export function BillingCenterPage() {
     <div className="space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="text-xs uppercase tracking-[0.24em] text-sky-300">Billing</div>
-          <h1 className="mt-2 text-2xl font-semibold text-white">Billing Center</h1>
+          <div className="text-xs uppercase tracking-[0.24em] text-sky-300">计费</div>
+          <h1 className="mt-2 text-2xl font-semibold text-white">计费中心</h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-            Credits are reserved by the backend before workflow execution, settled on success, and refunded on failure.
+            点数会在任务开始前由后端预占，任务成功后结算，失败时自动退回。
           </p>
         </div>
         <button
@@ -111,7 +107,7 @@ export function BillingCenterPage() {
           type="button"
         >
           {loading ? <Loader2 className="animate-spin" size={15} /> : <RefreshCw size={15} />}
-          Refresh
+          刷新
         </button>
       </header>
 
@@ -123,9 +119,9 @@ export function BillingCenterPage() {
 
       {showLocalQaHint && (
         <div className="rounded border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
-          No billing activity exists for this tenant yet. For local QA, create a redeem code and sample
-          ledger data with <code className="mx-1 rounded bg-black/30 px-1 py-0.5">npm run dev:seed-billing -- --email your-user@example.com</code>
-          , then refresh this page.
+          当前工作区还没有计费记录。如需本地联调，可运行
+          <code className="mx-1 rounded bg-black/30 px-1 py-0.5">npm run dev:seed-billing -- --email your-user@example.com</code>
+          生成测试数据后再刷新此页面。
         </div>
       )}
 

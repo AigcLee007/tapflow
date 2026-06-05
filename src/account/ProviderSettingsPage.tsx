@@ -35,13 +35,20 @@ function asTimeoutMs(requestConfig: Record<string, unknown>): number {
 }
 
 function maskBaseUrl(value: string | null): string {
-  if (!value) return "(not set)";
+  if (!value) return "（未设置）";
   try {
     const url = new URL(value);
     return `${url.protocol}//${url.host}${url.pathname}`;
   } catch {
-    return "(invalid URL)";
+    return "（URL 无效）";
   }
+}
+
+function statusLabel(status: string | null | undefined) {
+  if (status === "active") return "启用";
+  if (status === "inactive") return "停用";
+  if (status === "disabled") return "已禁用";
+  return status || "-";
 }
 
 export function ProviderSettingsPage() {
@@ -101,7 +108,7 @@ export function ProviderSettingsPage() {
   const refresh = async () => {
     if (!canAccessProviderSettings) {
       setState("error");
-      setError("You do not have permission to access provider settings.");
+      setError("当前账号没有访问服务商设置的权限。");
       return;
     }
     setState("loading");
@@ -132,7 +139,7 @@ export function ProviderSettingsPage() {
       setState("ready");
     } catch (cause) {
       setState("error");
-      setError(cause instanceof Error ? cause.message : "Failed to load provider settings.");
+      setError(cause instanceof Error ? cause.message : "服务商设置加载失败。");
     }
   };
 
@@ -160,12 +167,12 @@ export function ProviderSettingsPage() {
   const onSaveRouteAndPricing = async () => {
     if (!selectedRoute) return;
     if (!selectedProvider) {
-      setError("Route provider is missing.");
+      setError("当前线路缺少对应的服务商。");
       return;
     }
     const model = models.find((item) => item.id === selectedModelId);
     if (!model) {
-      setError("Please select a valid image model.");
+      setError("请选择有效的图片模型。");
       return;
     }
 
@@ -191,7 +198,7 @@ export function ProviderSettingsPage() {
       });
       await refresh();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Failed to save route settings.");
+      setError(cause instanceof Error ? cause.message : "保存线路设置失败。");
     } finally {
       setSaving(false);
     }
@@ -199,7 +206,7 @@ export function ProviderSettingsPage() {
 
   const onRotateCredential = async () => {
     if (!selectedCredentialId || !newSecret.trim()) {
-      setError("Select a credential and input a new API key.");
+      setError("请选择凭证并输入新的 API Key。");
       return;
     }
     setRotating(true);
@@ -209,7 +216,7 @@ export function ProviderSettingsPage() {
       setNewSecret("");
       await refresh();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Failed to rotate credential.");
+      setError(cause instanceof Error ? cause.message : "更新凭证失败。");
     } finally {
       setRotating(false);
     }
@@ -219,11 +226,10 @@ export function ProviderSettingsPage() {
     <section className="space-y-5">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <div className="text-xs uppercase tracking-[0.24em] text-sky-300">Provider Settings</div>
-          <h1 className="mt-2 text-2xl font-semibold text-white">OpenAI-compatible Route Admin</h1>
+          <div className="text-xs uppercase tracking-[0.24em] text-sky-300">服务商设置</div>
+          <h1 className="mt-2 text-2xl font-semibold text-white">OpenAI 兼容线路管理</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
-            Local/dev admin panel for tenant-scoped route settings. Secrets are write-only and stored via
-            CredentialVault. Existing keys are never shown in plaintext.
+            这是面向本地或开发环境的租户级管理面板。密钥仅支持写入保存，不会以明文展示。
           </p>
         </div>
         <div className="flex gap-2">
@@ -234,23 +240,23 @@ export function ProviderSettingsPage() {
             }}
             type="button"
           >
-            Back to Account
+            返回账号中心
           </button>
           <button
             className="rounded border border-white/15 bg-white/10 px-4 py-2 text-sm text-white hover:bg-white/15"
             onClick={() => void refresh()}
             type="button"
           >
-            Refresh
+            刷新
           </button>
         </div>
       </header>
 
       {state === "loading" && (
-        <div className="rounded border border-white/10 bg-white/[0.03] p-4 text-sm text-slate-300">Loading settings...</div>
+        <div className="rounded border border-white/10 bg-white/[0.03] p-4 text-sm text-slate-300">正在加载设置...</div>
       )}
       {state === "error" && (
-        <div className="rounded border border-red-400/30 bg-red-500/10 p-4 text-sm text-red-100">{error || "Failed to load settings."}</div>
+        <div className="rounded border border-red-400/30 bg-red-500/10 p-4 text-sm text-red-100">{error || "设置加载失败。"}</div>
       )}
 
       {state === "ready" && (
@@ -260,10 +266,10 @@ export function ProviderSettingsPage() {
           ) : null}
           <div className="grid gap-4 lg:grid-cols-2">
             <div className="rounded border border-white/10 bg-white/[0.03] p-4">
-              <h2 className="text-lg font-semibold text-white">Route Settings</h2>
+              <h2 className="text-lg font-semibold text-white">线路设置</h2>
               <div className="mt-4 space-y-3">
-                <label className="block text-xs uppercase tracking-[0.12em] text-slate-400">
-                  Route
+                <label className="block text-xs tracking-[0.12em] text-slate-400">
+                  线路
                   <select
                     className="mt-2 w-full rounded border border-white/15 bg-black/30 px-3 py-2 text-sm text-white"
                     onChange={(event) => setSelectedRouteId(event.target.value)}
@@ -271,14 +277,14 @@ export function ProviderSettingsPage() {
                   >
                     {imageRoutes.map((route) => (
                       <option key={route.id} value={route.id}>
-                        {route.routeKey} ({route.status})
+                        {route.routeKey} ({statusLabel(route.status)})
                       </option>
                     ))}
                   </select>
                 </label>
 
-                <label className="block text-xs uppercase tracking-[0.12em] text-slate-400">
-                  Base URL Override
+                <label className="block text-xs tracking-[0.12em] text-slate-400">
+                  Base URL 覆盖地址
                   <input
                     className="mt-2 w-full rounded border border-white/15 bg-black/30 px-3 py-2 text-sm text-white"
                     onChange={(event) => setBaseUrlOverride(event.target.value)}
@@ -286,14 +292,14 @@ export function ProviderSettingsPage() {
                   />
                 </label>
 
-                <label className="block text-xs uppercase tracking-[0.12em] text-slate-400">
-                  Image Model
+                <label className="block text-xs tracking-[0.12em] text-slate-400">
+                  图片模型
                   <select
                     className="mt-2 w-full rounded border border-white/15 bg-black/30 px-3 py-2 text-sm text-white"
                     onChange={(event) => setSelectedModelId(event.target.value)}
                     value={selectedModelId}
                   >
-                    <option value="">Select model...</option>
+                    <option value="">请选择模型...</option>
                     {imageModels.map((model) => (
                       <option key={model.id} value={model.id}>
                         {model.displayName} ({model.modelKey})
@@ -302,8 +308,8 @@ export function ProviderSettingsPage() {
                   </select>
                 </label>
 
-                <label className="block text-xs uppercase tracking-[0.12em] text-slate-400">
-                  Timeout (ms)
+                <label className="block text-xs tracking-[0.12em] text-slate-400">
+                  超时时间（毫秒）
                   <input
                     className="mt-2 w-full rounded border border-white/15 bg-black/30 px-3 py-2 text-sm text-white"
                     max={300000}
@@ -315,20 +321,20 @@ export function ProviderSettingsPage() {
                   />
                 </label>
 
-                <label className="block text-xs uppercase tracking-[0.12em] text-slate-400">
-                  Status
+                <label className="block text-xs tracking-[0.12em] text-slate-400">
+                  状态
                   <select
                     className="mt-2 w-full rounded border border-white/15 bg-black/30 px-3 py-2 text-sm text-white"
                     onChange={(event) => setStatus(event.target.value)}
                     value={status}
                   >
-                    <option value="active">active</option>
-                    <option value="inactive">inactive</option>
+                    <option value="active">启用</option>
+                    <option value="inactive">停用</option>
                   </select>
                 </label>
 
-                <label className="block text-xs uppercase tracking-[0.12em] text-slate-400">
-                  Pricing min_charge_credits (image_generation)
+                <label className="block text-xs tracking-[0.12em] text-slate-400">
+                  最低扣费点数（image_generation）
                   <input
                     className="mt-2 w-full rounded border border-white/15 bg-black/30 px-3 py-2 text-sm text-white"
                     min={1}
@@ -345,37 +351,37 @@ export function ProviderSettingsPage() {
                   onClick={() => void onSaveRouteAndPricing()}
                   type="button"
                 >
-                  {saving ? "Saving..." : "Save Route + Pricing"}
+                  {saving ? "保存中..." : "保存线路与定价"}
                 </button>
               </div>
             </div>
 
             <div className="rounded border border-white/10 bg-white/[0.03] p-4">
-              <h2 className="text-lg font-semibold text-white">Credential Rotation</h2>
+              <h2 className="text-lg font-semibold text-white">凭证轮换</h2>
               <div className="mt-4 space-y-3">
-                <label className="block text-xs uppercase tracking-[0.12em] text-slate-400">
-                  Credential
+                <label className="block text-xs tracking-[0.12em] text-slate-400">
+                  凭证
                   <select
                     className="mt-2 w-full rounded border border-white/15 bg-black/30 px-3 py-2 text-sm text-white"
                     onChange={(event) => setSelectedCredentialId(event.target.value)}
                     value={selectedCredentialId}
                   >
-                    <option value="">Select credential...</option>
+                    <option value="">请选择凭证...</option>
                     {credentials.map((credential) => (
                       <option key={credential.id} value={credential.id}>
-                        {credential.name} [{credential.maskedSecret}] ({credential.status})
+                        {credential.name} [{credential.maskedSecret}] ({statusLabel(credential.status)})
                       </option>
                     ))}
                   </select>
                 </label>
 
-                <label className="block text-xs uppercase tracking-[0.12em] text-slate-400">
-                  New API Key (write-only)
+                <label className="block text-xs tracking-[0.12em] text-slate-400">
+                  新 API Key（仅写入）
                   <input
                     autoComplete="off"
                     className="mt-2 w-full rounded border border-white/15 bg-black/30 px-3 py-2 text-sm text-white"
                     onChange={(event) => setNewSecret(event.target.value)}
-                    placeholder="Paste new key"
+                    placeholder="粘贴新的密钥"
                     type="password"
                     value={newSecret}
                   />
@@ -387,23 +393,23 @@ export function ProviderSettingsPage() {
                   onClick={() => void onRotateCredential()}
                   type="button"
                 >
-                  {rotating ? "Updating..." : "Rotate Credential"}
+                  {rotating ? "更新中..." : "轮换凭证"}
                 </button>
               </div>
             </div>
           </div>
 
           <div className="rounded border border-white/10 bg-white/[0.03] p-4">
-            <h2 className="text-lg font-semibold text-white">Current Route Snapshot</h2>
+            <h2 className="text-lg font-semibold text-white">当前线路快照</h2>
             <div className="mt-3 grid gap-2 text-sm text-slate-300 md:grid-cols-2">
-              <div>routeKey: {selectedRoute?.routeKey || "-"}</div>
-              <div>modality: {selectedRoute?.modality || "-"}</div>
-              <div>provider: {selectedProvider ? `${selectedProvider.key} / ${selectedProvider.name}` : "-"}</div>
-              <div>model: {selectedModel ? `${selectedModel.modelKey} / ${selectedModel.displayName}` : "-"}</div>
-              <div>status: {selectedRoute?.status || "-"}</div>
-              <div>timeoutMs: {asTimeoutMs(selectedRoute?.requestConfig ?? {})}</div>
-              <div>pricing.min_charge_credits: {selectedPricing?.minChargeCredits ?? "-"}</div>
-              <div>baseUrl: {maskBaseUrl(selectedRoute?.baseUrlOverride ?? selectedProvider?.defaultBaseUrl ?? null)}</div>
+              <div>线路键：{selectedRoute?.routeKey || "-"}</div>
+              <div>类型：{selectedRoute?.modality || "-"}</div>
+              <div>服务商：{selectedProvider ? `${selectedProvider.key} / ${selectedProvider.name}` : "-"}</div>
+              <div>模型：{selectedModel ? `${selectedModel.modelKey} / ${selectedModel.displayName}` : "-"}</div>
+              <div>状态：{statusLabel(selectedRoute?.status)}</div>
+              <div>超时：{asTimeoutMs(selectedRoute?.requestConfig ?? {})} ms</div>
+              <div>最低扣费：{selectedPricing?.minChargeCredits ?? "-"}</div>
+              <div>Base URL：{maskBaseUrl(selectedRoute?.baseUrlOverride ?? selectedProvider?.defaultBaseUrl ?? null)}</div>
             </div>
           </div>
         </>

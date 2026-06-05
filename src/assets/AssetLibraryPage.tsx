@@ -50,9 +50,9 @@ export function AssetLibraryPage() {
         <main className="min-w-0 flex-1 p-5 md:p-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <div className="text-xs uppercase tracking-[0.22em] text-sky-300">Assets</div>
-              <h1 className="mt-2 text-2xl font-semibold text-white">Cloud Asset Library</h1>
-              <p className="mt-2 text-sm text-slate-500">{library.total} server-backed assets</p>
+              <div className="text-xs uppercase tracking-[0.22em] text-sky-300">素材库</div>
+              <h1 className="mt-2 text-2xl font-semibold text-white">云端素材库</h1>
+              <p className="mt-2 text-sm text-slate-500">共 {library.total} 个云端素材</p>
             </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
               <div className="relative">
@@ -60,7 +60,7 @@ export function AssetLibraryPage() {
                 <input
                   className="h-10 w-full rounded border border-white/10 bg-black/30 pl-9 pr-3 text-sm text-slate-100 outline-none placeholder:text-slate-600 focus:border-sky-400/60 sm:w-72"
                   onChange={(event) => library.setQuery(event.target.value)}
-                  placeholder="Search assets"
+                  placeholder="搜索素材"
                   value={library.query}
                 />
               </div>
@@ -70,7 +70,7 @@ export function AssetLibraryPage() {
                 type="button"
               >
                 <RefreshCw size={16} />
-                Refresh
+                刷新
               </button>
               <UploadAssetButton key={identityKey} onUploaded={refresh} />
             </div>

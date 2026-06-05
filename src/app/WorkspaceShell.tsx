@@ -30,6 +30,11 @@ const navItems = [
   { icon: UserRound, label: "账号", path: ACCOUNT_ROUTE },
 ];
 
+function displayTenantName(name?: string | null) {
+  if (!name) return "工作区";
+  return name.replace(/'s Workspace$/i, " 的工作区");
+}
+
 export function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const { logout, permissions, tenant, user } = useAuth();
   const currentPath = typeof window === "undefined" ? WORKSPACE_ROUTE : window.location.pathname;
@@ -52,7 +57,7 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
             <span className="min-w-0">
               <span className="block truncate text-sm font-semibold">AI Flow</span>
               <span className="block truncate text-xs text-slate-500">
-                {tenant?.name || "工作区"}
+                {displayTenantName(tenant?.name)}
               </span>
             </span>
           </button>

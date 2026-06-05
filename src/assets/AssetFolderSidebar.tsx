@@ -40,7 +40,7 @@ export function AssetFolderSidebar({
         type="button"
       >
         <Images size={16} />
-        All assets
+        全部素材
       </button>
       <div className="mt-4 space-y-1">
         {folders.map((folder) => (
@@ -64,14 +64,14 @@ export function AssetFolderSidebar({
           onKeyDown={(event) => {
             if (event.key === "Enter") void createFolder();
           }}
-          placeholder="New folder"
+          placeholder="新建文件夹"
           value={name}
         />
         <button
           className="inline-flex h-10 w-10 items-center justify-center rounded bg-white text-slate-950 hover:bg-slate-200 disabled:opacity-50"
           disabled={creating || !name.trim()}
           onClick={() => void createFolder()}
-          title="Create folder"
+          title="创建文件夹"
           type="button"
         >
           <FolderPlus size={17} />

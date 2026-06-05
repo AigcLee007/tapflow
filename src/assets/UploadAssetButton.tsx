@@ -10,6 +10,12 @@ type UploadState = {
   status: "failed" | "success" | "uploading";
 };
 
+function statusLabel(status: UploadState["status"]) {
+  if (status === "uploading") return "上传中";
+  if (status === "success") return "成功";
+  return "失败";
+}
+
 export function UploadAssetButton({
   onUploaded,
   projectId,
@@ -55,7 +61,7 @@ export function UploadAssetButton({
             ),
           );
         } catch (error) {
-          const message = error instanceof Error ? error.message : "Upload failed";
+          const message = error instanceof Error ? error.message : "上传失败，请稍后重试。";
           setItems((current) =>
             current.map((item) =>
               item.id === itemId
@@ -96,11 +102,11 @@ export function UploadAssetButton({
           type="button"
         >
           <Upload size={16} />
-          {uploading ? "Uploading..." : "Upload"}
+          {uploading ? "上传中..." : "上传"}
         </button>
         {items.length > 0 && (
           <div className="rounded border border-white/10 bg-black/20 p-3 text-xs text-slate-300">
-            <div className="mb-2 font-medium text-slate-200">Upload results</div>
+            <div className="mb-2 font-medium text-slate-200">上传结果</div>
             <div className="space-y-2">
               {items.map((item) => (
                 <div className="flex items-start justify-between gap-3" key={item.id}>
@@ -117,7 +123,7 @@ export function UploadAssetButton({
                           : "text-sky-300"
                     }
                   >
-                    {item.status}
+                    {statusLabel(item.status)}
                   </div>
                 </div>
               ))}

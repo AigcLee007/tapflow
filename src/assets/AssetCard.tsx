@@ -17,6 +17,14 @@ function formatBytes(bytes: number | null) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+function kindLabel(kind: string) {
+  if (kind === "image") return "图片";
+  if (kind === "video") return "视频";
+  if (kind === "audio") return "音频";
+  if (kind === "document") return "文档";
+  return kind;
+}
+
 export function AssetCard({
   asset,
   onOpen,
@@ -24,7 +32,7 @@ export function AssetCard({
   asset: AssetItem;
   onOpen: (asset: AssetItem) => void;
 }) {
-  const title = asset.title || asset.originalFilename || "Untitled asset";
+  const title = asset.title || asset.originalFilename || "未命名素材";
   return (
     <button
       className="group overflow-hidden rounded border border-white/10 bg-white/[0.035] text-left shadow-lg shadow-black/10 transition hover:border-sky-300/40 hover:bg-white/[0.06]"
@@ -48,7 +56,7 @@ export function AssetCard({
       <div className="p-3">
         <div className="truncate text-sm font-medium text-slate-100">{title}</div>
         <div className="mt-1 flex items-center justify-between gap-2 text-xs text-slate-500">
-          <span>{asset.kind}</span>
+          <span>{kindLabel(asset.kind)}</span>
           <span>{formatBytes(asset.sizeBytes)}</span>
         </div>
       </div>

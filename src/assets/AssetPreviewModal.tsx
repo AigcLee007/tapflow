@@ -4,6 +4,14 @@ import { ArrowRight, Download, Star, X } from "lucide-react";
 import { getAssetDownloadUrl, updateAssetMetadata, type AssetItem } from "./assetApi";
 import { listWorkspaceProjects, updateWorkspaceProject, type WorkspaceProject } from "../workspace/workspaceApi";
 
+function kindLabel(kind: string) {
+  if (kind === "image") return "图片";
+  if (kind === "video") return "视频";
+  if (kind === "audio") return "音频";
+  if (kind === "document") return "文档";
+  return kind;
+}
+
 export function AssetPreviewModal({
   asset,
   onClose,
@@ -36,12 +44,12 @@ export function AssetPreviewModal({
       })
       .catch((error) => {
         setProjects([]);
-        setProjectsError(error instanceof Error ? error.message : "Unable to load projects.");
+        setProjectsError(error instanceof Error ? error.message : "项目加载失败，请稍后重试。");
       })
       .finally(() => setLoadingProjects(false));
   }, [asset.projectId]);
 
-  const title = asset.title || asset.originalFilename || "Untitled asset";
+  const title = asset.title || asset.originalFilename || "未命名素材";
 
   const download = async () => {
     setActionError(null);
@@ -49,7 +57,7 @@ export function AssetPreviewModal({
       const url = await getAssetDownloadUrl(asset.id);
       window.open(url.url, "_blank", "noopener,noreferrer");
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : "Unable to open download.");
+      setActionError(error instanceof Error ? error.message : "暂时无法下载该素材。");
     }
   };
 
@@ -61,10 +69,10 @@ export function AssetPreviewModal({
       const nextFavorite = !favorite;
       await updateAssetMetadata(asset.id, { favorite: nextFavorite });
       setFavorite(nextFavorite);
-      setActionMessage(nextFavorite ? "Added to favorites." : "Removed from favorites.");
+      setActionMessage(nextFavorite ? "已加入收藏。" : "已取消收藏。");
       onUpdated();
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : "Unable to update favorite.");
+      setActionError(error instanceof Error ? error.message : "更新收藏状态失败，请稍后重试。");
     } finally {
       setWorkingAction(null);
     }
@@ -77,10 +85,10 @@ export function AssetPreviewModal({
     setWorkingAction("cover");
     try {
       await updateWorkspaceProject(selectedProjectId, { coverAssetId: asset.id });
-      setActionMessage("Project cover updated. Refresh /workspace to confirm the latest card image.");
+      setActionMessage("项目封面已更新，返回工作区后即可看到最新卡片封面。");
       onUpdated();
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : "Unable to set project cover.");
+      setActionError(error instanceof Error ? error.message : "设置项目封面失败，请稍后重试。");
     } finally {
       setWorkingAction(null);
     }
@@ -97,10 +105,10 @@ export function AssetPreviewModal({
     <div className="fixed inset-0 z-[1500] grid place-items-center bg-black/70 p-4 backdrop-blur-sm">
       <section className="relative grid max-h-[92vh] w-full max-w-5xl overflow-hidden rounded border border-white/10 bg-zinc-950 shadow-2xl md:grid-cols-[minmax(0,1.4fr)_360px]">
         <button
-          aria-label="Close preview"
+          aria-label="关闭预览"
           className="absolute right-3 top-3 z-20 inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-black/65 text-slate-300 hover:bg-black hover:text-white"
           onClick={onClose}
-          title="Close"
+          title="关闭"
           type="button"
         >
           <X size={18} />
@@ -111,22 +119,22 @@ export function AssetPreviewModal({
           ) : asset.previewUrl && asset.mimeType.startsWith("video/") ? (
             <video className="max-h-[82vh] max-w-full" controls src={asset.previewUrl} />
           ) : (
-            <div className="px-8 text-center text-sm text-slate-500">Preview is not available for this asset type.</div>
+            <div className="px-8 text-center text-sm text-slate-500">该素材类型暂不支持预览。</div>
           )}
         </div>
         <div className="flex min-h-0 flex-col p-5">
           <div className="pr-12">
-            <div className="text-xs uppercase tracking-[0.18em] text-sky-300">{asset.kind}</div>
+            <div className="text-xs uppercase tracking-[0.18em] text-sky-300">{kindLabel(asset.kind)}</div>
             <h2 className="mt-2 break-words text-xl font-semibold text-white">{title}</h2>
           </div>
           <dl className="mt-5 grid grid-cols-2 gap-3 text-xs">
             <Info label="MIME" value={asset.mimeType} />
-            <Info label="Status" value={asset.status} />
-            <Info label="Size" value={asset.sizeBytes ? `${Math.round(asset.sizeBytes / 1024)} KB` : "-"} />
-            <Info label="Dimensions" value={asset.width && asset.height ? `${asset.width} x ${asset.height}` : "-"} />
+            <Info label="状态" value={asset.status} />
+            <Info label="大小" value={asset.sizeBytes ? `${Math.round(asset.sizeBytes / 1024)} KB` : "-"} />
+            <Info label="尺寸" value={asset.width && asset.height ? `${asset.width} x ${asset.height}` : "-"} />
           </dl>
           <label className="mt-5 text-xs font-medium text-slate-400" htmlFor="asset-project">
-            Project
+            项目
           </label>
           <select
             className="mt-2 h-10 rounded border border-white/10 bg-black/30 px-3 text-sm text-slate-100 outline-none focus:border-sky-400/60"
@@ -134,12 +142,12 @@ export function AssetPreviewModal({
             onChange={(event) => setSelectedProjectId(event.target.value)}
             value={selectedProjectId}
           >
-            <option value="">Select project</option>
+            <option value="">选择项目</option>
             {projects.map((project) => (
               <option key={project.id} value={project.id}>{project.name}</option>
             ))}
           </select>
-          {loadingProjects && <div className="mt-2 text-xs text-slate-500">Loading projects...</div>}
+          {loadingProjects && <div className="mt-2 text-xs text-slate-500">正在加载项目...</div>}
           {projectsError && <div className="mt-2 text-xs text-red-300">{projectsError}</div>}
           {actionError && <div className="mt-3 text-xs text-red-300">{actionError}</div>}
           {actionMessage && <div className="mt-3 text-xs text-emerald-300">{actionMessage}</div>}
@@ -151,7 +159,7 @@ export function AssetPreviewModal({
               type="button"
             >
               <ArrowRight size={16} />
-              Insert into canvas
+              插入画布
             </button>
             <button
               className="inline-flex h-10 items-center justify-center gap-2 rounded border border-white/10 px-4 text-sm font-semibold text-slate-100 hover:bg-white/[0.06] disabled:opacity-50"
@@ -159,7 +167,7 @@ export function AssetPreviewModal({
               onClick={() => void setCover()}
               type="button"
             >
-              {workingAction === "cover" ? "Setting cover..." : "Set as project cover"}
+              {workingAction === "cover" ? "设置中..." : "设为项目封面"}
             </button>
             <div className="grid grid-cols-2 gap-2">
               <button
@@ -169,7 +177,7 @@ export function AssetPreviewModal({
                 type="button"
               >
                 <Star fill={favorite ? "currentColor" : "none"} size={16} />
-                {workingAction === "favorite" ? "Saving..." : "Favorite"}
+                {workingAction === "favorite" ? "保存中..." : "收藏"}
               </button>
               <button
                 className="inline-flex h-10 items-center justify-center gap-2 rounded border border-white/10 px-4 text-sm font-semibold text-slate-100 hover:bg-white/[0.06]"
@@ -177,7 +185,7 @@ export function AssetPreviewModal({
                 type="button"
               >
                 <Download size={16} />
-                Download
+                下载
               </button>
             </div>
           </div>

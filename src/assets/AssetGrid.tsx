@@ -18,7 +18,7 @@ export function AssetGrid({
       <div className="grid min-h-72 place-items-center text-slate-400">
         <div className="flex items-center gap-3 text-sm">
           <Loader2 className="animate-spin text-sky-300" size={18} />
-          Loading cloud assets...
+          正在加载云端素材...
         </div>
       </div>
     );
@@ -27,7 +27,7 @@ export function AssetGrid({
   if (assets.length === 0) {
     return (
       <div className="grid min-h-72 place-items-center rounded border border-dashed border-white/10 bg-white/[0.025] text-sm text-slate-500">
-        No assets found.
+        暂无素材。
       </div>
     );
   }

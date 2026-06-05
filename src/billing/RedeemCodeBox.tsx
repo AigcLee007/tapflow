@@ -11,7 +11,7 @@ export function RedeemCodeBox({ onRedeemed }: { onRedeemed: () => Promise<void> 
 
   const submit = async () => {
     if (!code.trim()) {
-      setError("Enter a redeem code.");
+      setError("请输入兑换码。");
       return;
     }
     setLoading(true);
@@ -20,10 +20,10 @@ export function RedeemCodeBox({ onRedeemed }: { onRedeemed: () => Promise<void> 
     try {
       const result = await redeemBillingCode(code);
       setCode("");
-      setMessage(`Redeemed ${result.credits.toLocaleString()} pts.`);
+      setMessage(`已成功兑换 ${result.credits.toLocaleString()} 点。`);
       await onRedeemed();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Redeem failed.");
+      setError(err instanceof Error ? err.message : "兑换失败，请稍后重试。");
     } finally {
       setLoading(false);
     }
@@ -33,13 +33,13 @@ export function RedeemCodeBox({ onRedeemed }: { onRedeemed: () => Promise<void> 
     <section className="rounded border border-sky-400/20 bg-sky-400/10 p-4">
       <div className="flex items-center gap-2 text-sm font-semibold text-sky-100">
         <Ticket size={16} />
-        Redeem Code
+        兑换码
       </div>
       <div className="mt-3 flex flex-col gap-2 sm:flex-row">
         <input
           className="h-10 flex-1 rounded border border-white/10 bg-black/30 px-3 text-sm text-white outline-none focus:border-sky-300/60"
           onChange={(event) => setCode(event.target.value)}
-          placeholder="Enter code"
+          placeholder="输入兑换码"
           value={code}
         />
         <button
@@ -49,7 +49,7 @@ export function RedeemCodeBox({ onRedeemed }: { onRedeemed: () => Promise<void> 
           type="button"
         >
           {loading ? <Loader2 className="animate-spin" size={15} /> : <Ticket size={15} />}
-          Redeem
+          兑换
         </button>
       </div>
       {error && <div className="mt-2 text-xs text-red-300">{error}</div>}

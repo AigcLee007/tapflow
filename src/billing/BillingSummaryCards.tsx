@@ -3,7 +3,7 @@ import { CircleDollarSign, LockKeyhole, ReceiptText, TrendingDown } from "lucide
 
 import type { BillingSummary } from "./billingApi";
 
-const formatCredits = (value: number) => `${value.toLocaleString()} pts`;
+const formatCredits = (value: number) => `${value.toLocaleString()} 点`;
 
 export function BillingSummaryCards({ summary }: { summary: BillingSummary | null }) {
   const account = summary?.account;
@@ -12,27 +12,27 @@ export function BillingSummaryCards({ summary }: { summary: BillingSummary | nul
   const cards = [
     {
       icon: CircleDollarSign,
-      label: "Balance",
+      label: "余额",
       value: formatCredits(account?.balanceCents ?? 0),
-      hint: `Available ${formatCredits(available)}`,
+      hint: `可用 ${formatCredits(available)}`,
     },
     {
       icon: LockKeyhole,
-      label: "Reserved",
+      label: "已占用",
       value: formatCredits(account?.reservedCents ?? 0),
-      hint: "Held for running workflow jobs",
+      hint: "用于运行中任务的预占点数",
     },
     {
       icon: TrendingDown,
-      label: "This Month Usage",
+      label: "本月用量",
       value: formatCredits(summary?.usageTotals.totalBillableCents ?? 0),
-      hint: `${summary?.usageTotals.settledCount ?? 0} settled events`,
+      hint: `已结算 ${summary?.usageTotals.settledCount ?? 0} 次`,
     },
     {
       icon: ReceiptText,
-      label: "Ledger Activity",
+      label: "账单流水",
       value: formatCredits(summary?.ledgerTotals.settleCents ?? 0),
-      hint: `${formatCredits(summary?.ledgerTotals.refundCents ?? 0)} refunded`,
+      hint: `已退款 ${formatCredits(summary?.ledgerTotals.refundCents ?? 0)}`,
     },
   ];
 
