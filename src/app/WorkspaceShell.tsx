@@ -1,10 +1,10 @@
 import React from "react";
 import {
-  Shield,
   Box,
   CreditCard,
   FolderKanban,
   LogOut,
+  Shield,
   UserRound,
   Workflow,
 } from "lucide-react";
@@ -108,9 +108,12 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
         >
           {shellNavItems.map((item) => {
             const Icon = item.icon;
+            const active = currentPath === item.path || currentPath.startsWith(`${item.path}/`);
             return (
               <button
-                className="flex h-12 flex-col items-center justify-center gap-1 text-[11px] text-slate-400"
+                className={`flex h-12 flex-col items-center justify-center gap-1 text-[11px] ${
+                  active ? "text-white" : "text-slate-400"
+                }`}
                 key={item.path}
                 onClick={() => navigate(item.path)}
                 type="button"

@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
+  createAdminCredential,
+  createAdminModel,
+  createAdminProvider,
+  createAdminRoute,
   listAdminPricing,
   listAdminRoutes,
   rotateAdminCredential,
@@ -105,6 +109,80 @@ describe("v2AiGatewayAdminApi", () => {
       expect.objectContaining({
         method: "PATCH",
       }),
+    );
+  });
+
+  test("creates provider, model, route, and credential through admin v2 paths", async () => {
+    const fetchMock = vi.fn(async (input: string, init?: RequestInit) => {
+      const body = init?.body ? JSON.parse(String(init.body)) : {};
+      if (input.endsWith("/admin/ai/providers")) {
+        return new Response(JSON.stringify({ id: "provider-1", ...body }), {
+          headers: { "content-type": "application/json" },
+          status: 201,
+        });
+      }
+      if (input.endsWith("/admin/ai/models")) {
+        return new Response(JSON.stringify({ id: "model-1", ...body }), {
+          headers: { "content-type": "application/json" },
+          status: 201,
+        });
+      }
+      if (input.endsWith("/admin/ai/routes")) {
+        return new Response(JSON.stringify({ id: "route-1", ...body }), {
+          headers: { "content-type": "application/json" },
+          status: 201,
+        });
+      }
+      return new Response(JSON.stringify({ id: "credential-1", ...body, maskedSecret: "sk-***" }), {
+        headers: { "content-type": "application/json" },
+        status: 201,
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createAdminProvider({
+      defaultBaseUrl: "https://api.example.com/v1",
+      key: "example",
+      kind: "openai-compatible",
+      name: "Example",
+    });
+    await createAdminModel({
+      displayName: "Example Text",
+      modality: "text",
+      modelKey: "example-text",
+      providerId: "provider-1",
+    });
+    await createAdminRoute({
+      modality: "text",
+      modelId: "model-1",
+      providerId: "provider-1",
+      routeKey: "text.example",
+    });
+    await createAdminCredential({
+      name: "Example Key",
+      providerId: "provider-1",
+      secret: "sk-test",
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/v2/admin/ai/providers",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/v2/admin/ai/models",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "/api/v2/admin/ai/routes",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      "/api/v2/admin/credentials",
+      expect.objectContaining({ method: "POST" }),
     );
   });
 });

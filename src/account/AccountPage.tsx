@@ -1,5 +1,5 @@
 import React from "react";
-import { Loader2, LogOut, RefreshCw } from "lucide-react";
+import { Loader2, LogOut, RefreshCw, Settings2 } from "lucide-react";
 
 import { useAuth } from "../auth/useAuth";
 import { ACCOUNT_PROVIDER_SETTINGS_ROUTE } from "../app/routes";
@@ -29,6 +29,7 @@ function displayTenantName(name?: string | null) {
 function statusLabel(status?: string | null) {
   if (status === "active") return "正常";
   if (status === "disabled") return "已停用";
+  if (status === "inactive") return "未启用";
   return status || "-";
 }
 
@@ -57,7 +58,7 @@ export function AccountPage() {
           <div className="text-xs uppercase tracking-[0.24em] text-sky-300">账号</div>
           <h1 className="mt-2 text-2xl font-semibold text-white">账号中心</h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-            这里显示当前登录身份、所属工作区、角色权限和退出登录等账号信息。
+            查看当前登录身份、所属工作区、角色权限和后台模型管理入口。
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -69,7 +70,8 @@ export function AccountPage() {
               }}
               type="button"
             >
-              服务商设置
+              <Settings2 size={15} />
+              模型与线路管理
             </button>
           ) : null}
           <button
