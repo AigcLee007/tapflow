@@ -64,7 +64,7 @@ export function WorkspacePage() {
 
       {loading ? (
         <div className="grid min-h-64 place-items-center rounded-lg border border-white/10 bg-white/[0.04] text-sm text-slate-400">
-          Loading projects...
+          正在加载项目...
         </div>
       ) : (
         <ProjectGrid

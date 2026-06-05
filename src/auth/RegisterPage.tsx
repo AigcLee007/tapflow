@@ -36,7 +36,7 @@ export function RegisterPage() {
       });
       navigate(WORKSPACE_ROUTE);
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Registration failed");
+      setError(submitError instanceof Error ? submitError.message : "注册失败，请稍后重试。");
     } finally {
       setSubmitting(false);
     }
@@ -49,10 +49,10 @@ export function RegisterPage() {
         className="w-full max-w-md rounded border border-white/10 bg-white/[0.04] p-6 shadow-2xl"
       >
         <div className="mb-6">
-          <div className="text-xs uppercase tracking-[0.24em] text-emerald-300">AI Flow Workspace</div>
-          <h1 className="mt-3 text-2xl font-semibold">Register</h1>
+          <div className="text-xs uppercase tracking-[0.24em] text-emerald-300">AI Flow 工作区</div>
+          <h1 className="mt-3 text-2xl font-semibold">注册</h1>
           <p className="mt-2 text-sm leading-6 text-slate-400">
-            Create a v2 account and tenant-aware workspace.
+            创建账号并开通你的专属工作区。
           </p>
         </div>
 
@@ -63,7 +63,7 @@ export function RegisterPage() {
         )}
 
         <label className="mb-3 block text-sm">
-          <span className="mb-1 block text-slate-300">Display name</span>
+          <span className="mb-1 block text-slate-300">显示名称</span>
           <input
             autoComplete="name"
             className="h-11 w-full rounded border border-white/10 bg-black/30 px-3 text-slate-100 outline-none focus:border-emerald-400"
@@ -73,7 +73,7 @@ export function RegisterPage() {
         </label>
 
         <label className="mb-3 block text-sm">
-          <span className="mb-1 block text-slate-300">Email</span>
+          <span className="mb-1 block text-slate-300">邮箱</span>
           <input
             autoComplete="email"
             className="h-11 w-full rounded border border-white/10 bg-black/30 px-3 text-slate-100 outline-none focus:border-emerald-400"
@@ -85,7 +85,7 @@ export function RegisterPage() {
         </label>
 
         <label className="mb-3 block text-sm">
-          <span className="mb-1 block text-slate-300">Password</span>
+          <span className="mb-1 block text-slate-300">密码</span>
           <input
             autoComplete="new-password"
             className="h-11 w-full rounded border border-white/10 bg-black/30 px-3 text-slate-100 outline-none focus:border-emerald-400"
@@ -98,11 +98,11 @@ export function RegisterPage() {
         </label>
 
         <label className="mb-5 block text-sm">
-          <span className="mb-1 block text-slate-300">Workspace name</span>
+          <span className="mb-1 block text-slate-300">工作区名称</span>
           <input
             className="h-11 w-full rounded border border-white/10 bg-black/30 px-3 text-slate-100 outline-none focus:border-emerald-400"
             onChange={(event) => setTenantName(event.target.value)}
-            placeholder="Optional"
+            placeholder="选填"
             value={tenantName}
           />
         </label>
@@ -112,7 +112,7 @@ export function RegisterPage() {
           disabled={submitting}
           type="submit"
         >
-          {submitting ? "Creating account..." : "Create account"}
+          {submitting ? "创建中..." : "创建账号"}
         </button>
 
         <button
@@ -120,7 +120,7 @@ export function RegisterPage() {
           onClick={() => navigate(LOGIN_ROUTE)}
           type="button"
         >
-          Back to login
+          返回登录
         </button>
       </form>
     </main>

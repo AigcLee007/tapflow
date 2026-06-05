@@ -33,7 +33,7 @@ export function ProjectToolbar({
         <input
           className="h-11 w-full rounded-lg border border-white/10 bg-black/25 pl-10 pr-3 text-sm text-white outline-none focus:border-sky-400"
           onChange={(event) => onQueryChange(event.target.value)}
-          placeholder="Search projects"
+          placeholder="搜索项目"
           value={query}
         />
       </label>
@@ -49,7 +49,7 @@ export function ProjectToolbar({
           type="button"
         >
           <SlidersHorizontal size={16} />
-          All
+          全部
         </button>
 
         <select
@@ -59,16 +59,16 @@ export function ProjectToolbar({
           }
           value={sortMode}
         >
-          <option value="updated_desc">Updated</option>
-          <option value="created_desc">Created</option>
-          <option value="name_asc">Name</option>
+          <option value="updated_desc">最近更新</option>
+          <option value="created_desc">最近创建</option>
+          <option value="name_asc">按名称</option>
         </select>
 
         <div className="inline-flex rounded-lg border border-white/10 bg-black/20 p-1">
-          <IconButton active={viewMode === "grid"} label="Grid" onClick={() => onViewModeChange("grid")}>
+          <IconButton active={viewMode === "grid"} label="网格视图" onClick={() => onViewModeChange("grid")}>
             <Grid2X2 size={16} />
           </IconButton>
-          <IconButton active={viewMode === "list"} label="List" onClick={() => onViewModeChange("list")}>
+          <IconButton active={viewMode === "list"} label="列表视图" onClick={() => onViewModeChange("list")}>
             <List size={16} />
           </IconButton>
         </div>
@@ -77,7 +77,7 @@ export function ProjectToolbar({
           className="grid h-11 w-11 place-items-center rounded-lg border border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/10 hover:text-white disabled:opacity-50"
           disabled={disabled}
           onClick={onRefresh}
-          title="Refresh"
+          title="刷新"
           type="button"
         >
           <RefreshCw size={16} />

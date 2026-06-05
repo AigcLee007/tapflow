@@ -31,7 +31,7 @@ export function CreateProjectCard({
       <button
         className={`flex rounded-lg border border-dashed border-white/20 bg-white/[0.03] p-5 text-slate-300 transition hover:border-sky-300/50 hover:bg-sky-400/10 hover:text-white ${
           viewMode === "list"
-            ? "min-h-0 flex-row items-center justify-start"
+            ? "min-h-0 flex-row items-center justify-start gap-3"
             : "min-h-64 flex-col items-center justify-center gap-3"
         }`}
         onClick={() => setExpanded(true)}
@@ -40,7 +40,7 @@ export function CreateProjectCard({
         <span className="grid h-12 w-12 place-items-center rounded-lg bg-sky-400 text-slate-950">
           <Plus size={24} />
         </span>
-        <span className="text-sm font-semibold">New project</span>
+        <span className="text-sm font-semibold">新建项目</span>
       </button>
     );
   }
@@ -52,20 +52,20 @@ export function CreateProjectCard({
       }`}
       onSubmit={submit}
     >
-      <div className="text-sm font-semibold text-white">New project</div>
+      <div className="text-sm font-semibold text-white">新建项目</div>
       <input
         autoFocus
         className="mt-4 h-10 rounded-md border border-white/10 bg-black/30 px-3 text-sm text-white outline-none focus:border-sky-300"
         disabled={creating}
         onChange={(event) => setName(event.target.value)}
-        placeholder="Project name"
+        placeholder="项目名称"
         value={name}
       />
       <textarea
         className="mt-3 min-h-20 flex-1 resize-none rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none focus:border-sky-300"
         disabled={creating}
         onChange={(event) => setDescription(event.target.value)}
-        placeholder="Description"
+        placeholder="项目描述"
         value={description}
       />
       <div className="mt-4 flex gap-2">
@@ -75,7 +75,7 @@ export function CreateProjectCard({
           type="submit"
         >
           {creating ? <Loader2 className="animate-spin" size={15} /> : <Plus size={15} />}
-          Create
+          创建
         </button>
         <button
           className="h-10 rounded-md border border-white/10 px-3 text-sm text-slate-300 hover:bg-white/10"
@@ -83,7 +83,7 @@ export function CreateProjectCard({
           onClick={() => setExpanded(false)}
           type="button"
         >
-          Cancel
+          取消
         </button>
       </div>
     </form>

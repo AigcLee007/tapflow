@@ -11,10 +11,10 @@ function formatRelativeTime(input: string) {
   const minute = 60 * 1000;
   const hour = 60 * minute;
   const day = 24 * hour;
-  if (diffMs < minute) return "Just now";
-  if (diffMs < hour) return `${Math.floor(diffMs / minute)} min ago`;
-  if (diffMs < day) return `${Math.floor(diffMs / hour)} hr ago`;
-  return `${Math.floor(diffMs / day)} days ago`;
+  if (diffMs < minute) return "刚刚";
+  if (diffMs < hour) return `${Math.floor(diffMs / minute)} 分钟前`;
+  if (diffMs < day) return `${Math.floor(diffMs / hour)} 小时前`;
+  return `${Math.floor(diffMs / day)} 天前`;
 }
 
 export function ProjectCard({
@@ -55,16 +55,12 @@ export function ProjectCard({
     >
       <div className="relative aspect-[16/10] overflow-hidden bg-[linear-gradient(135deg,#0ea5e9_0%,#22c55e_48%,#111827_100%)] p-4">
         {cover.url ? (
-          <img
-            alt=""
-            className="absolute inset-0 h-full w-full object-cover"
-            src={cover.url}
-          />
+          <img alt="" className="absolute inset-0 h-full w-full object-cover" src={cover.url} />
         ) : cover.failed ? (
           <div className="absolute inset-0 grid place-items-center bg-[linear-gradient(135deg,#111827_0%,#0f172a_42%,#1e293b_100%)] text-slate-400">
             <div className="flex flex-col items-center gap-2 text-xs">
               <ImageOff size={20} />
-              Cover unavailable
+              封面暂不可用
             </div>
           </div>
         ) : null}
@@ -77,7 +73,7 @@ export function ProjectCard({
       <div className="p-4">
         <div className="truncate text-sm font-semibold text-white">{project.name}</div>
         <div className="mt-2 min-h-10 text-xs leading-5 text-slate-500">
-          {project.description || "No description"}
+          {project.description || "暂无描述"}
         </div>
         <div className="mt-4 flex items-center justify-between gap-3 text-xs text-slate-400">
           <span className="inline-flex items-center gap-1">

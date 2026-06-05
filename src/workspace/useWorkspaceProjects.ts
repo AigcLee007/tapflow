@@ -58,7 +58,7 @@ export function useWorkspaceProjects() {
         return;
       }
       setProjects([]);
-      setError(loadError instanceof Error ? loadError.message : "Unable to load projects");
+      setError(loadError instanceof Error ? loadError.message : "项目加载失败，请稍后重试。");
     } finally {
       if (requestSequenceRef.current === requestId) {
         setLoading(false);
@@ -73,7 +73,7 @@ export function useWorkspaceProjects() {
   const createProject = useCallback(
     async (input: { description?: string | null; name: string }) => {
       if (!authenticated || !tenant || !user) {
-        throw new Error("Sign in again to create a project.");
+        throw new Error("请先重新登录后再创建项目。");
       }
       setCreating(true);
       setError(null);
@@ -82,7 +82,7 @@ export function useWorkspaceProjects() {
         setProjects((current) => [result.project, ...current]);
         return result;
       } catch (createError) {
-        setError(createError instanceof Error ? createError.message : "Unable to create project");
+        setError(createError instanceof Error ? createError.message : "创建项目失败，请稍后重试。");
         throw createError;
       } finally {
         setCreating(false);

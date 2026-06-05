@@ -24,17 +24,17 @@ function navigate(path: string) {
 }
 
 const navItems = [
-  { icon: FolderKanban, label: "Workspace", path: WORKSPACE_ROUTE },
-  { icon: Box, label: "Assets", path: ASSETS_ROUTE },
-  { icon: CreditCard, label: "Billing", path: BILLING_ROUTE },
-  { icon: UserRound, label: "Account", path: ACCOUNT_ROUTE },
+  { icon: FolderKanban, label: "工作区", path: WORKSPACE_ROUTE },
+  { icon: Box, label: "素材库", path: ASSETS_ROUTE },
+  { icon: CreditCard, label: "计费", path: BILLING_ROUTE },
+  { icon: UserRound, label: "账号", path: ACCOUNT_ROUTE },
 ];
 
 export function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const { logout, permissions, tenant, user } = useAuth();
   const currentPath = typeof window === "undefined" ? WORKSPACE_ROUTE : window.location.pathname;
   const shellNavItems = permissions.includes("admin:system")
-    ? [...navItems, { icon: Shield, label: "Admin", path: ADMIN_ROUTE }]
+    ? [...navItems, { icon: Shield, label: "管理后台", path: ADMIN_ROUTE }]
     : navItems;
 
   return (
@@ -52,7 +52,7 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
             <span className="min-w-0">
               <span className="block truncate text-sm font-semibold">AI Flow</span>
               <span className="block truncate text-xs text-slate-500">
-                {tenant?.name || "Workspace"}
+                {tenant?.name || "工作区"}
               </span>
             </span>
           </button>
@@ -83,12 +83,12 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
               <div className="truncate text-xs text-slate-500">{user?.email}</div>
             </div>
             <button
-              aria-label="Log out"
+              aria-label="退出登录"
               className="grid h-10 w-10 place-items-center rounded border border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/10 hover:text-white"
               onClick={() => {
                 void logout().finally(() => navigate("/login"));
               }}
-              title="Log out"
+              title="退出登录"
               type="button"
             >
               <LogOut size={17} />

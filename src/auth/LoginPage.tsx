@@ -43,7 +43,7 @@ export function LoginPage() {
       });
       navigate(getReturnTo());
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Login failed");
+      setError(submitError instanceof Error ? submitError.message : "登录失败，请稍后重试。");
     } finally {
       setSubmitting(false);
     }
@@ -56,10 +56,10 @@ export function LoginPage() {
         className="w-full max-w-md rounded border border-white/10 bg-white/[0.04] p-6 shadow-2xl"
       >
         <div className="mb-6">
-          <div className="text-xs uppercase tracking-[0.24em] text-sky-300">AI Flow Workspace</div>
-          <h1 className="mt-3 text-2xl font-semibold">Login</h1>
+          <div className="text-xs uppercase tracking-[0.24em] text-sky-300">AI Flow 工作区</div>
+          <h1 className="mt-3 text-2xl font-semibold">登录</h1>
           <p className="mt-2 text-sm leading-6 text-slate-400">
-            Sign in with the v2 account system to enter the workspace shell.
+            使用你的账号登录后进入 AI Flow 工作区。
           </p>
         </div>
 
@@ -70,7 +70,7 @@ export function LoginPage() {
         )}
 
         <label className="mb-3 block text-sm">
-          <span className="mb-1 block text-slate-300">Email</span>
+          <span className="mb-1 block text-slate-300">邮箱</span>
           <input
             autoComplete="email"
             className="h-11 w-full rounded border border-white/10 bg-black/30 px-3 text-slate-100 outline-none focus:border-sky-400"
@@ -82,7 +82,7 @@ export function LoginPage() {
         </label>
 
         <label className="mb-3 block text-sm">
-          <span className="mb-1 block text-slate-300">Password</span>
+          <span className="mb-1 block text-slate-300">密码</span>
           <input
             autoComplete="current-password"
             className="h-11 w-full rounded border border-white/10 bg-black/30 px-3 text-slate-100 outline-none focus:border-sky-400"
@@ -95,11 +95,11 @@ export function LoginPage() {
         </label>
 
         <label className="mb-5 block text-sm">
-          <span className="mb-1 block text-slate-300">Tenant ID</span>
+          <span className="mb-1 block text-slate-300">租户 ID</span>
           <input
             className="h-11 w-full rounded border border-white/10 bg-black/30 px-3 text-slate-100 outline-none focus:border-sky-400"
             onChange={(event) => setTenantId(event.target.value)}
-            placeholder="Optional"
+            placeholder="选填"
             value={tenantId}
           />
         </label>
@@ -109,7 +109,7 @@ export function LoginPage() {
           disabled={submitting}
           type="submit"
         >
-          {submitting ? "Signing in..." : "Sign in"}
+          {submitting ? "登录中..." : "登录"}
         </button>
 
         <button
@@ -117,7 +117,7 @@ export function LoginPage() {
           onClick={() => navigate(REGISTER_ROUTE)}
           type="button"
         >
-          Create an account
+          创建账号
         </button>
       </form>
     </main>

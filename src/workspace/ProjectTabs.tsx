@@ -11,8 +11,8 @@ export function ProjectTabs({
 }) {
   return (
     <div className="inline-flex rounded-lg border border-white/10 bg-black/20 p-1">
-      <Tab active={scope === "personal"} label="Personal" onClick={() => onChange("personal")} />
-      <Tab active={scope === "team"} label="Team" onClick={() => onChange("team")} />
+      <Tab active={scope === "personal"} label="我的" onClick={() => onChange("personal")} />
+      <Tab active={scope === "team"} label="团队" onClick={() => onChange("team")} />
     </div>
   );
 }

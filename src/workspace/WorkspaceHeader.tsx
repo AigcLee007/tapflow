@@ -6,20 +6,16 @@ export function WorkspaceHeader({ projects }: { projects: WorkspaceProject[] }) 
   return (
     <header className="flex flex-col gap-4 border-b border-white/10 pb-5 md:flex-row md:items-end md:justify-between">
       <div>
-        <div className="text-xs uppercase tracking-[0.24em] text-sky-300">Workspace</div>
-        <h1 className="mt-2 text-3xl font-semibold text-white">Projects</h1>
+        <div className="text-xs uppercase tracking-[0.24em] text-sky-300">工作区</div>
+        <h1 className="mt-2 text-3xl font-semibold text-white">项目</h1>
       </div>
       <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-3">
-        <Metric label="Projects" value={projects.length} />
+        <Metric label="项目数" value={projects.length} />
         <Metric
-          label="Updated"
-          value={
-            projects[0]?.updatedAt
-              ? new Date(projects[0].updatedAt).toLocaleDateString()
-              : "-"
-          }
+          label="最近更新"
+          value={projects[0]?.updatedAt ? new Date(projects[0].updatedAt).toLocaleDateString("zh-CN") : "-"}
         />
-        <Metric label="Scope" value="Tenant" />
+        <Metric label="范围" value="当前工作区" />
       </div>
     </header>
   );
