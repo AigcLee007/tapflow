@@ -1,0 +1,77 @@
+import type { AiPluginManifest } from "./plugin-manifest.js";
+import { validateAiPluginManifest } from "./plugin-manifest.js";
+import { mockLocalDevManifest } from "./manifests/mock-local-dev.js";
+import { openAiGptImage2Manifest } from "./manifests/openai-gpt-image-2.js";
+import { visionaryNanoBananaManifest } from "./manifests/visionary-nano-banana.js";
+
+export const BUILTIN_AI_PLUGIN_MANIFESTS = [
+  visionaryNanoBananaManifest,
+  openAiGptImage2Manifest,
+  mockLocalDevManifest,
+] as const satisfies readonly AiPluginManifest[];
+
+export class AiPluginRegistryError extends Error {
+  readonly code: string;
+
+  constructor(code: string, message: string) {
+    super(message);
+    this.code = code;
+    this.name = "AiPluginRegistryError";
+  }
+}
+
+export class AiPluginRegistry {
+  private readonly manifests: Map<string, AiPluginManifest>;
+
+  constructor(manifests: readonly AiPluginManifest[] = BUILTIN_AI_PLUGIN_MANIFESTS) {
+    this.manifests = new Map();
+
+    for (const manifest of manifests) {
+      const issues = validateAiPluginManifest(manifest);
+      if (issues.length > 0) {
+        throw new AiPluginRegistryError(
+          "PLUGIN_MANIFEST_INVALID",
+          `${manifest.packageKey || "(unknown package)"} is invalid: ${issues
+            .map((issue) => `${issue.code}: ${issue.message}`)
+            .join("; ")}`,
+        );
+      }
+
+      if (this.manifests.has(manifest.packageKey)) {
+        throw new AiPluginRegistryError(
+          "PLUGIN_PACKAGE_DUPLICATE",
+          `Duplicate plugin package key: ${manifest.packageKey}`,
+        );
+      }
+
+      this.manifests.set(manifest.packageKey, manifest);
+    }
+  }
+
+  get(packageKey: string): AiPluginManifest | null {
+    return this.manifests.get(packageKey) ?? null;
+  }
+
+  list(options?: {
+    modality?: AiPluginManifest["modality"];
+    providerKind?: string;
+  }): AiPluginManifest[] {
+    return Array.from(this.manifests.values())
+      .filter((manifest) => !options?.modality || manifest.modality === options.modality)
+      .filter((manifest) => !options?.providerKind || manifest.provider.kind === options.providerKind)
+      .sort((left, right) => left.displayName.localeCompare(right.displayName));
+  }
+
+  require(packageKey: string): AiPluginManifest {
+    const manifest = this.get(packageKey);
+    if (!manifest) {
+      throw new AiPluginRegistryError(
+        "PLUGIN_PACKAGE_NOT_FOUND",
+        `Plugin package not found: ${packageKey}`,
+      );
+    }
+    return manifest;
+  }
+}
+
+export const builtinAiPluginRegistry = new AiPluginRegistry();

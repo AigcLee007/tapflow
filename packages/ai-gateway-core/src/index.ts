@@ -18,6 +18,25 @@ export { OpenAiCompatibleTextAdapter } from "./openai-compatible-text-adapter.js
 export { VisionaryNanoBananaAdapter } from "./visionary-nano-banana-adapter.js";
 export { MockProviderAdapter } from "./mock-provider-adapter.js";
 export type { ProviderAdapter } from "./provider-adapter.js";
+export {
+  AiPluginRegistry,
+  AiPluginRegistryError,
+  BUILTIN_AI_PLUGIN_MANIFESTS,
+  builtinAiPluginRegistry,
+} from "./plugins/registry.js";
+export type {
+  AiPluginCredentialField,
+  AiPluginCredentialManifest,
+  AiPluginManifest,
+  AiPluginManifestValidationIssue,
+  AiPluginModality,
+  AiPluginModelManifest,
+  AiPluginPricingManifest,
+  AiPluginRouteManifest,
+  AiPluginTestManifest,
+  AiPluginUiField,
+} from "./plugins/plugin-manifest.js";
+export { validateAiPluginManifest } from "./plugins/plugin-manifest.js";
 export { redactString, redactValue } from "./redaction.js";
 export { RouteResolver } from "./route-resolver.js";
 export type {
