@@ -1779,11 +1779,25 @@ const IMAGE_RUNTIME_ROUTE_BY_MODEL_ID: Record<string, string> = {
   'nano-banana': 'image.nano-banana-pro',
   'nano-banana-pro': 'image.nano-banana-pro',
   'nano-banana-pro-fast': 'image.nano-banana-pro-fast',
-  'gpt-image-2': 'image.openai',
+  'gpt-image-2': 'image.gpt-image-2',
+};
+const LEGACY_IMAGE_RUNTIME_ROUTE_BY_MODEL_ID: Record<string, string[]> = {
+  'gpt-image-2': ['image.openai'],
 };
 const normalizeImageModelId = (modelId: string) =>
   modelId === 'nano-banana' ? 'nano-banana-pro' : modelId;
 const normalizeRuntimeModelKey = (value?: string | null) => String(value || '').trim().toLowerCase();
+const normalizeImageRuntimeRouteKey = (modelId: string, routeKey?: string | null) => {
+  const normalizedModelId = normalizeImageModelId(modelId);
+  const normalizedRouteKey = String(routeKey || '').trim();
+  if (
+    normalizedRouteKey &&
+    LEGACY_IMAGE_RUNTIME_ROUTE_BY_MODEL_ID[normalizedModelId]?.includes(normalizedRouteKey)
+  ) {
+    return IMAGE_RUNTIME_ROUTE_BY_MODEL_ID[normalizedModelId] || normalizedRouteKey;
+  }
+  return normalizedRouteKey;
+};
 const getRuntimeModelKeysForImageModel = (modelId: string): Set<string> => {
   const normalizedModelId = normalizeImageModelId(modelId);
   const requestModel = getImageModelRequestName(normalizedModelId);
@@ -3431,15 +3445,16 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const fallbackModelRuntimeRoutes = getRuntimeRoutesForImageModel(currentModelId, runtimeRoutes);
   const modelRuntimeRoutes = useModelScopedImageRoutes(showNodeEditor, currentModelId, fallbackModelRuntimeRoutes);
   const preferredRuntimeRouteKey = selectedCatalogModel?.defaultRouteKey || IMAGE_RUNTIME_ROUTE_BY_MODEL_ID[currentModelId] || '';
+  const normalizedCurrentRouteKey = normalizeImageRuntimeRouteKey(currentModelId, d.routeKey);
   const preferredRuntimeRoute = preferredRuntimeRouteKey
     ? modelRuntimeRoutes.find((route) => route.routeKey === preferredRuntimeRouteKey)
     : null;
   const selectedModelRuntimeRoute =
-    modelRuntimeRoutes.find((route) => route.routeKey === d.routeKey)
+    modelRuntimeRoutes.find((route) => route.routeKey === normalizedCurrentRouteKey)
     || preferredRuntimeRoute
     || modelRuntimeRoutes[0]
     || null;
-  const currentRouteKey = String(d.routeKey || selectedModelRuntimeRoute?.routeKey || '');
+  const currentRouteKey = String(normalizedCurrentRouteKey || selectedModelRuntimeRoute?.routeKey || '');
 
   const catalogSizeOptions = getSizeOptionsFromCatalogModel(selectedCatalogModel);
   const sizeOptions = catalogSizeOptions.length ? catalogSizeOptions : ['1k', '2k', '4k'];
@@ -3684,12 +3699,12 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   );
 
   useEffect(() => {
-    if (d.modelId === currentModelId && d.routeKey === selectedModelRuntimeRoute?.routeKey) return;
+    if (d.modelId === currentModelId && normalizedCurrentRouteKey === selectedModelRuntimeRoute?.routeKey) return;
     updateNodeData(id, {
       modelId: currentModelId,
       routeKey: selectedModelRuntimeRoute?.routeKey,
     });
-  }, [currentModelId, d.modelId, d.routeKey, id, selectedModelRuntimeRoute?.routeKey, updateNodeData]);
+  }, [currentModelId, d.modelId, id, normalizedCurrentRouteKey, selectedModelRuntimeRoute?.routeKey, updateNodeData]);
 
   useEffect(() => {
     if (!selectedRoute) return;

@@ -589,6 +589,142 @@ describe('v2WorkflowRunner', () => {
     expect(updatedNode?.data.thumbnailUrl).toBeUndefined();
   });
 
+  test('terminal stream event finalizes the run snapshot and applies generated assets', async () => {
+    useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, { title: 'Stream Image' });
+    const nodeId = useFlowCanvasStore.getState().nodes[0]?.id as string;
+    let onEvent: ((event: {
+      createdAt: string;
+      eventType: string;
+      id: string;
+      nodeRunId: string | null;
+      payload: Record<string, unknown>;
+      sequence: number;
+      tenantId: string;
+      workflowRunId: string;
+    }) => void) | null = null;
+
+    createWorkflowRunMock.mockResolvedValue({
+      runId: 'run-stream-final',
+      status: 'pending',
+    });
+    getAssetDownloadUrlMock.mockResolvedValue({
+      expiresAt: '2026-05-17T00:15:00.000Z',
+      method: 'GET',
+      url: 'https://example.test/stream-final',
+    });
+    getWorkflowRunMock
+      .mockResolvedValueOnce({
+        nodeRuns: [
+          {
+            attempt: 1,
+            costJson: {},
+            createdAt: '2026-05-17T00:00:00.000Z',
+            errorJson: null,
+            finishedAt: null,
+            id: 'node-run-stream-final',
+            inputJson: {},
+            maxAttempts: 3,
+            nodeId,
+            nodeType: 'image.generate',
+            outputJson: null,
+            providerTaskId: null,
+            startedAt: null,
+            status: 'running',
+            tenantId: 'tenant-1',
+            updatedAt: '2026-05-17T00:00:00.000Z',
+            workflowRunId: 'run-stream-final',
+          },
+        ],
+        workflowRun: {
+          canceledAt: null,
+          createdAt: '2026-05-17T00:00:00.000Z',
+          createdBy: 'user-1',
+          errorJson: null,
+          finishedAt: null,
+          flowId: '11111111-1111-1111-1111-111111111111',
+          flowVersionId: 'version-1',
+          id: 'run-stream-final',
+          idempotencyKey: null,
+          inputJson: { runMode: 'target_node', targetNodeId: nodeId },
+          outputJson: null,
+          startedAt: null,
+          status: 'running',
+          tenantId: 'tenant-1',
+          updatedAt: '2026-05-17T00:00:00.000Z',
+        },
+      })
+      .mockResolvedValueOnce({
+        nodeRuns: [
+          {
+            attempt: 1,
+            costJson: {},
+            createdAt: '2026-05-17T00:00:00.000Z',
+            errorJson: null,
+            finishedAt: '2026-05-17T00:00:02.000Z',
+            id: 'node-run-stream-final',
+            inputJson: {},
+            maxAttempts: 3,
+            nodeId,
+            nodeType: 'image.generate',
+            outputJson: {
+              assets: [{ assetId: 'asset-stream-final', kind: 'image', mimeType: 'image/png' }],
+            },
+            providerTaskId: null,
+            startedAt: null,
+            status: 'succeeded',
+            tenantId: 'tenant-1',
+            updatedAt: '2026-05-17T00:00:02.000Z',
+            workflowRunId: 'run-stream-final',
+          },
+        ],
+        workflowRun: {
+          canceledAt: null,
+          createdAt: '2026-05-17T00:00:00.000Z',
+          createdBy: 'user-1',
+          errorJson: null,
+          finishedAt: '2026-05-17T00:00:02.000Z',
+          flowId: '11111111-1111-1111-1111-111111111111',
+          flowVersionId: 'version-1',
+          id: 'run-stream-final',
+          idempotencyKey: null,
+          inputJson: { runMode: 'target_node', targetNodeId: nodeId },
+          outputJson: null,
+          startedAt: null,
+          status: 'succeeded',
+          tenantId: 'tenant-1',
+          updatedAt: '2026-05-17T00:00:02.000Z',
+        },
+      });
+    streamWorkflowRunMock.mockImplementation((_runId, options) => {
+      onEvent = options.onEvent;
+      return { close: vi.fn() };
+    });
+
+    await runBackendWorkflow({ runMode: 'target_node', targetNodeId: nodeId });
+    onEvent?.({
+      createdAt: '2026-05-17T00:00:02.000Z',
+      eventType: 'workflow.run.succeeded',
+      id: 'event-final',
+      nodeRunId: null,
+      payload: { status: 'succeeded' },
+      sequence: 10,
+      tenantId: 'tenant-1',
+      workflowRunId: 'run-stream-final',
+    });
+    await vi.waitFor(() => {
+      expect(useFlowCanvasStore.getState().nodes.find((node) => node.id === nodeId)?.data.assetId)
+        .toBe('asset-stream-final');
+    });
+
+    expect(getWorkflowRunMock).toHaveBeenCalledTimes(2);
+    const updatedNode = useFlowCanvasStore.getState().nodes.find((node) => node.id === nodeId);
+    expect(updatedNode?.data).toMatchObject({
+      assetId: 'asset-stream-final',
+      generationStatus: 'done',
+      status: 'success',
+    });
+  });
+
   test('target-node snapshots do not overwrite completed assets on other nodes', async () => {
     useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, {
       title: 'Pig',

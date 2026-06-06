@@ -25,6 +25,7 @@ const RUNNER_ENABLED = String(import.meta.env.VITE_USE_V2_WORKFLOW_RUNNER ?? 'tr
 
 const activeStreamsByRunId = new Map<string, WorkflowRunStreamHandle>();
 const disposedRunIds = new Set<string>();
+const finalizingRunIds = new Set<string>();
 const optimisticCreditReservationsByNodeId = new Map<string, number>();
 let creditPreflightQueue: Promise<void> = Promise.resolve();
 let runtimeRoutesCache: Promise<V2RuntimeRouteItem[]> | null = null;
@@ -568,18 +569,37 @@ function applyRunEvent(event: V2WorkflowRunEventView): void {
       runStatus: 'succeeded',
     });
   }
+
+  if (
+    event.workflowRunId &&
+    (
+      event.eventType === 'workflow.run.failed' ||
+      event.eventType === 'workflow.run.canceled' ||
+      event.eventType === 'workflow.run.succeeded'
+    )
+  ) {
+    void finalizeRun(event.workflowRunId);
+  }
 }
 
 async function finalizeRun(runId: string): Promise<void> {
   if (disposedRunIds.has(runId)) {
     return;
   }
-  const snapshot = await getWorkflowRun(runId);
-  if (disposedRunIds.has(runId)) {
+  if (finalizingRunIds.has(runId)) {
     return;
   }
-  await applyWorkflowRunSnapshot(snapshot);
-  activeStreamsByRunId.delete(runId);
+  finalizingRunIds.add(runId);
+  try {
+    const snapshot = await getWorkflowRun(runId);
+    if (disposedRunIds.has(runId)) {
+      return;
+    }
+    await applyWorkflowRunSnapshot(snapshot);
+    activeStreamsByRunId.delete(runId);
+  } finally {
+    finalizingRunIds.delete(runId);
+  }
 }
 
 function buildRunLaunchError(message: string): Error {
@@ -751,4 +771,5 @@ export function resetCreditPreflightStateForTests(): void {
   creditPreflightQueue = Promise.resolve();
   runtimeRoutesCache = null;
   billingPricingCache = null;
+  finalizingRunIds.clear();
 }
