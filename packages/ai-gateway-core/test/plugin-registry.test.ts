@@ -56,6 +56,39 @@ describe("AI plugin registry", () => {
     );
   });
 
+  test("returns GPT-Image-2 plugin manifest for SiphonLab line one", () => {
+    const manifest = builtinAiPluginRegistry.require("openai-compatible.gpt-image-2");
+
+    expect(manifest.displayName).toBe("GPT-Image-2");
+    expect(manifest.provider).toMatchObject({
+      defaultBaseUrl: "https://sub.siphonlab.cn/v1",
+      key: "openai-compatible",
+      kind: "openai-compatible",
+    });
+    expect(manifest.models).toEqual([
+      expect.objectContaining({
+        defaultRouteKey: "image.gpt-image-2",
+        displayName: "GPT-Image-2",
+        modality: "image",
+        modelFamily: "gpt-image-2",
+        modelKey: "gpt-image-2",
+      }),
+    ]);
+    expect(manifest.routes).toEqual([
+      expect.objectContaining({
+        modelFamily: "gpt-image-2",
+        modelKey: "gpt-image-2",
+        path: "/images/generations",
+        requestConfig: expect.objectContaining({
+          editPath: "/images/edits",
+          path: "/images/generations",
+        }),
+        routeKey: "image.gpt-image-2",
+        routeLabel: "线路一",
+      }),
+    ]);
+  });
+
   test("filters by modality and provider kind", () => {
     expect(builtinAiPluginRegistry.list({ modality: "text" })).toEqual([]);
     expect(
