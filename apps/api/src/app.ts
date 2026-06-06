@@ -18,6 +18,8 @@ import { registerAdminRoutes } from "./modules/admin/admin.routes.js";
 import { AdminApiService } from "./modules/admin/admin.service.js";
 import { registerAiGatewayAdminRoutes } from "./modules/ai-gateway/ai-gateway.routes.js";
 import { AiGatewayAdminService } from "./modules/ai-gateway/ai-gateway.service.js";
+import { registerAiModelCatalogRoutes } from "./modules/ai-model-catalog/ai-model-catalog.routes.js";
+import { AiModelCatalogService } from "./modules/ai-model-catalog/ai-model-catalog.service.js";
 import { registerAiPluginAdminRoutes } from "./modules/ai-plugins/ai-plugins.routes.js";
 import { AiPluginService } from "./modules/ai-plugins/ai-plugins.service.js";
 import { registerAuthRoutes } from "./modules/auth/auth.routes.js";
@@ -88,6 +90,7 @@ export function buildApp(options?: {
     credentialVault,
     pool,
   });
+  const aiModelCatalogService = new AiModelCatalogService({ pool });
   const aiPluginService = new AiPluginService({
     credentialVault,
     pool,
@@ -133,6 +136,7 @@ export function buildApp(options?: {
 
   app.decorate("adminService", adminService);
   app.decorate("aiGatewayService", aiGatewayService);
+  app.decorate("aiModelCatalogService", aiModelCatalogService);
   app.decorate("aiPluginService", aiPluginService);
   app.decorate("auditService", auditService);
   app.decorate("authService", authService);
@@ -178,6 +182,7 @@ export function buildApp(options?: {
   registerAdminRoutes(app);
   registerAuditRoutes(app);
   registerAiGatewayAdminRoutes(app);
+  registerAiModelCatalogRoutes(app);
   registerAiPluginAdminRoutes(app);
   registerAuthRoutes(app);
   registerAssetRoutes(app);
