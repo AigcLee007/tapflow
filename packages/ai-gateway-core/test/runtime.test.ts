@@ -967,6 +967,74 @@ describe("route resolver and ai gateway", () => {
     expect(capturedTimeout).toBe(23456);
   });
 
+  test("database media runtime can override request config for diagnostic calls", async () => {
+    const { DatabaseMediaRuntime } = await import("../src/database-media-runtime.js");
+    let capturedTimeout: number | null = null;
+    const runtime = new DatabaseMediaRuntime({
+      aiGateway: new AiGateway({
+        "openai-compatible": {
+          async generateImage(context) {
+            capturedTimeout = context.timeoutMs;
+            return {
+              modelKey: "image-test",
+              outputs: [{ mimeType: "image/png", url: "https://example.com/diag.png" }],
+              providerRequest: {},
+              providerResponse: {},
+              status: "succeeded" as const,
+              usage: { inputTokens: null, outputTokens: null, totalTokens: null },
+            };
+          },
+        },
+      }),
+      credentialVault: {
+        getSecretForProviderCall() {
+          return "sk-test-secret";
+        },
+      } as never,
+      pool: {} as never,
+      routeResolver: {
+        resolveMediaRoute({ routes }: { routes: ResolvedRoute[] }) {
+          return routes[0];
+        },
+      } as never,
+    });
+
+    Object.defineProperty(runtime, "listRuntimeRoutes", {
+      value: async () => [
+        makeRoute({
+          credential: {
+            authTag: Buffer.from("tag"),
+            encryptedSecret: Buffer.from("secret"),
+            id: "credential-1",
+            nonce: Buffer.from("nonce"),
+          },
+          requestConfig: { timeoutMs: 300000 },
+        }),
+      ],
+    });
+    Object.defineProperty(runtime, "insertAiCallLog", {
+      value: async () => undefined,
+    });
+
+    await runtime.generateImage(
+      {
+        tenantId: "tenant-1",
+        userId: "user-1",
+      },
+      {
+        prompt: "diagnostic",
+        routeKey: "image.gpt-image-2",
+      },
+      {
+        requestConfigOverride: {
+          timeoutMs: 30000,
+        },
+      },
+    );
+
+    expect(capturedTimeout).toBe(30000);
+  });
+
   test("ai gateway image timeout falls back to provider capabilities timeoutMs", async () => {
     let capturedTimeout: number | null = null;
     const gateway = new AiGateway({

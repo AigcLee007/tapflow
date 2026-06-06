@@ -34,6 +34,8 @@ type RouteRecord = {
   route_key: string;
 };
 
+const DEFAULT_ROUTE_TEST_TIMEOUT_MS = 30_000;
+
 export type RouteTestResultView = {
   checkedAt: string;
   error: Record<string, unknown> | null;
@@ -205,6 +207,10 @@ export class AiRouteTestService {
         model: input.model ?? route.model_key,
         prompt,
         routeKey: route.route_key,
+      }, {
+        requestConfigOverride: {
+          timeoutMs: DEFAULT_ROUTE_TEST_TIMEOUT_MS,
+        },
       });
     }
 
@@ -213,6 +219,10 @@ export class AiRouteTestService {
       model: input.model ?? route.model_key,
       prompt,
       routeKey: route.route_key,
+    }, {
+      requestConfigOverride: {
+        timeoutMs: DEFAULT_ROUTE_TEST_TIMEOUT_MS,
+      },
     });
   }
 
@@ -235,6 +245,7 @@ export class AiRouteTestService {
       providerKey: route.provider_key,
       routeKey: route.route_key,
       testKey: defaultTest?.key ?? null,
+      timeoutMs: DEFAULT_ROUTE_TEST_TIMEOUT_MS,
     };
   }
 

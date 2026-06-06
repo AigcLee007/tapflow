@@ -82,6 +82,7 @@ export class DatabaseMediaRuntime {
     request: ImageGenerationRequest,
     metadata?: {
       nodeRunId?: string | null;
+      requestConfigOverride?: Record<string, unknown>;
       workflowRunId?: string | null;
     },
   ): Promise<AiGatewayMediaResult> {
@@ -104,6 +105,7 @@ export class DatabaseMediaRuntime {
     request: VideoGenerationRequest,
     metadata?: {
       nodeRunId?: string | null;
+      requestConfigOverride?: Record<string, unknown>;
       workflowRunId?: string | null;
     },
   ): Promise<AiGatewayMediaResult> {
@@ -195,16 +197,26 @@ export class DatabaseMediaRuntime {
     routeKey: string | null,
     metadata: {
       nodeRunId?: string | null;
+      requestConfigOverride?: Record<string, unknown>;
       workflowRunId?: string | null;
     } | undefined,
     caller: (selectedRoute: ResolvedRoute, apiKey: string) => Promise<AiGatewayMediaResult>,
   ): Promise<AiGatewayMediaResult> {
     const selectedRoute = await this.resolveRoute(context, modality, routeKey);
+    const routeForCall = metadata?.requestConfigOverride
+      ? {
+          ...selectedRoute,
+          requestConfig: {
+            ...selectedRoute.requestConfig,
+            ...metadata.requestConfigOverride,
+          },
+        }
+      : selectedRoute;
     const apiKey = this.getApiKeyForRoute(selectedRoute);
     const startedAt = Date.now();
 
     try {
-      const result = await caller(selectedRoute, apiKey);
+      const result = await caller(routeForCall, apiKey);
 
       await this.insertAiCallLog({
         error: null,
