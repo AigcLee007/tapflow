@@ -19,6 +19,14 @@ export { VisionaryNanoBananaAdapter } from "./visionary-nano-banana-adapter.js";
 export { MockProviderAdapter } from "./mock-provider-adapter.js";
 export type { ProviderAdapter } from "./provider-adapter.js";
 export {
+  ProviderAdapterRegistry,
+  createDefaultAiGateway,
+  createDefaultProviderAdapterRegistry,
+  normalizeProviderKind,
+  type ProviderAdapterFactory,
+  type ProviderAdapterRegistryEntry,
+} from "./provider-adapter-registry.js";
+export {
   AiPluginRegistry,
   AiPluginRegistryError,
   BUILTIN_AI_PLUGIN_MANIFESTS,

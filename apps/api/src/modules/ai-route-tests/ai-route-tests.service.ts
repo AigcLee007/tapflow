@@ -1,15 +1,12 @@
 import type { Pool, PoolClient } from "pg";
 
 import {
-  AiGateway,
   AiGatewayError,
   CredentialVault,
   DatabaseMediaRuntime,
   DatabaseTextGenerationRuntime,
-  MockProviderAdapter,
-  OpenAiCompatibleTextAdapter,
-  VisionaryNanoBananaAdapter,
   builtinAiPluginRegistry,
+  createDefaultAiGateway,
   redactValue,
   type AiGatewayMediaResult,
   type AiGatewayTextResult,
@@ -71,12 +68,7 @@ export class AiRouteTestService {
     pool?: Pool;
   }) {
     this.pool = options.pool ?? createPgPool();
-    const aiGateway = new AiGateway({
-      mock: new MockProviderAdapter(),
-      openai: new OpenAiCompatibleTextAdapter(),
-      "openai-compatible": new OpenAiCompatibleTextAdapter(),
-      "visionary-nano-banana": new VisionaryNanoBananaAdapter(),
-    });
+    const aiGateway = createDefaultAiGateway();
     this.mediaRuntime = new DatabaseMediaRuntime({
       aiGateway,
       credentialVault: options.credentialVault,

@@ -1,13 +1,10 @@
 import { fileURLToPath } from "node:url";
 
 import {
-  AiGateway,
   CredentialVault,
   DatabaseMediaRuntime,
   DatabaseTextGenerationRuntime,
-  MockProviderAdapter,
-  OpenAiCompatibleTextAdapter,
-  VisionaryNanoBananaAdapter,
+  createDefaultAiGateway,
 } from "@aigc-flow/ai-gateway-core";
 import { createPgPool } from "@aigc-flow/db";
 import {
@@ -79,12 +76,7 @@ export function createWorkerRuntime(options?: {
     keyVersion: env.credentialKeyVersion,
     masterKey: env.credentialMasterKey,
   });
-  const aiGateway = new AiGateway({
-    mock: new MockProviderAdapter(),
-    openai: new OpenAiCompatibleTextAdapter(),
-    "openai-compatible": new OpenAiCompatibleTextAdapter(),
-    "visionary-nano-banana": new VisionaryNanoBananaAdapter(),
-  });
+  const aiGateway = createDefaultAiGateway();
   const nodeExecuteQueue = queueFactory.createQueue(QUEUE_NAMES.nodeExecute);
   const providerPollQueue = queueFactory.createQueue(QUEUE_NAMES.providerPoll);
   const storageProvider = new S3StorageProvider({
