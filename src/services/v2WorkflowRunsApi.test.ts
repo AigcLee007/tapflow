@@ -160,4 +160,54 @@ describe('v2WorkflowRunsApi', () => {
       }),
     );
   });
+
+  test('streamWorkflowRun falls back to the streamed run id for legacy payload-only events', async () => {
+    const encoder = new TextEncoder();
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            [
+              'id: 9',
+              'event: workflow.run.succeeded',
+              'data: {"status":"succeeded"}',
+              '',
+              '',
+            ].join('\n'),
+          ),
+        );
+        controller.close();
+      },
+    });
+
+    vi.stubGlobal('fetch', vi.fn(async () =>
+      new Response(body, {
+        status: 200,
+        headers: {
+          'content-type': 'text/event-stream',
+        },
+      }),
+    ));
+
+    const received: Array<{ eventType: string; workflowRunId: string }> = [];
+
+    await new Promise<void>((resolve) => {
+      streamWorkflowRun('run-legacy', {
+        onClose: resolve,
+        onEvent: (event) => {
+          received.push({
+            eventType: event.eventType,
+            workflowRunId: event.workflowRunId,
+          });
+        },
+      });
+    });
+
+    expect(received).toEqual([
+      {
+        eventType: 'workflow.run.succeeded',
+        workflowRunId: 'run-legacy',
+      },
+    ]);
+  });
 });

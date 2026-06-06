@@ -1283,6 +1283,14 @@ describeWithDatabase("workflow runs api", () => {
           event: "workflow.run.created",
           id: "1",
         });
+        expect(initialEvents[0]?.json).toMatchObject({
+          eventType: "workflow.run.created",
+          sequence: 1,
+          workflowRunId: createRunA.json().runId,
+        });
+        expect(initialEvents[0]?.json.payload).toMatchObject({
+          status: "pending",
+        });
         expect(initialEvents.some((event) => event.event === "workflow.run.canceled")).toBe(true);
         expect(initialEvents.every((event) => !String(event.data).includes("tenant b stream"))).toBe(true);
 

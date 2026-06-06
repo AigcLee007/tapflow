@@ -62,11 +62,16 @@ function delay(ms: number): Promise<void> {
 }
 
 function formatSseEvent(input: {
+  createdAt: string;
   eventType: string;
+  id: string;
+  nodeRunId: string | null;
   payload: Record<string, unknown>;
   sequence: number;
+  tenantId: string;
+  workflowRunId: string;
 }): string {
-  return `id: ${input.sequence}\nevent: ${input.eventType}\ndata: ${JSON.stringify(input.payload)}\n\n`;
+  return `id: ${input.sequence}\nevent: ${input.eventType}\ndata: ${JSON.stringify(input)}\n\n`;
 }
 
 function resolveAfterSequence(
@@ -282,9 +287,14 @@ export function registerWorkflowRunRoutes(app: FastifyInstance): void {
               afterSequence = event.sequence;
               reply.raw.write(
                 formatSseEvent({
+                  createdAt: event.createdAt,
                   eventType: event.eventType,
+                  id: event.id,
+                  nodeRunId: event.nodeRunId,
                   payload: event.payload,
                   sequence: event.sequence,
+                  tenantId: event.tenantId,
+                  workflowRunId: event.workflowRunId,
                 }),
               );
             }

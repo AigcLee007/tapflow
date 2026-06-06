@@ -204,7 +204,7 @@ function parseSseBuffer(
   }
 }
 
-function decodeWorkflowRunEvent(envelope: SseEnvelope): V2WorkflowRunEventView | null {
+function decodeWorkflowRunEvent(envelope: SseEnvelope, fallbackRunId?: string): V2WorkflowRunEventView | null {
   if (!envelope.data.trim()) {
     return null;
   }
@@ -225,7 +225,7 @@ function decodeWorkflowRunEvent(envelope: SseEnvelope): V2WorkflowRunEventView |
         ? parsed.sequence
         : Number.parseInt(String(envelope.id || '0'), 10) || 0,
     tenantId: typeof parsed.tenantId === 'string' ? parsed.tenantId : '',
-    workflowRunId: typeof parsed.workflowRunId === 'string' ? parsed.workflowRunId : '',
+    workflowRunId: typeof parsed.workflowRunId === 'string' ? parsed.workflowRunId : fallbackRunId || '',
   };
 }
 
@@ -345,7 +345,7 @@ export function streamWorkflowRun(
         }
 
         parseSseBuffer(decoder.decode(value, { stream: true }), parserState, (envelope) => {
-          const event = decodeWorkflowRunEvent(envelope);
+          const event = decodeWorkflowRunEvent(envelope, runId);
           if (event) {
             options.onEvent?.(event);
           }
