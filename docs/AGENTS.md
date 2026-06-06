@@ -1,49 +1,75 @@
 # AGENTS.md
 
-## Project mission
+This file intentionally mirrors the root `AGENTS.md`. The root file is the primary source of truth for AI agents working in this repository.
 
-This repository is being refactored into a single authenticated AI Flow workspace product.
+## Current Project Status
 
-The final product must keep:
+This repository is now a v2 authenticated AI Flow workspace product. The original foundation work for auth shell, workspace projects, remote flow drafts, cloud assets, billing reserve/settle/refund, account page, and legacy entry cleanup has been completed. Do not treat the old sprint list as pending work.
 
-- User login and tenant-aware auth.
-- TapNow-style workspace project list.
-- One Flow canvas per user-facing project.
-- Server-side canvas persistence.
-- Cloud asset library.
-- Billing, credits, reserve/settle/refund, and ledger records.
+Current source-of-truth docs:
 
-The final product must remove or stop using as primary product paths:
+- `AGENTS.md` is the primary instruction file for future AI agents.
+- `docs/CODEX_HANDOFF.md` records completed work and current known status.
+- `docs/DEVELOPMENT_PLAN.md` is the historical product plan. The root file `DEVELOPMENT_PLAN.md` does not exist.
+- `docs/v2-local-development.md` is the local development and QA guide.
+- `docs/PRODUCTION_DEPLOYMENT.md`, `docs/PRODUCTION_RUNBOOK.md`, and `docs/staging-runbook.md` are deployment references.
+- `docs/AI_GATEWAY_PLUGIN_DEVELOPMENT_PLAN.md` is the current detailed plan for the plugin-style AI Gateway/model integration redesign.
 
-- The old `InfiniteCanvas` classic UI.
-- `/create/classic` as a product route.
-- Browser localStorage/IndexedDB as the authoritative canvas or asset store.
-- Legacy account/billing frontend API calls when a `/api/v2/*` equivalent exists.
-- Multiple disconnected frontend shells.
-
-Read `DEVELOPMENT_PLAN.md` before implementing large changes.
+When these documents conflict with current code, inspect the current code and choose the safest minimal change that preserves the v2 architecture.
 
 ---
 
-## Current architecture direction
+## Product Mission
+
+Keep and improve the v2 product path:
+
+- User login and tenant-aware auth.
+- TapNow-style workspace project list.
+- One user-facing project has one primary Flow canvas.
+- Server-side canvas draft persistence.
+- Cloud asset library backed by object storage.
+- Billing credits with reserve, settle, refund, usage events, and ledger records.
+- AI provider/model/route configuration through the v2 AI Gateway path.
+
+Do not restore old product paths as the main experience:
+
+- Do not mount the old `InfiniteCanvas` as a normal entry.
+- Do not restore `/create/classic` or `/create/flow` as primary product routes.
+- Do not use browser `localStorage` or IndexedDB as the authoritative canvas or asset store.
+- Do not use legacy account/billing/frontend API calls when `/api/v2/*` equivalents exist.
+- Do not reintroduce multiple disconnected frontend shells.
+
+---
+
+## Current Architecture
 
 Use the v2 runtime as the main path:
 
 - Frontend: Vite + React.
 - Flow canvas: `@xyflow/react`.
-- Backend API: `apps/api`.
+- API: `apps/api`.
 - Worker: `apps/worker`.
 - Database and migrations: `packages/db`.
-- Object storage: existing storage packages and S3-compatible flow.
-- Queue/background work: Redis/BullMQ where already used.
+- Queue/background work: Redis/BullMQ via existing redis packages.
+- Object storage: existing S3-compatible storage flow.
+- AI Gateway: `packages/ai-gateway-core` plus database-backed providers/models/routes/credentials.
 
-Prefer existing project conventions and avoid adding new production dependencies unless necessary.
+Runtime services in deployment:
+
+- `tapflow-frontend`: serves built Vite `dist` via `scripts/serve-dist.cjs`.
+- `tapflow-api`: runs `npm run start:api`.
+- `tapflow-worker`: runs `npm run start:worker`.
+- `tapflow-redis`: Redis for BullMQ queues.
+
+Postgres is external and provided by `DATABASE_URL`. Object storage is S3-compatible and provided by `S3_*` environment variables.
+
+Prefer existing project conventions and helper APIs. Do not add new production dependencies unless they are clearly needed.
 
 ---
 
-## Required product routes
+## Required Product Routes
 
-Implement or preserve these as the only normal user-facing routes:
+Normal user-facing routes:
 
 ```txt
 /login
@@ -55,7 +81,7 @@ Implement or preserve these as the only normal user-facing routes:
 /account
 ```
 
-Route compatibility:
+Compatibility behavior:
 
 ```txt
 /                -> authenticated users go to /workspace; anonymous users go to /login
@@ -65,43 +91,188 @@ Route compatibility:
 /model-mapping   -> not a normal user-facing route
 ```
 
+Admin/model configuration may exist under account/admin paths, but it must remain permission-protected and must not become a normal creator-facing entry unless explicitly requested.
+
 ---
 
-## Implementation rules
+## Deployment Rules
 
-### Auth
+The primary server deployment path is Docker Compose v2.
 
-- Use `/api/v2/auth/register`, `/api/v2/auth/login`, `/api/v2/auth/refresh`, `/api/v2/auth/logout`, and `/api/v2/auth/me`.
-- Add an `AuthProvider` and `AuthGate`.
-- Do not rely on legacy `/api/auth/*` as the main path.
-- Keep token handling centralized in `src/services/v2HttpClient.ts` and `src/services/v2AuthClient.ts`.
-- If token refresh fails, clear auth state and return to `/login`.
+Use:
 
-### App shell
+```txt
+Compose file: docker-compose.staging.yml
+Server project path: /opt/aittco/tapflow
+Server env file: /opt/aittco/env/tapflow.staging.env
+Default branch: main
+```
 
-- Replace the overloaded root `App.tsx` with a small composition:
-  - `AuthProvider`
-  - `AppRouter`
-  - `WorkspaceShell`
-- Do not keep `InfiniteCanvas`, `ControlPanel`, `MobileView`, or legacy create UI mounted from the root app router.
-- Do not delete large legacy files in the same PR that introduces new routing. First remove references, build, then clean up in a later PR.
+Do not use the root `docker-compose.yml` for the current v2 product deployment unless the user explicitly asks for the old legacy/MySQL deployment path. The root `docker-compose.yml` is oriented toward the legacy MySQL app and is not the current v2 deployment entry.
 
-### Workspace and projects
+When the user asks how to deploy, update, or restart the server, default to the Docker Compose v2 flow below. Keep the answer practical and do not invent unrelated platform instructions.
 
-- The user-facing concept is: one project has one primary canvas.
-- Internally, it is acceptable to keep `project -> flow`, but the UI should not expose multiple flows per project.
-- Creating a workspace project should create:
-  1. `projects` row
-  2. default `flows` row
-  3. default `flow_drafts` row
-- Project cards should support name, updated time, cover image, and basic counts when available.
+```bash
+cd /opt/aittco/tapflow
+git fetch --all --prune
+git pull --ff-only origin main
 
-### Canvas persistence
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml build
 
-- Do not use localStorage or IndexedDB as the authoritative canvas store.
-- Add or use `flow_drafts` for high-frequency autosave.
-- Keep `flow_versions` for snapshots/publish/history, not high-frequency autosave.
-- Persist this graph shape at minimum:
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml stop tapflow-worker
+
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-api node packages/db/dist/cli.js
+
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml up -d tapflow-redis tapflow-api tapflow-worker tapflow-frontend
+
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml ps
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml logs --tail=100 tapflow-api tapflow-worker
+```
+
+Important production image rule:
+
+- In the production Docker image, run migrations with `node packages/db/dist/cli.js`.
+- Do not tell the user to run `npm run db:migrate` inside the production image unless the image has source TypeScript available. The production image contains compiled `packages/db/dist/cli.js`.
+
+Safe deployment order:
+
+1. Pull latest code.
+2. Build images.
+3. Stop worker before DB migration to avoid jobs running against changing schema.
+4. Run DB migration once.
+5. Start Redis/API/worker/frontend.
+6. Check service status and logs.
+
+Rollback guidance:
+
+- Prefer redeploying a previous git commit or image.
+- Stop worker before rollback if workflow behavior is affected.
+- Disable broken AI routes by setting route status to `inactive` instead of deleting historical records.
+- Restore DB only when explicitly required and after backup/approval.
+- Keep billing ledger immutable where possible.
+
+---
+
+## Environment Variable Rules
+
+The server env file is normally:
+
+```txt
+/opt/aittco/env/tapflow.staging.env
+```
+
+`--env-file` does not automatically inject every variable into every container. Any variable needed by `tapflow-api` or `tapflow-worker` must be listed in `x-tapflow-env` inside `docker-compose.staging.yml`.
+
+When adding a new provider/model/API integration, update all relevant places:
+
+- `docker-compose.staging.yml`
+- `docs/STAGING_ENV_TEMPLATE.md`
+- seed or plugin install docs if needed
+- deployment notes if the variable is required on the server
+
+Never commit real secrets, API keys, database passwords, JWT secrets, or `CREDENTIAL_MASTER_KEY`.
+
+Provider credentials must stay server-side:
+
+- Prefer CredentialVault-backed `api_credentials` for provider API keys.
+- Do not expose raw keys, encrypted secrets, nonces, auth tags, or full Authorization headers to frontend responses, node data, draft JSON, logs, or screenshots.
+
+Important existing provider env examples:
+
+```txt
+VISIONARY_API_KEY
+VISIONARY_BASE_URL
+OPENAI_API_KEY
+OPENAI_COMPAT_BASE_URL
+OPENAI_BASE_URL
+OPENAI_COMPAT_IMAGE_TIMEOUT_MS
+```
+
+Only document placeholders in repository files.
+
+---
+
+## Local Development
+
+Use local v2 infrastructure:
+
+```bash
+npm install
+npm run dev:infra
+npm run db:migrate
+npm run dev:api
+npm run dev:worker
+npm run dev
+```
+
+Local URLs:
+
+```txt
+API: http://localhost:3366
+Frontend: http://localhost:5188
+Health: http://localhost:3366/health
+```
+
+Use `infra/docker-compose.dev.yml` for local v2 infrastructure. Do not use the root `docker-compose.yml` as the v2 local QA path.
+
+Useful scripts:
+
+```bash
+npm run build
+npm test
+npm run build --workspace @aigc-flow/api
+npm run build --workspace @aigc-flow/db
+npm run build --workspace @aigc-flow/worker
+npm run dev:seed-billing
+npm run dev:seed-ai
+```
+
+Seed scripts are for local/dev or explicitly approved staging operations only. They are guarded and must not be used casually on production data.
+
+---
+
+## Auth Rules
+
+Use the v2 auth APIs:
+
+```txt
+POST /api/v2/auth/register
+POST /api/v2/auth/login
+POST /api/v2/auth/refresh
+POST /api/v2/auth/logout
+GET  /api/v2/auth/me
+```
+
+Keep token handling centralized in:
+
+```txt
+src/services/v2HttpClient.ts
+src/services/v2AuthClient.ts
+src/auth/AuthProvider.tsx
+src/auth/AuthGate.tsx
+```
+
+If token refresh fails, clear auth state and return to `/login`.
+
+Do not rely on legacy `/api/auth/*` as the main product path.
+
+---
+
+## Workspace and Canvas Rules
+
+The user-facing concept is:
+
+```txt
+one project -> one primary canvas
+```
+
+Internally, `project -> flow` may remain for extensibility, but the UI should not expose multiple flows per project unless explicitly designed.
+
+Canvas persistence:
+
+- Use `flow_drafts` for high-frequency autosave.
+- Use `flow_versions` for snapshots/history/publish, not high-frequency autosave.
+- Persist at minimum:
 
 ```ts
 {
@@ -111,122 +282,244 @@ Route compatibility:
 }
 ```
 
-- Autosave should be debounced and expose save status in the UI.
-- If using revision numbers, return 409 on stale writes and show a clear conflict message.
+Do not write these as authoritative data into `flow_drafts.graph_json`:
 
-### Assets
+```txt
+base64 media
+data: URLs
+blob: URLs
+File objects
+Blob objects
+long-lived signed URLs
+```
 
-- Do not store image/video/audio base64 or blob URLs as authoritative node data.
-- Upload files through the backend asset flow and object storage.
-- Node data should persist `assetId` as the source of truth.
-- Temporary preview or signed URLs may be cached in UI state, but must be recoverable from `assetId`.
-- Generated outputs must become `assets` records and appear in `/assets`.
-
-### Billing
-
-- User-facing balance can be shown as credits/points.
-- Billing state must be changed only on the server.
-- Generation workflow should follow:
-  1. estimate cost
-  2. reserve credits
-  3. enqueue/run job
-  4. settle on success
-  5. refund/release on failure
-- Use idempotency keys for reserve, usage, settle, refund, redeem, and payment webhook flows.
-- Billing UI should read `/api/v2/billing/summary`, `/api/v2/billing/usage-events`, and `/api/v2/billing/ledger`.
-
-### Database
-
-- Every new multi-tenant table must include `tenant_id` unless there is a strong reason not to.
-- Add indexes for common tenant-scoped queries.
-- Add RLS policies using the existing tenant context pattern.
-- Do not create migrations that assume only one tenant.
-- Do not store provider secrets, payment secrets, or raw API keys in frontend-visible data.
+If using revision numbers, return `409` on stale writes and show a clear conflict message.
 
 ---
 
-## Suggested files to inspect first
+## Asset Rules
 
-When working on routing and app shell:
+Authoritative asset data lives in:
+
+```txt
+assets
+object storage
+```
+
+Canvas node data should persist `assetId` as the source of truth.
+
+Temporary signed URLs and preview URLs are UI conveniences only. They must be recoverable from `assetId`.
+
+Generated outputs must be persisted as `assets` records and appear in `/assets`.
+
+Do not store generated media as base64/blob/data URLs inside canvas graph JSON.
+
+---
+
+## Billing Rules
+
+Billing state changes happen only on the server.
+
+Generation workflow must follow:
+
+```txt
+1. estimate cost
+2. reserve credits
+3. enqueue/run job
+4. settle on success
+5. refund/release on failure
+```
+
+Use idempotency keys for:
+
+```txt
+reserve
+usage
+settle
+refund
+redeem
+payment webhook
+admin adjustment
+```
+
+Billing UI reads:
+
+```txt
+GET /api/v2/billing/summary
+GET /api/v2/billing/usage-events
+GET /api/v2/billing/ledger
+```
+
+The frontend must never directly mutate balances.
+
+Missing pricing must fail closed: return `PRICING_NOT_FOUND` and do not enqueue free execution.
+
+---
+
+## AI Gateway and Model Integration Rules
+
+Current AI Gateway path:
+
+```txt
+ai_providers
+ai_models
+api_credentials
+ai_routes
+model_pricing
+ai_call_logs
+packages/ai-gateway-core
+apps/worker runtime adapters
+```
+
+Provider secrets must be encrypted and server-side only.
+
+When adding or fixing providers/models/routes:
+
+- Keep provider kind aligned with a registered worker adapter.
+- Keep route modality, model binding, credential binding, and pricing aligned.
+- Keep route keys stable once users may have saved them in node data.
+- Do not make frontend model selection show unrelated routes.
+- Production should not expose mock routes as normal options.
+
+For the next major model integration redesign, follow:
+
+```txt
+docs/AI_GATEWAY_PLUGIN_DEVELOPMENT_PLAN.md
+```
+
+The intended direction is plugin-style model packages:
+
+```txt
+plugin manifest -> provider/model/route/pricing/ui schema/test -> publish to canvas
+```
+
+---
+
+## Database Rules
+
+Every new multi-tenant table must include `tenant_id` unless there is a strong documented reason not to.
+
+Add indexes for common tenant-scoped queries.
+
+Add RLS policies using the existing tenant context pattern.
+
+Do not create migrations that assume only one tenant.
+
+Do not store provider secrets, payment secrets, or raw API keys in frontend-visible data.
+
+For production/staging deployment, run migrations before restarting the worker.
+
+---
+
+## Files to Inspect First
+
+App shell and routing:
 
 ```txt
 App.tsx
-src/services/accountIdentity.ts
-components/BillingCenterPage.tsx
-components/AccountCenterPage.tsx
-src/flowCanvas/FlowCanvasPage.tsx
-src/flowCanvas/pages/ImageLibraryPage.tsx
+src/app/AppRouter.tsx
+src/app/WorkspaceShell.tsx
+src/app/routes.ts
+src/auth/*
 ```
 
-When working on backend modules:
+Workspace, canvas, and assets:
 
 ```txt
-apps/api/src/app.ts
-apps/api/src/modules/auth/*
+src/workspace/*
+src/flowCanvas/**
+src/assets/*
 apps/api/src/modules/projects/*
 apps/api/src/modules/flows/*
 apps/api/src/modules/assets/*
-apps/api/src/modules/billing/*
 packages/db/migrations/*
-packages/db/src/*
 ```
 
-When working on canvas state:
+Billing and workflow:
 
 ```txt
-src/flowCanvas/**
-src/store/canvasStore.ts
-src/services/assetStorage.ts
-src/flowCanvas/store/imageFolderStore.ts
+src/billing/*
+src/services/v2WorkflowRunsApi.ts
+apps/api/src/modules/billing/*
+apps/api/src/modules/workflow-runs/*
+apps/worker/src/workflow-runtime/service.ts
+packages/db/src/billing.ts
+```
+
+AI Gateway:
+
+```txt
+src/account/ProviderSettingsPage.tsx
+src/services/v2AiGatewayAdminApi.ts
+src/services/v2AiRoutesApi.ts
+apps/api/src/modules/ai-gateway/*
+packages/ai-gateway-core/src/*
+apps/worker/src/main.ts
+scripts/dev-seed-ai.ts
+```
+
+Deployment:
+
+```txt
+docker-compose.staging.yml
+Dockerfile
+scripts/serve-dist.cjs
+docs/staging-runbook.md
+docs/PRODUCTION_DEPLOYMENT.md
+docs/PRODUCTION_RUNBOOK.md
+docs/STAGING_ENV_TEMPLATE.md
 ```
 
 ---
 
-## Commands
+## Validation Commands
 
-Use the existing npm scripts unless package files change:
-
-```bash
-npm run dev
-npm run build
-npm test
-npm run dev:infra
-npm run dev:api
-npm run dev:worker
-npm run db:migrate
-```
-
-For each implementation task, run at least:
+For implementation tasks, run at least:
 
 ```bash
 npm run build
 ```
 
-Run tests when touching backend services, database logic, billing, auth, or worker behavior:
+When touching backend services, database logic, billing, auth, worker behavior, or AI Gateway runtime, also run relevant tests:
 
 ```bash
 npm test
+npm run test --workspace @aigc-flow/api
+npm run test --workspace @aigc-flow/worker
+npm run test --workspace @aigc-flow/ai-gateway-core
+npm run test --workspace @aigc-flow/db
 ```
 
-If a command fails because the local environment is missing infrastructure, report the exact failure and what was already validated.
+If a command fails because local infrastructure is missing, report the exact failure and what was already validated.
+
+Known historical note: some legacy migration tests may fail independently of the v2 product path. Check `docs/CODEX_HANDOFF.md` before treating legacy migration failures as blockers.
 
 ---
 
-## PR and change management
+## Git and Change Management
 
-Prefer small PRs in this order:
+There may be unrelated dirty files in the working tree. Do not revert user changes.
 
-1. `app-router-auth-shell`
-2. `workspace-projects`
-3. `flow-drafts-remote-autosave`
-4. `asset-library-server-side`
-5. `canvas-asset-id-migration`
-6. `billing-redeem-pricing`
-7. `workflow-billing-reserve-settle-refund`
-8. `cleanup-legacy-ui`
-9. `docs-and-agent-instructions`
+Stage only files touched for the current task.
 
-Do not mix unrelated areas in one PR. For example, do not combine billing reserve/settle with App router cleanup unless the task explicitly requires it.
+Do not run destructive git commands such as:
+
+```txt
+git reset --hard
+git checkout -- <path>
+```
+
+unless the user explicitly asks for that exact destructive operation.
+
+When the user explicitly asks to push to GitHub:
+
+1. Inspect `git status`.
+2. Stage only relevant files.
+3. Commit with a concise task-specific message.
+4. Push the current branch to the expected remote.
+5. Tell the user the commit hash and branch.
+
+Do not combine unrelated refactors with deployment, billing, auth, AI provider, or database changes unless the user explicitly asks.
 
 ---
 
@@ -234,32 +527,13 @@ Do not mix unrelated areas in one PR. For example, do not combine billing reserv
 
 A task is not done until:
 
-- The main user flow affected by the change works from the UI.
+- The affected main user flow works from the UI when UI behavior changed.
 - `npm run build` passes, or the failure is documented with a concrete reason.
 - Relevant tests pass, or missing infrastructure is documented.
 - New APIs use auth and tenant checks.
 - New tables have tenant isolation and RLS where applicable.
 - No new browser local persistence is introduced as authoritative storage.
 - No secrets are exposed to the frontend.
-- The final response lists changed files, validation commands, and known follow-ups.
+- Deployment instructions, if requested, follow Docker Compose v2 with `docker-compose.staging.yml`.
+- Final response lists changed files, validation commands, and known follow-ups.
 
----
-
-## Prohibited shortcuts
-
-Do not:
-
-- Keep old local canvas persistence and call it "server sync".
-- Store base64 images in `graph_json`.
-- Use frontend-only balance updates for billing.
-- Delete legacy UI files before the replacement route builds successfully.
-- Add a new router library unless necessary.
-- Add a new state manager unless necessary.
-- Bypass tenant isolation to make development easier.
-- Hardcode a single user, tenant, project, model, or price in production code.
-
----
-
-## If the plan conflicts with code
-
-When the codebase differs from `DEVELOPMENT_PLAN.md`, inspect the current code and choose the safest minimal change that advances the plan. Then update `DEVELOPMENT_PLAN.md` or this file if the discovered repo reality changes the implementation strategy.
