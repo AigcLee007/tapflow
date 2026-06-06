@@ -10,13 +10,13 @@ const imageSizeOptions = ["1K", "2K", "4K"].map((value) => ({
   value,
 }));
 
-export const pixelleLabsGeminiImageManifest: AiPluginManifest = {
+export const pixelleLabsNanoBananaProManifest: AiPluginManifest = {
   credentials: {
-    envKeys: ["PIXELLELABS_API_KEY"],
+    envKeys: ["PIXELLELABS_NANO_BANANA_PRO_API_KEY"],
     fields: [
       {
         key: "apiKey",
-        label: "PixelleLabs API Key",
+        label: "Nano Banana Pro API Key",
         placeholder: "sk-...",
         required: true,
         secret: true,
@@ -24,8 +24,8 @@ export const pixelleLabsGeminiImageManifest: AiPluginManifest = {
     ],
     type: "bearer",
   },
-  description: "PixelleLabs Gemini image generation API.",
-  displayName: "PixelleLabs Nano Banana",
+  description: "PixelleLabs Nano Banana Pro image generation.",
+  displayName: "Nano Banana Pro",
   modality: "image",
   models: [
     {
@@ -63,63 +63,17 @@ export const pixelleLabsGeminiImageManifest: AiPluginManifest = {
         panelLayout: "nano-banana",
       },
     },
-    {
-      capabilities: {
-        maxInputImages: 9,
-        supportedAspectRatios: aspectRatioOptions.map((option) => String(option.value)),
-        supportedSizes: imageSizeOptions.map((option) => String(option.value)),
-        supportsReferenceImages: true,
-      },
-      defaultRouteKey: "image.pixellelabs.nano-banana-2",
-      displayName: "Nano Banana 2",
-      modality: "image",
-      modelFamily: "pixellelabs.nano-banana-2",
-      modelKey: "gemini-3.1-flash-image-preview",
-      sortOrder: 20,
-      uiSchema: {
-        fields: [
-          {
-            defaultValue: "1:1",
-            key: "aspectRatio",
-            label: "比例",
-            mapsTo: "request.metadata",
-            options: aspectRatioOptions,
-            type: "select",
-          },
-          {
-            defaultValue: "2K",
-            key: "imageSize",
-            label: "分辨率",
-            mapsTo: "request.metadata",
-            options: imageSizeOptions,
-            type: "select",
-          },
-        ],
-        panelLayout: "nano-banana",
-      },
-    },
   ],
-  packageKey: "pixellelabs.gemini-image",
+  packageKey: "pixellelabs.nano-banana-pro",
   pricing: [
     {
       metadata: {
-        source: "pixellelabs-gemini-image",
+        source: "pixellelabs-nano-banana-pro",
       },
       minChargeCredits: 24,
       model: "gemini-3-pro-image-preview",
       provider: "pixellelabs",
       route: "image.pixellelabs.nano-banana-pro",
-      unit: "image_generation",
-      unitCredits: 24,
-    },
-    {
-      metadata: {
-        source: "pixellelabs-gemini-image",
-      },
-      minChargeCredits: 24,
-      model: "gemini-3.1-flash-image-preview",
-      provider: "pixellelabs",
-      route: "image.pixellelabs.nano-banana-2",
       unit: "image_generation",
       unitCredits: 24,
     },
@@ -148,22 +102,7 @@ export const pixelleLabsGeminiImageManifest: AiPluginManifest = {
         timeoutMs: 300000,
       },
       routeKey: "image.pixellelabs.nano-banana-pro",
-      routeLabel: "PixelleLabs 默认线路",
-      timeoutMs: 300000,
-    },
-    {
-      mode: "sync",
-      modality: "image",
-      modelFamily: "pixellelabs.nano-banana-2",
-      modelKey: "gemini-3.1-flash-image-preview",
-      path: "/v1beta/models/gemini-3.1-flash-image-preview:generateContent",
-      priority: 10,
-      requestConfig: {
-        path: "/v1beta/models/gemini-3.1-flash-image-preview:generateContent",
-        timeoutMs: 300000,
-      },
-      routeKey: "image.pixellelabs.nano-banana-2",
-      routeLabel: "PixelleLabs 默认线路",
+      routeLabel: "PixelleLabs Pro 线路",
       timeoutMs: 300000,
     },
   ],

@@ -15,25 +15,22 @@ describe("AI plugin registry", () => {
     expect(manifests.map((manifest) => manifest.packageKey)).toEqual([
       "openai-compatible.gpt-image-2",
       "mock.local-dev.image",
-      "pixellelabs.gemini-image",
+      "pixellelabs.nano-banana-2",
+      "pixellelabs.nano-banana-pro",
     ]);
-    expect(BUILTIN_AI_PLUGIN_MANIFESTS).toHaveLength(3);
+    expect(BUILTIN_AI_PLUGIN_MANIFESTS).toHaveLength(4);
   });
 
-  test("returns PixelleLabs Nano Banana models with route-bound pricing", () => {
-    const manifest = builtinAiPluginRegistry.require("pixellelabs.gemini-image");
+  test("returns split PixelleLabs Nano Banana plugins with independent routes", () => {
+    const proManifest = builtinAiPluginRegistry.require("pixellelabs.nano-banana-pro");
+    const flashManifest = builtinAiPluginRegistry.require("pixellelabs.nano-banana-2");
 
-    expect(manifest.provider.kind).toBe("pixellelabs-gemini-image");
-    expect(manifest.provider.defaultBaseUrl).toBe("https://api.pixellelabs.com");
-    expect(manifest.models.map((model) => model.modelKey)).toEqual([
-      "gemini-3-pro-image-preview",
-      "gemini-3.1-flash-image-preview",
-    ]);
-    expect(manifest.routes.map((route) => route.routeKey)).toEqual([
-      "image.pixellelabs.nano-banana-pro",
-      "image.pixellelabs.nano-banana-2",
-    ]);
-    expect(manifest.pricing).toEqual(
+    expect(proManifest.provider.kind).toBe("pixellelabs-gemini-image");
+    expect(proManifest.provider.defaultBaseUrl).toBe("https://api.pixellelabs.com");
+    expect(proManifest.models.map((model) => model.modelKey)).toEqual(["gemini-3-pro-image-preview"]);
+    expect(proManifest.routes.map((route) => route.routeKey)).toEqual(["image.pixellelabs.nano-banana-pro"]);
+    expect(proManifest.credentials.envKeys).toEqual(["PIXELLELABS_NANO_BANANA_PRO_API_KEY"]);
+    expect(proManifest.pricing).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           minChargeCredits: 24,
@@ -41,6 +38,14 @@ describe("AI plugin registry", () => {
           route: "image.pixellelabs.nano-banana-pro",
           unitCredits: 24,
         }),
+      ]),
+    );
+
+    expect(flashManifest.models.map((model) => model.modelKey)).toEqual(["gemini-3.1-flash-image-preview"]);
+    expect(flashManifest.routes.map((route) => route.routeKey)).toEqual(["image.pixellelabs.nano-banana-2"]);
+    expect(flashManifest.credentials.envKeys).toEqual(["PIXELLELABS_NANO_BANANA_2_API_KEY"]);
+    expect(flashManifest.pricing).toEqual(
+      expect.arrayContaining([
         expect.objectContaining({
           minChargeCredits: 24,
           model: "gemini-3.1-flash-image-preview",

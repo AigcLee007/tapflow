@@ -120,7 +120,7 @@ describeWithDatabase("ai plugin admin API", () => {
         });
         expect(listBefore.statusCode).toBe(200);
         expect(listBefore.json().map((item: { packageKey: string }) => item.packageKey)).toContain(
-          "visionary.nano-banana",
+          "pixellelabs.nano-banana-pro",
         );
 
         const install = await api.inject({
@@ -130,21 +130,21 @@ describeWithDatabase("ai plugin admin API", () => {
           method: "POST",
           payload: {
             credential: {
-              name: "Visionary Test Key",
-              secret: "visionary-test-secret",
+              name: "PixelleLabs Pro Test Key",
+              secret: "pixellelabs-pro-test-secret",
             },
             publishImmediately: true,
           },
-          url: "/api/v2/admin/ai/plugins/visionary.nano-banana/install",
+          url: "/api/v2/admin/ai/plugins/pixellelabs.nano-banana-pro/install",
         });
         expect(install.statusCode).toBe(201);
         expect(install.json()).toMatchObject({
-          catalogModelKeys: ["nano-banana-pro", "nano-banana-pro-fast"],
-          packageKey: "visionary.nano-banana",
-          routeKeys: ["image.nano-banana-pro", "image.nano-banana-pro-fast"],
+          catalogModelKeys: ["gemini-3-pro-image-preview"],
+          packageKey: "pixellelabs.nano-banana-pro",
+          routeKeys: ["image.pixellelabs.nano-banana-pro"],
           status: "published",
         });
-        expect(JSON.stringify(install.json())).not.toContain("visionary-test-secret");
+        expect(JSON.stringify(install.json())).not.toContain("pixellelabs-pro-test-secret");
 
         const dbState = await adminPool.query<{
           catalog_active_count: string;
@@ -155,7 +155,7 @@ describeWithDatabase("ai plugin admin API", () => {
         }>(
           `
             SELECT
-              (SELECT key FROM ai_providers WHERE key = 'visionary') AS provider_key,
+              (SELECT key FROM ai_providers WHERE key = 'pixellelabs') AS provider_key,
               (
                 SELECT COUNT(*)::text
                 FROM ai_routes
@@ -173,25 +173,25 @@ describeWithDatabase("ai plugin admin API", () => {
               (
                 SELECT COUNT(*)::text
                 FROM model_pricing
-                WHERE provider = 'visionary'
-                  AND model IN ('nano-banana-pro', 'nano-banana-pro-fast')
+                WHERE provider = 'pixellelabs'
+                  AND model = 'gemini-3-pro-image-preview'
                   AND active = true
               ) AS pricing_count,
               EXISTS (
                 SELECT 1
                 FROM api_credentials
                 WHERE id = $3::uuid
-                  AND encode(encrypted_secret, 'escape') LIKE '%visionary-test-secret%'
+                  AND encode(encrypted_secret, 'escape') LIKE '%pixellelabs-pro-test-secret%'
               ) AS credential_secret_contains_raw
           `,
           [owner.currentTenant.id, install.json().id, install.json().credentialId],
         );
         expect(dbState.rows[0]).toEqual({
-          catalog_active_count: "2",
+          catalog_active_count: "1",
           credential_secret_contains_raw: false,
-          pricing_count: "2",
-          provider_key: "visionary",
-          route_active_count: "2",
+          pricing_count: "1",
+          provider_key: "pixellelabs",
+          route_active_count: "1",
         });
 
         const listAfterInstall = await api.inject({
@@ -199,7 +199,7 @@ describeWithDatabase("ai plugin admin API", () => {
             authorization: `Bearer ${owner.accessToken}`,
           },
           method: "GET",
-          url: "/api/v2/admin/ai/plugins/visionary.nano-banana",
+          url: "/api/v2/admin/ai/plugins/pixellelabs.nano-banana-pro",
         });
         expect(listAfterInstall.statusCode).toBe(200);
         expect(listAfterInstall.json().install).toMatchObject({
@@ -227,7 +227,7 @@ describeWithDatabase("ai plugin admin API", () => {
           `,
           [owner.currentTenant.id, install.json().id],
         );
-        expect(disabledRoutes.rows[0]?.inactive_count).toBe("2");
+        expect(disabledRoutes.rows[0]?.inactive_count).toBe("1");
 
         const publish = await api.inject({
           headers: {
@@ -282,7 +282,7 @@ describeWithDatabase("ai plugin admin API", () => {
           payload: {
             publishImmediately: true,
           },
-          url: "/api/v2/admin/ai/plugins/visionary.nano-banana/install",
+          url: "/api/v2/admin/ai/plugins/pixellelabs.nano-banana-pro/install",
         });
         expect(forbiddenInstall.statusCode).toBe(403);
 

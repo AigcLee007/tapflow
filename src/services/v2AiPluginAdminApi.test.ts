@@ -53,9 +53,9 @@ describe("v2AiPluginAdminApi", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await installAiPlugin("visionary.nano-banana", {
+    await installAiPlugin("pixellelabs.nano-banana-pro", {
       credential: {
-        name: "Visionary",
+        name: "PixelleLabs Pro",
         secret: "sk-test",
       },
       publishImmediately: true,
@@ -65,7 +65,7 @@ describe("v2AiPluginAdminApi", () => {
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      "/api/v2/admin/ai/plugins/visionary.nano-banana/install",
+      "/api/v2/admin/ai/plugins/pixellelabs.nano-banana-pro/install",
       expect.objectContaining({ method: "POST" }),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(

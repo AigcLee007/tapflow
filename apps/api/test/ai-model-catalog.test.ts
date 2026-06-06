@@ -126,14 +126,30 @@ describeWithDatabase("ai model catalog API", () => {
           method: "POST",
           payload: {
             credential: {
-              name: "Visionary Catalog Key",
-              secret: "visionary-catalog-secret",
+              name: "PixelleLabs Pro Catalog Key",
+              secret: "pixellelabs-pro-catalog-secret",
             },
             publishImmediately: true,
           },
-          url: "/api/v2/admin/ai/plugins/visionary.nano-banana/install",
+          url: "/api/v2/admin/ai/plugins/pixellelabs.nano-banana-pro/install",
         });
         expect(install.statusCode).toBe(201);
+
+        const installFlash = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "POST",
+          payload: {
+            credential: {
+              name: "PixelleLabs 2 Catalog Key",
+              secret: "pixellelabs-2-catalog-secret",
+            },
+            publishImmediately: true,
+          },
+          url: "/api/v2/admin/ai/plugins/pixellelabs.nano-banana-2/install",
+        });
+        expect(installFlash.statusCode).toBe(201);
 
         const catalog = await api.inject({
           headers: {
@@ -144,13 +160,13 @@ describeWithDatabase("ai model catalog API", () => {
         });
         expect(catalog.statusCode).toBe(200);
         expect(catalog.json().map((item: { modelKey: string }) => item.modelKey)).toEqual([
-          "nano-banana-pro",
-          "nano-banana-pro-fast",
+          "gemini-3-pro-image-preview",
+          "gemini-3.1-flash-image-preview",
         ]);
         expect(catalog.json()[0]).toMatchObject({
-          defaultRouteKey: "image.nano-banana-pro",
+          defaultRouteKey: "image.pixellelabs.nano-banana-pro",
           modality: "image",
-          modelFamily: "nano-banana-pro",
+          modelFamily: "pixellelabs.nano-banana-pro",
         });
 
         const proRoutes = await api.inject({
@@ -158,36 +174,36 @@ describeWithDatabase("ai model catalog API", () => {
             authorization: `Bearer ${owner.accessToken}`,
           },
           method: "GET",
-          url: "/api/v2/ai/model-catalog/nano-banana-pro/routes",
+          url: "/api/v2/ai/model-catalog/gemini-3-pro-image-preview/routes",
         });
         expect(proRoutes.statusCode).toBe(200);
         expect(proRoutes.json()).toEqual([
           expect.objectContaining({
             estimatedCredits: 24,
             minChargeCredits: 24,
-            modelFamily: "nano-banana-pro",
-            modelKey: "nano-banana-pro",
+            modelFamily: "pixellelabs.nano-banana-pro",
+            modelKey: "gemini-3-pro-image-preview",
             pricingUnit: "image_generation",
-            providerKey: "visionary",
-            routeKey: "image.nano-banana-pro",
+            providerKey: "pixellelabs",
+            routeKey: "image.pixellelabs.nano-banana-pro",
           }),
         ]);
 
-        const fastRoutes = await api.inject({
+        const flashRoutes = await api.inject({
           headers: {
             authorization: `Bearer ${owner.accessToken}`,
           },
           method: "GET",
-          url: "/api/v2/ai/model-catalog/nano-banana-pro-fast/routes",
+          url: "/api/v2/ai/model-catalog/gemini-3.1-flash-image-preview/routes",
         });
-        expect(fastRoutes.statusCode).toBe(200);
-        expect(fastRoutes.json()).toEqual([
+        expect(flashRoutes.statusCode).toBe(200);
+        expect(flashRoutes.json()).toEqual([
           expect.objectContaining({
-            estimatedCredits: 48,
-            minChargeCredits: 48,
-            modelFamily: "nano-banana-pro-fast",
-            modelKey: "nano-banana-pro-fast",
-            routeKey: "image.nano-banana-pro-fast",
+            estimatedCredits: 24,
+            minChargeCredits: 24,
+            modelFamily: "pixellelabs.nano-banana-2",
+            modelKey: "gemini-3.1-flash-image-preview",
+            routeKey: "image.pixellelabs.nano-banana-2",
           }),
         ]);
 
