@@ -2,10 +2,10 @@ import type { AiPluginManifest } from "./plugin-manifest.js";
 import { validateAiPluginManifest } from "./plugin-manifest.js";
 import { mockLocalDevManifest } from "./manifests/mock-local-dev.js";
 import { openAiGptImage2Manifest } from "./manifests/openai-gpt-image-2.js";
-import { visionaryNanoBananaManifest } from "./manifests/visionary-nano-banana.js";
+import { pixelleLabsGeminiImageManifest } from "./manifests/pixellelabs-gemini-image.js";
 
 export const BUILTIN_AI_PLUGIN_MANIFESTS = [
-  visionaryNanoBananaManifest,
+  pixelleLabsGeminiImageManifest,
   openAiGptImage2Manifest,
   mockLocalDevManifest,
 ] as const satisfies readonly AiPluginManifest[];

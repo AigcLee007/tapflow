@@ -6,6 +6,7 @@ import { afterEach, describe, expect, test } from "vitest";
 import { AiGateway } from "../src/ai-gateway.js";
 import { AiGatewayError } from "../src/errors.js";
 import { OpenAiCompatibleTextAdapter } from "../src/openai-compatible-text-adapter.js";
+import { PixelleLabsGeminiImageAdapter } from "../src/pixellelabs-gemini-image-adapter.js";
 import { redactString, redactValue } from "../src/redaction.js";
 import { RouteResolver } from "../src/route-resolver.js";
 import { VisionaryNanoBananaAdapter } from "../src/visionary-nano-banana-adapter.js";
@@ -593,6 +594,105 @@ describe("visionary nano banana adapter", () => {
       ),
     ).rejects.toMatchObject<Partial<AiGatewayError>>({
       code: "PROVIDER_BAD_REQUEST",
+    });
+  });
+});
+
+describe("pixellelabs gemini image adapter", () => {
+  test("posts Gemini generateContent payload and parses inline image output", async () => {
+    const calls: Array<{ body: Record<string, unknown>; headers: HeadersInit | undefined; url: string }> = [];
+    const fetchMock = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+      calls.push({
+        body: JSON.parse(String(init?.body || "{}")) as Record<string, unknown>,
+        headers: init?.headers,
+        url: String(input),
+      });
+      return new Response(
+        JSON.stringify({
+          candidates: [
+            {
+              content: {
+                parts: [
+                  {
+                    inlineData: {
+                      data: "iVBORw0KGgo=",
+                      mimeType: "image/png",
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    };
+    const adapter = new PixelleLabsGeminiImageAdapter({
+      fetchImplementation: fetchMock as unknown as typeof fetch,
+    });
+
+    const result = await adapter.generateImage(
+      {
+        apiKey: "sk-pixelle",
+        baseUrl: "https://api.pixellelabs.com",
+        modelKey: "gemini-3-pro-image-preview",
+        providerKey: "pixellelabs",
+        requestConfig: {
+          path: "/v1beta/models/gemini-3-pro-image-preview:generateContent",
+        },
+        routeId: "route-1",
+        routeKey: "image.pixellelabs.nano-banana-pro",
+        timeoutMs: 5_000,
+      },
+      {
+        metadata: {
+          aspectRatio: "16:9",
+          images: ["https://example.com/input.jpg"],
+          imageSize: "2K",
+        },
+        prompt: "Keep the composition, make it watercolor style",
+      },
+    );
+
+    expect(calls[0]?.url).toBe(
+      "https://api.pixellelabs.com/v1beta/models/gemini-3-pro-image-preview:generateContent",
+    );
+    expect(calls[0]?.headers).toMatchObject({
+      Authorization: "Bearer sk-pixelle",
+      "Content-Type": "application/json",
+    });
+    expect(calls[0]?.body).toEqual({
+      contents: [
+        {
+          parts: [
+            { text: "Keep the composition, make it watercolor style" },
+            {
+              fileData: {
+                fileUri: "https://example.com/input.jpg",
+                mimeType: "image/jpeg",
+              },
+            },
+          ],
+          role: "user",
+        },
+      ],
+      generationConfig: {
+        imageConfig: {
+          aspectRatio: "16:9",
+          imageSize: "2K",
+        },
+        responseModalities: ["IMAGE"],
+      },
+    });
+    expect(result).toMatchObject({
+      modelKey: "gemini-3-pro-image-preview",
+      outputs: [
+        {
+          base64: "iVBORw0KGgo=",
+          mimeType: "image/png",
+        },
+      ],
+      status: "succeeded",
     });
   });
 });

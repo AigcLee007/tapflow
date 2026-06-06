@@ -15,37 +15,37 @@ describe("AI plugin registry", () => {
     expect(manifests.map((manifest) => manifest.packageKey)).toEqual([
       "openai-compatible.gpt-image-2",
       "mock.local-dev.image",
-      "visionary.nano-banana",
+      "pixellelabs.gemini-image",
     ]);
     expect(BUILTIN_AI_PLUGIN_MANIFESTS).toHaveLength(3);
   });
 
-  test("returns Nano Banana Pro and Fast models with route-bound pricing", () => {
-    const manifest = builtinAiPluginRegistry.require("visionary.nano-banana");
+  test("returns PixelleLabs Nano Banana models with route-bound pricing", () => {
+    const manifest = builtinAiPluginRegistry.require("pixellelabs.gemini-image");
 
-    expect(manifest.provider.kind).toBe("visionary-nano-banana");
-    expect(manifest.provider.defaultBaseUrl).toBe("https://visionary.beer");
+    expect(manifest.provider.kind).toBe("pixellelabs-gemini-image");
+    expect(manifest.provider.defaultBaseUrl).toBe("https://api.pixellelabs.com");
     expect(manifest.models.map((model) => model.modelKey)).toEqual([
-      "nano-banana-pro",
-      "nano-banana-pro-fast",
+      "gemini-3-pro-image-preview",
+      "gemini-3.1-flash-image-preview",
     ]);
     expect(manifest.routes.map((route) => route.routeKey)).toEqual([
-      "image.nano-banana-pro",
-      "image.nano-banana-pro-fast",
+      "image.pixellelabs.nano-banana-pro",
+      "image.pixellelabs.nano-banana-2",
     ]);
     expect(manifest.pricing).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           minChargeCredits: 24,
-          model: "nano-banana-pro",
-          route: "image.nano-banana-pro",
+          model: "gemini-3-pro-image-preview",
+          route: "image.pixellelabs.nano-banana-pro",
           unitCredits: 24,
         }),
         expect.objectContaining({
-          minChargeCredits: 48,
-          model: "nano-banana-pro-fast",
-          route: "image.nano-banana-pro-fast",
-          unitCredits: 48,
+          minChargeCredits: 24,
+          model: "gemini-3.1-flash-image-preview",
+          route: "image.pixellelabs.nano-banana-2",
+          unitCredits: 24,
         }),
       ]),
     );

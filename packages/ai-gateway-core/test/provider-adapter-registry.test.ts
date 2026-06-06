@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import { AiGateway } from "../src/ai-gateway.js";
 import { MockProviderAdapter } from "../src/mock-provider-adapter.js";
 import { OpenAiCompatibleTextAdapter } from "../src/openai-compatible-text-adapter.js";
+import { PixelleLabsGeminiImageAdapter } from "../src/pixellelabs-gemini-image-adapter.js";
 import {
   ProviderAdapterRegistry,
   createDefaultAiGateway,
@@ -23,11 +24,13 @@ describe("ProviderAdapterRegistry", () => {
       "mock",
       "openai",
       "openai-compatible",
+      "pixellelabs-gemini-image",
       "visionary-nano-banana",
     ]);
     expect(registry.create("mock")).toBeInstanceOf(MockProviderAdapter);
     expect(registry.create("openai")).toBeInstanceOf(OpenAiCompatibleTextAdapter);
     expect(registry.create("openai-compatible")).toBeInstanceOf(OpenAiCompatibleTextAdapter);
+    expect(registry.create("pixellelabs-gemini-image")).toBeInstanceOf(PixelleLabsGeminiImageAdapter);
     expect(registry.create("visionary-nano-banana")).toBeInstanceOf(VisionaryNanoBananaAdapter);
   });
 
