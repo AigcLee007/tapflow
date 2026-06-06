@@ -1,0 +1,370 @@
+import type { Pool, PoolClient } from "pg";
+
+import {
+  AiGateway,
+  AiGatewayError,
+  CredentialVault,
+  DatabaseMediaRuntime,
+  DatabaseTextGenerationRuntime,
+  MockProviderAdapter,
+  OpenAiCompatibleTextAdapter,
+  VisionaryNanoBananaAdapter,
+  builtinAiPluginRegistry,
+  redactValue,
+  type AiGatewayMediaResult,
+  type AiGatewayTextResult,
+  type AiPluginTestManifest,
+} from "@aigc-flow/ai-gateway-core";
+import { createPgPool, withTenantTransaction } from "@aigc-flow/db";
+
+import type { RunRouteTestInput } from "./ai-route-tests.schemas.js";
+
+type TenantContext = {
+  ipHash?: string | null;
+  requestId?: string | null;
+  tenantId: string;
+  traceId?: string | null;
+  userAgent?: string | null;
+  userId: string | null;
+};
+
+type RouteRecord = {
+  id: string;
+  modality: "image" | "text" | "video";
+  model_key: string | null;
+  package_key: string | null;
+  provider_key: string;
+  route_key: string;
+};
+
+export type RouteTestResultView = {
+  checkedAt: string;
+  error: Record<string, unknown> | null;
+  healthCheckId: string;
+  latencyMs: number;
+  requestSummary: Record<string, unknown>;
+  responseSummary: Record<string, unknown>;
+  routeId: string;
+  routeKey: string;
+  status: "failed" | "ok";
+};
+
+export class AiRouteTestApiError extends Error {
+  readonly code: string;
+  readonly statusCode: number;
+
+  constructor(statusCode: number, code: string, message: string) {
+    super(message);
+    this.code = code;
+    this.name = "AiRouteTestApiError";
+    this.statusCode = statusCode;
+  }
+}
+
+export class AiRouteTestService {
+  readonly mediaRuntime: DatabaseMediaRuntime;
+  readonly pool: Pool;
+  readonly textRuntime: DatabaseTextGenerationRuntime;
+
+  constructor(options: {
+    credentialVault: CredentialVault;
+    pool?: Pool;
+  }) {
+    this.pool = options.pool ?? createPgPool();
+    const aiGateway = new AiGateway({
+      mock: new MockProviderAdapter(),
+      openai: new OpenAiCompatibleTextAdapter(),
+      "openai-compatible": new OpenAiCompatibleTextAdapter(),
+      "visionary-nano-banana": new VisionaryNanoBananaAdapter(),
+    });
+    this.mediaRuntime = new DatabaseMediaRuntime({
+      aiGateway,
+      credentialVault: options.credentialVault,
+      pool: this.pool,
+    });
+    this.textRuntime = new DatabaseTextGenerationRuntime({
+      aiGateway,
+      credentialVault: options.credentialVault,
+      pool: this.pool,
+    });
+  }
+
+  async runRouteTest(
+    context: TenantContext,
+    routeId: string,
+    input: RunRouteTestInput,
+  ): Promise<RouteTestResultView> {
+    const route = await this.getTenantRoute(context, routeId);
+    const defaultTest = this.findDefaultTest(route.package_key, route.route_key);
+    const requestSummary = this.buildRequestSummary(route, defaultTest, input);
+    const startedAt = Date.now();
+
+    try {
+      const result = await this.callRuntime(context, route, defaultTest, input);
+      const latencyMs = Date.now() - startedAt;
+      const responseSummary = this.summarizeSuccess(route, result);
+      return this.recordHealthCheck({
+        checkedBy: context.userId,
+        context,
+        error: null,
+        latencyMs,
+        requestSummary,
+        responseSummary,
+        route,
+        status: "ok",
+      });
+    } catch (error) {
+      const latencyMs = Date.now() - startedAt;
+      const normalizedError = this.normalizeError(error);
+      const responseSummary = {
+        status: "failed",
+      };
+      return this.recordHealthCheck({
+        checkedBy: context.userId,
+        context,
+        error: normalizedError,
+        latencyMs,
+        requestSummary,
+        responseSummary,
+        route,
+        status: "failed",
+      });
+    }
+  }
+
+  private async getTenantRoute(context: TenantContext, routeId: string): Promise<RouteRecord> {
+    return withTenantTransaction(context, async (client) => {
+      const result = await client.query<RouteRecord>(
+        `
+          SELECT
+            route.id::text AS id,
+            route.route_key,
+            route.modality,
+            provider.key AS provider_key,
+            model.model_key,
+            package.package_key
+          FROM ai_routes AS route
+          JOIN ai_providers AS provider
+            ON provider.id = route.provider_id
+          LEFT JOIN ai_models AS model
+            ON model.id = route.model_id
+          LEFT JOIN tenant_ai_plugin_installs AS install
+            ON install.id = route.plugin_install_id
+          LEFT JOIN ai_plugin_packages AS package
+            ON package.id = install.package_id
+          WHERE route.id = $1::uuid
+            AND route.tenant_id = $2::uuid
+            AND route.status = 'active'
+            AND provider.status = 'active'
+            AND (route.model_id IS NULL OR model.status = 'active')
+          LIMIT 1
+        `,
+        [routeId, context.tenantId],
+      );
+
+      const route = result.rows[0];
+      if (!route) {
+        throw new AiRouteTestApiError(404, "ROUTE_NOT_FOUND", "Route not found or is not active");
+      }
+      return route;
+    }, this.pool);
+  }
+
+  private findDefaultTest(packageKey: string | null, routeKey: string): AiPluginTestManifest | null {
+    if (!packageKey) {
+      return null;
+    }
+    const manifest = builtinAiPluginRegistry.get(packageKey);
+    return manifest?.tests.find((test) => test.routeKey === routeKey) ?? null;
+  }
+
+  private async callRuntime(
+    context: TenantContext,
+    route: RouteRecord,
+    defaultTest: AiPluginTestManifest | null,
+    input: RunRouteTestInput,
+  ): Promise<AiGatewayMediaResult | AiGatewayTextResult> {
+    if (route.modality === "text") {
+      return this.textRuntime.generateText(context, {
+        maxTokens: input.maxTokens ?? null,
+        messages:
+          input.messages ??
+          defaultTest?.request.messages ?? [
+            {
+              content: input.prompt ?? defaultTest?.request.prompt ?? "Return a short route test response.",
+              role: "user",
+            },
+          ],
+        model: input.model ?? route.model_key,
+        routeKey: route.route_key,
+        temperature: input.temperature ?? null,
+      });
+    }
+
+    const prompt = input.prompt ?? defaultTest?.request.prompt ?? "A simple route test image.";
+    const metadata = {
+      ...(defaultTest?.request.metadata ?? {}),
+      ...(input.metadata ?? {}),
+    };
+
+    if (route.modality === "image") {
+      return this.mediaRuntime.generateImage(context, {
+        metadata,
+        model: input.model ?? route.model_key,
+        prompt,
+        routeKey: route.route_key,
+      });
+    }
+
+    return this.mediaRuntime.generateVideo(context, {
+      metadata,
+      model: input.model ?? route.model_key,
+      prompt,
+      routeKey: route.route_key,
+    });
+  }
+
+  private buildRequestSummary(
+    route: RouteRecord,
+    defaultTest: AiPluginTestManifest | null,
+    input: RunRouteTestInput,
+  ): Record<string, unknown> {
+    const prompt = input.prompt ?? defaultTest?.request.prompt ?? null;
+    return {
+      hasCustomInput: Object.keys(input).length > 0,
+      messageCount: input.messages?.length ?? defaultTest?.request.messages?.length ?? null,
+      metadataKeys: Object.keys({
+        ...(defaultTest?.request.metadata ?? {}),
+        ...(input.metadata ?? {}),
+      }),
+      modelKey: input.model ?? route.model_key,
+      packageKey: route.package_key,
+      promptPreview: typeof prompt === "string" ? prompt.slice(0, 200) : null,
+      providerKey: route.provider_key,
+      routeKey: route.route_key,
+      testKey: defaultTest?.key ?? null,
+    };
+  }
+
+  private summarizeSuccess(
+    route: RouteRecord,
+    result: AiGatewayMediaResult | AiGatewayTextResult,
+  ): Record<string, unknown> {
+    if (route.modality === "text" && "outputText" in result) {
+      return {
+        modelKey: result.modelKey,
+        outputPreview: result.outputText.slice(0, 200),
+        providerKey: result.providerKey,
+        status: result.status,
+        usage: result.usage,
+      };
+    }
+
+    const mediaResult = result as AiGatewayMediaResult;
+    return {
+      hasProviderTaskId: Boolean(mediaResult.providerTaskId),
+      modelKey: mediaResult.modelKey,
+      outputCount: mediaResult.outputs?.length ?? 0,
+      outputs: (mediaResult.outputs ?? []).slice(0, 5).map((output) => ({
+        durationMs: output.durationMs ?? null,
+        hasBase64: Boolean(output.base64),
+        hasUrl: Boolean(output.url),
+        height: output.height ?? null,
+        mimeType: output.mimeType ?? null,
+        width: output.width ?? null,
+      })),
+      providerKey: mediaResult.providerKey,
+      status: mediaResult.status,
+      usage: mediaResult.usage ?? null,
+    };
+  }
+
+  private normalizeError(error: unknown): Record<string, unknown> {
+    if (error instanceof AiRouteTestApiError) {
+      return {
+        code: error.code,
+        message: error.message,
+      };
+    }
+
+    if (error instanceof AiGatewayError) {
+      return {
+        code: error.code,
+        details: redactValue(error.details),
+        message: error.message,
+        providerRequest: redactValue(error.providerRequest),
+        providerResponse: redactValue(error.providerResponse),
+      };
+    }
+
+    return {
+      code: "INTERNAL_ERROR",
+      message: error instanceof Error ? error.message : String(error),
+    };
+  }
+
+  private async recordHealthCheck(options: {
+    checkedBy: string | null;
+    context: TenantContext;
+    error: Record<string, unknown> | null;
+    latencyMs: number;
+    requestSummary: Record<string, unknown>;
+    responseSummary: Record<string, unknown>;
+    route: RouteRecord;
+    status: "failed" | "ok";
+  }): Promise<RouteTestResultView> {
+    return withTenantTransaction(options.context, async (client: PoolClient) => {
+      const result = await client.query<{
+        created_at: string;
+        id: string;
+      }>(
+        `
+          INSERT INTO ai_route_health_checks (
+            tenant_id,
+            route_id,
+            status,
+            latency_ms,
+            request_summary,
+            response_summary,
+            error,
+            checked_by
+          )
+          VALUES (
+            $1::uuid,
+            $2::uuid,
+            $3,
+            $4,
+            $5::jsonb,
+            $6::jsonb,
+            $7::jsonb,
+            $8::uuid
+          )
+          RETURNING id::text AS id, created_at::text AS created_at
+        `,
+        [
+          options.context.tenantId,
+          options.route.id,
+          options.status,
+          options.latencyMs,
+          JSON.stringify(options.requestSummary),
+          JSON.stringify(options.responseSummary),
+          options.error ? JSON.stringify(options.error) : null,
+          options.checkedBy,
+        ],
+      );
+
+      const row = result.rows[0];
+      return {
+        checkedAt: row.created_at,
+        error: options.error,
+        healthCheckId: row.id,
+        latencyMs: options.latencyMs,
+        requestSummary: options.requestSummary,
+        responseSummary: options.responseSummary,
+        routeId: options.route.id,
+        routeKey: options.route.route_key,
+        status: options.status,
+      };
+    }, this.pool);
+  }
+}

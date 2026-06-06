@@ -10,6 +10,7 @@ import type { AuthService } from "./modules/auth/auth.service.js";
 import type { AiGatewayAdminService } from "./modules/ai-gateway/ai-gateway.service.js";
 import type { AiModelCatalogService } from "./modules/ai-model-catalog/ai-model-catalog.service.js";
 import type { AiPluginService } from "./modules/ai-plugins/ai-plugins.service.js";
+import type { AiRouteTestService } from "./modules/ai-route-tests/ai-route-tests.service.js";
 import type { AssetsService } from "./modules/assets/assets.service.js";
 import type { BillingApiService } from "./modules/billing/billing.service.js";
 import type { FlowsService } from "./modules/flows/flows.service.js";
@@ -24,6 +25,7 @@ declare module "fastify" {
     aiGatewayService: AiGatewayAdminService;
     aiModelCatalogService: AiModelCatalogService;
     aiPluginService: AiPluginService;
+    aiRouteTestService: AiRouteTestService;
     auditService: AuditApiService;
     authService: AuthService;
     assetsService: AssetsService;
