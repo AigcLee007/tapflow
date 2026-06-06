@@ -103,9 +103,19 @@ import { normalizeBackendAssetUrl } from '../../utils/generatedImageStorage';
 import { canNodeReceiveIncoming } from '../rules/connectionRules';
 import { getAssetDownloadUrl, uploadAssetFile } from '../../assets/assetApi';
 import { listRuntimeRoutes, type V2RuntimeRouteItem } from '../../services/v2AiRoutesApi';
+import { listAiModelCatalog, listAiModelRoutes, type AiModelCatalogItem } from '../../services/v2AiModelCatalogApi';
 import { buildAssetBackedNodeData } from '../utils/assetNodeData';
 import { persistDerivedImageAsset, type DerivedImageSourceType } from '../utils/persistDerivedImageAsset';
 import { mapImageRuntimeRouteOptions, type RuntimeRouteOption } from '../utils/runtimeRouteOptions';
+import {
+  getAspectRatioOptionsFromCatalogModel,
+  getCatalogUiFields,
+  getDefaultParamsFromUiSchema,
+  getSizeOptionsFromCatalogModel,
+  mapCatalogModelsToOptions,
+  mapCatalogRoutesToRuntimeOptions,
+  type UiSchemaField,
+} from '../utils/modelCatalogOptions';
 
 type FlowNode = Node<FlowNodeData>;
 
@@ -173,6 +183,7 @@ const useSingleNodeSelection = (selected?: boolean) => {
 
 const useImageModelCatalogWhenNeeded = (enabled: boolean) => {
   const [catalog, setCatalog] = useState<ImageModelCatalogShape>(() => getImageModelCatalogSnapshot());
+  const [v2Catalog, setV2Catalog] = useState<AiModelCatalogItem[]>([]);
 
   useEffect(() => {
     if (!enabled) return undefined;
@@ -189,7 +200,25 @@ const useImageModelCatalogWhenNeeded = (enabled: boolean) => {
     };
   }, [enabled]);
 
-  return catalog.models;
+  useEffect(() => {
+    if (!enabled) return undefined;
+    let active = true;
+    void listAiModelCatalog('image')
+      .then((items) => {
+        if (active) setV2Catalog(items);
+      })
+      .catch(() => {
+        if (active) setV2Catalog([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [enabled]);
+
+  return useMemo(
+    () => mapCatalogModelsToOptions(v2Catalog, catalog.models),
+    [catalog.models, v2Catalog],
+  );
 };
 
 const useRuntimeImageRoutes = (enabled: boolean) => {
@@ -212,6 +241,44 @@ const useRuntimeImageRoutes = (enabled: boolean) => {
   }, [enabled]);
 
   return routes;
+};
+
+const useModelScopedImageRoutes = (
+  enabled: boolean,
+  modelKey: string,
+  fallbackRoutes: RuntimeRouteOption[],
+) => {
+  const [routes, setRoutes] = useState<RuntimeRouteOption[]>([]);
+  const [loadedModelKey, setLoadedModelKey] = useState('');
+
+  useEffect(() => {
+    if (!enabled || !modelKey) {
+      setRoutes([]);
+      setLoadedModelKey('');
+      return undefined;
+    }
+    let active = true;
+    setLoadedModelKey('');
+    void listAiModelRoutes(modelKey)
+      .then((items) => {
+        if (!active) return;
+        setRoutes(mapCatalogRoutesToRuntimeOptions(items));
+        setLoadedModelKey(modelKey);
+      })
+      .catch(() => {
+        if (!active) return;
+        setRoutes([]);
+        setLoadedModelKey(modelKey);
+      });
+    return () => {
+      active = false;
+    };
+  }, [enabled, modelKey]);
+
+  if (loadedModelKey === modelKey && routes.length > 0) {
+    return routes;
+  }
+  return fallbackRoutes;
 };
 
 /* Section */
@@ -1702,7 +1769,6 @@ const ParamSelect: React.FC<{
 
 const ParamDivider = () => <span style={{ color: 'rgba(255,255,255,0.1)', margin: '0 2px' }}>·</span>;
 
-const IMAGE_NODE_MODEL_IDS = ['nano-banana-pro', 'nano-banana-pro-fast', 'gemini-flash', 'gpt-image-2'] as const;
 const IMAGE_MODEL_ICON_BY_ID: Record<string, React.ReactNode> = {
   'nano-banana-pro': <GoogleLogo />,
   'nano-banana-pro-fast': <GoogleLogo />,
@@ -1807,7 +1873,7 @@ const ratioPreviewStyle = (ratioValue: string, active: boolean): React.CSSProper
 };
 
 interface ImageModelRouteDropupProps {
-  modelOptions: Array<{ id: string; label: string }>;
+  modelOptions: Array<{ id: string; label: string; sizeOptions?: string[] }>;
   currentModelId: string;
   currentRouteKey: string;
   runtimeRoutes: RuntimeRouteOption[];
@@ -1860,7 +1926,8 @@ const ImageModelRouteDropup: React.FC<ImageModelRouteDropupProps> = ({
           {modelOptions.map((option) => {
             const active = option.id === currentModelId;
             const hovered = hoveredModelId === option.id;
-            const modelSizes = getImageModelSizeOptions(option.id).map((item) => String(item).toUpperCase());
+            const modelSizes = (option.sizeOptions?.length ? option.sizeOptions : getImageModelSizeOptions(option.id))
+              .map((item) => String(item).toUpperCase());
             const maxQuality = modelSizes.includes('4K') ? '4K' : modelSizes.includes('2K') ? '2K' : (modelSizes[0] || '1K');
             return (
               <button
@@ -2044,6 +2111,143 @@ const ImageSettingsDropup: React.FC<ImageSettingsDropupProps> = ({
               );
             })}
           </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+interface DynamicImageParamsDropupProps {
+  fields: UiSchemaField[];
+  params: Record<string, any>;
+  ratio: string;
+  size: string;
+  onChangeParam: (key: string, value: any) => void;
+}
+
+const getDynamicParamValue = (
+  params: Record<string, any>,
+  field: UiSchemaField,
+  ratio: string,
+  size: string,
+) => {
+  if (field.key === 'aspectRatio' || field.key === 'aspect_ratio') return params[field.key] ?? ratio;
+  if (field.key === 'imageSize' || field.key === 'size') return params[field.key] ?? size;
+  return params[field.key] ?? field.defaultValue ?? (field.type === 'boolean' ? false : '');
+};
+
+const DynamicImageParamsDropup: React.FC<DynamicImageParamsDropupProps> = ({
+  fields,
+  params,
+  ratio,
+  size,
+  onChangeParam,
+}) => {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (event: MouseEvent) => {
+      if (!wrapRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    window.addEventListener('mousedown', onDown);
+    return () => window.removeEventListener('mousedown', onDown);
+  }, [open]);
+
+  return (
+    <div ref={wrapRef} style={{ position: 'relative' }}>
+      <button type="button" className="nodrag nopan" onClick={() => setOpen((value) => !value)} style={textModelTrigger}>
+        <span style={{ border: '1px solid #cbd5e1', width: 13, height: 13, display: 'inline-block', borderRadius: 2 }} />
+        <span>{ratio}</span>
+        <span style={{ color: '#94a3b8' }}>· {String(size || '').toUpperCase()}</span>
+        <ChevronDown size={14} color="#a1a1aa" />
+      </button>
+      {open && (
+        <div style={{ ...imageMenuSurface, width: 440, padding: 18 }}>
+          {fields.map((field) => {
+            const value = getDynamicParamValue(params, field, ratio, size);
+            if (field.type === 'boolean') {
+              return (
+                <label
+                  key={field.key}
+                  className="nodrag nopan"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 12,
+                    padding: '10px 6px',
+                    color: '#e5e7eb',
+                    fontSize: 13,
+                    fontWeight: 700,
+                  }}
+                >
+                  <span>{field.label}</span>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(value)}
+                    onChange={(event) => onChangeParam(field.key, event.target.checked)}
+                  />
+                </label>
+              );
+            }
+
+            const options = field.options ?? [];
+            return (
+              <label key={field.key} style={{ display: 'block', padding: '8px 0' }}>
+                <div style={imageMenuSubHeader}>{field.label}</div>
+                {field.type === 'select' && options.length > 0 ? (
+                  <select
+                    className="nodrag nopan"
+                    value={String(value)}
+                    onChange={(event) => onChangeParam(field.key, event.target.value)}
+                    style={{
+                      width: '100%',
+                      height: 38,
+                      borderRadius: 10,
+                      border: '1px solid rgba(255,255,255,0.12)',
+                      background: 'rgba(255,255,255,0.07)',
+                      color: '#f8fafc',
+                      padding: '0 10px',
+                    }}
+                  >
+                    {options.map((option) => (
+                      <option key={String(option.value)} value={String(option.value)} style={{ background: '#1e1e28' }}>
+                        {option.label || String(option.value)}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    className="nodrag nopan"
+                    type={field.type === 'number' || field.type === 'slider' ? 'number' : 'text'}
+                    min={field.min}
+                    max={field.max}
+                    step={field.step}
+                    value={String(value)}
+                    onChange={(event) => {
+                      const nextValue = field.type === 'number' || field.type === 'slider'
+                        ? Number(event.target.value)
+                        : event.target.value;
+                      onChangeParam(field.key, nextValue);
+                    }}
+                    style={{
+                      width: '100%',
+                      height: 38,
+                      borderRadius: 10,
+                      border: '1px solid rgba(255,255,255,0.12)',
+                      background: 'rgba(255,255,255,0.07)',
+                      color: '#f8fafc',
+                      padding: '0 10px',
+                    }}
+                  />
+                )}
+              </label>
+            );
+          })}
         </div>
       )}
     </div>
@@ -3192,24 +3396,26 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     }
   }, []);
 
-  const modelOptions = (
-    models.length
-      ? models.filter((model) => (IMAGE_NODE_MODEL_IDS as readonly string[]).includes(model.id))
-      : []
-  ).map((m) => ({ id: m.id, label: m.label }));
+  const modelOptions = models.map((model) => ({
+    id: model.id,
+    label: model.label,
+    sizeOptions: getSizeOptionsFromCatalogModel(model),
+  }));
   if (modelOptions.length === 0) {
     modelOptions.push(
-      { id: 'nano-banana-pro', label: 'Nano Banana Pro' },
-      { id: 'nano-banana-pro-fast', label: 'Nano Banana Pro Fast' },
-      { id: 'gemini-flash', label: 'Nano Banana 2' },
-      { id: 'gpt-image-2', label: 'GPT-image-2' },
+      { id: 'nano-banana-pro', label: 'Nano Banana Pro', sizeOptions: ['2k', '4k'] },
+      { id: 'nano-banana-pro-fast', label: 'Nano Banana Pro Fast', sizeOptions: ['2k', '4k'] },
+      { id: 'gemini-flash', label: 'Nano Banana 2', sizeOptions: ['1k'] },
+      { id: 'gpt-image-2', label: 'GPT-image-2', sizeOptions: ['auto', '1k', '2k', '4k'] },
     );
   }
 
   const currentModelId = normalizeImageModelId(String(d.modelId || modelOptions[0]?.id || 'nano-banana-pro'));
+  const selectedCatalogModel = models.find((model) => model.id === currentModelId) || null;
   const runtimeRoutes = useRuntimeImageRoutes(showNodeEditor);
-  const modelRuntimeRoutes = getRuntimeRoutesForImageModel(currentModelId, runtimeRoutes);
-  const preferredRuntimeRouteKey = IMAGE_RUNTIME_ROUTE_BY_MODEL_ID[currentModelId] || '';
+  const fallbackModelRuntimeRoutes = getRuntimeRoutesForImageModel(currentModelId, runtimeRoutes);
+  const modelRuntimeRoutes = useModelScopedImageRoutes(showNodeEditor, currentModelId, fallbackModelRuntimeRoutes);
+  const preferredRuntimeRouteKey = selectedCatalogModel?.defaultRouteKey || IMAGE_RUNTIME_ROUTE_BY_MODEL_ID[currentModelId] || '';
   const preferredRuntimeRoute = preferredRuntimeRouteKey
     ? modelRuntimeRoutes.find((route) => route.routeKey === preferredRuntimeRouteKey)
     : null;
@@ -3220,15 +3426,18 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     || null;
   const currentRouteKey = String(d.routeKey || selectedModelRuntimeRoute?.routeKey || '');
 
-  const sizeOptions = ['1k', '2k', '4k'];
+  const catalogSizeOptions = getSizeOptionsFromCatalogModel(selectedCatalogModel);
+  const sizeOptions = catalogSizeOptions.length ? catalogSizeOptions : ['1k', '2k', '4k'];
   const showSize = shouldShowImageSizeSelector(currentModelId) && sizeOptions.length > 0;
-  const extraRatios = getImageModelExtraAspectRatios(currentModelId);
+  const catalogRatios = getAspectRatioOptionsFromCatalogModel(selectedCatalogModel);
+  const extraRatios = catalogRatios.length ? catalogRatios : getImageModelExtraAspectRatios(currentModelId);
   const defaultRatios = ['1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3', '21:9'];
   const aspectOptions = Array.from(new Set([...defaultRatios, ...extraRatios]));
 
   const p = (d.params || {}) as Record<string, any>;
-  const currentSize = String(p.size || sizeOptions[0] || '1k').toLowerCase();
-  const currentRatio = String(p.aspect_ratio || aspectOptions[0] || '1:1');
+  const currentSize = String(p.size || p.imageSize || sizeOptions[0] || '1k').toLowerCase();
+  const currentRatio = String(p.aspectRatio || p.aspect_ratio || aspectOptions[0] || '1:1');
+  const dynamicParamFields = getCatalogUiFields(selectedCatalogModel?.uiSchema);
   const routeFamily = String(getImageModelById(currentModelId)?.routeFamily || 'default').trim() || 'default';
   const routeOptions = getImageRoutesByModelFamily(routeFamily).filter((route) => route.isActive !== false);
   const selectedRoute =
@@ -3410,8 +3619,13 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const resultStripTimerRef = useRef<number | null>(null);
 
   const setParam = (key: string, val: any) => {
-    const patch: Partial<FlowNodeData> = { params: { ...p, [key]: val } };
-    if (key === 'aspect_ratio' && !effectiveThumbnailUrl) {
+    const nextParams = { ...p, [key]: val };
+    if (key === 'aspect_ratio') nextParams.aspectRatio = val;
+    if (key === 'aspectRatio') nextParams.aspect_ratio = val;
+    if (key === 'size') nextParams.imageSize = String(val).toUpperCase();
+    if (key === 'imageSize') nextParams.size = String(val).toLowerCase();
+    const patch: Partial<FlowNodeData> = { params: nextParams };
+    if ((key === 'aspect_ratio' || key === 'aspectRatio') && !effectiveThumbnailUrl) {
       const nextSize = getMediaNodeSizeFromRatioString(val, 4 / 3);
       patch.width = nextSize.width;
       patch.height = nextSize.height;
@@ -3547,8 +3761,16 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
 
   const handleGenerate = () => {
     if (isGenerating) return;
+    if (!selectedRuntimeRoute?.routeKey) {
+      updateNodeData(id, {
+        errorMessage: '当前模型未配置运行路由，请先在后台添加对应线路',
+        generationStatus: 'error',
+        status: 'error',
+      });
+      return;
+    }
     const referenceImages = referenceChips.map((item) => item.imageUrl);
-    updateNodeData(id, { referenceImages });
+    updateNodeData(id, { referenceImages, routeKey: selectedRuntimeRoute.routeKey });
     void runBackendWorkflow({ runMode: 'target_node', targetNodeId: id }).catch(() => undefined);
   };
 
