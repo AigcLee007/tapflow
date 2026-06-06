@@ -168,7 +168,10 @@ export class AiModelCatalogService {
           LEFT JOIN tenant_ai_plugin_installs AS install
             ON install.id = catalog.plugin_install_id
           WHERE (catalog.tenant_id = $1::uuid OR catalog.tenant_id IS NULL)
-            AND catalog.model_key = $2::text
+            AND (
+              catalog.model_key = $2::text
+              OR catalog.model_family = $2::text
+            )
             AND catalog.status = 'active'
             AND (
               catalog.plugin_install_id IS NULL

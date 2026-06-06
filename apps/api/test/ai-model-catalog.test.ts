@@ -189,6 +189,16 @@ describeWithDatabase("ai model catalog API", () => {
           }),
         ]);
 
+        const proFamilyRoutes = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "GET",
+          url: "/api/v2/ai/model-catalog/pixellelabs.nano-banana-pro/routes",
+        });
+        expect(proFamilyRoutes.statusCode).toBe(200);
+        expect(proFamilyRoutes.json()).toEqual(proRoutes.json());
+
         const flashRoutes = await api.inject({
           headers: {
             authorization: `Bearer ${owner.accessToken}`,
