@@ -18,6 +18,8 @@ import { registerAdminRoutes } from "./modules/admin/admin.routes.js";
 import { AdminApiService } from "./modules/admin/admin.service.js";
 import { registerAiGatewayAdminRoutes } from "./modules/ai-gateway/ai-gateway.routes.js";
 import { AiGatewayAdminService } from "./modules/ai-gateway/ai-gateway.service.js";
+import { registerAiPluginAdminRoutes } from "./modules/ai-plugins/ai-plugins.routes.js";
+import { AiPluginService } from "./modules/ai-plugins/ai-plugins.service.js";
 import { registerAuthRoutes } from "./modules/auth/auth.routes.js";
 import { AuthService } from "./modules/auth/auth.service.js";
 import { registerAssetRoutes } from "./modules/assets/assets.routes.js";
@@ -86,6 +88,10 @@ export function buildApp(options?: {
     credentialVault,
     pool,
   });
+  const aiPluginService = new AiPluginService({
+    credentialVault,
+    pool,
+  });
   const assetsService = new AssetsService({
     bucket: env.s3Bucket,
     pool,
@@ -127,6 +133,7 @@ export function buildApp(options?: {
 
   app.decorate("adminService", adminService);
   app.decorate("aiGatewayService", aiGatewayService);
+  app.decorate("aiPluginService", aiPluginService);
   app.decorate("auditService", auditService);
   app.decorate("authService", authService);
   app.decorate("assetsService", assetsService);
@@ -171,6 +178,7 @@ export function buildApp(options?: {
   registerAdminRoutes(app);
   registerAuditRoutes(app);
   registerAiGatewayAdminRoutes(app);
+  registerAiPluginAdminRoutes(app);
   registerAuthRoutes(app);
   registerAssetRoutes(app);
   registerBillingRoutes(app);
