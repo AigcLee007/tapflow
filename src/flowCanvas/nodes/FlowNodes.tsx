@@ -1872,6 +1872,16 @@ const ratioPreviewStyle = (ratioValue: string, active: boolean): React.CSSProper
   };
 };
 
+const ROUTE_NUMBER_LABELS = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
+
+const getUserFacingRouteLabel = (route: RuntimeRouteOption | undefined, index: number) => {
+  const configured = String(route?.label || '').trim();
+  if (/^线路[一二三四五六七八九十0-9]+$/.test(configured)) {
+    return configured;
+  }
+  return `线路${ROUTE_NUMBER_LABELS[index] || index + 1}`;
+};
+
 interface ImageModelRouteDropupProps {
   modelOptions: Array<{ id: string; label: string; sizeOptions?: string[] }>;
   currentModelId: string;
@@ -1894,6 +1904,9 @@ const ImageModelRouteDropup: React.FC<ImageModelRouteDropupProps> = ({
   const [hoveredRouteId, setHoveredRouteId] = useState<string | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const currentModel = modelOptions.find((option) => option.id === currentModelId) || modelOptions[0];
+  const currentRoute = runtimeRoutes.find((route) => route.routeKey === currentRouteKey) || runtimeRoutes[0];
+  const currentRouteIndex = currentRoute ? Math.max(0, runtimeRoutes.findIndex((route) => route.routeKey === currentRoute.routeKey)) : 0;
+  const currentRouteLabel = currentRoute ? getUserFacingRouteLabel(currentRoute, currentRouteIndex) : (currentRouteKey ? '线路一' : '');
 
   useEffect(() => {
     if (!open) return;
@@ -1917,7 +1930,7 @@ const ImageModelRouteDropup: React.FC<ImageModelRouteDropupProps> = ({
       >
         {IMAGE_MODEL_ICON_BY_ID[currentModelId] || <GoogleLogo />}
         <span>{currentModel?.label || currentModelId}</span>
-        {currentRouteKey ? <span style={{ color: '#94a3b8', fontSize: 12 }}>· {currentRouteKey}</span> : null}
+        {currentRouteLabel ? <span style={{ color: '#94a3b8', fontSize: 12 }}>· {currentRouteLabel}</span> : null}
         <ChevronDown size={14} color="#a1a1aa" />
       </button>
 
@@ -1955,10 +1968,12 @@ const ImageModelRouteDropup: React.FC<ImageModelRouteDropupProps> = ({
 
           {runtimeRoutes.length > 0 && (
             <>
-              <div style={imageMenuSubHeader}>运行路由</div>
-              {runtimeRoutes.map((route) => {
+              <div style={imageMenuSubHeader}>运行线路</div>
+              {runtimeRoutes.map((route, index) => {
                 const active = currentRouteKey === route.routeKey;
                 const hovered = hoveredRouteId === route.routeKey;
+                const label = getUserFacingRouteLabel(route, index);
+                const credits = route.estimatedCredits ?? route.minChargeCredits;
                 return (
                   <button
                     key={route.routeKey}
@@ -1973,10 +1988,10 @@ const ImageModelRouteDropup: React.FC<ImageModelRouteDropupProps> = ({
                     style={imageMenuItem(active, hovered)}
                   >
                     <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}>
-                      <span style={{ fontWeight: 650 }}>{route.label}</span>
-                      <span style={{ color: '#94a3b8', fontSize: 11 }}>
-                        {route.providerName} · {route.modelDisplayName || route.modelKey || '--'}
-                      </span>
+                      <span style={{ fontWeight: 650 }}>{label}</span>
+                      {typeof credits === 'number' ? (
+                        <span style={{ color: '#94a3b8', fontSize: 11 }}>预估 {credits} 点</span>
+                      ) : null}
                     </span>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                       {active ? <Check size={15} /> : null}

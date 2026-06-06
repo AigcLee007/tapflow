@@ -102,7 +102,7 @@ export const pixelleLabsNanoBananaProManifest: AiPluginManifest = {
         timeoutMs: 300000,
       },
       routeKey: "image.pixellelabs.nano-banana-pro",
-      routeLabel: "PixelleLabs Pro 线路",
+      routeLabel: "线路一",
       timeoutMs: 300000,
     },
   ],
