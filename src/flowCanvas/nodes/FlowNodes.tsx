@@ -55,14 +55,12 @@ import { runImageEdit, type ImageEditType } from '../runtime/graphExecutor';
 import { runBackendWorkflow } from '../runtime/v2WorkflowRunner';
 import { useVideoModelCatalog } from '../../hooks/useVideoModelCatalog';
 import {
-  ensureImageModelCatalogLoaded,
   getImageModelById,
   getImageModelCatalogSnapshot,
   getImageModelSizeOptions,
   getImageModelRequestName,
   shouldShowImageSizeSelector,
   getImageModelExtraAspectRatios,
-  subscribeImageModelCatalog,
   type ImageModelCatalogShape,
 } from '../../config/imageModels';
 import {
@@ -186,18 +184,7 @@ const useImageModelCatalogWhenNeeded = (enabled: boolean) => {
   const [v2Catalog, setV2Catalog] = useState<AiModelCatalogItem[]>([]);
 
   useEffect(() => {
-    if (!enabled) return undefined;
-    let active = true;
-    const syncCatalog = () => {
-      if (active) setCatalog(getImageModelCatalogSnapshot());
-    };
-    const unsubscribe = subscribeImageModelCatalog(syncCatalog);
-    syncCatalog();
-    void ensureImageModelCatalogLoaded().then(syncCatalog).catch(() => undefined);
-    return () => {
-      active = false;
-      unsubscribe();
-    };
+    if (enabled) setCatalog(getImageModelCatalogSnapshot());
   }, [enabled]);
 
   useEffect(() => {
@@ -220,6 +207,11 @@ const useImageModelCatalogWhenNeeded = (enabled: boolean) => {
     [catalog.models, v2Catalog],
   );
 };
+
+const getImageModelCatalogRouteLookupKey = (
+  modelId: string,
+  catalogModel?: { modelKey?: string | null } | null,
+) => String(catalogModel?.modelKey || modelId || '').trim();
 
 const useRuntimeImageRoutes = (enabled: boolean) => {
   const [routes, setRoutes] = useState<RuntimeRouteOption[]>([]);
@@ -1776,25 +1768,47 @@ const IMAGE_MODEL_ICON_BY_ID: Record<string, React.ReactNode> = {
   'gpt-image-2': <OpenAILogo />,
 };
 const IMAGE_RUNTIME_ROUTE_BY_MODEL_ID: Record<string, string> = {
-  'nano-banana': 'image.nano-banana-pro',
-  'nano-banana-pro': 'image.nano-banana-pro',
-  'nano-banana-pro-fast': 'image.nano-banana-pro-fast',
+  'nano-banana': 'image.pixellelabs.nano-banana-pro',
+  'nano-banana-pro': 'image.pixellelabs.nano-banana-pro',
+  'nano-banana-pro-fast': 'image.pixellelabs.nano-banana-pro',
+  'gemini-flash': 'image.pixellelabs.nano-banana-2',
+  'pixellelabs.nano-banana-pro': 'image.pixellelabs.nano-banana-pro',
+  'pixellelabs.nano-banana-2': 'image.pixellelabs.nano-banana-2',
   'gpt-image-2': 'image.gpt-image-2',
 };
 const LEGACY_IMAGE_RUNTIME_ROUTE_BY_MODEL_ID: Record<string, string[]> = {
+  'nano-banana-pro': ['image.nano-banana-pro'],
+  'nano-banana-pro-fast': ['image.nano-banana-pro-fast'],
+  'gemini-flash': ['image.nano-banana-pro-fast'],
+  'pixellelabs.nano-banana-pro': ['image.nano-banana-pro'],
+  'pixellelabs.nano-banana-2': ['image.nano-banana-pro-fast'],
   'gpt-image-2': ['image.openai'],
+};
+const V2_IMAGE_MODEL_ID_BY_LEGACY_ID: Record<string, string> = {
+  'nano-banana': 'pixellelabs.nano-banana-pro',
+  'nano-banana-pro': 'pixellelabs.nano-banana-pro',
+  'nano-banana-pro-fast': 'pixellelabs.nano-banana-pro',
+  'gemini-flash': 'pixellelabs.nano-banana-2',
 };
 const normalizeImageModelId = (modelId: string) =>
   modelId === 'nano-banana' ? 'nano-banana-pro' : modelId;
 const normalizeRuntimeModelKey = (value?: string | null) => String(value || '').trim().toLowerCase();
+const resolveV2ImageModelId = (modelId: string) => {
+  const normalizedModelId = normalizeImageModelId(modelId);
+  return V2_IMAGE_MODEL_ID_BY_LEGACY_ID[normalizedModelId] || normalizedModelId;
+};
 const normalizeImageRuntimeRouteKey = (modelId: string, routeKey?: string | null) => {
   const normalizedModelId = normalizeImageModelId(modelId);
+  const v2ModelId = resolveV2ImageModelId(normalizedModelId);
   const normalizedRouteKey = String(routeKey || '').trim();
   if (
     normalizedRouteKey &&
-    LEGACY_IMAGE_RUNTIME_ROUTE_BY_MODEL_ID[normalizedModelId]?.includes(normalizedRouteKey)
+    (
+      LEGACY_IMAGE_RUNTIME_ROUTE_BY_MODEL_ID[normalizedModelId]?.includes(normalizedRouteKey) ||
+      LEGACY_IMAGE_RUNTIME_ROUTE_BY_MODEL_ID[v2ModelId]?.includes(normalizedRouteKey)
+    )
   ) {
-    return IMAGE_RUNTIME_ROUTE_BY_MODEL_ID[normalizedModelId] || normalizedRouteKey;
+    return IMAGE_RUNTIME_ROUTE_BY_MODEL_ID[v2ModelId] || IMAGE_RUNTIME_ROUTE_BY_MODEL_ID[normalizedModelId] || normalizedRouteKey;
   }
   return normalizedRouteKey;
 };
@@ -3439,11 +3453,12 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     );
   }
 
-  const currentModelId = normalizeImageModelId(String(d.modelId || modelOptions[0]?.id || 'nano-banana-pro'));
+  const currentModelId = resolveV2ImageModelId(String(d.modelId || modelOptions[0]?.id || 'nano-banana-pro'));
   const selectedCatalogModel = models.find((model) => model.id === currentModelId) || null;
   const runtimeRoutes = useRuntimeImageRoutes(showNodeEditor);
   const fallbackModelRuntimeRoutes = getRuntimeRoutesForImageModel(currentModelId, runtimeRoutes);
-  const modelRuntimeRoutes = useModelScopedImageRoutes(showNodeEditor, currentModelId, fallbackModelRuntimeRoutes);
+  const modelRouteLookupKey = getImageModelCatalogRouteLookupKey(currentModelId, selectedCatalogModel);
+  const modelRuntimeRoutes = useModelScopedImageRoutes(showNodeEditor, modelRouteLookupKey, fallbackModelRuntimeRoutes);
   const preferredRuntimeRouteKey = selectedCatalogModel?.defaultRouteKey || IMAGE_RUNTIME_ROUTE_BY_MODEL_ID[currentModelId] || '';
   const normalizedCurrentRouteKey = normalizeImageRuntimeRouteKey(currentModelId, d.routeKey);
   const preferredRuntimeRoute = preferredRuntimeRouteKey

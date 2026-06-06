@@ -11,6 +11,7 @@ export type ModelCatalogOption = {
   id: string;
   label: string;
   modelFamily: string;
+  modelKey: string;
   uiSchema: Record<string, unknown>;
 };
 
@@ -51,9 +52,10 @@ export function mapCatalogModelsToOptions(
         .map((item) => ({
           capabilities: item.capabilities ?? {},
           defaultRouteKey: item.defaultRouteKey,
-          id: item.modelKey,
+          id: item.modelFamily || item.modelKey,
           label: item.displayName || item.modelKey,
           modelFamily: item.modelFamily || item.modelKey,
+          modelKey: item.modelKey,
           uiSchema: item.uiSchema ?? {},
         }))
     : fallbackModels
@@ -67,6 +69,7 @@ export function mapCatalogModelsToOptions(
           id: model.id,
           label: model.label || model.id,
           modelFamily: model.modelFamily || model.id,
+          modelKey: model.requestModel || model.id,
           uiSchema: {},
         }));
 

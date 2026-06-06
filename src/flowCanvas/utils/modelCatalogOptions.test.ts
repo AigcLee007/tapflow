@@ -15,13 +15,13 @@ describe('modelCatalogOptions', () => {
       [
         {
           capabilities: { supportedSizes: ['2K'] },
-          defaultRouteKey: 'image.nano-banana-pro',
+          defaultRouteKey: 'image.pixellelabs.nano-banana-pro',
           displayName: 'Nano Banana Pro',
           id: 'model-1',
           modality: 'image',
-          modelFamily: 'nano-banana-pro',
+          modelFamily: 'pixellelabs.nano-banana-pro',
           modelId: null,
-          modelKey: 'nano-banana-pro',
+          modelKey: 'gemini-3-pro-image-preview',
           sortOrder: 2,
           status: 'active',
           uiSchema: {},
@@ -52,9 +52,10 @@ describe('modelCatalogOptions', () => {
 
     expect(models).toEqual([
       expect.objectContaining({
-        defaultRouteKey: 'image.nano-banana-pro',
-        id: 'nano-banana-pro',
+        defaultRouteKey: 'image.pixellelabs.nano-banana-pro',
+        id: 'pixellelabs.nano-banana-pro',
         label: 'Nano Banana Pro',
+        modelKey: 'gemini-3-pro-image-preview',
       }),
     ]);
   });
