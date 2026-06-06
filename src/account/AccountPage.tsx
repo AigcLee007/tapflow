@@ -1,8 +1,8 @@
 import React from "react";
-import { Loader2, LogOut, RefreshCw, Settings2 } from "lucide-react";
+import { Loader2, LogOut, RefreshCw, Settings2, Sparkles } from "lucide-react";
 
+import { ACCOUNT_AI_SETTINGS_ROUTE, ACCOUNT_PROVIDER_SETTINGS_ROUTE } from "../app/routes";
 import { useAuth } from "../auth/useAuth";
-import { ACCOUNT_PROVIDER_SETTINGS_ROUTE } from "../app/routes";
 
 function InfoCard({
   label,
@@ -58,7 +58,7 @@ export function AccountPage() {
           <div className="text-xs uppercase tracking-[0.24em] text-sky-300">账号</div>
           <h1 className="mt-2 text-2xl font-semibold text-white">账号中心</h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-            查看当前登录身份、所属工作区、角色权限和后台模型管理入口。
+            查看当前登录身份、所属工作区、角色权限，并进入模型中心完成模型插件安装、发布和线路测试。
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -66,12 +66,24 @@ export function AccountPage() {
             <button
               className="inline-flex h-10 items-center gap-2 rounded border border-sky-300/25 bg-sky-500/10 px-4 text-sm text-sky-100 hover:bg-sky-500/20"
               onClick={() => {
+                window.location.assign(ACCOUNT_AI_SETTINGS_ROUTE);
+              }}
+              type="button"
+            >
+              <Sparkles size={15} />
+              模型中心
+            </button>
+          ) : null}
+          {canManageProviderSettings ? (
+            <button
+              className="inline-flex h-10 items-center gap-2 rounded border border-white/10 bg-white/10 px-4 text-sm text-white hover:bg-white/15"
+              onClick={() => {
                 window.location.assign(ACCOUNT_PROVIDER_SETTINGS_ROUTE);
               }}
               type="button"
             >
               <Settings2 size={15} />
-              模型与线路管理
+              高级配置
             </button>
           ) : null}
           <button

@@ -5,6 +5,7 @@ import { LoginPage } from "../auth/LoginPage";
 import { RegisterPage } from "../auth/RegisterPage";
 import { AssetLibraryPage } from "../assets/AssetLibraryPage";
 import { AccountPage } from "../account/AccountPage";
+import { AiSettingsPage } from "../account/ai-settings/AiSettingsPage";
 import { AdminPage } from "../admin/AdminPage";
 import { ProviderSettingsPage } from "../account/ProviderSettingsPage";
 import { BillingCenterPage } from "../billing/BillingCenterPage";
@@ -13,6 +14,7 @@ import { WorkspacePage } from "../workspace/WorkspacePage";
 import { WorkspaceShell } from "./WorkspaceShell";
 import {
   ACCOUNT_ROUTE,
+  ACCOUNT_AI_SETTINGS_ROUTE,
   ACCOUNT_PROVIDER_SETTINGS_ROUTE,
   ADMIN_ROUTE,
   ASSETS_ROUTE,
@@ -84,6 +86,13 @@ function ProtectedRoutes({ pathname }: { pathname: string }) {
 
   if (pathname === BILLING_ROUTE || pathname.startsWith(`${BILLING_ROUTE}/`)) {
     return <BillingCenterPage />;
+  }
+
+  if (
+    pathname === ACCOUNT_AI_SETTINGS_ROUTE ||
+    pathname.startsWith(`${ACCOUNT_AI_SETTINGS_ROUTE}/`)
+  ) {
+    return <AiSettingsPage />;
   }
 
   if (

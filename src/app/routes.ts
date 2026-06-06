@@ -6,6 +6,7 @@ export const ASSETS_ROUTE = "/assets";
 export const BILLING_ROUTE = "/billing";
 export const ACCOUNT_ROUTE = "/account";
 export const ADMIN_ROUTE = "/admin";
+export const ACCOUNT_AI_SETTINGS_ROUTE = "/account/ai-settings";
 export const ACCOUNT_PROVIDER_SETTINGS_ROUTE = "/account/provider-settings";
 
 export const PRODUCT_ROUTES = [
