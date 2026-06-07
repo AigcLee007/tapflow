@@ -87,6 +87,19 @@ function navigate(path: string) {
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
+function buildProviderSettingsLink(input: {
+  connectionId?: string | null;
+  modelFamily?: string | null;
+  providerId?: string | null;
+}) {
+  const search = new URLSearchParams();
+  if (input.connectionId) search.set("connection", input.connectionId);
+  if (input.modelFamily) search.set("family", input.modelFamily);
+  if (input.providerId) search.set("provider", input.providerId);
+  const query = search.toString();
+  return query ? `${ACCOUNT_PROVIDER_SETTINGS_ROUTE}?${query}` : ACCOUNT_PROVIDER_SETTINGS_ROUTE;
+}
+
 function formatCredits(value: number | null) {
   return value === null ? "-" : `${value} 点`;
 }
@@ -382,6 +395,16 @@ export function AiSettingsPage() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const modelParam = params.get("model");
+    const routeParam = params.get("route");
+
+    if (modelParam) setSelectedModelKey(modelParam);
+    if (routeParam) setSelectedRouteId(routeParam);
+  }, []);
 
   useEffect(() => {
     if (!selectedModelKey) {
@@ -938,12 +961,24 @@ export function AiSettingsPage() {
                         </div>
                         <div className="mt-2 flex flex-wrap gap-2">
                           {providerRoutes.map((route) => (
-                            <span
+                            <button
                               className="inline-flex rounded border border-white/10 bg-black/20 px-2 py-1 text-xs text-slate-300"
                               key={route.routeId}
+                              onClick={() =>
+                                navigate(
+                                  buildProviderSettingsLink({
+                                    connectionId:
+                                      adminRoutes.find((item) => item.routeKey === route.routeKey)?.connectionId ?? null,
+                                    modelFamily: route.modelFamily,
+                                    providerId:
+                                      adminRoutes.find((item) => item.routeKey === route.routeKey)?.providerId ?? null,
+                                  }),
+                                )
+                              }
+                              type="button"
                             >
                               {route.routeLabel || route.routeKey}
-                            </span>
+                            </button>
                           ))}
                         </div>
                       </div>
@@ -1468,6 +1503,21 @@ export function AiSettingsPage() {
                             <div className="mt-1 text-xs text-slate-500">
                               {route.routeKey} / {route.upstreamModel || "-"} / {route.apiMode || "-"}
                             </div>
+                            <button
+                              className="mt-3 inline-flex h-8 items-center gap-2 rounded border border-white/10 bg-white/10 px-3 text-xs text-white hover:bg-white/15"
+                              onClick={() =>
+                                navigate(
+                                  buildProviderSettingsLink({
+                                    connectionId: route.connectionId ?? null,
+                                    modelFamily: route.modelFamily,
+                                    providerId: route.providerId,
+                                  }),
+                                )
+                              }
+                              type="button"
+                            >
+                              去高级配置查看这个连接
+                            </button>
                           </div>
                         ))}
                       </div>

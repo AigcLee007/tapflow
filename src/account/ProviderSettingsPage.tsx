@@ -11,7 +11,7 @@ import {
   Trash2,
 } from "lucide-react";
 
-import { ACCOUNT_ROUTE } from "../app/routes";
+import { ACCOUNT_AI_SETTINGS_ROUTE, ACCOUNT_ROUTE } from "../app/routes";
 import { useAuth } from "../auth/useAuth";
 import {
   createAdminCredential,
@@ -78,6 +78,13 @@ const textareaClass =
 function navigate(path: string) {
   window.history.pushState(null, "", path);
   window.dispatchEvent(new PopStateEvent("popstate"));
+}
+
+function buildAiSettingsLink(modelFamily: string, routeId?: string | null) {
+  const search = new URLSearchParams();
+  search.set("model", modelFamily);
+  if (routeId) search.set("route", routeId);
+  return `${ACCOUNT_AI_SETTINGS_ROUTE}?${search.toString()}`;
 }
 
 function statusLabel(status?: string | null) {
@@ -269,6 +276,18 @@ export function ProviderSettingsPage() {
       return filteredConnectionRows[0]?.connection.id || "";
     });
   }, [filteredConnectionRows]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const providerParam = params.get("provider");
+    const familyParam = params.get("family");
+    const connectionParam = params.get("connection");
+
+    if (providerParam) setProviderFilterId(providerParam);
+    if (familyParam) setModelFamilyFilter(familyParam);
+    if (connectionParam) setSelectedConnectionId(connectionParam);
+  }, []);
 
   const connectionCredentialOptions = useMemo(
     () =>
@@ -895,18 +914,25 @@ export function ProviderSettingsPage() {
               <div className="mt-4 space-y-2">
                 {selectedRoutes.map((route) => {
                   const model = models.find((item) => item.id === route.modelId) ?? null;
-                  return (
-                    <div
-                      className="rounded border border-white/10 bg-black/20 px-4 py-3 text-sm text-slate-300"
-                      key={route.id}
-                    >
-                      <div className="font-medium text-white">{route.routeLabel || route.routeKey}</div>
-                      <div className="mt-1 text-xs text-slate-500">
-                        {model ? `${model.displayName} (${model.modelKey})` : "未绑定模型"} / {route.routeKey}
+                    return (
+                      <div
+                        className="rounded border border-white/10 bg-black/20 px-4 py-3 text-sm text-slate-300"
+                        key={route.id}
+                      >
+                        <div className="font-medium text-white">{route.routeLabel || route.routeKey}</div>
+                        <div className="mt-1 text-xs text-slate-500">
+                          {model ? `${model.displayName} (${model.modelKey})` : "未绑定模型"} / {route.routeKey}
+                        </div>
+                        <button
+                          className="mt-3 inline-flex h-8 items-center gap-2 rounded border border-white/10 bg-white/10 px-3 text-xs text-white hover:bg-white/15"
+                          onClick={() => navigate(buildAiSettingsLink(route.modelFamily || model?.modelKey || "", route.id))}
+                          type="button"
+                        >
+                          去模型中心查看这条线路
+                        </button>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
               </div>
             ) : (
               <div className="mt-4 rounded border border-dashed border-white/10 p-5 text-sm text-slate-400">
@@ -944,12 +970,16 @@ export function ProviderSettingsPage() {
                         <div className="mt-2 flex flex-wrap gap-2">
                           {providerRoutes.length > 0 ? (
                             providerRoutes.map((route) => (
-                              <span
+                              <button
                                 className="inline-flex rounded border border-white/10 bg-white/[0.03] px-2 py-1 text-xs text-slate-300"
                                 key={route.id}
+                                onClick={() =>
+                                  navigate(buildAiSettingsLink(route.modelFamily || model.modelKey, route.id))
+                                }
+                                type="button"
                               >
                                 {route.routeLabel || route.routeKey}
-                              </span>
+                              </button>
                             ))
                           ) : (
                             <span className="text-xs text-slate-500">当前还没有挂接线路</span>
