@@ -179,6 +179,7 @@ Project instructions and handoff docs:
 - [docs/AGENTS.md](./docs/AGENTS.md)
 - [docs/DEVELOPMENT_PLAN.md](./docs/DEVELOPMENT_PLAN.md)
 - [docs/CODEX_HANDOFF.md](./docs/CODEX_HANDOFF.md)
+- [docs/AI_GATEWAY_ADMIN_V2_FINAL_VERIFICATION.md](./docs/AI_GATEWAY_ADMIN_V2_FINAL_VERIFICATION.md)
 
 For v2 local setup details, see:
 

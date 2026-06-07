@@ -12,6 +12,7 @@ Current source-of-truth docs:
 - `docs/v2-local-development.md` is the local development and QA guide.
 - `docs/PRODUCTION_DEPLOYMENT.md`, `docs/PRODUCTION_RUNBOOK.md`, and `docs/staging-runbook.md` are deployment references.
 - `docs/AI_GATEWAY_PLUGIN_DEVELOPMENT_PLAN.md` is the current detailed plan for the plugin-style AI Gateway/model integration redesign.
+- `docs/AI_GATEWAY_ADMIN_V2_FINAL_VERIFICATION.md` is the final acceptance, deployment, smoke-test, and rollback checklist for the AI Gateway admin upgrade.
 
 When these documents conflict with current code, inspect the current code and choose the safest minimal change that preserves the v2 architecture.
 
@@ -391,6 +392,27 @@ The intended direction is plugin-style model packages:
 plugin manifest -> provider/model/route/pricing/ui schema/test -> publish to canvas
 ```
 
+Admin information architecture must stay consistent:
+
+- Model Center = daily management of product models, lines, default line, pricing, testing, and status
+- Provider Connections = management of provider resources, API keys, base URLs, and reusable runtime connections
+- Template Library = initialization entry only, not the main daily management surface
+
+When adding new models or providers, keep this split intact. Do not push day-to-day route editing back into Template Library.
+
+Route model semantics:
+
+- Product model display name is what end users see in canvas/model pickers
+- Upstream model is what the selected line actually sends to the provider
+- Friendly route labels should be user-facing labels like `线路一`, `线路二`
+- Provider/vendor names should stay in admin surfaces unless the product explicitly needs to expose them
+
+Migration/backfill expectations:
+
+- Existing `route_key` values must remain stable
+- Legacy routes should be backfilled into `connection_id`, `upstream_model`, `api_mode`, and `request_path`
+- New template installs should create or update provider connections and write those same normalized route fields
+
 ---
 
 ## Database Rules
@@ -534,4 +556,3 @@ A task is not done until:
 - No secrets are exposed to the frontend.
 - Deployment instructions, if requested, follow Docker Compose v2 with `docker-compose.staging.yml`.
 - Final response lists changed files, validation commands, and known follow-ups.
-
