@@ -26,12 +26,16 @@ type TenantContext = {
 };
 
 type RouteRecord = {
+  api_mode: string | null;
+  connection_name: string | null;
   id: string;
   modality: "image" | "text" | "video";
   model_key: string | null;
   package_key: string | null;
   provider_key: string;
+  route_label: string | null;
   route_key: string;
+  upstream_model: string | null;
 };
 
 const DEFAULT_ROUTE_TEST_TIMEOUT_MS = 30_000;
@@ -133,15 +137,21 @@ export class AiRouteTestService {
           SELECT
             route.id::text AS id,
             route.route_key,
+            route.route_label,
             route.modality,
+            route.api_mode,
+            route.upstream_model,
             provider.key AS provider_key,
             model.model_key,
+            connection.name AS connection_name,
             package.package_key
           FROM ai_routes AS route
           JOIN ai_providers AS provider
             ON provider.id = route.provider_id
           LEFT JOIN ai_models AS model
             ON model.id = route.model_id
+          LEFT JOIN ai_provider_connections AS connection
+            ON connection.id = route.connection_id
           LEFT JOIN tenant_ai_plugin_installs AS install
             ON install.id = route.plugin_install_id
           LEFT JOIN ai_plugin_packages AS package
@@ -240,12 +250,16 @@ export class AiRouteTestService {
         ...(input.metadata ?? {}),
       }),
       modelKey: input.model ?? route.model_key,
+      routeLabel: route.route_label,
+      connectionName: route.connection_name,
+      apiMode: route.api_mode,
       packageKey: route.package_key,
       promptPreview: typeof prompt === "string" ? prompt.slice(0, 200) : null,
       providerKey: route.provider_key,
       routeKey: route.route_key,
       testKey: defaultTest?.key ?? null,
       timeoutMs: DEFAULT_ROUTE_TEST_TIMEOUT_MS,
+      upstreamModel: route.upstream_model,
     };
   }
 
@@ -255,16 +269,22 @@ export class AiRouteTestService {
   ): Record<string, unknown> {
     if (route.modality === "text" && "outputText" in result) {
       return {
+        apiMode: route.api_mode,
+        connectionName: route.connection_name,
         modelKey: result.modelKey,
         outputPreview: result.outputText.slice(0, 200),
         providerKey: result.providerKey,
+        routeLabel: route.route_label,
         status: result.status,
+        upstreamModel: route.upstream_model,
         usage: result.usage,
       };
     }
 
     const mediaResult = result as AiGatewayMediaResult;
     return {
+      apiMode: route.api_mode,
+      connectionName: route.connection_name,
       hasProviderTaskId: Boolean(mediaResult.providerTaskId),
       modelKey: mediaResult.modelKey,
       outputCount: mediaResult.outputs?.length ?? 0,
@@ -277,7 +297,9 @@ export class AiRouteTestService {
         width: output.width ?? null,
       })),
       providerKey: mediaResult.providerKey,
+      routeLabel: route.route_label,
       status: mediaResult.status,
+      upstreamModel: route.upstream_model,
       usage: mediaResult.usage ?? null,
     };
   }

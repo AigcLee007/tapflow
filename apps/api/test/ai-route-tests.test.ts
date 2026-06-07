@@ -159,9 +159,18 @@ describeWithDatabase("ai route test API", () => {
           status: "ok",
         });
         expect(successTest.json().responseSummary).toMatchObject({
+          apiMode: "mock",
+          connectionName: null,
           outputCount: 1,
           providerKey: "mock-local-dev",
           status: "succeeded",
+          upstreamModel: "mock-image",
+        });
+        expect(successTest.json().requestSummary).toMatchObject({
+          apiMode: "mock",
+          providerKey: "mock-local-dev",
+          routeKey: "image.default",
+          upstreamModel: "mock-image",
         });
         expect(JSON.stringify(successTest.json())).not.toContain("mock-route-test-secret");
         expect(JSON.stringify(successTest.json())).not.toContain("iVBORw0KGgo");

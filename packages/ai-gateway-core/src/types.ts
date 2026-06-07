@@ -144,6 +144,11 @@ export type ResolvedRoute = {
     id: string | null;
     nonce: Buffer | null;
   };
+  connection?: {
+    adapterKind?: string | null;
+    id: string | null;
+    name?: string | null;
+  };
   model: {
     id: string | null;
     modelKey: string | null;
@@ -155,11 +160,14 @@ export type ResolvedRoute = {
     id: string;
     key: string;
     kind: string;
+    name?: string | null;
   };
   requestConfig: Record<string, unknown>;
   routeId: string;
   routeKey: string;
+  routeLabel?: string | null;
   status: string;
   tenantId: string | null;
+  upstreamModel?: string | null;
   weight: number;
 };
