@@ -136,6 +136,10 @@ export function getDefaultParamsFromUiSchema(uiSchema: Record<string, unknown> |
   const params: Record<string, unknown> = {};
   for (const field of getCatalogUiFields(uiSchema)) {
     if (field.defaultValue !== undefined) {
+      if (field.key === 'size') {
+        params.size = normalizeSize(field.defaultValue);
+        continue;
+      }
       params[field.key] = field.defaultValue;
       if (field.key === 'aspectRatio') params.aspect_ratio = field.defaultValue;
       if (field.key === 'imageSize') params.size = normalizeSize(field.defaultValue);

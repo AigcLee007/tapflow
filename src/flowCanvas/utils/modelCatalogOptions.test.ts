@@ -146,4 +146,31 @@ describe('modelCatalogOptions', () => {
     expect(getAspectRatioOptionsFromCatalogModel(model)).toEqual(['16:9', '1:1']);
     expect(getSizeOptionsFromCatalogModel(model)).toEqual(['2k', '4k']);
   });
+
+  test('keeps gpt-image-2 size defaults on the size key only', () => {
+    const uiSchema = {
+      fields: [
+        {
+          defaultValue: 'auto',
+          key: 'size',
+          label: '尺寸档位',
+          options: [{ label: 'auto', value: 'auto' }, { label: '1K 档位', value: '1K' }],
+          type: 'select',
+        },
+      ],
+    };
+
+    expect(getDefaultParamsFromUiSchema(uiSchema)).toEqual({
+      size: 'auto',
+    });
+    expect(getSizeOptionsFromCatalogModel({
+      capabilities: { supportedSizes: ['1024x1024'] },
+      defaultRouteKey: 'image.gpt-image-2',
+      id: 'gpt-image-2',
+      label: 'GPT-Image-2',
+      modelFamily: 'gpt-image-2',
+      modelKey: 'gpt-image-2',
+      uiSchema,
+    })).toEqual(['auto', '1k', '1024x1024']);
+  });
 });

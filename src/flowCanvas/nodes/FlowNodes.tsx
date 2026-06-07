@@ -2052,6 +2052,15 @@ interface ImageSettingsDropupProps {
   onChangeSize: (value: string) => void;
 }
 
+const formatImageSizeLabel = (size: string) => {
+  const value = String(size || '').trim();
+  const lower = value.toLowerCase();
+  if (lower === 'auto') return 'auto';
+  if (/^\d+x\d+$/.test(lower)) return lower;
+  if (lower === '1k' || lower === '2k' || lower === '4k') return lower.toUpperCase();
+  return value;
+};
+
 const ImageSettingsDropup: React.FC<ImageSettingsDropupProps> = ({
   ratio,
   size,
@@ -2082,7 +2091,7 @@ const ImageSettingsDropup: React.FC<ImageSettingsDropupProps> = ({
       <button type="button" className="nodrag nopan" onClick={() => setOpen((value) => !value)} style={textModelTrigger}>
         <span style={{ border: '1px solid #cbd5e1', width: 13, height: 13, display: 'inline-block', borderRadius: 2 }} />
         <span>{ratio}</span>
-        <span style={{ color: '#94a3b8' }}>· {safeSize.toUpperCase()}</span>
+        <span style={{ color: '#94a3b8' }}>· {formatImageSizeLabel(safeSize)}</span>
         <ChevronDown size={14} color="#a1a1aa" />
       </button>
       {open && (
@@ -2113,7 +2122,7 @@ const ImageSettingsDropup: React.FC<ImageSettingsDropupProps> = ({
                     transform: hovered ? 'translateY(-1px)' : 'translateY(0)',
                   }}
                 >
-                  {item.toUpperCase()}
+                  {formatImageSizeLabel(item)}
                 </button>
               );
             })}
@@ -3665,10 +3674,25 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
 
   const setParam = (key: string, val: any) => {
     const nextParams = { ...p, [key]: val };
-    if (key === 'aspect_ratio') nextParams.aspectRatio = val;
-    if (key === 'aspectRatio') nextParams.aspect_ratio = val;
-    if (key === 'size') nextParams.imageSize = String(val).toUpperCase();
-    if (key === 'imageSize') nextParams.size = String(val).toLowerCase();
+    const isGptImage2 = currentModelId === 'gpt-image-2';
+    if (key === 'aspect_ratio' || key === 'aspectRatio') {
+      nextParams.aspectRatio = val;
+      nextParams.aspect_ratio = val;
+    }
+    if (key === 'size' || key === 'imageSize') {
+      const normalizedSize = String(val || '').toLowerCase();
+      if (isGptImage2) {
+        nextParams.size = normalizedSize;
+        delete nextParams.imageSize;
+        delete nextParams.image_size;
+      } else if (key === 'size') {
+        nextParams.size = normalizedSize;
+        nextParams.imageSize = String(val).toUpperCase();
+      } else {
+        nextParams.imageSize = String(val).toUpperCase();
+        nextParams.size = normalizedSize;
+      }
+    }
     const patch: Partial<FlowNodeData> = { params: nextParams };
     if ((key === 'aspect_ratio' || key === 'aspectRatio') && !effectiveThumbnailUrl) {
       const nextSize = getMediaNodeSizeFromRatioString(val, 4 / 3);
