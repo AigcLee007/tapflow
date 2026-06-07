@@ -38,6 +38,11 @@ const normalizeSize = (value: unknown) => {
   return raw ? raw.toLowerCase() : raw;
 };
 
+const isGptImage2CatalogModel = (model: ModelCatalogOption | null | undefined) => {
+  const keys = [model?.id, model?.modelFamily, model?.modelKey].map((value) => normalizeKey(value).toLowerCase());
+  return keys.includes('gpt-image-2');
+};
+
 export function mapCatalogModelsToOptions(
   items: AiModelCatalogItem[],
   fallbackModels: ImageModelConfig[],
@@ -169,5 +174,9 @@ export function getSizeOptionsFromCatalogModel(model: ModelCatalogOption | null 
   const fromCapabilities = Array.isArray(model?.capabilities?.supportedSizes)
     ? (model!.capabilities.supportedSizes as unknown[]).map(normalizeSize).filter(Boolean)
     : [];
-  return Array.from(new Set([...fromField, ...fromCapabilities]));
+  const options = Array.from(new Set([...fromField, ...fromCapabilities]));
+  if (isGptImage2CatalogModel(model)) {
+    return options.filter((option) => option === '1k' || option === '2k' || option === '4k');
+  }
+  return options;
 }

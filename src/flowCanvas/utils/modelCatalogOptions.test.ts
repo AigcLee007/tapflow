@@ -151,26 +151,32 @@ describe('modelCatalogOptions', () => {
     const uiSchema = {
       fields: [
         {
-          defaultValue: 'auto',
+          defaultValue: '1K',
           key: 'size',
-          label: '尺寸档位',
-          options: [{ label: 'auto', value: 'auto' }, { label: '1K 档位', value: '1K' }],
+          label: 'size tier',
+          options: [
+            { label: 'auto', value: 'auto' },
+            { label: '1024x1024', value: '1024x1024' },
+            { label: '1K', value: '1K' },
+            { label: '2K', value: '2K' },
+            { label: '4K', value: '4K' },
+          ],
           type: 'select',
         },
       ],
     };
 
     expect(getDefaultParamsFromUiSchema(uiSchema)).toEqual({
-      size: 'auto',
+      size: '1k',
     });
     expect(getSizeOptionsFromCatalogModel({
-      capabilities: { supportedSizes: ['1024x1024'] },
+      capabilities: { supportedSizes: ['1024x1024', '1536x1024', '2K'] },
       defaultRouteKey: 'image.gpt-image-2',
       id: 'gpt-image-2',
       label: 'GPT-Image-2',
       modelFamily: 'gpt-image-2',
       modelKey: 'gpt-image-2',
       uiSchema,
-    })).toEqual(['auto', '1k', '1024x1024']);
+    })).toEqual(['1k', '2k', '4k']);
   });
 });

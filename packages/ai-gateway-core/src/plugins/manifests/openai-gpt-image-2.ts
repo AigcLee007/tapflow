@@ -21,7 +21,7 @@ export const openAiGptImage2Manifest: AiPluginManifest = {
     {
       capabilities: {
         maxInputImages: 10,
-        supportedSizes: ["auto", "1024x1024", "1024x1536", "1536x1024", "1K", "2K", "4K"],
+        supportedSizes: ["1K", "2K", "4K"],
         supportsImageEdit: true,
         supportsReferenceImages: true,
       },
@@ -34,38 +34,34 @@ export const openAiGptImage2Manifest: AiPluginManifest = {
       uiSchema: {
         fields: [
           {
-            defaultValue: "auto",
+            defaultValue: "1K",
             key: "size",
-            label: "尺寸档位",
+            label: "\u5c3a\u5bf8\u6863\u4f4d",
             mapsTo: "request.params",
             options: [
-              { label: "自动", value: "auto" },
-              { label: "1024 x 1024", value: "1024x1024" },
-              { label: "1024 x 1536", value: "1024x1536" },
-              { label: "1536 x 1024", value: "1536x1024" },
-              { label: "1K 档位", value: "1K" },
-              { label: "2K 档位", value: "2K" },
-              { label: "4K 档位", value: "4K" },
+              { label: "1K", value: "1K" },
+              { label: "2K", value: "2K" },
+              { label: "4K", value: "4K" },
             ],
             type: "select",
           },
           {
             defaultValue: "auto",
             key: "quality",
-            label: "质量",
+            label: "\u8d28\u91cf",
             mapsTo: "request.params",
             options: [
-              { label: "自动", value: "auto" },
-              { label: "低", value: "low" },
-              { label: "中", value: "medium" },
-              { label: "高", value: "high" },
+              { label: "\u81ea\u52a8", value: "auto" },
+              { label: "\u4f4e", value: "low" },
+              { label: "\u4e2d", value: "medium" },
+              { label: "\u9ad8", value: "high" },
             ],
             type: "select",
           },
           {
             defaultValue: "png",
             key: "outputFormat",
-            label: "输出格式",
+            label: "\u8f93\u51fa\u683c\u5f0f",
             mapsTo: "request.params",
             options: [
               { label: "PNG", value: "png" },
@@ -77,11 +73,11 @@ export const openAiGptImage2Manifest: AiPluginManifest = {
           {
             defaultValue: "auto",
             key: "moderation",
-            label: "审核强度",
+            label: "\u5ba1\u6838\u5f3a\u5ea6",
             mapsTo: "request.params",
             options: [
-              { label: "自动", value: "auto" },
-              { label: "低", value: "low" },
+              { label: "\u81ea\u52a8", value: "auto" },
+              { label: "\u4f4e", value: "low" },
             ],
             type: "select",
           },
