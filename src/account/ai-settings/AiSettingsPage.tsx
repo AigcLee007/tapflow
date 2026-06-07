@@ -268,6 +268,21 @@ export function AiSettingsPage() {
       credentials.find((credential) => credential.id === selectedConnection?.credentialId) ?? null,
     [credentials, selectedConnection?.credentialId],
   );
+  const selectedProviderName = selectedCatalogRoute?.providerName || "-";
+  const isSelectedRouteTenantEditable = Boolean(selectedAdminRoute?.tenantId);
+  const isSelectedRouteDefault = Boolean(selectedRouteRow?.isDefault);
+  const selectedRouteSource = routeSourceLabel(selectedAdminRoute);
+
+  const selectedRouteEditHint = useMemo(() => {
+    if (!selectedAdminRoute) return "请选择一条线路后再管理。";
+    if (!isSelectedRouteTenantEditable) {
+      return "当前是系统线路，只能查看和测试。需要修改参数时，请先复制成租户线路。";
+    }
+    if (isSelectedRouteDefault) {
+      return "当前是默认线路。你可以直接修改参数；如果要停用，请先把别的线路设为默认。";
+    }
+    return "当前是租户线路，可以直接修改、停用或删除。";
+  }, [isSelectedRouteDefault, isSelectedRouteTenantEditable, selectedAdminRoute]);
 
   const selectedProviderConnections = useMemo(() => {
     if (!selectedAdminRoute?.providerId) return [];
@@ -848,7 +863,10 @@ export function AiSettingsPage() {
                             <td className="px-4 py-3 align-top text-slate-300">
                               <div>{item.connection?.name || "-"}</div>
                               <div className="mt-1 text-xs text-slate-500">
-                                {item.connection?.environment || item.route.providerName}
+                                {item.route.providerName}
+                              </div>
+                              <div className="mt-1 text-xs text-slate-500">
+                                环境：{item.connection?.environment || "-"}
                               </div>
                             </td>
                             <td className="px-4 py-3 align-top text-slate-300">
@@ -1119,6 +1137,10 @@ export function AiSettingsPage() {
                         </span>
                       </div>
 
+                      <div className="rounded border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-slate-300">
+                        {selectedRouteEditHint}
+                      </div>
+
                       <div className="grid gap-3 md:grid-cols-2">
                         <label className="block">
                           <span className="mb-1.5 block text-xs font-medium text-slate-400">显示线路名称</span>
@@ -1146,7 +1168,7 @@ export function AiSettingsPage() {
                           <span className="mb-1.5 block text-xs font-medium text-slate-400">运行连接</span>
                           <select
                             className={selectClass}
-                            disabled={!selectedAdminRoute.tenantId}
+                            disabled
                             onChange={(event) =>
                               setEditor((current) => ({ ...current, connectionId: event.target.value }))
                             }
@@ -1164,7 +1186,7 @@ export function AiSettingsPage() {
                           <span className="mb-1.5 block text-xs font-medium text-slate-400">上游模型</span>
                           <input
                             className={inputClass}
-                            disabled={!selectedAdminRoute.tenantId}
+                            disabled={!isSelectedRouteTenantEditable}
                             onChange={(event) =>
                               setEditor((current) => ({ ...current, upstreamModel: event.target.value }))
                             }
@@ -1175,7 +1197,7 @@ export function AiSettingsPage() {
                           <span className="mb-1.5 block text-xs font-medium text-slate-400">API 模式</span>
                           <input
                             className={inputClass}
-                            disabled={!selectedAdminRoute.tenantId}
+                            disabled={!isSelectedRouteTenantEditable}
                             onChange={(event) =>
                               setEditor((current) => ({ ...current, apiMode: event.target.value }))
                             }
@@ -1186,7 +1208,7 @@ export function AiSettingsPage() {
                           <span className="mb-1.5 block text-xs font-medium text-slate-400">请求路径</span>
                           <input
                             className={inputClass}
-                            disabled={!selectedAdminRoute.tenantId}
+                            disabled={!isSelectedRouteTenantEditable}
                             onChange={(event) =>
                               setEditor((current) => ({ ...current, requestPath: event.target.value }))
                             }
@@ -1228,6 +1250,14 @@ export function AiSettingsPage() {
                               ? `${selectedCredential.name} ${selectedCredential.maskedSecret}`
                               : "-"}
                           </div>
+                          <button
+                            className="mt-3 inline-flex h-8 items-center gap-2 rounded border border-white/10 bg-white/10 px-3 text-xs text-white hover:bg-white/15"
+                            onClick={() => navigate(ACCOUNT_PROVIDER_SETTINGS_ROUTE)}
+                            type="button"
+                          >
+                            <Settings2 size={12} />
+                            去高级配置页调整连接/凭证
+                          </button>
                         </div>
                       </div>
 
@@ -1249,7 +1279,7 @@ export function AiSettingsPage() {
                           </button>
                           <button
                             className={buttonClass}
-                            disabled={!canManage || savingRouteId === selectedAdminRoute.id || !selectedAdminRoute.tenantId}
+                            disabled={!canManage || savingRouteId === selectedAdminRoute.id || !isSelectedRouteTenantEditable}
                             onClick={() => void handleSaveRoute()}
                             type="button"
                           >
@@ -1278,7 +1308,7 @@ export function AiSettingsPage() {
                             disabled={
                               !canManage ||
                               actionRouteId === selectedAdminRoute.id ||
-                              selectedRouteRow?.isDefault
+                              isSelectedRouteDefault
                             }
                             onClick={() => void handleSetDefaultRoute()}
                             type="button"
@@ -1288,7 +1318,12 @@ export function AiSettingsPage() {
                           </button>
                           <button
                             className={buttonClass}
-                            disabled={!canManage || actionRouteId === selectedAdminRoute.id || !selectedAdminRoute.tenantId}
+                            disabled={
+                              !canManage ||
+                              actionRouteId === selectedAdminRoute.id ||
+                              !isSelectedRouteTenantEditable ||
+                              isSelectedRouteDefault
+                            }
                             onClick={() => void handleDisableRoute()}
                             type="button"
                           >
@@ -1300,7 +1335,8 @@ export function AiSettingsPage() {
                             disabled={
                               !canManage ||
                               actionRouteId === selectedAdminRoute.id ||
-                              !selectedAdminRoute.tenantId
+                              !isSelectedRouteTenantEditable ||
+                              isSelectedRouteDefault
                             }
                             onClick={() => void handleDeleteRoute()}
                             type="button"
@@ -1321,10 +1357,22 @@ export function AiSettingsPage() {
                     <div className="text-sm font-medium text-white">线路概览</div>
                     <div className="mt-4 grid gap-2 text-sm text-slate-300">
                       <div className="rounded border border-white/10 bg-white/[0.03] px-3 py-2">
+                        线路类型：{selectedRouteSource}
+                      </div>
+                      <div className="rounded border border-white/10 bg-white/[0.03] px-3 py-2">
+                        默认状态：{isSelectedRouteDefault ? "默认线路" : "非默认线路"}
+                      </div>
+                      <div className="rounded border border-white/10 bg-white/[0.03] px-3 py-2">
                         连接：{selectedConnection?.name || "-"}
                       </div>
                       <div className="rounded border border-white/10 bg-white/[0.03] px-3 py-2">
-                        服务商：{selectedCatalogRoute?.providerName || "-"}
+                        服务商：{selectedProviderName}
+                      </div>
+                      <div className="rounded border border-white/10 bg-white/[0.03] px-3 py-2">
+                        运行环境：{selectedConnection?.environment || "-"}
+                      </div>
+                      <div className="rounded border border-white/10 bg-white/[0.03] px-3 py-2">
+                        连接凭证：{selectedCredential ? selectedCredential.name : "-"}
                       </div>
                       <div className="rounded border border-white/10 bg-white/[0.03] px-3 py-2">
                         上游模型：{selectedAdminRoute?.upstreamModel || "-"}
@@ -1375,7 +1423,9 @@ export function AiSettingsPage() {
                     <div className="text-sm font-medium text-white">职责边界</div>
                     <div className="mt-3 space-y-2 text-sm leading-6 text-slate-400">
                       <p>模型中心负责产品模型和线路的日常管理。</p>
+                      <p>这里适合改显示名称、上游模型、API 模式、请求路径、默认线路和启停状态。</p>
                       <p>高级配置页只维护服务商、API Key、连接、底层资源和初始化数据。</p>
+                      <p>如果你要换连接、换密钥、改服务商资源，直接去高级配置页处理。</p>
                     </div>
                     <button
                       className="mt-4 inline-flex h-9 items-center gap-2 rounded border border-white/10 bg-white/10 px-3 text-sm text-white hover:bg-white/15"
