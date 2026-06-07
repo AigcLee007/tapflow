@@ -73,6 +73,7 @@ export const createRouteSchema = z.object({
   internalLabel: z.string().trim().min(1).max(255).nullable().optional(),
   isDefault: z.boolean().optional(),
   modality: aiModalitySchema,
+  modelFamily: z.string().trim().min(1).max(255).nullable().optional(),
   modelId: z.string().uuid().nullable().optional(),
   pricing: jsonRecordSchema.optional(),
   priority: z.number().int().min(0).optional(),
@@ -85,6 +86,14 @@ export const createRouteSchema = z.object({
   status: routeStatusSchema.optional(),
   upstreamModel: z.string().trim().min(1).max(255).nullable().optional(),
   weight: z.number().int().min(0).optional(),
+}).superRefine((value, context) => {
+  if (!value.modelId && !value.modelFamily) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Either modelId or modelFamily must be provided",
+      path: ["modelFamily"],
+    });
+  }
 });
 
 export const updateRouteSchema = z

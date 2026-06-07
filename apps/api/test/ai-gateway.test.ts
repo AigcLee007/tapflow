@@ -1297,4 +1297,334 @@ describeWithDatabase("ai gateway admin API", () => {
       }
     });
   });
+
+  test("routes can be created under an existing product model family across providers", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({
+          connectionString: await createAppDatabaseUrl(),
+        });
+        const api = buildTestApp(appPool);
+        const owner = await registerOwner(api, "cross-provider-route@example.com", "Cross Provider Route");
+
+        const siphonProvider = await api.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` },
+          method: "POST",
+          payload: {
+            key: "openai-compatible",
+            kind: "openai-compatible",
+            name: "SiphonLab OpenAI Compatible",
+          },
+          url: "/api/v2/admin/ai/providers",
+        });
+        expect(siphonProvider.statusCode).toBe(201);
+
+        const mouxiProvider = await api.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` },
+          method: "POST",
+          payload: {
+            defaultBaseUrl: "https://api.mouxihub.com/v1",
+            key: "mouxihub-openai",
+            kind: "openai-compatible",
+            name: "MouxiHub OpenAI Compatible",
+          },
+          url: "/api/v2/admin/ai/providers",
+        });
+        expect(mouxiProvider.statusCode).toBe(201);
+
+        const siphonProviderBody = siphonProvider.json();
+        const mouxiProviderBody = mouxiProvider.json();
+
+        const catalogModel = await api.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` },
+          method: "POST",
+          payload: {
+            displayName: "GPT-Image-2",
+            modality: "image",
+            modelKey: "gpt-image-2",
+            providerId: siphonProviderBody.id,
+          },
+          url: "/api/v2/admin/ai/models",
+        });
+        expect(catalogModel.statusCode).toBe(201);
+
+        const providerModel = await api.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` },
+          method: "POST",
+          payload: {
+            displayName: "MouxiHub GPT Image",
+            modality: "image",
+            modelKey: "gpt-image-2",
+            providerId: mouxiProviderBody.id,
+          },
+          url: "/api/v2/admin/ai/models",
+        });
+        expect(providerModel.statusCode).toBe(201);
+
+        await withTenantTransaction(
+          { tenantId: owner.currentTenant.id, userId: owner.user.id },
+          async (client) => {
+            await client.query(
+              `
+                INSERT INTO ai_model_catalog (
+                  tenant_id,
+                  model_id,
+                  model_key,
+                  display_name,
+                  modality,
+                  model_family,
+                  default_route_key,
+                  status
+                )
+                VALUES (
+                  $1::uuid,
+                  $2::uuid,
+                  'gpt-image-2',
+                  'GPT-Image-2',
+                  'image',
+                  'gpt-image-2',
+                  'image.gpt-image-2',
+                  'active'
+                )
+              `,
+              [owner.currentTenant.id, catalogModel.json().id],
+            );
+          },
+          appPool,
+        );
+
+        const mouxiCredential = await api.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` },
+          method: "POST",
+          payload: {
+            name: "MouxiHub Key",
+            providerId: mouxiProviderBody.id,
+            secret: "sk-mouxi-secret",
+          },
+          url: "/api/v2/admin/credentials",
+        });
+        expect(mouxiCredential.statusCode).toBe(201);
+
+        const mouxiConnection = await api.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` },
+          method: "POST",
+          payload: {
+            adapterKind: "openai-compatible",
+            baseUrl: "https://api.mouxihub.com/v1",
+            credentialId: mouxiCredential.json().id,
+            name: "MouxiHub GPT Image",
+            providerId: mouxiProviderBody.id,
+          },
+          url: "/api/v2/admin/ai/connections",
+        });
+        expect(mouxiConnection.statusCode).toBe(201);
+
+        const route = await api.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` },
+          method: "POST",
+          payload: {
+            apiMode: "images",
+            connectionId: mouxiConnection.json().id,
+            modality: "image",
+            modelFamily: "gpt-image-2",
+            modelId: providerModel.json().id,
+            providerId: mouxiProviderBody.id,
+            requestPath: "/images/generations",
+            routeKey: "image.gpt-image-2.mouxihub",
+            routeLabel: "线路三",
+            upstreamModel: "gpt-image-2",
+          },
+          url: "/api/v2/admin/ai/routes",
+        });
+        expect(route.statusCode).toBe(201);
+        expect(route.json()).toMatchObject({
+          apiMode: "images",
+          connectionId: mouxiConnection.json().id,
+          modelFamily: "gpt-image-2",
+          providerId: mouxiProviderBody.id,
+          requestPath: "/images/generations",
+          routeKey: "image.gpt-image-2.mouxihub",
+          routeLabel: "线路三",
+          upstreamModel: "gpt-image-2",
+        });
+
+        const catalogRoutes = await api.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` },
+          method: "GET",
+          url: "/api/v2/ai/model-catalog/gpt-image-2/routes",
+        });
+        expect(catalogRoutes.statusCode).toBe(200);
+        expect(catalogRoutes.json()).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              providerKey: "mouxihub-openai",
+              providerName: "MouxiHub OpenAI Compatible",
+              routeKey: "image.gpt-image-2.mouxihub",
+              routeLabel: "线路三",
+            }),
+          ]),
+        );
+
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("route creation rejects provider mismatches for connections and models", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({
+          connectionString: await createAppDatabaseUrl(),
+        });
+        const api = buildTestApp(appPool);
+        const owner = await registerOwner(api, "cross-provider-errors@example.com", "Cross Provider Errors");
+
+        const providerA = await api.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` },
+          method: "POST",
+          payload: {
+            key: "provider-a",
+            kind: "openai-compatible",
+            name: "Provider A",
+          },
+          url: "/api/v2/admin/ai/providers",
+        });
+        const providerB = await api.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` },
+          method: "POST",
+          payload: {
+            key: "provider-b",
+            kind: "openai-compatible",
+            name: "Provider B",
+          },
+          url: "/api/v2/admin/ai/providers",
+        });
+        expect(providerA.statusCode).toBe(201);
+        expect(providerB.statusCode).toBe(201);
+
+        const providerABody = providerA.json();
+        const providerBBody = providerB.json();
+
+        const modelA = await api.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` },
+          method: "POST",
+          payload: {
+            displayName: "Model A",
+            modality: "image",
+            modelKey: "gpt-image-2",
+            providerId: providerABody.id,
+          },
+          url: "/api/v2/admin/ai/models",
+        });
+        expect(modelA.statusCode).toBe(201);
+
+        await withTenantTransaction(
+          { tenantId: owner.currentTenant.id, userId: owner.user.id },
+          async (client) => {
+            await client.query(
+              `
+                INSERT INTO ai_model_catalog (
+                  tenant_id,
+                  model_id,
+                  model_key,
+                  display_name,
+                  modality,
+                  model_family,
+                  status
+                )
+                VALUES (
+                  $1::uuid,
+                  $2::uuid,
+                  'gpt-image-2',
+                  'GPT-Image-2',
+                  'image',
+                  'gpt-image-2',
+                  'active'
+                )
+              `,
+              [owner.currentTenant.id, modelA.json().id],
+            );
+          },
+          appPool,
+        );
+
+        const credentialB = await api.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` },
+          method: "POST",
+          payload: {
+            name: "Provider B Key",
+            providerId: providerBBody.id,
+            secret: "sk-provider-b",
+          },
+          url: "/api/v2/admin/credentials",
+        });
+        expect(credentialB.statusCode).toBe(201);
+
+        const connectionB = await api.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` },
+          method: "POST",
+          payload: {
+            adapterKind: "openai-compatible",
+            credentialId: credentialB.json().id,
+            name: "Provider B Connection",
+            providerId: providerBBody.id,
+          },
+          url: "/api/v2/admin/ai/connections",
+        });
+        expect(connectionB.statusCode).toBe(201);
+
+        const providerMismatchConnection = await api.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` },
+          method: "POST",
+          payload: {
+            connectionId: connectionB.json().id,
+            modality: "image",
+            modelFamily: "gpt-image-2",
+            providerId: providerABody.id,
+            routeKey: "image.gpt-image-2.provider-a-connection-b",
+          },
+          url: "/api/v2/admin/ai/routes",
+        });
+        expect(providerMismatchConnection.statusCode).toBe(400);
+        expect(providerMismatchConnection.json()).toMatchObject({
+          code: "PROVIDER_CONNECTION_PROVIDER_MISMATCH",
+        });
+
+        const providerMismatchModel = await api.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` },
+          method: "POST",
+          payload: {
+            modality: "image",
+            modelFamily: "gpt-image-2",
+            modelId: modelA.json().id,
+            providerId: providerBBody.id,
+            routeKey: "image.gpt-image-2.provider-b-model-a",
+          },
+          url: "/api/v2/admin/ai/routes",
+        });
+        expect(providerMismatchModel.statusCode).toBe(400);
+        expect(providerMismatchModel.json()).toMatchObject({
+          code: "ROUTE_MODEL_PROVIDER_MISMATCH",
+        });
+
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
 });

@@ -63,6 +63,8 @@ type ModelRecord = {
 
 type ModelIdentityRecord = {
   id: string;
+  modality?: string;
+  provider_id?: string;
   model_key: string;
 };
 
@@ -1085,15 +1087,50 @@ export class AiGatewayAdminService {
       if (input.credentialId) {
         await this.ensureCredentialExists(input.credentialId, client, context.tenantId);
       }
+      let connection = null;
       if (input.connectionId) {
-        const connection = await this.getProviderConnectionRow(client, input.connectionId);
+        connection = await this.getProviderConnectionRow(client, input.connectionId);
         this.assertTenantOwnedProviderConnection(connection, context.tenantId);
+        if (connection.provider_id !== input.providerId) {
+          throw new AiGatewayApiError(
+            400,
+            "PROVIDER_CONNECTION_PROVIDER_MISMATCH",
+            "Provider connection does not belong to the selected provider",
+          );
+        }
       }
-      const environment =
-        input.connectionId
-          ? (await this.getProviderConnectionRow(client, input.connectionId)).environment
-          : "production";
-      const modelFamily = model?.model_key ?? null;
+      if (input.modelId && model?.provider_id !== input.providerId) {
+        throw new AiGatewayApiError(
+          400,
+          "ROUTE_MODEL_PROVIDER_MISMATCH",
+          "Selected model does not belong to the selected provider",
+        );
+      }
+
+      const normalizedModelFamily = input.modelFamily?.trim() || model?.model_key || null;
+      if (!normalizedModelFamily) {
+        throw new AiGatewayApiError(
+          400,
+          "MODEL_FAMILY_REQUIRED",
+          "Either modelId or modelFamily must be provided when creating a route",
+        );
+      }
+
+      if (model?.modality && model.modality !== input.modality.trim()) {
+        throw new AiGatewayApiError(
+          400,
+          "ROUTE_MODEL_MODALITY_MISMATCH",
+          "Selected model modality does not match route modality",
+        );
+      }
+
+      await this.ensureCatalogModelFamilyExists(client, {
+        modality: input.modality.trim(),
+        modelFamily: normalizedModelFamily,
+        tenantId: context.tenantId,
+      });
+
+      const environment = connection?.environment ?? "production";
       const requestConfig = buildNormalizedRouteRequestConfig({
         apiMode: input.apiMode ?? null,
         connectionId: input.connectionId ?? null,
@@ -1196,7 +1233,7 @@ export class AiGatewayAdminService {
             context.tenantId,
             input.providerId,
             input.modelId ?? null,
-            modelFamily,
+            normalizedModelFamily,
             input.credentialId ?? null,
             input.connectionId ?? null,
             input.routeKey.trim(),
@@ -1976,6 +2013,8 @@ export class AiGatewayAdminService {
       `
         SELECT
           id::text AS id,
+          provider_id::text AS provider_id,
+          modality,
           model_key
         FROM ai_models
         WHERE id = $1::uuid
@@ -1990,6 +2029,37 @@ export class AiGatewayAdminService {
     }
 
     return row;
+  }
+
+  private async ensureCatalogModelFamilyExists(
+    client: PoolClient,
+    input: {
+      modality: string;
+      modelFamily: string;
+      tenantId: string;
+    },
+  ): Promise<void> {
+    const result = await client.query<{ id: string }>(
+      `
+        SELECT id::text AS id
+        FROM ai_model_catalog
+        WHERE (tenant_id = $1::uuid OR tenant_id IS NULL)
+          AND modality = $2::text
+          AND model_family = $3::text
+          AND status = 'active'
+        ORDER BY CASE WHEN tenant_id = $1::uuid THEN 0 ELSE 1 END ASC
+        LIMIT 1
+      `,
+      [input.tenantId, input.modality, input.modelFamily],
+    );
+
+    if (!result.rows[0]?.id) {
+      throw new AiGatewayApiError(
+        404,
+        "MODEL_FAMILY_NOT_FOUND",
+        "No active product model exists for the provided model family",
+      );
+    }
   }
 
   private async ensureCredentialExists(

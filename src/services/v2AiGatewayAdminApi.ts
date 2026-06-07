@@ -186,6 +186,7 @@ export async function createAdminRoute(input: {
   internalLabel?: string | null;
   isDefault?: boolean;
   modality: AiModality;
+  modelFamily?: string | null;
   modelId?: string | null;
   pricing?: Record<string, unknown>;
   priority?: number;
