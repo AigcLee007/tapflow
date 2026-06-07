@@ -27,6 +27,15 @@ export const routeIdParamsSchema = z.object({
   routeId: z.string().uuid(),
 });
 
+export const duplicateRouteSchema = z
+  .object({
+    internalLabel: z.string().trim().min(1).max(255).nullable().optional(),
+    isDefault: z.boolean().optional(),
+    routeKey: routeKeySchema.optional(),
+    routeLabel: z.string().trim().min(1).max(255).nullable().optional(),
+  })
+  .optional();
+
 export const credentialIdParamsSchema = z.object({
   credentialId: z.string().uuid(),
 });
@@ -183,6 +192,7 @@ export type CreateCredentialInput = z.infer<typeof createCredentialSchema>;
 export type CreateModelInput = z.infer<typeof createModelSchema>;
 export type CreateProviderInput = z.infer<typeof createProviderSchema>;
 export type CreateRouteInput = z.infer<typeof createRouteSchema>;
+export type DuplicateRouteInput = z.infer<typeof duplicateRouteSchema>;
 export type CredentialIdParams = z.infer<typeof credentialIdParamsSchema>;
 export type ConnectionIdParams = z.infer<typeof connectionIdParamsSchema>;
 export type CreateProviderConnectionInput = z.infer<typeof createProviderConnectionSchema>;

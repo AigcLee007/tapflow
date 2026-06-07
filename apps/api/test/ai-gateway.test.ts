@@ -828,6 +828,253 @@ describeWithDatabase("ai gateway admin API", () => {
     });
   });
 
+  test("route duplicate, default assignment, and delete rules stay consistent with model catalog", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({
+          connectionString: await createAppDatabaseUrl(),
+        });
+        const api = buildTestApp(appPool);
+        const owner = await registerOwner(api, "route-admin@example.com", "Route Admin");
+
+        const provider = await api.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` },
+          method: "POST",
+          payload: {
+            key: "route-admin-provider",
+            kind: "openai-compatible",
+            name: "Route Admin Provider",
+          },
+          url: "/api/v2/admin/ai/providers",
+        });
+        expect(provider.statusCode).toBe(201);
+        const providerBody = provider.json();
+
+        const model = await api.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` },
+          method: "POST",
+          payload: {
+            displayName: "GPT-Image-2",
+            modality: "image",
+            modelKey: "gpt-image-2",
+            providerId: providerBody.id,
+          },
+          url: "/api/v2/admin/ai/models",
+        });
+        expect(model.statusCode).toBe(201);
+        const modelBody = model.json();
+
+        const credential = await api.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` },
+          method: "POST",
+          payload: {
+            name: "Image Credential",
+            providerId: providerBody.id,
+            secret: "sk-image-test-secret",
+          },
+          url: "/api/v2/admin/credentials",
+        });
+        expect(credential.statusCode).toBe(201);
+        const credentialBody = credential.json();
+
+        const connection = await api.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` },
+          method: "POST",
+          payload: {
+            adapterKind: "openai-compatible",
+            baseUrl: "https://example.com/v1",
+            credentialId: credentialBody.id,
+            name: "Primary Connection",
+            providerId: providerBody.id,
+          },
+          url: "/api/v2/admin/ai/connections",
+        });
+        expect(connection.statusCode).toBe(201);
+        const connectionBody = connection.json();
+
+        await withTenantTransaction(
+          { tenantId: owner.currentTenant.id, userId: owner.user.id },
+          async (client) => {
+            await client.query(
+              `
+                INSERT INTO ai_model_catalog (
+                  tenant_id,
+                  model_id,
+                  model_key,
+                  display_name,
+                  modality,
+                  model_family,
+                  default_route_key
+                )
+                VALUES (
+                  $1::uuid,
+                  $2::uuid,
+                  'gpt-image-2',
+                  'GPT-Image-2',
+                  'image',
+                  'gpt-image-2',
+                  NULL
+                )
+              `,
+              [owner.currentTenant.id, modelBody.id],
+            );
+          },
+          appPool,
+        );
+
+        const route1 = await api.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` },
+          method: "POST",
+          payload: {
+            apiMode: "images",
+            connectionId: connectionBody.id,
+            credentialId: credentialBody.id,
+            modality: "image",
+            modelId: modelBody.id,
+            providerId: providerBody.id,
+            requestPath: "/images/generations",
+            routeKey: "image.gpt-image-2.line1",
+            routeLabel: "Line 1",
+            upstreamModel: "gpt-image-2",
+          },
+          url: "/api/v2/admin/ai/routes",
+        });
+        expect(route1.statusCode).toBe(201);
+        expect(route1.json()).toMatchObject({
+          environment: "production",
+          modelFamily: "gpt-image-2",
+          pluginInstallId: null,
+        });
+
+        const duplicate = await api.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` },
+          method: "POST",
+          payload: {
+            routeKey: "image.gpt-image-2.line2",
+            routeLabel: "Line 2",
+            internalLabel: "Backup Line",
+          },
+          url: `/api/v2/admin/ai/routes/${route1.json().id}/duplicate`,
+        });
+        expect(duplicate.statusCode).toBe(201);
+        expect(duplicate.json()).toMatchObject({
+          apiMode: "images",
+          connectionId: connectionBody.id,
+          environment: "production",
+          internalLabel: "Backup Line",
+          modelFamily: "gpt-image-2",
+          requestPath: "/images/generations",
+          routeKey: "image.gpt-image-2.line2",
+          routeLabel: "Line 2",
+          upstreamModel: "gpt-image-2",
+        });
+
+        const setDefault = await api.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` },
+          method: "POST",
+          url: `/api/v2/admin/ai/routes/${duplicate.json().id}/set-default`,
+        });
+        expect(setDefault.statusCode).toBe(200);
+        expect(setDefault.json()).toMatchObject({
+          id: duplicate.json().id,
+          isDefault: true,
+          routeKey: "image.gpt-image-2.line2",
+        });
+
+        const routeRows = await adminPool.query<{
+          is_default: boolean;
+          route_key: string;
+        }>(
+          `
+            SELECT route_key, is_default
+            FROM ai_routes
+            WHERE tenant_id = $1::uuid
+              AND model_family = 'gpt-image-2'
+            ORDER BY route_key ASC
+          `,
+          [owner.currentTenant.id],
+        );
+        expect(routeRows.rows).toEqual([
+          {
+            is_default: false,
+            route_key: "image.gpt-image-2.line1",
+          },
+          {
+            is_default: true,
+            route_key: "image.gpt-image-2.line2",
+          },
+        ]);
+
+        const catalogRoutes = await api.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` },
+          method: "GET",
+          url: "/api/v2/ai/model-catalog/gpt-image-2/routes",
+        });
+        expect(catalogRoutes.statusCode).toBe(200);
+        expect(catalogRoutes.json().map((item: { routeKey: string }) => item.routeKey)).toEqual([
+          "image.gpt-image-2.line1",
+          "image.gpt-image-2.line2",
+        ]);
+
+        const catalogModel = await api.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` },
+          method: "GET",
+          url: "/api/v2/ai/model-catalog?modality=image",
+        });
+        expect(catalogModel.statusCode).toBe(200);
+        expect(catalogModel.json()).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              defaultRouteKey: "image.gpt-image-2.line2",
+              modelKey: "gpt-image-2",
+            }),
+          ]),
+        );
+
+        const deleteDefault = await api.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` },
+          method: "DELETE",
+          url: `/api/v2/admin/ai/routes/${duplicate.json().id}`,
+        });
+        expect(deleteDefault.statusCode).toBe(409);
+
+        const deleteNonDefault = await api.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` },
+          method: "DELETE",
+          url: `/api/v2/admin/ai/routes/${route1.json().id}`,
+        });
+        expect(deleteNonDefault.statusCode).toBe(200);
+        expect(deleteNonDefault.json()).toEqual({ ok: true });
+
+        const deletedRoute = await adminPool.query<{
+          deleted_at: string | null;
+          status: string;
+        }>(
+          `
+            SELECT
+              deleted_at::text AS deleted_at,
+              status
+            FROM ai_routes
+            WHERE id = $1::uuid
+          `,
+          [route1.json().id],
+        );
+        expect(deletedRoute.rows[0]?.status).toBe("inactive");
+        expect(deletedRoute.rows[0]?.deleted_at).toBeTruthy();
+
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
   test("text runtime uses a mock provider, writes ai_call_logs, normalizes 429, and enforces tenant access", async () => {
     const mockProvider = await withMockProvider(async (request, response) => {
       const chunks: Buffer[] = [];

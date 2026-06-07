@@ -16,6 +16,7 @@ import type {
   CreateProviderConnectionInput,
   CreateProviderInput,
   CreateRouteInput,
+  DuplicateRouteInput,
   ListRuntimeRoutesQuery,
   ListPricingQuery,
   UpsertPricingInput,
@@ -60,6 +61,11 @@ type ModelRecord = {
   updated_at: string;
 };
 
+type ModelIdentityRecord = {
+  id: string;
+  model_key: string;
+};
+
 type RouteRecord = {
   admin_notes: string | null;
   api_mode: string | null;
@@ -68,6 +74,7 @@ type RouteRecord = {
   created_at: string;
   credential_id: string | null;
   deleted_at: string | null;
+  environment: string;
   fallback_group: string | null;
   health_status: string | null;
   id: string;
@@ -78,6 +85,7 @@ type RouteRecord = {
   model_id: string | null;
   pricing: Record<string, unknown>;
   priority: number;
+  plugin_install_id: string | null;
   provider_id: string;
   rate_limit: Record<string, unknown>;
   request_path: string | null;
@@ -86,6 +94,7 @@ type RouteRecord = {
   route_label: string | null;
   status: string;
   tenant_id: string | null;
+  model_family: string | null;
   upstream_model: string | null;
   updated_at: string;
   weight: number;
@@ -218,6 +227,7 @@ export type RouteView = {
   createdAt: string;
   credentialId: string | null;
   deletedAt: string | null;
+  environment: string;
   fallbackGroup: string | null;
   healthStatus: string | null;
   id: string;
@@ -226,8 +236,10 @@ export type RouteView = {
   lastHealthCheckedAt: string | null;
   modality: string;
   modelId: string | null;
+  modelFamily: string | null;
   pricing: Record<string, unknown>;
   priority: number;
+  pluginInstallId: string | null;
   providerId: string;
   rateLimit: Record<string, unknown>;
   requestPath: string | null;
@@ -345,6 +357,7 @@ function mapRoute(row: RouteRecord): RouteView {
     createdAt: row.created_at,
     credentialId: row.credential_id,
     deletedAt: row.deleted_at,
+    environment: row.environment,
     fallbackGroup: row.fallback_group,
     healthStatus: row.health_status,
     id: row.id,
@@ -353,8 +366,10 @@ function mapRoute(row: RouteRecord): RouteView {
     lastHealthCheckedAt: row.last_health_checked_at,
     modality: row.modality,
     modelId: row.model_id,
+    modelFamily: row.model_family,
     pricing: row.pricing ?? {},
     priority: row.priority,
+    pluginInstallId: row.plugin_install_id,
     providerId: row.provider_id,
     rateLimit: row.rate_limit ?? {},
     requestPath: row.request_path,
@@ -430,6 +445,10 @@ function buildNormalizedRouteRequestConfig(input: {
   }
 
   return next;
+}
+
+function buildDuplicatedRouteKey(routeKey: string): string {
+  return routeKey.endsWith("-copy") ? `${routeKey}-2` : `${routeKey}-copy`;
 }
 
 export class AiGatewayAdminService {
@@ -827,11 +846,14 @@ export class AiGatewayAdminService {
             tenant_id::text AS tenant_id,
             provider_id::text AS provider_id,
             model_id::text AS model_id,
+            plugin_install_id::text AS plugin_install_id,
             credential_id::text AS credential_id,
             connection_id::text AS connection_id,
             route_key,
             route_label,
             modality,
+            model_family,
+            environment,
             priority,
             weight,
             fallback_group,
@@ -1059,9 +1081,7 @@ export class AiGatewayAdminService {
   async createRoute(context: TenantContext, input: CreateRouteInput): Promise<RouteView> {
     return withTenantTransaction(context, async (client) => {
       await this.ensureProviderExists(input.providerId, client);
-      if (input.modelId) {
-        await this.ensureModelExists(input.modelId, client);
-      }
+      const model = input.modelId ? await this.getModelRow(client, input.modelId) : null;
       if (input.credentialId) {
         await this.ensureCredentialExists(input.credentialId, client, context.tenantId);
       }
@@ -1069,6 +1089,11 @@ export class AiGatewayAdminService {
         const connection = await this.getProviderConnectionRow(client, input.connectionId);
         this.assertTenantOwnedProviderConnection(connection, context.tenantId);
       }
+      const environment =
+        input.connectionId
+          ? (await this.getProviderConnectionRow(client, input.connectionId)).environment
+          : "production";
+      const modelFamily = model?.model_key ?? null;
       const requestConfig = buildNormalizedRouteRequestConfig({
         apiMode: input.apiMode ?? null,
         connectionId: input.connectionId ?? null,
@@ -1085,11 +1110,13 @@ export class AiGatewayAdminService {
               tenant_id,
               provider_id,
               model_id,
+              model_family,
               credential_id,
               connection_id,
               route_key,
               route_label,
               modality,
+              environment,
               priority,
               weight,
               fallback_group,
@@ -1110,25 +1137,26 @@ export class AiGatewayAdminService {
               $1::uuid,
               $2::uuid,
               $3::uuid,
-              $4::uuid,
+              $4,
               $5::uuid,
-              $6,
+              $6::uuid,
               $7,
               $8,
-              $9::int,
+              $9,
               $10::int,
-              $11,
+              $11::int,
               $12,
               $13,
               $14,
               $15,
               $16,
               $17,
-              $18::boolean,
-              $19::jsonb,
+              $18,
+              $19::boolean,
               $20::jsonb,
               $21::jsonb,
-              $22,
+              $22::jsonb,
+              $23,
               now()
             )
             RETURNING
@@ -1136,11 +1164,14 @@ export class AiGatewayAdminService {
               tenant_id::text AS tenant_id,
               provider_id::text AS provider_id,
               model_id::text AS model_id,
+              plugin_install_id::text AS plugin_install_id,
               credential_id::text AS credential_id,
               connection_id::text AS connection_id,
               route_key,
               route_label,
               modality,
+              model_family,
+              environment,
               priority,
               weight,
               fallback_group,
@@ -1165,11 +1196,13 @@ export class AiGatewayAdminService {
             context.tenantId,
             input.providerId,
             input.modelId ?? null,
+            modelFamily,
             input.credentialId ?? null,
             input.connectionId ?? null,
             input.routeKey.trim(),
             input.routeLabel?.trim() ?? null,
             input.modality.trim(),
+            environment,
             input.priority ?? 100,
             input.weight ?? 100,
             input.fallbackGroup?.trim() ?? null,
@@ -1188,6 +1221,9 @@ export class AiGatewayAdminService {
         );
 
         const route = mapRoute(result.rows[0]);
+        if (route.isDefault) {
+          await this.applyDefaultRouteState(client, context.tenantId, route);
+        }
         await safeRecordAuditLog(
           {
             action: "ai.route.create",
@@ -1229,19 +1265,22 @@ export class AiGatewayAdminService {
     return withTenantTransaction(context, async (client) => {
       const existing = await this.getRouteRow(client, routeId);
       this.assertTenantOwnedRoute(existing, context.tenantId);
-      if (input.modelId) {
-        await this.ensureModelExists(input.modelId, client);
-      }
+      const modelId = input.modelId !== undefined ? input.modelId : existing.model_id;
+      const model = modelId ? await this.getModelRow(client, modelId) : null;
       if (input.credentialId) {
         await this.ensureCredentialExists(input.credentialId, client, context.tenantId);
       }
-      if (input.connectionId) {
-        const connection = await this.getProviderConnectionRow(client, input.connectionId);
+      const nextConnectionId = input.connectionId !== undefined ? input.connectionId : existing.connection_id;
+      let connection = null;
+      if (nextConnectionId) {
+        connection = await this.getProviderConnectionRow(client, nextConnectionId);
         this.assertTenantOwnedProviderConnection(connection, context.tenantId);
       }
+      const nextEnvironment = connection?.environment ?? existing.environment ?? "production";
+      const nextModelFamily = model?.model_key ?? existing.model_family ?? null;
       const nextRequestConfig = buildNormalizedRouteRequestConfig({
         apiMode: input.apiMode === undefined ? existing.api_mode : input.apiMode,
-        connectionId: input.connectionId === undefined ? existing.connection_id : input.connectionId,
+        connectionId: nextConnectionId,
         requestConfig: input.requestConfig ?? existing.request_config ?? {},
         requestPath: input.requestPath === undefined ? existing.request_path : input.requestPath,
         upstreamModel: input.upstreamModel === undefined ? existing.upstream_model : input.upstreamModel,
@@ -1253,23 +1292,25 @@ export class AiGatewayAdminService {
           UPDATE ai_routes
           SET
             model_id = $2::uuid,
-            credential_id = $3::uuid,
-            connection_id = $4::uuid,
-            priority = $5::int,
-            weight = $6::int,
-            fallback_group = $7,
-            base_url_override = $8,
-            upstream_model = $9,
-            api_mode = $10,
-            request_path = $11,
-            internal_label = $12,
-            admin_notes = $13,
-            is_default = $14::boolean,
-            route_label = $15,
-            request_config = $16::jsonb,
-            pricing = $17::jsonb,
-            rate_limit = $18::jsonb,
-            status = $19,
+            model_family = $3,
+            credential_id = $4::uuid,
+            connection_id = $5::uuid,
+            environment = $6,
+            priority = $7::int,
+            weight = $8::int,
+            fallback_group = $9,
+            base_url_override = $10,
+            upstream_model = $11,
+            api_mode = $12,
+            request_path = $13,
+            internal_label = $14,
+            admin_notes = $15,
+            is_default = $16::boolean,
+            route_label = $17,
+            request_config = $18::jsonb,
+            pricing = $19::jsonb,
+            rate_limit = $20::jsonb,
+            status = $21,
             updated_at = now()
           WHERE id = $1::uuid
           RETURNING
@@ -1277,11 +1318,14 @@ export class AiGatewayAdminService {
             tenant_id::text AS tenant_id,
             provider_id::text AS provider_id,
             model_id::text AS model_id,
+            plugin_install_id::text AS plugin_install_id,
             credential_id::text AS credential_id,
             connection_id::text AS connection_id,
             route_key,
             route_label,
             modality,
+            model_family,
+            environment,
             priority,
             weight,
             fallback_group,
@@ -1304,9 +1348,11 @@ export class AiGatewayAdminService {
         `,
         [
           routeId,
-          input.modelId !== undefined ? input.modelId : existing.model_id,
+          modelId,
+          nextModelFamily,
           input.credentialId !== undefined ? input.credentialId : existing.credential_id,
-          input.connectionId !== undefined ? input.connectionId : existing.connection_id,
+          nextConnectionId,
+          nextEnvironment,
           input.priority ?? existing.priority,
           input.weight ?? existing.weight,
           input.fallbackGroup !== undefined ? input.fallbackGroup?.trim() ?? null : existing.fallback_group,
@@ -1331,6 +1377,11 @@ export class AiGatewayAdminService {
       }
 
       const route = mapRoute(row);
+      if (route.isDefault) {
+        await this.applyDefaultRouteState(client, context.tenantId, route);
+      } else if (existing.is_default && !route.isDefault) {
+        await this.clearCatalogDefaultForRoute(client, context.tenantId, existing.route_key);
+      }
       await safeRecordAuditLog(
         {
           action: "ai.route.update",
@@ -1359,6 +1410,165 @@ export class AiGatewayAdminService {
         },
       );
       return route;
+    }, this.pool);
+  }
+
+  async duplicateRoute(
+    context: TenantContext,
+    routeId: string,
+    input: DuplicateRouteInput = {},
+  ): Promise<RouteView> {
+    return withTenantTransaction(context, async (client) => {
+      const existing = await this.getRouteRow(client, routeId);
+      this.assertTenantOwnedRoute(existing, context.tenantId);
+
+      const duplicateInput: CreateRouteInput = {
+        adminNotes: existing.admin_notes,
+        apiMode: existing.api_mode,
+        baseUrlOverride: existing.base_url_override,
+        connectionId: existing.connection_id,
+        credentialId: existing.credential_id,
+        fallbackGroup: existing.fallback_group,
+        internalLabel:
+          input.internalLabel !== undefined
+            ? input.internalLabel?.trim() ?? null
+            : existing.internal_label
+              ? `${existing.internal_label} Copy`
+              : null,
+        isDefault: input.isDefault ?? false,
+        modality: existing.modality as CreateRouteInput["modality"],
+        modelId: existing.model_id,
+        pricing: existing.pricing ?? {},
+        priority: existing.priority,
+        providerId: existing.provider_id,
+        rateLimit: existing.rate_limit ?? {},
+        requestConfig: existing.request_config ?? {},
+        requestPath: existing.request_path,
+        routeKey: input.routeKey?.trim() ?? buildDuplicatedRouteKey(existing.route_key),
+        routeLabel:
+          input.routeLabel !== undefined
+            ? input.routeLabel?.trim() ?? null
+            : existing.route_label
+              ? `${existing.route_label} Copy`
+              : null,
+        status: existing.status as CreateRouteInput["status"],
+        upstreamModel: existing.upstream_model,
+        weight: existing.weight,
+      };
+
+      return this.createRoute(context, duplicateInput);
+    }, this.pool);
+  }
+
+  async setDefaultRoute(context: TenantContext, routeId: string): Promise<RouteView> {
+    return withTenantTransaction(context, async (client) => {
+      const route = await this.getRouteRow(client, routeId);
+      this.assertTenantOwnedRoute(route, context.tenantId);
+      if (route.deleted_at) {
+        throw new AiGatewayApiError(409, "ROUTE_DELETED", "Route has been deleted");
+      }
+      if (route.status !== "active") {
+        throw new AiGatewayApiError(409, "ROUTE_NOT_ACTIVE", "Only active routes can be set as default");
+      }
+
+      const updated = await client.query<RouteRecord>(
+        `
+          UPDATE ai_routes
+          SET
+            is_default = true,
+            updated_at = now()
+          WHERE id = $1::uuid
+          RETURNING
+            id::text AS id,
+            tenant_id::text AS tenant_id,
+            provider_id::text AS provider_id,
+            model_id::text AS model_id,
+            plugin_install_id::text AS plugin_install_id,
+            credential_id::text AS credential_id,
+            connection_id::text AS connection_id,
+            route_key,
+            route_label,
+            modality,
+            model_family,
+            environment,
+            priority,
+            weight,
+            fallback_group,
+            base_url_override,
+            upstream_model,
+            api_mode,
+            request_path,
+            internal_label,
+            admin_notes,
+            is_default,
+            health_status,
+            last_health_checked_at::text AS last_health_checked_at,
+            deleted_at::text AS deleted_at,
+            request_config,
+            pricing,
+            rate_limit,
+            status,
+            created_at::text AS created_at,
+            updated_at::text AS updated_at
+        `,
+        [routeId],
+      );
+
+      const nextRoute = mapRoute(updated.rows[0]);
+      await this.applyDefaultRouteState(client, context.tenantId, nextRoute);
+      return nextRoute;
+    }, this.pool);
+  }
+
+  async deleteRoute(context: TenantContext, routeId: string): Promise<{ ok: true }> {
+    return withTenantTransaction(context, async (client) => {
+      const existing = await this.getRouteRow(client, routeId);
+      this.assertTenantOwnedRoute(existing, context.tenantId);
+
+      if (existing.is_default) {
+        throw new AiGatewayApiError(
+          409,
+          "DEFAULT_ROUTE_DELETE_FORBIDDEN",
+          "Default route must be reassigned before deletion",
+        );
+      }
+
+      await client.query(
+        `
+          UPDATE ai_routes
+          SET
+            status = 'inactive',
+            deleted_at = now(),
+            updated_at = now()
+          WHERE id = $1::uuid
+        `,
+        [routeId],
+      );
+
+      await this.clearCatalogDefaultForRoute(client, context.tenantId, existing.route_key);
+      await safeRecordAuditLog(
+        {
+          action: "ai.route.delete",
+          actorType: context.userId ? "user" : "system",
+          actorUserId: context.userId,
+          ipHash: context.ipHash,
+          metadata: {
+            routeId,
+            routeKey: existing.route_key,
+          },
+          requestId: context.requestId,
+          resourceId: routeId,
+          resourceType: "ai_route",
+          tenantId: context.tenantId,
+          traceId: context.traceId,
+          userAgent: context.userAgent,
+        },
+        {
+          pool: this.pool,
+        },
+      );
+
+      return { ok: true as const };
     }, this.pool);
   }
 
@@ -1671,7 +1881,11 @@ export class AiGatewayAdminService {
           SELECT id::text AS id
           FROM ai_routes
           WHERE tenant_id = $1::uuid
-            AND request_config->>'connectionId' = $2::text
+            AND (
+              connection_id = $2::uuid
+              OR request_config->>'connectionId' = $2::text
+            )
+            AND deleted_at IS NULL
           LIMIT 1
         `,
         [context.tenantId, connectionId],
@@ -1757,6 +1971,27 @@ export class AiGatewayAdminService {
     }
   }
 
+  private async getModelRow(client: PoolClient, modelId: string): Promise<ModelIdentityRecord> {
+    const result = await client.query<ModelIdentityRecord>(
+      `
+        SELECT
+          id::text AS id,
+          model_key
+        FROM ai_models
+        WHERE id = $1::uuid
+        LIMIT 1
+      `,
+      [modelId],
+    );
+
+    const row = result.rows[0];
+    if (!row) {
+      throw new AiGatewayApiError(404, "MODEL_NOT_FOUND", "Model not found");
+    }
+
+    return row;
+  }
+
   private async ensureCredentialExists(
     credentialId: string,
     client: PoolClient,
@@ -1787,11 +2022,14 @@ export class AiGatewayAdminService {
           tenant_id::text AS tenant_id,
           provider_id::text AS provider_id,
           model_id::text AS model_id,
+          plugin_install_id::text AS plugin_install_id,
+          model_family,
           credential_id::text AS credential_id,
           connection_id::text AS connection_id,
           route_key,
           route_label,
           modality,
+          environment,
           priority,
           weight,
           fallback_group,
@@ -1824,6 +2062,62 @@ export class AiGatewayAdminService {
     }
 
     return row;
+  }
+
+  private async applyDefaultRouteState(
+    client: PoolClient,
+    tenantId: string,
+    route: RouteView,
+  ): Promise<void> {
+    if (!route.modelFamily) {
+      return;
+    }
+
+    await client.query(
+      `
+        UPDATE ai_routes
+        SET
+          is_default = CASE WHEN id = $4::uuid THEN true ELSE false END,
+          updated_at = CASE WHEN id = $4::uuid THEN updated_at ELSE now() END
+        WHERE tenant_id = $1::uuid
+          AND modality = $2::text
+          AND model_family = $3::text
+          AND environment = $5::text
+          AND deleted_at IS NULL
+      `,
+      [tenantId, route.modality, route.modelFamily, route.id, route.environment],
+    );
+
+    await client.query(
+      `
+        UPDATE ai_model_catalog
+        SET
+          default_route_key = $3::text,
+          updated_at = now()
+        WHERE tenant_id = $1::uuid
+          AND modality = $2::text
+          AND model_family = $4::text
+      `,
+      [tenantId, route.modality, route.routeKey, route.modelFamily],
+    );
+  }
+
+  private async clearCatalogDefaultForRoute(
+    client: PoolClient,
+    tenantId: string,
+    routeKey: string,
+  ): Promise<void> {
+    await client.query(
+      `
+        UPDATE ai_model_catalog
+        SET
+          default_route_key = NULL,
+          updated_at = now()
+        WHERE tenant_id = $1::uuid
+          AND default_route_key = $2::text
+      `,
+      [tenantId, routeKey],
+    );
   }
 
   private async getCredentialRow(

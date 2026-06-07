@@ -16,6 +16,7 @@ import {
   type CreateProviderInput,
   type CreateRouteInput,
   type CredentialIdParams,
+  type DuplicateRouteInput,
   type GenerateTextInput,
   type RotateCredentialInput,
   type RouteIdParams,
@@ -27,6 +28,7 @@ import {
   type UpdateRouteInput,
   connectionIdParamsSchema,
   createCredentialSchema,
+  duplicateRouteSchema,
   generateTextSchema,
   createModelSchema,
   createProviderConnectionSchema,
@@ -332,6 +334,62 @@ export function registerAiGatewayAdminRoutes(app: FastifyInstance): void {
         const body = parseBody<UpdateRouteInput>(request, updateRouteSchema);
         return reply.send(
           await app.aiGatewayService.updateRoute(getTenantContext(request), params.routeId, body),
+        );
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.post(
+    "/api/v2/admin/ai/routes/:routeId/duplicate",
+    {
+      preHandler: [...authHandlers, requirePermissionForAdmin("provider:manage")],
+    },
+    async (request, reply) => {
+      try {
+        const params = parseParams<RouteIdParams>(request, routeIdParamsSchema);
+        const body = parseBody<DuplicateRouteInput | undefined>(request, duplicateRouteSchema);
+        return reply.code(201).send(
+          await app.aiGatewayService.duplicateRoute(
+            getTenantContext(request),
+            params.routeId,
+            body ?? {},
+          ),
+        );
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.post(
+    "/api/v2/admin/ai/routes/:routeId/set-default",
+    {
+      preHandler: [...authHandlers, requirePermissionForAdmin("provider:manage")],
+    },
+    async (request, reply) => {
+      try {
+        const params = parseParams<RouteIdParams>(request, routeIdParamsSchema);
+        return reply.send(
+          await app.aiGatewayService.setDefaultRoute(getTenantContext(request), params.routeId),
+        );
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.delete(
+    "/api/v2/admin/ai/routes/:routeId",
+    {
+      preHandler: [...authHandlers, requirePermissionForAdmin("provider:manage")],
+    },
+    async (request, reply) => {
+      try {
+        const params = parseParams<RouteIdParams>(request, routeIdParamsSchema);
+        return reply.send(
+          await app.aiGatewayService.deleteRoute(getTenantContext(request), params.routeId),
         );
       } catch (error) {
         return handleRouteError(error, request, reply);
