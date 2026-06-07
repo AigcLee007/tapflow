@@ -63,6 +63,7 @@ type ConnectionFormState = {
 type ConnectionRow = {
   connection: AdminProviderConnection;
   credential: AdminCredential | null;
+  providerModels: AdminModel[];
   provider: AdminProvider | null;
   routes: AdminRoute[];
 };
@@ -220,6 +221,7 @@ export function ProviderSettingsPage() {
         connection,
         credential:
           credentials.find((credential) => credential.id === connection.credentialId) ?? null,
+        providerModels: models.filter((model) => model.providerId === connection.providerId),
         provider: providers.find((provider) => provider.id === connection.providerId) ?? null,
         routes: routes.filter((route) => route.connectionId === connection.id),
       })),
@@ -233,6 +235,7 @@ export function ProviderSettingsPage() {
 
   const selectedConnection = selectedConnectionRow?.connection ?? null;
   const selectedCredential = selectedConnectionRow?.credential ?? null;
+  const selectedProviderModels = selectedConnectionRow?.providerModels ?? [];
   const selectedProvider = selectedConnectionRow?.provider ?? null;
   const selectedRoutes = selectedConnectionRow?.routes ?? [];
 
@@ -618,6 +621,7 @@ export function ProviderSettingsPage() {
                     <div>适配器：{item.connection.adapterKind}</div>
                     <div>凭证：{credentialLabel(item.credential)}</div>
                     <div>复用线路：{item.routes.length} 条</div>
+                    <div>服务商模型：{item.providerModels.length} 个</div>
                   </div>
                 </button>
               );
@@ -741,6 +745,8 @@ export function ProviderSettingsPage() {
                   <div>最近健康状态：{healthStatusLabel(selectedConnection.lastHealthStatus)}</div>
                   <div>最近检测时间：{selectedConnection.lastHealthCheckedAt || "-"}</div>
                   <div>复用线路数：{selectedRoutes.length}</div>
+                  <div>服务商模型数：{selectedProviderModels.length}</div>
+                  <div>所属服务商：{selectedProvider ? providerLabel(selectedProvider) : "-"}</div>
                 </div>
 
                 <div className="flex flex-wrap gap-2">
@@ -843,6 +849,62 @@ export function ProviderSettingsPage() {
             ) : (
               <div className="mt-4 rounded border border-dashed border-white/10 p-5 text-sm text-slate-400">
                 当前连接还没有被任何线路使用。
+              </div>
+            )}
+          </SectionCard>
+
+          <SectionCard
+            title="当前服务商的模型与线路"
+            description="这里把当前连接所属服务商下面的模型定义和已挂上的线路一起列出来，方便核对服务商侧资源和产品模型线路之间的映射。"
+          >
+            {selectedProvider ? (
+              <div className="mt-4 space-y-3">
+                <div className="rounded border border-white/10 bg-black/20 px-4 py-3 text-sm text-slate-300">
+                  <div className="font-medium text-white">{providerLabel(selectedProvider)}</div>
+                  <div className="mt-1 text-xs text-slate-500">
+                    模型 {selectedProviderModels.length} 个 / 线路 {routes.filter((route) => route.providerId === selectedProvider.id).length} 条
+                  </div>
+                </div>
+
+                {selectedProviderModels.length > 0 ? (
+                  selectedProviderModels.map((model) => {
+                    const providerRoutes = routes.filter(
+                      (route) => route.providerId === selectedProvider.id && route.modelId === model.id,
+                    );
+                    return (
+                      <div
+                        className="rounded border border-white/10 bg-black/20 px-4 py-3 text-sm text-slate-300"
+                        key={model.id}
+                      >
+                        <div className="font-medium text-white">
+                          {model.displayName} <span className="text-xs text-slate-500">{model.modelKey}</span>
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {providerRoutes.length > 0 ? (
+                            providerRoutes.map((route) => (
+                              <span
+                                className="inline-flex rounded border border-white/10 bg-white/[0.03] px-2 py-1 text-xs text-slate-300"
+                                key={route.id}
+                              >
+                                {route.routeLabel || route.routeKey}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-xs text-slate-500">当前还没有挂接线路</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="rounded border border-dashed border-white/10 p-5 text-sm text-slate-400">
+                    当前服务商还没有定义模型。
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="mt-4 rounded border border-dashed border-white/10 p-5 text-sm text-slate-400">
+                先选择一个连接，再查看所属服务商下的模型与线路映射。
               </div>
             )}
           </SectionCard>

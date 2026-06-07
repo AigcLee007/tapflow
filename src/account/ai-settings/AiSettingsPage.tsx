@@ -308,6 +308,11 @@ export function AiSettingsPage() {
     return routeRows.find((item) => item.adminRoute)?.adminRoute ?? null;
   }, [routeRows, selectedAdminRoute]);
 
+  const selectedConnectionRoutes = useMemo(() => {
+    if (!selectedConnection?.id) return [];
+    return adminRoutes.filter((route) => route.connectionId === selectedConnection.id);
+  }, [adminRoutes, selectedConnection?.id]);
+
   const createConnections = useMemo(() => {
     if (!createEditor?.providerId) return [];
     return connections.filter(
@@ -1405,6 +1410,29 @@ export function AiSettingsPage() {
                         预估价格：{formatCredits(selectedCatalogRoute?.estimatedCredits ?? null)}
                       </div>
                     </div>
+                  </div>
+
+                  <div className="rounded border border-white/10 bg-black/20 p-4">
+                    <div className="text-sm font-medium text-white">当前连接还服务哪些线路</div>
+                    {selectedConnectionRoutes.length > 0 ? (
+                      <div className="mt-4 space-y-2">
+                        {selectedConnectionRoutes.map((route) => (
+                          <div
+                            className="rounded border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-slate-300"
+                            key={route.id}
+                          >
+                            <div className="font-medium text-white">{route.routeLabel || route.routeKey}</div>
+                            <div className="mt-1 text-xs text-slate-500">
+                              {route.routeKey} / {route.upstreamModel || "-"} / {route.apiMode || "-"}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="mt-4 rounded border border-dashed border-white/10 p-5 text-sm text-slate-400">
+                        当前连接还没有挂到其他线路上。
+                      </div>
+                    )}
                   </div>
 
                   <div className="rounded border border-white/10 bg-black/20 p-4">
