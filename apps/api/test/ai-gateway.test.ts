@@ -510,6 +510,122 @@ describeWithDatabase("ai gateway admin API", () => {
           "Tenant A Credential",
         ]);
 
+        const connectionA = await api.inject({
+          headers: {
+            authorization: `Bearer ${tenantAOwner.accessToken}`,
+          },
+          method: "POST",
+          payload: {
+            adapterKind: "openai-compatible",
+            baseUrl: "https://tenant-a.example.com/v1",
+            credentialId: credentialABody.id,
+            name: "Tenant A Connection",
+            providerId: providerBody.id,
+          },
+          url: "/api/v2/admin/ai/connections",
+        });
+        expect(connectionA.statusCode).toBe(201);
+        const connectionABody = connectionA.json();
+
+        const connectionB = await api.inject({
+          headers: {
+            authorization: `Bearer ${tenantBOwner.accessToken}`,
+          },
+          method: "POST",
+          payload: {
+            adapterKind: "openai-compatible",
+            baseUrl: "https://tenant-b.example.com/v1",
+            credentialId: credentialBBody.id,
+            name: "Tenant B Connection",
+            providerId: providerBody.id,
+          },
+          url: "/api/v2/admin/ai/connections",
+        });
+        expect(connectionB.statusCode).toBe(201);
+        const connectionBBody = connectionB.json();
+
+        const listConnectionsA = await api.inject({
+          headers: {
+            authorization: `Bearer ${tenantAOwner.accessToken}`,
+          },
+          method: "GET",
+          url: "/api/v2/admin/ai/connections",
+        });
+        expect(listConnectionsA.statusCode).toBe(200);
+        expect(listConnectionsA.json().map((item: { name: string }) => item.name)).toEqual([
+          "Tenant A Connection",
+        ]);
+
+        const imageModel = await api.inject({
+          headers: {
+            authorization: `Bearer ${tenantAOwner.accessToken}`,
+          },
+          method: "POST",
+          payload: {
+            displayName: "Image Model A",
+            modality: "image",
+            modelKey: "image-model-a",
+            providerId: providerBody.id,
+          },
+          url: "/api/v2/admin/ai/models",
+        });
+        expect(imageModel.statusCode).toBe(201);
+        const imageModelBody = imageModel.json();
+
+        const imageRoute = await api.inject({
+          headers: {
+            authorization: `Bearer ${tenantAOwner.accessToken}`,
+          },
+          method: "POST",
+          payload: {
+            apiMode: "responses",
+            connectionId: connectionABody.id,
+            credentialId: credentialABody.id,
+            internalLabel: "SiphonLab Backup",
+            modality: "image",
+            modelId: imageModelBody.id,
+            providerId: providerBody.id,
+            requestPath: "/responses",
+            routeKey: "image.model-a.line2",
+            routeLabel: "线路二",
+            upstreamModel: "gpt-5.5",
+          },
+          url: "/api/v2/admin/ai/routes",
+        });
+        expect(imageRoute.statusCode).toBe(201);
+        expect(imageRoute.json()).toMatchObject({
+          apiMode: "responses",
+          connectionId: connectionABody.id,
+          internalLabel: "SiphonLab Backup",
+          requestPath: "/responses",
+          routeLabel: "线路二",
+          upstreamModel: "gpt-5.5",
+        });
+
+        const updatedImageRoute = await api.inject({
+          headers: {
+            authorization: `Bearer ${tenantAOwner.accessToken}`,
+          },
+          method: "PATCH",
+          payload: {
+            apiMode: "images",
+            internalLabel: "SiphonLab Main",
+            requestPath: "/images/generations",
+            routeLabel: "线路一",
+            upstreamModel: "gpt-image-2",
+          },
+          url: `/api/v2/admin/ai/routes/${imageRoute.json().id}`,
+        });
+        expect(updatedImageRoute.statusCode).toBe(200);
+        expect(updatedImageRoute.json()).toMatchObject({
+          apiMode: "images",
+          connectionId: connectionABody.id,
+          internalLabel: "SiphonLab Main",
+          requestPath: "/images/generations",
+          routeLabel: "线路一",
+          upstreamModel: "gpt-image-2",
+        });
+
         const listRoutesA = await api.inject({
           headers: {
             authorization: `Bearer ${tenantAOwner.accessToken}`,
@@ -535,6 +651,18 @@ describeWithDatabase("ai gateway admin API", () => {
         });
         expect(crossTenantCredentialUpdate.statusCode).toBe(404);
 
+        const crossTenantConnectionUpdate = await api.inject({
+          headers: {
+            authorization: `Bearer ${tenantAOwner.accessToken}`,
+          },
+          method: "PATCH",
+          payload: {
+            name: "No Access",
+          },
+          url: `/api/v2/admin/ai/connections/${connectionBBody.id}`,
+        });
+        expect(crossTenantConnectionUpdate.statusCode).toBe(404);
+
         const crossTenantRouteUpdate = await api.inject({
           headers: {
             authorization: `Bearer ${tenantAOwner.accessToken}`,
@@ -546,6 +674,23 @@ describeWithDatabase("ai gateway admin API", () => {
           url: `/api/v2/admin/ai/routes/${routeB.json().id}`,
         });
         expect(crossTenantRouteUpdate.statusCode).toBe(404);
+
+        const updateConnectionA = await api.inject({
+          headers: {
+            authorization: `Bearer ${tenantAOwner.accessToken}`,
+          },
+          method: "PATCH",
+          payload: {
+            name: "Tenant A Connection Updated",
+            status: "inactive",
+          },
+          url: `/api/v2/admin/ai/connections/${connectionABody.id}`,
+        });
+        expect(updateConnectionA.statusCode).toBe(200);
+        expect(updateConnectionA.json()).toMatchObject({
+          name: "Tenant A Connection Updated",
+          status: "inactive",
+        });
 
         const systemRouteUpdate = await api.inject({
           headers: {

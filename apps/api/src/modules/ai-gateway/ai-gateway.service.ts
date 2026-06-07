@@ -13,12 +13,14 @@ import type { Pool, PoolClient } from "pg";
 import type {
   CreateCredentialInput,
   CreateModelInput,
+  CreateProviderConnectionInput,
   CreateProviderInput,
   CreateRouteInput,
   ListRuntimeRoutesQuery,
   ListPricingQuery,
   UpsertPricingInput,
   UpdateCredentialInput,
+  UpdateProviderConnectionInput,
   UpdateRouteInput,
 } from "./ai-gateway.schemas.js";
 
@@ -59,21 +61,32 @@ type ModelRecord = {
 };
 
 type RouteRecord = {
+  admin_notes: string | null;
+  api_mode: string | null;
   base_url_override: string | null;
+  connection_id: string | null;
   created_at: string;
   credential_id: string | null;
+  deleted_at: string | null;
   fallback_group: string | null;
+  health_status: string | null;
   id: string;
+  internal_label: string | null;
+  is_default: boolean;
+  last_health_checked_at: string | null;
   modality: string;
   model_id: string | null;
   pricing: Record<string, unknown>;
   priority: number;
   provider_id: string;
   rate_limit: Record<string, unknown>;
+  request_path: string | null;
   request_config: Record<string, unknown>;
   route_key: string;
+  route_label: string | null;
   status: string;
   tenant_id: string | null;
+  upstream_model: string | null;
   updated_at: string;
   weight: number;
 };
@@ -138,6 +151,24 @@ type CredentialRecord = {
   updated_at: string;
 };
 
+type ProviderConnectionRecord = {
+  adapter_kind: string;
+  base_url: string | null;
+  created_at: string;
+  created_by: string | null;
+  credential_id: string | null;
+  environment: string;
+  id: string;
+  last_health_checked_at: string | null;
+  last_health_status: string | null;
+  metadata: Record<string, unknown>;
+  name: string;
+  provider_id: string;
+  status: string;
+  tenant_id: string;
+  updated_at: string;
+};
+
 type AiCallLogInsertInput = {
   error: Record<string, unknown> | null;
   inputTokens?: number | null;
@@ -180,21 +211,32 @@ export type ModelView = {
 };
 
 export type RouteView = {
+  adminNotes: string | null;
+  apiMode: string | null;
   baseUrlOverride: string | null;
+  connectionId: string | null;
   createdAt: string;
   credentialId: string | null;
+  deletedAt: string | null;
   fallbackGroup: string | null;
+  healthStatus: string | null;
   id: string;
+  internalLabel: string | null;
+  isDefault: boolean;
+  lastHealthCheckedAt: string | null;
   modality: string;
   modelId: string | null;
   pricing: Record<string, unknown>;
   priority: number;
   providerId: string;
   rateLimit: Record<string, unknown>;
+  requestPath: string | null;
   requestConfig: Record<string, unknown>;
   routeKey: string;
+  routeLabel: string | null;
   status: string;
   tenantId: string | null;
+  upstreamModel: string | null;
   updatedAt: string;
   weight: number;
 };
@@ -232,6 +274,24 @@ export type PricingView = {
   route: string;
   unit: string;
   unitCredits: number;
+  updatedAt: string;
+};
+
+export type ProviderConnectionView = {
+  adapterKind: string;
+  baseUrl: string | null;
+  createdAt: string;
+  createdBy: string | null;
+  credentialId: string | null;
+  environment: string;
+  id: string;
+  lastHealthCheckedAt: string | null;
+  lastHealthStatus: string | null;
+  metadata: Record<string, unknown>;
+  name: string;
+  providerId: string;
+  status: string;
+  tenantId: string;
   updatedAt: string;
 };
 
@@ -278,21 +338,32 @@ function mapModel(row: ModelRecord): ModelView {
 
 function mapRoute(row: RouteRecord): RouteView {
   return {
+    adminNotes: row.admin_notes,
+    apiMode: row.api_mode,
     baseUrlOverride: row.base_url_override,
+    connectionId: row.connection_id,
     createdAt: row.created_at,
     credentialId: row.credential_id,
+    deletedAt: row.deleted_at,
     fallbackGroup: row.fallback_group,
+    healthStatus: row.health_status,
     id: row.id,
+    internalLabel: row.internal_label,
+    isDefault: row.is_default,
+    lastHealthCheckedAt: row.last_health_checked_at,
     modality: row.modality,
     modelId: row.model_id,
     pricing: row.pricing ?? {},
     priority: row.priority,
     providerId: row.provider_id,
     rateLimit: row.rate_limit ?? {},
+    requestPath: row.request_path,
     requestConfig: row.request_config ?? {},
     routeKey: row.route_key,
+    routeLabel: row.route_label,
     status: row.status,
     tenantId: row.tenant_id,
+    upstreamModel: row.upstream_model,
     updatedAt: row.updated_at,
     weight: row.weight,
   };
@@ -310,6 +381,55 @@ function mapPricing(row: PricingRecord): PricingView {
     unitCredits: Number(row.unit_credits),
     updatedAt: row.created_at,
   };
+}
+
+function mapProviderConnection(row: ProviderConnectionRecord): ProviderConnectionView {
+  return {
+    adapterKind: row.adapter_kind,
+    baseUrl: row.base_url,
+    createdAt: row.created_at,
+    createdBy: row.created_by,
+    credentialId: row.credential_id,
+    environment: row.environment,
+    id: row.id,
+    lastHealthCheckedAt: row.last_health_checked_at,
+    lastHealthStatus: row.last_health_status,
+    metadata: row.metadata ?? {},
+    name: row.name,
+    providerId: row.provider_id,
+    status: row.status,
+    tenantId: row.tenant_id,
+    updatedAt: row.updated_at,
+  };
+}
+
+function buildNormalizedRouteRequestConfig(input: {
+  apiMode?: string | null;
+  connectionId?: string | null;
+  requestConfig?: Record<string, unknown>;
+  requestPath?: string | null;
+  upstreamModel?: string | null;
+}): Record<string, unknown> {
+  const next = { ...(input.requestConfig ?? {}) };
+
+  if (input.connectionId !== undefined) {
+    if (input.connectionId) next.connectionId = input.connectionId;
+    else delete next.connectionId;
+  }
+  if (input.upstreamModel !== undefined) {
+    if (input.upstreamModel) next.model = input.upstreamModel;
+    else delete next.model;
+  }
+  if (input.apiMode !== undefined) {
+    if (input.apiMode) next.apiMode = input.apiMode;
+    else delete next.apiMode;
+  }
+  if (input.requestPath !== undefined) {
+    if (input.requestPath) next.path = input.requestPath;
+    else delete next.path;
+  }
+
+  return next;
 }
 
 export class AiGatewayAdminService {
@@ -414,6 +534,198 @@ export class AiGatewayAdminService {
     }
   }
 
+  async listProviderConnections(context: TenantContext): Promise<ProviderConnectionView[]> {
+    return withTenantTransaction(context, async (client) => {
+      const result = await client.query<ProviderConnectionRecord>(
+        `
+          SELECT
+            id::text AS id,
+            tenant_id::text AS tenant_id,
+            provider_id::text AS provider_id,
+            credential_id::text AS credential_id,
+            name,
+            adapter_kind,
+            base_url,
+            environment,
+            status,
+            metadata,
+            last_health_status,
+            last_health_checked_at::text AS last_health_checked_at,
+            created_by::text AS created_by,
+            created_at::text AS created_at,
+            updated_at::text AS updated_at
+          FROM ai_provider_connections
+          WHERE tenant_id = $1::uuid
+          ORDER BY created_at ASC, id ASC
+        `,
+        [context.tenantId],
+      );
+
+      return result.rows.map(mapProviderConnection);
+    }, this.pool);
+  }
+
+  async createProviderConnection(
+    context: TenantContext,
+    input: CreateProviderConnectionInput,
+  ): Promise<ProviderConnectionView> {
+    return withTenantTransaction(context, async (client) => {
+      await this.ensureProviderExists(input.providerId, client);
+      if (input.credentialId) {
+        await this.ensureCredentialExists(input.credentialId, client, context.tenantId);
+      }
+
+      try {
+        const result = await client.query<ProviderConnectionRecord>(
+          `
+            INSERT INTO ai_provider_connections (
+              tenant_id,
+              provider_id,
+              credential_id,
+              name,
+              adapter_kind,
+              base_url,
+              environment,
+              status,
+              metadata,
+              created_by,
+              updated_at
+            )
+            VALUES (
+              $1::uuid,
+              $2::uuid,
+              $3::uuid,
+              $4,
+              $5,
+              $6,
+              $7,
+              $8,
+              $9::jsonb,
+              $10::uuid,
+              now()
+            )
+            RETURNING
+              id::text AS id,
+              tenant_id::text AS tenant_id,
+              provider_id::text AS provider_id,
+              credential_id::text AS credential_id,
+              name,
+              adapter_kind,
+              base_url,
+              environment,
+              status,
+              metadata,
+              last_health_status,
+              last_health_checked_at::text AS last_health_checked_at,
+              created_by::text AS created_by,
+              created_at::text AS created_at,
+              updated_at::text AS updated_at
+          `,
+          [
+            context.tenantId,
+            input.providerId,
+            input.credentialId ?? null,
+            input.name.trim(),
+            input.adapterKind.trim(),
+            input.baseUrl?.trim() ?? null,
+            input.environment?.trim() ?? "production",
+            input.status?.trim() ?? "active",
+            JSON.stringify(input.metadata ?? {}),
+            context.userId,
+          ],
+        );
+
+        const connection = mapProviderConnection(result.rows[0]);
+        await safeRecordAuditLog(
+          {
+            action: "ai.provider_connection.create",
+            actorType: context.userId ? "user" : "system",
+            actorUserId: context.userId,
+            ipHash: context.ipHash,
+            metadata: {
+              adapterKind: connection.adapterKind,
+              connectionId: connection.id,
+              credentialId: connection.credentialId,
+              environment: connection.environment,
+              providerId: connection.providerId,
+              status: connection.status,
+            },
+            requestId: context.requestId,
+            resourceId: connection.id,
+            resourceType: "ai_provider_connection",
+            tenantId: context.tenantId,
+            traceId: context.traceId,
+            userAgent: context.userAgent,
+          },
+          {
+            pool: this.pool,
+          },
+        );
+        return connection;
+      } catch (error) {
+        this.rethrowKnownDatabaseError(error, "Unable to create provider connection");
+      }
+    }, this.pool);
+  }
+
+  async updateProviderConnection(
+    context: TenantContext,
+    connectionId: string,
+    input: UpdateProviderConnectionInput,
+  ): Promise<ProviderConnectionView> {
+    return withTenantTransaction(context, async (client) => {
+      const existing = await this.getProviderConnectionRow(client, connectionId);
+      this.assertTenantOwnedProviderConnection(existing, context.tenantId);
+      if (input.credentialId) {
+        await this.ensureCredentialExists(input.credentialId, client, context.tenantId);
+      }
+
+      const result = await client.query<ProviderConnectionRecord>(
+        `
+          UPDATE ai_provider_connections
+          SET
+            credential_id = $2::uuid,
+            name = $3,
+            adapter_kind = $4,
+            base_url = $5,
+            environment = $6,
+            status = $7,
+            metadata = $8::jsonb,
+            updated_at = now()
+          WHERE id = $1::uuid
+          RETURNING
+            id::text AS id,
+            tenant_id::text AS tenant_id,
+            provider_id::text AS provider_id,
+            credential_id::text AS credential_id,
+            name,
+            adapter_kind,
+            base_url,
+            environment,
+            status,
+            metadata,
+            last_health_status,
+            last_health_checked_at::text AS last_health_checked_at,
+            created_by::text AS created_by,
+            created_at::text AS created_at,
+            updated_at::text AS updated_at
+        `,
+        [
+          connectionId,
+          input.credentialId === undefined ? existing.credential_id : input.credentialId,
+          input.name?.trim() ?? existing.name,
+          input.adapterKind?.trim() ?? existing.adapter_kind,
+          input.baseUrl === undefined ? existing.base_url : (input.baseUrl?.trim() ?? null),
+          input.environment?.trim() ?? existing.environment,
+          input.status?.trim() ?? existing.status,
+          JSON.stringify(input.metadata ?? existing.metadata ?? {}),
+        ],
+      );
+
+      return mapProviderConnection(result.rows[0]);
+    }, this.pool);
+  }
+
   async listModels(): Promise<ModelView[]> {
     const result = await this.pool.query<ModelRecord>(
       `
@@ -516,18 +828,29 @@ export class AiGatewayAdminService {
             provider_id::text AS provider_id,
             model_id::text AS model_id,
             credential_id::text AS credential_id,
+            connection_id::text AS connection_id,
             route_key,
+            route_label,
             modality,
             priority,
             weight,
             fallback_group,
             base_url_override,
+            upstream_model,
+            api_mode,
+            request_path,
+            internal_label,
+            admin_notes,
+            is_default,
+            health_status,
+            last_health_checked_at::text AS last_health_checked_at,
+            deleted_at::text AS deleted_at,
             request_config,
             pricing,
             rate_limit,
-          status,
-          created_at::text AS created_at,
-          updated_at::text AS updated_at
+            status,
+            created_at::text AS created_at,
+            updated_at::text AS updated_at
           FROM ai_routes
           WHERE tenant_id = $1::uuid OR tenant_id IS NULL
           ORDER BY route_key ASC, created_at ASC
@@ -742,7 +1065,18 @@ export class AiGatewayAdminService {
       if (input.credentialId) {
         await this.ensureCredentialExists(input.credentialId, client, context.tenantId);
       }
-      this.validateRouteConfig(input.requestConfig ?? {});
+      if (input.connectionId) {
+        const connection = await this.getProviderConnectionRow(client, input.connectionId);
+        this.assertTenantOwnedProviderConnection(connection, context.tenantId);
+      }
+      const requestConfig = buildNormalizedRouteRequestConfig({
+        apiMode: input.apiMode ?? null,
+        connectionId: input.connectionId ?? null,
+        requestConfig: input.requestConfig ?? {},
+        requestPath: input.requestPath ?? null,
+        upstreamModel: input.upstreamModel ?? null,
+      });
+      this.validateRouteConfig(requestConfig);
 
       try {
         const result = await client.query<RouteRecord>(
@@ -752,12 +1086,20 @@ export class AiGatewayAdminService {
               provider_id,
               model_id,
               credential_id,
+              connection_id,
               route_key,
+              route_label,
               modality,
               priority,
               weight,
               fallback_group,
               base_url_override,
+              upstream_model,
+              api_mode,
+              request_path,
+              internal_label,
+              admin_notes,
+              is_default,
               request_config,
               pricing,
               rate_limit,
@@ -769,16 +1111,24 @@ export class AiGatewayAdminService {
               $2::uuid,
               $3::uuid,
               $4::uuid,
-              $5,
+              $5::uuid,
               $6,
-              $7::int,
-              $8::int,
-              $9,
-              $10,
-              $11::jsonb,
-              $12::jsonb,
-              $13::jsonb,
+              $7,
+              $8,
+              $9::int,
+              $10::int,
+              $11,
+              $12,
+              $13,
               $14,
+              $15,
+              $16,
+              $17,
+              $18::boolean,
+              $19::jsonb,
+              $20::jsonb,
+              $21::jsonb,
+              $22,
               now()
             )
             RETURNING
@@ -787,12 +1137,23 @@ export class AiGatewayAdminService {
               provider_id::text AS provider_id,
               model_id::text AS model_id,
               credential_id::text AS credential_id,
+              connection_id::text AS connection_id,
               route_key,
+              route_label,
               modality,
               priority,
               weight,
               fallback_group,
               base_url_override,
+              upstream_model,
+              api_mode,
+              request_path,
+              internal_label,
+              admin_notes,
+              is_default,
+              health_status,
+              last_health_checked_at::text AS last_health_checked_at,
+              deleted_at::text AS deleted_at,
               request_config,
               pricing,
               rate_limit,
@@ -805,13 +1166,21 @@ export class AiGatewayAdminService {
             input.providerId,
             input.modelId ?? null,
             input.credentialId ?? null,
+            input.connectionId ?? null,
             input.routeKey.trim(),
+            input.routeLabel?.trim() ?? null,
             input.modality.trim(),
             input.priority ?? 100,
             input.weight ?? 100,
             input.fallbackGroup?.trim() ?? null,
             input.baseUrlOverride?.trim() ?? null,
-            JSON.stringify(input.requestConfig ?? {}),
+            input.upstreamModel?.trim() ?? null,
+            input.apiMode?.trim() ?? null,
+            input.requestPath?.trim() ?? null,
+            input.internalLabel?.trim() ?? null,
+            input.adminNotes?.trim() ?? null,
+            input.isDefault ?? false,
+            JSON.stringify(requestConfig),
             JSON.stringify(input.pricing ?? {}),
             JSON.stringify(input.rateLimit ?? {}),
             input.status?.trim() ?? "active",
@@ -827,6 +1196,7 @@ export class AiGatewayAdminService {
             ipHash: context.ipHash,
             metadata: {
               credentialId: route.credentialId,
+              connectionId: route.connectionId,
               modality: route.modality,
               modelId: route.modelId,
               providerId: route.providerId,
@@ -865,7 +1235,17 @@ export class AiGatewayAdminService {
       if (input.credentialId) {
         await this.ensureCredentialExists(input.credentialId, client, context.tenantId);
       }
-      const nextRequestConfig = input.requestConfig ?? existing.request_config ?? {};
+      if (input.connectionId) {
+        const connection = await this.getProviderConnectionRow(client, input.connectionId);
+        this.assertTenantOwnedProviderConnection(connection, context.tenantId);
+      }
+      const nextRequestConfig = buildNormalizedRouteRequestConfig({
+        apiMode: input.apiMode === undefined ? existing.api_mode : input.apiMode,
+        connectionId: input.connectionId === undefined ? existing.connection_id : input.connectionId,
+        requestConfig: input.requestConfig ?? existing.request_config ?? {},
+        requestPath: input.requestPath === undefined ? existing.request_path : input.requestPath,
+        upstreamModel: input.upstreamModel === undefined ? existing.upstream_model : input.upstreamModel,
+      });
       this.validateRouteConfig(nextRequestConfig);
 
       const result = await client.query<RouteRecord>(
@@ -874,14 +1254,22 @@ export class AiGatewayAdminService {
           SET
             model_id = $2::uuid,
             credential_id = $3::uuid,
-            priority = $4::int,
-            weight = $5::int,
-            fallback_group = $6,
-            base_url_override = $7,
-            request_config = $8::jsonb,
-            pricing = $9::jsonb,
-            rate_limit = $10::jsonb,
-            status = $11,
+            connection_id = $4::uuid,
+            priority = $5::int,
+            weight = $6::int,
+            fallback_group = $7,
+            base_url_override = $8,
+            upstream_model = $9,
+            api_mode = $10,
+            request_path = $11,
+            internal_label = $12,
+            admin_notes = $13,
+            is_default = $14::boolean,
+            route_label = $15,
+            request_config = $16::jsonb,
+            pricing = $17::jsonb,
+            rate_limit = $18::jsonb,
+            status = $19,
             updated_at = now()
           WHERE id = $1::uuid
           RETURNING
@@ -890,12 +1278,23 @@ export class AiGatewayAdminService {
             provider_id::text AS provider_id,
             model_id::text AS model_id,
             credential_id::text AS credential_id,
+            connection_id::text AS connection_id,
             route_key,
+            route_label,
             modality,
             priority,
             weight,
             fallback_group,
             base_url_override,
+            upstream_model,
+            api_mode,
+            request_path,
+            internal_label,
+            admin_notes,
+            is_default,
+            health_status,
+            last_health_checked_at::text AS last_health_checked_at,
+            deleted_at::text AS deleted_at,
             request_config,
             pricing,
             rate_limit,
@@ -907,10 +1306,18 @@ export class AiGatewayAdminService {
           routeId,
           input.modelId !== undefined ? input.modelId : existing.model_id,
           input.credentialId !== undefined ? input.credentialId : existing.credential_id,
+          input.connectionId !== undefined ? input.connectionId : existing.connection_id,
           input.priority ?? existing.priority,
           input.weight ?? existing.weight,
           input.fallbackGroup !== undefined ? input.fallbackGroup?.trim() ?? null : existing.fallback_group,
           input.baseUrlOverride !== undefined ? input.baseUrlOverride?.trim() ?? null : existing.base_url_override,
+          input.upstreamModel !== undefined ? input.upstreamModel?.trim() ?? null : existing.upstream_model,
+          input.apiMode !== undefined ? input.apiMode?.trim() ?? null : existing.api_mode,
+          input.requestPath !== undefined ? input.requestPath?.trim() ?? null : existing.request_path,
+          input.internalLabel !== undefined ? input.internalLabel?.trim() ?? null : existing.internal_label,
+          input.adminNotes !== undefined ? input.adminNotes?.trim() ?? null : existing.admin_notes,
+          input.isDefault ?? existing.is_default,
+          input.routeLabel !== undefined ? input.routeLabel?.trim() ?? null : existing.route_label,
           JSON.stringify(nextRequestConfig),
           JSON.stringify(input.pricing ?? existing.pricing),
           JSON.stringify(input.rateLimit ?? existing.rate_limit),
@@ -932,6 +1339,7 @@ export class AiGatewayAdminService {
           ipHash: context.ipHash,
           metadata: {
             credentialId: route.credentialId,
+            connectionId: route.connectionId,
             modality: route.modality,
             modelId: route.modelId,
             priority: route.priority,
@@ -1250,6 +1658,65 @@ export class AiGatewayAdminService {
     }, this.pool);
   }
 
+  async deleteProviderConnection(
+    context: TenantContext,
+    connectionId: string,
+  ): Promise<{ ok: true }> {
+    return withTenantTransaction(context, async (client) => {
+      const existing = await this.getProviderConnectionRow(client, connectionId);
+      this.assertTenantOwnedProviderConnection(existing, context.tenantId);
+
+      const inUse = await client.query<{ id: string }>(
+        `
+          SELECT id::text AS id
+          FROM ai_routes
+          WHERE tenant_id = $1::uuid
+            AND request_config->>'connectionId' = $2::text
+          LIMIT 1
+        `,
+        [context.tenantId, connectionId],
+      );
+
+      if (inUse.rows[0]?.id) {
+        throw new AiGatewayApiError(
+          409,
+          "PROVIDER_CONNECTION_IN_USE",
+          "Provider connection is still referenced by at least one route",
+        );
+      }
+
+      await client.query(
+        `
+          DELETE FROM ai_provider_connections
+          WHERE id = $1::uuid
+        `,
+        [connectionId],
+      );
+
+      await safeRecordAuditLog(
+        {
+          action: "ai.provider_connection.delete",
+          actorType: context.userId ? "user" : "system",
+          actorUserId: context.userId,
+          ipHash: context.ipHash,
+          metadata: {
+            connectionId,
+          },
+          requestId: context.requestId,
+          resourceId: connectionId,
+          resourceType: "ai_provider_connection",
+          tenantId: context.tenantId,
+          traceId: context.traceId,
+          userAgent: context.userAgent,
+        },
+        {
+          pool: this.pool,
+        },
+      );
+      return { ok: true as const };
+    }, this.pool);
+  }
+
   async generateText(
     context: TenantContext,
     request: TextGenerationRequest,
@@ -1321,12 +1788,23 @@ export class AiGatewayAdminService {
           provider_id::text AS provider_id,
           model_id::text AS model_id,
           credential_id::text AS credential_id,
+          connection_id::text AS connection_id,
           route_key,
+          route_label,
           modality,
           priority,
           weight,
           fallback_group,
           base_url_override,
+          upstream_model,
+          api_mode,
+          request_path,
+          internal_label,
+          admin_notes,
+          is_default,
+          health_status,
+          last_health_checked_at::text AS last_health_checked_at,
+          deleted_at::text AS deleted_at,
           request_config,
           pricing,
           rate_limit,
@@ -1386,6 +1864,43 @@ export class AiGatewayAdminService {
     return row;
   }
 
+  private async getProviderConnectionRow(
+    client: PoolClient,
+    connectionId: string,
+  ): Promise<ProviderConnectionRecord> {
+    const result = await client.query<ProviderConnectionRecord>(
+      `
+        SELECT
+          id::text AS id,
+          tenant_id::text AS tenant_id,
+          provider_id::text AS provider_id,
+          credential_id::text AS credential_id,
+          name,
+          adapter_kind,
+          base_url,
+          environment,
+          status,
+          metadata,
+          last_health_status,
+          last_health_checked_at::text AS last_health_checked_at,
+          created_by::text AS created_by,
+          created_at::text AS created_at,
+          updated_at::text AS updated_at
+        FROM ai_provider_connections
+        WHERE id = $1::uuid
+        LIMIT 1
+      `,
+      [connectionId],
+    );
+
+    const row = result.rows[0];
+    if (!row) {
+      throw new AiGatewayApiError(404, "PROVIDER_CONNECTION_NOT_FOUND", "Provider connection not found");
+    }
+
+    return row;
+  }
+
   private mapCredential(row: CredentialRecord): CredentialResponseView {
     const secret = this.credentialVault.getSecretForProviderCall({
       authTag: row.auth_tag,
@@ -1424,6 +1939,15 @@ export class AiGatewayAdminService {
   private assertTenantOwnedCredential(row: CredentialRecord, tenantId: string): void {
     if (!row.tenant_id || row.tenant_id !== tenantId) {
       throw new AiGatewayApiError(404, "CREDENTIAL_NOT_FOUND", "Credential not found");
+    }
+  }
+
+  private assertTenantOwnedProviderConnection(
+    row: ProviderConnectionRecord,
+    tenantId: string,
+  ): void {
+    if (!row.tenant_id || row.tenant_id !== tenantId) {
+      throw new AiGatewayApiError(404, "PROVIDER_CONNECTION_NOT_FOUND", "Provider connection not found");
     }
   }
 
@@ -1625,7 +2149,7 @@ export class AiGatewayAdminService {
       "code" in error &&
       error.code === "23505"
     ) {
-      throw new AiGatewayApiError(409, "CONFLICT", "A record with the same unique value already exists");
+      throw new AiGatewayApiError(409, "CONFLICT", "已存在相同的唯一记录，请更换后重试");
     }
 
     if (error instanceof AiGatewayApiError) {

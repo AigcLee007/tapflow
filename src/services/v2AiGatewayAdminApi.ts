@@ -1,8 +1,26 @@
-import { apiGet, apiPatch, apiPost } from "./v2HttpClient";
+import { apiDelete, apiGet, apiPatch, apiPost } from "./v2HttpClient";
 
 export type AiModality = "text" | "image" | "video";
 export type AiResourceStatus = "active" | "inactive";
 export type PricingUnit = "text_generation" | "image_generation" | "video_generation";
+
+export type AdminProviderConnection = {
+  id: string;
+  providerId: string;
+  credentialId: string | null;
+  name: string;
+  adapterKind: string;
+  baseUrl: string | null;
+  environment: string;
+  status: string;
+  metadata: Record<string, unknown>;
+  lastHealthStatus: string | null;
+  lastHealthCheckedAt: string | null;
+  tenantId: string;
+  createdBy: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+};
 
 export type AdminProvider = {
   id: string;
@@ -30,21 +48,32 @@ export type AdminModel = {
 };
 
 export type AdminRoute = {
+  adminNotes?: string | null;
+  apiMode?: string | null;
   id: string;
+  connectionId?: string | null;
   providerId: string;
   modelId: string | null;
   credentialId: string | null;
   routeKey: string;
+  routeLabel?: string | null;
   modality: AiModality;
   status: string;
   baseUrlOverride: string | null;
+  internalLabel?: string | null;
+  isDefault?: boolean;
   requestConfig: Record<string, unknown>;
   pricing: Record<string, unknown>;
   fallbackGroup?: string | null;
+  healthStatus?: string | null;
   priority?: number;
   rateLimit?: Record<string, unknown>;
+  requestPath?: string | null;
   tenantId?: string | null;
+  upstreamModel?: string | null;
   weight?: number;
+  deletedAt?: string | null;
+  lastHealthCheckedAt?: string | null;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -75,6 +104,42 @@ export type ModelPricingRow = {
 
 export async function listAdminProviders(): Promise<AdminProvider[]> {
   return apiGet<AdminProvider[]>("/admin/ai/providers");
+}
+
+export async function listAdminProviderConnections(): Promise<AdminProviderConnection[]> {
+  return apiGet<AdminProviderConnection[]>("/admin/ai/connections");
+}
+
+export async function createAdminProviderConnection(input: {
+  adapterKind: string;
+  baseUrl?: string | null;
+  credentialId?: string | null;
+  environment?: string;
+  metadata?: Record<string, unknown>;
+  name: string;
+  providerId: string;
+  status?: AiResourceStatus;
+}): Promise<AdminProviderConnection> {
+  return apiPost<AdminProviderConnection>("/admin/ai/connections", input);
+}
+
+export async function updateAdminProviderConnection(
+  connectionId: string,
+  input: {
+    adapterKind?: string;
+    baseUrl?: string | null;
+    credentialId?: string | null;
+    environment?: string;
+    metadata?: Record<string, unknown>;
+    name?: string;
+    status?: AiResourceStatus;
+  },
+): Promise<AdminProviderConnection> {
+  return apiPatch<AdminProviderConnection>(`/admin/ai/connections/${encodeURIComponent(connectionId)}`, input);
+}
+
+export async function deleteAdminProviderConnection(connectionId: string): Promise<{ ok: true }> {
+  return apiDelete<{ ok: true }>(`/admin/ai/connections/${encodeURIComponent(connectionId)}`);
 }
 
 export async function createAdminProvider(input: {
@@ -109,18 +174,26 @@ export async function listAdminRoutes(): Promise<AdminRoute[]> {
 }
 
 export async function createAdminRoute(input: {
+  adminNotes?: string | null;
+  apiMode?: string | null;
   baseUrlOverride?: string | null;
+  connectionId?: string | null;
   credentialId?: string | null;
   fallbackGroup?: string | null;
+  internalLabel?: string | null;
+  isDefault?: boolean;
   modality: AiModality;
   modelId?: string | null;
   pricing?: Record<string, unknown>;
   priority?: number;
   providerId: string;
+  requestPath?: string | null;
   rateLimit?: Record<string, unknown>;
   requestConfig?: Record<string, unknown>;
   routeKey: string;
+  routeLabel?: string | null;
   status?: AiResourceStatus;
+  upstreamModel?: string | null;
   weight?: number;
 }): Promise<AdminRoute> {
   return apiPost<AdminRoute>("/admin/ai/routes", input);
@@ -129,15 +202,23 @@ export async function createAdminRoute(input: {
 export async function updateAdminRoute(
   routeId: string,
   input: {
+    adminNotes?: string | null;
+    apiMode?: string | null;
     baseUrlOverride?: string | null;
+    connectionId?: string | null;
     credentialId?: string | null;
     fallbackGroup?: string | null;
+    internalLabel?: string | null;
+    isDefault?: boolean;
     modelId?: string | null;
     pricing?: Record<string, unknown>;
     priority?: number;
+    requestPath?: string | null;
     rateLimit?: Record<string, unknown>;
     requestConfig?: Record<string, unknown>;
+    routeLabel?: string | null;
     status?: string;
+    upstreamModel?: string | null;
     weight?: number;
   },
 ): Promise<AdminRoute> {

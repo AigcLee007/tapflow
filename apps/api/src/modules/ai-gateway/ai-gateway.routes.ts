@@ -9,8 +9,10 @@ import {
   requireTenant,
 } from "../../http/auth-middleware.js";
 import {
+  type ConnectionIdParams,
   type CreateCredentialInput,
   type CreateModelInput,
+  type CreateProviderConnectionInput,
   type CreateProviderInput,
   type CreateRouteInput,
   type CredentialIdParams,
@@ -21,10 +23,13 @@ import {
   type ListPricingQuery,
   type UpsertPricingInput,
   type UpdateCredentialInput,
+  type UpdateProviderConnectionInput,
   type UpdateRouteInput,
+  connectionIdParamsSchema,
   createCredentialSchema,
   generateTextSchema,
   createModelSchema,
+  createProviderConnectionSchema,
   createProviderSchema,
   createRouteSchema,
   credentialIdParamsSchema,
@@ -33,6 +38,7 @@ import {
   listRuntimeRoutesQuerySchema,
   listPricingQuerySchema,
   updateCredentialSchema,
+  updateProviderConnectionSchema,
   upsertPricingSchema,
   updateRouteSchema,
 } from "./ai-gateway.schemas.js";
@@ -149,6 +155,79 @@ export function registerAiGatewayAdminRoutes(app: FastifyInstance): void {
       try {
         const query = listRuntimeRoutesQuerySchema.parse(request.query) as ListRuntimeRoutesQuery;
         return reply.send(await app.aiGatewayService.listRuntimeRoutesForUi(getTenantContext(request), query));
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.get(
+    "/api/v2/admin/ai/connections",
+    {
+      preHandler: [...authHandlers, requirePermissionForAdmin("provider:read")],
+    },
+    async (request, reply) => {
+      try {
+        return reply.send(await app.aiGatewayService.listProviderConnections(getTenantContext(request)));
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.post(
+    "/api/v2/admin/ai/connections",
+    {
+      preHandler: [...authHandlers, requirePermissionForAdmin("provider:manage")],
+    },
+    async (request, reply) => {
+      try {
+        const body = parseBody<CreateProviderConnectionInput>(request, createProviderConnectionSchema);
+        return reply.code(201).send(
+          await app.aiGatewayService.createProviderConnection(getTenantContext(request), body),
+        );
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.patch(
+    "/api/v2/admin/ai/connections/:connectionId",
+    {
+      preHandler: [...authHandlers, requirePermissionForAdmin("provider:manage")],
+    },
+    async (request, reply) => {
+      try {
+        const params = parseParams<ConnectionIdParams>(request, connectionIdParamsSchema);
+        const body = parseBody<UpdateProviderConnectionInput>(request, updateProviderConnectionSchema);
+        return reply.send(
+          await app.aiGatewayService.updateProviderConnection(
+            getTenantContext(request),
+            params.connectionId,
+            body,
+          ),
+        );
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.delete(
+    "/api/v2/admin/ai/connections/:connectionId",
+    {
+      preHandler: [...authHandlers, requirePermissionForAdmin("provider:manage")],
+    },
+    async (request, reply) => {
+      try {
+        const params = parseParams<ConnectionIdParams>(request, connectionIdParamsSchema);
+        return reply.send(
+          await app.aiGatewayService.deleteProviderConnection(
+            getTenantContext(request),
+            params.connectionId,
+          ),
+        );
       } catch (error) {
         return handleRouteError(error, request, reply);
       }

@@ -56,16 +56,36 @@ describeWithDatabase("ai plugin package migration and RLS", () => {
                 'plugin_install_id',
                 'model_family',
                 'route_label',
-                'environment'
+                'environment',
+                'connection_id',
+                'upstream_model',
+                'api_mode',
+                'request_path',
+                'internal_label',
+                'admin_notes',
+                'is_default',
+                'health_status',
+                'last_health_checked_at',
+                'deleted_at'
               )
             ORDER BY column_name ASC
           `,
         );
         expect(routeColumns.rows.map((row) => row.column_name)).toEqual([
+          "admin_notes",
+          "api_mode",
+          "connection_id",
+          "deleted_at",
           "environment",
+          "health_status",
+          "internal_label",
+          "is_default",
+          "last_health_checked_at",
           "model_family",
           "plugin_install_id",
+          "request_path",
           "route_label",
+          "upstream_model",
         ]);
       } finally {
         await pool.end();
