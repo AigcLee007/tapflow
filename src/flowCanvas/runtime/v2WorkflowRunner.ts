@@ -39,7 +39,7 @@ type AssetLike = {
   height?: number | null;
 };
 
-type PersistableNodeRun = Pick<V2NodeRunView, 'id' | 'nodeId' | 'nodeType' | 'status' | 'outputJson' | 'workflowRunId'>;
+type PersistableNodeRun = Pick<V2NodeRunView, 'errorJson' | 'id' | 'nodeId' | 'nodeType' | 'status' | 'outputJson' | 'workflowRunId'>;
 
 type RunScope = {
   runMode: 'flow' | 'target_node';
@@ -391,10 +391,38 @@ function buildGeneratedAssetNodePatch(
   };
 }
 
+function getNodeRunErrorMessage(nodeRun: PersistableNodeRun): string {
+  const message = nodeRun.errorJson?.message;
+  return typeof message === 'string' && message.trim()
+    ? message.trim()
+    : '节点生成失败，请稍后重试。';
+}
+
+function buildFailedNodePatch(nodeRun: PersistableNodeRun): Partial<FlowNodeData> | null {
+  if ((nodeRun.status !== 'failed' && nodeRun.status !== 'canceled') || !shouldApplyNodeRun(nodeRun)) {
+    return null;
+  }
+  const isImageNode = nodeRun.nodeType === 'image.generate';
+  const isVideoNode = nodeRun.nodeType === 'video.generate';
+  if (!isImageNode && !isVideoNode) {
+    return null;
+  }
+
+  return {
+    errorMessage: nodeRun.status === 'failed' ? getNodeRunErrorMessage(nodeRun) : '生成已取消。',
+    generationStatus: 'error',
+    latestNodeRunId: nodeRun.id,
+    latestWorkflowRunId: nodeRun.workflowRunId,
+    progress: 0,
+    status: 'failed',
+  };
+}
+
 function persistNodeOutputsFromRun(nodeRuns: PersistableNodeRun[], assetRefsByNodeId: Record<string, FlowRuntimeAssetRef[]>): void {
   const { updateNodeData } = useFlowCanvasStore.getState();
   for (const nodeRun of nodeRuns) {
-    const nodePatch = buildGeneratedAssetNodePatch(nodeRun, assetRefsByNodeId[nodeRun.nodeId] ?? []);
+    const nodePatch = buildGeneratedAssetNodePatch(nodeRun, assetRefsByNodeId[nodeRun.nodeId] ?? [])
+      ?? buildFailedNodePatch(nodeRun);
     if (!nodePatch) {
       continue;
     }
@@ -553,6 +581,14 @@ function applyRunEvent(event: V2WorkflowRunEventView): void {
           }
         : state.nodeOutputByNodeId,
     }));
+    if (nodeId) {
+      useFlowCanvasStore.getState().updateNodeData(nodeId, {
+        errorMessage: message,
+        generationStatus: 'error',
+        progress: 0,
+        status: 'failed',
+      } as Partial<FlowNodeData>);
+    }
   }
 
   if (event.eventType === 'workflow.run.failed') {

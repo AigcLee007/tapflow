@@ -83,6 +83,16 @@ function normalizeOutputCompression(value: number | null, outputFormat: string):
   return Math.max(0, Math.min(100, Math.floor(value)));
 }
 
+function normalizeImageSize(value: string | null): string | null {
+  if (!value) return null;
+  const normalized = value.trim();
+  const lower = normalized.toLowerCase();
+  if (lower === "1k" || lower === "2k" || lower === "4k") {
+    return lower.toUpperCase();
+  }
+  return normalized;
+}
+
 function mimeTypeForOutputFormat(outputFormat: string): string {
   if (outputFormat === "jpeg") return "image/jpeg";
   if (outputFormat === "webp") return "image/webp";
@@ -367,7 +377,7 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
     };
     const background = getFirstString(lookupRecords, ["background"]);
     const quality = getFirstString(lookupRecords, ["quality"]);
-    const size = getFirstString(lookupRecords, ["size", "imageSize", "image_size"]);
+    const size = normalizeImageSize(getFirstString(lookupRecords, ["size", "imageSize", "image_size"]));
     const moderation = getFirstString(lookupRecords, ["moderation"]);
     if (background) payload.background = background;
     if (outputCompression !== null) payload.output_compression = outputCompression;

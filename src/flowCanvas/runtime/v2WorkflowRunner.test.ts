@@ -725,6 +725,78 @@ describe('v2WorkflowRunner', () => {
     });
   });
 
+  test('failed target-node snapshot clears generating state on the node', async () => {
+    useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, {
+      generationStatus: 'generating',
+      routeKey: 'image.gpt-image-2',
+      status: 'running',
+      title: 'GPT Image',
+    });
+    const nodeId = useFlowCanvasStore.getState().nodes[0]?.id as string;
+
+    createWorkflowRunMock.mockResolvedValue({
+      runId: 'run-gpt-image-failed',
+      status: 'pending',
+    });
+    getWorkflowRunMock.mockResolvedValue({
+      nodeRuns: [
+        {
+          attempt: 1,
+          costJson: {},
+          createdAt: '2026-05-17T00:00:00.000Z',
+          errorJson: {
+            code: 'PROVIDER_BAD_REQUEST',
+            message: 'The provider rejected the request payload',
+          },
+          finishedAt: '2026-05-17T00:00:02.000Z',
+          id: 'node-run-gpt-image-failed',
+          inputJson: {},
+          maxAttempts: 3,
+          nodeId,
+          nodeType: 'image.generate',
+          outputJson: null,
+          providerTaskId: null,
+          startedAt: null,
+          status: 'failed',
+          tenantId: 'tenant-1',
+          updatedAt: '2026-05-17T00:00:02.000Z',
+          workflowRunId: 'run-gpt-image-failed',
+        },
+      ],
+      workflowRun: {
+        canceledAt: null,
+        createdAt: '2026-05-17T00:00:00.000Z',
+        createdBy: 'user-1',
+        errorJson: {
+          code: 'PROVIDER_BAD_REQUEST',
+          message: 'The provider rejected the request payload',
+        },
+        finishedAt: '2026-05-17T00:00:02.000Z',
+        flowId: '11111111-1111-1111-1111-111111111111',
+        flowVersionId: 'version-1',
+        id: 'run-gpt-image-failed',
+        idempotencyKey: null,
+        inputJson: { runMode: 'target_node', targetNodeId: nodeId },
+        outputJson: null,
+        startedAt: null,
+        status: 'failed',
+        tenantId: 'tenant-1',
+        updatedAt: '2026-05-17T00:00:02.000Z',
+      },
+    });
+    streamWorkflowRunMock.mockReturnValue({ close: vi.fn() });
+
+    await runBackendWorkflow({ runMode: 'target_node', targetNodeId: nodeId });
+
+    const updatedNode = useFlowCanvasStore.getState().nodes.find((node) => node.id === nodeId);
+    expect(useFlowCanvasStore.getState().nodeRunStatusByNodeId[nodeId]).toBe('failed');
+    expect(updatedNode?.data).toMatchObject({
+      errorMessage: 'The provider rejected the request payload',
+      generationStatus: 'error',
+      status: 'failed',
+    });
+  });
+
   test('target-node snapshots do not overwrite completed assets on other nodes', async () => {
     useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, {
       title: 'Pig',
