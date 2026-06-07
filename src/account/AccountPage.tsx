@@ -1,7 +1,11 @@
 import React from "react";
-import { Loader2, LogOut, RefreshCw, Settings2, Sparkles } from "lucide-react";
+import { Boxes, Loader2, LogOut, RefreshCw, Settings2, Sparkles } from "lucide-react";
 
-import { ACCOUNT_AI_SETTINGS_ROUTE, ACCOUNT_PROVIDER_SETTINGS_ROUTE } from "../app/routes";
+import {
+  ACCOUNT_AI_SETTINGS_ROUTE,
+  ACCOUNT_PROVIDER_SETTINGS_ROUTE,
+  ACCOUNT_TEMPLATE_LIBRARY_ROUTE,
+} from "../app/routes";
 import { useAuth } from "../auth/useAuth";
 
 function InfoCard({
@@ -58,7 +62,7 @@ export function AccountPage() {
           <div className="text-xs uppercase tracking-[0.24em] text-sky-300">账号</div>
           <h1 className="mt-2 text-2xl font-semibold text-white">账号中心</h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-            查看当前登录身份、所属工作区、角色权限，并进入模型中心管理模型与线路；进入高级配置维护服务商、密钥、连接和底层资源。
+            查看当前登录身份、所属工作区、角色权限，并进入模型中心管理模型与线路；进入连接页维护服务商、密钥和运行连接；模板库只用于初始化第一套配置。
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -84,6 +88,18 @@ export function AccountPage() {
             >
               <Settings2 size={15} />
               高级配置
+            </button>
+          ) : null}
+          {canManageProviderSettings ? (
+            <button
+              className="inline-flex h-10 items-center gap-2 rounded border border-white/10 bg-white/10 px-4 text-sm text-white hover:bg-white/15"
+              onClick={() => {
+                window.location.assign(ACCOUNT_TEMPLATE_LIBRARY_ROUTE);
+              }}
+              type="button"
+            >
+              <Boxes size={15} />
+              模板库
             </button>
           ) : null}
           <button

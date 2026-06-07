@@ -540,7 +540,7 @@ export function ProviderSettingsPage() {
           <div className="text-xs uppercase tracking-[0.24em] text-sky-300">高级配置</div>
           <h1 className="mt-2 text-2xl font-semibold text-white">Provider Connections</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
-            这里专门管理服务商、凭证和连接资源。模型、线路、默认线路这些日常操作已经收口到模型中心。
+            这里专门管理服务商、凭证和连接资源。模型、线路、默认线路这些日常操作已经收口到模型中心；模板初始化请去模板库。
           </p>
         </div>
         <div className="flex flex-wrap gap-2">

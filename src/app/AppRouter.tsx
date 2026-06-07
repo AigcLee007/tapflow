@@ -6,6 +6,7 @@ import { RegisterPage } from "../auth/RegisterPage";
 import { AssetLibraryPage } from "../assets/AssetLibraryPage";
 import { AccountPage } from "../account/AccountPage";
 import { AiSettingsPage } from "../account/ai-settings/AiSettingsPage";
+import { TemplateLibraryPage } from "../account/TemplateLibraryPage";
 import { AdminPage } from "../admin/AdminPage";
 import { ProviderSettingsPage } from "../account/ProviderSettingsPage";
 import { BillingCenterPage } from "../billing/BillingCenterPage";
@@ -16,6 +17,7 @@ import {
   ACCOUNT_ROUTE,
   ACCOUNT_AI_SETTINGS_ROUTE,
   ACCOUNT_PROVIDER_SETTINGS_ROUTE,
+  ACCOUNT_TEMPLATE_LIBRARY_ROUTE,
   ADMIN_ROUTE,
   ASSETS_ROUTE,
   BILLING_ROUTE,
@@ -93,6 +95,13 @@ function ProtectedRoutes({ pathname }: { pathname: string }) {
     pathname.startsWith(`${ACCOUNT_AI_SETTINGS_ROUTE}/`)
   ) {
     return <AiSettingsPage />;
+  }
+
+  if (
+    pathname === ACCOUNT_TEMPLATE_LIBRARY_ROUTE ||
+    pathname.startsWith(`${ACCOUNT_TEMPLATE_LIBRARY_ROUTE}/`)
+  ) {
+    return <TemplateLibraryPage />;
   }
 
   if (
