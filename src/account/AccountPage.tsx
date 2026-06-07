@@ -92,14 +92,14 @@ export function AccountPage() {
           ) : null}
           {canManageProviderSettings ? (
             <button
-              className="inline-flex h-10 items-center gap-2 rounded border border-white/10 bg-white/10 px-4 text-sm text-white hover:bg-white/15"
+              className="inline-flex h-10 items-center gap-2 rounded border border-white/10 bg-white/5 px-4 text-sm text-slate-300 hover:bg-white/10"
               onClick={() => {
                 window.location.assign(ACCOUNT_TEMPLATE_LIBRARY_ROUTE);
               }}
               type="button"
             >
               <Boxes size={15} />
-              模板库
+              初始化模板
             </button>
           ) : null}
           <button

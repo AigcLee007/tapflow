@@ -284,6 +284,17 @@ export function AiSettingsPage() {
     return "当前是租户线路，可以直接修改、停用或删除。";
   }, [isSelectedRouteDefault, isSelectedRouteTenantEditable, selectedAdminRoute]);
 
+  const selectedRouteNextStep = useMemo(() => {
+    if (!selectedAdminRoute) return "先从左侧列表选择一条线路。";
+    if (!isSelectedRouteTenantEditable) {
+      return "推荐先复制成租户线路，再调整上游模型、API 模式或请求路径。";
+    }
+    if (isSelectedRouteDefault) {
+      return "如果你准备停用这条线路，先把另一条线路设为默认。";
+    }
+    return "如果这条线路已经验证通过，可以把它设为默认线路。";
+  }, [isSelectedRouteDefault, isSelectedRouteTenantEditable, selectedAdminRoute]);
+
   const selectedProviderConnections = useMemo(() => {
     if (!selectedAdminRoute?.providerId) return [];
     return connections.filter(
@@ -1141,6 +1152,10 @@ export function AiSettingsPage() {
                         {selectedRouteEditHint}
                       </div>
 
+                      <div className="rounded border border-sky-300/20 bg-sky-400/10 px-3 py-3 text-sm text-sky-100">
+                        下一步建议：{selectedRouteNextStep}
+                      </div>
+
                       <div className="grid gap-3 md:grid-cols-2">
                         <label className="block">
                           <span className="mb-1.5 block text-xs font-medium text-slate-400">显示线路名称</span>
@@ -1301,7 +1316,7 @@ export function AiSettingsPage() {
                             ) : (
                               <Copy size={14} />
                             )}
-                            复制
+                            复制为新线路
                           </button>
                           <button
                             className={buttonClass}
@@ -1314,7 +1329,7 @@ export function AiSettingsPage() {
                             type="button"
                           >
                             <ArrowRightLeft size={14} />
-                            设为默认
+                            设为默认线路
                           </button>
                           <button
                             className={buttonClass}

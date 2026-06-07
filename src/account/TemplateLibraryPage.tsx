@@ -1,7 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Download, Loader2, RefreshCw, Rocket, ShieldCheck } from "lucide-react";
 
-import { ACCOUNT_PROVIDER_SETTINGS_ROUTE, ACCOUNT_ROUTE } from "../app/routes";
+import {
+  ACCOUNT_AI_SETTINGS_ROUTE,
+  ACCOUNT_PROVIDER_SETTINGS_ROUTE,
+  ACCOUNT_ROUTE,
+} from "../app/routes";
 import { useAuth } from "../auth/useAuth";
 import {
   disableAiPluginInstall,
@@ -186,8 +190,8 @@ export function TemplateLibraryPage() {
     <section className="space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="text-xs uppercase tracking-[0.24em] text-sky-300">模板库</div>
-          <h1 className="mt-2 text-2xl font-semibold text-white">Template Library</h1>
+          <div className="text-xs uppercase tracking-[0.24em] text-sky-300">初始化模板</div>
+          <h1 className="mt-2 text-2xl font-semibold text-white">模板初始化</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
             这里不再是日常操作入口，只负责用模板快速初始化一套可用的服务商、模型、线路和价格基础配置。
             初始化完成后，请回到模型中心和连接页继续日常管理。
@@ -228,8 +232,8 @@ export function TemplateLibraryPage() {
         <MetricCard label="当前模板数" value={plugins.length} />
         <MetricCard label="已初始化模板" value={plugins.filter((plugin) => plugin.install).length} />
         <MetricCard
-          label="主操作入口"
-          value="模型中心 / 连接页"
+          label="日常管理入口"
+          value="模型中心 / 高级配置"
         />
       </div>
 
@@ -255,7 +259,7 @@ export function TemplateLibraryPage() {
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-white">可用模板</h2>
-              <p className="mt-1 text-sm text-slate-400">只用于初始化，不建议当作日常管理页面。</p>
+              <p className="mt-1 text-sm text-slate-400">这里只负责首套配置初始化，不承担后续日常管理。</p>
             </div>
             <Rocket className="text-sky-300" size={20} />
           </div>
@@ -397,7 +401,7 @@ export function TemplateLibraryPage() {
                       ) : (
                         <Download size={15} />
                       )}
-                      初始化模板
+                      开始初始化
                     </button>
                     <button
                       className="inline-flex h-10 items-center gap-2 rounded border border-white/10 bg-white/10 px-4 text-sm text-white hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50"
@@ -405,7 +409,7 @@ export function TemplateLibraryPage() {
                       onClick={() => void handlePublish()}
                       type="button"
                     >
-                      发布模板实例
+                      发布初始化结果
                     </button>
                     <button
                       className="inline-flex h-10 items-center gap-2 rounded border border-white/10 bg-white/10 px-4 text-sm text-white hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50"
@@ -413,7 +417,7 @@ export function TemplateLibraryPage() {
                       onClick={() => void handleDisable()}
                       type="button"
                     >
-                      停用模板实例
+                      停用初始化结果
                     </button>
                   </div>
                 </div>
@@ -426,7 +430,7 @@ export function TemplateLibraryPage() {
           </section>
 
           <section className="rounded border border-white/10 bg-white/[0.04] p-5">
-            <div className="text-sm font-medium text-white">初始化之后怎么走</div>
+            <div className="text-sm font-medium text-white">初始化之后下一步</div>
             <div className="mt-3 space-y-2 text-sm leading-6 text-slate-400">
               <p>1. 模板库只负责创建第一套基础对象。</p>
               <p>2. 模型中心负责日常新增线路、设默认线路、测试和停用。</p>
@@ -435,17 +439,17 @@ export function TemplateLibraryPage() {
             <div className="mt-4 flex flex-wrap gap-2">
               <button
                 className="inline-flex h-9 items-center gap-2 rounded border border-white/10 bg-white/10 px-3 text-sm text-white hover:bg-white/15"
-                onClick={() => navigate("/account/ai-settings")}
+                onClick={() => navigate(ACCOUNT_AI_SETTINGS_ROUTE)}
                 type="button"
               >
-                去模型中心
+                去模型中心继续管理
               </button>
               <button
                 className="inline-flex h-9 items-center gap-2 rounded border border-white/10 bg-white/10 px-3 text-sm text-white hover:bg-white/15"
                 onClick={() => navigate(ACCOUNT_PROVIDER_SETTINGS_ROUTE)}
                 type="button"
               >
-                去连接页
+                去高级配置
               </button>
             </div>
           </section>
