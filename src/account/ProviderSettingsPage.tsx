@@ -179,6 +179,7 @@ export function ProviderSettingsPage() {
   const [rotating, setRotating] = useState(false);
   const [testingConnectionId, setTestingConnectionId] = useState("");
   const [actionConnectionId, setActionConnectionId] = useState("");
+  const [bulkActionRunning, setBulkActionRunning] = useState(false);
 
   const [providers, setProviders] = useState<AdminProvider[]>([]);
   const [credentials, setCredentials] = useState<AdminCredential[]>([]);
@@ -578,6 +579,70 @@ export function ProviderSettingsPage() {
     }
   }
 
+  async function handleBulkDisableRoutes() {
+    const targetRoutes = filteredConnectionRows
+      .flatMap((item) => item.routes)
+      .filter((route) => route.status === "active");
+
+    if (targetRoutes.length === 0) {
+      setError("当前筛选结果下没有可批量停用的活跃线路。");
+      return;
+    }
+
+    setBulkActionRunning(true);
+    setError("");
+    setMessage("");
+    try {
+      await Promise.all(
+        targetRoutes.map((route) =>
+          updateAdminRoute(route.id, {
+            status: "inactive",
+          }),
+        ),
+      );
+      setMessage(`已批量停用 ${targetRoutes.length} 条线路。`);
+      await refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "批量停用线路失败。");
+    } finally {
+      setBulkActionRunning(false);
+    }
+  }
+
+  async function handleBulkTestRoutes() {
+    const targetRoutes = filteredConnectionRows
+      .flatMap((item) => item.routes)
+      .filter((route) => !modelFamilyFilter || route.modelFamily === modelFamilyFilter);
+
+    if (targetRoutes.length === 0) {
+      setError("当前筛选结果下没有可批量检查的线路。");
+      return;
+    }
+
+    setBulkActionRunning(true);
+    setError("");
+    setMessage("");
+    try {
+      const results = await Promise.all(
+        targetRoutes.map(async (route) => {
+          try {
+            const result = await testAiRoute(route.id);
+            return { ok: result.status === "ok", route };
+          } catch {
+            return { ok: false, route };
+          }
+        }),
+      );
+
+      const successCount = results.filter((item) => item.ok).length;
+      setMessage(`批量检查完成：成功 ${successCount} 条，失败 ${results.length - successCount} 条。`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "批量检查线路失败。");
+    } finally {
+      setBulkActionRunning(false);
+    }
+  }
+
   if (!canRead) {
     return (
       <section className="rounded border border-amber-400/20 bg-amber-400/10 p-5 text-sm text-amber-100">
@@ -712,6 +777,26 @@ export function ProviderSettingsPage() {
                 当前还没有任何连接。
               </div>
             ) : null}
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              className="inline-flex h-9 items-center gap-2 rounded border border-white/10 bg-white/10 px-3 text-sm text-white hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={!canManage || bulkActionRunning}
+              onClick={() => void handleBulkDisableRoutes()}
+              type="button"
+            >
+              {bulkActionRunning ? <Loader2 className="animate-spin" size={14} /> : <Trash2 size={14} />}
+              批量停用当前筛选线路
+            </button>
+            <button
+              className="inline-flex h-9 items-center gap-2 rounded border border-white/10 bg-white/10 px-3 text-sm text-white hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={!canManage || bulkActionRunning}
+              onClick={() => void handleBulkTestRoutes()}
+              type="button"
+            >
+              {bulkActionRunning ? <Loader2 className="animate-spin" size={14} /> : <FlaskConical size={14} />}
+              批量检查当前筛选线路
+            </button>
           </div>
         </SectionCard>
 

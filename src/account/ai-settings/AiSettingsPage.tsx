@@ -356,6 +356,46 @@ export function AiSettingsPage() {
     return Array.from(groups.entries());
   }, [routes]);
 
+  const modelIssueItems = useMemo(() => {
+    const issues: Array<{
+      id: string;
+      kind: "missing-connection" | "missing-credential" | "missing-default-route";
+      label: string;
+      routeId?: string | null;
+      routeKey?: string | null;
+    }> = [];
+
+    if (selectedModel && !selectedModel.defaultRouteKey) {
+      issues.push({
+        id: `default:${selectedModel.modelKey}`,
+        kind: "missing-default-route",
+        label: `${selectedModel.displayName} 还没有默认线路`,
+      });
+    }
+
+    for (const row of routeRows) {
+      if (!row.adminRoute?.connectionId) {
+        issues.push({
+          id: `connection:${row.route.routeId}`,
+          kind: "missing-connection",
+          label: `${row.route.routeLabel || row.route.routeKey} 没有关联连接`,
+          routeId: row.route.routeId,
+          routeKey: row.route.routeKey,
+        });
+      } else if (!row.connection?.credentialId) {
+        issues.push({
+          id: `credential:${row.route.routeId}`,
+          kind: "missing-credential",
+          label: `${row.route.routeLabel || row.route.routeKey} 的连接还没有绑定凭证`,
+          routeId: row.route.routeId,
+          routeKey: row.route.routeKey,
+        });
+      }
+    }
+
+    return issues;
+  }, [routeRows, selectedModel]);
+
   const refresh = useCallback(async () => {
     if (!canRead) {
       setState("error");
@@ -945,6 +985,52 @@ export function AiSettingsPage() {
                     这个模型当前没有可用线路。请先到高级配置页完成首条线路初始化。
                   </div>
                 ) : null}
+              </div>
+
+              <div className="rounded border border-white/10 bg-black/20 p-4">
+                <div className="text-sm font-medium text-white">异常项扫描</div>
+                {modelIssueItems.length > 0 ? (
+                  <div className="mt-4 space-y-2">
+                    {modelIssueItems.map((issue) => (
+                      <div
+                        className="rounded border border-amber-300/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-50"
+                        key={issue.id}
+                      >
+                        <div className="font-medium">{issue.label}</div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {issue.routeId ? (
+                            <button
+                              className="inline-flex h-8 items-center gap-2 rounded border border-white/10 bg-white/10 px-3 text-xs text-white hover:bg-white/15"
+                              onClick={() => setSelectedRouteId(issue.routeId || "")}
+                              type="button"
+                            >
+                              定位到这条线路
+                            </button>
+                          ) : null}
+                          <button
+                            className="inline-flex h-8 items-center gap-2 rounded border border-white/10 bg-white/10 px-3 text-xs text-white hover:bg-white/15"
+                            onClick={() =>
+                              navigate(
+                                buildProviderSettingsLink({
+                                  connectionId: selectedAdminRoute?.connectionId ?? null,
+                                  modelFamily: selectedModel?.modelFamily ?? selectedModel?.modelKey ?? null,
+                                  providerId: selectedAdminRoute?.providerId ?? null,
+                                }),
+                              )
+                            }
+                            type="button"
+                          >
+                            去高级配置处理
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-4 rounded border border-dashed border-white/10 p-5 text-sm text-slate-400">
+                    当前模型没有发现连接、凭证或默认线路异常项。
+                  </div>
+                )}
               </div>
 
               <div className="rounded border border-white/10 bg-black/20 p-4">
