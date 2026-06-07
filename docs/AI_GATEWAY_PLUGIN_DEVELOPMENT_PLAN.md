@@ -786,13 +786,16 @@ type AiPluginTestManifest = {
       "defaultRouteKey": "image.gpt-image-2",
       "capabilities": {
         "supportsReferenceImages": true,
-        "supportedSizes": ["auto", "1K", "2K", "4K"]
+        "supportedSizes": ["auto", "1024x1024", "1024x1536", "1536x1024", "1K", "2K", "4K"]
       },
       "uiSchema": {
         "panelLayout": "default",
         "fields": []
       }
     }
+  ],
+  "notes": [
+    "GPT-Image-2 provider payload size must be auto or a concrete pixel size. 1K/2K/4K are UI route/billing tiers only and must be converted with aspectRatio before provider calls."
   ],
   "routes": [
     {

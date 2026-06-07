@@ -313,7 +313,7 @@ describe("openai-compatible text adapter", () => {
     await server.close();
   });
 
-  test("generateImage normalizes canvas image size aliases for OpenAI images API", async () => {
+  test("generateImage converts gpt-image-2 canvas size tier to pixel size for OpenAI images API", async () => {
     const server = await withHttpServer(async (request, response) => {
       expect(request.url).toBe("/images/generations");
 
@@ -322,7 +322,7 @@ describe("openai-compatible text adapter", () => {
         chunks.push(Buffer.from(chunk));
       }
       const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;
-      expect(body.size).toBe("1K");
+      expect(body.size).toBe("1248x1248");
 
       response.setHeader("content-type", "application/json");
       response.end(JSON.stringify({ data: [{ url: "https://example.test/generated.png" }] }));
@@ -343,6 +343,47 @@ describe("openai-compatible text adapter", () => {
       {
         metadata: {
           params: {
+            aspectRatio: "1:1",
+            size: "1k",
+          },
+        },
+        prompt: "a tiny pig",
+      },
+    );
+
+    await server.close();
+  });
+
+  test("generateImage keeps non-gpt-image-2 size tiers unchanged", async () => {
+    const server = await withHttpServer(async (request, response) => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of request) {
+        chunks.push(Buffer.from(chunk));
+      }
+      const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;
+      expect(body.model).toBe("other-image-model");
+      expect(body.size).toBe("1k");
+
+      response.setHeader("content-type", "application/json");
+      response.end(JSON.stringify({ data: [{ url: "https://example.test/generated.png" }] }));
+    });
+
+    const adapter = new OpenAiCompatibleTextAdapter();
+    await adapter.generateImage(
+      {
+        apiKey: "sk-test-secret",
+        baseUrl: server.url,
+        modelKey: "other-image-model",
+        providerKey: "openai-compatible",
+        requestConfig: {},
+        routeId: "route-1",
+        routeKey: "image.other",
+        timeoutMs: 5_000,
+      },
+      {
+        metadata: {
+          params: {
+            aspectRatio: "1:1",
             size: "1k",
           },
         },

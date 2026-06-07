@@ -1,4 +1,5 @@
 import { AiGatewayError } from "./errors.js";
+import { normalizeOpenAiCompatibleImageSize } from "./image-size.js";
 import type { ProviderAdapter } from "./provider-adapter.js";
 import type {
   AssetReferenceInput,
@@ -83,16 +84,6 @@ function normalizeOutputCompression(value: number | null, outputFormat: string):
   return Math.max(0, Math.min(100, Math.floor(value)));
 }
 
-function normalizeImageSize(value: string | null): string | null {
-  if (!value) return null;
-  const normalized = value.trim();
-  const lower = normalized.toLowerCase();
-  if (lower === "1k" || lower === "2k" || lower === "4k") {
-    return lower.toUpperCase();
-  }
-  return normalized;
-}
-
 function mimeTypeForOutputFormat(outputFormat: string): string {
   if (outputFormat === "jpeg") return "image/jpeg";
   if (outputFormat === "webp") return "image/webp";
@@ -101,6 +92,18 @@ function mimeTypeForOutputFormat(outputFormat: string): string {
 
 function extensionForOutputFormat(outputFormat: string): string {
   return outputFormat === "jpeg" ? "jpg" : outputFormat;
+}
+
+function isGptImage2Model(model: string): boolean {
+  return model.trim().toLowerCase() === "gpt-image-2";
+}
+
+function normalizeProviderImageSize(model: string, size: string | null, aspectRatio: string | null): string | null {
+  if (!size) return null;
+  if (isGptImage2Model(model)) {
+    return normalizeOpenAiCompatibleImageSize(size, aspectRatio || "1:1");
+  }
+  return size.trim() || null;
 }
 
 function collectStringInputs(...values: unknown[]): string[] {
@@ -377,7 +380,12 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
     };
     const background = getFirstString(lookupRecords, ["background"]);
     const quality = getFirstString(lookupRecords, ["quality"]);
-    const size = normalizeImageSize(getFirstString(lookupRecords, ["size", "imageSize", "image_size"]));
+    const aspectRatio = getFirstString(lookupRecords, ["aspectRatio", "aspect_ratio"]);
+    const size = normalizeProviderImageSize(
+      model,
+      getFirstString(lookupRecords, ["size", "imageSize", "image_size"]),
+      aspectRatio,
+    );
     const moderation = getFirstString(lookupRecords, ["moderation"]);
     if (background) payload.background = background;
     if (outputCompression !== null) payload.output_compression = outputCompression;
