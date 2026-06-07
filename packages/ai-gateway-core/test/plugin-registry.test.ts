@@ -86,6 +86,18 @@ describe("AI plugin registry", () => {
         routeKey: "image.gpt-image-2",
         routeLabel: "线路一",
       }),
+      expect.objectContaining({
+        modelFamily: "gpt-image-2",
+        modelKey: "gpt-image-2",
+        path: "/responses",
+        requestConfig: expect.objectContaining({
+          apiMode: "responses",
+          model: "gpt-5.5",
+          path: "/responses",
+        }),
+        routeKey: "image.gpt-image-2.line2",
+        routeLabel: "线路二",
+      }),
     ]);
   });
 

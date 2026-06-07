@@ -98,12 +98,27 @@ function isGptImage2Model(model: string): boolean {
   return model.trim().toLowerCase() === "gpt-image-2";
 }
 
+function isOpenAiImageSizeTierModel(model: string): boolean {
+  const normalized = model.trim().toLowerCase();
+  return normalized === "gpt-image-2" || normalized === "gpt-5.5";
+}
+
 function normalizeProviderImageSize(model: string, size: string | null, aspectRatio: string | null): string | null {
   if (!size) return null;
-  if (isGptImage2Model(model)) {
+  if (isOpenAiImageSizeTierModel(model)) {
     return normalizeOpenAiCompatibleImageSize(size, aspectRatio || "1:1");
   }
   return size.trim() || null;
+}
+
+function isResponsesImageMode(requestConfig: Record<string, unknown>): boolean {
+  const apiMode = getString(requestConfig.apiMode);
+  const endpoint = getString(requestConfig.endpoint);
+  return apiMode?.toLowerCase() === "responses" || endpoint?.toLowerCase() === "responses";
+}
+
+function buildPromptInput(prompt: string): string {
+  return `Use the following text as the complete prompt. Do not rewrite it:\n${prompt}`;
 }
 
 function collectStringInputs(...values: unknown[]): string[] {
@@ -181,6 +196,52 @@ function collectMaskInput(metadata: Record<string, unknown>, params: Record<stri
     params.maskUrl,
     params.mask_url,
   )[0] ?? null;
+}
+
+function collectResponseImageOutputs(value: unknown): unknown[] {
+  const outputs: unknown[] = [];
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      outputs.push(...collectResponseImageOutputs(item));
+    }
+    return outputs;
+  }
+
+  const record = asRecord(value);
+  if (Object.keys(record).length === 0) return outputs;
+  const type = getString(record.type);
+  if (type === "image_generation_call") {
+    outputs.push(record.result ?? record.b64_json ?? record.base64 ?? record.image ?? record.data);
+    return outputs;
+  }
+  for (const key of ["result", "b64_json", "base64", "image", "data", "output", "content"]) {
+    if (record[key] !== undefined) {
+      outputs.push(...collectResponseImageOutputs(record[key]));
+    }
+  }
+  return outputs;
+}
+
+function responseImageValueToOutput(value: unknown, index: number, outputFormat: string): MediaOutput | null {
+  const outputMimeType = mimeTypeForOutputFormat(outputFormat);
+  const outputExtension = extensionForOutputFormat(outputFormat);
+  const direct = getString(value);
+  const record = asRecord(value);
+  const candidate =
+    direct ??
+    getString(record.b64_json) ??
+    getString(record.base64) ??
+    getString(record.image) ??
+    getString(record.data) ??
+    getString(record.url);
+  if (!candidate) return null;
+
+  const isUrl = /^https?:\/\//i.test(candidate);
+  return {
+    ...(isUrl ? { url: candidate } : { base64: candidate }),
+    filename: `openai-response-image-${index + 1}.${outputExtension}`,
+    mimeType: getString(record.mime_type ?? record.mimeType) || outputMimeType,
+  };
 }
 
 function guessMimeType(value: string): string {
@@ -360,6 +421,18 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
     request: ImageGenerationRequest,
   ): Promise<ProviderMediaGenerationResult> {
     const requestConfig = asRecord(context.requestConfig);
+    if (isResponsesImageMode(requestConfig)) {
+      return this.generateImageWithResponsesApi(context, request, requestConfig);
+    }
+
+    return this.generateImageWithImagesApi(context, request, requestConfig);
+  }
+
+  private async generateImageWithImagesApi(
+    context: ProviderCallContext,
+    request: ImageGenerationRequest,
+    requestConfig: Record<string, unknown>,
+  ): Promise<ProviderMediaGenerationResult> {
     const metadata = asRecord(request.metadata);
     const params = getNestedRecord(metadata, requestConfig);
     const lookupRecords = [params, metadata, requestConfig];
@@ -504,6 +577,146 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
           ...(url ? { url } : {}),
         };
       })
+      .filter((value): value is MediaOutput => value !== null);
+
+    if (!outputs.length) {
+      throw new AiGatewayError({
+        code: "PROVIDER_INVALID_RESPONSE",
+        message: "The provider response did not include image output",
+        providerRequest,
+        providerResponse,
+        statusCode: 502,
+      });
+    }
+
+    return {
+      modelKey: model,
+      outputs,
+      providerRequest,
+      providerResponse,
+      status: "succeeded",
+      usage: {
+        inputTokens: null,
+        outputTokens: null,
+        totalTokens: null,
+      },
+    };
+  }
+
+  private async generateImageWithResponsesApi(
+    context: ProviderCallContext,
+    request: ImageGenerationRequest,
+    requestConfig: Record<string, unknown>,
+  ): Promise<ProviderMediaGenerationResult> {
+    const metadata = asRecord(request.metadata);
+    const params = getNestedRecord(metadata, requestConfig);
+    const lookupRecords = [params, metadata, requestConfig];
+    const model = request.model?.trim() || getString(requestConfig.model) || context.modelKey;
+    const outputFormat = normalizeOutputFormat(
+      getFirstString(lookupRecords, ["outputFormat", "output_format"]),
+    );
+    const outputCompression = normalizeOutputCompression(
+      getFirstNumber(lookupRecords, ["outputCompression", "output_compression"]),
+      outputFormat,
+    );
+    const aspectRatio = getFirstString(lookupRecords, ["aspectRatio", "aspect_ratio"]);
+    const size = normalizeProviderImageSize(
+      model,
+      getFirstString(lookupRecords, ["size", "imageSize", "image_size"]),
+      aspectRatio,
+    ) || "auto";
+    const quality = getFirstString(lookupRecords, ["quality"]) || "auto";
+    const moderation = getFirstString(lookupRecords, ["moderation"]) || "auto";
+    const images = collectImageInputs(request, metadata, params);
+    const mask = collectMaskInput(metadata, params);
+    const action = images.length > 0 ? "edit" : "generate";
+    const tool: Record<string, unknown> = {
+      action,
+      moderation,
+      output_format: outputFormat,
+      quality,
+      size,
+      type: "image_generation",
+    };
+    if (outputCompression !== null) tool.output_compression = outputCompression;
+    if (mask) tool.input_image_mask = { image_url: mask };
+
+    const promptInput = buildPromptInput(request.prompt);
+    const payload: Record<string, unknown> = {
+      input: images.length > 0
+        ? [
+            {
+              content: [
+                { text: promptInput, type: "input_text" },
+                ...images.slice(0, 10).map((image) => ({
+                  image_url: image,
+                  type: "input_image",
+                })),
+              ],
+              role: "user",
+            },
+          ]
+        : promptInput,
+      model,
+      tool_choice: "required",
+      tools: [tool],
+    };
+
+    const url = buildUrl(context.baseUrl, normalizePath(requestConfig.path ?? requestConfig.generatePath, "/responses"));
+    const requestHeaders = {
+      Authorization: `Bearer ${context.apiKey}`,
+      "Content-Type": "application/json",
+    };
+    const providerRequest = {
+      body: payload,
+      headers: requestHeaders,
+      method: "POST",
+      url,
+    };
+
+    let response: Response;
+    try {
+      response = await this.fetchImplementation(providerRequest.url, {
+        body: JSON.stringify(payload),
+        headers: requestHeaders,
+        method: "POST",
+        signal: AbortSignal.timeout(context.timeoutMs),
+      });
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        (error.name === "AbortError" || error.name === "TimeoutError")
+      ) {
+        throw new AiGatewayError({
+          code: "PROVIDER_TIMEOUT",
+          message: "The provider request timed out",
+          providerRequest,
+          statusCode: 504,
+        });
+      }
+
+      throw new AiGatewayError({
+        code: "PROVIDER_INTERNAL_ERROR",
+        details: error instanceof Error ? error.message : String(error),
+        message: "The provider request failed before a response was received",
+        providerRequest,
+        statusCode: 502,
+      });
+    }
+
+    const providerResponse = {
+      body: await readResponseBody(response),
+      status: response.status,
+    };
+
+    if (!response.ok) {
+      throw this.mapError(response.status, providerRequest, providerResponse);
+    }
+
+    const responseBody = asRecord(providerResponse.body);
+    const imageValues = collectResponseImageOutputs(responseBody.output);
+    const outputs = imageValues
+      .map((value, index) => responseImageValueToOutput(value, index, outputFormat))
       .filter((value): value is MediaOutput => value !== null);
 
     if (!outputs.length) {

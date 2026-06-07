@@ -394,6 +394,158 @@ describe("openai-compatible text adapter", () => {
     await server.close();
   });
 
+  test("generateImage uses Responses API image_generation tool for gpt-5.5 line two", async () => {
+    const server = await withHttpServer(async (request, response) => {
+      expect(request.url).toBe("/responses");
+      expect(request.headers.authorization).toBe("Bearer sk-test-secret");
+      expect(request.headers["content-type"]).toContain("application/json");
+
+      const chunks: Buffer[] = [];
+      for await (const chunk of request) {
+        chunks.push(Buffer.from(chunk));
+      }
+      const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, any>;
+      expect(body.model).toBe("gpt-5.5");
+      expect(body.input).toContain("Use the following text as the complete prompt");
+      expect(body.tool_choice).toBe("required");
+      expect(body.tools[0]).toMatchObject({
+        action: "generate",
+        output_format: "jpeg",
+        quality: "high",
+        size: "2720x1536",
+        type: "image_generation",
+      });
+      expect(body.tools[0].size).not.toBe("2k");
+      expect(body.tools[0].output_compression).toBe(80);
+
+      response.setHeader("content-type", "application/json");
+      response.end(
+        JSON.stringify({
+          output: [
+            {
+              result:
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9MbugAAAAASUVORK5CYII=",
+              type: "image_generation_call",
+            },
+          ],
+        }),
+      );
+    });
+
+    const adapter = new OpenAiCompatibleTextAdapter();
+    const result = await adapter.generateImage(
+      {
+        apiKey: "sk-test-secret",
+        baseUrl: server.url,
+        modelKey: "gpt-image-2",
+        providerKey: "openai-compatible",
+        requestConfig: {
+          apiMode: "responses",
+          model: "gpt-5.5",
+          path: "/responses",
+        },
+        routeId: "route-2",
+        routeKey: "image.gpt-image-2.line2",
+        timeoutMs: 5_000,
+      },
+      {
+        metadata: {
+          params: {
+            aspectRatio: "16:9",
+            outputCompression: 80,
+            outputFormat: "jpeg",
+            quality: "high",
+            size: "2k",
+          },
+        },
+        prompt: "a tiny pig",
+      },
+    );
+
+    expect(result).toMatchObject({
+      modelKey: "gpt-5.5",
+      outputs: [
+        {
+          filename: "openai-response-image-1.jpg",
+          mimeType: "image/jpeg",
+        },
+      ],
+      status: "succeeded",
+    });
+    expect(result.outputs?.[0]?.base64).toBeTruthy();
+
+    await server.close();
+  });
+
+  test("generateImage uses Responses API edit action with input images", async () => {
+    const server = await withHttpServer(async (request, response) => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of request) {
+        chunks.push(Buffer.from(chunk));
+      }
+      const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, any>;
+      expect(body.model).toBe("gpt-5.5");
+      expect(body.tools[0]).toMatchObject({
+        action: "edit",
+        output_format: "png",
+        size: "auto",
+        type: "image_generation",
+      });
+      expect(body.tools[0].output_compression).toBeUndefined();
+      expect(body.input[0].content).toEqual([
+        expect.objectContaining({ type: "input_text" }),
+        { image_url: "https://cdn.example/input.png", type: "input_image" },
+      ]);
+
+      response.setHeader("content-type", "application/json");
+      response.end(
+        JSON.stringify({
+          output: [
+            {
+              result: {
+                b64_json:
+                  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9MbugAAAAASUVORK5CYII=",
+              },
+              type: "image_generation_call",
+            },
+          ],
+        }),
+      );
+    });
+
+    const adapter = new OpenAiCompatibleTextAdapter();
+    const result = await adapter.generateImage(
+      {
+        apiKey: "sk-test-secret",
+        baseUrl: server.url,
+        modelKey: "gpt-image-2",
+        providerKey: "openai-compatible",
+        requestConfig: {
+          endpoint: "responses",
+          model: "gpt-5.5",
+          outputFormat: "png",
+          path: "/responses",
+        },
+        routeId: "route-2",
+        routeKey: "image.gpt-image-2.line2",
+        timeoutMs: 5_000,
+      },
+      {
+        metadata: {
+          params: {
+            images: ["https://cdn.example/input.png"],
+            size: "auto",
+          },
+        },
+        prompt: "edit this image",
+      },
+    );
+
+    expect(result.outputs?.[0]?.base64).toBeTruthy();
+
+    await server.close();
+  });
+
   test("generateImage uses multipart edits when reference images are present", async () => {
     const server = await withHttpServer(async (request, response) => {
       expect(request.url).toBe("/images/edits");
