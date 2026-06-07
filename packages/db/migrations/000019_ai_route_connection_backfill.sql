@@ -106,7 +106,7 @@ SET
     NULLIF(route.upstream_model, ''),
     NULLIF(route.request_config->>'upstreamModel', ''),
     NULLIF(route.request_config->>'model', ''),
-    model.model_key
+    (SELECT model_key FROM ai_models WHERE id = route.model_id)
   ),
   api_mode = COALESCE(
     NULLIF(route.api_mode, ''),
@@ -120,6 +120,4 @@ SET
   ),
   updated_at = now()
 FROM propagated_connections AS propagated
-LEFT JOIN ai_models AS model
-  ON model.id = route.model_id
 WHERE route.id = propagated.route_id;
