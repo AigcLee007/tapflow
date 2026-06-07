@@ -147,15 +147,53 @@ describeWithDatabase("ai plugin admin API", () => {
         expect(JSON.stringify(install.json())).not.toContain("pixellelabs-pro-test-secret");
 
         const dbState = await adminPool.query<{
+          connection_adapter_kind: string | null;
+          connection_count: string;
+          connection_metadata_generated_by: string | null;
+          connection_name: string | null;
           catalog_active_count: string;
           credential_secret_contains_raw: boolean;
           pricing_count: string;
           provider_key: string;
+          route_api_mode: string | null;
           route_active_count: string;
+          route_connection_matches: boolean;
+          route_request_path: string | null;
+          route_upstream_model: string | null;
         }>(
           `
             SELECT
               (SELECT key FROM ai_providers WHERE key = 'pixellelabs') AS provider_key,
+              (
+                SELECT COUNT(*)::text
+                FROM ai_provider_connections
+                WHERE tenant_id = $1::uuid
+                  AND provider_id = (SELECT provider_id FROM tenant_ai_plugin_installs WHERE id = $2::uuid)
+              ) AS connection_count,
+              (
+                SELECT name
+                FROM ai_provider_connections
+                WHERE tenant_id = $1::uuid
+                  AND provider_id = (SELECT provider_id FROM tenant_ai_plugin_installs WHERE id = $2::uuid)
+                ORDER BY created_at ASC
+                LIMIT 1
+              ) AS connection_name,
+              (
+                SELECT adapter_kind
+                FROM ai_provider_connections
+                WHERE tenant_id = $1::uuid
+                  AND provider_id = (SELECT provider_id FROM tenant_ai_plugin_installs WHERE id = $2::uuid)
+                ORDER BY created_at ASC
+                LIMIT 1
+              ) AS connection_adapter_kind,
+              (
+                SELECT metadata->>'generatedBy'
+                FROM ai_provider_connections
+                WHERE tenant_id = $1::uuid
+                  AND provider_id = (SELECT provider_id FROM tenant_ai_plugin_installs WHERE id = $2::uuid)
+                ORDER BY created_at ASC
+                LIMIT 1
+              ) AS connection_metadata_generated_by,
               (
                 SELECT COUNT(*)::text
                 FROM ai_routes
@@ -163,6 +201,34 @@ describeWithDatabase("ai plugin admin API", () => {
                   AND plugin_install_id = $2::uuid
                   AND status = 'active'
               ) AS route_active_count,
+              (
+                SELECT connection_id IS NOT NULL
+                FROM ai_routes
+                WHERE tenant_id = $1::uuid
+                  AND plugin_install_id = $2::uuid
+                LIMIT 1
+              ) AS route_connection_matches,
+              (
+                SELECT api_mode
+                FROM ai_routes
+                WHERE tenant_id = $1::uuid
+                  AND plugin_install_id = $2::uuid
+                LIMIT 1
+              ) AS route_api_mode,
+              (
+                SELECT upstream_model
+                FROM ai_routes
+                WHERE tenant_id = $1::uuid
+                  AND plugin_install_id = $2::uuid
+                LIMIT 1
+              ) AS route_upstream_model,
+              (
+                SELECT request_path
+                FROM ai_routes
+                WHERE tenant_id = $1::uuid
+                  AND plugin_install_id = $2::uuid
+                LIMIT 1
+              ) AS route_request_path,
               (
                 SELECT COUNT(*)::text
                 FROM ai_model_catalog
@@ -188,10 +254,18 @@ describeWithDatabase("ai plugin admin API", () => {
         );
         expect(dbState.rows[0]).toEqual({
           catalog_active_count: "1",
+          connection_adapter_kind: "sync",
+          connection_count: "1",
+          connection_metadata_generated_by: "template-install",
+          connection_name: "Nano Banana Pro Connection",
           credential_secret_contains_raw: false,
           pricing_count: "1",
           provider_key: "pixellelabs",
+          route_api_mode: "sync",
           route_active_count: "1",
+          route_connection_matches: true,
+          route_request_path: "/v1beta/models/gemini-3-pro-image-preview:generateContent",
+          route_upstream_model: "gemini-3-pro-image-preview",
         });
 
         const listAfterInstall = await api.inject({

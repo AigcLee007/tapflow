@@ -35,6 +35,10 @@ type PluginInstallRecord = {
   status: string;
 };
 
+type ProviderConnectionRecord = {
+  id: string;
+};
+
 export type AiPluginSummaryView = {
   description: string;
   displayName: string;
@@ -142,8 +146,17 @@ export class AiPluginService {
         status,
         version: manifest.version,
       });
+      const connectionId = await this.upsertProviderConnection(client, {
+        context,
+        credentialId,
+        input,
+        installId: install.id,
+        manifest,
+        providerId,
+      });
 
       const routeKeys = await this.upsertRoutes(client, {
+        connectionId,
         credentialId,
         input,
         installId: install.id,
@@ -612,6 +625,7 @@ export class AiPluginService {
   private async upsertRoutes(
     client: PoolClient,
     options: {
+      connectionId: string | null;
       credentialId: string | null;
       input: InstallPluginInput;
       installId: string;
@@ -641,6 +655,7 @@ export class AiPluginService {
             provider_id,
             model_id,
             credential_id,
+            connection_id,
             route_key,
             modality,
             priority,
@@ -653,6 +668,9 @@ export class AiPluginService {
             model_family,
             route_label,
             environment,
+            upstream_model,
+            api_mode,
+            request_path,
             updated_at
           )
           VALUES (
@@ -660,7 +678,7 @@ export class AiPluginService {
             $2::uuid,
             $3::uuid,
             $4::uuid,
-            $5,
+            $5::uuid,
             $6,
             $7,
             100,
@@ -672,6 +690,9 @@ export class AiPluginService {
             $13,
             $14,
             $15,
+            $16,
+            $17,
+            $18,
             now()
           )
           ON CONFLICT (tenant_id, route_key) WHERE tenant_id IS NOT NULL
@@ -679,6 +700,7 @@ export class AiPluginService {
             provider_id = EXCLUDED.provider_id,
             model_id = EXCLUDED.model_id,
             credential_id = COALESCE(EXCLUDED.credential_id, ai_routes.credential_id),
+            connection_id = COALESCE(EXCLUDED.connection_id, ai_routes.connection_id),
             modality = EXCLUDED.modality,
             priority = EXCLUDED.priority,
             base_url_override = EXCLUDED.base_url_override,
@@ -689,6 +711,9 @@ export class AiPluginService {
             model_family = EXCLUDED.model_family,
             route_label = EXCLUDED.route_label,
             environment = EXCLUDED.environment,
+            upstream_model = EXCLUDED.upstream_model,
+            api_mode = EXCLUDED.api_mode,
+            request_path = EXCLUDED.request_path,
             updated_at = now()
         `,
         [
@@ -696,6 +721,7 @@ export class AiPluginService {
           options.providerId,
           modelId,
           options.credentialId,
+          options.connectionId,
           route.routeKey,
           route.modality,
           route.priority,
@@ -707,11 +733,99 @@ export class AiPluginService {
           route.modelFamily,
           route.routeLabel,
           (route.requestConfig.environment as string | undefined) ?? "production",
+          route.modelKey,
+          this.resolveRouteApiMode(route),
+          route.path ?? this.readRouteRequestConfigString(route.requestConfig, "path"),
         ],
       );
       routeKeys.push(route.routeKey);
     }
     return routeKeys;
+  }
+
+  private async upsertProviderConnection(
+    client: PoolClient,
+    options: {
+      context: TenantContext;
+      credentialId: string | null;
+      input: InstallPluginInput;
+      installId: string;
+      manifest: AiPluginManifest;
+      providerId: string;
+    },
+  ): Promise<string | null> {
+    const firstRoute = options.manifest.routes[0];
+    if (!firstRoute) {
+      return null;
+    }
+
+    const adapterKind = this.resolveRouteApiMode(firstRoute);
+    const environment = this.readRouteRequestConfigString(firstRoute.requestConfig, "environment") ?? "production";
+    const baseUrl =
+      options.input.baseUrlOverride?.trim() ||
+      firstRoute.baseUrl?.trim() ||
+      options.manifest.provider.defaultBaseUrl ||
+      null;
+
+    const result = await client.query<ProviderConnectionRecord>(
+      `
+        INSERT INTO ai_provider_connections (
+          tenant_id,
+          provider_id,
+          credential_id,
+          name,
+          adapter_kind,
+          base_url,
+          environment,
+          status,
+          metadata,
+          created_by,
+          updated_at
+        )
+        VALUES (
+          $1::uuid,
+          $2::uuid,
+          $3::uuid,
+          $4,
+          $5,
+          $6,
+          $7,
+          'active',
+          $8::jsonb,
+          $9::uuid,
+          now()
+        )
+        ON CONFLICT (tenant_id, name)
+        DO UPDATE SET
+          provider_id = EXCLUDED.provider_id,
+          credential_id = COALESCE(EXCLUDED.credential_id, ai_provider_connections.credential_id),
+          adapter_kind = EXCLUDED.adapter_kind,
+          base_url = EXCLUDED.base_url,
+          environment = EXCLUDED.environment,
+          status = 'active',
+          metadata = EXCLUDED.metadata,
+          updated_at = now()
+        RETURNING id::text AS id
+      `,
+      [
+        options.context.tenantId,
+        options.providerId,
+        options.credentialId,
+        `${options.manifest.displayName} Connection`,
+        adapterKind,
+        baseUrl,
+        environment,
+        JSON.stringify({
+          baseUrlOverride: options.input.baseUrlOverride ?? null,
+          generatedBy: "template-install",
+          installId: options.installId,
+          packageKey: options.manifest.packageKey,
+        }),
+        options.context.userId,
+      ],
+    );
+
+    return result.rows[0]?.id ?? null;
   }
 
   private async upsertCatalog(
@@ -931,5 +1045,21 @@ export class AiPluginService {
       [tenantId, installId],
     );
     return result.rows.map((row) => row.model_key);
+  }
+
+  private resolveRouteApiMode(route: AiPluginManifest["routes"][number]): string {
+    const configuredMode = this.readRouteRequestConfigString(route.requestConfig, "apiMode");
+    if (configuredMode) {
+      return configuredMode;
+    }
+    return route.mode;
+  }
+
+  private readRouteRequestConfigString(
+    requestConfig: Record<string, unknown> | undefined,
+    key: string,
+  ): string | null {
+    const value = requestConfig?.[key];
+    return typeof value === "string" && value.trim() ? value.trim() : null;
   }
 }

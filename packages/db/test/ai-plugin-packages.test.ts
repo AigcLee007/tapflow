@@ -470,4 +470,162 @@ describeWithDatabase("ai plugin package migration and RLS", () => {
       }
     });
   });
+
+  test("backfills legacy route connection and runtime metadata without changing route keys", async () => {
+    await withDatabase(async ({ databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const pool = createPgPool();
+
+      const tenantId = randomUUID();
+      const userId = randomUUID();
+      const providerId = randomUUID();
+      const modelId = randomUUID();
+      const credentialId = randomUUID();
+      const routeId = randomUUID();
+
+      try {
+        await runMigrations(pool);
+
+        await withTenantTransaction({ tenantId, userId }, async (client) => {
+          await client.query(
+            `
+              INSERT INTO users (id, email, display_name)
+              VALUES ($1::uuid, $2, $3)
+            `,
+            [userId, "backfill@example.com", "Backfill"],
+          );
+          await client.query(
+            `
+              INSERT INTO tenants (id, name, slug, updated_at)
+              VALUES ($1::uuid, $2, $3, now())
+            `,
+            [tenantId, "Backfill Tenant", "backfill-tenant"],
+          );
+          await client.query(
+            `
+              INSERT INTO tenant_memberships (tenant_id, user_id, role_key, status, joined_at, updated_at)
+              VALUES ($1::uuid, $2::uuid, 'tenant_owner', 'active', now(), now())
+            `,
+            [tenantId, userId],
+          );
+          await client.query(
+            `
+              INSERT INTO ai_providers (id, key, name, kind, default_base_url)
+              VALUES ($1::uuid, 'openai-compatible', 'OpenAI Compatible', 'openai-compatible', 'https://sub.siphonlab.cn/v1')
+            `,
+            [providerId],
+          );
+          await client.query(
+            `
+              INSERT INTO ai_models (id, provider_id, model_key, display_name, modality)
+              VALUES ($1::uuid, $2::uuid, 'gpt-image-2', 'GPT-Image-2', 'image')
+            `,
+            [modelId, providerId],
+          );
+          await client.query(
+            `
+              INSERT INTO api_credentials (
+                id,
+                tenant_id,
+                provider_id,
+                name,
+                encrypted_secret,
+                nonce,
+                auth_tag,
+                key_version,
+                secret_fingerprint,
+                status
+              )
+              VALUES (
+                $1::uuid,
+                $2::uuid,
+                $3::uuid,
+                'Legacy Key',
+                decode('616263', 'hex'),
+                decode('646566', 'hex'),
+                decode('676869', 'hex'),
+                'v1',
+                'fingerprint',
+                'active'
+              )
+            `,
+            [credentialId, tenantId, providerId],
+          );
+          await client.query(
+            `
+              INSERT INTO ai_routes (
+                id,
+                tenant_id,
+                provider_id,
+                model_id,
+                credential_id,
+                route_key,
+                modality,
+                environment,
+                base_url_override,
+                request_config,
+                status
+              )
+              VALUES (
+                $1::uuid,
+                $2::uuid,
+                $3::uuid,
+                $4::uuid,
+                $5::uuid,
+                'image.gpt-image-2.line2',
+                'image',
+                'production',
+                'https://sub.siphonlab.cn/v1',
+                '{"apiMode":"responses","path":"/responses","model":"gpt-5.5"}'::jsonb,
+                'active'
+              )
+            `,
+            [routeId, tenantId, providerId, modelId, credentialId],
+          );
+        }, pool);
+
+        await pool.query(`DELETE FROM schema_migrations WHERE filename = '000019_ai_route_connection_backfill.sql'`);
+        const rerun = await runMigrations(pool);
+        expect(rerun.appliedMigrations).toContain("000019_ai_route_connection_backfill.sql");
+
+        const result = await pool.query<{
+          adapter_kind: string | null;
+          base_url: string | null;
+          connection_id: string | null;
+          connection_name: string | null;
+          request_path: string | null;
+          route_key: string;
+          upstream_model: string | null;
+        }>(
+          `
+            SELECT
+              route.route_key,
+              route.connection_id::text AS connection_id,
+              route.upstream_model,
+              route.request_path,
+              connection.name AS connection_name,
+              connection.adapter_kind,
+              connection.base_url
+            FROM ai_routes AS route
+            LEFT JOIN ai_provider_connections AS connection
+              ON connection.id = route.connection_id
+            WHERE route.id = $1::uuid
+          `,
+          [routeId],
+        );
+
+        expect(result.rows[0]).toEqual({
+          adapter_kind: "responses",
+          base_url: "https://sub.siphonlab.cn/v1",
+          connection_id: expect.any(String),
+          connection_name: expect.stringMatching(/^Migrated Connection /),
+          request_path: "/responses",
+          route_key: "image.gpt-image-2.line2",
+          upstream_model: "gpt-5.5",
+        });
+      } finally {
+        await pool.end();
+      }
+    });
+  });
 });
