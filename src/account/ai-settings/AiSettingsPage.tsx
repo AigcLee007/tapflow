@@ -5,6 +5,7 @@ import {
   Copy,
   FlaskConical,
   Loader2,
+  Plus,
   RefreshCw,
   Save,
   Settings2,
@@ -48,6 +49,17 @@ type RouteEditorState = {
   upstreamModel: string;
 };
 
+type RouteCreateState = RouteEditorState & {
+  routeKey: string;
+};
+
+type RouteRow = {
+  adminRoute: AdminRoute | null;
+  connection: AdminProviderConnection | null;
+  isDefault: boolean;
+  route: AiModelCatalogRoute;
+};
+
 const MODALITIES: Array<{ label: string; value: Modality }> = [
   { label: "生图", value: "image" },
   { label: "文本", value: "text" },
@@ -60,6 +72,8 @@ const inputClass =
   "h-10 w-full rounded border border-white/10 bg-black/25 px-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-sky-300/50";
 const selectClass =
   "h-10 w-full rounded border border-white/10 bg-black/25 px-3 text-sm text-white outline-none focus:border-sky-300/50";
+const textareaClass =
+  "min-h-[96px] w-full rounded border border-white/10 bg-black/25 px-3 py-2 text-sm text-white outline-none placeholder:text-slate-500 focus:border-sky-300/50";
 
 function navigate(path: string) {
   window.history.pushState(null, "", path);
@@ -75,7 +89,20 @@ function statusLabel(status?: string | null) {
   if (status === "inactive") return "停用";
   if (status === "published") return "已发布";
   if (status === "draft") return "草稿";
-  if (status === "disabled") return "已停用";
+  if (status === "disabled") return "已禁用";
+  return status || "-";
+}
+
+function routeSourceLabel(route: AdminRoute | null) {
+  if (!route) return "未映射";
+  return route.tenantId ? "租户线路" : "系统线路";
+}
+
+function formatHealthLabel(status?: string | null) {
+  if (status === "ok") return "正常";
+  if (status === "failed") return "失败";
+  if (status === "active") return "可用";
+  if (status === "inactive") return "停用";
   return status || "-";
 }
 
@@ -114,6 +141,54 @@ function buildEditorState(route: AdminRoute | null): RouteEditorState {
   };
 }
 
+function toChineseIndex(value: number) {
+  const labels = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十"];
+  if (value >= 1 && value <= labels.length) return labels[value - 1];
+  return String(value);
+}
+
+function deriveRouteKeyPrefix(routeKey: string) {
+  if (!routeKey) return "route";
+  if (/\.line\d+$/i.test(routeKey)) return routeKey.replace(/\.line\d+$/i, "");
+  return routeKey;
+}
+
+function findNextRouteIndex(routes: AiModelCatalogRoute[], prefix: string) {
+  let maxIndex = 1;
+  for (const route of routes) {
+    const normalized = route.routeKey ?? "";
+    if (normalized === prefix) {
+      maxIndex = Math.max(maxIndex, 1);
+      continue;
+    }
+    const match = normalized.match(/\.line(\d+)$/i);
+    if (!match) continue;
+    if (normalized.replace(/\.line\d+$/i, "") !== prefix) continue;
+    maxIndex = Math.max(maxIndex, Number.parseInt(match[1] || "1", 10));
+  }
+  return maxIndex + 1;
+}
+
+function buildCreateState(
+  baseRoute: AdminRoute,
+  routes: AiModelCatalogRoute[],
+  overrideConnectionId?: string | null,
+): RouteCreateState {
+  const prefix = deriveRouteKeyPrefix(baseRoute.routeKey);
+  const nextIndex = findNextRouteIndex(routes, prefix);
+  return {
+    adminNotes: "",
+    apiMode: baseRoute.apiMode ?? "",
+    connectionId: overrideConnectionId ?? baseRoute.connectionId ?? "",
+    internalLabel: baseRoute.internalLabel ? `${baseRoute.internalLabel} ${nextIndex}` : "",
+    requestPath: baseRoute.requestPath ?? "",
+    routeKey: `${prefix}.line${nextIndex}`,
+    routeLabel: `线路${toChineseIndex(nextIndex)}`,
+    status: "active",
+    upstreamModel: baseRoute.upstreamModel ?? "",
+  };
+}
+
 export function AiSettingsPage() {
   const { permissions } = useAuth();
   const canRead =
@@ -133,8 +208,11 @@ export function AiSettingsPage() {
   const [selectedRouteId, setSelectedRouteId] = useState("");
   const [routeTest, setRouteTest] = useState<AiRouteTestResult | null>(null);
   const [editor, setEditor] = useState<RouteEditorState>(buildEditorState(null));
+  const [createEditor, setCreateEditor] = useState<RouteCreateState | null>(null);
+  const [createPanelOpen, setCreatePanelOpen] = useState(false);
   const [testingRouteId, setTestingRouteId] = useState("");
   const [savingRouteId, setSavingRouteId] = useState("");
+  const [creatingRoute, setCreatingRoute] = useState(false);
   const [actionRouteId, setActionRouteId] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -143,35 +221,57 @@ export function AiSettingsPage() {
     () => models.find((model) => model.modelKey === selectedModelKey) ?? null,
     [models, selectedModelKey],
   );
-  const selectedCatalogRoute = useMemo(
-    () => routes.find((route) => route.routeId === selectedRouteId) ?? null,
-    [routes, selectedRouteId],
-  );
-  const selectedAdminRoute = useMemo(
+
+  const routeRows = useMemo<RouteRow[]>(
     () =>
-      adminRoutes.find((route) => route.id === selectedRouteId) ??
-      findAdminRouteByKey(adminRoutes, selectedCatalogRoute?.routeKey),
-    [adminRoutes, selectedCatalogRoute?.routeKey, selectedRouteId],
+      routes.map((route) => {
+        const adminRoute = findAdminRouteByKey(adminRoutes, route.routeKey);
+        const connection =
+          connections.find((item) => item.id === (adminRoute?.connectionId ?? null)) ?? null;
+        return {
+          adminRoute,
+          connection,
+          isDefault: selectedModel?.defaultRouteKey === route.routeKey,
+          route,
+        };
+      }),
+    [adminRoutes, connections, routes, selectedModel?.defaultRouteKey],
   );
-  const selectedConnection = useMemo(
-    () =>
-      connections.find((connection) => connection.id === selectedAdminRoute?.connectionId) ?? null,
-    [connections, selectedAdminRoute?.connectionId],
+
+  const selectedRouteRow = useMemo(
+    () => routeRows.find((item) => item.route.routeId === selectedRouteId) ?? null,
+    [routeRows, selectedRouteId],
   );
+
+  const selectedCatalogRoute = selectedRouteRow?.route ?? null;
+  const selectedAdminRoute = selectedRouteRow?.adminRoute ?? null;
+  const selectedConnection = selectedRouteRow?.connection ?? null;
   const selectedCredential = useMemo(
     () =>
       credentials.find((credential) => credential.id === selectedConnection?.credentialId) ?? null,
     [credentials, selectedConnection?.credentialId],
   );
-  const editorConnections = useMemo(
-    () =>
-      connections.filter(
-        (connection) =>
-          connection.providerId === selectedAdminRoute?.providerId &&
-          connection.status === "active",
-      ),
-    [connections, selectedAdminRoute?.providerId],
-  );
+
+  const selectedProviderConnections = useMemo(() => {
+    if (!selectedAdminRoute?.providerId) return [];
+    return connections.filter(
+      (connection) =>
+        connection.providerId === selectedAdminRoute.providerId && connection.status === "active",
+    );
+  }, [connections, selectedAdminRoute?.providerId]);
+
+  const baseRouteForCreate = useMemo(() => {
+    if (selectedAdminRoute) return selectedAdminRoute;
+    return routeRows.find((item) => item.adminRoute)?.adminRoute ?? null;
+  }, [routeRows, selectedAdminRoute]);
+
+  const createConnections = useMemo(() => {
+    if (!baseRouteForCreate?.providerId) return [];
+    return connections.filter(
+      (connection) =>
+        connection.providerId === baseRouteForCreate.providerId && connection.status === "active",
+    );
+  }, [baseRouteForCreate?.providerId, connections]);
 
   const refresh = useCallback(async () => {
     if (!canRead) {
@@ -223,7 +323,8 @@ export function AiSettingsPage() {
         setSelectedRouteId((current) => {
           if (current && nextRoutes.some((route) => route.routeId === current)) return current;
           const defaultRoute =
-            nextRoutes.find((route) => route.routeKey === selectedModel?.defaultRouteKey) ?? nextRoutes[0];
+            nextRoutes.find((route) => route.routeKey === selectedModel?.defaultRouteKey) ??
+            nextRoutes[0];
           return defaultRoute?.routeId || "";
         });
       })
@@ -242,6 +343,11 @@ export function AiSettingsPage() {
   useEffect(() => {
     setEditor(buildEditorState(selectedAdminRoute));
   }, [selectedAdminRoute]);
+
+  useEffect(() => {
+    if (!createPanelOpen || !baseRouteForCreate) return;
+    setCreateEditor((current) => current ?? buildCreateState(baseRouteForCreate, routes));
+  }, [baseRouteForCreate, createPanelOpen, routes]);
 
   async function handleTestRoute(route: AiModelCatalogRoute) {
     setTestingRouteId(route.routeId);
@@ -289,6 +395,61 @@ export function AiSettingsPage() {
     }
   }
 
+  function openCreatePanel() {
+    if (!baseRouteForCreate) {
+      setError("当前模型还没有可复制的基础线路，请先到高级配置页完成首条线路初始化。");
+      return;
+    }
+    setCreateEditor(buildCreateState(baseRouteForCreate, routes, baseRouteForCreate.connectionId));
+    setCreatePanelOpen(true);
+    setError("");
+    setMessage("");
+  }
+
+  async function handleCreateRoute() {
+    if (!baseRouteForCreate || !createEditor) return;
+    const routeKey = createEditor.routeKey.trim();
+    if (!routeKey) {
+      setError("请填写线路 Key。");
+      return;
+    }
+    if (routes.some((route) => route.routeKey === routeKey)) {
+      setError("线路 Key 已存在，请换一个。");
+      return;
+    }
+
+    setCreatingRoute(true);
+    setError("");
+    setMessage("");
+    try {
+      const duplicated = await duplicateAdminRoute(baseRouteForCreate.id, {
+        internalLabel: createEditor.internalLabel.trim() || null,
+        isDefault: false,
+        routeKey,
+        routeLabel: createEditor.routeLabel.trim() || null,
+      });
+      const created = await updateAdminRoute(duplicated.id, {
+        adminNotes: createEditor.adminNotes.trim() || null,
+        apiMode: createEditor.apiMode.trim() || null,
+        connectionId: createEditor.connectionId || null,
+        internalLabel: createEditor.internalLabel.trim() || null,
+        requestPath: createEditor.requestPath.trim() || null,
+        routeLabel: createEditor.routeLabel.trim() || null,
+        status: createEditor.status,
+        upstreamModel: createEditor.upstreamModel.trim() || null,
+      });
+      setMessage(`已新增线路：${created.routeLabel || created.routeKey}`);
+      setCreatePanelOpen(false);
+      setCreateEditor(null);
+      await refresh();
+      setSelectedRouteId(created.id);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "新增线路失败。");
+    } finally {
+      setCreatingRoute(false);
+    }
+  }
+
   async function handleDuplicateRoute() {
     if (!selectedAdminRoute) return;
     setActionRouteId(selectedAdminRoute.id);
@@ -324,6 +485,30 @@ export function AiSettingsPage() {
       await refresh();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "设置默认线路失败。");
+    } finally {
+      setActionRouteId("");
+    }
+  }
+
+  async function handleDisableRoute() {
+    if (!selectedAdminRoute || !selectedAdminRoute.tenantId) {
+      setError("当前线路不可直接停用，请先复制为租户线路后再操作。");
+      return;
+    }
+    setActionRouteId(selectedAdminRoute.id);
+    setError("");
+    setMessage("");
+    try {
+      const nextStatus = selectedAdminRoute.status === "inactive" ? "active" : "inactive";
+      const updatedRoute = await updateAdminRoute(selectedAdminRoute.id, {
+        status: nextStatus,
+      });
+      setMessage(
+        `${updatedRoute.routeLabel || updatedRoute.routeKey} 已${nextStatus === "active" ? "启用" : "停用"}。`,
+      );
+      await refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "更新线路状态失败。");
     } finally {
       setActionRouteId("");
     }
@@ -414,6 +599,8 @@ export function AiSettingsPage() {
               setSelectedModelKey("");
               setSelectedRouteId("");
               setRouteTest(null);
+              setCreatePanelOpen(false);
+              setCreateEditor(null);
             }}
             type="button"
           >
@@ -422,11 +609,11 @@ export function AiSettingsPage() {
         ))}
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(260px,0.76fr)_minmax(0,1.24fr)]">
+      <div className="grid gap-5 xl:grid-cols-[300px_minmax(0,1fr)]">
         <section className="rounded border border-white/10 bg-white/[0.04] p-5">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold text-white">模型列表</h2>
+              <h2 className="text-lg font-semibold text-white">产品模型</h2>
               <p className="mt-1 text-sm text-slate-400">用户在画布里看到的模型。</p>
             </div>
             <Activity className="text-sky-300" size={20} />
@@ -444,6 +631,8 @@ export function AiSettingsPage() {
                 onClick={() => {
                   setSelectedModelKey(model.modelKey);
                   setRouteTest(null);
+                  setCreatePanelOpen(false);
+                  setCreateEditor(null);
                 }}
                 type="button"
               >
@@ -468,287 +657,553 @@ export function AiSettingsPage() {
         </section>
 
         <section className="rounded border border-white/10 bg-white/[0.04] p-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-white">线路管理</h2>
-              <p className="mt-1 text-sm text-slate-400">直接在这里完成查看、编辑、测试、复制、设默认和删除。</p>
+              <p className="mt-1 text-sm text-slate-400">
+                先选模型，再集中完成查看、编辑、测试、复制、设为默认、停用和删除。
+              </p>
             </div>
-            <div className="text-sm text-slate-400">
-              {selectedModel ? `${selectedModel.displayName} / ${routes.length} 条线路` : "请选择模型"}
+            <div className="flex flex-wrap gap-2">
+              <button
+                className={buttonClass}
+                disabled={!selectedModel || !canManage}
+                onClick={openCreatePanel}
+                type="button"
+              >
+                <Plus size={15} />
+                新增线路
+              </button>
             </div>
           </div>
 
           {selectedModel ? (
-            <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(290px,0.82fr)_minmax(0,1.18fr)]">
-              <div className="space-y-3">
-                {routes.map((route) => {
-                  const adminRoute = findAdminRouteByKey(adminRoutes, route.routeKey);
-                  const isSelected = selectedRouteId === route.routeId;
-                  const isDefault = selectedModel.defaultRouteKey === route.routeKey;
-                  return (
-                    <button
-                      className={`w-full rounded border p-4 text-left ${
-                        isSelected
-                          ? "border-sky-300/40 bg-sky-400/10"
-                          : "border-white/10 bg-black/20 hover:bg-white/[0.06]"
-                      }`}
-                      key={route.routeId}
-                      onClick={() => {
-                        setSelectedRouteId(route.routeId);
-                        setRouteTest(null);
-                      }}
-                      type="button"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="font-medium text-white">{route.routeLabel || route.routeKey}</div>
-                          <div className="mt-1 text-xs text-slate-500">{route.routeKey}</div>
-                        </div>
-                        <span className="rounded bg-white/10 px-2 py-1 text-xs text-slate-300">
-                          {isDefault ? "默认" : statusLabel(adminRoute?.status || "active")}
-                        </span>
-                      </div>
-                      <div className="mt-3 space-y-1 text-xs text-slate-400">
-                        <div>服务商：{route.providerName}</div>
-                        <div>预估价格：{formatCredits(route.estimatedCredits)}</div>
-                        <div>线路来源：{adminRoute?.tenantId ? "租户" : "系统"}</div>
-                      </div>
-                    </button>
-                  );
-                })}
-                {routes.length === 0 ? (
-                  <div className="rounded border border-dashed border-white/10 p-5 text-sm text-slate-400">
-                    这个模型当前没有可用线路。
+            <div className="mt-4 space-y-4">
+              <div className="rounded border border-white/10 bg-black/20">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-white/10 text-sm">
+                    <thead className="bg-white/[0.03] text-left text-xs uppercase tracking-[0.18em] text-slate-500">
+                      <tr>
+                        <th className="px-4 py-3">线路</th>
+                        <th className="px-4 py-3">连接</th>
+                        <th className="px-4 py-3">上游模型</th>
+                        <th className="px-4 py-3">API 模式</th>
+                        <th className="px-4 py-3">预估价格</th>
+                        <th className="px-4 py-3">状态</th>
+                        <th className="px-4 py-3">来源</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/10">
+                      {routeRows.map((item) => {
+                        const isSelected = item.route.routeId === selectedRouteId;
+                        return (
+                          <tr
+                            className={`cursor-pointer ${
+                              isSelected ? "bg-sky-400/10" : "hover:bg-white/[0.04]"
+                            }`}
+                            key={item.route.routeId}
+                            onClick={() => {
+                              setSelectedRouteId(item.route.routeId);
+                              setRouteTest(null);
+                              setCreatePanelOpen(false);
+                            }}
+                          >
+                            <td className="px-4 py-3 align-top">
+                              <div className="font-medium text-white">
+                                {item.route.routeLabel || item.route.routeKey}
+                              </div>
+                              <div className="mt-1 text-xs text-slate-500">{item.route.routeKey}</div>
+                              {item.isDefault ? (
+                                <span className="mt-2 inline-flex rounded bg-sky-400/15 px-2 py-1 text-[11px] text-sky-200">
+                                  默认线路
+                                </span>
+                              ) : null}
+                            </td>
+                            <td className="px-4 py-3 align-top text-slate-300">
+                              <div>{item.connection?.name || "-"}</div>
+                              <div className="mt-1 text-xs text-slate-500">
+                                {item.connection?.environment || item.route.providerName}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 align-top text-slate-300">
+                              {item.adminRoute?.upstreamModel || "-"}
+                            </td>
+                            <td className="px-4 py-3 align-top text-slate-300">
+                              {item.adminRoute?.apiMode || "-"}
+                            </td>
+                            <td className="px-4 py-3 align-top text-slate-300">
+                              {formatCredits(item.route.estimatedCredits)}
+                            </td>
+                            <td className="px-4 py-3 align-top text-slate-300">
+                              {statusLabel(item.adminRoute?.status || "active")}
+                            </td>
+                            <td className="px-4 py-3 align-top text-slate-300">
+                              {routeSourceLabel(item.adminRoute)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                {routeRows.length === 0 ? (
+                  <div className="border-t border-dashed border-white/10 p-5 text-sm text-slate-400">
+                    这个模型当前没有可用线路。请先到高级配置页完成首条线路初始化。
                   </div>
                 ) : null}
               </div>
 
-              <div className="rounded border border-white/10 bg-black/20 p-4">
-                {selectedCatalogRoute && selectedAdminRoute ? (
-                  <div className="space-y-5">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <div className="text-xs tracking-[0.18em] text-slate-500">当前线路</div>
-                        <h3 className="mt-1 text-base font-semibold text-white">
-                          {selectedCatalogRoute.routeLabel || selectedCatalogRoute.routeKey}
-                        </h3>
-                        <div className="mt-1 text-xs text-slate-500">{selectedCatalogRoute.routeKey}</div>
-                      </div>
-                      <span className="rounded bg-white/10 px-2 py-1 text-xs text-slate-300">
-                        {selectedModel.defaultRouteKey === selectedCatalogRoute.routeKey
-                          ? "默认线路"
-                          : selectedAdminRoute.tenantId
-                            ? "租户线路"
-                            : "系统线路"}
-                      </span>
-                    </div>
-
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <label className="block">
-                        <span className="mb-1.5 block text-xs font-medium text-slate-400">显示线路名称</span>
-                        <input
-                          className={inputClass}
-                          disabled={!selectedAdminRoute.tenantId}
-                          onChange={(event) =>
-                            setEditor((current) => ({ ...current, routeLabel: event.target.value }))
-                          }
-                          value={editor.routeLabel}
-                        />
-                      </label>
-                      <label className="block">
-                        <span className="mb-1.5 block text-xs font-medium text-slate-400">内部备注名</span>
-                        <input
-                          className={inputClass}
-                          disabled={!selectedAdminRoute.tenantId}
-                          onChange={(event) =>
-                            setEditor((current) => ({ ...current, internalLabel: event.target.value }))
-                          }
-                          value={editor.internalLabel}
-                        />
-                      </label>
-                      <label className="block">
-                        <span className="mb-1.5 block text-xs font-medium text-slate-400">运行连接</span>
-                        <select
-                          className={selectClass}
-                          disabled={!selectedAdminRoute.tenantId}
-                          onChange={(event) =>
-                            setEditor((current) => ({ ...current, connectionId: event.target.value }))
-                          }
-                          value={editor.connectionId}
-                        >
-                          <option value="">请选择连接</option>
-                          {editorConnections.map((connection) => (
-                            <option key={connection.id} value={connection.id}>
-                              {connection.name} / {connection.environment}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label className="block">
-                        <span className="mb-1.5 block text-xs font-medium text-slate-400">上游模型</span>
-                        <input
-                          className={inputClass}
-                          disabled={!selectedAdminRoute.tenantId}
-                          onChange={(event) =>
-                            setEditor((current) => ({ ...current, upstreamModel: event.target.value }))
-                          }
-                          value={editor.upstreamModel}
-                        />
-                      </label>
-                      <label className="block">
-                        <span className="mb-1.5 block text-xs font-medium text-slate-400">API 模式</span>
-                        <input
-                          className={inputClass}
-                          disabled={!selectedAdminRoute.tenantId}
-                          onChange={(event) =>
-                            setEditor((current) => ({ ...current, apiMode: event.target.value }))
-                          }
-                          value={editor.apiMode}
-                        />
-                      </label>
-                      <label className="block">
-                        <span className="mb-1.5 block text-xs font-medium text-slate-400">请求路径</span>
-                        <input
-                          className={inputClass}
-                          disabled={!selectedAdminRoute.tenantId}
-                          onChange={(event) =>
-                            setEditor((current) => ({ ...current, requestPath: event.target.value }))
-                          }
-                          value={editor.requestPath}
-                        />
-                      </label>
-                      <label className="block md:col-span-2">
-                        <span className="mb-1.5 block text-xs font-medium text-slate-400">管理备注</span>
-                        <textarea
-                          className="min-h-[96px] w-full rounded border border-white/10 bg-black/25 px-3 py-2 text-sm text-white outline-none placeholder:text-slate-500 focus:border-sky-300/50"
-                          disabled={!selectedAdminRoute.tenantId}
-                          onChange={(event) =>
-                            setEditor((current) => ({ ...current, adminNotes: event.target.value }))
-                          }
-                          value={editor.adminNotes}
-                        />
-                      </label>
-                      <label className="block">
-                        <span className="mb-1.5 block text-xs font-medium text-slate-400">线路状态</span>
-                        <select
-                          className={selectClass}
-                          disabled={!selectedAdminRoute.tenantId}
-                          onChange={(event) =>
-                            setEditor((current) => ({
-                              ...current,
-                              status: event.target.value as "active" | "inactive",
-                            }))
-                          }
-                          value={editor.status}
-                        >
-                          <option value="active">启用</option>
-                          <option value="inactive">停用</option>
-                        </select>
-                      </label>
-                      <div className="rounded border border-white/10 bg-white/[0.03] p-3">
-                        <div className="text-xs text-slate-500">当前凭证</div>
-                        <div className="mt-1 text-sm font-medium text-white">
-                          {selectedCredential ? `${selectedCredential.name} ${selectedCredential.maskedSecret}` : "-"}
-                        </div>
+              {createPanelOpen && createEditor ? (
+                <div className="rounded border border-sky-300/25 bg-sky-400/10 p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-medium text-white">新增线路</div>
+                      <div className="mt-1 text-xs text-slate-300">
+                        基于当前模型已有线路复制出一条新线路，再单独调整连接、上游模型和 API 模式。
                       </div>
                     </div>
-
-                    <div className="rounded border border-white/10 bg-white/[0.03] p-4">
-                      <div className="mb-3 text-sm font-medium text-white">线路操作</div>
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          className={buttonClass}
-                          disabled={!canManage || testingRouteId === selectedCatalogRoute.routeId}
-                          onClick={() => void handleTestRoute(selectedCatalogRoute)}
-                          type="button"
-                        >
-                          {testingRouteId === selectedCatalogRoute.routeId ? (
-                            <Loader2 className="animate-spin" size={14} />
-                          ) : (
-                            <FlaskConical size={14} />
-                          )}
-                          测试
-                        </button>
-                        <button
-                          className={buttonClass}
-                          disabled={!canManage || savingRouteId === selectedAdminRoute.id || !selectedAdminRoute.tenantId}
-                          onClick={() => void handleSaveRoute()}
-                          type="button"
-                        >
-                          {savingRouteId === selectedAdminRoute.id ? (
-                            <Loader2 className="animate-spin" size={14} />
-                          ) : (
-                            <Save size={14} />
-                          )}
-                          保存
-                        </button>
-                        <button
-                          className={buttonClass}
-                          disabled={!canManage || actionRouteId === selectedAdminRoute.id}
-                          onClick={() => void handleDuplicateRoute()}
-                          type="button"
-                        >
-                          {actionRouteId === selectedAdminRoute.id ? (
-                            <Loader2 className="animate-spin" size={14} />
-                          ) : (
-                            <Copy size={14} />
-                          )}
-                          复制
-                        </button>
-                        <button
-                          className={buttonClass}
-                          disabled={
-                            !canManage ||
-                            actionRouteId === selectedAdminRoute.id ||
-                            selectedModel.defaultRouteKey === selectedCatalogRoute.routeKey
-                          }
-                          onClick={() => void handleSetDefaultRoute()}
-                          type="button"
-                        >
-                          <ArrowRightLeft size={14} />
-                          设为默认
-                        </button>
-                        <button
-                          className="inline-flex h-9 items-center gap-2 rounded border border-red-300/25 bg-red-500/10 px-3 text-sm text-red-100 hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-                          disabled={
-                            !canManage ||
-                            actionRouteId === selectedAdminRoute.id ||
-                            !selectedAdminRoute.tenantId
-                          }
-                          onClick={() => void handleDeleteRoute()}
-                          type="button"
-                        >
-                          <Trash2 size={14} />
-                          删除
-                        </button>
-                        <button
-                          className={buttonClass}
-                          onClick={() => navigate(ACCOUNT_PROVIDER_SETTINGS_ROUTE)}
-                          type="button"
-                        >
-                          <Settings2 size={14} />
-                          底层资源页
-                        </button>
-                      </div>
-                    </div>
-
-                    {routeTest ? (
-                      <div className="rounded border border-white/10 bg-black/30 p-4">
-                        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                          <div className="font-medium text-white">
-                            最近测试：{routeTest.status === "ok" ? "成功" : "失败"}
-                          </div>
-                          <div className="text-xs text-slate-400">{routeTest.latencyMs} ms</div>
-                        </div>
-                        <JsonPreview
-                          value={routeTest.status === "ok" ? routeTest.responseSummary : routeTest.error}
-                        />
-                      </div>
-                    ) : null}
+                    <button
+                      className={buttonClass}
+                      onClick={() => {
+                        setCreatePanelOpen(false);
+                        setCreateEditor(null);
+                      }}
+                      type="button"
+                    >
+                      取消
+                    </button>
                   </div>
-                ) : (
-                  <div className="p-6 text-sm text-slate-400">请选择一条线路。</div>
-                )}
+
+                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                    <label className="block">
+                      <span className="mb-1.5 block text-xs font-medium text-slate-300">线路 Key</span>
+                      <input
+                        className={inputClass}
+                        onChange={(event) =>
+                          setCreateEditor((current) =>
+                            current ? { ...current, routeKey: event.target.value } : current,
+                          )
+                        }
+                        value={createEditor.routeKey}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1.5 block text-xs font-medium text-slate-300">显示线路名称</span>
+                      <input
+                        className={inputClass}
+                        onChange={(event) =>
+                          setCreateEditor((current) =>
+                            current ? { ...current, routeLabel: event.target.value } : current,
+                          )
+                        }
+                        value={createEditor.routeLabel}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1.5 block text-xs font-medium text-slate-300">内部备注名称</span>
+                      <input
+                        className={inputClass}
+                        onChange={(event) =>
+                          setCreateEditor((current) =>
+                            current ? { ...current, internalLabel: event.target.value } : current,
+                          )
+                        }
+                        value={createEditor.internalLabel}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1.5 block text-xs font-medium text-slate-300">运行连接</span>
+                      <select
+                        className={selectClass}
+                        onChange={(event) =>
+                          setCreateEditor((current) =>
+                            current ? { ...current, connectionId: event.target.value } : current,
+                          )
+                        }
+                        value={createEditor.connectionId}
+                      >
+                        <option value="">请选择连接</option>
+                        {createConnections.map((connection) => (
+                          <option key={connection.id} value={connection.id}>
+                            {connection.name} / {connection.environment}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="block">
+                      <span className="mb-1.5 block text-xs font-medium text-slate-300">上游模型</span>
+                      <input
+                        className={inputClass}
+                        onChange={(event) =>
+                          setCreateEditor((current) =>
+                            current ? { ...current, upstreamModel: event.target.value } : current,
+                          )
+                        }
+                        value={createEditor.upstreamModel}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1.5 block text-xs font-medium text-slate-300">API 模式</span>
+                      <input
+                        className={inputClass}
+                        onChange={(event) =>
+                          setCreateEditor((current) =>
+                            current ? { ...current, apiMode: event.target.value } : current,
+                          )
+                        }
+                        value={createEditor.apiMode}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1.5 block text-xs font-medium text-slate-300">请求路径</span>
+                      <input
+                        className={inputClass}
+                        onChange={(event) =>
+                          setCreateEditor((current) =>
+                            current ? { ...current, requestPath: event.target.value } : current,
+                          )
+                        }
+                        value={createEditor.requestPath}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1.5 block text-xs font-medium text-slate-300">线路状态</span>
+                      <select
+                        className={selectClass}
+                        onChange={(event) =>
+                          setCreateEditor((current) =>
+                            current
+                              ? { ...current, status: event.target.value as "active" | "inactive" }
+                              : current,
+                          )
+                        }
+                        value={createEditor.status}
+                      >
+                        <option value="active">启用</option>
+                        <option value="inactive">停用</option>
+                      </select>
+                    </label>
+                    <label className="block md:col-span-2">
+                      <span className="mb-1.5 block text-xs font-medium text-slate-300">管理备注</span>
+                      <textarea
+                        className={textareaClass}
+                        onChange={(event) =>
+                          setCreateEditor((current) =>
+                            current ? { ...current, adminNotes: event.target.value } : current,
+                          )
+                        }
+                        value={createEditor.adminNotes}
+                      />
+                    </label>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <button
+                      className={buttonClass}
+                      disabled={!canManage || creatingRoute}
+                      onClick={() => void handleCreateRoute()}
+                      type="button"
+                    >
+                      {creatingRoute ? <Loader2 className="animate-spin" size={14} /> : <Plus size={14} />}
+                      创建线路
+                    </button>
+                    <button
+                      className={buttonClass}
+                      onClick={() => navigate(ACCOUNT_PROVIDER_SETTINGS_ROUTE)}
+                      type="button"
+                    >
+                      <Settings2 size={14} />
+                      去高级配置页
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_320px]">
+                <div className="rounded border border-white/10 bg-black/20 p-4">
+                  {selectedCatalogRoute && selectedAdminRoute ? (
+                    <div className="space-y-5">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <div className="text-xs tracking-[0.18em] text-slate-500">当前线路</div>
+                          <h3 className="mt-1 text-base font-semibold text-white">
+                            {selectedCatalogRoute.routeLabel || selectedCatalogRoute.routeKey}
+                          </h3>
+                          <div className="mt-1 text-xs text-slate-500">{selectedCatalogRoute.routeKey}</div>
+                        </div>
+                        <span className="rounded bg-white/10 px-2 py-1 text-xs text-slate-300">
+                          {selectedRouteRow?.isDefault ? "默认线路" : routeSourceLabel(selectedAdminRoute)}
+                        </span>
+                      </div>
+
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <label className="block">
+                          <span className="mb-1.5 block text-xs font-medium text-slate-400">显示线路名称</span>
+                          <input
+                            className={inputClass}
+                            disabled={!selectedAdminRoute.tenantId}
+                            onChange={(event) =>
+                              setEditor((current) => ({ ...current, routeLabel: event.target.value }))
+                            }
+                            value={editor.routeLabel}
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="mb-1.5 block text-xs font-medium text-slate-400">内部备注名称</span>
+                          <input
+                            className={inputClass}
+                            disabled={!selectedAdminRoute.tenantId}
+                            onChange={(event) =>
+                              setEditor((current) => ({ ...current, internalLabel: event.target.value }))
+                            }
+                            value={editor.internalLabel}
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="mb-1.5 block text-xs font-medium text-slate-400">运行连接</span>
+                          <select
+                            className={selectClass}
+                            disabled={!selectedAdminRoute.tenantId}
+                            onChange={(event) =>
+                              setEditor((current) => ({ ...current, connectionId: event.target.value }))
+                            }
+                            value={editor.connectionId}
+                          >
+                            <option value="">请选择连接</option>
+                            {selectedProviderConnections.map((connection) => (
+                              <option key={connection.id} value={connection.id}>
+                                {connection.name} / {connection.environment}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="block">
+                          <span className="mb-1.5 block text-xs font-medium text-slate-400">上游模型</span>
+                          <input
+                            className={inputClass}
+                            disabled={!selectedAdminRoute.tenantId}
+                            onChange={(event) =>
+                              setEditor((current) => ({ ...current, upstreamModel: event.target.value }))
+                            }
+                            value={editor.upstreamModel}
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="mb-1.5 block text-xs font-medium text-slate-400">API 模式</span>
+                          <input
+                            className={inputClass}
+                            disabled={!selectedAdminRoute.tenantId}
+                            onChange={(event) =>
+                              setEditor((current) => ({ ...current, apiMode: event.target.value }))
+                            }
+                            value={editor.apiMode}
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="mb-1.5 block text-xs font-medium text-slate-400">请求路径</span>
+                          <input
+                            className={inputClass}
+                            disabled={!selectedAdminRoute.tenantId}
+                            onChange={(event) =>
+                              setEditor((current) => ({ ...current, requestPath: event.target.value }))
+                            }
+                            value={editor.requestPath}
+                          />
+                        </label>
+                        <label className="block md:col-span-2">
+                          <span className="mb-1.5 block text-xs font-medium text-slate-400">管理备注</span>
+                          <textarea
+                            className={textareaClass}
+                            disabled={!selectedAdminRoute.tenantId}
+                            onChange={(event) =>
+                              setEditor((current) => ({ ...current, adminNotes: event.target.value }))
+                            }
+                            value={editor.adminNotes}
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="mb-1.5 block text-xs font-medium text-slate-400">线路状态</span>
+                          <select
+                            className={selectClass}
+                            disabled={!selectedAdminRoute.tenantId}
+                            onChange={(event) =>
+                              setEditor((current) => ({
+                                ...current,
+                                status: event.target.value as "active" | "inactive",
+                              }))
+                            }
+                            value={editor.status}
+                          >
+                            <option value="active">启用</option>
+                            <option value="inactive">停用</option>
+                          </select>
+                        </label>
+                        <div className="rounded border border-white/10 bg-white/[0.03] p-3">
+                          <div className="text-xs text-slate-500">当前凭证</div>
+                          <div className="mt-1 text-sm font-medium text-white">
+                            {selectedCredential
+                              ? `${selectedCredential.name} ${selectedCredential.maskedSecret}`
+                              : "-"}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="rounded border border-white/10 bg-white/[0.03] p-4">
+                        <div className="mb-3 text-sm font-medium text-white">线路操作</div>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            className={buttonClass}
+                            disabled={!canManage || testingRouteId === selectedCatalogRoute.routeId}
+                            onClick={() => void handleTestRoute(selectedCatalogRoute)}
+                            type="button"
+                          >
+                            {testingRouteId === selectedCatalogRoute.routeId ? (
+                              <Loader2 className="animate-spin" size={14} />
+                            ) : (
+                              <FlaskConical size={14} />
+                            )}
+                            测试
+                          </button>
+                          <button
+                            className={buttonClass}
+                            disabled={!canManage || savingRouteId === selectedAdminRoute.id || !selectedAdminRoute.tenantId}
+                            onClick={() => void handleSaveRoute()}
+                            type="button"
+                          >
+                            {savingRouteId === selectedAdminRoute.id ? (
+                              <Loader2 className="animate-spin" size={14} />
+                            ) : (
+                              <Save size={14} />
+                            )}
+                            保存
+                          </button>
+                          <button
+                            className={buttonClass}
+                            disabled={!canManage || actionRouteId === selectedAdminRoute.id}
+                            onClick={() => void handleDuplicateRoute()}
+                            type="button"
+                          >
+                            {actionRouteId === selectedAdminRoute.id ? (
+                              <Loader2 className="animate-spin" size={14} />
+                            ) : (
+                              <Copy size={14} />
+                            )}
+                            复制
+                          </button>
+                          <button
+                            className={buttonClass}
+                            disabled={
+                              !canManage ||
+                              actionRouteId === selectedAdminRoute.id ||
+                              selectedRouteRow?.isDefault
+                            }
+                            onClick={() => void handleSetDefaultRoute()}
+                            type="button"
+                          >
+                            <ArrowRightLeft size={14} />
+                            设为默认
+                          </button>
+                          <button
+                            className={buttonClass}
+                            disabled={!canManage || actionRouteId === selectedAdminRoute.id || !selectedAdminRoute.tenantId}
+                            onClick={() => void handleDisableRoute()}
+                            type="button"
+                          >
+                            <Activity size={14} />
+                            {selectedAdminRoute.status === "inactive" ? "启用线路" : "停用线路"}
+                          </button>
+                          <button
+                            className="inline-flex h-9 items-center gap-2 rounded border border-red-300/25 bg-red-500/10 px-3 text-sm text-red-100 hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                            disabled={
+                              !canManage ||
+                              actionRouteId === selectedAdminRoute.id ||
+                              !selectedAdminRoute.tenantId
+                            }
+                            onClick={() => void handleDeleteRoute()}
+                            type="button"
+                          >
+                            <Trash2 size={14} />
+                            删除
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-6 text-sm text-slate-400">请选择一条线路。</div>
+                  )}
+                </div>
+
+                <div className="space-y-4">
+                  <div className="rounded border border-white/10 bg-black/20 p-4">
+                    <div className="text-sm font-medium text-white">线路概览</div>
+                    <div className="mt-4 grid gap-2 text-sm text-slate-300">
+                      <div className="rounded border border-white/10 bg-white/[0.03] px-3 py-2">
+                        连接：{selectedConnection?.name || "-"}
+                      </div>
+                      <div className="rounded border border-white/10 bg-white/[0.03] px-3 py-2">
+                        服务商：{selectedCatalogRoute?.providerName || "-"}
+                      </div>
+                      <div className="rounded border border-white/10 bg-white/[0.03] px-3 py-2">
+                        上游模型：{selectedAdminRoute?.upstreamModel || "-"}
+                      </div>
+                      <div className="rounded border border-white/10 bg-white/[0.03] px-3 py-2">
+                        API 模式：{selectedAdminRoute?.apiMode || "-"}
+                      </div>
+                      <div className="rounded border border-white/10 bg-white/[0.03] px-3 py-2">
+                        请求路径：{selectedAdminRoute?.requestPath || "-"}
+                      </div>
+                      <div className="rounded border border-white/10 bg-white/[0.03] px-3 py-2">
+                        健康状态：{formatHealthLabel(selectedAdminRoute?.healthStatus)}
+                      </div>
+                      <div className="rounded border border-white/10 bg-white/[0.03] px-3 py-2">
+                        预估价格：{formatCredits(selectedCatalogRoute?.estimatedCredits ?? null)}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded border border-white/10 bg-black/20 p-4">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <div className="text-sm font-medium text-white">测试结果</div>
+                      {routeTest ? (
+                        <div className="text-xs text-slate-400">{routeTest.latencyMs} ms</div>
+                      ) : null}
+                    </div>
+                    {routeTest ? (
+                      <div className="space-y-3">
+                        <div className="rounded border border-white/10 bg-white/[0.03] p-3">
+                          <div className="mb-2 text-xs uppercase tracking-[0.18em] text-slate-500">
+                            请求摘要
+                          </div>
+                          <JsonPreview value={routeTest.requestSummary} />
+                        </div>
+                        <div className="rounded border border-white/10 bg-white/[0.03] p-3">
+                          <div className="mb-2 text-xs uppercase tracking-[0.18em] text-slate-500">
+                            {routeTest.status === "ok" ? "响应摘要" : "错误详情"}
+                          </div>
+                          <JsonPreview value={routeTest.status === "ok" ? routeTest.responseSummary : routeTest.error} />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-sm text-slate-400">选择一条线路后点击测试，这里会显示最近一次结果。</div>
+                    )}
+                  </div>
+
+                  <div className="rounded border border-white/10 bg-black/20 p-4">
+                    <div className="text-sm font-medium text-white">职责边界</div>
+                    <div className="mt-3 space-y-2 text-sm leading-6 text-slate-400">
+                      <p>模型中心负责产品模型和线路的日常管理。</p>
+                      <p>高级配置页只维护服务商、API Key、连接、底层资源和初始化数据。</p>
+                    </div>
+                    <button
+                      className="mt-4 inline-flex h-9 items-center gap-2 rounded border border-white/10 bg-white/10 px-3 text-sm text-white hover:bg-white/15"
+                      onClick={() => navigate(ACCOUNT_PROVIDER_SETTINGS_ROUTE)}
+                      type="button"
+                    >
+                      <Settings2 size={14} />
+                      打开高级配置页
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           ) : (
