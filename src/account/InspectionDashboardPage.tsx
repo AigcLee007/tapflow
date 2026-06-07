@@ -40,6 +40,42 @@ type InspectionIssue = {
 const buttonClass =
   "inline-flex h-9 items-center gap-2 rounded border border-white/10 bg-white/10 px-3 text-sm text-white hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50";
 
+function readStringRecordValue(value: unknown, keys: string[]): string | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  for (const key of keys) {
+    const item = record[key];
+    if (typeof item === "string" && item.trim()) return item.trim();
+  }
+  return null;
+}
+
+function getRouteConnectionId(route: AdminRoute): string | null {
+  return (
+    route.connectionId ??
+    readStringRecordValue(route as unknown as Record<string, unknown>, ["connection_id"]) ??
+    readStringRecordValue(route.requestConfig, ["connectionId", "connection_id"]) ??
+    null
+  );
+}
+
+function getRouteCredentialId(route: AdminRoute): string | null {
+  return (
+    route.credentialId ??
+    readStringRecordValue(route as unknown as Record<string, unknown>, ["credential_id"]) ??
+    readStringRecordValue(route.requestConfig, ["credentialId", "credential_id"]) ??
+    null
+  );
+}
+
+function hasLegacyDirectRuntime(route: AdminRoute): boolean {
+  return Boolean(
+    getRouteCredentialId(route) ||
+      route.baseUrlOverride ||
+      readStringRecordValue(route.requestConfig, ["baseUrl", "base_url"]),
+  );
+}
+
 function navigate(path: string) {
   window.history.pushState(null, "", path);
   window.dispatchEvent(new PopStateEvent("popstate"));
@@ -279,7 +315,7 @@ export function InspectionDashboardPage() {
   }, [catalogRoutes, routes]);
   const liveConnections = useMemo(() => {
     const liveConnectionIds = new Set(
-      liveAdminRoutes.map((route) => route.connectionId).filter(Boolean) as string[],
+      liveAdminRoutes.map((route) => getRouteConnectionId(route)).filter(Boolean) as string[],
     );
     return connections.filter((connection) => liveConnectionIds.has(connection.id));
   }, [connections, liveAdminRoutes]);
@@ -287,6 +323,14 @@ export function InspectionDashboardPage() {
     const liveProviderIds = new Set(liveAdminRoutes.map((route) => route.providerId));
     return providers.filter((provider) => liveProviderIds.has(provider.id));
   }, [liveAdminRoutes, providers]);
+  const liveConnectionBackedRoutes = useMemo(
+    () => liveAdminRoutes.filter((route) => Boolean(getRouteConnectionId(route))),
+    [liveAdminRoutes],
+  );
+  const liveLegacyDirectRoutes = useMemo(
+    () => liveAdminRoutes.filter((route) => !getRouteConnectionId(route) && hasLegacyDirectRuntime(route)),
+    [liveAdminRoutes],
+  );
 
   const issues = useMemo<InspectionIssue[]>(() => {
     const nextIssues: InspectionIssue[] = [];
@@ -306,14 +350,16 @@ export function InspectionDashboardPage() {
 
     for (const route of liveAdminRoutes) {
       const provider = providerById.get(route.providerId) ?? null;
-      const connection = route.connectionId ? connectionById.get(route.connectionId) ?? null : null;
+      const connectionId = getRouteConnectionId(route);
+      const directCredentialId = getRouteCredentialId(route);
+      const connection = connectionId ? connectionById.get(connectionId) ?? null : null;
       const credential = connection?.credentialId
         ? credentialById.get(connection.credentialId) ?? null
-        : route.credentialId
-          ? credentialById.get(route.credentialId) ?? null
+        : directCredentialId
+          ? credentialById.get(directCredentialId) ?? null
           : null;
 
-      if (!connection) {
+      if (!connection && !hasLegacyDirectRuntime(route)) {
         nextIssues.push({
           id: `route-connection:${route.id}`,
           severity: "blocking",
@@ -379,13 +425,16 @@ export function InspectionDashboardPage() {
     }
 
     for (const provider of liveProviders) {
+      const providerHasRuntime =
+        liveConnections.some((connection) => connection.providerId === provider.id) ||
+        liveLegacyDirectRoutes.some((route) => route.providerId === provider.id);
       const providerConnections = liveConnections.filter(
         (connection) => connection.providerId === provider.id,
       );
       if (providerConnections.length === 0) {
         nextIssues.push({
           id: `provider-connections:${provider.id}`,
-          severity: "warning",
+          severity: providerHasRuntime ? "warning" : "blocking",
           title: `${provider.name} 没有启用中的连接`,
           description: "这个服务商已经存在，但当前没有任何可用连接，后面新增线路时会卡住。",
           actionHref: buildProviderSettingsLink({ providerId: provider.id }),
@@ -407,7 +456,7 @@ export function InspectionDashboardPage() {
     }
 
     for (const connection of liveConnections) {
-      const usedRoutes = liveAdminRoutes.filter((route) => route.connectionId === connection.id);
+      const usedRoutes = liveAdminRoutes.filter((route) => getRouteConnectionId(route) === connection.id);
       if (usedRoutes.length === 0) {
         nextIssues.push({
           id: `connection-unused:${connection.id}`,
@@ -459,7 +508,7 @@ export function InspectionDashboardPage() {
     }
 
     return nextIssues;
-  }, [activeCatalogItems, connectionById, credentialById, credentials, liveAdminRoutes, liveConnections, liveProviders, models, providerById, routes]);
+  }, [activeCatalogItems, connectionById, credentialById, credentials, liveAdminRoutes, liveConnections, liveLegacyDirectRoutes, liveProviders, models, providerById, routes]);
 
   const blockingIssues = useMemo(
     () => issues.filter((issue) => issue.severity === "blocking"),
@@ -472,16 +521,20 @@ export function InspectionDashboardPage() {
 
   const checklistItems = useMemo(() => {
     const modelsMissingDefault = activeCatalogItems.filter((item) => !item.defaultRouteKey).length;
-    const routesMissingConnection = liveAdminRoutes.filter((route) => !route.connectionId).length;
+    const routesMissingRuntime = liveAdminRoutes.filter(
+      (route) => !getRouteConnectionId(route) && !hasLegacyDirectRuntime(route),
+    ).length;
     const routesMissingCredential = liveAdminRoutes.filter((route) => {
-      const connection = route.connectionId ? connectionById.get(route.connectionId) ?? null : null;
+      const connectionId = getRouteConnectionId(route);
+      const connection = connectionId ? connectionById.get(connectionId) ?? null : null;
       if (!connection) return false;
-      const credentialId = connection.credentialId ?? route.credentialId ?? null;
+      const credentialId = connection.credentialId ?? getRouteCredentialId(route) ?? null;
       return !credentialId;
     }).length;
     const providersMissingConnection = liveProviders.filter(
       (provider) =>
-        !liveConnections.some((connection) => connection.providerId === provider.id),
+        !liveConnections.some((connection) => connection.providerId === provider.id) &&
+        !liveLegacyDirectRoutes.some((route) => route.providerId === provider.id),
     ).length;
 
     return [
@@ -495,12 +548,12 @@ export function InspectionDashboardPage() {
         href: ACCOUNT_AI_SETTINGS_ROUTE,
       },
       {
-        label: "启用线路都已绑定连接",
-        ok: routesMissingConnection === 0,
+        label: "\u4e0a\u7ebf\u7ebf\u8def\u90fd\u6709\u8fd0\u884c\u914d\u7f6e",
+        ok: routesMissingRuntime === 0,
         details:
-          routesMissingConnection === 0
-            ? "当前启用线路都已经有运行连接。"
-            : `还有 ${routesMissingConnection} 条启用线路没有连接。`,
+          routesMissingRuntime === 0
+            ? "\u5f53\u524d\u4e0a\u7ebf\u7ebf\u8def\u90fd\u6709\u8fde\u63a5\u5bf9\u8c61\u6216\u65e7\u5f0f\u76f4\u8fde\u914d\u7f6e\u3002"
+            : `\u8fd8\u6709 ${routesMissingRuntime} \u6761\u4e0a\u7ebf\u7ebf\u8def\u7f3a\u5c11\u8fd0\u884c\u914d\u7f6e\u3002`,
         href: ACCOUNT_AI_SETTINGS_ROUTE,
       },
       {
@@ -584,9 +637,10 @@ export function InspectionDashboardPage() {
         </div>
       </header>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
         <MetricCard label="上线服务商" value={liveProviders.length} />
-        <MetricCard label="上线连接" value={liveConnections.length} />
+        <MetricCard label={"\u8fde\u63a5\u5bf9\u8c61\u7ebf\u8def"} value={liveConnectionBackedRoutes.length} />
+        <MetricCard label={"\u65e7\u5f0f\u76f4\u8fde\u7ebf\u8def"} value={liveLegacyDirectRoutes.length} />
         <MetricCard label="上线线路" value={liveAdminRoutes.length} />
         <MetricCard label="阻塞异常" tone={blockingIssues.length > 0 ? "danger" : "success"} value={blockingIssues.length} />
         <MetricCard label="提醒项" tone={warningIssues.length > 0 ? "default" : "success"} value={warningIssues.length} />
