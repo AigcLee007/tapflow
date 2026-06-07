@@ -19,7 +19,12 @@ import {
   type AdminProviderConnection,
   type AdminRoute,
 } from "../services/v2AiGatewayAdminApi";
-import { listAiModelCatalog, type AiModelCatalogItem } from "../services/v2AiModelCatalogApi";
+import {
+  listAiModelCatalog,
+  listAiModelRoutes,
+  type AiModelCatalogItem,
+  type AiModelCatalogRoute,
+} from "../services/v2AiModelCatalogApi";
 
 type LoadState = "idle" | "loading" | "ready" | "error";
 type IssueSeverity = "blocking" | "warning";
@@ -166,6 +171,7 @@ export function InspectionDashboardPage() {
   const [routes, setRoutes] = useState<AdminRoute[]>([]);
   const [models, setModels] = useState<AdminModel[]>([]);
   const [catalogItems, setCatalogItems] = useState<AiModelCatalogItem[]>([]);
+  const [catalogRoutes, setCatalogRoutes] = useState<AiModelCatalogRoute[]>([]);
 
   const canRead =
     permissions.includes("provider:read") ||
@@ -202,12 +208,26 @@ export function InspectionDashboardPage() {
         listAiModelCatalog("video"),
       ]);
 
+      const nextCatalogItems = [...imageCatalog, ...textCatalog, ...videoCatalog];
+      const activeCatalogModels = nextCatalogItems.filter((item) => item.status === "active");
+      const routeGroups = await Promise.all(
+        activeCatalogModels.map((item) => listAiModelRoutes(item.modelKey)),
+      );
+      const nextCatalogRoutes = Array.from(
+        new Map(
+          routeGroups
+            .flat()
+            .map((route) => [route.routeId, route] as const),
+        ).values(),
+      );
+
       setProviders(nextProviders);
       setCredentials(nextCredentials);
       setConnections(nextConnections);
       setRoutes(nextRoutes);
       setModels(nextModels);
-      setCatalogItems([...imageCatalog, ...textCatalog, ...videoCatalog]);
+      setCatalogItems(nextCatalogItems);
+      setCatalogRoutes(nextCatalogRoutes);
       setState("ready");
     } catch (cause) {
       setState("error");
@@ -248,6 +268,25 @@ export function InspectionDashboardPage() {
     () => catalogItems.filter((item) => item.status === "active"),
     [catalogItems],
   );
+  const liveAdminRoutes = useMemo(() => {
+    const liveRouteIds = new Set(catalogRoutes.map((route) => route.routeId));
+    return routes.filter(
+      (route) =>
+        route.status === "active" &&
+        !route.deletedAt &&
+        liveRouteIds.has(route.id),
+    );
+  }, [catalogRoutes, routes]);
+  const liveConnections = useMemo(() => {
+    const liveConnectionIds = new Set(
+      liveAdminRoutes.map((route) => route.connectionId).filter(Boolean) as string[],
+    );
+    return connections.filter((connection) => liveConnectionIds.has(connection.id));
+  }, [connections, liveAdminRoutes]);
+  const liveProviders = useMemo(() => {
+    const liveProviderIds = new Set(liveAdminRoutes.map((route) => route.providerId));
+    return providers.filter((provider) => liveProviderIds.has(provider.id));
+  }, [liveAdminRoutes, providers]);
 
   const issues = useMemo<InspectionIssue[]>(() => {
     const nextIssues: InspectionIssue[] = [];
@@ -265,7 +304,7 @@ export function InspectionDashboardPage() {
       }
     }
 
-    for (const route of activeRoutes) {
+    for (const route of liveAdminRoutes) {
       const provider = providerById.get(route.providerId) ?? null;
       const connection = route.connectionId ? connectionById.get(route.connectionId) ?? null : null;
       const credential = connection?.credentialId
@@ -339,8 +378,8 @@ export function InspectionDashboardPage() {
       }
     }
 
-    for (const provider of activeProviders) {
-      const providerConnections = activeConnections.filter(
+    for (const provider of liveProviders) {
+      const providerConnections = liveConnections.filter(
         (connection) => connection.providerId === provider.id,
       );
       if (providerConnections.length === 0) {
@@ -367,8 +406,8 @@ export function InspectionDashboardPage() {
       }
     }
 
-    for (const connection of activeConnections) {
-      const usedRoutes = activeRoutes.filter((route) => route.connectionId === connection.id);
+    for (const connection of liveConnections) {
+      const usedRoutes = liveAdminRoutes.filter((route) => route.connectionId === connection.id);
       if (usedRoutes.length === 0) {
         nextIssues.push({
           id: `connection-unused:${connection.id}`,
@@ -420,7 +459,7 @@ export function InspectionDashboardPage() {
     }
 
     return nextIssues;
-  }, [activeCatalogItems, activeConnections, activeProviders, activeRoutes, connectionById, credentialById, credentials, models, providerById, routes]);
+  }, [activeCatalogItems, connectionById, credentialById, credentials, liveAdminRoutes, liveConnections, liveProviders, models, providerById, routes]);
 
   const blockingIssues = useMemo(
     () => issues.filter((issue) => issue.severity === "blocking"),
@@ -433,16 +472,16 @@ export function InspectionDashboardPage() {
 
   const checklistItems = useMemo(() => {
     const modelsMissingDefault = activeCatalogItems.filter((item) => !item.defaultRouteKey).length;
-    const routesMissingConnection = activeRoutes.filter((route) => !route.connectionId).length;
-    const routesMissingCredential = activeRoutes.filter((route) => {
+    const routesMissingConnection = liveAdminRoutes.filter((route) => !route.connectionId).length;
+    const routesMissingCredential = liveAdminRoutes.filter((route) => {
       const connection = route.connectionId ? connectionById.get(route.connectionId) ?? null : null;
       if (!connection) return false;
       const credentialId = connection.credentialId ?? route.credentialId ?? null;
       return !credentialId;
     }).length;
-    const providersMissingConnection = activeProviders.filter(
+    const providersMissingConnection = liveProviders.filter(
       (provider) =>
-        !activeConnections.some((connection) => connection.providerId === provider.id),
+        !liveConnections.some((connection) => connection.providerId === provider.id),
     ).length;
 
     return [
@@ -483,7 +522,7 @@ export function InspectionDashboardPage() {
         href: ACCOUNT_PROVIDER_SETTINGS_ROUTE,
       },
     ];
-  }, [activeCatalogItems, activeConnections, activeProviders, activeRoutes, connectionById]);
+  }, [activeCatalogItems, connectionById, liveAdminRoutes, liveConnections, liveProviders]);
 
   if (state === "loading" || state === "idle") {
     return (
@@ -546,9 +585,9 @@ export function InspectionDashboardPage() {
       </header>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <MetricCard label="启用服务商" value={activeProviders.length} />
-        <MetricCard label="启用连接" value={activeConnections.length} />
-        <MetricCard label="启用线路" value={activeRoutes.length} />
+        <MetricCard label="上线服务商" value={liveProviders.length} />
+        <MetricCard label="上线连接" value={liveConnections.length} />
+        <MetricCard label="上线线路" value={liveAdminRoutes.length} />
         <MetricCard label="阻塞异常" tone={blockingIssues.length > 0 ? "danger" : "success"} value={blockingIssues.length} />
         <MetricCard label="提醒项" tone={warningIssues.length > 0 ? "default" : "success"} value={warningIssues.length} />
       </div>
