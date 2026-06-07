@@ -68,11 +68,8 @@ function MetricCard({ label, value }: { label: string; value: number | string })
 
 export function TemplateLibraryPage() {
   const { permissions } = useAuth();
-  const canRead =
-    permissions.includes("provider:read") ||
-    permissions.includes("provider:manage") ||
-    permissions.includes("credential:manage");
-  const canManage = permissions.includes("provider:manage");
+  const canRead = permissions.includes("admin:system");
+  const canManage = permissions.includes("admin:system");
 
   const [state, setState] = useState<LoadState>("idle");
   const [activeModality, setActiveModality] = useState<AiPluginModality>("image");

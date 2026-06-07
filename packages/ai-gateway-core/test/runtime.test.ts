@@ -1119,7 +1119,7 @@ describe("redaction", () => {
 });
 
 describe("route resolver and ai gateway", () => {
-  test("tenant route overrides system route for the same key", () => {
+  test("system route overrides tenant route for the same key", () => {
     const resolver = new RouteResolver();
     const selected = resolver.resolveTextRoute({
       routeKey: "shared",
@@ -1138,7 +1138,7 @@ describe("route resolver and ai gateway", () => {
       ],
     });
 
-    expect(selected.routeId).toBe("tenant-route");
+    expect(selected.routeId).toBe("system-route");
   });
 
   test("ai gateway generateText delegates to the adapter for the selected route", async () => {

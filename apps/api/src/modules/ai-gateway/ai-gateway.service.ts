@@ -36,6 +36,8 @@ type TenantContext = {
   userId: string | null;
 };
 
+const PLATFORM_TENANT_ID: string | null = null;
+
 type ProviderRecord = {
   capabilities: Record<string, unknown>;
   created_at: string;
@@ -104,6 +106,10 @@ type RouteRecord = {
 
 type RuntimeRouteRecord = {
   auth_tag: Buffer | null;
+  connection_adapter_kind: string | null;
+  connection_base_url: string | null;
+  connection_id: string | null;
+  connection_name: string | null;
   credential_id: string | null;
   default_base_url: string | null;
   encrypted_secret: Buffer | null;
@@ -114,11 +120,14 @@ type RuntimeRouteRecord = {
   provider_id: string;
   provider_key: string;
   provider_kind: string;
+  provider_name: string | null;
   request_config: Record<string, unknown>;
   route_id: string;
   route_key: string;
+  route_label: string | null;
   route_status: string;
   route_tenant_id: string | null;
+  upstream_model: string | null;
   weight: number;
   base_url_override: string | null;
 };
@@ -576,8 +585,11 @@ export class AiGatewayAdminService {
             created_at::text AS created_at,
             updated_at::text AS updated_at
           FROM ai_provider_connections
-          WHERE tenant_id = $1::uuid
-          ORDER BY created_at ASC, id ASC
+          WHERE tenant_id IS NULL OR tenant_id = $1::uuid
+          ORDER BY
+            CASE WHEN tenant_id IS NULL THEN 0 ELSE 1 END ASC,
+            created_at ASC,
+            id ASC
         `,
         [context.tenantId],
       );
@@ -593,7 +605,7 @@ export class AiGatewayAdminService {
     return withTenantTransaction(context, async (client) => {
       await this.ensureProviderExists(input.providerId, client);
       if (input.credentialId) {
-        await this.ensureCredentialExists(input.credentialId, client, context.tenantId);
+        await this.ensurePlatformCredentialExists(input.credentialId, client);
       }
 
       try {
@@ -643,7 +655,7 @@ export class AiGatewayAdminService {
               updated_at::text AS updated_at
           `,
           [
-            context.tenantId,
+            PLATFORM_TENANT_ID,
             input.providerId,
             input.credentialId ?? null,
             input.name.trim(),
@@ -696,9 +708,13 @@ export class AiGatewayAdminService {
   ): Promise<ProviderConnectionView> {
     return withTenantTransaction(context, async (client) => {
       const existing = await this.getProviderConnectionRow(client, connectionId);
-      this.assertTenantOwnedProviderConnection(existing, context.tenantId);
+      this.assertAdminManageableProviderConnection(existing, context.tenantId);
       if (input.credentialId) {
-        await this.ensureCredentialExists(input.credentialId, client, context.tenantId);
+        if (!existing.tenant_id) {
+          await this.ensurePlatformCredentialExists(input.credentialId, client);
+        } else {
+          await this.ensureCredentialExists(input.credentialId, client, context.tenantId);
+        }
       }
 
       const result = await client.query<ProviderConnectionRecord>(
@@ -1085,12 +1101,18 @@ export class AiGatewayAdminService {
       await this.ensureProviderExists(input.providerId, client);
       const model = input.modelId ? await this.getModelRow(client, input.modelId) : null;
       if (input.credentialId) {
-        await this.ensureCredentialExists(input.credentialId, client, context.tenantId);
+        await this.ensurePlatformCredentialExists(input.credentialId, client);
       }
       let connection = null;
       if (input.connectionId) {
         connection = await this.getProviderConnectionRow(client, input.connectionId);
-        this.assertTenantOwnedProviderConnection(connection, context.tenantId);
+        if (connection.tenant_id) {
+          throw new AiGatewayApiError(
+            400,
+            "PLATFORM_CONNECTION_REQUIRED",
+            "Platform routes must use a platform-level provider connection",
+          );
+        }
         if (connection.provider_id !== input.providerId) {
           throw new AiGatewayApiError(
             400,
@@ -1127,7 +1149,7 @@ export class AiGatewayAdminService {
       await this.ensureCatalogModelFamilyExists(client, {
         modality: input.modality.trim(),
         modelFamily: normalizedModelFamily,
-        tenantId: context.tenantId,
+        tenantId: PLATFORM_TENANT_ID,
       });
 
       const environment = connection?.environment ?? "production";
@@ -1230,7 +1252,7 @@ export class AiGatewayAdminService {
               updated_at::text AS updated_at
           `,
           [
-            context.tenantId,
+            PLATFORM_TENANT_ID,
             input.providerId,
             input.modelId ?? null,
             normalizedModelFamily,
@@ -1259,7 +1281,7 @@ export class AiGatewayAdminService {
 
         const route = mapRoute(result.rows[0]);
         if (route.isDefault) {
-          await this.applyDefaultRouteState(client, context.tenantId, route);
+          await this.applyDefaultRouteState(client, PLATFORM_TENANT_ID, route);
         }
         await safeRecordAuditLog(
           {
@@ -1301,17 +1323,31 @@ export class AiGatewayAdminService {
   ): Promise<RouteView> {
     return withTenantTransaction(context, async (client) => {
       const existing = await this.getRouteRow(client, routeId);
-      this.assertTenantOwnedRoute(existing, context.tenantId);
+      this.assertAdminManageableRoute(existing, context.tenantId);
+      const routeTenantId = existing.tenant_id ?? PLATFORM_TENANT_ID;
       const modelId = input.modelId !== undefined ? input.modelId : existing.model_id;
       const model = modelId ? await this.getModelRow(client, modelId) : null;
       if (input.credentialId) {
-        await this.ensureCredentialExists(input.credentialId, client, context.tenantId);
+        if (!routeTenantId) {
+          await this.ensurePlatformCredentialExists(input.credentialId, client);
+        } else {
+          await this.ensureCredentialExists(input.credentialId, client, routeTenantId);
+        }
       }
       const nextConnectionId = input.connectionId !== undefined ? input.connectionId : existing.connection_id;
       let connection = null;
       if (nextConnectionId) {
         connection = await this.getProviderConnectionRow(client, nextConnectionId);
-        this.assertTenantOwnedProviderConnection(connection, context.tenantId);
+        if (!routeTenantId && connection.tenant_id) {
+          throw new AiGatewayApiError(
+            400,
+            "PLATFORM_CONNECTION_REQUIRED",
+            "Platform routes must use a platform-level provider connection",
+          );
+        }
+        if (routeTenantId) {
+          this.assertAdminManageableProviderConnection(connection, context.tenantId);
+        }
       }
       const nextEnvironment = connection?.environment ?? existing.environment ?? "production";
       const nextModelFamily = model?.model_key ?? existing.model_family ?? null;
@@ -1415,9 +1451,9 @@ export class AiGatewayAdminService {
 
       const route = mapRoute(row);
       if (route.isDefault) {
-        await this.applyDefaultRouteState(client, context.tenantId, route);
+        await this.applyDefaultRouteState(client, routeTenantId, route);
       } else if (existing.is_default && !route.isDefault) {
-        await this.clearCatalogDefaultForRoute(client, context.tenantId, existing.route_key);
+        await this.clearCatalogDefaultForRoute(client, routeTenantId, existing.route_key);
       }
       await safeRecordAuditLog(
         {
@@ -1457,7 +1493,7 @@ export class AiGatewayAdminService {
   ): Promise<RouteView> {
     return withTenantTransaction(context, async (client) => {
       const existing = await this.getRouteRow(client, routeId);
-      this.assertTenantOwnedRoute(existing, context.tenantId);
+      this.assertAdminManageableRoute(existing, context.tenantId);
 
       const duplicateInput: CreateRouteInput = {
         adminNotes: existing.admin_notes,
@@ -1500,7 +1536,8 @@ export class AiGatewayAdminService {
   async setDefaultRoute(context: TenantContext, routeId: string): Promise<RouteView> {
     return withTenantTransaction(context, async (client) => {
       const route = await this.getRouteRow(client, routeId);
-      this.assertTenantOwnedRoute(route, context.tenantId);
+      this.assertAdminManageableRoute(route, context.tenantId);
+      const routeTenantId = route.tenant_id ?? PLATFORM_TENANT_ID;
       if (route.deleted_at) {
         throw new AiGatewayApiError(409, "ROUTE_DELETED", "Route has been deleted");
       }
@@ -1552,7 +1589,7 @@ export class AiGatewayAdminService {
       );
 
       const nextRoute = mapRoute(updated.rows[0]);
-      await this.applyDefaultRouteState(client, context.tenantId, nextRoute);
+      await this.applyDefaultRouteState(client, routeTenantId, nextRoute);
       return nextRoute;
     }, this.pool);
   }
@@ -1560,7 +1597,8 @@ export class AiGatewayAdminService {
   async deleteRoute(context: TenantContext, routeId: string): Promise<{ ok: true }> {
     return withTenantTransaction(context, async (client) => {
       const existing = await this.getRouteRow(client, routeId);
-      this.assertTenantOwnedRoute(existing, context.tenantId);
+      this.assertAdminManageableRoute(existing, context.tenantId);
+      const routeTenantId = existing.tenant_id ?? PLATFORM_TENANT_ID;
 
       if (existing.is_default) {
         throw new AiGatewayApiError(
@@ -1582,7 +1620,7 @@ export class AiGatewayAdminService {
         [routeId],
       );
 
-      await this.clearCatalogDefaultForRoute(client, context.tenantId, existing.route_key);
+      await this.clearCatalogDefaultForRoute(client, routeTenantId, existing.route_key);
       await safeRecordAuditLog(
         {
           action: "ai.route.delete",
@@ -1631,8 +1669,11 @@ export class AiGatewayAdminService {
             updated_at::text AS updated_at
           FROM api_credentials
           WHERE status <> 'deleted'
-            AND tenant_id = $1::uuid
-          ORDER BY created_at ASC, id ASC
+            AND (tenant_id IS NULL OR tenant_id = $1::uuid)
+          ORDER BY
+            CASE WHEN tenant_id IS NULL THEN 0 ELSE 1 END ASC,
+            created_at ASC,
+            id ASC
         `,
         [context.tenantId],
       );
@@ -1696,7 +1737,7 @@ export class AiGatewayAdminService {
               updated_at::text AS updated_at
           `,
           [
-            context.tenantId,
+            PLATFORM_TENANT_ID,
             input.providerId,
             input.name.trim(),
             encrypted.encryptedSecret,
@@ -1747,7 +1788,7 @@ export class AiGatewayAdminService {
   ): Promise<CredentialResponseView> {
     return withTenantTransaction(context, async (client) => {
       const existing = await this.getCredentialRow(client, credentialId);
-      this.assertTenantOwnedCredential(existing, context.tenantId);
+      this.assertAdminManageableCredential(existing, context.tenantId);
       const result = await client.query<CredentialRecord>(
         `
           UPDATE api_credentials
@@ -1791,7 +1832,7 @@ export class AiGatewayAdminService {
   ): Promise<CredentialResponseView> {
     return withTenantTransaction(context, async (client) => {
       const existing = await this.getCredentialRow(client, credentialId);
-      this.assertTenantOwnedCredential(existing, context.tenantId);
+      this.assertAdminManageableCredential(existing, context.tenantId);
       const encrypted = this.credentialVault.rotateCredential(secret);
       const result = await client.query<CredentialRecord>(
         `
@@ -1865,7 +1906,7 @@ export class AiGatewayAdminService {
   async deleteCredential(context: TenantContext, credentialId: string): Promise<{ ok: true }> {
     return withTenantTransaction(context, async (client) => {
       const existing = await this.getCredentialRow(client, credentialId);
-      this.assertTenantOwnedCredential(existing, context.tenantId);
+      this.assertAdminManageableCredential(existing, context.tenantId);
       const result = await client.query<{ id: string }>(
         `
           UPDATE api_credentials
@@ -1911,13 +1952,13 @@ export class AiGatewayAdminService {
   ): Promise<{ ok: true }> {
     return withTenantTransaction(context, async (client) => {
       const existing = await this.getProviderConnectionRow(client, connectionId);
-      this.assertTenantOwnedProviderConnection(existing, context.tenantId);
+      this.assertAdminManageableProviderConnection(existing, context.tenantId);
 
       const inUse = await client.query<{ id: string }>(
         `
           SELECT id::text AS id
           FROM ai_routes
-          WHERE tenant_id = $1::uuid
+          WHERE (tenant_id IS NULL OR tenant_id = $1::uuid)
             AND (
               connection_id = $2::uuid
               OR request_config->>'connectionId' = $2::text
@@ -2036,14 +2077,18 @@ export class AiGatewayAdminService {
     input: {
       modality: string;
       modelFamily: string;
-      tenantId: string;
+      tenantId: string | null;
     },
   ): Promise<void> {
     const result = await client.query<{ id: string }>(
       `
         SELECT id::text AS id
         FROM ai_model_catalog
-        WHERE (tenant_id = $1::uuid OR tenant_id IS NULL)
+        WHERE (
+            ($1::uuid IS NULL AND tenant_id IS NULL)
+            OR tenant_id = $1::uuid
+            OR tenant_id IS NULL
+          )
           AND modality = $2::text
           AND model_family = $3::text
           AND status = 'active'
@@ -2065,7 +2110,7 @@ export class AiGatewayAdminService {
   private async ensureCredentialExists(
     credentialId: string,
     client: PoolClient,
-    tenantId?: string,
+    tenantId?: string | null,
   ): Promise<void> {
     const result = await client.query<{ id: string }>(
       `
@@ -2081,6 +2126,31 @@ export class AiGatewayAdminService {
 
     if (!result.rows[0]?.id) {
       throw new AiGatewayApiError(404, "CREDENTIAL_NOT_FOUND", "Credential not found");
+    }
+  }
+
+  private async ensurePlatformCredentialExists(
+    credentialId: string,
+    client: PoolClient,
+  ): Promise<void> {
+    const result = await client.query<{ id: string }>(
+      `
+        SELECT id::text AS id
+        FROM api_credentials
+        WHERE id = $1::uuid
+          AND tenant_id IS NULL
+          AND status <> 'deleted'
+        LIMIT 1
+      `,
+      [credentialId],
+    );
+
+    if (!result.rows[0]?.id) {
+      throw new AiGatewayApiError(
+        404,
+        "PLATFORM_CREDENTIAL_NOT_FOUND",
+        "Platform routes must use a platform-level credential",
+      );
     }
   }
 
@@ -2136,7 +2206,7 @@ export class AiGatewayAdminService {
 
   private async applyDefaultRouteState(
     client: PoolClient,
-    tenantId: string,
+    tenantId: string | null,
     route: RouteView,
   ): Promise<void> {
     if (!route.modelFamily) {
@@ -2149,7 +2219,10 @@ export class AiGatewayAdminService {
         SET
           is_default = CASE WHEN id = $4::uuid THEN true ELSE false END,
           updated_at = CASE WHEN id = $4::uuid THEN updated_at ELSE now() END
-        WHERE tenant_id = $1::uuid
+        WHERE (
+            ($1::uuid IS NULL AND tenant_id IS NULL)
+            OR tenant_id = $1::uuid
+          )
           AND modality = $2::text
           AND model_family = $3::text
           AND environment = $5::text
@@ -2164,7 +2237,10 @@ export class AiGatewayAdminService {
         SET
           default_route_key = $3::text,
           updated_at = now()
-        WHERE tenant_id = $1::uuid
+        WHERE (
+            ($1::uuid IS NULL AND tenant_id IS NULL)
+            OR tenant_id = $1::uuid
+          )
           AND modality = $2::text
           AND model_family = $4::text
       `,
@@ -2174,7 +2250,7 @@ export class AiGatewayAdminService {
 
   private async clearCatalogDefaultForRoute(
     client: PoolClient,
-    tenantId: string,
+    tenantId: string | null,
     routeKey: string,
   ): Promise<void> {
     await client.query(
@@ -2183,7 +2259,10 @@ export class AiGatewayAdminService {
         SET
           default_route_key = NULL,
           updated_at = now()
-        WHERE tenant_id = $1::uuid
+        WHERE (
+            ($1::uuid IS NULL AND tenant_id IS NULL)
+            OR tenant_id = $1::uuid
+          )
           AND default_route_key = $2::text
       `,
       [tenantId, routeKey],
@@ -2300,8 +2379,20 @@ export class AiGatewayAdminService {
     }
   }
 
+  private assertAdminManageableRoute(route: RouteRecord, tenantId: string): void {
+    if (route.tenant_id && route.tenant_id !== tenantId) {
+      throw new AiGatewayApiError(404, "ROUTE_NOT_FOUND", "Route not found");
+    }
+  }
+
   private assertTenantOwnedCredential(row: CredentialRecord, tenantId: string): void {
     if (!row.tenant_id || row.tenant_id !== tenantId) {
+      throw new AiGatewayApiError(404, "CREDENTIAL_NOT_FOUND", "Credential not found");
+    }
+  }
+
+  private assertAdminManageableCredential(row: CredentialRecord, tenantId: string): void {
+    if (row.tenant_id && row.tenant_id !== tenantId) {
       throw new AiGatewayApiError(404, "CREDENTIAL_NOT_FOUND", "Credential not found");
     }
   }
@@ -2311,6 +2402,15 @@ export class AiGatewayAdminService {
     tenantId: string,
   ): void {
     if (!row.tenant_id || row.tenant_id !== tenantId) {
+      throw new AiGatewayApiError(404, "PROVIDER_CONNECTION_NOT_FOUND", "Provider connection not found");
+    }
+  }
+
+  private assertAdminManageableProviderConnection(
+    row: ProviderConnectionRecord,
+    tenantId: string,
+  ): void {
+    if (row.tenant_id && row.tenant_id !== tenantId) {
       throw new AiGatewayApiError(404, "PROVIDER_CONNECTION_NOT_FOUND", "Provider connection not found");
     }
   }
@@ -2348,17 +2448,25 @@ export class AiGatewayAdminService {
             r.id::text AS route_id,
             r.tenant_id::text AS route_tenant_id,
             r.route_key,
+            r.route_label,
             r.status AS route_status,
             r.priority,
             r.weight,
+            r.connection_id::text AS connection_id,
+            r.api_mode,
+            r.upstream_model,
             r.base_url_override,
             r.request_config,
             p.id::text AS provider_id,
             p.key AS provider_key,
+            p.name AS provider_name,
             p.kind AS provider_kind,
             p.default_base_url,
             m.id::text AS model_id,
             m.model_key,
+            pc.adapter_kind AS connection_adapter_kind,
+            pc.base_url AS connection_base_url,
+            pc.name AS connection_name,
             c.id::text AS credential_id,
             c.encrypted_secret,
             c.nonce,
@@ -2368,8 +2476,10 @@ export class AiGatewayAdminService {
             ON p.id = r.provider_id
           LEFT JOIN ai_models m
             ON m.id = r.model_id
+          LEFT JOIN ai_provider_connections pc
+            ON pc.id = r.connection_id
           LEFT JOIN api_credentials c
-            ON c.id = r.credential_id
+            ON c.id = COALESCE(r.credential_id, pc.credential_id)
            AND c.status <> 'deleted'
           WHERE r.modality = 'text'
             AND r.status = 'active'
@@ -2377,7 +2487,7 @@ export class AiGatewayAdminService {
             AND (r.model_id IS NULL OR m.status = 'active')
             AND ($1::text IS NULL OR r.route_key = $1)
           ORDER BY
-            CASE WHEN r.tenant_id IS NULL THEN 1 ELSE 0 END ASC,
+            CASE WHEN r.tenant_id IS NULL THEN 0 ELSE 1 END ASC,
             r.priority ASC,
             r.weight DESC,
             r.created_at ASC,
@@ -2387,7 +2497,11 @@ export class AiGatewayAdminService {
       );
 
       return result.rows.map((row) => {
-        const baseUrl = row.base_url_override?.trim() || row.default_base_url?.trim() || "";
+        const baseUrl =
+          row.base_url_override?.trim() ||
+          row.connection_base_url?.trim() ||
+          row.default_base_url?.trim() ||
+          "";
         if (!baseUrl) {
           throw new AiGatewayError({
             code: "PROVIDER_BAD_REQUEST",
@@ -2404,6 +2518,11 @@ export class AiGatewayAdminService {
             id: row.credential_id,
             nonce: row.nonce,
           },
+          connection: {
+            adapterKind: row.connection_adapter_kind,
+            id: row.connection_id,
+            name: row.connection_name,
+          },
           model: {
             id: row.model_id,
             modelKey: row.model_key,
@@ -2414,12 +2533,15 @@ export class AiGatewayAdminService {
             id: row.provider_id,
             key: row.provider_key,
             kind: row.provider_kind,
+            name: row.provider_name,
           },
           requestConfig: row.request_config ?? {},
           routeId: row.route_id,
           routeKey: row.route_key,
+          routeLabel: row.route_label,
           status: row.route_status,
           tenantId: row.route_tenant_id,
+          upstreamModel: row.upstream_model,
           weight: row.weight,
         } satisfies ResolvedRoute;
       });

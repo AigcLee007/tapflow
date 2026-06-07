@@ -47,11 +47,11 @@ export class RouteResolver {
         return right.weight - left.weight;
       }
 
-      if (left.tenantId && !right.tenantId) {
+      if (!left.tenantId && right.tenantId) {
         return -1;
       }
 
-      if (!left.tenantId && right.tenantId) {
+      if (left.tenantId && !right.tenantId) {
         return 1;
       }
 
@@ -85,7 +85,7 @@ export class RouteResolver {
         continue;
       }
 
-      if (route.tenantId && !existing.tenantId) {
+      if (!route.tenantId && existing.tenantId) {
         byRouteKey.set(route.routeKey, route);
       }
     }

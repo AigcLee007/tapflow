@@ -218,12 +218,9 @@ export function ProviderSettingsPage() {
   );
   const [rotateSecret, setRotateSecret] = useState("");
 
-  const canRead =
-    permissions.includes("provider:read") ||
-    permissions.includes("provider:manage") ||
-    permissions.includes("credential:manage");
-  const canManage = permissions.includes("provider:manage");
-  const canManageCredentials = permissions.includes("credential:manage");
+  const canRead = permissions.includes("admin:system");
+  const canManage = permissions.includes("admin:system");
+  const canManageCredentials = permissions.includes("admin:system");
 
   const connectionRows = useMemo<ConnectionRow[]>(
     () =>

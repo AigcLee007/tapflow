@@ -22,6 +22,8 @@ type RuntimeContext = {
 type RuntimeRouteRecord = {
   api_mode: string | null;
   auth_tag: Buffer | null;
+  connection_adapter_kind: string | null;
+  connection_base_url: string | null;
   connection_id: string | null;
   connection_name: string | null;
   credential_id: string | null;
@@ -246,6 +248,8 @@ export class DatabaseTextGenerationRuntime {
             p.default_base_url,
             m.id::text AS model_id,
             m.model_key,
+            pc.adapter_kind AS connection_adapter_kind,
+            pc.base_url AS connection_base_url,
             pc.name AS connection_name,
             c.id::text AS credential_id,
             c.encrypted_secret,
@@ -259,7 +263,7 @@ export class DatabaseTextGenerationRuntime {
           LEFT JOIN ai_provider_connections pc
             ON pc.id = r.connection_id
           LEFT JOIN api_credentials c
-            ON c.id = r.credential_id
+            ON c.id = COALESCE(r.credential_id, pc.credential_id)
            AND c.status <> 'deleted'
           WHERE r.modality = 'text'
             AND r.status = 'active'
@@ -277,7 +281,11 @@ export class DatabaseTextGenerationRuntime {
       );
 
       return result.rows.map((row) => {
-        const baseUrl = row.base_url_override?.trim() || row.default_base_url?.trim() || "";
+        const baseUrl =
+          row.base_url_override?.trim() ||
+          row.connection_base_url?.trim() ||
+          row.default_base_url?.trim() ||
+          "";
         if (!baseUrl) {
           throw new AiGatewayError({
             code: "PROVIDER_BAD_REQUEST",
@@ -295,7 +303,7 @@ export class DatabaseTextGenerationRuntime {
             nonce: row.nonce,
           },
           connection: {
-            adapterKind: row.api_mode,
+            adapterKind: row.api_mode ?? row.connection_adapter_kind,
             id: row.connection_id,
             name: row.connection_name,
           },

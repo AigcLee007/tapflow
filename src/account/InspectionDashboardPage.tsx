@@ -209,10 +209,7 @@ export function InspectionDashboardPage() {
   const [catalogItems, setCatalogItems] = useState<AiModelCatalogItem[]>([]);
   const [catalogRoutes, setCatalogRoutes] = useState<AiModelCatalogRoute[]>([]);
 
-  const canRead =
-    permissions.includes("provider:read") ||
-    permissions.includes("provider:manage") ||
-    permissions.includes("credential:manage");
+  const canRead = permissions.includes("admin:system");
 
   const refresh = useCallback(async () => {
     if (!canRead) {

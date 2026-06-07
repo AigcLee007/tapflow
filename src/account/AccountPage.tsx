@@ -40,10 +40,7 @@ function statusLabel(status?: string | null) {
 
 export function AccountPage() {
   const { loading, logout, permissions, refreshMe, roles, tenant, user } = useAuth();
-  const canManageProviderSettings =
-    permissions.includes("provider:read") ||
-    permissions.includes("provider:manage") ||
-    permissions.includes("credential:manage");
+  const canManageProviderSettings = permissions.includes("admin:system");
 
   if (loading && !user) {
     return (

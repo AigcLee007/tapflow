@@ -94,13 +94,12 @@ function handleRouteError(
 
 export function registerAiPluginAdminRoutes(app: FastifyInstance): void {
   const authHandlers = [requireAuth, requireTenant];
-  const readHandlers = [...authHandlers, requirePermission("provider:read")];
-  const manageHandlers = [...authHandlers, requirePermission("provider:manage")];
+  const systemAdminHandlers = [...authHandlers, requirePermission("admin:system")];
 
   app.get(
     "/api/v2/admin/ai/plugins",
     {
-      preHandler: readHandlers,
+      preHandler: systemAdminHandlers,
     },
     async (request, reply) => {
       try {
@@ -115,7 +114,7 @@ export function registerAiPluginAdminRoutes(app: FastifyInstance): void {
   app.get(
     "/api/v2/admin/ai/plugins/:packageKey",
     {
-      preHandler: readHandlers,
+      preHandler: systemAdminHandlers,
     },
     async (request, reply) => {
       try {
@@ -130,7 +129,7 @@ export function registerAiPluginAdminRoutes(app: FastifyInstance): void {
   app.post(
     "/api/v2/admin/ai/plugins/:packageKey/install",
     {
-      preHandler: manageHandlers,
+      preHandler: systemAdminHandlers,
     },
     async (request, reply) => {
       try {
@@ -152,7 +151,7 @@ export function registerAiPluginAdminRoutes(app: FastifyInstance): void {
   app.post(
     "/api/v2/admin/ai/plugins/:installId/publish",
     {
-      preHandler: manageHandlers,
+      preHandler: systemAdminHandlers,
     },
     async (request, reply) => {
       try {
@@ -167,7 +166,7 @@ export function registerAiPluginAdminRoutes(app: FastifyInstance): void {
   app.post(
     "/api/v2/admin/ai/plugins/:installId/disable",
     {
-      preHandler: manageHandlers,
+      preHandler: systemAdminHandlers,
     },
     async (request, reply) => {
       try {

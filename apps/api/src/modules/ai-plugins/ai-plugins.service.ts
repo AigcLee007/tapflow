@@ -22,6 +22,8 @@ type TenantContext = {
   userId: string | null;
 };
 
+const PLATFORM_TENANT_ID: string | null = null;
+
 type PluginInstallRecord = {
   credential_id: string | null;
   disabled_at: string | null;
@@ -127,7 +129,7 @@ export class AiPluginService {
       const packageId = await this.upsertPluginPackage(client, manifest);
       const providerId = await this.upsertProvider(client, manifest, input.baseUrlOverride ?? undefined);
       const modelIdsByKey = await this.upsertModels(client, manifest, providerId);
-      const existingInstall = await this.getInstallByPackageId(client, context.tenantId, packageId);
+      const existingInstall = await this.getInstallByPackageId(client, PLATFORM_TENANT_ID, packageId);
       const credentialId = await this.resolveCredentialId(
         client,
         context,
@@ -164,14 +166,14 @@ export class AiPluginService {
         modelIdsByKey,
         providerId,
         status: status === "published" ? "active" : "inactive",
-        tenantId: context.tenantId,
+        tenantId: PLATFORM_TENANT_ID,
       });
       const catalogModelKeys = await this.upsertCatalog(client, {
         installId: install.id,
         manifest,
         modelIdsByKey,
         status: status === "published" ? "active" : "inactive",
-        tenantId: context.tenantId,
+        tenantId: PLATFORM_TENANT_ID,
       });
       await this.upsertPricing(client, manifest, input);
 
@@ -219,7 +221,7 @@ export class AiPluginService {
     status: "disabled" | "published",
   ): Promise<InstalledPluginView> {
     return withTenantTransaction(context, async (client) => {
-      const row = await this.getInstallById(client, context.tenantId, installId);
+      const row = await this.getInstallById(client, PLATFORM_TENANT_ID, installId);
       const routeStatus = status === "published" ? "active" : "inactive";
       const catalogStatus = routeStatus;
       const result = await client.query<PluginInstallRecord>(
@@ -231,7 +233,10 @@ export class AiPluginService {
             disabled_at = CASE WHEN $3 = 'disabled' THEN now() ELSE NULL END,
             updated_at = now()
           WHERE id = $1::uuid
-            AND tenant_id = $2::uuid
+            AND (
+              ($2::uuid IS NULL AND tenant_id IS NULL)
+              OR tenant_id = $2::uuid
+            )
           RETURNING
             id::text AS id,
             package_id::text AS package_id,
@@ -244,33 +249,39 @@ export class AiPluginService {
             published_at::text AS published_at,
             disabled_at::text AS disabled_at
         `,
-        [installId, context.tenantId, status],
+        [installId, PLATFORM_TENANT_ID, status],
       );
 
       await client.query(
         `
           UPDATE ai_routes
           SET status = $2, updated_at = now()
-          WHERE tenant_id = $1::uuid
+          WHERE (
+              ($1::uuid IS NULL AND tenant_id IS NULL)
+              OR tenant_id = $1::uuid
+            )
             AND plugin_install_id = $3::uuid
         `,
-        [context.tenantId, routeStatus, installId],
+        [PLATFORM_TENANT_ID, routeStatus, installId],
       );
       await client.query(
         `
           UPDATE ai_model_catalog
           SET status = $2, updated_at = now()
-          WHERE tenant_id = $1::uuid
+          WHERE (
+              ($1::uuid IS NULL AND tenant_id IS NULL)
+              OR tenant_id = $1::uuid
+            )
             AND plugin_install_id = $3::uuid
         `,
-        [context.tenantId, catalogStatus, installId],
+        [PLATFORM_TENANT_ID, catalogStatus, installId],
       );
 
       const view = this.mapInstall(result.rows[0] ?? row);
       return {
         ...view,
-        catalogModelKeys: await this.listCatalogModelKeys(client, context.tenantId, installId),
-        routeKeys: await this.listRouteKeys(client, context.tenantId, installId),
+        catalogModelKeys: await this.listCatalogModelKeys(client, PLATFORM_TENANT_ID, installId),
+        routeKeys: await this.listRouteKeys(client, PLATFORM_TENANT_ID, installId),
       };
     }, this.pool);
   }
@@ -293,9 +304,9 @@ export class AiPluginService {
           FROM tenant_ai_plugin_installs AS install
           JOIN ai_plugin_packages AS package
             ON package.id = install.package_id
-          WHERE install.tenant_id = $1::uuid
+          WHERE install.tenant_id IS NULL
         `,
-        [context.tenantId],
+        [],
       );
       return new Map(result.rows.map((row) => [row.package_key, this.mapInstall(row)]));
     }, this.pool);
@@ -511,7 +522,7 @@ export class AiPluginService {
           $9::uuid,
           now()
         )
-        ON CONFLICT (tenant_id, provider_id, name) WHERE tenant_id IS NOT NULL
+        ON CONFLICT (provider_id, name) WHERE tenant_id IS NULL
         DO UPDATE SET
           encrypted_secret = EXCLUDED.encrypted_secret,
           nonce = EXCLUDED.nonce,
@@ -524,7 +535,7 @@ export class AiPluginService {
         RETURNING id::text AS id
       `,
       [
-        context.tenantId,
+        PLATFORM_TENANT_ID,
         providerId,
         name,
         encrypted.encryptedSecret,
@@ -582,7 +593,7 @@ export class AiPluginService {
           NULL,
           now()
         )
-        ON CONFLICT (tenant_id, package_id)
+        ON CONFLICT (package_id) WHERE tenant_id IS NULL
         DO UPDATE SET
           installed_version = EXCLUDED.installed_version,
           status = EXCLUDED.status,
@@ -609,7 +620,7 @@ export class AiPluginService {
           disabled_at::text AS disabled_at
       `,
       [
-        options.context.tenantId,
+        PLATFORM_TENANT_ID,
         options.packageId,
         options.version,
         options.status,
@@ -633,7 +644,7 @@ export class AiPluginService {
       modelIdsByKey: Map<string, string>;
       providerId: string;
       status: string;
-      tenantId: string;
+      tenantId: string | null;
     },
   ): Promise<string[]> {
     const routeKeys: string[] = [];
@@ -695,7 +706,7 @@ export class AiPluginService {
             $18,
             now()
           )
-          ON CONFLICT (tenant_id, route_key) WHERE tenant_id IS NOT NULL
+          ON CONFLICT (route_key) WHERE tenant_id IS NULL
           DO UPDATE SET
             provider_id = EXCLUDED.provider_id,
             model_id = EXCLUDED.model_id,
@@ -795,7 +806,7 @@ export class AiPluginService {
           $9::uuid,
           now()
         )
-        ON CONFLICT (tenant_id, name)
+        ON CONFLICT (name) WHERE tenant_id IS NULL
         DO UPDATE SET
           provider_id = EXCLUDED.provider_id,
           credential_id = COALESCE(EXCLUDED.credential_id, ai_provider_connections.credential_id),
@@ -808,7 +819,7 @@ export class AiPluginService {
         RETURNING id::text AS id
       `,
       [
-        options.context.tenantId,
+        PLATFORM_TENANT_ID,
         options.providerId,
         options.credentialId,
         `${options.manifest.displayName} Connection`,
@@ -835,7 +846,7 @@ export class AiPluginService {
       manifest: AiPluginManifest;
       modelIdsByKey: Map<string, string>;
       status: string;
-      tenantId: string;
+      tenantId: string | null;
     },
   ): Promise<string[]> {
     const modelKeys: string[] = [];
@@ -876,7 +887,7 @@ export class AiPluginService {
             $12,
             now()
           )
-          ON CONFLICT (tenant_id, model_key) WHERE tenant_id IS NOT NULL
+          ON CONFLICT (model_key) WHERE tenant_id IS NULL
           DO UPDATE SET
             plugin_install_id = EXCLUDED.plugin_install_id,
             model_id = EXCLUDED.model_id,
@@ -957,7 +968,7 @@ export class AiPluginService {
 
   private async getInstallByPackageId(
     client: PoolClient,
-    tenantId: string,
+    tenantId: string | null,
     packageId: string,
   ): Promise<PluginInstallRecord | null> {
     const result = await client.query<PluginInstallRecord>(
@@ -976,7 +987,10 @@ export class AiPluginService {
         FROM tenant_ai_plugin_installs AS install
         JOIN ai_plugin_packages AS package
           ON package.id = install.package_id
-        WHERE install.tenant_id = $1::uuid
+        WHERE (
+            ($1::uuid IS NULL AND install.tenant_id IS NULL)
+            OR install.tenant_id = $1::uuid
+          )
           AND install.package_id = $2::uuid
         LIMIT 1
       `,
@@ -987,7 +1001,7 @@ export class AiPluginService {
 
   private async getInstallById(
     client: PoolClient,
-    tenantId: string,
+    tenantId: string | null,
     installId: string,
   ): Promise<PluginInstallRecord> {
     const result = await client.query<PluginInstallRecord>(
@@ -1006,7 +1020,10 @@ export class AiPluginService {
         FROM tenant_ai_plugin_installs AS install
         JOIN ai_plugin_packages AS package
           ON package.id = install.package_id
-        WHERE install.tenant_id = $1::uuid
+        WHERE (
+            ($1::uuid IS NULL AND install.tenant_id IS NULL)
+            OR install.tenant_id = $1::uuid
+          )
           AND install.id = $2::uuid
         LIMIT 1
       `,
@@ -1019,12 +1036,15 @@ export class AiPluginService {
     return row;
   }
 
-  private async listRouteKeys(client: PoolClient, tenantId: string, installId: string): Promise<string[]> {
+  private async listRouteKeys(client: PoolClient, tenantId: string | null, installId: string): Promise<string[]> {
     const result = await client.query<{ route_key: string }>(
       `
         SELECT route_key
         FROM ai_routes
-        WHERE tenant_id = $1::uuid
+        WHERE (
+            ($1::uuid IS NULL AND tenant_id IS NULL)
+            OR tenant_id = $1::uuid
+          )
           AND plugin_install_id = $2::uuid
         ORDER BY route_key ASC
       `,
@@ -1033,12 +1053,15 @@ export class AiPluginService {
     return result.rows.map((row) => row.route_key);
   }
 
-  private async listCatalogModelKeys(client: PoolClient, tenantId: string, installId: string): Promise<string[]> {
+  private async listCatalogModelKeys(client: PoolClient, tenantId: string | null, installId: string): Promise<string[]> {
     const result = await client.query<{ model_key: string }>(
       `
         SELECT model_key
         FROM ai_model_catalog
-        WHERE tenant_id = $1::uuid
+        WHERE (
+            ($1::uuid IS NULL AND tenant_id IS NULL)
+            OR tenant_id = $1::uuid
+          )
           AND plugin_install_id = $2::uuid
         ORDER BY sort_order ASC, model_key ASC
       `,
