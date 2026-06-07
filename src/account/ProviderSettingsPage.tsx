@@ -1,29 +1,38 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, KeyRound, Loader2, Plus, RefreshCw, Save, Settings2 } from "lucide-react";
+import {
+  ArrowLeft,
+  FlaskConical,
+  KeyRound,
+  Loader2,
+  Plus,
+  RefreshCw,
+  Save,
+  Settings2,
+  Trash2,
+} from "lucide-react";
 
 import { ACCOUNT_ROUTE } from "../app/routes";
 import { useAuth } from "../auth/useAuth";
 import {
   createAdminCredential,
-  createAdminModel,
   createAdminProvider,
-  createAdminRoute,
+  createAdminProviderConnection,
+  deleteAdminProviderConnection,
   listAdminCredentials,
   listAdminModels,
-  listAdminPricing,
+  listAdminProviderConnections,
   listAdminProviders,
   listAdminRoutes,
   rotateAdminCredential,
   type AdminCredential,
   type AdminModel,
   type AdminProvider,
+  type AdminProviderConnection,
   type AdminRoute,
-  type AiModality,
-  type ModelPricingRow,
-  type PricingUnit,
-  updateAdminRoute,
-  upsertAdminPricing,
+  type AiResourceStatus,
+  updateAdminProviderConnection,
 } from "../services/v2AiGatewayAdminApi";
+import { testAiRoute, type AiRouteTestResult } from "../services/v2AiModelCatalogApi";
 
 type LoadState = "idle" | "loading" | "error" | "ready";
 
@@ -40,35 +49,30 @@ type CredentialForm = {
   secret: string;
 };
 
-type BundleForm = {
-  baseUrlOverride: string;
+type ConnectionFormState = {
+  adapterKind: string;
+  baseUrl: string;
   credentialId: string;
-  displayName: string;
-  minChargeCredits: string;
-  modality: AiModality;
-  modelKey: string;
+  environment: string;
+  name: string;
+  notes: string;
   providerId: string;
-  routeKey: string;
-  timeoutMs: string;
-  unitCredits: string;
+  status: AiResourceStatus;
 };
 
-const MODALITY_OPTIONS: Array<{
-  label: string;
-  value: AiModality;
-  unit: PricingUnit;
-  routePrefix: string;
-}> = [
-  { label: "文本", routePrefix: "text", unit: "text_generation", value: "text" },
-  { label: "生图", routePrefix: "image", unit: "image_generation", value: "image" },
-  { label: "视频", routePrefix: "video", unit: "video_generation", value: "video" },
-];
+type ConnectionRow = {
+  connection: AdminProviderConnection;
+  credential: AdminCredential | null;
+  provider: AdminProvider | null;
+  routes: AdminRoute[];
+};
 
 const inputClass =
   "h-10 w-full rounded border border-white/10 bg-black/25 px-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-sky-300/50";
 const selectClass =
   "h-10 w-full rounded border border-white/10 bg-black/25 px-3 text-sm text-white outline-none focus:border-sky-300/50";
-const labelClass = "mb-1.5 block text-xs font-medium text-slate-400";
+const textareaClass =
+  "min-h-[96px] w-full rounded border border-white/10 bg-black/25 px-3 py-2 text-sm text-white outline-none placeholder:text-slate-500 focus:border-sky-300/50";
 
 function navigate(path: string) {
   window.history.pushState(null, "", path);
@@ -82,68 +86,51 @@ function statusLabel(status?: string | null) {
   return status || "-";
 }
 
-function modalityLabel(modality?: string | null) {
-  return MODALITY_OPTIONS.find((item) => item.value === modality)?.label ?? modality ?? "-";
+function healthStatusLabel(status?: string | null) {
+  if (status === "ok") return "正常";
+  if (status === "failed") return "失败";
+  return statusLabel(status);
 }
 
-function pricingUnitFor(modality: AiModality): PricingUnit {
-  return MODALITY_OPTIONS.find((item) => item.value === modality)?.unit ?? "image_generation";
-}
-
-function asTimeoutMs(requestConfig: Record<string, unknown> | undefined): number {
-  const value = requestConfig?.timeoutMs;
-  if (typeof value === "number" && Number.isFinite(value) && value > 0) return Math.floor(value);
-  if (typeof value === "string") {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed) && parsed > 0) return Math.floor(parsed);
-  }
-  return 300000;
-}
-
-function providerName(providers: AdminProvider[], providerId?: string | null) {
-  const provider = providers.find((item) => item.id === providerId);
+function providerLabel(provider: AdminProvider | null) {
   return provider ? `${provider.name} (${provider.key})` : "-";
 }
 
-function modelName(models: AdminModel[], modelId?: string | null) {
-  const model = models.find((item) => item.id === modelId);
-  return model ? `${model.displayName} (${model.modelKey})` : "未绑定模型";
-}
-
-function credentialName(credentials: AdminCredential[], credentialId?: string | null) {
-  const credential = credentials.find((item) => item.id === credentialId);
+function credentialLabel(credential: AdminCredential | null) {
   return credential ? `${credential.name} ${credential.maskedSecret}` : "未绑定凭证";
 }
 
-function findPricing(
-  pricing: ModelPricingRow[],
-  provider: AdminProvider | null,
-  model: AdminModel | null,
-  route: AdminRoute | null,
-) {
-  if (!provider || !model || !route) return null;
-  const unit = pricingUnitFor(route.modality);
-  return (
-    pricing.find(
-      (item) =>
-        item.provider === provider.key &&
-        item.model === model.modelKey &&
-        item.route === route.routeKey &&
-        item.unit === unit,
-    ) ?? null
-  );
+function extractNotes(connection: AdminProviderConnection | null) {
+  const value = connection?.metadata?.notes;
+  return typeof value === "string" ? value : "";
+}
+
+function buildConnectionEditor(connection: AdminProviderConnection | null): ConnectionFormState {
+  return {
+    adapterKind: connection?.adapterKind ?? "",
+    baseUrl: connection?.baseUrl ?? "",
+    credentialId: connection?.credentialId ?? "",
+    environment: connection?.environment ?? "production",
+    name: connection?.name ?? "",
+    notes: extractNotes(connection),
+    providerId: connection?.providerId ?? "",
+    status: connection?.status === "inactive" ? "inactive" : "active",
+  };
 }
 
 function SectionCard({
   children,
   title,
+  description,
 }: {
   children: React.ReactNode;
+  description?: string;
   title: string;
 }) {
   return (
     <section className="rounded border border-white/10 bg-white/[0.04] p-5">
       <h2 className="text-lg font-semibold text-white">{title}</h2>
+      {description ? <p className="mt-1 text-sm text-slate-400">{description}</p> : null}
       {children}
     </section>
   );
@@ -158,9 +145,18 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className={labelClass}>{label}</span>
+      <span className="mb-1.5 block text-xs font-medium text-slate-400">{label}</span>
       {children}
     </label>
+  );
+}
+
+function MetricCard({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="rounded border border-white/10 bg-white/[0.04] p-4">
+      <div className="text-xs text-slate-500">{label}</div>
+      <div className="mt-2 text-2xl font-semibold text-white">{value}</div>
+    </div>
   );
 }
 
@@ -169,49 +165,46 @@ export function ProviderSettingsPage() {
   const [state, setState] = useState<LoadState>("idle");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
-  const [saving, setSaving] = useState(false);
+  const [savingProvider, setSavingProvider] = useState(false);
+  const [savingCredential, setSavingCredential] = useState(false);
+  const [savingConnection, setSavingConnection] = useState(false);
   const [rotating, setRotating] = useState(false);
+  const [testingConnectionId, setTestingConnectionId] = useState("");
+  const [actionConnectionId, setActionConnectionId] = useState("");
 
   const [providers, setProviders] = useState<AdminProvider[]>([]);
-  const [models, setModels] = useState<AdminModel[]>([]);
-  const [routes, setRoutes] = useState<AdminRoute[]>([]);
   const [credentials, setCredentials] = useState<AdminCredential[]>([]);
-  const [pricing, setPricing] = useState<ModelPricingRow[]>([]);
+  const [connections, setConnections] = useState<AdminProviderConnection[]>([]);
+  const [routes, setRoutes] = useState<AdminRoute[]>([]);
+  const [models, setModels] = useState<AdminModel[]>([]);
 
-  const [activeModality, setActiveModality] = useState<AiModality>("image");
-  const [selectedRouteId, setSelectedRouteId] = useState("");
-  const [routeBaseUrlOverride, setRouteBaseUrlOverride] = useState("");
-  const [routeModelId, setRouteModelId] = useState("");
-  const [routeCredentialId, setRouteCredentialId] = useState("");
-  const [routeTimeoutMs, setRouteTimeoutMs] = useState("300000");
-  const [routeStatus, setRouteStatus] = useState<"active" | "inactive">("active");
-  const [routeMinChargeCredits, setRouteMinChargeCredits] = useState("100");
-  const [routeUnitCredits, setRouteUnitCredits] = useState("100");
+  const [selectedConnectionId, setSelectedConnectionId] = useState("");
+  const [routeTest, setRouteTest] = useState<AiRouteTestResult | null>(null);
 
   const [providerForm, setProviderForm] = useState<ProviderForm>({
     defaultBaseUrl: "https://api.openai.com/v1",
     key: "openai-compatible",
     kind: "openai-compatible",
-    name: "OpenAI 兼容服务商",
+    name: "OpenAI Compatible",
   });
   const [credentialForm, setCredentialForm] = useState<CredentialForm>({
     name: "默认 API Key",
     providerId: "",
     secret: "",
   });
-  const [bundleForm, setBundleForm] = useState<BundleForm>({
-    baseUrlOverride: "",
+  const [createConnectionForm, setCreateConnectionForm] = useState<ConnectionFormState>({
+    adapterKind: "openai-compatible",
+    baseUrl: "",
     credentialId: "",
-    displayName: "",
-    minChargeCredits: "100",
-    modality: "image",
-    modelKey: "",
+    environment: "production",
+    name: "",
+    notes: "",
     providerId: "",
-    routeKey: "image.openai",
-    timeoutMs: "300000",
-    unitCredits: "100",
+    status: "active",
   });
-  const [rotateCredentialId, setRotateCredentialId] = useState("");
+  const [editConnectionForm, setEditConnectionForm] = useState<ConnectionFormState>(
+    buildConnectionEditor(null),
+  );
   const [rotateSecret, setRotateSecret] = useState("");
 
   const canRead =
@@ -221,35 +214,41 @@ export function ProviderSettingsPage() {
   const canManage = permissions.includes("provider:manage");
   const canManageCredentials = permissions.includes("credential:manage");
 
-  const selectedRoute = useMemo(
-    () => routes.find((route) => route.id === selectedRouteId) ?? null,
-    [routes, selectedRouteId],
+  const connectionRows = useMemo<ConnectionRow[]>(
+    () =>
+      connections.map((connection) => ({
+        connection,
+        credential:
+          credentials.find((credential) => credential.id === connection.credentialId) ?? null,
+        provider: providers.find((provider) => provider.id === connection.providerId) ?? null,
+        routes: routes.filter((route) => route.connectionId === connection.id),
+      })),
+    [connections, credentials, providers, routes],
   );
-  const selectedProvider = useMemo(
-    () => providers.find((provider) => provider.id === selectedRoute?.providerId) ?? null,
-    [providers, selectedRoute?.providerId],
+
+  const selectedConnectionRow = useMemo(
+    () => connectionRows.find((item) => item.connection.id === selectedConnectionId) ?? null,
+    [connectionRows, selectedConnectionId],
   );
-  const selectedModel = useMemo(
-    () => models.find((model) => model.id === selectedRoute?.modelId) ?? null,
-    [models, selectedRoute?.modelId],
+
+  const selectedConnection = selectedConnectionRow?.connection ?? null;
+  const selectedCredential = selectedConnectionRow?.credential ?? null;
+  const selectedProvider = selectedConnectionRow?.provider ?? null;
+  const selectedRoutes = selectedConnectionRow?.routes ?? [];
+
+  const connectionCredentialOptions = useMemo(
+    () =>
+      credentials.filter(
+        (credential) => credential.providerId === (createConnectionForm.providerId || selectedConnection?.providerId),
+      ),
+    [createConnectionForm.providerId, credentials, selectedConnection?.providerId],
   );
-  const selectedPricing = useMemo(
-    () => findPricing(pricing, selectedProvider, selectedModel, selectedRoute),
-    [pricing, selectedModel, selectedProvider, selectedRoute],
+
+  const createProviderCredentials = useMemo(
+    () =>
+      credentials.filter((credential) => credential.providerId === createConnectionForm.providerId),
+    [createConnectionForm.providerId, credentials],
   );
-  const visibleRoutes = useMemo(
-    () => routes.filter((route) => route.modality === activeModality),
-    [activeModality, routes],
-  );
-  const visibleModels = useMemo(
-    () => models.filter((model) => model.modality === activeModality),
-    [activeModality, models],
-  );
-  const providerCredentials = useMemo(
-    () => credentials.filter((item) => item.providerId === (bundleForm.providerId || selectedRoute?.providerId)),
-    [bundleForm.providerId, credentials, selectedRoute?.providerId],
-  );
-  const selectedRouteIsTenantOwned = Boolean(selectedRoute?.tenantId);
 
   const refresh = useCallback(async () => {
     if (!canRead) {
@@ -257,82 +256,68 @@ export function ProviderSettingsPage() {
       setError("当前账号没有访问高级配置的权限。");
       return;
     }
+
     setState("loading");
     setError("");
     try {
-      const [nextProviders, nextModels, nextRoutes, nextCredentials, nextPricing] = await Promise.all([
-        listAdminProviders(),
-        listAdminModels(),
-        listAdminRoutes(),
-        listAdminCredentials(),
-        listAdminPricing(),
-      ]);
-      setProviders(nextProviders);
-      setModels(nextModels);
-      setRoutes(nextRoutes);
-      setCredentials(nextCredentials);
-      setPricing(nextPricing);
+      const [nextProviders, nextCredentials, nextConnections, nextRoutes, nextModels] =
+        await Promise.all([
+          listAdminProviders(),
+          listAdminCredentials(),
+          listAdminProviderConnections(),
+          listAdminRoutes(),
+          listAdminModels(),
+        ]);
 
-      const firstProviderId = nextProviders[0]?.id ?? "";
+      setProviders(nextProviders);
+      setCredentials(nextCredentials);
+      setConnections(nextConnections);
+      setRoutes(nextRoutes);
+      setModels(nextModels);
+
+      const defaultProviderId = nextProviders[0]?.id ?? "";
       setCredentialForm((current) => ({
         ...current,
-        providerId: current.providerId || firstProviderId,
+        providerId: current.providerId || defaultProviderId,
       }));
-      setBundleForm((current) => ({
+      setCreateConnectionForm((current) => ({
         ...current,
-        credentialId: current.credentialId || nextCredentials.find((item) => item.providerId === (current.providerId || firstProviderId))?.id || "",
-        providerId: current.providerId || firstProviderId,
+        credentialId:
+          current.credentialId ||
+          nextCredentials.find((credential) => credential.providerId === (current.providerId || defaultProviderId))?.id ||
+          "",
+        providerId: current.providerId || defaultProviderId,
       }));
-      setRotateCredentialId((current) => current || nextCredentials[0]?.id || "");
 
-      const nextSelected =
-        nextRoutes.find((item) => item.id === selectedRouteId) ??
-        nextRoutes.find((item) => item.modality === activeModality && item.tenantId) ??
-        nextRoutes.find((item) => item.modality === activeModality) ??
-        nextRoutes[0] ??
-        null;
-      setSelectedRouteId(nextSelected?.id ?? "");
+      setSelectedConnectionId((current) => {
+        if (current && nextConnections.some((connection) => connection.id === current)) return current;
+        return nextConnections[0]?.id || "";
+      });
+
       setState("ready");
     } catch (cause) {
       setState("error");
       setError(cause instanceof Error ? cause.message : "高级配置数据加载失败。");
     }
-  }, [activeModality, canRead, selectedRouteId]);
+  }, [canRead]);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
   useEffect(() => {
-    if (!selectedRoute) return;
-    const nextPricing = findPricing(pricing, selectedProvider, selectedModel, selectedRoute);
-    setRouteBaseUrlOverride(selectedRoute.baseUrlOverride ?? "");
-    setRouteModelId(selectedRoute.modelId ?? "");
-    setRouteCredentialId(selectedRoute.credentialId ?? "");
-    setRouteTimeoutMs(String(asTimeoutMs(selectedRoute.requestConfig)));
-    setRouteStatus(selectedRoute.status === "inactive" ? "inactive" : "active");
-    setRouteMinChargeCredits(String(nextPricing?.minChargeCredits ?? 100));
-    setRouteUnitCredits(String(nextPricing?.unitCredits ?? nextPricing?.minChargeCredits ?? 100));
-  }, [pricing, selectedModel, selectedProvider, selectedRoute]);
-
-  useEffect(() => {
-    const option = MODALITY_OPTIONS.find((item) => item.value === bundleForm.modality);
-    if (!option) return;
-    setBundleForm((current) => ({
-      ...current,
-      routeKey:
-        current.routeKey && current.routeKey.startsWith(`${option.routePrefix}.`)
-          ? current.routeKey
-          : `${option.routePrefix}.`,
-    }));
-  }, [bundleForm.modality]);
+    setEditConnectionForm(buildConnectionEditor(selectedConnection));
+    setRouteTest(null);
+    setRotateSecret("");
+  }, [selectedConnection]);
 
   async function handleCreateProvider() {
     if (!providerForm.key.trim() || !providerForm.name.trim() || !providerForm.kind.trim()) {
       setError("请填写服务商 Key、名称和适配器类型。");
       return;
     }
-    setSaving(true);
+
+    setSavingProvider(true);
     setError("");
     setMessage("");
     try {
@@ -343,14 +328,18 @@ export function ProviderSettingsPage() {
         name: providerForm.name.trim(),
         status: "active",
       });
-      setMessage(`服务商已创建：${provider.name}`);
+      setMessage(`已创建服务商：${provider.name}`);
       setCredentialForm((current) => ({ ...current, providerId: provider.id }));
-      setBundleForm((current) => ({ ...current, providerId: provider.id }));
+      setCreateConnectionForm((current) => ({
+        ...current,
+        adapterKind: provider.kind,
+        providerId: provider.id,
+      }));
       await refresh();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "创建服务商失败。");
     } finally {
-      setSaving(false);
+      setSavingProvider(false);
     }
   }
 
@@ -359,7 +348,8 @@ export function ProviderSettingsPage() {
       setError("请选择服务商，并填写凭证名称和 API Key。");
       return;
     }
-    setSaving(true);
+
+    setSavingCredential(true);
     setError("");
     setMessage("");
     try {
@@ -370,141 +360,163 @@ export function ProviderSettingsPage() {
         status: "active",
       });
       setCredentialForm((current) => ({ ...current, secret: "" }));
-      setBundleForm((current) => ({
+      setCreateConnectionForm((current) => ({
         ...current,
         credentialId: credential.id,
         providerId: credential.providerId,
       }));
-      setRotateCredentialId(credential.id);
-      setMessage(`凭证已创建：${credential.name}`);
+      setMessage(`已创建凭证：${credential.name}`);
       await refresh();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "创建凭证失败。");
     } finally {
-      setSaving(false);
+      setSavingCredential(false);
     }
   }
 
-  async function handleCreateModelRoutePricing() {
-    const provider = providers.find((item) => item.id === bundleForm.providerId);
-    if (!provider) {
-      setError("请先选择服务商。");
+  async function handleCreateConnection() {
+    if (!createConnectionForm.providerId || !createConnectionForm.name.trim() || !createConnectionForm.adapterKind.trim()) {
+      setError("请填写连接名称、服务商和适配器类型。");
       return;
     }
-    if (!bundleForm.modelKey.trim() || !bundleForm.displayName.trim() || !bundleForm.routeKey.trim()) {
-      setError("请填写模型 ID、显示名称和线路 Key。");
-      return;
-    }
-    const minChargeCredits = Math.max(1, Number.parseInt(bundleForm.minChargeCredits, 10) || 1);
-    const unitCredits = Math.max(1, Number.parseInt(bundleForm.unitCredits, 10) || minChargeCredits);
-    const timeoutMs = Math.max(1000, Number.parseInt(bundleForm.timeoutMs, 10) || 300000);
 
-    setSaving(true);
+    setSavingConnection(true);
     setError("");
     setMessage("");
     try {
-      const model = await createAdminModel({
-        displayName: bundleForm.displayName.trim(),
-        modality: bundleForm.modality,
-        modelKey: bundleForm.modelKey.trim(),
-        providerId: provider.id,
-        status: "active",
+      const connection = await createAdminProviderConnection({
+        adapterKind: createConnectionForm.adapterKind.trim(),
+        baseUrl: createConnectionForm.baseUrl.trim() || null,
+        credentialId: createConnectionForm.credentialId || null,
+        environment: createConnectionForm.environment.trim() || "production",
+        metadata: createConnectionForm.notes.trim()
+          ? { notes: createConnectionForm.notes.trim() }
+          : {},
+        name: createConnectionForm.name.trim(),
+        providerId: createConnectionForm.providerId,
+        status: createConnectionForm.status,
       });
-      const route = await createAdminRoute({
-        baseUrlOverride: bundleForm.baseUrlOverride.trim() || null,
-        credentialId: bundleForm.credentialId || null,
-        modality: bundleForm.modality,
-        modelId: model.id,
-        providerId: provider.id,
-        requestConfig: { timeoutMs },
-        routeKey: bundleForm.routeKey.trim(),
-        status: "active",
-      });
-      await upsertAdminPricing({
-        active: true,
-        minChargeCredits,
-        model: model.modelKey,
-        provider: provider.key,
-        route: route.routeKey,
-        unit: pricingUnitFor(bundleForm.modality),
-        unitCredits,
-      });
-      setActiveModality(bundleForm.modality);
-      setSelectedRouteId(route.id);
-      setBundleForm((current) => ({
+      setMessage(`已创建连接：${connection.name}`);
+      setCreateConnectionForm((current) => ({
         ...current,
-        displayName: "",
-        modelKey: "",
-        routeKey: `${MODALITY_OPTIONS.find((item) => item.value === current.modality)?.routePrefix ?? "image"}.`,
+        baseUrl: "",
+        name: "",
+        notes: "",
       }));
-      setMessage(`模型和线路已创建：${model.displayName}`);
       await refresh();
+      setSelectedConnectionId(connection.id);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "创建模型线路失败。");
+      setError(cause instanceof Error ? cause.message : "创建连接失败。");
     } finally {
-      setSaving(false);
+      setSavingConnection(false);
     }
   }
 
-  async function handleSaveRoute() {
-    if (!selectedRoute || !selectedProvider) return;
-    if (!selectedRouteIsTenantOwned) {
-      setError("系统默认线路是只读的。请新增一条当前工作区线路后再编辑。");
+  async function handleSaveConnection() {
+    if (!selectedConnection) return;
+    if (!editConnectionForm.name.trim() || !editConnectionForm.adapterKind.trim()) {
+      setError("请填写连接名称和适配器类型。");
       return;
     }
-    const model = models.find((item) => item.id === routeModelId);
-    if (!model) {
-      setError("请选择有效模型。");
-      return;
-    }
-    const minChargeCredits = Math.max(1, Number.parseInt(routeMinChargeCredits, 10) || 1);
-    const unitCredits = Math.max(1, Number.parseInt(routeUnitCredits, 10) || minChargeCredits);
-    const timeoutMs = Math.max(1000, Number.parseInt(routeTimeoutMs, 10) || 300000);
 
-    setSaving(true);
+    setSavingConnection(true);
     setError("");
     setMessage("");
     try {
-      await updateAdminRoute(selectedRoute.id, {
-        baseUrlOverride: routeBaseUrlOverride.trim() || null,
-        credentialId: routeCredentialId || null,
-        modelId: model.id,
-        requestConfig: {
-          ...(selectedRoute.requestConfig ?? {}),
-          timeoutMs,
-        },
-        status: routeStatus,
+      const connection = await updateAdminProviderConnection(selectedConnection.id, {
+        adapterKind: editConnectionForm.adapterKind.trim(),
+        baseUrl: editConnectionForm.baseUrl.trim() || null,
+        credentialId: editConnectionForm.credentialId || null,
+        environment: editConnectionForm.environment.trim() || "production",
+        metadata: editConnectionForm.notes.trim() ? { notes: editConnectionForm.notes.trim() } : {},
+        name: editConnectionForm.name.trim(),
+        status: editConnectionForm.status,
       });
-      await upsertAdminPricing({
-        active: true,
-        minChargeCredits,
-        model: model.modelKey,
-        provider: selectedProvider.key,
-        route: selectedRoute.routeKey,
-        unit: pricingUnitFor(selectedRoute.modality),
-        unitCredits,
-      });
-      setMessage(`线路已保存：${selectedRoute.routeKey}`);
+      setMessage(`已保存连接：${connection.name}`);
       await refresh();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "保存线路失败。");
+      setError(cause instanceof Error ? cause.message : "保存连接失败。");
     } finally {
-      setSaving(false);
+      setSavingConnection(false);
+    }
+  }
+
+  async function handleToggleConnectionStatus() {
+    if (!selectedConnection) return;
+    setActionConnectionId(selectedConnection.id);
+    setError("");
+    setMessage("");
+    try {
+      const nextStatus: AiResourceStatus =
+        selectedConnection.status === "inactive" ? "active" : "inactive";
+      const updated = await updateAdminProviderConnection(selectedConnection.id, {
+        status: nextStatus,
+      });
+      setMessage(`${updated.name} 已${nextStatus === "active" ? "启用" : "停用"}。`);
+      await refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "更新连接状态失败。");
+    } finally {
+      setActionConnectionId("");
+    }
+  }
+
+  async function handleDeleteConnection() {
+    if (!selectedConnection) return;
+    const confirmed = window.confirm(`确认删除连接 ${selectedConnection.name} 吗？`);
+    if (!confirmed) return;
+
+    setActionConnectionId(selectedConnection.id);
+    setError("");
+    setMessage("");
+    try {
+      await deleteAdminProviderConnection(selectedConnection.id);
+      setMessage(`已删除连接：${selectedConnection.name}`);
+      await refresh();
+      setRouteTest(null);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "删除连接失败。");
+    } finally {
+      setActionConnectionId("");
+    }
+  }
+
+  async function handleTestConnection() {
+    if (!selectedConnection) return;
+    const testRoute = selectedRoutes.find((route) => route.status === "active") ?? selectedRoutes[0] ?? null;
+    if (!testRoute) {
+      setError("当前连接还没有绑定任何可测试线路，请先在模型中心把线路接到这个连接上。");
+      return;
+    }
+
+    setTestingConnectionId(selectedConnection.id);
+    setError("");
+    setMessage("");
+    setRouteTest(null);
+    try {
+      const result = await testAiRoute(testRoute.id);
+      setRouteTest(result);
+      setMessage(`${selectedConnection.name} 测试${result.status === "ok" ? "成功" : "失败"}。`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "连接测试失败。");
+    } finally {
+      setTestingConnectionId("");
     }
   }
 
   async function handleRotateCredential() {
-    if (!rotateCredentialId || !rotateSecret.trim()) {
-      setError("请选择凭证并输入新的 API Key。");
+    if (!selectedCredential || !rotateSecret.trim()) {
+      setError("请先选择绑定了凭证的连接，并输入新的 API Key。");
       return;
     }
+
     setRotating(true);
     setError("");
     setMessage("");
     try {
-      const credential = await rotateAdminCredential(rotateCredentialId, rotateSecret.trim());
+      const credential = await rotateAdminCredential(selectedCredential.id, rotateSecret.trim());
       setRotateSecret("");
-      setMessage(`凭证已更新：${credential.name}`);
+      setMessage(`已更新凭证：${credential.name}`);
       await refresh();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "更新凭证失败。");
@@ -513,14 +525,22 @@ export function ProviderSettingsPage() {
     }
   }
 
+  if (!canRead) {
+    return (
+      <section className="rounded border border-amber-400/20 bg-amber-400/10 p-5 text-sm text-amber-100">
+        当前账号没有访问高级配置的权限。
+      </section>
+    );
+  }
+
   return (
     <section className="space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="text-xs uppercase tracking-[0.24em] text-sky-300">高级配置</div>
-          <h1 className="mt-2 text-2xl font-semibold text-white">底层资源管理</h1>
+          <h1 className="mt-2 text-2xl font-semibold text-white">Provider Connections</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
-            在这里维护服务商、API Key、底层模型、连接和价格规则。日常的模型与线路操作优先在模型中心完成。
+            这里专门管理服务商、凭证和连接资源。模型、线路、默认线路这些日常操作已经收口到模型中心。
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -530,7 +550,7 @@ export function ProviderSettingsPage() {
             type="button"
           >
             <ArrowLeft size={15} />
-            返回账号中心
+            返回账户中心
           </button>
           <button
             className="inline-flex h-10 items-center gap-2 rounded border border-white/10 bg-white/10 px-4 text-sm text-white hover:bg-white/15"
@@ -543,455 +563,542 @@ export function ProviderSettingsPage() {
         </div>
       </header>
 
-      {state === "loading" ? (
-        <div className="inline-flex items-center gap-3 rounded border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-slate-300">
-          <Loader2 className="animate-spin" size={16} />
-          正在加载模型配置...
-        </div>
-      ) : null}
-
       {error ? (
-        <div className="rounded border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+        <div className="rounded border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
           {error}
         </div>
       ) : null}
       {message ? (
-        <div className="rounded border border-emerald-400/25 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+        <div className="rounded border border-emerald-400/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
           {message}
         </div>
       ) : null}
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(320px,0.8fr)_minmax(0,1.2fr)]">
-        <div className="space-y-4">
-          <SectionCard title="新增服务商">
-            <div className="mt-4 grid gap-3">
-              <Field label="服务商 Key">
-                <input
-                  className={inputClass}
-                  onChange={(event) => setProviderForm((current) => ({ ...current, key: event.target.value }))}
-                  placeholder="openai-compatible"
-                  value={providerForm.key}
-                />
-              </Field>
-              <Field label="显示名称">
-                <input
-                  className={inputClass}
-                  onChange={(event) => setProviderForm((current) => ({ ...current, name: event.target.value }))}
-                  placeholder="OpenAI 兼容服务商"
-                  value={providerForm.name}
-                />
-              </Field>
-              <Field label="适配器类型">
-                <input
-                  className={inputClass}
-                  onChange={(event) => setProviderForm((current) => ({ ...current, kind: event.target.value }))}
-                  placeholder="openai-compatible"
-                  value={providerForm.kind}
-                />
-              </Field>
-              <Field label="默认 Base URL">
-                <input
-                  className={inputClass}
-                  onChange={(event) =>
-                    setProviderForm((current) => ({ ...current, defaultBaseUrl: event.target.value }))
-                  }
-                  placeholder="https://api.openai.com/v1"
-                  value={providerForm.defaultBaseUrl}
-                />
-              </Field>
-              <button
-                className="inline-flex h-10 items-center justify-center gap-2 rounded bg-sky-400 px-4 text-sm font-semibold text-slate-950 hover:bg-sky-300 disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={!canManage || saving}
-                onClick={() => void handleCreateProvider()}
-                type="button"
-              >
-                <Plus size={15} />
-                创建服务商
-              </button>
-            </div>
-          </SectionCard>
+      <div className="grid gap-4 md:grid-cols-4">
+        <MetricCard label="服务商数" value={providers.length} />
+        <MetricCard label="凭证数" value={credentials.length} />
+        <MetricCard label="连接数" value={connections.length} />
+        <MetricCard
+          label="已被线路复用的连接"
+          value={connectionRows.filter((item) => item.routes.length > 1).length}
+        />
+      </div>
 
-          <SectionCard title="新增或更新凭证">
-            <div className="mt-4 grid gap-3">
-              <Field label="所属服务商">
-                <select
-                  className={selectClass}
-                  onChange={(event) =>
-                    setCredentialForm((current) => ({ ...current, providerId: event.target.value }))
-                  }
-                  value={credentialForm.providerId}
-                >
-                  <option value="">请选择服务商</option>
-                  {providers.map((provider) => (
-                    <option key={provider.id} value={provider.id}>
-                      {provider.name} ({provider.key})
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="凭证名称">
-                <input
-                  className={inputClass}
-                  onChange={(event) => setCredentialForm((current) => ({ ...current, name: event.target.value }))}
-                  placeholder="默认 API Key"
-                  value={credentialForm.name}
-                />
-              </Field>
-              <Field label="API Key">
-                <input
-                  className={inputClass}
-                  onChange={(event) => setCredentialForm((current) => ({ ...current, secret: event.target.value }))}
-                  placeholder="只会加密保存，不会明文展示"
-                  type="password"
-                  value={credentialForm.secret}
-                />
-              </Field>
-              <button
-                className="inline-flex h-10 items-center justify-center gap-2 rounded bg-sky-400 px-4 text-sm font-semibold text-slate-950 hover:bg-sky-300 disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={!canManageCredentials || saving}
-                onClick={() => void handleCreateCredential()}
-                type="button"
-              >
-                <KeyRound size={15} />
-                保存新凭证
-              </button>
-              <div className="border-t border-white/10 pt-3">
-                <Field label="替换已有凭证 Key">
-                  <select
-                    className={selectClass}
-                    onChange={(event) => setRotateCredentialId(event.target.value)}
-                    value={rotateCredentialId}
-                  >
-                    <option value="">请选择凭证</option>
-                    {credentials.map((credential) => (
-                      <option key={credential.id} value={credential.id}>
-                        {credential.name} {credential.maskedSecret}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
-                  <input
-                    className={inputClass}
-                    onChange={(event) => setRotateSecret(event.target.value)}
-                    placeholder="新的 API Key"
-                    type="password"
-                    value={rotateSecret}
-                  />
-                  <button
-                    className="inline-flex h-10 items-center justify-center gap-2 rounded border border-white/10 bg-white/10 px-4 text-sm text-white hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={!canManageCredentials || rotating}
-                    onClick={() => void handleRotateCredential()}
-                    type="button"
-                  >
-                    {rotating ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />}
-                    更新
-                  </button>
-                </div>
-              </div>
-            </div>
-          </SectionCard>
-        </div>
-
-        <div className="space-y-4">
-          <SectionCard title="快速新增底层模型与线路">
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
-              <Field label="模型类型">
-                <select
-                  className={selectClass}
-                  onChange={(event) =>
-                    setBundleForm((current) => ({ ...current, modality: event.target.value as AiModality }))
-                  }
-                  value={bundleForm.modality}
-                >
-                  {MODALITY_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label} ({option.unit})
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="服务商">
-                <select
-                  className={selectClass}
-                  onChange={(event) =>
-                    setBundleForm((current) => ({
-                      ...current,
-                      credentialId: "",
-                      providerId: event.target.value,
-                    }))
-                  }
-                  value={bundleForm.providerId}
-                >
-                  <option value="">请选择服务商</option>
-                  {providers.map((provider) => (
-                    <option key={provider.id} value={provider.id}>
-                      {provider.name} ({provider.key})
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="模型 ID">
-                <input
-                  className={inputClass}
-                  onChange={(event) => setBundleForm((current) => ({ ...current, modelKey: event.target.value }))}
-                  placeholder="gpt-4o-mini / flux-pro / veo-3"
-                  value={bundleForm.modelKey}
-                />
-              </Field>
-              <Field label="显示名称">
-                <input
-                  className={inputClass}
-                  onChange={(event) => setBundleForm((current) => ({ ...current, displayName: event.target.value }))}
-                  placeholder="给后台和画布用户看的名称"
-                  value={bundleForm.displayName}
-                />
-              </Field>
-              <Field label="线路 Key">
-                <input
-                  className={inputClass}
-                  onChange={(event) => setBundleForm((current) => ({ ...current, routeKey: event.target.value }))}
-                  placeholder="image.openai.gpt-image-2"
-                  value={bundleForm.routeKey}
-                />
-              </Field>
-              <Field label="绑定凭证">
-                <select
-                  className={selectClass}
-                  onChange={(event) => setBundleForm((current) => ({ ...current, credentialId: event.target.value }))}
-                  value={bundleForm.credentialId}
-                >
-                  <option value="">不绑定</option>
-                  {providerCredentials.map((credential) => (
-                    <option key={credential.id} value={credential.id}>
-                      {credential.name} {credential.maskedSecret}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Base URL 覆盖">
-                <input
-                  className={inputClass}
-                  onChange={(event) =>
-                    setBundleForm((current) => ({ ...current, baseUrlOverride: event.target.value }))
-                  }
-                  placeholder="留空则使用服务商默认地址"
-                  value={bundleForm.baseUrlOverride}
-                />
-              </Field>
-              <Field label="超时时间（毫秒）">
-                <input
-                  className={inputClass}
-                  onChange={(event) => setBundleForm((current) => ({ ...current, timeoutMs: event.target.value }))}
-                  type="number"
-                  value={bundleForm.timeoutMs}
-                />
-              </Field>
-              <Field label="最低扣费点数">
-                <input
-                  className={inputClass}
-                  min={1}
-                  onChange={(event) =>
-                    setBundleForm((current) => ({ ...current, minChargeCredits: event.target.value }))
-                  }
-                  type="number"
-                  value={bundleForm.minChargeCredits}
-                />
-              </Field>
-              <Field label="单位扣费点数">
-                <input
-                  className={inputClass}
-                  min={1}
-                  onChange={(event) =>
-                    setBundleForm((current) => ({ ...current, unitCredits: event.target.value }))
-                  }
-                  type="number"
-                  value={bundleForm.unitCredits}
-                />
-              </Field>
-            </div>
-            <button
-              className="mt-4 inline-flex h-10 items-center justify-center gap-2 rounded bg-sky-400 px-4 text-sm font-semibold text-slate-950 hover:bg-sky-300 disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={!canManage || saving}
-              onClick={() => void handleCreateModelRoutePricing()}
-              type="button"
-            >
-              {saving ? <Loader2 className="animate-spin" size={15} /> : <Plus size={15} />}
-              创建模型线路
-            </button>
-          </SectionCard>
-
-          <SectionCard title="底层线路与价格">
-            <div className="mt-4 flex flex-wrap gap-2">
-              {MODALITY_OPTIONS.map((option) => (
+      <div className="grid gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
+        <SectionCard
+          title="连接列表"
+          description="同一个连接可以被多条线路复用。停用连接后，模型中心不会再把它作为新的可选连接。"
+        >
+          <div className="mt-4 space-y-2">
+            {connectionRows.map((item) => {
+              const isSelected = item.connection.id === selectedConnectionId;
+              return (
                 <button
-                  className={`h-9 rounded px-3 text-sm ${
-                    activeModality === option.value
-                      ? "bg-sky-400 text-slate-950"
-                      : "border border-white/10 bg-white/10 text-slate-300 hover:bg-white/15"
+                  className={`w-full rounded border p-4 text-left ${
+                    isSelected
+                      ? "border-sky-300/40 bg-sky-400/10"
+                      : "border-white/10 bg-black/20 hover:bg-white/[0.06]"
                   }`}
-                  key={option.value}
-                  onClick={() => setActiveModality(option.value)}
+                  key={item.connection.id}
+                  onClick={() => setSelectedConnectionId(item.connection.id)}
                   type="button"
                 >
-                  {option.label}
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-medium text-white">{item.connection.name}</div>
+                      <div className="mt-1 text-xs text-slate-500">
+                        {providerLabel(item.provider)}
+                      </div>
+                    </div>
+                    <span className="rounded bg-white/10 px-2 py-1 text-xs text-slate-300">
+                      {statusLabel(item.connection.status)}
+                    </span>
+                  </div>
+                  <div className="mt-3 space-y-1 text-xs text-slate-400">
+                    <div>适配器：{item.connection.adapterKind}</div>
+                    <div>凭证：{credentialLabel(item.credential)}</div>
+                    <div>复用线路：{item.routes.length} 条</div>
+                  </div>
                 </button>
-              ))}
-            </div>
-            <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(240px,0.8fr)_minmax(0,1.2fr)]">
-              <div className="max-h-[520px] space-y-2 overflow-y-auto pr-1">
-                {visibleRoutes.length === 0 ? (
-                  <div className="rounded border border-white/10 bg-black/20 p-4 text-sm text-slate-400">
-                    暂无 {modalityLabel(activeModality)} 线路。
-                  </div>
-                ) : (
-                  visibleRoutes.map((route) => (
-                    <button
-                      className={`w-full rounded border p-3 text-left text-sm ${
-                        selectedRouteId === route.id
-                          ? "border-sky-300/50 bg-sky-400/10"
-                          : "border-white/10 bg-black/20 hover:bg-white/[0.06]"
-                      }`}
-                      key={route.id}
-                      onClick={() => setSelectedRouteId(route.id)}
-                      type="button"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="truncate font-medium text-white">{route.routeKey}</div>
-                          <div className="mt-1 truncate text-xs text-slate-500">
-                            {modelName(models, route.modelId)}
-                          </div>
-                        </div>
-                        <span className="shrink-0 rounded bg-white/10 px-2 py-1 text-xs text-slate-300">
-                          {route.tenantId ? "工作区" : "系统"}
-                        </span>
-                      </div>
-                    </button>
-                  ))
-                )}
+              );
+            })}
+            {connectionRows.length === 0 && state !== "loading" ? (
+              <div className="rounded border border-dashed border-white/10 p-5 text-sm text-slate-400">
+                当前还没有任何连接。
               </div>
+            ) : null}
+          </div>
+        </SectionCard>
 
-              <div className="rounded border border-white/10 bg-black/20 p-4">
-                {selectedRoute ? (
-                  <div className="space-y-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <div className="text-xs tracking-[0.18em] text-slate-500">线路详情</div>
-                        <h3 className="mt-1 text-base font-semibold text-white">{selectedRoute.routeKey}</h3>
-                      </div>
-                      <span className="rounded bg-white/10 px-2 py-1 text-xs text-slate-300">
-                        {selectedRouteIsTenantOwned ? "可编辑" : "系统只读"}
-                      </span>
-                    </div>
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <Field label="模型">
-                        <select
-                          className={selectClass}
-                          disabled={!selectedRouteIsTenantOwned}
-                          onChange={(event) => setRouteModelId(event.target.value)}
-                          value={routeModelId}
-                        >
-                          <option value="">请选择模型</option>
-                          {visibleModels.map((model) => (
-                            <option key={model.id} value={model.id}>
-                              {model.displayName} ({model.modelKey})
-                            </option>
-                          ))}
-                        </select>
-                      </Field>
-                      <Field label="凭证">
-                        <select
-                          className={selectClass}
-                          disabled={!selectedRouteIsTenantOwned}
-                          onChange={(event) => setRouteCredentialId(event.target.value)}
-                          value={routeCredentialId}
-                        >
-                          <option value="">不绑定</option>
-                          {credentials
-                            .filter((credential) => credential.providerId === selectedRoute.providerId)
-                            .map((credential) => (
-                              <option key={credential.id} value={credential.id}>
-                                {credential.name} {credential.maskedSecret}
-                              </option>
-                            ))}
-                        </select>
-                      </Field>
-                      <Field label="状态">
-                        <select
-                          className={selectClass}
-                          disabled={!selectedRouteIsTenantOwned}
-                          onChange={(event) => setRouteStatus(event.target.value as "active" | "inactive")}
-                          value={routeStatus}
-                        >
-                          <option value="active">启用</option>
-                          <option value="inactive">停用</option>
-                        </select>
-                      </Field>
-                      <Field label="超时时间（毫秒）">
-                        <input
-                          className={inputClass}
-                          disabled={!selectedRouteIsTenantOwned}
-                          onChange={(event) => setRouteTimeoutMs(event.target.value)}
-                          type="number"
-                          value={routeTimeoutMs}
-                        />
-                      </Field>
-                      <Field label="Base URL 覆盖">
-                        <input
-                          className={inputClass}
-                          disabled={!selectedRouteIsTenantOwned}
-                          onChange={(event) => setRouteBaseUrlOverride(event.target.value)}
-                          placeholder="留空则使用服务商默认地址"
-                          value={routeBaseUrlOverride}
-                        />
-                      </Field>
-                      <Field label={`最低扣费点数（${pricingUnitFor(selectedRoute.modality)}）`}>
-                        <input
-                          className={inputClass}
-                          disabled={!selectedRouteIsTenantOwned}
-                          min={1}
-                          onChange={(event) => setRouteMinChargeCredits(event.target.value)}
-                          type="number"
-                          value={routeMinChargeCredits}
-                        />
-                      </Field>
-                      <Field label="单位扣费点数">
-                        <input
-                          className={inputClass}
-                          disabled={!selectedRouteIsTenantOwned}
-                          min={1}
-                          onChange={(event) => setRouteUnitCredits(event.target.value)}
-                          type="number"
-                          value={routeUnitCredits}
-                        />
-                      </Field>
-                    </div>
-                    <div className="grid gap-2 rounded border border-white/10 bg-white/[0.03] p-3 text-xs text-slate-400 md:grid-cols-2">
-                      <div>服务商：{providerName(providers, selectedRoute.providerId)}</div>
-                      <div>类型：{modalityLabel(selectedRoute.modality)}</div>
-                      <div>凭证：{credentialName(credentials, selectedRoute.credentialId)}</div>
-                      <div>状态：{statusLabel(selectedRoute.status)}</div>
-                      <div>当前最低扣费：{selectedPricing?.minChargeCredits ?? "-"}</div>
-                      <div>当前单位扣费：{selectedPricing?.unitCredits ?? "-"}</div>
-                    </div>
+        <div className="space-y-5">
+          <SectionCard
+            title="连接详情"
+            description="在这里编辑连接、测试连接、停用连接、删除连接，以及为已绑定凭证的连接旋转 API Key。"
+          >
+            {selectedConnection ? (
+              <div className="mt-4 space-y-5">
+                <div className="grid gap-3 md:grid-cols-2">
+                  <Field label="连接名称">
+                    <input
+                      className={inputClass}
+                      onChange={(event) =>
+                        setEditConnectionForm((current) => ({ ...current, name: event.target.value }))
+                      }
+                      value={editConnectionForm.name}
+                    />
+                  </Field>
+                  <Field label="服务商">
+                    <input
+                      className={inputClass}
+                      disabled
+                      value={selectedProvider ? providerLabel(selectedProvider) : "-"}
+                    />
+                  </Field>
+                  <Field label="适配器类型">
+                    <input
+                      className={inputClass}
+                      onChange={(event) =>
+                        setEditConnectionForm((current) => ({
+                          ...current,
+                          adapterKind: event.target.value,
+                        }))
+                      }
+                      value={editConnectionForm.adapterKind}
+                    />
+                  </Field>
+                  <Field label="运行环境">
+                    <input
+                      className={inputClass}
+                      onChange={(event) =>
+                        setEditConnectionForm((current) => ({
+                          ...current,
+                          environment: event.target.value,
+                        }))
+                      }
+                      value={editConnectionForm.environment}
+                    />
+                  </Field>
+                  <Field label="Base URL">
+                    <input
+                      className={inputClass}
+                      onChange={(event) =>
+                        setEditConnectionForm((current) => ({ ...current, baseUrl: event.target.value }))
+                      }
+                      placeholder="https://api.example.com/v1"
+                      value={editConnectionForm.baseUrl}
+                    />
+                  </Field>
+                  <Field label="绑定凭证">
+                    <select
+                      className={selectClass}
+                      onChange={(event) =>
+                        setEditConnectionForm((current) => ({
+                          ...current,
+                          credentialId: event.target.value,
+                        }))
+                      }
+                      value={editConnectionForm.credentialId}
+                    >
+                      <option value="">不绑定凭证</option>
+                      {connectionCredentialOptions.map((credential) => (
+                        <option key={credential.id} value={credential.id}>
+                          {credential.name} {credential.maskedSecret}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="连接状态">
+                    <select
+                      className={selectClass}
+                      onChange={(event) =>
+                        setEditConnectionForm((current) => ({
+                          ...current,
+                          status: event.target.value as AiResourceStatus,
+                        }))
+                      }
+                      value={editConnectionForm.status}
+                    >
+                      <option value="active">启用</option>
+                      <option value="inactive">停用</option>
+                    </select>
+                  </Field>
+                  <Field label="连接备注">
+                    <textarea
+                      className={textareaClass}
+                      onChange={(event) =>
+                        setEditConnectionForm((current) => ({
+                          ...current,
+                          notes: event.target.value,
+                        }))
+                      }
+                      value={editConnectionForm.notes}
+                    />
+                  </Field>
+                </div>
+
+                <div className="grid gap-2 rounded border border-white/10 bg-white/[0.03] p-3 text-xs text-slate-400 md:grid-cols-2">
+                  <div>当前凭证：{credentialLabel(selectedCredential)}</div>
+                  <div>最近健康状态：{healthStatusLabel(selectedConnection.lastHealthStatus)}</div>
+                  <div>最近检测时间：{selectedConnection.lastHealthCheckedAt || "-"}</div>
+                  <div>复用线路数：{selectedRoutes.length}</div>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded bg-sky-400 px-4 text-sm font-semibold text-slate-950 hover:bg-sky-300 disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={!canManage || savingConnection}
+                    onClick={() => void handleSaveConnection()}
+                    type="button"
+                  >
+                    {savingConnection ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />}
+                    保存连接
+                  </button>
+                  <button
+                    className="inline-flex h-10 items-center gap-2 rounded border border-white/10 bg-white/10 px-4 text-sm text-white hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={!canManage || testingConnectionId === selectedConnection.id}
+                    onClick={() => void handleTestConnection()}
+                    type="button"
+                  >
+                    {testingConnectionId === selectedConnection.id ? (
+                      <Loader2 className="animate-spin" size={15} />
+                    ) : (
+                      <FlaskConical size={15} />
+                    )}
+                    测试连接
+                  </button>
+                  <button
+                    className="inline-flex h-10 items-center gap-2 rounded border border-white/10 bg-white/10 px-4 text-sm text-white hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={!canManage || actionConnectionId === selectedConnection.id}
+                    onClick={() => void handleToggleConnectionStatus()}
+                    type="button"
+                  >
+                    <Settings2 size={15} />
+                    {selectedConnection.status === "inactive" ? "启用连接" : "停用连接"}
+                  </button>
+                  <button
+                    className="inline-flex h-10 items-center gap-2 rounded border border-red-300/25 bg-red-500/10 px-4 text-sm text-red-100 hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={!canManage || actionConnectionId === selectedConnection.id}
+                    onClick={() => void handleDeleteConnection()}
+                    type="button"
+                  >
+                    <Trash2 size={15} />
+                    删除连接
+                  </button>
+                </div>
+
+                <div className="rounded border border-white/10 bg-black/20 p-4">
+                  <div className="text-sm font-medium text-white">旋转连接密钥</div>
+                  <p className="mt-2 text-sm leading-6 text-slate-400">
+                    这里只显示掩码后的凭证。真正的 API Key 只会加密保存，不会回显到前端。
+                  </p>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+                    <input
+                      className={inputClass}
+                      disabled={!selectedCredential}
+                      onChange={(event) => setRotateSecret(event.target.value)}
+                      placeholder={selectedCredential ? "输入新的 API Key" : "当前连接未绑定凭证"}
+                      type="password"
+                      value={rotateSecret}
+                    />
                     <button
-                      className="inline-flex h-10 items-center justify-center gap-2 rounded bg-sky-400 px-4 text-sm font-semibold text-slate-950 hover:bg-sky-300 disabled:cursor-not-allowed disabled:opacity-50"
-                      disabled={!canManage || !selectedRouteIsTenantOwned || saving}
-                      onClick={() => void handleSaveRoute()}
+                      className="inline-flex h-10 items-center justify-center gap-2 rounded border border-white/10 bg-white/10 px-4 text-sm text-white hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={!canManageCredentials || !selectedCredential || rotating}
+                      onClick={() => void handleRotateCredential()}
                       type="button"
                     >
-                      {saving ? <Loader2 className="animate-spin" size={15} /> : <Settings2 size={15} />}
-                      保存线路
+                      {rotating ? <Loader2 className="animate-spin" size={15} /> : <KeyRound size={15} />}
+                      更新凭证
                     </button>
                   </div>
-                ) : (
-                  <div className="p-6 text-sm text-slate-400">请选择一条线路。</div>
-                )}
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="mt-4 rounded border border-dashed border-white/10 p-6 text-sm text-slate-400">
+                请选择一个连接开始管理。
+              </div>
+            )}
+          </SectionCard>
+
+          <SectionCard
+            title="连接被哪些线路复用"
+            description="这个视图用来确认一个连接是否已经被多条线路复用，也方便理解删除连接时为什么会被拦截。"
+          >
+            {selectedRoutes.length > 0 ? (
+              <div className="mt-4 space-y-2">
+                {selectedRoutes.map((route) => {
+                  const model = models.find((item) => item.id === route.modelId) ?? null;
+                  return (
+                    <div
+                      className="rounded border border-white/10 bg-black/20 px-4 py-3 text-sm text-slate-300"
+                      key={route.id}
+                    >
+                      <div className="font-medium text-white">{route.routeLabel || route.routeKey}</div>
+                      <div className="mt-1 text-xs text-slate-500">
+                        {model ? `${model.displayName} (${model.modelKey})` : "未绑定模型"} / {route.routeKey}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="mt-4 rounded border border-dashed border-white/10 p-5 text-sm text-slate-400">
+                当前连接还没有被任何线路使用。
+              </div>
+            )}
+          </SectionCard>
+
+          <SectionCard
+            title="最近测试结果"
+            description="连接测试会复用当前连接已绑定的一条线路执行健康检查，所以可以看到真实的上游调用结果。"
+          >
+            {routeTest ? (
+              <div className="mt-4 space-y-3">
+                <div className="rounded border border-white/10 bg-black/20 p-3">
+                  <div className="mb-2 text-xs uppercase tracking-[0.18em] text-slate-500">
+                    请求摘要
+                  </div>
+                  <pre className="max-h-56 overflow-auto text-xs leading-5 text-slate-300">
+                    {JSON.stringify(routeTest.requestSummary, null, 2)}
+                  </pre>
+                </div>
+                <div className="rounded border border-white/10 bg-black/20 p-3">
+                  <div className="mb-2 text-xs uppercase tracking-[0.18em] text-slate-500">
+                    {routeTest.status === "ok" ? "响应摘要" : "错误详情"}
+                  </div>
+                  <pre className="max-h-56 overflow-auto text-xs leading-5 text-slate-300">
+                    {JSON.stringify(routeTest.status === "ok" ? routeTest.responseSummary : routeTest.error, null, 2)}
+                  </pre>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-4 rounded border border-dashed border-white/10 p-5 text-sm text-slate-400">
+                选择一个连接并点击“测试连接”后，这里会显示结果。
+              </div>
+            )}
           </SectionCard>
         </div>
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-3">
+        <SectionCard
+          title="创建服务商"
+          description="只有当现有服务商不够用时，才需要新建服务商定义。"
+        >
+          <div className="mt-4 grid gap-3">
+            <Field label="服务商 Key">
+              <input
+                className={inputClass}
+                onChange={(event) =>
+                  setProviderForm((current) => ({ ...current, key: event.target.value }))
+                }
+                value={providerForm.key}
+              />
+            </Field>
+            <Field label="显示名称">
+              <input
+                className={inputClass}
+                onChange={(event) =>
+                  setProviderForm((current) => ({ ...current, name: event.target.value }))
+                }
+                value={providerForm.name}
+              />
+            </Field>
+            <Field label="适配器类型">
+              <input
+                className={inputClass}
+                onChange={(event) =>
+                  setProviderForm((current) => ({ ...current, kind: event.target.value }))
+                }
+                value={providerForm.kind}
+              />
+            </Field>
+            <Field label="默认 Base URL">
+              <input
+                className={inputClass}
+                onChange={(event) =>
+                  setProviderForm((current) => ({
+                    ...current,
+                    defaultBaseUrl: event.target.value,
+                  }))
+                }
+                placeholder="https://api.openai.com/v1"
+                value={providerForm.defaultBaseUrl}
+              />
+            </Field>
+            <button
+              className="inline-flex h-10 items-center justify-center gap-2 rounded bg-sky-400 px-4 text-sm font-semibold text-slate-950 hover:bg-sky-300 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={!canManage || savingProvider}
+              onClick={() => void handleCreateProvider()}
+              type="button"
+            >
+              {savingProvider ? <Loader2 className="animate-spin" size={15} /> : <Plus size={15} />}
+              创建服务商
+            </button>
+          </div>
+        </SectionCard>
+
+        <SectionCard
+          title="创建凭证"
+          description="API Key 只会加密保存，页面只显示掩码。"
+        >
+          <div className="mt-4 grid gap-3">
+            <Field label="所属服务商">
+              <select
+                className={selectClass}
+                onChange={(event) =>
+                  setCredentialForm((current) => ({ ...current, providerId: event.target.value }))
+                }
+                value={credentialForm.providerId}
+              >
+                <option value="">请选择服务商</option>
+                {providers.map((provider) => (
+                  <option key={provider.id} value={provider.id}>
+                    {provider.name} ({provider.key})
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="凭证名称">
+              <input
+                className={inputClass}
+                onChange={(event) =>
+                  setCredentialForm((current) => ({ ...current, name: event.target.value }))
+                }
+                value={credentialForm.name}
+              />
+            </Field>
+            <Field label="API Key">
+              <input
+                className={inputClass}
+                onChange={(event) =>
+                  setCredentialForm((current) => ({ ...current, secret: event.target.value }))
+                }
+                placeholder="只会加密保存，不会明文展示"
+                type="password"
+                value={credentialForm.secret}
+              />
+            </Field>
+            <button
+              className="inline-flex h-10 items-center justify-center gap-2 rounded bg-sky-400 px-4 text-sm font-semibold text-slate-950 hover:bg-sky-300 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={!canManageCredentials || savingCredential}
+              onClick={() => void handleCreateCredential()}
+              type="button"
+            >
+              {savingCredential ? <Loader2 className="animate-spin" size={15} /> : <KeyRound size={15} />}
+              保存凭证
+            </button>
+          </div>
+        </SectionCard>
+
+        <SectionCard
+          title="创建连接"
+          description="连接是给线路复用的真正运行资源。一个连接可被多条线路共用。"
+        >
+          <div className="mt-4 grid gap-3">
+            <Field label="连接名称">
+              <input
+                className={inputClass}
+                onChange={(event) =>
+                  setCreateConnectionForm((current) => ({ ...current, name: event.target.value }))
+                }
+                value={createConnectionForm.name}
+              />
+            </Field>
+            <Field label="服务商">
+              <select
+                className={selectClass}
+                onChange={(event) => {
+                  const provider = providers.find((item) => item.id === event.target.value) ?? null;
+                  setCreateConnectionForm((current) => ({
+                    ...current,
+                    adapterKind: provider?.kind ?? current.adapterKind,
+                    credentialId: "",
+                    providerId: event.target.value,
+                  }));
+                }}
+                value={createConnectionForm.providerId}
+              >
+                <option value="">请选择服务商</option>
+                {providers.map((provider) => (
+                  <option key={provider.id} value={provider.id}>
+                    {provider.name} ({provider.key})
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="适配器类型">
+              <input
+                className={inputClass}
+                onChange={(event) =>
+                  setCreateConnectionForm((current) => ({
+                    ...current,
+                    adapterKind: event.target.value,
+                  }))
+                }
+                value={createConnectionForm.adapterKind}
+              />
+            </Field>
+            <Field label="绑定凭证">
+              <select
+                className={selectClass}
+                onChange={(event) =>
+                  setCreateConnectionForm((current) => ({
+                    ...current,
+                    credentialId: event.target.value,
+                  }))
+                }
+                value={createConnectionForm.credentialId}
+              >
+                <option value="">不绑定凭证</option>
+                {createProviderCredentials.map((credential) => (
+                  <option key={credential.id} value={credential.id}>
+                    {credential.name} {credential.maskedSecret}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Base URL">
+              <input
+                className={inputClass}
+                onChange={(event) =>
+                  setCreateConnectionForm((current) => ({ ...current, baseUrl: event.target.value }))
+                }
+                placeholder="https://api.example.com/v1"
+                value={createConnectionForm.baseUrl}
+              />
+            </Field>
+            <Field label="运行环境">
+              <input
+                className={inputClass}
+                onChange={(event) =>
+                  setCreateConnectionForm((current) => ({
+                    ...current,
+                    environment: event.target.value,
+                  }))
+                }
+                value={createConnectionForm.environment}
+              />
+            </Field>
+            <Field label="备注">
+              <textarea
+                className={textareaClass}
+                onChange={(event) =>
+                  setCreateConnectionForm((current) => ({ ...current, notes: event.target.value }))
+                }
+                value={createConnectionForm.notes}
+              />
+            </Field>
+            <button
+              className="inline-flex h-10 items-center justify-center gap-2 rounded bg-sky-400 px-4 text-sm font-semibold text-slate-950 hover:bg-sky-300 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={!canManage || savingConnection}
+              onClick={() => void handleCreateConnection()}
+              type="button"
+            >
+              {savingConnection ? <Loader2 className="animate-spin" size={15} /> : <Plus size={15} />}
+              创建连接
+            </button>
+          </div>
+        </SectionCard>
       </div>
     </section>
   );
