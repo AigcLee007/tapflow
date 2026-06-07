@@ -8,6 +8,7 @@ export const ACCOUNT_ROUTE = "/account";
 export const ADMIN_ROUTE = "/admin";
 export const ACCOUNT_AI_SETTINGS_ROUTE = "/account/ai-settings";
 export const ACCOUNT_PROVIDER_SETTINGS_ROUTE = "/account/provider-settings";
+export const ACCOUNT_INSPECTION_ROUTE = "/account/inspection";
 export const ACCOUNT_TEMPLATE_LIBRARY_ROUTE = "/account/template-library";
 
 export const PRODUCT_ROUTES = [

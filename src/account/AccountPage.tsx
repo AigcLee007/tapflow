@@ -1,8 +1,9 @@
 import React from "react";
-import { Boxes, Loader2, LogOut, RefreshCw, Settings2, Sparkles } from "lucide-react";
+import { Activity, Boxes, Loader2, LogOut, RefreshCw, Settings2, Sparkles } from "lucide-react";
 
 import {
   ACCOUNT_AI_SETTINGS_ROUTE,
+  ACCOUNT_INSPECTION_ROUTE,
   ACCOUNT_PROVIDER_SETTINGS_ROUTE,
   ACCOUNT_TEMPLATE_LIBRARY_ROUTE,
 } from "../app/routes";
@@ -76,6 +77,18 @@ export function AccountPage() {
             >
               <Sparkles size={15} />
               模型中心
+            </button>
+          ) : null}
+          {canManageProviderSettings ? (
+            <button
+              className="inline-flex h-10 items-center gap-2 rounded border border-white/10 bg-white/10 px-4 text-sm text-white hover:bg-white/15"
+              onClick={() => {
+                window.location.assign(ACCOUNT_INSPECTION_ROUTE);
+              }}
+              type="button"
+            >
+              <Activity size={15} />
+              巡检面板
             </button>
           ) : null}
           {canManageProviderSettings ? (

@@ -5,6 +5,7 @@ import { LoginPage } from "../auth/LoginPage";
 import { RegisterPage } from "../auth/RegisterPage";
 import { AssetLibraryPage } from "../assets/AssetLibraryPage";
 import { AccountPage } from "../account/AccountPage";
+import { InspectionDashboardPage } from "../account/InspectionDashboardPage";
 import { AiSettingsPage } from "../account/ai-settings/AiSettingsPage";
 import { TemplateLibraryPage } from "../account/TemplateLibraryPage";
 import { AdminPage } from "../admin/AdminPage";
@@ -16,6 +17,7 @@ import { WorkspaceShell } from "./WorkspaceShell";
 import {
   ACCOUNT_ROUTE,
   ACCOUNT_AI_SETTINGS_ROUTE,
+  ACCOUNT_INSPECTION_ROUTE,
   ACCOUNT_PROVIDER_SETTINGS_ROUTE,
   ACCOUNT_TEMPLATE_LIBRARY_ROUTE,
   ADMIN_ROUTE,
@@ -95,6 +97,13 @@ function ProtectedRoutes({ pathname }: { pathname: string }) {
     pathname.startsWith(`${ACCOUNT_AI_SETTINGS_ROUTE}/`)
   ) {
     return <AiSettingsPage />;
+  }
+
+  if (
+    pathname === ACCOUNT_INSPECTION_ROUTE ||
+    pathname.startsWith(`${ACCOUNT_INSPECTION_ROUTE}/`)
+  ) {
+    return <InspectionDashboardPage />;
   }
 
   if (
