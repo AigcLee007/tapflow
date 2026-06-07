@@ -182,6 +182,8 @@ const useSingleNodeSelection = (selected?: boolean) => {
 const useImageModelCatalogWhenNeeded = (enabled: boolean) => {
   const [catalog, setCatalog] = useState<ImageModelCatalogShape>(() => getImageModelCatalogSnapshot());
   const [v2Catalog, setV2Catalog] = useState<AiModelCatalogItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     if (enabled) setCatalog(getImageModelCatalogSnapshot());
@@ -190,22 +192,35 @@ const useImageModelCatalogWhenNeeded = (enabled: boolean) => {
   useEffect(() => {
     if (!enabled) return undefined;
     let active = true;
+    setLoading(true);
+    setLoaded(false);
+    setV2Catalog([]);
     void listAiModelCatalog('image')
       .then((items) => {
         if (active) setV2Catalog(items);
       })
       .catch(() => {
         if (active) setV2Catalog([]);
+      })
+      .finally(() => {
+        if (!active) return;
+        setLoading(false);
+        setLoaded(true);
       });
     return () => {
       active = false;
     };
   }, [enabled]);
 
-  return useMemo(
-    () => mapCatalogModelsToOptions(v2Catalog, catalog.models),
-    [catalog.models, v2Catalog],
+  const models = useMemo(
+    () => {
+      if (enabled && !loaded) return [];
+      return mapCatalogModelsToOptions(v2Catalog, enabled ? [] : catalog.models);
+    },
+    [catalog.models, enabled, loaded, v2Catalog],
   );
+
+  return { models, loading, loaded };
 };
 
 const getImageModelCatalogRouteLookupKey = (
@@ -215,10 +230,12 @@ const getImageModelCatalogRouteLookupKey = (
 
 const useRuntimeImageRoutes = (enabled: boolean) => {
   const [routes, setRoutes] = useState<RuntimeRouteOption[]>([]);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (!enabled) return undefined;
     let active = true;
+    setLoading(true);
     void listRuntimeRoutes('image')
       .then((items: V2RuntimeRouteItem[]) => {
         if (!active) return;
@@ -226,13 +243,16 @@ const useRuntimeImageRoutes = (enabled: boolean) => {
       })
       .catch(() => {
         if (active) setRoutes([]);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
       });
     return () => {
       active = false;
     };
   }, [enabled]);
 
-  return routes;
+  return { routes, loading };
 };
 
 const useModelScopedImageRoutes = (
@@ -242,15 +262,18 @@ const useModelScopedImageRoutes = (
 ) => {
   const [routes, setRoutes] = useState<RuntimeRouteOption[]>([]);
   const [loadedModelKey, setLoadedModelKey] = useState('');
+  const [loadingModelKey, setLoadingModelKey] = useState('');
 
   useEffect(() => {
     if (!enabled || !modelKey) {
       setRoutes([]);
       setLoadedModelKey('');
+      setLoadingModelKey('');
       return undefined;
     }
     let active = true;
     setLoadedModelKey('');
+    setLoadingModelKey(modelKey);
     void listAiModelRoutes(modelKey)
       .then((items) => {
         if (!active) return;
@@ -261,6 +284,9 @@ const useModelScopedImageRoutes = (
         if (!active) return;
         setRoutes([]);
         setLoadedModelKey(modelKey);
+      })
+      .finally(() => {
+        if (active) setLoadingModelKey('');
       });
     return () => {
       active = false;
@@ -268,9 +294,12 @@ const useModelScopedImageRoutes = (
   }, [enabled, modelKey]);
 
   if (loadedModelKey === modelKey && routes.length > 0) {
-    return routes;
+    return { routes, loading: false, loaded: true };
   }
-  return fallbackRoutes;
+  if (!enabled || !modelKey) {
+    return { routes: fallbackRoutes, loading: false, loaded: false };
+  }
+  return { routes: [], loading: loadingModelKey === modelKey, loaded: loadedModelKey === modelKey };
 };
 
 /* Section */
@@ -3394,7 +3423,8 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const runtimeNodeStatus = useFlowCanvasStore((s) => s.nodeRunStatusByNodeId[id]);
   const showNodeEditor = useSingleNodeSelection(selected || selectedInStore);
   const shouldLoadEditorResources = showNodeEditor || activeImageTool?.nodeId === id || fullscreenOpen || assetMenuOpen || slashMenuOpen;
-  const models = useImageModelCatalogWhenNeeded(shouldLoadEditorResources);
+  const imageCatalogState = useImageModelCatalogWhenNeeded(shouldLoadEditorResources);
+  const models = imageCatalogState.models;
   const folders = EMPTY_IMAGE_FOLDERS;
   const folderItems = EMPTY_IMAGE_FOLDER_ITEMS;
 
@@ -3453,21 +3483,32 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     label: model.label,
     sizeOptions: getSizeOptionsFromCatalogModel(model),
   }));
-  if (modelOptions.length === 0) {
+  const shouldUseLocalModelFallback = !shouldLoadEditorResources || (imageCatalogState.loaded && modelOptions.length === 0);
+  if (modelOptions.length === 0 && shouldUseLocalModelFallback) {
     modelOptions.push(
       { id: 'nano-banana-pro', label: 'Nano Banana Pro', sizeOptions: ['2k', '4k'] },
       { id: 'nano-banana-pro-fast', label: 'Nano Banana Pro Fast', sizeOptions: ['2k', '4k'] },
       { id: 'gemini-flash', label: 'Nano Banana 2', sizeOptions: ['1k'] },
-      { id: 'gpt-image-2', label: 'GPT-image-2', sizeOptions: ['auto', '1k', '2k', '4k'] },
+      { id: 'gpt-image-2', label: 'GPT-Image-2', sizeOptions: ['1k', '2k', '4k'] },
     );
+  }
+  if (modelOptions.length === 0 && !shouldUseLocalModelFallback) {
+    const currentFallbackId = resolveV2ImageModelId(String(d.modelId || 'gpt-image-2'));
+    modelOptions.push({
+      id: currentFallbackId,
+      label: currentFallbackId,
+      sizeOptions: currentFallbackId === 'gpt-image-2' ? ['1k', '2k', '4k'] : ['1k'],
+    });
   }
 
   const currentModelId = resolveV2ImageModelId(String(d.modelId || modelOptions[0]?.id || 'nano-banana-pro'));
   const selectedCatalogModel = models.find((model) => model.id === currentModelId) || null;
-  const runtimeRoutes = useRuntimeImageRoutes(showNodeEditor);
+  const runtimeRouteState = useRuntimeImageRoutes(showNodeEditor);
+  const runtimeRoutes = runtimeRouteState.routes;
   const fallbackModelRuntimeRoutes = getRuntimeRoutesForImageModel(currentModelId, runtimeRoutes);
   const modelRouteLookupKey = getImageModelCatalogRouteLookupKey(currentModelId, selectedCatalogModel);
-  const modelRuntimeRoutes = useModelScopedImageRoutes(showNodeEditor, modelRouteLookupKey, fallbackModelRuntimeRoutes);
+  const scopedRouteState = useModelScopedImageRoutes(showNodeEditor, modelRouteLookupKey, fallbackModelRuntimeRoutes);
+  const modelRuntimeRoutes = scopedRouteState.routes;
   const preferredRuntimeRouteKey = selectedCatalogModel?.defaultRouteKey || IMAGE_RUNTIME_ROUTE_BY_MODEL_ID[currentModelId] || '';
   const normalizedCurrentRouteKey = normalizeImageRuntimeRouteKey(currentModelId, d.routeKey);
   const preferredRuntimeRoute = preferredRuntimeRouteKey
@@ -3738,12 +3779,13 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   );
 
   useEffect(() => {
+    if (showNodeEditor && !scopedRouteState.loaded) return;
     if (d.modelId === currentModelId && normalizedCurrentRouteKey === selectedModelRuntimeRoute?.routeKey) return;
     updateNodeData(id, {
       modelId: currentModelId,
       routeKey: selectedModelRuntimeRoute?.routeKey,
     });
-  }, [currentModelId, d.modelId, id, normalizedCurrentRouteKey, selectedModelRuntimeRoute?.routeKey, updateNodeData]);
+  }, [currentModelId, d.modelId, id, normalizedCurrentRouteKey, scopedRouteState.loaded, selectedModelRuntimeRoute?.routeKey, showNodeEditor, updateNodeData]);
 
   useEffect(() => {
     if (!selectedRoute) return;
