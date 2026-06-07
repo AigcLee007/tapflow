@@ -332,6 +332,17 @@ export function AiSettingsPage() {
     );
   }, [activeModality, createEditor?.providerId, providerModels]);
 
+  const crossProviderRouteGroups = useMemo(() => {
+    const groups = new Map<string, AiModelCatalogRoute[]>();
+    for (const route of routes) {
+      const key = route.providerName || route.providerKey || "unknown";
+      const current = groups.get(key) ?? [];
+      current.push(route);
+      groups.set(key, current);
+    }
+    return Array.from(groups.entries());
+  }, [routes]);
+
   const refresh = useCallback(async () => {
     if (!canRead) {
       setState("error");
@@ -911,6 +922,38 @@ export function AiSettingsPage() {
                     这个模型当前没有可用线路。请先到高级配置页完成首条线路初始化。
                   </div>
                 ) : null}
+              </div>
+
+              <div className="rounded border border-white/10 bg-black/20 p-4">
+                <div className="text-sm font-medium text-white">当前产品模型的跨服务商线路</div>
+                {crossProviderRouteGroups.length > 0 ? (
+                  <div className="mt-4 space-y-3">
+                    {crossProviderRouteGroups.map(([providerName, providerRoutes]) => (
+                      <div
+                        className="rounded border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-slate-300"
+                        key={providerName}
+                      >
+                        <div className="font-medium text-white">
+                          {providerName} <span className="text-xs text-slate-500">{providerRoutes.length} 条线路</span>
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {providerRoutes.map((route) => (
+                            <span
+                              className="inline-flex rounded border border-white/10 bg-black/20 px-2 py-1 text-xs text-slate-300"
+                              key={route.routeId}
+                            >
+                              {route.routeLabel || route.routeKey}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-4 rounded border border-dashed border-white/10 p-5 text-sm text-slate-400">
+                    当前模型还没有可展示的跨服务商线路。
+                  </div>
+                )}
               </div>
 
               {createPanelOpen && createEditor ? (

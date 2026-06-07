@@ -180,6 +180,8 @@ export function ProviderSettingsPage() {
   const [models, setModels] = useState<AdminModel[]>([]);
 
   const [selectedConnectionId, setSelectedConnectionId] = useState("");
+  const [providerFilterId, setProviderFilterId] = useState("");
+  const [modelFamilyFilter, setModelFamilyFilter] = useState("");
   const [routeTest, setRouteTest] = useState<AiRouteTestResult | null>(null);
 
   const [providerForm, setProviderForm] = useState<ProviderForm>({
@@ -228,9 +230,31 @@ export function ProviderSettingsPage() {
     [connections, credentials, providers, routes],
   );
 
+  const providerModelFamilyOptions = useMemo(() => {
+    const values = new Set<string>();
+    for (const route of routes) {
+      if (route.modelFamily) values.add(route.modelFamily);
+    }
+    for (const model of models) {
+      if (model.modelKey) values.add(model.modelKey);
+    }
+    return Array.from(values).sort((a, b) => a.localeCompare(b));
+  }, [models, routes]);
+
+  const filteredConnectionRows = useMemo(() => {
+    return connectionRows.filter((item) => {
+      if (providerFilterId && item.connection.providerId !== providerFilterId) return false;
+      if (!modelFamilyFilter) return true;
+
+      const matchesRouteFamily = item.routes.some((route) => route.modelFamily === modelFamilyFilter);
+      const matchesProviderModel = item.providerModels.some((model) => model.modelKey === modelFamilyFilter);
+      return matchesRouteFamily || matchesProviderModel;
+    });
+  }, [connectionRows, modelFamilyFilter, providerFilterId]);
+
   const selectedConnectionRow = useMemo(
-    () => connectionRows.find((item) => item.connection.id === selectedConnectionId) ?? null,
-    [connectionRows, selectedConnectionId],
+    () => filteredConnectionRows.find((item) => item.connection.id === selectedConnectionId) ?? null,
+    [filteredConnectionRows, selectedConnectionId],
   );
 
   const selectedConnection = selectedConnectionRow?.connection ?? null;
@@ -238,6 +262,13 @@ export function ProviderSettingsPage() {
   const selectedProviderModels = selectedConnectionRow?.providerModels ?? [];
   const selectedProvider = selectedConnectionRow?.provider ?? null;
   const selectedRoutes = selectedConnectionRow?.routes ?? [];
+
+  useEffect(() => {
+    setSelectedConnectionId((current) => {
+      if (current && filteredConnectionRows.some((item) => item.connection.id === current)) return current;
+      return filteredConnectionRows[0]?.connection.id || "";
+    });
+  }, [filteredConnectionRows]);
 
   const connectionCredentialOptions = useMemo(
     () =>
@@ -592,8 +623,39 @@ export function ProviderSettingsPage() {
           title="连接列表"
           description="同一个连接可以被多条线路复用。停用连接后，模型中心不会再把它作为新的可选连接。"
         >
+          <div className="mt-4 grid gap-3">
+            <Field label="按服务商筛选">
+              <select
+                className={selectClass}
+                onChange={(event) => setProviderFilterId(event.target.value)}
+                value={providerFilterId}
+              >
+                <option value="">全部服务商</option>
+                {providers.map((provider) => (
+                  <option key={provider.id} value={provider.id}>
+                    {provider.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="按模型家族筛选">
+              <select
+                className={selectClass}
+                onChange={(event) => setModelFamilyFilter(event.target.value)}
+                value={modelFamilyFilter}
+              >
+                <option value="">全部模型家族</option>
+                {providerModelFamilyOptions.map((family) => (
+                  <option key={family} value={family}>
+                    {family}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+
           <div className="mt-4 space-y-2">
-            {connectionRows.map((item) => {
+            {filteredConnectionRows.map((item) => {
               const isSelected = item.connection.id === selectedConnectionId;
               return (
                 <button
@@ -626,7 +688,7 @@ export function ProviderSettingsPage() {
                 </button>
               );
             })}
-            {connectionRows.length === 0 && state !== "loading" ? (
+            {filteredConnectionRows.length === 0 && state !== "loading" ? (
               <div className="rounded border border-dashed border-white/10 p-5 text-sm text-slate-400">
                 当前还没有任何连接。
               </div>
