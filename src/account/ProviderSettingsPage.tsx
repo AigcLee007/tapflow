@@ -254,7 +254,7 @@ export function ProviderSettingsPage() {
   const refresh = useCallback(async () => {
     if (!canRead) {
       setState("error");
-      setError("当前账号没有访问模型管理的权限。");
+      setError("当前账号没有访问高级配置的权限。");
       return;
     }
     setState("loading");
@@ -295,7 +295,7 @@ export function ProviderSettingsPage() {
       setState("ready");
     } catch (cause) {
       setState("error");
-      setError(cause instanceof Error ? cause.message : "模型管理数据加载失败。");
+      setError(cause instanceof Error ? cause.message : "高级配置数据加载失败。");
     }
   }, [activeModality, canRead, selectedRouteId]);
 
@@ -517,10 +517,10 @@ export function ProviderSettingsPage() {
     <section className="space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="text-xs uppercase tracking-[0.24em] text-sky-300">模型管理</div>
-          <h1 className="mt-2 text-2xl font-semibold text-white">模型与线路管理</h1>
+          <div className="text-xs uppercase tracking-[0.24em] text-sky-300">高级配置</div>
+          <h1 className="mt-2 text-2xl font-semibold text-white">底层资源管理</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
-            在这里维护服务商、API Key、文本模型、生图模型、视频模型、调用线路和扣费价格。
+            在这里维护服务商、API Key、底层模型、连接和价格规则。日常的模型与线路操作优先在模型中心完成。
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -694,7 +694,7 @@ export function ProviderSettingsPage() {
         </div>
 
         <div className="space-y-4">
-          <SectionCard title="一键新增模型、线路和价格">
+          <SectionCard title="快速新增底层模型与线路">
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               <Field label="模型类型">
                 <select
@@ -821,7 +821,7 @@ export function ProviderSettingsPage() {
             </button>
           </SectionCard>
 
-          <SectionCard title="已有模型和线路">
+          <SectionCard title="底层线路与价格">
             <div className="mt-4 flex flex-wrap gap-2">
               {MODALITY_OPTIONS.map((option) => (
                 <button

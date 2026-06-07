@@ -3,11 +3,14 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   createAdminCredential,
   createAdminModel,
+  deleteAdminRoute,
+  duplicateAdminRoute,
   createAdminProvider,
   createAdminRoute,
   listAdminPricing,
   listAdminRoutes,
   rotateAdminCredential,
+  setDefaultAdminRoute,
   upsertAdminPricing,
 } from "./v2AiGatewayAdminApi";
 import { clearStoredAuth, setStoredTokens } from "./v2HttpClient";
@@ -183,6 +186,55 @@ describe("v2AiGatewayAdminApi", () => {
       4,
       "/api/v2/admin/credentials",
       expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  test("route lifecycle actions use the expected admin endpoints", async () => {
+    const fetchMock = vi.fn(async (input: string, init?: RequestInit) => {
+      const method = init?.method || "GET";
+      if (input.endsWith("/duplicate")) {
+        return new Response(JSON.stringify({ id: "route-2", routeKey: "image.gpt-image-2.line2" }), {
+          headers: { "content-type": "application/json" },
+          status: 201,
+        });
+      }
+      if (input.endsWith("/set-default")) {
+        return new Response(JSON.stringify({ id: "route-2", isDefault: true }), {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        });
+      }
+      if (method === "DELETE") {
+        return new Response(JSON.stringify({ ok: true }), {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        });
+      }
+      return new Response(JSON.stringify({ id: "route-1" }), {
+        headers: { "content-type": "application/json" },
+        status: 200,
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await duplicateAdminRoute("route-1", { routeKey: "image.gpt-image-2.line2" });
+    await setDefaultAdminRoute("route-2");
+    await deleteAdminRoute("route-1");
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/v2/admin/ai/routes/route-1/duplicate",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/v2/admin/ai/routes/route-2/set-default",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "/api/v2/admin/ai/routes/route-1",
+      expect.objectContaining({ method: "DELETE" }),
     );
   });
 });

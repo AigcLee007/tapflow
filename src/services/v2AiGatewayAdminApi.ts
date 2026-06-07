@@ -70,6 +70,9 @@ export type AdminRoute = {
   rateLimit?: Record<string, unknown>;
   requestPath?: string | null;
   tenantId?: string | null;
+  modelFamily?: string | null;
+  environment?: string;
+  pluginInstallId?: string | null;
   upstreamModel?: string | null;
   weight?: number;
   deletedAt?: string | null;
@@ -223,6 +226,29 @@ export async function updateAdminRoute(
   },
 ): Promise<AdminRoute> {
   return apiPatch<AdminRoute>(`/admin/ai/routes/${encodeURIComponent(routeId)}`, input);
+}
+
+export async function duplicateAdminRoute(
+  routeId: string,
+  input?: {
+    internalLabel?: string | null;
+    isDefault?: boolean;
+    routeKey?: string;
+    routeLabel?: string | null;
+  },
+): Promise<AdminRoute> {
+  return apiPost<AdminRoute>(
+    `/admin/ai/routes/${encodeURIComponent(routeId)}/duplicate`,
+    input ?? {},
+  );
+}
+
+export async function setDefaultAdminRoute(routeId: string): Promise<AdminRoute> {
+  return apiPost<AdminRoute>(`/admin/ai/routes/${encodeURIComponent(routeId)}/set-default`);
+}
+
+export async function deleteAdminRoute(routeId: string): Promise<{ ok: true }> {
+  return apiDelete<{ ok: true }>(`/admin/ai/routes/${encodeURIComponent(routeId)}`);
 }
 
 export async function listAdminCredentials(): Promise<AdminCredential[]> {

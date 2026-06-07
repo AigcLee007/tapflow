@@ -58,7 +58,7 @@ export function AccountPage() {
           <div className="text-xs uppercase tracking-[0.24em] text-sky-300">账号</div>
           <h1 className="mt-2 text-2xl font-semibold text-white">账号中心</h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-            查看当前登录身份、所属工作区、角色权限，并进入模型中心完成模型插件安装、发布和线路测试。
+            查看当前登录身份、所属工作区、角色权限，并进入模型中心管理模型与线路；进入高级配置维护服务商、密钥、连接和底层资源。
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
