@@ -16,12 +16,17 @@ import { ACCOUNT_PROVIDER_SETTINGS_ROUTE } from "../../app/routes";
 import { useAuth } from "../../auth/useAuth";
 import {
   deleteAdminRoute,
+  createAdminRoute,
   duplicateAdminRoute,
+  listAdminModels,
+  listAdminProviders,
   listAdminCredentials,
   listAdminProviderConnections,
   listAdminRoutes,
   setDefaultAdminRoute,
   type AdminCredential,
+  type AdminModel,
+  type AdminProvider,
   type AdminProviderConnection,
   type AdminRoute,
   updateAdminRoute,
@@ -50,6 +55,8 @@ type RouteEditorState = {
 };
 
 type RouteCreateState = RouteEditorState & {
+  modelId: string;
+  providerId: string;
   routeKey: string;
 };
 
@@ -170,22 +177,30 @@ function findNextRouteIndex(routes: AiModelCatalogRoute[], prefix: string) {
 }
 
 function buildCreateState(
-  baseRoute: AdminRoute,
+  input: {
+    defaultApiMode?: string | null;
+    defaultConnectionId?: string | null;
+    defaultProviderId?: string | null;
+    defaultRequestPath?: string | null;
+    defaultUpstreamModel?: string | null;
+    prefix: string;
+    providerModelId?: string | null;
+  },
   routes: AiModelCatalogRoute[],
-  overrideConnectionId?: string | null,
 ): RouteCreateState {
-  const prefix = deriveRouteKeyPrefix(baseRoute.routeKey);
-  const nextIndex = findNextRouteIndex(routes, prefix);
+  const nextIndex = findNextRouteIndex(routes, input.prefix);
   return {
     adminNotes: "",
-    apiMode: baseRoute.apiMode ?? "",
-    connectionId: overrideConnectionId ?? baseRoute.connectionId ?? "",
-    internalLabel: baseRoute.internalLabel ? `${baseRoute.internalLabel} ${nextIndex}` : "",
-    requestPath: baseRoute.requestPath ?? "",
-    routeKey: `${prefix}.line${nextIndex}`,
+    apiMode: input.defaultApiMode ?? "",
+    connectionId: input.defaultConnectionId ?? "",
+    internalLabel: "",
+    modelId: input.providerModelId ?? "",
+    providerId: input.defaultProviderId ?? "",
+    requestPath: input.defaultRequestPath ?? "",
+    routeKey: `${input.prefix}.line${nextIndex}`,
     routeLabel: `线路${toChineseIndex(nextIndex)}`,
     status: "active",
-    upstreamModel: baseRoute.upstreamModel ?? "",
+    upstreamModel: input.defaultUpstreamModel ?? "",
   };
 }
 
@@ -202,6 +217,8 @@ export function AiSettingsPage() {
   const [models, setModels] = useState<AiModelCatalogItem[]>([]);
   const [routes, setRoutes] = useState<AiModelCatalogRoute[]>([]);
   const [adminRoutes, setAdminRoutes] = useState<AdminRoute[]>([]);
+  const [providers, setProviders] = useState<AdminProvider[]>([]);
+  const [providerModels, setProviderModels] = useState<AdminModel[]>([]);
   const [connections, setConnections] = useState<AdminProviderConnection[]>([]);
   const [credentials, setCredentials] = useState<AdminCredential[]>([]);
   const [selectedModelKey, setSelectedModelKey] = useState("");
@@ -266,12 +283,23 @@ export function AiSettingsPage() {
   }, [routeRows, selectedAdminRoute]);
 
   const createConnections = useMemo(() => {
-    if (!baseRouteForCreate?.providerId) return [];
+    if (!createEditor?.providerId) return [];
     return connections.filter(
-      (connection) =>
-        connection.providerId === baseRouteForCreate.providerId && connection.status === "active",
+      (connection) => connection.providerId === createEditor.providerId && connection.status === "active",
     );
-  }, [baseRouteForCreate?.providerId, connections]);
+  }, [connections, createEditor?.providerId]);
+
+  const createProviders = useMemo(
+    () => providers.filter((provider) => provider.status === "active"),
+    [providers],
+  );
+
+  const createModels = useMemo(() => {
+    if (!createEditor?.providerId) return [];
+    return providerModels.filter(
+      (model) => model.providerId === createEditor.providerId && model.modality === activeModality,
+    );
+  }, [activeModality, createEditor?.providerId, providerModels]);
 
   const refresh = useCallback(async () => {
     if (!canRead) {
@@ -283,14 +311,19 @@ export function AiSettingsPage() {
     setState("loading");
     setError("");
     try {
-      const [nextModels, nextAdminRoutes, nextConnections, nextCredentials] = await Promise.all([
+      const [nextModels, nextAdminRoutes, nextProviders, nextProviderModels, nextConnections, nextCredentials] =
+        await Promise.all([
         listAiModelCatalog(activeModality),
         listAdminRoutes(),
+        listAdminProviders(),
+        listAdminModels(),
         listAdminProviderConnections(),
         listAdminCredentials(),
-      ]);
+        ]);
       setModels(nextModels);
       setAdminRoutes(nextAdminRoutes);
+      setProviders(nextProviders);
+      setProviderModels(nextProviderModels);
       setConnections(nextConnections);
       setCredentials(nextCredentials);
       setSelectedModelKey((current) => {
@@ -345,9 +378,69 @@ export function AiSettingsPage() {
   }, [selectedAdminRoute]);
 
   useEffect(() => {
-    if (!createPanelOpen || !baseRouteForCreate) return;
-    setCreateEditor((current) => current ?? buildCreateState(baseRouteForCreate, routes));
-  }, [baseRouteForCreate, createPanelOpen, routes]);
+    if (!createPanelOpen || !selectedModel) return;
+    setCreateEditor((current) => {
+      if (current) return current;
+      const prefixSource =
+        baseRouteForCreate?.routeKey ?? selectedModel.defaultRouteKey ?? `${activeModality}.${selectedModel.modelKey}`;
+      const prefix = deriveRouteKeyPrefix(prefixSource);
+      const defaultProviderId = baseRouteForCreate?.providerId ?? createProviders[0]?.id ?? "";
+      const defaultConnectionId =
+        connections.find(
+          (connection) => connection.providerId === defaultProviderId && connection.status === "active",
+        )?.id ?? "";
+      const defaultProviderModelId =
+        providerModels.find(
+          (model) => model.providerId === defaultProviderId && model.modality === activeModality,
+        )?.id ?? "";
+      return buildCreateState(
+        {
+          defaultApiMode: baseRouteForCreate?.apiMode ?? "",
+          defaultConnectionId,
+          defaultProviderId,
+          defaultRequestPath: baseRouteForCreate?.requestPath ?? "",
+          defaultUpstreamModel: baseRouteForCreate?.upstreamModel ?? selectedModel.modelKey,
+          prefix,
+          providerModelId: defaultProviderModelId,
+        },
+        routes,
+      );
+    });
+  }, [
+    activeModality,
+    baseRouteForCreate,
+    connections,
+    createPanelOpen,
+    createProviders,
+    providerModels,
+    routes,
+    selectedModel,
+  ]);
+
+  useEffect(() => {
+    if (!createEditor) return;
+    const providerStillExists = createProviders.some((provider) => provider.id === createEditor.providerId);
+    if (providerStillExists) return;
+    const fallbackProviderId = createProviders[0]?.id ?? "";
+    if (fallbackProviderId === createEditor.providerId) return;
+    setCreateEditor((current) => {
+      if (!current) return current;
+      const fallbackConnectionId =
+        connections.find(
+          (connection) => connection.providerId === fallbackProviderId && connection.status === "active",
+        )?.id ?? "";
+      const fallbackModelId =
+        providerModels.find(
+          (model) => model.providerId === fallbackProviderId && model.modality === activeModality,
+        )?.id ?? "";
+      return {
+        ...current,
+        connectionId: fallbackConnectionId,
+        modelId: fallbackModelId,
+        providerId: fallbackProviderId,
+      };
+    });
+  }, [activeModality, connections, createEditor, createProviders, providerModels]);
 
   async function handleTestRoute(route: AiModelCatalogRoute) {
     setTestingRouteId(route.routeId);
@@ -396,18 +489,43 @@ export function AiSettingsPage() {
   }
 
   function openCreatePanel() {
-    if (!baseRouteForCreate) {
+    if (!selectedModel) {
       setError("当前模型还没有可复制的基础线路，请先到高级配置页完成首条线路初始化。");
       return;
     }
-    setCreateEditor(buildCreateState(baseRouteForCreate, routes, baseRouteForCreate.connectionId));
+    const prefixSource =
+      baseRouteForCreate?.routeKey ?? selectedModel.defaultRouteKey ?? `${activeModality}.${selectedModel.modelKey}`;
+    const prefix = deriveRouteKeyPrefix(prefixSource);
+    const defaultProviderId = baseRouteForCreate?.providerId ?? createProviders[0]?.id ?? "";
+    const defaultConnectionId =
+      connections.find(
+        (connection) => connection.providerId === defaultProviderId && connection.status === "active",
+      )?.id ?? "";
+    const defaultProviderModelId =
+      providerModels.find(
+        (model) => model.providerId === defaultProviderId && model.modality === activeModality,
+      )?.id ?? "";
+    setCreateEditor(
+      buildCreateState(
+        {
+          defaultApiMode: baseRouteForCreate?.apiMode ?? "",
+          defaultConnectionId,
+          defaultProviderId,
+          defaultRequestPath: baseRouteForCreate?.requestPath ?? "",
+          defaultUpstreamModel: baseRouteForCreate?.upstreamModel ?? selectedModel.modelKey,
+          prefix,
+          providerModelId: defaultProviderModelId,
+        },
+        routes,
+      ),
+    );
     setCreatePanelOpen(true);
     setError("");
     setMessage("");
   }
 
   async function handleCreateRoute() {
-    if (!baseRouteForCreate || !createEditor) return;
+    if (!selectedModel || !createEditor) return;
     const routeKey = createEditor.routeKey.trim();
     if (!routeKey) {
       setError("请填写线路 Key。");
@@ -418,22 +536,30 @@ export function AiSettingsPage() {
       return;
     }
 
+    if (!createEditor.providerId) {
+      setError("请选择所属服务商。");
+      return;
+    }
+    if (!createEditor.connectionId) {
+      setError("请选择运行连接。");
+      return;
+    }
+
     setCreatingRoute(true);
     setError("");
     setMessage("");
     try {
-      const duplicated = await duplicateAdminRoute(baseRouteForCreate.id, {
-        internalLabel: createEditor.internalLabel.trim() || null,
-        isDefault: false,
-        routeKey,
-        routeLabel: createEditor.routeLabel.trim() || null,
-      });
-      const created = await updateAdminRoute(duplicated.id, {
+      const created = await createAdminRoute({
         adminNotes: createEditor.adminNotes.trim() || null,
         apiMode: createEditor.apiMode.trim() || null,
         connectionId: createEditor.connectionId || null,
         internalLabel: createEditor.internalLabel.trim() || null,
+        modality: activeModality,
+        modelFamily: selectedModel.modelFamily || selectedModel.modelKey,
+        modelId: createEditor.modelId || null,
+        providerId: createEditor.providerId,
         requestPath: createEditor.requestPath.trim() || null,
+        routeKey,
         routeLabel: createEditor.routeLabel.trim() || null,
         status: createEditor.status,
         upstreamModel: createEditor.upstreamModel.trim() || null,
@@ -759,7 +885,7 @@ export function AiSettingsPage() {
                     <div>
                       <div className="text-sm font-medium text-white">新增线路</div>
                       <div className="mt-1 text-xs text-slate-300">
-                        基于当前模型已有线路复制出一条新线路，再单独调整连接、上游模型和 API 模式。
+                        直接把新线路挂到当前产品模型下，并单独选择服务商、运行连接、服务商模型和上游调用参数。
                       </div>
                     </div>
                     <button
@@ -775,6 +901,42 @@ export function AiSettingsPage() {
                   </div>
 
                   <div className="mt-4 grid gap-3 md:grid-cols-2">
+                    <label className="block">
+                      <span className="mb-1.5 block text-xs font-medium text-slate-300">所属服务商</span>
+                      <select
+                        className={selectClass}
+                        onChange={(event) =>
+                          setCreateEditor((current) => {
+                            if (!current) return current;
+                            const nextProviderId = event.target.value;
+                            const nextConnectionId =
+                              connections.find(
+                                (connection) =>
+                                  connection.providerId === nextProviderId && connection.status === "active",
+                              )?.id ?? "";
+                            const nextModelId =
+                              providerModels.find(
+                                (model) =>
+                                  model.providerId === nextProviderId && model.modality === activeModality,
+                              )?.id ?? "";
+                            return {
+                              ...current,
+                              connectionId: nextConnectionId,
+                              modelId: nextModelId,
+                              providerId: nextProviderId,
+                            };
+                          })
+                        }
+                        value={createEditor.providerId}
+                      >
+                        <option value="">请选择服务商</option>
+                        {createProviders.map((provider) => (
+                          <option key={provider.id} value={provider.id}>
+                            {provider.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                     <label className="block">
                       <span className="mb-1.5 block text-xs font-medium text-slate-300">线路 Key</span>
                       <input
@@ -815,6 +977,7 @@ export function AiSettingsPage() {
                       <span className="mb-1.5 block text-xs font-medium text-slate-300">运行连接</span>
                       <select
                         className={selectClass}
+                        disabled={!createEditor.providerId}
                         onChange={(event) =>
                           setCreateEditor((current) =>
                             current ? { ...current, connectionId: event.target.value } : current,
@@ -826,6 +989,26 @@ export function AiSettingsPage() {
                         {createConnections.map((connection) => (
                           <option key={connection.id} value={connection.id}>
                             {connection.name} / {connection.environment}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="block">
+                      <span className="mb-1.5 block text-xs font-medium text-slate-300">服务商模型</span>
+                      <select
+                        className={selectClass}
+                        disabled={!createEditor.providerId}
+                        onChange={(event) =>
+                          setCreateEditor((current) =>
+                            current ? { ...current, modelId: event.target.value } : current,
+                          )
+                        }
+                        value={createEditor.modelId}
+                      >
+                        <option value="">不绑定服务商模型</option>
+                        {createModels.map((model) => (
+                          <option key={model.id} value={model.id}>
+                            {model.displayName} / {model.modelKey}
                           </option>
                         ))}
                       </select>

@@ -157,6 +157,7 @@ describe("v2AiGatewayAdminApi", () => {
     });
     await createAdminRoute({
       modality: "text",
+      modelFamily: "example-text",
       modelId: "model-1",
       providerId: "provider-1",
       routeKey: "text.example",
@@ -180,7 +181,16 @@ describe("v2AiGatewayAdminApi", () => {
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
       "/api/v2/admin/ai/routes",
-      expect.objectContaining({ method: "POST" }),
+      expect.objectContaining({
+        body: JSON.stringify({
+          modality: "text",
+          modelFamily: "example-text",
+          modelId: "model-1",
+          providerId: "provider-1",
+          routeKey: "text.example",
+        }),
+        method: "POST",
+      }),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       4,
