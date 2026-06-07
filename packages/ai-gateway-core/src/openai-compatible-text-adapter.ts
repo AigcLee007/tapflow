@@ -611,7 +611,7 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
     const metadata = asRecord(request.metadata);
     const params = getNestedRecord(metadata, requestConfig);
     const lookupRecords = [params, metadata, requestConfig];
-    const model = request.model?.trim() || getString(requestConfig.model) || context.modelKey;
+    const model = getString(requestConfig.model) || request.model?.trim() || context.modelKey;
     const outputFormat = normalizeOutputFormat(
       getFirstString(lookupRecords, ["outputFormat", "output_format"]),
     );

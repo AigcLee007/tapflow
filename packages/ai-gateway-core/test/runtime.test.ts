@@ -477,6 +477,59 @@ describe("openai-compatible text adapter", () => {
     await server.close();
   });
 
+  test("generateImage lets Responses route config override request model", async () => {
+    const server = await withHttpServer(async (request, response) => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of request) {
+        chunks.push(Buffer.from(chunk));
+      }
+      const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, any>;
+      expect(body.model).toBe("gpt-5.5");
+
+      response.setHeader("content-type", "application/json");
+      response.end(
+        JSON.stringify({
+          output: [
+            {
+              result:
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9MbugAAAAASUVORK5CYII=",
+              type: "image_generation_call",
+            },
+          ],
+        }),
+      );
+    });
+
+    const adapter = new OpenAiCompatibleTextAdapter();
+    await adapter.generateImage(
+      {
+        apiKey: "sk-test-secret",
+        baseUrl: server.url,
+        modelKey: "gpt-image-2",
+        providerKey: "openai-compatible",
+        requestConfig: {
+          apiMode: "responses",
+          model: "gpt-5.5",
+          path: "/responses",
+        },
+        routeId: "route-2",
+        routeKey: "image.gpt-image-2.line2",
+        timeoutMs: 5_000,
+      },
+      {
+        metadata: {
+          params: {
+            size: "1k",
+          },
+        },
+        model: "gpt-image-2",
+        prompt: "a tiny pig",
+      },
+    );
+
+    await server.close();
+  });
+
   test("generateImage uses Responses API edit action with input images", async () => {
     const server = await withHttpServer(async (request, response) => {
       const chunks: Buffer[] = [];
