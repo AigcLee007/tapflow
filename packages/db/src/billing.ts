@@ -761,7 +761,9 @@ export class BillingService {
             COALESCE(SUM(billable_cents), 0)::text AS total_billable_cents,
             COALESCE(SUM(raw_cost), 0)::text AS raw_cost_total
           FROM usage_events
+          WHERE tenant_id = $1::uuid
         `,
+        [context.tenantId],
       );
       const ledgerTotalsResult = await client.query<{
         refund_cents: string;
@@ -774,7 +776,9 @@ export class BillingService {
             COALESCE(SUM(CASE WHEN entry_type = 'settle' THEN amount_cents ELSE 0 END), 0)::text AS settle_cents,
             COALESCE(SUM(CASE WHEN entry_type = 'refund' THEN amount_cents ELSE 0 END), 0)::text AS refund_cents
           FROM billing_ledger
+          WHERE tenant_id = $1::uuid
         `,
+        [context.tenantId],
       );
 
       const usageTotals = usageTotalsResult.rows[0];
@@ -1101,11 +1105,12 @@ export class BillingService {
             occurred_at::text AS occurred_at,
             created_at::text AS created_at
           FROM usage_events
+          WHERE tenant_id = $3::uuid
           ORDER BY created_at DESC, id DESC
           LIMIT $1::int
           OFFSET $2::int
         `,
-        [pageSize, offset],
+        [pageSize, offset, context.tenantId],
       );
 
       return {
@@ -1143,11 +1148,12 @@ export class BillingService {
             metadata,
             created_at::text AS created_at
           FROM billing_ledger
+          WHERE tenant_id = $3::uuid
           ORDER BY created_at DESC, id DESC
           LIMIT $1::int
           OFFSET $2::int
         `,
-        [pageSize, offset],
+        [pageSize, offset, context.tenantId],
       );
 
       return {
