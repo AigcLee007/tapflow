@@ -388,7 +388,7 @@ export class AuthService {
 
       return response;
     } catch (error) {
-      this.rethrowKnownDatabaseError(error, "Unable to register user");
+      this.rethrowKnownDatabaseError(error, "注册账号失败，请稍后重试");
     }
   }
 
@@ -416,17 +416,17 @@ export class AuthService {
 
     const user = userResult.rows[0];
     if (!user?.password_hash || user.status !== "active") {
-      throw new AuthApiError(401, "INVALID_CREDENTIALS", "Invalid email or password");
+      throw new AuthApiError(401, "INVALID_CREDENTIALS", "邮箱或密码不正确");
     }
 
     const passwordMatches = await verifyPassword(user.password_hash, input.password);
     if (!passwordMatches) {
-      throw new AuthApiError(401, "INVALID_CREDENTIALS", "Invalid email or password");
+      throw new AuthApiError(401, "INVALID_CREDENTIALS", "邮箱或密码不正确");
     }
 
     const memberships = await this.listActiveTenantsForUser(user.id);
     if (memberships.length === 0) {
-      throw new AuthApiError(403, "TENANT_ACCESS_REQUIRED", "No active tenant membership found");
+      throw new AuthApiError(403, "TENANT_ACCESS_REQUIRED", "当前账号还没有可用的工作区权限");
     }
 
     const currentMembership =
@@ -435,7 +435,7 @@ export class AuthService {
         : memberships[0]) ?? null;
 
     if (!currentMembership) {
-      throw new AuthApiError(403, "TENANT_FORBIDDEN", "Tenant access denied");
+      throw new AuthApiError(403, "TENANT_FORBIDDEN", "当前账号没有访问该工作区的权限");
     }
 
     const currentTenant: PublicTenant = {
@@ -594,7 +594,7 @@ export class AuthService {
 
       const row = existing.rows[0];
       if (!row) {
-        throw new AuthApiError(401, "INVALID_REFRESH_TOKEN", "Refresh token is invalid");
+        throw new AuthApiError(401, "INVALID_REFRESH_TOKEN", "登录状态已失效，请重新登录");
       }
 
       const nextRefreshToken = generateRefreshToken();
@@ -612,7 +612,7 @@ export class AuthService {
         [row.token_id],
       );
       if (!revoked.rows[0]?.id) {
-        throw new AuthApiError(401, "INVALID_REFRESH_TOKEN", "Refresh token is invalid");
+        throw new AuthApiError(401, "INVALID_REFRESH_TOKEN", "登录状态已失效，请重新登录");
       }
 
       await client.query(
@@ -758,7 +758,7 @@ export class AuthService {
 
   async getMe(context: RequestContext) {
     if (!context.userId) {
-      throw new AuthApiError(401, "UNAUTHORIZED", "Authentication is required");
+      throw new AuthApiError(401, "UNAUTHORIZED", "请先登录后再继续操作");
     }
 
     const userResult = await this.pool.query<{
@@ -779,7 +779,7 @@ export class AuthService {
 
     const user = userResult.rows[0];
     if (!user) {
-      throw new AuthApiError(401, "UNAUTHORIZED", "Authentication is required");
+      throw new AuthApiError(401, "UNAUTHORIZED", "请先登录后再继续操作");
     }
 
     const currentTenant = context.tenantId
@@ -863,7 +863,7 @@ export class AuthService {
       "code" in error &&
       error.code === "23505"
     ) {
-      throw new AuthApiError(409, "CONFLICT", "A record with the same unique value already exists");
+      throw new AuthApiError(409, "CONFLICT", "该邮箱或工作区信息已存在，请更换后重试");
     }
 
     if (error instanceof AuthApiError) {

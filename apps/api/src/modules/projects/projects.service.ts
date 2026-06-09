@@ -151,7 +151,7 @@ export class ProjectsService {
 
       const row = result.rows[0];
       if (!row) {
-        throw new ProjectsApiError(404, "PROJECT_NOT_FOUND", "Project not found");
+        throw new ProjectsApiError(404, "PROJECT_NOT_FOUND", "未找到对应项目");
       }
 
       return mapProject(row);
@@ -190,7 +190,7 @@ export class ProjectsService {
 
       const row = existing.rows[0];
       if (!row) {
-        throw new ProjectsApiError(404, "PROJECT_NOT_FOUND", "Project not found");
+        throw new ProjectsApiError(404, "PROJECT_NOT_FOUND", "未找到对应项目");
       }
 
       if (input.coverAssetId) {
@@ -207,7 +207,7 @@ export class ProjectsService {
         );
 
         if (!cover.rows[0]) {
-          throw new ProjectsApiError(404, "ASSET_NOT_FOUND", "Cover asset not found");
+          throw new ProjectsApiError(404, "ASSET_NOT_FOUND", "未找到项目封面素材");
         }
       }
 
@@ -260,7 +260,7 @@ export class ProjectsService {
       );
 
       if (!deleted.rows[0]?.id) {
-        throw new ProjectsApiError(404, "PROJECT_NOT_FOUND", "Project not found");
+        throw new ProjectsApiError(404, "PROJECT_NOT_FOUND", "未找到对应项目");
       }
 
       return { ok: true as const };

@@ -174,7 +174,7 @@ export async function uploadAssetFile(input: {
   if (!upload.ok) {
     const message = (await upload.text().catch(() => "")).trim();
     throw new Error(
-      message ? `Upload failed with status ${upload.status}: ${message}` : `Upload failed with status ${upload.status}`,
+      message ? `上传失败（状态 ${upload.status}）：${message}` : `上传失败（状态 ${upload.status}）。`,
     );
   }
 

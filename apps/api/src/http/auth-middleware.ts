@@ -23,7 +23,7 @@ export async function requireAuth(request: FastifyRequest, reply: FastifyReply):
       reply,
       401,
       "UNAUTHORIZED",
-      "Authentication is required",
+      "请先登录后再继续操作",
     );
   }
 }
@@ -35,7 +35,7 @@ export async function requireTenant(request: FastifyRequest, reply: FastifyReply
       reply,
       400,
       "TENANT_REQUIRED",
-      "A tenant context is required",
+      "当前请求缺少工作区上下文",
     );
   }
 }
@@ -51,7 +51,7 @@ export function requirePermission(permissionKey: string) {
         reply,
         401,
         "UNAUTHORIZED",
-        "Authentication is required",
+        "请先登录后再继续操作",
       );
       return;
     }

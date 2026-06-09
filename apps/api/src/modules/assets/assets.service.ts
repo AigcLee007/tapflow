@@ -383,7 +383,7 @@ export class AssetsService {
         );
 
         if (!project.rows[0]) {
-          throw new AssetsApiError(404, "PROJECT_NOT_FOUND", "Project not found");
+          throw new AssetsApiError(404, "PROJECT_NOT_FOUND", "未找到对应项目");
         }
       }
 

@@ -2060,9 +2060,9 @@ const ImageModelRouteDropup: React.FC<ImageModelRouteDropupProps> = ({
           )}
           {runtimeRoutes.length === 0 && (
             <>
-              <div style={imageMenuSubHeader}>运行路由</div>
+              <div style={imageMenuSubHeader}>运行线路</div>
               <div style={{ color: '#94a3b8', fontSize: 13, lineHeight: 1.5, padding: '10px 16px 14px' }}>
-                当前模型未配置可用运行路由
+                当前模型未配置可用运行线路
               </div>
             </>
           )}
@@ -2088,6 +2088,28 @@ const formatImageSizeLabel = (size: string) => {
   if (/^\d+x\d+$/.test(lower)) return lower;
   if (lower === '1k' || lower === '2k' || lower === '4k') return lower.toUpperCase();
   return value;
+};
+
+const buildImageSizeParamPatch = (modelId: string, size: string) => {
+  const normalizedSize = String(size || '').toLowerCase();
+  if (modelId === 'gpt-image-2') {
+    return {
+      size: normalizedSize,
+    };
+  }
+  return {
+    imageSize: normalizedSize.toUpperCase(),
+    size: normalizedSize,
+  };
+};
+
+const cleanParamsForImageModel = (modelId: string, params: Record<string, any>) => {
+  const nextParams = { ...params };
+  if (modelId === 'gpt-image-2') {
+    delete nextParams.imageSize;
+    delete nextParams.image_size;
+  }
+  return nextParams;
 };
 
 const ImageSettingsDropup: React.FC<ImageSettingsDropupProps> = ({
@@ -2243,7 +2265,7 @@ const DynamicImageParamsDropup: React.FC<DynamicImageParamsDropupProps> = ({
       <button type="button" className="nodrag nopan" onClick={() => setOpen((value) => !value)} style={textModelTrigger}>
         <span style={{ border: '1px solid #cbd5e1', width: 13, height: 13, display: 'inline-block', borderRadius: 2 }} />
         <span>{ratio}</span>
-        <span style={{ color: '#94a3b8' }}>· {String(size || '').toUpperCase()}</span>
+        <span style={{ color: '#94a3b8' }}>· {formatImageSizeLabel(String(size || ''))}</span>
         <ChevronDown size={14} color="#a1a1aa" />
       </button>
       {open && (
@@ -3753,22 +3775,25 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       const nextSize = nextSizes.includes(currentSize) ? currentSize : (nextSizes[0] || '1k');
       const fallbackRoute = getLowestCostImageRouteForModel(normalizedModelId, nextSize) || getSelectedImageRoute(normalizedModelId);
       const nextRuntimeRoutes = getRuntimeRoutesForImageModel(normalizedModelId, runtimeRoutes);
-      const preferredRouteKey = IMAGE_RUNTIME_ROUTE_BY_MODEL_ID[normalizedModelId] || '';
+      const catalogModel = models.find((model) => model.id === normalizedModelId) || null;
+      const preferredRouteKey = catalogModel?.defaultRouteKey || IMAGE_RUNTIME_ROUTE_BY_MODEL_ID[normalizedModelId] || '';
       const runtimeRoute =
         nextRuntimeRoutes.find((route) => route.routeKey === preferredRouteKey) ||
         nextRuntimeRoutes[0] ||
         null;
+      const defaults = getDefaultParamsFromUiSchema(catalogModel?.uiSchema);
       updateNodeData(id, {
         modelId: normalizedModelId,
         routeId: fallbackRoute?.id,
-        routeKey: runtimeRoute?.routeKey,
-        params: {
+        routeKey: runtimeRoute?.routeKey || preferredRouteKey || undefined,
+        params: cleanParamsForImageModel(normalizedModelId, {
           ...p,
-          size: nextSize,
-        },
+          ...defaults,
+          ...buildImageSizeParamPatch(normalizedModelId, nextSize),
+        }),
       });
     },
-    [currentSize, id, p, runtimeRoutes, updateNodeData],
+    [currentSize, id, modelRuntimeRoutes, models, p, runtimeRoutes, updateNodeData],
   );
 
   const applyRouteSelection = useCallback(
@@ -5679,7 +5704,15 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
                 onChangeModel={applyModelSelection}
                 onChangeRoute={applyRouteSelection}
               />
-              {showSize && (
+              {dynamicParamFields.length > 0 ? (
+                <DynamicImageParamsDropup
+                  fields={dynamicParamFields}
+                  params={p}
+                  ratio={currentRatio}
+                  size={currentSize}
+                  onChangeParam={setParam}
+                />
+              ) : showSize && (
                 <ImageSettingsDropup
                   ratio={currentRatio}
                   size={currentSize}
@@ -6255,7 +6288,7 @@ export const UploadNodeComponent = memo(function UploadNode({
         minHeight={160} 
         lineStyle={{ border: 'none' }}
       />
-      <NodeLabel nodeId={id} icon={<Upload size={14} />} label={String(d.title || 'Upload')} fallbackLabel="Upload" />
+      <NodeLabel nodeId={id} icon={<Upload size={14} />} label={String(d.title || '上传')} fallbackLabel="上传" />
 
       <div style={card(d.width || FLOW_NODE_DEFAULT_SIZES.upload.width, d.height || FLOW_NODE_DEFAULT_SIZES.upload.height, selected, isTargeting)}>
         <div style={{
@@ -6569,4 +6602,3 @@ const groupPopupButtonStyle: React.CSSProperties = {
   borderRadius: 10,
   background: 'transparent',
 };
-

@@ -302,7 +302,7 @@ describe("useRemoteFlowAutosave", () => {
 
     expect(saveFlowDraftMock).toHaveBeenCalledTimes(3);
     expect(result.current.status).toBe("failed");
-    expect(result.current.error).toContain("Editing can continue");
+    expect(result.current.error).toContain("你可以继续编辑");
 
     act(() => {
       setNodeIds(["local-a", "local-b"]);

@@ -231,7 +231,7 @@ export function assertDraftGraphSafe(graph: FlowDraftGraph): void {
     throw new FlowsApiError(
       400,
       "UNSUPPORTED_LOCAL_PAYLOAD",
-      "Draft graph cannot contain data:, blob:, or embedded base64 payloads. Upload assets first and store assetId references.",
+      "画布草稿中不能直接保存 data:、blob: 或 base64 素材内容。请先上传素材，并仅保存 assetId 引用。",
     );
   }
 }
@@ -425,7 +425,7 @@ export class FlowsService {
         );
 
         if (!lockedFlow.rows[0]) {
-          throw new FlowsApiError(404, "FLOW_NOT_FOUND", "Flow not found");
+          throw new FlowsApiError(404, "FLOW_NOT_FOUND", "未找到对应画布");
         }
 
         const existingVersion = await client.query<FlowVersionRecord>(
@@ -608,7 +608,7 @@ export class FlowsService {
         throw new FlowsApiError(
           409,
           "FLOW_DRAFT_REVISION_CONFLICT",
-          "Flow draft has changed since it was loaded",
+          "画布草稿已在其他位置更新，请刷新后再试",
         );
       }
 
@@ -655,7 +655,7 @@ export class FlowsService {
     );
 
     if (!project.rows[0]?.id) {
-      throw new FlowsApiError(404, "PROJECT_NOT_FOUND", "Project not found");
+      throw new FlowsApiError(404, "PROJECT_NOT_FOUND", "未找到对应项目");
     }
   }
 
@@ -690,7 +690,7 @@ export class FlowsService {
 
     const row = result.rows[0];
     if (!row) {
-      throw new FlowsApiError(404, "FLOW_NOT_FOUND", "Flow not found");
+      throw new FlowsApiError(404, "FLOW_NOT_FOUND", "未找到对应画布");
     }
 
     return mapFlow(row);

@@ -144,7 +144,7 @@ export function useRemoteFlowAutosave(input: {
         }
 
         if (!nextDraft) {
-          throw new Error("Autosave retry exhausted before receiving a saved draft.");
+          throw new Error("自动保存多次重试后仍未拿到已保存的草稿。");
         }
 
         revisionRef.current = nextDraft.revision;
@@ -292,28 +292,28 @@ function getAutosaveErrorMessage(error: unknown) {
   if (error instanceof V2HttpError) {
     if (error.status === 400) {
       return error.code === "UNSUPPORTED_LOCAL_PAYLOAD"
-        ? "Cloud sync is pending because the canvas still contains local-only image data. Please re-upload the asset and try again."
-        : "Cloud sync is pending because the draft payload did not pass validation.";
+        ? "当前画布仍包含本地图片数据，暂时无法同步到云端。请重新上传素材后再试。"
+        : "草稿内容未通过校验，暂时无法同步到云端。";
     }
     if (error.status === 401) {
-      return "Cloud sync is pending because your session expired. Please log in again.";
+      return "登录状态已失效，云端同步已暂停，请重新登录。";
     }
     if (error.status === 409) {
-      return "Cloud sync is pending because autosave could not claim the latest revision yet. Editing can continue.";
+      return "检测到草稿版本冲突，系统会继续重试同步，你可以继续编辑。";
     }
     if (error.status >= 500) {
-      return "Cloud sync is pending because the server is temporarily unavailable.";
+      return "服务暂时不可用，云端同步稍后会自动重试。";
     }
-    return error.message || "Cloud sync is pending.";
+    return error.message || "云端同步暂未完成。";
   }
 
   if (error instanceof Error && /failed to fetch/i.test(error.message)) {
-    return "Cloud sync is pending because the app could not reach the draft API. Check the local API server or proxy.";
+    return "当前无法连接草稿接口，云端同步已暂停，请检查本地 API 服务或代理。";
   }
 
   if (error instanceof Error) {
     return error.message;
   }
 
-  return "Cloud sync is pending.";
+  return "云端同步暂未完成。";
 }

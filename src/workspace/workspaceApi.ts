@@ -78,14 +78,12 @@ export async function createWorkspaceProject(input: {
 
   try {
     flow = await createProjectFlow(project.id, {
-      description: "Default project canvas",
-      title: `${project.name} Flow`,
+      description: "项目默认画布",
+      title: `${project.name} 画布`,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    throw new Error(
-      `Project was created, but the default Flow could not be created. Project ID: ${project.id}. ${message}`,
-    );
+    const message = error instanceof Error ? error.message : "未知错误";
+    throw new Error(`项目已创建，但默认画布创建失败。项目 ID：${project.id}。${message}`);
   }
 
   return { flow, project };

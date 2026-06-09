@@ -137,7 +137,7 @@ export class AdminApiError extends Error {
 
 function requireTenantContext(context: AdminContext): { tenantId: string; userId: string | null } {
   if (!context.tenantId) {
-    throw new AdminApiError(400, "TENANT_REQUIRED", "A tenant context is required");
+    throw new AdminApiError(400, "TENANT_REQUIRED", "当前请求缺少工作区上下文");
   }
 
   return {
@@ -312,7 +312,7 @@ export class AdminApiService {
 
     const row = user.rows[0];
     if (!row) {
-      throw new AdminApiError(404, "USER_NOT_FOUND", "User not found");
+      throw new AdminApiError(404, "USER_NOT_FOUND", "未找到对应用户");
     }
 
     const membershipsByUserId = await this.loadMembershipsByUserIds(tenantContext, [userId]);
@@ -339,7 +339,7 @@ export class AdminApiService {
   }> {
     const tenantContext = requireTenantContext(context);
     if (input.tenantId !== tenantContext.tenantId) {
-      throw new AdminApiError(403, "TENANT_SCOPE_MISMATCH", "Admin operations are scoped to the current tenant");
+      throw new AdminApiError(403, "TENANT_SCOPE_MISMATCH", "当前管理操作仅允许在当前工作区内执行");
     }
 
     const membership = await withTenantTransaction<{ rows: Array<{ exists_flag: number }> }>(tenantContext, async (client) => {
@@ -356,7 +356,7 @@ export class AdminApiService {
     }, this.pool);
 
     if (!membership.rows[0]) {
-      throw new AdminApiError(404, "TENANT_MEMBERSHIP_NOT_FOUND", "User is not a member of the specified tenant");
+      throw new AdminApiError(404, "TENANT_MEMBERSHIP_NOT_FOUND", "该用户不属于指定工作区");
     }
 
     const idempotencyKey = input.idempotencyKey?.trim() || `admin-grant:${input.tenantId}:${input.targetUserId}:${randomUUID()}`;
@@ -446,7 +446,7 @@ export class AdminApiService {
     const tenantContext = requireTenantContext(context);
     const tenantId = input.tenantId ?? tenantContext.tenantId;
     if (tenantId !== null && tenantId !== tenantContext.tenantId) {
-      throw new AdminApiError(403, "TENANT_SCOPE_MISMATCH", "Redeem code creation is scoped to the current tenant");
+      throw new AdminApiError(403, "TENANT_SCOPE_MISMATCH", "当前只能为当前工作区创建兑换码");
     }
 
     const client = await this.pool.connect();
@@ -541,7 +541,7 @@ export class AdminApiService {
       }
 
       if (!created) {
-        throw new AdminApiError(500, "REDEEM_CODE_CREATE_FAILED", "Failed to create redeem code");
+        throw new AdminApiError(500, "REDEEM_CODE_CREATE_FAILED", "兑换码创建失败，请稍后重试");
       }
 
       await client.query("COMMIT");
@@ -610,7 +610,7 @@ export class AdminApiService {
       );
     }, this.pool);
     if (!membership.rows[0]) {
-      throw new AdminApiError(404, "TENANT_MEMBERSHIP_NOT_FOUND", "User is not a member of the current tenant");
+      throw new AdminApiError(404, "TENANT_MEMBERSHIP_NOT_FOUND", "该用户不属于当前工作区");
     }
 
     const updated = await this.pool.query<{
@@ -640,7 +640,7 @@ export class AdminApiService {
 
     const row = updated.rows[0];
     if (!row) {
-      throw new AdminApiError(404, "USER_NOT_FOUND", "User not found");
+      throw new AdminApiError(404, "USER_NOT_FOUND", "未找到对应用户");
     }
 
     await safeRecordAuditLog(
@@ -688,7 +688,7 @@ export class AdminApiService {
     const tenantContext = requireTenantContext(context);
     const limit = Math.max(1, Math.min(input?.limit ?? 20, 100));
     if (input?.tenantId && input.tenantId !== tenantContext.tenantId) {
-      throw new AdminApiError(403, "TENANT_SCOPE_MISMATCH", "Workflow run inspection is scoped to the current tenant");
+      throw new AdminApiError(403, "TENANT_SCOPE_MISMATCH", "当前只能查看当前工作区的任务记录");
     }
     const result = await withTenantTransaction<{ rows: AdminWorkflowRunRow[] }>(tenantContext, async (client) => {
       return client.query<AdminWorkflowRunRow>(
@@ -769,7 +769,7 @@ export class AdminApiService {
 
     const row = workflowRun.rows[0];
     if (!row) {
-      throw new AdminApiError(404, "WORKFLOW_RUN_NOT_FOUND", "Workflow run not found");
+      throw new AdminApiError(404, "WORKFLOW_RUN_NOT_FOUND", "未找到对应任务记录");
     }
 
     const nodeRuns = await withTenantTransaction<{ rows: AdminNodeRunRow[] }>(tenantContext, async (client) => {

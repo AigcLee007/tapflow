@@ -65,7 +65,7 @@ export const saveFlowDraftSchema = z.object({
   graphJson: draftGraphSchema.optional(),
   graph_json: draftGraphSchema.optional(),
 }).refine((value) => value.graph || value.graphJson || value.graph_json, {
-  message: "A graph payload is required",
+  message: "缺少画布图数据",
 });
 
 export type CreateFlowInput = z.infer<typeof createFlowSchema>;

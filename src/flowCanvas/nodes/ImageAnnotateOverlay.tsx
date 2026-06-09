@@ -1492,7 +1492,7 @@ export const ImageAnnotateOverlay: React.FC<ImageAnnotateOverlayProps> = ({
         </button>
         <button type="button" onClick={handleSave} disabled={isSaving} style={saveButtonStyle(isSaving)}>
           <Save size={18} />
-          {isSaving ? 'Saving' : 'Save'}
+          {isSaving ? '保存中' : '保存'}
         </button>
       </div>
 

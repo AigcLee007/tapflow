@@ -47,7 +47,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         requestSequenceRef.current === requestId &&
         !(loadError instanceof V2HttpError && loadError.status === 401)
       ) {
-        setError(loadError instanceof Error ? loadError.message : "Unable to load session");
+        setError(loadError instanceof Error ? loadError.message : "账号会话加载失败。");
       }
     } finally {
       if (requestSequenceRef.current === requestId) {
@@ -94,7 +94,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setSession(await v2AuthClient.register(input));
           await loadCurrentSession();
         } catch (registerError) {
-          setError(registerError instanceof Error ? registerError.message : "Registration failed");
+          setError(registerError instanceof Error ? registerError.message : "注册失败，请稍后重试。");
           throw registerError;
         } finally {
           setLoading(false);
@@ -113,7 +113,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setSession(await v2AuthClient.login(input));
           await loadCurrentSession();
         } catch (loginError) {
-          setError(loginError instanceof Error ? loginError.message : "Login failed");
+          setError(loginError instanceof Error ? loginError.message : "登录失败，请稍后重试。");
           throw loginError;
         } finally {
           setLoading(false);

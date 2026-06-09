@@ -17,7 +17,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   if (loading) {
     return (
       <div className="grid min-h-screen place-items-center bg-[#09090f] text-sm text-slate-200">
-        Loading workspace...
+        正在加载工作区...
       </div>
     );
   }
