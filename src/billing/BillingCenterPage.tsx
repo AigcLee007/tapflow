@@ -82,6 +82,7 @@ export function BillingCenterPage() {
   }, [identityKey, refresh]);
 
   const showLocalQaHint =
+    import.meta.env.DEV &&
     !loading &&
     !error &&
     summary &&
