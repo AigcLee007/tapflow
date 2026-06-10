@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { ArrowRight, Download, Star, X } from "lucide-react";
 
-import { getAssetDownloadUrl, updateAssetMetadata, type AssetItem } from "./assetApi";
+import { getAssetDownloadUrl, getAssetVariantUrl, updateAssetMetadata, type AssetItem } from "./assetApi";
 import { listWorkspaceProjects, updateWorkspaceProject, type WorkspaceProject } from "../workspace/workspaceApi";
 
 function kindLabel(kind: string) {
@@ -29,10 +29,36 @@ export function AssetPreviewModal({
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [favorite, setFavorite] = useState(asset.favorite);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(asset.previewUrl ?? null);
 
   useEffect(() => {
     setFavorite(asset.favorite);
   }, [asset.favorite]);
+
+  useEffect(() => {
+    setPreviewUrl(asset.previewUrl ?? null);
+
+    if (!asset.id || (!asset.mimeType.startsWith("image/") && !asset.mimeType.startsWith("video/"))) {
+      return;
+    }
+
+    let active = true;
+    void getAssetVariantUrl(asset.id, "preview")
+      .then((result) => {
+        if (active) {
+          setPreviewUrl(result.url);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setPreviewUrl(asset.previewUrl ?? null);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [asset.id, asset.mimeType, asset.previewUrl]);
 
   useEffect(() => {
     setLoadingProjects(true);
@@ -50,6 +76,8 @@ export function AssetPreviewModal({
   }, [asset.projectId]);
 
   const title = asset.title || asset.originalFilename || "未命名素材";
+
+  const displayUrl = previewUrl || asset.previewUrl || "";
 
   const download = async () => {
     setActionError(null);
@@ -114,10 +142,10 @@ export function AssetPreviewModal({
           <X size={18} />
         </button>
         <div className="grid min-h-[360px] place-items-center bg-black">
-          {asset.previewUrl && asset.mimeType.startsWith("image/") ? (
-            <img alt="" className="max-h-[82vh] max-w-full object-contain" src={asset.previewUrl} />
-          ) : asset.previewUrl && asset.mimeType.startsWith("video/") ? (
-            <video className="max-h-[82vh] max-w-full" controls src={asset.previewUrl} />
+          {displayUrl && asset.mimeType.startsWith("image/") ? (
+            <img alt="" className="max-h-[82vh] max-w-full object-contain" src={displayUrl} />
+          ) : displayUrl && asset.mimeType.startsWith("video/") ? (
+            <video className="max-h-[82vh] max-w-full" controls preload="metadata" src={displayUrl} />
           ) : (
             <div className="px-8 text-center text-sm text-slate-500">该素材类型暂不支持预览。</div>
           )}

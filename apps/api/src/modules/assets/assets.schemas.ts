@@ -36,6 +36,10 @@ export const assetListQuerySchema = z.object({
   source: z.string().trim().min(1).max(64).optional(),
 });
 
+export const assetDownloadUrlQuerySchema = z.object({
+  variantKey: z.string().trim().min(1).max(64).optional(),
+});
+
 export const updateAssetMetadataSchema = z
   .object({
     description: z.string().trim().max(2000).nullable().optional(),
@@ -95,12 +99,26 @@ export const completeUploadSchema = z
   .optional()
   .default({});
 
+export const signedAssetUrlRequestSchema = z.object({
+  requests: z
+    .array(
+      z.object({
+        assetId: z.string().uuid(),
+        variantKey: z.string().trim().min(1).max(64).optional(),
+      }),
+    )
+    .min(1)
+    .max(100),
+});
+
 export type AssetIdParams = z.infer<typeof assetIdParamsSchema>;
+export type AssetDownloadUrlQuery = z.infer<typeof assetDownloadUrlQuerySchema>;
 export type AssetListQuery = z.infer<typeof assetListQuerySchema>;
 export type CompleteUploadInput = z.infer<typeof completeUploadSchema>;
 export type CreateAssetFolderInput = z.infer<typeof createAssetFolderSchema>;
 export type FolderAssetParams = z.infer<typeof folderAssetParamsSchema>;
 export type FolderIdParams = z.infer<typeof folderIdParamsSchema>;
 export type PresignedUploadInput = z.infer<typeof presignedUploadSchema>;
+export type SignedAssetUrlRequest = z.infer<typeof signedAssetUrlRequestSchema>;
 export type UpdateAssetFolderInput = z.infer<typeof updateAssetFolderSchema>;
 export type UpdateAssetMetadataInput = z.infer<typeof updateAssetMetadataSchema>;

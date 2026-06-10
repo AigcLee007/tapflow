@@ -117,6 +117,15 @@ type AssetForStorage = {
   status: string;
 };
 
+type AssetStorageTarget = {
+  assetId: string;
+  bucket: string;
+  key: string;
+  mimeType: string;
+  originalFilename: string | null;
+  variantKey: string | null;
+};
+
 type AssetFolderRecord = {
   created_at: string;
   created_by: string | null;
@@ -340,10 +349,12 @@ export class AssetsService {
         pageValues,
       );
 
-      const items: AssetView[] = [];
-      for (const row of result.rows) {
-        items.push(mapAsset(row, await this.listVariants(client, row.id)));
-      }
+      const variantsByAssetId = await this.listVariantsForAssets(
+        client,
+        result.rows.map((row) => row.id),
+      );
+
+      const items = result.rows.map((row) => mapAsset(row, variantsByAssetId.get(row.id) ?? []));
 
       return {
         items,
@@ -894,40 +905,87 @@ export class AssetsService {
   async createDownloadUrl(
     context: AssetContext,
     assetId: string,
+    variantKey?: string,
   ): Promise<{
     expiresAt: string;
     method: "GET";
     url: string;
+    variantKey: string | null;
   }> {
     return withTenantTransaction(context, async (client) => {
-      const asset = await this.getAssetRow(client, context.tenantId, assetId);
-      if (asset.deleted_at) {
-        throw new AssetsApiError(404, "ASSET_NOT_FOUND", "Asset not found");
-      }
-      if (asset.status !== "available") {
-        throw new AssetsApiError(409, "ASSET_NOT_AVAILABLE", "Asset is not available");
-      }
+      const target = await this.getAssetStorageTarget(client, context.tenantId, assetId, variantKey);
 
       const download = await this.storageProvider.createPresignedGetUrl({
-        bucket: asset.bucket,
+        bucket: target.bucket,
         expiresInSeconds: 900,
-        key: asset.object_key,
+        key: target.key,
         responseContentDisposition: `attachment; filename="${buildDownloadFilename({
-          bucket: asset.bucket,
-          id: asset.id,
-          mimeType: asset.mime_type,
-          objectKey: asset.object_key,
-          originalFilename: asset.original_filename,
-          status: asset.status,
+          bucket: target.bucket,
+          id: target.assetId,
+          mimeType: target.mimeType,
+          objectKey: target.key,
+          originalFilename: target.originalFilename,
+          status: "available",
         })}"`,
-        responseContentType: asset.mime_type,
+        responseContentType: target.mimeType,
       });
 
       return {
         expiresAt: download.expiresAt,
         method: "GET",
         url: download.url,
+        variantKey: target.variantKey,
       };
+    }, this.pool);
+  }
+
+  async createSignedUrls(
+    context: AssetContext,
+    requests: Array<{ assetId: string; variantKey?: string }>,
+  ): Promise<{
+    items: Array<{
+      assetId: string;
+      expiresAt: string;
+      method: "GET";
+      url: string;
+      variantKey: string | null;
+    }>;
+  }> {
+    return withTenantTransaction(context, async (client) => {
+      const items = [];
+
+      for (const request of requests) {
+        const target = await this.getAssetStorageTarget(
+          client,
+          context.tenantId,
+          request.assetId,
+          request.variantKey,
+        );
+        const signed = await this.storageProvider.createPresignedGetUrl({
+          bucket: target.bucket,
+          expiresInSeconds: 900,
+          key: target.key,
+          responseContentDisposition: `inline; filename="${buildDownloadFilename({
+            bucket: target.bucket,
+            id: target.assetId,
+            mimeType: target.mimeType,
+            objectKey: target.key,
+            originalFilename: target.originalFilename,
+            status: "available",
+          })}"`,
+          responseContentType: target.mimeType,
+        });
+
+        items.push({
+          assetId: target.assetId,
+          expiresAt: signed.expiresAt,
+          method: "GET" as const,
+          url: signed.url,
+          variantKey: target.variantKey,
+        });
+      }
+
+      return { items };
     }, this.pool);
   }
 
@@ -1073,6 +1131,67 @@ export class AssetsService {
     return row;
   }
 
+  private async getAssetStorageTarget(
+    client: PoolClient,
+    tenantId: string,
+    assetId: string,
+    variantKey?: string,
+  ): Promise<AssetStorageTarget> {
+    const asset = await this.getAssetRow(client, tenantId, assetId);
+    if (asset.deleted_at) {
+      throw new AssetsApiError(404, "ASSET_NOT_FOUND", "Asset not found");
+    }
+    if (asset.status !== "available") {
+      throw new AssetsApiError(409, "ASSET_NOT_AVAILABLE", "Asset is not available");
+    }
+
+    if (!variantKey) {
+      return {
+        assetId: asset.id,
+        bucket: asset.bucket,
+        key: asset.object_key,
+        mimeType: asset.mime_type,
+        originalFilename: asset.original_filename,
+        variantKey: null,
+      };
+    }
+
+    const variant = await client.query<AssetVariantRecord>(
+      `
+        SELECT
+          id::text AS id,
+          variant_key,
+          bucket,
+          object_key,
+          mime_type,
+          width,
+          height,
+          size_bytes::text AS size_bytes,
+          metadata
+        FROM asset_variants
+        WHERE tenant_id = $1::uuid
+          AND asset_id = $2::uuid
+          AND variant_key = $3
+        LIMIT 1
+      `,
+      [tenantId, assetId, variantKey],
+    );
+
+    const row = variant.rows[0];
+    if (!row) {
+      throw new AssetsApiError(404, "ASSET_VARIANT_NOT_FOUND", "Asset variant not found");
+    }
+
+    return {
+      assetId: asset.id,
+      bucket: row.bucket,
+      key: row.object_key,
+      mimeType: row.mime_type,
+      originalFilename: asset.original_filename,
+      variantKey: row.variant_key,
+    };
+  }
+
   private async ensureAssetExists(
     client: PoolClient,
     tenantId: string,
@@ -1141,5 +1260,43 @@ export class AssetsService {
     );
 
     return result.rows.map(mapVariant);
+  }
+
+  private async listVariantsForAssets(
+    client: PoolClient,
+    assetIds: string[],
+  ): Promise<Map<string, AssetVariantView[]>> {
+    const byAssetId = new Map<string, AssetVariantView[]>();
+    if (assetIds.length === 0) {
+      return byAssetId;
+    }
+
+    const result = await client.query<AssetVariantRecord & { asset_id: string }>(
+      `
+        SELECT
+          asset_id::text AS asset_id,
+          id::text AS id,
+          variant_key,
+          bucket,
+          object_key,
+          mime_type,
+          width,
+          height,
+          size_bytes::text AS size_bytes,
+          metadata
+        FROM asset_variants
+        WHERE asset_id = ANY($1::uuid[])
+        ORDER BY asset_id ASC, created_at ASC, id ASC
+      `,
+      [assetIds],
+    );
+
+    for (const row of result.rows) {
+      const list = byAssetId.get(row.asset_id) ?? [];
+      list.push(mapVariant(row));
+      byAssetId.set(row.asset_id, list);
+    }
+
+    return byAssetId;
   }
 }

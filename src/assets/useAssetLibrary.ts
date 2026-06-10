@@ -2,13 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useAuth } from "../auth/useAuth";
 import {
-  getAssetDownloadUrl,
+  getAssetSignedUrls,
   listAssetFolders,
   listAssets,
   type AssetFolder,
   type AssetItem,
   type AssetListParams,
 } from "./assetApi";
+import { getCachedAssetUrl, setCachedAssetUrl } from "./assetUrlCache";
 
 export type AssetLibraryState = {
   assets: AssetItem[];
@@ -70,14 +71,26 @@ export function useAssetLibrary(): AssetLibraryState {
         listAssets(params),
         listAssetFolders(),
       ]);
-      const withPreview = await Promise.all(
-        assetResult.items.map(async (asset) => {
-          if (asset.status !== "available") return asset;
-          if (!asset.mimeType.startsWith("image/") && !asset.mimeType.startsWith("video/")) return asset;
-          const download = await getAssetDownloadUrl(asset.id).catch(() => null);
-          return download ? { ...asset, previewUrl: download.url } : asset;
-        }),
+
+      const previewableAssets = assetResult.items.filter((asset) =>
+        asset.status === "available" &&
+        (asset.mimeType.startsWith("image/") || asset.mimeType.startsWith("video/"))
       );
+
+      const requests = previewableAssets
+        .filter((asset) => !getCachedAssetUrl(asset.id, "thumb"))
+        .map((asset) => ({ assetId: asset.id, variantKey: "thumb" }));
+
+      if (requests.length > 0) {
+        const signed = await getAssetSignedUrls(requests).catch(() => ({ items: [] }));
+        signed.items.forEach(setCachedAssetUrl);
+      }
+
+      const withPreview = assetResult.items.map((asset) => ({
+        ...asset,
+        previewUrl: getCachedAssetUrl(asset.id, "thumb") || asset.previewUrl,
+      }));
+
       if (requestSequenceRef.current !== requestId) return;
       setAssets(withPreview);
       setFolders(folderResult);

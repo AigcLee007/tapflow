@@ -78,6 +78,14 @@ export type AssetDownloadUrlResponse = {
   url: string;
 };
 
+export type AssetSignedUrl = {
+  assetId: string;
+  expiresAt: string;
+  method: "GET";
+  url: string;
+  variantKey: string | null;
+};
+
 export type PresignedUploadResponse = {
   asset: AssetItem;
   upload: {
@@ -120,6 +128,22 @@ export async function getAsset(assetId: string): Promise<AssetItem> {
 
 export async function getAssetDownloadUrl(assetId: string): Promise<AssetDownloadUrlResponse> {
   return apiGet<AssetDownloadUrlResponse>(`/assets/${assetId}/download-url`);
+}
+
+export async function getAssetVariantUrl(
+  assetId: string,
+  variantKey?: string,
+): Promise<AssetDownloadUrlResponse & { variantKey?: string | null }> {
+  const query = variantKey ? `?variantKey=${encodeURIComponent(variantKey)}` : "";
+  return apiGet<AssetDownloadUrlResponse & { variantKey?: string | null }>(
+    `/assets/${assetId}/download-url${query}`,
+  );
+}
+
+export async function getAssetSignedUrls(
+  requests: Array<{ assetId: string; variantKey?: string }>,
+): Promise<{ items: AssetSignedUrl[] }> {
+  return apiPost<{ items: AssetSignedUrl[] }>("/assets/signed-urls", { requests });
 }
 
 export async function updateAssetMetadata(

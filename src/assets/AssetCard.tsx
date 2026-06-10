@@ -41,9 +41,9 @@ export function AssetCard({
     >
       <div className="relative aspect-[4/3] bg-zinc-950">
         {asset.previewUrl && asset.mimeType.startsWith("image/") ? (
-          <img alt="" className="h-full w-full object-cover" src={asset.previewUrl} />
+          <img alt="" className="h-full w-full object-cover" decoding="async" loading="lazy" src={asset.previewUrl} />
         ) : asset.previewUrl && asset.mimeType.startsWith("video/") ? (
-          <video className="h-full w-full object-cover" muted src={asset.previewUrl} />
+          <video className="h-full w-full object-cover" muted preload="metadata" src={asset.previewUrl} />
         ) : (
           <div className="grid h-full place-items-center text-slate-500">{iconFor(asset)}</div>
         )}

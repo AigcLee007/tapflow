@@ -7,6 +7,7 @@ import {
 import type { PoolClient } from "pg";
 
 import type { MediaOutput } from "@aigc-flow/ai-gateway-core";
+import { createImageVariants } from "./media-variants.js";
 
 export type FetchResponseLike = {
   arrayBuffer(): Promise<ArrayBuffer>;
@@ -272,6 +273,83 @@ export class MediaAssetStore {
           }),
         ],
       );
+
+      const variants = await createImageVariants({
+        body: binary.body,
+        mimeType: binary.mimeType,
+      });
+
+      for (const variant of variants) {
+        const variantObjectKey = buildAssetObjectKey({
+          assetId,
+          filename: `${variant.variantKey}.webp`,
+          tenantId: input.tenantId,
+        });
+
+        await this.storageProvider.putObject({
+          body: variant.body,
+          bucket: this.assetBucket,
+          contentType: variant.mimeType,
+          key: variantObjectKey,
+          metadata: {
+            assetId,
+            nodeRunId: input.nodeRunId,
+            variantKey: variant.variantKey,
+            workflowRunId: input.workflowRunId,
+          },
+        });
+
+        await client.query(
+          `
+            INSERT INTO asset_variants (
+              tenant_id,
+              asset_id,
+              variant_key,
+              bucket,
+              object_key,
+              mime_type,
+              width,
+              height,
+              size_bytes,
+              metadata
+            )
+            VALUES (
+              $1::uuid,
+              $2::uuid,
+              $3,
+              $4,
+              $5,
+              $6,
+              $7::int,
+              $8::int,
+              $9::bigint,
+              $10::jsonb
+            )
+            ON CONFLICT (asset_id, variant_key) DO UPDATE SET
+              bucket = EXCLUDED.bucket,
+              object_key = EXCLUDED.object_key,
+              mime_type = EXCLUDED.mime_type,
+              width = EXCLUDED.width,
+              height = EXCLUDED.height,
+              size_bytes = EXCLUDED.size_bytes,
+              metadata = EXCLUDED.metadata
+          `,
+          [
+            input.tenantId,
+            assetId,
+            variant.variantKey,
+            this.assetBucket,
+            variantObjectKey,
+            variant.mimeType,
+            variant.width,
+            variant.height,
+            variant.body.byteLength,
+            JSON.stringify({
+              source: "workflow-runner",
+            }),
+          ],
+        );
+      }
 
       assetRefs.push({
         assetId,

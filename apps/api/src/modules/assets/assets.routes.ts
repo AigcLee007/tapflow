@@ -8,21 +8,25 @@ import {
 } from "../../http/auth-middleware.js";
 import {
   type AssetIdParams,
+  type AssetDownloadUrlQuery,
   type AssetListQuery,
   type CompleteUploadInput,
   type CreateAssetFolderInput,
   type FolderAssetParams,
   type FolderIdParams,
   type PresignedUploadInput,
+  type SignedAssetUrlRequest,
   type UpdateAssetFolderInput,
   type UpdateAssetMetadataInput,
   assetIdParamsSchema,
+  assetDownloadUrlQuerySchema,
   assetListQuerySchema,
   completeUploadSchema,
   createAssetFolderSchema,
   folderAssetParamsSchema,
   folderIdParamsSchema,
   presignedUploadSchema,
+  signedAssetUrlRequestSchema,
   updateAssetFolderSchema,
   updateAssetMetadataSchema,
 } from "./assets.schemas.js";
@@ -235,6 +239,22 @@ export function registerAssetRoutes(app: FastifyInstance): void {
   );
 
   app.post(
+    "/api/v2/assets/signed-urls",
+    {
+      preHandler: [...authHandlers, requirePermission("asset:read")],
+    },
+    async (request, reply) => {
+      try {
+        const body = parseBody<SignedAssetUrlRequest>(request, signedAssetUrlRequestSchema);
+        const result = await app.assetsService.createSignedUrls(getAssetContext(request), body.requests);
+        return reply.send(result);
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.post(
     "/api/v2/assets/presigned-upload",
     {
       preHandler: [...authHandlers, requirePermission("asset:create")],
@@ -316,9 +336,11 @@ export function registerAssetRoutes(app: FastifyInstance): void {
     async (request, reply) => {
       try {
         const params = parseParams<AssetIdParams>(request, assetIdParamsSchema);
+        const query = parseQuery<AssetDownloadUrlQuery>(request, assetDownloadUrlQuerySchema);
         const result = await app.assetsService.createDownloadUrl(
           getAssetContext(request),
           params.assetId,
+          query.variantKey,
         );
         return reply.send(result);
       } catch (error) {

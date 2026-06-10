@@ -8,6 +8,7 @@ import type { AssetItem } from "./assetApi";
 const listWorkspaceProjectsMock = vi.fn();
 const updateWorkspaceProjectMock = vi.fn();
 const getAssetDownloadUrlMock = vi.fn();
+const getAssetVariantUrlMock = vi.fn();
 const updateAssetMetadataMock = vi.fn();
 
 vi.mock("../workspace/workspaceApi", () => ({
@@ -17,6 +18,7 @@ vi.mock("../workspace/workspaceApi", () => ({
 
 vi.mock("./assetApi", () => ({
   getAssetDownloadUrl: (...args: unknown[]) => getAssetDownloadUrlMock(...args),
+  getAssetVariantUrl: (...args: unknown[]) => getAssetVariantUrlMock(...args),
   updateAssetMetadata: (...args: unknown[]) => updateAssetMetadataMock(...args),
 }));
 
@@ -65,6 +67,7 @@ describe("AssetPreviewModal", () => {
     listWorkspaceProjectsMock.mockReset();
     updateWorkspaceProjectMock.mockReset();
     getAssetDownloadUrlMock.mockReset();
+    getAssetVariantUrlMock.mockReset();
     updateAssetMetadataMock.mockReset();
   });
 
@@ -84,6 +87,12 @@ describe("AssetPreviewModal", () => {
 
     const saveRequest = deferred<{ coverAssetId: string }>();
     updateWorkspaceProjectMock.mockReturnValue(saveRequest.promise);
+    getAssetVariantUrlMock.mockResolvedValue({
+      expiresAt: "2026-05-19T01:00:00.000Z",
+      method: "GET",
+      url: "https://example.test/asset-1-preview.webp",
+      variantKey: "preview",
+    });
 
     const onClose = vi.fn();
     render(<AssetPreviewModal asset={asset} onClose={onClose} onUpdated={() => undefined} />);
@@ -92,9 +101,9 @@ describe("AssetPreviewModal", () => {
       expect(screen.getByDisplayValue("Project One")).toBeTruthy();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /set as project cover/i }));
+    fireEvent.click(screen.getByRole("button", { name: /设为项目封面/i }));
 
-    const closeButton = screen.getByRole("button", { name: /close preview/i });
+    const closeButton = screen.getByRole("button", { name: /关闭预览/i });
     expect(closeButton).toBeTruthy();
 
     fireEvent.click(closeButton);

@@ -138,6 +138,86 @@ async function registerOwner(
   return response.json();
 }
 
+async function insertAvailableImageAssetWithVariant(
+  pool: ReturnType<typeof createPgPool>,
+  tenantId: string,
+  userId: string,
+  input: {
+    variantKey: string;
+    variantObjectKey: string;
+  },
+): Promise<string> {
+  const assetId = randomUUID();
+
+  await withTenantTransaction(
+    { tenantId, userId },
+    async (client) => {
+      await client.query(
+        `
+          INSERT INTO assets (
+            id,
+            tenant_id,
+            owner_user_id,
+            kind,
+            mime_type,
+            bucket,
+            object_key,
+            original_filename,
+            size_bytes,
+            status
+          )
+          VALUES (
+            $1::uuid,
+            $2::uuid,
+            $3::uuid,
+            'image',
+            'image/png',
+            'test-bucket',
+            $4,
+            'image.png',
+            1024,
+            'available'
+          )
+        `,
+        [assetId, tenantId, userId, `tenants/${tenantId}/assets/${assetId}/original.png`],
+      );
+
+      await client.query(
+        `
+          INSERT INTO asset_variants (
+            tenant_id,
+            asset_id,
+            variant_key,
+            bucket,
+            object_key,
+            mime_type,
+            width,
+            height,
+            size_bytes,
+            metadata
+          )
+          VALUES (
+            $1::uuid,
+            $2::uuid,
+            $3,
+            'test-bucket',
+            $4,
+            'image/webp',
+            320,
+            200,
+            512,
+            '{}'::jsonb
+          )
+        `,
+        [tenantId, assetId, input.variantKey, input.variantObjectKey],
+      );
+    },
+    pool,
+  );
+
+  return assetId;
+}
+
 describeWithDatabase("assets v2", () => {
   test("asset:create can create a presigned upload and a viewer cannot", async () => {
     await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
@@ -501,6 +581,103 @@ describeWithDatabase("assets v2", () => {
           url: `/api/v2/assets/folders/${folderAId}/items`,
         });
         expect(crossTenantFolderAssignment.statusCode).toBe(404);
+
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("download-url can sign a variant instead of the original", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({
+          connectionString: await createAppDatabaseUrl(),
+        });
+        const storageProvider = new MemoryStorageProvider();
+        const api = buildTestApp(appPool, storageProvider);
+
+        const owner = await registerOwner(api, "variant-owner@example.com", "Variant Owner");
+        const assetId = await insertAvailableImageAssetWithVariant(
+          appPool,
+          owner.currentTenant.id,
+          owner.user.id,
+          {
+            variantKey: "preview",
+            variantObjectKey: "tenants/test/assets/asset-preview.webp",
+          },
+        );
+
+        const response = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "GET",
+          url: `/api/v2/assets/${assetId}/download-url?variantKey=preview`,
+        });
+
+        expect(response.statusCode).toBe(200);
+        expect(response.json().url).toContain("asset-preview.webp");
+
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("signed-urls returns thumb urls in one request", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({
+          connectionString: await createAppDatabaseUrl(),
+        });
+        const storageProvider = new MemoryStorageProvider();
+        const api = buildTestApp(appPool, storageProvider);
+
+        const owner = await registerOwner(api, "bulk-variant-owner@example.com", "Bulk Variant Owner");
+        const assetId = await insertAvailableImageAssetWithVariant(
+          appPool,
+          owner.currentTenant.id,
+          owner.user.id,
+          {
+            variantKey: "thumb",
+            variantObjectKey: "tenants/test/assets/asset-thumb.webp",
+          },
+        );
+
+        const response = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "POST",
+          payload: {
+            requests: [{ assetId, variantKey: "thumb" }],
+          },
+          url: "/api/v2/assets/signed-urls",
+        });
+
+        expect(response.statusCode).toBe(200);
+        expect(response.json().items).toEqual([
+          expect.objectContaining({
+            assetId,
+            method: "GET",
+            variantKey: "thumb",
+          }),
+        ]);
 
         await api.close();
       } finally {

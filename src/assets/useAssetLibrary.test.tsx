@@ -3,15 +3,18 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AuthContext, type AuthState } from "../auth/useAuth";
+import { clearAssetUrlCache } from "./assetUrlCache";
 import { useAssetLibrary } from "./useAssetLibrary";
 import type { AssetFolder, AssetItem, AssetListResponse } from "./assetApi";
 
 const listAssetsMock = vi.fn();
 const listAssetFoldersMock = vi.fn();
 const getAssetDownloadUrlMock = vi.fn();
+const getAssetSignedUrlsMock = vi.fn();
 
 vi.mock("./assetApi", () => ({
   getAssetDownloadUrl: (...args: unknown[]) => getAssetDownloadUrlMock(...args),
+  getAssetSignedUrls: (...args: unknown[]) => getAssetSignedUrlsMock(...args),
   listAssetFolders: (...args: unknown[]) => listAssetFoldersMock(...args),
   listAssets: (...args: unknown[]) => listAssetsMock(...args),
 }));
@@ -133,9 +136,11 @@ function renderWithAuth(authState: AuthState) {
 
 describe("useAssetLibrary", () => {
   beforeEach(() => {
+    clearAssetUrlCache();
     listAssetsMock.mockReset();
     listAssetFoldersMock.mockReset();
     getAssetDownloadUrlMock.mockReset();
+    getAssetSignedUrlsMock.mockReset();
   });
 
   it("clears stale assets immediately and ignores late responses from the previous identity", async () => {
@@ -150,11 +155,29 @@ describe("useAssetLibrary", () => {
     listAssetFoldersMock
       .mockReturnValueOnce(tenantAFolders.promise)
       .mockReturnValueOnce(tenantBFolders.promise);
-    getAssetDownloadUrlMock.mockResolvedValue({
-      expiresAt: "2026-05-19T01:00:00.000Z",
-      method: "GET",
-      url: "https://example.test/preview.png",
-    });
+    getAssetSignedUrlsMock
+      .mockResolvedValueOnce({
+        items: [
+          {
+            assetId: assetA.id,
+            expiresAt: "2026-05-19T01:00:00.000Z",
+            method: "GET",
+            url: "https://example.test/asset-a-thumb.webp",
+            variantKey: "thumb",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        items: [
+          {
+            assetId: assetB.id,
+            expiresAt: "2026-05-19T01:00:00.000Z",
+            method: "GET",
+            url: "https://example.test/asset-b-thumb.webp",
+            variantKey: "thumb",
+          },
+        ],
+      });
 
     const firstRender = renderWithAuth(baseAuthState);
 
@@ -211,5 +234,43 @@ describe("useAssetLibrary", () => {
 
     expect(screen.getByTestId("assets").textContent).not.toContain("Asset A");
     expect(screen.getByTestId("folders").textContent).not.toContain("Folder A");
+    expect(getAssetDownloadUrlMock).not.toHaveBeenCalled();
+  });
+
+  it("batch signs thumb variants instead of requesting per-asset download urls", async () => {
+    listAssetsMock.mockResolvedValue({
+      items: [assetA, { ...assetA, id: "asset-c", objectKey: "asset-c.png", originalFilename: "asset-c.png", title: "Asset C" }],
+      page: 1,
+      pageSize: 60,
+      total: 2,
+    });
+    listAssetFoldersMock.mockResolvedValue([]);
+    getAssetSignedUrlsMock.mockResolvedValue({
+      items: [
+        {
+          assetId: assetA.id,
+          expiresAt: new Date(Date.now() + 900_000).toISOString(),
+          method: "GET",
+          url: "https://cdn.test/a-thumb.webp",
+          variantKey: "thumb",
+        },
+        {
+          assetId: "asset-c",
+          expiresAt: new Date(Date.now() + 900_000).toISOString(),
+          method: "GET",
+          url: "https://cdn.test/c-thumb.webp",
+          variantKey: "thumb",
+        },
+      ],
+    });
+
+    renderWithAuth(baseAuthState);
+
+    await waitFor(() => expect(screen.getByTestId("assets").textContent).toContain("Asset A"));
+    expect(getAssetSignedUrlsMock).toHaveBeenCalledWith([
+      { assetId: assetA.id, variantKey: "thumb" },
+      { assetId: "asset-c", variantKey: "thumb" },
+    ]);
+    expect(getAssetDownloadUrlMock).not.toHaveBeenCalled();
   });
 });
