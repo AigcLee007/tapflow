@@ -197,7 +197,7 @@ export const FlowTopToolbar: React.FC<{
 
       <div style={rightClusterStyle}>
         <button type="button" style={topPillStyle} title="当前点数">
-          <Sparkles size={23} />
+          <Sparkles size={20} />
           <span>{pointsLoading ? '...' : formatToolbarPoint(points)}</span>
         </button>
         <div ref={notificationRef} style={notificationHostStyle}>
@@ -210,7 +210,7 @@ export const FlowTopToolbar: React.FC<{
               void refreshAnnouncements();
             }}
           >
-            <Bell size={22} />
+            <Bell size={20} />
             <span>通知</span>
             {unreadIds.length > 0 && (
               <span style={notificationBadgeStyle}>
@@ -265,7 +265,7 @@ export const FlowTopToolbar: React.FC<{
           )}
         </div>
         <button type="button" style={shareButtonStyle} title={shareCopied ? '已复制链接' : '分享'} onClick={copyShareLink}>
-          <Share2 size={23} />
+          <Share2 size={20} />
         </button>
       </div>
 
@@ -308,9 +308,9 @@ export const FlowTopToolbar: React.FC<{
 
 const topChromeStyle: React.CSSProperties = {
   position: 'fixed',
-  left: 32,
-  right: 32,
-  top: 28,
+  left: 28,
+  right: 28,
+  top: 24,
   zIndex: 900,
   display: 'flex',
   alignItems: 'flex-start',
@@ -321,14 +321,14 @@ const topChromeStyle: React.CSSProperties = {
 const titleClusterStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  gap: 14,
+  gap: 12,
   pointerEvents: 'auto',
   minWidth: 0,
 };
 
 const logoImageStyle: React.CSSProperties = {
-  width: 54,
-  height: 54,
+  width: 44,
+  height: 44,
   objectFit: 'contain',
   display: 'block',
   filter: 'drop-shadow(0 8px 14px rgba(0,0,0,0.34))',
@@ -338,17 +338,17 @@ const titleTextWrapStyle: React.CSSProperties = {
   minWidth: 0,
   display: 'flex',
   flexDirection: 'column',
-  gap: 6,
+  gap: 4,
 };
 
 const titleInputStyle: React.CSSProperties = {
-  width: 'min(320px, calc(100vw - 560px))',
-  minWidth: 150,
+  width: 'min(280px, calc(100vw - 520px))',
+  minWidth: 136,
   border: 'none',
   outline: 'none',
   background: 'transparent',
   color: '#fff',
-  fontSize: 26,
+  fontSize: 22,
   fontWeight: 760,
   lineHeight: 1,
   padding: 0,
@@ -365,7 +365,7 @@ const saveStatusStyle = (status?: string): React.CSSProperties => ({
       : status === 'saved'
         ? 'rgba(156,163,175,0.78)'
         : 'rgba(125,211,252,0.86)',
-  fontSize: 17,
+  fontSize: 14,
   fontWeight: 520,
   lineHeight: 1,
 });
@@ -386,29 +386,29 @@ const saveRetryButtonStyle: React.CSSProperties = {
 const rightClusterStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  gap: 12,
+  gap: 10,
   pointerEvents: 'auto',
 };
 
 const topPillStyle: React.CSSProperties = {
-  height: 60,
+  height: 52,
   border: 'none',
-  borderRadius: 20,
-  padding: '0 22px',
+  borderRadius: 18,
+  padding: '0 18px',
   display: 'flex',
   alignItems: 'center',
-  gap: 10,
+  gap: 9,
   background: 'rgba(43,43,49,0.96)',
   color: '#fff',
-  fontSize: 20,
+  fontSize: 16,
   fontWeight: 820,
   cursor: 'pointer',
   boxShadow: '0 12px 34px rgba(0,0,0,0.34), inset 0 1px 0 rgba(255,255,255,0.06)',
 };
 
 const shareButtonStyle: React.CSSProperties = {
-  width: 60,
-  height: 60,
+  width: 52,
+  height: 52,
   border: 'none',
   borderRadius: '50%',
   display: 'grid',

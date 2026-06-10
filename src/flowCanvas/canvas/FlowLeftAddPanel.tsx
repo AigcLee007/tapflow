@@ -37,20 +37,20 @@ type AddEntry = {
 };
 
 const PRIMARY_ITEMS: AddEntry[] = [
-  { kind: 'text', label: '文本', desc: '脚本、提示词和文案', icon: <List size={24} strokeWidth={1.75} /> },
-  { kind: 'image', label: '图片', icon: <ImageIcon size={24} strokeWidth={1.75} /> },
-  { kind: 'video', label: '视频', icon: <PlaySquare size={24} strokeWidth={1.8} /> },
-  { kind: 'audio', label: '音频', icon: <Music size={24} strokeWidth={1.8} /> },
-  { kind: 'world3d', label: '3D 世界', icon: <Box size={24} strokeWidth={1.75} />, beta: true, disabled: true },
+  { kind: 'text', label: '文本', desc: '脚本、提示词和文案', icon: <List size={21} strokeWidth={1.75} /> },
+  { kind: 'image', label: '图片', icon: <ImageIcon size={21} strokeWidth={1.75} /> },
+  { kind: 'video', label: '视频', icon: <PlaySquare size={21} strokeWidth={1.8} /> },
+  { kind: 'audio', label: '音频', icon: <Music size={21} strokeWidth={1.8} /> },
+  { kind: 'world3d', label: '3D 世界', icon: <Box size={21} strokeWidth={1.75} />, beta: true, disabled: true },
 ];
 
 const TOOL_ITEMS: AddEntry[] = [
-  { kind: 'playlist', label: '播放列表', icon: <LayoutList size={24} strokeWidth={1.75} />, beta: true, disabled: true },
-  { kind: 'image_editor', label: '图片编辑节点', icon: <Wand2 size={24} strokeWidth={1.8} /> },
+  { kind: 'playlist', label: '播放列表', icon: <LayoutList size={21} strokeWidth={1.75} />, beta: true, disabled: true },
+  { kind: 'image_editor', label: '图片编辑节点', icon: <Wand2 size={21} strokeWidth={1.8} /> },
 ];
 
 const RESOURCE_ITEMS: AddEntry[] = [
-  { kind: 'upload', label: '上传', icon: <Upload size={24} strokeWidth={1.85} /> },
+  { kind: 'upload', label: '上传', icon: <Upload size={21} strokeWidth={1.85} /> },
 ];
 
 const isFlowNodeKind = (kind: AddEntry['kind']): kind is FlowNodeKind =>
@@ -239,17 +239,17 @@ export const FlowLeftAddPanel: React.FC = memo(function FlowLeftAddPanel() {
     <div style={dockHostStyle} onMouseLeave={() => setUserOpen(false)}>
       <div style={dockStyle}>
         <DockButton
-          icon={addOpen ? <X size={28} strokeWidth={1.7} /> : <Plus size={34} strokeWidth={1.75} />}
+          icon={addOpen ? <X size={24} strokeWidth={1.7} /> : <Plus size={30} strokeWidth={1.75} />}
           label="添加节点"
           large
           active={addOpen}
           onMouseEnter={openAdd}
           onClick={() => (addOpen ? setAddOpen(false) : openAdd())}
         />
-        <DockButton icon={<Folder size={23} strokeWidth={1.8} />} label="素材库" badge />
-        <DockButton icon={<LayoutList size={23} strokeWidth={1.85} />} label="模板列表" />
-        <DockButton icon={<MessageCircle size={24} strokeWidth={1.85} />} label="评论" />
-        <DockButton icon={<Clock3 size={24} strokeWidth={1.85} />} label="历史记录" onClick={undo} />
+        <DockButton icon={<Folder size={21} strokeWidth={1.8} />} label="素材库" badge />
+        <DockButton icon={<LayoutList size={21} strokeWidth={1.85} />} label="模板列表" />
+        <DockButton icon={<MessageCircle size={22} strokeWidth={1.85} />} label="评论" />
+        <DockButton icon={<Clock3 size={22} strokeWidth={1.85} />} label="历史记录" onClick={undo} />
         <div style={dockDividerStyle} />
         <DockButton
           icon={<span style={userAvatarSmallStyle}>{(user?.displayName || user?.email || 'L').charAt(0).toUpperCase()}</span>}
@@ -281,30 +281,30 @@ export const FlowLeftAddPanel: React.FC = memo(function FlowLeftAddPanel() {
 
 const dockHostStyle: React.CSSProperties = {
   position: 'absolute',
-  left: 23,
-  top: 208,
+  left: 20,
+  top: 198,
   zIndex: 1000,
 };
 
 const dockStyle: React.CSSProperties = {
-  width: 80,
-  minHeight: 440,
-  padding: '9px 9px 10px',
+  width: 72,
+  minHeight: 404,
+  padding: '8px 8px 10px',
   boxSizing: 'border-box',
-  borderRadius: 40,
+  borderRadius: 36,
   background: 'rgba(31,31,31,0.96)',
   border: '1px solid rgba(255,255,255,0.12)',
   boxShadow: '0 22px 56px rgba(0,0,0,0.48), inset 0 1px 0 rgba(255,255,255,0.05)',
   display: 'flex',
   flexDirection: 'column',
   alignItems: 'center',
-  gap: 15,
+  gap: 12,
   backdropFilter: 'blur(18px)',
 };
 
 const addButtonStyle = (active?: boolean): React.CSSProperties => ({
-  width: 60,
-  height: 60,
+  width: 54,
+  height: 54,
   borderRadius: '50%',
   border: active ? '1px solid rgba(255,255,255,0.1)' : 'none',
   background: active ? 'rgba(255,255,255,0.095)' : '#f7f7f7',
@@ -318,9 +318,9 @@ const addButtonStyle = (active?: boolean): React.CSSProperties => ({
 
 const dockButtonStyle = (active?: boolean): React.CSSProperties => ({
   position: 'relative',
-  width: 54,
-  height: 54,
-  borderRadius: 15,
+  width: 48,
+  height: 48,
+  borderRadius: 14,
   border: 'none',
   background: active ? 'rgba(255,255,255,0.085)' : 'transparent',
   color: '#f4f4f5',
@@ -366,14 +366,14 @@ const dockTooltipStyle: React.CSSProperties = {
 
 const flyoutStyle: React.CSSProperties = {
   position: 'absolute',
-  left: 91,
-  top: -18,
-  width: 320,
-  maxHeight: 'calc(100vh - 48px)',
+  left: 82,
+  top: -12,
+  width: 274,
+  maxHeight: 'calc(100vh - 40px)',
   overflow: 'auto',
-  padding: '14px 16px 16px',
+  padding: '12px 14px 14px',
   boxSizing: 'border-box',
-  borderRadius: 22,
+  borderRadius: 20,
   background: 'linear-gradient(150deg, rgba(31,31,31,0.98), rgba(25,28,32,0.98))',
   border: '1px solid rgba(255,255,255,0.14)',
   boxShadow: '0 24px 70px rgba(0,0,0,0.58)',
@@ -382,30 +382,30 @@ const flyoutStyle: React.CSSProperties = {
 
 const flyoutSectionTitleStyle: React.CSSProperties = {
   color: 'rgba(255,255,255,0.42)',
-  fontSize: 13,
+  fontSize: 12,
   fontWeight: 760,
-  margin: '8px 0 8px',
+  margin: '8px 0 6px',
 };
 
 const flyoutItemStyle = (active: boolean, disabled: boolean): React.CSSProperties => ({
   width: '100%',
-  minHeight: 56,
+  minHeight: 50,
   border: 'none',
-  borderRadius: 16,
+  borderRadius: 14,
   background: active ? 'rgba(255,255,255,0.105)' : 'transparent',
   color: disabled ? 'rgba(255,255,255,0.56)' : '#f8fafc',
   display: 'flex',
   alignItems: 'center',
-  gap: 12,
-  padding: '8px 10px',
+  gap: 10,
+  padding: '7px 9px',
   cursor: disabled ? 'default' : 'pointer',
   textAlign: 'left',
 });
 
 const flyoutIconStyle = (active: boolean): React.CSSProperties => ({
-  width: 46,
-  height: 46,
-  borderRadius: 14,
+  width: 40,
+  height: 40,
+  borderRadius: 12,
   display: 'grid',
   placeItems: 'center',
   background: active ? 'rgba(255,255,255,0.09)' : 'rgba(255,255,255,0.065)',
@@ -416,7 +416,7 @@ const flyoutIconStyle = (active: boolean): React.CSSProperties => ({
 const flyoutLabelStyle: React.CSSProperties = {
   display: 'block',
   color: '#fff',
-  fontSize: 16,
+  fontSize: 14,
   fontWeight: 800,
   lineHeight: 1.15,
 };
@@ -424,9 +424,9 @@ const flyoutLabelStyle: React.CSSProperties = {
 const flyoutDescStyle: React.CSSProperties = {
   display: 'block',
   color: 'rgba(255,255,255,0.44)',
-  fontSize: 12,
+  fontSize: 11,
   fontWeight: 600,
-  marginTop: 5,
+  marginTop: 4,
 };
 
 const betaPillStyle: React.CSSProperties = {
