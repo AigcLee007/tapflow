@@ -18,6 +18,7 @@
     "dev:worker": "npm run dev --workspace @aigc-flow/worker",
     "dev:seed-billing": "tsx scripts/dev-seed-billing.ts",
     "dev:seed-ai": "tsx scripts/dev-seed-ai.ts",
+    "assets:backfill-variants": "tsx scripts/backfill-asset-variants.ts",
     "cleanup:stuck-runs": "tsx scripts/cleanup-stuck-workflow-runs.ts",
     "smoke:concurrent-runs": "tsx scripts/smoke-concurrent-target-node-runs.ts",
     "start:api": "npm run start --workspace @aigc-flow/api",

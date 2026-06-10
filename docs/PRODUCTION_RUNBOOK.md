@@ -176,3 +176,13 @@ Only allow production cutover after staging smoke passes.
 - If launching before payment, product must operate as internal/manual-credit beta.
 - No real API keys are committed.
 - Provider credentials are server-side only.
+
+## Backfill Asset Variants
+
+Run after deploying the media pipeline:
+
+```bash
+cd /opt/aittco/tapflow
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-worker npm run assets:backfill-variants -- --dry-run --limit=20
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-worker npm run assets:backfill-variants -- --limit=50
+```

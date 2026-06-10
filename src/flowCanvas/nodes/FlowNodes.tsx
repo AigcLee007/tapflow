@@ -99,7 +99,7 @@ import { GoogleLogo, OpenAILogo } from '../../../components/Logos';
 import { useAuth } from '../../auth/useAuth';
 import { normalizeBackendAssetUrl } from '../../utils/generatedImageStorage';
 import { canNodeReceiveIncoming } from '../rules/connectionRules';
-import { getAssetDownloadUrl, uploadAssetFile } from '../../assets/assetApi';
+import { getAssetDownloadUrl, getAssetVariantUrl, uploadAssetFile } from '../../assets/assetApi';
 import { listRuntimeRoutes, type V2RuntimeRouteItem } from '../../services/v2AiRoutesApi';
 import { listAiModelCatalog, listAiModelRoutes, type AiModelCatalogItem } from '../../services/v2AiModelCatalogApi';
 import { buildAssetBackedNodeData } from '../utils/assetNodeData';
@@ -1687,6 +1687,22 @@ const generatedFavoriteButton = (active?: boolean): React.CSSProperties => ({
   transition: 'all 140ms ease',
 });
 
+const imageLoadErrorStyle: React.CSSProperties = {
+  position: 'absolute',
+  left: 12,
+  right: 12,
+  bottom: 12,
+  padding: '8px 10px',
+  borderRadius: 10,
+  background: 'rgba(15,23,42,0.78)',
+  border: '1px solid rgba(248,113,113,0.35)',
+  color: '#fecaca',
+  fontSize: 12,
+  fontWeight: 600,
+  textAlign: 'center',
+  backdropFilter: 'blur(6px)',
+};
+
 const resultExpansionWrap: React.CSSProperties = {
   position: 'absolute',
   top: -48,
@@ -3154,6 +3170,7 @@ interface ImageNodeCardProps {
   selected?: boolean;
   isTargeting: boolean;
   displayThumbnailUrl: string;
+  imageLoadState: 'idle' | 'loading' | 'loaded' | 'error';
   isGeneratedImageNode: boolean;
   showNodeEditor: boolean;
   resultCount: number;
@@ -3162,6 +3179,8 @@ interface ImageNodeCardProps {
   coverResult?: { id: string; url: string; createdAt?: number };
   favoriteResultIds: Set<string>;
   isGenerating: boolean;
+  onImageLoad: () => void;
+  onImageError: () => void;
   onToggleResultStrip: () => void;
   onToggleFavoriteResult: (resultId: string) => void;
   onUploadClick: () => void;
@@ -3172,6 +3191,7 @@ const ImageNodeCard = memo(function ImageNodeCard({
   selected,
   isTargeting,
   displayThumbnailUrl,
+  imageLoadState,
   isGeneratedImageNode,
   showNodeEditor,
   resultCount,
@@ -3180,6 +3200,8 @@ const ImageNodeCard = memo(function ImageNodeCard({
   coverResult,
   favoriteResultIds,
   isGenerating,
+  onImageLoad,
+  onImageError,
   onToggleResultStrip,
   onToggleFavoriteResult,
   onUploadClick,
@@ -3195,8 +3217,14 @@ const ImageNodeCard = memo(function ImageNodeCard({
             alt=""
             draggable={false}
             decoding="async"
+            loading="eager"
+            onLoad={onImageLoad}
+            onError={onImageError}
             style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
           />
+          {imageLoadState === 'error' && (
+            <div style={imageLoadErrorStyle}>预览加载失败</div>
+          )}
           {isGeneratedImageNode && showNodeEditor && resultCount > 0 && (
             <button
               type="button"
@@ -3462,11 +3490,13 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     : [];
   const runtimeThumbnailUrl = runtimeImageAssets[0]?.downloadUrl || '';
   const [assetPreviewUrl, setAssetPreviewUrl] = useState('');
+  const [imageLoadState, setImageLoadState] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle');
   const assetId = typeof d.assetId === 'string' ? d.assetId : '';
   useEffect(() => {
     if (!assetId || runtimeThumbnailUrl || d.thumbnailUrl) return;
     let cancelled = false;
-    void getAssetDownloadUrl(assetId)
+    void getAssetVariantUrl(assetId, 'preview')
+      .catch(() => getAssetDownloadUrl(assetId))
       .then((download) => {
         if (!cancelled) setAssetPreviewUrl(download.url);
       })
@@ -3478,6 +3508,9 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     };
   }, [assetId, d.thumbnailUrl, runtimeThumbnailUrl]);
   const effectiveThumbnailUrl = runtimeThumbnailUrl || String(d.thumbnailUrl || '') || assetPreviewUrl;
+  useEffect(() => {
+    setImageLoadState(effectiveThumbnailUrl ? 'loading' : 'idle');
+  }, [effectiveThumbnailUrl]);
   const hasImage = !!effectiveThumbnailUrl;
   const isGenerating = runtimeNodeStatus === 'pending'
     || runtimeNodeStatus === 'runnable'
@@ -5107,6 +5140,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
           selected={selected}
           isTargeting={isTargeting}
           displayThumbnailUrl={displayThumbnailUrl}
+          imageLoadState={imageLoadState}
           isGeneratedImageNode={isGeneratedImageNode}
           showNodeEditor={showNodeEditor}
           resultCount={resultCount}
@@ -5115,6 +5149,8 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
           coverResult={coverResult}
           favoriteResultIds={favoriteResultIds}
           isGenerating={isGenerating}
+          onImageLoad={() => setImageLoadState('loaded')}
+          onImageError={() => setImageLoadState('error')}
           onToggleResultStrip={toggleResultStrip}
           onToggleFavoriteResult={handleToggleFavoriteResult}
           onUploadClick={handleUploadClick}

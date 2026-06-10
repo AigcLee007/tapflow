@@ -81,6 +81,7 @@ Required:
 - `CREDENTIAL_MASTER_KEY` must not be lost.
 - Losing it makes existing provider credentials undecryptable.
 - Key rotation requires a controlled migration/rotation plan.
+- Any suspected exposure of the current key requires human-led credential rotation before broader rollout.
 
 ### Provider
 
@@ -116,6 +117,14 @@ If Sentry/metrics are not implemented, keep as P1 follow-up.
 
 If adding `.env.example.production`, use placeholders only.
 
+Real secrets must be injected only via:
+
+- deployment platform secret manager
+- external host-level env file outside the repository
+- CI/CD secret store
+
+Do not rely on repository-tracked staging or production env files as the source of truth.
+
 Never commit:
 
 - `.env.production`
@@ -124,6 +133,7 @@ Never commit:
 - real DB passwords
 - real JWT secrets
 - real `CREDENTIAL_MASTER_KEY`
+- real external-object-storage credentials
 
 ## Launch Policy
 
@@ -139,3 +149,14 @@ Never commit:
 - No real API keys are committed.
 - Provider credentials are server-side only.
 - Credential material must never appear in frontend payloads.
+- If a repo-local staging/production env file is discovered (for example `tapflow.staging.env`), treat it as a potential exposure event: remove it from planned commits, rotate the relevant secrets, and re-verify rollout readiness before continuing.
+
+## Media Asset Performance
+
+Generated images are stored as `original` objects and rendered through `asset_variants`:
+
+- `thumb`: 320px WebP for asset grids
+- `preview`: 1024px WebP for canvas nodes and preview modals
+- `original`: full quality object for download, editing, and fullscreen high-quality viewing
+
+Production object storage should be fronted by CDN or an equivalent accelerated endpoint. Canvas and `/assets` must not use original URLs for initial rendering.

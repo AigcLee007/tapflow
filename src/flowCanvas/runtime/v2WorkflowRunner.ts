@@ -1,4 +1,4 @@
-import { getAssetDownloadUrl } from '../../services/v2AssetsApi';
+import { getAssetVariantUrl } from '../../services/v2AssetsApi';
 import { V2HttpError } from '../../services/v2HttpClient';
 import { listRuntimeRoutes, type V2RuntimeRouteItem } from '../../services/v2AiRoutesApi';
 import {
@@ -436,7 +436,8 @@ async function resolveAssetRefs(outputJson: Record<string, unknown> | null): Pro
     assets
       .filter(isAssetLike)
       .map(async (asset) => {
-        const download = await getAssetDownloadUrl(asset.assetId);
+        const download = await getAssetVariantUrl(asset.assetId, 'preview')
+          .catch(() => getAssetVariantUrl(asset.assetId));
         return {
           assetId: asset.assetId,
           downloadUrl: download.url,

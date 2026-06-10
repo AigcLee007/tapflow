@@ -13,7 +13,7 @@ const createWorkflowRunMock = vi.fn();
 const getWorkflowRunMock = vi.fn();
 const listFlowWorkflowRunsMock = vi.fn();
 const streamWorkflowRunMock = vi.fn();
-const getAssetDownloadUrlMock = vi.fn();
+const getAssetVariantUrlMock = vi.fn();
 const getBillingSummaryMock = vi.fn();
 const listBillingPricingMock = vi.fn();
 const listRuntimeRoutesMock = vi.fn();
@@ -26,7 +26,7 @@ vi.mock('../../services/v2WorkflowRunsApi', () => ({
 }));
 
 vi.mock('../../services/v2AssetsApi', () => ({
-  getAssetDownloadUrl: (...args: unknown[]) => getAssetDownloadUrlMock(...args),
+  getAssetVariantUrl: (...args: unknown[]) => getAssetVariantUrlMock(...args),
 }));
 
 vi.mock('../../billing/billingApi', () => ({
@@ -44,7 +44,7 @@ describe('v2WorkflowRunner', () => {
     getWorkflowRunMock.mockReset();
     listFlowWorkflowRunsMock.mockReset();
     streamWorkflowRunMock.mockReset();
-    getAssetDownloadUrlMock.mockReset();
+    getAssetVariantUrlMock.mockReset();
     getBillingSummaryMock.mockReset();
     listBillingPricingMock.mockReset();
     listRuntimeRoutesMock.mockReset();
@@ -401,7 +401,7 @@ describe('v2WorkflowRunner', () => {
     createWorkflowRunMock
       .mockResolvedValueOnce({ runId: 'run-done', status: 'pending' })
       .mockResolvedValueOnce({ runId: 'run-next', status: 'pending' });
-    getAssetDownloadUrlMock.mockResolvedValue({
+    getAssetVariantUrlMock.mockResolvedValue({
       expiresAt: '2026-05-17T00:15:00.000Z',
       method: 'GET',
       url: 'https://example.test/image',
@@ -507,7 +507,7 @@ describe('v2WorkflowRunner', () => {
       runId: 'run-asset',
       status: 'pending',
     });
-    getAssetDownloadUrlMock.mockResolvedValue({
+    getAssetVariantUrlMock.mockResolvedValue({
       expiresAt: '2026-05-17T00:15:00.000Z',
       method: 'GET',
       url: 'https://example.test/presigned-image',
@@ -567,7 +567,7 @@ describe('v2WorkflowRunner', () => {
 
     await runBackendWorkflow();
 
-    expect(getAssetDownloadUrlMock).toHaveBeenCalledWith('asset-1');
+    expect(getAssetVariantUrlMock).toHaveBeenCalledWith('asset-1', 'preview');
     expect(useFlowCanvasStore.getState().nodeOutputByNodeId[imageNodeId]).toMatchObject({
       assets: [
         expect.objectContaining({
@@ -607,7 +607,7 @@ describe('v2WorkflowRunner', () => {
       runId: 'run-stream-final',
       status: 'pending',
     });
-    getAssetDownloadUrlMock.mockResolvedValue({
+    getAssetVariantUrlMock.mockResolvedValue({
       expiresAt: '2026-05-17T00:15:00.000Z',
       method: 'GET',
       url: 'https://example.test/stream-final',
@@ -815,7 +815,7 @@ describe('v2WorkflowRunner', () => {
       runId: 'run-scope',
       status: 'pending',
     });
-    getAssetDownloadUrlMock.mockResolvedValue({
+    getAssetVariantUrlMock.mockResolvedValue({
       expiresAt: '2026-05-17T00:15:00.000Z',
       method: 'GET',
       url: 'https://example.test/presigned-image',
@@ -928,7 +928,7 @@ describe('v2WorkflowRunner', () => {
   test('recovering flow runs restores completed target-node assets after remount', async () => {
     useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, { title: 'Recovered' });
     const nodeId = useFlowCanvasStore.getState().nodes[0]?.id as string;
-    getAssetDownloadUrlMock.mockResolvedValue({
+    getAssetVariantUrlMock.mockResolvedValue({
       expiresAt: '2026-05-17T00:15:00.000Z',
       method: 'GET',
       url: 'https://example.test/recovered',
@@ -994,7 +994,7 @@ describe('v2WorkflowRunner', () => {
   test('late completion from an older same-node run cannot overwrite the latest run', async () => {
     useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, { title: 'Same node' });
     const nodeId = useFlowCanvasStore.getState().nodes[0]?.id as string;
-    getAssetDownloadUrlMock.mockResolvedValue({
+    getAssetVariantUrlMock.mockResolvedValue({
       expiresAt: '2026-05-17T00:15:00.000Z',
       method: 'GET',
       url: 'https://example.test/latest',
