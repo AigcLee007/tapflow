@@ -1,7 +1,7 @@
 /**
  * TapNow-style left dock and add-node flyout.
  */
-import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   Bell,
   Box,
@@ -105,9 +105,16 @@ const DockButton: React.FC<{
   );
 };
 
+type FlyoutPosition = {
+  left: number;
+  top: number;
+  maxHeight: number;
+};
+
 const AddNodeFlyout: React.FC<{
   onAdd: (kind: FlowNodeKind) => void;
-}> = ({ onAdd }) => {
+  position: FlyoutPosition;
+}> = ({ onAdd, position }) => {
   const [hoveredKind, setHoveredKind] = useState<string>('text');
 
   const renderItem = (item: AddEntry) => {
@@ -134,7 +141,7 @@ const AddNodeFlyout: React.FC<{
   };
 
   return (
-    <div className="nodrag nopan nowheel" style={flyoutStyle}>
+    <div className="nodrag nopan nowheel" style={flyoutStyle(position)}>
       <div style={flyoutSectionTitleStyle}>添加节点</div>
       {PRIMARY_ITEMS.map(renderItem)}
       <div style={flyoutSectionTitleStyle}>工具</div>
@@ -197,8 +204,14 @@ export const FlowLeftAddPanel: React.FC = memo(function FlowLeftAddPanel() {
   const undo = useFlowCanvasStore((s) => s.undo);
   const { authenticated, loading: userLoading, logout, user } = useAuth();
   const reactFlow = useReactFlow();
+  const dockHostRef = useRef<HTMLDivElement | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [userOpen, setUserOpen] = useState(false);
+  const [flyoutPosition, setFlyoutPosition] = useState<FlyoutPosition>({
+    left: 96,
+    top: 96,
+    maxHeight: 640,
+  });
   const closeTimerRef = useRef<number | null>(null);
 
   const openAdd = () => {
@@ -215,6 +228,32 @@ export const FlowLeftAddPanel: React.FC = memo(function FlowLeftAddPanel() {
   useEffect(() => () => {
     if (closeTimerRef.current !== null) window.clearTimeout(closeTimerRef.current);
   }, []);
+
+  useLayoutEffect(() => {
+    if (!addOpen) return;
+
+    const updateFlyoutPosition = () => {
+      const rect = dockHostRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const margin = 16;
+      const desiredWidth = 274;
+      const desiredTop = rect.top - 26;
+      const maxHeight = Math.max(360, viewportHeight - margin * 2);
+
+      setFlyoutPosition({
+        left: Math.min(rect.right + 10, viewportWidth - desiredWidth - margin),
+        top: Math.max(margin, Math.min(desiredTop, viewportHeight - maxHeight - margin)),
+        maxHeight,
+      });
+    };
+
+    updateFlyoutPosition();
+    window.addEventListener('resize', updateFlyoutPosition);
+    return () => window.removeEventListener('resize', updateFlyoutPosition);
+  }, [addOpen]);
 
   const handleLogout = useCallback(() => {
     void logout().finally(() => {
@@ -236,7 +275,7 @@ export const FlowLeftAddPanel: React.FC = memo(function FlowLeftAddPanel() {
   );
 
   return (
-    <div style={dockHostStyle} onMouseLeave={() => setUserOpen(false)}>
+    <div ref={dockHostRef} style={dockHostStyle} onMouseLeave={() => setUserOpen(false)}>
       <div style={dockStyle}>
         <DockButton
           icon={addOpen ? <X size={24} strokeWidth={1.7} /> : <Plus size={30} strokeWidth={1.75} />}
@@ -264,7 +303,7 @@ export const FlowLeftAddPanel: React.FC = memo(function FlowLeftAddPanel() {
 
       {addOpen && (
         <div onMouseEnter={openAdd} onMouseLeave={scheduleCloseAdd}>
-          <AddNodeFlyout onAdd={handleAdd} />
+          <AddNodeFlyout onAdd={handleAdd} position={flyoutPosition} />
         </div>
       )}
       {userOpen && (
@@ -282,7 +321,7 @@ export const FlowLeftAddPanel: React.FC = memo(function FlowLeftAddPanel() {
 const dockHostStyle: React.CSSProperties = {
   position: 'absolute',
   left: 20,
-  top: 198,
+  top: 164,
   zIndex: 1000,
 };
 
@@ -364,12 +403,12 @@ const dockTooltipStyle: React.CSSProperties = {
   boxShadow: '0 12px 28px rgba(0,0,0,0.38)',
 };
 
-const flyoutStyle: React.CSSProperties = {
-  position: 'absolute',
-  left: 82,
-  top: -12,
+const flyoutStyle = (position: FlyoutPosition): React.CSSProperties => ({
+  position: 'fixed',
+  left: position.left,
+  top: position.top,
   width: 274,
-  maxHeight: 'calc(100vh - 40px)',
+  maxHeight: position.maxHeight,
   overflow: 'auto',
   padding: '12px 14px 14px',
   boxSizing: 'border-box',
@@ -378,7 +417,8 @@ const flyoutStyle: React.CSSProperties = {
   border: '1px solid rgba(255,255,255,0.14)',
   boxShadow: '0 24px 70px rgba(0,0,0,0.58)',
   backdropFilter: 'blur(22px)',
-};
+  zIndex: 1100,
+});
 
 const flyoutSectionTitleStyle: React.CSSProperties = {
   color: 'rgba(255,255,255,0.42)',
