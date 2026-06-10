@@ -26,6 +26,7 @@ import { useReactFlow } from '@xyflow/react';
 import { useAuth } from '../../auth/useAuth';
 import { useFlowCanvasStore } from '../store/flowCanvasStore';
 import type { FlowNodeKind } from '../types';
+import { getAnchoredFlyoutPosition, type FlyoutPosition } from '../utils/flyoutLayout';
 
 type AddEntry = {
   kind: FlowNodeKind | 'world3d' | 'playlist';
@@ -105,12 +106,6 @@ const DockButton: React.FC<{
       <DockTooltip label={label} visible={showTooltip} />
     </div>
   );
-};
-
-type FlyoutPosition = {
-  left: number;
-  top: number;
-  maxHeight: number;
 };
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(value, max));
@@ -250,15 +245,18 @@ export const FlowLeftAddPanel: React.FC = memo(function FlowLeftAddPanel() {
 
       const hostRect = dockHostRef.current?.getBoundingClientRect();
       if (hostRect && addOpen) {
-        const desiredWidth = 246;
-        const desiredTop = hostRect.top - 32;
-        const maxHeight = Math.max(300, viewportHeight - margin * 2);
-
-        setFlyoutPosition({
-          left: clamp(hostRect.right + 10, margin, viewportWidth - desiredWidth - margin),
-          top: clamp(desiredTop, margin, viewportHeight - maxHeight - margin),
-          maxHeight,
-        });
+        setFlyoutPosition(
+          getAnchoredFlyoutPosition({
+            anchorRect: { top: hostRect.top, right: hostRect.right },
+            viewportWidth,
+            viewportHeight,
+            panelWidth: 224,
+            panelMaxHeight: 560,
+            offsetLeft: 8,
+            offsetTop: -12,
+            margin,
+          }),
+        );
       }
 
       const userRect = userButtonRef.current?.getBoundingClientRect();
@@ -351,14 +349,14 @@ export const FlowLeftAddPanel: React.FC = memo(function FlowLeftAddPanel() {
 const dockHostStyle: React.CSSProperties = {
   position: 'absolute',
   left: 14,
-  top: 122,
+  top: 118,
   zIndex: 1000,
 };
 
 const dockStyle: React.CSSProperties = {
   width: 60,
   minHeight: 348,
-  padding: '6px 6px 8px',
+  padding: '5px 6px 8px',
   boxSizing: 'border-box',
   borderRadius: 30,
   background: 'rgba(31,31,31,0.96)',
@@ -437,48 +435,49 @@ const flyoutStyle = (position: FlyoutPosition): React.CSSProperties => ({
   position: 'fixed',
   left: position.left,
   top: position.top,
-  width: 246,
+  width: 224,
   maxHeight: position.maxHeight,
   overflow: 'auto',
-  padding: '10px 12px 12px',
+  padding: '8px 10px 10px',
   boxSizing: 'border-box',
-  borderRadius: 18,
-  background: 'linear-gradient(150deg, rgba(31,31,31,0.98), rgba(25,28,32,0.98))',
-  border: '1px solid rgba(255,255,255,0.14)',
-  boxShadow: '0 24px 70px rgba(0,0,0,0.58)',
-  backdropFilter: 'blur(22px)',
+  borderRadius: 16,
+  background: 'linear-gradient(155deg, rgba(28,28,29,0.985), rgba(23,25,28,0.985))',
+  border: '1px solid rgba(255,255,255,0.12)',
+  boxShadow: '0 18px 48px rgba(0,0,0,0.52)',
+  backdropFilter: 'blur(18px)',
   zIndex: 1100,
 });
 
 const flyoutSectionTitleStyle: React.CSSProperties = {
-  color: 'rgba(255,255,255,0.42)',
-  fontSize: 11,
-  fontWeight: 760,
-  margin: '6px 0 5px',
+  color: 'rgba(255,255,255,0.34)',
+  fontSize: 10,
+  fontWeight: 700,
+  letterSpacing: 0,
+  margin: '6px 0 4px',
 };
 
 const flyoutItemStyle = (active: boolean, disabled: boolean): React.CSSProperties => ({
   width: '100%',
-  minHeight: 44,
+  minHeight: 38,
   border: 'none',
-  borderRadius: 12,
-  background: active ? 'rgba(255,255,255,0.105)' : 'transparent',
+  borderRadius: 10,
+  background: active ? 'rgba(255,255,255,0.088)' : 'transparent',
   color: disabled ? 'rgba(255,255,255,0.56)' : '#f8fafc',
   display: 'flex',
   alignItems: 'center',
-  gap: 8,
-  padding: '6px 8px',
+  gap: 7,
+  padding: '5px 6px',
   cursor: disabled ? 'default' : 'pointer',
   textAlign: 'left',
 });
 
 const flyoutIconStyle = (active: boolean): React.CSSProperties => ({
-  width: 34,
-  height: 34,
-  borderRadius: 10,
+  width: 30,
+  height: 30,
+  borderRadius: 9,
   display: 'grid',
   placeItems: 'center',
-  background: active ? 'rgba(255,255,255,0.09)' : 'rgba(255,255,255,0.065)',
+  background: active ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.055)',
   color: '#f4f4f5',
   flexShrink: 0,
 });
@@ -486,26 +485,27 @@ const flyoutIconStyle = (active: boolean): React.CSSProperties => ({
 const flyoutLabelStyle: React.CSSProperties = {
   display: 'block',
   color: '#fff',
-  fontSize: 13,
-  fontWeight: 800,
-  lineHeight: 1.15,
+  fontSize: 12,
+  fontWeight: 700,
+  lineHeight: 1.1,
 };
 
 const flyoutDescStyle: React.CSSProperties = {
   display: 'block',
-  color: 'rgba(255,255,255,0.44)',
-  fontSize: 10,
-  fontWeight: 600,
-  marginTop: 4,
+  color: 'rgba(255,255,255,0.4)',
+  fontSize: 9,
+  fontWeight: 500,
+  marginTop: 2,
+  lineHeight: 1.25,
 };
 
 const betaPillStyle: React.CSSProperties = {
-  padding: '2px 7px',
+  padding: '1px 6px',
   borderRadius: 999,
-  border: '1px solid rgba(255,255,255,0.22)',
-  color: '#fff',
-  fontSize: 10,
-  fontWeight: 820,
+  border: '1px solid rgba(255,255,255,0.18)',
+  color: 'rgba(255,255,255,0.9)',
+  fontSize: 9,
+  fontWeight: 760,
 };
 
 const userAvatarSmallStyle: React.CSSProperties = {
