@@ -74,7 +74,8 @@ const DockButton: React.FC<{
   onClick?: () => void;
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
-}> = ({ icon, label, active, badge, large, onClick, onMouseEnter, onMouseLeave }) => {
+  buttonRef?: React.RefObject<HTMLButtonElement | null>;
+}> = ({ icon, label, active, badge, large, onClick, onMouseEnter, onMouseLeave, buttonRef }) => {
   const [hovered, setHovered] = useState(false);
   const showTooltip = hovered && !active && !large;
 
@@ -91,6 +92,7 @@ const DockButton: React.FC<{
       }}
     >
       <button
+        ref={buttonRef}
         type="button"
         className="nodrag nopan"
         onClick={onClick}
@@ -110,6 +112,8 @@ type FlyoutPosition = {
   top: number;
   maxHeight: number;
 };
+
+const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(value, max));
 
 const AddNodeFlyout: React.FC<{
   onAdd: (kind: FlowNodeKind) => void;
@@ -157,7 +161,8 @@ const UserFlyout: React.FC<{
   loading: boolean;
   onLogout: () => void;
   user: { displayName: string | null; email: string } | null;
-}> = ({ authenticated, loading, onLogout, user }) => {
+  position: FlyoutPosition;
+}> = ({ authenticated, loading, onLogout, user, position }) => {
   const displayName = loading
     ? '加载中...'
     : user?.displayName || user?.email?.split('@')[0] || '访客';
@@ -169,7 +174,7 @@ const UserFlyout: React.FC<{
       : 'L';
 
   return (
-    <div className="nodrag nopan nowheel" style={userMenuStyle}>
+    <div className="nodrag nopan nowheel" style={userMenuStyle(position)}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
         <div style={userAvatarLargeStyle}>{initial}</div>
         <div style={{ minWidth: 0 }}>
@@ -205,9 +210,15 @@ export const FlowLeftAddPanel: React.FC = memo(function FlowLeftAddPanel() {
   const { authenticated, loading: userLoading, logout, user } = useAuth();
   const reactFlow = useReactFlow();
   const dockHostRef = useRef<HTMLDivElement | null>(null);
+  const userButtonRef = useRef<HTMLButtonElement | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [userOpen, setUserOpen] = useState(false);
   const [flyoutPosition, setFlyoutPosition] = useState<FlyoutPosition>({
+    left: 96,
+    top: 96,
+    maxHeight: 640,
+  });
+  const [userFlyoutPosition, setUserFlyoutPosition] = useState<FlyoutPosition>({
     left: 96,
     top: 96,
     maxHeight: 640,
@@ -230,30 +241,47 @@ export const FlowLeftAddPanel: React.FC = memo(function FlowLeftAddPanel() {
   }, []);
 
   useLayoutEffect(() => {
-    if (!addOpen) return;
+    if (!addOpen && !userOpen) return;
 
-    const updateFlyoutPosition = () => {
-      const rect = dockHostRef.current?.getBoundingClientRect();
-      if (!rect) return;
-
+    const updateFloatingPositions = () => {
       const viewportWidth = window.innerWidth;
       const viewportHeight = window.innerHeight;
       const margin = 16;
-      const desiredWidth = 274;
-      const desiredTop = rect.top - 26;
-      const maxHeight = Math.max(360, viewportHeight - margin * 2);
 
-      setFlyoutPosition({
-        left: Math.min(rect.right + 10, viewportWidth - desiredWidth - margin),
-        top: Math.max(margin, Math.min(desiredTop, viewportHeight - maxHeight - margin)),
-        maxHeight,
-      });
+      const hostRect = dockHostRef.current?.getBoundingClientRect();
+      if (hostRect && addOpen) {
+        const desiredWidth = 274;
+        const desiredTop = hostRect.top - 26;
+        const maxHeight = Math.max(360, viewportHeight - margin * 2);
+
+        setFlyoutPosition({
+          left: clamp(hostRect.right + 10, margin, viewportWidth - desiredWidth - margin),
+          top: clamp(desiredTop, margin, viewportHeight - maxHeight - margin),
+          maxHeight,
+        });
+      }
+
+      const userRect = userButtonRef.current?.getBoundingClientRect();
+      if (userRect && userOpen) {
+        const desiredWidth = 286;
+        const desiredHeight = 434;
+        const maxHeight = Math.max(320, viewportHeight - margin * 2);
+        const effectiveHeight = Math.min(desiredHeight, maxHeight);
+        const desiredLeft = userRect.right + 12;
+        const desiredTop = userRect.bottom - effectiveHeight;
+
+        setUserFlyoutPosition({
+          left: clamp(desiredLeft, margin, viewportWidth - desiredWidth - margin),
+          top: clamp(desiredTop, margin, viewportHeight - effectiveHeight - margin),
+          maxHeight,
+        });
+      }
     };
 
-    updateFlyoutPosition();
-    window.addEventListener('resize', updateFlyoutPosition);
-    return () => window.removeEventListener('resize', updateFlyoutPosition);
-  }, [addOpen]);
+    updateFloatingPositions();
+    window.addEventListener('resize', updateFloatingPositions);
+    return () => window.removeEventListener('resize', updateFloatingPositions);
+  }, [addOpen, userOpen]);
 
   const handleLogout = useCallback(() => {
     void logout().finally(() => {
@@ -294,6 +322,7 @@ export const FlowLeftAddPanel: React.FC = memo(function FlowLeftAddPanel() {
           icon={<span style={userAvatarSmallStyle}>{(user?.displayName || user?.email || 'L').charAt(0).toUpperCase()}</span>}
           label="用户"
           active={userOpen}
+          buttonRef={userButtonRef}
           onClick={() => {
             setAddOpen(false);
             setUserOpen((open) => !open);
@@ -311,6 +340,7 @@ export const FlowLeftAddPanel: React.FC = memo(function FlowLeftAddPanel() {
           authenticated={authenticated}
           loading={userLoading}
           onLogout={handleLogout}
+          position={userFlyoutPosition}
           user={user}
         />
       )}
@@ -321,14 +351,14 @@ export const FlowLeftAddPanel: React.FC = memo(function FlowLeftAddPanel() {
 const dockHostStyle: React.CSSProperties = {
   position: 'absolute',
   left: 20,
-  top: 164,
+  top: 148,
   zIndex: 1000,
 };
 
 const dockStyle: React.CSSProperties = {
   width: 72,
-  minHeight: 404,
-  padding: '8px 8px 10px',
+  minHeight: 392,
+  padding: '7px 8px 9px',
   boxSizing: 'border-box',
   borderRadius: 36,
   background: 'rgba(31,31,31,0.96)',
@@ -337,7 +367,7 @@ const dockStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   alignItems: 'center',
-  gap: 12,
+  gap: 10,
   backdropFilter: 'blur(18px)',
 };
 
@@ -479,31 +509,34 @@ const betaPillStyle: React.CSSProperties = {
 };
 
 const userAvatarSmallStyle: React.CSSProperties = {
-  width: 46,
-  height: 46,
+  width: 42,
+  height: 42,
   borderRadius: '50%',
   display: 'grid',
   placeItems: 'center',
   color: 'rgba(255,255,255,0.64)',
   background: 'rgba(255,255,255,0.065)',
   border: '1px solid rgba(255,255,255,0.08)',
-  fontSize: 24,
+  fontSize: 22,
   fontWeight: 500,
 };
 
-const userMenuStyle: React.CSSProperties = {
-  position: 'absolute',
-  left: 89,
-  bottom: -170,
-  width: 300,
-  padding: '18px 18px 16px',
+const userMenuStyle = (position: FlyoutPosition): React.CSSProperties => ({
+  position: 'fixed',
+  left: position.left,
+  top: position.top,
+  width: 286,
+  maxHeight: position.maxHeight,
+  overflowY: 'auto',
+  padding: '16px 16px 14px',
   boxSizing: 'border-box',
-  borderRadius: 24,
+  borderRadius: 22,
   background: 'linear-gradient(150deg, rgba(34,34,34,0.98), rgba(27,30,34,0.98))',
   border: '1px solid rgba(255,255,255,0.14)',
   boxShadow: '0 24px 70px rgba(0,0,0,0.58)',
   backdropFilter: 'blur(22px)',
-};
+  zIndex: 1100,
+});
 
 const userAvatarLargeStyle: React.CSSProperties = {
   width: 52,
