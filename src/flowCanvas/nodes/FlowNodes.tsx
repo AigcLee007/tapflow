@@ -6310,7 +6310,7 @@ export const UploadNodeComponent = memo(function UploadNode({
         type="source" 
         position={Position.Right} 
         id="out" 
-        style={{ ...plusHandle, opacity: hovered ? 1 : 0, position: 'absolute', right: -18, top: '50%', transform: 'translateY(-50%)' }}
+        style={{ ...invisibleHandle, opacity: hovered ? 1 : 0, position: 'absolute', right: -18, top: '50%', transform: 'translateY(-50%)' }}
       >
         <div style={plusHandleInner}><Plus size={14} /></div>
       </Handle>
