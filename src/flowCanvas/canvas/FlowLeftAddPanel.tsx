@@ -241,7 +241,7 @@ export const FlowLeftAddPanel: React.FC = memo(function FlowLeftAddPanel() {
     const updateFloatingPositions = () => {
       const viewportWidth = window.innerWidth;
       const viewportHeight = window.innerHeight;
-      const margin = 16;
+      const margin = 24;
 
       const hostRect = dockHostRef.current?.getBoundingClientRect();
       if (hostRect && addOpen) {
@@ -261,18 +261,19 @@ export const FlowLeftAddPanel: React.FC = memo(function FlowLeftAddPanel() {
 
       const userRect = userButtonRef.current?.getBoundingClientRect();
       if (userRect && userOpen) {
-        const desiredWidth = 252;
-        const desiredHeight = 372;
-        const maxHeight = Math.max(280, viewportHeight - margin * 2);
-        const effectiveHeight = Math.min(desiredHeight, maxHeight);
-        const desiredLeft = userRect.right + 12;
-        const desiredTop = userRect.bottom - effectiveHeight;
-
-        setUserFlyoutPosition({
-          left: clamp(desiredLeft, margin, viewportWidth - desiredWidth - margin),
-          top: clamp(desiredTop, margin, viewportHeight - effectiveHeight - margin),
-          maxHeight,
-        });
+        const maxHeight = Math.max(280, Math.min(372, viewportHeight - margin * 2));
+        setUserFlyoutPosition(
+          getAnchoredFlyoutPosition({
+            anchorRect: { top: userRect.bottom, right: userRect.right },
+            viewportWidth,
+            viewportHeight,
+            panelWidth: 252,
+            panelMaxHeight: maxHeight,
+            offsetLeft: 8,
+            offsetTop: -maxHeight + 52,
+            margin,
+          }),
+        );
       }
     };
 
@@ -349,7 +350,7 @@ export const FlowLeftAddPanel: React.FC = memo(function FlowLeftAddPanel() {
 const dockHostStyle: React.CSSProperties = {
   position: 'absolute',
   left: 14,
-  top: 118,
+  top: 134,
   zIndex: 1000,
 };
 
@@ -528,13 +529,13 @@ const userMenuStyle = (position: FlyoutPosition): React.CSSProperties => ({
   width: 252,
   maxHeight: position.maxHeight,
   overflowY: 'auto',
-  padding: '14px 14px 12px',
+  padding: '13px 14px 12px',
   boxSizing: 'border-box',
-  borderRadius: 18,
-  background: 'linear-gradient(150deg, rgba(34,34,34,0.98), rgba(27,30,34,0.98))',
-  border: '1px solid rgba(255,255,255,0.14)',
-  boxShadow: '0 24px 70px rgba(0,0,0,0.58)',
-  backdropFilter: 'blur(22px)',
+  borderRadius: 16,
+  background: 'linear-gradient(155deg, rgba(28,28,29,0.985), rgba(23,25,28,0.985))',
+  border: '1px solid rgba(255,255,255,0.12)',
+  boxShadow: '0 18px 48px rgba(0,0,0,0.52)',
+  backdropFilter: 'blur(18px)',
   zIndex: 1100,
 });
 

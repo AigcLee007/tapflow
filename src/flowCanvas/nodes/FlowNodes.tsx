@@ -364,9 +364,9 @@ const EditableNodeTitle: React.FC<{
       style={{
         display: 'flex',
         alignItems: 'center',
-        gap: compact ? 4 : 5,
-        color: compact ? 'rgba(148,163,184,0.6)' : 'rgba(255, 255, 255, 0.66)',
-        fontSize: compact ? 12 : 15,
+        gap: compact ? 3 : 4,
+        color: compact ? 'rgba(148,163,184,0.58)' : 'rgba(255, 255, 255, 0.62)',
+        fontSize: compact ? 11 : 13,
         fontWeight: compact ? 600 : 500,
         lineHeight: 1.1,
         userSelect: editing ? 'text' : 'none',
@@ -436,13 +436,13 @@ const NodeLabel: React.FC<{
     <div
       style={{
         position: 'absolute',
-        bottom: 'calc(100% + 3px)',
+        bottom: 'calc(100% + 2px)',
         left: 0,
         width: constrainedWidth,
         minWidth: 0,
         display: 'flex',
         alignItems: 'center',
-        gap: 5,
+        gap: 4,
         transform: `scale(${scale})`,
         transformOrigin: 'bottom left',
         transition: 'transform 0.1s ease-out',

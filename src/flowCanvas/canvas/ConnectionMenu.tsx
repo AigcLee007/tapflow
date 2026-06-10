@@ -18,11 +18,11 @@ interface ConnectionMenuProps {
 }
 
 const ICON_BY_KIND: Record<string, React.ReactNode> = {
-  text: <List size={26} strokeWidth={1.8} />,
-  image: <ImageIcon size={26} strokeWidth={1.75} />,
-  video: <PlaySquare size={25} strokeWidth={1.8} />,
-  image_editor: <Wand2 size={25} strokeWidth={1.8} />,
-  world3d: <Box size={25} strokeWidth={1.75} />,
+  text: <List size={18} strokeWidth={1.75} />,
+  image: <ImageIcon size={18} strokeWidth={1.75} />,
+  video: <PlaySquare size={18} strokeWidth={1.8} />,
+  image_editor: <Wand2 size={18} strokeWidth={1.8} />,
+  world3d: <Box size={18} strokeWidth={1.75} />,
 };
 
 export const ConnectionMenu: React.FC<ConnectionMenuProps> = memo(function ConnectionMenu({
@@ -103,48 +103,46 @@ export const ConnectionMenu: React.FC<ConnectionMenuProps> = memo(function Conne
 const menuStyle: React.CSSProperties = {
   position: 'fixed',
   zIndex: 1200,
-  width: 432,
-  minHeight: 488,
+  width: 224,
   boxSizing: 'border-box',
-  background: 'rgba(25,25,25,0.98)',
-  border: '1px solid rgba(255,255,255,0.14)',
-  borderRadius: 22,
-  padding: '20px 18px 18px',
-  backdropFilter: 'blur(22px)',
-  boxShadow: '0 24px 70px rgba(0,0,0,0.58)',
+  background: 'linear-gradient(155deg, rgba(28,28,29,0.985), rgba(23,25,28,0.985))',
+  border: '1px solid rgba(255,255,255,0.12)',
+  borderRadius: 16,
+  padding: '8px 10px 10px',
+  backdropFilter: 'blur(18px)',
+  boxShadow: '0 18px 48px rgba(0,0,0,0.52)',
 };
 
 const headerStyle: React.CSSProperties = {
-  fontSize: 22,
-  fontWeight: 800,
-  color: 'rgba(255,255,255,0.44)',
-  padding: '0 2px 16px',
+  fontSize: 10,
+  fontWeight: 700,
+  color: 'rgba(255,255,255,0.34)',
+  padding: '6px 0 4px',
   userSelect: 'none',
 };
 
 const menuItemStyle = (active: boolean, disabled: boolean): React.CSSProperties => ({
   display: 'flex',
   alignItems: 'center',
-  gap: 14,
+  gap: 7,
   width: '100%',
-  minHeight: 78,
-  padding: '12px 18px',
-  background: active ? 'rgba(255,255,255,0.105)' : 'transparent',
+  minHeight: 38,
+  padding: '5px 6px',
+  background: active ? 'rgba(255,255,255,0.088)' : 'transparent',
   border: 'none',
-  color: disabled ? 'rgba(255,255,255,0.82)' : '#f8fafc',
+  color: disabled ? 'rgba(255,255,255,0.56)' : '#f8fafc',
   cursor: disabled ? 'default' : 'pointer',
   textAlign: 'left',
-  borderRadius: 22,
-  transition: 'background 140ms ease, transform 140ms ease',
+  borderRadius: 10,
+  transition: 'background 140ms ease',
 });
 
 const iconBoxStyle = (active: boolean): React.CSSProperties => ({
-  width: 56,
-  height: 56,
-  borderRadius: 15,
-  background: active ? 'rgba(255,255,255,0.095)' : 'rgba(255,255,255,0.065)',
-  border: active ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(255,255,255,0.04)',
-  color: '#e5e7eb',
+  width: 30,
+  height: 30,
+  borderRadius: 9,
+  background: active ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.055)',
+  color: '#f4f4f5',
   display: 'grid',
   placeItems: 'center',
   flexShrink: 0,
@@ -152,23 +150,24 @@ const iconBoxStyle = (active: boolean): React.CSSProperties => ({
 
 const labelStyle: React.CSSProperties = {
   color: '#f8fafc',
-  fontSize: 23,
-  fontWeight: 850,
-  lineHeight: 1.15,
+  fontSize: 12,
+  fontWeight: 700,
+  lineHeight: 1.1,
 };
 
 const descStyle: React.CSSProperties = {
-  fontSize: 17,
-  color: 'rgba(255,255,255,0.36)',
-  fontWeight: 650,
-  marginTop: 9,
+  fontSize: 9,
+  color: 'rgba(255,255,255,0.4)',
+  fontWeight: 500,
+  marginTop: 2,
+  lineHeight: 1.25,
 };
 
 const emptyStyle: React.CSSProperties = {
-  minHeight: 120,
+  minHeight: 72,
   display: 'grid',
   placeItems: 'center',
   color: 'rgba(255,255,255,0.44)',
-  fontSize: 18,
-  fontWeight: 750,
+  fontSize: 12,
+  fontWeight: 650,
 };
