@@ -11,6 +11,7 @@ import {
 import { isLocalDraftNewer, readLocalFlowDraft } from "../services/localFlowDraft";
 import { recoverFlowTargetNodeRuns } from "../runtime/v2WorkflowRunner";
 import type { WorkspaceFlow, WorkspaceProject } from "../../workspace/workspaceApi";
+import { normalizeViewportForCanvasDensity } from "../utils/viewportDensity";
 
 type RemoteFlowProjectState = {
   draft: FlowDraft | null;
@@ -49,15 +50,29 @@ function resolveDraftForCanvas(serverDraft: FlowDraft): FlowDraft {
     }) ||
     !localDraft
   ) {
-    return serverDraft;
+    return {
+      ...serverDraft,
+      graph: {
+        ...serverDraft.graph,
+        viewport: normalizeViewportForCanvasDensity(serverDraft.graph.viewport),
+      },
+    };
   }
 
-  return {
+  const resolvedDraft = {
     ...serverDraft,
     graph: localDraft.canonicalGraph,
     revision: localDraft.lastServerRevision ?? serverDraft.revision,
     needsCloudSync: true,
     updatedAt: localDraft.updatedAt,
+  };
+
+  return {
+    ...resolvedDraft,
+    graph: {
+      ...resolvedDraft.graph,
+      viewport: normalizeViewportForCanvasDensity(resolvedDraft.graph.viewport),
+    },
   };
 }
 

@@ -38,11 +38,11 @@ import { canConnectFlowNodes } from '../rules/connectionRules';
 import { uploadAssetFile } from '../../assets/assetApi';
 import { buildAssetBackedNodeData } from '../utils/assetNodeData';
 
-const CANVAS_MIN_ZOOM = 0.24;
+const CANVAS_MIN_ZOOM = 0.18;
 const CANVAS_MAX_ZOOM = 2.2;
-const CONNECTION_MENU_WIDTH = 368;
-const CONNECTION_MENU_HEIGHT = 452;
-const CONNECTION_MENU_MARGIN = 24;
+const CONNECTION_MENU_WIDTH = 332;
+const CONNECTION_MENU_HEIGHT = 420;
+const CONNECTION_MENU_MARGIN = 18;
 const clampZoom = (zoom: number) => Math.max(CANVAS_MIN_ZOOM, Math.min(CANVAS_MAX_ZOOM, zoom));
 
 const isBrowserZoomShortcut = (event: KeyboardEvent) => {
@@ -578,7 +578,7 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled }) =>
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         fitView
-        fitViewOptions={{ padding: 0.38, maxZoom: 1.12 }}
+        fitViewOptions={{ padding: 0.46, maxZoom: 0.92 }}
         minZoom={CANVAS_MIN_ZOOM}
         maxZoom={CANVAS_MAX_ZOOM}
         defaultEdgeOptions={{ type: 'smart' }}
@@ -608,7 +608,7 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled }) =>
             nodeColor={miniMapNodeColor}
             nodeStrokeWidth={1}
             nodeStrokeColor="rgba(255,255,255,0.16)"
-            style={{ ...miniMapStyle, left: leftPanelOpen ? 248 : 20 }}
+            style={{ ...miniMapStyle, left: leftPanelOpen ? 218 : 16 }}
             maskColor="rgba(255,255,255,0.055)"
             maskStrokeColor="rgba(255,255,255,0.26)"
             maskStrokeWidth={1}
@@ -631,7 +631,7 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled }) =>
         onToggleMiniMap={() => setMiniMapOpen((open) => !open)}
         onToggleGridSnap={() => setGridSnapEnabled((enabled) => !enabled)}
         zoom={viewport.zoom}
-        onFitView={() => reactFlow.fitView({ padding: 0.36, maxZoom: 1.12, duration: 220 })}
+        onFitView={() => reactFlow.fitView({ padding: 0.44, maxZoom: 0.92, duration: 220 })}
         onZoomChange={(zoom) => {
           const nextZoom = clampZoom(zoom);
           const currentViewport = reactFlow.getViewport();
@@ -753,17 +753,17 @@ const CanvasViewportControls: React.FC<{
     <div style={viewportControlsStyle}>
       <ControlTooltip title={miniMapOpen ? '关闭小地图' : '打开小地图'}>
         <button type="button" style={controlButtonStyle(miniMapOpen)} onClick={onToggleMiniMap}>
-          <MapPinned size={18} />
+          <MapPinned size={16} />
         </button>
       </ControlTooltip>
       <ControlTooltip title="网格吸附">
         <button type="button" style={controlButtonStyle(gridSnapEnabled)} onClick={onToggleGridSnap}>
-          <Grip size={18} />
+          <Grip size={16} />
         </button>
       </ControlTooltip>
       <ControlTooltip title="重置">
         <button type="button" style={controlButtonStyle()} onClick={onFitView}>
-          <Crosshair size={18} />
+          <Crosshair size={16} />
         </button>
       </ControlTooltip>
       <ControlTooltip title="放大/缩小画布（Ctrl/⌘ + 0）">
@@ -791,7 +791,7 @@ const CanvasViewportControls: React.FC<{
     </div>
     <ControlTooltip title={`缩放 ${Math.round(zoom * 100)}%`}>
       <button type="button" style={helpButtonStyle}>
-        <CircleHelp size={21} />
+        <CircleHelp size={18} />
       </button>
     </ControlTooltip>
   </div>
@@ -848,21 +848,21 @@ const ConnectionLinePersistent: React.FC<{ sourceNodeId: string; targetX: number
 
 const viewportControlsShellStyle: React.CSSProperties = {
   position: 'absolute',
-  left: 20,
-  bottom: 16,
+  left: 16,
+  bottom: 14,
   zIndex: 45,
   display: 'flex',
   alignItems: 'center',
-  gap: 10,
+  gap: 8,
 };
 
 const viewportControlsStyle: React.CSSProperties = {
-  height: 44,
+  height: 38,
   display: 'flex',
   alignItems: 'center',
-  gap: 8,
-  padding: '0 12px',
-  borderRadius: 22,
+  gap: 6,
+  padding: '0 10px',
+  borderRadius: 19,
   background: 'rgba(34,34,39,0.96)',
   border: '1px solid rgba(255,255,255,0.09)',
   boxShadow: '0 18px 48px rgba(0,0,0,0.46)',
@@ -870,9 +870,9 @@ const viewportControlsStyle: React.CSSProperties = {
 };
 
 const controlButtonStyle = (active = false): React.CSSProperties => ({
-  width: 32,
-  height: 32,
-  borderRadius: 12,
+  width: 28,
+  height: 28,
+  borderRadius: 10,
   border: '1px solid transparent',
   background: active ? 'rgba(255,255,255,0.11)' : 'transparent',
   color: active ? '#fff' : 'rgba(229,231,235,0.78)',
@@ -884,8 +884,8 @@ const controlButtonStyle = (active = false): React.CSSProperties => ({
 });
 
 const helpButtonStyle: React.CSSProperties = {
-  width: 44,
-  height: 44,
+  width: 38,
+  height: 38,
   borderRadius: '50%',
   border: '1px solid rgba(255,255,255,0.09)',
   background: 'rgba(34,34,39,0.96)',
@@ -901,8 +901,8 @@ const helpButtonStyle: React.CSSProperties = {
 const zoomSliderWrapStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  width: 84,
-  height: 30,
+  width: 72,
+  height: 26,
   padding: '0 1px',
 };
 
@@ -927,9 +927,9 @@ const controlTooltipStyle: React.CSSProperties = {
   transform: 'translateX(-50%)',
   background: 'rgba(39,39,42,0.98)',
   color: '#fff',
-  padding: '9px 16px',
-  borderRadius: 13,
-  fontSize: 15,
+  padding: '8px 13px',
+  borderRadius: 12,
+  fontSize: 13,
   fontWeight: 700,
   lineHeight: 1,
   whiteSpace: 'nowrap',
@@ -955,9 +955,9 @@ const miniMapStyle: React.CSSProperties = {
   borderRadius: 18,
   border: '1px solid rgba(255,255,255,0.09)',
   boxShadow: '0 18px 50px rgba(0,0,0,0.45)',
-  left: 20,
-  bottom: 68,
-  width: 280,
+  left: 16,
+  bottom: 58,
+  width: 248,
   height: 218,
   zIndex: 58,
 };

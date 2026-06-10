@@ -37,20 +37,20 @@ type AddEntry = {
 };
 
 const PRIMARY_ITEMS: AddEntry[] = [
-  { kind: 'text', label: '文本', desc: '脚本、提示词和文案', icon: <List size={21} strokeWidth={1.75} /> },
-  { kind: 'image', label: '图片', icon: <ImageIcon size={21} strokeWidth={1.75} /> },
-  { kind: 'video', label: '视频', icon: <PlaySquare size={21} strokeWidth={1.8} /> },
-  { kind: 'audio', label: '音频', icon: <Music size={21} strokeWidth={1.8} /> },
-  { kind: 'world3d', label: '3D 世界', icon: <Box size={21} strokeWidth={1.75} />, beta: true, disabled: true },
+  { kind: 'text', label: '文本', desc: '脚本、提示词和文案', icon: <List size={18} strokeWidth={1.75} /> },
+  { kind: 'image', label: '图片', icon: <ImageIcon size={18} strokeWidth={1.75} /> },
+  { kind: 'video', label: '视频', icon: <PlaySquare size={18} strokeWidth={1.8} /> },
+  { kind: 'audio', label: '音频', icon: <Music size={18} strokeWidth={1.8} /> },
+  { kind: 'world3d', label: '3D 世界', icon: <Box size={18} strokeWidth={1.75} />, beta: true, disabled: true },
 ];
 
 const TOOL_ITEMS: AddEntry[] = [
-  { kind: 'playlist', label: '播放列表', icon: <LayoutList size={21} strokeWidth={1.75} />, beta: true, disabled: true },
-  { kind: 'image_editor', label: '图片编辑节点', icon: <Wand2 size={21} strokeWidth={1.8} /> },
+  { kind: 'playlist', label: '播放列表', icon: <LayoutList size={18} strokeWidth={1.75} />, beta: true, disabled: true },
+  { kind: 'image_editor', label: '图片编辑节点', icon: <Wand2 size={18} strokeWidth={1.8} /> },
 ];
 
 const RESOURCE_ITEMS: AddEntry[] = [
-  { kind: 'upload', label: '上传', icon: <Upload size={21} strokeWidth={1.85} /> },
+  { kind: 'upload', label: '上传', icon: <Upload size={18} strokeWidth={1.85} /> },
 ];
 
 const isFlowNodeKind = (kind: AddEntry['kind']): kind is FlowNodeKind =>
@@ -214,14 +214,14 @@ export const FlowLeftAddPanel: React.FC = memo(function FlowLeftAddPanel() {
   const [addOpen, setAddOpen] = useState(false);
   const [userOpen, setUserOpen] = useState(false);
   const [flyoutPosition, setFlyoutPosition] = useState<FlyoutPosition>({
-    left: 96,
-    top: 96,
-    maxHeight: 640,
+    left: 88,
+    top: 88,
+    maxHeight: 560,
   });
   const [userFlyoutPosition, setUserFlyoutPosition] = useState<FlyoutPosition>({
-    left: 96,
-    top: 96,
-    maxHeight: 640,
+    left: 88,
+    top: 88,
+    maxHeight: 520,
   });
   const closeTimerRef = useRef<number | null>(null);
 
@@ -250,9 +250,9 @@ export const FlowLeftAddPanel: React.FC = memo(function FlowLeftAddPanel() {
 
       const hostRect = dockHostRef.current?.getBoundingClientRect();
       if (hostRect && addOpen) {
-        const desiredWidth = 274;
-        const desiredTop = hostRect.top - 26;
-        const maxHeight = Math.max(360, viewportHeight - margin * 2);
+        const desiredWidth = 246;
+        const desiredTop = hostRect.top - 32;
+        const maxHeight = Math.max(300, viewportHeight - margin * 2);
 
         setFlyoutPosition({
           left: clamp(hostRect.right + 10, margin, viewportWidth - desiredWidth - margin),
@@ -263,9 +263,9 @@ export const FlowLeftAddPanel: React.FC = memo(function FlowLeftAddPanel() {
 
       const userRect = userButtonRef.current?.getBoundingClientRect();
       if (userRect && userOpen) {
-        const desiredWidth = 286;
-        const desiredHeight = 434;
-        const maxHeight = Math.max(320, viewportHeight - margin * 2);
+        const desiredWidth = 252;
+        const desiredHeight = 372;
+        const maxHeight = Math.max(280, viewportHeight - margin * 2);
         const effectiveHeight = Math.min(desiredHeight, maxHeight);
         const desiredLeft = userRect.right + 12;
         const desiredTop = userRect.bottom - effectiveHeight;
@@ -306,17 +306,17 @@ export const FlowLeftAddPanel: React.FC = memo(function FlowLeftAddPanel() {
     <div ref={dockHostRef} style={dockHostStyle} onMouseLeave={() => setUserOpen(false)}>
       <div style={dockStyle}>
         <DockButton
-          icon={addOpen ? <X size={24} strokeWidth={1.7} /> : <Plus size={30} strokeWidth={1.75} />}
+          icon={addOpen ? <X size={20} strokeWidth={1.7} /> : <Plus size={26} strokeWidth={1.75} />}
           label="添加节点"
           large
           active={addOpen}
           onMouseEnter={openAdd}
           onClick={() => (addOpen ? setAddOpen(false) : openAdd())}
         />
-        <DockButton icon={<Folder size={21} strokeWidth={1.8} />} label="素材库" badge />
-        <DockButton icon={<LayoutList size={21} strokeWidth={1.85} />} label="模板列表" />
-        <DockButton icon={<MessageCircle size={22} strokeWidth={1.85} />} label="评论" />
-        <DockButton icon={<Clock3 size={22} strokeWidth={1.85} />} label="历史记录" onClick={undo} />
+        <DockButton icon={<Folder size={18} strokeWidth={1.8} />} label="素材库" badge />
+        <DockButton icon={<LayoutList size={18} strokeWidth={1.85} />} label="模板列表" />
+        <DockButton icon={<MessageCircle size={19} strokeWidth={1.85} />} label="评论" />
+        <DockButton icon={<Clock3 size={19} strokeWidth={1.85} />} label="历史记录" onClick={undo} />
         <div style={dockDividerStyle} />
         <DockButton
           icon={<span style={userAvatarSmallStyle}>{(user?.displayName || user?.email || 'L').charAt(0).toUpperCase()}</span>}
@@ -350,30 +350,30 @@ export const FlowLeftAddPanel: React.FC = memo(function FlowLeftAddPanel() {
 
 const dockHostStyle: React.CSSProperties = {
   position: 'absolute',
-  left: 20,
-  top: 148,
+  left: 14,
+  top: 122,
   zIndex: 1000,
 };
 
 const dockStyle: React.CSSProperties = {
-  width: 72,
-  minHeight: 392,
-  padding: '7px 8px 9px',
+  width: 60,
+  minHeight: 348,
+  padding: '6px 6px 8px',
   boxSizing: 'border-box',
-  borderRadius: 36,
+  borderRadius: 30,
   background: 'rgba(31,31,31,0.96)',
   border: '1px solid rgba(255,255,255,0.12)',
   boxShadow: '0 22px 56px rgba(0,0,0,0.48), inset 0 1px 0 rgba(255,255,255,0.05)',
   display: 'flex',
   flexDirection: 'column',
   alignItems: 'center',
-  gap: 10,
+  gap: 8,
   backdropFilter: 'blur(18px)',
 };
 
 const addButtonStyle = (active?: boolean): React.CSSProperties => ({
-  width: 54,
-  height: 54,
+  width: 44,
+  height: 44,
   borderRadius: '50%',
   border: active ? '1px solid rgba(255,255,255,0.1)' : 'none',
   background: active ? 'rgba(255,255,255,0.095)' : '#f7f7f7',
@@ -387,9 +387,9 @@ const addButtonStyle = (active?: boolean): React.CSSProperties => ({
 
 const dockButtonStyle = (active?: boolean): React.CSSProperties => ({
   position: 'relative',
-  width: 48,
-  height: 48,
-  borderRadius: 14,
+  width: 40,
+  height: 40,
+  borderRadius: 12,
   border: 'none',
   background: active ? 'rgba(255,255,255,0.085)' : 'transparent',
   color: '#f4f4f5',
@@ -402,11 +402,11 @@ const dockButtonStyle = (active?: boolean): React.CSSProperties => ({
 
 const dockBadgeStyle: React.CSSProperties = {
   position: 'absolute',
-  width: 12,
-  height: 12,
+  width: 10,
+  height: 10,
   borderRadius: '50%',
-  right: 6,
-  top: 8,
+  right: 4,
+  top: 6,
   background: '#24a9ff',
   boxShadow: '0 0 0 2px rgba(31,31,31,0.96)',
 };
@@ -420,14 +420,14 @@ const dockDividerStyle: React.CSSProperties = {
 
 const dockTooltipStyle: React.CSSProperties = {
   position: 'absolute',
-  left: 'calc(100% + 10px)',
+  left: 'calc(100% + 8px)',
   top: '50%',
   transform: 'translateY(-50%)',
-  padding: '9px 14px',
-  borderRadius: 16,
+  padding: '7px 12px',
+  borderRadius: 14,
   background: 'rgba(49,49,49,0.96)',
   color: '#fff',
-  fontSize: 14,
+  fontSize: 12,
   fontWeight: 760,
   whiteSpace: 'nowrap',
   boxShadow: '0 12px 28px rgba(0,0,0,0.38)',
@@ -437,12 +437,12 @@ const flyoutStyle = (position: FlyoutPosition): React.CSSProperties => ({
   position: 'fixed',
   left: position.left,
   top: position.top,
-  width: 274,
+  width: 246,
   maxHeight: position.maxHeight,
   overflow: 'auto',
-  padding: '12px 14px 14px',
+  padding: '10px 12px 12px',
   boxSizing: 'border-box',
-  borderRadius: 20,
+  borderRadius: 18,
   background: 'linear-gradient(150deg, rgba(31,31,31,0.98), rgba(25,28,32,0.98))',
   border: '1px solid rgba(255,255,255,0.14)',
   boxShadow: '0 24px 70px rgba(0,0,0,0.58)',
@@ -452,30 +452,30 @@ const flyoutStyle = (position: FlyoutPosition): React.CSSProperties => ({
 
 const flyoutSectionTitleStyle: React.CSSProperties = {
   color: 'rgba(255,255,255,0.42)',
-  fontSize: 12,
+  fontSize: 11,
   fontWeight: 760,
-  margin: '8px 0 6px',
+  margin: '6px 0 5px',
 };
 
 const flyoutItemStyle = (active: boolean, disabled: boolean): React.CSSProperties => ({
   width: '100%',
-  minHeight: 50,
+  minHeight: 44,
   border: 'none',
-  borderRadius: 14,
+  borderRadius: 12,
   background: active ? 'rgba(255,255,255,0.105)' : 'transparent',
   color: disabled ? 'rgba(255,255,255,0.56)' : '#f8fafc',
   display: 'flex',
   alignItems: 'center',
-  gap: 10,
-  padding: '7px 9px',
+  gap: 8,
+  padding: '6px 8px',
   cursor: disabled ? 'default' : 'pointer',
   textAlign: 'left',
 });
 
 const flyoutIconStyle = (active: boolean): React.CSSProperties => ({
-  width: 40,
-  height: 40,
-  borderRadius: 12,
+  width: 34,
+  height: 34,
+  borderRadius: 10,
   display: 'grid',
   placeItems: 'center',
   background: active ? 'rgba(255,255,255,0.09)' : 'rgba(255,255,255,0.065)',
@@ -486,7 +486,7 @@ const flyoutIconStyle = (active: boolean): React.CSSProperties => ({
 const flyoutLabelStyle: React.CSSProperties = {
   display: 'block',
   color: '#fff',
-  fontSize: 14,
+  fontSize: 13,
   fontWeight: 800,
   lineHeight: 1.15,
 };
@@ -494,30 +494,30 @@ const flyoutLabelStyle: React.CSSProperties = {
 const flyoutDescStyle: React.CSSProperties = {
   display: 'block',
   color: 'rgba(255,255,255,0.44)',
-  fontSize: 11,
+  fontSize: 10,
   fontWeight: 600,
   marginTop: 4,
 };
 
 const betaPillStyle: React.CSSProperties = {
-  padding: '3px 8px',
+  padding: '2px 7px',
   borderRadius: 999,
   border: '1px solid rgba(255,255,255,0.22)',
   color: '#fff',
-  fontSize: 11,
+  fontSize: 10,
   fontWeight: 820,
 };
 
 const userAvatarSmallStyle: React.CSSProperties = {
-  width: 42,
-  height: 42,
+  width: 36,
+  height: 36,
   borderRadius: '50%',
   display: 'grid',
   placeItems: 'center',
   color: 'rgba(255,255,255,0.64)',
   background: 'rgba(255,255,255,0.065)',
   border: '1px solid rgba(255,255,255,0.08)',
-  fontSize: 22,
+  fontSize: 18,
   fontWeight: 500,
 };
 
@@ -525,12 +525,12 @@ const userMenuStyle = (position: FlyoutPosition): React.CSSProperties => ({
   position: 'fixed',
   left: position.left,
   top: position.top,
-  width: 286,
+  width: 252,
   maxHeight: position.maxHeight,
   overflowY: 'auto',
-  padding: '16px 16px 14px',
+  padding: '14px 14px 12px',
   boxSizing: 'border-box',
-  borderRadius: 22,
+  borderRadius: 18,
   background: 'linear-gradient(150deg, rgba(34,34,34,0.98), rgba(27,30,34,0.98))',
   border: '1px solid rgba(255,255,255,0.14)',
   boxShadow: '0 24px 70px rgba(0,0,0,0.58)',
@@ -539,15 +539,15 @@ const userMenuStyle = (position: FlyoutPosition): React.CSSProperties => ({
 });
 
 const userAvatarLargeStyle: React.CSSProperties = {
-  width: 52,
-  height: 52,
+  width: 42,
+  height: 42,
   borderRadius: '50%',
   display: 'grid',
   placeItems: 'center',
   color: 'rgba(255,255,255,0.72)',
   background: 'rgba(255,255,255,0.06)',
   border: '1px solid rgba(255,255,255,0.22)',
-  fontSize: 24,
+  fontSize: 20,
   fontWeight: 500,
   flexShrink: 0,
 };
@@ -555,28 +555,28 @@ const userAvatarLargeStyle: React.CSSProperties = {
 const userDividerStyle: React.CSSProperties = {
   height: 1,
   background: 'rgba(255,255,255,0.12)',
-  margin: '16px 0 10px',
+  margin: '14px 0 9px',
 };
 
 const userMenuItemStyle: React.CSSProperties = {
   width: '100%',
-  height: 42,
+  height: 36,
   border: 'none',
   background: 'transparent',
   color: '#f8fafc',
   display: 'flex',
   alignItems: 'center',
-  gap: 12,
-  fontSize: 15,
+  gap: 10,
+  fontSize: 14,
   fontWeight: 760,
   cursor: 'pointer',
   padding: '0 2px',
 };
 
 const userMenuIconStyle: React.CSSProperties = {
-  width: 30,
-  height: 30,
-  borderRadius: 10,
+  width: 26,
+  height: 26,
+  borderRadius: 9,
   display: 'grid',
   placeItems: 'center',
   background: 'rgba(255,255,255,0.065)',
