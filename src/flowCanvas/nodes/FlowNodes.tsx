@@ -365,8 +365,8 @@ const EditableNodeTitle: React.FC<{
         display: 'flex',
         alignItems: 'center',
         gap: compact ? 3 : 4,
-        color: compact ? 'rgba(148,163,184,0.58)' : 'rgba(255, 255, 255, 0.62)',
-        fontSize: compact ? 11 : 13,
+        color: compact ? 'rgba(148,163,184,0.56)' : 'rgba(255, 255, 255, 0.58)',
+        fontSize: compact ? 10 : 11,
         fontWeight: compact ? 600 : 500,
         lineHeight: 1.1,
         userSelect: editing ? 'text' : 'none',
@@ -394,14 +394,14 @@ const EditableNodeTitle: React.FC<{
             minWidth: 0,
             maxWidth: '100%',
             background: 'rgba(255,255,255,0.08)',
-            border: '1px solid rgba(255,255,255,0.16)',
-            borderRadius: compact ? 8 : 10,
-            color: '#fff',
-            outline: 'none',
-            padding: compact ? '3px 6px' : '4px 8px',
-            font: 'inherit',
-            boxSizing: 'border-box',
-          }}
+        border: '1px solid rgba(255,255,255,0.16)',
+        borderRadius: compact ? 8 : 10,
+        color: '#fff',
+        outline: 'none',
+        padding: compact ? '2px 5px' : '3px 6px',
+        font: 'inherit',
+        boxSizing: 'border-box',
+      }}
         />
       ) : (
         <span
@@ -436,7 +436,7 @@ const NodeLabel: React.FC<{
     <div
       style={{
         position: 'absolute',
-        bottom: 'calc(100% + 2px)',
+        bottom: 'calc(100% + 1px)',
         left: 0,
         width: constrainedWidth,
         minWidth: 0,

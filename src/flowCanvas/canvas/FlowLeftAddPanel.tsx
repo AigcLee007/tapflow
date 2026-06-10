@@ -264,7 +264,7 @@ export const FlowLeftAddPanel: React.FC = memo(function FlowLeftAddPanel() {
         const maxHeight = Math.max(280, Math.min(372, viewportHeight - margin * 2));
         setUserFlyoutPosition(
           getAnchoredFlyoutPosition({
-            anchorRect: { top: userRect.bottom, right: userRect.right },
+            anchorRect: { top: userRect.bottom, right: hostRect?.right || userRect.right },
             viewportWidth,
             viewportHeight,
             panelWidth: 252,
@@ -350,7 +350,7 @@ export const FlowLeftAddPanel: React.FC = memo(function FlowLeftAddPanel() {
 const dockHostStyle: React.CSSProperties = {
   position: 'absolute',
   left: 14,
-  top: 134,
+  top: 166,
   zIndex: 1000,
 };
 

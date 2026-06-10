@@ -51,15 +51,15 @@ type PaneAddItem = {
 };
 
 const PANE_ADD_ITEMS: PaneAddItem[] = [
-  { kind: 'text', icon: <List size={31} strokeWidth={1.65} />, label: '文本', desc: '脚本、广告词、品牌文案' },
-  { kind: 'image', icon: <ImageIcon size={31} strokeWidth={1.65} />, label: '图片' },
-  { kind: 'video', icon: <Video size={31} strokeWidth={1.65} />, label: '视频' },
-  { kind: 'audio', icon: <Music size={31} strokeWidth={1.65} />, label: '音频' },
-  { icon: <Box size={31} strokeWidth={1.65} />, label: '3D 世界', beta: true, disabled: true },
+  { kind: 'text', icon: <List size={18} strokeWidth={1.75} />, label: '文本', desc: '脚本、广告词、品牌文案' },
+  { kind: 'image', icon: <ImageIcon size={18} strokeWidth={1.75} />, label: '图片' },
+  { kind: 'video', icon: <Video size={18} strokeWidth={1.75} />, label: '视频' },
+  { kind: 'audio', icon: <Music size={18} strokeWidth={1.75} />, label: '音频' },
+  { icon: <Box size={18} strokeWidth={1.75} />, label: '3D 世界', beta: true, disabled: true },
 ];
 
 const PANE_RESOURCE_ITEMS: PaneAddItem[] = [
-  { kind: 'upload', icon: <Upload size={31} strokeWidth={1.65} />, label: '上传' },
+  { kind: 'upload', icon: <Upload size={18} strokeWidth={1.75} />, label: '上传' },
 ];
 
 const HoverButton: React.FC<{
@@ -233,12 +233,12 @@ const iconBoxStyle: React.CSSProperties = {
 };
 
 const getPaneMenuStyle = (x: number, y: number): React.CSSProperties => {
-  const width = 430;
-  const height = 626;
-  const margin = 28;
+  const width = 224;
+  const height = 404;
+  const margin = 24;
   const viewportWidth = typeof window === 'undefined' ? 1440 : window.innerWidth;
   const viewportHeight = typeof window === 'undefined' ? 900 : window.innerHeight;
-  const left = Math.max(margin, Math.min(x - width / 2, viewportWidth - width - margin));
+  const left = Math.max(margin, Math.min(x - 24, viewportWidth - width - margin));
   const top = Math.max(margin, Math.min(y - 24, viewportHeight - height - margin));
 
   return {
@@ -251,51 +251,49 @@ const getPaneMenuStyle = (x: number, y: number): React.CSSProperties => {
 const paneAddMenuStyle: React.CSSProperties = {
   position: 'fixed',
   zIndex: 1200,
-  width: 430,
-  minHeight: 626,
+  width: 224,
   boxSizing: 'border-box',
-  padding: '20px 10px 12px',
-  borderRadius: 18,
-  background: 'rgba(29,29,29,0.98)',
-  border: '1px solid rgba(255,255,255,0.16)',
-  boxShadow: '0 28px 76px rgba(0,0,0,0.56), inset 0 1px 0 rgba(255,255,255,0.035)',
-  backdropFilter: 'blur(20px)',
-  overflow: 'hidden',
+  padding: '8px 10px 10px',
+  borderRadius: 16,
+  background: 'linear-gradient(155deg, rgba(28,28,29,0.985), rgba(23,25,28,0.985))',
+  border: '1px solid rgba(255,255,255,0.12)',
+  boxShadow: '0 18px 48px rgba(0,0,0,0.52)',
+  backdropFilter: 'blur(18px)',
+  overflow: 'auto',
 };
 
 const paneSectionLabelStyle: React.CSSProperties = {
-  height: 34,
-  padding: '0 8px 0',
-  color: 'rgba(255,255,255,0.38)',
-  fontSize: 22,
-  fontWeight: 760,
-  lineHeight: '30px',
+  padding: '6px 0 4px',
+  color: 'rgba(255,255,255,0.34)',
+  fontSize: 10,
+  fontWeight: 700,
+  lineHeight: 1.1,
   userSelect: 'none',
 };
 
 const paneAddItemStyle = (active: boolean, disabled: boolean): React.CSSProperties => ({
   width: '100%',
-  minHeight: 78,
+  minHeight: 38,
   border: 'none',
-  borderRadius: 20,
-  background: active ? 'rgba(255,255,255,0.09)' : 'transparent',
-  color: disabled ? 'rgba(255,255,255,0.72)' : '#f8fafc',
+  borderRadius: 10,
+  background: active ? 'rgba(255,255,255,0.088)' : 'transparent',
+  color: disabled ? 'rgba(255,255,255,0.56)' : '#f8fafc',
   display: 'flex',
   alignItems: 'center',
-  gap: 13,
-  padding: '9px 12px',
+  gap: 7,
+  padding: '5px 6px',
   cursor: disabled ? 'default' : 'pointer',
   textAlign: 'left',
   opacity: disabled ? 0.9 : 1,
 });
 
 const paneAddIconStyle = (active: boolean): React.CSSProperties => ({
-  width: 56,
-  height: 56,
-  borderRadius: 13,
+  width: 30,
+  height: 30,
+  borderRadius: 9,
   display: 'grid',
   placeItems: 'center',
-  background: active ? 'rgba(255,255,255,0.075)' : 'rgba(255,255,255,0.07)',
+  background: active ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.055)',
   color: '#f4f4f5',
   flexShrink: 0,
 });
@@ -305,42 +303,42 @@ const paneAddTextWrapStyle: React.CSSProperties = {
   flex: 1,
   display: 'flex',
   flexDirection: 'column',
-  gap: 8,
+  gap: 2,
 };
 
 const paneAddLabelStyle: React.CSSProperties = {
   color: '#f8fafc',
-  fontSize: 25,
-  fontWeight: 820,
-  lineHeight: 1,
+  fontSize: 12,
+  fontWeight: 700,
+  lineHeight: 1.1,
 };
 
 const paneAddLabelRowStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  gap: 10,
+  gap: 6,
   minWidth: 0,
 };
 
 const paneAddDescStyle: React.CSSProperties = {
-  color: 'rgba(255,255,255,0.34)',
-  fontSize: 18,
-  fontWeight: 650,
-  lineHeight: 1,
+  color: 'rgba(255,255,255,0.4)',
+  fontSize: 9,
+  fontWeight: 500,
+  lineHeight: 1.25,
 };
 
 const paneBetaPillStyle: React.CSSProperties = {
-  padding: '3px 8px',
+  padding: '1px 6px',
   borderRadius: 999,
-  border: '1px solid rgba(255,255,255,0.24)',
-  color: '#fff',
-  fontSize: 14,
-  fontWeight: 780,
+  border: '1px solid rgba(255,255,255,0.18)',
+  color: 'rgba(255,255,255,0.9)',
+  fontSize: 9,
+  fontWeight: 760,
   lineHeight: 1,
 };
 
 const paneSeparatorStyle: React.CSSProperties = {
   height: 1,
   background: 'rgba(255,255,255,0.07)',
-  margin: '10px 10px 7px',
+  margin: '8px 0 6px',
 };
