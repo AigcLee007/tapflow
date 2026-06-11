@@ -1,16 +1,104 @@
 import { AiGatewayError } from "./errors.js";
 import type { ProviderAdapter } from "./provider-adapter.js";
 import type {
+  AiGatewayUsage,
   AiGatewayMediaResult,
   AiGatewayTextResult,
   ImageGenerationRequest,
+  MediaOutput,
   PollTaskRequest,
   ProviderCallContext,
+  ProviderMediaGenerationResult,
   ProviderTaskResult,
   ResolvedRoute,
   TextGenerationRequest,
   VideoGenerationRequest,
 } from "./types.js";
+
+function readRequestedImageCount(request: ImageGenerationRequest, route: ResolvedRoute): number {
+  const metadata = isRecord(request.metadata) ? request.metadata : {};
+  const params = isRecord(metadata.params) ? metadata.params : {};
+  const candidates = [
+    params.n,
+    metadata.n,
+    route.requestConfig.n,
+    isRecord(route.requestConfig.params) ? route.requestConfig.params.n : undefined,
+  ];
+
+  for (const candidate of candidates) {
+    const parsed = readPositiveInteger(candidate);
+    if (parsed !== null) {
+      return Math.min(Math.max(parsed, 1), 4);
+    }
+  }
+
+  return 1;
+}
+
+function withRequestedImageCount(request: ImageGenerationRequest, count: number): ImageGenerationRequest {
+  const metadata = isRecord(request.metadata) ? request.metadata : {};
+  const params = isRecord(metadata.params) ? metadata.params : {};
+  return {
+    ...request,
+    metadata: {
+      ...metadata,
+      n: count,
+      params: {
+        ...params,
+        n: count,
+      },
+    },
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readPositiveInteger(value: unknown): number | null {
+  const parsed = typeof value === "number"
+    ? value
+    : typeof value === "string"
+      ? Number(value)
+      : Number.NaN;
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return null;
+  }
+  return Math.floor(parsed);
+}
+
+function sumUsage(results: ProviderMediaGenerationResult[]): AiGatewayUsage | null {
+  const usages = results.map((result) => result.usage).filter((usage): usage is AiGatewayUsage => Boolean(usage));
+  if (usages.length === 0) {
+    return null;
+  }
+
+  return {
+    inputTokens: sumNullableNumbers(usages.map((usage) => usage.inputTokens)),
+    outputTokens: sumNullableNumbers(usages.map((usage) => usage.outputTokens)),
+    rawCost: sumRawCosts(usages.map((usage) => usage.rawCost)),
+    totalTokens: sumNullableNumbers(usages.map((usage) => usage.totalTokens)),
+  };
+}
+
+function sumNullableNumbers(values: Array<number | null>): number | null {
+  if (values.some((value) => value === null)) {
+    return null;
+  }
+  return values.reduce<number>((total, value) => total + (value ?? 0), 0);
+}
+
+function sumRawCosts(values: Array<string | number | null | undefined>): string | number | null {
+  const present = values.filter((value): value is string | number => value !== null && value !== undefined);
+  if (present.length === 0) {
+    return null;
+  }
+  const parsed = present.map((value) => Number(value));
+  if (parsed.some((value) => !Number.isFinite(value))) {
+    return null;
+  }
+  return parsed.reduce((total, value) => total + value, 0);
+}
 
 export class AiGateway {
   private readonly adapters: Map<string, ProviderAdapter>;
@@ -65,19 +153,53 @@ export class AiGateway {
       throw this.unsupportedOperationError(options.route.provider.kind, "image generation");
     }
 
-    const result = await adapter.generateImage(context, options.request);
+    const requestedCount = readRequestedImageCount(options.request, options.route);
+    const results: ProviderMediaGenerationResult[] = [];
+    let outputs: MediaOutput[] = [];
+    let request = withRequestedImageCount(options.request, requestedCount);
+
+    while (outputs.length < requestedCount) {
+      const result = await adapter.generateImage(context, request);
+      results.push(result);
+      outputs = outputs.concat(result.outputs ?? []);
+
+      if (
+        result.status !== "succeeded" ||
+        result.providerTaskId ||
+        outputs.length >= requestedCount ||
+        requestedCount === 1
+      ) {
+        break;
+      }
+
+      request = withRequestedImageCount(options.request, requestedCount - outputs.length);
+    }
+
+    const result = results[0];
+    if (!result) {
+      throw new AiGatewayError({
+        code: "PROVIDER_INVALID_RESPONSE",
+        message: "Image provider returned no result",
+        statusCode: 502,
+      });
+    }
+
     return {
       modelId: options.route.model.id,
       modelKey: result.modelKey,
-      outputs: result.outputs ?? [],
+      outputs: outputs.slice(0, requestedCount),
       providerId: options.route.provider.id,
       providerKey: options.route.provider.key,
-      providerRequest: result.providerRequest,
-      providerResponse: result.providerResponse,
+      providerRequest: results.length === 1
+        ? result.providerRequest
+        : results.map((entry) => entry.providerRequest),
+      providerResponse: results.length === 1
+        ? result.providerResponse
+        : results.map((entry) => entry.providerResponse),
       providerTaskId: result.providerTaskId ?? null,
       routeId: options.route.routeId,
       status: result.status,
-      usage: result.usage,
+      usage: results.length === 1 ? result.usage : sumUsage(results),
     };
   }
 

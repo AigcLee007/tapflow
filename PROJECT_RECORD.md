@@ -561,3 +561,22 @@ Validation completed:
 
 - `npm run test -- src/flowCanvas/utils/imageDownload.test.ts`
 - `npm run build`
+
+### Latest Image Batch Count Execution and Billing Fix
+
+Completed in current local iteration:
+
+- traced the remaining `2x` generation issue to the backend execution and billing layers, not the canvas UI
+- added AI Gateway sync-image fallback execution so adapters that return one image per call repeat until the requested `n` image count is reached
+- kept async provider-task routes from being repeated automatically, because task count semantics must stay provider-controlled while polling
+- updated workflow pre-reserve pricing to read `unit_credits` and multiply image-generation cost by the requested batch count
+- added `pricingQuantity` into node run cost metadata and billing reserve metadata for easier staging ledger inspection
+
+Validation completed:
+
+- `npm run test --workspace @aigc-flow/ai-gateway-core -- runtime.test.ts`
+- `npm test -- apps/api/test/workflow-pricing-resolver.test.ts`
+- `npm run build --workspace @aigc-flow/api`
+- `npm run build --workspace @aigc-flow/worker`
+- `npm run build --workspace @aigc-flow/ai-gateway-core`
+- `npm run build`

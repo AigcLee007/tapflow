@@ -87,6 +87,7 @@ type PricingRow = {
   provider: string;
   route: string;
   unit: string;
+  unit_credits: string;
 };
 
 export type PricingMatchInfo = {
@@ -100,6 +101,7 @@ export type ResolvedNodePricing = {
   amountCents: number;
   fallbackLevel: 1 | 2 | 3 | 4 | null;
   pricingMatch: PricingMatchInfo | null;
+  quantity: number;
   unit: string | null;
 };
 
@@ -242,6 +244,7 @@ export function resolveNodePricing(input: {
   configuredRouteKey: string | null;
   nodeType: string;
   pricingRows: PricingRow[];
+  quantity?: number;
   routeContext: RouteRuntimeContext | null;
 }): ResolvedNodePricing {
   const unit = UNIT_BY_NODE_TYPE[input.nodeType] ?? null;
@@ -250,6 +253,7 @@ export function resolveNodePricing(input: {
       amountCents: 0,
       fallbackLevel: null,
       pricingMatch: null,
+      quantity: 1,
       unit: null,
     };
   }
@@ -291,12 +295,17 @@ export function resolveNodePricing(input: {
       amountCents: 0,
       fallbackLevel: null,
       pricingMatch: null,
+      quantity: 1,
       unit,
     };
   }
 
+  const quantity = Math.max(1, Math.floor(input.quantity ?? 1));
+  const unitCredits = Number.parseInt(matched.row.unit_credits, 10) || 0;
+  const minChargeCredits = Number.parseInt(matched.row.min_charge_credits, 10) || 0;
+
   return {
-    amountCents: Number.parseInt(matched.row.min_charge_credits, 10) || 0,
+    amountCents: Math.max(minChargeCredits, unitCredits * quantity),
     fallbackLevel: matched.candidate.fallbackLevel,
     pricingMatch: {
       model: matched.row.model,
@@ -304,8 +313,37 @@ export function resolveNodePricing(input: {
       route: matched.row.route,
       unit,
     },
+    quantity,
     unit,
   };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readPositiveInteger(value: unknown): number | null {
+  const parsed = typeof value === "number"
+    ? value
+    : typeof value === "string"
+      ? Number(value)
+      : Number.NaN;
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return null;
+  }
+  return Math.floor(parsed);
+}
+
+function resolveNodePricingQuantity(node: CompiledWorkflow["nodes"][number]): number {
+  if (node.type !== "image.generate") {
+    return 1;
+  }
+
+  const params = isRecord(node.config?.params) ? node.config.params : {};
+  return readPositiveInteger(node.config?.batchCount)
+    ?? readPositiveInteger(params.n)
+    ?? readPositiveInteger(node.config?.n)
+    ?? 1;
 }
 
 function normalizeNodeTypeForRuntime(type: string): string {
@@ -710,6 +748,7 @@ export class WorkflowRunsService {
               estimatedCents: estimatedCost.amountCents,
               pricingFallbackLevel: estimatedCost.fallbackLevel,
               pricingMatch: estimatedCost.pricingMatch,
+              pricingQuantity: estimatedCost.quantity,
               pricingUnit: estimatedCost.unit,
               reservedCredits: 0,
               reservedCents: 0,
@@ -748,6 +787,7 @@ export class WorkflowRunsService {
                   nodeType: node.type,
                   pricingFallbackLevel: estimatedCost.fallbackLevel,
                   pricingMatch: estimatedCost.pricingMatch,
+                  pricingQuantity: estimatedCost.quantity,
                   pricingUnit: estimatedCost.unit,
                   workflowRunId: run.id,
                 },
@@ -1259,6 +1299,7 @@ export class WorkflowRunsService {
           model,
           route,
           unit,
+          unit_credits::text AS unit_credits,
           min_charge_credits::text AS min_charge_credits
         FROM model_pricing
         WHERE active = true
@@ -1340,6 +1381,7 @@ export class WorkflowRunsService {
       configuredRouteKey: configuredRoute,
       nodeType: node.type,
       pricingRows,
+      quantity: resolveNodePricingQuantity(node),
       routeContext,
     });
   }

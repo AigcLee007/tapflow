@@ -1224,6 +1224,57 @@ describe("route resolver and ai gateway", () => {
     });
   });
 
+  test("ai gateway generateImage repeats single-output sync adapters until requested image count is reached", async () => {
+    let callCount = 0;
+    const gateway = new AiGateway({
+      "openai-compatible": {
+        async generateImage() {
+          callCount += 1;
+          return {
+            modelKey: "image-test",
+            outputs: [
+              {
+                mimeType: "image/png",
+                url: `https://example.com/generated-${callCount}.png`,
+              },
+            ],
+            providerRequest: { callCount },
+            providerResponse: { callCount },
+            status: "succeeded" as const,
+            usage: {
+              inputTokens: 2,
+              outputTokens: 1,
+              rawCost: 12,
+              totalTokens: 3,
+            },
+          };
+        },
+      },
+    });
+
+    const result = await gateway.generateImage({
+      apiKey: "sk-test-secret",
+      request: {
+        metadata: { params: { n: 2 } },
+        prompt: "draw two images",
+      },
+      route: makeRoute(),
+    });
+
+    expect(callCount).toBe(2);
+    expect(result.outputs).toHaveLength(2);
+    expect(result.outputs?.map((output) => output.url)).toEqual([
+      "https://example.com/generated-1.png",
+      "https://example.com/generated-2.png",
+    ]);
+    expect(result.usage).toEqual({
+      inputTokens: 4,
+      outputTokens: 2,
+      rawCost: 24,
+      totalTokens: 6,
+    });
+  });
+
   test("ai gateway image timeout prefers route request_config timeoutMs", async () => {
     let capturedTimeout: number | null = null;
     const gateway = new AiGateway({

@@ -9,6 +9,7 @@ const pricingRows = [
     provider: "provider-a",
     route: "image.default",
     unit: "image_generation",
+    unit_credits: "19",
   },
   {
     min_charge_credits: "17",
@@ -16,6 +17,7 @@ const pricingRows = [
     provider: "provider-a",
     route: "default",
     unit: "image_generation",
+    unit_credits: "17",
   },
   {
     min_charge_credits: "13",
@@ -23,6 +25,7 @@ const pricingRows = [
     provider: "provider-a",
     route: "default",
     unit: "image_generation",
+    unit_credits: "13",
   },
   {
     min_charge_credits: "10",
@@ -30,6 +33,7 @@ const pricingRows = [
     provider: "default",
     route: "default",
     unit: "image_generation",
+    unit_credits: "10",
   },
 ] as const;
 
@@ -126,6 +130,7 @@ describe("workflow pricing resolver", () => {
           provider: "default",
           route: "default",
           unit: "image_generation",
+          unit_credits: "10",
         },
       ],
       routeContext: null,
@@ -139,5 +144,30 @@ describe("workflow pricing resolver", () => {
       route: "default",
       unit: "image_generation",
     });
+  });
+
+  it("multiplies image pricing by requested output count", () => {
+    const resolved = resolveNodePricing({
+      configuredRouteKey: "image.default",
+      nodeType: "image.generate",
+      pricingRows: [
+        {
+          min_charge_credits: "24",
+          model: "model-a",
+          provider: "provider-a",
+          route: "image.default",
+          unit: "image_generation",
+          unit_credits: "24",
+        },
+      ],
+      quantity: 2,
+      routeContext: {
+        modelKey: "model-a",
+        providerKey: "provider-a",
+        routeKey: "image.default",
+      },
+    });
+
+    expect(resolved.amountCents).toBe(48);
   });
 });
