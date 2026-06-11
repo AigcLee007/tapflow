@@ -214,7 +214,49 @@ const createEditCounts = (): FlowDerivedEditCounts => ({
   annotate: 0,
 });
 
-const buildGraphIndex = (nodes: FlowNode[], edges: FlowEdge[]): FlowGraphIndex => {
+const isImageNode = (node: FlowNode | undefined | null) =>
+  !!node && (node.type === 'image' || node.data.kind === 'image');
+
+const getNodeReferenceImageUrl = (
+  node: FlowNode | undefined,
+  runtimeNodeOutput?: FlowRuntimeNodeOutput,
+) => {
+  if (!node || !isImageNode(node)) return '';
+
+  const thumbnailUrl = String(node.data.thumbnailUrl || '').trim();
+  if (thumbnailUrl) return thumbnailUrl;
+
+  const originalImageUrl = String(node.data.originalImageUrl || '').trim();
+  if (originalImageUrl) return originalImageUrl;
+
+  const generatedResults = Array.isArray(node.data.generatedResults)
+    ? (node.data.generatedResults as Array<{ id?: string; url?: string }>)
+    : [];
+  const coverResultId = String(node.data.coverResultId || '');
+  const activeResultIndex = Number(node.data.activeResultIndex || 0);
+  const coverResult = generatedResults.find((item) => String(item?.id || '') === coverResultId);
+  const activeResult = generatedResults[activeResultIndex];
+  const generatedUrl = String(coverResult?.url || activeResult?.url || generatedResults[0]?.url || '').trim();
+  if (generatedUrl) return generatedUrl;
+
+  const runtimeAssetUrl = Array.isArray(runtimeNodeOutput?.assets)
+    ? runtimeNodeOutput.assets.find((asset) => asset.kind === 'image' && asset.downloadUrl)?.downloadUrl || ''
+    : '';
+  return String(runtimeAssetUrl || '').trim();
+};
+
+const appendReferenceOrderKey = (referenceOrder: unknown, key: string) => {
+  const current = Array.isArray(referenceOrder)
+    ? referenceOrder.map((item) => String(item || '')).filter(Boolean)
+    : [];
+  return current.includes(key) ? current : [...current, key];
+};
+
+const buildGraphIndex = (
+  nodes: FlowNode[],
+  edges: FlowEdge[],
+  nodeOutputByNodeId: Record<string, FlowRuntimeNodeOutput> = {},
+): FlowGraphIndex => {
   if (nodes.length === 0 && edges.length === 0) return EMPTY_GRAPH_INDEX;
 
   const nodesById = new Map(nodes.map((node) => [node.id, node]));
@@ -226,17 +268,14 @@ const buildGraphIndex = (nodes: FlowNode[], edges: FlowEdge[]): FlowGraphIndex =
     hasIncomingEdgesByNodeId[edge.target] = true;
 
     const sourceNode = nodesById.get(edge.source);
-    if (
-      sourceNode &&
-      (sourceNode.type === 'image' || sourceNode.data.kind === 'image') &&
-      sourceNode.data.thumbnailUrl
-    ) {
+    const sourceImageUrl = getNodeReferenceImageUrl(sourceNode, nodeOutputByNodeId[edge.source]);
+    if (sourceNode && isImageNode(sourceNode) && sourceImageUrl) {
       const refs = upstreamImageRefsByNodeId[edge.target] || [];
       refs.push({
         key: `upstream:${sourceNode.id}`,
         id: sourceNode.id,
         edgeId: edge.id,
-        imageUrl: String(sourceNode.data.thumbnailUrl),
+        imageUrl: sourceImageUrl,
         title: String(sourceNode.data.title || '参考图'),
         source: 'upstream',
       });
@@ -317,7 +356,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
       const nodes = applyNodeChanges(changes, state.nodes);
       return {
         nodes,
-        graphIndex: rebuildGraphIndex ? buildGraphIndex(nodes, state.edges) : state.graphIndex,
+        graphIndex: rebuildGraphIndex ? buildGraphIndex(nodes, state.edges, state.nodeOutputByNodeId) : state.graphIndex,
         selectedNodeCount: recountSelection ? countSelectedNodes(nodes) : state.selectedNodeCount,
         isDirty: dirty ? true : state.isDirty,
       };
@@ -330,7 +369,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
       const edges = applyEdgeChanges(changes, state.edges);
       return {
         edges,
-        graphIndex: dirty ? buildGraphIndex(state.nodes, edges) : state.graphIndex,
+        graphIndex: dirty ? buildGraphIndex(state.nodes, edges, state.nodeOutputByNodeId) : state.graphIndex,
         isDirty: dirty ? true : state.isDirty,
       };
     });
@@ -361,9 +400,28 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
         },
         state.edges,
       );
+      const shouldAutoReference = isImageNode(sourceNode) && isImageNode(targetNode);
+      const nodes = shouldAutoReference
+        ? state.nodes.map((node) =>
+            node.id === connection.target
+              ? {
+                  ...node,
+                  data: {
+                    ...node.data,
+                    referenceOrder: appendReferenceOrderKey(
+                      node.data.referenceOrder,
+                      `upstream:${sourceNode!.id}`,
+                    ),
+                    updatedAt: Date.now(),
+                  },
+                }
+              : node,
+          )
+        : state.nodes;
       return {
+        nodes,
         edges,
-        graphIndex: buildGraphIndex(state.nodes, edges),
+        graphIndex: buildGraphIndex(nodes, edges, state.nodeOutputByNodeId),
         isDirty: true,
       };
     });
@@ -384,7 +442,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
       ];
       return {
         nodes,
-        graphIndex: buildGraphIndex(nodes, state.edges),
+        graphIndex: buildGraphIndex(nodes, state.edges, state.nodeOutputByNodeId),
         selectedNodeCount: countSelectedNodes(nodes),
         isDirty: true,
       };
@@ -398,7 +456,14 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
       throw new Error('该节点不支持生成所选类型');
     }
     get().pushHistory();
-    const node = createFlowNode(kind, position, overrides);
+    const node = createFlowNode(kind, position, {
+      ...overrides,
+      ...(kind === 'image' && isImageNode(sourceNode)
+        ? {
+            referenceOrder: appendReferenceOrderKey(undefined, `upstream:${sourceNode.id}`),
+          }
+        : {}),
+    });
     const edge: FlowEdge = {
       id: nanoid(12),
       source: sourceNodeId,
@@ -414,7 +479,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
       return {
         nodes,
         edges,
-        graphIndex: buildGraphIndex(nodes, edges),
+        graphIndex: buildGraphIndex(nodes, edges, state.nodeOutputByNodeId),
         isDirty: true,
       };
     });
@@ -479,7 +544,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
       const nodes = [groupNode, ...otherNodes, ...updatedSelected.map((node) => ({ ...node, selected: false }))];
       return {
         nodes,
-        graphIndex: buildGraphIndex(nodes, state.edges),
+        graphIndex: buildGraphIndex(nodes, state.edges, state.nodeOutputByNodeId),
         selectedNodeCount: countSelectedNodes(nodes),
         isDirty: true,
       };
@@ -514,7 +579,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
         });
       return {
         nodes,
-        graphIndex: buildGraphIndex(nodes, state.edges),
+        graphIndex: buildGraphIndex(nodes, state.edges, state.nodeOutputByNodeId),
         selectedNodeCount: countSelectedNodes(nodes),
         isDirty: true,
       };
@@ -582,7 +647,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
       });
       return {
         nodes,
-        graphIndex: buildGraphIndex(nodes, state.edges),
+        graphIndex: buildGraphIndex(nodes, state.edges, state.nodeOutputByNodeId),
         isDirty: true,
       };
     });
@@ -598,7 +663,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
       return {
         nodes,
         edges,
-        graphIndex: buildGraphIndex(nodes, edges),
+        graphIndex: buildGraphIndex(nodes, edges, state.nodeOutputByNodeId),
         selectedNodeCount: countSelectedNodes(nodes),
         activeImageTool: state.activeImageTool && selectedIds.has(state.activeImageTool.nodeId) ? null : state.activeImageTool,
         isDirty: true,
@@ -618,7 +683,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
       ];
       return {
         nodes,
-        graphIndex: buildGraphIndex(nodes, state.edges),
+        graphIndex: buildGraphIndex(nodes, state.edges, state.nodeOutputByNodeId),
         selectedNodeCount: countSelectedNodes(nodes),
         isDirty: true,
       };
@@ -634,7 +699,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
       );
       return {
         nodes,
-        graphIndex: buildGraphIndex(nodes, state.edges),
+        graphIndex: buildGraphIndex(nodes, state.edges, state.nodeOutputByNodeId),
         isDirty: true,
       };
     });
@@ -680,7 +745,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
       );
       return {
         nodes,
-        graphIndex: buildGraphIndex(nodes, state.edges),
+        graphIndex: buildGraphIndex(nodes, state.edges, state.nodeOutputByNodeId),
         isDirty: true,
       };
     });
@@ -694,7 +759,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
       const edges = state.edges.filter((edge) => !idSet.has(edge.id));
       return {
         edges,
-        graphIndex: buildGraphIndex(state.nodes, edges),
+        graphIndex: buildGraphIndex(state.nodes, edges, state.nodeOutputByNodeId),
         isDirty: true,
       };
     });
@@ -708,7 +773,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
       const edges = state.edges.filter((edge) => !edge.selected);
       return {
         edges,
-        graphIndex: buildGraphIndex(state.nodes, edges),
+        graphIndex: buildGraphIndex(state.nodes, edges, state.nodeOutputByNodeId),
         isDirty: true,
       };
     });
@@ -749,7 +814,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
     set({
       nodes: structuredClone(previous.nodes),
       edges: structuredClone(previous.edges),
-      graphIndex: buildGraphIndex(previous.nodes, previous.edges),
+      graphIndex: buildGraphIndex(previous.nodes, previous.edges, get().nodeOutputByNodeId),
       selectedNodeCount: countSelectedNodes(previous.nodes),
       historyIndex: historyIndex - 1,
       activeImageTool: null,
@@ -765,7 +830,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
     set({
       nodes: structuredClone(next.nodes),
       edges: structuredClone(next.edges),
-      graphIndex: buildGraphIndex(next.nodes, next.edges),
+      graphIndex: buildGraphIndex(next.nodes, next.edges, get().nodeOutputByNodeId),
       selectedNodeCount: countSelectedNodes(next.nodes),
       historyIndex: historyIndex + 1,
       activeImageTool: null,
@@ -802,7 +867,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
       projectTitle: project.title || '未命名项目',
       nodes,
       edges,
-      graphIndex: buildGraphIndex(nodes, edges),
+      graphIndex: buildGraphIndex(nodes, edges, get().nodeOutputByNodeId),
       selectedNodeCount: countSelectedNodes(nodes),
       viewport: project.viewport || INITIAL_VIEWPORT,
       version: project.version || 1,

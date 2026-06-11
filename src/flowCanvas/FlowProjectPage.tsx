@@ -125,6 +125,7 @@ export function FlowProjectPage() {
           kindForAsset(asset.kind),
           center,
           buildAssetBackedNodeData(asset, {
+            previewUrl: asset.previewUrl,
             source: "asset-library",
             title: asset.title || asset.originalFilename || "云端素材",
           }),

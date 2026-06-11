@@ -234,6 +234,16 @@ Important commits in this area:
 - `0b17ff8`
 - `dc82771`
 
+### Upstream Image Auto-Reference Work
+
+Completed in current working session:
+
+- fixed the image-to-image chaining gap where runtime could use upstream images but the image node prompt bar still showed no active references
+- image-to-image connect now auto-appends `upstream:<sourceNodeId>` into downstream `referenceOrder`
+- graph upstream reference indexing now accepts image nodes backed by `thumbnailUrl`, `originalImageUrl`, generated result urls, or runtime image asset outputs
+- asset-backed node data can now persist an optional preview url into referenceable image fields so imported asset nodes behave more like TapNow-style source images
+- added focused regression tests for store auto-reference behavior and asset-backed image preview persistence
+
 ### Media Preview Performance Work
 
 Completed:

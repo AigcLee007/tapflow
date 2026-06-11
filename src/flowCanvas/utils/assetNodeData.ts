@@ -5,6 +5,7 @@ import { fitMediaNodeToShortSide } from "./nodeSizing";
 type AssetNodeDataOptions = {
   naturalHeight?: number | null;
   naturalWidth?: number | null;
+  previewUrl?: string;
   source?: string;
   title?: string;
 };
@@ -12,12 +13,13 @@ type AssetNodeDataOptions = {
 export function buildAssetBackedNodeData(
   asset: Pick<
     AssetItem,
-    "durationMs" | "height" | "id" | "mimeType" | "originalFilename" | "source" | "title" | "width"
+    "durationMs" | "height" | "id" | "mimeType" | "originalFilename" | "previewUrl" | "source" | "title" | "width"
   >,
   options: AssetNodeDataOptions = {},
 ): Partial<FlowNodeData> {
   const naturalWidth = pickPositiveNumber(options.naturalWidth, asset.width);
   const naturalHeight = pickPositiveNumber(options.naturalHeight, asset.height);
+  const previewUrl = options.previewUrl ?? asset.previewUrl;
   const fittedSize =
     naturalWidth && naturalHeight
       ? fitMediaNodeToShortSide(naturalWidth, naturalHeight)
@@ -36,6 +38,7 @@ export function buildAssetBackedNodeData(
     imageFolderIds: [],
     lastGenerationSnapshot: undefined,
     mimeType: asset.mimeType,
+    ...(previewUrl ? { originalImageUrl: previewUrl, thumbnailUrl: previewUrl } : {}),
     source: options.source ?? asset.source ?? "asset-library",
     status: "success",
     title: options.title ?? asset.title ?? asset.originalFilename ?? "云端素材",
