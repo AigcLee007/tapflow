@@ -440,3 +440,18 @@ Validation completed:
 Notes:
 
 - `npm run test --workspace @aigc-flow/api -- assets.test.ts` was skipped locally because database test env was not configured in this machine session
+
+### Latest Upload 413 Hotfix
+
+Completed in current local iteration:
+
+- traced the new upload regression to the same-origin fallback route `POST /api/v2/assets/:assetId/upload-bytes`
+- confirmed the fallback route was receiving browser image uploads but Fastify rejected larger binary bodies with `413 FST_ERR_CTP_BODY_TOO_LARGE`
+- raised the `application/octet-stream` parser body limit for the asset upload route to `25 MB`
+- added a regression test case covering multi-megabyte proxied image upload behavior
+
+Validation completed:
+
+- `npm run build --workspace @aigc-flow/api`
+- `npm run test --workspace @aigc-flow/api -- assets.test.ts` (skipped locally because DB env was not configured)
+- `npm run build`

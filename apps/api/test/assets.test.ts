@@ -16,11 +16,18 @@ const describeWithDatabase = hasDatabaseEnv() ? describe : describe.skip;
 const testEnv: ApiEnv = {
   accessTokenTtlSeconds: 60 * 15,
   adminEmails: [],
+  apiRateLimitMax: 1000,
+  apiRateLimitWindowMs: 60_000,
+  authRateLimitMax: 20,
+  authRateLimitWindowMs: 60_000,
   credentialKeyVersion: "v1",
+  corsAllowedOrigins: ["http://localhost:5188"],
   credentialMasterKey: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
   jwtAccessSecret: "test_access_secret_1234567890",
   jwtRefreshSecret: "test_refresh_secret_1234567890",
   nodeEnv: "test",
+  queuePrefix: "aigc-flow:v2:test",
+  redisUrl: "redis://localhost:6379",
   refreshTokenTtlSeconds: 60 * 60 * 24 * 7,
   s3AccessKeyId: "test-access",
   s3Bucket: "test-bucket",
@@ -28,6 +35,8 @@ const testEnv: ApiEnv = {
   s3ForcePathStyle: true,
   s3Region: "us-east-1",
   s3SecretAccessKey: "test-secret",
+  securityHeadersEnabled: false,
+  trustProxy: false,
 };
 
 class MemoryStorageProvider implements StorageProvider {
@@ -667,6 +676,61 @@ describeWithDatabase("assets v2", () => {
           sizeBytes: 5,
           status: "available",
         });
+
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("upload-bytes accepts multi-megabyte image payloads without Fastify 413", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({
+          connectionString: await createAppDatabaseUrl(),
+        });
+        const storageProvider = new MemoryStorageProvider();
+        const api = buildTestApp(appPool, storageProvider);
+
+        const owner = await registerOwner(api, "large-upload-owner@example.com", "Large Upload Owner");
+
+        const payload = Buffer.alloc(2 * 1024 * 1024, 1);
+        const created = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "POST",
+          payload: {
+            kind: "image",
+            mimeType: "image/png",
+            originalFilename: "large-upload.png",
+            sizeBytes: payload.length,
+          },
+          url: "/api/v2/assets/presigned-upload",
+        });
+        expect(created.statusCode).toBe(201);
+        const createdBody = created.json();
+
+        const proxied = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+            "content-type": "application/octet-stream",
+            "x-asset-upload-content-type": "image/png",
+          },
+          method: "POST",
+          payload,
+          url: `/api/v2/assets/${createdBody.asset.id}/upload-bytes`,
+        });
+
+        expect(proxied.statusCode).toBe(204);
+        expect(storageProvider.objects.get(`test-bucket/${createdBody.asset.objectKey}`)?.contentLength).toBe(payload.length);
 
         await api.close();
       } finally {

@@ -114,7 +114,7 @@ export function registerAssetRoutes(app: FastifyInstance): void {
   const authHandlers = [requireAuth, requireTenant];
   app.addContentTypeParser(
     "application/octet-stream",
-    { parseAs: "buffer" },
+    { bodyLimit: 25 * 1024 * 1024, parseAs: "buffer" },
     (_request, body, done) => done(null, body),
   );
 
