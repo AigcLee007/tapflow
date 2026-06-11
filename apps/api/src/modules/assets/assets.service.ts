@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { createPgPool, safeRecordAuditLog, withTenantTransaction } from "@aigc-flow/db";
 import {
   buildAssetObjectKey,
+  type PutObjectInput,
   type StorageProvider,
 } from "@aigc-flow/storage";
 import type { Pool, PoolClient } from "pg";
@@ -626,6 +627,34 @@ export class AssetsService {
       );
 
       return assetView;
+    }, this.pool);
+  }
+
+  async uploadAssetBytes(
+    context: AssetContext,
+    assetId: string,
+    input: {
+      body: PutObjectInput["body"];
+      contentType?: string | null;
+    },
+  ): Promise<{ ok: true }> {
+    return withTenantTransaction(context, async (client) => {
+      const asset = await this.getAssetRowForUpdate(client, context.tenantId, assetId);
+      if (asset.deleted_at) {
+        throw new AssetsApiError(404, "ASSET_NOT_FOUND", "Asset not found");
+      }
+      if (asset.status !== "uploading") {
+        throw new AssetsApiError(409, "ASSET_UPLOAD_ALREADY_FINALIZED", "Asset upload is no longer pending");
+      }
+
+      await this.storageProvider.putObject({
+        body: input.body,
+        bucket: asset.bucket,
+        contentType: input.contentType?.trim() || asset.mime_type,
+        key: asset.object_key,
+      });
+
+      return { ok: true as const };
     }, this.pool);
   }
 

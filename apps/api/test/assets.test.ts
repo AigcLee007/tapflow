@@ -39,7 +39,25 @@ class MemoryStorageProvider implements StorageProvider {
     metadata: Record<string, string>;
   }>();
 
-  async putObject(): Promise<void> {}
+  async putObject(input: {
+    body: Buffer | Uint8Array | string;
+    bucket: string;
+    contentType?: string;
+    key: string;
+    metadata?: Record<string, string>;
+  }): Promise<void> {
+    const contentLength =
+      typeof input.body === "string"
+        ? Buffer.byteLength(input.body)
+        : input.body instanceof Uint8Array
+          ? input.body.byteLength
+          : Buffer.byteLength(String(input.body));
+    this.objects.set(`${input.bucket}/${input.key}`, {
+      contentLength,
+      contentType: input.contentType ?? null,
+      metadata: input.metadata ?? {},
+    });
+  }
 
   async headObject(input: { bucket: string; key: string }) {
     this.headRequests.push(input);
@@ -581,6 +599,74 @@ describeWithDatabase("assets v2", () => {
           url: `/api/v2/assets/folders/${folderAId}/items`,
         });
         expect(crossTenantFolderAssignment.statusCode).toBe(404);
+
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("upload-bytes can proxy an asset upload when browser direct storage upload is unavailable", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({
+          connectionString: await createAppDatabaseUrl(),
+        });
+        const storageProvider = new MemoryStorageProvider();
+        const api = buildTestApp(appPool, storageProvider);
+
+        const owner = await registerOwner(api, "proxy-upload-owner@example.com", "Proxy Upload Owner");
+
+        const created = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "POST",
+          payload: {
+            kind: "image",
+            mimeType: "image/png",
+            originalFilename: "proxy-upload.png",
+            sizeBytes: 5,
+          },
+          url: "/api/v2/assets/presigned-upload",
+        });
+        expect(created.statusCode).toBe(201);
+        const createdBody = created.json();
+
+        const proxied = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+            "content-type": "application/octet-stream",
+            "x-asset-upload-content-type": "image/png",
+          },
+          method: "POST",
+          payload: Buffer.from("hello"),
+          url: `/api/v2/assets/${createdBody.asset.id}/upload-bytes`,
+        });
+        expect(proxied.statusCode).toBe(204);
+
+        const complete = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "POST",
+          payload: {},
+          url: `/api/v2/assets/${createdBody.asset.id}/complete-upload`,
+        });
+        expect(complete.statusCode).toBe(200);
+        expect(complete.json()).toMatchObject({
+          id: createdBody.asset.id,
+          mimeType: "image/png",
+          sizeBytes: 5,
+          status: "available",
+        });
 
         await api.close();
       } finally {

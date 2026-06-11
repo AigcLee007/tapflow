@@ -1,4 +1,4 @@
-import { apiDelete, apiGet, apiPatch, apiPost } from "../services/v2HttpClient";
+import { apiDelete, apiGet, apiPatch, apiPost, getStoredAccessToken } from "../services/v2HttpClient";
 
 export type AssetKind = "image" | "video" | "audio" | "document" | "other" | string;
 
@@ -189,11 +189,7 @@ export async function uploadAssetFile(input: {
     title: file.name,
   });
 
-  const upload = await fetch(presigned.upload.url, {
-    body: file,
-    headers: presigned.upload.headers,
-    method: presigned.upload.method,
-  });
+  const upload = await uploadAssetBytes(presigned.asset.id, file, presigned.upload);
 
   if (!upload.ok) {
     const message = (await upload.text().catch(() => "")).trim();
@@ -217,4 +213,48 @@ export function kindFromMimeType(mimeType: string): AssetKind {
   if (mimeType.startsWith("audio/")) return "audio";
   if (mimeType === "application/pdf" || mimeType.startsWith("text/")) return "document";
   return "other";
+}
+
+async function uploadAssetBytes(
+  assetId: string,
+  file: File,
+  upload: PresignedUploadResponse["upload"],
+): Promise<Response> {
+  try {
+    return await fetch(upload.url, {
+      body: file,
+      headers: upload.headers,
+      method: upload.method,
+    });
+  } catch (error) {
+    if (!isDirectUploadFetchFailure(error)) {
+      throw error;
+    }
+    return uploadAssetBytesViaApi(assetId, file);
+  }
+}
+
+function isDirectUploadFetchFailure(error: unknown) {
+  return error instanceof TypeError || (error instanceof Error && /failed to fetch/i.test(error.message));
+}
+
+async function uploadAssetBytesViaApi(assetId: string, file: File): Promise<Response> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/octet-stream",
+  };
+  if (file.type) {
+    headers["x-asset-upload-content-type"] = file.type;
+  }
+
+  const token = getStoredAccessToken();
+  if (token) {
+    headers.Authorization = token.startsWith("Bearer ") ? token : `Bearer ${token}`;
+  }
+
+  return fetch(`/api/v2/assets/${assetId}/upload-bytes`, {
+    body: file,
+    cache: "no-store",
+    headers,
+    method: "POST",
+  });
 }

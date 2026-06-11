@@ -140,6 +140,7 @@ interface FlowCanvasState {
   deleteSelectedNodes: () => void;
   duplicateSelectedNodes: () => void;
   updateNodeData: (nodeId: string, patch: Partial<FlowNodeData>) => void;
+  replaceNode: (nodeId: string, input: { data?: Partial<FlowNodeData>; type?: FlowNodeKind }) => void;
   commitNodePositions: (nodes: FlowNode[]) => void;
   lockNode: (nodeId: string, locked: boolean) => void;
   removeEdgesByIds: (edgeIds: string[]) => void;
@@ -697,6 +698,29 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
           ? { ...node, data: { ...node.data, ...patch, updatedAt: Date.now() } }
           : node,
       );
+      return {
+        nodes,
+        graphIndex: buildGraphIndex(nodes, state.edges, state.nodeOutputByNodeId),
+        isDirty: true,
+      };
+    });
+  },
+
+  replaceNode: (nodeId, input) => {
+    set((state) => {
+      const nodes = state.nodes.map((node) => {
+        if (node.id !== nodeId) return node;
+        return {
+          ...node,
+          type: input.type ?? node.type,
+          data: {
+            ...node.data,
+            ...input.data,
+            kind: input.type ?? node.data.kind,
+            updatedAt: Date.now(),
+          },
+        };
+      });
       return {
         nodes,
         graphIndex: buildGraphIndex(nodes, state.edges, state.nodeOutputByNodeId),

@@ -417,3 +417,26 @@ Completed in current local iteration:
 Validation completed:
 
 - `npm run build`
+
+### Latest Local Image Upload Repair
+
+Completed in current local iteration:
+
+- fixed the shared local-image upload path used by empty image nodes, upload nodes, canvas drag/drop, and paste upload
+- kept direct `presigned-upload` browser upload as the first path
+- added automatic fallback to same-origin API proxy upload when browser direct upload fails with fetch/CORS-style failure
+- added new API route `POST /api/v2/assets/:assetId/upload-bytes` for binary proxy upload into object storage
+- added a shared frontend helper to hydrate uploaded asset-backed image nodes with signed preview or original download urls
+- implemented real click-upload and drag-upload behavior for `UploadNode`
+- upload nodes now convert into image nodes after successful upload instead of staying as a static placeholder shell
+
+Validation completed:
+
+- `npm run test -- src/assets/assetApi.test.ts src/flowCanvas/utils/localImageUpload.test.ts`
+- `npm run build --workspace @aigc-flow/api`
+- `npm run build --workspace @aigc-flow/worker`
+- `npm run build`
+
+Notes:
+
+- `npm run test --workspace @aigc-flow/api -- assets.test.ts` was skipped locally because database test env was not configured in this machine session

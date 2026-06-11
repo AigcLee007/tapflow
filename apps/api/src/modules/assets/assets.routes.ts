@@ -112,6 +112,11 @@ function handleRouteError(
 
 export function registerAssetRoutes(app: FastifyInstance): void {
   const authHandlers = [requireAuth, requireTenant];
+  app.addContentTypeParser(
+    "application/octet-stream",
+    { parseAs: "buffer" },
+    (_request, body, done) => done(null, body),
+  );
 
   app.get(
     "/api/v2/assets",
@@ -285,6 +290,33 @@ export function registerAssetRoutes(app: FastifyInstance): void {
           body,
         );
         return reply.send(result);
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.post(
+    "/api/v2/assets/:assetId/upload-bytes",
+    {
+      preHandler: [...authHandlers, requirePermission("asset:create")],
+    },
+    async (request, reply) => {
+      try {
+        const params = parseParams<AssetIdParams>(request, assetIdParamsSchema);
+        const rawBody = request.body;
+        if (!(rawBody instanceof Buffer)) {
+          return sendError(request, reply, 400, "INVALID_UPLOAD_BODY", "Upload body must be binary data");
+        }
+
+        const contentTypeHeader = request.headers["x-asset-upload-content-type"];
+        const contentType = Array.isArray(contentTypeHeader) ? contentTypeHeader[0] : contentTypeHeader;
+
+        await app.assetsService.uploadAssetBytes(getAssetContext(request), params.assetId, {
+          body: rawBody,
+          contentType,
+        });
+        return reply.code(204).send();
       } catch (error) {
         return handleRouteError(error, request, reply);
       }

@@ -35,8 +35,7 @@ import { FlowLeftAddPanel } from './FlowLeftAddPanel';
 import type { FlowNodeData } from '../types';
 import { fitMediaNodeToShortSide } from '../utils/nodeSizing';
 import { canConnectFlowNodes } from '../rules/connectionRules';
-import { uploadAssetFile } from '../../assets/assetApi';
-import { buildAssetBackedNodeData } from '../utils/assetNodeData';
+import { prepareUploadedImageNodeData } from '../utils/localImageUpload';
 
 const CANVAS_MIN_ZOOM = 0.18;
 const CANVAS_MAX_ZOOM = 2.2;
@@ -401,11 +400,12 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled }) =>
             const previewUrl = source.url;
             const natural = await getImportedImageSize(previewUrl);
             const displaySize = fitMediaNodeToShortSide(natural.naturalWidth, natural.naturalHeight);
-            const asset = source.file
-              ? await uploadAssetFile({
+            const uploaded = source.file
+              ? await prepareUploadedImageNodeData({
                   file: source.file,
-                  kind: "image",
                   projectId: backendProjectId,
+                  source: 'canvas-upload',
+                  title: source.title || '图片',
                 })
               : null;
             return {
@@ -414,7 +414,7 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled }) =>
                 originalImageUrl: source.file ? undefined : (source.originalImageUrl || previewUrl),
                 url: previewUrl,
               },
-              asset,
+              uploaded,
               natural,
               displaySize,
             };
@@ -444,13 +444,12 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled }) =>
         addNode(
           'image',
           { x, y },
-          item.asset
-            ? buildAssetBackedNodeData(item.asset, {
-                naturalHeight: item.natural.naturalHeight,
-                naturalWidth: item.natural.naturalWidth,
-                source: 'canvas-upload',
-                title: item.source.title || '图片',
-              })
+          item.uploaded
+            ? {
+                ...item.uploaded.nodeData,
+                width: item.displaySize.width,
+                height: item.displaySize.height,
+              }
             : {
                 title: item.source.title || '图片',
                 thumbnailUrl: item.source.url,

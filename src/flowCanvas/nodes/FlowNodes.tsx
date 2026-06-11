@@ -99,10 +99,11 @@ import { GoogleLogo, OpenAILogo } from '../../../components/Logos';
 import { useAuth } from '../../auth/useAuth';
 import { normalizeBackendAssetUrl } from '../../utils/generatedImageStorage';
 import { canNodeReceiveIncoming } from '../rules/connectionRules';
-import { getAssetDownloadUrl, getAssetVariantUrl, uploadAssetFile } from '../../assets/assetApi';
+import { getAssetDownloadUrl, getAssetVariantUrl } from '../../assets/assetApi';
 import { listRuntimeRoutes, type V2RuntimeRouteItem } from '../../services/v2AiRoutesApi';
 import { listAiModelCatalog, listAiModelRoutes, type AiModelCatalogItem } from '../../services/v2AiModelCatalogApi';
 import { buildAssetBackedNodeData } from '../utils/assetNodeData';
+import { prepareUploadedImageNodeData } from '../utils/localImageUpload';
 import { persistDerivedImageAsset, type DerivedImageSourceType } from '../utils/persistDerivedImageAsset';
 import { mapImageRuntimeRouteOptions, type RuntimeRouteOption } from '../utils/runtimeRouteOptions';
 import {
@@ -4586,21 +4587,15 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const previewUrl = URL.createObjectURL(file);
 
     try {
-      const natural = await getImageNaturalSize(previewUrl);
-      const asset = await uploadAssetFile({
+      const uploaded = await prepareUploadedImageNodeData({
         file,
-        kind: 'image',
         projectId: backendProjectId,
-      });
-      updateNodeData(id, buildAssetBackedNodeData(asset, {
-        naturalHeight: natural.h,
-        naturalWidth: natural.w,
         source: 'node-upload',
         title: file.name.replace(/\.[^.]+$/, '') || d.title,
-      }));
+      });
+      updateNodeData(id, uploaded.nodeData);
     } catch (error) {
       updateNodeData(id, {
         errorMessage: error instanceof Error ? error.message : '图片上传失败',
@@ -4608,7 +4603,6 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
         status: 'error',
       });
     } finally {
-      URL.revokeObjectURL(previewUrl);
       if (e.target) {
         e.target.value = '';
       }
@@ -6309,9 +6303,56 @@ export const UploadNodeComponent = memo(function UploadNode({
   selected,
 }: NodeProps<FlowNode>) {
   const d = data;
+  const backendProjectId = useFlowCanvasStore((s) => s.backendProjectId);
+  const replaceNode = useFlowCanvasStore((s) => s.replaceNode);
+  const updateNodeData = useFlowCanvasStore((s) => s.updateNodeData);
   const [hovered, setHovered] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { connectionNodeId } = useConnection();
   const isTargeting = !!connectionNodeId && connectionNodeId !== id && hovered;
+
+  const handleUpload = useCallback(async (file: File) => {
+    try {
+      updateNodeData(id, {
+        errorMessage: undefined,
+        generationStatus: 'generating',
+        status: 'running',
+      });
+      const uploaded = await prepareUploadedImageNodeData({
+        file,
+        projectId: backendProjectId,
+        source: 'node-upload',
+        title: file.name.replace(/\.[^.]+$/, '') || d.title || '图片',
+      });
+      replaceNode(id, {
+        type: 'image',
+        data: uploaded.nodeData,
+      });
+    } catch (error) {
+      updateNodeData(id, {
+        errorMessage: error instanceof Error ? error.message : '图片上传失败',
+        generationStatus: 'error',
+        status: 'error',
+      });
+    }
+  }, [backendProjectId, d.title, id, replaceNode, updateNodeData]);
+
+  const handleFileChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      void handleUpload(file);
+    }
+    event.target.value = '';
+  }, [handleUpload]);
+
+  const handleDrop = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const file = Array.from(event.dataTransfer.files || []).find((item) => item.type.startsWith('image/'));
+    if (file) {
+      void handleUpload(file);
+    }
+  }, [handleUpload]);
 
   return (
     <div 
@@ -6327,6 +6368,14 @@ export const UploadNodeComponent = memo(function UploadNode({
       />
       <NodeLabel nodeId={id} icon={<Upload size={14} />} label={String(d.title || '上传')} fallbackLabel="上传" />
 
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        style={{ display: 'none' }}
+        onChange={handleFileChange}
+      />
+
       <div style={card(d.width || FLOW_NODE_DEFAULT_SIZES.upload.width, d.height || FLOW_NODE_DEFAULT_SIZES.upload.height, selected, isTargeting)}>
         <div style={{
           ...placeholderArea(d.height || FLOW_NODE_DEFAULT_SIZES.upload.height),
@@ -6336,7 +6385,14 @@ export const UploadNodeComponent = memo(function UploadNode({
           fontSize: 13,
           color: 'rgba(255,255,255,0.3)',
           cursor: 'pointer',
-        }}>
+        }}
+        onClick={() => fileInputRef.current?.click()}
+        onDragOver={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+        }}
+        onDrop={handleDrop}
+        >
           <Upload size={32} strokeWidth={1.5} color="rgba(255,255,255,0.2)" />
           <span>点击或拖拽上传</span>
         </div>
@@ -6350,6 +6406,8 @@ export const UploadNodeComponent = memo(function UploadNode({
       >
         <div style={plusHandleInner}><Plus size={14} /></div>
       </Handle>
+
+      {d.errorMessage && <div style={errorBar}>⚠{String(d.errorMessage)}</div>}
     </div>
   );
 });
