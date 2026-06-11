@@ -531,3 +531,16 @@ Validation completed:
 
 - `npm run test -- src/flowCanvas/store/flowCanvasStore.test.ts`
 - `npm run build`
+
+### Latest Generated Image Original Download Fix
+
+Completed in current local iteration:
+
+- fixed generated image downloads to resolve the original asset download URL before downloading
+- updated main image download, fullscreen viewer download, and generated result strip download to prefer original asset URLs over preview WebP URLs
+- added a small tested download helper for asset-result id parsing, original URL resolution, and filename extension selection
+
+Validation completed:
+
+- `npm run test -- src/flowCanvas/utils/imageDownload.test.ts`
+- `npm run build`

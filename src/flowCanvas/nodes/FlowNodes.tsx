@@ -76,7 +76,7 @@ import {
   getVideoModelSupportsHd,
 } from '../../config/videoModels';
 import { DEFAULT_TEXT_MODEL_ID, getTextModelOption, TEXT_MODEL_OPTIONS } from '../../config/textModels';
-import { downloadImage, getImageNaturalSize, imageUrlToBlob } from '../utils/imageUtils';
+import { getImageNaturalSize, imageUrlToBlob } from '../utils/imageUtils';
 import type { LightDirection } from './ImageLightingOverlay';
 import type { MultiAngleId } from './ImageMultiAngleOverlay';
 import { ImageMoreMenu, type ImageMoreMenuAction } from './ImageMoreMenu';
@@ -111,6 +111,7 @@ import {
   uploadLocalImageAndBuildAssetNodeData,
 } from '../utils/localImageUpload';
 import { persistDerivedImageAsset, type DerivedImageSourceType } from '../utils/persistDerivedImageAsset';
+import { downloadOriginalImage, getPreferredImageDownloadAssetId } from '../utils/imageDownload';
 import { mapImageRuntimeRouteOptions, type RuntimeRouteOption } from '../utils/runtimeRouteOptions';
 import {
   getAspectRatioOptionsFromCatalogModel,
@@ -4084,8 +4085,18 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   );
 
   const handleDownloadResult = useCallback((url: string, index: number) => {
-    void downloadImage(url, `image-${id}-result-${index + 1}-${Date.now()}.png`);
-  }, [id]);
+    const result = resultItems[index];
+    const resultAssetId = getPreferredImageDownloadAssetId({
+      resultId: result?.id,
+      runtimeAssetId: runtimeImageAssets[index]?.assetId,
+    });
+    void downloadOriginalImage({
+      assetId: resultAssetId,
+      fallbackUrl: url,
+      filenameBase: `image-${id}-result-${index + 1}-${Date.now()}`,
+      mimeType: d.mimeType,
+    });
+  }, [d.mimeType, id, resultItems, runtimeImageAssets]);
 
   const appendPromptToken = useCallback(
     (nextText: string, patch?: Partial<FlowNodeData>) => {
@@ -4769,8 +4780,18 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
 
   const handleDownload = useCallback(() => {
     if (!effectiveThumbnailUrl) return;
-    void downloadImage(String(effectiveThumbnailUrl), `image-${id}-${Date.now()}.png`);
-  }, [effectiveThumbnailUrl, id]);
+    const downloadAssetId = getPreferredImageDownloadAssetId({
+      nodeAssetId: assetId,
+      resultId: coverResult?.id,
+      runtimeAssetId: runtimeImageAssets[activeResultIndex]?.assetId,
+    });
+    void downloadOriginalImage({
+      assetId: downloadAssetId,
+      fallbackUrl: String(effectiveThumbnailUrl),
+      filenameBase: `image-${id}-${Date.now()}`,
+      mimeType: d.mimeType,
+    });
+  }, [activeResultIndex, assetId, coverResult?.id, d.mimeType, effectiveThumbnailUrl, id, runtimeImageAssets]);
 
   const handleStepBack = useCallback(async () => {
     const history = Array.isArray(d.editHistory) ? (d.editHistory as string[]) : [];
