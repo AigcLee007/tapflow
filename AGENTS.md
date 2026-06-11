@@ -7,6 +7,7 @@ This repository is now a v2 authenticated AI Flow workspace product. The origina
 Current source-of-truth docs:
 
 - `AGENTS.md` is the primary instruction file for future AI agents.
+- `PROJECT_RECORD.md` is the root-level running project record and must be updated after meaningful product, staging, deployment, or infrastructure progress.
 - `docs/CODEX_HANDOFF.md` records completed work and current known status.
 - `docs/DEVELOPMENT_PLAN.md` is the historical product plan. The root file `DEVELOPMENT_PLAN.md` does not exist.
 - `docs/v2-local-development.md` is the local development and QA guide.
@@ -15,6 +16,10 @@ Current source-of-truth docs:
 - `docs/AI_GATEWAY_ADMIN_V2_FINAL_VERIFICATION.md` is the final acceptance, deployment, smoke-test, and rollback checklist for the AI Gateway admin upgrade.
 
 When these documents conflict with current code, inspect the current code and choose the safest minimal change that preserves the v2 architecture.
+
+Project record maintenance rule:
+
+- When completing meaningful improvements, staging validations, deployment changes, or operational fixes, update `PROJECT_RECORD.md` in the same task or immediately after.
 
 ---
 
