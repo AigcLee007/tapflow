@@ -506,3 +506,15 @@ Completed in current local iteration:
 Validation completed:
 
 - `npm run test -- src/flowCanvas/runtime/v2WorkflowRunner.test.ts`
+
+### Latest Fullscreen Viewer Scrollbar Alignment
+
+Completed in current local iteration:
+
+- added a TapNow-style hover scrollbar to the fullscreen image viewer right-side metadata panel
+- scoped the scrollbar styling to the image viewer panel only so canvas and menu scrollbars are not affected
+- kept the download button fixed at the bottom while the prompt and info content remain scrollable
+
+Validation completed:
+
+- `npm run build`

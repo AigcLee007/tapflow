@@ -741,6 +741,42 @@ const flickerStyles = `
   color: #fff !important;
   background: rgba(255,255,255,0.04) !important;
 }
+
+.flow-image-viewer-scroll {
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.flow-image-viewer-scroll:hover,
+.flow-image-viewer-scroll:focus-within {
+  scrollbar-color: rgba(151, 154, 164, 0.74) transparent;
+}
+
+.flow-image-viewer-scroll::-webkit-scrollbar {
+  width: 10px;
+}
+
+.flow-image-viewer-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.flow-image-viewer-scroll::-webkit-scrollbar-thumb {
+  min-height: 76px;
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+  background-color: transparent;
+}
+
+.flow-image-viewer-scroll:hover::-webkit-scrollbar-thumb,
+.flow-image-viewer-scroll:focus-within::-webkit-scrollbar-thumb {
+  background-color: rgba(151, 154, 164, 0.74);
+}
+
+.flow-image-viewer-scroll:hover::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(181, 184, 193, 0.9);
+}
 `;
 if (typeof document !== 'undefined') {
   const existingStyle = document.getElementById('node-flicker-styles');
@@ -1102,7 +1138,10 @@ const ImageFullscreenOverlay: React.FC<ImageFullscreenOverlayProps> = ({
             </button>
           </div>
 
-          <div style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto', paddingRight: 2 }}>
+          <div
+            className="flow-image-viewer-scroll"
+            style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto', paddingRight: 2 }}
+          >
             <div
               role="button"
               tabIndex={0}
