@@ -29,6 +29,9 @@ import type { FlowNodeKind } from '../types';
 import { getAnchoredFlyoutPosition, type FlyoutPosition } from '../utils/flyoutLayout';
 
 const LEFT_DOCK_VISUAL_SCALE = 0.7;
+const LEFT_DOCK_VISUAL_WIDTH = 60 * LEFT_DOCK_VISUAL_SCALE;
+const ADD_NODE_FLYOUT_GAP = 8;
+const ADD_NODE_FLYOUT_BOTTOM_LINE_OFFSET = 76;
 
 type AddEntry = {
   kind: FlowNodeKind | 'world3d' | 'playlist';
@@ -115,7 +118,8 @@ const clamp = (value: number, min: number, max: number) => Math.max(min, Math.mi
 const AddNodeFlyout: React.FC<{
   onAdd: (kind: FlowNodeKind) => void;
   position: FlyoutPosition;
-}> = ({ onAdd, position }) => {
+  panelRef?: React.RefObject<HTMLDivElement | null>;
+}> = ({ onAdd, position, panelRef }) => {
   const [hoveredKind, setHoveredKind] = useState<string>('text');
 
   const renderItem = (item: AddEntry) => {
@@ -142,7 +146,7 @@ const AddNodeFlyout: React.FC<{
   };
 
   return (
-    <div className="nodrag nopan nowheel" style={flyoutStyle(position)}>
+    <div ref={panelRef} className="nodrag nopan nowheel" style={flyoutStyle(position)}>
       <div style={flyoutSectionTitleStyle}>添加节点</div>
       {PRIMARY_ITEMS.map(renderItem)}
       <div style={flyoutSectionTitleStyle}>工具</div>
@@ -208,6 +212,7 @@ export const FlowLeftAddPanel: React.FC = memo(function FlowLeftAddPanel() {
   const reactFlow = useReactFlow();
   const dockHostRef = useRef<HTMLDivElement | null>(null);
   const userButtonRef = useRef<HTMLButtonElement | null>(null);
+  const addFlyoutRef = useRef<HTMLDivElement | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [userOpen, setUserOpen] = useState(false);
   const [flyoutPosition, setFlyoutPosition] = useState<FlyoutPosition>({
@@ -247,18 +252,15 @@ export const FlowLeftAddPanel: React.FC = memo(function FlowLeftAddPanel() {
 
       const hostRect = dockHostRef.current?.getBoundingClientRect();
       if (hostRect && addOpen) {
-        setFlyoutPosition(
-          getAnchoredFlyoutPosition({
-            anchorRect: { top: hostRect.top, right: hostRect.right },
-            viewportWidth,
-            viewportHeight,
-            panelWidth: 224,
-            panelMaxHeight: 560,
-            offsetLeft: 8,
-            offsetTop: -12,
-            margin,
-          }),
-        );
+        const panelWidth = 224;
+        const maxHeight = Math.max(300, Math.min(560, viewportHeight - margin * 2));
+        const panelHeight = Math.min(addFlyoutRef.current?.offsetHeight || maxHeight, maxHeight);
+        const visualDockRight = hostRect.left + LEFT_DOCK_VISUAL_WIDTH;
+        const left = clamp(visualDockRight + ADD_NODE_FLYOUT_GAP, margin, viewportWidth - panelWidth - margin);
+        const targetBottom = viewportHeight - ADD_NODE_FLYOUT_BOTTOM_LINE_OFFSET;
+        const top = clamp(targetBottom - panelHeight, margin, viewportHeight - panelHeight - margin);
+
+        setFlyoutPosition({ left, top, maxHeight });
       }
 
       const userRect = userButtonRef.current?.getBoundingClientRect();
@@ -335,7 +337,7 @@ export const FlowLeftAddPanel: React.FC = memo(function FlowLeftAddPanel() {
 
       {addOpen && (
         <div onMouseEnter={openAdd} onMouseLeave={scheduleCloseAdd}>
-          <AddNodeFlyout onAdd={handleAdd} position={flyoutPosition} />
+          <AddNodeFlyout onAdd={handleAdd} position={flyoutPosition} panelRef={addFlyoutRef} />
         </div>
       )}
       {userOpen && (

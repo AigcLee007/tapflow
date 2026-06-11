@@ -369,3 +369,15 @@ Completed in current local iteration:
 Validation completed:
 
 - `npm run build`
+
+### Latest Add Menu Alignment Update
+
+Completed in current local iteration:
+
+- moved the add-node flyout closer to the left dock after the dock was visually reduced
+- kept the menu height unchanged
+- aligned the add-node flyout bottom edge to a fixed lower reference line instead of the prior top-anchor behavior
+
+Validation completed:
+
+- `npm run build`
