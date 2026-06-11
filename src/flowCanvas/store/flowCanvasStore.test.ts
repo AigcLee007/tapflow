@@ -64,4 +64,37 @@ describe('flowCanvasStore upstream image references', () => {
     const nextTarget = useFlowCanvasStore.getState().nodes.find((node) => node.id === target.id);
     expect(nextTarget?.data.referenceOrder).toEqual([`upstream:${source.id}`]);
   });
+
+  it('rebuilds upstream refs when an asset-backed upload gets its preview url later', () => {
+    const source = useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, {
+      assetId: 'uploaded-asset-1',
+      assetIds: ['uploaded-asset-1'],
+      source: 'upload',
+      title: 'Uploaded Pig',
+    });
+    const target = useFlowCanvasStore.getState().addNode('image', { x: 400, y: 0 }, { title: 'Target Image' });
+
+    useFlowCanvasStore.getState().onConnect({
+      source: source.id,
+      sourceHandle: 'right',
+      target: target.id,
+      targetHandle: 'left',
+    });
+
+    expect(useFlowCanvasStore.getState().graphIndex.upstreamImageRefsByNodeId[target.id]).toBeUndefined();
+
+    useFlowCanvasStore.getState().updateNodeData(source.id, {
+      thumbnailUrl: 'https://cdn.test/uploaded-pig-preview.png',
+    });
+
+    expect(useFlowCanvasStore.getState().graphIndex.upstreamImageRefsByNodeId[target.id]).toEqual([
+      expect.objectContaining({
+        id: source.id,
+        imageUrl: 'https://cdn.test/uploaded-pig-preview.png',
+        key: `upstream:${source.id}`,
+        source: 'upstream',
+        title: 'Uploaded Pig',
+      }),
+    ]);
+  });
 });

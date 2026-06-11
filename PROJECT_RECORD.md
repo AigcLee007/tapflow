@@ -518,3 +518,16 @@ Completed in current local iteration:
 Validation completed:
 
 - `npm run build`
+
+### Latest Local Upload Reference Preview Fix
+
+Completed in current local iteration:
+
+- fixed asset-backed local upload image nodes so resolved preview URLs are written back to node data, not only kept in component-local state
+- restored downstream image reference chips for uploaded local images after connecting them into another image generation node
+- added an always-visible-on-hover right-side viewer scroll indicator so the fullscreen metadata panel shows a TapNow-style scrollbar cue even when browser native scrollbars stay hidden
+
+Validation completed:
+
+- `npm run test -- src/flowCanvas/store/flowCanvasStore.test.ts`
+- `npm run build`

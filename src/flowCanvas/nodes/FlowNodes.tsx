@@ -777,6 +777,15 @@ const flickerStyles = `
 .flow-image-viewer-scroll:hover::-webkit-scrollbar-thumb:hover {
   background-color: rgba(181, 184, 193, 0.9);
 }
+
+.flow-image-viewer-scroll-indicator {
+  opacity: 0;
+}
+
+.flow-image-viewer-side:hover .flow-image-viewer-scroll-indicator,
+.flow-image-viewer-side:focus-within .flow-image-viewer-scroll-indicator {
+  opacity: 1;
+}
 `;
 if (typeof document !== 'undefined') {
   const existingStyle = document.getElementById('node-flicker-styles');
@@ -1082,6 +1091,7 @@ const ImageFullscreenOverlay: React.FC<ImageFullscreenOverlayProps> = ({
         </div>
 
         <aside
+          className="flow-image-viewer-side"
           style={{
             width: 420,
             flex: '0 0 420px',
@@ -1089,6 +1099,7 @@ const ImageFullscreenOverlay: React.FC<ImageFullscreenOverlayProps> = ({
             flexDirection: 'column',
             gap: 0,
             minHeight: 0,
+            position: 'relative',
             padding: '24px 24px 22px',
             boxSizing: 'border-box',
             background: 'rgba(29,29,29,0.98)',
@@ -1263,6 +1274,22 @@ const ImageFullscreenOverlay: React.FC<ImageFullscreenOverlayProps> = ({
           >
             下载
           </button>
+          <div
+            className="flow-image-viewer-scroll-indicator"
+            aria-hidden="true"
+            style={{
+              position: 'absolute',
+              top: 64,
+              right: 10,
+              bottom: 78,
+              width: 9,
+              borderRadius: 999,
+              background: 'rgba(139,143,153,0.88)',
+              boxShadow: '0 0 0 1px rgba(255,255,255,0.08), 0 4px 12px rgba(0,0,0,0.28)',
+              pointerEvents: 'none',
+              transition: 'opacity 140ms ease',
+            }}
+          />
         </aside>
       </div>
     </div>,
@@ -3574,7 +3601,16 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     void getAssetVariantUrl(assetId, 'preview')
       .catch(() => getAssetDownloadUrl(assetId))
       .then((download) => {
-        if (!cancelled) setAssetPreviewUrl(download.url);
+        if (!cancelled) {
+          const previewUrl = String(download.url || '').trim();
+          setAssetPreviewUrl(previewUrl);
+          if (previewUrl) {
+            updateNodeData(id, {
+              originalImageUrl: previewUrl,
+              thumbnailUrl: previewUrl,
+            });
+          }
+        }
       })
       .catch(() => {
         if (!cancelled) setAssetPreviewUrl('');
@@ -3582,7 +3618,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     return () => {
       cancelled = true;
     };
-  }, [assetId, d.thumbnailUrl, runtimeThumbnailUrl]);
+  }, [assetId, d.thumbnailUrl, id, runtimeThumbnailUrl, updateNodeData]);
   const effectiveThumbnailUrl = runtimeThumbnailUrl || String(d.thumbnailUrl || '') || assetPreviewUrl;
   useEffect(() => {
     setImageLoadState(effectiveThumbnailUrl ? 'loading' : 'idle');
