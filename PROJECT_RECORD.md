@@ -580,3 +580,20 @@ Validation completed:
 - `npm run build --workspace @aigc-flow/worker`
 - `npm run build --workspace @aigc-flow/ai-gateway-core`
 - `npm run build`
+
+### Latest GPT-Image-2 Reference Batch Payload Fix
+
+Completed in current local iteration:
+
+- traced the `gpt-image-2` 3x failure with a reference image to the OpenAI-compatible Images edit payload
+- confirmed the adapter was sending a single `/images/edits` multipart request with `n=3`
+- changed `gpt-image-2` reference-image edit requests to ask the provider for one image per call, letting the AI Gateway repeat calls until the requested batch count is reached
+- removed `response_format=b64_json` from GPT Image requests while keeping `b64_json` response parsing intact
+- kept legacy/non-GPT Image request behavior compatible for providers that still expect `response_format`
+
+Validation completed:
+
+- `npm run test --workspace @aigc-flow/ai-gateway-core -- runtime.test.ts`
+- `npm run build --workspace @aigc-flow/ai-gateway-core`
+- `npm run build --workspace @aigc-flow/worker`
+- `npm run build`

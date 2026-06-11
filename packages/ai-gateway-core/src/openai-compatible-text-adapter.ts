@@ -437,7 +437,10 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
     const params = getNestedRecord(metadata, requestConfig);
     const lookupRecords = [params, metadata, requestConfig];
     const model = request.model?.trim() || context.modelKey;
-    const n = normalizeN(params.n ?? requestConfig.n);
+    const images = collectImageInputs(request, metadata, params);
+    const mask = collectMaskInput(metadata, params);
+    const hasEditInput = images.length > 0;
+    const n = hasEditInput && isGptImage2Model(model) ? 1 : normalizeN(params.n ?? requestConfig.n);
     const outputFormat = normalizeOutputFormat(
       getFirstString(lookupRecords, ["outputFormat", "output_format"]),
     );
@@ -449,8 +452,10 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
       model,
       n,
       prompt: request.prompt,
-      response_format: "b64_json",
     };
+    if (!isGptImage2Model(model)) {
+      payload.response_format = "b64_json";
+    }
     const background = getFirstString(lookupRecords, ["background"]);
     const quality = getFirstString(lookupRecords, ["quality"]);
     const aspectRatio = getFirstString(lookupRecords, ["aspectRatio", "aspect_ratio"]);
@@ -467,9 +472,6 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
     if (moderation) payload.moderation = moderation;
     if (size) payload.size = size;
 
-    const images = collectImageInputs(request, metadata, params);
-    const mask = collectMaskInput(metadata, params);
-    const hasEditInput = images.length > 0;
     const url = hasEditInput
       ? buildUrl(context.baseUrl, normalizePath(requestConfig.editPath ?? requestConfig.editsPath, "/images/edits"))
       : buildUrl(context.baseUrl, normalizePath(requestConfig.path ?? requestConfig.generatePath, "/images/generations"));

@@ -261,9 +261,9 @@ describe("openai-compatible text adapter", () => {
         output_format: "jpeg",
         prompt: "a tiny pig",
         quality: "high",
-        response_format: "b64_json",
         size: "1024x1024",
       });
+      expect(body.response_format).toBeUndefined();
       expect(body.output_compression).toBe(70);
 
       response.setHeader("content-type", "application/json");
@@ -615,8 +615,7 @@ describe("openai-compatible text adapter", () => {
       expect(body).toContain('name="prompt"');
       expect(body).toContain("edit with reference");
       expect(body).toContain('name="image[]"');
-      expect(body).toContain('name="response_format"');
-      expect(body).toContain("b64_json");
+      expect(body).not.toContain('name="response_format"');
 
       response.setHeader("content-type", "application/json");
       response.end(
@@ -678,6 +677,78 @@ describe("openai-compatible text adapter", () => {
       },
       status: "succeeded",
     });
+
+    await server.close();
+  });
+
+  test("ai gateway splits gpt-image-2 reference edit batches into one-image provider requests", async () => {
+    const requestBodies: string[] = [];
+    const server = await withHttpServer(async (request, response) => {
+      expect(request.url).toBe("/images/edits");
+      const chunks: Buffer[] = [];
+      for await (const chunk of request) {
+        chunks.push(Buffer.from(chunk));
+      }
+      const body = Buffer.concat(chunks).toString("utf8");
+      requestBodies.push(body);
+
+      response.setHeader("content-type", "application/json");
+      response.end(
+        JSON.stringify({
+          data: [
+            {
+              url: `https://cdn.example/generated-${requestBodies.length}.webp`,
+            },
+          ],
+        }),
+      );
+    });
+
+    const gateway = new AiGateway({
+      "openai-compatible": new OpenAiCompatibleTextAdapter(),
+    });
+    const result = await gateway.generateImage({
+      apiKey: "sk-test-secret",
+      request: {
+        metadata: {
+          params: {
+            n: 3,
+            output_format: "webp",
+            size: "1536x1024",
+          },
+          referenceImages: [
+            "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9MbugAAAAASUVORK5CYII=",
+          ],
+        },
+        prompt: "edit with reference",
+      },
+      route: makeRoute({
+        baseUrl: server.url,
+        model: {
+          id: "model-1",
+          modelKey: "gpt-image-2",
+        },
+        requestConfig: {
+          editPath: "/images/edits",
+          outputFormat: "webp",
+          path: "/images/generations",
+        },
+        routeKey: "image.gpt-image-2",
+      }),
+    });
+
+    expect(requestBodies).toHaveLength(3);
+    for (const body of requestBodies) {
+      expect(body).toContain('name="n"');
+      expect(body).toContain("\r\n1\r\n");
+      expect(body).not.toContain("\r\n2\r\n");
+      expect(body).not.toContain("\r\n3\r\n");
+    }
+    expect(result.outputs?.map((output) => output.url)).toEqual([
+      "https://cdn.example/generated-1.webp",
+      "https://cdn.example/generated-2.webp",
+      "https://cdn.example/generated-3.webp",
+    ]);
 
     await server.close();
   });
