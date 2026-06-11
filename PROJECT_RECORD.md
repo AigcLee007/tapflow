@@ -455,3 +455,20 @@ Validation completed:
 - `npm run build --workspace @aigc-flow/api`
 - `npm run test --workspace @aigc-flow/api -- assets.test.ts` (skipped locally because DB env was not configured)
 - `npm run build`
+
+### Latest Canvas Upload Smoothness Upgrade
+
+Completed in current local iteration:
+
+- changed local image ingestion from a blocking “upload first, then render” flow to a two-phase “local preview first, background upload second” flow
+- added immediate local `blob:` preview rendering for image-node upload, upload-node upload, drag-and-drop upload, and paste upload
+- removed the drag/paste batch blocking behavior where `Promise.all(...)` delayed every node until the whole upload batch finished
+- upload and paste interactions now insert image nodes immediately and backfill `assetId` plus cloud preview URL after upload completes
+- upload nodes now convert into image nodes with visible local preview first, then upgrade to cloud-backed image nodes once upload settles
+- failed uploads now keep the visible local image instead of looking like “nothing happened”
+
+Validation completed:
+
+- `npm run test -- src/flowCanvas/utils/localImageUpload.test.ts src/flowCanvas/store/flowCanvasStore.test.ts src/assets/assetApi.test.ts`
+- `npm run build --workspace @aigc-flow/api`
+- `npm run build`

@@ -35,7 +35,7 @@ import { FlowLeftAddPanel } from './FlowLeftAddPanel';
 import type { FlowNodeData } from '../types';
 import { fitMediaNodeToShortSide } from '../utils/nodeSizing';
 import { canConnectFlowNodes } from '../rules/connectionRules';
-import { prepareUploadedImageNodeData } from '../utils/localImageUpload';
+import { prepareLocalImageNodeData, prepareUploadedImageNodeData } from '../utils/localImageUpload';
 
 const CANVAS_MIN_ZOOM = 0.18;
 const CANVAS_MAX_ZOOM = 2.2;
@@ -394,71 +394,64 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled }) =>
 
   const createUploadedImageNodes = useCallback(
     async (sources: ImportedImageSource[], center: { x: number; y: number }) => {
-      const loaded = await Promise.all(
+      const gap = 32;
+      const cols = Math.ceil(Math.sqrt(sources.length));
+      const rows = Math.ceil(sources.length / cols);
+      const fallbackSize = fitMediaNodeToShortSide(1024, 1024);
+      const measured = await Promise.all(
         sources.map(async (source) => {
           try {
-            const previewUrl = source.url;
-            const natural = await getImportedImageSize(previewUrl);
+            const natural = await getImportedImageSize(source.url);
             const displaySize = fitMediaNodeToShortSide(natural.naturalWidth, natural.naturalHeight);
-            const uploaded = source.file
-              ? await prepareUploadedImageNodeData({
-                  file: source.file,
-                  projectId: backendProjectId,
-                  source: 'canvas-upload',
-                  title: source.title || '图片',
-                })
-              : null;
+            return { displaySize, natural };
+          } catch {
             return {
-              source: {
-                ...source,
-                originalImageUrl: source.file ? undefined : (source.originalImageUrl || previewUrl),
-                url: previewUrl,
-              },
-              uploaded,
-              natural,
-              displaySize,
+              displaySize: fallbackSize,
+              natural: { naturalWidth: fallbackSize.width, naturalHeight: fallbackSize.height },
             };
-          } catch (error) {
-            console.warn('[FlowCanvas] Failed to import image:', source.url, error);
-            return null;
           }
         }),
       );
-      const valid = loaded.filter((item): item is NonNullable<(typeof loaded)[number]> => Boolean(item));
-      if (valid.length === 0) return;
-
-      const gap = 32;
-      const cols = Math.ceil(Math.sqrt(valid.length));
-      const rows = Math.ceil(valid.length / cols);
-      const cellWidth = Math.max(...valid.map((item) => item.displaySize.width));
-      const cellHeight = Math.max(...valid.map((item) => item.displaySize.height));
+      const cellWidth = Math.max(...measured.map((item) => item.displaySize.width));
+      const cellHeight = Math.max(...measured.map((item) => item.displaySize.height));
       const startX = center.x - (cols * cellWidth + (cols - 1) * gap) / 2;
       const startY = center.y - (rows * cellHeight + (rows - 1) * gap) / 2;
 
-      valid.forEach((item, index) => {
+      sources.forEach((source, index) => {
+        const metrics = measured[index];
+        if (!metrics) return;
         const col = index % cols;
         const row = Math.floor(index / cols);
-        const x = startX + col * (cellWidth + gap) + Math.max(0, (cellWidth - item.displaySize.width) / 2);
-        const y = startY + row * (cellHeight + gap) + Math.max(0, (cellHeight - item.displaySize.height) / 2);
+        const x = startX + col * (cellWidth + gap) + Math.max(0, (cellWidth - metrics.displaySize.width) / 2);
+        const y = startY + row * (cellHeight + gap) + Math.max(0, (cellHeight - metrics.displaySize.height) / 2);
 
-        addNode(
+        const createdNode = addNode(
           'image',
           { x, y },
-          item.uploaded
+          source.file
             ? {
-                ...item.uploaded.nodeData,
-                width: item.displaySize.width,
-                height: item.displaySize.height,
+                title: source.title || '图片',
+                thumbnailUrl: source.url,
+                originalImageUrl: source.originalImageUrl || source.url,
+                width: metrics.displaySize.width,
+                height: metrics.displaySize.height,
+                naturalWidth: metrics.natural.naturalWidth,
+                naturalHeight: metrics.natural.naturalHeight,
+                aspectRatio: metrics.natural.naturalWidth / metrics.natural.naturalHeight,
+                editHistory: [],
+                imageFolderIds: [],
+                status: 'running',
+                generationStatus: 'generating',
               }
             : {
-                title: item.source.title || '图片',
-                thumbnailUrl: item.source.url,
-                originalImageUrl: item.source.originalImageUrl || item.source.url,
-                width: item.displaySize.width,
-                height: item.displaySize.height,
-                naturalWidth: item.natural.naturalWidth,
-                naturalHeight: item.natural.naturalHeight,
-                aspectRatio: item.natural.naturalWidth / item.natural.naturalHeight,
+                title: source.title || '图片',
+                thumbnailUrl: source.url,
+                originalImageUrl: source.originalImageUrl || source.url,
+                width: metrics.displaySize.width,
+                height: metrics.displaySize.height,
+                naturalWidth: metrics.natural.naturalWidth,
+                naturalHeight: metrics.natural.naturalHeight,
+                aspectRatio: metrics.natural.naturalWidth / metrics.natural.naturalHeight,
                 editHistory: [],
                 imageFolderIds: [],
                 status: 'success',
@@ -472,9 +465,45 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled }) =>
               },
           { selected: true, preserveSelection: index > 0 },
         );
-        if (item.source.file) {
-          URL.revokeObjectURL(item.source.url);
-        }
+
+        if (!source.file) return;
+
+        void (async () => {
+          let revokeSourceUrlOnFinish = false;
+          try {
+            const local = await prepareLocalImageNodeData({
+              file: source.file!,
+              projectId: backendProjectId,
+              source: 'canvas-upload',
+              title: source.title || '图片',
+            });
+            useFlowCanvasStore.getState().updateNodeData(createdNode.id, local.nodeData);
+
+            const uploaded = await prepareUploadedImageNodeData({
+              file: source.file!,
+              projectId: backendProjectId,
+              source: 'canvas-upload',
+              title: source.title || '图片',
+            });
+            useFlowCanvasStore.getState().updateNodeData(createdNode.id, {
+              ...uploaded.nodeData,
+              status: 'success',
+              generationStatus: 'done',
+            });
+            revokeSourceUrlOnFinish = true;
+            URL.revokeObjectURL(local.localObjectUrl);
+          } catch (error) {
+            useFlowCanvasStore.getState().updateNodeData(createdNode.id, {
+              errorMessage: error instanceof Error ? error.message : '图片上传失败',
+              generationStatus: 'error',
+              status: 'error',
+            });
+          } finally {
+            if (revokeSourceUrlOnFinish && source.url.startsWith('blob:')) {
+              URL.revokeObjectURL(source.url);
+            }
+          }
+        })();
       });
     },
     [addNode, backendProjectId],

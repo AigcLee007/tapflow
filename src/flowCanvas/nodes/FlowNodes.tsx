@@ -103,7 +103,7 @@ import { getAssetDownloadUrl, getAssetVariantUrl } from '../../assets/assetApi';
 import { listRuntimeRoutes, type V2RuntimeRouteItem } from '../../services/v2AiRoutesApi';
 import { listAiModelCatalog, listAiModelRoutes, type AiModelCatalogItem } from '../../services/v2AiModelCatalogApi';
 import { buildAssetBackedNodeData } from '../utils/assetNodeData';
-import { prepareUploadedImageNodeData } from '../utils/localImageUpload';
+import { prepareLocalImageNodeData, prepareUploadedImageNodeData } from '../utils/localImageUpload';
 import { persistDerivedImageAsset, type DerivedImageSourceType } from '../utils/persistDerivedImageAsset';
 import { mapImageRuntimeRouteOptions, type RuntimeRouteOption } from '../utils/runtimeRouteOptions';
 import {
@@ -4589,13 +4589,26 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     if (!file) return;
 
     try {
+      const local = await prepareLocalImageNodeData({
+        file,
+        projectId: backendProjectId,
+        source: 'node-upload',
+        title: file.name.replace(/\.[^.]+$/, '') || d.title,
+      });
+      updateNodeData(id, local.nodeData);
+
       const uploaded = await prepareUploadedImageNodeData({
         file,
         projectId: backendProjectId,
         source: 'node-upload',
         title: file.name.replace(/\.[^.]+$/, '') || d.title,
       });
-      updateNodeData(id, uploaded.nodeData);
+      updateNodeData(id, {
+        ...uploaded.nodeData,
+        status: 'success',
+        generationStatus: 'done',
+      });
+      URL.revokeObjectURL(local.localObjectUrl);
     } catch (error) {
       updateNodeData(id, {
         errorMessage: error instanceof Error ? error.message : '图片上传失败',
@@ -6313,10 +6326,11 @@ export const UploadNodeComponent = memo(function UploadNode({
 
   const handleUpload = useCallback(async (file: File) => {
     try {
-      updateNodeData(id, {
-        errorMessage: undefined,
-        generationStatus: 'generating',
-        status: 'running',
+      const local = await prepareLocalImageNodeData({
+        file,
+        projectId: backendProjectId,
+        source: 'node-upload',
+        title: file.name.replace(/\.[^.]+$/, '') || d.title || '图片',
       });
       const uploaded = await prepareUploadedImageNodeData({
         file,
@@ -6326,8 +6340,14 @@ export const UploadNodeComponent = memo(function UploadNode({
       });
       replaceNode(id, {
         type: 'image',
-        data: uploaded.nodeData,
+        data: {
+          ...local.nodeData,
+          ...uploaded.nodeData,
+          status: 'success',
+          generationStatus: 'done',
+        },
       });
+      URL.revokeObjectURL(local.localObjectUrl);
     } catch (error) {
       updateNodeData(id, {
         errorMessage: error instanceof Error ? error.message : '图片上传失败',
