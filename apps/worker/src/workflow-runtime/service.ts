@@ -383,7 +383,14 @@ function buildImageRequest(
 
   return {
     inputAssets: extractAssetInputs(upstreamOutputs),
-    metadata,
+    metadata: {
+      ...metadata,
+      referenceImages: Array.isArray(config.referenceImages)
+        ? config.referenceImages
+            .map((item) => String(item || "").trim())
+            .filter(Boolean)
+        : undefined,
+    },
     model:
       typeof config.model === "string"
         ? config.model
@@ -396,6 +403,10 @@ function buildImageRequest(
     routeKey,
   };
 }
+
+export const __workerTestUtils = {
+  buildImageRequest,
+};
 
 function buildVideoRequest(
   upstreamOutputs: Array<Record<string, unknown> | null>,

@@ -244,6 +244,20 @@ Completed in current working session:
 - asset-backed node data can now persist an optional preview url into referenceable image fields so imported asset nodes behave more like TapNow-style source images
 - added focused regression tests for store auto-reference behavior and asset-backed image preview persistence
 
+### Upstream Image Execution Wiring Fix
+
+Completed in current working session:
+
+- fixed the worker image-generation request builder so node-level `referenceImages` are forwarded into provider-facing request metadata
+- this closes the gap where canvas UI showed an upstream image reference chip but the provider runtime still generated from prompt-only input
+- added a focused worker unit test to lock the request-shaping behavior
+
+Validation completed:
+
+- `npm run test --workspace @aigc-flow/worker -- workflow-runtime-image-request.test.ts`
+- `npm run build --workspace @aigc-flow/worker`
+- `npm run build`
+
 ### Media Preview Performance Work
 
 Completed:
