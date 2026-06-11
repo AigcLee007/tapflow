@@ -578,7 +578,7 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled }) =>
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         fitView
-        fitViewOptions={{ padding: 0.58, maxZoom: 0.82 }}
+        fitViewOptions={{ padding: 0.46, maxZoom: 0.92 }}
         minZoom={CANVAS_MIN_ZOOM}
         maxZoom={CANVAS_MAX_ZOOM}
         defaultEdgeOptions={{ type: 'smart' }}
@@ -631,7 +631,7 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled }) =>
         onToggleMiniMap={() => setMiniMapOpen((open) => !open)}
         onToggleGridSnap={() => setGridSnapEnabled((enabled) => !enabled)}
         zoom={viewport.zoom}
-        onFitView={() => reactFlow.fitView({ padding: 0.56, maxZoom: 0.82, duration: 220 })}
+        onFitView={() => reactFlow.fitView({ padding: 0.44, maxZoom: 0.92, duration: 220 })}
         onZoomChange={(zoom) => {
           const nextZoom = clampZoom(zoom);
           const currentViewport = reactFlow.getViewport();

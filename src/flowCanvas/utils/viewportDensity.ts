@@ -2,7 +2,7 @@ import type { Viewport } from '@xyflow/react';
 
 const LEGACY_DENSITY_MIN_ZOOM = 0.95;
 const LEGACY_DENSITY_MAX_ZOOM = 1.12;
-const CANVAS_DENSITY_SCALE = 0.67;
+const CANVAS_DENSITY_SCALE = 0.76;
 
 export function normalizeViewportForCanvasDensity(viewport: Viewport): Viewport {
   const zoom = Number(viewport.zoom || 1);

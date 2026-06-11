@@ -330,3 +330,17 @@ Next recommended focus:
 
 - prepare production release checklist using the now-validated staging path
 - continue updating this file after each meaningful improvement or deploy-related change
+
+### Latest UI Framing Update
+
+Completed in current local iteration:
+
+- added a desktop page-scale shell to the project canvas page so browser zoom `100%` visually matches the prior `80%` framing target more closely
+- compensated shell width and height to preserve full-viewport coverage after scale
+- relaxed the previous extra React Flow density shrink so page-level scale does not double-compress the canvas
+
+Validation completed:
+
+- `npm run test -- src/flowCanvas/FlowCanvasPage.test.tsx`
+- `npm run test -- src/flowCanvas/utils/viewportDensity.test.ts`
+- `npm run build`

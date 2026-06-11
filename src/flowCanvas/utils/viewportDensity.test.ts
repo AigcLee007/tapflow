@@ -6,7 +6,7 @@ describe('normalizeViewportForCanvasDensity', () => {
   test('scales legacy zoom-1 viewport to match denser canvas framing', () => {
     expect(
       normalizeViewportForCanvasDensity({ x: 240, y: 120, zoom: 1 }),
-    ).toEqual({ x: 160.8, y: 80.4, zoom: 0.67 });
+    ).toEqual({ x: 182.4, y: 91.2, zoom: 0.76 });
   });
 
   test('does not rescale already-normalized viewport', () => {
