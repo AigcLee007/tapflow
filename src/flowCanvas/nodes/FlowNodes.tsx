@@ -504,6 +504,11 @@ const flickerStyles = `
   100% { transform: translateX(140%); opacity: 0.1; }
 }
 
+@keyframes flow-image-skeleton-pulse {
+  0%, 100% { opacity: 0.52; transform: scale(0.985); }
+  50% { opacity: 0.86; transform: scale(1); }
+}
+
 @keyframes flow-image-dot {
   0%, 100% { opacity: 0.4; transform: scale(0.9); }
   50% { opacity: 1; transform: scale(1.08); }
@@ -1048,23 +1053,24 @@ const ImageFullscreenOverlay: React.FC<ImageFullscreenOverlayProps> = ({
             flexDirection: 'column',
             gap: 0,
             minHeight: 0,
-            padding: '28px 24px 24px 17px',
+            padding: '24px 24px 22px',
             boxSizing: 'border-box',
             background: 'rgba(29,29,29,0.98)',
             borderLeft: '1px solid rgba(255,255,255,0.06)',
+            overflow: 'hidden',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, height: 34, marginBottom: 10 }}>
-            <h3 style={{ margin: 0, color: 'rgba(255,255,255,0.62)', fontSize: 22, fontWeight: 700, lineHeight: '34px', letterSpacing: 0 }}>提示词</h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, height: 34, marginBottom: 14, flex: '0 0 auto' }}>
+            <h3 style={{ margin: 0, color: 'rgba(255,255,255,0.66)', fontSize: 20, fontWeight: 700, lineHeight: '34px', letterSpacing: 0 }}>提示词</h3>
             {promptHovered && (
               <div
                 style={{
-                  padding: '8px 13px',
-                  borderRadius: 16,
+                  padding: '7px 12px',
+                  borderRadius: 14,
                   background: 'rgba(48,48,48,0.98)',
                   border: '1px solid rgba(255,255,255,0.1)',
                   color: '#fff',
-                  fontSize: 17,
+                  fontSize: 14,
                   fontWeight: 700,
                   lineHeight: 1,
                   whiteSpace: 'nowrap',
@@ -1096,103 +1102,105 @@ const ImageFullscreenOverlay: React.FC<ImageFullscreenOverlayProps> = ({
             </button>
           </div>
 
-          <div
-            role="button"
-            tabIndex={0}
-            onClick={handleCopyPrompt}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault();
-                handleCopyPrompt();
-              }
-            }}
-            onMouseEnter={() => setPromptHovered(true)}
-            onMouseLeave={() => setPromptHovered(false)}
-            title="点击内容复制"
-            style={{
-              position: 'relative',
-              display: 'block',
-              appearance: 'none',
-              width: 378,
-              minHeight: 0,
-              height: 270,
-              flex: '0 0 270px',
-              overflowY: 'auto',
-              border: '1px solid rgba(255,255,255,0.035)',
-              borderRadius: 16,
-              background: promptHovered ? 'rgba(17,17,17,0.98)' : 'rgba(40,40,40,0.96)',
-              color: cleanPrompt ? 'rgba(255,255,255,0.86)' : 'rgba(255,255,255,0.86)',
-              textAlign: 'left',
-              padding: '13px 18px',
-              fontSize: 21,
-              fontWeight: 400,
-              lineHeight: 1.45,
-              cursor: 'pointer',
-              fontFamily: '"Microsoft YaHei", "PingFang SC", Arial, sans-serif',
-              transition: 'background-color 140ms ease, border-color 140ms ease',
-            }}
-          >
-            <span
+          <div style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto', paddingRight: 2 }}>
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={handleCopyPrompt}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  handleCopyPrompt();
+                }
+              }}
+              onMouseEnter={() => setPromptHovered(true)}
+              onMouseLeave={() => setPromptHovered(false)}
+              title="点击内容复制"
               style={{
+                position: 'relative',
                 display: 'block',
+                appearance: 'none',
                 width: '100%',
-                margin: 0,
-                padding: 0,
+                minHeight: 210,
+                maxHeight: '38vh',
+                overflowY: 'auto',
+                border: '1px solid rgba(255,255,255,0.045)',
+                borderRadius: 14,
+                background: promptHovered ? 'rgba(17,17,17,0.98)' : 'rgba(40,40,40,0.96)',
+                color: 'rgba(255,255,255,0.86)',
                 textAlign: 'left',
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-word',
+                padding: '13px 16px',
+                boxSizing: 'border-box',
+                fontSize: 18,
+                fontWeight: 400,
+                lineHeight: 1.48,
+                cursor: 'pointer',
+                fontFamily: '"Microsoft YaHei", "PingFang SC", Arial, sans-serif',
+                transition: 'background-color 140ms ease, border-color 140ms ease',
               }}
             >
-              {displayPrompt}
-            </span>
-            {copiedVisible && (
               <span
                 style={{
-                  position: 'absolute',
-                  left: '50%',
-                  top: '50%',
-                  transform: 'translate(-50%, -50%)',
-                  padding: '9px 14px',
-                  borderRadius: 8,
-                  background: 'rgba(244,244,245,0.96)',
-                  color: '#1f1f1f',
-                  fontSize: 18,
-                  fontWeight: 700,
-                  lineHeight: 1,
-                  boxShadow: '0 10px 24px rgba(0,0,0,0.36)',
-                  pointerEvents: 'none',
-                  whiteSpace: 'nowrap',
+                  display: 'block',
+                  width: '100%',
+                  margin: 0,
+                  padding: 0,
+                  textAlign: 'left',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
                 }}
               >
-                已复制
+                {displayPrompt}
               </span>
-            )}
-          </div>
+              {copiedVisible && (
+                <span
+                  style={{
+                    position: 'absolute',
+                    left: '50%',
+                    top: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    padding: '8px 13px',
+                    borderRadius: 8,
+                    background: 'rgba(244,244,245,0.96)',
+                    color: '#1f1f1f',
+                    fontSize: 15,
+                    fontWeight: 700,
+                    lineHeight: 1,
+                    boxShadow: '0 10px 24px rgba(0,0,0,0.36)',
+                    pointerEvents: 'none',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  已复制
+                </span>
+              )}
+            </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14, minHeight: 0, marginTop: 32 }}>
-            <h3 style={{ margin: 0, color: 'rgba(255,255,255,0.62)', fontSize: 22, fontWeight: 700, lineHeight: 1.2, letterSpacing: 0 }}>信息</h3>
-            <div
-              style={{
-                width: 378,
-                borderRadius: 16,
-                border: '1px solid rgba(255,255,255,0.045)',
-                background: 'rgba(40,40,40,0.96)',
-                padding: '14px 16px 14px',
-                boxSizing: 'border-box',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 12,
-                minHeight: 0,
-              }}
-            >
-              {infoRows.map((row) => (
-                <div key={row.label} style={{ display: 'grid', gridTemplateColumns: '106px minmax(0, 1fr)', alignItems: 'center', columnGap: 4, minHeight: 31 }}>
-                  <span style={{ color: 'rgba(255,255,255,0.38)', fontSize: 21, fontWeight: 400, whiteSpace: 'nowrap', letterSpacing: 0 }}>{row.label}:</span>
-                  <span style={{ minWidth: 0, color: 'rgba(255,255,255,0.84)', fontSize: 21, fontWeight: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', letterSpacing: 0 }}>
-                    {row.value}
-                  </span>
-                </div>
-              ))}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0, marginTop: 24 }}>
+              <h3 style={{ margin: 0, color: 'rgba(255,255,255,0.66)', fontSize: 20, fontWeight: 700, lineHeight: 1.2, letterSpacing: 0 }}>信息</h3>
+              <div
+                style={{
+                  width: '100%',
+                  borderRadius: 14,
+                  border: '1px solid rgba(255,255,255,0.045)',
+                  background: 'rgba(40,40,40,0.96)',
+                  padding: '13px 15px',
+                  boxSizing: 'border-box',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 10,
+                  minHeight: 0,
+                }}
+              >
+                {infoRows.map((row) => (
+                  <div key={row.label} style={{ display: 'grid', gridTemplateColumns: '82px minmax(0, 1fr)', alignItems: 'center', columnGap: 8, minHeight: 28 }}>
+                    <span style={{ color: 'rgba(255,255,255,0.42)', fontSize: 16, fontWeight: 400, whiteSpace: 'nowrap', letterSpacing: 0 }}>{row.label}:</span>
+                    <span style={{ minWidth: 0, color: 'rgba(255,255,255,0.84)', fontSize: 16, fontWeight: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', letterSpacing: 0 }}>
+                      {row.value}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -1200,15 +1208,15 @@ const ImageFullscreenOverlay: React.FC<ImageFullscreenOverlayProps> = ({
             type="button"
             onClick={onDownload}
             style={{
-              marginTop: 'auto',
-              width: 378,
+              marginTop: 18,
+              width: '100%',
               height: 48,
               flex: '0 0 48px',
               borderRadius: 10,
               border: '1px solid rgba(255,255,255,0.18)',
               background: 'rgba(106,106,106,0.96)',
               color: '#fff',
-              fontSize: 20,
+              fontSize: 18,
               fontWeight: 700,
               cursor: 'pointer',
               boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.14)',
@@ -1556,7 +1564,7 @@ const textSkeletonStack: React.CSSProperties = {
 const imageGeneratingOverlay: React.CSSProperties = {
   position: 'absolute',
   inset: 0,
-  background: 'linear-gradient(180deg, rgba(15,23,42,0.46), rgba(15,23,42,0.68))',
+  background: 'linear-gradient(180deg, rgba(21,21,21,0.74), rgba(12,12,12,0.88))',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -1565,27 +1573,46 @@ const imageGeneratingOverlay: React.CSSProperties = {
   overflow: 'hidden',
 };
 
-const imageGeneratingPill: React.CSSProperties = {
+const imageGeneratingSkeleton: React.CSSProperties = {
   position: 'relative',
   zIndex: 2,
-  display: 'inline-flex',
+  width: 120,
+  height: 88,
+  display: 'flex',
+  flexDirection: 'column',
   alignItems: 'center',
-  gap: 8,
-  padding: '8px 12px',
-  borderRadius: 999,
-  border: '1px solid rgba(255,255,255,0.18)',
-  background: 'rgba(15,23,42,0.58)',
-  color: '#e2e8f0',
-  fontSize: 12,
-  fontWeight: 700,
+  justifyContent: 'center',
+  gap: 10,
+  borderRadius: 18,
+  border: '1px solid rgba(255,255,255,0.08)',
+  background: 'rgba(34,34,34,0.58)',
+  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06), 0 16px 34px rgba(0,0,0,0.26)',
+  animation: 'flow-image-skeleton-pulse 1.45s ease-in-out infinite',
 };
 
-const imageGeneratingDot: React.CSSProperties = {
-  width: 8,
-  height: 8,
-  borderRadius: '50%',
-  background: '#f8fafc',
-  animation: 'flow-image-dot 1.05s ease-in-out infinite',
+const imageGeneratingIconBox: React.CSSProperties = {
+  width: 34,
+  height: 34,
+  borderRadius: 11,
+  border: '1px solid rgba(255,255,255,0.13)',
+  background: 'rgba(255,255,255,0.045)',
+  color: 'rgba(255,255,255,0.42)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+};
+
+const imageGeneratingLine: React.CSSProperties = {
+  width: 58,
+  height: 5,
+  borderRadius: 999,
+  background: 'rgba(255,255,255,0.12)',
+};
+
+const imageGeneratingLineShort: React.CSSProperties = {
+  ...imageGeneratingLine,
+  width: 38,
+  opacity: 0.72,
 };
 
 const imageGeneratingSheen: React.CSSProperties = {
@@ -1593,10 +1620,10 @@ const imageGeneratingSheen: React.CSSProperties = {
   top: 0,
   bottom: 0,
   left: 0,
-  width: '44%',
-  background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.22), transparent)',
+  width: '40%',
+  background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.11), transparent)',
   transform: 'translateX(-120%)',
-  animation: 'flow-image-sheen 1.8s linear infinite',
+  animation: 'flow-image-sheen 1.9s linear infinite',
 };
 
 const errorBar: React.CSSProperties = {
@@ -3291,9 +3318,12 @@ const ImageNodeCard = memo(function ImageNodeCard({
       {isGenerating && (
         <div style={imageGeneratingOverlay}>
           <div style={imageGeneratingSheen} />
-          <div style={imageGeneratingPill}>
-            <span style={imageGeneratingDot} />
-            <span>正在生成</span>
+          <div style={imageGeneratingSkeleton}>
+            <div style={imageGeneratingIconBox}>
+              <ImageIcon size={18} strokeWidth={1.6} />
+            </div>
+            <div style={imageGeneratingLine} />
+            <div style={imageGeneratingLineShort} />
           </div>
         </div>
       )}

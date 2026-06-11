@@ -16,6 +16,8 @@ import {
 import { getBillingSummary, listBillingPricing, type BillingPricingRow } from '../../billing/billingApi';
 import { useFlowCanvasStore } from '../store/flowCanvasStore';
 import type {
+  FlowImageGenerationSnapshot,
+  FlowImageResultItem,
   FlowNodeData,
   FlowRuntimeAssetRef,
   FlowRuntimeNodeOutput,
@@ -358,6 +360,69 @@ function shouldApplyNodeRun(nodeRun: PersistableNodeRun): boolean {
   return !latestRunId || latestRunId === nodeRun.workflowRunId;
 }
 
+function readString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function readPositiveInteger(value: unknown): number | undefined {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? Math.max(1, Math.floor(numeric)) : undefined;
+}
+
+function countReferenceImages(data: Partial<FlowNodeData>): number {
+  if (Array.isArray(data.referenceOrder)) {
+    return data.referenceOrder.length;
+  }
+  if (Array.isArray(data.referenceAssetItemIds)) {
+    return data.referenceAssetItemIds.length;
+  }
+  return 0;
+}
+
+function buildGeneratedResults(assetRefs: FlowRuntimeAssetRef[], generatedAt: number): FlowImageResultItem[] {
+  return assetRefs
+    .filter((asset) => asset.assetId && asset.downloadUrl)
+    .map((asset) => ({
+      createdAt: generatedAt,
+      id: `asset:${asset.assetId}`,
+      url: String(asset.downloadUrl),
+    }));
+}
+
+function buildImageGenerationSnapshot(
+  nodeData: Partial<FlowNodeData>,
+  assetRefs: FlowRuntimeAssetRef[],
+  generatedAt: number,
+): FlowImageGenerationSnapshot {
+  const params = nodeData.params && typeof nodeData.params === 'object'
+    ? nodeData.params as Record<string, unknown>
+    : {};
+  const fallbackPrompt = typeof nodeData.lastGenerationSnapshot === 'object'
+    ? readString((nodeData.lastGenerationSnapshot as Partial<FlowImageGenerationSnapshot>).prompt)
+    : undefined;
+  const prompt = readString(nodeData.generationPrompt)
+    || fallbackPrompt
+    || '一张精美的 AI 生成图片';
+  const modelId = readString(nodeData.modelId)
+    || (typeof nodeData.lastGenerationSnapshot === 'object'
+      ? readString((nodeData.lastGenerationSnapshot as Partial<FlowImageGenerationSnapshot>).modelId)
+      : undefined)
+    || '';
+
+  return {
+    activeCommandId: readString(nodeData.activeCommandId),
+    aspectRatio: readString(params.aspect_ratio) || readString(params.aspectRatio) || readString(nodeData.aspectRatio),
+    generatedAt,
+    modelId,
+    n: readPositiveInteger(nodeData.batchCount) || readPositiveInteger(params.n) || assetRefs.length || 1,
+    prompt,
+    quality: readString(params.quality),
+    referenceImageCount: countReferenceImages(nodeData),
+    routeId: readString(nodeData.routeId) || readString(nodeData.routeKey),
+    size: readString(params.size) || readString(params.imageSize) || readString(params.image_size),
+  };
+}
+
 function buildGeneratedAssetNodePatch(
   nodeRun: PersistableNodeRun,
   assetRefs: FlowRuntimeAssetRef[],
@@ -374,8 +439,20 @@ function buildGeneratedAssetNodePatch(
   if (!isImageNode && !isVideoNode) {
     return null;
   }
+  const currentNode = useFlowCanvasStore.getState().nodes.find((node) => node.id === nodeRun.nodeId);
+  const currentData = currentNode?.data ?? {};
+  const generatedAt = Date.now();
+  const generatedResults = isImageNode ? buildGeneratedResults(assetRefs, generatedAt) : [];
 
   return {
+    ...(isImageNode && generatedResults.length > 0
+      ? {
+          activeResultIndex: 0,
+          coverResultId: generatedResults[0]?.id,
+          generatedResults,
+          lastGenerationSnapshot: buildImageGenerationSnapshot(currentData, assetRefs, generatedAt),
+        }
+      : {}),
     assetId: primaryAsset.assetId,
     assetIds: assetRefs.map((asset) => asset.assetId),
     errorMessage: undefined,

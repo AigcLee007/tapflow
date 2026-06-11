@@ -498,7 +498,20 @@ describe('v2WorkflowRunner', () => {
   });
 
   test('asset refs trigger download-url resolution and stay in runtime state', async () => {
-    useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, { title: 'Generated Image' });
+    useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, {
+      batchCount: 2,
+      generationPrompt: 'a quiet studio product photo',
+      modelId: 'mock-image',
+      params: {
+        aspect_ratio: '4:3',
+        quality: 'high',
+        size: '2k',
+      },
+      referenceOrder: ['asset:ref-1'],
+      routeId: 'route-image-default',
+      routeKey: 'image.default',
+      title: 'Generated Image',
+    });
     const nodeId = useFlowCanvasStore.getState().nodes[0]?.id;
     expect(nodeId).toBeTruthy();
     const imageNodeId = nodeId as string;
@@ -529,6 +542,14 @@ describe('v2WorkflowRunner', () => {
             assets: [
               {
                 assetId: 'asset-1',
+                height: 384,
+                kind: 'image',
+                mimeType: 'image/png',
+                width: 512,
+              },
+              {
+                assetId: 'asset-2',
+                height: 384,
                 kind: 'image',
                 mimeType: 'image/png',
                 width: 512,
@@ -568,10 +589,15 @@ describe('v2WorkflowRunner', () => {
     await runBackendWorkflow();
 
     expect(getAssetVariantUrlMock).toHaveBeenCalledWith('asset-1', 'preview');
+    expect(getAssetVariantUrlMock).toHaveBeenCalledWith('asset-2', 'preview');
     expect(useFlowCanvasStore.getState().nodeOutputByNodeId[imageNodeId]).toMatchObject({
       assets: [
         expect.objectContaining({
           assetId: 'asset-1',
+          downloadUrl: 'https://example.test/presigned-image',
+        }),
+        expect.objectContaining({
+          assetId: 'asset-2',
           downloadUrl: 'https://example.test/presigned-image',
         }),
       ],
@@ -579,9 +605,32 @@ describe('v2WorkflowRunner', () => {
     const updatedNode = useFlowCanvasStore.getState().nodes.find((node) => node.id === imageNodeId);
     expect(updatedNode?.data).toMatchObject({
       assetId: 'asset-1',
-      assetIds: ['asset-1'],
+      assetIds: ['asset-1', 'asset-2'],
+      activeResultIndex: 0,
+      coverResultId: 'asset:asset-1',
+      generatedResults: [
+        expect.objectContaining({
+          id: 'asset:asset-1',
+          url: 'https://example.test/presigned-image',
+        }),
+        expect.objectContaining({
+          id: 'asset:asset-2',
+          url: 'https://example.test/presigned-image',
+        }),
+      ],
       generationStatus: 'done',
+      lastGenerationSnapshot: expect.objectContaining({
+        aspectRatio: '4:3',
+        modelId: 'mock-image',
+        n: 2,
+        prompt: 'a quiet studio product photo',
+        quality: 'high',
+        referenceImageCount: 1,
+        routeId: 'route-image-default',
+        size: '2k',
+      }),
       mimeType: 'image/png',
+      naturalHeight: 384,
       naturalWidth: 512,
       source: 'generated',
       status: 'success',

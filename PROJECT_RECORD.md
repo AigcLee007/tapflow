@@ -492,3 +492,17 @@ Validation completed:
 - `npm run test -- src/flowCanvas/utils/localImageUpload.test.ts src/flowCanvas/store/flowCanvasStore.test.ts src/assets/assetApi.test.ts`
 - `npm run build --workspace @aigc-flow/api`
 - `npm run build`
+
+### Latest Text-to-Image Generation UI Alignment
+
+Completed in current local iteration:
+
+- fixed the v2 generated-image writeback so successful runs preserve `lastGenerationSnapshot`, generated result metadata, active result, cover result, and natural image size
+- fullscreen image viewer now receives the real generation prompt/model/size metadata instead of falling back to empty prompt state
+- rebuilt the fullscreen viewer right panel as fixed header, scrollable prompt/info content, and fixed download footer to avoid info/download overlap
+- changed the in-node generation state from a loud central status pill to a quieter TapNow-style dark image skeleton
+- kept generated image result controls driven by real node/runtime data instead of visual-only placeholders
+
+Validation completed:
+
+- `npm run test -- src/flowCanvas/runtime/v2WorkflowRunner.test.ts`
