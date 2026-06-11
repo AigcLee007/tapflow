@@ -36,6 +36,7 @@ import type { FlowNodeData } from '../types';
 import { FLOW_NODE_DEFAULT_SIZES, fitMediaNodeToShortSide } from '../utils/nodeSizing';
 import { canConnectFlowNodes } from '../rules/connectionRules';
 import {
+  buildLocalUploadFailureNodeData,
   createImmediateLocalImageNodeData,
   createLocalPreviewObjectUrl,
   measureLocalImageNodeData,
@@ -423,8 +424,9 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled }) =>
                 height: fallbackSize.height,
                 editHistory: [],
                 imageFolderIds: [],
-                status: 'running',
-                generationStatus: 'generating',
+                status: 'success',
+                generationStatus: 'done',
+                uploadStatus: 'uploading',
               }
             : {
                 title: source.title || '图片',
@@ -494,15 +496,13 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled }) =>
               ...uploaded.nodeData,
               status: 'success',
               generationStatus: 'done',
+              uploadErrorMessage: undefined,
+              uploadStatus: 'done',
             });
             if (source.url.startsWith('blob:')) URL.revokeObjectURL(source.url);
             if (activePreviewUrl !== source.url) URL.revokeObjectURL(activePreviewUrl);
           } catch (error) {
-            useFlowCanvasStore.getState().updateNodeData(createdNode.id, {
-              errorMessage: error instanceof Error ? error.message : '图片上传失败',
-              generationStatus: 'error',
-              status: 'error',
-            });
+            useFlowCanvasStore.getState().updateNodeData(createdNode.id, buildLocalUploadFailureNodeData(error));
           }
         })();
       });

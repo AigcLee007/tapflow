@@ -28,6 +28,8 @@ const TRANSIENT_NODE_DATA_KEYS = new Set([
   "status",
   "thumbnailUrl",
   "updatedAt",
+  "uploadErrorMessage",
+  "uploadStatus",
   "workflowRun",
   "workflowRunId",
 ]);

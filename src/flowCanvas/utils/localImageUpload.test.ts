@@ -37,19 +37,32 @@ describe('createImmediateLocalImageNodeData', () => {
     expect(result).toMatchObject({
       localObjectUrl: 'blob://local-cat',
       nodeData: {
-        generationStatus: 'generating',
+        generationStatus: 'done',
         mimeType: 'image/png',
         originalImageUrl: 'blob://local-cat',
         source: 'node-upload',
-        status: 'running',
+        status: 'success',
         thumbnailUrl: 'blob://local-cat',
         title: 'Cat',
+        uploadStatus: 'uploading',
       },
     });
     expect(result.nodeData.width).toBeGreaterThan(0);
     expect(result.nodeData.height).toBeGreaterThan(0);
     expect(getImageNaturalSizeMock).not.toHaveBeenCalled();
     expect(uploadAssetFileMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps upload failures separate from generation errors', async () => {
+    const { buildLocalUploadFailureNodeData } = await import('./localImageUpload');
+
+    expect(buildLocalUploadFailureNodeData(new TypeError('Failed to fetch'))).toMatchObject({
+      errorMessage: undefined,
+      generationStatus: 'done',
+      status: 'success',
+      uploadErrorMessage: 'Failed to fetch',
+      uploadStatus: 'failed',
+    });
   });
 });
 

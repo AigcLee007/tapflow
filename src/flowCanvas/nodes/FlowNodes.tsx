@@ -104,6 +104,7 @@ import { listRuntimeRoutes, type V2RuntimeRouteItem } from '../../services/v2AiR
 import { listAiModelCatalog, listAiModelRoutes, type AiModelCatalogItem } from '../../services/v2AiModelCatalogApi';
 import { buildAssetBackedNodeData } from '../utils/assetNodeData';
 import {
+  buildLocalUploadFailureNodeData,
   createImmediateLocalImageNodeData,
   createLocalPreviewObjectUrl,
   measureLocalImageNodeData,
@@ -4650,15 +4651,13 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
           ...uploaded.nodeData,
           status: 'success',
           generationStatus: 'done',
+          uploadErrorMessage: undefined,
+          uploadStatus: 'done',
         });
         URL.revokeObjectURL(localObjectUrl);
         if (activePreviewUrl !== localObjectUrl) URL.revokeObjectURL(activePreviewUrl);
       } catch (error) {
-        updateNodeData(id, {
-          errorMessage: error instanceof Error ? error.message : '图片上传失败',
-          generationStatus: 'error',
-          status: 'error',
-        });
+        updateNodeData(id, buildLocalUploadFailureNodeData(error));
       }
     })();
   };
@@ -6426,15 +6425,13 @@ export const UploadNodeComponent = memo(function UploadNode({
           ...uploaded.nodeData,
           status: 'success',
           generationStatus: 'done',
+          uploadErrorMessage: undefined,
+          uploadStatus: 'done',
         });
         URL.revokeObjectURL(localObjectUrl);
         if (activePreviewUrl !== localObjectUrl) URL.revokeObjectURL(activePreviewUrl);
       } catch (error) {
-        useFlowCanvasStore.getState().updateNodeData(id, {
-          errorMessage: error instanceof Error ? error.message : '图片上传失败',
-          generationStatus: 'error',
-          status: 'error',
-        });
+        useFlowCanvasStore.getState().updateNodeData(id, buildLocalUploadFailureNodeData(error));
       }
     })();
   }, [backendProjectId, d.title, id, replaceNode]);

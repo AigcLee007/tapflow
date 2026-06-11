@@ -37,8 +37,9 @@ export function createImmediateLocalImageNodeData(input: ImmediateLocalImageInpu
       height: fallback.height,
       editHistory: [],
       imageFolderIds: [],
-      status: "running",
-      generationStatus: "generating",
+      status: "success",
+      generationStatus: "done",
+      uploadStatus: "uploading",
       generatedResults: undefined,
       activeResultIndex: undefined,
       coverResultId: undefined,
@@ -48,6 +49,16 @@ export function createImmediateLocalImageNodeData(input: ImmediateLocalImageInpu
       source: input.source,
       mimeType: input.file.type || "image/*",
     },
+  };
+}
+
+export function buildLocalUploadFailureNodeData(error: unknown): Partial<FlowNodeData> {
+  return {
+    errorMessage: undefined,
+    generationStatus: "done",
+    status: "success",
+    uploadErrorMessage: error instanceof Error ? error.message : "图片上传失败",
+    uploadStatus: "failed",
   };
 }
 
