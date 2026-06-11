@@ -53,8 +53,6 @@ const useFlowShortcuts = () => {
 };
 
 const FLOW_VIEWPORT_META = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover';
-const FLOW_PAGE_DESKTOP_SCALE = 0.8;
-const FLOW_PAGE_DESKTOP_SCALE_INVERSE = 1 / FLOW_PAGE_DESKTOP_SCALE;
 
 function isDebugOverlayEnabled() {
   if (typeof window === 'undefined') return false;
@@ -221,20 +219,18 @@ const FlowCanvasPage: React.FC<{
 
   return (
     <div style={pageStyle}>
-      <div data-testid="flow-page-scale-shell" style={pageScaleShellStyle}>
-        <FlowTopToolbar
-          onToggleCulling={toggleCulling}
-          cullingEnabled={cullingEnabled}
-          saveStatus={saveStatus}
-        />
-        <div style={{ flex: 1, position: 'relative' }}>
-          <ReactFlowProvider>
-            <AiFlowCanvas cullingEnabled={cullingEnabled} />
-            {isDebugOverlayEnabled() && <StatsOverlay />}
-            {isDebugOverlayEnabled() && <BackendRunOverlay />}
-            <EmptyState />
-          </ReactFlowProvider>
-        </div>
+      <FlowTopToolbar
+        onToggleCulling={toggleCulling}
+        cullingEnabled={cullingEnabled}
+        saveStatus={saveStatus}
+      />
+      <div style={{ flex: 1, position: 'relative' }}>
+        <ReactFlowProvider>
+          <AiFlowCanvas cullingEnabled={cullingEnabled} />
+          {isDebugOverlayEnabled() && <StatsOverlay />}
+          {isDebugOverlayEnabled() && <BackendRunOverlay />}
+          <EmptyState />
+        </ReactFlowProvider>
       </div>
     </div>
   );
@@ -249,15 +245,6 @@ const pageStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-};
-
-const pageScaleShellStyle: React.CSSProperties = {
-  width: `${FLOW_PAGE_DESKTOP_SCALE_INVERSE * 100}%`,
-  height: `${FLOW_PAGE_DESKTOP_SCALE_INVERSE * 100}%`,
-  display: 'flex',
-  flexDirection: 'column',
-  transform: `scale(${FLOW_PAGE_DESKTOP_SCALE})`,
-  transformOrigin: 'top left',
 };
 
 const statsStyle: React.CSSProperties = {

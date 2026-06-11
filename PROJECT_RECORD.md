@@ -344,3 +344,16 @@ Validation completed:
 - `npm run test -- src/flowCanvas/FlowCanvasPage.test.tsx`
 - `npm run test -- src/flowCanvas/utils/viewportDensity.test.ts`
 - `npm run build`
+
+### Latest UI Positioning Fix
+
+Completed in current local iteration:
+
+- removed the page-level desktop `scale()` shell from the project canvas page after it caused widespread overlay and toolbar position drift
+- restored the project page to a normal viewport coordinate system so fixed-position menus, toolbars, and canvas interaction anchors line up again
+- kept the denser default project-page visual framing by moving the adjustment back into React Flow fitView and viewport density settings instead of page transforms
+
+Validation completed:
+
+- `npm run test -- src/flowCanvas/utils/viewportDensity.test.ts`
+- `npm run build`
