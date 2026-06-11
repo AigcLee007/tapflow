@@ -357,3 +357,15 @@ Validation completed:
 
 - `npm run test -- src/flowCanvas/utils/viewportDensity.test.ts`
 - `npm run build`
+
+### Latest Left Dock Scaling Update
+
+Completed in current local iteration:
+
+- scaled only the left vertical project dock to `70%` of its prior visual size
+- kept the bottom viewport control bar unchanged
+- applied the reduction through a dock-local wrapper so the adjustment stays scoped to the red-box area only
+
+Validation completed:
+
+- `npm run build`

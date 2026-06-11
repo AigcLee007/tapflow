@@ -28,6 +28,8 @@ import { useFlowCanvasStore } from '../store/flowCanvasStore';
 import type { FlowNodeKind } from '../types';
 import { getAnchoredFlyoutPosition, type FlyoutPosition } from '../utils/flyoutLayout';
 
+const LEFT_DOCK_VISUAL_SCALE = 0.7;
+
 type AddEntry = {
   kind: FlowNodeKind | 'world3d' | 'playlist';
   label: string;
@@ -303,7 +305,8 @@ export const FlowLeftAddPanel: React.FC = memo(function FlowLeftAddPanel() {
 
   return (
     <div ref={dockHostRef} style={dockHostStyle} onMouseLeave={() => setUserOpen(false)}>
-      <div style={dockStyle}>
+      <div style={dockScaleShellStyle}>
+        <div style={dockStyle}>
         <DockButton
           icon={addOpen ? <X size={20} strokeWidth={1.7} /> : <Plus size={26} strokeWidth={1.75} />}
           label="添加节点"
@@ -327,6 +330,7 @@ export const FlowLeftAddPanel: React.FC = memo(function FlowLeftAddPanel() {
             setUserOpen((open) => !open);
           }}
         />
+        </div>
       </div>
 
       {addOpen && (
@@ -352,6 +356,11 @@ const dockHostStyle: React.CSSProperties = {
   left: 14,
   top: 166,
   zIndex: 1000,
+};
+
+const dockScaleShellStyle: React.CSSProperties = {
+  transform: `scale(${LEFT_DOCK_VISUAL_SCALE})`,
+  transformOrigin: 'top left',
 };
 
 const dockStyle: React.CSSProperties = {
