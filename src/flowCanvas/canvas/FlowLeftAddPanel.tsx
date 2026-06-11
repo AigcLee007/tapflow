@@ -27,11 +27,21 @@ import { useAuth } from '../../auth/useAuth';
 import { useFlowCanvasStore } from '../store/flowCanvasStore';
 import type { FlowNodeKind } from '../types';
 import { getAnchoredFlyoutPosition, type FlyoutPosition } from '../utils/flyoutLayout';
+import {
+  MENU_BETA_PILL_STYLE,
+  MENU_ITEM_DESC_STYLE,
+  MENU_ITEM_LABEL_STYLE,
+  MENU_SECTION_LABEL_STYLE,
+  buildMenuItemIconStyle,
+  buildMenuItemStyle,
+  buildMenuPanelStyle,
+} from './menuTokens';
 
 const LEFT_DOCK_VISUAL_SCALE = 0.7;
 const LEFT_DOCK_VISUAL_WIDTH = 60 * LEFT_DOCK_VISUAL_SCALE;
 const ADD_NODE_FLYOUT_GAP = 8;
 const ADD_NODE_FLYOUT_BOTTOM_LINE_OFFSET = 76;
+const USER_MENU_WIDTH = 224;
 
 type AddEntry = {
   kind: FlowNodeKind | 'world3d' | 'playlist';
@@ -266,18 +276,13 @@ export const FlowLeftAddPanel: React.FC = memo(function FlowLeftAddPanel() {
       const userRect = userButtonRef.current?.getBoundingClientRect();
       if (userRect && userOpen) {
         const maxHeight = Math.max(280, Math.min(372, viewportHeight - margin * 2));
-        setUserFlyoutPosition(
-          getAnchoredFlyoutPosition({
-            anchorRect: { top: userRect.bottom, right: hostRect?.right || userRect.right },
-            viewportWidth,
-            viewportHeight,
-            panelWidth: 252,
-            panelMaxHeight: maxHeight,
-            offsetLeft: 8,
-            offsetTop: -maxHeight + 52,
-            margin,
-          }),
-        );
+        const visualDockRight = hostRect ? hostRect.left + LEFT_DOCK_VISUAL_WIDTH : userRect.right;
+        const left = clamp(visualDockRight + ADD_NODE_FLYOUT_GAP, margin, viewportWidth - USER_MENU_WIDTH - margin);
+        const targetBottom = viewportHeight - ADD_NODE_FLYOUT_BOTTOM_LINE_OFFSET;
+        const panelHeight = maxHeight;
+        const top = clamp(targetBottom - panelHeight, margin, viewportHeight - panelHeight - margin);
+
+        setUserFlyoutPosition({ left, top, maxHeight });
       }
     };
 
@@ -443,82 +448,32 @@ const dockTooltipStyle: React.CSSProperties = {
   boxShadow: '0 12px 28px rgba(0,0,0,0.38)',
 };
 
-const flyoutStyle = (position: FlyoutPosition): React.CSSProperties => ({
-  position: 'fixed',
+const flyoutStyle = (position: FlyoutPosition): React.CSSProperties => buildMenuPanelStyle({
   left: position.left,
   top: position.top,
-  width: 224,
   maxHeight: position.maxHeight,
-  overflow: 'auto',
-  padding: '8px 10px 10px',
-  boxSizing: 'border-box',
-  borderRadius: 16,
-  background: 'linear-gradient(155deg, rgba(28,28,29,0.985), rgba(23,25,28,0.985))',
-  border: '1px solid rgba(255,255,255,0.12)',
-  boxShadow: '0 18px 48px rgba(0,0,0,0.52)',
-  backdropFilter: 'blur(18px)',
   zIndex: 1100,
 });
 
-const flyoutSectionTitleStyle: React.CSSProperties = {
-  color: 'rgba(255,255,255,0.34)',
-  fontSize: 10,
-  fontWeight: 700,
-  letterSpacing: 0,
-  margin: '6px 0 4px',
-};
+const flyoutSectionTitleStyle: React.CSSProperties = MENU_SECTION_LABEL_STYLE;
 
-const flyoutItemStyle = (active: boolean, disabled: boolean): React.CSSProperties => ({
-  width: '100%',
-  minHeight: 38,
-  border: 'none',
-  borderRadius: 10,
-  background: active ? 'rgba(255,255,255,0.088)' : 'transparent',
-  color: disabled ? 'rgba(255,255,255,0.56)' : '#f8fafc',
-  display: 'flex',
-  alignItems: 'center',
-  gap: 7,
-  padding: '5px 6px',
-  cursor: disabled ? 'default' : 'pointer',
-  textAlign: 'left',
-});
+const flyoutItemStyle = (active: boolean, disabled: boolean): React.CSSProperties =>
+  buildMenuItemStyle(active, disabled);
 
-const flyoutIconStyle = (active: boolean): React.CSSProperties => ({
-  width: 30,
-  height: 30,
-  borderRadius: 9,
-  display: 'grid',
-  placeItems: 'center',
-  background: active ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.055)',
-  color: '#f4f4f5',
-  flexShrink: 0,
-});
+const flyoutIconStyle = (active: boolean): React.CSSProperties => buildMenuItemIconStyle(active);
 
 const flyoutLabelStyle: React.CSSProperties = {
+  ...MENU_ITEM_LABEL_STYLE,
   display: 'block',
-  color: '#fff',
-  fontSize: 12,
-  fontWeight: 700,
-  lineHeight: 1.1,
 };
 
 const flyoutDescStyle: React.CSSProperties = {
+  ...MENU_ITEM_DESC_STYLE,
   display: 'block',
-  color: 'rgba(255,255,255,0.4)',
-  fontSize: 9,
-  fontWeight: 500,
   marginTop: 2,
-  lineHeight: 1.25,
 };
 
-const betaPillStyle: React.CSSProperties = {
-  padding: '1px 6px',
-  borderRadius: 999,
-  border: '1px solid rgba(255,255,255,0.18)',
-  color: 'rgba(255,255,255,0.9)',
-  fontSize: 9,
-  fontWeight: 760,
-};
+const betaPillStyle: React.CSSProperties = MENU_BETA_PILL_STYLE;
 
 const userAvatarSmallStyle: React.CSSProperties = {
   width: 36,
@@ -533,20 +488,13 @@ const userAvatarSmallStyle: React.CSSProperties = {
   fontWeight: 500,
 };
 
-const userMenuStyle = (position: FlyoutPosition): React.CSSProperties => ({
-  position: 'fixed',
+const userMenuStyle = (position: FlyoutPosition): React.CSSProperties => buildMenuPanelStyle({
   left: position.left,
   top: position.top,
-  width: 252,
+  width: USER_MENU_WIDTH,
   maxHeight: position.maxHeight,
   overflowY: 'auto',
-  padding: '13px 14px 12px',
-  boxSizing: 'border-box',
-  borderRadius: 16,
-  background: 'linear-gradient(155deg, rgba(28,28,29,0.985), rgba(23,25,28,0.985))',
-  border: '1px solid rgba(255,255,255,0.12)',
-  boxShadow: '0 18px 48px rgba(0,0,0,0.52)',
-  backdropFilter: 'blur(18px)',
+  padding: '12px 10px 10px',
   zIndex: 1100,
 });
 

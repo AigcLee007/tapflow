@@ -19,6 +19,15 @@ import {
 import { useReactFlow } from '@xyflow/react';
 import { useFlowCanvasStore } from '../store/flowCanvasStore';
 import type { FlowNodeKind } from '../types';
+import {
+  MENU_BETA_PILL_STYLE,
+  MENU_ITEM_DESC_STYLE,
+  MENU_ITEM_LABEL_STYLE,
+  MENU_SECTION_LABEL_STYLE,
+  buildMenuItemIconStyle,
+  buildMenuItemStyle,
+  buildMenuPanelStyle,
+} from './menuTokens';
 
 const menuItemStyle: React.CSSProperties = {
   display: 'flex',
@@ -248,55 +257,16 @@ const getPaneMenuStyle = (x: number, y: number): React.CSSProperties => {
   };
 };
 
-const paneAddMenuStyle: React.CSSProperties = {
-  position: 'fixed',
-  zIndex: 1200,
-  width: 224,
-  boxSizing: 'border-box',
-  padding: '8px 10px 10px',
-  borderRadius: 16,
-  background: 'linear-gradient(155deg, rgba(28,28,29,0.985), rgba(23,25,28,0.985))',
-  border: '1px solid rgba(255,255,255,0.12)',
-  boxShadow: '0 18px 48px rgba(0,0,0,0.52)',
-  backdropFilter: 'blur(18px)',
-  overflow: 'auto',
-};
+const paneAddMenuStyle: React.CSSProperties = buildMenuPanelStyle();
 
-const paneSectionLabelStyle: React.CSSProperties = {
-  padding: '6px 0 4px',
-  color: 'rgba(255,255,255,0.34)',
-  fontSize: 10,
-  fontWeight: 700,
-  lineHeight: 1.1,
-  userSelect: 'none',
-};
+const paneSectionLabelStyle: React.CSSProperties = MENU_SECTION_LABEL_STYLE;
 
 const paneAddItemStyle = (active: boolean, disabled: boolean): React.CSSProperties => ({
-  width: '100%',
-  minHeight: 38,
-  border: 'none',
-  borderRadius: 10,
-  background: active ? 'rgba(255,255,255,0.088)' : 'transparent',
-  color: disabled ? 'rgba(255,255,255,0.56)' : '#f8fafc',
-  display: 'flex',
-  alignItems: 'center',
-  gap: 7,
-  padding: '5px 6px',
-  cursor: disabled ? 'default' : 'pointer',
-  textAlign: 'left',
+  ...buildMenuItemStyle(active, disabled),
   opacity: disabled ? 0.9 : 1,
 });
 
-const paneAddIconStyle = (active: boolean): React.CSSProperties => ({
-  width: 30,
-  height: 30,
-  borderRadius: 9,
-  display: 'grid',
-  placeItems: 'center',
-  background: active ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.055)',
-  color: '#f4f4f5',
-  flexShrink: 0,
-});
+const paneAddIconStyle = (active: boolean): React.CSSProperties => buildMenuItemIconStyle(active);
 
 const paneAddTextWrapStyle: React.CSSProperties = {
   minWidth: 0,
@@ -306,12 +276,7 @@ const paneAddTextWrapStyle: React.CSSProperties = {
   gap: 2,
 };
 
-const paneAddLabelStyle: React.CSSProperties = {
-  color: '#f8fafc',
-  fontSize: 12,
-  fontWeight: 700,
-  lineHeight: 1.1,
-};
+const paneAddLabelStyle: React.CSSProperties = MENU_ITEM_LABEL_STYLE;
 
 const paneAddLabelRowStyle: React.CSSProperties = {
   display: 'flex',
@@ -320,22 +285,9 @@ const paneAddLabelRowStyle: React.CSSProperties = {
   minWidth: 0,
 };
 
-const paneAddDescStyle: React.CSSProperties = {
-  color: 'rgba(255,255,255,0.4)',
-  fontSize: 9,
-  fontWeight: 500,
-  lineHeight: 1.25,
-};
+const paneAddDescStyle: React.CSSProperties = MENU_ITEM_DESC_STYLE;
 
-const paneBetaPillStyle: React.CSSProperties = {
-  padding: '1px 6px',
-  borderRadius: 999,
-  border: '1px solid rgba(255,255,255,0.18)',
-  color: 'rgba(255,255,255,0.9)',
-  fontSize: 9,
-  fontWeight: 760,
-  lineHeight: 1,
-};
+const paneBetaPillStyle: React.CSSProperties = MENU_BETA_PILL_STYLE;
 
 const paneSeparatorStyle: React.CSSProperties = {
   height: 1,

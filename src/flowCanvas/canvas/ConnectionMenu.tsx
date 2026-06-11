@@ -7,6 +7,14 @@ import { useReactFlow } from '@xyflow/react';
 import { useFlowCanvasStore } from '../store/flowCanvasStore';
 import type { FlowNodeKind } from '../types';
 import { getConnectionActionsForSource, getConnectionAction } from '../rules/connectionRules';
+import {
+  MENU_ITEM_DESC_STYLE,
+  MENU_ITEM_LABEL_STYLE,
+  MENU_SECTION_LABEL_STYLE,
+  buildMenuItemIconStyle,
+  buildMenuItemStyle,
+  buildMenuPanelStyle,
+} from './menuTokens';
 
 interface ConnectionMenuProps {
   x: number;
@@ -100,67 +108,22 @@ export const ConnectionMenu: React.FC<ConnectionMenuProps> = memo(function Conne
   );
 });
 
-const menuStyle: React.CSSProperties = {
-  position: 'fixed',
-  zIndex: 1200,
-  width: 224,
-  boxSizing: 'border-box',
-  background: 'linear-gradient(155deg, rgba(28,28,29,0.985), rgba(23,25,28,0.985))',
-  border: '1px solid rgba(255,255,255,0.12)',
-  borderRadius: 16,
-  padding: '8px 10px 10px',
-  backdropFilter: 'blur(18px)',
-  boxShadow: '0 18px 48px rgba(0,0,0,0.52)',
-};
+const menuStyle: React.CSSProperties = buildMenuPanelStyle();
 
-const headerStyle: React.CSSProperties = {
-  fontSize: 10,
-  fontWeight: 700,
-  color: 'rgba(255,255,255,0.34)',
-  padding: '6px 0 4px',
-  userSelect: 'none',
-};
+const headerStyle: React.CSSProperties = MENU_SECTION_LABEL_STYLE;
 
 const menuItemStyle = (active: boolean, disabled: boolean): React.CSSProperties => ({
-  display: 'flex',
-  alignItems: 'center',
-  gap: 7,
-  width: '100%',
-  minHeight: 38,
-  padding: '5px 6px',
-  background: active ? 'rgba(255,255,255,0.088)' : 'transparent',
-  border: 'none',
-  color: disabled ? 'rgba(255,255,255,0.56)' : '#f8fafc',
-  cursor: disabled ? 'default' : 'pointer',
-  textAlign: 'left',
-  borderRadius: 10,
+  ...buildMenuItemStyle(active, disabled),
   transition: 'background 140ms ease',
 });
 
-const iconBoxStyle = (active: boolean): React.CSSProperties => ({
-  width: 30,
-  height: 30,
-  borderRadius: 9,
-  background: active ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.055)',
-  color: '#f4f4f5',
-  display: 'grid',
-  placeItems: 'center',
-  flexShrink: 0,
-});
+const iconBoxStyle = (active: boolean): React.CSSProperties => buildMenuItemIconStyle(active);
 
-const labelStyle: React.CSSProperties = {
-  color: '#f8fafc',
-  fontSize: 12,
-  fontWeight: 700,
-  lineHeight: 1.1,
-};
+const labelStyle: React.CSSProperties = MENU_ITEM_LABEL_STYLE;
 
 const descStyle: React.CSSProperties = {
-  fontSize: 9,
-  color: 'rgba(255,255,255,0.4)',
-  fontWeight: 500,
+  ...MENU_ITEM_DESC_STYLE,
   marginTop: 2,
-  lineHeight: 1.25,
 };
 
 const emptyStyle: React.CSSProperties = {

@@ -381,3 +381,15 @@ Completed in current local iteration:
 Validation completed:
 
 - `npm run build`
+
+### Latest Menu Consistency Update
+
+Completed in current local iteration:
+
+- unified the add-node flyout, user menu, pane quick-add menu, and connection menu onto one shared menu token set
+- aligned menu width, radius, padding, item height, icon box sizing, title font size, and description font size to the same baseline
+- moved the user menu onto the same left/right and bottom-line anchoring model as the add-node menu so the whole menu system reads as one family
+
+Validation completed:
+
+- `npm run build`
