@@ -33,9 +33,14 @@ import { ConnectionMenu } from './ConnectionMenu';
 import { FlowContextMenu } from './FlowContextMenu';
 import { FlowLeftAddPanel } from './FlowLeftAddPanel';
 import type { FlowNodeData } from '../types';
-import { fitMediaNodeToShortSide } from '../utils/nodeSizing';
+import { FLOW_NODE_DEFAULT_SIZES, fitMediaNodeToShortSide } from '../utils/nodeSizing';
 import { canConnectFlowNodes } from '../rules/connectionRules';
-import { prepareLocalImageNodeData, prepareUploadedImageNodeData } from '../utils/localImageUpload';
+import {
+  createImmediateLocalImageNodeData,
+  createLocalPreviewObjectUrl,
+  measureLocalImageNodeData,
+  uploadLocalImageAndBuildAssetNodeData,
+} from '../utils/localImageUpload';
 
 const CANVAS_MIN_ZOOM = 0.18;
 const CANVAS_MAX_ZOOM = 2.2;
@@ -113,17 +118,6 @@ const hasImageTransfer = (dataTransfer: DataTransfer | null) => {
   if (Array.from(dataTransfer.files || []).some(isImageFile)) return true;
   return Array.from(dataTransfer.types || []).some((type) => ['Files', 'text/html', 'text/uri-list'].includes(type));
 };
-
-const getImportedImageSize = (url: string) =>
-  new Promise<{ naturalWidth: number; naturalHeight: number }>((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve({
-      naturalWidth: img.naturalWidth || img.width || 1,
-      naturalHeight: img.naturalHeight || img.height || 1,
-    });
-    img.onerror = reject;
-    img.src = url;
-  });
 
 const titleFromFileName = (name: string, fallback = '图片') => {
   const trimmed = name.trim();
@@ -397,47 +391,36 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled }) =>
       const gap = 32;
       const cols = Math.ceil(Math.sqrt(sources.length));
       const rows = Math.ceil(sources.length / cols);
-      const fallbackSize = fitMediaNodeToShortSide(1024, 1024);
-      const measured = await Promise.all(
-        sources.map(async (source) => {
-          try {
-            const natural = await getImportedImageSize(source.url);
-            const displaySize = fitMediaNodeToShortSide(natural.naturalWidth, natural.naturalHeight);
-            return { displaySize, natural };
-          } catch {
-            return {
-              displaySize: fallbackSize,
-              natural: { naturalWidth: fallbackSize.width, naturalHeight: fallbackSize.height },
-            };
-          }
-        }),
-      );
-      const cellWidth = Math.max(...measured.map((item) => item.displaySize.width));
-      const cellHeight = Math.max(...measured.map((item) => item.displaySize.height));
+      const fallbackSize = FLOW_NODE_DEFAULT_SIZES.image;
+      const cellWidth = fallbackSize.width;
+      const cellHeight = fallbackSize.height;
       const startX = center.x - (cols * cellWidth + (cols - 1) * gap) / 2;
       const startY = center.y - (rows * cellHeight + (rows - 1) * gap) / 2;
 
       sources.forEach((source, index) => {
-        const metrics = measured[index];
-        if (!metrics) return;
         const col = index % cols;
         const row = Math.floor(index / cols);
-        const x = startX + col * (cellWidth + gap) + Math.max(0, (cellWidth - metrics.displaySize.width) / 2);
-        const y = startY + row * (cellHeight + gap) + Math.max(0, (cellHeight - metrics.displaySize.height) / 2);
+        const x = startX + col * (cellWidth + gap);
+        const y = startY + row * (cellHeight + gap);
+        const immediate = source.file
+          ? createImmediateLocalImageNodeData({
+              file: source.file,
+              objectUrl: source.url,
+              source: 'canvas-upload',
+              title: source.title || '图片',
+            }).nodeData
+          : null;
 
         const createdNode = addNode(
           'image',
           { x, y },
           source.file
-            ? {
+            ? immediate || {
                 title: source.title || '图片',
                 thumbnailUrl: source.url,
                 originalImageUrl: source.originalImageUrl || source.url,
-                width: metrics.displaySize.width,
-                height: metrics.displaySize.height,
-                naturalWidth: metrics.natural.naturalWidth,
-                naturalHeight: metrics.natural.naturalHeight,
-                aspectRatio: metrics.natural.naturalWidth / metrics.natural.naturalHeight,
+                width: fallbackSize.width,
+                height: fallbackSize.height,
                 editHistory: [],
                 imageFolderIds: [],
                 status: 'running',
@@ -447,11 +430,8 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled }) =>
                 title: source.title || '图片',
                 thumbnailUrl: source.url,
                 originalImageUrl: source.originalImageUrl || source.url,
-                width: metrics.displaySize.width,
-                height: metrics.displaySize.height,
-                naturalWidth: metrics.natural.naturalWidth,
-                naturalHeight: metrics.natural.naturalHeight,
-                aspectRatio: metrics.natural.naturalWidth / metrics.natural.naturalHeight,
+                width: fallbackSize.width,
+                height: fallbackSize.height,
                 editHistory: [],
                 imageFolderIds: [],
                 status: 'success',
@@ -469,39 +449,60 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled }) =>
         if (!source.file) return;
 
         void (async () => {
-          let revokeSourceUrlOnFinish = false;
-          try {
-            const local = await prepareLocalImageNodeData({
-              file: source.file!,
-              projectId: backendProjectId,
-              source: 'canvas-upload',
-              title: source.title || '图片',
-            });
-            useFlowCanvasStore.getState().updateNodeData(createdNode.id, local.nodeData);
+          let activePreviewUrl = source.url;
+          let uploadSucceeded = false;
+          let measuredNatural: { h: number; w: number } | null = null;
 
-            const uploaded = await prepareUploadedImageNodeData({
+          void (async () => {
+            try {
+              const measured = await measureLocalImageNodeData(source.url);
+              measuredNatural =
+                typeof measured.naturalWidth === 'number' && typeof measured.naturalHeight === 'number'
+                  ? { w: measured.naturalWidth, h: measured.naturalHeight }
+                  : null;
+              useFlowCanvasStore.getState().updateNodeData(createdNode.id, measured);
+            } catch {
+              // Keep immediate preview.
+            }
+          })();
+
+          void (async () => {
+            try {
+              const previewUrl = await createLocalPreviewObjectUrl(source.file!);
+              if (previewUrl && !uploadSucceeded) {
+                activePreviewUrl = previewUrl;
+                useFlowCanvasStore.getState().updateNodeData(createdNode.id, {
+                  originalImageUrl: previewUrl,
+                  thumbnailUrl: previewUrl,
+                });
+              }
+            } catch {
+              // Keep source blob preview.
+            }
+          })();
+
+          try {
+            const uploaded = await uploadLocalImageAndBuildAssetNodeData({
               file: source.file!,
+              natural: measuredNatural,
               projectId: backendProjectId,
               source: 'canvas-upload',
               title: source.title || '图片',
             });
+            uploadSucceeded = true;
             useFlowCanvasStore.getState().updateNodeData(createdNode.id, {
               ...uploaded.nodeData,
               status: 'success',
               generationStatus: 'done',
             });
-            revokeSourceUrlOnFinish = true;
-            URL.revokeObjectURL(local.localObjectUrl);
+            if (source.url.startsWith('blob:')) URL.revokeObjectURL(source.url);
+            if (activePreviewUrl !== source.url) URL.revokeObjectURL(activePreviewUrl);
           } catch (error) {
             useFlowCanvasStore.getState().updateNodeData(createdNode.id, {
               errorMessage: error instanceof Error ? error.message : '图片上传失败',
               generationStatus: 'error',
               status: 'error',
             });
-          } finally {
-            if (revokeSourceUrlOnFinish && source.url.startsWith('blob:')) {
-              URL.revokeObjectURL(source.url);
-            }
           }
         })();
       });

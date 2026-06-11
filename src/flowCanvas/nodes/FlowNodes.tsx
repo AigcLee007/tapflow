@@ -103,7 +103,12 @@ import { getAssetDownloadUrl, getAssetVariantUrl } from '../../assets/assetApi';
 import { listRuntimeRoutes, type V2RuntimeRouteItem } from '../../services/v2AiRoutesApi';
 import { listAiModelCatalog, listAiModelRoutes, type AiModelCatalogItem } from '../../services/v2AiModelCatalogApi';
 import { buildAssetBackedNodeData } from '../utils/assetNodeData';
-import { prepareLocalImageNodeData, prepareUploadedImageNodeData } from '../utils/localImageUpload';
+import {
+  createImmediateLocalImageNodeData,
+  createLocalPreviewObjectUrl,
+  measureLocalImageNodeData,
+  uploadLocalImageAndBuildAssetNodeData,
+} from '../utils/localImageUpload';
 import { persistDerivedImageAsset, type DerivedImageSourceType } from '../utils/persistDerivedImageAsset';
 import { mapImageRuntimeRouteOptions, type RuntimeRouteOption } from '../utils/runtimeRouteOptions';
 import {
@@ -4584,42 +4589,78 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     fileInputRef.current?.click();
   };
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const input = e.target;
+    const title = file.name.replace(/\.[^.]+$/, '') || d.title;
+    const localObjectUrl = URL.createObjectURL(file);
+    let activePreviewUrl = localObjectUrl;
+    let uploadSucceeded = false;
+    let measuredNatural: { h: number; w: number } | null = null;
 
-    try {
-      const local = await prepareLocalImageNodeData({
-        file,
-        projectId: backendProjectId,
-        source: 'node-upload',
-        title: file.name.replace(/\.[^.]+$/, '') || d.title,
-      });
-      updateNodeData(id, local.nodeData);
+    const immediate = createImmediateLocalImageNodeData({
+      file,
+      objectUrl: localObjectUrl,
+      source: 'node-upload',
+      title,
+    });
+    updateNodeData(id, immediate.nodeData);
+    input.value = '';
 
-      const uploaded = await prepareUploadedImageNodeData({
-        file,
-        projectId: backendProjectId,
-        source: 'node-upload',
-        title: file.name.replace(/\.[^.]+$/, '') || d.title,
-      });
-      updateNodeData(id, {
-        ...uploaded.nodeData,
-        status: 'success',
-        generationStatus: 'done',
-      });
-      URL.revokeObjectURL(local.localObjectUrl);
-    } catch (error) {
-      updateNodeData(id, {
-        errorMessage: error instanceof Error ? error.message : '图片上传失败',
-        generationStatus: 'error',
-        status: 'error',
-      });
-    } finally {
-      if (e.target) {
-        e.target.value = '';
+    void (async () => {
+      try {
+        const measured = await measureLocalImageNodeData(localObjectUrl);
+        measuredNatural =
+          typeof measured.naturalWidth === 'number' && typeof measured.naturalHeight === 'number'
+            ? { w: measured.naturalWidth, h: measured.naturalHeight }
+            : null;
+        updateNodeData(id, measured);
+      } catch {
+        // Keep the immediate preview visible even if measurement fails.
       }
-    }
+    })();
+
+    void (async () => {
+      try {
+        const previewUrl = await createLocalPreviewObjectUrl(file);
+        if (previewUrl && !uploadSucceeded) {
+          activePreviewUrl = previewUrl;
+          updateNodeData(id, {
+            originalImageUrl: previewUrl,
+            thumbnailUrl: previewUrl,
+          });
+        }
+      } catch {
+        // The original blob preview is already visible.
+      }
+    })();
+
+    void (async () => {
+      try {
+        const uploaded = await uploadLocalImageAndBuildAssetNodeData({
+          file,
+          natural: measuredNatural,
+          projectId: backendProjectId,
+          source: 'node-upload',
+          title,
+        });
+        uploadSucceeded = true;
+        updateNodeData(id, {
+          ...uploaded.nodeData,
+          status: 'success',
+          generationStatus: 'done',
+        });
+        URL.revokeObjectURL(localObjectUrl);
+        if (activePreviewUrl !== localObjectUrl) URL.revokeObjectURL(activePreviewUrl);
+      } catch (error) {
+        updateNodeData(id, {
+          errorMessage: error instanceof Error ? error.message : '图片上传失败',
+          generationStatus: 'error',
+          status: 'error',
+        });
+      }
+    })();
   };
 
   const handleDownload = useCallback(() => {
@@ -6324,38 +6365,79 @@ export const UploadNodeComponent = memo(function UploadNode({
   const { connectionNodeId } = useConnection();
   const isTargeting = !!connectionNodeId && connectionNodeId !== id && hovered;
 
-  const handleUpload = useCallback(async (file: File) => {
-    try {
-      const local = await prepareLocalImageNodeData({
-        file,
-        projectId: backendProjectId,
-        source: 'node-upload',
-        title: file.name.replace(/\.[^.]+$/, '') || d.title || '图片',
-      });
-      const uploaded = await prepareUploadedImageNodeData({
-        file,
-        projectId: backendProjectId,
-        source: 'node-upload',
-        title: file.name.replace(/\.[^.]+$/, '') || d.title || '图片',
-      });
-      replaceNode(id, {
-        type: 'image',
-        data: {
-          ...local.nodeData,
+  const handleUpload = useCallback((file: File) => {
+    const title = file.name.replace(/\.[^.]+$/, '') || d.title || '图片';
+    const localObjectUrl = URL.createObjectURL(file);
+    let activePreviewUrl = localObjectUrl;
+    let uploadSucceeded = false;
+    let measuredNatural: { h: number; w: number } | null = null;
+
+    const immediate = createImmediateLocalImageNodeData({
+      file,
+      objectUrl: localObjectUrl,
+      source: 'node-upload',
+      title,
+    });
+
+    replaceNode(id, {
+      type: 'image',
+      data: immediate.nodeData,
+    });
+
+    void (async () => {
+      try {
+        const measured = await measureLocalImageNodeData(localObjectUrl);
+        measuredNatural =
+          typeof measured.naturalWidth === 'number' && typeof measured.naturalHeight === 'number'
+            ? { w: measured.naturalWidth, h: measured.naturalHeight }
+            : null;
+        useFlowCanvasStore.getState().updateNodeData(id, measured);
+      } catch {
+        // Keep immediate preview.
+      }
+    })();
+
+    void (async () => {
+      try {
+        const previewUrl = await createLocalPreviewObjectUrl(file);
+        if (previewUrl && !uploadSucceeded) {
+          activePreviewUrl = previewUrl;
+          useFlowCanvasStore.getState().updateNodeData(id, {
+            originalImageUrl: previewUrl,
+            thumbnailUrl: previewUrl,
+          });
+        }
+      } catch {
+        // Keep original blob preview.
+      }
+    })();
+
+    void (async () => {
+      try {
+        const uploaded = await uploadLocalImageAndBuildAssetNodeData({
+          file,
+          natural: measuredNatural,
+          projectId: backendProjectId,
+          source: 'node-upload',
+          title,
+        });
+        uploadSucceeded = true;
+        useFlowCanvasStore.getState().updateNodeData(id, {
           ...uploaded.nodeData,
           status: 'success',
           generationStatus: 'done',
-        },
-      });
-      URL.revokeObjectURL(local.localObjectUrl);
-    } catch (error) {
-      updateNodeData(id, {
-        errorMessage: error instanceof Error ? error.message : '图片上传失败',
-        generationStatus: 'error',
-        status: 'error',
-      });
-    }
-  }, [backendProjectId, d.title, id, replaceNode, updateNodeData]);
+        });
+        URL.revokeObjectURL(localObjectUrl);
+        if (activePreviewUrl !== localObjectUrl) URL.revokeObjectURL(activePreviewUrl);
+      } catch (error) {
+        useFlowCanvasStore.getState().updateNodeData(id, {
+          errorMessage: error instanceof Error ? error.message : '图片上传失败',
+          generationStatus: 'error',
+          status: 'error',
+        });
+      }
+    })();
+  }, [backendProjectId, d.title, id, replaceNode]);
 
   const handleFileChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];

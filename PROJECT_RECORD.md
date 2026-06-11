@@ -58,6 +58,8 @@ As of 2026-06-11:
 - `/projects` and `/assets` loading experience improved and validated
 - production/staging Docker image base Node version upgraded from 18 to 22
 - staging runtime confirmed on Node `v22.22.3` for both API and worker
+- local image upload smoothness root cause identified: upload entry points still wait for image decode/measurement before first canvas paint
+- upload smooth preview execution plan added at `docs/superpowers/plans/2026-06-11-upload-smooth-preview-pipeline.md`
 
 ## Recent Important Commits
 
@@ -69,6 +71,24 @@ As of 2026-06-11:
 - `0b17ff8` refine tapnow menu alignment and node labels
 - `339452a` fix: restore upload node handle runtime style
 - `58f9d0f` refine tapnow menu density and node labels
+
+## 2026-06-11 - Upload Smooth Preview Pipeline Plan
+
+- Root cause identified: image node upload, upload node upload, canvas drag upload, and canvas paste upload still wait for local image decode/measurement before the first visible canvas update.
+- Current implementation also repeats local image preparation in upload hydration, which can decode the same large file more than once.
+- Execution plan added: `docs/superpowers/plans/2026-06-11-upload-smooth-preview-pipeline.md`.
+- Target behavior: immediate local canvas preview, async local lightweight preview, background original upload, and uploaded asset `thumb`/`preview` variants for fast refresh and `/assets` thumbnails.
+
+## 2026-06-11 - Upload Smooth Preview Pipeline Execution
+
+- Frontend upload entry points now use a shared immediate-preview pipeline: image node upload, upload node upload, drag upload, and paste upload all render a local image node before measurement or network upload.
+- Local upload helpers were split into synchronous immediate node hydration, async local preview generation, async size measurement, and upload-only asset hydration so the first paint no longer waits on image decode.
+- API fallback upload path now persists uploaded image `thumb` and `preview` variants when valid image bytes are available, aligning refreshed canvas rendering with the fast preview path already used for generated assets.
+- Fresh validation completed:
+  - `npm run test -- src/flowCanvas/utils/localImageUpload.test.ts src/flowCanvas/store/flowCanvasStore.test.ts src/assets/assetApi.test.ts`
+  - `npm run build`
+  - `npm run build --workspace @aigc-flow/api`
+- Database-gated API asset tests are still environment-gated locally; `npm run test --workspace @aigc-flow/api -- test/assets.test.ts` returned skipped in the current environment rather than failing.
 
 ## Common Staging Commands
 

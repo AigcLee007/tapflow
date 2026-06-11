@@ -12,6 +12,10 @@ import { hasDatabaseEnv, withDatabase } from "../../../packages/db/test/helpers.
 
 const originalDatabaseUrl = process.env.DATABASE_URL;
 const describeWithDatabase = hasDatabaseEnv() ? describe : describe.skip;
+const SMALL_PNG_BUFFER = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9sotk6sAAAAASUVORK5CYII=",
+  "base64",
+);
 
 const testEnv: ApiEnv = {
   accessTokenTtlSeconds: 60 * 15,
@@ -731,6 +735,80 @@ describeWithDatabase("assets v2", () => {
 
         expect(proxied.statusCode).toBe(204);
         expect(storageProvider.objects.get(`test-bucket/${createdBody.asset.objectKey}`)?.contentLength).toBe(payload.length);
+
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("upload-bytes creates preview variants for valid uploaded images", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({
+          connectionString: await createAppDatabaseUrl(),
+        });
+        const storageProvider = new MemoryStorageProvider();
+        const api = buildTestApp(appPool, storageProvider);
+
+        const owner = await registerOwner(api, "variant-upload-owner@example.com", "Variant Upload Owner");
+
+        const created = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "POST",
+          payload: {
+            kind: "image",
+            mimeType: "image/png",
+            originalFilename: "variant-upload.png",
+            sizeBytes: SMALL_PNG_BUFFER.length,
+          },
+          url: "/api/v2/assets/presigned-upload",
+        });
+        expect(created.statusCode).toBe(201);
+        const createdBody = created.json();
+
+        const proxied = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+            "content-type": "application/octet-stream",
+            "x-asset-upload-content-type": "image/png",
+          },
+          method: "POST",
+          payload: SMALL_PNG_BUFFER,
+          url: `/api/v2/assets/${createdBody.asset.id}/upload-bytes`,
+        });
+        expect(proxied.statusCode).toBe(204);
+
+        const complete = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "POST",
+          payload: {},
+          url: `/api/v2/assets/${createdBody.asset.id}/complete-upload`,
+        });
+        expect(complete.statusCode).toBe(200);
+
+        const previewResponse = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "GET",
+          url: `/api/v2/assets/${createdBody.asset.id}/download-url?variantKey=preview`,
+        });
+
+        expect(previewResponse.statusCode).toBe(200);
+        expect(previewResponse.json().variantKey).toBe("preview");
+        expect(previewResponse.json().url).toContain("preview.webp");
 
         await api.close();
       } finally {

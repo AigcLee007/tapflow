@@ -7,6 +7,7 @@ import {
   type StorageProvider,
 } from "@aigc-flow/storage";
 import type { Pool, PoolClient } from "pg";
+import sharp from "sharp";
 
 import type {
   AssetListQuery,
@@ -151,6 +152,16 @@ export type AssetFolderView = {
   updatedAt: string;
 };
 
+type GeneratedUploadVariant = {
+  body: Buffer;
+  height: number | null;
+  mimeType: "image/webp";
+  variantKey: "thumb" | "preview";
+  width: number | null;
+};
+
+const UPLOAD_IMAGE_MIME_RE = /^image\/(png|jpe?g|webp)$/i;
+
 export class AssetsApiError extends Error {
   readonly code: string;
   readonly statusCode: number;
@@ -229,6 +240,50 @@ function mapFolder(row: AssetFolderRecord): AssetFolderView {
     tenantId: row.tenant_id,
     updatedAt: row.updated_at,
   };
+}
+
+async function buildUploadWebpVariant(
+  body: Buffer,
+  variantKey: "thumb" | "preview",
+  size: number,
+  quality: number,
+): Promise<GeneratedUploadVariant> {
+  const output = await sharp(body, { failOn: "none" })
+    .rotate()
+    .resize({
+      fit: "inside",
+      height: size,
+      width: size,
+      withoutEnlargement: true,
+    })
+    .webp({ effort: 4, quality })
+    .toBuffer({ resolveWithObject: true });
+
+  return {
+    body: output.data,
+    height: output.info.height ?? null,
+    mimeType: "image/webp",
+    variantKey,
+    width: output.info.width ?? null,
+  };
+}
+
+async function createUploadImageVariants(input: {
+  body: Buffer;
+  mimeType: string;
+}): Promise<GeneratedUploadVariant[]> {
+  if (!UPLOAD_IMAGE_MIME_RE.test(input.mimeType)) return [];
+
+  try {
+    const [thumb, preview] = await Promise.all([
+      buildUploadWebpVariant(input.body, "thumb", 320, 72),
+      buildUploadWebpVariant(input.body, "preview", 1024, 78),
+    ]);
+
+    return [thumb, preview];
+  } catch {
+    return [];
+  }
 }
 
 function buildDownloadFilename(asset: AssetForStorage): string {
@@ -653,6 +708,15 @@ export class AssetsService {
         contentType: input.contentType?.trim() || asset.mime_type,
         key: asset.object_key,
       });
+
+      if (Buffer.isBuffer(input.body)) {
+        await this.persistUploadedImageVariants(
+          client,
+          asset,
+          input.body,
+          input.contentType?.trim() || asset.mime_type,
+        );
+      }
 
       return { ok: true as const };
     }, this.pool);
@@ -1327,5 +1391,82 @@ export class AssetsService {
     }
 
     return byAssetId;
+  }
+
+  private async persistUploadedImageVariants(
+    client: PoolClient,
+    asset: AssetRecord,
+    body: Buffer,
+    mimeType: string,
+  ): Promise<void> {
+    const variants = await createUploadImageVariants({ body, mimeType });
+    for (const variant of variants) {
+      const variantObjectKey = buildAssetObjectKey({
+        assetId: asset.id,
+        filename: `${variant.variantKey}.webp`,
+        tenantId: asset.tenant_id,
+      });
+
+      await this.storageProvider.putObject({
+        body: variant.body,
+        bucket: asset.bucket,
+        contentType: variant.mimeType,
+        key: variantObjectKey,
+        metadata: {
+          assetId: asset.id,
+          source: "user-upload",
+          variantKey: variant.variantKey,
+        },
+      });
+
+      await client.query(
+        `
+          INSERT INTO asset_variants (
+            tenant_id,
+            asset_id,
+            variant_key,
+            bucket,
+            object_key,
+            mime_type,
+            width,
+            height,
+            size_bytes,
+            metadata
+          )
+          VALUES (
+            $1::uuid,
+            $2::uuid,
+            $3,
+            $4,
+            $5,
+            $6,
+            $7::int,
+            $8::int,
+            $9::bigint,
+            $10::jsonb
+          )
+          ON CONFLICT (asset_id, variant_key) DO UPDATE SET
+            bucket = EXCLUDED.bucket,
+            object_key = EXCLUDED.object_key,
+            mime_type = EXCLUDED.mime_type,
+            width = EXCLUDED.width,
+            height = EXCLUDED.height,
+            size_bytes = EXCLUDED.size_bytes,
+            metadata = EXCLUDED.metadata
+        `,
+        [
+          asset.tenant_id,
+          asset.id,
+          variant.variantKey,
+          asset.bucket,
+          variantObjectKey,
+          variant.mimeType,
+          variant.width,
+          variant.height,
+          variant.body.byteLength,
+          JSON.stringify({ source: "user-upload" }),
+        ],
+      );
+    }
   }
 }

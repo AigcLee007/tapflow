@@ -15,7 +15,45 @@ vi.mock('./imageUtils', () => ({
   getImageNaturalSize: (...args: unknown[]) => getImageNaturalSizeMock(...args),
 }));
 
-describe('prepareUploadedImageNodeData', () => {
+describe('createImmediateLocalImageNodeData', () => {
+  beforeEach(() => {
+    uploadAssetFileMock.mockReset();
+    getAssetVariantUrlMock.mockReset();
+    getAssetDownloadUrlMock.mockReset();
+    getImageNaturalSizeMock.mockReset();
+  });
+
+  it('returns blob-backed node data without decoding or uploading', async () => {
+    const { createImmediateLocalImageNodeData } = await import('./localImageUpload');
+    const file = new File(['cat'], 'cat.png', { type: 'image/png' });
+
+    const result = createImmediateLocalImageNodeData({
+      file,
+      objectUrl: 'blob://local-cat',
+      source: 'node-upload',
+      title: 'Cat',
+    });
+
+    expect(result).toMatchObject({
+      localObjectUrl: 'blob://local-cat',
+      nodeData: {
+        generationStatus: 'generating',
+        mimeType: 'image/png',
+        originalImageUrl: 'blob://local-cat',
+        source: 'node-upload',
+        status: 'running',
+        thumbnailUrl: 'blob://local-cat',
+        title: 'Cat',
+      },
+    });
+    expect(result.nodeData.width).toBeGreaterThan(0);
+    expect(result.nodeData.height).toBeGreaterThan(0);
+    expect(getImageNaturalSizeMock).not.toHaveBeenCalled();
+    expect(uploadAssetFileMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('uploadLocalImageAndBuildAssetNodeData', () => {
   beforeEach(() => {
     uploadAssetFileMock.mockReset();
     getAssetVariantUrlMock.mockReset();
@@ -24,7 +62,6 @@ describe('prepareUploadedImageNodeData', () => {
   });
 
   it('hydrates uploaded local images with a usable preview url', async () => {
-    getImageNaturalSizeMock.mockResolvedValue({ h: 768, w: 1024 });
     uploadAssetFileMock.mockResolvedValue({
       durationMs: null,
       height: 768,
@@ -43,11 +80,12 @@ describe('prepareUploadedImageNodeData', () => {
       variantKey: 'preview',
     });
 
-    const { prepareUploadedImageNodeData } = await import('./localImageUpload');
+    const { uploadLocalImageAndBuildAssetNodeData } = await import('./localImageUpload');
     const file = new File(['cat'], 'cat.png', { type: 'image/png' });
 
-    const result = await prepareUploadedImageNodeData({
+    const result = await uploadLocalImageAndBuildAssetNodeData({
       file,
+      natural: { h: 768, w: 1024 },
       projectId: '11111111-1111-1111-1111-111111111111',
       source: 'node-upload',
       title: 'Cat',
@@ -64,11 +102,10 @@ describe('prepareUploadedImageNodeData', () => {
       thumbnailUrl: 'https://cdn.test/asset-1-preview.png',
       title: 'Cat',
     });
-    expect(result.natural).toEqual({ h: 768, w: 1024 });
+    expect(getImageNaturalSizeMock).not.toHaveBeenCalled();
   });
 
   it('falls back to the original download url when preview is unavailable', async () => {
-    getImageNaturalSizeMock.mockResolvedValue({ h: 512, w: 512 });
     uploadAssetFileMock.mockResolvedValue({
       durationMs: null,
       height: 512,
@@ -87,11 +124,12 @@ describe('prepareUploadedImageNodeData', () => {
       url: 'https://cdn.test/asset-2-original.png',
     });
 
-    const { prepareUploadedImageNodeData } = await import('./localImageUpload');
+    const { uploadLocalImageAndBuildAssetNodeData } = await import('./localImageUpload');
     const file = new File(['dog'], 'dog.png', { type: 'image/png' });
 
-    const result = await prepareUploadedImageNodeData({
+    const result = await uploadLocalImageAndBuildAssetNodeData({
       file,
+      natural: { h: 512, w: 512 },
       projectId: null,
       source: 'canvas-upload',
       title: 'Dog',
