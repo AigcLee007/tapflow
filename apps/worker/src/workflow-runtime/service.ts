@@ -120,6 +120,16 @@ type RuntimeFlowRecord = {
   workflow_run_id: string;
 };
 
+type AssetStorageLookup = {
+  bucket: string;
+  durationMs?: number | null;
+  height?: number | null;
+  kind: string;
+  mimeType: string;
+  objectKey: string;
+  width?: number | null;
+};
+
 type NodeExecutionOutcome =
   | {
       usageRecord?: UsageRecordInput;
@@ -184,6 +194,14 @@ type UsageRecordInput = {
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readPositiveInteger(value: unknown): number | null {
+  const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    return null;
+  }
+  return parsed;
 }
 
 function isTerminalStatus(status: string): boolean {
@@ -310,6 +328,96 @@ function extractAssetInputs(upstreamOutputs: Array<Record<string, unknown> | nul
   return assets;
 }
 
+function extractStaticTextFromConfig(config: Record<string, unknown>): string {
+  const candidates = [
+    config.text,
+    config.generationPrompt,
+    config.prompt,
+    config.content,
+    config.value,
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+  return "";
+}
+
+function extractAssetOutputsFromConfig(config: Record<string, unknown>): AssetReferenceInput[] {
+  const assetIds = new Set<string>();
+  const directAssetId = typeof config.assetId === "string" ? config.assetId.trim() : "";
+  if (directAssetId) {
+    assetIds.add(directAssetId);
+  }
+  if (Array.isArray(config.assetIds)) {
+    for (const item of config.assetIds) {
+      if (typeof item === "string" && item.trim()) {
+        assetIds.add(item.trim());
+      }
+    }
+  }
+  if (typeof config.sourceAssetId === "string" && config.sourceAssetId.trim()) {
+    assetIds.add(config.sourceAssetId.trim());
+  }
+
+  return [...assetIds].map((assetId) => ({
+    assetId,
+    durationMs: typeof config.durationMs === "number" ? config.durationMs : null,
+    height:
+      typeof config.naturalHeight === "number"
+        ? config.naturalHeight
+        : typeof config.height === "number"
+          ? config.height
+          : null,
+    kind:
+      typeof config.kind === "string"
+        ? config.kind
+        : typeof config.mimeType === "string" && config.mimeType.startsWith("video/")
+          ? "video"
+          : "image",
+    mimeType: typeof config.mimeType === "string" ? config.mimeType : null,
+    width:
+      typeof config.naturalWidth === "number"
+        ? config.naturalWidth
+        : typeof config.width === "number"
+          ? config.width
+          : null,
+  }));
+}
+
+function buildOutputFromNodeConfig(node: CompiledWorkflowNode | undefined): Record<string, unknown> | null {
+  if (!node) {
+    return null;
+  }
+
+  const staticText = extractStaticTextFromConfig(node.config ?? {});
+  const assets = extractAssetOutputsFromConfig(node.config ?? {});
+  if (!staticText && assets.length === 0) {
+    return null;
+  }
+
+  return {
+    ...(staticText ? { text: staticText } : {}),
+    ...(assets.length > 0 ? { assets } : {}),
+  };
+}
+
+function getDependencyOutputsFromRuntimeGraph(
+  node: Pick<CompiledWorkflowNode, "dependencies">,
+  nodeRuns: Array<Pick<NodeRunRecord, "node_id" | "output_json">>,
+  runtimeFlow: Pick<RuntimeFlowRecord, "compiled_graph_json">,
+): Array<Record<string, unknown> | null> {
+  return node.dependencies.map((dependencyId) => {
+    const dependencyRun = nodeRuns.find((row) => row.node_id === dependencyId);
+    if (dependencyRun?.output_json) {
+      return dependencyRun.output_json;
+    }
+    const dependencyNode = runtimeFlow.compiled_graph_json.nodes.find((candidate) => candidate.id === dependencyId);
+    return buildOutputFromNodeConfig(dependencyNode);
+  });
+}
+
 function extractPromptFromUpstreamOutputs(
   upstreamOutputs: Array<Record<string, unknown> | null>,
   fallbackPrompt: string,
@@ -347,6 +455,10 @@ function buildImageRequest(
   config: Record<string, unknown>,
 ): ImageGenerationRequest {
   const params = isPlainObject(config.params) ? config.params : {};
+  const batchCount = readPositiveInteger(config.batchCount)
+    ?? readPositiveInteger(params.n)
+    ?? readPositiveInteger(config.n);
+  const normalizedParams = batchCount ? { ...params, n: batchCount } : params;
   const metadata = {
     ...(isPlainObject(config.metadata) ? config.metadata : {}),
     aspectRatio:
@@ -369,7 +481,8 @@ function buildImageRequest(
         : typeof params.optimize_chinese_text === "boolean"
           ? params.optimize_chinese_text
           : undefined,
-    params,
+    ...(batchCount ? { n: batchCount } : {}),
+    params: normalizedParams,
   };
   const routeKey = typeof config.routeKey === "string" && config.routeKey.trim()
     ? config.routeKey.trim()
@@ -406,6 +519,7 @@ function buildImageRequest(
 
 export const __workerTestUtils = {
   buildImageRequest,
+  getDependencyOutputs: getDependencyOutputsFromRuntimeGraph,
 };
 
 function buildVideoRequest(
@@ -656,10 +770,7 @@ export class WorkflowNodeExecutionService {
         "node.execute marked node running",
       );
 
-      const upstreamOutputs =
-        getWorkflowRunMode(workflowRun) === "target_node"
-          ? []
-          : this.getDependencyOutputs(currentNode, nodeRuns);
+      const upstreamOutputs = this.getDependencyOutputs(currentNode, nodeRuns, runtimeFlow);
 
       return {
         prepared: {
@@ -1295,6 +1406,7 @@ export class WorkflowNodeExecutionService {
 
     if (node.type === "image.generate") {
       const request = buildImageRequest(upstreamOutputs, node.config ?? {});
+      await this.hydrateInputAssetUrls(workflowRun.tenant_id, request.inputAssets ?? []);
       const providerStartedAt = Date.now();
       logger.info(
         {
@@ -1346,6 +1458,7 @@ export class WorkflowNodeExecutionService {
 
     if (node.type === "video.generate") {
       const request = buildVideoRequest(upstreamOutputs, node.config ?? {});
+      await this.hydrateInputAssetUrls(workflowRun.tenant_id, request.inputAssets ?? []);
       const providerStartedAt = Date.now();
       logger.info(
         {
@@ -1769,11 +1882,106 @@ export class WorkflowNodeExecutionService {
   private getDependencyOutputs(
     node: CompiledWorkflowNode,
     nodeRuns: NodeRunRecord[],
+    runtimeFlow: RuntimeFlowRecord,
   ): Array<Record<string, unknown> | null> {
-    return node.dependencies.map((dependencyId) => {
-      const dependencyRun = nodeRuns.find((row) => row.node_id === dependencyId);
-      return dependencyRun?.output_json ?? null;
+    return getDependencyOutputsFromRuntimeGraph(node, nodeRuns, runtimeFlow);
+  }
+
+  private async hydrateInputAssetUrls(
+    tenantId: string,
+    inputAssets: AssetReferenceInput[],
+  ): Promise<void> {
+    const missingUrlAssets = inputAssets.filter((asset) => {
+      const metadata = isPlainObject(asset.metadata) ? asset.metadata : {};
+      return asset.assetId && !metadata.url && !metadata.signedUrl && !metadata.publicUrl;
     });
+    if (missingUrlAssets.length === 0) {
+      return;
+    }
+
+    const assetIds = Array.from(new Set(missingUrlAssets.map((asset) => asset.assetId)));
+    const lookups = await withTenantTransaction(
+      { tenantId, userId: null },
+      async (client) => this.loadAssetStorageLookups(client, tenantId, assetIds),
+      this.pool,
+    );
+
+    for (const asset of missingUrlAssets) {
+      const lookup = lookups.get(asset.assetId);
+      if (!lookup) {
+        continue;
+      }
+      const signed = await this.assetStore.storageProvider.createPresignedGetUrl({
+        bucket: lookup.bucket,
+        expiresInSeconds: 15 * 60,
+        key: lookup.objectKey,
+        responseContentType: lookup.mimeType,
+      });
+      asset.kind = asset.kind ?? lookup.kind;
+      asset.mimeType = asset.mimeType ?? lookup.mimeType;
+      asset.width = asset.width ?? lookup.width ?? null;
+      asset.height = asset.height ?? lookup.height ?? null;
+      asset.durationMs = asset.durationMs ?? lookup.durationMs ?? null;
+      asset.metadata = {
+        ...(isPlainObject(asset.metadata) ? asset.metadata : {}),
+        bucket: lookup.bucket,
+        objectKey: lookup.objectKey,
+        signedUrl: signed.url,
+        url: signed.url,
+      };
+    }
+  }
+
+  private async loadAssetStorageLookups(
+    client: PoolClient,
+    tenantId: string,
+    assetIds: string[],
+  ): Promise<Map<string, AssetStorageLookup>> {
+    if (assetIds.length === 0) {
+      return new Map();
+    }
+
+    const result = await client.query<{
+      bucket: string;
+      duration_ms: number | null;
+      height: number | null;
+      id: string;
+      kind: string;
+      mime_type: string;
+      object_key: string;
+      width: number | null;
+    }>(
+      `
+        SELECT
+          id::text AS id,
+          kind,
+          mime_type,
+          bucket,
+          object_key,
+          width,
+          height,
+          duration_ms
+        FROM assets
+        WHERE tenant_id = $1::uuid
+          AND id = ANY($2::uuid[])
+          AND deleted_at IS NULL
+          AND status = 'available'
+      `,
+      [tenantId, assetIds],
+    );
+
+    return new Map(result.rows.map((row) => [
+      row.id,
+      {
+        bucket: row.bucket,
+        durationMs: row.duration_ms,
+        height: row.height,
+        kind: row.kind,
+        mimeType: row.mime_type,
+        objectKey: row.object_key,
+        width: row.width,
+      },
+    ]));
   }
 
   private async getRuntimeFlow(

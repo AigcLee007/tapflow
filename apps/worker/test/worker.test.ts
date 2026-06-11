@@ -89,8 +89,16 @@ class MemoryStorageProvider implements StorageProvider {
     throw new Error("not used in worker tests");
   }
 
-  async createPresignedGetUrl() {
-    throw new Error("not used in worker tests");
+  async createPresignedGetUrl(input: {
+    bucket: string;
+    key: string;
+  }) {
+    return {
+      expiresAt: new Date(Date.now() + 900_000).toISOString(),
+      headers: {},
+      method: "GET" as const,
+      url: `https://storage.test/${input.bucket}/${input.key}`,
+    };
   }
 }
 
@@ -1188,6 +1196,190 @@ describeWithDatabase("workflow node execution", () => {
         expect(billing).toEqual({
           ledgerEntries: 1,
           usageEvents: 1,
+        });
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("target image node receives static text prompt, image asset reference, and batch count", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({
+          connectionString: await createAppDatabaseUrl(),
+        });
+
+        const referenceAssetId = "00000000-0000-4000-8000-000000000001";
+        const seeded = await seedWorkflowRuntime(appPool, {
+          inputNodeStatus: "succeeded",
+          middleNodeConfig: {
+            batchCount: 2,
+            routeKey: "default-image",
+          },
+          middleNodeStatus: "runnable",
+          middleNodeType: "image.generate",
+        });
+
+        await withTenantTransaction(
+          { tenantId: seeded.tenantId, userId: seeded.userId },
+          async (client) => {
+            await client.query(
+              `
+                INSERT INTO assets (
+                  id,
+                  tenant_id,
+                  project_id,
+                  owner_user_id,
+                  kind,
+                  mime_type,
+                  bucket,
+                  object_key,
+                  original_filename,
+                  status,
+                  source
+                )
+                VALUES (
+                  $1::uuid,
+                  $2::uuid,
+                  $3::uuid,
+                  $4::uuid,
+                  'image',
+                  'image/png',
+                  'test-bucket',
+                  'tenants/reference/cat.png',
+                  'cat.png',
+                  'available',
+                  'upload'
+                )
+              `,
+              [referenceAssetId, seeded.tenantId, seeded.projectId, seeded.userId],
+            );
+            await client.query(
+              `
+                UPDATE flow_versions
+                SET compiled_graph_json = $2::jsonb
+                WHERE id = $1::uuid
+              `,
+              [
+                seeded.flowVersionId,
+                JSON.stringify({
+                  edges: [
+                    { source: "prompt", target: "image" },
+                    { source: "reference", target: "image" },
+                  ],
+                  entryNodeIds: ["prompt", "reference"],
+                  nodes: [
+                    {
+                      config: { text: "一只黑色小猫" },
+                      dependencies: [],
+                      dependents: ["image"],
+                      id: "prompt",
+                      type: "text.static",
+                    },
+                    {
+                      config: {
+                        assetId: referenceAssetId,
+                        mimeType: "image/png",
+                      },
+                      dependencies: [],
+                      dependents: ["image"],
+                      id: "reference",
+                      type: "image.asset",
+                    },
+                    {
+                      config: {
+                        batchCount: 2,
+                        routeKey: "default-image",
+                      },
+                      dependencies: ["prompt", "reference"],
+                      dependents: [],
+                      id: "image",
+                      type: "image.generate",
+                    },
+                  ],
+                  outputNodeIds: ["image"],
+                  schemaVersion: "v2",
+                }),
+              ],
+            );
+          },
+          appPool,
+        );
+
+        const generateImage = vi.fn(async () => ({
+          modelKey: "image-model",
+          outputs: [
+            {
+              base64: Buffer.from("fake image bytes").toString("base64"),
+              mimeType: "image/png",
+              width: 512,
+            },
+          ],
+          providerKey: "mock-provider",
+          providerRequest: {},
+          providerResponse: { accepted: true },
+          status: "succeeded" as const,
+          usage: {
+            inputTokens: 5,
+            outputTokens: 1,
+            totalTokens: 6,
+          },
+        }));
+        const service = createWorkflowService({
+          mediaGenerationRuntime: {
+            generateImage,
+            async generateVideo() {
+              throw new Error("not used");
+            },
+            async pollTask() {
+              throw new Error("not used");
+            },
+          },
+          nodeQueue: createFakeNodeExecuteQueue(),
+          pollQueue: createFakeProviderPollQueue(),
+          pool: appPool,
+          storageProvider: new MemoryStorageProvider(),
+        });
+
+        await processNodeExecuteJob(
+          {
+            data: {
+              nodeRunId: seeded.middleNodeRunId,
+              tenantId: seeded.tenantId,
+              traceId: "trace-target-inputs",
+              workflowRunId: seeded.workflowRunId,
+            },
+            id: "job-target-inputs",
+            queueName: QUEUE_NAMES.nodeExecute,
+          } as never,
+          createTestLogger(),
+          { executionService: service },
+        );
+
+        expect(generateImage).toHaveBeenCalledTimes(1);
+        expect(generateImage.mock.calls[0]?.[1]).toMatchObject({
+          inputAssets: [
+            {
+              assetId: referenceAssetId,
+              metadata: {
+                signedUrl: "https://storage.test/test-bucket/tenants/reference/cat.png",
+              },
+            },
+          ],
+          metadata: {
+            n: 2,
+            params: expect.objectContaining({
+              n: 2,
+            }),
+          },
+          prompt: "一只黑色小猫",
         });
       } finally {
         await appPool.end();

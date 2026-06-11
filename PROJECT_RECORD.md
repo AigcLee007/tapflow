@@ -1,6 +1,6 @@
 # Project Record
 
-Last updated: 2026-06-11
+Last updated: 2026-06-12
 Maintainers: project team + Codex sessions
 
 ## Purpose
@@ -49,7 +49,7 @@ Current deployment baseline:
 
 ## Current Key Status Snapshot
 
-As of 2026-06-11:
+As of 2026-06-12:
 
 - TapNow-style visual alignment work has been iterated several rounds on canvas layout, add-node menus, user menus, and node title density
 - media asset preview optimization is implemented
@@ -60,9 +60,11 @@ As of 2026-06-11:
 - staging runtime confirmed on Node `v22.22.3` for both API and worker
 - local image upload smoothness root cause identified: upload entry points still wait for image decode/measurement before first canvas paint
 - upload smooth preview execution plan added at `docs/superpowers/plans/2026-06-11-upload-smooth-preview-pipeline.md`
+- image generation target-node input propagation fixed: upstream text nodes, image/upload asset nodes, and `batchCount` now reach the worker/provider request instead of remaining visual-only canvas state
 
 ## Recent Important Commits
 
+- pending: fix image generation input propagation
 - `b24b42f` chore: upgrade production image to node 22
 - `767ba4a` fix: make asset variant backfill run in production
 - `ebed8f2` feat: add preview-backed asset pipeline
@@ -89,6 +91,21 @@ As of 2026-06-11:
   - `npm run build`
   - `npm run build --workspace @aigc-flow/api`
 - Database-gated API asset tests are still environment-gated locally; `npm run test --workspace @aigc-flow/api -- test/assets.test.ts` returned skipped in the current environment rather than failing.
+
+## 2026-06-12 - Image Generation Input Propagation Fix
+
+- Root cause: target-node workflow runs were started before the latest remote draft was guaranteed to be saved, and the worker set target-node `upstreamOutputs` to an empty array. This meant connected text/image nodes could look correct on canvas but not reach the provider request.
+- Frontend fix: added a remote draft save barrier before `runBackendWorkflow()` creates the backend run, so newly typed prompts, links, references, and batch count are flushed to the server draft first.
+- Worker fix: target-node runs now resolve dependency outputs from existing node runs or from compiled upstream node config. Static text nodes contribute `text`; asset-backed image/upload nodes contribute `assets`.
+- Provider input fix: upstream asset references are hydrated with signed object-storage URLs before media generation so image models can actually read the reference image.
+- Batch fix: image node `batchCount` is normalized into provider-facing `metadata.n` and `metadata.params.n`, so selecting `2x` is sent as two requested outputs.
+- Validation:
+  - `npm run test --workspace @aigc-flow/worker -- workflow-runtime-image-request.test.ts`
+  - `npm test -- src/flowCanvas/runtime/v2WorkflowRunner.test.ts`
+  - `npm run test --workspace @aigc-flow/worker`
+  - `npm run build --workspace @aigc-flow/worker`
+  - `npm run build`
+- Full `npm test` still has unrelated existing failures in legacy migration, ProjectCard/UploadAssetButton text assertions, storage presigned URL expectations, AI Gateway schema examples, and one OpenAI-compatible multipart test. The new worker/runner tests for this fix pass.
 
 ## Common Staging Commands
 

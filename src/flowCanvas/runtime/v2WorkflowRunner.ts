@@ -22,6 +22,7 @@ import type {
   FlowRuntimeAssetRef,
   FlowRuntimeNodeOutput,
 } from '../types';
+import { flushRemoteDraftBeforeRun } from './remoteDraftSaveBarrier';
 
 const RUNNER_ENABLED = String(import.meta.env.VITE_USE_V2_WORKFLOW_RUNNER ?? 'true').toLowerCase() !== 'false';
 
@@ -809,6 +810,8 @@ export async function runBackendWorkflow(options?: {
         runStatus: 'pending',
       }));
     }
+
+    await flushRemoteDraftBeforeRun();
 
     const request: CreateWorkflowRunInput = {
       idempotencyKey: `flow-canvas:${state.backendFlowId}:${options?.targetNodeId ?? 'flow'}:${Date.now()}`,

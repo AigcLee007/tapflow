@@ -22,7 +22,7 @@ export type RemoteFlowSaveStatus =
 
 type RemoteFlowAutosaveState = {
   error: string | null;
-  saveNow: () => void;
+  saveNow: () => Promise<void>;
   status: RemoteFlowSaveStatus;
   updatedAt: string | null;
 };
@@ -234,9 +234,9 @@ export function useRemoteFlowAutosave(input: {
     setError(null);
   }, [clearScheduledSave, input.draft]);
 
-  const saveNow = () => {
+  const saveNow = async () => {
     dirtyAgainRef.current = true;
-    scheduleSave(0);
+    await flushSaveQueue(retryingRef.current ? "retrying" : "syncing");
   };
 
   useEffect(() => {

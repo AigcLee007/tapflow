@@ -7,6 +7,7 @@ import {
   resetCreditPreflightStateForTests,
   runBackendWorkflow,
 } from './v2WorkflowRunner';
+import { registerRemoteDraftSaveBarrier } from './remoteDraftSaveBarrier';
 import { V2HttpError } from '../../services/v2HttpClient';
 
 const createWorkflowRunMock = vi.fn();
@@ -50,6 +51,7 @@ describe('v2WorkflowRunner', () => {
     listRuntimeRoutesMock.mockReset();
     resetCreditPreflightStateForTests();
     disposeBackendWorkflowRunStream();
+    registerRemoteDraftSaveBarrier(null);
 
     getBillingSummaryMock.mockResolvedValue({
       account: {
@@ -203,6 +205,59 @@ describe('v2WorkflowRunner', () => {
         targetNodeId,
       }),
     );
+  });
+
+  test('waits for remote draft save before creating a target-node run', async () => {
+    useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, {
+      routeKey: 'image.default',
+      title: 'Image',
+    });
+    const targetNodeId = useFlowCanvasStore.getState().nodes[0]?.id as string;
+    let resolveSave!: () => void;
+    const savePromise = new Promise<void>((resolve) => {
+      resolveSave = resolve;
+    });
+    const saveBarrier = vi.fn(() => savePromise);
+    registerRemoteDraftSaveBarrier(saveBarrier);
+
+    createWorkflowRunMock.mockResolvedValue({
+      runId: 'run-save-barrier',
+      status: 'pending',
+    });
+    getWorkflowRunMock.mockResolvedValue({
+      nodeRuns: [],
+      workflowRun: {
+        canceledAt: null,
+        createdAt: '2026-05-17T00:00:00.000Z',
+        createdBy: 'user-1',
+        errorJson: null,
+        finishedAt: null,
+        flowId: '11111111-1111-1111-1111-111111111111',
+        flowVersionId: 'version-1',
+        id: 'run-save-barrier',
+        idempotencyKey: null,
+        inputJson: {
+          runMode: 'target_node',
+          targetNodeId,
+        },
+        outputJson: null,
+        startedAt: null,
+        status: 'pending',
+        tenantId: 'tenant-1',
+        updatedAt: '2026-05-17T00:00:00.000Z',
+      },
+    });
+    streamWorkflowRunMock.mockReturnValue({ close: vi.fn() });
+
+    const runPromise = runBackendWorkflow({ runMode: 'target_node', targetNodeId });
+
+    await vi.waitFor(() => expect(saveBarrier).toHaveBeenCalledTimes(1));
+    expect(createWorkflowRunMock).not.toHaveBeenCalled();
+
+    resolveSave();
+    await runPromise;
+
+    expect(createWorkflowRunMock).toHaveBeenCalledTimes(1);
   });
 
   test('target-node runs are tracked per node and starting B does not clear A', async () => {

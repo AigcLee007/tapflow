@@ -6,6 +6,7 @@ import { V2HttpError } from "../services/v2HttpClient";
 import FlowCanvasPage from "./FlowCanvasPage";
 import { useRemoteFlowAutosave, type RemoteFlowSaveStatus } from "./hooks/useRemoteFlowAutosave";
 import { useRemoteFlowProject } from "./hooks/useRemoteFlowProject";
+import { registerRemoteDraftSaveBarrier } from "./runtime/remoteDraftSaveBarrier";
 import { useFlowCanvasStore } from "./store/flowCanvasStore";
 import type { FlowNodeKind } from "./types";
 import { buildAssetBackedNodeData } from "./utils/assetNodeData";
@@ -95,6 +96,8 @@ export function FlowProjectPage() {
     enabled: !projectState.loading && !projectState.error,
     flowId: projectState.flow?.id ?? null,
   });
+
+  useEffect(() => registerRemoteDraftSaveBarrier(autosave.saveNow), [autosave.saveNow]);
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
