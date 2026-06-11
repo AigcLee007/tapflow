@@ -1,5 +1,5 @@
 # Build Stage
-FROM node:18-alpine as builder
+FROM node:22-alpine as builder
 
 WORKDIR /app
 
@@ -30,7 +30,7 @@ RUN npm run build --workspace @aigc-flow/api
 RUN npm run build --workspace @aigc-flow/worker
 
 # Production Stage
-FROM node:18-alpine
+FROM node:22-alpine
 
 WORKDIR /app
 
