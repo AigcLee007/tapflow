@@ -911,6 +911,20 @@ Validation completed:
 
 - `npm run test -- src\workspace\WorkspacePage.test.tsx src\assets\AssetLibraryPage.test.tsx src\assets\useAssetLibrary.test.tsx src\flowCanvas\panels\CanvasAssetPanel.test.tsx`
 
+### Latest Project Management Interaction Stabilization
+
+Completed in current local iteration:
+
+- moved shared rename/delete dialogs into `document.body` portals so project card transforms no longer offset modal placement
+- simplified project card hover behavior and kept project action menus card-local to reduce menu positioning jitter
+- made the project menu `选择` action functional with a visible selected-count chip and selected card/list row styling
+- removed asset management three-dot buttons from the canvas left asset drawer while keeping `/assets` page management menus available
+- added regression coverage for body-level project rename dialogs, project selection, and hidden canvas drawer asset management buttons
+
+Validation completed:
+
+- `npm run test -- src\workspace\WorkspacePage.test.tsx src\assets\AssetLibraryPage.test.tsx src\assets\useAssetLibrary.test.tsx src\flowCanvas\panels\CanvasAssetPanel.test.tsx`
+
 ### Latest Workspace Cover and Asset Library Performance Fix
 
 Completed in current local iteration:

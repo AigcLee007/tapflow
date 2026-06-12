@@ -36,6 +36,7 @@ export function AssetCard({
   onOpen,
   onRename,
   onToggleFavorite,
+  showActions = true,
 }: {
   asset: AssetItem;
   compact?: boolean;
@@ -46,6 +47,7 @@ export function AssetCard({
   onOpen: (asset: AssetItem) => void;
   onRename?: (asset: AssetItem, title: string) => Promise<void>;
   onToggleFavorite?: (asset: AssetItem) => Promise<void>;
+  showActions?: boolean;
 }) {
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [renaming, setRenaming] = React.useState(false);
@@ -170,54 +172,56 @@ export function AssetCard({
           </div>
         )}
       </button>
-      <div className="absolute right-2 top-2">
-        <button
-          aria-label={`管理素材 ${title}`}
-          className="grid h-8 w-8 place-items-center rounded-full bg-black/55 text-white/85 opacity-90 transition hover:bg-black/75 hover:text-white"
-          onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            setMenuOpen((open) => !open);
-            setMoving(false);
-          }}
-          ref={menuButtonRef}
-          type="button"
-        >
-          <MoreHorizontal size={16} />
-        </button>
-        {menuOpen && (
-          <EntityActionMenu
-            anchorRef={menuButtonRef}
-            density={compact ? "compact" : "default"}
-            items={menuItems}
-            onClose={() => {
-              setMenuOpen(false);
+      {showActions && (
+        <div className="absolute right-2 top-2">
+          <button
+            aria-label={`管理素材 ${title}`}
+            className="grid h-8 w-8 place-items-center rounded-full bg-black/55 text-white/85 opacity-90 transition hover:bg-black/75 hover:text-white"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              setMenuOpen((open) => !open);
               setMoving(false);
             }}
-          />
-        )}
-        {menuOpen && moving && (
-          <div className="absolute right-[252px] top-0 z-[90] w-[220px] overflow-hidden rounded-2xl border border-white/10 bg-[#242424] py-2 text-sm font-medium text-slate-100 shadow-[0_22px_60px_rgba(0,0,0,0.5)]">
-            {folders.map((folder) => (
-              <button
-                aria-label={`移动到 ${folder.name}`}
-                className="flex h-10 w-full items-center px-4 text-left hover:bg-white/[0.07]"
-                key={folder.id}
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  void onAddToFolder?.(asset, folder.id);
-                  setMenuOpen(false);
-                  setMoving(false);
-                }}
-                type="button"
-              >
-                {folder.name}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+            ref={menuButtonRef}
+            type="button"
+          >
+            <MoreHorizontal size={16} />
+          </button>
+          {menuOpen && (
+            <EntityActionMenu
+              anchorRef={menuButtonRef}
+              density={compact ? "compact" : "default"}
+              items={menuItems}
+              onClose={() => {
+                setMenuOpen(false);
+                setMoving(false);
+              }}
+            />
+          )}
+          {menuOpen && moving && (
+            <div className="absolute right-[252px] top-0 z-[90] w-[220px] overflow-hidden rounded-2xl border border-white/10 bg-[#242424] py-2 text-sm font-medium text-slate-100 shadow-[0_22px_60px_rgba(0,0,0,0.5)]">
+              {folders.map((folder) => (
+                <button
+                  aria-label={`移动到 ${folder.name}`}
+                  className="flex h-10 w-full items-center px-4 text-left hover:bg-white/[0.07]"
+                  key={folder.id}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    void onAddToFolder?.(asset, folder.id);
+                    setMenuOpen(false);
+                    setMoving(false);
+                  }}
+                  type="button"
+                >
+                  {folder.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       {renaming && (
         <EntityRenameDialog
           defaultValue={title}

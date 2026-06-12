@@ -29,14 +29,18 @@ export function ProjectCard({
   onDelete,
   onOpen,
   onRename,
+  onSelect,
   project,
+  selected,
   viewMode,
 }: {
   compact?: boolean;
   onDelete: (project: WorkspaceProject) => Promise<void>;
   onOpen: (project: WorkspaceProject) => void;
   onRename: (project: WorkspaceProject, name: string) => Promise<void>;
+  onSelect: (project: WorkspaceProject) => void;
   project: WorkspaceProject;
+  selected?: boolean;
   viewMode: "grid" | "list";
 }) {
   const [menuOpen, setMenuOpen] = React.useState(false);
@@ -49,7 +53,6 @@ export function ProjectCard({
 
   const menu = (
     <WorkspaceActionMenu
-      anchorRef={menuButtonRef}
       items={[
         {
           key: "open",
@@ -67,7 +70,14 @@ export function ProjectCard({
             setRenaming(true);
           },
         },
-        { key: "select", label: "选择", onSelect: () => undefined },
+        {
+          key: "select",
+          label: selected ? "取消选择" : "选择",
+          onSelect: () => {
+            setMenuOpen(false);
+            onSelect(project);
+          },
+        },
         { disabled: true, key: "move", label: "移动至...", onSelect: () => undefined, separatorBefore: true },
         { disabled: true, key: "share", label: "分享链接", onSelect: () => undefined },
         { disabled: true, key: "team", label: "移动至团队", onSelect: () => undefined },
@@ -111,7 +121,7 @@ export function ProjectCard({
 
   if (viewMode === "list") {
     return (
-      <div className="relative grid w-full grid-cols-[180px_1.2fr_1fr_1.3fr_1.2fr_76px] items-center border-b border-white/10 py-6 text-left transition hover:bg-white/[0.04]">
+      <div className={`relative grid w-full grid-cols-[180px_1.2fr_1fr_1.3fr_1.2fr_76px] items-center border-b border-white/10 py-6 text-left transition hover:bg-white/[0.04] ${selected ? "bg-cyan-300/[0.06]" : ""}`}>
         <button
           className="contents text-left"
           onClick={() => onOpen(project)}
@@ -152,7 +162,7 @@ export function ProjectCard({
 
   return (
     <article
-      className={`group relative overflow-visible rounded-[20px] border border-white/10 bg-[#171719] text-left transition hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/[0.08] ${
+      className={`group relative overflow-visible rounded-[20px] border ${selected ? "border-cyan-300/60 bg-cyan-300/[0.06]" : "border-white/10 bg-[#171719]"} text-left transition hover:border-white/20 hover:bg-white/[0.08] ${
         compact ? "min-h-[250px]" : "min-h-[286px]"
       }`}
     >

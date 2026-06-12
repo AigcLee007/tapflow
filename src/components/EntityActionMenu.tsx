@@ -151,7 +151,7 @@ export function EntityRenameDialog({
     }
   };
 
-  return (
+  const dialog = (
     <div className="fixed inset-0 z-[1600] grid place-items-center bg-black/60 px-4 backdrop-blur-sm">
       <form className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#1f1f20] p-5 shadow-2xl" onSubmit={submit}>
         <h2 className="text-lg font-semibold text-white">{title}</h2>
@@ -184,6 +184,8 @@ export function EntityRenameDialog({
       </form>
     </div>
   );
+
+  return typeof document !== "undefined" ? createPortal(dialog, document.body) : dialog;
 }
 
 export function EntityConfirmDialog({
@@ -215,7 +217,7 @@ export function EntityConfirmDialog({
     }
   };
 
-  return (
+  const dialog = (
     <div className="fixed inset-0 z-[1600] grid place-items-center bg-black/60 px-4 backdrop-blur-sm">
       <section className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#1f1f20] p-5 shadow-2xl">
         <h2 className="text-lg font-semibold text-white">{title}</h2>
@@ -241,4 +243,6 @@ export function EntityConfirmDialog({
       </section>
     </div>
   );
+
+  return typeof document !== "undefined" ? createPortal(dialog, document.body) : dialog;
 }

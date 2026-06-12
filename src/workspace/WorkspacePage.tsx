@@ -16,6 +16,7 @@ function navigate(path: string) {
 
 export function WorkspacePage() {
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [selectedProjectIds, setSelectedProjectIds] = useState<Set<string>>(() => new Set());
   const {
     createProject,
     creating,
@@ -53,6 +54,23 @@ export function WorkspacePage() {
     await removeProjectOptimistically(project.id, async () => {
       await deleteWorkspaceProject(project.id);
     });
+    setSelectedProjectIds((current) => {
+      const next = new Set(current);
+      next.delete(project.id);
+      return next;
+    });
+  };
+
+  const selectProject = (project: WorkspaceProject) => {
+    setSelectedProjectIds((current) => {
+      const next = new Set(current);
+      if (next.has(project.id)) {
+        next.delete(project.id);
+      } else {
+        next.add(project.id);
+      }
+      return next;
+    });
   };
 
   return (
@@ -84,6 +102,12 @@ export function WorkspacePage() {
           />
         </div>
 
+        {selectedProjectIds.size > 0 && (
+          <div className="inline-flex h-10 items-center rounded-full border border-cyan-300/20 bg-cyan-300/10 px-4 text-sm font-semibold text-cyan-100">
+            已选择 {selectedProjectIds.size} 个项目
+          </div>
+        )}
+
         {error && (
           <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
             {error}
@@ -101,7 +125,9 @@ export function WorkspacePage() {
             onDelete={deleteProject}
             onOpen={openProject}
             onRename={renameProject}
+            onSelect={selectProject}
             projects={filteredProjects}
+            selectedProjectIds={selectedProjectIds}
             viewMode={viewMode}
           />
         )}

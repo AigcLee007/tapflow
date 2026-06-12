@@ -10,7 +10,9 @@ export function ProjectGrid({
   onDelete,
   onOpen,
   onRename,
+  onSelect,
   projects,
+  selectedProjectIds = new Set<string>(),
   viewMode,
 }: {
   creating: boolean;
@@ -18,7 +20,9 @@ export function ProjectGrid({
   onDelete: (project: WorkspaceProject) => Promise<void>;
   onOpen: (project: WorkspaceProject) => void;
   onRename: (project: WorkspaceProject, name: string) => Promise<void>;
+  onSelect: (project: WorkspaceProject) => void;
   projects: WorkspaceProject[];
+  selectedProjectIds?: Set<string>;
   viewMode: "grid" | "list";
 }) {
   if (viewMode === "list") {
@@ -38,7 +42,9 @@ export function ProjectGrid({
             onDelete={onDelete}
             onOpen={onOpen}
             onRename={onRename}
+            onSelect={onSelect}
             project={project}
+            selected={selectedProjectIds.has(project.id)}
             viewMode={viewMode}
           />
         ))}
@@ -56,7 +62,9 @@ export function ProjectGrid({
           onDelete={onDelete}
           onOpen={onOpen}
           onRename={onRename}
+          onSelect={onSelect}
           project={project}
+          selected={selectedProjectIds.has(project.id)}
           viewMode={viewMode}
         />
       ))}

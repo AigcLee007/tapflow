@@ -85,6 +85,7 @@ export function CanvasAssetPanel({
           emptyMessage="当前分类下还没有素材。"
           groups={library.groupedAssets}
           onOpen={(asset) => onInsertAsset(asset.id)}
+          showActions={false}
         />
       ) : null}
     </div>

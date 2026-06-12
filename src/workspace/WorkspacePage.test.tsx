@@ -97,6 +97,7 @@ describe("WorkspacePage", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "重命名" }));
 
     const input = screen.getByLabelText("项目名称");
+    expect(input.closest("article")).toBeNull();
     fireEvent.change(input, { target: { value: "Renamed Project" } });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
@@ -104,6 +105,15 @@ describe("WorkspacePage", () => {
       expect(updateWorkspaceProjectMock).toHaveBeenCalledWith("project-1", { name: "Renamed Project" });
     });
     expect(refresh).toHaveBeenCalled();
+  });
+
+  test("selects a project from the action menu", () => {
+    render(<WorkspacePage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "管理项目 Visual Strategy" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "选择" }));
+
+    expect(screen.getByText("已选择 1 个项目")).toBeTruthy();
   });
 
   test("deletes a project from the action menu without forcing a loading refresh", async () => {
