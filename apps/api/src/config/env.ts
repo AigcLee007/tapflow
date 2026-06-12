@@ -1,6 +1,11 @@
 export type ApiEnv = {
   accessTokenTtlSeconds: number;
   adminEmails: string[];
+  apiRateLimitMax?: number;
+  apiRateLimitWindowMs?: number;
+  authRateLimitMax?: number;
+  authRateLimitWindowMs?: number;
+  corsAllowedOrigins?: string[];
   credentialKeyVersion: string;
   credentialMasterKey: string;
   jwtAccessSecret: string;
@@ -15,10 +20,17 @@ export type ApiEnv = {
   s3ForcePathStyle: boolean;
   s3Region: string;
   s3SecretAccessKey: string;
+  securityHeadersEnabled?: boolean;
+  trustProxy?: boolean;
 };
 
 const DEV_ACCESS_SECRET = "dev_access_secret_change_me";
 const DEV_ADMIN_EMAILS = "";
+const DEV_API_RATE_LIMIT_MAX = 1000;
+const DEV_API_RATE_LIMIT_WINDOW_MS = 60_000;
+const DEV_AUTH_RATE_LIMIT_MAX = 20;
+const DEV_AUTH_RATE_LIMIT_WINDOW_MS = 60_000;
+const DEV_CORS_ALLOWED_ORIGINS = "http://localhost:5173,http://localhost:5188,http://127.0.0.1:5173,http://127.0.0.1:5188";
 const DEV_CREDENTIAL_KEY_VERSION = "v1";
 const DEV_CREDENTIAL_MASTER_KEY = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
 const DEV_QUEUE_PREFIX = "aigc-flow:v2";
@@ -31,13 +43,41 @@ const DEV_S3_FORCE_PATH_STYLE = true;
 const DEV_S3_REGION = "us-east-1";
 const DEV_S3_SECRET_ACCESS_KEY = "minio123456";
 
+function parseBooleanEnv(name: string, value: string | undefined, fallback: boolean): boolean {
+  const raw = value?.trim().toLowerCase();
+  if (!raw) {
+    return fallback;
+  }
+  if (["1", "true", "yes", "on"].includes(raw)) {
+    return true;
+  }
+  if (["0", "false", "no", "off"].includes(raw)) {
+    return false;
+  }
+  throw new Error(`${name} must be a boolean when provided`);
+}
+
+function parseCsvEnv(value: string | undefined, fallback: string): string[] {
+  return (value?.trim() || fallback)
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+}
+
+function parsePositiveIntegerEnv(name: string, value: string | undefined, fallback: number): number {
+  const raw = value?.trim() ?? "";
+  const parsed = raw ? Number(raw) : fallback;
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`${name} must be a positive integer when provided`);
+  }
+  return parsed;
+}
+
 export function getApiEnv(): ApiEnv {
   const nodeEnv = process.env.NODE_ENV?.trim() || "development";
   const isProduction = nodeEnv === "production";
-  const adminEmails = (process.env.ADMIN_EMAILS?.trim() || DEV_ADMIN_EMAILS)
-    .split(",")
-    .map((value) => value.trim().toLowerCase())
-    .filter((value) => value.length > 0);
+  const adminEmails = parseCsvEnv(process.env.ADMIN_EMAILS, DEV_ADMIN_EMAILS)
+    .map((value) => value.toLowerCase());
   const jwtAccessSecret =
     process.env.JWT_ACCESS_SECRET?.trim() ||
     (isProduction ? "" : DEV_ACCESS_SECRET);
@@ -56,6 +96,44 @@ export function getApiEnv(): ApiEnv {
   const jwtRefreshSecret =
     process.env.JWT_REFRESH_SECRET?.trim() ||
     (isProduction ? "" : DEV_REFRESH_SECRET);
+  const corsAllowedOrigins = parseCsvEnv(
+    process.env.CORS_ALLOWED_ORIGINS,
+    isProduction ? "" : DEV_CORS_ALLOWED_ORIGINS,
+  );
+  const apiRateLimitMax = parsePositiveIntegerEnv(
+    "API_RATE_LIMIT_MAX",
+    process.env.API_RATE_LIMIT_MAX,
+    DEV_API_RATE_LIMIT_MAX,
+  );
+  const apiRateLimitWindowMs = parsePositiveIntegerEnv(
+    "API_RATE_LIMIT_WINDOW_MS",
+    process.env.API_RATE_LIMIT_WINDOW_MS,
+    DEV_API_RATE_LIMIT_WINDOW_MS,
+  );
+  const authRateLimitMax = parsePositiveIntegerEnv(
+    "AUTH_RATE_LIMIT_MAX",
+    process.env.AUTH_RATE_LIMIT_MAX,
+    DEV_AUTH_RATE_LIMIT_MAX,
+  );
+  const authRateLimitWindowMs = parsePositiveIntegerEnv(
+    "AUTH_RATE_LIMIT_WINDOW_MS",
+    process.env.AUTH_RATE_LIMIT_WINDOW_MS,
+    DEV_AUTH_RATE_LIMIT_WINDOW_MS,
+  );
+  const securityHeadersEnabled = parseBooleanEnv(
+    "SECURITY_HEADERS_ENABLED",
+    process.env.SECURITY_HEADERS_ENABLED,
+    true,
+  );
+  const trustProxy = parseBooleanEnv(
+    "TRUST_PROXY",
+    process.env.TRUST_PROXY,
+    isProduction,
+  );
+
+  if (isProduction && corsAllowedOrigins.length === 0) {
+    throw new Error("CORS_ALLOWED_ORIGINS is required to start the v2 API in production");
+  }
 
   if (!jwtAccessSecret) {
     throw new Error("JWT_ACCESS_SECRET is required to start the v2 API");
@@ -115,6 +193,11 @@ export function getApiEnv(): ApiEnv {
   return {
     accessTokenTtlSeconds: 60 * 15,
     adminEmails,
+    apiRateLimitMax,
+    apiRateLimitWindowMs,
+    authRateLimitMax,
+    authRateLimitWindowMs,
+    corsAllowedOrigins,
     credentialKeyVersion,
     credentialMasterKey,
     jwtAccessSecret,
@@ -129,5 +212,7 @@ export function getApiEnv(): ApiEnv {
     s3ForcePathStyle: s3ForcePathStyleRaw.toLowerCase() === "true",
     s3Region,
     s3SecretAccessKey,
+    securityHeadersEnabled,
+    trustProxy,
   };
 }
