@@ -122,6 +122,7 @@ import {
   mapCatalogRoutesToRuntimeOptions,
   type UiSchemaField,
 } from '../utils/modelCatalogOptions';
+import { getNodeSelectionMode } from '../utils/nodeSelectionMode';
 
 type FlowNode = Node<FlowNodeData>;
 
@@ -183,8 +184,13 @@ const isTransientDraftUrl = (value: string) => {
   return trimmed.startsWith('blob:') || trimmed.startsWith('data:') || SIGNED_URL_RE.test(value);
 };
 
-const useSingleNodeSelection = (selected?: boolean) => {
-  return !!selected;
+const useNodeSelectionState = (nodeId: string, selected?: boolean) => {
+  const selectedNodeCount = useFlowCanvasStore((s) => s.selectedNodeCount);
+  const selectedInStore = useFlowCanvasStore((s) => !!s.nodes.find((node) => node.id === nodeId)?.selected);
+  return getNodeSelectionMode({
+    nodeSelected: Boolean(selected || selectedInStore),
+    selectedNodeCount,
+  });
 };
 
 const useImageModelCatalogWhenNeeded = (enabled: boolean) => {
@@ -685,6 +691,13 @@ const flickerStyles = `
   opacity: 1;
   pointer-events: auto;
   transform: translateY(0);
+}
+
+.flow-node-multi-selecting:hover .flow-image-hover-reveal,
+.flow-node-multi-selecting:focus-within .flow-image-hover-reveal {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-1px);
 }
 
 .flow-image-replace-btn:hover {
@@ -2557,8 +2570,8 @@ export const TextNodeComponent = memo(function TextNode({
   const copyToastTimerRef = useRef<number | null>(null);
   const currentModelId = String(d.modelId || DEFAULT_TEXT_MODEL_ID);
   const currentTextModel = getTextModelOption(currentModelId);
-  const selectedInStore = useFlowCanvasStore((s) => !!s.nodes.find((node) => node.id === id)?.selected);
-  const showNodeEditor = useSingleNodeSelection(selected || selectedInStore);
+  const { showSingleNodeControls } = useNodeSelectionState(id, selected);
+  const showNodeEditor = showSingleNodeControls;
 
   const handleGenerate = () => {
     if (isGenerating) return;
@@ -2669,7 +2682,7 @@ export const TextNodeComponent = memo(function TextNode({
       }}
     >
       <NodeResizer 
-        isVisible={selected} 
+        isVisible={showSingleNodeControls} 
         minWidth={220} 
         minHeight={220} 
         lineStyle={{ border: 'none' }}
@@ -2693,7 +2706,7 @@ export const TextNodeComponent = memo(function TextNode({
         style={{ ...invisibleHandle, position: 'absolute', left: -2, top: '50%', transform: 'translateY(-50%)' }}
       >
         <div style={handleHitArea}>
-          <div style={{ ...plusHandleInner, opacity: hovered ? 1 : 0 }}><Plus size={14} /></div>
+          <div style={{ ...plusHandleInner, opacity: showSingleNodeControls && hovered ? 1 : 0 }}><Plus size={14} /></div>
         </div>
       </Handle>
 
@@ -2702,7 +2715,8 @@ export const TextNodeComponent = memo(function TextNode({
           <textarea
             data-node-id={id}
             className="nodrag nopan nowheel sleek-scroll-y"
-          value={resolvedText}
+            value={resolvedText}
+            readOnly={!showNodeEditor}
           onChange={(e) => updateNodeData(id, { text: e.target.value })}
             onKeyDown={stopCanvasKeyboardPropagation}
             placeholder="开始输入..."
@@ -2720,6 +2734,8 @@ export const TextNodeComponent = memo(function TextNode({
               fontStyle: d.fontStyle === 'italic' ? 'italic' : 'normal',
               lineHeight: 1.48,
               resize: 'none',
+              pointerEvents: showNodeEditor ? 'auto' : 'none',
+              userSelect: showNodeEditor ? 'text' : 'none',
               fontFamily: '"Microsoft YaHei", "微软雅黑", Arial, sans-serif',
               position: 'relative',
               zIndex: 2,
@@ -2754,7 +2770,7 @@ export const TextNodeComponent = memo(function TextNode({
         style={{ ...invisibleHandle, position: 'absolute', right: -2, top: '50%', transform: 'translateY(-50%)' }}
       >
         <div style={handleHitArea}>
-          <div style={{ ...plusHandleInner, opacity: hovered ? 1 : 0 }}><Plus size={14} /></div>
+          <div style={{ ...plusHandleInner, opacity: showSingleNodeControls && hovered ? 1 : 0 }}><Plus size={14} /></div>
         </div>
       </Handle>
 
@@ -3573,10 +3589,10 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const [slashMenuIndex, setSlashMenuIndex] = useState(0);
   const [hoveredReferenceKey, setHoveredReferenceKey] = useState<string | null>(null);
   const [draggingReferenceKey, setDraggingReferenceKey] = useState<string | null>(null);
-  const selectedInStore = useFlowCanvasStore((s) => !!s.nodes.find((node) => node.id === id)?.selected);
+  const { isMultiSelecting, showSingleNodeControls } = useNodeSelectionState(id, selected);
   const runtimeNodeOutput = useFlowCanvasStore((s) => s.nodeOutputByNodeId[id]);
   const runtimeNodeStatus = useFlowCanvasStore((s) => s.nodeRunStatusByNodeId[id]);
-  const showNodeEditor = useSingleNodeSelection(selected || selectedInStore);
+  const showNodeEditor = showSingleNodeControls;
   const shouldLoadEditorResources = showNodeEditor || activeImageTool?.nodeId === id || fullscreenOpen || assetMenuOpen || slashMenuOpen;
   const imageCatalogState = useImageModelCatalogWhenNeeded(shouldLoadEditorResources);
   const models = imageCatalogState.models;
@@ -4009,6 +4025,21 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       closeResultStrip();
     }
   }, [canExpandResults, closeResultStrip, showNodeEditor]);
+
+  useEffect(() => {
+    if (!isMultiSelecting) return;
+    setShowBatchSelector(false);
+    setMoreMenuOpen(false);
+    setAssetMenuOpen(false);
+    setSlashMenuOpen(false);
+    setMentionQuery('');
+    setSlashQuery('');
+    setHoveredReferenceKey(null);
+    closeResultStrip();
+    if (activeImageTool?.nodeId === id) {
+      closeImageTool();
+    }
+  }, [activeImageTool?.nodeId, closeImageTool, closeResultStrip, id, isMultiSelecting]);
 
   useEffect(
     () => () => {
@@ -5288,7 +5319,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     <div
       ref={imageNodeRef}
       style={nodeWrapper}
-      className="flow-image-node"
+      className={`flow-image-node${isMultiSelecting ? ' flow-node-multi-selecting' : ''}`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
@@ -6052,7 +6083,8 @@ export const VideoNodeComponent = memo(function VideoNode({
   const [showBatchSelector, setShowBatchSelector] = useState(false);
   const [showBatchTooltip, setShowBatchTooltip] = useState(false);
   const { connectionNodeId } = useConnection();
-  const showNodeEditor = useSingleNodeSelection(selected);
+  const { showSingleNodeControls } = useNodeSelectionState(id, selected);
+  const showNodeEditor = showSingleNodeControls;
   
   const isTargeting = !!connectionNodeId && connectionNodeId !== id && hovered;
 
@@ -6102,7 +6134,7 @@ export const VideoNodeComponent = memo(function VideoNode({
       onMouseLeave={() => setHovered(false)}
     >
       <NodeResizer 
-        isVisible={selected} 
+        isVisible={showSingleNodeControls} 
         minWidth={160} 
         minHeight={160} 
         lineStyle={{ border: 'none' }}
@@ -6117,7 +6149,7 @@ export const VideoNodeComponent = memo(function VideoNode({
         style={{ ...invisibleHandle, position: 'absolute', left: -2, top: '50%', transform: 'translateY(-50%)' }}
       >
         <div style={handleHitArea}>
-          <div style={{ ...plusHandleInner, opacity: hovered ? 1 : 0 }}><Plus size={14} /></div>
+          <div style={{ ...plusHandleInner, opacity: showSingleNodeControls && hovered ? 1 : 0 }}><Plus size={14} /></div>
         </div>
       </Handle>
 
@@ -6144,7 +6176,7 @@ export const VideoNodeComponent = memo(function VideoNode({
         style={{ ...invisibleHandle, position: 'absolute', right: -2, top: '50%', transform: 'translateY(-50%)' }}
       >
         <div style={handleHitArea}>
-          <div style={{ ...plusHandleInner, opacity: hovered ? 1 : 0 }}><Plus size={14} /></div>
+          <div style={{ ...plusHandleInner, opacity: showSingleNodeControls && hovered ? 1 : 0 }}><Plus size={14} /></div>
         </div>
       </Handle>
 
@@ -6354,6 +6386,7 @@ export const AudioNodeComponent = memo(function AudioNode({
   const d = data;
   const [hovered, setHovered] = useState(false);
   const { connectionNodeId } = useConnection();
+  const { showSingleNodeControls } = useNodeSelectionState(id, selected);
   const isTargeting = !!connectionNodeId && connectionNodeId !== id && hovered;
 
   return (
@@ -6363,7 +6396,7 @@ export const AudioNodeComponent = memo(function AudioNode({
       onMouseLeave={() => setHovered(false)}
     >
       <NodeResizer 
-        isVisible={selected} 
+        isVisible={showSingleNodeControls} 
         minWidth={160} 
         minHeight={160} 
         lineStyle={{ border: 'none' }}
@@ -6377,7 +6410,7 @@ export const AudioNodeComponent = memo(function AudioNode({
         style={{ ...invisibleHandle, position: 'absolute', left: -2, top: '50%', transform: 'translateY(-50%)' }}
       >
         <div style={handleHitArea}>
-          <div style={{ ...plusHandleInner, opacity: hovered ? 1 : 0 }}><Plus size={14} /></div>
+          <div style={{ ...plusHandleInner, opacity: showSingleNodeControls && hovered ? 1 : 0 }}><Plus size={14} /></div>
         </div>
       </Handle>
 
@@ -6401,7 +6434,7 @@ export const AudioNodeComponent = memo(function AudioNode({
         style={{ ...invisibleHandle, position: 'absolute', right: -2, top: '50%', transform: 'translateY(-50%)' }}
       >
         <div style={handleHitArea}>
-          <div style={{ ...plusHandleInner, opacity: hovered ? 1 : 0 }}><Plus size={14} /></div>
+          <div style={{ ...plusHandleInner, opacity: showSingleNodeControls && hovered ? 1 : 0 }}><Plus size={14} /></div>
         </div>
       </Handle>
     </div>
@@ -6417,6 +6450,7 @@ export const ImageEditorNodeComponent = memo(function ImageEditorNode({
   const d = data;
   const [hovered, setHovered] = useState(false);
   const { connectionNodeId } = useConnection();
+  const { showSingleNodeControls } = useNodeSelectionState(id, selected);
   const isTargeting = !!connectionNodeId && connectionNodeId !== id && hovered;
 
   return (
@@ -6426,7 +6460,7 @@ export const ImageEditorNodeComponent = memo(function ImageEditorNode({
       onMouseLeave={() => setHovered(false)}
     >
       <NodeResizer 
-        isVisible={selected} 
+        isVisible={showSingleNodeControls} 
         minWidth={220} 
         minHeight={220} 
         lineStyle={{ border: 'none' }}
@@ -6440,7 +6474,7 @@ export const ImageEditorNodeComponent = memo(function ImageEditorNode({
         style={{ ...invisibleHandle, position: 'absolute', left: -2, top: '50%', transform: 'translateY(-50%)' }}
       >
         <div style={handleHitArea}>
-          <div style={{ ...plusHandleInner, opacity: hovered ? 1 : 0 }}><Plus size={14} /></div>
+          <div style={{ ...plusHandleInner, opacity: showSingleNodeControls && hovered ? 1 : 0 }}><Plus size={14} /></div>
         </div>
       </Handle>
 
@@ -6468,7 +6502,7 @@ export const ImageEditorNodeComponent = memo(function ImageEditorNode({
         style={{ ...invisibleHandle, position: 'absolute', right: -2, top: '50%', transform: 'translateY(-50%)' }}
       >
         <div style={handleHitArea}>
-          <div style={{ ...plusHandleInner, opacity: hovered ? 1 : 0 }}><Plus size={14} /></div>
+          <div style={{ ...plusHandleInner, opacity: showSingleNodeControls && hovered ? 1 : 0 }}><Plus size={14} /></div>
         </div>
       </Handle>
     </div>
@@ -6488,6 +6522,7 @@ export const UploadNodeComponent = memo(function UploadNode({
   const [hovered, setHovered] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { connectionNodeId } = useConnection();
+  const { showSingleNodeControls } = useNodeSelectionState(id, selected);
   const isTargeting = !!connectionNodeId && connectionNodeId !== id && hovered;
 
   const handleUpload = useCallback((file: File) => {
@@ -6586,7 +6621,7 @@ export const UploadNodeComponent = memo(function UploadNode({
       onMouseLeave={() => setHovered(false)}
     >
       <NodeResizer 
-        isVisible={selected} 
+        isVisible={showSingleNodeControls} 
         minWidth={160} 
         minHeight={160} 
         lineStyle={{ border: 'none' }}
@@ -6627,7 +6662,7 @@ export const UploadNodeComponent = memo(function UploadNode({
         type="source" 
         position={Position.Right} 
         id="out" 
-        style={{ ...invisibleHandle, opacity: hovered ? 1 : 0, position: 'absolute', right: -18, top: '50%', transform: 'translateY(-50%)' }}
+        style={{ ...invisibleHandle, opacity: showSingleNodeControls && hovered ? 1 : 0, position: 'absolute', right: -18, top: '50%', transform: 'translateY(-50%)' }}
       >
         <div style={plusHandleInner}><Plus size={14} /></div>
       </Handle>
@@ -6654,6 +6689,7 @@ export const GroupNodeComponent = memo(function GroupNode({
   const [templateCopied, setTemplateCopied] = useState(false);
   const colorButtonRef = useRef<HTMLButtonElement>(null);
   const layoutButtonRef = useRef<HTMLButtonElement>(null);
+  const { showSingleNodeControls } = useNodeSelectionState(id, selected);
 
   useEffect(() => {
     if (!showColorPicker && !showLayoutMenu) return;
@@ -6708,7 +6744,7 @@ export const GroupNodeComponent = memo(function GroupNode({
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', minWidth: 300, minHeight: 200 }}>
       <NodeResizer 
-        isVisible={selected} 
+        isVisible={showSingleNodeControls} 
         minWidth={300} 
         minHeight={200} 
         keepAspectRatio={false}
@@ -6718,7 +6754,7 @@ export const GroupNodeComponent = memo(function GroupNode({
         }}
       />
 
-      {selected && (
+      {showSingleNodeControls && (
         <FloatingToolbar>
           <div style={{ position: 'relative' }}>
             <Tooltip title="颜色">

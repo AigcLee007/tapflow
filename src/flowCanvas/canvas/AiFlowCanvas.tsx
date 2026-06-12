@@ -205,6 +205,7 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled }) =>
   const { screenToFlowPosition } = reactFlow;
   const selectedNodes = nodes.filter((node) => node.selected);
   const selectedEdges = edges.filter((edge) => edge.selected);
+  const isMultiSelecting = selectedNodes.length > 1;
 
   const [miniMapOpen, setMiniMapOpen] = useState(false);
   const [gridSnapEnabled, setGridSnapEnabled] = useState(false);
@@ -218,6 +219,13 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled }) =>
 
   const connectingNodeRef = useRef<string | null>(null);
   const canvasRootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isMultiSelecting) return;
+    closeContextMenu();
+    closeImageTool();
+    setConnMenu(null);
+  }, [closeContextMenu, closeImageTool, isMultiSelecting]);
 
   const handleNodeDragStart = useCallback((_event: React.MouseEvent, node: Node) => {
     pushHistory();

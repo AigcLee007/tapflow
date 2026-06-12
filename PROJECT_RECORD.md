@@ -597,3 +597,18 @@ Validation completed:
 - `npm run build --workspace @aigc-flow/ai-gateway-core`
 - `npm run build --workspace @aigc-flow/worker`
 - `npm run build`
+
+### Latest Canvas Multi-Selection Interaction Fix
+
+Completed in current local iteration:
+
+- changed canvas node selection behavior so multi-select is treated as its own batch operation mode instead of opening every selected node as an editor
+- added a shared node selection mode helper that only allows single-node controls when exactly one node is selected
+- suppressed text/image/video/upload/audio/image-editor/group node floating controls, resizers, prompt bars, result strips, and hover connection affordances during multi-selection
+- made text nodes read-only for pointer interactions outside single-node edit mode to avoid accidental blue text selections while marquee-selecting or dragging batches
+- closed context menus, image tools, and connection menus automatically when multi-selection starts
+
+Validation completed:
+
+- `npm run test -- src/flowCanvas/utils/nodeSelectionMode.test.ts`
+- `npm run build`
