@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Bell,
   Box,
@@ -28,6 +28,8 @@ function navigate(path: string) {
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
+export const WORKSPACE_SHOW_PROJECTS_EVENT = "workspace:show-projects";
+
 const navItems = [
   { icon: Home, label: "主页", path: WORKSPACE_ROUTE },
   { icon: FolderKanban, label: "工作空间", path: WORKSPACE_ROUTE, hash: "projects" },
@@ -47,6 +49,9 @@ function getInitial(displayName?: string | null, email?: string | null) {
 export function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const { logout, permissions, tenant, user } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [locationKey, setLocationKey] = useState(() =>
+    typeof window === "undefined" ? WORKSPACE_ROUTE : `${window.location.pathname}${window.location.hash}`,
+  );
   const currentPath = typeof window === "undefined" ? WORKSPACE_ROUTE : window.location.pathname;
   const currentHash = typeof window === "undefined" ? "" : window.location.hash;
   const tenantName = displayTenantName(tenant?.name);
@@ -54,8 +59,22 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const userEmail = user?.email || "";
   const canAdmin = permissions.includes("admin:system");
 
+  useEffect(() => {
+    const handleLocationChange = () => setLocationKey(`${window.location.pathname}${window.location.hash}`);
+    window.addEventListener("popstate", handleLocationChange);
+    window.addEventListener("hashchange", handleLocationChange);
+    return () => {
+      window.removeEventListener("popstate", handleLocationChange);
+      window.removeEventListener("hashchange", handleLocationChange);
+    };
+  }, []);
+
   const goTo = (path: string, hash?: string) => {
     navigate(hash ? `${path}#${hash}` : path);
+    setLocationKey(`${window.location.pathname}${window.location.hash}`);
+    if (path === WORKSPACE_ROUTE && hash === "projects") {
+      window.dispatchEvent(new Event(WORKSPACE_SHOW_PROJECTS_EVENT));
+    }
   };
 
   return (
@@ -79,16 +98,16 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
 
           <nav className="hidden items-center gap-3 rounded-full md:flex">
             {navItems.map((item) => {
-              const active = currentPath === item.path && (!item.hash || currentHash === `#${item.hash}`);
+              const active = currentPath === item.path && (!item.hash ? currentHash !== "#projects" : currentHash === `#${item.hash}`);
               const Icon = item.icon;
               return (
                 <button
-                  className={`inline-flex h-14 items-center gap-3 rounded-[18px] px-5 text-lg font-medium transition ${
+                  className={`inline-flex h-[58px] items-center gap-3 rounded-[28px] px-7 text-lg font-medium transition ${
                     active
                       ? "border border-white/10 bg-white/[0.10] text-white shadow-inner"
                       : "text-slate-300 hover:bg-white/[0.07] hover:text-white"
                   }`}
-                  key={`${item.path}-${item.label}`}
+                key={`${item.path}-${item.label}-${locationKey}`}
                   onClick={() => goTo(item.path, item.hash)}
                   type="button"
                 >

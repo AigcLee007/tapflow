@@ -63,6 +63,10 @@ describe("WorkspacePage", () => {
 
     expect(screen.getByRole("heading", { name: "今天要做点什么？" })).toBeTruthy();
     expect(screen.getByText("开始一段灵感对话...")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "AI 视频" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "图像生成" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "智能抠图" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "批量工作流" })).toBeTruthy();
     expect(screen.getByText("最近项目")).toBeTruthy();
     expect(screen.getAllByRole("button", { name: "新建项目" }).length).toBeGreaterThan(0);
     expect(screen.getAllByText("Visual Strategy").length).toBeGreaterThan(0);
@@ -74,6 +78,8 @@ describe("WorkspacePage", () => {
 
     expect(screen.getByRole("button", { name: "个人" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "团队项目" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "我的空间" })).toBeTruthy();
+    expect(screen.getByText("管理你的 AI Flow 项目，继续创作、筛选和打开画布。")).toBeTruthy();
     expect(screen.getByPlaceholderText("搜索")).toBeTruthy();
     expect(screen.getByRole("button", { name: "显示全部" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "网格视图" })).toBeTruthy();

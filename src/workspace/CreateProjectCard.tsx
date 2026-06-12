@@ -31,21 +31,21 @@ export function CreateProjectCard({
   if (!expanded) {
     return (
       <button
-        className={`group flex border border-white/10 bg-[#1a1a1c] text-slate-200 transition hover:border-white/20 hover:bg-white/[0.08] ${
+        className={`group flex border border-white/10 bg-[#171719] text-slate-200 transition hover:border-white/20 hover:bg-white/[0.08] ${
           viewMode === "list"
             ? "min-h-0 flex-row items-center justify-start gap-4 rounded-2xl p-5"
             : compact
-              ? "min-h-[220px] flex-col items-center justify-center gap-4 rounded-[22px] p-5"
-              : "min-h-[300px] flex-col items-center justify-center gap-5 rounded-[26px] p-6"
+              ? "min-h-[250px] flex-col items-center justify-center gap-3 rounded-[18px] p-4"
+              : "min-h-[286px] flex-col items-center justify-center gap-4 rounded-[20px] p-6"
         }`}
         data-create-project-trigger="true"
         onClick={() => setExpanded(true)}
         type="button"
       >
-        <span className="grid h-16 w-16 place-items-center rounded-full bg-white text-slate-950 transition group-hover:scale-105">
-          <Plus size={30} />
+        <span className="grid h-14 w-14 place-items-center rounded-full bg-white text-slate-950 transition group-hover:scale-105">
+          <Plus size={26} />
         </span>
-        <span className="text-xl font-semibold">新建项目</span>
+        <span className="text-base font-semibold">新建项目</span>
       </button>
     );
   }
@@ -56,8 +56,8 @@ export function CreateProjectCard({
         viewMode === "list"
           ? "min-h-0 rounded-2xl"
           : compact
-            ? "min-h-[220px] rounded-[22px]"
-            : "min-h-[300px] rounded-[26px]"
+            ? "min-h-[250px] rounded-[18px]"
+            : "min-h-[286px] rounded-[20px]"
       }`}
       onSubmit={submit}
     >

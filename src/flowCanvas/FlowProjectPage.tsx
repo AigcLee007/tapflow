@@ -38,7 +38,7 @@ function LoadingState() {
     <div className="fixed inset-0 z-50 grid place-items-center bg-[#09090f] text-slate-200">
       <div className="flex items-center gap-3 rounded border border-white/10 bg-white/[0.04] px-5 py-4 text-sm">
         <Loader2 className="animate-spin text-sky-300" size={18} />
-        正在加载项目画布...
+        正在打开项目画布...
       </div>
     </div>
   );
@@ -56,7 +56,7 @@ function ErrorState({
       <section className="w-full max-w-xl rounded border border-red-400/20 bg-red-500/10 p-6">
         <div className="flex items-center gap-2 text-sm font-semibold text-red-200">
           <AlertTriangle size={18} />
-          项目画布加载失败
+          项目画布打开失败
         </div>
         <p className="mt-3 text-sm leading-6 text-red-100/80">{error}</p>
         <button
@@ -65,7 +65,7 @@ function ErrorState({
           type="button"
         >
           <RefreshCw size={16} />
-          重试
+          重新加载
         </button>
       </section>
     </div>

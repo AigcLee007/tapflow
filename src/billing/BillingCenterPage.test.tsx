@@ -74,6 +74,12 @@ describe("BillingCenterPage", () => {
     expect(screen.getByText("Basic")).toBeTruthy();
     expect(screen.getByText("Pro")).toBeTruthy();
     expect(screen.getByText("Ultimate")).toBeTruthy();
+    expect(screen.getByText("积分永不过期。")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "连续包月 15% OFF" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "连续包年 40% OFF" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByText("12,000 积分/月")).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "选择套餐" })).toHaveLength(3);
+    expect(screen.getByText("最受欢迎")).toBeTruthy();
 
     await waitFor(() => {
       expect(getBillingSummaryMock).toHaveBeenCalled();

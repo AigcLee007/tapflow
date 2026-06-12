@@ -879,6 +879,33 @@ Validation completed:
 - `npm run test -- src/app/WorkspaceShell.test.tsx src/workspace/WorkspacePage.test.tsx src/workspace/ProjectCard.test.tsx`
 - `npm run build`
 
+### Latest TapNow Billing Pixel Alignment Pass
+
+Completed in current local iteration:
+
+- pushed `/billing` closer to the TapNow reference pricing page with an open dark dotted canvas, oversized `选择你的套餐` headline, larger spacing, and a yearly billing segmented control
+- enlarged Basic, Pro, and Ultimate pricing cards with uppercase plan labels, a `最受欢迎` Pro pill, card CTAs, and plan-specific monthly credit benefits
+- kept the existing server-backed billing summary, usage, ledger, redeem, and recharge behavior unchanged below the pricing-first surface
+- extended the focused billing page rendering test to lock the yearly switch, Pro highlight, card CTAs, and visible credit benefit copy
+
+Validation completed:
+
+- `npm run test -- src/billing/BillingCenterPage.test.tsx`
+
+### Latest TapNow Workspace Pixel Alignment Pass 2
+
+Completed in current local iteration:
+
+- refined the `/workspace` home surface toward the TapNow reference with a more centered creator prompt, tighter first-screen spacing, and compact quick action chips for `AI 视频`, `图像生成`, `智能抠图`, and `批量工作流`
+- refreshed the project management section from generic `项目` copy to `我的空间` with clearer supporting text and a lighter count pill
+- reduced the visual weight of project tabs, search, sort, view toggle, refresh, and create controls so the project grid reads closer to TapNow's dense product UI
+- tightened create/project card dimensions, thumbnail ratios, rounded corners, metadata sizing, and hover affordances while keeping project creation/opening behavior unchanged
+- extended the workspace page test coverage for the new quick actions and project section copy
+
+Validation completed:
+
+- `npm run test -- src/workspace/WorkspacePage.test.tsx`
+
 Notes:
 
 - Phase 2 should apply the same TapNow shell language to `/assets`, `/billing`, and `/account` content pages.

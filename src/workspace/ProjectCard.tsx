@@ -34,12 +34,12 @@ export function ProjectCard({
   if (viewMode === "list") {
     return (
       <button
-        className="grid w-full grid-cols-[1fr_auto] items-center gap-4 rounded-2xl border border-white/10 bg-[#171719] p-5 text-left transition hover:border-white/20 hover:bg-white/[0.07]"
+        className="grid w-full grid-cols-[1fr_auto] items-center gap-4 rounded-[18px] border border-white/10 bg-[#171719] p-4 text-left transition hover:border-white/20 hover:bg-white/[0.07]"
         onClick={() => onOpen(project)}
         type="button"
       >
         <div className="min-w-0">
-          <div className="truncate text-lg font-semibold text-white">{project.name}</div>
+          <div className="truncate text-base font-semibold text-white">{project.name}</div>
           <div className="mt-1 truncate text-sm text-slate-500">{project.description || "暂无描述"}</div>
         </div>
         <div className="flex items-center gap-4 text-sm text-slate-400">
@@ -52,13 +52,13 @@ export function ProjectCard({
 
   return (
     <button
-      className={`group overflow-hidden rounded-[26px] border border-white/10 bg-[#1b1b1d] text-left transition hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/[0.08] ${
-        compact ? "min-h-[220px]" : "min-h-[300px]"
+      className={`group overflow-hidden rounded-[20px] border border-white/10 bg-[#171719] text-left transition hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/[0.08] ${
+        compact ? "min-h-[250px]" : "min-h-[286px]"
       }`}
       onClick={() => onOpen(project)}
       type="button"
     >
-      <div className={`relative overflow-hidden bg-[linear-gradient(135deg,#374151_0%,#2563eb_50%,#111827_100%)] ${compact ? "aspect-[16/9]" : "aspect-[16/11]"}`}>
+      <div className={`relative overflow-hidden bg-[linear-gradient(135deg,#374151_0%,#2563eb_50%,#111827_100%)] ${compact ? "aspect-[16/8.8]" : "aspect-[16/10.5]"}`}>
         {cover.url ? (
           <img alt="" className="absolute inset-0 h-full w-full object-cover" src={cover.url} />
         ) : cover.failed ? (
@@ -69,23 +69,23 @@ export function ProjectCard({
             </div>
           </div>
         ) : null}
-        <div className="absolute right-4 top-4 grid h-10 w-10 place-items-center rounded-xl bg-black/35 text-white/85 opacity-90 transition group-hover:bg-black/55">
-          <MoreHorizontal size={18} />
+        <div className="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full bg-black/35 text-white/85 opacity-90 transition group-hover:bg-black/55">
+          <MoreHorizontal size={17} />
         </div>
       </div>
-      <div className={compact ? "p-4" : "p-5"}>
+      <div className={compact ? "p-3.5" : "p-4"}>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="truncate text-xl font-semibold text-white">{project.name}</div>
-            <div className="mt-2 flex items-center gap-1.5 text-sm text-slate-500">
-              <CalendarDays size={15} />
+            <div className={compact ? "truncate text-[15px] font-semibold text-white" : "truncate text-lg font-semibold text-white"}>{project.name}</div>
+            <div className="mt-1.5 flex items-center gap-1.5 text-xs text-slate-500">
+              <CalendarDays size={13} />
               编辑于 {relativeTime}
             </div>
           </div>
-          <ArrowUpRight className="mt-1 shrink-0 text-slate-400 transition group-hover:text-white" size={20} />
+          <ArrowUpRight className="mt-1 shrink-0 text-slate-400 transition group-hover:text-white" size={18} />
         </div>
         {!compact && (
-          <div className="mt-4 truncate rounded-xl bg-black/30 px-4 py-3 text-sm font-medium text-slate-200">
+          <div className="mt-3 truncate rounded-xl bg-black/25 px-3.5 py-2.5 text-sm font-medium text-slate-200">
             {project.description || "打开项目继续创作"}
           </div>
         )}

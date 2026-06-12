@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, Loader2, RefreshCw, Sparkles, Zap } from "lucide-react";
+import { Check, Flame, Loader2, RefreshCw, Zap } from "lucide-react";
 
 import { useAuth } from "../auth/useAuth";
 import { BillingLedgerTable } from "./BillingLedgerTable";
@@ -18,28 +18,32 @@ import {
 
 const plans = [
   {
-    description: "适合试用和轻量创作",
+    description: "适合初次探索 AI 创作",
+    features: ["1,000 积分/月", "基础生成队列", "个人项目创作"],
     name: "Basic",
     price: "¥0",
-    tag: "入门",
-    tone: "border-white/10 bg-white/[0.04]",
+    tag: "",
+    tone: "border-white/12 bg-[#171719] hover:border-white/20",
     value: "基础额度",
   },
   {
-    description: "适合稳定生成和团队协作",
+    description: "适合高频创作与持续产出",
     featured: true,
+    features: ["12,000 积分/月", "高优先级队列", "商用项目流水追踪"],
     name: "Pro",
     price: "¥99",
-    tag: "推荐",
-    tone: "border-sky-300/30 bg-sky-500/10",
+    tag: "最受欢迎",
+    tone:
+      "border-cyan-200/35 bg-[radial-gradient(circle_at_88%_0%,rgba(125,211,252,0.24),transparent_30%),linear-gradient(145deg,#172126,#121416)] shadow-[0_24px_80px_rgba(8,145,178,0.16)]",
     value: "高频创作",
   },
   {
-    description: "适合高并发、商业项目和定制路线",
+    description: "适合大批量稳定产出与交付",
+    features: ["60,000 积分/月", "团队协作额度", "专属交付支持"],
     name: "Ultimate",
     price: "¥399",
-    tag: "进阶",
-    tone: "border-white/10 bg-white/[0.04]",
+    tag: "",
+    tone: "border-white/12 bg-[#171719] hover:border-white/20",
     value: "规模化生产",
   },
 ];
@@ -120,22 +124,26 @@ export function BillingCenterPage() {
     ledger.length === 0;
 
   return (
-    <div className="space-y-5">
-      <header className="rounded border border-white/10 bg-[#0b0d14] p-5 md:p-6">
+    <div className="relative -mx-6 -my-9 min-h-[calc(100vh-80px)] overflow-hidden px-6 py-16 sm:px-8 lg:py-20">
+      <div className="absolute inset-0 bg-[#0b0b0d]" />
+      <div className="absolute inset-0 opacity-25 [background-image:radial-gradient(rgba(148,163,184,0.28)_1.2px,transparent_1.2px)] [background-size:38px_38px]" />
+      <div className="absolute right-[-120px] top-[-180px] h-[520px] w-[680px] bg-[radial-gradient(circle_at_50%_50%,rgba(45,212,191,0.13),transparent_62%)]" />
+
+      <header className="relative mx-auto max-w-[1760px]">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <div className="inline-flex items-center gap-2 rounded border border-sky-300/20 bg-sky-500/10 px-2.5 py-1 text-xs font-medium text-sky-100">
-              <Sparkles size={14} />
-              Billing
-            </div>
-            <h1 className="mt-4 text-3xl font-semibold text-white">选择你的套餐</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">不止额度，更是灵感落地的速度。</p>
-            <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">
-              额度由服务端预占、结算和失败退款，适合从个人试用到团队生产的不同节奏。
+            <h1 className="text-5xl font-semibold leading-[1.06] text-white sm:text-[58px] lg:text-[72px]">
+              选择你的套餐
+            </h1>
+            <p className="mt-5 max-w-3xl text-xl leading-8 text-slate-300 sm:text-2xl sm:leading-9">
+              不止额度，更是灵感落地的速度。
+            </p>
+            <p className="mt-3 max-w-3xl text-xl leading-8 text-slate-400 sm:text-2xl sm:leading-9">
+              积分永不过期。
             </p>
           </div>
           <button
-            className="inline-flex h-10 items-center justify-center gap-2 rounded border border-white/10 bg-white/10 px-4 text-sm text-white hover:bg-white/15 disabled:opacity-60"
+            className="inline-flex h-12 w-fit items-center justify-center gap-2 rounded-[14px] border border-white/10 bg-white/10 px-5 text-sm text-white hover:bg-white/15 disabled:opacity-60"
             disabled={loading}
             onClick={() => void refresh()}
             type="button"
@@ -145,52 +153,86 @@ export function BillingCenterPage() {
           </button>
         </div>
 
-        <div className="mt-6 grid gap-3 lg:grid-cols-3">
+        <div className="mt-20 inline-flex max-w-full flex-wrap rounded-[24px] border border-white/12 bg-[#19191b] p-2 text-base font-semibold text-slate-300 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] sm:mt-28 sm:text-lg">
+          <button className="h-14 rounded-[18px] px-6 text-slate-300 hover:text-white sm:px-8" type="button">
+            连续包月 15% OFF
+          </button>
+          <button
+            aria-pressed="true"
+            className="h-14 rounded-[18px] bg-white px-6 text-slate-950 shadow-[0_12px_30px_rgba(255,255,255,0.08)] sm:px-8"
+            type="button"
+          >
+            连续包年 40% OFF
+          </button>
+          <button className="h-14 rounded-[18px] px-6 text-slate-300 hover:text-white sm:px-8" type="button">
+            企业版
+          </button>
+        </div>
+
+        <div className="mt-12 grid gap-6 lg:grid-cols-3 xl:gap-10">
           {plans.map((plan) => (
-            <section className={`rounded border p-4 ${plan.tone}`} key={plan.name}>
+            <section
+              className={`min-h-[392px] rounded-[26px] border p-7 transition-colors sm:p-8 ${plan.tone}`}
+              key={plan.name}
+            >
               <div className="flex items-center justify-between gap-3">
-                <div className="text-lg font-semibold text-white">{plan.name}</div>
-                <span className="rounded bg-white px-2 py-1 text-xs font-semibold text-slate-950">{plan.tag}</span>
+                <div className="text-3xl font-semibold uppercase tracking-tight text-white">{plan.name}</div>
+                {plan.tag ? (
+                  <span className="inline-flex items-center gap-2 rounded-full bg-cyan-200 px-4 py-2 text-sm font-bold text-slate-950">
+                    <Flame size={16} />
+                    {plan.tag}
+                  </span>
+                ) : null}
               </div>
-              <div className="mt-4 flex items-end gap-2">
-                <span className="text-3xl font-semibold text-white">{plan.price}</span>
-                <span className="pb-1 text-sm text-slate-500">/ 月</span>
+              <div className="mt-10 flex items-end gap-2">
+                <span className="text-5xl font-semibold text-white">{plan.price}</span>
+                <span className="pb-2 text-xl text-slate-500">/ 月</span>
               </div>
-              <p className="mt-2 text-sm text-slate-400">{plan.description}</p>
-              <div className="mt-4 flex items-center gap-2 text-sm text-slate-200">
+              <p className="mt-4 text-lg leading-7 text-slate-400 sm:text-xl">{plan.description}</p>
+              <div className="mt-8 flex items-center gap-3 border-t border-white/10 pt-7 text-lg text-slate-200 sm:text-xl">
                 <Zap className={plan.featured ? "text-sky-200" : "text-slate-400"} size={16} />
                 {plan.value}
               </div>
-              <div className="mt-4 space-y-2 text-sm text-slate-400">
-                {["额度自动结算", "失败自动退回", "支持项目流水追踪"].map((feature) => (
-                  <div className="flex items-center gap-2" key={feature}>
-                    <Check className="text-emerald-300" size={15} />
+              <div className="mt-7 space-y-4 text-base text-slate-400 sm:text-lg">
+                {plan.features.map((feature) => (
+                  <div className="flex items-center gap-3" key={feature}>
+                    <Check className="text-emerald-300" size={18} />
                     {feature}
                   </div>
                 ))}
               </div>
+              <button
+                className={`mt-9 h-12 w-full rounded-[14px] text-sm font-semibold transition-colors ${
+                  plan.featured ? "bg-white text-slate-950 hover:bg-cyan-50" : "bg-white/[0.08] text-white hover:bg-white/12"
+                }`}
+                type="button"
+              >
+                选择套餐
+              </button>
             </section>
           ))}
         </div>
       </header>
 
       {error && (
-        <div className="rounded border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-200">
+        <div className="relative mx-auto mt-6 max-w-[1760px] rounded border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-200">
           {error}
         </div>
       )}
 
       {showLocalQaHint && (
-        <div className="rounded border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
+        <div className="relative mx-auto mt-6 max-w-[1760px] rounded border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
           当前工作区还没有计费记录。如需本地联调，可运行
           <code className="mx-1 rounded bg-black/30 px-1 py-0.5">npm run dev:seed-billing -- --email your-user@example.com</code>
           生成测试数据后再刷新此页面。
         </div>
       )}
 
-      <BillingSummaryCards summary={summary} />
+      <div className="relative mx-auto mt-10 max-w-[1760px]">
+        <BillingSummaryCards summary={summary} />
+      </div>
 
-      <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
+      <div className="relative mx-auto mt-4 grid max-w-[1760px] gap-4 xl:grid-cols-[1fr_360px]">
         <div className="space-y-4">
           <BillingUsageTable items={usage} />
           <BillingLedgerTable items={ledger} />

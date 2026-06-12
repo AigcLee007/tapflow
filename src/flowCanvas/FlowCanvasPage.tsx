@@ -2,7 +2,7 @@
  * Flow canvas surface used by the authenticated project route.
  */
 import React, { useCallback, useEffect, useState } from 'react';
-import { Image as ImageIcon, LayoutList, MousePointerClick, Music, Sparkles, Video } from 'lucide-react';
+import { Image as ImageIcon, LayoutList, Music, Sparkles, Video } from 'lucide-react';
 import { ReactFlowProvider, useReactFlow } from '@xyflow/react';
 import { AiFlowCanvas } from './canvas/AiFlowCanvas';
 import { FlowTopToolbar } from './canvas/FlowTopToolbar';
@@ -157,11 +157,11 @@ const BackendRunOverlay: React.FC = React.memo(() => {
 });
 
 const QUICK_TEMPLATES: { icon: React.ReactNode; label: string; kind: FlowNodeKind }[] = [
-  { icon: <Video size={23} strokeWidth={1.8} />, label: '文字生视频', kind: 'video' },
-  { icon: <ImageIcon size={23} strokeWidth={1.8} />, label: '图片换背景', kind: 'image' },
-  { icon: <Sparkles size={22} strokeWidth={1.8} />, label: '首帧生成视频', kind: 'video' },
-  { icon: <Music size={23} strokeWidth={1.8} />, label: '音频生视频', kind: 'video' },
-  { icon: <LayoutList size={22} strokeWidth={1.8} />, label: '模板', kind: 'text' },
+  { icon: <Video size={21} strokeWidth={1.8} />, label: '文生视频', kind: 'video' },
+  { icon: <ImageIcon size={21} strokeWidth={1.8} />, label: '图片生成', kind: 'image' },
+  { icon: <Sparkles size={20} strokeWidth={1.8} />, label: '首帧视频', kind: 'video' },
+  { icon: <Music size={21} strokeWidth={1.8} />, label: '音频视频', kind: 'video' },
+  { icon: <LayoutList size={20} strokeWidth={1.8} />, label: '打开模板', kind: 'text' },
 ];
 
 const EmptyState: React.FC = React.memo(() => {
@@ -178,11 +178,8 @@ const EmptyState: React.FC = React.memo(() => {
   return (
     <div style={emptyStyle}>
       <div style={emptyHintStyle}>
-        <span style={emptyPillStyle}>
-          <MousePointerClick size={26} strokeWidth={1.8} color="#38d5ff" />
-          双击
-        </span>
-        <span style={emptyHintTextStyle}>画布自由生成,或者查看模板</span>
+        <span style={emptyPillStyle}>今天想创作什么？</span>
+        <span style={emptyHintTextStyle}>从一个节点开始，或打开模板快速搭建你的 AI Flow。</span>
       </div>
 
       <div style={templateRowStyle}>
@@ -298,19 +295,20 @@ const emptyStyle: React.CSSProperties = {
 
 const emptyHintStyle: React.CSSProperties = {
   display: 'flex',
+  flexDirection: 'column',
   alignItems: 'center',
   justifyContent: 'center',
-  gap: 14,
-  marginBottom: 18,
+  gap: 10,
+  marginBottom: 22,
 };
 
 const emptyPillStyle: React.CSSProperties = {
   minHeight: 48,
   background: 'rgba(39,39,42,0.96)',
   border: '1px solid rgba(255,255,255,0.1)',
-  borderRadius: 15,
-  padding: '0 19px',
-  fontSize: 25,
+  borderRadius: 18,
+  padding: '0 24px',
+  fontSize: 28,
   color: '#f8fafc',
   fontWeight: 800,
   display: 'flex',
@@ -320,9 +318,9 @@ const emptyPillStyle: React.CSSProperties = {
 };
 
 const emptyHintTextStyle: React.CSSProperties = {
-  color: 'rgba(255,255,255,0.32)',
-  fontSize: 25,
-  fontWeight: 720,
+  color: 'rgba(255,255,255,0.42)',
+  fontSize: 15,
+  fontWeight: 560,
   whiteSpace: 'nowrap',
 };
 
@@ -335,12 +333,12 @@ const templateRowStyle: React.CSSProperties = {
 };
 
 const templateButtonStyle: React.CSSProperties = {
-  height: 56,
+  height: 48,
   background: 'rgba(18,18,18,0.92)',
   border: '1px solid rgba(255,255,255,0.16)',
-  borderRadius: 17,
-  padding: '0 24px',
-  fontSize: 21,
+  borderRadius: 15,
+  padding: '0 18px',
+  fontSize: 15,
   fontWeight: 720,
   color: 'rgba(255,255,255,0.48)',
   cursor: 'pointer',
