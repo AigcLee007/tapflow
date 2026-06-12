@@ -914,4 +914,106 @@ describeWithDatabase("assets v2", () => {
       }
     });
   });
+
+  test("asset list can inline preferred thumb preview urls", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({
+          connectionString: await createAppDatabaseUrl(),
+        });
+        const storageProvider = new MemoryStorageProvider();
+        const api = buildTestApp(appPool, storageProvider);
+
+        const owner = await registerOwner(api, "inline-preview-owner@example.com", "Inline Preview Owner");
+        const assetId = await insertAvailableImageAssetWithVariant(
+          appPool,
+          owner.currentTenant.id,
+          owner.user.id,
+          {
+            variantKey: "thumb",
+            variantObjectKey: "tenants/test/assets/inline-thumb.webp",
+          },
+        );
+
+        const response = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "GET",
+          url: "/api/v2/assets?includePreviewUrls=true&page=1&pageSize=20&kind=image",
+        });
+
+        expect(response.statusCode).toBe(200);
+        expect(response.json().items).toEqual([
+          expect.objectContaining({
+            id: assetId,
+            previewVariantKey: "thumb",
+            previewUrl: expect.stringContaining("inline-thumb.webp"),
+            previewUrlExpiresAt: expect.any(String),
+          }),
+        ]);
+
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("asset summary returns media counts in one request", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({
+          connectionString: await createAppDatabaseUrl(),
+        });
+        const storageProvider = new MemoryStorageProvider();
+        const api = buildTestApp(appPool, storageProvider);
+        const owner = await registerOwner(api, "summary-owner@example.com", "Summary Owner");
+
+        await insertAvailableImageAssetWithVariant(
+          appPool,
+          owner.currentTenant.id,
+          owner.user.id,
+          {
+            variantKey: "thumb",
+            variantObjectKey: "tenants/test/assets/summary-thumb.webp",
+          },
+        );
+
+        const response = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "GET",
+          url: "/api/v2/assets/summary",
+        });
+
+        expect(response.statusCode).toBe(200);
+        expect(response.json()).toMatchObject({
+          counts: {
+            all: 1,
+            audio: 0,
+            image: 1,
+            video: 0,
+          },
+        });
+
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
 });

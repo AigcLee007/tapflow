@@ -4,6 +4,11 @@ export const projectIdParamsSchema = z.object({
   projectId: z.string().uuid(),
 });
 
+export const listProjectsQuerySchema = z.object({
+  coverExpiresInSeconds: z.coerce.number().int().min(60).max(3600).optional(),
+  includeCoverUrl: z.coerce.boolean().optional(),
+});
+
 export const createProjectSchema = z.object({
   description: z.string().trim().max(2000).nullable().optional(),
   name: z.string().trim().min(1).max(255),
@@ -20,5 +25,6 @@ export const updateProjectSchema = z
   });
 
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;
+export type ListProjectsQuery = z.infer<typeof listProjectsQuerySchema>;
 export type ProjectIdParams = z.infer<typeof projectIdParamsSchema>;
 export type UpdateProjectInput = z.infer<typeof updateProjectSchema>;

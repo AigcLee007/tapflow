@@ -200,7 +200,10 @@ export function buildApp(options?: {
       pool,
       queueHealthService,
     });
-  const projectsService = new ProjectsService({ pool });
+  const projectsService = new ProjectsService({
+    pool,
+    storageProvider,
+  });
   const flowsService = new FlowsService({ pool });
   const flowCommentsService = new FlowCommentsService({ pool });
   const flowHistoryService = new FlowHistoryService({ pool });

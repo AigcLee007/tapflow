@@ -1,5 +1,6 @@
 import { createPgPool, withTenantTransaction } from "@aigc-flow/db";
-import type { Pool } from "pg";
+import type { StorageProvider } from "@aigc-flow/storage";
+import type { Pool, PoolClient } from "pg";
 
 type PgPool = Pool;
 
@@ -21,6 +22,8 @@ type ProjectWithDraftCoverRecord = ProjectRecord & {
 
 export type ProjectView = {
   coverAssetId: string | null;
+  coverUrl?: string;
+  coverUrlExpiresAt?: string;
   createdAt: string;
   createdBy: string | null;
   description: string | null;
@@ -130,12 +133,17 @@ function mapProject(row: ProjectRecord & { draft_cover_asset_id?: string | null;
 
 export class ProjectsService {
   readonly pool: PgPool;
+  readonly storageProvider?: StorageProvider;
 
-  constructor(options?: { pool?: PgPool }) {
+  constructor(options?: { pool?: PgPool; storageProvider?: StorageProvider }) {
     this.pool = options?.pool ?? createPgPool();
+    this.storageProvider = options?.storageProvider;
   }
 
-  async listProjects(context: ProjectContext): Promise<ProjectView[]> {
+  async listProjects(
+    context: ProjectContext,
+    options?: { coverExpiresInSeconds?: number; includeCoverUrl?: boolean },
+  ): Promise<ProjectView[]> {
     return withTenantTransaction(context, async (client) => {
       const result = await client.query<ProjectWithDraftCoverRecord>(
         `
@@ -168,7 +176,10 @@ export class ProjectsService {
         [context.tenantId],
       );
 
-      return result.rows.map(mapProject);
+      const items = result.rows.map(mapProject);
+      return options?.includeCoverUrl
+        ? this.attachCoverUrls(context, client, items, options.coverExpiresInSeconds ?? 900)
+        : items;
     }, this.pool);
   }
 
@@ -361,5 +372,85 @@ export class ProjectsService {
 
       return { ok: true as const };
     }, this.pool);
+  }
+
+  private async attachCoverUrls(
+    context: ProjectContext,
+    client: PoolClient,
+    items: ProjectView[],
+    expiresInSeconds: number,
+  ): Promise<ProjectView[]> {
+    if (!this.storageProvider) {
+      return items;
+    }
+
+    const coverAssetIds = Array.from(
+      new Set(items.map((item) => item.coverAssetId).filter((assetId): assetId is string => Boolean(assetId))),
+    );
+    if (coverAssetIds.length === 0) {
+      return items;
+    }
+
+    const variantRows = await client.query<{
+      asset_id: string;
+      bucket: string;
+      mime_type: string;
+      object_key: string;
+      original_filename: string | null;
+      status: string;
+      variant_key: string | null;
+    }>(
+      `
+        SELECT
+          a.id::text AS asset_id,
+          COALESCE(av.bucket, a.bucket) AS bucket,
+          COALESCE(av.mime_type, a.mime_type) AS mime_type,
+          COALESCE(av.object_key, a.object_key) AS object_key,
+          a.original_filename,
+          a.status,
+          av.variant_key
+        FROM assets a
+        LEFT JOIN LATERAL (
+          SELECT bucket, mime_type, object_key, variant_key
+          FROM asset_variants
+          WHERE tenant_id = a.tenant_id
+            AND asset_id = a.id
+            AND variant_key IN ('thumb', 'preview')
+          ORDER BY CASE variant_key WHEN 'thumb' THEN 0 WHEN 'preview' THEN 1 ELSE 2 END
+          LIMIT 1
+        ) av ON true
+        WHERE a.tenant_id = $1::uuid
+          AND a.id = ANY($2::uuid[])
+          AND a.deleted_at IS NULL
+      `,
+      [context.tenantId, coverAssetIds],
+    );
+
+    const signedByAssetId = new Map<string, { expiresAt: string; url: string }>();
+    for (const row of variantRows.rows) {
+      if (row.status !== "available") continue;
+      const signed = await this.storageProvider.createPresignedGetUrl({
+        bucket: row.bucket,
+        expiresInSeconds,
+        key: row.object_key,
+        responseContentDisposition: `inline; filename="${row.original_filename?.trim() || `asset-${row.asset_id}`}"`,
+        responseContentType: row.mime_type,
+      });
+      signedByAssetId.set(row.asset_id, {
+        expiresAt: signed.expiresAt,
+        url: signed.url,
+      });
+    }
+
+    return items.map((item) => {
+      const signed = item.coverAssetId ? signedByAssetId.get(item.coverAssetId) : null;
+      return signed
+        ? {
+            ...item,
+            coverUrl: signed.url,
+            coverUrlExpiresAt: signed.expiresAt,
+          }
+        : item;
+    });
   }
 }

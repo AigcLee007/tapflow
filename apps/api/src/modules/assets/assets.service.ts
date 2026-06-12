@@ -108,6 +108,9 @@ export type AssetView = {
   updatedAt: string;
   variants: AssetVariantView[];
   width: number | null;
+  previewUrl?: string;
+  previewUrlExpiresAt?: string;
+  previewVariantKey?: string | null;
 };
 
 type AssetForStorage = {
@@ -226,6 +229,12 @@ function mapAsset(row: AssetRecord, variants: AssetVariantView[]): AssetView {
     variants,
     width: row.width,
   };
+}
+
+function getPreferredPreviewVariant(variants: AssetVariantView[]): AssetVariantView | null {
+  return variants.find((variant) => variant.variantKey === "thumb")
+    ?? variants.find((variant) => variant.variantKey === "preview")
+    ?? null;
 }
 
 function mapFolder(row: AssetFolderRecord): AssetFolderView {
@@ -428,13 +437,55 @@ export class AssetsService {
       );
 
       const items = result.rows.map((row) => mapAsset(row, variantsByAssetId.get(row.id) ?? []));
+      const finalItems = query.includePreviewUrls
+        ? await this.attachPreviewUrls(items, query.previewExpiresInSeconds ?? 900)
+        : items;
 
       return {
-        items,
+        items: finalItems,
         page,
         pageSize,
         total: total.rows[0]?.total ?? 0,
       };
+    }, this.pool);
+  }
+
+  async getAssetSummary(context: AssetContext): Promise<{
+    counts: {
+      all: number;
+      audio: number;
+      image: number;
+      video: number;
+    };
+  }> {
+    return withTenantTransaction(context, async (client) => {
+      const result = await client.query<{ kind: string; total: number }>(
+        `
+          SELECT kind, COUNT(*)::int AS total
+          FROM assets
+          WHERE tenant_id = $1::uuid
+            AND deleted_at IS NULL
+            AND status = 'available'
+          GROUP BY kind
+        `,
+        [context.tenantId],
+      );
+
+      const counts = {
+        all: 0,
+        audio: 0,
+        image: 0,
+        video: 0,
+      };
+
+      for (const row of result.rows) {
+        counts.all += row.total;
+        if (row.kind === "image" || row.kind === "video" || row.kind === "audio") {
+          counts[row.kind] = row.total;
+        }
+      }
+
+      return { counts };
     }, this.pool);
   }
 
@@ -1115,6 +1166,41 @@ export class AssetsService {
 
       return { items };
     }, this.pool);
+  }
+
+  private async attachPreviewUrls(items: AssetView[], expiresInSeconds: number): Promise<AssetView[]> {
+    return Promise.all(
+      items.map(async (asset) => {
+        if (asset.status !== "available") return asset;
+        if (!(asset.mimeType.startsWith("image/") || asset.mimeType.startsWith("video/"))) return asset;
+
+        const variant = getPreferredPreviewVariant(asset.variants);
+        const bucket = variant?.bucket ?? asset.bucket;
+        const key = variant?.objectKey ?? asset.objectKey;
+        const mimeType = variant?.mimeType ?? asset.mimeType;
+        const signed = await this.storageProvider.createPresignedGetUrl({
+          bucket,
+          expiresInSeconds,
+          key,
+          responseContentDisposition: `inline; filename="${buildDownloadFilename({
+            bucket,
+            id: asset.id,
+            mimeType,
+            objectKey: key,
+            originalFilename: asset.originalFilename,
+            status: asset.status,
+          })}"`,
+          responseContentType: mimeType,
+        });
+
+        return {
+          ...asset,
+          previewUrl: signed.url,
+          previewUrlExpiresAt: signed.expiresAt,
+          previewVariantKey: variant?.variantKey ?? null,
+        };
+      }),
+    );
   }
 
   async deleteAsset(context: AssetContext, assetId: string): Promise<{ ok: true }> {

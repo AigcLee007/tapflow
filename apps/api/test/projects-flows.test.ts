@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, describe, expect, test } from "vitest";
 
 import { createPgPool, withTenantTransaction } from "@aigc-flow/db";
+import type { StorageProvider } from "@aigc-flow/storage";
 
 import type { ApiEnv } from "../src/config/env.js";
 import { buildApp } from "../src/app.js";
@@ -11,6 +12,88 @@ import { hasDatabaseEnv, withDatabase } from "../../../packages/db/test/helpers.
 
 const originalDatabaseUrl = process.env.DATABASE_URL;
 const describeWithDatabase = hasDatabaseEnv() ? describe : describe.skip;
+
+class MemoryStorageProvider implements StorageProvider {
+  readonly objects = new Map<string, {
+    contentLength: number | null;
+    contentType: string | null;
+    metadata: Record<string, string>;
+  }>();
+
+  async putObject(input: {
+    body: Buffer | Uint8Array | string;
+    bucket: string;
+    contentType?: string;
+    key: string;
+    metadata?: Record<string, string>;
+  }): Promise<void> {
+    const contentLength =
+      typeof input.body === "string"
+        ? Buffer.byteLength(input.body)
+        : input.body instanceof Uint8Array
+          ? input.body.byteLength
+          : Buffer.byteLength(String(input.body));
+    this.objects.set(`${input.bucket}/${input.key}`, {
+      contentLength,
+      contentType: input.contentType ?? null,
+      metadata: input.metadata ?? {},
+    });
+  }
+
+  async headObject(input: { bucket: string; key: string }) {
+    const object = this.objects.get(`${input.bucket}/${input.key}`);
+    if (!object) {
+      throw new Error("Object not found");
+    }
+
+    return {
+      contentLength: object.contentLength,
+      contentType: object.contentType,
+      eTag: "etag-test",
+      lastModified: new Date().toISOString(),
+      metadata: object.metadata,
+    };
+  }
+
+  async deleteObject(): Promise<void> {}
+
+  async createPresignedPutUrl(input: {
+    bucket: string;
+    contentLength?: number | null;
+    contentType?: string | null;
+    expiresInSeconds: number;
+    key: string;
+    metadata?: Record<string, string>;
+  }) {
+    this.objects.set(`${input.bucket}/${input.key}`, {
+      contentLength: input.contentLength ?? null,
+      contentType: input.contentType ?? null,
+      metadata: input.metadata ?? {},
+    });
+
+    return {
+      expiresAt: new Date(Date.now() + input.expiresInSeconds * 1000).toISOString(),
+      headers: input.contentType ? { "content-type": input.contentType } : {},
+      method: "PUT" as const,
+      url: `memory://put/${input.bucket}/${input.key}`,
+    };
+  }
+
+  async createPresignedGetUrl(input: {
+    bucket: string;
+    expiresInSeconds: number;
+    key: string;
+    responseContentDisposition?: string | null;
+    responseContentType?: string | null;
+  }) {
+    return {
+      expiresAt: new Date(Date.now() + input.expiresInSeconds * 1000).toISOString(),
+      headers: {},
+      method: "GET" as const,
+      url: `memory://get/${input.bucket}/${input.key}?contentType=${encodeURIComponent(input.responseContentType ?? "")}&disposition=${encodeURIComponent(input.responseContentDisposition ?? "")}`,
+    };
+  }
+}
 
 const testEnv: ApiEnv = {
   accessTokenTtlSeconds: 60 * 15,
@@ -37,11 +120,12 @@ afterAll(() => {
   }
 });
 
-function buildTestApp(pool: ReturnType<typeof createPgPool>) {
+function buildTestApp(pool: ReturnType<typeof createPgPool>, storageProvider?: StorageProvider) {
   return buildApp({
     env: testEnv,
     logger: false,
     pool,
+    storageProvider,
   });
 }
 
@@ -145,6 +229,136 @@ describeWithDatabase("projects and flows v2", () => {
           url: "/api/v2/projects",
         });
         expect(viewerCreate.statusCode).toBe(403);
+
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("project list can inline cover urls", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({
+          connectionString: await createAppDatabaseUrl(),
+        });
+        const storageProvider = new MemoryStorageProvider();
+        const api = buildTestApp(appPool, storageProvider);
+        const owner = await registerOwner(api, "project-cover-owner@example.com", "Project Cover Owner");
+
+        const project = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "POST",
+          payload: {
+            name: "Cover Project",
+          },
+          url: "/api/v2/projects",
+        });
+        expect(project.statusCode).toBe(201);
+        const projectBody = project.json();
+
+        const createdAsset = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "POST",
+          payload: {
+            kind: "image",
+            mimeType: "image/png",
+            originalFilename: "cover.png",
+            sizeBytes: 128,
+          },
+          url: "/api/v2/assets/presigned-upload",
+        });
+        expect(createdAsset.statusCode).toBe(201);
+        const assetBody = createdAsset.json();
+
+        await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "POST",
+          payload: {},
+          url: `/api/v2/assets/${assetBody.asset.id}/complete-upload`,
+        });
+
+        await withTenantTransaction(
+          { tenantId: owner.currentTenant.id, userId: owner.user.id },
+          async (client) => {
+            await client.query(
+              `
+                INSERT INTO asset_variants (
+                  tenant_id,
+                  asset_id,
+                  variant_key,
+                  bucket,
+                  object_key,
+                  mime_type,
+                  width,
+                  height,
+                  size_bytes,
+                  metadata
+                )
+                VALUES (
+                  $1::uuid,
+                  $2::uuid,
+                  'thumb',
+                  'test-bucket',
+                  $3,
+                  'image/webp',
+                  320,
+                  200,
+                  512,
+                  '{}'::jsonb
+                )
+                ON CONFLICT (asset_id, variant_key) DO NOTHING
+              `,
+              [owner.currentTenant.id, assetBody.asset.id, `tenants/${owner.currentTenant.id}/assets/${assetBody.asset.id}/thumb.webp`],
+            );
+          },
+          appPool,
+        );
+
+        const updatedProject = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "PATCH",
+          payload: {
+            coverAssetId: assetBody.asset.id,
+          },
+          url: `/api/v2/projects/${projectBody.id}`,
+        });
+        expect(updatedProject.statusCode).toBe(200);
+
+        const listResponse = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "GET",
+          url: "/api/v2/projects?includeCoverUrl=true",
+        });
+
+        expect(listResponse.statusCode).toBe(200);
+        expect(listResponse.json()).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              coverAssetId: assetBody.asset.id,
+              coverUrl: expect.stringContaining("memory://get/"),
+              coverUrlExpiresAt: expect.any(String),
+              id: projectBody.id,
+            }),
+          ]),
+        );
 
         await api.close();
       } finally {

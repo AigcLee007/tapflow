@@ -149,6 +149,21 @@ export function registerAssetRoutes(app: FastifyInstance): void {
     },
   );
 
+  app.get(
+    "/api/v2/assets/summary",
+    {
+      preHandler: [...authHandlers, requirePermission("asset:read")],
+    },
+    async (request, reply) => {
+      try {
+        const result = await app.assetsService.getAssetSummary(getAssetContext(request));
+        return reply.send(result);
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
   app.post(
     "/api/v2/assets/folders",
     {

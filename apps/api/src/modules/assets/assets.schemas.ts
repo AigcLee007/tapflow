@@ -28,9 +28,11 @@ export const assetListQuerySchema = z.object({
     .transform((value) => value === "true")
     .optional(),
   folderId: z.string().uuid().optional(),
+  includePreviewUrls: z.coerce.boolean().optional(),
   kind: z.string().trim().min(1).max(64).optional(),
   page: z.coerce.number().int().positive().max(10_000).optional(),
   pageSize: z.coerce.number().int().positive().max(100).optional(),
+  previewExpiresInSeconds: z.coerce.number().int().min(60).max(3600).optional(),
   projectId: z.string().uuid().optional(),
   query: z.string().trim().min(1).max(255).optional(),
   source: z.string().trim().min(1).max(64).optional(),

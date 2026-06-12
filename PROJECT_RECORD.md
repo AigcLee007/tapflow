@@ -892,6 +892,40 @@ Validation completed:
 - `npm run test -- src\assets\AssetLibraryPage.test.tsx src\flowCanvas\panels\CanvasAssetPanel.test.tsx`
 - `npm run build`
 
+### Latest Production Asset and Workspace Performance Plan
+
+Completed in current local iteration:
+
+- created the executable production performance plan for the canvas asset drawer, `/assets`, and `/workspace`
+- selected the full production-grade path: backend inline preview URLs, asset summary endpoint, project cover URL inlining, frontend cache-first hooks, windowed thumbnail rendering, performance marks, and staging validation
+- documented the work as 12 executable tasks with files, tests, commands, deployment order, and acceptance checks
+
+Plan:
+
+- `docs/superpowers/plans/2026-06-13-production-asset-workspace-performance.md`
+
+### Latest Production Asset and Workspace Performance Tasks 1-4
+
+Completed in current local iteration:
+
+- added DB indexes for tenant-scoped asset browsing, favorite filtering, variant lookup, and workspace project ordering in `000022_asset_workspace_performance.sql`
+- extended `GET /api/v2/assets` to support inline preview signing with `includePreviewUrls=true`, returning `previewUrl`, `previewUrlExpiresAt`, and `previewVariantKey`
+- added `GET /api/v2/assets/summary` to return one-shot image/video/audio/all counts for the asset library
+- extended `GET /api/v2/projects` to support `includeCoverUrl=true`, returning signed inline project cover URLs from thumb, preview, or original assets
+- added API integration coverage for the new asset preview, asset summary, and project cover URL behaviors
+
+Validation completed:
+
+- `npm run build --workspace @aigc-flow/db`
+- `npm run build --workspace @aigc-flow/api`
+- `npm run test -- src\workspace\useWorkspaceProjects.test.tsx src\assets\useAssetLibrary.test.tsx`
+- `npm run build`
+
+Notes:
+
+- local API integration tests under `apps/api/test/*.test.ts` are present but skipped in this environment because `DATABASE_URL` is not configured locally
+- frontend hooks have not been switched to the new inline preview and cover URL APIs yet; that starts in Task 5-6
+
 ### Latest Project and Asset Management Menus
 
 Completed in current local iteration:

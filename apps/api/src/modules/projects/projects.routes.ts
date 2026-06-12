@@ -8,9 +8,11 @@ import {
 } from "../../http/auth-middleware.js";
 import {
   type CreateProjectInput,
+  type ListProjectsQuery,
   type ProjectIdParams,
   type UpdateProjectInput,
   createProjectSchema,
+  listProjectsQuerySchema,
   projectIdParamsSchema,
   updateProjectSchema,
 } from "./projects.schemas.js";
@@ -40,6 +42,10 @@ function parseBody<T>(request: FastifyRequest, schema: { parse: (value: unknown)
 
 function parseParams<T>(request: FastifyRequest, schema: { parse: (value: unknown) => T }): T {
   return schema.parse(request.params);
+}
+
+function parseQuery<T>(request: FastifyRequest, schema: { parse: (value: unknown) => T }): T {
+  return schema.parse(request.query);
 }
 
 function handleRouteError(
@@ -87,7 +93,8 @@ export function registerProjectRoutes(app: FastifyInstance): void {
     },
     async (request, reply) => {
       try {
-        return reply.send(await app.projectsService.listProjects(getProjectContext(request)));
+        const query = parseQuery<ListProjectsQuery>(request, listProjectsQuerySchema);
+        return reply.send(await app.projectsService.listProjects(getProjectContext(request), query));
       } catch (error) {
         return handleRouteError(error, request, reply);
       }
