@@ -2,7 +2,13 @@ import React, { useState } from "react";
 import { Grid2X2, RefreshCw, Search, SlidersHorizontal } from "lucide-react";
 
 import { useAuth } from "../auth/useAuth";
-import type { AssetItem } from "./assetApi";
+import {
+  addAssetToFolder,
+  deleteAsset,
+  getAssetDownloadUrl,
+  updateAssetMetadata,
+  type AssetItem,
+} from "./assetApi";
 import { AssetFolderSidebar } from "./AssetFolderSidebar";
 import { AssetGrid } from "./AssetGrid";
 import { AssetMediaTabs } from "./AssetGroupedSections";
@@ -39,6 +45,34 @@ export function AssetLibraryPage() {
     void library.refresh();
   };
 
+  const renameAsset = async (asset: AssetItem, title: string) => {
+    await updateAssetMetadata(asset.id, { title });
+    await library.refresh();
+  };
+
+  const toggleAssetFavorite = async (asset: AssetItem) => {
+    await updateAssetMetadata(asset.id, { favorite: !asset.favorite });
+    await library.refresh();
+  };
+
+  const downloadAsset = async (asset: AssetItem) => {
+    const result = await getAssetDownloadUrl(asset.id);
+    window.open(result.url, "_blank", "noopener,noreferrer");
+  };
+
+  const moveAssetToFolder = async (asset: AssetItem, folderId: string) => {
+    await addAssetToFolder(folderId, asset.id);
+    await library.refresh();
+  };
+
+  const removeAsset = async (asset: AssetItem) => {
+    await deleteAsset(asset.id);
+    await library.refresh();
+  };
+
+  const selectedMediaLabel =
+    library.selectedMediaTab === "image" ? "图片" : library.selectedMediaTab === "video" ? "视频" : "音频";
+
   return (
     <section className="min-h-[calc(100vh-92px)] overflow-hidden rounded border border-white/10 bg-[#0b0d14] shadow-2xl shadow-black/20">
       <div className="flex flex-col md:flex-row">
@@ -57,7 +91,9 @@ export function AssetLibraryPage() {
                 管理项目可复用的图片、视频、音频和参考素材。
               </p>
               <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500">
-                <span className="rounded border border-white/10 bg-white/[0.04] px-2.5 py-1">共 {library.mediaCounts.all} 个素材</span>
+                <span className="rounded border border-white/10 bg-white/[0.04] px-2.5 py-1">
+                  共 {library.mediaCounts.all} 个素材
+                </span>
                 <span className="rounded border border-white/10 bg-white/[0.04] px-2.5 py-1">云端同步</span>
                 <span className="rounded border border-white/10 bg-white/[0.04] px-2.5 py-1">项目复用</span>
               </div>
@@ -113,10 +149,16 @@ export function AssetLibraryPage() {
               />
             </div>
             <AssetGrid
-              emptyMessage={`当前${library.selectedMediaTab === "image" ? "图片" : library.selectedMediaTab === "video" ? "视频" : "音频"}分类下还没有素材。`}
+              emptyMessage={`当前${selectedMediaLabel}分类下还没有素材。`}
+              folders={library.folders}
               groups={library.groupedAssets}
               loading={library.loading}
+              onAddToFolder={moveAssetToFolder}
+              onDelete={removeAsset}
+              onDownload={downloadAsset}
               onOpen={setPreviewAsset}
+              onRename={renameAsset}
+              onToggleFavorite={toggleAssetFavorite}
             />
           </div>
         </main>
@@ -125,9 +167,7 @@ export function AssetLibraryPage() {
         <AssetPreviewModal
           asset={previewAsset}
           onClose={() => setPreviewAsset(null)}
-          onUpdated={() => {
-            refresh();
-          }}
+          onUpdated={refresh}
         />
       )}
     </section>

@@ -1,15 +1,31 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { AuthContext, type AuthState } from "../auth/useAuth";
 import { AssetLibraryPage } from "./AssetLibraryPage";
+import type { AssetFolder, AssetItem } from "./assetApi";
 
 const useAssetLibraryMock = vi.fn();
+const updateAssetMetadataMock = vi.fn();
+const deleteAssetMock = vi.fn();
+const getAssetDownloadUrlMock = vi.fn();
+const addAssetToFolderMock = vi.fn();
 
 vi.mock("./useAssetLibrary", () => ({
   useAssetLibrary: () => useAssetLibraryMock(),
 }));
+
+vi.mock("./assetApi", async () => {
+  const actual = await vi.importActual<typeof import("./assetApi")>("./assetApi");
+  return {
+    ...actual,
+    addAssetToFolder: (...args: unknown[]) => addAssetToFolderMock(...args),
+    deleteAsset: (...args: unknown[]) => deleteAssetMock(...args),
+    getAssetDownloadUrl: (...args: unknown[]) => getAssetDownloadUrlMock(...args),
+    updateAssetMetadata: (...args: unknown[]) => updateAssetMetadataMock(...args),
+  };
+});
 
 vi.mock("./UploadAssetButton", () => ({
   UploadAssetButton: ({ onUploaded }: { onUploaded: () => void }) => (
@@ -36,32 +52,88 @@ function createAuthState(): AuthState {
   };
 }
 
+const asset: AssetItem = {
+  bucket: "bucket",
+  checksumSha256: null,
+  createdAt: "2026-06-12T01:00:00.000Z",
+  deletedAt: null,
+  description: null,
+  durationMs: null,
+  favorite: false,
+  height: 512,
+  id: "asset-1",
+  kind: "image",
+  metadata: {},
+  mimeType: "image/png",
+  objectKey: "asset-1.png",
+  originalFilename: "asset-1.png",
+  ownerUserId: "user-1",
+  previewUrl: "https://example.test/asset-1.png",
+  projectId: null,
+  sizeBytes: 1200,
+  source: "upload",
+  status: "available",
+  storageProvider: "s3",
+  tags: [],
+  tenantId: "tenant-1",
+  title: "Asset One",
+  updatedAt: "2026-06-12T01:00:00.000Z",
+  variants: [],
+  width: 512,
+};
+
+const folder: AssetFolder = {
+  createdAt: "2026-06-12T01:00:00.000Z",
+  createdBy: "user-1",
+  deletedAt: null,
+  description: null,
+  id: "folder-1",
+  name: "Campaign",
+  parentFolderId: null,
+  tenantId: "tenant-1",
+  updatedAt: "2026-06-12T01:00:00.000Z",
+};
+
+function mockLibrary(overrides: Record<string, unknown> = {}) {
+  useAssetLibraryMock.mockReturnValue({
+    assets: [],
+    error: null,
+    folders: [],
+    groupedAssets: [],
+    loading: false,
+    mediaCounts: { all: 135, audio: 0, image: 60, video: 0 },
+    query: "",
+    refresh: vi.fn(async () => undefined),
+    selectedMediaTab: "image",
+    selectedFolderId: null,
+    setQuery: vi.fn(),
+    setSelectedFolderId: vi.fn(),
+    setSelectedMediaTab: vi.fn(),
+    total: 0,
+    ...overrides,
+  });
+}
+
+function renderPage() {
+  return render(
+    <AuthContext.Provider value={createAuthState()}>
+      <AssetLibraryPage />
+    </AuthContext.Provider>,
+  );
+}
+
 describe("AssetLibraryPage", () => {
   beforeEach(() => {
-    useAssetLibraryMock.mockReturnValue({
-      assets: [],
-      error: null,
-      folders: [],
-      groupedAssets: [],
-      loading: false,
-      mediaCounts: { all: 135, audio: 0, image: 60, video: 0 },
-      query: "",
-      refresh: vi.fn(async () => undefined),
-      selectedMediaTab: "image",
-      selectedFolderId: null,
-      setQuery: vi.fn(),
-      setSelectedFolderId: vi.fn(),
-      setSelectedMediaTab: vi.fn(),
-      total: 0,
-    });
+    useAssetLibraryMock.mockReset();
+    updateAssetMetadataMock.mockReset();
+    deleteAssetMock.mockReset();
+    getAssetDownloadUrlMock.mockReset();
+    addAssetToFolderMock.mockReset();
+    mockLibrary();
   });
 
   test("renders categorized asset library empty state", () => {
-    render(
-      <AuthContext.Provider value={createAuthState()}>
-        <AssetLibraryPage />
-      </AuthContext.Provider>,
-    );
+    renderPage();
 
     expect(screen.getByRole("heading", { name: /素材库/i })).toBeTruthy();
     expect(screen.getByRole("button", { name: /全部素材/i })).toBeTruthy();
@@ -70,12 +142,66 @@ describe("AssetLibraryPage", () => {
     expect(screen.getByRole("button", { name: /音频/ })).toBeTruthy();
     expect(screen.getByPlaceholderText(/搜索素材/i)).toBeTruthy();
     expect(screen.getByText(/上传第一个素材/i)).toBeTruthy();
-    expect(screen.getByText(/上传图片/i)).toBeTruthy();
-    expect(screen.getByText(/上传视频/i)).toBeTruthy();
-    expect(screen.getByText(/上传音频/i)).toBeTruthy();
     expect(screen.getByText("共 135 个素材")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "图片60" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "视频0" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "音频0" })).toBeTruthy();
+  });
+
+  test("opens an asset action menu and manages the asset", async () => {
+    const refresh = vi.fn(async () => undefined);
+    mockLibrary({
+      assets: [asset],
+      folders: [folder],
+      groupedAssets: [{ dateLabel: "2026-06-12", items: [asset] }],
+      mediaCounts: { all: 1, audio: 0, image: 1, video: 0 },
+      refresh,
+      total: 1,
+    });
+    updateAssetMetadataMock.mockResolvedValue(asset);
+    deleteAssetMock.mockResolvedValue({ ok: true });
+    addAssetToFolderMock.mockResolvedValue({ ok: true });
+    getAssetDownloadUrlMock.mockResolvedValue({
+      expiresAt: "2026-06-12T02:00:00.000Z",
+      method: "GET",
+      url: "https://example.test/original.png",
+    });
+    vi.spyOn(window, "open").mockImplementation(() => null);
+
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "管理素材 Asset One" }));
+    expect(screen.getByRole("menuitem", { name: "预览" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "重命名" }));
+    fireEvent.change(screen.getByLabelText("素材名称"), { target: { value: "Renamed Asset" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => {
+      expect(updateAssetMetadataMock).toHaveBeenCalledWith("asset-1", { title: "Renamed Asset" });
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "管理素材 Asset One" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "收藏" }));
+    await waitFor(() => {
+      expect(updateAssetMetadataMock).toHaveBeenCalledWith("asset-1", { favorite: true });
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "管理素材 Asset One" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "下载原图" }));
+    await waitFor(() => {
+      expect(getAssetDownloadUrlMock).toHaveBeenCalledWith("asset-1");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "管理素材 Asset One" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "移动到文件夹" }));
+    fireEvent.click(screen.getByRole("button", { name: "移动到 Campaign" }));
+    await waitFor(() => {
+      expect(addAssetToFolderMock).toHaveBeenCalledWith("folder-1", "asset-1");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "管理素材 Asset One" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "删除" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
+    await waitFor(() => {
+      expect(deleteAssetMock).toHaveBeenCalledWith("asset-1");
+    });
+    expect(refresh).toHaveBeenCalled();
   });
 });

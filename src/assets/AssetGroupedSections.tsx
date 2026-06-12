@@ -65,13 +65,25 @@ export function AssetMediaTabs({
 export function AssetGroupedSections({
   compact = false,
   emptyMessage,
+  folders,
   groups,
+  onAddToFolder,
+  onDelete,
+  onDownload,
   onOpen,
+  onRename,
+  onToggleFavorite,
 }: {
   compact?: boolean;
   emptyMessage: string;
+  folders?: Array<{ id: string; name: string }>;
   groups: AssetDateGroup[];
+  onAddToFolder?: (asset: AssetItem, folderId: string) => Promise<void>;
+  onDelete?: (asset: AssetItem) => Promise<void>;
+  onDownload?: (asset: AssetItem) => Promise<void>;
   onOpen: (asset: AssetItem) => void;
+  onRename?: (asset: AssetItem, title: string) => Promise<void>;
+  onToggleFavorite?: (asset: AssetItem) => Promise<void>;
 }) {
   if (groups.length === 0) {
     return (
@@ -124,7 +136,18 @@ export function AssetGroupedSections({
             }}
           >
             {group.items.map((asset) => (
-              <AssetCard asset={asset} compact={compact} key={asset.id} onOpen={onOpen} />
+              <AssetCard
+                asset={asset}
+                compact={compact}
+                folders={folders}
+                key={asset.id}
+                onAddToFolder={onAddToFolder}
+                onDelete={onDelete}
+                onDownload={onDownload}
+                onOpen={onOpen}
+                onRename={onRename}
+                onToggleFavorite={onToggleFavorite}
+              />
             ))}
           </div>
         </section>

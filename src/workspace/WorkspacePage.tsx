@@ -7,7 +7,7 @@ import { ProjectTabs } from "./ProjectTabs";
 import { ProjectToolbar } from "./ProjectToolbar";
 import { WorkspaceHeader } from "./WorkspaceHeader";
 import { useWorkspaceProjects } from "./useWorkspaceProjects";
-import type { WorkspaceProject } from "./workspaceApi";
+import { deleteWorkspaceProject, updateWorkspaceProject, type WorkspaceProject } from "./workspaceApi";
 
 function navigate(path: string) {
   window.history.pushState(null, "", path);
@@ -41,6 +41,16 @@ export function WorkspacePage() {
   const createAndOpen = async (input: { description?: string | null; name: string }) => {
     const result = await createProject(input);
     navigate(`/projects/${result.project.id}`);
+  };
+
+  const renameProject = async (project: WorkspaceProject, name: string) => {
+    await updateWorkspaceProject(project.id, { name });
+    await refresh();
+  };
+
+  const deleteProject = async (project: WorkspaceProject) => {
+    await deleteWorkspaceProject(project.id);
+    await refresh();
   };
 
   return (
@@ -86,7 +96,9 @@ export function WorkspacePage() {
           <ProjectGrid
             creating={creating}
             onCreate={createAndOpen}
+            onDelete={deleteProject}
             onOpen={openProject}
+            onRename={renameProject}
             projects={filteredProjects}
             viewMode={viewMode}
           />

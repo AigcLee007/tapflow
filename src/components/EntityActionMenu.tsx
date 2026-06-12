@@ -1,0 +1,204 @@
+import React, { useEffect, useRef } from "react";
+
+export type EntityActionMenuItem = {
+  danger?: boolean;
+  disabled?: boolean;
+  key: string;
+  label: string;
+  onSelect: () => void;
+  separatorBefore?: boolean;
+};
+
+export function EntityActionMenu({
+  items,
+  onClose,
+}: {
+  items: EntityActionMenuItem[];
+  onClose: () => void;
+}) {
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!menuRef.current) return;
+      if (menuRef.current.contains(event.target as Node)) return;
+      onClose();
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      className="absolute right-0 top-11 z-[80] w-[244px] overflow-hidden rounded-2xl border border-white/10 bg-[#242424] py-2 text-[15px] font-medium text-slate-100 shadow-[0_22px_60px_rgba(0,0,0,0.5)]"
+      ref={menuRef}
+      role="menu"
+    >
+      {items.map((item) => (
+        <React.Fragment key={item.key}>
+          {item.separatorBefore && <div className="my-2 border-t border-white/10" />}
+          <button
+            className={`flex h-11 w-full items-center px-5 text-left transition ${
+              item.danger
+                ? "text-red-300 hover:bg-red-500/10 hover:text-red-200"
+                : "text-slate-100 hover:bg-white/[0.07]"
+            } disabled:cursor-not-allowed disabled:opacity-45`}
+            disabled={item.disabled}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              item.onSelect();
+            }}
+            role="menuitem"
+            type="button"
+          >
+            {item.label}
+          </button>
+        </React.Fragment>
+      ))}
+    </div>
+  );
+}
+
+export function WorkspaceActionMenu(props: {
+  items: EntityActionMenuItem[];
+  onClose: () => void;
+}) {
+  return <EntityActionMenu {...props} />;
+}
+
+export function EntityRenameDialog({
+  defaultValue,
+  label,
+  onClose,
+  onSubmit,
+  title,
+}: {
+  defaultValue: string;
+  label: string;
+  onClose: () => void;
+  onSubmit: (value: string) => Promise<void> | void;
+  title: string;
+}) {
+  const [value, setValue] = React.useState(defaultValue);
+  const [submitting, setSubmitting] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const nextValue = value.trim();
+    if (!nextValue) {
+      setError("名称不能为空");
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      await onSubmit(nextValue);
+      onClose();
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : "保存失败，请稍后重试");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[1600] grid place-items-center bg-black/60 px-4 backdrop-blur-sm">
+      <form className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#1f1f20] p-5 shadow-2xl" onSubmit={submit}>
+        <h2 className="text-lg font-semibold text-white">{title}</h2>
+        <label className="mt-4 block text-sm font-medium text-slate-300">
+          {label}
+          <input
+            autoFocus
+            className="mt-2 h-11 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white outline-none focus:border-cyan-300/60"
+            onChange={(event) => setValue(event.target.value)}
+            value={value}
+          />
+        </label>
+        {error && <div className="mt-3 text-sm text-red-300">{error}</div>}
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            className="h-10 rounded-xl border border-white/10 px-4 text-sm font-semibold text-slate-200 hover:bg-white/[0.06]"
+            onClick={onClose}
+            type="button"
+          >
+            取消
+          </button>
+          <button
+            className="h-10 rounded-xl bg-white px-4 text-sm font-semibold text-slate-950 hover:bg-cyan-100 disabled:opacity-50"
+            disabled={submitting}
+            type="submit"
+          >
+            保存
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+export function EntityConfirmDialog({
+  body,
+  confirmLabel,
+  onClose,
+  onConfirm,
+  title,
+}: {
+  body: string;
+  confirmLabel: string;
+  onClose: () => void;
+  onConfirm: () => Promise<void> | void;
+  title: string;
+}) {
+  const [submitting, setSubmitting] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const confirm = async () => {
+    setSubmitting(true);
+    setError(null);
+    try {
+      await onConfirm();
+      onClose();
+    } catch (confirmError) {
+      setError(confirmError instanceof Error ? confirmError.message : "操作失败，请稍后重试");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[1600] grid place-items-center bg-black/60 px-4 backdrop-blur-sm">
+      <section className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#1f1f20] p-5 shadow-2xl">
+        <h2 className="text-lg font-semibold text-white">{title}</h2>
+        <p className="mt-3 text-sm leading-6 text-slate-400">{body}</p>
+        {error && <div className="mt-3 text-sm text-red-300">{error}</div>}
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            className="h-10 rounded-xl border border-white/10 px-4 text-sm font-semibold text-slate-200 hover:bg-white/[0.06]"
+            onClick={onClose}
+            type="button"
+          >
+            取消
+          </button>
+          <button
+            className="h-10 rounded-xl bg-red-400 px-4 text-sm font-semibold text-slate-950 hover:bg-red-300 disabled:opacity-50"
+            disabled={submitting}
+            onClick={() => void confirm()}
+            type="button"
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}

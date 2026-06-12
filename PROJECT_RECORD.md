@@ -879,6 +879,23 @@ Validation completed:
 - `npm run test -- src/app/WorkspaceShell.test.tsx src/workspace/WorkspacePage.test.tsx src/workspace/ProjectCard.test.tsx`
 - `npm run build`
 
+### Latest Project and Asset Management Menus
+
+Completed in current local iteration:
+
+- added shared `EntityActionMenu` primitives plus a `WorkspaceActionMenu` wrapper for TapNow-style entity management menus
+- wired project grid cards to a three-dot management menu with open, rename, disabled future actions, and delete
+- wired project list mode to an operation column with the same project management menu
+- connected project rename to `updateWorkspaceProject` and project delete to `DELETE /projects/:id`, refreshing the workspace list after successful actions
+- wired asset cards to a three-dot management menu with preview, rename, favorite/unfavorite, move to folder, download original, and delete
+- connected asset rename, favorite, download, delete, and move-to-folder to the existing asset and folder APIs, refreshing the asset library after mutations
+- tightened menu state handling so menu actions that open dialogs or run immediate operations close the menu cleanly, while the folder move submenu remains available until a folder is selected
+- added regression coverage for project rename/delete and asset rename/favorite/download/move/delete menu flows
+
+Validation completed:
+
+- `npm run test -- src\workspace\WorkspacePage.test.tsx src\assets\AssetLibraryPage.test.tsx`
+
 ### Latest Workspace Cover and Asset Library Performance Fix
 
 Completed in current local iteration:

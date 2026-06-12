@@ -9,11 +9,23 @@ export function AssetGrid({
   emptyMessage,
   groups,
   loading,
+  onAddToFolder,
+  onDelete,
+  onDownload,
+  onRename,
+  onToggleFavorite,
   onOpen,
+  folders,
 }: {
   emptyMessage: string;
+  folders?: Array<{ id: string; name: string }>;
   groups: AssetDateGroup[];
   loading: boolean;
+  onAddToFolder?: (asset: AssetItem, folderId: string) => Promise<void>;
+  onDelete?: (asset: AssetItem) => Promise<void>;
+  onDownload?: (asset: AssetItem) => Promise<void>;
+  onRename?: (asset: AssetItem, title: string) => Promise<void>;
+  onToggleFavorite?: (asset: AssetItem) => Promise<void>;
   onOpen: (asset: AssetItem) => void;
 }) {
   if (loading) {
@@ -62,5 +74,17 @@ export function AssetGrid({
     );
   }
 
-  return <AssetGroupedSections emptyMessage={emptyMessage} groups={groups} onOpen={onOpen} />;
+  return (
+    <AssetGroupedSections
+      emptyMessage={emptyMessage}
+      folders={folders}
+      groups={groups}
+      onAddToFolder={onAddToFolder}
+      onDelete={onDelete}
+      onDownload={onDownload}
+      onOpen={onOpen}
+      onRename={onRename}
+      onToggleFavorite={onToggleFavorite}
+    />
+  );
 }

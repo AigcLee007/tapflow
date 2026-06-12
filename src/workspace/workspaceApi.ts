@@ -1,4 +1,4 @@
-import { apiGet, apiPatch, apiPost } from "../services/v2HttpClient";
+import { apiDelete, apiGet, apiPatch, apiPost } from "../services/v2HttpClient";
 
 export type WorkspaceProject = {
   coverAssetId: string | null;
@@ -64,6 +64,10 @@ export async function updateWorkspaceProject(
   },
 ): Promise<WorkspaceProject> {
   return apiPatch<WorkspaceProject>(`/projects/${projectId}`, input);
+}
+
+export async function deleteWorkspaceProject(projectId: string): Promise<{ ok: true }> {
+  return apiDelete<{ ok: true }>(`/projects/${projectId}`);
 }
 
 export async function createWorkspaceProject(input: {
