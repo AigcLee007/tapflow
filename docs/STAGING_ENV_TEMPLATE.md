@@ -14,6 +14,8 @@ Do not commit real secrets into repository files.
 - `PUBLIC_APP_URL =https://art.aittco.com`
 - `API_BASE_URL =https://api-art.aittco.com`
 - `CORS_ALLOWED_ORIGINS =https://art.aittco.com`
+- `TRUST_PROXY =true`
+- `SECURITY_HEADERS_ENABLED =true`
 - `COOKIE_DOMAIN =.aittco.com`
 - `HTTPS configured =Yes`
 - `Certificate / CDN / Reverse proxy notes =TBD: configure HTTPS via hosting platform / reverse proxy. Planned domains: art.aittco.com and api-art.aittco.com.`
@@ -62,6 +64,10 @@ Do not commit real secrets into repository files.
 
 - `JWT_ACCESS_SECRET = <secret: strong random JWT access secret>`
 - `JWT_REFRESH_SECRET = <secret: strong random JWT refresh secret>`
+- `API_RATE_LIMIT_MAX = 1000`
+- `API_RATE_LIMIT_WINDOW_MS = 60000`
+- `AUTH_RATE_LIMIT_MAX = 20`
+- `AUTH_RATE_LIMIT_WINDOW_MS = 60000`
 - `COOKIE_SECURE = true`
 - `COOKIE_DOMAIN = .aittco.com`
 - `Token expiry strategy = Use application default expiry; verify in staging`
@@ -218,7 +224,7 @@ Relay D:
 
 ## 10. Deployment
 
-- `Deployment platform = ÓêÔÆÔÆ·þÎñÆ÷ + Docker Compose`
+- `Deployment platform = RainYun VPS + Docker Compose`
 - `API deployment method = Docker service running API behind reverse proxy at https://api-art.aittco.com`
 - `Frontend deployment method = Vite static build served by reverse proxy at https://art.aittco.com`
 - `Worker deployment method = Docker service / background worker process with no public port`
