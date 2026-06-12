@@ -119,6 +119,187 @@ As of 2026-06-12:
   - `npm run test -- src/flowCanvas/utils/promptBarDensity.test.ts`
   - `npm run build`
 
+## 2026-06-12 - Canvas Dock Panels Plan
+
+- Detailed implementation plan added for turning the left dock's empty `素材库`、`模板列表`、`评论`、`历史记录` entries into TapNow-style in-canvas drawers.
+- Plan path: `docs/superpowers/plans/2026-06-12-canvas-dock-panels.md`.
+- The plan is split into 8 executable tasks:
+  - shared drawer shell and dock state
+  - asset library drawer data/search
+  - asset insert, drag, and upload entry
+  - creative template backend
+  - template panel and graph insertion
+  - comments API and panel
+  - durable history API and panel
+  - integration, badges, project record, and staging validation
+- Planning self-check completed: no placeholder markers found, and all four requested dock functions have concrete frontend/backend execution tasks.
+
+## 2026-06-12 - Canvas Dock Panels Task 1-2
+
+- Executed Task 1 and Task 2 from `docs/superpowers/plans/2026-06-12-canvas-dock-panels.md`.
+- Added a shared in-canvas drawer shell and dock panel layout helper for the left dock.
+- The four dock buttons now switch a unified drawer state instead of being empty placeholders.
+- Opening the new drawer now syncs `leftPanelOpen`, so existing minimap and image-tool left safe area logic can react to the drawer width.
+- Added the first real drawer implementation for `素材库`, reusing `useAssetLibrary()` to show:
+  - search
+  - folder filters
+  - compact asset thumbnails
+  - loading / error / empty states
+- Asset insertion is still intentionally stubbed with a placeholder callback in `AiFlowCanvas`; the real click/drag/upload-to-canvas behavior remains scheduled for Task 3.
+- Validation:
+  - `npm run test -- src/flowCanvas/panels/canvasDockDrawer.test.ts`
+  - `npm run build`
+
+## 2026-06-12 - Canvas Dock Panels Task 3
+
+- Executed Task 3 from `docs/superpowers/plans/2026-06-12-canvas-dock-panels.md`.
+- The canvas asset drawer now supports real asset-backed image insertion:
+  - clicking a drawer asset inserts a selected image node at the canvas center
+  - dragging a drawer asset onto the canvas inserts the same asset-backed image node at the drop point
+- Inserted asset nodes now hydrate from the real asset record plus preview/download URL resolution, so the canvas continues to use `assetId` as the source of truth instead of temporary local-only state.
+- Added a compact `UploadAssetButton` variant for in-canvas drawer usage and mounted it in the asset drawer header and empty state.
+- Successful upload from the asset drawer now refreshes the drawer library immediately, so newly uploaded assets can be inserted back onto the canvas without leaving the workspace.
+- Also cleaned historical front-end text encoding issues in the asset drawer/upload path while keeping the current v2 asset API flow unchanged.
+- Validation:
+  - `npm run test -- src/assets/UploadAssetButton.test.tsx src/flowCanvas/store/flowCanvasStore.test.ts`
+  - `npm run build`
+
+## 2026-06-12 - Canvas Dock Panels Task 4
+
+- Executed the first production-facing backend slice for `模板列表`.
+- Added migration `packages/db/migrations/000021_canvas_dock_panels.sql` with:
+  - `flow_templates`
+  - `flow_template_usage`
+  - tenant/official visibility indexes
+  - row-level security policies aligned with current v2 multi-tenant rules
+- Added v2 API module `flow-templates` with three endpoints:
+  - `GET /api/v2/flow-templates`
+  - `GET /api/v2/flow-templates/:templateId`
+  - `POST /api/v2/flow-templates/:templateId/usage`
+- Visibility behavior now follows the planned rule:
+  - all tenants can read `official` templates
+  - a tenant can read its own tenant/private templates
+  - cross-tenant private templates remain hidden
+- Added usage recording so Task 5 template insertion can report server-backed template adoption without inventing a second analytics path later.
+- Added focused API integration test file `apps/api/test/flow-templates.test.ts` covering auth requirement, visibility scope, detail fetch, and usage insert behavior.
+- Validation:
+  - `npm run build --workspace @aigc-flow/db`
+  - `npm run test --workspace @aigc-flow/api -- test/flow-templates.test.ts`
+  - `npm run build --workspace @aigc-flow/api`
+  - `npm run build`
+- Note:
+  - the new API test is currently environment-gated the same way as the other DB integration tests; in this local session it was skipped instead of failing because the required database env was not present.
+
+## 2026-06-12 - Canvas Dock Panels Task 5
+
+- Executed Task 5 from `docs/superpowers/plans/2026-06-12-canvas-dock-panels.md`.
+- Added front-end template client `src/services/v2FlowTemplatesApi.ts` and wired it to the new `flow-templates` backend endpoints.
+- Added `CanvasTemplatePanel` so `模板列表` drawer now has:
+  - search
+  - category chips
+  - compact template cards
+  - per-template `插入` action
+- Added `offsetTemplateGraphForInsert()` to safely remap template node/edge ids and place the incoming graph around the current canvas center.
+- Added store action `mergeTemplateGraph()` so template insertion can append a graph into the current canvas while:
+  - clearing the previous selection
+  - selecting the newly inserted template nodes
+  - recomputing graph index
+  - marking the canvas dirty
+- `AiFlowCanvas` now wires `模板列表` drawer to real insertion:
+  - fetch template graph
+  - offset and remap ids
+  - merge into current canvas
+  - record template usage against the current backend project when available
+- Validation:
+  - `npm run test -- src/flowCanvas/utils/templateGraph.test.ts src/flowCanvas/store/flowCanvasStore.test.ts`
+  - `npm run build`
+
+## 2026-06-12 - Canvas Dock Panels Task 6
+
+- Executed Task 6 from `docs/superpowers/plans/2026-06-12-canvas-dock-panels.md`.
+- Extended `000021_canvas_dock_panels.sql` with tenant-scoped `flow_comments` table, project/node indexes, and row-level security policies.
+- Added backend comments module under `apps/api/src/modules/flow-comments` with:
+  - `GET /api/v2/projects/:projectId/comments`
+  - `POST /api/v2/projects/:projectId/comments`
+  - `PATCH /api/v2/projects/:projectId/comments/:commentId`
+- Comment backend behavior now covers:
+  - project-level comments
+  - node-level comments
+  - optional `flowId`
+  - resolve/open status updates
+  - tenant/project/flow ownership checks
+- Added front-end comments client `src/services/v2FlowCommentsApi.ts`.
+- Added `CanvasCommentPanel` and wired the `评论` drawer in `AiFlowCanvas`:
+  - open/resolved filter
+  - selected-node chip
+  - textarea + submit
+  - comment list
+  - `定位` action for node comments
+  - `解决` action for open comments
+- Added canvas node focus helper so a node comment can jump the viewport to the referenced node.
+- Validation:
+  - `npm run build --workspace @aigc-flow/api`
+  - `npm run test --workspace @aigc-flow/api -- test/flow-comments.test.ts`
+- Validation notes:
+  - the new API integration test is currently environment-gated and was skipped in this local session because the required DB env was not present
+  - root `npm run build` is currently blocked by an unrelated workspace issue outside the comments task: `Could not resolve "./ProjectCard" from "src/workspace/WorkspacePage.tsx"`
+
+## 2026-06-12 - Canvas Dock Panels Task 7
+
+- Executed Task 7 from `docs/superpowers/plans/2026-06-12-canvas-dock-panels.md`.
+- Extended `packages/db/migrations/000021_canvas_dock_panels.sql` with tenant-scoped `flow_activity_events`, project/flow indexes, and row-level security policies.
+- Added backend history module under `apps/api/src/modules/flow-history` with:
+  - `GET /api/v2/projects/:projectId/history`
+  - `POST /api/v2/projects/:projectId/history/snapshot`
+  - `POST /api/v2/projects/:projectId/history/:versionId/restore`
+- History backend behavior now covers:
+  - durable project history list from `flow_activity_events`
+  - snapshotting the current primary flow draft into `flow_versions`
+  - restore from a saved version back into `flow_drafts`
+  - snapshot/restore event recording for later drawer display
+  - tenant isolation and cross-tenant restore blocking
+- Added front-end history client `src/services/v2FlowHistoryApi.ts`.
+- Added `CanvasHistoryPanel` and wired the `历史记录` drawer in `AiFlowCanvas`:
+  - history list
+  - save snapshot action
+  - restore confirmation
+  - immediate canvas graph replacement through store-level `restoreGraphSnapshot()`
+- Added focused store regression coverage for `restoreGraphSnapshot()` so restored history now clears transient UI state and rebuilds upstream refs.
+- Validation:
+  - `npm run test -- src/flowCanvas/store/flowCanvasStore.test.ts`
+  - `npm run build --workspace @aigc-flow/api`
+  - `npm run test --workspace @aigc-flow/api -- test/flow-history.test.ts`
+- Validation notes:
+  - DB integration test is environment-gated and was skipped in this local session because the required DB env was not present
+  - root `npm run build` still has the existing unrelated workspace blocker: `Could not resolve "./ProjectCard" from "src/workspace/WorkspacePage.tsx"`
+
+## 2026-06-12 - Canvas Dock Panels Task 8
+
+- Executed Task 8 from `docs/superpowers/plans/2026-06-12-canvas-dock-panels.md`.
+- Completed left dock integration polish for the four in-canvas drawers:
+  - `素材库` now shows a dot badge when the tenant asset library has assets
+  - `评论` now shows unresolved comment count in the dock
+  - `历史记录` now shows a dot badge once snapshot history exists
+  - active drawer header count now mirrors the relevant drawer metric where useful
+- Added drawer/menu interlock behavior:
+  - opening a drawer closes add-node and user menus
+  - opening add-node or user menu closes the active drawer
+  - `Escape` closes the active drawer
+  - pane click closes the active drawer alongside existing context/image transient UI
+- Added badge refresh hooks so comment create/resolve and history snapshot/restore update dock state immediately instead of waiting for a later reload.
+- Added focused badge helper test coverage in `src/flowCanvas/panels/canvasDockDrawer.test.ts`.
+- Added local draft utility coverage for explicit draft clearing helper in `src/flowCanvas/services/localFlowDraft.test.ts`; helper is available for future restore-flow hardening work but is not yet wired into Task 8 restore behavior.
+- Validation:
+  - `npm run test -- src/flowCanvas/panels/canvasDockDrawer.test.ts src/flowCanvas/utils/templateGraph.test.ts src/flowCanvas/store/flowCanvasStore.test.ts src/flowCanvas/services/localFlowDraft.test.ts`
+  - `npm run test --workspace @aigc-flow/api -- test/flow-templates.test.ts test/flow-comments.test.ts test/flow-history.test.ts`
+  - `npm run build --workspace @aigc-flow/db`
+  - `npm run build --workspace @aigc-flow/api`
+  - `npm run build`
+- Validation notes:
+  - all focused frontend tests passed locally
+  - all three API integration suites were skipped locally because DB env is still not present in this session
+  - root/frontend build now passes again after the workspace-level billing page import issue was no longer blocking the build in the current worktree
+
 ## Common Staging Commands
 
 Set reusable command variables:
@@ -648,9 +829,9 @@ Validation blocked:
 Completed in current local iteration:
 
 - added `docs/superpowers/plans/2026-06-12-tapnow-workspace-phase-1.md` for the authenticated workspace redesign
-- refreshed the authenticated top shell into a TapNow-style dark creator nav with `??`, `????`, `???`, and `????`
+- refreshed the authenticated top shell into a TapNow-style dark creator nav with `主页`, `工作空间`, `素材库`, and `价格方案`
 - moved account/admin actions into a right-side account menu with profile, credits, account management, model settings, help, and logout entries
-- changed `/workspace` into a creator home with `????????`, a prompt-style input surface, recent projects, and an all-projects jump
+- changed `/workspace` into a creator home with `今天要做点什么？`, a prompt-style input surface, recent projects, and an all-projects jump
 - refreshed workspace project controls, tabs, create card, project cards, and project copy to match the denser TapNow-style project grid
 - kept existing v2 auth, project listing, project creation, and project-opening behavior unchanged
 

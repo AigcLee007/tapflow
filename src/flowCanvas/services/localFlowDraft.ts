@@ -64,6 +64,14 @@ export function writeLocalFlowDraft(input: {
   return draft;
 }
 
+export function clearLocalFlowDraft(input: {
+  flowId: string;
+  tenantId: string;
+}) {
+  if (!canUseLocalStorage()) return;
+  window.localStorage.removeItem(getLocalFlowDraftKey(input));
+}
+
 export function isLocalDraftNewer(input: {
   localDraft: LocalFlowDraft | null;
   serverGraph: FlowDraftGraph;

@@ -15,6 +15,14 @@ describe("UploadAssetButton", () => {
     uploadAssetFileMock.mockReset();
   });
 
+  it("renders a compact trigger for canvas drawer usage", () => {
+    render(<UploadAssetButton onUploaded={vi.fn()} variant="compact" />);
+
+    const button = screen.getByRole("button");
+    expect(button.className).toContain("h-8");
+    expect(button.className).toContain("rounded-lg");
+  });
+
   it("uploads multiple files and preserves partial failures", async () => {
     uploadAssetFileMock
       .mockResolvedValueOnce({ id: "asset-1" })
@@ -42,8 +50,8 @@ describe("UploadAssetButton", () => {
     await waitFor(() => {
       expect(screen.getByText("first.png")).toBeTruthy();
       expect(screen.getByText("second.png")).toBeTruthy();
-      expect(screen.getByText("success")).toBeTruthy();
-      expect(screen.getByText("failed")).toBeTruthy();
+      expect(screen.getByText("成功")).toBeTruthy();
+      expect(screen.getByText("失败")).toBeTruthy();
       expect(screen.getByText("Second upload failed")).toBeTruthy();
     });
 

@@ -1,4 +1,11 @@
-import Fastify from "fastify";
+import cors from "@fastify/cors";
+import helmet from "@fastify/helmet";
+import rateLimit from "@fastify/rate-limit";
+import Fastify, {
+  type FastifyInstance,
+  type FastifyReply,
+  type FastifyRequest,
+} from "fastify";
 
 import { CredentialVault } from "@aigc-flow/ai-gateway-core";
 import { createPgPool } from "@aigc-flow/db";
@@ -32,6 +39,12 @@ import { registerBillingRoutes } from "./modules/billing/billing.routes.js";
 import { BillingApiService } from "./modules/billing/billing.service.js";
 import { registerFlowRoutes } from "./modules/flows/flows.routes.js";
 import { FlowsService } from "./modules/flows/flows.service.js";
+import { registerFlowCommentRoutes } from "./modules/flow-comments/flow-comments.routes.js";
+import { FlowCommentsService } from "./modules/flow-comments/flow-comments.service.js";
+import { registerFlowHistoryRoutes } from "./modules/flow-history/flow-history.routes.js";
+import { FlowHistoryService } from "./modules/flow-history/flow-history.service.js";
+import { registerFlowTemplateRoutes } from "./modules/flow-templates/flow-templates.routes.js";
+import { FlowTemplatesService } from "./modules/flow-templates/flow-templates.service.js";
 import { registerObservabilityRoutes } from "./modules/observability/observability.routes.js";
 import { ObservabilityService } from "./modules/observability/observability.service.js";
 import { createApiLoggerOptions, logApiRequestComplete } from "./observability/logger.js";
@@ -43,6 +56,60 @@ import { registerWorkflowRunRoutes } from "./modules/workflow-runs/workflow-runs
 import { WorkflowRunsService } from "./modules/workflow-runs/workflow-runs.service.js";
 
 type PgPool = ReturnType<typeof createPgPool>;
+
+function isAllowedOrigin(origin: string | undefined, allowedOrigins: string[]): boolean {
+  if (!origin) {
+    return true;
+  }
+  if (allowedOrigins.includes("*")) {
+    return true;
+  }
+  return allowedOrigins.includes(origin);
+}
+
+function sendStandardError(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  statusCode: number,
+  code: string,
+  message: string,
+  details?: unknown,
+) {
+  const ctx = request.ctx;
+  return reply.code(statusCode).send({
+    error: {
+      code,
+      details,
+      message,
+      requestId: ctx?.requestId ?? request.id,
+    },
+  });
+}
+
+function registerSecurityBaseline(app: FastifyInstance, env: ApiEnv): void {
+  app.register(cors, {
+    credentials: true,
+    origin(origin, callback) {
+      callback(null, isAllowedOrigin(origin, env.corsAllowedOrigins ?? []));
+    },
+  });
+
+  if (env.securityHeadersEnabled ?? true) {
+    app.register(helmet, {
+      contentSecurityPolicy: false,
+      crossOriginEmbedderPolicy: false,
+    });
+  }
+
+  app.register(rateLimit, {
+    global: true,
+    keyGenerator(request) {
+      return request.ctx?.userId ?? request.ip;
+    },
+    max: env.apiRateLimitMax ?? 1000,
+    timeWindow: env.apiRateLimitWindowMs ?? 60_000,
+  });
+}
 
 export function buildApp(options?: {
   auditService?: AuditApiService;
@@ -135,10 +202,16 @@ export function buildApp(options?: {
     });
   const projectsService = new ProjectsService({ pool });
   const flowsService = new FlowsService({ pool });
+  const flowCommentsService = new FlowCommentsService({ pool });
+  const flowHistoryService = new FlowHistoryService({ pool });
+  const flowTemplatesService = new FlowTemplatesService({ pool });
 
   const app = Fastify({
     logger: options?.logger === false ? false : (createApiLoggerOptions() as never),
+    trustProxy: env.trustProxy ?? false,
   });
+
+  registerSecurityBaseline(app, env);
 
   app.decorate("adminService", adminService);
   app.decorate("aiGatewayService", aiGatewayService);
@@ -153,10 +226,29 @@ export function buildApp(options?: {
   app.decorate("projectsService", projectsService);
   app.decorate("observabilityService", observabilityService);
   app.decorate("flowsService", flowsService);
+  app.decorate("flowCommentsService", flowCommentsService);
+  app.decorate("flowHistoryService", flowHistoryService);
+  app.decorate("flowTemplatesService", flowTemplatesService);
   app.decorate("queueHealthService", queueHealthService);
   app.decorate("storageProvider", storageProvider);
   app.decorate("workflowRunsService", workflowRunsService);
   registerRequestContext(app, authService);
+  app.setErrorHandler((error, request, reply) => {
+    request.log.error(
+      {
+        err: error,
+        requestId: request.ctx?.requestId ?? request.id,
+        tenantId: request.ctx?.tenantId,
+        traceId: request.ctx?.traceId,
+        userId: request.ctx?.userId,
+      },
+      "api request failed",
+    );
+    return sendStandardError(request, reply, 500, "INTERNAL_ERROR", "服务暂时不可用，请稍后重试。");
+  });
+  app.setNotFoundHandler((request, reply) => {
+    return sendStandardError(request, reply, 404, "NOT_FOUND", "Route not found");
+  });
   app.addHook("onResponse", async (request, reply) => {
     const responseTimeMs = typeof reply.elapsedTime === "number"
       ? Math.round(reply.elapsedTime)
@@ -186,6 +278,27 @@ export function buildApp(options?: {
     return { status: "ok" };
   });
 
+  app.get("/health/live", async () => {
+    return {
+      status: "ok",
+      timestamp: new Date().toISOString(),
+      uptimeSeconds: Math.round(process.uptime()),
+    };
+  });
+
+  app.get("/health/ready", async (_request, reply) => {
+    const health = await observabilityService.getAdminHealth();
+    const statusCode = health.status === "ok" ? 200 : 503;
+    return reply.code(statusCode).send({
+      database: health.database,
+      redis: health.redis,
+      status: health.status,
+      timestamp: health.timestamp,
+      uptimeSeconds: health.uptimeSeconds,
+      version: health.version,
+    });
+  });
+
   registerAdminRoutes(app);
   registerAuditRoutes(app);
   registerAiGatewayAdminRoutes(app);
@@ -197,6 +310,9 @@ export function buildApp(options?: {
   registerBillingRoutes(app);
   registerProjectRoutes(app);
   registerFlowRoutes(app);
+  registerFlowCommentRoutes(app);
+  registerFlowHistoryRoutes(app);
+  registerFlowTemplateRoutes(app);
   registerObservabilityRoutes(app);
   registerQueueRoutes(app);
   registerWorkflowRunRoutes(app);

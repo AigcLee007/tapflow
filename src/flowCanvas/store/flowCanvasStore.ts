@@ -139,6 +139,8 @@ interface FlowCanvasState {
   layoutSelectedGroup: (layout: 'grid' | 'horizontal') => void;
   deleteSelectedNodes: () => void;
   duplicateSelectedNodes: () => void;
+  mergeTemplateGraph: (graph: { nodes: FlowNode[]; edges: FlowEdge[] }) => void;
+  restoreGraphSnapshot: (graph: { nodes: FlowNode[]; edges: FlowEdge[]; viewport?: Viewport }) => void;
   updateNodeData: (nodeId: string, patch: Partial<FlowNodeData>) => void;
   replaceNode: (nodeId: string, input: { data?: Partial<FlowNodeData>; type?: FlowNodeKind }) => void;
   commitNodePositions: (nodes: FlowNode[]) => void;
@@ -169,6 +171,7 @@ interface FlowCanvasState {
   setNodeDragging: (dragging: boolean) => void;
 
   toggleLeftPanel: () => void;
+  setLeftPanelOpen: (open: boolean) => void;
   openContextMenu: (x: number, y: number, nodeId?: string) => void;
   closeContextMenu: () => void;
   openImageTool: (nodeId: string, tool: ActiveImageToolType) => void;
@@ -691,6 +694,52 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
     });
   },
 
+  mergeTemplateGraph: (graph) => {
+    if (!graph.nodes.length && !graph.edges.length) return;
+    get().pushHistory();
+    set((state) => {
+      const nodes = [
+        ...state.nodes.map((node) => (node.selected ? { ...node, selected: false } : node)),
+        ...graph.nodes.map((node) => ({ ...node, selected: true })),
+      ];
+      const edges = [
+        ...state.edges.map((edge) => (edge.selected ? { ...edge, selected: false } : edge)),
+        ...graph.edges.map((edge) => ({ ...edge, selected: false })),
+      ];
+      return {
+        nodes,
+        edges,
+        graphIndex: buildGraphIndex(nodes, edges, state.nodeOutputByNodeId),
+        selectedNodeCount: countSelectedNodes(nodes),
+        isDirty: true,
+      };
+    });
+  },
+
+  restoreGraphSnapshot: (graph) => {
+    const viewport = graph.viewport ?? INITIAL_VIEWPORT;
+    set((state) => {
+      const nodes = graph.nodes.map((node) => ({
+        ...node,
+        selected: !!node.selected,
+      }));
+      const edges = graph.edges.map((edge) => ({
+        ...edge,
+        selected: false,
+      }));
+      return {
+        nodes,
+        edges,
+        graphIndex: buildGraphIndex(nodes, edges, state.nodeOutputByNodeId),
+        selectedNodeCount: countSelectedNodes(nodes),
+        viewport,
+        contextMenu: null,
+        activeImageTool: null,
+        isDirty: true,
+      };
+    });
+  },
+
   updateNodeData: (nodeId, patch) => {
     set((state) => {
       const nodes = state.nodes.map((node) =>
@@ -978,6 +1027,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
   setNodeDragging: (dragging) => set((state) => (state.isNodeDragging === dragging ? state : { isNodeDragging: dragging })),
 
   toggleLeftPanel: () => set((state) => ({ leftPanelOpen: !state.leftPanelOpen })),
+  setLeftPanelOpen: (open) => set((state) => (state.leftPanelOpen === open ? state : { leftPanelOpen: open })),
   openContextMenu: (x, y, nodeId) => set({ contextMenu: { x, y, nodeId }, activeImageTool: null }),
   closeContextMenu: () => set({ contextMenu: null }),
   openImageTool: (nodeId, tool) => set({ activeImageTool: { nodeId, tool }, contextMenu: null }),

@@ -29,11 +29,19 @@ import {
 } from '../nodes/FlowNodes';
 import { SmartEdgeComponent } from '../edges/SmartEdge';
 import { useFlowCanvasStore } from '../store/flowCanvasStore';
+import { CanvasAssetPanel, CanvasCommentPanel, CanvasDockDrawer, CanvasDockEmptyState, CanvasHistoryPanel, CanvasTemplatePanel } from '../panels';
 import { ConnectionMenu } from './ConnectionMenu';
 import { FlowContextMenu } from './FlowContextMenu';
 import { FlowLeftAddPanel } from './FlowLeftAddPanel';
+import { getAsset, getAssetVariantUrl, listAssets } from '../../assets/assetApi';
+import { getFlowTemplate, recordFlowTemplateUsage } from '../../services/v2FlowTemplatesApi';
+import { listProjectHistory } from '../../services/v2FlowHistoryApi';
+import { listFlowComments } from '../../services/v2FlowCommentsApi';
 import type { FlowNodeData } from '../types';
+import { buildAssetBackedNodeData } from '../utils/assetNodeData';
+import { getCanvasDockBadge, getCanvasDockDrawerLayout, type CanvasDockPanelId } from '../utils/canvasDockPanel';
 import { FLOW_NODE_DEFAULT_SIZES, fitMediaNodeToShortSide } from '../utils/nodeSizing';
+import { offsetTemplateGraphForInsert } from '../utils/templateGraph';
 import { canConnectFlowNodes } from '../rules/connectionRules';
 import {
   buildLocalUploadFailureNodeData,
@@ -79,6 +87,13 @@ const getConnectionMenuLayout = (x: number, y: number) => {
   return { left, top, anchorX, anchorY };
 };
 
+const drawerTitleByPanel: Record<CanvasDockPanelId, string> = {
+  assets: '素材库',
+  templates: '模板列表',
+  comments: '评论',
+  history: '历史记录',
+};
+
 const nodeTypes: NodeTypes = {
   text: TextNodeComponent,
   image: ImageNodeComponent,
@@ -102,6 +117,7 @@ type ImportedImageSource = {
 
 const IMAGE_FILE_RE = /\.(avif|bmp|gif|jpe?g|png|svg|webp)$/i;
 const INTERNAL_REFERENCE_DRAG_TYPE = 'application/x-flow-reference-chip';
+const ASSET_LIBRARY_DRAG_TYPE = 'application/x-tapflow-asset-id';
 
 const isImageFile = (file: File) => file.type.startsWith('image/') || IMAGE_FILE_RE.test(file.name);
 
@@ -116,6 +132,7 @@ const isEditableElement = (target: EventTarget | null) => {
 const hasImageTransfer = (dataTransfer: DataTransfer | null) => {
   if (!dataTransfer) return false;
   if (Array.from(dataTransfer.types || []).includes(INTERNAL_REFERENCE_DRAG_TYPE)) return false;
+  if (Array.from(dataTransfer.types || []).includes(ASSET_LIBRARY_DRAG_TYPE)) return true;
   if (Array.from(dataTransfer.files || []).some(isImageFile)) return true;
   return Array.from(dataTransfer.types || []).some((type) => ['Files', 'text/html', 'text/uri-list'].includes(type));
 };
@@ -194,9 +211,13 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled }) =>
   const closeContextMenu = useFlowCanvasStore((s) => s.closeContextMenu);
   const closeImageTool = useFlowCanvasStore((s) => s.closeImageTool);
   const leftPanelOpen = useFlowCanvasStore((s) => s.leftPanelOpen);
+  const setLeftPanelOpen = useFlowCanvasStore((s) => s.setLeftPanelOpen);
   const pushHistory = useFlowCanvasStore((s) => s.pushHistory);
   const setNodeDragging = useFlowCanvasStore((s) => s.setNodeDragging);
   const addNode = useFlowCanvasStore((s) => s.addNode);
+  const mergeTemplateGraph = useFlowCanvasStore((s) => s.mergeTemplateGraph);
+  const restoreGraphSnapshot = useFlowCanvasStore((s) => s.restoreGraphSnapshot);
+  const backendFlowId = useFlowCanvasStore((s) => s.backendFlowId);
   const backendProjectId = useFlowCanvasStore((s) => s.backendProjectId);
   const groupSelectedNodes = useFlowCanvasStore((s) => s.groupSelectedNodes);
   const deleteSelectedNodes = useFlowCanvasStore((s) => s.deleteSelectedNodes);
@@ -209,6 +230,12 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled }) =>
 
   const [miniMapOpen, setMiniMapOpen] = useState(false);
   const [gridSnapEnabled, setGridSnapEnabled] = useState(false);
+  const [activeDockPanel, setActiveDockPanel] = useState<CanvasDockPanelId | null>(null);
+  const [dockBadgeMetrics, setDockBadgeMetrics] = useState({
+    assetTotal: 0,
+    historySnapshotCount: 0,
+    unresolvedCommentCount: 0,
+  });
   const [connMenu, setConnMenu] = useState<{
     x: number;
     y: number;
@@ -226,6 +253,53 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled }) =>
     closeImageTool();
     setConnMenu(null);
   }, [closeContextMenu, closeImageTool, isMultiSelecting]);
+
+  useEffect(() => {
+    setLeftPanelOpen(Boolean(activeDockPanel));
+  }, [activeDockPanel, setLeftPanelOpen]);
+
+  const refreshDockBadges = useCallback(() => {
+    if (!backendProjectId) {
+      setDockBadgeMetrics({
+        assetTotal: 0,
+        historySnapshotCount: 0,
+        unresolvedCommentCount: 0,
+      });
+      return;
+    }
+
+    void Promise.allSettled([
+      listAssets({ page: 1, pageSize: 1 }),
+      listFlowComments(backendProjectId),
+      listProjectHistory(backendProjectId),
+    ]).then((results) => {
+      const assets = results[0].status === 'fulfilled' ? results[0].value : null;
+      const comments = results[1].status === 'fulfilled' ? results[1].value.items : [];
+      const history = results[2].status === 'fulfilled' ? results[2].value.items : [];
+      setDockBadgeMetrics({
+        assetTotal: assets?.total ?? 0,
+        historySnapshotCount: history.filter((item) => item.type === 'snapshot').length,
+        unresolvedCommentCount: comments.filter((item) => item.status === 'open').length,
+      });
+    });
+  }, [backendProjectId]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      if (!activeDockPanel) return;
+      if (isEditableElement(event.target)) return;
+      event.preventDefault();
+      setActiveDockPanel(null);
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeDockPanel]);
+
+  useEffect(() => {
+    refreshDockBadges();
+  }, [refreshDockBadges]);
 
   const handleNodeDragStart = useCallback((_event: React.MouseEvent, node: Node) => {
     pushHistory();
@@ -263,6 +337,7 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled }) =>
     closeContextMenu();
     closeImageTool();
     setConnMenu(null);
+    setActiveDockPanel(null);
   }, [closeContextMenu, closeImageTool]);
 
   const handleCanvasDoubleClick = useCallback(
@@ -526,6 +601,53 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled }) =>
     });
   }, [screenToFlowPosition]);
 
+  const handleInsertAssetNode = useCallback(
+    async (assetId: string, position?: { x: number; y: number }) => {
+      const asset = await getAsset(assetId);
+      const preview =
+        asset.previewUrl ||
+        (await getAssetVariantUrl(assetId, 'preview').then((result) => result.url).catch(() => undefined)) ||
+        (await getAssetVariantUrl(assetId).then((result) => result.url).catch(() => undefined));
+      const nextPosition = position ?? getCanvasCenterFlowPosition();
+
+      addNode(
+        'image',
+        nextPosition,
+        buildAssetBackedNodeData(asset, {
+          previewUrl: preview,
+          source: 'asset-library',
+          title: asset.title || asset.originalFilename || '素材',
+        }),
+        { selected: true },
+      );
+    },
+    [addNode, getCanvasCenterFlowPosition],
+  );
+
+  const handleInsertTemplate = useCallback(
+    async (templateId: string) => {
+      const template = await getFlowTemplate(templateId);
+      const center = getCanvasCenterFlowPosition();
+      const graph = offsetTemplateGraphForInsert({
+        graph: template.graph as { edges: any[]; nodes: any[] },
+        center,
+        idPrefix: 'tpl',
+      });
+      mergeTemplateGraph(graph as any);
+      await recordFlowTemplateUsage(templateId, backendProjectId || undefined).catch(() => undefined);
+    },
+    [backendProjectId, getCanvasCenterFlowPosition, mergeTemplateGraph],
+  );
+
+  const handleFocusCommentNode = useCallback((nodeId: string) => {
+    const node = nodes.find((item) => item.id === nodeId);
+    if (!node) return;
+    void reactFlow.setCenter(node.position.x, node.position.y, {
+      zoom: Math.max(viewport.zoom, 0.75),
+      duration: 220,
+    });
+  }, [nodes, reactFlow, viewport.zoom]);
+
   const handleDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
     if (!hasImageTransfer(event.dataTransfer)) return;
     event.preventDefault();
@@ -537,11 +659,16 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled }) =>
       if (!hasImageTransfer(event.dataTransfer)) return;
       event.preventDefault();
       event.stopPropagation();
+      const assetId = event.dataTransfer.getData(ASSET_LIBRARY_DRAG_TYPE);
+      if (assetId) {
+        void handleInsertAssetNode(assetId, screenToFlowPosition({ x: event.clientX, y: event.clientY }));
+        return;
+      }
       const sources = collectImageSources(event.dataTransfer);
       if (sources.length === 0) return;
       void createUploadedImageNodes(sources, screenToFlowPosition({ x: event.clientX, y: event.clientY }));
     },
-    [createUploadedImageNodes, screenToFlowPosition],
+    [createUploadedImageNodes, handleInsertAssetNode, screenToFlowPosition],
   );
 
   useEffect(() => {
@@ -583,6 +710,12 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled }) =>
       default: return '#475569';
     }
   }, []);
+
+  const drawerLayout = getCanvasDockDrawerLayout({
+    dockLeft: 14,
+    viewportWidth: typeof window === 'undefined' ? 1440 : window.innerWidth,
+    viewportHeight: typeof window === 'undefined' ? 900 : window.innerHeight,
+  });
 
   return (
     <div
@@ -655,7 +788,69 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled }) =>
         )}
       </ReactFlow>
 
-      <FlowLeftAddPanel />
+      <FlowLeftAddPanel
+        activePanel={activeDockPanel}
+        badgeByPanel={{
+          assets: getCanvasDockBadge('assets', dockBadgeMetrics),
+          comments: getCanvasDockBadge('comments', dockBadgeMetrics),
+          history: getCanvasDockBadge('history', dockBadgeMetrics),
+          templates: getCanvasDockBadge('templates', dockBadgeMetrics),
+        }}
+        onOpenPanel={(panel) => {
+          closeContextMenu();
+          closeImageTool();
+          setConnMenu(null);
+          setActiveDockPanel((current) => (current === panel ? null : panel));
+        }}
+        onClosePanel={() => setActiveDockPanel(null)}
+      />
+      {activeDockPanel && (
+        <CanvasDockDrawer
+          count={
+            activeDockPanel === 'assets'
+              ? dockBadgeMetrics.assetTotal || undefined
+              : activeDockPanel === 'comments'
+                ? dockBadgeMetrics.unresolvedCommentCount || undefined
+                : activeDockPanel === 'history'
+                  ? dockBadgeMetrics.historySnapshotCount || undefined
+                  : undefined
+          }
+          layout={drawerLayout}
+          onClose={() => setActiveDockPanel(null)}
+          title={drawerTitleByPanel[activeDockPanel]}
+        >
+          {activeDockPanel === 'assets' ? (
+            <CanvasAssetPanel
+              onInsertAsset={(assetId) => {
+                void handleInsertAssetNode(assetId);
+              }}
+              projectId={backendProjectId}
+            />
+          ) : activeDockPanel === 'templates' ? (
+            <CanvasTemplatePanel
+              onInsertTemplate={handleInsertTemplate}
+            />
+          ) : activeDockPanel === 'comments' && backendProjectId ? (
+            <CanvasCommentPanel
+              flowId={backendFlowId}
+              onFocusNode={handleFocusCommentNode}
+              onRefreshCount={refreshDockBadges}
+              projectId={backendProjectId}
+              selectedNodeId={selectedNodes[0]?.id ?? null}
+            />
+          ) : activeDockPanel === 'history' && backendProjectId ? (
+            <CanvasHistoryPanel
+              onHistoryChanged={refreshDockBadges}
+              onRestoreSnapshot={(graph) => {
+                restoreGraphSnapshot(graph as any);
+              }}
+              projectId={backendProjectId}
+            />
+          ) : (
+            <CanvasDockEmptyState message="这个面板正在接入真实数据。" />
+          )}
+        </CanvasDockDrawer>
+      )}
       {selectedNodes.length > 1 && (
         <MultiSelectionToolbar
           selectedNodes={selectedNodes}

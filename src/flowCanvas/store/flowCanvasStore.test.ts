@@ -8,6 +8,36 @@ describe('flowCanvasStore upstream image references', () => {
     useFlowCanvasStore.getState().newProject();
   });
 
+  it('keeps asset-backed image node data and selection when inserted from asset library', () => {
+    const node = useFlowCanvasStore.getState().addNode(
+      'image',
+      { x: 120, y: 80 },
+      buildAssetBackedNodeData({
+        durationMs: null,
+        height: 768,
+        id: 'asset-inserted',
+        mimeType: 'image/png',
+        originalFilename: 'inserted.png',
+        previewUrl: 'https://cdn.test/inserted-preview.png',
+        source: 'asset-library',
+        title: 'Inserted Asset',
+        width: 1024,
+      }),
+      { selected: true },
+    );
+
+    const insertedNode = useFlowCanvasStore.getState().nodes.find((candidate) => candidate.id === node.id);
+
+    expect(insertedNode?.selected).toBe(true);
+    expect(insertedNode?.data).toEqual(expect.objectContaining({
+      assetId: 'asset-inserted',
+      assetIds: ['asset-inserted'],
+      originalImageUrl: 'https://cdn.test/inserted-preview.png',
+      thumbnailUrl: 'https://cdn.test/inserted-preview.png',
+      title: 'Inserted Asset',
+    }));
+  });
+
   it('indexes asset-backed image nodes with original image urls as upstream refs', () => {
     const source = useFlowCanvasStore.getState().addNode(
       'image',
@@ -94,6 +124,143 @@ describe('flowCanvasStore upstream image references', () => {
         key: `upstream:${source.id}`,
         source: 'upstream',
         title: 'Uploaded Pig',
+      }),
+    ]);
+  });
+
+  it('merges template graph into canvas and clears prior selection', () => {
+    const existing = useFlowCanvasStore.getState().addNode(
+      'text',
+      { x: 0, y: 0 },
+      { title: 'Existing Text' },
+      { selected: true },
+    );
+
+    useFlowCanvasStore.getState().mergeTemplateGraph({
+      edges: [
+        {
+          id: 'template-edge-1',
+          source: 'template-node-1',
+          target: 'template-node-2',
+          type: 'smart',
+          data: { dataType: 'text' },
+          selected: true,
+        } as any,
+      ],
+      nodes: [
+        {
+          id: 'template-node-1',
+          type: 'text',
+          position: { x: 100, y: 120 },
+          data: { kind: 'text', title: 'Template Text A' },
+          selected: true,
+        } as any,
+        {
+          id: 'template-node-2',
+          type: 'image',
+          position: { x: 300, y: 120 },
+          data: { kind: 'image', title: 'Template Image B' },
+          selected: true,
+        } as any,
+      ],
+    });
+
+    const state = useFlowCanvasStore.getState();
+    const existingNode = state.nodes.find((node) => node.id === existing.id);
+    const selectedTemplateNodes = state.nodes.filter((node) => node.id.startsWith('template-node') && node.selected);
+
+    expect(existingNode?.selected).toBe(false);
+    expect(selectedTemplateNodes).toHaveLength(2);
+    expect(state.edges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'template-edge-1',
+          selected: false,
+        }),
+      ]),
+    );
+  });
+
+  it('restores a graph snapshot and clears transient canvas state', () => {
+    const state = useFlowCanvasStore.getState();
+    const source = state.addNode(
+      'image',
+      { x: 40, y: 60 },
+      {
+        title: 'Snapshot Source',
+        thumbnailUrl: 'https://cdn.test/snapshot-source.png',
+      },
+      { selected: true },
+    );
+    const target = state.addNode(
+      'text',
+      { x: 280, y: 60 },
+      { title: 'Snapshot Target' },
+      { selected: false },
+    );
+
+    state.onConnect({
+      source: source.id,
+      sourceHandle: 'right',
+      target: target.id,
+      targetHandle: 'left',
+    });
+    state.openImageTool(source.id, 'crop');
+    state.openContextMenu(120, 180, source.id);
+
+    useFlowCanvasStore.getState().restoreGraphSnapshot({
+      edges: [
+        {
+          id: 'restored-edge-1',
+          source: 'restored-image-1',
+          target: 'restored-text-1',
+          type: 'smart',
+          data: { dataType: 'image' },
+          selected: true,
+        } as any,
+      ],
+      nodes: [
+        {
+          id: 'restored-image-1',
+          type: 'image',
+          position: { x: 160, y: 140 },
+          data: {
+            kind: 'image',
+            title: 'Restored Image',
+            thumbnailUrl: 'https://cdn.test/restored-image.png',
+          },
+          selected: true,
+        } as any,
+        {
+          id: 'restored-text-1',
+          type: 'text',
+          position: { x: 460, y: 140 },
+          data: {
+            kind: 'text',
+            title: 'Restored Prompt',
+          },
+        } as any,
+      ],
+      viewport: { x: 32, y: 64, zoom: 0.72 },
+    });
+
+    const restored = useFlowCanvasStore.getState();
+    expect(restored.nodes).toHaveLength(2);
+    expect(restored.edges).toEqual([
+      expect.objectContaining({
+        id: 'restored-edge-1',
+        selected: false,
+      }),
+    ]);
+    expect(restored.viewport).toEqual({ x: 32, y: 64, zoom: 0.72 });
+    expect(restored.activeImageTool).toBeNull();
+    expect(restored.contextMenu).toBeNull();
+    expect(restored.selectedNodeCount).toBe(1);
+    expect(restored.graphIndex.upstreamImageRefsByNodeId['restored-text-1']).toEqual([
+      expect.objectContaining({
+        id: 'restored-image-1',
+        imageUrl: 'https://cdn.test/restored-image.png',
+        key: 'upstream:restored-image-1',
       }),
     ]);
   });

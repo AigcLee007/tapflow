@@ -1,0 +1,206 @@
+import { createPgPool, withTenantTransaction } from '@aigc-flow/db';
+import type { Pool } from 'pg';
+
+import type { FlowTemplateListQuery } from './flow-templates.schemas.js';
+
+type PgPool = Pool;
+
+type FlowTemplateContext = {
+  tenantId: string;
+  userId: string | null;
+};
+
+type FlowTemplateRecord = {
+  category: string;
+  cover_asset_id: string | null;
+  created_at: string;
+  created_by: string | null;
+  description: string;
+  estimated_credits: string | null;
+  graph_json: Record<string, unknown>;
+  id: string;
+  node_count: number;
+  tenant_id: string | null;
+  title: string;
+  updated_at: string;
+  visibility: 'official' | 'private' | 'tenant';
+};
+
+export type FlowTemplateView = {
+  category: string;
+  coverAssetId: string | null;
+  createdAt: string;
+  createdBy: string | null;
+  description: string;
+  estimatedCredits: number | null;
+  graph: Record<string, unknown>;
+  id: string;
+  nodeCount: number;
+  tenantId: string | null;
+  title: string;
+  updatedAt: string;
+  visibility: 'official' | 'private' | 'tenant';
+};
+
+export class FlowTemplatesApiError extends Error {
+  readonly code: string;
+  readonly statusCode: number;
+
+  constructor(statusCode: number, code: string, message: string) {
+    super(message);
+    this.code = code;
+    this.name = 'FlowTemplatesApiError';
+    this.statusCode = statusCode;
+  }
+}
+
+function mapTemplate(row: FlowTemplateRecord): FlowTemplateView {
+  return {
+    category: row.category,
+    coverAssetId: row.cover_asset_id,
+    createdAt: row.created_at,
+    createdBy: row.created_by,
+    description: row.description,
+    estimatedCredits: row.estimated_credits === null ? null : Number(row.estimated_credits),
+    graph: row.graph_json,
+    id: row.id,
+    nodeCount: row.node_count,
+    tenantId: row.tenant_id,
+    title: row.title,
+    updatedAt: row.updated_at,
+    visibility: row.visibility,
+  };
+}
+
+export class FlowTemplatesService {
+  readonly pool: PgPool;
+
+  constructor(options?: { pool?: PgPool }) {
+    this.pool = options?.pool ?? createPgPool();
+  }
+
+  async listTemplates(ctx: FlowTemplateContext, query: FlowTemplateListQuery): Promise<FlowTemplateView[]> {
+    return withTenantTransaction(ctx, async (client) => {
+      const result = await client.query<FlowTemplateRecord>(
+        `
+          SELECT
+            id::text AS id,
+            tenant_id::text AS tenant_id,
+            created_by::text AS created_by,
+            title,
+            description,
+            category,
+            visibility,
+            cover_asset_id::text AS cover_asset_id,
+            graph_json,
+            node_count,
+            estimated_credits::text AS estimated_credits,
+            created_at::text AS created_at,
+            updated_at::text AS updated_at
+          FROM flow_templates
+          WHERE (visibility = 'official' OR tenant_id = $1::uuid)
+            AND ($2::text IS NULL OR category = $2)
+            AND (
+              $3::text IS NULL
+              OR title ILIKE '%' || $3 || '%'
+              OR description ILIKE '%' || $3 || '%'
+            )
+          ORDER BY
+            CASE WHEN visibility = 'official' THEN 0 ELSE 1 END,
+            updated_at DESC,
+            id ASC
+        `,
+        [ctx.tenantId, query.category ?? null, query.query?.trim() || null],
+      );
+
+      return result.rows.map(mapTemplate);
+    }, this.pool);
+  }
+
+  async getTemplateGraph(ctx: FlowTemplateContext, templateId: string): Promise<FlowTemplateView> {
+    return withTenantTransaction(ctx, async (client) => {
+      const result = await client.query<FlowTemplateRecord>(
+        `
+          SELECT
+            id::text AS id,
+            tenant_id::text AS tenant_id,
+            created_by::text AS created_by,
+            title,
+            description,
+            category,
+            visibility,
+            cover_asset_id::text AS cover_asset_id,
+            graph_json,
+            node_count,
+            estimated_credits::text AS estimated_credits,
+            created_at::text AS created_at,
+            updated_at::text AS updated_at
+          FROM flow_templates
+          WHERE id = $1::uuid
+            AND (visibility = 'official' OR tenant_id = $2::uuid)
+          LIMIT 1
+        `,
+        [templateId, ctx.tenantId],
+      );
+
+      const row = result.rows[0];
+      if (!row) {
+        throw new FlowTemplatesApiError(404, 'FLOW_TEMPLATE_NOT_FOUND', '未找到对应模板');
+      }
+
+      return mapTemplate(row);
+    }, this.pool);
+  }
+
+  async recordUsage(ctx: FlowTemplateContext, templateId: string, projectId?: string): Promise<{ ok: true }> {
+    return withTenantTransaction(ctx, async (client) => {
+      const template = await client.query<{ id: string }>(
+        `
+          SELECT id::text AS id
+          FROM flow_templates
+          WHERE id = $1::uuid
+            AND (visibility = 'official' OR tenant_id = $2::uuid)
+          LIMIT 1
+        `,
+        [templateId, ctx.tenantId],
+      );
+
+      if (!template.rows[0]) {
+        throw new FlowTemplatesApiError(404, 'FLOW_TEMPLATE_NOT_FOUND', '未找到对应模板');
+      }
+
+      if (projectId) {
+        const project = await client.query<{ id: string }>(
+          `
+            SELECT id::text AS id
+            FROM projects
+            WHERE id = $1::uuid
+              AND tenant_id = $2::uuid
+              AND deleted_at IS NULL
+            LIMIT 1
+          `,
+          [projectId, ctx.tenantId],
+        );
+
+        if (!project.rows[0]) {
+          throw new FlowTemplatesApiError(404, 'PROJECT_NOT_FOUND', '未找到对应项目');
+        }
+      }
+
+      await client.query(
+        `
+          INSERT INTO flow_template_usage (
+            tenant_id,
+            template_id,
+            user_id,
+            project_id
+          )
+          VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid)
+        `,
+        [ctx.tenantId, templateId, ctx.userId, projectId ?? null],
+      );
+
+      return { ok: true as const };
+    }, this.pool);
+  }
+}

@@ -26,7 +26,8 @@ import { useReactFlow } from '@xyflow/react';
 import { useAuth } from '../../auth/useAuth';
 import { useFlowCanvasStore } from '../store/flowCanvasStore';
 import type { FlowNodeKind } from '../types';
-import { getAnchoredFlyoutPosition, type FlyoutPosition } from '../utils/flyoutLayout';
+import type { CanvasDockBadge, CanvasDockPanelId } from '../utils/canvasDockPanel';
+import { type FlyoutPosition } from '../utils/flyoutLayout';
 import {
   MENU_BETA_PILL_STYLE,
   MENU_ITEM_DESC_STYLE,
@@ -85,7 +86,7 @@ const DockButton: React.FC<{
   icon: React.ReactNode;
   label: string;
   active?: boolean;
-  badge?: boolean;
+  badge?: CanvasDockBadge;
   large?: boolean;
   onClick?: () => void;
   onMouseEnter?: () => void;
@@ -116,7 +117,13 @@ const DockButton: React.FC<{
         title={label}
       >
         {icon}
-        {badge && <span style={dockBadgeStyle} />}
+        {badge ? (
+          badge.tone === 'count' && typeof badge.count === 'number' ? (
+            <span style={dockCountBadgeStyle}>{badge.count > 99 ? '99+' : badge.count}</span>
+          ) : (
+            <span style={dockBadgeStyle} />
+          )
+        ) : null}
       </button>
       <DockTooltip label={label} visible={showTooltip} />
     </div>
@@ -215,9 +222,18 @@ const UserMenuItem: React.FC<{ icon: React.ReactNode; label: string; onClick?: (
   </button>
 );
 
-export const FlowLeftAddPanel: React.FC = memo(function FlowLeftAddPanel() {
+export const FlowLeftAddPanel: React.FC<{
+  activePanel?: CanvasDockPanelId | null;
+  badgeByPanel?: Partial<Record<CanvasDockPanelId, CanvasDockBadge>>;
+  onOpenPanel?: (panel: CanvasDockPanelId) => void;
+  onClosePanel?: () => void;
+}> = memo(function FlowLeftAddPanel({
+  activePanel = null,
+  badgeByPanel,
+  onOpenPanel,
+  onClosePanel,
+}) {
   const addNode = useFlowCanvasStore((s) => s.addNode);
-  const undo = useFlowCanvasStore((s) => s.undo);
   const { authenticated, loading: userLoading, logout, user } = useAuth();
   const reactFlow = useReactFlow();
   const dockHostRef = useRef<HTMLDivElement | null>(null);
@@ -239,6 +255,7 @@ export const FlowLeftAddPanel: React.FC = memo(function FlowLeftAddPanel() {
 
   const openAdd = () => {
     if (closeTimerRef.current !== null) window.clearTimeout(closeTimerRef.current);
+    onClosePanel?.();
     setUserOpen(false);
     setAddOpen(true);
   };
@@ -314,29 +331,53 @@ export const FlowLeftAddPanel: React.FC = memo(function FlowLeftAddPanel() {
     <div ref={dockHostRef} style={dockHostStyle} onMouseLeave={() => setUserOpen(false)}>
       <div style={dockScaleShellStyle}>
         <div style={dockStyle}>
-        <DockButton
-          icon={addOpen ? <X size={20} strokeWidth={1.7} /> : <Plus size={26} strokeWidth={1.75} />}
-          label="添加节点"
-          large
-          active={addOpen}
-          onMouseEnter={openAdd}
-          onClick={() => (addOpen ? setAddOpen(false) : openAdd())}
-        />
-        <DockButton icon={<Folder size={18} strokeWidth={1.8} />} label="素材库" badge />
-        <DockButton icon={<LayoutList size={18} strokeWidth={1.85} />} label="模板列表" />
-        <DockButton icon={<MessageCircle size={19} strokeWidth={1.85} />} label="评论" />
-        <DockButton icon={<Clock3 size={19} strokeWidth={1.85} />} label="历史记录" onClick={undo} />
-        <div style={dockDividerStyle} />
-        <DockButton
-          icon={<span style={userAvatarSmallStyle}>{(user?.displayName || user?.email || 'L').charAt(0).toUpperCase()}</span>}
-          label="用户"
-          active={userOpen}
-          buttonRef={userButtonRef}
-          onClick={() => {
-            setAddOpen(false);
-            setUserOpen((open) => !open);
-          }}
-        />
+          <DockButton
+            icon={addOpen ? <X size={20} strokeWidth={1.7} /> : <Plus size={26} strokeWidth={1.75} />}
+            label="添加节点"
+            large
+            active={addOpen}
+            onMouseEnter={openAdd}
+            onClick={() => (addOpen ? setAddOpen(false) : openAdd())}
+          />
+          <DockButton
+            icon={<Folder size={18} strokeWidth={1.8} />}
+            label="素材库"
+            badge={badgeByPanel?.assets ?? null}
+            active={activePanel === 'assets'}
+            onClick={() => onOpenPanel?.('assets')}
+          />
+          <DockButton
+            icon={<LayoutList size={18} strokeWidth={1.85} />}
+            label="模板列表"
+            active={activePanel === 'templates'}
+            onClick={() => onOpenPanel?.('templates')}
+          />
+          <DockButton
+            icon={<MessageCircle size={19} strokeWidth={1.85} />}
+            label="评论"
+            badge={badgeByPanel?.comments ?? null}
+            active={activePanel === 'comments'}
+            onClick={() => onOpenPanel?.('comments')}
+          />
+          <DockButton
+            icon={<Clock3 size={19} strokeWidth={1.85} />}
+            label="历史记录"
+            badge={badgeByPanel?.history ?? null}
+            active={activePanel === 'history'}
+            onClick={() => onOpenPanel?.('history')}
+          />
+          <div style={dockDividerStyle} />
+          <DockButton
+            icon={<span style={userAvatarSmallStyle}>{(user?.displayName || user?.email || 'L').charAt(0).toUpperCase()}</span>}
+            label="用户"
+            active={userOpen}
+            buttonRef={userButtonRef}
+            onClick={() => {
+              onClosePanel?.();
+              setAddOpen(false);
+              setUserOpen((open) => !open);
+            }}
+          />
         </div>
       </div>
 
@@ -424,6 +465,23 @@ const dockBadgeStyle: React.CSSProperties = {
   top: 6,
   background: '#24a9ff',
   boxShadow: '0 0 0 2px rgba(31,31,31,0.96)',
+};
+
+const dockCountBadgeStyle: React.CSSProperties = {
+  position: 'absolute',
+  minWidth: 16,
+  height: 16,
+  borderRadius: 999,
+  right: -2,
+  top: 2,
+  background: '#24a9ff',
+  boxShadow: '0 0 0 2px rgba(31,31,31,0.96)',
+  color: '#ffffff',
+  fontSize: 9,
+  fontWeight: 800,
+  lineHeight: '16px',
+  padding: '0 4px',
+  textAlign: 'center',
 };
 
 const dockDividerStyle: React.CSSProperties = {
