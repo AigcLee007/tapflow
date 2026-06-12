@@ -31,7 +31,7 @@ function createAuthState(): AuthState {
     logout: vi.fn(async () => undefined),
     roles: ["tenant_owner"],
     sessionId: "session-1",
-    tenant: { id: "tenant-1", name: "测试 的工作区", plan: "free", slug: "test", status: "active" },
+    tenant: { id: "tenant-1", name: "测试工作区", plan: "free", slug: "test", status: "active" },
     user: { displayName: "测试", email: "user@example.com", id: "user-1", status: "active" },
   };
 }
@@ -42,30 +42,35 @@ describe("AssetLibraryPage", () => {
       assets: [],
       error: null,
       folders: [],
+      groupedAssets: [],
       loading: false,
       query: "",
       refresh: vi.fn(async () => undefined),
+      selectedMediaTab: "image",
       selectedFolderId: null,
       setQuery: vi.fn(),
       setSelectedFolderId: vi.fn(),
+      setSelectedMediaTab: vi.fn(),
       total: 0,
     });
   });
 
-  test("renders TapNow-style asset library empty state", () => {
+  test("renders categorized asset library empty state", () => {
     render(
       <AuthContext.Provider value={createAuthState()}>
         <AssetLibraryPage />
       </AuthContext.Provider>,
     );
 
-    expect(screen.getByRole("heading", { name: "素材库" })).toBeTruthy();
-    expect(screen.getByText("管理项目可复用的图片、视频、音频和参考素材。")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "全部素材" })).toBeTruthy();
-    expect(screen.getByPlaceholderText("搜索素材")).toBeTruthy();
-    expect(screen.getByText("上传第一个素材")).toBeTruthy();
-    expect(screen.getByText("上传图片")).toBeTruthy();
-    expect(screen.getByText("上传视频")).toBeTruthy();
-    expect(screen.getByText("上传音频")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: /素材库/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /全部素材/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /图片/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /视频/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /音频/ })).toBeTruthy();
+    expect(screen.getByPlaceholderText(/搜索素材/i)).toBeTruthy();
+    expect(screen.getByText(/上传第一个素材/i)).toBeTruthy();
+    expect(screen.getByText(/上传图片/i)).toBeTruthy();
+    expect(screen.getByText(/上传视频/i)).toBeTruthy();
+    expect(screen.getByText(/上传音频/i)).toBeTruthy();
   });
 });

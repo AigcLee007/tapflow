@@ -300,6 +300,45 @@ As of 2026-06-12:
   - all three API integration suites were skipped locally because DB env is still not present in this session
   - root/frontend build now passes again after the workspace-level billing page import issue was no longer blocking the build in the current worktree
 
+## 2026-06-12 - Staging Auth 502 Deployment Follow-up
+
+- Investigated a staging login failure that surfaced in the browser as `Request failed with status 502` after the API security-baseline work landed.
+- Root cause: `apps/api/src/app.ts` and `apps/api/src/config/env.ts` now require/pass through CORS, helmet, trust-proxy, and rate-limit configuration, but `docker-compose.staging.yml` was not forwarding those variables into the `tapflow-api` or `tapflow-worker` containers.
+- In production mode that left `CORS_ALLOWED_ORIGINS` empty inside the API container, which can stop API startup and cause the reverse proxy to return `502` for login and other `/api/v2/auth/*` requests.
+- Fixed the deployment wiring by adding these variables to `x-tapflow-env` in `docker-compose.staging.yml`:
+  - `CORS_ALLOWED_ORIGINS`
+  - `SECURITY_HEADERS_ENABLED`
+  - `TRUST_PROXY`
+  - `API_RATE_LIMIT_MAX`
+  - `API_RATE_LIMIT_WINDOW_MS`
+  - `AUTH_RATE_LIMIT_MAX`
+  - `AUTH_RATE_LIMIT_WINDOW_MS`
+- Updated staging deployment documentation to reflect the current API runtime contract.
+- Local verification after the deploy-config fix:
+  - `npm run build --workspace @aigc-flow/api`
+  - `npm run build`
+
+## 2026-06-12 - Asset Library Classification and Date Grouping
+
+- Reworked the shared asset-library view model used by both the `/assets` page and the in-canvas `素材库` drawer.
+- Added media-category tabs for:
+  - `图片`
+  - `视频`
+  - `音频`
+- Changed asset presentation to group items by `createdAt` date from newest to oldest, so both surfaces now render sections such as `2026-06-12`, `2026-06-11`, and `2026-06-10`.
+- Fixed a major thumbnail reliability gap in the asset preview signing flow:
+  - old behavior effectively assumed `thumb` was always available
+  - new behavior now falls back in order: `thumb -> preview -> original`
+  - this allows older assets and upload-only assets without a `thumb` variant to still render visible media cards instead of collapsing to placeholder icons
+- Added a shared grouped asset section component so the drawer and `/assets` page use the same classification, grouping, and card-density rules while keeping drawer cards visually compact.
+- Updated `/assets` rendering tests and added focused regression coverage for:
+  - preview request fallback selection
+  - date grouping order
+  - categorized asset-library empty state
+- Validation:
+  - `npm run test -- src/assets/assetLibraryView.test.ts src/assets/useAssetLibrary.test.tsx src/assets/AssetLibraryPage.test.tsx`
+  - `npm run build`
+
 ## Common Staging Commands
 
 Set reusable command variables:
@@ -857,3 +896,32 @@ Completed in current local iteration:
 Validation completed:
 
 - `npm run test -- src/assets/AssetLibraryPage.test.tsx src/billing/BillingCenterPage.test.tsx src/account/AccountPage.test.tsx`
+
+### Latest TapNow Canvas Entry Phase 3 Refresh
+
+Completed in current local iteration:
+
+- added `docs/superpowers/plans/2026-06-12-tapnow-canvas-entry-phase-3.md` for the project canvas entry refresh
+- refreshed the empty project canvas start surface with `今天想创作什么？`, concise guidance, and compact quick-start actions
+- refreshed project canvas loading/error wording and retry action copy while keeping remote project loading and autosave behavior unchanged
+- added focused tests for the canvas empty state, project loading/error/save status copy, and left dock add-node menu copy
+- kept the Phase 3 scope presentation-only: no dock drawer, backend, billing, asset storage, workflow execution, or autosave semantics were changed
+
+Validation completed:
+
+- `npm run test -- src/flowCanvas/FlowCanvasPage.test.tsx src/flowCanvas/FlowProjectPage.test.tsx src/flowCanvas/canvas/FlowLeftAddPanel.test.tsx`
+
+### Latest TapNow Workspace Pixel Alignment Pass
+
+Completed in current local iteration:
+
+- fixed the top `工作空间` navigation so clicking it on `/workspace` updates `#projects` and dispatches a reveal event that the workspace page can use to scroll to the project section
+- separated `主页` and `工作空间` active states so `#projects` no longer visually behaves like the same nav target
+- removed the oversized framed hero container from the workspace home and moved the first screen closer to TapNow's full-page dotted background layout
+- narrowed the home content, increased the title/icon scale, tightened the prompt bar, and resized recent project cards toward the TapNow reference proportions
+- restored readable Chinese copy in the workspace home loading/prompt/recent-project surfaces touched by this pass
+
+Validation completed:
+
+- `npm run test -- src/app/WorkspaceShell.test.tsx src/workspace/WorkspacePage.test.tsx src/workspace/ProjectCard.test.tsx`
+- `npm run build`

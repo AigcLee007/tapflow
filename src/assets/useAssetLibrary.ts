@@ -10,16 +10,26 @@ import {
   type AssetListParams,
 } from "./assetApi";
 import { getCachedAssetUrl, setCachedAssetUrl } from "./assetUrlCache";
+import {
+  filterAssetsByMediaTab,
+  getPreferredAssetPreviewRequest,
+  groupAssetsByCreatedDate,
+  type AssetDateGroup,
+  type AssetMediaTab,
+} from "./assetLibraryView";
 
 export type AssetLibraryState = {
   assets: AssetItem[];
+  groupedAssets: AssetDateGroup[];
   error: string | null;
   folders: AssetFolder[];
   loading: boolean;
   page: number;
   pageSize: number;
   refresh: () => Promise<void>;
+  selectedMediaTab: AssetMediaTab;
   selectedFolderId: string | null;
+  setSelectedMediaTab: (tab: AssetMediaTab) => void;
   setSelectedFolderId: (folderId: string | null) => void;
   setQuery: (query: string) => void;
   query: string;
@@ -30,6 +40,7 @@ export function useAssetLibrary(): AssetLibraryState {
   const { authenticated, sessionId, tenant, user } = useAuth();
   const [assets, setAssets] = useState<AssetItem[]>([]);
   const [folders, setFolders] = useState<AssetFolder[]>([]);
+  const [selectedMediaTab, setSelectedMediaTab] = useState<AssetMediaTab>("image");
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
@@ -72,24 +83,31 @@ export function useAssetLibrary(): AssetLibraryState {
         listAssetFolders(),
       ]);
 
-      const previewableAssets = assetResult.items.filter((asset) =>
-        asset.status === "available" &&
-        (asset.mimeType.startsWith("image/") || asset.mimeType.startsWith("video/"))
-      );
+      const previewRequests = assetResult.items
+        .map((asset) => ({
+          asset,
+          request: getPreferredAssetPreviewRequest(asset),
+        }))
+        .filter((item): item is { asset: AssetItem; request: NonNullable<ReturnType<typeof getPreferredAssetPreviewRequest>> } => Boolean(item.request));
 
-      const requests = previewableAssets
-        .filter((asset) => !getCachedAssetUrl(asset.id, "thumb"))
-        .map((asset) => ({ assetId: asset.id, variantKey: "thumb" }));
+      const requests = previewRequests
+        .filter(({ asset, request }) => !getCachedAssetUrl(asset.id, request.variantKey ?? null))
+        .map(({ request }) => request);
 
       if (requests.length > 0) {
         const signed = await getAssetSignedUrls(requests).catch(() => ({ items: [] }));
         signed.items.forEach(setCachedAssetUrl);
       }
 
-      const withPreview = assetResult.items.map((asset) => ({
-        ...asset,
-        previewUrl: getCachedAssetUrl(asset.id, "thumb") || asset.previewUrl,
-      }));
+      const requestByAssetId = new Map(previewRequests.map(({ asset, request }) => [asset.id, request]));
+      const withPreview = assetResult.items.map((asset) => {
+        const request = requestByAssetId.get(asset.id);
+        const cachedPreview = request ? getCachedAssetUrl(asset.id, request.variantKey ?? null) : null;
+        return {
+          ...asset,
+          previewUrl: cachedPreview || asset.previewUrl,
+        };
+      });
 
       if (requestSequenceRef.current !== requestId) return;
       setAssets(withPreview);
@@ -112,6 +130,7 @@ export function useAssetLibrary(): AssetLibraryState {
     requestSequenceRef.current += 1;
     setAssets([]);
     setFolders([]);
+    setSelectedMediaTab("image");
     setSelectedFolderId(null);
     setQuery("");
     setTotal(0);
@@ -123,8 +142,14 @@ export function useAssetLibrary(): AssetLibraryState {
     void refresh();
   }, [identityKey, refresh]);
 
+  const groupedAssets = useMemo(
+    () => groupAssetsByCreatedDate(filterAssetsByMediaTab(assets, selectedMediaTab)),
+    [assets, selectedMediaTab],
+  );
+
   return {
     assets,
+    groupedAssets,
     error,
     folders,
     loading,
@@ -132,7 +157,9 @@ export function useAssetLibrary(): AssetLibraryState {
     pageSize,
     query,
     refresh,
+    selectedMediaTab,
     selectedFolderId,
+    setSelectedMediaTab,
     setQuery,
     setSelectedFolderId,
     total,

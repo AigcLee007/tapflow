@@ -2,14 +2,17 @@ import React from "react";
 import { FileImage, Loader2, Music, UploadCloud, Video } from "lucide-react";
 
 import type { AssetItem } from "./assetApi";
-import { AssetCard } from "./AssetCard";
+import type { AssetDateGroup } from "./assetLibraryView";
+import { AssetGroupedSections } from "./AssetGroupedSections";
 
 export function AssetGrid({
-  assets,
+  emptyMessage,
+  groups,
   loading,
   onOpen,
 }: {
-  assets: AssetItem[];
+  emptyMessage: string;
+  groups: AssetDateGroup[];
   loading: boolean;
   onOpen: (asset: AssetItem) => void;
 }) {
@@ -24,7 +27,7 @@ export function AssetGrid({
     );
   }
 
-  if (assets.length === 0) {
+  if (groups.length === 0) {
     return (
       <div className="grid min-h-[360px] place-items-center rounded border border-dashed border-white/10 bg-white/[0.025] px-6 text-center">
         <div className="max-w-md">
@@ -53,16 +56,11 @@ export function AssetGrid({
               );
             })}
           </div>
+          <p className="mt-5 text-sm text-slate-500">{emptyMessage}</p>
         </div>
       </div>
     );
   }
 
-  return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-      {assets.map((asset) => (
-        <AssetCard asset={asset} key={asset.id} onOpen={onOpen} />
-      ))}
-    </div>
-  );
+  return <AssetGroupedSections emptyMessage={emptyMessage} groups={groups} onOpen={onOpen} />;
 }

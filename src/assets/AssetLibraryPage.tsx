@@ -5,8 +5,10 @@ import { useAuth } from "../auth/useAuth";
 import type { AssetItem } from "./assetApi";
 import { AssetFolderSidebar } from "./AssetFolderSidebar";
 import { AssetGrid } from "./AssetGrid";
+import { AssetMediaTabs } from "./AssetGroupedSections";
 import { AssetPreviewModal } from "./AssetPreviewModal";
 import { UploadAssetButton } from "./UploadAssetButton";
+import { filterAssetsByMediaTab } from "./assetLibraryView";
 import { useAssetLibrary } from "./useAssetLibrary";
 
 export function AssetLibraryPage() {
@@ -36,6 +38,13 @@ export function AssetLibraryPage() {
 
   const refresh = () => {
     void library.refresh();
+  };
+
+  const mediaCounts = {
+    all: library.assets.length,
+    image: filterAssetsByMediaTab(library.assets, "image").length,
+    video: filterAssetsByMediaTab(library.assets, "video").length,
+    audio: filterAssetsByMediaTab(library.assets, "audio").length,
   };
 
   return (
@@ -104,7 +113,19 @@ export function AssetLibraryPage() {
           )}
 
           <div className="mt-6">
-            <AssetGrid assets={library.assets} loading={library.loading} onOpen={setPreviewAsset} />
+            <div className="mb-5">
+              <AssetMediaTabs
+                counts={mediaCounts}
+                onSelectTab={library.setSelectedMediaTab}
+                selectedTab={library.selectedMediaTab}
+              />
+            </div>
+            <AssetGrid
+              emptyMessage={`当前${library.selectedMediaTab === "image" ? "图片" : library.selectedMediaTab === "video" ? "视频" : "音频"}分类下还没有素材。`}
+              groups={library.groupedAssets}
+              loading={library.loading}
+              onOpen={setPreviewAsset}
+            />
           </div>
         </main>
       </div>

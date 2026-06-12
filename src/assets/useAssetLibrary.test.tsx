@@ -239,7 +239,44 @@ describe("useAssetLibrary", () => {
 
   it("batch signs thumb variants instead of requesting per-asset download urls", async () => {
     listAssetsMock.mockResolvedValue({
-      items: [assetA, { ...assetA, id: "asset-c", objectKey: "asset-c.png", originalFilename: "asset-c.png", title: "Asset C" }],
+      items: [
+        {
+          ...assetA,
+          variants: [
+            {
+              bucket: "bucket",
+              height: 320,
+              id: "asset-a-thumb",
+              metadata: {},
+              mimeType: "image/webp",
+              objectKey: "asset-a-thumb.webp",
+              sizeBytes: 123,
+              variantKey: "thumb",
+              width: 320,
+            },
+          ],
+        },
+        {
+          ...assetA,
+          id: "asset-c",
+          objectKey: "asset-c.png",
+          originalFilename: "asset-c.png",
+          title: "Asset C",
+          variants: [
+            {
+              bucket: "bucket",
+              height: 320,
+              id: "asset-c-thumb",
+              metadata: {},
+              mimeType: "image/webp",
+              objectKey: "asset-c-thumb.webp",
+              sizeBytes: 123,
+              variantKey: "thumb",
+              width: 320,
+            },
+          ],
+        },
+      ],
       page: 1,
       pageSize: 60,
       total: 2,
@@ -270,6 +307,68 @@ describe("useAssetLibrary", () => {
     expect(getAssetSignedUrlsMock).toHaveBeenCalledWith([
       { assetId: assetA.id, variantKey: "thumb" },
       { assetId: "asset-c", variantKey: "thumb" },
+    ]);
+    expect(getAssetDownloadUrlMock).not.toHaveBeenCalled();
+  });
+
+  it("falls back to preview or original signing when thumb is unavailable", async () => {
+    listAssetsMock.mockResolvedValue({
+      items: [
+        {
+          ...assetA,
+          id: "asset-preview",
+          title: "Preview Asset",
+          variants: [
+            {
+              bucket: "bucket",
+              height: 1024,
+              id: "asset-preview-variant",
+              metadata: {},
+              mimeType: "image/webp",
+              objectKey: "asset-preview.webp",
+              sizeBytes: 456,
+              variantKey: "preview",
+              width: 1024,
+            },
+          ],
+        },
+        {
+          ...assetA,
+          id: "asset-original",
+          title: "Original Asset",
+          variants: [],
+        },
+      ],
+      page: 1,
+      pageSize: 60,
+      total: 2,
+    });
+    listAssetFoldersMock.mockResolvedValue([]);
+    getAssetSignedUrlsMock.mockResolvedValue({
+      items: [
+        {
+          assetId: "asset-preview",
+          expiresAt: new Date(Date.now() + 900_000).toISOString(),
+          method: "GET",
+          url: "https://cdn.test/asset-preview.webp",
+          variantKey: "preview",
+        },
+        {
+          assetId: "asset-original",
+          expiresAt: new Date(Date.now() + 900_000).toISOString(),
+          method: "GET",
+          url: "https://cdn.test/asset-original.png",
+          variantKey: null,
+        },
+      ],
+    });
+
+    renderWithAuth(baseAuthState);
+
+    await waitFor(() => expect(screen.getByTestId("assets").textContent).toContain("Preview Asset"));
+    expect(getAssetSignedUrlsMock).toHaveBeenCalledWith([
+      { assetId: "asset-preview", variantKey: "preview" },
+      { assetId: "asset-original" },
     ]);
     expect(getAssetDownloadUrlMock).not.toHaveBeenCalled();
   });
