@@ -950,6 +950,21 @@ Validation completed:
 
 - `npm run test -- src/workspace/WorkspacePage.test.tsx`
 
+### Latest Home / Workspace Split and Project Cover Pass
+
+Completed in current local iteration:
+
+- split the TapNow-style creator home into a dedicated `/home` route and kept `/workspace` as a standalone project management page
+- updated the authenticated shell so `主页` navigates to `/home` and `工作空间` navigates to `/workspace` without hash-based scrolling behavior
+- changed root authenticated redirects to land on `/home`
+- aligned the workspace page with the TapNow grid/list references: grid remains card-based, list mode now uses a table-like preview/name/type/created/updated layout
+- added server-side project cover inference from the latest flow draft: generated image result assets take priority, uploaded canvas image assets are next, and projects with no durable image asset continue to fall back to the frontend gradient cover
+- added focused tests for the split home/workspace behavior and draft-cover inference rules
+
+Validation completed:
+
+- `npm run test -- src/workspace/HomePage.test.tsx src/workspace/WorkspacePage.test.tsx src/workspace/ProjectCard.test.tsx src/app/WorkspaceShell.test.tsx apps/api/test/project-cover-inference.test.ts`
+
 Notes:
 
 - Phase 2 should apply the same TapNow shell language to `/assets`, `/billing`, and `/account` content pages.

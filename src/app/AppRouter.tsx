@@ -12,6 +12,7 @@ import { AdminPage } from "../admin/AdminPage";
 import { ProviderSettingsPage } from "../account/ProviderSettingsPage";
 import { BillingCenterPage } from "../billing/BillingCenterPage";
 import { FlowProjectPage } from "../flowCanvas/FlowProjectPage";
+import { HomePage } from "../workspace/HomePage";
 import { WorkspacePage } from "../workspace/WorkspacePage";
 import { WorkspaceShell } from "./WorkspaceShell";
 import {
@@ -23,6 +24,7 @@ import {
   ADMIN_ROUTE,
   ASSETS_ROUTE,
   BILLING_ROUTE,
+  HOME_ROUTE,
   isCompatibilityRoute,
   isNonUserFacingRoute,
   isProjectRoute,
@@ -69,11 +71,15 @@ function Redirect({ to }: { to: string }) {
 
 function ProtectedRoutes({ pathname }: { pathname: string }) {
   if (pathname === ROOT_ROUTE || isCompatibilityRoute(pathname) || isNonUserFacingRoute(pathname)) {
-    return <Redirect to={WORKSPACE_ROUTE} />;
+    return <Redirect to={HOME_ROUTE} />;
   }
 
   if (pathname === ADMIN_ROUTE || pathname.startsWith(`${ADMIN_ROUTE}/`)) {
     return <AdminPage />;
+  }
+
+  if (pathname === HOME_ROUTE || pathname.startsWith(`${HOME_ROUTE}/`)) {
+    return <HomePage />;
   }
 
   if (pathname === WORKSPACE_ROUTE || pathname.startsWith(`${WORKSPACE_ROUTE}/`)) {
@@ -124,7 +130,7 @@ function ProtectedRoutes({ pathname }: { pathname: string }) {
     return <AccountPage />;
   }
 
-  return <Redirect to={WORKSPACE_ROUTE} />;
+  return <Redirect to={HOME_ROUTE} />;
 }
 
 export function AppRouter() {

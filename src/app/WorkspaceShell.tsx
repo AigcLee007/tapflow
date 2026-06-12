@@ -19,6 +19,7 @@ import {
   ADMIN_ROUTE,
   ASSETS_ROUTE,
   BILLING_ROUTE,
+  HOME_ROUTE,
   WORKSPACE_ROUTE,
 } from "./routes";
 import { useAuth } from "../auth/useAuth";
@@ -28,11 +29,9 @@ function navigate(path: string) {
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
-export const WORKSPACE_SHOW_PROJECTS_EVENT = "workspace:show-projects";
-
 const navItems = [
-  { icon: Home, label: "主页", path: WORKSPACE_ROUTE },
-  { icon: FolderKanban, label: "工作空间", path: WORKSPACE_ROUTE, hash: "projects" },
+  { icon: Home, label: "主页", path: HOME_ROUTE },
+  { icon: FolderKanban, label: "工作空间", path: WORKSPACE_ROUTE },
   { icon: Box, label: "素材库", path: ASSETS_ROUTE },
   { icon: CreditCard, label: "价格方案", path: BILLING_ROUTE },
 ];
@@ -50,10 +49,9 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const { logout, permissions, tenant, user } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const [locationKey, setLocationKey] = useState(() =>
-    typeof window === "undefined" ? WORKSPACE_ROUTE : `${window.location.pathname}${window.location.hash}`,
+    typeof window === "undefined" ? HOME_ROUTE : `${window.location.pathname}${window.location.hash}`,
   );
   const currentPath = typeof window === "undefined" ? WORKSPACE_ROUTE : window.location.pathname;
-  const currentHash = typeof window === "undefined" ? "" : window.location.hash;
   const tenantName = displayTenantName(tenant?.name);
   const displayName = user?.displayName || user?.email || "用户";
   const userEmail = user?.email || "";
@@ -69,12 +67,9 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const goTo = (path: string, hash?: string) => {
-    navigate(hash ? `${path}#${hash}` : path);
+  const goTo = (path: string) => {
+    navigate(path);
     setLocationKey(`${window.location.pathname}${window.location.hash}`);
-    if (path === WORKSPACE_ROUTE && hash === "projects") {
-      window.dispatchEvent(new Event(WORKSPACE_SHOW_PROJECTS_EVENT));
-    }
   };
 
   return (
@@ -84,7 +79,7 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
           <button
             aria-label={`AI Flow ${tenantName}`}
             className="flex min-w-0 items-center gap-4 text-left"
-            onClick={() => goTo(WORKSPACE_ROUTE)}
+            onClick={() => goTo(HOME_ROUTE)}
             type="button"
           >
             <span className="grid h-12 w-12 place-items-center rounded-xl bg-cyan-400 text-slate-950 shadow-[0_0_28px_rgba(34,211,238,0.22)]">
@@ -98,7 +93,7 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
 
           <nav className="hidden items-center gap-3 rounded-full md:flex">
             {navItems.map((item) => {
-              const active = currentPath === item.path && (!item.hash ? currentHash !== "#projects" : currentHash === `#${item.hash}`);
+              const active = currentPath === item.path;
               const Icon = item.icon;
               return (
                 <button
@@ -108,7 +103,7 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
                       : "text-slate-300 hover:bg-white/[0.07] hover:text-white"
                   }`}
                 key={`${item.path}-${item.label}-${locationKey}`}
-                  onClick={() => goTo(item.path, item.hash)}
+                  onClick={() => goTo(item.path)}
                   type="button"
                 >
                   <Icon size={22} />
@@ -198,7 +193,7 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
                   active ? "text-white" : "text-slate-400"
                 }`}
                 key={`${item.path}-${item.label}-mobile`}
-                onClick={() => goTo(item.path, item.hash)}
+                onClick={() => goTo(item.path)}
                 type="button"
               >
                 <Icon size={17} />

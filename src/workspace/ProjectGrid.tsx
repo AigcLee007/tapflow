@@ -19,11 +19,18 @@ export function ProjectGrid({
 }) {
   if (viewMode === "list") {
     return (
-      <div className="space-y-3">
-        <CreateProjectCard creating={creating} onCreate={onCreate} viewMode={viewMode} />
+      <div className="overflow-hidden rounded-[28px] bg-[#19191a] px-8 py-7">
+        <div className="grid grid-cols-[180px_1.2fr_1fr_1.3fr_1.2fr] border-b border-white/10 pb-6 text-lg text-slate-500">
+          <div>预览</div>
+          <div>名称</div>
+          <div>类型</div>
+          <div>创建时间</div>
+          <div>最近更新</div>
+        </div>
         {projects.map((project) => (
           <ProjectCard key={project.id} onOpen={onOpen} project={project} viewMode={viewMode} />
         ))}
+        {projects.length === 0 && <CreateProjectCard creating={creating} onCreate={onCreate} viewMode={viewMode} />}
       </div>
     );
   }

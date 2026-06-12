@@ -66,21 +66,19 @@ describe("WorkspaceShell", () => {
     expect(screen.getByRole("button", { name: "退出登录" })).toBeTruthy();
   });
 
-  test("clicking workspace navigation dispatches a projects reveal event", () => {
-    const listener = vi.fn();
-    window.addEventListener("workspace:show-projects", listener);
+  test("navigates home and workspace as separate pages", () => {
     window.history.replaceState(null, "", "/workspace");
 
-    try {
-      renderShell();
+    renderShell();
 
-      fireEvent.click(screen.getAllByRole("button", { name: "工作空间" })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: "主页" })[0]);
 
-      expect(window.location.pathname).toBe("/workspace");
-      expect(window.location.hash).toBe("#projects");
-      expect(listener).toHaveBeenCalled();
-    } finally {
-      window.removeEventListener("workspace:show-projects", listener);
-    }
+    expect(window.location.pathname).toBe("/home");
+    expect(window.location.hash).toBe("");
+
+    fireEvent.click(screen.getAllByRole("button", { name: "工作空间" })[0]);
+
+    expect(window.location.pathname).toBe("/workspace");
+    expect(window.location.hash).toBe("");
   });
 });

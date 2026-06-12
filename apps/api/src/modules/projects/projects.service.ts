@@ -14,6 +14,11 @@ type ProjectRecord = {
   updated_at: string;
 };
 
+type ProjectWithDraftCoverRecord = ProjectRecord & {
+  draft_cover_asset_id: string | null;
+  draft_graph_json?: unknown;
+};
+
 export type ProjectView = {
   coverAssetId: string | null;
   createdAt: string;
@@ -42,9 +47,77 @@ export class ProjectsApiError extends Error {
   }
 }
 
-function mapProject(row: ProjectRecord): ProjectView {
+function getStringValue(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function getAssetIdFromResultId(resultId: unknown): string {
+  const value = getStringValue(resultId);
+  return value.startsWith("asset:") ? value.slice("asset:".length).trim() : "";
+}
+
+function getFirstGeneratedCoverAssetId(nodes: Record<string, unknown>[]): string {
+  for (const node of nodes) {
+    const data = node.data && typeof node.data === "object" ? node.data as Record<string, unknown> : {};
+    const generatedResults = Array.isArray(data.generatedResults) ? data.generatedResults : [];
+    for (const result of generatedResults) {
+      if (!result || typeof result !== "object") continue;
+      const resultRecord = result as Record<string, unknown>;
+      const resultAssetId =
+        getAssetIdFromResultId(resultRecord.id) ||
+        getStringValue(resultRecord.assetId) ||
+        getStringValue(resultRecord.resultAssetId);
+      if (resultAssetId) return resultAssetId;
+    }
+
+    const runtimeOutput = data.runtimeOutput && typeof data.runtimeOutput === "object"
+      ? data.runtimeOutput as Record<string, unknown>
+      : {};
+    const runtimeAssets = Array.isArray(runtimeOutput.assets) ? runtimeOutput.assets : [];
+    for (const asset of runtimeAssets) {
+      if (!asset || typeof asset !== "object") continue;
+      const assetRecord = asset as Record<string, unknown>;
+      if (getStringValue(assetRecord.kind) !== "image") continue;
+      const assetId = getStringValue(assetRecord.assetId);
+      if (assetId) return assetId;
+    }
+  }
+
+  return "";
+}
+
+function getFirstUploadedCoverAssetId(nodes: Record<string, unknown>[]): string {
+  for (const node of nodes) {
+    const type = getStringValue(node.type);
+    const data = node.data && typeof node.data === "object" ? node.data as Record<string, unknown> : {};
+    const kind = getStringValue(data.kind);
+    const source = getStringValue(data.source);
+    const mimeType = getStringValue(data.mimeType);
+    const assetId = getStringValue(data.assetId);
+    const looksUploadedImage =
+      assetId &&
+      (type === "upload" ||
+        kind === "upload" ||
+        source === "canvas-upload" ||
+        source === "node-upload" ||
+        (kind === "image" && mimeType.startsWith("image/") && !Array.isArray(data.generatedResults)));
+    if (looksUploadedImage) return assetId;
+  }
+
+  return "";
+}
+
+export function inferProjectCoverAssetIdFromDraftGraph(graph: unknown): string | null {
+  const input = graph && typeof graph === "object" ? graph as { nodes?: unknown } : {};
+  const nodes = Array.isArray(input.nodes)
+    ? input.nodes.filter((node): node is Record<string, unknown> => Boolean(node && typeof node === "object"))
+    : [];
+  return getFirstGeneratedCoverAssetId(nodes) || getFirstUploadedCoverAssetId(nodes) || null;
+}
+
+function mapProject(row: ProjectRecord & { draft_cover_asset_id?: string | null; draft_graph_json?: unknown }): ProjectView {
   return {
-    coverAssetId: row.cover_asset_id,
+    coverAssetId: row.cover_asset_id ?? row.draft_cover_asset_id ?? inferProjectCoverAssetIdFromDraftGraph(row.draft_graph_json),
     createdAt: row.created_at,
     createdBy: row.created_by,
     description: row.description,
@@ -64,21 +137,33 @@ export class ProjectsService {
 
   async listProjects(context: ProjectContext): Promise<ProjectView[]> {
     return withTenantTransaction(context, async (client) => {
-      const result = await client.query<ProjectRecord>(
+      const result = await client.query<ProjectWithDraftCoverRecord>(
         `
+          WITH latest_drafts AS (
+            SELECT DISTINCT ON (project_id)
+              project_id,
+              graph_json
+            FROM flow_drafts
+            WHERE tenant_id = $1::uuid
+            ORDER BY project_id, updated_at DESC, id DESC
+          )
           SELECT
-            id::text AS id,
-            tenant_id::text AS tenant_id,
-            name,
-            description,
-            cover_asset_id::text AS cover_asset_id,
-            created_by::text AS created_by,
-            created_at::text AS created_at,
-            updated_at::text AS updated_at
+            projects.id::text AS id,
+            projects.tenant_id::text AS tenant_id,
+            projects.name,
+            projects.description,
+            projects.cover_asset_id::text AS cover_asset_id,
+            projects.created_by::text AS created_by,
+            projects.created_at::text AS created_at,
+            projects.updated_at::text AS updated_at,
+            NULL::text AS draft_cover_asset_id,
+            latest_drafts.graph_json AS draft_graph_json
           FROM projects
+          LEFT JOIN latest_drafts
+            ON latest_drafts.project_id = projects.id
           WHERE tenant_id = $1::uuid
             AND deleted_at IS NULL
-          ORDER BY created_at ASC, id ASC
+          ORDER BY projects.created_at ASC, projects.id ASC
         `,
         [context.tenantId],
       );
@@ -129,18 +214,29 @@ export class ProjectsService {
 
   async getProject(context: ProjectContext, projectId: string): Promise<ProjectView> {
     return withTenantTransaction(context, async (client) => {
-      const result = await client.query<ProjectRecord>(
+      const result = await client.query<ProjectWithDraftCoverRecord>(
         `
+          WITH latest_draft AS (
+            SELECT graph_json
+            FROM flow_drafts
+            WHERE project_id = $1::uuid
+              AND tenant_id = $2::uuid
+            ORDER BY updated_at DESC, id DESC
+            LIMIT 1
+          )
           SELECT
-            id::text AS id,
-            tenant_id::text AS tenant_id,
-            name,
-            description,
-            cover_asset_id::text AS cover_asset_id,
-            created_by::text AS created_by,
-            created_at::text AS created_at,
-            updated_at::text AS updated_at
+            projects.id::text AS id,
+            projects.tenant_id::text AS tenant_id,
+            projects.name,
+            projects.description,
+            projects.cover_asset_id::text AS cover_asset_id,
+            projects.created_by::text AS created_by,
+            projects.created_at::text AS created_at,
+            projects.updated_at::text AS updated_at,
+            NULL::text AS draft_cover_asset_id,
+            latest_draft.graph_json AS draft_graph_json
           FROM projects
+          LEFT JOIN latest_draft ON true
           WHERE id = $1::uuid
             AND tenant_id = $2::uuid
             AND deleted_at IS NULL

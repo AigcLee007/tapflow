@@ -17,6 +17,13 @@ function formatRelativeTime(input: string) {
   return `${Math.floor(diffMs / day)} 天前`;
 }
 
+function formatDateTime(input: string) {
+  const date = new Date(input);
+  if (!Number.isFinite(date.getTime())) return "-";
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 export function ProjectCard({
   compact,
   project,
@@ -34,17 +41,27 @@ export function ProjectCard({
   if (viewMode === "list") {
     return (
       <button
-        className="grid w-full grid-cols-[1fr_auto] items-center gap-4 rounded-[18px] border border-white/10 bg-[#171719] p-4 text-left transition hover:border-white/20 hover:bg-white/[0.07]"
+        className="grid w-full grid-cols-[180px_1.2fr_1fr_1.3fr_1.2fr] items-center border-b border-white/10 py-6 text-left transition hover:bg-white/[0.04]"
         onClick={() => onOpen(project)}
         type="button"
       >
-        <div className="min-w-0">
-          <div className="truncate text-base font-semibold text-white">{project.name}</div>
-          <div className="mt-1 truncate text-sm text-slate-500">{project.description || "暂无描述"}</div>
+        <div className="h-[90px] w-[136px] overflow-hidden rounded-[18px] bg-[linear-gradient(135deg,#3f3f46_0%,#2563eb_60%,#475569_100%)]">
+          {cover.url ? (
+            <img alt="" className="h-full w-full object-cover" src={cover.url} />
+          ) : cover.failed ? (
+            <div className="grid h-full place-items-center text-slate-500">
+              <ImageOff size={20} />
+            </div>
+          ) : null}
         </div>
-        <div className="flex items-center gap-4 text-sm text-slate-400">
-          <span>{relativeTime}</span>
-          <ArrowUpRight size={18} />
+        <div className="min-w-0">
+          <div className="truncate text-lg font-semibold text-white">{project.name || "项目"}</div>
+        </div>
+        <div className="text-lg text-slate-300">项目</div>
+        <div className="text-lg text-slate-300">{formatDateTime(project.createdAt)}</div>
+        <div className="flex items-center justify-between gap-4 text-lg text-white">
+          <span>编辑于 {relativeTime}</span>
+          <ArrowUpRight size={18} className="text-slate-500" />
         </div>
       </button>
     );

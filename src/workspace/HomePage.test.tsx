@@ -2,7 +2,7 @@ import React from "react";
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-import { WorkspacePage } from "./WorkspacePage";
+import { HomePage } from "./HomePage";
 import type { WorkspaceProject } from "./workspaceApi";
 
 const useWorkspaceProjectsMock = vi.fn();
@@ -31,7 +31,7 @@ const project: WorkspaceProject = {
   updatedAt: "2026-06-12T02:00:00.000Z",
 };
 
-function mockWorkspaceProjects(overrides: Record<string, unknown> = {}) {
+function mockWorkspaceProjects() {
   useWorkspaceProjectsMock.mockReturnValue({
     createProject: vi.fn(async () => ({ project })),
     creating: false,
@@ -48,30 +48,26 @@ function mockWorkspaceProjects(overrides: Record<string, unknown> = {}) {
     setSortMode: vi.fn(),
     showAll: true,
     sortMode: "updated_desc",
-    ...overrides,
   });
 }
 
-describe("WorkspacePage", () => {
+describe("HomePage", () => {
   beforeEach(() => {
     useWorkspaceProjectsMock.mockReset();
     mockWorkspaceProjects();
   });
 
-  test("renders TapNow-style project controls without the home prompt", () => {
-    render(<WorkspacePage />);
+  test("renders the creator home prompt and recent projects", () => {
+    render(<HomePage />);
 
-    expect(screen.queryByRole("heading", { name: "今天要做点什么？" })).toBeNull();
-    expect(screen.queryByText("开始一段灵感对话...")).toBeNull();
-    expect(screen.getByRole("button", { name: "个人" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "团队项目" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "我的空间" })).toBeTruthy();
-    expect(screen.getByText("管理你的 AI Flow 项目，继续创作、筛选和打开画布。")).toBeTruthy();
-    expect(screen.getByPlaceholderText("搜索")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "显示全部" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "网格视图" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "列表视图" })).toBeTruthy();
-    expect(screen.getAllByRole("button", { name: "新建项目" }).length).toBeGreaterThan(0);
+    expect(screen.getByRole("heading", { name: "今天要做点什么？" })).toBeTruthy();
+    expect(screen.getByText("开始一段灵感对话...")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "AI 视频" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "图像生成" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "智能抠图" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "批量工作流" })).toBeTruthy();
+    expect(screen.getByText("最近项目")).toBeTruthy();
     expect(screen.getAllByText("Visual Strategy").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "所有项目" })).toBeTruthy();
   });
 });
