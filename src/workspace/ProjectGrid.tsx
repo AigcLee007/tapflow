@@ -29,7 +29,7 @@ export function ProjectGrid({
   }
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="grid gap-7 sm:grid-cols-2 xl:grid-cols-4">
       <CreateProjectCard creating={creating} onCreate={onCreate} viewMode={viewMode} />
       {projects.map((project) => (
         <ProjectCard key={project.id} onOpen={onOpen} project={project} viewMode={viewMode} />

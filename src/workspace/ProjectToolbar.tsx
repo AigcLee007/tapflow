@@ -1,10 +1,11 @@
 import React from "react";
-import { Grid2X2, List, RefreshCw, Search, SlidersHorizontal } from "lucide-react";
+import { Grid2X2, List, Plus, RefreshCw, Search, SlidersHorizontal } from "lucide-react";
 
 type ViewMode = "grid" | "list";
 
 export function ProjectToolbar({
   disabled,
+  onCreate,
   onRefresh,
   onShowAllChange,
   onSortChange,
@@ -16,6 +17,7 @@ export function ProjectToolbar({
   onQueryChange,
 }: {
   disabled?: boolean;
+  onCreate: () => void;
   onQueryChange: (value: string) => void;
   onRefresh: () => void;
   onShowAllChange: (value: boolean) => void;
@@ -27,33 +29,35 @@ export function ProjectToolbar({
   viewMode: ViewMode;
 }) {
   return (
-    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-      <label className="relative min-w-0 flex-1">
-        <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={17} />
+    <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+      <label className="relative min-w-[260px] flex-1 lg:w-72 lg:flex-none">
+        <Search className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 text-slate-500" size={22} />
         <input
-          className="h-11 w-full rounded-lg border border-white/10 bg-black/25 pl-10 pr-3 text-sm text-white outline-none focus:border-sky-400"
+          className="h-16 w-full rounded-2xl border border-white/10 bg-[#141416] pl-14 pr-4 text-lg text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-300/60"
           onChange={(event) => onQueryChange(event.target.value)}
-          placeholder="搜索项目"
+          placeholder="搜索"
           value={query}
         />
       </label>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-3">
         <button
-          className={`inline-flex h-11 items-center gap-2 rounded-lg border px-3 text-sm ${
+          aria-label="显示全部"
+          className={`inline-flex h-16 items-center gap-3 rounded-2xl border px-5 text-lg font-medium transition ${
             showAll
-              ? "border-sky-400/40 bg-sky-400/10 text-sky-100"
-              : "border-white/10 bg-white/[0.04] text-slate-300"
+              ? "border-white/12 bg-white/[0.09] text-white"
+              : "border-white/10 bg-[#141416] text-slate-300 hover:bg-white/[0.08]"
           }`}
           onClick={() => onShowAllChange(!showAll)}
           type="button"
         >
-          <SlidersHorizontal size={16} />
-          全部
+          <SlidersHorizontal size={21} />
+          显示全部
         </button>
 
         <select
-          className="h-11 rounded-lg border border-white/10 bg-black/25 px-3 text-sm text-white outline-none focus:border-sky-400"
+          aria-label="排序"
+          className="h-16 rounded-2xl border border-white/10 bg-[#141416] px-5 text-lg text-white outline-none focus:border-cyan-300/60"
           onChange={(event) =>
             onSortChange(event.target.value as "updated_desc" | "created_desc" | "name_asc")
           }
@@ -64,23 +68,32 @@ export function ProjectToolbar({
           <option value="name_asc">按名称</option>
         </select>
 
-        <div className="inline-flex rounded-lg border border-white/10 bg-black/20 p-1">
+        <div className="inline-flex h-16 items-center rounded-2xl border border-white/10 bg-[#141416] p-1">
           <IconButton active={viewMode === "grid"} label="网格视图" onClick={() => onViewModeChange("grid")}>
-            <Grid2X2 size={16} />
+            <Grid2X2 size={22} />
           </IconButton>
           <IconButton active={viewMode === "list"} label="列表视图" onClick={() => onViewModeChange("list")}>
-            <List size={16} />
+            <List size={22} />
           </IconButton>
         </div>
 
         <button
-          className="grid h-11 w-11 place-items-center rounded-lg border border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/10 hover:text-white disabled:opacity-50"
+          aria-label="刷新"
+          className="grid h-16 w-16 place-items-center rounded-2xl border border-white/10 bg-[#141416] text-slate-300 transition hover:bg-white/[0.08] hover:text-white disabled:opacity-50"
           disabled={disabled}
           onClick={onRefresh}
-          title="刷新"
           type="button"
         >
-          <RefreshCw size={16} />
+          <RefreshCw size={22} />
+        </button>
+
+        <button
+          className="inline-flex h-16 items-center gap-3 rounded-2xl bg-white px-7 text-lg font-semibold text-slate-950 transition hover:bg-cyan-100"
+          onClick={onCreate}
+          type="button"
+        >
+          <Plus size={24} />
+          新建项目
         </button>
       </div>
     </div>
@@ -101,7 +114,7 @@ function IconButton({
   return (
     <button
       aria-label={label}
-      className={`grid h-9 w-9 place-items-center rounded-md ${
+      className={`grid h-12 w-12 place-items-center rounded-xl transition ${
         active ? "bg-white text-slate-950" : "text-slate-400 hover:text-white"
       }`}
       onClick={onClick}

@@ -642,3 +642,23 @@ Validation blocked:
 
 - `npm run build` is currently blocked by unrelated in-progress workspace changes outside this auth task: `src/flowCanvas/panels/index.ts` exports missing canvas panel modules.
 - Browser smoke for `/login` is currently blocked by unrelated Vite import analysis for `src/assets/AssetPreviewModal.tsx` resolving `./assetApi` while other local asset changes are dirty.
+
+### Latest TapNow Workspace Phase 1 Refresh
+
+Completed in current local iteration:
+
+- added `docs/superpowers/plans/2026-06-12-tapnow-workspace-phase-1.md` for the authenticated workspace redesign
+- refreshed the authenticated top shell into a TapNow-style dark creator nav with `??`, `????`, `???`, and `????`
+- moved account/admin actions into a right-side account menu with profile, credits, account management, model settings, help, and logout entries
+- changed `/workspace` into a creator home with `????????`, a prompt-style input surface, recent projects, and an all-projects jump
+- refreshed workspace project controls, tabs, create card, project cards, and project copy to match the denser TapNow-style project grid
+- kept existing v2 auth, project listing, project creation, and project-opening behavior unchanged
+
+Validation completed:
+
+- `npm run test -- src/app/WorkspaceShell.test.tsx src/workspace/WorkspacePage.test.tsx src/workspace/ProjectCard.test.tsx`
+- `npm run build`
+
+Notes:
+
+- Phase 2 should apply the same TapNow shell language to `/assets`, `/billing`, and `/account` content pages.
