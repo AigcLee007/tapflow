@@ -113,6 +113,7 @@ import {
 import { persistDerivedImageAsset, type DerivedImageSourceType } from '../utils/persistDerivedImageAsset';
 import { downloadOriginalImage, getPreferredImageDownloadAssetId } from '../utils/imageDownload';
 import { mapImageRuntimeRouteOptions, type RuntimeRouteOption } from '../utils/runtimeRouteOptions';
+import { getPromptBarDensity, type PromptBarDensityVariant } from '../utils/promptBarDensity';
 import {
   getAspectRatioOptionsFromCatalogModel,
   getCatalogUiFields,
@@ -838,30 +839,40 @@ const uploadBtn: React.CSSProperties = {
 // Bottom floating prompt bar
 const bottomFloatingBarBase: React.CSSProperties = {
   position: 'absolute',
-  top: 'calc(100% + 24px)', // Increased gap
+  top: `calc(100% + ${getPromptBarDensity('image').topGap}px)`,
   left: '50%',
-  width: 960,
-  minHeight: 178,
+  width: getPromptBarDensity('image').width,
+  minHeight: getPromptBarDensity('image').minHeight,
   background: 'rgba(38,38,38,0.98)', // Uniform color with node
   border: '1px solid rgba(255,255,255,0.1)',
-  borderRadius: 26,
-  padding: '22px 24px 18px',
+  borderRadius: getPromptBarDensity('image').borderRadius,
+  padding: getPromptBarDensity('image').padding,
   display: 'flex',
   flexDirection: 'column',
   justifyContent: 'space-between',
-  gap: 18,
+  gap: getPromptBarDensity('image').gap,
   boxShadow: '0 12px 48px rgba(0,0,0,0.6)',
   backdropFilter: 'blur(20px)',
   zIndex: 30,
 };
 
-const FloatingPromptBar: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+const FloatingPromptBar: React.FC<{ children: React.ReactNode; variant?: PromptBarDensityVariant }> = ({
+  children,
+  variant = 'image',
+}) => {
   const { zoom } = useViewport();
   const scale = 1 / zoom;
+  const density = getPromptBarDensity(variant);
   return (
     <div
       style={{
         ...bottomFloatingBarBase,
+        top: `calc(100% + ${density.topGap}px)`,
+        width: density.width,
+        minHeight: density.minHeight,
+        borderRadius: density.borderRadius,
+        padding: density.padding,
+        gap: density.gap,
         transform: `translateX(-50%) scale(${scale})`,
         transformOrigin: 'top center',
         transition: 'transform 0.1s ease-out',
@@ -1317,33 +1328,33 @@ const promptTextarea: React.CSSProperties = {
   border: 'none',
   outline: 'none',
   color: '#f8fafc',
-  fontSize: 20,
-  lineHeight: 1.42,
+  fontSize: getPromptBarDensity('image').editorFontSize,
+  lineHeight: getPromptBarDensity('image').editorLineHeight,
   fontWeight: 400,
   resize: 'none',
-  minHeight: 118,
-  maxHeight: 400,
+  minHeight: getPromptBarDensity('image').editorMinHeight,
+  maxHeight: getPromptBarDensity('image').editorMaxHeight,
   fontFamily: '"Microsoft YaHei", "微软雅黑", Arial, sans-serif',
 };
 
 const richPromptShell: React.CSSProperties = {
   position: 'relative',
   width: '100%',
-  minHeight: 118,
-  maxHeight: 400,
+  minHeight: getPromptBarDensity('image').editorMinHeight,
+  maxHeight: getPromptBarDensity('image').editorMaxHeight,
 };
 
 const richPromptEditor: React.CSSProperties = {
   width: '100%',
-  minHeight: 118,
-  maxHeight: 400,
+  minHeight: getPromptBarDensity('image').editorMinHeight,
+  maxHeight: getPromptBarDensity('image').editorMaxHeight,
   overflowY: 'auto',
   background: 'transparent',
   border: 'none',
   outline: 'none',
   color: '#f8fafc',
-  fontSize: 20,
-  lineHeight: 1.42,
+  fontSize: getPromptBarDensity('image').editorFontSize,
+  lineHeight: getPromptBarDensity('image').editorLineHeight,
   fontWeight: 400,
   fontFamily: '"Microsoft YaHei", "微软雅黑", Arial, sans-serif',
   whiteSpace: 'pre-wrap',
@@ -1416,7 +1427,7 @@ const COLORS = [
 const paramRow: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  gap: 6,
+  gap: 8,
   flexWrap: 'wrap',
 };
 
@@ -1424,14 +1435,14 @@ const promptBottomRow: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'space-between',
-  marginTop: 4,
+  marginTop: getPromptBarDensity('image').bottomRowMarginTop,
 };
 
 const paramChip: React.CSSProperties = {
   background: 'transparent',
   border: 'none',
-  padding: '4px 2px',
-  fontSize: 13,
+  padding: '3px 2px',
+  fontSize: getPromptBarDensity('image').controlFontSize,
   color: '#94a3b8',
   cursor: 'pointer',
   outline: 'none',
@@ -1443,14 +1454,14 @@ const paramChip: React.CSSProperties = {
 const textModelTrigger: React.CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
-  gap: 8,
-  height: 34,
-  padding: '0 10px',
+  gap: 7,
+  height: getPromptBarDensity('image').controlHeight,
+  padding: '0 9px',
   borderRadius: 999,
   border: '1px solid rgba(255,255,255,0.08)',
   background: 'rgba(255,255,255,0.06)',
   color: '#f4f4f5',
-  fontSize: 14,
+  fontSize: getPromptBarDensity('image').controlFontSize,
   fontWeight: 650,
   cursor: 'pointer',
   boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08)',
@@ -1514,16 +1525,16 @@ const sendBtnOuter: React.CSSProperties = {
   alignItems: 'center',
   gap: 8,
   background: 'rgba(255,255,255,0.06)',
-  borderRadius: 20,
-  padding: '4px 6px 4px 12px',
+  borderRadius: 18,
+  padding: '3px 5px 3px 10px',
   color: '#94a3b8',
-  fontSize: 13,
+  fontSize: getPromptBarDensity('image').controlFontSize,
   fontWeight: 500,
 };
 
 const sendBtnAction = (active: boolean): React.CSSProperties => ({
-  width: 28,
-  height: 28,
+  width: getPromptBarDensity('image').actionButtonSize,
+  height: getPromptBarDensity('image').actionButtonSize,
   borderRadius: '50%',
   border: 'none',
   background: active ? 'rgba(255,255,255,0.1)' : 'linear-gradient(135deg, #6366f1, #4f46e5)',
@@ -2875,7 +2886,7 @@ export const TextNodeComponent = memo(function TextNode({
     )}
 
       {showNodeEditor && !isFullscreen && (
-        <FloatingPromptBar>
+        <FloatingPromptBar variant="text">
           <div style={{ position: 'relative' }}>
             <textarea
               className="nodrag nopan nowheel"
@@ -2883,7 +2894,14 @@ export const TextNodeComponent = memo(function TextNode({
               onChange={(e) => updateNodeData(id, { generationPrompt: e.target.value })}
               onKeyDown={stopCanvasKeyboardPropagation}
               placeholder="描述任何你想要生成的内容"
-              style={{ ...promptTextarea, minHeight: promptExpanded ? 360 : 118, fontWeight: 400 }}
+              style={{
+                ...promptTextarea,
+                minHeight: promptExpanded
+                  ? getPromptBarDensity('text').editorExpandedMinHeight
+                  : getPromptBarDensity('text').editorMinHeight,
+                maxHeight: getPromptBarDensity('text').editorMaxHeight,
+                fontWeight: 400,
+              }}
             />
             <button 
               onClick={() => setPromptExpanded(!promptExpanded)}
@@ -5637,7 +5655,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       )}
 
       {shouldShowPromptEditor && (
-        <FloatingPromptBar>
+        <FloatingPromptBar variant="image">
           <div ref={promptBarRef} style={{ position: 'relative' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, minHeight: 42 }}>
             <button
@@ -5932,6 +5950,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
               onChange={handlePromptLexicalChange}
               onKeyDown={handlePromptTextareaKeyDown}
               placeholder="描述任何你想要生成的内容，按 @ 引用素材"
+              densityVariant="image"
             />
           </div>
 
@@ -6189,7 +6208,7 @@ export const VideoNodeComponent = memo(function VideoNode({
       )}
 
       {showNodeEditor && (
-        <FloatingPromptBar>
+        <FloatingPromptBar variant="video">
           <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
             <button style={{ ...topToolbarBtn, background: 'rgba(255,255,255,0.06)', borderRadius: 8, padding: '6px 12px' }}>首尾帧</button>
             <button style={{ ...topToolbarBtn, background: 'rgba(255,255,255,0.06)', borderRadius: 8, padding: '6px 12px' }}>+</button>
@@ -6199,7 +6218,11 @@ export const VideoNodeComponent = memo(function VideoNode({
             value={d.generationPrompt || ''}
             onChange={(e) => updateNodeData(id, { generationPrompt: e.target.value })}
             placeholder="描述任何你想要生成的内容"
-            style={promptTextarea}
+            style={{
+              ...promptTextarea,
+              minHeight: getPromptBarDensity('video').editorMinHeight,
+              maxHeight: getPromptBarDensity('video').editorMaxHeight,
+            }}
           />
 
           <div style={promptBottomRow}>

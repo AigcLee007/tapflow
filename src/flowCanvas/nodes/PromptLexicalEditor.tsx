@@ -22,6 +22,7 @@ import {
   type SerializedLexicalNode,
   type Spread,
 } from 'lexical';
+import { getPromptBarDensity, type PromptBarDensityVariant } from '../utils/promptBarDensity';
 
 export type PromptReference = {
   key: string;
@@ -311,6 +312,7 @@ interface PromptLexicalEditorProps {
   onChange: (value: string) => void;
   onKeyDown?: (event: React.KeyboardEvent<HTMLElement>) => void;
   placeholder?: string;
+  densityVariant?: PromptBarDensityVariant;
 }
 
 export const PromptLexicalEditor = forwardRef<PromptLexicalEditorHandle, PromptLexicalEditorProps>(({
@@ -319,7 +321,9 @@ export const PromptLexicalEditor = forwardRef<PromptLexicalEditorHandle, PromptL
   onChange,
   onKeyDown,
   placeholder = '描述任何你想要生成的内容，按 @ 引用素材',
+  densityVariant = 'image',
 }, ref) => {
+  const density = getPromptBarDensity(densityVariant);
   const initialConfig = useMemo(() => ({
     namespace: 'FlowPromptEditor',
     nodes: [ReferenceNode],
@@ -334,7 +338,7 @@ export const PromptLexicalEditor = forwardRef<PromptLexicalEditorHandle, PromptL
 
   return (
     <LexicalComposer initialConfig={initialConfig}>
-      <div style={{ position: 'relative', minHeight: 118, maxHeight: 400 }}>
+      <div style={{ position: 'relative', minHeight: density.editorMinHeight, maxHeight: density.editorMaxHeight }}>
         <PlainTextPlugin
           contentEditable={
             <ContentEditable
@@ -342,15 +346,15 @@ export const PromptLexicalEditor = forwardRef<PromptLexicalEditorHandle, PromptL
               onKeyDown={onKeyDown}
               style={{
                 width: '100%',
-                minHeight: 118,
-                maxHeight: 400,
+                minHeight: density.editorMinHeight,
+                maxHeight: density.editorMaxHeight,
                 overflowY: 'auto',
                 background: 'transparent',
                 border: 'none',
                 outline: 'none',
                 color: '#f8fafc',
-                fontSize: 20,
-                lineHeight: 1.42,
+                fontSize: density.editorFontSize,
+                lineHeight: density.editorLineHeight,
                 fontWeight: 400,
                 fontFamily: '"Microsoft YaHei", "微软雅黑", Arial, sans-serif',
                 whiteSpace: 'pre-wrap',
@@ -365,8 +369,8 @@ export const PromptLexicalEditor = forwardRef<PromptLexicalEditorHandle, PromptL
               left: 0,
               top: 0,
               color: 'rgba(255,255,255,0.28)',
-              fontSize: 20,
-              lineHeight: 1.42,
+              fontSize: density.editorFontSize,
+              lineHeight: density.editorLineHeight,
               pointerEvents: 'none',
               fontFamily: '"Microsoft YaHei", "微软雅黑", Arial, sans-serif',
             }}>

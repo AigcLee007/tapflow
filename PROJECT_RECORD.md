@@ -107,6 +107,18 @@ As of 2026-06-12:
   - `npm run build`
 - Full `npm test` still has unrelated existing failures in legacy migration, ProjectCard/UploadAssetButton text assertions, storage presigned URL expectations, AI Gateway schema examples, and one OpenAI-compatible multipart test. The new worker/runner tests for this fix pass.
 
+## 2026-06-12 - Prompt Bar Density Alignment
+
+- Text, image, and video node selected-state PromptBars now share one compact density token set.
+- PromptBar widths/heights were reduced toward TapNow-like viewport proportions:
+  - text: `clamp(720px, 56vw, 1040px)`
+  - image: `clamp(760px, 58vw, 1080px)`
+  - video: `clamp(780px, 60vw, 1120px)`
+- Prompt editor font size, line height, padding, bottom-row controls, and send button density were unified so the edit boxes no longer dominate the canvas.
+- Validation:
+  - `npm run test -- src/flowCanvas/utils/promptBarDensity.test.ts`
+  - `npm run build`
+
 ## Common Staging Commands
 
 Set reusable command variables:
