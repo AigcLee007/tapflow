@@ -25,6 +25,7 @@ export function WorkspacePage() {
     projects,
     query,
     refresh,
+    removeProjectOptimistically,
     scope,
     setQuery,
     setScope,
@@ -49,8 +50,9 @@ export function WorkspacePage() {
   };
 
   const deleteProject = async (project: WorkspaceProject) => {
-    await deleteWorkspaceProject(project.id);
-    await refresh();
+    await removeProjectOptimistically(project.id, async () => {
+      await deleteWorkspaceProject(project.id);
+    });
   };
 
   return (

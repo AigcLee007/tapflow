@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import type { AssetItem } from "../../assets/assetApi";
@@ -85,5 +85,15 @@ describe("CanvasAssetPanel", () => {
     expect(screen.queryByText("2.0 MB")).toBeNull();
     expect(screen.queryByRole("button", { name: /all/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /recent/i })).toBeNull();
+  });
+
+  test("uses a compact visible asset menu inside the drawer", () => {
+    render(<CanvasAssetPanel onInsertAsset={vi.fn()} projectId="project-1" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "管理素材 drawer-reference.png" }));
+
+    const menu = screen.getByRole("menu");
+    expect(menu.className).toContain("w-[188px]");
+    expect(screen.getByRole("menuitem", { name: "预览" })).toBeTruthy();
   });
 });

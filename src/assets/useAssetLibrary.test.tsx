@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AuthContext, type AuthState } from "../auth/useAuth";
@@ -115,7 +115,7 @@ const folderB: AssetFolder = {
 };
 
 function Harness() {
-  const { assets, folders, loading, mediaCounts } = useAssetLibrary();
+  const { assets, folders, loading, mediaCounts, setFavoriteOnly } = useAssetLibrary();
 
   return (
     <div>
@@ -125,6 +125,9 @@ function Harness() {
       <div data-testid="counts">
         {mediaCounts.all}/{mediaCounts.image}/{mediaCounts.video}/{mediaCounts.audio}
       </div>
+      <button onClick={() => setFavoriteOnly(true)} type="button">
+        show favorites
+      </button>
     </div>
   );
 }
@@ -404,6 +407,34 @@ describe("useAssetLibrary", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("counts").textContent).toBe("135/135/0/0");
+    });
+  });
+
+  it("requests favorite assets when the favorite filter is enabled", async () => {
+    listAssetsMock.mockImplementation((params: { favorite?: boolean; kind?: string }) => {
+      if (params.kind) {
+        return Promise.resolve({ items: [], page: 1, pageSize: 1, total: 0 });
+      }
+      return Promise.resolve({
+        items: params.favorite ? [{ ...assetA, favorite: true }] : [assetA],
+        page: 1,
+        pageSize: 60,
+        total: 1,
+      });
+    });
+    listAssetFoldersMock.mockResolvedValue([]);
+    getAssetSignedUrlsMock.mockResolvedValue({ items: [] });
+
+    renderWithAuth(baseAuthState);
+
+    await waitFor(() => {
+      expect(listAssetsMock).toHaveBeenCalledWith(expect.not.objectContaining({ favorite: true }));
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "show favorites" }));
+
+    await waitFor(() => {
+      expect(listAssetsMock).toHaveBeenCalledWith(expect.objectContaining({ favorite: true }));
     });
   });
 });

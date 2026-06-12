@@ -42,12 +42,14 @@ export function ProjectCard({
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [renaming, setRenaming] = React.useState(false);
   const [confirmingDelete, setConfirmingDelete] = React.useState(false);
+  const menuButtonRef = React.useRef<HTMLButtonElement | null>(null);
   const coverUrl = project.coverUrl || "";
   const projectName = project.name || "项目";
   const relativeTime = formatRelativeTime(project.updatedAt);
 
   const menu = (
     <WorkspaceActionMenu
+      anchorRef={menuButtonRef}
       items={[
         {
           key: "open",
@@ -136,6 +138,7 @@ export function ProjectCard({
               event.stopPropagation();
               setMenuOpen((open) => !open);
             }}
+            ref={menuButtonRef}
             type="button"
           >
             <MoreHorizontal size={20} />
@@ -186,6 +189,7 @@ export function ProjectCard({
             event.stopPropagation();
             setMenuOpen((open) => !open);
           }}
+          ref={menuButtonRef}
           type="button"
         >
           <MoreHorizontal size={17} />

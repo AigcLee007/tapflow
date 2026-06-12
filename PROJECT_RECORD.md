@@ -896,6 +896,21 @@ Validation completed:
 
 - `npm run test -- src\workspace\WorkspacePage.test.tsx src\assets\AssetLibraryPage.test.tsx`
 
+### Latest Management Menu Stability Fixes
+
+Completed in current local iteration:
+
+- changed shared entity menus to support fixed-position anchored rendering, viewport edge clamping, and compact density for canvas drawer usage
+- adjusted asset cards so compact drawer menus only show actions that have real handlers, preventing oversized empty menu blocks in the left asset drawer
+- changed project deletion to use optimistic local removal plus silent refresh, avoiding full-list loading flashes after confirm delete
+- wired the asset library sidebar `收藏` category to real `favorite=true` asset queries instead of a static button
+- changed asset favorite/delete actions to update the visible list optimistically, so the UI responds immediately while the API call completes
+- added focused regression coverage for compact drawer menus, no-flash project deletion flow, favorite-category filtering, and asset menu management flows
+
+Validation completed:
+
+- `npm run test -- src\workspace\WorkspacePage.test.tsx src\assets\AssetLibraryPage.test.tsx src\assets\useAssetLibrary.test.tsx src\flowCanvas\panels\CanvasAssetPanel.test.tsx`
+
 ### Latest Workspace Cover and Asset Library Performance Fix
 
 Completed in current local iteration:

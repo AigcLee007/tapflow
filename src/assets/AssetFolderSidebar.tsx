@@ -4,13 +4,17 @@ import { Folder, FolderPlus, Images, Sparkles, Star } from "lucide-react";
 import { createAssetFolder, type AssetFolder } from "./assetApi";
 
 export function AssetFolderSidebar({
+  favoriteOnly,
   folders,
   onCreated,
+  onFavoriteOnlyChange,
   onSelect,
   selectedFolderId,
 }: {
+  favoriteOnly: boolean;
   folders: AssetFolder[];
   onCreated: () => void;
+  onFavoriteOnlyChange: (favoriteOnly: boolean) => void;
   onSelect: (folderId: string | null) => void;
   selectedFolderId: string | null;
 }) {
@@ -43,16 +47,25 @@ export function AssetFolderSidebar({
       <div className="space-y-1">
         <button
           className={`flex h-10 w-full items-center gap-2 rounded px-3 text-left text-sm ${
-            selectedFolderId === null ? "bg-sky-400/15 text-sky-100" : "text-slate-300 hover:bg-white/[0.05]"
+            selectedFolderId === null && !favoriteOnly ? "bg-sky-400/15 text-sky-100" : "text-slate-300 hover:bg-white/[0.05]"
           }`}
-          onClick={() => onSelect(null)}
+          onClick={() => {
+            onFavoriteOnlyChange(false);
+            onSelect(null);
+          }}
           type="button"
         >
           <Images size={16} />
           全部素材
         </button>
         <button
-          className="flex h-10 w-full items-center gap-2 rounded px-3 text-left text-sm text-slate-300 hover:bg-white/[0.05]"
+          className={`flex h-10 w-full items-center gap-2 rounded px-3 text-left text-sm ${
+            favoriteOnly ? "bg-sky-400/15 text-sky-100" : "text-slate-300 hover:bg-white/[0.05]"
+          }`}
+          onClick={() => {
+            onFavoriteOnlyChange(true);
+            onSelect(null);
+          }}
           type="button"
         >
           <Star size={16} />
@@ -66,10 +79,13 @@ export function AssetFolderSidebar({
           {folders.map((folder) => (
             <button
               className={`flex h-9 w-full items-center gap-2 rounded px-3 text-left text-sm ${
-                selectedFolderId === folder.id ? "bg-sky-400/15 text-sky-100" : "text-slate-300 hover:bg-white/[0.05]"
+                selectedFolderId === folder.id && !favoriteOnly ? "bg-sky-400/15 text-sky-100" : "text-slate-300 hover:bg-white/[0.05]"
               }`}
               key={folder.id}
-              onClick={() => onSelect(folder.id)}
+              onClick={() => {
+                onFavoriteOnlyChange(false);
+                onSelect(folder.id);
+              }}
               type="button"
             >
               <Folder size={15} />

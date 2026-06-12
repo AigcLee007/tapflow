@@ -24,6 +24,7 @@ export type AssetLibraryState = {
   assets: AssetItem[];
   groupedAssets: AssetDateGroup[];
   error: string | null;
+  favoriteOnly: boolean;
   folders: AssetFolder[];
   loading: boolean;
   mediaCounts: AssetMediaCounts;
@@ -34,6 +35,12 @@ export type AssetLibraryState = {
   selectedFolderId: string | null;
   setSelectedMediaTab: (tab: AssetMediaTab) => void;
   setSelectedFolderId: (folderId: string | null) => void;
+  setFavoriteOnly: (favoriteOnly: boolean) => void;
+  updateAssetOptimistically: (
+    assetId: string,
+    updater: (asset: AssetItem) => AssetItem | null,
+    action: () => Promise<void>,
+  ) => Promise<void>;
   setQuery: (query: string) => void;
   query: string;
   total: number;
@@ -61,6 +68,7 @@ export function useAssetLibrary(): AssetLibraryState {
   const [folders, setFolders] = useState<AssetFolder[]>([]);
   const [selectedMediaTab, setSelectedMediaTab] = useState<AssetMediaTab>("image");
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
+  const [favoriteOnly, setFavoriteOnly] = useState(false);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -77,17 +85,19 @@ export function useAssetLibrary(): AssetLibraryState {
 
   const params = useMemo<AssetListParams>(() => ({
     folderId: selectedFolderId,
+    favorite: favoriteOnly || undefined,
     page,
     pageSize,
     query: query.trim() || undefined,
-  }), [page, pageSize, query, selectedFolderId]);
+  }), [favoriteOnly, page, pageSize, query, selectedFolderId]);
 
   const countParams = useMemo(
     () => ({
       folderId: selectedFolderId,
+      favorite: favoriteOnly || undefined,
       query: query.trim() || undefined,
     }),
-    [query, selectedFolderId],
+    [favoriteOnly, query, selectedFolderId],
   );
 
   const refresh = useCallback(async () => {
@@ -193,6 +203,36 @@ export function useAssetLibrary(): AssetLibraryState {
     }
   }, [authenticated, countParams, identityKey, params, tenant, user]);
 
+  const updateAssetOptimistically = useCallback(
+    async (assetId: string, updater: (asset: AssetItem) => AssetItem | null, action: () => Promise<void>) => {
+      const previousAssets = assets;
+      const nextAssets = assets
+        .map((asset) => (asset.id === assetId ? updater(asset) : asset))
+        .filter((asset): asset is AssetItem => Boolean(asset));
+      setAssets(nextAssets);
+      librarySnapshotCache.set(identityKey, {
+        assets: nextAssets,
+        folders,
+        mediaCounts,
+        total: favoriteOnly ? nextAssets.length : total,
+      });
+      try {
+        await action();
+        void refresh();
+      } catch (error) {
+        setAssets(previousAssets);
+        librarySnapshotCache.set(identityKey, {
+          assets: previousAssets,
+          folders,
+          mediaCounts,
+          total,
+        });
+        throw error;
+      }
+    },
+    [assets, favoriteOnly, folders, identityKey, mediaCounts, refresh, total],
+  );
+
   useEffect(() => {
     requestSequenceRef.current += 1;
     const cached = librarySnapshotCache.get(identityKey);
@@ -200,6 +240,7 @@ export function useAssetLibrary(): AssetLibraryState {
     setFolders(cached?.folders ?? []);
     setSelectedMediaTab("image");
     setSelectedFolderId(null);
+    setFavoriteOnly(false);
     setQuery("");
     setTotal(cached?.total ?? 0);
     setMediaCounts(cached?.mediaCounts ?? DEFAULT_MEDIA_COUNTS);
@@ -220,6 +261,7 @@ export function useAssetLibrary(): AssetLibraryState {
     assets,
     groupedAssets,
     error,
+    favoriteOnly,
     folders,
     loading,
     mediaCounts,
@@ -230,8 +272,10 @@ export function useAssetLibrary(): AssetLibraryState {
     selectedMediaTab,
     selectedFolderId,
     setSelectedMediaTab,
+    setFavoriteOnly,
     setQuery,
     setSelectedFolderId,
+    updateAssetOptimistically,
     total,
   };
 }

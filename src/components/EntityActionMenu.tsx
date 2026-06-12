@@ -1,4 +1,5 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 export type EntityActionMenuItem = {
   danger?: boolean;
@@ -10,13 +11,41 @@ export type EntityActionMenuItem = {
 };
 
 export function EntityActionMenu({
+  anchorRef,
+  density = "default",
   items,
   onClose,
 }: {
+  anchorRef?: React.RefObject<HTMLElement | null>;
+  density?: "default" | "compact";
   items: EntityActionMenuItem[];
   onClose: () => void;
 }) {
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
+  const menuWidth = density === "compact" ? 188 : 220;
+  const rowHeight = density === "compact" ? "h-9" : "h-10";
+  const textSize = density === "compact" ? "text-[13px]" : "text-sm";
+
+  useLayoutEffect(() => {
+    if (!anchorRef?.current) {
+      setPosition(null);
+      return;
+    }
+    const anchorRect = anchorRef.current.getBoundingClientRect();
+    const estimatedHeight = items.length * (density === "compact" ? 36 : 40) + 16;
+    const padding = 12;
+    const left = Math.min(
+      Math.max(padding, anchorRect.right - menuWidth),
+      Math.max(padding, window.innerWidth - menuWidth - padding),
+    );
+    const preferredTop = anchorRect.bottom + 8;
+    const top =
+      preferredTop + estimatedHeight > window.innerHeight - padding
+        ? Math.max(padding, anchorRect.top - estimatedHeight - 8)
+        : preferredTop;
+    setPosition({ left, top });
+  }, [anchorRef, density, items.length, menuWidth]);
 
   useEffect(() => {
     const handlePointerDown = (event: PointerEvent) => {
@@ -36,17 +65,20 @@ export function EntityActionMenu({
     };
   }, [onClose]);
 
-  return (
+  const menu = (
     <div
-      className="absolute right-0 top-11 z-[80] w-[244px] overflow-hidden rounded-2xl border border-white/10 bg-[#242424] py-2 text-[15px] font-medium text-slate-100 shadow-[0_22px_60px_rgba(0,0,0,0.5)]"
+      className={`${
+        position ? "fixed" : "absolute right-0 top-11"
+      } z-[1800] ${density === "compact" ? "w-[188px] rounded-xl py-1.5" : "w-[220px] rounded-2xl py-2"} overflow-hidden border border-white/10 bg-[#242424] ${textSize} font-medium text-slate-100 shadow-[0_22px_60px_rgba(0,0,0,0.5)]`}
       ref={menuRef}
       role="menu"
+      style={position ? { left: position.left, top: position.top } : undefined}
     >
       {items.map((item) => (
         <React.Fragment key={item.key}>
           {item.separatorBefore && <div className="my-2 border-t border-white/10" />}
           <button
-            className={`flex h-11 w-full items-center px-5 text-left transition ${
+            className={`flex ${rowHeight} w-full items-center ${density === "compact" ? "px-3.5" : "px-4"} text-left transition ${
               item.danger
                 ? "text-red-300 hover:bg-red-500/10 hover:text-red-200"
                 : "text-slate-100 hover:bg-white/[0.07]"
@@ -66,9 +98,17 @@ export function EntityActionMenu({
       ))}
     </div>
   );
+
+  if (position && typeof document !== "undefined") {
+    return createPortal(menu, document.body);
+  }
+
+  return menu;
 }
 
 export function WorkspaceActionMenu(props: {
+  anchorRef?: React.RefObject<HTMLElement | null>;
+  density?: "default" | "compact";
   items: EntityActionMenuItem[];
   onClose: () => void;
 }) {

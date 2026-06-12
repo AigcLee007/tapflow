@@ -51,7 +51,84 @@ export function AssetCard({
   const [renaming, setRenaming] = React.useState(false);
   const [confirmingDelete, setConfirmingDelete] = React.useState(false);
   const [moving, setMoving] = React.useState(false);
+  const menuButtonRef = React.useRef<HTMLButtonElement | null>(null);
   const title = asset.title || asset.originalFilename || "未命名素材";
+  const menuItems = [
+    {
+      key: "preview",
+      label: "预览",
+      onSelect: () => {
+        setMenuOpen(false);
+        setMoving(false);
+        onOpen(asset);
+      },
+    },
+    ...(onRename
+      ? [
+          {
+            key: "rename",
+            label: "重命名",
+            onSelect: () => {
+              setMenuOpen(false);
+              setMoving(false);
+              setRenaming(true);
+            },
+          },
+        ]
+      : []),
+    ...(onToggleFavorite
+      ? [
+          {
+            key: "favorite",
+            label: asset.favorite ? "取消收藏" : "收藏",
+            onSelect: () => {
+              setMenuOpen(false);
+              setMoving(false);
+              void onToggleFavorite(asset);
+            },
+          },
+        ]
+      : []),
+    ...(onAddToFolder
+      ? [
+          {
+            disabled: folders.length === 0,
+            key: "move",
+            label: "移动到文件夹",
+            onSelect: () => setMoving(true),
+            separatorBefore: true,
+          },
+        ]
+      : []),
+    ...(onDownload
+      ? [
+          {
+            key: "download",
+            label: "下载原图",
+            onSelect: () => {
+              setMenuOpen(false);
+              setMoving(false);
+              void onDownload(asset);
+            },
+          },
+        ]
+      : []),
+    ...(onDelete
+      ? [
+          {
+            danger: true,
+            key: "delete",
+            label: "删除",
+            onSelect: () => {
+              setMenuOpen(false);
+              setMoving(false);
+              setConfirmingDelete(true);
+            },
+            separatorBefore: true,
+          },
+        ]
+      : []),
+  ];
 
   return (
     <article
@@ -103,68 +180,16 @@ export function AssetCard({
             setMenuOpen((open) => !open);
             setMoving(false);
           }}
+          ref={menuButtonRef}
           type="button"
         >
           <MoreHorizontal size={16} />
         </button>
         {menuOpen && (
           <EntityActionMenu
-            items={[
-              {
-                key: "preview",
-                label: "预览",
-                onSelect: () => {
-                  setMenuOpen(false);
-                  setMoving(false);
-                  onOpen(asset);
-                },
-              },
-              {
-                key: "rename",
-                label: "重命名",
-                onSelect: () => {
-                  setMenuOpen(false);
-                  setMoving(false);
-                  setRenaming(true);
-                },
-              },
-              {
-                key: "favorite",
-                label: asset.favorite ? "取消收藏" : "收藏",
-                onSelect: () => {
-                  setMenuOpen(false);
-                  setMoving(false);
-                  void onToggleFavorite?.(asset);
-                },
-              },
-              {
-                disabled: folders.length === 0,
-                key: "move",
-                label: "移动到文件夹",
-                onSelect: () => setMoving(true),
-                separatorBefore: true,
-              },
-              {
-                key: "download",
-                label: "下载原图",
-                onSelect: () => {
-                  setMenuOpen(false);
-                  setMoving(false);
-                  void onDownload?.(asset);
-                },
-              },
-              {
-                danger: true,
-                key: "delete",
-                label: "删除",
-                onSelect: () => {
-                  setMenuOpen(false);
-                  setMoving(false);
-                  setConfirmingDelete(true);
-                },
-                separatorBefore: true,
-              },
-            ]}
+            anchorRef={menuButtonRef}
+            density={compact ? "compact" : "default"}
+            items={menuItems}
             onClose={() => {
               setMenuOpen(false);
               setMoving(false);

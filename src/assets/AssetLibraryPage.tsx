@@ -51,8 +51,17 @@ export function AssetLibraryPage() {
   };
 
   const toggleAssetFavorite = async (asset: AssetItem) => {
-    await updateAssetMetadata(asset.id, { favorite: !asset.favorite });
-    await library.refresh();
+    const nextFavorite = !asset.favorite;
+    await library.updateAssetOptimistically(
+      asset.id,
+      (current) => {
+        const updated = { ...current, favorite: nextFavorite };
+        return library.favoriteOnly && !nextFavorite ? null : updated;
+      },
+      async () => {
+        await updateAssetMetadata(asset.id, { favorite: nextFavorite });
+      },
+    );
   };
 
   const downloadAsset = async (asset: AssetItem) => {
@@ -66,8 +75,13 @@ export function AssetLibraryPage() {
   };
 
   const removeAsset = async (asset: AssetItem) => {
-    await deleteAsset(asset.id);
-    await library.refresh();
+    await library.updateAssetOptimistically(
+      asset.id,
+      () => null,
+      async () => {
+        await deleteAsset(asset.id);
+      },
+    );
   };
 
   const selectedMediaLabel =
@@ -77,8 +91,10 @@ export function AssetLibraryPage() {
     <section className="min-h-[calc(100vh-92px)] overflow-hidden rounded border border-white/10 bg-[#0b0d14] shadow-2xl shadow-black/20">
       <div className="flex flex-col md:flex-row">
         <AssetFolderSidebar
+          favoriteOnly={library.favoriteOnly}
           folders={library.folders}
           onCreated={refresh}
+          onFavoriteOnlyChange={library.setFavoriteOnly}
           onSelect={library.setSelectedFolderId}
           selectedFolderId={library.selectedFolderId}
         />

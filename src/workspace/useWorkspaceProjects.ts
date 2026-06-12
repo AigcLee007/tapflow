@@ -56,7 +56,7 @@ export function useWorkspaceProjects() {
     setLoading(Boolean(authenticated && tenant && user));
   }, [authenticated, identityKey, tenant, user]);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (options: { silent?: boolean } = {}) => {
     if (!authenticated || !tenant || !user) {
       requestSequenceRef.current += 1;
       setProjects([]);
@@ -67,7 +67,9 @@ export function useWorkspaceProjects() {
 
     const requestId = requestSequenceRef.current + 1;
     requestSequenceRef.current = requestId;
-    setLoading(true);
+    if (!options.silent) {
+      setLoading(true);
+    }
     setError(null);
     try {
       const nextProjects = await resolveProjectCoverUrls(await listWorkspaceProjects());
@@ -134,6 +136,23 @@ export function useWorkspaceProjects() {
     });
   }, [projects, query, showAll, sortMode]);
 
+  const removeProjectOptimistically = useCallback(
+    async (projectId: string, action: () => Promise<void>) => {
+      const previousProjects = projects;
+      setProjects((current) => current.filter((project) => project.id !== projectId));
+      setError(null);
+      try {
+        await action();
+        void refresh({ silent: true });
+      } catch (deleteError) {
+        setProjects(previousProjects);
+        setError(deleteError instanceof Error ? deleteError.message : "删除项目失败，请稍后重试。");
+        throw deleteError;
+      }
+    },
+    [projects, refresh],
+  );
+
   return {
     createProject,
     creating,
@@ -143,6 +162,7 @@ export function useWorkspaceProjects() {
     projects,
     query,
     refresh,
+    removeProjectOptimistically,
     scope,
     setQuery,
     setScope,

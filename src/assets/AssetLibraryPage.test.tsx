@@ -104,9 +104,14 @@ function mockLibrary(overrides: Record<string, unknown> = {}) {
     mediaCounts: { all: 135, audio: 0, image: 60, video: 0 },
     query: "",
     refresh: vi.fn(async () => undefined),
+    favoriteOnly: false,
+    updateAssetOptimistically: vi.fn(async (_assetId: string, _updater: unknown, action: () => Promise<void>) => {
+      await action();
+    }),
     selectedMediaTab: "image",
     selectedFolderId: null,
     setQuery: vi.fn(),
+    setFavoriteOnly: vi.fn(),
     setSelectedFolderId: vi.fn(),
     setSelectedMediaTab: vi.fn(),
     total: 0,
@@ -203,5 +208,19 @@ describe("AssetLibraryPage", () => {
       expect(deleteAssetMock).toHaveBeenCalledWith("asset-1");
     });
     expect(refresh).toHaveBeenCalled();
+  });
+
+  test("selects the favorite category from the sidebar", () => {
+    const setFavoriteOnly = vi.fn();
+    mockLibrary({
+      favoriteOnly: false,
+      setFavoriteOnly,
+    });
+
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "收藏" }));
+
+    expect(setFavoriteOnly).toHaveBeenCalledWith(true);
   });
 });

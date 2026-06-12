@@ -48,6 +48,7 @@ function mockWorkspaceProjects(overrides: Record<string, unknown> = {}) {
     projects: [project],
     query: "",
     refresh: vi.fn(async () => undefined),
+    removeProjectOptimistically: vi.fn(async () => undefined),
     scope: "personal",
     setQuery: vi.fn(),
     setScope: vi.fn(),
@@ -105,9 +106,10 @@ describe("WorkspacePage", () => {
     expect(refresh).toHaveBeenCalled();
   });
 
-  test("deletes a project from the action menu", async () => {
+  test("deletes a project from the action menu without forcing a loading refresh", async () => {
     const refresh = vi.fn(async () => undefined);
-    mockWorkspaceProjects({ refresh });
+    const removeProjectOptimistically = vi.fn(async () => undefined);
+    mockWorkspaceProjects({ refresh, removeProjectOptimistically });
     deleteWorkspaceProjectMock.mockResolvedValue({ ok: true });
 
     render(<WorkspacePage />);
@@ -117,8 +119,9 @@ describe("WorkspacePage", () => {
     fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
 
     await waitFor(() => {
-      expect(deleteWorkspaceProjectMock).toHaveBeenCalledWith("project-1");
+      expect(removeProjectOptimistically).toHaveBeenCalledWith("project-1", expect.any(Function));
     });
-    expect(refresh).toHaveBeenCalled();
+    expect(deleteWorkspaceProjectMock).not.toHaveBeenCalled();
+    expect(refresh).not.toHaveBeenCalled();
   });
 });
