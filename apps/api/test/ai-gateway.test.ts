@@ -19,6 +19,11 @@ const openServers = new Set<ReturnType<typeof createServer>>();
 const testEnv: ApiEnv = {
   accessTokenTtlSeconds: 60 * 15,
   adminEmails: [],
+  apiRateLimitMax: 1000,
+  apiRateLimitWindowMs: 60_000,
+  authRateLimitMax: 20,
+  authRateLimitWindowMs: 60_000,
+  corsAllowedOrigins: ["http://localhost:5173"],
   credentialKeyVersion: "v1",
   credentialMasterKey: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
   jwtAccessSecret: "test_access_secret_1234567890",
@@ -31,6 +36,8 @@ const testEnv: ApiEnv = {
   s3ForcePathStyle: true,
   s3Region: "us-east-1",
   s3SecretAccessKey: "test-secret",
+  securityHeadersEnabled: true,
+  trustProxy: false,
 };
 
 class MemoryStorageProvider implements StorageProvider {

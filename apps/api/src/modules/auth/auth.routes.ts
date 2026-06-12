@@ -70,7 +70,16 @@ function handleRouteError(
 }
 
 export function registerAuthRoutes(app: FastifyInstance): void {
-  app.post("/api/v2/auth/register", async (request, reply) => {
+  const authRateLimitConfig = {
+    config: {
+      rateLimit: {
+        max: app.authService.env.authRateLimitMax ?? 20,
+        timeWindow: app.authService.env.authRateLimitWindowMs ?? 60_000,
+      },
+    },
+  };
+
+  app.post("/api/v2/auth/register", authRateLimitConfig, async (request, reply) => {
     try {
       const body = parseBody<RegisterInput>(request, registerSchema);
       const result = await app.authService.register(body, {
@@ -86,7 +95,7 @@ export function registerAuthRoutes(app: FastifyInstance): void {
     }
   });
 
-  app.post("/api/v2/auth/login", async (request, reply) => {
+  app.post("/api/v2/auth/login", authRateLimitConfig, async (request, reply) => {
     try {
       const body = parseBody<LoginInput>(request, loginSchema);
       const result = await app.authService.login(body, {
@@ -102,7 +111,7 @@ export function registerAuthRoutes(app: FastifyInstance): void {
     }
   });
 
-  app.post("/api/v2/auth/refresh", async (request, reply) => {
+  app.post("/api/v2/auth/refresh", authRateLimitConfig, async (request, reply) => {
     try {
       const body = parseBody<RefreshInput>(request, refreshSchema);
       const result = await app.authService.refresh(body);
