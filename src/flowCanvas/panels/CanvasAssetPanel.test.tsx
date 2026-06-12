@@ -92,4 +92,12 @@ describe("CanvasAssetPanel", () => {
 
     expect(screen.queryByRole("button", { name: "管理素材 drawer-reference.png" })).toBeNull();
   });
+
+  test("does not render search or upload controls in the drawer header", () => {
+    render(<CanvasAssetPanel onInsertAsset={vi.fn()} projectId="project-1" />);
+
+    expect(screen.queryByPlaceholderText("搜索素材")).toBeNull();
+    expect(screen.queryByRole("button", { name: "upload" })).toBeNull();
+    expect(screen.getByRole("button", { name: /图片1/ })).toBeTruthy();
+  });
 });

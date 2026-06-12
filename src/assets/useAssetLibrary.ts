@@ -2,17 +2,21 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useAuth } from "../auth/useAuth";
 import {
-  getAssetSignedUrls,
+  getAssetSummary,
   listAssetFolders,
   listAssets,
   type AssetFolder,
   type AssetItem,
   type AssetListParams,
 } from "./assetApi";
-import { getCachedAssetUrl, setCachedAssetUrl } from "./assetUrlCache";
+import {
+  clearAssetSessionCache,
+  getAssetSessionSnapshot,
+  isAssetSessionSnapshotFresh,
+  setAssetSessionSnapshot,
+} from "./assetSessionCache";
 import {
   filterAssetsByMediaTab,
-  getPreferredAssetPreviewRequest,
   groupAssetsByCreatedDate,
   type AssetDateGroup,
   type AssetMediaTab,
@@ -46,21 +50,13 @@ export type AssetLibraryState = {
   total: number;
 };
 
-type AssetLibrarySnapshot = {
-  assets: AssetItem[];
-  folders: AssetFolder[];
-  mediaCounts: AssetMediaCounts;
-  total: number;
-};
-
 const DEFAULT_MEDIA_COUNTS: AssetMediaCounts = {
   all: 0,
   audio: 0,
   image: 0,
   video: 0,
 };
-
-const librarySnapshotCache = new Map<string, AssetLibrarySnapshot>();
+const SNAPSHOT_TTL_MS = 30_000;
 
 export function useAssetLibrary(): AssetLibraryState {
   const { authenticated, sessionId, tenant, user } = useAuth();
@@ -73,7 +69,7 @@ export function useAssetLibrary(): AssetLibraryState {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [page] = useState(1);
-  const [pageSize] = useState(60);
+  const [pageSize] = useState(30);
   const [total, setTotal] = useState(0);
   const [mediaCounts, setMediaCounts] = useState<AssetMediaCounts>(DEFAULT_MEDIA_COUNTS);
   const requestSequenceRef = useRef(0);
@@ -86,21 +82,26 @@ export function useAssetLibrary(): AssetLibraryState {
   const params = useMemo<AssetListParams>(() => ({
     folderId: selectedFolderId,
     favorite: favoriteOnly || undefined,
+    includePreviewUrls: true,
     page,
     pageSize,
+    previewExpiresInSeconds: 900,
     query: query.trim() || undefined,
   }), [favoriteOnly, page, pageSize, query, selectedFolderId]);
 
-  const countParams = useMemo(
-    () => ({
-      folderId: selectedFolderId,
-      favorite: favoriteOnly || undefined,
-      query: query.trim() || undefined,
-    }),
-    [favoriteOnly, query, selectedFolderId],
+  const paramsKey = useMemo(
+    () =>
+      JSON.stringify({
+        favoriteOnly,
+        folderId: selectedFolderId,
+        page,
+        pageSize,
+        query: query.trim() || undefined,
+      }),
+    [favoriteOnly, page, pageSize, query, selectedFolderId],
   );
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (options: { silent?: boolean } = {}) => {
     if (!authenticated || !tenant || !user) {
       requestSequenceRef.current += 1;
       setAssets([]);
@@ -114,7 +115,9 @@ export function useAssetLibrary(): AssetLibraryState {
 
     const requestId = requestSequenceRef.current + 1;
     requestSequenceRef.current = requestId;
-    setLoading(true);
+    if (!options.silent) {
+      setLoading(true);
+    }
     setError(null);
     try {
       const [assetResult, folderResult] = await Promise.all([
@@ -122,69 +125,35 @@ export function useAssetLibrary(): AssetLibraryState {
         listAssetFolders(),
       ]);
 
-      const previewRequests = assetResult.items
-        .map((asset) => ({
-          asset,
-          request: getPreferredAssetPreviewRequest(asset),
-        }))
-        .filter((item): item is { asset: AssetItem; request: NonNullable<ReturnType<typeof getPreferredAssetPreviewRequest>> } => Boolean(item.request));
-
-      const requests = previewRequests
-        .filter(({ asset, request }) => !getCachedAssetUrl(asset.id, request.variantKey ?? null))
-        .map(({ request }) => request);
-
-      if (requests.length > 0) {
-        const signed = await getAssetSignedUrls(requests).catch(() => ({ items: [] }));
-        signed.items.forEach(setCachedAssetUrl);
-      }
-
-      const requestByAssetId = new Map(previewRequests.map(({ asset, request }) => [asset.id, request]));
-      const withPreview = assetResult.items.map((asset) => {
-        const request = requestByAssetId.get(asset.id);
-        const cachedPreview = request ? getCachedAssetUrl(asset.id, request.variantKey ?? null) : null;
-        return {
-          ...asset,
-          previewUrl: cachedPreview || asset.previewUrl,
-        };
-      });
-
       if (requestSequenceRef.current !== requestId) return;
-      const cachedCounts = librarySnapshotCache.get(identityKey)?.mediaCounts ?? DEFAULT_MEDIA_COUNTS;
+      const cachedCounts = getAssetSessionSnapshot(identityKey, paramsKey)?.mediaCounts ?? DEFAULT_MEDIA_COUNTS;
       const nextCounts = {
         all: assetResult.total,
         audio: cachedCounts.audio,
         image: cachedCounts.image,
         video: cachedCounts.video,
       };
-      setAssets(withPreview);
+      setAssets(assetResult.items);
       setFolders(folderResult);
       setTotal(assetResult.total);
       setMediaCounts(nextCounts);
-      librarySnapshotCache.set(identityKey, {
-        assets: withPreview,
+      setAssetSessionSnapshot(identityKey, paramsKey, {
+        assets: assetResult.items,
         folders: folderResult,
         mediaCounts: nextCounts,
+        staleAt: Date.now() + SNAPSHOT_TTL_MS,
         total: assetResult.total,
       });
 
-      void Promise.all([
-        listAssets({ ...countParams, kind: "image", page: 1, pageSize: 1 }),
-        listAssets({ ...countParams, kind: "video", page: 1, pageSize: 1 }),
-        listAssets({ ...countParams, kind: "audio", page: 1, pageSize: 1 }),
-      ])
-        .then(([imageCount, videoCount, audioCount]) => {
+      void Promise.resolve(getAssetSummary())
+        .then((summary) => {
           if (requestSequenceRef.current !== requestId) return;
-          const updatedCounts = {
-            all: assetResult.total,
-            audio: audioCount.total,
-            image: imageCount.total,
-            video: videoCount.total,
-          };
-          setMediaCounts(updatedCounts);
-          librarySnapshotCache.set(identityKey, {
-            assets: withPreview,
+          setMediaCounts(summary.counts);
+          setAssetSessionSnapshot(identityKey, paramsKey, {
+            assets: assetResult.items,
             folders: folderResult,
-            mediaCounts: updatedCounts,
+            mediaCounts: summary.counts,
+            staleAt: Date.now() + SNAPSHOT_TTL_MS,
             total: assetResult.total,
           });
         })
@@ -201,7 +170,7 @@ export function useAssetLibrary(): AssetLibraryState {
         setLoading(false);
       }
     }
-  }, [authenticated, countParams, identityKey, params, tenant, user]);
+  }, [authenticated, identityKey, params, paramsKey, tenant, user]);
 
   const updateAssetOptimistically = useCallback(
     async (assetId: string, updater: (asset: AssetItem) => AssetItem | null, action: () => Promise<void>) => {
@@ -210,10 +179,11 @@ export function useAssetLibrary(): AssetLibraryState {
         .map((asset) => (asset.id === assetId ? updater(asset) : asset))
         .filter((asset): asset is AssetItem => Boolean(asset));
       setAssets(nextAssets);
-      librarySnapshotCache.set(identityKey, {
+      setAssetSessionSnapshot(identityKey, paramsKey, {
         assets: nextAssets,
         folders,
         mediaCounts,
+        staleAt: Date.now() + SNAPSHOT_TTL_MS,
         total: favoriteOnly ? nextAssets.length : total,
       });
       try {
@@ -221,36 +191,41 @@ export function useAssetLibrary(): AssetLibraryState {
         void refresh();
       } catch (error) {
         setAssets(previousAssets);
-        librarySnapshotCache.set(identityKey, {
+        setAssetSessionSnapshot(identityKey, paramsKey, {
           assets: previousAssets,
           folders,
           mediaCounts,
+          staleAt: Date.now() + SNAPSHOT_TTL_MS,
           total,
         });
         throw error;
       }
     },
-    [assets, favoriteOnly, folders, identityKey, mediaCounts, refresh, total],
+    [assets, favoriteOnly, folders, identityKey, mediaCounts, paramsKey, refresh, total],
   );
 
   useEffect(() => {
     requestSequenceRef.current += 1;
-    const cached = librarySnapshotCache.get(identityKey);
+    if (!authenticated || !tenant || !user) {
+      clearAssetSessionCache();
+    }
+    const cached = getAssetSessionSnapshot(identityKey, paramsKey);
     setAssets(cached?.assets ?? []);
     setFolders(cached?.folders ?? []);
-    setSelectedMediaTab("image");
-    setSelectedFolderId(null);
-    setFavoriteOnly(false);
-    setQuery("");
     setTotal(cached?.total ?? 0);
     setMediaCounts(cached?.mediaCounts ?? DEFAULT_MEDIA_COUNTS);
     setError(null);
-    setLoading(Boolean(authenticated && tenant && user));
-  }, [authenticated, identityKey, tenant, user]);
+    setLoading(Boolean(authenticated && tenant && user && !cached));
+  }, [authenticated, identityKey, paramsKey, tenant, user]);
 
   useEffect(() => {
-    void refresh();
-  }, [identityKey, refresh]);
+    const cached = getAssetSessionSnapshot(identityKey, paramsKey);
+    if (cached && isAssetSessionSnapshotFresh(cached)) {
+      void refresh({ silent: true });
+      return;
+    }
+    void refresh({ silent: Boolean(cached) });
+  }, [identityKey, paramsKey, refresh]);
 
   const groupedAssets = useMemo(
     () => groupAssetsByCreatedDate(filterAssetsByMediaTab(assets, selectedMediaTab)),

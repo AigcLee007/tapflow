@@ -926,6 +926,22 @@ Notes:
 - local API integration tests under `apps/api/test/*.test.ts` are present but skipped in this environment because `DATABASE_URL` is not configured locally
 - frontend hooks have not been switched to the new inline preview and cover URL APIs yet; that starts in Task 5-6
 
+### Latest Production Asset and Workspace Performance Tasks 5-7
+
+Completed in current local iteration:
+
+- added frontend asset session cache primitives so the asset drawer and asset library can reuse warm data within the same authenticated session
+- extended the frontend asset API types to consume backend inline preview URLs and the `/assets/summary` counts endpoint
+- rewrote `useAssetLibrary` to be cache-first and stale-while-revalidate: first-page assets now request `includePreviewUrls=true`, counts come from `/assets/summary`, page size drops from 60 to 30, and reopen no longer blocks on a fresh loading state when cached data exists
+- removed the canvas asset drawer header search box and upload button, and removed the empty-state upload CTA so the drawer now stays focused on fast asset picking
+- updated asset hook tests and canvas drawer tests to lock the new cache-first and simplified drawer behavior
+
+Validation completed:
+
+- `npm run test -- src/assets/assetSessionCache.test.ts src/assets/useAssetLibrary.test.tsx`
+- `npm run test -- src/flowCanvas/panels/CanvasAssetPanel.test.tsx`
+- `npm run build`
+
 ### Latest Project and Asset Management Menus
 
 Completed in current local iteration:

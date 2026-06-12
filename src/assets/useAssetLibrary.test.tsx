@@ -1,8 +1,9 @@
 import React from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AuthContext, type AuthState } from "../auth/useAuth";
+import { clearAssetSessionCache } from "./assetSessionCache";
 import { clearAssetUrlCache } from "./assetUrlCache";
 import { useAssetLibrary } from "./useAssetLibrary";
 import type { AssetFolder, AssetItem, AssetListResponse } from "./assetApi";
@@ -10,10 +11,12 @@ import type { AssetFolder, AssetItem, AssetListResponse } from "./assetApi";
 const listAssetsMock = vi.fn();
 const listAssetFoldersMock = vi.fn();
 const getAssetDownloadUrlMock = vi.fn();
+const getAssetSummaryMock = vi.fn();
 const getAssetSignedUrlsMock = vi.fn();
 
 vi.mock("./assetApi", () => ({
   getAssetDownloadUrl: (...args: unknown[]) => getAssetDownloadUrlMock(...args),
+  getAssetSummary: (...args: unknown[]) => getAssetSummaryMock(...args),
   getAssetSignedUrls: (...args: unknown[]) => getAssetSignedUrlsMock(...args),
   listAssetFolders: (...args: unknown[]) => listAssetFoldersMock(...args),
   listAssets: (...args: unknown[]) => listAssetsMock(...args),
@@ -142,11 +145,77 @@ function renderWithAuth(authState: AuthState) {
 
 describe("useAssetLibrary", () => {
   beforeEach(() => {
+    clearAssetSessionCache();
     clearAssetUrlCache();
     listAssetsMock.mockReset();
     listAssetFoldersMock.mockReset();
     getAssetDownloadUrlMock.mockReset();
+    getAssetSummaryMock.mockReset();
     getAssetSignedUrlsMock.mockReset();
+    getAssetSummaryMock.mockResolvedValue({
+      counts: { all: 0, audio: 0, image: 0, video: 0 },
+    });
+  });
+
+  it("shows cached assets immediately and refreshes silently when reopened", async () => {
+    listAssetsMock.mockResolvedValue({
+      items: [
+        {
+          ...assetA,
+          previewUrl: "https://cdn.test/a-thumb.webp",
+          previewUrlExpiresAt: new Date(Date.now() + 900_000).toISOString(),
+          previewVariantKey: "thumb",
+        },
+      ],
+      page: 1,
+      pageSize: 30,
+      total: 1,
+    });
+    listAssetFoldersMock.mockResolvedValue([]);
+    getAssetSummaryMock.mockResolvedValue({
+      counts: { all: 1, audio: 0, image: 1, video: 0 },
+    });
+    getAssetSignedUrlsMock.mockResolvedValue({ items: [] });
+
+    const first = renderWithAuth(baseAuthState);
+    await waitFor(() => expect(screen.getByTestId("loading").textContent).toBe("idle"));
+    await act(async () => {
+      first.unmount();
+    });
+
+    renderWithAuth(baseAuthState);
+
+    expect(screen.getByTestId("assets").textContent).toContain("Asset A");
+    expect(screen.getByTestId("loading").textContent).toBe("idle");
+    await waitFor(() => {
+      expect(listAssetsMock).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it("uses inline preview urls and does not call signed urls for the initial asset page", async () => {
+    listAssetsMock.mockResolvedValue({
+      items: [
+        {
+          ...assetA,
+          previewUrl: "https://cdn.test/a-thumb.webp",
+          previewUrlExpiresAt: new Date(Date.now() + 900_000).toISOString(),
+          previewVariantKey: "thumb",
+        },
+      ],
+      page: 1,
+      pageSize: 30,
+      total: 1,
+    });
+    listAssetFoldersMock.mockResolvedValue([]);
+    getAssetSummaryMock.mockResolvedValue({
+      counts: { all: 1, audio: 0, image: 1, video: 0 },
+    });
+
+    renderWithAuth(baseAuthState);
+
+    await waitFor(() => expect(screen.getByTestId("assets").textContent).toContain("Asset A"));
+    expect(listAssetsMock).toHaveBeenCalledWith(expect.objectContaining({ includePreviewUrls: true }));
+    expect(getAssetSignedUrlsMock).not.toHaveBeenCalled();
   });
 
   it("clears stale assets immediately and ignores late responses from the previous identity", async () => {
@@ -161,30 +230,6 @@ describe("useAssetLibrary", () => {
     listAssetFoldersMock
       .mockReturnValueOnce(tenantAFolders.promise)
       .mockReturnValueOnce(tenantBFolders.promise);
-    getAssetSignedUrlsMock
-      .mockResolvedValueOnce({
-        items: [
-          {
-            assetId: assetA.id,
-            expiresAt: "2026-05-19T01:00:00.000Z",
-            method: "GET",
-            url: "https://example.test/asset-a-thumb.webp",
-            variantKey: "thumb",
-          },
-        ],
-      })
-      .mockResolvedValueOnce({
-        items: [
-          {
-            assetId: assetB.id,
-            expiresAt: "2026-05-19T01:00:00.000Z",
-            method: "GET",
-            url: "https://example.test/asset-b-thumb.webp",
-            variantKey: "thumb",
-          },
-        ],
-      });
-
     const firstRender = renderWithAuth(baseAuthState);
 
     await waitFor(() => {
@@ -218,17 +263,17 @@ describe("useAssetLibrary", () => {
     expect(screen.getByTestId("folders").textContent).toBe("");
 
     tenantAAssets.resolve({
-      items: [assetA],
+      items: [{ ...assetA, previewUrl: "https://example.test/asset-a-thumb.webp" }],
       page: 1,
-      pageSize: 60,
+      pageSize: 30,
       total: 1,
     });
     tenantAFolders.resolve([folderA]);
 
     tenantBAssets.resolve({
-      items: [assetB],
+      items: [{ ...assetB, previewUrl: "https://example.test/asset-b-thumb.webp" }],
       page: 1,
-      pageSize: 60,
+      pageSize: 30,
       total: 1,
     });
     tenantBFolders.resolve([folderB]);
@@ -243,11 +288,14 @@ describe("useAssetLibrary", () => {
     expect(getAssetDownloadUrlMock).not.toHaveBeenCalled();
   });
 
-  it("batch signs thumb variants instead of requesting per-asset download urls", async () => {
+  it("requests inline preview urls instead of signed-url fanout for the first asset page", async () => {
     listAssetsMock.mockResolvedValue({
       items: [
         {
           ...assetA,
+          previewUrl: "https://cdn.test/a-thumb.webp",
+          previewUrlExpiresAt: new Date(Date.now() + 900_000).toISOString(),
+          previewVariantKey: "thumb",
           variants: [
             {
               bucket: "bucket",
@@ -267,6 +315,9 @@ describe("useAssetLibrary", () => {
           id: "asset-c",
           objectKey: "asset-c.png",
           originalFilename: "asset-c.png",
+          previewUrl: "https://cdn.test/c-thumb.webp",
+          previewUrlExpiresAt: new Date(Date.now() + 900_000).toISOString(),
+          previewVariantKey: "thumb",
           title: "Asset C",
           variants: [
             {
@@ -284,45 +335,35 @@ describe("useAssetLibrary", () => {
         },
       ],
       page: 1,
-      pageSize: 60,
+      pageSize: 30,
       total: 2,
     });
     listAssetFoldersMock.mockResolvedValue([]);
-    getAssetSignedUrlsMock.mockResolvedValue({
-      items: [
-        {
-          assetId: assetA.id,
-          expiresAt: new Date(Date.now() + 900_000).toISOString(),
-          method: "GET",
-          url: "https://cdn.test/a-thumb.webp",
-          variantKey: "thumb",
-        },
-        {
-          assetId: "asset-c",
-          expiresAt: new Date(Date.now() + 900_000).toISOString(),
-          method: "GET",
-          url: "https://cdn.test/c-thumb.webp",
-          variantKey: "thumb",
-        },
-      ],
+    getAssetSummaryMock.mockResolvedValue({
+      counts: { all: 2, audio: 0, image: 2, video: 0 },
     });
 
     renderWithAuth(baseAuthState);
 
     await waitFor(() => expect(screen.getByTestId("assets").textContent).toContain("Asset A"));
-    expect(getAssetSignedUrlsMock).toHaveBeenCalledWith([
-      { assetId: assetA.id, variantKey: "thumb" },
-      { assetId: "asset-c", variantKey: "thumb" },
-    ]);
+    expect(listAssetsMock).toHaveBeenCalledWith(expect.objectContaining({
+      includePreviewUrls: true,
+      pageSize: 30,
+      previewExpiresInSeconds: 900,
+    }));
     expect(getAssetDownloadUrlMock).not.toHaveBeenCalled();
+    expect(getAssetSignedUrlsMock).not.toHaveBeenCalled();
   });
 
-  it("falls back to preview or original signing when thumb is unavailable", async () => {
+  it("keeps inline preview or original preview urls provided by the backend", async () => {
     listAssetsMock.mockResolvedValue({
       items: [
         {
           ...assetA,
           id: "asset-preview",
+          previewUrl: "https://cdn.test/asset-preview.webp",
+          previewUrlExpiresAt: new Date(Date.now() + 900_000).toISOString(),
+          previewVariantKey: "preview",
           title: "Preview Asset",
           variants: [
             {
@@ -341,41 +382,26 @@ describe("useAssetLibrary", () => {
         {
           ...assetA,
           id: "asset-original",
+          previewUrl: "https://cdn.test/asset-original.png",
+          previewUrlExpiresAt: new Date(Date.now() + 900_000).toISOString(),
+          previewVariantKey: null,
           title: "Original Asset",
           variants: [],
         },
       ],
       page: 1,
-      pageSize: 60,
+      pageSize: 30,
       total: 2,
     });
     listAssetFoldersMock.mockResolvedValue([]);
-    getAssetSignedUrlsMock.mockResolvedValue({
-      items: [
-        {
-          assetId: "asset-preview",
-          expiresAt: new Date(Date.now() + 900_000).toISOString(),
-          method: "GET",
-          url: "https://cdn.test/asset-preview.webp",
-          variantKey: "preview",
-        },
-        {
-          assetId: "asset-original",
-          expiresAt: new Date(Date.now() + 900_000).toISOString(),
-          method: "GET",
-          url: "https://cdn.test/asset-original.png",
-          variantKey: null,
-        },
-      ],
+    getAssetSummaryMock.mockResolvedValue({
+      counts: { all: 2, audio: 0, image: 2, video: 0 },
     });
 
     renderWithAuth(baseAuthState);
 
     await waitFor(() => expect(screen.getByTestId("assets").textContent).toContain("Preview Asset"));
-    expect(getAssetSignedUrlsMock).toHaveBeenCalledWith([
-      { assetId: "asset-preview", variantKey: "preview" },
-      { assetId: "asset-original" },
-    ]);
+    expect(getAssetSignedUrlsMock).not.toHaveBeenCalled();
     expect(getAssetDownloadUrlMock).not.toHaveBeenCalled();
   });
 
@@ -385,23 +411,15 @@ describe("useAssetLibrary", () => {
       id: `image-${index}`,
       objectKey: `image-${index}.png`,
       originalFilename: `image-${index}.png`,
+      previewUrl: `https://cdn.test/image-${index}.webp`,
       title: `Image ${index}`,
     }));
 
-    listAssetsMock.mockImplementation((params: { kind?: string }) => {
-      if (params.kind === "image") {
-        return Promise.resolve({ items: [assetA], page: 1, pageSize: 1, total: 135 });
-      }
-      if (params.kind === "video") {
-        return Promise.resolve({ items: [], page: 1, pageSize: 1, total: 0 });
-      }
-      if (params.kind === "audio") {
-        return Promise.resolve({ items: [], page: 1, pageSize: 1, total: 0 });
-      }
-      return Promise.resolve({ items: firstPageItems, page: 1, pageSize: 60, total: 135 });
-    });
+    listAssetsMock.mockResolvedValue({ items: firstPageItems, page: 1, pageSize: 30, total: 135 });
     listAssetFoldersMock.mockResolvedValue([]);
-    getAssetSignedUrlsMock.mockResolvedValue({ items: [] });
+    getAssetSummaryMock.mockResolvedValue({
+      counts: { all: 135, audio: 0, image: 135, video: 0 },
+    });
 
     renderWithAuth(baseAuthState);
 

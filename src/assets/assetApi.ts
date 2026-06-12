@@ -19,6 +19,8 @@ export type AssetItem = {
   originalFilename: string | null;
   ownerUserId: string | null;
   previewUrl?: string;
+  previewUrlExpiresAt?: string;
+  previewVariantKey?: string | null;
   projectId: string | null;
   sizeBytes: number | null;
   source: string;
@@ -64,12 +66,18 @@ export type AssetListResponse = {
 export type AssetListParams = {
   favorite?: boolean;
   folderId?: string | null;
+  includePreviewUrls?: boolean;
   kind?: string;
   page?: number;
   pageSize?: number;
+  previewExpiresInSeconds?: number;
   projectId?: string | null;
   query?: string;
   source?: string;
+};
+
+export type AssetSummaryResponse = {
+  counts: Record<"all" | "image" | "video" | "audio", number>;
 };
 
 export type AssetDownloadUrlResponse = {
@@ -112,6 +120,10 @@ export async function listAssets(params?: AssetListParams): Promise<AssetListRes
 
 export async function listAssetFolders(): Promise<AssetFolder[]> {
   return apiGet<AssetFolder[]>('/assets/folders');
+}
+
+export async function getAssetSummary(): Promise<AssetSummaryResponse> {
+  return apiGet<AssetSummaryResponse>('/assets/summary');
 }
 
 export async function createAssetFolder(input: {
