@@ -27,36 +27,37 @@ export function AssetMediaTabs({
       className={compact ? "sleek-scroll-x" : undefined}
       style={{
         display: "flex",
-        gap: compact ? 6 : 10,
+        gap: compact ? 10 : 10,
         overflowX: compact ? "auto" : "visible",
         paddingBottom: compact ? 2 : 0,
       }}
     >
-      {TAB_OPTIONS.map((tab) => (
-        <button
-          key={tab.value}
-          className="nodrag nopan"
-          onClick={() => onSelectTab(tab.value)}
-          style={{
-            height: compact ? 28 : 34,
-            border: "1px solid rgba(255,255,255,0.08)",
-            borderRadius: 999,
-            background: selectedTab === tab.value ? "rgba(255,255,255,0.13)" : "rgba(255,255,255,0.05)",
-            color: selectedTab === tab.value ? "#fff" : "#cbd5e1",
-            fontSize: compact ? 12 : 13,
-            fontWeight: 700,
-            padding: compact ? "0 12px" : "0 14px",
-            cursor: "pointer",
-            whiteSpace: "nowrap",
-          }}
-          type="button"
-        >
-          {tab.label}
-          <span style={{ marginLeft: 6, color: selectedTab === tab.value ? "#e2e8f0" : "#71717a" }}>
-            {counts[tab.value]}
-          </span>
-        </button>
-      ))}
+      {TAB_OPTIONS.map((tab) => {
+        const active = selectedTab === tab.value;
+        return (
+          <button
+            key={tab.value}
+            className="nodrag nopan"
+            onClick={() => onSelectTab(tab.value)}
+            style={{
+              height: compact ? 42 : 34,
+              border: "1px solid rgba(255,255,255,0.09)",
+              borderRadius: 999,
+              background: active ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.05)",
+              color: active ? "#ffffff" : "#d4d4d8",
+              fontSize: compact ? 15 : 13,
+              fontWeight: 700,
+              padding: compact ? "0 16px" : "0 14px",
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+            }}
+            type="button"
+          >
+            {tab.label}
+            <span style={{ marginLeft: 8, color: active ? "#f4f4f5" : "#8a8a95" }}>{counts[tab.value]}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -101,14 +102,16 @@ export function AssetGroupedSections({
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: compact ? 14 : 22 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: compact ? 18 : 22 }}>
       {groups.map((group) => (
-        <section key={group.dateLabel} style={{ display: "flex", flexDirection: "column", gap: compact ? 8 : 12 }}>
+        <section key={group.dateLabel} style={{ display: "flex", flexDirection: "column", gap: compact ? 12 : 12 }}>
           <div
             style={{
-              color: "#f8fafc",
-              fontSize: compact ? 12 : 14,
+              color: "rgba(255,255,255,0.96)",
+              fontSize: compact ? 17 : 14,
               fontWeight: 700,
+              letterSpacing: 0,
+              paddingLeft: compact ? 2 : 0,
             }}
           >
             {group.dateLabel}
@@ -117,7 +120,7 @@ export function AssetGroupedSections({
             style={{
               display: "grid",
               gridTemplateColumns: compact ? "repeat(2, minmax(0, 1fr))" : "repeat(auto-fill, minmax(220px, 1fr))",
-              gap: compact ? 8 : 14,
+              gap: compact ? 14 : 14,
             }}
           >
             {group.items.map((asset) => (

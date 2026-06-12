@@ -35,14 +35,27 @@ export function AssetCard({
   onOpen: (asset: AssetItem) => void;
 }) {
   const title = asset.title || asset.originalFilename || "未命名素材";
+
   return (
     <button
-      className="group overflow-hidden rounded border border-white/10 bg-white/[0.035] text-left shadow-lg shadow-black/10 transition hover:border-sky-300/40 hover:bg-white/[0.06]"
+      aria-label={title}
+      className={
+        compact
+          ? "group overflow-hidden rounded-[18px] border border-white/8 bg-[#11131a] text-left shadow-[0_10px_28px_rgba(0,0,0,0.22)] transition hover:border-white/16 hover:bg-[#151822]"
+          : "group overflow-hidden rounded border border-white/10 bg-white/[0.035] text-left shadow-lg shadow-black/10 transition hover:border-sky-300/40 hover:bg-white/[0.06]"
+      }
       onClick={() => onOpen(asset)}
       style={{ minWidth: 0 }}
       type="button"
     >
-      <div className="relative bg-zinc-950" style={{ aspectRatio: compact ? "1 / 1" : "4 / 3" }}>
+      <div
+        className="relative bg-zinc-950"
+        style={{
+          aspectRatio: compact ? "1 / 1" : "4 / 3",
+          borderRadius: compact ? 18 : undefined,
+          overflow: compact ? "hidden" : undefined,
+        }}
+      >
         {asset.previewUrl && asset.mimeType.startsWith("image/") ? (
           <img alt="" className="h-full w-full object-cover" decoding="async" loading="lazy" src={asset.previewUrl} />
         ) : asset.previewUrl && asset.mimeType.startsWith("video/") ? (
@@ -56,13 +69,15 @@ export function AssetCard({
           </span>
         )}
       </div>
-      <div className={compact ? "p-2.5" : "p-3"}>
-        <div className={`truncate font-medium text-slate-100 ${compact ? "text-[12px]" : "text-sm"}`}>{title}</div>
-        <div className={`mt-1 flex items-center justify-between gap-2 text-slate-500 ${compact ? "text-[11px]" : "text-xs"}`}>
-          <span>{kindLabel(asset.kind)}</span>
-          <span>{formatBytes(asset.sizeBytes)}</span>
+      {compact ? null : (
+        <div className="p-3">
+          <div className="truncate text-sm font-medium text-slate-100">{title}</div>
+          <div className="mt-1 flex items-center justify-between gap-2 text-xs text-slate-500">
+            <span>{kindLabel(asset.kind)}</span>
+            <span>{formatBytes(asset.sizeBytes)}</span>
+          </div>
         </div>
-      </div>
+      )}
     </button>
   );
 }

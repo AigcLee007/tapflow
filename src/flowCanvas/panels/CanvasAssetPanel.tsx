@@ -24,24 +24,24 @@ export function CanvasAssetPanel({
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <label style={{ position: "relative", display: "block", flex: 1, minWidth: 0 }}>
-          <Search size={14} style={{ position: "absolute", left: 10, top: 9, color: "#71717a" }} />
+          <Search size={16} style={{ position: "absolute", left: 14, top: 14, color: "#8b8b95" }} />
           <input
             className="nodrag nopan"
             onChange={(event) => library.setQuery(event.target.value)}
             placeholder="搜索素材"
             style={{
               width: "100%",
-              height: 32,
-              borderRadius: 11,
-              border: "1px solid rgba(255,255,255,0.08)",
-              background: "rgba(255,255,255,0.055)",
+              height: 44,
+              borderRadius: 16,
+              border: "1px solid rgba(255,255,255,0.1)",
+              background: "rgba(255,255,255,0.05)",
               color: "#f8fafc",
-              fontSize: 12,
+              fontSize: 14,
               outline: "none",
-              padding: "0 10px 0 30px",
+              padding: "0 14px 0 38px",
             }}
             value={library.query}
           />
@@ -53,28 +53,6 @@ export function CanvasAssetPanel({
           projectId={projectId}
           variant="compact"
         />
-      </div>
-
-      <div className="sleek-scroll-x" style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 2 }}>
-        <button
-          className="nodrag nopan"
-          onClick={() => library.setSelectedFolderId(null)}
-          style={folderChip(!library.selectedFolderId)}
-          type="button"
-        >
-          全部
-        </button>
-        {library.folders.map((folder) => (
-          <button
-            key={folder.id}
-            className="nodrag nopan"
-            onClick={() => library.setSelectedFolderId(folder.id)}
-            style={folderChip(library.selectedFolderId === folder.id)}
-            type="button"
-          >
-            {folder.name}
-          </button>
-        ))}
       </div>
 
       <AssetMediaTabs
@@ -111,19 +89,4 @@ export function CanvasAssetPanel({
       ) : null}
     </div>
   );
-}
-
-function folderChip(active: boolean): React.CSSProperties {
-  return {
-    height: 26,
-    border: "none",
-    borderRadius: 999,
-    background: active ? "rgba(255,255,255,0.14)" : "rgba(255,255,255,0.055)",
-    color: active ? "#fff" : "#a1a1aa",
-    fontSize: 11,
-    fontWeight: 650,
-    padding: "0 10px",
-    whiteSpace: "nowrap",
-    cursor: "pointer",
-  };
 }

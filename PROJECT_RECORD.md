@@ -879,6 +879,30 @@ Validation completed:
 - `npm run test -- src/app/WorkspaceShell.test.tsx src/workspace/WorkspacePage.test.tsx src/workspace/ProjectCard.test.tsx`
 - `npm run build`
 
+### 2026-06-12 - Canvas Asset Drawer UI Refresh
+
+- Restyled the left in-canvas `素材库` drawer toward the TapNow reference while keeping the existing grouped asset data flow unchanged.
+- Simplified the drawer hierarchy:
+  - removed the extra folder chip row from the main drawer surface
+  - kept media tabs as the primary filter control
+  - retained date-grouped sections as the main browsing structure
+- Changed compact asset rendering from metadata-heavy cards to thumbnail-first tiles:
+  - compact drawer items now render as pure image/video thumbnails
+  - visible filename / kind / size text is removed from the drawer
+  - accessibility is preserved via button `aria-label`
+- Refined drawer density to better match the reference:
+  - larger search field
+  - larger compact upload button
+  - stronger date heading hierarchy
+  - more restrained card chrome and spacing
+  - slightly cleaner drawer shell padding and header density
+- Added focused regression coverage for the drawer presentation so future changes do not accidentally bring back verbose card metadata or the folder chip row.
+
+Validation completed:
+
+- `npm run test -- src/flowCanvas/panels/CanvasAssetPanel.test.tsx src/assets/AssetLibraryPage.test.tsx src/assets/assetLibraryView.test.ts src/assets/useAssetLibrary.test.tsx`
+- `npm run build`
+
 ### Latest TapNow Billing Pixel Alignment Pass
 
 Completed in current local iteration:

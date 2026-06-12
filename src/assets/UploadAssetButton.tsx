@@ -31,9 +31,9 @@ export function UploadAssetButton({
 
   const buttonClassName =
     variant === 'compact'
-      ? 'inline-flex h-8 items-center gap-2 rounded-lg border border-white/10 bg-white/10 px-3 text-xs font-semibold text-slate-100 hover:bg-white/14 disabled:opacity-60'
+      ? 'inline-flex h-11 items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.07] px-4 text-sm font-semibold text-slate-100 hover:bg-white/[0.1] disabled:opacity-60'
       : 'inline-flex h-10 items-center gap-2 rounded bg-white px-4 text-sm font-semibold text-slate-950 hover:bg-slate-200 disabled:opacity-60';
-  const iconSize = variant === 'compact' ? 14 : 16;
+  const iconSize = variant === 'compact' ? 16 : 16;
   const wrapperClassName = variant === 'compact' ? 'space-y-1.5' : 'space-y-2';
   const resultPanelClassName =
     variant === 'compact'

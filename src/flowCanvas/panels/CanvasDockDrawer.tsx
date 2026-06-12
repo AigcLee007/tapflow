@@ -36,20 +36,20 @@ export function CanvasDockDrawer({
         overflow: 'hidden',
       }}
     >
-      <header style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 12px 9px' }}>
-        <div style={{ flex: 1, minWidth: 0, color: '#f8fafc', fontSize: 14, fontWeight: 760 }}>{title}</div>
+      <header style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '14px 16px 11px' }}>
+        <div style={{ flex: 1, minWidth: 0, color: '#f8fafc', fontSize: 15, fontWeight: 780 }}>{title}</div>
         {typeof count === 'number' ? (
-          <span style={{ color: '#a1a1aa', fontSize: 11, fontWeight: 650 }}>{count}</span>
+          <span style={{ color: '#a1a1aa', fontSize: 12, fontWeight: 650 }}>{count}</span>
         ) : null}
         <button
           type="button"
           className="nodrag nopan"
           onClick={onClose}
           style={{
-            width: 28,
-            height: 28,
+            width: 32,
+            height: 32,
             border: 'none',
-            borderRadius: 9,
+            borderRadius: 11,
             background: 'rgba(255,255,255,0.06)',
             color: '#d4d4d8',
             display: 'inline-flex',
@@ -63,7 +63,7 @@ export function CanvasDockDrawer({
         </button>
       </header>
       <div style={{ height: 1, background: 'rgba(255,255,255,0.08)' }} />
-      <div className="sleek-scroll-y" style={{ overflowY: 'auto', padding: 10 }}>
+      <div className="sleek-scroll-y" style={{ overflowY: 'auto', padding: '14px 14px 16px' }}>
         {children}
       </div>
     </aside>
