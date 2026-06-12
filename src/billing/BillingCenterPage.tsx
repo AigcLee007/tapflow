@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, RefreshCw } from "lucide-react";
+import { Check, Loader2, RefreshCw, Sparkles, Zap } from "lucide-react";
 
 import { useAuth } from "../auth/useAuth";
 import { BillingLedgerTable } from "./BillingLedgerTable";
@@ -15,6 +15,34 @@ import {
   type BillingSummary,
   type BillingUsageEvent,
 } from "./billingApi";
+
+const plans = [
+  {
+    description: "适合试用和轻量创作",
+    name: "Basic",
+    price: "¥0",
+    tag: "入门",
+    tone: "border-white/10 bg-white/[0.04]",
+    value: "基础额度",
+  },
+  {
+    description: "适合稳定生成和团队协作",
+    featured: true,
+    name: "Pro",
+    price: "¥99",
+    tag: "推荐",
+    tone: "border-sky-300/30 bg-sky-500/10",
+    value: "高频创作",
+  },
+  {
+    description: "适合高并发、商业项目和定制路线",
+    name: "Ultimate",
+    price: "¥399",
+    tag: "进阶",
+    tone: "border-white/10 bg-white/[0.04]",
+    value: "规模化生产",
+  },
+];
 
 export function BillingCenterPage() {
   const { authenticated, sessionId, tenant, user } = useAuth();
@@ -93,23 +121,57 @@ export function BillingCenterPage() {
 
   return (
     <div className="space-y-5">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="text-xs uppercase tracking-[0.24em] text-sky-300">计费</div>
-          <h1 className="mt-2 text-2xl font-semibold text-white">计费中心</h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-            点数会在任务开始前由后端预占，任务成功后结算，失败时自动退回。
-          </p>
+      <header className="rounded border border-white/10 bg-[#0b0d14] p-5 md:p-6">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <div className="inline-flex items-center gap-2 rounded border border-sky-300/20 bg-sky-500/10 px-2.5 py-1 text-xs font-medium text-sky-100">
+              <Sparkles size={14} />
+              Billing
+            </div>
+            <h1 className="mt-4 text-3xl font-semibold text-white">选择你的套餐</h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">不止额度，更是灵感落地的速度。</p>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">
+              额度由服务端预占、结算和失败退款，适合从个人试用到团队生产的不同节奏。
+            </p>
+          </div>
+          <button
+            className="inline-flex h-10 items-center justify-center gap-2 rounded border border-white/10 bg-white/10 px-4 text-sm text-white hover:bg-white/15 disabled:opacity-60"
+            disabled={loading}
+            onClick={() => void refresh()}
+            type="button"
+          >
+            {loading ? <Loader2 className="animate-spin" size={15} /> : <RefreshCw size={15} />}
+            刷新
+          </button>
         </div>
-        <button
-          className="inline-flex h-10 items-center gap-2 rounded border border-white/10 bg-white/10 px-4 text-sm text-white hover:bg-white/15 disabled:opacity-60"
-          disabled={loading}
-          onClick={() => void refresh()}
-          type="button"
-        >
-          {loading ? <Loader2 className="animate-spin" size={15} /> : <RefreshCw size={15} />}
-          刷新
-        </button>
+
+        <div className="mt-6 grid gap-3 lg:grid-cols-3">
+          {plans.map((plan) => (
+            <section className={`rounded border p-4 ${plan.tone}`} key={plan.name}>
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-lg font-semibold text-white">{plan.name}</div>
+                <span className="rounded bg-white px-2 py-1 text-xs font-semibold text-slate-950">{plan.tag}</span>
+              </div>
+              <div className="mt-4 flex items-end gap-2">
+                <span className="text-3xl font-semibold text-white">{plan.price}</span>
+                <span className="pb-1 text-sm text-slate-500">/ 月</span>
+              </div>
+              <p className="mt-2 text-sm text-slate-400">{plan.description}</p>
+              <div className="mt-4 flex items-center gap-2 text-sm text-slate-200">
+                <Zap className={plan.featured ? "text-sky-200" : "text-slate-400"} size={16} />
+                {plan.value}
+              </div>
+              <div className="mt-4 space-y-2 text-sm text-slate-400">
+                {["额度自动结算", "失败自动退回", "支持项目流水追踪"].map((feature) => (
+                  <div className="flex items-center gap-2" key={feature}>
+                    <Check className="text-emerald-300" size={15} />
+                    {feature}
+                  </div>
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
       </header>
 
       {error && (

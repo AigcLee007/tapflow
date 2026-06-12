@@ -1,0 +1,82 @@
+import React from "react";
+import { render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, test, vi } from "vitest";
+
+import { AuthContext, type AuthState } from "../auth/useAuth";
+import { BillingCenterPage } from "./BillingCenterPage";
+
+const getBillingSummaryMock = vi.fn();
+const listBillingLedgerMock = vi.fn();
+const listBillingUsageEventsMock = vi.fn();
+
+vi.mock("./billingApi", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./billingApi")>();
+  return {
+    ...actual,
+    getBillingSummary: () => getBillingSummaryMock(),
+    listBillingLedger: () => listBillingLedgerMock(),
+    listBillingUsageEvents: () => listBillingUsageEventsMock(),
+  };
+});
+
+function createAuthState(): AuthState {
+  return {
+    authenticated: true,
+    error: null,
+    loading: false,
+    permissions: [],
+    refreshMe: vi.fn(async () => undefined),
+    register: vi.fn(async () => undefined),
+    login: vi.fn(async () => undefined),
+    logout: vi.fn(async () => undefined),
+    roles: ["tenant_owner"],
+    sessionId: "session-1",
+    tenant: { id: "tenant-1", name: "测试 的工作区", plan: "free", slug: "test", status: "active" },
+    user: { displayName: "测试", email: "user@example.com", id: "user-1", status: "active" },
+  };
+}
+
+describe("BillingCenterPage", () => {
+  beforeEach(() => {
+    getBillingSummaryMock.mockResolvedValue({
+      account: {
+        balanceCents: 0,
+        createdAt: "2026-06-12T00:00:00.000Z",
+        currency: "credits",
+        id: "billing-1",
+        reservedCents: 0,
+        status: "active",
+        tenantId: "tenant-1",
+        updatedAt: "2026-06-12T00:00:00.000Z",
+      },
+      ledgerTotals: { refundCents: 0, reserveCents: 0, settleCents: 0 },
+      usageTotals: {
+        eventCount: 0,
+        pendingCount: 0,
+        rawCostTotal: "0",
+        settledCount: 0,
+        totalBillableCents: 0,
+      },
+    });
+    listBillingUsageEventsMock.mockResolvedValue({ items: [], page: 1, pageSize: 20 });
+    listBillingLedgerMock.mockResolvedValue({ items: [], page: 1, pageSize: 20 });
+  });
+
+  test("renders price-plan-first billing page", async () => {
+    render(
+      <AuthContext.Provider value={createAuthState()}>
+        <BillingCenterPage />
+      </AuthContext.Provider>,
+    );
+
+    expect(await screen.findByRole("heading", { name: "选择你的套餐" })).toBeTruthy();
+    expect(screen.getByText("不止额度，更是灵感落地的速度。")).toBeTruthy();
+    expect(screen.getByText("Basic")).toBeTruthy();
+    expect(screen.getByText("Pro")).toBeTruthy();
+    expect(screen.getByText("Ultimate")).toBeTruthy();
+
+    await waitFor(() => {
+      expect(getBillingSummaryMock).toHaveBeenCalled();
+    });
+  });
+});

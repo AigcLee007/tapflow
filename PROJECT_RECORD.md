@@ -662,3 +662,17 @@ Validation completed:
 Notes:
 
 - Phase 2 should apply the same TapNow shell language to `/assets`, `/billing`, and `/account` content pages.
+
+### Latest TapNow Secondary Pages Phase 2 Refresh
+
+Completed in current local iteration:
+
+- refreshed `/assets` into a cleaner TapNow-style asset library with left-side category navigation, product copy, compact tool buttons, search, and a richer empty state for image/video/audio uploads
+- refreshed `/billing` into a price-plan-first page with Basic, Pro, and Ultimate cards while keeping existing server-backed balance, usage, ledger, redeem, and recharge flows unchanged
+- refreshed `/account` into a product settings-style page with readable identity, workspace, and model connection sections
+- kept the Phase 2 scope presentation-only: no backend API, auth, billing ledger, or asset storage behavior was changed
+- added focused rendering tests for the three refreshed pages
+
+Validation completed:
+
+- `npm run test -- src/assets/AssetLibraryPage.test.tsx src/billing/BillingCenterPage.test.tsx src/account/AccountPage.test.tsx`

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { RefreshCw, Search } from "lucide-react";
+import { Grid2X2, RefreshCw, Search, SlidersHorizontal } from "lucide-react";
 
 import { useAuth } from "../auth/useAuth";
 import type { AssetItem } from "./assetApi";
@@ -39,7 +39,7 @@ export function AssetLibraryPage() {
   };
 
   return (
-    <section className="min-h-[calc(100vh-92px)] overflow-hidden rounded border border-white/10 bg-[#0b0d14]">
+    <section className="min-h-[calc(100vh-92px)] overflow-hidden rounded border border-white/10 bg-[#0b0d14] shadow-2xl shadow-black/20">
       <div className="flex flex-col md:flex-row">
         <AssetFolderSidebar
           folders={library.folders}
@@ -48,11 +48,18 @@ export function AssetLibraryPage() {
           selectedFolderId={library.selectedFolderId}
         />
         <main className="min-w-0 flex-1 p-5 md:p-6">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <div className="text-xs uppercase tracking-[0.22em] text-sky-300">素材库</div>
-              <h1 className="mt-2 text-2xl font-semibold text-white">云端素材库</h1>
-              <p className="mt-2 text-sm text-slate-500">共 {library.total} 个云端素材</p>
+              <div className="text-xs uppercase tracking-[0.22em] text-sky-300">Assets</div>
+              <h1 className="mt-2 text-2xl font-semibold text-white">素材库</h1>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
+                管理项目可复用的图片、视频、音频和参考素材。
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500">
+                <span className="rounded border border-white/10 bg-white/[0.04] px-2.5 py-1">共 {library.total} 个素材</span>
+                <span className="rounded border border-white/10 bg-white/[0.04] px-2.5 py-1">云端同步</span>
+                <span className="rounded border border-white/10 bg-white/[0.04] px-2.5 py-1">项目复用</span>
+              </div>
             </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
               <div className="relative">
@@ -65,21 +72,37 @@ export function AssetLibraryPage() {
                 />
               </div>
               <button
-                className="inline-flex h-10 items-center justify-center gap-2 rounded border border-white/10 px-4 text-sm font-semibold text-slate-100 hover:bg-white/[0.06]"
+                className="inline-flex h-10 w-10 items-center justify-center rounded border border-white/10 text-slate-100 hover:bg-white/[0.06]"
                 onClick={refresh}
+                title="刷新"
                 type="button"
               >
                 <RefreshCw size={16} />
-                刷新
+              </button>
+              <button
+                className="inline-flex h-10 w-10 items-center justify-center rounded border border-white/10 text-slate-100 hover:bg-white/[0.06]"
+                title="筛选"
+                type="button"
+              >
+                <SlidersHorizontal size={16} />
+              </button>
+              <button
+                className="inline-flex h-10 w-10 items-center justify-center rounded border border-white/10 text-slate-100 hover:bg-white/[0.06]"
+                title="网格视图"
+                type="button"
+              >
+                <Grid2X2 size={16} />
               </button>
               <UploadAssetButton key={identityKey} onUploaded={refresh} />
             </div>
           </div>
+
           {library.error && (
             <div className="mt-5 rounded border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
               {library.error}
             </div>
           )}
+
           <div className="mt-6">
             <AssetGrid assets={library.assets} loading={library.loading} onOpen={setPreviewAsset} />
           </div>

@@ -12,15 +12,15 @@ export function BillingSummaryCards({ summary }: { summary: BillingSummary | nul
   const cards = [
     {
       icon: CircleDollarSign,
-      label: "余额",
+      label: "当前余额",
       value: formatCredits(account?.balanceCents ?? 0),
       hint: `可用 ${formatCredits(available)}`,
     },
     {
       icon: LockKeyhole,
-      label: "已占用",
+      label: "任务预占",
       value: formatCredits(account?.reservedCents ?? 0),
-      hint: "用于运行中任务的预占点数",
+      hint: "运行中的生成任务会先预占额度",
     },
     {
       icon: TrendingDown,
