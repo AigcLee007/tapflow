@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildAssetBackedNodeData } from './assetNodeData';
+import { buildAssetBackedNodeData, buildMeasuredAssetNodePatch } from './assetNodeData';
 
 describe('buildAssetBackedNodeData', () => {
   it('persists preview urls as referenceable image fields when provided', () => {
@@ -50,5 +50,26 @@ describe('buildAssetBackedNodeData', () => {
     expect(nodeData.aspectRatio).toBeCloseTo(900 / 1600);
     expect(nodeData.width).toBe(170);
     expect(nodeData.height).toBe(302);
+  });
+
+  it('builds a patch from measured natural size when stored asset ratio is wrong', () => {
+    const patch = buildMeasuredAssetNodePatch(
+      {
+        height: 1024,
+        width: 1024,
+      } as const,
+      {
+        h: 1600,
+        w: 900,
+      },
+    );
+
+    expect(patch).toEqual({
+      aspectRatio: 900 / 1600,
+      height: 302,
+      naturalHeight: 1600,
+      naturalWidth: 900,
+      width: 170,
+    });
   });
 });

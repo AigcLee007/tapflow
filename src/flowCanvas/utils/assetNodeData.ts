@@ -50,6 +50,38 @@ export function buildAssetBackedNodeData(
   };
 }
 
+export function buildMeasuredAssetNodePatch(
+  asset: Pick<AssetItem, "height" | "width">,
+  natural: { h: number; w: number },
+): Pick<FlowNodeData, "aspectRatio" | "height" | "naturalHeight" | "naturalWidth" | "width"> | null {
+  const storedAspectRatio =
+    typeof asset.width === "number" &&
+    asset.width > 0 &&
+    typeof asset.height === "number" &&
+    asset.height > 0
+      ? asset.width / asset.height
+      : null;
+  const naturalAspectRatio = natural.w / natural.h;
+  const missingNaturalSize =
+    typeof asset.width !== "number" ||
+    asset.width <= 0 ||
+    typeof asset.height !== "number" ||
+    asset.height <= 0;
+  const ratioMismatch =
+    storedAspectRatio !== null && Math.abs(storedAspectRatio - naturalAspectRatio) > 0.08;
+
+  if (!missingNaturalSize && !ratioMismatch) return null;
+
+  const fitted = fitMediaNodeToShortSide(natural.w, natural.h);
+  return {
+    aspectRatio: naturalAspectRatio,
+    height: fitted.height,
+    naturalHeight: natural.h,
+    naturalWidth: natural.w,
+    width: fitted.width,
+  };
+}
+
 function pickPositiveNumber(...values: Array<number | null | undefined>) {
   for (const value of values) {
     if (typeof value === "number" && Number.isFinite(value) && value > 0) {

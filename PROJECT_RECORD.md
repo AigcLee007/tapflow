@@ -939,6 +939,24 @@ Validation completed:
 - `npm run build`
 - `npm run build --workspace @aigc-flow/api`
 
+### 2026-06-12 - Asset Modal Insert Route Aspect Ratio Follow-up
+
+- Fixed the remaining portrait asset insertion path that still rendered some asset-library images as square `1:1` nodes on canvas.
+- Root cause:
+  - the earlier aspect-ratio recovery work covered the in-canvas asset drawer insertion path
+  - inserting from the `/assets` preview modal used the separate `insertAssetId` route flow in `FlowProjectPage`, which was still building nodes only from stored asset metadata
+- Changes made:
+  - extracted the shared natural-size reconciliation logic into `src/flowCanvas/utils/assetNodeData.ts`
+  - reused that logic in both:
+    - `src/flowCanvas/canvas/AiFlowCanvas.tsx`
+    - `src/flowCanvas/FlowProjectPage.tsx`
+  - added a regression test that locks the `?insertAssetId=` portrait-asset case so preview-modal insertion now rehydrates bad historical metadata back to the correct `9:16`-style canvas size
+
+Validation completed:
+
+- `npm run test -- src/flowCanvas/FlowProjectPage.test.tsx src/flowCanvas/utils/assetNodeData.test.ts`
+- `npm run build`
+
 ### Latest TapNow Billing Pixel Alignment Pass
 
 Completed in current local iteration:

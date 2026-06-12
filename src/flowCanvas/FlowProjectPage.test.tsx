@@ -1,11 +1,15 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { FlowProjectPage } from "./FlowProjectPage";
 
 const useRemoteFlowProjectMock = vi.fn();
 const useRemoteFlowAutosaveMock = vi.fn();
+const getAssetMock = vi.fn();
+const getImageNaturalSizeMock = vi.fn();
+const addNodeMock = vi.fn();
+const updateNodeDataMock = vi.fn();
 
 vi.mock("./FlowCanvasPage", () => ({
   default: ({ saveStatus }: { saveStatus: { label: string } }) => (
@@ -29,7 +33,28 @@ vi.mock("./runtime/remoteDraftSaveBarrier", () => ({
 }));
 
 vi.mock("../assets/assetApi", () => ({
-  getAsset: vi.fn(),
+  getAsset: (...args: unknown[]) => getAssetMock(...args),
+}));
+
+vi.mock("./utils/imageUtils", () => ({
+  getImageNaturalSize: (...args: unknown[]) => getImageNaturalSizeMock(...args),
+}));
+
+vi.mock("./store/flowCanvasStore", () => ({
+  useFlowCanvasStore: (
+    selector: (state: {
+      addNode: typeof addNodeMock;
+      nodes: Array<{ id: string }>;
+      updateNodeData: typeof updateNodeDataMock;
+      viewport: { x: number; y: number; zoom: number };
+    }) => unknown,
+  ) =>
+    selector({
+      addNode: addNodeMock,
+      nodes: [],
+      updateNodeData: updateNodeDataMock,
+      viewport: { x: 0, y: 0, zoom: 1 },
+    }),
 }));
 
 function setProjectPath(path: string) {
@@ -39,6 +64,11 @@ function setProjectPath(path: string) {
 describe("FlowProjectPage", () => {
   beforeEach(() => {
     setProjectPath("/projects/project-1");
+    getAssetMock.mockReset();
+    getImageNaturalSizeMock.mockReset();
+    addNodeMock.mockReset();
+    updateNodeDataMock.mockReset();
+    addNodeMock.mockReturnValue({ id: "inserted-node-1" });
     useRemoteFlowAutosaveMock.mockReturnValue({
       error: null,
       saveNow: vi.fn(async () => undefined),
@@ -46,7 +76,7 @@ describe("FlowProjectPage", () => {
     });
   });
 
-  test("renders clean project loading copy", () => {
+  test("renders loading state", () => {
     useRemoteFlowProjectMock.mockReturnValue({
       draft: null,
       error: null,
@@ -60,10 +90,10 @@ describe("FlowProjectPage", () => {
     expect(screen.getByText("正在打开项目画布...")).toBeTruthy();
   });
 
-  test("renders clean project error copy", () => {
+  test("renders error state", () => {
     useRemoteFlowProjectMock.mockReturnValue({
       draft: null,
-      error: "项目不存在",
+      error: "椤圭洰涓嶅瓨鍦?",
       flow: null,
       loading: false,
       reload: vi.fn(),
@@ -75,7 +105,7 @@ describe("FlowProjectPage", () => {
     expect(screen.getByRole("button", { name: "重新加载" })).toBeTruthy();
   });
 
-  test("passes readable save status copy into the canvas page", () => {
+  test("passes save status into the canvas page", () => {
     useRemoteFlowProjectMock.mockReturnValue({
       draft: null,
       error: null,
@@ -88,5 +118,44 @@ describe("FlowProjectPage", () => {
 
     expect(screen.getByTestId("flow-canvas-page")).toBeTruthy();
     expect(screen.getByText("已保存到云端")).toBeTruthy();
+  });
+
+  test("repairs portrait asset sizing when inserted from insertAssetId route", async () => {
+    setProjectPath("/projects/project-1?insertAssetId=asset-portrait");
+    useRemoteFlowProjectMock.mockReturnValue({
+      draft: null,
+      error: null,
+      flow: { id: "flow-1" },
+      loading: false,
+      reload: vi.fn(),
+    });
+    getAssetMock.mockResolvedValue({
+      durationMs: null,
+      height: 1024,
+      id: "asset-portrait",
+      kind: "image",
+      mimeType: "image/png",
+      originalFilename: "portrait.png",
+      previewUrl: "https://cdn.test/portrait-preview.png",
+      source: "asset-library",
+      title: "Portrait",
+      width: 1024,
+    });
+    getImageNaturalSizeMock.mockResolvedValue({ h: 1600, w: 900 });
+
+    render(<FlowProjectPage />);
+
+    await waitFor(() => {
+      expect(addNodeMock).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(updateNodeDataMock).toHaveBeenCalledWith("inserted-node-1", {
+        aspectRatio: 900 / 1600,
+        height: 302,
+        naturalHeight: 1600,
+        naturalWidth: 900,
+        width: 170,
+      });
+    });
   });
 });

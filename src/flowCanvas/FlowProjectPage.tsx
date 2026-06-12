@@ -9,7 +9,8 @@ import { useRemoteFlowProject } from "./hooks/useRemoteFlowProject";
 import { registerRemoteDraftSaveBarrier } from "./runtime/remoteDraftSaveBarrier";
 import { useFlowCanvasStore } from "./store/flowCanvasStore";
 import type { FlowNodeKind } from "./types";
-import { buildAssetBackedNodeData } from "./utils/assetNodeData";
+import { buildAssetBackedNodeData, buildMeasuredAssetNodePatch } from "./utils/assetNodeData";
+import { getImageNaturalSize } from "./utils/imageUtils";
 
 function getProjectIdFromLocation() {
   if (typeof window === "undefined") return "";
@@ -84,6 +85,7 @@ export function FlowProjectPage() {
   const projectState = useRemoteFlowProject(projectId);
   const addNode = useFlowCanvasStore((state) => state.addNode);
   const nodes = useFlowCanvasStore((state) => state.nodes);
+  const updateNodeData = useFlowCanvasStore((state) => state.updateNodeData);
   const viewport = useFlowCanvasStore((state) => state.viewport);
   const insertedAssetIdRef = useRef<string | null>(null);
   const [insertError, setInsertError] = useState<string | null>(null);
@@ -124,7 +126,7 @@ export function FlowProjectPage() {
           y: (window.innerHeight / 2 - viewport.y) / zoom + nodes.length * 24,
         };
 
-        addNode(
+        const inserted = addNode(
           kindForAsset(asset.kind),
           center,
           buildAssetBackedNodeData(asset, {
@@ -134,6 +136,16 @@ export function FlowProjectPage() {
           }),
           { selected: true },
         );
+
+        if (asset.previewUrl && asset.kind === "image") {
+          void getImageNaturalSize(asset.previewUrl)
+            .then((natural) => {
+              const patch = buildMeasuredAssetNodePatch(asset, natural);
+              if (!patch) return;
+              updateNodeData(inserted.id, patch);
+            })
+            .catch(() => undefined);
+        }
 
         const nextParams = new URLSearchParams(window.location.search);
         nextParams.delete("insertAssetId");
@@ -153,6 +165,7 @@ export function FlowProjectPage() {
     nodes.length,
     projectState.error,
     projectState.loading,
+    updateNodeData,
     viewport,
   ]);
 

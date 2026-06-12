@@ -38,7 +38,7 @@ import { getFlowTemplate, recordFlowTemplateUsage } from '../../services/v2FlowT
 import { listProjectHistory } from '../../services/v2FlowHistoryApi';
 import { listFlowComments } from '../../services/v2FlowCommentsApi';
 import type { FlowNodeData } from '../types';
-import { buildAssetBackedNodeData } from '../utils/assetNodeData';
+import { buildAssetBackedNodeData, buildMeasuredAssetNodePatch } from '../utils/assetNodeData';
 import { getCanvasDockBadge, getCanvasDockDrawerLayout, type CanvasDockPanelId } from '../utils/canvasDockPanel';
 import { FLOW_NODE_DEFAULT_SIZES, fitMediaNodeToShortSide } from '../utils/nodeSizing';
 import { offsetTemplateGraphForInsert } from '../utils/templateGraph';
@@ -623,36 +623,12 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled }) =>
         { selected: true },
       );
 
-      const storedAspectRatio =
-        typeof asset.width === 'number' &&
-        asset.width > 0 &&
-        typeof asset.height === 'number' &&
-        asset.height > 0
-          ? asset.width / asset.height
-          : null;
-
       if (preview) {
         void getImageNaturalSize(preview)
           .then((natural) => {
-            const naturalAspectRatio = natural.w / natural.h;
-            const missingNaturalSize =
-              typeof asset.width !== 'number' ||
-              asset.width <= 0 ||
-              typeof asset.height !== 'number' ||
-              asset.height <= 0;
-            const ratioMismatch =
-              storedAspectRatio !== null && Math.abs(storedAspectRatio - naturalAspectRatio) > 0.08;
-
-            if (!missingNaturalSize && !ratioMismatch) return;
-
-            const fitted = fitMediaNodeToShortSide(natural.w, natural.h);
-            updateNodeData(inserted.id, {
-              aspectRatio: naturalAspectRatio,
-              height: fitted.height,
-              naturalHeight: natural.h,
-              naturalWidth: natural.w,
-              width: fitted.width,
-            });
+            const patch = buildMeasuredAssetNodePatch(asset, natural);
+            if (!patch) return;
+            updateNodeData(inserted.id, patch);
           })
           .catch(() => undefined);
       }
