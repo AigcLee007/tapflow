@@ -624,3 +624,21 @@ Validation completed:
 
 - `npm run test -- src/flowCanvas/utils/nodeSelectionMode.test.ts`
 - `npm run build`
+
+### Latest Auth Page Visual Refresh
+
+Completed in current local iteration:
+
+- refreshed `/login` with a TapNow-style immersive product layout and glass login panel
+- refreshed `/register` to reuse the same auth shell, spacing, controls, and visual language
+- restored readable Chinese auth page copy and kept existing v2 auth API behavior unchanged
+- added focused auth page rendering and submit tests for login/register
+
+Validation completed:
+
+- `npm run test -- src/auth/AuthPages.test.tsx`
+
+Validation blocked:
+
+- `npm run build` is currently blocked by unrelated in-progress workspace changes outside this auth task: `src/flowCanvas/panels/index.ts` exports missing canvas panel modules.
+- Browser smoke for `/login` is currently blocked by unrelated Vite import analysis for `src/assets/AssetPreviewModal.tsx` resolving `./assetApi` while other local asset changes are dirty.
