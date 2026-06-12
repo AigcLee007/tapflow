@@ -175,6 +175,7 @@ export function AssetLibraryPage() {
               onOpen={setPreviewAsset}
               onRename={renameAsset}
               onToggleFavorite={toggleAssetFavorite}
+              tileOnly
             />
           </div>
         </main>

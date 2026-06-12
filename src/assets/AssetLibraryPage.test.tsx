@@ -223,4 +223,20 @@ describe("AssetLibraryPage", () => {
 
     expect(setFavoriteOnly).toHaveBeenCalledWith(true);
   });
+
+  test("renders asset cards as canvas-style thumbnail tiles", () => {
+    mockLibrary({
+      assets: [asset],
+      groupedAssets: [{ dateLabel: "2026-06-12", items: [asset] }],
+      mediaCounts: { all: 1, audio: 0, image: 1, video: 0 },
+      total: 1,
+    });
+
+    renderPage();
+
+    expect(screen.getByRole("button", { name: "Asset One" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "管理素材 Asset One" })).toBeTruthy();
+    expect(screen.queryByText("Asset One")).toBeNull();
+    expect(screen.queryByText("1 KB")).toBeNull();
+  });
 });

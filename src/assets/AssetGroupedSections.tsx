@@ -74,6 +74,7 @@ export function AssetGroupedSections({
   onRename,
   onToggleFavorite,
   showActions = true,
+  tileOnly = false,
 }: {
   compact?: boolean;
   emptyMessage: string;
@@ -86,6 +87,7 @@ export function AssetGroupedSections({
   onRename?: (asset: AssetItem, title: string) => Promise<void>;
   onToggleFavorite?: (asset: AssetItem) => Promise<void>;
   showActions?: boolean;
+  tileOnly?: boolean;
 }) {
   if (groups.length === 0) {
     return (
@@ -150,6 +152,7 @@ export function AssetGroupedSections({
                 onRename={onRename}
                 onToggleFavorite={onToggleFavorite}
                 showActions={showActions}
+                tileOnly={tileOnly}
               />
             ))}
           </div>

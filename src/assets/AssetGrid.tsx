@@ -16,6 +16,7 @@ export function AssetGrid({
   onToggleFavorite,
   onOpen,
   folders,
+  tileOnly = false,
 }: {
   emptyMessage: string;
   folders?: Array<{ id: string; name: string }>;
@@ -27,6 +28,7 @@ export function AssetGrid({
   onRename?: (asset: AssetItem, title: string) => Promise<void>;
   onToggleFavorite?: (asset: AssetItem) => Promise<void>;
   onOpen: (asset: AssetItem) => void;
+  tileOnly?: boolean;
 }) {
   if (loading) {
     return (
@@ -85,6 +87,7 @@ export function AssetGrid({
       onOpen={onOpen}
       onRename={onRename}
       onToggleFavorite={onToggleFavorite}
+      tileOnly={tileOnly}
     />
   );
 }

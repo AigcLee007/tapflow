@@ -37,6 +37,7 @@ export function AssetCard({
   onRename,
   onToggleFavorite,
   showActions = true,
+  tileOnly = false,
 }: {
   asset: AssetItem;
   compact?: boolean;
@@ -48,6 +49,7 @@ export function AssetCard({
   onRename?: (asset: AssetItem, title: string) => Promise<void>;
   onToggleFavorite?: (asset: AssetItem) => Promise<void>;
   showActions?: boolean;
+  tileOnly?: boolean;
 }) {
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [renaming, setRenaming] = React.useState(false);
@@ -135,7 +137,7 @@ export function AssetCard({
   return (
     <article
       className={
-        compact
+        compact || tileOnly
           ? "group relative overflow-visible rounded-[18px] border border-white/8 bg-[#11131a] text-left shadow-[0_10px_28px_rgba(0,0,0,0.22)] transition hover:border-white/16 hover:bg-[#151822]"
           : "group relative overflow-visible rounded border border-white/10 bg-white/[0.035] text-left shadow-lg shadow-black/10 transition hover:border-sky-300/40 hover:bg-white/[0.06]"
       }
@@ -145,8 +147,8 @@ export function AssetCard({
         <div
           className="relative overflow-hidden bg-zinc-950"
           style={{
-            aspectRatio: compact ? "1 / 1" : "4 / 3",
-            borderRadius: compact ? 18 : undefined,
+            aspectRatio: compact || tileOnly ? "1 / 1" : "4 / 3",
+            borderRadius: compact || tileOnly ? 18 : undefined,
           }}
         >
           {asset.previewUrl && asset.mimeType.startsWith("image/") ? (
@@ -162,7 +164,7 @@ export function AssetCard({
             </span>
           )}
         </div>
-        {compact ? null : (
+        {compact || tileOnly ? null : (
           <div className="p-3">
             <div className="truncate text-sm font-medium text-slate-100">{title}</div>
             <div className="mt-1 flex items-center justify-between gap-2 text-xs text-slate-500">
