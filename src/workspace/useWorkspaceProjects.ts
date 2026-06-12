@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useAuth } from "../auth/useAuth";
+import { getAssetSignedUrls } from "../assets/assetApi";
+import { getCachedAssetUrl, setCachedAssetUrl } from "../assets/assetUrlCache";
 import {
   createWorkspaceProject,
   listWorkspaceProjects,
@@ -9,6 +11,26 @@ import {
 
 type Scope = "personal" | "team";
 type SortMode = "updated_desc" | "created_desc" | "name_asc";
+
+async function resolveProjectCoverUrls(projects: WorkspaceProject[]): Promise<WorkspaceProject[]> {
+  const coverAssetIds = Array.from(
+    new Set(projects.map((project) => project.coverAssetId).filter((assetId): assetId is string => Boolean(assetId))),
+  );
+  const missingRequests = coverAssetIds
+    .filter((assetId) => !getCachedAssetUrl(assetId, null))
+    .map((assetId) => ({ assetId }));
+
+  if (missingRequests.length > 0) {
+    const signed = await getAssetSignedUrls(missingRequests).catch(() => ({ items: [] }));
+    signed.items.forEach(setCachedAssetUrl);
+  }
+
+  return projects.map((project) => {
+    if (!project.coverAssetId || project.coverUrl) return project;
+    const cachedUrl = getCachedAssetUrl(project.coverAssetId, null);
+    return cachedUrl ? { ...project, coverUrl: cachedUrl } : project;
+  });
+}
 
 export function useWorkspaceProjects() {
   const { authenticated, sessionId, tenant, user } = useAuth();
@@ -48,7 +70,7 @@ export function useWorkspaceProjects() {
     setLoading(true);
     setError(null);
     try {
-      const nextProjects = await listWorkspaceProjects();
+      const nextProjects = await resolveProjectCoverUrls(await listWorkspaceProjects());
       if (requestSequenceRef.current !== requestId) {
         return;
       }

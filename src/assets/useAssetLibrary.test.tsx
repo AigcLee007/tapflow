@@ -115,13 +115,16 @@ const folderB: AssetFolder = {
 };
 
 function Harness() {
-  const { assets, folders, loading } = useAssetLibrary();
+  const { assets, folders, loading, mediaCounts } = useAssetLibrary();
 
   return (
     <div>
       <div data-testid="loading">{loading ? "loading" : "idle"}</div>
       <div data-testid="assets">{assets.map((asset) => asset.title).join(",")}</div>
       <div data-testid="folders">{folders.map((folder) => folder.name).join(",")}</div>
+      <div data-testid="counts">
+        {mediaCounts.all}/{mediaCounts.image}/{mediaCounts.video}/{mediaCounts.audio}
+      </div>
     </div>
   );
 }
@@ -371,5 +374,36 @@ describe("useAssetLibrary", () => {
       { assetId: "asset-original" },
     ]);
     expect(getAssetDownloadUrlMock).not.toHaveBeenCalled();
+  });
+
+  it("uses server totals for media tab counts instead of the loaded page length", async () => {
+    const firstPageItems = Array.from({ length: 60 }, (_, index) => ({
+      ...assetA,
+      id: `image-${index}`,
+      objectKey: `image-${index}.png`,
+      originalFilename: `image-${index}.png`,
+      title: `Image ${index}`,
+    }));
+
+    listAssetsMock.mockImplementation((params: { kind?: string }) => {
+      if (params.kind === "image") {
+        return Promise.resolve({ items: [assetA], page: 1, pageSize: 1, total: 135 });
+      }
+      if (params.kind === "video") {
+        return Promise.resolve({ items: [], page: 1, pageSize: 1, total: 0 });
+      }
+      if (params.kind === "audio") {
+        return Promise.resolve({ items: [], page: 1, pageSize: 1, total: 0 });
+      }
+      return Promise.resolve({ items: firstPageItems, page: 1, pageSize: 60, total: 135 });
+    });
+    listAssetFoldersMock.mockResolvedValue([]);
+    getAssetSignedUrlsMock.mockResolvedValue({ items: [] });
+
+    renderWithAuth(baseAuthState);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("counts").textContent).toBe("135/135/0/0");
+    });
   });
 });

@@ -8,7 +8,6 @@ import { AssetGrid } from "./AssetGrid";
 import { AssetMediaTabs } from "./AssetGroupedSections";
 import { AssetPreviewModal } from "./AssetPreviewModal";
 import { UploadAssetButton } from "./UploadAssetButton";
-import { filterAssetsByMediaTab } from "./assetLibraryView";
 import { useAssetLibrary } from "./useAssetLibrary";
 
 export function AssetLibraryPage() {
@@ -40,13 +39,6 @@ export function AssetLibraryPage() {
     void library.refresh();
   };
 
-  const mediaCounts = {
-    all: library.assets.length,
-    image: filterAssetsByMediaTab(library.assets, "image").length,
-    video: filterAssetsByMediaTab(library.assets, "video").length,
-    audio: filterAssetsByMediaTab(library.assets, "audio").length,
-  };
-
   return (
     <section className="min-h-[calc(100vh-92px)] overflow-hidden rounded border border-white/10 bg-[#0b0d14] shadow-2xl shadow-black/20">
       <div className="flex flex-col md:flex-row">
@@ -65,7 +57,7 @@ export function AssetLibraryPage() {
                 管理项目可复用的图片、视频、音频和参考素材。
               </p>
               <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500">
-                <span className="rounded border border-white/10 bg-white/[0.04] px-2.5 py-1">共 {library.total} 个素材</span>
+                <span className="rounded border border-white/10 bg-white/[0.04] px-2.5 py-1">共 {library.mediaCounts.all} 个素材</span>
                 <span className="rounded border border-white/10 bg-white/[0.04] px-2.5 py-1">云端同步</span>
                 <span className="rounded border border-white/10 bg-white/[0.04] px-2.5 py-1">项目复用</span>
               </div>
@@ -115,7 +107,7 @@ export function AssetLibraryPage() {
           <div className="mt-6">
             <div className="mb-5">
               <AssetMediaTabs
-                counts={mediaCounts}
+                counts={library.mediaCounts}
                 onSelectTab={library.setSelectedMediaTab}
                 selectedTab={library.selectedMediaTab}
               />

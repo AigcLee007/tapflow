@@ -8,10 +8,15 @@ import type { WorkspaceProject } from "./workspaceApi";
 
 const listWorkspaceProjectsMock = vi.fn();
 const createWorkspaceProjectMock = vi.fn();
+const getAssetSignedUrlsMock = vi.fn();
 
 vi.mock("./workspaceApi", () => ({
   createWorkspaceProject: (...args: unknown[]) => createWorkspaceProjectMock(...args),
   listWorkspaceProjects: (...args: unknown[]) => listWorkspaceProjectsMock(...args),
+}));
+
+vi.mock("../assets/assetApi", () => ({
+  getAssetSignedUrls: (...args: unknown[]) => getAssetSignedUrlsMock(...args),
 }));
 
 function deferred<T>() {
@@ -95,6 +100,7 @@ describe("useWorkspaceProjects", () => {
   beforeEach(() => {
     listWorkspaceProjectsMock.mockReset();
     createWorkspaceProjectMock.mockReset();
+    getAssetSignedUrlsMock.mockReset();
   });
 
   it("clears stale project state and ignores late responses from the previous identity", async () => {
@@ -144,5 +150,39 @@ describe("useWorkspaceProjects", () => {
     });
 
     expect(screen.getByTestId("projects").textContent).not.toContain("Project A");
+  });
+
+  it("batch signs project cover urls so cards can render without per-card signing", async () => {
+    listWorkspaceProjectsMock.mockResolvedValue([
+      { ...projectA, coverAssetId: "cover-a" },
+      { ...projectB, coverAssetId: "cover-b" },
+      { ...projectB, id: "project-c", name: "Project C", coverAssetId: "cover-a" },
+    ]);
+    getAssetSignedUrlsMock.mockResolvedValue({
+      items: [
+        {
+          assetId: "cover-a",
+          expiresAt: new Date(Date.now() + 900_000).toISOString(),
+          method: "GET",
+          url: "https://cdn.test/cover-a.webp",
+          variantKey: null,
+        },
+        {
+          assetId: "cover-b",
+          expiresAt: new Date(Date.now() + 900_000).toISOString(),
+          method: "GET",
+          url: "https://cdn.test/cover-b.webp",
+          variantKey: null,
+        },
+      ],
+    });
+
+    renderWithAuth(baseAuthState);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("projects").textContent).toContain("Project A");
+    });
+
+    expect(getAssetSignedUrlsMock).toHaveBeenCalledWith([{ assetId: "cover-a" }, { assetId: "cover-b" }]);
   });
 });

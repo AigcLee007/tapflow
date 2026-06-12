@@ -1,18 +1,13 @@
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 import { ProjectCard } from "./ProjectCard";
 import type { WorkspaceProject } from "./workspaceApi";
 
-const getAssetDownloadUrlMock = vi.fn();
-
-vi.mock("../assets/assetApi", () => ({
-  getAssetDownloadUrl: (...args: unknown[]) => getAssetDownloadUrlMock(...args),
-}));
-
 const baseProject: WorkspaceProject = {
   coverAssetId: "asset-cover-1",
+  coverUrl: "https://example.test/project-cover.png",
   createdAt: "2026-05-19T00:00:00.000Z",
   createdBy: "user-1",
   description: "Demo project",
@@ -24,37 +19,26 @@ const baseProject: WorkspaceProject = {
 
 describe("ProjectCard", () => {
   beforeEach(() => {
-    getAssetDownloadUrlMock.mockReset();
   });
 
-  it("uses coverAssetId to fetch a temporary download url", async () => {
-    getAssetDownloadUrlMock.mockResolvedValue({
-      expiresAt: "2026-05-19T01:00:00.000Z",
-      method: "GET",
-      url: "https://example.test/project-cover.png",
-    });
-
+  it("renders the pre-resolved project cover url without requesting it per card", () => {
     const { container } = render(
       <ProjectCard onOpen={() => undefined} project={baseProject} viewMode="grid" />,
     );
 
-    await waitFor(() => {
-      expect(getAssetDownloadUrlMock).toHaveBeenCalledWith("asset-cover-1");
-    });
-
-    await waitFor(() => {
-      const image = container.querySelector("img");
-      expect(image?.getAttribute("src")).toBe("https://example.test/project-cover.png");
-    });
+    const image = container.querySelector("img");
+    expect(image?.getAttribute("src")).toBe("https://example.test/project-cover.png");
   });
 
-  it("falls back gracefully when the cover asset cannot be loaded", async () => {
-    getAssetDownloadUrlMock.mockRejectedValue(new Error("boom"));
+  it("falls back to the gradient cover when no resolved cover url exists", () => {
+    render(
+      <ProjectCard
+        onOpen={() => undefined}
+        project={{ ...baseProject, coverAssetId: null, coverUrl: undefined }}
+        viewMode="grid"
+      />,
+    );
 
-    render(<ProjectCard onOpen={() => undefined} project={baseProject} viewMode="grid" />);
-
-    await waitFor(() => {
-      expect(screen.getByText("Cover unavailable")).toBeTruthy();
-    });
+    expect(screen.queryByText("Cover unavailable")).toBeNull();
   });
 });

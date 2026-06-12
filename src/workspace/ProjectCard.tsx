@@ -1,7 +1,6 @@
-import React, { useEffect, useState } from "react";
-import { ArrowUpRight, CalendarDays, ImageOff, MoreHorizontal } from "lucide-react";
+import React from "react";
+import { ArrowUpRight, CalendarDays, MoreHorizontal } from "lucide-react";
 
-import { getAssetDownloadUrl } from "../assets/assetApi";
 import type { WorkspaceProject } from "./workspaceApi";
 
 function formatRelativeTime(input: string) {
@@ -35,7 +34,7 @@ export function ProjectCard({
   project: WorkspaceProject;
   viewMode: "grid" | "list";
 }) {
-  const cover = useProjectCover(project);
+  const coverUrl = project.coverUrl || "";
   const relativeTime = formatRelativeTime(project.updatedAt);
 
   if (viewMode === "list") {
@@ -46,12 +45,8 @@ export function ProjectCard({
         type="button"
       >
         <div className="h-[90px] w-[136px] overflow-hidden rounded-[18px] bg-[linear-gradient(135deg,#3f3f46_0%,#2563eb_60%,#475569_100%)]">
-          {cover.url ? (
-            <img alt="" className="h-full w-full object-cover" src={cover.url} />
-          ) : cover.failed ? (
-            <div className="grid h-full place-items-center text-slate-500">
-              <ImageOff size={20} />
-            </div>
+          {coverUrl ? (
+            <img alt="" className="h-full w-full object-cover" decoding="async" loading="lazy" src={coverUrl} />
           ) : null}
         </div>
         <div className="min-w-0">
@@ -76,15 +71,8 @@ export function ProjectCard({
       type="button"
     >
       <div className={`relative overflow-hidden bg-[linear-gradient(135deg,#374151_0%,#2563eb_50%,#111827_100%)] ${compact ? "aspect-[16/8.8]" : "aspect-[16/10.5]"}`}>
-        {cover.url ? (
-          <img alt="" className="absolute inset-0 h-full w-full object-cover" src={cover.url} />
-        ) : cover.failed ? (
-          <div className="absolute inset-0 grid place-items-center bg-[linear-gradient(135deg,#111827_0%,#0f172a_42%,#1e293b_100%)] text-slate-400">
-            <div className="flex flex-col items-center gap-2 text-xs">
-              <ImageOff size={22} />
-              Cover unavailable
-            </div>
-          </div>
+        {coverUrl ? (
+          <img alt="" className="absolute inset-0 h-full w-full object-cover" decoding="async" loading="lazy" src={coverUrl} />
         ) : null}
         <div className="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full bg-black/35 text-white/85 opacity-90 transition group-hover:bg-black/55">
           <MoreHorizontal size={17} />
@@ -109,46 +97,4 @@ export function ProjectCard({
       </div>
     </button>
   );
-}
-
-function useProjectCover(project: WorkspaceProject) {
-  const [coverUrl, setCoverUrl] = useState(project.coverUrl || "");
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    if (project.coverUrl) {
-      setCoverUrl(project.coverUrl);
-      setFailed(false);
-      return;
-    }
-
-    if (!project.coverAssetId) {
-      setCoverUrl("");
-      setFailed(false);
-      return;
-    }
-
-    let cancelled = false;
-    setCoverUrl("");
-    setFailed(false);
-
-    void getAssetDownloadUrl(project.coverAssetId)
-      .then((download) => {
-        if (cancelled) return;
-        setCoverUrl(download.url);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setFailed(true);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [project.coverAssetId, project.coverUrl]);
-
-  return {
-    failed,
-    url: coverUrl,
-  };
 }

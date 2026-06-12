@@ -879,6 +879,22 @@ Validation completed:
 - `npm run test -- src/app/WorkspaceShell.test.tsx src/workspace/WorkspacePage.test.tsx src/workspace/ProjectCard.test.tsx`
 - `npm run build`
 
+### Latest Workspace Cover and Asset Library Performance Fix
+
+Completed in current local iteration:
+
+- changed workspace project cover loading from per-card signed URL requests to a deduplicated batch signing pass in `useWorkspaceProjects`
+- kept project cards render-only for cover URLs and added lazy/async image loading so the project grid does not create request storms
+- added an in-memory asset library snapshot cache so reopening `/assets` can show the last loaded page immediately while fresh data reloads
+- changed asset library media tab counts to use server totals instead of the current 60-item page length
+- made image/video/audio count refresh run in the background after the first asset page renders, avoiding count queries blocking the library view
+
+Validation completed:
+
+- `npm run test -- src/workspace/useWorkspaceProjects.test.tsx src/workspace/ProjectCard.test.tsx src/assets/AssetLibraryPage.test.tsx src/assets/useAssetLibrary.test.tsx`
+- `npm run test -- src/workspace/HomePage.test.tsx src/workspace/WorkspacePage.test.tsx src/workspace/useWorkspaceProjects.test.tsx src/workspace/ProjectCard.test.tsx src/assets/AssetLibraryPage.test.tsx src/assets/useAssetLibrary.test.tsx src/assets/assetLibraryView.test.ts`
+- `npm run build`
+
 ### 2026-06-12 - Canvas Asset Drawer UI Refresh
 
 - Restyled the left in-canvas `素材库` drawer toward the TapNow reference while keeping the existing grouped asset data flow unchanged.

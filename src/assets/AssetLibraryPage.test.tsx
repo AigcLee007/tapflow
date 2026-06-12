@@ -44,6 +44,7 @@ describe("AssetLibraryPage", () => {
       folders: [],
       groupedAssets: [],
       loading: false,
+      mediaCounts: { all: 135, audio: 0, image: 60, video: 0 },
       query: "",
       refresh: vi.fn(async () => undefined),
       selectedMediaTab: "image",
@@ -72,5 +73,9 @@ describe("AssetLibraryPage", () => {
     expect(screen.getByText(/上传图片/i)).toBeTruthy();
     expect(screen.getByText(/上传视频/i)).toBeTruthy();
     expect(screen.getByText(/上传音频/i)).toBeTruthy();
+    expect(screen.getByText("共 135 个素材")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "图片60" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "视频0" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "音频0" })).toBeTruthy();
   });
 });
