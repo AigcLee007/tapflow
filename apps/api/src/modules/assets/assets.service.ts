@@ -286,6 +286,23 @@ async function createUploadImageVariants(input: {
   }
 }
 
+async function readUploadedImageSize(input: {
+  body: Buffer;
+  mimeType: string;
+}): Promise<{ height: number | null; width: number | null } | null> {
+  if (!UPLOAD_IMAGE_MIME_RE.test(input.mimeType)) return null;
+
+  try {
+    const metadata = await sharp(input.body, { failOn: "none" }).rotate().metadata();
+    return {
+      height: metadata.height ?? null,
+      width: metadata.width ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 function buildDownloadFilename(asset: AssetForStorage): string {
   return asset.originalFilename?.trim() || `asset-${asset.id}`;
 }
@@ -710,6 +727,24 @@ export class AssetsService {
       });
 
       if (Buffer.isBuffer(input.body)) {
+        const originalSize = await readUploadedImageSize({
+          body: input.body,
+          mimeType: input.contentType?.trim() || asset.mime_type,
+        });
+        if (originalSize?.width && originalSize?.height) {
+          await client.query(
+            `
+              UPDATE assets
+              SET
+                width = COALESCE(width, $2::int),
+                height = COALESCE(height, $3::int),
+                updated_at = now()
+              WHERE id = $1::uuid
+            `,
+            [asset.id, originalSize.width, originalSize.height],
+          );
+        }
+
         await this.persistUploadedImageVariants(
           client,
           asset,

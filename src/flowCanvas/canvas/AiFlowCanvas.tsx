@@ -50,6 +50,7 @@ import {
   measureLocalImageNodeData,
   uploadLocalImageAndBuildAssetNodeData,
 } from '../utils/localImageUpload';
+import { getImageNaturalSize } from '../utils/imageUtils';
 
 const CANVAS_MIN_ZOOM = 0.18;
 const CANVAS_MAX_ZOOM = 2.2;
@@ -215,6 +216,7 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled }) =>
   const pushHistory = useFlowCanvasStore((s) => s.pushHistory);
   const setNodeDragging = useFlowCanvasStore((s) => s.setNodeDragging);
   const addNode = useFlowCanvasStore((s) => s.addNode);
+  const updateNodeData = useFlowCanvasStore((s) => s.updateNodeData);
   const mergeTemplateGraph = useFlowCanvasStore((s) => s.mergeTemplateGraph);
   const restoreGraphSnapshot = useFlowCanvasStore((s) => s.restoreGraphSnapshot);
   const backendFlowId = useFlowCanvasStore((s) => s.backendFlowId);
@@ -610,7 +612,7 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled }) =>
         (await getAssetVariantUrl(assetId).then((result) => result.url).catch(() => undefined));
       const nextPosition = position ?? getCanvasCenterFlowPosition();
 
-      addNode(
+      const inserted = addNode(
         'image',
         nextPosition,
         buildAssetBackedNodeData(asset, {
@@ -620,8 +622,42 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled }) =>
         }),
         { selected: true },
       );
+
+      const storedAspectRatio =
+        typeof asset.width === 'number' &&
+        asset.width > 0 &&
+        typeof asset.height === 'number' &&
+        asset.height > 0
+          ? asset.width / asset.height
+          : null;
+
+      if (preview) {
+        void getImageNaturalSize(preview)
+          .then((natural) => {
+            const naturalAspectRatio = natural.w / natural.h;
+            const missingNaturalSize =
+              typeof asset.width !== 'number' ||
+              asset.width <= 0 ||
+              typeof asset.height !== 'number' ||
+              asset.height <= 0;
+            const ratioMismatch =
+              storedAspectRatio !== null && Math.abs(storedAspectRatio - naturalAspectRatio) > 0.08;
+
+            if (!missingNaturalSize && !ratioMismatch) return;
+
+            const fitted = fitMediaNodeToShortSide(natural.w, natural.h);
+            updateNodeData(inserted.id, {
+              aspectRatio: naturalAspectRatio,
+              height: fitted.height,
+              naturalHeight: natural.h,
+              naturalWidth: natural.w,
+              width: fitted.width,
+            });
+          })
+          .catch(() => undefined);
+      }
     },
-    [addNode, getCanvasCenterFlowPosition],
+    [addNode, getCanvasCenterFlowPosition, updateNodeData],
   );
 
   const handleInsertTemplate = useCallback(

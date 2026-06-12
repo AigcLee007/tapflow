@@ -179,7 +179,9 @@ export async function uploadAssetFile(input: {
 }): Promise<AssetItem> {
   const file = input.file;
   const kind = input.kind ?? kindFromMimeType(file.type);
+  const dimensions = kind === 'image' ? await readImageDimensions(file).catch(() => null) : null;
   const presigned = await apiPost<PresignedUploadResponse>('/assets/presigned-upload', {
+    ...(dimensions ? { height: dimensions.height, width: dimensions.width } : {}),
     kind,
     mimeType: file.type || 'application/octet-stream',
     originalFilename: file.name,
@@ -200,6 +202,7 @@ export async function uploadAssetFile(input: {
   }
 
   const completed = await apiPost<AssetItem>(`/assets/${presigned.asset.id}/complete-upload`, {
+    ...(dimensions ? { height: dimensions.height, width: dimensions.width } : {}),
     sizeBytes: file.size,
   });
   return updateAssetMetadata(completed.id, {
@@ -214,6 +217,28 @@ export function kindFromMimeType(mimeType: string): AssetKind {
   if (mimeType.startsWith('audio/')) return 'audio';
   if (mimeType === 'application/pdf' || mimeType.startsWith('text/')) return 'document';
   return 'other';
+}
+
+export function readImageDimensions(file: File): Promise<{ height: number; width: number }> {
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      const width = Number(image.naturalWidth || 0);
+      const height = Number(image.naturalHeight || 0);
+      if (width > 0 && height > 0) {
+        resolve({ height, width });
+        return;
+      }
+      reject(new Error('Unable to read image dimensions'));
+    };
+    image.onerror = (error) => {
+      URL.revokeObjectURL(objectUrl);
+      reject(error instanceof Error ? error : new Error('Unable to load image'));
+    };
+    image.src = objectUrl;
+  });
 }
 
 async function uploadAssetBytes(

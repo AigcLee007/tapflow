@@ -10,6 +10,15 @@ vi.mock("../services/v2HttpClient", () => ({
   getStoredAccessToken: (...args: unknown[]) => getStoredAccessTokenMock(...args),
 }));
 
+function stubUrlObjectApi(createObjectURL: ReturnType<typeof vi.fn>, revokeObjectURL: ReturnType<typeof vi.fn>) {
+  const OriginalURL = globalThis.URL;
+  class URLWithObjectApi extends OriginalURL {
+    static createObjectURL = createObjectURL;
+    static revokeObjectURL = revokeObjectURL;
+  }
+  vi.stubGlobal("URL", URLWithObjectApi as unknown as typeof URL);
+}
+
 describe("uploadAssetFile", () => {
   beforeEach(() => {
     apiPostMock.mockReset();
@@ -20,6 +29,24 @@ describe("uploadAssetFile", () => {
   });
 
   it("falls back to the API upload proxy when direct presigned upload fetch fails", async () => {
+    class FakeImage {
+      naturalHeight = 1536;
+      naturalWidth = 864;
+      onerror: null | ((error?: unknown) => void) = null;
+      onload: null | (() => void) = null;
+
+      set src(_value: string) {
+        queueMicrotask(() => {
+          this.onload?.();
+        });
+      }
+    }
+
+    vi.stubGlobal("Image", FakeImage as unknown as typeof Image);
+    const createObjectURL = vi.fn(() => "blob://cat");
+    const revokeObjectURL = vi.fn();
+    stubUrlObjectApi(createObjectURL, revokeObjectURL);
+
     const fetchMock = vi
       .fn()
       .mockRejectedValueOnce(new TypeError("Failed to fetch"))
@@ -95,12 +122,56 @@ describe("uploadAssetFile", () => {
         method: "POST",
       }),
     );
+    expect(apiPostMock).toHaveBeenNthCalledWith(
+      1,
+      "/assets/presigned-upload",
+      expect.objectContaining({
+        height: 1536,
+        width: 864,
+      }),
+    );
     expect(apiPostMock).toHaveBeenNthCalledWith(2, "/assets/asset-1/complete-upload", {
+      height: 1536,
       sizeBytes: file.size,
+      width: 864,
     });
     expect(result).toMatchObject({
       id: "asset-1",
       title: "cat.png",
     });
+  });
+});
+
+describe("readImageDimensions", () => {
+  beforeEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("reads natural image dimensions before upload metadata is sent", async () => {
+    class FakeImage {
+      naturalHeight = 1536;
+      naturalWidth = 864;
+      onerror: null | (() => void) = null;
+      onload: null | (() => void) = null;
+
+      set src(_value: string) {
+        queueMicrotask(() => {
+          this.onload?.();
+        });
+      }
+    }
+
+    vi.stubGlobal("Image", FakeImage as unknown as typeof Image);
+    const createObjectURL = vi.fn(() => "blob://portrait");
+    const revokeObjectURL = vi.fn();
+    stubUrlObjectApi(createObjectURL, revokeObjectURL);
+
+    const { readImageDimensions } = await import("./assetApi");
+    const file = new File(["portrait"], "portrait.png", { type: "image/png" });
+    const result = await readImageDimensions(file);
+
+    expect(result).toEqual({ height: 1536, width: 864 });
+    expect(createObjectURL).toHaveBeenCalledWith(file);
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob://portrait");
   });
 });

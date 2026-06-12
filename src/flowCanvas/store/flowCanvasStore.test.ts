@@ -38,6 +38,42 @@ describe('flowCanvasStore upstream image references', () => {
     }));
   });
 
+  it('uses explicit natural dimensions to preserve portrait aspect ratios for asset-library insertions', () => {
+    const node = useFlowCanvasStore.getState().addNode(
+      'image',
+      { x: 120, y: 80 },
+      buildAssetBackedNodeData(
+        {
+          durationMs: null,
+          height: 1024,
+          id: 'asset-portrait',
+          mimeType: 'image/png',
+          originalFilename: 'portrait.png',
+          previewUrl: 'https://cdn.test/portrait-preview.png',
+          source: 'asset-library',
+          title: 'Portrait Asset',
+          width: 1024,
+        },
+        {
+          naturalHeight: 1600,
+          naturalWidth: 900,
+          previewUrl: 'https://cdn.test/portrait-preview.png',
+        },
+      ),
+      { selected: true },
+    );
+
+    const insertedNode = useFlowCanvasStore.getState().nodes.find((candidate) => candidate.id === node.id);
+
+    expect(insertedNode?.data).toEqual(expect.objectContaining({
+      aspectRatio: 900 / 1600,
+      height: 302,
+      naturalHeight: 1600,
+      naturalWidth: 900,
+      width: 170,
+    }));
+  });
+
   it('indexes asset-backed image nodes with original image urls as upstream refs', () => {
     const source = useFlowCanvasStore.getState().addNode(
       'image',

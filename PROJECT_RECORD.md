@@ -903,6 +903,26 @@ Validation completed:
 - `npm run test -- src/flowCanvas/panels/CanvasAssetPanel.test.tsx src/assets/AssetLibraryPage.test.tsx src/assets/assetLibraryView.test.ts src/assets/useAssetLibrary.test.tsx`
 - `npm run build`
 
+### 2026-06-12 - Asset Aspect Ratio Preservation Fix
+
+- Fixed the asset-library-to-canvas aspect ratio regression where portrait uploads could appear as square `1:1` nodes after insertion.
+- Frontend upload flow now reads the original image's natural `width` and `height` before upload and sends those dimensions through both:
+  - `/api/v2/assets/presigned-upload`
+  - `/api/v2/assets/:assetId/complete-upload`
+- Canvas asset insertion now has a compatibility fallback for historical assets:
+  - after inserting an asset-backed image node from the drawer, the canvas reads the preview image's real dimensions
+  - if stored asset dimensions are missing or materially inconsistent with the preview, the node is rehydrated to the correct aspect ratio on canvas
+- Backend asset upload-bytes flow now also extracts original image dimensions from binary uploads with `sharp().metadata()` and backfills `assets.width` / `assets.height` when they are still missing, so the system is more resilient even if a frontend path misses dimension metadata in the future
+- Result:
+  - new uploaded materials keep the correct portrait / landscape ratio on canvas
+  - old materials with missing or wrong stored dimensions can still be inserted with corrected on-canvas proportions
+
+Validation completed:
+
+- `npm run test -- src/assets/assetApi.test.ts src/flowCanvas/utils/assetNodeData.test.ts src/flowCanvas/store/flowCanvasStore.test.ts`
+- `npm run build`
+- `npm run build --workspace @aigc-flow/api`
+
 ### Latest TapNow Billing Pixel Alignment Pass
 
 Completed in current local iteration:
