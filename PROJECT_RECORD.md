@@ -64,6 +64,7 @@ As of 2026-06-13:
 - image crop/resize/split/annotation/generated-result derived nodes now render immediately with a local preview while cloud asset persistence continues in the background
 - model-backed image node tools now use the v2 target-node workflow path, so logged-in v2 users no longer hit the legacy `auth-session-v1` billing login error from repaint/erase/outpaint/relight/multi-angle/enhance/remove-background actions
 - v2 image edit result nodes now persist the resolved preview URL back into canvas node data, show a model/route run label while generating, and forward source asset URLs into Visionary/Gemini image adapters so edit models receive the actual input image
+- target-node image edit tools now preserve the selected runtime `routeKey` from the canvas model line, avoiding wrong-line fallback that could yield completed white result images even when the workflow itself succeeded
 
 ## Recent Important Commits
 
@@ -116,8 +117,27 @@ Notes:
 - Worker fix:
   - target-node image requests now forward `imageEditRequest` into provider-facing metadata while preserving upstream image asset inputs and mask params
 - Legacy compatibility:
-  - remaining legacy API helper calls no longer throw the old frontend-only billing login error when a v2 access token exists
-  - ordinary GPT-image-2 reference-image generation still has a legacy compatibility edge and should be migrated to the v2 workflow path in a later cleanup
+- remaining legacy API helper calls no longer throw the old frontend-only billing login error when a v2 access token exists
+- ordinary GPT-image-2 reference-image generation still has a legacy compatibility edge and should be migrated to the v2 workflow path in a later cleanup
+
+## 2026-06-13 - Image Edit Runtime Route Preservation Fix
+
+- Fixed a follow-up root cause for blank/white completed results from model-backed image tools such as `重绘`, `擦除`, `扩图`, `打光`, `多角度`, `增强`, and `抠图`.
+- Root cause:
+  - downstream edit nodes were writing the local catalog `routeId` into `node.data.routeKey`
+  - worker/API runtime route resolution matches exact runtime `routeKey`, so these edit runs could fall back to the wrong default line instead of the user-selected model line
+  - when the fallback line accepted the request but did not behave as intended for the selected edit workflow, the canvas showed a completed white image result
+- Frontend fix:
+  - `runImageEdit()` now accepts and persists an explicit runtime `routeKey`
+  - image node tool actions now pass the current selected runtime route key into downstream target-node edit runs
+  - downstream `imageEditRequest` metadata now carries that runtime key too, keeping the workflow run aligned with the visible canvas line selection
+- Regression coverage:
+  - added a failing-then-passing test to ensure explicit runtime `routeKey` values survive downstream image edit node creation
+- Validation:
+  - `npm test -- src/flowCanvas/runtime/graphExecutor.test.ts src/flowCanvas/runtime/v2WorkflowRunner.test.ts`
+  - `npm run test --workspace @aigc-flow/worker -- workflow-runtime-image-request.test.ts`
+  - `npm run test --workspace @aigc-flow/ai-gateway-core -- runtime.test.ts`
+  - `npm run build`
 - Follow-up fix:
   - v2 workflow image/video success patches now write the resolved preview URL into `thumbnailUrl`/`posterUrl` in addition to durable `assetId`, so generated target nodes render immediately and survive remount/recovery without relying only on runtime memory state
   - image edit target nodes now store `generationRunLabel`, and the image generating overlay displays the active model/route label while waiting for the result

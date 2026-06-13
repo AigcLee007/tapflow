@@ -48,6 +48,7 @@ describe('runImageEdit', () => {
       height: 240,
       modelId: 'nano-banana-pro',
       routeId: 'nano-banana-pro-line1',
+      routeKey: 'image.nano-banana-pro',
       thumbnailUrl: 'https://cdn.test/source.png',
       title: 'Source',
       width: 320,
@@ -81,17 +82,53 @@ describe('runImageEdit', () => {
       lastEditType: 'erase',
       modelId: 'nano-banana-pro',
       routeId: 'nano-banana-pro-line1',
-      routeKey: 'nano-banana-pro-line1',
+      routeKey: 'image.nano-banana-pro',
       status: 'running',
     }));
     expect(targetNode?.data.imageEditRequest).toEqual(expect.objectContaining({
       editType: 'erase',
       prompt: 'Remove the highlighted object',
+      routeKey: 'image.nano-banana-pro',
       sourceNodeId: sourceNode.id,
     }));
     expect(targetNode?.data.params).toEqual(expect.objectContaining({
       mask: 'data:image/png;base64,mask',
       maskMode: 'brush',
+    }));
+  });
+
+  it('preserves an explicit runtime routeKey for downstream workflow runs', async () => {
+    const sourceNode = useFlowCanvasStore.getState().addNode('image', { x: 10, y: 20 }, {
+      assetId: 'asset-source',
+      height: 240,
+      modelId: 'nano-banana-pro',
+      routeId: 'nano-banana-pro-line1',
+      routeKey: 'image.nano-banana-pro',
+      thumbnailUrl: 'https://cdn.test/source.png',
+      title: 'Source',
+      width: 320,
+    });
+
+    const targetNodeId = await runImageEdit(sourceNode.id, 'relight', {
+      prompt: 'Add soft side lighting',
+      modelId: 'nano-banana-pro',
+      routeId: 'nano-banana-pro-line1',
+      routeKey: 'image.nano-banana-pro',
+      params: {
+        relight: {
+          brightness: 0.3,
+          direction: 'left',
+        },
+      },
+    });
+
+    const targetNode = useFlowCanvasStore.getState().nodes.find((node) => node.id === targetNodeId);
+    expect(targetNode?.data).toEqual(expect.objectContaining({
+      routeId: 'nano-banana-pro-line1',
+      routeKey: 'image.nano-banana-pro',
+    }));
+    expect(targetNode?.data.imageEditRequest).toEqual(expect.objectContaining({
+      routeId: 'nano-banana-pro-line1',
     }));
   });
 });

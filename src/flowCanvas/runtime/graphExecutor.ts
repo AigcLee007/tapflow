@@ -38,6 +38,7 @@ export interface RunImageEditParams {
   title?: string;
   modelId?: string;
   routeId?: string;
+  routeKey?: string;
   params?: Record<string, any>;
 }
 
@@ -580,7 +581,11 @@ export async function runImageEdit(
     sourceParams: (sourceData.params || {}) as Record<string, any>,
     editParams: editParams.params || {},
   });
-  const routeKey = getImageRouteById(routeId)?.id || routeId || undefined;
+  const routeKey =
+    String(editParams.routeKey || sourceData.routeKey || '').trim()
+    || getImageRouteById(routeId)?.id
+    || routeId
+    || undefined;
   const reusableNode = findReusableFailedEditNode(sourceNodeId, editType);
   const resultIndex = reusableNode ? countDerivedEditResults(sourceNodeId, editType) : countDerivedEditResults(sourceNodeId, editType) + 1;
   const title = editParams.title || String(reusableNode?.data.title || `${IMAGE_EDIT_TITLES[editType]}${resultIndex}`);
@@ -592,6 +597,7 @@ export async function runImageEdit(
     scale: editParams.scale,
     modelId,
     routeId,
+    routeKey,
     params: editParams.params || {},
     submittedAt: Date.now(),
   };

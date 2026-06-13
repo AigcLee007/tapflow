@@ -5163,6 +5163,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
         prompt,
         modelId: String(d.modelId || currentModelId),
         routeId: typeof d.routeId === 'string' ? d.routeId : undefined,
+        routeKey: currentRouteKey || undefined,
         params: { ...((d.params || {}) as Record<string, any>), maskMode },
       });
       closeImageTool();
@@ -5170,7 +5171,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
         void runBackendWorkflow({ runMode: 'target_node', targetNodeId }).catch(() => undefined);
       }
     },
-    [closeImageTool, currentModelId, d.modelId, d.params, d.routeId, id, repaintMode],
+    [closeImageTool, currentModelId, currentRouteKey, d.modelId, d.params, d.routeId, id, repaintMode],
   );
 
   const handleOutpaintConfirm = useCallback(
@@ -5194,6 +5195,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
         direction,
         modelId: String(d.modelId || currentModelId),
         routeId: typeof d.routeId === 'string' ? d.routeId : undefined,
+        routeKey: currentRouteKey || undefined,
         params: { ...((d.params || {}) as Record<string, any>), maskMode },
       });
       closeImageTool();
@@ -5201,7 +5203,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
         void runBackendWorkflow({ runMode: 'target_node', targetNodeId }).catch(() => undefined);
       }
     },
-    [closeImageTool, currentModelId, d.modelId, d.params, d.routeId, id],
+    [closeImageTool, currentModelId, currentRouteKey, d.modelId, d.params, d.routeId, id],
   );
 
   const handleLightingConfirm = useCallback(
@@ -5222,6 +5224,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
         prompt,
         modelId: String(d.modelId || currentModelId),
         routeId: typeof d.routeId === 'string' ? d.routeId : undefined,
+        routeKey: currentRouteKey || undefined,
         params: {
           ...((d.params || {}) as Record<string, any>),
           relight: {
@@ -5245,7 +5248,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
         void runBackendWorkflow({ runMode: 'target_node', targetNodeId }).catch(() => undefined);
       }
     },
-    [closeImageTool, currentModelId, d.modelId, d.params, d.routeId, id],
+    [closeImageTool, currentModelId, currentRouteKey, d.modelId, d.params, d.routeId, id],
   );
 
   const handleMultiAngleConfirm = useCallback(
@@ -5272,6 +5275,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
         prompt,
         modelId: String(d.modelId || currentModelId),
         routeId: typeof d.routeId === 'string' ? d.routeId : undefined,
+        routeKey: currentRouteKey || undefined,
         params: {
           ...((d.params || {}) as Record<string, any>),
           multiAngle: {
@@ -5290,7 +5294,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
         void runBackendWorkflow({ runMode: 'target_node', targetNodeId }).catch(() => undefined);
       }
     },
-    [closeImageTool, currentModelId, d.modelId, d.params, d.routeId, id],
+    [closeImageTool, currentModelId, currentRouteKey, d.modelId, d.params, d.routeId, id],
   );
 
   const runQuickAiEdit = useCallback(
@@ -5298,13 +5302,14 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       const targetNodeId = await runImageEdit(id, editType, {
         modelId: String(d.modelId || currentModelId),
         routeId: typeof d.routeId === 'string' ? d.routeId : undefined,
+        routeKey: currentRouteKey || undefined,
         params: (d.params || {}) as Record<string, any>,
       });
       if (targetNodeId) {
         void runBackendWorkflow({ runMode: 'target_node', targetNodeId }).catch(() => undefined);
       }
     },
-    [currentModelId, d.modelId, d.params, d.routeId, id],
+    [currentModelId, currentRouteKey, d.modelId, d.params, d.routeId, id],
   );
 
   const handleMoreMenuSelect = useCallback((action: ImageMoreMenuAction, payload?: { gridSize?: number }) => {
