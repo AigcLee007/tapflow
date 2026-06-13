@@ -33,7 +33,7 @@ export function BrandTransition({
       <div className="brand-transition__grid" />
       <div className="brand-transition__core">
         <div className="brand-transition__pulse" />
-        <BrandMark size="large" showCaption={false} className="brand-transition__mark" />
+        <BrandMark animated size="large" showCaption={false} className="brand-transition__mark" />
         <div className="brand-transition__label">{label}</div>
         {sublabel ? <div className="brand-transition__sublabel">{sublabel}</div> : null}
       </div>

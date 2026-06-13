@@ -205,33 +205,76 @@
   box-shadow: 0 3px 12px rgba(0, 0, 0, 0.38);
 }
 
-.brand-mark {
-  --brand-glow: rgba(96, 165, 250, 0.28);
-  position: relative;
-}
-
-.brand-mark::after {
-  content: "";
-  position: absolute;
-  inset: 1px;
-  border-radius: inherit;
-  pointer-events: none;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 0 26px var(--brand-glow);
-  opacity: 0.72;
-}
-
 .brand-mark__orb {
+  position: relative;
+  background:
+    radial-gradient(circle at 50% 45%, rgba(255,255,255,0.08), rgba(255,255,255,0.01) 60%),
+    rgba(8, 10, 16, 0.9);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.brand-mark__orb--bare {
+  border: none;
+  padding: 0;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.09),
+    0 16px 38px rgba(0, 0, 0, 0.42),
+    0 0 24px rgba(89, 124, 255, 0.16);
+}
+
+.brand-mark__logo {
+  position: relative;
+  z-index: 1;
+  padding: 14%;
+  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.55));
+}
+
+.brand-mark__infinity {
+  position: absolute;
+  inset: 14%;
+  z-index: 2;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.brand-mark__infinity-base,
+.brand-mark__infinity-glow {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.brand-mark__infinity-base {
+  stroke: rgba(255, 255, 255, 0.12);
+  stroke-width: 7;
+}
+
+.brand-mark__infinity-glow {
+  stroke: #ffffff;
+  stroke-width: 7;
+  stroke-dasharray: 14 86;
+  stroke-dashoffset: 0;
+  filter:
+    drop-shadow(0 0 6px rgba(255,255,255,0.95))
+    drop-shadow(0 0 12px rgba(96,165,250,0.8))
+    drop-shadow(0 0 18px rgba(244,114,182,0.42));
+  animation: brand-infinity-run 1.5s linear infinite;
+}
+
+@keyframes brand-infinity-run {
+  to {
+    stroke-dashoffset: -100;
+  }
 }
 
 @keyframes brand-transition-breathe {
   0%, 100% {
-    transform: scale(0.92) rotate(-4deg);
-    opacity: 0.52;
+    transform: scale(0.96);
+    opacity: 0.5;
   }
   50% {
-    transform: scale(1.08) rotate(5deg);
-    opacity: 0.92;
+    transform: scale(1.05);
+    opacity: 0.82;
   }
 }
 
@@ -266,17 +309,17 @@
 
 .brand-transition__pulse {
   position: absolute;
-  width: 140px;
-  height: 140px;
-  border-radius: 42% 58% 62% 38%;
+  width: 180px;
+  height: 180px;
+  border-radius: 999px;
   background: linear-gradient(
     135deg,
-    rgba(56, 189, 248, 0.38),
-    rgba(244, 114, 182, 0.28),
-    rgba(250, 204, 21, 0.24)
+    rgba(56, 189, 248, 0.24),
+    rgba(244, 114, 182, 0.2),
+    rgba(250, 204, 21, 0.18)
   );
-  filter: blur(10px);
-  animation: brand-transition-breathe 1.45s ease-in-out infinite;
+  filter: blur(18px);
+  animation: brand-transition-breathe 1.7s ease-in-out infinite;
 }
 
 .brand-transition__mark {
@@ -304,7 +347,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .brand-transition__grid,
-  .brand-transition__pulse {
+  .brand-transition__pulse,
+  .brand-mark__infinity-glow {
     animation: none;
   }
 }

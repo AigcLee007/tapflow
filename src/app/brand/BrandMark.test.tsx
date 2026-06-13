@@ -24,4 +24,11 @@ describe("BrandMark", () => {
 
     expect(screen.queryByText("Aittco")).toBeNull();
   });
+
+  test("can render an animated infinity highlight for transition states", () => {
+    render(<BrandMark animated />);
+
+    expect(screen.getByTestId("brand-mark").getAttribute("data-animated")).toBe("true");
+    expect(screen.getByTestId("brand-mark-infinity")).toBeTruthy();
+  });
 });
