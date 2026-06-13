@@ -49,6 +49,37 @@ describe("sanitizeFlowDraftGraph", () => {
     });
   });
 
+  it("strips authenticated asset bytes URLs from asset-backed node data", () => {
+    const graph: FlowDraftGraph = {
+      edges: [],
+      nodes: [
+        {
+          data: {
+            assetId: "asset-1",
+            originalImageUrl: "/api/v2/assets/asset-1/bytes?variantKey=preview",
+            thumbnailUrl: "/api/v2/assets/asset-1/bytes?variantKey=preview",
+            title: "Generated",
+          },
+          id: "node-1",
+          type: "image",
+        },
+      ],
+      viewport: { x: 0, y: 0, zoom: 1 },
+    };
+
+    const sanitized = sanitizeFlowDraftGraph(graph);
+
+    expect(sanitized.nodes[0]).toEqual({
+      data: {
+        assetId: "asset-1",
+        title: "Generated",
+      },
+      id: "node-1",
+      type: "image",
+    });
+    expect(JSON.stringify(sanitized)).not.toContain("/bytes");
+  });
+
   it("removes data/blob/base64/file payloads before draft save", () => {
     const graph: FlowDraftGraph = {
       edges: [],

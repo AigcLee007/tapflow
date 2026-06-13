@@ -152,11 +152,6 @@ export async function getAssetVariantUrl(
   );
 }
 
-export function getAssetBytesUrl(assetId: string, variantKey = 'preview'): string {
-  const query = variantKey ? `?variantKey=${encodeURIComponent(variantKey)}` : '';
-  return `/api/v2/assets/${encodeURIComponent(assetId)}/bytes${query}`;
-}
-
 export async function getAssetSignedUrls(
   requests: Array<{ assetId: string; variantKey?: string }>,
 ): Promise<{ items: AssetSignedUrl[] }> {

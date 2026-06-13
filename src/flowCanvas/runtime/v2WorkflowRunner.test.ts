@@ -15,6 +15,7 @@ const createWorkflowRunMock = vi.fn();
 const getWorkflowRunMock = vi.fn();
 const listFlowWorkflowRunsMock = vi.fn();
 const streamWorkflowRunMock = vi.fn();
+const getAssetVariantUrlMock = vi.fn();
 const getBillingSummaryMock = vi.fn();
 const listBillingPricingMock = vi.fn();
 const listRuntimeRoutesMock = vi.fn();
@@ -27,8 +28,7 @@ vi.mock('../../services/v2WorkflowRunsApi', () => ({
 }));
 
 vi.mock('../../services/v2AssetsApi', () => ({
-  getAssetBytesUrl: (assetId: string, variantKey = 'preview') =>
-    `/api/v2/assets/${encodeURIComponent(assetId)}/bytes?variantKey=${encodeURIComponent(variantKey)}`,
+  getAssetVariantUrl: (...args: unknown[]) => getAssetVariantUrlMock(...args),
 }));
 
 vi.mock('../../billing/billingApi', () => ({
@@ -46,6 +46,13 @@ describe('v2WorkflowRunner', () => {
     getWorkflowRunMock.mockReset();
     listFlowWorkflowRunsMock.mockReset();
     streamWorkflowRunMock.mockReset();
+    getAssetVariantUrlMock.mockReset();
+    getAssetVariantUrlMock.mockImplementation(async (assetId: string, variantKey?: string) => ({
+      expiresAt: '2026-05-17T00:15:00.000Z',
+      method: 'GET',
+      url: `https://cdn.test/${assetId}-${variantKey || 'original'}.png?X-Amz-Signature=signed`,
+      variantKey: variantKey ?? null,
+    }));
     getBillingSummaryMock.mockReset();
     listBillingPricingMock.mockReset();
     listRuntimeRoutesMock.mockReset();
@@ -699,7 +706,7 @@ describe('v2WorkflowRunner', () => {
     expect(useFlowCanvasStore.getState().runError).toContain('余额不足');
   });
 
-  test('asset refs use same-origin bytes urls and stay in runtime state', async () => {
+  test('asset refs use signed preview urls and stay in runtime state', async () => {
     useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, {
       batchCount: 2,
       generationPrompt: 'a quiet studio product photo',
@@ -722,6 +729,12 @@ describe('v2WorkflowRunner', () => {
       runId: 'run-asset',
       status: 'pending',
     });
+    getAssetVariantUrlMock.mockImplementation(async (assetId: string, variantKey?: string) => ({
+      expiresAt: '2026-05-17T00:15:00.000Z',
+      method: 'GET',
+      url: `https://cdn.test/${assetId}-${variantKey || 'original'}.png?X-Amz-Signature=signed`,
+      variantKey: variantKey ?? null,
+    }));
     getWorkflowRunMock.mockResolvedValue({
       nodeRuns: [
         {
@@ -785,15 +798,17 @@ describe('v2WorkflowRunner', () => {
 
     await runBackendWorkflow();
 
+    expect(getAssetVariantUrlMock).toHaveBeenCalledWith('asset-1', 'preview');
+    expect(getAssetVariantUrlMock).toHaveBeenCalledWith('asset-2', 'preview');
     expect(useFlowCanvasStore.getState().nodeOutputByNodeId[imageNodeId]).toMatchObject({
       assets: [
         expect.objectContaining({
           assetId: 'asset-1',
-          downloadUrl: '/api/v2/assets/asset-1/bytes?variantKey=preview',
+          downloadUrl: 'https://cdn.test/asset-1-preview.png?X-Amz-Signature=signed',
         }),
         expect.objectContaining({
           assetId: 'asset-2',
-          downloadUrl: '/api/v2/assets/asset-2/bytes?variantKey=preview',
+          downloadUrl: 'https://cdn.test/asset-2-preview.png?X-Amz-Signature=signed',
         }),
       ],
     });
@@ -806,11 +821,11 @@ describe('v2WorkflowRunner', () => {
       generatedResults: [
         expect.objectContaining({
           id: 'asset:asset-1',
-          url: '/api/v2/assets/asset-1/bytes?variantKey=preview',
+          url: 'https://cdn.test/asset-1-preview.png?X-Amz-Signature=signed',
         }),
         expect.objectContaining({
           id: 'asset:asset-2',
-          url: '/api/v2/assets/asset-2/bytes?variantKey=preview',
+          url: 'https://cdn.test/asset-2-preview.png?X-Amz-Signature=signed',
         }),
       ],
       generationStatus: 'done',
@@ -830,7 +845,7 @@ describe('v2WorkflowRunner', () => {
       source: 'generated',
       status: 'success',
     });
-    expect(updatedNode?.data.thumbnailUrl).toBe('/api/v2/assets/asset-1/bytes?variantKey=preview');
+    expect(updatedNode?.data.thumbnailUrl).toBe('https://cdn.test/asset-1-preview.png?X-Amz-Signature=signed');
   });
 
   test('terminal stream event finalizes the run snapshot and applies generated assets', async () => {
@@ -1216,7 +1231,7 @@ describe('v2WorkflowRunner', () => {
     expect(updatedNode?.data.assetId).toBe('asset-recovered');
     expect(useFlowCanvasStore.getState().nodeOutputByNodeId[nodeId]?.assets?.[0]).toMatchObject({
       assetId: 'asset-recovered',
-      downloadUrl: '/api/v2/assets/asset-recovered/bytes?variantKey=preview',
+      downloadUrl: 'https://cdn.test/asset-recovered-preview.png?X-Amz-Signature=signed',
     });
   });
 

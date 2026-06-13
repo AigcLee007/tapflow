@@ -93,7 +93,7 @@ describe("FlowProjectPage", () => {
   test("renders error state", () => {
     useRemoteFlowProjectMock.mockReturnValue({
       draft: null,
-      error: "椤圭洰涓嶅瓨鍦?",
+      error: "项目不存在",
       flow: null,
       loading: false,
       reload: vi.fn(),

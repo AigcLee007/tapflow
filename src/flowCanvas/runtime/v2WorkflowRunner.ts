@@ -1,4 +1,4 @@
-import { getAssetBytesUrl } from '../../services/v2AssetsApi';
+import { getAssetVariantUrl } from '../../services/v2AssetsApi';
 import { V2HttpError } from '../../services/v2HttpClient';
 import { listRuntimeRoutes, type V2RuntimeRouteItem } from '../../services/v2AiRoutesApi';
 import {
@@ -524,17 +524,23 @@ function persistNodeOutputsFromRun(nodeRuns: PersistableNodeRun[], assetRefsByNo
 
 async function resolveAssetRefs(outputJson: Record<string, unknown> | null): Promise<FlowRuntimeAssetRef[]> {
   const assets = Array.isArray(outputJson?.assets) ? outputJson.assets : [];
-  const result = assets
-    .filter(isAssetLike)
-    .map((asset) => ({
-      assetId: asset.assetId,
-      downloadUrl: getAssetBytesUrl(asset.assetId, 'preview'),
-      expiresAt: null,
-      height: asset.height ?? null,
-      kind: asset.kind,
-      mimeType: asset.mimeType,
-      width: asset.width ?? null,
-    }) satisfies FlowRuntimeAssetRef);
+  const result = await Promise.all(
+    assets
+      .filter(isAssetLike)
+      .map(async (asset) => {
+        const download = await getAssetVariantUrl(asset.assetId, 'preview')
+          .catch(() => getAssetVariantUrl(asset.assetId));
+        return {
+          assetId: asset.assetId,
+          downloadUrl: download.url,
+          expiresAt: download.expiresAt,
+          height: asset.height ?? null,
+          kind: asset.kind,
+          mimeType: asset.mimeType,
+          width: asset.width ?? null,
+        } satisfies FlowRuntimeAssetRef;
+      }),
+  );
 
   return result;
 }

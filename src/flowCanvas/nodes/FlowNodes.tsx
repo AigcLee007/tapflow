@@ -99,7 +99,7 @@ import { GoogleLogo, OpenAILogo } from '../../../components/Logos';
 import { useAuth } from '../../auth/useAuth';
 import { normalizeBackendAssetUrl } from '../../utils/generatedImageStorage';
 import { canNodeReceiveIncoming } from '../rules/connectionRules';
-import { getAssetBytesUrl } from '../../assets/assetApi';
+import { getAssetDownloadUrl, getAssetVariantUrl } from '../../assets/assetApi';
 import { listRuntimeRoutes, type V2RuntimeRouteItem } from '../../services/v2AiRoutesApi';
 import { listAiModelCatalog, listAiModelRoutes, type AiModelCatalogItem } from '../../services/v2AiModelCatalogApi';
 import { buildAssetBackedNodeData } from '../utils/assetNodeData';
@@ -3248,13 +3248,20 @@ const imageDragCard = (w: number, h: number, selected?: boolean): React.CSSPrope
   zIndex: 10,
 });
 
+const AUTHENTICATED_ASSET_BYTES_URL_RE = /(?:^|\/)api\/v2\/assets\/[^/]+\/bytes(?:\?|$)/;
+
+const isAuthenticatedAssetBytesUrl = (value: unknown): boolean =>
+  typeof value === 'string' && AUTHENTICATED_ASSET_BYTES_URL_RE.test(value.trim());
+
 const ImageNodeLite = memo(function ImageNodeLite({
   id,
   data,
   selected,
 }: NodeProps<FlowNode>) {
   const d = data;
-  const displayThumbnailUrl = normalizeBackendAssetUrl(String(d.thumbnailUrl || ''));
+  const displayThumbnailUrl = isAuthenticatedAssetBytesUrl(d.thumbnailUrl)
+    ? ''
+    : normalizeBackendAssetUrl(String(d.thumbnailUrl || ''));
   const width = Number(d.width || FLOW_NODE_DEFAULT_SIZES.image.width);
   const height = Number(d.height || FLOW_NODE_DEFAULT_SIZES.image.height);
 
@@ -3656,22 +3663,36 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const [assetPreviewUrl, setAssetPreviewUrl] = useState('');
   const [imageLoadState, setImageLoadState] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle');
   const assetId = typeof d.assetId === 'string' ? d.assetId : '';
+  const persistedThumbnailUrl = String(d.thumbnailUrl || '');
+  const persistedThumbnailNeedsRefresh = isAuthenticatedAssetBytesUrl(persistedThumbnailUrl);
   useEffect(() => {
-    if (!assetId || runtimeThumbnailUrl || d.thumbnailUrl) return;
+    if (!assetId || runtimeThumbnailUrl || (persistedThumbnailUrl && !persistedThumbnailNeedsRefresh)) return;
     let cancelled = false;
-    const previewUrl = getAssetBytesUrl(assetId, 'preview');
-    if (!cancelled) {
-      setAssetPreviewUrl(previewUrl);
-      updateNodeData(id, {
-        originalImageUrl: previewUrl,
-        thumbnailUrl: previewUrl,
+    void getAssetVariantUrl(assetId, 'preview')
+      .catch(() => getAssetDownloadUrl(assetId))
+      .then((download) => {
+        if (cancelled) return;
+        const previewUrl = String(download.url || '').trim();
+        setAssetPreviewUrl(previewUrl);
+        if (previewUrl) {
+          updateNodeData(id, {
+            originalImageUrl: previewUrl,
+            thumbnailUrl: previewUrl,
+          });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setAssetPreviewUrl('');
+        }
       });
-    }
     return () => {
       cancelled = true;
     };
-  }, [assetId, d.thumbnailUrl, id, runtimeThumbnailUrl, updateNodeData]);
-  const effectiveThumbnailUrl = runtimeThumbnailUrl || String(d.thumbnailUrl || '') || assetPreviewUrl;
+  }, [assetId, id, persistedThumbnailNeedsRefresh, persistedThumbnailUrl, runtimeThumbnailUrl, updateNodeData]);
+  const effectiveThumbnailUrl = runtimeThumbnailUrl
+    || (persistedThumbnailNeedsRefresh ? '' : persistedThumbnailUrl)
+    || assetPreviewUrl;
   const editableImageSource = useMemo(
     () => resolveEditableImageSource({
       assetId,
@@ -3699,6 +3720,27 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     (tool: string) => activeImageTool?.nodeId === id && activeImageTool.tool === tool,
     [activeImageTool, id],
   );
+  const handleImagePreviewError = useCallback(() => {
+    if (!assetId) {
+      setImageLoadState('error');
+      return;
+    }
+    void getAssetDownloadUrl(assetId)
+      .then((download) => {
+        const fallbackUrl = String(download.url || '').trim();
+        if (!fallbackUrl || fallbackUrl === effectiveThumbnailUrl) {
+          setImageLoadState('error');
+          return;
+        }
+        setAssetPreviewUrl(fallbackUrl);
+        setImageLoadState('loading');
+        updateNodeData(id, {
+          originalImageUrl: fallbackUrl,
+          thumbnailUrl: fallbackUrl,
+        });
+      })
+      .catch(() => setImageLoadState('error'));
+  }, [assetId, effectiveThumbnailUrl, id, updateNodeData]);
   
   const isTargeting = !!connectionNodeId && connectionNodeId !== id && hovered;
 
@@ -5419,7 +5461,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
           favoriteResultIds={favoriteResultIds}
           isGenerating={isGenerating}
           onImageLoad={() => setImageLoadState('loaded')}
-          onImageError={() => setImageLoadState('error')}
+          onImageError={handleImagePreviewError}
           onToggleResultStrip={toggleResultStrip}
           onToggleFavoriteResult={handleToggleFavoriteResult}
           onUploadClick={handleUploadClick}

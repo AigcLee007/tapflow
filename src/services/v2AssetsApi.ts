@@ -19,8 +19,3 @@ export async function getAssetVariantUrl(
     `/assets/${assetId}/download-url${query}`,
   );
 }
-
-export function getAssetBytesUrl(assetId: string, variantKey = 'preview'): string {
-  const query = variantKey ? `?variantKey=${encodeURIComponent(variantKey)}` : '';
-  return `/api/v2/assets/${encodeURIComponent(assetId)}/bytes${query}`;
-}

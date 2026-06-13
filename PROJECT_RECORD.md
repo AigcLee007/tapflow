@@ -71,9 +71,11 @@ As of 2026-06-13:
 - target-node image edit launch no longer stalls at `workflowLaunchStatus: saving_draft` when a manual run-save barrier overlaps an existing autosave; `saveNow()` now performs a foreground latest-graph flush before allowing workflow run creation to continue
 - same-origin asset bytes responses now normalize `content-length` from the actual response body and fall back from empty preview variants to original image bytes, addressing completed image-edit runs that rendered as 0-byte white previews
 - image edit worker requests now recover route keys from nested edit metadata when the top-level node route key is missing, preventing model-backed edits from falling back to the mock `image.default` route
+- canvas image previews now use browser-loadable signed preview URLs again, with automatic recovery from older saved authenticated `/bytes` URLs
 
 ## Recent Important Commits
 
+- pending: fix canvas asset preview display regression
 - pending: fix image edit route key fallback
 - pending: fix empty asset preview bytes fallback
 - pending: fix image edit save barrier stall
@@ -150,6 +152,22 @@ Notes:
   - `npm test -- src/services/v2AssetsApi.test.ts`
   - `npm run build --workspace @aigc-flow/api`
   - `npm run build --workspace @aigc-flow/worker`
+  - `npm run build`
+
+## 2026-06-14 - Canvas Asset Preview Display Regression
+
+- Investigated a production regression where reopened projects and newly generated image nodes showed `预览加载失败`.
+- Root cause:
+  - canvas display code had started writing `/api/v2/assets/:assetId/bytes?variantKey=preview` into image node preview fields
+  - that endpoint requires v2 Authorization headers, but browser `<img src>` requests do not attach the Bearer token
+  - existing nodes with persisted `/bytes` URLs skipped preview re-resolution because `thumbnailUrl` was already populated
+- Fixed canvas runtime output display to use signed preview download URLs again, with original-asset signed URL fallback when preview URL resolution fails.
+- Fixed image nodes to detect previously saved authenticated `/bytes` URLs and re-resolve a signed preview URL from `assetId`.
+- Added image load-error fallback from preview signed URL to original signed URL.
+- Restored mojibake text in the canvas asset drawer loading/empty states.
+- Validation:
+  - `npm test -- src/services/v2AssetsApi.test.ts src/flowCanvas/services/flowProjectApi.test.ts src/flowCanvas/runtime/v2WorkflowRunner.test.ts`
+  - `npm test -- src/flowCanvas/utils/editableImageSource.test.ts`
   - `npm run build`
 
 ## 2026-06-13 - Image Edit Tools v2 Auth Workflow Fix

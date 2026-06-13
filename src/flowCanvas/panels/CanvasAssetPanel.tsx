@@ -28,16 +28,16 @@ export function CanvasAssetPanel({
         selectedTab={library.selectedMediaTab}
       />
 
-      {library.loading ? <CanvasDockEmptyState message="姝ｅ湪鍔犺浇绱犳潗..." /> : null}
+      {library.loading ? <CanvasDockEmptyState message="素材加载中..." /> : null}
       {library.error ? <CanvasDockEmptyState message={library.error} /> : null}
       {!library.loading && !library.error && library.groupedAssets.length === 0 ? (
-        <CanvasDockEmptyState message="褰撳墠鍒嗙被涓嬭繕娌℃湁绱犳潗锛岃鍒扮礌鏉愬簱涓婁紶鍚庡啀寮曠敤銆?" />
+        <CanvasDockEmptyState message="当前分类下还没有素材，请到素材库上传后再引用。" />
       ) : null}
 
       {!library.loading && !library.error && library.groupedAssets.length > 0 ? (
         <AssetGroupedSections
           compact
-          emptyMessage="褰撳墠鍒嗙被涓嬭繕娌℃湁绱犳潗銆?"
+          emptyMessage="当前分类下还没有素材。"
           groups={library.groupedAssets}
           onOpen={(asset) => onInsertAsset(asset.id)}
           showActions={false}
