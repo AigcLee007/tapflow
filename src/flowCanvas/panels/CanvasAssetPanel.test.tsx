@@ -57,7 +57,19 @@ describe("CanvasAssetPanel", () => {
     useAssetLibraryMock.mockReturnValue({
       assets: [createAsset()],
       error: null,
-      folders: [{ id: "folder-1", name: "Recent", createdAt: "", createdBy: null, deletedAt: null, description: null, parentFolderId: null, tenantId: "tenant-1", updatedAt: "" }],
+      folders: [
+        {
+          id: "folder-1",
+          name: "Recent",
+          createdAt: "",
+          createdBy: null,
+          deletedAt: null,
+          description: null,
+          parentFolderId: null,
+          tenantId: "tenant-1",
+          updatedAt: "",
+        },
+      ],
       groupedAssets: [{ dateLabel: "2026-06-12", items: [createAsset()] }],
       loading: false,
       page: 1,
@@ -74,7 +86,7 @@ describe("CanvasAssetPanel", () => {
   });
 
   test("renders the drawer as date-grouped thumbnails without verbose asset metadata", () => {
-    render(<CanvasAssetPanel onInsertAsset={vi.fn()} projectId="project-1" />);
+    render(<CanvasAssetPanel onInsertAsset={vi.fn()} />);
 
     expect(screen.getByText("2026-06-12")).toBeTruthy();
     expect(screen.getByRole("button", { name: /图片1/ })).toBeTruthy();
@@ -88,16 +100,41 @@ describe("CanvasAssetPanel", () => {
   });
 
   test("does not show asset management buttons inside the drawer", () => {
-    render(<CanvasAssetPanel onInsertAsset={vi.fn()} projectId="project-1" />);
+    render(<CanvasAssetPanel onInsertAsset={vi.fn()} />);
 
     expect(screen.queryByRole("button", { name: "管理素材 drawer-reference.png" })).toBeNull();
   });
 
   test("does not render search or upload controls in the drawer header", () => {
-    render(<CanvasAssetPanel onInsertAsset={vi.fn()} projectId="project-1" />);
+    render(<CanvasAssetPanel onInsertAsset={vi.fn()} />);
 
     expect(screen.queryByPlaceholderText("搜索素材")).toBeNull();
     expect(screen.queryByRole("button", { name: "upload" })).toBeNull();
     expect(screen.getByRole("button", { name: /图片1/ })).toBeTruthy();
+  });
+
+  test("renders compact loading skeletons while drawer assets load", () => {
+    useAssetLibraryMock.mockReturnValue({
+      assets: [],
+      error: null,
+      folders: [],
+      groupedAssets: [],
+      loading: true,
+      page: 1,
+      pageSize: 60,
+      query: "",
+      refresh: vi.fn(async () => undefined),
+      selectedFolderId: null,
+      selectedMediaTab: "image",
+      setQuery: vi.fn(),
+      setSelectedFolderId: vi.fn(),
+      setSelectedMediaTab: vi.fn(),
+      total: 0,
+    });
+
+    render(<CanvasAssetPanel onInsertAsset={vi.fn()} />);
+
+    expect(screen.getByText("素材加载中...")).toBeTruthy();
+    expect(screen.getAllByTestId("brand-skeleton").length).toBeGreaterThan(0);
   });
 });

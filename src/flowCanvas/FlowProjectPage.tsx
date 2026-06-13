@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, Cloud, Loader2, RefreshCw } from "lucide-react";
 
 import { getAsset } from "../assets/assetApi";
+import { BrandTransition } from "../app/brand/BrandTransition";
 import { V2HttpError } from "../services/v2HttpClient";
 import FlowCanvasPage from "./FlowCanvasPage";
 import { useRemoteFlowAutosave, type RemoteFlowSaveStatus } from "./hooks/useRemoteFlowAutosave";
@@ -36,12 +37,11 @@ function StatusIcon({ status }: { status: RemoteFlowSaveStatus }) {
 
 function LoadingState() {
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-[#09090f] text-slate-200">
-      <div className="flex items-center gap-3 rounded border border-white/10 bg-white/[0.04] px-5 py-4 text-sm">
-        <Loader2 className="animate-spin text-sky-300" size={18} />
-        正在打开项目画布...
-      </div>
-    </div>
+    <BrandTransition
+      label="正在打开项目画布..."
+      sublabel="正在恢复节点、素材与云端草稿"
+      variant="canvas"
+    />
   );
 }
 

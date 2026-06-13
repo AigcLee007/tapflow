@@ -1,17 +1,18 @@
-﻿/**
+/**
  * TapNow-style minimal canvas chrome.
  */
-import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Bell, CheckCheck, Megaphone, RefreshCw, Share2, Sparkles, X } from 'lucide-react';
-import { useFlowCanvasStore } from '../store/flowCanvasStore';
-import { getStoredAccessToken, V2_AUTH_CHANGE_EVENT } from '../../services/v2HttpClient';
-import { getBillingSummary } from '../../billing/billingApi';
-import { formatPoint } from '../../utils/pointFormat';
-import type { CanvasSaveStatusView } from '../FlowCanvasPage';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Bell, CheckCheck, Megaphone, RefreshCw, Share2, Sparkles, X } from "lucide-react";
 
-const LogoMark: React.FC = () => <img src="/logo.png" alt="艾特智绘" style={logoImageStyle} />;
-const formatToolbarPoint = (value: number) => formatPoint(value).replace(/\.0$/, '');
-const SEEN_STORAGE_KEY = 'seen_announcement_ids';
+import { getBillingSummary } from "../../billing/billingApi";
+import { BrandMark } from "../../app/brand/BrandMark";
+import { getStoredAccessToken, V2_AUTH_CHANGE_EVENT } from "../../services/v2HttpClient";
+import { formatPoint } from "../../utils/pointFormat";
+import type { CanvasSaveStatusView } from "../FlowCanvasPage";
+import { useFlowCanvasStore } from "../store/flowCanvasStore";
+
+const formatToolbarPoint = (value: number) => formatPoint(value).replace(/\.0$/, "");
+const SEEN_STORAGE_KEY = "seen_announcement_ids";
 
 interface Announcement {
   id: string;
@@ -42,9 +43,9 @@ const writeSeenAnnouncementIds = (ids: string[]) => {
 };
 
 const formatAnnouncementDate = (input?: string) => {
-  if (!input) return '';
+  if (!input) return "";
   const date = new Date(input);
-  if (Number.isNaN(date.getTime())) return '';
+  if (Number.isNaN(date.getTime())) return "";
   return date.toLocaleDateString();
 };
 
@@ -85,18 +86,18 @@ export const FlowTopToolbar: React.FC<{
   useEffect(() => {
     void refreshPoints();
 
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
     window.addEventListener(V2_AUTH_CHANGE_EVENT, refreshPoints);
-    window.addEventListener('storage', refreshPoints);
+    window.addEventListener("storage", refreshPoints);
     return () => {
       window.removeEventListener(V2_AUTH_CHANGE_EVENT, refreshPoints);
-      window.removeEventListener('storage', refreshPoints);
+      window.removeEventListener("storage", refreshPoints);
     };
   }, [refreshPoints]);
 
   const refreshAnnouncements = useCallback(async () => {
     try {
-      const response = await fetch('/api/announcements?page=1&pageSize=50');
+      const response = await fetch("/api/announcements?page=1&pageSize=50");
       if (!response.ok) {
         setAnnouncements([]);
         return;
@@ -121,16 +122,16 @@ export const FlowTopToolbar: React.FC<{
       }
     };
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
+      if (event.key === "Escape") {
         setNotificationOpen(false);
         setSelectedAnnouncement(null);
       }
     };
-    document.addEventListener('mousedown', handleMouseDown);
-    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener("mousedown", handleMouseDown);
+    document.addEventListener("keydown", handleKeyDown);
     return () => {
-      document.removeEventListener('mousedown', handleMouseDown);
-      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener("mousedown", handleMouseDown);
+      document.removeEventListener("keydown", handleKeyDown);
     };
   }, [notificationOpen]);
 
@@ -159,7 +160,7 @@ export const FlowTopToolbar: React.FC<{
   };
 
   const copyShareLink = () => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
     const url = window.location.href;
     void navigator.clipboard?.writeText(url).catch(() => undefined);
     setShareCopied(true);
@@ -169,10 +170,10 @@ export const FlowTopToolbar: React.FC<{
   return (
     <div className="nodrag nopan nowheel" style={topChromeStyle}>
       <div style={titleClusterStyle}>
-        <LogoMark />
+        <BrandMark size="canvas" showCaption={false} />
         <div style={titleTextWrapStyle}>
           <input
-            value={projectTitle || '未命名项目'}
+            value={projectTitle || "未命名项目"}
             onChange={(event) => setProjectTitle(event.target.value)}
             style={titleInputStyle}
             spellCheck={false}
@@ -180,12 +181,12 @@ export const FlowTopToolbar: React.FC<{
           />
           <div style={saveStatusStyle(saveStatus?.status)}>
             {saveStatus?.icon}
-            <span>{saveStatus?.label || '已保存到云端'}</span>
-            {saveStatus?.status === 'failed' && saveStatus.onRetry && (
+            <span>{saveStatus?.label || "已保存到云端"}</span>
+            {saveStatus?.status === "failed" && saveStatus.onRetry && (
               <button
                 type="button"
                 style={saveRetryButtonStyle}
-                title={saveStatus.error || '重试同步'}
+                title={saveStatus.error || "重试同步"}
                 onClick={saveStatus.onRetry}
               >
                 <RefreshCw size={12} />
@@ -198,7 +199,7 @@ export const FlowTopToolbar: React.FC<{
       <div style={rightClusterStyle}>
         <button type="button" style={topPillStyle} title="当前点数">
           <Sparkles size={17} />
-          <span>{pointsLoading ? '...' : formatToolbarPoint(points)}</span>
+          <span>{pointsLoading ? "..." : formatToolbarPoint(points)}</span>
         </button>
         <div ref={notificationRef} style={notificationHostStyle}>
           <button
@@ -213,9 +214,7 @@ export const FlowTopToolbar: React.FC<{
             <Bell size={17} />
             <span>通知</span>
             {unreadIds.length > 0 && (
-              <span style={notificationBadgeStyle}>
-                {unreadIds.length > 99 ? '99+' : unreadIds.length}
-              </span>
+              <span style={notificationBadgeStyle}>{unreadIds.length > 99 ? "99+" : unreadIds.length}</span>
             )}
           </button>
           {notificationOpen && (
@@ -250,7 +249,7 @@ export const FlowTopToolbar: React.FC<{
                         onClick={() => openAnnouncement(item)}
                       >
                         <span style={notificationItemContentStyle}>
-                          <span style={notificationItemTitleStyle}>{item.title || '系统公告'}</span>
+                          <span style={notificationItemTitleStyle}>{item.title || "系统公告"}</span>
                           {item.pinned && <span style={pinnedStyle}>置顶</span>}
                           <span style={notificationItemTextStyle}>{item.content}</span>
                           <span style={notificationDateStyle}>{formatAnnouncementDate(item.date)}</span>
@@ -264,7 +263,12 @@ export const FlowTopToolbar: React.FC<{
             </div>
           )}
         </div>
-        <button type="button" style={shareButtonStyle} title={shareCopied ? '已复制链接' : '分享'} onClick={copyShareLink}>
+        <button
+          type="button"
+          style={shareButtonStyle}
+          title={shareCopied ? "已复制链接" : "分享"}
+          onClick={copyShareLink}
+        >
           <Share2 size={17} />
         </button>
       </div>
@@ -273,12 +277,12 @@ export const FlowTopToolbar: React.FC<{
         <div style={announcementOverlayStyle} onMouseDown={() => setSelectedAnnouncement(null)}>
           <div style={announcementModalStyle} onMouseDown={(event) => event.stopPropagation()}>
             <div style={announcementModalHeaderStyle}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
                 <span style={announcementIconStyle}>
                   <Megaphone size={20} />
                 </span>
                 <div style={{ minWidth: 0 }}>
-                  <div style={announcementTitleStyle}>{selectedAnnouncement.title || '系统公告'}</div>
+                  <div style={announcementTitleStyle}>{selectedAnnouncement.title || "系统公告"}</div>
                   <div style={announcementDateModalStyle}>{formatAnnouncementDate(selectedAnnouncement.date)}</div>
                 </div>
               </div>
@@ -290,7 +294,12 @@ export const FlowTopToolbar: React.FC<{
             {!!selectedAnnouncement.images?.length && (
               <div style={announcementImagesStyle}>
                 {selectedAnnouncement.images.map((src, index) => (
-                  <img key={`${src}-${index}`} src={src} alt={`announcement-${index + 1}`} style={announcementImageStyle} />
+                  <img
+                    key={`${src}-${index}`}
+                    src={src}
+                    alt={`announcement-${index + 1}`}
+                    style={announcementImageStyle}
+                  />
                 ))}
               </div>
             )}
@@ -307,64 +316,56 @@ export const FlowTopToolbar: React.FC<{
 });
 
 const topChromeStyle: React.CSSProperties = {
-  position: 'fixed',
+  position: "fixed",
   left: 18,
   right: 18,
   top: 16,
   zIndex: 900,
-  display: 'flex',
-  alignItems: 'flex-start',
-  justifyContent: 'space-between',
-  pointerEvents: 'none',
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  pointerEvents: "none",
 };
 
 const titleClusterStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 10,
-  pointerEvents: 'auto',
+  display: "flex",
+  alignItems: "center",
+  gap: 14,
+  pointerEvents: "auto",
   minWidth: 0,
-};
-
-const logoImageStyle: React.CSSProperties = {
-  width: 34,
-  height: 34,
-  objectFit: 'contain',
-  display: 'block',
-  filter: 'drop-shadow(0 8px 14px rgba(0,0,0,0.34))',
 };
 
 const titleTextWrapStyle: React.CSSProperties = {
   minWidth: 0,
-  display: 'flex',
-  flexDirection: 'column',
+  display: "flex",
+  flexDirection: "column",
   gap: 3,
 };
 
 const titleInputStyle: React.CSSProperties = {
-  width: 'min(220px, calc(100vw - 420px))',
+  width: "min(260px, calc(100vw - 440px))",
   minWidth: 112,
-  border: 'none',
-  outline: 'none',
-  background: 'transparent',
-  color: '#fff',
-  fontSize: 18,
-  fontWeight: 760,
+  border: "none",
+  outline: "none",
+  background: "transparent",
+  color: "#fff",
+  fontSize: 20,
+  fontWeight: 820,
   lineHeight: 1,
   padding: 0,
-  textShadow: '0 2px 12px rgba(0,0,0,0.35)',
+  textShadow: "0 2px 16px rgba(0,0,0,0.5)",
 };
 
 const saveStatusStyle = (status?: string): React.CSSProperties => ({
-  display: 'flex',
-  alignItems: 'center',
+  display: "flex",
+  alignItems: "center",
   gap: 5,
   color:
-    status === 'failed'
-      ? 'rgba(251,191,36,0.86)'
-      : status === 'saved'
-        ? 'rgba(156,163,175,0.78)'
-        : 'rgba(125,211,252,0.86)',
+    status === "failed"
+      ? "rgba(251,191,36,0.86)"
+      : status === "saved"
+        ? "rgba(156,163,175,0.78)"
+        : "rgba(125,211,252,0.86)",
   fontSize: 12,
   fontWeight: 520,
   lineHeight: 1,
@@ -373,309 +374,309 @@ const saveStatusStyle = (status?: string): React.CSSProperties => ({
 const saveRetryButtonStyle: React.CSSProperties = {
   width: 20,
   height: 20,
-  borderRadius: '50%',
-  border: '1px solid rgba(251,191,36,0.28)',
-  background: 'rgba(251,191,36,0.1)',
-  color: '#fde68a',
-  display: 'grid',
-  placeItems: 'center',
-  cursor: 'pointer',
+  borderRadius: "50%",
+  border: "1px solid rgba(251,191,36,0.28)",
+  background: "rgba(251,191,36,0.1)",
+  color: "#fde68a",
+  display: "grid",
+  placeItems: "center",
+  cursor: "pointer",
   padding: 0,
 };
 
 const rightClusterStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
+  display: "flex",
+  alignItems: "center",
   gap: 8,
-  pointerEvents: 'auto',
+  pointerEvents: "auto",
 };
 
 const topPillStyle: React.CSSProperties = {
   height: 42,
-  border: 'none',
+  border: "none",
   borderRadius: 16,
-  padding: '0 14px',
-  display: 'flex',
-  alignItems: 'center',
+  padding: "0 14px",
+  display: "flex",
+  alignItems: "center",
   gap: 7,
-  background: 'rgba(43,43,49,0.96)',
-  color: '#fff',
+  background: "rgba(43,43,49,0.96)",
+  color: "#fff",
   fontSize: 13,
   fontWeight: 820,
-  cursor: 'pointer',
-  boxShadow: '0 12px 34px rgba(0,0,0,0.34), inset 0 1px 0 rgba(255,255,255,0.06)',
+  cursor: "pointer",
+  boxShadow: "0 12px 34px rgba(0,0,0,0.34), inset 0 1px 0 rgba(255,255,255,0.06)",
 };
 
 const shareButtonStyle: React.CSSProperties = {
   width: 42,
   height: 42,
-  border: 'none',
-  borderRadius: '50%',
-  display: 'grid',
-  placeItems: 'center',
-  background: 'rgba(43,43,49,0.96)',
-  color: '#fff',
-  cursor: 'pointer',
-  boxShadow: '0 12px 34px rgba(0,0,0,0.34), inset 0 1px 0 rgba(255,255,255,0.06)',
+  border: "none",
+  borderRadius: "50%",
+  display: "grid",
+  placeItems: "center",
+  background: "rgba(43,43,49,0.96)",
+  color: "#fff",
+  cursor: "pointer",
+  boxShadow: "0 12px 34px rgba(0,0,0,0.34), inset 0 1px 0 rgba(255,255,255,0.06)",
 };
 
 const notificationHostStyle: React.CSSProperties = {
-  position: 'relative',
+  position: "relative",
 };
 
 const notificationBadgeStyle: React.CSSProperties = {
   minWidth: 20,
   height: 20,
   borderRadius: 999,
-  padding: '0 6px',
-  display: 'grid',
-  placeItems: 'center',
-  background: '#ef4444',
-  color: '#fff',
+  padding: "0 6px",
+  display: "grid",
+  placeItems: "center",
+  background: "#ef4444",
+  color: "#fff",
   fontSize: 11,
   fontWeight: 850,
   lineHeight: 1,
-  boxShadow: '0 0 0 2px rgba(43,43,49,0.96), 0 0 14px rgba(239,68,68,0.78)',
+  boxShadow: "0 0 0 2px rgba(43,43,49,0.96), 0 0 14px rgba(239,68,68,0.78)",
 };
 
 const notificationPanelStyle: React.CSSProperties = {
-  position: 'absolute',
-  top: 'calc(100% + 14px)',
+  position: "absolute",
+  top: "calc(100% + 14px)",
   right: 0,
   width: 370,
-  maxWidth: 'calc(100vw - 48px)',
-  overflow: 'hidden',
+  maxWidth: "calc(100vw - 48px)",
+  overflow: "hidden",
   borderRadius: 18,
-  background: 'rgba(18,20,27,0.98)',
-  border: '1px solid rgba(255,255,255,0.12)',
-  boxShadow: '0 28px 70px rgba(0,0,0,0.56)',
-  backdropFilter: 'blur(22px)',
+  background: "rgba(18,20,27,0.98)",
+  border: "1px solid rgba(255,255,255,0.12)",
+  boxShadow: "0 28px 70px rgba(0,0,0,0.56)",
+  backdropFilter: "blur(22px)",
 };
 
 const notificationHeaderStyle: React.CSSProperties = {
   height: 54,
-  padding: '0 14px 0 16px',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  borderBottom: '1px solid rgba(255,255,255,0.08)',
+  padding: "0 14px 0 16px",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  borderBottom: "1px solid rgba(255,255,255,0.08)",
 };
 
 const notificationHeaderTitleStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
+  display: "flex",
+  alignItems: "center",
   gap: 9,
-  color: '#fff',
+  color: "#fff",
   fontSize: 15,
   fontWeight: 780,
 };
 
 const markReadButtonStyle: React.CSSProperties = {
   height: 32,
-  border: '1px solid rgba(255,255,255,0.1)',
+  border: "1px solid rgba(255,255,255,0.1)",
   borderRadius: 10,
-  background: 'rgba(255,255,255,0.055)',
-  color: '#d1d5db',
-  padding: '0 10px',
-  display: 'flex',
-  alignItems: 'center',
+  background: "rgba(255,255,255,0.055)",
+  color: "#d1d5db",
+  padding: "0 10px",
+  display: "flex",
+  alignItems: "center",
   gap: 6,
   fontSize: 12,
   fontWeight: 700,
-  cursor: 'pointer',
+  cursor: "pointer",
 };
 
 const notificationListStyle: React.CSSProperties = {
-  maxHeight: '62vh',
-  overflowY: 'auto',
+  maxHeight: "62vh",
+  overflowY: "auto",
 };
 
 const emptyNotificationStyle: React.CSSProperties = {
-  padding: '44px 16px',
-  textAlign: 'center',
-  color: 'rgba(255,255,255,0.45)',
+  padding: "44px 16px",
+  textAlign: "center",
+  color: "rgba(255,255,255,0.45)",
   fontSize: 14,
 };
 
 const notificationItemStyle: React.CSSProperties = {
-  position: 'relative',
-  width: '100%',
-  border: 'none',
-  borderBottom: '1px solid rgba(255,255,255,0.06)',
-  background: 'transparent',
-  color: '#fff',
-  padding: '14px 18px',
-  display: 'flex',
-  alignItems: 'center',
+  position: "relative",
+  width: "100%",
+  border: "none",
+  borderBottom: "1px solid rgba(255,255,255,0.06)",
+  background: "transparent",
+  color: "#fff",
+  padding: "14px 18px",
+  display: "flex",
+  alignItems: "center",
   gap: 12,
-  textAlign: 'left',
-  cursor: 'pointer',
+  textAlign: "left",
+  cursor: "pointer",
 };
 
 const notificationItemContentStyle: React.CSSProperties = {
   minWidth: 0,
   flex: 1,
-  display: 'flex',
-  flexDirection: 'column',
+  display: "flex",
+  flexDirection: "column",
   gap: 6,
 };
 
 const notificationItemTitleStyle: React.CSSProperties = {
-  color: '#f8fafc',
+  color: "#f8fafc",
   fontSize: 14,
   fontWeight: 800,
-  overflow: 'hidden',
-  textOverflow: 'ellipsis',
-  whiteSpace: 'nowrap',
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
 };
 
 const pinnedStyle: React.CSSProperties = {
-  alignSelf: 'flex-start',
+  alignSelf: "flex-start",
   borderRadius: 999,
-  background: 'rgba(245,158,11,0.16)',
-  color: '#fbbf24',
-  padding: '2px 7px',
+  background: "rgba(245,158,11,0.16)",
+  color: "#fbbf24",
+  padding: "2px 7px",
   fontSize: 10,
   fontWeight: 750,
 };
 
 const notificationItemTextStyle: React.CSSProperties = {
-  color: 'rgba(209,213,219,0.78)',
+  color: "rgba(209,213,219,0.78)",
   fontSize: 12,
   lineHeight: 1.55,
-  display: '-webkit-box',
+  display: "-webkit-box",
   WebkitLineClamp: 2,
-  WebkitBoxOrient: 'vertical',
-  overflow: 'hidden',
+  WebkitBoxOrient: "vertical",
+  overflow: "hidden",
 };
 
 const notificationDateStyle: React.CSSProperties = {
-  color: 'rgba(148,163,184,0.62)',
+  color: "rgba(148,163,184,0.62)",
   fontSize: 11,
 };
 
 const unreadDotStyle: React.CSSProperties = {
   width: 8,
   height: 8,
-  borderRadius: '50%',
-  background: '#60a5fa',
-  boxShadow: '0 0 10px rgba(96,165,250,0.85)',
+  borderRadius: "50%",
+  background: "#60a5fa",
+  boxShadow: "0 0 10px rgba(96,165,250,0.85)",
   flexShrink: 0,
 };
 
 const announcementOverlayStyle: React.CSSProperties = {
-  position: 'fixed',
+  position: "fixed",
   inset: 0,
   zIndex: 1300,
-  background: 'rgba(0,0,0,0.62)',
-  backdropFilter: 'blur(6px)',
-  display: 'grid',
-  placeItems: 'center',
-  pointerEvents: 'auto',
+  background: "rgba(0,0,0,0.62)",
+  backdropFilter: "blur(6px)",
+  display: "grid",
+  placeItems: "center",
+  pointerEvents: "auto",
   padding: 24,
 };
 
 const announcementModalStyle: React.CSSProperties = {
-  width: 'min(520px, calc(100vw - 32px))',
-  maxHeight: '86vh',
-  overflow: 'hidden',
+  width: "min(520px, calc(100vw - 32px))",
+  maxHeight: "86vh",
+  overflow: "hidden",
   borderRadius: 22,
-  background: 'rgba(24,24,27,0.98)',
-  border: '1px solid rgba(245,158,11,0.22)',
-  boxShadow: '0 32px 86px rgba(0,0,0,0.65)',
+  background: "rgba(24,24,27,0.98)",
+  border: "1px solid rgba(245,158,11,0.22)",
+  boxShadow: "0 32px 86px rgba(0,0,0,0.65)",
 };
 
 const announcementModalHeaderStyle: React.CSSProperties = {
-  padding: '18px 18px 16px',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
+  padding: "18px 18px 16px",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
   gap: 16,
-  borderBottom: '1px solid rgba(255,255,255,0.07)',
-  background: 'linear-gradient(90deg, rgba(245,158,11,0.12), transparent)',
+  borderBottom: "1px solid rgba(255,255,255,0.07)",
+  background: "linear-gradient(90deg, rgba(245,158,11,0.12), transparent)",
 };
 
 const announcementIconStyle: React.CSSProperties = {
   width: 40,
   height: 40,
   borderRadius: 12,
-  display: 'grid',
-  placeItems: 'center',
-  background: 'rgba(245,158,11,0.12)',
-  color: '#f59e0b',
+  display: "grid",
+  placeItems: "center",
+  background: "rgba(245,158,11,0.12)",
+  color: "#f59e0b",
   flexShrink: 0,
 };
 
 const announcementTitleStyle: React.CSSProperties = {
-  color: '#fff',
+  color: "#fff",
   fontSize: 16,
   fontWeight: 820,
-  overflow: 'hidden',
-  textOverflow: 'ellipsis',
-  whiteSpace: 'nowrap',
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
 };
 
 const announcementDateModalStyle: React.CSSProperties = {
   marginTop: 4,
-  color: 'rgba(209,213,219,0.58)',
+  color: "rgba(209,213,219,0.58)",
   fontSize: 12,
 };
 
 const modalCloseButtonStyle: React.CSSProperties = {
   width: 32,
   height: 32,
-  border: 'none',
+  border: "none",
   borderRadius: 10,
-  display: 'grid',
-  placeItems: 'center',
-  background: 'rgba(255,255,255,0.06)',
-  color: 'rgba(255,255,255,0.72)',
-  cursor: 'pointer',
+  display: "grid",
+  placeItems: "center",
+  background: "rgba(255,255,255,0.06)",
+  color: "rgba(255,255,255,0.72)",
+  cursor: "pointer",
   flexShrink: 0,
 };
 
 const announcementBodyStyle: React.CSSProperties = {
-  maxHeight: '38vh',
-  overflowY: 'auto',
-  padding: '18px 20px',
-  color: '#d4d4d8',
+  maxHeight: "38vh",
+  overflowY: "auto",
+  padding: "18px 20px",
+  color: "#d4d4d8",
   fontSize: 14,
   lineHeight: 1.75,
-  whiteSpace: 'pre-wrap',
+  whiteSpace: "pre-wrap",
 };
 
 const announcementImagesStyle: React.CSSProperties = {
-  maxHeight: '26vh',
-  overflowY: 'auto',
-  padding: '0 20px 18px',
-  display: 'grid',
+  maxHeight: "26vh",
+  overflowY: "auto",
+  padding: "0 20px 18px",
+  display: "grid",
   gap: 10,
 };
 
 const announcementImageStyle: React.CSSProperties = {
-  width: '100%',
+  width: "100%",
   maxHeight: 240,
-  objectFit: 'contain',
+  objectFit: "contain",
   borderRadius: 14,
-  border: '1px solid rgba(255,255,255,0.1)',
-  background: 'rgba(0,0,0,0.25)',
+  border: "1px solid rgba(255,255,255,0.1)",
+  background: "rgba(0,0,0,0.25)",
 };
 
 const announcementFooterStyle: React.CSSProperties = {
-  padding: '14px 18px 18px',
-  display: 'flex',
-  justifyContent: 'flex-end',
-  borderTop: '1px solid rgba(255,255,255,0.06)',
+  padding: "14px 18px 18px",
+  display: "flex",
+  justifyContent: "flex-end",
+  borderTop: "1px solid rgba(255,255,255,0.06)",
 };
 
 const confirmButtonStyle: React.CSSProperties = {
   height: 38,
-  border: 'none',
+  border: "none",
   borderRadius: 12,
-  background: '#f59e0b',
-  color: '#111827',
-  padding: '0 18px',
+  background: "#f59e0b",
+  color: "#111827",
+  padding: "0 18px",
   fontSize: 14,
   fontWeight: 800,
-  cursor: 'pointer',
+  cursor: "pointer",
 };

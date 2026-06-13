@@ -73,6 +73,37 @@ As of 2026-06-13:
 - image edit worker requests now recover route keys from nested edit metadata when the top-level node route key is missing, preventing model-backed edits from falling back to the mock `image.default` route
 - canvas image previews now use browser-loadable signed preview URLs again, with automatic recovery from older saved authenticated `/bytes` URLs
 
+## 2026-06-14 - Brand Chrome and Transition System Tasks 1-4
+
+- Added a shared creator-facing brand UI layer under `src/app/brand`:
+  - `BrandMark` for consistent logo rendering in dark chrome
+  - `BrandTransition` for branded animated loading states
+- Upgraded auth loading from plain centered text to a branded full-screen transition so the first workspace entry feels intentional instead of placeholder-like.
+- Upgraded project canvas loading from a text spinner card to the same branded transition, with clearer supporting copy for draft/node recovery.
+- Unified touched project loading, save-status, retry, and asset-insert strings to readable Chinese in the updated surfaces.
+- Replaced the canvas top-left inline logo image with the shared `BrandMark`, increasing logo clarity, contrast, and title hierarchy in the canvas chrome.
+- Added focused regression coverage for:
+  - `src/app/brand/BrandMark.test.tsx`
+  - `src/app/brand/BrandTransition.test.tsx`
+  - `src/auth/AuthGate.test.tsx`
+  - `src/flowCanvas/FlowProjectPage.test.tsx`
+  - `src/flowCanvas/canvas/FlowTopToolbar.test.tsx`
+- Validation:
+  - `npm test -- src/app/brand/BrandMark.test.tsx src/app/brand/BrandTransition.test.tsx src/auth/AuthGate.test.tsx src/flowCanvas/FlowProjectPage.test.tsx src/flowCanvas/canvas/FlowTopToolbar.test.tsx`
+  - `npm run build`
+
+## 2026-06-14 - Brand Chrome and Transition System Tasks 5-7
+
+- Replaced `/workspace` project-list loading with an inline branded transition so the project surface keeps its layout while data refreshes.
+- Added a lightweight route fade shell in `AppRouter` for non-canvas page switches to reduce plain text/blank-feeling transitions.
+- Changed `/assets` loading to contextual skeleton tiles instead of a static text wait state.
+- Changed the canvas asset drawer loading experience to compact skeleton thumbnails so reopening the drawer keeps canvas context visible.
+- Normalized touched template/history/asset/workspace strings to readable Chinese in the updated loading and empty-state surfaces.
+- Added reduced-motion-safe skeleton animation support in `src/index.css`.
+- Validation:
+  - `npm test -- src/app/brand/BrandMark.test.tsx src/app/brand/BrandTransition.test.tsx src/auth/AuthGate.test.tsx src/flowCanvas/FlowProjectPage.test.tsx src/flowCanvas/canvas/FlowTopToolbar.test.tsx src/workspace/WorkspacePage.test.tsx src/assets/AssetLibraryPage.test.tsx src/flowCanvas/panels/CanvasAssetPanel.test.tsx`
+  - `npm run build`
+
 ## Recent Important Commits
 
 - pending: fix canvas asset preview display regression

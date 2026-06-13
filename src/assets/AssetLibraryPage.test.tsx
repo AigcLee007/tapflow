@@ -150,6 +150,15 @@ describe("AssetLibraryPage", () => {
     expect(screen.getByText("共 135 个素材")).toBeTruthy();
   });
 
+  test("renders contextual skeleton loading for the asset library", () => {
+    mockLibrary({ loading: true });
+
+    renderPage();
+
+    expect(screen.getByText("素材加载中...")).toBeTruthy();
+    expect(screen.getAllByTestId("brand-skeleton").length).toBeGreaterThan(0);
+  });
+
   test("opens an asset action menu and manages the asset", async () => {
     const refresh = vi.fn(async () => undefined);
     mockLibrary({

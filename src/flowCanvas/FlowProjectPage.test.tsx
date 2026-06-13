@@ -88,6 +88,7 @@ describe("FlowProjectPage", () => {
     render(<FlowProjectPage />);
 
     expect(screen.getByText("正在打开项目画布...")).toBeTruthy();
+    expect(screen.getByTestId("brand-transition").getAttribute("data-variant")).toBe("canvas");
   });
 
   test("renders error state", () => {

@@ -116,6 +116,16 @@ describe("WorkspacePage", () => {
     expect(screen.getByText("已选择 1 个项目")).toBeTruthy();
   });
 
+  test("uses branded workspace transition while projects load", () => {
+    mockWorkspaceProjects({ loading: true, projects: [], filteredProjects: [] });
+
+    render(<WorkspacePage />);
+
+    expect(screen.getByText("正在加载项目...")).toBeTruthy();
+    expect(screen.getByTestId("brand-transition").getAttribute("data-variant")).toBe("workspace");
+    expect(screen.getByTestId("brand-transition").getAttribute("data-mode")).toBe("inline");
+  });
+
   test("deletes a project from the action menu without forcing a loading refresh", async () => {
     const refresh = vi.fn(async () => undefined);
     const removeProjectOptimistically = vi.fn(async () => undefined);

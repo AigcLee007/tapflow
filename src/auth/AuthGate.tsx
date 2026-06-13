@@ -1,5 +1,6 @@
 import React, { useEffect } from "react";
 
+import { BrandTransition } from "../app/brand/BrandTransition";
 import { LOGIN_ROUTE } from "../app/routes";
 import { useAuth } from "./useAuth";
 
@@ -15,11 +16,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   }, [authenticated, loading]);
 
   if (loading) {
-    return (
-      <div className="grid min-h-screen place-items-center bg-[#09090f] text-sm text-slate-200">
-        正在加载工作区...
-      </div>
-    );
+    return <BrandTransition label="正在加载工作区..." variant="auth" />;
   }
 
   if (!authenticated) {

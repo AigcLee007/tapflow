@@ -150,7 +150,9 @@ export function AppRouter() {
         <FlowProjectPage />
       ) : (
         <WorkspaceShell>
-          <ProtectedRoutes pathname={pathname} />
+          <div className="app-route-transition" key={pathname}>
+            <ProtectedRoutes pathname={pathname} />
+          </div>
         </WorkspaceShell>
       )}
     </AuthGate>

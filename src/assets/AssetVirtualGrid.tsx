@@ -30,7 +30,7 @@ export function AssetVirtualGrid({
           onClick={() => setVisibleCount((current) => Math.min(current + limit, items.length))}
           type="button"
         >
-          鍔犺浇鏇村
+          加载更多
         </button>
       ) : null}
     </>

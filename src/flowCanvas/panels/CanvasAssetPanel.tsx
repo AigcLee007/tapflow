@@ -5,6 +5,23 @@ import { filterAssetsByMediaTab } from "../../assets/assetLibraryView";
 import { useAssetLibrary } from "../../assets/useAssetLibrary";
 import { CanvasDockEmptyState } from "./CanvasDockDrawer";
 
+function LoadingSkeleton() {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ color: "#a1a1aa", fontSize: 12, lineHeight: 1.55 }}>素材加载中...</div>
+      <div className="grid grid-cols-2 gap-3">
+        {Array.from({ length: 6 }).map((_, index) => (
+          <div
+            key={index}
+            className="brand-skeleton h-24 rounded-lg border border-white/10 bg-white/[0.04]"
+            data-testid="brand-skeleton"
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function CanvasAssetPanel({
   onInsertAsset,
 }: {
@@ -28,7 +45,7 @@ export function CanvasAssetPanel({
         selectedTab={library.selectedMediaTab}
       />
 
-      {library.loading ? <CanvasDockEmptyState message="素材加载中..." /> : null}
+      {library.loading ? <LoadingSkeleton /> : null}
       {library.error ? <CanvasDockEmptyState message={library.error} /> : null}
       {!library.loading && !library.error && library.groupedAssets.length === 0 ? (
         <CanvasDockEmptyState message="当前分类下还没有素材，请到素材库上传后再引用。" />

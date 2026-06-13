@@ -16,6 +16,23 @@ import { AssetPreviewModal } from "./AssetPreviewModal";
 import { UploadAssetButton } from "./UploadAssetButton";
 import { useAssetLibrary } from "./useAssetLibrary";
 
+function AssetLibraryLoadingState() {
+  return (
+    <div className="space-y-4">
+      <div className="text-sm text-slate-400">素材加载中...</div>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {Array.from({ length: 8 }).map((_, index) => (
+          <div
+            key={index}
+            className="brand-skeleton h-28 rounded-xl border border-white/10 bg-white/[0.04]"
+            data-testid="brand-skeleton"
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function AssetLibraryPage() {
   const { authenticated, sessionId, tenant, user } = useAuth();
   const library = useAssetLibrary();
@@ -164,19 +181,23 @@ export function AssetLibraryPage() {
                 selectedTab={library.selectedMediaTab}
               />
             </div>
-            <AssetGrid
-              emptyMessage={`当前${selectedMediaLabel}分类下还没有素材。`}
-              folders={library.folders}
-              groups={library.groupedAssets}
-              loading={library.loading}
-              onAddToFolder={moveAssetToFolder}
-              onDelete={removeAsset}
-              onDownload={downloadAsset}
-              onOpen={setPreviewAsset}
-              onRename={renameAsset}
-              onToggleFavorite={toggleAssetFavorite}
-              tileOnly
-            />
+            {library.loading ? (
+              <AssetLibraryLoadingState />
+            ) : (
+              <AssetGrid
+                emptyMessage={`当前${selectedMediaLabel}分类下还没有素材。`}
+                folders={library.folders}
+                groups={library.groupedAssets}
+                loading={library.loading}
+                onAddToFolder={moveAssetToFolder}
+                onDelete={removeAsset}
+                onDownload={downloadAsset}
+                onOpen={setPreviewAsset}
+                onRename={renameAsset}
+                onToggleFavorite={toggleAssetFavorite}
+                tileOnly
+              />
+            )}
           </div>
         </main>
       </div>

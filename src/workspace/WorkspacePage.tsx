@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 
-import { CreateProjectCard } from "./CreateProjectCard";
-import { ProjectCard } from "./ProjectCard";
+import { BrandTransition } from "../app/brand/BrandTransition";
 import { ProjectGrid } from "./ProjectGrid";
 import { ProjectTabs } from "./ProjectTabs";
 import { ProjectToolbar } from "./ProjectToolbar";
@@ -115,8 +114,13 @@ export function WorkspacePage() {
         )}
 
         {loading ? (
-          <div className="grid min-h-64 place-items-center rounded-[22px] border border-white/10 bg-white/[0.04] text-sm text-slate-400">
-            正在加载项目...
+          <div className="relative min-h-64 overflow-hidden rounded-[22px] border border-white/10 bg-white/[0.04]">
+            <BrandTransition
+              label="正在加载项目..."
+              sublabel="正在同步工作空间和项目封面"
+              variant="workspace"
+              mode="inline"
+            />
           </div>
         ) : (
           <ProjectGrid
