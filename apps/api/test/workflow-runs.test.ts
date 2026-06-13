@@ -352,6 +352,85 @@ async function createDraftOnlyFlowWithImageNodes(
   return flow.json();
 }
 
+async function createDraftOnlyFlowWithImageEditTarget(
+  api: ReturnType<typeof buildTestApp>["api"],
+  accessToken: string,
+  routeKey: string,
+) {
+  const project = await api.inject({
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+    },
+    method: "POST",
+    payload: {
+      name: "Workflow Image Edit Target Project",
+    },
+    url: "/api/v2/projects",
+  });
+  expect(project.statusCode).toBe(201);
+
+  const flow = await api.inject({
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+    },
+    method: "POST",
+    payload: {
+      title: "Workflow Image Edit Target Flow",
+    },
+    url: `/api/v2/projects/${project.json().id}/flows`,
+  });
+  expect(flow.statusCode).toBe(201);
+
+  const saveDraft = await api.inject({
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+    },
+    method: "PUT",
+    payload: {
+      graph: {
+        edges: [
+          {
+            id: "edge-source-target",
+            source: "source-image",
+            target: "target-image",
+          },
+        ],
+        nodes: [
+          {
+            data: {
+              assetId: "asset-source",
+              generationPrompt: "source",
+              routeKey,
+            },
+            id: "source-image",
+            type: "image",
+          },
+          {
+            data: {
+              generationPrompt: "show a new angle",
+              imageEditRequest: {
+                editType: "multiAngle",
+                prompt: "show a new angle",
+                routeKey,
+                sourceNodeId: "source-image",
+              },
+              modelId: "mock-image-v1",
+              routeKey,
+              title: "多角度后的1",
+            },
+            id: "target-image",
+            type: "image",
+          },
+        ],
+      },
+    },
+    url: `/api/v2/flows/${flow.json().id}/draft`,
+  });
+  expect(saveDraft.statusCode).toBe(200);
+
+  return flow.json();
+}
+
 async function seedRouteAndPricing(
   pool: ReturnType<typeof createPgPool>,
   input: {
@@ -877,6 +956,79 @@ describeWithDatabase("workflow runs api", () => {
         expect(runRows.currentVersionId).toBeNull();
         expect(runRows.flowVersionCount).toBe(1);
         expect(runRows.workflowRunVersionCount).toBe(1);
+
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("target_node run for an image edit child node creates and enqueues the edit target", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({
+          connectionString: await createAppDatabaseUrl(),
+        });
+
+        const { api, fakeQueue } = buildTestApp(appPool);
+        const ownerEmail = "workflow-image-edit-target@example.com";
+        const owner = await registerOwner(api, ownerEmail, "Workflow Image Edit Target");
+        const ownerUserId = await lookupUserIdByEmail(appPool, ownerEmail);
+        await seedRouteAndPricing(appPool, {
+          modelKey: "mock-image-v1",
+          providerKey: "mock-local-dev",
+          routeKey: "image.default",
+          tenantId: owner.currentTenant.id,
+          userId: ownerUserId,
+          withExactPricing: true,
+        });
+
+        const flow = await createDraftOnlyFlowWithImageEditTarget(api, owner.accessToken, "image.default");
+        const createRun = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "POST",
+          payload: {
+            input: {
+              runMode: "target_node",
+              targetNodeId: "target-image",
+            },
+          },
+          url: `/api/v2/flows/${flow.id}/runs`,
+        });
+
+        expect(createRun.statusCode).toBe(201);
+        expect(fakeQueue.jobs).toHaveLength(1);
+
+        const runDetails = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "GET",
+          url: `/api/v2/workflow-runs/${createRun.json().runId}`,
+        });
+        expect(runDetails.statusCode).toBe(200);
+        expect(runDetails.json().nodeRuns).toHaveLength(1);
+        expect(runDetails.json().nodeRuns[0]).toMatchObject({
+          nodeId: "target-image",
+          nodeType: "image.generate",
+          status: "runnable",
+        });
+        expect(runDetails.json().nodeRuns[0].inputJson).toMatchObject({
+          imageEditRequest: {
+            editType: "multiAngle",
+            sourceNodeId: "source-image",
+          },
+          routeKey: "image.default",
+        });
 
         await api.close();
       } finally {

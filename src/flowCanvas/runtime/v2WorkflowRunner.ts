@@ -723,6 +723,57 @@ function buildRunLaunchError(message: string): Error {
   return new Error(message);
 }
 
+export function getBackendRunLaunchErrorMessage(error: unknown): string {
+  if (error instanceof V2HttpError && isInsufficientCreditsError(error)) {
+    return buildInsufficientCreditsMessageFromError(error);
+  }
+  if (error && typeof error === 'object') {
+    const code = typeof (error as { code?: unknown }).code === 'string'
+      ? String((error as { code?: unknown }).code)
+      : '';
+    const message = typeof (error as { message?: unknown }).message === 'string'
+      ? String((error as { message?: unknown }).message)
+      : '';
+    if (code || message) {
+      return `${code ? `${code}: ` : ''}${message || 'Failed to start backend workflow.'}`;
+    }
+  }
+  if (error instanceof V2HttpError) {
+    const code = error.code ? `${error.code}: ` : '';
+    return `${code}${error.message || 'Failed to start backend workflow.'}`;
+  }
+  if (error instanceof Error) {
+    return error.message || 'Failed to start backend workflow.';
+  }
+  return 'Failed to start backend workflow.';
+}
+
+export function markBackendRunLaunchFailed(nodeId: string, error: unknown): void {
+  const message = getBackendRunLaunchErrorMessage(error);
+  useFlowCanvasStore.getState().updateNodeData(nodeId, {
+    errorMessage: message,
+    generationStatus: 'error',
+    progress: 0,
+    status: 'failed',
+  } as Partial<FlowNodeData>);
+  useFlowCanvasStore.setState((currentState) => ({
+    isRunningBackendWorkflow: false,
+    nodeRunStatusByNodeId: {
+      ...currentState.nodeRunStatusByNodeId,
+      [nodeId]: 'failed',
+    },
+    nodeOutputByNodeId: {
+      ...currentState.nodeOutputByNodeId,
+      [nodeId]: {
+        ...currentState.nodeOutputByNodeId[nodeId],
+        errorMessage: message,
+      },
+    },
+    runError: message,
+    runStatus: 'failed',
+  }));
+}
+
 function startRunStream(runId: string): void {
   if (activeStreamsByRunId.has(runId)) {
     return;
@@ -848,11 +899,7 @@ export async function runBackendWorkflow(options?: {
     if (creditReservation) {
       releaseOptimisticCreditReservation(creditReservation.nodeId);
     }
-    const message = error instanceof V2HttpError && isInsufficientCreditsError(error)
-      ? buildInsufficientCreditsMessageFromError(error)
-      : error instanceof Error
-        ? error.message
-        : 'Failed to start backend workflow.';
+    const message = getBackendRunLaunchErrorMessage(error);
     setRunError(message);
     if (isTargetNodeRun) {
       if (isInsufficientCreditsError(error)) {

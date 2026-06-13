@@ -54,6 +54,8 @@ export function useRemoteFlowAutosave(input: {
   const latestGraphKeyRef = useRef<string>(input.draft ? hashGraph(input.draft.graph) : "");
   const localVersionRef = useRef(0);
   const inFlightRef = useRef(false);
+  const inFlightPromiseRef = useRef<Promise<void> | null>(null);
+  const inFlightResolveRef = useRef<(() => void) | null>(null);
   const dirtyAgainRef = useRef(false);
   const retryingRef = useRef(false);
   const timerRef = useRef<number | null>(null);
@@ -92,10 +94,28 @@ export function useRemoteFlowAutosave(input: {
     });
   }, []);
 
+  const syncLatestGraphFromStore = useCallback(() => {
+    const state = useFlowCanvasStore.getState();
+    const latestGraph = canonicalizeGraph({
+      edges: state.edges as unknown as Record<string, unknown>[],
+      nodes: state.nodes as unknown as Record<string, unknown>[],
+      viewport: state.viewport,
+    });
+    latestGraphRef.current = latestGraph;
+    latestGraphKeyRef.current = hashGraph(latestGraph);
+    return latestGraph;
+  }, []);
+
   const flushSaveQueue = useCallback(
     async (mode: "syncing" | "retrying" = "syncing"): Promise<void> => {
-      if (!input.enabled || !input.flowId || !input.draft || inFlightRef.current) {
+      if (!input.enabled || !input.flowId || !input.draft) {
         return;
+      }
+      syncLatestGraphFromStore();
+      if (inFlightRef.current) {
+        dirtyAgainRef.current = true;
+        await inFlightPromiseRef.current;
+        return flushSaveQueue(mode);
       }
 
       const currentGraphKey = latestGraphKeyRef.current;
@@ -106,6 +126,9 @@ export function useRemoteFlowAutosave(input: {
 
       clearScheduledSave();
       inFlightRef.current = true;
+      inFlightPromiseRef.current = new Promise<void>((resolve) => {
+        inFlightResolveRef.current = resolve;
+      });
       dirtyAgainRef.current = false;
       retryingRef.current = mode === "retrying";
       setStatus(mode === "retrying" ? "retrying" : "syncing");
@@ -182,6 +205,9 @@ export function useRemoteFlowAutosave(input: {
       } finally {
         inFlightRef.current = false;
         retryingRef.current = false;
+        inFlightResolveRef.current?.();
+        inFlightResolveRef.current = null;
+        inFlightPromiseRef.current = null;
 
         if (
           saveSucceeded &&
@@ -194,7 +220,7 @@ export function useRemoteFlowAutosave(input: {
         }
       }
     },
-    [clearScheduledSave, input.draft, input.enabled, input.flowId, markClean, markDirty, waitForRetryDelay],
+    [clearScheduledSave, input.draft, input.enabled, input.flowId, markClean, markDirty, syncLatestGraphFromStore, waitForRetryDelay],
   );
 
   const scheduleSave = useCallback(
@@ -235,6 +261,7 @@ export function useRemoteFlowAutosave(input: {
   }, [clearScheduledSave, input.draft]);
 
   const saveNow = async () => {
+    syncLatestGraphFromStore();
     dirtyAgainRef.current = true;
     await flushSaveQueue(retryingRef.current ? "retrying" : "syncing");
   };

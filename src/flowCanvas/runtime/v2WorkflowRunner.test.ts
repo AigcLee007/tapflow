@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { useFlowCanvasStore } from '../store/flowCanvasStore';
 import {
   disposeBackendWorkflowRunStream,
+  markBackendRunLaunchFailed,
   recoverFlowTargetNodeRuns,
   resetCreditPreflightStateForTests,
   runBackendWorkflow,
@@ -348,6 +349,51 @@ describe('v2WorkflowRunner', () => {
     expect(useFlowCanvasStore.getState().nodeRunStatusByNodeId[nodeId]).toBe('failed');
     expect(useFlowCanvasStore.getState().nodes[0]?.data).toMatchObject({
       errorCode: 'INSUFFICIENT_CREDITS',
+      generationStatus: 'error',
+      status: 'failed',
+    });
+  });
+
+  test('markBackendRunLaunchFailed exposes workflow launch errors on the target node', () => {
+    useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, {
+      generationStatus: 'generating',
+      status: 'running',
+      title: '多角度后的1',
+    });
+    const nodeId = useFlowCanvasStore.getState().nodes[0]?.id as string;
+
+    markBackendRunLaunchFailed(nodeId, new V2HttpError({
+      code: 'PRICING_NOT_FOUND',
+      message: 'No active pricing found for node target-image (image.generate)',
+      status: 422,
+    }));
+
+    expect(useFlowCanvasStore.getState().nodes[0]?.data).toMatchObject({
+      errorMessage: 'PRICING_NOT_FOUND: No active pricing found for node target-image (image.generate)',
+      generationStatus: 'error',
+      progress: 0,
+      status: 'failed',
+    });
+    expect(useFlowCanvasStore.getState().nodeRunStatusByNodeId[nodeId]).toBe('failed');
+    expect(useFlowCanvasStore.getState().runError)
+      .toBe('PRICING_NOT_FOUND: No active pricing found for node target-image (image.generate)');
+  });
+
+  test('markBackendRunLaunchFailed preserves API-style error codes outside V2HttpError', () => {
+    useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, {
+      generationStatus: 'generating',
+      status: 'running',
+      title: '打光后的1',
+    });
+    const nodeId = useFlowCanvasStore.getState().nodes[0]?.id as string;
+
+    markBackendRunLaunchFailed(nodeId, {
+      code: 'TARGET_NODE_NOT_FOUND',
+      message: '未在当前草稿中找到目标节点',
+    });
+
+    expect(useFlowCanvasStore.getState().nodes[0]?.data).toMatchObject({
+      errorMessage: 'TARGET_NODE_NOT_FOUND: 未在当前草稿中找到目标节点',
       generationStatus: 'error',
       status: 'failed',
     });

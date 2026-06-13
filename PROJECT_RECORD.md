@@ -65,6 +65,7 @@ As of 2026-06-13:
 - model-backed image node tools now use the v2 target-node workflow path, so logged-in v2 users no longer hit the legacy `auth-session-v1` billing login error from repaint/erase/outpaint/relight/multi-angle/enhance/remove-background actions
 - v2 image edit result nodes now persist the resolved preview URL back into canvas node data, show a model/route run label while generating, and forward source asset URLs into Visionary/Gemini image adapters so edit models receive the actual input image
 - target-node image edit tools now preserve the selected runtime `routeKey` from the canvas model line, avoiding wrong-line fallback that could yield completed white result images even when the workflow itself succeeded
+- target-node image edit launches now wait for any in-flight remote draft save to finish and then save the latest canvas graph before creating the workflow run, so newly created edit target nodes are present in server-side `flow_drafts` before API/worker execution begins
 
 ## Recent Important Commits
 
@@ -137,6 +138,28 @@ Notes:
   - `npm test -- src/flowCanvas/runtime/graphExecutor.test.ts src/flowCanvas/runtime/v2WorkflowRunner.test.ts`
   - `npm run test --workspace @aigc-flow/worker -- workflow-runtime-image-request.test.ts`
   - `npm run test --workspace @aigc-flow/ai-gateway-core -- runtime.test.ts`
+  - `npm run build`
+
+## 2026-06-13 - Image Edit Launch Save Barrier Fix
+
+- Fixed the root cause for model-backed image edit tools creating blank target cards while the relay/provider receives no request.
+- Root cause:
+  - users can trigger `多角度`, `打光`, `重绘`, `擦除`, `扩图`, `增强`, or `抠图` while the canvas is already showing `正在保存`
+  - the remote draft save barrier returned immediately when an autosave was already in flight
+  - the workflow run was then created against the previous server-side draft, where the newly added edit target node was not yet available
+  - API/worker execution therefore had no valid target node to enqueue, so the provider relay saw no outbound request while the canvas still showed a blank generated card
+- Frontend/runtime fix:
+  - `saveNow()` now refreshes the graph directly from `useFlowCanvasStore` before saving
+  - if an autosave is in flight, `saveNow()` waits for it to complete and then flushes the latest graph again before workflow run creation continues
+  - image edit run launch failures are no longer swallowed; target nodes are marked failed with the backend error code/message so route, pricing, queue, and target-node failures become visible on canvas
+- Regression coverage:
+  - added autosave timing coverage for launching a target-node run while a previous save is still in flight
+  - added target-node launch error visibility coverage for API-style errors
+  - added API integration coverage for an image edit child target node creating a runnable node run and enqueueing execution; this remains database-env gated locally
+- Validation:
+  - `npm test -- src/flowCanvas/runtime/v2WorkflowRunner.test.ts src/flowCanvas/hooks/useRemoteFlowAutosave.test.tsx src/flowCanvas/runtime/graphExecutor.test.ts`
+  - `npm run test --workspace @aigc-flow/worker -- workflow-runtime-image-request.test.ts`
+  - `npm run test --workspace @aigc-flow/api -- workflow-runs.test.ts` (skipped locally because database test env is not configured)
   - `npm run build`
 - Follow-up fix:
   - v2 workflow image/video success patches now write the resolved preview URL into `thumbnailUrl`/`posterUrl` in addition to durable `assetId`, so generated target nodes render immediately and survive remount/recovery without relying only on runtime memory state

@@ -52,7 +52,7 @@ import {
 import type { FlowImageGenerationSnapshot, FlowNodeData, FlowNodeKind } from '../types';
 import { useFlowCanvasStore, type FlowDerivedEditCounts, type FlowUpstreamImageRef } from '../store/flowCanvasStore';
 import { runImageEdit, type ImageEditType } from '../runtime/graphExecutor';
-import { runBackendWorkflow } from '../runtime/v2WorkflowRunner';
+import { markBackendRunLaunchFailed, runBackendWorkflow } from '../runtime/v2WorkflowRunner';
 import { useVideoModelCatalog } from '../../hooks/useVideoModelCatalog';
 import {
   getImageModelById,
@@ -5168,7 +5168,8 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       });
       closeImageTool();
       if (targetNodeId) {
-        void runBackendWorkflow({ runMode: 'target_node', targetNodeId }).catch(() => undefined);
+        void runBackendWorkflow({ runMode: 'target_node', targetNodeId })
+          .catch((error) => markBackendRunLaunchFailed(targetNodeId, error));
       }
     },
     [closeImageTool, currentModelId, currentRouteKey, d.modelId, d.params, d.routeId, id, repaintMode],
@@ -5200,7 +5201,8 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       });
       closeImageTool();
       if (targetNodeId) {
-        void runBackendWorkflow({ runMode: 'target_node', targetNodeId }).catch(() => undefined);
+        void runBackendWorkflow({ runMode: 'target_node', targetNodeId })
+          .catch((error) => markBackendRunLaunchFailed(targetNodeId, error));
       }
     },
     [closeImageTool, currentModelId, currentRouteKey, d.modelId, d.params, d.routeId, id],
@@ -5245,7 +5247,8 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       });
       closeImageTool();
       if (targetNodeId) {
-        void runBackendWorkflow({ runMode: 'target_node', targetNodeId }).catch(() => undefined);
+        void runBackendWorkflow({ runMode: 'target_node', targetNodeId })
+          .catch((error) => markBackendRunLaunchFailed(targetNodeId, error));
       }
     },
     [closeImageTool, currentModelId, currentRouteKey, d.modelId, d.params, d.routeId, id],
@@ -5291,7 +5294,8 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       });
       closeImageTool();
       if (targetNodeId) {
-        void runBackendWorkflow({ runMode: 'target_node', targetNodeId }).catch(() => undefined);
+        void runBackendWorkflow({ runMode: 'target_node', targetNodeId })
+          .catch((error) => markBackendRunLaunchFailed(targetNodeId, error));
       }
     },
     [closeImageTool, currentModelId, currentRouteKey, d.modelId, d.params, d.routeId, id],
@@ -5306,7 +5310,8 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
         params: (d.params || {}) as Record<string, any>,
       });
       if (targetNodeId) {
-        void runBackendWorkflow({ runMode: 'target_node', targetNodeId }).catch(() => undefined);
+        void runBackendWorkflow({ runMode: 'target_node', targetNodeId })
+          .catch((error) => markBackendRunLaunchFailed(targetNodeId, error));
       }
     },
     [currentModelId, currentRouteKey, d.modelId, d.params, d.routeId, id],

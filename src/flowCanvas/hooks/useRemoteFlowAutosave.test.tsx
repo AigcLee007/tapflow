@@ -408,6 +408,179 @@ describe("useRemoteFlowAutosave", () => {
     expect(saveFlowDraftMock).not.toHaveBeenCalled();
   });
 
+  it("saveNow flushes the latest store graph even before the hook observes the new node", async () => {
+    const initialDraft = createDraft(1, ["source-image"]);
+    loadStoreFromDraft(initialDraft);
+    const savedDraft = createDraft(2, ["source-image", "target-image"]);
+    saveFlowDraftMock.mockResolvedValueOnce(savedDraft);
+
+    const { result } = renderHook(() =>
+      useRemoteFlowAutosave({
+        draft: initialDraft,
+        enabled: true,
+        flowId: "flow-1",
+      }),
+    );
+
+    act(() => {
+      useFlowCanvasStore.setState((state) => ({
+        edges: [
+          ...state.edges,
+          {
+            id: "edge-source-target",
+            source: "source-image",
+            target: "target-image",
+            type: "smart",
+          },
+        ] as never[],
+        nodes: [
+          ...state.nodes,
+          {
+            id: "target-image",
+            position: { x: 120, y: 0 },
+            type: "image",
+            data: {
+              generationPrompt: "show a new angle",
+              generationStatus: "generating",
+              routeKey: "image.nano-banana-pro",
+              status: "running",
+              title: "多角度后的1",
+            },
+          },
+        ] as never[],
+        isDirty: true,
+      }));
+    });
+
+    await act(async () => {
+      await result.current.saveNow();
+    });
+
+    expect(saveFlowDraftMock).toHaveBeenCalledTimes(1);
+    expect(saveFlowDraftMock.mock.calls[0]?.[1]).toMatchObject({
+      graph: {
+        edges: [
+          expect.objectContaining({
+            source: "source-image",
+            target: "target-image",
+          }),
+        ],
+        nodes: expect.arrayContaining([
+          expect.objectContaining({ id: "source-image" }),
+          expect.objectContaining({
+            data: expect.objectContaining({
+              generationPrompt: "show a new angle",
+              routeKey: "image.nano-banana-pro",
+              title: "多角度后的1",
+            }),
+            id: "target-image",
+          }),
+        ]),
+      },
+    });
+    expect(saveFlowDraftMock.mock.calls[0]?.[1].graph.nodes).toHaveLength(2);
+  });
+
+  it("saveNow waits for an in-flight autosave and then persists a newly added target node", async () => {
+    const firstSave = deferred<FlowDraft>();
+    const secondSave = deferred<FlowDraft>();
+    const initialDraft = createDraft(1, ["source-image"]);
+    loadStoreFromDraft(initialDraft);
+    saveFlowDraftMock
+      .mockReturnValueOnce(firstSave.promise)
+      .mockReturnValueOnce(secondSave.promise);
+
+    const { result } = renderHook(() =>
+      useRemoteFlowAutosave({
+        draft: initialDraft,
+        enabled: true,
+        flowId: "flow-1",
+      }),
+    );
+
+    act(() => {
+      setNodeIds(["source-image", "intermediate-change"]);
+    });
+    await advanceTimers(1200);
+    expect(saveFlowDraftMock).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      useFlowCanvasStore.setState((state) => ({
+        edges: [
+          {
+            id: "edge-source-target",
+            source: "source-image",
+            target: "target-image",
+            type: "smart",
+          },
+        ] as never[],
+        nodes: [
+          ...state.nodes.filter((node) => node.id === "source-image"),
+          {
+            id: "target-image",
+            position: { x: 120, y: 0 },
+            type: "image",
+            data: {
+              generationPrompt: "relight the source",
+              imageEditRequest: {
+                editType: "relight",
+                sourceNodeId: "source-image",
+              },
+              routeKey: "image.pixellelabs.nano-banana-pro",
+              title: "打光后的1",
+            },
+          },
+        ] as never[],
+        isDirty: true,
+      }));
+    });
+
+    let saveNowSettled = false;
+    const saveNowPromise = result.current.saveNow().then(() => {
+      saveNowSettled = true;
+    });
+    await flushPromises();
+    expect(saveNowSettled).toBe(false);
+    expect(saveFlowDraftMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      firstSave.resolve(createDraft(2, ["source-image", "intermediate-change"]));
+      await Promise.resolve();
+    });
+    await vi.waitFor(() => expect(saveFlowDraftMock).toHaveBeenCalledTimes(2));
+
+    expect(saveFlowDraftMock.mock.calls[1]?.[1]).toMatchObject({
+      graph: {
+        edges: [
+          expect.objectContaining({
+            source: "source-image",
+            target: "target-image",
+          }),
+        ],
+        nodes: expect.arrayContaining([
+          expect.objectContaining({ id: "source-image" }),
+          expect.objectContaining({
+            data: expect.objectContaining({
+              generationPrompt: "relight the source",
+              imageEditRequest: expect.objectContaining({
+                editType: "relight",
+                sourceNodeId: "source-image",
+              }),
+              routeKey: "image.pixellelabs.nano-banana-pro",
+            }),
+            id: "target-image",
+          }),
+        ]),
+      },
+    });
+
+    await act(async () => {
+      secondSave.resolve(createDraft(3, ["source-image", "target-image"]));
+      await saveNowPromise;
+    });
+    expect(saveNowSettled).toBe(true);
+  });
+
   it("syncs once when generation completion writes durable output to the target node", async () => {
     const initialDraft = createDraft(1);
     initialDraft.graph.nodes = [
