@@ -1008,6 +1008,23 @@ Validation completed:
 - `npm run test --workspace @aigc-flow/api -- test/assets.test.ts test/projects-flows.test.ts`
 - `npm run build`
 
+### Latest Asset and Workspace Performance Staging Validation
+
+Validated on staging:
+
+- `/workspace` returns with visible content immediately after page switching instead of showing a blocking loading surface
+- canvas asset drawer reopens without a blocking loading state after the first warm cache pass
+- `/assets` first-screen thumbnail loading feels faster than the pre-optimization path
+- browser Network confirms `GET /api/v2/projects?includeCoverUrl=true`
+- browser Network confirms `GET /api/v2/assets?includePreviewUrls=true`
+- browser Network confirms `GET /api/v2/assets/summary`
+- repeated `projects?includeCoverUrl=true` requests observed during manual navigation were tied to deliberate page switching, not to blocked cache rendering
+
+Known follow-ups:
+
+- continue observing real staging traffic for unexpectedly repeated background refreshes outside explicit user navigation
+- if needed, capture a dedicated Performance panel trace for `asset-library-refresh` and `workspace-projects-refresh`
+
 ### Latest Project and Asset Management Menus
 
 Completed in current local iteration:
