@@ -993,6 +993,21 @@ Validation completed:
 - `npm run test -- src/performance/performanceMarks.test.ts src/assets/useAssetLibrary.test.tsx src/workspace/useWorkspaceProjects.test.tsx`
 - `npm run build`
 
+
+### Latest Production Asset and Workspace Performance Task 11
+
+Completed in current local iteration:
+
+- added a performance-specific smoke test checklist to `docs/staging-runbook.md`
+- performed full local validation of the performance plan across assets, workspace, and hook caching
+- verified that API performance tests pass (skipped locally due to missing DATABASE_URL, which is expected)
+
+Validation completed:
+
+- `npm run test -- src/assets/useAssetLibrary.test.tsx src/assets/AssetLibraryPage.test.tsx src/flowCanvas/panels/CanvasAssetPanel.test.tsx src/workspace/useWorkspaceProjects.test.tsx src/workspace/WorkspacePage.test.tsx`
+- `npm run test --workspace @aigc-flow/api -- test/assets.test.ts test/projects-flows.test.ts`
+- `npm run build`
+
 ### Latest Project and Asset Management Menus
 
 Completed in current local iteration:

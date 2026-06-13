@@ -63,6 +63,18 @@ npm run cleanup:stuck-runs -- --tenant-id <tenant-id> --after 2026-05-22T17:00:0
 
 The cleanup only marks clearly orphaned `pending` workflow runs and `runnable` node runs that never started. It does not touch succeeded, running, failed, or waiting-provider runs.
 
+## Asset and Workspace Performance Smoke
+
+Perform these checks after a performance-related deployment:
+
+1. **Warm up cache:** Open `/workspace` and the canvas asset drawer once.
+2. **Check instant remount:** Navigate away and return; verify there is no visible loading state on return to `/workspace` or on reopening the asset drawer.
+3. **Verify inline covers:** In browser Network, confirm `/api/v2/projects?includeCoverUrl=true` is called and returns `coverUrl`.
+4. **Verify inline previews:** In browser Network, confirm `/api/v2/assets?includePreviewUrls=true` is called and returns `previewUrl`.
+5. **Check summary counts:** In browser Network, confirm `/api/v2/assets/summary` is called once for counts.
+6. **Verify grid virtualization:** Open `/assets` with at least 100 images; scroll and confirm rendering remains responsive without a long blank grid.
+7. **Diagnostic marks:** Check browser Console/Performance for `asset-library-refresh` and `workspace-projects-refresh` measures.
+
 ## Notes
 
 - Target-node runs must not use `flows FOR UPDATE`.
