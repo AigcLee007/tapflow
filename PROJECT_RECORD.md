@@ -1,6 +1,6 @@
 # Project Record
 
-Last updated: 2026-06-13
+Last updated: 2026-06-14
 Maintainers: project team + Codex sessions
 
 ## Purpose
@@ -69,9 +69,11 @@ As of 2026-06-13:
 - image edit tools now ignore stale generic `image.default` route keys on uploaded/asset-backed source nodes when a model-scoped runtime route is available, preventing edits from silently running through the mock/default image route instead of the configured provider relay
 - target-node workflow launch now marks missing backend `node_run` snapshots as a visible node failure with diagnostic launch status instead of leaving a blank white result card
 - target-node image edit launch no longer stalls at `workflowLaunchStatus: saving_draft` when a manual run-save barrier overlaps an existing autosave; `saveNow()` now performs a foreground latest-graph flush before allowing workflow run creation to continue
+- same-origin asset bytes responses now normalize `content-length` from the actual response body and fall back from empty preview variants to original image bytes, addressing completed image-edit runs that rendered as 0-byte white previews
 
 ## Recent Important Commits
 
+- pending: fix empty asset preview bytes fallback
 - pending: fix image edit save barrier stall
 - pending: fix image edit runtime route selection
 - pending: fix image edit result previews
@@ -109,6 +111,23 @@ As of 2026-06-13:
 Notes:
 
 - Local API asset integration tests are still database-env gated in this workspace; the new bytes endpoint test was added to `apps/api/test/assets.test.ts` but is skipped locally without `DATABASE_URL`.
+
+## 2026-06-14 - Empty Asset Preview Bytes Fallback
+
+- Continued the image-edit blank-result investigation after browser evidence showed workflow runs and asset IDs were being created, but `/api/v2/assets/:assetId/bytes?variantKey=preview` returned `0 B image/webp`.
+- Root cause narrowed to the asset bytes response layer rather than workflow launch or provider routing:
+  - storage/provider metadata can report stale zero `contentLength`
+  - preview variant objects can exist but contain an empty body
+- Fixed the same-origin asset bytes service to:
+  - always send `content-length` from the actual `Buffer.byteLength`
+  - fall back to the original asset object when a requested variant body is empty
+  - expose the fallback through `x-asset-variant-key: original`
+- Added pure API tests for bytes normalization and database-gated route tests for stale zero content length and empty preview variant fallback.
+- Validation:
+  - `npm run test --workspace @aigc-flow/api -- assets-bytes-normalization.test.ts`
+  - `npm run test --workspace @aigc-flow/api -- assets.test.ts` (skipped locally because DB env is not configured)
+  - `npm run build --workspace @aigc-flow/api`
+  - `npm run build`
 
 ## 2026-06-13 - Image Edit Tools v2 Auth Workflow Fix
 

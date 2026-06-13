@@ -131,6 +131,12 @@ type AssetStorageTarget = {
   variantKey: string | null;
 };
 
+type AssetObjectForBytesResponse = {
+  body: Buffer;
+  contentLength: number | null;
+  contentType: string | null;
+};
+
 type AssetFolderRecord = {
   created_at: string;
   created_by: string | null;
@@ -315,6 +321,38 @@ async function readUploadedImageSize(input: {
 function buildDownloadFilename(asset: AssetForStorage): string {
   return asset.originalFilename?.trim() || `asset-${asset.id}`;
 }
+
+function normalizeAssetObjectForBytesResponse(
+  object: AssetObjectForBytesResponse,
+  target: {
+    contentType: string;
+    variantKey: string | null;
+  },
+): {
+  body: Buffer;
+  contentLength: number;
+  contentType: string;
+  variantKey: string | null;
+} {
+  return {
+    body: object.body,
+    contentLength: object.body.byteLength,
+    contentType: object.contentType || target.contentType || "application/octet-stream",
+    variantKey: target.variantKey,
+  };
+}
+
+function shouldFallbackEmptyVariantBytes(input: {
+  body: Buffer;
+  variantKey: string | null;
+}): boolean {
+  return Boolean(input.variantKey) && input.body.byteLength === 0;
+}
+
+export const __assetsServiceTestUtils = {
+  normalizeAssetObjectForBytesResponse,
+  shouldFallbackEmptyVariantBytes,
+};
 
 export class AssetsService {
   readonly bucket: string;
@@ -1148,12 +1186,23 @@ export class AssetsService {
         key: target.key,
       });
 
-      return {
-        body: object.body,
-        contentLength: object.contentLength,
-        contentType: object.contentType || target.mimeType || "application/octet-stream",
+      if (shouldFallbackEmptyVariantBytes({ body: object.body, variantKey: target.variantKey })) {
+        const originalTarget = await this.getAssetStorageTarget(client, context.tenantId, assetId);
+        const originalObject = await this.storageProvider.getObject!({
+          bucket: originalTarget.bucket,
+          key: originalTarget.key,
+        });
+
+        return normalizeAssetObjectForBytesResponse(originalObject, {
+          contentType: originalTarget.mimeType,
+          variantKey: originalTarget.variantKey,
+        });
+      }
+
+      return normalizeAssetObjectForBytesResponse(object, {
+        contentType: target.mimeType,
         variantKey: target.variantKey,
-      };
+      });
     }, this.pool);
   }
 

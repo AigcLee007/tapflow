@@ -44,6 +44,7 @@ const testEnv: ApiEnv = {
 };
 
 class MemoryStorageProvider implements StorageProvider {
+  readonly contentLengthOverrides = new Map<string, number | null>();
   readonly deletedKeys: string[] = [];
   readonly headRequests: Array<{ bucket: string; key: string }> = [];
   readonly objects = new Map<string, {
@@ -86,7 +87,9 @@ class MemoryStorageProvider implements StorageProvider {
     }
     return {
       body: object.body,
-      contentLength: object.contentLength,
+      contentLength: this.contentLengthOverrides.has(`${input.bucket}/${input.key}`)
+        ? this.contentLengthOverrides.get(`${input.bucket}/${input.key}`) ?? null
+        : object.contentLength,
       contentType: object.contentType,
       metadata: object.metadata,
     };
@@ -957,6 +960,121 @@ describeWithDatabase("assets v2", () => {
           url: `/api/v2/assets/${createdBody.asset.id}/bytes`,
         });
         expect(crossTenantBytes.statusCode).toBe(404);
+
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("asset bytes uses actual body length when storage reports stale zero content length", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({
+          connectionString: await createAppDatabaseUrl(),
+        });
+        const storageProvider = new MemoryStorageProvider();
+        const api = buildTestApp(appPool, storageProvider);
+
+        const owner = await registerOwner(api, "asset-bytes-length@example.com", "Asset Bytes Length");
+        const assetId = await insertAvailableImageAssetWithVariant(
+          appPool,
+          owner.currentTenant.id,
+          owner.user.id,
+          {
+            variantKey: "preview",
+            variantObjectKey: "tenants/test/assets/stale-length-preview.webp",
+          },
+        );
+        const storageKey = "test-bucket/tenants/test/assets/stale-length-preview.webp";
+        storageProvider.objects.set(storageKey, {
+          body: Buffer.from("preview-webp-bytes"),
+          contentLength: 0,
+          contentType: "image/webp",
+          metadata: {},
+        });
+        storageProvider.contentLengthOverrides.set(storageKey, 0);
+
+        const response = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "GET",
+          url: `/api/v2/assets/${assetId}/bytes?variantKey=preview`,
+        });
+
+        expect(response.statusCode).toBe(200);
+        expect(response.headers["content-length"]).toBe(String(Buffer.byteLength("preview-webp-bytes")));
+        expect(response.body).toBe("preview-webp-bytes");
+        expect(response.headers["x-asset-variant-key"]).toBe("preview");
+
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("asset bytes falls back to original when requested variant object is empty", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({
+          connectionString: await createAppDatabaseUrl(),
+        });
+        const storageProvider = new MemoryStorageProvider();
+        const api = buildTestApp(appPool, storageProvider);
+
+        const owner = await registerOwner(api, "asset-bytes-empty-variant@example.com", "Asset Bytes Empty Variant");
+        const assetId = await insertAvailableImageAssetWithVariant(
+          appPool,
+          owner.currentTenant.id,
+          owner.user.id,
+          {
+            variantKey: "preview",
+            variantObjectKey: "tenants/test/assets/empty-preview.webp",
+          },
+        );
+        const originalKey = `test-bucket/tenants/${owner.currentTenant.id}/assets/${assetId}/original.png`;
+        const variantKey = "test-bucket/tenants/test/assets/empty-preview.webp";
+        storageProvider.objects.set(originalKey, {
+          body: Buffer.from("original-image-bytes"),
+          contentLength: Buffer.byteLength("original-image-bytes"),
+          contentType: "image/png",
+          metadata: {},
+        });
+        storageProvider.objects.set(variantKey, {
+          body: Buffer.alloc(0),
+          contentLength: 0,
+          contentType: "image/webp",
+          metadata: {},
+        });
+
+        const response = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "GET",
+          url: `/api/v2/assets/${assetId}/bytes?variantKey=preview`,
+        });
+
+        expect(response.statusCode).toBe(200);
+        expect(response.headers["content-type"]).toContain("image/png");
+        expect(response.headers["content-length"]).toBe(String(Buffer.byteLength("original-image-bytes")));
+        expect(response.headers["x-asset-variant-key"]).toBe("original");
+        expect(response.body).toBe("original-image-bytes");
 
         await api.close();
       } finally {
