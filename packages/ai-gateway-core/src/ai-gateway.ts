@@ -119,7 +119,7 @@ export class AiGateway {
       "text generation",
     );
     if (!adapter.generateText) {
-      throw this.unsupportedOperationError(options.route.provider.kind, "text generation");
+      throw this.unsupportedOperationError(context.adapterKind, "text generation");
     }
 
     const result = await adapter.generateText(context, options.request);
@@ -150,7 +150,7 @@ export class AiGateway {
       "image generation",
     );
     if (!adapter.generateImage) {
-      throw this.unsupportedOperationError(options.route.provider.kind, "image generation");
+      throw this.unsupportedOperationError(context.adapterKind, "image generation");
     }
 
     const requestedCount = readRequestedImageCount(options.request, options.route);
@@ -215,7 +215,7 @@ export class AiGateway {
       "video generation",
     );
     if (!adapter.generateVideo) {
-      throw this.unsupportedOperationError(options.route.provider.kind, "video generation");
+      throw this.unsupportedOperationError(context.adapterKind, "video generation");
     }
 
     const result = await adapter.generateVideo(context, options.request);
@@ -246,7 +246,7 @@ export class AiGateway {
       "task polling",
     );
     if (!adapter.pollTask) {
-      throw this.unsupportedOperationError(options.route.provider.kind, "task polling");
+      throw this.unsupportedOperationError(context.adapterKind, "task polling");
     }
 
     const result = await adapter.pollTask(context, options.request);
@@ -265,13 +265,14 @@ export class AiGateway {
     operationLabel: string,
   ): {
     adapter: ProviderAdapter;
-    context: ProviderCallContext;
+      context: ProviderCallContext & { adapterKind: string };
   } {
-    const adapter = this.adapters.get(route.provider.kind);
+    const adapterKind = route.connection?.adapterKind?.trim() || route.provider.kind;
+    const adapter = this.adapters.get(adapterKind);
     if (!adapter) {
       throw new AiGatewayError({
         code: "ADAPTER_NOT_FOUND",
-        message: `No provider adapter is registered for ${route.provider.kind}`,
+        message: `No provider adapter is registered for ${adapterKind}`,
         statusCode: 500,
       });
     }
@@ -289,6 +290,7 @@ export class AiGateway {
       adapter,
       context: {
         apiKey,
+        adapterKind,
         baseUrl: route.baseUrl,
         modelKey,
         providerKey: route.provider.key,

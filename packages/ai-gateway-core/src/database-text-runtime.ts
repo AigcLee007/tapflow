@@ -49,6 +49,14 @@ type RuntimeRouteRecord = {
   base_url_override: string | null;
 };
 
+function buildRuntimeRequestConfig(row: RuntimeRouteRecord): Record<string, unknown> {
+  return {
+    ...(row.request_config ?? {}),
+    ...(row.api_mode ? { apiMode: row.api_mode } : {}),
+    ...(row.upstream_model ? { model: row.upstream_model, upstreamModel: row.upstream_model } : {}),
+  };
+}
+
 type AiCallLogInsertInput = {
   adapterKindSnapshot?: string | null;
   apiModeSnapshot?: string | null;
@@ -303,7 +311,7 @@ export class DatabaseTextGenerationRuntime {
             nonce: row.nonce,
           },
           connection: {
-            adapterKind: row.api_mode ?? row.connection_adapter_kind,
+            adapterKind: row.connection_adapter_kind,
             id: row.connection_id,
             name: row.connection_name,
           },
@@ -320,7 +328,7 @@ export class DatabaseTextGenerationRuntime {
             kind: row.provider_kind,
             name: row.provider_name,
           },
-          requestConfig: row.request_config ?? {},
+          requestConfig: buildRuntimeRequestConfig(row),
           routeId: row.route_id,
           routeKey: row.route_key,
           routeLabel: row.route_label,

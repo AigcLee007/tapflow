@@ -1395,3 +1395,19 @@ Validation completed:
 
 - `npm run test -- src/app/WorkspaceShell.test.tsx src/workspace/WorkspacePage.test.tsx src/workspace/ProjectCard.test.tsx`
 - `npm run build`
+
+### Latest AI Gateway Runtime Route Fix
+
+Completed in current local iteration:
+
+- fixed AI Gateway runtime adapter selection so provider connections use `connection.adapterKind` instead of falling back to `provider.kind`, preventing configured OpenAI-compatible image routes from silently executing the mock adapter
+- kept route `api_mode`, `request_path`, and `upstream_model` as provider request configuration instead of treating them as adapter kinds
+- added media output diagnostics (`aiRuntime`) to worker output JSON and generated canvas node patches so image tool results show the runtime model/provider/route actually used
+- changed worker asset persistence to read image dimensions from the stored binary before writing asset refs, avoiding provider-reported `1x1` metadata from corrupting canvas node size
+- strengthened worker test coverage for real generated image bytes, non-empty preview variants, measured dimensions, and runtime diagnostics
+
+Validation completed:
+
+- `npm run test --workspace @aigc-flow/ai-gateway-core -- runtime.test.ts provider-adapter-registry.test.ts`
+- `npm run build --workspace @aigc-flow/ai-gateway-core`
+- `npm run build --workspace @aigc-flow/worker`

@@ -61,6 +61,7 @@ afterEach(async () => {
 function makeRoute(overrides?: Partial<ResolvedRoute>): ResolvedRoute {
   return {
     baseUrl: overrides?.baseUrl ?? "http://localhost:1234",
+    ...(overrides?.connection ? { connection: overrides.connection } : {}),
     credential: overrides?.credential ?? {
       authTag: null,
       encryptedSecret: null,
@@ -1420,6 +1421,94 @@ describe("route resolver and ai gateway", () => {
         },
       ],
       providerKey: "openai-compatible",
+      status: "succeeded",
+    });
+  });
+
+  test("ai gateway uses the connection adapter kind over provider kind", async () => {
+    let openAiCompatibleCalled = false;
+    let mockCalled = false;
+    const gateway = new AiGateway({
+      mock: {
+        async generateImage() {
+          mockCalled = true;
+          return {
+            modelKey: "mock-image",
+            outputs: [
+              {
+                height: 1,
+                mimeType: "image/png",
+                url: "https://example.com/mock.png",
+                width: 1,
+              },
+            ],
+            providerRequest: { adapter: "mock" },
+            providerResponse: { adapter: "mock" },
+            status: "succeeded" as const,
+            usage: {
+              inputTokens: 1,
+              outputTokens: 1,
+              totalTokens: 2,
+            },
+          };
+        },
+      },
+      "openai-compatible": {
+        async generateImage() {
+          openAiCompatibleCalled = true;
+          return {
+            modelKey: "gpt-image-2",
+            outputs: [
+              {
+                mimeType: "image/png",
+                url: "https://example.com/generated.png",
+                width: 1024,
+              },
+            ],
+            providerRequest: { adapter: "openai-compatible" },
+            providerResponse: { adapter: "openai-compatible" },
+            status: "succeeded" as const,
+            usage: {
+              inputTokens: 4,
+              outputTokens: 1,
+              totalTokens: 5,
+            },
+          };
+        },
+      },
+    });
+
+    const result = await gateway.generateImage({
+      apiKey: "sk-test-secret",
+      request: {
+        prompt: "draw through connection adapter",
+      },
+      route: makeRoute({
+        connection: {
+          adapterKind: "openai-compatible",
+          id: "connection-1",
+          name: "MouxiHub",
+        },
+        provider: {
+          defaultBaseUrl: "mock://local",
+          id: "provider-1",
+          key: "mock-local-dev",
+          kind: "mock",
+        },
+      }),
+    });
+
+    expect(mockCalled).toBe(false);
+    expect(openAiCompatibleCalled).toBe(true);
+    expect(result).toMatchObject({
+      modelKey: "gpt-image-2",
+      outputs: [
+        {
+          url: "https://example.com/generated.png",
+          width: 1024,
+        },
+      ],
+      providerKey: "mock-local-dev",
       status: "succeeded",
     });
   });

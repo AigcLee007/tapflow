@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, describe, expect, test, vi } from "vitest";
+import sharp from "sharp";
 
 import { BillingService, createPgPool, withTenantTransaction } from "@aigc-flow/db";
 import type {
@@ -26,6 +27,19 @@ import { hasDatabaseEnv, withDatabase } from "../../../packages/db/test/helpers.
 
 const originalDatabaseUrl = process.env.DATABASE_URL;
 const describeWithDatabase = hasDatabaseEnv() ? describe : describe.skip;
+
+async function createPngBuffer(width: number, height: number): Promise<Buffer> {
+  return sharp({
+    create: {
+      background: { alpha: 1, b: 90, g: 80, r: 40 },
+      channels: 4,
+      height,
+      width,
+    },
+  })
+    .png()
+    .toBuffer();
+}
 
 const testEnv: ApiEnv = {
   accessTokenTtlSeconds: 60 * 15,
@@ -960,6 +974,7 @@ describeWithDatabase("workflow node execution", () => {
           connectionString: await createAppDatabaseUrl(),
         });
 
+        const generatedImage = await createPngBuffer(640, 360);
         const seeded = await seedWorkflowRuntime(appPool, {
           inputNodeStatus: "succeeded",
           inputOutputJson: { prompt: "hello from upstream" },
@@ -1103,9 +1118,10 @@ describeWithDatabase("workflow node execution", () => {
                 modelKey: "image-model",
                 outputs: [
                   {
-                    base64: Buffer.from("fake image bytes").toString("base64"),
+                    base64: generatedImage.toString("base64"),
                     mimeType: "image/png",
-                    width: 512,
+                    height: 1,
+                    width: 1,
                   },
                 ],
                 providerKey: "mock-provider",
@@ -1154,9 +1170,13 @@ describeWithDatabase("workflow node execution", () => {
               "SELECT status, output_json FROM node_runs WHERE id = $1::uuid",
               [seeded.middleNodeRunId],
             );
-            const asset = await client.query<{ kind: string; status: string; workflow_run_id: string; node_run_id: string }>(
-              "SELECT kind, status, workflow_run_id::text AS workflow_run_id, node_run_id::text AS node_run_id FROM assets WHERE workflow_run_id = $1::uuid",
+            const asset = await client.query<{ height: number; id: string; kind: string; status: string; workflow_run_id: string; node_run_id: string; width: number }>(
+              "SELECT height, id::text AS id, kind, status, workflow_run_id::text AS workflow_run_id, node_run_id::text AS node_run_id, width FROM assets WHERE workflow_run_id = $1::uuid",
               [seeded.workflowRunId],
+            );
+            const variants = await client.query<{ height: number; object_key: string; size_bytes: string; variant_key: string; width: number }>(
+              "SELECT height, object_key, size_bytes::text AS size_bytes, variant_key, width FROM asset_variants WHERE asset_id = $1::uuid ORDER BY variant_key ASC",
+              [asset.rows[0]?.id],
             );
             const outputNode = await client.query<{ status: string }>(
               "SELECT status FROM node_runs WHERE id = $1::uuid",
@@ -1166,6 +1186,7 @@ describeWithDatabase("workflow node execution", () => {
               asset: asset.rows[0],
               nodeRun: nodeRun.rows[0],
               outputNode: outputNode.rows[0],
+              variants: variants.rows,
             };
           },
           appPool,
@@ -1174,23 +1195,39 @@ describeWithDatabase("workflow node execution", () => {
 
         expect(state.nodeRun.status).toBe("succeeded");
         expect(state.nodeRun.output_json).toEqual({
+          aiRuntime: {
+            modelId: null,
+            modelKey: "image-model",
+            providerId: null,
+            providerKey: "mock-provider",
+            routeId: null,
+            routeKey: "default-image",
+          },
           assets: [
             expect.objectContaining({
               assetId: expect.any(String),
               kind: "image",
               mimeType: "image/png",
-              width: 512,
+              height: 360,
+              width: 640,
             }),
           ],
         });
         expect(JSON.stringify(state.nodeRun.output_json)).not.toContain("base64");
         expect(state.asset).toMatchObject({
           kind: "image",
+          height: 360,
           node_run_id: seeded.middleNodeRunId,
           status: "available",
+          width: 640,
           workflow_run_id: seeded.workflowRunId,
         });
-        expect(storageProvider.objects.size).toBe(1);
+        expect(state.variants.map((variant) => variant.variant_key)).toEqual(["preview", "thumb"]);
+        for (const variant of state.variants) {
+          expect(Number(variant.size_bytes)).toBeGreaterThan(0);
+          expect(storageProvider.objects.get(`test-bucket/${variant.object_key}`)?.body.byteLength).toBeGreaterThan(0);
+        }
+        expect(storageProvider.objects.size).toBe(3);
         expect(state.outputNode.status).toBe("runnable");
         expect(pollQueue.jobs).toHaveLength(0);
         expect(billing).toEqual({

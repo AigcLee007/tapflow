@@ -192,6 +192,24 @@ type UsageRecordInput = {
   workflowRunId: string;
 };
 
+function buildAiRuntimeDiagnostic(input: {
+  modelId?: string | null;
+  modelKey?: string | null;
+  providerId?: string | null;
+  providerKey?: string | null;
+  routeId?: string | null;
+  routeKey?: string | null;
+}): Record<string, string | null> {
+  return {
+    modelId: input.modelId ?? null,
+    modelKey: input.modelKey ?? null,
+    providerId: input.providerId ?? null,
+    providerKey: input.providerKey ?? null,
+    routeId: input.routeId ?? null,
+    routeKey: input.routeKey ?? null,
+  };
+}
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -1557,7 +1575,15 @@ export class WorkflowNodeExecutionService {
       };
     }
 
-    const outputJson = await this.persistMediaOutputs(
+    const runtimeDiagnostic = buildAiRuntimeDiagnostic({
+      modelId: result.modelId ?? null,
+      modelKey: result.modelKey,
+      providerId: result.providerId ?? null,
+      providerKey: result.providerKey,
+      routeId: result.routeId ?? null,
+      routeKey: typeof node.config.routeKey === "string" ? node.config.routeKey : null,
+    });
+    const persistedOutputJson = await this.persistMediaOutputs(
       client,
       kind,
       workflowRun,
@@ -1565,11 +1591,21 @@ export class WorkflowNodeExecutionService {
       nodeRun,
       this.normalizeMediaOutputs(result.outputs ?? []),
     );
+    const outputJson: Record<string, unknown> = {
+      ...persistedOutputJson,
+      aiRuntime: runtimeDiagnostic,
+    };
     logger.info(
       {
         asset_persisted_at: new Date().toISOString(),
+        modelId: runtimeDiagnostic.modelId,
+        modelKey: runtimeDiagnostic.modelKey,
         nodeRunId: nodeRun.id,
         outputCount: Array.isArray(outputJson.assets) ? outputJson.assets.length : 0,
+        providerId: runtimeDiagnostic.providerId,
+        providerKey: runtimeDiagnostic.providerKey,
+        routeId: runtimeDiagnostic.routeId,
+        routeKey: runtimeDiagnostic.routeKey,
         targetNodeId: node.id,
         tenantId: context.tenantId,
         workflowRunId: workflowRun.id,
@@ -1751,6 +1787,7 @@ export class WorkflowNodeExecutionService {
   ): Record<string, unknown> | null {
     const assets = Array.isArray(outputJson.assets) ? outputJson.assets : [];
     const primaryAsset = assets.find((asset): asset is Record<string, unknown> => isPlainObject(asset) && typeof asset.assetId === "string");
+    const aiRuntime = isPlainObject(outputJson.aiRuntime) ? outputJson.aiRuntime : null;
     if (!primaryAsset) {
       return null;
     }
@@ -1767,6 +1804,7 @@ export class WorkflowNodeExecutionService {
       generationStatus: "done",
       latestNodeRunId: nodeRun.id,
       latestWorkflowRunId: workflowRun.id,
+      ...(aiRuntime ? { aiRuntime } : {}),
       mimeType: typeof primaryAsset.mimeType === "string" ? primaryAsset.mimeType : undefined,
       naturalHeight: typeof primaryAsset.height === "number" ? primaryAsset.height : undefined,
       naturalWidth: typeof primaryAsset.width === "number" ? primaryAsset.width : undefined,

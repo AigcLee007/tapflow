@@ -5,6 +5,7 @@ import {
   type StorageProvider,
 } from "@aigc-flow/storage";
 import type { PoolClient } from "pg";
+import sharp from "sharp";
 
 import type { MediaOutput } from "@aigc-flow/ai-gateway-core";
 import { createImageVariants } from "./media-variants.js";
@@ -28,6 +29,25 @@ export type AssetRef = {
   mimeType: string;
   width?: number;
 };
+
+async function readImageDimensions(input: {
+  body: Buffer;
+  mimeType: string;
+}): Promise<{ height: number | null; width: number | null }> {
+  if (!/^image\/(png|jpe?g|webp)$/i.test(input.mimeType)) {
+    return { height: null, width: null };
+  }
+
+  try {
+    const metadata = await sharp(input.body, { failOn: "none" }).rotate().metadata();
+    return {
+      height: metadata.height ?? null,
+      width: metadata.width ?? null,
+    };
+  } catch {
+    return { height: null, width: null };
+  }
+}
 
 function defaultMimeType(kind: "image" | "video"): string {
   return kind === "image" ? "image/png" : "video/mp4";
@@ -190,6 +210,14 @@ export class MediaAssetStore {
       }
 
       const binary = await resolveOutputBinary(this.fetchFn, input.kind, output, index);
+      const measuredDimensions = input.kind === "image"
+        ? await readImageDimensions({
+            body: binary.body,
+            mimeType: binary.mimeType,
+          })
+        : { height: null, width: null };
+      const width = measuredDimensions.width ?? output.width ?? null;
+      const height = measuredDimensions.height ?? output.height ?? null;
       const assetId = randomUUID();
       const objectKey = buildAssetObjectKey({
         assetId,
@@ -265,10 +293,14 @@ export class MediaAssetStore {
           binary.filename,
           binary.body.byteLength,
           checksumSha256,
-          output.width ?? null,
-          output.height ?? null,
+          width,
+          height,
           output.durationMs ?? null,
           JSON.stringify({
+            measuredHeight: measuredDimensions.height,
+            measuredWidth: measuredDimensions.width,
+            providerHeight: output.height ?? null,
+            providerWidth: output.width ?? null,
             source: "workflow-runner",
           }),
         ],
@@ -354,10 +386,10 @@ export class MediaAssetStore {
       assetRefs.push({
         assetId,
         durationMs: output.durationMs ?? undefined,
-        height: output.height ?? undefined,
+        height: height ?? undefined,
         kind: input.kind,
         mimeType: binary.mimeType,
-        width: output.width ?? undefined,
+        width: width ?? undefined,
       });
     }
 
