@@ -1,6 +1,7 @@
 import { AiGatewayError } from "./errors.js";
 import type { ProviderAdapter } from "./provider-adapter.js";
 import type {
+  AssetReferenceInput,
   ImageGenerationRequest,
   ProviderCallContext,
   ProviderMediaGenerationResult,
@@ -102,6 +103,26 @@ function normalizeImages(value: unknown): string[] {
   ).slice(0, 9);
 }
 
+function collectAssetImageInputs(inputAssets: AssetReferenceInput[] | null | undefined): string[] {
+  if (!Array.isArray(inputAssets)) return [];
+  return inputAssets
+    .flatMap((asset) => {
+      const metadata = asRecord(asset.metadata);
+      return [
+        metadata.url,
+        metadata.uri,
+        metadata.fileUri,
+        metadata.file_url,
+        metadata.signedUrl,
+        metadata.signed_url,
+        metadata.publicUrl,
+        metadata.public_url,
+      ];
+    })
+    .map((item) => String(item || "").trim())
+    .filter(Boolean);
+}
+
 async function readResponseBody(response: Response): Promise<unknown> {
   const text = await response.text();
   if (!text) return null;
@@ -146,9 +167,10 @@ export class VisionaryNanoBananaAdapter implements ProviderAdapter {
     const optimizeChineseText = model === "nano-banana-pro"
       ? getFirstBoolean(lookupRecords, ["optimizeChineseText", "optimize_chinese_text"]) ?? false
       : false;
-    const images = normalizeImages(
-      metadata.images ?? metadata.referenceImages ?? params.images ?? params.reference_images,
-    );
+    const images = normalizeImages([
+      ...normalizeImages(metadata.images ?? metadata.referenceImages ?? params.images ?? params.reference_images),
+      ...collectAssetImageInputs(request.inputAssets),
+    ]);
 
     const payload: Record<string, unknown> = {
       aspectRatio,

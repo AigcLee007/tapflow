@@ -452,8 +452,10 @@ function buildGeneratedAssetNodePatch(
           coverResultId: generatedResults[0]?.id,
           generatedResults,
           lastGenerationSnapshot: buildImageGenerationSnapshot(currentData, assetRefs, generatedAt),
+          thumbnailUrl: generatedResults[0]?.url,
         }
       : {}),
+    ...(isVideoNode && primaryAsset.downloadUrl ? { posterUrl: primaryAsset.downloadUrl } : {}),
     assetId: primaryAsset.assetId,
     assetIds: assetRefs.map((asset) => asset.assetId),
     errorMessage: undefined,

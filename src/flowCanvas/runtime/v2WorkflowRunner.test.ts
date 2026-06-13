@@ -690,7 +690,7 @@ describe('v2WorkflowRunner', () => {
       source: 'generated',
       status: 'success',
     });
-    expect(updatedNode?.data.thumbnailUrl).toBeUndefined();
+    expect(updatedNode?.data.thumbnailUrl).toBe('https://example.test/presigned-image');
   });
 
   test('terminal stream event finalizes the run snapshot and applies generated assets', async () => {

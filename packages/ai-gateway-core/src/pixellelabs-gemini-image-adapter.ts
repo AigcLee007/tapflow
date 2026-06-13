@@ -1,6 +1,7 @@
 import { AiGatewayError } from "./errors.js";
 import type { ProviderAdapter } from "./provider-adapter.js";
 import type {
+  AssetReferenceInput,
   ImageGenerationRequest,
   MediaOutput,
   ProviderCallContext,
@@ -76,6 +77,26 @@ function normalizeImageInputs(value: unknown): string[] {
   ).slice(0, 9);
 }
 
+function collectAssetImageInputs(inputAssets: AssetReferenceInput[] | null | undefined): string[] {
+  if (!Array.isArray(inputAssets)) return [];
+  return inputAssets
+    .flatMap((asset) => {
+      const metadata = asRecord(asset.metadata);
+      return [
+        metadata.url,
+        metadata.uri,
+        metadata.fileUri,
+        metadata.file_url,
+        metadata.signedUrl,
+        metadata.signed_url,
+        metadata.publicUrl,
+        metadata.public_url,
+      ];
+    })
+    .map((item) => String(item || "").trim())
+    .filter(Boolean);
+}
+
 function guessMimeType(uri: string): string {
   const normalized = uri.split("?")[0]?.toLowerCase() || "";
   if (normalized.endsWith(".png")) return "image/png";
@@ -148,9 +169,10 @@ export class PixelleLabsGeminiImageAdapter implements ProviderAdapter {
     const lookupRecords = [metadata, params, requestConfig];
     const aspectRatio = normalizeAspectRatio(getFirstString(lookupRecords, ["aspectRatio", "aspect_ratio"]));
     const imageSize = normalizeImageSize(getFirstString(lookupRecords, ["imageSize", "image_size", "size"]));
-    const images = normalizeImageInputs(
-      metadata.images ?? metadata.referenceImages ?? params.images ?? params.reference_images,
-    );
+    const images = normalizeImageInputs([
+      ...normalizeImageInputs(metadata.images ?? metadata.referenceImages ?? params.images ?? params.reference_images),
+      ...collectAssetImageInputs(request.inputAssets),
+    ]);
 
     const parts: Array<Record<string, unknown>> = [{ text: request.prompt }];
     for (const image of images) {

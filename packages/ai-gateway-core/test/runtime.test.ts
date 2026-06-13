@@ -1035,6 +1035,56 @@ describe("visionary nano banana adapter", () => {
     });
   });
 
+  test("includes input asset urls as Nano Banana reference images", async () => {
+    const calls: Array<{ body: Record<string, unknown> }> = [];
+    const adapter = new VisionaryNanoBananaAdapter({
+      fetchImplementation: (async (_input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+        calls.push({
+          body: JSON.parse(String(init?.body || "{}")) as Record<string, unknown>,
+        });
+        return new Response(
+          JSON.stringify({
+            results: [{ url: "https://visionary.beer/api/generations/nb-asset/display" }],
+            status: "succeeded",
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }) as unknown as typeof fetch,
+    });
+
+    await adapter.generateImage(
+      {
+        apiKey: "sk-visionary",
+        baseUrl: "https://visionary.beer",
+        modelKey: "nano-banana-pro",
+        providerKey: "visionary",
+        requestConfig: { path: "/v1/api/nano-banana" },
+        routeId: "route-1",
+        routeKey: "image.nano-banana-pro",
+        timeoutMs: 5_000,
+      },
+      {
+        inputAssets: [
+          {
+            assetId: "asset-source",
+            metadata: {
+              signedUrl: "https://assets.example/source-preview.png",
+            },
+          },
+        ],
+        metadata: {
+          images: ["https://cdn.example/manual-reference.png"],
+        },
+        prompt: "extend this image",
+      },
+    );
+
+    expect(calls[0]?.body.images).toEqual([
+      "https://cdn.example/manual-reference.png",
+      "https://assets.example/source-preview.png",
+    ]);
+  });
+
   test("rejects unsupported Nano Banana model names", async () => {
     const adapter = new VisionaryNanoBananaAdapter({
       fetchImplementation: (async () => {
@@ -1159,6 +1209,85 @@ describe("pixellelabs gemini image adapter", () => {
         },
       ],
       status: "succeeded",
+    });
+  });
+
+  test("includes input asset urls as Gemini fileData references", async () => {
+    const calls: Array<{ body: Record<string, unknown> }> = [];
+    const adapter = new PixelleLabsGeminiImageAdapter({
+      fetchImplementation: (async (_input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+        calls.push({
+          body: JSON.parse(String(init?.body || "{}")) as Record<string, unknown>,
+        });
+        return new Response(
+          JSON.stringify({
+            candidates: [
+              {
+                content: {
+                  parts: [
+                    {
+                      inlineData: {
+                        data: "iVBORw0KGgo=",
+                        mimeType: "image/png",
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }) as unknown as typeof fetch,
+    });
+
+    await adapter.generateImage(
+      {
+        apiKey: "sk-pixelle",
+        baseUrl: "https://api.pixellelabs.com",
+        modelKey: "gemini-3-pro-image-preview",
+        providerKey: "pixellelabs",
+        requestConfig: {
+          path: "/v1beta/models/gemini-3-pro-image-preview:generateContent",
+        },
+        routeId: "route-1",
+        routeKey: "image.pixellelabs.nano-banana-pro",
+        timeoutMs: 5_000,
+      },
+      {
+        inputAssets: [
+          {
+            assetId: "asset-source",
+            metadata: {
+              signedUrl: "https://assets.example/source-preview.png",
+            },
+          },
+        ],
+        metadata: {
+          images: ["https://example.com/input.jpg"],
+        },
+        prompt: "relight this image",
+      },
+    );
+
+    expect(calls[0]?.body).toMatchObject({
+      contents: [
+        {
+          parts: [
+            { text: "relight this image" },
+            {
+              fileData: {
+                fileUri: "https://example.com/input.jpg",
+              },
+            },
+            {
+              fileData: {
+                fileUri: "https://assets.example/source-preview.png",
+              },
+            },
+          ],
+        },
+      ],
     });
   });
 });

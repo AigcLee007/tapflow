@@ -482,6 +482,29 @@ const IMAGE_EDIT_TITLES: Record<ImageEditType, string> = {
   removeBackground: '抠图后的',
 };
 
+const IMAGE_MODEL_LABELS: Record<string, string> = {
+  'nano-banana-pro': 'Nano Banana Pro',
+  'nano-banana-pro-fast': 'Nano Banana Pro Fast',
+  'gemini-flash': 'Nano Banana 2',
+  'gpt-image-2': 'GPT-Image-2',
+};
+
+function buildImageEditRunLabel(modelId: string, routeId?: string) {
+  const modelLabel = IMAGE_MODEL_LABELS[modelId] || modelId || '图片模型';
+  const route = getImageRouteById(routeId);
+  const routeLabel = String(route?.line || route?.label || routeId || '').trim();
+  const normalizedLine = routeLabel.toLowerCase();
+  const lineMatch = normalizedLine.match(/^line\s*([0-9]+)$/i);
+  const userRouteLabel = lineMatch?.[1]
+    ? `线路${lineMatch[1]}`
+    : normalizedLine === 'default'
+      ? '默认线路'
+      : routeLabel;
+  return userRouteLabel
+    ? `正在使用 ${modelLabel} · ${userRouteLabel}`
+    : `正在使用 ${modelLabel}`;
+}
+
 function countDerivedEditResults(sourceNodeId: string, editType: ImageEditType) {
   const store = useFlowCanvasStore.getState();
   const childIds = new Set(
@@ -583,6 +606,7 @@ export async function runImageEdit(
     lastEditType: editType,
     editSourceNodeId: sourceNodeId,
     editPrompt: prompt,
+    generationRunLabel: buildImageEditRunLabel(modelId, routeId),
     imageEditRequest,
     generationStatus: 'generating',
     status: 'running',

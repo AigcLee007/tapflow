@@ -1675,8 +1675,8 @@ const imageGeneratingOverlay: React.CSSProperties = {
 const imageGeneratingSkeleton: React.CSSProperties = {
   position: 'relative',
   zIndex: 2,
-  width: 120,
-  height: 88,
+  width: 'min(78%, 260px)',
+  minHeight: 112,
   display: 'flex',
   flexDirection: 'column',
   alignItems: 'center',
@@ -1687,6 +1687,18 @@ const imageGeneratingSkeleton: React.CSSProperties = {
   background: 'rgba(34,34,34,0.58)',
   boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06), 0 16px 34px rgba(0,0,0,0.26)',
   animation: 'flow-image-skeleton-pulse 1.45s ease-in-out infinite',
+};
+
+const imageGeneratingLabel: React.CSSProperties = {
+  maxWidth: 'calc(100% - 28px)',
+  color: 'rgba(255,255,255,0.82)',
+  fontSize: 12,
+  fontWeight: 760,
+  lineHeight: 1.35,
+  overflow: 'hidden',
+  textAlign: 'center',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
 };
 
 const imageGeneratingIconBox: React.CSSProperties = {
@@ -3349,6 +3361,10 @@ const ImageNodeCard = memo(function ImageNodeCard({
   onToggleFavoriteResult,
   onUploadClick,
 }: ImageNodeCardProps) {
+  const generationRunLabel = typeof d.generationRunLabel === 'string' && d.generationRunLabel.trim()
+    ? d.generationRunLabel.trim()
+    : '正在生成图片';
+
   return (
     <div
       style={card(d.width || FLOW_NODE_DEFAULT_SIZES.image.width, d.height || FLOW_NODE_DEFAULT_SIZES.image.height, selected, isTargeting)}
@@ -3431,6 +3447,7 @@ const ImageNodeCard = memo(function ImageNodeCard({
             <div style={imageGeneratingIconBox}>
               <ImageIcon size={18} strokeWidth={1.6} />
             </div>
+            <div style={imageGeneratingLabel}>{generationRunLabel}</div>
             <div style={imageGeneratingLine} />
             <div style={imageGeneratingLineShort} />
           </div>

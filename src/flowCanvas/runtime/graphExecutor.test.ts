@@ -76,6 +76,7 @@ describe('runImageEdit', () => {
       editPrompt: 'Remove the highlighted object',
       editSourceNodeId: sourceNode.id,
       generationPrompt: 'Remove the highlighted object',
+      generationRunLabel: '正在使用 Nano Banana Pro · 线路1',
       generationStatus: 'generating',
       lastEditType: 'erase',
       modelId: 'nano-banana-pro',

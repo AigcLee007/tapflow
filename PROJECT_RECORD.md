@@ -63,9 +63,11 @@ As of 2026-06-13:
 - image generation target-node input propagation fixed: upstream text nodes, image/upload asset nodes, and `batchCount` now reach the worker/provider request instead of remaining visual-only canvas state
 - image crop/resize/split/annotation/generated-result derived nodes now render immediately with a local preview while cloud asset persistence continues in the background
 - model-backed image node tools now use the v2 target-node workflow path, so logged-in v2 users no longer hit the legacy `auth-session-v1` billing login error from repaint/erase/outpaint/relight/multi-angle/enhance/remove-background actions
+- v2 image edit result nodes now persist the resolved preview URL back into canvas node data, show a model/route run label while generating, and forward source asset URLs into Visionary/Gemini image adapters so edit models receive the actual input image
 
 ## Recent Important Commits
 
+- pending: fix image edit result previews
 - pending: fix image edit tools v2 auth workflow
 - pending: fix optimistic derived image save UX
 - pending: fix image generation input propagation
@@ -116,8 +118,15 @@ Notes:
 - Legacy compatibility:
   - remaining legacy API helper calls no longer throw the old frontend-only billing login error when a v2 access token exists
   - ordinary GPT-image-2 reference-image generation still has a legacy compatibility edge and should be migrated to the v2 workflow path in a later cleanup
+- Follow-up fix:
+  - v2 workflow image/video success patches now write the resolved preview URL into `thumbnailUrl`/`posterUrl` in addition to durable `assetId`, so generated target nodes render immediately and survive remount/recovery without relying only on runtime memory state
+  - image edit target nodes now store `generationRunLabel`, and the image generating overlay displays the active model/route label while waiting for the result
+  - Visionary Nano Banana and PixelleLabs Gemini image adapters now merge `request.inputAssets` signed/public URLs into their provider reference-image payloads, matching the OpenAI-compatible adapter behavior and ensuring model-backed edit tools receive the source image instead of running text-only
 - Validation:
   - `npm test -- src/flowCanvas/runtime/graphExecutor.test.ts`
+  - `npm test -- src/flowCanvas/runtime/v2WorkflowRunner.test.ts`
+  - `npm run test --workspace @aigc-flow/ai-gateway-core -- runtime.test.ts`
+  - `npm run build --workspace @aigc-flow/ai-gateway-core`
   - `npm run test --workspace @aigc-flow/worker -- workflow-runtime-image-request.test.ts`
   - `npm run build --workspace @aigc-flow/worker`
   - `npm run build`
