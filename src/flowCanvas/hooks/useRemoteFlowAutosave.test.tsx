@@ -579,6 +579,65 @@ describe("useRemoteFlowAutosave", () => {
       await saveNowPromise;
     });
     expect(saveNowSettled).toBe(true);
+    await flushPromises();
+    expect(saveFlowDraftMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("multiple saveNow callers waiting on one in-flight autosave share the next flush", async () => {
+    const firstSave = deferred<FlowDraft>();
+    const secondSave = deferred<FlowDraft>();
+    const initialDraft = createDraft(1, ["source-image"]);
+    loadStoreFromDraft(initialDraft);
+    saveFlowDraftMock
+      .mockReturnValueOnce(firstSave.promise)
+      .mockReturnValueOnce(secondSave.promise);
+
+    const { result } = renderHook(() =>
+      useRemoteFlowAutosave({
+        draft: initialDraft,
+        enabled: true,
+        flowId: "flow-1",
+      }),
+    );
+
+    act(() => {
+      setNodeIds(["source-image", "intermediate-change"]);
+    });
+    await advanceTimers(1200);
+    expect(saveFlowDraftMock).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      setNodeIds(["source-image", "target-image"]);
+    });
+
+    let firstSaveNowSettled = false;
+    let secondSaveNowSettled = false;
+    const firstSaveNow = result.current.saveNow().then(() => {
+      firstSaveNowSettled = true;
+    });
+    const secondSaveNow = result.current.saveNow().then(() => {
+      secondSaveNowSettled = true;
+    });
+
+    await flushPromises();
+    expect(firstSaveNowSettled).toBe(false);
+    expect(secondSaveNowSettled).toBe(false);
+
+    await act(async () => {
+      firstSave.resolve(createDraft(2, ["source-image", "intermediate-change"]));
+      await Promise.resolve();
+    });
+    await vi.waitFor(() => expect(saveFlowDraftMock).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      secondSave.resolve(createDraft(3, ["source-image", "target-image"]));
+      await Promise.all([firstSaveNow, secondSaveNow]);
+    });
+
+    expect(firstSaveNowSettled).toBe(true);
+    expect(secondSaveNowSettled).toBe(true);
+    await flushPromises();
+    expect(saveFlowDraftMock).toHaveBeenCalledTimes(2);
   });
 
   it("syncs once when generation completion writes durable output to the target node", async () => {

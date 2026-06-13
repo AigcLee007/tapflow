@@ -68,9 +68,11 @@ As of 2026-06-13:
 - target-node image edit launches now wait for any in-flight remote draft save to finish and then save the latest canvas graph before creating the workflow run, so newly created edit target nodes are present in server-side `flow_drafts` before API/worker execution begins
 - image edit tools now ignore stale generic `image.default` route keys on uploaded/asset-backed source nodes when a model-scoped runtime route is available, preventing edits from silently running through the mock/default image route instead of the configured provider relay
 - target-node workflow launch now marks missing backend `node_run` snapshots as a visible node failure with diagnostic launch status instead of leaving a blank white result card
+- target-node image edit launch no longer stalls at `workflowLaunchStatus: saving_draft` when a manual run-save barrier overlaps an existing autosave; `saveNow()` now performs a foreground latest-graph flush before allowing workflow run creation to continue
 
 ## Recent Important Commits
 
+- pending: fix image edit save barrier stall
 - pending: fix image edit runtime route selection
 - pending: fix image edit result previews
 - pending: fix image edit tools v2 auth workflow
@@ -193,6 +195,27 @@ Notes:
   - if the backend run snapshot does not contain a `node_run` for the requested target node, the target node now fails visibly with `TARGET_NODE_RUN_MISSING` instead of staying as an idle blank white card
 - Validation:
   - `npm test -- src/flowCanvas/utils/imageRuntimeRouteSelection.test.ts src/flowCanvas/runtime/v2WorkflowRunner.test.ts src/flowCanvas/runtime/graphExecutor.test.ts`
+  - `npm run build`
+
+## 2026-06-13 - Image Edit Save Barrier Stall Fix
+
+- Fixed the next observed blocker after route selection:
+  - user-captured draft data showed the newest edit target node stuck at `workflowLaunchStatus: "saving_draft"`
+  - browser Network showed `PUT /api/v2/flows/:flowId/draft` returning `200 OK`
+  - no `POST /api/v2/flows/:flowId/runs` appeared, proving the provider relay/worker were not reached because frontend workflow launch never left the save barrier
+- Root cause:
+  - `saveNow()` shared the same recursive autosave path as background autosave
+  - when an image edit run was launched while another autosave was in flight, foreground save and background follow-up flush could both observe `dirtyAgainRef` and race around the same pending graph
+  - the target node could remain persisted with `workflowLaunchStatus: "saving_draft"` and no `latestWorkflowRunId`, so the canvas showed a blank target node while no workflow run request was sent
+- Frontend fix:
+  - added foreground flush options for `useRemoteFlowAutosave`
+  - `saveNow()` now waits for any current save, then explicitly flushes the latest store graph without scheduling background follow-up recursion
+  - `saveNow()` loops until the latest graph hash matches the cloud-synced hash before returning to `runBackendWorkflow()`
+- Regression coverage:
+  - strengthened the in-flight autosave + target-node save test to assert no extra background save is started after `saveNow()` resolves
+  - added concurrent `saveNow()` coverage so multiple workflow launches waiting on the same in-flight autosave share the next foreground flush and settle together
+- Validation:
+  - `npm test -- src/flowCanvas/hooks/useRemoteFlowAutosave.test.tsx src/flowCanvas/runtime/v2WorkflowRunner.test.ts src/flowCanvas/utils/imageRuntimeRouteSelection.test.ts src/flowCanvas/runtime/graphExecutor.test.ts`
   - `npm run build`
 
 ## 2026-06-13 - Image Derived Tool Optimistic Save Fix

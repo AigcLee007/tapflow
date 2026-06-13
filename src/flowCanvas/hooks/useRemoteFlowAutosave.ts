@@ -27,6 +27,11 @@ type RemoteFlowAutosaveState = {
   updatedAt: string | null;
 };
 
+type FlushSaveOptions = {
+  backgroundFollowUp?: boolean;
+  recurseAfterInFlight?: boolean;
+};
+
 const AUTOSAVE_DELAY_MS = 1200;
 const CONFLICT_RETRY_DELAYS_MS = [150, 300];
 const FAILED_SYNC_RETRY_MS = 5000;
@@ -107,7 +112,10 @@ export function useRemoteFlowAutosave(input: {
   }, []);
 
   const flushSaveQueue = useCallback(
-    async (mode: "syncing" | "retrying" = "syncing"): Promise<void> => {
+    async (
+      mode: "syncing" | "retrying" = "syncing",
+      options: FlushSaveOptions = {},
+    ): Promise<void> => {
       if (!input.enabled || !input.flowId || !input.draft) {
         return;
       }
@@ -115,6 +123,9 @@ export function useRemoteFlowAutosave(input: {
       if (inFlightRef.current) {
         dirtyAgainRef.current = true;
         await inFlightPromiseRef.current;
+        if (options.recurseAfterInFlight === false) {
+          return;
+        }
         return flushSaveQueue(mode);
       }
 
@@ -211,6 +222,7 @@ export function useRemoteFlowAutosave(input: {
 
         if (
           saveSucceeded &&
+          options.backgroundFollowUp !== false &&
           input.enabled &&
           input.flowId &&
           input.draft &&
@@ -263,7 +275,19 @@ export function useRemoteFlowAutosave(input: {
   const saveNow = async () => {
     syncLatestGraphFromStore();
     dirtyAgainRef.current = true;
-    await flushSaveQueue(retryingRef.current ? "retrying" : "syncing");
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await flushSaveQueue(retryingRef.current ? "retrying" : "syncing", {
+        backgroundFollowUp: false,
+        recurseAfterInFlight: false,
+      });
+      syncLatestGraphFromStore();
+      if (latestGraphKeyRef.current === cloudSyncedGraphKeyRef.current) {
+        return;
+      }
+    }
+    await flushSaveQueue(retryingRef.current ? "retrying" : "syncing", {
+      backgroundFollowUp: false,
+    });
   };
 
   useEffect(() => {
