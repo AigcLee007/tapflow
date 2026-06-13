@@ -239,4 +239,24 @@ describe("AssetLibraryPage", () => {
     expect(screen.queryByText("Asset One")).toBeNull();
     expect(screen.queryByText("1 KB")).toBeNull();
   });
+
+  test("limits initial thumbnail DOM nodes for large asset groups", () => {
+    const manyAssets = Array.from({ length: 120 }, (_, index) => ({
+      ...asset,
+      id: `asset-${index}`,
+      originalFilename: `asset-${index}.png`,
+      title: `Asset ${index}`,
+    }));
+
+    mockLibrary({
+      assets: manyAssets,
+      groupedAssets: [{ dateLabel: "2026-06-12", items: manyAssets }],
+      mediaCounts: { all: 120, audio: 0, image: 120, video: 0 },
+      total: 120,
+    });
+
+    renderPage();
+
+    expect(screen.getAllByRole("button", { name: /^Asset / }).length).toBeLessThanOrEqual(40);
+  });
 });

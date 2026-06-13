@@ -88,6 +88,7 @@ export function AssetGrid({
       onRename={onRename}
       onToggleFavorite={onToggleFavorite}
       tileOnly={tileOnly}
+      virtualize
     />
   );
 }

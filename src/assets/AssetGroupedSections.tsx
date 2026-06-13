@@ -4,6 +4,7 @@ import { Film, Image, Music } from "lucide-react";
 import type { AssetItem } from "./assetApi";
 import type { AssetDateGroup, AssetMediaTab } from "./assetLibraryView";
 import { AssetCard } from "./AssetCard";
+import { AssetVirtualGrid } from "./AssetVirtualGrid";
 
 const TAB_OPTIONS: Array<{ label: string; value: AssetMediaTab }> = [
   { label: "图片", value: "image" },
@@ -75,6 +76,7 @@ export function AssetGroupedSections({
   onToggleFavorite,
   showActions = true,
   tileOnly = false,
+  virtualize = false,
 }: {
   compact?: boolean;
   emptyMessage: string;
@@ -88,6 +90,7 @@ export function AssetGroupedSections({
   onToggleFavorite?: (asset: AssetItem) => Promise<void>;
   showActions?: boolean;
   tileOnly?: boolean;
+  virtualize?: boolean;
 }) {
   if (groups.length === 0) {
     return (
@@ -139,12 +142,11 @@ export function AssetGroupedSections({
               gap: compact ? 14 : 14,
             }}
           >
-            {group.items.map((asset) => (
-              <AssetCard
-                asset={asset}
+            {virtualize ? (
+              <AssetVirtualGrid
                 compact={compact}
                 folders={folders}
-                key={asset.id}
+                items={group.items}
                 onAddToFolder={onAddToFolder}
                 onDelete={onDelete}
                 onDownload={onDownload}
@@ -154,7 +156,24 @@ export function AssetGroupedSections({
                 showActions={showActions}
                 tileOnly={tileOnly}
               />
-            ))}
+            ) : (
+              group.items.map((asset) => (
+                <AssetCard
+                  asset={asset}
+                  compact={compact}
+                  folders={folders}
+                  key={asset.id}
+                  onAddToFolder={onAddToFolder}
+                  onDelete={onDelete}
+                  onDownload={onDownload}
+                  onOpen={onOpen}
+                  onRename={onRename}
+                  onToggleFavorite={onToggleFavorite}
+                  showActions={showActions}
+                  tileOnly={tileOnly}
+                />
+              ))
+            )}
           </div>
         </section>
       ))}
