@@ -1,6 +1,6 @@
 # Project Record
 
-Last updated: 2026-06-12
+Last updated: 2026-06-13
 Maintainers: project team + Codex sessions
 
 ## Purpose
@@ -49,7 +49,7 @@ Current deployment baseline:
 
 ## Current Key Status Snapshot
 
-As of 2026-06-12:
+As of 2026-06-13:
 
 - TapNow-style visual alignment work has been iterated several rounds on canvas layout, add-node menus, user menus, and node title density
 - media asset preview optimization is implemented
@@ -61,9 +61,11 @@ As of 2026-06-12:
 - local image upload smoothness root cause identified: upload entry points still wait for image decode/measurement before first canvas paint
 - upload smooth preview execution plan added at `docs/superpowers/plans/2026-06-11-upload-smooth-preview-pipeline.md`
 - image generation target-node input propagation fixed: upstream text nodes, image/upload asset nodes, and `batchCount` now reach the worker/provider request instead of remaining visual-only canvas state
+- image crop/resize/split/annotation/generated-result derived nodes now render immediately with a local preview while cloud asset persistence continues in the background
 
 ## Recent Important Commits
 
+- pending: fix optimistic derived image save UX
 - pending: fix image generation input propagation
 - `b24b42f` chore: upgrade production image to node 22
 - `767ba4a` fix: make asset variant backfill run in production
@@ -96,6 +98,20 @@ As of 2026-06-12:
 Notes:
 
 - Local API asset integration tests are still database-env gated in this workspace; the new bytes endpoint test was added to `apps/api/test/assets.test.ts` but is skipped locally without `DATABASE_URL`.
+
+## 2026-06-13 - Image Derived Tool Optimistic Save Fix
+
+- Fixed the crop confirmation UX where `确认裁剪` appeared idle while the browser waited for derived-image upload and metadata persistence.
+- Image-derived canvas results now use an optimistic path:
+  - create the result image node immediately with the local blob/URL preview
+  - close the image tool immediately for crop, resize, split, and annotation flows
+  - persist the derived asset in the background
+  - patch the result node with durable `assetId`, asset-backed preview data, and success state when persistence completes
+- Background persistence failures now mark the newly created result node as failed while keeping its local preview visible instead of blocking the source tool or marking the source node as failed.
+- Added focused tests for optimistic derived image node data, persisted patches, and failure patches.
+- Validation:
+  - `npm test -- src/flowCanvas/utils/optimisticDerivedImageAsset.test.ts`
+  - `npm run build`
 
 ## 2026-06-11 - Upload Smooth Preview Pipeline Plan
 

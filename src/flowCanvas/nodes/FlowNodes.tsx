@@ -112,6 +112,12 @@ import {
 } from '../utils/localImageUpload';
 import { persistDerivedImageAsset, type DerivedImageSourceType } from '../utils/persistDerivedImageAsset';
 import { downloadOriginalImage, getPreferredImageDownloadAssetId } from '../utils/imageDownload';
+import {
+  buildFailedDerivedImagePatch,
+  buildOptimisticDerivedImageNodeData,
+  buildPersistedDerivedImagePatch,
+  getDerivedImageSourceType,
+} from '../utils/optimisticDerivedImageAsset';
 import { mapImageRuntimeRouteOptions, type RuntimeRouteOption } from '../utils/runtimeRouteOptions';
 import { getPromptBarDensity, type PromptBarDensityVariant } from '../utils/promptBarDensity';
 import {
@@ -4906,7 +4912,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   }, [d.editHistory, d.height, d.thumbnailUrl, d.width, id]);
 
   const addDerivedImageNode = useCallback(
-    async (
+    (
       editType: string,
       title: string,
       imageUrl: string,
@@ -4918,66 +4924,74 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       const { sourceWidth, sourceHeight, sourcePosition, previousUrl, history } = getDerivedNodeBase();
       const displaySize = fitMediaNodeToShortSide(naturalWidth, naturalHeight);
 
-      const derivedSource: DerivedImageSourceType =
-        editType === 'split'
-          ? 'slice'
-          : editType === 'crop'
-            ? 'crop'
-            : editType === 'annotate'
-              ? 'annotation'
-              : editType === 'generated-result'
-                ? 'generated-result'
-                : editType === 'resize'
-                  ? 'resize'
-                  : 'image-edit';
-
-      try {
-        const persisted = await persistDerivedImageAsset({
-          imageUrl,
-          metadata: {
-            ...metadata,
-            editType,
-          },
-          naturalHeight,
-          naturalWidth,
-          projectId: backendProjectId,
-          source: derivedSource,
-          sourceAssetId: typeof d.assetId === 'string' ? d.assetId : undefined,
-          title,
-        });
-
-        addNodeAndEdge(
-          'image',
-          position || {
-            x: sourcePosition.x + sourceWidth + 160,
-            y: sourcePosition.y + Math.max(0, (sourceHeight - displaySize.height) / 2),
-          },
-          id,
-          'out',
-          'in',
-          {
-            ...persisted.nodeData,
-            width: displaySize.width,
-            height: displaySize.height,
-            editHistory: previousUrl && !isTransientDraftUrl(previousUrl) ? [...history, previousUrl] : history,
-            lastEditType: editType,
-            naturalWidth,
-            naturalHeight,
+      const derivedSource: DerivedImageSourceType = getDerivedImageSourceType(editType);
+      const nextPosition = position || {
+        x: sourcePosition.x + sourceWidth + 160,
+        y: sourcePosition.y + Math.max(0, (sourceHeight - displaySize.height) / 2),
+      };
+      const optimisticNode = addNodeAndEdge(
+        'image',
+        nextPosition,
+        id,
+        'out',
+        'in',
+        {
+          ...buildOptimisticDerivedImageNodeData({
             aspectRatio: naturalWidth / naturalHeight,
-          },
-        );
-      } catch (error) {
-        updateNodeData(id, {
-          errorMessage: error instanceof Error ? error.message : '派生图片保存失败',
-          generationStatus: 'error',
-          status: 'error',
-        });
-        throw error;
-      } finally {
-        if (imageUrl.startsWith('blob:')) {
-          URL.revokeObjectURL(imageUrl);
+            editType,
+            imageUrl,
+            metadata,
+            naturalHeight,
+            naturalWidth,
+            sourceAssetId: typeof d.assetId === 'string' ? d.assetId : undefined,
+            title,
+          }),
+          width: displaySize.width,
+          height: displaySize.height,
+          editHistory: previousUrl && !isTransientDraftUrl(previousUrl) ? [...history, previousUrl] : history,
+        },
+      );
+      const optimisticNodeId = optimisticNode.id;
+
+      void (async () => {
+        try {
+          const persisted = await persistDerivedImageAsset({
+            imageUrl,
+            metadata: {
+              ...metadata,
+              editType,
+            },
+            naturalHeight,
+            naturalWidth,
+            projectId: backendProjectId,
+            source: derivedSource,
+            sourceAssetId: typeof d.assetId === 'string' ? d.assetId : undefined,
+            title,
+          });
+
+          updateNodeData(
+            optimisticNodeId,
+            {
+              ...buildPersistedDerivedImagePatch({
+                lastEditType: editType,
+                naturalHeight,
+                naturalWidth,
+                nodeData: persisted.nodeData,
+              }),
+              width: displaySize.width,
+              height: displaySize.height,
+              editHistory: previousUrl && !isTransientDraftUrl(previousUrl) ? [...history, previousUrl] : history,
+              aspectRatio: naturalWidth / naturalHeight,
+            },
+          );
+
+          if (imageUrl.startsWith('blob:')) {
+            URL.revokeObjectURL(imageUrl);
+          }
+        } catch (error) {
+          updateNodeData(optimisticNodeId, buildFailedDerivedImagePatch(error));
         }
-      }
+      })();
     },
     [addNodeAndEdge, backendProjectId, d.assetId, getDerivedNodeBase, id, updateNodeData],
   );
@@ -4986,11 +5000,11 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     async (imageUrl: string, index: number) => {
       try {
         const natural = await getImageNaturalSize(imageUrl);
-        await addDerivedImageNode('generated-result', `生成结果${index + 1}`, imageUrl, natural.w, natural.h);
+        addDerivedImageNode('generated-result', `生成结果${index + 1}`, imageUrl, natural.w, natural.h);
       } catch {
         const fallbackWidth = Number(d.naturalWidth || d.width || FLOW_NODE_DEFAULT_SIZES.image.width);
         const fallbackHeight = Number(d.naturalHeight || d.height || FLOW_NODE_DEFAULT_SIZES.image.height);
-        await addDerivedImageNode('generated-result', `生成结果${index + 1}`, imageUrl, fallbackWidth, fallbackHeight);
+        addDerivedImageNode('generated-result', `生成结果${index + 1}`, imageUrl, fallbackWidth, fallbackHeight);
       }
     },
     [addDerivedImageNode, d.height, d.naturalHeight, d.naturalWidth, d.width],
@@ -4998,24 +5012,20 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
 
   const handleCropConfirm = useCallback(
     (croppedUrl: string, width: number, height: number, naturalWidth: number, naturalHeight: number) => {
-      void (async () => {
-        await addDerivedImageNode('crop', `裁剪后的${cropResultCount + 1}`, croppedUrl, naturalWidth, naturalHeight, undefined, {
-          crop: true,
-        });
-        closeImageTool();
-      })();
+      addDerivedImageNode('crop', `裁剪后的${cropResultCount + 1}`, croppedUrl, naturalWidth, naturalHeight, undefined, {
+        crop: true,
+      });
+      closeImageTool();
     },
-    [addDerivedImageNode, cropResultCount],
+    [addDerivedImageNode, closeImageTool, cropResultCount],
   );
 
   const handleResizeConfirm = useCallback(
     (resultUrl: string, naturalWidth: number, naturalHeight: number) => {
-      void (async () => {
-        await addDerivedImageNode('resize', `调整后的${resizeResultCount + 1}`, resultUrl, naturalWidth, naturalHeight);
-        closeImageTool();
-      })();
+      addDerivedImageNode('resize', `调整后的${resizeResultCount + 1}`, resultUrl, naturalWidth, naturalHeight);
+      closeImageTool();
     },
-    [addDerivedImageNode, resizeResultCount],
+    [addDerivedImageNode, closeImageTool, resizeResultCount],
   );
 
   const handleSplitConfirm = useCallback(
@@ -5029,7 +5039,6 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
         const startX = sourcePosition.x + sourceWidth + 160;
         const startY = sourcePosition.y;
         const batchIndex = splitResultCount + 1;
-        let failureCount = 0;
 
         for (let index = 0; index < pieces.length; index += 1) {
           const piece = pieces[index];
@@ -5039,49 +5048,36 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
             y: startY + piece.row * (cellHeight + gap) + Math.max(0, (cellHeight - displaySize.height) / 2),
           };
 
-          try {
-            await addDerivedImageNode(
-              'split',
-              `切片${batchIndex}-${piece.row + 1}-${piece.col + 1}`,
-              piece.url,
-              piece.naturalWidth,
-              piece.naturalHeight,
-              position,
-              {
-                grid: { rows: gridSize, cols: gridSize },
-                row: piece.row,
-                col: piece.col,
-                rows: gridSize,
-                cols: gridSize,
-                slice: true,
-              },
-            );
-          } catch {
-            failureCount += 1;
-          }
+          addDerivedImageNode(
+            'split',
+            `切片${batchIndex}-${piece.row + 1}-${piece.col + 1}`,
+            piece.url,
+            piece.naturalWidth,
+            piece.naturalHeight,
+            position,
+            {
+              grid: { rows: gridSize, cols: gridSize },
+              row: piece.row,
+              col: piece.col,
+              rows: gridSize,
+              cols: gridSize,
+              slice: true,
+            },
+          );
         }
 
-        if (failureCount > 0) {
-          updateNodeData(id, {
-            errorMessage: `切片结果有 ${failureCount} 张保存失败，请重试`,
-            generationStatus: 'error',
-            status: 'error',
-          });
-        }
         closeImageTool();
       })();
     },
-    [addDerivedImageNode, closeImageTool, getDerivedNodeBase, id, splitResultCount, updateNodeData],
+    [addDerivedImageNode, closeImageTool, getDerivedNodeBase, splitResultCount],
   );
 
   const handleAnnotateConfirm = useCallback(
     (resultUrl: string, naturalWidth: number, naturalHeight: number) => {
-      void (async () => {
-        await addDerivedImageNode('annotate', `标注后的${annotateResultCount + 1}`, resultUrl, naturalWidth, naturalHeight, undefined, {
-          annotation: true,
-        });
-        closeImageTool();
-      })();
+      addDerivedImageNode('annotate', `标注后的${annotateResultCount + 1}`, resultUrl, naturalWidth, naturalHeight, undefined, {
+        annotation: true,
+      });
+      closeImageTool();
     },
     [addDerivedImageNode, annotateResultCount, closeImageTool],
   );
