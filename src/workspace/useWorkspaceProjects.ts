@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useAuth } from "../auth/useAuth";
-import { getAssetSignedUrls } from "../assets/assetApi";
-import { getCachedAssetUrl, setCachedAssetUrl } from "../assets/assetUrlCache";
+import {
+  getWorkspaceProjectsSnapshot,
+  setWorkspaceProjectsSnapshot,
+} from "./workspaceSessionCache";
 import {
   createWorkspaceProject,
   listWorkspaceProjects,
@@ -11,26 +13,6 @@ import {
 
 type Scope = "personal" | "team";
 type SortMode = "updated_desc" | "created_desc" | "name_asc";
-
-async function resolveProjectCoverUrls(projects: WorkspaceProject[]): Promise<WorkspaceProject[]> {
-  const coverAssetIds = Array.from(
-    new Set(projects.map((project) => project.coverAssetId).filter((assetId): assetId is string => Boolean(assetId))),
-  );
-  const missingRequests = coverAssetIds
-    .filter((assetId) => !getCachedAssetUrl(assetId, null))
-    .map((assetId) => ({ assetId }));
-
-  if (missingRequests.length > 0) {
-    const signed = await getAssetSignedUrls(missingRequests).catch(() => ({ items: [] }));
-    signed.items.forEach(setCachedAssetUrl);
-  }
-
-  return projects.map((project) => {
-    if (!project.coverAssetId || project.coverUrl) return project;
-    const cachedUrl = getCachedAssetUrl(project.coverAssetId, null);
-    return cachedUrl ? { ...project, coverUrl: cachedUrl } : project;
-  });
-}
 
 export function useWorkspaceProjects() {
   const { authenticated, sessionId, tenant, user } = useAuth();
@@ -51,15 +33,30 @@ export function useWorkspaceProjects() {
 
   useEffect(() => {
     requestSequenceRef.current += 1;
-    setProjects([]);
     setError(null);
-    setLoading(Boolean(authenticated && tenant && user));
+    if (!authenticated || !tenant || !user) {
+      setProjects([]);
+      setLoading(false);
+      return;
+    }
+
+    const snapshot = getWorkspaceProjectsSnapshot(identityKey);
+    if (snapshot) {
+      setProjects(snapshot.projects);
+      setLoading(false);
+      return;
+    }
+
+    setProjects([]);
+    setLoading(true);
   }, [authenticated, identityKey, tenant, user]);
 
   const refresh = useCallback(async (options: { silent?: boolean } = {}) => {
     if (!authenticated || !tenant || !user) {
       requestSequenceRef.current += 1;
-      setProjects([]);
+      if (!options.silent) {
+        setProjects([]);
+      }
       setError(null);
       setLoading(false);
       return;
@@ -72,11 +69,15 @@ export function useWorkspaceProjects() {
     }
     setError(null);
     try {
-      const nextProjects = await resolveProjectCoverUrls(await listWorkspaceProjects());
+      const nextProjects = await listWorkspaceProjects({ includeCoverUrl: true });
       if (requestSequenceRef.current !== requestId) {
         return;
       }
       setProjects(nextProjects);
+      setWorkspaceProjectsSnapshot(identityKey, {
+        projects: nextProjects,
+        staleAt: Date.now() + 30_000,
+      });
     } catch (loadError) {
       if (requestSequenceRef.current !== requestId) {
         return;
@@ -88,11 +89,12 @@ export function useWorkspaceProjects() {
         setLoading(false);
       }
     }
-  }, [authenticated, tenant, user]);
+  }, [authenticated, identityKey, tenant, user]);
 
   useEffect(() => {
-    void refresh();
-  }, [identityKey, refresh]);
+    const hasSnapshot = Boolean(authenticated && tenant && user && getWorkspaceProjectsSnapshot(identityKey));
+    void refresh({ silent: hasSnapshot });
+  }, [authenticated, identityKey, refresh, tenant, user]);
 
   const createProject = useCallback(
     async (input: { description?: string | null; name: string }) => {

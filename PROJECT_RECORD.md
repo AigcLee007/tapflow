@@ -957,6 +957,22 @@ Validation completed:
 - `npm run test -- src/assets/AssetLibraryPage.test.tsx src/flowCanvas/panels/CanvasAssetPanel.test.tsx`
 - `npm run build`
 
+### Latest Production Asset and Workspace Performance Task 9
+
+Completed in current local iteration:
+
+- extended the workspace project API client to request backend inline cover URLs with `includeCoverUrl=true`
+- added a session-scoped workspace project snapshot cache keyed by authenticated user, tenant, and session
+- rewrote `useWorkspaceProjects` to show cached project lists immediately on remount and refresh silently in the background
+- removed the workspace hook's frontend cover signing fanout, so `/workspace` now consumes cover URLs from `GET /api/v2/projects?includeCoverUrl=true`
+- added regression coverage for cache-first workspace remounts and for avoiding `/assets/signed-urls` calls during project list loading
+
+Validation completed:
+
+- `npm run test -- src/workspace/useWorkspaceProjects.test.tsx`
+- `npm run test -- src/workspace/useWorkspaceProjects.test.tsx src/workspace/WorkspacePage.test.tsx src/assets/AssetLibraryPage.test.tsx`
+- `npm run build`
+
 ### Latest Project and Asset Management Menus
 
 Completed in current local iteration:

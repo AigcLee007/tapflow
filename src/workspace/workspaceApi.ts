@@ -3,6 +3,7 @@ import { apiDelete, apiGet, apiPatch, apiPost } from "../services/v2HttpClient";
 export type WorkspaceProject = {
   coverAssetId: string | null;
   coverUrl?: string;
+  coverUrlExpiresAt?: string;
   createdAt: string;
   createdBy: string | null;
   description: string | null;
@@ -26,8 +27,9 @@ export type WorkspaceFlow = {
   updatedBy: string | null;
 };
 
-export async function listWorkspaceProjects(): Promise<WorkspaceProject[]> {
-  return apiGet<WorkspaceProject[]>("/projects");
+export async function listWorkspaceProjects(options: { includeCoverUrl?: boolean } = {}): Promise<WorkspaceProject[]> {
+  const query = options.includeCoverUrl ? "?includeCoverUrl=true" : "";
+  return apiGet<WorkspaceProject[]>(`/projects${query}`);
 }
 
 export async function getWorkspaceProject(projectId: string): Promise<WorkspaceProject> {

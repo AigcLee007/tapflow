@@ -3,6 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AuthContext, type AuthState } from "../auth/useAuth";
+import { clearWorkspaceProjectsCache } from "./workspaceSessionCache";
 import { useWorkspaceProjects } from "./useWorkspaceProjects";
 import type { WorkspaceProject } from "./workspaceApi";
 
@@ -98,6 +99,7 @@ function renderWithAuth(authState: AuthState) {
 
 describe("useWorkspaceProjects", () => {
   beforeEach(() => {
+    clearWorkspaceProjectsCache();
     listWorkspaceProjectsMock.mockReset();
     createWorkspaceProjectMock.mockReset();
     getAssetSignedUrlsMock.mockReset();
@@ -152,30 +154,24 @@ describe("useWorkspaceProjects", () => {
     expect(screen.getByTestId("projects").textContent).not.toContain("Project A");
   });
 
-  it("batch signs project cover urls so cards can render without per-card signing", async () => {
+  it("shows cached projects immediately when workspace page remounts", async () => {
+    listWorkspaceProjectsMock.mockResolvedValue([{ ...projectA, coverUrl: "https://cdn.test/cover.webp" }]);
+    const first = renderWithAuth(baseAuthState);
+
+    await waitFor(() => expect(screen.getByTestId("loading").textContent).toBe("idle"));
+    first.unmount();
+
+    renderWithAuth(baseAuthState);
+
+    expect(screen.getByTestId("projects").textContent).toContain("Project A");
+    expect(screen.getByTestId("loading").textContent).toBe("idle");
+    await waitFor(() => expect(listWorkspaceProjectsMock).toHaveBeenCalledTimes(2));
+  });
+
+  it("requests backend cover urls instead of frontend signing covers", async () => {
     listWorkspaceProjectsMock.mockResolvedValue([
-      { ...projectA, coverAssetId: "cover-a" },
-      { ...projectB, coverAssetId: "cover-b" },
-      { ...projectB, id: "project-c", name: "Project C", coverAssetId: "cover-a" },
+      { ...projectA, coverAssetId: "cover-a", coverUrl: "https://cdn.test/cover-a.webp" },
     ]);
-    getAssetSignedUrlsMock.mockResolvedValue({
-      items: [
-        {
-          assetId: "cover-a",
-          expiresAt: new Date(Date.now() + 900_000).toISOString(),
-          method: "GET",
-          url: "https://cdn.test/cover-a.webp",
-          variantKey: null,
-        },
-        {
-          assetId: "cover-b",
-          expiresAt: new Date(Date.now() + 900_000).toISOString(),
-          method: "GET",
-          url: "https://cdn.test/cover-b.webp",
-          variantKey: null,
-        },
-      ],
-    });
 
     renderWithAuth(baseAuthState);
 
@@ -183,6 +179,7 @@ describe("useWorkspaceProjects", () => {
       expect(screen.getByTestId("projects").textContent).toContain("Project A");
     });
 
-    expect(getAssetSignedUrlsMock).toHaveBeenCalledWith([{ assetId: "cover-a" }, { assetId: "cover-b" }]);
+    expect(listWorkspaceProjectsMock).toHaveBeenCalledWith({ includeCoverUrl: true });
+    expect(getAssetSignedUrlsMock).not.toHaveBeenCalled();
   });
 });
