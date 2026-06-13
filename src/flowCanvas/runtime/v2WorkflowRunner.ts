@@ -115,6 +115,18 @@ function setRunError(message: string): void {
   });
 }
 
+function updateTargetNodeLaunchState(
+  nodeId: string,
+  status: string,
+  extra: Partial<FlowNodeData> = {},
+): void {
+  useFlowCanvasStore.getState().updateNodeData(nodeId, {
+    ...extra,
+    workflowLaunchStatus: status,
+    workflowLaunchUpdatedAt: Date.now(),
+  } as Partial<FlowNodeData>);
+}
+
 function getOptimisticReservedCredits(): number {
   return Array.from(optimisticCreditReservationsByNodeId.values())
     .reduce((total, amount) => total + amount, 0);
@@ -755,6 +767,8 @@ export function markBackendRunLaunchFailed(nodeId: string, error: unknown): void
     generationStatus: 'error',
     progress: 0,
     status: 'failed',
+    workflowLaunchStatus: 'failed',
+    workflowLaunchUpdatedAt: Date.now(),
   } as Partial<FlowNodeData>);
   useFlowCanvasStore.setState((currentState) => ({
     isRunningBackendWorkflow: false,
@@ -772,6 +786,23 @@ export function markBackendRunLaunchFailed(nodeId: string, error: unknown): void
     runError: message,
     runStatus: 'failed',
   }));
+}
+
+function assertTargetNodeRunCreated(snapshot: GetWorkflowRunResponse, targetNodeId: string): void {
+  const scope = resolveRunScope(snapshot.workflowRun.inputJson);
+  if (scope.runMode !== 'target_node' || scope.targetNodeId !== targetNodeId) {
+    throw {
+      code: 'TARGET_NODE_RUN_SCOPE_MISMATCH',
+      message: `Workflow run ${snapshot.workflowRun.id} was created without the requested target node scope.`,
+    };
+  }
+  const targetNodeRun = snapshot.nodeRuns.find((nodeRun) => nodeRun.nodeId === targetNodeId);
+  if (!targetNodeRun) {
+    throw {
+      code: 'TARGET_NODE_RUN_MISSING',
+      message: `Workflow run ${snapshot.workflowRun.id} did not create a node run for target node ${targetNodeId}.`,
+    };
+  }
 }
 
 function startRunStream(runId: string): void {
@@ -844,6 +875,8 @@ export async function runBackendWorkflow(options?: {
         errorMessage: undefined,
         generationStatus: 'generating',
         status: 'pending',
+        workflowLaunchStatus: 'credit_reserved',
+        workflowLaunchUpdatedAt: Date.now(),
       } as Partial<FlowNodeData>);
       useFlowCanvasStore.setState((currentState) => ({
         currentRunId: null,
@@ -864,8 +897,14 @@ export async function runBackendWorkflow(options?: {
       }));
     }
 
+    if (isTargetNodeRun) {
+      updateTargetNodeLaunchState(options.targetNodeId as string, 'saving_draft');
+    }
     await flushRemoteDraftBeforeRun();
 
+    if (isTargetNodeRun) {
+      updateTargetNodeLaunchState(options.targetNodeId as string, 'creating_run');
+    }
     const request: CreateWorkflowRunInput = {
       idempotencyKey: `flow-canvas:${state.backendFlowId}:${options?.targetNodeId ?? 'flow'}:${Date.now()}`,
       input: {},
@@ -878,6 +917,11 @@ export async function runBackendWorkflow(options?: {
     const created = await createWorkflowRun(state.backendFlowId, request);
     disposedRunIds.delete(created.runId);
 
+    if (isTargetNodeRun) {
+      updateTargetNodeLaunchState(options.targetNodeId as string, 'run_created', {
+        latestWorkflowRunId: created.runId,
+      });
+    }
     useFlowCanvasStore.setState((currentState) => ({
       currentRunId: created.runId,
       runStatus: created.status,
@@ -890,9 +934,16 @@ export async function runBackendWorkflow(options?: {
     }));
 
     const snapshot = await getWorkflowRun(created.runId);
+    if (isTargetNodeRun) {
+      assertTargetNodeRunCreated(snapshot, options.targetNodeId as string);
+      updateTargetNodeLaunchState(options.targetNodeId as string, 'node_run_created');
+    }
     await applyWorkflowRunSnapshot(snapshot);
 
     if (!isTerminalStatus(snapshot.workflowRun.status)) {
+      if (isTargetNodeRun) {
+        updateTargetNodeLaunchState(options.targetNodeId as string, 'worker_waiting');
+      }
       startRunStream(created.runId);
     }
   } catch (error) {
@@ -904,6 +955,8 @@ export async function runBackendWorkflow(options?: {
     if (isTargetNodeRun) {
       if (isInsufficientCreditsError(error)) {
         markNodeBlockedByCredits(options.targetNodeId as string, message);
+      } else {
+        markBackendRunLaunchFailed(options.targetNodeId as string, error);
       }
       useFlowCanvasStore.setState((currentState) => ({
         nodeRunStatusByNodeId: {

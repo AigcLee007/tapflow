@@ -118,6 +118,7 @@ import {
   buildPersistedDerivedImagePatch,
   getDerivedImageSourceType,
 } from '../utils/optimisticDerivedImageAsset';
+import { resolveActiveImageRuntimeRouteKey } from '../utils/imageRuntimeRouteSelection';
 import { mapImageRuntimeRouteOptions, type RuntimeRouteOption } from '../utils/runtimeRouteOptions';
 import { getPromptBarDensity, type PromptBarDensityVariant } from '../utils/promptBarDensity';
 import {
@@ -3757,7 +3758,12 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     || preferredRuntimeRoute
     || modelRuntimeRoutes[0]
     || null;
-  const currentRouteKey = String(normalizedCurrentRouteKey || selectedModelRuntimeRoute?.routeKey || '');
+  const currentRouteKey = resolveActiveImageRuntimeRouteKey({
+    normalizedCurrentRouteKey,
+    preferredRouteKey: preferredRuntimeRouteKey,
+    selectedRouteKey: selectedModelRuntimeRoute?.routeKey,
+    visibleRoutes: modelRuntimeRoutes,
+  });
 
   const catalogSizeOptions = getSizeOptionsFromCatalogModel(selectedCatalogModel);
   const sizeOptions = catalogSizeOptions.length ? catalogSizeOptions : ['1k', '2k', '4k'];

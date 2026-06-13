@@ -168,7 +168,27 @@ describe('v2WorkflowRunner', () => {
       status: 'pending',
     });
     getWorkflowRunMock.mockResolvedValue({
-      nodeRuns: [],
+      nodeRuns: [
+        {
+          attempt: 1,
+          costJson: {},
+          createdAt: '2026-05-17T00:00:00.000Z',
+          errorJson: null,
+          finishedAt: null,
+          id: 'node-run-target',
+          inputJson: {},
+          maxAttempts: 3,
+          nodeId: targetNodeId,
+          nodeType: 'image.generate',
+          outputJson: null,
+          providerTaskId: null,
+          startedAt: null,
+          status: 'runnable',
+          tenantId: 'tenant-1',
+          updatedAt: '2026-05-17T00:00:00.000Z',
+          workflowRunId: 'run-target',
+        },
+      ],
       workflowRun: {
         canceledAt: null,
         createdAt: '2026-05-17T00:00:00.000Z',
@@ -226,7 +246,27 @@ describe('v2WorkflowRunner', () => {
       status: 'pending',
     });
     getWorkflowRunMock.mockResolvedValue({
-      nodeRuns: [],
+      nodeRuns: [
+        {
+          attempt: 1,
+          costJson: {},
+          createdAt: '2026-05-17T00:00:00.000Z',
+          errorJson: null,
+          finishedAt: null,
+          id: 'node-run-save-barrier',
+          inputJson: {},
+          maxAttempts: 3,
+          nodeId: targetNodeId,
+          nodeType: 'image.generate',
+          outputJson: null,
+          providerTaskId: null,
+          startedAt: null,
+          status: 'runnable',
+          tenantId: 'tenant-1',
+          updatedAt: '2026-05-17T00:00:00.000Z',
+          workflowRunId: 'run-save-barrier',
+        },
+      ],
       workflowRun: {
         canceledAt: null,
         createdAt: '2026-05-17T00:00:00.000Z',
@@ -399,6 +439,53 @@ describe('v2WorkflowRunner', () => {
     });
   });
 
+  test('target-node run fails visibly when the backend snapshot has no target node run', async () => {
+    useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, {
+      generationStatus: 'generating',
+      routeKey: 'image.default',
+      status: 'running',
+      title: 'Image edit result',
+    });
+    const nodeId = useFlowCanvasStore.getState().nodes[0]?.id as string;
+
+    createWorkflowRunMock.mockResolvedValue({
+      runId: 'run-without-target-node-run',
+      status: 'pending',
+    });
+    getWorkflowRunMock.mockResolvedValue({
+      nodeRuns: [],
+      workflowRun: {
+        canceledAt: null,
+        createdAt: '2026-05-17T00:00:00.000Z',
+        createdBy: 'user-1',
+        errorJson: null,
+        finishedAt: null,
+        flowId: '11111111-1111-1111-1111-111111111111',
+        flowVersionId: 'version-1',
+        id: 'run-without-target-node-run',
+        idempotencyKey: null,
+        inputJson: { runMode: 'target_node', targetNodeId: nodeId },
+        outputJson: null,
+        startedAt: null,
+        status: 'pending',
+        tenantId: 'tenant-1',
+        updatedAt: '2026-05-17T00:00:00.000Z',
+      },
+    });
+
+    await expect(runBackendWorkflow({ runMode: 'target_node', targetNodeId: nodeId }))
+      .rejects.toThrow('TARGET_NODE_RUN_MISSING');
+
+    expect(streamWorkflowRunMock).not.toHaveBeenCalled();
+    expect(useFlowCanvasStore.getState().nodes[0]?.data).toMatchObject({
+      errorMessage: expect.stringContaining('TARGET_NODE_RUN_MISSING'),
+      generationStatus: 'error',
+      status: 'failed',
+      workflowLaunchStatus: 'failed',
+    });
+    expect(useFlowCanvasStore.getState().nodeRunStatusByNodeId[nodeId]).toBe('failed');
+  });
+
   test('rapid target-node clicks use optimistic reservations and block the fifth image locally', async () => {
     for (let index = 0; index < 5; index += 1) {
       useFlowCanvasStore.getState().addNode('image', { x: index * 120, y: 0 }, {
@@ -551,7 +638,27 @@ describe('v2WorkflowRunner', () => {
         },
       })
       .mockResolvedValueOnce({
-        nodeRuns: [],
+        nodeRuns: [
+          {
+            attempt: 1,
+            costJson: {},
+            createdAt: '2026-05-17T00:00:02.000Z',
+            errorJson: null,
+            finishedAt: null,
+            id: 'node-run-next',
+            inputJson: {},
+            maxAttempts: 3,
+            nodeId: secondNode!.id,
+            nodeType: 'image.generate',
+            outputJson: null,
+            providerTaskId: null,
+            startedAt: null,
+            status: 'runnable',
+            tenantId: 'tenant-1',
+            updatedAt: '2026-05-17T00:00:02.000Z',
+            workflowRunId: 'run-next',
+          },
+        ],
         workflowRun: {
           canceledAt: null,
           createdAt: '2026-05-17T00:00:02.000Z',

@@ -66,9 +66,12 @@ As of 2026-06-13:
 - v2 image edit result nodes now persist the resolved preview URL back into canvas node data, show a model/route run label while generating, and forward source asset URLs into Visionary/Gemini image adapters so edit models receive the actual input image
 - target-node image edit tools now preserve the selected runtime `routeKey` from the canvas model line, avoiding wrong-line fallback that could yield completed white result images even when the workflow itself succeeded
 - target-node image edit launches now wait for any in-flight remote draft save to finish and then save the latest canvas graph before creating the workflow run, so newly created edit target nodes are present in server-side `flow_drafts` before API/worker execution begins
+- image edit tools now ignore stale generic `image.default` route keys on uploaded/asset-backed source nodes when a model-scoped runtime route is available, preventing edits from silently running through the mock/default image route instead of the configured provider relay
+- target-node workflow launch now marks missing backend `node_run` snapshots as a visible node failure with diagnostic launch status instead of leaving a blank white result card
 
 ## Recent Important Commits
 
+- pending: fix image edit runtime route selection
 - pending: fix image edit result previews
 - pending: fix image edit tools v2 auth workflow
 - pending: fix optimistic derived image save UX
@@ -172,6 +175,24 @@ Notes:
   - `npm run build --workspace @aigc-flow/ai-gateway-core`
   - `npm run test --workspace @aigc-flow/worker -- workflow-runtime-image-request.test.ts`
   - `npm run build --workspace @aigc-flow/worker`
+  - `npm run build`
+
+## 2026-06-13 - Image Edit Runtime Route Selection Fix
+
+- Fixed the root cause for image edit tools producing blank white outputs while the external relay/proxy saw no requests.
+- Root cause:
+  - uploaded and asset-backed image nodes are created with the generic default `routeKey` value `image.default`
+  - top image edit tools reused that source-node route key when creating target edit nodes
+  - when the selected model had a real model-scoped route such as `image.pixellelabs.nano-banana-pro`, the stale `image.default` value could still be passed into the target-node workflow
+  - worker/provider execution could therefore use the default/mock image route instead of the configured provider relay, yielding a tiny/blank generated asset and no request in the expected relay logs
+- Frontend fix:
+  - added `resolveActiveImageRuntimeRouteKey()` to prefer current model-scoped runtime routes and ignore stale generic `image.default` on image edit launch
+  - wired image node route resolution to use that effective route before `runImageEdit()` persists target node `routeKey`
+- Runtime diagnostic fix:
+  - target-node launch writes `workflowLaunchStatus` on the target node through `saving_draft`, `creating_run`, `run_created`, `node_run_created`, and `worker_waiting`
+  - if the backend run snapshot does not contain a `node_run` for the requested target node, the target node now fails visibly with `TARGET_NODE_RUN_MISSING` instead of staying as an idle blank white card
+- Validation:
+  - `npm test -- src/flowCanvas/utils/imageRuntimeRouteSelection.test.ts src/flowCanvas/runtime/v2WorkflowRunner.test.ts src/flowCanvas/runtime/graphExecutor.test.ts`
   - `npm run build`
 
 ## 2026-06-13 - Image Derived Tool Optimistic Save Fix
