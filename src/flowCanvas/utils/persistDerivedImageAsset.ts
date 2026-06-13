@@ -1,7 +1,7 @@
 import { kindFromMimeType, updateAssetMetadata, uploadAssetFile, type AssetItem } from "../../assets/assetApi";
 import type { FlowNodeData } from "../types";
 import { buildAssetBackedNodeData } from "./assetNodeData";
-import { imageUrlToBlob } from "./imageUtils";
+import { imageUrlToBlobWithProxyFallback } from "./imageUtils";
 
 export type DerivedImageSourceType =
   | "canvas-upload"
@@ -38,7 +38,7 @@ const MIME_EXTENSION_MAP: Record<string, string> = {
 export async function persistDerivedImageAsset(
   input: PersistDerivedImageAssetInput,
 ): Promise<PersistDerivedImageAssetResult> {
-  const blob = await imageUrlToBlob(input.imageUrl);
+  const blob = await imageUrlToBlobWithProxyFallback(input.imageUrl);
   const mimeType = blob.type || "image/png";
   const extension = MIME_EXTENSION_MAP[mimeType] || "png";
   const filename = `${normalizeTitle(input.title)}.${extension}`;

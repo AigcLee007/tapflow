@@ -19,6 +19,18 @@ export type HeadObjectResult = {
   metadata: Record<string, string>;
 };
 
+export type GetObjectInput = {
+  bucket: string;
+  key: string;
+};
+
+export type GetObjectResult = {
+  body: Buffer;
+  contentLength: number | null;
+  contentType: string | null;
+  metadata: Record<string, string>;
+};
+
 export type DeleteObjectInput = {
   bucket: string;
   key: string;
@@ -34,6 +46,7 @@ export type CreatePresignedUrlResult = {
 export interface StorageProvider {
   putObject(input: PutObjectInput): Promise<void>;
   headObject(input: HeadObjectInput): Promise<HeadObjectResult>;
+  getObject?(input: GetObjectInput): Promise<GetObjectResult>;
   deleteObject(input: DeleteObjectInput): Promise<void>;
   createPresignedPutUrl(input: {
     bucket: string;

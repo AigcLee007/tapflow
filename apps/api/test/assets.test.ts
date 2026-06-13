@@ -47,6 +47,7 @@ class MemoryStorageProvider implements StorageProvider {
   readonly deletedKeys: string[] = [];
   readonly headRequests: Array<{ bucket: string; key: string }> = [];
   readonly objects = new Map<string, {
+    body: Buffer;
     contentLength: number | null;
     contentType: string | null;
     metadata: Record<string, string>;
@@ -59,6 +60,11 @@ class MemoryStorageProvider implements StorageProvider {
     key: string;
     metadata?: Record<string, string>;
   }): Promise<void> {
+    const body = Buffer.isBuffer(input.body)
+      ? input.body
+      : input.body instanceof Uint8Array
+        ? Buffer.from(input.body)
+        : Buffer.from(input.body);
     const contentLength =
       typeof input.body === "string"
         ? Buffer.byteLength(input.body)
@@ -66,10 +72,24 @@ class MemoryStorageProvider implements StorageProvider {
           ? input.body.byteLength
           : Buffer.byteLength(String(input.body));
     this.objects.set(`${input.bucket}/${input.key}`, {
+      body,
       contentLength,
       contentType: input.contentType ?? null,
       metadata: input.metadata ?? {},
     });
+  }
+
+  async getObject(input: { bucket: string; key: string }) {
+    const object = this.objects.get(`${input.bucket}/${input.key}`);
+    if (!object) {
+      throw new Error("Object not found");
+    }
+    return {
+      body: object.body,
+      contentLength: object.contentLength,
+      contentType: object.contentType,
+      metadata: object.metadata,
+    };
   }
 
   async headObject(input: { bucket: string; key: string }) {
@@ -101,6 +121,7 @@ class MemoryStorageProvider implements StorageProvider {
     metadata?: Record<string, string>;
   }) {
     this.objects.set(`${input.bucket}/${input.key}`, {
+      body: Buffer.alloc(0),
       contentLength: input.contentLength ?? null,
       contentType: input.contentType ?? null,
       metadata: input.metadata ?? {},
@@ -853,6 +874,89 @@ describeWithDatabase("assets v2", () => {
 
         expect(response.statusCode).toBe(200);
         expect(response.json().url).toContain("asset-preview.webp");
+
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("asset bytes returns same-origin image bytes and remains tenant scoped", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({
+          connectionString: await createAppDatabaseUrl(),
+        });
+        const storageProvider = new MemoryStorageProvider();
+        const api = buildTestApp(appPool, storageProvider);
+
+        const tenantAOwner = await registerOwner(api, "asset-bytes-a@example.com", "Asset Bytes A");
+        const tenantBOwner = await registerOwner(api, "asset-bytes-b@example.com", "Asset Bytes B");
+
+        const created = await api.inject({
+          headers: {
+            authorization: `Bearer ${tenantAOwner.accessToken}`,
+          },
+          method: "POST",
+          payload: {
+            kind: "image",
+            mimeType: "image/png",
+            originalFilename: "bytes.png",
+            sizeBytes: SMALL_PNG_BUFFER.length,
+          },
+          url: "/api/v2/assets/presigned-upload",
+        });
+        expect(created.statusCode).toBe(201);
+        const createdBody = created.json();
+
+        const proxied = await api.inject({
+          headers: {
+            authorization: `Bearer ${tenantAOwner.accessToken}`,
+            "content-type": "application/octet-stream",
+            "x-asset-upload-content-type": "image/png",
+          },
+          method: "POST",
+          payload: SMALL_PNG_BUFFER,
+          url: `/api/v2/assets/${createdBody.asset.id}/upload-bytes`,
+        });
+        expect(proxied.statusCode).toBe(204);
+
+        const complete = await api.inject({
+          headers: {
+            authorization: `Bearer ${tenantAOwner.accessToken}`,
+          },
+          method: "POST",
+          payload: {},
+          url: `/api/v2/assets/${createdBody.asset.id}/complete-upload`,
+        });
+        expect(complete.statusCode).toBe(200);
+
+        const bytes = await api.inject({
+          headers: {
+            authorization: `Bearer ${tenantAOwner.accessToken}`,
+          },
+          method: "GET",
+          url: `/api/v2/assets/${createdBody.asset.id}/bytes`,
+        });
+        expect(bytes.statusCode).toBe(200);
+        expect(bytes.headers["content-type"]).toContain("image/png");
+        expect(bytes.body).toBe(SMALL_PNG_BUFFER.toString("binary"));
+
+        const crossTenantBytes = await api.inject({
+          headers: {
+            authorization: `Bearer ${tenantBOwner.accessToken}`,
+          },
+          method: "GET",
+          url: `/api/v2/assets/${createdBody.asset.id}/bytes`,
+        });
+        expect(crossTenantBytes.statusCode).toBe(404);
 
         await api.close();
       } finally {

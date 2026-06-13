@@ -1,6 +1,10 @@
 /**
  * Image processing utilities for Flow Canvas
  */
+const LEGACY_API_ORIGIN =
+  typeof window !== 'undefined' && window.location.hostname === 'localhost'
+    ? 'http://localhost:3355'
+    : '';
 
 // URL -> Blob
 export async function imageUrlToBlob(url: string): Promise<Blob> {
@@ -15,11 +19,38 @@ export async function imageUrlToBlob(url: string): Promise<Blob> {
     return new Blob([bytes], { type: mime });
   }
 
-  const response = await fetch(url);
+  const headers: Record<string, string> = {};
+  if (url.startsWith('/api/v2/')) {
+    try {
+      const { getStoredAccessToken } = await import('../../services/v2HttpClient');
+      const token = getStoredAccessToken();
+      if (token) {
+        headers.Authorization = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
+      }
+    } catch {
+      // Keep image tools usable in non-auth test environments.
+    }
+  }
+
+  const response = await fetch(url, {
+    cache: 'no-store',
+    headers,
+  });
   if (!response.ok) {
     throw new Error(`Failed to fetch image: ${response.statusText}`);
   }
   return await response.blob();
+}
+
+export async function imageUrlToBlobWithProxyFallback(url: string): Promise<Blob> {
+  try {
+    return await imageUrlToBlob(url);
+  } catch (error) {
+    if (!/^https?:\/\//i.test(url)) {
+      throw error;
+    }
+    return imageUrlToBlob(`${LEGACY_API_ORIGIN}/api/proxy/image?url=${encodeURIComponent(url)}`);
+  }
 }
 
 export function fileToDataUrl(file: File): Promise<string> {

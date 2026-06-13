@@ -376,6 +376,33 @@ export function registerAssetRoutes(app: FastifyInstance): void {
   );
 
   app.get(
+    "/api/v2/assets/:assetId/bytes",
+    {
+      preHandler: [...authHandlers, requirePermission("asset:read")],
+    },
+    async (request, reply) => {
+      try {
+        const params = parseParams<AssetIdParams>(request, assetIdParamsSchema);
+        const query = parseQuery<AssetDownloadUrlQuery>(request, assetDownloadUrlQuerySchema);
+        const result = await app.assetsService.getAssetBytes(
+          getAssetContext(request),
+          params.assetId,
+          query.variantKey,
+        );
+        if (result.contentLength !== null) {
+          reply.header("content-length", String(result.contentLength));
+        }
+        reply.header("cache-control", "private, max-age=300");
+        reply.header("content-type", result.contentType);
+        reply.header("x-asset-variant-key", result.variantKey ?? "original");
+        return reply.send(result.body);
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.get(
     "/api/v2/assets/:assetId/download-url",
     {
       preHandler: [...authHandlers, requirePermission("asset:read")],

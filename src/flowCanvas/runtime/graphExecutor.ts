@@ -14,6 +14,7 @@ import { getImageNaturalSize, imageUrlToBase64 } from '../utils/imageUtils';
 import { getImageEditErrorMessage } from '../utils/imageEditStatus';
 import { buildImageEditModelMapping } from '../utils/imageEditModelMapping';
 import { persistDerivedImageAsset } from '../utils/persistDerivedImageAsset';
+import { resolveEditableImageSource } from '../utils/editableImageSource';
 import {
   FLOW_NODE_DEFAULT_SIZES,
   fitMediaNodeToShortSide,
@@ -566,7 +567,12 @@ export async function runImageEdit(
   if (!sourceNode) return;
 
   const sourceData = sourceNode.data || {};
-  const sourceImageUrl = String(editParams.image || sourceData.thumbnailUrl || '').trim();
+  const resolvedSource = resolveEditableImageSource({
+    assetId: typeof sourceData.assetId === 'string' ? sourceData.assetId : undefined,
+    fallbackUrl: sourceData.thumbnailUrl,
+    variantKey: 'preview',
+  });
+  const sourceImageUrl = String(editParams.image || resolvedSource.url || '').trim();
   if (!sourceImageUrl) {
     throw new Error('当前图片节点没有可编辑的图片');
   }
@@ -651,6 +657,7 @@ export async function runImageEdit(
       modelId,
       routeId,
       image: base64Image,
+      ...(resolvedSource.assetId ? { sourceAssetId: resolvedSource.assetId } : {}),
       prompt,
       uiMode: 'flow',
       editType,

@@ -124,6 +124,8 @@ import {
   type UiSchemaField,
 } from '../utils/modelCatalogOptions';
 import { getNodeSelectionMode } from '../utils/nodeSelectionMode';
+import { resolveEditableImageSource } from '../utils/editableImageSource';
+import { useEditableImageObjectUrl } from '../utils/useEditableImageObjectUrl';
 
 type FlowNode = Node<FlowNodeData>;
 
@@ -3655,6 +3657,16 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     };
   }, [assetId, d.thumbnailUrl, id, runtimeThumbnailUrl, updateNodeData]);
   const effectiveThumbnailUrl = runtimeThumbnailUrl || String(d.thumbnailUrl || '') || assetPreviewUrl;
+  const editableImageSource = useMemo(
+    () => resolveEditableImageSource({
+      assetId,
+      fallbackUrl: effectiveThumbnailUrl,
+      variantKey: 'preview',
+    }),
+    [assetId, effectiveThumbnailUrl],
+  );
+  const editableImageUrl = editableImageSource.url;
+  const editableOverlayImageUrl = useEditableImageObjectUrl(editableImageUrl);
   useEffect(() => {
     setImageLoadState(effectiveThumbnailUrl ? 'loading' : 'idle');
   }, [effectiveThumbnailUrl]);
@@ -5542,9 +5554,9 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       })()}
 
       <LazyOverlayFrame>
-        {isImageToolOpen('crop') && effectiveThumbnailUrl && (
+        {isImageToolOpen('crop') && effectiveThumbnailUrl && editableOverlayImageUrl && (
           <ImageCropOverlay
-            imageUrl={String(effectiveThumbnailUrl)}
+            imageUrl={editableOverlayImageUrl}
             onConfirm={handleCropConfirm}
             onCancel={closeImageTool}
           />
@@ -5567,9 +5579,9 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
           />
         )}
 
-        {isImageToolOpen('resize') && effectiveThumbnailUrl && (
+        {isImageToolOpen('resize') && effectiveThumbnailUrl && editableOverlayImageUrl && (
           <ImageResizeOverlay
-            imageUrl={String(effectiveThumbnailUrl)}
+            imageUrl={editableOverlayImageUrl}
             initialWidth={typeof d.naturalWidth === 'number' ? d.naturalWidth : undefined}
             initialHeight={typeof d.naturalHeight === 'number' ? d.naturalHeight : undefined}
             onConfirm={handleResizeConfirm}
@@ -5577,64 +5589,64 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
           />
         )}
 
-        {isImageToolOpen('split') && effectiveThumbnailUrl && (
+        {isImageToolOpen('split') && effectiveThumbnailUrl && editableOverlayImageUrl && (
           <ImageSplitOverlay
             key={splitInitialGridSize}
-            imageUrl={String(effectiveThumbnailUrl)}
+            imageUrl={editableOverlayImageUrl}
             initialGridSize={splitInitialGridSize}
             onConfirm={handleSplitConfirm}
             onCancel={closeImageTool}
           />
         )}
 
-        {isImageToolOpen('annotate') && effectiveThumbnailUrl && (
+        {isImageToolOpen('annotate') && effectiveThumbnailUrl && editableOverlayImageUrl && (
           <ImageAnnotateOverlay
-            imageUrl={String(effectiveThumbnailUrl)}
+            imageUrl={editableOverlayImageUrl}
             initialWidth={typeof d.naturalWidth === 'number' ? d.naturalWidth : undefined}
             initialHeight={typeof d.naturalHeight === 'number' ? d.naturalHeight : undefined}
             onConfirm={handleAnnotateConfirm}
             onCancel={closeImageTool}
           />
         )}
-        {(isImageToolOpen('repaint') || isImageToolOpen('erase')) && effectiveThumbnailUrl && (
+        {(isImageToolOpen('repaint') || isImageToolOpen('erase')) && effectiveThumbnailUrl && editableOverlayImageUrl && (
           <ImageRepaintOverlay
-            imageUrl={String(effectiveThumbnailUrl)}
+            imageUrl={editableOverlayImageUrl}
             mode={repaintMode}
             onConfirm={handleRepaintConfirm}
             onCancel={closeImageTool}
           />
         )}
 
-        {isImageToolOpen('outpaint') && effectiveThumbnailUrl && (
+        {isImageToolOpen('outpaint') && effectiveThumbnailUrl && editableOverlayImageUrl && (
           <ImageOutpaintOverlay
-            imageUrl={String(effectiveThumbnailUrl)}
+            imageUrl={editableOverlayImageUrl}
             onConfirm={handleOutpaintConfirm}
             onCancel={closeImageTool}
           />
         )}
 
-        {isImageToolOpen('lighting') && effectiveThumbnailUrl && (
+        {isImageToolOpen('lighting') && effectiveThumbnailUrl && editableOverlayImageUrl && (
           <ImageLightingOverlay
-            imageUrl={String(effectiveThumbnailUrl)}
+            imageUrl={editableOverlayImageUrl}
             anchorRect={imageCardRef.current?.getBoundingClientRect() || imageNodeRef.current?.getBoundingClientRect()}
             onConfirm={handleLightingConfirm}
             onCancel={closeImageTool}
           />
         )}
 
-        {isImageToolOpen('multiAngle') && effectiveThumbnailUrl && (
+        {isImageToolOpen('multiAngle') && effectiveThumbnailUrl && editableOverlayImageUrl && (
           <ImageMultiAngleOverlay
-            imageUrl={String(effectiveThumbnailUrl)}
+            imageUrl={editableOverlayImageUrl}
             anchorRect={imageCardRef.current?.getBoundingClientRect() || imageNodeRef.current?.getBoundingClientRect()}
             onConfirm={handleMultiAngleConfirm}
             onCancel={closeImageTool}
           />
         )}
 
-        {aiConfirmType && effectiveThumbnailUrl && (
+        {aiConfirmType && effectiveThumbnailUrl && editableOverlayImageUrl && (
           <ImageAiConfirmOverlay
             editType={aiConfirmType}
-            imageUrl={String(effectiveThumbnailUrl)}
+            imageUrl={editableOverlayImageUrl}
             modelLabel={modelOptions.find((model) => model.id === currentModelId)?.label || currentModelId}
             onConfirm={async () => {
               await runQuickAiEdit(aiConfirmType);

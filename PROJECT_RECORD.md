@@ -74,6 +74,29 @@ As of 2026-06-12:
 - `339452a` fix: restore upload node handle runtime style
 - `58f9d0f` refine tapnow menu density and node labels
 
+## 2026-06-13 - Image Node Tool Source Reliability Fix
+
+- Fixed the image-node top toolbar and More-menu tool chain after asset preview optimization exposed stale/CORS-limited signed URL usage.
+- Added an authenticated same-origin asset bytes endpoint:
+  - `GET /api/v2/assets/:assetId/bytes`
+  - optional `variantKey=preview`
+  - tenant-scoped through the existing asset read permission path
+  - falls back from missing preview variant to original asset bytes for older assets
+- Added object-read support to the storage provider abstraction and S3 implementation so the API can privately read object storage and return browser-safe same-origin bytes.
+- Frontend image editing tools now resolve asset-backed nodes through `assetId` first instead of treating `thumbnailUrl` signed URLs as editable source data.
+- Canvas overlays create local blob URLs from authenticated asset bytes, so `裁剪`, `调整像素`, `标注`, `快速切分`, `重绘`, `擦除`, `扩图`, `打光`, `多角度`, `增强`, and `抠图` no longer depend on object-storage CORS for source-image loading.
+- AI image edit requests now include `sourceAssetId` when available and use the same asset-backed source resolution before falling back to legacy URLs.
+- Derived image persistence now retries remote provider result downloads through the existing image proxy when direct browser fetch is blocked, reducing downstream `Failed to fetch` result-node failures.
+- Validation:
+  - `npm test -- src/flowCanvas/utils/editableImageSource.test.ts`
+  - `npm run build --workspace @aigc-flow/storage`
+  - `npm run build --workspace @aigc-flow/api`
+  - `npm run build`
+
+Notes:
+
+- Local API asset integration tests are still database-env gated in this workspace; the new bytes endpoint test was added to `apps/api/test/assets.test.ts` but is skipped locally without `DATABASE_URL`.
+
 ## 2026-06-11 - Upload Smooth Preview Pipeline Plan
 
 - Root cause identified: image node upload, upload node upload, canvas drag upload, and canvas paste upload still wait for local image decode/measurement before the first visible canvas update.

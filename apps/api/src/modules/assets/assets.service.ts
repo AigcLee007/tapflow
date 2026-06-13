@@ -1118,6 +1118,45 @@ export class AssetsService {
     }, this.pool);
   }
 
+  async getAssetBytes(
+    context: AssetContext,
+    assetId: string,
+    variantKey?: string,
+  ): Promise<{
+    body: Buffer;
+    contentLength: number | null;
+    contentType: string;
+    variantKey: string | null;
+  }> {
+    if (!this.storageProvider.getObject) {
+      throw new AssetsApiError(501, "ASSET_BYTES_UNSUPPORTED", "Asset byte reads are not supported by this storage provider");
+    }
+
+    return withTenantTransaction(context, async (client) => {
+      let target: AssetStorageTarget;
+      try {
+        target = await this.getAssetStorageTarget(client, context.tenantId, assetId, variantKey);
+      } catch (error) {
+        if (variantKey && error instanceof AssetsApiError && error.code === "ASSET_VARIANT_NOT_FOUND") {
+          target = await this.getAssetStorageTarget(client, context.tenantId, assetId);
+        } else {
+          throw error;
+        }
+      }
+      const object = await this.storageProvider.getObject!({
+        bucket: target.bucket,
+        key: target.key,
+      });
+
+      return {
+        body: object.body,
+        contentLength: object.contentLength,
+        contentType: object.contentType || target.mimeType || "application/octet-stream",
+        variantKey: target.variantKey,
+      };
+    }, this.pool);
+  }
+
   async createSignedUrls(
     context: AssetContext,
     requests: Array<{ assetId: string; variantKey?: string }>,

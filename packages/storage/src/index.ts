@@ -10,6 +10,8 @@ export {
 export {
   type CreatePresignedUrlResult,
   type DeleteObjectInput,
+  type GetObjectInput,
+  type GetObjectResult,
   type HeadObjectInput,
   type HeadObjectResult,
   type PutObjectInput,

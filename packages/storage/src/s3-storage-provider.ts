@@ -10,6 +10,8 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import type {
   CreatePresignedUrlResult,
   DeleteObjectInput,
+  GetObjectInput,
+  GetObjectResult,
   HeadObjectInput,
   HeadObjectResult,
   PutObjectInput,
@@ -67,6 +69,23 @@ export class S3StorageProvider implements StorageProvider {
       contentType: result.ContentType ?? null,
       eTag: result.ETag ?? null,
       lastModified: result.LastModified?.toISOString() ?? null,
+      metadata: result.Metadata ?? {},
+    };
+  }
+
+  async getObject(input: GetObjectInput): Promise<GetObjectResult> {
+    const result = await this.client.send(
+      new GetObjectCommand({
+        Bucket: input.bucket,
+        Key: input.key,
+      }),
+    );
+    const bytes = await result.Body?.transformToByteArray();
+
+    return {
+      body: Buffer.from(bytes ?? []),
+      contentLength: result.ContentLength ?? null,
+      contentType: result.ContentType ?? null,
       metadata: result.Metadata ?? {},
     };
   }
