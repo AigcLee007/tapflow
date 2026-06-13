@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useAuth } from "../auth/useAuth";
+import { markMeasure, markNow } from "../performance/performanceMarks";
 import {
   getAssetSummary,
   listAssetFolders,
@@ -115,6 +116,7 @@ export function useAssetLibrary(): AssetLibraryState {
 
     const requestId = requestSequenceRef.current + 1;
     requestSequenceRef.current = requestId;
+    markNow("asset-library-refresh-start");
     if (!options.silent) {
       setLoading(true);
     }
@@ -167,6 +169,8 @@ export function useAssetLibrary(): AssetLibraryState {
       setError(err instanceof Error ? err.message : "素材库加载失败，请稍后重试。");
     } finally {
       if (requestSequenceRef.current === requestId) {
+        markNow("asset-library-refresh-end");
+        markMeasure("asset-library-refresh", "asset-library-refresh-start", "asset-library-refresh-end");
         setLoading(false);
       }
     }

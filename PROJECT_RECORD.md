@@ -973,6 +973,26 @@ Validation completed:
 - `npm run test -- src/workspace/useWorkspaceProjects.test.tsx src/workspace/WorkspacePage.test.tsx src/assets/AssetLibraryPage.test.tsx`
 - `npm run build`
 
+### Latest Production Asset and Workspace Performance Task 10
+
+Completed in current local iteration:
+
+- added a tiny frontend performance mark helper that safely no-ops when browser performance APIs are unavailable
+- added diagnostic timing marks around asset library refreshes:
+  - `asset-library-refresh-start`
+  - `asset-library-refresh-end`
+  - `asset-library-refresh`
+- added diagnostic timing marks around workspace project refreshes:
+  - `workspace-projects-refresh-start`
+  - `workspace-projects-refresh-end`
+  - `workspace-projects-refresh`
+- kept performance marks diagnostic-only so missing marks or unsupported APIs cannot break user flows
+
+Validation completed:
+
+- `npm run test -- src/performance/performanceMarks.test.ts src/assets/useAssetLibrary.test.tsx src/workspace/useWorkspaceProjects.test.tsx`
+- `npm run build`
+
 ### Latest Project and Asset Management Menus
 
 Completed in current local iteration:

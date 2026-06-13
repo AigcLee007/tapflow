@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useAuth } from "../auth/useAuth";
+import { markMeasure, markNow } from "../performance/performanceMarks";
 import {
   getWorkspaceProjectsSnapshot,
   setWorkspaceProjectsSnapshot,
@@ -64,6 +65,7 @@ export function useWorkspaceProjects() {
 
     const requestId = requestSequenceRef.current + 1;
     requestSequenceRef.current = requestId;
+    markNow("workspace-projects-refresh-start");
     if (!options.silent) {
       setLoading(true);
     }
@@ -86,6 +88,8 @@ export function useWorkspaceProjects() {
       setError(loadError instanceof Error ? loadError.message : "项目加载失败，请稍后重试。");
     } finally {
       if (requestSequenceRef.current === requestId) {
+        markNow("workspace-projects-refresh-end");
+        markMeasure("workspace-projects-refresh", "workspace-projects-refresh-start", "workspace-projects-refresh-end");
         setLoading(false);
       }
     }
