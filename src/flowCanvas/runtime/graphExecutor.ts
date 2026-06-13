@@ -7,13 +7,11 @@
 import { useFlowCanvasStore } from '../store/flowCanvasStore';
 import { generateImageApi, generateTextApi, editImageApi, checkTaskStatus, findAllUrlsInObject } from '../../../services/api';
 import { generateVideo } from '../../../services/videoService';
-import { getSelectedImageRoute } from '../../config/imageRoutes';
+import { getImageRouteById, getSelectedImageRoute } from '../../config/imageRoutes';
 import { getSelectedVideoRoute } from '../../config/videoRoutes';
 import { DEFAULT_TEXT_MODEL_ID } from '../../config/textModels';
 import { getImageNaturalSize, imageUrlToBase64 } from '../utils/imageUtils';
-import { getImageEditErrorMessage } from '../utils/imageEditStatus';
 import { buildImageEditModelMapping } from '../utils/imageEditModelMapping';
-import { persistDerivedImageAsset } from '../utils/persistDerivedImageAsset';
 import { resolveEditableImageSource } from '../utils/editableImageSource';
 import {
   FLOW_NODE_DEFAULT_SIZES,
@@ -517,42 +515,6 @@ function findReusableFailedEditNode(sourceNodeId: string, editType: ImageEditTyp
   );
 }
 
-async function applyImageEditResult(nodeId: string, imageUrl: string, editType: ImageEditType) {
-  const store = useFlowCanvasStore.getState();
-  const node = store.nodes.find((n) => n.id === nodeId);
-  const sourceNodeId = typeof node?.data?.editSourceNodeId === "string" ? node.data.editSourceNodeId : "";
-  const sourceNode = sourceNodeId ? store.nodes.find((item) => item.id === sourceNodeId) : undefined;
-  const displaySize = await resolveImageDisplaySize(imageUrl, node?.data || {});
-  const resultItems = buildImageResultItems([imageUrl]);
-
-  const persisted = await persistDerivedImageAsset({
-    imageUrl,
-    naturalHeight: displaySize.naturalHeight,
-    naturalWidth: displaySize.naturalWidth,
-    projectId: store.backendProjectId,
-    source: "image-edit",
-    sourceAssetId: typeof sourceNode?.data?.assetId === "string" ? sourceNode.data.assetId : undefined,
-    title: String(node?.data?.title || IMAGE_EDIT_TITLES[editType]),
-    metadata: {
-      editType,
-    },
-  });
-  const persistedNodeData = persisted.nodeData as Record<string, unknown>;
-
-  store.updateNodeData(nodeId, {
-    ...persistedNodeData,
-    ...displaySize,
-    generationStatus: 'done',
-    status: 'success',
-    progress: 100,
-    errorMessage: undefined,
-    lastEditType: editType,
-    generatedResults: resultItems,
-    activeResultIndex: 0,
-    coverResultId: resultItems[0]?.id,
-  });
-}
-
 /**
  * Run an AI image edit and write the result into a new downstream image node.
  * This keeps the original image on canvas and makes the edit chain visible.
@@ -561,7 +523,7 @@ export async function runImageEdit(
   sourceNodeId: string,
   editType: ImageEditType,
   editParams: RunImageEditParams = {},
-) {
+): Promise<string | undefined> {
   const store = useFlowCanvasStore.getState();
   const sourceNode = store.nodes.find((n) => n.id === sourceNodeId);
   if (!sourceNode) return;
@@ -572,8 +534,7 @@ export async function runImageEdit(
     fallbackUrl: sourceData.thumbnailUrl,
     variantKey: 'preview',
   });
-  const sourceImageUrl = String(editParams.image || resolvedSource.url || '').trim();
-  if (!sourceImageUrl) {
+  if (!String(editParams.image || resolvedSource.url || resolvedSource.assetId || '').trim()) {
     throw new Error('当前图片节点没有可编辑的图片');
   }
 
@@ -596,6 +557,7 @@ export async function runImageEdit(
     sourceParams: (sourceData.params || {}) as Record<string, any>,
     editParams: editParams.params || {},
   });
+  const routeKey = getImageRouteById(routeId)?.id || routeId || undefined;
   const reusableNode = findReusableFailedEditNode(sourceNodeId, editType);
   const resultIndex = reusableNode ? countDerivedEditResults(sourceNodeId, editType) : countDerivedEditResults(sourceNodeId, editType) + 1;
   const title = editParams.title || String(reusableNode?.data.title || `${IMAGE_EDIT_TITLES[editType]}${resultIndex}`);
@@ -617,6 +579,7 @@ export async function runImageEdit(
     height: Number(sourceData.height || FLOW_NODE_DEFAULT_SIZES.image.height),
     originalImageUrl: String(sourceData.originalImageUrl || previousUrl),
     editHistory: previousUrl && !isTransientDraftUrl(previousUrl) ? [...history, previousUrl] : history,
+    generationPrompt: prompt,
     lastEditType: editType,
     editSourceNodeId: sourceNodeId,
     editPrompt: prompt,
@@ -627,11 +590,16 @@ export async function runImageEdit(
     errorMessage: undefined,
     modelId,
     routeId,
+    routeKey,
     params: {
       ...((sourceData.params || {}) as Record<string, any>),
       ...(editParams.params || {}),
+      ...mappedEdit.payloadParams,
       imageEditMapping: mappedEdit.debug,
       imageEditModelGroup: mappedEdit.group,
+      ...(editParams.mask ? { mask: editParams.mask } : {}),
+      ...(editParams.direction ? { outpaint_direction: editParams.direction } : {}),
+      ...(editParams.scale ? { scale: editParams.scale } : {}),
     },
   };
 
@@ -648,52 +616,7 @@ export async function runImageEdit(
     store.updateNodeData(reusableNode.id, nextNodeData);
   }
 
-  try {
-    const base64Image = sourceImageUrl.startsWith('data:')
-      ? sourceImageUrl
-      : await imageUrlToBase64(sourceImageUrl);
-
-    const payload: any = {
-      modelId,
-      routeId,
-      image: base64Image,
-      ...(resolvedSource.assetId ? { sourceAssetId: resolvedSource.assetId } : {}),
-      prompt,
-      uiMode: 'flow',
-      editType,
-      ...mappedEdit.payloadParams,
-      ...(editParams.params || {}),
-    };
-
-    if (editParams.mask) payload.mask = editParams.mask;
-    if (editParams.direction) payload.outpaint_direction = editParams.direction;
-    if (editParams.scale) payload.scale = editParams.scale;
-
-    const res = await editImageApi(undefined, payload);
-    const directUrl = res.url || res.images?.[0];
-
-    if (directUrl) {
-      await applyImageEditResult(imageNode.id, directUrl, editType);
-      return;
-    }
-
-    if (res.taskId) {
-      await pollImageTask(imageNode.id, res.taskId);
-      useFlowCanvasStore.getState().updateNodeData(imageNode.id, { lastEditType: editType });
-      return;
-    }
-
-    throw new Error('图片编辑未返回结果或任务 ID');
-  } catch (error: any) {
-    console.error('[GraphExecutor] Image edit failed:', error);
-    useFlowCanvasStore.getState().updateNodeData(imageNode.id, {
-      generationStatus: 'error',
-      status: 'error',
-      progress: 0,
-      errorMessage: getImageEditErrorMessage(error, '图片编辑请求失败'),
-    });
-    throw error;
-  }
+  return imageNode.id;
 }
 
 // Video Generation

@@ -498,6 +498,7 @@ function buildImageRequest(
     inputAssets: extractAssetInputs(upstreamOutputs),
     metadata: {
       ...metadata,
+      ...(isPlainObject(config.imageEditRequest) ? { imageEditRequest: config.imageEditRequest } : {}),
       referenceImages: Array.isArray(config.referenceImages)
         ? config.referenceImages
             .map((item) => String(item || "").trim())

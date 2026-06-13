@@ -5141,7 +5141,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const handleRepaintConfirm = useCallback(
     async ({ mask, prompt, maskMode }: { mask: string; prompt: string; maskMode: string }) => {
       const editType: ImageEditType = repaintMode === 'erase' ? 'erase' : 'inpaint';
-      await runImageEdit(id, editType, {
+      const targetNodeId = await runImageEdit(id, editType, {
         mask,
         prompt,
         modelId: String(d.modelId || currentModelId),
@@ -5149,8 +5149,11 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
         params: { ...((d.params || {}) as Record<string, any>), maskMode },
       });
       closeImageTool();
+      if (targetNodeId) {
+        void runBackendWorkflow({ runMode: 'target_node', targetNodeId }).catch(() => undefined);
+      }
     },
-    [currentModelId, d.modelId, d.params, d.routeId, id, repaintMode],
+    [closeImageTool, currentModelId, d.modelId, d.params, d.routeId, id, repaintMode],
   );
 
   const handleOutpaintConfirm = useCallback(
@@ -5167,7 +5170,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       direction: OutpaintDirection;
       maskMode: string;
     }) => {
-      await runImageEdit(id, 'outpaint', {
+      const targetNodeId = await runImageEdit(id, 'outpaint', {
         image,
         mask,
         prompt,
@@ -5177,8 +5180,11 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
         params: { ...((d.params || {}) as Record<string, any>), maskMode },
       });
       closeImageTool();
+      if (targetNodeId) {
+        void runBackendWorkflow({ runMode: 'target_node', targetNodeId }).catch(() => undefined);
+      }
     },
-    [currentModelId, d.modelId, d.params, d.routeId, id],
+    [closeImageTool, currentModelId, d.modelId, d.params, d.routeId, id],
   );
 
   const handleLightingConfirm = useCallback(
@@ -5195,7 +5201,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       direction: LightDirection;
       rimLight: boolean;
     }) => {
-      await runImageEdit(id, 'relight', {
+      const targetNodeId = await runImageEdit(id, 'relight', {
         prompt,
         modelId: String(d.modelId || currentModelId),
         routeId: typeof d.routeId === 'string' ? d.routeId : undefined,
@@ -5218,8 +5224,11 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
         },
       });
       closeImageTool();
+      if (targetNodeId) {
+        void runBackendWorkflow({ runMode: 'target_node', targetNodeId }).catch(() => undefined);
+      }
     },
-    [currentModelId, d.modelId, d.params, d.routeId, id],
+    [closeImageTool, currentModelId, d.modelId, d.params, d.routeId, id],
   );
 
   const handleMultiAngleConfirm = useCallback(
@@ -5242,7 +5251,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       zoom: number;
       zoomLabel: string;
     }) => {
-      await runImageEdit(id, 'multiAngle', {
+      const targetNodeId = await runImageEdit(id, 'multiAngle', {
         prompt,
         modelId: String(d.modelId || currentModelId),
         routeId: typeof d.routeId === 'string' ? d.routeId : undefined,
@@ -5260,17 +5269,23 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
         },
       });
       closeImageTool();
+      if (targetNodeId) {
+        void runBackendWorkflow({ runMode: 'target_node', targetNodeId }).catch(() => undefined);
+      }
     },
-    [currentModelId, d.modelId, d.params, d.routeId, id],
+    [closeImageTool, currentModelId, d.modelId, d.params, d.routeId, id],
   );
 
   const runQuickAiEdit = useCallback(
     async (editType: ImageEditType) => {
-      await runImageEdit(id, editType, {
+      const targetNodeId = await runImageEdit(id, editType, {
         modelId: String(d.modelId || currentModelId),
         routeId: typeof d.routeId === 'string' ? d.routeId : undefined,
         params: (d.params || {}) as Record<string, any>,
       });
+      if (targetNodeId) {
+        void runBackendWorkflow({ runMode: 'target_node', targetNodeId }).catch(() => undefined);
+      }
     },
     [currentModelId, d.modelId, d.params, d.routeId, id],
   );

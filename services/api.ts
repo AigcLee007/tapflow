@@ -1,8 +1,8 @@
 ﻿import {
   buildBillingIdentityHeaders,
-  getAuthorizedBillingHeaders,
   getStoredAuthSessionToken,
 } from '../src/services/accountIdentity';
+import { getStoredAccessToken } from '../src/services/v2HttpClient';
 import {
   allowsDirectUserApiKeyImageRoute,
   getImageRouteById,
@@ -47,6 +47,19 @@ const buildOptionalSessionHeaders = (): Record<string, string> => {
   return sessionToken ? buildBillingIdentityHeaders(sessionToken) : {};
 };
 
+const buildLegacyBillingCompatibilityHeaders = (): Record<string, string> => {
+  const sessionHeaders = buildOptionalSessionHeaders();
+  if (Object.keys(sessionHeaders).length > 0) {
+    return sessionHeaders;
+  }
+  const accessToken = getStoredAccessToken();
+  return accessToken
+    ? {
+        'X-V2-Access-Token': accessToken.startsWith('Bearer ') ? accessToken : `Bearer ${accessToken}`,
+      }
+    : {};
+};
+
 const shouldBypassBillingWithUserApiKey = (apiKey: string | undefined, payload: any) => {
   const trimmedApiKey = String(apiKey || '').trim();
   if (!trimmedApiKey) return false;
@@ -63,7 +76,7 @@ const buildImageRequestHeaders = async (
 ): Promise<Record<string, string>> => {
   const billingHeaders = shouldBypassBillingWithUserApiKey(apiKey, payload)
     ? buildOptionalSessionHeaders()
-    : await getAuthorizedBillingHeaders();
+    : buildLegacyBillingCompatibilityHeaders();
 
   return {
     ...billingHeaders,
@@ -274,7 +287,7 @@ export const generateTextApi = async (payload: any): Promise<GenerateTextApiResp
   const response = await fetch(`${cleanUrl(API_BASE_URL)}/text/generate`, {
     method: 'POST',
     headers: {
-      ...(await getAuthorizedBillingHeaders()),
+      ...buildLegacyBillingCompatibilityHeaders(),
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -420,7 +433,7 @@ export const generateGeminiImage = async (
     method: 'POST',
     headers: {
       ...buildOptionalSessionHeaders(),
-      ...(await getAuthorizedBillingHeaders()),
+      ...buildLegacyBillingCompatibilityHeaders(),
       ...buildAuthHeaders(apiKey),
       'Content-Type': 'application/json',
     },

@@ -62,9 +62,11 @@ As of 2026-06-13:
 - upload smooth preview execution plan added at `docs/superpowers/plans/2026-06-11-upload-smooth-preview-pipeline.md`
 - image generation target-node input propagation fixed: upstream text nodes, image/upload asset nodes, and `batchCount` now reach the worker/provider request instead of remaining visual-only canvas state
 - image crop/resize/split/annotation/generated-result derived nodes now render immediately with a local preview while cloud asset persistence continues in the background
+- model-backed image node tools now use the v2 target-node workflow path, so logged-in v2 users no longer hit the legacy `auth-session-v1` billing login error from repaint/erase/outpaint/relight/multi-angle/enhance/remove-background actions
 
 ## Recent Important Commits
 
+- pending: fix image edit tools v2 auth workflow
 - pending: fix optimistic derived image save UX
 - pending: fix image generation input propagation
 - `b24b42f` chore: upgrade production image to node 22
@@ -98,6 +100,27 @@ As of 2026-06-13:
 Notes:
 
 - Local API asset integration tests are still database-env gated in this workspace; the new bytes endpoint test was added to `apps/api/test/assets.test.ts` but is skipped locally without `DATABASE_URL`.
+
+## 2026-06-13 - Image Edit Tools v2 Auth Workflow Fix
+
+- Fixed model-backed image tools that incorrectly showed `请先登录后再使用点数功能` even when the user was logged in through v2 auth.
+- Root cause:
+  - the top image tools for repaint/erase/outpaint/relight/multi-angle/enhance/remove-background still executed the legacy direct model API path
+  - that path checked the old local `auth-session-v1` / `X-Auth-Session` billing identity instead of the current v2 access token and `/api/v2/*` workflow path
+- Frontend fix:
+  - image edit confirmations now create or reuse a downstream target image node with `imageEditRequest`, prompt, route/model, mask, outpaint direction, scale, and mapped provider params
+  - after the tool closes, the canvas triggers `runBackendWorkflow({ runMode: 'target_node', targetNodeId })`, so v2 auth, billing preflight, draft save barrier, worker execution, and result asset persistence own the model call
+  - removed the stale direct image-edit success path from `graphExecutor.ts`
+- Worker fix:
+  - target-node image requests now forward `imageEditRequest` into provider-facing metadata while preserving upstream image asset inputs and mask params
+- Legacy compatibility:
+  - remaining legacy API helper calls no longer throw the old frontend-only billing login error when a v2 access token exists
+  - ordinary GPT-image-2 reference-image generation still has a legacy compatibility edge and should be migrated to the v2 workflow path in a later cleanup
+- Validation:
+  - `npm test -- src/flowCanvas/runtime/graphExecutor.test.ts`
+  - `npm run test --workspace @aigc-flow/worker -- workflow-runtime-image-request.test.ts`
+  - `npm run build --workspace @aigc-flow/worker`
+  - `npm run build`
 
 ## 2026-06-13 - Image Derived Tool Optimistic Save Fix
 
