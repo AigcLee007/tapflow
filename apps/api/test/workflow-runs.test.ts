@@ -356,6 +356,7 @@ async function createDraftOnlyFlowWithImageEditTarget(
   api: ReturnType<typeof buildTestApp>["api"],
   accessToken: string,
   routeKey: string,
+  options: { omitTargetRouteKey?: boolean } = {},
 ) {
   const project = await api.inject({
     headers: {
@@ -415,7 +416,7 @@ async function createDraftOnlyFlowWithImageEditTarget(
                 sourceNodeId: "source-image",
               },
               modelId: "mock-image-v1",
-              routeKey,
+              ...(options.omitTargetRouteKey ? {} : { routeKey }),
               title: "多角度后的1",
             },
             id: "target-image",
@@ -1028,6 +1029,81 @@ describeWithDatabase("workflow runs api", () => {
             sourceNodeId: "source-image",
           },
           routeKey: "image.default",
+        });
+
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("target_node image edit uses nested imageEditRequest routeKey for pricing when top-level routeKey is missing", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({
+          connectionString: await createAppDatabaseUrl(),
+        });
+
+        const { api, fakeQueue } = buildTestApp(appPool);
+        const ownerEmail = "workflow-image-edit-nested-route@example.com";
+        const owner = await registerOwner(api, ownerEmail, "Workflow Image Edit Nested Route");
+        const ownerUserId = await lookupUserIdByEmail(appPool, ownerEmail);
+        await seedRouteAndPricing(appPool, {
+          modelKey: "mock-image-v1",
+          providerKey: "mock-local-dev-nested",
+          routeKey: "image.pixellelabs.nano-banana-pro",
+          tenantId: owner.currentTenant.id,
+          userId: ownerUserId,
+          withExactPricing: true,
+        });
+
+        const flow = await createDraftOnlyFlowWithImageEditTarget(
+          api,
+          owner.accessToken,
+          "image.pixellelabs.nano-banana-pro",
+          { omitTargetRouteKey: true },
+        );
+        const createRun = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "POST",
+          payload: {
+            input: {
+              runMode: "target_node",
+              targetNodeId: "target-image",
+            },
+          },
+          url: `/api/v2/flows/${flow.id}/runs`,
+        });
+
+        expect(createRun.statusCode).toBe(201);
+        expect(fakeQueue.jobs).toHaveLength(1);
+
+        const runDetails = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "GET",
+          url: `/api/v2/workflow-runs/${createRun.json().runId}`,
+        });
+        expect(runDetails.statusCode).toBe(200);
+        expect(runDetails.json().nodeRuns[0].costJson).toMatchObject({
+          estimatedCents: 17,
+          pricingFallbackLevel: 1,
+          pricingMatch: {
+            model: "mock-image-v1",
+            provider: "mock-local-dev-nested",
+            route: "image.pixellelabs.nano-banana-pro",
+            unit: "image_generation",
+          },
         });
 
         await api.close();

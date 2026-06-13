@@ -322,6 +322,26 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function readTrimmedString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+export function resolveConfiguredRouteKey(node: Pick<CompiledWorkflow["nodes"][number], "config" | "type">): string | null {
+  const config = isRecord(node.config) ? node.config : {};
+  const params = isRecord(config.params) ? config.params : {};
+  const imageEditRequest = isRecord(config.imageEditRequest) ? config.imageEditRequest : {};
+  const imageEditMapping = isRecord(params.imageEditMapping) ? params.imageEditMapping : {};
+
+  return readTrimmedString(config.routeKey)
+    ?? readTrimmedString(imageEditRequest.routeKey)
+    ?? readTrimmedString(imageEditMapping.routeKey)
+    ?? null;
+}
+
+function resolveEffectiveRouteKey(node: Pick<CompiledWorkflow["nodes"][number], "config" | "type">): string {
+  return resolveConfiguredRouteKey(node) ?? DEFAULT_ROUTE_BY_NODE_TYPE[node.type] ?? "default";
+}
+
 function readPositiveInteger(value: unknown): number | null {
   const parsed = typeof value === "number"
     ? value
@@ -1315,11 +1335,7 @@ export class WorkflowRunsService {
   ): Promise<Map<string, RouteRuntimeContext>> {
     const routeKeys = Array.from(new Set(nodes
       .map((node) => {
-        if (typeof node.config?.routeKey === "string" && node.config.routeKey.trim().length > 0) {
-          return node.config.routeKey.trim();
-        }
-        const defaultRoute = DEFAULT_ROUTE_BY_NODE_TYPE[node.type];
-        return defaultRoute ?? "";
+        return resolveEffectiveRouteKey(node);
       })
       .filter((routeKey) => routeKey.length > 0)));
 
@@ -1372,10 +1388,8 @@ export class WorkflowRunsService {
     routeContexts: Map<string, RouteRuntimeContext>,
     pricingRows: PricingRow[],
   ): ResolvedNodePricing {
-    const configuredRoute = typeof node.config?.routeKey === "string"
-      ? node.config.routeKey
-      : null;
-    const effectiveRoute = configuredRoute?.trim() || DEFAULT_ROUTE_BY_NODE_TYPE[node.type] || "default";
+    const configuredRoute = resolveConfiguredRouteKey(node);
+    const effectiveRoute = resolveEffectiveRouteKey(node);
     const routeContext = routeContexts.get(effectiveRoute) ?? null;
     return resolveNodePricing({
       configuredRouteKey: configuredRoute,

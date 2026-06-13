@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
-import { getAssetDownloadUrl, getAssetVariantUrl } from './v2AssetsApi';
+import { getAssetBytesUrl, getAssetDownloadUrl, getAssetVariantUrl } from './v2AssetsApi';
 import { clearStoredAuth, setStoredTokens } from './v2HttpClient';
 
 describe('v2AssetsApi', () => {
@@ -88,6 +88,12 @@ describe('v2AssetsApi', () => {
         }),
         method: 'GET',
       }),
+    );
+  });
+
+  test('getAssetBytesUrl builds a same-origin authenticated asset bytes URL', () => {
+    expect(getAssetBytesUrl('asset 123', 'preview')).toBe(
+      '/api/v2/assets/asset%20123/bytes?variantKey=preview',
     );
   });
 });

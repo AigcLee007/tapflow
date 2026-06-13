@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveNodePricing } from "../src/modules/workflow-runs/workflow-runs.service.js";
+import {
+  resolveConfiguredRouteKey,
+  resolveNodePricing,
+} from "../src/modules/workflow-runs/workflow-runs.service.js";
 
 const pricingRows = [
   {
@@ -38,6 +41,38 @@ const pricingRows = [
 ] as const;
 
 describe("workflow pricing resolver", () => {
+  it("resolves nested image edit route keys when the top-level routeKey is missing", () => {
+    expect(resolveConfiguredRouteKey({
+      config: {
+        imageEditRequest: {
+          routeKey: " image.pixellelabs.nano-banana-pro ",
+        },
+      },
+      type: "image.generate",
+    })).toBe("image.pixellelabs.nano-banana-pro");
+
+    expect(resolveConfiguredRouteKey({
+      config: {
+        params: {
+          imageEditMapping: {
+            routeKey: "image.pixellelabs.nano-banana-2",
+          },
+        },
+      },
+      type: "image.generate",
+    })).toBe("image.pixellelabs.nano-banana-2");
+
+    expect(resolveConfiguredRouteKey({
+      config: {
+        imageEditRequest: {
+          routeKey: "image.pixellelabs.nano-banana-pro",
+        },
+        routeKey: "image.default",
+      },
+      type: "image.generate",
+    })).toBe("image.default");
+  });
+
   it("matches exact provider/model/route/unit first", () => {
     const resolved = resolveNodePricing({
       configuredRouteKey: "image.default",

@@ -70,9 +70,11 @@ As of 2026-06-13:
 - target-node workflow launch now marks missing backend `node_run` snapshots as a visible node failure with diagnostic launch status instead of leaving a blank white result card
 - target-node image edit launch no longer stalls at `workflowLaunchStatus: saving_draft` when a manual run-save barrier overlaps an existing autosave; `saveNow()` now performs a foreground latest-graph flush before allowing workflow run creation to continue
 - same-origin asset bytes responses now normalize `content-length` from the actual response body and fall back from empty preview variants to original image bytes, addressing completed image-edit runs that rendered as 0-byte white previews
+- image edit worker requests now recover route keys from nested edit metadata when the top-level node route key is missing, preventing model-backed edits from falling back to the mock `image.default` route
 
 ## Recent Important Commits
 
+- pending: fix image edit route key fallback
 - pending: fix empty asset preview bytes fallback
 - pending: fix image edit save barrier stall
 - pending: fix image edit runtime route selection
@@ -127,6 +129,27 @@ Notes:
   - `npm run test --workspace @aigc-flow/api -- assets-bytes-normalization.test.ts`
   - `npm run test --workspace @aigc-flow/api -- assets.test.ts` (skipped locally because DB env is not configured)
   - `npm run build --workspace @aigc-flow/api`
+  - `npm run build`
+
+## 2026-06-14 - Image Edit Route Key Fallback
+
+- Investigated production logs for blank/placeholder image edit results.
+- Server evidence showed the workflow runner and worker were not stuck:
+  - API created the target-node workflow run and enqueued `node.execute`
+  - worker processed the job, called the media runtime, persisted one asset, settled billing, patched the target node draft, and completed successfully
+- Root cause in the log:
+  - selected product model was PixelleLabs/Nano Banana, but worker runtime diagnostics showed `providerKey: "mock-local-dev"` and `routeKey: null`
+  - the worker built image requests only from top-level `node.config.routeKey`; when the edit node lost that field but retained nested `imageEditRequest.routeKey`, the runtime fell back to `image.default`
+- Fixed API workflow-run route context/pricing and worker image request construction to recover the route key from nested edit metadata before falling back to `image.default`.
+- Fixed worker runtime diagnostics to report the same recovered route key, so production logs should no longer show `routeKey: null` for these nested image edit runs.
+- Changed generated asset display URLs to same-origin `/api/v2/assets/:assetId/bytes?variantKey=preview` so canvas previews use the authenticated bytes endpoint with empty-variant fallback instead of signed preview URLs.
+- Validation:
+  - `npm run test --workspace @aigc-flow/worker -- workflow-runtime-image-request.test.ts`
+  - `npm run test --workspace @aigc-flow/api -- workflow-pricing-resolver.test.ts`
+  - `npm test -- src/flowCanvas/runtime/v2WorkflowRunner.test.ts`
+  - `npm test -- src/services/v2AssetsApi.test.ts`
+  - `npm run build --workspace @aigc-flow/api`
+  - `npm run build --workspace @aigc-flow/worker`
   - `npm run build`
 
 ## 2026-06-13 - Image Edit Tools v2 Auth Workflow Fix

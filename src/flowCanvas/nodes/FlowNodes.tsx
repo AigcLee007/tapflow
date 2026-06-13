@@ -99,7 +99,7 @@ import { GoogleLogo, OpenAILogo } from '../../../components/Logos';
 import { useAuth } from '../../auth/useAuth';
 import { normalizeBackendAssetUrl } from '../../utils/generatedImageStorage';
 import { canNodeReceiveIncoming } from '../rules/connectionRules';
-import { getAssetDownloadUrl, getAssetVariantUrl } from '../../assets/assetApi';
+import { getAssetBytesUrl } from '../../assets/assetApi';
 import { listRuntimeRoutes, type V2RuntimeRouteItem } from '../../services/v2AiRoutesApi';
 import { listAiModelCatalog, listAiModelRoutes, type AiModelCatalogItem } from '../../services/v2AiModelCatalogApi';
 import { buildAssetBackedNodeData } from '../utils/assetNodeData';
@@ -3659,23 +3659,14 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   useEffect(() => {
     if (!assetId || runtimeThumbnailUrl || d.thumbnailUrl) return;
     let cancelled = false;
-    void getAssetVariantUrl(assetId, 'preview')
-      .catch(() => getAssetDownloadUrl(assetId))
-      .then((download) => {
-        if (!cancelled) {
-          const previewUrl = String(download.url || '').trim();
-          setAssetPreviewUrl(previewUrl);
-          if (previewUrl) {
-            updateNodeData(id, {
-              originalImageUrl: previewUrl,
-              thumbnailUrl: previewUrl,
-            });
-          }
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setAssetPreviewUrl('');
+    const previewUrl = getAssetBytesUrl(assetId, 'preview');
+    if (!cancelled) {
+      setAssetPreviewUrl(previewUrl);
+      updateNodeData(id, {
+        originalImageUrl: previewUrl,
+        thumbnailUrl: previewUrl,
       });
+    }
     return () => {
       cancelled = true;
     };

@@ -141,4 +141,54 @@ describe("buildImageRequest", () => {
       }),
     });
   });
+
+  test("uses imageEditRequest routeKey when the top-level routeKey is missing", () => {
+    const request = __workerTestUtils.buildImageRequest(
+      [
+        {
+          assets: [
+            {
+              assetId: "asset-source",
+              kind: "image",
+              mimeType: "image/png",
+            },
+          ],
+        },
+      ],
+      {
+        generationPrompt: "Generate a new angle of the same subject",
+        imageEditRequest: {
+          editType: "multiAngle",
+          routeKey: "image.pixellelabs.nano-banana-pro",
+          sourceNodeId: "source-node",
+        },
+        modelId: "pixellelabs.nano-banana-pro",
+      },
+    );
+
+    expect(request.routeKey).toBe("image.pixellelabs.nano-banana-pro");
+    expect(request.model).toBe("pixellelabs.nano-banana-pro");
+  });
+
+  test("resolves nested routeKey for runtime diagnostics", () => {
+    expect(__workerTestUtils.resolveImageRequestRouteKey({
+      imageEditRequest: {
+        routeKey: " image.pixellelabs.nano-banana-pro ",
+      },
+    })).toBe("image.pixellelabs.nano-banana-pro");
+
+    expect(__workerTestUtils.buildAiRuntimeDiagnostic({
+      modelKey: "pixellelabs.nano-banana-pro",
+      providerKey: "pixellelabs",
+      routeKey: __workerTestUtils.resolveImageRequestRouteKey({
+        imageEditRequest: {
+          routeKey: "image.pixellelabs.nano-banana-pro",
+        },
+      }),
+    })).toMatchObject({
+      modelKey: "pixellelabs.nano-banana-pro",
+      providerKey: "pixellelabs",
+      routeKey: "image.pixellelabs.nano-banana-pro",
+    });
+  });
 });

@@ -468,6 +468,26 @@ function extractPromptFromUpstreamOutputs(
   return JSON.stringify(upstreamOutputs);
 }
 
+function readTrimmedString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function resolveNestedImageRouteKey(config: Record<string, unknown>): string | null {
+  const imageEditRequest = isPlainObject(config.imageEditRequest) ? config.imageEditRequest : null;
+  const params = isPlainObject(config.params) ? config.params : null;
+  const imageEditMapping = params && isPlainObject(params.imageEditMapping) ? params.imageEditMapping : null;
+
+  return readTrimmedString(imageEditRequest?.routeKey)
+    ?? readTrimmedString(imageEditMapping?.routeKey)
+    ?? null;
+}
+
+function resolveImageRequestRouteKey(config: Record<string, unknown>): string {
+  return readTrimmedString(config.routeKey)
+    ?? resolveNestedImageRouteKey(config)
+    ?? "image.default";
+}
+
 function buildImageRequest(
   upstreamOutputs: Array<Record<string, unknown> | null>,
   config: Record<string, unknown>,
@@ -502,9 +522,7 @@ function buildImageRequest(
     ...(batchCount ? { n: batchCount } : {}),
     params: normalizedParams,
   };
-  const routeKey = typeof config.routeKey === "string" && config.routeKey.trim()
-    ? config.routeKey.trim()
-    : "image.default";
+  const routeKey = resolveImageRequestRouteKey(config);
   const prompt =
     typeof config.generationPrompt === "string" && config.generationPrompt.trim()
       ? config.generationPrompt
@@ -537,8 +555,10 @@ function buildImageRequest(
 }
 
 export const __workerTestUtils = {
+  buildAiRuntimeDiagnostic,
   buildImageRequest,
   getDependencyOutputs: getDependencyOutputsFromRuntimeGraph,
+  resolveImageRequestRouteKey,
 };
 
 function buildVideoRequest(
@@ -1548,6 +1568,8 @@ export class WorkflowNodeExecutionService {
     kind: "image" | "video",
     logger: WorkerLogger,
   ): Promise<NodeExecutionOutcome> {
+    const routeKey = resolveImageRequestRouteKey(node.config);
+
     if (result.status === "waiting_provider") {
       if (!result.providerTaskId) {
         throw new Error("Provider task ID is required for waiting_provider results");
@@ -1561,7 +1583,7 @@ export class WorkflowNodeExecutionService {
           providerKey: result.providerKey,
           providerTaskId: result.providerTaskId,
           routeId: result.routeId ?? null,
-          routeKey: typeof node.config.routeKey === "string" ? node.config.routeKey : null,
+          routeKey,
           status: "waiting_provider",
         }),
         pollPayload: {
@@ -1581,7 +1603,7 @@ export class WorkflowNodeExecutionService {
       providerId: result.providerId ?? null,
       providerKey: result.providerKey,
       routeId: result.routeId ?? null,
-      routeKey: typeof node.config.routeKey === "string" ? node.config.routeKey : null,
+      routeKey,
     });
     const persistedOutputJson = await this.persistMediaOutputs(
       client,

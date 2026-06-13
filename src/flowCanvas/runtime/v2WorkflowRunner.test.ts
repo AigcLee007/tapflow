@@ -15,7 +15,6 @@ const createWorkflowRunMock = vi.fn();
 const getWorkflowRunMock = vi.fn();
 const listFlowWorkflowRunsMock = vi.fn();
 const streamWorkflowRunMock = vi.fn();
-const getAssetVariantUrlMock = vi.fn();
 const getBillingSummaryMock = vi.fn();
 const listBillingPricingMock = vi.fn();
 const listRuntimeRoutesMock = vi.fn();
@@ -28,7 +27,8 @@ vi.mock('../../services/v2WorkflowRunsApi', () => ({
 }));
 
 vi.mock('../../services/v2AssetsApi', () => ({
-  getAssetVariantUrl: (...args: unknown[]) => getAssetVariantUrlMock(...args),
+  getAssetBytesUrl: (assetId: string, variantKey = 'preview') =>
+    `/api/v2/assets/${encodeURIComponent(assetId)}/bytes?variantKey=${encodeURIComponent(variantKey)}`,
 }));
 
 vi.mock('../../billing/billingApi', () => ({
@@ -46,7 +46,6 @@ describe('v2WorkflowRunner', () => {
     getWorkflowRunMock.mockReset();
     listFlowWorkflowRunsMock.mockReset();
     streamWorkflowRunMock.mockReset();
-    getAssetVariantUrlMock.mockReset();
     getBillingSummaryMock.mockReset();
     listBillingPricingMock.mockReset();
     listRuntimeRoutesMock.mockReset();
@@ -589,11 +588,6 @@ describe('v2WorkflowRunner', () => {
     createWorkflowRunMock
       .mockResolvedValueOnce({ runId: 'run-done', status: 'pending' })
       .mockResolvedValueOnce({ runId: 'run-next', status: 'pending' });
-    getAssetVariantUrlMock.mockResolvedValue({
-      expiresAt: '2026-05-17T00:15:00.000Z',
-      method: 'GET',
-      url: 'https://example.test/image',
-    });
     getWorkflowRunMock
       .mockResolvedValueOnce({
         nodeRuns: [
@@ -705,7 +699,7 @@ describe('v2WorkflowRunner', () => {
     expect(useFlowCanvasStore.getState().runError).toContain('余额不足');
   });
 
-  test('asset refs trigger download-url resolution and stay in runtime state', async () => {
+  test('asset refs use same-origin bytes urls and stay in runtime state', async () => {
     useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, {
       batchCount: 2,
       generationPrompt: 'a quiet studio product photo',
@@ -727,11 +721,6 @@ describe('v2WorkflowRunner', () => {
     createWorkflowRunMock.mockResolvedValue({
       runId: 'run-asset',
       status: 'pending',
-    });
-    getAssetVariantUrlMock.mockResolvedValue({
-      expiresAt: '2026-05-17T00:15:00.000Z',
-      method: 'GET',
-      url: 'https://example.test/presigned-image',
     });
     getWorkflowRunMock.mockResolvedValue({
       nodeRuns: [
@@ -796,17 +785,15 @@ describe('v2WorkflowRunner', () => {
 
     await runBackendWorkflow();
 
-    expect(getAssetVariantUrlMock).toHaveBeenCalledWith('asset-1', 'preview');
-    expect(getAssetVariantUrlMock).toHaveBeenCalledWith('asset-2', 'preview');
     expect(useFlowCanvasStore.getState().nodeOutputByNodeId[imageNodeId]).toMatchObject({
       assets: [
         expect.objectContaining({
           assetId: 'asset-1',
-          downloadUrl: 'https://example.test/presigned-image',
+          downloadUrl: '/api/v2/assets/asset-1/bytes?variantKey=preview',
         }),
         expect.objectContaining({
           assetId: 'asset-2',
-          downloadUrl: 'https://example.test/presigned-image',
+          downloadUrl: '/api/v2/assets/asset-2/bytes?variantKey=preview',
         }),
       ],
     });
@@ -819,11 +806,11 @@ describe('v2WorkflowRunner', () => {
       generatedResults: [
         expect.objectContaining({
           id: 'asset:asset-1',
-          url: 'https://example.test/presigned-image',
+          url: '/api/v2/assets/asset-1/bytes?variantKey=preview',
         }),
         expect.objectContaining({
           id: 'asset:asset-2',
-          url: 'https://example.test/presigned-image',
+          url: '/api/v2/assets/asset-2/bytes?variantKey=preview',
         }),
       ],
       generationStatus: 'done',
@@ -843,7 +830,7 @@ describe('v2WorkflowRunner', () => {
       source: 'generated',
       status: 'success',
     });
-    expect(updatedNode?.data.thumbnailUrl).toBe('https://example.test/presigned-image');
+    expect(updatedNode?.data.thumbnailUrl).toBe('/api/v2/assets/asset-1/bytes?variantKey=preview');
   });
 
   test('terminal stream event finalizes the run snapshot and applies generated assets', async () => {
@@ -863,11 +850,6 @@ describe('v2WorkflowRunner', () => {
     createWorkflowRunMock.mockResolvedValue({
       runId: 'run-stream-final',
       status: 'pending',
-    });
-    getAssetVariantUrlMock.mockResolvedValue({
-      expiresAt: '2026-05-17T00:15:00.000Z',
-      method: 'GET',
-      url: 'https://example.test/stream-final',
     });
     getWorkflowRunMock
       .mockResolvedValueOnce({
@@ -1072,11 +1054,6 @@ describe('v2WorkflowRunner', () => {
       runId: 'run-scope',
       status: 'pending',
     });
-    getAssetVariantUrlMock.mockResolvedValue({
-      expiresAt: '2026-05-17T00:15:00.000Z',
-      method: 'GET',
-      url: 'https://example.test/presigned-image',
-    });
     getWorkflowRunMock.mockResolvedValue({
       nodeRuns: [
         {
@@ -1185,11 +1162,6 @@ describe('v2WorkflowRunner', () => {
   test('recovering flow runs restores completed target-node assets after remount', async () => {
     useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, { title: 'Recovered' });
     const nodeId = useFlowCanvasStore.getState().nodes[0]?.id as string;
-    getAssetVariantUrlMock.mockResolvedValue({
-      expiresAt: '2026-05-17T00:15:00.000Z',
-      method: 'GET',
-      url: 'https://example.test/recovered',
-    });
     listFlowWorkflowRunsMock.mockResolvedValue([
       {
         nodeRuns: [
@@ -1244,18 +1216,13 @@ describe('v2WorkflowRunner', () => {
     expect(updatedNode?.data.assetId).toBe('asset-recovered');
     expect(useFlowCanvasStore.getState().nodeOutputByNodeId[nodeId]?.assets?.[0]).toMatchObject({
       assetId: 'asset-recovered',
-      downloadUrl: 'https://example.test/recovered',
+      downloadUrl: '/api/v2/assets/asset-recovered/bytes?variantKey=preview',
     });
   });
 
   test('late completion from an older same-node run cannot overwrite the latest run', async () => {
     useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, { title: 'Same node' });
     const nodeId = useFlowCanvasStore.getState().nodes[0]?.id as string;
-    getAssetVariantUrlMock.mockResolvedValue({
-      expiresAt: '2026-05-17T00:15:00.000Z',
-      method: 'GET',
-      url: 'https://example.test/latest',
-    });
     listFlowWorkflowRunsMock.mockResolvedValue([
       {
         nodeRuns: [
