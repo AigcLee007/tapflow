@@ -159,6 +159,47 @@ describe('modelCatalogOptions', () => {
     expect(routes.map((item) => item.userFacingLabel).join(' ')).not.toContain('openai-compatible');
   });
 
+  test('keeps official Nano Banana Pro line labels and pricing stable regardless of route key sort order', () => {
+    const routes = mapCatalogRoutesToRuntimeOptions([
+      {
+        estimatedCredits: 6,
+        minChargeCredits: 6,
+        modality: 'image',
+        modelFamily: 'pixellelabs.nano-banana-pro',
+        modelKey: 'gemini-3-pro-image-preview',
+        pricingUnit: 'image_generation',
+        providerKey: 'mouxihub-openai',
+        providerName: 'MouxiHub OpenAI Compatible',
+        routeId: 'route-t3',
+        routeKey: 'image.mouxihub.nano-banana-pro.t3',
+        routeLabel: '线路二（官方T3）',
+      },
+      {
+        estimatedCredits: 24,
+        minChargeCredits: 24,
+        modality: 'image',
+        modelFamily: 'pixellelabs.nano-banana-pro',
+        modelKey: 'gemini-3-pro-image-preview',
+        pricingUnit: 'image_generation',
+        providerKey: 'pixellelabs',
+        providerName: 'PixelleLabs',
+        routeId: 'route-line-1',
+        routeKey: 'image.pixellelabs.nano-banana-pro',
+        routeLabel: '线路一',
+      },
+    ] satisfies AiModelCatalogRoute[]);
+
+    expect(routes.map((item) => item.routeKey)).toEqual([
+      'image.pixellelabs.nano-banana-pro',
+      'image.mouxihub.nano-banana-pro.t3',
+    ]);
+    expect(routes.map((item) => item.userFacingLabel)).toEqual([
+      'Nano Banana Pro 线路一',
+      'Nano Banana Pro 线路二（官方T3）',
+    ]);
+    expect(routes.map((item) => item.estimatedCredits)).toEqual([24, 6]);
+  });
+
   test('derives canvas params and selectors from uiSchema', () => {
     const uiSchema = {
       fields: [

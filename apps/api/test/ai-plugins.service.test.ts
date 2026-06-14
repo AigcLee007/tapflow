@@ -4,6 +4,46 @@ import { AiPluginService } from "../src/modules/ai-plugins/ai-plugins.service.js
 import { mouxiHubNanoBananaProT3Manifest } from "../../../packages/ai-gateway-core/src/plugins/manifests/mouxihub-nano-banana-pro-t3.js";
 
 describe("AiPluginService route install statements", () => {
+  test("uses provider adapter kind for MouxiHub T3 connection instead of async route mode", async () => {
+    const service = new AiPluginService({
+      credentialVault: {} as never,
+      pool: {} as never,
+    });
+    const queries: Array<{ sql: string; values: unknown[] }> = [];
+    const client = {
+      async query(sql: string, values: unknown[]) {
+        queries.push({ sql, values });
+        return { rows: [{ id: "00000000-0000-0000-0000-000000000007" }] };
+      },
+    };
+
+    await (
+      service as unknown as {
+        upsertProviderConnection: (
+          client: typeof client,
+          options: {
+            context: { tenantId: string; userId: string | null };
+            credentialId: string | null;
+            input: { baseUrlOverride?: string | null };
+            installId: string;
+            manifest: typeof mouxiHubNanoBananaProT3Manifest;
+            providerId: string;
+          },
+        ) => Promise<string | null>;
+      }
+    ).upsertProviderConnection(client, {
+      context: { tenantId: "tenant-1", userId: null },
+      credentialId: "00000000-0000-0000-0000-000000000004",
+      input: {},
+      installId: "00000000-0000-0000-0000-000000000006",
+      manifest: mouxiHubNanoBananaProT3Manifest,
+      providerId: "00000000-0000-0000-0000-000000000002",
+    });
+
+    expect(queries[0]?.values[4]).toBe("openai-compatible");
+    expect(queries[0]?.values[4]).not.toBe("async");
+  });
+
   test("builds aligned ai_routes insert parameters for MouxiHub T3 async route", () => {
     const service = new AiPluginService({
       credentialVault: {} as never,

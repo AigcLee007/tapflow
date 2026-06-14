@@ -56,6 +56,14 @@ const KNOWN_IMAGE_ROUTE_USER_FACING_LABEL_BY_KEY: Record<string, string> = {
   'image.pixellelabs.nano-banana-pro': 'Nano Banana Pro 线路一',
 };
 
+const KNOWN_IMAGE_ROUTE_SORT_ORDER_BY_KEY: Record<string, number> = {
+  'image.pixellelabs.nano-banana-pro': 10,
+  'image.mouxihub.nano-banana-pro.t3': 20,
+  'image.pixellelabs.nano-banana-2': 10,
+  'image.gpt-image-2': 10,
+  'image.gpt-image-2.line2': 20,
+};
+
 const normalizeRouteLineLabel = (value: unknown, index: number) => {
   const configured = normalizeKey(value);
   const directLine = configured.match(/^线路([一二三四五六七八九十0-9]+)$/);
@@ -160,7 +168,19 @@ export function mapCatalogRoutesToRuntimeOptions(routes: AiModelCatalogRoute[]):
   const lineCountsByModel = new Map<string, number>();
   const result: RuntimeRouteOption[] = [];
 
-  for (const item of [...routes].sort((left, right) => left.routeKey.localeCompare(right.routeKey))) {
+  for (const item of [...routes].sort((left, right) => {
+    const leftScope = normalizeKey(left.modelFamily) || normalizeKey(left.modelKey) || 'default';
+    const rightScope = normalizeKey(right.modelFamily) || normalizeKey(right.modelKey) || 'default';
+    if (leftScope !== rightScope) {
+      return left.routeKey.localeCompare(right.routeKey);
+    }
+    const leftKnownOrder = KNOWN_IMAGE_ROUTE_SORT_ORDER_BY_KEY[normalizeKey(left.routeKey).toLowerCase()];
+    const rightKnownOrder = KNOWN_IMAGE_ROUTE_SORT_ORDER_BY_KEY[normalizeKey(right.routeKey).toLowerCase()];
+    if (leftKnownOrder !== undefined || rightKnownOrder !== undefined) {
+      return (leftKnownOrder ?? Number.MAX_SAFE_INTEGER) - (rightKnownOrder ?? Number.MAX_SAFE_INTEGER);
+    }
+    return left.routeKey.localeCompare(right.routeKey);
+  })) {
     const routeKey = normalizeKey(item.routeKey);
     if (!routeKey || seen.has(routeKey)) continue;
     seen.add(routeKey);
@@ -168,8 +188,11 @@ export function mapCatalogRoutesToRuntimeOptions(routes: AiModelCatalogRoute[]):
     const lineScope = normalizeKey(item.modelFamily) || normalizeKey(item.modelKey) || 'default';
     const lineIndex = lineCountsByModel.get(lineScope) ?? 0;
     lineCountsByModel.set(lineScope, lineIndex + 1);
-    const lineLabel = normalizeRouteLineLabel(item.routeLabel, lineIndex);
     const modelLabel = getProductModelDisplayName(item);
+    const knownUserFacingLabel = getKnownImageRouteUserFacingLabel(routeKey);
+    const lineLabel = knownUserFacingLabel.startsWith(`${modelLabel} `)
+      ? knownUserFacingLabel.slice(modelLabel.length + 1)
+      : normalizeRouteLineLabel(item.routeLabel, lineIndex);
     result.push({
       estimatedCredits: item.estimatedCredits ?? item.minChargeCredits ?? null,
       label: lineLabel,
@@ -180,7 +203,7 @@ export function mapCatalogRoutesToRuntimeOptions(routes: AiModelCatalogRoute[]):
       providerKey: item.providerKey,
       providerName: item.providerName,
       routeKey,
-      userFacingLabel: `${modelLabel} ${lineLabel}`,
+      userFacingLabel: knownUserFacingLabel || `${modelLabel} ${lineLabel}`,
     });
   }
 
