@@ -73,6 +73,7 @@ As of 2026-06-13:
 - image edit worker requests now recover route keys from nested edit metadata when the top-level node route key is missing, preventing model-backed edits from falling back to the mock `image.default` route
 - canvas image previews now use browser-loadable signed preview URLs again, with automatic recovery from older saved authenticated `/bytes` URLs
 - canvas top-left project menu now renders through a body-level fixed portal with TapNow-style width and anchored positioning, preventing overlap with the left dock and keeping project-menu dismissal behavior stable when other toolbar menus open
+- canvas model pickers now align more closely with add-node menu density: image/text model menu labels use the shared compact menu rhythm and the image model picker/dropup width has been narrowed to better match the prompt-bar target width
 
 ## 2026-06-14 - Brand Chrome and Transition System Tasks 1-4
 

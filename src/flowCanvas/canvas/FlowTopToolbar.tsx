@@ -30,8 +30,8 @@ import { useFlowCanvasStore } from "../store/flowCanvasStore";
 
 const formatToolbarPoint = (value: number) => formatPoint(value).replace(/\.0$/, "");
 const SEEN_STORAGE_KEY = "seen_announcement_ids";
-const PROJECT_MENU_WIDTH = 392;
-const PROJECT_MENU_EDGE_MARGIN = 24;
+const PROJECT_MENU_WIDTH = 320;
+const PROJECT_MENU_EDGE_MARGIN = 20;
 const PROJECT_MENU_TOP_OFFSET = 18;
 const PROJECT_MENU_FALLBACK_TOP = 112;
 const PROJECT_MENU_Z_INDEX = 2400;
@@ -277,7 +277,7 @@ export const FlowTopToolbar: React.FC<{
       <MenuSurface
         ref={projectMenuLayer.ref as React.RefObject<HTMLDivElement>}
         role="menu"
-        aria-label="椤圭洰鑿滃崟"
+        aria-label="项目菜单"
         className="max-w-[calc(100vw-48px)] overflow-hidden p-0"
         style={{
           position: "fixed",
@@ -296,14 +296,14 @@ export const FlowTopToolbar: React.FC<{
             navigate(WORKSPACE_ROUTE);
           }}
         >
-          <span className={MENU_ITEM_PRIMARY_CLASS}>??????????????</span>
+          <span className={MENU_ITEM_PRIMARY_CLASS}>返回工作空间</span>
           <ChevronRight size={16} />
         </button>
 
         <div className="my-0 h-px bg-white/8" />
 
         <button type="button" role="menuitem" className={`${MENU_ITEM_CLASS} min-h-[64px] rounded-none px-5`} onClick={focusTitleInput}>
-          <span className={MENU_ITEM_PRIMARY_CLASS}>????????????</span>
+          <span className={MENU_ITEM_PRIMARY_CLASS}>重命名项目</span>
         </button>
 
         <button
@@ -315,7 +315,7 @@ export const FlowTopToolbar: React.FC<{
         >
           <span style={projectMenuLabelWithIconStyle}>
             <Plus size={16} />
-            <span className={MENU_ITEM_PRIMARY_CLASS}>{projectMenuBusy === "create" ? "姝ｅ湪鍒涘缓..." : "鏂板缓椤圭洰"}</span>
+            <span className={MENU_ITEM_PRIMARY_CLASS}>{projectMenuBusy === "create" ? "正在创建..." : "新建项目"}</span>
           </span>
         </button>
 
@@ -330,7 +330,7 @@ export const FlowTopToolbar: React.FC<{
         >
           <span style={projectMenuLabelWithIconStyle}>
             <Trash2 size={16} />
-            <span className={MENU_ITEM_PRIMARY_CLASS}>{projectMenuBusy === "delete" ? "姝ｅ湪鍒犻櫎..." : "鍒犻櫎椤圭洰"}</span>
+            <span className={MENU_ITEM_PRIMARY_CLASS}>{projectMenuBusy === "delete" ? "正在删除..." : "删除项目"}</span>
           </span>
         </button>
       </MenuSurface>

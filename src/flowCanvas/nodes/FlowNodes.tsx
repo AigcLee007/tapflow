@@ -97,6 +97,7 @@ import {
 } from '../utils/nodeSizing';
 import { GoogleLogo, OpenAILogo } from '../../../components/Logos';
 import { MenuSelect } from '../../components/menu/MenuSelect';
+import { MENU_ITEM_PRIMARY_CLASS, MENU_ITEM_SECONDARY_CLASS } from '../../components/menu/menuStyles';
 import { useDismissibleLayer } from '../../components/menu/useDismissibleLayer';
 import { useAuth } from '../../auth/useAuth';
 import { normalizeBackendAssetUrl } from '../../utils/generatedImageStorage';
@@ -1515,7 +1516,7 @@ const textModelMenu: React.CSSProperties = {
   position: 'absolute',
   left: -18,
   bottom: 'calc(100% + 10px)',
-  width: 360,
+  width: 320,
   maxHeight: 340,
   overflowY: 'auto',
   padding: 8,
@@ -1529,32 +1530,32 @@ const textModelMenu: React.CSSProperties = {
 
 const textModelMenuItem: React.CSSProperties = {
   width: '100%',
-  minHeight: 58,
+  minHeight: 38,
   display: 'flex',
   alignItems: 'center',
-  gap: 12,
-  padding: '9px 10px',
+  gap: 7,
+  padding: '5px 6px',
   border: 'none',
-  borderRadius: 15,
+  borderRadius: 10,
   color: '#f4f4f5',
   cursor: 'pointer',
   textAlign: 'left',
 };
 
 const textModelLogo: React.CSSProperties = {
-  width: 38,
-  height: 38,
-  padding: 9,
-  borderRadius: 12,
+  width: 30,
+  height: 30,
+  padding: 7,
+  borderRadius: 9,
   objectFit: 'contain',
-  background: 'rgba(255,255,255,0.07)',
+  background: 'rgba(255,255,255,0.055)',
   flex: '0 0 auto',
 };
 
 const textModelMenuLabel: React.CSSProperties = {
-  fontSize: 18,
-  fontWeight: 650,
-  lineHeight: 1.2,
+  fontSize: 12,
+  fontWeight: 700,
+  lineHeight: 1.1,
 };
 
 const sendBtnOuter: React.CSSProperties = {
@@ -2095,10 +2096,10 @@ const imageMenuSurface: React.CSSProperties = {
   position: 'absolute',
   left: 0,
   bottom: 'calc(100% + 10px)',
-  width: 420,
+  width: 320,
   maxHeight: 590,
   overflowY: 'auto',
-  padding: 10,
+  padding: 8,
   borderRadius: 16,
   background: 'linear-gradient(155deg, rgba(28,28,29,0.985), rgba(23,25,28,0.985))',
   border: '1px solid rgba(255,255,255,0.12)',
@@ -2189,7 +2190,7 @@ const imageMenuItem = (active: boolean, hovered = false): React.CSSProperties =>
 const imageMenuSubHeader: React.CSSProperties = {
   margin: '8px 6px 4px',
   color: '#94a3b8',
-  fontSize: 11,
+  fontSize: 10,
   fontWeight: 700,
   letterSpacing: 0.2,
 };
@@ -2205,8 +2206,9 @@ const menuQualityPill: React.CSSProperties = {
   background: 'rgba(255,255,255,0.07)',
   border: '1px solid rgba(255,255,255,0.08)',
   color: '#a1a1aa',
-  fontSize: 12,
-  fontWeight: 650,
+  fontSize: 10,
+  fontWeight: 700,
+  lineHeight: 1.1,
 };
 
 const ratioPreviewStyle = (ratioValue: string, active: boolean): React.CSSProperties => {
@@ -2264,7 +2266,7 @@ const ImageModelRouteDropup: React.FC<ImageModelRouteDropupProps> = ({
   const [open, setOpen] = useState(false);
   const [hoveredModelId, setHoveredModelId] = useState<string | null>(null);
   const [hoveredRouteId, setHoveredRouteId] = useState<string | null>(null);
-  const { menuRef, position, updatePosition, wrapRef } = useFixedImageDropup(open, setOpen, 420);
+  const { menuRef, position, updatePosition, wrapRef } = useFixedImageDropup(open, setOpen, 320);
   const currentModel = modelOptions.find((option) => option.id === currentModelId) || modelOptions[0];
   const currentRoute = runtimeRoutes.find((route) => route.routeKey === currentRouteKey) || runtimeRoutes[0];
   const currentRouteIndex = currentRoute ? Math.max(0, runtimeRoutes.findIndex((route) => route.routeKey === currentRoute.routeKey)) : 0;
@@ -2288,7 +2290,7 @@ const ImageModelRouteDropup: React.FC<ImageModelRouteDropupProps> = ({
       >
         {IMAGE_MODEL_ICON_BY_ID[currentModelId] || <GoogleLogo />}
         <span>{currentModel?.label || currentModelId}</span>
-        {currentRouteLabel ? <span style={{ color: '#94a3b8', fontSize: 12 }}>· {currentRouteLabel}</span> : null}
+        {currentRouteLabel ? <span style={{ color: '#94a3b8', fontSize: 12, fontWeight: 500, lineHeight: 1.1 }}>· {currentRouteLabel}</span> : null}
         <ChevronDown size={14} color="#a1a1aa" />
       </button>
 
@@ -2312,10 +2314,10 @@ const ImageModelRouteDropup: React.FC<ImageModelRouteDropupProps> = ({
                 }}
                 style={imageMenuItem(active, hovered)}
               >
-                <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', gap: 8 }}>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10, fontSize: 20, fontWeight: 760 }}>
+                <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
                     {IMAGE_MODEL_ICON_BY_ID[option.id] || <GoogleLogo />}
-                    <span>{option.label}</span>
+                    <span className={MENU_ITEM_PRIMARY_CLASS}>{option.label}</span>
                   </span>
                   <span style={menuQualityPill}>◇ {maxQuality}</span>
                 </span>
@@ -2346,9 +2348,9 @@ const ImageModelRouteDropup: React.FC<ImageModelRouteDropupProps> = ({
                     style={imageMenuItem(active, hovered)}
                   >
                     <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}>
-                      <span style={{ fontWeight: 650 }}>{label}</span>
+                      <span className={MENU_ITEM_PRIMARY_CLASS}>{label}</span>
                       {typeof credits === 'number' ? (
-                        <span style={{ color: '#94a3b8', fontSize: 11 }}>预估 {credits} 点</span>
+                        <span className={MENU_ITEM_SECONDARY_CLASS}>预估 {credits} 点</span>
                       ) : null}
                     </span>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
@@ -2362,7 +2364,7 @@ const ImageModelRouteDropup: React.FC<ImageModelRouteDropupProps> = ({
           {runtimeRoutes.length === 0 && routesLoading && (
             <>
               <div style={imageMenuSubHeader}>可用线路</div>
-              <div style={{ color: '#94a3b8', fontSize: 13, lineHeight: 1.5, padding: '10px 16px 14px' }}>
+              <div style={{ color: '#94a3b8', fontSize: 12, lineHeight: 1.35, padding: '8px 6px 10px' }}>
                 线路加载中...
               </div>
             </>
@@ -2370,7 +2372,7 @@ const ImageModelRouteDropup: React.FC<ImageModelRouteDropupProps> = ({
           {runtimeRoutes.length === 0 && !routesLoading && (
             <>
               <div style={imageMenuSubHeader}>可用线路</div>
-              <div style={{ color: '#94a3b8', fontSize: 13, lineHeight: 1.5, padding: '10px 16px 14px' }}>
+              <div style={{ color: '#94a3b8', fontSize: 12, lineHeight: 1.35, padding: '8px 6px 10px' }}>
                 当前模型暂时没有可用线路
               </div>
             </>

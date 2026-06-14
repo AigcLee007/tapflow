@@ -17,7 +17,7 @@ import {
   MENU_ITEM_PRIMARY_CLASS,
   MENU_ITEM_SECONDARY_CLASS,
 } from '../../components/menu/menuStyles';
-import { IMAGE_MENU_SURFACE_Z_INDEX } from './imageMenuStyles';
+import { IMAGE_MENU_SURFACE_Z_INDEX, IMAGE_MODEL_MENU_WIDTH } from './imageMenuStyles';
 
 export type ImageMoreMenuAction =
   | 'outpaint'
@@ -54,13 +54,14 @@ export const ImageMoreMenu: React.FC<ImageMoreMenuProps> = ({ fixedPosition, men
   return (
     <MenuSurface
       ref={menuRef as React.RefObject<HTMLDivElement>}
-      className={`nodrag nopan nowheel w-[300px] p-2 ${
+      className={`nodrag nopan nowheel p-2 ${
         fixedPosition ? 'fixed -translate-x-1/2' : 'absolute left-1/2 top-[calc(100%+14px)] -translate-x-1/2'
       }`}
+      role="menu"
       style={
         fixedPosition
-          ? { left: fixedPosition.left, top: fixedPosition.top, zIndex: IMAGE_MENU_SURFACE_Z_INDEX }
-          : { zIndex: IMAGE_MENU_SURFACE_Z_INDEX }
+          ? { left: fixedPosition.left, top: fixedPosition.top, width: IMAGE_MODEL_MENU_WIDTH, zIndex: IMAGE_MENU_SURFACE_Z_INDEX }
+          : { width: IMAGE_MODEL_MENU_WIDTH, zIndex: IMAGE_MENU_SURFACE_Z_INDEX }
       }
       onClick={(event) => event.stopPropagation()}
     >
