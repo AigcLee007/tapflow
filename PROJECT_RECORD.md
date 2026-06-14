@@ -89,9 +89,15 @@ As of 2026-06-13:
 - Workflow reserve pricing now supports `model_pricing.metadata.sizeTiers`, so the T3 route can reserve `6 / 8 / 12` credits for `1K / 2K / 4K`.
 - Creator-facing fallback labels now include `Nano Banana Pro 线路二（官方T3）` so route keys and provider details are not shown while route data loads.
 - Validation:
+  - `npm run test --workspace @aigc-flow/api -- ai-plugins.service.test.ts`
   - `npm run test --workspace @aigc-flow/ai-gateway-core -- runtime.test.ts plugin-registry.test.ts`
-  - `npm run test --workspace @aigc-flow/api -- workflow-pricing-resolver.test.ts`
+  - `npm run test --workspace @aigc-flow/api -- workflow-pricing-resolver.test.ts ai-plugins.test.ts`
   - `npx vitest run src/flowCanvas/utils/modelCatalogOptions.test.ts`
+  - `npm run build`
+  - `npm run build --workspace @aigc-flow/redis`
+  - `npm run build --workspace @aigc-flow/api`
+  - `npm run build --workspace @aigc-flow/worker`
+- Follow-up fix: plugin initialization now builds an aligned `ai_routes` insert statement so `base_url_override`, `request_config`, `rate_limit`, `status`, `plugin_install_id`, and `request_path` are written to the intended columns. This addresses Template Library installs that could fail server-side and leave the UI showing `未安装`.
 
 ## 2026-06-14 - Brand Chrome and Transition System Tasks 1-4
 

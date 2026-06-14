@@ -41,6 +41,11 @@ type ProviderConnectionRecord = {
   id: string;
 };
 
+type AiRouteInsertStatement = {
+  sql: string;
+  values: unknown[];
+};
+
 export type AiPluginSummaryView = {
   description: string;
   displayName: string;
@@ -659,7 +664,38 @@ export class AiPluginService {
         path: route.path ?? route.requestConfig.path,
         timeoutMs: route.timeoutMs,
       };
-      await client.query(
+      const statement = this.buildRouteInsertStatement({
+        baseUrlOverride: options.input.baseUrlOverride ?? route.baseUrl ?? null,
+        connectionId: options.connectionId,
+        credentialId: options.credentialId,
+        installId: options.installId,
+        modelId,
+        providerId: options.providerId,
+        requestConfig,
+        route,
+        status: options.status,
+        tenantId: options.tenantId,
+      });
+      await client.query(statement.sql, statement.values);
+      routeKeys.push(route.routeKey);
+    }
+    return routeKeys;
+  }
+
+  private buildRouteInsertStatement(options: {
+    baseUrlOverride: string | null;
+    connectionId: string | null;
+    credentialId: string | null;
+    installId: string;
+    modelId: string;
+    providerId: string;
+    requestConfig: Record<string, unknown>;
+    route: AiPluginManifest["routes"][number];
+    status: string;
+    tenantId: string | null;
+  }): AiRouteInsertStatement {
+    return {
+      sql:
         `
           INSERT INTO ai_routes (
             tenant_id,
@@ -694,16 +730,17 @@ export class AiPluginService {
             $7,
             100,
             $8,
-            $9::jsonb,
+            $9,
             $10::jsonb,
-            $11,
-            $12::uuid,
+            $11::jsonb,
+            $12,
             $13,
-            $14,
+            $14::uuid,
             $15,
             $16,
             $17,
             $18,
+            $19,
             now()
           )
           ON CONFLICT (route_key) WHERE tenant_id IS NULL
@@ -727,31 +764,28 @@ export class AiPluginService {
             request_path = EXCLUDED.request_path,
             updated_at = now()
         `,
-        [
-          options.tenantId,
-          options.providerId,
-          modelId,
-          options.credentialId,
-          options.connectionId,
-          route.routeKey,
-          route.modality,
-          route.priority,
-          options.input.baseUrlOverride ?? route.baseUrl ?? null,
-          JSON.stringify(requestConfig),
-          JSON.stringify(route.rateLimit ?? {}),
-          options.status,
-          options.installId,
-          route.modelFamily,
-          route.routeLabel,
-          (route.requestConfig.environment as string | undefined) ?? "production",
-          route.modelKey,
-          this.resolveRouteApiMode(route),
-          route.path ?? this.readRouteRequestConfigString(route.requestConfig, "path"),
-        ],
-      );
-      routeKeys.push(route.routeKey);
-    }
-    return routeKeys;
+      values: [
+        options.tenantId,
+        options.providerId,
+        options.modelId,
+        options.credentialId,
+        options.connectionId,
+        options.route.routeKey,
+        options.route.modality,
+        options.route.priority,
+        options.baseUrlOverride,
+        JSON.stringify(options.requestConfig),
+        JSON.stringify(options.route.rateLimit ?? {}),
+        options.status,
+        options.installId,
+        options.route.modelFamily,
+        options.route.routeLabel,
+        (options.route.requestConfig.environment as string | undefined) ?? "production",
+        options.route.modelKey,
+        this.resolveRouteApiMode(options.route),
+        options.route.path ?? this.readRouteRequestConfigString(options.route.requestConfig, "path"),
+      ],
+    };
   }
 
   private async upsertProviderConnection(
