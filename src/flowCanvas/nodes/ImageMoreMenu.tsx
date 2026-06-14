@@ -17,6 +17,7 @@ import {
   MENU_ITEM_PRIMARY_CLASS,
   MENU_ITEM_SECONDARY_CLASS,
 } from '../../components/menu/menuStyles';
+import { IMAGE_MENU_SURFACE_Z_INDEX } from './imageMenuStyles';
 
 export type ImageMoreMenuAction =
   | 'outpaint'
@@ -30,6 +31,7 @@ export type ImageMoreMenuAction =
 
 interface ImageMoreMenuProps {
   menuRef?: React.RefObject<HTMLDivElement | null>;
+  fixedPosition?: { left: number; top: number };
   onSelect: (action: ImageMoreMenuAction, payload?: { gridSize?: number }) => void;
 }
 
@@ -48,11 +50,18 @@ const menuRows: Array<{
   { id: 'removeBackground', label: '抠图', description: '分离主体背景', icon: <ImageOff size={20} /> },
 ];
 
-export const ImageMoreMenu: React.FC<ImageMoreMenuProps> = ({ menuRef, onSelect }) => {
+export const ImageMoreMenu: React.FC<ImageMoreMenuProps> = ({ fixedPosition, menuRef, onSelect }) => {
   return (
     <MenuSurface
       ref={menuRef as React.RefObject<HTMLDivElement>}
-      className="nodrag nopan nowheel absolute left-1/2 top-[calc(100%+14px)] z-[2200] w-[300px] -translate-x-1/2 p-2"
+      className={`nodrag nopan nowheel w-[300px] p-2 ${
+        fixedPosition ? 'fixed -translate-x-1/2' : 'absolute left-1/2 top-[calc(100%+14px)] -translate-x-1/2'
+      }`}
+      style={
+        fixedPosition
+          ? { left: fixedPosition.left, top: fixedPosition.top, zIndex: IMAGE_MENU_SURFACE_Z_INDEX }
+          : { zIndex: IMAGE_MENU_SURFACE_Z_INDEX }
+      }
       onClick={(event) => event.stopPropagation()}
     >
       <div
