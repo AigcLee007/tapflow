@@ -2114,8 +2114,8 @@ const buildFixedImageMenuSurface = (
   ...imageMenuSurface,
   position: 'fixed',
   left: position.left,
-  top: position.top,
-  bottom: 'auto',
+  top: 'auto',
+  bottom: position.top,
   zIndex: IMAGE_MENU_SURFACE_Z_INDEX,
   ...overrides,
 });
@@ -2128,9 +2128,9 @@ const getFixedImageDropupPosition = (trigger: HTMLElement | null, menuWidth: num
     window.innerWidth - viewportPadding - menuWidth,
     Math.max(viewportPadding, rect.left),
   );
-  const estimatedTop = rect.top - 10;
-  const top = Math.max(viewportPadding, estimatedTop);
-  return { left, top };
+  const estimatedBottom = window.innerHeight - rect.top + 10;
+  const bottom = Math.max(viewportPadding, estimatedBottom);
+  return { left, top: bottom };
 };
 
 const useFixedImageDropup = (
@@ -2724,12 +2724,47 @@ export const TextNodeComponent = memo(function TextNode({
   const [promptExpanded, setPromptExpanded] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showModelMenu, setShowModelMenu] = useState(false);
+  const textModelTriggerRef = useRef<HTMLButtonElement>(null);
+  const textModelMenuRef = useRef<HTMLDivElement>(null);
+  const [textModelMenuPosition, setTextModelMenuPosition] = useState<{ left: number; bottom: number } | null>(null);
   const [copyToastVisible, setCopyToastVisible] = useState(false);
   const copyToastTimerRef = useRef<number | null>(null);
   const currentModelId = String(d.modelId || DEFAULT_TEXT_MODEL_ID);
   const currentTextModel = getTextModelOption(currentModelId);
   const { showSingleNodeControls } = useNodeSelectionState(id, selected);
   const showNodeEditor = showSingleNodeControls;
+
+  const updateTextModelMenuPosition = useCallback(() => {
+    const rect = textModelTriggerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const width = 360;
+    const viewportPadding = 18;
+    const left = Math.min(
+      window.innerWidth - viewportPadding - width,
+      Math.max(viewportPadding, rect.left - 18),
+    );
+    const bottom = Math.max(viewportPadding, window.innerHeight - rect.top + 10);
+    setTextModelMenuPosition({ left, bottom });
+  }, []);
+
+  useEffect(() => {
+    if (!showModelMenu) return undefined;
+    updateTextModelMenuPosition();
+    const onDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (!textModelTriggerRef.current?.contains(target) && !textModelMenuRef.current?.contains(target)) {
+        setShowModelMenu(false);
+      }
+    };
+    window.addEventListener('mousedown', onDown);
+    window.addEventListener('resize', updateTextModelMenuPosition);
+    window.addEventListener('scroll', updateTextModelMenuPosition, true);
+    return () => {
+      window.removeEventListener('mousedown', onDown);
+      window.removeEventListener('resize', updateTextModelMenuPosition);
+      window.removeEventListener('scroll', updateTextModelMenuPosition, true);
+    };
+  }, [showModelMenu, updateTextModelMenuPosition]);
 
   const handleGenerate = () => {
     if (isGenerating) return;
@@ -3062,8 +3097,18 @@ export const TextNodeComponent = memo(function TextNode({
           <div style={promptBottomRow}>
             <div style={paramRow}>
               <div style={{ position: 'relative' }}>
-                {showModelMenu && (
-                  <div style={textModelMenu}>
+                {showModelMenu && textModelMenuPosition && createPortal(
+                  <div
+                    ref={textModelMenuRef}
+                    style={{
+                      ...textModelMenu,
+                      position: 'fixed',
+                      left: textModelMenuPosition.left,
+                      bottom: textModelMenuPosition.bottom,
+                      zIndex: 10020,
+                    }}
+                    className="nodrag nopan nowheel"
+                  >
                     {TEXT_MODEL_OPTIONS.map((model) => {
                       const active = model.id === currentModelId;
                       return (
@@ -3085,11 +3130,16 @@ export const TextNodeComponent = memo(function TextNode({
                         </button>
                       );
                     })}
-                  </div>
+                  </div>,
+                  document.body,
                 )}
                 <button
+                  ref={textModelTriggerRef}
                   type="button"
-                  onClick={() => setShowModelMenu((open) => !open)}
+                  onClick={() => {
+                    updateTextModelMenuPosition();
+                    setShowModelMenu((open) => !open);
+                  }}
                   className="nodrag nopan"
                   style={textModelTrigger}
                   title="选择文本模型"

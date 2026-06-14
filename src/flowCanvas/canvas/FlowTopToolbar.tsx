@@ -273,7 +273,7 @@ export const FlowTopToolbar: React.FC<{
             ref={projectMenuLayer.ref as React.RefObject<HTMLDivElement>}
             role="menu"
             aria-label="项目菜单"
-            className="w-[374px] max-w-[calc(100vw-36px)] overflow-hidden p-0"
+            className="w-[374px] max-w-[calc(100vw-36px)] overflow-hidden p-2"
             style={projectMenuStyle}
           >
             <button
@@ -520,8 +520,8 @@ const projectMenuLabelWithIconStyle: React.CSSProperties = {
 
 const projectMenuStyle: React.CSSProperties = {
   position: "fixed",
-  left: 30,
-  top: 118,
+  left: 32,
+  top: 124,
   zIndex: 2400,
 };
 
