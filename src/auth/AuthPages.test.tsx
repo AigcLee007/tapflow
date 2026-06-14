@@ -29,14 +29,16 @@ function renderWithAuth(ui: React.ReactElement, authState = createAuthState()) {
 }
 
 describe("auth pages", () => {
-  test("renders the immersive product login page with reduced layout scale and submits v2 login fields", async () => {
+  test("renders the immersive product login page with compact first-screen layout and submits v2 login fields", async () => {
     const login = vi.fn(async () => undefined);
     renderWithAuth(<LoginPage />, createAuthState({ login }));
 
     expect(screen.getByRole("heading", { name: "登录 TapFlow" })).toBeTruthy();
-    expect(screen.getByTestId("auth-shell").className).toContain("max-w-[1320px]");
-    expect(screen.getByTestId("auth-shell-grid").className).toContain("lg:grid-cols-[0.98fr_398px]");
-    expect(screen.getByRole("heading", { name: "登录 TapFlow" }).className).toContain("text-3xl");
+    expect(screen.getByTestId("auth-shell").className).toContain("overflow-hidden");
+    expect(screen.getByTestId("auth-shell").className).toContain("max-w-[1280px]");
+    expect(screen.getByTestId("auth-shell-grid").className).toContain("gap-4");
+    expect(screen.getByTestId("auth-shell-grid").className).toContain("lg:grid-cols-[1.02fr_380px]");
+    expect(screen.getByRole("heading", { name: "登录 TapFlow" }).className).toContain("text-[30px]");
     expect(screen.getByText("云端项目")).toBeTruthy();
     expect(screen.getAllByText("AI 工作流").length).toBeGreaterThan(0);
     expect(screen.getAllByText("素材资产库").length).toBeGreaterThan(0);
@@ -61,13 +63,17 @@ describe("auth pages", () => {
     });
   });
 
-  test("renders matching register page copy and switches back to login", () => {
+  test("keeps register actions inside the same compact auth shell and switches back to login", () => {
     renderWithAuth(<RegisterPage />);
 
     expect(screen.getByRole("heading", { name: "创建 TapFlow 账号" })).toBeTruthy();
     expect(screen.getByText("创建你的专属工作区，开始沉淀可复用的 AI 创作流程。")).toBeTruthy();
+    expect(screen.getByTestId("auth-shell").className).toContain("max-w-[1280px]");
+    expect(screen.getByTestId("auth-shell-grid").className).toContain("lg:grid-cols-[1.02fr_380px]");
     expect(screen.getByLabelText("显示名称")).toBeTruthy();
     expect(screen.getByLabelText("工作区名称")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "创建账号" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "返回登录" })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "返回登录" }));
 

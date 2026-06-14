@@ -57,16 +57,19 @@ describe("HomePage", () => {
     mockWorkspaceProjects();
   });
 
-  test("renders the creator home prompt and recent projects", () => {
+  test("shows a brand-led premium hero with quick start and recent project continuation", () => {
     render(<HomePage />);
 
-    expect(screen.getByRole("heading", { name: "今天要做点什么？" })).toBeTruthy();
-    expect(screen.getByText("开始一段灵感对话...")).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { name: "把 AI 创作流程变成稳定可复用的产品能力" }),
+    ).toBeTruthy();
+    expect(screen.getByText("快速开始")).toBeTruthy();
+    expect(screen.getByText("能力预览")).toBeTruthy();
+    expect(screen.getByText("继续最近项目")).toBeTruthy();
     expect(screen.getByRole("button", { name: "AI 视频" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "图像生成" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "智能抠图" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "批量工作流" })).toBeTruthy();
-    expect(screen.getByText("最近项目")).toBeTruthy();
     expect(screen.getAllByText("Visual Strategy").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "所有项目" })).toBeTruthy();
   });

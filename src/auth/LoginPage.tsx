@@ -28,9 +28,10 @@ function navigate(path: string) {
 
 function ProductPreview() {
   return (
-    <div className="relative min-h-[380px] overflow-hidden rounded-[24px] border border-white/10 bg-[#080a12]/90 p-4 shadow-[0_24px_72px_rgba(0,0,0,0.4)]">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_16%,rgba(34,211,238,0.22),transparent_30%),radial-gradient(circle_at_86%_78%,rgba(168,85,247,0.18),transparent_34%)]" />
-      <div className="relative flex items-center justify-between border-b border-white/10 pb-3 text-xs text-slate-400">
+    <div className="relative min-h-[320px] overflow-hidden rounded-[22px] border border-white/10 bg-[#080a12]/90 p-4 shadow-[0_24px_72px_rgba(0,0,0,0.4)]">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_16%,rgba(34,211,238,0.18),transparent_30%),radial-gradient(circle_at_86%_78%,rgba(96,165,250,0.14),transparent_34%)]" />
+
+      <div className="relative flex items-center justify-between border-b border-white/10 pb-3 text-[11px] text-slate-400">
         <span className="font-medium text-white">Creative Flow</span>
         <span>Live draft</span>
       </div>
@@ -38,7 +39,7 @@ function ProductPreview() {
       <div className="relative mt-4 flex flex-wrap gap-2">
         {["云端项目", "AI 工作流", "素材资产库"].map((label) => (
           <span
-            className="rounded-full border border-white/10 bg-white/[0.07] px-3 py-1 text-xs font-medium text-slate-200"
+            className="rounded-full border border-white/10 bg-white/[0.07] px-3 py-1 text-[11px] font-medium text-slate-200"
             key={label}
           >
             {label}
@@ -46,7 +47,7 @@ function ProductPreview() {
         ))}
       </div>
 
-      <div className="relative mt-5 grid gap-3">
+      <div className="relative mt-4 grid gap-3">
         <div className="w-[74%] rounded-2xl border border-white/10 bg-white/[0.07] p-4 backdrop-blur">
           <div className="mb-3 flex items-center gap-2">
             <span className="h-2.5 w-2.5 rounded-full bg-cyan-300" />
@@ -64,18 +65,18 @@ function ProductPreview() {
             </span>
           </div>
           <div className="grid grid-cols-3 gap-2">
-            <div className="h-14 rounded-xl bg-white/[0.12]" />
-            <div className="h-14 rounded-xl bg-white/[0.16]" />
-            <div className="h-14 rounded-xl bg-white/10" />
+            <div className="h-12 rounded-xl bg-white/[0.12]" />
+            <div className="h-12 rounded-xl bg-white/[0.16]" />
+            <div className="h-12 rounded-xl bg-white/10" />
           </div>
         </div>
 
         <div className="w-[70%] rounded-2xl border border-white/10 bg-white/[0.06] p-4 backdrop-blur">
           <div className="mb-3 text-sm font-medium text-white">素材资产库</div>
           <div className="flex gap-2">
-            <div className="h-11 w-11 rounded-xl bg-fuchsia-300/30" />
-            <div className="h-11 w-11 rounded-xl bg-cyan-300/30" />
-            <div className="h-11 w-11 rounded-xl bg-amber-200/30" />
+            <div className="h-10 w-10 rounded-xl bg-fuchsia-300/30" />
+            <div className="h-10 w-10 rounded-xl bg-cyan-300/30" />
+            <div className="h-10 w-10 rounded-xl bg-amber-200/30" />
           </div>
         </div>
       </div>
@@ -86,41 +87,41 @@ function ProductPreview() {
 export function AuthShell({ children, eyebrow, heading, intro, mode, onSubmit }: AuthShellProps) {
   return (
     <main className="min-h-screen overflow-hidden bg-[#07080d] text-slate-100">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_14%_18%,rgba(34,211,238,0.20),transparent_32%),radial-gradient(circle_at_88%_16%,rgba(244,114,182,0.12),transparent_28%),linear-gradient(135deg,#07080d_0%,#11131d_54%,#07080d_100%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_14%_18%,rgba(34,211,238,0.18),transparent_32%),radial-gradient(circle_at_88%_16%,rgba(96,165,250,0.1),transparent_28%),linear-gradient(135deg,#07080d_0%,#11131d_54%,#07080d_100%)]" />
       <div
-        className="relative mx-auto flex min-h-screen w-full max-w-[1320px] items-center px-4 py-6 sm:px-6 lg:px-8"
+        className="relative mx-auto flex min-h-screen w-full max-w-[1280px] items-center overflow-hidden px-4 py-4 sm:px-6 lg:px-8"
         data-testid="auth-shell"
       >
         <section
-          className="grid w-full items-center gap-6 lg:grid-cols-[0.98fr_398px]"
+          className="grid w-full items-center gap-4 lg:grid-cols-[1.02fr_380px]"
           data-testid="auth-shell-grid"
         >
           <div className="hidden lg:block">
-            <div className="mb-8">
-              <div className="mb-4 inline-flex rounded-full border border-white/10 bg-white/[0.06] px-3 py-1 text-xs font-medium text-cyan-100">
+            <div className="mb-6">
+              <div className="mb-3 inline-flex rounded-full border border-white/10 bg-white/[0.06] px-3 py-1 text-[11px] font-medium text-cyan-100">
                 TapFlow AI Workspace
               </div>
-              <h2 className="max-w-2xl text-[64px] font-semibold leading-[1.02] text-white">
-                把灵感、素材和 AI 模型组织成一张可执行的创作流程。
+              <h2 className="max-w-[720px] text-[54px] font-semibold leading-[0.98] text-white">
+                把灵感、素材和 AI 模型组织成真正可执行的创作系统。
               </h2>
-              <p className="mt-4 max-w-xl text-[15px] leading-7 text-slate-300">
-                登录后继续管理云端项目、画布草稿、素材资产和模型线路，让创作流程稳定沉淀在工作区里。
+              <p className="mt-3 max-w-[620px] text-[14px] leading-7 text-slate-300">
+                登录后继续管理项目、画布草稿、素材资产和模型线路，让创作流程稳定沉淀在工作区里。
               </p>
             </div>
             <ProductPreview />
           </div>
 
           <form
-            className="mx-auto w-full max-w-[398px] rounded-[22px] border border-white/12 bg-white/[0.075] p-5 shadow-[0_26px_72px_rgba(0,0,0,0.42)] backdrop-blur-xl sm:p-6"
+            className="mx-auto w-full max-w-[380px] rounded-[22px] border border-white/12 bg-white/[0.075] p-5 shadow-[0_26px_72px_rgba(0,0,0,0.42)] backdrop-blur-xl sm:p-5"
             data-auth-mode={mode}
             onSubmit={onSubmit}
           >
-            <div className="mb-6">
-              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-200">
+            <div className="mb-5">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-cyan-200">
                 {eyebrow}
               </div>
-              <h1 className="mt-4 text-3xl font-semibold text-white">{heading}</h1>
-              <p className="mt-3 text-sm leading-6 text-slate-300">{intro}</p>
+              <h1 className="mt-3 text-[30px] font-semibold text-white">{heading}</h1>
+              <p className="mt-2 text-[13px] leading-6 text-slate-300">{intro}</p>
             </div>
             {children}
           </form>
@@ -150,11 +151,11 @@ export function AuthField({
   value: string;
 }) {
   return (
-    <label className="mb-4 block text-sm">
+    <label className="mb-3 block text-sm">
       <span className="mb-2 block font-medium text-slate-200">{label}</span>
       <input
         autoComplete={autoComplete}
-        className="h-12 w-full rounded-xl border border-white/10 bg-black/25 px-4 text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-cyan-300 focus:bg-black/35 focus:ring-2 focus:ring-cyan-300/20"
+        className="h-11 w-full rounded-xl border border-white/10 bg-black/25 px-4 text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-cyan-300 focus:bg-black/35 focus:ring-2 focus:ring-cyan-300/20"
         minLength={minLength}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
@@ -170,7 +171,7 @@ export function AuthErrorMessage({ message }: { message: string | null }) {
   if (!message) return null;
 
   return (
-    <div className="mb-5 rounded-xl border border-red-400/25 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+    <div className="mb-4 rounded-xl border border-red-400/25 bg-red-500/10 px-4 py-3 text-sm text-red-100">
       {message}
     </div>
   );
@@ -185,7 +186,7 @@ export function AuthPrimaryButton({
 }) {
   return (
     <button
-      className="h-12 w-full rounded-xl bg-cyan-300 font-semibold text-slate-950 shadow-[0_14px_38px_rgba(34,211,238,0.24)] transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-60"
+      className="h-11 w-full rounded-xl bg-cyan-300 font-semibold text-slate-950 shadow-[0_14px_38px_rgba(34,211,238,0.24)] transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-60"
       disabled={disabled}
       type="submit"
     >
@@ -203,7 +204,7 @@ export function AuthSecondaryButton({
 }) {
   return (
     <button
-      className="mt-5 w-full rounded-xl px-3 py-2 text-center text-sm font-medium text-cyan-100 transition hover:bg-white/8 hover:text-white"
+      className="mt-4 w-full rounded-xl px-3 py-2 text-center text-sm font-medium text-cyan-100 transition hover:bg-white/8 hover:text-white"
       onClick={onClick}
       type="button"
     >
@@ -248,7 +249,7 @@ export function LoginPage() {
     <AuthShell
       eyebrow="AI Flow 工作区"
       heading="登录 TapFlow"
-      intro="使用你的账号进入工作区，继续编辑项目画布和云端素材。"
+      intro="进入工作区，继续你的项目、画布和素材。"
       mode="login"
       onSubmit={handleSubmit}
     >
