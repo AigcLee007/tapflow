@@ -27,8 +27,24 @@ export type AssetRef = {
   height?: number;
   kind: "image" | "video";
   mimeType: string;
+  timing?: PersistedAssetTiming;
   width?: number;
 };
+
+export type PersistedAssetTiming = {
+  asset_db_insert_ms: number;
+  asset_original_upload_ms: number;
+  asset_variant_processing_ms: number;
+  provider_output_download_ms: number;
+};
+
+export type MediaVariantQueue = {
+  add(name: string, payload: Record<string, unknown>): Promise<unknown>;
+};
+
+function elapsedMs(startedAt: number): number {
+  return Math.max(0, Date.now() - startedAt);
+}
 
 async function readImageDimensions(input: {
   body: Buffer;
@@ -167,11 +183,15 @@ export class MediaAssetStore {
   readonly assetBucket: string;
   readonly fetchFn: FetchLike;
   readonly storageProvider: StorageProvider;
+  readonly variantMode: "async" | "sync";
+  readonly variantQueue: MediaVariantQueue | null;
 
   constructor(options: {
     assetBucket: string;
     fetchFn?: FetchLike;
     storageProvider: StorageProvider;
+    variantMode?: "async" | "sync";
+    variantQueue?: MediaVariantQueue | null;
   }) {
     this.assetBucket = options.assetBucket;
     this.fetchFn =
@@ -188,6 +208,8 @@ export class MediaAssetStore {
         };
       });
     this.storageProvider = options.storageProvider;
+    this.variantMode = options.variantMode ?? "sync";
+    this.variantQueue = options.variantQueue ?? null;
   }
 
   async persistOutputs(
@@ -209,7 +231,9 @@ export class MediaAssetStore {
         continue;
       }
 
+      const downloadStartedAt = Date.now();
       const binary = await resolveOutputBinary(this.fetchFn, input.kind, output, index);
+      const providerOutputDownloadMs = elapsedMs(downloadStartedAt);
       const measuredDimensions = input.kind === "image"
         ? await readImageDimensions({
             body: binary.body,
@@ -226,6 +250,7 @@ export class MediaAssetStore {
       });
       const checksumSha256 = createHash("sha256").update(binary.body).digest("hex");
 
+      const originalUploadStartedAt = Date.now();
       await this.storageProvider.putObject({
         body: binary.body,
         bucket: this.assetBucket,
@@ -236,7 +261,9 @@ export class MediaAssetStore {
           workflowRunId: input.workflowRunId,
         },
       });
+      const assetOriginalUploadMs = elapsedMs(originalUploadStartedAt);
 
+      const assetDbInsertStartedAt = Date.now();
       await client.query(
         `
           INSERT INTO assets (
@@ -305,83 +332,96 @@ export class MediaAssetStore {
           }),
         ],
       );
+      const assetDbInsertMs = elapsedMs(assetDbInsertStartedAt);
 
-      const variants = await createImageVariants({
-        body: binary.body,
-        mimeType: binary.mimeType,
-      });
-
-      for (const variant of variants) {
-        const variantObjectKey = buildAssetObjectKey({
+      const variantProcessingStartedAt = Date.now();
+      if (input.kind === "image" && this.variantMode === "async") {
+        if (!this.variantQueue) {
+          throw new Error("variantQueue is required when MediaAssetStore variantMode is async");
+        }
+        await this.variantQueue.add("asset.image-variants.create", {
           assetId,
-          filename: `${variant.variantKey}.webp`,
           tenantId: input.tenantId,
         });
-
-        await this.storageProvider.putObject({
-          body: variant.body,
-          bucket: this.assetBucket,
-          contentType: variant.mimeType,
-          key: variantObjectKey,
-          metadata: {
-            assetId,
-            nodeRunId: input.nodeRunId,
-            variantKey: variant.variantKey,
-            workflowRunId: input.workflowRunId,
-          },
+      } else if (input.kind === "image") {
+        const variants = await createImageVariants({
+          body: binary.body,
+          mimeType: binary.mimeType,
         });
 
-        await client.query(
-          `
-            INSERT INTO asset_variants (
-              tenant_id,
-              asset_id,
-              variant_key,
-              bucket,
-              object_key,
-              mime_type,
-              width,
-              height,
-              size_bytes,
-              metadata
-            )
-            VALUES (
-              $1::uuid,
-              $2::uuid,
-              $3,
-              $4,
-              $5,
-              $6,
-              $7::int,
-              $8::int,
-              $9::bigint,
-              $10::jsonb
-            )
-            ON CONFLICT (asset_id, variant_key) DO UPDATE SET
-              bucket = EXCLUDED.bucket,
-              object_key = EXCLUDED.object_key,
-              mime_type = EXCLUDED.mime_type,
-              width = EXCLUDED.width,
-              height = EXCLUDED.height,
-              size_bytes = EXCLUDED.size_bytes,
-              metadata = EXCLUDED.metadata
-          `,
-          [
-            input.tenantId,
+        for (const variant of variants) {
+          const variantObjectKey = buildAssetObjectKey({
             assetId,
-            variant.variantKey,
-            this.assetBucket,
-            variantObjectKey,
-            variant.mimeType,
-            variant.width,
-            variant.height,
-            variant.body.byteLength,
-            JSON.stringify({
-              source: "workflow-runner",
-            }),
-          ],
-        );
+            filename: `${variant.variantKey}.webp`,
+            tenantId: input.tenantId,
+          });
+
+          await this.storageProvider.putObject({
+            body: variant.body,
+            bucket: this.assetBucket,
+            contentType: variant.mimeType,
+            key: variantObjectKey,
+            metadata: {
+              assetId,
+              nodeRunId: input.nodeRunId,
+              variantKey: variant.variantKey,
+              workflowRunId: input.workflowRunId,
+            },
+          });
+
+          await client.query(
+            `
+              INSERT INTO asset_variants (
+                tenant_id,
+                asset_id,
+                variant_key,
+                bucket,
+                object_key,
+                mime_type,
+                width,
+                height,
+                size_bytes,
+                metadata
+              )
+              VALUES (
+                $1::uuid,
+                $2::uuid,
+                $3,
+                $4,
+                $5,
+                $6,
+                $7::int,
+                $8::int,
+                $9::bigint,
+                $10::jsonb
+              )
+              ON CONFLICT (asset_id, variant_key) DO UPDATE SET
+                bucket = EXCLUDED.bucket,
+                object_key = EXCLUDED.object_key,
+                mime_type = EXCLUDED.mime_type,
+                width = EXCLUDED.width,
+                height = EXCLUDED.height,
+                size_bytes = EXCLUDED.size_bytes,
+                metadata = EXCLUDED.metadata
+            `,
+            [
+              input.tenantId,
+              assetId,
+              variant.variantKey,
+              this.assetBucket,
+              variantObjectKey,
+              variant.mimeType,
+              variant.width,
+              variant.height,
+              variant.body.byteLength,
+              JSON.stringify({
+                source: "workflow-runner",
+              }),
+            ],
+          );
+        }
       }
+      const assetVariantProcessingMs = elapsedMs(variantProcessingStartedAt);
 
       assetRefs.push({
         assetId,
@@ -389,6 +429,12 @@ export class MediaAssetStore {
         height: height ?? undefined,
         kind: input.kind,
         mimeType: binary.mimeType,
+        timing: {
+          asset_db_insert_ms: assetDbInsertMs,
+          asset_original_upload_ms: assetOriginalUploadMs,
+          asset_variant_processing_ms: assetVariantProcessingMs,
+          provider_output_download_ms: providerOutputDownloadMs,
+        },
         width: width ?? undefined,
       });
     }

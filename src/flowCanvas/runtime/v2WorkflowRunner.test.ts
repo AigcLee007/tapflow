@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+﻿import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { useFlowCanvasStore } from '../store/flowCanvasStore';
 import {
@@ -8,7 +8,11 @@ import {
   resetCreditPreflightStateForTests,
   runBackendWorkflow,
 } from './v2WorkflowRunner';
-import { registerRemoteDraftSaveBarrier } from './remoteDraftSaveBarrier';
+import {
+  flushRemoteDraftBeforeRun,
+  registerRemoteDraftSaveBarrier,
+  resetRemoteDraftSaveBarrierStateForTests,
+} from './remoteDraftSaveBarrier';
 import { V2HttpError } from '../../services/v2HttpClient';
 
 const createWorkflowRunMock = vi.fn();
@@ -58,7 +62,7 @@ describe('v2WorkflowRunner', () => {
     listRuntimeRoutesMock.mockReset();
     resetCreditPreflightStateForTests();
     disposeBackendWorkflowRunStream();
-    registerRemoteDraftSaveBarrier(null);
+    resetRemoteDraftSaveBarrierStateForTests();
 
     getBillingSummaryMock.mockResolvedValue({
       account: {
@@ -304,6 +308,72 @@ describe('v2WorkflowRunner', () => {
     resolveSave();
     await runPromise;
 
+    expect(createWorkflowRunMock).toHaveBeenCalledTimes(1);
+  });
+
+  test('skips redundant remote draft save for target-node run immediately after a successful save', async () => {
+    useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, {
+      routeKey: 'image.default',
+      title: 'Image',
+    });
+    const targetNodeId = useFlowCanvasStore.getState().nodes[0]?.id as string;
+    const saveBarrier = vi.fn(async () => {});
+    registerRemoteDraftSaveBarrier(saveBarrier);
+    await flushRemoteDraftBeforeRun();
+    saveBarrier.mockClear();
+
+    createWorkflowRunMock.mockResolvedValue({
+      runId: 'run-fresh-draft',
+      status: 'pending',
+    });
+    getWorkflowRunMock.mockResolvedValue({
+      nodeRuns: [
+        {
+          attempt: 1,
+          costJson: {},
+          createdAt: '2026-05-17T00:00:00.000Z',
+          errorJson: null,
+          finishedAt: null,
+          id: 'node-run-fresh-draft',
+          inputJson: {},
+          maxAttempts: 3,
+          nodeId: targetNodeId,
+          nodeType: 'image.generate',
+          outputJson: null,
+          providerTaskId: null,
+          startedAt: null,
+          status: 'runnable',
+          tenantId: 'tenant-1',
+          updatedAt: '2026-05-17T00:00:00.000Z',
+          workflowRunId: 'run-fresh-draft',
+        },
+      ],
+      workflowRun: {
+        canceledAt: null,
+        createdAt: '2026-05-17T00:00:00.000Z',
+        createdBy: 'user-1',
+        errorJson: null,
+        finishedAt: null,
+        flowId: '11111111-1111-1111-1111-111111111111',
+        flowVersionId: 'version-1',
+        id: 'run-fresh-draft',
+        idempotencyKey: null,
+        inputJson: {
+          runMode: 'target_node',
+          targetNodeId,
+        },
+        outputJson: null,
+        startedAt: null,
+        status: 'pending',
+        tenantId: 'tenant-1',
+        updatedAt: '2026-05-17T00:00:00.000Z',
+      },
+    });
+    streamWorkflowRunMock.mockReturnValue({ close: vi.fn() });
+
+    await runBackendWorkflow({ runMode: 'target_node', targetNodeId });
+
+    expect(saveBarrier).not.toHaveBeenCalled();
     expect(createWorkflowRunMock).toHaveBeenCalledTimes(1);
   });
 
@@ -844,8 +914,181 @@ describe('v2WorkflowRunner', () => {
       naturalWidth: 512,
       source: 'generated',
       status: 'success',
+      workflowLaunchStatus: 'asset_visible',
+      workflowLaunchUpdatedAt: expect.any(Number),
     });
     expect(updatedNode?.data.thumbnailUrl).toBe('https://cdn.test/asset-1-preview.png?X-Amz-Signature=signed');
+  });
+
+  test('asset refs fall back to original signed url while preview variant is pending', async () => {
+    useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, {
+      routeKey: 'image.default',
+      title: 'Generated Image',
+    });
+    const imageNodeId = useFlowCanvasStore.getState().nodes[0]?.id as string;
+
+    createWorkflowRunMock.mockResolvedValue({
+      runId: 'run-preview-pending',
+      status: 'pending',
+    });
+    getAssetVariantUrlMock.mockImplementation(async (assetId: string, variantKey?: string) => {
+      if (variantKey === 'preview') {
+        throw new Error('preview variant pending');
+      }
+      return {
+        expiresAt: '2026-05-17T00:15:00.000Z',
+        method: 'GET',
+        url: `https://cdn.test/${assetId}-original.png?X-Amz-Signature=signed`,
+        variantKey: null,
+      };
+    });
+    getWorkflowRunMock.mockResolvedValue({
+      nodeRuns: [
+        {
+          attempt: 1,
+          costJson: {},
+          createdAt: '2026-05-17T00:00:00.000Z',
+          errorJson: null,
+          finishedAt: null,
+          id: 'node-run-preview-pending',
+          inputJson: {},
+          maxAttempts: 3,
+          nodeId: imageNodeId,
+          nodeType: 'image.generate',
+          outputJson: {
+            assets: [
+              {
+                assetId: 'asset-original-fallback',
+                height: 384,
+                kind: 'image',
+                mimeType: 'image/png',
+                width: 512,
+              },
+            ],
+          },
+          providerTaskId: null,
+          startedAt: null,
+          status: 'succeeded',
+          tenantId: 'tenant-1',
+          updatedAt: '2026-05-17T00:00:00.000Z',
+          workflowRunId: 'run-preview-pending',
+        },
+      ],
+      workflowRun: {
+        canceledAt: null,
+        createdAt: '2026-05-17T00:00:00.000Z',
+        createdBy: 'user-1',
+        errorJson: null,
+        finishedAt: '2026-05-17T00:00:01.000Z',
+        flowId: '11111111-1111-1111-1111-111111111111',
+        flowVersionId: 'version-1',
+        id: 'run-preview-pending',
+        idempotencyKey: null,
+        inputJson: {},
+        outputJson: null,
+        startedAt: null,
+        status: 'succeeded',
+        tenantId: 'tenant-1',
+        updatedAt: '2026-05-17T00:00:01.000Z',
+      },
+    });
+    streamWorkflowRunMock.mockReturnValue({ close: vi.fn() });
+
+    await runBackendWorkflow();
+
+    expect(getAssetVariantUrlMock).toHaveBeenCalledWith('asset-original-fallback', 'preview');
+    expect(getAssetVariantUrlMock).toHaveBeenCalledWith('asset-original-fallback');
+    const updatedNode = useFlowCanvasStore.getState().nodes.find((node) => node.id === imageNodeId);
+    expect(updatedNode?.data.thumbnailUrl).toBe('https://cdn.test/asset-original-fallback-original.png?X-Amz-Signature=signed');
+    expect(updatedNode?.data.assetId).toBe('asset-original-fallback');
+  });
+
+  test('video assets use original signed url as poster when preview variant is unavailable', async () => {
+    useFlowCanvasStore.getState().addNode('video', { x: 0, y: 0 }, {
+      routeKey: 'video.default',
+      title: 'Generated Video',
+    });
+    const videoNodeId = useFlowCanvasStore.getState().nodes[0]?.id as string;
+
+    createWorkflowRunMock.mockResolvedValue({
+      runId: 'run-video-asset',
+      status: 'pending',
+    });
+    getAssetVariantUrlMock.mockImplementation(async (assetId: string, variantKey?: string) => {
+      if (variantKey === 'preview') {
+        throw new Error('video preview unavailable');
+      }
+      return {
+        expiresAt: '2026-05-17T00:15:00.000Z',
+        method: 'GET',
+        url: `https://cdn.test/${assetId}-original.mp4?X-Amz-Signature=signed`,
+        variantKey: null,
+      };
+    });
+    getWorkflowRunMock.mockResolvedValue({
+      nodeRuns: [
+        {
+          attempt: 1,
+          costJson: {},
+          createdAt: '2026-05-17T00:00:00.000Z',
+          errorJson: null,
+          finishedAt: null,
+          id: 'node-run-video-asset',
+          inputJson: {},
+          maxAttempts: 3,
+          nodeId: videoNodeId,
+          nodeType: 'video.generate',
+          outputJson: {
+            assets: [
+              {
+                assetId: 'video-asset-1',
+                durationMs: 4000,
+                kind: 'video',
+                mimeType: 'video/mp4',
+              },
+            ],
+          },
+          providerTaskId: null,
+          startedAt: null,
+          status: 'succeeded',
+          tenantId: 'tenant-1',
+          updatedAt: '2026-05-17T00:00:00.000Z',
+          workflowRunId: 'run-video-asset',
+        },
+      ],
+      workflowRun: {
+        canceledAt: null,
+        createdAt: '2026-05-17T00:00:00.000Z',
+        createdBy: 'user-1',
+        errorJson: null,
+        finishedAt: '2026-05-17T00:00:01.000Z',
+        flowId: '11111111-1111-1111-1111-111111111111',
+        flowVersionId: 'version-1',
+        id: 'run-video-asset',
+        idempotencyKey: null,
+        inputJson: {},
+        outputJson: null,
+        startedAt: null,
+        status: 'succeeded',
+        tenantId: 'tenant-1',
+        updatedAt: '2026-05-17T00:00:01.000Z',
+      },
+    });
+    streamWorkflowRunMock.mockReturnValue({ close: vi.fn() });
+
+    await runBackendWorkflow();
+
+    expect(getAssetVariantUrlMock).toHaveBeenCalledWith('video-asset-1', 'preview');
+    expect(getAssetVariantUrlMock).toHaveBeenCalledWith('video-asset-1');
+    const updatedNode = useFlowCanvasStore.getState().nodes.find((node) => node.id === videoNodeId);
+    expect(updatedNode?.data).toMatchObject({
+      assetId: 'video-asset-1',
+      generationStatus: 'done',
+      mimeType: 'video/mp4',
+      posterUrl: 'https://cdn.test/video-asset-1-original.mp4?X-Amz-Signature=signed',
+      workflowLaunchStatus: 'asset_visible',
+      workflowLaunchUpdatedAt: expect.any(Number),
+    });
   });
 
   test('terminal stream event finalizes the run snapshot and applies generated assets', async () => {

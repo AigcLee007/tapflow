@@ -14,11 +14,15 @@ import type { Redis } from "ioredis";
 import { DEFAULT_QUEUE_PREFIX, resolveQueuePrefix } from "./redis.js";
 
 export const QUEUE_NAMES = {
+  assetImageVariant: "asset.image-variant",
   assetIngest: "asset.ingest",
   auditFlush: "audit.flush",
   billingSettle: "billing.settle",
   emailSend: "email.send",
   nodeExecute: "node.execute",
+  nodeExecuteDefault: "node.execute.default",
+  nodeExecuteImage: "node.execute.image",
+  nodeExecuteVideo: "node.execute.video",
   providerPoll: "provider.poll",
   workflowStart: "workflow.start",
 } as const;
@@ -36,6 +40,7 @@ export type WorkflowStartJobPayload = BaseJobPayload & {
 
 export type NodeExecuteJobPayload = BaseJobPayload & {
   nodeRunId: string;
+  nodeType?: string;
   workflowRunId: string;
 };
 
@@ -43,6 +48,10 @@ export type ProviderPollJobPayload = BaseJobPayload & {
   nodeRunId: string;
   providerTaskId: string;
   workflowRunId: string;
+};
+
+export type AssetImageVariantJobPayload = BaseJobPayload & {
+  assetId: string;
 };
 
 export type AssetIngestJobPayload = BaseJobPayload & {
@@ -62,17 +71,20 @@ export type AuditFlushJobPayload = BaseJobPayload & {
 };
 
 export type QueuePayloadMap = {
+  "asset.image-variant": AssetImageVariantJobPayload;
   "asset.ingest": AssetIngestJobPayload;
   "audit.flush": AuditFlushJobPayload;
   "billing.settle": BillingSettleJobPayload;
   "email.send": EmailSendJobPayload;
   "node.execute": NodeExecuteJobPayload;
+  "node.execute.default": NodeExecuteJobPayload;
+  "node.execute.image": NodeExecuteJobPayload;
+  "node.execute.video": NodeExecuteJobPayload;
   "provider.poll": ProviderPollJobPayload;
   "workflow.start": WorkflowStartJobPayload;
 };
 
 export type AnyJobPayload = QueuePayloadMap[QueueName];
-
 export const DEFAULT_QUEUE_JOB_OPTIONS: DefaultJobOptions = {
   attempts: 3,
   backoff: {
@@ -90,6 +102,16 @@ export const DEFAULT_QUEUE_JOB_OPTIONS: DefaultJobOptions = {
 };
 
 export const DEFAULT_WORKER_CONCURRENCY = 16;
+
+export function resolveNodeExecuteQueueName(nodeType: string | null | undefined): QueueName {
+  if (nodeType === "image.generate") {
+    return QUEUE_NAMES.nodeExecuteImage;
+  }
+  if (nodeType === "video.generate") {
+    return QUEUE_NAMES.nodeExecuteVideo;
+  }
+  return QUEUE_NAMES.nodeExecuteDefault;
+}
 
 const DISALLOWED_PAYLOAD_KEYS = [
   "base64",
@@ -193,3 +215,4 @@ export function createQueueFactory(options: QueueFactoryOptions) {
     prefix,
   };
 }
+

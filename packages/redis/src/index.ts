@@ -12,7 +12,9 @@ export {
   DEFAULT_QUEUE_JOB_OPTIONS,
   assertLightweightJobPayload,
   createQueueFactory,
+  resolveNodeExecuteQueueName,
   type AnyJobPayload,
+  type AssetImageVariantJobPayload,
   type AssetIngestJobPayload,
   type AuditFlushJobPayload,
   type BaseJobPayload,
@@ -31,3 +33,4 @@ export {
   type RateLimitResult,
 } from "./rate-limit.js";
 export { RedisPubSub } from "./pubsub.js";
+

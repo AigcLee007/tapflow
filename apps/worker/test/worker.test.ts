@@ -534,8 +534,12 @@ describe("worker skeleton", () => {
         s3ForcePathStyle: true,
         s3Region: "us-east-1",
         s3SecretAccessKey: "test-secret",
+        defaultNodeConcurrency: 4,
+        imageNodeConcurrency: 2,
+        imageVariantsMode: "sync",
         nodeExecuteConcurrency: 16,
         providerPollConcurrency: 16,
+        videoNodeConcurrency: 1,
         workerConcurrency: 2,
         workerName: "test-worker",
       },
@@ -560,10 +564,14 @@ describe("worker skeleton", () => {
 
     expect(runtime.queueNames).toEqual([...WORKER_QUEUE_NAMES]);
     expect(createdQueues).toContain(`worker:${QUEUE_NAMES.nodeExecute}`);
+    expect(createdQueues).toContain(`worker:${QUEUE_NAMES.nodeExecuteDefault}`);
+    expect(createdQueues).toContain(`worker:${QUEUE_NAMES.nodeExecuteImage}`);
+    expect(createdQueues).toContain(`worker:${QUEUE_NAMES.nodeExecuteVideo}`);
     expect(createdQueues).toContain(`worker:${QUEUE_NAMES.providerPoll}`);
+    expect(createdQueues).toContain(`worker:${QUEUE_NAMES.assetImageVariant}`);
   });
 
-  test("registers node.execute and provider.poll with independent concurrent workers", () => {
+  test("registers node execution modality queues with independent concurrency", () => {
     const workerClose = vi.fn(async () => {});
     const eventsClose = vi.fn(async () => {});
     const queueClose = vi.fn(async () => {});
@@ -582,8 +590,12 @@ describe("worker skeleton", () => {
         s3ForcePathStyle: true,
         s3Region: "us-east-1",
         s3SecretAccessKey: "test-secret",
+        defaultNodeConcurrency: 5,
+        imageNodeConcurrency: 3,
+        imageVariantsMode: "sync",
         nodeExecuteConcurrency: 32,
         providerPollConcurrency: 24,
+        videoNodeConcurrency: 1,
         workerConcurrency: 8,
         workerName: "test-worker",
       },
@@ -605,8 +617,12 @@ describe("worker skeleton", () => {
     });
 
     expect(workerOptions.get(QUEUE_NAMES.nodeExecute)?.concurrency).toBe(32);
+    expect(workerOptions.get(QUEUE_NAMES.nodeExecuteDefault)?.concurrency).toBe(5);
+    expect(workerOptions.get(QUEUE_NAMES.nodeExecuteImage)?.concurrency).toBe(3);
+    expect(workerOptions.get(QUEUE_NAMES.nodeExecuteVideo)?.concurrency).toBe(1);
     expect(workerOptions.get(QUEUE_NAMES.providerPoll)?.concurrency).toBe(24);
     expect(workerOptions.get(QUEUE_NAMES.workflowStart)?.concurrency).toBe(8);
+    expect(workerOptions.get(QUEUE_NAMES.assetImageVariant)?.concurrency).toBe(8);
     expect(workerOptions.get(QUEUE_NAMES.assetIngest)?.concurrency).toBe(8);
     expect(workerOptions.get(QUEUE_NAMES.billingSettle)?.concurrency).toBe(8);
   });
@@ -614,6 +630,9 @@ describe("worker skeleton", () => {
   test("worker env defaults node.execute concurrency above single-flight and supports override", () => {
     const previous = {
       credential: process.env.CREDENTIAL_MASTER_KEY,
+      defaultConcurrency: process.env.WORKER_DEFAULT_CONCURRENCY,
+      imageConcurrency: process.env.WORKER_IMAGE_CONCURRENCY,
+      imageVariantsMode: process.env.WORKER_IMAGE_VARIANTS_MODE,
       nodeExecuteConcurrency: process.env.NODE_EXECUTE_CONCURRENCY,
       nodeEnv: process.env.NODE_ENV,
       providerPollConcurrency: process.env.PROVIDER_POLL_CONCURRENCY,
@@ -623,28 +642,53 @@ describe("worker skeleton", () => {
       s3ForcePathStyle: process.env.S3_FORCE_PATH_STYLE,
       s3Region: process.env.S3_REGION,
       s3SecretAccessKey: process.env.S3_SECRET_ACCESS_KEY,
+      videoConcurrency: process.env.WORKER_VIDEO_CONCURRENCY,
       workerConcurrency: process.env.WORKER_CONCURRENCY,
     };
 
     try {
       process.env.NODE_ENV = "test";
       delete process.env.WORKER_CONCURRENCY;
+      delete process.env.WORKER_DEFAULT_CONCURRENCY;
+      delete process.env.WORKER_IMAGE_CONCURRENCY;
+      delete process.env.WORKER_IMAGE_VARIANTS_MODE;
+      delete process.env.WORKER_VIDEO_CONCURRENCY;
       delete process.env.NODE_EXECUTE_CONCURRENCY;
       delete process.env.PROVIDER_POLL_CONCURRENCY;
       const defaultEnv = getWorkerEnv();
       expect(defaultEnv.nodeExecuteConcurrency).toBeGreaterThan(1);
       expect(defaultEnv.providerPollConcurrency).toBeGreaterThan(1);
+      expect(defaultEnv.imageNodeConcurrency).toBe(4);
+      expect(defaultEnv.videoNodeConcurrency).toBe(1);
+      expect(defaultEnv.defaultNodeConcurrency).toBe(4);
+      expect(defaultEnv.imageVariantsMode).toBe("sync");
 
       process.env.NODE_EXECUTE_CONCURRENCY = "37";
       process.env.PROVIDER_POLL_CONCURRENCY = "19";
+      process.env.WORKER_IMAGE_CONCURRENCY = "6";
+      process.env.WORKER_VIDEO_CONCURRENCY = "2";
+      process.env.WORKER_DEFAULT_CONCURRENCY = "7";
+      process.env.WORKER_IMAGE_VARIANTS_MODE = "async";
       const overriddenEnv = getWorkerEnv();
       expect(overriddenEnv.nodeExecuteConcurrency).toBe(37);
       expect(overriddenEnv.providerPollConcurrency).toBe(19);
+      expect(overriddenEnv.imageNodeConcurrency).toBe(6);
+      expect(overriddenEnv.videoNodeConcurrency).toBe(2);
+      expect(overriddenEnv.defaultNodeConcurrency).toBe(7);
+      expect(overriddenEnv.imageVariantsMode).toBe("async");
     } finally {
       if (previous.credential === undefined) delete process.env.CREDENTIAL_MASTER_KEY;
       else process.env.CREDENTIAL_MASTER_KEY = previous.credential;
+      if (previous.defaultConcurrency === undefined) delete process.env.WORKER_DEFAULT_CONCURRENCY;
+      else process.env.WORKER_DEFAULT_CONCURRENCY = previous.defaultConcurrency;
+      if (previous.imageConcurrency === undefined) delete process.env.WORKER_IMAGE_CONCURRENCY;
+      else process.env.WORKER_IMAGE_CONCURRENCY = previous.imageConcurrency;
+      if (previous.imageVariantsMode === undefined) delete process.env.WORKER_IMAGE_VARIANTS_MODE;
+      else process.env.WORKER_IMAGE_VARIANTS_MODE = previous.imageVariantsMode;
       if (previous.nodeEnv === undefined) delete process.env.NODE_ENV;
       else process.env.NODE_ENV = previous.nodeEnv;
+      if (previous.videoConcurrency === undefined) delete process.env.WORKER_VIDEO_CONCURRENCY;
+      else process.env.WORKER_VIDEO_CONCURRENCY = previous.videoConcurrency;
       if (previous.workerConcurrency === undefined) delete process.env.WORKER_CONCURRENCY;
       else process.env.WORKER_CONCURRENCY = previous.workerConcurrency;
       if (previous.nodeExecuteConcurrency === undefined) delete process.env.NODE_EXECUTE_CONCURRENCY;
@@ -762,8 +806,12 @@ describe("worker skeleton", () => {
         s3ForcePathStyle: true,
         s3Region: "us-east-1",
         s3SecretAccessKey: "test-secret",
+        defaultNodeConcurrency: 4,
+        imageNodeConcurrency: 2,
+        imageVariantsMode: "sync",
         nodeExecuteConcurrency: 16,
         providerPollConcurrency: 16,
+        videoNodeConcurrency: 1,
         workerConcurrency: 2,
         workerName: "test-worker",
       },
@@ -787,7 +835,7 @@ describe("worker skeleton", () => {
 
     expect(workerClose).toHaveBeenCalledTimes(WORKER_QUEUE_NAMES.length);
     expect(eventsClose).toHaveBeenCalledTimes(WORKER_QUEUE_NAMES.length);
-    expect(queueClose).toHaveBeenCalledTimes(2);
+    expect(queueClose).toHaveBeenCalledTimes(6);
   });
 });
 
@@ -1214,6 +1262,8 @@ describeWithDatabase("workflow node execution", () => {
           ],
         });
         expect(JSON.stringify(state.nodeRun.output_json)).not.toContain("base64");
+        expect(JSON.stringify(state.nodeRun.output_json)).not.toContain("assetTimings");
+        expect(JSON.stringify(state.nodeRun.output_json)).not.toContain("timing");
         expect(state.asset).toMatchObject({
           kind: "image",
           height: 360,
