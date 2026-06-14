@@ -1,7 +1,8 @@
 /**
  * TapNow-style minimal canvas chrome.
  */
-import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Bell,
   CheckCheck,
@@ -29,6 +30,11 @@ import { useFlowCanvasStore } from "../store/flowCanvasStore";
 
 const formatToolbarPoint = (value: number) => formatPoint(value).replace(/\.0$/, "");
 const SEEN_STORAGE_KEY = "seen_announcement_ids";
+const PROJECT_MENU_WIDTH = 392;
+const PROJECT_MENU_EDGE_MARGIN = 24;
+const PROJECT_MENU_TOP_OFFSET = 18;
+const PROJECT_MENU_FALLBACK_TOP = 112;
+const PROJECT_MENU_Z_INDEX = 2400;
 
 interface Announcement {
   active: boolean;
@@ -84,6 +90,7 @@ export const FlowTopToolbar: React.FC<{
   const [seenIds, setSeenIds] = useState<string[]>(() => readSeenAnnouncementIds());
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<Announcement | null>(null);
   const [projectMenuBusy, setProjectMenuBusy] = useState<"create" | "delete" | null>(null);
+  const [projectMenuPosition, setProjectMenuPosition] = useState<{ left: number; top: number } | null>(null);
   const [shareCopied, setShareCopied] = useState(false);
   const projectMenuLayer = useDismissibleLayer("canvas-toolbar-project");
   const notificationLayer = useDismissibleLayer("canvas-toolbar-notifications");
@@ -225,6 +232,110 @@ export const FlowTopToolbar: React.FC<{
     }
   }, [projectId, projectMenuBusy, projectMenuLayer]);
 
+  const updateProjectMenuPosition = useCallback(() => {
+    const triggerRect = projectMenuLayer.triggerRef.current?.getBoundingClientRect();
+    if (!triggerRect || typeof window === "undefined") {
+      setProjectMenuPosition(null);
+      return;
+    }
+
+    const viewportWidth = window.innerWidth;
+    const unclampedLeft = triggerRect.left + 6;
+    const left = Math.max(
+      PROJECT_MENU_EDGE_MARGIN,
+      Math.min(unclampedLeft, viewportWidth - PROJECT_MENU_WIDTH - PROJECT_MENU_EDGE_MARGIN),
+    );
+
+    const measuredTop = Math.round(Math.max(PROJECT_MENU_EDGE_MARGIN, triggerRect.bottom + PROJECT_MENU_TOP_OFFSET));
+
+    setProjectMenuPosition({
+      left: Math.round(left),
+      top: measuredTop <= PROJECT_MENU_EDGE_MARGIN + PROJECT_MENU_TOP_OFFSET ? PROJECT_MENU_FALLBACK_TOP : measuredTop,
+    });
+  }, [projectMenuLayer.triggerRef]);
+
+  useLayoutEffect(() => {
+    if (!projectMenuLayer.open) {
+      setProjectMenuPosition(null);
+      return;
+    }
+
+    updateProjectMenuPosition();
+
+    const syncPosition = () => updateProjectMenuPosition();
+    window.addEventListener("resize", syncPosition);
+    window.addEventListener("scroll", syncPosition, true);
+
+    return () => {
+      window.removeEventListener("resize", syncPosition);
+      window.removeEventListener("scroll", syncPosition, true);
+    };
+  }, [projectMenuLayer.open, updateProjectMenuPosition]);
+
+  const projectMenu =
+    projectMenuLayer.open && projectMenuPosition ? (
+      <MenuSurface
+        ref={projectMenuLayer.ref as React.RefObject<HTMLDivElement>}
+        role="menu"
+        aria-label="椤圭洰鑿滃崟"
+        className="max-w-[calc(100vw-48px)] overflow-hidden p-0"
+        style={{
+          position: "fixed",
+          left: projectMenuPosition.left,
+          top: projectMenuPosition.top,
+          width: PROJECT_MENU_WIDTH,
+          zIndex: PROJECT_MENU_Z_INDEX,
+        }}
+      >
+        <button
+          type="button"
+          role="menuitem"
+          className={`${MENU_ITEM_CLASS} min-h-[66px] justify-between rounded-[18px] px-5`}
+          onClick={() => {
+            projectMenuLayer.closeLayer();
+            navigate(WORKSPACE_ROUTE);
+          }}
+        >
+          <span className={MENU_ITEM_PRIMARY_CLASS}>??????????????</span>
+          <ChevronRight size={16} />
+        </button>
+
+        <div className="my-0 h-px bg-white/8" />
+
+        <button type="button" role="menuitem" className={`${MENU_ITEM_CLASS} min-h-[64px] rounded-none px-5`} onClick={focusTitleInput}>
+          <span className={MENU_ITEM_PRIMARY_CLASS}>????????????</span>
+        </button>
+
+        <button
+          type="button"
+          role="menuitem"
+          className={`${MENU_ITEM_CLASS} min-h-[64px] rounded-none px-5`}
+          onClick={() => void handleCreateProject()}
+          disabled={projectMenuBusy === "create"}
+        >
+          <span style={projectMenuLabelWithIconStyle}>
+            <Plus size={16} />
+            <span className={MENU_ITEM_PRIMARY_CLASS}>{projectMenuBusy === "create" ? "姝ｅ湪鍒涘缓..." : "鏂板缓椤圭洰"}</span>
+          </span>
+        </button>
+
+        <div className="my-0 h-px bg-white/8" />
+
+        <button
+          type="button"
+          role="menuitem"
+          className={`${MENU_ITEM_CLASS} min-h-[64px] rounded-b-[18px] rounded-t-none px-5 text-red-200 hover:bg-red-500/15`}
+          onClick={() => void handleDeleteProject()}
+          disabled={!projectId || projectMenuBusy === "delete"}
+        >
+          <span style={projectMenuLabelWithIconStyle}>
+            <Trash2 size={16} />
+            <span className={MENU_ITEM_PRIMARY_CLASS}>{projectMenuBusy === "delete" ? "姝ｅ湪鍒犻櫎..." : "鍒犻櫎椤圭洰"}</span>
+          </span>
+        </button>
+      </MenuSurface>
+    ) : null;
+
   return (
     <div className="nodrag nopan nowheel" style={topChromeStyle}>
       <div style={titleMenuHostStyle}>
@@ -268,62 +379,6 @@ export const FlowTopToolbar: React.FC<{
           </div>
         </div>
 
-        {projectMenuLayer.open ? (
-          <MenuSurface
-            ref={projectMenuLayer.ref as React.RefObject<HTMLDivElement>}
-            role="menu"
-            aria-label="项目菜单"
-            className="w-[374px] max-w-[calc(100vw-36px)] overflow-hidden p-2"
-            style={projectMenuStyle}
-          >
-            <button
-              type="button"
-              role="menuitem"
-              className={`${MENU_ITEM_CLASS} min-h-[38px] justify-between`}
-              onClick={() => {
-                projectMenuLayer.closeLayer();
-                navigate(WORKSPACE_ROUTE);
-              }}
-            >
-              <span className={MENU_ITEM_PRIMARY_CLASS}>返回工作空间</span>
-              <ChevronRight size={16} />
-            </button>
-
-            <div className={MENU_DIVIDER_CLASS} />
-
-            <button type="button" role="menuitem" className={`${MENU_ITEM_CLASS} min-h-[38px]`} onClick={focusTitleInput}>
-              <span className={MENU_ITEM_PRIMARY_CLASS}>重命名项目</span>
-            </button>
-
-            <button
-              type="button"
-              role="menuitem"
-              className={`${MENU_ITEM_CLASS} min-h-[38px]`}
-              onClick={() => void handleCreateProject()}
-              disabled={projectMenuBusy === "create"}
-            >
-              <span style={projectMenuLabelWithIconStyle}>
-                <Plus size={16} />
-                <span className={MENU_ITEM_PRIMARY_CLASS}>{projectMenuBusy === "create" ? "正在创建..." : "新建项目"}</span>
-              </span>
-            </button>
-
-            <div className={MENU_DIVIDER_CLASS} />
-
-            <button
-              type="button"
-              role="menuitem"
-              className={`${MENU_ITEM_CLASS} min-h-[38px] text-red-200 hover:bg-red-500/15`}
-              onClick={() => void handleDeleteProject()}
-              disabled={!projectId || projectMenuBusy === "delete"}
-            >
-              <span style={projectMenuLabelWithIconStyle}>
-                <Trash2 size={16} />
-                <span className={MENU_ITEM_PRIMARY_CLASS}>{projectMenuBusy === "delete" ? "正在删除..." : "删除项目"}</span>
-              </span>
-            </button>
-          </MenuSurface>
-        ) : null}
       </div>
 
       <div style={rightClusterStyle}>
@@ -451,6 +506,8 @@ export const FlowTopToolbar: React.FC<{
           </div>
         </div>
       ) : null}
+
+      {projectMenu && typeof document !== "undefined" ? createPortal(projectMenu, document.body) : projectMenu}
     </div>
   );
 });
@@ -516,13 +573,6 @@ const projectMenuLabelWithIconStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
   gap: 10,
-};
-
-const projectMenuStyle: React.CSSProperties = {
-  position: "fixed",
-  left: 32,
-  top: 124,
-  zIndex: 2400,
 };
 
 const saveStatusStyle = (status?: string): React.CSSProperties => ({

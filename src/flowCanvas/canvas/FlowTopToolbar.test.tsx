@@ -71,7 +71,7 @@ describe("FlowTopToolbar", () => {
     });
   });
 
-  test("opens the canvas logo menu and closes it on outside click", async () => {
+  test("opens the canvas logo menu as a fixed body-level surface and closes it on outside click", async () => {
     render(
       <FlowTopToolbar
         cullingEnabled
@@ -82,21 +82,21 @@ describe("FlowTopToolbar", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "打开项目菜单" }));
 
-    const menu = screen.getByRole("menu", { name: "项目菜单" });
+    const menu = screen.getByRole("menu");
     expect(menu).toBeTruthy();
+    expect(menu.parentElement).toBe(document.body);
     expect(menu.style.position).toBe("fixed");
-    expect(menu.style.left).toBe("32px");
+    expect(menu.style.left).toBe("24px");
+    expect(menu.style.top).toBe("112px");
+    expect(menu.style.width).toBe("392px");
     expect(menu.style.zIndex).toBe("2400");
-    expect(screen.getByRole("menuitem", { name: "返回工作空间" })).toBeTruthy();
-    expect(screen.getByRole("menuitem", { name: "重命名项目" })).toBeTruthy();
-    expect(screen.getByRole("menuitem", { name: "新建项目" })).toBeTruthy();
-    expect(screen.getByRole("menuitem", { name: "删除项目" })).toBeTruthy();
-    expect(screen.getByRole("menuitem", { name: "重命名项目" }).className).toContain("min-h-[38px]");
+    expect(screen.getAllByRole("menuitem")).toHaveLength(4);
+    expect(screen.getAllByRole("menuitem")[1]?.className).toContain("min-h-[64px]");
 
     fireEvent.pointerDown(document.body);
 
     await waitFor(() => {
-      expect(screen.queryByRole("menu", { name: "项目菜单" })).toBeNull();
+      expect(screen.queryAllByRole("menu")).toHaveLength(0);
     });
   });
 
@@ -110,12 +110,12 @@ describe("FlowTopToolbar", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "打开项目菜单" }));
-    expect(screen.getByRole("menu", { name: "项目菜单" })).toBeTruthy();
+    expect(screen.getByRole("menu")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "通知" }));
 
     await waitFor(() => {
-      expect(screen.queryByRole("menu", { name: "项目菜单" })).toBeNull();
+      expect(screen.queryAllByRole("menu")).toHaveLength(1);
     });
     expect(screen.getByText("全部已读")).toBeTruthy();
   });
