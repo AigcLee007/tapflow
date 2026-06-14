@@ -395,6 +395,209 @@ describe("openai-compatible text adapter", () => {
     await server.close();
   });
 
+  test("generateImage submits MouxiHub async generation with size-specific upstream model", async () => {
+    const server = await withHttpServer(async (request, response) => {
+      expect(request.url).toBe("/v1/images/generations?async=true");
+      expect(request.headers.authorization).toBe("Bearer sk-test-secret");
+      expect(request.headers["content-type"]).toContain("application/json");
+
+      const chunks: Buffer[] = [];
+      for await (const chunk of request) {
+        chunks.push(Buffer.from(chunk));
+      }
+      const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;
+      expect(body).toMatchObject({
+        model: "gemini-3.1-flash-image-preview-2k",
+        n: 1,
+        prompt: "a tiny pig",
+        size: "2k",
+      });
+      expect(body.response_format).toBeUndefined();
+
+      response.setHeader("content-type", "application/json");
+      response.end(JSON.stringify({ code: "success", message: "", data: "task-mouxihub-1" }));
+    });
+
+    const adapter = new OpenAiCompatibleTextAdapter();
+    const result = await adapter.generateImage(
+      {
+        apiKey: "sk-test-secret",
+        baseUrl: server.url,
+        modelKey: "gemini-3-pro-image-preview",
+        providerKey: "mouxihub-openai",
+        requestConfig: {
+          async: true,
+          modelBySize: {
+            "1K": "gemini-3.1-flash-image-preview",
+            "2K": "gemini-3.1-flash-image-preview-2k",
+            "4K": "gemini-3.1-flash-image-preview-4k",
+          },
+          path: "/v1/images/generations",
+          responseFormat: null,
+        },
+        routeId: "route-t3",
+        routeKey: "image.mouxihub.nano-banana-pro.t3",
+        timeoutMs: 5_000,
+      },
+      {
+        metadata: {
+          params: {
+            size: "2k",
+          },
+        },
+        prompt: "a tiny pig",
+      },
+    );
+
+    expect(result).toMatchObject({
+      modelKey: "gemini-3.1-flash-image-preview-2k",
+      providerTaskId: "task-mouxihub-1",
+      status: "waiting_provider",
+    });
+
+    await server.close();
+  });
+
+  test("generateImage submits MouxiHub async edits through multipart endpoint", async () => {
+    const server = await withHttpServer(async (request, response) => {
+      expect(request.url).toBe("/v1/images/edits?async=true");
+      expect(request.headers.authorization).toBe("Bearer sk-test-secret");
+      expect(request.headers["content-type"]).toContain("multipart/form-data");
+
+      const chunks: Buffer[] = [];
+      for await (const chunk of request) {
+        chunks.push(Buffer.from(chunk));
+      }
+      const body = Buffer.concat(chunks).toString("utf8");
+      expect(body).toContain('name="model"');
+      expect(body).toContain("gemini-3.1-flash-image-preview-4k");
+      expect(body).toContain('name="prompt"');
+      expect(body).toContain("edit with reference");
+      expect(body).toContain('name="image[]"');
+      expect(body).not.toContain('name="response_format"');
+
+      response.setHeader("content-type", "application/json");
+      response.end(JSON.stringify({ code: "success", message: "", data: "task-mouxihub-edit" }));
+    });
+
+    const adapter = new OpenAiCompatibleTextAdapter();
+    const result = await adapter.generateImage(
+      {
+        apiKey: "sk-test-secret",
+        baseUrl: server.url,
+        modelKey: "gemini-3-pro-image-preview",
+        providerKey: "mouxihub-openai",
+        requestConfig: {
+          async: true,
+          editPath: "/v1/images/edits",
+          modelBySize: {
+            "1K": "gemini-3.1-flash-image-preview",
+            "2K": "gemini-3.1-flash-image-preview-2k",
+            "4K": "gemini-3.1-flash-image-preview-4k",
+          },
+          path: "/v1/images/generations",
+          responseFormat: null,
+        },
+        routeId: "route-t3",
+        routeKey: "image.mouxihub.nano-banana-pro.t3",
+        timeoutMs: 5_000,
+      },
+      {
+        metadata: {
+          params: {
+            imageSize: "4K",
+          },
+          referenceImages: [
+            "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9MbugAAAAASUVORK5CYII=",
+          ],
+        },
+        prompt: "edit with reference",
+      },
+    );
+
+    expect(result).toMatchObject({
+      modelKey: "gemini-3.1-flash-image-preview-4k",
+      providerTaskId: "task-mouxihub-edit",
+      status: "waiting_provider",
+    });
+
+    await server.close();
+  });
+
+  test("pollTask parses MouxiHub async image task states and nested outputs", async () => {
+    const server = await withHttpServer(async (request, response) => {
+      expect(request.url).toBe("/v1/images/tasks/task-mouxihub-1");
+      expect(request.headers.authorization).toBe("Bearer sk-test-secret");
+
+      response.setHeader("content-type", "application/json");
+      response.end(
+        JSON.stringify({
+          code: "success",
+          message: "",
+          data: {
+            data: {
+              created: 1758993885,
+              data: [
+                {
+                  b64_json: "",
+                  revised_prompt: "cat",
+                  url: "https://cdn.example/generated.png",
+                },
+              ],
+              model: "nano-banana",
+              usage: {
+                completion_tokens: 1290,
+                prompt_tokens: 1425,
+                total_tokens: 2715,
+              },
+            },
+            fail_reason: "",
+            status: "SUCCESS",
+            task_id: "task-mouxihub-1",
+          },
+        }),
+      );
+    });
+
+    const adapter = new OpenAiCompatibleTextAdapter();
+    const result = await adapter.pollTask!(
+      {
+        apiKey: "sk-test-secret",
+        baseUrl: server.url,
+        modelKey: "gemini-3-pro-image-preview",
+        providerKey: "mouxihub-openai",
+        requestConfig: {
+          pollPath: "/v1/images/tasks/{task_id}",
+        },
+        routeId: "route-t3",
+        routeKey: "image.mouxihub.nano-banana-pro.t3",
+        timeoutMs: 5_000,
+      },
+      {
+        providerTaskId: "task-mouxihub-1",
+      },
+    );
+
+    expect(result).toMatchObject({
+      outputs: [
+        {
+          filename: "openai-image-1.png",
+          mimeType: "image/png",
+          url: "https://cdn.example/generated.png",
+        },
+      ],
+      providerTaskId: "task-mouxihub-1",
+      status: "succeeded",
+      usage: {
+        inputTokens: 1425,
+        outputTokens: 1290,
+        totalTokens: 2715,
+      },
+    });
+
+    await server.close();
+  });
+
   test("generateImage uses Responses API image_generation tool for gpt-5.5 line two", async () => {
     const server = await withHttpServer(async (request, response) => {
       expect(request.url).toBe("/responses");

@@ -15,12 +15,14 @@ describe('modelCatalogOptions', () => {
   test('maps internal image model keys to product labels before catalog data loads', () => {
     expect(getProductImageModelLabel('pixellelabs.nano-banana-pro')).toBe('Nano Banana Pro');
     expect(getProductImageModelLabel('gemini-3-pro-image-preview')).toBe('Nano Banana Pro');
+    expect(getProductImageModelLabel('gemini-3.1-flash-image-preview-4k')).toBe('Nano Banana Pro');
     expect(getProductImageModelLabel('pixellelabs.nano-banana-2')).toBe('Nano Banana 2');
     expect(getProductImageModelLabel('gpt-image-2')).toBe('GPT-Image-2');
   });
 
   test('maps known official route keys to user-facing route labels before routes load', () => {
     expect(getKnownImageRouteUserFacingLabel('image.pixellelabs.nano-banana-pro')).toBe('Nano Banana Pro 线路一');
+    expect(getKnownImageRouteUserFacingLabel('image.mouxihub.nano-banana-pro.t3')).toBe('Nano Banana Pro 线路二（官方T3）');
     expect(getKnownImageRouteUserFacingLabel('image.pixellelabs.nano-banana-2')).toBe('Nano Banana 2 线路一');
     expect(getKnownImageRouteUserFacingLabel('image.gpt-image-2')).toBe('GPT-Image-2 线路一');
     expect(getKnownImageRouteUserFacingLabel('image.gpt-image-2.line2')).toBe('GPT-Image-2 线路二');

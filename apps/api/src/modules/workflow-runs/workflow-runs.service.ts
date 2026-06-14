@@ -85,6 +85,7 @@ type CreatedRunTransactionResult = {
 };
 
 type PricingRow = {
+  metadata?: Record<string, unknown> | null;
   min_charge_credits: string;
   model: string;
   provider: string;
@@ -245,6 +246,7 @@ const UNIT_BY_NODE_TYPE: Record<string, string> = {
 
 export function resolveNodePricing(input: {
   configuredRouteKey: string | null;
+  nodeConfig?: Record<string, unknown> | null;
   nodeType: string;
   pricingRows: PricingRow[];
   quantity?: number;
@@ -304,8 +306,9 @@ export function resolveNodePricing(input: {
   }
 
   const quantity = Math.max(1, Math.floor(input.quantity ?? 1));
-  const unitCredits = Number.parseInt(matched.row.unit_credits, 10) || 0;
-  const minChargeCredits = Number.parseInt(matched.row.min_charge_credits, 10) || 0;
+  const tierCredits = resolvePricingTierCredits(matched.row.metadata, input.nodeConfig);
+  const unitCredits = tierCredits ?? (Number.parseInt(matched.row.unit_credits, 10) || 0);
+  const minChargeCredits = tierCredits ?? (Number.parseInt(matched.row.min_charge_credits, 10) || 0);
 
   return {
     amountCents: Math.max(minChargeCredits, unitCredits * quantity),
@@ -319,6 +322,42 @@ export function resolveNodePricing(input: {
     quantity,
     unit,
   };
+}
+
+function normalizePricingSizeTier(value: unknown): string | null {
+  if (typeof value !== "string" || !value.trim()) {
+    return null;
+  }
+  const normalized = value.trim().toUpperCase();
+  return normalized === "1K" || normalized === "2K" || normalized === "4K" ? normalized : null;
+}
+
+function readPricingSizeTierFromNodeConfig(nodeConfig: Record<string, unknown> | null | undefined): string | null {
+  const config = isRecord(nodeConfig) ? nodeConfig : {};
+  const params = isRecord(config.params) ? config.params : {};
+  return normalizePricingSizeTier(params.size)
+    ?? normalizePricingSizeTier(params.imageSize)
+    ?? normalizePricingSizeTier(params.image_size)
+    ?? normalizePricingSizeTier(config.size)
+    ?? normalizePricingSizeTier(config.imageSize)
+    ?? normalizePricingSizeTier(config.image_size);
+}
+
+function resolvePricingTierCredits(
+  metadata: Record<string, unknown> | null | undefined,
+  nodeConfig: Record<string, unknown> | null | undefined,
+): number | null {
+  const tiers = isRecord(metadata?.sizeTiers) ? metadata.sizeTiers : null;
+  if (!tiers) {
+    return null;
+  }
+  const tier = readPricingSizeTierFromNodeConfig(nodeConfig);
+  if (!tier) {
+    return null;
+  }
+  const value = tiers[tier] ?? tiers[tier.toLowerCase()];
+  const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1345,7 +1384,8 @@ export class WorkflowRunsService {
           route,
           unit,
           unit_credits::text AS unit_credits,
-          min_charge_credits::text AS min_charge_credits
+          min_charge_credits::text AS min_charge_credits,
+          metadata
         FROM model_pricing
         WHERE active = true
       `,
@@ -1418,6 +1458,7 @@ export class WorkflowRunsService {
     const routeContext = routeContexts.get(effectiveRoute) ?? null;
     return resolveNodePricing({
       configuredRouteKey: configuredRoute,
+      nodeConfig: node.config ?? {},
       nodeType: node.type,
       pricingRows,
       quantity: resolveNodePricingQuantity(node),

@@ -75,6 +75,24 @@ As of 2026-06-13:
 - canvas top-left project menu now renders through a body-level fixed portal with TapNow-style width and anchored positioning, preventing overlap with the left dock and keeping project-menu dismissal behavior stable when other toolbar menus open
 - canvas model pickers now align more closely with add-node menu density: image/text model menu labels use the shared compact menu rhythm and the image model picker/dropup width has been narrowed to better match the prompt-bar target width
 
+## 2026-06-14 - MouxiHub Nano Banana Pro Official T3 Route
+
+- Added a built-in AI Gateway plugin package for `Nano Banana Pro` route `线路二（官方T3）`.
+- The new route uses MouxiHub OpenAI-compatible async image APIs:
+  - text-to-image: `/v1/images/generations?async=true`
+  - image edit: `/v1/images/edits?async=true`
+  - polling: `/v1/images/tasks/{task_id}`
+- Runtime requests now support route-configured size-based upstream model selection for OpenAI-compatible image routes:
+  - `1K` -> `gemini-3.1-flash-image-preview`
+  - `2K` -> `gemini-3.1-flash-image-preview-2k`
+  - `4K` -> `gemini-3.1-flash-image-preview-4k`
+- Workflow reserve pricing now supports `model_pricing.metadata.sizeTiers`, so the T3 route can reserve `6 / 8 / 12` credits for `1K / 2K / 4K`.
+- Creator-facing fallback labels now include `Nano Banana Pro 线路二（官方T3）` so route keys and provider details are not shown while route data loads.
+- Validation:
+  - `npm run test --workspace @aigc-flow/ai-gateway-core -- runtime.test.ts plugin-registry.test.ts`
+  - `npm run test --workspace @aigc-flow/api -- workflow-pricing-resolver.test.ts`
+  - `npx vitest run src/flowCanvas/utils/modelCatalogOptions.test.ts`
+
 ## 2026-06-14 - Brand Chrome and Transition System Tasks 1-4
 
 - Added a shared creator-facing brand UI layer under `src/app/brand`:

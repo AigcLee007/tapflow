@@ -205,4 +205,46 @@ describe("workflow pricing resolver", () => {
 
     expect(resolved.amountCents).toBe(48);
   });
+
+  it("uses pricing metadata size tiers for Nano Banana Pro official T3 route", () => {
+    const resolved = resolveNodePricing({
+      configuredRouteKey: "image.mouxihub.nano-banana-pro.t3",
+      nodeConfig: {
+        params: {
+          size: "4k",
+        },
+      },
+      nodeType: "image.generate",
+      pricingRows: [
+        {
+          metadata: {
+            sizeTiers: {
+              "1K": 6,
+              "2K": 8,
+              "4K": 12,
+            },
+          },
+          min_charge_credits: "6",
+          model: "gemini-3-pro-image-preview",
+          provider: "mouxihub-openai",
+          route: "image.mouxihub.nano-banana-pro.t3",
+          unit: "image_generation",
+          unit_credits: "6",
+        },
+      ],
+      routeContext: {
+        modelKey: "gemini-3-pro-image-preview",
+        providerKey: "mouxihub-openai",
+        routeKey: "image.mouxihub.nano-banana-pro.t3",
+      },
+    });
+
+    expect(resolved.amountCents).toBe(12);
+    expect(resolved.pricingMatch).toMatchObject({
+      model: "gemini-3-pro-image-preview",
+      provider: "mouxihub-openai",
+      route: "image.mouxihub.nano-banana-pro.t3",
+      unit: "image_generation",
+    });
+  });
 });
