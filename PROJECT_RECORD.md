@@ -215,6 +215,17 @@ As of 2026-06-13:
 - Validation:
   - `rg -n "Menu and Dropdown UI Rules|menu row height: 38px|primary label font size: 12px|Do not use native <select>" AGENTS.md`
 
+## 2026-06-14 - Canvas Menu Overlay Placement Follow-up
+
+- Fixed remaining canvas menu overlap from staging screenshots:
+  - Image node model, settings, dynamic-params, and "more" menus now render as fixed body-level overlays instead of inside the node/toolbar stacking context.
+  - Image menu z-index was raised above image toolbars and overlay controls.
+  - Canvas logo project menu was repositioned to a TapNow-style left-top drop-down that covers the left dock instead of opening offset into the canvas.
+- Added `ImageMoreMenu` regression coverage for fixed high-layer placement.
+- Validation:
+  - `npm test -- src/flowCanvas/canvas/FlowTopToolbar.test.tsx src/flowCanvas/nodes/ImageMoreMenu.test.tsx src/flowCanvas/nodes/imageMenuStyles.test.ts`
+  - `npm run build`
+
 ## Recent Important Commits
 
 - pending: fix canvas asset preview display regression

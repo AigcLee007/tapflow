@@ -2107,6 +2107,68 @@ const imageMenuSurface: React.CSSProperties = {
   zIndex: IMAGE_MENU_SURFACE_Z_INDEX,
 };
 
+const buildFixedImageMenuSurface = (
+  position: { left: number; top: number },
+  overrides?: React.CSSProperties,
+): React.CSSProperties => ({
+  ...imageMenuSurface,
+  position: 'fixed',
+  left: position.left,
+  top: position.top,
+  bottom: 'auto',
+  zIndex: IMAGE_MENU_SURFACE_Z_INDEX,
+  ...overrides,
+});
+
+const getFixedImageDropupPosition = (trigger: HTMLElement | null, menuWidth: number) => {
+  const rect = trigger?.getBoundingClientRect();
+  if (!rect) return null;
+  const viewportPadding = 18;
+  const left = Math.min(
+    window.innerWidth - viewportPadding - menuWidth,
+    Math.max(viewportPadding, rect.left),
+  );
+  const estimatedTop = rect.top - 10;
+  const top = Math.max(viewportPadding, estimatedTop);
+  return { left, top };
+};
+
+const useFixedImageDropup = (
+  open: boolean,
+  setOpen: React.Dispatch<React.SetStateAction<boolean>>,
+  menuWidth: number,
+) => {
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
+
+  const updatePosition = useCallback(() => {
+    const nextPosition = getFixedImageDropupPosition(wrapRef.current, menuWidth);
+    if (nextPosition) setPosition(nextPosition);
+  }, [menuWidth]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    updatePosition();
+    const onDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (!wrapRef.current?.contains(target) && !menuRef.current?.contains(target)) {
+        setOpen(false);
+      }
+    };
+    window.addEventListener('mousedown', onDown);
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+    return () => {
+      window.removeEventListener('mousedown', onDown);
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [open, setOpen, updatePosition]);
+
+  return { menuRef, position, updatePosition, wrapRef };
+};
+
 const imageMenuItem = (active: boolean, hovered = false): React.CSSProperties => ({
   width: '100%',
   minHeight: IMAGE_MENU_ITEM_MIN_HEIGHT,
@@ -2202,7 +2264,7 @@ const ImageModelRouteDropup: React.FC<ImageModelRouteDropupProps> = ({
   const [open, setOpen] = useState(false);
   const [hoveredModelId, setHoveredModelId] = useState<string | null>(null);
   const [hoveredRouteId, setHoveredRouteId] = useState<string | null>(null);
-  const wrapRef = useRef<HTMLDivElement>(null);
+  const { menuRef, position, updatePosition, wrapRef } = useFixedImageDropup(open, setOpen, 420);
   const currentModel = modelOptions.find((option) => option.id === currentModelId) || modelOptions[0];
   const currentRoute = runtimeRoutes.find((route) => route.routeKey === currentRouteKey) || runtimeRoutes[0];
   const currentRouteIndex = currentRoute ? Math.max(0, runtimeRoutes.findIndex((route) => route.routeKey === currentRoute.routeKey)) : 0;
@@ -2212,23 +2274,15 @@ const ImageModelRouteDropup: React.FC<ImageModelRouteDropupProps> = ({
     ? getUserFacingRouteLineLabel(currentRoute, currentRouteIndex)
     : knownRouteLineLabel;
 
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (event: MouseEvent) => {
-      if (!wrapRef.current?.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    };
-    window.addEventListener('mousedown', onDown);
-    return () => window.removeEventListener('mousedown', onDown);
-  }, [open]);
-
   return (
     <div ref={wrapRef} style={{ position: 'relative' }}>
       <button
         type="button"
         className="nodrag nopan"
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => {
+          updatePosition();
+          setOpen((value) => !value);
+        }}
         style={textModelTrigger}
         title="选择模型与线路"
       >
@@ -2238,8 +2292,8 @@ const ImageModelRouteDropup: React.FC<ImageModelRouteDropupProps> = ({
         <ChevronDown size={14} color="#a1a1aa" />
       </button>
 
-      {open && (
-        <div style={imageMenuSurface} className="sleek-scroll-y">
+      {open && position ? createPortal(
+        <div ref={menuRef} style={buildFixedImageMenuSurface(position)} className="sleek-scroll-y nodrag nopan nowheel">
           {modelOptions.map((option) => {
             const active = option.id === currentModelId;
             const hovered = hoveredModelId === option.id;
@@ -2321,8 +2375,9 @@ const ImageModelRouteDropup: React.FC<ImageModelRouteDropupProps> = ({
               </div>
             </>
           )}
-        </div>
-      )}
+        </div>,
+        document.body,
+      ) : null}
     </div>
   );
 };
@@ -2378,30 +2433,22 @@ const ImageSettingsDropup: React.FC<ImageSettingsDropupProps> = ({
   const [open, setOpen] = useState(false);
   const [hoveredSize, setHoveredSize] = useState<string | null>(null);
   const [hoveredRatio, setHoveredRatio] = useState<string | null>(null);
-  const wrapRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (event: MouseEvent) => {
-      if (!wrapRef.current?.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    };
-    window.addEventListener('mousedown', onDown);
-    return () => window.removeEventListener('mousedown', onDown);
-  }, [open]);
+  const { menuRef, position, updatePosition, wrapRef } = useFixedImageDropup(open, setOpen, 480);
 
   const safeSize = String(size || '1k').toLowerCase();
   return (
     <div ref={wrapRef} style={{ position: 'relative' }}>
-      <button type="button" className="nodrag nopan" onClick={() => setOpen((value) => !value)} style={textModelTrigger}>
+      <button type="button" className="nodrag nopan" onClick={() => {
+        updatePosition();
+        setOpen((value) => !value);
+      }} style={textModelTrigger}>
         <span style={{ border: '1px solid #cbd5e1', width: 13, height: 13, display: 'inline-block', borderRadius: 2 }} />
         <span>{ratio}</span>
         <span style={{ color: '#94a3b8' }}>· {formatImageSizeLabel(safeSize)}</span>
         <ChevronDown size={14} color="#a1a1aa" />
       </button>
-      {open && (
-        <div style={{ ...imageMenuSurface, width: 480, padding: 18 }}>
+      {open && position ? createPortal(
+        <div ref={menuRef} style={buildFixedImageMenuSurface(position, { width: 480, padding: 18 })} className="nodrag nopan nowheel">
           <div style={imageMenuSubHeader}>画质</div>
           <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(3, sizes.length)},minmax(0,1fr))`, gap: 10, padding: '8px 0 18px' }}>
             {sizes.map((item) => {
@@ -2469,8 +2516,9 @@ const ImageSettingsDropup: React.FC<ImageSettingsDropupProps> = ({
               );
             })}
           </div>
-        </div>
-      )}
+        </div>,
+        document.body,
+      ) : null}
     </div>
   );
 };
@@ -2502,29 +2550,21 @@ const DynamicImageParamsDropup: React.FC<DynamicImageParamsDropupProps> = ({
   onChangeParam,
 }) => {
   const [open, setOpen] = useState(false);
-  const wrapRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (event: MouseEvent) => {
-      if (!wrapRef.current?.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    };
-    window.addEventListener('mousedown', onDown);
-    return () => window.removeEventListener('mousedown', onDown);
-  }, [open]);
+  const { menuRef, position, updatePosition, wrapRef } = useFixedImageDropup(open, setOpen, 440);
 
   return (
     <div ref={wrapRef} style={{ position: 'relative' }}>
-      <button type="button" className="nodrag nopan" onClick={() => setOpen((value) => !value)} style={textModelTrigger}>
+      <button type="button" className="nodrag nopan" onClick={() => {
+        updatePosition();
+        setOpen((value) => !value);
+      }} style={textModelTrigger}>
         <span style={{ border: '1px solid #cbd5e1', width: 13, height: 13, display: 'inline-block', borderRadius: 2 }} />
         <span>{ratio}</span>
         <span style={{ color: '#94a3b8' }}>· {formatImageSizeLabel(String(size || ''))}</span>
         <ChevronDown size={14} color="#a1a1aa" />
       </button>
-      {open && (
-        <div style={{ ...imageMenuSurface, width: 440, padding: 18 }}>
+      {open && position ? createPortal(
+        <div ref={menuRef} style={buildFixedImageMenuSurface(position, { width: 440, padding: 18 })} className="nodrag nopan nowheel">
           {fields.map((field) => {
             const value = getDynamicParamValue(params, field, ratio, size);
             if (field.type === 'boolean') {
@@ -2599,8 +2639,9 @@ const DynamicImageParamsDropup: React.FC<DynamicImageParamsDropupProps> = ({
               </label>
             );
           })}
-        </div>
-      )}
+        </div>,
+        document.body,
+      ) : null}
     </div>
   );
 };
@@ -3706,6 +3747,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const promptEditorRef = useRef<HTMLDivElement>(null);
   const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
   const promptLexicalEditorRef = useRef<PromptLexicalEditorHandle>(null);
+  const moreMenuButtonRef = useRef<HTMLButtonElement>(null);
   const promptSelectionRef = useRef({ start: 0, end: 0 });
   const promptValueRef = useRef(String(d.generationPrompt || ''));
   const pendingPromptCaretRef = useRef<number | null>(null);
@@ -3717,6 +3759,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const [showBatchSelector, setShowBatchSelector] = useState(false);
   const [fullscreenOpen, setFullscreenOpen] = useState(false);
   const moreMenuLayer = useDismissibleLayer(`image-node-more-${id}`);
+  const [moreMenuPosition, setMoreMenuPosition] = useState<{ left: number; top: number } | null>(null);
   const [assetMenuOpen, setAssetMenuOpen] = useState(false);
   const [slashMenuOpen, setSlashMenuOpen] = useState(false);
   const [mentionQuery, setMentionQuery] = useState('');
@@ -5451,6 +5494,18 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     }
   }, [id, moreMenuLayer, openImageTool, openRepaintOverlay]);
 
+  const updateMoreMenuPosition = useCallback(() => {
+    const triggerRect = moreMenuButtonRef.current?.getBoundingClientRect();
+    if (!triggerRect) return;
+    const menuWidth = 300;
+    const viewportPadding = 18;
+    const left = Math.min(
+      window.innerWidth - viewportPadding - menuWidth / 2,
+      Math.max(viewportPadding + menuWidth / 2, triggerRect.left + triggerRect.width / 2),
+    );
+    setMoreMenuPosition({ left, top: triggerRect.bottom + 14 });
+  }, []);
+
   const handleToolAction = useCallback(
     (toolId: string) => {
       if (!effectiveThumbnailUrl) return;
@@ -5485,11 +5540,23 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
         return;
       }
       if (toolId === 'more') {
+        updateMoreMenuPosition();
         moreMenuLayer.toggle();
       }
     },
-    [effectiveThumbnailUrl, handleDownload, handleStepBack, moreMenuLayer, openAnchoredPreviewTool, openImageTool, openRepaintOverlay],
+    [effectiveThumbnailUrl, handleDownload, handleStepBack, moreMenuLayer, openAnchoredPreviewTool, openImageTool, openRepaintOverlay, updateMoreMenuPosition],
   );
+
+  useEffect(() => {
+    if (!moreMenuLayer.open) return undefined;
+    updateMoreMenuPosition();
+    window.addEventListener('resize', updateMoreMenuPosition);
+    window.addEventListener('scroll', updateMoreMenuPosition, true);
+    return () => {
+      window.removeEventListener('resize', updateMoreMenuPosition);
+      window.removeEventListener('scroll', updateMoreMenuPosition, true);
+    };
+  }, [moreMenuLayer.open, updateMoreMenuPosition]);
 
   return (
     <div
@@ -5611,7 +5678,12 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
                   </div>
                   <button
                     className="nodrag nopan flow-image-toolbar-btn"
-                    ref={t.id === 'more' ? (moreMenuLayer.triggerRef as React.RefObject<HTMLButtonElement>) : undefined}
+                    ref={t.id === 'more'
+                      ? (node) => {
+                        moreMenuButtonRef.current = node;
+                        (moreMenuLayer.triggerRef as React.MutableRefObject<HTMLButtonElement | null>).current = node;
+                      }
+                      : undefined}
                     onClick={() => handleToolAction(t.id)}
                     style={{
                       position: 'relative',
@@ -5642,9 +5714,6 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
                       }} />
                     )}
                   </button>
-                  {t.id === 'more' && moreMenuLayer.open && (
-                    <ImageMoreMenu menuRef={moreMenuLayer.ref as React.RefObject<HTMLDivElement>} onSelect={handleMoreMenuSelect} />
-                  )}
                 </div>
               ))}
 
@@ -5699,6 +5768,15 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
           </FloatingToolbar>
         );
       })()}
+
+      {hasImage && showNodeEditor && moreMenuLayer.open && moreMenuPosition ? createPortal(
+        <ImageMoreMenu
+          fixedPosition={moreMenuPosition}
+          menuRef={moreMenuLayer.ref as React.RefObject<HTMLDivElement>}
+          onSelect={handleMoreMenuSelect}
+        />,
+        document.body,
+      ) : null}
 
       <LazyOverlayFrame>
         {isImageToolOpen('crop') && effectiveThumbnailUrl && editableOverlayImageUrl && (

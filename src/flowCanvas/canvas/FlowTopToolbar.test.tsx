@@ -85,7 +85,8 @@ describe("FlowTopToolbar", () => {
     const menu = screen.getByRole("menu", { name: "项目菜单" });
     expect(menu).toBeTruthy();
     expect(menu.style.position).toBe("fixed");
-    expect(menu.style.left).toBe("96px");
+    expect(menu.style.left).toBe("30px");
+    expect(menu.style.zIndex).toBe("2400");
     expect(screen.getByRole("menuitem", { name: "返回工作空间" })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "重命名项目" })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "新建项目" })).toBeTruthy();
