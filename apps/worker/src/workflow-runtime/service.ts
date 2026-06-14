@@ -451,9 +451,28 @@ function extractPromptFromUpstreamOutputs(
   upstreamOutputs: Array<Record<string, unknown> | null>,
   fallbackPrompt: string,
 ): string {
+  const upstreamText = extractTextPromptFromUpstreamOutputs(upstreamOutputs);
+
+  if (upstreamText) {
+    return upstreamText;
+  }
+
+  if (fallbackPrompt.trim()) {
+    return fallbackPrompt.trim();
+  }
+
+  return JSON.stringify(upstreamOutputs);
+}
+
+function extractTextPromptFromUpstreamOutputs(
+  upstreamOutputs: Array<Record<string, unknown> | null>,
+): string {
   const fragments = upstreamOutputs
     .flatMap((output) => {
       if (!output) {
+        return [];
+      }
+      if (Array.isArray(output.assets) && output.assets.length > 0) {
         return [];
       }
 
@@ -468,14 +487,20 @@ function extractPromptFromUpstreamOutputs(
     })
     .filter(Boolean);
 
+  return fragments.join("\n");
+}
+
+function mergeImageGenerationPrompt(
+  upstreamOutputs: Array<Record<string, unknown> | null>,
+  generationPrompt: string | null,
+  fallbackPrompt: string,
+): string {
+  const upstreamText = extractTextPromptFromUpstreamOutputs(upstreamOutputs);
+  const ownPrompt = generationPrompt ?? (fallbackPrompt.trim() ? fallbackPrompt.trim() : "");
+  const fragments = [upstreamText, ownPrompt].filter((value) => value.trim());
   if (fragments.length > 0) {
     return fragments.join("\n");
   }
-
-  if (fallbackPrompt.trim()) {
-    return fallbackPrompt.trim();
-  }
-
   return JSON.stringify(upstreamOutputs);
 }
 
@@ -556,7 +581,7 @@ function buildImageRequest(
             ? "nano-banana-pro"
             : config.modelId
           : null,
-    prompt: generationPrompt ?? extractPromptFromUpstreamOutputs(upstreamOutputs, fallbackPrompt),
+    prompt: mergeImageGenerationPrompt(upstreamOutputs, generationPrompt, fallbackPrompt),
     routeKey,
   };
 }

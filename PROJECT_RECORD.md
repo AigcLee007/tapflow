@@ -1802,3 +1802,20 @@ Validation completed:
 - `npm run build --workspace @aigc-flow/worker`
 - `npm run test --workspace @aigc-flow/worker`
 - `npm run build`
+
+### Latest Image Prompt Channel Separation Fix
+
+Completed in current local iteration:
+
+- tightened image request construction so upstream outputs containing media `assets` are treated as reference media only and never contribute `prompt` or `text` to the next provider request
+- allowed text-only upstream outputs to remain valid prompt inputs for image nodes
+- merged text-only upstream prompt fragments with the current image node `generationPrompt` when both are present, preserving explicit text-node workflows without leaking old reference-image prompts
+- added regression coverage for a mixed upstream text plus reference image case to prove old reference prompt/text values are excluded
+
+Validation completed:
+
+- `npm run test --workspace @aigc-flow/worker -- workflow-runtime-image-request.test.ts -t "combines upstream text"`
+- `npm run test --workspace @aigc-flow/worker -- workflow-runtime-image-request.test.ts`
+- `npm run test --workspace @aigc-flow/worker`
+- `npm run build --workspace @aigc-flow/worker`
+- `npm run build`

@@ -57,6 +57,46 @@ describe("buildImageRequest", () => {
     ]);
   });
 
+  test("combines upstream text with current prompt and ignores reference image prompt", () => {
+    const request = __workerTestUtils.buildImageRequest(
+      [
+        {
+          text: "Animal sports day, 3D style",
+        },
+        {
+          assets: [
+            {
+              assetId: "asset-reference",
+              kind: "image",
+              mimeType: "image/png",
+            },
+          ],
+          prompt: "old reference image prompt",
+          text: "old reference image text",
+        },
+      ],
+      {
+        generationPrompt: "The lion is behind the zebra, and the zebra is first place",
+        params: {
+          size: "4K",
+        },
+        routeKey: "image.mouxihub.nano-banana-pro.t3",
+      },
+    );
+
+    expect(request.prompt).toBe(
+      "Animal sports day, 3D style\nThe lion is behind the zebra, and the zebra is first place",
+    );
+    expect(request.prompt).not.toContain("old reference image prompt");
+    expect(request.prompt).not.toContain("old reference image text");
+    expect(request.inputAssets).toEqual([
+      expect.objectContaining({
+        assetId: "asset-reference",
+        kind: "image",
+      }),
+    ]);
+  });
+
   test("builds target-node upstream outputs from static text and asset-backed image node configs", () => {
     const outputs = __workerTestUtils.getDependencyOutputs(
       {
