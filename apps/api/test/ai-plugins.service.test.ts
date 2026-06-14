@@ -51,7 +51,8 @@ describe("AiPluginService route install statements", () => {
     expect(statement.values).toHaveLength(19);
     expect(statement.sql).not.toContain("$9::jsonb");
     expect(statement.sql).toContain("$9,\n            $10::jsonb,\n            $11::jsonb");
-    expect(statement.sql).toContain("$12,\n            $13,\n            $14::uuid");
+    expect(statement.sql).toContain("$12,\n            $13::uuid,\n            $14");
+    expect(statement.sql).not.toContain("$14::uuid");
 
     expect(statement.values.slice(8, 19)).toEqual([
       "https://api.mouxihub.com",
