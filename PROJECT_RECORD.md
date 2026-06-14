@@ -237,6 +237,23 @@ As of 2026-06-13:
   - `npm test -- src/flowCanvas/canvas/FlowTopToolbar.test.tsx`
   - `npm run build`
 
+## 2026-06-14 - Cinematic Brand Transition Animation
+
+- Upgraded the shared brand loading animation from a dashed highlight into a cinematic infinity-path motion system.
+- Enlarged the transition logo mark to roughly 2x the previous loading scale so fullscreen and inline loading states read as a real brand transition.
+- Rebuilt the animated infinity layer around one canonical SVG path and added:
+  - full-path aura glow
+  - moving trail stroke
+  - exact-path light particle
+  - delayed tail particles
+  - restrained center crossing pulse
+- Kept the existing `BrandTransition` API intact so workspace, canvas, auth, and inline loaders inherit the upgraded animation without route-level behavior changes.
+- Added reduced-motion fallback that removes particle travel and looped trail motion while preserving a calm premium branded state.
+- Validation:
+  - `npm test -- src/app/brand/BrandMark.test.tsx src/app/brand/BrandTransition.test.tsx`
+  - `npm run build`
+  - `git diff --check`
+
 ## 2026-06-14 - Media Generation Stability and Speed Optimization Phases 0-4
 
 - Implemented the approved first four phases of the media generation optimization plan while keeping the existing OSS/S3 asset-first persistence path.

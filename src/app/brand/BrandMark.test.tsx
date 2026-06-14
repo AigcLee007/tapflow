@@ -31,4 +31,13 @@ describe("BrandMark", () => {
     expect(screen.getByTestId("brand-mark").getAttribute("data-animated")).toBe("true");
     expect(screen.getByTestId("brand-mark-infinity")).toBeTruthy();
   });
+
+  test("renders cinematic animation layers when animated", () => {
+    render(<BrandMark animated size="large" />);
+
+    expect(screen.getByTestId("brand-mark-orb")).toBeTruthy();
+    expect(screen.getByTestId("brand-mark-infinity-particle")).toBeTruthy();
+    expect(screen.getByTestId("brand-mark-infinity-center-pulse")).toBeTruthy();
+    expect(screen.getByTestId("brand-mark").getAttribute("data-size")).toBe("large");
+  });
 });

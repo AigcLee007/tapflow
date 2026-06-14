@@ -6,22 +6,30 @@ import { BrandTransition } from "./BrandTransition";
 
 describe("BrandTransition", () => {
   test("renders workspace loading copy with an animated visual", () => {
-    render(<BrandTransition label="正在加载工作区..." variant="workspace" />);
+    render(<BrandTransition label="Loading workspace..." variant="workspace" />);
 
-    expect(screen.getByText("正在加载工作区...")).toBeTruthy();
+    expect(screen.getByText("Loading workspace...")).toBeTruthy();
     expect(screen.getByTestId("brand-transition").getAttribute("data-variant")).toBe("workspace");
   });
 
   test("renders canvas variant for project transitions", () => {
-    render(<BrandTransition label="正在打开项目画布..." variant="canvas" />);
+    render(<BrandTransition label="Opening project canvas..." variant="canvas" />);
 
-    expect(screen.getByText("正在打开项目画布...")).toBeTruthy();
+    expect(screen.getByText("Opening project canvas...")).toBeTruthy();
     expect(screen.getByTestId("brand-transition").getAttribute("data-variant")).toBe("canvas");
   });
 
   test("supports inline mode for contextual loading areas", () => {
-    render(<BrandTransition label="正在加载项目..." variant="workspace" mode="inline" />);
+    render(<BrandTransition label="Loading project..." variant="workspace" mode="inline" />);
 
     expect(screen.getByTestId("brand-transition").getAttribute("data-mode")).toBe("inline");
+  });
+
+  test("uses the enlarged cinematic animated brand mark", () => {
+    render(<BrandTransition label="Loading workspace..." variant="workspace" />);
+
+    expect(screen.getByTestId("brand-mark").getAttribute("data-size")).toBe("large");
+    expect(screen.getByTestId("brand-mark-infinity-particle")).toBeTruthy();
+    expect(screen.getByTestId("brand-mark-infinity-center-pulse")).toBeTruthy();
   });
 });
