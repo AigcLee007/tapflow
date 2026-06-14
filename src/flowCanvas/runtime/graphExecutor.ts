@@ -491,19 +491,7 @@ const IMAGE_MODEL_LABELS: Record<string, string> = {
 };
 
 function buildImageEditRunLabel(modelId: string, routeId?: string) {
-  const modelLabel = IMAGE_MODEL_LABELS[modelId] || modelId || '图片模型';
-  const route = getImageRouteById(routeId);
-  const routeLabel = String(route?.line || route?.label || routeId || '').trim();
-  const normalizedLine = routeLabel.toLowerCase();
-  const lineMatch = normalizedLine.match(/^line\s*([0-9]+)$/i);
-  const userRouteLabel = lineMatch?.[1]
-    ? `线路${lineMatch[1]}`
-    : normalizedLine === 'default'
-      ? '默认线路'
-      : routeLabel;
-  return userRouteLabel
-    ? `正在使用 ${modelLabel} · ${userRouteLabel}`
-    : `正在使用 ${modelLabel}`;
+  return '正在生成图片';
 }
 
 function countDerivedEditResults(sourceNodeId: string, editType: ImageEditType) {

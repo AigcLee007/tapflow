@@ -94,7 +94,7 @@ export class AiModelCatalogService {
     return withTenantTransaction(context, async (client) => {
       const result = await client.query<ModelCatalogRecord>(
         `
-          SELECT
+          SELECT DISTINCT ON (catalog.model_family)
             catalog.id::text AS id,
             catalog.model_id::text AS model_id,
             catalog.model_key,
@@ -132,7 +132,8 @@ export class AiModelCatalogService {
                 AND (route.model_id IS NULL OR model.status = 'active')
             )
           ORDER BY
-            CASE WHEN catalog.tenant_id = $1::uuid THEN 0 ELSE 1 END ASC,
+            catalog.model_family ASC,
+            CASE WHEN catalog.tenant_id IS NULL THEN 0 ELSE 1 END ASC,
             catalog.sort_order ASC,
             catalog.display_name ASC,
             catalog.model_key ASC
@@ -190,7 +191,7 @@ export class AiModelCatalogService {
 
       const result = await client.query<ModelRouteRecord>(
         `
-          SELECT
+          SELECT DISTINCT ON (route.route_key)
             route.id::text AS route_id,
             route.route_key,
             route.route_label,
@@ -245,10 +246,10 @@ export class AiModelCatalogService {
               OR model.model_key = $2::text
             )
           ORDER BY
-            CASE WHEN route.tenant_id = $1::uuid THEN 0 ELSE 1 END ASC,
+            route.route_key ASC,
+            CASE WHEN route.tenant_id IS NULL THEN 0 ELSE 1 END ASC,
             route.priority ASC,
-            route.weight DESC,
-            route.route_key ASC
+            route.weight DESC
         `,
         [
           context.tenantId,

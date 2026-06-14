@@ -77,7 +77,7 @@ describe('runImageEdit', () => {
       editPrompt: 'Remove the highlighted object',
       editSourceNodeId: sourceNode.id,
       generationPrompt: 'Remove the highlighted object',
-      generationRunLabel: '正在使用 Nano Banana Pro · 线路1',
+      generationRunLabel: '正在生成图片',
       generationStatus: 'generating',
       lastEditType: 'erase',
       modelId: 'nano-banana-pro',
@@ -130,5 +130,30 @@ describe('runImageEdit', () => {
     expect(targetNode?.data.imageEditRequest).toEqual(expect.objectContaining({
       routeId: 'nano-banana-pro-line1',
     }));
+  });
+
+  it('does not expose route keys or provider identifiers in the generating label', async () => {
+    const sourceNode = useFlowCanvasStore.getState().addNode('image', { x: 10, y: 20 }, {
+      assetId: 'asset-source',
+      height: 240,
+      modelId: 'pixellelabs.nano-banana-pro',
+      routeId: 'image.pixellelabs.nano-banana-pro',
+      routeKey: 'image.pixellelabs.nano-banana-pro',
+      thumbnailUrl: 'https://cdn.test/source.png',
+      title: 'Source',
+      width: 320,
+    });
+
+    const targetNodeId = await runImageEdit(sourceNode.id, 'relight', {
+      prompt: 'Add soft side lighting',
+      modelId: 'pixellelabs.nano-banana-pro',
+      routeId: 'image.pixellelabs.nano-banana-pro',
+      routeKey: 'image.pixellelabs.nano-banana-pro',
+    });
+
+    const targetNode = useFlowCanvasStore.getState().nodes.find((node) => node.id === targetNodeId);
+    expect(targetNode?.data.generationRunLabel).toBe('正在生成图片');
+    expect(String(targetNode?.data.generationRunLabel)).not.toContain('pixellelabs');
+    expect(String(targetNode?.data.generationRunLabel)).not.toContain('image.');
   });
 });

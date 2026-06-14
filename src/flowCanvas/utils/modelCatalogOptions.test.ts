@@ -94,12 +94,51 @@ describe('modelCatalogOptions', () => {
     expect(routes[0]).toEqual(
       expect.objectContaining({
         estimatedCredits: 24,
-        label: 'Visionary stable',
+        label: '线路一',
         modelKey: 'nano-banana-pro',
         providerName: 'Visionary',
         routeKey: 'image.nano-banana-pro',
       }),
     );
+  });
+
+  test('builds user-facing product route labels without exposing route keys or providers', () => {
+    const routes = mapCatalogRoutesToRuntimeOptions([
+      {
+        estimatedCredits: 100,
+        minChargeCredits: 100,
+        modality: 'image',
+        modelFamily: 'gpt-image-2',
+        modelKey: 'gpt-image-2',
+        pricingUnit: 'image_generation',
+        providerKey: 'openai-compatible',
+        providerName: 'SiphonLab OpenAI Compatible',
+        routeId: 'route-1',
+        routeKey: 'image.gpt-image-2.line2',
+        routeLabel: '线路二',
+      },
+      {
+        estimatedCredits: 24,
+        minChargeCredits: 24,
+        modality: 'image',
+        modelFamily: 'pixellelabs.nano-banana-pro',
+        modelKey: 'gemini-3-pro-image-preview',
+        pricingUnit: 'image_generation',
+        providerKey: 'pixellelabs',
+        providerName: 'PixelleLabs',
+        routeId: 'route-2',
+        routeKey: 'image.pixellelabs.nano-banana-pro',
+        routeLabel: 'PixelleLabs Pro 线路',
+      },
+    ] satisfies AiModelCatalogRoute[]);
+
+    expect(routes.map((item) => item.label)).toEqual(['线路二', '线路一']);
+    expect(routes.map((item) => item.userFacingLabel)).toEqual([
+      'GPT-Image-2 线路二',
+      'Nano Banana Pro 线路一',
+    ]);
+    expect(routes.map((item) => item.userFacingLabel).join(' ')).not.toContain('pixellelabs');
+    expect(routes.map((item) => item.userFacingLabel).join(' ')).not.toContain('openai-compatible');
   });
 
   test('derives canvas params and selectors from uiSchema', () => {

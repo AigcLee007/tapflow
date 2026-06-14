@@ -1521,3 +1521,17 @@ Validation completed:
 - `npm run test --workspace @aigc-flow/ai-gateway-core -- runtime.test.ts provider-adapter-registry.test.ts`
 - `npm run build --workspace @aigc-flow/ai-gateway-core`
 - `npm run build --workspace @aigc-flow/worker`
+
+### Latest Official Model Catalog Cleanup
+
+Completed in current local iteration:
+
+- kept the creator-facing image model catalog to the 3 official product models: Nano Banana Pro, Nano Banana 2, and GPT-Image-2
+- kept only 4 official system image routes in the database: `image.gpt-image-2`, `image.gpt-image-2.line2`, `image.pixellelabs.nano-banana-2`, and `image.pixellelabs.nano-banana-pro`
+- deleted non-official tenant/mock/legacy routes from `ai_routes`; removed related route health checks and cleared historical `ai_call_logs.route_id` references while preserving the call log rows
+- changed creator-facing model route labels to product labels such as `Nano Banana Pro 线路一` and `GPT-Image-2 线路二`, without exposing provider names, upstream model names, or route keys
+- changed image generation loading copy to neutral text so route/provider identifiers are not shown while a node is generating
+
+Validation completed:
+
+- `npx vitest run src/flowCanvas/utils/modelCatalogOptions.test.ts src/flowCanvas/runtime/graphExecutor.test.ts src/flowCanvas/utils/runtimeRouteOptions.test.ts`

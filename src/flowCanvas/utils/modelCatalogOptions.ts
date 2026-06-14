@@ -32,6 +32,33 @@ export type UiSchemaField = {
 };
 
 const normalizeKey = (value: unknown) => String(value || '').trim();
+const ROUTE_NUMBER_LABELS = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
+
+const MODEL_DISPLAY_NAME_BY_FAMILY_OR_MODEL: Record<string, string> = {
+  'gemini-3-pro-image-preview': 'Nano Banana Pro',
+  'gemini-3.1-flash-image-preview': 'Nano Banana 2',
+  'gpt-image-2': 'GPT-Image-2',
+  'pixellelabs.nano-banana-2': 'Nano Banana 2',
+  'pixellelabs.nano-banana-pro': 'Nano Banana Pro',
+};
+
+const normalizeRouteLineLabel = (value: unknown, index: number) => {
+  const configured = normalizeKey(value);
+  const directLine = configured.match(/^线路([一二三四五六七八九十0-9]+)$/);
+  if (directLine) return configured;
+  const lineNumber = configured.match(/(?:线路|line)\s*([0-9]+)/i)?.[1];
+  if (lineNumber) return `线路${ROUTE_NUMBER_LABELS[Number(lineNumber) - 1] || lineNumber}`;
+  return `线路${ROUTE_NUMBER_LABELS[index] || index + 1}`;
+};
+
+const getProductModelDisplayName = (item: AiModelCatalogRoute) => {
+  const keys = [item.modelFamily, item.modelKey].map((value) => normalizeKey(value).toLowerCase());
+  for (const key of keys) {
+    const label = MODEL_DISPLAY_NAME_BY_FAMILY_OR_MODEL[key];
+    if (label) return label;
+  }
+  return normalizeKey(item.modelKey) || '图片模型';
+};
 
 const normalizeSize = (value: unknown) => {
   const raw = normalizeKey(value);
@@ -88,6 +115,7 @@ export function mapCatalogModelsToOptions(
 
 export function mapCatalogRoutesToRuntimeOptions(routes: AiModelCatalogRoute[]): RuntimeRouteOption[] {
   const seen = new Set<string>();
+  const lineCountsByModel = new Map<string, number>();
   const result: RuntimeRouteOption[] = [];
 
   for (const item of [...routes].sort((left, right) => left.routeKey.localeCompare(right.routeKey))) {
@@ -95,10 +123,14 @@ export function mapCatalogRoutesToRuntimeOptions(routes: AiModelCatalogRoute[]):
     if (!routeKey || seen.has(routeKey)) continue;
     seen.add(routeKey);
 
-    const routeLabel = normalizeKey(item.routeLabel) || routeKey;
+    const lineScope = normalizeKey(item.modelFamily) || normalizeKey(item.modelKey) || 'default';
+    const lineIndex = lineCountsByModel.get(lineScope) ?? 0;
+    lineCountsByModel.set(lineScope, lineIndex + 1);
+    const lineLabel = normalizeRouteLineLabel(item.routeLabel, lineIndex);
+    const modelLabel = getProductModelDisplayName(item);
     result.push({
       estimatedCredits: item.estimatedCredits ?? item.minChargeCredits ?? null,
-      label: routeLabel,
+      label: lineLabel,
       minChargeCredits: item.minChargeCredits ?? item.estimatedCredits ?? null,
       modelDisplayName: item.modelKey,
       modelKey: item.modelKey,
@@ -106,6 +138,7 @@ export function mapCatalogRoutesToRuntimeOptions(routes: AiModelCatalogRoute[]):
       providerKey: item.providerKey,
       providerName: item.providerName,
       routeKey,
+      userFacingLabel: `${modelLabel} ${lineLabel}`,
     });
   }
 

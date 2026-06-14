@@ -10,6 +10,7 @@ export type RuntimeRouteOption = {
   providerKey: string;
   providerName: string;
   routeKey: string;
+  userFacingLabel?: string;
 };
 
 export function mapImageRuntimeRouteOptions(items: V2RuntimeRouteItem[]): RuntimeRouteOption[] {
