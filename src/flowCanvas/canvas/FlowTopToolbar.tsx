@@ -273,12 +273,13 @@ export const FlowTopToolbar: React.FC<{
             ref={projectMenuLayer.ref as React.RefObject<HTMLDivElement>}
             role="menu"
             aria-label="项目菜单"
-            className="absolute left-0 top-[calc(100%+14px)] w-[296px] max-w-[calc(100vw-36px)] p-3"
+            className="w-[296px] max-w-[calc(100vw-120px)] p-3"
+            style={projectMenuStyle}
           >
             <button
               type="button"
               role="menuitem"
-              className={`${MENU_ITEM_CLASS} min-h-[54px] justify-between`}
+              className={`${MENU_ITEM_CLASS} min-h-[38px] justify-between`}
               onClick={() => {
                 projectMenuLayer.closeLayer();
                 navigate(WORKSPACE_ROUTE);
@@ -290,14 +291,14 @@ export const FlowTopToolbar: React.FC<{
 
             <div className={MENU_DIVIDER_CLASS} />
 
-            <button type="button" role="menuitem" className={`${MENU_ITEM_CLASS} min-h-[54px]`} onClick={focusTitleInput}>
+            <button type="button" role="menuitem" className={`${MENU_ITEM_CLASS} min-h-[38px]`} onClick={focusTitleInput}>
               <span className={MENU_ITEM_PRIMARY_CLASS}>重命名项目</span>
             </button>
 
             <button
               type="button"
               role="menuitem"
-              className={`${MENU_ITEM_CLASS} min-h-[54px]`}
+              className={`${MENU_ITEM_CLASS} min-h-[38px]`}
               onClick={() => void handleCreateProject()}
               disabled={projectMenuBusy === "create"}
             >
@@ -312,7 +313,7 @@ export const FlowTopToolbar: React.FC<{
             <button
               type="button"
               role="menuitem"
-              className={`${MENU_ITEM_CLASS} min-h-[54px] text-red-200 hover:bg-red-500/15`}
+              className={`${MENU_ITEM_CLASS} min-h-[38px] text-red-200 hover:bg-red-500/15`}
               onClick={() => void handleDeleteProject()}
               disabled={!projectId || projectMenuBusy === "delete"}
             >
@@ -515,6 +516,13 @@ const projectMenuLabelWithIconStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
   gap: 10,
+};
+
+const projectMenuStyle: React.CSSProperties = {
+  position: "fixed",
+  left: 96,
+  top: 118,
+  zIndex: 1800,
 };
 
 const saveStatusStyle = (status?: string): React.CSSProperties => ({

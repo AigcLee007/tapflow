@@ -33,6 +33,10 @@ import { type FlyoutPosition } from '../utils/flyoutLayout';
 import {
   MENU_BETA_PILL_STYLE,
   MENU_ITEM_DESC_STYLE,
+  MENU_ITEM_GAP,
+  MENU_ITEM_HEIGHT,
+  MENU_ITEM_LABEL_SIZE,
+  MENU_ITEM_PADDING,
   MENU_ITEM_LABEL_STYLE,
   MENU_SECTION_LABEL_STYLE,
   buildMenuItemIconStyle,
@@ -594,17 +598,18 @@ const userDividerStyle: React.CSSProperties = {
 
 const userMenuItemStyle = (danger?: boolean): React.CSSProperties => ({
   width: '100%',
-  minHeight: 38,
+  minHeight: MENU_ITEM_HEIGHT,
   border: 'none',
   background: 'transparent',
   color: danger ? '#fecaca' : '#f8fafc',
   display: 'flex',
   alignItems: 'center',
-  gap: 10,
-  fontSize: 13,
-  fontWeight: 760,
+  gap: MENU_ITEM_GAP,
+  fontSize: MENU_ITEM_LABEL_SIZE,
+  fontWeight: 700,
+  lineHeight: 1.1,
   cursor: 'pointer',
-  padding: '6px 2px',
+  padding: MENU_ITEM_PADDING,
   textAlign: 'left',
 });
 

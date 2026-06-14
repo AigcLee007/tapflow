@@ -43,7 +43,7 @@ describe("MenuSelect", () => {
 
     const trigger = screen.getByRole("button", { name: "服务商 全部服务商" });
     expect(trigger.className).toContain("w-full");
-    expect(trigger.className).toContain("h-10");
+    expect(trigger.className).toContain("h-[38px]");
     expect(trigger).toHaveProperty("disabled", true);
   });
 });

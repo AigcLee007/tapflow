@@ -81,6 +81,7 @@ import type { MultiAngleId } from './ImageMultiAngleOverlay';
 import { ImageMoreMenu, type ImageMoreMenuAction } from './ImageMoreMenu';
 import type { OutpaintDirection } from './ImageOutpaintOverlay';
 import type { ImageSplitPiece } from './ImageSplitOverlay';
+import { IMAGE_MENU_ITEM_MIN_HEIGHT, IMAGE_MENU_SURFACE_Z_INDEX } from './imageMenuStyles';
 import { PromptLexicalEditor, type PromptLexicalEditorHandle, type PromptReference } from './PromptLexicalEditor';
 import {
   applySlashCommandToPrompt,
@@ -2098,25 +2099,25 @@ const imageMenuSurface: React.CSSProperties = {
   maxHeight: 590,
   overflowY: 'auto',
   padding: 10,
-  borderRadius: 22,
-  background: 'rgba(38,38,38,0.98)',
-  border: '1px solid rgba(255,255,255,0.11)',
-  boxShadow: '0 22px 56px rgba(0,0,0,0.52)',
-  backdropFilter: 'blur(22px)',
-  zIndex: 1400,
+  borderRadius: 16,
+  background: 'linear-gradient(155deg, rgba(28,28,29,0.985), rgba(23,25,28,0.985))',
+  border: '1px solid rgba(255,255,255,0.12)',
+  boxShadow: '0 18px 48px rgba(0,0,0,0.52)',
+  backdropFilter: 'blur(18px)',
+  zIndex: IMAGE_MENU_SURFACE_Z_INDEX,
 };
 
 const imageMenuItem = (active: boolean, hovered = false): React.CSSProperties => ({
   width: '100%',
-  minHeight: 72,
+  minHeight: IMAGE_MENU_ITEM_MIN_HEIGHT,
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'space-between',
-  gap: 10,
-  padding: '12px 14px',
+  gap: 7,
+  padding: '5px 6px',
   border: 'none',
-  borderRadius: 15,
-  background: active || hovered ? 'rgba(255,255,255,0.10)' : 'transparent',
+  borderRadius: 10,
+  background: active || hovered ? 'rgba(255,255,255,0.088)' : 'transparent',
   color: active ? '#f8fafc' : hovered ? '#e5e7eb' : '#a1a1aa',
   cursor: 'pointer',
   textAlign: 'left',
@@ -2136,13 +2137,13 @@ const menuQualityPill: React.CSSProperties = {
   alignItems: 'center',
   gap: 5,
   width: 'fit-content',
-  height: 28,
-  padding: '0 10px',
+  height: 22,
+  padding: '0 8px',
   borderRadius: 999,
   background: 'rgba(255,255,255,0.07)',
   border: '1px solid rgba(255,255,255,0.08)',
   color: '#a1a1aa',
-  fontSize: 14,
+  fontSize: 12,
   fontWeight: 650,
 };
 

@@ -33,8 +33,8 @@ export function MenuSelect({
   const current = options.find((option) => option.value === value) ?? options[0];
   const triggerClassName =
     size === "compact"
-      ? "inline-flex h-10 items-center justify-between gap-3 rounded border border-white/10 bg-black/25 px-3 text-sm text-white outline-none transition focus:border-sky-300/50 disabled:cursor-not-allowed disabled:opacity-50"
-      : "inline-flex h-16 items-center gap-3 rounded-[26px] border border-white/10 bg-[#17171b] px-7 text-[15px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50";
+      ? "inline-flex h-[38px] items-center justify-between gap-[7px] rounded-[10px] border border-white/10 bg-black/25 px-2 text-xs font-bold text-white outline-none transition focus:border-sky-300/50 disabled:cursor-not-allowed disabled:opacity-50"
+      : "inline-flex h-[38px] items-center justify-between gap-[7px] rounded-[10px] border border-white/10 bg-[#17171b] px-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-50";
 
   return (
     <div className={fullWidth ? "relative w-full" : "relative"}>
@@ -63,7 +63,7 @@ export function MenuSelect({
           {options.map((option) => (
             <button
               key={option.value}
-              className={`${MENU_ITEM_CLASS} ${size === "compact" ? "h-10 px-3" : "h-12"}`.trim()}
+              className={`${MENU_ITEM_CLASS} h-[38px]`.trim()}
               onClick={() => {
                 onChange(option.value);
                 layer.closeLayer();

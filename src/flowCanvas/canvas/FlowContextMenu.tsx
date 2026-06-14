@@ -22,7 +22,14 @@ import type { FlowNodeKind } from '../types';
 import {
   MENU_BETA_PILL_STYLE,
   MENU_ITEM_DESC_STYLE,
+  MENU_ITEM_GAP,
+  MENU_ITEM_HEIGHT,
+  MENU_ITEM_ICON_RADIUS,
+  MENU_ITEM_ICON_SIZE,
   MENU_ITEM_LABEL_STYLE,
+  MENU_ITEM_LABEL_SIZE,
+  MENU_ITEM_PADDING,
+  MENU_ITEM_RADIUS,
   MENU_SECTION_LABEL_STYLE,
   buildMenuItemIconStyle,
   buildMenuItemStyle,
@@ -32,17 +39,19 @@ import {
 const menuItemStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  gap: 10,
+  gap: MENU_ITEM_GAP,
   width: '100%',
-  padding: '9px 12px',
+  minHeight: MENU_ITEM_HEIGHT,
+  padding: MENU_ITEM_PADDING,
   background: 'transparent',
   border: 'none',
   color: '#e2e8f0',
-  fontSize: 13,
-  fontWeight: 650,
+  fontSize: MENU_ITEM_LABEL_SIZE,
+  fontWeight: 700,
+  lineHeight: 1.1,
   cursor: 'pointer',
   textAlign: 'left',
-  borderRadius: 10,
+  borderRadius: MENU_ITEM_RADIUS,
   transition: 'background 0.12s ease',
 };
 
@@ -232,9 +241,9 @@ const menuStyle: React.CSSProperties = {
 };
 
 const iconBoxStyle: React.CSSProperties = {
-  width: 24,
-  height: 24,
-  borderRadius: 8,
+  width: MENU_ITEM_ICON_SIZE,
+  height: MENU_ITEM_ICON_SIZE,
+  borderRadius: MENU_ITEM_ICON_RADIUS,
   display: 'grid',
   placeItems: 'center',
   background: 'rgba(255,255,255,0.055)',

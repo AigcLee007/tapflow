@@ -1,0 +1,2 @@
+export const IMAGE_MENU_SURFACE_Z_INDEX = 2200;
+export const IMAGE_MENU_ITEM_MIN_HEIGHT = 38;

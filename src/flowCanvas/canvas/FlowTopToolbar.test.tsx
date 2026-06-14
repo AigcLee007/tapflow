@@ -82,11 +82,15 @@ describe("FlowTopToolbar", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "打开项目菜单" }));
 
-    expect(screen.getByRole("menu", { name: "项目菜单" })).toBeTruthy();
+    const menu = screen.getByRole("menu", { name: "项目菜单" });
+    expect(menu).toBeTruthy();
+    expect(menu.style.position).toBe("fixed");
+    expect(menu.style.left).toBe("96px");
     expect(screen.getByRole("menuitem", { name: "返回工作空间" })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "重命名项目" })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "新建项目" })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "删除项目" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "重命名项目" }).className).toContain("min-h-[38px]");
 
     fireEvent.pointerDown(document.body);
 

@@ -78,6 +78,7 @@ describe("WorkspaceShell", () => {
     fireEvent.click(screen.getByRole("button", { name: /打开账户菜单/ }));
 
     expect(screen.getAllByText("test@example.com").length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button").some((button) => button.className.includes("h-[38px]"))).toBe(true);
     expect(screen.getByRole("button", { name: "账户管理" })).toBeTruthy();
     expect(screen.getByRole("button", { name: /退出登录/ })).toBeTruthy();
   });

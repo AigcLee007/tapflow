@@ -52,7 +52,7 @@ export const ImageMoreMenu: React.FC<ImageMoreMenuProps> = ({ menuRef, onSelect 
   return (
     <MenuSurface
       ref={menuRef as React.RefObject<HTMLDivElement>}
-      className="nodrag nopan nowheel absolute left-1/2 top-[calc(100%+14px)] z-[260] w-[338px] -translate-x-1/2 p-3"
+      className="nodrag nopan nowheel absolute left-1/2 top-[calc(100%+14px)] z-[2200] w-[300px] -translate-x-1/2 p-2"
       onClick={(event) => event.stopPropagation()}
     >
       <div
@@ -74,11 +74,11 @@ export const ImageMoreMenu: React.FC<ImageMoreMenuProps> = ({ menuRef, onSelect 
             type="button"
             disabled={row.disabled}
             onClick={() => onSelect(row.id)}
-            className={`${MENU_ITEM_CLASS} min-h-[54px] items-start gap-3 px-3 py-3 ${
+            className={`${MENU_ITEM_CLASS} min-h-[38px] ${
               row.disabled ? 'cursor-not-allowed opacity-50' : ''
             }`}
           >
-            <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] bg-white/[0.08] text-white/90">
+            <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[9px] bg-white/[0.08] text-white/90">
               {row.icon}
             </span>
             <span className="min-w-0 flex-1">
@@ -91,9 +91,9 @@ export const ImageMoreMenu: React.FC<ImageMoreMenuProps> = ({ menuRef, onSelect 
 
         <div className={MENU_DIVIDER_CLASS} />
 
-        <div className="flex items-center justify-between gap-3 px-3 py-3 text-white">
-          <div className="flex min-w-0 items-center gap-3">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] bg-white/[0.08] text-white/90">
+        <div className="flex min-h-[38px] items-center justify-between gap-[7px] rounded-[10px] px-1.5 text-white">
+          <div className="flex min-w-0 items-center gap-[7px]">
+            <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[9px] bg-white/[0.08] text-white/90">
               <Grid3X3 size={20} />
             </span>
             <span>
@@ -107,7 +107,7 @@ export const ImageMoreMenu: React.FC<ImageMoreMenuProps> = ({ menuRef, onSelect 
                 key={size}
                 type="button"
                 onClick={() => onSelect('split', { gridSize: size })}
-                className="h-9 min-w-9 rounded-[14px] border border-white/10 bg-white/[0.04] px-2 text-[13px] font-semibold text-white transition hover:bg-white/[0.09]"
+                className="h-[30px] min-w-[30px] rounded-[9px] border border-white/10 bg-white/[0.04] px-2 text-xs font-bold text-white transition hover:bg-white/[0.09]"
               >
                 {size}x{size}
               </button>
@@ -120,9 +120,9 @@ export const ImageMoreMenu: React.FC<ImageMoreMenuProps> = ({ menuRef, onSelect 
         <button
           type="button"
           disabled
-          className={`${MENU_ITEM_CLASS} min-h-[54px] items-start gap-3 px-3 py-3 cursor-not-allowed opacity-50`}
+          className={`${MENU_ITEM_CLASS} min-h-[38px] cursor-not-allowed opacity-50`}
         >
-          <span className="relative mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] bg-white/[0.08] text-white/90">
+          <span className="relative flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[9px] bg-white/[0.08] text-white/90">
             <BadgeCheck size={20} />
             <span
               style={{

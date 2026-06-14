@@ -186,6 +186,35 @@ As of 2026-06-13:
   - `rg -n '<select' src`
   - `npm run build`
 
+## 2026-06-14 - Canvas Menu Density and Layering Follow-up
+
+- Fixed the canvas logo project menu placement after staging screenshots showed it could open under the left floating dock and appear clipped.
+- Moved the canvas project menu to a fixed, dock-safe position so it opens to the right of the left rail instead of behind it.
+- Re-aligned shared menu typography, row height, radius, and spacing to the left add-node menu reference:
+  - 38px menu row height
+  - 12px primary labels
+  - 9px secondary labels
+  - compact 7px item gaps and 10px row radius
+- Raised image model/settings/more menus above the floating image toolbar so menus no longer render behind the toolbar.
+- Added focused style regression coverage for the project menu safe placement and image-menu z-index/density tokens.
+- Validation:
+  - `npm test -- src/flowCanvas/canvas/FlowTopToolbar.test.tsx src/flowCanvas/nodes/imageMenuStyles.test.ts src/components/menu/MenuSelect.test.tsx`
+  - `rg -n "min-h-\\[54px\\]|h-16|text-\\[15px\\]|rounded-\\[26px\\]|z-\\[260\\]" src/components/menu src/flowCanvas/canvas src/flowCanvas/nodes`
+  - `npm run build`
+
+## 2026-06-14 - Menu UI Rules Added to Agent Instructions
+
+- Added a project-wide menu/dropdown UI rule section to `AGENTS.md`.
+- Documented the shared menu token entry points and the TapNow-style density baseline:
+  - 38px menu rows
+  - 12px primary labels
+  - 9px secondary labels
+  - 7px row gaps
+  - 30px icon boxes
+- Documented rules to avoid one-off native selects, oversized menu rows, and custom menu typography outside shared tokens.
+- Validation:
+  - `rg -n "Menu and Dropdown UI Rules|menu row height: 38px|primary label font size: 12px|Do not use native <select>" AGENTS.md`
+
 ## Recent Important Commits
 
 - pending: fix canvas asset preview display regression

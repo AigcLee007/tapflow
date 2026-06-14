@@ -240,11 +240,11 @@ function MenuItem({
 }) {
   return (
     <button
-      className={`${MENU_ITEM_CLASS} h-12 ${danger ? "text-red-100 hover:bg-red-500/15" : ""}`}
+      className={`${MENU_ITEM_CLASS} h-[38px] ${danger ? "text-red-100 hover:bg-red-500/15" : ""}`}
       onClick={onClick}
       type="button"
     >
-      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-[14px] bg-white/[0.08]">
+      <span className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-[9px] bg-white/[0.08]">
         <Icon size={17} />
       </span>
       <span className="min-w-0">

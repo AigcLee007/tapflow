@@ -301,6 +301,50 @@ If using revision numbers, return `409` on stale writes and show a clear conflic
 
 ---
 
+## Menu and Dropdown UI Rules
+
+All app menus, dropdowns, select popovers, context menus, canvas flyouts, and compact command menus must follow the same TapNow-style menu density baseline unless the user explicitly approves a new design system.
+
+Use these shared files first:
+
+```txt
+src/components/menu/menuStyles.ts
+src/components/menu/MenuSurface.tsx
+src/components/menu/MenuSelect.tsx
+src/components/menu/useDismissibleLayer.ts
+src/flowCanvas/canvas/menuTokens.ts
+```
+
+Required menu density tokens:
+
+```txt
+menu row height: 38px
+primary label font size: 12px
+primary label weight: bold/700
+primary label line-height: 1.1
+secondary label font size: 9px
+secondary label line-height: 1.25
+row gap: 7px
+row padding: 5px 6px or the shared MENU_ITEM_CLASS equivalent
+row radius: 10px
+icon box: 30px x 30px
+icon box radius: 9px
+surface radius: 16px
+surface shadow: compact dark menu shadow from the shared tokens
+```
+
+Implementation rules:
+
+- Do not create one-off menu row sizes such as `h-12`, `min-h-[54px]`, `72px`, `text-sm`, `text-[13px]`, or custom large padding for menu items.
+- Do not use native `<select>` controls in the product UI. Use `MenuSelect` or a shared `MenuSurface`-based component.
+- Do not build custom popover/menu surfaces with separate typography unless the new pattern is first promoted into the shared menu tokens.
+- Canvas add-node flyout is the visual baseline for menu density and spacing.
+- All menu layers must close on outside click, Escape where appropriate, and when another mutually exclusive menu opens. Prefer `useDismissibleLayer`.
+- Menus that appear over canvas nodes or floating toolbars must use a z-index high enough to render above node toolbars; image node menus use the shared image menu z-index token.
+- When modifying menu UI, add or update focused style regression tests for row height, font size token, z-index, or dismissal behavior.
+
+---
+
 ## Asset Rules
 
 Authoritative asset data lives in:
