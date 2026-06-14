@@ -477,6 +477,24 @@ function collectFirstOpenAiImageOutputs(
   return [];
 }
 
+function parseProgressPercent(records: Array<Record<string, unknown>>): number | null {
+  for (const record of records) {
+    const numeric = getNumber(record.progress);
+    if (numeric !== null) {
+      return Math.max(0, Math.min(100, numeric));
+    }
+
+    const text = getString(record.progress);
+    if (!text) continue;
+    const normalized = text.replace("%", "").trim();
+    const parsed = Number(normalized);
+    if (Number.isFinite(parsed)) {
+      return Math.max(0, Math.min(100, parsed));
+    }
+  }
+  return null;
+}
+
 function replaceTaskId(path: string, providerTaskId: string): string {
   const encoded = encodeURIComponent(providerTaskId);
   return path
@@ -895,6 +913,42 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
       };
     }
 
+    const outputFormat = normalizeOutputFormat(getString(requestConfig.outputFormat ?? requestConfig.output_format));
+    const resultCandidates = [
+      nestedData,
+      data,
+      body,
+    ].filter((candidate) => Object.keys(candidate).length > 0);
+    const outputs = collectFirstOpenAiImageOutputs(resultCandidates, outputFormat);
+
+    if (!taskStatus.normalized) {
+      if (outputs.length > 0) {
+        const usageRecord = resultCandidates
+          .map((candidate) => asRecord(candidate.usage))
+          .find((usage) => Object.keys(usage).length > 0) ?? {};
+
+        return {
+          outputs,
+          providerRequest,
+          providerResponse,
+          providerTaskId,
+          status: "succeeded",
+          usage: extractUsage(usageRecord),
+        };
+      }
+
+      const progress = parseProgressPercent(resultCandidates);
+      if (providerTaskId || progress !== null) {
+        return {
+          providerRequest,
+          providerResponse,
+          providerTaskId,
+          status: progress === null || progress <= 0 ? "pending" : "running",
+          usage: null,
+        };
+      }
+    }
+
     if (taskStatus.normalized !== "succeeded") {
       throw new AiGatewayError({
         code: "PROVIDER_INVALID_RESPONSE",
@@ -904,14 +958,6 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
         statusCode: 502,
       });
     }
-
-    const outputFormat = normalizeOutputFormat(getString(requestConfig.outputFormat ?? requestConfig.output_format));
-    const resultCandidates = [
-      nestedData,
-      data,
-      body,
-    ].filter((candidate) => Object.keys(candidate).length > 0);
-    const outputs = collectFirstOpenAiImageOutputs(resultCandidates, outputFormat);
 
     if (!outputs.length) {
       throw new AiGatewayError({

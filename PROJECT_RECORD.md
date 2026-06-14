@@ -102,7 +102,9 @@ As of 2026-06-13:
 - Follow-up fix: template-created provider connections now keep `adapter_kind` aligned to the provider adapter (`openai-compatible`) while `api_mode` remains the route execution mode (`async`). Canvas model-route options now keep official Nano Banana Pro route ordering so line one remains the 24-credit PixelleLabs route and line two official T3 remains the MouxiHub route.
 
 - Follow-up fix: OpenAI-compatible async polling now recognizes MouxiHub task states such as `SUBMITTED`, `QUEUED`, `PROCESSING`, `COMPLETED`, and top-level task detail responses. This keeps successful official T3 async tasks from failing early with `The provider poll response did not include a recognized task status`.
+- Follow-up fix: MouxiHub async polling now also infers task state when the provider omits `status`: parsed image outputs are treated as success, while task/progress-only responses remain pending/running instead of failing early.
 - Validation:
+  - `npm run test --workspace @aigc-flow/ai-gateway-core -- runtime.test.ts -t "status is missing"`
   - `npm run test --workspace @aigc-flow/ai-gateway-core -- runtime.test.ts -t "MouxiHub"`
   - `npm run test --workspace @aigc-flow/ai-gateway-core -- runtime.test.ts plugin-registry.test.ts`
   - `npm run build --workspace @aigc-flow/ai-gateway-core`

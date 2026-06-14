@@ -710,6 +710,121 @@ describe("openai-compatible text adapter", () => {
     await server.close();
   });
 
+  test("pollTask infers MouxiHub success from completed output when status is missing", async () => {
+    const server = await withHttpServer(async (request, response) => {
+      expect(request.url).toBe("/v1/images/tasks/task-mouxihub-no-status-success");
+
+      response.setHeader("content-type", "application/json");
+      response.end(
+        JSON.stringify({
+          code: "success",
+          data: {
+            finish_time: 1781439927,
+            progress: "100%",
+            task_id: "task-mouxihub-no-status-success",
+            data: {
+              data: [
+                {
+                  url: "https://cdn.example/no-status-generated.png",
+                },
+              ],
+              usage: {
+                completion_tokens: 9,
+                prompt_tokens: 7,
+                total_tokens: 16,
+              },
+            },
+          },
+          message: "",
+        }),
+      );
+    });
+
+    const adapter = new OpenAiCompatibleTextAdapter();
+    const result = await adapter.pollTask!(
+      {
+        apiKey: "sk-test-secret",
+        baseUrl: server.url,
+        modelKey: "gemini-3-pro-image-preview",
+        providerKey: "mouxihub-openai",
+        requestConfig: {
+          pollPath: "/v1/images/tasks/{task_id}",
+        },
+        routeId: "route-t3",
+        routeKey: "image.mouxihub.nano-banana-pro.t3",
+        timeoutMs: 5_000,
+      },
+      {
+        providerTaskId: "task-mouxihub-no-status-success",
+      },
+    );
+
+    expect(result).toMatchObject({
+      outputs: [
+        {
+          filename: "openai-image-1.png",
+          mimeType: "image/png",
+          url: "https://cdn.example/no-status-generated.png",
+        },
+      ],
+      providerTaskId: "task-mouxihub-no-status-success",
+      status: "succeeded",
+      usage: {
+        inputTokens: 7,
+        outputTokens: 9,
+        totalTokens: 16,
+      },
+    });
+
+    await server.close();
+  });
+
+  test("pollTask infers MouxiHub in-flight task when status is missing", async () => {
+    const server = await withHttpServer(async (request, response) => {
+      expect(request.url).toBe("/v1/images/tasks/task-mouxihub-no-status-running");
+
+      response.setHeader("content-type", "application/json");
+      response.end(
+        JSON.stringify({
+          code: "success",
+          data: {
+            platform: "sync-task",
+            progress: "35%",
+            start_time: 1781439927,
+            task_id: "task-mouxihub-no-status-running",
+          },
+          message: "",
+        }),
+      );
+    });
+
+    const adapter = new OpenAiCompatibleTextAdapter();
+    const result = await adapter.pollTask!(
+      {
+        apiKey: "sk-test-secret",
+        baseUrl: server.url,
+        modelKey: "gemini-3-pro-image-preview",
+        providerKey: "mouxihub-openai",
+        requestConfig: {
+          pollPath: "/v1/images/tasks/{task_id}",
+        },
+        routeId: "route-t3",
+        routeKey: "image.mouxihub.nano-banana-pro.t3",
+        timeoutMs: 5_000,
+      },
+      {
+        providerTaskId: "task-mouxihub-no-status-running",
+      },
+    );
+
+    expect(result).toMatchObject({
+      providerTaskId: "task-mouxihub-no-status-running",
+      status: "running",
+    });
+
+    await server.close();
+  });
+
   test("generateImage uses Responses API image_generation tool for gpt-5.5 line two", async () => {
     const server = await withHttpServer(async (request, response) => {
       expect(request.url).toBe("/responses");
