@@ -1,4 +1,4 @@
-import { getAssetVariantUrl } from '../../services/v2AssetsApi';
+﻿import { getAssetVariantUrl } from '../../services/v2AssetsApi';
 import { V2HttpError } from '../../services/v2HttpClient';
 import { listRuntimeRoutes, type V2RuntimeRouteItem } from '../../services/v2AiRoutesApi';
 import {
@@ -22,7 +22,7 @@ import type {
   FlowRuntimeAssetRef,
   FlowRuntimeNodeOutput,
 } from '../types';
-import { flushRemoteDraftBeforeRun } from './remoteDraftSaveBarrier';
+import { flushRemoteDraftBeforeRun, shouldFlushRemoteDraftBeforeRun } from './remoteDraftSaveBarrier';
 
 const RUNNER_ENABLED = String(import.meta.env.VITE_USE_V2_WORKFLOW_RUNNER ?? 'true').toLowerCase() !== 'false';
 
@@ -480,6 +480,8 @@ function buildGeneratedAssetNodePatch(
     progress: 100,
     source: 'generated',
     status: 'success',
+    workflowLaunchStatus: 'asset_visible',
+    workflowLaunchUpdatedAt: Date.now(),
   };
 }
 
@@ -897,10 +899,13 @@ export async function runBackendWorkflow(options?: {
       }));
     }
 
-    if (isTargetNodeRun) {
+    const shouldFlushDraft = shouldFlushRemoteDraftBeforeRun({ isTargetNodeRun });
+    if (isTargetNodeRun && shouldFlushDraft) {
       updateTargetNodeLaunchState(options.targetNodeId as string, 'saving_draft');
     }
-    await flushRemoteDraftBeforeRun();
+    if (shouldFlushDraft) {
+      await flushRemoteDraftBeforeRun();
+    }
 
     if (isTargetNodeRun) {
       updateTargetNodeLaunchState(options.targetNodeId as string, 'creating_run');

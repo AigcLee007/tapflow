@@ -3,11 +3,13 @@ import type { QueueEvents, Worker } from "bullmq";
 import { QUEUE_NAMES, type QueueName } from "@aigc-flow/redis";
 
 import type { WorkerLogger } from "../logger.js";
+import { processAssetImageVariantJob } from "../processors/asset-image-variant.processor.js";
 import { processAssetIngestJob } from "../processors/asset-ingest.processor.js";
 import { processBillingSettleJob } from "../processors/billing-settle.processor.js";
 import { processNodeExecuteJob } from "../processors/node-execute.processor.js";
 import { processProviderPollJob } from "../processors/provider-poll.processor.js";
 import { processWorkflowStartJob } from "../processors/workflow-start.processor.js";
+import type { ImageVariantProcessor } from "../workflow-runtime/image-variant-processor.js";
 import type { WorkflowNodeExecutionService } from "../workflow-runtime/service.js";
 
 type Closable = {
@@ -26,13 +28,20 @@ type QueueFactoryLike = {
 export const WORKER_QUEUE_NAMES = [
   QUEUE_NAMES.workflowStart,
   QUEUE_NAMES.nodeExecute,
+  QUEUE_NAMES.nodeExecuteDefault,
+  QUEUE_NAMES.nodeExecuteImage,
+  QUEUE_NAMES.nodeExecuteVideo,
   QUEUE_NAMES.providerPoll,
+  QUEUE_NAMES.assetImageVariant,
   QUEUE_NAMES.assetIngest,
   QUEUE_NAMES.billingSettle,
 ] as const;
 
 export type WorkerQueueConcurrency = {
   default: number;
+  nodeExecuteDefault: number;
+  nodeExecuteImage: number;
+  nodeExecuteVideo: number;
   nodeExecute: number;
   providerPoll: number;
 };
@@ -40,6 +49,15 @@ export type WorkerQueueConcurrency = {
 function resolveQueueConcurrency(queueName: QueueName, concurrency: WorkerQueueConcurrency): number {
   if (queueName === QUEUE_NAMES.nodeExecute) {
     return concurrency.nodeExecute;
+  }
+  if (queueName === QUEUE_NAMES.nodeExecuteDefault) {
+    return concurrency.nodeExecuteDefault;
+  }
+  if (queueName === QUEUE_NAMES.nodeExecuteImage) {
+    return concurrency.nodeExecuteImage;
+  }
+  if (queueName === QUEUE_NAMES.nodeExecuteVideo) {
+    return concurrency.nodeExecuteVideo;
   }
   if (queueName === QUEUE_NAMES.providerPoll) {
     return concurrency.providerPoll;
@@ -80,6 +98,7 @@ function withWorkerErrorLogging(
 
 export function registerWorkerQueues(options: {
   concurrency: WorkerQueueConcurrency;
+  imageVariantProcessor?: ImageVariantProcessor;
   logger: WorkerLogger;
   queueFactory: QueueFactoryLike;
   workflowNodeExecutionService?: WorkflowNodeExecutionService;
@@ -95,6 +114,9 @@ export function registerWorkerQueues(options: {
       queueName === QUEUE_NAMES.workflowStart
         ? (job: unknown) => processWorkflowStartJob(job as never, options.logger)
         : queueName === QUEUE_NAMES.nodeExecute
+          || queueName === QUEUE_NAMES.nodeExecuteDefault
+          || queueName === QUEUE_NAMES.nodeExecuteImage
+          || queueName === QUEUE_NAMES.nodeExecuteVideo
           ? (job: unknown) =>
               processNodeExecuteJob(job as never, options.logger, {
                 executionService: options.workflowNodeExecutionService,
@@ -104,6 +126,15 @@ export function registerWorkerQueues(options: {
               processProviderPollJob(job as never, options.logger, {
                 executionService: options.workflowNodeExecutionService,
               })
+        : queueName === QUEUE_NAMES.assetImageVariant
+          ? (job: unknown) => {
+              if (!options.imageVariantProcessor) {
+                throw new Error("imageVariantProcessor is required for asset image variant jobs");
+              }
+              return processAssetImageVariantJob(job as never, options.logger, {
+                imageVariantProcessor: options.imageVariantProcessor,
+              });
+            }
         : queueName === QUEUE_NAMES.assetIngest
           ? (job: unknown) => processAssetIngestJob(job as never, options.logger)
           : (job: unknown) => processBillingSettleJob(job as never, options.logger);

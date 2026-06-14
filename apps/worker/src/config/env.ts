@@ -12,8 +12,12 @@ export type WorkerEnv = {
   s3ForcePathStyle: boolean;
   s3Region: string;
   s3SecretAccessKey: string;
+  defaultNodeConcurrency: number;
+  imageNodeConcurrency: number;
+  imageVariantsMode: "async" | "sync";
   providerPollConcurrency: number;
   nodeExecuteConcurrency: number;
+  videoNodeConcurrency: number;
   workerConcurrency: number;
   workerName: string;
 };
@@ -29,6 +33,10 @@ const DEFAULT_NODE_EXECUTE_CONCURRENCY = 16;
 const DEFAULT_PROVIDER_POLL_CONCURRENCY = 16;
 const DEFAULT_WORKER_CONCURRENCY = 16;
 const DEFAULT_WORKER_NAME = "aigc-flow-v2-worker";
+const DEFAULT_DEFAULT_NODE_CONCURRENCY = 4;
+const DEFAULT_IMAGE_NODE_CONCURRENCY = 4;
+const DEFAULT_IMAGE_VARIANTS_MODE = "sync";
+const DEFAULT_VIDEO_NODE_CONCURRENCY = 1;
 
 function parsePositiveIntegerEnv(name: string, value: string | undefined, fallback: number): number {
   const raw = value?.trim() ?? "";
@@ -64,6 +72,10 @@ export function getWorkerEnv(): WorkerEnv {
     process.env.S3_SECRET_ACCESS_KEY?.trim() ||
     (isProduction ? "" : DEV_S3_SECRET_ACCESS_KEY);
   const s3ForcePathStyleRaw = process.env.S3_FORCE_PATH_STYLE?.trim();
+  const imageVariantsModeRaw = process.env.WORKER_IMAGE_VARIANTS_MODE?.trim().toLowerCase() || DEFAULT_IMAGE_VARIANTS_MODE;
+  if (imageVariantsModeRaw !== "async" && imageVariantsModeRaw !== "sync") {
+    throw new Error("WORKER_IMAGE_VARIANTS_MODE must be either 'sync' or 'async' when provided");
+  }
   const workerConcurrency = parsePositiveIntegerEnv(
     "WORKER_CONCURRENCY",
     process.env.WORKER_CONCURRENCY,
@@ -78,6 +90,21 @@ export function getWorkerEnv(): WorkerEnv {
     "PROVIDER_POLL_CONCURRENCY",
     process.env.PROVIDER_POLL_CONCURRENCY,
     process.env.WORKER_CONCURRENCY ? workerConcurrency : DEFAULT_PROVIDER_POLL_CONCURRENCY,
+  );
+  const imageNodeConcurrency = parsePositiveIntegerEnv(
+    "WORKER_IMAGE_CONCURRENCY",
+    process.env.WORKER_IMAGE_CONCURRENCY,
+    DEFAULT_IMAGE_NODE_CONCURRENCY,
+  );
+  const videoNodeConcurrency = parsePositiveIntegerEnv(
+    "WORKER_VIDEO_CONCURRENCY",
+    process.env.WORKER_VIDEO_CONCURRENCY,
+    DEFAULT_VIDEO_NODE_CONCURRENCY,
+  );
+  const defaultNodeConcurrency = parsePositiveIntegerEnv(
+    "WORKER_DEFAULT_CONCURRENCY",
+    process.env.WORKER_DEFAULT_CONCURRENCY,
+    DEFAULT_DEFAULT_NODE_CONCURRENCY,
   );
 
   if (!credentialMasterKey) {
@@ -116,8 +143,12 @@ export function getWorkerEnv(): WorkerEnv {
       : s3ForcePathStyleRaw.toLowerCase() === "true",
     s3Region,
     s3SecretAccessKey,
+    defaultNodeConcurrency,
+    imageNodeConcurrency,
+    imageVariantsMode: imageVariantsModeRaw,
     providerPollConcurrency,
     nodeExecuteConcurrency,
+    videoNodeConcurrency,
     workerConcurrency,
     workerName: process.env.WORKER_NAME?.trim() || DEFAULT_WORKER_NAME,
   };

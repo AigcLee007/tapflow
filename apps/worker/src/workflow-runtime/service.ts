@@ -21,6 +21,7 @@ import type {
 import {
   QUEUE_NAMES,
   assertLightweightJobPayload,
+  resolveNodeExecuteQueueName,
   type NodeExecuteJobPayload,
   type ProviderPollJobPayload,
 } from "@aigc-flow/redis";
@@ -33,6 +34,7 @@ import type { ProcessorResult } from "../processors/shared.js";
 import {
   type AssetRef,
   type FetchLike,
+  type MediaVariantQueue,
   MediaAssetStore,
 } from "./media-asset-store.js";
 
@@ -91,6 +93,8 @@ type NodeExecuteQueueLike = {
   add: (name: string, data: NodeExecuteJobPayload) => Promise<unknown>;
 };
 
+type NodeExecuteQueueMapLike = Partial<Record<"default" | "image" | "legacy" | "video", NodeExecuteQueueLike>>;
+
 type ProviderPollQueueLike = {
   add: (
     name: string,
@@ -128,6 +132,13 @@ type AssetStorageLookup = {
   mimeType: string;
   objectKey: string;
   width?: number | null;
+};
+
+type SerializableAssetRef = Omit<AssetRef, "timing">;
+
+type PersistedMediaOutput = {
+  assetTimings: Array<Record<string, number | string>>;
+  outputJson: Record<string, unknown>;
 };
 
 type NodeExecutionOutcome =
@@ -602,6 +613,7 @@ export class WorkflowNodeExecutionService {
   readonly assetStore: MediaAssetStore;
   readonly billingService: BillingService;
   readonly mediaGenerationRuntime: MediaGenerationRuntimeLike;
+  readonly nodeExecuteQueues: NodeExecuteQueueMapLike;
   readonly nodeExecuteQueue: NodeExecuteQueueLike;
   readonly pollDelayMs: number;
   readonly pool: Pool;
@@ -612,8 +624,11 @@ export class WorkflowNodeExecutionService {
     assetBucket: string;
     billingService?: BillingService;
     fetchFn?: FetchLike;
+    imageVariantQueue?: MediaVariantQueue | null;
+    imageVariantsMode?: "async" | "sync";
     mediaGenerationRuntime: MediaGenerationRuntimeLike;
     nodeExecuteQueue: NodeExecuteQueueLike;
+    nodeExecuteQueues?: NodeExecuteQueueMapLike;
     pollDelayMs?: number;
     pool?: Pool;
     providerPollQueue: ProviderPollQueueLike;
@@ -624,12 +639,18 @@ export class WorkflowNodeExecutionService {
       assetBucket: options.assetBucket,
       fetchFn: options.fetchFn,
       storageProvider: options.storageProvider,
+      variantMode: options.imageVariantsMode,
+      variantQueue: options.imageVariantQueue,
     });
     this.billingService = options.billingService ?? new BillingService({
       pool: options.pool,
     });
     this.mediaGenerationRuntime = options.mediaGenerationRuntime;
     this.nodeExecuteQueue = options.nodeExecuteQueue;
+    this.nodeExecuteQueues = {
+      legacy: options.nodeExecuteQueue,
+      ...options.nodeExecuteQueues,
+    };
     this.pollDelayMs = options.pollDelayMs ?? 250;
     this.pool = options.pool ?? createPgPool();
     this.providerPollQueue = options.providerPollQueue;
@@ -698,7 +719,8 @@ export class WorkflowNodeExecutionService {
   private async flushEnqueues(execution: RuntimeExecutionResult): Promise<void> {
     for (const payload of execution.nodeEnqueuePayloads) {
       assertLightweightJobPayload(payload);
-      await this.nodeExecuteQueue.add(QUEUE_NAMES.nodeExecute, payload);
+      const queueName = resolveNodeExecuteQueueName(payload.nodeType);
+      await this.resolveNodeExecuteQueue(queueName).add(queueName, payload);
     }
 
     for (const instruction of execution.pollEnqueuePayloads) {
@@ -707,6 +729,19 @@ export class WorkflowNodeExecutionService {
         delay: instruction.delayMs,
       });
     }
+  }
+
+  private resolveNodeExecuteQueue(queueName: string): NodeExecuteQueueLike {
+    if (queueName === QUEUE_NAMES.nodeExecuteImage) {
+      return this.nodeExecuteQueues.image ?? this.nodeExecuteQueue;
+    }
+    if (queueName === QUEUE_NAMES.nodeExecuteVideo) {
+      return this.nodeExecuteQueues.video ?? this.nodeExecuteQueue;
+    }
+    if (queueName === QUEUE_NAMES.nodeExecuteDefault) {
+      return this.nodeExecuteQueues.default ?? this.nodeExecuteQueue;
+    }
+    return this.nodeExecuteQueues.legacy ?? this.nodeExecuteQueue;
   }
 
   private async flushAuditLogs(auditLogs: AuditLogInput[]): Promise<void> {
@@ -1569,6 +1604,7 @@ export class WorkflowNodeExecutionService {
     logger: WorkerLogger,
   ): Promise<NodeExecutionOutcome> {
     const routeKey = resolveImageRequestRouteKey(node.config);
+    const providerFinishedAt = Date.now();
 
     if (result.status === "waiting_provider") {
       if (!result.providerTaskId) {
@@ -1605,7 +1641,8 @@ export class WorkflowNodeExecutionService {
       routeId: result.routeId ?? null,
       routeKey,
     });
-    const persistedOutputJson = await this.persistMediaOutputs(
+    const mediaPersistStartedAt = Date.now();
+    const persistedMedia = await this.persistMediaOutputs(
       client,
       kind,
       workflowRun,
@@ -1613,17 +1650,21 @@ export class WorkflowNodeExecutionService {
       nodeRun,
       this.normalizeMediaOutputs(result.outputs ?? []),
     );
+    const mediaPersistTotalMs = Math.max(0, Date.now() - mediaPersistStartedAt);
     const outputJson: Record<string, unknown> = {
-      ...persistedOutputJson,
+      ...persistedMedia.outputJson,
       aiRuntime: runtimeDiagnostic,
     };
     logger.info(
       {
         asset_persisted_at: new Date().toISOString(),
+        assetTimings: persistedMedia.assetTimings,
         modelId: runtimeDiagnostic.modelId,
         modelKey: runtimeDiagnostic.modelKey,
+        media_persist_total_ms: mediaPersistTotalMs,
         nodeRunId: nodeRun.id,
         outputCount: Array.isArray(outputJson.assets) ? outputJson.assets.length : 0,
+        provider_finished_to_asset_persisted_ms: Math.max(0, Date.now() - providerFinishedAt),
         providerId: runtimeDiagnostic.providerId,
         providerKey: runtimeDiagnostic.providerKey,
         routeId: runtimeDiagnostic.routeId,
@@ -1757,7 +1798,7 @@ export class WorkflowNodeExecutionService {
     nodeRun: NodeRunRecord,
     result: ProviderTaskResult,
   ): Promise<Record<string, unknown>> {
-    return this.persistMediaOutputs(
+    const persistedMedia = await this.persistMediaOutputs(
       client,
       node.type === "video.generate" ? "video" : "image",
       workflowRun,
@@ -1770,6 +1811,7 @@ export class WorkflowNodeExecutionService {
         result.mimeType ?? null,
       ),
     );
+    return persistedMedia.outputJson;
   }
 
   private async persistMediaOutputs(
@@ -1779,7 +1821,7 @@ export class WorkflowNodeExecutionService {
     runtimeFlow: RuntimeFlowRecord,
     nodeRun: NodeRunRecord,
     outputs: MediaOutput[],
-  ): Promise<Record<string, unknown>> {
+  ): Promise<PersistedMediaOutput> {
     const assets = await this.assetStore.persistOutputs(client, {
       kind,
       nodeRunId: nodeRun.id,
@@ -1788,15 +1830,28 @@ export class WorkflowNodeExecutionService {
       tenantId: workflowRun.tenant_id,
       workflowRunId: workflowRun.id,
     });
+    const assetTimings = assets
+      .filter((asset) => asset.timing)
+      .map((asset) => ({
+        assetId: asset.assetId,
+        ...asset.timing,
+      }));
+    const serializableAssets: SerializableAssetRef[] = assets.map((asset) => {
+      const { timing: _timing, ...serializable } = asset;
+      return serializable;
+    });
 
     return {
-      assets,
-      flowId: runtimeFlow.flow_id,
-      nodeId: nodeRun.node_id,
-      nodeRunId: nodeRun.id,
-      projectId: runtimeFlow.project_id,
-      targetNodeId: nodeRun.node_id,
-      workflowRunId: workflowRun.id,
+      assetTimings,
+      outputJson: {
+        assets: serializableAssets,
+        flowId: runtimeFlow.flow_id,
+        nodeId: nodeRun.node_id,
+        nodeRunId: nodeRun.id,
+        projectId: runtimeFlow.project_id,
+        targetNodeId: nodeRun.node_id,
+        workflowRunId: workflowRun.id,
+      },
     };
   }
 
@@ -2407,6 +2462,7 @@ export class WorkflowNodeExecutionService {
 
         enqueuePayloads.push({
           nodeRunId: dependentRun.id,
+          nodeType: dependentNode.type,
           tenantId,
           traceId: traceId ?? undefined,
           workflowRunId,

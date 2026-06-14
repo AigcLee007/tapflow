@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, describe, expect, test } from "vitest";
 
 import { createPgPool, withTenantTransaction } from "@aigc-flow/db";
+import { QUEUE_NAMES } from "@aigc-flow/redis";
 
 import type { ApiEnv } from "../src/config/env.js";
 import { buildApp } from "../src/app.js";
@@ -74,6 +75,66 @@ function buildTestApp(pool: ReturnType<typeof createPgPool>) {
     }),
     fakeQueue,
   };
+}
+
+async function createDraftOnlyFlowWithSingleNode(
+  api: ReturnType<typeof buildTestApp>["api"],
+  accessToken: string,
+  input: {
+    nodeId: string;
+    nodeType: "image.generate" | "video.generate";
+    routeKey: string;
+  },
+) {
+  const project = await api.inject({
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+    },
+    method: "POST",
+    payload: {
+      name: `Workflow ${input.nodeType} Queue Project`,
+    },
+    url: "/api/v2/projects",
+  });
+  expect(project.statusCode).toBe(201);
+
+  const flow = await api.inject({
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+    },
+    method: "POST",
+    payload: {
+      title: `Workflow ${input.nodeType} Queue Flow`,
+    },
+    url: `/api/v2/projects/${project.json().id}/flows`,
+  });
+  expect(flow.statusCode).toBe(201);
+
+  const saveDraft = await api.inject({
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+    },
+    method: "PUT",
+    payload: {
+      graph: {
+        edges: [],
+        nodes: [
+          {
+            data: {
+              generationPrompt: "queue routing prompt",
+              routeKey: input.routeKey,
+            },
+            id: input.nodeId,
+            type: input.nodeType,
+          },
+        ],
+      },
+    },
+    url: `/api/v2/flows/${flow.json().id}/draft`,
+  });
+  expect(saveDraft.statusCode).toBe(200);
+
+  return flow.json();
 }
 
 async function registerOwner(
@@ -435,6 +496,7 @@ async function createDraftOnlyFlowWithImageEditTarget(
 async function seedRouteAndPricing(
   pool: ReturnType<typeof createPgPool>,
   input: {
+    modality?: "image" | "video";
     modelKey: string;
     providerKey: string;
     routeKey: string;
@@ -466,12 +528,12 @@ async function seedRouteAndPricing(
       const model = await client.query<{ id: string }>(
         `
           INSERT INTO ai_models (provider_id, model_key, display_name, modality, capabilities, status, updated_at)
-          VALUES ($1::uuid, $2, $3, 'image', '{}'::jsonb, 'active', now())
+          VALUES ($1::uuid, $2, $3, $4, '{}'::jsonb, 'active', now())
           ON CONFLICT (provider_id, model_key) DO UPDATE
           SET display_name = EXCLUDED.display_name, modality = EXCLUDED.modality, status = 'active', updated_at = now()
           RETURNING id::text AS id
         `,
-        [providerId, input.modelKey, `${input.modelKey} model`],
+        [providerId, input.modelKey, `${input.modelKey} model`, input.modality ?? "image"],
       );
       const modelId = model.rows[0]?.id;
       if (!modelId) {
@@ -481,24 +543,29 @@ async function seedRouteAndPricing(
       await client.query(
         `
           INSERT INTO ai_routes (tenant_id, provider_id, model_id, route_key, modality, status, request_config, pricing, rate_limit, updated_at)
-          VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 'image', 'active', '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, now())
+          VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, 'active', '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, now())
           ON CONFLICT (tenant_id, route_key)
           WHERE tenant_id IS NOT NULL
           DO UPDATE
           SET provider_id = EXCLUDED.provider_id, model_id = EXCLUDED.model_id, modality = EXCLUDED.modality, status = 'active', updated_at = now()
         `,
-        [input.tenantId, providerId, modelId, input.routeKey],
+        [input.tenantId, providerId, modelId, input.routeKey, input.modality ?? "image"],
       );
 
       if (input.withExactPricing) {
         await client.query(
           `
             INSERT INTO model_pricing (provider, model, route, unit, unit_credits, min_charge_credits, metadata, active)
-            VALUES ($1, $2, $3, 'image_generation', 17, 17, '{"source":"workflow-runs.test"}'::jsonb, true)
+            VALUES ($1, $2, $3, $4, 17, 17, '{"source":"workflow-runs.test"}'::jsonb, true)
             ON CONFLICT (provider, model, route, unit) DO UPDATE
             SET min_charge_credits = EXCLUDED.min_charge_credits, unit_credits = EXCLUDED.unit_credits, active = true
           `,
-          [input.providerKey, input.modelKey, input.routeKey],
+          [
+            input.providerKey,
+            input.modelKey,
+            input.routeKey,
+            input.modality === "video" ? "video_generation" : "image_generation",
+          ],
         );
       }
 
@@ -898,9 +965,9 @@ describeWithDatabase("workflow runs api", () => {
         expect(responses.map((response) => response.statusCode)).toEqual([201, 201, 201]);
         expect(fakeQueue.jobs).toHaveLength(3);
         expect(fakeQueue.jobs.map((job) => job.name)).toEqual([
-          "node.execute",
-          "node.execute",
-          "node.execute",
+          QUEUE_NAMES.nodeExecuteImage,
+          QUEUE_NAMES.nodeExecuteImage,
+          QUEUE_NAMES.nodeExecuteImage,
         ]);
 
         const runIds = responses.map((response) => response.json().runId);
@@ -957,6 +1024,98 @@ describeWithDatabase("workflow runs api", () => {
         expect(runRows.currentVersionId).toBeNull();
         expect(runRows.flowVersionCount).toBe(1);
         expect(runRows.workflowRunVersionCount).toBe(1);
+
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("target_node image and video runs enqueue modality-specific execution queues", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({
+          connectionString: await createAppDatabaseUrl(),
+        });
+
+        const { api, fakeQueue } = buildTestApp(appPool);
+        const ownerEmail = "workflow-modality-queue@example.com";
+        const owner = await registerOwner(api, ownerEmail, "Workflow Modality Queue");
+        const ownerUserId = await lookupUserIdByEmail(appPool, ownerEmail);
+        await seedRouteAndPricing(appPool, {
+          modality: "image",
+          modelKey: "mock-image-queue",
+          providerKey: "mock-local-image-queue",
+          routeKey: "image.default",
+          tenantId: owner.currentTenant.id,
+          userId: ownerUserId,
+          withExactPricing: true,
+        });
+        await seedRouteAndPricing(appPool, {
+          modality: "video",
+          modelKey: "mock-video-queue",
+          providerKey: "mock-local-video-queue",
+          routeKey: "video.default",
+          tenantId: owner.currentTenant.id,
+          userId: ownerUserId,
+          withExactPricing: true,
+        });
+
+        const imageFlow = await createDraftOnlyFlowWithSingleNode(api, owner.accessToken, {
+          nodeId: "image-target",
+          nodeType: "image.generate",
+          routeKey: "image.default",
+        });
+        const videoFlow = await createDraftOnlyFlowWithSingleNode(api, owner.accessToken, {
+          nodeId: "video-target",
+          nodeType: "video.generate",
+          routeKey: "video.default",
+        });
+
+        const imageRun = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "POST",
+          payload: {
+            input: {
+              runMode: "target_node",
+              targetNodeId: "image-target",
+            },
+          },
+          url: `/api/v2/flows/${imageFlow.id}/runs`,
+        });
+        const videoRun = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "POST",
+          payload: {
+            input: {
+              runMode: "target_node",
+              targetNodeId: "video-target",
+            },
+          },
+          url: `/api/v2/flows/${videoFlow.id}/runs`,
+        });
+
+        expect(imageRun.statusCode).toBe(201);
+        expect(videoRun.statusCode).toBe(201);
+        expect(fakeQueue.jobs.map((job) => job.name)).toEqual([
+          QUEUE_NAMES.nodeExecuteImage,
+          QUEUE_NAMES.nodeExecuteVideo,
+        ]);
+        expect(fakeQueue.jobs.map((job) => job.data)).toEqual([
+          expect.objectContaining({ nodeType: "image.generate" }),
+          expect.objectContaining({ nodeType: "video.generate" }),
+        ]);
 
         await api.close();
       } finally {

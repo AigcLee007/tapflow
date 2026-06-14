@@ -10,6 +10,7 @@ import {
 import {
   QUEUE_NAMES,
   assertLightweightJobPayload,
+  resolveNodeExecuteQueueName,
   type NodeExecuteJobPayload,
 } from "@aigc-flow/redis";
 import {
@@ -37,6 +38,8 @@ type WorkflowRunContext = {
 type NodeExecuteQueueLike = {
   add: (name: string, data: NodeExecuteJobPayload) => Promise<unknown>;
 };
+
+type NodeExecuteQueueMapLike = Partial<Record<"default" | "image" | "legacy" | "video", NodeExecuteQueueLike>>;
 
 type FlowRuntimeRecord = {
   compiled_graph_json: CompiledWorkflow;
@@ -473,15 +476,21 @@ function isUniqueViolation(error: unknown): boolean {
 
 export class WorkflowRunsService {
   readonly billingService: BillingService;
+  readonly nodeExecuteQueues: NodeExecuteQueueMapLike;
   readonly nodeExecuteQueue: NodeExecuteQueueLike;
   readonly pool: PgPool;
 
   constructor(options: {
     billingService?: BillingService;
     nodeExecuteQueue: NodeExecuteQueueLike;
+    nodeExecuteQueues?: NodeExecuteQueueMapLike;
     pool?: PgPool;
   }) {
     this.nodeExecuteQueue = options.nodeExecuteQueue;
+    this.nodeExecuteQueues = {
+      legacy: options.nodeExecuteQueue,
+      ...options.nodeExecuteQueues,
+    };
     this.pool = options.pool ?? createPgPool();
     this.billingService = options.billingService ?? new BillingService({ pool: this.pool });
   }
@@ -894,6 +903,7 @@ export class WorkflowRunsService {
 
             const queuePayload: NodeExecuteJobPayload = {
               nodeRunId,
+              nodeType: node.type,
               tenantId: context.tenantId,
               traceId: context.traceId ?? undefined,
               workflowRunId: run.id,
@@ -923,13 +933,15 @@ export class WorkflowRunsService {
     try {
       for (const payload of createdRun.enqueuePayloads) {
         const enqueueStartedAt = Date.now();
-        const queuedJob = await this.nodeExecuteQueue.add(QUEUE_NAMES.nodeExecute, payload);
+        const queueName = resolveNodeExecuteQueueName(payload.nodeType);
+        const queuedJob = await this.resolveNodeExecuteQueue(queueName).add(queueName, payload);
         this.logCreateRunDiagnostic(
           {
             enqueueJobId: this.extractQueueJobId(queuedJob),
             enqueueMs: Date.now() - enqueueStartedAt,
             flowId,
             nodeRunId: payload.nodeRunId,
+            queueName,
             runMode,
             targetNodeId,
             tenantId: context.tenantId,
@@ -989,6 +1001,19 @@ export class WorkflowRunsService {
       runId: createdRun.run.id,
       status: createdRun.run.status,
     };
+  }
+
+  private resolveNodeExecuteQueue(queueName: string): NodeExecuteQueueLike {
+    if (queueName === QUEUE_NAMES.nodeExecuteImage) {
+      return this.nodeExecuteQueues.image ?? this.nodeExecuteQueue;
+    }
+    if (queueName === QUEUE_NAMES.nodeExecuteVideo) {
+      return this.nodeExecuteQueues.video ?? this.nodeExecuteQueue;
+    }
+    if (queueName === QUEUE_NAMES.nodeExecuteDefault) {
+      return this.nodeExecuteQueues.default ?? this.nodeExecuteQueue;
+    }
+    return this.nodeExecuteQueues.legacy ?? this.nodeExecuteQueue;
   }
 
   async getWorkflowRun(

@@ -22,6 +22,7 @@ import type { Pool } from "pg";
 import { getWorkerEnv, type WorkerEnv } from "./config/env.js";
 import { createConsoleWorkerLogger, type WorkerLogger } from "./logger.js";
 import { registerWorkerQueues } from "./queues/registry.js";
+import { ImageVariantProcessor } from "./workflow-runtime/image-variant-processor.js";
 import { WorkflowNodeExecutionService } from "./workflow-runtime/service.js";
 
 type Closable = {
@@ -78,7 +79,11 @@ export function createWorkerRuntime(options?: {
   });
   const aiGateway = createDefaultAiGateway();
   const nodeExecuteQueue = queueFactory.createQueue(QUEUE_NAMES.nodeExecute);
+  const nodeExecuteDefaultQueue = queueFactory.createQueue(QUEUE_NAMES.nodeExecuteDefault);
+  const nodeExecuteImageQueue = queueFactory.createQueue(QUEUE_NAMES.nodeExecuteImage);
+  const nodeExecuteVideoQueue = queueFactory.createQueue(QUEUE_NAMES.nodeExecuteVideo);
   const providerPollQueue = queueFactory.createQueue(QUEUE_NAMES.providerPoll);
+  const assetImageVariantQueue = queueFactory.createQueue(QUEUE_NAMES.assetImageVariant);
   const storageProvider = new S3StorageProvider({
     accessKeyId: env.s3AccessKeyId,
     endpoint: env.s3Endpoint,
@@ -90,12 +95,20 @@ export function createWorkerRuntime(options?: {
     options?.workflowNodeExecutionService ??
     new WorkflowNodeExecutionService({
       assetBucket: env.s3Bucket,
+      imageVariantQueue: assetImageVariantQueue,
+      imageVariantsMode: env.imageVariantsMode,
       mediaGenerationRuntime: new DatabaseMediaRuntime({
         aiGateway,
         credentialVault,
         pool,
       }),
       nodeExecuteQueue,
+      nodeExecuteQueues: {
+        default: nodeExecuteDefaultQueue,
+        image: nodeExecuteImageQueue,
+        legacy: nodeExecuteQueue,
+        video: nodeExecuteVideoQueue,
+      },
       pool,
       providerPollQueue,
       storageProvider,
@@ -105,13 +118,21 @@ export function createWorkerRuntime(options?: {
         pool,
       }),
     });
+  const imageVariantProcessor = new ImageVariantProcessor({
+    pool,
+    storageProvider,
+  });
 
   const registration = registerWorkerQueues({
     concurrency: {
       default: env.workerConcurrency,
+      nodeExecuteDefault: env.defaultNodeConcurrency,
+      nodeExecuteImage: env.imageNodeConcurrency,
+      nodeExecuteVideo: env.videoNodeConcurrency,
       nodeExecute: env.nodeExecuteConcurrency,
       providerPoll: env.providerPollConcurrency,
     },
+    imageVariantProcessor,
     logger,
     queueFactory,
     workflowNodeExecutionService,
@@ -135,7 +156,14 @@ export function createWorkerRuntime(options?: {
 
     await Promise.all(registration.workers.map((worker) => worker.close()));
     await Promise.all(registration.queueEvents.map((queueEvents) => queueEvents.close()));
-    await Promise.all([nodeExecuteQueue.close(), providerPollQueue.close()]);
+    await Promise.all([
+      assetImageVariantQueue.close(),
+      nodeExecuteQueue.close(),
+      nodeExecuteDefaultQueue.close(),
+      nodeExecuteImageQueue.close(),
+      nodeExecuteVideoQueue.close(),
+      providerPollQueue.close(),
+    ]);
 
     if (ownedRedisConnection) {
       await closeRedisConnection(redisConnection);
@@ -165,8 +193,12 @@ async function main() {
       queueNames: runtime.queueNames,
       queuePrefix: env.queuePrefix,
       nodeExecuteConcurrency: env.nodeExecuteConcurrency,
+      defaultNodeConcurrency: env.defaultNodeConcurrency,
+      imageNodeConcurrency: env.imageNodeConcurrency,
+      imageVariantsMode: env.imageVariantsMode,
       providerPollConcurrency: env.providerPollConcurrency,
       s3Bucket: env.s3Bucket,
+      videoNodeConcurrency: env.videoNodeConcurrency,
       workerConcurrency: env.workerConcurrency,
       workerName: env.workerName,
     },

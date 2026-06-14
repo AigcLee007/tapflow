@@ -188,10 +188,19 @@ export function buildApp(options?: {
       },
     );
   const nodeExecuteQueue = appQueueFactory?.createQueue(QUEUE_NAMES.nodeExecute);
+  const nodeExecuteDefaultQueue = appQueueFactory?.createQueue(QUEUE_NAMES.nodeExecuteDefault);
+  const nodeExecuteImageQueue = appQueueFactory?.createQueue(QUEUE_NAMES.nodeExecuteImage);
+  const nodeExecuteVideoQueue = appQueueFactory?.createQueue(QUEUE_NAMES.nodeExecuteVideo);
   const workflowRunsService =
     options?.workflowRunsService ??
     new WorkflowRunsService({
       nodeExecuteQueue: nodeExecuteQueue!,
+      nodeExecuteQueues: {
+        default: nodeExecuteDefaultQueue!,
+        image: nodeExecuteImageQueue!,
+        legacy: nodeExecuteQueue!,
+        video: nodeExecuteVideoQueue!,
+      },
       pool,
     });
   const observabilityService =
@@ -265,7 +274,12 @@ export function buildApp(options?: {
     }
 
     if (ownedWorkflowRunsService) {
-      await nodeExecuteQueue?.close();
+      await Promise.all([
+        nodeExecuteQueue?.close(),
+        nodeExecuteDefaultQueue?.close(),
+        nodeExecuteImageQueue?.close(),
+        nodeExecuteVideoQueue?.close(),
+      ]);
     }
 
     if (ownedQueueHealthService) {

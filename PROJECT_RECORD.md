@@ -215,6 +215,32 @@ As of 2026-06-13:
 - Validation:
   - `rg -n "Menu and Dropdown UI Rules|menu row height: 38px|primary label font size: 12px|Do not use native <select>" AGENTS.md`
 
+## 2026-06-14 - Media Generation Stability and Speed Optimization Phases 0-4
+
+- Implemented the approved first four phases of the media generation optimization plan while keeping the existing OSS/S3 asset-first persistence path.
+- Added worker-side timing metadata for provider-output download, original object upload, asset DB insert, image variant work, and total media persistence latency.
+- Added canvas first-visible markers when generated image/video assets are applied to nodes.
+- Split image original persistence from image preview/thumbnail generation:
+  - default behavior remains synchronous via `WORKER_IMAGE_VARIANTS_MODE=sync`
+  - async rollout is available via `WORKER_IMAGE_VARIANTS_MODE=async`
+  - async variant jobs carry only `assetId` and `tenantId`; the worker reloads authoritative asset storage details from DB
+- Added an idempotent image variant processor that reads persisted originals from object storage, creates image variants, uploads them, and upserts `asset_variants`.
+- Added modality-specific node execution queues for `image.generate`, `video.generate`, and default node work while keeping the legacy `node.execute` queue active for rollback/compatibility.
+- Added worker concurrency flags:
+  - `WORKER_IMAGE_CONCURRENCY`
+  - `WORKER_VIDEO_CONCURRENCY`
+  - `WORKER_DEFAULT_CONCURRENCY`
+- Improved video/image first-visible resilience by falling back from missing preview variants to original signed asset URLs.
+- Reduced target-node generate-start latency by skipping a redundant remote draft flush only when a successful draft flush completed within the last 1.5 seconds; otherwise the previous safe flush behavior remains.
+- Validation completed locally:
+  - `npx vitest run src/flowCanvas/runtime/v2WorkflowRunner.test.ts`
+  - `npm run test --workspace @aigc-flow/worker`
+  - `npm run build --workspace @aigc-flow/api`
+  - `npm run build --workspace @aigc-flow/worker`
+- Notes:
+  - API workflow-run queue-routing database tests are present but skipped locally without `DATABASE_URL`, following the existing test harness behavior.
+  - Staging rollout and smoke validation have not been executed in this local implementation pass.
+
 ## Recent Important Commits
 
 - pending: fix canvas asset preview display regression
