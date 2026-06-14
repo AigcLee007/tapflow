@@ -11,7 +11,6 @@ import {
   Settings,
   Shield,
   UserRound,
-  Workflow,
 } from "lucide-react";
 
 import {
@@ -22,7 +21,16 @@ import {
   HOME_ROUTE,
   WORKSPACE_ROUTE,
 } from "./routes";
+import { BrandMark } from "./brand/BrandMark";
 import { useAuth } from "../auth/useAuth";
+import { MenuSurface } from "../components/menu/MenuSurface";
+import {
+  MENU_DIVIDER_CLASS,
+  MENU_ITEM_CLASS,
+  MENU_ITEM_PRIMARY_CLASS,
+  MENU_ITEM_SECONDARY_CLASS,
+} from "../components/menu/menuStyles";
+import { useDismissibleLayer } from "../components/menu/useDismissibleLayer";
 
 function navigate(path: string) {
   window.history.pushState(null, "", path);
@@ -47,7 +55,7 @@ function getInitial(displayName?: string | null, email?: string | null) {
 
 export function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const { logout, permissions, tenant, user } = useAuth();
-  const [menuOpen, setMenuOpen] = useState(false);
+  const accountLayer = useDismissibleLayer("workspace-shell-account");
   const [locationKey, setLocationKey] = useState(() =>
     typeof window === "undefined" ? HOME_ROUTE : `${window.location.pathname}${window.location.hash}`,
   );
@@ -70,6 +78,7 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const goTo = (path: string) => {
     navigate(path);
     setLocationKey(`${window.location.pathname}${window.location.hash}`);
+    accountLayer.closeLayer();
   };
 
   return (
@@ -82,11 +91,9 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
             onClick={() => goTo(HOME_ROUTE)}
             type="button"
           >
-            <span className="grid h-12 w-12 place-items-center rounded-xl bg-cyan-400 text-slate-950 shadow-[0_0_28px_rgba(34,211,238,0.22)]">
-              <Workflow size={24} />
-            </span>
+            <BrandMark size="canvas" showCaption={false} />
             <span className="min-w-0">
-              <span className="block truncate text-xl font-semibold tracking-tight text-white">AI Flow</span>
+              <span className="block truncate text-xl font-semibold text-white">AI Flow</span>
               <span className="block truncate text-sm text-slate-500">{tenantName}</span>
             </span>
           </button>
@@ -102,7 +109,7 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
                       ? "border border-white/10 bg-white/[0.10] text-white shadow-inner"
                       : "text-slate-300 hover:bg-white/[0.07] hover:text-white"
                   }`}
-                key={`${item.path}-${item.label}-${locationKey}`}
+                  key={`${item.path}-${item.label}-${locationKey}`}
                   onClick={() => goTo(item.path)}
                   type="button"
                 >
@@ -123,10 +130,11 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
             </button>
 
             <button
-              aria-expanded={menuOpen}
+              ref={accountLayer.triggerRef as React.RefObject<HTMLButtonElement>}
+              aria-expanded={accountLayer.open}
               aria-label={`${displayName} ${userEmail} 打开账户菜单`}
               className="inline-flex h-14 items-center gap-3 rounded-full border border-white/10 bg-white/[0.06] pl-2 pr-4 text-left transition hover:bg-white/[0.10]"
-              onClick={() => setMenuOpen((open) => !open)}
+              onClick={accountLayer.toggle}
               type="button"
             >
               <span className="grid h-10 w-10 place-items-center rounded-full bg-white/[0.10] text-sm font-semibold text-white">
@@ -136,11 +144,18 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
                 <span className="block max-w-36 truncate text-sm font-medium text-white">{displayName}</span>
                 <span className="block max-w-36 truncate text-xs text-slate-500">{userEmail}</span>
               </span>
-              <ChevronDown size={17} className={`text-slate-400 transition ${menuOpen ? "rotate-180" : ""}`} />
+              <ChevronDown
+                size={17}
+                className={`text-slate-400 transition ${accountLayer.open ? "rotate-180" : ""}`}
+              />
             </button>
 
-            {menuOpen && (
-              <div className="absolute right-0 top-[calc(100%+14px)] w-80 rounded-[24px] border border-white/10 bg-[#1b1b1e] p-4 shadow-[0_24px_80px_rgba(0,0,0,0.45)]">
+            {accountLayer.open ? (
+              <MenuSurface
+                ref={accountLayer.ref as React.RefObject<HTMLDivElement>}
+                className="absolute right-0 top-[calc(100%+14px)] w-[320px] p-4"
+                role="menu"
+              >
                 <div className="flex items-center gap-4 px-1 pb-4">
                   <span className="grid h-14 w-14 place-items-center rounded-full border border-white/10 bg-white/[0.08] text-lg font-semibold">
                     {getInitial(user?.displayName, user?.email)}
@@ -151,7 +166,7 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
                   </div>
                 </div>
 
-                <div className="rounded-2xl bg-white/[0.06] p-4">
+                <div className="rounded-[22px] bg-white/[0.06] p-4">
                   <div className="flex items-center justify-between text-sm text-slate-300">
                     <span>积分余额</span>
                     <span className="rounded-full bg-cyan-400/15 px-2 py-0.5 text-xs font-semibold text-cyan-200">
@@ -164,9 +179,11 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
                   </div>
                 </div>
 
-                <div className="mt-3 space-y-1 border-t border-white/10 pt-3">
+                <div className={MENU_DIVIDER_CLASS} />
+
+                <div className="space-y-1">
                   <MenuItem icon={UserRound} label="账户管理" onClick={() => goTo(ACCOUNT_ROUTE)} />
-                  {canAdmin && <MenuItem icon={Shield} label="管理后台" onClick={() => goTo(ADMIN_ROUTE)} />}
+                  {canAdmin ? <MenuItem icon={Shield} label="管理后台" onClick={() => goTo(ADMIN_ROUTE)} /> : null}
                   <MenuItem icon={Settings} label="连接与模型" onClick={() => goTo("/account/ai-settings")} />
                   <MenuItem icon={HelpCircle} label="帮助中心" onClick={() => undefined} />
                   <MenuItem
@@ -174,12 +191,13 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
                     icon={LogOut}
                     label="退出登录"
                     onClick={() => {
+                      accountLayer.closeLayer();
                       void logout().finally(() => navigate("/login"));
                     }}
                   />
                 </div>
-              </div>
-            )}
+              </MenuSurface>
+            ) : null}
           </div>
         </div>
 
@@ -222,16 +240,17 @@ function MenuItem({
 }) {
   return (
     <button
-      className={`flex h-12 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-medium transition ${
-        danger ? "text-red-100 hover:bg-red-500/15" : "text-slate-100 hover:bg-white/[0.08]"
-      }`}
+      className={`${MENU_ITEM_CLASS} h-12 ${danger ? "text-red-100 hover:bg-red-500/15" : ""}`}
       onClick={onClick}
       type="button"
     >
-      <span className="grid h-8 w-8 place-items-center rounded-lg bg-white/[0.08]">
+      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-[14px] bg-white/[0.08]">
         <Icon size={17} />
       </span>
-      {label}
+      <span className="min-w-0">
+        <span className={MENU_ITEM_PRIMARY_CLASS}>{label}</span>
+        {danger ? <span className={MENU_ITEM_SECONDARY_CLASS}>结束当前会话</span> : null}
+      </span>
     </button>
   );
 }

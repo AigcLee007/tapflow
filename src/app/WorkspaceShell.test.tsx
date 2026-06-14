@@ -48,11 +48,17 @@ describe("WorkspaceShell", () => {
   test("renders primary creator navigation", () => {
     renderShell();
 
-    expect(screen.getByRole("button", { name: "AI Flow 测试工作区" })).toBeTruthy();
-    expect(screen.getAllByRole("button", { name: "主页" }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole("button", { name: "工作空间" }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole("button", { name: "素材库" }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole("button", { name: "价格方案" }).length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: /AI Flow/i })).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: /主页/ }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: /工作空间/ }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: /素材库/ }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: /价格方案/ }).length).toBeGreaterThan(0);
+  });
+
+  test("renders the shared brand mark instead of the legacy cyan square icon", () => {
+    renderShell();
+    expect(screen.getByTestId("brand-mark")).toBeTruthy();
+    expect(screen.queryByText("Workflow")).toBeNull();
   });
 
   test("logo click navigates to home without opening a menu", () => {
@@ -60,19 +66,26 @@ describe("WorkspaceShell", () => {
 
     renderShell();
 
-    fireEvent.click(screen.getByRole("button", { name: "AI Flow 测试工作区" }));
+    fireEvent.click(screen.getByRole("button", { name: /AI Flow/i }));
 
     expect(window.location.pathname).toBe("/home");
-    expect(screen.queryByRole("menu", { name: "项目菜单" })).toBeNull();
+    expect(screen.queryByRole("menu", { name: /项目菜单/ })).toBeNull();
   });
 
   test("opens the account menu separately", () => {
     renderShell();
 
-    fireEvent.click(screen.getByRole("button", { name: "测试用户 test@example.com 打开账户菜单" }));
+    fireEvent.click(screen.getByRole("button", { name: /打开账户菜单/ }));
 
     expect(screen.getAllByText("test@example.com").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "账户管理" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "退出登录" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /退出登录/ })).toBeTruthy();
+  });
+
+  test("closes the account menu when clicking blank space", () => {
+    renderShell();
+    fireEvent.click(screen.getByRole("button", { name: /打开账户菜单/ }));
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole("button", { name: "账户管理" })).toBeNull();
   });
 });

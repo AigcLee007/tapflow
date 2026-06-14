@@ -1,6 +1,9 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
+import { MenuSurface } from "./menu/MenuSurface";
+import { MENU_DIVIDER_CLASS, MENU_ITEM_CLASS } from "./menu/menuStyles";
+
 export type EntityActionMenuItem = {
   danger?: boolean;
   disabled?: boolean;
@@ -66,19 +69,19 @@ export function EntityActionMenu({
   }, [onClose]);
 
   const menu = (
-    <div
-      className={`${
-        position ? "fixed" : "absolute right-0 top-11"
-      } z-[1800] ${density === "compact" ? "w-[188px] rounded-xl py-1.5" : "w-[220px] rounded-2xl py-2"} overflow-hidden border border-white/10 bg-[#242424] ${textSize} font-medium text-slate-100 shadow-[0_22px_60px_rgba(0,0,0,0.5)]`}
+    <MenuSurface
       ref={menuRef}
+      className={`${position ? "fixed" : "absolute right-0 top-11"} z-[1800] w-[220px] overflow-hidden p-2 ${
+        density === "compact" ? "w-[188px]" : "w-[220px]"
+      }`}
       role="menu"
       style={position ? { left: position.left, top: position.top } : undefined}
     >
       {items.map((item) => (
         <React.Fragment key={item.key}>
-          {item.separatorBefore && <div className="my-2 border-t border-white/10" />}
+          {item.separatorBefore ? <div className={MENU_DIVIDER_CLASS} /> : null}
           <button
-            className={`flex ${rowHeight} w-full items-center ${density === "compact" ? "px-3.5" : "px-4"} text-left transition ${
+            className={`${MENU_ITEM_CLASS} ${rowHeight} ${textSize} ${
               item.danger
                 ? "text-red-300 hover:bg-red-500/10 hover:text-red-200"
                 : "text-slate-100 hover:bg-white/[0.07]"
@@ -96,7 +99,7 @@ export function EntityActionMenu({
           </button>
         </React.Fragment>
       ))}
-    </div>
+    </MenuSurface>
   );
 
   if (position && typeof document !== "undefined") {
@@ -164,7 +167,7 @@ export function EntityRenameDialog({
             value={value}
           />
         </label>
-        {error && <div className="mt-3 text-sm text-red-300">{error}</div>}
+        {error ? <div className="mt-3 text-sm text-red-300">{error}</div> : null}
         <div className="mt-5 flex justify-end gap-2">
           <button
             className="h-10 rounded-xl border border-white/10 px-4 text-sm font-semibold text-slate-200 hover:bg-white/[0.06]"
@@ -222,7 +225,7 @@ export function EntityConfirmDialog({
       <section className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#1f1f20] p-5 shadow-2xl">
         <h2 className="text-lg font-semibold text-white">{title}</h2>
         <p className="mt-3 text-sm leading-6 text-slate-400">{body}</p>
-        {error && <div className="mt-3 text-sm text-red-300">{error}</div>}
+        {error ? <div className="mt-3 text-sm text-red-300">{error}</div> : null}
         <div className="mt-5 flex justify-end gap-2">
           <button
             className="h-10 rounded-xl border border-white/10 px-4 text-sm font-semibold text-slate-200 hover:bg-white/[0.06]"
