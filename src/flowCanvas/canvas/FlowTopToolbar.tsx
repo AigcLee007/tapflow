@@ -8,11 +8,9 @@ import {
   CheckCheck,
   ChevronRight,
   Megaphone,
-  Plus,
   RefreshCw,
   Share2,
   Sparkles,
-  Trash2,
   X,
 } from "lucide-react";
 
@@ -30,11 +28,12 @@ import { useFlowCanvasStore } from "../store/flowCanvasStore";
 
 const formatToolbarPoint = (value: number) => formatPoint(value).replace(/\.0$/, "");
 const SEEN_STORAGE_KEY = "seen_announcement_ids";
-const PROJECT_MENU_WIDTH = 320;
+const PROJECT_MENU_WIDTH = 288;
 const PROJECT_MENU_EDGE_MARGIN = 20;
 const PROJECT_MENU_TOP_OFFSET = 18;
 const PROJECT_MENU_FALLBACK_TOP = 112;
 const PROJECT_MENU_Z_INDEX = 2400;
+const PROJECT_CONFIRM_Z_INDEX = 2500;
 
 interface Announcement {
   active: boolean;
@@ -91,6 +90,8 @@ export const FlowTopToolbar: React.FC<{
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<Announcement | null>(null);
   const [projectMenuBusy, setProjectMenuBusy] = useState<"create" | "delete" | null>(null);
   const [projectMenuPosition, setProjectMenuPosition] = useState<{ left: number; top: number } | null>(null);
+  const [showDeleteProjectConfirm, setShowDeleteProjectConfirm] = useState(false);
+  const [deleteProjectError, setDeleteProjectError] = useState<string | null>(null);
   const [shareCopied, setShareCopied] = useState(false);
   const projectMenuLayer = useDismissibleLayer("canvas-toolbar-project");
   const notificationLayer = useDismissibleLayer("canvas-toolbar-notifications");
@@ -150,6 +151,8 @@ export const FlowTopToolbar: React.FC<{
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setSelectedAnnouncement(null);
+        setShowDeleteProjectConfirm(false);
+        setDeleteProjectError(null);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
@@ -219,18 +222,27 @@ export const FlowTopToolbar: React.FC<{
     }
   }, [projectMenuBusy, projectMenuLayer]);
 
+  const openDeleteProjectConfirm = useCallback(() => {
+    if (!projectId || projectMenuBusy) return;
+    projectMenuLayer.closeLayer();
+    setDeleteProjectError(null);
+    setShowDeleteProjectConfirm(true);
+  }, [projectId, projectMenuBusy, projectMenuLayer]);
+
   const handleDeleteProject = useCallback(async () => {
     if (!projectId || projectMenuBusy) return;
-    if (!window.confirm("删除后项目和画布将无法恢复，确认删除吗？")) return;
     setProjectMenuBusy("delete");
+    setDeleteProjectError(null);
     try {
       await deleteWorkspaceProject(projectId);
-      projectMenuLayer.closeLayer();
+      setShowDeleteProjectConfirm(false);
       navigate(WORKSPACE_ROUTE);
+    } catch (error) {
+      setDeleteProjectError(error instanceof Error ? error.message : "删除项目失败，请稍后重试。");
     } finally {
       setProjectMenuBusy(null);
     }
-  }, [projectId, projectMenuBusy, projectMenuLayer]);
+  }, [projectId, projectMenuBusy]);
 
   const updateProjectMenuPosition = useCallback(() => {
     const triggerRect = projectMenuLayer.triggerRef.current?.getBoundingClientRect();
@@ -290,7 +302,7 @@ export const FlowTopToolbar: React.FC<{
         <button
           type="button"
           role="menuitem"
-          className={`${MENU_ITEM_CLASS} min-h-[66px] justify-between rounded-[18px] px-5`}
+          className={`${MENU_ITEM_CLASS} min-h-[68px] justify-between rounded-[18px] px-5`}
           onClick={() => {
             projectMenuLayer.closeLayer();
             navigate(WORKSPACE_ROUTE);
@@ -302,21 +314,18 @@ export const FlowTopToolbar: React.FC<{
 
         <div className="my-0 h-px bg-white/8" />
 
-        <button type="button" role="menuitem" className={`${MENU_ITEM_CLASS} min-h-[64px] rounded-none px-5`} onClick={focusTitleInput}>
+        <button type="button" role="menuitem" className={`${MENU_ITEM_CLASS} min-h-[60px] rounded-none px-5`} onClick={focusTitleInput}>
           <span className={MENU_ITEM_PRIMARY_CLASS}>重命名项目</span>
         </button>
 
         <button
           type="button"
           role="menuitem"
-          className={`${MENU_ITEM_CLASS} min-h-[64px] rounded-none px-5`}
+          className={`${MENU_ITEM_CLASS} min-h-[60px] rounded-none px-5`}
           onClick={() => void handleCreateProject()}
           disabled={projectMenuBusy === "create"}
         >
-          <span style={projectMenuLabelWithIconStyle}>
-            <Plus size={16} />
-            <span className={MENU_ITEM_PRIMARY_CLASS}>{projectMenuBusy === "create" ? "正在创建..." : "新建项目"}</span>
-          </span>
+          <span className={MENU_ITEM_PRIMARY_CLASS}>{projectMenuBusy === "create" ? "正在创建..." : "新建项目"}</span>
         </button>
 
         <div className="my-0 h-px bg-white/8" />
@@ -324,191 +333,239 @@ export const FlowTopToolbar: React.FC<{
         <button
           type="button"
           role="menuitem"
-          className={`${MENU_ITEM_CLASS} min-h-[64px] rounded-b-[18px] rounded-t-none px-5 text-red-200 hover:bg-red-500/15`}
-          onClick={() => void handleDeleteProject()}
+          className={`${MENU_ITEM_CLASS} min-h-[60px] rounded-b-[18px] rounded-t-none px-5 text-red-200 hover:bg-red-500/12`}
+          onClick={openDeleteProjectConfirm}
           disabled={!projectId || projectMenuBusy === "delete"}
         >
-          <span style={projectMenuLabelWithIconStyle}>
-            <Trash2 size={16} />
-            <span className={MENU_ITEM_PRIMARY_CLASS}>{projectMenuBusy === "delete" ? "正在删除..." : "删除项目"}</span>
-          </span>
+          <span className={MENU_ITEM_PRIMARY_CLASS}>{projectMenuBusy === "delete" ? "正在删除..." : "删除项目"}</span>
         </button>
       </MenuSurface>
     ) : null;
 
-  return (
-    <div className="nodrag nopan nowheel" style={topChromeStyle}>
-      <div style={titleMenuHostStyle}>
-        <div style={titleClusterStyle}>
-          <button
-            type="button"
-            ref={projectMenuLayer.triggerRef as React.RefObject<HTMLButtonElement>}
-            aria-expanded={projectMenuLayer.open}
-            aria-haspopup="menu"
-            aria-label="打开项目菜单"
-            onClick={projectMenuLayer.toggle}
-            style={brandMenuButtonStyle}
-          >
-            <BrandMark size="canvas" showCaption={false} />
-          </button>
-
-          <div style={titleTextWrapStyle}>
-            <input
-              ref={titleInputRef}
-              value={projectTitle || "未命名项目"}
-              onBlur={() => void handleTitleBlur()}
-              onChange={(event) => setProjectTitle(event.target.value)}
-              style={titleInputStyle}
-              spellCheck={false}
-              aria-label="项目名称"
-            />
-            <div style={saveStatusStyle(saveStatus?.status)}>
-              {saveStatus?.icon}
-              <span>{saveStatus?.label || "已保存到云端"}</span>
-              {saveStatus?.status === "failed" && saveStatus.onRetry ? (
-                <button
-                  type="button"
-                  style={saveRetryButtonStyle}
-                  title={saveStatus.error || "重试同步"}
-                  onClick={saveStatus.onRetry}
-                >
-                  <RefreshCw size={12} />
-                </button>
-              ) : null}
-            </div>
-          </div>
-        </div>
-
-      </div>
-
-      <div style={rightClusterStyle}>
-        <button type="button" style={topPillStyle} title="当前点数">
-          <Sparkles size={17} />
-          <span>{pointsLoading ? "..." : formatToolbarPoint(points)}</span>
-        </button>
-
-        <div style={notificationHostStyle}>
-          <button
-            type="button"
-            ref={notificationLayer.triggerRef as React.RefObject<HTMLButtonElement>}
-            style={topPillStyle}
-            aria-expanded={notificationLayer.open}
-            aria-haspopup="menu"
-            aria-label="通知"
-            title="通知"
-            onClick={() => {
-              notificationLayer.toggle();
-              void refreshAnnouncements();
+  const deleteProjectConfirm =
+    showDeleteProjectConfirm && typeof document !== "undefined"
+      ? createPortal(
+          <div
+            className="fixed inset-0 grid place-items-center bg-black/58 px-4 backdrop-blur-sm"
+            style={{ zIndex: PROJECT_CONFIRM_Z_INDEX }}
+            onPointerDown={() => {
+              if (projectMenuBusy === "delete") return;
+              setShowDeleteProjectConfirm(false);
+              setDeleteProjectError(null);
             }}
           >
-            <Bell size={17} />
-            <span>通知</span>
-            {unreadIds.length > 0 ? (
-              <span style={notificationBadgeStyle}>{unreadIds.length > 99 ? "99+" : unreadIds.length}</span>
-            ) : null}
-          </button>
-
-          {notificationLayer.open ? (
-            <MenuSurface
-              ref={notificationLayer.ref as React.RefObject<HTMLDivElement>}
-              role="menu"
-              aria-label="通知菜单"
-              className="absolute right-0 top-[calc(100%+14px)] w-[370px] max-w-[calc(100vw-48px)] overflow-hidden p-0"
+            <section
+              role="dialog"
+              aria-modal="true"
+              aria-label="删除当前项目"
+              className="w-full max-w-[340px] rounded-[24px] border border-white/10 bg-[#17191d]/96 p-5 shadow-[0_28px_72px_rgba(0,0,0,0.48)]"
+              onPointerDown={(event) => event.stopPropagation()}
             >
-              <div style={notificationHeaderStyle}>
-                <div style={notificationHeaderTitleStyle}>
-                  <Megaphone size={17} color="#93c5fd" />
-                  <span>通知</span>
-                </div>
+              <h2 className="text-[18px] font-semibold text-white">删除当前项目</h2>
+              <p className="mt-3 text-[13px] leading-6 text-white/58">删除后项目、画布和相关结果将无法恢复。</p>
+              {deleteProjectError ? <p className="mt-3 text-[13px] leading-5 text-red-300">{deleteProjectError}</p> : null}
+              <div className="mt-5 flex items-center gap-2">
                 <button
                   type="button"
-                  style={markReadButtonStyle}
-                  onClick={markAllRead}
-                  disabled={announcements.length === 0}
+                  className="h-10 rounded-full bg-[#ef6b6b] px-5 text-[13px] font-semibold text-[#140b0b] transition hover:bg-[#f38181] disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={projectMenuBusy === "delete"}
+                  onClick={() => void handleDeleteProject()}
                 >
-                  <CheckCheck size={13} />
-                  全部已读
+                  {projectMenuBusy === "delete" ? "正在删除..." : "删除"}
+                </button>
+                <button
+                  type="button"
+                  className="h-10 rounded-full border border-white/10 bg-white/5 px-5 text-[13px] font-semibold text-white/88 transition hover:bg-white/8 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={projectMenuBusy === "delete"}
+                  onClick={() => {
+                    setShowDeleteProjectConfirm(false);
+                    setDeleteProjectError(null);
+                  }}
+                >
+                  取消
                 </button>
               </div>
+            </section>
+          </div>,
+          document.body,
+        )
+      : null;
 
-              <div style={notificationListStyle}>
-                {announcements.length === 0 ? (
-                  <div style={emptyNotificationStyle}>暂无公告</div>
-                ) : (
-                  announcements.map((item) => {
-                    const unread = !seenIds.includes(item.id);
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        style={notificationItemStyle}
-                        onClick={() => openAnnouncement(item)}
-                      >
-                        <span style={notificationItemContentStyle}>
-                          <span style={notificationItemTitleStyle}>{item.title || "系统公告"}</span>
-                          {item.pinned ? <span style={pinnedStyle}>置顶</span> : null}
-                          <span style={notificationItemTextStyle}>{item.content}</span>
-                          <span style={notificationDateStyle}>{formatAnnouncementDate(item.date)}</span>
-                        </span>
-                        {unread ? <span style={unreadDotStyle} /> : null}
-                      </button>
-                    );
-                  })
-                )}
+  return (
+    <>
+      <div className="nodrag nopan nowheel" style={topChromeStyle}>
+        <div style={titleMenuHostStyle}>
+          <div style={titleClusterStyle}>
+            <button
+              type="button"
+              ref={projectMenuLayer.triggerRef as React.RefObject<HTMLButtonElement>}
+              aria-expanded={projectMenuLayer.open}
+              aria-haspopup="menu"
+              aria-label="打开项目菜单"
+              onClick={projectMenuLayer.toggle}
+              style={brandMenuButtonStyle}
+            >
+              <BrandMark size="canvas" showCaption={false} />
+            </button>
+
+            <div style={titleTextWrapStyle}>
+              <input
+                ref={titleInputRef}
+                value={projectTitle || "未命名项目"}
+                onBlur={() => void handleTitleBlur()}
+                onChange={(event) => setProjectTitle(event.target.value)}
+                style={titleInputStyle}
+                spellCheck={false}
+                aria-label="项目名称"
+              />
+              <div style={saveStatusStyle(saveStatus?.status)}>
+                {saveStatus?.icon}
+                <span>{saveStatus?.label || "已保存到云端"}</span>
+                {saveStatus?.status === "failed" && saveStatus.onRetry ? (
+                  <button
+                    type="button"
+                    style={saveRetryButtonStyle}
+                    title={saveStatus.error || "重试同步"}
+                    onClick={saveStatus.onRetry}
+                  >
+                    <RefreshCw size={12} />
+                  </button>
+                ) : null}
               </div>
-            </MenuSurface>
-          ) : null}
-        </div>
-
-        <button
-          type="button"
-          style={shareButtonStyle}
-          title={shareCopied ? "已复制链接" : "分享"}
-          onClick={copyShareLink}
-        >
-          <Share2 size={17} />
-        </button>
-      </div>
-
-      {selectedAnnouncement ? (
-        <div style={announcementOverlayStyle} onMouseDown={() => setSelectedAnnouncement(null)}>
-          <div style={announcementModalStyle} onMouseDown={(event) => event.stopPropagation()}>
-            <div style={announcementModalHeaderStyle}>
-              <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-                <span style={announcementIconStyle}>
-                  <Megaphone size={20} />
-                </span>
-                <div style={{ minWidth: 0 }}>
-                  <div style={announcementTitleStyle}>{selectedAnnouncement.title || "系统公告"}</div>
-                  <div style={announcementDateModalStyle}>{formatAnnouncementDate(selectedAnnouncement.date)}</div>
-                </div>
-              </div>
-              <button type="button" style={modalCloseButtonStyle} onClick={() => setSelectedAnnouncement(null)}>
-                <X size={18} />
-              </button>
-            </div>
-
-            <div style={announcementBodyStyle}>{selectedAnnouncement.content}</div>
-
-            {!!selectedAnnouncement.images?.length ? (
-              <div style={announcementImagesStyle}>
-                {selectedAnnouncement.images.map((src, index) => (
-                  <img key={`${src}-${index}`} src={src} alt={`announcement-${index + 1}`} style={announcementImageStyle} />
-                ))}
-              </div>
-            ) : null}
-
-            <div style={announcementFooterStyle}>
-              <button type="button" style={confirmButtonStyle} onClick={() => setSelectedAnnouncement(null)}>
-                我知道了
-              </button>
             </div>
           </div>
         </div>
-      ) : null}
 
-      {projectMenu && typeof document !== "undefined" ? createPortal(projectMenu, document.body) : projectMenu}
-    </div>
+        <div style={rightClusterStyle}>
+          <button type="button" style={topPillStyle} title="当前点数">
+            <Sparkles size={17} />
+            <span>{pointsLoading ? "..." : formatToolbarPoint(points)}</span>
+          </button>
+
+          <div style={notificationHostStyle}>
+            <button
+              type="button"
+              ref={notificationLayer.triggerRef as React.RefObject<HTMLButtonElement>}
+              style={topPillStyle}
+              aria-expanded={notificationLayer.open}
+              aria-haspopup="menu"
+              aria-label="通知"
+              title="通知"
+              onClick={() => {
+                notificationLayer.toggle();
+                void refreshAnnouncements();
+              }}
+            >
+              <Bell size={17} />
+              <span>通知</span>
+              {unreadIds.length > 0 ? (
+                <span style={notificationBadgeStyle}>{unreadIds.length > 99 ? "99+" : unreadIds.length}</span>
+              ) : null}
+            </button>
+
+            {notificationLayer.open ? (
+              <MenuSurface
+                ref={notificationLayer.ref as React.RefObject<HTMLDivElement>}
+                role="menu"
+                aria-label="通知菜单"
+                className="absolute right-0 top-[calc(100%+14px)] w-[370px] max-w-[calc(100vw-48px)] overflow-hidden p-0"
+              >
+                <div style={notificationHeaderStyle}>
+                  <div style={notificationHeaderTitleStyle}>
+                    <Megaphone size={17} color="#93c5fd" />
+                    <span>通知</span>
+                  </div>
+                  <button
+                    type="button"
+                    style={markReadButtonStyle}
+                    onClick={markAllRead}
+                    disabled={announcements.length === 0}
+                  >
+                    <CheckCheck size={13} />
+                    全部已读
+                  </button>
+                </div>
+
+                <div style={notificationListStyle}>
+                  {announcements.length === 0 ? (
+                    <div style={emptyNotificationStyle}>暂无公告</div>
+                  ) : (
+                    announcements.map((item) => {
+                      const unread = !seenIds.includes(item.id);
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          style={notificationItemStyle}
+                          onClick={() => openAnnouncement(item)}
+                        >
+                          <span style={notificationItemContentStyle}>
+                            <span style={notificationItemTitleStyle}>{item.title || "系统公告"}</span>
+                            {item.pinned ? <span style={pinnedStyle}>置顶</span> : null}
+                            <span style={notificationItemTextStyle}>{item.content}</span>
+                            <span style={notificationDateStyle}>{formatAnnouncementDate(item.date)}</span>
+                          </span>
+                          {unread ? <span style={unreadDotStyle} /> : null}
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </MenuSurface>
+            ) : null}
+          </div>
+
+          <button
+            type="button"
+            style={shareButtonStyle}
+            title={shareCopied ? "已复制链接" : "分享"}
+            onClick={copyShareLink}
+          >
+            <Share2 size={17} />
+          </button>
+        </div>
+
+        {selectedAnnouncement ? (
+          <div style={announcementOverlayStyle} onMouseDown={() => setSelectedAnnouncement(null)}>
+            <div style={announcementModalStyle} onMouseDown={(event) => event.stopPropagation()}>
+              <div style={announcementModalHeaderStyle}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+                  <span style={announcementIconStyle}>
+                    <Megaphone size={20} />
+                  </span>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={announcementTitleStyle}>{selectedAnnouncement.title || "系统公告"}</div>
+                    <div style={announcementDateModalStyle}>{formatAnnouncementDate(selectedAnnouncement.date)}</div>
+                  </div>
+                </div>
+                <button type="button" style={modalCloseButtonStyle} onClick={() => setSelectedAnnouncement(null)}>
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div style={announcementBodyStyle}>{selectedAnnouncement.content}</div>
+
+              {!!selectedAnnouncement.images?.length ? (
+                <div style={announcementImagesStyle}>
+                  {selectedAnnouncement.images.map((src, index) => (
+                    <img key={`${src}-${index}`} src={src} alt={`announcement-${index + 1}`} style={announcementImageStyle} />
+                  ))}
+                </div>
+              ) : null}
+
+              <div style={announcementFooterStyle}>
+                <button type="button" style={confirmButtonStyle} onClick={() => setSelectedAnnouncement(null)}>
+                  我知道了
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {projectMenu && typeof document !== "undefined" ? createPortal(projectMenu, document.body) : projectMenu}
+      </div>
+      {deleteProjectConfirm}
+    </>
   );
 });
 
@@ -567,12 +624,6 @@ const titleInputStyle: React.CSSProperties = {
   lineHeight: 1,
   padding: 0,
   textShadow: "0 2px 16px rgba(0,0,0,0.5)",
-};
-
-const projectMenuLabelWithIconStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 10,
 };
 
 const saveStatusStyle = (status?: string): React.CSSProperties => ({

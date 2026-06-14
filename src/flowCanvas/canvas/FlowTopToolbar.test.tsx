@@ -1,5 +1,5 @@
 import React from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { FlowTopToolbar } from "./FlowTopToolbar";
@@ -37,6 +37,7 @@ vi.mock("../../billing/billingApi", () => ({
 
 describe("FlowTopToolbar", () => {
   beforeEach(() => {
+    window.history.pushState(null, "", "/projects/project-1");
     createWorkspaceProjectMock.mockReset();
     updateWorkspaceProjectMock.mockReset();
     deleteWorkspaceProjectMock.mockReset();
@@ -47,12 +48,19 @@ describe("FlowTopToolbar", () => {
         ok: true,
       })),
     );
-    vi.spyOn(window, "confirm").mockReturnValue(true);
   });
 
   afterEach(() => {
+    cleanup();
+    try {
+      vi.runOnlyPendingTimers();
+    } catch {}
+    try {
+      vi.useRealTimers();
+    } catch {}
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+    window.history.pushState(null, "", "/");
   });
 
   test("renders a clear shared brand mark in the canvas chrome", async () => {
@@ -71,7 +79,7 @@ describe("FlowTopToolbar", () => {
     });
   });
 
-  test("opens the canvas logo menu as a fixed body-level surface and closes it on outside click", async () => {
+  test("opens the canvas logo menu as a fixed body-level surface with the narrow minimal layout and closes it on outside click", async () => {
     render(
       <FlowTopToolbar
         cullingEnabled
@@ -82,20 +90,21 @@ describe("FlowTopToolbar", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "打开项目菜单" }));
 
-    const menu = screen.getByRole("menu");
+    const menu = screen.getByRole("menu", { name: "项目菜单" });
     expect(menu).toBeTruthy();
     expect(menu.parentElement).toBe(document.body);
     expect(menu.style.position).toBe("fixed");
     expect(menu.style.left).toBe("20px");
     expect(menu.style.top).toBe("112px");
-    expect(menu.style.width).toBe("320px");
+    expect(menu.style.width).toBe("288px");
     expect(menu.style.zIndex).toBe("2400");
-    expect(screen.getByRole("menu", { name: "项目菜单" })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "返回工作空间" })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "重命名项目" })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "新建项目" })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "删除项目" })).toBeTruthy();
-    expect(screen.getAllByRole("menuitem")[1]?.className).toContain("min-h-[64px]");
+    expect(screen.getAllByRole("menuitem")[1]?.className).toContain("min-h-[60px]");
+    expect(screen.queryByTestId("project-menu-create-icon")).toBeNull();
+    expect(screen.queryByTestId("project-menu-delete-icon")).toBeNull();
 
     fireEvent.pointerDown(document.body);
 
@@ -122,5 +131,58 @@ describe("FlowTopToolbar", () => {
       expect(screen.queryAllByRole("menu")).toHaveLength(1);
     });
     expect(screen.getByText("全部已读")).toBeTruthy();
+  });
+
+  test("opens a custom dark confirmation sheet before deleting a project", async () => {
+    deleteWorkspaceProjectMock.mockResolvedValue(undefined);
+    vi.useFakeTimers();
+
+    render(
+      <FlowTopToolbar
+        cullingEnabled
+        onToggleCulling={vi.fn()}
+        saveStatus={{ label: "已保存到云端", status: "saved" }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "打开项目菜单" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "删除项目" }));
+
+    expect(screen.getByRole("dialog", { name: "删除当前项目" })).toBeTruthy();
+    expect(deleteWorkspaceProjectMock).not.toHaveBeenCalled();
+    expect(screen.queryByRole("menu", { name: "项目菜单" })).toBeNull();
+
+    await act(async () => {
+      vi.runOnlyPendingTimers();
+    });
+  });
+
+  test("closes the delete confirmation sheet on cancel and confirms deletion explicitly", async () => {
+    deleteWorkspaceProjectMock.mockResolvedValue(undefined);
+
+    render(
+      <FlowTopToolbar
+        cullingEnabled
+        onToggleCulling={vi.fn()}
+        saveStatus={{ label: "已保存到云端", status: "saved" }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "打开项目菜单" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "删除项目" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "删除当前项目" })).toBeNull();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "打开项目菜单" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "删除项目" }));
+    fireEvent.click(screen.getByRole("button", { name: "删除" }));
+
+    await waitFor(() => {
+      expect(deleteWorkspaceProjectMock).toHaveBeenCalledWith("project-1");
+    });
   });
 });

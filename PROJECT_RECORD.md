@@ -217,6 +217,26 @@ As of 2026-06-13:
 - Validation:
   - `rg -n "Menu and Dropdown UI Rules|menu row height: 38px|primary label font size: 12px|Do not use native <select>" AGENTS.md`
 
+## 2026-06-14 - Canvas Project Menu and Delete Confirmation Refresh
+
+- Refined the canvas top-left project menu toward the approved minimal TapNow-style direction:
+  - narrowed the menu width from the earlier wide flyout
+  - tightened non-primary rows to a 60px rhythm
+  - removed mixed create/delete row icons so the menu reads as a cleaner text-led action list
+- Replaced the canvas project delete `window.confirm(...)` flow with a custom dark action-sheet-style confirmation surface:
+  - dark translucent panel
+  - compact destructive copy
+  - explicit `删除` / `取消` actions
+  - backdrop-dismiss and `Escape` dismissal support
+  - inline error retention on delete failure
+- Normalized touched canvas toolbar copy back to readable Chinese for the refreshed project menu and the surrounding toolbar strings touched during the change.
+- Added focused regression coverage for:
+  - slimmer project menu width and row density
+  - custom delete confirmation open/cancel/confirm behavior
+- Validation:
+  - `npm test -- src/flowCanvas/canvas/FlowTopToolbar.test.tsx`
+  - `npm run build`
+
 ## 2026-06-14 - Media Generation Stability and Speed Optimization Phases 0-4
 
 - Implemented the approved first four phases of the media generation optimization plan while keeping the existing OSS/S3 asset-first persistence path.
