@@ -1770,6 +1770,20 @@ Validation completed:
 
 - `npm test -- src/flowCanvas/nodes/NanoBananaParamPanel.test.tsx src/flowCanvas/utils/modelCatalogOptions.test.ts`
 
+### Latest GPT-image-2 Parameter Panel Refresh
+
+Completed in current local iteration:
+
+- added a dedicated GPT-image-2 dual-zone parameter panel instead of relying on the generic dynamic image parameter popup
+- aligned the popup shell and visual language with the Nano Banana panel family while preserving GPT-image-2-specific controls for size, quality, output format, and moderation
+- kept GPT-image-2 on the `size` field contract and avoided regressing it into the Nano Banana `imageSize` / `image_size` flow
+- added GPT-image-2-specific fallback options for `Auto / 1K / 2K / 4K` size and the approved ratio set so the popup remains complete even when catalog metadata is sparse
+- kept Nano Banana routing and all other generic image-model popup paths unchanged
+
+Validation completed:
+
+- `npm test -- src/flowCanvas/nodes/GptImage2ParamPanel.test.tsx src/flowCanvas/utils/modelCatalogOptions.test.ts`
+
 ### Latest MouxiHub Nano Banana Pro T3 Default Size Fix
 
 Completed in current local iteration:

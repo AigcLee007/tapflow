@@ -79,6 +79,7 @@ import { getImageNaturalSize, imageUrlToBlob } from '../utils/imageUtils';
 import type { LightDirection } from './ImageLightingOverlay';
 import type { MultiAngleId } from './ImageMultiAngleOverlay';
 import { ImageMoreMenu, type ImageMoreMenuAction } from './ImageMoreMenu';
+import { GptImage2ParamPanel } from './GptImage2ParamPanel';
 import { NanoBananaParamPanel } from './NanoBananaParamPanel';
 import type { OutpaintDirection } from './ImageOutpaintOverlay';
 import type { ImageSplitPiece } from './ImageSplitOverlay';
@@ -2094,6 +2095,7 @@ const isNanoBananaImageModelId = (modelId: string) => {
   const normalizedModelId = resolveV2ImageModelId(String(modelId || '').trim());
   return normalizedModelId === 'pixellelabs.nano-banana-pro' || normalizedModelId === 'pixellelabs.nano-banana-2';
 };
+const isGptImage2ModelId = (modelId: string) => resolveV2ImageModelId(String(modelId || '').trim()) === 'gpt-image-2';
 const normalizeImageRuntimeRouteKey = (modelId: string, routeKey?: string | null) => {
   const normalizedModelId = normalizeImageModelId(modelId);
   const v2ModelId = resolveV2ImageModelId(normalizedModelId);
@@ -2403,11 +2405,17 @@ const ImageModelRouteDropup: React.FC<ImageModelRouteDropupProps> = ({
 };
 
 interface ImageSettingsDropupProps {
+  format?: 'jpeg' | 'png' | 'webp';
+  moderation?: 'auto' | 'low';
   modelId?: string;
+  quality?: 'auto' | 'high' | 'low' | 'medium';
   ratio: string;
   size: string;
   ratios: string[];
   sizes: string[];
+  onChangeFormat?: (value: 'jpeg' | 'png' | 'webp') => void;
+  onChangeModeration?: (value: 'auto' | 'low') => void;
+  onChangeQuality?: (value: 'auto' | 'high' | 'low' | 'medium') => void;
   onChangeRatio: (value: string) => void;
   onChangeSize: (value: string) => void;
 }
@@ -2444,11 +2452,17 @@ const cleanParamsForImageModel = (modelId: string, params: Record<string, any>) 
 };
 
 const ImageSettingsDropup: React.FC<ImageSettingsDropupProps> = ({
+  format,
+  moderation,
   modelId,
+  quality,
   ratio,
   size,
   ratios,
   sizes,
+  onChangeFormat,
+  onChangeModeration,
+  onChangeQuality,
   onChangeRatio,
   onChangeSize,
 }) => {
@@ -2456,7 +2470,8 @@ const ImageSettingsDropup: React.FC<ImageSettingsDropupProps> = ({
   const [hoveredSize, setHoveredSize] = useState<string | null>(null);
   const [hoveredRatio, setHoveredRatio] = useState<string | null>(null);
   const isNanoBanana = isNanoBananaImageModelId(String(modelId || ''));
-  const menuWidth = isNanoBanana ? 636 : 480;
+  const isGptImage2 = isGptImage2ModelId(String(modelId || ''));
+  const menuWidth = isNanoBanana ? 636 : isGptImage2 ? 760 : 480;
   const { menuRef, position, updatePosition, wrapRef } = useFixedImageDropup(open, setOpen, menuWidth);
 
   const safeSize = String(size || '1k').toLowerCase();
@@ -2479,6 +2494,21 @@ const ImageSettingsDropup: React.FC<ImageSettingsDropupProps> = ({
               ratios={ratios}
               size={safeSize}
               sizes={sizes}
+              onChangeRatio={onChangeRatio}
+              onChangeSize={onChangeSize}
+            />
+          ) : isGptImage2 ? (
+            <GptImage2ParamPanel
+              format={format || 'png'}
+              moderation={moderation || 'auto'}
+              quality={quality || 'auto'}
+              ratio={ratio}
+              ratios={ratios}
+              size={safeSize}
+              sizes={sizes}
+              onChangeFormat={(value) => onChangeFormat?.(value)}
+              onChangeModeration={(value) => onChangeModeration?.(value)}
+              onChangeQuality={(value) => onChangeQuality?.(value)}
               onChangeRatio={onChangeRatio}
               onChangeSize={onChangeSize}
             />
@@ -4014,6 +4044,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const currentRatio = String(p.aspectRatio || p.aspect_ratio || aspectOptions[0] || '1:1');
   const dynamicParamFields = getCatalogUiFields(selectedCatalogModel?.uiSchema);
   const useNanoBananaParamPanel = isNanoBananaImageModelId(currentModelId) && showSize;
+  const useGptImage2ParamPanel = isGptImage2ModelId(currentModelId) && showSize;
   const routeFamily = String(getImageModelById(currentModelId)?.routeFamily || 'default').trim() || 'default';
   const routeOptions = getImageRoutesByModelFamily(routeFamily).filter((route) => route.isActive !== false);
   const selectedRoute =
@@ -6300,6 +6331,22 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
                   size={currentSize}
                   ratios={aspectOptions}
                   sizes={sizeOptions}
+                  onChangeRatio={(value) => setParam('aspect_ratio', value)}
+                  onChangeSize={(value) => setParam('size', value)}
+                />
+              ) : useGptImage2ParamPanel ? (
+                <ImageSettingsDropup
+                  format={String(p.output_format || 'png').toLowerCase() as 'jpeg' | 'png' | 'webp'}
+                  moderation={String(p.moderation || 'auto').toLowerCase() as 'auto' | 'low'}
+                  modelId={currentModelId}
+                  quality={String(p.quality || 'auto').toLowerCase() as 'auto' | 'high' | 'low' | 'medium'}
+                  ratio={currentRatio}
+                  size={currentSize}
+                  ratios={aspectOptions}
+                  sizes={sizeOptions}
+                  onChangeFormat={(value) => setParam('output_format', value)}
+                  onChangeModeration={(value) => setParam('moderation', value)}
+                  onChangeQuality={(value) => setParam('quality', value)}
                   onChangeRatio={(value) => setParam('aspect_ratio', value)}
                   onChangeSize={(value) => setParam('size', value)}
                 />
