@@ -23,6 +23,8 @@ import {
   X,
 } from 'lucide-react';
 import { useReactFlow } from '@xyflow/react';
+
+import { useDismissibleLayer } from '../../components/menu/useDismissibleLayer';
 import { useAuth } from '../../auth/useAuth';
 import { useFlowCanvasStore } from '../store/flowCanvasStore';
 import type { FlowNodeKind } from '../types';
@@ -155,9 +157,9 @@ const AddNodeFlyout: React.FC<{
         <span style={flyoutIconStyle(active)}>{item.icon}</span>
         <span style={{ minWidth: 0, flex: 1 }}>
           <span style={flyoutLabelStyle}>{item.label}</span>
-          {item.desc && active && <span style={flyoutDescStyle}>{item.desc}</span>}
+          {item.desc && active ? <span style={flyoutDescStyle}>{item.desc}</span> : null}
         </span>
-        {item.beta && <span style={betaPillStyle}>Beta</span>}
+        {item.beta ? <span style={betaPillStyle}>Beta</span> : null}
       </button>
     );
   };
@@ -178,13 +180,14 @@ const UserFlyout: React.FC<{
   authenticated: boolean;
   loading: boolean;
   onLogout: () => void;
+  panelRef?: React.RefObject<HTMLDivElement | null>;
   user: { displayName: string | null; email: string } | null;
   position: FlyoutPosition;
-}> = ({ authenticated, loading, onLogout, user, position }) => {
+}> = ({ authenticated, loading, onLogout, panelRef, user, position }) => {
   const displayName = loading
     ? '加载中...'
     : user?.displayName || user?.email?.split('@')[0] || '访客';
-  const email = loading ? '正在同步账号信息' : user?.email || '登录后查看账号信息';
+  const email = loading ? '正在同步账号信息' : user?.email || '登录后查看账户信息';
   const initial = user
     ? (displayName.trim().charAt(0).toUpperCase() || 'U')
     : loading
@@ -192,31 +195,36 @@ const UserFlyout: React.FC<{
       : 'L';
 
   return (
-    <div className="nodrag nopan nowheel" style={userMenuStyle(position)}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+    <div ref={panelRef} className="nodrag nopan nowheel" style={userMenuStyle(position)}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
         <div style={userAvatarLargeStyle}>{initial}</div>
         <div style={{ minWidth: 0 }}>
-          <div style={{ color: '#fff', fontSize: 20, fontWeight: 760, lineHeight: 1.1 }}>{displayName}</div>
-          <div style={{ color: 'rgba(255,255,255,0.42)', fontSize: 13, fontWeight: 560, marginTop: 7, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{email}</div>
+          <div style={{ color: '#fff', fontSize: 15, fontWeight: 760, lineHeight: 1.2 }}>{displayName}</div>
+          <div style={userEmailStyle}>{email}</div>
         </div>
       </div>
       <div style={userDividerStyle} />
-      <UserMenuItem icon={<User size={19} />} label={authenticated ? '账号' : '登录'} onClick={() => navigateTo(authenticated ? '/account' : '/login')} />
-      <UserMenuItem icon={<Wallet size={19} />} label="计费" onClick={() => navigateTo('/billing')} />
-      <UserMenuItem icon={<Bell size={19} />} label="工作区" onClick={() => navigateTo('/workspace')} />
+      <UserMenuItem icon={<User size={18} />} label={authenticated ? '账户管理' : '登录'} onClick={() => navigateTo(authenticated ? '/account' : '/login')} />
+      <UserMenuItem icon={<Wallet size={18} />} label="账单" onClick={() => navigateTo('/billing')} />
+      <UserMenuItem icon={<Bell size={18} />} label="工作空间" onClick={() => navigateTo('/workspace')} />
       <div style={userDividerStyle} />
-      <UserMenuItem icon={<CircleHelp size={19} />} label="帮助" />
+      <UserMenuItem icon={<CircleHelp size={18} />} label="帮助中心" />
       {authenticated ? (
-        <UserMenuItem icon={<LogOut size={19} />} label="退出登录" onClick={onLogout} />
+        <UserMenuItem icon={<LogOut size={18} />} label="退出登录" onClick={onLogout} danger />
       ) : (
-        <UserMenuItem icon={<LogOut size={19} />} label="前往登录" onClick={() => navigateTo('/login')} />
+        <UserMenuItem icon={<LogOut size={18} />} label="前往登录" onClick={() => navigateTo('/login')} />
       )}
     </div>
   );
 };
 
-const UserMenuItem: React.FC<{ icon: React.ReactNode; label: string; onClick?: () => void }> = ({ icon, label, onClick }) => (
-  <button type="button" className="nodrag nopan" onClick={onClick} style={userMenuItemStyle}>
+const UserMenuItem: React.FC<{ danger?: boolean; icon: React.ReactNode; label: string; onClick?: () => void }> = ({
+  danger,
+  icon,
+  label,
+  onClick,
+}) => (
+  <button type="button" className="nodrag nopan" onClick={onClick} style={userMenuItemStyle(danger)}>
     <span style={userMenuIconStyle}>{icon}</span>
     <span>{label}</span>
   </button>
@@ -238,9 +246,8 @@ export const FlowLeftAddPanel: React.FC<{
   const reactFlow = useReactFlow();
   const dockHostRef = useRef<HTMLDivElement | null>(null);
   const userButtonRef = useRef<HTMLButtonElement | null>(null);
-  const addFlyoutRef = useRef<HTMLDivElement | null>(null);
-  const [addOpen, setAddOpen] = useState(false);
-  const [userOpen, setUserOpen] = useState(false);
+  const addLayer = useDismissibleLayer('canvas-left-add');
+  const userLayer = useDismissibleLayer('canvas-left-user');
   const [flyoutPosition, setFlyoutPosition] = useState<FlyoutPosition>({
     left: 88,
     top: 88,
@@ -256,13 +263,13 @@ export const FlowLeftAddPanel: React.FC<{
   const openAdd = () => {
     if (closeTimerRef.current !== null) window.clearTimeout(closeTimerRef.current);
     onClosePanel?.();
-    setUserOpen(false);
-    setAddOpen(true);
+    userLayer.closeLayer();
+    addLayer.openLayer();
   };
 
   const scheduleCloseAdd = () => {
     if (closeTimerRef.current !== null) window.clearTimeout(closeTimerRef.current);
-    closeTimerRef.current = window.setTimeout(() => setAddOpen(false), 140);
+    closeTimerRef.current = window.setTimeout(() => addLayer.closeLayer(), 140);
   };
 
   useEffect(() => () => {
@@ -270,7 +277,7 @@ export const FlowLeftAddPanel: React.FC<{
   }, []);
 
   useLayoutEffect(() => {
-    if (!addOpen && !userOpen) return;
+    if (!addLayer.open && !userLayer.open) return;
 
     const updateFloatingPositions = () => {
       const viewportWidth = window.innerWidth;
@@ -278,10 +285,10 @@ export const FlowLeftAddPanel: React.FC<{
       const margin = 24;
 
       const hostRect = dockHostRef.current?.getBoundingClientRect();
-      if (hostRect && addOpen) {
+      if (hostRect && addLayer.open) {
         const panelWidth = 224;
         const maxHeight = Math.max(300, Math.min(560, viewportHeight - margin * 2));
-        const panelHeight = Math.min(addFlyoutRef.current?.offsetHeight || maxHeight, maxHeight);
+        const panelHeight = Math.min(addLayer.ref.current?.offsetHeight || maxHeight, maxHeight);
         const visualDockRight = hostRect.left + LEFT_DOCK_VISUAL_WIDTH;
         const left = clamp(visualDockRight + ADD_NODE_FLYOUT_GAP, margin, viewportWidth - panelWidth - margin);
         const targetBottom = viewportHeight - ADD_NODE_FLYOUT_BOTTOM_LINE_OFFSET;
@@ -291,7 +298,7 @@ export const FlowLeftAddPanel: React.FC<{
       }
 
       const userRect = userButtonRef.current?.getBoundingClientRect();
-      if (userRect && userOpen) {
+      if (userRect && userLayer.open) {
         const maxHeight = Math.max(280, Math.min(372, viewportHeight - margin * 2));
         const visualDockRight = hostRect ? hostRect.left + LEFT_DOCK_VISUAL_WIDTH : userRect.right;
         const left = clamp(visualDockRight + ADD_NODE_FLYOUT_GAP, margin, viewportWidth - USER_MENU_WIDTH - margin);
@@ -306,7 +313,7 @@ export const FlowLeftAddPanel: React.FC<{
     updateFloatingPositions();
     window.addEventListener('resize', updateFloatingPositions);
     return () => window.removeEventListener('resize', updateFloatingPositions);
-  }, [addOpen, userOpen]);
+  }, [addLayer, userLayer]);
 
   const handleLogout = useCallback(() => {
     void logout().finally(() => {
@@ -322,22 +329,23 @@ export const FlowLeftAddPanel: React.FC<{
         y: (rect?.top || 0) + (rect?.height || window.innerHeight) / 2,
       });
       addNode(kind, center, undefined, { selected: true });
-      setAddOpen(false);
+      addLayer.closeLayer();
     },
-    [addNode, reactFlow],
+    [addLayer, addNode, reactFlow],
   );
 
   return (
-    <div ref={dockHostRef} style={dockHostStyle} onMouseLeave={() => setUserOpen(false)}>
+    <div ref={dockHostRef} style={dockHostStyle} onMouseLeave={() => userLayer.closeLayer()}>
       <div style={dockScaleShellStyle}>
         <div style={dockStyle}>
           <DockButton
-            icon={addOpen ? <X size={20} strokeWidth={1.7} /> : <Plus size={26} strokeWidth={1.75} />}
+            icon={addLayer.open ? <X size={20} strokeWidth={1.7} /> : <Plus size={26} strokeWidth={1.75} />}
             label="添加节点"
             large
-            active={addOpen}
+            active={addLayer.open}
+            buttonRef={addLayer.triggerRef as React.RefObject<HTMLButtonElement>}
             onMouseEnter={openAdd}
-            onClick={() => (addOpen ? setAddOpen(false) : openAdd())}
+            onClick={() => (addLayer.open ? addLayer.closeLayer() : openAdd())}
           />
           <DockButton
             icon={<Folder size={18} strokeWidth={1.8} />}
@@ -370,31 +378,32 @@ export const FlowLeftAddPanel: React.FC<{
           <DockButton
             icon={<span style={userAvatarSmallStyle}>{(user?.displayName || user?.email || 'L').charAt(0).toUpperCase()}</span>}
             label="用户"
-            active={userOpen}
+            active={userLayer.open}
             buttonRef={userButtonRef}
             onClick={() => {
               onClosePanel?.();
-              setAddOpen(false);
-              setUserOpen((open) => !open);
+              addLayer.closeLayer();
+              userLayer.toggle();
             }}
           />
         </div>
       </div>
 
-      {addOpen && (
+      {addLayer.open ? (
         <div onMouseEnter={openAdd} onMouseLeave={scheduleCloseAdd}>
-          <AddNodeFlyout onAdd={handleAdd} position={flyoutPosition} panelRef={addFlyoutRef} />
+          <AddNodeFlyout onAdd={handleAdd} position={flyoutPosition} panelRef={addLayer.ref as React.RefObject<HTMLDivElement>} />
         </div>
-      )}
-      {userOpen && (
+      ) : null}
+      {userLayer.open ? (
         <UserFlyout
           authenticated={authenticated}
           loading={userLoading}
           onLogout={handleLogout}
+          panelRef={userLayer.ref as React.RefObject<HTMLDivElement>}
           position={userFlyoutPosition}
           user={user}
         />
-      )}
+      ) : null}
     </div>
   );
 });
@@ -514,10 +523,7 @@ const flyoutStyle = (position: FlyoutPosition): React.CSSProperties => buildMenu
 });
 
 const flyoutSectionTitleStyle: React.CSSProperties = MENU_SECTION_LABEL_STYLE;
-
-const flyoutItemStyle = (active: boolean, disabled: boolean): React.CSSProperties =>
-  buildMenuItemStyle(active, disabled);
-
+const flyoutItemStyle = (active: boolean, disabled: boolean): React.CSSProperties => buildMenuItemStyle(active, disabled);
 const flyoutIconStyle = (active: boolean): React.CSSProperties => buildMenuItemIconStyle(active);
 
 const flyoutLabelStyle: React.CSSProperties = {
@@ -570,31 +576,42 @@ const userAvatarLargeStyle: React.CSSProperties = {
   flexShrink: 0,
 };
 
+const userEmailStyle: React.CSSProperties = {
+  color: 'rgba(255,255,255,0.42)',
+  fontSize: 12,
+  fontWeight: 560,
+  marginTop: 6,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+};
+
 const userDividerStyle: React.CSSProperties = {
   height: 1,
   background: 'rgba(255,255,255,0.12)',
-  margin: '14px 0 9px',
+  margin: '12px 0 8px',
 };
 
-const userMenuItemStyle: React.CSSProperties = {
+const userMenuItemStyle = (danger?: boolean): React.CSSProperties => ({
   width: '100%',
-  height: 36,
+  minHeight: 38,
   border: 'none',
   background: 'transparent',
-  color: '#f8fafc',
+  color: danger ? '#fecaca' : '#f8fafc',
   display: 'flex',
   alignItems: 'center',
   gap: 10,
-  fontSize: 14,
+  fontSize: 13,
   fontWeight: 760,
   cursor: 'pointer',
-  padding: '0 2px',
-};
+  padding: '6px 2px',
+  textAlign: 'left',
+});
 
 const userMenuIconStyle: React.CSSProperties = {
-  width: 26,
-  height: 26,
-  borderRadius: 9,
+  width: 28,
+  height: 28,
+  borderRadius: 10,
   display: 'grid',
   placeItems: 'center',
   background: 'rgba(255,255,255,0.065)',

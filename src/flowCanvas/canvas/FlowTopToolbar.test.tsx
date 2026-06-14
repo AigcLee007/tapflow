@@ -82,16 +82,36 @@ describe("FlowTopToolbar", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "打开项目菜单" }));
 
-    expect(screen.getByRole("menu")).toBeTruthy();
+    expect(screen.getByRole("menu", { name: "项目菜单" })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "返回工作空间" })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "重命名项目" })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "新建项目" })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "删除项目" })).toBeTruthy();
 
-    fireEvent.mouseDown(document.body);
+    fireEvent.pointerDown(document.body);
 
     await waitFor(() => {
-      expect(screen.queryByRole("menu")).toBeNull();
+      expect(screen.queryByRole("menu", { name: "项目菜单" })).toBeNull();
     });
+  });
+
+  test("closes the project menu when the notifications menu opens", async () => {
+    render(
+      <FlowTopToolbar
+        cullingEnabled
+        onToggleCulling={vi.fn()}
+        saveStatus={{ label: "已保存到云端", status: "saved" }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "打开项目菜单" }));
+    expect(screen.getByRole("menu", { name: "项目菜单" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "通知" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("menu", { name: "项目菜单" })).toBeNull();
+    });
+    expect(screen.getByText("全部已读")).toBeTruthy();
   });
 });

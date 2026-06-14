@@ -58,7 +58,6 @@ import {
   getImageModelById,
   getImageModelCatalogSnapshot,
   getImageModelSizeOptions,
-  getImageModelRequestName,
   shouldShowImageSizeSelector,
   getImageModelExtraAspectRatios,
   type ImageModelCatalogShape,
@@ -96,11 +95,11 @@ import {
   parseAspectRatio,
 } from '../utils/nodeSizing';
 import { GoogleLogo, OpenAILogo } from '../../../components/Logos';
+import { useDismissibleLayer } from '../../components/menu/useDismissibleLayer';
 import { useAuth } from '../../auth/useAuth';
 import { normalizeBackendAssetUrl } from '../../utils/generatedImageStorage';
 import { canNodeReceiveIncoming } from '../rules/connectionRules';
 import { getAssetDownloadUrl, getAssetVariantUrl } from '../../assets/assetApi';
-import { listRuntimeRoutes, type V2RuntimeRouteItem } from '../../services/v2AiRoutesApi';
 import { listAiModelCatalog, listAiModelRoutes, type AiModelCatalogItem } from '../../services/v2AiModelCatalogApi';
 import { buildAssetBackedNodeData } from '../utils/assetNodeData';
 import {
@@ -119,7 +118,7 @@ import {
   getDerivedImageSourceType,
 } from '../utils/optimisticDerivedImageAsset';
 import { resolveActiveImageRuntimeRouteKey } from '../utils/imageRuntimeRouteSelection';
-import { mapImageRuntimeRouteOptions, type RuntimeRouteOption } from '../utils/runtimeRouteOptions';
+import type { RuntimeRouteOption } from '../utils/runtimeRouteOptions';
 import { getPromptBarDensity, type PromptBarDensityVariant } from '../utils/promptBarDensity';
 import {
   getAspectRatioOptionsFromCatalogModel,
@@ -252,37 +251,9 @@ const getImageModelCatalogRouteLookupKey = (
   catalogModel?: { modelKey?: string | null } | null,
 ) => String(catalogModel?.modelKey || modelId || '').trim();
 
-const useRuntimeImageRoutes = (enabled: boolean) => {
-  const [routes, setRoutes] = useState<RuntimeRouteOption[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (!enabled) return undefined;
-    let active = true;
-    setLoading(true);
-    void listRuntimeRoutes('image')
-      .then((items: V2RuntimeRouteItem[]) => {
-        if (!active) return;
-        setRoutes(mapImageRuntimeRouteOptions(items));
-      })
-      .catch(() => {
-        if (active) setRoutes([]);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [enabled]);
-
-  return { routes, loading };
-};
-
 const useModelScopedImageRoutes = (
   enabled: boolean,
   modelKey: string,
-  fallbackRoutes: RuntimeRouteOption[],
 ) => {
   const [routes, setRoutes] = useState<RuntimeRouteOption[]>([]);
   const [loadedModelKey, setLoadedModelKey] = useState('');
@@ -320,9 +291,7 @@ const useModelScopedImageRoutes = (
   if (loadedModelKey === modelKey && routes.length > 0) {
     return { routes, loading: false, loaded: true };
   }
-  if (!enabled || !modelKey) {
-    return { routes: fallbackRoutes, loading: false, loaded: false };
-  }
+  if (!enabled || !modelKey) return { routes: [], loading: false, loaded: false };
   return { routes: [], loading: loadingModelKey === modelKey, loaded: loadedModelKey === modelKey };
 };
 
@@ -1984,7 +1953,6 @@ const V2_IMAGE_MODEL_ID_BY_LEGACY_ID: Record<string, string> = {
 };
 const normalizeImageModelId = (modelId: string) =>
   modelId === 'nano-banana' ? 'nano-banana-pro' : modelId;
-const normalizeRuntimeModelKey = (value?: string | null) => String(value || '').trim().toLowerCase();
 const resolveV2ImageModelId = (modelId: string) => {
   const normalizedModelId = normalizeImageModelId(modelId);
   return V2_IMAGE_MODEL_ID_BY_LEGACY_ID[normalizedModelId] || normalizedModelId;
@@ -2003,22 +1971,6 @@ const normalizeImageRuntimeRouteKey = (modelId: string, routeKey?: string | null
     return IMAGE_RUNTIME_ROUTE_BY_MODEL_ID[v2ModelId] || IMAGE_RUNTIME_ROUTE_BY_MODEL_ID[normalizedModelId] || normalizedRouteKey;
   }
   return normalizedRouteKey;
-};
-const getRuntimeModelKeysForImageModel = (modelId: string): Set<string> => {
-  const normalizedModelId = normalizeImageModelId(modelId);
-  const requestModel = getImageModelRequestName(normalizedModelId);
-  return new Set(
-    [normalizedModelId, requestModel]
-      .map(normalizeRuntimeModelKey)
-      .filter(Boolean),
-  );
-};
-const getRuntimeRoutesForImageModel = (
-  modelId: string,
-  routes: RuntimeRouteOption[],
-): RuntimeRouteOption[] => {
-  const modelKeys = getRuntimeModelKeysForImageModel(modelId);
-  return routes.filter((route) => modelKeys.has(normalizeRuntimeModelKey(route.modelKey)));
 };
 
 const imageMenuSurface: React.CSSProperties = {
@@ -2095,10 +2047,18 @@ const ratioPreviewStyle = (ratioValue: string, active: boolean): React.CSSProper
 const ROUTE_NUMBER_LABELS = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
 
 const getUserFacingRouteLabel = (route: RuntimeRouteOption | undefined, index: number) => {
+  const userFacing = String(route?.userFacingLabel || '').trim();
+  if (userFacing) return userFacing;
   const configured = String(route?.label || '').trim();
   if (/^线路[一二三四五六七八九十0-9]+$/.test(configured)) {
     return configured;
   }
+  return `线路${ROUTE_NUMBER_LABELS[index] || index + 1}`;
+};
+
+const getUserFacingRouteLineLabel = (route: RuntimeRouteOption | undefined, index: number) => {
+  const configured = String(route?.label || '').trim();
+  if (/^线路[一二三四五六七八九十0-9]+$/.test(configured)) return configured;
   return `线路${ROUTE_NUMBER_LABELS[index] || index + 1}`;
 };
 
@@ -2126,7 +2086,7 @@ const ImageModelRouteDropup: React.FC<ImageModelRouteDropupProps> = ({
   const currentModel = modelOptions.find((option) => option.id === currentModelId) || modelOptions[0];
   const currentRoute = runtimeRoutes.find((route) => route.routeKey === currentRouteKey) || runtimeRoutes[0];
   const currentRouteIndex = currentRoute ? Math.max(0, runtimeRoutes.findIndex((route) => route.routeKey === currentRoute.routeKey)) : 0;
-  const currentRouteLabel = currentRoute ? getUserFacingRouteLabel(currentRoute, currentRouteIndex) : (currentRouteKey ? '线路一' : '');
+  const currentRouteLabel = currentRoute ? getUserFacingRouteLineLabel(currentRoute, currentRouteIndex) : (currentRouteKey ? '线路一' : '');
 
   useEffect(() => {
     if (!open) return;
@@ -2188,7 +2148,7 @@ const ImageModelRouteDropup: React.FC<ImageModelRouteDropupProps> = ({
 
           {runtimeRoutes.length > 0 && (
             <>
-              <div style={imageMenuSubHeader}>运行线路</div>
+              <div style={imageMenuSubHeader}>可用线路</div>
               {runtimeRoutes.map((route, index) => {
                 const active = currentRouteKey === route.routeKey;
                 const hovered = hoveredRouteId === route.routeKey;
@@ -2223,9 +2183,9 @@ const ImageModelRouteDropup: React.FC<ImageModelRouteDropupProps> = ({
           )}
           {runtimeRoutes.length === 0 && (
             <>
-              <div style={imageMenuSubHeader}>运行线路</div>
+              <div style={imageMenuSubHeader}>可用线路</div>
               <div style={{ color: '#94a3b8', fontSize: 13, lineHeight: 1.5, padding: '10px 16px 14px' }}>
-                当前模型未配置可用运行线路
+                当前模型暂时没有可用线路
               </div>
             </>
           )}
@@ -3631,7 +3591,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const [hovered, setHovered] = useState(false);
   const [showBatchSelector, setShowBatchSelector] = useState(false);
   const [fullscreenOpen, setFullscreenOpen] = useState(false);
-  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const moreMenuLayer = useDismissibleLayer(`image-node-more-${id}`);
   const [assetMenuOpen, setAssetMenuOpen] = useState(false);
   const [slashMenuOpen, setSlashMenuOpen] = useState(false);
   const [mentionQuery, setMentionQuery] = useState('');
@@ -3775,11 +3735,8 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
 
   const currentModelId = resolveV2ImageModelId(String(d.modelId || modelOptions[0]?.id || 'nano-banana-pro'));
   const selectedCatalogModel = models.find((model) => model.id === currentModelId) || null;
-  const runtimeRouteState = useRuntimeImageRoutes(showNodeEditor);
-  const runtimeRoutes = runtimeRouteState.routes;
-  const fallbackModelRuntimeRoutes = getRuntimeRoutesForImageModel(currentModelId, runtimeRoutes);
   const modelRouteLookupKey = getImageModelCatalogRouteLookupKey(currentModelId, selectedCatalogModel);
-  const scopedRouteState = useModelScopedImageRoutes(showNodeEditor, modelRouteLookupKey, fallbackModelRuntimeRoutes);
+  const scopedRouteState = useModelScopedImageRoutes(showNodeEditor, modelRouteLookupKey);
   const modelRuntimeRoutes = scopedRouteState.routes;
   const preferredRuntimeRouteKey = selectedCatalogModel?.defaultRouteKey || IMAGE_RUNTIME_ROUTE_BY_MODEL_ID[currentModelId] || '';
   const normalizedCurrentRouteKey = normalizeImageRuntimeRouteKey(currentModelId, d.routeKey);
@@ -4029,18 +3986,13 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
         .filter((value) => ['auto', '1k', '2k', '4k'].includes(value));
       const nextSize = nextSizes.includes(currentSize) ? currentSize : (nextSizes[0] || '1k');
       const fallbackRoute = getLowestCostImageRouteForModel(normalizedModelId, nextSize) || getSelectedImageRoute(normalizedModelId);
-      const nextRuntimeRoutes = getRuntimeRoutesForImageModel(normalizedModelId, runtimeRoutes);
       const catalogModel = models.find((model) => model.id === normalizedModelId) || null;
       const preferredRouteKey = catalogModel?.defaultRouteKey || IMAGE_RUNTIME_ROUTE_BY_MODEL_ID[normalizedModelId] || '';
-      const runtimeRoute =
-        nextRuntimeRoutes.find((route) => route.routeKey === preferredRouteKey) ||
-        nextRuntimeRoutes[0] ||
-        null;
       const defaults = getDefaultParamsFromUiSchema(catalogModel?.uiSchema);
       updateNodeData(id, {
         modelId: normalizedModelId,
         routeId: fallbackRoute?.id,
-        routeKey: runtimeRoute?.routeKey || preferredRouteKey || undefined,
+        routeKey: preferredRouteKey || undefined,
         params: cleanParamsForImageModel(normalizedModelId, {
           ...p,
           ...defaults,
@@ -4048,7 +4000,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
         }),
       });
     },
-    [currentSize, id, modelRuntimeRoutes, models, p, runtimeRoutes, updateNodeData],
+    [currentSize, id, models, p, updateNodeData],
   );
 
   const applyRouteSelection = useCallback(
@@ -4121,7 +4073,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   useEffect(() => {
     if (!isMultiSelecting) return;
     setShowBatchSelector(false);
-    setMoreMenuOpen(false);
+    moreMenuLayer.closeLayer();
     setAssetMenuOpen(false);
     setSlashMenuOpen(false);
     setMentionQuery('');
@@ -4131,7 +4083,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     if (activeImageTool?.nodeId === id) {
       closeImageTool();
     }
-  }, [activeImageTool?.nodeId, closeImageTool, closeResultStrip, id, isMultiSelecting]);
+  }, [activeImageTool?.nodeId, closeImageTool, closeResultStrip, id, isMultiSelecting, moreMenuLayer]);
 
   useEffect(
     () => () => {
@@ -5357,7 +5309,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   );
 
   const handleMoreMenuSelect = useCallback((action: ImageMoreMenuAction, payload?: { gridSize?: number }) => {
-    setMoreMenuOpen(false);
+    moreMenuLayer.closeLayer();
     if (action === 'resize') {
       openImageTool(id, 'resize');
     }
@@ -5380,12 +5332,12 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     if (action === 'removeBackground') {
       setAiConfirmType('removeBackground');
     }
-  }, [id, openImageTool, openRepaintOverlay]);
+  }, [id, moreMenuLayer, openImageTool, openRepaintOverlay]);
 
   const handleToolAction = useCallback(
     (toolId: string) => {
       if (!effectiveThumbnailUrl) return;
-      if (toolId !== 'more') setMoreMenuOpen(false);
+      if (toolId !== 'more') moreMenuLayer.closeLayer();
 
       if (toolId === 'crop') {
         openImageTool(id, 'crop');
@@ -5416,10 +5368,10 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
         return;
       }
       if (toolId === 'more') {
-        setMoreMenuOpen((open) => !open);
+        moreMenuLayer.toggle();
       }
     },
-    [effectiveThumbnailUrl, handleDownload, handleStepBack, id, openAnchoredPreviewTool, openImageTool, openRepaintOverlay],
+    [effectiveThumbnailUrl, handleDownload, handleStepBack, moreMenuLayer, openAnchoredPreviewTool, openImageTool, openRepaintOverlay],
   );
 
   return (
@@ -5542,6 +5494,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
                   </div>
                   <button
                     className="nodrag nopan flow-image-toolbar-btn"
+                    ref={t.id === 'more' ? (moreMenuLayer.triggerRef as React.RefObject<HTMLButtonElement>) : undefined}
                     onClick={() => handleToolAction(t.id)}
                     style={{
                       position: 'relative',
@@ -5572,8 +5525,8 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
                       }} />
                     )}
                   </button>
-                  {t.id === 'more' && moreMenuOpen && (
-                    <ImageMoreMenu onSelect={handleMoreMenuSelect} />
+                  {t.id === 'more' && moreMenuLayer.open && (
+                    <ImageMoreMenu menuRef={moreMenuLayer.ref as React.RefObject<HTMLDivElement>} onSelect={handleMoreMenuSelect} />
                   )}
                 </div>
               ))}

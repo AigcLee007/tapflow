@@ -18,6 +18,9 @@ import {
 import { WORKSPACE_ROUTE, getProjectId } from "../../app/routes";
 import { BrandMark } from "../../app/brand/BrandMark";
 import { getBillingSummary } from "../../billing/billingApi";
+import { MenuSurface } from "../../components/menu/MenuSurface";
+import { MENU_DIVIDER_CLASS, MENU_ITEM_CLASS, MENU_ITEM_PRIMARY_CLASS } from "../../components/menu/menuStyles";
+import { useDismissibleLayer } from "../../components/menu/useDismissibleLayer";
 import { getStoredAccessToken, V2_AUTH_CHANGE_EVENT } from "../../services/v2HttpClient";
 import { formatPoint } from "../../utils/pointFormat";
 import { createWorkspaceProject, deleteWorkspaceProject, updateWorkspaceProject } from "../../workspace/workspaceApi";
@@ -79,13 +82,11 @@ export const FlowTopToolbar: React.FC<{
   const [pointsLoading, setPointsLoading] = useState(false);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [seenIds, setSeenIds] = useState<string[]>(() => readSeenAnnouncementIds());
-  const [notificationOpen, setNotificationOpen] = useState(false);
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<Announcement | null>(null);
-  const [projectMenuOpen, setProjectMenuOpen] = useState(false);
   const [projectMenuBusy, setProjectMenuBusy] = useState<"create" | "delete" | null>(null);
   const [shareCopied, setShareCopied] = useState(false);
-  const notificationRef = useRef<HTMLDivElement | null>(null);
-  const projectMenuRef = useRef<HTMLDivElement | null>(null);
+  const projectMenuLayer = useDismissibleLayer("canvas-toolbar-project");
+  const notificationLayer = useDismissibleLayer("canvas-toolbar-notifications");
   const titleInputRef = useRef<HTMLInputElement | null>(null);
   const projectId = typeof window === "undefined" ? null : getProjectId(window.location.pathname);
 
@@ -139,32 +140,14 @@ export const FlowTopToolbar: React.FC<{
   }, [refreshAnnouncements]);
 
   useEffect(() => {
-    if (!notificationOpen && !projectMenuOpen) return;
-
-    const handleMouseDown = (event: MouseEvent) => {
-      if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
-        setNotificationOpen(false);
-      }
-      if (projectMenuRef.current && !projectMenuRef.current.contains(event.target as Node)) {
-        setProjectMenuOpen(false);
-      }
-    };
-
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setNotificationOpen(false);
         setSelectedAnnouncement(null);
-        setProjectMenuOpen(false);
       }
     };
-
-    document.addEventListener("mousedown", handleMouseDown);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", handleMouseDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [notificationOpen, projectMenuOpen]);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   const unreadIds = useMemo(
     () => announcements.filter((item) => !seenIds.includes(item.id)).map((item) => item.id),
@@ -199,12 +182,12 @@ export const FlowTopToolbar: React.FC<{
   };
 
   const focusTitleInput = useCallback(() => {
-    setProjectMenuOpen(false);
+    projectMenuLayer.closeLayer();
     window.setTimeout(() => {
       titleInputRef.current?.focus();
       titleInputRef.current?.select();
     }, 0);
-  }, []);
+  }, [projectMenuLayer]);
 
   const handleTitleBlur = useCallback(async () => {
     const normalizedTitle = (projectTitle || "").trim() || "未命名项目";
@@ -222,12 +205,12 @@ export const FlowTopToolbar: React.FC<{
     setProjectMenuBusy("create");
     try {
       const result = await createWorkspaceProject({ name: "未命名项目" });
-      setProjectMenuOpen(false);
+      projectMenuLayer.closeLayer();
       navigate(`/projects/${result.project.id}`);
     } finally {
       setProjectMenuBusy(null);
     }
-  }, [projectMenuBusy]);
+  }, [projectMenuBusy, projectMenuLayer]);
 
   const handleDeleteProject = useCallback(async () => {
     if (!projectId || projectMenuBusy) return;
@@ -235,23 +218,24 @@ export const FlowTopToolbar: React.FC<{
     setProjectMenuBusy("delete");
     try {
       await deleteWorkspaceProject(projectId);
-      setProjectMenuOpen(false);
+      projectMenuLayer.closeLayer();
       navigate(WORKSPACE_ROUTE);
     } finally {
       setProjectMenuBusy(null);
     }
-  }, [projectId, projectMenuBusy]);
+  }, [projectId, projectMenuBusy, projectMenuLayer]);
 
   return (
     <div className="nodrag nopan nowheel" style={topChromeStyle}>
-      <div ref={projectMenuRef} style={titleMenuHostStyle}>
+      <div style={titleMenuHostStyle}>
         <div style={titleClusterStyle}>
           <button
             type="button"
-            aria-expanded={projectMenuOpen}
+            ref={projectMenuLayer.triggerRef as React.RefObject<HTMLButtonElement>}
+            aria-expanded={projectMenuLayer.open}
             aria-haspopup="menu"
             aria-label="打开项目菜单"
-            onClick={() => setProjectMenuOpen((open) => !open)}
+            onClick={projectMenuLayer.toggle}
             style={brandMenuButtonStyle}
           >
             <BrandMark size="canvas" showCaption={false} />
@@ -270,7 +254,7 @@ export const FlowTopToolbar: React.FC<{
             <div style={saveStatusStyle(saveStatus?.status)}>
               {saveStatus?.icon}
               <span>{saveStatus?.label || "已保存到云端"}</span>
-              {saveStatus?.status === "failed" && saveStatus.onRetry && (
+              {saveStatus?.status === "failed" && saveStatus.onRetry ? (
                 <button
                   type="button"
                   style={saveRetryButtonStyle}
@@ -279,61 +263,66 @@ export const FlowTopToolbar: React.FC<{
                 >
                   <RefreshCw size={12} />
                 </button>
-              )}
+              ) : null}
             </div>
           </div>
         </div>
 
-        {projectMenuOpen && (
-          <div role="menu" aria-label="项目菜单" style={projectMenuStyle}>
+        {projectMenuLayer.open ? (
+          <MenuSurface
+            ref={projectMenuLayer.ref as React.RefObject<HTMLDivElement>}
+            role="menu"
+            aria-label="项目菜单"
+            className="absolute left-0 top-[calc(100%+14px)] w-[296px] max-w-[calc(100vw-36px)] p-3"
+          >
             <button
               type="button"
               role="menuitem"
-              style={projectMenuItemStyle}
+              className={`${MENU_ITEM_CLASS} min-h-[54px] justify-between`}
               onClick={() => {
-                setProjectMenuOpen(false);
+                projectMenuLayer.closeLayer();
                 navigate(WORKSPACE_ROUTE);
               }}
             >
-              <span>返回工作空间</span>
+              <span className={MENU_ITEM_PRIMARY_CLASS}>返回工作空间</span>
               <ChevronRight size={16} />
             </button>
 
-            <div style={projectMenuDividerStyle} />
+            <div className={MENU_DIVIDER_CLASS} />
 
-            <button type="button" role="menuitem" style={projectMenuItemStyle} onClick={focusTitleInput}>
-              <span>重命名项目</span>
+            <button type="button" role="menuitem" className={`${MENU_ITEM_CLASS} min-h-[54px]`} onClick={focusTitleInput}>
+              <span className={MENU_ITEM_PRIMARY_CLASS}>重命名项目</span>
             </button>
 
             <button
               type="button"
               role="menuitem"
-              style={projectMenuItemStyle}
+              className={`${MENU_ITEM_CLASS} min-h-[54px]`}
               onClick={() => void handleCreateProject()}
               disabled={projectMenuBusy === "create"}
             >
               <span style={projectMenuLabelWithIconStyle}>
                 <Plus size={16} />
-                <span>{projectMenuBusy === "create" ? "正在创建..." : "新建项目"}</span>
+                <span className={MENU_ITEM_PRIMARY_CLASS}>{projectMenuBusy === "create" ? "正在创建..." : "新建项目"}</span>
               </span>
             </button>
 
-            <div style={projectMenuDividerStyle} />
+            <div className={MENU_DIVIDER_CLASS} />
 
             <button
               type="button"
               role="menuitem"
-              style={{ ...projectMenuItemStyle, ...projectMenuDangerItemStyle }}
+              className={`${MENU_ITEM_CLASS} min-h-[54px] text-red-200 hover:bg-red-500/15`}
               onClick={() => void handleDeleteProject()}
               disabled={!projectId || projectMenuBusy === "delete"}
             >
               <span style={projectMenuLabelWithIconStyle}>
                 <Trash2 size={16} />
-                <span>{projectMenuBusy === "delete" ? "正在删除..." : "删除项目"}</span>
+                <span className={MENU_ITEM_PRIMARY_CLASS}>{projectMenuBusy === "delete" ? "正在删除..." : "删除项目"}</span>
               </span>
             </button>
-          </div>
-        )}
+          </MenuSurface>
+        ) : null}
       </div>
 
       <div style={rightClusterStyle}>
@@ -342,25 +331,34 @@ export const FlowTopToolbar: React.FC<{
           <span>{pointsLoading ? "..." : formatToolbarPoint(points)}</span>
         </button>
 
-        <div ref={notificationRef} style={notificationHostStyle}>
+        <div style={notificationHostStyle}>
           <button
             type="button"
+            ref={notificationLayer.triggerRef as React.RefObject<HTMLButtonElement>}
             style={topPillStyle}
+            aria-expanded={notificationLayer.open}
+            aria-haspopup="menu"
+            aria-label="通知"
             title="通知"
             onClick={() => {
-              setNotificationOpen((open) => !open);
+              notificationLayer.toggle();
               void refreshAnnouncements();
             }}
           >
             <Bell size={17} />
             <span>通知</span>
-            {unreadIds.length > 0 && (
+            {unreadIds.length > 0 ? (
               <span style={notificationBadgeStyle}>{unreadIds.length > 99 ? "99+" : unreadIds.length}</span>
-            )}
+            ) : null}
           </button>
 
-          {notificationOpen && (
-            <div style={notificationPanelStyle}>
+          {notificationLayer.open ? (
+            <MenuSurface
+              ref={notificationLayer.ref as React.RefObject<HTMLDivElement>}
+              role="menu"
+              aria-label="通知菜单"
+              className="absolute right-0 top-[calc(100%+14px)] w-[370px] max-w-[calc(100vw-48px)] overflow-hidden p-0"
+            >
               <div style={notificationHeaderStyle}>
                 <div style={notificationHeaderTitleStyle}>
                   <Megaphone size={17} color="#93c5fd" />
@@ -392,18 +390,18 @@ export const FlowTopToolbar: React.FC<{
                       >
                         <span style={notificationItemContentStyle}>
                           <span style={notificationItemTitleStyle}>{item.title || "系统公告"}</span>
-                          {item.pinned && <span style={pinnedStyle}>置顶</span>}
+                          {item.pinned ? <span style={pinnedStyle}>置顶</span> : null}
                           <span style={notificationItemTextStyle}>{item.content}</span>
                           <span style={notificationDateStyle}>{formatAnnouncementDate(item.date)}</span>
                         </span>
-                        {unread && <span style={unreadDotStyle} />}
+                        {unread ? <span style={unreadDotStyle} /> : null}
                       </button>
                     );
                   })
                 )}
               </div>
-            </div>
-          )}
+            </MenuSurface>
+          ) : null}
         </div>
 
         <button
@@ -416,7 +414,7 @@ export const FlowTopToolbar: React.FC<{
         </button>
       </div>
 
-      {selectedAnnouncement && (
+      {selectedAnnouncement ? (
         <div style={announcementOverlayStyle} onMouseDown={() => setSelectedAnnouncement(null)}>
           <div style={announcementModalStyle} onMouseDown={(event) => event.stopPropagation()}>
             <div style={announcementModalHeaderStyle}>
@@ -436,18 +434,13 @@ export const FlowTopToolbar: React.FC<{
 
             <div style={announcementBodyStyle}>{selectedAnnouncement.content}</div>
 
-            {!!selectedAnnouncement.images?.length && (
+            {!!selectedAnnouncement.images?.length ? (
               <div style={announcementImagesStyle}>
                 {selectedAnnouncement.images.map((src, index) => (
-                  <img
-                    key={`${src}-${index}`}
-                    src={src}
-                    alt={`announcement-${index + 1}`}
-                    style={announcementImageStyle}
-                  />
+                  <img key={`${src}-${index}`} src={src} alt={`announcement-${index + 1}`} style={announcementImageStyle} />
                 ))}
               </div>
-            )}
+            ) : null}
 
             <div style={announcementFooterStyle}>
               <button type="button" style={confirmButtonStyle} onClick={() => setSelectedAnnouncement(null)}>
@@ -456,7 +449,7 @@ export const FlowTopToolbar: React.FC<{
             </div>
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 });
@@ -476,12 +469,14 @@ const topChromeStyle: React.CSSProperties = {
 const titleMenuHostStyle: React.CSSProperties = {
   position: "relative",
   pointerEvents: "auto",
+  minWidth: 0,
+  maxWidth: "min(520px, calc(100vw - 520px))",
 };
 
 const titleClusterStyle: React.CSSProperties = {
   display: "flex",
-  alignItems: "center",
-  gap: 14,
+  alignItems: "flex-start",
+  gap: 12,
   minWidth: 0,
 };
 
@@ -492,6 +487,7 @@ const brandMenuButtonStyle: React.CSSProperties = {
   cursor: "pointer",
   display: "flex",
   alignItems: "center",
+  flexShrink: 0,
 };
 
 const titleTextWrapStyle: React.CSSProperties = {
@@ -502,7 +498,7 @@ const titleTextWrapStyle: React.CSSProperties = {
 };
 
 const titleInputStyle: React.CSSProperties = {
-  width: "min(260px, calc(100vw - 440px))",
+  width: "min(300px, calc(100vw - 540px))",
   minWidth: 112,
   border: "none",
   outline: "none",
@@ -515,52 +511,10 @@ const titleInputStyle: React.CSSProperties = {
   textShadow: "0 2px 16px rgba(0,0,0,0.5)",
 };
 
-const projectMenuStyle: React.CSSProperties = {
-  position: "absolute",
-  top: "calc(100% + 14px)",
-  left: 0,
-  width: 296,
-  maxWidth: "calc(100vw - 36px)",
-  borderRadius: 26,
-  background: "rgba(20,20,24,0.98)",
-  border: "1px solid rgba(255,255,255,0.1)",
-  boxShadow: "0 28px 72px rgba(0,0,0,0.52)",
-  backdropFilter: "blur(20px)",
-  padding: 12,
-};
-
-const projectMenuItemStyle: React.CSSProperties = {
-  width: "100%",
-  minHeight: 54,
-  border: "none",
-  borderRadius: 18,
-  background: "transparent",
-  color: "#f8fafc",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 12,
-  padding: "0 14px",
-  textAlign: "left",
-  fontSize: 22,
-  fontWeight: 700,
-  cursor: "pointer",
-};
-
-const projectMenuDangerItemStyle: React.CSSProperties = {
-  color: "#fca5a5",
-};
-
 const projectMenuLabelWithIconStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
   gap: 10,
-};
-
-const projectMenuDividerStyle: React.CSSProperties = {
-  height: 1,
-  background: "rgba(255,255,255,0.08)",
-  margin: "8px 0",
 };
 
 const saveStatusStyle = (status?: string): React.CSSProperties => ({
@@ -644,20 +598,6 @@ const notificationBadgeStyle: React.CSSProperties = {
   fontWeight: 850,
   lineHeight: 1,
   boxShadow: "0 0 0 2px rgba(43,43,49,0.96), 0 0 14px rgba(239,68,68,0.78)",
-};
-
-const notificationPanelStyle: React.CSSProperties = {
-  position: "absolute",
-  top: "calc(100% + 14px)",
-  right: 0,
-  width: 370,
-  maxWidth: "calc(100vw - 48px)",
-  overflow: "hidden",
-  borderRadius: 18,
-  background: "rgba(18,20,27,0.98)",
-  border: "1px solid rgba(255,255,255,0.12)",
-  boxShadow: "0 28px 70px rgba(0,0,0,0.56)",
-  backdropFilter: "blur(22px)",
 };
 
 const notificationHeaderStyle: React.CSSProperties = {
