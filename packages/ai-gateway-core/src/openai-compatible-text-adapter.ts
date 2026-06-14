@@ -5,9 +5,11 @@ import type {
   AssetReferenceInput,
   ImageGenerationRequest,
   MediaOutput,
-  ProviderMediaGenerationResult,
   ProviderCallContext,
+  ProviderMediaGenerationResult,
+  ProviderTaskResult,
   ProviderTextGenerationResult,
+  PollTaskRequest,
   TextGenerationRequest,
 } from "./types.js";
 
@@ -55,6 +57,15 @@ function getFirstNumber(records: Array<Record<string, unknown>>, keys: string[])
   return null;
 }
 
+function getBoolean(value: unknown): boolean {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    return normalized === "true" || normalized === "1" || normalized === "yes";
+  }
+  return false;
+}
+
 function normalizePath(value: unknown, fallback: string): string {
   const path = getString(value) || fallback;
   return path.startsWith("/") ? path : `/${path}`;
@@ -62,6 +73,11 @@ function normalizePath(value: unknown, fallback: string): string {
 
 function buildUrl(baseUrl: string, path: string): string {
   return `${baseUrl.replace(/\/$/, "")}${path}`;
+}
+
+function appendQueryParam(url: string, key: string, value: string): string {
+  const separator = url.includes("?") ? "&" : "?";
+  return `${url}${separator}${encodeURIComponent(key)}=${encodeURIComponent(value)}`;
 }
 
 function normalizeN(value: unknown): number {
@@ -109,6 +125,25 @@ function normalizeProviderImageSize(model: string, size: string | null, aspectRa
     return normalizeOpenAiCompatibleImageSize(size, aspectRatio || "1:1");
   }
   return size.trim() || null;
+}
+
+function normalizeSizeTierKey(size: string | null): string | null {
+  if (!size) return null;
+  const normalized = size.trim().toUpperCase();
+  return normalized === "1K" || normalized === "2K" || normalized === "4K" ? normalized : null;
+}
+
+function resolveModelBySize(
+  fallbackModel: string,
+  requestConfig: Record<string, unknown>,
+  size: string | null,
+): string {
+  const modelBySize = asRecord(requestConfig.modelBySize);
+  const tier = normalizeSizeTierKey(size);
+  if (!tier) return fallbackModel;
+  return getString(modelBySize[tier])
+    ?? getString(modelBySize[tier.toLowerCase()])
+    ?? fallbackModel;
 }
 
 function isResponsesImageMode(requestConfig: Record<string, unknown>): boolean {
@@ -244,6 +279,33 @@ function responseImageValueToOutput(value: unknown, index: number, outputFormat:
   };
 }
 
+function openAiImageDataItemToOutput(item: unknown, index: number, outputFormat: string): MediaOutput | null {
+  const row = asRecord(item);
+  const b64Json = getString(row.b64_json);
+  const url = getString(row.url);
+  if (!b64Json && !url) return null;
+
+  const outputMimeType = mimeTypeForOutputFormat(outputFormat);
+  const outputExtension = extensionForOutputFormat(outputFormat);
+  return {
+    ...(b64Json ? { base64: b64Json } : {}),
+    filename: `openai-image-${index + 1}.${outputExtension}`,
+    mimeType: getString(row.mime_type ?? row.mimeType) || (url ? guessMimeType(url) : outputMimeType),
+    ...(url ? { url } : {}),
+  };
+}
+
+function collectOpenAiImageData(value: unknown): unknown[] {
+  const record = asRecord(value);
+  if (Array.isArray(record.data)) return record.data;
+
+  const nestedData = asRecord(record.data).data;
+  if (Array.isArray(nestedData)) return nestedData;
+
+  const doubleNestedData = asRecord(asRecord(record.data).data).data;
+  return Array.isArray(doubleNestedData) ? doubleNestedData : [];
+}
+
 function guessMimeType(value: string): string {
   const normalized = value.split("?")[0]?.toLowerCase() || "";
   if (normalized.startsWith("data:")) {
@@ -311,6 +373,36 @@ async function readResponseBody(response: Response): Promise<unknown> {
   } catch {
     return text;
   }
+}
+
+function extractProviderTaskId(responseBody: unknown): string | null {
+  const body = asRecord(responseBody);
+  const data = asRecord(body.data);
+  return getString(body.task_id)
+    ?? getString(body.taskId)
+    ?? getString(body.id)
+    ?? getString(body.data)
+    ?? getString(data.task_id)
+    ?? getString(data.taskId)
+    ?? getString(data.id);
+}
+
+function extractUsage(value: unknown) {
+  const usage = asRecord(value);
+  return {
+    inputTokens: getNumber(usage.prompt_tokens),
+    outputTokens: getNumber(usage.completion_tokens),
+    totalTokens: getNumber(usage.total_tokens),
+  };
+}
+
+function replaceTaskId(path: string, providerTaskId: string): string {
+  const encoded = encodeURIComponent(providerTaskId);
+  return path
+    .replace("{task_id}", encoded)
+    .replace("{taskId}", encoded)
+    .replace(":task_id", encoded)
+    .replace(":taskId", encoded);
 }
 
 export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
@@ -436,10 +528,12 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
     const metadata = asRecord(request.metadata);
     const params = getNestedRecord(metadata, requestConfig);
     const lookupRecords = [params, metadata, requestConfig];
-    const model = request.model?.trim() || context.modelKey;
     const images = collectImageInputs(request, metadata, params);
     const mask = collectMaskInput(metadata, params);
     const hasEditInput = images.length > 0;
+    const requestedSize = getFirstString(lookupRecords, ["size", "imageSize", "image_size"]);
+    const baseModel = getString(requestConfig.model) || request.model?.trim() || context.modelKey;
+    const model = resolveModelBySize(baseModel, requestConfig, requestedSize);
     const n = hasEditInput && isGptImage2Model(model) ? 1 : normalizeN(params.n ?? requestConfig.n);
     const outputFormat = normalizeOutputFormat(
       getFirstString(lookupRecords, ["outputFormat", "output_format"]),
@@ -453,15 +547,15 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
       n,
       prompt: request.prompt,
     };
-    if (!isGptImage2Model(model)) {
-      payload.response_format = "b64_json";
+    if (!isGptImage2Model(model) && requestConfig.responseFormat !== null) {
+      payload.response_format = getString(requestConfig.responseFormat ?? requestConfig.response_format) || "b64_json";
     }
     const background = getFirstString(lookupRecords, ["background"]);
     const quality = getFirstString(lookupRecords, ["quality"]);
     const aspectRatio = getFirstString(lookupRecords, ["aspectRatio", "aspect_ratio"]);
     const size = normalizeProviderImageSize(
       model,
-      getFirstString(lookupRecords, ["size", "imageSize", "image_size"]),
+      requestedSize,
       aspectRatio,
     );
     const moderation = getFirstString(lookupRecords, ["moderation"]);
@@ -472,9 +566,13 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
     if (moderation) payload.moderation = moderation;
     if (size) payload.size = size;
 
-    const url = hasEditInput
+    let url = hasEditInput
       ? buildUrl(context.baseUrl, normalizePath(requestConfig.editPath ?? requestConfig.editsPath, "/images/edits"))
       : buildUrl(context.baseUrl, normalizePath(requestConfig.path ?? requestConfig.generatePath, "/images/generations"));
+    const isAsync = getBoolean(requestConfig.async ?? requestConfig.asyncMode);
+    if (isAsync) {
+      url = appendQueryParam(url, "async", "true");
+    }
 
     let requestBody: BodyInit;
     let requestHeaders: Record<string, string>;
@@ -561,24 +659,35 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
       throw this.mapError(response.status, providerRequest, providerResponse);
     }
 
-    const responseBody = asRecord(providerResponse.body);
-    const data = Array.isArray(responseBody.data) ? responseBody.data : [];
-    const outputMimeType = mimeTypeForOutputFormat(outputFormat);
-    const outputExtension = extensionForOutputFormat(outputFormat);
-    const outputs: MediaOutput[] = data
-      .map((item, index): MediaOutput | null => {
-        const row = asRecord(item);
-        const b64Json = getString(row.b64_json);
-        const url = getString(row.url);
-        if (!b64Json && !url) return null;
+    if (isAsync) {
+      const providerTaskId = extractProviderTaskId(providerResponse.body);
+      if (!providerTaskId) {
+        throw new AiGatewayError({
+          code: "PROVIDER_INVALID_RESPONSE",
+          message: "The provider async response did not include a task id",
+          providerRequest,
+          providerResponse,
+          statusCode: 502,
+        });
+      }
 
-        return {
-          ...(b64Json ? { base64: b64Json } : {}),
-          filename: `openai-image-${index + 1}.${outputExtension}`,
-          mimeType: getString(row.mime_type ?? row.mimeType) || outputMimeType,
-          ...(url ? { url } : {}),
-        };
-      })
+      return {
+        modelKey: model,
+        outputs: [],
+        providerRequest,
+        providerResponse,
+        providerTaskId,
+        status: "waiting_provider",
+        usage: {
+          inputTokens: null,
+          outputTokens: null,
+          totalTokens: null,
+        },
+      };
+    }
+
+    const outputs: MediaOutput[] = collectOpenAiImageData(providerResponse.body)
+      .map((item, index) => openAiImageDataItemToOutput(item, index, outputFormat))
       .filter((value): value is MediaOutput => value !== null);
 
     if (!outputs.length) {
@@ -602,6 +711,126 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
         outputTokens: null,
         totalTokens: null,
       },
+    };
+  }
+
+  async pollTask(
+    context: ProviderCallContext,
+    request: PollTaskRequest,
+  ): Promise<ProviderTaskResult> {
+    const requestConfig = asRecord(context.requestConfig);
+    const path = normalizePath(requestConfig.pollPath ?? requestConfig.taskPath, "/v1/images/tasks/{task_id}");
+    const url = buildUrl(context.baseUrl, replaceTaskId(path, request.providerTaskId));
+    const requestHeaders = {
+      Authorization: `Bearer ${context.apiKey}`,
+      "Content-Type": "application/json",
+    };
+    const providerRequest = {
+      headers: requestHeaders,
+      method: "GET",
+      url,
+    };
+
+    let response: Response;
+    try {
+      response = await this.fetchImplementation(providerRequest.url, {
+        headers: requestHeaders,
+        method: "GET",
+        signal: AbortSignal.timeout(context.timeoutMs),
+      });
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        (error.name === "AbortError" || error.name === "TimeoutError")
+      ) {
+        throw new AiGatewayError({
+          code: "PROVIDER_TIMEOUT",
+          message: "The provider poll request timed out",
+          providerRequest,
+          statusCode: 504,
+        });
+      }
+
+      throw new AiGatewayError({
+        code: "PROVIDER_INTERNAL_ERROR",
+        details: error instanceof Error ? error.message : String(error),
+        message: "The provider poll request failed before a response was received",
+        providerRequest,
+        statusCode: 502,
+      });
+    }
+
+    const providerResponse = {
+      body: await readResponseBody(response),
+      status: response.status,
+    };
+
+    if (!response.ok) {
+      throw this.mapError(response.status, providerRequest, providerResponse);
+    }
+
+    const body = asRecord(providerResponse.body);
+    const data = asRecord(body.data);
+    const rawStatus = (getString(data.status) ?? getString(body.status) ?? "").toUpperCase();
+    const providerTaskId = getString(data.task_id) ?? request.providerTaskId;
+
+    if (rawStatus === "IN_PROGRESS" || rawStatus === "RUNNING" || rawStatus === "PENDING") {
+      return {
+        providerRequest,
+        providerResponse,
+        providerTaskId,
+        status: rawStatus === "PENDING" ? "pending" : "running",
+        usage: null,
+      };
+    }
+
+    if (rawStatus === "FAILURE" || rawStatus === "FAILED" || rawStatus === "ERROR") {
+      return {
+        error: {
+          message: getString(data.fail_reason) ?? getString(body.message) ?? "Provider task failed",
+          status: rawStatus,
+        },
+        providerRequest,
+        providerResponse,
+        providerTaskId,
+        status: "failed",
+        usage: null,
+      };
+    }
+
+    if (rawStatus !== "SUCCESS" && rawStatus !== "SUCCEEDED") {
+      throw new AiGatewayError({
+        code: "PROVIDER_INVALID_RESPONSE",
+        message: "The provider poll response did not include a recognized task status",
+        providerRequest,
+        providerResponse,
+        statusCode: 502,
+      });
+    }
+
+    const resultData = asRecord(data.data);
+    const outputFormat = normalizeOutputFormat(getString(requestConfig.outputFormat ?? requestConfig.output_format));
+    const outputs = collectOpenAiImageData(resultData)
+      .map((item, index) => openAiImageDataItemToOutput(item, index, outputFormat))
+      .filter((value): value is MediaOutput => value !== null);
+
+    if (!outputs.length) {
+      throw new AiGatewayError({
+        code: "PROVIDER_INVALID_RESPONSE",
+        message: "The provider poll response did not include image output",
+        providerRequest,
+        providerResponse,
+        statusCode: 502,
+      });
+    }
+
+    return {
+      outputs,
+      providerRequest,
+      providerResponse,
+      providerTaskId,
+      status: "succeeded",
+      usage: extractUsage(resultData.usage),
     };
   }
 

@@ -36,6 +36,8 @@ const ROUTE_NUMBER_LABELS = ['一', '二', '三', '四', '五', '六', '七', '�
 
 const MODEL_DISPLAY_NAME_BY_FAMILY_OR_MODEL: Record<string, string> = {
   'gemini-3-pro-image-preview': 'Nano Banana Pro',
+  'gemini-3.1-flash-image-preview-2k': 'Nano Banana Pro',
+  'gemini-3.1-flash-image-preview-4k': 'Nano Banana Pro',
   'gemini-3.1-flash-image-preview': 'Nano Banana 2',
   'gpt-image-2': 'GPT-Image-2',
   'image.gpt-image-2': 'GPT-Image-2',
@@ -49,6 +51,7 @@ const MODEL_DISPLAY_NAME_BY_FAMILY_OR_MODEL: Record<string, string> = {
 const KNOWN_IMAGE_ROUTE_USER_FACING_LABEL_BY_KEY: Record<string, string> = {
   'image.gpt-image-2': 'GPT-Image-2 线路一',
   'image.gpt-image-2.line2': 'GPT-Image-2 线路二',
+  'image.mouxihub.nano-banana-pro.t3': 'Nano Banana Pro 线路二（官方T3）',
   'image.pixellelabs.nano-banana-2': 'Nano Banana 2 线路一',
   'image.pixellelabs.nano-banana-pro': 'Nano Banana Pro 线路一',
 };

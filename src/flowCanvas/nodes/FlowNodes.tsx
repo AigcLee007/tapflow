@@ -2014,6 +2014,18 @@ const OFFICIAL_IMAGE_RUNTIME_ROUTES_BY_MODEL_ID: Record<string, RuntimeRouteOpti
       routeKey: 'image.pixellelabs.nano-banana-pro',
       userFacingLabel: 'Nano Banana Pro 线路一',
     },
+    {
+      estimatedCredits: null,
+      label: '线路二（官方T3）',
+      minChargeCredits: null,
+      modelDisplayName: 'Nano Banana Pro',
+      modelKey: 'pixellelabs.nano-banana-pro',
+      pricingUnit: null,
+      providerKey: '',
+      providerName: '',
+      routeKey: 'image.mouxihub.nano-banana-pro.t3',
+      userFacingLabel: 'Nano Banana Pro 线路二（官方T3）',
+    },
   ],
   'pixellelabs.nano-banana-2': [
     {
