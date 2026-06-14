@@ -1535,3 +1535,18 @@ Completed in current local iteration:
 Validation completed:
 
 - `npx vitest run src/flowCanvas/utils/modelCatalogOptions.test.ts src/flowCanvas/runtime/graphExecutor.test.ts src/flowCanvas/utils/runtimeRouteOptions.test.ts`
+
+### Latest Image Model Picker First-Frame Fix
+
+Completed in current local iteration:
+
+- removed first-frame exposure of internal model keys such as `pixellelabs.nano-banana-pro` in the image model/route picker by mapping fallback labels through product-facing names
+- added cached, shared loading for image model catalog and model-scoped routes so reopening/selecting the picker does not clear visible route options while requests are in flight
+- started model-scoped route loading as soon as the current model is known instead of waiting for the picker/editor open state
+- added official 3-model / 4-route fallback route options so `Nano Banana Pro 线路一`, `Nano Banana 2 线路一`, and `GPT-Image-2 线路一/线路二` can render immediately before the API response returns
+- changed the empty route section to show a loading state during route fetches instead of incorrectly saying the current model has no available routes
+
+Validation completed:
+
+- `npx vitest run src/flowCanvas/utils/modelCatalogOptions.test.ts src/flowCanvas/runtime/graphExecutor.test.ts src/flowCanvas/utils/runtimeRouteOptions.test.ts`
+- `npm run build`

@@ -124,6 +124,8 @@ import {
   getAspectRatioOptionsFromCatalogModel,
   getCatalogUiFields,
   getDefaultParamsFromUiSchema,
+  getKnownImageRouteUserFacingLabel,
+  getProductImageModelLabel,
   getSizeOptionsFromCatalogModel,
   mapCatalogModelsToOptions,
   mapCatalogRoutesToRuntimeOptions,
@@ -202,11 +204,50 @@ const useNodeSelectionState = (nodeId: string, selected?: boolean) => {
   });
 };
 
+let imageModelCatalogCache: AiModelCatalogItem[] | null = null;
+let imageModelCatalogRequest: Promise<AiModelCatalogItem[]> | null = null;
+const imageModelRoutesCache = new Map<string, RuntimeRouteOption[]>();
+const imageModelRoutesRequest = new Map<string, Promise<RuntimeRouteOption[]>>();
+
+const loadImageModelCatalogWithCache = () => {
+  if (imageModelCatalogCache) return Promise.resolve(imageModelCatalogCache);
+  if (!imageModelCatalogRequest) {
+    imageModelCatalogRequest = listAiModelCatalog('image')
+      .then((items) => {
+        imageModelCatalogCache = items;
+        return items;
+      })
+      .finally(() => {
+        imageModelCatalogRequest = null;
+      });
+  }
+  return imageModelCatalogRequest;
+};
+
+const loadImageModelRoutesWithCache = (modelKey: string) => {
+  const key = String(modelKey || '').trim();
+  const cached = imageModelRoutesCache.get(key);
+  if (cached) return Promise.resolve(cached);
+  const activeRequest = imageModelRoutesRequest.get(key);
+  if (activeRequest) return activeRequest;
+  const request = listAiModelRoutes(key)
+    .then((items) => {
+      const routes = mapCatalogRoutesToRuntimeOptions(items);
+      imageModelRoutesCache.set(key, routes);
+      return routes;
+    })
+    .finally(() => {
+      imageModelRoutesRequest.delete(key);
+    });
+  imageModelRoutesRequest.set(key, request);
+  return request;
+};
+
 const useImageModelCatalogWhenNeeded = (enabled: boolean) => {
   const [catalog, setCatalog] = useState<ImageModelCatalogShape>(() => getImageModelCatalogSnapshot());
-  const [v2Catalog, setV2Catalog] = useState<AiModelCatalogItem[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [loaded, setLoaded] = useState(false);
+  const [v2Catalog, setV2Catalog] = useState<AiModelCatalogItem[]>(() => imageModelCatalogCache ?? []);
+  const [loading, setLoading] = useState(() => enabled && !imageModelCatalogCache);
+  const [loaded, setLoaded] = useState(() => Boolean(imageModelCatalogCache));
 
   useEffect(() => {
     if (enabled) setCatalog(getImageModelCatalogSnapshot());
@@ -215,15 +256,18 @@ const useImageModelCatalogWhenNeeded = (enabled: boolean) => {
   useEffect(() => {
     if (!enabled) return undefined;
     let active = true;
-    setLoading(true);
-    setLoaded(false);
-    setV2Catalog([]);
-    void listAiModelCatalog('image')
+    const hasCache = Boolean(imageModelCatalogCache);
+    if (hasCache) {
+      setV2Catalog(imageModelCatalogCache ?? []);
+      setLoaded(true);
+    }
+    setLoading(!hasCache);
+    void loadImageModelCatalogWithCache()
       .then((items) => {
         if (active) setV2Catalog(items);
       })
       .catch(() => {
-        if (active) setV2Catalog([]);
+        if (active && !imageModelCatalogCache) setV2Catalog([]);
       })
       .finally(() => {
         if (!active) return;
@@ -248,37 +292,49 @@ const useImageModelCatalogWhenNeeded = (enabled: boolean) => {
 
 const getImageModelCatalogRouteLookupKey = (
   modelId: string,
-  catalogModel?: { modelKey?: string | null } | null,
-) => String(catalogModel?.modelKey || modelId || '').trim();
+  catalogModel?: { modelFamily?: string | null; modelKey?: string | null } | null,
+) => String(catalogModel?.modelFamily || modelId || catalogModel?.modelKey || '').trim();
 
 const useModelScopedImageRoutes = (
   enabled: boolean,
   modelKey: string,
 ) => {
-  const [routes, setRoutes] = useState<RuntimeRouteOption[]>([]);
-  const [loadedModelKey, setLoadedModelKey] = useState('');
+  const normalizedModelKey = String(modelKey || '').trim();
+  const [routesByModelKey, setRoutesByModelKey] = useState<Record<string, RuntimeRouteOption[]>>(() => {
+    if (!normalizedModelKey) return {};
+    const cached = imageModelRoutesCache.get(normalizedModelKey);
+    return cached ? { [normalizedModelKey]: cached } : {};
+  });
+  const [loadedModelKey, setLoadedModelKey] = useState(() => (
+    normalizedModelKey && imageModelRoutesCache.has(normalizedModelKey) ? normalizedModelKey : ''
+  ));
   const [loadingModelKey, setLoadingModelKey] = useState('');
 
   useEffect(() => {
-    if (!enabled || !modelKey) {
-      setRoutes([]);
+    if (!enabled || !normalizedModelKey) {
       setLoadedModelKey('');
       setLoadingModelKey('');
       return undefined;
     }
     let active = true;
-    setLoadedModelKey('');
-    setLoadingModelKey(modelKey);
-    void listAiModelRoutes(modelKey)
-      .then((items) => {
+    const cached = imageModelRoutesCache.get(normalizedModelKey);
+    if (cached) {
+      setRoutesByModelKey((prev) => ({ ...prev, [normalizedModelKey]: cached }));
+      setLoadedModelKey(normalizedModelKey);
+      setLoadingModelKey('');
+      return undefined;
+    }
+    setLoadingModelKey(normalizedModelKey);
+    void loadImageModelRoutesWithCache(normalizedModelKey)
+      .then((routes) => {
         if (!active) return;
-        setRoutes(mapCatalogRoutesToRuntimeOptions(items));
-        setLoadedModelKey(modelKey);
+        setRoutesByModelKey((prev) => ({ ...prev, [normalizedModelKey]: routes }));
+        setLoadedModelKey(normalizedModelKey);
       })
       .catch(() => {
         if (!active) return;
-        setRoutes([]);
-        setLoadedModelKey(modelKey);
+        setRoutesByModelKey((prev) => ({ ...prev, [normalizedModelKey]: [] }));
+        setLoadedModelKey(normalizedModelKey);
       })
       .finally(() => {
         if (active) setLoadingModelKey('');
@@ -286,13 +342,14 @@ const useModelScopedImageRoutes = (
     return () => {
       active = false;
     };
-  }, [enabled, modelKey]);
+  }, [enabled, normalizedModelKey]);
 
-  if (loadedModelKey === modelKey && routes.length > 0) {
+  const routes = normalizedModelKey ? routesByModelKey[normalizedModelKey] ?? imageModelRoutesCache.get(normalizedModelKey) ?? [] : [];
+  if (loadedModelKey === normalizedModelKey && routes.length > 0) {
     return { routes, loading: false, loaded: true };
   }
-  if (!enabled || !modelKey) return { routes: [], loading: false, loaded: false };
-  return { routes: [], loading: loadingModelKey === modelKey, loaded: loadedModelKey === modelKey };
+  if (!enabled || !normalizedModelKey) return { routes: [], loading: false, loaded: false };
+  return { routes, loading: loadingModelKey === normalizedModelKey, loaded: loadedModelKey === normalizedModelKey };
 };
 
 /* Section */
@@ -1927,6 +1984,8 @@ const IMAGE_MODEL_ICON_BY_ID: Record<string, React.ReactNode> = {
   'nano-banana-pro-fast': <GoogleLogo />,
   'gemini-flash': <GoogleLogo />,
   'gpt-image-2': <OpenAILogo />,
+  'pixellelabs.nano-banana-pro': <GoogleLogo />,
+  'pixellelabs.nano-banana-2': <GoogleLogo />,
 };
 const IMAGE_RUNTIME_ROUTE_BY_MODEL_ID: Record<string, string> = {
   'nano-banana': 'image.pixellelabs.nano-banana-pro',
@@ -1936,6 +1995,62 @@ const IMAGE_RUNTIME_ROUTE_BY_MODEL_ID: Record<string, string> = {
   'pixellelabs.nano-banana-pro': 'image.pixellelabs.nano-banana-pro',
   'pixellelabs.nano-banana-2': 'image.pixellelabs.nano-banana-2',
   'gpt-image-2': 'image.gpt-image-2',
+};
+const OFFICIAL_IMAGE_RUNTIME_ROUTES_BY_MODEL_ID: Record<string, RuntimeRouteOption[]> = {
+  'pixellelabs.nano-banana-pro': [
+    {
+      estimatedCredits: null,
+      label: '线路一',
+      minChargeCredits: null,
+      modelDisplayName: 'Nano Banana Pro',
+      modelKey: 'pixellelabs.nano-banana-pro',
+      pricingUnit: null,
+      providerKey: '',
+      providerName: '',
+      routeKey: 'image.pixellelabs.nano-banana-pro',
+      userFacingLabel: 'Nano Banana Pro 线路一',
+    },
+  ],
+  'pixellelabs.nano-banana-2': [
+    {
+      estimatedCredits: null,
+      label: '线路一',
+      minChargeCredits: null,
+      modelDisplayName: 'Nano Banana 2',
+      modelKey: 'pixellelabs.nano-banana-2',
+      pricingUnit: null,
+      providerKey: '',
+      providerName: '',
+      routeKey: 'image.pixellelabs.nano-banana-2',
+      userFacingLabel: 'Nano Banana 2 线路一',
+    },
+  ],
+  'gpt-image-2': [
+    {
+      estimatedCredits: null,
+      label: '线路一',
+      minChargeCredits: null,
+      modelDisplayName: 'GPT-Image-2',
+      modelKey: 'gpt-image-2',
+      pricingUnit: null,
+      providerKey: '',
+      providerName: '',
+      routeKey: 'image.gpt-image-2',
+      userFacingLabel: 'GPT-Image-2 线路一',
+    },
+    {
+      estimatedCredits: null,
+      label: '线路二',
+      minChargeCredits: null,
+      modelDisplayName: 'GPT-Image-2',
+      modelKey: 'gpt-image-2',
+      pricingUnit: null,
+      providerKey: '',
+      providerName: '',
+      routeKey: 'image.gpt-image-2.line2',
+      userFacingLabel: 'GPT-Image-2 线路二',
+    },
+  ],
 };
 const LEGACY_IMAGE_RUNTIME_ROUTE_BY_MODEL_ID: Record<string, string[]> = {
   'nano-banana-pro': ['image.nano-banana-pro'],
@@ -2067,6 +2182,7 @@ interface ImageModelRouteDropupProps {
   currentModelId: string;
   currentRouteKey: string;
   runtimeRoutes: RuntimeRouteOption[];
+  routesLoading?: boolean;
   onChangeModel: (modelId: string) => void;
   onChangeRoute: (routeKey: string) => void;
 }
@@ -2076,6 +2192,7 @@ const ImageModelRouteDropup: React.FC<ImageModelRouteDropupProps> = ({
   currentModelId,
   currentRouteKey,
   runtimeRoutes,
+  routesLoading = false,
   onChangeModel,
   onChangeRoute,
 }) => {
@@ -2086,7 +2203,11 @@ const ImageModelRouteDropup: React.FC<ImageModelRouteDropupProps> = ({
   const currentModel = modelOptions.find((option) => option.id === currentModelId) || modelOptions[0];
   const currentRoute = runtimeRoutes.find((route) => route.routeKey === currentRouteKey) || runtimeRoutes[0];
   const currentRouteIndex = currentRoute ? Math.max(0, runtimeRoutes.findIndex((route) => route.routeKey === currentRoute.routeKey)) : 0;
-  const currentRouteLabel = currentRoute ? getUserFacingRouteLineLabel(currentRoute, currentRouteIndex) : (currentRouteKey ? '线路一' : '');
+  const knownRouteLabel = getKnownImageRouteUserFacingLabel(currentRouteKey);
+  const knownRouteLineLabel = knownRouteLabel.match(/线路[一二三四五六七八九十0-9]+$/)?.[0] || '';
+  const currentRouteLabel = currentRoute
+    ? getUserFacingRouteLineLabel(currentRoute, currentRouteIndex)
+    : knownRouteLineLabel;
 
   useEffect(() => {
     if (!open) return;
@@ -2181,7 +2302,15 @@ const ImageModelRouteDropup: React.FC<ImageModelRouteDropupProps> = ({
               })}
             </>
           )}
-          {runtimeRoutes.length === 0 && (
+          {runtimeRoutes.length === 0 && routesLoading && (
+            <>
+              <div style={imageMenuSubHeader}>可用线路</div>
+              <div style={{ color: '#94a3b8', fontSize: 13, lineHeight: 1.5, padding: '10px 16px 14px' }}>
+                线路加载中...
+              </div>
+            </>
+          )}
+          {runtimeRoutes.length === 0 && !routesLoading && (
             <>
               <div style={imageMenuSubHeader}>可用线路</div>
               <div style={{ color: '#94a3b8', fontSize: 13, lineHeight: 1.5, padding: '10px 16px 14px' }}>
@@ -3715,29 +3844,20 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     label: model.label,
     sizeOptions: getSizeOptionsFromCatalogModel(model),
   }));
-  const shouldUseLocalModelFallback = !shouldLoadEditorResources || (imageCatalogState.loaded && modelOptions.length === 0);
-  if (modelOptions.length === 0 && shouldUseLocalModelFallback) {
+  if (modelOptions.length === 0) {
     modelOptions.push(
-      { id: 'nano-banana-pro', label: 'Nano Banana Pro', sizeOptions: ['2k', '4k'] },
-      { id: 'nano-banana-pro-fast', label: 'Nano Banana Pro Fast', sizeOptions: ['2k', '4k'] },
-      { id: 'gemini-flash', label: 'Nano Banana 2', sizeOptions: ['1k'] },
+      { id: 'pixellelabs.nano-banana-pro', label: 'Nano Banana Pro', sizeOptions: ['1k'] },
+      { id: 'pixellelabs.nano-banana-2', label: 'Nano Banana 2', sizeOptions: ['1k'] },
       { id: 'gpt-image-2', label: 'GPT-Image-2', sizeOptions: ['1k', '2k', '4k'] },
     );
-  }
-  if (modelOptions.length === 0 && !shouldUseLocalModelFallback) {
-    const currentFallbackId = resolveV2ImageModelId(String(d.modelId || 'gpt-image-2'));
-    modelOptions.push({
-      id: currentFallbackId,
-      label: currentFallbackId,
-      sizeOptions: currentFallbackId === 'gpt-image-2' ? ['1k', '2k', '4k'] : ['1k'],
-    });
   }
 
   const currentModelId = resolveV2ImageModelId(String(d.modelId || modelOptions[0]?.id || 'nano-banana-pro'));
   const selectedCatalogModel = models.find((model) => model.id === currentModelId) || null;
   const modelRouteLookupKey = getImageModelCatalogRouteLookupKey(currentModelId, selectedCatalogModel);
-  const scopedRouteState = useModelScopedImageRoutes(showNodeEditor, modelRouteLookupKey);
-  const modelRuntimeRoutes = scopedRouteState.routes;
+  const scopedRouteState = useModelScopedImageRoutes(Boolean(modelRouteLookupKey), modelRouteLookupKey);
+  const officialFallbackRuntimeRoutes = OFFICIAL_IMAGE_RUNTIME_ROUTES_BY_MODEL_ID[currentModelId] ?? [];
+  const modelRuntimeRoutes = scopedRouteState.routes.length ? scopedRouteState.routes : officialFallbackRuntimeRoutes;
   const preferredRuntimeRouteKey = selectedCatalogModel?.defaultRouteKey || IMAGE_RUNTIME_ROUTE_BY_MODEL_ID[currentModelId] || '';
   const normalizedCurrentRouteKey = normalizeImageRuntimeRouteKey(currentModelId, d.routeKey);
   const preferredRuntimeRoute = preferredRuntimeRouteKey
@@ -3981,7 +4101,8 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const applyModelSelection = useCallback(
     (modelId: string) => {
       const normalizedModelId = normalizeImageModelId(modelId);
-      const nextSizes = getImageModelSizeOptions(modelId)
+      const selectedModelOption = modelOptions.find((option) => option.id === normalizedModelId || option.id === modelId);
+      const nextSizes = (selectedModelOption?.sizeOptions?.length ? selectedModelOption.sizeOptions : getImageModelSizeOptions(modelId))
         .map((value) => String(value || '').toLowerCase())
         .filter((value) => ['auto', '1k', '2k', '4k'].includes(value));
       const nextSize = nextSizes.includes(currentSize) ? currentSize : (nextSizes[0] || '1k');
@@ -4000,7 +4121,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
         }),
       });
     },
-    [currentSize, id, models, p, updateNodeData],
+    [currentSize, id, modelOptions, models, p, updateNodeData],
   );
 
   const applyRouteSelection = useCallback(
@@ -6003,6 +6124,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
                 currentModelId={currentModelId}
                 currentRouteKey={currentRouteKey}
                 runtimeRoutes={visibleRuntimeRoutes}
+                routesLoading={scopedRouteState.loading}
                 onChangeModel={applyModelSelection}
                 onChangeRoute={applyRouteSelection}
               />
