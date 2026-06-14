@@ -804,7 +804,7 @@ export class AiPluginService {
       return null;
     }
 
-    const adapterKind = this.resolveRouteApiMode(firstRoute);
+    const adapterKind = options.manifest.provider.kind;
     const environment = this.readRouteRequestConfigString(firstRoute.requestConfig, "environment") ?? "production";
     const baseUrl =
       options.input.baseUrlOverride?.trim() ||

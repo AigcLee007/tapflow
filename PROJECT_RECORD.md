@@ -99,6 +99,8 @@ As of 2026-06-13:
   - `npm run build --workspace @aigc-flow/worker`
 - Follow-up fix: plugin initialization now builds an aligned `ai_routes` insert statement so `base_url_override`, `request_config`, `rate_limit`, `status`, `plugin_install_id`, and `request_path` are written to the intended columns. This addresses Template Library installs that could fail server-side and leave the UI showing `未安装`.
 
+- Follow-up fix: template-created provider connections now keep `adapter_kind` aligned to the provider adapter (`openai-compatible`) while `api_mode` remains the route execution mode (`async`). Canvas model-route options now keep official Nano Banana Pro route ordering so line one remains the 24-credit PixelleLabs route and line two official T3 remains the MouxiHub route.
+
 ## 2026-06-14 - Brand Chrome and Transition System Tasks 1-4
 
 - Added a shared creator-facing brand UI layer under `src/app/brand`:
