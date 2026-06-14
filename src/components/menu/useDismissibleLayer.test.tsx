@@ -26,10 +26,17 @@ describe("useDismissibleLayer", () => {
     expect(screen.getByText("Second Menu")).toBeTruthy();
   });
 
-  test("closes the active layer on Escape and outside click", () => {
+  test("closes the active layer on Escape", () => {
     render(<TestMenuPair />);
     fireEvent.click(screen.getByRole("button", { name: "Open First" }));
     fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByText("First Menu")).toBeNull();
+  });
+
+  test("closes the active layer on outside pointerdown", () => {
+    render(<TestMenuPair />);
+    fireEvent.click(screen.getByRole("button", { name: "Open First" }));
+    fireEvent.pointerDown(window);
     expect(screen.queryByText("First Menu")).toBeNull();
   });
 });
