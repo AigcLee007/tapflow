@@ -79,6 +79,7 @@ import { getImageNaturalSize, imageUrlToBlob } from '../utils/imageUtils';
 import type { LightDirection } from './ImageLightingOverlay';
 import type { MultiAngleId } from './ImageMultiAngleOverlay';
 import { ImageMoreMenu, type ImageMoreMenuAction } from './ImageMoreMenu';
+import { NanoBananaParamPanel } from './NanoBananaParamPanel';
 import type { OutpaintDirection } from './ImageOutpaintOverlay';
 import type { ImageSplitPiece } from './ImageSplitOverlay';
 import { IMAGE_MENU_ITEM_MIN_HEIGHT, IMAGE_MENU_SURFACE_Z_INDEX } from './imageMenuStyles';
@@ -2076,6 +2077,10 @@ const resolveV2ImageModelId = (modelId: string) => {
   const normalizedModelId = normalizeImageModelId(modelId);
   return V2_IMAGE_MODEL_ID_BY_LEGACY_ID[normalizedModelId] || normalizedModelId;
 };
+const isNanoBananaImageModelId = (modelId: string) => {
+  const normalizedModelId = resolveV2ImageModelId(String(modelId || '').trim());
+  return normalizedModelId === 'pixellelabs.nano-banana-pro' || normalizedModelId === 'pixellelabs.nano-banana-2';
+};
 const normalizeImageRuntimeRouteKey = (modelId: string, routeKey?: string | null) => {
   const normalizedModelId = normalizeImageModelId(modelId);
   const v2ModelId = resolveV2ImageModelId(normalizedModelId);
@@ -2385,6 +2390,7 @@ const ImageModelRouteDropup: React.FC<ImageModelRouteDropupProps> = ({
 };
 
 interface ImageSettingsDropupProps {
+  modelId?: string;
   ratio: string;
   size: string;
   ratios: string[];
@@ -2425,6 +2431,7 @@ const cleanParamsForImageModel = (modelId: string, params: Record<string, any>) 
 };
 
 const ImageSettingsDropup: React.FC<ImageSettingsDropupProps> = ({
+  modelId,
   ratio,
   size,
   ratios,
@@ -2435,7 +2442,9 @@ const ImageSettingsDropup: React.FC<ImageSettingsDropupProps> = ({
   const [open, setOpen] = useState(false);
   const [hoveredSize, setHoveredSize] = useState<string | null>(null);
   const [hoveredRatio, setHoveredRatio] = useState<string | null>(null);
-  const { menuRef, position, updatePosition, wrapRef } = useFixedImageDropup(open, setOpen, 480);
+  const isNanoBanana = isNanoBananaImageModelId(String(modelId || ''));
+  const menuWidth = isNanoBanana ? 636 : 480;
+  const { menuRef, position, updatePosition, wrapRef } = useFixedImageDropup(open, setOpen, menuWidth);
 
   const safeSize = String(size || '1k').toLowerCase();
   return (
@@ -2450,74 +2459,87 @@ const ImageSettingsDropup: React.FC<ImageSettingsDropupProps> = ({
         <ChevronDown size={14} color="#a1a1aa" />
       </button>
       {open && position ? createPortal(
-        <div ref={menuRef} style={buildFixedImageMenuSurface(position, { width: 480, padding: 18 })} className="nodrag nopan nowheel">
-          <div style={imageMenuSubHeader}>画质</div>
-          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(3, sizes.length)},minmax(0,1fr))`, gap: 10, padding: '8px 0 18px' }}>
-            {sizes.map((item) => {
-              const active = item === safeSize;
-              const hovered = hoveredSize === item;
-              return (
-                <button
-                  key={item}
-                  type="button"
-                  className="nodrag nopan"
-                  onMouseEnter={() => setHoveredSize(item)}
-                  onMouseLeave={() => setHoveredSize(null)}
-                  onClick={() => onChangeSize(item)}
-                  style={{
-                    height: 48,
-                    borderRadius: 15,
-                    border: '1px solid rgba(255,255,255,0.07)',
-                    background: active || hovered ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.035)',
-                    color: active ? '#f8fafc' : '#cbd5e1',
-                    fontSize: 22,
-                    fontWeight: 800,
-                    cursor: 'pointer',
-                    transition: 'background 120ms ease, transform 120ms ease',
-                    transform: hovered ? 'translateY(-1px)' : 'translateY(0)',
-                  }}
-                >
-                  {formatImageSizeLabel(item)}
-                </button>
-              );
-            })}
-          </div>
-          <div style={imageMenuSubHeader}>比例</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,minmax(0,1fr))', gap: 10, padding: '8px 0 0' }}>
-            {ratios.map((item) => {
-              const active = item === ratio;
-              const hovered = hoveredRatio === item;
-              return (
-                <button
-                  key={item}
-                  type="button"
-                  className="nodrag nopan"
-                  onMouseEnter={() => setHoveredRatio(item)}
-                  onMouseLeave={() => setHoveredRatio(null)}
-                  onClick={() => onChangeRatio(item)}
-                  style={{
-                    height: 64,
-                    borderRadius: 15,
-                    border: '1px solid rgba(255,255,255,0.08)',
-                    background: active || hovered ? 'rgba(255,255,255,0.11)' : 'transparent',
-                    color: active ? '#f8fafc' : hovered ? '#e5e7eb' : '#9ca3af',
-                    fontWeight: 650,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 7,
-                    transition: 'background 120ms ease, color 120ms ease, transform 120ms ease',
-                    transform: hovered ? 'translateY(-1px)' : 'translateY(0)',
-                  }}
-                >
-                  <span style={ratioPreviewStyle(item, active)} />
-                  <span>{item}</span>
-                </button>
-              );
-            })}
-          </div>
+        <div ref={menuRef} style={buildFixedImageMenuSurface(position, { width: menuWidth, padding: isNanoBanana ? 20 : 18 })} className="nodrag nopan nowheel">
+          {isNanoBanana ? (
+            <NanoBananaParamPanel
+              ratio={ratio}
+              ratios={ratios}
+              size={safeSize}
+              sizes={sizes}
+              onChangeRatio={onChangeRatio}
+              onChangeSize={onChangeSize}
+            />
+          ) : (
+            <>
+              <div style={imageMenuSubHeader}>画质</div>
+              <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(3, sizes.length)},minmax(0,1fr))`, gap: 10, padding: '8px 0 18px' }}>
+                {sizes.map((item) => {
+                  const active = item === safeSize;
+                  const hovered = hoveredSize === item;
+                  return (
+                    <button
+                      key={item}
+                      type="button"
+                      className="nodrag nopan"
+                      onMouseEnter={() => setHoveredSize(item)}
+                      onMouseLeave={() => setHoveredSize(null)}
+                      onClick={() => onChangeSize(item)}
+                      style={{
+                        height: 48,
+                        borderRadius: 15,
+                        border: '1px solid rgba(255,255,255,0.07)',
+                        background: active || hovered ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.035)',
+                        color: active ? '#f8fafc' : '#cbd5e1',
+                        fontSize: 22,
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                        transition: 'background 120ms ease, transform 120ms ease',
+                        transform: hovered ? 'translateY(-1px)' : 'translateY(0)',
+                      }}
+                    >
+                      {formatImageSizeLabel(item)}
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={imageMenuSubHeader}>比例</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,minmax(0,1fr))', gap: 10, padding: '8px 0 0' }}>
+                {ratios.map((item) => {
+                  const active = item === ratio;
+                  const hovered = hoveredRatio === item;
+                  return (
+                    <button
+                      key={item}
+                      type="button"
+                      className="nodrag nopan"
+                      onMouseEnter={() => setHoveredRatio(item)}
+                      onMouseLeave={() => setHoveredRatio(null)}
+                      onClick={() => onChangeRatio(item)}
+                      style={{
+                        height: 64,
+                        borderRadius: 15,
+                        border: '1px solid rgba(255,255,255,0.08)',
+                        background: active || hovered ? 'rgba(255,255,255,0.11)' : 'transparent',
+                        color: active ? '#f8fafc' : hovered ? '#e5e7eb' : '#9ca3af',
+                        fontWeight: 650,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 7,
+                        transition: 'background 120ms ease, color 120ms ease, transform 120ms ease',
+                        transform: hovered ? 'translateY(-1px)' : 'translateY(0)',
+                      }}
+                    >
+                      <span style={ratioPreviewStyle(item, active)} />
+                      <span>{item}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
         </div>,
         document.body,
       ) : null}
@@ -3978,6 +4000,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const currentSize = String(p.size || p.imageSize || sizeOptions[0] || '1k').toLowerCase();
   const currentRatio = String(p.aspectRatio || p.aspect_ratio || aspectOptions[0] || '1:1');
   const dynamicParamFields = getCatalogUiFields(selectedCatalogModel?.uiSchema);
+  const useNanoBananaParamPanel = isNanoBananaImageModelId(currentModelId) && showSize;
   const routeFamily = String(getImageModelById(currentModelId)?.routeFamily || 'default').trim() || 'default';
   const routeOptions = getImageRoutesByModelFamily(routeFamily).filter((route) => route.isActive !== false);
   const selectedRoute =
@@ -6254,7 +6277,17 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
                 onChangeModel={applyModelSelection}
                 onChangeRoute={applyRouteSelection}
               />
-              {dynamicParamFields.length > 0 ? (
+              {useNanoBananaParamPanel ? (
+                <ImageSettingsDropup
+                  modelId={currentModelId}
+                  ratio={currentRatio}
+                  size={currentSize}
+                  ratios={aspectOptions}
+                  sizes={sizeOptions}
+                  onChangeRatio={(value) => setParam('aspect_ratio', value)}
+                  onChangeSize={(value) => setParam('size', value)}
+                />
+              ) : dynamicParamFields.length > 0 ? (
                 <DynamicImageParamsDropup
                   fields={dynamicParamFields}
                   params={p}
@@ -6264,6 +6297,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
                 />
               ) : showSize && (
                 <ImageSettingsDropup
+                  modelId={currentModelId}
                   ratio={currentRatio}
                   size={currentSize}
                   ratios={aspectOptions}

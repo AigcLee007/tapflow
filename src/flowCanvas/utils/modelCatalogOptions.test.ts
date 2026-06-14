@@ -260,6 +260,40 @@ describe('modelCatalogOptions', () => {
     })).toEqual(['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9']);
   });
 
+  test('treats gemini-flash fallback ids as Nano Banana 2 for panel options', () => {
+    expect(getSizeOptionsFromCatalogModel({
+      capabilities: { supportedSizes: ['1K'] },
+      defaultRouteKey: 'image.nano-banana-pro-fast',
+      id: 'gemini-flash',
+      label: 'Nano Banana 2',
+      modelFamily: 'gemini-flash',
+      modelKey: 'gemini-flash',
+      uiSchema: {},
+    })).toEqual(['1k', '2k', '4k']);
+
+    expect(getAspectRatioOptionsFromCatalogModel({
+      capabilities: { supportedAspectRatios: ['1:1'] },
+      defaultRouteKey: 'image.nano-banana-pro-fast',
+      id: 'gemini-flash',
+      label: 'Nano Banana 2',
+      modelFamily: 'gemini-flash',
+      modelKey: 'gemini-flash',
+      uiSchema: {},
+    })).toEqual(['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9']);
+  });
+
+  test('keeps gpt-image-2 ratio helper path untouched', () => {
+    expect(getAspectRatioOptionsFromCatalogModel({
+      capabilities: { supportedAspectRatios: ['1:1', '16:9'] },
+      defaultRouteKey: 'image.gpt-image-2',
+      id: 'gpt-image-2',
+      label: 'GPT-Image-2',
+      modelFamily: 'gpt-image-2',
+      modelKey: 'gpt-image-2',
+      uiSchema: {},
+    })).toEqual(['1:1', '16:9']);
+  });
+
   test('forces fixed Nano Banana fallback options for legacy local identities', () => {
     const model = {
       capabilities: { supportedAspectRatios: ['1:1'], supportedSizes: ['2K'] },

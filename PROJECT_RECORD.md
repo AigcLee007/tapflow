@@ -1718,3 +1718,18 @@ Validation completed:
 
 - `npx vitest run src/flowCanvas/utils/modelCatalogOptions.test.ts src/flowCanvas/runtime/graphExecutor.test.ts src/flowCanvas/utils/runtimeRouteOptions.test.ts`
 - `npm run build`
+
+### Latest Nano Banana Parameter Panel Refresh
+
+Completed in current local iteration:
+
+- added a dedicated `NanoBananaParamPanel` popup body for `Nano Banana Pro` and `Nano Banana 2` instead of reusing the generic image settings layout
+- locked Nano Banana quality options to `1K / 2K / 4K` and ratio options to the approved 10-item two-row set even when catalog metadata is incomplete
+- routed Nano Banana image nodes to the dedicated panel ahead of the dynamic-schema branch so the new UI actually renders for current catalog-backed models
+- preserved the existing parameter write-back contract for `size` and `aspect_ratio`
+- kept `GPT-Image-2` on the existing settings path unchanged in this iteration
+- added focused regression coverage for fixed ratio ordering, all 10 visible ratio items, legacy alias handling, and GPT-image-2 isolation
+
+Validation completed:
+
+- `npm test -- src/flowCanvas/nodes/NanoBananaParamPanel.test.tsx src/flowCanvas/utils/modelCatalogOptions.test.ts`
