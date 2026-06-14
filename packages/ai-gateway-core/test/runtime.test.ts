@@ -598,6 +598,118 @@ describe("openai-compatible text adapter", () => {
     await server.close();
   });
 
+  test("pollTask treats MouxiHub queued task states as still pending", async () => {
+    const server = await withHttpServer(async (request, response) => {
+      expect(request.url).toBe("/v1/images/tasks/task-mouxihub-queued");
+
+      response.setHeader("content-type", "application/json");
+      response.end(
+        JSON.stringify({
+          created_at: 1781439891,
+          model_name: "gemini-3.1-flash-image-preview-4k",
+          progress: "0%",
+          status: "SUBMITTED",
+          task_id: "task-mouxihub-queued",
+        }),
+      );
+    });
+
+    const adapter = new OpenAiCompatibleTextAdapter();
+    const result = await adapter.pollTask!(
+      {
+        apiKey: "sk-test-secret",
+        baseUrl: server.url,
+        modelKey: "gemini-3-pro-image-preview",
+        providerKey: "mouxihub-openai",
+        requestConfig: {
+          pollPath: "/v1/images/tasks/{task_id}",
+        },
+        routeId: "route-t3",
+        routeKey: "image.mouxihub.nano-banana-pro.t3",
+        timeoutMs: 5_000,
+      },
+      {
+        providerTaskId: "task-mouxihub-queued",
+      },
+    );
+
+    expect(result).toMatchObject({
+      providerTaskId: "task-mouxihub-queued",
+      status: "pending",
+    });
+
+    await server.close();
+  });
+
+  test("pollTask parses MouxiHub top-level success task details", async () => {
+    const server = await withHttpServer(async (request, response) => {
+      expect(request.url).toBe("/v1/images/tasks/task-mouxihub-top-level");
+
+      response.setHeader("content-type", "application/json");
+      response.end(
+        JSON.stringify({
+          created_at: 1781439891,
+          finish_time: 1781439927,
+          model_name: "gemini-3.1-flash-image-preview-4k",
+          progress: "100%",
+          status: "SUCCESS",
+          task_id: "task-mouxihub-top-level",
+          data: {
+            created: 1781439927,
+            data: [
+              {
+                url: "https://cdn.example/top-level-generated.png",
+              },
+            ],
+            usage: {
+              completion_tokens: 22,
+              prompt_tokens: 11,
+              total_tokens: 33,
+            },
+          },
+        }),
+      );
+    });
+
+    const adapter = new OpenAiCompatibleTextAdapter();
+    const result = await adapter.pollTask!(
+      {
+        apiKey: "sk-test-secret",
+        baseUrl: server.url,
+        modelKey: "gemini-3-pro-image-preview",
+        providerKey: "mouxihub-openai",
+        requestConfig: {
+          pollPath: "/v1/images/tasks/{task_id}",
+        },
+        routeId: "route-t3",
+        routeKey: "image.mouxihub.nano-banana-pro.t3",
+        timeoutMs: 5_000,
+      },
+      {
+        providerTaskId: "task-mouxihub-top-level",
+      },
+    );
+
+    expect(result).toMatchObject({
+      outputs: [
+        {
+          filename: "openai-image-1.png",
+          mimeType: "image/png",
+          url: "https://cdn.example/top-level-generated.png",
+        },
+      ],
+      providerTaskId: "task-mouxihub-top-level",
+      status: "succeeded",
+      usage: {
+        inputTokens: 11,
+        outputTokens: 22,
+        totalTokens: 33,
+      },
+    });
+
+    await server.close();
+  });
+
   test("generateImage uses Responses API image_generation tool for gpt-5.5 line two", async () => {
     const server = await withHttpServer(async (request, response) => {
       expect(request.url).toBe("/responses");

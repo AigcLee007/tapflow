@@ -396,6 +396,87 @@ function extractUsage(value: unknown) {
   };
 }
 
+function normalizeProviderTaskStatus(value: string): "pending" | "running" | "succeeded" | "failed" | null {
+  const normalized = value.trim().toUpperCase().replace(/[\s-]+/g, "_");
+  if (!normalized) return null;
+
+  if (
+    normalized === "SUBMITTED" ||
+    normalized === "CREATED" ||
+    normalized === "QUEUED" ||
+    normalized === "PENDING" ||
+    normalized === "WAITING" ||
+    normalized === "NOT_STARTED"
+  ) {
+    return "pending";
+  }
+
+  if (
+    normalized === "IN_PROGRESS" ||
+    normalized === "PROCESSING" ||
+    normalized === "RUNNING" ||
+    normalized === "GENERATING" ||
+    normalized === "EXECUTING"
+  ) {
+    return "running";
+  }
+
+  if (
+    normalized === "SUCCESS" ||
+    normalized === "SUCCEEDED" ||
+    normalized === "COMPLETED" ||
+    normalized === "COMPLETE" ||
+    normalized === "DONE" ||
+    normalized === "FINISHED"
+  ) {
+    return "succeeded";
+  }
+
+  if (
+    normalized === "FAILURE" ||
+    normalized === "FAILED" ||
+    normalized === "ERROR" ||
+    normalized === "CANCELED" ||
+    normalized === "CANCELLED" ||
+    normalized === "TIMEOUT" ||
+    normalized === "TIMED_OUT"
+  ) {
+    return "failed";
+  }
+
+  return null;
+}
+
+function getTaskStatus(records: Array<Record<string, unknown>>): { normalized: ReturnType<typeof normalizeProviderTaskStatus>; raw: string } {
+  const raw = getFirstString(records, [
+    "status",
+    "task_status",
+    "taskStatus",
+    "state",
+    "task_state",
+    "taskState",
+  ]) ?? "";
+  return {
+    normalized: normalizeProviderTaskStatus(raw),
+    raw: raw.toUpperCase(),
+  };
+}
+
+function collectFirstOpenAiImageOutputs(
+  candidates: Array<Record<string, unknown>>,
+  outputFormat: string,
+): MediaOutput[] {
+  for (const candidate of candidates) {
+    const outputs = collectOpenAiImageData(candidate)
+      .map((item, index) => openAiImageDataItemToOutput(item, index, outputFormat))
+      .filter((value): value is MediaOutput => value !== null);
+    if (outputs.length > 0) {
+      return outputs;
+    }
+  }
+  return [];
+}
+
 function replaceTaskId(path: string, providerTaskId: string): string {
   const encoded = encodeURIComponent(providerTaskId);
   return path
@@ -771,24 +852,40 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
 
     const body = asRecord(providerResponse.body);
     const data = asRecord(body.data);
-    const rawStatus = (getString(data.status) ?? getString(body.status) ?? "").toUpperCase();
-    const providerTaskId = getString(data.task_id) ?? request.providerTaskId;
+    const nestedData = asRecord(data.data);
+    const taskStatus = getTaskStatus([nestedData, data, body]);
+    const providerTaskId =
+      getString(nestedData.task_id) ??
+      getString(nestedData.taskId) ??
+      getString(data.task_id) ??
+      getString(data.taskId) ??
+      getString(body.task_id) ??
+      getString(body.taskId) ??
+      request.providerTaskId;
 
-    if (rawStatus === "IN_PROGRESS" || rawStatus === "RUNNING" || rawStatus === "PENDING") {
+    if (taskStatus.normalized === "pending" || taskStatus.normalized === "running") {
       return {
         providerRequest,
         providerResponse,
         providerTaskId,
-        status: rawStatus === "PENDING" ? "pending" : "running",
+        status: taskStatus.normalized,
         usage: null,
       };
     }
 
-    if (rawStatus === "FAILURE" || rawStatus === "FAILED" || rawStatus === "ERROR") {
+    if (taskStatus.normalized === "failed") {
       return {
         error: {
-          message: getString(data.fail_reason) ?? getString(body.message) ?? "Provider task failed",
-          status: rawStatus,
+          message:
+            getString(nestedData.fail_reason) ??
+            getString(nestedData.failReason) ??
+            getString(data.fail_reason) ??
+            getString(data.failReason) ??
+            getString(body.fail_reason) ??
+            getString(body.failReason) ??
+            getString(body.message) ??
+            "Provider task failed",
+          status: taskStatus.raw,
         },
         providerRequest,
         providerResponse,
@@ -798,7 +895,7 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
       };
     }
 
-    if (rawStatus !== "SUCCESS" && rawStatus !== "SUCCEEDED") {
+    if (taskStatus.normalized !== "succeeded") {
       throw new AiGatewayError({
         code: "PROVIDER_INVALID_RESPONSE",
         message: "The provider poll response did not include a recognized task status",
@@ -808,11 +905,13 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
       });
     }
 
-    const resultData = asRecord(data.data);
     const outputFormat = normalizeOutputFormat(getString(requestConfig.outputFormat ?? requestConfig.output_format));
-    const outputs = collectOpenAiImageData(resultData)
-      .map((item, index) => openAiImageDataItemToOutput(item, index, outputFormat))
-      .filter((value): value is MediaOutput => value !== null);
+    const resultCandidates = [
+      nestedData,
+      data,
+      body,
+    ].filter((candidate) => Object.keys(candidate).length > 0);
+    const outputs = collectFirstOpenAiImageOutputs(resultCandidates, outputFormat);
 
     if (!outputs.length) {
       throw new AiGatewayError({
@@ -823,6 +922,9 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
         statusCode: 502,
       });
     }
+    const usageRecord = resultCandidates
+      .map((candidate) => asRecord(candidate.usage))
+      .find((usage) => Object.keys(usage).length > 0) ?? {};
 
     return {
       outputs,
@@ -830,7 +932,7 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
       providerResponse,
       providerTaskId,
       status: "succeeded",
-      usage: extractUsage(resultData.usage),
+      usage: extractUsage(usageRecord),
     };
   }
 
