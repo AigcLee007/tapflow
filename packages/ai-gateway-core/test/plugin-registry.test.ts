@@ -16,9 +16,67 @@ describe("AI plugin registry", () => {
       "openai-compatible.gpt-image-2",
       "mock.local-dev.image",
       "pixellelabs.nano-banana-2",
+      "mouxihub.nano-banana-pro-t3",
       "pixellelabs.nano-banana-pro",
     ]);
-    expect(BUILTIN_AI_PLUGIN_MANIFESTS).toHaveLength(4);
+    expect(BUILTIN_AI_PLUGIN_MANIFESTS).toHaveLength(5);
+  });
+
+  test("returns MouxiHub Nano Banana Pro official T3 async route manifest", () => {
+    const manifest = builtinAiPluginRegistry.require("mouxihub.nano-banana-pro-t3");
+
+    expect(manifest.displayName).toBe("Nano Banana Pro");
+    expect(manifest.provider).toMatchObject({
+      defaultBaseUrl: "https://api.mouxihub.com",
+      key: "mouxihub-openai",
+      kind: "openai-compatible",
+    });
+    expect(manifest.models).toEqual([
+      expect.objectContaining({
+        defaultRouteKey: "image.mouxihub.nano-banana-pro.t3",
+        displayName: "Nano Banana Pro",
+        modality: "image",
+        modelFamily: "pixellelabs.nano-banana-pro",
+        modelKey: "gemini-3-pro-image-preview",
+      }),
+    ]);
+    expect(manifest.routes).toEqual([
+      expect.objectContaining({
+        mode: "async",
+        modelFamily: "pixellelabs.nano-banana-pro",
+        modelKey: "gemini-3-pro-image-preview",
+        path: "/v1/images/generations",
+        requestConfig: expect.objectContaining({
+          async: true,
+          editPath: "/v1/images/edits",
+          modelBySize: {
+            "1K": "gemini-3.1-flash-image-preview",
+            "2K": "gemini-3.1-flash-image-preview-2k",
+            "4K": "gemini-3.1-flash-image-preview-4k",
+          },
+          path: "/v1/images/generations",
+          pollPath: "/v1/images/tasks/{task_id}",
+        }),
+        routeKey: "image.mouxihub.nano-banana-pro.t3",
+        routeLabel: "线路二（官方T3）",
+      }),
+    ]);
+    expect(manifest.pricing).toEqual([
+      expect.objectContaining({
+        minChargeCredits: 6,
+        model: "gemini-3-pro-image-preview",
+        provider: "mouxihub-openai",
+        route: "image.mouxihub.nano-banana-pro.t3",
+        unitCredits: 6,
+        metadata: expect.objectContaining({
+          sizeTiers: {
+            "1K": 6,
+            "2K": 8,
+            "4K": 12,
+          },
+        }),
+      }),
+    ]);
   });
 
   test("returns split PixelleLabs Nano Banana plugins with independent routes", () => {
@@ -107,7 +165,7 @@ describe("AI plugin registry", () => {
       builtinAiPluginRegistry
         .list({ modality: "image", providerKind: "openai-compatible" })
         .map((manifest) => manifest.packageKey),
-    ).toEqual(["openai-compatible.gpt-image-2"]);
+    ).toEqual(["openai-compatible.gpt-image-2", "mouxihub.nano-banana-pro-t3"]);
   });
 
   test("throws for missing packages", () => {
