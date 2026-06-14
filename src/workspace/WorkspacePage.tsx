@@ -78,27 +78,29 @@ export function WorkspacePage() {
       <div className="absolute inset-0 opacity-35 [background-image:radial-gradient(rgba(148,163,184,0.36)_1.2px,transparent_1.2px)] [background-size:36px_36px]" />
       <div className="absolute left-0 top-0 h-[520px] w-[760px] bg-[radial-gradient(circle_at_25%_30%,rgba(34,211,238,0.12),transparent_46%)]" />
 
-      <section className="relative mx-auto max-w-[1760px] space-y-5">
+      <section className="relative mx-auto max-w-[1440px] space-y-5">
         <WorkspaceHeader projects={projects} />
 
-        <div className="flex flex-col gap-4 border-b border-white/10 pb-5 xl:flex-row xl:items-center xl:justify-between">
-          <ProjectTabs onChange={setScope} scope={scope} />
-          <ProjectToolbar
-            disabled={loading}
-            onCreate={() => {
-              const target = document.querySelector<HTMLButtonElement>("[data-create-project-trigger='true']");
-              target?.click();
-            }}
-            onQueryChange={setQuery}
-            onRefresh={() => void refresh()}
-            onShowAllChange={setShowAll}
-            onSortChange={setSortMode}
-            onViewModeChange={setViewMode}
-            query={query}
-            showAll={showAll}
-            sortMode={sortMode}
-            viewMode={viewMode}
-          />
+        <div className="rounded-[26px] border border-white/10 bg-white/[0.04] p-4">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <ProjectTabs onChange={setScope} scope={scope} />
+            <ProjectToolbar
+              disabled={loading}
+              onCreate={() => {
+                const target = document.querySelector<HTMLButtonElement>("[data-create-project-trigger='true']");
+                target?.click();
+              }}
+              onQueryChange={setQuery}
+              onRefresh={() => void refresh()}
+              onShowAllChange={setShowAll}
+              onSortChange={setSortMode}
+              onViewModeChange={setViewMode}
+              query={query}
+              showAll={showAll}
+              sortMode={sortMode}
+              viewMode={viewMode}
+            />
+          </div>
         </div>
 
         {selectedProjectIds.size > 0 && (

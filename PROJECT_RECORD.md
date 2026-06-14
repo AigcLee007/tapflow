@@ -1838,3 +1838,14 @@ Validation completed:
 - `npm run build --workspace @aigc-flow/api`
 - `npm run build --workspace @aigc-flow/db`
 - `npm run build --workspace @aigc-flow/ai-gateway-core`
+
+## 2026-06-15 - Scheme C Home Workspace Auth Refresh
+
+- refreshed `/home`, `/workspace`, `/login`, and `/register` toward the approved Scheme C premium product direction
+- reduced the old oversized prompt dominance on `/home` and replaced it with a brand-led hero, lighter quick-start entry, capability preview, and recent-project continuation
+- reorganized `/workspace` around a unified control bar and project-first layout while keeping existing project actions and creation behavior intact
+- tightened the shared auth shell so login/register use a more compact desktop-first layout and keep primary actions within standard first-screen desktop view without relying on page scrolling
+- normalized the touched auth/workspace/home test copy to readable Chinese in the refreshed surfaces
+- Validation:
+  - `npm test -- src/auth/AuthPages.test.tsx src/workspace/HomePage.test.tsx src/workspace/WorkspacePage.test.tsx`
+  - `npm run build`
