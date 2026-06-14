@@ -25,6 +25,38 @@ describe("buildImageRequest", () => {
     });
   });
 
+  test("keeps the current image node prompt when upstream image outputs include their original prompt", () => {
+    const request = __workerTestUtils.buildImageRequest(
+      [
+        {
+          assets: [
+            {
+              assetId: "asset-reference",
+              kind: "image",
+              mimeType: "image/png",
+            },
+          ],
+          prompt: "动物运动会，3D风格",
+        },
+      ],
+      {
+        generationPrompt: "狮子在斑马的后面，斑马是第一名",
+        params: {
+          size: "4K",
+        },
+        routeKey: "image.mouxihub.nano-banana-pro.t3",
+      },
+    );
+
+    expect(request.prompt).toBe("狮子在斑马的后面，斑马是第一名");
+    expect(request.inputAssets).toEqual([
+      expect.objectContaining({
+        assetId: "asset-reference",
+        kind: "image",
+      }),
+    ]);
+  });
+
   test("builds target-node upstream outputs from static text and asset-backed image node configs", () => {
     const outputs = __workerTestUtils.getDependencyOutputs(
       {

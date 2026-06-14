@@ -534,12 +534,8 @@ function buildImageRequest(
     params: normalizedParams,
   };
   const routeKey = resolveImageRequestRouteKey(config);
-  const prompt =
-    typeof config.generationPrompt === "string" && config.generationPrompt.trim()
-      ? config.generationPrompt
-      : typeof config.prompt === "string"
-        ? config.prompt
-        : "";
+  const generationPrompt = readTrimmedString(config.generationPrompt);
+  const fallbackPrompt = typeof config.prompt === "string" ? config.prompt : "";
 
   return {
     inputAssets: extractAssetInputs(upstreamOutputs),
@@ -560,7 +556,7 @@ function buildImageRequest(
             ? "nano-banana-pro"
             : config.modelId
           : null,
-    prompt: extractPromptFromUpstreamOutputs(upstreamOutputs, prompt),
+    prompt: generationPrompt ?? extractPromptFromUpstreamOutputs(upstreamOutputs, fallbackPrompt),
     routeKey,
   };
 }

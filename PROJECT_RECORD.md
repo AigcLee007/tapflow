@@ -1786,3 +1786,19 @@ Validation completed:
 - `npm run build --workspace @aigc-flow/ai-gateway-core`
 - `npm run build --workspace @aigc-flow/worker`
 - `npm run build`
+
+### Latest Image Reference Prompt Priority Fix
+
+Completed in current local iteration:
+
+- traced a MouxiHub image-edit prompt mismatch to worker request construction rather than the provider: upstream reference image output prompts could override the current image node prompt
+- changed image request building so the current node `generationPrompt` is sent to providers when present, while preserving the older upstream-text fallback when the image node has no own prompt
+- added regression coverage for the exact reference-image case where a prior prompt like `动物运动会，3D风格` must not replace the newly typed prompt
+
+Validation completed:
+
+- `npm run test --workspace @aigc-flow/worker -- workflow-runtime-image-request.test.ts -t "keeps the current image node prompt"`
+- `npm run test --workspace @aigc-flow/worker -- workflow-runtime-image-request.test.ts`
+- `npm run build --workspace @aigc-flow/worker`
+- `npm run test --workspace @aigc-flow/worker`
+- `npm run build`
