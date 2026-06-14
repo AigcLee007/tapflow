@@ -458,6 +458,61 @@ describe("openai-compatible text adapter", () => {
     await server.close();
   });
 
+  test("generateImage defaults MouxiHub async generation to 1K upstream model when size is missing", async () => {
+    const server = await withHttpServer(async (request, response) => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of request) {
+        chunks.push(Buffer.from(chunk));
+      }
+      const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;
+      expect(request.url).toBe("/v1/images/generations?async=true");
+      expect(body).toMatchObject({
+        model: "gemini-3.1-flash-image-preview",
+        n: 1,
+        prompt: "forest sports day",
+        size: "1K",
+      });
+
+      response.setHeader("content-type", "application/json");
+      response.end(JSON.stringify({ code: "success", message: "", data: "task-mouxihub-default-size" }));
+    });
+
+    const adapter = new OpenAiCompatibleTextAdapter();
+    const result = await adapter.generateImage(
+      {
+        apiKey: "sk-test-secret",
+        baseUrl: server.url,
+        modelKey: "gemini-3-pro-image-preview",
+        providerKey: "mouxihub-openai",
+        requestConfig: {
+          async: true,
+          modelBySize: {
+            "1K": "gemini-3.1-flash-image-preview",
+            "2K": "gemini-3.1-flash-image-preview-2k",
+            "4K": "gemini-3.1-flash-image-preview-4k",
+          },
+          path: "/v1/images/generations",
+          responseFormat: null,
+        },
+        routeId: "route-t3",
+        routeKey: "image.mouxihub.nano-banana-pro.t3",
+        timeoutMs: 5_000,
+      },
+      {
+        metadata: {},
+        prompt: "forest sports day",
+      },
+    );
+
+    expect(result).toMatchObject({
+      modelKey: "gemini-3.1-flash-image-preview",
+      providerTaskId: "task-mouxihub-default-size",
+      status: "waiting_provider",
+    });
+
+    await server.close();
+  });
+
   test("generateImage submits MouxiHub async edits through multipart endpoint", async () => {
     const server = await withHttpServer(async (request, response) => {
       expect(request.url).toBe("/v1/images/edits?async=true");

@@ -1769,3 +1769,20 @@ Completed in current local iteration:
 Validation completed:
 
 - `npm test -- src/flowCanvas/nodes/NanoBananaParamPanel.test.tsx src/flowCanvas/utils/modelCatalogOptions.test.ts`
+
+### Latest MouxiHub Nano Banana Pro T3 Default Size Fix
+
+Completed in current local iteration:
+
+- traced the production MouxiHub T3 failure to the provider request body using the product model `gemini-3-pro-image-preview` instead of the route's size-specific upstream model
+- changed the OpenAI-compatible image adapter so routes with `requestConfig.modelBySize` default a missing canvas size to `1K`
+- ensured MouxiHub T3 async text-to-image requests now send `gemini-3.1-flash-image-preview` and provider size `1K` when the node does not explicitly provide a size
+- added regression coverage for missing-size MouxiHub async generation to keep the product model from leaking into the upstream request path again
+
+Validation completed:
+
+- `npm run test --workspace @aigc-flow/ai-gateway-core -- runtime.test.ts -t "defaults MouxiHub"`
+- `npm run test --workspace @aigc-flow/ai-gateway-core -- runtime.test.ts plugin-registry.test.ts`
+- `npm run build --workspace @aigc-flow/ai-gateway-core`
+- `npm run build --workspace @aigc-flow/worker`
+- `npm run build`

@@ -133,6 +133,13 @@ function normalizeSizeTierKey(size: string | null): string | null {
   return normalized === "1K" || normalized === "2K" || normalized === "4K" ? normalized : null;
 }
 
+function resolveSizeForModelBySize(requestConfig: Record<string, unknown>, requestedSize: string | null): string | null {
+  if (requestedSize) return requestedSize;
+  const modelBySize = asRecord(requestConfig.modelBySize);
+  if (Object.keys(modelBySize).length === 0) return null;
+  return getString(requestConfig.defaultSize ?? requestConfig.default_size) ?? "1K";
+}
+
 function resolveModelBySize(
   fallbackModel: string,
   requestConfig: Record<string, unknown>,
@@ -631,8 +638,9 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
     const mask = collectMaskInput(metadata, params);
     const hasEditInput = images.length > 0;
     const requestedSize = getFirstString(lookupRecords, ["size", "imageSize", "image_size"]);
+    const providerRequestedSize = resolveSizeForModelBySize(requestConfig, requestedSize);
     const baseModel = getString(requestConfig.model) || request.model?.trim() || context.modelKey;
-    const model = resolveModelBySize(baseModel, requestConfig, requestedSize);
+    const model = resolveModelBySize(baseModel, requestConfig, providerRequestedSize);
     const n = hasEditInput && isGptImage2Model(model) ? 1 : normalizeN(params.n ?? requestConfig.n);
     const outputFormat = normalizeOutputFormat(
       getFirstString(lookupRecords, ["outputFormat", "output_format"]),
@@ -654,7 +662,7 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
     const aspectRatio = getFirstString(lookupRecords, ["aspectRatio", "aspect_ratio"]);
     const size = normalizeProviderImageSize(
       model,
-      requestedSize,
+      providerRequestedSize,
       aspectRatio,
     );
     const moderation = getFirstString(lookupRecords, ["moderation"]);
