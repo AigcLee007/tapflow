@@ -99,6 +99,8 @@ const normalizeSize = (value: unknown) => {
 
 const NANO_BANANA_FIXED_SIZE_OPTIONS = ['1k', '2k', '4k'];
 const NANO_BANANA_FIXED_RATIO_OPTIONS = ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'];
+const GPT_IMAGE_2_FIXED_SIZE_OPTIONS = ['auto', '1k', '2k', '4k'];
+const GPT_IMAGE_2_FIXED_RATIO_OPTIONS = ['1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3', '21:9'];
 const NANO_BANANA_MODEL_IDENTITIES = new Set([
   'nano-banana',
   'nano-banana-pro',
@@ -255,6 +257,9 @@ export function getAspectRatioOptionsFromCatalogModel(model: ModelCatalogOption 
   if (isNanoBananaCatalogModel(model)) {
     return [...NANO_BANANA_FIXED_RATIO_OPTIONS];
   }
+  if (isGptImage2CatalogModel(model)) {
+    return [...GPT_IMAGE_2_FIXED_RATIO_OPTIONS];
+  }
 
   const fields = getCatalogUiFields(model?.uiSchema);
   const aspectField = fields.find((field) => field.key === 'aspectRatio' || field.key === 'aspect_ratio');
@@ -271,6 +276,9 @@ export function getSizeOptionsFromCatalogModel(model: ModelCatalogOption | null 
   if (isNanoBananaCatalogModel(model)) {
     return [...NANO_BANANA_FIXED_SIZE_OPTIONS];
   }
+  if (isGptImage2CatalogModel(model)) {
+    return [...GPT_IMAGE_2_FIXED_SIZE_OPTIONS];
+  }
 
   const fields = getCatalogUiFields(model?.uiSchema);
   const sizeField = fields.find((field) => field.key === 'imageSize' || field.key === 'size');
@@ -281,8 +289,5 @@ export function getSizeOptionsFromCatalogModel(model: ModelCatalogOption | null 
     ? (model!.capabilities.supportedSizes as unknown[]).map(normalizeSize).filter(Boolean)
     : [];
   const options = Array.from(new Set([...fromField, ...fromCapabilities]));
-  if (isGptImage2CatalogModel(model)) {
-    return options.filter((option) => option === '1k' || option === '2k' || option === '4k');
-  }
   return options;
 }
