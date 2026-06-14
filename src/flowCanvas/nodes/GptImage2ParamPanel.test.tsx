@@ -32,6 +32,11 @@ describe('GptImage2ParamPanel', () => {
     expect(within(rightZone).getByRole('button', { name: 'LOW' })).toBeTruthy();
     expect(within(rightZone).getByRole('button', { name: 'JPEG' })).toBeTruthy();
     expect(within(rightZone).getByRole('button', { name: 'AUTO MODERATION' })).toBeTruthy();
+    expect(screen.getByText('尺寸')).toBeTruthy();
+    expect(screen.getByText('比例')).toBeTruthy();
+    expect(screen.getByText('质量')).toBeTruthy();
+    expect(screen.getByText('输出格式')).toBeTruthy();
+    expect(screen.getByText('审核强度')).toBeTruthy();
     expect(screen.getByText('2K · 1:1 · LOW · JPEG · AUTO')).toBeTruthy();
   });
 
@@ -93,5 +98,32 @@ describe('GptImage2ParamPanel', () => {
     ['1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3', '21:9'].forEach((value) => {
       expect(screen.getByRole('button', { name: value })).toBeTruthy();
     });
+  });
+
+  test('keeps the right-side controls readable with balanced panel spacing', () => {
+    render(
+      <GptImage2ParamPanel
+        format="webp"
+        moderation="low"
+        quality="medium"
+        ratio="21:9"
+        ratios={['1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3', '21:9']}
+        size="4k"
+        sizes={['auto', '1k', '2k', '4k']}
+        onChangeFormat={vi.fn()}
+        onChangeModeration={vi.fn()}
+        onChangeQuality={vi.fn()}
+        onChangeRatio={vi.fn()}
+        onChangeSize={vi.fn()}
+      />,
+    );
+
+    const panel = screen.getByTestId('gpt-image-2-param-panel') as HTMLDivElement;
+    const mediumChip = screen.getByRole('button', { name: 'MEDIUM' }) as HTMLButtonElement;
+
+    expect(panel.style.gap).toBe('20px');
+    expect(panel.style.gridTemplateColumns).toBe('minmax(0, 1.55fr) minmax(320px, 1fr)');
+    expect(mediumChip.style.fontSize).toBe('14px');
+    expect(mediumChip.style.whiteSpace).toBe('nowrap');
   });
 });

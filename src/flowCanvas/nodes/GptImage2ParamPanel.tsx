@@ -20,6 +20,12 @@ const QUALITY_OPTIONS = ['auto', 'low', 'medium', 'high'] as const;
 const FORMAT_OPTIONS = ['png', 'jpeg', 'webp'] as const;
 const MODERATION_OPTIONS = ['auto', 'low'] as const;
 
+const sectionLabelStyle: React.CSSProperties = {
+  color: 'rgba(255,255,255,0.72)',
+  fontSize: 14,
+  fontWeight: 700,
+};
+
 const labelize = (value: string) => String(value || '').trim().toUpperCase();
 const moderationLabel = (value: 'auto' | 'low') => `${value.toUpperCase()} MODERATION`;
 
@@ -54,8 +60,9 @@ const chipStyle = (active: boolean): React.CSSProperties => ({
   border: '1px solid rgba(255,255,255,0.06)',
   background: active ? 'rgba(255,255,255,0.11)' : 'transparent',
   color: active ? '#f8fafc' : 'rgba(255,255,255,0.62)',
-  fontSize: 15,
+  fontSize: 14,
   fontWeight: active ? 800 : 700,
+  whiteSpace: 'nowrap',
   cursor: 'pointer',
 });
 
@@ -77,9 +84,16 @@ export function GptImage2ParamPanel({
   const summary = `${labelize(size)} · ${ratio} · ${labelize(quality)} · ${labelize(format)} · ${labelize(moderation)}`;
 
   return (
-    <div data-testid="gpt-image-2-param-panel" style={{ display: 'grid', gridTemplateColumns: '1.7fr 1fr', gap: 18 }}>
+    <div
+      data-testid="gpt-image-2-param-panel"
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'minmax(0, 1.55fr) minmax(320px, 1fr)',
+        gap: 20,
+      }}
+    >
       <section data-testid="gpt-image-2-left-zone" style={{ display: 'grid', gap: 14 }}>
-        <div style={{ color: 'rgba(255,255,255,0.72)', fontSize: 14, fontWeight: 700 }}>尺寸</div>
+        <div style={sectionLabelStyle}>尺寸</div>
         <div style={{ ...segmentedRailStyle, gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}>
           {sizes.map((item) => (
             <button
@@ -98,7 +112,7 @@ export function GptImage2ParamPanel({
           ))}
         </div>
 
-        <div style={{ color: 'rgba(255,255,255,0.72)', fontSize: 14, fontWeight: 700, marginTop: 2 }}>比例</div>
+        <div style={{ ...sectionLabelStyle, marginTop: 2 }}>比例</div>
         <div
           style={{
             display: 'grid',
@@ -140,8 +154,8 @@ export function GptImage2ParamPanel({
         </div>
       </section>
 
-      <section data-testid="gpt-image-2-right-zone" style={{ display: 'grid', gap: 14 }}>
-        <div style={{ color: 'rgba(255,255,255,0.72)', fontSize: 14, fontWeight: 700 }}>质量</div>
+      <section data-testid="gpt-image-2-right-zone" style={{ display: 'grid', gap: 14, alignContent: 'start' }}>
+        <div style={sectionLabelStyle}>质量</div>
         <div style={{ ...segmentedRailStyle, gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}>
           {QUALITY_OPTIONS.map((item) => (
             <button key={item} type="button" aria-label={labelize(item)} onClick={() => onChangeQuality(item)} style={chipStyle(item === quality)}>
@@ -150,7 +164,7 @@ export function GptImage2ParamPanel({
           ))}
         </div>
 
-        <div style={{ color: 'rgba(255,255,255,0.72)', fontSize: 14, fontWeight: 700 }}>输出格式</div>
+        <div style={sectionLabelStyle}>输出格式</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10 }}>
           {FORMAT_OPTIONS.map((item) => (
             <button key={item} type="button" aria-label={labelize(item)} onClick={() => onChangeFormat(item)} style={chipStyle(item === format)}>
@@ -159,7 +173,7 @@ export function GptImage2ParamPanel({
           ))}
         </div>
 
-        <div style={{ color: 'rgba(255,255,255,0.72)', fontSize: 14, fontWeight: 700 }}>审核强度</div>
+        <div style={sectionLabelStyle}>审核强度</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
           {MODERATION_OPTIONS.map((item) => (
             <button
@@ -184,6 +198,7 @@ export function GptImage2ParamPanel({
             color: '#d5d9e0',
             fontSize: 14,
             fontWeight: 700,
+            lineHeight: 1.25,
           }}
         >
           {summary}

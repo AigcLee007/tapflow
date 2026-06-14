@@ -1863,3 +1863,13 @@ Validation completed:
 - Validation:
   - `npm test -- src/auth/AuthPages.test.tsx src/workspace/HomePage.test.tsx src/workspace/WorkspacePage.test.tsx`
   - `npm run build`
+
+## 2026-06-15 - GPT-Image-2 Parameter Panel UI Consistency Pass
+
+- cleaned the dedicated GPT-image-2 parameter panel so the visible section labels are readable Chinese and the summary strip uses the shared `·` separator instead of corrupted characters
+- widened and rebalanced the dual-zone GPT panel layout to reduce right-column crowding for quality, output format, and moderation controls
+- tightened GPT panel chip typography with nowrap behavior so compact English option labels stay aligned with the rest of the canvas parameter surfaces
+- normalized image route user-facing Chinese labels in the catalog option helpers so model line menus no longer surface mojibake strings
+- Validation:
+  - `npm test -- src/flowCanvas/nodes/GptImage2ParamPanel.test.tsx src/flowCanvas/utils/modelCatalogOptions.test.ts`
+  - `npm run build`
