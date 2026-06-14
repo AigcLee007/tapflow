@@ -76,9 +76,10 @@ describe("WorkspacePage", () => {
     expect(screen.getByRole("button", { name: "个人" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "团队项目" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "我的空间" })).toBeTruthy();
-    expect(screen.getByText("管理你的 AI Flow 项目，继续创作、筛选和打开画布。")).toBeTruthy();
     expect(screen.getByPlaceholderText("搜索")).toBeTruthy();
     expect(screen.getByRole("button", { name: "显示全部" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /排序/ })).toBeTruthy();
+    expect(screen.queryByRole("combobox")).toBeNull();
     expect(screen.getByRole("button", { name: "网格视图" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "列表视图" })).toBeTruthy();
     expect(screen.getAllByRole("button", { name: "新建项目" }).length).toBeGreaterThan(0);

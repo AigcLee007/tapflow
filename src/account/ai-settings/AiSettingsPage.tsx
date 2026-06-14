@@ -14,6 +14,7 @@ import {
 
 import { ACCOUNT_PROVIDER_SETTINGS_ROUTE } from "../../app/routes";
 import { useAuth } from "../../auth/useAuth";
+import { MenuSelect } from "../../components/menu/MenuSelect";
 import {
   deleteAdminRoute,
   createAdminRoute,
@@ -1098,12 +1099,13 @@ export function AiSettingsPage() {
                   <div className="mt-4 grid gap-3 md:grid-cols-2">
                     <label className="block">
                       <span className="mb-1.5 block text-xs font-medium text-slate-300">所属服务商</span>
-                      <select
-                        className={selectClass}
-                        onChange={(event) =>
+                      <MenuSelect
+                        fullWidth
+                        label="create route provider"
+                        onChange={(value) =>
                           setCreateEditor((current) => {
                             if (!current) return current;
-                            const nextProviderId = event.target.value;
+                            const nextProviderId = value;
                             const nextConnectionId =
                               connections.find(
                                 (connection) =>
@@ -1122,15 +1124,16 @@ export function AiSettingsPage() {
                             };
                           })
                         }
+                        options={[
+                          { label: "请选择服务商", value: "" },
+                          ...createProviders.map((provider) => ({
+                            label: provider.name,
+                            value: provider.id,
+                          })),
+                        ]}
+                        size="compact"
                         value={createEditor.providerId}
-                      >
-                        <option value="">请选择服务商</option>
-                        {createProviders.map((provider) => (
-                          <option key={provider.id} value={provider.id}>
-                            {provider.name}
-                          </option>
-                        ))}
-                      </select>
+                      />
                     </label>
                     <label className="block">
                       <span className="mb-1.5 block text-xs font-medium text-slate-300">线路 Key</span>
@@ -1170,43 +1173,47 @@ export function AiSettingsPage() {
                     </label>
                     <label className="block">
                       <span className="mb-1.5 block text-xs font-medium text-slate-300">运行连接</span>
-                      <select
-                        className={selectClass}
+                      <MenuSelect
                         disabled={!createEditor.providerId}
-                        onChange={(event) =>
+                        fullWidth
+                        label="create route connection"
+                        onChange={(value) =>
                           setCreateEditor((current) =>
-                            current ? { ...current, connectionId: event.target.value } : current,
+                            current ? { ...current, connectionId: value } : current,
                           )
                         }
+                        options={[
+                          { label: "请选择连接", value: "" },
+                          ...createConnections.map((connection) => ({
+                            label: `${connection.name} / ${connection.environment}`,
+                            value: connection.id,
+                          })),
+                        ]}
+                        size="compact"
                         value={createEditor.connectionId}
-                      >
-                        <option value="">请选择连接</option>
-                        {createConnections.map((connection) => (
-                          <option key={connection.id} value={connection.id}>
-                            {connection.name} / {connection.environment}
-                          </option>
-                        ))}
-                      </select>
+                      />
                     </label>
                     <label className="block">
                       <span className="mb-1.5 block text-xs font-medium text-slate-300">服务商模型</span>
-                      <select
-                        className={selectClass}
+                      <MenuSelect
                         disabled={!createEditor.providerId}
-                        onChange={(event) =>
+                        fullWidth
+                        label="create route model"
+                        onChange={(value) =>
                           setCreateEditor((current) =>
-                            current ? { ...current, modelId: event.target.value } : current,
+                            current ? { ...current, modelId: value } : current,
                           )
                         }
+                        options={[
+                          { label: "不绑定服务商模型", value: "" },
+                          ...createModels.map((model) => ({
+                            label: `${model.displayName} / ${model.modelKey}`,
+                            value: model.id,
+                          })),
+                        ]}
+                        size="compact"
                         value={createEditor.modelId}
-                      >
-                        <option value="">不绑定服务商模型</option>
-                        {createModels.map((model) => (
-                          <option key={model.id} value={model.id}>
-                            {model.displayName} / {model.modelKey}
-                          </option>
-                        ))}
-                      </select>
+                      />
                     </label>
                     <label className="block">
                       <span className="mb-1.5 block text-xs font-medium text-slate-300">上游模型</span>
@@ -1246,20 +1253,21 @@ export function AiSettingsPage() {
                     </label>
                     <label className="block">
                       <span className="mb-1.5 block text-xs font-medium text-slate-300">线路状态</span>
-                      <select
-                        className={selectClass}
-                        onChange={(event) =>
+                      <MenuSelect
+                        fullWidth
+                        label="create route status"
+                        onChange={(value) =>
                           setCreateEditor((current) =>
-                            current
-                              ? { ...current, status: event.target.value as "active" | "inactive" }
-                              : current,
+                            current ? { ...current, status: value as "active" | "inactive" } : current,
                           )
                         }
+                        options={[
+                          { label: "启用", value: "active" },
+                          { label: "停用", value: "inactive" },
+                        ]}
+                        size="compact"
                         value={createEditor.status}
-                      >
-                        <option value="active">启用</option>
-                        <option value="inactive">停用</option>
-                      </select>
+                      />
                     </label>
                     <label className="block md:col-span-2">
                       <span className="mb-1.5 block text-xs font-medium text-slate-300">管理备注</span>
@@ -1347,21 +1355,23 @@ export function AiSettingsPage() {
                         </label>
                         <label className="block">
                           <span className="mb-1.5 block text-xs font-medium text-slate-400">运行连接</span>
-                          <select
-                            className={selectClass}
+                          <MenuSelect
                             disabled
-                            onChange={(event) =>
-                              setEditor((current) => ({ ...current, connectionId: event.target.value }))
+                            fullWidth
+                            label="edit route connection"
+                            onChange={(value) =>
+                              setEditor((current) => ({ ...current, connectionId: value }))
                             }
+                            options={[
+                              { label: "请选择连接", value: "" },
+                              ...selectedProviderConnections.map((connection) => ({
+                                label: `${connection.name} / ${connection.environment}`,
+                                value: connection.id,
+                              })),
+                            ]}
+                            size="compact"
                             value={editor.connectionId}
-                          >
-                            <option value="">请选择连接</option>
-                            {selectedProviderConnections.map((connection) => (
-                              <option key={connection.id} value={connection.id}>
-                                {connection.name} / {connection.environment}
-                              </option>
-                            ))}
-                          </select>
+                          />
                         </label>
                         <label className="block">
                           <span className="mb-1.5 block text-xs font-medium text-slate-400">上游模型</span>
@@ -1409,20 +1419,23 @@ export function AiSettingsPage() {
                         </label>
                         <label className="block">
                           <span className="mb-1.5 block text-xs font-medium text-slate-400">线路状态</span>
-                          <select
-                            className={selectClass}
+                          <MenuSelect
                             disabled={!selectedAdminRoute.tenantId}
-                            onChange={(event) =>
+                            fullWidth
+                            label="edit route status"
+                            onChange={(value) =>
                               setEditor((current) => ({
                                 ...current,
-                                status: event.target.value as "active" | "inactive",
+                                status: value as "active" | "inactive",
                               }))
                             }
+                            options={[
+                              { label: "启用", value: "active" },
+                              { label: "停用", value: "inactive" },
+                            ]}
+                            size="compact"
                             value={editor.status}
-                          >
-                            <option value="active">启用</option>
-                            <option value="inactive">停用</option>
-                          </select>
+                          />
                         </label>
                         <div className="rounded border border-white/10 bg-white/[0.03] p-3">
                           <div className="text-xs text-slate-500">当前凭证</div>

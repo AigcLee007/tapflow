@@ -29,7 +29,7 @@ function createAuthState(): AuthState {
 }
 
 describe("FlowLeftAddPanel", () => {
-  test("renders readable Phase 3 dock menu copy", async () => {
+  test("renders readable dock menu copy", async () => {
     render(
       <AuthContext.Provider value={createAuthState()}>
         <FlowLeftAddPanel />
@@ -45,5 +45,21 @@ describe("FlowLeftAddPanel", () => {
     expect(screen.getByText("视频")).toBeTruthy();
     expect(screen.getByText("音频")).toBeTruthy();
     expect(screen.getByText("资源")).toBeTruthy();
+  });
+
+  test("closes the add flyout when the user menu opens", async () => {
+    render(
+      <AuthContext.Provider value={createAuthState()}>
+        <FlowLeftAddPanel />
+      </AuthContext.Provider>,
+    );
+
+    fireEvent.mouseEnter(screen.getByTitle("添加节点"));
+    expect(await screen.findByText("添加节点")).toBeTruthy();
+
+    fireEvent.click(screen.getByTitle("用户"));
+
+    expect(screen.queryByText("添加节点")).toBeNull();
+    expect(screen.getByText("user@example.com")).toBeTruthy();
   });
 });

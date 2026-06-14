@@ -13,6 +13,7 @@ import {
 
 import { ACCOUNT_AI_SETTINGS_ROUTE, ACCOUNT_ROUTE } from "../app/routes";
 import { useAuth } from "../auth/useAuth";
+import { MenuSelect } from "../components/menu/MenuSelect";
 import {
   createAdminCredential,
   createAdminProvider,
@@ -706,32 +707,36 @@ export function ProviderSettingsPage() {
         >
           <div className="mt-4 grid gap-3">
             <Field label="按服务商筛选">
-              <select
-                className={selectClass}
-                onChange={(event) => setProviderFilterId(event.target.value)}
+              <MenuSelect
+                fullWidth
+                label="provider filter"
+                onChange={setProviderFilterId}
+                options={[
+                  { label: "全部服务商", value: "" },
+                  ...providers.map((provider) => ({
+                    label: provider.name,
+                    value: provider.id,
+                  })),
+                ]}
+                size="compact"
                 value={providerFilterId}
-              >
-                <option value="">全部服务商</option>
-                {providers.map((provider) => (
-                  <option key={provider.id} value={provider.id}>
-                    {provider.name}
-                  </option>
-                ))}
-              </select>
+              />
             </Field>
             <Field label="按模型家族筛选">
-              <select
-                className={selectClass}
-                onChange={(event) => setModelFamilyFilter(event.target.value)}
+              <MenuSelect
+                fullWidth
+                label="model family filter"
+                onChange={setModelFamilyFilter}
+                options={[
+                  { label: "全部模型家族", value: "" },
+                  ...providerModelFamilyOptions.map((family) => ({
+                    label: family,
+                    value: family,
+                  })),
+                ]}
+                size="compact"
                 value={modelFamilyFilter}
-              >
-                <option value="">全部模型家族</option>
-                {providerModelFamilyOptions.map((family) => (
-                  <option key={family} value={family}>
-                    {family}
-                  </option>
-                ))}
-              </select>
+              />
             </Field>
           </div>
 
@@ -856,38 +861,43 @@ export function ProviderSettingsPage() {
                     />
                   </Field>
                   <Field label="绑定凭证">
-                    <select
-                      className={selectClass}
-                      onChange={(event) =>
+                    <MenuSelect
+                      fullWidth
+                      label="edit connection credential"
+                      onChange={(value) =>
                         setEditConnectionForm((current) => ({
                           ...current,
-                          credentialId: event.target.value,
+                          credentialId: value,
                         }))
                       }
+                      options={[
+                        { label: "不绑定凭证", value: "" },
+                        ...connectionCredentialOptions.map((credential) => ({
+                          label: `${credential.name} ${credential.maskedSecret}`,
+                          value: credential.id,
+                        })),
+                      ]}
+                      size="compact"
                       value={editConnectionForm.credentialId}
-                    >
-                      <option value="">不绑定凭证</option>
-                      {connectionCredentialOptions.map((credential) => (
-                        <option key={credential.id} value={credential.id}>
-                          {credential.name} {credential.maskedSecret}
-                        </option>
-                      ))}
-                    </select>
+                    />
                   </Field>
                   <Field label="连接状态">
-                    <select
-                      className={selectClass}
-                      onChange={(event) =>
+                    <MenuSelect
+                      fullWidth
+                      label="edit connection status"
+                      onChange={(value) =>
                         setEditConnectionForm((current) => ({
                           ...current,
-                          status: event.target.value as AiResourceStatus,
+                          status: value as AiResourceStatus,
                         }))
                       }
+                      options={[
+                        { label: "启用", value: "active" },
+                        { label: "停用", value: "inactive" },
+                      ]}
+                      size="compact"
                       value={editConnectionForm.status}
-                    >
-                      <option value="active">启用</option>
-                      <option value="inactive">停用</option>
-                    </select>
+                    />
                   </Field>
                   <Field label="连接备注">
                     <textarea
@@ -1179,20 +1189,22 @@ export function ProviderSettingsPage() {
         >
           <div className="mt-4 grid gap-3">
             <Field label="所属服务商">
-              <select
-                className={selectClass}
-                onChange={(event) =>
-                  setCredentialForm((current) => ({ ...current, providerId: event.target.value }))
+              <MenuSelect
+                fullWidth
+                label="credential provider"
+                onChange={(value) =>
+                  setCredentialForm((current) => ({ ...current, providerId: value }))
                 }
+                options={[
+                  { label: "请选择服务商", value: "" },
+                  ...providers.map((provider) => ({
+                    label: `${provider.name} (${provider.key})`,
+                    value: provider.id,
+                  })),
+                ]}
+                size="compact"
                 value={credentialForm.providerId}
-              >
-                <option value="">请选择服务商</option>
-                {providers.map((provider) => (
-                  <option key={provider.id} value={provider.id}>
-                    {provider.name} ({provider.key})
-                  </option>
-                ))}
-              </select>
+              />
             </Field>
             <Field label="凭证名称">
               <input
@@ -1241,26 +1253,28 @@ export function ProviderSettingsPage() {
               />
             </Field>
             <Field label="服务商">
-              <select
-                className={selectClass}
-                onChange={(event) => {
-                  const provider = providers.find((item) => item.id === event.target.value) ?? null;
+              <MenuSelect
+                fullWidth
+                label="create connection provider"
+                onChange={(value) => {
+                  const provider = providers.find((item) => item.id === value) ?? null;
                   setCreateConnectionForm((current) => ({
                     ...current,
                     adapterKind: provider?.kind ?? current.adapterKind,
                     credentialId: "",
-                    providerId: event.target.value,
+                    providerId: value,
                   }));
                 }}
+                options={[
+                  { label: "请选择服务商", value: "" },
+                  ...providers.map((provider) => ({
+                    label: `${provider.name} (${provider.key})`,
+                    value: provider.id,
+                  })),
+                ]}
+                size="compact"
                 value={createConnectionForm.providerId}
-              >
-                <option value="">请选择服务商</option>
-                {providers.map((provider) => (
-                  <option key={provider.id} value={provider.id}>
-                    {provider.name} ({provider.key})
-                  </option>
-                ))}
-              </select>
+              />
             </Field>
             <Field label="适配器类型">
               <input
@@ -1275,23 +1289,25 @@ export function ProviderSettingsPage() {
               />
             </Field>
             <Field label="绑定凭证">
-              <select
-                className={selectClass}
-                onChange={(event) =>
+              <MenuSelect
+                fullWidth
+                label="create connection credential"
+                onChange={(value) =>
                   setCreateConnectionForm((current) => ({
                     ...current,
-                    credentialId: event.target.value,
+                    credentialId: value,
                   }))
                 }
+                options={[
+                  { label: "不绑定凭证", value: "" },
+                  ...createProviderCredentials.map((credential) => ({
+                    label: `${credential.name} ${credential.maskedSecret}`,
+                    value: credential.id,
+                  })),
+                ]}
+                size="compact"
                 value={createConnectionForm.credentialId}
-              >
-                <option value="">不绑定凭证</option>
-                {createProviderCredentials.map((credential) => (
-                  <option key={credential.id} value={credential.id}>
-                    {credential.name} {credential.maskedSecret}
-                  </option>
-                ))}
-              </select>
+              />
             </Field>
             <Field label="Base URL">
               <input

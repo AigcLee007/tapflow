@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { ArrowRight, Download, Star, X } from "lucide-react";
 
+import { MenuSelect } from "../components/menu/MenuSelect";
 import { getAssetDownloadUrl, getAssetVariantUrl, updateAssetMetadata, type AssetItem } from "./assetApi";
 import { listWorkspaceProjects, updateWorkspaceProject, type WorkspaceProject } from "../workspace/workspaceApi";
 
@@ -161,20 +162,21 @@ export function AssetPreviewModal({
             <Info label="大小" value={asset.sizeBytes ? `${Math.round(asset.sizeBytes / 1024)} KB` : "-"} />
             <Info label="尺寸" value={asset.width && asset.height ? `${asset.width} x ${asset.height}` : "-"} />
           </dl>
-          <label className="mt-5 text-xs font-medium text-slate-400" htmlFor="asset-project">
-            项目
-          </label>
-          <select
-            className="mt-2 h-10 rounded border border-white/10 bg-black/30 px-3 text-sm text-slate-100 outline-none focus:border-sky-400/60"
-            id="asset-project"
-            onChange={(event) => setSelectedProjectId(event.target.value)}
-            value={selectedProjectId}
-          >
-            <option value="">选择项目</option>
-            {projects.map((project) => (
-              <option key={project.id} value={project.id}>{project.name}</option>
-            ))}
-          </select>
+          <div className="mt-5 text-xs font-medium text-slate-400">项目</div>
+          <div className="mt-2">
+            <MenuSelect
+              label="asset project"
+              disabled={loadingProjects}
+              onChange={setSelectedProjectId}
+              options={[
+                { label: "选择项目", value: "" },
+                ...projects.map((project) => ({ label: project.name, value: project.id })),
+              ]}
+              size="compact"
+              value={selectedProjectId}
+              fullWidth
+            />
+          </div>
           {loadingProjects && <div className="mt-2 text-xs text-slate-500">正在加载项目...</div>}
           {projectsError && <div className="mt-2 text-xs text-red-300">{projectsError}</div>}
           {actionError && <div className="mt-3 text-xs text-red-300">{actionError}</div>}

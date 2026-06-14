@@ -98,7 +98,7 @@ describe("AssetPreviewModal", () => {
     render(<AssetPreviewModal asset={asset} onClose={onClose} onUpdated={() => undefined} />);
 
     await waitFor(() => {
-      expect(screen.getByDisplayValue("Project One")).toBeTruthy();
+      expect(screen.getByRole("button", { name: "asset project Project One" })).toBeTruthy();
     });
 
     fireEvent.click(screen.getByRole("button", { name: /设为项目封面/i }));

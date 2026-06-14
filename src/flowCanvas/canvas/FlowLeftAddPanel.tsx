@@ -313,7 +313,7 @@ export const FlowLeftAddPanel: React.FC<{
     updateFloatingPositions();
     window.addEventListener('resize', updateFloatingPositions);
     return () => window.removeEventListener('resize', updateFloatingPositions);
-  }, [addLayer, userLayer]);
+  }, [addLayer.open, userLayer.open]);
 
   const handleLogout = useCallback(() => {
     void logout().finally(() => {

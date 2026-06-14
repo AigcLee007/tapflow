@@ -1,6 +1,7 @@
 ﻿import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Brush, Eraser, RotateCcw, Sparkles, X } from 'lucide-react';
+import { MenuSelect } from '../../components/menu/MenuSelect';
 import { getImageEditRetryMessage } from '../utils/imageEditStatus';
 
 export type MaskOutputMode = 'transparent-edit' | 'white-edit';
@@ -275,15 +276,18 @@ export const ImageRepaintOverlay: React.FC<ImageRepaintOverlayProps> = ({
             style={{ accentColor: '#0ea5e9', width: 150 }}
           />
         </div>
-        <select
-          value={maskMode}
-          onChange={(event) => setMaskMode(event.target.value as MaskOutputMode)}
-          title="Mask 输出模式"
-          style={maskSelectStyle}
-        >
-          <option value="transparent-edit">透明=编辑区</option>
-          <option value="white-edit">白色=编辑区</option>
-        </select>
+        <div style={maskSelectWrapStyle}>
+          <MenuSelect
+            label="repaint mask mode"
+            onChange={(value) => setMaskMode(value as MaskOutputMode)}
+            options={[
+              { label: '透明=编辑区', value: 'transparent-edit' },
+              { label: '白色=编辑区', value: 'white-edit' },
+            ]}
+            size="compact"
+            value={maskMode}
+          />
+        </div>
         <button type="button" style={toolButtonStyle} onClick={handleClear} title="清空">
           <RotateCcw size={21} />
         </button>
@@ -393,16 +397,8 @@ const activeToolStyle: React.CSSProperties = {
   boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.08)',
 };
 
-const maskSelectStyle: React.CSSProperties = {
-  height: 38,
-  border: '1px solid rgba(255,255,255,0.1)',
-  borderRadius: 999,
-  background: 'rgba(255,255,255,0.06)',
-  color: '#f8fafc',
-  outline: 'none',
-  padding: '0 12px',
-  fontSize: 13,
-  fontWeight: 800,
+const maskSelectWrapStyle: React.CSSProperties = {
+  minWidth: 172,
 };
 
 const saveButtonStyle: React.CSSProperties = {

@@ -123,6 +123,69 @@ As of 2026-06-13:
   - `npm test -- src/app/WorkspaceShell.test.tsx src/flowCanvas/canvas/FlowTopToolbar.test.tsx`
   - `npm run build`
 
+## 2026-06-14 - Global Menu and Auth Layout Unification Task 6
+
+- Continued the approved menu/UI unification plan on admin and model-management surfaces, keeping the shared dark menu language consistent with the canvas and workspace updates finished earlier in the day.
+- Extended shared menu primitives in `src/components/menu/MenuSelect.tsx` so the same control can cover dense settings forms safely:
+  - added compact sizing
+  - added full-width layout support
+  - added disabled-state support
+- Replaced visible native dropdowns on the main provider/model admin surfaces with the shared menu trigger UI:
+  - `src/account/ProviderSettingsPage.tsx`
+  - `src/account/ai-settings/AiSettingsPage.tsx`
+- Provider Connections page now uses shared menu selects for:
+  - provider filter
+  - model family filter
+  - create credential provider
+  - create connection provider
+  - create connection credential
+  - edit connection credential
+  - edit connection status
+- Model Center route management now uses shared menu selects for:
+  - create route provider
+  - create route connection
+  - create route model
+  - create route status
+  - edit route connection
+  - edit route status
+- Added and aligned focused regression coverage for the shared menu select behavior and the two upgraded admin pages.
+- Validation:
+  - `npm test -- src/components/menu/MenuSelect.test.tsx`
+  - `npm test -- src/account/ProviderSettingsPage.test.tsx src/account/ai-settings/AiSettingsPage.test.tsx`
+  - `npm run build`
+
+## 2026-06-14 - Global Menu and Auth Layout Unification Task 7
+
+- Confirmed the login/register shell is now using the reduced first-screen layout scale from the approved unification plan instead of the earlier oversized composition.
+- Locked the auth layout expectations in `src/auth/AuthPages.test.tsx`, including:
+  - reduced outer shell width
+  - tightened desktop grid split
+  - smaller login heading scale
+- Re-ran the cross-surface unification validation suite so the shared menu primitives, shell logo behavior, canvas menu behavior, workspace dropdown replacements, and auth layout all validate together.
+- Validation:
+  - `npm test -- src/auth/AuthPages.test.tsx`
+  - `npm test -- src/components/menu/useDismissibleLayer.test.tsx src/components/menu/MenuSelect.test.tsx src/app/WorkspaceShell.test.tsx src/flowCanvas/canvas/FlowTopToolbar.test.tsx src/workspace/WorkspacePage.test.tsx src/auth/AuthPages.test.tsx`
+  - `npm run build`
+
+## 2026-06-14 - Post-Plan Native Select Cleanup
+
+- Continued the approved menu unification work beyond Tasks 1-7 by removing the remaining visible native `<select>` controls from the current frontend source tree.
+- Replaced project selection in the asset preview modal with the shared compact `MenuSelect`.
+- Replaced image-edit mask mode selectors in:
+  - `src/flowCanvas/nodes/ImageOutpaintOverlay.tsx`
+  - `src/flowCanvas/nodes/ImageRepaintOverlay.tsx`
+- Replaced remaining node-level native selects inside `src/flowCanvas/nodes/FlowNodes.tsx`, including:
+  - shared inline parameter selects
+  - dynamic image parameter select fields
+  - video node model selection
+- Updated focused asset preview regression coverage to assert the new custom menu trigger instead of native input value lookup.
+- Added focused image-edit overlay coverage so repaint and outpaint mask mode controls stay on the shared custom menu path.
+- Validation:
+  - `npm test -- src/assets/AssetPreviewModal.test.tsx src/components/menu/MenuSelect.test.tsx`
+  - `npm test -- src/flowCanvas/nodes/ImageEditOverlayMenuSelect.test.tsx`
+  - `rg -n '<select' src`
+  - `npm run build`
+
 ## Recent Important Commits
 
 - pending: fix canvas asset preview display regression

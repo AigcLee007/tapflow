@@ -1,6 +1,8 @@
 import React from "react";
 import { Grid2X2, List, Plus, RefreshCw, Search, SlidersHorizontal } from "lucide-react";
 
+import { MenuSelect } from "../components/menu/MenuSelect";
+
 type ViewMode = "grid" | "list";
 
 export function ProjectToolbar({
@@ -55,18 +57,16 @@ export function ProjectToolbar({
           显示全部
         </button>
 
-        <select
-          aria-label="排序"
-          className="h-12 rounded-full border border-white/10 bg-[#141416] px-4 text-sm text-white outline-none focus:border-cyan-300/60"
-          onChange={(event) =>
-            onSortChange(event.target.value as "updated_desc" | "created_desc" | "name_asc")
-          }
+        <MenuSelect
+          label="排序"
+          onChange={(value) => onSortChange(value as "updated_desc" | "created_desc" | "name_asc")}
+          options={[
+            { label: "最近更新", value: "updated_desc" },
+            { label: "最近创建", value: "created_desc" },
+            { label: "按名称", value: "name_asc" },
+          ]}
           value={sortMode}
-        >
-          <option value="updated_desc">最近更新</option>
-          <option value="created_desc">最近创建</option>
-          <option value="name_asc">按名称</option>
-        </select>
+        />
 
         <div className="inline-flex h-12 items-center rounded-full border border-white/10 bg-[#141416] p-1">
           <IconButton active={viewMode === "grid"} label="网格视图" onClick={() => onViewModeChange("grid")}>

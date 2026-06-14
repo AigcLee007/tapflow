@@ -1,6 +1,7 @@
 ﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Expand, Sparkles, X } from 'lucide-react';
+import { MenuSelect } from '../../components/menu/MenuSelect';
 import type { MaskOutputMode } from './ImageRepaintOverlay';
 import { getImageEditRetryMessage } from '../utils/imageEditStatus';
 
@@ -229,15 +230,18 @@ export const ImageOutpaintOverlay: React.FC<ImageOutpaintOverlayProps> = ({
             style={{ accentColor: '#0ea5e9', width: 150 }}
           />
         </div>
-        <select
-          value={maskMode}
-          onChange={(event) => setMaskMode(event.target.value as MaskOutputMode)}
-          title="Mask 输出模式"
-          style={maskSelectStyle}
-        >
-          <option value="transparent-edit">透明=编辑区</option>
-          <option value="white-edit">白色=编辑区</option>
-        </select>
+        <div style={maskSelectWrapStyle}>
+          <MenuSelect
+            label="outpaint mask mode"
+            onChange={(value) => setMaskMode(value as MaskOutputMode)}
+            options={[
+              { label: '透明=编辑区', value: 'transparent-edit' },
+              { label: '白色=编辑区', value: 'white-edit' },
+            ]}
+            size="compact"
+            value={maskMode}
+          />
+        </div>
         <button type="button" style={saveButtonStyle} disabled={submitting} onClick={handleConfirm}>
           <Sparkles size={18} />
           {submitting ? '处理中...' : '生成'}
@@ -331,16 +335,8 @@ const activeDirectionStyle: React.CSSProperties = {
   boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.1)',
 };
 
-const maskSelectStyle: React.CSSProperties = {
-  height: 38,
-  border: '1px solid rgba(255,255,255,0.1)',
-  borderRadius: 999,
-  background: 'rgba(255,255,255,0.06)',
-  color: '#f8fafc',
-  outline: 'none',
-  padding: '0 12px',
-  fontSize: 13,
-  fontWeight: 800,
+const maskSelectWrapStyle: React.CSSProperties = {
+  minWidth: 172,
 };
 
 const saveButtonStyle: React.CSSProperties = {

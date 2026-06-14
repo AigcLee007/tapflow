@@ -95,6 +95,7 @@ import {
   parseAspectRatio,
 } from '../utils/nodeSizing';
 import { GoogleLogo, OpenAILogo } from '../../../components/Logos';
+import { MenuSelect } from '../../components/menu/MenuSelect';
 import { useDismissibleLayer } from '../../components/menu/useDismissibleLayer';
 import { useAuth } from '../../auth/useAuth';
 import { normalizeBackendAssetUrl } from '../../utils/generatedImageStorage';
@@ -1964,17 +1965,18 @@ const ParamSelect: React.FC<{
   onChange: (v: string) => void;
   prefix?: string;
 }> = ({ value, options, onChange, prefix }) => (
-  <select
-    value={value}
-    onChange={(e) => onChange(e.target.value)}
-    style={{ ...paramChip, appearance: 'none' }}
-  >
-    {options.map((o) => (
-      <option key={o} value={o} style={{ background: '#1e1e28' }}>
-        {prefix || ''}{o}
-      </option>
-    ))}
-  </select>
+  <div style={{ minWidth: 92 }}>
+    <MenuSelect
+      label={`param select ${prefix ?? 'default'}`}
+      onChange={onChange}
+      options={options.map((option) => ({
+        label: `${prefix || ''}${option}`,
+        value: option,
+      }))}
+      size="compact"
+      value={value}
+    />
+  </div>
 );
 
 const ParamDivider = () => <span style={{ color: 'rgba(255,255,255,0.1)', margin: '0 2px' }}>·</span>;
@@ -2555,26 +2557,19 @@ const DynamicImageParamsDropup: React.FC<DynamicImageParamsDropupProps> = ({
               <label key={field.key} style={{ display: 'block', padding: '8px 0' }}>
                 <div style={imageMenuSubHeader}>{field.label}</div>
                 {field.type === 'select' && options.length > 0 ? (
-                  <select
-                    className="nodrag nopan"
-                    value={String(value)}
-                    onChange={(event) => onChangeParam(field.key, event.target.value)}
-                    style={{
-                      width: '100%',
-                      height: 38,
-                      borderRadius: 10,
-                      border: '1px solid rgba(255,255,255,0.12)',
-                      background: 'rgba(255,255,255,0.07)',
-                      color: '#f8fafc',
-                      padding: '0 10px',
-                    }}
-                  >
-                    {options.map((option) => (
-                      <option key={String(option.value)} value={String(option.value)} style={{ background: '#1e1e28' }}>
-                        {option.label || String(option.value)}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="nodrag nopan">
+                    <MenuSelect
+                      label={`image field ${field.key}`}
+                      onChange={(nextValue) => onChangeParam(field.key, nextValue)}
+                      options={options.map((option) => ({
+                        label: option.label || String(option.value),
+                        value: String(option.value),
+                      }))}
+                      size="compact"
+                      value={String(value)}
+                      fullWidth
+                    />
+                  </div>
                 ) : (
                   <input
                     className="nodrag nopan"
@@ -6392,15 +6387,18 @@ export const VideoNodeComponent = memo(function VideoNode({
           <div style={promptBottomRow}>
             <div style={paramRow}>
               <span style={{ fontSize: 14, color: '#94a3b8', marginRight: 4 }}>模型</span>
-              <select
-                value={currentModelId}
-                onChange={(e) => updateNodeData(id, { modelId: e.target.value })}
-                style={{ ...paramChip, appearance: 'none', fontWeight: 500, color: '#e2e8f0' }}
-              >
-                {modelOptions.map((m) => (
-                  <option key={m.id} value={m.id} style={{ background: '#1e1e28' }}>{m.label}</option>
-                ))}
-              </select>
+              <div style={{ minWidth: 156 }}>
+                <MenuSelect
+                  label={`video model ${id}`}
+                  onChange={(nextValue) => updateNodeData(id, { modelId: nextValue })}
+                  options={modelOptions.map((modelOption) => ({
+                    label: modelOption.label,
+                    value: modelOption.id,
+                  }))}
+                  size="compact"
+                  value={currentModelId}
+                />
+              </div>
 
               <span style={{ color: 'rgba(255,255,255,0.1)', margin: '0 8px' }}>|</span>
 

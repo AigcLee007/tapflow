@@ -28,14 +28,14 @@ function navigate(path: string) {
 
 function ProductPreview() {
   return (
-    <div className="relative min-h-[420px] overflow-hidden rounded-[28px] border border-white/10 bg-[#080a12]/90 p-5 shadow-[0_28px_90px_rgba(0,0,0,0.42)]">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_16%,rgba(34,211,238,0.25),transparent_30%),radial-gradient(circle_at_86%_78%,rgba(168,85,247,0.22),transparent_34%)]" />
-      <div className="relative flex items-center justify-between border-b border-white/10 pb-4 text-xs text-slate-400">
+    <div className="relative min-h-[380px] overflow-hidden rounded-[24px] border border-white/10 bg-[#080a12]/90 p-4 shadow-[0_24px_72px_rgba(0,0,0,0.4)]">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_16%,rgba(34,211,238,0.22),transparent_30%),radial-gradient(circle_at_86%_78%,rgba(168,85,247,0.18),transparent_34%)]" />
+      <div className="relative flex items-center justify-between border-b border-white/10 pb-3 text-xs text-slate-400">
         <span className="font-medium text-white">Creative Flow</span>
         <span>Live draft</span>
       </div>
 
-      <div className="relative mt-5 flex flex-wrap gap-2">
+      <div className="relative mt-4 flex flex-wrap gap-2">
         {["云端项目", "AI 工作流", "素材资产库"].map((label) => (
           <span
             className="rounded-full border border-white/10 bg-white/[0.07] px-3 py-1 text-xs font-medium text-slate-200"
@@ -46,7 +46,7 @@ function ProductPreview() {
         ))}
       </div>
 
-      <div className="relative mt-6 grid gap-4">
+      <div className="relative mt-5 grid gap-3">
         <div className="w-[74%] rounded-2xl border border-white/10 bg-white/[0.07] p-4 backdrop-blur">
           <div className="mb-3 flex items-center gap-2">
             <span className="h-2.5 w-2.5 rounded-full bg-cyan-300" />
@@ -57,25 +57,25 @@ function ProductPreview() {
         </div>
 
         <div className="ml-auto w-[78%] rounded-2xl border border-cyan-300/20 bg-cyan-300/[0.08] p-4 backdrop-blur">
-          <div className="mb-4 flex items-center justify-between">
+          <div className="mb-3 flex items-center justify-between">
             <span className="text-sm font-medium text-cyan-100">AI 工作流</span>
             <span className="rounded-full bg-cyan-300 px-2 py-0.5 text-[11px] font-semibold text-slate-950">
               Ready
             </span>
           </div>
           <div className="grid grid-cols-3 gap-2">
-            <div className="h-16 rounded-xl bg-white/[0.12]" />
-            <div className="h-16 rounded-xl bg-white/[0.16]" />
-            <div className="h-16 rounded-xl bg-white/10" />
+            <div className="h-14 rounded-xl bg-white/[0.12]" />
+            <div className="h-14 rounded-xl bg-white/[0.16]" />
+            <div className="h-14 rounded-xl bg-white/10" />
           </div>
         </div>
 
         <div className="w-[70%] rounded-2xl border border-white/10 bg-white/[0.06] p-4 backdrop-blur">
           <div className="mb-3 text-sm font-medium text-white">素材资产库</div>
           <div className="flex gap-2">
-            <div className="h-12 w-12 rounded-xl bg-fuchsia-300/30" />
-            <div className="h-12 w-12 rounded-xl bg-cyan-300/30" />
-            <div className="h-12 w-12 rounded-xl bg-amber-200/30" />
+            <div className="h-11 w-11 rounded-xl bg-fuchsia-300/30" />
+            <div className="h-11 w-11 rounded-xl bg-cyan-300/30" />
+            <div className="h-11 w-11 rounded-xl bg-amber-200/30" />
           </div>
         </div>
       </div>
@@ -87,17 +87,23 @@ export function AuthShell({ children, eyebrow, heading, intro, mode, onSubmit }:
   return (
     <main className="min-h-screen overflow-hidden bg-[#07080d] text-slate-100">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_14%_18%,rgba(34,211,238,0.20),transparent_32%),radial-gradient(circle_at_88%_16%,rgba(244,114,182,0.12),transparent_28%),linear-gradient(135deg,#07080d_0%,#11131d_54%,#07080d_100%)]" />
-      <div className="relative mx-auto flex min-h-screen w-full max-w-7xl items-center px-4 py-8 sm:px-6 lg:px-8">
-        <section className="grid w-full items-center gap-8 lg:grid-cols-[1.05fr_430px]">
+      <div
+        className="relative mx-auto flex min-h-screen w-full max-w-[1320px] items-center px-4 py-6 sm:px-6 lg:px-8"
+        data-testid="auth-shell"
+      >
+        <section
+          className="grid w-full items-center gap-6 lg:grid-cols-[0.98fr_398px]"
+          data-testid="auth-shell-grid"
+        >
           <div className="hidden lg:block">
-            <div className="mb-10">
-              <div className="mb-5 inline-flex rounded-full border border-white/10 bg-white/[0.06] px-3 py-1 text-xs font-medium text-cyan-100">
+            <div className="mb-8">
+              <div className="mb-4 inline-flex rounded-full border border-white/10 bg-white/[0.06] px-3 py-1 text-xs font-medium text-cyan-100">
                 TapFlow AI Workspace
               </div>
-              <h2 className="max-w-2xl text-5xl font-semibold leading-tight text-white">
+              <h2 className="max-w-2xl text-[64px] font-semibold leading-[1.02] text-white">
                 把灵感、素材和 AI 模型组织成一张可执行的创作流程。
               </h2>
-              <p className="mt-5 max-w-xl text-base leading-7 text-slate-300">
+              <p className="mt-4 max-w-xl text-[15px] leading-7 text-slate-300">
                 登录后继续管理云端项目、画布草稿、素材资产和模型线路，让创作流程稳定沉淀在工作区里。
               </p>
             </div>
@@ -105,11 +111,11 @@ export function AuthShell({ children, eyebrow, heading, intro, mode, onSubmit }:
           </div>
 
           <form
-            className="mx-auto w-full max-w-[430px] rounded-[24px] border border-white/12 bg-white/[0.075] p-6 shadow-[0_30px_90px_rgba(0,0,0,0.45)] backdrop-blur-xl sm:p-8"
+            className="mx-auto w-full max-w-[398px] rounded-[22px] border border-white/12 bg-white/[0.075] p-5 shadow-[0_26px_72px_rgba(0,0,0,0.42)] backdrop-blur-xl sm:p-6"
             data-auth-mode={mode}
             onSubmit={onSubmit}
           >
-            <div className="mb-7">
+            <div className="mb-6">
               <div className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-200">
                 {eyebrow}
               </div>

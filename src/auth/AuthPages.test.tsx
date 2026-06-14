@@ -2,9 +2,9 @@ import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
 
-import { AuthContext, type AuthState } from "./useAuth";
 import { LoginPage } from "./LoginPage";
 import { RegisterPage } from "./RegisterPage";
+import { AuthContext, type AuthState } from "./useAuth";
 
 function createAuthState(overrides: Partial<AuthState> = {}): AuthState {
   return {
@@ -29,12 +29,14 @@ function renderWithAuth(ui: React.ReactElement, authState = createAuthState()) {
 }
 
 describe("auth pages", () => {
-  test("renders the immersive product login page and submits v2 login fields", async () => {
+  test("renders the immersive product login page with reduced layout scale and submits v2 login fields", async () => {
     const login = vi.fn(async () => undefined);
     renderWithAuth(<LoginPage />, createAuthState({ login }));
 
     expect(screen.getByRole("heading", { name: "登录 TapFlow" })).toBeTruthy();
-    expect(screen.getByText("把灵感、素材和 AI 模型组织成一张可执行的创作流程。")).toBeTruthy();
+    expect(screen.getByTestId("auth-shell").className).toContain("max-w-[1320px]");
+    expect(screen.getByTestId("auth-shell-grid").className).toContain("lg:grid-cols-[0.98fr_398px]");
+    expect(screen.getByRole("heading", { name: "登录 TapFlow" }).className).toContain("text-3xl");
     expect(screen.getByText("云端项目")).toBeTruthy();
     expect(screen.getAllByText("AI 工作流").length).toBeGreaterThan(0);
     expect(screen.getAllByText("素材资产库").length).toBeGreaterThan(0);
