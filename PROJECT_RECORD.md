@@ -104,6 +104,25 @@ As of 2026-06-13:
   - `npm test -- src/app/brand/BrandMark.test.tsx src/app/brand/BrandTransition.test.tsx src/auth/AuthGate.test.tsx src/flowCanvas/FlowProjectPage.test.tsx src/flowCanvas/canvas/FlowTopToolbar.test.tsx src/workspace/WorkspacePage.test.tsx src/assets/AssetLibraryPage.test.tsx src/flowCanvas/panels/CanvasAssetPanel.test.tsx`
   - `npm run build`
 
+## 2026-06-14 - Canvas Logo Menu and Home Logo Routing
+
+- Changed the canvas top-left logo interaction so `/projects/:projectId` now opens a TapNow-style dark project menu instead of behaving like a static mark.
+- Kept the canvas menu focused on project actions only:
+  - `返回工作空间`
+  - `重命名项目`
+  - `新建项目`
+  - `删除项目`
+- Wired the canvas menu actions to real product behavior:
+  - return to `/workspace`
+  - focus the title input for rename and persist the renamed project on blur
+  - create a new workspace project and enter its canvas
+  - delete the current project and return to `/workspace`
+- Locked the non-canvas behavior so the shared header logo continues to navigate directly to `/home` without opening any project menu.
+- Normalized touched toolbar and test copy to readable Chinese while keeping the change scoped to the current chrome interaction work.
+- Validation:
+  - `npm test -- src/app/WorkspaceShell.test.tsx src/flowCanvas/canvas/FlowTopToolbar.test.tsx`
+  - `npm run build`
+
 ## Recent Important Commits
 
 - pending: fix canvas asset preview display regression

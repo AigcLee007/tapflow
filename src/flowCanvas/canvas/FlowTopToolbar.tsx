@@ -2,12 +2,25 @@
  * TapNow-style minimal canvas chrome.
  */
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Bell, CheckCheck, Megaphone, RefreshCw, Share2, Sparkles, X } from "lucide-react";
+import {
+  Bell,
+  CheckCheck,
+  ChevronRight,
+  Megaphone,
+  Plus,
+  RefreshCw,
+  Share2,
+  Sparkles,
+  Trash2,
+  X,
+} from "lucide-react";
 
-import { getBillingSummary } from "../../billing/billingApi";
+import { WORKSPACE_ROUTE, getProjectId } from "../../app/routes";
 import { BrandMark } from "../../app/brand/BrandMark";
+import { getBillingSummary } from "../../billing/billingApi";
 import { getStoredAccessToken, V2_AUTH_CHANGE_EVENT } from "../../services/v2HttpClient";
 import { formatPoint } from "../../utils/pointFormat";
+import { createWorkspaceProject, deleteWorkspaceProject, updateWorkspaceProject } from "../../workspace/workspaceApi";
 import type { CanvasSaveStatusView } from "../FlowCanvasPage";
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
 
@@ -15,13 +28,13 @@ const formatToolbarPoint = (value: number) => formatPoint(value).replace(/\.0$/,
 const SEEN_STORAGE_KEY = "seen_announcement_ids";
 
 interface Announcement {
-  id: string;
-  title: string;
-  content: string;
   active: boolean;
+  content: string;
   date: string;
-  pinned?: boolean;
+  id: string;
   images?: string[];
+  pinned?: boolean;
+  title: string;
 }
 
 const readSeenAnnouncementIds = (): string[] => {
@@ -49,9 +62,15 @@ const formatAnnouncementDate = (input?: string) => {
   return date.toLocaleDateString();
 };
 
+function navigate(path: string) {
+  if (typeof window === "undefined") return;
+  window.history.pushState(null, "", path);
+  window.dispatchEvent(new PopStateEvent("popstate"));
+}
+
 export const FlowTopToolbar: React.FC<{
-  onToggleCulling: () => void;
   cullingEnabled: boolean;
+  onToggleCulling: () => void;
   saveStatus?: CanvasSaveStatusView;
 }> = memo(function FlowTopToolbar({ saveStatus }) {
   const projectTitle = useFlowCanvasStore((s) => s.projectTitle);
@@ -62,8 +81,13 @@ export const FlowTopToolbar: React.FC<{
   const [seenIds, setSeenIds] = useState<string[]>(() => readSeenAnnouncementIds());
   const [notificationOpen, setNotificationOpen] = useState(false);
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<Announcement | null>(null);
-  const notificationRef = useRef<HTMLDivElement | null>(null);
+  const [projectMenuOpen, setProjectMenuOpen] = useState(false);
+  const [projectMenuBusy, setProjectMenuBusy] = useState<"create" | "delete" | null>(null);
   const [shareCopied, setShareCopied] = useState(false);
+  const notificationRef = useRef<HTMLDivElement | null>(null);
+  const projectMenuRef = useRef<HTMLDivElement | null>(null);
+  const titleInputRef = useRef<HTMLInputElement | null>(null);
+  const projectId = typeof window === "undefined" ? null : getProjectId(window.location.pathname);
 
   const refreshPoints = useCallback(async () => {
     if (!getStoredAccessToken()) {
@@ -115,25 +139,32 @@ export const FlowTopToolbar: React.FC<{
   }, [refreshAnnouncements]);
 
   useEffect(() => {
-    if (!notificationOpen) return;
+    if (!notificationOpen && !projectMenuOpen) return;
+
     const handleMouseDown = (event: MouseEvent) => {
       if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
         setNotificationOpen(false);
       }
+      if (projectMenuRef.current && !projectMenuRef.current.contains(event.target as Node)) {
+        setProjectMenuOpen(false);
+      }
     };
+
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setNotificationOpen(false);
         setSelectedAnnouncement(null);
+        setProjectMenuOpen(false);
       }
     };
+
     document.addEventListener("mousedown", handleMouseDown);
     document.addEventListener("keydown", handleKeyDown);
     return () => {
       document.removeEventListener("mousedown", handleMouseDown);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [notificationOpen]);
+  }, [notificationOpen, projectMenuOpen]);
 
   const unreadIds = useMemo(
     () => announcements.filter((item) => !seenIds.includes(item.id)).map((item) => item.id),
@@ -167,33 +198,142 @@ export const FlowTopToolbar: React.FC<{
     window.setTimeout(() => setShareCopied(false), 1500);
   };
 
+  const focusTitleInput = useCallback(() => {
+    setProjectMenuOpen(false);
+    window.setTimeout(() => {
+      titleInputRef.current?.focus();
+      titleInputRef.current?.select();
+    }, 0);
+  }, []);
+
+  const handleTitleBlur = useCallback(async () => {
+    const normalizedTitle = (projectTitle || "").trim() || "未命名项目";
+    if (normalizedTitle !== projectTitle) {
+      setProjectTitle(normalizedTitle);
+    }
+    if (!projectId) return;
+    try {
+      await updateWorkspaceProject(projectId, { name: normalizedTitle });
+    } catch {}
+  }, [projectId, projectTitle, setProjectTitle]);
+
+  const handleCreateProject = useCallback(async () => {
+    if (projectMenuBusy) return;
+    setProjectMenuBusy("create");
+    try {
+      const result = await createWorkspaceProject({ name: "未命名项目" });
+      setProjectMenuOpen(false);
+      navigate(`/projects/${result.project.id}`);
+    } finally {
+      setProjectMenuBusy(null);
+    }
+  }, [projectMenuBusy]);
+
+  const handleDeleteProject = useCallback(async () => {
+    if (!projectId || projectMenuBusy) return;
+    if (!window.confirm("删除后项目和画布将无法恢复，确认删除吗？")) return;
+    setProjectMenuBusy("delete");
+    try {
+      await deleteWorkspaceProject(projectId);
+      setProjectMenuOpen(false);
+      navigate(WORKSPACE_ROUTE);
+    } finally {
+      setProjectMenuBusy(null);
+    }
+  }, [projectId, projectMenuBusy]);
+
   return (
     <div className="nodrag nopan nowheel" style={topChromeStyle}>
-      <div style={titleClusterStyle}>
-        <BrandMark size="canvas" showCaption={false} />
-        <div style={titleTextWrapStyle}>
-          <input
-            value={projectTitle || "未命名项目"}
-            onChange={(event) => setProjectTitle(event.target.value)}
-            style={titleInputStyle}
-            spellCheck={false}
-            aria-label="项目名称"
-          />
-          <div style={saveStatusStyle(saveStatus?.status)}>
-            {saveStatus?.icon}
-            <span>{saveStatus?.label || "已保存到云端"}</span>
-            {saveStatus?.status === "failed" && saveStatus.onRetry && (
-              <button
-                type="button"
-                style={saveRetryButtonStyle}
-                title={saveStatus.error || "重试同步"}
-                onClick={saveStatus.onRetry}
-              >
-                <RefreshCw size={12} />
-              </button>
-            )}
+      <div ref={projectMenuRef} style={titleMenuHostStyle}>
+        <div style={titleClusterStyle}>
+          <button
+            type="button"
+            aria-expanded={projectMenuOpen}
+            aria-haspopup="menu"
+            aria-label="打开项目菜单"
+            onClick={() => setProjectMenuOpen((open) => !open)}
+            style={brandMenuButtonStyle}
+          >
+            <BrandMark size="canvas" showCaption={false} />
+          </button>
+
+          <div style={titleTextWrapStyle}>
+            <input
+              ref={titleInputRef}
+              value={projectTitle || "未命名项目"}
+              onBlur={() => void handleTitleBlur()}
+              onChange={(event) => setProjectTitle(event.target.value)}
+              style={titleInputStyle}
+              spellCheck={false}
+              aria-label="项目名称"
+            />
+            <div style={saveStatusStyle(saveStatus?.status)}>
+              {saveStatus?.icon}
+              <span>{saveStatus?.label || "已保存到云端"}</span>
+              {saveStatus?.status === "failed" && saveStatus.onRetry && (
+                <button
+                  type="button"
+                  style={saveRetryButtonStyle}
+                  title={saveStatus.error || "重试同步"}
+                  onClick={saveStatus.onRetry}
+                >
+                  <RefreshCw size={12} />
+                </button>
+              )}
+            </div>
           </div>
         </div>
+
+        {projectMenuOpen && (
+          <div role="menu" aria-label="项目菜单" style={projectMenuStyle}>
+            <button
+              type="button"
+              role="menuitem"
+              style={projectMenuItemStyle}
+              onClick={() => {
+                setProjectMenuOpen(false);
+                navigate(WORKSPACE_ROUTE);
+              }}
+            >
+              <span>返回工作空间</span>
+              <ChevronRight size={16} />
+            </button>
+
+            <div style={projectMenuDividerStyle} />
+
+            <button type="button" role="menuitem" style={projectMenuItemStyle} onClick={focusTitleInput}>
+              <span>重命名项目</span>
+            </button>
+
+            <button
+              type="button"
+              role="menuitem"
+              style={projectMenuItemStyle}
+              onClick={() => void handleCreateProject()}
+              disabled={projectMenuBusy === "create"}
+            >
+              <span style={projectMenuLabelWithIconStyle}>
+                <Plus size={16} />
+                <span>{projectMenuBusy === "create" ? "正在创建..." : "新建项目"}</span>
+              </span>
+            </button>
+
+            <div style={projectMenuDividerStyle} />
+
+            <button
+              type="button"
+              role="menuitem"
+              style={{ ...projectMenuItemStyle, ...projectMenuDangerItemStyle }}
+              onClick={() => void handleDeleteProject()}
+              disabled={!projectId || projectMenuBusy === "delete"}
+            >
+              <span style={projectMenuLabelWithIconStyle}>
+                <Trash2 size={16} />
+                <span>{projectMenuBusy === "delete" ? "正在删除..." : "删除项目"}</span>
+              </span>
+            </button>
+          </div>
+        )}
       </div>
 
       <div style={rightClusterStyle}>
@@ -201,6 +341,7 @@ export const FlowTopToolbar: React.FC<{
           <Sparkles size={17} />
           <span>{pointsLoading ? "..." : formatToolbarPoint(points)}</span>
         </button>
+
         <div ref={notificationRef} style={notificationHostStyle}>
           <button
             type="button"
@@ -217,6 +358,7 @@ export const FlowTopToolbar: React.FC<{
               <span style={notificationBadgeStyle}>{unreadIds.length > 99 ? "99+" : unreadIds.length}</span>
             )}
           </button>
+
           {notificationOpen && (
             <div style={notificationPanelStyle}>
               <div style={notificationHeaderStyle}>
@@ -263,6 +405,7 @@ export const FlowTopToolbar: React.FC<{
             </div>
           )}
         </div>
+
         <button
           type="button"
           style={shareButtonStyle}
@@ -290,7 +433,9 @@ export const FlowTopToolbar: React.FC<{
                 <X size={18} />
               </button>
             </div>
+
             <div style={announcementBodyStyle}>{selectedAnnouncement.content}</div>
+
             {!!selectedAnnouncement.images?.length && (
               <div style={announcementImagesStyle}>
                 {selectedAnnouncement.images.map((src, index) => (
@@ -303,6 +448,7 @@ export const FlowTopToolbar: React.FC<{
                 ))}
               </div>
             )}
+
             <div style={announcementFooterStyle}>
               <button type="button" style={confirmButtonStyle} onClick={() => setSelectedAnnouncement(null)}>
                 我知道了
@@ -327,12 +473,25 @@ const topChromeStyle: React.CSSProperties = {
   pointerEvents: "none",
 };
 
+const titleMenuHostStyle: React.CSSProperties = {
+  position: "relative",
+  pointerEvents: "auto",
+};
+
 const titleClusterStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
   gap: 14,
-  pointerEvents: "auto",
   minWidth: 0,
+};
+
+const brandMenuButtonStyle: React.CSSProperties = {
+  border: "none",
+  background: "transparent",
+  padding: 0,
+  cursor: "pointer",
+  display: "flex",
+  alignItems: "center",
 };
 
 const titleTextWrapStyle: React.CSSProperties = {
@@ -354,6 +513,54 @@ const titleInputStyle: React.CSSProperties = {
   lineHeight: 1,
   padding: 0,
   textShadow: "0 2px 16px rgba(0,0,0,0.5)",
+};
+
+const projectMenuStyle: React.CSSProperties = {
+  position: "absolute",
+  top: "calc(100% + 14px)",
+  left: 0,
+  width: 296,
+  maxWidth: "calc(100vw - 36px)",
+  borderRadius: 26,
+  background: "rgba(20,20,24,0.98)",
+  border: "1px solid rgba(255,255,255,0.1)",
+  boxShadow: "0 28px 72px rgba(0,0,0,0.52)",
+  backdropFilter: "blur(20px)",
+  padding: 12,
+};
+
+const projectMenuItemStyle: React.CSSProperties = {
+  width: "100%",
+  minHeight: 54,
+  border: "none",
+  borderRadius: 18,
+  background: "transparent",
+  color: "#f8fafc",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 12,
+  padding: "0 14px",
+  textAlign: "left",
+  fontSize: 22,
+  fontWeight: 700,
+  cursor: "pointer",
+};
+
+const projectMenuDangerItemStyle: React.CSSProperties = {
+  color: "#fca5a5",
+};
+
+const projectMenuLabelWithIconStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+};
+
+const projectMenuDividerStyle: React.CSSProperties = {
+  height: 1,
+  background: "rgba(255,255,255,0.08)",
+  margin: "8px 0",
 };
 
 const saveStatusStyle = (status?: string): React.CSSProperties => ({

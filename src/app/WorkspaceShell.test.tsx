@@ -19,14 +19,14 @@ function createAuthState(overrides: Partial<AuthState> = {}): AuthState {
     sessionId: "session-1",
     tenant: {
       id: "tenant-1",
-      name: "测试 的工作区",
+      name: "测试工作区",
       plan: "free",
       slug: "test",
       status: "active",
     },
     user: {
-      displayName: "测试",
-      email: "lb20060807@126.com",
+      displayName: "测试用户",
+      email: "test@example.com",
       id: "user-1",
       status: "active",
     },
@@ -45,40 +45,34 @@ function renderShell(authState = createAuthState()) {
 }
 
 describe("WorkspaceShell", () => {
-  test("renders TapNow-style creator navigation and hides account from primary nav", () => {
+  test("renders primary creator navigation", () => {
     renderShell();
 
-    expect(screen.getByRole("button", { name: "AI Flow 测试 的工作区" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "AI Flow 测试工作区" })).toBeTruthy();
     expect(screen.getAllByRole("button", { name: "主页" }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole("button", { name: "工作空间" }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole("button", { name: "素材库" }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole("button", { name: "价格方案" }).length).toBeGreaterThan(0);
-    expect(screen.queryByRole("button", { name: "账号" })).toBeNull();
   });
 
-  test("opens an account menu with profile and logout actions", () => {
-    renderShell();
-
-    fireEvent.click(screen.getByRole("button", { name: "测试 lb20060807@126.com 打开账户菜单" }));
-
-    expect(screen.getAllByText("lb20060807@126.com").length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: "账户管理" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "退出登录" })).toBeTruthy();
-  });
-
-  test("navigates home and workspace as separate pages", () => {
+  test("logo click navigates to home without opening a menu", () => {
     window.history.replaceState(null, "", "/workspace");
 
     renderShell();
 
-    fireEvent.click(screen.getAllByRole("button", { name: "主页" })[0]);
+    fireEvent.click(screen.getByRole("button", { name: "AI Flow 测试工作区" }));
 
     expect(window.location.pathname).toBe("/home");
-    expect(window.location.hash).toBe("");
+    expect(screen.queryByRole("menu", { name: "项目菜单" })).toBeNull();
+  });
 
-    fireEvent.click(screen.getAllByRole("button", { name: "工作空间" })[0]);
+  test("opens the account menu separately", () => {
+    renderShell();
 
-    expect(window.location.pathname).toBe("/workspace");
-    expect(window.location.hash).toBe("");
+    fireEvent.click(screen.getByRole("button", { name: "测试用户 test@example.com 打开账户菜单" }));
+
+    expect(screen.getAllByText("test@example.com").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "账户管理" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "退出登录" })).toBeTruthy();
   });
 });
