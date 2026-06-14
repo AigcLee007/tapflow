@@ -307,8 +307,8 @@ export function resolveNodePricing(input: {
 
   const quantity = Math.max(1, Math.floor(input.quantity ?? 1));
   const tierCredits = resolvePricingTierCredits(matched.row.metadata, input.nodeConfig);
-  const unitCredits = tierCredits ?? (Number.parseInt(matched.row.unit_credits, 10) || 0);
-  const minChargeCredits = tierCredits ?? (Number.parseInt(matched.row.min_charge_credits, 10) || 0);
+  const unitCredits = tierCredits ?? readPositivePricingNumber(matched.row.unit_credits);
+  const minChargeCredits = tierCredits ?? readPositivePricingNumber(matched.row.min_charge_credits);
 
   return {
     amountCents: Math.max(minChargeCredits, unitCredits * quantity),
@@ -357,7 +357,12 @@ function resolvePricingTierCredits(
   }
   const value = tiers[tier] ?? tiers[tier.toLowerCase()];
   const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : null;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function readPositivePricingNumber(value: string): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -874,8 +879,8 @@ export class WorkflowRunsService {
                   `,
                   [context.tenantId],
                 );
-                const balanceCredits = Number.parseInt(account.rows[0]?.balance_cents ?? "0", 10) || 0;
-                const reservedCredits = Number.parseInt(account.rows[0]?.reserved_cents ?? "0", 10) || 0;
+                const balanceCredits = Number(account.rows[0]?.balance_cents ?? "0") || 0;
+                const reservedCredits = Number(account.rows[0]?.reserved_cents ?? "0") || 0;
                 const availableCredits = Math.max(balanceCredits - reservedCredits, 0);
                 throw new WorkflowRunsApiError(
                   402,

@@ -146,8 +146,9 @@ function requireTenantContext(context: AdminContext): { tenantId: string; userId
   };
 }
 
-function parseBigIntString(value: string | null | undefined): number {
-  return Number.parseInt(value ?? "0", 10) || 0;
+function parseNumericString(value: string | null | undefined): number {
+  const parsed = Number(value ?? "0");
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function summarizeErrorJson(errorJson: Record<string, unknown> | null): string | null {
@@ -169,8 +170,8 @@ function summarizeJson(value: Record<string, unknown> | null): string | null {
 }
 
 function mapMembership(row: AdminMembershipRow): AdminUserMembershipView {
-  const balanceCredits = parseBigIntString(row.balance_cents);
-  const reservedCredits = parseBigIntString(row.reserved_cents);
+  const balanceCredits = parseNumericString(row.balance_cents);
+  const reservedCredits = parseNumericString(row.reserved_cents);
   return {
     availableCredits: Math.max(balanceCredits - reservedCredits, 0),
     balanceCredits,
@@ -489,7 +490,7 @@ export class AdminApiService {
               VALUES (
                 $1::uuid,
                 $2,
-                $3::bigint,
+                $3::numeric,
                 'active',
                 $4::int,
                 $5::timestamptz,
@@ -518,7 +519,7 @@ export class AdminApiService {
           );
           created = {
             code: plaintextCode,
-            credits: parseBigIntString(inserted.rows[0]?.credits),
+            credits: parseNumericString(inserted.rows[0]?.credits),
             expiresAt: inserted.rows[0]?.expires_at ?? null,
             id: inserted.rows[0]?.id ?? "",
             maxRedemptions: inserted.rows[0]?.max_redemptions ?? input.maxRedemptions,

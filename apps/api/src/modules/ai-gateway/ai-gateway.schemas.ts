@@ -189,12 +189,12 @@ export const listPricingQuerySchema = z.object({
 
 export const upsertPricingSchema = z.object({
   active: z.boolean().optional(),
-  minChargeCredits: z.number().int().min(1).max(1_000_000_000),
+  minChargeCredits: z.number().min(0.0001).max(1_000_000_000),
   model: z.string().trim().min(1).max(255),
   provider: z.string().trim().min(1).max(255),
   route: routeKeySchema,
   unit: pricingUnitSchema,
-  unitCredits: z.number().int().min(1).max(1_000_000_000).optional(),
+  unitCredits: z.number().min(0.0001).max(1_000_000_000).optional(),
 });
 
 export type CreateCredentialInput = z.infer<typeof createCredentialSchema>;

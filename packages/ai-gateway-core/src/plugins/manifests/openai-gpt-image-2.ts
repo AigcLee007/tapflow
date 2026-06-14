@@ -1,5 +1,17 @@
 import type { AiPluginManifest } from "../plugin-manifest.js";
 
+const lineOneSizeTiers = {
+  "1K": 2.5,
+  "2K": 3,
+  "4K": 3.5,
+};
+
+const lineTwoSizeTiers = {
+  "1K": 3,
+  "2K": 3.5,
+  "4K": 4,
+};
+
 export const openAiGptImage2Manifest: AiPluginManifest = {
   credentials: {
     envKeys: ["OPENAI_API_KEY"],
@@ -90,26 +102,28 @@ export const openAiGptImage2Manifest: AiPluginManifest = {
   pricing: [
     {
       metadata: {
+        sizeTiers: lineOneSizeTiers,
         source: "openai-compatible-gpt-image-2",
       },
-      minChargeCredits: 100,
+      minChargeCredits: 2.5,
       model: "gpt-image-2",
       provider: "openai-compatible",
       route: "image.gpt-image-2",
       unit: "image_generation",
-      unitCredits: 100,
+      unitCredits: 2.5,
     },
     {
       metadata: {
+        sizeTiers: lineTwoSizeTiers,
         source: "openai-compatible-gpt-image-2-line2",
         upstreamModel: "gpt-5.5",
       },
-      minChargeCredits: 100,
+      minChargeCredits: 3,
       model: "gpt-image-2",
       provider: "openai-compatible",
       route: "image.gpt-image-2.line2",
       unit: "image_generation",
-      unitCredits: 100,
+      unitCredits: 3,
     },
   ],
   provider: {

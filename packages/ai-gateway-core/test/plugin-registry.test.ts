@@ -91,10 +91,17 @@ describe("AI plugin registry", () => {
     expect(proManifest.pricing).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          minChargeCredits: 24,
+          minChargeCredits: 4,
           model: "gemini-3-pro-image-preview",
           route: "image.pixellelabs.nano-banana-pro",
-          unitCredits: 24,
+          unitCredits: 4,
+          metadata: expect.objectContaining({
+            sizeTiers: {
+              "1K": 4,
+              "2K": 4.5,
+              "4K": 5,
+            },
+          }),
         }),
       ]),
     );
@@ -105,10 +112,17 @@ describe("AI plugin registry", () => {
     expect(flashManifest.pricing).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          minChargeCredits: 24,
+          minChargeCredits: 2.5,
           model: "gemini-3.1-flash-image-preview",
           route: "image.pixellelabs.nano-banana-2",
-          unitCredits: 24,
+          unitCredits: 2.5,
+          metadata: expect.objectContaining({
+            sizeTiers: {
+              "1K": 2.5,
+              "2K": 3,
+              "4K": 3.5,
+            },
+          }),
         }),
       ]),
     );
@@ -155,6 +169,32 @@ describe("AI plugin registry", () => {
         }),
         routeKey: "image.gpt-image-2.line2",
         routeLabel: "线路二",
+      }),
+    ]);
+    expect(manifest.pricing).toEqual([
+      expect.objectContaining({
+        minChargeCredits: 2.5,
+        route: "image.gpt-image-2",
+        unitCredits: 2.5,
+        metadata: expect.objectContaining({
+          sizeTiers: {
+            "1K": 2.5,
+            "2K": 3,
+            "4K": 3.5,
+          },
+        }),
+      }),
+      expect.objectContaining({
+        minChargeCredits: 3,
+        route: "image.gpt-image-2.line2",
+        unitCredits: 3,
+        metadata: expect.objectContaining({
+          sizeTiers: {
+            "1K": 3,
+            "2K": 3.5,
+            "4K": 4,
+          },
+        }),
       }),
     ]);
   });

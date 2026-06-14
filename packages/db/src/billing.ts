@@ -267,8 +267,9 @@ export class BillingServiceError extends Error {
   }
 }
 
-function parseBigIntString(value: string): number {
-  return Number.parseInt(value, 10);
+function parseNumericString(value: string): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function normalizeDecimalValue(value: string | number | null | undefined): string | null {
@@ -290,12 +291,12 @@ export function hashBillingRedeemCode(code: string): string {
 
 function mapBillingAccount(row: BillingAccountRecord): BillingAccountView {
   return {
-    balanceCents: parseBigIntString(row.balance_cents),
+    balanceCents: parseNumericString(row.balance_cents),
     createdAt: row.created_at,
     currency: row.currency,
     id: row.id,
     metadata: row.metadata ?? {},
-    reservedCents: parseBigIntString(row.reserved_cents),
+    reservedCents: parseNumericString(row.reserved_cents),
     status: row.status,
     tenantId: row.tenant_id,
     updatedAt: row.updated_at,
@@ -304,7 +305,7 @@ function mapBillingAccount(row: BillingAccountRecord): BillingAccountView {
 
 function mapUsageEvent(row: UsageEventRecord): UsageEventView {
   return {
-    billableCents: parseBigIntString(row.billable_cents),
+    billableCents: parseNumericString(row.billable_cents),
     createdAt: row.created_at,
     eventType: row.event_type,
     id: row.id,
@@ -330,7 +331,7 @@ function mapUsageEvent(row: UsageEventRecord): UsageEventView {
 
 function mapLedgerEntry(row: BillingLedgerRecord): BillingLedgerView {
   return {
-    amountCents: parseBigIntString(row.amount_cents),
+    amountCents: parseNumericString(row.amount_cents),
     billingAccountId: row.billing_account_id,
     createdAt: row.created_at,
     currency: row.currency,
@@ -361,10 +362,10 @@ function mapPayment(row: {
   user_id: string | null;
 }): BillingPaymentView {
   return {
-    amountCents: parseBigIntString(row.amount_cents),
+    amountCents: parseNumericString(row.amount_cents),
     billingLedgerId: row.billing_ledger_id,
     createdAt: row.created_at,
-    credits: parseBigIntString(row.credits),
+    credits: parseNumericString(row.credits),
     currency: row.currency,
     id: row.id,
     idempotencyKey: row.idempotency_key,
@@ -395,12 +396,12 @@ function mapPricing(row: {
     createdAt: row.created_at,
     id: row.id,
     metadata: row.metadata ?? {},
-    minChargeCredits: parseBigIntString(row.min_charge_credits),
+    minChargeCredits: parseNumericString(row.min_charge_credits),
     model: row.model,
     provider: row.provider,
     route: row.route,
     unit: row.unit,
-    unitCredits: parseBigIntString(row.unit_credits),
+    unitCredits: parseNumericString(row.unit_credits),
   };
 }
 
@@ -524,7 +525,7 @@ export class BillingService {
             `
               UPDATE billing_accounts
               SET
-                reserved_cents = reserved_cents + $2::bigint,
+                reserved_cents = reserved_cents + $2::numeric,
                 updated_at = now()
               WHERE id = $1::uuid
             `,
@@ -557,7 +558,7 @@ export class BillingService {
           `
             UPDATE billing_accounts
             SET
-              reserved_cents = reserved_cents + $2::bigint,
+              reserved_cents = reserved_cents + $2::numeric,
               updated_at = now()
             WHERE id = $1::uuid
           `,
@@ -590,8 +591,8 @@ export class BillingService {
             `
               UPDATE billing_accounts
               SET
-                balance_cents = balance_cents - $2::bigint,
-                reserved_cents = GREATEST(reserved_cents - $3::bigint, 0),
+                balance_cents = balance_cents - $2::numeric,
+                reserved_cents = GREATEST(reserved_cents - $3::numeric, 0),
                 updated_at = now()
               WHERE id = $1::uuid
             `,
@@ -603,7 +604,7 @@ export class BillingService {
               UPDATE usage_events
               SET
                 status = 'settled',
-                billable_cents = $2::bigint
+                billable_cents = $2::numeric
               WHERE id = $1::uuid
             `,
             [usageEvent.id, input.amountCents],
@@ -638,8 +639,8 @@ export class BillingService {
           `
             UPDATE billing_accounts
             SET
-              balance_cents = balance_cents - $2::bigint,
-              reserved_cents = GREATEST(reserved_cents - $3::bigint, 0),
+              balance_cents = balance_cents - $2::numeric,
+              reserved_cents = GREATEST(reserved_cents - $3::numeric, 0),
               updated_at = now()
             WHERE id = $1::uuid
           `,
@@ -651,7 +652,7 @@ export class BillingService {
             UPDATE usage_events
             SET
               status = 'settled',
-              billable_cents = $2::bigint
+              billable_cents = $2::numeric
             WHERE id = $1::uuid
           `,
           [usageEvent.id, input.amountCents],
@@ -686,7 +687,7 @@ export class BillingService {
             `
               UPDATE billing_accounts
               SET
-                reserved_cents = GREATEST(reserved_cents - $2::bigint, 0),
+                reserved_cents = GREATEST(reserved_cents - $2::numeric, 0),
                 updated_at = now()
               WHERE id = $1::uuid
             `,
@@ -723,7 +724,7 @@ export class BillingService {
           `
             UPDATE billing_accounts
             SET
-              reserved_cents = GREATEST(reserved_cents - $2::bigint, 0),
+              reserved_cents = GREATEST(reserved_cents - $2::numeric, 0),
               updated_at = now()
             WHERE id = $1::uuid
           `,
@@ -787,16 +788,16 @@ export class BillingService {
       return {
         account,
         ledgerTotals: {
-          refundCents: parseBigIntString(ledgerTotals?.refund_cents ?? "0"),
-          reserveCents: parseBigIntString(ledgerTotals?.reserve_cents ?? "0"),
-          settleCents: parseBigIntString(ledgerTotals?.settle_cents ?? "0"),
+          refundCents: parseNumericString(ledgerTotals?.refund_cents ?? "0"),
+          reserveCents: parseNumericString(ledgerTotals?.reserve_cents ?? "0"),
+          settleCents: parseNumericString(ledgerTotals?.settle_cents ?? "0"),
         },
         usageTotals: {
           eventCount: usageTotals?.event_count ?? 0,
           pendingCount: usageTotals?.pending_count ?? 0,
           rawCostTotal: usageTotals?.raw_cost_total ?? "0",
           settledCount: usageTotals?.settled_count ?? 0,
-          totalBillableCents: parseBigIntString(usageTotals?.total_billable_cents ?? "0"),
+          totalBillableCents: parseNumericString(usageTotals?.total_billable_cents ?? "0"),
         },
       };
     }, this.pool);
@@ -839,7 +840,7 @@ export class BillingService {
         const account = await this.getOrCreateBillingAccountInTransaction(client, context.tenantId);
         return {
           account,
-          credits: parseBigIntString(existingRedemption.rows[0].credits),
+          credits: parseNumericString(existingRedemption.rows[0].credits),
           ledgerEntry,
           redemptionId: existingRedemption.rows[0].id,
         };
@@ -901,7 +902,7 @@ export class BillingService {
         }
       }
 
-      const credits = parseBigIntString(redeemCode.credits);
+      const credits = parseNumericString(redeemCode.credits);
       const ledgerEntry = await this.creditAccountWithClient(client, context.tenantId, {
         amountCents: credits,
         description: "Redeem code credit",
@@ -997,8 +998,8 @@ export class BillingService {
             $2::uuid,
             $3,
             $4,
-            $5::bigint,
-            $6::bigint,
+            $5::numeric,
+            $6::numeric,
             COALESCE($7, 'USD'),
             COALESCE($8, 'pending'),
             $9,
@@ -1274,7 +1275,7 @@ export class BillingService {
           `
             UPDATE billing_accounts
             SET
-              balance_cents = balance_cents + $2::bigint,
+              balance_cents = balance_cents + $2::numeric,
               updated_at = now()
             WHERE id = $1::uuid
           `,
@@ -1306,7 +1307,7 @@ export class BillingService {
           `
             UPDATE billing_accounts
             SET
-              balance_cents = balance_cents - $2::bigint,
+              balance_cents = balance_cents - $2::numeric,
               updated_at = now()
             WHERE id = $1::uuid
           `,
@@ -1369,7 +1370,7 @@ export class BillingService {
           $14::numeric(18, 6),
           $15,
           $16::numeric(18, 8),
-          $17::bigint,
+          $17::numeric,
           $18::jsonb,
           COALESCE($19::timestamptz, now())
         )
@@ -1466,7 +1467,7 @@ export class BillingService {
           $2::uuid,
           $3::uuid,
           $4,
-          $5::bigint,
+          $5::numeric,
           $6,
           $7,
           $8,

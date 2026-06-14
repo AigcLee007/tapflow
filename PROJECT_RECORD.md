@@ -1819,3 +1819,22 @@ Validation completed:
 - `npm run test --workspace @aigc-flow/worker`
 - `npm run build --workspace @aigc-flow/worker`
 - `npm run build`
+
+### Latest Official Image Pricing Refresh
+
+Completed in current local iteration:
+
+- updated official image model pricing by route and size: Nano Banana Pro line one `4/4.5/5`, Nano Banana 2 line one `2.5/3/3.5`, GPT-Image-2 line one `2.5/3/3.5`, GPT-Image-2 line two `3/3.5/4`
+- kept MouxiHub Nano Banana Pro line two T3 pricing unchanged at `6/8/12`
+- added decimal billing support for pricing, reservation, ledger, and usage amounts so half-credit prices are stored and settled accurately instead of being truncated
+- added a production migration to update existing `model_pricing` rows and convert billing amount columns to `numeric(18,4)`
+- changed the image prompt bar point display to calculate the current points from active route key plus selected `1K/2K/4K` size so the bottom-right value updates immediately when model, line, or quality changes
+
+Validation completed:
+
+- `npm run test --workspace @aigc-flow/api -- workflow-pricing-resolver.test.ts -t "preserves decimal"`
+- `npm run test --workspace @aigc-flow/ai-gateway-core -- plugin-registry.test.ts`
+- `npx vitest run src/flowCanvas/utils/imageRoutePricing.test.ts`
+- `npm run build --workspace @aigc-flow/api`
+- `npm run build --workspace @aigc-flow/db`
+- `npm run build --workspace @aigc-flow/ai-gateway-core`

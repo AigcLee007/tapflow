@@ -247,4 +247,40 @@ describe("workflow pricing resolver", () => {
       unit: "image_generation",
     });
   });
+
+  it("preserves decimal image pricing tiers", () => {
+    const resolved = resolveNodePricing({
+      configuredRouteKey: "image.pixellelabs.nano-banana-pro",
+      nodeConfig: {
+        params: {
+          imageSize: "2K",
+        },
+      },
+      nodeType: "image.generate",
+      pricingRows: [
+        {
+          metadata: {
+            sizeTiers: {
+              "1K": 4,
+              "2K": 4.5,
+              "4K": 5,
+            },
+          },
+          min_charge_credits: "4",
+          model: "gemini-3-pro-image-preview",
+          provider: "pixellelabs",
+          route: "image.pixellelabs.nano-banana-pro",
+          unit: "image_generation",
+          unit_credits: "4",
+        },
+      ],
+      routeContext: {
+        modelKey: "gemini-3-pro-image-preview",
+        providerKey: "pixellelabs",
+        routeKey: "image.pixellelabs.nano-banana-pro",
+      },
+    });
+
+    expect(resolved.amountCents).toBe(4.5);
+  });
 });

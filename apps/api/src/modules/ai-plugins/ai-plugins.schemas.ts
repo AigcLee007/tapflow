@@ -47,10 +47,10 @@ export const installPluginSchema = z.object({
   pricingOverrides: z
     .array(
       z.object({
-        minChargeCredits: z.number().int().min(1).max(1_000_000_000),
+        minChargeCredits: z.number().min(0.0001).max(1_000_000_000),
         modelKey: z.string().trim().min(1).max(255),
         routeKey: packageKeySchema,
-        unitCredits: z.number().int().min(1).max(1_000_000_000),
+        unitCredits: z.number().min(0.0001).max(1_000_000_000),
       }),
     )
     .optional(),

@@ -10,6 +10,12 @@ const imageSizeOptions = ["1K", "2K", "4K"].map((value) => ({
   value,
 }));
 
+const sizeTiers = {
+  "1K": 4,
+  "2K": 4.5,
+  "4K": 5,
+};
+
 export const pixelleLabsNanoBananaProManifest: AiPluginManifest = {
   credentials: {
     envKeys: ["PIXELLELABS_NANO_BANANA_PRO_API_KEY"],
@@ -68,14 +74,15 @@ export const pixelleLabsNanoBananaProManifest: AiPluginManifest = {
   pricing: [
     {
       metadata: {
+        sizeTiers,
         source: "pixellelabs-nano-banana-pro",
       },
-      minChargeCredits: 24,
+      minChargeCredits: 4,
       model: "gemini-3-pro-image-preview",
       provider: "pixellelabs",
       route: "image.pixellelabs.nano-banana-pro",
       unit: "image_generation",
-      unitCredits: 24,
+      unitCredits: 4,
     },
   ],
   provider: {

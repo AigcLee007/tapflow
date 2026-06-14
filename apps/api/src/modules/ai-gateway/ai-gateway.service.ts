@@ -1054,7 +1054,7 @@ export class AiGatewayAdminService {
             metadata,
             active
           )
-          VALUES ($1, $2, $3, $4, $5::bigint, $6::bigint, $7::jsonb, $8::boolean)
+          VALUES ($1, $2, $3, $4, $5::numeric, $6::numeric, $7::jsonb, $8::boolean)
           ON CONFLICT (provider, model, route, unit)
           DO UPDATE SET
             unit_credits = EXCLUDED.unit_credits,
