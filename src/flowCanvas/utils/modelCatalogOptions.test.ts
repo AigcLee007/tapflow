@@ -234,4 +234,40 @@ describe('modelCatalogOptions', () => {
       uiSchema,
     })).toEqual(['1k', '2k', '4k']);
   });
+
+  test('forces Nano Banana quality options to 1k 2k 4k even when catalog is incomplete', () => {
+    expect(getSizeOptionsFromCatalogModel({
+      capabilities: { supportedSizes: ['1K'] },
+      defaultRouteKey: 'image.pixellelabs.nano-banana-pro',
+      id: 'pixellelabs.nano-banana-pro',
+      label: 'Nano Banana Pro',
+      modelFamily: 'pixellelabs.nano-banana-pro',
+      modelKey: 'gemini-3-pro-image-preview',
+      uiSchema: {},
+    })).toEqual(['1k', '2k', '4k']);
+  });
+
+  test('forces Nano Banana ratio options to the fixed two-row panel set', () => {
+    expect(getAspectRatioOptionsFromCatalogModel({
+      capabilities: { supportedAspectRatios: ['1:1'] },
+      defaultRouteKey: 'image.pixellelabs.nano-banana-2',
+      id: 'pixellelabs.nano-banana-2',
+      label: 'Nano Banana 2',
+      modelFamily: 'pixellelabs.nano-banana-2',
+      modelKey: 'gemini-3.1-flash-image-preview',
+      uiSchema: {},
+    })).toEqual(['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9']);
+  });
+
+  test('keeps gpt-image-2 size fallback behavior unchanged', () => {
+    expect(getSizeOptionsFromCatalogModel({
+      capabilities: { supportedSizes: ['1024x1024', '2K'] },
+      defaultRouteKey: 'image.gpt-image-2',
+      id: 'gpt-image-2',
+      label: 'GPT-Image-2',
+      modelFamily: 'gpt-image-2',
+      modelKey: 'gpt-image-2',
+      uiSchema: {},
+    })).toEqual(['2k']);
+  });
 });

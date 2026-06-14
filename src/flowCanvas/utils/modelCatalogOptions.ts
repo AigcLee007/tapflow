@@ -86,6 +86,17 @@ const normalizeSize = (value: unknown) => {
   return raw ? raw.toLowerCase() : raw;
 };
 
+const NANO_BANANA_FIXED_SIZE_OPTIONS = ['1k', '2k', '4k'];
+const NANO_BANANA_FIXED_RATIO_OPTIONS = ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'];
+
+const isNanoBananaCatalogModel = (model: ModelCatalogOption | null | undefined) => {
+  const keys = [model?.id, model?.modelFamily, model?.modelKey].map((value) => normalizeKey(value).toLowerCase());
+  return keys.includes('pixellelabs.nano-banana-pro')
+    || keys.includes('pixellelabs.nano-banana-2')
+    || keys.includes('gemini-3-pro-image-preview')
+    || keys.includes('gemini-3.1-flash-image-preview');
+};
+
 const isGptImage2CatalogModel = (model: ModelCatalogOption | null | undefined) => {
   const keys = [model?.id, model?.modelFamily, model?.modelKey].map((value) => normalizeKey(value).toLowerCase());
   return keys.includes('gpt-image-2');
@@ -208,6 +219,10 @@ export function getDefaultParamsFromUiSchema(uiSchema: Record<string, unknown> |
 }
 
 export function getAspectRatioOptionsFromCatalogModel(model: ModelCatalogOption | null | undefined): string[] {
+  if (isNanoBananaCatalogModel(model)) {
+    return [...NANO_BANANA_FIXED_RATIO_OPTIONS];
+  }
+
   const fields = getCatalogUiFields(model?.uiSchema);
   const aspectField = fields.find((field) => field.key === 'aspectRatio' || field.key === 'aspect_ratio');
   const fromField = aspectField?.options
@@ -220,6 +235,10 @@ export function getAspectRatioOptionsFromCatalogModel(model: ModelCatalogOption 
 }
 
 export function getSizeOptionsFromCatalogModel(model: ModelCatalogOption | null | undefined): string[] {
+  if (isNanoBananaCatalogModel(model)) {
+    return [...NANO_BANANA_FIXED_SIZE_OPTIONS];
+  }
+
   const fields = getCatalogUiFields(model?.uiSchema);
   const sizeField = fields.find((field) => field.key === 'imageSize' || field.key === 'size');
   const fromField = sizeField?.options
