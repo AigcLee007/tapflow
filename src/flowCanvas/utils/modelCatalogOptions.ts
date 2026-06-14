@@ -88,13 +88,18 @@ const normalizeSize = (value: unknown) => {
 
 const NANO_BANANA_FIXED_SIZE_OPTIONS = ['1k', '2k', '4k'];
 const NANO_BANANA_FIXED_RATIO_OPTIONS = ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'];
+const NANO_BANANA_MODEL_IDENTITIES = new Set([
+  'nano-banana-pro',
+  'nano-banana-pro-fast',
+  'pixellelabs.nano-banana-pro',
+  'pixellelabs.nano-banana-2',
+  'gemini-3-pro-image-preview',
+  'gemini-3.1-flash-image-preview',
+]);
 
 const isNanoBananaCatalogModel = (model: ModelCatalogOption | null | undefined) => {
   const keys = [model?.id, model?.modelFamily, model?.modelKey].map((value) => normalizeKey(value).toLowerCase());
-  return keys.includes('pixellelabs.nano-banana-pro')
-    || keys.includes('pixellelabs.nano-banana-2')
-    || keys.includes('gemini-3-pro-image-preview')
-    || keys.includes('gemini-3.1-flash-image-preview');
+  return keys.some((key) => NANO_BANANA_MODEL_IDENTITIES.has(key));
 };
 
 const isGptImage2CatalogModel = (model: ModelCatalogOption | null | undefined) => {

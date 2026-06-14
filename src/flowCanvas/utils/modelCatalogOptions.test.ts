@@ -184,10 +184,11 @@ describe('modelCatalogOptions', () => {
     };
     const model = {
       capabilities: { supportedAspectRatios: ['1:1'], supportedSizes: ['4K'] },
-      defaultRouteKey: 'image.nano-banana-pro',
-      id: 'nano-banana-pro',
-      label: 'Nano Banana Pro',
-      modelFamily: 'nano-banana-pro',
+      defaultRouteKey: 'image.custom-model',
+      id: 'custom-model',
+      label: 'Custom Model',
+      modelFamily: 'custom-model',
+      modelKey: 'custom-model',
       uiSchema,
     };
 
@@ -257,6 +258,32 @@ describe('modelCatalogOptions', () => {
       modelKey: 'gemini-3.1-flash-image-preview',
       uiSchema: {},
     })).toEqual(['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9']);
+  });
+
+  test('forces fixed Nano Banana fallback options for legacy local identities', () => {
+    const model = {
+      capabilities: { supportedAspectRatios: ['1:1'], supportedSizes: ['2K'] },
+      defaultRouteKey: null,
+      id: 'nano-banana-pro',
+      label: 'Nano Banana Pro',
+      modelFamily: 'nano-banana-pro',
+      modelKey: 'nano-banana-pro',
+      uiSchema: {},
+    };
+
+    expect(getSizeOptionsFromCatalogModel(model)).toEqual(['1k', '2k', '4k']);
+    expect(getAspectRatioOptionsFromCatalogModel(model)).toEqual([
+      '1:1',
+      '2:3',
+      '3:2',
+      '3:4',
+      '4:3',
+      '4:5',
+      '5:4',
+      '9:16',
+      '16:9',
+      '21:9',
+    ]);
   });
 
   test('keeps gpt-image-2 size fallback behavior unchanged', () => {
