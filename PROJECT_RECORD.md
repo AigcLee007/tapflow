@@ -1873,3 +1873,13 @@ Validation completed:
 - Validation:
   - `npm test -- src/flowCanvas/nodes/GptImage2ParamPanel.test.tsx src/flowCanvas/utils/modelCatalogOptions.test.ts`
   - `npm run build`
+
+## 2026-06-15 - Image Batch Credit Display Fix
+
+- traced the image prompt-bar credit mismatch to a frontend-only display bug: the bottom-right credit pill was rendering the single-image route price and ignored the selected `batchCount`
+- added a shared image credit display helper that multiplies the route unit price by the selected generation quantity for UI display
+- updated the image node prompt bar so switching from `1x` to `2x`/`3x`/`4x` immediately updates the displayed required credits
+- added a regression test covering quantity-aware display pricing for decimal and whole-credit routes
+- Validation:
+  - `npm test -- src/flowCanvas/utils/imageRoutePricing.test.ts src/flowCanvas/utils/modelCatalogOptions.test.ts src/flowCanvas/nodes/GptImage2ParamPanel.test.tsx`
+  - `npm run build`

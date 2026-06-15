@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 
-import { formatImageCredits, getOfficialImageRouteSizeCredits } from './imageRoutePricing';
+import { formatImageCredits, getDisplayImageCredits, getOfficialImageRouteSizeCredits } from './imageRoutePricing';
 
 describe('imageRoutePricing', () => {
   test('returns official route and size specific image credits', () => {
@@ -16,5 +16,12 @@ describe('imageRoutePricing', () => {
   test('formats integer and half-point credits cleanly', () => {
     expect(formatImageCredits(4)).toBe('4');
     expect(formatImageCredits(4.5)).toBe('4.5');
+  });
+
+  test('multiplies displayed image credits by the selected batch count', () => {
+    expect(getDisplayImageCredits(2.5, 1)).toBe(2.5);
+    expect(getDisplayImageCredits(2.5, 2)).toBe(5);
+    expect(getDisplayImageCredits(3.5, 4)).toBe(14);
+    expect(getDisplayImageCredits(null, 2)).toBeNull();
   });
 });

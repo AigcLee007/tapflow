@@ -123,7 +123,7 @@ import {
   getDerivedImageSourceType,
 } from '../utils/optimisticDerivedImageAsset';
 import { resolveActiveImageRuntimeRouteKey } from '../utils/imageRuntimeRouteSelection';
-import { formatImageCredits, getOfficialImageRouteSizeCredits } from '../utils/imageRoutePricing';
+import { formatImageCredits, getDisplayImageCredits, getOfficialImageRouteSizeCredits } from '../utils/imageRoutePricing';
 import type { RuntimeRouteOption } from '../utils/runtimeRouteOptions';
 import { getPromptBarDensity, type PromptBarDensityVariant } from '../utils/promptBarDensity';
 import {
@@ -4060,6 +4060,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     getOfficialImageRouteSizeCredits(currentRouteKey, currentSize)
     ?? getOfficialImageRouteSizeCredits(selectedRuntimeRoute?.routeKey, currentSize)
     ?? getImageRoutePointCost(selectedRoute, currentSize);
+  const displayPointCost = getDisplayImageCredits(currentPointCost, d.batchCount);
   const referencedAssetItemIds = Array.isArray(d.referenceAssetItemIds)
     ? (d.referenceAssetItemIds as string[])
     : [];
@@ -6448,7 +6449,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
 
               <div style={sendBtnOuter}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <span style={{ fontSize: 14 }}>点数</span> {formatImageCredits(currentPointCost)}
+                  <span style={{ fontSize: 14 }}>点数</span> {formatImageCredits(displayPointCost ?? 0)}
                 </span>
                 <button
                   onClick={handleGenerate}

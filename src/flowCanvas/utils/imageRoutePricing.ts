@@ -37,6 +37,12 @@ export function getOfficialImageRouteSizeCredits(routeKey: unknown, size: unknow
   return routePricing[normalizeImagePricingSize(size)] ?? null;
 }
 
+export function getDisplayImageCredits(unitCredits: number | null | undefined, batchCount: unknown): number | null {
+  if (typeof unitCredits !== "number" || !Number.isFinite(unitCredits)) return null;
+  const normalizedBatchCount = Math.max(1, Number(batchCount) || 1);
+  return unitCredits * normalizedBatchCount;
+}
+
 export function formatImageCredits(value: number): string {
   return Number.isInteger(value) ? value.toFixed(0) : value.toFixed(1);
 }
