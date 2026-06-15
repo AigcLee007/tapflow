@@ -142,17 +142,12 @@ function resolveMappedGptImage2Model(
   requestedSize: string | null,
   fallbackModel: string,
 ): string {
-  const tierModel = resolveModelBySize(fallbackModel, requestConfig, requestedSize);
-  if (tierModel && tierModel !== fallbackModel) {
-    return tierModel;
-  }
-
   if (routeKey === "image.gpt-image-2.line4") {
-    return resolveModelBySize("gpt-image-2-vip", requestConfig, requestedSize);
+    return "gpt-image-2-vip";
   }
 
   if (routeKey === "image.gpt-image-2.line3") {
-    return resolveModelBySize("gpt-image-2", requestConfig, requestedSize);
+    return "gpt-image-2";
   }
 
   const requestConfigModel = getString(requestConfig.model);
@@ -873,7 +868,9 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
       }
 
       return {
-        modelKey: model,
+        modelKey: usesProviderSideGptImage2SizeRouting(context.routeKey)
+          ? resolveModelBySize(model, requestConfig, providerRequestedSize)
+          : model,
         outputs: [],
         providerRequest,
         providerResponse,
