@@ -46,6 +46,7 @@ export type AiPluginModelManifest = {
   modality: AiPluginModality;
   modelFamily: string;
   modelKey: string;
+  publishToCatalog?: boolean;
   sortOrder?: number;
   uiSchema: {
     fields: AiPluginUiField[];

@@ -1951,3 +1951,11 @@ Validation completed:
   - `npm run test --workspace @aigc-flow/api -- ai-plugins.service.test.ts`
   - `npx vitest run src/flowCanvas/utils/imageRoutePricing.test.ts src/flowCanvas/utils/modelCatalogOptions.test.ts`
   - `npm run build`
+
+- follow-up template split:
+  - split the original combined MouxiHub GPT-Image-2 template into two independent template-library entries:
+    - `GPT-Image-2 线路三`
+    - `GPT-Image-2 线路四`
+  - each template now installs only its own route so the initializer can bind a different API key per line instead of forcing both lines through one shared template credential
+  - provider connection names are now package-scoped during template install, preventing split templates from accidentally reusing the same generated connection/credential because of a shared display-name-based connection key
+  - the split line templates are route-only install templates and do not republish duplicate `gpt-image-2` catalog entries, so the creator-facing GPT-Image-2 model directory remains stable while the extra lines stay independently installable

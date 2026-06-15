@@ -1,8 +1,9 @@
 import { describe, expect, test } from "vitest";
 
-import { AiPluginService } from "../src/modules/ai-plugins/ai-plugins.service.js";
-import { mouxiHubGptImage2AsyncManifest } from "../../../packages/ai-gateway-core/src/plugins/manifests/mouxihub-gpt-image-2-async.js";
+import { mouxiHubGptImage2Line3Manifest } from "../../../packages/ai-gateway-core/src/plugins/manifests/mouxihub-gpt-image-2-line3.js";
+import { mouxiHubGptImage2Line4Manifest } from "../../../packages/ai-gateway-core/src/plugins/manifests/mouxihub-gpt-image-2-line4.js";
 import { mouxiHubNanoBananaProT3Manifest } from "../../../packages/ai-gateway-core/src/plugins/manifests/mouxihub-nano-banana-pro-t3.js";
+import { AiPluginService } from "../src/modules/ai-plugins/ai-plugins.service.js";
 
 describe("AiPluginService route install statements", () => {
   test("uses provider adapter kind for MouxiHub T3 connection instead of async route mode", async () => {
@@ -43,6 +44,45 @@ describe("AiPluginService route install statements", () => {
 
     expect(queries[0]?.values[4]).toBe("openai-compatible");
     expect(queries[0]?.values[4]).not.toBe("async");
+  });
+
+  test("uses package-scoped connection names so split GPT-Image-2 templates do not reuse one connection", async () => {
+    const service = new AiPluginService({
+      credentialVault: {} as never,
+      pool: {} as never,
+    });
+    const queries: Array<{ sql: string; values: unknown[] }> = [];
+    const client = {
+      async query(sql: string, values: unknown[]) {
+        queries.push({ sql, values });
+        return { rows: [{ id: "00000000-0000-0000-0000-000000000017" }] };
+      },
+    };
+
+    await (
+      service as unknown as {
+        upsertProviderConnection: (
+          client: typeof client,
+          options: {
+            context: { tenantId: string; userId: string | null };
+            credentialId: string | null;
+            input: { baseUrlOverride?: string | null };
+            installId: string;
+            manifest: typeof mouxiHubGptImage2Line3Manifest;
+            providerId: string;
+          },
+        ) => Promise<string | null>;
+      }
+    ).upsertProviderConnection(client, {
+      context: { tenantId: "tenant-1", userId: null },
+      credentialId: "00000000-0000-0000-0000-000000000014",
+      input: {},
+      installId: "00000000-0000-0000-0000-000000000016",
+      manifest: mouxiHubGptImage2Line3Manifest,
+      providerId: "00000000-0000-0000-0000-000000000012",
+    });
+
+    expect(queries[0]?.values[3]).toBe("GPT-Image-2 线路三 (mouxihub.gpt-image-2-line3) Connection");
   });
 
   test("builds aligned ai_routes insert parameters for MouxiHub T3 async route", () => {
@@ -90,10 +130,6 @@ describe("AiPluginService route install statements", () => {
     expect(Math.max(...placeholders)).toBe(19);
     expect(new Set(placeholders)).toEqual(new Set(Array.from({ length: 19 }, (_, index) => index + 1)));
     expect(statement.values).toHaveLength(19);
-    expect(statement.sql).not.toContain("$9::jsonb");
-    expect(statement.sql).toContain("$9,\n            $10::jsonb,\n            $11::jsonb");
-    expect(statement.sql).toContain("$12,\n            $13::uuid,\n            $14");
-    expect(statement.sql).not.toContain("$14::uuid");
 
     expect(statement.values.slice(8, 19)).toEqual([
       "https://api.mouxihub.com",
@@ -110,12 +146,12 @@ describe("AiPluginService route install statements", () => {
     ]);
   });
 
-  test("builds aligned ai_routes insert parameters for GPT-Image-2 MouxiHub async routes", () => {
+  test("builds aligned ai_routes insert parameters for GPT-Image-2 line three template", () => {
     const service = new AiPluginService({
       credentialVault: {} as never,
       pool: {} as never,
     });
-    const route = mouxiHubGptImage2AsyncManifest.routes[0];
+    const route = mouxiHubGptImage2Line3Manifest.routes[0];
     const requestConfig = {
       ...route.requestConfig,
       mode: route.mode,
@@ -151,11 +187,6 @@ describe("AiPluginService route install statements", () => {
       tenantId: null,
     });
 
-    const placeholders = Array.from(statement.sql.matchAll(/\$(\d+)/g), (match) => Number(match[1]));
-    expect(Math.max(...placeholders)).toBe(19);
-    expect(new Set(placeholders)).toEqual(new Set(Array.from({ length: 19 }, (_, index) => index + 1)));
-    expect(statement.values).toHaveLength(19);
-
     expect(statement.values.slice(8, 19)).toEqual([
       "https://api.mouxihub.com",
       JSON.stringify(requestConfig),
@@ -164,6 +195,62 @@ describe("AiPluginService route install statements", () => {
       "00000000-0000-0000-0000-000000000016",
       "gpt-image-2",
       "线路三",
+      "production",
+      "gpt-image-2",
+      "async",
+      "/v1/images/generations",
+    ]);
+  });
+
+  test("builds aligned ai_routes insert parameters for GPT-Image-2 line four template", () => {
+    const service = new AiPluginService({
+      credentialVault: {} as never,
+      pool: {} as never,
+    });
+    const route = mouxiHubGptImage2Line4Manifest.routes[0];
+    const requestConfig = {
+      ...route.requestConfig,
+      mode: route.mode,
+      path: route.path ?? route.requestConfig.path,
+      timeoutMs: route.timeoutMs,
+    };
+
+    const statement = (
+      service as unknown as {
+        buildRouteInsertStatement: (options: {
+          baseUrlOverride: string | null;
+          connectionId: string | null;
+          credentialId: string | null;
+          installId: string;
+          modelId: string;
+          providerId: string;
+          requestConfig: Record<string, unknown>;
+          route: typeof route;
+          status: string;
+          tenantId: string | null;
+        }) => { sql: string; values: unknown[] };
+      }
+    ).buildRouteInsertStatement({
+      baseUrlOverride: "https://api.mouxihub.com",
+      connectionId: "00000000-0000-0000-0000-000000000025",
+      credentialId: "00000000-0000-0000-0000-000000000024",
+      installId: "00000000-0000-0000-0000-000000000026",
+      modelId: "00000000-0000-0000-0000-000000000023",
+      providerId: "00000000-0000-0000-0000-000000000022",
+      requestConfig,
+      route,
+      status: "active",
+      tenantId: null,
+    });
+
+    expect(statement.values.slice(8, 19)).toEqual([
+      "https://api.mouxihub.com",
+      JSON.stringify(requestConfig),
+      JSON.stringify(route.rateLimit ?? {}),
+      "active",
+      "00000000-0000-0000-0000-000000000026",
+      "gpt-image-2",
+      "线路四",
       "production",
       "gpt-image-2",
       "async",

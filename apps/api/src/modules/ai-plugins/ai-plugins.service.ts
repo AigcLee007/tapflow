@@ -852,14 +852,14 @@ export class AiPluginService {
           updated_at = now()
         RETURNING id::text AS id
       `,
-      [
-        PLATFORM_TENANT_ID,
-        options.providerId,
-        options.credentialId,
-        `${options.manifest.displayName} Connection`,
-        adapterKind,
-        baseUrl,
-        environment,
+        [
+          PLATFORM_TENANT_ID,
+          options.providerId,
+          options.credentialId,
+          `${options.manifest.displayName} (${options.manifest.packageKey}) Connection`,
+          adapterKind,
+          baseUrl,
+          environment,
         JSON.stringify({
           baseUrlOverride: options.input.baseUrlOverride ?? null,
           generatedBy: "template-install",
@@ -885,6 +885,9 @@ export class AiPluginService {
   ): Promise<string[]> {
     const modelKeys: string[] = [];
     for (const model of options.manifest.models) {
+      if (model.publishToCatalog === false) {
+        continue;
+      }
       const modelId = options.modelIdsByKey.get(model.modelKey);
       if (!modelId) {
         throw new AiPluginApiError(400, "PLUGIN_MODEL_NOT_FOUND", `Catalog references missing model ${model.modelKey}`);

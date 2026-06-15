@@ -23,28 +23,16 @@ const moderationOptions = [
   { label: "低", value: "low" },
 ];
 
-const lineThreeModelBySize = {
+const modelBySize = {
   "1K": "gpt-image-2",
   "2K": "gpt-image-2-2k",
   "4K": "gpt-image-2-4k",
 };
 
-const lineFourModelBySize = {
-  "1K": "gpt-image-2-vip",
-  "2K": "gpt-image-2-vip-2k",
-  "4K": "gpt-image-2-vip-4k",
-};
-
-const lineThreeSizeTiers = {
+const sizeTiers = {
   "1K": 1,
   "2K": 2,
   "4K": 3,
-};
-
-const lineFourSizeTiers = {
-  "1K": 3,
-  "2K": 4,
-  "4K": 5,
 };
 
 const sharedUiFields = [
@@ -82,7 +70,7 @@ const sharedUiFields = [
   },
 ];
 
-export const mouxiHubGptImage2AsyncManifest: AiPluginManifest = {
+export const mouxiHubGptImage2Line3Manifest: AiPluginManifest = {
   credentials: {
     envKeys: ["MOUXIHUB_API_KEY"],
     fields: [
@@ -96,8 +84,8 @@ export const mouxiHubGptImage2AsyncManifest: AiPluginManifest = {
     ],
     type: "bearer",
   },
-  description: "GPT-Image-2 async generation through MouxiHub OpenAI-compatible image API.",
-  displayName: "GPT-Image-2",
+  description: "GPT-Image-2 line 3 async generation through MouxiHub OpenAI-compatible image API.",
+  displayName: "GPT-Image-2 线路三",
   modality: "image",
   models: [
     {
@@ -112,6 +100,7 @@ export const mouxiHubGptImage2AsyncManifest: AiPluginManifest = {
       modality: "image",
       modelFamily: "gpt-image-2",
       modelKey: "gpt-image-2",
+      publishToCatalog: false,
       sortOrder: 30,
       uiSchema: {
         fields: sharedUiFields,
@@ -119,12 +108,12 @@ export const mouxiHubGptImage2AsyncManifest: AiPluginManifest = {
       },
     },
   ],
-  packageKey: "mouxihub.gpt-image-2-async",
+  packageKey: "mouxihub.gpt-image-2-line3",
   pricing: [
     {
       metadata: {
-        modelBySize: lineThreeModelBySize,
-        sizeTiers: lineThreeSizeTiers,
+        modelBySize,
+        sizeTiers,
         source: "mouxihub-gpt-image-2-line3",
       },
       minChargeCredits: 1,
@@ -133,19 +122,6 @@ export const mouxiHubGptImage2AsyncManifest: AiPluginManifest = {
       route: "image.gpt-image-2.line3",
       unit: "image_generation",
       unitCredits: 1,
-    },
-    {
-      metadata: {
-        modelBySize: lineFourModelBySize,
-        sizeTiers: lineFourSizeTiers,
-        source: "mouxihub-gpt-image-2-line4",
-      },
-      minChargeCredits: 3,
-      model: "gpt-image-2",
-      provider: "mouxihub-openai",
-      route: "image.gpt-image-2.line4",
-      unit: "image_generation",
-      unitCredits: 3,
     },
   ],
   provider: {
@@ -173,40 +149,16 @@ export const mouxiHubGptImage2AsyncManifest: AiPluginManifest = {
         aspectRatioParam: "aspect_ratio",
         defaultSize: "1K",
         editPath: "/v1/images/edits",
-        modelBySize: lineThreeModelBySize,
+        modelBySize,
         outputFormat: "png",
         path: "/v1/images/generations",
         pollPath: "/v1/images/tasks/{task_id}",
         responseFormat: null,
-        sizeTiers: lineThreeSizeTiers,
+        sizeTiers,
         timeoutMs: 300000,
       },
       routeKey: "image.gpt-image-2.line3",
       routeLabel: "线路三",
-      timeoutMs: 300000,
-    },
-    {
-      mode: "async",
-      modality: "image",
-      modelFamily: "gpt-image-2",
-      modelKey: "gpt-image-2",
-      path: "/v1/images/generations",
-      priority: 40,
-      requestConfig: {
-        async: true,
-        aspectRatioParam: "aspect_ratio",
-        defaultSize: "1K",
-        editPath: "/v1/images/edits",
-        modelBySize: lineFourModelBySize,
-        outputFormat: "png",
-        path: "/v1/images/generations",
-        pollPath: "/v1/images/tasks/{task_id}",
-        responseFormat: null,
-        sizeTiers: lineFourSizeTiers,
-        timeoutMs: 300000,
-      },
-      routeKey: "image.gpt-image-2.line4",
-      routeLabel: "线路四",
       timeoutMs: 300000,
     },
   ],
