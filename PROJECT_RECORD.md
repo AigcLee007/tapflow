@@ -2026,3 +2026,15 @@ Validation completed:
 - validation:
   - `npm test -- src/account/ai-settings/AiSettingsPage.test.tsx`
   - `npm run build`
+## 2026-06-16 - Canvas GPT-Image-2 Disabled Route Visibility Fix
+
+- traced the still-visible `GPT-Image-2 线路三 / 线路四` canvas menu issue to frontend fallback data rather than the admin disable action or route-status persistence
+- confirmed the canvas image model picker kept a hard-coded GPT-Image-2 fallback route list that still included lines 3 and 4, so those routes could reappear even after the backend route list no longer returned them
+- moved the official image fallback route definitions into shared runtime-route helpers and limited the GPT-Image-2 fallback set to line one and line two only
+- updated the canvas model-scoped route loader so cached route lists are shown immediately but still trigger a background refresh, preventing stale same-session route caches from keeping recently disabled lines visible
+- added a focused regression test to lock the GPT-Image-2 fallback route set to:
+  - `image.gpt-image-2`
+  - `image.gpt-image-2.line2`
+- validation:
+  - `npm test -- src/flowCanvas/utils/runtimeRouteOptions.test.ts`
+  - `npm run build`

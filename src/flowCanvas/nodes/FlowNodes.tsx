@@ -126,6 +126,7 @@ import {
 import { resolveActiveImageRuntimeRouteKey } from '../utils/imageRuntimeRouteSelection';
 import { formatImageCredits, getDisplayImageCredits, getOfficialImageRouteSizeCredits } from '../utils/imageRoutePricing';
 import type { RuntimeRouteOption } from '../utils/runtimeRouteOptions';
+import { getOfficialFallbackImageRuntimeRoutes } from '../utils/runtimeRouteOptions';
 import { getPromptBarDensity, type PromptBarDensityVariant } from '../utils/promptBarDensity';
 import {
   getAspectRatioOptionsFromCatalogModel,
@@ -328,10 +329,10 @@ const useModelScopedImageRoutes = (
     if (cached) {
       setRoutesByModelKey((prev) => ({ ...prev, [normalizedModelKey]: cached }));
       setLoadedModelKey(normalizedModelKey);
-      setLoadingModelKey('');
-      return undefined;
+      setLoadingModelKey(normalizedModelKey);
+    } else {
+      setLoadingModelKey(normalizedModelKey);
     }
-    setLoadingModelKey(normalizedModelKey);
     void loadImageModelRoutesWithCache(normalizedModelKey)
       .then((routes) => {
         if (!active) return;
@@ -2005,98 +2006,6 @@ const IMAGE_RUNTIME_ROUTE_BY_MODEL_ID: Record<string, string> = {
   'pixellelabs.nano-banana-pro': 'image.pixellelabs.nano-banana-pro',
   'pixellelabs.nano-banana-2': 'image.pixellelabs.nano-banana-2',
   'gpt-image-2': 'image.gpt-image-2',
-};
-const OFFICIAL_IMAGE_RUNTIME_ROUTES_BY_MODEL_ID: Record<string, RuntimeRouteOption[]> = {
-  'pixellelabs.nano-banana-pro': [
-    {
-      estimatedCredits: null,
-      label: '线路一',
-      minChargeCredits: null,
-      modelDisplayName: 'Nano Banana Pro',
-      modelKey: 'pixellelabs.nano-banana-pro',
-      pricingUnit: null,
-      providerKey: '',
-      providerName: '',
-      routeKey: 'image.pixellelabs.nano-banana-pro',
-      userFacingLabel: 'Nano Banana Pro 线路一',
-    },
-    {
-      estimatedCredits: null,
-      label: '线路二（官方T3）',
-      minChargeCredits: null,
-      modelDisplayName: 'Nano Banana Pro',
-      modelKey: 'pixellelabs.nano-banana-pro',
-      pricingUnit: null,
-      providerKey: '',
-      providerName: '',
-      routeKey: 'image.mouxihub.nano-banana-pro.t3',
-      userFacingLabel: 'Nano Banana Pro 线路二（官方T3）',
-    },
-  ],
-  'pixellelabs.nano-banana-2': [
-    {
-      estimatedCredits: null,
-      label: '线路一',
-      minChargeCredits: null,
-      modelDisplayName: 'Nano Banana 2',
-      modelKey: 'pixellelabs.nano-banana-2',
-      pricingUnit: null,
-      providerKey: '',
-      providerName: '',
-      routeKey: 'image.pixellelabs.nano-banana-2',
-      userFacingLabel: 'Nano Banana 2 线路一',
-    },
-  ],
-  'gpt-image-2': [
-    {
-      estimatedCredits: null,
-      label: '线路一',
-      minChargeCredits: null,
-      modelDisplayName: 'GPT-Image-2',
-      modelKey: 'gpt-image-2',
-      pricingUnit: null,
-      providerKey: '',
-      providerName: '',
-      routeKey: 'image.gpt-image-2',
-      userFacingLabel: 'GPT-Image-2 线路一',
-    },
-    {
-      estimatedCredits: null,
-      label: '线路二',
-      minChargeCredits: null,
-      modelDisplayName: 'GPT-Image-2',
-      modelKey: 'gpt-image-2',
-      pricingUnit: null,
-      providerKey: '',
-      providerName: '',
-      routeKey: 'image.gpt-image-2.line2',
-      userFacingLabel: 'GPT-Image-2 线路二',
-    },
-    {
-      estimatedCredits: null,
-      label: '线路三',
-      minChargeCredits: null,
-      modelDisplayName: 'GPT-Image-2',
-      modelKey: 'gpt-image-2',
-      pricingUnit: null,
-      providerKey: '',
-      providerName: '',
-      routeKey: 'image.gpt-image-2.line3',
-      userFacingLabel: 'GPT-Image-2 线路三',
-    },
-    {
-      estimatedCredits: null,
-      label: '线路四',
-      minChargeCredits: null,
-      modelDisplayName: 'GPT-Image-2',
-      modelKey: 'gpt-image-2',
-      pricingUnit: null,
-      providerKey: '',
-      providerName: '',
-      routeKey: 'image.gpt-image-2.line4',
-      userFacingLabel: 'GPT-Image-2 线路四',
-    },
-  ],
 };
 const LEGACY_IMAGE_RUNTIME_ROUTE_BY_MODEL_ID: Record<string, string[]> = {
   'nano-banana-pro': ['image.nano-banana-pro'],
@@ -4039,7 +3948,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const selectedCatalogModel = models.find((model) => model.id === currentModelId) || null;
   const modelRouteLookupKey = getImageModelCatalogRouteLookupKey(currentModelId, selectedCatalogModel);
   const scopedRouteState = useModelScopedImageRoutes(Boolean(modelRouteLookupKey), modelRouteLookupKey);
-  const officialFallbackRuntimeRoutes = OFFICIAL_IMAGE_RUNTIME_ROUTES_BY_MODEL_ID[currentModelId] ?? [];
+  const officialFallbackRuntimeRoutes = getOfficialFallbackImageRuntimeRoutes(currentModelId);
   const modelRuntimeRoutes = scopedRouteState.routes.length ? scopedRouteState.routes : officialFallbackRuntimeRoutes;
   const preferredRuntimeRouteKey = selectedCatalogModel?.defaultRouteKey || IMAGE_RUNTIME_ROUTE_BY_MODEL_ID[currentModelId] || '';
   const normalizedCurrentRouteKey = normalizeImageRuntimeRouteKey(currentModelId, d.routeKey);

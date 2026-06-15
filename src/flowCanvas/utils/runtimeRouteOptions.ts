@@ -13,6 +13,79 @@ export type RuntimeRouteOption = {
   userFacingLabel?: string;
 };
 
+const OFFICIAL_FALLBACK_IMAGE_RUNTIME_ROUTES_BY_MODEL_ID: Record<string, RuntimeRouteOption[]> = {
+  'pixellelabs.nano-banana-pro': [
+    {
+      estimatedCredits: null,
+      label: '线路一',
+      minChargeCredits: null,
+      modelDisplayName: 'Nano Banana Pro',
+      modelKey: 'pixellelabs.nano-banana-pro',
+      pricingUnit: null,
+      providerKey: '',
+      providerName: '',
+      routeKey: 'image.pixellelabs.nano-banana-pro',
+      userFacingLabel: 'Nano Banana Pro 线路一',
+    },
+    {
+      estimatedCredits: null,
+      label: '线路二（官方T3）',
+      minChargeCredits: null,
+      modelDisplayName: 'Nano Banana Pro',
+      modelKey: 'pixellelabs.nano-banana-pro',
+      pricingUnit: null,
+      providerKey: '',
+      providerName: '',
+      routeKey: 'image.mouxihub.nano-banana-pro.t3',
+      userFacingLabel: 'Nano Banana Pro 线路二（官方T3）',
+    },
+  ],
+  'pixellelabs.nano-banana-2': [
+    {
+      estimatedCredits: null,
+      label: '线路一',
+      minChargeCredits: null,
+      modelDisplayName: 'Nano Banana 2',
+      modelKey: 'pixellelabs.nano-banana-2',
+      pricingUnit: null,
+      providerKey: '',
+      providerName: '',
+      routeKey: 'image.pixellelabs.nano-banana-2',
+      userFacingLabel: 'Nano Banana 2 线路一',
+    },
+  ],
+  'gpt-image-2': [
+    {
+      estimatedCredits: null,
+      label: '线路一',
+      minChargeCredits: null,
+      modelDisplayName: 'GPT-Image-2',
+      modelKey: 'gpt-image-2',
+      pricingUnit: null,
+      providerKey: '',
+      providerName: '',
+      routeKey: 'image.gpt-image-2',
+      userFacingLabel: 'GPT-Image-2 线路一',
+    },
+    {
+      estimatedCredits: null,
+      label: '线路二',
+      minChargeCredits: null,
+      modelDisplayName: 'GPT-Image-2',
+      modelKey: 'gpt-image-2',
+      pricingUnit: null,
+      providerKey: '',
+      providerName: '',
+      routeKey: 'image.gpt-image-2.line2',
+      userFacingLabel: 'GPT-Image-2 线路二',
+    },
+  ],
+};
+
+export function getOfficialFallbackImageRuntimeRoutes(modelId: string): RuntimeRouteOption[] {
+  return OFFICIAL_FALLBACK_IMAGE_RUNTIME_ROUTES_BY_MODEL_ID[String(modelId || '').trim()] ?? [];
+}
+
 export function mapImageRuntimeRouteOptions(items: V2RuntimeRouteItem[]): RuntimeRouteOption[] {
   const seen = new Set<string>();
   const result: RuntimeRouteOption[] = [];
