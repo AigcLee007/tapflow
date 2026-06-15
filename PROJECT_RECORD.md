@@ -1966,3 +1966,13 @@ Validation completed:
 - updated API regression coverage so:
   - the admin-email owner can install the mock plugin and run route tests
   - a non-admin tenant viewer is rejected with `403` and `Missing permission: admin:system`
+
+## 2026-06-15 - Model Catalog Route ID Tenant Priority Fix
+
+- traced the new `Route not found or is not active` admin/model-center error to the model-catalog route list query rather than the upstream providers
+- confirmed the frontend route test action was receiving the wrong `routeId` when the same `route_key` existed in both a system route and a tenant-installed route
+- fixed `ai-model-catalog` route ordering so the current tenant's route record is preferred over the system fallback for the same `route_key`
+- added regression coverage for the exact duplicate-route-key case to ensure model-center route lists keep returning the tenant route id
+- validation:
+  - `npm run test --workspace @aigc-flow/api -- ai-model-catalog.test.ts` (skipped locally because database test env is unavailable)
+  - `npm run build`

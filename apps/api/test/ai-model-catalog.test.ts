@@ -196,6 +196,97 @@ describeWithDatabase("ai model catalog API", () => {
           }),
         ]);
 
+        const tenantRouteRow = await adminPool.query<{
+          id: string;
+          model_family: string;
+          model_id: string;
+          provider_id: string;
+          route_key: string;
+        }>(
+          `
+            SELECT
+              id::text AS id,
+              provider_id::text AS provider_id,
+              model_id::text AS model_id,
+              model_family,
+              route_key
+            FROM ai_routes
+            WHERE tenant_id = $1::uuid
+              AND route_key = 'image.pixellelabs.nano-banana-pro'
+            LIMIT 1
+          `,
+          [owner.currentTenant.id],
+        );
+        expect(tenantRouteRow.rows[0]?.id).toBeTruthy();
+
+        await adminPool.query(
+          `
+            INSERT INTO ai_routes (
+              tenant_id,
+              provider_id,
+              model_id,
+              route_key,
+              modality,
+              priority,
+              weight,
+              request_config,
+              pricing,
+              rate_limit,
+              status,
+              model_family,
+              environment,
+              route_label,
+              updated_at
+            )
+            VALUES (
+              NULL,
+              $1::uuid,
+              $2::uuid,
+              $3,
+              'image',
+              1,
+              1,
+              '{}'::jsonb,
+              '{}'::jsonb,
+              '{}'::jsonb,
+              'active',
+              $4,
+              'production',
+              'System Fallback Route',
+              now()
+            )
+            ON CONFLICT (route_key) WHERE tenant_id IS NULL
+            DO UPDATE SET
+              provider_id = EXCLUDED.provider_id,
+              model_id = EXCLUDED.model_id,
+              model_family = EXCLUDED.model_family,
+              route_label = EXCLUDED.route_label,
+              status = EXCLUDED.status,
+              updated_at = now()
+          `,
+          [
+            tenantRouteRow.rows[0]?.provider_id,
+            tenantRouteRow.rows[0]?.model_id,
+            tenantRouteRow.rows[0]?.route_key,
+            tenantRouteRow.rows[0]?.model_family,
+          ],
+        );
+
+        const proRoutesWithSystemDuplicate = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "GET",
+          url: "/api/v2/ai/model-catalog/gemini-3-pro-image-preview/routes",
+        });
+        expect(proRoutesWithSystemDuplicate.statusCode).toBe(200);
+        expect(proRoutesWithSystemDuplicate.json()).toEqual([
+          expect.objectContaining({
+            routeId: tenantRouteRow.rows[0]?.id,
+            routeKey: "image.pixellelabs.nano-banana-pro",
+          }),
+        ]);
+
         const proFamilyRoutes = await api.inject({
           headers: {
             authorization: `Bearer ${owner.accessToken}`,

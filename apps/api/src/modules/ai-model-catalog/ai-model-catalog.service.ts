@@ -247,9 +247,11 @@ export class AiModelCatalogService {
             )
           ORDER BY
             route.route_key ASC,
-            CASE WHEN route.tenant_id IS NULL THEN 0 ELSE 1 END ASC,
+            CASE WHEN route.tenant_id = $1::uuid THEN 0 ELSE 1 END ASC,
             route.priority ASC,
-            route.weight DESC
+            route.weight DESC,
+            route.updated_at DESC,
+            route.id ASC
         `,
         [
           context.tenantId,
