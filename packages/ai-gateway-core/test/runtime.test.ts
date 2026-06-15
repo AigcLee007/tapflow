@@ -774,6 +774,70 @@ describe("openai-compatible text adapter", () => {
     await server.close();
   });
 
+  test("generateImage keeps MouxiHub GPT-Image-2 line4 on vip base model even when legacy requestConfig.model is stale", async () => {
+    const server = await withHttpServer(async (request, response) => {
+      expect(request.url).toBe("/v1/images/generations?async=true");
+
+      const chunks: Buffer[] = [];
+      for await (const chunk of request) {
+        chunks.push(Buffer.from(chunk));
+      }
+      const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;
+      expect(body).toMatchObject({
+        model: "gpt-image-2-vip",
+        n: 1,
+        prompt: "legacy line4 check",
+        size: "2160x3840",
+      });
+
+      response.setHeader("content-type", "application/json");
+      response.end(JSON.stringify({ code: "success", message: "", data: "task-gpt-image-line4-legacy" }));
+    });
+
+    const adapter = new OpenAiCompatibleTextAdapter();
+    const result = await adapter.generateImage(
+      {
+        apiKey: "sk-test-secret",
+        baseUrl: server.url,
+        modelKey: "gpt-image-2",
+        providerKey: "mouxihub-openai",
+        requestConfig: {
+          async: true,
+          aspectRatioParam: "aspect_ratio",
+          model: "gpt-image-2",
+          modelBySize: {
+            "1K": "gpt-image-2-vip",
+            "2K": "gpt-image-2-vip-2k",
+            "4K": "gpt-image-2-vip-4k",
+          },
+          path: "/v1/images/generations",
+          pollPath: "/v1/images/tasks/{task_id}",
+          responseFormat: null,
+        },
+        routeId: "route-line4",
+        routeKey: "image.gpt-image-2.line4",
+        timeoutMs: 5_000,
+      },
+      {
+        metadata: {
+          params: {
+            aspectRatio: "9:16",
+            size: "4K",
+          },
+        },
+        prompt: "legacy line4 check",
+      },
+    );
+
+    expect(result).toMatchObject({
+      modelKey: "gpt-image-2-vip",
+      providerTaskId: "task-gpt-image-line4-legacy",
+      status: "waiting_provider",
+    });
+
+    await server.close();
+  });
+
   test("pollTask parses MouxiHub async image task states and nested outputs", async () => {
     const server = await withHttpServer(async (request, response) => {
       expect(request.url).toBe("/v1/images/tasks/task-mouxihub-1");

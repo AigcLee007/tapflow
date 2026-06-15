@@ -143,8 +143,7 @@ function resolveProviderSideGptImage2BaseModel(
 ): string {
   const configured = getString(
     requestConfig.providerBaseModel
-      ?? requestConfig.provider_base_model
-      ?? requestConfig.model,
+      ?? requestConfig.provider_base_model,
   );
   if (configured) {
     return configured;
@@ -156,6 +155,11 @@ function resolveProviderSideGptImage2BaseModel(
 
   if (routeKey === "image.gpt-image-2.line3") {
     return "gpt-image-2";
+  }
+
+  const requestConfigModel = getString(requestConfig.model);
+  if (requestConfigModel) {
+    return requestConfigModel;
   }
 
   return fallbackModel;
