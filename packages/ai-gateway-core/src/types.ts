@@ -101,6 +101,7 @@ export type ProviderMediaGenerationResult = {
   providerResponse: unknown;
   providerId?: string | null;
   providerTaskId?: string | null;
+  providerTaskIds?: string[] | null;
   routeId?: string | null;
   status: "succeeded" | "waiting_provider";
   usage: AiGatewayUsage;
@@ -131,6 +132,7 @@ export type AiGatewayMediaResult = {
   providerRequest: unknown;
   providerResponse: unknown;
   providerTaskId?: string | null;
+  providerTaskIds?: string[] | null;
   routeId?: string | null;
   status: "succeeded" | "waiting_provider" | "failed";
   usage?: AiGatewayUsage | null;

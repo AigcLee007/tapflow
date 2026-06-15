@@ -149,9 +149,25 @@ type NodeExecutionOutcome =
     }
   | {
       outputJson: Record<string, unknown>;
-      pollPayload: ProviderPollJobPayload;
+      pollPayloads: ProviderPollJobPayload[];
       type: "waiting_provider";
     };
+
+type WaitingProviderTaskState = {
+  modelId: string | null;
+  modelKey: string | null;
+  outputs?: MediaOutput[] | null;
+  providerId: string | null;
+  providerKey: string | null;
+  providerTaskId: string;
+  routeId: string | null;
+  routeKey: string | null;
+  status: "pending" | "running" | "succeeded" | "waiting_provider";
+};
+
+type AiGatewayMediaResultWithTaskIds = AiGatewayMediaResult & {
+  providerTaskIds?: string[] | null;
+};
 
 type MediaProviderOutcome = {
   kind: "image" | "video";
@@ -231,6 +247,13 @@ function readPositiveInteger(value: unknown): number | null {
     return null;
   }
   return parsed;
+}
+
+function isWaitingProviderTaskState(value: unknown): value is WaitingProviderTaskState {
+  if (!isPlainObject(value)) {
+    return false;
+  }
+  return typeof value.providerTaskId === "string" && value.providerTaskId.trim().length > 0;
 }
 
 function isTerminalStatus(status: string): boolean {
@@ -956,6 +979,7 @@ export class WorkflowNodeExecutionService {
         : outcome;
 
       if (resolvedOutcome.type === "waiting_provider") {
+        const primaryProviderTaskId = resolvedOutcome.pollPayloads[0]?.providerTaskId ?? null;
         await client.query(
           `
             UPDATE node_runs
@@ -967,7 +991,7 @@ export class WorkflowNodeExecutionService {
               updated_at = now()
             WHERE id = $1::uuid
           `,
-          [currentNodeRun.id, JSON.stringify(resolvedOutcome.outputJson), resolvedOutcome.pollPayload.providerTaskId],
+          [currentNodeRun.id, JSON.stringify(resolvedOutcome.outputJson), primaryProviderTaskId],
         );
 
         await this.appendWorkflowRunEvent(client, {
@@ -981,7 +1005,8 @@ export class WorkflowNodeExecutionService {
         logger.info(
           {
             nodeRunId: currentNodeRun.id,
-            providerTaskId: resolvedOutcome.pollPayload.providerTaskId,
+            providerTaskCount: resolvedOutcome.pollPayloads.length,
+            providerTaskId: primaryProviderTaskId,
             workflowRunId: workflowRun.id,
           },
           "workflow node waiting on provider task",
@@ -990,12 +1015,10 @@ export class WorkflowNodeExecutionService {
         return {
           auditLogs: [],
           nodeEnqueuePayloads: [],
-          pollEnqueuePayloads: [
-            {
-              delayMs: this.pollDelayMs,
-              payload: resolvedOutcome.pollPayload,
-            },
-          ],
+          pollEnqueuePayloads: resolvedOutcome.pollPayloads.map((payload) => ({
+            delayMs: this.pollDelayMs,
+            payload,
+          })),
           processorResult: prepared.processorResult,
         };
       }
@@ -1195,9 +1218,10 @@ export class WorkflowNodeExecutionService {
       }
 
       try {
-        const providerState = isPlainObject(currentNodeRun.output_json?.providerTask)
-          ? currentNodeRun.output_json?.providerTask
-          : {};
+        const waitingProviderTasks = this.readWaitingProviderTasks(currentNodeRun.output_json);
+        const currentProviderTask =
+          waitingProviderTasks.find((task) => task.providerTaskId === input.providerTaskId)
+          ?? (isPlainObject(currentNodeRun.output_json?.providerTask) ? currentNodeRun.output_json?.providerTask : {});
 
         const pollResult = await this.mediaGenerationRuntime.pollTask(
           {
@@ -1207,8 +1231,8 @@ export class WorkflowNodeExecutionService {
           currentNode.type === "video.generate" ? "video" : "image",
           {
             providerTaskId: input.providerTaskId,
-            routeId: typeof providerState.routeId === "string" ? providerState.routeId : null,
-            routeKey: typeof providerState.routeKey === "string" ? providerState.routeKey : null,
+            routeId: typeof currentProviderTask.routeId === "string" ? currentProviderTask.routeId : null,
+            routeKey: typeof currentProviderTask.routeKey === "string" ? currentProviderTask.routeKey : null,
           },
           {
             nodeRunId: currentNodeRun.id,
@@ -1217,16 +1241,14 @@ export class WorkflowNodeExecutionService {
         );
 
         if (pollResult.status === "pending" || pollResult.status === "running") {
-          const waitingJson = this.buildWaitingProviderOutput({
-            modelId: typeof providerState.modelId === "string" ? providerState.modelId : null,
-            modelKey: typeof providerState.modelKey === "string" ? providerState.modelKey : null,
-            providerId: typeof providerState.providerId === "string" ? providerState.providerId : null,
-            providerKey: typeof providerState.providerKey === "string" ? providerState.providerKey : null,
-            providerTaskId: input.providerTaskId,
-            routeId: typeof providerState.routeId === "string" ? providerState.routeId : null,
-            routeKey: typeof providerState.routeKey === "string" ? providerState.routeKey : null,
-            status: pollResult.status,
-          });
+          const updatedTasks = this.updateWaitingProviderTaskStates(
+            waitingProviderTasks,
+            input.providerTaskId,
+            {
+              status: pollResult.status,
+            },
+          );
+          const waitingJson = this.buildWaitingProviderOutput(updatedTasks);
 
           await client.query(
             `
@@ -1290,13 +1312,65 @@ export class WorkflowNodeExecutionService {
           };
         }
 
+        const succeededOutputs = this.normalizeMediaOutputs(
+          pollResult.outputs ?? [],
+          pollResult.outputUrls ?? [],
+          pollResult.outputBase64 ?? [],
+          pollResult.mimeType ?? null,
+        );
+        const completedTasks = this.updateWaitingProviderTaskStates(
+          waitingProviderTasks,
+          input.providerTaskId,
+          {
+            outputs: succeededOutputs,
+            status: "succeeded",
+          },
+        );
+        const pendingTasks = completedTasks.filter((task) => task.status !== "succeeded");
+        if (pendingTasks.length > 0) {
+          const waitingJson = this.buildWaitingProviderOutput(completedTasks);
+          await client.query(
+            `
+              UPDATE node_runs
+              SET
+                output_json = $2::jsonb,
+                updated_at = now()
+              WHERE id = $1::uuid
+            `,
+            [currentNodeRun.id, JSON.stringify(waitingJson)],
+          );
+          await this.appendWorkflowRunEvent(client, {
+            eventType: "node.run.waiting_provider",
+            nodeRunId: currentNodeRun.id,
+            payload: waitingJson,
+            tenantId: input.tenantId,
+            workflowRunId: workflowRun.id,
+          });
+          return {
+            auditLogs: [],
+            nodeEnqueuePayloads: [],
+            pollEnqueuePayloads: [],
+            processorResult: {
+              jobId: null,
+              queueName: QUEUE_NAMES.providerPoll,
+              status: "ok",
+              tenantId: input.tenantId,
+              traceId: input.traceId ?? null,
+            },
+          };
+        }
+
+        const aggregatedOutputs = completedTasks.flatMap((task) => task.outputs ?? []);
         const outputJson = await this.persistProviderResult(
           client,
           currentNode,
           workflowRun,
           runtimeFlow,
           currentNodeRun,
-          pollResult,
+          {
+            ...pollResult,
+            outputs: aggregatedOutputs,
+          },
         );
         const usageRecord = this.buildUsageRecord({
           billableCents: this.getReservedCents(currentNodeRun),
@@ -1628,28 +1702,38 @@ export class WorkflowNodeExecutionService {
     const providerFinishedAt = Date.now();
 
     if (result.status === "waiting_provider") {
-      if (!result.providerTaskId) {
+      const taskAwareResult = result as AiGatewayMediaResultWithTaskIds;
+      const providerTaskIds = Array.isArray(taskAwareResult.providerTaskIds)
+        ? taskAwareResult.providerTaskIds.filter(
+            (value: unknown): value is string => typeof value === "string" && value.trim().length > 0,
+          )
+        : result.providerTaskId
+          ? [result.providerTaskId]
+          : [];
+      if (providerTaskIds.length === 0) {
         throw new Error("Provider task ID is required for waiting_provider results");
       }
 
+      const providerTasks = providerTaskIds.map<WaitingProviderTaskState>((providerTaskId: string) => ({
+        modelId: result.modelId ?? null,
+        modelKey: result.modelKey,
+        providerId: result.providerId ?? null,
+        providerKey: result.providerKey,
+        providerTaskId,
+        routeId: result.routeId ?? null,
+        routeKey,
+        status: "waiting_provider",
+      }));
+
       return {
-        outputJson: this.buildWaitingProviderOutput({
-          modelId: result.modelId ?? null,
-          modelKey: result.modelKey,
-          providerId: result.providerId ?? null,
-          providerKey: result.providerKey,
-          providerTaskId: result.providerTaskId,
-          routeId: result.routeId ?? null,
-          routeKey,
-          status: "waiting_provider",
-        }),
-        pollPayload: {
+        outputJson: this.buildWaitingProviderOutput(providerTasks),
+        pollPayloads: providerTaskIds.map((providerTaskId: string) => ({
           nodeRunId: nodeRun.id,
-          providerTaskId: result.providerTaskId,
+          providerTaskId,
           tenantId: context.tenantId,
           traceId: context.traceId ?? undefined,
           workflowRunId: workflowRun.id,
-        },
+        })),
         type: "waiting_provider",
       };
     }
@@ -1725,27 +1809,24 @@ export class WorkflowNodeExecutionService {
     };
   }
 
-  private buildWaitingProviderOutput(input: {
-    modelId: string | null;
-    modelKey: string | null;
-    providerId: string | null;
-    providerKey: string | null;
-    providerTaskId: string;
-    routeId: string | null;
-    routeKey: string | null;
-    status: "pending" | "running" | "waiting_provider";
-  }): Record<string, unknown> {
+  private buildWaitingProviderOutput(input: WaitingProviderTaskState[]): Record<string, unknown> {
+    const primary = input[0];
+    if (!primary) {
+      throw new Error("At least one provider task is required");
+    }
+
     return {
       providerTask: {
-        modelId: input.modelId,
-        modelKey: input.modelKey,
-        providerId: input.providerId,
-        providerKey: input.providerKey,
-        providerTaskId: input.providerTaskId,
-        routeId: input.routeId,
-        routeKey: input.routeKey,
-        status: input.status,
+        modelId: primary.modelId,
+        modelKey: primary.modelKey,
+        providerId: primary.providerId,
+        providerKey: primary.providerKey,
+        providerTaskId: primary.providerTaskId,
+        routeId: primary.routeId,
+        routeKey: primary.routeKey,
+        status: primary.status,
       },
+      providerTasks: input,
     };
   }
 
@@ -1768,6 +1849,35 @@ export class WorkflowNodeExecutionService {
         workflowRunId: workflowRun.id,
       },
     };
+  }
+
+  private readWaitingProviderTasks(outputJson: Record<string, unknown> | null): WaitingProviderTaskState[] {
+    const providerTasks = Array.isArray(outputJson?.providerTasks)
+      ? outputJson.providerTasks.filter(isWaitingProviderTaskState)
+      : [];
+    if (providerTasks.length > 0) {
+      return providerTasks;
+    }
+
+    const legacyTask = isWaitingProviderTaskState(outputJson?.providerTask)
+      ? outputJson.providerTask
+      : null;
+    return legacyTask ? [legacyTask] : [];
+  }
+
+  private updateWaitingProviderTaskStates(
+    tasks: WaitingProviderTaskState[],
+    providerTaskId: string,
+    patch: Partial<WaitingProviderTaskState>,
+  ): WaitingProviderTaskState[] {
+    return tasks.map((task) =>
+      task.providerTaskId === providerTaskId
+        ? {
+            ...task,
+            ...patch,
+          }
+        : task
+    );
   }
 
   private normalizeMediaOutputs(

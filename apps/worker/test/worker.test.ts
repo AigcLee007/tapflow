@@ -1920,6 +1920,181 @@ describeWithDatabase("workflow node execution", () => {
     });
   });
 
+  test("image.generate async multi-task waits for all provider tasks before settling", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({
+          connectionString: await createAppDatabaseUrl(),
+        });
+
+        const seeded = await seedWorkflowRuntime(appPool, {
+          inputNodeStatus: "succeeded",
+          inputOutputJson: { prompt: "make two images" },
+          middleNodeStatus: "runnable",
+          middleNodeType: "image.generate",
+        });
+        const nodeQueue = createFakeNodeExecuteQueue();
+        const pollQueue = createFakeProviderPollQueue();
+        const imageOne = await createPngBuffer(32, 32);
+        const imageTwo = await createPngBuffer(48, 48);
+        const service = createWorkflowService({
+          mediaGenerationRuntime: {
+            async generateImage() {
+              return {
+                modelKey: "nano-banana-pro",
+                outputs: [],
+                providerKey: "mock-provider",
+                providerRequest: [{ call: 1 }, { call: 2 }],
+                providerResponse: [{ accepted: true }, { accepted: true }],
+                providerTaskId: "task-image-1",
+                providerTaskIds: ["task-image-1", "task-image-2"],
+                status: "waiting_provider",
+                usage: {
+                  inputTokens: 10,
+                  outputTokens: null,
+                  totalTokens: 10,
+                },
+              };
+            },
+            async generateVideo() {
+              throw new Error("not used");
+            },
+            async pollTask(_context, _modality, request) {
+              if ((request as { providerTaskId: string }).providerTaskId === "task-image-1") {
+                return {
+                  mimeType: "image/png",
+                  outputBase64: [imageOne.toString("base64")],
+                  providerRequest: {},
+                  providerResponse: {},
+                  providerTaskId: "task-image-1",
+                  status: "succeeded",
+                  usage: null,
+                };
+              }
+              return {
+                mimeType: "image/png",
+                outputBase64: [imageTwo.toString("base64")],
+                providerRequest: {},
+                providerResponse: {},
+                providerTaskId: "task-image-2",
+                status: "succeeded",
+                usage: null,
+              };
+            },
+          },
+          nodeQueue,
+          pollQueue,
+          pool: appPool,
+          storageProvider: new MemoryStorageProvider(),
+        });
+
+        await processNodeExecuteJob(
+          {
+            data: {
+              nodeRunId: seeded.middleNodeRunId,
+              tenantId: seeded.tenantId,
+              traceId: "trace-image-multi",
+              workflowRunId: seeded.workflowRunId,
+            },
+            id: "job-image-multi",
+            queueName: QUEUE_NAMES.nodeExecute,
+          } as never,
+          createTestLogger(),
+          { executionService: service },
+        );
+
+        expect(pollQueue.jobs).toHaveLength(2);
+
+        await processProviderPollJob(
+          {
+            data: pollQueue.jobs[0]!.data,
+            id: "job-image-poll-1",
+            queueName: QUEUE_NAMES.providerPoll,
+          } as never,
+          createTestLogger(),
+          { executionService: service },
+        );
+
+        const afterFirstPoll = await withTenantTransaction(
+          { tenantId: seeded.tenantId, userId: seeded.userId },
+          async (client) => {
+            const nodeRun = await client.query<{ status: string; output_json: Record<string, unknown> }>(
+              "SELECT status, output_json FROM node_runs WHERE id = $1::uuid",
+              [seeded.middleNodeRunId],
+            );
+            return nodeRun.rows[0];
+          },
+          appPool,
+        );
+        const billingAfterFirstPoll = await countBillingState(appPool, seeded.tenantId, seeded.userId);
+
+        expect(afterFirstPoll.status).toBe("waiting_provider");
+        expect(Array.isArray(afterFirstPoll.output_json.providerTasks)).toBe(true);
+        expect((afterFirstPoll.output_json.providerTasks as Array<Record<string, unknown>>).map((task) => task.status)).toEqual([
+          "succeeded",
+          "waiting_provider",
+        ]);
+        expect(billingAfterFirstPoll).toEqual({
+          ledgerEntries: 0,
+          usageEvents: 0,
+        });
+
+        await processProviderPollJob(
+          {
+            data: pollQueue.jobs[1]!.data,
+            id: "job-image-poll-2",
+            queueName: QUEUE_NAMES.providerPoll,
+          } as never,
+          createTestLogger(),
+          { executionService: service },
+        );
+
+        const finalState = await withTenantTransaction(
+          { tenantId: seeded.tenantId, userId: seeded.userId },
+          async (client) => {
+            const nodeRun = await client.query<{ status: string; output_json: Record<string, unknown> }>(
+              "SELECT status, output_json FROM node_runs WHERE id = $1::uuid",
+              [seeded.middleNodeRunId],
+            );
+            const outputNode = await client.query<{ status: string }>(
+              "SELECT status FROM node_runs WHERE id = $1::uuid",
+              [seeded.outputNodeRunId],
+            );
+            const assets = await client.query<{ count: number }>(
+              "SELECT COUNT(*)::int AS count FROM assets WHERE workflow_run_id = $1::uuid",
+              [seeded.workflowRunId],
+            );
+            return {
+              assets: assets.rows[0]?.count ?? 0,
+              nodeRun: nodeRun.rows[0],
+              outputNode: outputNode.rows[0],
+            };
+          },
+          appPool,
+        );
+        const finalBilling = await countBillingState(appPool, seeded.tenantId, seeded.userId);
+
+        expect(finalState.nodeRun.status).toBe("succeeded");
+        expect(finalState.nodeRun.output_json.assets).toHaveLength(2);
+        expect(finalState.assets).toBe(2);
+        expect(finalState.outputNode.status).toBe("runnable");
+        expect(nodeQueue.jobs).toHaveLength(1);
+        expect(finalBilling).toEqual({
+          ledgerEntries: 1,
+          usageEvents: 1,
+        });
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
   test("provider.poll failed marks node and workflow failed", async () => {
     await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
       process.env.DATABASE_URL = databaseUrl;

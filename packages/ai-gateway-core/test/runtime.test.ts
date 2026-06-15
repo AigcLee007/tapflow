@@ -2273,6 +2273,75 @@ describe("route resolver and ai gateway", () => {
     });
   });
 
+  test("ai gateway splits MouxiHub T3 async image quantity into multiple provider tasks", async () => {
+    const calls: Array<{ n: unknown; prompt: string }> = [];
+    let taskNumber = 0;
+    const gateway = new AiGateway({
+      "openai-compatible": {
+        async generateImage(_context, request) {
+          taskNumber += 1;
+          const metadata = request.metadata && typeof request.metadata === "object" ? request.metadata : {};
+          const params = "params" in metadata && metadata.params && typeof metadata.params === "object"
+            ? metadata.params as Record<string, unknown>
+            : {};
+          calls.push({
+            n: params.n,
+            prompt: request.prompt,
+          });
+          return {
+            modelKey: "gemini-3.1-flash-image-preview-2k",
+            outputs: [],
+            providerRequest: { call: taskNumber },
+            providerResponse: { task: taskNumber },
+            providerTaskId: `task-${taskNumber}`,
+            status: "waiting_provider" as const,
+            usage: {
+              inputTokens: 3,
+              outputTokens: null,
+              totalTokens: 3,
+            },
+          };
+        },
+      },
+    });
+
+    const result = await gateway.generateImage({
+      apiKey: "sk-test-secret",
+      request: {
+        metadata: {
+          n: 3,
+          params: {
+            imageSize: "2K",
+            n: 3,
+          },
+        },
+        prompt: "three variations",
+      },
+      route: makeRoute({
+        routeKey: "image.mouxihub.nano-banana-pro.t3",
+      }),
+    });
+
+    expect(calls).toEqual([
+      { n: 1, prompt: "three variations" },
+      { n: 1, prompt: "three variations" },
+      { n: 1, prompt: "three variations" },
+    ]);
+    expect(result).toMatchObject({
+      modelKey: "gemini-3.1-flash-image-preview-2k",
+      providerTaskId: "task-1",
+      providerTaskIds: ["task-1", "task-2", "task-3"],
+      status: "waiting_provider",
+    });
+    expect(Array.isArray(result.providerRequest)).toBe(true);
+    expect(Array.isArray(result.providerResponse)).toBe(true);
+    expect(result.usage).toMatchObject({
+      inputTokens: 9,
+      outputTokens: null,
+      totalTokens: 9,
+    });
+  });
+
   test("ai gateway pollTask returns pending running succeeded and failed task states", async () => {
     const pollStates = [
       { status: "pending" as const },

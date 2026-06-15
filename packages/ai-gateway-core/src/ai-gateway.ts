@@ -51,6 +51,10 @@ function withRequestedImageCount(request: ImageGenerationRequest, count: number)
   };
 }
 
+function shouldSplitAsyncImageTasks(route: ResolvedRoute): boolean {
+  return route.routeKey === "image.mouxihub.nano-banana-pro.t3";
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -155,24 +159,41 @@ export class AiGateway {
 
     const requestedCount = readRequestedImageCount(options.request, options.route);
     const results: ProviderMediaGenerationResult[] = [];
+    const providerTaskIds: string[] = [];
     let outputs: MediaOutput[] = [];
-    let request = withRequestedImageCount(options.request, requestedCount);
+    const splitAsyncTasks = shouldSplitAsyncImageTasks(options.route) && requestedCount > 1;
+    let request = withRequestedImageCount(options.request, splitAsyncTasks ? 1 : requestedCount);
 
-    while (outputs.length < requestedCount) {
+    while ((splitAsyncTasks ? providerTaskIds.length : outputs.length) < requestedCount) {
       const result = await adapter.generateImage(context, request);
       results.push(result);
       outputs = outputs.concat(result.outputs ?? []);
+      if (result.providerTaskId) {
+        providerTaskIds.push(result.providerTaskId);
+      }
+
+      const splitAsyncSatisfied = splitAsyncTasks && providerTaskIds.length >= requestedCount;
+      const syncSatisfied = !splitAsyncTasks && outputs.length >= requestedCount;
+      const shouldContinueSplitAsync =
+        splitAsyncTasks &&
+        result.status === "waiting_provider" &&
+        Boolean(result.providerTaskId) &&
+        !splitAsyncSatisfied;
 
       if (
-        result.status !== "succeeded" ||
-        result.providerTaskId ||
-        outputs.length >= requestedCount ||
+        (!shouldContinueSplitAsync && result.status !== "succeeded") ||
+        (result.providerTaskId && !splitAsyncTasks) ||
+        splitAsyncSatisfied ||
+        syncSatisfied ||
         requestedCount === 1
       ) {
         break;
       }
 
-      request = withRequestedImageCount(options.request, requestedCount - outputs.length);
+      request = withRequestedImageCount(
+        options.request,
+        splitAsyncTasks ? 1 : requestedCount - outputs.length,
+      );
     }
 
     const result = results[0];
@@ -196,7 +217,8 @@ export class AiGateway {
       providerResponse: results.length === 1
         ? result.providerResponse
         : results.map((entry) => entry.providerResponse),
-      providerTaskId: result.providerTaskId ?? null,
+      providerTaskId: result.providerTaskId ?? providerTaskIds[0] ?? null,
+      providerTaskIds: providerTaskIds.length > 0 ? providerTaskIds : null,
       routeId: options.route.routeId,
       status: result.status,
       usage: results.length === 1 ? result.usage : sumUsage(results),

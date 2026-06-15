@@ -1883,3 +1883,17 @@ Validation completed:
 - Validation:
   - `npm test -- src/flowCanvas/utils/imageRoutePricing.test.ts src/flowCanvas/utils/modelCatalogOptions.test.ts src/flowCanvas/nodes/GptImage2ParamPanel.test.tsx`
   - `npm run build`
+
+## 2026-06-15 - MouxiHub T3 Async Quantity Aggregation
+
+- changed the official MouxiHub Nano Banana Pro T3 async route so image quantity greater than `1` no longer relies on a single upstream async task carrying `n > 1`
+- the AI Gateway now splits `image.mouxihub.nano-banana-pro.t3` requests into multiple async provider create calls with single-image payloads and returns an aggregated provider-task list
+- the worker waiting-provider state now supports multiple provider tasks for a single node run while remaining backward-compatible with the older single-task shape
+- provider polling now updates per-task progress, waits until all async provider tasks succeed, then aggregates all outputs into one final asset persistence + one billing settle
+- this keeps official T3 behavior aligned with the other multi-image routes that already satisfy quantity by repeated provider requests instead of trusting one provider task to return multiple outputs
+- Validation:
+  - `npm run test --workspace @aigc-flow/ai-gateway-core -- runtime.test.ts`
+  - `npm run test --workspace @aigc-flow/worker -- worker.test.ts`
+  - `npm run build --workspace @aigc-flow/ai-gateway-core`
+  - `npm run build --workspace @aigc-flow/worker`
+  - `npm run build`
