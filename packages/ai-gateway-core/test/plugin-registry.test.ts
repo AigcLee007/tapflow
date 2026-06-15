@@ -13,13 +13,14 @@ describe("AI plugin registry", () => {
   test("lists built-in plugin manifests", () => {
     const manifests = builtinAiPluginRegistry.list();
     expect(manifests.map((manifest) => manifest.packageKey)).toEqual([
+      "mouxihub.gpt-image-2-async",
       "openai-compatible.gpt-image-2",
       "mock.local-dev.image",
       "pixellelabs.nano-banana-2",
       "mouxihub.nano-banana-pro-t3",
       "pixellelabs.nano-banana-pro",
     ]);
-    expect(BUILTIN_AI_PLUGIN_MANIFESTS).toHaveLength(5);
+    expect(BUILTIN_AI_PLUGIN_MANIFESTS).toHaveLength(6);
   });
 
   test("returns MouxiHub Nano Banana Pro official T3 async route manifest", () => {
@@ -199,13 +200,103 @@ describe("AI plugin registry", () => {
     ]);
   });
 
+  test("returns GPT-Image-2 MouxiHub async plugin manifest for line three and line four", () => {
+    const manifest = builtinAiPluginRegistry.require("mouxihub.gpt-image-2-async");
+
+    expect(manifest.displayName).toBe("GPT-Image-2");
+    expect(manifest.provider).toMatchObject({
+      defaultBaseUrl: "https://api.mouxihub.com",
+      key: "mouxihub-openai",
+      kind: "openai-compatible",
+    });
+    expect(manifest.models).toEqual([
+      expect.objectContaining({
+        defaultRouteKey: "image.gpt-image-2.line3",
+        displayName: "GPT-Image-2",
+        modality: "image",
+        modelFamily: "gpt-image-2",
+        modelKey: "gpt-image-2",
+      }),
+    ]);
+    expect(manifest.routes).toEqual([
+      expect.objectContaining({
+        mode: "async",
+        modelFamily: "gpt-image-2",
+        modelKey: "gpt-image-2",
+        path: "/v1/images/generations",
+        requestConfig: expect.objectContaining({
+          async: true,
+          editPath: "/v1/images/edits",
+          modelBySize: {
+            "1K": "gpt-image-2",
+            "2K": "gpt-image-2-2k",
+            "4K": "gpt-image-2-4k",
+          },
+          path: "/v1/images/generations",
+          pollPath: "/v1/images/tasks/{task_id}",
+        }),
+        routeKey: "image.gpt-image-2.line3",
+        routeLabel: "线路三",
+      }),
+      expect.objectContaining({
+        mode: "async",
+        modelFamily: "gpt-image-2",
+        modelKey: "gpt-image-2",
+        path: "/v1/images/generations",
+        requestConfig: expect.objectContaining({
+          async: true,
+          editPath: "/v1/images/edits",
+          modelBySize: {
+            "1K": "gpt-image-2-vip",
+            "2K": "gpt-image-2-vip-2k",
+            "4K": "gpt-image-2-vip-4k",
+          },
+          path: "/v1/images/generations",
+          pollPath: "/v1/images/tasks/{task_id}",
+        }),
+        routeKey: "image.gpt-image-2.line4",
+        routeLabel: "线路四",
+      }),
+    ]);
+    expect(manifest.pricing).toEqual([
+      expect.objectContaining({
+        minChargeCredits: 1,
+        route: "image.gpt-image-2.line3",
+        unitCredits: 1,
+        metadata: expect.objectContaining({
+          sizeTiers: {
+            "1K": 1,
+            "2K": 2,
+            "4K": 3,
+          },
+        }),
+      }),
+      expect.objectContaining({
+        minChargeCredits: 3,
+        route: "image.gpt-image-2.line4",
+        unitCredits: 3,
+        metadata: expect.objectContaining({
+          sizeTiers: {
+            "1K": 3,
+            "2K": 4,
+            "4K": 5,
+          },
+        }),
+      }),
+    ]);
+  });
+
   test("filters by modality and provider kind", () => {
     expect(builtinAiPluginRegistry.list({ modality: "text" })).toEqual([]);
     expect(
       builtinAiPluginRegistry
         .list({ modality: "image", providerKind: "openai-compatible" })
         .map((manifest) => manifest.packageKey),
-    ).toEqual(["openai-compatible.gpt-image-2", "mouxihub.nano-banana-pro-t3"]);
+    ).toEqual([
+      "mouxihub.gpt-image-2-async",
+      "openai-compatible.gpt-image-2",
+      "mouxihub.nano-banana-pro-t3",
+    ]);
   });
 
   test("throws for missing packages", () => {

@@ -10,6 +10,10 @@ describe('imageRoutePricing', () => {
     expect(getOfficialImageRouteSizeCredits('image.pixellelabs.nano-banana-2', '1K')).toBe(2.5);
     expect(getOfficialImageRouteSizeCredits('image.gpt-image-2', '4K')).toBe(3.5);
     expect(getOfficialImageRouteSizeCredits('image.gpt-image-2.line2', '2K')).toBe(3.5);
+    expect(getOfficialImageRouteSizeCredits('image.gpt-image-2.line3', '1K')).toBe(1);
+    expect(getOfficialImageRouteSizeCredits('image.gpt-image-2.line3', '4K')).toBe(3);
+    expect(getOfficialImageRouteSizeCredits('image.gpt-image-2.line4', '2K')).toBe(4);
+    expect(getOfficialImageRouteSizeCredits('image.gpt-image-2.line4', '4K')).toBe(5);
     expect(getOfficialImageRouteSizeCredits('image.mouxihub.nano-banana-pro.t3', '4K')).toBe(12);
   });
 

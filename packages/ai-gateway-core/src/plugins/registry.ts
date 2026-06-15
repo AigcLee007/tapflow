@@ -1,5 +1,6 @@
 import type { AiPluginManifest } from "./plugin-manifest.js";
 import { validateAiPluginManifest } from "./plugin-manifest.js";
+import { mouxiHubGptImage2AsyncManifest } from "./manifests/mouxihub-gpt-image-2-async.js";
 import { mouxiHubNanoBananaProT3Manifest } from "./manifests/mouxihub-nano-banana-pro-t3.js";
 import { mockLocalDevManifest } from "./manifests/mock-local-dev.js";
 import { openAiGptImage2Manifest } from "./manifests/openai-gpt-image-2.js";
@@ -7,6 +8,7 @@ import { pixelleLabsNanoBanana2Manifest } from "./manifests/pixellelabs-nano-ban
 import { pixelleLabsNanoBananaProManifest } from "./manifests/pixellelabs-nano-banana-pro.js";
 
 export const BUILTIN_AI_PLUGIN_MANIFESTS = [
+  mouxiHubGptImage2AsyncManifest,
   mouxiHubNanoBananaProT3Manifest,
   pixelleLabsNanoBanana2Manifest,
   pixelleLabsNanoBananaProManifest,

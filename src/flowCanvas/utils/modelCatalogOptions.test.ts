@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 
+import type { AiModelCatalogItem, AiModelCatalogRoute } from '../../services/v2AiModelCatalogApi';
 import {
   getAspectRatioOptionsFromCatalogModel,
   getDefaultParamsFromUiSchema,
@@ -9,7 +10,6 @@ import {
   mapCatalogModelsToOptions,
   mapCatalogRoutesToRuntimeOptions,
 } from './modelCatalogOptions';
-import type { AiModelCatalogItem, AiModelCatalogRoute } from '../../services/v2AiModelCatalogApi';
 
 describe('modelCatalogOptions', () => {
   test('maps internal image model keys to product labels before catalog data loads', () => {
@@ -22,10 +22,14 @@ describe('modelCatalogOptions', () => {
 
   test('maps known official route keys to user-facing route labels before routes load', () => {
     expect(getKnownImageRouteUserFacingLabel('image.pixellelabs.nano-banana-pro')).toBe('Nano Banana Pro 线路一');
-    expect(getKnownImageRouteUserFacingLabel('image.mouxihub.nano-banana-pro.t3')).toBe('Nano Banana Pro 线路二（官方T3）');
+    expect(getKnownImageRouteUserFacingLabel('image.mouxihub.nano-banana-pro.t3')).toBe(
+      'Nano Banana Pro 线路二（官方T3）',
+    );
     expect(getKnownImageRouteUserFacingLabel('image.pixellelabs.nano-banana-2')).toBe('Nano Banana 2 线路一');
     expect(getKnownImageRouteUserFacingLabel('image.gpt-image-2')).toBe('GPT-Image-2 线路一');
     expect(getKnownImageRouteUserFacingLabel('image.gpt-image-2.line2')).toBe('GPT-Image-2 线路二');
+    expect(getKnownImageRouteUserFacingLabel('image.gpt-image-2.line3')).toBe('GPT-Image-2 线路三');
+    expect(getKnownImageRouteUserFacingLabel('image.gpt-image-2.line4')).toBe('GPT-Image-2 线路四');
   });
 
   test('maps active v2 image catalog models before config fallback', () => {
@@ -206,21 +210,21 @@ describe('modelCatalogOptions', () => {
         {
           defaultValue: '16:9',
           key: 'aspectRatio',
-          label: '比例',
+          label: '画面比例',
           options: [{ label: '16:9', value: '16:9' }],
           type: 'select',
         },
         {
           defaultValue: '2K',
           key: 'imageSize',
-          label: '分辨率',
+          label: '图像尺寸',
           options: [{ label: '2K', value: '2K' }],
           type: 'select',
         },
         {
           defaultValue: false,
           key: 'optimizeChineseText',
-          label: 'AI 增强中文',
+          label: 'AI 优化中文排版',
           type: 'boolean',
         },
       ],
@@ -268,97 +272,113 @@ describe('modelCatalogOptions', () => {
     expect(getDefaultParamsFromUiSchema(uiSchema)).toEqual({
       size: '1k',
     });
-    expect(getSizeOptionsFromCatalogModel({
-      capabilities: { supportedSizes: ['1024x1024', '1536x1024', '2K'] },
-      defaultRouteKey: 'image.gpt-image-2',
-      id: 'gpt-image-2',
-      label: 'GPT-Image-2',
-      modelFamily: 'gpt-image-2',
-      modelKey: 'gpt-image-2',
-      uiSchema,
-    })).toEqual(['auto', '1k', '2k', '4k']);
+    expect(
+      getSizeOptionsFromCatalogModel({
+        capabilities: { supportedSizes: ['1024x1024', '1536x1024', '2K'] },
+        defaultRouteKey: 'image.gpt-image-2',
+        id: 'gpt-image-2',
+        label: 'GPT-Image-2',
+        modelFamily: 'gpt-image-2',
+        modelKey: 'gpt-image-2',
+        uiSchema,
+      }),
+    ).toEqual(['auto', '1k', '2k', '4k']);
   });
 
   test('forces Nano Banana quality options to 1k 2k 4k even when catalog is incomplete', () => {
-    expect(getSizeOptionsFromCatalogModel({
-      capabilities: { supportedSizes: ['1K'] },
-      defaultRouteKey: 'image.pixellelabs.nano-banana-pro',
-      id: 'pixellelabs.nano-banana-pro',
-      label: 'Nano Banana Pro',
-      modelFamily: 'pixellelabs.nano-banana-pro',
-      modelKey: 'gemini-3-pro-image-preview',
-      uiSchema: {},
-    })).toEqual(['1k', '2k', '4k']);
+    expect(
+      getSizeOptionsFromCatalogModel({
+        capabilities: { supportedSizes: ['1K'] },
+        defaultRouteKey: 'image.pixellelabs.nano-banana-pro',
+        id: 'pixellelabs.nano-banana-pro',
+        label: 'Nano Banana Pro',
+        modelFamily: 'pixellelabs.nano-banana-pro',
+        modelKey: 'gemini-3-pro-image-preview',
+        uiSchema: {},
+      }),
+    ).toEqual(['1k', '2k', '4k']);
   });
 
   test('forces Nano Banana ratio options to the fixed two-row panel set', () => {
-    expect(getAspectRatioOptionsFromCatalogModel({
-      capabilities: { supportedAspectRatios: ['1:1'] },
-      defaultRouteKey: 'image.pixellelabs.nano-banana-2',
-      id: 'pixellelabs.nano-banana-2',
-      label: 'Nano Banana 2',
-      modelFamily: 'pixellelabs.nano-banana-2',
-      modelKey: 'gemini-3.1-flash-image-preview',
-      uiSchema: {},
-    })).toEqual(['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9']);
+    expect(
+      getAspectRatioOptionsFromCatalogModel({
+        capabilities: { supportedAspectRatios: ['1:1'] },
+        defaultRouteKey: 'image.pixellelabs.nano-banana-2',
+        id: 'pixellelabs.nano-banana-2',
+        label: 'Nano Banana 2',
+        modelFamily: 'pixellelabs.nano-banana-2',
+        modelKey: 'gemini-3.1-flash-image-preview',
+        uiSchema: {},
+      }),
+    ).toEqual(['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9']);
   });
 
   test('treats gemini-flash fallback ids as Nano Banana 2 for panel options', () => {
-    expect(getSizeOptionsFromCatalogModel({
-      capabilities: { supportedSizes: ['1K'] },
-      defaultRouteKey: 'image.nano-banana-pro-fast',
-      id: 'gemini-flash',
-      label: 'Nano Banana 2',
-      modelFamily: 'gemini-flash',
-      modelKey: 'gemini-flash',
-      uiSchema: {},
-    })).toEqual(['1k', '2k', '4k']);
+    expect(
+      getSizeOptionsFromCatalogModel({
+        capabilities: { supportedSizes: ['1K'] },
+        defaultRouteKey: 'image.nano-banana-pro-fast',
+        id: 'gemini-flash',
+        label: 'Nano Banana 2',
+        modelFamily: 'gemini-flash',
+        modelKey: 'gemini-flash',
+        uiSchema: {},
+      }),
+    ).toEqual(['1k', '2k', '4k']);
 
-    expect(getAspectRatioOptionsFromCatalogModel({
-      capabilities: { supportedAspectRatios: ['1:1'] },
-      defaultRouteKey: 'image.nano-banana-pro-fast',
-      id: 'gemini-flash',
-      label: 'Nano Banana 2',
-      modelFamily: 'gemini-flash',
-      modelKey: 'gemini-flash',
-      uiSchema: {},
-    })).toEqual(['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9']);
+    expect(
+      getAspectRatioOptionsFromCatalogModel({
+        capabilities: { supportedAspectRatios: ['1:1'] },
+        defaultRouteKey: 'image.nano-banana-pro-fast',
+        id: 'gemini-flash',
+        label: 'Nano Banana 2',
+        modelFamily: 'gemini-flash',
+        modelKey: 'gemini-flash',
+        uiSchema: {},
+      }),
+    ).toEqual(['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9']);
   });
 
   test('keeps gpt-image-2 ratio options aligned with the dedicated panel set', () => {
-    expect(getAspectRatioOptionsFromCatalogModel({
-      capabilities: { supportedAspectRatios: ['1:1', '16:9'] },
-      defaultRouteKey: 'image.gpt-image-2',
-      id: 'gpt-image-2',
-      label: 'GPT-Image-2',
-      modelFamily: 'gpt-image-2',
-      modelKey: 'gpt-image-2',
-      uiSchema: {},
-    })).toEqual(['1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3', '21:9']);
+    expect(
+      getAspectRatioOptionsFromCatalogModel({
+        capabilities: { supportedAspectRatios: ['1:1', '16:9'] },
+        defaultRouteKey: 'image.gpt-image-2',
+        id: 'gpt-image-2',
+        label: 'GPT-Image-2',
+        modelFamily: 'gpt-image-2',
+        modelKey: 'gpt-image-2',
+        uiSchema: {},
+      }),
+    ).toEqual(['1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3', '21:9']);
   });
 
   test('keeps gpt-image-2 dedicated size fallback options including auto', () => {
-    expect(getSizeOptionsFromCatalogModel({
-      capabilities: { supportedSizes: ['1024x1024'] },
-      defaultRouteKey: 'image.gpt-image-2',
-      id: 'gpt-image-2',
-      label: 'GPT-Image-2',
-      modelFamily: 'gpt-image-2',
-      modelKey: 'gpt-image-2',
-      uiSchema: {},
-    })).toEqual(['auto', '1k', '2k', '4k']);
+    expect(
+      getSizeOptionsFromCatalogModel({
+        capabilities: { supportedSizes: ['1024x1024'] },
+        defaultRouteKey: 'image.gpt-image-2',
+        id: 'gpt-image-2',
+        label: 'GPT-Image-2',
+        modelFamily: 'gpt-image-2',
+        modelKey: 'gpt-image-2',
+        uiSchema: {},
+      }),
+    ).toEqual(['auto', '1k', '2k', '4k']);
   });
 
   test('keeps gpt-image-2 dedicated ratio fallback options for the custom panel', () => {
-    expect(getAspectRatioOptionsFromCatalogModel({
-      capabilities: { supportedAspectRatios: ['1:1'] },
-      defaultRouteKey: 'image.gpt-image-2',
-      id: 'gpt-image-2',
-      label: 'GPT-Image-2',
-      modelFamily: 'gpt-image-2',
-      modelKey: 'gpt-image-2',
-      uiSchema: {},
-    })).toEqual(['1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3', '21:9']);
+    expect(
+      getAspectRatioOptionsFromCatalogModel({
+        capabilities: { supportedAspectRatios: ['1:1'] },
+        defaultRouteKey: 'image.gpt-image-2',
+        id: 'gpt-image-2',
+        label: 'GPT-Image-2',
+        modelFamily: 'gpt-image-2',
+        modelKey: 'gpt-image-2',
+        uiSchema: {},
+      }),
+    ).toEqual(['1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3', '21:9']);
   });
 
   test('forces fixed Nano Banana fallback options for legacy local identities', () => {
@@ -388,26 +408,100 @@ describe('modelCatalogOptions', () => {
   });
 
   test('keeps gpt-image-2 size fallback behavior aligned with the dedicated panel set', () => {
-    expect(getSizeOptionsFromCatalogModel({
-      capabilities: { supportedSizes: ['1024x1024', '2K'] },
-      defaultRouteKey: 'image.gpt-image-2',
-      id: 'gpt-image-2',
-      label: 'GPT-Image-2',
-      modelFamily: 'gpt-image-2',
-      modelKey: 'gpt-image-2',
-      uiSchema: {},
-    })).toEqual(['auto', '1k', '2k', '4k']);
+    expect(
+      getSizeOptionsFromCatalogModel({
+        capabilities: { supportedSizes: ['1024x1024', '2K'] },
+        defaultRouteKey: 'image.gpt-image-2',
+        id: 'gpt-image-2',
+        label: 'GPT-Image-2',
+        modelFamily: 'gpt-image-2',
+        modelKey: 'gpt-image-2',
+        uiSchema: {},
+      }),
+    ).toEqual(['auto', '1k', '2k', '4k']);
   });
 
   test('keeps nano banana helper paths untouched while adding gpt-image-2 panel fallbacks', () => {
-    expect(getSizeOptionsFromCatalogModel({
-      capabilities: { supportedSizes: ['1K'] },
-      defaultRouteKey: 'image.pixellelabs.nano-banana-pro',
-      id: 'pixellelabs.nano-banana-pro',
-      label: 'Nano Banana Pro',
-      modelFamily: 'pixellelabs.nano-banana-pro',
-      modelKey: 'gemini-3-pro-image-preview',
-      uiSchema: {},
-    })).toEqual(['1k', '2k', '4k']);
+    expect(
+      getSizeOptionsFromCatalogModel({
+        capabilities: { supportedSizes: ['1K'] },
+        defaultRouteKey: 'image.pixellelabs.nano-banana-pro',
+        id: 'pixellelabs.nano-banana-pro',
+        label: 'Nano Banana Pro',
+        modelFamily: 'pixellelabs.nano-banana-pro',
+        modelKey: 'gemini-3-pro-image-preview',
+        uiSchema: {},
+      }),
+    ).toEqual(['1k', '2k', '4k']);
+  });
+
+  test('keeps GPT-Image-2 line ordering stable with new line three and line four routes', () => {
+    const routes = mapCatalogRoutesToRuntimeOptions([
+      {
+        estimatedCredits: 5,
+        minChargeCredits: 5,
+        modality: 'image',
+        modelFamily: 'gpt-image-2',
+        modelKey: 'gpt-image-2',
+        pricingUnit: 'image_generation',
+        providerKey: 'mouxihub-openai',
+        providerName: 'MouxiHub OpenAI Compatible',
+        routeId: 'route-4',
+        routeKey: 'image.gpt-image-2.line4',
+        routeLabel: '线路四',
+      },
+      {
+        estimatedCredits: 2,
+        minChargeCredits: 2,
+        modality: 'image',
+        modelFamily: 'gpt-image-2',
+        modelKey: 'gpt-image-2',
+        pricingUnit: 'image_generation',
+        providerKey: 'mouxihub-openai',
+        providerName: 'MouxiHub OpenAI Compatible',
+        routeId: 'route-3',
+        routeKey: 'image.gpt-image-2.line3',
+        routeLabel: '线路三',
+      },
+      {
+        estimatedCredits: 100,
+        minChargeCredits: 100,
+        modality: 'image',
+        modelFamily: 'gpt-image-2',
+        modelKey: 'gpt-image-2',
+        pricingUnit: 'image_generation',
+        providerKey: 'openai-compatible',
+        providerName: 'SiphonLab OpenAI Compatible',
+        routeId: 'route-2',
+        routeKey: 'image.gpt-image-2.line2',
+        routeLabel: '线路二',
+      },
+      {
+        estimatedCredits: 50,
+        minChargeCredits: 50,
+        modality: 'image',
+        modelFamily: 'gpt-image-2',
+        modelKey: 'gpt-image-2',
+        pricingUnit: 'image_generation',
+        providerKey: 'openai-compatible',
+        providerName: 'SiphonLab OpenAI Compatible',
+        routeId: 'route-1',
+        routeKey: 'image.gpt-image-2',
+        routeLabel: '线路一',
+      },
+    ] satisfies AiModelCatalogRoute[]);
+
+    expect(routes.map((item) => item.routeKey)).toEqual([
+      'image.gpt-image-2',
+      'image.gpt-image-2.line2',
+      'image.gpt-image-2.line3',
+      'image.gpt-image-2.line4',
+    ]);
+    expect(routes.map((item) => item.userFacingLabel)).toEqual([
+      'GPT-Image-2 线路一',
+      'GPT-Image-2 线路二',
+      'GPT-Image-2 线路三',
+      'GPT-Image-2 线路四',
+    ]);
   });
 });

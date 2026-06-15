@@ -641,6 +641,138 @@ describe("openai-compatible text adapter", () => {
     await server.close();
   });
 
+  test("generateImage submits MouxiHub GPT-Image-2 async generation with GPT-image size model mapping", async () => {
+    const server = await withHttpServer(async (request, response) => {
+      expect(request.url).toBe("/v1/images/generations?async=true");
+      expect(request.headers.authorization).toBe("Bearer sk-test-secret");
+      expect(request.headers["content-type"]).toContain("application/json");
+
+      const chunks: Buffer[] = [];
+      for await (const chunk of request) {
+        chunks.push(Buffer.from(chunk));
+      }
+      const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;
+      expect(body).toMatchObject({
+        model: "gpt-image-2-2k",
+        n: 1,
+        prompt: "product poster",
+        size: "2512x1664",
+      });
+      expect(body.response_format).toBeUndefined();
+      expect(body.aspect_ratio).toBe("3:2");
+
+      response.setHeader("content-type", "application/json");
+      response.end(JSON.stringify({ code: "success", message: "", data: "task-gpt-image-line3" }));
+    });
+
+    const adapter = new OpenAiCompatibleTextAdapter();
+    const result = await adapter.generateImage(
+      {
+        apiKey: "sk-test-secret",
+        baseUrl: server.url,
+        modelKey: "gpt-image-2",
+        providerKey: "mouxihub-openai",
+        requestConfig: {
+          async: true,
+          aspectRatioParam: "aspect_ratio",
+          modelBySize: {
+            "1K": "gpt-image-2",
+            "2K": "gpt-image-2-2k",
+            "4K": "gpt-image-2-4k",
+          },
+          path: "/v1/images/generations",
+          pollPath: "/v1/images/tasks/{task_id}",
+          responseFormat: null,
+        },
+        routeId: "route-line3",
+        routeKey: "image.gpt-image-2.line3",
+        timeoutMs: 5_000,
+      },
+      {
+        metadata: {
+          params: {
+            aspectRatio: "3:2",
+            size: "2K",
+          },
+        },
+        prompt: "product poster",
+      },
+    );
+
+    expect(result).toMatchObject({
+      modelKey: "gpt-image-2-2k",
+      providerTaskId: "task-gpt-image-line3",
+      status: "waiting_provider",
+    });
+
+    await server.close();
+  });
+
+  test("generateImage submits MouxiHub GPT-Image-2 async edits through multipart endpoint", async () => {
+    const server = await withHttpServer(async (request, response) => {
+      expect(request.url).toBe("/v1/images/edits?async=true");
+      expect(request.headers.authorization).toBe("Bearer sk-test-secret");
+      expect(request.headers["content-type"]).toContain("multipart/form-data");
+
+      const chunks: Buffer[] = [];
+      for await (const chunk of request) {
+        chunks.push(Buffer.from(chunk));
+      }
+      const body = Buffer.concat(chunks).toString("utf8");
+      expect(body).toContain('name="model"');
+      expect(body).toContain("gpt-image-2-vip-4k");
+      expect(body).toContain('name="image[]"');
+
+      response.setHeader("content-type", "application/json");
+      response.end(JSON.stringify({ code: "success", message: "", data: "task-gpt-image-line4-edit" }));
+    });
+
+    const adapter = new OpenAiCompatibleTextAdapter();
+    const result = await adapter.generateImage(
+      {
+        apiKey: "sk-test-secret",
+        baseUrl: server.url,
+        modelKey: "gpt-image-2",
+        providerKey: "mouxihub-openai",
+        requestConfig: {
+          async: true,
+          aspectRatioParam: "aspect_ratio",
+          editPath: "/v1/images/edits",
+          modelBySize: {
+            "1K": "gpt-image-2-vip",
+            "2K": "gpt-image-2-vip-2k",
+            "4K": "gpt-image-2-vip-4k",
+          },
+          path: "/v1/images/generations",
+          pollPath: "/v1/images/tasks/{task_id}",
+          responseFormat: null,
+        },
+        routeId: "route-line4",
+        routeKey: "image.gpt-image-2.line4",
+        timeoutMs: 5_000,
+      },
+      {
+        metadata: {
+          params: {
+            size: "4K",
+          },
+          referenceImages: [
+            "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9MbugAAAAASUVORK5CYII=",
+          ],
+        },
+        prompt: "edit this image",
+      },
+    );
+
+    expect(result).toMatchObject({
+      modelKey: "gpt-image-2-vip-4k",
+      providerTaskId: "task-gpt-image-line4-edit",
+      status: "waiting_provider",
+    });
+
+    await server.close();
+  });
+
   test("pollTask parses MouxiHub async image task states and nested outputs", async () => {
     const server = await withHttpServer(async (request, response) => {
       expect(request.url).toBe("/v1/images/tasks/task-mouxihub-1");

@@ -1924,3 +1924,30 @@ Validation completed:
   - `npm run test --workspace @aigc-flow/ai-gateway-core -- runtime.test.ts -t "generateImage forwards MouxiHub async generation aspect ratio to upstream payload"`
   - `npm run test --workspace @aigc-flow/ai-gateway-core -- runtime.test.ts`
   - `npm run build --workspace @aigc-flow/ai-gateway-core`
+
+## 2026-06-15 - GPT-Image-2 MouxiHub Async Lines 3 and 4
+
+- added a built-in AI Gateway plugin package for `GPT-Image-2` MouxiHub async routes `image.gpt-image-2.line3` and `image.gpt-image-2.line4`
+- line 3 now maps size tiers to upstream models:
+  - `1K -> gpt-image-2`
+  - `2K -> gpt-image-2-2k`
+  - `4K -> gpt-image-2-4k`
+- line 4 now maps size tiers to upstream models:
+  - `1K -> gpt-image-2-vip`
+  - `2K -> gpt-image-2-vip-2k`
+  - `4K -> gpt-image-2-vip-4k`
+- kept all GPT-Image-2-specific size behavior aligned with the existing dedicated panel/runtime rules instead of reusing the Nano Banana size contract
+- kept MouxiHub async generation/edit integration on:
+  - `/v1/images/generations?async=true`
+  - `/v1/images/edits?async=true`
+  - `/v1/images/tasks/{task_id}`
+- kept GPT-Image-2 quantity behavior aligned with the current multi-image safety path by preserving one-image-per-request upstream splitting when the requested image count is greater than `1`
+- extended creator-facing route metadata so fallback labels, route ordering, and frontend pricing now include:
+  - `GPT-Image-2 线路三`
+  - `GPT-Image-2 线路四`
+- cleaned the touched GPT-Image-2 MouxiHub plugin/catalog metadata to readable Chinese labels so the new lines do not surface mojibake in canvas or admin-adjacent views
+- Validation:
+  - `npm run test --workspace @aigc-flow/ai-gateway-core -- plugin-registry.test.ts runtime.test.ts`
+  - `npm run test --workspace @aigc-flow/api -- ai-plugins.service.test.ts`
+  - `npx vitest run src/flowCanvas/utils/imageRoutePricing.test.ts src/flowCanvas/utils/modelCatalogOptions.test.ts`
+  - `npm run build`

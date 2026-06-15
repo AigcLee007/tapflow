@@ -9,6 +9,16 @@ const SIZE_TIER_PRICING: Record<string, Record<string, number>> = {
     "2k": 3.5,
     "4k": 4,
   },
+  "image.gpt-image-2.line3": {
+    "1k": 1,
+    "2k": 2,
+    "4k": 3,
+  },
+  "image.gpt-image-2.line4": {
+    "1k": 3,
+    "2k": 4,
+    "4k": 5,
+  },
   "image.mouxihub.nano-banana-pro.t3": {
     "1k": 6,
     "2k": 8,

@@ -111,12 +111,24 @@ function extensionForOutputFormat(outputFormat: string): string {
 }
 
 function isGptImage2Model(model: string): boolean {
-  return model.trim().toLowerCase() === "gpt-image-2";
+  const normalized = model.trim().toLowerCase();
+  return normalized === "gpt-image-2"
+    || normalized === "gpt-image-2-2k"
+    || normalized === "gpt-image-2-4k"
+    || normalized === "gpt-image-2-vip"
+    || normalized === "gpt-image-2-vip-2k"
+    || normalized === "gpt-image-2-vip-4k";
 }
 
 function isOpenAiImageSizeTierModel(model: string): boolean {
   const normalized = model.trim().toLowerCase();
-  return normalized === "gpt-image-2" || normalized === "gpt-5.5";
+  return normalized === "gpt-image-2"
+    || normalized === "gpt-image-2-2k"
+    || normalized === "gpt-image-2-4k"
+    || normalized === "gpt-image-2-vip"
+    || normalized === "gpt-image-2-vip-2k"
+    || normalized === "gpt-image-2-vip-4k"
+    || normalized === "gpt-5.5";
 }
 
 function normalizeProviderImageSize(model: string, size: string | null, aspectRatio: string | null): string | null {
@@ -135,7 +147,12 @@ function resolveForwardedAspectRatioParam(
   const configured = getString(requestConfig.aspectRatioParam ?? requestConfig.aspect_ratio_param);
   if (configured) return configured;
 
-  if (providerKey === "mouxihub-openai" || routeKey === "image.mouxihub.nano-banana-pro.t3") {
+  if (
+    providerKey === "mouxihub-openai"
+    || routeKey === "image.mouxihub.nano-banana-pro.t3"
+    || routeKey === "image.gpt-image-2.line3"
+    || routeKey === "image.gpt-image-2.line4"
+  ) {
     return "aspect_ratio";
   }
 
