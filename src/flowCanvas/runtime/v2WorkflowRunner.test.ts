@@ -1222,6 +1222,88 @@ describe('v2WorkflowRunner', () => {
     });
   });
 
+  test('split_nodes mode creates child image nodes and suppresses duplicate parent filmstrip batch state', async () => {
+    const parent = useFlowCanvasStore.getState().addNode('image', { x: 80, y: 120 }, {
+      batchCount: 2,
+      multiImageDisplayMode: 'split_nodes',
+      routeKey: 'image.default',
+      title: 'Parent Image',
+    });
+
+    listFlowWorkflowRunsMock.mockResolvedValue([
+      {
+        nodeRuns: [
+          {
+            attempt: 1,
+            costJson: {},
+            createdAt: '2026-05-17T00:00:00.000Z',
+            errorJson: null,
+            finishedAt: '2026-05-17T00:00:03.000Z',
+            id: 'node-run-image-split',
+            inputJson: {},
+            maxAttempts: 3,
+            nodeId: parent.id,
+            nodeType: 'image.generate',
+            outputJson: {
+              assets: [
+                {
+                  assetId: 'asset-parent-1',
+                  height: 1024,
+                  kind: 'image',
+                  mimeType: 'image/png',
+                  width: 768,
+                },
+                {
+                  assetId: 'asset-parent-2',
+                  height: 1024,
+                  kind: 'image',
+                  mimeType: 'image/png',
+                  width: 768,
+                },
+              ],
+            },
+            providerTaskId: null,
+            startedAt: '2026-05-17T00:00:01.000Z',
+            status: 'succeeded',
+            tenantId: 'tenant-1',
+            updatedAt: '2026-05-17T00:00:03.000Z',
+            workflowRunId: 'run-image-split',
+          },
+        ],
+        workflowRun: {
+          canceledAt: null,
+          createdAt: '2026-05-17T00:00:00.000Z',
+          createdBy: 'user-1',
+          errorJson: null,
+          finishedAt: '2026-05-17T00:00:03.000Z',
+          flowId: '11111111-1111-1111-1111-111111111111',
+          flowVersionId: 'version-1',
+          id: 'run-image-split',
+          idempotencyKey: null,
+          inputJson: {
+            runMode: 'target_node',
+            targetNodeId: parent.id,
+          },
+          outputJson: null,
+          startedAt: '2026-05-17T00:00:01.000Z',
+          status: 'succeeded',
+          tenantId: 'tenant-1',
+          updatedAt: '2026-05-17T00:00:03.000Z',
+        },
+      },
+    ]);
+
+    await recoverFlowTargetNodeRuns('11111111-1111-1111-1111-111111111111');
+
+    const state = useFlowCanvasStore.getState();
+    const refreshedParent = state.nodes.find((node) => node.id === parent.id);
+    const children = state.nodes.filter((node) => node.id !== parent.id && node.data.editSourceNodeId === parent.id);
+
+    expect(children).toHaveLength(2);
+    expect(refreshedParent?.data.generatedResults).toBeUndefined();
+    expect(refreshedParent?.data.thumbnailUrl).toBe('https://cdn.test/asset-parent-1-preview.png?X-Amz-Signature=signed');
+  });
+
   test('failed target-node snapshot clears generating state on the node', async () => {
     useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, {
       generationStatus: 'generating',

@@ -4206,14 +4206,19 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       : (effectiveThumbnailUrl
         ? [{ id: 'result-single', url: effectiveThumbnailUrl, createdAt: Date.now() }]
         : []);
+  const multiImageDisplayMode = d.multiImageDisplayMode === 'split_nodes' ? 'split_nodes' : 'combined';
+  const shouldSuppressDuplicateResultStrip =
+    multiImageDisplayMode === 'split_nodes' &&
+    d.latestMultiImageDelivery === 'split_nodes';
+  const visibleResultItems = shouldSuppressDuplicateResultStrip ? [] : resultItems;
   const rawActiveIndex = Number(d.activeResultIndex || 0);
-  const activeResultIndex = resultItems.length > 0
-    ? Math.min(Math.max(rawActiveIndex, 0), resultItems.length - 1)
+  const activeResultIndex = visibleResultItems.length > 0
+    ? Math.min(Math.max(rawActiveIndex, 0), visibleResultItems.length - 1)
     : 0;
   const coverResultId = String(d.coverResultId || '');
-  const coverResult = resultItems.find((item) => item.id === coverResultId) || resultItems[activeResultIndex];
+  const coverResult = visibleResultItems.find((item) => item.id === coverResultId) || visibleResultItems[activeResultIndex];
   const displayThumbnailUrl = normalizeBackendAssetUrl(coverResult?.url || effectiveThumbnailUrl);
-  const resultCount = isGeneratedImageNode ? resultItems.length : 0;
+  const resultCount = isGeneratedImageNode ? visibleResultItems.length : 0;
   const canExpandResults = resultCount > 1;
   const favoriteResultIds = useMemo(
     () => new Set(
@@ -4417,7 +4422,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
 
   const handleSelectGeneratedResult = useCallback(
     (index: number) => {
-      const target = resultItems[index];
+      const target = visibleResultItems[index];
       if (!target) return;
       updateNodeData(id, {
         thumbnailUrl: target.url,
@@ -4426,7 +4431,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
         errorMessage: undefined,
       });
     },
-    [id, resultItems, updateNodeData],
+    [id, updateNodeData, visibleResultItems],
   );
 
   const handleToggleFavoriteResult = useCallback(
@@ -4443,7 +4448,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   );
 
   const handleDownloadResult = useCallback((url: string, index: number) => {
-    const result = resultItems[index];
+    const result = visibleResultItems[index];
     const resultAssetId = getPreferredImageDownloadAssetId({
       resultId: result?.id,
       runtimeAssetId: runtimeImageAssets[index]?.assetId,
@@ -4454,7 +4459,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       filenameBase: `image-${id}-result-${index + 1}-${Date.now()}`,
       mimeType: d.mimeType,
     });
-  }, [d.mimeType, id, resultItems, runtimeImageAssets]);
+  }, [d.mimeType, id, runtimeImageAssets, visibleResultItems]);
 
   const appendPromptToken = useCallback(
     (nextText: string, patch?: Partial<FlowNodeData>) => {
@@ -6446,6 +6451,56 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
                   {d.batchCount || 1}x
                 </button>
               </div>
+
+              {(d.batchCount || 1) > 1 && (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    padding: 4,
+                    background: 'rgba(255,255,255,0.04)',
+                    border: '1px solid rgba(255,255,255,0.06)',
+                    borderRadius: 12,
+                    minWidth: 156,
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => updateNodeData(id, { multiImageDisplayMode: 'combined' })}
+                    style={{
+                      flex: 1,
+                      border: 'none',
+                      borderRadius: 8,
+                      padding: '7px 10px',
+                      background: multiImageDisplayMode === 'combined' ? 'rgba(255,255,255,0.1)' : 'transparent',
+                      color: multiImageDisplayMode === 'combined' ? '#fff' : '#94a3b8',
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    合并显示
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => updateNodeData(id, { multiImageDisplayMode: 'split_nodes' })}
+                    style={{
+                      flex: 1,
+                      border: 'none',
+                      borderRadius: 8,
+                      padding: '7px 10px',
+                      background: multiImageDisplayMode === 'split_nodes' ? 'rgba(255,255,255,0.1)' : 'transparent',
+                      color: multiImageDisplayMode === 'split_nodes' ? '#fff' : '#94a3b8',
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    多节点显示
+                  </button>
+                </div>
+              )}
 
               <div style={sendBtnOuter}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>

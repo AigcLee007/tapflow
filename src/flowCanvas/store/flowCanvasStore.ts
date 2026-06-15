@@ -14,6 +14,8 @@ import { nanoid } from 'nanoid';
 import type { FlowEdgeData, FlowNodeData, FlowNodeKind } from '../types';
 import { createFlowNode, duplicateFlowNode } from '../utils/nodeFactory';
 import { canConnectFlowNodes, canCreateNodeFromSource } from '../rules/connectionRules';
+import { buildAssetBackedNodeData } from '../utils/assetNodeData';
+import { fitMediaNodeToShortSide } from '../utils/nodeSizing';
 import type {
   FlowRuntimeNodeOutput,
 } from '../types';
@@ -133,6 +135,17 @@ interface FlowCanvasState {
     targetHandle?: string,
     overrides?: Partial<FlowNodeData>,
   ) => FlowNode;
+  addGeneratedImageChildren: (
+    parentNodeId: string,
+    items: Array<{
+      assetId: string;
+      downloadUrl: string;
+      height?: number | null;
+      mimeType: string;
+      title: string;
+      width?: number | null;
+    }>,
+  ) => string[];
   getUpstreamNodes: (nodeId: string) => FlowNode[];
   groupSelectedNodes: () => void;
   ungroupSelectedGroups: () => void;
@@ -488,6 +501,85 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
       };
     });
     return node;
+  },
+
+  addGeneratedImageChildren: (parentNodeId, items) => {
+    const parentNode = get().nodes.find((node) => node.id === parentNodeId);
+    if (!parentNode || items.length === 0) return [];
+
+    get().pushHistory();
+
+    const parentWidth = Number(parentNode.data.width || 260);
+    const parentX = parentNode.position.x;
+    const parentY = parentNode.position.y;
+    const startX = parentX + parentWidth + 160;
+    const gapY = 28;
+    const createdIds: string[] = [];
+
+    set((state) => {
+      const nextNodes = [...state.nodes];
+      const nextEdges = [...state.edges];
+
+      items.forEach((item, index) => {
+        const fitted = fitMediaNodeToShortSide(
+          typeof item.width === 'number' && item.width > 0 ? item.width : 260,
+          typeof item.height === 'number' && item.height > 0 ? item.height : 210,
+        );
+        const node = createFlowNode(
+          'image',
+          {
+            x: startX,
+            y: parentY + index * (fitted.height + gapY),
+          },
+          {
+            ...buildAssetBackedNodeData({
+              durationMs: null,
+              height: typeof item.height === 'number' ? item.height : null,
+              id: item.assetId,
+              mimeType: item.mimeType,
+              originalFilename: item.title,
+              previewUrl: item.downloadUrl,
+              source: 'generated-result',
+              title: item.title,
+              width: typeof item.width === 'number' ? item.width : null,
+            }, {
+              naturalHeight: item.height,
+              naturalWidth: item.width,
+              previewUrl: item.downloadUrl,
+              source: 'generated-result',
+              title: item.title,
+            }),
+            editSourceNodeId: parentNodeId,
+            referenceOrder: appendReferenceOrderKey(undefined, `upstream:${parentNodeId}`),
+            width: fitted.width,
+            height: fitted.height,
+          },
+        );
+
+        const edge: FlowEdge = {
+          id: nanoid(12),
+          source: parentNodeId,
+          sourceHandle: 'out',
+          target: node.id,
+          targetHandle: 'in',
+          type: 'smart',
+          data: { dataType: 'any' as const } satisfies FlowEdgeData,
+        };
+
+        createdIds.push(node.id);
+        nextNodes.push(node);
+        nextEdges.push(edge);
+      });
+
+      return {
+        nodes: nextNodes,
+        edges: nextEdges,
+        graphIndex: buildGraphIndex(nextNodes, nextEdges, state.nodeOutputByNodeId),
+        isDirty: true,
+      };
+    });
+
+    return createdIds;
   },
 
   getUpstreamNodes: (nodeId) => {

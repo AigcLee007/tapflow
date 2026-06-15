@@ -31,6 +31,7 @@ export type FlowNodeStatus =
 
 // ─── Generation Status (embedded in content nodes) ───────────
 export type FlowGenerationStatus = 'idle' | 'generating' | 'done' | 'error';
+export type FlowMultiImageDisplayMode = 'combined' | 'split_nodes';
 
 export interface FlowImageResultItem {
   id: string;
@@ -144,6 +145,8 @@ export interface FlowNodeData {
 
   // Batch Generation
   batchCount?: number;
+  multiImageDisplayMode?: FlowMultiImageDisplayMode;
+  latestMultiImageDelivery?: FlowMultiImageDisplayMode;
 
   // Timestamps
   createdAt: number;

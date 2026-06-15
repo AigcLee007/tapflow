@@ -300,4 +300,59 @@ describe('flowCanvasStore upstream image references', () => {
       }),
     ]);
   });
+
+  it('adds one generated child image node per split-mode result', () => {
+    const parent = useFlowCanvasStore.getState().addNode(
+      'image',
+      { x: 160, y: 120 },
+      {
+        title: 'Parent Image',
+        width: 220,
+        height: 280,
+      },
+      { selected: true },
+    );
+
+    const createdIds = useFlowCanvasStore.getState().addGeneratedImageChildren?.(
+      parent.id,
+      [
+        {
+          assetId: 'asset-child-1',
+          downloadUrl: 'https://cdn.test/child-1.png',
+          height: 960,
+          mimeType: 'image/png',
+          title: '生成结果1',
+          width: 720,
+        },
+        {
+          assetId: 'asset-child-2',
+          downloadUrl: 'https://cdn.test/child-2.png',
+          height: 960,
+          mimeType: 'image/png',
+          title: '生成结果2',
+          width: 720,
+        },
+      ],
+    );
+
+    expect(createdIds).toHaveLength(2);
+    const state = useFlowCanvasStore.getState();
+    const childNodes = state.nodes.filter((node) => createdIds?.includes(node.id));
+    const childEdges = state.edges.filter((edge) => edge.source === parent.id && createdIds?.includes(edge.target));
+
+    expect(childNodes).toHaveLength(2);
+    expect(childEdges).toHaveLength(2);
+    expect(childNodes[0]?.data).toEqual(expect.objectContaining({
+      assetId: 'asset-child-1',
+      assetIds: ['asset-child-1'],
+      thumbnailUrl: 'https://cdn.test/child-1.png',
+      title: '生成结果1',
+    }));
+    expect(childNodes[1]?.data).toEqual(expect.objectContaining({
+      assetId: 'asset-child-2',
+      assetIds: ['asset-child-2'],
+      thumbnailUrl: 'https://cdn.test/child-2.png',
+      title: '生成结果2',
+    }));
+  });
 });

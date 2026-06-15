@@ -1897,3 +1897,18 @@ Validation completed:
   - `npm run build --workspace @aigc-flow/ai-gateway-core`
   - `npm run build --workspace @aigc-flow/worker`
   - `npm run build`
+
+## 2026-06-15 - Image Multi-Result Display Mode
+
+- added a new persisted image-node display mode so multi-image generation can be shown either as `combined` results on the parent node or as `split_nodes`
+- image prompt bars now reveal an inline display-mode switch next to the existing `2x / 3x / 4x` quantity control when the selected batch count is greater than `1`
+- kept the existing combined-result strip behavior as the default path for backward compatibility
+- added split-mode fan-out behavior on successful multi-image runs:
+  - keep the parent image node in place
+  - create one generated child image node per output asset
+  - connect each child from the parent node
+  - suppress duplicate parent filmstrip rendering for that same split-delivered batch
+- kept the implementation frontend-only in the canvas/store/workflow runner layer without changing the backend workflow contract
+- Validation:
+  - `npm test -- src/flowCanvas/runtime/v2WorkflowRunner.test.ts src/flowCanvas/store/flowCanvasStore.test.ts`
+  - `npm run build`

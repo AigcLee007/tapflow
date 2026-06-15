@@ -18,6 +18,7 @@ import { useFlowCanvasStore } from '../store/flowCanvasStore';
 import type {
   FlowImageGenerationSnapshot,
   FlowImageResultItem,
+  FlowMultiImageDisplayMode,
   FlowNodeData,
   FlowRuntimeAssetRef,
   FlowRuntimeNodeOutput,
@@ -464,6 +465,7 @@ function buildGeneratedAssetNodePatch(
           coverResultId: generatedResults[0]?.id,
           generatedResults,
           lastGenerationSnapshot: buildImageGenerationSnapshot(currentData, assetRefs, generatedAt),
+          latestMultiImageDelivery: 'combined' as FlowMultiImageDisplayMode,
           thumbnailUrl: generatedResults[0]?.url,
         }
       : {}),
@@ -480,6 +482,46 @@ function buildGeneratedAssetNodePatch(
     progress: 100,
     source: 'generated',
     status: 'success',
+    workflowLaunchStatus: 'asset_visible',
+    workflowLaunchUpdatedAt: Date.now(),
+  };
+}
+
+function buildSplitModeParentNodePatch(
+  nodeRun: PersistableNodeRun,
+  assetRefs: FlowRuntimeAssetRef[],
+): Partial<FlowNodeData> | null {
+  if (nodeRun.status !== 'succeeded' || assetRefs.length === 0 || !shouldApplyNodeRun(nodeRun)) {
+    return null;
+  }
+  const primaryAsset = assetRefs[0];
+  if (!primaryAsset?.assetId || nodeRun.nodeType !== 'image.generate') {
+    return null;
+  }
+  const currentNode = useFlowCanvasStore.getState().nodes.find((node) => node.id === nodeRun.nodeId);
+  const currentData = currentNode?.data ?? {};
+  const generatedAt = Date.now();
+
+  return {
+    activeResultIndex: undefined,
+    assetId: primaryAsset.assetId,
+    assetIds: assetRefs.map((asset) => asset.assetId),
+    coverResultId: undefined,
+    errorMessage: undefined,
+    favoriteResultIds: undefined,
+    generatedResults: undefined,
+    generationStatus: 'done',
+    lastGenerationSnapshot: buildImageGenerationSnapshot(currentData, assetRefs, generatedAt),
+    latestMultiImageDelivery: 'split_nodes',
+    latestNodeRunId: nodeRun.id,
+    latestWorkflowRunId: nodeRun.workflowRunId,
+    mimeType: primaryAsset.mimeType,
+    naturalHeight: primaryAsset.height ?? undefined,
+    naturalWidth: primaryAsset.width ?? undefined,
+    progress: 100,
+    source: 'generated',
+    status: 'success',
+    thumbnailUrl: primaryAsset.downloadUrl,
     workflowLaunchStatus: 'asset_visible',
     workflowLaunchUpdatedAt: Date.now(),
   };
@@ -513,10 +555,37 @@ function buildFailedNodePatch(nodeRun: PersistableNodeRun): Partial<FlowNodeData
 }
 
 function persistNodeOutputsFromRun(nodeRuns: PersistableNodeRun[], assetRefsByNodeId: Record<string, FlowRuntimeAssetRef[]>): void {
-  const { updateNodeData } = useFlowCanvasStore.getState();
+  const { addGeneratedImageChildren, nodes, updateNodeData } = useFlowCanvasStore.getState();
   for (const nodeRun of nodeRuns) {
-    const nodePatch = buildGeneratedAssetNodePatch(nodeRun, assetRefsByNodeId[nodeRun.nodeId] ?? [])
-      ?? buildFailedNodePatch(nodeRun);
+    const nodeAssets = assetRefsByNodeId[nodeRun.nodeId] ?? [];
+    const currentNode = nodes.find((node) => node.id === nodeRun.nodeId);
+    const displayMode = currentNode?.data.multiImageDisplayMode === 'split_nodes'
+      ? 'split_nodes'
+      : 'combined';
+    const shouldSplitIntoChildNodes =
+      nodeRun.nodeType === 'image.generate' &&
+      displayMode === 'split_nodes' &&
+      nodeAssets.length > 1;
+
+    if (shouldSplitIntoChildNodes) {
+      addGeneratedImageChildren(
+        nodeRun.nodeId,
+        nodeAssets.map((asset, index) => ({
+          assetId: asset.assetId,
+          downloadUrl: String(asset.downloadUrl || ''),
+          height: asset.height ?? null,
+          mimeType: asset.mimeType,
+          title: `生成结果${index + 1}`,
+          width: asset.width ?? null,
+        })),
+      );
+    }
+
+    const nodePatch = (
+      shouldSplitIntoChildNodes
+        ? buildSplitModeParentNodePatch(nodeRun, nodeAssets)
+        : buildGeneratedAssetNodePatch(nodeRun, nodeAssets)
+    ) ?? buildFailedNodePatch(nodeRun);
     if (!nodePatch) {
       continue;
     }
