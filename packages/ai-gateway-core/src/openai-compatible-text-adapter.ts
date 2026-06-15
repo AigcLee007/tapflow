@@ -136,25 +136,23 @@ function usesProviderSideGptImage2SizeRouting(routeKey: string): boolean {
     || routeKey === "image.gpt-image-2.line4";
 }
 
-function resolveProviderSideGptImage2BaseModel(
+function resolveMappedGptImage2Model(
   routeKey: string,
   requestConfig: Record<string, unknown>,
+  requestedSize: string | null,
   fallbackModel: string,
 ): string {
-  const configured = getString(
-    requestConfig.providerBaseModel
-      ?? requestConfig.provider_base_model,
-  );
-  if (configured) {
-    return configured;
+  const tierModel = resolveModelBySize(fallbackModel, requestConfig, requestedSize);
+  if (tierModel && tierModel !== fallbackModel) {
+    return tierModel;
   }
 
   if (routeKey === "image.gpt-image-2.line4") {
-    return "gpt-image-2-vip";
+    return resolveModelBySize("gpt-image-2-vip", requestConfig, requestedSize);
   }
 
   if (routeKey === "image.gpt-image-2.line3") {
-    return "gpt-image-2";
+    return resolveModelBySize("gpt-image-2", requestConfig, requestedSize);
   }
 
   const requestConfigModel = getString(requestConfig.model);
@@ -165,8 +163,16 @@ function resolveProviderSideGptImage2BaseModel(
   return fallbackModel;
 }
 
-function normalizeProviderImageSize(model: string, size: string | null, aspectRatio: string | null): string | null {
+function normalizeProviderImageSize(
+  model: string,
+  size: string | null,
+  aspectRatio: string | null,
+  routeKey?: string,
+): string | null {
   if (!size) return null;
+  if (routeKey && usesProviderSideGptImage2SizeRouting(routeKey)) {
+    return size.trim() || null;
+  }
   if (isOpenAiImageSizeTierModel(model)) {
     return normalizeOpenAiCompatibleImageSize(size, aspectRatio || "1:1");
   }
@@ -178,10 +184,6 @@ function resolveForwardedAspectRatioParam(
   routeKey: string,
   requestConfig: Record<string, unknown>,
 ): string | null {
-  if (usesProviderSideGptImage2SizeRouting(routeKey)) {
-    return null;
-  }
-
   const configured = getString(requestConfig.aspectRatioParam ?? requestConfig.aspect_ratio_param);
   if (configured) return configured;
 
@@ -722,7 +724,7 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
     const providerRequestedSize = resolveSizeForModelBySize(requestConfig, requestedSize);
     const baseModel = getString(requestConfig.model) || request.model?.trim() || context.modelKey;
     const model = usesProviderSideGptImage2SizeRouting(context.routeKey)
-      ? resolveProviderSideGptImage2BaseModel(context.routeKey, requestConfig, baseModel)
+      ? resolveMappedGptImage2Model(context.routeKey, requestConfig, providerRequestedSize, baseModel)
       : resolveModelBySize(baseModel, requestConfig, providerRequestedSize);
     const n = hasEditInput && isGptImage2Model(model) ? 1 : normalizeN(params.n ?? requestConfig.n);
     const outputFormat = normalizeOutputFormat(
@@ -747,6 +749,7 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
       model,
       providerRequestedSize,
       aspectRatio,
+      context.routeKey,
     );
     const moderation = getFirstString(lookupRecords, ["moderation"]);
     if (background) payload.background = background;
@@ -1103,6 +1106,7 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
       model,
       getFirstString(lookupRecords, ["size", "imageSize", "image_size"]),
       aspectRatio,
+      context.routeKey,
     ) || "auto";
     const quality = getFirstString(lookupRecords, ["quality"]) || "auto";
     const moderation = getFirstString(lookupRecords, ["moderation"]) || "auto";

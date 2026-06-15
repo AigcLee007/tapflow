@@ -47,18 +47,6 @@ const detectGroup = (modelId: string): FlowImageEditModelGroup => {
   return 'generic';
 };
 
-const normalizeGptSize = (size: string, aspectRatio: string) => {
-  const normalizedSize = String(size || '').toLowerCase();
-  const normalizedRatio = String(aspectRatio || '').trim();
-  if (normalizedSize === '4k') return '4096x4096';
-  if (normalizedSize === '2k') return '2048x2048';
-  if (normalizedRatio === '16:9') return '1536x864';
-  if (normalizedRatio === '9:16') return '864x1536';
-  if (normalizedRatio === '4:3') return '1344x1008';
-  if (normalizedRatio === '3:4') return '1008x1344';
-  return '1024x1024';
-};
-
 const editSemanticsByType: Record<ImageEditType, Record<string, any>> = {
   inpaint: { operation: 'inpaint', requiresMask: true, outputStrategy: 'new-downstream-node' },
   erase: { operation: 'erase', requiresMask: true, outputStrategy: 'new-downstream-node' },
@@ -85,11 +73,12 @@ export const buildImageEditModelMapping = ({
   const mappedFields: string[] = [];
 
   if (group === 'gpt-image-2') {
-    payloadParams.size = normalizeGptSize(size, aspectRatio);
+    payloadParams.size = String(size || '1k').toUpperCase();
+    payloadParams.aspect_ratio = aspectRatio;
     payloadParams.quality = mergedParams.quality || (editType === 'enhance' ? 'high' : 'medium');
     payloadParams.output_format = mergedParams.output_format || 'png';
     payloadParams.moderation = mergedParams.moderation || 'auto';
-    mappedFields.push('size', 'quality', 'output_format', 'moderation');
+    mappedFields.push('size', 'aspect_ratio', 'quality', 'output_format', 'moderation');
   } else {
     payloadParams.image_size = size;
     payloadParams.aspect_ratio = aspectRatio;
@@ -126,7 +115,7 @@ export const buildImageEditModelMapping = ({
 };
 
 export const IMAGE_EDIT_MODEL_MAPPING_NOTES = [
-  'gpt-image-2: size 使用像素尺寸，默认输出 png，增强默认 high quality。',
+  'gpt-image-2: size 使用 1K / 2K / 4K 档位，并保留 aspect_ratio，默认输出 png，增强默认 high quality。',
   'nano-banana / Gemini: 使用 image_size 与 aspect_ratio，复杂编辑语义保存在 params 中供后端或后续模型适配。',
   'maskMode: transparent-edit / white-edit 会随 payload 保留，便于实测不同上游 mask 语义。',
 ];

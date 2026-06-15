@@ -1992,3 +1992,25 @@ Validation completed:
 - validation:
   - `npm run test --workspace @aigc-flow/ai-gateway-core -- runtime.test.ts -t "MouxiHub GPT-Image-2"`
   - `npm run build`
+
+## 2026-06-15 - MouxiHub GPT-Image-2 Lines 3 and 4 Size-Tier Model Routing Alignment
+
+- re-checked `GPT-Image-2 绾胯矾涓塦 / 绾胯矾鍥沗` against the working `Nano Banana Pro 绾胯矾浜岋紙瀹樻柟T3锛塦` upstream pattern instead of continuing the earlier pixel-size fallback approach
+- confirmed the desired provider contract for these MouxiHub async lines is:
+  - choose the upstream model directly from the selected size tier
+  - keep request `size` as the original `1K / 2K / 4K` tier string
+  - forward the selected `aspect_ratio`
+  - avoid any extra local `gpt-image-2` pixel-size normalization for these two lines
+- updated the OpenAI-compatible image adapter so:
+  - `image.gpt-image-2.line3` maps `1K / 2K / 4K` to `gpt-image-2 / gpt-image-2-2k / gpt-image-2-4k`
+  - `image.gpt-image-2.line4` maps `1K / 2K / 4K` to `gpt-image-2-vip / gpt-image-2-vip-2k / gpt-image-2-vip-4k`
+  - both lines now bypass OpenAI pixel-size conversion and send the original size tier upstream
+- updated the GPT-image edit mapping so creator-side edit payload metadata for GPT-image-2 also stays on `1K / 2K / 4K` plus `aspect_ratio`, matching the generation/runtime contract
+- added regression coverage proving:
+  - line 3 async generation sends `model: gpt-image-2-2k`, `size: 2K`, `aspect_ratio: 3:2`
+  - line 4 async edit uses `gpt-image-2-vip-4k`
+  - stale legacy `requestConfig.model` values no longer override line 4 size-tier routing
+- validation:
+  - `npm run test --workspace @aigc-flow/ai-gateway-core -- runtime.test.ts -t "explicit size-mapped upstream model|explicit vip size-mapped model"`
+  - `npm run test --workspace @aigc-flow/ai-gateway-core`
+  - `npm run build`
