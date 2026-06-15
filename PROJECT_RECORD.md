@@ -2014,3 +2014,15 @@ Validation completed:
   - `npm run test --workspace @aigc-flow/ai-gateway-core -- runtime.test.ts -t "size-mapped upstream model and pixel size payload|explicit vip size-mapped model with pixel size payload"`
   - `npm run test --workspace @aigc-flow/ai-gateway-core`
   - `npm run build`
+
+## 2026-06-16 - Admin AI Model Center System Route Disable Fix
+
+- traced the non-working "停用线路" action to frontend gating in the AI model center instead of an API or database failure
+- confirmed `admin:system` users could already update system-route status through the admin route update API, but the page blocked the action in two places:
+  - the disable button was hard-disabled for non-tenant routes
+  - the click handler returned early for system routes before calling `updateAdminRoute`
+- updated the model-center route management UI so non-default system routes can now be disabled or re-enabled directly from the page, while the existing protection for default routes remains in place
+- added a focused regression test covering the exact scenario: a non-default system route is selectable and sends `status: inactive` through `updateAdminRoute`
+- validation:
+  - `npm test -- src/account/ai-settings/AiSettingsPage.test.tsx`
+  - `npm run build`

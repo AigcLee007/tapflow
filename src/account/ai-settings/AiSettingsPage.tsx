@@ -720,7 +720,7 @@ export function AiSettingsPage() {
   }
 
   async function handleDisableRoute() {
-    if (!selectedAdminRoute || !selectedAdminRoute.tenantId) {
+    if (!selectedAdminRoute) {
       setError("当前线路不可直接停用，请先复制为租户线路后再操作。");
       return;
     }
@@ -1515,7 +1515,6 @@ export function AiSettingsPage() {
                             disabled={
                               !canManage ||
                               actionRouteId === selectedAdminRoute.id ||
-                              !isSelectedRouteTenantEditable ||
                               isSelectedRouteDefault
                             }
                             onClick={() => void handleDisableRoute()}

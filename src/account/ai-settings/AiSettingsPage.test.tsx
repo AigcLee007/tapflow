@@ -12,6 +12,7 @@ const listAdminProvidersMock = vi.fn();
 const listAdminModelsMock = vi.fn();
 const listAdminProviderConnectionsMock = vi.fn();
 const listAdminCredentialsMock = vi.fn();
+const updateAdminRouteMock = vi.fn();
 
 vi.mock("../../services/v2AiModelCatalogApi", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../services/v2AiModelCatalogApi")>();
@@ -34,6 +35,8 @@ vi.mock("../../services/v2AiGatewayAdminApi", async (importOriginal) => {
     listAdminModels: () => listAdminModelsMock(),
     listAdminProviderConnections: () => listAdminProviderConnectionsMock(),
     listAdminCredentials: () => listAdminCredentialsMock(),
+    updateAdminRoute: (...args: Parameters<typeof actual.updateAdminRoute>) =>
+      updateAdminRouteMock(...args),
   };
 });
 
@@ -56,6 +59,7 @@ function createAuthState(): AuthState {
 
 describe("AiSettingsPage", () => {
   beforeEach(() => {
+    updateAdminRouteMock.mockReset();
     listAiModelCatalogMock.mockResolvedValue([
       {
         id: "catalog-1",
@@ -160,5 +164,70 @@ describe("AiSettingsPage", () => {
     expect(screen.getByRole("button", { name: "create route status 启用" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "edit route connection 请选择连接" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "edit route status 启用" })).toBeTruthy();
+  });
+
+  test("allows disabling a system route when it is not the default route", async () => {
+    listAiModelCatalogMock.mockResolvedValueOnce([
+      {
+        id: "catalog-1",
+        capabilities: {},
+        defaultRouteKey: "image.test.line2",
+        displayName: "Test Image",
+        modality: "image",
+        modelFamily: "test-image",
+        modelId: "model-1",
+        modelKey: "test-image",
+        sortOrder: 1,
+        status: "active",
+        uiSchema: {},
+      },
+    ]);
+    listAdminRoutesMock.mockResolvedValueOnce([
+      {
+        id: "admin-route-1",
+        routeKey: "image.test.line1",
+        routeLabel: "线路一",
+        providerId: "provider-1",
+        modelId: "model-1",
+        credentialId: null,
+        modality: "image",
+        status: "active",
+        baseUrlOverride: null,
+        requestConfig: {},
+        pricing: {},
+        tenantId: null,
+        connectionId: "connection-1",
+      },
+    ]);
+    updateAdminRouteMock.mockResolvedValue({
+      id: "admin-route-1",
+      routeKey: "image.test.line1",
+      routeLabel: "线路一",
+      providerId: "provider-1",
+      modelId: "model-1",
+      credentialId: null,
+      modality: "image",
+      status: "inactive",
+      baseUrlOverride: null,
+      requestConfig: {},
+      pricing: {},
+      tenantId: null,
+      connectionId: "connection-1",
+    });
+
+    render(
+      <AuthContext.Provider value={createAuthState()}>
+        <AiSettingsPage />
+      </AuthContext.Provider>,
+    );
+
+    const disableButton = await screen.findByRole("button", { name: "停用线路" });
+    expect(disableButton.hasAttribute("disabled")).toBe(false);
+
+    fireEvent.click(disableButton);
+
+    expect(updateAdminRouteMock).toHaveBeenCalledWith("admin-route-1", {
+      status: "inactive",
+    });
   });
 });
