@@ -641,7 +641,7 @@ describe("openai-compatible text adapter", () => {
     await server.close();
   });
 
-  test("generateImage submits MouxiHub GPT-Image-2 async generation with explicit size-mapped upstream model", async () => {
+  test("generateImage submits MouxiHub GPT-Image-2 async generation with size-mapped upstream model and pixel size payload", async () => {
     const server = await withHttpServer(async (request, response) => {
       expect(request.url).toBe("/v1/images/generations?async=true");
       expect(request.headers.authorization).toBe("Bearer sk-test-secret");
@@ -657,7 +657,7 @@ describe("openai-compatible text adapter", () => {
         model: "gpt-image-2-2k",
         n: 1,
         prompt: "product poster",
-        size: "2K",
+        size: "2512x1664",
       });
       expect(body.response_format).toBeUndefined();
 
@@ -774,7 +774,7 @@ describe("openai-compatible text adapter", () => {
     await server.close();
   });
 
-  test("generateImage keeps MouxiHub GPT-Image-2 line4 on explicit vip size-mapped model even when legacy requestConfig.model is stale", async () => {
+  test("generateImage keeps MouxiHub GPT-Image-2 line4 on explicit vip size-mapped model with pixel size payload even when legacy requestConfig.model is stale", async () => {
     const server = await withHttpServer(async (request, response) => {
       expect(request.url).toBe("/v1/images/generations?async=true");
 
@@ -788,7 +788,7 @@ describe("openai-compatible text adapter", () => {
         model: "gpt-image-2-vip-4k",
         n: 1,
         prompt: "legacy line4 check",
-        size: "4K",
+        size: "2160x3840",
       });
 
       response.setHeader("content-type", "application/json");

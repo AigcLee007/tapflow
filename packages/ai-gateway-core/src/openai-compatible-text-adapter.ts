@@ -170,9 +170,6 @@ function normalizeProviderImageSize(
   routeKey?: string,
 ): string | null {
   if (!size) return null;
-  if (routeKey && usesProviderSideGptImage2SizeRouting(routeKey)) {
-    return size.trim() || null;
-  }
   if (isOpenAiImageSizeTierModel(model)) {
     return normalizeOpenAiCompatibleImageSize(size, aspectRatio || "1:1");
   }
@@ -189,6 +186,8 @@ function resolveForwardedAspectRatioParam(
 
   if (
     routeKey === "image.mouxihub.nano-banana-pro.t3"
+    || routeKey === "image.gpt-image-2.line3"
+    || routeKey === "image.gpt-image-2.line4"
   ) {
     return "aspect_ratio";
   }

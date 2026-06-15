@@ -47,6 +47,34 @@ const detectGroup = (modelId: string): FlowImageEditModelGroup => {
   return 'generic';
 };
 
+const normalizeGptSize = (size: string, aspectRatio: string) => {
+  const normalizedSize = String(size || '').toLowerCase();
+  const normalizedRatio = String(aspectRatio || '').trim();
+  if (normalizedSize === '4k') {
+    if (normalizedRatio === '9:16') return '2160x3840';
+    if (normalizedRatio === '16:9') return '3840x2160';
+    if (normalizedRatio === '3:4') return '2480x3312';
+    if (normalizedRatio === '4:3') return '3312x2480';
+    return '4096x4096';
+  }
+  if (normalizedSize === '2k') {
+    if (normalizedRatio === '16:9') return '1536x864';
+    if (normalizedRatio === '9:16') return '864x1536';
+    if (normalizedRatio === '3:4') return '1152x1536';
+    if (normalizedRatio === '4:3') return '1536x1152';
+    if (normalizedRatio === '3:2') return '1536x1024';
+    if (normalizedRatio === '2:3') return '1024x1536';
+    return '2048x2048';
+  }
+  if (normalizedRatio === '16:9') return '1536x864';
+  if (normalizedRatio === '9:16') return '864x1536';
+  if (normalizedRatio === '4:3') return '1344x1008';
+  if (normalizedRatio === '3:4') return '1008x1344';
+  if (normalizedRatio === '3:2') return '1536x1024';
+  if (normalizedRatio === '2:3') return '1024x1536';
+  return '1024x1024';
+};
+
 const editSemanticsByType: Record<ImageEditType, Record<string, any>> = {
   inpaint: { operation: 'inpaint', requiresMask: true, outputStrategy: 'new-downstream-node' },
   erase: { operation: 'erase', requiresMask: true, outputStrategy: 'new-downstream-node' },
@@ -73,7 +101,7 @@ export const buildImageEditModelMapping = ({
   const mappedFields: string[] = [];
 
   if (group === 'gpt-image-2') {
-    payloadParams.size = String(size || '1k').toUpperCase();
+    payloadParams.size = normalizeGptSize(size, aspectRatio);
     payloadParams.aspect_ratio = aspectRatio;
     payloadParams.quality = mergedParams.quality || (editType === 'enhance' ? 'high' : 'medium');
     payloadParams.output_format = mergedParams.output_format || 'png';
