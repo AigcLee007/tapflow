@@ -2111,6 +2111,79 @@ describe("route resolver and ai gateway", () => {
     });
   });
 
+  test("ai gateway splits gpt-image-2 generation batches into one-image provider requests", async () => {
+    const calls: Array<{ n: unknown; prompt: string }> = [];
+    let callCount = 0;
+    const gateway = new AiGateway({
+      "openai-compatible": {
+        async generateImage(_context, request) {
+          callCount += 1;
+          const metadata = request.metadata && typeof request.metadata === "object" ? request.metadata : {};
+          const params = "params" in metadata && metadata.params && typeof metadata.params === "object"
+            ? metadata.params as Record<string, unknown>
+            : {};
+          calls.push({
+            n: params.n,
+            prompt: request.prompt,
+          });
+          return {
+            modelKey: "gpt-image-2",
+            outputs: [
+              {
+                mimeType: "image/png",
+                url: `https://example.com/gpt-image-2-${callCount}.png`,
+              },
+            ],
+            providerRequest: { callCount, n: params.n },
+            providerResponse: { callCount },
+            status: "succeeded" as const,
+            usage: {
+              inputTokens: 5,
+              outputTokens: 10,
+              totalTokens: 15,
+            },
+          };
+        },
+      },
+    });
+
+    const result = await gateway.generateImage({
+      apiKey: "sk-test-secret",
+      request: {
+        metadata: {
+          params: {
+            n: 2,
+            outputFormat: "png",
+            size: "1k",
+          },
+        },
+        prompt: "draw two polished product shots",
+      },
+      route: makeRoute({
+        model: {
+          id: "model-1",
+          modelKey: "gpt-image-2",
+        },
+        routeKey: "image.gpt-image-2.line1",
+      }),
+    });
+
+    expect(calls).toEqual([
+      { n: 1, prompt: "draw two polished product shots" },
+      { n: 1, prompt: "draw two polished product shots" },
+    ]);
+    expect(result.outputs?.map((output) => output.url)).toEqual([
+      "https://example.com/gpt-image-2-1.png",
+      "https://example.com/gpt-image-2-2.png",
+    ]);
+    expect(result.usage).toEqual({
+      inputTokens: 10,
+      outputTokens: 20,
+      totalTokens: 30,
+      rawCost: null,
+    });
+  });
+
   test("ai gateway image timeout prefers route request_config timeoutMs", async () => {
     let capturedTimeout: number | null = null;
     const gateway = new AiGateway({

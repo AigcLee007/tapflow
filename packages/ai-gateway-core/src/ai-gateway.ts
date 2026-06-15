@@ -55,6 +55,15 @@ function shouldSplitAsyncImageTasks(route: ResolvedRoute): boolean {
   return route.routeKey === "image.mouxihub.nano-banana-pro.t3";
 }
 
+function isGptImage2Route(route: ResolvedRoute): boolean {
+  const routeKey = route.routeKey.trim().toLowerCase();
+  if (routeKey.startsWith("image.gpt-image-2")) {
+    return true;
+  }
+
+  return typeof route.model.modelKey === "string" && route.model.modelKey.trim().toLowerCase() === "gpt-image-2";
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -162,7 +171,11 @@ export class AiGateway {
     const providerTaskIds: string[] = [];
     let outputs: MediaOutput[] = [];
     const splitAsyncTasks = shouldSplitAsyncImageTasks(options.route) && requestedCount > 1;
-    let request = withRequestedImageCount(options.request, splitAsyncTasks ? 1 : requestedCount);
+    const splitSyncRequests = isGptImage2Route(options.route) && requestedCount > 1;
+    let request = withRequestedImageCount(
+      options.request,
+      splitAsyncTasks || splitSyncRequests ? 1 : requestedCount,
+    );
 
     while ((splitAsyncTasks ? providerTaskIds.length : outputs.length) < requestedCount) {
       const result = await adapter.generateImage(context, request);
@@ -192,7 +205,7 @@ export class AiGateway {
 
       request = withRequestedImageCount(
         options.request,
-        splitAsyncTasks ? 1 : requestedCount - outputs.length,
+        splitAsyncTasks || splitSyncRequests ? 1 : requestedCount - outputs.length,
       );
     }
 
