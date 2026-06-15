@@ -79,6 +79,7 @@ import { getImageNaturalSize, imageUrlToBlob } from '../utils/imageUtils';
 import type { LightDirection } from './ImageLightingOverlay';
 import type { MultiAngleId } from './ImageMultiAngleOverlay';
 import { ImageMoreMenu, type ImageMoreMenuAction } from './ImageMoreMenu';
+import { MultiImageDisplayModeToggle } from './MultiImageDisplayModeToggle';
 import { GptImage2ParamPanel } from './GptImage2ParamPanel';
 import { NanoBananaParamPanel } from './NanoBananaParamPanel';
 import type { OutpaintDirection } from './ImageOutpaintOverlay';
@@ -1566,8 +1567,10 @@ const sendBtnOuter: React.CSSProperties = {
   alignItems: 'center',
   gap: 8,
   background: 'rgba(255,255,255,0.06)',
-  borderRadius: 18,
-  padding: '3px 5px 3px 10px',
+  border: '1px solid rgba(255,255,255,0.05)',
+  borderRadius: 13,
+  minHeight: 42,
+  padding: '3px 5px 3px 12px',
   color: '#94a3b8',
   fontSize: getPromptBarDensity('image').controlFontSize,
   fontWeight: 500,
@@ -6437,12 +6440,14 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
                     alignItems: 'center',
                     justifyContent: 'center',
                     background: 'rgba(255,255,255,0.06)',
-                    border: '1px solid rgba(255,255,255,0.04)',
+                    border: '1px solid rgba(255,255,255,0.05)',
                     color: '#e2e8f0',
                     fontSize: 14,
-                    fontWeight: 600,
-                    padding: '6px 14px',
-                    borderRadius: 12,
+                    fontWeight: 700,
+                    lineHeight: 1,
+                    minHeight: 42,
+                    padding: '0 16px',
+                    borderRadius: 13,
                     cursor: 'pointer',
                     minWidth: 44,
                     transition: 'all 0.2s',
@@ -6453,53 +6458,10 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
               </div>
 
               {(d.batchCount || 1) > 1 && (
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 4,
-                    padding: 4,
-                    background: 'rgba(255,255,255,0.04)',
-                    border: '1px solid rgba(255,255,255,0.06)',
-                    borderRadius: 12,
-                    minWidth: 156,
-                  }}
-                >
-                  <button
-                    type="button"
-                    onClick={() => updateNodeData(id, { multiImageDisplayMode: 'combined' })}
-                    style={{
-                      flex: 1,
-                      border: 'none',
-                      borderRadius: 8,
-                      padding: '7px 10px',
-                      background: multiImageDisplayMode === 'combined' ? 'rgba(255,255,255,0.1)' : 'transparent',
-                      color: multiImageDisplayMode === 'combined' ? '#fff' : '#94a3b8',
-                      fontSize: 12,
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    合并显示
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => updateNodeData(id, { multiImageDisplayMode: 'split_nodes' })}
-                    style={{
-                      flex: 1,
-                      border: 'none',
-                      borderRadius: 8,
-                      padding: '7px 10px',
-                      background: multiImageDisplayMode === 'split_nodes' ? 'rgba(255,255,255,0.1)' : 'transparent',
-                      color: multiImageDisplayMode === 'split_nodes' ? '#fff' : '#94a3b8',
-                      fontSize: 12,
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    多节点显示
-                  </button>
-                </div>
+                <MultiImageDisplayModeToggle
+                  mode={multiImageDisplayMode}
+                  onChange={(mode) => updateNodeData(id, { multiImageDisplayMode: mode })}
+                />
               )}
 
               <div style={sendBtnOuter}>
