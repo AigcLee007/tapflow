@@ -127,6 +127,21 @@ function normalizeProviderImageSize(model: string, size: string | null, aspectRa
   return size.trim() || null;
 }
 
+function resolveForwardedAspectRatioParam(
+  providerKey: string,
+  routeKey: string,
+  requestConfig: Record<string, unknown>,
+): string | null {
+  const configured = getString(requestConfig.aspectRatioParam ?? requestConfig.aspect_ratio_param);
+  if (configured) return configured;
+
+  if (providerKey === "mouxihub-openai" || routeKey === "image.mouxihub.nano-banana-pro.t3") {
+    return "aspect_ratio";
+  }
+
+  return null;
+}
+
 function normalizeSizeTierKey(size: string | null): string | null {
   if (!size) return null;
   const normalized = size.trim().toUpperCase();
@@ -672,6 +687,14 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
     if (quality) payload.quality = quality;
     if (moderation) payload.moderation = moderation;
     if (size) payload.size = size;
+    const forwardedAspectRatioParam = resolveForwardedAspectRatioParam(
+      context.providerKey,
+      context.routeKey,
+      requestConfig,
+    );
+    if (aspectRatio && forwardedAspectRatioParam) {
+      payload[forwardedAspectRatioParam] = aspectRatio;
+    }
 
     let url = hasEditInput
       ? buildUrl(context.baseUrl, normalizePath(requestConfig.editPath ?? requestConfig.editsPath, "/images/edits"))

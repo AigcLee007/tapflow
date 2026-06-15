@@ -1912,3 +1912,14 @@ Validation completed:
 - Validation:
   - `npm test -- src/flowCanvas/runtime/v2WorkflowRunner.test.ts src/flowCanvas/store/flowCanvasStore.test.ts`
   - `npm run build`
+
+## 2026-06-15 - MouxiHub T3 Aspect Ratio Forwarding Fix
+
+- traced the official MouxiHub Nano Banana Pro T3 ratio mismatch to the OpenAI-compatible image adapter layer rather than the canvas or worker request builder
+- confirmed frontend and worker metadata already preserved the selected image ratio, but the async MouxiHub generation payload dropped it before the upstream provider request was created
+- updated the OpenAI-compatible adapter so the official MouxiHub T3 route forwards the selected ratio as `aspect_ratio` in the upstream generation payload
+- added a focused regression test for the exact `2K + 3:4` official T3 request path to prevent future regressions where MouxiHub falls back to its provider default ratio
+- Validation:
+  - `npm run test --workspace @aigc-flow/ai-gateway-core -- runtime.test.ts -t "generateImage forwards MouxiHub async generation aspect ratio to upstream payload"`
+  - `npm run test --workspace @aigc-flow/ai-gateway-core -- runtime.test.ts`
+  - `npm run build --workspace @aigc-flow/ai-gateway-core`
