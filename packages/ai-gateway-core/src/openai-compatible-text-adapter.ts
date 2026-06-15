@@ -131,6 +131,36 @@ function isOpenAiImageSizeTierModel(model: string): boolean {
     || normalized === "gpt-5.5";
 }
 
+function usesProviderSideGptImage2SizeRouting(routeKey: string): boolean {
+  return routeKey === "image.gpt-image-2.line3"
+    || routeKey === "image.gpt-image-2.line4";
+}
+
+function resolveProviderSideGptImage2BaseModel(
+  routeKey: string,
+  requestConfig: Record<string, unknown>,
+  fallbackModel: string,
+): string {
+  const configured = getString(
+    requestConfig.providerBaseModel
+      ?? requestConfig.provider_base_model
+      ?? requestConfig.model,
+  );
+  if (configured) {
+    return configured;
+  }
+
+  if (routeKey === "image.gpt-image-2.line4") {
+    return "gpt-image-2-vip";
+  }
+
+  if (routeKey === "image.gpt-image-2.line3") {
+    return "gpt-image-2";
+  }
+
+  return fallbackModel;
+}
+
 function normalizeProviderImageSize(model: string, size: string | null, aspectRatio: string | null): string | null {
   if (!size) return null;
   if (isOpenAiImageSizeTierModel(model)) {
@@ -144,10 +174,7 @@ function resolveForwardedAspectRatioParam(
   routeKey: string,
   requestConfig: Record<string, unknown>,
 ): string | null {
-  if (
-    routeKey === "image.gpt-image-2.line3"
-    || routeKey === "image.gpt-image-2.line4"
-  ) {
+  if (usesProviderSideGptImage2SizeRouting(routeKey)) {
     return null;
   }
 
@@ -409,10 +436,7 @@ function resolveEditImageFieldName(
   routeKey: string,
   requestConfig: Record<string, unknown>,
 ): string {
-  if (
-    routeKey === "image.gpt-image-2.line3"
-    || routeKey === "image.gpt-image-2.line4"
-  ) {
+  if (usesProviderSideGptImage2SizeRouting(routeKey)) {
     return "image";
   }
 
@@ -693,7 +717,9 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
     const requestedSize = getFirstString(lookupRecords, ["size", "imageSize", "image_size"]);
     const providerRequestedSize = resolveSizeForModelBySize(requestConfig, requestedSize);
     const baseModel = getString(requestConfig.model) || request.model?.trim() || context.modelKey;
-    const model = resolveModelBySize(baseModel, requestConfig, providerRequestedSize);
+    const model = usesProviderSideGptImage2SizeRouting(context.routeKey)
+      ? resolveProviderSideGptImage2BaseModel(context.routeKey, requestConfig, baseModel)
+      : resolveModelBySize(baseModel, requestConfig, providerRequestedSize);
     const n = hasEditInput && isGptImage2Model(model) ? 1 : normalizeN(params.n ?? requestConfig.n);
     const outputFormat = normalizeOutputFormat(
       getFirstString(lookupRecords, ["outputFormat", "output_format"]),

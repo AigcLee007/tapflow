@@ -153,6 +153,7 @@ export const mouxiHubGptImage2Line4Manifest: AiPluginManifest = {
         outputFormat: "png",
         path: "/v1/images/generations",
         pollPath: "/v1/images/tasks/{task_id}",
+        providerBaseModel: "gpt-image-2-vip",
         responseFormat: null,
         sizeTiers,
         timeoutMs: 300000,

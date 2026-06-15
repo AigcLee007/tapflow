@@ -641,7 +641,7 @@ describe("openai-compatible text adapter", () => {
     await server.close();
   });
 
-  test("generateImage submits MouxiHub GPT-Image-2 async generation with GPT-image size model mapping", async () => {
+  test("generateImage submits MouxiHub GPT-Image-2 async generation with provider-side size selection", async () => {
     const server = await withHttpServer(async (request, response) => {
       expect(request.url).toBe("/v1/images/generations?async=true");
       expect(request.headers.authorization).toBe("Bearer sk-test-secret");
@@ -653,7 +653,7 @@ describe("openai-compatible text adapter", () => {
       }
       const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;
       expect(body).toMatchObject({
-        model: "gpt-image-2-2k",
+        model: "gpt-image-2",
         n: 1,
         prompt: "product poster",
         size: "2512x1664",
@@ -700,7 +700,7 @@ describe("openai-compatible text adapter", () => {
     );
 
     expect(result).toMatchObject({
-      modelKey: "gpt-image-2-2k",
+      modelKey: "gpt-image-2",
       providerTaskId: "task-gpt-image-line3",
       status: "waiting_provider",
     });
@@ -708,7 +708,7 @@ describe("openai-compatible text adapter", () => {
     await server.close();
   });
 
-  test("generateImage submits MouxiHub GPT-Image-2 async edits through multipart endpoint", async () => {
+  test("generateImage submits MouxiHub GPT-Image-2 async edits through multipart endpoint without duplicating size tier in the model", async () => {
     const server = await withHttpServer(async (request, response) => {
       expect(request.url).toBe("/v1/images/edits?async=true");
       expect(request.headers.authorization).toBe("Bearer sk-test-secret");
@@ -720,7 +720,7 @@ describe("openai-compatible text adapter", () => {
       }
       const body = Buffer.concat(chunks).toString("utf8");
       expect(body).toContain('name="model"');
-      expect(body).toContain("gpt-image-2-vip-4k");
+      expect(body).toContain("gpt-image-2-vip");
       expect(body).toContain('name="image"');
       expect(body).not.toContain('name="image[]"');
 
@@ -766,7 +766,7 @@ describe("openai-compatible text adapter", () => {
     );
 
     expect(result).toMatchObject({
-      modelKey: "gpt-image-2-vip-4k",
+      modelKey: "gpt-image-2-vip",
       providerTaskId: "task-gpt-image-line4-edit",
       status: "waiting_provider",
     });
