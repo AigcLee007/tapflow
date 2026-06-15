@@ -659,7 +659,7 @@ describe("openai-compatible text adapter", () => {
         size: "2512x1664",
       });
       expect(body.response_format).toBeUndefined();
-      expect(body.aspect_ratio).toBe("3:2");
+      expect(body.aspect_ratio).toBeUndefined();
 
       response.setHeader("content-type", "application/json");
       response.end(JSON.stringify({ code: "success", message: "", data: "task-gpt-image-line3" }));
@@ -721,7 +721,8 @@ describe("openai-compatible text adapter", () => {
       const body = Buffer.concat(chunks).toString("utf8");
       expect(body).toContain('name="model"');
       expect(body).toContain("gpt-image-2-vip-4k");
-      expect(body).toContain('name="image[]"');
+      expect(body).toContain('name="image"');
+      expect(body).not.toContain('name="image[]"');
 
       response.setHeader("content-type", "application/json");
       response.end(JSON.stringify({ code: "success", message: "", data: "task-gpt-image-line4-edit" }));

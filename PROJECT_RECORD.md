@@ -1976,3 +1976,17 @@ Validation completed:
 - validation:
   - `npm run test --workspace @aigc-flow/api -- ai-model-catalog.test.ts` (skipped locally because database test env is unavailable)
   - `npm run build`
+
+## 2026-06-15 - MouxiHub GPT-Image-2 Async Payload Compatibility Fix
+
+- traced the remaining `The provider returned an internal error` failures for GPT-Image-2 lines 3 and 4 to request-shape mismatches against MouxiHub's async image docs rather than route selection
+- confirmed MouxiHub async GPT-image generation docs only require the basic image payload and do not document the extra `aspect_ratio` parameter for these routes
+- confirmed MouxiHub async image-edit docs use multipart field `image` for uploaded source images rather than the older `image[]` field used by other compatible routes
+- updated the OpenAI-compatible image adapter so:
+  - `image.gpt-image-2.line3` and `image.gpt-image-2.line4` never forward `aspect_ratio`
+  - `image.gpt-image-2.line3` and `image.gpt-image-2.line4` always send edit uploads under multipart field `image`
+  - the runtime override applies even for already-initialized routes whose saved `request_config` still contains older template values
+- aligned the MouxiHub GPT-Image-2 manifests and runtime regression coverage with the corrected request shape
+- validation:
+  - `npm run test --workspace @aigc-flow/ai-gateway-core -- runtime.test.ts -t "MouxiHub GPT-Image-2"`
+  - `npm run build`

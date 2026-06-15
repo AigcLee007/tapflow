@@ -146,9 +146,9 @@ export const mouxiHubGptImage2Line3Manifest: AiPluginManifest = {
       priority: 30,
       requestConfig: {
         async: true,
-        aspectRatioParam: "aspect_ratio",
         defaultSize: "1K",
         editPath: "/v1/images/edits",
+        imageFieldName: "image",
         modelBySize,
         outputFormat: "png",
         path: "/v1/images/generations",

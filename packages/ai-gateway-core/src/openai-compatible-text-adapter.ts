@@ -144,14 +144,18 @@ function resolveForwardedAspectRatioParam(
   routeKey: string,
   requestConfig: Record<string, unknown>,
 ): string | null {
+  if (
+    routeKey === "image.gpt-image-2.line3"
+    || routeKey === "image.gpt-image-2.line4"
+  ) {
+    return null;
+  }
+
   const configured = getString(requestConfig.aspectRatioParam ?? requestConfig.aspect_ratio_param);
   if (configured) return configured;
 
   if (
-    providerKey === "mouxihub-openai"
-    || routeKey === "image.mouxihub.nano-banana-pro.t3"
-    || routeKey === "image.gpt-image-2.line3"
-    || routeKey === "image.gpt-image-2.line4"
+    routeKey === "image.mouxihub.nano-banana-pro.t3"
   ) {
     return "aspect_ratio";
   }
@@ -399,6 +403,23 @@ async function imageInputToBlob(
     blob: new Blob([Buffer.from(input, "base64")], { type: "image/png" }),
     mimeType: "image/png",
   };
+}
+
+function resolveEditImageFieldName(
+  routeKey: string,
+  requestConfig: Record<string, unknown>,
+): string {
+  if (
+    routeKey === "image.gpt-image-2.line3"
+    || routeKey === "image.gpt-image-2.line4"
+  ) {
+    return "image";
+  }
+
+  const configured = getString(requestConfig.imageFieldName ?? requestConfig.image_field_name);
+  if (configured) return configured;
+
+  return "image[]";
 }
 
 async function readResponseBody(response: Response): Promise<unknown> {
@@ -727,6 +748,7 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
 
     if (hasEditInput) {
       const formData = new FormData();
+      const imageFieldName = resolveEditImageFieldName(context.routeKey, requestConfig);
       for (const [key, value] of Object.entries(payload)) {
         if (value !== undefined && value !== null) {
           formData.append(key, String(value));
@@ -736,7 +758,7 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
       for (const image of images.slice(0, 10)) {
         const file = await imageInputToBlob(image, this.fetchImplementation, context.timeoutMs);
         imageIndex += 1;
-        formData.append("image[]", file.blob, `input-${imageIndex}.${file.mimeType.split("/")[1] || "png"}`);
+        formData.append(imageFieldName, file.blob, `input-${imageIndex}.${file.mimeType.split("/")[1] || "png"}`);
       }
       if (mask) {
         const maskFile = await imageInputToBlob(mask, this.fetchImplementation, context.timeoutMs);
