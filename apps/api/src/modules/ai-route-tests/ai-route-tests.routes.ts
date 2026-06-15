@@ -81,7 +81,7 @@ function handleRouteError(
 }
 
 export function registerAiRouteTestRoutes(app: FastifyInstance): void {
-  const authHandlers = [requireAuth, requireTenant, requirePermission("provider:manage")];
+  const authHandlers = [requireAuth, requireTenant, requirePermission("admin:system")];
 
   app.post(
     "/api/v2/admin/ai/routes/:routeId/test",

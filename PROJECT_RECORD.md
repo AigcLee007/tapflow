@@ -1959,3 +1959,10 @@ Validation completed:
   - each template now installs only its own route so the initializer can bind a different API key per line instead of forcing both lines through one shared template credential
   - provider connection names are now package-scoped during template install, preventing split templates from accidentally reusing the same generated connection/credential because of a shared display-name-based connection key
   - the split line templates are route-only install templates and do not republish duplicate `gpt-image-2` catalog entries, so the creator-facing GPT-Image-2 model directory remains stable while the extra lines stay independently installable
+## 2026-06-15 - AI Route Test Admin Permission Alignment
+
+- unified the AI route test endpoint `POST /api/v2/admin/ai/routes/:routeId/test` with the rest of the admin/model-management surfaces by requiring `admin:system`
+- removed the old `provider:manage` mismatch that let users open the admin AI pages but blocked the route test action itself
+- updated API regression coverage so:
+  - the admin-email owner can install the mock plugin and run route tests
+  - a non-admin tenant viewer is rejected with `403` and `Missing permission: admin:system`

@@ -12,10 +12,11 @@ import { hasDatabaseEnv, withDatabase } from "../../../packages/db/test/helpers.
 
 const originalDatabaseUrl = process.env.DATABASE_URL;
 const describeWithDatabase = hasDatabaseEnv() ? describe : describe.skip;
+const adminEmail = "route-test-owner@example.com";
 
 const testEnv: ApiEnv = {
   accessTokenTtlSeconds: 60 * 15,
-  adminEmails: [],
+  adminEmails: [adminEmail],
   apiRateLimitMax: 1000,
   apiRateLimitWindowMs: 60_000,
   authRateLimitMax: 20,
@@ -116,7 +117,7 @@ describeWithDatabase("ai route test API", () => {
           connectionString: await createAppDatabaseUrl(),
         });
         const api = buildTestApp(appPool);
-        const owner = await registerOwner(api, "route-test-owner@example.com", "Route Test Owner");
+        const owner = await registerOwner(api, adminEmail, "Route Test Owner");
 
         const install = await api.inject({
           headers: {
@@ -259,6 +260,12 @@ describeWithDatabase("ai route test API", () => {
           url: `/api/v2/admin/ai/routes/${successRoute?.id}/test`,
         });
         expect(forbiddenTest.statusCode).toBe(403);
+        expect(forbiddenTest.json()).toMatchObject({
+          error: {
+            code: "FORBIDDEN",
+            message: "Missing permission: admin:system",
+          },
+        });
 
         await api.close();
       } finally {
