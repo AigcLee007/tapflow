@@ -2049,3 +2049,11 @@ Validation completed:
 - validation:
   - npm test -- src/flowCanvas/nodes/ImageGenerateToolbar.test.tsx src/flowCanvas/nodes/MultiImageDisplayModeToggle.test.tsx src/flowCanvas/nodes/NanoBananaParamPanel.test.tsx src/flowCanvas/nodes/GptImage2ParamPanel.test.tsx
   - npm run build
+
+## 2026-06-16 - Canvas Agent Production Assistant Design
+
+- Added the formal Canvas Agent design spec at `docs/superpowers/specs/2026-06-16-canvas-agent-design.md`.
+- Defined the Agent as a canvas production coordinator rather than a plain chat assistant.
+- Documented the recommended direction: TapNow-style entry and side panel, Infinite Canvas-style structured canvas ops, TapCanvas-style evidence-first production principles, and the existing TapFlow v2 workflow/billing/assets execution path.
+- Covered user-facing capabilities, panel structure, `CanvasAgentOp` protocol, tool permissions, backend API/session tables, execution flow, billing and asset rules, security constraints, staged implementation plan, risks, and acceptance criteria.
+- No product code was changed in this design-only step.
