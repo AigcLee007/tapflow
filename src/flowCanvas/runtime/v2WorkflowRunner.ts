@@ -554,6 +554,21 @@ function buildFailedNodePatch(nodeRun: PersistableNodeRun): Partial<FlowNodeData
   };
 }
 
+function buildSucceededTextNodePatch(nodeRun: PersistableNodeRun): Partial<FlowNodeData> | null {
+  if (nodeRun.status !== 'succeeded' || !shouldApplyNodeRun(nodeRun) || nodeRun.nodeType !== 'text.generate') {
+    return null;
+  }
+
+  return {
+    errorMessage: undefined,
+    generationStatus: 'done',
+    latestNodeRunId: nodeRun.id,
+    latestWorkflowRunId: nodeRun.workflowRunId,
+    progress: 100,
+    status: 'success',
+  };
+}
+
 function persistNodeOutputsFromRun(nodeRuns: PersistableNodeRun[], assetRefsByNodeId: Record<string, FlowRuntimeAssetRef[]>): void {
   const { addGeneratedImageChildren, nodes, updateNodeData } = useFlowCanvasStore.getState();
   for (const nodeRun of nodeRuns) {
@@ -585,7 +600,7 @@ function persistNodeOutputsFromRun(nodeRuns: PersistableNodeRun[], assetRefsByNo
       shouldSplitIntoChildNodes
         ? buildSplitModeParentNodePatch(nodeRun, nodeAssets)
         : buildGeneratedAssetNodePatch(nodeRun, nodeAssets)
-    ) ?? buildFailedNodePatch(nodeRun);
+    ) ?? buildSucceededTextNodePatch(nodeRun) ?? buildFailedNodePatch(nodeRun);
     if (!nodePatch) {
       continue;
     }

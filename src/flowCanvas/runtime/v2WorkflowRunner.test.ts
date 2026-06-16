@@ -1091,6 +1091,85 @@ describe('v2WorkflowRunner', () => {
     });
   });
 
+  test('text target-node snapshot clears generating state and applies returned text', async () => {
+    useFlowCanvasStore.getState().addNode('text', { x: 0, y: 0 }, {
+      generationPrompt: 'analyze this image',
+      generationStatus: 'generating',
+      modelId: 'gpt-5.5',
+      routeKey: 'text.gpt-5-5',
+      status: 'running',
+      text: '',
+      title: 'Generated Copy',
+    });
+    const textNodeId = useFlowCanvasStore.getState().nodes[0]?.id as string;
+
+    createWorkflowRunMock.mockResolvedValue({
+      runId: 'run-text-success',
+      status: 'pending',
+    });
+    getWorkflowRunMock.mockResolvedValue({
+      nodeRuns: [
+        {
+          attempt: 1,
+          costJson: {},
+          createdAt: '2026-05-17T00:00:00.000Z',
+          errorJson: null,
+          finishedAt: '2026-05-17T00:00:02.000Z',
+          id: 'node-run-text-success',
+          inputJson: {},
+          maxAttempts: 3,
+          nodeId: textNodeId,
+          nodeType: 'text.generate',
+          outputJson: {
+            modelKey: 'gpt-5.5',
+            providerKey: 'siphonlab-openai-text',
+            text: 'Palm trees beside a bright tropical beach.',
+            usage: {
+              inputTokens: 120,
+              outputTokens: 48,
+              totalTokens: 168,
+            },
+          },
+          providerTaskId: null,
+          startedAt: null,
+          status: 'succeeded',
+          tenantId: 'tenant-1',
+          updatedAt: '2026-05-17T00:00:02.000Z',
+          workflowRunId: 'run-text-success',
+        },
+      ],
+      workflowRun: {
+        canceledAt: null,
+        createdAt: '2026-05-17T00:00:00.000Z',
+        createdBy: 'user-1',
+        errorJson: null,
+        finishedAt: '2026-05-17T00:00:02.000Z',
+        flowId: '11111111-1111-1111-1111-111111111111',
+        flowVersionId: 'version-1',
+        id: 'run-text-success',
+        idempotencyKey: null,
+        inputJson: { runMode: 'target_node', targetNodeId: textNodeId },
+        outputJson: null,
+        startedAt: null,
+        status: 'succeeded',
+        tenantId: 'tenant-1',
+        updatedAt: '2026-05-17T00:00:02.000Z',
+      },
+    });
+    streamWorkflowRunMock.mockReturnValue({ close: vi.fn() });
+
+    await runBackendWorkflow({ runMode: 'target_node', targetNodeId: textNodeId });
+
+    expect(useFlowCanvasStore.getState().nodeOutputByNodeId[textNodeId]).toMatchObject({
+      text: 'Palm trees beside a bright tropical beach.',
+    });
+    const updatedNode = useFlowCanvasStore.getState().nodes.find((node) => node.id === textNodeId);
+    expect(updatedNode?.data).toMatchObject({
+      generationStatus: 'done',
+      status: 'success',
+    });
+  });
+
   test('terminal stream event finalizes the run snapshot and applies generated assets', async () => {
     useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, { title: 'Stream Image' });
     const nodeId = useFlowCanvasStore.getState().nodes[0]?.id as string;
