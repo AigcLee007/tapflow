@@ -65,7 +65,7 @@ type InsufficientCreditsDetails = {
 
 const DEFAULT_ROUTE_BY_NODE_KIND: Record<string, string> = {
   image: 'image.default',
-  text: 'text.default',
+  text: 'text.gpt-5-5',
   video: 'video.default',
 };
 

@@ -13,6 +13,7 @@ describe("AI plugin registry", () => {
   test("lists built-in plugin manifests", () => {
     const manifests = builtinAiPluginRegistry.list();
     expect(manifests.map((manifest) => manifest.packageKey)).toEqual([
+      "siphonlab.gpt-5-5-text",
       "openai-compatible.gpt-image-2",
       "mouxihub.gpt-image-2-line3",
       "mouxihub.gpt-image-2-line4",
@@ -21,7 +22,7 @@ describe("AI plugin registry", () => {
       "mouxihub.nano-banana-pro-t3",
       "pixellelabs.nano-banana-pro",
     ]);
-    expect(BUILTIN_AI_PLUGIN_MANIFESTS).toHaveLength(7);
+    expect(BUILTIN_AI_PLUGIN_MANIFESTS).toHaveLength(8);
   });
 
   test("returns MouxiHub Nano Banana Pro official T3 async route manifest", () => {
@@ -175,6 +176,52 @@ describe("AI plugin registry", () => {
     ]);
   });
 
+  test("returns GPT-5.5 text plugin manifest for SiphonLab", () => {
+    const manifest = builtinAiPluginRegistry.require("siphonlab.gpt-5-5-text");
+
+    expect(manifest.displayName).toBe("GPT-5.5");
+    expect(manifest.modality).toBe("text");
+    expect(manifest.provider).toMatchObject({
+      defaultBaseUrl: "https://sub.siphonlab.cn",
+      key: "siphonlab-openai-text",
+      kind: "openai-compatible",
+    });
+    expect(manifest.credentials.envKeys).toEqual(["SIPHONLAB_GPT_5_5_API_KEY"]);
+    expect(manifest.models).toEqual([
+      expect.objectContaining({
+        defaultRouteKey: "text.gpt-5-5",
+        displayName: "GPT-5.5",
+        modality: "text",
+        modelFamily: "gpt-5.5",
+        modelKey: "gpt-5.5",
+      }),
+    ]);
+    expect(manifest.routes).toEqual([
+      expect.objectContaining({
+        mode: "sync",
+        modelFamily: "gpt-5.5",
+        modelKey: "gpt-5.5",
+        path: "/v1/chat/completions",
+        requestConfig: expect.objectContaining({
+          chatPath: "/v1/chat/completions",
+          responsesPath: "/v1/responses",
+        }),
+        routeKey: "text.gpt-5-5",
+        routeLabel: "默认线路",
+      }),
+    ]);
+    expect(manifest.pricing).toEqual([
+      expect.objectContaining({
+        minChargeCredits: 2,
+        model: "gpt-5.5",
+        provider: "siphonlab-openai-text",
+        route: "text.gpt-5-5",
+        unit: "text_generation",
+        unitCredits: 2,
+      }),
+    ]);
+  });
+
   test("returns GPT-Image-2 MouxiHub line three plugin manifest", () => {
     const manifest = builtinAiPluginRegistry.require("mouxihub.gpt-image-2-line3");
 
@@ -290,7 +337,9 @@ describe("AI plugin registry", () => {
   });
 
   test("filters by modality and provider kind", () => {
-    expect(builtinAiPluginRegistry.list({ modality: "text" })).toEqual([]);
+    expect(builtinAiPluginRegistry.list({ modality: "text" }).map((manifest) => manifest.packageKey)).toEqual([
+      "siphonlab.gpt-5-5-text",
+    ]);
     expect(
       builtinAiPluginRegistry
         .list({ modality: "image", providerKind: "openai-compatible" })

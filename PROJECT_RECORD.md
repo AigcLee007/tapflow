@@ -2152,3 +2152,29 @@ Validation completed:
   - `npm run build --workspace @aigc-flow/api`
   - `npm run build --workspace @aigc-flow/db`
   - `npm run build`
+
+## 2026-06-16 - GPT-5.5 Text Model Gateway Integration
+
+- Added a built-in AI Gateway text plugin for `GPT-5.5` through SiphonLab.
+- The template creates the `text.gpt-5-5` route for text nodes and Agent planner usage:
+  - base URL: `https://sub.siphonlab.cn`
+  - upstream model: `gpt-5.5`
+  - chat endpoint: `/v1/chat/completions`
+  - responses endpoint metadata: `/v1/responses`
+  - pricing: `2` credits per text generation
+- New text nodes now default to `modelId: gpt-5.5` and `routeKey: text.gpt-5-5`, while non-integrated legacy text model options keep `text.default` as a fallback route.
+- Extended the OpenAI-compatible text adapter so text routes can opt into the Responses API via route request config while preserving the existing chat-completions default path.
+- Added `AGENT_PLANNER_ENABLED` and `AGENT_TEXT_ROUTE_KEY` to the staging compose runtime env map so server env settings are visible inside API/worker containers.
+- Updated staging environment docs with the new CredentialVault-backed `SIPHONLAB_GPT_5_5_API_KEY` placeholder and the recommended Agent route key `text.gpt-5-5`.
+- Validation:
+  - `npm run test --workspace @aigc-flow/ai-gateway-core -- plugin-registry.test.ts runtime.test.ts -t "GPT-5.5|responses API when configured|filters by modality"`
+  - `npm run test --workspace @aigc-flow/api -- ai-plugins.service.test.ts`
+  - `npm test -- src/flowCanvas/utils/nodeFactory.test.ts`
+
+## 2026-06-16 - Real LLM Canvas Agent Design
+
+- Added the real large-model Canvas Agent connection design at `docs/superpowers/specs/2026-06-16-real-llm-canvas-agent-design.md`.
+- Compared the relevant Agent patterns from `CookSleep/gpt_image_playground`, `basketikun/infinite-canvas`, and `anymouschina/TapCanvas` against the current TapFlow v2 architecture.
+- Documented the recommended Stage 1.5 direction: make the AI Gateway text route the primary Agent planner, keep deterministic planning only as explicit fallback, add strict JSON parsing, repair retry, output redaction, policy validation, planner observability, and staging rollout flags.
+- The design preserves the existing `CanvasAgentOp` confirmation boundary and v2 workflow/billing/assets execution chain, and keeps provider/baseUrl/API key/raw route/upstream model internals out of creator-facing UI.
+- No product runtime code was changed in this design-only step.

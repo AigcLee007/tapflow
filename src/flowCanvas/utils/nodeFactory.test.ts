@@ -12,5 +12,11 @@ describe('nodeFactory route defaults', () => {
     const node = createFlowNode('video', { x: 20, y: 20 });
     expect(node.data.routeKey).toBe('video.default');
   });
+
+  it('sets text node model and routeKey to GPT-5.5 defaults', () => {
+    const node = createFlowNode('text', { x: 30, y: 30 });
+    expect(node.data.modelId).toBe('gpt-5.5');
+    expect(node.data.routeKey).toBe('text.gpt-5-5');
+  });
 });
 

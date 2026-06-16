@@ -235,7 +235,7 @@ export class WorkflowRunsApiError extends Error {
 const AUTO_RUN_SNAPSHOT_CHANGELOG = "auto_run_snapshot";
 const DEFAULT_ROUTE_BY_NODE_TYPE: Record<string, string> = {
   "image.generate": "image.default",
-  "text.generate": "text.default",
+  "text.generate": "text.gpt-5-5",
   "video.generate": "video.default",
 };
 const UNIT_BY_NODE_TYPE: Record<string, string> = {

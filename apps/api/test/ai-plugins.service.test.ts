@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import { mouxiHubGptImage2Line3Manifest } from "../../../packages/ai-gateway-core/src/plugins/manifests/mouxihub-gpt-image-2-line3.js";
 import { mouxiHubGptImage2Line4Manifest } from "../../../packages/ai-gateway-core/src/plugins/manifests/mouxihub-gpt-image-2-line4.js";
 import { mouxiHubNanoBananaProT3Manifest } from "../../../packages/ai-gateway-core/src/plugins/manifests/mouxihub-nano-banana-pro-t3.js";
+import { siphonLabGpt55TextManifest } from "../../../packages/ai-gateway-core/src/plugins/manifests/siphonlab-gpt-5-5-text.js";
 import { AiPluginService } from "../src/modules/ai-plugins/ai-plugins.service.js";
 
 describe("AiPluginService route install statements", () => {
@@ -255,6 +256,62 @@ describe("AiPluginService route install statements", () => {
       "gpt-image-2",
       "async",
       "/v1/images/generations",
+    ]);
+  });
+
+  test("builds aligned ai_routes insert parameters for GPT-5.5 text template", () => {
+    const service = new AiPluginService({
+      credentialVault: {} as never,
+      pool: {} as never,
+    });
+    const route = siphonLabGpt55TextManifest.routes[0];
+    const requestConfig = {
+      ...route.requestConfig,
+      mode: route.mode,
+      path: route.path ?? route.requestConfig.path,
+      timeoutMs: route.timeoutMs,
+    };
+
+    const statement = (
+      service as unknown as {
+        buildRouteInsertStatement: (options: {
+          baseUrlOverride: string | null;
+          connectionId: string | null;
+          credentialId: string | null;
+          installId: string;
+          modelId: string;
+          providerId: string;
+          requestConfig: Record<string, unknown>;
+          route: typeof route;
+          status: string;
+          tenantId: string | null;
+        }) => { sql: string; values: unknown[] };
+      }
+    ).buildRouteInsertStatement({
+      baseUrlOverride: "https://sub.siphonlab.cn",
+      connectionId: "00000000-0000-0000-0000-000000000035",
+      credentialId: "00000000-0000-0000-0000-000000000034",
+      installId: "00000000-0000-0000-0000-000000000036",
+      modelId: "00000000-0000-0000-0000-000000000033",
+      providerId: "00000000-0000-0000-0000-000000000032",
+      requestConfig,
+      route,
+      status: "active",
+      tenantId: null,
+    });
+
+    expect(statement.values.slice(8, 19)).toEqual([
+      "https://sub.siphonlab.cn",
+      JSON.stringify(requestConfig),
+      JSON.stringify(route.rateLimit ?? {}),
+      "active",
+      "00000000-0000-0000-0000-000000000036",
+      "gpt-5.5",
+      "默认线路",
+      "production",
+      "gpt-5.5",
+      "sync",
+      "/v1/chat/completions",
     ]);
   });
 });

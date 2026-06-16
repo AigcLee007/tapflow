@@ -480,6 +480,41 @@ function extractUsage(value: unknown) {
   };
 }
 
+function extractResponsesUsage(value: unknown) {
+  const usage = asRecord(value);
+  return {
+    inputTokens: getNumber(usage.input_tokens) ?? getNumber(usage.prompt_tokens),
+    outputTokens: getNumber(usage.output_tokens) ?? getNumber(usage.completion_tokens),
+    totalTokens: getNumber(usage.total_tokens),
+  };
+}
+
+function isTextResponsesMode(requestConfig: Record<string, unknown>): boolean {
+  const apiMode = getString(requestConfig.apiMode);
+  const endpoint = getString(requestConfig.endpoint);
+  return apiMode?.toLowerCase() === "responses" || endpoint?.toLowerCase() === "responses";
+}
+
+function extractResponsesOutputText(value: unknown): string | null {
+  const body = asRecord(value);
+  const direct = getString(body.output_text ?? body.outputText);
+  if (direct) return direct;
+
+  const outputs = Array.isArray(body.output) ? body.output : [];
+  const fragments: string[] = [];
+  for (const output of outputs) {
+    const outputRecord = asRecord(output);
+    const content = Array.isArray(outputRecord.content) ? outputRecord.content : [];
+    for (const item of content) {
+      const itemRecord = asRecord(item);
+      const text = getString(itemRecord.text);
+      if (text) fragments.push(text);
+    }
+  }
+
+  return fragments.length > 0 ? fragments.join("") : null;
+}
+
 function normalizeProviderTaskStatus(value: string): "pending" | "running" | "succeeded" | "failed" | null {
   const normalized = value.trim().toUpperCase().replace(/[\s-]+/g, "_");
   if (!normalized) return null;
@@ -600,6 +635,14 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
     request: TextGenerationRequest,
   ): Promise<ProviderTextGenerationResult> {
     const requestConfig = asRecord(context.requestConfig);
+    if (isTextResponsesMode(requestConfig)) {
+      return this.generateTextWithResponsesApi(context, request, requestConfig);
+    }
+
+    const url = buildUrl(
+      context.baseUrl,
+      normalizePath(requestConfig.chatPath ?? requestConfig.path ?? requestConfig.generatePath, "/chat/completions"),
+    );
     const payload = {
       max_tokens:
         request.maxTokens ??
@@ -618,7 +661,7 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
         "Content-Type": "application/json",
       },
       method: "POST",
-      url: `${context.baseUrl.replace(/\/$/, "")}/chat/completions`,
+      url,
     };
 
     let response: Response;
@@ -688,6 +731,97 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
         outputTokens: getNumber(usage.completion_tokens),
         totalTokens: getNumber(usage.total_tokens),
       },
+    };
+  }
+
+  private async generateTextWithResponsesApi(
+    context: ProviderCallContext,
+    request: TextGenerationRequest,
+    requestConfig: Record<string, unknown>,
+  ): Promise<ProviderTextGenerationResult> {
+    const payload = {
+      input: request.messages,
+      max_output_tokens:
+        request.maxTokens ??
+        getNumber(requestConfig.maxOutputTokens) ??
+        getNumber(requestConfig.max_output_tokens) ??
+        getNumber(requestConfig.maxTokens) ??
+        getNumber(requestConfig.max_tokens),
+      model: request.model?.trim() || getString(requestConfig.model) || context.modelKey,
+      temperature:
+        request.temperature ??
+        getNumber(requestConfig.temperature),
+    };
+    const providerRequest = {
+      body: payload,
+      headers: {
+        Authorization: `Bearer ${context.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+      url: buildUrl(
+        context.baseUrl,
+        normalizePath(requestConfig.responsesPath ?? requestConfig.path ?? requestConfig.generatePath, "/v1/responses"),
+      ),
+    };
+
+    let response: Response;
+    try {
+      response = await this.fetchImplementation(providerRequest.url, {
+        body: JSON.stringify(payload),
+        headers: providerRequest.headers,
+        method: "POST",
+        signal: AbortSignal.timeout(context.timeoutMs),
+      });
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        (error.name === "AbortError" || error.name === "TimeoutError")
+      ) {
+        throw new AiGatewayError({
+          code: "PROVIDER_TIMEOUT",
+          message: "The provider request timed out",
+          providerRequest,
+          statusCode: 504,
+        });
+      }
+
+      throw new AiGatewayError({
+        code: "PROVIDER_INTERNAL_ERROR",
+        details: error instanceof Error ? error.message : String(error),
+        message: "The provider request failed before a response was received",
+        providerRequest,
+        statusCode: 502,
+      });
+    }
+
+    const providerResponse = {
+      body: await readResponseBody(response),
+      status: response.status,
+    };
+
+    if (!response.ok) {
+      throw this.mapError(response.status, providerRequest, providerResponse);
+    }
+
+    const outputText = extractResponsesOutputText(providerResponse.body);
+    if (!outputText) {
+      throw new AiGatewayError({
+        code: "PROVIDER_INVALID_RESPONSE",
+        message: "The provider response did not contain text output",
+        providerRequest,
+        providerResponse,
+        statusCode: 502,
+      });
+    }
+
+    const responseBody = asRecord(providerResponse.body);
+    return {
+      modelKey: payload.model,
+      outputText,
+      providerRequest,
+      providerResponse,
+      usage: extractResponsesUsage(responseBody.usage),
     };
   }
 
