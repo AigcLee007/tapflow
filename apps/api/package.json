@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/main.ts",
+    "prebuild": "npm run build --workspace @aigc-flow/db && npm run build --workspace @aigc-flow/ai-gateway-core",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/main.js",
     "test": "vitest run --config vitest.config.ts"

@@ -111,6 +111,21 @@ For staging/private beta, only the following route is required:
   - API protocol: OpenAI-compatible image API
   - Credential: server-side only, stored in CredentialVault
 
+### Text model route
+
+- `GPT-5.5`
+  - Provider kind: `openai-compatible`
+  - Base URL: `https://sub.siphonlab.cn`
+  - Upstream model: `gpt-5.5`
+  - Chat API: `/v1/chat/completions`
+  - Responses API: `/v1/responses`
+  - Route key: `text.gpt-5-5`
+  - Pricing: `2` credits per text generation
+  - Credential env placeholder: `SIPHONLAB_GPT_5_5_API_KEY = <secret: SiphonLab GPT-5.5 API key>`
+  - Credential storage: server-side CredentialVault / template install only
+  - Text node success tested = No
+  - Agent planner success tested = No
+
 Gemini native routes are documented as a future plan only. They are not required for the first staging deployment.
 
 ### Future multi-relay / multi-protocol plan
@@ -219,6 +234,12 @@ Relay D:
 - `Log redaction enabled = Yes`
 - `Worker error alerting method = manual log review for staging`
 - `Provider timeout/429 alerting method = manual log review for staging; P1 to add alerting`
+
+## 9.1 Agent Planner
+
+- `AGENT_PLANNER_ENABLED = false`
+- `AGENT_TEXT_ROUTE_KEY = text.gpt-5-5`
+- `Agent planner note = keep false until the GPT-5.5 text template is installed, published, and smoke-tested; false uses deterministic planning only`
 
 ---
 

@@ -33,6 +33,9 @@ import { CanvasAssetPanel, CanvasCommentPanel, CanvasDockDrawer, CanvasDockEmpty
 import { ConnectionMenu } from './ConnectionMenu';
 import { FlowContextMenu } from './FlowContextMenu';
 import { FlowLeftAddPanel } from './FlowLeftAddPanel';
+import { CanvasAgentButton } from '../agent/CanvasAgentButton';
+import { CanvasAgentPanel } from '../agent/CanvasAgentPanel';
+import { applyCanvasAgentOps } from '../agent/canvasAgentOps';
 import { getAsset, getAssetVariantUrl, listAssets } from '../../assets/assetApi';
 import { getFlowTemplate, recordFlowTemplateUsage } from '../../services/v2FlowTemplatesApi';
 import { listProjectHistory } from '../../services/v2FlowHistoryApi';
@@ -51,6 +54,7 @@ import {
   uploadLocalImageAndBuildAssetNodeData,
 } from '../utils/localImageUpload';
 import { getImageNaturalSize } from '../utils/imageUtils';
+import { runBackendWorkflow } from '../runtime/v2WorkflowRunner';
 
 const CANVAS_MIN_ZOOM = 0.18;
 const CANVAS_MAX_ZOOM = 2.2;
@@ -233,6 +237,7 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled }) =>
   const [miniMapOpen, setMiniMapOpen] = useState(false);
   const [gridSnapEnabled, setGridSnapEnabled] = useState(false);
   const [activeDockPanel, setActiveDockPanel] = useState<CanvasDockPanelId | null>(null);
+  const [agentOpen, setAgentOpen] = useState(false);
   const [dockBadgeMetrics, setDockBadgeMetrics] = useState({
     assetTotal: 0,
     historySnapshotCount: 0,
@@ -884,6 +889,36 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled }) =>
             setViewport(reactFlow.getViewport());
           });
         }}
+      />
+      <CanvasAgentButton
+        onClick={() => {
+          closeContextMenu();
+          closeImageTool();
+          setConnMenu(null);
+          setActiveDockPanel(null);
+          setAgentOpen(true);
+        }}
+        status={agentOpen ? 'awaiting' : 'idle'}
+      />
+      <CanvasAgentPanel
+        onClose={() => setAgentOpen(false)}
+        onConfirmPlan={async (plan) =>
+          applyCanvasAgentOps({
+            ops: plan.proposedOps,
+            runNode: async (nodeId) => {
+              await runBackendWorkflow({ runMode: 'target_node', targetNodeId: nodeId });
+            },
+          })
+        }
+        onCreateOnlyPlan={async (plan) =>
+          applyCanvasAgentOps({
+            ops: plan.proposedOps.filter((op) => op.type !== 'run_node'),
+            runNode: async (nodeId) => {
+              await runBackendWorkflow({ runMode: 'target_node', targetNodeId: nodeId });
+            },
+          })
+        }
+        open={agentOpen}
       />
       <FlowContextMenu />
 

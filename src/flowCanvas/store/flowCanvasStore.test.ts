@@ -355,4 +355,57 @@ describe('flowCanvasStore upstream image references', () => {
       title: '生成结果2',
     }));
   });
+  it('connects nodes through the targeted helper without duplicating edges', () => {
+    const source = useFlowCanvasStore.getState().addNode(
+      'text',
+      { x: 0, y: 0 },
+      { title: 'Source Prompt' },
+    );
+    const target = useFlowCanvasStore.getState().addNode(
+      'image',
+      { x: 320, y: 0 },
+      { title: 'Target Image' },
+    );
+
+    useFlowCanvasStore.getState().connectNodes(source.id, target.id, 'out', 'in');
+    useFlowCanvasStore.getState().connectNodes(source.id, target.id, 'out', 'in');
+
+    const state = useFlowCanvasStore.getState();
+    expect(state.edges).toHaveLength(1);
+    expect(state.edges[0]).toEqual(
+      expect.objectContaining({
+        source: source.id,
+        sourceHandle: 'out',
+        target: target.id,
+        targetHandle: 'in',
+      }),
+    );
+  });
+
+  it('selects and removes nodes through targeted helpers', () => {
+    const keepNode = useFlowCanvasStore.getState().addNode(
+      'text',
+      { x: 0, y: 0 },
+      { title: 'Keep Me' },
+      { selected: true },
+    );
+    const removeNode = useFlowCanvasStore.getState().addNode(
+      'image',
+      { x: 320, y: 0 },
+      { title: 'Remove Me' },
+    );
+
+    useFlowCanvasStore.getState().selectNodesByIds([removeNode.id]);
+
+    let state = useFlowCanvasStore.getState();
+    expect(state.nodes.find((node) => node.id === keepNode.id)?.selected).toBe(false);
+    expect(state.nodes.find((node) => node.id === removeNode.id)?.selected).toBe(true);
+    expect(state.selectedNodeCount).toBe(1);
+
+    useFlowCanvasStore.getState().removeNodesByIds([removeNode.id]);
+
+    state = useFlowCanvasStore.getState();
+    expect(state.nodes.map((node) => node.id)).toEqual([keepNode.id]);
+    expect(state.selectedNodeCount).toBe(0);
+  });
 });

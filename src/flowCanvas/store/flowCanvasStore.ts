@@ -158,7 +158,10 @@ interface FlowCanvasState {
   replaceNode: (nodeId: string, input: { data?: Partial<FlowNodeData>; type?: FlowNodeKind }) => void;
   commitNodePositions: (nodes: FlowNode[]) => void;
   lockNode: (nodeId: string, locked: boolean) => void;
+  connectNodes: (source: string, target: string, sourceHandle?: string, targetHandle?: string) => void;
+  removeNodesByIds: (nodeIds: string[]) => void;
   removeEdgesByIds: (edgeIds: string[]) => void;
+  selectNodesByIds: (nodeIds: string[]) => void;
 
   deleteSelectedEdges: () => void;
 
@@ -916,6 +919,28 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
     });
   },
 
+  connectNodes: (source, target, sourceHandle = "out", targetHandle = "in") => {
+    get().onConnect({ source, sourceHandle, target, targetHandle });
+  },
+
+  removeNodesByIds: (nodeIds) => {
+    const idSet = new Set(nodeIds);
+    if (idSet.size === 0) return;
+    get().pushHistory();
+    set((state) => {
+      const nodes = state.nodes.filter((node) => !idSet.has(node.id));
+      const edges = state.edges.filter((edge) => !idSet.has(edge.source) && !idSet.has(edge.target));
+      return {
+        activeImageTool: state.activeImageTool && idSet.has(state.activeImageTool.nodeId) ? null : state.activeImageTool,
+        edges,
+        graphIndex: buildGraphIndex(nodes, edges, state.nodeOutputByNodeId),
+        isDirty: true,
+        nodes,
+        selectedNodeCount: countSelectedNodes(nodes),
+      };
+    });
+  },
+
   removeEdgesByIds: (edgeIds) => {
     if (edgeIds.length === 0) return;
     const idSet = new Set(edgeIds);
@@ -926,6 +951,18 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
         edges,
         graphIndex: buildGraphIndex(state.nodes, edges, state.nodeOutputByNodeId),
         isDirty: true,
+      };
+    });
+  },
+
+  selectNodesByIds: (nodeIds) => {
+    const selectedIds = new Set(nodeIds);
+    set((state) => {
+      const nodes = state.nodes.map((node) => ({ ...node, selected: selectedIds.has(node.id) }));
+      return {
+        edges: state.edges.map((edge) => ({ ...edge, selected: false })),
+        nodes,
+        selectedNodeCount: countSelectedNodes(nodes),
       };
     });
   },

@@ -11,7 +11,7 @@ describe('ImagePromptActionRow', () => {
         batchCount={2}
         creditsValue="8"
         isGenerating={false}
-        modelControl={<button type="button">Nano Banana Pro · 线路二</button>}
+        modelControl={<button type="button">Nano Banana Pro · 线路一</button>}
         settingsControl={<button type="button">1:1 · 1K</button>}
         onGenerate={vi.fn()}
         quantityControl={<button type="button">2x</button>}
@@ -31,7 +31,7 @@ describe('ImagePromptActionRow', () => {
     expect(spacer.style.flex).toBe('1 1 auto');
     expect(right.style.flexShrink).toBe('0');
     expect(screen.queryByTestId('image-prompt-action-row-secondary')).toBeNull();
-    expect(screen.getByRole('button', { name: 'Nano Banana Pro · 线路二' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Nano Banana Pro · 线路一' })).toBeTruthy();
     expect(screen.getByText('合并显示 / 多节点显示')).toBeTruthy();
     expect(screen.getByText('点数')).toBeTruthy();
   });

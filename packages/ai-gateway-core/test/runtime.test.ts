@@ -155,6 +155,93 @@ describe("openai-compatible text adapter", () => {
     await server.close();
   });
 
+  test("returns text from OpenAI-compatible responses API when configured", async () => {
+    const server = await withHttpServer(async (request, response) => {
+      expect(request.url).toBe("/v1/responses");
+      expect(request.headers.authorization).toBe("Bearer sk-test-secret");
+
+      const chunks: Buffer[] = [];
+      for await (const chunk of request) {
+        chunks.push(Buffer.from(chunk));
+      }
+      const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as {
+        input: Array<{ content: string; role: string }>;
+        max_output_tokens?: number;
+        model: string;
+        temperature?: number;
+      };
+
+      expect(body).toMatchObject({
+        input: [
+          { content: "You are concise.", role: "system" },
+          { content: "hello", role: "user" },
+        ],
+        max_output_tokens: 128,
+        model: "gpt-5.5",
+        temperature: 0.2,
+      });
+
+      response.setHeader("content-type", "application/json");
+      response.end(
+        JSON.stringify({
+          output: [
+            {
+              content: [
+                {
+                  text: "mocked responses hello",
+                  type: "output_text",
+                },
+              ],
+              type: "message",
+            },
+          ],
+          usage: {
+            input_tokens: 4,
+            output_tokens: 5,
+            total_tokens: 9,
+          },
+        }),
+      );
+    });
+
+    const adapter = new OpenAiCompatibleTextAdapter();
+    const result = await adapter.generateText(
+      {
+        apiKey: "sk-test-secret",
+        baseUrl: server.url,
+        modelKey: "gpt-5.5",
+        providerKey: "siphonlab-openai-text",
+        requestConfig: {
+          apiMode: "responses",
+          path: "/v1/responses",
+        },
+        routeId: "route-1",
+        routeKey: "text.gpt-5-5.responses",
+        timeoutMs: 5_000,
+      },
+      {
+        maxTokens: 128,
+        messages: [
+          { content: "You are concise.", role: "system" },
+          { content: "hello", role: "user" },
+        ],
+        temperature: 0.2,
+      },
+    );
+
+    expect(result).toMatchObject({
+      modelKey: "gpt-5.5",
+      outputText: "mocked responses hello",
+      usage: {
+        inputTokens: 4,
+        outputTokens: 5,
+        totalTokens: 9,
+      },
+    });
+
+    await server.close();
+  });
+
   test("maps 401 to PROVIDER_AUTH_FAILED", async () => {
     const server = await withHttpServer((_request, response) => {
       response.statusCode = 401;

@@ -32,6 +32,22 @@ export type FlowNodeStatus =
 // ─── Generation Status (embedded in content nodes) ───────────
 export type FlowGenerationStatus = 'idle' | 'generating' | 'done' | 'error';
 export type FlowMultiImageDisplayMode = 'combined' | 'split_nodes';
+export type FlowProductionLayer =
+  | 'evidence'
+  | 'constraints'
+  | 'anchors'
+  | 'expansion'
+  | 'execution'
+  | 'results';
+
+export interface FlowAgentNodeMetadata {
+  agentSessionId?: string;
+  agentTurnId?: string;
+  approvalStatus?: 'candidate' | 'approved' | 'rejected';
+  creationStage?: string;
+  productionLayer?: FlowProductionLayer;
+  sourceEvidenceNodeIds?: string[];
+}
 
 export interface FlowImageResultItem {
   id: string;
@@ -147,6 +163,7 @@ export interface FlowNodeData {
   batchCount?: number;
   multiImageDisplayMode?: FlowMultiImageDisplayMode;
   latestMultiImageDelivery?: FlowMultiImageDisplayMode;
+  agentMetadata?: FlowAgentNodeMetadata;
 
   // Timestamps
   createdAt: number;

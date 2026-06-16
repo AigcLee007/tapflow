@@ -74,7 +74,7 @@ import {
   getVideoModelDurationOptions,
   getVideoModelSupportsHd,
 } from '../../config/videoModels';
-import { DEFAULT_TEXT_MODEL_ID, getTextModelOption, TEXT_MODEL_OPTIONS } from '../../config/textModels';
+import { DEFAULT_TEXT_MODEL_ID, getTextModelOption, getTextModelRouteKey, TEXT_MODEL_OPTIONS } from '../../config/textModels';
 import { getImageNaturalSize, imageUrlToBlob } from '../utils/imageUtils';
 import type { LightDirection } from './ImageLightingOverlay';
 import type { MultiAngleId } from './ImageMultiAngleOverlay';
@@ -3126,7 +3126,10 @@ export const TextNodeComponent = memo(function TextNode({
                           type="button"
                           className="nodrag nopan"
                           onClick={() => {
-                            updateNodeData(id, { modelId: model.id });
+                            updateNodeData(id, {
+                              modelId: model.id,
+                              routeKey: getTextModelRouteKey(model.id),
+                            });
                             setShowModelMenu(false);
                           }}
                           style={{
