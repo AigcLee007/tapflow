@@ -22,11 +22,14 @@ describe('ImagePromptActionRow', () => {
     const root = screen.getByTestId('image-prompt-action-row');
     const primary = screen.getByTestId('image-prompt-action-row-primary');
     const secondary = screen.getByTestId('image-prompt-action-row-secondary');
+    const modeStack = screen.getByTestId('image-prompt-action-row-mode-stack');
     const modelTrigger = screen.getByRole('button', { name: 'Nano Banana Pro · 线路二' });
 
     expect(root.style.flexDirection).toBe('column');
     expect(primary.style.flexWrap).toBe('nowrap');
     expect(secondary.style.justifyContent).toBe('space-between');
+    expect(modeStack.style.flexDirection).toBe('column');
+    expect(modeStack.style.alignItems).toBe('stretch');
     expect(modelTrigger.textContent).toBe('Nano Banana Pro · 线路二');
     expect(screen.getByText('合并显示 / 多节点显示')).toBeTruthy();
     expect(screen.getByText('点数')).toBeTruthy();

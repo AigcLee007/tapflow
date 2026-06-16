@@ -64,7 +64,16 @@ export function ImagePromptActionRow({
             gap: 12,
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+          <div
+            data-testid="image-prompt-action-row-mode-stack"
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'stretch',
+              gap: 10,
+              minWidth: 0,
+            }}
+          >
             {multiImageModeControl}
           </div>
           <ImageGenerateToolbar
