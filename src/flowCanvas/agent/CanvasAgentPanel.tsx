@@ -14,6 +14,22 @@ type ApplyResult = {
   ranNodeIds: string[];
 };
 
+function getStatusCopy(status: "awaiting_approval" | "error" | "executing" | "idle" | "thinking", usedOfflineFallback: boolean) {
+  if (status === "thinking") {
+    return usedOfflineFallback ? "正在使用基础规划模式…" : "正在使用真实大模型理解画布并制定计划…";
+  }
+  if (status === "awaiting_approval") {
+    return usedOfflineFallback ? "基础规划已生成，等待你确认。" : "真实 Agent 计划已生成，等待你确认。";
+  }
+  if (status === "executing") {
+    return "正在执行已确认的画布操作…";
+  }
+  if (status === "error") {
+    return usedOfflineFallback ? "基础规划执行失败。" : "真实大模型 Agent 调用失败。";
+  }
+  return usedOfflineFallback ? "当前处于基础规划模式。" : "由真实大模型负责规划，执行前仍由你确认。";
+}
+
 export function CanvasAgentPanel(props: {
   onClose: () => void;
   onConfirmPlan: (plan: CanvasAgentPlannerOutput) => Promise<ApplyResult>;
@@ -25,6 +41,7 @@ export function CanvasAgentPanel(props: {
   if (!props.open) return null;
 
   const busy = session.status === "thinking" || session.status === "executing";
+  const statusCopy = getStatusCopy(session.status, session.usedOfflineFallback);
 
   return (
     <aside
@@ -72,7 +89,7 @@ export function CanvasAgentPanel(props: {
           </div>
           <div>
             <div style={{ color: "#f8fafc", fontSize: 16, fontWeight: 800 }}>TapFlow Agent</div>
-            <div style={{ color: "rgba(226,232,240,0.58)", fontSize: 12 }}>先生成计划，再确认写入画布</div>
+            <div style={{ color: "rgba(226,232,240,0.58)", fontSize: 12 }}>{statusCopy}</div>
           </div>
         </div>
         <button
@@ -136,6 +153,7 @@ export function CanvasAgentPanel(props: {
                     : "#f8fafc",
               fontSize: 13,
               lineHeight: 1.6,
+              whiteSpace: "pre-wrap",
             }}
           >
             {message.content}

@@ -19,6 +19,7 @@ vi.mock("./canvasAgentApi", () => ({
 
 describe("useCanvasAgentSession", () => {
   beforeEach(() => {
+    vi.unstubAllEnvs();
     useFlowCanvasStore.getState().newProject();
     mockCreateAgentSession.mockReset();
     mockCreateAgentTurn.mockReset();
@@ -48,7 +49,28 @@ describe("useCanvasAgentSession", () => {
     expect(result.current.status).toBe("awaiting_approval");
   });
 
-  it("falls back to offline planning in dev-compatible mode when server turn fails", async () => {
+  it("shows an error instead of silently falling back when offline fallback is not explicitly enabled", async () => {
+    mockCreateAgentSession.mockResolvedValue({ id: "session-1" });
+    mockOpenAgentTurnStream.mockResolvedValue({ ok: false, status: 503 });
+    mockCreateAgentTurn.mockRejectedValue(
+      new V2HttpError({
+        message: "server down",
+        status: 500,
+      }),
+    );
+
+    const { result } = renderHook(() => useCanvasAgentSession());
+    await act(async () => {
+      await result.current.sendPrompt("Help me make a forest sports day image");
+    });
+
+    expect(result.current.currentPlan).toBeNull();
+    expect(result.current.error).toContain("server down");
+    expect(result.current.status).toBe("error");
+  });
+
+  it("falls back to offline planning only when explicitly enabled", async () => {
+    vi.stubEnv("VITE_AGENT_OFFLINE_FALLBACK", "true");
     mockCreateAgentSession.mockResolvedValue({ id: "session-1" });
     mockOpenAgentTurnStream.mockResolvedValue({ ok: false, status: 503 });
     mockCreateAgentTurn.mockRejectedValue(

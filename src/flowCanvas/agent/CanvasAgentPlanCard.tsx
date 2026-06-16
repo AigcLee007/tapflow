@@ -12,7 +12,7 @@ export function CanvasAgentPlanCard(props: {
 }) {
   const summary = summarizeCanvasAgentOps(props.plan.proposedOps);
   const hasRunNode = props.plan.proposedOps.some((op) => op.type === "run_node");
-  const confirmLabel = hasRunNode ? "确认并生成" : "批准执行";
+  const confirmLabel = hasRunNode ? "确认并生成" : "确认执行";
 
   return (
     <section

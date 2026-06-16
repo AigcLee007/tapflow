@@ -19,6 +19,7 @@ vi.mock("./canvasAgentApi", () => ({
 
 describe("CanvasAgentPanel", () => {
   beforeEach(() => {
+    vi.unstubAllEnvs();
     useFlowCanvasStore.getState().newProject();
     mockCreateAgentSession.mockReset();
     mockCreateAgentTurn.mockReset();
@@ -37,7 +38,7 @@ describe("CanvasAgentPanel", () => {
     });
   });
 
-  it("shows an offline plan and calls confirm handler", async () => {
+  it("shows a server plan and calls confirm handler", async () => {
     const onConfirmPlan = vi.fn(async () => ({
       createdNodeIds: [],
       errors: [],
@@ -52,9 +53,9 @@ describe("CanvasAgentPanel", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
 
-    expect(await screen.findByRole("button", { name: "批准执行" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "确认执行" })).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "批准执行" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认执行" }));
 
     await waitFor(() => expect(onConfirmPlan).toHaveBeenCalledTimes(1));
   });
@@ -72,7 +73,23 @@ describe("CanvasAgentPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "取消" }));
 
     await waitFor(() => {
-      expect(screen.queryByRole("button", { name: "批准执行" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "确认执行" })).toBeNull();
     });
+  });
+
+  it("surfaces a planner error when fallback is disabled", async () => {
+    mockCreateAgentSession.mockResolvedValue({ id: "session-1" });
+    mockOpenAgentTurnStream.mockResolvedValue({ ok: false, status: 503 });
+    mockCreateAgentTurn.mockRejectedValue(new Error("Agent planner unavailable"));
+
+    render(<CanvasAgentPanel open onClose={vi.fn()} onConfirmPlan={vi.fn()} />);
+
+    fireEvent.change(screen.getByPlaceholderText("描述你想完成的生产任务，或引用当前画布内容..."), {
+      target: { value: "帮我做一张森林运动会图片" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(await screen.findByText("最近一次执行失败")).toBeTruthy();
+    expect(screen.getAllByText("Agent planner unavailable").length).toBeGreaterThan(0);
   });
 });

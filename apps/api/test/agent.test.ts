@@ -13,7 +13,10 @@ const describeWithDatabase = hasDatabaseEnv() ? describe : describe.skip;
 const testEnv: ApiEnv = {
   accessTokenTtlSeconds: 60 * 15,
   adminEmails: [],
+  agentPlannerFallbackEnabled: false,
   agentPlannerEnabled: false,
+  agentPlannerRepairAttempts: 1,
+  agentPlannerTimeoutMs: 45_000,
   agentTextRouteKey: "text.default",
   apiRateLimitMax: 1000,
   apiRateLimitWindowMs: 60_000,

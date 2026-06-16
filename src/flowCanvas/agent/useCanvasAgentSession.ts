@@ -22,9 +22,6 @@ type ApplyResult = {
 
 type SessionStatus = "awaiting_approval" | "error" | "executing" | "idle" | "thinking";
 
-const allowOfflineFallback = import.meta.env.DEV || import.meta.env.VITE_AGENT_OFFLINE_FALLBACK === "true";
-const useStreaming = import.meta.env.VITE_AGENT_STREAMING !== "false";
-
 function createMessage(role: CanvasAgentMessage["role"], content: string): CanvasAgentMessage {
   return {
     content,
@@ -39,12 +36,16 @@ export function useCanvasAgentSession() {
   const [error, setError] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [status, setStatus] = useState<SessionStatus>("idle");
+  const [usedOfflineFallback, setUsedOfflineFallback] = useState(false);
 
   const sendPrompt = useCallback(async (prompt: string) => {
     const trimmed = prompt.trim();
     if (!trimmed) return;
+    const allowOfflineFallback = import.meta.env.VITE_AGENT_OFFLINE_FALLBACK === "true";
+    const useStreaming = import.meta.env.VITE_AGENT_STREAMING !== "false";
 
     setError(null);
+    setUsedOfflineFallback(false);
     setStatus("thinking");
     setMessages((current) => [...current, createMessage("user", trimmed)]);
 
@@ -72,15 +73,23 @@ export function useCanvasAgentSession() {
 
       const applyPlan = (plan: CanvasAgentPlannerOutput) => {
         setCurrentPlan(plan);
-        setMessages((current) => [...current, createMessage("assistant", plan.reply)]);
+        setMessages((current) => [
+          ...current,
+          createMessage(
+            "assistant",
+            usedOfflineFallback ? `[基础规划模式]\n${plan.reply}` : plan.reply,
+          ),
+        ]);
         setStatus("awaiting_approval");
       };
 
+      let streamFailedMessage: string | null = null;
       if (useStreaming && resolvedSessionId) {
         let receivedPlan = false;
         try {
           const response = await openAgentTurnStream(resolvedSessionId, { prompt: trimmed, snapshot });
           if (!response.ok) {
+            streamFailedMessage = `Request failed with status ${response.status}`;
             throw new V2HttpError({
               message: `Request failed with status ${response.status}`,
               status: response.status,
@@ -103,9 +112,7 @@ export function useCanvasAgentSession() {
             return;
           }
         } catch (streamError) {
-          if (!allowOfflineFallback) {
-            throw streamError;
-          }
+          streamFailedMessage = streamError instanceof Error ? streamError.message : String(streamError);
         }
       }
 
@@ -128,6 +135,7 @@ export function useCanvasAgentSession() {
       }
 
       const offlinePlan = planOfflineCanvasAgentTurn({ prompt: trimmed, snapshot });
+      setUsedOfflineFallback(true);
       applyPlan(offlinePlan);
     } catch (planError) {
       const message = planError instanceof Error ? planError.message : String(planError);
@@ -193,7 +201,8 @@ export function useCanvasAgentSession() {
       sendPrompt,
       sessionId,
       status,
+      usedOfflineFallback,
     }),
-    [cancelCurrentPlan, currentPlan, error, executeCurrentPlan, messages, sendPrompt, sessionId, status],
+    [cancelCurrentPlan, currentPlan, error, executeCurrentPlan, messages, sendPrompt, sessionId, status, usedOfflineFallback],
   );
 }
