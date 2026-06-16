@@ -5,7 +5,7 @@ import { describe, expect, test, vi } from 'vitest';
 import { ImagePromptActionRow } from './ImagePromptActionRow';
 
 describe('ImagePromptActionRow', () => {
-  test('keeps the model trigger readable and moves multi-image controls onto their own row when batch mode is active', () => {
+  test('keeps every control on one row when batch mode is active', () => {
     render(
       <ImagePromptActionRow
         batchCount={2}
@@ -20,22 +20,23 @@ describe('ImagePromptActionRow', () => {
     );
 
     const root = screen.getByTestId('image-prompt-action-row');
-    const primary = screen.getByTestId('image-prompt-action-row-primary');
-    const secondary = screen.getByTestId('image-prompt-action-row-secondary');
-    const modeStack = screen.getByTestId('image-prompt-action-row-mode-stack');
-    const modelTrigger = screen.getByRole('button', { name: 'Nano Banana Pro · 线路二' });
+    const left = screen.getByTestId('image-prompt-action-row-left');
+    const center = screen.getByTestId('image-prompt-action-row-center');
+    const right = screen.getByTestId('image-prompt-action-row-right');
 
-    expect(root.style.flexDirection).toBe('column');
-    expect(primary.style.flexWrap).toBe('nowrap');
-    expect(secondary.style.justifyContent).toBe('space-between');
-    expect(modeStack.style.flexDirection).toBe('column');
-    expect(modeStack.style.alignItems).toBe('stretch');
-    expect(modelTrigger.textContent).toBe('Nano Banana Pro · 线路二');
+    expect(root.style.flexDirection).toBe('row');
+    expect(root.style.flexWrap).toBe('nowrap');
+    expect(left.style.flexShrink).toBe('0');
+    expect(center.style.flex).toBe('1 1 auto');
+    expect(center.style.justifyContent).toBe('center');
+    expect(right.style.flexShrink).toBe('0');
+    expect(screen.queryByTestId('image-prompt-action-row-secondary')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Nano Banana Pro · 线路二' })).toBeTruthy();
     expect(screen.getByText('合并显示 / 多节点显示')).toBeTruthy();
     expect(screen.getByText('点数')).toBeTruthy();
   });
 
-  test('uses a single-row layout when batch mode is one', () => {
+  test('uses the same one-row shell when batch mode is one', () => {
     render(
       <ImagePromptActionRow
         batchCount={1}
@@ -49,10 +50,11 @@ describe('ImagePromptActionRow', () => {
     );
 
     const root = screen.getByTestId('image-prompt-action-row');
-    const primary = screen.getByTestId('image-prompt-action-row-primary');
+    const center = screen.getByTestId('image-prompt-action-row-center');
 
     expect(root.style.flexDirection).toBe('row');
-    expect(primary.style.flex).toBe('1 1 auto');
+    expect(root.style.flexWrap).toBe('nowrap');
+    expect(center.textContent).toBe('');
     expect(screen.queryByTestId('image-prompt-action-row-secondary')).toBeNull();
   });
 });

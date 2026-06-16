@@ -25,87 +25,27 @@ export function ImagePromptActionRow({
 }: ImagePromptActionRowProps) {
   const showMultiImageMode = batchCount > 1 && Boolean(multiImageModeControl);
 
-  if (showMultiImageMode) {
-    return (
-      <div
-        data-testid="image-prompt-action-row"
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 12,
-          width: '100%',
-        }}
-      >
-        <div
-          data-testid="image-prompt-action-row-primary"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            flexWrap: 'nowrap',
-            minWidth: 0,
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '1 1 auto', minWidth: 0 }}>
-            {modelControl}
-            {settingsControl}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: '0 0 auto' }}>
-            {quantityControl}
-          </div>
-        </div>
-
-        <div
-          data-testid="image-prompt-action-row-secondary"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 12,
-          }}
-        >
-          <div
-            data-testid="image-prompt-action-row-mode-stack"
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'stretch',
-              gap: 10,
-              minWidth: 0,
-            }}
-          >
-            {multiImageModeControl}
-          </div>
-          <ImageGenerateToolbar
-            creditsLabel="点数"
-            creditsValue={creditsValue}
-            isGenerating={isGenerating}
-            onGenerate={onGenerate}
-          />
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div
       data-testid="image-prompt-action-row"
       style={{
         display: 'flex',
         flexDirection: 'row',
+        flexWrap: 'nowrap',
         alignItems: 'center',
         justifyContent: 'space-between',
-        gap: 12,
+        gap: 16,
         width: '100%',
       }}
     >
       <div
-        data-testid="image-prompt-action-row-primary"
+        data-testid="image-prompt-action-row-left"
         style={{
           display: 'flex',
           alignItems: 'center',
           gap: 8,
-          flex: '1 1 auto',
+          flex: '0 0 auto',
+          flexShrink: 0,
           minWidth: 0,
           flexWrap: 'nowrap',
         }}
@@ -115,12 +55,38 @@ export function ImagePromptActionRow({
         {quantityControl}
       </div>
 
-      <ImageGenerateToolbar
-        creditsLabel="点数"
-        creditsValue={creditsValue}
-        isGenerating={isGenerating}
-        onGenerate={onGenerate}
-      />
+      <div
+        data-testid="image-prompt-action-row-center"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flex: '1 1 auto',
+          minWidth: 0,
+          padding: '0 12px',
+          overflow: 'hidden',
+        }}
+      >
+        {showMultiImageMode ? multiImageModeControl : null}
+      </div>
+
+      <div
+        data-testid="image-prompt-action-row-right"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'flex-end',
+          flex: '0 0 auto',
+          flexShrink: 0,
+        }}
+      >
+        <ImageGenerateToolbar
+          creditsLabel="点数"
+          creditsValue={creditsValue}
+          isGenerating={isGenerating}
+          onGenerate={onGenerate}
+        />
+      </div>
     </div>
   );
 }
