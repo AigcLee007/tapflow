@@ -83,6 +83,7 @@ import { MultiImageDisplayModeToggle } from './MultiImageDisplayModeToggle';
 import { GptImage2ParamPanel } from './GptImage2ParamPanel';
 import { NanoBananaParamPanel } from './NanoBananaParamPanel';
 import { ImageGenerateToolbar } from './ImageGenerateToolbar';
+import { ImagePromptActionRow } from './ImagePromptActionRow';
 import type { OutpaintDirection } from './ImageOutpaintOverlay';
 import type { ImageSplitPiece } from './ImageSplitOverlay';
 import { IMAGE_MENU_ITEM_MIN_HEIGHT, IMAGE_MENU_SURFACE_Z_INDEX } from './imageMenuStyles';
@@ -6261,154 +6262,151 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
           </div>
 
           <div style={promptBottomRow}>
-            <div style={paramRow}>
-              <ImageModelRouteDropup
-                modelOptions={modelOptions}
-                currentModelId={currentModelId}
-                currentRouteKey={currentRouteKey}
-                runtimeRoutes={visibleRuntimeRoutes}
-                routesLoading={scopedRouteState.loading}
-                onChangeModel={applyModelSelection}
-                onChangeRoute={applyRouteSelection}
-              />
-              {useNanoBananaParamPanel ? (
-                <ImageSettingsDropup
-                  modelId={currentModelId}
-                  ratio={currentRatio}
-                  size={currentSize}
-                  ratios={aspectOptions}
-                  sizes={sizeOptions}
-                  onChangeRatio={(value) => setParam('aspect_ratio', value)}
-                  onChangeSize={(value) => setParam('size', value)}
-                />
-              ) : useGptImage2ParamPanel ? (
-                <ImageSettingsDropup
-                  format={String(p.output_format || 'png').toLowerCase() as 'jpeg' | 'png' | 'webp'}
-                  moderation={String(p.moderation || 'auto').toLowerCase() as 'auto' | 'low'}
-                  modelId={currentModelId}
-                  quality={String(p.quality || 'auto').toLowerCase() as 'auto' | 'high' | 'low' | 'medium'}
-                  ratio={currentRatio}
-                  size={currentSize}
-                  ratios={aspectOptions}
-                  sizes={sizeOptions}
-                  onChangeFormat={(value) => setParam('output_format', value)}
-                  onChangeModeration={(value) => setParam('moderation', value)}
-                  onChangeQuality={(value) => setParam('quality', value)}
-                  onChangeRatio={(value) => setParam('aspect_ratio', value)}
-                  onChangeSize={(value) => setParam('size', value)}
-                />
-              ) : dynamicParamFields.length > 0 ? (
-                <DynamicImageParamsDropup
-                  fields={dynamicParamFields}
-                  params={p}
-                  ratio={currentRatio}
-                  size={currentSize}
-                  onChangeParam={setParam}
-                />
-              ) : showSize && (
-                <ImageSettingsDropup
-                  modelId={currentModelId}
-                  ratio={currentRatio}
-                  size={currentSize}
-                  ratios={aspectOptions}
-                  sizes={sizeOptions}
-                  onChangeRatio={(value) => setParam('aspect_ratio', value)}
-                  onChangeSize={(value) => setParam('size', value)}
+            <ImagePromptActionRow
+              batchCount={d.batchCount || 1}
+              creditsValue={formatImageCredits(displayPointCost ?? 0)}
+              isGenerating={isGenerating}
+              modelControl={(
+                <ImageModelRouteDropup
+                  modelOptions={modelOptions}
+                  currentModelId={currentModelId}
+                  currentRouteKey={currentRouteKey}
+                  runtimeRoutes={visibleRuntimeRoutes}
+                  routesLoading={scopedRouteState.loading}
+                  onChangeModel={applyModelSelection}
+                  onChangeRoute={applyRouteSelection}
                 />
               )}
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: '0 0 auto' }}>
-              
-              {/* Batch Count Selector (TapNow Style) */}
-              <div 
-                style={{ position: 'relative' }}
-              >
-                {showBatchSelector && (
-                  <div style={{
-                    position: 'absolute',
-                    bottom: 'calc(100% + 12px)',
-                    left: '50%',
-                    transform: 'translateX(-50%)',
-                    background: 'rgba(28, 28, 38, 0.98)',
-                    backdropFilter: 'blur(12px)',
-                    borderRadius: 16,
-                    padding: '6px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 4,
-                    border: '1px solid rgba(255, 255, 255, 0.08)',
-                    boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
-                    zIndex: 1000,
-                    minWidth: 44,
-                  }}>
-                    {[4, 3, 2, 1].map(num => (
-                      <button
-                        key={num}
-                        onClick={() => {
-                          updateNodeData(id, { batchCount: num });
-                          setShowBatchSelector(false);
-                        }}
-                        className="flow-batch-option"
-                        style={{
-                          background: (d.batchCount || 1) === num ? 'rgba(255,255,255,0.08)' : 'transparent',
-                          border: 'none',
-                          color: (d.batchCount || 1) === num ? '#fff' : '#64748b',
-                          fontSize: 13,
-                          fontWeight: 500,
-                          padding: '8px 0',
-                          borderRadius: 10,
-                          cursor: 'pointer',
-                          textAlign: 'center',
-                          transition: 'all 0.2s',
-                        }}
-                      >
-                        {num}x
-                      </button>
-                    ))}
-                  </div>
-                )}
-                
-                <button
-                  onClick={() => setShowBatchSelector(!showBatchSelector)}
-                  className="flow-batch-btn"
-                  title="生成数量"
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    background: 'rgba(255,255,255,0.06)',
-                    border: '1px solid rgba(255,255,255,0.05)',
-                    color: '#e2e8f0',
-                    fontSize: 14,
-                    fontWeight: 700,
-                    lineHeight: 1,
-                    minHeight: 42,
-                    padding: '0 16px',
-                    borderRadius: 13,
-                    cursor: 'pointer',
-                    minWidth: 44,
-                    transition: 'all 0.2s',
-                  }}
-                >
-                  {d.batchCount || 1}x
-                </button>
-              </div>
-
-              {(d.batchCount || 1) > 1 && (
-                <MultiImageDisplayModeToggle
-                  mode={multiImageDisplayMode}
-                  onChange={(mode) => updateNodeData(id, { multiImageDisplayMode: mode })}
-                />
+              settingsControl={(
+                useNanoBananaParamPanel ? (
+                  <ImageSettingsDropup
+                    modelId={currentModelId}
+                    ratio={currentRatio}
+                    size={currentSize}
+                    ratios={aspectOptions}
+                    sizes={sizeOptions}
+                    onChangeRatio={(value) => setParam('aspect_ratio', value)}
+                    onChangeSize={(value) => setParam('size', value)}
+                  />
+                ) : useGptImage2ParamPanel ? (
+                  <ImageSettingsDropup
+                    format={String(p.output_format || 'png').toLowerCase() as 'jpeg' | 'png' | 'webp'}
+                    moderation={String(p.moderation || 'auto').toLowerCase() as 'auto' | 'low'}
+                    modelId={currentModelId}
+                    quality={String(p.quality || 'auto').toLowerCase() as 'auto' | 'high' | 'low' | 'medium'}
+                    ratio={currentRatio}
+                    size={currentSize}
+                    ratios={aspectOptions}
+                    sizes={sizeOptions}
+                    onChangeFormat={(value) => setParam('output_format', value)}
+                    onChangeModeration={(value) => setParam('moderation', value)}
+                    onChangeQuality={(value) => setParam('quality', value)}
+                    onChangeRatio={(value) => setParam('aspect_ratio', value)}
+                    onChangeSize={(value) => setParam('size', value)}
+                  />
+                ) : dynamicParamFields.length > 0 ? (
+                  <DynamicImageParamsDropup
+                    fields={dynamicParamFields}
+                    params={p}
+                    ratio={currentRatio}
+                    size={currentSize}
+                    onChangeParam={setParam}
+                  />
+                ) : showSize ? (
+                  <ImageSettingsDropup
+                    modelId={currentModelId}
+                    ratio={currentRatio}
+                    size={currentSize}
+                    ratios={aspectOptions}
+                    sizes={sizeOptions}
+                    onChangeRatio={(value) => setParam('aspect_ratio', value)}
+                    onChangeSize={(value) => setParam('size', value)}
+                  />
+                ) : null
               )}
+              quantityControl={(
+                <div style={{ position: 'relative' }}>
+                  {showBatchSelector && (
+                    <div style={{
+                      position: 'absolute',
+                      bottom: 'calc(100% + 12px)',
+                      left: '50%',
+                      transform: 'translateX(-50%)',
+                      background: 'rgba(28, 28, 38, 0.98)',
+                      backdropFilter: 'blur(12px)',
+                      borderRadius: 16,
+                      padding: '6px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 4,
+                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                      boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+                      zIndex: 1000,
+                      minWidth: 44,
+                    }}>
+                      {[4, 3, 2, 1].map(num => (
+                        <button
+                          key={num}
+                          onClick={() => {
+                            updateNodeData(id, { batchCount: num });
+                            setShowBatchSelector(false);
+                          }}
+                          className="flow-batch-option"
+                          style={{
+                            background: (d.batchCount || 1) === num ? 'rgba(255,255,255,0.08)' : 'transparent',
+                            border: 'none',
+                            color: (d.batchCount || 1) === num ? '#fff' : '#64748b',
+                            fontSize: 13,
+                            fontWeight: 500,
+                            padding: '8px 0',
+                            borderRadius: 10,
+                            cursor: 'pointer',
+                            textAlign: 'center',
+                            transition: 'all 0.2s',
+                          }}
+                        >
+                          {num}x
+                        </button>
+                      ))}
+                    </div>
+                  )}
 
-              <ImageGenerateToolbar
-                creditsLabel="点数"
-                creditsValue={formatImageCredits(displayPointCost ?? 0)}
-                isGenerating={isGenerating}
-                onGenerate={handleGenerate}
-              />
-            </div>
+                  <button
+                    onClick={() => setShowBatchSelector(!showBatchSelector)}
+                    className="flow-batch-btn"
+                    title="生成数量"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      background: 'rgba(255,255,255,0.06)',
+                      border: '1px solid rgba(255,255,255,0.05)',
+                      color: '#e2e8f0',
+                      fontSize: 14,
+                      fontWeight: 700,
+                      lineHeight: 1,
+                      minHeight: 42,
+                      padding: '0 16px',
+                      borderRadius: 13,
+                      cursor: 'pointer',
+                      minWidth: 44,
+                      transition: 'all 0.2s',
+                    }}
+                  >
+                    {d.batchCount || 1}x
+                  </button>
+                </div>
+              )}
+              multiImageModeControl={(
+                (d.batchCount || 1) > 1 ? (
+                  <MultiImageDisplayModeToggle
+                    mode={multiImageDisplayMode}
+                    onChange={(mode) => updateNodeData(id, { multiImageDisplayMode: mode })}
+                  />
+                ) : undefined
+              )}
+              onGenerate={handleGenerate}
+            />
           </div>
           </div>
         </FloatingPromptBar>
