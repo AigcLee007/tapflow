@@ -1134,6 +1134,87 @@ describeWithDatabase("workflow node execution", () => {
     });
   });
 
+  test("text.generate uses generationPrompt when there is no upstream text output", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({
+          connectionString: await createAppDatabaseUrl(),
+        });
+
+        const seeded = await seedWorkflowRuntime(appPool, {
+          inputNodeOutputJson: {},
+          inputNodeStatus: "succeeded",
+          middleNodeConfig: {
+            generationPrompt: "帮我写一段搞笑的短视频脚本",
+            routeKey: "default-text",
+            systemPrompt: "You are helpful.",
+          },
+          middleNodeStatus: "runnable",
+        });
+        const generateText = vi.fn(async () => ({
+          modelKey: "mock-model",
+          outputText: "这是一个搞笑短视频脚本。",
+          providerKey: "mock-provider",
+          providerRequest: {},
+          providerResponse: {},
+          status: "succeeded" as const,
+          usage: {
+            inputTokens: 2,
+            outputTokens: 3,
+            totalTokens: 5,
+          },
+        }));
+
+        const service = createWorkflowService({
+          nodeQueue: createFakeNodeExecuteQueue(),
+          pollQueue: createFakeProviderPollQueue(),
+          pool: appPool,
+          storageProvider: new MemoryStorageProvider(),
+          textGenerationRuntime: {
+            generateText,
+          },
+        });
+
+        await processNodeExecuteJob(
+          {
+            data: {
+              nodeRunId: seeded.middleNodeRunId,
+              tenantId: seeded.tenantId,
+              traceId: "trace-text-generation-prompt",
+              workflowRunId: seeded.workflowRunId,
+            },
+            id: "job-text-generation-prompt",
+            queueName: QUEUE_NAMES.nodeExecute,
+          } as never,
+          createTestLogger(),
+          { executionService: service },
+        );
+
+        expect(generateText).toHaveBeenCalledTimes(1);
+        expect(generateText).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({
+            messages: expect.arrayContaining([
+              expect.objectContaining({
+                content: "帮我写一段搞笑的短视频脚本",
+                role: "user",
+              }),
+            ]),
+          }),
+          expect.anything(),
+        );
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
   test("image.generate sync result creates asset rows and stores AssetRef only", async () => {
     await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
       process.env.DATABASE_URL = databaseUrl;

@@ -334,10 +334,7 @@ function buildTextMessages(
     .filter(Boolean)
     .join("\n");
 
-  const fallbackPrompt =
-    typeof config.prompt === "string" && config.prompt.trim()
-      ? config.prompt.trim()
-      : "";
+  const fallbackPrompt = extractStaticTextFromConfig(config);
 
   const content = upstreamText || fallbackPrompt || JSON.stringify(upstreamOutputs);
   messages.push({
