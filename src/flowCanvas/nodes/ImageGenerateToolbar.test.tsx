@@ -3,18 +3,18 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 
 import {
-  IMAGE_GENERATE_TOOLBAR_CREDITS_MIN_WIDTH,
   IMAGE_GENERATE_TOOLBAR_HEIGHT,
   IMAGE_GENERATE_TOOLBAR_SEND_BUTTON_SIZE,
+  IMAGE_GENERATE_TOOLBAR_CREDITS_MIN_WIDTH,
   ImageGenerateToolbar,
 } from './ImageGenerateToolbar';
 
 describe('ImageGenerateToolbar', () => {
-  test('renders credits in a single horizontal row and keeps the send button isolated on the right', () => {
+  test('renders credits in a compact horizontal pill with the send button on the right', () => {
     render(
       <ImageGenerateToolbar
         creditsLabel="点数"
-        creditsValue="6"
+        creditsValue="12"
         isGenerating={false}
         onGenerate={vi.fn()}
       />,
@@ -24,11 +24,13 @@ describe('ImageGenerateToolbar', () => {
     const credits = screen.getByTestId('image-generate-toolbar-credits') as HTMLDivElement;
     const send = screen.getByRole('button', { name: '开始生成' }) as HTMLButtonElement;
 
-    expect(root.style.minHeight).toBe(`${IMAGE_GENERATE_TOOLBAR_HEIGHT}px`);
+    expect(root.style.height).toBe(`${IMAGE_GENERATE_TOOLBAR_HEIGHT}px`);
+    expect(root.style.minWidth).toBe('0');
+    expect(root.style.borderRadius).toBe('999px');
     expect(credits.style.minWidth).toBe(`${IMAGE_GENERATE_TOOLBAR_CREDITS_MIN_WIDTH}px`);
     expect(credits.style.flexDirection).toBe('row');
     expect(credits.style.whiteSpace).toBe('nowrap');
-    expect(credits.textContent).toBe('点数6');
+    expect(credits.textContent).toBe('点数12');
     expect(send.style.width).toBe(`${IMAGE_GENERATE_TOOLBAR_SEND_BUTTON_SIZE}px`);
     expect(send.style.height).toBe(`${IMAGE_GENERATE_TOOLBAR_SEND_BUTTON_SIZE}px`);
     expect(send.textContent).toBe('↑');

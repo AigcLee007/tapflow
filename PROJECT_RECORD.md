@@ -2083,3 +2083,13 @@ Validation completed:
 - validation:
   - `npm run test -- src/flowCanvas/nodes/ImagePromptActionRow.test.tsx src/flowCanvas/nodes/ImageGenerateToolbar.test.tsx src/flowCanvas/nodes/MultiImageDisplayModeToggle.test.tsx src/flowCanvas/nodes/NanoBananaParamPanel.test.tsx src/flowCanvas/nodes/GptImage2ParamPanel.test.tsx`
   - `npm run build`
+
+## 2026-06-16 - Image Prompt Bottom Control Pill Alignment
+
+- Unified the image prompt bottom-row quantity, multi-image display mode, credits, and send controls onto the same 42px pill height.
+- Changed the `2x` quantity trigger and multi-image display-mode trigger to use the same fully rounded pill shape as the model and parameter controls.
+- Tightened the credits/send pill by reducing the credits minimum width so `点数 12` stays compact instead of stretching across the right side.
+- Cleaned the related Chinese labels in the generate toolbar and multi-image display-mode control.
+- validation:
+  - `npm run test -- src/flowCanvas/nodes/ImagePromptActionRow.test.tsx src/flowCanvas/nodes/ImageGenerateToolbar.test.tsx src/flowCanvas/nodes/MultiImageDisplayModeToggle.test.tsx src/flowCanvas/nodes/NanoBananaParamPanel.test.tsx src/flowCanvas/nodes/GptImage2ParamPanel.test.tsx`
+  - `npm run build`

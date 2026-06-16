@@ -2,7 +2,7 @@ import React from 'react';
 
 export const IMAGE_GENERATE_TOOLBAR_HEIGHT = 42;
 export const IMAGE_GENERATE_TOOLBAR_SEND_BUTTON_SIZE = 36;
-export const IMAGE_GENERATE_TOOLBAR_CREDITS_MIN_WIDTH = 124;
+export const IMAGE_GENERATE_TOOLBAR_CREDITS_MIN_WIDTH = 72;
 
 type ImageGenerateToolbarProps = {
   creditsLabel: string;
@@ -24,14 +24,17 @@ export function ImageGenerateToolbar({
         display: 'flex',
         alignItems: 'center',
         gap: 8,
+        height: IMAGE_GENERATE_TOOLBAR_HEIGHT,
+        minWidth: 0,
+        padding: '3px 5px 3px 14px',
+        border: '1px solid rgba(255,255,255,0.08)',
+        borderRadius: 999,
         background: 'rgba(255,255,255,0.06)',
-        border: '1px solid rgba(255,255,255,0.05)',
-        borderRadius: 13,
-        minHeight: IMAGE_GENERATE_TOOLBAR_HEIGHT,
-        padding: '3px 5px 3px 12px',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08)',
         color: '#94a3b8',
         fontSize: 14,
-        fontWeight: 500,
+        fontWeight: 700,
+        flexShrink: 0,
       }}
     >
       <div
@@ -49,7 +52,7 @@ export function ImageGenerateToolbar({
           lineHeight: 1,
         }}
       >
-        <span style={{ color: '#94a3b8', fontSize: 14, fontWeight: 700 }}>点数</span>
+        <span style={{ color: '#94a3b8', fontSize: 14, fontWeight: 700 }}>{creditsLabel}</span>
         <span style={{ color: '#f8fafc', fontSize: 16, fontWeight: 800 }}>{creditsValue}</span>
       </div>
 

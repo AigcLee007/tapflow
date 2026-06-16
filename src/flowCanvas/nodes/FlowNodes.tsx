@@ -6385,11 +6385,12 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
                       fontSize: 14,
                       fontWeight: 700,
                       lineHeight: 1,
-                      minHeight: 42,
+                      height: 42,
                       padding: '0 16px',
-                      borderRadius: 13,
+                      borderRadius: 999,
                       cursor: 'pointer',
                       minWidth: 44,
+                      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08)',
                       transition: 'all 0.2s',
                     }}
                   >

@@ -9,14 +9,15 @@ import {
 } from './MultiImageDisplayModeToggle';
 
 describe('MultiImageDisplayModeToggle', () => {
-  test('renders as a compact single-value dropup trigger', () => {
+  test('renders as a compact pill dropup trigger aligned with prompt controls', () => {
     render(<MultiImageDisplayModeToggle mode="split_nodes" onChange={vi.fn()} />);
 
     const trigger = screen.getByRole('button', { name: '多节点显示' }) as HTMLButtonElement;
 
     expect(trigger.dataset.testid).toBe('multi-image-display-mode-trigger');
     expect(trigger.style.minWidth).toBe(`${MULTI_IMAGE_MODE_TRIGGER_MIN_WIDTH}px`);
-    expect(trigger.style.minHeight).toBe(`${MULTI_IMAGE_MODE_TRIGGER_HEIGHT}px`);
+    expect(trigger.style.height).toBe(`${MULTI_IMAGE_MODE_TRIGGER_HEIGHT}px`);
+    expect(trigger.style.borderRadius).toBe('999px');
     expect(trigger.style.whiteSpace).toBe('nowrap');
     expect(trigger.textContent).toContain('多节点显示');
     expect(screen.queryByText('合并显示')).toBeNull();
