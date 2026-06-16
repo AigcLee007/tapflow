@@ -2057,3 +2057,19 @@ Validation completed:
 - Documented the recommended direction: TapNow-style entry and side panel, Infinite Canvas-style structured canvas ops, TapCanvas-style evidence-first production principles, and the existing TapFlow v2 workflow/billing/assets execution path.
 - Covered user-facing capabilities, panel structure, `CanvasAgentOp` protocol, tool permissions, backend API/session tables, execution flow, billing and asset rules, security constraints, staged implementation plan, risks, and acceptance criteria.
 - No product code was changed in this design-only step.
+
+## 2026-06-16 - Canvas Agent Implementation Plan
+
+- Added the executable implementation plan for the first Canvas Agent wave at `docs/superpowers/plans/2026-06-16-canvas-agent-implementation.md`.
+- The plan breaks the Agent work into concrete tasks covering frontend protocol/snapshot/policy/executor, Agent panel UI, server session and streaming planning, confirmed canvas writes, and existing target-node workflow generation integration.
+- The first wave intentionally excludes long-term memory, MCP, multi-agent collaboration, automatic model/plugin installation, and complex storyboard state machines.
+- The plan keeps provider/baseUrl/API key/upstream route internals out of creator-facing Agent UI and preserves the v2 workflow/billing/assets execution chain.
+- No product code was changed in this planning step.
+
+## 2026-06-16 - Canvas Agent Final Stage Implementation Plan
+
+- Added the second-stage final Agent implementation plan at `docs/superpowers/plans/2026-06-16-canvas-agent-final-stage-implementation.md`.
+- The plan continues from the first-stage Agent MVP and expands it into project memory, production semantics, storyboard planning, batch orchestration, failure diagnosis, recipe reuse, safe model-line recommendation, controlled automation, optional external tools, role orchestration, evaluation, and admin observability.
+- Updated the first-stage Agent implementation plan with an explicit final-stage handoff section so the work can move directly into stage two after the first 16 tasks pass acceptance.
+- The plan keeps the existing v2 workflow/billing/assets path as the only generation execution path and continues hiding provider/baseUrl/API key/raw route/upstream model details from creator-facing UI.
+- No product code was changed in this planning step.
