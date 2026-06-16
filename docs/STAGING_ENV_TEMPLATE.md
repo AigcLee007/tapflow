@@ -220,6 +220,12 @@ Relay D:
 - `Worker error alerting method = manual log review for staging`
 - `Provider timeout/429 alerting method = manual log review for staging; P1 to add alerting`
 
+## 9.1 Agent Planner
+
+- `AGENT_PLANNER_ENABLED = false`
+- `AGENT_TEXT_ROUTE_KEY = text.default`
+- `Agent planner note = keep false until a production-safe text route is configured; false uses deterministic planning only`
+
 ---
 
 ## 10. Deployment

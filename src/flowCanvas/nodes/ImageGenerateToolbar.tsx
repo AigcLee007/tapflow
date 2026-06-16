@@ -17,6 +17,8 @@ export function ImageGenerateToolbar({
   isGenerating,
   onGenerate,
 }: ImageGenerateToolbarProps) {
+  const buttonLabel = isGenerating ? '生成中' : '开始生成';
+
   return (
     <div
       data-testid="image-generate-toolbar"
@@ -58,8 +60,8 @@ export function ImageGenerateToolbar({
 
       <button
         type="button"
-        aria-label={isGenerating ? '生成中' : '开始生成'}
-        title="开始生成"
+        aria-label={buttonLabel}
+        title={buttonLabel}
         disabled={isGenerating}
         onClick={onGenerate}
         style={{
@@ -78,7 +80,7 @@ export function ImageGenerateToolbar({
           transition: 'all 0.2s',
         }}
       >
-        {isGenerating ? '...' : '↑'}
+        {isGenerating ? '...' : '→'}
       </button>
     </div>
   );

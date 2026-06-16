@@ -5,6 +5,7 @@ import type { StorageProvider } from "@aigc-flow/storage";
 
 import type { RequestContext } from "./http/request-context.js";
 import type { AdminApiService } from "./modules/admin/admin.service.js";
+import type { AgentService } from "./modules/agent/agent.service.js";
 import type { AuditApiService } from "./modules/audit/audit.service.js";
 import type { AuthService } from "./modules/auth/auth.service.js";
 import type { AiGatewayAdminService } from "./modules/ai-gateway/ai-gateway.service.js";
@@ -25,6 +26,7 @@ import type { WorkflowRunsService } from "./modules/workflow-runs/workflow-runs.
 declare module "fastify" {
   interface FastifyInstance {
     adminService: AdminApiService;
+    agentService: AgentService;
     aiGatewayService: AiGatewayAdminService;
     aiModelCatalogService: AiModelCatalogService;
     aiPluginService: AiPluginService;

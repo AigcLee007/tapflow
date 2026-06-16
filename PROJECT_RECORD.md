@@ -258,6 +258,53 @@ As of 2026-06-13:
 
 ## 2026-06-14 - Canvas Project Menu and Delete Confirmation Refresh
 
+## 2026-06-16 - Canvas Agent Phase 1 Implementation
+
+- Implemented the first usable Canvas Agent foundation under `src/flowCanvas/agent/*`.
+- Added a typed Agent operation protocol covering:
+  - add node
+  - update node data
+  - connect nodes
+  - delete nodes / edges
+  - select nodes
+  - set viewport
+  - approved `run_node`
+- Added sanitized canvas snapshot building so Agent planning only receives creator-safe canvas evidence and does not expose provider internals.
+- Added policy validation and op summaries so approval-gated writes and credit-consuming actions are separated from simple safe writes.
+- Added deterministic local planning for:
+  - basic text-to-image flow creation
+  - selected-image to video flow creation
+- Added creator-facing Agent UI:
+  - bottom-right Agent entry button
+  - right-side Agent panel
+  - prompt composer
+  - plan approval card
+  - task/error status card
+- Added confirmed canvas execution flow:
+  - approved plans write into the existing Zustand canvas store
+  - `run_node` continues to use the existing `runBackendWorkflow({ runMode: 'target_node' })` chain
+  - create-only approval path now strips `run_node` ops and only writes nodes/edges
+- Added server-backed Agent persistence and planning scaffolding:
+  - `agent_sessions`
+  - `agent_messages`
+  - `agent_turns`
+  - `agent_tool_calls`
+  - tenant-scoped RLS migration `000024_agent_sessions.sql`
+- Added authenticated API routes:
+  - `POST /api/v2/agent/sessions`
+  - `GET /api/v2/agent/sessions/:sessionId`
+  - `POST /api/v2/agent/sessions/:sessionId/turns`
+  - `POST /api/v2/agent/sessions/:sessionId/turns/stream`
+- Added guarded planner env support:
+  - `AGENT_PLANNER_ENABLED`
+  - `AGENT_TEXT_ROUTE_KEY`
+- Current behavior keeps deterministic planning as the safe default. Text-runtime planning is gated and rejects unsafe output containing internal provider fields.
+- Validation:
+  - `npm test -- src/flowCanvas/agent/canvasAgentTypes.test.ts src/flowCanvas/agent/canvasAgentSnapshot.test.ts src/flowCanvas/agent/canvasAgentPolicy.test.ts src/flowCanvas/agent/canvasAgentOps.test.ts src/flowCanvas/agent/offlineCanvasAgentPlanner.test.ts src/flowCanvas/agent/CanvasAgentPanel.test.tsx src/flowCanvas/agent/useCanvasAgentSession.test.tsx src/flowCanvas/agent/canvasAgentApi.test.ts src/flowCanvas/agent/CanvasAgentPlanCard.test.tsx`
+  - `npm test -- src/flowCanvas/store/flowCanvasStore.test.ts src/flowCanvas/runtime/v2WorkflowRunner.test.ts src/flowCanvas/agent/CanvasAgentIntegration.test.tsx`
+- Validation note:
+  - database-backed `packages/db` and `apps/api` Agent tests were skipped locally because the current environment did not provide a runnable `DATABASE_URL` test database, matching the repo’s existing conditional DB-test behavior.
+
 - Refined the canvas top-left project menu toward the approved minimal TapNow-style direction:
   - narrowed the menu width from the earlier wide flyout
   - tightened non-primary rows to a 60px rhythm
@@ -2092,4 +2139,16 @@ Validation completed:
 - Cleaned the related Chinese labels in the generate toolbar and multi-image display-mode control.
 - validation:
   - `npm run test -- src/flowCanvas/nodes/ImagePromptActionRow.test.tsx src/flowCanvas/nodes/ImageGenerateToolbar.test.tsx src/flowCanvas/nodes/MultiImageDisplayModeToggle.test.tsx src/flowCanvas/nodes/NanoBananaParamPanel.test.tsx src/flowCanvas/nodes/GptImage2ParamPanel.test.tsx`
+  - `npm run build`
+
+## 2026-06-16 - Canvas Agent Build Blocker Recovery
+
+- Restored the repo to a clean full-build state while keeping the Stage 1 Canvas Agent implementation in place.
+- Fixed the image prompt generate toolbar files after they had fallen into a broken/garbled state that caused parser and module-resolution failures around `ImageGenerateToolbar`.
+- Normalized the visible toolbar labels back to creator-facing Chinese copy (`点数`, `开始生成`, `生成中`) and kept the existing one-row layout and interaction model unchanged.
+- Hardened the API workspace build path by adding an `@aigc-flow/api` `prebuild` step that compiles `@aigc-flow/db` and `@aigc-flow/ai-gateway-core` first, preventing stale workspace declaration output from breaking clean-environment API builds.
+- validation:
+  - `npm test -- src/flowCanvas/nodes/ImageGenerateToolbar.test.tsx src/flowCanvas/nodes/ImagePromptActionRow.test.tsx`
+  - `npm run build --workspace @aigc-flow/api`
+  - `npm run build --workspace @aigc-flow/db`
   - `npm run build`

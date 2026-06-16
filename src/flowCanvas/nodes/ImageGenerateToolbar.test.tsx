@@ -3,9 +3,9 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 
 import {
+  IMAGE_GENERATE_TOOLBAR_CREDITS_MIN_WIDTH,
   IMAGE_GENERATE_TOOLBAR_HEIGHT,
   IMAGE_GENERATE_TOOLBAR_SEND_BUTTON_SIZE,
-  IMAGE_GENERATE_TOOLBAR_CREDITS_MIN_WIDTH,
   ImageGenerateToolbar,
 } from './ImageGenerateToolbar';
 
@@ -33,10 +33,10 @@ describe('ImageGenerateToolbar', () => {
     expect(credits.textContent).toBe('点数12');
     expect(send.style.width).toBe(`${IMAGE_GENERATE_TOOLBAR_SEND_BUTTON_SIZE}px`);
     expect(send.style.height).toBe(`${IMAGE_GENERATE_TOOLBAR_SEND_BUTTON_SIZE}px`);
-    expect(send.textContent).toBe('↑');
+    expect(send.textContent).toBe('→');
   });
 
-  test('keeps larger Nano Banana credit values horizontal too', () => {
+  test('keeps larger credit values horizontal too', () => {
     render(
       <ImageGenerateToolbar
         creditsLabel="点数"

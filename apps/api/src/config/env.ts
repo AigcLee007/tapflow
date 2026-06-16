@@ -1,6 +1,8 @@
 export type ApiEnv = {
   accessTokenTtlSeconds: number;
   adminEmails: string[];
+  agentPlannerEnabled: boolean;
+  agentTextRouteKey: string;
   apiRateLimitMax?: number;
   apiRateLimitWindowMs?: number;
   authRateLimitMax?: number;
@@ -110,6 +112,12 @@ export function getApiEnv(): ApiEnv {
     process.env.API_RATE_LIMIT_WINDOW_MS,
     DEV_API_RATE_LIMIT_WINDOW_MS,
   );
+  const agentPlannerEnabled = parseBooleanEnv(
+    "AGENT_PLANNER_ENABLED",
+    process.env.AGENT_PLANNER_ENABLED,
+    false,
+  );
+  const agentTextRouteKey = process.env.AGENT_TEXT_ROUTE_KEY?.trim() || "text.default";
   const authRateLimitMax = parsePositiveIntegerEnv(
     "AUTH_RATE_LIMIT_MAX",
     process.env.AUTH_RATE_LIMIT_MAX,
@@ -193,6 +201,8 @@ export function getApiEnv(): ApiEnv {
   return {
     accessTokenTtlSeconds: 60 * 15,
     adminEmails,
+    agentPlannerEnabled,
+    agentTextRouteKey,
     apiRateLimitMax,
     apiRateLimitWindowMs,
     authRateLimitMax,
