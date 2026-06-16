@@ -1,41 +1,67 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { ChevronDown } from 'lucide-react';
 
 import type { FlowMultiImageDisplayMode } from '../types';
 
-export const MULTI_IMAGE_TOGGLE_MIN_WIDTH = 208;
-export const MULTI_IMAGE_TOGGLE_HEIGHT = 42;
-export const MULTI_IMAGE_TOGGLE_SEGMENT_HEIGHT = 34;
+export const MULTI_IMAGE_MODE_TRIGGER_MIN_WIDTH = 116;
+export const MULTI_IMAGE_MODE_TRIGGER_HEIGHT = 42;
 
-const rootStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 4,
-  padding: 4,
-  minWidth: MULTI_IMAGE_TOGGLE_MIN_WIDTH,
-  minHeight: MULTI_IMAGE_TOGGLE_HEIGHT,
-  background: 'rgba(255,255,255,0.06)',
-  border: '1px solid rgba(255,255,255,0.05)',
-  borderRadius: 13,
-  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.025)',
+const MODE_LABELS: Record<FlowMultiImageDisplayMode, string> = {
+  combined: '合并显示',
+  split_nodes: '多节点显示',
 };
 
-const buildSegmentStyle = (active: boolean): React.CSSProperties => ({
-  flex: '1 1 0',
-  minHeight: MULTI_IMAGE_TOGGLE_SEGMENT_HEIGHT,
-  padding: '0 16px',
+const triggerStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 8,
+  minWidth: MULTI_IMAGE_MODE_TRIGGER_MIN_WIDTH,
+  minHeight: MULTI_IMAGE_MODE_TRIGGER_HEIGHT,
+  padding: '0 14px',
+  border: '1px solid rgba(255,255,255,0.08)',
+  borderRadius: 13,
+  background: 'rgba(255,255,255,0.06)',
+  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08)',
+  color: '#f8fafc',
+  fontSize: 14,
+  fontWeight: 800,
+  lineHeight: 1,
+  whiteSpace: 'nowrap',
+  cursor: 'pointer',
+  flexShrink: 0,
+};
+
+const menuStyle: React.CSSProperties = {
+  position: 'absolute',
+  right: 0,
+  bottom: 'calc(100% + 12px)',
+  minWidth: 116,
+  padding: 6,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 4,
+  borderRadius: 16,
+  border: '1px solid rgba(255,255,255,0.08)',
+  background: 'rgba(28,28,38,0.98)',
+  backdropFilter: 'blur(12px)',
+  boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+  zIndex: 1000,
+};
+
+const buildOptionStyle = (active: boolean): React.CSSProperties => ({
+  minHeight: 34,
+  padding: '0 10px',
   border: 'none',
   borderRadius: 10,
-  background: active ? 'rgba(255,255,255,0.12)' : 'transparent',
-  boxShadow: active ? 'inset 0 0 0 1px rgba(255,255,255,0.045)' : 'none',
-  color: active ? '#f8fafc' : '#94a3b8',
-  fontSize: 12,
+  background: active ? 'rgba(255,255,255,0.08)' : 'transparent',
+  color: active ? '#fff' : '#94a3b8',
+  fontSize: 13,
   fontWeight: 700,
-  lineHeight: 1.1,
-  letterSpacing: 0,
+  lineHeight: 1,
   whiteSpace: 'nowrap',
   textAlign: 'center',
   cursor: 'pointer',
-  transition: 'background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease',
 });
 
 export function MultiImageDisplayModeToggle({
@@ -45,21 +71,61 @@ export function MultiImageDisplayModeToggle({
   mode: FlowMultiImageDisplayMode;
   onChange: (mode: FlowMultiImageDisplayMode) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    const closeOnPointerDown = (event: MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setOpen(false);
+      }
+    };
+
+    window.addEventListener('mousedown', closeOnPointerDown);
+    window.addEventListener('keydown', closeOnEscape);
+
+    return () => {
+      window.removeEventListener('mousedown', closeOnPointerDown);
+      window.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [open]);
+
   return (
-    <div data-testid="multi-image-display-mode-toggle" style={rootStyle}>
+    <div ref={rootRef} style={{ position: 'relative', flex: '0 0 auto' }}>
+      {open ? (
+        <div data-testid="multi-image-display-mode-menu" style={menuStyle}>
+          {(Object.keys(MODE_LABELS) as FlowMultiImageDisplayMode[]).map((nextMode) => (
+            <button
+              key={nextMode}
+              type="button"
+              onClick={() => {
+                onChange(nextMode);
+                setOpen(false);
+              }}
+              style={buildOptionStyle(mode === nextMode)}
+            >
+              {MODE_LABELS[nextMode]}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
       <button
         type="button"
-        onClick={() => onChange('combined')}
-        style={buildSegmentStyle(mode === 'combined')}
+        data-testid="multi-image-display-mode-trigger"
+        onClick={() => setOpen((value) => !value)}
+        style={triggerStyle}
+        title="选择多图显示方式"
       >
-        合并显示
-      </button>
-      <button
-        type="button"
-        onClick={() => onChange('split_nodes')}
-        style={buildSegmentStyle(mode === 'split_nodes')}
-      >
-        多节点显示
+        <span>{MODE_LABELS[mode]}</span>
+        <ChevronDown size={14} color="#a1a1aa" />
       </button>
     </div>
   );

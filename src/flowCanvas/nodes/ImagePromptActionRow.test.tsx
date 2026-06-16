@@ -21,14 +21,14 @@ describe('ImagePromptActionRow', () => {
 
     const root = screen.getByTestId('image-prompt-action-row');
     const left = screen.getByTestId('image-prompt-action-row-left');
-    const center = screen.getByTestId('image-prompt-action-row-center');
+    const spacer = screen.getByTestId('image-prompt-action-row-spacer');
     const right = screen.getByTestId('image-prompt-action-row-right');
 
     expect(root.style.flexDirection).toBe('row');
     expect(root.style.flexWrap).toBe('nowrap');
     expect(left.style.flexShrink).toBe('0');
-    expect(center.style.flex).toBe('1 1 auto');
-    expect(center.style.justifyContent).toBe('center');
+    expect(left.textContent).toContain('合并显示 / 多节点显示');
+    expect(spacer.style.flex).toBe('1 1 auto');
     expect(right.style.flexShrink).toBe('0');
     expect(screen.queryByTestId('image-prompt-action-row-secondary')).toBeNull();
     expect(screen.getByRole('button', { name: 'Nano Banana Pro · 线路二' })).toBeTruthy();
@@ -50,11 +50,11 @@ describe('ImagePromptActionRow', () => {
     );
 
     const root = screen.getByTestId('image-prompt-action-row');
-    const center = screen.getByTestId('image-prompt-action-row-center');
+    const spacer = screen.getByTestId('image-prompt-action-row-spacer');
 
     expect(root.style.flexDirection).toBe('row');
     expect(root.style.flexWrap).toBe('nowrap');
-    expect(center.textContent).toBe('');
+    expect(spacer.textContent).toBe('');
     expect(screen.queryByTestId('image-prompt-action-row-secondary')).toBeNull();
   });
 });

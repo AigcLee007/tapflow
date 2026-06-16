@@ -2073,3 +2073,13 @@ Validation completed:
 - Updated the first-stage Agent implementation plan with an explicit final-stage handoff section so the work can move directly into stage two after the first 16 tasks pass acceptance.
 - The plan keeps the existing v2 workflow/billing/assets path as the only generation execution path and continues hiding provider/baseUrl/API key/raw route/upstream model details from creator-facing UI.
 - No product code was changed in this planning step.
+
+## 2026-06-16 - Image Prompt Multi-Image Mode Compact Dropup
+
+- Replaced the two-segment multi-image display mode control with a compact single-value dropup that matches the height and density of the quantity selector.
+- Moved the multi-image mode trigger directly after the quantity control so model, parameters, quantity, and display mode stay on one continuous row.
+- Kept the credits pill and send button pinned to the right side with a flexible spacer instead of letting the display-mode control crowd or clip them.
+- Added focused regression coverage for the compact dropup trigger, menu selection behavior, and one-row action layout.
+- validation:
+  - `npm run test -- src/flowCanvas/nodes/ImagePromptActionRow.test.tsx src/flowCanvas/nodes/ImageGenerateToolbar.test.tsx src/flowCanvas/nodes/MultiImageDisplayModeToggle.test.tsx src/flowCanvas/nodes/NanoBananaParamPanel.test.tsx src/flowCanvas/nodes/GptImage2ParamPanel.test.tsx`
+  - `npm run build`

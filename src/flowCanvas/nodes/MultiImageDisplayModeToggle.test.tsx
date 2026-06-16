@@ -4,37 +4,37 @@ import { describe, expect, test, vi } from 'vitest';
 
 import {
   MultiImageDisplayModeToggle,
-  MULTI_IMAGE_TOGGLE_HEIGHT,
-  MULTI_IMAGE_TOGGLE_MIN_WIDTH,
-  MULTI_IMAGE_TOGGLE_SEGMENT_HEIGHT,
+  MULTI_IMAGE_MODE_TRIGGER_HEIGHT,
+  MULTI_IMAGE_MODE_TRIGGER_MIN_WIDTH,
 } from './MultiImageDisplayModeToggle';
 
 describe('MultiImageDisplayModeToggle', () => {
-  test('renders a single-line segmented control with balanced button sizing', () => {
-    render(<MultiImageDisplayModeToggle mode="combined" onChange={vi.fn()} />);
+  test('renders as a compact single-value dropup trigger', () => {
+    render(<MultiImageDisplayModeToggle mode="split_nodes" onChange={vi.fn()} />);
 
-    const root = screen.getByTestId('multi-image-display-mode-toggle') as HTMLDivElement;
-    const combined = screen.getByRole('button', { name: '合并显示' }) as HTMLButtonElement;
-    const split = screen.getByRole('button', { name: '多节点显示' }) as HTMLButtonElement;
+    const trigger = screen.getByRole('button', { name: '多节点显示' }) as HTMLButtonElement;
 
-    expect(root.style.minWidth).toBe(`${MULTI_IMAGE_TOGGLE_MIN_WIDTH}px`);
-    expect(root.style.minHeight).toBe(`${MULTI_IMAGE_TOGGLE_HEIGHT}px`);
-    expect(root.style.padding).toBe('4px');
-    expect(combined.style.whiteSpace).toBe('nowrap');
-    expect(split.style.whiteSpace).toBe('nowrap');
-    expect(combined.style.minHeight).toBe(`${MULTI_IMAGE_TOGGLE_SEGMENT_HEIGHT}px`);
-    expect(split.style.minHeight).toBe(`${MULTI_IMAGE_TOGGLE_SEGMENT_HEIGHT}px`);
-    expect(combined.textContent).toBe('合并显示');
-    expect(split.textContent).toBe('多节点显示');
+    expect(trigger.dataset.testid).toBe('multi-image-display-mode-trigger');
+    expect(trigger.style.minWidth).toBe(`${MULTI_IMAGE_MODE_TRIGGER_MIN_WIDTH}px`);
+    expect(trigger.style.minHeight).toBe(`${MULTI_IMAGE_MODE_TRIGGER_HEIGHT}px`);
+    expect(trigger.style.whiteSpace).toBe('nowrap');
+    expect(trigger.textContent).toContain('多节点显示');
+    expect(screen.queryByText('合并显示')).toBeNull();
   });
 
-  test('updates display mode when the other segment is clicked', () => {
+  test('opens a compact menu and updates display mode', () => {
     const onChange = vi.fn();
 
-    render(<MultiImageDisplayModeToggle mode="combined" onChange={onChange} />);
+    render(<MultiImageDisplayModeToggle mode="split_nodes" onChange={onChange} />);
 
-    fireEvent.click(screen.getByRole('button', { name: '多节点显示' }));
+    fireEvent.click(screen.getByTestId('multi-image-display-mode-trigger'));
 
-    expect(onChange).toHaveBeenCalledWith('split_nodes');
+    const menu = screen.getByTestId('multi-image-display-mode-menu') as HTMLDivElement;
+    expect(menu.style.minWidth).toBe('116px');
+
+    fireEvent.click(screen.getByRole('button', { name: '合并显示' }));
+
+    expect(onChange).toHaveBeenCalledWith('combined');
+    expect(screen.queryByTestId('multi-image-display-mode-menu')).toBeNull();
   });
 });

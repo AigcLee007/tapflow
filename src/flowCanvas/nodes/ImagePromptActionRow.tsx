@@ -34,7 +34,7 @@ export function ImagePromptActionRow({
         flexWrap: 'nowrap',
         alignItems: 'center',
         justifyContent: 'space-between',
-        gap: 16,
+        gap: 14,
         width: '100%',
       }}
     >
@@ -53,22 +53,17 @@ export function ImagePromptActionRow({
         {modelControl}
         {settingsControl}
         {quantityControl}
+        {showMultiImageMode ? multiImageModeControl : null}
       </div>
 
       <div
-        data-testid="image-prompt-action-row-center"
+        aria-hidden="true"
+        data-testid="image-prompt-action-row-spacer"
         style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
           flex: '1 1 auto',
           minWidth: 0,
-          padding: '0 12px',
-          overflow: 'hidden',
         }}
-      >
-        {showMultiImageMode ? multiImageModeControl : null}
-      </div>
+      />
 
       <div
         data-testid="image-prompt-action-row-right"
