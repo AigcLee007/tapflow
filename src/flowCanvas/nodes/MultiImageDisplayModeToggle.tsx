@@ -3,8 +3,8 @@ import { ChevronDown } from 'lucide-react';
 
 import type { FlowMultiImageDisplayMode } from '../types';
 
-export const MULTI_IMAGE_MODE_TRIGGER_MIN_WIDTH = 116;
-export const MULTI_IMAGE_MODE_TRIGGER_HEIGHT = 42;
+export const MULTI_IMAGE_MODE_TRIGGER_MIN_WIDTH = 104;
+export const MULTI_IMAGE_MODE_TRIGGER_HEIGHT = 32;
 
 const MODE_LABELS: Record<FlowMultiImageDisplayMode, string> = {
   combined: '合并显示',
@@ -15,17 +15,17 @@ const triggerStyle: React.CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
   justifyContent: 'center',
-  gap: 8,
+  gap: 7,
   minWidth: MULTI_IMAGE_MODE_TRIGGER_MIN_WIDTH,
   height: MULTI_IMAGE_MODE_TRIGGER_HEIGHT,
-  padding: '0 14px',
+  padding: '0 9px',
   border: '1px solid rgba(255,255,255,0.08)',
   borderRadius: 999,
   background: 'rgba(255,255,255,0.06)',
   boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08)',
-  color: '#f8fafc',
-  fontSize: 14,
-  fontWeight: 800,
+  color: '#f4f4f5',
+  fontSize: 13,
+  fontWeight: 650,
   lineHeight: 1,
   whiteSpace: 'nowrap',
   cursor: 'pointer',
@@ -35,8 +35,8 @@ const triggerStyle: React.CSSProperties = {
 const menuStyle: React.CSSProperties = {
   position: 'absolute',
   right: 0,
-  bottom: 'calc(100% + 12px)',
-  minWidth: 116,
+  bottom: 'calc(100% + 10px)',
+  minWidth: MULTI_IMAGE_MODE_TRIGGER_MIN_WIDTH,
   padding: 6,
   display: 'flex',
   flexDirection: 'column',

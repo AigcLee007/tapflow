@@ -18,6 +18,8 @@ describe('MultiImageDisplayModeToggle', () => {
     expect(trigger.style.minWidth).toBe(`${MULTI_IMAGE_MODE_TRIGGER_MIN_WIDTH}px`);
     expect(trigger.style.height).toBe(`${MULTI_IMAGE_MODE_TRIGGER_HEIGHT}px`);
     expect(trigger.style.borderRadius).toBe('999px');
+    expect(trigger.style.padding).toBe('0px 9px');
+    expect(trigger.style.fontSize).toBe('13px');
     expect(trigger.style.whiteSpace).toBe('nowrap');
     expect(trigger.textContent).toContain('多节点显示');
     expect(screen.queryByText('合并显示')).toBeNull();
@@ -31,7 +33,7 @@ describe('MultiImageDisplayModeToggle', () => {
     fireEvent.click(screen.getByTestId('multi-image-display-mode-trigger'));
 
     const menu = screen.getByTestId('multi-image-display-mode-menu') as HTMLDivElement;
-    expect(menu.style.minWidth).toBe('116px');
+    expect(menu.style.minWidth).toBe('104px');
 
     fireEvent.click(screen.getByRole('button', { name: '合并显示' }));
 

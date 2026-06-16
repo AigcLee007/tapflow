@@ -10,7 +10,7 @@ import {
 } from './ImageGenerateToolbar';
 
 describe('ImageGenerateToolbar', () => {
-  test('renders credits in a compact horizontal pill with the send button on the right', () => {
+  test('matches the prompt control pill density and keeps credits compact', () => {
     render(
       <ImageGenerateToolbar
         creditsLabel="点数"
@@ -25,8 +25,8 @@ describe('ImageGenerateToolbar', () => {
     const send = screen.getByRole('button', { name: '开始生成' }) as HTMLButtonElement;
 
     expect(root.style.height).toBe(`${IMAGE_GENERATE_TOOLBAR_HEIGHT}px`);
-    expect(root.style.minWidth).toBe('0');
     expect(root.style.borderRadius).toBe('999px');
+    expect(root.style.padding).toBe('0px 3px 0px 9px');
     expect(credits.style.minWidth).toBe(`${IMAGE_GENERATE_TOOLBAR_CREDITS_MIN_WIDTH}px`);
     expect(credits.style.flexDirection).toBe('row');
     expect(credits.style.whiteSpace).toBe('nowrap');
