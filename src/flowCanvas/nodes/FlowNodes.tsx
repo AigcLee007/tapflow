@@ -82,6 +82,7 @@ import { ImageMoreMenu, type ImageMoreMenuAction } from './ImageMoreMenu';
 import { MultiImageDisplayModeToggle } from './MultiImageDisplayModeToggle';
 import { GptImage2ParamPanel } from './GptImage2ParamPanel';
 import { NanoBananaParamPanel } from './NanoBananaParamPanel';
+import { ImageGenerateToolbar } from './ImageGenerateToolbar';
 import type { OutpaintDirection } from './ImageOutpaintOverlay';
 import type { ImageSplitPiece } from './ImageSplitOverlay';
 import { IMAGE_MENU_ITEM_MIN_HEIGHT, IMAGE_MENU_SURFACE_Z_INDEX } from './imageMenuStyles';
@@ -1471,7 +1472,9 @@ const paramRow: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: 8,
-  flexWrap: 'wrap',
+  flexWrap: 'nowrap',
+  flex: '1 1 auto',
+  minWidth: 0,
 };
 
 const promptBottomRow: React.CSSProperties = {
@@ -1479,6 +1482,8 @@ const promptBottomRow: React.CSSProperties = {
   alignItems: 'center',
   justifyContent: 'space-between',
   marginTop: getPromptBarDensity('image').bottomRowMarginTop,
+  gap: 12,
+  flexWrap: 'nowrap',
 };
 
 const paramChip: React.CSSProperties = {
@@ -6313,7 +6318,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
               )}
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: '0 0 auto' }}>
               
               {/* Batch Count Selector (TapNow Style) */}
               <div 
@@ -6397,19 +6402,12 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
                 />
               )}
 
-              <div style={sendBtnOuter}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <span style={{ fontSize: 14 }}>点数</span> {formatImageCredits(displayPointCost ?? 0)}
-                </span>
-                <button
-                  onClick={handleGenerate}
-                  disabled={isGenerating}
-                  style={sendBtnAction(isGenerating)}
-                  title="开始生成"
-                >
-                  {isGenerating ? '...' : '↑'}
-                </button>
-              </div>
+              <ImageGenerateToolbar
+                creditsLabel="点数"
+                creditsValue={formatImageCredits(displayPointCost ?? 0)}
+                isGenerating={isGenerating}
+                onGenerate={handleGenerate}
+              />
             </div>
           </div>
           </div>

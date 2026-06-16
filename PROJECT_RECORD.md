@@ -1,6 +1,6 @@
-# Project Record
+﻿# Project Record
 
-Last updated: 2026-06-14
+Last updated: 2026-06-16
 Maintainers: project team + Codex sessions
 
 ## Purpose
@@ -75,12 +75,12 @@ As of 2026-06-13:
 - canvas top-left project menu now renders through a body-level fixed portal with TapNow-style width and anchored positioning, preventing overlap with the left dock and keeping project-menu dismissal behavior stable when other toolbar menus open
 - canvas model pickers now align more closely with add-node menu density: image/text model menu labels use the shared compact menu rhythm and the image model picker/dropup width has been narrowed to better match the prompt-bar target width
 - GPT-image-2 multi-image generation now follows the same one-image-per-request batching strategy already used by GPT-image-2 reference edits, preventing upstream `The provider rejected the request payload` failures when creators set image count above `1`
-- MouxiHub GPT-Image-2 `线路三/线路四` upstream failure root cause was confirmed from production `ai_call_logs`: we were sending pixel `size` together with already size-suffixed upstream models, which made MouxiHub internally resolve invalid model names like `gpt-image-2-4k-4k`; runtime fallback now forces these two routes to use provider-side base models (`gpt-image-2` / `gpt-image-2-vip`) while still forwarding the existing GPT-image-2 pixel-size payload
-- Follow-up root cause for MouxiHub GPT-Image-2 `线路四` was also fixed: legacy `ai_routes.upstream_model` values were still being injected into `requestConfig.model` and could override the new line-four runtime fallback, so provider-side GPT-Image-2 base model routing now prefers dedicated `providerBaseModel`/route defaults over stale normalized route config
+- MouxiHub GPT-Image-2 `绾胯矾涓?绾胯矾鍥沗 upstream failure root cause was confirmed from production `ai_call_logs`: we were sending pixel `size` together with already size-suffixed upstream models, which made MouxiHub internally resolve invalid model names like `gpt-image-2-4k-4k`; runtime fallback now forces these two routes to use provider-side base models (`gpt-image-2` / `gpt-image-2-vip`) while still forwarding the existing GPT-image-2 pixel-size payload
+- Follow-up root cause for MouxiHub GPT-Image-2 `绾胯矾鍥沗 was also fixed: legacy `ai_routes.upstream_model` values were still being injected into `requestConfig.model` and could override the new line-four runtime fallback, so provider-side GPT-Image-2 base model routing now prefers dedicated `providerBaseModel`/route defaults over stale normalized route config
 
 ## 2026-06-14 - MouxiHub Nano Banana Pro Official T3 Route
 
-- Added a built-in AI Gateway plugin package for `Nano Banana Pro` route `线路二（官方T3）`.
+- Added a built-in AI Gateway plugin package for `Nano Banana Pro` route `绾胯矾浜岋紙瀹樻柟T3锛塦.
 - The new route uses MouxiHub OpenAI-compatible async image APIs:
   - text-to-image: `/v1/images/generations?async=true`
   - image edit: `/v1/images/edits?async=true`
@@ -90,7 +90,7 @@ As of 2026-06-13:
   - `2K` -> `gemini-3.1-flash-image-preview-2k`
   - `4K` -> `gemini-3.1-flash-image-preview-4k`
 - Workflow reserve pricing now supports `model_pricing.metadata.sizeTiers`, so the T3 route can reserve `6 / 8 / 12` credits for `1K / 2K / 4K`.
-- Creator-facing fallback labels now include `Nano Banana Pro 线路二（官方T3）` so route keys and provider details are not shown while route data loads.
+- Creator-facing fallback labels now include `Nano Banana Pro 绾胯矾浜岋紙瀹樻柟T3锛塦 so route keys and provider details are not shown while route data loads.
 - Validation:
   - `npm run test --workspace @aigc-flow/api -- ai-plugins.service.test.ts`
   - `npm run test --workspace @aigc-flow/ai-gateway-core -- runtime.test.ts plugin-registry.test.ts`
@@ -100,7 +100,7 @@ As of 2026-06-13:
   - `npm run build --workspace @aigc-flow/redis`
   - `npm run build --workspace @aigc-flow/api`
   - `npm run build --workspace @aigc-flow/worker`
-- Follow-up fix: plugin initialization now builds an aligned `ai_routes` insert statement so `base_url_override`, `request_config`, `rate_limit`, `status`, `plugin_install_id`, and `request_path` are written to the intended columns. This addresses Template Library installs that could fail server-side and leave the UI showing `未安装`.
+- Follow-up fix: plugin initialization now builds an aligned `ai_routes` insert statement so `base_url_override`, `request_config`, `rate_limit`, `status`, `plugin_install_id`, and `request_path` are written to the intended columns. This addresses Template Library installs that could fail server-side and leave the UI showing `鏈畨瑁卄.
 
 - Follow-up fix: template-created provider connections now keep `adapter_kind` aligned to the provider adapter (`openai-compatible`) while `api_mode` remains the route execution mode (`async`). Canvas model-route options now keep official Nano Banana Pro route ordering so line one remains the 24-credit PixelleLabs route and line two official T3 remains the MouxiHub route.
 
@@ -149,10 +149,10 @@ As of 2026-06-13:
 
 - Changed the canvas top-left logo interaction so `/projects/:projectId` now opens a TapNow-style dark project menu instead of behaving like a static mark.
 - Kept the canvas menu focused on project actions only:
-  - `返回工作空间`
-  - `重命名项目`
-  - `新建项目`
-  - `删除项目`
+  - `杩斿洖宸ヤ綔绌洪棿`
+  - `閲嶅懡鍚嶉」鐩甡
+  - `鏂板缓椤圭洰`
+  - `鍒犻櫎椤圭洰`
 - Wired the canvas menu actions to real product behavior:
   - return to `/workspace`
   - focus the title input for rename and persist the renamed project on blur
@@ -265,7 +265,7 @@ As of 2026-06-13:
 - Replaced the canvas project delete `window.confirm(...)` flow with a custom dark action-sheet-style confirmation surface:
   - dark translucent panel
   - compact destructive copy
-  - explicit `删除` / `取消` actions
+  - explicit `鍒犻櫎` / `鍙栨秷` actions
   - backdrop-dismiss and `Escape` dismissal support
   - inline error retention on delete failure
 - Normalized touched canvas toolbar copy back to readable Chinese for the refreshed project menu and the surrounding toolbar strings touched during the change.
@@ -360,7 +360,7 @@ As of 2026-06-13:
   - falls back from missing preview variant to original asset bytes for older assets
 - Added object-read support to the storage provider abstraction and S3 implementation so the API can privately read object storage and return browser-safe same-origin bytes.
 - Frontend image editing tools now resolve asset-backed nodes through `assetId` first instead of treating `thumbnailUrl` signed URLs as editable source data.
-- Canvas overlays create local blob URLs from authenticated asset bytes, so `裁剪`, `调整像素`, `标注`, `快速切分`, `重绘`, `擦除`, `扩图`, `打光`, `多角度`, `增强`, and `抠图` no longer depend on object-storage CORS for source-image loading.
+- Canvas overlays create local blob URLs from authenticated asset bytes, so `瑁佸壀`, `璋冩暣鍍忕礌`, `鏍囨敞`, `蹇€熷垏鍒哷, `閲嶇粯`, `鎿﹂櫎`, `鎵╁浘`, `鎵撳厜`, `澶氳搴, `澧炲己`, and `鎶犲浘` no longer depend on object-storage CORS for source-image loading.
 - AI image edit requests now include `sourceAssetId` when available and use the same asset-backed source resolution before falling back to legacy URLs.
 - Derived image persistence now retries remote provider result downloads through the existing image proxy when direct browser fetch is blocked, reducing downstream `Failed to fetch` result-node failures.
 - Validation:
@@ -413,7 +413,7 @@ Notes:
 
 ## 2026-06-14 - Canvas Asset Preview Display Regression
 
-- Investigated a production regression where reopened projects and newly generated image nodes showed `预览加载失败`.
+- Investigated a production regression where reopened projects and newly generated image nodes showed `棰勮鍔犺浇澶辫触`.
 - Root cause:
   - canvas display code had started writing `/api/v2/assets/:assetId/bytes?variantKey=preview` into image node preview fields
   - that endpoint requires v2 Authorization headers, but browser `<img src>` requests do not attach the Bearer token
@@ -429,7 +429,7 @@ Notes:
 
 ## 2026-06-13 - Image Edit Tools v2 Auth Workflow Fix
 
-- Fixed model-backed image tools that incorrectly showed `请先登录后再使用点数功能` even when the user was logged in through v2 auth.
+- Fixed model-backed image tools that incorrectly showed `璇峰厛鐧诲綍鍚庡啀浣跨敤鐐规暟鍔熻兘` even when the user was logged in through v2 auth.
 - Root cause:
   - the top image tools for repaint/erase/outpaint/relight/multi-angle/enhance/remove-background still executed the legacy direct model API path
   - that path checked the old local `auth-session-v1` / `X-Auth-Session` billing identity instead of the current v2 access token and `/api/v2/*` workflow path
@@ -445,7 +445,7 @@ Notes:
 
 ## 2026-06-13 - Image Edit Runtime Route Preservation Fix
 
-- Fixed a follow-up root cause for blank/white completed results from model-backed image tools such as `重绘`, `擦除`, `扩图`, `打光`, `多角度`, `增强`, and `抠图`.
+- Fixed a follow-up root cause for blank/white completed results from model-backed image tools such as `閲嶇粯`, `鎿﹂櫎`, `鎵╁浘`, `鎵撳厜`, `澶氳搴, `澧炲己`, and `鎶犲浘`.
 - Root cause:
   - downstream edit nodes were writing the local catalog `routeId` into `node.data.routeKey`
   - worker/API runtime route resolution matches exact runtime `routeKey`, so these edit runs could fall back to the wrong default line instead of the user-selected model line
@@ -466,7 +466,7 @@ Notes:
 
 - Fixed the root cause for model-backed image edit tools creating blank target cards while the relay/provider receives no request.
 - Root cause:
-  - users can trigger `多角度`, `打光`, `重绘`, `擦除`, `扩图`, `增强`, or `抠图` while the canvas is already showing `正在保存`
+  - users can trigger `澶氳搴, `鎵撳厜`, `閲嶇粯`, `鎿﹂櫎`, `鎵╁浘`, `澧炲己`, or `鎶犲浘` while the canvas is already showing `姝ｅ湪淇濆瓨`
   - the remote draft save barrier returned immediately when an autosave was already in flight
   - the workflow run was then created against the previous server-side draft, where the newly added edit target node was not yet available
   - API/worker execution therefore had no valid target node to enqueue, so the provider relay saw no outbound request while the canvas still showed a blank generated card
@@ -537,7 +537,7 @@ Notes:
 
 ## 2026-06-13 - Image Derived Tool Optimistic Save Fix
 
-- Fixed the crop confirmation UX where `确认裁剪` appeared idle while the browser waited for derived-image upload and metadata persistence.
+- Fixed the crop confirmation UX where `纭瑁佸壀` appeared idle while the browser waited for derived-image upload and metadata persistence.
 - Image-derived canvas results now use an optimistic path:
   - create the result image node immediately with the local blob/URL preview
   - close the image tool immediately for crop, resize, split, and annotation flows
@@ -596,7 +596,7 @@ Notes:
 
 ## 2026-06-12 - Canvas Dock Panels Plan
 
-- Detailed implementation plan added for turning the left dock's empty `素材库`、`模板列表`、`评论`、`历史记录` entries into TapNow-style in-canvas drawers.
+- Detailed implementation plan added for turning the left dock's empty `绱犳潗搴揱銆乣妯℃澘鍒楄〃`銆乣璇勮`銆乣鍘嗗彶璁板綍` entries into TapNow-style in-canvas drawers.
 - Plan path: `docs/superpowers/plans/2026-06-12-canvas-dock-panels.md`.
 - The plan is split into 8 executable tasks:
   - shared drawer shell and dock state
@@ -615,7 +615,7 @@ Notes:
 - Added a shared in-canvas drawer shell and dock panel layout helper for the left dock.
 - The four dock buttons now switch a unified drawer state instead of being empty placeholders.
 - Opening the new drawer now syncs `leftPanelOpen`, so existing minimap and image-tool left safe area logic can react to the drawer width.
-- Added the first real drawer implementation for `素材库`, reusing `useAssetLibrary()` to show:
+- Added the first real drawer implementation for `绱犳潗搴揱, reusing `useAssetLibrary()` to show:
   - search
   - folder filters
   - compact asset thumbnails
@@ -641,7 +641,7 @@ Notes:
 
 ## 2026-06-12 - Canvas Dock Panels Task 4
 
-- Executed the first production-facing backend slice for `模板列表`.
+- Executed the first production-facing backend slice for `妯℃澘鍒楄〃`.
 - Added migration `packages/db/migrations/000021_canvas_dock_panels.sql` with:
   - `flow_templates`
   - `flow_template_usage`
@@ -669,18 +669,18 @@ Notes:
 
 - Executed Task 5 from `docs/superpowers/plans/2026-06-12-canvas-dock-panels.md`.
 - Added front-end template client `src/services/v2FlowTemplatesApi.ts` and wired it to the new `flow-templates` backend endpoints.
-- Added `CanvasTemplatePanel` so `模板列表` drawer now has:
+- Added `CanvasTemplatePanel` so `妯℃澘鍒楄〃` drawer now has:
   - search
   - category chips
   - compact template cards
-  - per-template `插入` action
+  - per-template `鎻掑叆` action
 - Added `offsetTemplateGraphForInsert()` to safely remap template node/edge ids and place the incoming graph around the current canvas center.
 - Added store action `mergeTemplateGraph()` so template insertion can append a graph into the current canvas while:
   - clearing the previous selection
   - selecting the newly inserted template nodes
   - recomputing graph index
   - marking the canvas dirty
-- `AiFlowCanvas` now wires `模板列表` drawer to real insertion:
+- `AiFlowCanvas` now wires `妯℃澘鍒楄〃` drawer to real insertion:
   - fetch template graph
   - offset and remap ids
   - merge into current canvas
@@ -704,13 +704,13 @@ Notes:
   - resolve/open status updates
   - tenant/project/flow ownership checks
 - Added front-end comments client `src/services/v2FlowCommentsApi.ts`.
-- Added `CanvasCommentPanel` and wired the `评论` drawer in `AiFlowCanvas`:
+- Added `CanvasCommentPanel` and wired the `璇勮` drawer in `AiFlowCanvas`:
   - open/resolved filter
   - selected-node chip
   - textarea + submit
   - comment list
-  - `定位` action for node comments
-  - `解决` action for open comments
+  - `瀹氫綅` action for node comments
+  - `瑙ｅ喅` action for open comments
 - Added canvas node focus helper so a node comment can jump the viewport to the referenced node.
 - Validation:
   - `npm run build --workspace @aigc-flow/api`
@@ -734,7 +734,7 @@ Notes:
   - snapshot/restore event recording for later drawer display
   - tenant isolation and cross-tenant restore blocking
 - Added front-end history client `src/services/v2FlowHistoryApi.ts`.
-- Added `CanvasHistoryPanel` and wired the `历史记录` drawer in `AiFlowCanvas`:
+- Added `CanvasHistoryPanel` and wired the `鍘嗗彶璁板綍` drawer in `AiFlowCanvas`:
   - history list
   - save snapshot action
   - restore confirmation
@@ -752,9 +752,9 @@ Notes:
 
 - Executed Task 8 from `docs/superpowers/plans/2026-06-12-canvas-dock-panels.md`.
 - Completed left dock integration polish for the four in-canvas drawers:
-  - `素材库` now shows a dot badge when the tenant asset library has assets
-  - `评论` now shows unresolved comment count in the dock
-  - `历史记录` now shows a dot badge once snapshot history exists
+  - `绱犳潗搴揱 now shows a dot badge when the tenant asset library has assets
+  - `璇勮` now shows unresolved comment count in the dock
+  - `鍘嗗彶璁板綍` now shows a dot badge once snapshot history exists
   - active drawer header count now mirrors the relevant drawer metric where useful
 - Added drawer/menu interlock behavior:
   - opening a drawer closes add-node and user menus
@@ -795,11 +795,11 @@ Notes:
 
 ## 2026-06-12 - Asset Library Classification and Date Grouping
 
-- Reworked the shared asset-library view model used by both the `/assets` page and the in-canvas `素材库` drawer.
+- Reworked the shared asset-library view model used by both the `/assets` page and the in-canvas `绱犳潗搴揱 drawer.
 - Added media-category tabs for:
-  - `图片`
-  - `视频`
-  - `音频`
+  - `鍥剧墖`
+  - `瑙嗛`
+  - `闊抽`
 - Changed asset presentation to group items by `createdAt` date from newest to oldest, so both surfaces now render sections such as `2026-06-12`, `2026-06-11`, and `2026-06-10`.
 - Fixed a major thumbnail reliability gap in the asset preview signing flow:
   - old behavior effectively assumed `thumb` was always available
@@ -1204,12 +1204,12 @@ Validation completed:
 
 Completed in current local iteration:
 
-- changed local image ingestion from a blocking “upload first, then render” flow to a two-phase “local preview first, background upload second” flow
+- changed local image ingestion from a blocking 鈥渦pload first, then render鈥?flow to a two-phase 鈥渓ocal preview first, background upload second鈥?flow
 - added immediate local `blob:` preview rendering for image-node upload, upload-node upload, drag-and-drop upload, and paste upload
 - removed the drag/paste batch blocking behavior where `Promise.all(...)` delayed every node until the whole upload batch finished
 - upload and paste interactions now insert image nodes immediately and backfill `assetId` plus cloud preview URL after upload completes
 - upload nodes now convert into image nodes with visible local preview first, then upgrade to cloud-backed image nodes once upload settles
-- failed uploads now keep the visible local image instead of looking like “nothing happened”
+- failed uploads now keep the visible local image instead of looking like 鈥渘othing happened鈥?
 
 Validation completed:
 
@@ -1343,9 +1343,9 @@ Validation blocked:
 Completed in current local iteration:
 
 - added `docs/superpowers/plans/2026-06-12-tapnow-workspace-phase-1.md` for the authenticated workspace redesign
-- refreshed the authenticated top shell into a TapNow-style dark creator nav with `主页`, `工作空间`, `素材库`, and `价格方案`
+- refreshed the authenticated top shell into a TapNow-style dark creator nav with `涓婚〉`, `宸ヤ綔绌洪棿`, `绱犳潗搴揱, and `浠锋牸鏂规`
 - moved account/admin actions into a right-side account menu with profile, credits, account management, model settings, help, and logout entries
-- changed `/workspace` into a creator home with `今天要做点什么？`, a prompt-style input surface, recent projects, and an all-projects jump
+- changed `/workspace` into a creator home with `浠婂ぉ瑕佸仛鐐逛粈涔堬紵`, a prompt-style input surface, recent projects, and an all-projects jump
 - refreshed workspace project controls, tabs, create card, project cards, and project copy to match the denser TapNow-style project grid
 - kept existing v2 auth, project listing, project creation, and project-opening behavior unchanged
 
@@ -1524,7 +1524,7 @@ Completed in current local iteration:
 - changed shared entity menus to support fixed-position anchored rendering, viewport edge clamping, and compact density for canvas drawer usage
 - adjusted asset cards so compact drawer menus only show actions that have real handlers, preventing oversized empty menu blocks in the left asset drawer
 - changed project deletion to use optimistic local removal plus silent refresh, avoiding full-list loading flashes after confirm delete
-- wired the asset library sidebar `收藏` category to real `favorite=true` asset queries instead of a static button
+- wired the asset library sidebar `鏀惰棌` category to real `favorite=true` asset queries instead of a static button
 - changed asset favorite/delete actions to update the visible list optimistically, so the UI responds immediately while the API call completes
 - added focused regression coverage for compact drawer menus, no-flash project deletion flow, favorite-category filtering, and asset menu management flows
 
@@ -1538,7 +1538,7 @@ Completed in current local iteration:
 
 - moved shared rename/delete dialogs into `document.body` portals so project card transforms no longer offset modal placement
 - simplified project card hover behavior and kept project action menus card-local to reduce menu positioning jitter
-- made the project menu `选择` action functional with a visible selected-count chip and selected card/list row styling
+- made the project menu `閫夋嫨` action functional with a visible selected-count chip and selected card/list row styling
 - removed asset management three-dot buttons from the canvas left asset drawer while keeping `/assets` page management menus available
 - added regression coverage for body-level project rename dialogs, project selection, and hidden canvas drawer asset management buttons
 
@@ -1564,7 +1564,7 @@ Validation completed:
 
 ### 2026-06-12 - Canvas Asset Drawer UI Refresh
 
-- Restyled the left in-canvas `素材库` drawer toward the TapNow reference while keeping the existing grouped asset data flow unchanged.
+- Restyled the left in-canvas `绱犳潗搴揱 drawer toward the TapNow reference while keeping the existing grouped asset data flow unchanged.
 - Simplified the drawer hierarchy:
   - removed the extra folder chip row from the main drawer surface
   - kept media tabs as the primary filter control
@@ -1628,8 +1628,8 @@ Validation completed:
 
 Completed in current local iteration:
 
-- pushed `/billing` closer to the TapNow reference pricing page with an open dark dotted canvas, oversized `选择你的套餐` headline, larger spacing, and a yearly billing segmented control
-- enlarged Basic, Pro, and Ultimate pricing cards with uppercase plan labels, a `最受欢迎` Pro pill, card CTAs, and plan-specific monthly credit benefits
+- pushed `/billing` closer to the TapNow reference pricing page with an open dark dotted canvas, oversized `閫夋嫨浣犵殑濂楅` headline, larger spacing, and a yearly billing segmented control
+- enlarged Basic, Pro, and Ultimate pricing cards with uppercase plan labels, a `鏈€鍙楁杩巂 Pro pill, card CTAs, and plan-specific monthly credit benefits
 - kept the existing server-backed billing summary, usage, ledger, redeem, and recharge behavior unchanged below the pricing-first surface
 - extended the focused billing page rendering test to lock the yearly switch, Pro highlight, card CTAs, and visible credit benefit copy
 
@@ -1641,8 +1641,8 @@ Validation completed:
 
 Completed in current local iteration:
 
-- refined the `/workspace` home surface toward the TapNow reference with a more centered creator prompt, tighter first-screen spacing, and compact quick action chips for `AI 视频`, `图像生成`, `智能抠图`, and `批量工作流`
-- refreshed the project management section from generic `项目` copy to `我的空间` with clearer supporting text and a lighter count pill
+- refined the `/workspace` home surface toward the TapNow reference with a more centered creator prompt, tighter first-screen spacing, and compact quick action chips for `AI 瑙嗛`, `鍥惧儚鐢熸垚`, `鏅鸿兘鎶犲浘`, and `鎵归噺宸ヤ綔娴乣
+- refreshed the project management section from generic `椤圭洰` copy to `鎴戠殑绌洪棿` with clearer supporting text and a lighter count pill
 - reduced the visual weight of project tabs, search, sort, view toggle, refresh, and create controls so the project grid reads closer to TapNow's dense product UI
 - tightened create/project card dimensions, thumbnail ratios, rounded corners, metadata sizing, and hover affordances while keeping project creation/opening behavior unchanged
 - extended the workspace page test coverage for the new quick actions and project section copy
@@ -1656,7 +1656,7 @@ Validation completed:
 Completed in current local iteration:
 
 - split the TapNow-style creator home into a dedicated `/home` route and kept `/workspace` as a standalone project management page
-- updated the authenticated shell so `主页` navigates to `/home` and `工作空间` navigates to `/workspace` without hash-based scrolling behavior
+- updated the authenticated shell so `涓婚〉` navigates to `/home` and `宸ヤ綔绌洪棿` navigates to `/workspace` without hash-based scrolling behavior
 - changed root authenticated redirects to land on `/home`
 - aligned the workspace page with the TapNow grid/list references: grid remains card-based, list mode now uses a table-like preview/name/type/created/updated layout
 - added server-side project cover inference from the latest flow draft: generated image result assets take priority, uploaded canvas image assets are next, and projects with no durable image asset continue to fall back to the frontend gradient cover
@@ -1689,7 +1689,7 @@ Validation completed:
 Completed in current local iteration:
 
 - added `docs/superpowers/plans/2026-06-12-tapnow-canvas-entry-phase-3.md` for the project canvas entry refresh
-- refreshed the empty project canvas start surface with `今天想创作什么？`, concise guidance, and compact quick-start actions
+- refreshed the empty project canvas start surface with `浠婂ぉ鎯冲垱浣滀粈涔堬紵`, concise guidance, and compact quick-start actions
 - refreshed project canvas loading/error wording and retry action copy while keeping remote project loading and autosave behavior unchanged
 - added focused tests for the canvas empty state, project loading/error/save status copy, and left dock add-node menu copy
 - kept the Phase 3 scope presentation-only: no dock drawer, backend, billing, asset storage, workflow execution, or autosave semantics were changed
@@ -1702,8 +1702,8 @@ Validation completed:
 
 Completed in current local iteration:
 
-- fixed the top `工作空间` navigation so clicking it on `/workspace` updates `#projects` and dispatches a reveal event that the workspace page can use to scroll to the project section
-- separated `主页` and `工作空间` active states so `#projects` no longer visually behaves like the same nav target
+- fixed the top `宸ヤ綔绌洪棿` navigation so clicking it on `/workspace` updates `#projects` and dispatches a reveal event that the workspace page can use to scroll to the project section
+- separated `涓婚〉` and `宸ヤ綔绌洪棿` active states so `#projects` no longer visually behaves like the same nav target
 - removed the oversized framed hero container from the workspace home and moved the first screen closer to TapNow's full-page dotted background layout
 - narrowed the home content, increased the title/icon scale, tightened the prompt bar, and resized recent project cards toward the TapNow reference proportions
 - restored readable Chinese copy in the workspace home loading/prompt/recent-project surfaces touched by this pass
@@ -1736,7 +1736,7 @@ Completed in current local iteration:
 - kept the creator-facing image model catalog to the 3 official product models: Nano Banana Pro, Nano Banana 2, and GPT-Image-2
 - kept only 4 official system image routes in the database: `image.gpt-image-2`, `image.gpt-image-2.line2`, `image.pixellelabs.nano-banana-2`, and `image.pixellelabs.nano-banana-pro`
 - deleted non-official tenant/mock/legacy routes from `ai_routes`; removed related route health checks and cleared historical `ai_call_logs.route_id` references while preserving the call log rows
-- changed creator-facing model route labels to product labels such as `Nano Banana Pro 线路一` and `GPT-Image-2 线路二`, without exposing provider names, upstream model names, or route keys
+- changed creator-facing model route labels to product labels such as `Nano Banana Pro 绾胯矾涓€` and `GPT-Image-2 绾胯矾浜宍, without exposing provider names, upstream model names, or route keys
 - changed image generation loading copy to neutral text so route/provider identifiers are not shown while a node is generating
 
 Validation completed:
@@ -1750,7 +1750,7 @@ Completed in current local iteration:
 - removed first-frame exposure of internal model keys such as `pixellelabs.nano-banana-pro` in the image model/route picker by mapping fallback labels through product-facing names
 - added cached, shared loading for image model catalog and model-scoped routes so reopening/selecting the picker does not clear visible route options while requests are in flight
 - started model-scoped route loading as soon as the current model is known instead of waiting for the picker/editor open state
-- added official 3-model / 4-route fallback route options so `Nano Banana Pro 线路一`, `Nano Banana 2 线路一`, and `GPT-Image-2 线路一/线路二` can render immediately before the API response returns
+- added official 3-model / 4-route fallback route options so `Nano Banana Pro 绾胯矾涓€`, `Nano Banana 2 绾胯矾涓€`, and `GPT-Image-2 绾胯矾涓€/绾胯矾浜宍 can render immediately before the API response returns
 - changed the empty route section to show a loading state during route fetches instead of incorrectly saying the current model has no available routes
 
 Validation completed:
@@ -1810,7 +1810,7 @@ Completed in current local iteration:
 
 - traced a MouxiHub image-edit prompt mismatch to worker request construction rather than the provider: upstream reference image output prompts could override the current image node prompt
 - changed image request building so the current node `generationPrompt` is sent to providers when present, while preserving the older upstream-text fallback when the image node has no own prompt
-- added regression coverage for the exact reference-image case where a prior prompt like `动物运动会，3D风格` must not replace the newly typed prompt
+- added regression coverage for the exact reference-image case where a prior prompt like `鍔ㄧ墿杩愬姩浼氾紝3D椋庢牸` must not replace the newly typed prompt
 
 Validation completed:
 
@@ -1869,7 +1869,7 @@ Validation completed:
 
 ## 2026-06-15 - GPT-Image-2 Parameter Panel UI Consistency Pass
 
-- cleaned the dedicated GPT-image-2 parameter panel so the visible section labels are readable Chinese and the summary strip uses the shared `·` separator instead of corrupted characters
+- cleaned the dedicated GPT-image-2 parameter panel so the visible section labels are readable Chinese and the summary strip uses the shared `路` separator instead of corrupted characters
 - widened and rebalanced the dual-zone GPT panel layout to reduce right-column crowding for quality, output format, and moderation controls
 - tightened GPT panel chip typography with nowrap behavior so compact English option labels stay aligned with the rest of the canvas parameter surfaces
 - normalized image route user-facing Chinese labels in the catalog option helpers so model line menus no longer surface mojibake strings
@@ -1945,8 +1945,8 @@ Validation completed:
   - `/v1/images/tasks/{task_id}`
 - kept GPT-Image-2 quantity behavior aligned with the current multi-image safety path by preserving one-image-per-request upstream splitting when the requested image count is greater than `1`
 - extended creator-facing route metadata so fallback labels, route ordering, and frontend pricing now include:
-  - `GPT-Image-2 线路三`
-  - `GPT-Image-2 线路四`
+  - `GPT-Image-2 绾胯矾涓塦
+  - `GPT-Image-2 绾胯矾鍥沗
 - cleaned the touched GPT-Image-2 MouxiHub plugin/catalog metadata to readable Chinese labels so the new lines do not surface mojibake in canvas or admin-adjacent views
 - Validation:
   - `npm run test --workspace @aigc-flow/ai-gateway-core -- plugin-registry.test.ts runtime.test.ts`
@@ -1956,8 +1956,8 @@ Validation completed:
 
 - follow-up template split:
   - split the original combined MouxiHub GPT-Image-2 template into two independent template-library entries:
-    - `GPT-Image-2 线路三`
-    - `GPT-Image-2 线路四`
+    - `GPT-Image-2 绾胯矾涓塦
+    - `GPT-Image-2 绾胯矾鍥沗
   - each template now installs only its own route so the initializer can bind a different API key per line instead of forcing both lines through one shared template credential
   - provider connection names are now package-scoped during template install, preventing split templates from accidentally reusing the same generated connection/credential because of a shared display-name-based connection key
   - the split line templates are route-only install templates and do not republish duplicate `gpt-image-2` catalog entries, so the creator-facing GPT-Image-2 model directory remains stable while the extra lines stay independently installable
@@ -2017,7 +2017,7 @@ Validation completed:
 
 ## 2026-06-16 - Admin AI Model Center System Route Disable Fix
 
-- traced the non-working "停用线路" action to frontend gating in the AI model center instead of an API or database failure
+- traced the non-working "鍋滅敤绾胯矾" action to frontend gating in the AI model center instead of an API or database failure
 - confirmed `admin:system` users could already update system-route status through the admin route update API, but the page blocked the action in two places:
   - the disable button was hard-disabled for non-tenant routes
   - the click handler returned early for system routes before calling `updateAdminRoute`
@@ -2028,7 +2028,7 @@ Validation completed:
   - `npm run build`
 ## 2026-06-16 - Canvas GPT-Image-2 Disabled Route Visibility Fix
 
-- traced the still-visible `GPT-Image-2 ��·�� / ��·��` canvas menu issue to frontend fallback data rather than the admin disable action or route-status persistence
+- traced the still-visible `GPT-Image-2 线路三 / 线路四` canvas menu issue to frontend fallback data rather than the admin disable action or route-status persistence
 - confirmed the canvas image model picker kept a hard-coded GPT-Image-2 fallback route list that still included lines 3 and 4, so those routes could reappear even after the backend route list no longer returned them
 - moved the official image fallback route definitions into shared runtime-route helpers and limited the GPT-Image-2 fallback set to line one and line two only
 - updated the canvas model-scoped route loader so cached route lists are shown immediately but still trigger a background refresh, preventing stale same-session route caches from keeping recently disabled lines visible
@@ -2038,3 +2038,14 @@ Validation completed:
 - validation:
   - `npm test -- src/flowCanvas/utils/runtimeRouteOptions.test.ts`
   - `npm run build`
+
+## 2026-06-16 - Image Prompt Bar Final Single-Row Layout
+
+- rebuilt the canvas image-node bottom generation controls toward the approved final single-row layout
+- credits now render as a horizontal ?? N pill and the send button sits independently on the far right
+- GPT-Image-2 and Nano Banana Pro states now share the same generation-toolbar structure instead of drifting into separate right-side layouts
+- cleaned mojibake regressions in the multi-image toggle and the dedicated Nano Banana / GPT-Image-2 parameter panels
+- added focused component coverage for the generation toolbar plus the refreshed Chinese labels in the prompt-bar control family
+- validation:
+  - npm test -- src/flowCanvas/nodes/ImageGenerateToolbar.test.tsx src/flowCanvas/nodes/MultiImageDisplayModeToggle.test.tsx src/flowCanvas/nodes/NanoBananaParamPanel.test.tsx src/flowCanvas/nodes/GptImage2ParamPanel.test.tsx
+  - npm run build
