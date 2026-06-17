@@ -16,11 +16,23 @@ export function SendToProjectDialog({ onClose, onConfirm, open }: Props) {
         <div className="text-base font-black">发送到画布</div>
         <label className="mt-4 grid gap-2">
           <span className="text-xs font-bold text-slate-400">新项目名称</span>
-          <input className="h-11 rounded-xl border border-white/10 bg-black/20 px-3 text-sm outline-none" value={projectName} onChange={(event) => setProjectName(event.target.value)} />
+          <input
+            className="h-11 rounded-xl border border-white/10 bg-black/20 px-3 text-sm outline-none"
+            onChange={(event) => setProjectName(event.target.value)}
+            value={projectName}
+          />
         </label>
         <div className="mt-5 flex justify-end gap-3">
-          <button className="h-10 rounded-full px-4 text-sm text-slate-300" onClick={onClose} type="button">取消</button>
-          <button className="h-10 rounded-full bg-white px-5 text-sm font-black text-black" onClick={() => onConfirm({ projectName })} type="button">确认</button>
+          <button className="h-10 rounded-full px-4 text-sm text-slate-300" onClick={onClose} type="button">
+            取消
+          </button>
+          <button
+            className="h-10 rounded-full bg-white px-5 text-sm font-black text-black"
+            onClick={() => onConfirm({ projectName })}
+            type="button"
+          >
+            确认
+          </button>
         </div>
       </section>
     </div>

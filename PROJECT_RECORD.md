@@ -2230,3 +2230,16 @@ Validation completed:
   - `npm run build --workspace @aigc-flow/api`
   - `npm run build --workspace @aigc-flow/worker`
   - `npm run build`
+
+## 2026-06-17 - Independent Workbench Model/Reference Hotfix
+
+- fixed the standalone `/workbench` image model source so it now prefers the same v2 AI model catalog mapping used by canvas image flows instead of falling back to legacy local-only image model definitions
+- this restores workbench model ordering and display alignment with the canvas picker, including the active Nano Banana / GPT-Image-2 product grouping and route family behavior
+- upgraded the shared asset upload button with an optional per-asset completion callback while keeping the existing `onUploaded` behavior unchanged for current callers
+- wired the workbench reference area to real asset upload flow so uploaded reference images immediately append their `assetId` into the current workbench draft
+- cleaned the main standalone workbench surface copy around composer, result feed, mobile composer, result sheet, and send-to-project dialog so newly touched UI no longer shows the recent garbled text regression in these flows
+- validation:
+  - `npm run test -- src/hooks/useImageModelCatalog.test.tsx src/workbench/WorkbenchPage.test.tsx`
+  - `npm run test -- src/app/WorkspaceShell.test.tsx src/workbench/WorkbenchPage.test.tsx src/hooks/useImageModelCatalog.test.tsx`
+  - `npm run test -- src/assets/UploadAssetButton.test.tsx`
+  - `npm run build`

@@ -1,15 +1,13 @@
 import React from "react";
 
+import { UploadAssetButton } from "../assets/UploadAssetButton";
 import type { ImageModelConfig } from "../config/imageModels";
 import { MenuSelect } from "../components/menu/MenuSelect";
 import { listAiModelRoutes, type AiModelCatalogRoute } from "../services/v2AiModelCatalogApi";
 import { mapCatalogRoutesToRuntimeOptions } from "../flowCanvas/utils/modelCatalogOptions";
 import { GptImage2ParamPanel } from "../flowCanvas/nodes/GptImage2ParamPanel";
 import { NanoBananaParamPanel } from "../flowCanvas/nodes/NanoBananaParamPanel";
-import {
-  WORKBENCH_QUANTITY_OPTIONS,
-} from "../flowCanvas/workbench/imageWorkbenchUtils";
-import { buildWorkbenchModelOptions } from "../flowCanvas/workbench/imageWorkbenchUtils";
+import { WORKBENCH_QUANTITY_OPTIONS, buildWorkbenchModelOptions } from "../flowCanvas/workbench/imageWorkbenchUtils";
 import { getWorkbenchAspectOptions, getWorkbenchModelSizeOptions } from "./workbenchModelParams";
 import type { WorkbenchDraft } from "./workbenchTypes";
 
@@ -75,9 +73,42 @@ export function WorkbenchComposer({
       }`}
     >
       <div className="grid gap-2">
-        <div className="text-xs font-bold text-slate-300">参考图片</div>
-        <div className="flex min-h-[56px] items-center rounded-[14px] border border-dashed border-white/12 px-3 text-xs text-slate-400">
-          {draft.referenceAssetIds.length > 0 ? `${draft.referenceAssetIds.length} 张参考图` : "暂未添加参考图"}
+        <div className="text-xs font-bold text-slate-300">参考图</div>
+        <div className="grid gap-3 rounded-[14px] border border-dashed border-white/12 p-3">
+          <div className="flex min-h-[56px] items-center rounded-[12px] bg-white/[0.035] px-3 text-xs text-slate-400">
+            {draft.referenceAssetIds.length > 0 ? `${draft.referenceAssetIds.length} 张参考图` : "暂未添加参考图"}
+          </div>
+          {draft.referenceAssetIds.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {draft.referenceAssetIds.map((assetId) => (
+                <button
+                  key={assetId}
+                  className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5 text-[11px] font-semibold text-slate-200"
+                  onClick={() =>
+                    onChangeDraft({
+                      referenceAssetIds: draft.referenceAssetIds.filter((item) => item !== assetId),
+                    })
+                  }
+                  type="button"
+                >
+                  <span>{assetId.slice(0, 8)}</span>
+                  <span className="text-slate-500">移除</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+          <UploadAssetButton
+            onUploaded={() => undefined}
+            onUploadComplete={(asset) => {
+              if (!asset?.id) return;
+              onChangeDraft({
+                referenceAssetIds: draft.referenceAssetIds.includes(asset.id)
+                  ? draft.referenceAssetIds
+                  : [...draft.referenceAssetIds, asset.id],
+              });
+            }}
+            variant="compact"
+          />
         </div>
       </div>
 
@@ -160,7 +191,7 @@ export function WorkbenchComposer({
 
       {draft.quantity > 1 ? (
         <label className="grid gap-2">
-          <span className="text-xs font-bold text-slate-300">多图展示</span>
+          <span className="text-xs font-bold text-slate-300">多图显示</span>
           <div className="grid grid-cols-2 gap-3">
             <button
               className={`h-11 rounded-[14px] border text-sm font-bold ${
@@ -218,7 +249,7 @@ export function WorkbenchComposer({
 
       <div className="mt-auto flex items-center justify-between rounded-[16px] border border-white/10 bg-white/[0.05] px-4 py-3">
         <div>
-          <div className="text-xs font-bold text-slate-400">操作</div>
+          <div className="text-xs font-bold text-slate-400">生成数量</div>
           <div className="mt-1 text-sm font-bold text-white">{draft.quantity} 张</div>
         </div>
         <button
@@ -230,7 +261,7 @@ export function WorkbenchComposer({
           }}
           type="button"
         >
-          {isGenerating ? "生成中" : "开始生成"}
+          {isGenerating ? "生成中..." : "开始生成"}
         </button>
       </div>
     </aside>

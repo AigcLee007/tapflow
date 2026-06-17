@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { Upload } from 'lucide-react';
 
-import { uploadAssetFile } from './assetApi';
+import { uploadAssetFile, type AssetItem } from './assetApi';
 
 type UploadState = {
   error: string | null;
@@ -18,10 +18,12 @@ function statusLabel(status: UploadState['status']) {
 
 export function UploadAssetButton({
   onUploaded,
+  onUploadComplete,
   projectId,
   variant = 'default',
 }: {
   onUploaded: () => void;
+  onUploadComplete?: (asset: AssetItem) => void;
   projectId?: string | null;
   variant?: 'compact' | 'default';
 }) {
@@ -31,9 +33,8 @@ export function UploadAssetButton({
 
   const buttonClassName =
     variant === 'compact'
-      ? 'inline-flex h-11 items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.07] px-4 text-sm font-semibold text-slate-100 hover:bg-white/[0.1] disabled:opacity-60'
+      ? 'inline-flex h-8 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.07] px-3 text-xs font-semibold text-slate-100 hover:bg-white/[0.1] disabled:opacity-60'
       : 'inline-flex h-10 items-center gap-2 rounded bg-white px-4 text-sm font-semibold text-slate-950 hover:bg-slate-200 disabled:opacity-60';
-  const iconSize = variant === 'compact' ? 16 : 16;
   const wrapperClassName = variant === 'compact' ? 'space-y-1.5' : 'space-y-2';
   const resultPanelClassName =
     variant === 'compact'
@@ -54,6 +55,7 @@ export function UploadAssetButton({
     setItems(nextItems);
     setUploading(true);
     let successCount = 0;
+
     try {
       for (let index = 0; index < selectedFiles.length; index += 1) {
         const file = selectedFiles[index];
@@ -61,8 +63,9 @@ export function UploadAssetButton({
         if (!itemId) continue;
 
         try {
-          await uploadAssetFile({ file, projectId });
+          const asset = await uploadAssetFile({ file, projectId });
           successCount += 1;
+          onUploadComplete?.(asset);
           setItems((current) =>
             current.map((item) =>
               item.id === itemId
@@ -115,10 +118,10 @@ export function UploadAssetButton({
           onClick={() => inputRef.current?.click()}
           type="button"
         >
-          <Upload size={iconSize} />
+          <Upload size={16} />
           {uploading ? '上传中...' : '上传'}
         </button>
-        {items.length > 0 && (
+        {items.length > 0 ? (
           <div className={resultPanelClassName}>
             <div className={resultTitleClassName}>上传结果</div>
             <div className="space-y-2">
@@ -126,7 +129,7 @@ export function UploadAssetButton({
                 <div className="flex items-start justify-between gap-3" key={item.id}>
                   <div className="min-w-0">
                     <div className="truncate">{item.fileName}</div>
-                    {item.error && <div className="mt-1 text-red-300">{item.error}</div>}
+                    {item.error ? <div className="mt-1 text-red-300">{item.error}</div> : null}
                   </div>
                   <div
                     className={
@@ -143,7 +146,7 @@ export function UploadAssetButton({
               ))}
             </div>
           </div>
-        )}
+        ) : null}
       </div>
     </>
   );

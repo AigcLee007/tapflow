@@ -1,9 +1,9 @@
 import React from "react";
 import { Sparkles } from "lucide-react";
 
+import type { ImageModelConfig } from "../config/imageModels";
 import { WorkbenchComposer } from "./WorkbenchComposer";
 import type { WorkbenchDraft } from "./workbenchTypes";
-import type { ImageModelConfig } from "../config/imageModels";
 
 type Props = {
   draft: WorkbenchDraft;

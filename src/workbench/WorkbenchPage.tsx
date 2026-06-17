@@ -65,7 +65,7 @@ export function WorkbenchPage() {
         <div className="text-xs uppercase tracking-[0.22em] text-cyan-300">Workbench</div>
         <h1 className="mt-2 text-3xl font-semibold text-white">独立生图工作台</h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
-          不依赖项目即可直接生图，生成结果会进入云端素材与工作台历史，发送到画布是后续显式动作。
+          不依赖项目即可直接生图，生成结果会进入云端素材与工作台历史，发送到画布作为显式后续操作。
         </p>
       </div>
 

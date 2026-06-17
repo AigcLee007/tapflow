@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { AppRouter } from "../app/AppRouter";
@@ -11,6 +11,7 @@ const listWorkbenchGenerationsMock = vi.fn();
 const createWorkbenchGenerationMock = vi.fn();
 const getWorkbenchGenerationMock = vi.fn();
 const retryWorkbenchGenerationMock = vi.fn();
+const uploadAssetFileMock = vi.fn();
 
 vi.mock("../auth/AuthGate", () => ({
   AuthGate: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -39,6 +40,14 @@ vi.mock("../services/v2WorkbenchApi", async () => {
   };
 });
 
+vi.mock("../assets/assetApi", async () => {
+  const actual = await vi.importActual("../assets/assetApi");
+  return {
+    ...actual,
+    uploadAssetFile: (...args: unknown[]) => uploadAssetFileMock(...args),
+  };
+});
+
 function setRoute(pathname: string) {
   window.history.replaceState(null, "", pathname);
 }
@@ -57,13 +66,13 @@ function createAuthState(overrides: Partial<AuthState> = {}): AuthState {
     sessionId: "session-1",
     tenant: {
       id: "tenant-1",
-      name: "测试工作区",
+      name: "Test Workspace",
       plan: "free",
       slug: "test",
       status: "active",
     },
     user: {
-      displayName: "测试用户",
+      displayName: "Test User",
       email: "test@example.com",
       id: "user-1",
       status: "active",
@@ -136,7 +145,7 @@ describe("WorkbenchPage", () => {
             aspect_ratio: "1:1",
             size: "1k",
           },
-          prompt: "产品海报，干净背景",
+          prompt: "Product poster",
           referenceAssetIds: [],
           requestedCount: 1,
           reservedCredits: 1,
@@ -155,6 +164,12 @@ describe("WorkbenchPage", () => {
     createWorkbenchGenerationMock.mockResolvedValue(undefined);
     getWorkbenchGenerationMock.mockResolvedValue(undefined);
     retryWorkbenchGenerationMock.mockResolvedValue(undefined);
+    uploadAssetFileMock.mockResolvedValue({
+      id: "asset-uploaded-1",
+      originalFilename: "ref.png",
+      previewUrl: "https://example.com/ref.png",
+      title: "ref.png",
+    });
   });
 
   test("renders /workbench under the shared shell", async () => {
@@ -178,7 +193,28 @@ describe("WorkbenchPage", () => {
     setRoute("/workbench");
     renderRouter();
 
-    expect(await screen.findByLabelText("再次生成")).toBeTruthy();
-    expect(screen.getByLabelText("复用参数")).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "再次生成" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "复用参数" })).toBeTruthy();
+  });
+
+  test("uploads a reference image and attaches it to the current draft", async () => {
+    setRoute("/workbench");
+    const { container } = renderRouter();
+
+    expect(await screen.findByText("暂未添加参考图")).toBeTruthy();
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement | null;
+    expect(input).toBeTruthy();
+
+    fireEvent.change(input!, {
+      target: {
+        files: [new File(["ref"], "ref.png", { type: "image/png" })],
+      },
+    });
+
+    await waitFor(() => {
+      expect(uploadAssetFileMock).toHaveBeenCalledTimes(1);
+    });
+
+    expect(await screen.findByText("1 张参考图")).toBeTruthy();
   });
 });
