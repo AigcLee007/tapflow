@@ -2271,3 +2271,14 @@ Validation completed:
 - validation:
   - `npm run test -- src/workbench/WorkbenchPage.test.tsx src/workbench/workbenchReferences.test.ts`
   - `npm run build`
+
+## 2026-06-17 - Workbench Billing Model UUID Hotfix
+
+- fixed a worker-side workbench failure where successful provider image generations could still be marked failed during settlement
+- root cause: `/workbench` stores product model keys such as `pixellelabs.nano-banana-pro` in `workbench_generations.model_id`, but `usage_events.model_id` is an internal `ai_models.id` UUID field
+- changed workbench settlement so usage events leave the UUID `modelId` field as `null` and preserve the product model key in usage metadata as `productModelId`
+- this keeps billing records valid while retaining model auditability for standalone workbench generations
+- validation:
+  - `npm run test --workspace @aigc-flow/worker -- workbench-generation.service.test.ts`
+  - `npm run build --workspace @aigc-flow/worker`
+  - `npm run build`
