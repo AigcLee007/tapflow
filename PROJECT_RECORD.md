@@ -80,6 +80,7 @@ As of 2026-06-13:
 - MouxiHub GPT-Image-2 `绾胯矾涓?绾胯矾鍥沗 upstream failure root cause was confirmed from production `ai_call_logs`: we were sending pixel `size` together with already size-suffixed upstream models, which made MouxiHub internally resolve invalid model names like `gpt-image-2-4k-4k`; runtime fallback now forces these two routes to use provider-side base models (`gpt-image-2` / `gpt-image-2-vip`) while still forwarding the existing GPT-image-2 pixel-size payload
 - Follow-up root cause for MouxiHub GPT-Image-2 `绾胯矾鍥沗 was also fixed: legacy `ai_routes.upstream_model` values were still being injected into `requestConfig.model` and could override the new line-four runtime fallback, so provider-side GPT-Image-2 base model routing now prefers dedicated `providerBaseModel`/route defaults over stale normalized route config
 - desktop `/workbench` has now been restructured into a fixed three-pane docked workstation: the desktop shell reads as `3:5:2`, the left parameter dock keeps the existing composer UI with a pinned footer action area, the center pane is split into current-task stage plus recent-task window capped to the newest 8 operational tasks, and the right dock now shows completed-only history with no active generations mixed into that rail
+- `/assets` drag multi-select now uses a floating contextual toolbar at the user's selection endpoint instead of a sticky top bulk bar, with cancel, select all, favorite, download original, and delete actions available next to the selection
 
 ## 2026-06-18 - Workbench Three-Pane Docked Desktop Layout
 
@@ -100,6 +101,22 @@ As of 2026-06-13:
   - `src/workbench/WorkbenchPage.test.tsx`
 - Validation:
   - `npx vitest run src/workbench/workbenchDesktopLayout.test.ts src/workbench/WorkbenchPage.test.tsx`
+  - `npm run build`
+
+## 2026-06-18 - Asset Library Floating Selection Toolbar
+
+- Replaced the `/assets` drag-selection sticky top bulk bar with a fixed floating toolbar that appears near the user's selection endpoint, matching the requested contextual action behavior.
+- Added the requested toolbar actions in order:
+  - cancel selection
+  - select all visible assets
+  - favorite selected assets
+  - download original files for selected assets
+  - delete selected assets with confirmation
+- Stabilized drag selection from asset thumbnails by preventing the same pointer-down from also bubbling to the outer selection surface after the card starts marquee selection.
+- Kept selected-asset cleanup tied to asset-list changes and identity changes so stale selections/toolbars disappear when the list changes.
+- Extended asset-library regression coverage for the floating toolbar position, complete action set, select-all behavior, bulk favorite, bulk download, and existing bulk delete flow.
+- Validation:
+  - `npm test -- src/assets/AssetLibraryPage.test.tsx`
   - `npm run build`
 
 ## 2026-06-14 - MouxiHub Nano Banana Pro Official T3 Route

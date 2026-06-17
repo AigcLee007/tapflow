@@ -12,6 +12,10 @@ type SelectionBox = {
   width: number;
 };
 
+export type AssetSelectionMeta = {
+  anchorPoint?: { x: number; y: number };
+};
+
 function rectsIntersect(a: DOMRect, b: SelectionBox) {
   const right = b.left + b.width;
   const bottom = b.top + b.height;
@@ -61,7 +65,7 @@ export function AssetGrid({
   onRename?: (asset: AssetItem, title: string) => Promise<void>;
   onToggleFavorite?: (asset: AssetItem) => Promise<void>;
   onOpen: (asset: AssetItem) => void;
-  onSelectionChange?: (assetIds: string[]) => void;
+  onSelectionChange?: (assetIds: string[], meta?: AssetSelectionMeta) => void;
   selectedAssetIds?: Set<string>;
   tileOnly?: boolean;
 }) {
@@ -70,6 +74,8 @@ export function AssetGrid({
   const suppressNextOpenRef = React.useRef(false);
   const [selectionBox, setSelectionBox] = React.useState<SelectionBox | null>(null);
 
+  const latestSelectedIdsRef = React.useRef<string[]>([]);
+
   const updateSelectionFromBox = React.useCallback((box: SelectionBox) => {
     const surface = surfaceRef.current;
     if (!surface) return;
@@ -77,6 +83,7 @@ export function AssetGrid({
       .filter((element) => rectsIntersect(element.getBoundingClientRect(), box))
       .map((element) => element.dataset.assetId)
       .filter((assetId): assetId is string => Boolean(assetId));
+    latestSelectedIdsRef.current = selectedIds;
     onSelectionChange?.(selectedIds);
   }, [onSelectionChange]);
 
@@ -98,13 +105,16 @@ export function AssetGrid({
       updateSelectionFromBox(nextBox);
   }, [updateSelectionFromBox]);
 
-  const stopSelecting = React.useCallback(() => {
+  const stopSelecting = React.useCallback((event?: PointerEvent) => {
+    if (event && latestSelectedIdsRef.current.length > 0) {
+      onSelectionChange?.(latestSelectedIdsRef.current, { anchorPoint: { x: event.clientX, y: event.clientY } });
+    }
     dragStartRef.current = null;
     setSelectionBox(null);
     window.removeEventListener("pointermove", handleWindowPointerMove);
     window.removeEventListener("pointerup", stopSelecting);
     window.removeEventListener("pointercancel", stopSelecting);
-  }, [handleWindowPointerMove]);
+  }, [handleWindowPointerMove, onSelectionChange]);
 
   const beginSelection = React.useCallback((event: React.PointerEvent) => {
     if (event.button !== 0 || shouldIgnoreDragStart(event.target)) return;
@@ -112,6 +122,7 @@ export function AssetGrid({
     dragStartRef.current = { x: event.clientX, y: event.clientY };
     const nextBox = getSelectionBox(dragStartRef.current, dragStartRef.current);
     setSelectionBox(nextBox);
+    latestSelectedIdsRef.current = [];
     onSelectionChange?.([]);
     window.addEventListener("pointermove", handleWindowPointerMove);
     window.addEventListener("pointerup", stopSelecting);

@@ -1,5 +1,5 @@
 import React from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { AuthContext, type AuthState } from "../auth/useAuth";
@@ -366,9 +366,9 @@ describe("AssetLibraryPage", () => {
     });
 
     expect(screen.getByText("已选择 2 个素材")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "批量删除" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "删除" })).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "批量删除" }));
+    fireEvent.click(screen.getByRole("button", { name: "删除" }));
     fireEvent.click(screen.getByRole("button", { name: "确认删除 2 个素材" }));
 
     await waitFor(() => {
@@ -475,5 +475,166 @@ describe("AssetLibraryPage", () => {
     });
 
     expect(wasNotCanceled).toBe(false);
+  });
+
+  test("uses a floating selection toolbar with complete bulk actions instead of a top layout bar", () => {
+    const first = createAsset(1);
+    const second = createAsset(2);
+    mockLibrary({
+      assets: [first, second],
+      groupedAssets: [{ dateLabel: "2026-06-12", items: [first, second] }],
+      mediaCounts: { all: 2, audio: 0, image: 2, video: 0 },
+      total: 2,
+    });
+
+    renderPage();
+
+    const [firstButton, secondButton] = screen.getAllByRole("button", { name: /^Asset / });
+    vi.spyOn(firstButton, "getBoundingClientRect").mockReturnValue({
+      bottom: 200,
+      height: 120,
+      left: 20,
+      right: 140,
+      top: 80,
+      width: 120,
+      x: 20,
+      y: 80,
+      toJSON: () => ({}),
+    });
+    vi.spyOn(secondButton, "getBoundingClientRect").mockReturnValue({
+      bottom: 200,
+      height: 120,
+      left: 160,
+      right: 280,
+      top: 80,
+      width: 120,
+      x: 160,
+      y: 80,
+      toJSON: () => ({}),
+    });
+
+    fireEvent.pointerDown(firstButton, {
+      button: 0,
+      clientX: 30,
+      clientY: 90,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+    fireEvent.pointerMove(window, {
+      clientX: 290,
+      clientY: 210,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+    fireEvent.pointerUp(window, {
+      clientX: 290,
+      clientY: 210,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+
+    const toolbar = screen.getByTestId("asset-selection-floating-toolbar");
+
+    expect(screen.queryByTestId("asset-selection-top-bar")).toBeNull();
+    expect(toolbar.style.left).toBe("290px");
+    expect(toolbar.style.top).toBe("210px");
+    expect(screen.getByText("已选择 2 个素材")).toBeTruthy();
+    expect(toolbar.querySelector('[aria-label="取消选择"]')).toBeTruthy();
+    expect(toolbar.querySelector('[aria-label="全选"]')).toBeTruthy();
+    expect(toolbar.querySelector('[aria-label="收藏"]')).toBeTruthy();
+    expect(toolbar.querySelector('[aria-label="下载原图"]')).toBeTruthy();
+    expect(toolbar.querySelector('[aria-label="删除"]')).toBeTruthy();
+  });
+
+  test("runs floating selection toolbar bulk select, favorite, and download actions", async () => {
+    const first = createAsset(1);
+    const second = createAsset(2);
+    const third = createAsset(3);
+    const updateAssetOptimistically = vi.fn(async (_assetId: string, _updater: unknown, action: () => Promise<void>) => {
+      await action();
+    });
+    mockLibrary({
+      assets: [first, second, third],
+      groupedAssets: [{ dateLabel: "2026-06-12", items: [first, second, third] }],
+      mediaCounts: { all: 3, audio: 0, image: 3, video: 0 },
+      total: 3,
+      updateAssetOptimistically,
+    });
+    updateAssetMetadataMock.mockResolvedValue(first);
+    getAssetDownloadUrlMock.mockImplementation(async (assetId: string) => ({
+      expiresAt: "2026-06-12T02:00:00.000Z",
+      method: "GET",
+      url: `https://example.test/${assetId}.png`,
+    }));
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+
+    renderPage();
+
+    const [firstButton, secondButton] = screen.getAllByRole("button", { name: /^Asset / });
+    vi.spyOn(firstButton, "getBoundingClientRect").mockReturnValue({
+      bottom: 200,
+      height: 120,
+      left: 20,
+      right: 140,
+      top: 80,
+      width: 120,
+      x: 20,
+      y: 80,
+      toJSON: () => ({}),
+    });
+    vi.spyOn(secondButton, "getBoundingClientRect").mockReturnValue({
+      bottom: 200,
+      height: 120,
+      left: 160,
+      right: 280,
+      top: 80,
+      width: 120,
+      x: 160,
+      y: 80,
+      toJSON: () => ({}),
+    });
+
+    fireEvent.pointerDown(firstButton, {
+      button: 0,
+      clientX: 30,
+      clientY: 90,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+    fireEvent.pointerMove(window, {
+      clientX: 290,
+      clientY: 210,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+    fireEvent.pointerUp(window, {
+      clientX: 290,
+      clientY: 210,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+
+    const toolbar = screen.getByTestId("asset-selection-floating-toolbar");
+    const toolbarActions = within(toolbar);
+
+    fireEvent.click(toolbarActions.getByRole("button", { name: "全选" }));
+    expect(screen.getByText("已选择 3 个素材")).toBeTruthy();
+
+    fireEvent.click(toolbarActions.getByRole("button", { name: "收藏" }));
+    await waitFor(() => {
+      expect(updateAssetMetadataMock).toHaveBeenCalledWith("asset-1", { favorite: true });
+      expect(updateAssetMetadataMock).toHaveBeenCalledWith("asset-2", { favorite: true });
+      expect(updateAssetMetadataMock).toHaveBeenCalledWith("asset-3", { favorite: true });
+    });
+
+    fireEvent.click(toolbarActions.getByRole("button", { name: "下载原图" }));
+    await waitFor(() => {
+      expect(getAssetDownloadUrlMock).toHaveBeenCalledWith("asset-1");
+      expect(getAssetDownloadUrlMock).toHaveBeenCalledWith("asset-2");
+      expect(getAssetDownloadUrlMock).toHaveBeenCalledWith("asset-3");
+      expect(openSpy).toHaveBeenCalledWith("https://example.test/asset-1.png", "_blank", "noopener,noreferrer");
+      expect(openSpy).toHaveBeenCalledWith("https://example.test/asset-2.png", "_blank", "noopener,noreferrer");
+      expect(openSpy).toHaveBeenCalledWith("https://example.test/asset-3.png", "_blank", "noopener,noreferrer");
+    });
   });
 });

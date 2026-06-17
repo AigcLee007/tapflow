@@ -158,7 +158,12 @@ export function AssetCard({
         data-asset-id={asset.id}
         data-asset-selectable="true"
         onClick={() => onOpen(asset)}
-        onPointerDown={(event) => onPointerDown?.(event, asset)}
+        onPointerDown={(event) => {
+          onPointerDown?.(event, asset);
+          if (event.defaultPrevented) {
+            event.stopPropagation();
+          }
+        }}
         type="button"
       >
         <div
