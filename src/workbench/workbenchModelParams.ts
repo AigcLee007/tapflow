@@ -22,6 +22,7 @@ export function createDefaultWorkbenchDraft(models: ImageModelConfig[] = []): Wo
     quality: base.quality,
     quantity: base.batchCount,
     referenceAssetIds: base.referenceAssetItemIds,
+    referenceUploadIds: [],
     routeKey: base.routeKey,
     size: String(base.size || "1k").toLowerCase(),
   };

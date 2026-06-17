@@ -11,9 +11,9 @@ const listWorkbenchGenerationsMock = vi.fn();
 const createWorkbenchGenerationMock = vi.fn();
 const getWorkbenchGenerationMock = vi.fn();
 const retryWorkbenchGenerationMock = vi.fn();
+const uploadWorkbenchReferenceFileMock = vi.fn();
 const getAssetMock = vi.fn();
 const getAssetVariantUrlMock = vi.fn();
-const uploadAssetFileMock = vi.fn();
 
 vi.mock("../auth/AuthGate", () => ({
   AuthGate: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -39,6 +39,7 @@ vi.mock("../services/v2WorkbenchApi", async () => {
     getWorkbenchGeneration: (...args: unknown[]) => getWorkbenchGenerationMock(...args),
     listWorkbenchGenerations: (...args: unknown[]) => listWorkbenchGenerationsMock(...args),
     retryWorkbenchGeneration: (...args: unknown[]) => retryWorkbenchGenerationMock(...args),
+    uploadWorkbenchReferenceFile: (...args: unknown[]) => uploadWorkbenchReferenceFileMock(...args),
   };
 });
 
@@ -48,7 +49,6 @@ vi.mock("../assets/assetApi", async () => {
     ...actual,
     getAsset: (...args: unknown[]) => getAssetMock(...args),
     getAssetVariantUrl: (...args: unknown[]) => getAssetVariantUrlMock(...args),
-    uploadAssetFile: (...args: unknown[]) => uploadAssetFileMock(...args),
   };
 });
 
@@ -182,11 +182,10 @@ describe("WorkbenchPage", () => {
       url: `https://example.com/${assetId}.png`,
       variantKey: "preview",
     }));
-    uploadAssetFileMock.mockResolvedValue({
-      id: "asset-uploaded-1",
+    uploadWorkbenchReferenceFileMock.mockResolvedValue({
+      id: "11111111-1111-4111-8111-111111111111",
       originalFilename: "ref.png",
-      previewUrl: "",
-      title: "ref.png",
+      previewUrl: "blob:local-ref-preview",
     });
   });
 
@@ -229,7 +228,7 @@ describe("WorkbenchPage", () => {
     });
   });
 
-  test("uploads a reference image with immediate local preview and signed preview fallback", async () => {
+  test("uploads a reference image with immediate local preview through temporary workbench uploads", async () => {
     setRoute("/workbench");
     const { container } = renderRouter();
 
@@ -237,24 +236,21 @@ describe("WorkbenchPage", () => {
     const input = container.querySelector('input[type="file"]') as HTMLInputElement | null;
     expect(input).toBeTruthy();
 
-    uploadAssetFileMock
+    uploadWorkbenchReferenceFileMock
       .mockResolvedValueOnce({
-        id: "asset-uploaded-1",
+        id: "11111111-1111-4111-8111-111111111111",
         originalFilename: "ref.png",
-        previewUrl: "",
-        title: "ref.png",
+        previewUrl: "blob:local-ref-preview",
       })
       .mockResolvedValueOnce({
-        id: "asset-uploaded-2",
+        id: "22222222-2222-4222-8222-222222222222",
         originalFilename: "ref-2.png",
-        previewUrl: "",
-        title: "ref-2.png",
+        previewUrl: "blob:local-ref-preview",
       })
       .mockResolvedValueOnce({
-        id: "asset-uploaded-3",
+        id: "33333333-3333-4333-8333-333333333333",
         originalFilename: "ref-3.png",
-        previewUrl: "",
-        title: "ref-3.png",
+        previewUrl: "blob:local-ref-preview",
       });
 
     fireEvent.change(input!, {
@@ -273,14 +269,12 @@ describe("WorkbenchPage", () => {
     expect(screen.getByRole("button", { name: "移除参考图1" }).className).toContain("opacity-0");
 
     await waitFor(() => {
-      expect(uploadAssetFileMock).toHaveBeenCalledTimes(3);
+      expect(uploadWorkbenchReferenceFileMock).toHaveBeenCalledTimes(3);
     });
     expect(screen.queryByText("上传结果")).toBeNull();
     expect(screen.queryByText("ref.png")).toBeNull();
 
-    await waitFor(() => {
-      expect(getAssetVariantUrlMock).toHaveBeenCalledWith("asset-uploaded-1", "preview");
-    });
+    expect(getAssetVariantUrlMock).not.toHaveBeenCalled();
 
     fireEvent.dragStart(screen.getByTestId("workbench-reference-card-1"));
     fireEvent.drop(screen.getByTestId("workbench-reference-card-3"));
@@ -298,7 +292,8 @@ describe("WorkbenchPage", () => {
       expect(createWorkbenchGenerationMock).toHaveBeenCalledTimes(1);
     });
     expect(createWorkbenchGenerationMock.mock.calls[0]?.[0]).toMatchObject({
-      referenceAssetIds: ["asset-uploaded-2"],
+      referenceAssetIds: [],
+      referenceUploadIds: ["22222222-2222-4222-8222-222222222222"],
     });
   });
 
@@ -310,18 +305,16 @@ describe("WorkbenchPage", () => {
     const input = container.querySelector('input[type="file"]') as HTMLInputElement | null;
     expect(input).toBeTruthy();
 
-    uploadAssetFileMock
+    uploadWorkbenchReferenceFileMock
       .mockResolvedValueOnce({
         id: "11111111-1111-4111-8111-111111111111",
         originalFilename: "ref-1.png",
-        previewUrl: "",
-        title: "ref-1.png",
+        previewUrl: "blob:local-ref-preview",
       })
       .mockResolvedValueOnce({
         id: "22222222-2222-4222-8222-222222222222",
         originalFilename: "ref-2.png",
-        previewUrl: "",
-        title: "ref-2.png",
+        previewUrl: "blob:local-ref-preview",
       });
 
     fireEvent.change(input!, {
@@ -347,7 +340,8 @@ describe("WorkbenchPage", () => {
       expect(createWorkbenchGenerationMock).toHaveBeenCalledTimes(1);
     });
     expect(createWorkbenchGenerationMock.mock.calls[0]?.[0]).toMatchObject({
-      referenceAssetIds: ["22222222-2222-4222-8222-222222222222"],
+      referenceAssetIds: [],
+      referenceUploadIds: ["22222222-2222-4222-8222-222222222222"],
     });
   });
 

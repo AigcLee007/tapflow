@@ -46,6 +46,25 @@ function getWorkbenchContext(request: FastifyRequest) {
   };
 }
 
+function firstHeader(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function toOptionalNumber(value: string | undefined): number | null {
+  if (!value) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function decodeOptionalHeader(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 function handleRouteError(error: unknown, request: FastifyRequest, reply: FastifyReply): FastifyReply {
   if (error instanceof ZodError) {
     return sendError(request, reply, 400, "VALIDATION_ERROR", "Request validation failed", error.issues);
@@ -71,6 +90,12 @@ function handleRouteError(error: unknown, request: FastifyRequest, reply: Fastif
 export function registerWorkbenchRoutes(app: FastifyInstance): void {
   const authHandlers = [requireAuth, requireTenant];
 
+  app.addContentTypeParser(
+    /^image\/[a-z0-9.+-]+$/i,
+    { bodyLimit: 25 * 1024 * 1024, parseAs: "buffer" },
+    (_request, body, done) => done(null, body),
+  );
+
   app.get(
     "/api/v2/workbench/generations",
     {
@@ -80,6 +105,33 @@ export function registerWorkbenchRoutes(app: FastifyInstance): void {
       try {
         const query = listWorkbenchGenerationsQuerySchema.parse(request.query) as ListWorkbenchGenerationsQuery;
         return reply.send(await app.workbenchService.listGenerations(getWorkbenchContext(request), query));
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.post(
+    "/api/v2/workbench/reference-uploads",
+    {
+      preHandler: [...authHandlers, requirePermission("flow:run")],
+    },
+    async (request, reply) => {
+      try {
+        const rawBody = request.body;
+        if (!(rawBody instanceof Buffer)) {
+          return sendError(request, reply, 400, "INVALID_REFERENCE_UPLOAD_BODY", "Upload body must be binary image data");
+        }
+        const contentType = firstHeader(request.headers["content-type"])?.split(";")[0]?.trim() || "application/octet-stream";
+        const result = await app.workbenchService.createReferenceUpload(getWorkbenchContext(request), {
+          body: rawBody,
+          height: toOptionalNumber(firstHeader(request.headers["x-workbench-image-height"])),
+          mimeType: contentType,
+          originalFilename: decodeOptionalHeader(firstHeader(request.headers["x-workbench-filename"])),
+          sizeBytes: Number(firstHeader(request.headers["content-length"])) || rawBody.length,
+          width: toOptionalNumber(firstHeader(request.headers["x-workbench-image-width"])),
+        });
+        return reply.code(201).send(result);
       } catch (error) {
         return handleRouteError(error, request, reply);
       }

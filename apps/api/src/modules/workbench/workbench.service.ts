@@ -30,6 +30,7 @@ type WorkbenchGenerationRow = {
   params_json: Record<string, unknown>;
   prompt: string;
   reference_asset_ids: string[];
+  reference_upload_ids: string[];
   requested_count: number;
   reserve_ledger_id: string | null;
   reserved_credits: string;
@@ -38,6 +39,17 @@ type WorkbenchGenerationRow = {
   started_at: string | null;
   status: string;
   updated_at: string;
+};
+
+type WorkbenchReferenceUploadRow = {
+  created_at: string;
+  expires_at: string;
+  height: number | null;
+  id: string;
+  mime_type: string;
+  original_filename: string | null;
+  size_bytes: string;
+  width: number | null;
 };
 
 type WorkbenchResultRow = {
@@ -112,6 +124,7 @@ function mapGeneration(row: WorkbenchGenerationRow, results: WorkbenchResultRow[
     params: row.params_json ?? {},
     prompt: row.prompt,
     referenceAssetIds: row.reference_asset_ids ?? [],
+    referenceUploadIds: row.reference_upload_ids ?? [],
     requestedCount: row.requested_count,
     reservedCredits: toNumber(row.reserved_credits),
     reserveLedgerId: row.reserve_ledger_id,
@@ -137,6 +150,10 @@ function mapGeneration(row: WorkbenchGenerationRow, results: WorkbenchResultRow[
     status: row.status,
     updatedAt: row.updated_at,
   };
+}
+
+function isSupportedReferenceMimeType(mimeType: string | null | undefined) {
+  return Boolean(mimeType?.toLowerCase().startsWith("image/"));
 }
 
 export class WorkbenchService {
@@ -169,6 +186,7 @@ export class WorkbenchService {
             route_key,
             params_json,
             reference_asset_ids::text[] AS reference_asset_ids,
+            reference_upload_ids::text[] AS reference_upload_ids,
             requested_count,
             display_mode,
             estimated_credits::text AS estimated_credits,
@@ -213,6 +231,7 @@ export class WorkbenchService {
             route_key,
             params_json,
             reference_asset_ids::text[] AS reference_asset_ids,
+            reference_upload_ids::text[] AS reference_upload_ids,
             requested_count,
             display_mode,
             estimated_credits::text AS estimated_credits,
@@ -242,6 +261,86 @@ export class WorkbenchService {
     }, this.pool);
   }
 
+  async createReferenceUpload(
+    context: WorkbenchContext,
+    input: {
+      body: Buffer;
+      height?: number | null;
+      mimeType: string;
+      originalFilename?: string | null;
+      sizeBytes?: number | null;
+      width?: number | null;
+    },
+  ) {
+    if (!isSupportedReferenceMimeType(input.mimeType)) {
+      throw new WorkbenchApiError(400, "INVALID_REFERENCE_UPLOAD_TYPE", "Workbench reference upload must be an image.");
+    }
+    if (!Buffer.isBuffer(input.body) || input.body.length === 0) {
+      throw new WorkbenchApiError(400, "INVALID_REFERENCE_UPLOAD_BODY", "Workbench reference upload body must be binary image data.");
+    }
+
+    return withTenantTransaction(context, async (client) => {
+      const result = await client.query<WorkbenchReferenceUploadRow>(
+        `
+          INSERT INTO workbench_reference_uploads (
+            tenant_id,
+            created_by,
+            original_filename,
+            mime_type,
+            size_bytes,
+            width,
+            height,
+            bytes
+          )
+          VALUES (
+            $1::uuid,
+            $2::uuid,
+            $3,
+            $4,
+            $5::bigint,
+            $6::int,
+            $7::int,
+            $8::bytea
+          )
+          RETURNING
+            id::text AS id,
+            original_filename,
+            mime_type,
+            size_bytes::text AS size_bytes,
+            width,
+            height,
+            created_at::text AS created_at,
+            expires_at::text AS expires_at
+        `,
+        [
+          context.tenantId,
+          context.userId,
+          input.originalFilename?.trim() || null,
+          input.mimeType,
+          input.sizeBytes ?? input.body.length,
+          input.width ?? null,
+          input.height ?? null,
+          input.body,
+        ],
+      );
+      const row = result.rows[0];
+      if (!row?.id) {
+        throw new WorkbenchApiError(500, "REFERENCE_UPLOAD_CREATE_FAILED", "Unable to create workbench reference upload.");
+      }
+      return {
+        createdAt: row.created_at,
+        expiresAt: row.expires_at,
+        height: row.height,
+        id: row.id,
+        mimeType: row.mime_type,
+        originalFilename: row.original_filename,
+        previewUrl: null,
+        sizeBytes: toNumber(row.size_bytes),
+        width: row.width,
+      };
+    }, this.pool);
+  }
+
   async createGeneration(context: WorkbenchContext, input: CreateWorkbenchGenerationInput) {
     const generationQueue = this.generationQueue;
     if (!generationQueue) {
@@ -250,6 +349,7 @@ export class WorkbenchService {
 
     return withTenantTransaction(context, async (client) => {
       await this.assertReferenceAssetsExist(client, context.tenantId, input.referenceAssetIds);
+      await this.assertReferenceUploadsExist(client, context.tenantId, input.referenceUploadIds);
       const pricing = await this.lookupRoutePricing(client, context.tenantId, input.routeKey);
       const estimatedCredits = Math.max(0, toNumber(pricing.min_charge_credits) * input.requestedCount);
       const idempotencySuffix = input.idempotencyKey ?? randomUUID();
@@ -278,6 +378,7 @@ export class WorkbenchService {
             route_key,
             params_json,
             reference_asset_ids,
+            reference_upload_ids,
             requested_count,
             display_mode,
             estimated_credits,
@@ -294,11 +395,12 @@ export class WorkbenchService {
             $6,
             $7::jsonb,
             $8::uuid[],
-            $9::int,
-            $10,
-            $11::numeric,
+            $9::uuid[],
+            $10::int,
+            $11,
             $12::numeric,
-            $13::uuid,
+            $13::numeric,
+            $14::uuid,
             'queued'
           )
           RETURNING
@@ -309,6 +411,7 @@ export class WorkbenchService {
             route_key,
             params_json,
             reference_asset_ids::text[] AS reference_asset_ids,
+            reference_upload_ids::text[] AS reference_upload_ids,
             requested_count,
             display_mode,
             estimated_credits::text AS estimated_credits,
@@ -331,6 +434,7 @@ export class WorkbenchService {
           input.routeKey.trim(),
           JSON.stringify(input.params ?? {}),
           input.referenceAssetIds,
+          input.referenceUploadIds,
           input.requestedCount,
           input.displayMode,
           estimatedCredits,
@@ -363,6 +467,7 @@ export class WorkbenchService {
       params: existing.params,
       prompt: existing.prompt,
       referenceAssetIds: existing.referenceAssetIds,
+      referenceUploadIds: existing.referenceUploadIds,
       requestedCount: existing.requestedCount,
       routeKey: existing.routeKey,
       sessionId: existing.sessionId ?? undefined,
@@ -558,6 +663,29 @@ export class WorkbenchService {
 
     if (result.rows.length !== assetIds.length) {
       throw new WorkbenchApiError(404, "WORKBENCH_REFERENCE_ASSET_NOT_FOUND", "One or more reference assets were not found.");
+    }
+  }
+
+  private async assertReferenceUploadsExist(client: PoolClient, tenantId: string, uploadIds: string[]) {
+    if (uploadIds.length === 0) {
+      return;
+    }
+
+    const result = await client.query<{ id: string }>(
+      `
+        SELECT id::text AS id
+        FROM workbench_reference_uploads
+        WHERE tenant_id = $1::uuid
+          AND id = ANY($2::uuid[])
+          AND status IN ('active', 'used')
+          AND expires_at > now()
+        ORDER BY id ASC
+      `,
+      [tenantId, uploadIds],
+    );
+
+    if (result.rows.length !== uploadIds.length) {
+      throw new WorkbenchApiError(404, "WORKBENCH_REFERENCE_UPLOAD_NOT_FOUND", "One or more temporary reference uploads were not found.");
     }
   }
 

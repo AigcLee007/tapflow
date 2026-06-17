@@ -1,11 +1,12 @@
 import React from "react";
 import { ChevronDown, Coins, Sparkles, Trash2, Upload, Wand2, X } from "lucide-react";
 
-import { getAsset, getAssetVariantUrl, uploadAssetFile, type AssetDownloadUrlResponse, type AssetItem } from "../assets/assetApi";
+import { getAsset, getAssetVariantUrl, type AssetDownloadUrlResponse, type AssetItem } from "../assets/assetApi";
 import { MenuSurface } from "../components/menu/MenuSurface";
 import { useDismissibleLayer } from "../components/menu/useDismissibleLayer";
 import type { ImageModelConfig } from "../config/imageModels";
 import { listAiModelRoutes, type AiModelCatalogRoute } from "../services/v2AiModelCatalogApi";
+import { uploadWorkbenchReferenceFile, type WorkbenchReferenceUploadView } from "../services/v2WorkbenchApi";
 import { mapCatalogRoutesToRuntimeOptions } from "../flowCanvas/utils/modelCatalogOptions";
 import type { RuntimeRouteOption } from "../flowCanvas/utils/runtimeRouteOptions";
 import {
@@ -36,6 +37,7 @@ type ReferencePreview = {
   loading: boolean;
   localPreviewUrl: string | null;
   previewUrl: string | null;
+  upload?: WorkbenchReferenceUploadView | null;
 };
 
 type SelectOption = {
@@ -332,7 +334,7 @@ export function WorkbenchComposer({
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   const promptRef = React.useRef<HTMLTextAreaElement | null>(null);
   const draggedReferenceIdRef = React.useRef<string | null>(null);
-  const uploadedReferenceIdsRef = React.useRef<string[]>(draft.referenceAssetIds);
+  const uploadedReferenceIdsRef = React.useRef<string[]>(draft.referenceUploadIds);
   const modelOptions = React.useMemo(() => buildWorkbenchModelOptions(models), [models]);
   const aspectOptions = React.useMemo(() => getWorkbenchAspectOptions(models, draft.modelId), [draft.modelId, models]);
   const sizeOptions = React.useMemo(() => getWorkbenchModelSizeOptions(models, draft.modelId), [draft.modelId, models]);
@@ -347,14 +349,14 @@ export function WorkbenchComposer({
     ? formatRouteLabel(routeOptions.find((item) => item.routeKey === draft.routeKey)!)
     : TEXT.routeOne;
   const visibleReferenceIds = React.useMemo(
-    () => [...pendingReferenceIds, ...draft.referenceAssetIds].slice(0, MAX_REFERENCE_COUNT),
-    [draft.referenceAssetIds, pendingReferenceIds],
+    () => [...pendingReferenceIds, ...draft.referenceUploadIds, ...draft.referenceAssetIds].slice(0, MAX_REFERENCE_COUNT),
+    [draft.referenceAssetIds, draft.referenceUploadIds, pendingReferenceIds],
   );
   const estimatedCredits = getEstimatedCredits(draft);
 
   React.useEffect(() => {
-    uploadedReferenceIdsRef.current = draft.referenceAssetIds;
-  }, [draft.referenceAssetIds]);
+    uploadedReferenceIdsRef.current = draft.referenceUploadIds;
+  }, [draft.referenceUploadIds]);
 
   React.useEffect(() => {
     let active = true;
@@ -442,38 +444,26 @@ export function WorkbenchComposer({
     }));
   }, []);
 
-  const handleUploadComplete = React.useCallback((asset: AssetItem, preview: Pick<ReferencePreview, "assetId" | "localPreviewUrl">) => {
-    if (!asset?.id) return;
-    const nextReferenceAssetIds = Array.from(new Set([...uploadedReferenceIdsRef.current, asset.id])).slice(0, MAX_REFERENCE_COUNT);
-    uploadedReferenceIdsRef.current = nextReferenceAssetIds;
+  const handleUploadComplete = React.useCallback((upload: WorkbenchReferenceUploadView, preview: Pick<ReferencePreview, "assetId" | "localPreviewUrl">) => {
+    if (!upload?.id) return;
+    const nextReferenceUploadIds = Array.from(new Set([...uploadedReferenceIdsRef.current, upload.id])).slice(0, MAX_REFERENCE_COUNT);
+    uploadedReferenceIdsRef.current = nextReferenceUploadIds;
     setPendingReferenceIds((current) => current.filter((item) => item !== preview.assetId));
     setReferencePreviews((current) => {
       const local = current[preview.assetId]?.localPreviewUrl || preview.localPreviewUrl || null;
       const next = { ...current };
       delete next[preview.assetId];
-      next[asset.id] = {
-        asset,
-        assetId: asset.id,
+      next[upload.id] = {
+        asset: null,
+        assetId: upload.id,
         loading: false,
         localPreviewUrl: local,
-        previewUrl: asset.previewUrl || null,
+        previewUrl: upload.previewUrl || local || null,
+        upload,
       };
       return next;
     });
-    onChangeDraft({ referenceAssetIds: nextReferenceAssetIds });
-
-    void loadAssetPreviewUrl(asset.id).then((signed) => {
-      setReferencePreviews((current) => ({
-        ...current,
-        [asset.id]: {
-          ...(current[asset.id] || { asset, assetId: asset.id, localPreviewUrl: null }),
-          asset,
-          assetId: asset.id,
-          loading: false,
-          previewUrl: signed?.url || current[asset.id]?.previewUrl || asset.previewUrl || null,
-        },
-      }));
-    });
+    onChangeDraft({ referenceUploadIds: nextReferenceUploadIds });
   }, [onChangeDraft]);
 
   const openUpload = React.useCallback(() => {
@@ -494,14 +484,15 @@ export function WorkbenchComposer({
     next.splice(Math.max(0, nextTargetIndex), 0, moved);
 
     const nextPending = next.filter((item) => pendingReferenceIds.includes(item));
-    const nextUploaded = next.filter((item) => draft.referenceAssetIds.includes(item));
+    const nextUploaded = next.filter((item) => draft.referenceUploadIds.includes(item));
+    const nextAssets = next.filter((item) => draft.referenceAssetIds.includes(item));
     setPendingReferenceIds(nextPending);
     uploadedReferenceIdsRef.current = nextUploaded;
-    onChangeDraft({ referenceAssetIds: nextUploaded });
-  }, [draft.referenceAssetIds, onChangeDraft, pendingReferenceIds, visibleReferenceIds]);
+    onChangeDraft({ referenceAssetIds: nextAssets, referenceUploadIds: nextUploaded });
+  }, [draft.referenceAssetIds, draft.referenceUploadIds, onChangeDraft, pendingReferenceIds, visibleReferenceIds]);
 
   const handleReferenceFiles = React.useCallback((files: FileList | null) => {
-    const selectedFiles = Array.from(files ?? []).slice(0, Math.max(0, MAX_REFERENCE_COUNT - uploadedReferenceIdsRef.current.length));
+    const selectedFiles = Array.from(files ?? []).slice(0, Math.max(0, MAX_REFERENCE_COUNT - visibleReferenceIds.length));
     if (selectedFiles.length === 0) return;
 
     selectedFiles.forEach((file, index) => {
@@ -515,8 +506,11 @@ export function WorkbenchComposer({
         previewUrl: null,
       };
       handleUploadStart(preview);
-      void uploadAssetFile({ file })
-        .then((asset) => handleUploadComplete(asset, preview))
+      void uploadWorkbenchReferenceFile({
+        file,
+        localPreviewUrl: preview.localPreviewUrl,
+      })
+        .then((upload) => handleUploadComplete(upload, preview))
         .catch(() => {
           setPendingReferenceIds((current) => current.filter((item) => item !== tempId));
           setReferencePreviews((current) => {
@@ -528,7 +522,7 @@ export function WorkbenchComposer({
     });
 
     if (fileInputRef.current) fileInputRef.current.value = "";
-  }, [handleUploadComplete, handleUploadStart]);
+  }, [handleUploadComplete, handleUploadStart, visibleReferenceIds.length]);
 
   return (
     <aside
@@ -568,7 +562,8 @@ export function WorkbenchComposer({
               className="grid h-6 w-6 place-items-center rounded-[5px] border border-white/8 bg-white/[0.03] text-slate-500 hover:text-white"
               onClick={() => {
                 setPendingReferenceIds([]);
-                onChangeDraft({ referenceAssetIds: [] });
+                uploadedReferenceIdsRef.current = [];
+                onChangeDraft({ referenceAssetIds: [], referenceUploadIds: [] });
               }}
               type="button"
             >
@@ -600,7 +595,12 @@ export function WorkbenchComposer({
               onInsertMention={() => insertMention(index + 1)}
               onRemove={() => {
                 setPendingReferenceIds((current) => current.filter((item) => item !== assetId));
-                onChangeDraft({ referenceAssetIds: draft.referenceAssetIds.filter((item) => item !== assetId) });
+                const nextUploadIds = draft.referenceUploadIds.filter((item) => item !== assetId);
+                uploadedReferenceIdsRef.current = nextUploadIds;
+                onChangeDraft({
+                  referenceAssetIds: draft.referenceAssetIds.filter((item) => item !== assetId),
+                  referenceUploadIds: nextUploadIds,
+                });
               }}
               preview={referencePreviews[assetId] || { asset: null, assetId, loading: true, localPreviewUrl: null, previewUrl: null }}
             />

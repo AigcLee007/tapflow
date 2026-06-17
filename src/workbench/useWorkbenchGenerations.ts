@@ -126,6 +126,7 @@ export function useWorkbenchGenerations() {
         params: buildWorkbenchRequestParams(draft),
         prompt: draft.prompt.trim(),
         referenceAssetIds: getReferencedAssetIdsForPrompt(draft.prompt, draft.referenceAssetIds),
+        referenceUploadIds: getReferencedAssetIdsForPrompt(draft.prompt, draft.referenceUploadIds),
         requestedCount: draft.quantity,
         routeKey: draft.routeKey,
       });

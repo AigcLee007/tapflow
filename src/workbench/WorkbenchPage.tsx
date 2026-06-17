@@ -49,6 +49,7 @@ export function WorkbenchPage() {
       quality: String(generation.params.quality || "auto") as "auto" | "high" | "low" | "medium",
       quantity: generation.requestedCount,
       referenceAssetIds: generation.referenceAssetIds,
+      referenceUploadIds: generation.referenceUploadIds ?? [],
       routeKey: generation.routeKey,
       size: String(generation.params.size || generation.params.imageSize || "1k").toLowerCase(),
     });

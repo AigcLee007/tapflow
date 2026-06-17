@@ -21,6 +21,20 @@ describe("workbench schemas", () => {
     expect(parsed.requestedCount).toBe(2);
   });
 
+  test("accepts temporary reference upload ids on generation requests", () => {
+    const parsed = createWorkbenchGenerationSchema.parse({
+      modelId: "pixellelabs.nano-banana-pro",
+      params: {},
+      prompt: "use @图1 as reference",
+      referenceAssetIds: [],
+      referenceUploadIds: ["00000000-0000-4000-8000-000000000031"],
+      requestedCount: 1,
+      routeKey: "image.pixellelabs.nano-banana-pro",
+    });
+
+    expect(parsed.referenceUploadIds).toEqual(["00000000-0000-4000-8000-000000000031"]);
+  });
+
   test("rejects an empty prompt", () => {
     expect(() =>
       createWorkbenchGenerationSchema.parse({

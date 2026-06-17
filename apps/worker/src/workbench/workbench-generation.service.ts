@@ -30,6 +30,7 @@ type WorkbenchGenerationRecord = {
   prompt: string;
   provider_task_id: string | null;
   reference_asset_ids: string[];
+  reference_upload_ids: string[];
   requested_count: number;
   reserve_ledger_id: string | null;
   reserved_credits: string;
@@ -47,6 +48,16 @@ type ReferenceAssetRecord = {
   kind: string;
   mime_type: string;
   signed_url: string;
+  width: number | null;
+};
+
+type ReferenceUploadRecord = {
+  bytes_base64: string;
+  height: number | null;
+  id: string;
+  mime_type: string;
+  original_filename: string | null;
+  size_bytes: string;
   width: number | null;
 };
 
@@ -235,6 +246,7 @@ export class WorkbenchGenerationService {
           params_json,
           provider_task_id,
           reference_asset_ids::text[] AS reference_asset_ids,
+          reference_upload_ids::text[] AS reference_upload_ids,
           requested_count,
           display_mode,
           estimated_credits::text AS estimated_credits,
@@ -342,59 +354,102 @@ export class WorkbenchGenerationService {
     client: PoolClient,
     tenantId: string,
     assetIds: string[],
+    uploadIds: string[] = [],
   ): Promise<AssetReferenceInput[]> {
-    if (assetIds.length === 0) {
-      return [];
-    }
-
-    const result = await client.query<ReferenceAssetRecord>(
-      `
-        SELECT
-          a.id::text AS asset_id,
-          a.kind,
-          a.mime_type,
-          a.width,
-          a.height,
-          a.duration_ms,
-          signed.url AS signed_url
-        FROM assets a
-        JOIN LATERAL (
-          SELECT $3::text AS url
-        ) AS signed ON true
-        WHERE a.tenant_id = $1::uuid
-          AND a.id = ANY($2::uuid[])
-          AND a.deleted_at IS NULL
-          AND a.status = 'available'
-      `,
-      [tenantId, assetIds, ""],
-    );
-
-    const records = new Map(result.rows.map((row) => [row.asset_id, row]));
     const hydrated: AssetReferenceInput[] = [];
 
-    for (const assetId of assetIds) {
-      const row = records.get(assetId);
-      if (!row) {
-        continue;
+    if (assetIds.length > 0) {
+      const result = await client.query<ReferenceAssetRecord>(
+        `
+          SELECT
+            a.id::text AS asset_id,
+            a.kind,
+            a.mime_type,
+            a.width,
+            a.height,
+            a.duration_ms,
+            signed.url AS signed_url
+          FROM assets a
+          JOIN LATERAL (
+            SELECT $3::text AS url
+          ) AS signed ON true
+          WHERE a.tenant_id = $1::uuid
+            AND a.id = ANY($2::uuid[])
+            AND a.deleted_at IS NULL
+            AND a.status = 'available'
+        `,
+        [tenantId, assetIds, ""],
+      );
+
+      const records = new Map(result.rows.map((row) => [row.asset_id, row]));
+
+      for (const assetId of assetIds) {
+        const row = records.get(assetId);
+        if (!row) {
+          continue;
+        }
+        const signed = await this.assetStore.storageProvider.createPresignedGetUrl({
+          bucket: this.assetBucket,
+          expiresInSeconds: 15 * 60,
+          key: await this.lookupAssetObjectKey(client, tenantId, assetId),
+          responseContentType: row.mime_type,
+        });
+        hydrated.push({
+          assetId,
+          durationMs: row.duration_ms,
+          height: row.height,
+          kind: row.kind,
+          metadata: {
+            signedUrl: signed.url,
+            url: signed.url,
+          },
+          mimeType: row.mime_type,
+          width: row.width,
+        });
       }
-      const signed = await this.assetStore.storageProvider.createPresignedGetUrl({
-        bucket: this.assetBucket,
-        expiresInSeconds: 15 * 60,
-        key: await this.lookupAssetObjectKey(client, tenantId, assetId),
-        responseContentType: row.mime_type,
-      });
-      hydrated.push({
-        assetId,
-        durationMs: row.duration_ms,
-        height: row.height,
-        kind: row.kind,
-        metadata: {
-          signedUrl: signed.url,
-          url: signed.url,
-        },
-        mimeType: row.mime_type,
-        width: row.width,
-      });
+    }
+
+    if (uploadIds.length > 0) {
+      const uploadResult = await client.query<ReferenceUploadRecord>(
+        `
+          SELECT
+            id::text AS id,
+            original_filename,
+            mime_type,
+            size_bytes::text AS size_bytes,
+            width,
+            height,
+            encode(bytes, 'base64') AS bytes_base64
+          FROM workbench_reference_uploads
+          WHERE tenant_id = $1::uuid
+            AND id = ANY($2::uuid[])
+            AND status IN ('active', 'used')
+            AND expires_at > now()
+        `,
+        [tenantId, uploadIds],
+      );
+      const uploadRecords = new Map(uploadResult.rows.map((row) => [row.id, row]));
+
+      for (const uploadId of uploadIds) {
+        const row = uploadRecords.get(uploadId);
+        if (!row?.bytes_base64) {
+          continue;
+        }
+        const dataUrl = `data:${row.mime_type};base64,${row.bytes_base64}`;
+        hydrated.push({
+          assetId: uploadId,
+          height: row.height,
+          kind: "image",
+          metadata: {
+            base64: dataUrl,
+            originalFilename: row.original_filename,
+            source: "workbench-temp-upload",
+            url: dataUrl,
+          },
+          mimeType: row.mime_type,
+          width: row.width,
+        });
+      }
     }
 
     return hydrated;
@@ -406,7 +461,7 @@ export class WorkbenchGenerationService {
   ): Promise<AssetReferenceInput[]> {
     return withTenantTransaction(
       { tenantId, userId: null },
-      (client) => this.loadReferenceAssets(client, tenantId, generation.reference_asset_ids),
+      (client) => this.loadReferenceAssets(client, tenantId, generation.reference_asset_ids, generation.reference_upload_ids),
       this.pool,
     );
   }
@@ -433,6 +488,7 @@ export class WorkbenchGenerationService {
         metadata: {
           params: buildMetadataParams(generation),
           referenceAssetIds: generation.reference_asset_ids,
+          referenceUploadIds: generation.reference_upload_ids,
           source: "workbench",
         },
         model: generation.model_id,

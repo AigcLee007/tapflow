@@ -14,6 +14,7 @@ export type WorkbenchDraft = {
   quality: WorkbenchQuality;
   quantity: number;
   referenceAssetIds: string[];
+  referenceUploadIds: string[];
   routeKey: string;
   size: string;
 };

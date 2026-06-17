@@ -2331,3 +2331,17 @@ Validation completed:
 - validation:
   - `npm run test -- src/workbench/WorkbenchPage.test.tsx src/workbench/workbenchReferences.test.ts`
   - `npm run build`
+
+## 2026-06-17 - Workbench Temporary Reference Uploads
+
+- added workbench-only temporary reference uploads so uploaded workbench references no longer create `assets` records or use browser direct OSS upload
+- added `workbench_reference_uploads` plus `workbench_generations.reference_upload_ids`; worker hydrates temporary uploads as inline image data for provider requests
+- switched the workbench composer to upload references through `/api/v2/workbench/reference-uploads` while keeping local preview and `@图N` filtering behavior
+- validation:
+  - `npm run test -- apps/api/test/workbench.test.ts`
+  - `npm run test --workspace @aigc-flow/worker -- workbench-generation.service.test.ts`
+  - `npm run test -- src/workbench/WorkbenchPage.test.tsx src/workbench/workbenchReferences.test.ts`
+  - `npm run build`
+  - `npm run build --workspace @aigc-flow/api`
+  - `npm run build --workspace @aigc-flow/worker`
+  - `npm run build --workspace @aigc-flow/db`

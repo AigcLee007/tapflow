@@ -22,6 +22,7 @@ export const createWorkbenchGenerationSchema = z.object({
   params: z.record(z.string(), z.unknown()).default({}),
   prompt: z.string().trim().min(1).max(8000),
   referenceAssetIds: z.array(z.string().uuid()).max(8).default([]),
+  referenceUploadIds: z.array(z.string().uuid()).max(8).default([]),
   requestedCount: z.number().int().min(1).max(8).default(1),
   routeKey: z.string().min(1).max(200),
   sessionId: z.string().uuid().optional(),
