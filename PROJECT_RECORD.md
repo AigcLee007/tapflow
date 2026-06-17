@@ -2180,3 +2180,14 @@ Validation completed:
 - Documented the recommended Stage 1.5 direction: make the AI Gateway text route the primary Agent planner, keep deterministic planning only as explicit fallback, add strict JSON parsing, repair retry, output redaction, policy validation, planner observability, and staging rollout flags.
 - The design preserves the existing `CanvasAgentOp` confirmation boundary and v2 workflow/billing/assets execution chain, and keeps provider/baseUrl/API key/raw route/upstream model internals out of creator-facing UI.
 - No product runtime code was changed in this design-only step.
+
+## 2026-06-17 - Independent Image Workbench Design
+
+- Added the formal Scheme C independent image workbench design at `docs/superpowers/specs/2026-06-17-independent-image-workbench-design.md`.
+- Clarified that the future workbench is a top-level `/workbench` product surface, not a project-scoped `/projects/:projectId/workbench` mode.
+- Locked the approved UX direction:
+  - desktop uses a professional left-parameters plus right-result-flow layout
+  - mobile uses a result-feed-first layout with a bottom composer inspired by JiMeng mobile creation flows
+  - workbench results are stored in independent server-side history first, with `发送到画布` as an explicit secondary action
+- Documented the required backend shape for tenant-scoped workbench history, server-side billing, AI Gateway execution, cloud asset persistence, and safe send-to-project insertion.
+- No product runtime code was changed in this design-only step.
