@@ -1,6 +1,6 @@
 ﻿# Project Record
 
-Last updated: 2026-06-17
+Last updated: 2026-06-18
 Maintainers: project team + Codex sessions
 
 ## Purpose
@@ -79,6 +79,28 @@ As of 2026-06-13:
 - GPT-image-2 multi-image generation now follows the same one-image-per-request batching strategy already used by GPT-image-2 reference edits, preventing upstream `The provider rejected the request payload` failures when creators set image count above `1`
 - MouxiHub GPT-Image-2 `绾胯矾涓?绾胯矾鍥沗 upstream failure root cause was confirmed from production `ai_call_logs`: we were sending pixel `size` together with already size-suffixed upstream models, which made MouxiHub internally resolve invalid model names like `gpt-image-2-4k-4k`; runtime fallback now forces these two routes to use provider-side base models (`gpt-image-2` / `gpt-image-2-vip`) while still forwarding the existing GPT-image-2 pixel-size payload
 - Follow-up root cause for MouxiHub GPT-Image-2 `绾胯矾鍥沗 was also fixed: legacy `ai_routes.upstream_model` values were still being injected into `requestConfig.model` and could override the new line-four runtime fallback, so provider-side GPT-Image-2 base model routing now prefers dedicated `providerBaseModel`/route defaults over stale normalized route config
+- desktop `/workbench` has now been restructured into a fixed three-pane docked workstation: the desktop shell reads as `3:5:2`, the left parameter dock keeps the existing composer UI with a pinned footer action area, the center pane is split into current-task stage plus recent-task window capped to the newest 8 operational tasks, and the right dock now shows completed-only history with no active generations mixed into that rail
+
+## 2026-06-18 - Workbench Three-Pane Docked Desktop Layout
+
+- Rebuilt the desktop workbench layout into a deterministic docked shell instead of the earlier loosely balanced fullscreen studio layout.
+- Locked the desktop pane proportions to the approved `3:5:2` visual structure:
+  - left dock = parameter composer
+  - center pane = current task stage + recent tasks
+  - right dock = completed-only history
+- Added explicit desktop task partition helpers under `src/workbench/workbenchDesktopLayout.ts` so the page now derives:
+  - primary stage task
+  - center recent operational tasks
+  - right completed-only history
+- The center pane now stays focused on the current task and the latest operational window, capped to at most 8 relevant tasks.
+- The right dock now excludes queued/running tasks and only shows completed generations.
+- The left workbench composer keeps its existing control UI, but its summary card and generate button now live in a separate pinned footer area so desktop users do not need to scroll down the full parameter column just to trigger generation.
+- Added focused regression coverage for:
+  - `src/workbench/workbenchDesktopLayout.test.ts`
+  - `src/workbench/WorkbenchPage.test.tsx`
+- Validation:
+  - `npx vitest run src/workbench/workbenchDesktopLayout.test.ts src/workbench/WorkbenchPage.test.tsx`
+  - `npm run build`
 
 ## 2026-06-14 - MouxiHub Nano Banana Pro Official T3 Route
 

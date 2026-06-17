@@ -467,6 +467,61 @@ describe("WorkbenchPage", () => {
     expect(screen.getAllByText("stage hero result").length).toBeGreaterThan(0);
   });
 
+  test("shows only completed tasks in the right dock and caps center recent items", async () => {
+    listWorkbenchGenerationsMock.mockResolvedValue({
+      generations: [
+        createGeneration({ id: "queued-1", prompt: "queued", status: "queued" }),
+        createGeneration({ id: "running-1", prompt: "running", status: "running" }),
+        createGeneration({ id: "failed-1", prompt: "failed", status: "failed" }),
+        ...Array.from({ length: 8 }, (_, index) =>
+          createGeneration({
+            createdAt: `2026-06-${String(index + 10).padStart(2, "0")}T08:00:00.000Z`,
+            id: `done-${index}`,
+            prompt: `done-${index}`,
+            results: [
+              {
+                assetId: `done-${index}-asset`,
+                createdAt: new Date().toISOString(),
+                downloadUrl: `https://example.com/done-${index}.png`,
+                downloadUrlExpiresAt: null,
+                height: 1024,
+                id: `done-${index}-result`,
+                metadata: {},
+                mimeType: "image/png",
+                originalFilename: `done-${index}.png`,
+                previewUrl: `https://example.com/done-${index}.png`,
+                previewUrlExpiresAt: null,
+                sortOrder: 0,
+                status: "available",
+                width: 1024,
+              },
+            ],
+            status: "succeeded",
+          }),
+        ),
+      ],
+      nextCursor: null,
+    });
+
+    setRoute("/workbench");
+    renderRouter();
+
+    expect(await screen.findByTestId("workbench-page")).toBeTruthy();
+    expect(screen.getAllByTestId("workbench-center-recent-item").length).toBeLessThanOrEqual(7);
+    expect(screen.getAllByTestId("workbench-completed-history-item").length).toBe(8);
+    expect(screen.queryByTestId("workbench-completed-history-item-queued-1")).toBeNull();
+    expect(screen.queryByTestId("workbench-completed-history-item-running-1")).toBeNull();
+  });
+
+  test("keeps the desktop composer footer action area separate from the scroll body", async () => {
+    setRoute("/workbench");
+    renderRouter();
+
+    expect(await screen.findByTestId("workbench-page")).toBeTruthy();
+    expect(screen.getByTestId("workbench-composer-scroll-body")).toBeTruthy();
+    expect(screen.getByTestId("workbench-composer-footer")).toBeTruthy();
+  });
+
   test("loads result detail preview from asset id when selected result has no preview url", async () => {
     listWorkbenchGenerationsMock.mockResolvedValue({
       generations: [

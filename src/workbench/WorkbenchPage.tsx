@@ -1,18 +1,34 @@
 import React from "react";
-import { Bell, ChevronLeft, Clock3, Coins, Share2, Sparkles } from "lucide-react";
+import {
+  Bell,
+  ChevronLeft,
+  ChevronRight,
+  Clock3,
+  Coins,
+  PanelLeftClose,
+  PanelRightClose,
+  Share2,
+  Sparkles,
+} from "lucide-react";
 
 import { BrandMark } from "../app/brand/BrandMark";
 import { HOME_ROUTE, WORKSPACE_ROUTE } from "../app/routes";
 import { getAssetVariantUrl } from "../assets/assetApi";
 import { useImageModelCatalog } from "../hooks/useImageModelCatalog";
 import { sendWorkbenchResultToProject } from "../services/v2WorkbenchApi";
-import { createDefaultWorkbenchDraft } from "./workbenchModelParams";
 import { SendToProjectDialog } from "./SendToProjectDialog";
 import { WorkbenchComposer } from "./WorkbenchComposer";
+import {
+  createDefaultWorkbenchDraft,
+} from "./workbenchModelParams";
+import {
+  getWorkbenchCompletedHistory,
+  getWorkbenchDesktopStage,
+} from "./workbenchDesktopLayout";
 import { WorkbenchMobileComposer } from "./WorkbenchMobileComposer";
 import { WorkbenchResultSheet } from "./WorkbenchResultSheet";
 import { useWorkbenchGenerations } from "./useWorkbenchGenerations";
-import type { WorkbenchGeneration, WorkbenchResult } from "./workbenchTypes";
+import type { WorkbenchDraft, WorkbenchGeneration, WorkbenchResult } from "./workbenchTypes";
 
 function navigate(path: string) {
   window.history.pushState(null, "", path);
@@ -57,6 +73,20 @@ function useResultPreviewUrl(result: WorkbenchResult | null) {
   return result?.previewUrl || fallbackUrl || result?.downloadUrl || null;
 }
 
+function useViewportWidth() {
+  const [width, setWidth] = React.useState(() =>
+    typeof window === "undefined" ? 1280 : window.innerWidth,
+  );
+
+  React.useEffect(() => {
+    const handleResize = () => setWidth(window.innerWidth);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  return width;
+}
+
 function WorkbenchStage({
   generation,
   loading,
@@ -70,10 +100,10 @@ function WorkbenchStage({
   const imageUrl = useResultPreviewUrl(primaryResult);
 
   return (
-    <section className="flex min-h-[560px] w-full min-w-0 flex-col overflow-hidden rounded-[30px] border border-white/10 bg-[radial-gradient(circle_at_top,rgba(96,164,255,0.18),transparent_34%),linear-gradient(180deg,rgba(18,24,38,0.96),rgba(8,10,17,0.98))] shadow-[0_30px_90px_rgba(0,0,0,0.34)] xl:min-h-[calc(100vh-160px)]">
+    <section className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-[28px] border border-white/10 bg-[radial-gradient(circle_at_top,rgba(96,164,255,0.18),transparent_34%),linear-gradient(180deg,rgba(18,24,38,0.96),rgba(8,10,17,0.98))] shadow-[0_30px_90px_rgba(0,0,0,0.34)]">
       <div className="flex items-center justify-between border-b border-white/8 px-6 py-5">
         <div>
-          <div className="text-[11px] font-black uppercase tracking-[0.22em] text-cyan-300">Current Result</div>
+          <div className="text-[11px] font-black uppercase tracking-[0.22em] text-cyan-300">Current Task</div>
           <div className="mt-1 text-base font-bold text-white">
             {generation ? formatStatus(generation.status) : "准备开始"}
           </div>
@@ -87,18 +117,18 @@ function WorkbenchStage({
 
       <div className="flex min-h-0 flex-1 flex-col justify-center p-6">
         {loading ? (
-          <div className="grid min-h-[460px] place-items-center rounded-[26px] border border-white/8 bg-black/20 text-sm text-slate-400 xl:min-h-[680px]">
-            正在加载工作台历史...
+          <div className="grid min-h-[320px] flex-1 place-items-center rounded-[24px] border border-white/8 bg-black/20 text-sm text-slate-400">
+            正在加载工作台记录...
           </div>
         ) : primaryResult && imageUrl ? (
           <button
-            className="group relative block min-h-[460px] overflow-hidden rounded-[26px] border border-white/10 bg-black/35 text-left xl:min-h-[680px]"
+            className="group relative block min-h-[320px] flex-1 overflow-hidden rounded-[24px] border border-white/10 bg-black/35 text-left"
             onClick={() => onSelectResult(primaryResult)}
             type="button"
           >
             <img
               alt={primaryResult.originalFilename || "Workbench result"}
-              className="h-full min-h-[460px] w-full object-cover transition duration-300 group-hover:scale-[1.01] xl:min-h-[680px]"
+              className="h-full min-h-[320px] w-full object-cover transition duration-300 group-hover:scale-[1.01]"
               src={imageUrl}
             />
             <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent px-6 pb-6 pt-20">
@@ -110,22 +140,22 @@ function WorkbenchStage({
             </div>
           </button>
         ) : generation ? (
-          <div className="grid min-h-[460px] place-items-center rounded-[26px] border border-dashed border-white/10 bg-black/20 text-center xl:min-h-[680px]">
+          <div className="grid min-h-[320px] flex-1 place-items-center rounded-[24px] border border-dashed border-white/10 bg-black/20 text-center">
             <div className="max-w-md px-8">
               <div className="text-lg font-bold text-white">{formatStatus(generation.status)}</div>
               <div className="mt-2 text-sm leading-6 text-slate-400">
                 {generation.status === "failed"
-                  ? (generation.errorJson?.message as string) || "这次生成没有成功，可以直接在右侧历史区重试。"
-                  : "结果会优先显示在这里，同时保留在右侧历史流里。"}
+                  ? (generation.errorJson?.message as string) || "这次生成没有成功，可以直接在中间任务区重试。"
+                  : "结果会优先显示在这里，同时保留在最近任务和完成历史里。"}
               </div>
             </div>
           </div>
         ) : (
-          <div className="grid min-h-[460px] place-items-center rounded-[26px] border border-dashed border-white/10 bg-black/20 text-center xl:min-h-[680px]">
+          <div className="grid min-h-[320px] flex-1 place-items-center rounded-[24px] border border-dashed border-white/10 bg-black/20 text-center">
             <div className="max-w-md px-8">
               <div className="text-lg font-bold text-white">独立生图工作台</div>
               <div className="mt-2 text-sm leading-6 text-slate-400">
-                左侧参数区保持现有工作台配置方式不变。开始一次生成后，当前主结果显示在中间，历史记录在右侧连续保存。
+                左侧参数区保持现有工作台配置方式不变。开始一次生成后，当前任务会在这里展示。
               </div>
             </div>
           </div>
@@ -135,19 +165,84 @@ function WorkbenchStage({
   );
 }
 
-function WorkbenchHistoryCard({
+function WorkbenchRecentTaskItem({
   generation,
   onReuseParams,
   onRetry,
   onSelectResult,
-  result,
 }: {
   generation: WorkbenchGeneration;
   onReuseParams: (generation: WorkbenchGeneration) => void;
   onRetry: (generationId: string) => void;
   onSelectResult: (result: WorkbenchResult) => void;
-  result: WorkbenchResult | null;
 }) {
+  const result = getPrimaryResult(generation);
+  const previewUrl = useResultPreviewUrl(result);
+
+  return (
+    <article
+      className="grid grid-cols-[72px_minmax(0,1fr)_auto] items-center gap-3 rounded-[18px] border border-white/8 bg-white/[0.035] px-3 py-3"
+      data-testid="workbench-center-recent-item"
+    >
+      <button
+        className="overflow-hidden rounded-[12px] border border-white/8 bg-black/20"
+        onClick={() => result && onSelectResult(result)}
+        type="button"
+      >
+        {previewUrl ? (
+          <img
+            alt={result?.originalFilename || "Workbench result"}
+            className="h-[72px] w-[72px] object-cover"
+            src={previewUrl}
+          />
+        ) : (
+          <div className="grid h-[72px] w-[72px] place-items-center text-[11px] text-slate-500">
+            {formatStatus(generation.status)}
+          </div>
+        )}
+      </button>
+
+      <div className="min-w-0">
+        <div className="line-clamp-1 text-[13px] font-bold text-white">{generation.prompt}</div>
+        <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-slate-400">
+          <span>{formatStatus(generation.status)}</span>
+          <span>{generation.requestedCount} 张</span>
+          <span>{generation.modelId}</span>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <button
+          className="h-8 rounded-full border border-white/10 bg-white/[0.06] px-3 text-[11px] font-bold text-white"
+          onClick={() => onRetry(generation.id)}
+          type="button"
+        >
+          再次生成
+        </button>
+        <button
+          className="h-8 rounded-full border border-white/10 bg-white/[0.03] px-3 text-[11px] font-bold text-slate-300"
+          onClick={() => onReuseParams(generation)}
+          type="button"
+        >
+          复用参数
+        </button>
+      </div>
+    </article>
+  );
+}
+
+function WorkbenchHistoryCard({
+  generation,
+  onReuseParams,
+  onRetry,
+  onSelectResult,
+}: {
+  generation: WorkbenchGeneration;
+  onReuseParams: (generation: WorkbenchGeneration) => void;
+  onRetry: (generationId: string) => void;
+  onSelectResult: (result: WorkbenchResult) => void;
+}) {
+  const result = getPrimaryResult(generation);
   const previewUrl = useResultPreviewUrl(result);
 
   return (
@@ -180,7 +275,7 @@ function WorkbenchHistoryCard({
         </button>
       ) : (
         <div className="mt-3 grid min-h-[170px] place-items-center rounded-[16px] border border-dashed border-white/10 bg-black/15 text-xs text-slate-500">
-          {generation.status === "failed" ? "本次生成失败" : "等待图片结果..."}
+          等待图片结果...
         </div>
       )}
 
@@ -204,7 +299,74 @@ function WorkbenchHistoryCard({
   );
 }
 
-function WorkbenchHistoryPanel({
+function DesktopLeftDock({
+  collapsed,
+  draft,
+  isGenerating,
+  models,
+  onChangeDraft,
+  onGenerate,
+  onToggle,
+}: {
+  collapsed: boolean;
+  draft: WorkbenchDraft;
+  isGenerating: boolean;
+  models: ReturnType<typeof useImageModelCatalog>["models"];
+  onChangeDraft: (patch: Partial<WorkbenchDraft>) => void;
+  onGenerate: () => void;
+  onToggle: () => void;
+}) {
+  return (
+    <div
+      className={`flex min-h-0 overflow-hidden rounded-[26px] border border-white/8 bg-[#0f1015]/92 shadow-[0_26px_80px_rgba(0,0,0,0.28)] transition-all duration-200 ${collapsed ? "max-w-[84px]" : "max-w-none"}`}
+      data-testid="workbench-left-dock"
+    >
+      {collapsed ? (
+        <div className="flex w-full flex-col items-center justify-between py-4">
+          <button
+            aria-label="展开左侧参数区"
+            className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-white/[0.06] text-slate-200"
+            onClick={onToggle}
+            type="button"
+          >
+            <ChevronRight size={16} />
+          </button>
+          <div className="rotate-180 text-[11px] font-black tracking-[0.28em] text-slate-400 [writing-mode:vertical-rl]">
+            PARAMS
+          </div>
+        </div>
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="flex items-center justify-between border-b border-white/8 px-4 py-3">
+            <div>
+              <div className="text-[11px] font-black uppercase tracking-[0.2em] text-cyan-300">Create</div>
+              <div className="mt-1 text-sm font-bold text-white">参数区</div>
+            </div>
+            <button
+              aria-label="收起左侧参数区"
+              className="grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-white/[0.05] text-slate-200"
+              onClick={onToggle}
+              type="button"
+            >
+              <PanelLeftClose size={16} />
+            </button>
+          </div>
+          <div className="min-h-0 flex-1">
+            <WorkbenchComposer
+              draft={draft}
+              isGenerating={isGenerating}
+              models={models}
+              onChangeDraft={onChangeDraft}
+              onGenerate={onGenerate}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DesktopRecentPane({
   generations,
   onReuseParams,
   onRetry,
@@ -216,40 +378,126 @@ function WorkbenchHistoryPanel({
   onSelectResult: (result: WorkbenchResult) => void;
 }) {
   return (
-    <aside className="flex h-full min-h-[560px] w-full min-w-0 flex-col overflow-hidden rounded-[26px] border border-white/10 bg-white/[0.04] shadow-[0_24px_70px_rgba(0,0,0,0.24)] xl:min-h-[calc(100vh-160px)]">
-      <div className="flex items-center justify-between border-b border-white/8 px-4 py-4">
+    <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[26px] border border-white/10 bg-white/[0.035] shadow-[0_24px_70px_rgba(0,0,0,0.2)]">
+      <div className="flex items-center justify-between border-b border-white/8 px-5 py-4">
         <div>
-          <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">History</div>
-          <div className="mt-1 text-sm font-bold text-white">结果流</div>
+          <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Recent Tasks</div>
+          <div className="mt-1 text-sm font-bold text-white">最近任务</div>
         </div>
         <span className="rounded-full border border-white/10 bg-white/[0.06] px-3 py-1 text-xs font-bold text-slate-300">
           {generations.length}
         </span>
       </div>
+
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        <div className="grid gap-4">
+        <div className="grid gap-3">
           {generations.length === 0 ? (
-            <div className="grid min-h-[260px] place-items-center rounded-[20px] border border-dashed border-white/10 bg-black/15 text-center">
+            <div className="grid min-h-[180px] place-items-center rounded-[20px] border border-dashed border-white/10 bg-black/15 text-center">
               <div className="px-5">
-                <div className="text-sm font-bold text-white">还没有生成记录</div>
-                <div className="mt-2 text-sm leading-6 text-slate-400">从左侧参数区开始一次新的图片生成。</div>
+                <div className="text-sm font-bold text-white">还没有最近任务</div>
+                <div className="mt-2 text-sm leading-6 text-slate-400">新的进行中任务和刚完成任务会优先显示在这里。</div>
               </div>
             </div>
           ) : null}
 
           {generations.map((generation) => (
-            <WorkbenchHistoryCard
-              key={generation.id}
+            <WorkbenchRecentTaskItem
               generation={generation}
+              key={generation.id}
               onReuseParams={onReuseParams}
               onRetry={onRetry}
               onSelectResult={onSelectResult}
-              result={getPrimaryResult(generation)}
             />
           ))}
         </div>
       </div>
-    </aside>
+    </section>
+  );
+}
+
+function DesktopRightDock({
+  collapsed,
+  generations,
+  onReuseParams,
+  onRetry,
+  onSelectResult,
+  onToggle,
+}: {
+  collapsed: boolean;
+  generations: WorkbenchGeneration[];
+  onReuseParams: (generation: WorkbenchGeneration) => void;
+  onRetry: (generationId: string) => void;
+  onSelectResult: (result: WorkbenchResult) => void;
+  onToggle: () => void;
+}) {
+  return (
+    <div
+      className={`flex min-h-0 overflow-hidden rounded-[26px] border border-white/8 bg-[#0f1015]/82 shadow-[0_26px_80px_rgba(0,0,0,0.24)] transition-all duration-200 ${collapsed ? "max-w-[72px]" : "max-w-none"}`}
+      data-testid="workbench-right-dock"
+    >
+      {collapsed ? (
+        <div className="flex w-full flex-col items-center justify-between py-4">
+          <button
+            aria-label="展开右侧完成历史"
+            className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-white/[0.06] text-slate-200"
+            onClick={onToggle}
+            type="button"
+          >
+            <ChevronLeft size={16} />
+          </button>
+          <div className="rotate-180 text-[11px] font-black tracking-[0.28em] text-slate-400 [writing-mode:vertical-rl]">
+            DONE
+          </div>
+        </div>
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="flex items-center justify-between border-b border-white/8 px-4 py-3">
+            <div>
+              <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">History</div>
+              <div className="mt-1 text-sm font-bold text-white">完成历史</div>
+            </div>
+            <button
+              aria-label="收起右侧完成历史"
+              className="grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-white/[0.05] text-slate-200"
+              onClick={onToggle}
+              type="button"
+            >
+              <PanelRightClose size={16} />
+            </button>
+          </div>
+
+          <div className="min-h-0 flex-1">
+            <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden">
+              <div className="min-h-0 flex-1 overflow-y-auto p-4">
+                <div className="grid gap-4">
+                  {generations.length === 0 ? (
+                    <div className="grid min-h-[260px] place-items-center rounded-[20px] border border-dashed border-white/10 bg-black/15 text-center">
+                      <div className="px-5">
+                        <div className="text-sm font-bold text-white">还没有完成记录</div>
+                        <div className="mt-2 text-sm leading-6 text-slate-400">已完成的任务会固定收纳在右侧。</div>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {generations.map((generation) => (
+                    <div data-testid="workbench-completed-history-item" key={generation.id}>
+                      <div data-testid={`workbench-completed-history-item-${generation.id}`}>
+                        <WorkbenchHistoryCard
+                          generation={generation}
+                          onReuseParams={onReuseParams}
+                          onRetry={onRetry}
+                          onSelectResult={onSelectResult}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -266,6 +514,11 @@ export function WorkbenchPage() {
   const [draft, setDraft] = React.useState(() => createDefaultWorkbenchDraft());
   const [selectedResult, setSelectedResult] = React.useState<WorkbenchResult | null>(null);
   const [sendDialogOpen, setSendDialogOpen] = React.useState(false);
+  const [leftCollapsed, setLeftCollapsed] = React.useState(false);
+  const [rightCollapsed, setRightCollapsed] = React.useState(false);
+  const viewportWidth = useViewportWidth();
+  const isDesktop = viewportWidth >= 1024;
+  const isMobile = viewportWidth < 768;
 
   React.useEffect(() => {
     if (models.length === 0) return;
@@ -301,15 +554,17 @@ export function WorkbenchPage() {
   }, [selectedResult]);
 
   const featuredGeneration = getFeaturedGeneration(generations);
+  const desktopStage = React.useMemo(() => getWorkbenchDesktopStage(generations), [generations]);
+  const completedHistory = React.useMemo(() => getWorkbenchCompletedHistory(generations), [generations]);
 
   return (
     <section
       data-testid="workbench-page"
-      className="min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(73,149,255,0.16),transparent_24%),radial-gradient(circle_at_top_right,rgba(63,233,255,0.10),transparent_22%),linear-gradient(180deg,#07090e,#0b0d13_44%,#090b10)] text-white"
+      className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(73,149,255,0.16),transparent_24%),radial-gradient(circle_at_top_right,rgba(63,233,255,0.10),transparent_22%),linear-gradient(180deg,#07090e,#0b0d13_44%,#090b10)] text-white"
     >
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:44px_44px] opacity-[0.08]" />
 
-      <header className="relative z-10 flex items-center justify-between gap-4 px-4 pb-3 pt-4 md:px-6 md:pb-4 md:pt-5">
+      <header className="relative z-10 flex items-center justify-between gap-4 px-4 pb-2 pt-3 md:px-5 md:pb-3 md:pt-4">
         <div className="flex min-w-0 items-center gap-4">
           <button
             aria-label="返回首页"
@@ -373,41 +628,98 @@ export function WorkbenchPage() {
           </div>
         ) : null}
 
-        <div className="grid min-h-[calc(100vh-96px)] w-full gap-5 md:grid-cols-[390px_minmax(0,1fr)] xl:grid-cols-[390px_minmax(780px,1fr)_360px]">
-          <div className="hidden min-h-0 overflow-hidden rounded-[26px] border border-white/8 bg-[#0f1015]/92 shadow-[0_26px_80px_rgba(0,0,0,0.28)] md:block">
-            <WorkbenchComposer
+        {isDesktop ? (
+          <div className="min-h-[calc(100vh-88px)] w-full overflow-hidden lg:grid lg:grid-cols-[minmax(84px,3fr)_minmax(0,5fr)_minmax(72px,2fr)] lg:gap-4">
+            <DesktopLeftDock
+              collapsed={leftCollapsed}
               draft={draft}
               isGenerating={submitting}
               models={models}
               onChangeDraft={(patch) => setDraft((current) => ({ ...current, ...patch }))}
               onGenerate={() => void submit(draft)}
+              onToggle={() => setLeftCollapsed((current) => !current)}
             />
-          </div>
 
-          <WorkbenchStage
-            generation={featuredGeneration}
-            loading={loading}
-            onSelectResult={setSelectedResult}
-          />
+            <div className="flex min-h-0 flex-col gap-4 overflow-hidden">
+              <WorkbenchStage
+                generation={desktopStage.primary ?? featuredGeneration}
+                loading={loading}
+                onSelectResult={setSelectedResult}
+              />
+              <DesktopRecentPane
+                generations={desktopStage.recent}
+                onReuseParams={reuseParams}
+                onRetry={(generationId) => void retry(generationId)}
+                onSelectResult={setSelectedResult}
+              />
+            </div>
 
-          <div className="md:col-start-2 xl:col-start-3">
-            <WorkbenchHistoryPanel
-              generations={generations}
+            <DesktopRightDock
+              collapsed={rightCollapsed}
+              generations={completedHistory}
               onReuseParams={reuseParams}
               onRetry={(generationId) => void retry(generationId)}
               onSelectResult={setSelectedResult}
+              onToggle={() => setRightCollapsed((current) => !current)}
             />
           </div>
-        </div>
+        ) : (
+          <div className="grid min-h-[calc(100vh-96px)] w-full gap-5 md:grid-cols-[390px_minmax(0,1fr)] xl:grid-cols-[390px_minmax(780px,1fr)_360px]">
+            <div className="hidden min-h-0 overflow-hidden rounded-[26px] border border-white/8 bg-[#0f1015]/92 shadow-[0_26px_80px_rgba(0,0,0,0.28)] md:block">
+              <WorkbenchComposer
+                draft={draft}
+                isGenerating={submitting}
+                models={models}
+                onChangeDraft={(patch) => setDraft((current) => ({ ...current, ...patch }))}
+                onGenerate={() => void submit(draft)}
+              />
+            </div>
+
+            <WorkbenchStage
+              generation={featuredGeneration}
+              loading={loading}
+              onSelectResult={setSelectedResult}
+            />
+
+            <div className="md:col-start-2 xl:col-start-3">
+              <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-[26px] border border-white/10 bg-white/[0.04] shadow-[0_24px_70px_rgba(0,0,0,0.24)]">
+                <div className="flex items-center justify-between border-b border-white/8 px-4 py-4">
+                  <div>
+                    <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">History</div>
+                    <div className="mt-1 text-sm font-bold text-white">结果流</div>
+                  </div>
+                  <span className="rounded-full border border-white/10 bg-white/[0.06] px-3 py-1 text-xs font-bold text-slate-300">
+                    {generations.length}
+                  </span>
+                </div>
+                <div className="min-h-0 flex-1 overflow-y-auto p-4">
+                  <div className="grid gap-4">
+                    {generations.map((generation) => (
+                      <WorkbenchHistoryCard
+                        generation={generation}
+                        key={generation.id}
+                        onReuseParams={reuseParams}
+                        onRetry={(generationId) => void retry(generationId)}
+                        onSelectResult={setSelectedResult}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
-      <WorkbenchMobileComposer
-        draft={draft}
-        isGenerating={submitting}
-        models={models}
-        onChangeDraft={(patch) => setDraft((current) => ({ ...current, ...patch }))}
-        onGenerate={() => void submit(draft)}
-      />
+      {isMobile ? (
+        <WorkbenchMobileComposer
+          draft={draft}
+          isGenerating={submitting}
+          models={models}
+          onChangeDraft={(patch) => setDraft((current) => ({ ...current, ...patch }))}
+          onGenerate={() => void submit(draft)}
+        />
+      ) : null}
 
       <SendToProjectDialog
         onClose={() => setSendDialogOpen(false)}

@@ -586,13 +586,18 @@ export function WorkbenchComposer({
     if (fileInputRef.current) fileInputRef.current.value = "";
   }, [handleUploadComplete, handleUploadStart, visibleReferenceIds.length]);
 
+  const scrollBodyClassName = compact
+    ? "flex min-h-0 flex-col gap-3 overflow-y-auto"
+    : "flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1";
+
   return (
     <aside
       data-testid="workbench-composer"
-      className={`workbench-composer flex min-h-0 flex-col gap-3 overflow-y-auto border-white/8 bg-[#101014] px-4 py-3 text-white ${
+      className={`workbench-composer flex min-h-0 flex-col overflow-hidden border-white/8 bg-[#101014] px-4 py-3 text-white ${
         compact ? "max-h-[88vh]" : "border-r"
       }`}
     >
+      <div data-testid="workbench-composer-scroll-body" className={scrollBodyClassName}>
       <section className="rounded-[8px] border border-dashed border-[#334153] bg-[#11151b] p-3">
         <input
           accept="image/*"
@@ -841,8 +846,13 @@ export function WorkbenchComposer({
           </button>
         </section>
       ) : null}
+      </div>
 
-      <section className="mt-auto rounded-[11px] border border-[#6b5d0b] bg-[#171605] p-3 shadow-[inset_0_0_0_1px_rgba(255,224,32,0.08)]">
+      <div
+        data-testid="workbench-composer-footer"
+        className={`shrink-0 ${compact ? "pt-3" : "mt-3 border-t border-white/8 bg-[#101014] pt-3"}`}
+      >
+      <section className="rounded-[11px] border border-[#6b5d0b] bg-[#171605] p-3 shadow-[inset_0_0_0_1px_rgba(255,224,32,0.08)]">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="text-[11px] font-bold text-slate-300">{TEXT.currentConfig}</div>
@@ -872,6 +882,7 @@ export function WorkbenchComposer({
         <Wand2 size={16} />
         {isGenerating ? TEXT.submitting : TEXT.start}
       </button>
+      </div>
     </aside>
   );
 }
