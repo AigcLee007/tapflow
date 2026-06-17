@@ -206,19 +206,44 @@ function WorkbenchSelect({
 }
 
 function ReferenceImageCard({
+  assetId,
   index,
+  onDragEnd,
+  onDragStart,
+  onDrop,
   onInsertMention,
   onRemove,
   preview,
 }: {
+  assetId: string;
   index: number;
+  onDragEnd: () => void;
+  onDragStart: () => void;
+  onDrop: () => void;
   onInsertMention: () => void;
   onRemove: () => void;
   preview: ReferencePreview;
 }) {
   const imageUrl = preview.localPreviewUrl || preview.previewUrl;
   return (
-    <div className="group relative h-[74px] w-[74px] shrink-0 overflow-hidden rounded-[11px] border border-[#4c5667] bg-[#182031]">
+    <div
+      className="group relative h-[74px] w-[74px] shrink-0 cursor-grab overflow-hidden rounded-[11px] border border-[#4c5667] bg-[#182031] active:cursor-grabbing"
+      data-testid={`workbench-reference-card-${index}`}
+      draggable
+      onDragEnd={onDragEnd}
+      onDragOver={(event) => event.preventDefault()}
+      onDragStart={(event) => {
+        if (event.dataTransfer) {
+          event.dataTransfer.effectAllowed = "move";
+          event.dataTransfer.setData("text/plain", assetId);
+        }
+        onDragStart();
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        onDrop();
+      }}
+    >
       {imageUrl ? (
         <img alt={`${TEXT.reference}${index}`} className="h-full w-full object-cover" src={imageUrl} />
       ) : (
@@ -237,7 +262,7 @@ function ReferenceImageCard({
       </div>
       <button
         aria-label={`${TEXT.removeReference}${index}`}
-        className="absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-full bg-black/65 text-white opacity-90 transition hover:bg-white hover:text-black"
+        className="absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-full bg-black/65 text-white opacity-0 transition group-hover:opacity-90 focus:opacity-90 hover:bg-white hover:text-black"
         onClick={onRemove}
         type="button"
       >
@@ -270,6 +295,7 @@ export function WorkbenchComposer({
 }: Props) {
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   const promptRef = React.useRef<HTMLTextAreaElement | null>(null);
+  const draggedReferenceIdRef = React.useRef<string | null>(null);
   const uploadedReferenceIdsRef = React.useRef<string[]>(draft.referenceAssetIds);
   const modelOptions = React.useMemo(() => buildWorkbenchModelOptions(models), [models]);
   const aspectOptions = React.useMemo(() => getWorkbenchAspectOptions(models, draft.modelId), [draft.modelId, models]);
@@ -418,6 +444,26 @@ export function WorkbenchComposer({
     fileInputRef.current?.click();
   }, []);
 
+  const reorderReferenceIds = React.useCallback((sourceId: string, targetId: string) => {
+    if (!sourceId || !targetId || sourceId === targetId) return;
+    const current = visibleReferenceIds;
+    const sourceIndex = current.indexOf(sourceId);
+    const targetIndex = current.indexOf(targetId);
+    if (sourceIndex < 0 || targetIndex < 0) return;
+
+    const next = [...current];
+    const [moved] = next.splice(sourceIndex, 1);
+    if (!moved) return;
+    const nextTargetIndex = next.indexOf(targetId);
+    next.splice(Math.max(0, nextTargetIndex), 0, moved);
+
+    const nextPending = next.filter((item) => pendingReferenceIds.includes(item));
+    const nextUploaded = next.filter((item) => draft.referenceAssetIds.includes(item));
+    setPendingReferenceIds(nextPending);
+    uploadedReferenceIdsRef.current = nextUploaded;
+    onChangeDraft({ referenceAssetIds: nextUploaded });
+  }, [draft.referenceAssetIds, onChangeDraft, pendingReferenceIds, visibleReferenceIds]);
+
   const handleReferenceFiles = React.useCallback((files: FileList | null) => {
     const selectedFiles = Array.from(files ?? []).slice(0, Math.max(0, MAX_REFERENCE_COUNT - uploadedReferenceIdsRef.current.length));
     if (selectedFiles.length === 0) return;
@@ -495,12 +541,26 @@ export function WorkbenchComposer({
           </div>
         </div>
 
-        <div className="flex min-h-[82px] gap-2 overflow-x-auto pb-1 [scrollbar-color:#4b5563_transparent] [scrollbar-width:thin]">
+        <div
+          className="flex min-h-[82px] gap-2 overflow-x-scroll pb-1 [scrollbar-color:#4b5563_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-600 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar]:h-2"
+          data-scrollbar="visible"
+          data-testid="workbench-reference-strip"
+        >
           {visibleReferenceIds.length === 0 ? <EmptyReferenceTile onClick={openUpload} /> : null}
           {visibleReferenceIds.map((assetId, index) => (
             <ReferenceImageCard
+              assetId={assetId}
               index={index + 1}
               key={assetId}
+              onDragEnd={() => {
+                draggedReferenceIdRef.current = null;
+              }}
+              onDragStart={() => {
+                draggedReferenceIdRef.current = assetId;
+              }}
+              onDrop={() => {
+                reorderReferenceIds(draggedReferenceIdRef.current || "", assetId);
+              }}
               onInsertMention={() => insertMention(index + 1)}
               onRemove={() => {
                 setPendingReferenceIds((current) => current.filter((item) => item !== assetId));
@@ -552,7 +612,20 @@ export function WorkbenchComposer({
         />
       </section>
 
-      <section className="grid grid-cols-4 gap-2">
+      <section className="grid gap-1.5" data-testid="workbench-route-row">
+        <span className="text-[11px] font-bold text-slate-500">{TEXT.route}</span>
+        <WorkbenchSelect
+          label={TEXT.route}
+          onChange={(value) => onChangeDraft({ routeKey: value })}
+          options={routeOptions.length > 0
+            ? routeOptions.map((item) => ({ label: formatRouteLabel(item), value: item.routeKey }))
+            : [{ label: TEXT.loadingRoute, value: "" }]}
+          value={draft.routeKey}
+          wide
+        />
+      </section>
+
+      <section className="grid grid-cols-3 gap-2" data-testid="workbench-param-row">
         <label className="grid gap-1.5">
           <span className="text-[11px] font-bold text-slate-500">{TEXT.aspectRatioLabel}</span>
           <WorkbenchSelect
@@ -570,17 +643,6 @@ export function WorkbenchComposer({
             onChange={(value) => onChangeDraft({ size: value })}
             options={sizeOptions.map((value) => ({ label: formatSelectLabel(value), value }))}
             value={draft.size}
-          />
-        </label>
-        <label className="grid gap-1.5">
-          <span className="text-[11px] font-bold text-slate-500">{TEXT.route}</span>
-          <WorkbenchSelect
-            label={TEXT.route}
-            onChange={(value) => onChangeDraft({ routeKey: value })}
-            options={routeOptions.length > 0
-              ? routeOptions.map((item) => ({ label: formatRouteLabel(item), value: item.routeKey }))
-              : [{ label: TEXT.loadingRoute, value: "" }]}
-            value={draft.routeKey}
           />
         </label>
         <label className="grid gap-1.5">

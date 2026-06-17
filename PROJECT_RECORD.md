@@ -2307,3 +2307,18 @@ Validation completed:
 - validation:
   - `npm run test -- src/workbench/WorkbenchPage.test.tsx src/workbench/workbenchReferences.test.ts`
   - `npm run build`
+
+## 2026-06-17 - Workbench Reference Strip and Parameter Layout Follow-up
+
+- updated the standalone `/workbench` reference strip to match the annotated review:
+  - reference thumbnails can be reordered by mouse drag and drop
+  - per-image remove buttons stay hidden until the card is hovered or focused
+  - the reference strip uses a visible horizontal scrollbar instead of wrapping into vertical rows
+- adjusted the composer parameter layout so:
+  - model selection remains its own full-width row
+  - route selection is now its own full-width row under the model selector
+  - aspect ratio, size, and quantity stay together in one compact three-column row
+- extended regression coverage for reference-strip scrollbar visibility, hover-only remove controls, drag reorder behavior, and the route/parameter row split
+- validation:
+  - `npm run test -- src/workbench/WorkbenchPage.test.tsx src/workbench/workbenchReferences.test.ts`
+  - `npm run build`

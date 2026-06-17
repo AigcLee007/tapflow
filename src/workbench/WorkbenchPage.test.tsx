@@ -209,6 +209,8 @@ describe("WorkbenchPage", () => {
     expect(screen.getByText("画面比例")).toBeTruthy();
     expect(screen.getByText("画质尺寸")).toBeTruthy();
     expect(screen.getByText("当前配置消耗")).toBeTruthy();
+    expect(screen.getByTestId("workbench-route-row").className).toContain("grid gap-1.5");
+    expect(screen.getByTestId("workbench-param-row").className).toContain("grid-cols-3");
     expect(screen.getByRole("button", { name: "立即开始创作" })).toBeTruthy();
   });
 
@@ -229,22 +231,68 @@ describe("WorkbenchPage", () => {
     const input = container.querySelector('input[type="file"]') as HTMLInputElement | null;
     expect(input).toBeTruthy();
 
+    uploadAssetFileMock
+      .mockResolvedValueOnce({
+        id: "asset-uploaded-1",
+        originalFilename: "ref.png",
+        previewUrl: "",
+        title: "ref.png",
+      })
+      .mockResolvedValueOnce({
+        id: "asset-uploaded-2",
+        originalFilename: "ref-2.png",
+        previewUrl: "",
+        title: "ref-2.png",
+      })
+      .mockResolvedValueOnce({
+        id: "asset-uploaded-3",
+        originalFilename: "ref-3.png",
+        previewUrl: "",
+        title: "ref-3.png",
+      });
+
     fireEvent.change(input!, {
       target: {
-        files: [new File(["ref"], "ref.png", { type: "image/png" })],
+        files: [
+          new File(["ref"], "ref.png", { type: "image/png" }),
+          new File(["ref2"], "ref-2.png", { type: "image/png" }),
+          new File(["ref3"], "ref-3.png", { type: "image/png" }),
+        ],
       },
     });
 
     expect(screen.getByAltText("参考图1").getAttribute("src")).toBe("blob:local-ref-preview");
+    expect(screen.getByTestId("workbench-reference-strip").className).toContain("overflow-x-scroll");
+    expect(screen.getByTestId("workbench-reference-strip").getAttribute("data-scrollbar")).toBe("visible");
+    expect(screen.getByRole("button", { name: "移除参考图1" }).className).toContain("opacity-0");
 
     await waitFor(() => {
-      expect(uploadAssetFileMock).toHaveBeenCalledTimes(1);
+      expect(uploadAssetFileMock).toHaveBeenCalledTimes(3);
     });
     expect(screen.queryByText("上传结果")).toBeNull();
     expect(screen.queryByText("ref.png")).toBeNull();
 
     await waitFor(() => {
       expect(getAssetVariantUrlMock).toHaveBeenCalledWith("asset-uploaded-1", "preview");
+    });
+
+    fireEvent.dragStart(screen.getByTestId("workbench-reference-card-1"));
+    fireEvent.drop(screen.getByTestId("workbench-reference-card-3"));
+    fireEvent.dragEnd(screen.getByTestId("workbench-reference-card-1"));
+
+    fireEvent.change(screen.getByLabelText("Prompt"), {
+      target: { value: "参考 @图1 生成海报" },
+    });
+    await waitFor(() => {
+      expect((screen.getByRole("button", { name: "立即开始创作" }) as HTMLButtonElement).disabled).toBe(false);
+    });
+    fireEvent.click(screen.getByRole("button", { name: "立即开始创作" }));
+
+    await waitFor(() => {
+      expect(createWorkbenchGenerationMock).toHaveBeenCalledTimes(1);
+    });
+    expect(createWorkbenchGenerationMock.mock.calls[0]?.[0]).toMatchObject({
+      referenceAssetIds: ["asset-uploaded-2"],
     });
   });
 
