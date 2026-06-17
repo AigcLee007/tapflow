@@ -212,6 +212,12 @@ describe("WorkbenchPage", () => {
     expect(screen.getByTestId("workbench-route-row").className).toContain("grid gap-1.5");
     expect(screen.getByTestId("workbench-param-row").className).toContain("grid-cols-3");
     expect(screen.getByRole("button", { name: "立即开始创作" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /画面比例/ }));
+    expect(screen.getByTestId("workbench-select-menu-画面比例").className).toContain("bottom-[calc(100%+4px)]");
+    expect(screen.getByTestId("workbench-aspect-icon-9:16").getAttribute("style")).not.toBe(
+      screen.getByTestId("workbench-aspect-icon-16:9").getAttribute("style"),
+    );
   });
 
   test("redirects project workbench routes to /workbench", async () => {

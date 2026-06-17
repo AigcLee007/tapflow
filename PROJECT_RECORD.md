@@ -2322,3 +2322,12 @@ Validation completed:
 - validation:
   - `npm run test -- src/workbench/WorkbenchPage.test.tsx src/workbench/workbenchReferences.test.ts`
   - `npm run build`
+
+## 2026-06-17 - Workbench Dropdown Direction and Aspect Icons
+
+- changed the compact workbench select popovers to open upward so lower controls do not cover the cost card or generate button
+- updated aspect-ratio option icons so each rectangle reflects its actual ratio, for example `9:16` renders tall and `16:9` renders wide
+- kept the same compact menu styling and added regression coverage for upward menu placement and ratio-specific icon dimensions
+- validation:
+  - `npm run test -- src/workbench/WorkbenchPage.test.tsx src/workbench/workbenchReferences.test.ts`
+  - `npm run build`

@@ -39,6 +39,7 @@ type ReferencePreview = {
 };
 
 type SelectOption = {
+  icon?: React.ReactNode;
   label: string;
   value: string;
 };
@@ -132,8 +133,35 @@ async function loadAssetPreviewUrl(assetId: string): Promise<AssetDownloadUrlRes
   return getAssetVariantUrl(assetId, "preview").catch(() => getAssetVariantUrl(assetId).catch(() => null));
 }
 
-function AspectIcon() {
-  return <span className="block h-[13px] w-[18px] rounded-[5px] border border-[#f2df28]" />;
+function getAspectIconSize(value: string) {
+  const [rawWidth, rawHeight] = value.split(":").map((item) => Number(item));
+  const width = Number.isFinite(rawWidth) && rawWidth > 0 ? rawWidth : 1;
+  const height = Number.isFinite(rawHeight) && rawHeight > 0 ? rawHeight : 1;
+  const max = 18;
+  const min = 8;
+
+  if (width >= height) {
+    return {
+      height: Math.max(min, Math.round((height / width) * max)),
+      width: max,
+    };
+  }
+
+  return {
+    height: max,
+    width: Math.max(min, Math.round((width / height) * max)),
+  };
+}
+
+function AspectIcon({ value }: { value: string }) {
+  const size = getAspectIconSize(value);
+  return (
+    <span
+      className="block rounded-[4px] border border-[#f2df28]"
+      data-testid={`workbench-aspect-icon-${value}`}
+      style={{ height: `${size.height}px`, width: `${size.width}px` }}
+    />
+  );
 }
 
 function WorkbenchSelect({
@@ -141,6 +169,7 @@ function WorkbenchSelect({
   icon,
   label,
   onChange,
+  openDirection = "up",
   options,
   value,
   wide = false,
@@ -149,6 +178,7 @@ function WorkbenchSelect({
   icon?: React.ReactNode;
   label: string;
   onChange: (value: string) => void;
+  openDirection?: "down" | "up";
   options: SelectOption[];
   value: string;
   wide?: boolean;
@@ -169,14 +199,19 @@ function WorkbenchSelect({
       >
         <span className="flex min-w-0 items-center gap-2">
           {icon ? <span className="shrink-0 text-[#ffd728]">{icon}</span> : null}
+          {current?.icon ? <span className="shrink-0 text-[#ffd728]">{current.icon}</span> : null}
           <span className="truncate">{current?.label}</span>
         </span>
-        <ChevronDown className={`shrink-0 text-slate-300 transition ${layer.open ? "rotate-180" : ""}`} size={14} />
+        <ChevronDown
+          className={`shrink-0 text-slate-300 transition ${layer.open && openDirection === "up" ? "rotate-180" : ""}`}
+          size={14}
+        />
       </button>
       {layer.open ? (
         <MenuSurface
           ref={layer.ref as React.RefObject<HTMLDivElement>}
-          className={`${wide ? "w-full" : "min-w-[88px]"} absolute left-0 top-[calc(100%+4px)] z-[1300] overflow-hidden rounded-[7px] border border-[#3c4352] bg-[#151518] p-1 shadow-[0_14px_40px_rgba(0,0,0,0.55)]`}
+          className={`${wide ? "w-full" : "min-w-[88px]"} absolute left-0 ${openDirection === "up" ? "bottom-[calc(100%+4px)]" : "top-[calc(100%+4px)]"} z-[1300] max-h-[240px] overflow-y-auto rounded-[7px] border border-[#3c4352] bg-[#151518] p-1 shadow-[0_14px_40px_rgba(0,0,0,0.55)]`}
+          data-testid={`workbench-select-menu-${label}`}
           role="menu"
         >
           {options.map((option) => {
@@ -195,6 +230,7 @@ function WorkbenchSelect({
                 type="button"
               >
                 {icon ? <span className="shrink-0">{icon}</span> : null}
+                {option.icon ? <span className="grid h-[18px] w-[22px] shrink-0 place-items-center">{option.icon}</span> : null}
                 <span>{option.label}</span>
               </button>
             );
@@ -629,10 +665,9 @@ export function WorkbenchComposer({
         <label className="grid gap-1.5">
           <span className="text-[11px] font-bold text-slate-500">{TEXT.aspectRatioLabel}</span>
           <WorkbenchSelect
-            icon={<AspectIcon />}
             label={TEXT.aspectRatioLabel}
             onChange={(value) => onChangeDraft({ aspectRatio: value })}
-            options={aspectOptions.map((value) => ({ label: value, value }))}
+            options={aspectOptions.map((value) => ({ icon: <AspectIcon value={value} />, label: value, value }))}
             value={draft.aspectRatio}
           />
         </label>
