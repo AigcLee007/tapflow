@@ -81,9 +81,14 @@ export function AssetGrid({
   }, [onSelectionChange]);
 
   React.useEffect(() => {
-    if (!selectionBox) return undefined;
+    return () => {
+      window.removeEventListener("pointermove", handleWindowPointerMove);
+      window.removeEventListener("pointerup", stopSelecting);
+      window.removeEventListener("pointercancel", stopSelecting);
+    };
+  }, []);
 
-    const handlePointerMove = (event: PointerEvent) => {
+  const handleWindowPointerMove = React.useCallback((event: PointerEvent) => {
       if (!dragStartRef.current) return;
       const nextBox = getSelectionBox(dragStartRef.current, { x: event.clientX, y: event.clientY });
       if (Math.max(nextBox.width, nextBox.height) >= DRAG_SELECT_THRESHOLD_PX) {
@@ -91,21 +96,27 @@ export function AssetGrid({
       }
       setSelectionBox(nextBox);
       updateSelectionFromBox(nextBox);
-    };
-    const stopSelecting = () => {
-      dragStartRef.current = null;
-      setSelectionBox(null);
-    };
+  }, [updateSelectionFromBox]);
 
-    window.addEventListener("pointermove", handlePointerMove);
+  const stopSelecting = React.useCallback(() => {
+    dragStartRef.current = null;
+    setSelectionBox(null);
+    window.removeEventListener("pointermove", handleWindowPointerMove);
+    window.removeEventListener("pointerup", stopSelecting);
+    window.removeEventListener("pointercancel", stopSelecting);
+  }, [handleWindowPointerMove]);
+
+  const beginSelection = React.useCallback((event: React.PointerEvent) => {
+    if (event.button !== 0 || shouldIgnoreDragStart(event.target)) return;
+    event.preventDefault();
+    dragStartRef.current = { x: event.clientX, y: event.clientY };
+    const nextBox = getSelectionBox(dragStartRef.current, dragStartRef.current);
+    setSelectionBox(nextBox);
+    onSelectionChange?.([]);
+    window.addEventListener("pointermove", handleWindowPointerMove);
     window.addEventListener("pointerup", stopSelecting);
     window.addEventListener("pointercancel", stopSelecting);
-    return () => {
-      window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("pointerup", stopSelecting);
-      window.removeEventListener("pointercancel", stopSelecting);
-    };
-  }, [selectionBox, updateSelectionFromBox]);
+  }, [handleWindowPointerMove, onSelectionChange, stopSelecting]);
 
   if (loading) {
     return (
@@ -157,13 +168,7 @@ export function AssetGrid({
     <div
       className="relative select-none"
       data-testid="asset-selection-surface"
-      onPointerDown={(event) => {
-        if (event.button !== 0 || shouldIgnoreDragStart(event.target)) return;
-        dragStartRef.current = { x: event.clientX, y: event.clientY };
-        const nextBox = getSelectionBox(dragStartRef.current, dragStartRef.current);
-        setSelectionBox(nextBox);
-        onSelectionChange?.([]);
-      }}
+      onPointerDown={beginSelection}
       ref={surfaceRef}
     >
       <AssetGroupedSections
@@ -180,13 +185,7 @@ export function AssetGrid({
           }
           onOpen(asset);
         }}
-        onPointerDown={(event) => {
-          if (event.button !== 0 || shouldIgnoreDragStart(event.target)) return;
-          dragStartRef.current = { x: event.clientX, y: event.clientY };
-          const nextBox = getSelectionBox(dragStartRef.current, dragStartRef.current);
-          setSelectionBox(nextBox);
-          onSelectionChange?.([]);
-        }}
+        onPointerDown={beginSelection}
         onRename={onRename}
         onToggleFavorite={onToggleFavorite}
         selectedAssetIds={selectedAssetIds}

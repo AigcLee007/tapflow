@@ -438,4 +438,42 @@ describe("AssetLibraryPage", () => {
     expect(screen.getByText("已选择 2 个素材")).toBeTruthy();
     expect(screen.queryByRole("dialog")).toBeNull();
   });
+
+  test("disables native media drag so browser drag-and-drop does not block marquee selection", () => {
+    mockLibrary({
+      assets: [asset],
+      groupedAssets: [{ dateLabel: "2026-06-12", items: [asset] }],
+      mediaCounts: { all: 1, audio: 0, image: 1, video: 0 },
+      total: 1,
+    });
+
+    renderPage();
+
+    const thumbnail = document.querySelector("img");
+
+    expect(thumbnail?.getAttribute("draggable")).toBe("false");
+  });
+
+  test("prevents the browser default drag behavior when marquee selection starts", () => {
+    mockLibrary({
+      assets: [asset],
+      groupedAssets: [{ dateLabel: "2026-06-12", items: [asset] }],
+      mediaCounts: { all: 1, audio: 0, image: 1, video: 0 },
+      total: 1,
+    });
+
+    renderPage();
+
+    const firstButton = screen.getByRole("button", { name: "Asset One" });
+    const wasNotCanceled = fireEvent.pointerDown(firstButton, {
+      button: 0,
+      cancelable: true,
+      clientX: 30,
+      clientY: 90,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+
+    expect(wasNotCanceled).toBe(false);
+  });
 });

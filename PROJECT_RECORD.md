@@ -2282,6 +2282,15 @@ Validation completed:
   - `npm test -- src/assets/AssetLibraryPage.test.tsx`
   - `npm run build`
 
+## 2026-06-17 - Asset Library Drag Selection Browser Fix
+
+- fixed the drag multi-select interaction for real browsers by disabling native image/video dragging inside asset tiles
+- changed marquee selection startup to call `preventDefault()` and attach window pointer listeners synchronously on pointer down, avoiding lost pointer move events during browser media drag
+- extended regression coverage for disabled native thumbnail dragging and prevented default drag behavior
+- validation:
+  - `npm test -- src/assets/AssetLibraryPage.test.tsx`
+  - `npm run build`
+
 ## 2026-06-17 - Workbench Billing Model UUID Hotfix
 
 - fixed a worker-side workbench failure where successful provider image generations could still be marked failed during settlement

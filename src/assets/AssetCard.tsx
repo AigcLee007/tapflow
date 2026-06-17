@@ -169,9 +169,16 @@ export function AssetCard({
           }}
         >
           {asset.previewUrl && asset.mimeType.startsWith("image/") ? (
-            <img alt="" className="h-full w-full object-cover" decoding="async" loading="lazy" src={asset.previewUrl} />
+            <img
+              alt=""
+              className="h-full w-full object-cover"
+              decoding="async"
+              draggable={false}
+              loading="lazy"
+              src={asset.previewUrl}
+            />
           ) : asset.previewUrl && asset.mimeType.startsWith("video/") ? (
-            <video className="h-full w-full object-cover" muted preload="metadata" src={asset.previewUrl} />
+            <video className="h-full w-full object-cover" draggable={false} muted preload="metadata" src={asset.previewUrl} />
           ) : (
             <div className="grid h-full place-items-center text-slate-500">{iconFor(asset)}</div>
           )}
