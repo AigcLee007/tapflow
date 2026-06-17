@@ -24,6 +24,7 @@ export const QUEUE_NAMES = {
   nodeExecuteImage: "node.execute.image",
   nodeExecuteVideo: "node.execute.video",
   providerPoll: "provider.poll",
+  workbenchGenerate: "workbench.generate",
   workflowStart: "workflow.start",
 } as const;
 
@@ -48,6 +49,10 @@ export type ProviderPollJobPayload = BaseJobPayload & {
   nodeRunId: string;
   providerTaskId: string;
   workflowRunId: string;
+};
+
+export type WorkbenchGenerateJobPayload = BaseJobPayload & {
+  generationId: string;
 };
 
 export type AssetImageVariantJobPayload = BaseJobPayload & {
@@ -81,6 +86,7 @@ export type QueuePayloadMap = {
   "node.execute.image": NodeExecuteJobPayload;
   "node.execute.video": NodeExecuteJobPayload;
   "provider.poll": ProviderPollJobPayload;
+  "workbench.generate": WorkbenchGenerateJobPayload;
   "workflow.start": WorkflowStartJobPayload;
 };
 
@@ -215,4 +221,3 @@ export function createQueueFactory(options: QueueFactoryOptions) {
     prefix,
   };
 }
-

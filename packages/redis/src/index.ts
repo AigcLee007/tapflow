@@ -24,6 +24,7 @@ export {
   type ProviderPollJobPayload,
   type QueueName,
   type QueuePayloadMap,
+  type WorkbenchGenerateJobPayload,
   type WorkflowStartJobPayload,
 } from "./queues.js";
 export { RedisLockManager, type RedisLock } from "./locks.js";
@@ -33,4 +34,3 @@ export {
   type RateLimitResult,
 } from "./rate-limit.js";
 export { RedisPubSub } from "./pubsub.js";
-

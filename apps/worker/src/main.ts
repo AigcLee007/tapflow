@@ -22,6 +22,8 @@ import type { Pool } from "pg";
 import { getWorkerEnv, type WorkerEnv } from "./config/env.js";
 import { createConsoleWorkerLogger, type WorkerLogger } from "./logger.js";
 import { registerWorkerQueues } from "./queues/registry.js";
+import { WorkbenchGenerationService } from "./workbench/workbench-generation.service.js";
+import { MediaAssetStore } from "./workflow-runtime/media-asset-store.js";
 import { ImageVariantProcessor } from "./workflow-runtime/image-variant-processor.js";
 import { WorkflowNodeExecutionService } from "./workflow-runtime/service.js";
 
@@ -84,6 +86,8 @@ export function createWorkerRuntime(options?: {
   const nodeExecuteVideoQueue = queueFactory.createQueue(QUEUE_NAMES.nodeExecuteVideo);
   const providerPollQueue = queueFactory.createQueue(QUEUE_NAMES.providerPoll);
   const assetImageVariantQueue = queueFactory.createQueue(QUEUE_NAMES.assetImageVariant);
+  const WORKBENCH_GENERATE_QUEUE = "workbench.generate" as const;
+  const workbenchGenerateQueue = queueFactory.createQueue(WORKBENCH_GENERATE_QUEUE);
   const storageProvider = new S3StorageProvider({
     accessKeyId: env.s3AccessKeyId,
     endpoint: env.s3Endpoint,
@@ -91,17 +95,18 @@ export function createWorkerRuntime(options?: {
     region: env.s3Region,
     secretAccessKey: env.s3SecretAccessKey,
   });
+  const mediaRuntime = new DatabaseMediaRuntime({
+    aiGateway,
+    credentialVault,
+    pool,
+  });
   const workflowNodeExecutionService =
     options?.workflowNodeExecutionService ??
     new WorkflowNodeExecutionService({
       assetBucket: env.s3Bucket,
       imageVariantQueue: assetImageVariantQueue,
       imageVariantsMode: env.imageVariantsMode,
-      mediaGenerationRuntime: new DatabaseMediaRuntime({
-        aiGateway,
-        credentialVault,
-        pool,
-      }),
+      mediaGenerationRuntime: mediaRuntime,
       nodeExecuteQueue,
       nodeExecuteQueues: {
         default: nodeExecuteDefaultQueue,
@@ -122,6 +127,17 @@ export function createWorkerRuntime(options?: {
     pool,
     storageProvider,
   });
+  const workbenchGenerationService = new WorkbenchGenerationService({
+    assetBucket: env.s3Bucket,
+    assetStore: new MediaAssetStore({
+      assetBucket: env.s3Bucket,
+      storageProvider,
+      variantMode: env.imageVariantsMode,
+      variantQueue: assetImageVariantQueue,
+    }),
+    mediaRuntime,
+    pool,
+  });
 
   const registration = registerWorkerQueues({
     concurrency: {
@@ -135,6 +151,7 @@ export function createWorkerRuntime(options?: {
     imageVariantProcessor,
     logger,
     queueFactory,
+    workbenchGenerationService,
     workflowNodeExecutionService,
   });
 
@@ -163,6 +180,7 @@ export function createWorkerRuntime(options?: {
       nodeExecuteImageQueue.close(),
       nodeExecuteVideoQueue.close(),
       providerPollQueue.close(),
+      workbenchGenerateQueue.close(),
     ]);
 
     if (ownedRedisConnection) {

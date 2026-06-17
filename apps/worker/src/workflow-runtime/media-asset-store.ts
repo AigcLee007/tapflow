@@ -216,11 +216,11 @@ export class MediaAssetStore {
     client: PoolClient,
     input: {
       kind: "image" | "video";
-      nodeRunId: string;
+      nodeRunId: string | null;
       outputs: MediaOutput[];
       projectId: string | null;
       tenantId: string;
-      workflowRunId: string;
+      workflowRunId: string | null;
     },
   ): Promise<AssetRef[]> {
     const assetRefs: AssetRef[] = [];
@@ -257,8 +257,8 @@ export class MediaAssetStore {
         contentType: binary.mimeType,
         key: objectKey,
         metadata: {
-          nodeRunId: input.nodeRunId,
-          workflowRunId: input.workflowRunId,
+          ...(input.nodeRunId ? { nodeRunId: input.nodeRunId } : {}),
+          ...(input.workflowRunId ? { workflowRunId: input.workflowRunId } : {}),
         },
       });
       const assetOriginalUploadMs = elapsedMs(originalUploadStartedAt);
@@ -363,9 +363,9 @@ export class MediaAssetStore {
             key: variantObjectKey,
             metadata: {
               assetId,
-              nodeRunId: input.nodeRunId,
+              ...(input.nodeRunId ? { nodeRunId: input.nodeRunId } : {}),
               variantKey: variant.variantKey,
-              workflowRunId: input.workflowRunId,
+              ...(input.workflowRunId ? { workflowRunId: input.workflowRunId } : {}),
             },
           });
 

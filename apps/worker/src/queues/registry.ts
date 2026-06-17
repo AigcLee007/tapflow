@@ -8,7 +8,9 @@ import { processAssetIngestJob } from "../processors/asset-ingest.processor.js";
 import { processBillingSettleJob } from "../processors/billing-settle.processor.js";
 import { processNodeExecuteJob } from "../processors/node-execute.processor.js";
 import { processProviderPollJob } from "../processors/provider-poll.processor.js";
+import { processWorkbenchGenerateJob } from "../processors/workbench-generate.processor.js";
 import { processWorkflowStartJob } from "../processors/workflow-start.processor.js";
+import type { WorkbenchGenerationService } from "../workbench/workbench-generation.service.js";
 import type { ImageVariantProcessor } from "../workflow-runtime/image-variant-processor.js";
 import type { WorkflowNodeExecutionService } from "../workflow-runtime/service.js";
 
@@ -35,6 +37,7 @@ export const WORKER_QUEUE_NAMES = [
   QUEUE_NAMES.assetImageVariant,
   QUEUE_NAMES.assetIngest,
   QUEUE_NAMES.billingSettle,
+  "workbench.generate" as QueueName,
 ] as const;
 
 export type WorkerQueueConcurrency = {
@@ -101,6 +104,7 @@ export function registerWorkerQueues(options: {
   imageVariantProcessor?: ImageVariantProcessor;
   logger: WorkerLogger;
   queueFactory: QueueFactoryLike;
+  workbenchGenerationService?: WorkbenchGenerationService;
   workflowNodeExecutionService?: WorkflowNodeExecutionService;
 }) {
   const workers: Closable[] = [];
@@ -137,6 +141,15 @@ export function registerWorkerQueues(options: {
             }
         : queueName === QUEUE_NAMES.assetIngest
           ? (job: unknown) => processAssetIngestJob(job as never, options.logger)
+          : queueName === ("workbench.generate" as QueueName)
+            ? (job: unknown) => {
+                if (!options.workbenchGenerationService) {
+                  throw new Error("workbenchGenerationService is required for workbench generation jobs");
+                }
+                return processWorkbenchGenerateJob(job as never, options.logger, {
+                  generationService: options.workbenchGenerationService,
+                });
+              }
           : (job: unknown) => processBillingSettleJob(job as never, options.logger);
 
     const worker = options.queueFactory.createWorker(

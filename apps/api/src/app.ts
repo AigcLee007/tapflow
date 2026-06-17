@@ -54,6 +54,8 @@ import { registerProjectRoutes } from "./modules/projects/projects.routes.js";
 import { ProjectsService } from "./modules/projects/projects.service.js";
 import { registerQueueRoutes } from "./modules/queues/queues.routes.js";
 import { QueueHealthService } from "./modules/queues/queues.service.js";
+import { registerWorkbenchRoutes } from "./modules/workbench/workbench.routes.js";
+import { WorkbenchService } from "./modules/workbench/workbench.service.js";
 import { registerWorkflowRunRoutes } from "./modules/workflow-runs/workflow-runs.routes.js";
 import { WorkflowRunsService } from "./modules/workflow-runs/workflow-runs.service.js";
 
@@ -194,6 +196,7 @@ export function buildApp(options?: {
   const nodeExecuteDefaultQueue = appQueueFactory?.createQueue(QUEUE_NAMES.nodeExecuteDefault);
   const nodeExecuteImageQueue = appQueueFactory?.createQueue(QUEUE_NAMES.nodeExecuteImage);
   const nodeExecuteVideoQueue = appQueueFactory?.createQueue(QUEUE_NAMES.nodeExecuteVideo);
+  const workbenchGenerateQueue = appQueueFactory?.createQueue(QUEUE_NAMES.workbenchGenerate);
   const workflowRunsService =
     options?.workflowRunsService ??
     new WorkflowRunsService({
@@ -206,6 +209,11 @@ export function buildApp(options?: {
       },
       pool,
     });
+  const workbenchService = new WorkbenchService({
+    generationQueue: workbenchGenerateQueue ?? null,
+    pool,
+    storageProvider,
+  });
   const observabilityService =
     options?.observabilityService ??
     new ObservabilityService({
@@ -247,6 +255,7 @@ export function buildApp(options?: {
   app.decorate("flowTemplatesService", flowTemplatesService);
   app.decorate("queueHealthService", queueHealthService);
   app.decorate("storageProvider", storageProvider);
+  app.decorate("workbenchService", workbenchService);
   app.decorate("workflowRunsService", workflowRunsService);
   registerRequestContext(app, authService);
   app.setErrorHandler((error, request, reply) => {
@@ -283,6 +292,7 @@ export function buildApp(options?: {
         nodeExecuteDefaultQueue?.close(),
         nodeExecuteImageQueue?.close(),
         nodeExecuteVideoQueue?.close(),
+        workbenchGenerateQueue?.close(),
       ]);
     }
 
@@ -337,6 +347,7 @@ export function buildApp(options?: {
   registerFlowTemplateRoutes(app);
   registerObservabilityRoutes(app);
   registerQueueRoutes(app);
+  registerWorkbenchRoutes(app);
   registerWorkflowRunRoutes(app);
 
   return app;

@@ -1,6 +1,6 @@
 ﻿# Project Record
 
-Last updated: 2026-06-16
+Last updated: 2026-06-17
 Maintainers: project team + Codex sessions
 
 ## Purpose
@@ -2198,3 +2198,35 @@ Validation completed:
 - The plan decomposes the approved workbench into database, queue, API, worker, frontend route/navigation, desktop composer, mobile composer, result actions, send-to-project, and old project-scoped workbench cleanup tasks.
 - The plan explicitly keeps workbench history server-side, uses the existing AI Gateway and cloud asset pipeline, requires billing reserve/settle/refund, and handles async provider polling before marking workbench generations complete.
 - No product runtime code was changed in this planning step.
+
+## 2026-06-17 - Independent Image Workbench Runtime Landing
+
+- added the first end-to-end independent `/workbench` creator surface as a standalone authenticated route instead of a project-scoped mode
+- added tenant-scoped backend workbench persistence:
+  - `workbench_sessions`
+  - `workbench_generations`
+  - `workbench_results`
+- added `/api/v2/workbench/*` API routes for:
+  - generation history listing
+  - generation creation
+  - generation detail lookup
+  - retry generation
+  - send result to project/canvas
+- added the `workbench.generate` queue contract and worker execution path so workbench image generations now reuse the existing AI Gateway, billing reserve/settle/refund, cloud asset persistence, and async provider polling flow
+- updated `MediaAssetStore` so workbench outputs can be persisted without workflow/node ids while still creating normal asset records and variants
+- added the new frontend workbench feature area under `src/workbench/*` with:
+  - desktop left-parameter plus right-result-feed layout
+  - mobile bottom composer entry with result-first feed behavior
+  - model-aware Nano Banana / GPT-Image-2 parameter panels
+  - result actions for `再次生成`, `复用参数`, and `发送到画布`
+- moved product navigation forward so the shared shell now includes a first-class `/workbench` entry
+- removed the old mobile auto-redirect that previously forced `/projects/:projectId` into project-scoped workbench mode
+- changed `/projects/:projectId/workbench` into a compatibility redirect to `/workbench` instead of keeping it as the promoted product path
+- validation:
+  - `npm run test --workspace @aigc-flow/api -- workbench.test.ts`
+  - `npm run test --workspace @aigc-flow/worker -- workbench-generation.service.test.ts`
+  - `npm run test -- src/app/WorkspaceShell.test.tsx src/flowCanvas/workbench/ImageWorkbenchPage.test.tsx src/workbench/WorkbenchPage.test.tsx`
+  - `npm run build --workspace @aigc-flow/redis`
+  - `npm run build --workspace @aigc-flow/api`
+  - `npm run build --workspace @aigc-flow/worker`
+  - `npm run build`

@@ -19,6 +19,7 @@ import {
   ASSETS_ROUTE,
   BILLING_ROUTE,
   HOME_ROUTE,
+  WORKBENCH_ROUTE,
   WORKSPACE_ROUTE,
 } from "./routes";
 import { BrandMark } from "./brand/BrandMark";
@@ -39,6 +40,7 @@ function navigate(path: string) {
 
 const navItems = [
   { icon: Home, label: "主页", path: HOME_ROUTE },
+  { icon: Box, label: "工作台", path: WORKBENCH_ROUTE },
   { icon: FolderKanban, label: "工作空间", path: WORKSPACE_ROUTE },
   { icon: Box, label: "素材库", path: ASSETS_ROUTE },
   { icon: CreditCard, label: "价格方案", path: BILLING_ROUTE },

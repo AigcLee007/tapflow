@@ -3,6 +3,7 @@ export const REGISTER_ROUTE = "/register";
 export const ROOT_ROUTE = "/";
 export const HOME_ROUTE = "/home";
 export const WORKSPACE_ROUTE = "/workspace";
+export const WORKBENCH_ROUTE = "/workbench";
 export const ASSETS_ROUTE = "/assets";
 export const BILLING_ROUTE = "/billing";
 export const ACCOUNT_ROUTE = "/account";
@@ -17,6 +18,7 @@ export const PRODUCT_ROUTES = [
   REGISTER_ROUTE,
   HOME_ROUTE,
   WORKSPACE_ROUTE,
+  WORKBENCH_ROUTE,
   "/projects/:projectId",
   "/projects/:projectId/workbench",
   "/projects/:projectId/canvas",

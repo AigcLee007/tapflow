@@ -21,6 +21,7 @@ import type { FlowTemplatesService } from "./modules/flow-templates/flow-templat
 import type { ObservabilityService } from "./modules/observability/observability.service.js";
 import type { ProjectsService } from "./modules/projects/projects.service.js";
 import type { QueueHealthService } from "./modules/queues/queues.service.js";
+import type { WorkbenchService } from "./modules/workbench/workbench.service.js";
 import type { WorkflowRunsService } from "./modules/workflow-runs/workflow-runs.service.js";
 
 declare module "fastify" {
@@ -44,6 +45,7 @@ declare module "fastify" {
     projectsService: ProjectsService;
     queueHealthService: QueueHealthService;
     storageProvider: StorageProvider;
+    workbenchService: WorkbenchService;
     workflowRunsService: WorkflowRunsService;
   }
 
