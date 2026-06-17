@@ -267,8 +267,7 @@ describe("WorkbenchPage", () => {
     expect(screen.getByTestId("workbench-reference-strip").className).toContain("overflow-x-auto");
     expect(screen.getByTestId("workbench-reference-strip").className).toContain("[scrollbar-width:none]");
     expect(screen.getByTestId("workbench-reference-strip").getAttribute("data-scrollbar")).toBe("visible");
-    expect(screen.getByTestId("workbench-reference-scrollbar").className).toContain("h-[8px]");
-    expect(screen.getByTestId("workbench-reference-scrollbar-thumb").className).toContain("bg-[#ff4d55]");
+    expect(screen.queryByTestId("workbench-reference-scrollbar")).toBeNull();
     expect(screen.getByRole("button", { name: "移除参考图1" }).className).toContain("opacity-0");
 
     await waitFor(() => {
@@ -298,6 +297,41 @@ describe("WorkbenchPage", () => {
       referenceAssetIds: [],
       referenceUploadIds: ["22222222-2222-4222-8222-222222222222"],
     });
+  });
+
+  test("shows a compact interactive scrollbar only when the reference strip overflows", async () => {
+    setRoute("/workbench");
+    const { container } = renderRouter();
+
+    expect(await screen.findByText("参考图")).toBeTruthy();
+    expect(screen.queryByTestId("workbench-reference-scrollbar")).toBeNull();
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement | null;
+    expect(input).toBeTruthy();
+
+    for (let index = 1; index <= 6; index += 1) {
+      uploadWorkbenchReferenceFileMock.mockResolvedValueOnce({
+        id: `00000000-0000-4000-8000-0000000000${index.toString().padStart(2, "0")}`,
+        originalFilename: `ref-${index}.png`,
+        previewUrl: "blob:local-ref-preview",
+      });
+    }
+
+    fireEvent.change(input!, {
+      target: {
+        files: Array.from({ length: 6 }, (_, index) =>
+          new File([`ref${index + 1}`], `ref-${index + 1}.png`, { type: "image/png" }),
+        ),
+      },
+    });
+
+    await waitFor(() => {
+      expect(uploadWorkbenchReferenceFileMock).toHaveBeenCalledTimes(6);
+    });
+    expect(screen.getByText("6/10")).toBeTruthy();
+    expect(screen.getByTestId("workbench-reference-scrollbar").className).toContain("h-[10px]");
+    expect(screen.getByTestId("workbench-reference-scrollbar-thumb").className).toContain("bg-[#6f7884]");
+    expect(screen.getByTestId("workbench-reference-scrollbar-prev")).toBeTruthy();
+    expect(screen.getByTestId("workbench-reference-scrollbar-next")).toBeTruthy();
   });
 
   test("submits only referenced images when prompt contains @图N tags", async () => {

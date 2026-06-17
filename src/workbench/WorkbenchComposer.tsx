@@ -342,7 +342,7 @@ export function WorkbenchComposer({
   const [pendingReferenceIds, setPendingReferenceIds] = React.useState<string[]>([]);
   const [routeOptionsByModel, setRouteOptionsByModel] = React.useState<Record<string, RuntimeRouteOption[]>>({});
   const [referencePreviews, setReferencePreviews] = React.useState<Record<string, ReferencePreview>>({});
-  const [referenceScroll, setReferenceScroll] = React.useState({ left: 0, width: 100 });
+  const [referenceScroll, setReferenceScroll] = React.useState({ left: 0, overflow: false, width: 100 });
 
   const routeLookupKey = modelOptions.find((item) => item.id === draft.modelId)?.routeLookupKey || draft.modelId;
   const routeOptions = routeOptionsByModel[routeLookupKey] || routeOptionsCache.get(routeLookupKey) || [];
@@ -359,13 +359,55 @@ export function WorkbenchComposer({
   const updateReferenceScroll = React.useCallback(() => {
     const element = referenceStripRef.current;
     if (!element) return;
+    const hasMeasuredOverflow = element.scrollWidth > element.clientWidth + 1;
+    const overflow = hasMeasuredOverflow || visibleReferenceIds.length > 4;
     const maxScroll = Math.max(1, element.scrollWidth - element.clientWidth);
-    const width = element.scrollWidth > 0
+    const width = overflow && element.scrollWidth > 0
       ? Math.max(18, Math.min(100, (element.clientWidth / element.scrollWidth) * 100))
       : 100;
     const left = Math.min(100 - width, Math.max(0, (element.scrollLeft / maxScroll) * (100 - width)));
-    setReferenceScroll({ left, width });
-  }, []);
+    setReferenceScroll({ left, overflow, width });
+  }, [visibleReferenceIds.length]);
+
+  const scrollReferenceStrip = React.useCallback((direction: -1 | 1) => {
+    const element = referenceStripRef.current;
+    if (!element) return;
+    element.scrollBy({ behavior: "smooth", left: direction * Math.max(96, Math.round(element.clientWidth * 0.72)) });
+    window.setTimeout(updateReferenceScroll, 160);
+  }, [updateReferenceScroll]);
+
+  const jumpReferenceStrip = React.useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    const element = referenceStripRef.current;
+    const track = event.currentTarget;
+    if (!element || event.target !== track) return;
+    const rect = track.getBoundingClientRect();
+    const ratio = rect.width > 0 ? Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width)) : 0;
+    element.scrollTo({ behavior: "smooth", left: ratio * Math.max(0, element.scrollWidth - element.clientWidth) });
+    window.setTimeout(updateReferenceScroll, 160);
+  }, [updateReferenceScroll]);
+
+  const dragReferenceThumb = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const element = referenceStripRef.current;
+    const track = event.currentTarget.parentElement;
+    if (!element || !track) return;
+    event.preventDefault();
+    const startX = event.clientX;
+    const startScrollLeft = element.scrollLeft;
+    const maxScroll = Math.max(1, element.scrollWidth - element.clientWidth);
+    const availableTrack = Math.max(1, track.clientWidth * (1 - referenceScroll.width / 100));
+
+    const handleMove = (moveEvent: PointerEvent) => {
+      const delta = moveEvent.clientX - startX;
+      element.scrollLeft = startScrollLeft + (delta / availableTrack) * maxScroll;
+      updateReferenceScroll();
+    };
+    const handleUp = () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+    };
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp);
+  }, [referenceScroll.width, updateReferenceScroll]);
 
   React.useEffect(() => {
     uploadedReferenceIdsRef.current = draft.referenceUploadIds;
@@ -628,17 +670,43 @@ export function WorkbenchComposer({
             />
           ))}
         </div>
-        <div
-          aria-hidden="true"
-          className="mt-1 h-[8px] rounded-full bg-[#332429]"
-          data-testid="workbench-reference-scrollbar"
-        >
+        {referenceScroll.overflow ? (
           <div
-            className="h-[8px] rounded-full bg-[#ff4d55]"
-            data-testid="workbench-reference-scrollbar-thumb"
-            style={{ marginLeft: `${referenceScroll.left}%`, width: `${referenceScroll.width}%` }}
-          />
-        </div>
+            className="mt-1 grid h-[10px] grid-cols-[14px_minmax(0,1fr)_14px] items-center rounded-[3px] bg-[#202832]"
+            data-testid="workbench-reference-scrollbar"
+          >
+            <button
+              aria-label="Scroll references left"
+              className="grid h-full place-items-center text-[#6f7884] hover:text-slate-200"
+              data-testid="workbench-reference-scrollbar-prev"
+              onClick={() => scrollReferenceStrip(-1)}
+              type="button"
+            >
+              <span className="h-0 w-0 border-y-[4px] border-r-[5px] border-y-transparent border-r-current" />
+            </button>
+            <div
+              className="h-[8px] rounded-[3px] bg-[#29323c] px-[2px]"
+              data-testid="workbench-reference-scrollbar-track"
+              onClick={jumpReferenceStrip}
+            >
+              <div
+                className="h-[6px] cursor-grab rounded-[3px] bg-[#6f7884] active:cursor-grabbing"
+                data-testid="workbench-reference-scrollbar-thumb"
+                onPointerDown={dragReferenceThumb}
+                style={{ marginLeft: `${referenceScroll.left}%`, width: `${referenceScroll.width}%` }}
+              />
+            </div>
+            <button
+              aria-label="Scroll references right"
+              className="grid h-full place-items-center text-[#6f7884] hover:text-slate-200"
+              data-testid="workbench-reference-scrollbar-next"
+              onClick={() => scrollReferenceStrip(1)}
+              type="button"
+            >
+              <span className="h-0 w-0 border-y-[4px] border-l-[5px] border-y-transparent border-l-current" />
+            </button>
+          </div>
+        ) : null}
       </section>
 
       <section className="grid gap-2">

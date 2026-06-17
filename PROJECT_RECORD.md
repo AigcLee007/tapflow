@@ -2353,3 +2353,11 @@ Validation completed:
 - validation:
   - `npm run test -- src/workbench/WorkbenchPage.test.tsx src/workbench/workbenchReferences.test.ts`
   - `npm run build`
+
+## 2026-06-17 - Workbench Reference Scrollbar States
+
+- refined the workbench reference strip scrollbar to match the compact TapNow-style state behavior: no scrollbar when the strip is empty or not overflowing, and a small gray scrollbar only when extra references require horizontal navigation
+- added left/right scroll controls plus track jump and thumb drag handling so the visible scrollbar is an actual control instead of a static indicator
+- validation:
+  - `npm run test -- src/workbench/WorkbenchPage.test.tsx src/workbench/workbenchReferences.test.ts`
+  - `npm run build`
