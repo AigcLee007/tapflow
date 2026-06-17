@@ -2345,3 +2345,11 @@ Validation completed:
   - `npm run build --workspace @aigc-flow/api`
   - `npm run build --workspace @aigc-flow/worker`
   - `npm run build --workspace @aigc-flow/db`
+
+## 2026-06-17 - Workbench Reference Strip Scrollbar
+
+- replaced the native reference-strip scrollbar with a stable in-app scrollbar track/thumb so the horizontal indicator is always visible below uploaded reference cards
+- kept horizontal scrolling on the reference card row while hiding browser-specific scrollbars that were not rendering consistently in production
+- validation:
+  - `npm run test -- src/workbench/WorkbenchPage.test.tsx src/workbench/workbenchReferences.test.ts`
+  - `npm run build`

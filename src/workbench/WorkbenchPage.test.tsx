@@ -264,8 +264,11 @@ describe("WorkbenchPage", () => {
     });
 
     expect(screen.getByAltText("参考图1").getAttribute("src")).toBe("blob:local-ref-preview");
-    expect(screen.getByTestId("workbench-reference-strip").className).toContain("overflow-x-scroll");
+    expect(screen.getByTestId("workbench-reference-strip").className).toContain("overflow-x-auto");
+    expect(screen.getByTestId("workbench-reference-strip").className).toContain("[scrollbar-width:none]");
     expect(screen.getByTestId("workbench-reference-strip").getAttribute("data-scrollbar")).toBe("visible");
+    expect(screen.getByTestId("workbench-reference-scrollbar").className).toContain("h-[8px]");
+    expect(screen.getByTestId("workbench-reference-scrollbar-thumb").className).toContain("bg-[#ff4d55]");
     expect(screen.getByRole("button", { name: "移除参考图1" }).className).toContain("opacity-0");
 
     await waitFor(() => {

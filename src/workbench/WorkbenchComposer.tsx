@@ -333,6 +333,7 @@ export function WorkbenchComposer({
 }: Props) {
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   const promptRef = React.useRef<HTMLTextAreaElement | null>(null);
+  const referenceStripRef = React.useRef<HTMLDivElement | null>(null);
   const draggedReferenceIdRef = React.useRef<string | null>(null);
   const uploadedReferenceIdsRef = React.useRef<string[]>(draft.referenceUploadIds);
   const modelOptions = React.useMemo(() => buildWorkbenchModelOptions(models), [models]);
@@ -341,6 +342,7 @@ export function WorkbenchComposer({
   const [pendingReferenceIds, setPendingReferenceIds] = React.useState<string[]>([]);
   const [routeOptionsByModel, setRouteOptionsByModel] = React.useState<Record<string, RuntimeRouteOption[]>>({});
   const [referencePreviews, setReferencePreviews] = React.useState<Record<string, ReferencePreview>>({});
+  const [referenceScroll, setReferenceScroll] = React.useState({ left: 0, width: 100 });
 
   const routeLookupKey = modelOptions.find((item) => item.id === draft.modelId)?.routeLookupKey || draft.modelId;
   const routeOptions = routeOptionsByModel[routeLookupKey] || routeOptionsCache.get(routeLookupKey) || [];
@@ -354,9 +356,27 @@ export function WorkbenchComposer({
   );
   const estimatedCredits = getEstimatedCredits(draft);
 
+  const updateReferenceScroll = React.useCallback(() => {
+    const element = referenceStripRef.current;
+    if (!element) return;
+    const maxScroll = Math.max(1, element.scrollWidth - element.clientWidth);
+    const width = element.scrollWidth > 0
+      ? Math.max(18, Math.min(100, (element.clientWidth / element.scrollWidth) * 100))
+      : 100;
+    const left = Math.min(100 - width, Math.max(0, (element.scrollLeft / maxScroll) * (100 - width)));
+    setReferenceScroll({ left, width });
+  }, []);
+
   React.useEffect(() => {
     uploadedReferenceIdsRef.current = draft.referenceUploadIds;
   }, [draft.referenceUploadIds]);
+
+  React.useEffect(() => {
+    updateReferenceScroll();
+    const handleResize = () => updateReferenceScroll();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [updateReferenceScroll, visibleReferenceIds.length]);
 
   React.useEffect(() => {
     let active = true;
@@ -573,9 +593,11 @@ export function WorkbenchComposer({
         </div>
 
         <div
-          className="flex min-h-[82px] gap-2 overflow-x-scroll pb-1 [scrollbar-color:#4b5563_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-600 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar]:h-2"
+          className="flex min-h-[82px] gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           data-scrollbar="visible"
           data-testid="workbench-reference-strip"
+          onScroll={updateReferenceScroll}
+          ref={referenceStripRef}
         >
           {visibleReferenceIds.length === 0 ? <EmptyReferenceTile onClick={openUpload} /> : null}
           {visibleReferenceIds.map((assetId, index) => (
@@ -605,6 +627,17 @@ export function WorkbenchComposer({
               preview={referencePreviews[assetId] || { asset: null, assetId, loading: true, localPreviewUrl: null, previewUrl: null }}
             />
           ))}
+        </div>
+        <div
+          aria-hidden="true"
+          className="mt-1 h-[8px] rounded-full bg-[#332429]"
+          data-testid="workbench-reference-scrollbar"
+        >
+          <div
+            className="h-[8px] rounded-full bg-[#ff4d55]"
+            data-testid="workbench-reference-scrollbar-thumb"
+            style={{ marginLeft: `${referenceScroll.left}%`, width: `${referenceScroll.width}%` }}
+          />
         </div>
       </section>
 
