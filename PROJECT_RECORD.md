@@ -2371,3 +2371,17 @@ Validation completed:
 - validation:
   - `npm run test -- src/workbench/WorkbenchPage.test.tsx src/workbench/workbenchReferences.test.ts`
   - `npm run build`
+
+## 2026-06-17 - Fullscreen Workbench Studio Shell
+
+- changed `/workbench` so it now renders outside `WorkspaceShell` instead of inheriting the homepage/global navigation shell
+- rebuilt the route as a fullscreen studio surface aligned to the approved Scheme C direction:
+  - existing left-side workbench composer UI is preserved as-is
+  - center stage now shows the current primary result in a dedicated large preview area
+  - right column now keeps the generation history flow visible at the same time
+- kept workbench result detail and `发送到画布` behavior available from the new fullscreen surface
+- kept the mobile workbench bottom composer attached so mobile generation entry still works after the desktop shell rewrite
+- updated workbench route tests to assert the new fullscreen-shell behavior and the intentional duplicated result presence between the center stage and right-side history
+- validation:
+  - `npm test -- src/workbench/WorkbenchPage.test.tsx`
+  - `npm run build`

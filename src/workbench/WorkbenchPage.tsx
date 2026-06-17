@@ -1,12 +1,15 @@
 import React from "react";
+import { Bell, ChevronLeft, Clock3, Coins, FolderOpenDot, Share2, Sparkles } from "lucide-react";
 
+import { BrandMark } from "../app/brand/BrandMark";
+import { HOME_ROUTE, WORKSPACE_ROUTE } from "../app/routes";
+import { getAssetVariantUrl } from "../assets/assetApi";
 import { useImageModelCatalog } from "../hooks/useImageModelCatalog";
 import { sendWorkbenchResultToProject } from "../services/v2WorkbenchApi";
 import { createDefaultWorkbenchDraft } from "./workbenchModelParams";
 import { SendToProjectDialog } from "./SendToProjectDialog";
 import { WorkbenchComposer } from "./WorkbenchComposer";
 import { WorkbenchMobileComposer } from "./WorkbenchMobileComposer";
-import { WorkbenchResultFeed } from "./WorkbenchResultFeed";
 import { WorkbenchResultSheet } from "./WorkbenchResultSheet";
 import { useWorkbenchGenerations } from "./useWorkbenchGenerations";
 import type { WorkbenchGeneration, WorkbenchResult } from "./workbenchTypes";
@@ -14,6 +17,239 @@ import type { WorkbenchGeneration, WorkbenchResult } from "./workbenchTypes";
 function navigate(path: string) {
   window.history.pushState(null, "", path);
   window.dispatchEvent(new PopStateEvent("popstate"));
+}
+
+function getPrimaryResult(generation: WorkbenchGeneration): WorkbenchResult | null {
+  return generation.results[0] ?? null;
+}
+
+function formatStatus(status: string) {
+  if (status === "succeeded") return "已完成";
+  if (status === "failed") return "失败";
+  if (status === "running" || status === "waiting_provider") return "生成中";
+  if (status === "queued" || status === "pending") return "排队中";
+  return status;
+}
+
+function useResultPreviewUrl(result: WorkbenchResult | null) {
+  const [fallbackUrl, setFallbackUrl] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    setFallbackUrl(null);
+    if (!result || result.previewUrl || result.downloadUrl || !result.assetId) return;
+    let active = true;
+    void getAssetVariantUrl(result.assetId, "preview")
+      .catch(() => getAssetVariantUrl(result.assetId))
+      .then((signed) => {
+        if (!active) return;
+        setFallbackUrl(signed.url);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [result]);
+
+  return result?.previewUrl || fallbackUrl || result?.downloadUrl || null;
+}
+
+function WorkbenchStage({
+  generation,
+  loading,
+  onSelectResult,
+}: {
+  generation: WorkbenchGeneration | null;
+  loading: boolean;
+  onSelectResult: (result: WorkbenchResult) => void;
+}) {
+  const primaryResult = generation ? getPrimaryResult(generation) : null;
+  const imageUrl = useResultPreviewUrl(primaryResult);
+
+  return (
+    <section className="flex min-h-[420px] flex-1 flex-col overflow-hidden rounded-[28px] border border-white/10 bg-[radial-gradient(circle_at_top,rgba(84,168,255,0.18),transparent_34%),linear-gradient(180deg,rgba(21,25,36,0.96),rgba(10,12,18,0.98))] shadow-[0_28px_90px_rgba(0,0,0,0.34)]">
+      <div className="flex items-center justify-between border-b border-white/8 px-5 py-4">
+        <div>
+          <div className="text-[11px] font-black uppercase tracking-[0.22em] text-cyan-300">Current Result</div>
+          <div className="mt-1 text-sm font-bold text-white">
+            {generation ? formatStatus(generation.status) : "准备开始"}
+          </div>
+        </div>
+        {generation ? (
+          <div className="rounded-full border border-white/10 bg-white/[0.06] px-3 py-1 text-xs font-bold text-slate-300">
+            {generation.requestedCount} 张
+          </div>
+        ) : null}
+      </div>
+
+      <div className="flex min-h-0 flex-1 flex-col justify-center p-5">
+        {loading ? (
+          <div className="grid min-h-[360px] place-items-center rounded-[24px] border border-white/8 bg-black/20 text-sm text-slate-400">
+            正在加载工作台历史...
+          </div>
+        ) : primaryResult && imageUrl ? (
+          <button
+            className="group relative block min-h-[360px] overflow-hidden rounded-[24px] border border-white/10 bg-black/35 text-left"
+            onClick={() => onSelectResult(primaryResult)}
+            type="button"
+          >
+            <img
+              alt={primaryResult.originalFilename || "Workbench result"}
+              className="h-full min-h-[360px] w-full object-cover transition duration-300 group-hover:scale-[1.01]"
+              src={imageUrl}
+            />
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/28 to-transparent px-5 pb-5 pt-16">
+              <div className="line-clamp-2 text-base font-bold text-white">{generation?.prompt}</div>
+              <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-200/90">
+                <span>{generation?.modelId}</span>
+                <span>{generation?.routeKey}</span>
+              </div>
+            </div>
+          </button>
+        ) : generation ? (
+          <div className="grid min-h-[360px] place-items-center rounded-[24px] border border-dashed border-white/10 bg-black/20 text-center">
+            <div className="max-w-sm px-6">
+              <div className="text-base font-bold text-white">{formatStatus(generation.status)}</div>
+              <div className="mt-2 text-sm leading-6 text-slate-400">
+                {generation.status === "failed"
+                  ? (generation.errorJson?.message as string) || "这次生成没有成功，可以直接在右侧历史区重试。"
+                  : "结果会优先显示在这里，同时保留在右侧历史流里。"}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="grid min-h-[360px] place-items-center rounded-[24px] border border-dashed border-white/10 bg-black/20 text-center">
+            <div className="max-w-sm px-6">
+              <div className="text-base font-bold text-white">独立生图工作台</div>
+              <div className="mt-2 text-sm leading-6 text-slate-400">
+                左侧参数区保持现有工作台配置方式不变。开始一次生成后，当前主结果显示在中间，历史记录在右侧连续保存。
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function WorkbenchHistoryPanel({
+  generations,
+  onReuseParams,
+  onRetry,
+  onSelectResult,
+}: {
+  generations: WorkbenchGeneration[];
+  onReuseParams: (generation: WorkbenchGeneration) => void;
+  onRetry: (generationId: string) => void;
+  onSelectResult: (result: WorkbenchResult) => void;
+}) {
+  return (
+    <aside className="flex h-full min-h-0 flex-col overflow-hidden rounded-[26px] border border-white/10 bg-white/[0.04] shadow-[0_24px_70px_rgba(0,0,0,0.24)]">
+      <div className="flex items-center justify-between border-b border-white/8 px-4 py-4">
+        <div>
+          <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">History</div>
+          <div className="mt-1 text-sm font-bold text-white">结果流</div>
+        </div>
+        <span className="rounded-full border border-white/10 bg-white/[0.06] px-3 py-1 text-xs font-bold text-slate-300">
+          {generations.length}
+        </span>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        <div className="grid gap-4">
+          {generations.length === 0 ? (
+            <div className="grid min-h-[260px] place-items-center rounded-[20px] border border-dashed border-white/10 bg-black/15 text-center">
+              <div className="px-5">
+                <div className="text-sm font-bold text-white">还没有生成记录</div>
+                <div className="mt-2 text-sm leading-6 text-slate-400">从左侧参数区开始一次新的图片生成。</div>
+              </div>
+            </div>
+          ) : null}
+
+          {generations.map((generation) => {
+            const primaryResult = getPrimaryResult(generation);
+            return (
+              <WorkbenchHistoryCard
+                key={generation.id}
+                generation={generation}
+                onReuseParams={onReuseParams}
+                onRetry={onRetry}
+                onSelectResult={onSelectResult}
+                result={primaryResult}
+              />
+            );
+          })}
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+function WorkbenchHistoryCard({
+  generation,
+  onReuseParams,
+  onRetry,
+  onSelectResult,
+  result,
+}: {
+  generation: WorkbenchGeneration;
+  onReuseParams: (generation: WorkbenchGeneration) => void;
+  onRetry: (generationId: string) => void;
+  onSelectResult: (result: WorkbenchResult) => void;
+  result: WorkbenchResult | null;
+}) {
+  const previewUrl = useResultPreviewUrl(result);
+
+  return (
+    <article className="overflow-hidden rounded-[20px] border border-white/8 bg-black/20 p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="line-clamp-2 text-[13px] font-bold leading-5 text-white">{generation.prompt}</div>
+          <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-400">
+            <span>{formatStatus(generation.status)}</span>
+            <span>{generation.requestedCount} 张</span>
+          </div>
+        </div>
+        <div className="flex h-9 min-w-[64px] items-center justify-center gap-1 rounded-[10px] border border-white/8 bg-white/[0.05] px-2 text-[12px] font-black text-[#ffe35a]">
+          <Coins size={13} />
+          {generation.estimatedCredits}
+        </div>
+      </div>
+
+      {previewUrl ? (
+        <button
+          className="mt-3 block overflow-hidden rounded-[16px] border border-white/8 bg-black/20"
+          onClick={() => result && onSelectResult(result)}
+          type="button"
+        >
+          <img
+            alt={result?.originalFilename || "Workbench result"}
+            className="aspect-[4/5] w-full object-cover"
+            src={previewUrl}
+          />
+        </button>
+      ) : (
+        <div className="mt-3 grid min-h-[170px] place-items-center rounded-[16px] border border-dashed border-white/10 bg-black/15 text-xs text-slate-500">
+          {generation.status === "failed" ? "本次生成失败" : "等待图片结果..."}
+        </div>
+      )}
+
+      <div className="mt-3 flex gap-2">
+        <button
+          className="h-9 rounded-full border border-white/10 bg-white/[0.06] px-3 text-xs font-bold text-white"
+          onClick={() => onRetry(generation.id)}
+          type="button"
+        >
+          再次生成
+        </button>
+        <button
+          className="h-9 rounded-full border border-white/10 bg-white/[0.03] px-3 text-xs font-bold text-slate-300"
+          onClick={() => onReuseParams(generation)}
+          type="button"
+        >
+          复用参数
+        </button>
+      </div>
+    </article>
+  );
 }
 
 export function WorkbenchPage() {
@@ -63,66 +299,130 @@ export function WorkbenchPage() {
     navigate(`/projects/${created.projectId}`);
   }, [selectedResult]);
 
+  const latestGeneration = generations[0] ?? null;
+
   return (
-    <section className="min-h-[calc(100vh-120px)]">
-      <div className="mb-6">
-        <div className="text-xs uppercase tracking-[0.22em] text-cyan-300">Workbench</div>
-        <h1 className="mt-2 text-3xl font-semibold text-white">独立生图工作台</h1>
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
-          不依赖项目即可直接生图。生成结果会进入云端素材和工作台历史，也可以发送到画布继续编辑。
-        </p>
-      </div>
+    <section
+      data-testid="workbench-page"
+      className="min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(73,149,255,0.16),transparent_24%),radial-gradient(circle_at_top_right,rgba(63,233,255,0.10),transparent_22%),linear-gradient(180deg,#07090e,#0b0d13_44%,#090b10)] text-white"
+    >
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:44px_44px] opacity-[0.08]" />
 
-      {error ? (
-        <div className="mb-4 rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
-          {error}
+      <header className="relative z-10 flex items-center justify-between gap-4 px-4 pb-4 pt-5 md:px-6 md:pt-6">
+        <div className="flex min-w-0 items-center gap-4">
+          <button
+            aria-label="返回首页"
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.06] text-slate-200 transition hover:bg-white/[0.12]"
+            onClick={() => navigate(HOME_ROUTE)}
+            type="button"
+          >
+            <ChevronLeft size={18} />
+          </button>
+          <button
+            aria-label="打开工作空间"
+            className="flex min-w-0 items-center gap-3 text-left"
+            onClick={() => navigate(WORKSPACE_ROUTE)}
+            type="button"
+          >
+            <BrandMark size="canvas" showCaption={false} />
+            <span className="min-w-0">
+              <span className="block text-[11px] font-black uppercase tracking-[0.22em] text-cyan-300">Workbench</span>
+              <span className="block truncate text-lg font-bold text-white">独立生图工作台</span>
+            </span>
+          </button>
         </div>
-      ) : null}
 
-      <div className="relative block min-h-[640px] overflow-hidden rounded-[26px] border border-white/8 bg-[#0b0b0f] md:grid md:h-[calc(100vh-210px)] md:grid-cols-[390px_minmax(0,1fr)]">
-        <div className="hidden md:block">
-          <WorkbenchComposer
-            draft={draft}
-            isGenerating={submitting}
-            models={models}
-            onChangeDraft={(patch) => setDraft((current) => ({ ...current, ...patch }))}
-            onGenerate={() => void submit(draft)}
-          />
+        <div className="hidden items-center gap-3 md:flex">
+          <div className="flex h-11 items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-4 text-sm font-bold text-white">
+            <Sparkles size={15} className="text-cyan-300" />
+            全屏创作流模式
+          </div>
+          <div className="flex h-11 items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-4 text-sm font-black text-[#ffe35a]">
+            <Coins size={15} />
+            19071
+          </div>
+          <button
+            aria-label="历史"
+            className="grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-white/[0.05] text-slate-200 transition hover:bg-white/[0.12]"
+            type="button"
+          >
+            <Clock3 size={16} />
+          </button>
+          <button
+            aria-label="通知"
+            className="grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-white/[0.05] text-slate-200 transition hover:bg-white/[0.12]"
+            type="button"
+          >
+            <Bell size={16} />
+          </button>
+          <button
+            aria-label="分享"
+            className="grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-white/[0.05] text-slate-200 transition hover:bg-white/[0.12]"
+            type="button"
+          >
+            <Share2 size={16} />
+          </button>
         </div>
+      </header>
 
-        <div className="min-h-0 overflow-y-auto p-5 pb-28 md:pb-5">
-          {loading ? (
-            <div className="grid min-h-[280px] place-items-center rounded-[24px] border border-white/8 bg-white/[0.03] text-sm text-slate-500">
-              正在加载工作台历史...
-            </div>
-          ) : (
-            <WorkbenchResultFeed
+      <div className="relative z-10 px-4 pb-4 md:px-6 md:pb-6">
+        {error ? (
+          <div className="mb-4 rounded-[18px] border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+            {error}
+          </div>
+        ) : null}
+
+        <div className="grid min-h-[calc(100vh-108px)] gap-4 md:grid-cols-[390px_minmax(0,1fr)] xl:grid-cols-[390px_minmax(0,1fr)_320px]">
+          <div className="hidden min-h-0 overflow-hidden rounded-[26px] border border-white/8 bg-[#0f1015]/92 shadow-[0_26px_80px_rgba(0,0,0,0.28)] md:block">
+            <WorkbenchComposer
+              draft={draft}
+              isGenerating={submitting}
+              models={models}
+              onChangeDraft={(patch) => setDraft((current) => ({ ...current, ...patch }))}
+              onGenerate={() => void submit(draft)}
+            />
+          </div>
+
+          <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+            <WorkbenchStage
+              generation={latestGeneration}
+              loading={loading}
+              onSelectResult={setSelectedResult}
+            />
+
+            <WorkbenchHistoryPanel
               generations={generations}
               onReuseParams={reuseParams}
               onRetry={(generationId) => void retry(generationId)}
               onSelectResult={setSelectedResult}
             />
-          )}
+          </div>
         </div>
-
-        <WorkbenchMobileComposer
-          draft={draft}
-          isGenerating={submitting}
-          models={models}
-          onChangeDraft={(patch) => setDraft((current) => ({ ...current, ...patch }))}
-          onGenerate={() => void submit(draft)}
-        />
       </div>
 
-      <WorkbenchResultSheet
-        onClose={() => setSelectedResult(null)}
-        onSendToProject={() => setSendDialogOpen(true)}
-        result={selectedResult}
+      <div className="pointer-events-none fixed bottom-5 right-5 hidden xl:block">
+        <div className="flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-white/[0.06] text-slate-200 shadow-[0_20px_40px_rgba(0,0,0,0.35)]">
+          <FolderOpenDot size={20} />
+        </div>
+      </div>
+
+      <WorkbenchMobileComposer
+        draft={draft}
+        isGenerating={submitting}
+        models={models}
+        onChangeDraft={(patch) => setDraft((current) => ({ ...current, ...patch }))}
+        onGenerate={() => void submit(draft)}
       />
+
       <SendToProjectDialog
         onClose={() => setSendDialogOpen(false)}
         onConfirm={(input) => void handleSendToProject(input)}
         open={sendDialogOpen}
+      />
+      <WorkbenchResultSheet
+        onClose={() => setSelectedResult(null)}
+        onSendToProject={() => setSendDialogOpen(true)}
+        result={selectedResult}
       />
     </section>
   );

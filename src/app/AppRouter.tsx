@@ -155,6 +155,8 @@ export function AppRouter() {
     <AuthGate>
       {isProjectRoute(pathname) ? (
         getProjectMode(pathname) === "workbench" ? <Redirect to={WORKBENCH_ROUTE} /> : <FlowProjectPage />
+      ) : pathname === WORKBENCH_ROUTE || pathname.startsWith(`${WORKBENCH_ROUTE}/`) ? (
+        <WorkbenchPage />
       ) : (
         <WorkspaceShell>
           <div className="app-route-transition" key={pathname}>

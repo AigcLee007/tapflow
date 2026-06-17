@@ -189,12 +189,14 @@ describe("WorkbenchPage", () => {
     });
   });
 
-  test("renders /workbench under the shared shell", async () => {
+  test("renders /workbench as a fullscreen studio route outside the shared shell", async () => {
     setRoute("/workbench");
     renderRouter();
 
-    expect(await screen.findByText("独立生图工作台")).toBeTruthy();
+    expect(await screen.findByTestId("workbench-page")).toBeTruthy();
     expect(screen.getByLabelText("Prompt")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /AI Flow/i })).toBeNull();
+    expect(screen.queryByText("WORKBENCH")).toBeNull();
   });
 
   test("renders the compact TapNow-style workbench composer controls", async () => {
@@ -208,6 +210,7 @@ describe("WorkbenchPage", () => {
     expect(screen.getByText("画面比例")).toBeTruthy();
     expect(screen.getByText("画质尺寸")).toBeTruthy();
     expect(screen.getByText("当前配置消耗")).toBeTruthy();
+    expect(screen.getByTestId("workbench-composer").className).toContain("workbench-composer");
     expect(screen.getByTestId("workbench-route-row").className).toContain("grid gap-1.5");
     expect(screen.getByTestId("workbench-param-row").className).toContain("grid-cols-3");
     expect(screen.getByRole("button", { name: "立即开始创作" })).toBeTruthy();
@@ -417,7 +420,8 @@ describe("WorkbenchPage", () => {
     await waitFor(() => {
       expect(getAssetVariantUrlMock).toHaveBeenCalledWith("asset-result-1", "preview");
     });
-    expect((await screen.findByAltText("result.png")).getAttribute("src")).toBe("https://example.com/asset-result-1.png");
+    const resultImages = await screen.findAllByAltText("result.png");
+    expect(resultImages.some((image) => image.getAttribute("src") === "https://example.com/asset-result-1.png")).toBe(true);
   });
 
   test("loads result detail preview from asset id when selected result has no preview url", async () => {
@@ -452,7 +456,7 @@ describe("WorkbenchPage", () => {
     setRoute("/workbench");
     renderRouter();
 
-    fireEvent.click(await screen.findByAltText("detail.png"));
+    fireEvent.click((await screen.findAllByAltText("detail.png"))[0]!);
 
     await screen.findByText("结果详情");
     await waitFor(() => {
