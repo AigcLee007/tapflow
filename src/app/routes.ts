@@ -18,6 +18,8 @@ export const PRODUCT_ROUTES = [
   HOME_ROUTE,
   WORKSPACE_ROUTE,
   "/projects/:projectId",
+  "/projects/:projectId/workbench",
+  "/projects/:projectId/canvas",
   ASSETS_ROUTE,
   BILLING_ROUTE,
   ACCOUNT_ROUTE,
@@ -30,6 +32,24 @@ export function isProjectRoute(pathname: string): boolean {
 export function getProjectId(pathname: string): string | null {
   if (!isProjectRoute(pathname)) return null;
   return pathname.split("/").filter(Boolean)[1] ?? null;
+}
+
+export function getProjectRouteParts(pathname: string): {
+  mode: "canvas" | "workbench" | null;
+  projectId: string | null;
+} {
+  if (!isProjectRoute(pathname)) {
+    return { mode: null, projectId: null };
+  }
+  const parts = pathname.split("/").filter(Boolean);
+  const projectId = parts[1] ? decodeURIComponent(parts[1]) : null;
+  const rawMode = parts[2] ?? null;
+  const mode = rawMode === "canvas" || rawMode === "workbench" ? rawMode : null;
+  return { mode, projectId };
+}
+
+export function getProjectMode(pathname: string): "canvas" | "workbench" | null {
+  return getProjectRouteParts(pathname).mode;
 }
 
 export function isCompatibilityRoute(pathname: string): boolean {

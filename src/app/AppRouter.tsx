@@ -12,6 +12,7 @@ import { AdminPage } from "../admin/AdminPage";
 import { ProviderSettingsPage } from "../account/ProviderSettingsPage";
 import { BillingCenterPage } from "../billing/BillingCenterPage";
 import { FlowProjectPage } from "../flowCanvas/FlowProjectPage";
+import { ImageWorkbenchPage } from "../flowCanvas/workbench/ImageWorkbenchPage";
 import { HomePage } from "../workspace/HomePage";
 import { WorkspacePage } from "../workspace/WorkspacePage";
 import { WorkspaceShell } from "./WorkspaceShell";
@@ -27,6 +28,7 @@ import {
   HOME_ROUTE,
   isCompatibilityRoute,
   isNonUserFacingRoute,
+  getProjectMode,
   isProjectRoute,
   LOGIN_ROUTE,
   REGISTER_ROUTE,
@@ -87,7 +89,7 @@ function ProtectedRoutes({ pathname }: { pathname: string }) {
   }
 
   if (isProjectRoute(pathname)) {
-    return <FlowProjectPage />;
+    return getProjectMode(pathname) === "workbench" ? <ImageWorkbenchPage /> : <FlowProjectPage />;
   }
 
   if (pathname === ASSETS_ROUTE || pathname.startsWith(`${ASSETS_ROUTE}/`)) {
@@ -147,7 +149,7 @@ export function AppRouter() {
   return (
     <AuthGate>
       {isProjectRoute(pathname) ? (
-        <FlowProjectPage />
+        getProjectMode(pathname) === "workbench" ? <ImageWorkbenchPage /> : <FlowProjectPage />
       ) : (
         <WorkspaceShell>
           <div className="app-route-transition" key={pathname}>

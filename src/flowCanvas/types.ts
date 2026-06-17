@@ -49,6 +49,12 @@ export interface FlowAgentNodeMetadata {
   sourceEvidenceNodeIds?: string[];
 }
 
+export interface FlowWorkbenchNodeMetadata {
+  batchId: string;
+  createdAt: number;
+  source: 'image-workbench';
+}
+
 export interface FlowImageResultItem {
   id: string;
   url: string;
@@ -164,6 +170,7 @@ export interface FlowNodeData {
   multiImageDisplayMode?: FlowMultiImageDisplayMode;
   latestMultiImageDelivery?: FlowMultiImageDisplayMode;
   agentMetadata?: FlowAgentNodeMetadata;
+  workbench?: FlowWorkbenchNodeMetadata;
 
   // Timestamps
   createdAt: number;

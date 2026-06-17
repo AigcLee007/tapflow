@@ -12,11 +12,31 @@ import { useFlowCanvasStore } from "./store/flowCanvasStore";
 import type { FlowNodeKind } from "./types";
 import { buildAssetBackedNodeData, buildMeasuredAssetNodePatch } from "./utils/assetNodeData";
 import { getImageNaturalSize } from "./utils/imageUtils";
+import {
+  getPreferredProjectMode,
+  getProjectCanvasPath,
+  getProjectWorkbenchPath,
+} from "./workbench/imageWorkbenchUtils";
 
 function getProjectIdFromLocation() {
   if (typeof window === "undefined") return "";
   const match = window.location.pathname.match(/^\/projects\/([^/]+)/);
   return decodeURIComponent(match?.[1] ?? "");
+}
+
+function isExplicitProjectModePath() {
+  if (typeof window === "undefined") return true;
+  return /\/projects\/[^/]+\/(?:canvas|workbench)$/.test(window.location.pathname);
+}
+
+function getViewportProbe() {
+  if (typeof window === "undefined") {
+    return { coarsePointer: false, width: 1200 };
+  }
+  return {
+    coarsePointer: window.matchMedia?.("(hover: none) and (pointer: coarse)")?.matches ?? false,
+    width: window.innerWidth,
+  };
 }
 
 function statusLabel(status: RemoteFlowSaveStatus) {
@@ -100,6 +120,15 @@ export function FlowProjectPage() {
   });
 
   useEffect(() => registerRemoteDraftSaveBarrier(autosave.saveNow), [autosave.saveNow]);
+
+  useEffect(() => {
+    if (!projectId || isExplicitProjectModePath() || typeof window === "undefined") return;
+    const mode = getPreferredProjectMode(getViewportProbe());
+    const nextPath = mode === "workbench" ? getProjectWorkbenchPath(projectId) : getProjectCanvasPath(projectId);
+    if (window.location.pathname === nextPath) return;
+    window.history.replaceState(null, "", nextPath);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, [projectId]);
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;

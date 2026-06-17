@@ -52,6 +52,7 @@ Current deployment baseline:
 As of 2026-06-13:
 
 - TapNow-style visual alignment work has been iterated several rounds on canvas layout, add-node menus, user menus, and node title density
+- project-scoped image workbench V1 is implemented on top of the same v2 flow draft/runtime path: desktop now has a left-parameter plus right-batch-feed workbench surface, mobile project entry defaults to workbench mode, workbench generations create normal image nodes with shared autosave plus target-node workflow execution, and completed assets continue to land in the same canvas/assets pipeline
 - media asset preview optimization is implemented
 - historical asset variant backfill script is implemented and validated on staging
 - staging asset backfill has been executed successfully
