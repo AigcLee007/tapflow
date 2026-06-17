@@ -32,7 +32,10 @@ export function WorkbenchPage() {
 
   React.useEffect(() => {
     if (models.length === 0) return;
-    setDraft((current) => (current.modelId ? current : createDefaultWorkbenchDraft(models)));
+    setDraft((current) => {
+      const hasCurrentModel = models.some((model) => model.id === current.modelId);
+      return current.modelId && hasCurrentModel ? current : createDefaultWorkbenchDraft(models);
+    });
   }, [models]);
 
   const reuseParams = React.useCallback((generation: WorkbenchGeneration) => {
@@ -65,7 +68,7 @@ export function WorkbenchPage() {
         <div className="text-xs uppercase tracking-[0.22em] text-cyan-300">Workbench</div>
         <h1 className="mt-2 text-3xl font-semibold text-white">独立生图工作台</h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
-          不依赖项目即可直接生图，生成结果会进入云端素材与工作台历史，发送到画布作为显式后续操作。
+          不依赖项目即可直接生图。生成结果会进入云端素材和工作台历史，也可以发送到画布继续编辑。
         </p>
       </div>
 

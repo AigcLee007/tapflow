@@ -60,7 +60,7 @@ export function UploadAssetButton({
       for (let index = 0; index < selectedFiles.length; index += 1) {
         const file = selectedFiles[index];
         const itemId = nextItems[index]?.id;
-        if (!itemId) continue;
+        if (!file || !itemId) continue;
 
         try {
           const asset = await uploadAssetFile({ file, projectId });
@@ -106,9 +106,9 @@ export function UploadAssetButton({
     <>
       <input
         className="hidden"
+        multiple
         onChange={(event) => void upload(event.target.files)}
         ref={inputRef}
-        multiple
         type="file"
       />
       <div className={wrapperClassName}>

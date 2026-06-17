@@ -31,7 +31,12 @@ export function WorkbenchMobileComposer(props: Props) {
 
       {open ? (
         <div className="fixed inset-0 z-50 md:hidden">
-          <button className="absolute inset-0 bg-black/55" aria-label="关闭工作台输入" onClick={() => setOpen(false)} type="button" />
+          <button
+            aria-label="关闭工作台输入"
+            className="absolute inset-0 bg-black/55"
+            onClick={() => setOpen(false)}
+            type="button"
+          />
           <div className="absolute bottom-0 left-0 right-0 max-h-[88vh] overflow-hidden rounded-t-[26px] border border-white/10 bg-[#101014] shadow-[0_-22px_70px_rgba(0,0,0,0.6)]">
             <WorkbenchComposer {...props} compact onAfterGenerate={() => setOpen(false)} />
           </div>

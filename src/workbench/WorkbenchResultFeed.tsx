@@ -12,7 +12,7 @@ type Props = {
 function statusLabel(status: string) {
   if (status === "succeeded") return "已完成";
   if (status === "failed") return "失败";
-  if (status === "running") return "生成中";
+  if (status === "running" || status === "waiting_provider") return "生成中";
   if (status === "queued" || status === "pending") return "排队中";
   return status;
 }
@@ -29,7 +29,7 @@ export function WorkbenchResultFeed({
         <div className="grid min-h-[280px] place-items-center rounded-[24px] border border-white/8 bg-white/[0.03] text-center">
           <div>
             <div className="text-sm font-bold text-slate-200">还没有生成记录</div>
-            <div className="mt-2 text-sm text-slate-500">从左侧参数区开始一次新的图片生成吧。</div>
+            <div className="mt-2 text-sm text-slate-500">从左侧参数区开始一次新的图片生成。</div>
           </div>
         </div>
       ) : null}

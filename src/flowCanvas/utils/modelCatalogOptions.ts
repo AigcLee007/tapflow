@@ -38,7 +38,19 @@ const normalizeSize = (value: unknown) => {
   return raw ? raw.toLowerCase() : raw;
 };
 
-const ROUTE_NUMBER_LABELS = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
+const ROUTE_LINE_PREFIX = '\u7ebf\u8def';
+const ROUTE_NUMBER_LABELS = [
+  '\u4e00',
+  '\u4e8c',
+  '\u4e09',
+  '\u56db',
+  '\u4e94',
+  '\u516d',
+  '\u4e03',
+  '\u516b',
+  '\u4e5d',
+  '\u5341',
+];
 
 const MODEL_DISPLAY_NAME_BY_FAMILY_OR_MODEL: Record<string, string> = {
   'gemini-3-pro-image-preview': 'Nano Banana Pro',
@@ -57,13 +69,13 @@ const MODEL_DISPLAY_NAME_BY_FAMILY_OR_MODEL: Record<string, string> = {
 };
 
 const KNOWN_IMAGE_ROUTE_USER_FACING_LABEL_BY_KEY: Record<string, string> = {
-  'image.gpt-image-2': 'GPT-Image-2 线路一',
-  'image.gpt-image-2.line2': 'GPT-Image-2 线路二',
-  'image.gpt-image-2.line3': 'GPT-Image-2 线路三',
-  'image.gpt-image-2.line4': 'GPT-Image-2 线路四',
-  'image.mouxihub.nano-banana-pro.t3': 'Nano Banana Pro 线路二（官方T3）',
-  'image.pixellelabs.nano-banana-2': 'Nano Banana 2 线路一',
-  'image.pixellelabs.nano-banana-pro': 'Nano Banana Pro 线路一',
+  'image.gpt-image-2': `GPT-Image-2 ${ROUTE_LINE_PREFIX}\u4e00`,
+  'image.gpt-image-2.line2': `GPT-Image-2 ${ROUTE_LINE_PREFIX}\u4e8c`,
+  'image.gpt-image-2.line3': `GPT-Image-2 ${ROUTE_LINE_PREFIX}\u4e09`,
+  'image.gpt-image-2.line4': `GPT-Image-2 ${ROUTE_LINE_PREFIX}\u56db`,
+  'image.mouxihub.nano-banana-pro.t3': `Nano Banana Pro ${ROUTE_LINE_PREFIX}\u4e8c\uff08\u5b98\u65b9T3\uff09`,
+  'image.pixellelabs.nano-banana-2': `Nano Banana 2 ${ROUTE_LINE_PREFIX}\u4e00`,
+  'image.pixellelabs.nano-banana-pro': `Nano Banana Pro ${ROUTE_LINE_PREFIX}\u4e00`,
 };
 
 const KNOWN_IMAGE_ROUTE_SORT_ORDER_BY_KEY: Record<string, number> = {
@@ -105,15 +117,15 @@ const NANO_BANANA_MODEL_IDENTITIES = new Set([
 
 const normalizeRouteLineLabel = (value: unknown, index: number) => {
   const configured = normalizeKey(value);
-  const directLine = configured.match(/^线路([一二三四五六七八九十0-9]+(?:（.*）)?)$/);
+  const directLine = configured.match(new RegExp(`^${ROUTE_LINE_PREFIX}([\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u53410-9]+(?:\uff08.*\uff09)?)$`));
   if (directLine) return configured;
 
-  const lineNumber = configured.match(/(?:线路|line)\s*([0-9]+)/i)?.[1];
+  const lineNumber = configured.match(new RegExp(`(?:${ROUTE_LINE_PREFIX}|line)\\s*([0-9]+)`, 'i'))?.[1];
   if (lineNumber) {
-    return `线路${ROUTE_NUMBER_LABELS[Number(lineNumber) - 1] || lineNumber}`;
+    return `${ROUTE_LINE_PREFIX}${ROUTE_NUMBER_LABELS[Number(lineNumber) - 1] || lineNumber}`;
   }
 
-  return `线路${ROUTE_NUMBER_LABELS[index] || index + 1}`;
+  return `${ROUTE_LINE_PREFIX}${ROUTE_NUMBER_LABELS[index] || index + 1}`;
 };
 
 export const getProductImageModelLabel = (value: unknown) => {

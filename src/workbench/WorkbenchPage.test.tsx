@@ -11,6 +11,8 @@ const listWorkbenchGenerationsMock = vi.fn();
 const createWorkbenchGenerationMock = vi.fn();
 const getWorkbenchGenerationMock = vi.fn();
 const retryWorkbenchGenerationMock = vi.fn();
+const getAssetMock = vi.fn();
+const getAssetVariantUrlMock = vi.fn();
 const uploadAssetFileMock = vi.fn();
 
 vi.mock("../auth/AuthGate", () => ({
@@ -44,12 +46,43 @@ vi.mock("../assets/assetApi", async () => {
   const actual = await vi.importActual("../assets/assetApi");
   return {
     ...actual,
+    getAsset: (...args: unknown[]) => getAssetMock(...args),
+    getAssetVariantUrl: (...args: unknown[]) => getAssetVariantUrlMock(...args),
     uploadAssetFile: (...args: unknown[]) => uploadAssetFileMock(...args),
   };
 });
 
 function setRoute(pathname: string) {
   window.history.replaceState(null, "", pathname);
+}
+
+function createGeneration(overrides: Record<string, unknown> = {}) {
+  return {
+    chargedCredits: null,
+    createdAt: new Date().toISOString(),
+    displayMode: "merged",
+    errorJson: null,
+    estimatedCredits: 1,
+    finishedAt: null,
+    id: "generation-1",
+    modelId: "pixellelabs.nano-banana-pro",
+    params: {
+      aspect_ratio: "1:1",
+      size: "1k",
+    },
+    prompt: "Product poster",
+    referenceAssetIds: [],
+    requestedCount: 1,
+    reservedCredits: 1,
+    reserveLedgerId: "ledger-1",
+    results: [],
+    routeKey: "image.pixellelabs.nano-banana-pro",
+    sessionId: null,
+    startedAt: null,
+    status: "queued",
+    updatedAt: new Date().toISOString(),
+    ...overrides,
+  };
 }
 
 function createAuthState(overrides: Partial<AuthState> = {}): AuthState {
@@ -91,6 +124,8 @@ function renderRouter() {
 
 describe("WorkbenchPage", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
+
     useImageModelCatalogMock.mockReturnValue({
       error: null,
       loading: false,
@@ -131,39 +166,30 @@ describe("WorkbenchPage", () => {
     ]);
 
     listWorkbenchGenerationsMock.mockResolvedValue({
-      generations: [
-        {
-          chargedCredits: null,
-          createdAt: new Date().toISOString(),
-          displayMode: "merged",
-          errorJson: null,
-          estimatedCredits: 1,
-          finishedAt: null,
-          id: "generation-1",
-          modelId: "pixellelabs.nano-banana-pro",
-          params: {
-            aspect_ratio: "1:1",
-            size: "1k",
-          },
-          prompt: "Product poster",
-          referenceAssetIds: [],
-          requestedCount: 1,
-          reservedCredits: 1,
-          reserveLedgerId: "ledger-1",
-          results: [],
-          routeKey: "image.pixellelabs.nano-banana-pro",
-          sessionId: null,
-          startedAt: null,
-          status: "queued",
-          updatedAt: new Date().toISOString(),
-        },
-      ],
+      generations: [createGeneration()],
       nextCursor: null,
     });
-
-    createWorkbenchGenerationMock.mockResolvedValue(undefined);
-    getWorkbenchGenerationMock.mockResolvedValue(undefined);
-    retryWorkbenchGenerationMock.mockResolvedValue(undefined);
+    createWorkbenchGenerationMock.mockResolvedValue(createGeneration({
+      id: "generation-created",
+      status: "succeeded",
+    }));
+    getWorkbenchGenerationMock.mockResolvedValue(createGeneration({ status: "succeeded" }));
+    retryWorkbenchGenerationMock.mockResolvedValue(createGeneration({
+      id: "generation-retry",
+      status: "succeeded",
+    }));
+    getAssetMock.mockImplementation(async (assetId: string) => ({
+      id: assetId,
+      originalFilename: `${assetId}.png`,
+      previewUrl: `https://example.com/${assetId}.png`,
+      title: `${assetId}.png`,
+    }));
+    getAssetVariantUrlMock.mockImplementation(async (assetId: string) => ({
+      expiresAt: new Date(Date.now() + 900000).toISOString(),
+      method: "GET",
+      url: `https://example.com/${assetId}.png`,
+      variantKey: "preview",
+    }));
     uploadAssetFileMock.mockResolvedValue({
       id: "asset-uploaded-1",
       originalFilename: "ref.png",
@@ -201,7 +227,7 @@ describe("WorkbenchPage", () => {
     setRoute("/workbench");
     const { container } = renderRouter();
 
-    expect(await screen.findByText("暂未添加参考图")).toBeTruthy();
+    expect(await screen.findByText("添加参考图")).toBeTruthy();
     const input = container.querySelector('input[type="file"]') as HTMLInputElement | null;
     expect(input).toBeTruthy();
 
@@ -215,6 +241,56 @@ describe("WorkbenchPage", () => {
       expect(uploadAssetFileMock).toHaveBeenCalledTimes(1);
     });
 
-    expect(await screen.findByText("1 张参考图")).toBeTruthy();
+    expect(await screen.findByText("图1")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "引用" })).toBeTruthy();
+  });
+
+  test("submits only referenced images when prompt contains @图N tags", async () => {
+    setRoute("/workbench");
+    const { container } = renderRouter();
+
+    expect(await screen.findByText("添加参考图")).toBeTruthy();
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement | null;
+    expect(input).toBeTruthy();
+
+    uploadAssetFileMock
+      .mockResolvedValueOnce({
+        id: "11111111-1111-4111-8111-111111111111",
+        originalFilename: "ref-1.png",
+        previewUrl: "https://example.com/ref-1.png",
+        title: "ref-1.png",
+      })
+      .mockResolvedValueOnce({
+        id: "22222222-2222-4222-8222-222222222222",
+        originalFilename: "ref-2.png",
+        previewUrl: "https://example.com/ref-2.png",
+        title: "ref-2.png",
+      });
+
+    fireEvent.change(input!, {
+      target: {
+        files: [
+          new File(["ref1"], "ref-1.png", { type: "image/png" }),
+          new File(["ref2"], "ref-2.png", { type: "image/png" }),
+        ],
+      },
+    });
+
+    expect(await screen.findByText("图2")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Prompt"), {
+      target: { value: "参考 @图2 生成海报" },
+    });
+
+    await waitFor(() => {
+      expect((screen.getByRole("button", { name: "开始生成" }) as HTMLButtonElement).disabled).toBe(false);
+    });
+    fireEvent.click(screen.getByRole("button", { name: "开始生成" }));
+
+    await waitFor(() => {
+      expect(createWorkbenchGenerationMock).toHaveBeenCalledTimes(1);
+    });
+    expect(createWorkbenchGenerationMock.mock.calls[0]?.[0]).toMatchObject({
+      referenceAssetIds: ["22222222-2222-4222-8222-222222222222"],
+    });
   });
 });

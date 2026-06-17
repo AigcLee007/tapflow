@@ -208,9 +208,9 @@ export async function uploadAssetFile(input: {
   if (!upload.ok) {
     const message = (await upload.text().catch(() => '')).trim();
     if (message) {
-      throw new Error(`上传失败（状态 ${upload.status}）：${message}`);
+      throw new Error(`Upload failed (status ${upload.status}): ${message}`);
     }
-    throw new Error(`上传失败（状态 ${upload.status}）。`);
+    throw new Error(`Upload failed (status ${upload.status}).`);
   }
 
   const completed = await apiPost<AssetItem>(`/assets/${presigned.asset.id}/complete-upload`, {

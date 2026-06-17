@@ -28,6 +28,7 @@ type WorkbenchGenerationRecord = {
   model_id: string;
   params_json: Record<string, unknown>;
   prompt: string;
+  provider_task_id: string | null;
   reference_asset_ids: string[];
   requested_count: number;
   reserve_ledger_id: string | null;
@@ -36,6 +37,7 @@ type WorkbenchGenerationRecord = {
   session_id: string | null;
   status: string;
   tenant_id: string;
+  updated_at: string;
 };
 
 type ReferenceAssetRecord = {
@@ -114,56 +116,62 @@ export class WorkbenchGenerationService {
     input: WorkbenchGenerateJobPayload,
     logger?: WorkerLogger,
   ): Promise<ProcessorResult> {
-    await withTenantTransaction(
+    const generation = await withTenantTransaction(
       { tenantId: input.tenantId, userId: null },
-      async (client) => {
+      async (client): Promise<WorkbenchGenerationRecord | null> => {
         const generation = await this.lockGeneration(client, input.tenantId, input.generationId);
         if (generation.status === "succeeded") {
-          return;
+          return null;
         }
-        if (generation.status === "running" || generation.status === "waiting_provider") {
-          return;
+        if ((generation.status === "running" || generation.status === "waiting_provider") && !this.isStaleGeneration(generation)) {
+          return null;
         }
 
         await this.markGenerationRunning(client, input.tenantId, input.generationId);
+        return generation;
+      },
+      this.pool,
+    );
 
-        try {
-          const referenceAssets = await this.loadReferenceAssets(
-            client,
-            input.tenantId,
-            generation.reference_asset_ids,
-          );
-          const result = await this.mediaRuntime.generateImage(
-            {
-              tenantId: input.tenantId,
-              userId: generation.created_by,
-            },
-            {
-              inputAssets: referenceAssets,
-              metadata: {
-                params: buildMetadataParams(generation),
-                referenceAssetIds: generation.reference_asset_ids,
-                source: "workbench",
-              },
-              model: generation.model_id,
-              prompt: generation.prompt,
-              routeKey: generation.route_key,
-            },
-          );
+    if (!generation) {
+      return {
+        jobId: null,
+        queueName: "workbench.generate",
+        status: "ok",
+        tenantId: input.tenantId,
+        traceId: input.traceId ?? null,
+      };
+    }
 
-          const outputs = await this.resolveOutputs(
-            {
-              tenantId: input.tenantId,
-              userId: generation.created_by,
-            },
-            generation,
-            result,
-          );
-
-          if (outputs.length === 0) {
-            throw new Error("Workbench generation completed without any image outputs.");
+    try {
+      const result = generation.status === "waiting_provider" && generation.provider_task_id
+        ? {
+            providerTaskId: generation.provider_task_id,
+            status: "waiting_provider" as const,
           }
+        : await this.createProviderTask(input.tenantId, generation);
 
+      const providerTaskId = result.providerTaskId || result.providerTaskIds?.[0] || null;
+      if (result.status === "waiting_provider" && providerTaskId) {
+        await this.markGenerationWaitingProvider(input.tenantId, generation.id, providerTaskId);
+      }
+
+      const outputs = await this.resolveOutputs(
+        {
+          tenantId: input.tenantId,
+          userId: generation.created_by,
+        },
+        generation,
+        result,
+      );
+
+      if (outputs.length === 0) {
+        throw new Error("Workbench generation completed without any image outputs.");
+      }
+
+      await withTenantTransaction(
+        { tenantId: input.tenantId, userId: null },
+        async (client) => {
           const assetRefs = await this.assetStore.persistOutputs(client, {
             kind: "image",
             nodeRunId: null,
@@ -176,24 +184,23 @@ export class WorkbenchGenerationService {
           await this.insertResults(client, input.tenantId, generation.id, assetRefs);
           await this.settleGeneration(client, input.tenantId, generation, assetRefs.length);
           await this.markGenerationSucceeded(client, input.tenantId, generation.id);
-        } catch (error) {
-          await this.markGenerationFailed(client, input.tenantId, generation.id, error);
-          await this.refundGeneration(client, input.tenantId, generation);
-          logger?.error(
-            {
-              err: error instanceof Error ? error.message : String(error),
-              generationId: generation.id,
-              queueName: "workbench.generate",
-              tenantId: input.tenantId,
-              traceId: input.traceId ?? null,
-            },
-            "workbench generation failed",
-          );
-          throw error;
-        }
-      },
-      this.pool,
-    );
+        },
+        this.pool,
+      );
+    } catch (error) {
+      await this.failGeneration(input.tenantId, generation, error);
+      logger?.error(
+        {
+          err: error instanceof Error ? error.message : String(error),
+          generationId: generation.id,
+          queueName: "workbench.generate",
+          tenantId: input.tenantId,
+          traceId: input.traceId ?? null,
+        },
+        "workbench generation failed",
+      );
+      throw error;
+    }
 
     return {
       jobId: null,
@@ -202,6 +209,12 @@ export class WorkbenchGenerationService {
       tenantId: input.tenantId,
       traceId: input.traceId ?? null,
     };
+  }
+
+  private isStaleGeneration(generation: WorkbenchGenerationRecord) {
+    const updatedAt = Date.parse(generation.updated_at);
+    if (!Number.isFinite(updatedAt)) return true;
+    return Date.now() - updatedAt > 10 * 60 * 1000;
   }
 
   private async lockGeneration(
@@ -220,6 +233,7 @@ export class WorkbenchGenerationService {
           model_id,
           route_key,
           params_json,
+          provider_task_id,
           reference_asset_ids::text[] AS reference_asset_ids,
           requested_count,
           display_mode,
@@ -227,7 +241,8 @@ export class WorkbenchGenerationService {
           charged_credits::text AS charged_credits,
           reserved_credits::text AS reserved_credits,
           reserve_ledger_id::text AS reserve_ledger_id,
-          status
+          status,
+          updated_at::text AS updated_at
         FROM workbench_generations
         WHERE tenant_id = $1::uuid
           AND id = $2::uuid
@@ -257,6 +272,27 @@ export class WorkbenchGenerationService {
           AND id = $2::uuid
       `,
       [tenantId, generationId],
+    );
+  }
+
+  private async markGenerationWaitingProvider(tenantId: string, generationId: string, providerTaskId: string) {
+    await withTenantTransaction(
+      { tenantId, userId: null },
+      async (client) => {
+        await client.query(
+          `
+            UPDATE workbench_generations
+            SET
+              status = 'waiting_provider',
+              provider_task_id = $3,
+              updated_at = now()
+            WHERE tenant_id = $1::uuid
+              AND id = $2::uuid
+          `,
+          [tenantId, generationId, providerTaskId],
+        );
+      },
+      this.pool,
     );
   }
 
@@ -364,6 +400,48 @@ export class WorkbenchGenerationService {
     return hydrated;
   }
 
+  private async loadReferenceAssetsForGeneration(
+    tenantId: string,
+    generation: WorkbenchGenerationRecord,
+  ): Promise<AssetReferenceInput[]> {
+    return withTenantTransaction(
+      { tenantId, userId: null },
+      (client) => this.loadReferenceAssets(client, tenantId, generation.reference_asset_ids),
+      this.pool,
+    );
+  }
+
+  private async createProviderTask(
+    tenantId: string,
+    generation: WorkbenchGenerationRecord,
+  ): Promise<{
+    outputs?: MediaOutput[] | null;
+    providerTaskId?: string | null;
+    providerTaskIds?: string[] | null;
+    routeId?: string | null;
+    status: "failed" | "succeeded" | "waiting_provider";
+    usage?: { inputTokens: number | null; outputTokens: number | null; rawCost?: string | number | null; totalTokens: number | null } | null;
+  }> {
+    const referenceAssets = await this.loadReferenceAssetsForGeneration(tenantId, generation);
+    return this.mediaRuntime.generateImage(
+      {
+        tenantId,
+        userId: generation.created_by,
+      },
+      {
+        inputAssets: referenceAssets,
+        metadata: {
+          params: buildMetadataParams(generation),
+          referenceAssetIds: generation.reference_asset_ids,
+          source: "workbench",
+        },
+        model: generation.model_id,
+        prompt: generation.prompt,
+        routeKey: generation.route_key,
+      },
+    );
+  }
+
   private async lookupAssetObjectKey(client: PoolClient, tenantId: string, assetId: string): Promise<string> {
     const result = await client.query<{ object_key: string }>(
       `
@@ -412,27 +490,35 @@ export class WorkbenchGenerationService {
       throw new Error("Workbench generation is waiting for provider but no provider task id was returned.");
     }
 
-    let lastPoll: ProviderTaskResult | null = null;
+    const outputs: MediaOutput[] = [];
     for (const providerTaskId of providerTaskIds) {
-      const polled = await this.mediaRuntime.pollTask(
-        context,
-        "image",
-        {
-          model: generation.model_id,
-          providerTaskId,
-          routeKey: generation.route_key,
-        },
-      );
-      lastPoll = polled;
-      if (polled.status === "failed") {
-        throw new Error(polled.error?.message ? String(polled.error.message) : "Workbench provider task failed.");
+      let finished: ProviderTaskResult | null = null;
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        const polled = await this.mediaRuntime.pollTask(
+          context,
+          "image",
+          {
+            model: generation.model_id,
+            providerTaskId,
+            routeKey: generation.route_key,
+          },
+        );
+        if (polled.status === "failed") {
+          throw new Error(polled.error?.message ? String(polled.error.message) : "Workbench provider task failed.");
+        }
+        if (polled.status !== "pending" && polled.status !== "running") {
+          finished = polled;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 3000));
       }
-      if (polled.status === "pending" || polled.status === "running") {
+      if (!finished) {
         throw new Error("Workbench provider task did not finish in time.");
       }
+      outputs.push(...normalizeTaskOutputs(finished));
     }
 
-    return lastPoll ? normalizeTaskOutputs(lastPoll) : [];
+    return outputs;
   }
 
   private async insertResults(
@@ -568,5 +654,16 @@ export class WorkbenchGenerationService {
       `,
       [tenantId, generation.id, refundLedger.id],
     );
+  }
+
+  private async failGeneration(tenantId: string, generation: WorkbenchGenerationRecord, error: unknown) {
+    await withTenantTransaction(
+      { tenantId, userId: null },
+      async (client) => {
+        await this.markGenerationFailed(client, tenantId, generation.id, error);
+        await this.refundGeneration(client, tenantId, generation);
+      },
+      this.pool,
+    ).catch(() => {});
   }
 }

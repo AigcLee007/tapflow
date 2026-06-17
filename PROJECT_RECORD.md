@@ -2243,3 +2243,20 @@ Validation completed:
   - `npm run test -- src/app/WorkspaceShell.test.tsx src/workbench/WorkbenchPage.test.tsx src/hooks/useImageModelCatalog.test.tsx`
   - `npm run test -- src/assets/UploadAssetButton.test.tsx`
   - `npm run build`
+
+## 2026-06-17 - Workbench Generation State and Reference UX Fix
+
+- fixed the `/workbench` generation worker flow so external provider calls and polling no longer run inside one long database transaction, preventing provider success/failure state from being hidden by transaction rollback
+- persisted `waiting_provider` plus `provider_task_id` for workbench async image tasks and reused existing provider task ids for stale retries instead of issuing duplicate upstream requests
+- changed workbench async provider polling from a single immediate poll to bounded condition polling before failing the generation
+- made frontend workbench polling resilient to temporary generation-detail errors and resumed polling for non-terminal history rows after page load
+- rebuilt the desktop/mobile workbench composer reference image area so uploaded references show thumbnails, labels like `图1`, remove controls, and one-click `@图N` insertion
+- added prompt reference filtering so `@图2` sends only the selected reference asset to the backend, while prompts without valid tags continue to send all selected references
+- simplified workbench model parameters to one shared dropdown layout and removed duplicate Nano Banana / GPT-Image-2 parameter panels from the workbench composer
+- prefetched and cached workbench route options by model route family to reduce the visible route-selector delay when switching models
+- cleaned newly touched workbench, upload, and model-route UI copy to avoid the recent garbled text regression
+- validation:
+  - `npm run test -- src/workbench/workbenchReferences.test.ts src/workbench/WorkbenchPage.test.tsx`
+  - `npm run test --workspace @aigc-flow/worker -- workbench-generation.service.test.ts`
+  - `npm run build --workspace @aigc-flow/worker`
+  - `npm run build`
