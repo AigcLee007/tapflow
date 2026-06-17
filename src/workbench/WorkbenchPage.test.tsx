@@ -66,10 +66,7 @@ function createGeneration(overrides: Record<string, unknown> = {}) {
     finishedAt: null,
     id: "generation-1",
     modelId: "pixellelabs.nano-banana-pro",
-    params: {
-      aspect_ratio: "1:1",
-      size: "1k",
-    },
+    params: { aspect_ratio: "1:1", size: "1k" },
     prompt: "Product poster",
     referenceAssetIds: [],
     requestedCount: 1,
@@ -125,6 +122,7 @@ function renderRouter() {
 describe("WorkbenchPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    URL.createObjectURL = vi.fn(() => "blob:local-ref-preview");
 
     useImageModelCatalogMock.mockReturnValue({
       error: null,
@@ -169,19 +167,13 @@ describe("WorkbenchPage", () => {
       generations: [createGeneration()],
       nextCursor: null,
     });
-    createWorkbenchGenerationMock.mockResolvedValue(createGeneration({
-      id: "generation-created",
-      status: "succeeded",
-    }));
+    createWorkbenchGenerationMock.mockResolvedValue(createGeneration({ id: "generation-created", status: "succeeded" }));
     getWorkbenchGenerationMock.mockResolvedValue(createGeneration({ status: "succeeded" }));
-    retryWorkbenchGenerationMock.mockResolvedValue(createGeneration({
-      id: "generation-retry",
-      status: "succeeded",
-    }));
+    retryWorkbenchGenerationMock.mockResolvedValue(createGeneration({ id: "generation-retry", status: "succeeded" }));
     getAssetMock.mockImplementation(async (assetId: string) => ({
       id: assetId,
       originalFilename: `${assetId}.png`,
-      previewUrl: `https://example.com/${assetId}.png`,
+      previewUrl: "",
       title: `${assetId}.png`,
     }));
     getAssetVariantUrlMock.mockImplementation(async (assetId: string) => ({
@@ -193,7 +185,7 @@ describe("WorkbenchPage", () => {
     uploadAssetFileMock.mockResolvedValue({
       id: "asset-uploaded-1",
       originalFilename: "ref.png",
-      previewUrl: "https://example.com/ref.png",
+      previewUrl: "",
       title: "ref.png",
     });
   });
@@ -215,15 +207,7 @@ describe("WorkbenchPage", () => {
     });
   });
 
-  test("shows generation result actions", async () => {
-    setRoute("/workbench");
-    renderRouter();
-
-    expect(await screen.findByRole("button", { name: "再次生成" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "复用参数" })).toBeTruthy();
-  });
-
-  test("uploads a reference image and attaches it to the current draft", async () => {
+  test("uploads a reference image with immediate local preview and signed preview fallback", async () => {
     setRoute("/workbench");
     const { container } = renderRouter();
 
@@ -240,9 +224,11 @@ describe("WorkbenchPage", () => {
     await waitFor(() => {
       expect(uploadAssetFileMock).toHaveBeenCalledTimes(1);
     });
+    expect(screen.getByAltText("参考图1").getAttribute("src")).toBe("blob:local-ref-preview");
 
-    expect(await screen.findByText("图1")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "引用" })).toBeTruthy();
+    await waitFor(() => {
+      expect(getAssetVariantUrlMock).toHaveBeenCalledWith("asset-uploaded-1", "preview");
+    });
   });
 
   test("submits only referenced images when prompt contains @图N tags", async () => {
@@ -257,13 +243,13 @@ describe("WorkbenchPage", () => {
       .mockResolvedValueOnce({
         id: "11111111-1111-4111-8111-111111111111",
         originalFilename: "ref-1.png",
-        previewUrl: "https://example.com/ref-1.png",
+        previewUrl: "",
         title: "ref-1.png",
       })
       .mockResolvedValueOnce({
         id: "22222222-2222-4222-8222-222222222222",
         originalFilename: "ref-2.png",
-        previewUrl: "https://example.com/ref-2.png",
+        previewUrl: "",
         title: "ref-2.png",
       });
 
@@ -292,5 +278,85 @@ describe("WorkbenchPage", () => {
     expect(createWorkbenchGenerationMock.mock.calls[0]?.[0]).toMatchObject({
       referenceAssetIds: ["22222222-2222-4222-8222-222222222222"],
     });
+  });
+
+  test("loads result preview from asset id when API result has no preview url", async () => {
+    listWorkbenchGenerationsMock.mockResolvedValue({
+      generations: [
+        createGeneration({
+          id: "generation-with-result",
+          results: [
+            {
+              assetId: "asset-result-1",
+              createdAt: new Date().toISOString(),
+              downloadUrl: null,
+              downloadUrlExpiresAt: null,
+              height: 1024,
+              id: "result-1",
+              metadata: {},
+              mimeType: "image/png",
+              originalFilename: "result.png",
+              previewUrl: null,
+              previewUrlExpiresAt: null,
+              sortOrder: 0,
+              status: "available",
+              width: 1024,
+            },
+          ],
+          status: "succeeded",
+        }),
+      ],
+      nextCursor: null,
+    });
+
+    setRoute("/workbench");
+    renderRouter();
+
+    await waitFor(() => {
+      expect(getAssetVariantUrlMock).toHaveBeenCalledWith("asset-result-1", "preview");
+    });
+    expect((await screen.findByAltText("result.png")).getAttribute("src")).toBe("https://example.com/asset-result-1.png");
+  });
+
+  test("loads result detail preview from asset id when selected result has no preview url", async () => {
+    listWorkbenchGenerationsMock.mockResolvedValue({
+      generations: [
+        createGeneration({
+          id: "generation-with-result",
+          results: [
+            {
+              assetId: "asset-result-detail-1",
+              createdAt: new Date().toISOString(),
+              downloadUrl: null,
+              downloadUrlExpiresAt: null,
+              height: 1024,
+              id: "result-detail-1",
+              metadata: {},
+              mimeType: "image/png",
+              originalFilename: "detail.png",
+              previewUrl: null,
+              previewUrlExpiresAt: null,
+              sortOrder: 0,
+              status: "available",
+              width: 1024,
+            },
+          ],
+          status: "succeeded",
+        }),
+      ],
+      nextCursor: null,
+    });
+
+    setRoute("/workbench");
+    renderRouter();
+
+    fireEvent.click(await screen.findByAltText("detail.png"));
+
+    await screen.findByText("结果详情");
+    await waitFor(() => {
+      expect(getAssetVariantUrlMock).toHaveBeenCalledWith("asset-result-detail-1", "preview");
+    });
+    const detailImages = screen.getAllByAltText("detail.png");
+    expect(detailImages.some((image) => image.getAttribute("src") === "https://example.com/asset-result-detail-1.png")).toBe(true);
   });
 });

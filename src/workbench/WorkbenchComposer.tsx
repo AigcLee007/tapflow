@@ -1,8 +1,8 @@
 import React from "react";
 import { ImagePlus, X } from "lucide-react";
 
-import { getAsset, getAssetVariantUrl, type AssetItem } from "../assets/assetApi";
-import { UploadAssetButton } from "../assets/UploadAssetButton";
+import { getAsset, getAssetVariantUrl, type AssetItem, type AssetDownloadUrlResponse } from "../assets/assetApi";
+import { UploadAssetButton, type UploadAssetPreview } from "../assets/UploadAssetButton";
 import type { ImageModelConfig } from "../config/imageModels";
 import { MenuSelect } from "../components/menu/MenuSelect";
 import { listAiModelRoutes, type AiModelCatalogRoute } from "../services/v2AiModelCatalogApi";
@@ -33,7 +33,35 @@ type ReferencePreview = {
   asset: AssetItem | null;
   assetId: string;
   loading: boolean;
+  localPreviewUrl: string | null;
   previewUrl: string | null;
+};
+
+const TEXT = {
+  addReference: "\u6dfb\u52a0\u53c2\u8003\u56fe",
+  aspectRatio: "\u6bd4\u4f8b",
+  clear: "\u6e05\u7a7a",
+  generationCount: "\u751f\u6210\u6570\u91cf",
+  imageQuality: "\u753b\u8d28",
+  insertReference: "\u5f15\u7528",
+  loading: "\u52a0\u8f7d\u4e2d",
+  loadingRoute: "\u7ebf\u8def\u52a0\u8f7d\u4e2d",
+  mergeDisplay: "\u5408\u5e76\u663e\u793a",
+  model: "\u6a21\u578b",
+  multiDisplay: "\u591a\u56fe\u663e\u793a",
+  noPreview: "\u6682\u65e0\u9884\u89c8",
+  prompt: "\u63d0\u793a\u8bcd",
+  promptPlaceholder: "\u63cf\u8ff0\u753b\u9762\u5185\u5bb9\u3001\u5149\u5f71\u3001\u98ce\u683c... \u652f\u6301 @\u56fe1 @\u56fe2 \u5f15\u7528\u53c2\u8003\u56fe",
+  quantity: "\u6570\u91cf",
+  reference: "\u53c2\u8003\u56fe",
+  referenceHint: "\u652f\u6301\u5728\u63d0\u793a\u8bcd\u4e2d\u8f93\u5165 @\u56fe1 @\u56fe2 \u7cbe\u51c6\u5f15\u7528",
+  removeReference: "\u79fb\u9664\u53c2\u8003\u56fe",
+  route: "\u7ebf\u8def",
+  separateDisplay: "\u591a\u8282\u70b9\u663e\u793a",
+  start: "\u5f00\u59cb\u751f\u6210",
+  submitting: "\u751f\u6210\u4e2d...",
+  imagePrefix: "\u56fe",
+  imageUnit: "\u5f20",
 };
 
 const routeOptionsCache = new Map<string, RuntimeRouteOption[]>();
@@ -72,6 +100,10 @@ function formatGptOption(value: string) {
   return value.toUpperCase();
 }
 
+async function loadAssetPreviewUrl(assetId: string): Promise<AssetDownloadUrlResponse | null> {
+  return getAssetVariantUrl(assetId, "preview").catch(() => getAssetVariantUrl(assetId).catch(() => null));
+}
+
 function ReferenceImageCard({
   index,
   onInsertMention,
@@ -83,25 +115,26 @@ function ReferenceImageCard({
   onRemove: () => void;
   preview: ReferencePreview;
 }) {
+  const imageUrl = preview.localPreviewUrl || preview.previewUrl;
   return (
     <div className="group overflow-hidden rounded-[14px] border border-white/10 bg-white/[0.045]">
       <div className="relative aspect-[4/3] bg-black/30">
-        {preview.previewUrl ? (
+        {imageUrl ? (
           <img
-            alt={`参考图${index}`}
+            alt={`${TEXT.reference}${index}`}
             className="h-full w-full object-cover"
-            src={preview.previewUrl}
+            src={imageUrl}
           />
         ) : (
           <div className="grid h-full place-items-center text-[11px] font-bold text-slate-500">
-            {preview.loading ? "加载中" : "暂无预览"}
+            {preview.loading ? TEXT.loading : TEXT.noPreview}
           </div>
         )}
         <div className="absolute left-2 top-2 rounded-full bg-black/70 px-2 py-1 text-[11px] font-black text-white">
           图{index}
         </div>
         <button
-          aria-label={`移除参考图${index}`}
+          aria-label={`${TEXT.removeReference}${index}`}
           className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full bg-black/65 text-white opacity-90 transition hover:bg-white hover:text-black"
           onClick={onRemove}
           type="button"
@@ -121,7 +154,7 @@ function ReferenceImageCard({
           onClick={onInsertMention}
           type="button"
         >
-          引用
+          {TEXT.insertReference}
         </button>
       </div>
     </div>
@@ -189,11 +222,11 @@ export function WorkbenchComposer({
     missing.forEach((assetId) => {
       setReferencePreviews((current) => ({
         ...current,
-        [assetId]: { asset: null, assetId, loading: true, previewUrl: null },
+        [assetId]: { asset: null, assetId, loading: true, localPreviewUrl: null, previewUrl: null },
       }));
       void Promise.all([
         getAsset(assetId).catch(() => null),
-        getAssetVariantUrl(assetId, "preview").catch(() => getAssetVariantUrl(assetId).catch(() => null)),
+        loadAssetPreviewUrl(assetId),
       ]).then(([asset, signed]) => {
         if (!active) return;
         setReferencePreviews((current) => ({
@@ -202,6 +235,7 @@ export function WorkbenchComposer({
             asset,
             assetId,
             loading: false,
+            localPreviewUrl: current[assetId]?.localPreviewUrl || null,
             previewUrl: signed?.url || asset?.previewUrl || null,
           },
         }));
@@ -223,6 +257,52 @@ export function WorkbenchComposer({
     }, 0);
   }, [draft.prompt, onChangeDraft]);
 
+  const handleUploadStart = React.useCallback((preview: UploadAssetPreview) => {
+    setReferencePreviews((current) => ({
+      ...current,
+      [preview.id]: {
+        asset: null,
+        assetId: preview.id,
+        loading: true,
+        localPreviewUrl: preview.previewUrl,
+        previewUrl: null,
+      },
+    }));
+  }, []);
+
+  const handleUploadComplete = React.useCallback((asset: AssetItem, preview: UploadAssetPreview) => {
+    if (!asset?.id) return;
+    const nextReferenceAssetIds = Array.from(new Set([...uploadedReferenceIdsRef.current, asset.id]));
+    uploadedReferenceIdsRef.current = nextReferenceAssetIds;
+    setReferencePreviews((current) => {
+      const local = current[preview.id]?.localPreviewUrl || preview.previewUrl || null;
+      const next = { ...current };
+      delete next[preview.id];
+      next[asset.id] = {
+        asset,
+        assetId: asset.id,
+        loading: false,
+        localPreviewUrl: local,
+        previewUrl: asset.previewUrl || null,
+      };
+      return next;
+    });
+    onChangeDraft({ referenceAssetIds: nextReferenceAssetIds });
+
+    void loadAssetPreviewUrl(asset.id).then((signed) => {
+      setReferencePreviews((current) => ({
+        ...current,
+        [asset.id]: {
+          ...(current[asset.id] || { asset, assetId: asset.id, localPreviewUrl: null }),
+          asset,
+          assetId: asset.id,
+          loading: false,
+          previewUrl: signed?.url || current[asset.id]?.previewUrl || asset.previewUrl || null,
+        },
+      }));
+    });
+  }, [onChangeDraft]);
+
   return (
     <aside
       data-testid="workbench-composer"
@@ -232,14 +312,14 @@ export function WorkbenchComposer({
     >
       <div className="grid gap-2">
         <div className="flex items-center justify-between">
-          <div className="text-xs font-bold text-slate-300">参考图</div>
+          <div className="text-xs font-bold text-slate-300">{TEXT.reference}</div>
           {draft.referenceAssetIds.length > 0 ? (
             <button
               className="text-[11px] font-bold text-slate-500 hover:text-white"
               onClick={() => onChangeDraft({ referenceAssetIds: [] })}
               type="button"
             >
-              清空
+              {TEXT.clear}
             </button>
           ) : null}
         </div>
@@ -256,7 +336,7 @@ export function WorkbenchComposer({
                       referenceAssetIds: draft.referenceAssetIds.filter((item) => item !== assetId),
                     })
                   }
-                  preview={referencePreviews[assetId] || { asset: null, assetId, loading: true, previewUrl: null }}
+                  preview={referencePreviews[assetId] || { asset: null, assetId, loading: true, localPreviewUrl: null, previewUrl: null }}
                 />
               ))}
             </div>
@@ -264,42 +344,27 @@ export function WorkbenchComposer({
             <div className="grid min-h-[96px] place-items-center rounded-[14px] border border-white/8 bg-white/[0.035] text-center">
               <div>
                 <ImagePlus className="mx-auto text-slate-500" size={22} />
-                <div className="mt-2 text-xs font-bold text-slate-300">添加参考图</div>
-                <div className="mt-1 text-[11px] text-slate-500">支持在提示词中输入 @图1 @图2 精准引用</div>
+                <div className="mt-2 text-xs font-bold text-slate-300">{TEXT.addReference}</div>
+                <div className="mt-1 text-[11px] text-slate-500">{TEXT.referenceHint}</div>
               </div>
             </div>
           )}
           <UploadAssetButton
             onUploaded={() => undefined}
-            onUploadComplete={(asset) => {
-              if (!asset?.id) return;
-              const nextReferenceAssetIds = Array.from(new Set([...uploadedReferenceIdsRef.current, asset.id]));
-              uploadedReferenceIdsRef.current = nextReferenceAssetIds;
-              setReferencePreviews((current) => ({
-                ...current,
-                [asset.id]: {
-                  asset,
-                  assetId: asset.id,
-                  loading: false,
-                  previewUrl: asset.previewUrl || null,
-                },
-              }));
-              onChangeDraft({
-                referenceAssetIds: nextReferenceAssetIds,
-              });
-            }}
+            onUploadComplete={handleUploadComplete}
+            onUploadStart={handleUploadStart}
             variant="compact"
           />
         </div>
       </div>
 
       <label className="grid gap-2">
-        <span className="text-xs font-bold text-slate-300">提示词</span>
+        <span className="text-xs font-bold text-slate-300">{TEXT.prompt}</span>
         <textarea
           aria-label="Prompt"
           className="min-h-[132px] resize-y rounded-[14px] border border-white/10 bg-white/[0.045] px-3 py-3 text-sm leading-6 text-white outline-none placeholder:text-slate-600"
           onChange={(event) => onChangeDraft({ prompt: event.target.value })}
-          placeholder="描述画面内容、光影、风格... 支持 @图1 @图2 引用参考图"
+          placeholder={TEXT.promptPlaceholder}
           ref={promptRef}
           value={draft.prompt}
         />
@@ -307,7 +372,7 @@ export function WorkbenchComposer({
 
       <div className="grid gap-3">
         <label className="grid gap-2">
-          <span className="text-xs font-bold text-slate-300">模型</span>
+          <span className="text-xs font-bold text-slate-300">{TEXT.model}</span>
           <MenuSelect
             fullWidth
             label="Model"
@@ -327,7 +392,7 @@ export function WorkbenchComposer({
         </label>
 
         <label className="grid gap-2">
-          <span className="text-xs font-bold text-slate-300">线路</span>
+          <span className="text-xs font-bold text-slate-300">{TEXT.route}</span>
           <MenuSelect
             disabled={routeOptions.length === 0}
             fullWidth
@@ -335,14 +400,14 @@ export function WorkbenchComposer({
             onChange={(value) => onChangeDraft({ routeKey: value })}
             options={routeOptions.length > 0
               ? routeOptions.map((item) => ({ label: item.userFacingLabel || item.label, value: item.routeKey }))
-              : [{ label: "线路加载中", value: "" }]}
+              : [{ label: TEXT.loadingRoute, value: "" }]}
             value={draft.routeKey}
           />
         </label>
 
         <div className="grid grid-cols-3 gap-3">
           <label className="grid gap-2">
-            <span className="text-xs font-bold text-slate-300">比例</span>
+            <span className="text-xs font-bold text-slate-300">{TEXT.aspectRatio}</span>
             <MenuSelect
               fullWidth
               label="Aspect ratio"
@@ -352,7 +417,7 @@ export function WorkbenchComposer({
             />
           </label>
           <label className="grid gap-2">
-            <span className="text-xs font-bold text-slate-300">画质</span>
+            <span className="text-xs font-bold text-slate-300">{TEXT.imageQuality}</span>
             <MenuSelect
               fullWidth
               label="Size"
@@ -362,7 +427,7 @@ export function WorkbenchComposer({
             />
           </label>
           <label className="grid gap-2">
-            <span className="text-xs font-bold text-slate-300">数量</span>
+            <span className="text-xs font-bold text-slate-300">{TEXT.quantity}</span>
             <MenuSelect
               fullWidth
               label="Quantity"
@@ -375,43 +440,34 @@ export function WorkbenchComposer({
 
         {isGptImage2Model(draft.modelId) ? (
           <div className="grid grid-cols-3 gap-3">
-            <label className="grid gap-2">
-              <span className="text-xs font-bold text-slate-300">质量</span>
-              <MenuSelect
-                fullWidth
-                label="Quality"
-                onChange={(value) => onChangeDraft({ quality: value as WorkbenchDraft["quality"] })}
-                options={WORKBENCH_QUALITY_OPTIONS.map((value) => ({ label: formatGptOption(value), value }))}
-                value={draft.quality}
-              />
-            </label>
-            <label className="grid gap-2">
-              <span className="text-xs font-bold text-slate-300">格式</span>
-              <MenuSelect
-                fullWidth
-                label="Format"
-                onChange={(value) => onChangeDraft({ outputFormat: value as WorkbenchDraft["outputFormat"] })}
-                options={WORKBENCH_FORMAT_OPTIONS.map((value) => ({ label: formatGptOption(value), value }))}
-                value={draft.outputFormat}
-              />
-            </label>
-            <label className="grid gap-2">
-              <span className="text-xs font-bold text-slate-300">审核</span>
-              <MenuSelect
-                fullWidth
-                label="Moderation"
-                onChange={(value) => onChangeDraft({ moderation: value as WorkbenchDraft["moderation"] })}
-                options={WORKBENCH_MODERATION_OPTIONS.map((value) => ({ label: formatGptOption(value), value }))}
-                value={draft.moderation}
-              />
-            </label>
+            <MenuSelect
+              fullWidth
+              label="Quality"
+              onChange={(value) => onChangeDraft({ quality: value as WorkbenchDraft["quality"] })}
+              options={WORKBENCH_QUALITY_OPTIONS.map((value) => ({ label: formatGptOption(value), value }))}
+              value={draft.quality}
+            />
+            <MenuSelect
+              fullWidth
+              label="Format"
+              onChange={(value) => onChangeDraft({ outputFormat: value as WorkbenchDraft["outputFormat"] })}
+              options={WORKBENCH_FORMAT_OPTIONS.map((value) => ({ label: formatGptOption(value), value }))}
+              value={draft.outputFormat}
+            />
+            <MenuSelect
+              fullWidth
+              label="Moderation"
+              onChange={(value) => onChangeDraft({ moderation: value as WorkbenchDraft["moderation"] })}
+              options={WORKBENCH_MODERATION_OPTIONS.map((value) => ({ label: formatGptOption(value), value }))}
+              value={draft.moderation}
+            />
           </div>
         ) : null}
       </div>
 
       {draft.quantity > 1 ? (
         <label className="grid gap-2">
-          <span className="text-xs font-bold text-slate-300">多图显示</span>
+          <span className="text-xs font-bold text-slate-300">{TEXT.multiDisplay}</span>
           <div className="grid grid-cols-2 gap-3">
             <button
               className={`h-10 rounded-[12px] border text-xs font-bold ${
@@ -422,7 +478,7 @@ export function WorkbenchComposer({
               onClick={() => onChangeDraft({ displayMode: "merged" })}
               type="button"
             >
-              合并显示
+              {TEXT.mergeDisplay}
             </button>
             <button
               className={`h-10 rounded-[12px] border text-xs font-bold ${
@@ -433,7 +489,7 @@ export function WorkbenchComposer({
               onClick={() => onChangeDraft({ displayMode: "separate" })}
               type="button"
             >
-              多节点显示
+              {TEXT.separateDisplay}
             </button>
           </div>
         </label>
@@ -441,7 +497,7 @@ export function WorkbenchComposer({
 
       <div className="mt-auto flex items-center justify-between gap-3 rounded-[16px] border border-white/10 bg-white/[0.05] px-4 py-3">
         <div className="min-w-0">
-          <div className="text-xs font-bold text-slate-400">生成数量</div>
+          <div className="text-xs font-bold text-slate-400">{TEXT.generationCount}</div>
           <div className="mt-1 text-sm font-bold text-white">{draft.quantity} 张</div>
         </div>
         <button
@@ -453,7 +509,7 @@ export function WorkbenchComposer({
           }}
           type="button"
         >
-          {isGenerating ? "生成中..." : "开始生成"}
+          {isGenerating ? TEXT.submitting : TEXT.start}
         </button>
       </div>
     </aside>

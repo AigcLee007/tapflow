@@ -2260,3 +2260,14 @@ Validation completed:
   - `npm run test --workspace @aigc-flow/worker -- workbench-generation.service.test.ts`
   - `npm run build --workspace @aigc-flow/worker`
   - `npm run build`
+
+## 2026-06-17 - Workbench Preview and Result Display Hotfix
+
+- fixed `/workbench` reference uploads so selected image files show a local `blob:` preview immediately instead of waiting for the server upload response
+- changed uploaded reference handling to replace the temporary local preview with the real asset id and then fetch a signed preview URL even when the upload response does not include `previewUrl`
+- added result-card and result-detail fallbacks that fetch signed preview URLs from `assetId` when workbench generation results do not include a direct preview URL
+- made frontend workbench polling continue for the edge case where a generation is marked `succeeded` before its `workbench_results` rows are visible to the list/detail API
+- cleaned the newly touched workbench upload/composer/result UI copy after the recent garbled-text regression
+- validation:
+  - `npm run test -- src/workbench/WorkbenchPage.test.tsx src/workbench/workbenchReferences.test.ts`
+  - `npm run build`

@@ -29,6 +29,10 @@ function isTerminalStatus(status: string) {
   return status === "succeeded" || status === "failed" || status === "canceled";
 }
 
+function isSucceededWithoutResults(generation: WorkbenchGenerationView) {
+  return generation.status === "succeeded" && generation.results.length === 0;
+}
+
 export function useWorkbenchGenerations() {
   const pollingIdsRef = React.useRef(new Set<string>());
   const [generations, setGenerations] = React.useState<WorkbenchGenerationView[]>([]);
@@ -36,22 +40,44 @@ export function useWorkbenchGenerations() {
   const [error, setError] = React.useState<string | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
 
+  const refresh = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const result = await listWorkbenchGenerations({ limit: 30 });
+      setGenerations(result.generations);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "加载工作台历史失败");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   const pollGeneration = React.useCallback(async (generationId: string) => {
     if (pollingIdsRef.current.has(generationId)) return;
     pollingIdsRef.current.add(generationId);
+    let emptyResultPolls = 0;
     let failedPolls = 0;
 
     try {
-      while (failedPolls < 8) {
+      while (failedPolls < 12) {
         try {
           const next = await getWorkbenchGeneration(generationId);
-          failedPolls = 0;
           if (!next?.id) {
             throw new Error("生成状态返回为空，正在重试");
           }
+          failedPolls = 0;
           setGenerations((current) => mergeGeneration(current, next));
+          if (isSucceededWithoutResults(next) && emptyResultPolls < 6) {
+            emptyResultPolls += 1;
+            await new Promise((resolve) => window.setTimeout(resolve, 1200));
+            continue;
+          }
           if (isTerminalStatus(next.status)) {
             setError(null);
+            if (isSucceededWithoutResults(next)) {
+              window.setTimeout(() => void refresh(), 900);
+            }
             break;
           }
         } catch (err) {
@@ -63,29 +89,33 @@ export function useWorkbenchGenerations() {
     } finally {
       pollingIdsRef.current.delete(generationId);
     }
-  }, []);
-
-  const refresh = React.useCallback(async () => {
-    setLoading(true);
-    try {
-      const result = await listWorkbenchGenerations({ limit: 30 });
-      setGenerations(result.generations);
-      setError(null);
-      result.generations
-        .filter((generation) => !isTerminalStatus(generation.status))
-        .forEach((generation) => {
-          void pollGeneration(generation.id);
-        });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "加载工作台历史失败");
-    } finally {
-      setLoading(false);
-    }
-  }, [pollGeneration]);
+  }, [refresh]);
 
   React.useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    let active = true;
+    setLoading(true);
+    void listWorkbenchGenerations({ limit: 30 })
+      .then((result) => {
+        if (!active) return;
+        setGenerations(result.generations);
+        setError(null);
+        result.generations
+          .filter((generation) => !isTerminalStatus(generation.status) || isSucceededWithoutResults(generation))
+          .forEach((generation) => {
+            void pollGeneration(generation.id);
+          });
+      })
+      .catch((err) => {
+        if (!active) return;
+        setError(err instanceof Error ? err.message : "加载工作台历史失败");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [pollGeneration]);
 
   const submit = React.useCallback(async (draft: WorkbenchDraft) => {
     setSubmitting(true);
@@ -101,7 +131,7 @@ export function useWorkbenchGenerations() {
       });
       setGenerations((current) => mergeGeneration(current, created));
       setError(null);
-      if (!isTerminalStatus(created.status)) {
+      if (!isTerminalStatus(created.status) || isSucceededWithoutResults(created)) {
         void pollGeneration(created.id);
       }
       return created;

@@ -1,6 +1,7 @@
 import React from "react";
 import { Download, Send, X } from "lucide-react";
 
+import { getAssetVariantUrl } from "../assets/assetApi";
 import type { WorkbenchResult } from "./workbenchTypes";
 
 type Props = {
@@ -10,7 +11,27 @@ type Props = {
 };
 
 export function WorkbenchResultSheet({ onClose, onSendToProject, result }: Props) {
+  const [fallbackUrl, setFallbackUrl] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    setFallbackUrl(null);
+    if (!result || result.previewUrl || !result.assetId) return;
+    let active = true;
+    void getAssetVariantUrl(result.assetId, "preview")
+      .catch(() => getAssetVariantUrl(result.assetId))
+      .then((signed) => {
+        if (!active) return;
+        setFallbackUrl(signed.url);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [result]);
+
   if (!result) return null;
+
+  const imageUrl = result.previewUrl || fallbackUrl || result.downloadUrl;
 
   return (
     <div className="fixed inset-0 z-50">
@@ -23,11 +44,11 @@ export function WorkbenchResultSheet({ onClose, onSendToProject, result }: Props
           </button>
         </div>
         <div className="mt-4 overflow-hidden rounded-2xl bg-black/30">
-          {result.previewUrl ? (
+          {imageUrl ? (
             <img
               alt={result.originalFilename || "Workbench result"}
               className="aspect-square w-full object-cover"
-              src={result.previewUrl}
+              src={imageUrl}
             />
           ) : (
             <div className="grid aspect-square place-items-center text-sm text-slate-500">暂无预览</div>
@@ -36,7 +57,7 @@ export function WorkbenchResultSheet({ onClose, onSendToProject, result }: Props
         <div className="mt-4 grid grid-cols-2 gap-3">
           <a
             className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-white/[0.08] text-sm font-bold"
-            href={result.downloadUrl || result.previewUrl || "#"}
+            href={result.downloadUrl || imageUrl || "#"}
             rel="noreferrer"
             target="_blank"
           >
