@@ -2296,3 +2296,14 @@ Validation completed:
 - validation:
   - `npm run test -- src/workbench/WorkbenchPage.test.tsx src/workbench/workbenchReferences.test.ts`
   - `npm run build`
+
+## 2026-06-17 - Workbench Reference Upload UI Hotfix
+
+- removed the shared `UploadAssetButton` from the standalone workbench reference strip because it still rendered its generic upload result panel after image upload
+- replaced it with a workbench-specific hidden file input that keeps the approved compact reference strip UI only
+- reference images now show local thumbnails immediately while upload continues, then swap to the persisted asset id and signed preview URL after completion
+- reference thumbnails stay horizontal with compact `图N` badges; uploaded file names and the generic `上传结果` list are no longer rendered in the workbench composer
+- added regression coverage to ensure reference upload does not surface `上传结果` or uploaded file names in the composer
+- validation:
+  - `npm run test -- src/workbench/WorkbenchPage.test.tsx src/workbench/workbenchReferences.test.ts`
+  - `npm run build`

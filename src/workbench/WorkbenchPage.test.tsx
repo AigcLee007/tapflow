@@ -235,10 +235,13 @@ describe("WorkbenchPage", () => {
       },
     });
 
+    expect(screen.getByAltText("参考图1").getAttribute("src")).toBe("blob:local-ref-preview");
+
     await waitFor(() => {
       expect(uploadAssetFileMock).toHaveBeenCalledTimes(1);
     });
-    expect(screen.getByAltText("参考图1").getAttribute("src")).toBe("blob:local-ref-preview");
+    expect(screen.queryByText("上传结果")).toBeNull();
+    expect(screen.queryByText("ref.png")).toBeNull();
 
     await waitFor(() => {
       expect(getAssetVariantUrlMock).toHaveBeenCalledWith("asset-uploaded-1", "preview");

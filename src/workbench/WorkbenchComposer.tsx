@@ -1,8 +1,7 @@
 import React from "react";
 import { ChevronDown, Coins, Sparkles, Trash2, Upload, Wand2, X } from "lucide-react";
 
-import { getAsset, getAssetVariantUrl, type AssetDownloadUrlResponse, type AssetItem } from "../assets/assetApi";
-import { UploadAssetButton, type UploadAssetPreview } from "../assets/UploadAssetButton";
+import { getAsset, getAssetVariantUrl, uploadAssetFile, type AssetDownloadUrlResponse, type AssetItem } from "../assets/assetApi";
 import { MenuSurface } from "../components/menu/MenuSurface";
 import { useDismissibleLayer } from "../components/menu/useDismissibleLayer";
 import type { ImageModelConfig } from "../config/imageModels";
@@ -33,6 +32,7 @@ type Props = {
 type ReferencePreview = {
   asset: AssetItem | null;
   assetId: string;
+  fileName?: string;
   loading: boolean;
   localPreviewUrl: string | null;
   previewUrl: string | null;
@@ -218,7 +218,7 @@ function ReferenceImageCard({
 }) {
   const imageUrl = preview.localPreviewUrl || preview.previewUrl;
   return (
-    <div className="group relative h-[78px] w-[78px] shrink-0 overflow-hidden rounded-[11px] border border-[#4c5667] bg-[#182031]">
+    <div className="group relative h-[74px] w-[74px] shrink-0 overflow-hidden rounded-[11px] border border-[#4c5667] bg-[#182031]">
       {imageUrl ? (
         <img alt={`${TEXT.reference}${index}`} className="h-full w-full object-cover" src={imageUrl} />
       ) : (
@@ -250,31 +250,12 @@ function ReferenceImageCard({
 function EmptyReferenceTile({ onClick }: { onClick: () => void }) {
   return (
     <button
-      className="grid h-[78px] w-[78px] shrink-0 place-items-center rounded-[11px] border border-[#46546b] bg-[#192336] text-slate-300 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]"
+      className="grid h-[74px] w-[74px] shrink-0 place-items-center rounded-[11px] border border-[#46546b] bg-[#192336] text-slate-300 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]"
       onClick={onClick}
       type="button"
     >
       <span className="grid h-[45px] w-[45px] place-items-center rounded-[9px] border border-dashed border-[#8a99ad] text-[22px] font-light leading-none">+</span>
     </button>
-  );
-}
-
-function ReferenceUploader({
-  onUploadComplete,
-  onUploadStart,
-}: {
-  onUploadComplete: (asset: AssetItem, preview: UploadAssetPreview) => void;
-  onUploadStart: (preview: UploadAssetPreview) => void;
-}) {
-  return (
-    <div className="workbench-upload-proxy hidden">
-      <UploadAssetButton
-        onUploaded={() => undefined}
-        onUploadComplete={onUploadComplete}
-        onUploadStart={onUploadStart}
-        variant="compact"
-      />
-    </div>
   );
 }
 
@@ -287,11 +268,13 @@ export function WorkbenchComposer({
   onChangeDraft,
   onGenerate,
 }: Props) {
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   const promptRef = React.useRef<HTMLTextAreaElement | null>(null);
   const uploadedReferenceIdsRef = React.useRef<string[]>(draft.referenceAssetIds);
   const modelOptions = React.useMemo(() => buildWorkbenchModelOptions(models), [models]);
   const aspectOptions = React.useMemo(() => getWorkbenchAspectOptions(models, draft.modelId), [draft.modelId, models]);
   const sizeOptions = React.useMemo(() => getWorkbenchModelSizeOptions(models, draft.modelId), [draft.modelId, models]);
+  const [pendingReferenceIds, setPendingReferenceIds] = React.useState<string[]>([]);
   const [routeOptionsByModel, setRouteOptionsByModel] = React.useState<Record<string, RuntimeRouteOption[]>>({});
   const [referencePreviews, setReferencePreviews] = React.useState<Record<string, ReferencePreview>>({});
 
@@ -301,6 +284,10 @@ export function WorkbenchComposer({
   const activeRouteLabel = routeOptions.find((item) => item.routeKey === draft.routeKey)
     ? formatRouteLabel(routeOptions.find((item) => item.routeKey === draft.routeKey)!)
     : TEXT.routeOne;
+  const visibleReferenceIds = React.useMemo(
+    () => [...pendingReferenceIds, ...draft.referenceAssetIds].slice(0, MAX_REFERENCE_COUNT),
+    [draft.referenceAssetIds, pendingReferenceIds],
+  );
   const estimatedCredits = getEstimatedCredits(draft);
 
   React.useEffect(() => {
@@ -379,27 +366,29 @@ export function WorkbenchComposer({
     }, 0);
   }, [draft.prompt, onChangeDraft]);
 
-  const handleUploadStart = React.useCallback((preview: UploadAssetPreview) => {
+  const handleUploadStart = React.useCallback((preview: ReferencePreview) => {
+    setPendingReferenceIds((current) => Array.from(new Set([...current, preview.assetId])).slice(0, MAX_REFERENCE_COUNT));
     setReferencePreviews((current) => ({
       ...current,
-      [preview.id]: {
+      [preview.assetId]: {
         asset: null,
-        assetId: preview.id,
+        assetId: preview.assetId,
         loading: true,
-        localPreviewUrl: preview.previewUrl,
+        localPreviewUrl: preview.localPreviewUrl,
         previewUrl: null,
       },
     }));
   }, []);
 
-  const handleUploadComplete = React.useCallback((asset: AssetItem, preview: UploadAssetPreview) => {
+  const handleUploadComplete = React.useCallback((asset: AssetItem, preview: Pick<ReferencePreview, "assetId" | "localPreviewUrl">) => {
     if (!asset?.id) return;
     const nextReferenceAssetIds = Array.from(new Set([...uploadedReferenceIdsRef.current, asset.id])).slice(0, MAX_REFERENCE_COUNT);
     uploadedReferenceIdsRef.current = nextReferenceAssetIds;
+    setPendingReferenceIds((current) => current.filter((item) => item !== preview.assetId));
     setReferencePreviews((current) => {
-      const local = current[preview.id]?.localPreviewUrl || preview.previewUrl || null;
+      const local = current[preview.assetId]?.localPreviewUrl || preview.localPreviewUrl || null;
       const next = { ...current };
-      delete next[preview.id];
+      delete next[preview.assetId];
       next[asset.id] = {
         asset,
         assetId: asset.id,
@@ -425,11 +414,39 @@ export function WorkbenchComposer({
     });
   }, [onChangeDraft]);
 
-  const uploadButtonRef = React.useRef<HTMLDivElement | null>(null);
   const openUpload = React.useCallback(() => {
-    const button = uploadButtonRef.current?.querySelector("button");
-    button?.click();
+    fileInputRef.current?.click();
   }, []);
+
+  const handleReferenceFiles = React.useCallback((files: FileList | null) => {
+    const selectedFiles = Array.from(files ?? []).slice(0, Math.max(0, MAX_REFERENCE_COUNT - uploadedReferenceIdsRef.current.length));
+    if (selectedFiles.length === 0) return;
+
+    selectedFiles.forEach((file, index) => {
+      const tempId = `${Date.now()}-${index}-${file.name}`;
+      const preview: ReferencePreview = {
+        asset: null,
+        assetId: tempId,
+        fileName: file.name,
+        loading: true,
+        localPreviewUrl: file.type.startsWith("image/") ? URL.createObjectURL(file) : null,
+        previewUrl: null,
+      };
+      handleUploadStart(preview);
+      void uploadAssetFile({ file })
+        .then((asset) => handleUploadComplete(asset, preview))
+        .catch(() => {
+          setPendingReferenceIds((current) => current.filter((item) => item !== tempId));
+          setReferencePreviews((current) => {
+            const next = { ...current };
+            delete next[tempId];
+            return next;
+          });
+        });
+    });
+
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }, [handleUploadComplete, handleUploadStart]);
 
   return (
     <aside
@@ -438,22 +455,23 @@ export function WorkbenchComposer({
         compact ? "max-h-[88vh]" : "border-r"
       }`}
     >
-      <style>{`
-        .workbench-upload-proxy > div > div { display: none; }
-      `}</style>
-
       <section className="rounded-[8px] border border-dashed border-[#334153] bg-[#11151b] p-3">
+        <input
+          accept="image/*"
+          className="hidden"
+          multiple
+          onChange={(event) => handleReferenceFiles(event.target.files)}
+          ref={fileInputRef}
+          type="file"
+        />
         <div className="mb-2 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="text-[12px] font-bold text-slate-200">{TEXT.reference}</span>
             <span className="rounded-[5px] border border-[#315c9e] bg-[#17253b] px-1.5 py-0.5 text-[11px] font-black leading-none text-[#d7e8ff]">
-              {draft.referenceAssetIds.length}/{MAX_REFERENCE_COUNT}
+              {visibleReferenceIds.length}/{MAX_REFERENCE_COUNT}
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <div ref={uploadButtonRef}>
-              <ReferenceUploader onUploadComplete={handleUploadComplete} onUploadStart={handleUploadStart} />
-            </div>
             <button
               aria-label={TEXT.upload}
               className="flex h-6 items-center gap-1 text-[12px] font-bold text-sky-300"
@@ -466,7 +484,10 @@ export function WorkbenchComposer({
             <button
               aria-label={TEXT.clear}
               className="grid h-6 w-6 place-items-center rounded-[5px] border border-white/8 bg-white/[0.03] text-slate-500 hover:text-white"
-              onClick={() => onChangeDraft({ referenceAssetIds: [] })}
+              onClick={() => {
+                setPendingReferenceIds([]);
+                onChangeDraft({ referenceAssetIds: [] });
+              }}
               type="button"
             >
               <Trash2 size={13} />
@@ -474,14 +495,17 @@ export function WorkbenchComposer({
           </div>
         </div>
 
-        <div className="flex min-h-[86px] gap-2 overflow-x-auto pb-1">
-          {draft.referenceAssetIds.length === 0 ? <EmptyReferenceTile onClick={openUpload} /> : null}
-          {draft.referenceAssetIds.map((assetId, index) => (
+        <div className="flex min-h-[82px] gap-2 overflow-x-auto pb-1 [scrollbar-color:#4b5563_transparent] [scrollbar-width:thin]">
+          {visibleReferenceIds.length === 0 ? <EmptyReferenceTile onClick={openUpload} /> : null}
+          {visibleReferenceIds.map((assetId, index) => (
             <ReferenceImageCard
               index={index + 1}
               key={assetId}
               onInsertMention={() => insertMention(index + 1)}
-              onRemove={() => onChangeDraft({ referenceAssetIds: draft.referenceAssetIds.filter((item) => item !== assetId) })}
+              onRemove={() => {
+                setPendingReferenceIds((current) => current.filter((item) => item !== assetId));
+                onChangeDraft({ referenceAssetIds: draft.referenceAssetIds.filter((item) => item !== assetId) });
+              }}
               preview={referencePreviews[assetId] || { asset: null, assetId, loading: true, localPreviewUrl: null, previewUrl: null }}
             />
           ))}
