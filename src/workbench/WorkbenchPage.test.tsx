@@ -198,6 +198,20 @@ describe("WorkbenchPage", () => {
     expect(screen.getByLabelText("Prompt")).toBeTruthy();
   });
 
+  test("renders the compact TapNow-style workbench composer controls", async () => {
+    setRoute("/workbench");
+    renderRouter();
+
+    expect(await screen.findByText("参考图")).toBeTruthy();
+    expect(screen.getByText("0/10")).toBeTruthy();
+    expect(screen.getByText("优化 (0.5 金币)")).toBeTruthy();
+    expect(screen.getByText("图像模型")).toBeTruthy();
+    expect(screen.getByText("画面比例")).toBeTruthy();
+    expect(screen.getByText("画质尺寸")).toBeTruthy();
+    expect(screen.getByText("当前配置消耗")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "立即开始创作" })).toBeTruthy();
+  });
+
   test("redirects project workbench routes to /workbench", async () => {
     setRoute("/projects/project-1/workbench");
     renderRouter();
@@ -211,7 +225,7 @@ describe("WorkbenchPage", () => {
     setRoute("/workbench");
     const { container } = renderRouter();
 
-    expect(await screen.findByText("添加参考图")).toBeTruthy();
+    expect(await screen.findByText("参考图")).toBeTruthy();
     const input = container.querySelector('input[type="file"]') as HTMLInputElement | null;
     expect(input).toBeTruthy();
 
@@ -235,7 +249,7 @@ describe("WorkbenchPage", () => {
     setRoute("/workbench");
     const { container } = renderRouter();
 
-    expect(await screen.findByText("添加参考图")).toBeTruthy();
+    expect(await screen.findByText("参考图")).toBeTruthy();
     const input = container.querySelector('input[type="file"]') as HTMLInputElement | null;
     expect(input).toBeTruthy();
 
@@ -268,9 +282,9 @@ describe("WorkbenchPage", () => {
     });
 
     await waitFor(() => {
-      expect((screen.getByRole("button", { name: "开始生成" }) as HTMLButtonElement).disabled).toBe(false);
+      expect((screen.getByRole("button", { name: "立即开始创作" }) as HTMLButtonElement).disabled).toBe(false);
     });
-    fireEvent.click(screen.getByRole("button", { name: "开始生成" }));
+    fireEvent.click(screen.getByRole("button", { name: "立即开始创作" }));
 
     await waitFor(() => {
       expect(createWorkbenchGenerationMock).toHaveBeenCalledTimes(1);

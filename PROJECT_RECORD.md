@@ -2282,3 +2282,17 @@ Validation completed:
   - `npm run test --workspace @aigc-flow/worker -- workbench-generation.service.test.ts`
   - `npm run build --workspace @aigc-flow/worker`
   - `npm run build`
+
+## 2026-06-17 - Workbench Composer Visual Refresh
+
+- refreshed the standalone `/workbench` desktop composer to better match the approved reference-style creator panel
+- rebuilt the left panel around:
+  - compact dashed reference-image filmstrip with `0/10` capacity, thumbnail cards, remove controls, and a single visible upload entry
+  - prompt header with optimize action and reference `@图N` usage hint
+  - compact model, aspect ratio, size, route, and quantity dropdown controls
+  - current configuration cost card and gradient primary creation button
+- preserved the existing workbench backend flow, model catalog source, route prefetching, reference upload behavior, `@图N` filtering, and multi-image display mode behavior
+- added focused regression coverage for the new compact composer controls
+- validation:
+  - `npm run test -- src/workbench/WorkbenchPage.test.tsx src/workbench/workbenchReferences.test.ts`
+  - `npm run build`
