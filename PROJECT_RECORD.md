@@ -2191,3 +2191,10 @@ Validation completed:
   - workbench results are stored in independent server-side history first, with `发送到画布` as an explicit secondary action
 - Documented the required backend shape for tenant-scoped workbench history, server-side billing, AI Gateway execution, cloud asset persistence, and safe send-to-project insertion.
 - No product runtime code was changed in this design-only step.
+
+## 2026-06-17 - Independent Image Workbench Implementation Plan
+
+- Added the executable implementation plan at `docs/superpowers/plans/2026-06-17-independent-image-workbench.md`.
+- The plan decomposes the approved workbench into database, queue, API, worker, frontend route/navigation, desktop composer, mobile composer, result actions, send-to-project, and old project-scoped workbench cleanup tasks.
+- The plan explicitly keeps workbench history server-side, uses the existing AI Gateway and cloud asset pipeline, requires billing reserve/settle/refund, and handles async provider polling before marking workbench generations complete.
+- No product runtime code was changed in this planning step.
