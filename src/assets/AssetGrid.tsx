@@ -5,6 +5,37 @@ import type { AssetItem } from "./assetApi";
 import type { AssetDateGroup } from "./assetLibraryView";
 import { AssetGroupedSections } from "./AssetGroupedSections";
 
+type SelectionBox = {
+  height: number;
+  left: number;
+  top: number;
+  width: number;
+};
+
+function rectsIntersect(a: DOMRect, b: SelectionBox) {
+  const right = b.left + b.width;
+  const bottom = b.top + b.height;
+  return a.left < right && a.right > b.left && a.top < bottom && a.bottom > b.top;
+}
+
+function getSelectionBox(start: { x: number; y: number }, current: { x: number; y: number }): SelectionBox {
+  const left = Math.min(start.x, current.x);
+  const top = Math.min(start.y, current.y);
+  return {
+    height: Math.abs(current.y - start.y),
+    left,
+    top,
+    width: Math.abs(current.x - start.x),
+  };
+}
+
+function shouldIgnoreDragStart(target: EventTarget | null) {
+  if (!(target instanceof Element)) return false;
+  return Boolean(target.closest("a, input, textarea, select, [role='menu'], [data-asset-actions='true']"));
+}
+
+const DRAG_SELECT_THRESHOLD_PX = 6;
+
 export function AssetGrid({
   emptyMessage,
   groups,
@@ -16,6 +47,8 @@ export function AssetGrid({
   onToggleFavorite,
   onOpen,
   folders,
+  onSelectionChange,
+  selectedAssetIds = new Set<string>(),
   tileOnly = false,
 }: {
   emptyMessage: string;
@@ -28,8 +61,52 @@ export function AssetGrid({
   onRename?: (asset: AssetItem, title: string) => Promise<void>;
   onToggleFavorite?: (asset: AssetItem) => Promise<void>;
   onOpen: (asset: AssetItem) => void;
+  onSelectionChange?: (assetIds: string[]) => void;
+  selectedAssetIds?: Set<string>;
   tileOnly?: boolean;
 }) {
+  const surfaceRef = React.useRef<HTMLDivElement | null>(null);
+  const dragStartRef = React.useRef<{ x: number; y: number } | null>(null);
+  const suppressNextOpenRef = React.useRef(false);
+  const [selectionBox, setSelectionBox] = React.useState<SelectionBox | null>(null);
+
+  const updateSelectionFromBox = React.useCallback((box: SelectionBox) => {
+    const surface = surfaceRef.current;
+    if (!surface) return;
+    const selectedIds = Array.from(surface.querySelectorAll<HTMLElement>("[data-asset-selectable='true']"))
+      .filter((element) => rectsIntersect(element.getBoundingClientRect(), box))
+      .map((element) => element.dataset.assetId)
+      .filter((assetId): assetId is string => Boolean(assetId));
+    onSelectionChange?.(selectedIds);
+  }, [onSelectionChange]);
+
+  React.useEffect(() => {
+    if (!selectionBox) return undefined;
+
+    const handlePointerMove = (event: PointerEvent) => {
+      if (!dragStartRef.current) return;
+      const nextBox = getSelectionBox(dragStartRef.current, { x: event.clientX, y: event.clientY });
+      if (Math.max(nextBox.width, nextBox.height) >= DRAG_SELECT_THRESHOLD_PX) {
+        suppressNextOpenRef.current = true;
+      }
+      setSelectionBox(nextBox);
+      updateSelectionFromBox(nextBox);
+    };
+    const stopSelecting = () => {
+      dragStartRef.current = null;
+      setSelectionBox(null);
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", stopSelecting);
+    window.addEventListener("pointercancel", stopSelecting);
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", stopSelecting);
+      window.removeEventListener("pointercancel", stopSelecting);
+    };
+  }, [selectionBox, updateSelectionFromBox]);
+
   if (loading) {
     return (
       <div className="grid min-h-72 place-items-center text-slate-400">
@@ -77,18 +154,56 @@ export function AssetGrid({
   }
 
   return (
-    <AssetGroupedSections
-      emptyMessage={emptyMessage}
-      folders={folders}
-      groups={groups}
-      onAddToFolder={onAddToFolder}
-      onDelete={onDelete}
-      onDownload={onDownload}
-      onOpen={onOpen}
-      onRename={onRename}
-      onToggleFavorite={onToggleFavorite}
-      tileOnly={tileOnly}
-      virtualize
-    />
+    <div
+      className="relative select-none"
+      data-testid="asset-selection-surface"
+      onPointerDown={(event) => {
+        if (event.button !== 0 || shouldIgnoreDragStart(event.target)) return;
+        dragStartRef.current = { x: event.clientX, y: event.clientY };
+        const nextBox = getSelectionBox(dragStartRef.current, dragStartRef.current);
+        setSelectionBox(nextBox);
+        onSelectionChange?.([]);
+      }}
+      ref={surfaceRef}
+    >
+      <AssetGroupedSections
+        emptyMessage={emptyMessage}
+        folders={folders}
+        groups={groups}
+        onAddToFolder={onAddToFolder}
+        onDelete={onDelete}
+        onDownload={onDownload}
+        onOpen={(asset) => {
+          if (suppressNextOpenRef.current) {
+            suppressNextOpenRef.current = false;
+            return;
+          }
+          onOpen(asset);
+        }}
+        onPointerDown={(event) => {
+          if (event.button !== 0 || shouldIgnoreDragStart(event.target)) return;
+          dragStartRef.current = { x: event.clientX, y: event.clientY };
+          const nextBox = getSelectionBox(dragStartRef.current, dragStartRef.current);
+          setSelectionBox(nextBox);
+          onSelectionChange?.([]);
+        }}
+        onRename={onRename}
+        onToggleFavorite={onToggleFavorite}
+        selectedAssetIds={selectedAssetIds}
+        tileOnly={tileOnly}
+        virtualize
+      />
+      {selectionBox ? (
+        <div
+          className="pointer-events-none fixed z-[1500] rounded border border-sky-300/90 bg-sky-300/15 shadow-[0_0_0_1px_rgba(14,165,233,0.16)]"
+          style={{
+            height: selectionBox.height,
+            left: selectionBox.left,
+            top: selectionBox.top,
+            width: selectionBox.width,
+          }}
+        />
+      ) : null}
+    </div>
   );
 }

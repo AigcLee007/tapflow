@@ -6,10 +6,12 @@ import type { AssetItem } from "./assetApi";
 export function AssetVirtualGrid({
   items,
   limit = 36,
+  selectedAssetIds = new Set<string>(),
   ...cardProps
 }: {
   items: AssetItem[];
   limit?: number;
+  selectedAssetIds?: Set<string>;
 } & Omit<React.ComponentProps<typeof AssetCard>, "asset">) {
   const [visibleCount, setVisibleCount] = React.useState(() => Math.min(limit, items.length));
 
@@ -22,7 +24,7 @@ export function AssetVirtualGrid({
   return (
     <>
       {visibleItems.map((asset) => (
-        <AssetCard asset={asset} key={asset.id} {...cardProps} />
+        <AssetCard asset={asset} key={asset.id} selected={selectedAssetIds.has(asset.id)} {...cardProps} />
       ))}
       {visibleCount < items.length ? (
         <button

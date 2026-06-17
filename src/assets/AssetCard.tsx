@@ -1,5 +1,5 @@
 import React from "react";
-import { File, Film, Image, MoreHorizontal, Music, Star } from "lucide-react";
+import { Check, File, Film, Image, MoreHorizontal, Music, Star } from "lucide-react";
 
 import { EntityActionMenu, EntityConfirmDialog, EntityRenameDialog } from "../components/EntityActionMenu";
 import type { AssetItem } from "./assetApi";
@@ -34,8 +34,10 @@ export function AssetCard({
   onDelete,
   onDownload,
   onOpen,
+  onPointerDown,
   onRename,
   onToggleFavorite,
+  selected = false,
   showActions = true,
   tileOnly = false,
 }: {
@@ -46,8 +48,10 @@ export function AssetCard({
   onDelete?: (asset: AssetItem) => Promise<void>;
   onDownload?: (asset: AssetItem) => Promise<void>;
   onOpen: (asset: AssetItem) => void;
+  onPointerDown?: (event: React.PointerEvent, asset: AssetItem) => void;
   onRename?: (asset: AssetItem, title: string) => Promise<void>;
   onToggleFavorite?: (asset: AssetItem) => Promise<void>;
+  selected?: boolean;
   showActions?: boolean;
   tileOnly?: boolean;
 }) {
@@ -138,12 +142,25 @@ export function AssetCard({
     <article
       className={
         compact || tileOnly
-          ? "group relative overflow-visible rounded-[18px] border border-white/8 bg-[#11131a] text-left shadow-[0_10px_28px_rgba(0,0,0,0.22)] transition hover:border-white/16 hover:bg-[#151822]"
-          : "group relative overflow-visible rounded border border-white/10 bg-white/[0.035] text-left shadow-lg shadow-black/10 transition hover:border-sky-300/40 hover:bg-white/[0.06]"
+          ? `group relative overflow-visible rounded-[18px] border bg-[#11131a] text-left shadow-[0_10px_28px_rgba(0,0,0,0.22)] transition hover:bg-[#151822] ${
+              selected ? "border-sky-300 ring-2 ring-sky-300/70" : "border-white/8 hover:border-white/16"
+            }`
+          : `group relative overflow-visible rounded border bg-white/[0.035] text-left shadow-lg shadow-black/10 transition hover:bg-white/[0.06] ${
+              selected ? "border-sky-300 ring-2 ring-sky-300/60" : "border-white/10 hover:border-sky-300/40"
+            }`
       }
       style={{ minWidth: 0 }}
     >
-      <button aria-label={title} className="block w-full text-left" onClick={() => onOpen(asset)} type="button">
+      <button
+        aria-label={title}
+        aria-selected={selected}
+        className="block w-full text-left"
+        data-asset-id={asset.id}
+        data-asset-selectable="true"
+        onClick={() => onOpen(asset)}
+        onPointerDown={(event) => onPointerDown?.(event, asset)}
+        type="button"
+      >
         <div
           className="relative overflow-hidden bg-zinc-950"
           style={{
@@ -161,6 +178,11 @@ export function AssetCard({
           {asset.favorite && (
             <span className="absolute left-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-full bg-black/70 text-amber-200">
               <Star fill="currentColor" size={14} />
+            </span>
+          )}
+          {selected && (
+            <span className="absolute left-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-full border border-sky-100/70 bg-sky-300 text-slate-950 shadow-lg shadow-sky-950/40">
+              <Check size={15} strokeWidth={3} />
             </span>
           )}
         </div>

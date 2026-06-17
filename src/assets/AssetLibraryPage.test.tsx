@@ -82,6 +82,17 @@ const asset: AssetItem = {
   width: 512,
 };
 
+function createAsset(index: number, overrides: Partial<AssetItem> = {}): AssetItem {
+  return {
+    ...asset,
+    id: `asset-${index}`,
+    originalFilename: `asset-${index}.png`,
+    previewUrl: `https://example.test/asset-${index}.png`,
+    title: `Asset ${index}`,
+    ...overrides,
+  };
+}
+
 const folder: AssetFolder = {
   createdAt: "2026-06-12T01:00:00.000Z",
   createdBy: "user-1",
@@ -267,5 +278,164 @@ describe("AssetLibraryPage", () => {
     renderPage();
 
     expect(screen.getAllByRole("button", { name: /^Asset / }).length).toBeLessThanOrEqual(40);
+  });
+
+  test("drag-selects visible asset tiles and bulk deletes the selected assets", async () => {
+    const first = createAsset(1);
+    const second = createAsset(2);
+    const third = createAsset(3);
+    const updateAssetOptimistically = vi.fn(async (_assetId: string, _updater: unknown, action: () => Promise<void>) => {
+      await action();
+    });
+    mockLibrary({
+      assets: [first, second, third],
+      groupedAssets: [{ dateLabel: "2026-06-12", items: [first, second, third] }],
+      mediaCounts: { all: 3, audio: 0, image: 3, video: 0 },
+      total: 3,
+      updateAssetOptimistically,
+    });
+    deleteAssetMock.mockResolvedValue({ ok: true });
+
+    renderPage();
+
+    const selectionSurface = screen.getByTestId("asset-selection-surface");
+    vi.spyOn(selectionSurface, "getBoundingClientRect").mockReturnValue({
+      bottom: 360,
+      height: 300,
+      left: 0,
+      right: 760,
+      top: 60,
+      width: 760,
+      x: 0,
+      y: 60,
+      toJSON: () => ({}),
+    });
+    const [firstButton, secondButton, thirdButton] = screen.getAllByRole("button", { name: /^Asset / });
+    vi.spyOn(firstButton, "getBoundingClientRect").mockReturnValue({
+      bottom: 200,
+      height: 120,
+      left: 20,
+      right: 140,
+      top: 80,
+      width: 120,
+      x: 20,
+      y: 80,
+      toJSON: () => ({}),
+    });
+    vi.spyOn(secondButton, "getBoundingClientRect").mockReturnValue({
+      bottom: 200,
+      height: 120,
+      left: 160,
+      right: 280,
+      top: 80,
+      width: 120,
+      x: 160,
+      y: 80,
+      toJSON: () => ({}),
+    });
+    vi.spyOn(thirdButton, "getBoundingClientRect").mockReturnValue({
+      bottom: 200,
+      height: 120,
+      left: 320,
+      right: 440,
+      top: 80,
+      width: 120,
+      x: 320,
+      y: 80,
+      toJSON: () => ({}),
+    });
+
+    fireEvent.pointerDown(selectionSurface, {
+      button: 0,
+      clientX: 10,
+      clientY: 70,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+    fireEvent.pointerMove(window, {
+      clientX: 300,
+      clientY: 220,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+    fireEvent.pointerUp(window, {
+      clientX: 300,
+      clientY: 220,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+
+    expect(screen.getByText("已选择 2 个素材")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "批量删除" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "批量删除" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认删除 2 个素材" }));
+
+    await waitFor(() => {
+      expect(deleteAssetMock).toHaveBeenCalledWith("asset-1");
+      expect(deleteAssetMock).toHaveBeenCalledWith("asset-2");
+    });
+    expect(deleteAssetMock).not.toHaveBeenCalledWith("asset-3");
+  });
+
+  test("starts drag selection from an asset tile without opening the preview", () => {
+    const first = createAsset(1);
+    const second = createAsset(2);
+    mockLibrary({
+      assets: [first, second],
+      groupedAssets: [{ dateLabel: "2026-06-12", items: [first, second] }],
+      mediaCounts: { all: 2, audio: 0, image: 2, video: 0 },
+      total: 2,
+    });
+
+    renderPage();
+
+    const [firstButton, secondButton] = screen.getAllByRole("button", { name: /^Asset / });
+    vi.spyOn(firstButton, "getBoundingClientRect").mockReturnValue({
+      bottom: 200,
+      height: 120,
+      left: 20,
+      right: 140,
+      top: 80,
+      width: 120,
+      x: 20,
+      y: 80,
+      toJSON: () => ({}),
+    });
+    vi.spyOn(secondButton, "getBoundingClientRect").mockReturnValue({
+      bottom: 200,
+      height: 120,
+      left: 160,
+      right: 280,
+      top: 80,
+      width: 120,
+      x: 160,
+      y: 80,
+      toJSON: () => ({}),
+    });
+
+    fireEvent.pointerDown(firstButton, {
+      button: 0,
+      clientX: 30,
+      clientY: 90,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+    fireEvent.pointerMove(window, {
+      clientX: 290,
+      clientY: 210,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+    fireEvent.pointerUp(window, {
+      clientX: 290,
+      clientY: 210,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+    fireEvent.click(firstButton);
+
+    expect(screen.getByText("已选择 2 个素材")).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 });

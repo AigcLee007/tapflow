@@ -1,6 +1,7 @@
 import React, { useState } from "react";
-import { Grid2X2, RefreshCw, Search, SlidersHorizontal } from "lucide-react";
+import { Grid2X2, RefreshCw, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
 
+import { EntityConfirmDialog } from "../components/EntityActionMenu";
 import { useAuth } from "../auth/useAuth";
 import {
   addAssetToFolder,
@@ -37,12 +38,15 @@ export function AssetLibraryPage() {
   const { authenticated, sessionId, tenant, user } = useAuth();
   const library = useAssetLibrary();
   const [previewAsset, setPreviewAsset] = useState<AssetItem | null>(null);
+  const [selectedAssetIds, setSelectedAssetIds] = useState<Set<string>>(() => new Set());
+  const [confirmingBulkDelete, setConfirmingBulkDelete] = useState(false);
 
   const identityKey =
     authenticated && tenant && user ? `${user.id}:${tenant.id}:${sessionId ?? "none"}` : "anonymous";
 
   React.useEffect(() => {
     setPreviewAsset(null);
+    setSelectedAssetIds(new Set());
   }, [identityKey]);
 
   React.useEffect(() => {
@@ -57,6 +61,15 @@ export function AssetLibraryPage() {
       setPreviewAsset(currentAsset);
     }
   }, [library.assets, previewAsset]);
+
+  React.useEffect(() => {
+    setSelectedAssetIds((current) => {
+      if (current.size === 0) return current;
+      const availableIds = new Set(library.assets.map((asset) => asset.id));
+      const next = new Set(Array.from(current).filter((assetId) => availableIds.has(assetId)));
+      return next.size === current.size ? current : next;
+    });
+  }, [library.assets]);
 
   const refresh = () => {
     void library.refresh();
@@ -99,6 +112,24 @@ export function AssetLibraryPage() {
         await deleteAsset(asset.id);
       },
     );
+  };
+
+  const selectedAssets = library.assets.filter((asset) => selectedAssetIds.has(asset.id));
+
+  const bulkDeleteSelectedAssets = async () => {
+    const assetsToDelete = selectedAssets;
+    await Promise.all(
+      assetsToDelete.map((asset) =>
+        library.updateAssetOptimistically(
+          asset.id,
+          () => null,
+          async () => {
+            await deleteAsset(asset.id);
+          },
+        ),
+      ),
+    );
+    setSelectedAssetIds(new Set());
   };
 
   const selectedMediaLabel =
@@ -181,6 +212,29 @@ export function AssetLibraryPage() {
                 selectedTab={library.selectedMediaTab}
               />
             </div>
+            {!library.loading && selectedAssets.length > 0 && (
+              <div className="sticky top-4 z-[80] mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sky-300/25 bg-[#111827]/95 px-4 py-3 text-sm text-slate-100 shadow-2xl shadow-black/30 backdrop-blur">
+                <div className="font-semibold">已选择 {selectedAssets.length} 个素材</div>
+                <div className="flex items-center gap-2">
+                  <button
+                    className="inline-flex h-9 items-center gap-2 rounded-xl border border-white/10 px-3 text-xs font-bold text-slate-200 hover:bg-white/[0.07]"
+                    onClick={() => setSelectedAssetIds(new Set())}
+                    type="button"
+                  >
+                    <X size={15} />
+                    取消选择
+                  </button>
+                  <button
+                    className="inline-flex h-9 items-center gap-2 rounded-xl bg-red-400 px-3 text-xs font-bold text-slate-950 hover:bg-red-300"
+                    onClick={() => setConfirmingBulkDelete(true)}
+                    type="button"
+                  >
+                    <Trash2 size={15} />
+                    批量删除
+                  </button>
+                </div>
+              </div>
+            )}
             {library.loading ? (
               <AssetLibraryLoadingState />
             ) : (
@@ -194,7 +248,9 @@ export function AssetLibraryPage() {
                 onDownload={downloadAsset}
                 onOpen={setPreviewAsset}
                 onRename={renameAsset}
+                onSelectionChange={(assetIds) => setSelectedAssetIds(new Set(assetIds))}
                 onToggleFavorite={toggleAssetFavorite}
+                selectedAssetIds={selectedAssetIds}
                 tileOnly
               />
             )}
@@ -206,6 +262,15 @@ export function AssetLibraryPage() {
           asset={previewAsset}
           onClose={() => setPreviewAsset(null)}
           onUpdated={refresh}
+        />
+      )}
+      {confirmingBulkDelete && (
+        <EntityConfirmDialog
+          body={`将从素材库删除选中的 ${selectedAssets.length} 个素材。删除后不可在素材库中继续使用，确定要删除吗？`}
+          confirmLabel={`确认删除 ${selectedAssets.length} 个素材`}
+          onClose={() => setConfirmingBulkDelete(false)}
+          onConfirm={bulkDeleteSelectedAssets}
+          title="批量删除素材"
         />
       )}
     </section>

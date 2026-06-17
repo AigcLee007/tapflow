@@ -72,8 +72,10 @@ export function AssetGroupedSections({
   onDelete,
   onDownload,
   onOpen,
+  onPointerDown,
   onRename,
   onToggleFavorite,
+  selectedAssetIds = new Set<string>(),
   showActions = true,
   tileOnly = false,
   virtualize = false,
@@ -86,8 +88,10 @@ export function AssetGroupedSections({
   onDelete?: (asset: AssetItem) => Promise<void>;
   onDownload?: (asset: AssetItem) => Promise<void>;
   onOpen: (asset: AssetItem) => void;
+  onPointerDown?: (event: React.PointerEvent, asset: AssetItem) => void;
   onRename?: (asset: AssetItem, title: string) => Promise<void>;
   onToggleFavorite?: (asset: AssetItem) => Promise<void>;
+  selectedAssetIds?: Set<string>;
   showActions?: boolean;
   tileOnly?: boolean;
   virtualize?: boolean;
@@ -151,8 +155,10 @@ export function AssetGroupedSections({
                 onDelete={onDelete}
                 onDownload={onDownload}
                 onOpen={onOpen}
+                onPointerDown={onPointerDown}
                 onRename={onRename}
                 onToggleFavorite={onToggleFavorite}
+                selectedAssetIds={selectedAssetIds}
                 showActions={showActions}
                 tileOnly={tileOnly}
               />
@@ -167,8 +173,10 @@ export function AssetGroupedSections({
                   onDelete={onDelete}
                   onDownload={onDownload}
                   onOpen={onOpen}
+                  onPointerDown={onPointerDown}
                   onRename={onRename}
                   onToggleFavorite={onToggleFavorite}
+                  selected={selectedAssetIds.has(asset.id)}
                   showActions={showActions}
                   tileOnly={tileOnly}
                 />

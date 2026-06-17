@@ -2272,6 +2272,16 @@ Validation completed:
   - `npm run test -- src/workbench/WorkbenchPage.test.tsx src/workbench/workbenchReferences.test.ts`
   - `npm run build`
 
+## 2026-06-17 - Asset Library Drag Multi-select
+
+- added desktop drag-box selection to the v2 `/assets` library so users can marquee-select visible asset tiles from either grid gaps or a thumbnail tile
+- added selected thumbnail styling with a check indicator and a sticky bulk action bar showing the selected count
+- added bulk delete confirmation that deletes the selected assets through the existing authenticated v2 asset delete path and clears stale selection as the asset list changes
+- added regression coverage for drag-selecting multiple assets, suppressing preview opens after drag selection, and bulk deleting only the selected assets
+- validation:
+  - `npm test -- src/assets/AssetLibraryPage.test.tsx`
+  - `npm run build`
+
 ## 2026-06-17 - Workbench Billing Model UUID Hotfix
 
 - fixed a worker-side workbench failure where successful provider image generations could still be marked failed during settlement
