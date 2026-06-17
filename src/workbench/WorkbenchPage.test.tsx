@@ -424,6 +424,49 @@ describe("WorkbenchPage", () => {
     expect(resultImages.some((image) => image.getAttribute("src") === "https://example.com/asset-result-1.png")).toBe(true);
   });
 
+  test("promotes the newest generation with a result into the center stage when the first row is empty", async () => {
+    listWorkbenchGenerationsMock.mockResolvedValue({
+      generations: [
+        createGeneration({
+          id: "generation-empty-latest",
+          prompt: "latest without result",
+          results: [],
+          status: "succeeded",
+        }),
+        createGeneration({
+          id: "generation-with-result",
+          prompt: "stage hero result",
+          results: [
+            {
+              assetId: "asset-stage-1",
+              createdAt: new Date().toISOString(),
+              downloadUrl: "https://example.com/stage-hero.png",
+              downloadUrlExpiresAt: null,
+              height: 1024,
+              id: "result-stage-1",
+              metadata: {},
+              mimeType: "image/png",
+              originalFilename: "stage-hero.png",
+              previewUrl: "https://example.com/stage-hero.png",
+              previewUrlExpiresAt: null,
+              sortOrder: 0,
+              status: "available",
+              width: 1024,
+            },
+          ],
+          status: "succeeded",
+        }),
+      ],
+      nextCursor: null,
+    });
+
+    setRoute("/workbench");
+    renderRouter();
+
+    expect((await screen.findAllByAltText("stage-hero.png")).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("stage hero result").length).toBeGreaterThan(0);
+  });
+
   test("loads result detail preview from asset id when selected result has no preview url", async () => {
     listWorkbenchGenerationsMock.mockResolvedValue({
       generations: [

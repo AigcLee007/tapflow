@@ -1,5 +1,5 @@
 import React from "react";
-import { Bell, ChevronLeft, Clock3, Coins, FolderOpenDot, Share2, Sparkles } from "lucide-react";
+import { Bell, ChevronLeft, Clock3, Coins, Share2, Sparkles } from "lucide-react";
 
 import { BrandMark } from "../app/brand/BrandMark";
 import { HOME_ROUTE, WORKSPACE_ROUTE } from "../app/routes";
@@ -21,6 +21,10 @@ function navigate(path: string) {
 
 function getPrimaryResult(generation: WorkbenchGeneration): WorkbenchResult | null {
   return generation.results[0] ?? null;
+}
+
+function getFeaturedGeneration(generations: WorkbenchGeneration[]) {
+  return generations.find((generation) => generation.results.length > 0) ?? generations[0] ?? null;
 }
 
 function formatStatus(status: string) {
@@ -66,11 +70,11 @@ function WorkbenchStage({
   const imageUrl = useResultPreviewUrl(primaryResult);
 
   return (
-    <section className="flex min-h-[420px] flex-1 flex-col overflow-hidden rounded-[28px] border border-white/10 bg-[radial-gradient(circle_at_top,rgba(84,168,255,0.18),transparent_34%),linear-gradient(180deg,rgba(21,25,36,0.96),rgba(10,12,18,0.98))] shadow-[0_28px_90px_rgba(0,0,0,0.34)]">
-      <div className="flex items-center justify-between border-b border-white/8 px-5 py-4">
+    <section className="flex min-h-[560px] w-full min-w-0 flex-col overflow-hidden rounded-[30px] border border-white/10 bg-[radial-gradient(circle_at_top,rgba(96,164,255,0.18),transparent_34%),linear-gradient(180deg,rgba(18,24,38,0.96),rgba(8,10,17,0.98))] shadow-[0_30px_90px_rgba(0,0,0,0.34)] xl:min-h-[calc(100vh-160px)]">
+      <div className="flex items-center justify-between border-b border-white/8 px-6 py-5">
         <div>
           <div className="text-[11px] font-black uppercase tracking-[0.22em] text-cyan-300">Current Result</div>
-          <div className="mt-1 text-sm font-bold text-white">
+          <div className="mt-1 text-base font-bold text-white">
             {generation ? formatStatus(generation.status) : "准备开始"}
           </div>
         </div>
@@ -81,34 +85,34 @@ function WorkbenchStage({
         ) : null}
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col justify-center p-5">
+      <div className="flex min-h-0 flex-1 flex-col justify-center p-6">
         {loading ? (
-          <div className="grid min-h-[360px] place-items-center rounded-[24px] border border-white/8 bg-black/20 text-sm text-slate-400">
+          <div className="grid min-h-[460px] place-items-center rounded-[26px] border border-white/8 bg-black/20 text-sm text-slate-400 xl:min-h-[680px]">
             正在加载工作台历史...
           </div>
         ) : primaryResult && imageUrl ? (
           <button
-            className="group relative block min-h-[360px] overflow-hidden rounded-[24px] border border-white/10 bg-black/35 text-left"
+            className="group relative block min-h-[460px] overflow-hidden rounded-[26px] border border-white/10 bg-black/35 text-left xl:min-h-[680px]"
             onClick={() => onSelectResult(primaryResult)}
             type="button"
           >
             <img
               alt={primaryResult.originalFilename || "Workbench result"}
-              className="h-full min-h-[360px] w-full object-cover transition duration-300 group-hover:scale-[1.01]"
+              className="h-full min-h-[460px] w-full object-cover transition duration-300 group-hover:scale-[1.01] xl:min-h-[680px]"
               src={imageUrl}
             />
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/28 to-transparent px-5 pb-5 pt-16">
-              <div className="line-clamp-2 text-base font-bold text-white">{generation?.prompt}</div>
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent px-6 pb-6 pt-20">
+              <div className="line-clamp-2 text-lg font-bold text-white">{generation.prompt}</div>
               <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-200/90">
-                <span>{generation?.modelId}</span>
-                <span>{generation?.routeKey}</span>
+                <span>{generation.modelId}</span>
+                <span>{generation.routeKey}</span>
               </div>
             </div>
           </button>
         ) : generation ? (
-          <div className="grid min-h-[360px] place-items-center rounded-[24px] border border-dashed border-white/10 bg-black/20 text-center">
-            <div className="max-w-sm px-6">
-              <div className="text-base font-bold text-white">{formatStatus(generation.status)}</div>
+          <div className="grid min-h-[460px] place-items-center rounded-[26px] border border-dashed border-white/10 bg-black/20 text-center xl:min-h-[680px]">
+            <div className="max-w-md px-8">
+              <div className="text-lg font-bold text-white">{formatStatus(generation.status)}</div>
               <div className="mt-2 text-sm leading-6 text-slate-400">
                 {generation.status === "failed"
                   ? (generation.errorJson?.message as string) || "这次生成没有成功，可以直接在右侧历史区重试。"
@@ -117,9 +121,9 @@ function WorkbenchStage({
             </div>
           </div>
         ) : (
-          <div className="grid min-h-[360px] place-items-center rounded-[24px] border border-dashed border-white/10 bg-black/20 text-center">
-            <div className="max-w-sm px-6">
-              <div className="text-base font-bold text-white">独立生图工作台</div>
+          <div className="grid min-h-[460px] place-items-center rounded-[26px] border border-dashed border-white/10 bg-black/20 text-center xl:min-h-[680px]">
+            <div className="max-w-md px-8">
+              <div className="text-lg font-bold text-white">独立生图工作台</div>
               <div className="mt-2 text-sm leading-6 text-slate-400">
                 左侧参数区保持现有工作台配置方式不变。开始一次生成后，当前主结果显示在中间，历史记录在右侧连续保存。
               </div>
@@ -128,58 +132,6 @@ function WorkbenchStage({
         )}
       </div>
     </section>
-  );
-}
-
-function WorkbenchHistoryPanel({
-  generations,
-  onReuseParams,
-  onRetry,
-  onSelectResult,
-}: {
-  generations: WorkbenchGeneration[];
-  onReuseParams: (generation: WorkbenchGeneration) => void;
-  onRetry: (generationId: string) => void;
-  onSelectResult: (result: WorkbenchResult) => void;
-}) {
-  return (
-    <aside className="flex h-full min-h-0 flex-col overflow-hidden rounded-[26px] border border-white/10 bg-white/[0.04] shadow-[0_24px_70px_rgba(0,0,0,0.24)]">
-      <div className="flex items-center justify-between border-b border-white/8 px-4 py-4">
-        <div>
-          <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">History</div>
-          <div className="mt-1 text-sm font-bold text-white">结果流</div>
-        </div>
-        <span className="rounded-full border border-white/10 bg-white/[0.06] px-3 py-1 text-xs font-bold text-slate-300">
-          {generations.length}
-        </span>
-      </div>
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        <div className="grid gap-4">
-          {generations.length === 0 ? (
-            <div className="grid min-h-[260px] place-items-center rounded-[20px] border border-dashed border-white/10 bg-black/15 text-center">
-              <div className="px-5">
-                <div className="text-sm font-bold text-white">还没有生成记录</div>
-                <div className="mt-2 text-sm leading-6 text-slate-400">从左侧参数区开始一次新的图片生成。</div>
-              </div>
-            </div>
-          ) : null}
-
-          {generations.map((generation) => {
-            const primaryResult = getPrimaryResult(generation);
-            return (
-              <WorkbenchHistoryCard
-                key={generation.id}
-                generation={generation}
-                onReuseParams={onReuseParams}
-                onRetry={onRetry}
-                onSelectResult={onSelectResult}
-                result={primaryResult}
-              />
-            );
-          })}
-        </div>
-      </div>
-    </aside>
   );
 }
 
@@ -252,6 +204,55 @@ function WorkbenchHistoryCard({
   );
 }
 
+function WorkbenchHistoryPanel({
+  generations,
+  onReuseParams,
+  onRetry,
+  onSelectResult,
+}: {
+  generations: WorkbenchGeneration[];
+  onReuseParams: (generation: WorkbenchGeneration) => void;
+  onRetry: (generationId: string) => void;
+  onSelectResult: (result: WorkbenchResult) => void;
+}) {
+  return (
+    <aside className="flex h-full min-h-[560px] w-full min-w-0 flex-col overflow-hidden rounded-[26px] border border-white/10 bg-white/[0.04] shadow-[0_24px_70px_rgba(0,0,0,0.24)] xl:min-h-[calc(100vh-160px)]">
+      <div className="flex items-center justify-between border-b border-white/8 px-4 py-4">
+        <div>
+          <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">History</div>
+          <div className="mt-1 text-sm font-bold text-white">结果流</div>
+        </div>
+        <span className="rounded-full border border-white/10 bg-white/[0.06] px-3 py-1 text-xs font-bold text-slate-300">
+          {generations.length}
+        </span>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        <div className="grid gap-4">
+          {generations.length === 0 ? (
+            <div className="grid min-h-[260px] place-items-center rounded-[20px] border border-dashed border-white/10 bg-black/15 text-center">
+              <div className="px-5">
+                <div className="text-sm font-bold text-white">还没有生成记录</div>
+                <div className="mt-2 text-sm leading-6 text-slate-400">从左侧参数区开始一次新的图片生成。</div>
+              </div>
+            </div>
+          ) : null}
+
+          {generations.map((generation) => (
+            <WorkbenchHistoryCard
+              key={generation.id}
+              generation={generation}
+              onReuseParams={onReuseParams}
+              onRetry={onRetry}
+              onSelectResult={onSelectResult}
+              result={getPrimaryResult(generation)}
+            />
+          ))}
+        </div>
+      </div>
+    </aside>
+  );
+}
+
 export function WorkbenchPage() {
   const { models } = useImageModelCatalog();
   const {
@@ -299,7 +300,7 @@ export function WorkbenchPage() {
     navigate(`/projects/${created.projectId}`);
   }, [selectedResult]);
 
-  const latestGeneration = generations[0] ?? null;
+  const featuredGeneration = getFeaturedGeneration(generations);
 
   return (
     <section
@@ -308,15 +309,15 @@ export function WorkbenchPage() {
     >
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:44px_44px] opacity-[0.08]" />
 
-      <header className="relative z-10 flex items-center justify-between gap-4 px-4 pb-4 pt-5 md:px-6 md:pt-6">
+      <header className="relative z-10 flex items-center justify-between gap-4 px-4 pb-3 pt-4 md:px-6 md:pb-4 md:pt-5">
         <div className="flex min-w-0 items-center gap-4">
           <button
             aria-label="返回首页"
-            className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.06] text-slate-200 transition hover:bg-white/[0.12]"
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.06] text-slate-200 transition hover:bg-white/[0.12]"
             onClick={() => navigate(HOME_ROUTE)}
             type="button"
           >
-            <ChevronLeft size={18} />
+            <ChevronLeft size={17} />
           </button>
           <button
             aria-label="打开工作空间"
@@ -327,37 +328,37 @@ export function WorkbenchPage() {
             <BrandMark size="canvas" showCaption={false} />
             <span className="min-w-0">
               <span className="block text-[11px] font-black uppercase tracking-[0.22em] text-cyan-300">Workbench</span>
-              <span className="block truncate text-lg font-bold text-white">独立生图工作台</span>
+              <span className="block truncate text-[32px] font-black leading-none text-white md:text-[34px]">独立生图工作台</span>
             </span>
           </button>
         </div>
 
         <div className="hidden items-center gap-3 md:flex">
-          <div className="flex h-11 items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-4 text-sm font-bold text-white">
+          <div className="flex h-10 items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3.5 text-xs font-bold text-white/90">
             <Sparkles size={15} className="text-cyan-300" />
             全屏创作流模式
           </div>
-          <div className="flex h-11 items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-4 text-sm font-black text-[#ffe35a]">
-            <Coins size={15} />
+          <div className="flex h-10 items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-4 text-sm font-black text-[#ffe35a]">
+            <Coins size={14} />
             19071
           </div>
           <button
             aria-label="历史"
-            className="grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-white/[0.05] text-slate-200 transition hover:bg-white/[0.12]"
+            className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-white/[0.05] text-slate-200 transition hover:bg-white/[0.12]"
             type="button"
           >
             <Clock3 size={16} />
           </button>
           <button
             aria-label="通知"
-            className="grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-white/[0.05] text-slate-200 transition hover:bg-white/[0.12]"
+            className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-white/[0.05] text-slate-200 transition hover:bg-white/[0.12]"
             type="button"
           >
             <Bell size={16} />
           </button>
           <button
             aria-label="分享"
-            className="grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-white/[0.05] text-slate-200 transition hover:bg-white/[0.12]"
+            className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-white/[0.05] text-slate-200 transition hover:bg-white/[0.12]"
             type="button"
           >
             <Share2 size={16} />
@@ -372,7 +373,7 @@ export function WorkbenchPage() {
           </div>
         ) : null}
 
-        <div className="grid min-h-[calc(100vh-108px)] gap-4 md:grid-cols-[390px_minmax(0,1fr)] xl:grid-cols-[390px_minmax(0,1fr)_320px]">
+        <div className="grid min-h-[calc(100vh-96px)] w-full gap-5 md:grid-cols-[390px_minmax(0,1fr)] xl:grid-cols-[390px_minmax(780px,1fr)_360px]">
           <div className="hidden min-h-0 overflow-hidden rounded-[26px] border border-white/8 bg-[#0f1015]/92 shadow-[0_26px_80px_rgba(0,0,0,0.28)] md:block">
             <WorkbenchComposer
               draft={draft}
@@ -383,13 +384,13 @@ export function WorkbenchPage() {
             />
           </div>
 
-          <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-            <WorkbenchStage
-              generation={latestGeneration}
-              loading={loading}
-              onSelectResult={setSelectedResult}
-            />
+          <WorkbenchStage
+            generation={featuredGeneration}
+            loading={loading}
+            onSelectResult={setSelectedResult}
+          />
 
+          <div className="md:col-start-2 xl:col-start-3">
             <WorkbenchHistoryPanel
               generations={generations}
               onReuseParams={reuseParams}
@@ -397,12 +398,6 @@ export function WorkbenchPage() {
               onSelectResult={setSelectedResult}
             />
           </div>
-        </div>
-      </div>
-
-      <div className="pointer-events-none fixed bottom-5 right-5 hidden xl:block">
-        <div className="flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-white/[0.06] text-slate-200 shadow-[0_20px_40px_rgba(0,0,0,0.35)]">
-          <FolderOpenDot size={20} />
         </div>
       </div>
 
