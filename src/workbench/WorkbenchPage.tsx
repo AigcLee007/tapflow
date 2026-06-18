@@ -183,31 +183,29 @@ function useResultPreviewUrl(result: WorkbenchResult | null) {
 }
 
 function CompletedResultThumbnail({
-  actionButtons,
   generationId,
   onSelectResult,
   result,
+  selected = false,
   sequenceLabel,
 }: {
-  actionButtons?: React.ReactNode;
   generationId: string;
   onSelectResult: (result: WorkbenchResult) => void;
   result: WorkbenchResult;
+  selected?: boolean;
   sequenceLabel?: string;
 }) {
   const previewUrl = useResultPreviewUrl(result);
 
   return (
-    <div
-      className="group relative overflow-hidden rounded-[16px] border border-white/8 bg-[#090b11]"
+    <button
+      className={`group relative overflow-hidden rounded-[16px] border bg-[#090b11] text-left transition ${
+        selected ? "border-cyan-300/70 shadow-[0_0_0_1px_rgba(103,232,249,0.28)]" : "border-white/8 hover:border-white/18"
+      }`}
       data-testid={`workbench-completed-result-thumb-${generationId}`}
+      onClick={() => onSelectResult(result)}
+      type="button"
     >
-      <button
-        aria-label={result.originalFilename || "Workbench result"}
-        className="absolute inset-0 z-0"
-        onClick={() => onSelectResult(result)}
-        type="button"
-      />
       {sequenceLabel ? (
         <span
           className="pointer-events-none absolute left-2 top-2 z-10 inline-flex h-6 min-w-[28px] items-center justify-center rounded-full border border-black/30 bg-black/72 px-2 text-[10px] font-black text-white shadow-[0_10px_24px_rgba(0,0,0,0.34)]"
@@ -217,57 +215,54 @@ function CompletedResultThumbnail({
         </span>
       ) : null}
       {previewUrl ? (
-        <div className="flex min-h-[156px] items-center justify-center bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.05),transparent_58%),linear-gradient(180deg,rgba(15,18,25,0.98),rgba(8,10,14,0.98))] p-2.5">
+        <div className="flex min-h-[112px] items-center justify-center bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.05),transparent_58%),linear-gradient(180deg,rgba(15,18,25,0.98),rgba(8,10,14,0.98))] p-2">
           <img
             alt={result.originalFilename || "Workbench result"}
-            className="h-full max-h-[196px] w-full rounded-[12px] object-contain transition duration-300 group-hover:scale-[1.015]"
+            className="h-[112px] w-full rounded-[12px] object-contain transition duration-300 group-hover:scale-[1.015]"
             data-testid={`workbench-result-image-${generationId}-${result.id}`}
             src={previewUrl}
           />
         </div>
       ) : (
-        <div className="grid min-h-[156px] place-items-center rounded-[16px] border border-dashed border-white/10 bg-black/15 text-xs text-slate-500">
-          暂无预览
+        <div className="grid min-h-[112px] place-items-center rounded-[16px] border border-dashed border-white/10 bg-black/15 text-xs text-slate-500">
+          删除任务
         </div>
       )}
-      {actionButtons ? <div className="absolute inset-x-2 bottom-2 z-10">{actionButtons}</div> : null}
-    </div>
+    </button>
   );
 }
 
 function BatchChildSlot({
-  actionButtons,
   child,
   generationId,
   onSelectResult,
+  selected = false,
 }: {
-  actionButtons?: React.ReactNode;
   child: WorkbenchBatchChild;
   generationId: string;
   onSelectResult: (result: WorkbenchResult) => void;
+  selected?: boolean;
 }) {
   const result = child.results[0] ?? null;
   const previewUrl = useResultPreviewUrl(result);
 
   if (result && previewUrl) {
     return (
-      <div
-        className="group relative overflow-hidden rounded-[14px] border border-white/8 bg-[#090b11]"
+      <button
+        className={`group relative overflow-hidden rounded-[14px] border bg-[#090b11] text-left transition ${
+          selected ? "border-cyan-300/70 shadow-[0_0_0_1px_rgba(103,232,249,0.28)]" : "border-white/8 hover:border-white/18"
+        }`}
         data-testid={`workbench-batch-child-result-${generationId}-${child.batchIndex}`}
+        onClick={() => onSelectResult(result)}
+        type="button"
       >
-        <button
-          aria-label={result.originalFilename || "Workbench result"}
-          className="absolute inset-0 z-0"
-          onClick={() => onSelectResult(result)}
-          type="button"
-        />
         <span
           className="pointer-events-none absolute left-2 top-2 z-10 inline-flex h-6 min-w-[28px] items-center justify-center rounded-full border border-black/30 bg-black/72 px-2 text-[10px] font-black text-white shadow-[0_10px_24px_rgba(0,0,0,0.34)]"
           data-testid={`workbench-batch-child-badge-${generationId}-${child.batchIndex}`}
         >
           {child.batchIndex + 1}
         </span>
-        <div className="flex h-[132px] items-center justify-center bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.05),transparent_58%),linear-gradient(180deg,rgba(15,18,25,0.98),rgba(8,10,14,0.98))] p-2">
+        <div className="flex h-[112px] items-center justify-center bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.05),transparent_58%),linear-gradient(180deg,rgba(15,18,25,0.98),rgba(8,10,14,0.98))] p-2">
           <img
             alt={result.originalFilename || "Workbench result"}
             className="h-full w-full rounded-[10px] object-contain transition duration-300 group-hover:scale-[1.015]"
@@ -275,17 +270,104 @@ function BatchChildSlot({
             src={previewUrl}
           />
         </div>
-        {actionButtons ? <div className="absolute inset-x-1.5 bottom-1.5 z-10">{actionButtons}</div> : null}
-      </div>
+      </button>
     );
   }
 
   return (
     <div
-      className="grid h-[132px] place-items-center rounded-[14px] border border-dashed border-white/10 bg-black/15 text-[11px] font-bold text-slate-500"
+      className="grid h-[112px] place-items-center rounded-[14px] border border-dashed border-white/10 bg-black/15 text-[11px] font-bold text-slate-500"
       data-testid={`workbench-batch-child-placeholder-${generationId}-${child.batchIndex}`}
     >
       {formatStatus(child.status)}
+    </div>
+  );
+}
+
+function ResultStagePreview({
+  generationId,
+  result,
+  testId,
+}: {
+  generationId: string;
+  result: WorkbenchResult | null;
+  testId: string;
+}) {
+  const previewUrl = useResultPreviewUrl(result);
+
+  return (
+    <div
+      className="overflow-hidden rounded-[18px] border border-white/8 bg-[#090b11]"
+      data-testid={testId}
+    >
+      {result && previewUrl ? (
+        <div className="flex h-[188px] items-center justify-center bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.06),transparent_58%),linear-gradient(180deg,rgba(15,18,25,0.98),rgba(8,10,14,0.98))] p-3">
+          <img
+            alt={result.originalFilename || "Workbench result"}
+            className="h-full w-full rounded-[14px] object-contain"
+            data-testid={`workbench-result-stage-image-${generationId}-${result.id}`}
+            src={previewUrl}
+          />
+        </div>
+      ) : (
+        <div className="grid h-[188px] place-items-center text-xs text-slate-500">暂无预览</div>
+      )}
+    </div>
+  );
+}
+
+function ResultActionTray({
+  generationId,
+  onDownloadOriginal,
+  onRetry,
+  onReuseParams,
+  onUseAsReference,
+  result,
+}: {
+  generationId: string;
+  onDownloadOriginal: () => void;
+  onRetry: () => void;
+  onReuseParams: () => void;
+  onUseAsReference: () => void;
+  result: WorkbenchResult;
+}) {
+  return (
+    <div
+      className="flex items-center justify-center gap-2 rounded-[16px] border border-white/8 bg-black/24 p-2"
+      data-testid={`workbench-result-action-tray-${generationId}`}
+    >
+      <button
+        aria-label={`再次生成-${result.id}`}
+        className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-white/[0.04] text-slate-100 transition hover:bg-white/[0.12]"
+        onClick={onRetry}
+        type="button"
+      >
+        <Sparkles size={15} />
+      </button>
+      <button
+        aria-label={`复用参数-${result.id}`}
+        className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-white/[0.04] text-slate-100 transition hover:bg-white/[0.12]"
+        onClick={onReuseParams}
+        type="button"
+      >
+        <Share2 size={15} />
+      </button>
+      <button
+        aria-label={`下载原图-${result.id}`}
+        className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-white/[0.04] text-slate-100 transition hover:bg-white/[0.12]"
+        onClick={onDownloadOriginal}
+        type="button"
+      >
+        <Download size={15} />
+      </button>
+      <button
+        aria-label={`引用参考-${result.id}`}
+        className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-white/[0.04] text-slate-100 transition hover:bg-white/[0.12]"
+        onClick={onUseAsReference}
+        type="button"
+      >
+        <ImagePlus size={15} />
+      </button>
     </div>
   );
 }
@@ -407,57 +489,22 @@ function DesktopActiveTaskItem({
   const result = getPrimaryResult(generation);
   const previewUrl = useResultPreviewUrl(result);
   const hasBatch = Boolean(generation.batch);
+  const [selectedBatchIndex, setSelectedBatchIndex] = React.useState(0);
   const renderBatchActionRow = React.useCallback(
     (item: WorkbenchResult) => (
-      <div className="grid grid-cols-4 gap-1.5">
-        <button
-          aria-label={`再次生成-${item.id}`}
-          className="grid h-8 place-items-center rounded-full border border-white/12 bg-black/62 text-slate-100 backdrop-blur-sm transition hover:bg-white/16"
-          onClick={(event) => {
-            event.stopPropagation();
-            onRetry(generation.id);
-          }}
-          type="button"
-        >
-          <Sparkles size={13} />
-        </button>
-        <button
-          aria-label={`复用参数-${item.id}`}
-          className="grid h-8 place-items-center rounded-full border border-white/12 bg-black/62 text-slate-100 backdrop-blur-sm transition hover:bg-white/16"
-          onClick={(event) => {
-            event.stopPropagation();
-            onReuseParams(generation);
-          }}
-          type="button"
-        >
-          <Share2 size={13} />
-        </button>
-        <button
-          aria-label={`下载原图-${item.id}`}
-          className="grid h-8 place-items-center rounded-full border border-white/12 bg-black/62 text-slate-100 backdrop-blur-sm transition hover:bg-white/16"
-          onClick={(event) => {
-            event.stopPropagation();
-            window.open(item.downloadUrl || item.previewUrl || "", "_blank", "noopener,noreferrer");
-          }}
-          type="button"
-        >
-          <Download size={13} />
-        </button>
-        <button
-          aria-label={`引用参考-${item.id}`}
-          className="grid h-8 place-items-center rounded-full border border-white/12 bg-black/62 text-slate-100 backdrop-blur-sm transition hover:bg-white/16"
-          onClick={(event) => {
-            event.stopPropagation();
-            onUseAsReference(item);
-          }}
-          type="button"
-        >
-          <ImagePlus size={13} />
-        </button>
-      </div>
+      <ResultActionTray
+        generationId={generation.id}
+        onDownloadOriginal={() => window.open(item.downloadUrl || item.previewUrl || "", "_blank", "noopener,noreferrer")}
+        onRetry={() => onRetry(generation.id)}
+        onReuseParams={() => onReuseParams(generation)}
+        onUseAsReference={() => onUseAsReference(item)}
+        result={item}
+      />
     ),
     [generation, onRetry, onReuseParams, onUseAsReference],
   );
+  const selectedChild = generation.batch?.children[selectedBatchIndex] ?? generation.batch?.children.find((child) => child.results[0]) ?? null;
+  const selectedBatchResult = selectedChild?.results[0] ?? null;
 
   return (
     <article
@@ -472,20 +519,20 @@ function DesktopActiveTaskItem({
           >
             {generation.batch!.completedCount}/{generation.batch!.totalCount}
           </div>
-          <div
-            className="grid auto-cols-[minmax(132px,1fr)] grid-flow-col gap-2 overflow-x-auto pb-1"
-            data-testid={`workbench-batch-row-${generation.id}`}
-          >
+          <ResultStagePreview generationId={generation.id} result={selectedBatchResult} testId={`workbench-batch-stage-${generation.id}`} />
+          <div className="grid grid-cols-4 gap-2" data-testid={`workbench-batch-thumb-row-${generation.id}`}>
             {generation.batch!.children.map((child) => (
-              <BatchChildSlot
-                actionButtons={child.results[0] ? renderBatchActionRow(child.results[0]) : null}
-                child={child}
-                generationId={generation.id}
-                key={child.generationId}
-                onSelectResult={onSelectResult}
-              />
+              <div key={child.generationId} onClick={() => child.results[0] && setSelectedBatchIndex(child.batchIndex)}>
+                <BatchChildSlot
+                  child={child}
+                  generationId={generation.id}
+                  onSelectResult={onSelectResult}
+                  selected={child.batchIndex === (selectedChild?.batchIndex ?? -1)}
+                />
+              </div>
             ))}
           </div>
+          {selectedBatchResult ? renderBatchActionRow(selectedBatchResult) : null}
         </div>
       ) : (
         <button
@@ -537,13 +584,12 @@ function DesktopActiveTaskItem({
           onClick={() => onDelete(generation.id)}
           type="button"
         >
-          删除任务
+          暂无预览
         </button>
       </div>
     </article>
   );
 }
-
 function DesktopCompletedResultCard({
   generation,
   models,
@@ -567,106 +613,53 @@ function DesktopCompletedResultCard({
   const previewUrl = useResultPreviewUrl(result);
   const displayResults = getGenerationDisplayResults(generation);
   const hasMultipleResults = displayResults.length > 1 || Boolean(generation.batch);
+  const [selectedResultId, setSelectedResultId] = React.useState<string | null>(displayResults[0]?.id ?? null);
+  const selectedDisplayResult = displayResults.find((item) => item.id === selectedResultId) ?? displayResults[0] ?? null;
   const renderResultActionRow = React.useCallback(
-    (item: WorkbenchResult, className = "") => (
-      <div className={`grid grid-cols-4 gap-1.5 ${className}`.trim()}>
-        <button
-          aria-label={`再次生成-${item.id}`}
-          className="grid h-8 place-items-center rounded-full border border-white/12 bg-black/62 text-slate-100 backdrop-blur-sm transition hover:bg-white/16"
-          onClick={(event) => {
-            event.stopPropagation();
-            onRetry(generation.id);
-          }}
-          type="button"
-        >
-          <Sparkles size={13} />
-        </button>
-        <button
-          aria-label={`复用参数-${item.id}`}
-          className="grid h-8 place-items-center rounded-full border border-white/12 bg-black/62 text-slate-100 backdrop-blur-sm transition hover:bg-white/16"
-          onClick={(event) => {
-            event.stopPropagation();
-            onReuseParams(generation);
-          }}
-          type="button"
-        >
-          <Share2 size={13} />
-        </button>
-        <button
-          aria-label={`下载原图-${item.id}`}
-          className="grid h-8 place-items-center rounded-full border border-white/12 bg-black/62 text-slate-100 backdrop-blur-sm transition hover:bg-white/16"
-          onClick={(event) => {
-            event.stopPropagation();
-            void onDownloadOriginal(item);
-          }}
-          type="button"
-        >
-          <Download size={13} />
-        </button>
-        <button
-          aria-label={`引用参考-${item.id}`}
-          className="grid h-8 place-items-center rounded-full border border-white/12 bg-black/62 text-slate-100 backdrop-blur-sm transition hover:bg-white/16"
-          onClick={(event) => {
-            event.stopPropagation();
-            onUseAsReference(item);
-          }}
-          type="button"
-        >
-          <ImagePlus size={13} />
-        </button>
-      </div>
+    (item: WorkbenchResult) => (
+      <ResultActionTray
+        generationId={generation.id}
+        onDownloadOriginal={() => void onDownloadOriginal(item)}
+        onRetry={() => onRetry(generation.id)}
+        onReuseParams={() => onReuseParams(generation)}
+        onUseAsReference={() => onUseAsReference(item)}
+        result={item}
+      />
     ),
     [generation, onDownloadOriginal, onRetry, onReuseParams, onUseAsReference],
   );
 
   return (
     <article
-      className="grid grid-cols-[minmax(120px,252px)_minmax(0,1fr)] gap-3 rounded-[20px] border border-white/8 bg-black/20 p-3"
+      className="grid grid-cols-[minmax(268px,340px)_minmax(0,1fr)] gap-3 rounded-[20px] border border-white/8 bg-black/20 p-3"
       data-testid={`workbench-completed-history-item-${generation.id}`}
     >
       {hasMultipleResults ? (
-        <>
+        <div className="flex h-full flex-col gap-3">
           {generation.batch ? (
-            <div className="flex h-full flex-col gap-2">
-              <div
-                className="flex h-8 items-center justify-center rounded-full border border-white/10 bg-white/[0.06] px-3 text-[11px] font-black text-cyan-100"
-                data-testid={`workbench-batch-progress-${generation.id}`}
-              >
-                {generation.batch.completedCount}/{generation.batch.totalCount}
-              </div>
-              <div
-                className="grid auto-cols-[minmax(132px,1fr)] grid-flow-col gap-2 overflow-x-auto pb-1"
-                data-testid={`workbench-batch-row-${generation.id}`}
-              >
-                {generation.batch.children.map((child) => (
-                  <BatchChildSlot
-                    actionButtons={child.results[0] ? renderResultActionRow(child.results[0], "pointer-events-auto") : null}
-                    child={child}
-                    generationId={generation.id}
-                    key={child.generationId}
-                    onSelectResult={onSelectResult}
-                  />
-                ))}
-              </div>
-            </div>
-          ) : (
             <div
-              className="grid auto-cols-[minmax(132px,1fr)] grid-flow-col gap-2 overflow-x-auto pb-1"
-              data-testid={`workbench-result-row-${generation.id}`}
+              className="flex h-8 items-center justify-center rounded-full border border-white/10 bg-white/[0.06] px-3 text-[11px] font-black text-cyan-100"
+              data-testid={`workbench-batch-progress-${generation.id}`}
             >
-              {displayResults.map((item, index) => (
+              {generation.batch.completedCount}/{generation.batch.totalCount}
+            </div>
+          ) : null}
+          <ResultStagePreview generationId={generation.id} result={selectedDisplayResult} testId={`workbench-result-stage-${generation.id}`} />
+          <div className="grid grid-cols-4 gap-2" data-testid={`workbench-result-thumb-row-${generation.id}`}>
+            {displayResults.map((item, index) => (
+              <div key={item.id} onClick={() => setSelectedResultId(item.id)}>
                 <CompletedResultThumbnail
-                  actionButtons={renderResultActionRow(item, "pointer-events-auto")}
                   generationId={generation.id}
-                  key={item.id}
                   onSelectResult={onSelectResult}
                   result={item}
+                  selected={item.id === selectedDisplayResult?.id}
                   sequenceLabel={String(index + 1)}
                 />
-              ))}
-            </div>
-          )}
-        </>
+              </div>
+            ))}
+          </div>
+          {selectedDisplayResult ? renderResultActionRow(selectedDisplayResult) : null}
+        </div>
       ) : (
         <button
           className="overflow-hidden rounded-[16px] border border-white/8 bg-[#090b11]"
@@ -684,7 +677,7 @@ function DesktopCompletedResultCard({
             </div>
           ) : (
             <div className="grid min-h-[156px] place-items-center rounded-[16px] border border-dashed border-white/10 bg-black/15 text-xs text-slate-500">
-            暂无预览
+              ????
             </div>
           )}
         </button>
@@ -694,9 +687,7 @@ function DesktopCompletedResultCard({
         <div>
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <div className="line-clamp-2 text-[14px] font-bold leading-5 text-white">
-                {generation.prompt}
-              </div>
+              <div className="line-clamp-2 text-[14px] font-bold leading-5 text-white">{generation.prompt}</div>
               <div className="mt-2 text-[11px] text-slate-400">{formatStatus(generation.status)}</div>
               <GenerationParameterLine generation={generation} models={models} />
             </div>

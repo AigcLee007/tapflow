@@ -579,7 +579,7 @@ describe("WorkbenchPage", () => {
     expect(await screen.findByTestId("workbench-completed-rail")).toBeTruthy();
     expect(screen.getByTestId("workbench-completed-history-list").className).toContain("grid-cols-1");
     expect(screen.getByTestId("workbench-completed-history-item-done-1")).toBeTruthy();
-    expect(screen.getByTestId("workbench-completed-history-item-done-1").className).toContain("grid-cols-[minmax(120px,252px)_minmax(0,1fr)]");
+    expect(screen.getByTestId("workbench-completed-history-item-done-1").className).toContain("grid-cols-[minmax(268px,340px)_minmax(0,1fr)]");
   });
 
   test("renders multiple result previews inside one completed workbench generation card when quantity is greater than one", async () => {
@@ -633,10 +633,12 @@ describe("WorkbenchPage", () => {
     renderRouter();
 
     expect(await screen.findByTestId("workbench-completed-history-item-done-multi")).toBeTruthy();
-    expect(screen.getByAltText("done-multi-1.png")).toBeTruthy();
-    expect(screen.getByAltText("done-multi-2.png")).toBeTruthy();
+    expect(screen.getAllByAltText("done-multi-1.png").length).toBeGreaterThan(0);
+    expect(screen.getAllByAltText("done-multi-2.png").length).toBeGreaterThan(0);
     expect(screen.getAllByTestId("workbench-completed-result-thumb-done-multi").length).toBe(2);
-    expect(screen.getByTestId("workbench-result-row-done-multi").className).toContain("grid-flow-col");
+    expect(screen.getByTestId("workbench-result-stage-done-multi")).toBeTruthy();
+    expect(screen.getByTestId("workbench-result-stage-image-done-multi-done-multi-result-1")).toBeTruthy();
+    expect(screen.getByTestId("workbench-result-thumb-row-done-multi")).toBeTruthy();
     expect(screen.getByTestId("workbench-result-sequence-done-multi-done-multi-result-1").textContent).toBe("1");
     expect(screen.getByTestId("workbench-result-sequence-done-multi-done-multi-result-2").textContent).toBe("2");
     expect(screen.getByTestId("workbench-result-image-done-multi-done-multi-result-1").className).toContain("object-contain");
@@ -692,6 +694,44 @@ describe("WorkbenchPage", () => {
     expect(meta.textContent).toContain("数量：2");
     expect(screen.queryByText("pixellelabs.nano-banana-pro")).toBeNull();
     expect(screen.queryByText("image.pixellelabs.nano-banana-pro")).toBeNull();
+  });
+
+  test("renders four completed images in one visible thumbnail strip with a single selected action tray", async () => {
+    listWorkbenchGenerationsMock.mockResolvedValue({
+      generations: [
+        createGeneration({
+          id: "done-quad",
+          requestedCount: 4,
+          results: [0, 1, 2, 3].map((index) => ({
+            assetId: `done-quad-asset-${index + 1}`,
+            createdAt: new Date().toISOString(),
+            downloadUrl: `https://example.com/done-quad-${index + 1}.png`,
+            downloadUrlExpiresAt: null,
+            height: 1024,
+            id: `done-quad-result-${index + 1}`,
+            metadata: {},
+            mimeType: "image/png",
+            originalFilename: `done-quad-${index + 1}.png`,
+            previewUrl: `https://example.com/done-quad-${index + 1}.png`,
+            previewUrlExpiresAt: null,
+            sortOrder: index,
+            status: "available",
+            width: 1024,
+          })),
+          status: "succeeded",
+        }),
+      ],
+      nextCursor: null,
+    });
+
+    setRoute("/workbench");
+    renderRouter();
+
+    expect(await screen.findByTestId("workbench-completed-history-item-done-quad")).toBeTruthy();
+    expect(screen.getAllByTestId("workbench-completed-result-thumb-done-quad").length).toBe(4);
+    expect(screen.getByTestId("workbench-result-thumb-row-done-quad").children.length).toBe(4);
+    expect(screen.getAllByTestId("workbench-result-action-tray-done-quad").length).toBe(1);
+    expect(screen.queryByRole("button", { name: "鍐嶆鐢熸垚-done-quad-result-2" })).toBeNull();
   });
 
   test("keeps the desktop composer footer action area separate from the scroll body", async () => {
@@ -951,8 +991,9 @@ describe("WorkbenchPage", () => {
     renderRouter();
 
     expect((await screen.findByTestId("workbench-batch-progress-batch-1")).textContent).toContain("1/2");
-    expect(screen.getByTestId("workbench-batch-row-batch-1").className).toContain("grid-flow-col");
-    expect(screen.getByAltText("one.png")).toBeTruthy();
+    expect(screen.getByTestId("workbench-batch-stage-batch-1")).toBeTruthy();
+    expect(screen.getByTestId("workbench-batch-thumb-row-batch-1")).toBeTruthy();
+    expect(screen.getAllByAltText("one.png").length).toBeGreaterThan(0);
     expect(screen.getByTestId("workbench-batch-child-badge-batch-1-0").textContent).toBe("1");
     expect(screen.getByTestId("workbench-batch-child-image-batch-1-0").className).toContain("object-contain");
     expect(screen.getByRole("button", { name: "再次生成-result-1" })).toBeTruthy();
