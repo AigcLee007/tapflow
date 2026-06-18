@@ -238,6 +238,17 @@ As of 2026-06-13:
   - favorite selected assets
   - download original files for selected assets
   - delete selected assets with confirmation
+
+## 2026-06-18 - Workbench Batch Card Interaction Polish
+
+- Removed the desktop `/workbench` left-side collapse control so the parameter composer now stays fully present without a secondary chrome button.
+- Reworked multi-image completed cards and active batch cards to render generated images in a single horizontal strip instead of wrapping into a two-column tile grid.
+- Added per-image floating icon actions for batch/multi-image cards: regenerate, reuse params, download original, and use as reference.
+- Moved multi-image deletion into a compact top-right trash icon button so image-specific actions can stay attached to each thumbnail.
+- Corrected active batch-card `引用参考` behavior so it now really appends that image into the workbench reference list, matching completed-card behavior.
+- Validation:
+  - `npm run test -- src/workbench/WorkbenchPage.test.tsx`
+  - `npm run build`
 - Stabilized drag selection from asset thumbnails by preventing the same pointer-down from also bubbling to the outer selection surface after the card starts marquee selection.
 - Kept selected-asset cleanup tied to asset-list changes and identity changes so stale selections/toolbars disappear when the list changes.
 - Extended asset-library regression coverage for the floating toolbar position, complete action set, select-all behavior, bulk favorite, bulk download, and existing bulk delete flow.

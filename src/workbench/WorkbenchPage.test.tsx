@@ -636,10 +636,16 @@ describe("WorkbenchPage", () => {
     expect(screen.getByAltText("done-multi-1.png")).toBeTruthy();
     expect(screen.getByAltText("done-multi-2.png")).toBeTruthy();
     expect(screen.getAllByTestId("workbench-completed-result-thumb-done-multi").length).toBe(2);
+    expect(screen.getByTestId("workbench-result-row-done-multi").className).toContain("grid-flow-col");
     expect(screen.getByTestId("workbench-result-sequence-done-multi-done-multi-result-1").textContent).toBe("1");
     expect(screen.getByTestId("workbench-result-sequence-done-multi-done-multi-result-2").textContent).toBe("2");
     expect(screen.getByTestId("workbench-result-image-done-multi-done-multi-result-1").className).toContain("object-contain");
     expect(screen.getByTestId("workbench-result-image-done-multi-done-multi-result-2").className).toContain("object-contain");
+    expect(screen.getByRole("button", { name: "再次生成-done-multi-result-1" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "复用参数-done-multi-result-1" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "下载原图-done-multi-result-1" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "引用参考-done-multi-result-1" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "删除记录-done-multi" })).toBeTruthy();
   });
 
   test("shows creator-facing generation parameters instead of raw model and route keys", async () => {
@@ -705,7 +711,8 @@ describe("WorkbenchPage", () => {
     expect(screen.queryByText("Create")).toBeNull();
     expect(screen.queryByText("参数面板")).toBeNull();
     expect(screen.queryByText("当前配置详情")).toBeNull();
-    expect(screen.getByRole("button", { name: "收起参数面板" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "收起参数面板" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "展开参数面板" })).toBeNull();
     expect(screen.getByRole("button", { name: "立即开始创作" })).toBeTruthy();
   });
 
@@ -817,7 +824,7 @@ describe("WorkbenchPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "引用参考" }));
     expect((await screen.findByAltText("参考图1")).getAttribute("src")).toBe("https://example.com/asset-actions-preview.webp");
 
-    fireEvent.click(screen.getByRole("button", { name: "删除记录" }));
+    fireEvent.click(screen.getByRole("button", { name: "删除记录-done-actions" }));
     await waitFor(() => {
       expect(deleteWorkbenchGenerationMock).toHaveBeenCalledWith("done-actions");
       expect(screen.queryByTestId("workbench-completed-history-item-done-actions")).toBeNull();
@@ -944,9 +951,14 @@ describe("WorkbenchPage", () => {
     renderRouter();
 
     expect((await screen.findByTestId("workbench-batch-progress-batch-1")).textContent).toContain("1/2");
+    expect(screen.getByTestId("workbench-batch-row-batch-1").className).toContain("grid-flow-col");
     expect(screen.getByAltText("one.png")).toBeTruthy();
     expect(screen.getByTestId("workbench-batch-child-badge-batch-1-0").textContent).toBe("1");
     expect(screen.getByTestId("workbench-batch-child-image-batch-1-0").className).toContain("object-contain");
+    expect(screen.getByRole("button", { name: "再次生成-result-1" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "复用参数-result-1" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "下载原图-result-1" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "引用参考-result-1" })).toBeTruthy();
     expect(screen.getByTestId("workbench-batch-child-placeholder-batch-1-1")).toBeTruthy();
   });
 });
