@@ -7,6 +7,15 @@ function createMockPool(rowsByQuery: Array<unknown[]> = []) {
   const client = {
     query: vi.fn(async (sql: string, params?: unknown[]) => {
       queries.push({ params, sql });
+      if (
+        sql === "BEGIN" ||
+        sql === "COMMIT" ||
+        sql === "ROLLBACK" ||
+        sql.includes("set_config('app.tenant_id'") ||
+        sql.includes("set_config('app.user_id'")
+      ) {
+        return { rows: [] };
+      }
       const rows = rowsByQuery.shift() ?? [];
       return { rows };
     }),
@@ -25,11 +34,11 @@ function createMockPool(rowsByQuery: Array<unknown[]> = []) {
 describe("WorkbenchService generation deletion", () => {
   test("marks a generation deleted and cancels non-terminal stuck work", async () => {
     const { pool, queries } = createMockPool([
-      [],
-      [],
-      [],
       [
         {
+          batch_id: null,
+          batch_index: null,
+          batch_role: "single",
           charged_credits: null,
           created_at: "2026-06-18T00:00:00.000Z",
           display_mode: "merged",
@@ -39,6 +48,7 @@ describe("WorkbenchService generation deletion", () => {
           id: "11111111-1111-4111-8111-111111111111",
           model_id: "pixellelabs.nano-banana-pro",
           params_json: {},
+          parent_generation_id: null,
           prompt: "stuck queued",
           reference_asset_ids: [],
           reference_upload_ids: [],
@@ -50,6 +60,7 @@ describe("WorkbenchService generation deletion", () => {
           started_at: null,
           status: "canceled",
           updated_at: "2026-06-18T00:00:00.000Z",
+          batch_total: null,
         },
       ],
       [],
@@ -121,5 +132,170 @@ describe("WorkbenchService generation deletion", () => {
       code: "WORKBENCH_GENERATION_NOT_FOUND",
       statusCode: 404,
     });
+  });
+
+  test("createGeneration creates a parent row and enqueues one child job per requested image", async () => {
+    const client = {
+      query: vi.fn(async (sql: string) => {
+        if (
+          sql === "BEGIN" ||
+          sql === "COMMIT" ||
+          sql === "ROLLBACK" ||
+          sql.includes("set_config('app.tenant_id'") ||
+          sql.includes("set_config('app.user_id'")
+        ) {
+          return { rows: [] };
+        }
+        if (sql.includes("FROM ai_routes AS route")) {
+          return { rows: [{ min_charge_credits: "2", route_id: "route-1" }] };
+        }
+        if (sql.includes("INSERT INTO workbench_generations")) {
+          const childInsertCount = client.query.mock.calls.filter(([entrySql]) => String(entrySql).includes("INSERT INTO workbench_generations")).length;
+          if (childInsertCount === 1) {
+            return {
+              rows: [{
+                batch_id: null,
+                batch_index: null,
+                batch_role: "parent",
+                charged_credits: null,
+                created_at: "2026-06-18T00:00:00.000Z",
+                display_mode: "merged",
+                error_json: null,
+                estimated_credits: "4",
+                finished_at: null,
+                id: "11111111-1111-4111-8111-111111111111",
+                model_id: "pixellelabs.nano-banana-pro",
+                params_json: { aspect_ratio: "1:1" },
+                parent_generation_id: null,
+                prompt: "batch prompt",
+                reference_asset_ids: [],
+                reference_upload_ids: [],
+                requested_count: 2,
+                reserve_ledger_id: "reserve-ledger-1",
+                reserved_credits: "4",
+                route_key: "image.pixellelabs.nano-banana-pro",
+                session_id: null,
+                started_at: null,
+                status: "queued",
+                updated_at: "2026-06-18T00:00:00.000Z",
+                batch_total: 2,
+              }],
+            };
+          }
+          if (childInsertCount === 2) {
+            return {
+              rows: [{
+                batch_id: "11111111-1111-4111-8111-111111111111",
+                batch_index: 0,
+                batch_role: "child",
+                charged_credits: null,
+                created_at: "2026-06-18T00:00:00.000Z",
+                display_mode: "merged",
+                error_json: null,
+                estimated_credits: "0",
+                finished_at: null,
+                id: "22222222-2222-4222-8222-222222222222",
+                model_id: "pixellelabs.nano-banana-pro",
+                params_json: { aspect_ratio: "1:1" },
+                parent_generation_id: "11111111-1111-4111-8111-111111111111",
+                prompt: "batch prompt",
+                reference_asset_ids: [],
+                reference_upload_ids: [],
+                requested_count: 1,
+                reserve_ledger_id: null,
+                reserved_credits: "0",
+                route_key: "image.pixellelabs.nano-banana-pro",
+                session_id: null,
+                started_at: null,
+                status: "queued",
+                updated_at: "2026-06-18T00:00:00.000Z",
+                batch_total: 2,
+              }],
+            };
+          }
+          return {
+            rows: [{
+              batch_id: "11111111-1111-4111-8111-111111111111",
+              batch_index: 1,
+              batch_role: "child",
+              charged_credits: null,
+              created_at: "2026-06-18T00:00:00.000Z",
+              display_mode: "merged",
+              error_json: null,
+              estimated_credits: "0",
+              finished_at: null,
+              id: "33333333-3333-4333-8333-333333333333",
+              model_id: "pixellelabs.nano-banana-pro",
+              params_json: { aspect_ratio: "1:1" },
+              parent_generation_id: "11111111-1111-4111-8111-111111111111",
+              prompt: "batch prompt",
+              reference_asset_ids: [],
+              reference_upload_ids: [],
+              requested_count: 1,
+              reserve_ledger_id: null,
+              reserved_credits: "0",
+              route_key: "image.pixellelabs.nano-banana-pro",
+              session_id: null,
+              started_at: null,
+              status: "queued",
+              updated_at: "2026-06-18T00:00:00.000Z",
+              batch_total: 2,
+            }],
+          };
+        }
+        if (sql.includes("UPDATE workbench_generations") || sql.includes("FROM workbench_results")) {
+          return { rows: [] };
+        }
+        return { rows: [] };
+      }),
+      release: vi.fn(),
+    };
+    const pool = {
+      connect: vi.fn(async () => client),
+    };
+    const generationQueue = {
+      add: vi.fn(async () => ({ id: "job-1" })),
+    };
+    const reserveUsageWithClient = vi.fn(async () => ({ id: "reserve-ledger-1" }));
+    const service = new WorkbenchService({
+      billingService: {
+        reserveUsageWithClient,
+      } as never,
+      generationQueue: generationQueue as never,
+      pool: pool as never,
+    });
+
+    const created = await service.createGeneration(
+      {
+        tenantId: "22222222-2222-4222-8222-222222222222",
+        traceId: "trace-1",
+        userId: "44444444-4444-4444-8444-444444444444",
+      },
+      {
+        displayMode: "merged",
+        modelId: "pixellelabs.nano-banana-pro",
+        params: { aspect_ratio: "1:1" },
+        prompt: "batch prompt",
+        referenceAssetIds: [],
+        referenceUploadIds: [],
+        requestedCount: 2,
+        routeKey: "image.pixellelabs.nano-banana-pro",
+      },
+    );
+
+    expect(created.batchRole).toBe("parent");
+    expect(created.requestedCount).toBe(2);
+    expect(created.batch?.totalCount).toBe(2);
+    expect(created.batch?.children).toHaveLength(2);
+    expect(generationQueue.add).toHaveBeenCalledTimes(2);
+    expect(generationQueue.add.mock.calls[0]?.[1]).toMatchObject({
+      generationId: "22222222-2222-4222-8222-222222222222",
+      tenantId: "22222222-2222-4222-8222-222222222222",
+    });
+    expect(generationQueue.add.mock.calls[1]?.[1]).toMatchObject({
+      generationId: "33333333-3333-4333-8333-333333333333",
+      tenantId: "22222222-2222-4222-8222-222222222222",
+    });
+    expect(reserveUsageWithClient).toHaveBeenCalledTimes(1);
   });
 });

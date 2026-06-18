@@ -19,7 +19,35 @@ export type WorkbenchResultView = {
   width: number | null;
 };
 
+export type WorkbenchBatchChildView = {
+  batchIndex: number;
+  chargedCredits: number | null;
+  errorJson: Record<string, unknown> | null;
+  finishedAt: string | null;
+  generationId: string;
+  results: WorkbenchResultView[];
+  startedAt: string | null;
+  status: string;
+  updatedAt: string;
+};
+
+export type WorkbenchBatchView = {
+  batchId: string;
+  children: WorkbenchBatchChildView[];
+  completedCount: number;
+  failedCount: number;
+  parentGenerationId: string | null;
+  pendingCount: number;
+  runningCount: number;
+  totalCount: number;
+};
+
 export type WorkbenchGenerationView = {
+  batch: WorkbenchBatchView | null;
+  batchId: string | null;
+  batchIndex: number | null;
+  batchRole: "single" | "parent" | "child";
+  batchTotal: number | null;
   chargedCredits: number | null;
   createdAt: string;
   displayMode: WorkbenchDisplayMode;
@@ -29,6 +57,7 @@ export type WorkbenchGenerationView = {
   id: string;
   modelId: string;
   params: Record<string, unknown>;
+  parentGenerationId: string | null;
   prompt: string;
   referenceAssetIds: string[];
   referenceUploadIds: string[];

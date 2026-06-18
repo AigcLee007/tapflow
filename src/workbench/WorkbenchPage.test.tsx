@@ -60,6 +60,11 @@ function setRoute(pathname: string) {
 
 function createGeneration(overrides: Record<string, unknown> = {}) {
   return {
+    batch: null,
+    batchId: null,
+    batchIndex: null,
+    batchRole: "single",
+    batchTotal: null,
     chargedCredits: null,
     createdAt: new Date().toISOString(),
     displayMode: "merged",
@@ -69,8 +74,10 @@ function createGeneration(overrides: Record<string, unknown> = {}) {
     id: "generation-1",
     modelId: "pixellelabs.nano-banana-pro",
     params: { aspect_ratio: "1:1", size: "1k" },
+    parentGenerationId: null,
     prompt: "Product poster",
     referenceAssetIds: [],
+    referenceUploadIds: [],
     requestedCount: 1,
     reservedCredits: 1,
     reserveLedgerId: "ledger-1",
@@ -843,5 +850,97 @@ describe("WorkbenchPage", () => {
       expect(deleteWorkbenchGenerationMock).toHaveBeenCalledWith("queued-stuck");
       expect(screen.queryByText("stuck queued")).toBeNull();
     });
+  });
+
+  test("renders partial batch progress with completed child preview and running placeholder", async () => {
+    const now = new Date().toISOString();
+    const partialBatchGeneration = createGeneration({
+      batch: {
+        batchId: "batch-1",
+        children: [
+          {
+            batchIndex: 0,
+            chargedCredits: null,
+            errorJson: null,
+            finishedAt: now,
+            generationId: "child-1",
+            results: [
+              {
+                assetId: "asset-1",
+                createdAt: now,
+                downloadUrl: "https://example.com/one.png",
+                downloadUrlExpiresAt: null,
+                height: 1024,
+                id: "result-1",
+                metadata: {},
+                mimeType: "image/png",
+                originalFilename: "one.png",
+                previewUrl: "https://example.com/one.png",
+                previewUrlExpiresAt: null,
+                sortOrder: 0,
+                status: "available",
+                width: 1024,
+              },
+            ],
+            startedAt: now,
+            status: "succeeded",
+            updatedAt: now,
+          },
+          {
+            batchIndex: 1,
+            chargedCredits: null,
+            errorJson: null,
+            finishedAt: null,
+            generationId: "child-2",
+            results: [],
+            startedAt: now,
+            status: "running",
+            updatedAt: now,
+          },
+        ],
+        completedCount: 1,
+        failedCount: 0,
+        parentGenerationId: "batch-1",
+        pendingCount: 0,
+        runningCount: 1,
+        totalCount: 2,
+      },
+      batchId: "batch-1",
+      batchRole: "parent",
+      batchTotal: 2,
+      id: "batch-1",
+      requestedCount: 2,
+      results: [
+        {
+          assetId: "asset-1",
+          createdAt: now,
+          downloadUrl: "https://example.com/one.png",
+          downloadUrlExpiresAt: null,
+          height: 1024,
+          id: "result-1",
+          metadata: { batchIndex: 0, childGenerationId: "child-1" },
+          mimeType: "image/png",
+          originalFilename: "one.png",
+          previewUrl: "https://example.com/one.png",
+          previewUrlExpiresAt: null,
+          sortOrder: 0,
+          status: "available",
+          width: 1024,
+        },
+      ],
+      status: "running",
+    });
+    listWorkbenchGenerationsMock.mockResolvedValue({
+      generations: [partialBatchGeneration],
+      nextCursor: null,
+    });
+    getWorkbenchGenerationMock.mockResolvedValue(partialBatchGeneration);
+
+    setRoute("/workbench");
+    renderRouter();
+
+    expect((await screen.findByTestId("workbench-batch-progress-batch-1")).textContent).toContain("1/2");
+    expect(screen.getByAltText("one.png")).toBeTruthy();
+    expect(screen.getByTestId("workbench-batch-child-placeholder-batch-1-1")).toBeTruthy();
   });
 });

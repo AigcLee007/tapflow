@@ -36,12 +36,24 @@ function navigate(path: string) {
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
+type WorkbenchBatchChild = NonNullable<WorkbenchGeneration["batch"]>["children"][number];
+
+function getGenerationDisplayResults(generation: WorkbenchGeneration): WorkbenchResult[] {
+  if (generation.batch) {
+    return generation.batch.children
+      .slice()
+      .sort((left, right) => left.batchIndex - right.batchIndex)
+      .flatMap((child) => child.results);
+  }
+  return generation.results;
+}
+
 function getPrimaryResult(generation: WorkbenchGeneration): WorkbenchResult | null {
-  return generation.results[0] ?? null;
+  return getGenerationDisplayResults(generation)[0] ?? null;
 }
 
 function getFeaturedGeneration(generations: WorkbenchGeneration[]) {
-  return generations.find((generation) => generation.results.length > 0) ?? generations[0] ?? null;
+  return generations.find((generation) => getGenerationDisplayResults(generation).length > 0) ?? generations[0] ?? null;
 }
 
 function formatStatus(status: string) {
@@ -205,6 +217,45 @@ function CompletedResultThumbnail({
   );
 }
 
+function BatchChildSlot({
+  child,
+  generationId,
+  onSelectResult,
+}: {
+  child: WorkbenchBatchChild;
+  generationId: string;
+  onSelectResult: (result: WorkbenchResult) => void;
+}) {
+  const result = child.results[0] ?? null;
+  const previewUrl = useResultPreviewUrl(result);
+
+  if (result && previewUrl) {
+    return (
+      <button
+        className="overflow-hidden rounded-[14px] border border-white/8 bg-black/20"
+        data-testid={`workbench-batch-child-result-${generationId}-${child.batchIndex}`}
+        onClick={() => onSelectResult(result)}
+        type="button"
+      >
+        <img
+          alt={result.originalFilename || "Workbench result"}
+          className="h-[132px] w-full object-cover"
+          src={previewUrl}
+        />
+      </button>
+    );
+  }
+
+  return (
+    <div
+      className="grid h-[132px] place-items-center rounded-[14px] border border-dashed border-white/10 bg-black/15 text-[11px] font-bold text-slate-500"
+      data-testid={`workbench-batch-child-placeholder-${generationId}-${child.batchIndex}`}
+    >
+      {formatStatus(child.status)}
+    </div>
+  );
+}
+
 function useViewportWidth() {
   const [width, setWidth] = React.useState(() =>
     typeof window === "undefined" ? 1280 : window.innerWidth,
@@ -319,30 +370,52 @@ function DesktopActiveTaskItem({
 }) {
   const result = getPrimaryResult(generation);
   const previewUrl = useResultPreviewUrl(result);
+  const hasBatch = Boolean(generation.batch);
 
   return (
     <article
       className="grid grid-cols-[68px_minmax(0,1fr)_auto] items-center gap-3 rounded-[18px] border border-white/8 bg-white/[0.03] px-3 py-3"
       data-testid="workbench-active-item"
     >
-      <button
-        className="overflow-hidden rounded-[12px] border border-white/8 bg-black/20"
-        disabled={!result}
-        onClick={() => result && onSelectResult(result)}
-        type="button"
-      >
-        {previewUrl ? (
-            <img
-            alt={result?.originalFilename || "Workbench result"}
-            className="h-[68px] w-[68px] object-cover"
-            src={previewUrl}
-            />
-        ) : (
-          <div className="grid h-[68px] w-[68px] place-items-center text-[11px] text-slate-500">
-            {formatStatus(generation.status)}
+      {hasBatch ? (
+        <div className="flex h-full flex-col gap-2">
+          <div
+            className="flex h-8 items-center justify-center rounded-full border border-white/10 bg-white/[0.06] px-3 text-[11px] font-black text-cyan-100"
+            data-testid={`workbench-batch-progress-${generation.id}`}
+          >
+            {generation.batch!.completedCount}/{generation.batch!.totalCount}
           </div>
-        )}
-      </button>
+          <div className="grid grid-cols-2 gap-2">
+            {generation.batch!.children.map((child) => (
+              <BatchChildSlot
+                child={child}
+                generationId={generation.id}
+                key={child.generationId}
+                onSelectResult={onSelectResult}
+              />
+            ))}
+          </div>
+        </div>
+      ) : (
+        <button
+          className="overflow-hidden rounded-[12px] border border-white/8 bg-black/20"
+          disabled={!result}
+          onClick={() => result && onSelectResult(result)}
+          type="button"
+        >
+          {previewUrl ? (
+            <img
+              alt={result?.originalFilename || "Workbench result"}
+              className="h-[68px] w-[68px] object-cover"
+              src={previewUrl}
+            />
+          ) : (
+            <div className="grid h-[68px] w-[68px] place-items-center text-[11px] text-slate-500">
+              {formatStatus(generation.status)}
+            </div>
+          )}
+        </button>
+      )}
 
       <div className="min-w-0">
         <div className="line-clamp-1 text-[13px] font-bold text-white">{generation.prompt}</div>
@@ -399,7 +472,8 @@ function DesktopCompletedResultCard({
 }) {
   const result = getPrimaryResult(generation);
   const previewUrl = useResultPreviewUrl(result);
-  const hasMultipleResults = generation.results.length > 1;
+  const displayResults = getGenerationDisplayResults(generation);
+  const hasMultipleResults = displayResults.length > 1 || Boolean(generation.batch);
 
   return (
     <article
@@ -407,16 +481,39 @@ function DesktopCompletedResultCard({
       data-testid={`workbench-completed-history-item-${generation.id}`}
     >
       {hasMultipleResults ? (
-        <div className="grid grid-cols-2 gap-2">
-          {generation.results.map((item) => (
-            <CompletedResultThumbnail
-              generationId={generation.id}
-              key={item.id}
-              onSelectResult={onSelectResult}
-              result={item}
-            />
-          ))}
-        </div>
+        <>
+          {generation.batch ? (
+            <div className="flex h-full flex-col gap-2">
+              <div
+                className="flex h-8 items-center justify-center rounded-full border border-white/10 bg-white/[0.06] px-3 text-[11px] font-black text-cyan-100"
+                data-testid={`workbench-batch-progress-${generation.id}`}
+              >
+                {generation.batch.completedCount}/{generation.batch.totalCount}
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {generation.batch.children.map((child) => (
+                  <BatchChildSlot
+                    child={child}
+                    generationId={generation.id}
+                    key={child.generationId}
+                    onSelectResult={onSelectResult}
+                  />
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-2">
+              {displayResults.map((item) => (
+                <CompletedResultThumbnail
+                  generationId={generation.id}
+                  key={item.id}
+                  onSelectResult={onSelectResult}
+                  result={item}
+                />
+              ))}
+            </div>
+          )}
+        </>
       ) : (
         <button
           className="overflow-hidden rounded-[16px] border border-white/8 bg-black/20"

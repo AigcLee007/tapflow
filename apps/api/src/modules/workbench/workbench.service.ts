@@ -19,6 +19,10 @@ type WorkbenchContext = {
 };
 
 type WorkbenchGenerationRow = {
+  batch_id: string | null;
+  batch_index: number | null;
+  batch_role: "single" | "parent" | "child";
+  batch_total: number | null;
   charged_credits: string | null;
   created_at: string;
   display_mode: "merged" | "separate";
@@ -28,6 +32,7 @@ type WorkbenchGenerationRow = {
   id: string;
   model_id: string;
   params_json: Record<string, unknown>;
+  parent_generation_id: string | null;
   prompt: string;
   reference_asset_ids: string[];
   reference_upload_ids: string[];
@@ -91,6 +96,21 @@ type FlowDraftRow = {
   id: string;
 };
 
+type CreateGenerationRowInput = {
+  batchId: string | null;
+  batchIndex: number | null;
+  batchRole: "single" | "parent" | "child";
+  batchTotal: number | null;
+  context: WorkbenchContext;
+  estimatedCredits: number;
+  input: CreateWorkbenchGenerationInput;
+  parentGenerationId: string | null;
+  requestedCount: number;
+  reserveLedgerId: string | null;
+  reservedCredits: number;
+  status: "queued";
+};
+
 export class WorkbenchApiError extends Error {
   readonly code: string;
   readonly details?: unknown;
@@ -111,8 +131,32 @@ function toNumber(value: string | null | undefined): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function mapGeneration(row: WorkbenchGenerationRow, results: WorkbenchResultRow[]) {
+function mapResult(result: WorkbenchResultRow) {
   return {
+    assetId: result.asset_id,
+    createdAt: result.created_at,
+    downloadUrl: result.download_url,
+    downloadUrlExpiresAt: result.download_expires_at,
+    height: result.height,
+    id: result.id,
+    metadata: result.metadata_json ?? {},
+    mimeType: result.mime_type,
+    originalFilename: result.original_filename,
+    previewUrl: result.preview_url,
+    previewUrlExpiresAt: result.preview_expires_at,
+    sortOrder: result.sort_order,
+    status: result.asset_status,
+    width: result.width,
+  };
+}
+
+function mapGeneration(row: WorkbenchGenerationRow, results: ReturnType<typeof mapResult>[]) {
+  return {
+    batch: null,
+    batchId: row.batch_id,
+    batchIndex: row.batch_index,
+    batchRole: row.batch_role,
+    batchTotal: row.batch_total,
     chargedCredits: row.charged_credits === null ? null : toNumber(row.charged_credits),
     createdAt: row.created_at,
     displayMode: row.display_mode,
@@ -122,28 +166,14 @@ function mapGeneration(row: WorkbenchGenerationRow, results: WorkbenchResultRow[
     id: row.id,
     modelId: row.model_id,
     params: row.params_json ?? {},
+    parentGenerationId: row.parent_generation_id,
     prompt: row.prompt,
     referenceAssetIds: row.reference_asset_ids ?? [],
     referenceUploadIds: row.reference_upload_ids ?? [],
     requestedCount: row.requested_count,
     reservedCredits: toNumber(row.reserved_credits),
     reserveLedgerId: row.reserve_ledger_id,
-    results: results.map((result) => ({
-      assetId: result.asset_id,
-      createdAt: result.created_at,
-      downloadUrl: result.download_url,
-      downloadUrlExpiresAt: result.download_expires_at,
-      height: result.height,
-      id: result.id,
-      metadata: result.metadata_json ?? {},
-      mimeType: result.mime_type,
-      originalFilename: result.original_filename,
-      previewUrl: result.preview_url,
-      previewUrlExpiresAt: result.preview_expires_at,
-      sortOrder: result.sort_order,
-      status: result.asset_status,
-      width: result.width,
-    })),
+    results,
     routeKey: row.route_key,
     sessionId: row.session_id,
     startedAt: row.started_at,
@@ -154,6 +184,10 @@ function mapGeneration(row: WorkbenchGenerationRow, results: WorkbenchResultRow[
 
 function isSupportedReferenceMimeType(mimeType: string | null | undefined) {
   return Boolean(mimeType?.toLowerCase().startsWith("image/"));
+}
+
+function isBatchTerminalStatus(status: string) {
+  return status === "succeeded" || status === "failed" || status === "canceled";
 }
 
 export class WorkbenchService {
@@ -189,6 +223,11 @@ export class WorkbenchService {
             reference_upload_ids::text[] AS reference_upload_ids,
             requested_count,
             display_mode,
+            batch_id::text AS batch_id,
+            parent_generation_id::text AS parent_generation_id,
+            batch_role,
+            batch_index,
+            batch_total,
             estimated_credits::text AS estimated_credits,
             charged_credits::text AS charged_credits,
             reserved_credits::text AS reserved_credits,
@@ -202,6 +241,7 @@ export class WorkbenchService {
           FROM workbench_generations
           WHERE tenant_id = $1::uuid
             AND deleted_at IS NULL
+            AND batch_role IN ('single', 'parent')
             AND ($2::timestamptz IS NULL OR created_at < $2::timestamptz)
           ORDER BY created_at DESC, id DESC
           LIMIT $3::int
@@ -210,7 +250,7 @@ export class WorkbenchService {
       );
 
       const generations = await Promise.all(
-        result.rows.map(async (row) => mapGeneration(row, await this.listResults(client, context, row.id))),
+        result.rows.map(async (row) => this.mapGenerationWithBatch(client, context, row)),
       );
 
       return {
@@ -235,6 +275,11 @@ export class WorkbenchService {
             reference_upload_ids::text[] AS reference_upload_ids,
             requested_count,
             display_mode,
+            batch_id::text AS batch_id,
+            parent_generation_id::text AS parent_generation_id,
+            batch_role,
+            batch_index,
+            batch_total,
             estimated_credits::text AS estimated_credits,
             charged_credits::text AS charged_credits,
             reserved_credits::text AS reserved_credits,
@@ -259,7 +304,7 @@ export class WorkbenchService {
         throw new WorkbenchApiError(404, "WORKBENCH_GENERATION_NOT_FOUND", "Workbench generation not found.");
       }
 
-      return mapGeneration(row, await this.listResults(client, context, row.id));
+      return this.mapGenerationWithBatch(client, context, row);
     }, this.pool);
   }
 
@@ -369,95 +414,86 @@ export class WorkbenchService {
         },
       });
 
-      const inserted = await client.query<WorkbenchGenerationRow>(
-        `
-          INSERT INTO workbench_generations (
-            tenant_id,
-            session_id,
-            created_by,
-            prompt,
-            model_id,
-            route_key,
-            params_json,
-            reference_asset_ids,
-            reference_upload_ids,
-            requested_count,
-            display_mode,
-            estimated_credits,
-            reserved_credits,
-            reserve_ledger_id,
-            status
-          )
-          VALUES (
-            $1::uuid,
-            $2::uuid,
-            $3::uuid,
-            $4,
-            $5,
-            $6,
-            $7::jsonb,
-            $8::uuid[],
-            $9::uuid[],
-            $10::int,
-            $11,
-            $12::numeric,
-            $13::numeric,
-            $14::uuid,
-            'queued'
-          )
-          RETURNING
-            id::text AS id,
-            session_id::text AS session_id,
-            prompt,
-            model_id,
-            route_key,
-            params_json,
-            reference_asset_ids::text[] AS reference_asset_ids,
-            reference_upload_ids::text[] AS reference_upload_ids,
-            requested_count,
-            display_mode,
-            estimated_credits::text AS estimated_credits,
-            charged_credits::text AS charged_credits,
-            reserved_credits::text AS reserved_credits,
-            reserve_ledger_id::text AS reserve_ledger_id,
-            status,
-            error_json,
-            created_at::text AS created_at,
-            updated_at::text AS updated_at,
-            started_at::text AS started_at,
-            finished_at::text AS finished_at
-        `,
-        [
-          context.tenantId,
-          input.sessionId ?? null,
-          context.userId,
-          input.prompt.trim(),
-          input.modelId.trim(),
-          input.routeKey.trim(),
-          JSON.stringify(input.params ?? {}),
-          input.referenceAssetIds,
-          input.referenceUploadIds,
-          input.requestedCount,
-          input.displayMode,
+      if (input.requestedCount <= 1) {
+        const generation = await this.insertGenerationRow(client, {
+          batchId: null,
+          batchIndex: null,
+          batchRole: "single",
+          batchTotal: null,
+          context,
           estimatedCredits,
-          estimatedCredits,
-          reserveLedger.id,
-        ],
-      );
+          input,
+          parentGenerationId: null,
+          requestedCount: input.requestedCount,
+          reserveLedgerId: reserveLedger.id,
+          reservedCredits: estimatedCredits,
+          status: "queued",
+        });
 
-      const generation = inserted.rows[0];
-      const generationId = generation?.id;
-      if (!generationId) {
-        throw new WorkbenchApiError(500, "WORKBENCH_GENERATION_CREATE_FAILED", "Unable to create workbench generation.");
+        await generationQueue.add("workbench.generate", {
+          generationId: generation.id,
+          tenantId: context.tenantId,
+          traceId: context.traceId ?? undefined,
+        });
+
+        return mapGeneration(generation, []);
       }
 
-      await generationQueue.add("workbench.generate", {
-        generationId,
-        tenantId: context.tenantId,
-        traceId: context.traceId ?? undefined,
+      const parent = await this.insertGenerationRow(client, {
+        batchId: null,
+        batchIndex: null,
+        batchRole: "parent",
+        batchTotal: input.requestedCount,
+        context,
+        estimatedCredits,
+        input,
+        parentGenerationId: null,
+        requestedCount: input.requestedCount,
+        reserveLedgerId: reserveLedger.id,
+        reservedCredits: estimatedCredits,
+        status: "queued",
       });
 
-      return mapGeneration(generation, []);
+      const batchId = parent.id;
+      await client.query(
+        `
+          UPDATE workbench_generations
+          SET batch_id = $3::uuid
+          WHERE tenant_id = $1::uuid
+            AND id = $2::uuid
+        `,
+        [context.tenantId, parent.id, batchId],
+      );
+      parent.batch_id = batchId;
+
+      const children: WorkbenchGenerationRow[] = [];
+      for (let index = 0; index < input.requestedCount; index += 1) {
+        const child = await this.insertGenerationRow(client, {
+          batchId,
+          batchIndex: index,
+          batchRole: "child",
+          batchTotal: input.requestedCount,
+          context,
+          estimatedCredits: 0,
+          input,
+          parentGenerationId: parent.id,
+          requestedCount: 1,
+          reserveLedgerId: null,
+          reservedCredits: 0,
+          status: "queued",
+        });
+        children.push(child);
+      }
+
+      for (const child of children) {
+        await generationQueue.add("workbench.generate", {
+          generationId: child.id,
+          tenantId: context.tenantId,
+          traceId: context.traceId ?? undefined,
+        });
+      }
+
+      return this.mapBatchGeneration(client, context, parent, children);
     }, this.pool);
   }
 
@@ -511,6 +547,11 @@ export class WorkbenchService {
             reference_upload_ids::text[] AS reference_upload_ids,
             requested_count,
             display_mode,
+            batch_id::text AS batch_id,
+            parent_generation_id::text AS parent_generation_id,
+            batch_role,
+            batch_index,
+            batch_total,
             estimated_credits::text AS estimated_credits,
             charged_credits::text AS charged_credits,
             reserved_credits::text AS reserved_credits,
@@ -528,6 +569,34 @@ export class WorkbenchService {
       const row = result.rows[0];
       if (!row?.id) {
         throw new WorkbenchApiError(404, "WORKBENCH_GENERATION_NOT_FOUND", "Workbench generation not found.");
+      }
+
+      if (row.batch_role === "parent") {
+        await client.query(
+          `
+            UPDATE workbench_generations
+            SET
+              deleted_at = now(),
+              deleted_by = $3::uuid,
+              status = CASE
+                WHEN status IN ('pending', 'queued', 'running', 'waiting_provider') THEN 'canceled'
+                ELSE status
+              END,
+              finished_at = CASE
+                WHEN status IN ('pending', 'queued', 'running', 'waiting_provider') THEN COALESCE(finished_at, now())
+                ELSE finished_at
+              END,
+              error_json = CASE
+                WHEN status IN ('pending', 'queued', 'running', 'waiting_provider') THEN '{"code":"WORKBENCH_GENERATION_DELETED","message":"Workbench generation was deleted by the user."}'::jsonb
+                ELSE error_json
+              END,
+              updated_at = now()
+            WHERE tenant_id = $1::uuid
+              AND parent_generation_id = $2::uuid
+              AND deleted_at IS NULL
+          `,
+          [context.tenantId, generationId, context.userId],
+        );
       }
 
       if (["pending", "queued", "running", "waiting_provider", "canceled"].includes(row.status)) {
@@ -702,13 +771,13 @@ export class WorkbenchService {
         previewExpiresAt = signedPreview.expiresAt;
       }
 
-      return {
+      return mapResult({
         ...row,
         download_expires_at: downloadExpiresAt,
         download_url: downloadUrl,
         preview_expires_at: previewExpiresAt,
         preview_url: previewUrl,
-      };
+      });
     }));
   }
 
@@ -741,6 +810,222 @@ export class WorkbenchService {
       `,
       [tenantId, generation.id, refundLedger.id],
     );
+  }
+
+  private async insertGenerationRow(
+    client: PoolClient,
+    input: CreateGenerationRowInput,
+  ): Promise<WorkbenchGenerationRow> {
+    const inserted = await client.query<WorkbenchGenerationRow>(
+      `
+        INSERT INTO workbench_generations (
+          tenant_id,
+          session_id,
+          created_by,
+          prompt,
+          model_id,
+          route_key,
+          params_json,
+          reference_asset_ids,
+          reference_upload_ids,
+          requested_count,
+          display_mode,
+          estimated_credits,
+          reserved_credits,
+          reserve_ledger_id,
+          batch_id,
+          parent_generation_id,
+          batch_role,
+          batch_index,
+          batch_total,
+          status
+        )
+        VALUES (
+          $1::uuid,
+          $2::uuid,
+          $3::uuid,
+          $4,
+          $5,
+          $6,
+          $7::jsonb,
+          $8::uuid[],
+          $9::uuid[],
+          $10::int,
+          $11,
+          $12::numeric,
+          $13::numeric,
+          $14::uuid,
+          $15::uuid,
+          $16::uuid,
+          $17,
+          $18::int,
+          $19::int,
+          $20
+        )
+        RETURNING
+          id::text AS id,
+          session_id::text AS session_id,
+          prompt,
+          model_id,
+          route_key,
+          params_json,
+          reference_asset_ids::text[] AS reference_asset_ids,
+          reference_upload_ids::text[] AS reference_upload_ids,
+          requested_count,
+          display_mode,
+          batch_id::text AS batch_id,
+          parent_generation_id::text AS parent_generation_id,
+          batch_role,
+          batch_index,
+          batch_total,
+          estimated_credits::text AS estimated_credits,
+          charged_credits::text AS charged_credits,
+          reserved_credits::text AS reserved_credits,
+          reserve_ledger_id::text AS reserve_ledger_id,
+          status,
+          error_json,
+          created_at::text AS created_at,
+          updated_at::text AS updated_at,
+          started_at::text AS started_at,
+          finished_at::text AS finished_at
+      `,
+      [
+        input.context.tenantId,
+        input.input.sessionId ?? null,
+        input.context.userId,
+        input.input.prompt.trim(),
+        input.input.modelId.trim(),
+        input.input.routeKey.trim(),
+        JSON.stringify(input.input.params ?? {}),
+        input.input.referenceAssetIds,
+        input.input.referenceUploadIds,
+        input.requestedCount,
+        input.input.displayMode,
+        input.estimatedCredits,
+        input.reservedCredits,
+        input.reserveLedgerId,
+        input.batchId,
+        input.parentGenerationId,
+        input.batchRole,
+        input.batchIndex,
+        input.batchTotal,
+        input.status,
+      ],
+    );
+
+    const row = inserted.rows[0];
+    if (!row?.id) {
+      throw new WorkbenchApiError(500, "WORKBENCH_GENERATION_CREATE_FAILED", "Unable to create workbench generation.");
+    }
+    return row;
+  }
+
+  private async listBatchChildren(
+    client: PoolClient,
+    context: WorkbenchContext,
+    parentGenerationId: string,
+  ) {
+    const result = await client.query<WorkbenchGenerationRow>(
+      `
+        SELECT
+          id::text AS id,
+          session_id::text AS session_id,
+          prompt,
+          model_id,
+          route_key,
+          params_json,
+          reference_asset_ids::text[] AS reference_asset_ids,
+          reference_upload_ids::text[] AS reference_upload_ids,
+          requested_count,
+          display_mode,
+          batch_id::text AS batch_id,
+          parent_generation_id::text AS parent_generation_id,
+          batch_role,
+          batch_index,
+          batch_total,
+          estimated_credits::text AS estimated_credits,
+          charged_credits::text AS charged_credits,
+          reserved_credits::text AS reserved_credits,
+          reserve_ledger_id::text AS reserve_ledger_id,
+          status,
+          error_json,
+          created_at::text AS created_at,
+          updated_at::text AS updated_at,
+          started_at::text AS started_at,
+          finished_at::text AS finished_at
+        FROM workbench_generations
+        WHERE tenant_id = $1::uuid
+          AND parent_generation_id = $2::uuid
+          AND deleted_at IS NULL
+        ORDER BY batch_index ASC, created_at ASC
+      `,
+      [context.tenantId, parentGenerationId],
+    );
+
+    return result.rows;
+  }
+
+  private async mapBatchGeneration(
+    client: PoolClient,
+    context: WorkbenchContext,
+    parent: WorkbenchGenerationRow,
+    children?: WorkbenchGenerationRow[],
+  ) {
+    const batchChildren = children ?? await this.listBatchChildren(client, context, parent.id);
+    const childViews = await Promise.all(
+      batchChildren.map(async (child) => ({
+        batchIndex: child.batch_index ?? 0,
+        chargedCredits: child.charged_credits === null ? null : toNumber(child.charged_credits),
+        errorJson: child.error_json as Record<string, unknown> | null,
+        finishedAt: child.finished_at,
+        generationId: child.id,
+        results: await this.listResults(client, context, child.id),
+        startedAt: child.started_at,
+        status: child.status,
+        updatedAt: child.updated_at,
+      })),
+    );
+
+    const flattenedResults = childViews.flatMap((child) =>
+      child.results.map((result, index) => ({
+        ...result,
+        metadata: {
+          ...result.metadata,
+          batchIndex: child.batchIndex,
+          childGenerationId: child.generationId,
+        },
+        sortOrder: child.batchIndex * 100 + index,
+      })),
+    );
+
+    const completedCount = childViews.filter((child) => child.results.length > 0).length;
+    const failedCount = childViews.filter((child) => child.status === "failed").length;
+    const runningCount = childViews.filter((child) => !isBatchTerminalStatus(child.status)).length;
+
+    return {
+      ...mapGeneration(parent, flattenedResults),
+      batch: {
+        batchId: parent.batch_id ?? parent.id,
+        children: childViews,
+        completedCount,
+        failedCount,
+        parentGenerationId: parent.id,
+        pendingCount: Math.max(0, batchChildren.length - completedCount - failedCount - runningCount),
+        runningCount,
+        totalCount: parent.batch_total ?? batchChildren.length,
+      },
+    };
+  }
+
+  private async mapGenerationWithBatch(
+    client: PoolClient,
+    context: WorkbenchContext,
+    row: WorkbenchGenerationRow,
+  ) {
+    if (row.batch_role === "parent") {
+      return this.mapBatchGeneration(client, context, row);
+    }
+    return mapGeneration(row, await this.listResults(client, context, row.id));
   }
 
   private async assertReferenceAssetsExist(client: PoolClient, tenantId: string, assetIds: string[]) {

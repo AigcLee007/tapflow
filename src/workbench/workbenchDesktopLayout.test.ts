@@ -76,4 +76,44 @@ describe("workbenchDesktopLayout", () => {
 
     expect(items.map((item) => item.id)).toEqual(["done-2", "done-1"]);
   });
+
+  test("keeps partial batch generations active while showing available results", () => {
+    const partial = generation("batch-1", "running", "2026-06-18T10:00:00.000Z", 1);
+    partial.batch = {
+      batchId: "batch-1",
+      children: [
+        {
+          batchIndex: 0,
+          chargedCredits: null,
+          errorJson: null,
+          finishedAt: "2026-06-18T10:01:00.000Z",
+          generationId: "child-1",
+          results: partial.results,
+          startedAt: null,
+          status: "succeeded",
+          updatedAt: "2026-06-18T10:01:00.000Z",
+        },
+        {
+          batchIndex: 1,
+          chargedCredits: null,
+          errorJson: null,
+          finishedAt: null,
+          generationId: "child-2",
+          results: [],
+          startedAt: null,
+          status: "running",
+          updatedAt: "2026-06-18T10:01:00.000Z",
+        },
+      ],
+      completedCount: 1,
+      failedCount: 0,
+      parentGenerationId: "batch-1",
+      pendingCount: 0,
+      runningCount: 1,
+      totalCount: 2,
+    };
+
+    expect(getWorkbenchActiveGenerations([partial])).toHaveLength(1);
+    expect(getWorkbenchCompletedGenerations([partial])).toHaveLength(0);
+  });
 });

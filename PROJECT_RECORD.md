@@ -84,6 +84,7 @@ As of 2026-06-13:
 - `/assets` drag multi-select now uses a floating contextual toolbar at the user's selection endpoint instead of a sticky top bulk bar, with cancel, select all, favorite, download original, and delete actions available next to the selection
 - `/assets` drag multi-select has been further reworked against the smoother `D:\gpt-iamge-2` task-grid interaction pattern: selection now uses page coordinates, drag thresholding, hit slop, body-level text-selection suppression, auto-scroll near viewport edges, and a fixed screen-centered floating toolbar instead of edge-sensitive selection-bound positioning
 - standalone `/workbench` follow-up fixes are in place: desktop left parameter dock now keeps the generate action visible at 100% browser zoom, fullscreen result preview constrains images by viewport longest-side fit, completed cards expose download/reference/delete actions, and active stuck tasks can be soft-deleted/canceled with reservation refund protection
+- workbench multi-image generation now uses parent batch rows plus one-image child generation rows, allowing each image to appear as soon as its child task finishes while preserving grouped creator-facing batch cards, partial-progress polling, and single parent-level billing settlement/refund semantics
 
 ## 2026-06-18 - Workbench Follow-up: Fixed Composer, Preview Fit, and Deletion Actions
 

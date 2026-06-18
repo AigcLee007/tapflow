@@ -196,4 +196,81 @@ describe("WorkbenchGenerationService", () => {
     expect(client.query.mock.calls[0]?.[0]).toContain("deleted_at IS NULL");
     expect(client.query.mock.calls[0]?.[0]).toContain("status <> 'canceled'");
   });
+
+  test("child batch generations send one-image metadata to the provider", async () => {
+    const client = {
+      query: vi.fn(async (sql: string) => {
+        if (
+          sql === "BEGIN" ||
+          sql === "COMMIT" ||
+          sql === "ROLLBACK" ||
+          sql.includes("set_config('app.tenant_id'") ||
+          sql.includes("set_config('app.user_id'")
+        ) {
+          return { rows: [] };
+        }
+        return { rows: [] };
+      }),
+      release: vi.fn(),
+    };
+    const mediaRuntime = {
+      generateImage: vi.fn(async () => ({
+        outputs: [{ base64: "data:image/png;base64,AAAA" }],
+        status: "succeeded" as const,
+      })),
+      pollTask: vi.fn(),
+    };
+    const service = new WorkbenchGenerationService({
+      assetBucket: "test-bucket",
+      assetStore: {} as never,
+      mediaRuntime,
+      pool: {
+        connect: vi.fn(async () => client),
+      } as never,
+    });
+
+    await (service as unknown as {
+      createProviderTask(
+        tenantId: string,
+        generation: {
+          batch_role: "child";
+          created_by: string | null;
+          display_mode: "merged";
+          model_id: string;
+          params_json: Record<string, unknown>;
+          prompt: string;
+          reference_asset_ids: string[];
+          reference_upload_ids: string[];
+          requested_count: number;
+          route_key: string;
+        },
+      ): Promise<unknown>;
+      loadReferenceAssetsForGeneration(tenantId: string, generation: unknown): Promise<unknown[]>;
+    }).createProviderTask(
+      "00000000-0000-4000-8000-000000000001",
+      {
+        batch_role: "child",
+        created_by: "00000000-0000-4000-8000-000000000009",
+        display_mode: "merged",
+        model_id: "pixellelabs.nano-banana-pro",
+        params_json: { aspect_ratio: "1:1" },
+        prompt: "batch child",
+        reference_asset_ids: [],
+        reference_upload_ids: [],
+        requested_count: 1,
+        route_key: "image.pixellelabs.nano-banana-pro",
+      },
+    );
+
+    expect(mediaRuntime.generateImage).toHaveBeenCalledTimes(1);
+    expect(mediaRuntime.generateImage.mock.calls[0]?.[1]).toMatchObject({
+      metadata: {
+        params: {
+          aspect_ratio: "1:1",
+          displayMode: "merged",
+        },
+      },
+    });
+    expect(mediaRuntime.generateImage.mock.calls[0]?.[1]?.metadata?.params?.n).toBeUndefined();
+  });
 });

@@ -31,7 +31,17 @@ function isTerminalStatus(status: string) {
 }
 
 function isSucceededWithoutResults(generation: WorkbenchGenerationView) {
-  return generation.status === "succeeded" && generation.results.length === 0;
+  const resultCount = generation.batch
+    ? generation.batch.children.reduce((count, child) => count + child.results.length, 0)
+    : generation.results.length;
+  return generation.status === "succeeded" && resultCount === 0;
+}
+
+function isBatchTerminal(generation: WorkbenchGenerationView) {
+  if (!generation.batch) {
+    return isTerminalStatus(generation.status) && !isSucceededWithoutResults(generation);
+  }
+  return generation.batch.runningCount === 0 && generation.batch.pendingCount === 0;
 }
 
 export function useWorkbenchGenerations() {
@@ -74,9 +84,9 @@ export function useWorkbenchGenerations() {
             await new Promise((resolve) => window.setTimeout(resolve, 1200));
             continue;
           }
-          if (isTerminalStatus(next.status)) {
+          if (isBatchTerminal(next)) {
             setError(null);
-            if (isSucceededWithoutResults(next)) {
+            if (!next.batch && isSucceededWithoutResults(next)) {
               window.setTimeout(() => void refresh(), 900);
             }
             break;
@@ -101,7 +111,7 @@ export function useWorkbenchGenerations() {
         setGenerations(result.generations);
         setError(null);
         result.generations
-          .filter((generation) => !isTerminalStatus(generation.status) || isSucceededWithoutResults(generation))
+          .filter((generation) => !isBatchTerminal(generation))
           .forEach((generation) => {
             void pollGeneration(generation.id);
           });
@@ -133,7 +143,7 @@ export function useWorkbenchGenerations() {
       });
       setGenerations((current) => mergeGeneration(current, created));
       setError(null);
-      if (!isTerminalStatus(created.status) || isSucceededWithoutResults(created)) {
+      if (!isBatchTerminal(created)) {
         void pollGeneration(created.id);
       }
       return created;
@@ -148,7 +158,7 @@ export function useWorkbenchGenerations() {
   const retry = React.useCallback(async (generationId: string) => {
     const created = await retryWorkbenchGeneration(generationId);
     setGenerations((current) => mergeGeneration(current, created));
-    if (!isTerminalStatus(created.status)) {
+    if (!isBatchTerminal(created)) {
       void pollGeneration(created.id);
     }
     return created;

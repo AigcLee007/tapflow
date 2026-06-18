@@ -20,6 +20,9 @@ type WorkbenchGenerateJobPayload = {
 type MediaRuntimeLike = Pick<DatabaseMediaRuntime, "generateImage" | "pollTask">;
 
 type WorkbenchGenerationRecord = {
+  batch_id: string | null;
+  batch_index: number | null;
+  batch_role: "single" | "parent" | "child";
   charged_credits: string | null;
   created_by: string | null;
   display_mode: "merged" | "separate";
@@ -27,6 +30,7 @@ type WorkbenchGenerationRecord = {
   id: string;
   model_id: string;
   params_json: Record<string, unknown>;
+  parent_generation_id: string | null;
   prompt: string;
   provider_task_id: string | null;
   reference_asset_ids: string[];
@@ -38,6 +42,7 @@ type WorkbenchGenerationRecord = {
   session_id: string | null;
   status: string;
   tenant_id: string;
+  batch_total: number | null;
   updated_at: string;
 };
 
@@ -82,10 +87,11 @@ function buildMetadataParams(
   generation: WorkbenchGenerationRecord,
 ): Record<string, unknown> {
   const params = isRecord(generation.params_json) ? generation.params_json : {};
+  const requestedCount = generation.batch_role === "child" ? 1 : generation.requested_count;
   return {
     ...params,
     ...(generation.display_mode ? { displayMode: generation.display_mode } : {}),
-    ...(generation.requested_count > 1 ? { n: generation.requested_count } : {}),
+    ...(requestedCount > 1 ? { n: requestedCount } : {}),
   };
 }
 
@@ -154,6 +160,16 @@ export class WorkbenchGenerationService {
       };
     }
 
+    if (generation.batch_role === "parent") {
+      return {
+        jobId: null,
+        queueName: "workbench.generate",
+        status: "ok",
+        tenantId: input.tenantId,
+        traceId: input.traceId ?? null,
+      };
+    }
+
     try {
       const result = generation.status === "waiting_provider" && generation.provider_task_id
         ? {
@@ -198,8 +214,13 @@ export class WorkbenchGenerationService {
           });
 
           await this.insertResults(client, input.tenantId, generation.id, assetRefs);
-          await this.settleGeneration(client, input.tenantId, generation, assetRefs.length);
           await this.markGenerationSucceeded(client, input.tenantId, generation.id);
+          if (generation.batch_role === "child" && generation.parent_generation_id) {
+            await this.refreshBatchParentStatus(client, input.tenantId, generation.parent_generation_id);
+            await this.settleBatchParentIfComplete(client, input.tenantId, generation.parent_generation_id);
+          } else {
+            await this.settleGeneration(client, input.tenantId, generation, assetRefs.length);
+          }
         },
         this.pool,
       );
@@ -254,6 +275,11 @@ export class WorkbenchGenerationService {
           reference_upload_ids::text[] AS reference_upload_ids,
           requested_count,
           display_mode,
+          batch_id::text AS batch_id,
+          parent_generation_id::text AS parent_generation_id,
+          batch_role,
+          batch_index,
+          batch_total,
           estimated_credits::text AS estimated_credits,
           charged_credits::text AS charged_credits,
           reserved_credits::text AS reserved_credits,
@@ -741,12 +767,158 @@ export class WorkbenchGenerationService {
     );
   }
 
+  private async loadGenerationById(
+    client: PoolClient,
+    tenantId: string,
+    generationId: string,
+  ): Promise<WorkbenchGenerationRecord | null> {
+    const result = await client.query<WorkbenchGenerationRecord>(
+      `
+        SELECT
+          id::text AS id,
+          tenant_id::text AS tenant_id,
+          session_id::text AS session_id,
+          created_by::text AS created_by,
+          prompt,
+          model_id,
+          route_key,
+          params_json,
+          provider_task_id,
+          reference_asset_ids::text[] AS reference_asset_ids,
+          reference_upload_ids::text[] AS reference_upload_ids,
+          requested_count,
+          display_mode,
+          batch_id::text AS batch_id,
+          parent_generation_id::text AS parent_generation_id,
+          batch_role,
+          batch_index,
+          batch_total,
+          estimated_credits::text AS estimated_credits,
+          charged_credits::text AS charged_credits,
+          reserved_credits::text AS reserved_credits,
+          reserve_ledger_id::text AS reserve_ledger_id,
+          status,
+          updated_at::text AS updated_at
+        FROM workbench_generations
+        WHERE tenant_id = $1::uuid
+          AND id = $2::uuid
+          AND deleted_at IS NULL
+        LIMIT 1
+      `,
+      [tenantId, generationId],
+    );
+
+    return result.rows[0] ?? null;
+  }
+
+  private async refreshBatchParentStatus(client: PoolClient, tenantId: string, parentGenerationId: string) {
+    const result = await client.query<{
+      canceled_count: number;
+      child_count: number;
+      failed_count: number;
+      result_count: number;
+      running_count: number;
+      terminal_count: number;
+    }>(
+      `
+        SELECT
+          COUNT(DISTINCT wg.id)::int AS child_count,
+          COUNT(DISTINCT wg.id) FILTER (WHERE wg.status = 'canceled')::int AS canceled_count,
+          COUNT(DISTINCT wg.id) FILTER (WHERE wg.status = 'failed')::int AS failed_count,
+          COUNT(DISTINCT wg.id) FILTER (WHERE wg.status IN ('pending', 'queued', 'running', 'waiting_provider'))::int AS running_count,
+          COUNT(DISTINCT wg.id) FILTER (WHERE wg.status IN ('succeeded', 'failed', 'canceled'))::int AS terminal_count,
+          COUNT(wr.id)::int AS result_count
+        FROM workbench_generations wg
+        LEFT JOIN workbench_results wr
+          ON wr.tenant_id = wg.tenant_id
+         AND wr.generation_id = wg.id
+        WHERE wg.tenant_id = $1::uuid
+          AND wg.parent_generation_id = $2::uuid
+          AND wg.deleted_at IS NULL
+      `,
+      [tenantId, parentGenerationId],
+    );
+
+    const row = result.rows[0];
+    if (!row || row.child_count === 0) return;
+
+    const nextStatus =
+      row.running_count > 0
+        ? "running"
+        : row.terminal_count === row.canceled_count
+          ? "canceled"
+          : row.result_count > 0
+            ? "succeeded"
+            : "failed";
+
+    await client.query(
+      `
+        UPDATE workbench_generations
+        SET
+          status = $3,
+          finished_at = CASE
+            WHEN $3 IN ('succeeded', 'failed', 'canceled') THEN COALESCE(finished_at, now())
+            ELSE finished_at
+          END,
+          updated_at = now()
+        WHERE tenant_id = $1::uuid
+          AND id = $2::uuid
+          AND batch_role = 'parent'
+      `,
+      [tenantId, parentGenerationId, nextStatus],
+    );
+  }
+
+  private async settleBatchParentIfComplete(
+    client: PoolClient,
+    tenantId: string,
+    parentGenerationId: string,
+  ) {
+    const parent = await this.loadGenerationById(client, tenantId, parentGenerationId);
+    if (!parent || parent.batch_role !== "parent" || parent.charged_credits !== null) {
+      return;
+    }
+
+    const result = await client.query<{ result_count: number; running_count: number }>(
+      `
+        SELECT
+          COUNT(wr.id)::int AS result_count,
+          COUNT(DISTINCT wg.id) FILTER (WHERE wg.status IN ('pending', 'queued', 'running', 'waiting_provider'))::int AS running_count
+        FROM workbench_generations wg
+        LEFT JOIN workbench_results wr
+          ON wr.tenant_id = wg.tenant_id
+         AND wr.generation_id = wg.id
+        WHERE wg.tenant_id = $1::uuid
+          AND wg.parent_generation_id = $2::uuid
+          AND wg.deleted_at IS NULL
+      `,
+      [tenantId, parentGenerationId],
+    );
+
+    const row = result.rows[0];
+    if (!row || row.running_count > 0) {
+      return;
+    }
+
+    if (row.result_count > 0) {
+      await this.settleGeneration(client, tenantId, parent, row.result_count);
+      return;
+    }
+
+    await this.refundGeneration(client, tenantId, parent);
+  }
+
   private async failGeneration(tenantId: string, generation: WorkbenchGenerationRecord, error: unknown) {
     await withTenantTransaction(
       { tenantId, userId: null },
       async (client) => {
         await this.markGenerationFailed(client, tenantId, generation.id, error);
-        await this.refundGeneration(client, tenantId, generation);
+        if (generation.batch_role === "child" && generation.parent_generation_id) {
+          await this.refreshBatchParentStatus(client, tenantId, generation.parent_generation_id);
+          await this.settleBatchParentIfComplete(client, tenantId, generation.parent_generation_id);
+        } else {
+          await this.refundGeneration(client, tenantId, generation);
+        }
       },
       this.pool,
     ).catch(() => {});
