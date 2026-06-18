@@ -85,6 +85,19 @@ As of 2026-06-13:
 - `/assets` drag multi-select has been further reworked against the smoother `D:\gpt-iamge-2` task-grid interaction pattern: selection now uses page coordinates, drag thresholding, hit slop, body-level text-selection suppression, auto-scroll near viewport edges, and a fixed screen-centered floating toolbar instead of edge-sensitive selection-bound positioning
 - standalone `/workbench` follow-up fixes are in place: desktop left parameter dock now keeps the generate action visible at 100% browser zoom, fullscreen result preview constrains images by viewport longest-side fit, completed cards expose download/reference/delete actions, and active stuck tasks can be soft-deleted/canceled with reservation refund protection
 - workbench multi-image generation now uses parent batch rows plus one-image child generation rows, allowing each image to appear as soon as its child task finishes while preserving grouped creator-facing batch cards, partial-progress polling, and single parent-level billing settlement/refund semantics
+- v2 auth refresh now coalesces concurrent frontend refresh attempts, proactively refreshes near-expiring access tokens, avoids clearing login state on transient server errors, and honors configured token TTL values
+
+## 2026-06-18 - Auth Refresh Stability Upgrade
+
+- Added frontend v2 auth refresh single-flight behavior so concurrent API calls share one `/api/v2/auth/refresh` request instead of racing the same rotating refresh token.
+- Added proactive access-token refresh when a JWT is close to expiry, reducing user-visible 401 refresh cycles during normal usage.
+- Changed refresh failure handling so only confirmed invalid/unauthorized refresh-token failures clear stored auth; transient server errors and rate-limit style failures no longer immediately kick users out.
+- Changed AuthProvider session loading so temporary `/auth/me` failures preserve stored tokens and show an error instead of forcing logout.
+- Fixed API environment parsing so `ACCESS_TOKEN_TTL_SECONDS` and `REFRESH_TOKEN_TTL_SECONDS` now control the actual access/refresh token lifetimes.
+- Validation:
+  - `npx vitest run src/services/v2HttpClient.test.ts`
+  - `npx vitest run src/auth/AuthProvider.test.tsx`
+  - `npm run test --workspace @aigc-flow/api -- env.test.ts`
 
 ## 2026-06-18 - Workbench Follow-up: Fixed Composer, Preview Fit, and Deletion Actions
 

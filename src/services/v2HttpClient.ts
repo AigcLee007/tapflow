@@ -47,6 +47,10 @@ type RefreshResponse = {
   refreshToken: string;
 };
 
+const ACCESS_TOKEN_REFRESH_SKEW_SECONDS = 120;
+
+let refreshPromise: Promise<RefreshResponse> | null = null;
+
 const canUseStorage = () =>
   typeof window !== "undefined" && typeof window.localStorage !== "undefined";
 
@@ -94,6 +98,46 @@ export function clearStoredAuth() {
   emitAuthChange();
 }
 
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  const parts = token.split(".");
+  if (parts.length !== 3) {
+    return null;
+  }
+
+  try {
+    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), "=");
+    return JSON.parse(atob(padded)) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function shouldRefreshAccessTokenSoon(token: string | null): boolean {
+  if (!token) {
+    return false;
+  }
+
+  const payload = decodeJwtPayload(token);
+  const exp = typeof payload?.exp === "number" ? payload.exp : null;
+  if (!exp) {
+    return false;
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  return exp - now <= ACCESS_TOKEN_REFRESH_SKEW_SECONDS;
+}
+
+function shouldClearAuthAfterRefreshFailure(error: unknown): boolean {
+  return (
+    error instanceof V2HttpError &&
+    error.status === 401 &&
+    (error.code === "INVALID_REFRESH_TOKEN" ||
+      error.code === "MISSING_REFRESH_TOKEN" ||
+      error.code === "UNAUTHORIZED")
+  );
+}
+
 async function parseResponse<T>(response: Response): Promise<T> {
   const payload = (await response.json().catch(() => ({}))) as T & ErrorEnvelope;
   if (!response.ok) {
@@ -109,7 +153,7 @@ async function parseResponse<T>(response: Response): Promise<T> {
   return payload as T;
 }
 
-export async function refreshAccessToken(): Promise<RefreshResponse> {
+async function performRefreshAccessToken(): Promise<RefreshResponse> {
   const refreshToken = getStoredRefreshToken();
   if (!refreshToken) {
     clearStoredAuth();
@@ -133,9 +177,21 @@ export async function refreshAccessToken(): Promise<RefreshResponse> {
     setStoredTokens(result);
     return result;
   } catch (error) {
-    clearStoredAuth();
+    if (shouldClearAuthAfterRefreshFailure(error)) {
+      clearStoredAuth();
+    }
     throw error;
   }
+}
+
+export async function refreshAccessToken(): Promise<RefreshResponse> {
+  if (!refreshPromise) {
+    refreshPromise = performRefreshAccessToken().finally(() => {
+      refreshPromise = null;
+    });
+  }
+
+  return refreshPromise;
 }
 
 async function request<T>(
@@ -146,11 +202,28 @@ async function request<T>(
 ): Promise<T> {
   const useAuth = options.auth !== false;
   const headers: Record<string, string> = {};
-  const token = getStoredAccessToken();
+  let token = getStoredAccessToken();
 
   if (body !== undefined) {
     headers["Content-Type"] = "application/json";
   }
+
+  if (
+    useAuth &&
+    options.retryOnUnauthorized !== false &&
+    getStoredRefreshToken() &&
+    shouldRefreshAccessTokenSoon(token)
+  ) {
+    try {
+      token = (await refreshAccessToken()).accessToken;
+    } catch (error) {
+      if (shouldClearAuthAfterRefreshFailure(error)) {
+        clearStoredAuth();
+        throw error;
+      }
+    }
+  }
+
   if (useAuth && token) {
     headers.Authorization = token.startsWith("Bearer ") ? token : `Bearer ${token}`;
   }
@@ -182,7 +255,9 @@ async function request<T>(
       });
       return parseResponse<T>(retryResponse);
     } catch (error) {
-      clearStoredAuth();
+      if (shouldClearAuthAfterRefreshFailure(error)) {
+        clearStoredAuth();
+      }
       throw error;
     }
   }

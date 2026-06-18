@@ -146,6 +146,16 @@ export function getApiEnv(): ApiEnv {
     process.env.AUTH_RATE_LIMIT_WINDOW_MS,
     DEV_AUTH_RATE_LIMIT_WINDOW_MS,
   );
+  const accessTokenTtlSeconds = parsePositiveIntegerEnv(
+    "ACCESS_TOKEN_TTL_SECONDS",
+    process.env.ACCESS_TOKEN_TTL_SECONDS,
+    60 * 15,
+  );
+  const refreshTokenTtlSeconds = parsePositiveIntegerEnv(
+    "REFRESH_TOKEN_TTL_SECONDS",
+    process.env.REFRESH_TOKEN_TTL_SECONDS,
+    60 * 60 * 24 * 7,
+  );
   const securityHeadersEnabled = parseBooleanEnv(
     "SECURITY_HEADERS_ENABLED",
     process.env.SECURITY_HEADERS_ENABLED,
@@ -217,7 +227,7 @@ export function getApiEnv(): ApiEnv {
   }
 
   return {
-    accessTokenTtlSeconds: 60 * 15,
+    accessTokenTtlSeconds,
     adminEmails,
     agentPlannerFallbackEnabled,
     agentPlannerEnabled,
@@ -236,7 +246,7 @@ export function getApiEnv(): ApiEnv {
     nodeEnv,
     queuePrefix,
     redisUrl,
-    refreshTokenTtlSeconds: 60 * 60 * 24 * 7,
+    refreshTokenTtlSeconds,
     s3AccessKeyId,
     s3Bucket,
     s3Endpoint,

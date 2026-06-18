@@ -39,13 +39,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setSession(nextSession);
       }
     } catch (loadError) {
-      clearStoredAuth();
+      const isUnauthorized = loadError instanceof V2HttpError && loadError.status === 401;
+      if (isUnauthorized) {
+        clearStoredAuth();
+      }
       if (requestSequenceRef.current === requestId) {
         setSession(null);
       }
       if (
         requestSequenceRef.current === requestId &&
-        !(loadError instanceof V2HttpError && loadError.status === 401)
+        !isUnauthorized
       ) {
         setError(loadError instanceof Error ? loadError.message : "账号会话加载失败。");
       }
