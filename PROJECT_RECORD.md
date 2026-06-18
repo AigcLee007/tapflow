@@ -104,6 +104,30 @@ As of 2026-06-13:
   - `npx vitest run src/workbench/workbenchDesktopLayout.test.ts src/workbench/WorkbenchPage.test.tsx`
   - `npm run build`
 
+## 2026-06-18 - Workbench Two-Column Results Rail Desktop Redesign
+
+- Replaced the just-landed desktop three-pane workbench shell with the newly approved two-column workstation layout for `/workbench`.
+- Desktop now uses a fixed `3:7` shell:
+  - left column = existing parameter composer dock
+  - right column = unified results workspace
+- Removed the dedicated desktop center current-task pane so desktop width is no longer split across:
+  - stage hero
+  - recent-task list
+  - narrow history dock
+- Kept the left parameter area visually/functionally aligned with the current workbench composer implementation, including its pinned footer action area.
+- Rebuilt the right side as a single internal-scrolling workspace with:
+  - a compact active status band for `pending / queued / running / waiting_provider / succeeded-without-results`
+  - a single-column horizontal completed-results rail for finished generations only
+- Simplified the desktop derivation helpers in `src/workbench/workbenchDesktopLayout.ts` so desktop rendering now partitions history into:
+  - `activeGenerations`
+  - `completedGenerations`
+- Added regression coverage to lock the new desktop shell and horizontal completed-card layout in place:
+  - `src/workbench/workbenchDesktopLayout.test.ts`
+  - `src/workbench/WorkbenchPage.test.tsx`
+- Validation:
+  - `npx vitest run src/workbench/workbenchDesktopLayout.test.ts src/workbench/WorkbenchPage.test.tsx`
+  - `npm run build`
+
 ## 2026-06-18 - Asset Library Floating Selection Toolbar
 
 - Replaced the `/assets` drag-selection sticky top bulk bar with a fixed floating toolbar that appears near the user's selection endpoint, matching the requested contextual action behavior.

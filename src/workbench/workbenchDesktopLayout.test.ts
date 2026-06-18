@@ -1,8 +1,8 @@
 import { describe, expect, test } from "vitest";
 
 import {
-  getWorkbenchCompletedHistory,
-  getWorkbenchDesktopStage,
+  getWorkbenchActiveGenerations,
+  getWorkbenchCompletedGenerations,
 } from "./workbenchDesktopLayout";
 
 function generation(id: string, status: string, createdAt: string, resultCount = 1) {
@@ -47,35 +47,33 @@ function generation(id: string, status: string, createdAt: string, resultCount =
 }
 
 describe("workbenchDesktopLayout", () => {
-  test("prefers the newest active generation for the center stage", () => {
-    const stage = getWorkbenchDesktopStage([
+  test("collects queued and running generations into the active band", () => {
+    const items = getWorkbenchActiveGenerations([
       generation("done-1", "succeeded", "2026-06-18T08:00:00.000Z"),
-      generation("active-1", "running", "2026-06-18T09:00:00.000Z", 0),
+      generation("queued-1", "queued", "2026-06-18T09:00:00.000Z", 0),
+      generation("running-1", "running", "2026-06-18T10:00:00.000Z", 0),
     ]);
 
-    expect(stage.primary?.id).toBe("active-1");
+    expect(items.map((item) => item.id)).toEqual(["running-1", "queued-1"]);
   });
 
-  test("keeps succeeded generations without results out of completed history", () => {
-    const completed = getWorkbenchCompletedHistory([
-      generation("ready", "succeeded", "2026-06-18T09:00:00.000Z"),
-      generation("blank", "succeeded", "2026-06-18T10:00:00.000Z", 0),
+  test("treats succeeded generations without results as still active", () => {
+    const items = getWorkbenchActiveGenerations([
+      generation("blank-1", "succeeded", "2026-06-18T10:00:00.000Z", 0),
+      generation("done-1", "succeeded", "2026-06-18T09:00:00.000Z", 1),
     ]);
 
-    expect(completed.map((item) => item.id)).toEqual(["ready"]);
+    expect(items.map((item) => item.id)).toEqual(["blank-1"]);
   });
 
-  test("caps the center recent window so total stage items do not exceed eight", () => {
-    const inputs = Array.from({ length: 10 }, (_, index) =>
-      generation(
-        `done-${index}`,
-        "succeeded",
-        `2026-06-${String(index + 10).padStart(2, "0")}T08:00:00.000Z`,
-      ),
-    );
+  test("keeps only succeeded generations with results in the completed rail", () => {
+    const items = getWorkbenchCompletedGenerations([
+      generation("failed-1", "failed", "2026-06-18T11:00:00.000Z", 0),
+      generation("done-2", "succeeded", "2026-06-18T10:00:00.000Z", 1),
+      generation("blank-1", "succeeded", "2026-06-18T09:00:00.000Z", 0),
+      generation("done-1", "succeeded", "2026-06-18T08:00:00.000Z", 1),
+    ]);
 
-    const stage = getWorkbenchDesktopStage(inputs);
-
-    expect(stage.recent.length).toBeLessThanOrEqual(7);
+    expect(items.map((item) => item.id)).toEqual(["done-2", "done-1"]);
   });
 });

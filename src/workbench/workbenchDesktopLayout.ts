@@ -18,27 +18,12 @@ export function isWorkbenchGenerationCompleted(generation: WorkbenchGeneration) 
   return generation.status === "succeeded" && generation.results.length > 0;
 }
 
-export function getWorkbenchCompletedHistory(generations: WorkbenchGeneration[]) {
+export function getWorkbenchActiveGenerations(generations: WorkbenchGeneration[]) {
+  return [...generations].filter(isWorkbenchGenerationActive).sort(byCreatedDesc);
+}
+
+export function getWorkbenchCompletedGenerations(generations: WorkbenchGeneration[]) {
   return [...generations].filter(isWorkbenchGenerationCompleted).sort(byCreatedDesc);
 }
 
-export function getWorkbenchDesktopStage(generations: WorkbenchGeneration[]) {
-  const sorted = [...generations].sort(byCreatedDesc);
-  const primary =
-    sorted.find(isWorkbenchGenerationActive) ??
-    sorted.find(isWorkbenchGenerationCompleted) ??
-    sorted[0] ??
-    null;
-
-  const recent = sorted
-    .filter((generation) => generation.id !== primary?.id)
-    .filter(
-      (generation) =>
-        isWorkbenchGenerationActive(generation) ||
-        isWorkbenchGenerationCompleted(generation) ||
-        generation.status === "failed",
-    )
-    .slice(0, primary ? 7 : 8);
-
-  return { primary, recent };
-}
+export const getWorkbenchCompletedHistory = getWorkbenchCompletedGenerations;

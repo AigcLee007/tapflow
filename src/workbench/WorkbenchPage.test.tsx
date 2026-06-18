@@ -168,7 +168,9 @@ describe("WorkbenchPage", () => {
       nextCursor: null,
     });
     createWorkbenchGenerationMock.mockResolvedValue(createGeneration({ id: "generation-created", status: "succeeded" }));
-    getWorkbenchGenerationMock.mockResolvedValue(createGeneration({ status: "succeeded" }));
+    getWorkbenchGenerationMock.mockImplementation(async (generationId: string) =>
+      createGeneration({ id: generationId, status: "succeeded" }),
+    );
     retryWorkbenchGenerationMock.mockResolvedValue(createGeneration({ id: "generation-retry", status: "succeeded" }));
     getAssetMock.mockImplementation(async (assetId: string) => ({
       id: assetId,
@@ -467,38 +469,33 @@ describe("WorkbenchPage", () => {
     expect(screen.getAllByText("stage hero result").length).toBeGreaterThan(0);
   });
 
-  test("shows only completed tasks in the right dock and caps center recent items", async () => {
+  test("renders desktop workbench as a two-column 3:7 shell with active band and completed rail", async () => {
     listWorkbenchGenerationsMock.mockResolvedValue({
       generations: [
         createGeneration({ id: "queued-1", prompt: "queued", status: "queued" }),
-        createGeneration({ id: "running-1", prompt: "running", status: "running" }),
-        createGeneration({ id: "failed-1", prompt: "failed", status: "failed" }),
-        ...Array.from({ length: 8 }, (_, index) =>
-          createGeneration({
-            createdAt: `2026-06-${String(index + 10).padStart(2, "0")}T08:00:00.000Z`,
-            id: `done-${index}`,
-            prompt: `done-${index}`,
-            results: [
-              {
-                assetId: `done-${index}-asset`,
-                createdAt: new Date().toISOString(),
-                downloadUrl: `https://example.com/done-${index}.png`,
-                downloadUrlExpiresAt: null,
-                height: 1024,
-                id: `done-${index}-result`,
-                metadata: {},
-                mimeType: "image/png",
-                originalFilename: `done-${index}.png`,
-                previewUrl: `https://example.com/done-${index}.png`,
-                previewUrlExpiresAt: null,
-                sortOrder: 0,
-                status: "available",
-                width: 1024,
-              },
-            ],
-            status: "succeeded",
-          }),
-        ),
+        createGeneration({
+          id: "done-1",
+          prompt: "done-1",
+          status: "succeeded",
+          results: [
+            {
+              assetId: "done-1-asset",
+              createdAt: new Date().toISOString(),
+              downloadUrl: "https://example.com/done-1.png",
+              downloadUrlExpiresAt: null,
+              height: 1024,
+              id: "done-1-result",
+              metadata: {},
+              mimeType: "image/png",
+              originalFilename: "done-1.png",
+              previewUrl: "https://example.com/done-1.png",
+              previewUrlExpiresAt: null,
+              sortOrder: 0,
+              status: "available",
+              width: 1024,
+            },
+          ],
+        }),
       ],
       nextCursor: null,
     });
@@ -507,10 +504,51 @@ describe("WorkbenchPage", () => {
     renderRouter();
 
     expect(await screen.findByTestId("workbench-page")).toBeTruthy();
-    expect(screen.getAllByTestId("workbench-center-recent-item").length).toBeLessThanOrEqual(7);
-    expect(screen.getAllByTestId("workbench-completed-history-item").length).toBe(8);
-    expect(screen.queryByTestId("workbench-completed-history-item-queued-1")).toBeNull();
-    expect(screen.queryByTestId("workbench-completed-history-item-running-1")).toBeNull();
+    expect(screen.getByTestId("workbench-desktop-layout").className).toContain("lg:grid-cols-[minmax(84px,3fr)_minmax(0,7fr)]");
+    expect(screen.getByTestId("workbench-active-band")).toBeTruthy();
+    expect(screen.getByTestId("workbench-completed-rail")).toBeTruthy();
+    expect(screen.getAllByTestId("workbench-active-item").length).toBe(1);
+    expect(screen.getAllByTestId("workbench-completed-history-item").length).toBe(1);
+    expect(screen.queryByTestId("workbench-stage")).toBeNull();
+  });
+
+  test("renders completed desktop results as horizontal cards in a single-column rail", async () => {
+    listWorkbenchGenerationsMock.mockResolvedValue({
+      generations: [
+        createGeneration({
+          id: "done-1",
+          prompt: "done-1",
+          status: "succeeded",
+          results: [
+            {
+              assetId: "done-1-asset",
+              createdAt: new Date().toISOString(),
+              downloadUrl: "https://example.com/done-1.png",
+              downloadUrlExpiresAt: null,
+              height: 1024,
+              id: "done-1-result",
+              metadata: {},
+              mimeType: "image/png",
+              originalFilename: "done-1.png",
+              previewUrl: "https://example.com/done-1.png",
+              previewUrlExpiresAt: null,
+              sortOrder: 0,
+              status: "available",
+              width: 1024,
+            },
+          ],
+        }),
+      ],
+      nextCursor: null,
+    });
+
+    setRoute("/workbench");
+    renderRouter();
+
+    expect(await screen.findByTestId("workbench-completed-rail")).toBeTruthy();
+    expect(screen.getByTestId("workbench-completed-history-list").className).toContain("grid-cols-1");
+    expect(screen.getByTestId("workbench-completed-history-item-done-1")).toBeTruthy();
+    expect(screen.getByTestId("workbench-completed-history-item-done-1").className).toContain("grid-cols-[120px_minmax(0,1fr)]");
   });
 
   test("keeps the desktop composer footer action area separate from the scroll body", async () => {
