@@ -62,6 +62,66 @@ function formatStatus(status: string) {
   }
 }
 
+function formatRouteLabel(routeKey: string) {
+  const normalized = routeKey.toLowerCase();
+  if (normalized.includes(".t3") || normalized.includes("line-2") || normalized.includes("route-2")) return "线路二";
+  if (normalized.includes("line-3") || normalized.includes("route-3")) return "线路三";
+  if (normalized.includes("line-4") || normalized.includes("route-4")) return "线路四";
+  return "线路一";
+}
+
+function readGenerationParam(params: Record<string, unknown>, keys: string[], fallback: string) {
+  for (const key of keys) {
+    const value = params[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+    if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  }
+  return fallback;
+}
+
+function formatSizeLabel(value: string) {
+  const normalized = value.trim();
+  return normalized ? normalized.toUpperCase() : "1K";
+}
+
+function getGenerationParameterSummary(
+  generation: WorkbenchGeneration,
+  models: ImageModelConfig[],
+) {
+  const modelLabel = models.find((model) => model.id === generation.modelId)?.label || generation.modelId;
+  const aspectRatio = readGenerationParam(generation.params, ["aspect_ratio", "aspectRatio"], "1:1");
+  const size = readGenerationParam(generation.params, ["imageSize", "image_size", "size"], "1k");
+  return {
+    aspectRatio,
+    modelLabel,
+    routeLabel: formatRouteLabel(generation.routeKey),
+    sizeLabel: formatSizeLabel(size),
+  };
+}
+
+function GenerationParameterLine({
+  generation,
+  models,
+}: {
+  generation: WorkbenchGeneration;
+  models: ImageModelConfig[];
+}) {
+  const summary = getGenerationParameterSummary(generation, models);
+
+  return (
+    <div
+      className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-400"
+      data-testid={`workbench-generation-params-${generation.id}`}
+    >
+      <span>模型：{summary.modelLabel}</span>
+      <span>线路：{summary.routeLabel}</span>
+      <span>比例：{summary.aspectRatio}</span>
+      <span>尺寸：{summary.sizeLabel}</span>
+      <span>数量：{generation.requestedCount}</span>
+    </div>
+  );
+}
+
 function useResultPreviewUrl(result: WorkbenchResult | null) {
   const [fallbackUrl, setFallbackUrl] = React.useState<string | null>(null);
 
@@ -185,11 +245,13 @@ function WorkbenchStage({
 
 function DesktopActiveTaskItem({
   generation,
+  models,
   onReuseParams,
   onRetry,
   onSelectResult,
 }: {
   generation: WorkbenchGeneration;
+  models: ImageModelConfig[];
   onReuseParams: (generation: WorkbenchGeneration) => void;
   onRetry: (generationId: string) => void;
   onSelectResult: (result: WorkbenchResult) => void;
@@ -223,11 +285,8 @@ function DesktopActiveTaskItem({
 
       <div className="min-w-0">
         <div className="line-clamp-1 text-[13px] font-bold text-white">{generation.prompt}</div>
-        <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-slate-400">
-          <span>{formatStatus(generation.status)}</span>
-          <span>{generation.requestedCount} 张</span>
-          <span>{generation.modelId}</span>
-        </div>
+        <div className="mt-1 text-[11px] text-slate-400">{formatStatus(generation.status)}</div>
+        <GenerationParameterLine generation={generation} models={models} />
       </div>
 
       <div className="flex flex-col gap-2">
@@ -252,11 +311,13 @@ function DesktopActiveTaskItem({
 
 function DesktopCompletedResultCard({
   generation,
+  models,
   onReuseParams,
   onRetry,
   onSelectResult,
 }: {
   generation: WorkbenchGeneration;
+  models: ImageModelConfig[];
   onReuseParams: (generation: WorkbenchGeneration) => void;
   onRetry: (generationId: string) => void;
   onSelectResult: (result: WorkbenchResult) => void;
@@ -295,20 +356,13 @@ function DesktopCompletedResultCard({
               <div className="line-clamp-2 text-[14px] font-bold leading-5 text-white">
                 {generation.prompt}
               </div>
-              <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-400">
-                <span>{formatStatus(generation.status)}</span>
-                <span>{generation.requestedCount} 张</span>
-                <span>{generation.modelId}</span>
-              </div>
+              <div className="mt-2 text-[11px] text-slate-400">{formatStatus(generation.status)}</div>
+              <GenerationParameterLine generation={generation} models={models} />
             </div>
             <div className="flex h-9 min-w-[64px] items-center justify-center gap-1 rounded-[10px] border border-white/8 bg-white/[0.05] px-2 text-[12px] font-black text-[#ffe35a]">
               <Coins size={13} />
               {generation.estimatedCredits}
             </div>
-          </div>
-
-          <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-500">
-            <span>{generation.routeKey}</span>
           </div>
         </div>
 
@@ -352,7 +406,7 @@ function DesktopLeftDock({
 }) {
   return (
     <div
-      className={`flex min-h-0 overflow-hidden rounded-[26px] border border-white/8 bg-[#0f1015]/92 shadow-[0_26px_80px_rgba(0,0,0,0.28)] transition-all duration-200 ${
+      className={`flex h-full min-h-0 overflow-hidden rounded-[26px] border border-white/8 bg-[#0f1015]/92 shadow-[0_26px_80px_rgba(0,0,0,0.28)] transition-all duration-200 ${
         collapsed ? "max-w-[84px]" : "max-w-none"
       }`}
       data-testid="workbench-left-dock"
@@ -407,19 +461,21 @@ function DesktopLeftDock({
 function DesktopResultsWorkspace({
   activeGenerations,
   completedGenerations,
+  models,
   onReuseParams,
   onRetry,
   onSelectResult,
 }: {
   activeGenerations: WorkbenchGeneration[];
   completedGenerations: WorkbenchGeneration[];
+  models: ImageModelConfig[];
   onReuseParams: (generation: WorkbenchGeneration) => void;
   onRetry: (generationId: string) => void;
   onSelectResult: (result: WorkbenchResult) => void;
 }) {
   return (
     <section
-      className="flex min-h-0 flex-col overflow-hidden rounded-[26px] border border-white/10 bg-[linear-gradient(180deg,rgba(16,21,31,0.96),rgba(10,13,19,0.98))] shadow-[0_26px_80px_rgba(0,0,0,0.26)]"
+      className="flex h-full min-h-0 flex-col overflow-hidden rounded-[26px] border border-white/10 bg-[linear-gradient(180deg,rgba(16,21,31,0.96),rgba(10,13,19,0.98))] shadow-[0_26px_80px_rgba(0,0,0,0.26)]"
       data-testid="workbench-completed-rail"
     >
       <div className="flex items-center justify-between border-b border-white/8 px-5 py-4">
@@ -434,7 +490,7 @@ function DesktopResultsWorkspace({
         </span>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+      <div className="min-h-0 flex-1 overflow-y-auto p-4" data-testid="workbench-results-scroll-area">
         <div className="grid gap-4">
           <section
             className="overflow-hidden rounded-[22px] border border-white/8 bg-white/[0.035]"
@@ -462,6 +518,7 @@ function DesktopResultsWorkspace({
                 <DesktopActiveTaskItem
                   generation={generation}
                   key={generation.id}
+                  models={models}
                   onReuseParams={onReuseParams}
                   onRetry={onRetry}
                   onSelectResult={onSelectResult}
@@ -500,6 +557,7 @@ function DesktopResultsWorkspace({
                   <div data-testid="workbench-completed-history-item" key={generation.id}>
                     <DesktopCompletedResultCard
                       generation={generation}
+                      models={models}
                       onReuseParams={onReuseParams}
                       onRetry={onRetry}
                       onSelectResult={onSelectResult}
@@ -574,7 +632,7 @@ export function WorkbenchPage() {
 
   return (
     <section
-      className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(73,149,255,0.16),transparent_24%),radial-gradient(circle_at_top_right,rgba(63,233,255,0.10),transparent_22%),linear-gradient(180deg,#07090e,#0b0d13_44%,#090b10)] text-white"
+      className="relative h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(73,149,255,0.16),transparent_24%),radial-gradient(circle_at_top_right,rgba(63,233,255,0.10),transparent_22%),linear-gradient(180deg,#07090e,#0b0d13_44%,#090b10)] text-white"
       data-testid="workbench-page"
     >
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:44px_44px] opacity-[0.08]" />
@@ -649,7 +707,7 @@ export function WorkbenchPage() {
 
         {isDesktop ? (
           <div
-            className="min-h-[calc(100vh-88px)] w-full overflow-hidden lg:grid lg:grid-cols-[minmax(84px,3fr)_minmax(0,7fr)] lg:gap-4"
+            className="h-[calc(100vh-112px)] w-full overflow-hidden lg:grid lg:grid-cols-[minmax(84px,3fr)_minmax(0,7fr)] lg:gap-4"
             data-testid="workbench-desktop-layout"
           >
             <DesktopLeftDock
@@ -665,6 +723,7 @@ export function WorkbenchPage() {
             <DesktopResultsWorkspace
               activeGenerations={activeGenerations}
               completedGenerations={completedGenerations}
+              models={models}
               onReuseParams={reuseParams}
               onRetry={(generationId) => void retry(generationId)}
               onSelectResult={setSelectedResult}
@@ -707,6 +766,7 @@ export function WorkbenchPage() {
                       <DesktopCompletedResultCard
                         generation={generation}
                         key={generation.id}
+                        models={models}
                         onReuseParams={reuseParams}
                         onRetry={(generationId) => void retry(generationId)}
                         onSelectResult={setSelectedResult}

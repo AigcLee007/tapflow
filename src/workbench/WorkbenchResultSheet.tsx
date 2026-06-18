@@ -11,17 +11,16 @@ type Props = {
 };
 
 export function WorkbenchResultSheet({ onClose, onSendToProject, result }: Props) {
-  const [fallbackUrl, setFallbackUrl] = React.useState<string | null>(null);
+  const [originalUrl, setOriginalUrl] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    setFallbackUrl(null);
-    if (!result || result.previewUrl || !result.assetId) return;
+    setOriginalUrl(null);
+    if (!result || !result.assetId) return;
     let active = true;
-    void getAssetVariantUrl(result.assetId, "preview")
-      .catch(() => getAssetVariantUrl(result.assetId))
+    void getAssetVariantUrl(result.assetId)
       .then((signed) => {
         if (!active) return;
-        setFallbackUrl(signed.url);
+        setOriginalUrl(signed.url);
       })
       .catch(() => undefined);
     return () => {
@@ -31,32 +30,41 @@ export function WorkbenchResultSheet({ onClose, onSendToProject, result }: Props
 
   if (!result) return null;
 
-  const imageUrl = result.previewUrl || fallbackUrl || result.downloadUrl;
+  const imageUrl = originalUrl || result.downloadUrl || result.previewUrl;
 
   return (
-    <div className="fixed inset-0 z-50">
-      <button aria-label="关闭结果详情" className="absolute inset-0 bg-black/55" onClick={onClose} type="button" />
-      <section className="absolute bottom-0 left-0 right-0 rounded-t-[26px] border border-white/10 bg-[#101014] p-4 text-white shadow-[0_-22px_70px_rgba(0,0,0,0.6)] md:left-auto md:right-8 md:top-24 md:w-[380px] md:rounded-[22px]">
-        <div className="flex items-center justify-between">
-          <div className="text-sm font-bold">结果详情</div>
-          <button className="grid h-9 w-9 place-items-center rounded-full bg-white/[0.08]" onClick={onClose} type="button" aria-label="关闭">
+    <div className="fixed inset-0 z-50 bg-black/92 text-white" data-testid="workbench-result-fullscreen">
+      <button aria-label="关闭结果详情" className="absolute inset-0 cursor-zoom-out" onClick={onClose} type="button" />
+      <section className="relative z-10 flex h-full w-full flex-col p-4 md:p-6">
+        <div className="flex shrink-0 items-center justify-between gap-3">
+          <div className="text-base font-black">结果详情</div>
+          <button
+            aria-label="关闭"
+            className="grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-white/[0.10] text-white transition hover:bg-white/[0.18]"
+            onClick={onClose}
+            type="button"
+          >
             <X size={16} />
           </button>
         </div>
-        <div className="mt-4 overflow-hidden rounded-2xl bg-black/30">
+
+        <div className="relative z-10 grid min-h-0 flex-1 place-items-center px-0 py-4 md:px-6">
           {imageUrl ? (
             <img
               alt={result.originalFilename || "Workbench result"}
-              className="aspect-square w-full object-cover"
+              className="max-h-full max-w-full rounded-[18px] object-contain shadow-[0_28px_90px_rgba(0,0,0,0.55)]"
               src={imageUrl}
             />
           ) : (
-            <div className="grid aspect-square place-items-center text-sm text-slate-500">暂无预览</div>
+            <div className="grid h-full min-h-[360px] w-full place-items-center rounded-[22px] border border-dashed border-white/10 bg-white/[0.04] text-sm text-slate-400">
+              暂无预览
+            </div>
           )}
         </div>
-        <div className="mt-4 grid grid-cols-2 gap-3">
+
+        <div className="relative z-10 mx-auto grid w-full max-w-[520px] shrink-0 grid-cols-2 gap-3">
           <a
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-white/[0.08] text-sm font-bold"
+            className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-white/[0.10] text-sm font-bold text-white transition hover:bg-white/[0.16]"
             href={result.downloadUrl || imageUrl || "#"}
             rel="noreferrer"
             target="_blank"
@@ -64,7 +72,11 @@ export function WorkbenchResultSheet({ onClose, onSendToProject, result }: Props
             <Download size={16} />
             下载
           </a>
-          <button className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-white text-sm font-black text-black" onClick={() => onSendToProject(result)} type="button">
+          <button
+            className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-white text-sm font-black text-black transition hover:bg-slate-100"
+            onClick={() => onSendToProject(result)}
+            type="button"
+          >
             <Send size={16} />
             发送到画布
           </button>

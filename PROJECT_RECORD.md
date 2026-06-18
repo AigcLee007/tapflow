@@ -128,6 +128,26 @@ As of 2026-06-13:
   - `npx vitest run src/workbench/workbenchDesktopLayout.test.ts src/workbench/WorkbenchPage.test.tsx`
   - `npm run build`
 
+## 2026-06-18 - Workbench Desktop Fixed Dock and Result Preview Follow-up
+
+- Tightened the desktop `/workbench` shell so the page itself uses a fixed viewport height and the right results workspace owns vertical scrolling.
+- Locked the left parameter dock to the desktop shell height so it stays in place while users browse active/completed results on the right.
+- Updated active and completed result cards to show creator-facing generation parameters instead of backend route/model keys:
+  - model label
+  - friendly line label
+  - aspect ratio
+  - size
+  - requested count
+- Changed result detail preview from the small side sheet to a full-screen image viewer.
+- Full-screen result preview now requests the original asset URL first instead of showing the lower-resolution preview thumbnail when an asset id is available.
+- Added focused regression coverage for:
+  - fixed desktop shell and right-side scroll ownership
+  - friendly generation parameter display
+  - full-screen original-image result preview
+- Validation:
+  - `npx vitest run src/workbench/workbenchDesktopLayout.test.ts src/workbench/WorkbenchPage.test.tsx`
+  - `npm run build`
+
 ## 2026-06-18 - Asset Library Floating Selection Toolbar
 
 - Replaced the `/assets` drag-selection sticky top bulk bar with a fixed floating toolbar that appears near the user's selection endpoint, matching the requested contextual action behavior.

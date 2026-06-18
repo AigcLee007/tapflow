@@ -512,6 +512,18 @@ describe("WorkbenchPage", () => {
     expect(screen.queryByTestId("workbench-stage")).toBeNull();
   });
 
+  test("keeps the desktop left parameter dock fixed while the results workspace owns scrolling", async () => {
+    setRoute("/workbench");
+    renderRouter();
+
+    expect(await screen.findByTestId("workbench-page")).toBeTruthy();
+    expect(screen.getByTestId("workbench-page").className).toContain("h-screen");
+    expect(screen.getByTestId("workbench-desktop-layout").className).toContain("h-[calc(100vh-112px)]");
+    expect(screen.getByTestId("workbench-left-dock").className).toContain("h-full");
+    expect(screen.getByTestId("workbench-results-scroll-area").className).toContain("overflow-y-auto");
+    expect(screen.getByTestId("workbench-composer-footer")).toBeTruthy();
+  });
+
   test("renders completed desktop results as horizontal cards in a single-column rail", async () => {
     listWorkbenchGenerationsMock.mockResolvedValue({
       generations: [
@@ -551,6 +563,52 @@ describe("WorkbenchPage", () => {
     expect(screen.getByTestId("workbench-completed-history-item-done-1").className).toContain("grid-cols-[120px_minmax(0,1fr)]");
   });
 
+  test("shows creator-facing generation parameters instead of raw model and route keys", async () => {
+    listWorkbenchGenerationsMock.mockResolvedValue({
+      generations: [
+        createGeneration({
+          id: "friendly-meta",
+          modelId: "pixellelabs.nano-banana-pro",
+          params: { aspect_ratio: "16:9", imageSize: "4K", size: "4k" },
+          requestedCount: 2,
+          routeKey: "image.pixellelabs.nano-banana-pro",
+          status: "succeeded",
+          results: [
+            {
+              assetId: "friendly-meta-asset",
+              createdAt: new Date().toISOString(),
+              downloadUrl: "https://example.com/friendly-meta.png",
+              downloadUrlExpiresAt: null,
+              height: 1024,
+              id: "friendly-meta-result",
+              metadata: {},
+              mimeType: "image/png",
+              originalFilename: "friendly-meta.png",
+              previewUrl: "https://example.com/friendly-meta.png",
+              previewUrlExpiresAt: null,
+              sortOrder: 0,
+              status: "available",
+              width: 1024,
+            },
+          ],
+        }),
+      ],
+      nextCursor: null,
+    });
+
+    setRoute("/workbench");
+    renderRouter();
+
+    const meta = await screen.findByTestId("workbench-generation-params-friendly-meta");
+    expect(meta.textContent).toContain("模型：Nano Banana Pro");
+    expect(meta.textContent).toContain("线路：线路一");
+    expect(meta.textContent).toContain("比例：16:9");
+    expect(meta.textContent).toContain("尺寸：4K");
+    expect(meta.textContent).toContain("数量：2");
+    expect(screen.queryByText("pixellelabs.nano-banana-pro")).toBeNull();
+    expect(screen.queryByText("image.pixellelabs.nano-banana-pro")).toBeNull();
+  });
+
   test("keeps the desktop composer footer action area separate from the scroll body", async () => {
     setRoute("/workbench");
     renderRouter();
@@ -560,7 +618,15 @@ describe("WorkbenchPage", () => {
     expect(screen.getByTestId("workbench-composer-footer")).toBeTruthy();
   });
 
-  test("loads result detail preview from asset id when selected result has no preview url", async () => {
+  test("opens selected workbench results in a fullscreen original-image preview", async () => {
+    getAssetVariantUrlMock.mockImplementation(async (assetId: string, variantKey?: string) => ({
+      expiresAt: new Date(Date.now() + 900000).toISOString(),
+      method: "GET",
+      url: variantKey === "preview"
+        ? `https://example.com/${assetId}-preview.webp`
+        : `https://example.com/${assetId}-original.png`,
+      variantKey: variantKey ?? null,
+    }));
     listWorkbenchGenerationsMock.mockResolvedValue({
       generations: [
         createGeneration({
@@ -576,7 +642,7 @@ describe("WorkbenchPage", () => {
               metadata: {},
               mimeType: "image/png",
               originalFilename: "detail.png",
-              previewUrl: null,
+              previewUrl: "https://example.com/detail-thumb.webp",
               previewUrlExpiresAt: null,
               sortOrder: 0,
               status: "available",
@@ -594,11 +660,12 @@ describe("WorkbenchPage", () => {
 
     fireEvent.click((await screen.findAllByAltText("detail.png"))[0]!);
 
-    await screen.findByText("结果详情");
+    await screen.findByTestId("workbench-result-fullscreen");
     await waitFor(() => {
-      expect(getAssetVariantUrlMock).toHaveBeenCalledWith("asset-result-detail-1", "preview");
+      expect(getAssetVariantUrlMock).toHaveBeenCalledWith("asset-result-detail-1");
     });
     const detailImages = screen.getAllByAltText("detail.png");
-    expect(detailImages.some((image) => image.getAttribute("src") === "https://example.com/asset-result-detail-1.png")).toBe(true);
+    expect(detailImages.some((image) => image.getAttribute("src") === "https://example.com/asset-result-detail-1-original.png")).toBe(true);
+    expect(screen.getByTestId("workbench-result-fullscreen").className).toContain("fixed inset-0");
   });
 });
