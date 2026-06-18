@@ -535,8 +535,10 @@ describe("AssetLibraryPage", () => {
     const toolbar = screen.getByTestId("asset-selection-floating-toolbar");
 
     expect(screen.queryByTestId("asset-selection-top-bar")).toBeNull();
-    expect(toolbar.style.left).toBe("168px");
-    expect(toolbar.style.top).toBe("212px");
+    expect(toolbar.className).toContain("left-1/2");
+    expect(toolbar.className).toContain("bottom-8");
+    expect(toolbar.style.left).toBe("");
+    expect(toolbar.style.top).toBe("");
     expect(screen.getByText("2 个")).toBeTruthy();
     expect(toolbar.querySelector('[aria-label="取消选择"]')).toBeTruthy();
     expect(toolbar.querySelector('[aria-label="全选"]')).toBeTruthy();
@@ -545,7 +547,7 @@ describe("AssetLibraryPage", () => {
     expect(toolbar.querySelector('[aria-label="删除"]')).toBeTruthy();
   });
 
-  test("keeps the floating selection toolbar near the selected asset bounds instead of the pointer endpoint", () => {
+  test("keeps the floating selection toolbar centered even when selected assets are near the right edge", () => {
     const first = createAsset(1);
     const second = createAsset(2);
     mockLibrary({
@@ -604,8 +606,10 @@ describe("AssetLibraryPage", () => {
     const toolbar = screen.getByTestId("asset-selection-floating-toolbar");
 
     expect(screen.getByText("2 个")).toBeTruthy();
-    expect(toolbar.style.left).toBe("490px");
-    expect(toolbar.style.top).toBe("212px");
+    expect(toolbar.className).toContain("left-1/2");
+    expect(toolbar.className).toContain("bottom-8");
+    expect(toolbar.style.left).toBe("");
+    expect(toolbar.style.top).toBe("");
   });
 
   test("does not select assets or open previews for tiny pointer movement on a tile", () => {

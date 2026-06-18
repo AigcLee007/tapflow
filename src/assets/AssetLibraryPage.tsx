@@ -11,7 +11,7 @@ import {
   type AssetItem,
 } from "./assetApi";
 import { AssetFolderSidebar } from "./AssetFolderSidebar";
-import { AssetGrid, type AssetSelectionMeta } from "./AssetGrid";
+import { AssetGrid } from "./AssetGrid";
 import { AssetMediaTabs } from "./AssetGroupedSections";
 import { AssetPreviewModal } from "./AssetPreviewModal";
 import { UploadAssetButton } from "./UploadAssetButton";
@@ -39,7 +39,6 @@ export function AssetLibraryPage() {
   const library = useAssetLibrary();
   const [previewAsset, setPreviewAsset] = useState<AssetItem | null>(null);
   const [selectedAssetIds, setSelectedAssetIds] = useState<Set<string>>(() => new Set());
-  const [selectionToolbarPoint, setSelectionToolbarPoint] = useState<{ x: number; y: number } | null>(null);
   const [confirmingBulkDelete, setConfirmingBulkDelete] = useState(false);
 
   const identityKey =
@@ -48,7 +47,6 @@ export function AssetLibraryPage() {
   React.useEffect(() => {
     setPreviewAsset(null);
     setSelectedAssetIds(new Set());
-    setSelectionToolbarPoint(null);
   }, [identityKey]);
 
   React.useEffect(() => {
@@ -69,7 +67,6 @@ export function AssetLibraryPage() {
       if (current.size === 0) return current;
       const availableIds = new Set(library.assets.map((asset) => asset.id));
       const next = new Set(Array.from(current).filter((assetId) => availableIds.has(assetId)));
-      if (next.size === 0) setSelectionToolbarPoint(null);
       return next.size === current.size ? current : next;
     });
   }, [library.assets]);
@@ -121,7 +118,6 @@ export function AssetLibraryPage() {
 
   const clearSelectedAssets = () => {
     setSelectedAssetIds(new Set());
-    setSelectionToolbarPoint(null);
   };
 
   const selectAllVisibleAssets = () => {
@@ -165,15 +161,8 @@ export function AssetLibraryPage() {
     clearSelectedAssets();
   };
 
-  const handleSelectionChange = (assetIds: string[], meta?: AssetSelectionMeta) => {
+  const handleSelectionChange = (assetIds: string[]) => {
     setSelectedAssetIds(new Set(assetIds));
-    if (assetIds.length === 0) {
-      setSelectionToolbarPoint(null);
-      return;
-    }
-    if (meta?.toolbarPoint ?? meta?.anchorPoint) {
-      setSelectionToolbarPoint(meta.toolbarPoint ?? meta.anchorPoint ?? null);
-    }
   };
 
   const selectedMediaLabel =
@@ -285,14 +274,10 @@ export function AssetLibraryPage() {
           onUpdated={refresh}
         />
       )}
-      {!library.loading && selectedAssets.length > 0 && selectionToolbarPoint && (
+      {!library.loading && selectedAssets.length > 0 && (
         <div
-          className="fixed z-[1700] flex items-center gap-1 rounded-full border border-slate-200/70 bg-white/95 p-1 text-slate-700 shadow-[0_10px_32px_rgba(0,0,0,0.22)] backdrop-blur"
+          className="fixed bottom-8 left-1/2 z-[1700] flex -translate-x-1/2 items-center gap-1 rounded-full border border-slate-200/70 bg-white/95 p-1 text-slate-700 shadow-[0_10px_32px_rgba(0,0,0,0.22)] backdrop-blur"
           data-testid="asset-selection-floating-toolbar"
-          style={{
-            left: selectionToolbarPoint.x,
-            top: selectionToolbarPoint.y,
-          }}
         >
           <span className="px-2 text-xs font-bold text-slate-500 whitespace-nowrap">{selectedAssets.length} 个</span>
           <button aria-label="取消选择" className="grid h-9 w-9 place-items-center rounded-full hover:bg-slate-100" onClick={clearSelectedAssets} title="取消选择" type="button">

@@ -12,11 +12,6 @@ type SelectionBox = {
   startPageY: number;
 };
 
-export type AssetSelectionMeta = {
-  anchorPoint?: { x: number; y: number };
-  toolbarPoint?: { x: number; y: number };
-};
-
 function rectsIntersect(rect: DOMRect, box: SelectionBox) {
   const minX = Math.min(box.startPageX, box.currentPageX);
   const maxX = Math.max(box.startPageX, box.currentPageX);
@@ -51,68 +46,9 @@ const DRAG_SELECT_THRESHOLD_PX = 6;
 const DRAG_SELECTION_HIT_SLOP_PX = 8;
 const DRAG_SCROLL_THRESHOLD_PX = 44;
 const DRAG_SCROLL_STEP_PX = 16;
-const TOOLBAR_ESTIMATED_WIDTH_PX = 304;
-const TOOLBAR_ESTIMATED_HEIGHT_PX = 48;
-const TOOLBAR_VIEWPORT_MARGIN_PX = 16;
-const TOOLBAR_SELECTION_GAP_PX = 12;
-
 function sameAssetIds(a: string[], b: string[]) {
   if (a.length !== b.length) return false;
   return a.every((assetId, index) => assetId === b[index]);
-}
-
-function getToolbarPoint(surface: HTMLElement | null, selectedIds: string[], fallback: { x: number; y: number }) {
-  const selectedIdSet = new Set(selectedIds);
-  const selectedRects = surface
-    ? Array.from(surface.querySelectorAll<HTMLElement>("[data-asset-selectable='true']"))
-        .filter((element) => {
-          const assetId = element.dataset.assetId;
-          return assetId ? selectedIdSet.has(assetId) : false;
-        })
-        .map((element) => element.getBoundingClientRect())
-    : [];
-
-  if (selectedRects.length === 0) {
-    return {
-      x: Math.min(
-        window.innerWidth - TOOLBAR_VIEWPORT_MARGIN_PX - TOOLBAR_ESTIMATED_WIDTH_PX / 2,
-        Math.max(TOOLBAR_VIEWPORT_MARGIN_PX + TOOLBAR_ESTIMATED_WIDTH_PX / 2, fallback.x),
-      ),
-      y: Math.min(
-        window.innerHeight - TOOLBAR_VIEWPORT_MARGIN_PX - TOOLBAR_ESTIMATED_HEIGHT_PX,
-        Math.max(TOOLBAR_VIEWPORT_MARGIN_PX, fallback.y - TOOLBAR_ESTIMATED_HEIGHT_PX - TOOLBAR_SELECTION_GAP_PX),
-      ),
-    };
-  }
-
-  const union = selectedRects.reduce(
-    (bounds, rect) => ({
-      bottom: Math.max(bounds.bottom, rect.bottom),
-      left: Math.min(bounds.left, rect.left),
-      right: Math.max(bounds.right, rect.right),
-      top: Math.min(bounds.top, rect.top),
-    }),
-    {
-      bottom: selectedRects[0].bottom,
-      left: selectedRects[0].left,
-      right: selectedRects[0].right,
-      top: selectedRects[0].top,
-    },
-  );
-
-  const minX = TOOLBAR_VIEWPORT_MARGIN_PX + TOOLBAR_ESTIMATED_WIDTH_PX / 2;
-  const maxX = window.innerWidth - TOOLBAR_VIEWPORT_MARGIN_PX - TOOLBAR_ESTIMATED_WIDTH_PX / 2;
-  const x = Math.min(maxX, Math.max(minX, (union.left + union.right) / 2));
-  const canFitBelow = union.bottom + TOOLBAR_SELECTION_GAP_PX + TOOLBAR_ESTIMATED_HEIGHT_PX <= window.innerHeight - TOOLBAR_VIEWPORT_MARGIN_PX;
-  const preferredY = canFitBelow
-    ? union.bottom + TOOLBAR_SELECTION_GAP_PX
-    : union.top - TOOLBAR_SELECTION_GAP_PX - TOOLBAR_ESTIMATED_HEIGHT_PX;
-  const y = Math.min(
-    window.innerHeight - TOOLBAR_VIEWPORT_MARGIN_PX - TOOLBAR_ESTIMATED_HEIGHT_PX,
-    Math.max(TOOLBAR_VIEWPORT_MARGIN_PX, preferredY),
-  );
-
-  return { x, y };
 }
 
 export function AssetGrid({
@@ -140,7 +76,7 @@ export function AssetGrid({
   onRename?: (asset: AssetItem, title: string) => Promise<void>;
   onToggleFavorite?: (asset: AssetItem) => Promise<void>;
   onOpen: (asset: AssetItem) => void;
-  onSelectionChange?: (assetIds: string[], meta?: AssetSelectionMeta) => void;
+  onSelectionChange?: (assetIds: string[]) => void;
   selectedAssetIds?: Set<string>;
   tileOnly?: boolean;
 }) {
@@ -238,8 +174,7 @@ export function AssetGrid({
     stopDragScroll();
 
     if (event && start && hasDraggedRef.current) {
-      const point = getToolbarPoint(surfaceRef.current, latestSelectedIdsRef.current, { x: event.clientX, y: event.clientY });
-      onSelectionChange?.(latestSelectedIdsRef.current, { anchorPoint: point, toolbarPoint: point });
+      onSelectionChange?.(latestSelectedIdsRef.current);
     } else if (event && start && !start.startedOnTile && initialSelectedIdsRef.current.length > 0) {
       onSelectionChange?.([]);
     }

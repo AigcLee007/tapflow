@@ -81,7 +81,7 @@ As of 2026-06-13:
 - Follow-up root cause for MouxiHub GPT-Image-2 `绾胯矾鍥沗 was also fixed: legacy `ai_routes.upstream_model` values were still being injected into `requestConfig.model` and could override the new line-four runtime fallback, so provider-side GPT-Image-2 base model routing now prefers dedicated `providerBaseModel`/route defaults over stale normalized route config
 - desktop `/workbench` has now been restructured into a fixed three-pane docked workstation: the desktop shell reads as `3:5:2`, the left parameter dock keeps the existing composer UI with a pinned footer action area, the center pane is split into current-task stage plus recent-task window capped to the newest 8 operational tasks, and the right dock now shows completed-only history with no active generations mixed into that rail
 - `/assets` drag multi-select now uses a floating contextual toolbar at the user's selection endpoint instead of a sticky top bulk bar, with cancel, select all, favorite, download original, and delete actions available next to the selection
-- `/assets` drag multi-select has been further reworked against the smoother `D:\gpt-iamge-2` task-grid interaction pattern: selection now uses page coordinates, drag thresholding, hit slop, body-level text-selection suppression, auto-scroll near viewport edges, and toolbar placement derived from the selected asset bounds rather than the raw pointer endpoint
+- `/assets` drag multi-select has been further reworked against the smoother `D:\gpt-iamge-2` task-grid interaction pattern: selection now uses page coordinates, drag thresholding, hit slop, body-level text-selection suppression, auto-scroll near viewport edges, and a fixed screen-centered floating toolbar instead of edge-sensitive selection-bound positioning
 
 ## 2026-06-18 - Workbench Three-Pane Docked Desktop Layout
 
@@ -153,7 +153,7 @@ As of 2026-06-13:
 - Reduced drag-time re-render churn by only notifying the asset library when the selected id set actually changes.
 - Added body-level `asset-drag-selecting` styling to suppress text selection during marquee drag.
 - Added edge auto-scroll while dragging near the top/bottom of the viewport.
-- Changed the floating selection toolbar to place itself near the selected asset group bounds with viewport clamping instead of following the raw mouse-up point, making it feel closer to the reference app's always-handy action bar.
+- Changed the floating selection toolbar to stay fixed around the screen center/bottom like the reference app's selected-record action bar, instead of following the raw mouse-up point or selected asset bounds.
 - Marked asset action menus as non-selection targets so clicking tile management controls does not accidentally start marquee selection.
 - Extended regression coverage for selected-bounds toolbar positioning and tiny pointer movement behavior.
 - Validation:
