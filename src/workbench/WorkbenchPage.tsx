@@ -479,24 +479,16 @@ function DesktopLeftDock({
           </div>
         </div>
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col">
-          <div className="flex items-center justify-between border-b border-white/8 px-4 py-3">
-            <div>
-              <div className="text-[11px] font-black uppercase tracking-[0.2em] text-cyan-300">
-                Create
-              </div>
-              <div className="mt-1 text-sm font-bold text-white">参数面板</div>
-            </div>
-            <button
-              aria-label="收起参数面板"
-              className="grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-white/[0.05] text-slate-200"
-              onClick={onToggle}
-              type="button"
-            >
-              <PanelLeftClose size={16} />
-            </button>
-          </div>
-          <div className="min-h-0 flex-1">
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          <button
+            aria-label="收起参数面板"
+            className="absolute right-3 top-3 z-10 grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-[#171a22]/92 text-slate-200 shadow-[0_12px_28px_rgba(0,0,0,0.28)] transition hover:bg-white/[0.10]"
+            onClick={onToggle}
+            type="button"
+          >
+            <PanelLeftClose size={16} />
+          </button>
+          <div className="min-h-0 flex-1 pt-1">
             <WorkbenchComposer
               draft={draft}
               isGenerating={isGenerating}

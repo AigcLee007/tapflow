@@ -52,7 +52,6 @@ const TEXT = {
   aspectRatioLabel: "\u753b\u9762\u6bd4\u4f8b",
   clear: "\u6e05\u7a7a",
   configCost: "\u5f53\u524d\u914d\u7f6e\u6d88\u8017",
-  currentConfig: "\u5f53\u524d\u914d\u7f6e\u8be6\u60c5",
   imageModel: "\u56fe\u50cf\u6a21\u578b",
   imagePrefix: "\u56fe",
   imageSize: "\u753b\u8d28\u5c3a\u5bf8",
@@ -346,10 +345,6 @@ export function WorkbenchComposer({
 
   const routeLookupKey = modelOptions.find((item) => item.id === draft.modelId)?.routeLookupKey || draft.modelId;
   const routeOptions = routeOptionsByModel[routeLookupKey] || routeOptionsCache.get(routeLookupKey) || [];
-  const activeModelLabel = modelOptions.find((item) => item.id === draft.modelId)?.label || draft.modelId;
-  const activeRouteLabel = routeOptions.find((item) => item.routeKey === draft.routeKey)
-    ? formatRouteLabel(routeOptions.find((item) => item.routeKey === draft.routeKey)!)
-    : TEXT.routeOne;
   const visibleReferenceIds = React.useMemo(
     () => [...pendingReferenceIds, ...draft.referenceUploadIds, ...draft.referenceAssetIds].slice(0, MAX_REFERENCE_COUNT),
     [draft.referenceAssetIds, draft.referenceUploadIds, pendingReferenceIds],
@@ -852,26 +847,9 @@ export function WorkbenchComposer({
         data-testid="workbench-composer-footer"
         className={`shrink-0 ${compact ? "pt-3" : "mt-1.5 border-t border-white/8 bg-[#101014] pt-1.5"}`}
       >
-      <section className="rounded-[10px] border border-[#6b5d0b] bg-[#171605] p-2 shadow-[inset_0_0_0_1px_rgba(255,224,32,0.08)]">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="text-[11px] font-bold text-slate-300">{TEXT.currentConfig}</div>
-            <div className="mt-1 truncate text-[11px] text-slate-500">
-              {activeModelLabel} / {activeRouteLabel} / {formatSelectLabel(draft.size)} / {draft.aspectRatio}
-            </div>
-            <div className="mt-1 text-[11px] text-slate-500">{TEXT.unitPrice}</div>
-          </div>
-          <div className="flex h-[32px] min-w-[68px] items-center justify-center gap-1 rounded-[8px] border border-[#8a7207] bg-[#1d1902] px-2 text-[16px] font-black text-[#ffdd25]">
-            <Coins size={15} />
-            {estimatedCredits.toFixed(1)}
-          </div>
-        </div>
-        <span className="sr-only">{TEXT.configCost}</span>
-      </section>
-
       <button
         aria-label={TEXT.start}
-        className="mt-1.5 flex h-[40px] w-full items-center justify-center gap-2 rounded-[8px] bg-gradient-to-r from-[#b515ff] via-[#7c29ff] to-[#236dff] text-[14px] font-black text-white shadow-[0_12px_30px_rgba(82,57,255,0.35)] transition disabled:cursor-not-allowed disabled:bg-none disabled:bg-[#3a465b] disabled:text-slate-400 disabled:shadow-none"
+        className="flex h-[42px] w-full items-center justify-center gap-2 rounded-[8px] bg-gradient-to-r from-[#b515ff] via-[#7c29ff] to-[#236dff] text-[14px] font-black text-white shadow-[0_12px_30px_rgba(82,57,255,0.35)] transition disabled:cursor-not-allowed disabled:bg-none disabled:bg-[#3a465b] disabled:text-slate-400 disabled:shadow-none"
         disabled={isGenerating || !draft.prompt.trim() || !draft.routeKey}
         onClick={() => {
           onGenerate();
@@ -882,6 +860,9 @@ export function WorkbenchComposer({
         <Wand2 size={16} />
         {isGenerating ? TEXT.submitting : TEXT.start}
       </button>
+      <span className="sr-only">
+        {TEXT.configCost} {estimatedCredits.toFixed(1)} {TEXT.unitPrice}
+      </span>
       </div>
     </aside>
   );

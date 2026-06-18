@@ -218,10 +218,10 @@ describe("WorkbenchPage", () => {
     expect(screen.getByText("图像模型")).toBeTruthy();
     expect(screen.getByText("画面比例")).toBeTruthy();
     expect(screen.getByText("画质尺寸")).toBeTruthy();
-    expect(screen.getByText("当前配置消耗")).toBeTruthy();
     expect(screen.getByTestId("workbench-composer").className).toContain("workbench-composer");
     expect(screen.getByTestId("workbench-route-row").className).toContain("grid gap-1.5");
     expect(screen.getByTestId("workbench-param-row").className).toContain("grid-cols-3");
+    expect(screen.getByTestId("workbench-composer-footer").className).toContain("shrink-0");
     expect(screen.getByRole("button", { name: "立即开始创作" })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: /画面比例/ }));
@@ -628,6 +628,18 @@ describe("WorkbenchPage", () => {
     expect(await screen.findByTestId("workbench-page")).toBeTruthy();
     expect(screen.getByTestId("workbench-composer-scroll-body")).toBeTruthy();
     expect(screen.getByTestId("workbench-composer-footer")).toBeTruthy();
+  });
+
+  test("removes the desktop parameter header chrome and config summary card while keeping actions", async () => {
+    setRoute("/workbench");
+    renderRouter();
+
+    expect(await screen.findByTestId("workbench-page")).toBeTruthy();
+    expect(screen.queryByText("Create")).toBeNull();
+    expect(screen.queryByText("参数面板")).toBeNull();
+    expect(screen.queryByText("当前配置详情")).toBeNull();
+    expect(screen.getByRole("button", { name: "收起参数面板" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "立即开始创作" })).toBeTruthy();
   });
 
   test("opens selected workbench results in a fullscreen original-image preview", async () => {

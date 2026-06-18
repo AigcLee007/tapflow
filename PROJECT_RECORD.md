@@ -179,6 +179,16 @@ As of 2026-06-13:
   - `npx vitest run src/workbench/workbenchDesktopLayout.test.ts src/workbench/WorkbenchPage.test.tsx`
   - `npm run build`
 
+## 2026-06-18 - Workbench Left Dock Chrome Cleanup
+
+- Removed the extra desktop left-dock header strip inside `/workbench`, so the parameter panel no longer shows the redundant `CREATE / 参数面板` block.
+- Kept left-dock collapse behavior by moving the collapse action into a lighter floating button anchored at the top-right of the panel body.
+- Removed the desktop composer footer `当前配置详情` summary card while preserving the pinned generate action area.
+- Updated workbench UI regression coverage so the removed header chrome and removed summary card stay out of the desktop layout.
+- Validation:
+  - `npx vitest run src/workbench/WorkbenchPage.test.tsx src/workbench/workbenchDesktopLayout.test.ts src/workbench/workbenchReferences.test.ts`
+  - `npm run build`
+
 ## 2026-06-18 - Asset Library Floating Selection Toolbar
 
 - Replaced the `/assets` drag-selection sticky top bulk bar with a fixed floating toolbar that appears near the user's selection endpoint, matching the requested contextual action behavior.
