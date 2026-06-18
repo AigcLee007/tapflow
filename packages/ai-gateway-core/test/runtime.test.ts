@@ -2124,6 +2124,81 @@ describe("pixellelabs gemini image adapter", () => {
       ],
     });
   });
+
+  test("sends workbench temporary base64 references as Gemini inlineData instead of fileData", async () => {
+    const calls: Array<{ body: Record<string, unknown> }> = [];
+    const adapter = new PixelleLabsGeminiImageAdapter({
+      fetchImplementation: (async (_input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+        calls.push({
+          body: JSON.parse(String(init?.body || "{}")) as Record<string, unknown>,
+        });
+        return new Response(
+          JSON.stringify({
+            candidates: [
+              {
+                content: {
+                  parts: [
+                    {
+                      inlineData: {
+                        data: "iVBORw0KGgo=",
+                        mimeType: "image/png",
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }) as unknown as typeof fetch,
+    });
+
+    await adapter.generateImage(
+      {
+        apiKey: "sk-pixelle",
+        baseUrl: "https://api.pixellelabs.com",
+        modelKey: "gemini-3-pro-image-preview",
+        providerKey: "pixellelabs",
+        requestConfig: {
+          path: "/v1beta/models/gemini-3-pro-image-preview:generateContent",
+        },
+        routeId: "route-1",
+        routeKey: "image.pixellelabs.nano-banana-pro",
+        timeoutMs: 5_000,
+      },
+      {
+        inputAssets: [
+          {
+            assetId: "temp-upload-1",
+            metadata: {
+              base64: "data:image/png;base64,dGVtcC1pbWFnZQ==",
+              source: "workbench-temp-upload",
+              url: "data:image/png;base64,dGVtcC1pbWFnZQ==",
+            },
+            mimeType: "image/png",
+          },
+        ],
+        prompt: "edit this temporary upload",
+      },
+    );
+
+    expect(calls[0]?.body).toMatchObject({
+      contents: [
+        {
+          parts: [
+            { text: "edit this temporary upload" },
+            {
+              inlineData: {
+                data: "dGVtcC1pbWFnZQ==",
+                mimeType: "image/png",
+              },
+            },
+          ],
+        },
+      ],
+    });
+  });
 });
 
 describe("redaction", () => {

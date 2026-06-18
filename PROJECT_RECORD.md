@@ -189,6 +189,18 @@ As of 2026-06-13:
   - `npx vitest run src/workbench/WorkbenchPage.test.tsx src/workbench/workbenchDesktopLayout.test.ts src/workbench/workbenchReferences.test.ts`
   - `npm run build`
 
+## 2026-06-18 - Workbench Temporary Reference Base64 Fix For Nano Banana Pro
+
+- Fixed the standalone `/workbench` temporary reference-image path for PixelleLabs `Nano Banana Pro` / Gemini image routes.
+- Root cause: workbench temporary uploads were hydrated as `data:image/...;base64,...` references, and the PixelleLabs Gemini adapter was forwarding those values as `fileData.fileUri` instead of Gemini `inlineData`.
+- This caused upstream PixelleLabs / Gemini requests to fail with `status_code=400, invalid base64 image data` even though the workbench submission itself was otherwise valid.
+- The Gemini adapter now detects `data:image/...;base64,...` image inputs, strips the data-URI wrapper, preserves the source mime type, and sends them as proper Gemini `inlineData`.
+- Added a focused regression test that locks the workbench temporary-upload case so future changes cannot regress back to `fileData.fileUri` for base64 references.
+- Validation:
+  - `npm run test --workspace @aigc-flow/ai-gateway-core -- runtime.test.ts`
+  - `npm run test --workspace @aigc-flow/worker -- workbench-generation.service.test.ts`
+  - `npm run build`
+
 ## 2026-06-18 - Asset Library Floating Selection Toolbar
 
 - Replaced the `/assets` drag-selection sticky top bulk bar with a fixed floating toolbar that appears near the user's selection endpoint, matching the requested contextual action behavior.

@@ -66,6 +66,15 @@ function buildUrl(baseUrl: string, path: string): string {
   return `${baseUrl.replace(/\/$/, "")}${path}`;
 }
 
+function parseDataUriImage(value: string): { base64: string; mimeType: string } | null {
+  const match = /^data:(image\/[^;,]+);base64,([a-z0-9+/=\r\n]+)$/i.exec(value.trim());
+  if (!match) return null;
+  const mimeType = match[1]?.trim();
+  const base64 = match[2]?.replace(/\s+/g, "");
+  if (!mimeType || !base64) return null;
+  return { base64, mimeType };
+}
+
 function normalizeImageInputs(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return Array.from(
@@ -176,6 +185,17 @@ export class PixelleLabsGeminiImageAdapter implements ProviderAdapter {
 
     const parts: Array<Record<string, unknown>> = [{ text: request.prompt }];
     for (const image of images) {
+      const inlineImage = parseDataUriImage(image);
+      if (inlineImage) {
+        parts.push({
+          inlineData: {
+            data: inlineImage.base64,
+            mimeType: inlineImage.mimeType,
+          },
+        });
+        continue;
+      }
+
       parts.push({
         fileData: {
           fileUri: image,
