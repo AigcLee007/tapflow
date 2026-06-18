@@ -184,13 +184,13 @@ function useResultPreviewUrl(result: WorkbenchResult | null) {
 
 function CompletedResultThumbnail({
   generationId,
-  onSelectResult,
+  onSelect,
   result,
   selected = false,
   sequenceLabel,
 }: {
   generationId: string;
-  onSelectResult: (result: WorkbenchResult) => void;
+  onSelect: (result: WorkbenchResult) => void;
   result: WorkbenchResult;
   selected?: boolean;
   sequenceLabel?: string;
@@ -199,11 +199,12 @@ function CompletedResultThumbnail({
 
   return (
     <button
-      className={`group relative overflow-hidden rounded-[16px] border bg-[#090b11] text-left transition ${
+      aria-label={`select-result-${result.id}`}
+      className={`group relative overflow-hidden rounded-[18px] border bg-[#090b11] text-left transition ${
         selected ? "border-cyan-300/70 shadow-[0_0_0_1px_rgba(103,232,249,0.28)]" : "border-white/8 hover:border-white/18"
       }`}
       data-testid={`workbench-completed-result-thumb-${generationId}`}
-      onClick={() => onSelectResult(result)}
+      onClick={() => onSelect(result)}
       type="button"
     >
       {sequenceLabel ? (
@@ -215,17 +216,17 @@ function CompletedResultThumbnail({
         </span>
       ) : null}
       {previewUrl ? (
-        <div className="flex min-h-[112px] items-center justify-center bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.05),transparent_58%),linear-gradient(180deg,rgba(15,18,25,0.98),rgba(8,10,14,0.98))] p-2">
+        <div className="flex h-[96px] items-center justify-center bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.05),transparent_58%),linear-gradient(180deg,rgba(15,18,25,0.98),rgba(8,10,14,0.98))] p-2">
           <img
             alt={result.originalFilename || "Workbench result"}
-            className="h-[112px] w-full rounded-[12px] object-contain transition duration-300 group-hover:scale-[1.015]"
+            className="h-full w-full rounded-[12px] object-contain transition duration-300 group-hover:scale-[1.02]"
             data-testid={`workbench-result-image-${generationId}-${result.id}`}
             src={previewUrl}
           />
         </div>
       ) : (
-        <div className="grid min-h-[112px] place-items-center rounded-[16px] border border-dashed border-white/10 bg-black/15 text-xs text-slate-500">
-          删除任务
+        <div className="grid h-[96px] place-items-center rounded-[16px] border border-dashed border-white/10 bg-black/15 text-xs text-slate-500">
+          暂无预览
         </div>
       )}
     </button>
@@ -286,33 +287,66 @@ function BatchChildSlot({
 
 function ResultStagePreview({
   generationId,
+  onOpenPreview,
   result,
   testId,
 }: {
   generationId: string;
+  onOpenPreview?: (() => void) | null;
   result: WorkbenchResult | null;
   testId: string;
 }) {
   const previewUrl = useResultPreviewUrl(result);
 
   return (
-    <div
-      className="overflow-hidden rounded-[18px] border border-white/8 bg-[#090b11]"
+    <button
+      aria-label={result ? `open-preview-${result.id}` : `open-preview-${generationId}`}
+      className="group overflow-hidden rounded-[22px] border border-white/8 bg-[#090b11] text-left"
       data-testid={testId}
+      disabled={!result || !onOpenPreview}
+      onClick={() => onOpenPreview?.()}
+      type="button"
     >
       {result && previewUrl ? (
-        <div className="flex h-[188px] items-center justify-center bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.06),transparent_58%),linear-gradient(180deg,rgba(15,18,25,0.98),rgba(8,10,14,0.98))] p-3">
+        <div className="flex h-[320px] items-center justify-center bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.06),transparent_58%),linear-gradient(180deg,rgba(15,18,25,0.98),rgba(8,10,14,0.98))] p-4">
           <img
             alt={result.originalFilename || "Workbench result"}
-            className="h-full w-full rounded-[14px] object-contain"
+            className="h-full w-full rounded-[18px] object-contain transition duration-300 group-hover:scale-[1.01]"
             data-testid={`workbench-result-stage-image-${generationId}-${result.id}`}
             src={previewUrl}
           />
         </div>
       ) : (
-        <div className="grid h-[188px] place-items-center text-xs text-slate-500">暂无预览</div>
+        <div className="grid h-[320px] place-items-center text-xs text-slate-500">暂无预览</div>
       )}
-    </div>
+    </button>
+  );
+}
+
+function DesktopResultActionButton({
+  accent = false,
+  ariaLabel,
+  children,
+  onClick,
+}: {
+  accent?: boolean;
+  ariaLabel: string;
+  children: React.ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      aria-label={ariaLabel}
+      className={`inline-flex h-11 w-full items-center justify-center gap-2 rounded-[14px] border px-4 text-[13px] font-bold transition ${
+        accent
+          ? "border-cyan-300/25 bg-cyan-400/10 text-cyan-100 hover:bg-cyan-400/16"
+          : "border-white/10 bg-white/[0.04] text-slate-100 hover:bg-white/[0.10]"
+      }`}
+      onClick={onClick}
+      type="button"
+    >
+      {children}
+    </button>
   );
 }
 
@@ -609,125 +643,112 @@ function DesktopCompletedResultCard({
   onSelectResult: (result: WorkbenchResult) => void;
   onUseAsReference: (result: WorkbenchResult) => void;
 }) {
-  const result = getPrimaryResult(generation);
-  const previewUrl = useResultPreviewUrl(result);
   const displayResults = getGenerationDisplayResults(generation);
-  const hasMultipleResults = displayResults.length > 1 || Boolean(generation.batch);
   const [selectedResultId, setSelectedResultId] = React.useState<string | null>(displayResults[0]?.id ?? null);
   const selectedDisplayResult = displayResults.find((item) => item.id === selectedResultId) ?? displayResults[0] ?? null;
-  const renderResultActionRow = React.useCallback(
-    (item: WorkbenchResult) => (
-      <ResultActionTray
-        generationId={generation.id}
-        onDownloadOriginal={() => void onDownloadOriginal(item)}
-        onRetry={() => onRetry(generation.id)}
-        onReuseParams={() => onReuseParams(generation)}
-        onUseAsReference={() => onUseAsReference(item)}
-        result={item}
-      />
-    ),
-    [generation, onDownloadOriginal, onRetry, onReuseParams, onUseAsReference],
-  );
 
   return (
     <article
-      className="grid grid-cols-[minmax(268px,340px)_minmax(0,1fr)] gap-3 rounded-[20px] border border-white/8 bg-black/20 p-3"
+      className="grid grid-cols-[minmax(0,1.45fr)_minmax(320px,0.8fr)] gap-4 rounded-[24px] border border-white/8 bg-black/20 p-4"
       data-testid={`workbench-completed-history-item-${generation.id}`}
     >
-      {hasMultipleResults ? (
-        <div className="flex h-full flex-col gap-3">
-          {generation.batch ? (
-            <div
-              className="flex h-8 items-center justify-center rounded-full border border-white/10 bg-white/[0.06] px-3 text-[11px] font-black text-cyan-100"
-              data-testid={`workbench-batch-progress-${generation.id}`}
+      <div className="flex min-h-0 flex-col gap-3">
+        {generation.batch ? (
+          <div
+            className="inline-flex h-9 w-fit items-center justify-center rounded-full border border-white/10 bg-white/[0.06] px-4 text-[12px] font-black text-cyan-100"
+            data-testid={`workbench-batch-progress-${generation.id}`}
+          >
+            {generation.batch.completedCount}/{generation.batch.totalCount} 当前选中
+          </div>
+        ) : null}
+        <ResultStagePreview
+          generationId={generation.id}
+          onOpenPreview={selectedDisplayResult ? () => onSelectResult(selectedDisplayResult) : null}
+          result={selectedDisplayResult}
+          testId={`workbench-result-stage-${generation.id}`}
+        />
+        <div className="px-1 text-[12px] text-slate-400">
+          点击下方缩略图切换当前图片；点击上方主图或右侧“全屏预览”查看原图。
+        </div>
+        <div className="grid grid-cols-4 gap-3" data-testid={`workbench-result-thumb-row-${generation.id}`}>
+          {displayResults.map((item, index) => (
+            <CompletedResultThumbnail
+              generationId={generation.id}
+              key={item.id}
+              onSelect={(picked) => setSelectedResultId(picked.id)}
+              result={item}
+              selected={item.id === selectedDisplayResult?.id}
+              sequenceLabel={String(index + 1)}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div className="flex min-w-0 flex-col gap-4 rounded-[22px] border border-white/8 bg-white/[0.03] p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="line-clamp-2 text-[20px] font-bold leading-7 text-white">{generation.prompt}</div>
+            <div className="mt-2 text-[13px] font-medium text-cyan-100">{formatStatus(generation.status)}</div>
+            <GenerationParameterLine generation={generation} models={models} />
+          </div>
+          <div className="flex items-start gap-2">
+            <div className="flex h-10 min-w-[72px] items-center justify-center gap-1 rounded-[12px] border border-white/8 bg-white/[0.05] px-3 text-[13px] font-black text-[#ffe35a]">
+              <Coins size={14} />
+              {generation.estimatedCredits}
+            </div>
+            <button
+              aria-label={`delete-record-${generation.id}`}
+              className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-white/[0.05] text-slate-300 transition hover:bg-red-500/16 hover:text-red-100"
+              onClick={() => onDelete(generation.id)}
+              type="button"
             >
-              {generation.batch.completedCount}/{generation.batch.totalCount}
-            </div>
-          ) : null}
-          <ResultStagePreview generationId={generation.id} result={selectedDisplayResult} testId={`workbench-result-stage-${generation.id}`} />
-          <div className="grid grid-cols-4 gap-2" data-testid={`workbench-result-thumb-row-${generation.id}`}>
-            {displayResults.map((item, index) => (
-              <div key={item.id} onClick={() => setSelectedResultId(item.id)}>
-                <CompletedResultThumbnail
-                  generationId={generation.id}
-                  onSelectResult={onSelectResult}
-                  result={item}
-                  selected={item.id === selectedDisplayResult?.id}
-                  sequenceLabel={String(index + 1)}
-                />
-              </div>
-            ))}
-          </div>
-          {selectedDisplayResult ? renderResultActionRow(selectedDisplayResult) : null}
-        </div>
-      ) : (
-        <button
-          className="overflow-hidden rounded-[16px] border border-white/8 bg-[#090b11]"
-          disabled={!result}
-          onClick={() => result && onSelectResult(result)}
-          type="button"
-        >
-          {previewUrl ? (
-            <div className="flex min-h-[156px] items-center justify-center bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.05),transparent_58%),linear-gradient(180deg,rgba(15,18,25,0.98),rgba(8,10,14,0.98))] p-2.5">
-              <img
-                alt={result?.originalFilename || "Workbench result"}
-                className="h-full max-h-[220px] w-full rounded-[12px] object-contain"
-                src={previewUrl}
-              />
-            </div>
-          ) : (
-            <div className="grid min-h-[156px] place-items-center rounded-[16px] border border-dashed border-white/10 bg-black/15 text-xs text-slate-500">
-              ????
-            </div>
-          )}
-        </button>
-      )}
-
-      <div className="flex min-w-0 flex-col justify-between gap-3">
-        <div>
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="line-clamp-2 text-[14px] font-bold leading-5 text-white">{generation.prompt}</div>
-              <div className="mt-2 text-[11px] text-slate-400">{formatStatus(generation.status)}</div>
-              <GenerationParameterLine generation={generation} models={models} />
-            </div>
-            <div className="flex items-start gap-2">
-              <div className="flex h-9 min-w-[64px] items-center justify-center gap-1 rounded-[10px] border border-white/8 bg-white/[0.05] px-2 text-[12px] font-black text-[#ffe35a]">
-                <Coins size={13} />
-                {generation.estimatedCredits}
-              </div>
-              <button
-                aria-label={`删除记录-${generation.id}`}
-                className="grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-white/[0.05] text-slate-300 transition hover:bg-red-500/16 hover:text-red-100"
-                onClick={() => onDelete(generation.id)}
-                type="button"
-              >
-                <Trash2 size={14} />
-              </button>
-            </div>
+              <Trash2 size={15} />
+            </button>
           </div>
         </div>
 
-        {!hasMultipleResults ? (
-          <div className="flex flex-wrap gap-2">
-            <WorkbenchPillButton className="bg-white/[0.06] text-white" onClick={() => onRetry(generation.id)}>
-              再次生成
-            </WorkbenchPillButton>
-            <WorkbenchPillButton className="bg-white/[0.03] text-slate-300" onClick={() => onReuseParams(generation)}>
-              复用参数
-            </WorkbenchPillButton>
-            {result ? (
-              <>
-                <WorkbenchPillButton onClick={() => onDownloadOriginal(result)}>
-                  <Download size={13} />
-                  下载原图
-                </WorkbenchPillButton>
-                <WorkbenchPillButton onClick={() => onUseAsReference(result)}>
-                  <ImagePlus size={13} />
-                  引用参考
-                </WorkbenchPillButton>
-              </>
-            ) : null}
+        <div className="flex flex-wrap gap-2">
+          <WorkbenchPillButton className="bg-white/[0.06] text-white" onClick={() => onRetry(generation.id)}>
+            再次生成
+          </WorkbenchPillButton>
+          <WorkbenchPillButton className="bg-white/[0.03] text-slate-300" onClick={() => onReuseParams(generation)}>
+            复用参数
+          </WorkbenchPillButton>
+        </div>
+
+        {selectedDisplayResult ? (
+          <div
+            className="grid gap-3"
+            data-testid={`workbench-result-action-panel-${generation.id}`}
+          >
+            <DesktopResultActionButton
+              accent
+              ariaLabel="全屏预览"
+              onClick={() => onSelectResult(selectedDisplayResult)}
+            >
+              全屏预览
+            </DesktopResultActionButton>
+            <DesktopResultActionButton
+              ariaLabel="引用参考"
+              onClick={() => onUseAsReference(selectedDisplayResult)}
+            >
+              <ImagePlus size={15} />
+              引用参考
+            </DesktopResultActionButton>
+            <DesktopResultActionButton
+              ariaLabel="下载原图"
+              onClick={() => void onDownloadOriginal(selectedDisplayResult)}
+            >
+              <Download size={15} />
+              下载原图
+            </DesktopResultActionButton>
+            <DesktopResultActionButton
+              ariaLabel={`删除记录-${generation.id}`}
+              onClick={() => onDelete(generation.id)}
+            >
+              <Trash2 size={15} />
+              删除记录
+            </DesktopResultActionButton>
           </div>
         ) : null}
       </div>

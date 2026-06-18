@@ -2648,3 +2648,20 @@ Validation completed:
 - validation:
   - `npm test -- src/assets/AssetLibraryPage.test.tsx src/assets/AssetPreviewModal.test.tsx src/assets/AssetVirtualGrid.test.tsx`
   - `npm run build`
+
+## 2026-06-19 - Workbench Result Card Scheme C Refinement
+
+- refined the desktop `/workbench` completed-result card into the approved Scheme C layout
+- rebuilt the finished-task card so:
+  - the left side is now a large stage preview for the currently selected image
+  - the bottom thumbnail strip only changes selection and no longer doubles as the fullscreen trigger
+  - the right side carries prompt, status, creator-facing parameter metadata, credits, and a dedicated vertical action stack
+- added explicit result actions for:
+  - `全屏预览`
+  - `引用参考`
+  - `下载原图`
+  - `删除记录`
+- cleaned the remaining stale/garbled workbench UI regression assertions so the test suite now verifies the real current Chinese labels and the new action-panel structure
+- validation:
+  - `npm run test -- src/workbench/WorkbenchPage.test.tsx`
+  - `npm run build`
