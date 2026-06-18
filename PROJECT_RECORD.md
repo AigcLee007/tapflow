@@ -81,6 +81,7 @@ As of 2026-06-13:
 - Follow-up root cause for MouxiHub GPT-Image-2 `绾胯矾鍥沗 was also fixed: legacy `ai_routes.upstream_model` values were still being injected into `requestConfig.model` and could override the new line-four runtime fallback, so provider-side GPT-Image-2 base model routing now prefers dedicated `providerBaseModel`/route defaults over stale normalized route config
 - desktop `/workbench` has now been restructured into a fixed three-pane docked workstation: the desktop shell reads as `3:5:2`, the left parameter dock keeps the existing composer UI with a pinned footer action area, the center pane is split into current-task stage plus recent-task window capped to the newest 8 operational tasks, and the right dock now shows completed-only history with no active generations mixed into that rail
 - `/assets` drag multi-select now uses a floating contextual toolbar at the user's selection endpoint instead of a sticky top bulk bar, with cancel, select all, favorite, download original, and delete actions available next to the selection
+- `/assets` drag multi-select has been further reworked against the smoother `D:\gpt-iamge-2` task-grid interaction pattern: selection now uses page coordinates, drag thresholding, hit slop, body-level text-selection suppression, auto-scroll near viewport edges, and toolbar placement derived from the selected asset bounds rather than the raw pointer endpoint
 
 ## 2026-06-18 - Workbench Three-Pane Docked Desktop Layout
 
@@ -115,6 +116,22 @@ As of 2026-06-13:
 - Stabilized drag selection from asset thumbnails by preventing the same pointer-down from also bubbling to the outer selection surface after the card starts marquee selection.
 - Kept selected-asset cleanup tied to asset-list changes and identity changes so stale selections/toolbars disappear when the list changes.
 - Extended asset-library regression coverage for the floating toolbar position, complete action set, select-all behavior, bulk favorite, bulk download, and existing bulk delete flow.
+- Validation:
+  - `npm test -- src/assets/AssetLibraryPage.test.tsx`
+  - `npm run build`
+
+## 2026-06-18 - Asset Library Drag Selection Deep Optimization
+
+- Compared the `/assets` drag-select interaction against `D:\gpt-iamge-2\src\components\TaskGrid.tsx` and moved the current implementation toward the same smoother interaction model.
+- Reworked marquee selection to use page-space coordinates so scrolling during a drag no longer shifts the selection math.
+- Added drag thresholding so tiny pointer movement on an asset tile does not create a selection or suppress normal card behavior.
+- Added selection hit slop so users do not need to drag perfectly across the interior of every tile to select it.
+- Reduced drag-time re-render churn by only notifying the asset library when the selected id set actually changes.
+- Added body-level `asset-drag-selecting` styling to suppress text selection during marquee drag.
+- Added edge auto-scroll while dragging near the top/bottom of the viewport.
+- Changed the floating selection toolbar to place itself near the selected asset group bounds with viewport clamping instead of following the raw mouse-up point, making it feel closer to the reference app's always-handy action bar.
+- Marked asset action menus as non-selection targets so clicking tile management controls does not accidentally start marquee selection.
+- Extended regression coverage for selected-bounds toolbar positioning and tiny pointer movement behavior.
 - Validation:
   - `npm test -- src/assets/AssetLibraryPage.test.tsx`
   - `npm run build`

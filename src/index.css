@@ -22,6 +22,12 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+body.asset-drag-selecting,
+body.asset-drag-selecting * {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+}
+
 @media (max-width: 640px) {
   input,
   textarea,

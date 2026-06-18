@@ -6,39 +6,114 @@ import type { AssetDateGroup } from "./assetLibraryView";
 import { AssetGroupedSections } from "./AssetGroupedSections";
 
 type SelectionBox = {
-  height: number;
-  left: number;
-  top: number;
-  width: number;
+  currentPageX: number;
+  currentPageY: number;
+  startPageX: number;
+  startPageY: number;
 };
 
 export type AssetSelectionMeta = {
   anchorPoint?: { x: number; y: number };
+  toolbarPoint?: { x: number; y: number };
 };
 
-function rectsIntersect(a: DOMRect, b: SelectionBox) {
-  const right = b.left + b.width;
-  const bottom = b.top + b.height;
-  return a.left < right && a.right > b.left && a.top < bottom && a.bottom > b.top;
+function rectsIntersect(rect: DOMRect, box: SelectionBox) {
+  const minX = Math.min(box.startPageX, box.currentPageX);
+  const maxX = Math.max(box.startPageX, box.currentPageX);
+  const minY = Math.min(box.startPageY, box.currentPageY);
+  const maxY = Math.max(box.startPageY, box.currentPageY);
+  const rectLeft = rect.left + window.scrollX;
+  const rectRight = rect.right + window.scrollX;
+  const rectTop = rect.top + window.scrollY;
+  const rectBottom = rect.bottom + window.scrollY;
+  return (
+    minX < rectRight + DRAG_SELECTION_HIT_SLOP_PX &&
+    maxX > rectLeft - DRAG_SELECTION_HIT_SLOP_PX &&
+    minY < rectBottom + DRAG_SELECTION_HIT_SLOP_PX &&
+    maxY > rectTop - DRAG_SELECTION_HIT_SLOP_PX
+  );
 }
 
-function getSelectionBox(start: { x: number; y: number }, current: { x: number; y: number }): SelectionBox {
-  const left = Math.min(start.x, current.x);
-  const top = Math.min(start.y, current.y);
+function getPagePoint(clientX: number, clientY: number) {
   return {
-    height: Math.abs(current.y - start.y),
-    left,
-    top,
-    width: Math.abs(current.x - start.x),
+    pageX: clientX + window.scrollX,
+    pageY: clientY + window.scrollY,
   };
 }
 
 function shouldIgnoreDragStart(target: EventTarget | null) {
   if (!(target instanceof Element)) return false;
-  return Boolean(target.closest("a, input, textarea, select, [role='menu'], [data-asset-actions='true']"));
+  if (target.closest("[data-asset-selectable='true']")) return false;
+  return Boolean(target.closest("button, a, input, textarea, select, [role='menu'], [data-asset-actions='true']"));
 }
 
 const DRAG_SELECT_THRESHOLD_PX = 6;
+const DRAG_SELECTION_HIT_SLOP_PX = 8;
+const DRAG_SCROLL_THRESHOLD_PX = 44;
+const DRAG_SCROLL_STEP_PX = 16;
+const TOOLBAR_ESTIMATED_WIDTH_PX = 304;
+const TOOLBAR_ESTIMATED_HEIGHT_PX = 48;
+const TOOLBAR_VIEWPORT_MARGIN_PX = 16;
+const TOOLBAR_SELECTION_GAP_PX = 12;
+
+function sameAssetIds(a: string[], b: string[]) {
+  if (a.length !== b.length) return false;
+  return a.every((assetId, index) => assetId === b[index]);
+}
+
+function getToolbarPoint(surface: HTMLElement | null, selectedIds: string[], fallback: { x: number; y: number }) {
+  const selectedIdSet = new Set(selectedIds);
+  const selectedRects = surface
+    ? Array.from(surface.querySelectorAll<HTMLElement>("[data-asset-selectable='true']"))
+        .filter((element) => {
+          const assetId = element.dataset.assetId;
+          return assetId ? selectedIdSet.has(assetId) : false;
+        })
+        .map((element) => element.getBoundingClientRect())
+    : [];
+
+  if (selectedRects.length === 0) {
+    return {
+      x: Math.min(
+        window.innerWidth - TOOLBAR_VIEWPORT_MARGIN_PX - TOOLBAR_ESTIMATED_WIDTH_PX / 2,
+        Math.max(TOOLBAR_VIEWPORT_MARGIN_PX + TOOLBAR_ESTIMATED_WIDTH_PX / 2, fallback.x),
+      ),
+      y: Math.min(
+        window.innerHeight - TOOLBAR_VIEWPORT_MARGIN_PX - TOOLBAR_ESTIMATED_HEIGHT_PX,
+        Math.max(TOOLBAR_VIEWPORT_MARGIN_PX, fallback.y - TOOLBAR_ESTIMATED_HEIGHT_PX - TOOLBAR_SELECTION_GAP_PX),
+      ),
+    };
+  }
+
+  const union = selectedRects.reduce(
+    (bounds, rect) => ({
+      bottom: Math.max(bounds.bottom, rect.bottom),
+      left: Math.min(bounds.left, rect.left),
+      right: Math.max(bounds.right, rect.right),
+      top: Math.min(bounds.top, rect.top),
+    }),
+    {
+      bottom: selectedRects[0].bottom,
+      left: selectedRects[0].left,
+      right: selectedRects[0].right,
+      top: selectedRects[0].top,
+    },
+  );
+
+  const minX = TOOLBAR_VIEWPORT_MARGIN_PX + TOOLBAR_ESTIMATED_WIDTH_PX / 2;
+  const maxX = window.innerWidth - TOOLBAR_VIEWPORT_MARGIN_PX - TOOLBAR_ESTIMATED_WIDTH_PX / 2;
+  const x = Math.min(maxX, Math.max(minX, (union.left + union.right) / 2));
+  const canFitBelow = union.bottom + TOOLBAR_SELECTION_GAP_PX + TOOLBAR_ESTIMATED_HEIGHT_PX <= window.innerHeight - TOOLBAR_VIEWPORT_MARGIN_PX;
+  const preferredY = canFitBelow
+    ? union.bottom + TOOLBAR_SELECTION_GAP_PX
+    : union.top - TOOLBAR_SELECTION_GAP_PX - TOOLBAR_ESTIMATED_HEIGHT_PX;
+  const y = Math.min(
+    window.innerHeight - TOOLBAR_VIEWPORT_MARGIN_PX - TOOLBAR_ESTIMATED_HEIGHT_PX,
+    Math.max(TOOLBAR_VIEWPORT_MARGIN_PX, preferredY),
+  );
+
+  return { x, y };
+}
 
 export function AssetGrid({
   emptyMessage,
@@ -70,64 +145,147 @@ export function AssetGrid({
   tileOnly?: boolean;
 }) {
   const surfaceRef = React.useRef<HTMLDivElement | null>(null);
-  const dragStartRef = React.useRef<{ x: number; y: number } | null>(null);
+  const dragStartRef = React.useRef<{ clientX: number; clientY: number; pageX: number; pageY: number; startedOnTile: boolean } | null>(null);
+  const lastClientPointRef = React.useRef<{ x: number; y: number } | null>(null);
+  const hasDraggedRef = React.useRef(false);
   const suppressNextOpenRef = React.useRef(false);
   const [selectionBox, setSelectionBox] = React.useState<SelectionBox | null>(null);
 
   const latestSelectedIdsRef = React.useRef<string[]>([]);
+  const initialSelectedIdsRef = React.useRef<string[]>([]);
+  const selectedAssetIdsRef = React.useRef(selectedAssetIds);
+  const dragScrollIntervalRef = React.useRef<number | null>(null);
+  const dragScrollDirectionRef = React.useRef<-1 | 1 | null>(null);
+
+  React.useEffect(() => {
+    selectedAssetIdsRef.current = selectedAssetIds;
+  }, [selectedAssetIds]);
+
+  const stopDragScroll = React.useCallback(() => {
+    if (dragScrollIntervalRef.current != null) {
+      window.clearInterval(dragScrollIntervalRef.current);
+      dragScrollIntervalRef.current = null;
+    }
+    dragScrollDirectionRef.current = null;
+  }, []);
+
+  const startDragScroll = React.useCallback((direction: -1 | 1) => {
+    if (dragScrollIntervalRef.current != null && dragScrollDirectionRef.current === direction) return;
+    stopDragScroll();
+    dragScrollDirectionRef.current = direction;
+    dragScrollIntervalRef.current = window.setInterval(() => {
+      window.scrollBy({ top: direction * DRAG_SCROLL_STEP_PX, behavior: "instant" });
+    }, 16);
+  }, [stopDragScroll]);
 
   const updateSelectionFromBox = React.useCallback((box: SelectionBox) => {
     const surface = surfaceRef.current;
     if (!surface) return;
-    const selectedIds = Array.from(surface.querySelectorAll<HTMLElement>("[data-asset-selectable='true']"))
+    const nextSelectedIds = Array.from(surface.querySelectorAll<HTMLElement>("[data-asset-selectable='true']"))
       .filter((element) => rectsIntersect(element.getBoundingClientRect(), box))
       .map((element) => element.dataset.assetId)
       .filter((assetId): assetId is string => Boolean(assetId));
-    latestSelectedIdsRef.current = selectedIds;
-    onSelectionChange?.(selectedIds);
+
+    latestSelectedIdsRef.current = nextSelectedIds;
+    if (!sameAssetIds(nextSelectedIds, Array.from(selectedAssetIdsRef.current))) {
+      onSelectionChange?.(nextSelectedIds);
+    }
   }, [onSelectionChange]);
 
   React.useEffect(() => {
     return () => {
+      stopDragScroll();
+      document.body.classList.remove("asset-drag-selecting");
       window.removeEventListener("pointermove", handleWindowPointerMove);
       window.removeEventListener("pointerup", stopSelecting);
       window.removeEventListener("pointercancel", stopSelecting);
+      window.removeEventListener("scroll", handleWindowScroll, true);
     };
   }, []);
 
   const handleWindowPointerMove = React.useCallback((event: PointerEvent) => {
-      if (!dragStartRef.current) return;
-      const nextBox = getSelectionBox(dragStartRef.current, { x: event.clientX, y: event.clientY });
-      if (Math.max(nextBox.width, nextBox.height) >= DRAG_SELECT_THRESHOLD_PX) {
-        suppressNextOpenRef.current = true;
-      }
+      const start = dragStartRef.current;
+      if (!start) return;
+      const point = getPagePoint(event.clientX, event.clientY);
+      lastClientPointRef.current = { x: event.clientX, y: event.clientY };
+      const distance = Math.hypot(point.pageX - start.pageX, point.pageY - start.pageY);
+      if (distance < DRAG_SELECT_THRESHOLD_PX && !hasDraggedRef.current) return;
+
+      hasDraggedRef.current = true;
+      suppressNextOpenRef.current = true;
+      const nextBox = {
+        currentPageX: point.pageX,
+        currentPageY: point.pageY,
+        startPageX: start.pageX,
+        startPageY: start.pageY,
+      };
       setSelectionBox(nextBox);
       updateSelectionFromBox(nextBox);
+      event.preventDefault();
+
+      if (event.clientY < DRAG_SCROLL_THRESHOLD_PX) {
+        startDragScroll(-1);
+      } else if (event.clientY > window.innerHeight - DRAG_SCROLL_THRESHOLD_PX) {
+        startDragScroll(1);
+      } else {
+        stopDragScroll();
+      }
   }, [updateSelectionFromBox]);
 
   const stopSelecting = React.useCallback((event?: PointerEvent) => {
-    if (event && latestSelectedIdsRef.current.length > 0) {
-      onSelectionChange?.(latestSelectedIdsRef.current, { anchorPoint: { x: event.clientX, y: event.clientY } });
+    const start = dragStartRef.current;
+    document.body.classList.remove("asset-drag-selecting");
+    stopDragScroll();
+
+    if (event && start && hasDraggedRef.current) {
+      const point = getToolbarPoint(surfaceRef.current, latestSelectedIdsRef.current, { x: event.clientX, y: event.clientY });
+      onSelectionChange?.(latestSelectedIdsRef.current, { anchorPoint: point, toolbarPoint: point });
+    } else if (event && start && !start.startedOnTile && initialSelectedIdsRef.current.length > 0) {
+      onSelectionChange?.([]);
     }
+
     dragStartRef.current = null;
+    lastClientPointRef.current = null;
+    hasDraggedRef.current = false;
     setSelectionBox(null);
     window.removeEventListener("pointermove", handleWindowPointerMove);
     window.removeEventListener("pointerup", stopSelecting);
     window.removeEventListener("pointercancel", stopSelecting);
-  }, [handleWindowPointerMove, onSelectionChange]);
+    window.removeEventListener("scroll", handleWindowScroll, true);
+  }, [handleWindowPointerMove, onSelectionChange, stopDragScroll]);
+
+  const handleWindowScroll = React.useCallback(() => {
+    const start = dragStartRef.current;
+    const lastClientPoint = lastClientPointRef.current;
+    if (!start || !lastClientPoint || !hasDraggedRef.current) return;
+    const point = getPagePoint(lastClientPoint.x, lastClientPoint.y);
+    const nextBox = {
+      currentPageX: point.pageX,
+      currentPageY: point.pageY,
+      startPageX: start.pageX,
+      startPageY: start.pageY,
+    };
+    setSelectionBox(nextBox);
+    updateSelectionFromBox(nextBox);
+  }, [updateSelectionFromBox]);
 
   const beginSelection = React.useCallback((event: React.PointerEvent) => {
     if (event.button !== 0 || shouldIgnoreDragStart(event.target)) return;
     event.preventDefault();
-    dragStartRef.current = { x: event.clientX, y: event.clientY };
-    const nextBox = getSelectionBox(dragStartRef.current, dragStartRef.current);
-    setSelectionBox(nextBox);
-    latestSelectedIdsRef.current = [];
-    onSelectionChange?.([]);
+    const point = getPagePoint(event.clientX, event.clientY);
+    const target = event.target instanceof Element ? event.target : null;
+    const startedOnTile = Boolean(target?.closest("[data-asset-selectable='true']"));
+    dragStartRef.current = { clientX: event.clientX, clientY: event.clientY, pageX: point.pageX, pageY: point.pageY, startedOnTile };
+    lastClientPointRef.current = { x: event.clientX, y: event.clientY };
+    hasDraggedRef.current = false;
+    latestSelectedIdsRef.current = Array.from(selectedAssetIdsRef.current);
+    initialSelectedIdsRef.current = Array.from(selectedAssetIdsRef.current);
+    document.body.classList.add("asset-drag-selecting");
     window.addEventListener("pointermove", handleWindowPointerMove);
     window.addEventListener("pointerup", stopSelecting);
     window.addEventListener("pointercancel", stopSelecting);
-  }, [handleWindowPointerMove, onSelectionChange, stopSelecting]);
+    window.addEventListener("scroll", handleWindowScroll, true);
+  }, [handleWindowPointerMove, handleWindowScroll, stopSelecting]);
 
   if (loading) {
     return (
@@ -196,7 +354,6 @@ export function AssetGrid({
           }
           onOpen(asset);
         }}
-        onPointerDown={beginSelection}
         onRename={onRename}
         onToggleFavorite={onToggleFavorite}
         selectedAssetIds={selectedAssetIds}
@@ -207,10 +364,10 @@ export function AssetGrid({
         <div
           className="pointer-events-none fixed z-[1500] rounded border border-sky-300/90 bg-sky-300/15 shadow-[0_0_0_1px_rgba(14,165,233,0.16)]"
           style={{
-            height: selectionBox.height,
-            left: selectionBox.left,
-            top: selectionBox.top,
-            width: selectionBox.width,
+            height: Math.abs(selectionBox.currentPageY - selectionBox.startPageY),
+            left: Math.min(selectionBox.startPageX, selectionBox.currentPageX) - window.scrollX,
+            top: Math.min(selectionBox.startPageY, selectionBox.currentPageY) - window.scrollY,
+            width: Math.abs(selectionBox.currentPageX - selectionBox.startPageX),
           }}
         />
       ) : null}

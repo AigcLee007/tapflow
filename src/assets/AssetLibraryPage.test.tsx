@@ -26,7 +26,6 @@ vi.mock("./assetApi", async () => {
     updateAssetMetadata: (...args: unknown[]) => updateAssetMetadataMock(...args),
   };
 });
-
 vi.mock("./UploadAssetButton", () => ({
   UploadAssetButton: ({ onUploaded }: { onUploaded: () => void }) => (
     <button onClick={onUploaded} type="button">
@@ -365,7 +364,7 @@ describe("AssetLibraryPage", () => {
       pointerType: "mouse",
     });
 
-    expect(screen.getByText("已选择 2 个素材")).toBeTruthy();
+    expect(screen.getByText("2 个")).toBeTruthy();
     expect(screen.getByRole("button", { name: "删除" })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "删除" }));
@@ -435,7 +434,7 @@ describe("AssetLibraryPage", () => {
     });
     fireEvent.click(firstButton);
 
-    expect(screen.getByText("已选择 2 个素材")).toBeTruthy();
+    expect(screen.getByText("2 个")).toBeTruthy();
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
@@ -536,14 +535,130 @@ describe("AssetLibraryPage", () => {
     const toolbar = screen.getByTestId("asset-selection-floating-toolbar");
 
     expect(screen.queryByTestId("asset-selection-top-bar")).toBeNull();
-    expect(toolbar.style.left).toBe("290px");
-    expect(toolbar.style.top).toBe("210px");
-    expect(screen.getByText("已选择 2 个素材")).toBeTruthy();
+    expect(toolbar.style.left).toBe("168px");
+    expect(toolbar.style.top).toBe("212px");
+    expect(screen.getByText("2 个")).toBeTruthy();
     expect(toolbar.querySelector('[aria-label="取消选择"]')).toBeTruthy();
     expect(toolbar.querySelector('[aria-label="全选"]')).toBeTruthy();
     expect(toolbar.querySelector('[aria-label="收藏"]')).toBeTruthy();
     expect(toolbar.querySelector('[aria-label="下载原图"]')).toBeTruthy();
     expect(toolbar.querySelector('[aria-label="删除"]')).toBeTruthy();
+  });
+
+  test("keeps the floating selection toolbar near the selected asset bounds instead of the pointer endpoint", () => {
+    const first = createAsset(1);
+    const second = createAsset(2);
+    mockLibrary({
+      assets: [first, second],
+      groupedAssets: [{ dateLabel: "2026-06-12", items: [first, second] }],
+      mediaCounts: { all: 2, audio: 0, image: 2, video: 0 },
+      total: 2,
+    });
+
+    renderPage();
+
+    const [firstButton, secondButton] = screen.getAllByRole("button", { name: /^Asset / });
+    vi.spyOn(firstButton, "getBoundingClientRect").mockReturnValue({
+      bottom: 200,
+      height: 120,
+      left: 360,
+      right: 480,
+      top: 80,
+      width: 120,
+      x: 360,
+      y: 80,
+      toJSON: () => ({}),
+    });
+    vi.spyOn(secondButton, "getBoundingClientRect").mockReturnValue({
+      bottom: 200,
+      height: 120,
+      left: 500,
+      right: 620,
+      top: 80,
+      width: 120,
+      x: 500,
+      y: 80,
+      toJSON: () => ({}),
+    });
+
+    fireEvent.pointerDown(firstButton, {
+      button: 0,
+      clientX: 370,
+      clientY: 90,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+    fireEvent.pointerMove(window, {
+      clientX: 900,
+      clientY: 520,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+    fireEvent.pointerUp(window, {
+      clientX: 900,
+      clientY: 520,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+
+    const toolbar = screen.getByTestId("asset-selection-floating-toolbar");
+
+    expect(screen.getByText("2 个")).toBeTruthy();
+    expect(toolbar.style.left).toBe("490px");
+    expect(toolbar.style.top).toBe("212px");
+  });
+
+  test("does not select assets or open previews for tiny pointer movement on a tile", () => {
+    const first = createAsset(1);
+    mockLibrary({
+      assets: [first],
+      groupedAssets: [{ dateLabel: "2026-06-12", items: [first] }],
+      mediaCounts: { all: 1, audio: 0, image: 1, video: 0 },
+      total: 1,
+    });
+
+    render(
+      <AuthContext.Provider value={createAuthState()}>
+        <AssetLibraryPage />
+      </AuthContext.Provider>,
+    );
+
+    const firstButton = screen.getByRole("button", { name: "Asset 1" });
+    vi.spyOn(firstButton, "getBoundingClientRect").mockReturnValue({
+      bottom: 200,
+      height: 120,
+      left: 20,
+      right: 140,
+      top: 80,
+      width: 120,
+      x: 20,
+      y: 80,
+      toJSON: () => ({}),
+    });
+
+    fireEvent.pointerDown(firstButton, {
+      button: 0,
+      clientX: 30,
+      clientY: 90,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+    fireEvent.pointerMove(window, {
+      clientX: 33,
+      clientY: 93,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+    fireEvent.pointerUp(window, {
+      clientX: 33,
+      clientY: 93,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+
+    expect(screen.queryByTestId("asset-selection-floating-toolbar")).toBeNull();
+    expect(screen.queryByText("已选择 1 个素材")).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   test("runs floating selection toolbar bulk select, favorite, and download actions", async () => {
@@ -618,7 +733,7 @@ describe("AssetLibraryPage", () => {
     const toolbarActions = within(toolbar);
 
     fireEvent.click(toolbarActions.getByRole("button", { name: "全选" }));
-    expect(screen.getByText("已选择 3 个素材")).toBeTruthy();
+    expect(screen.getByText("3 个")).toBeTruthy();
 
     fireEvent.click(toolbarActions.getByRole("button", { name: "收藏" }));
     await waitFor(() => {

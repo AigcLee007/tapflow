@@ -209,7 +209,7 @@ export function AssetCard({
         )}
       </button>
       {showActions && (
-        <div className="absolute right-2 top-2">
+        <div className="absolute right-2 top-2" data-asset-actions="true">
           <button
             aria-label={`管理素材 ${title}`}
             className="grid h-8 w-8 place-items-center rounded-full bg-black/55 text-white/85 opacity-90 transition hover:bg-black/75 hover:text-white"
