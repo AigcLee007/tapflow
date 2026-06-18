@@ -174,6 +174,17 @@ As of 2026-06-13:
   - `npm test -- src/assets/AssetLibraryPage.test.tsx src/assets/AssetPreviewModal.test.tsx`
   - `npm run build`
 
+## 2026-06-18 - Asset Library Viewport Follow-up
+
+- Corrected the previous overlay approach after visual review showed the toolbar and preview could still miss the user's current window.
+- Changed the `/assets` desktop grid to a fixed 6-column layout so the main asset library matches the requested first-screen density.
+- Removed the fragile asset-panel measurement logic for the bulk toolbar; it now stays fixed at the current browser window bottom center with a higher overlay z-index.
+- Changed double-click asset preview to cover the current page viewport below the global nav (`top-20` to bottom) and use a full-size preview dialog instead of a small centered panel.
+- Added focused regression coverage for the 6-column asset grid, toolbar fixed-window positioning, and full-window preview modal.
+- validation:
+  - `npm test -- src/assets/AssetLibraryPage.test.tsx src/assets/AssetPreviewModal.test.tsx src/assets/AssetVirtualGrid.test.tsx`
+  - `npm run build`
+
 ## 2026-06-18 - Asset Library Drag Selection Deep Optimization
 
 - Compared the `/assets` drag-select interaction against `D:\gpt-iamge-2\src\components\TaskGrid.tsx` and moved the current implementation toward the same smoother interaction model.

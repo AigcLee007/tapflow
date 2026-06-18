@@ -135,9 +135,11 @@ describe("AssetPreviewModal", () => {
     const imageStage = screen.getByTestId("asset-preview-stage");
 
     expect(overlay.className).toContain("fixed");
-    expect(overlay.className).toContain("inset-x-6");
-    expect(overlay.className).not.toContain("inset-0");
-    expect(panel.className).toContain("h-[calc(100%-32px)]");
+    expect(overlay.className).toContain("inset-x-0");
+    expect(overlay.className).toContain("top-20");
+    expect(overlay.className).toContain("bottom-0");
+    expect(panel.className).toContain("h-full");
+    expect(panel.className).toContain("w-full");
     expect(panel.className).toContain("max-w-none");
     expect(imageStage.className).toContain("min-h-0");
   });

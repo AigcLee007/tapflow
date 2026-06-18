@@ -140,11 +140,17 @@ export function AssetGroupedSections({
             {group.dateLabel}
           </div>
           <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: compact ? "repeat(2, minmax(0, 1fr))" : "repeat(auto-fill, minmax(220px, 1fr))",
-              gap: compact ? 14 : 14,
-            }}
+            className={compact ? undefined : "grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6"}
+            data-testid={compact ? undefined : "asset-group-grid"}
+            style={
+              compact
+                ? {
+                    display: "grid",
+                    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                    gap: 14,
+                  }
+                : undefined
+            }
           >
             {virtualize ? (
               <AssetVirtualGrid

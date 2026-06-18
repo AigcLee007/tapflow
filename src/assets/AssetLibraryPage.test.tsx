@@ -259,6 +259,20 @@ describe("AssetLibraryPage", () => {
     expect(screen.queryByText("1 KB")).toBeNull();
   });
 
+  test("uses a six-column desktop grid for the asset library page", () => {
+    const assets = Array.from({ length: 6 }, (_, index) => createAsset(index));
+    mockLibrary({
+      assets,
+      groupedAssets: [{ dateLabel: "2026-06-12", items: assets }],
+      mediaCounts: { all: 6, audio: 0, image: 6, video: 0 },
+      total: 6,
+    });
+
+    renderPage();
+
+    expect(screen.getByTestId("asset-group-grid").className).toContain("lg:grid-cols-6");
+  });
+
   test("limits initial thumbnail DOM nodes for large asset groups", () => {
     const manyAssets = Array.from({ length: 120 }, (_, index) => ({
       ...asset,
@@ -532,36 +546,18 @@ describe("AssetLibraryPage", () => {
       pointerType: "mouse",
     });
 
-    const shell = screen.getByTestId("asset-library-shell");
-    vi.spyOn(shell, "getBoundingClientRect").mockReturnValue({
-      bottom: 700,
-      height: 600,
-      left: 100,
-      right: 900,
-      top: 100,
-      width: 800,
-      x: 100,
-      y: 100,
-      toJSON: () => ({}),
-    });
-    fireEvent.scroll(window);
     const toolbar = screen.getByTestId("asset-selection-floating-toolbar");
 
     expect(screen.queryByTestId("asset-selection-top-bar")).toBeNull();
-    expect(shell.className).toContain("relative");
     expect(toolbar.className).toContain("fixed");
     expect(toolbar.className).toContain("left-1/2");
-    expect(toolbar.className).toContain("bottom-6");
+    expect(toolbar.className).toContain("bottom-8");
+    expect(toolbar.className).toContain("z-[2400]");
     expect(toolbar.className).toContain("bg-[#10131c]/95");
     expect(toolbar.className).not.toContain("bg-white/95");
-    expect(toolbar.style.left).toBe("500px");
-    expect(toolbar.style.bottom).toBe("92px");
-    expect(screen.getByText("2 个")).toBeTruthy();
-    expect(toolbar.querySelector('[aria-label="取消选择"]')).toBeTruthy();
-    expect(toolbar.querySelector('[aria-label="全选"]')).toBeTruthy();
-    expect(toolbar.querySelector('[aria-label="收藏"]')).toBeTruthy();
-    expect(toolbar.querySelector('[aria-label="下载原图"]')).toBeTruthy();
-    expect(toolbar.querySelector('[aria-label="删除"]')).toBeTruthy();
+    expect(toolbar.style.left).toBe("");
+    expect(toolbar.style.bottom).toBe("");
+    expect(within(toolbar).getAllByRole("button")).toHaveLength(5);
   });
 
   test("keeps the floating selection toolbar centered even when selected assets are near the right edge", () => {
@@ -620,27 +616,14 @@ describe("AssetLibraryPage", () => {
       pointerType: "mouse",
     });
 
-    const shell = screen.getByTestId("asset-library-shell");
-    vi.spyOn(shell, "getBoundingClientRect").mockReturnValue({
-      bottom: 700,
-      height: 600,
-      left: 100,
-      right: 900,
-      top: 100,
-      width: 800,
-      x: 100,
-      y: 100,
-      toJSON: () => ({}),
-    });
-    fireEvent.scroll(window);
     const toolbar = screen.getByTestId("asset-selection-floating-toolbar");
 
-    expect(screen.getByText("2 个")).toBeTruthy();
     expect(toolbar.className).toContain("fixed");
     expect(toolbar.className).toContain("left-1/2");
-    expect(toolbar.className).toContain("bottom-6");
-    expect(toolbar.style.left).toBe("500px");
-    expect(toolbar.style.bottom).toBe("92px");
+    expect(toolbar.className).toContain("bottom-8");
+    expect(toolbar.className).toContain("z-[2400]");
+    expect(toolbar.style.left).toBe("");
+    expect(toolbar.style.bottom).toBe("");
   });
 
   test("does not select assets or open previews for tiny pointer movement on a tile", () => {

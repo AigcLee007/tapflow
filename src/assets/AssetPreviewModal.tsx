@@ -17,12 +17,10 @@ export function AssetPreviewModal({
   asset,
   onClose,
   onUpdated,
-  viewportFrame,
 }: {
   asset: AssetItem;
   onClose: () => void;
   onUpdated: () => void;
-  viewportFrame?: { bottom: number; left: number; right: number; top: number };
 }) {
   const [projects, setProjects] = useState<WorkspaceProject[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState(asset.projectId ?? "");
@@ -134,18 +132,12 @@ export function AssetPreviewModal({
 
   return (
     <div
-      className="fixed inset-x-6 z-[1500] grid place-items-center bg-black/78 p-4 backdrop-blur-md"
+      className="fixed inset-x-0 bottom-0 top-20 z-[2200] grid place-items-center bg-black/82 p-4 backdrop-blur-md"
       data-testid="asset-preview-overlay"
-      style={{
-        bottom: viewportFrame?.bottom ?? 24,
-        left: viewportFrame?.left ?? undefined,
-        right: viewportFrame?.right ?? undefined,
-        top: viewportFrame?.top ?? 0,
-      }}
     >
       <section
         aria-modal="true"
-        className="relative grid h-[calc(100%-32px)] w-[calc(100%-32px)] max-w-none overflow-hidden rounded border border-white/10 bg-zinc-950 shadow-[0_24px_80px_rgba(0,0,0,0.55)] md:grid-cols-[minmax(0,1fr)_360px]"
+        className="relative grid h-full w-full max-w-none overflow-hidden rounded-none border border-white/10 bg-zinc-950 shadow-[0_24px_80px_rgba(0,0,0,0.55)] md:grid-cols-[minmax(0,1fr)_360px]"
         role="dialog"
       >
         <button
