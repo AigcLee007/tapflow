@@ -117,9 +117,9 @@ SELECT
 FROM billing_accounts AS account
 WHERE NOT EXISTS (
   SELECT 1
-  FROM billing_credit_grants AS grant
-  WHERE grant.billing_account_id = account.id
-    AND grant.source_type = 'migration'
+  FROM billing_credit_grants AS credit_grant
+  WHERE credit_grant.billing_account_id = account.id
+    AND credit_grant.source_type = 'migration'
 );
 
 ALTER TABLE billing_credit_grants ENABLE ROW LEVEL SECURITY;
