@@ -279,29 +279,36 @@ export function AssetLibraryPage() {
       )}
       {!library.loading && selectedAssets.length > 0 && (
         <div
-          className="fixed bottom-8 left-1/2 z-[2400] flex -translate-x-1/2 items-center gap-1 rounded-2xl border border-white/10 bg-[#10131c]/95 p-1 text-slate-100 shadow-[0_18px_52px_rgba(0,0,0,0.45)] ring-1 ring-sky-300/10 backdrop-blur-xl"
+          className="pointer-events-none fixed bottom-[96px] left-1/2 z-[2400] w-full max-w-4xl -translate-x-1/2 px-3 sm:px-4"
           data-testid="asset-selection-floating-toolbar"
         >
-          <span className="whitespace-nowrap px-2 text-xs font-bold text-sky-100">{selectedAssets.length} 个</span>
-          <button aria-label="取消选择" className="grid h-9 w-9 place-items-center rounded-xl text-slate-300 hover:bg-white/[0.08] hover:text-white" onClick={clearSelectedAssets} title="取消选择" type="button">
-            <X size={18} />
-          </button>
-          <span className="h-5 w-px bg-white/10" />
-          <button aria-label="全选" className="grid h-9 w-9 place-items-center rounded-xl text-sky-300 hover:bg-sky-300/10 hover:text-sky-100" onClick={selectAllVisibleAssets} title="全选" type="button">
-            <CheckSquare size={18} />
-          </button>
-          <span className="h-5 w-px bg-white/10" />
-          <button aria-label="收藏" className="grid h-9 w-9 place-items-center rounded-xl text-amber-300 hover:bg-amber-300/10 hover:text-amber-100" onClick={() => void favoriteSelectedAssets()} title="收藏" type="button">
-            <Star size={18} />
-          </button>
-          <span className="h-5 w-px bg-white/10" />
-          <button aria-label="下载原图" className="grid h-9 w-9 place-items-center rounded-xl text-emerald-300 hover:bg-emerald-300/10 hover:text-emerald-100" onClick={() => void downloadSelectedAssets()} title="下载原图" type="button">
-            <Download size={18} />
-          </button>
-          <span className="h-5 w-px bg-white/10" />
-          <button aria-label="删除" className="grid h-9 w-9 place-items-center rounded-xl text-red-300 hover:bg-red-400/10 hover:text-red-100" onClick={() => setConfirmingBulkDelete(true)} title="删除" type="button">
-            <Trash2 size={18} />
-          </button>
+          <div className="flex justify-center">
+            <div
+              className="pointer-events-auto flex items-center gap-1 rounded-full border border-white/10 bg-[#10131c]/95 p-1 text-slate-100 shadow-[0_18px_52px_rgba(0,0,0,0.45)] ring-1 ring-sky-300/10 backdrop-blur-xl"
+              data-testid="asset-selection-toolbar-pill"
+            >
+              <span className="whitespace-nowrap px-2 text-xs font-bold text-sky-100">{selectedAssets.length} 个</span>
+              <button aria-label="取消选择" className="grid h-9 w-9 place-items-center rounded-full text-slate-300 hover:bg-white/[0.08] hover:text-white" onClick={clearSelectedAssets} title="取消选择" type="button">
+                <X size={18} />
+              </button>
+              <span className="h-5 w-px bg-white/10" />
+              <button aria-label="全选" className="grid h-9 w-9 place-items-center rounded-full text-sky-300 hover:bg-sky-300/10 hover:text-sky-100" onClick={selectAllVisibleAssets} title="全选" type="button">
+                <CheckSquare size={18} />
+              </button>
+              <span className="h-5 w-px bg-white/10" />
+              <button aria-label="收藏" className="grid h-9 w-9 place-items-center rounded-full text-amber-300 hover:bg-amber-300/10 hover:text-amber-100" onClick={() => void favoriteSelectedAssets()} title="收藏" type="button">
+                <Star size={18} />
+              </button>
+              <span className="h-5 w-px bg-white/10" />
+              <button aria-label="下载原图" className="grid h-9 w-9 place-items-center rounded-full text-emerald-300 hover:bg-emerald-300/10 hover:text-emerald-100" onClick={() => void downloadSelectedAssets()} title="下载原图" type="button">
+                <Download size={18} />
+              </button>
+              <span className="h-5 w-px bg-white/10" />
+              <button aria-label="删除" className="grid h-9 w-9 place-items-center rounded-full text-red-300 hover:bg-red-400/10 hover:text-red-100" onClick={() => setConfirmingBulkDelete(true)} title="删除" type="button">
+                <Trash2 size={18} />
+              </button>
+            </div>
+          </div>
         </div>
       )}
       {confirmingBulkDelete && (

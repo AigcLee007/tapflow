@@ -115,7 +115,7 @@ describe("AssetPreviewModal", () => {
     });
   });
 
-  it("fills the current asset-library viewport instead of the whole page viewport", async () => {
+  it("uses a full-screen centered detail preview matching the asset reference modal", async () => {
     listWorkspaceProjectsMock.mockResolvedValue([]);
     getAssetVariantUrlMock.mockResolvedValue({
       expiresAt: "2026-05-19T01:00:00.000Z",
@@ -131,16 +131,28 @@ describe("AssetPreviewModal", () => {
     });
 
     const overlay = screen.getByTestId("asset-preview-overlay");
+    const backdrop = screen.getByTestId("asset-preview-backdrop");
     const panel = screen.getByRole("dialog");
     const imageStage = screen.getByTestId("asset-preview-stage");
 
+    expect(overlay.parentElement).toBe(document.body);
     expect(overlay.className).toContain("fixed");
-    expect(overlay.className).toContain("inset-x-0");
-    expect(overlay.className).toContain("top-20");
-    expect(overlay.className).toContain("bottom-0");
-    expect(panel.className).toContain("h-full");
+    expect(overlay.className).toContain("inset-0");
+    expect(overlay.className).toContain("z-[2600]");
+    expect(overlay.className).toContain("items-center");
+    expect(overlay.className).toContain("justify-center");
+    expect(backdrop.className).toContain("absolute");
+    expect(backdrop.className).toContain("inset-0");
+    expect(overlay.className).not.toContain("top-20");
+    expect(overlay.className).not.toContain("bottom-0");
     expect(panel.className).toContain("w-full");
-    expect(panel.className).toContain("max-w-none");
-    expect(imageStage.className).toContain("min-h-0");
+    expect(panel.className).toContain("max-w-4xl");
+    expect(panel.className).toContain("max-h-[90vh]");
+    expect(panel.className).toContain("rounded-3xl");
+    expect(panel.className).toContain("md:flex-row");
+    expect(panel.className).not.toContain("max-w-none");
+    expect(panel.className).not.toContain("rounded-none");
+    expect(imageStage.className).toContain("md:w-1/2");
+    expect(imageStage.className).toContain("min-h-[16rem]");
   });
 });

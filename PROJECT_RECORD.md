@@ -2546,3 +2546,13 @@ Validation completed:
 - validation:
   - `npm test -- src/workbench/WorkbenchPage.test.tsx`
   - `npm run build`
+
+## 2026-06-18 - Asset Library Selection Overlay Alignment
+
+- realigned the asset-library bulk selection toolbar with the reference project pattern: a fixed centered action container above the lower workspace controls, with pointer-safe wrapping and a compact dark pill UI
+- changed the double-click asset preview back to a full-screen backdrop with a centered rounded detail modal, left media preview, right metadata/actions, and a z-index above the selection toolbar
+- rendered the asset preview modal through a body-level portal so route transition transforms cannot clip or offset the fixed full-screen overlay
+- added focused regression coverage for the toolbar anchor structure, centered preview modal, and preview layer stacking
+- validation:
+  - `npm test -- src/assets/AssetLibraryPage.test.tsx src/assets/AssetPreviewModal.test.tsx src/assets/AssetVirtualGrid.test.tsx`
+  - `npm run build`

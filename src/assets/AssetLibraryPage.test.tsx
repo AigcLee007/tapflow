@@ -550,13 +550,16 @@ describe("AssetLibraryPage", () => {
 
     expect(screen.queryByTestId("asset-selection-top-bar")).toBeNull();
     expect(toolbar.className).toContain("fixed");
+    expect(toolbar.className).toContain("bottom-[96px]");
     expect(toolbar.className).toContain("left-1/2");
-    expect(toolbar.className).toContain("bottom-8");
-    expect(toolbar.className).toContain("z-[2400]");
-    expect(toolbar.className).toContain("bg-[#10131c]/95");
-    expect(toolbar.className).not.toContain("bg-white/95");
-    expect(toolbar.style.left).toBe("");
-    expect(toolbar.style.bottom).toBe("");
+    expect(toolbar.className).toContain("max-w-4xl");
+    expect(toolbar.className).toContain("pointer-events-none");
+
+    const toolbarPill = within(toolbar).getByTestId("asset-selection-toolbar-pill");
+    expect(toolbarPill.className).toContain("pointer-events-auto");
+    expect(toolbarPill.className).toContain("rounded-full");
+    expect(toolbarPill.className).toContain("bg-[#10131c]/95");
+    expect(toolbarPill.className).not.toContain("bg-white/95");
     expect(within(toolbar).getAllByRole("button")).toHaveLength(5);
   });
 
@@ -620,8 +623,8 @@ describe("AssetLibraryPage", () => {
 
     expect(toolbar.className).toContain("fixed");
     expect(toolbar.className).toContain("left-1/2");
-    expect(toolbar.className).toContain("bottom-8");
-    expect(toolbar.className).toContain("z-[2400]");
+    expect(toolbar.className).toContain("bottom-[96px]");
+    expect(toolbar.className).toContain("max-w-4xl");
     expect(toolbar.style.left).toBe("");
     expect(toolbar.style.bottom).toBe("");
   });

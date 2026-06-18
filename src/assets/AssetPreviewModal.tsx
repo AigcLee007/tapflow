@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { ArrowRight, Download, Star, X } from "lucide-react";
 
 import { MenuSelect } from "../components/menu/MenuSelect";
@@ -130,14 +131,17 @@ export function AssetPreviewModal({
     onClose();
   };
 
-  return (
+  const modal = (
     <div
-      className="fixed inset-x-0 bottom-0 top-20 z-[2200] grid place-items-center bg-black/82 p-4 backdrop-blur-md"
+      className="fixed inset-0 z-[2600] flex items-center justify-center p-4"
       data-testid="asset-preview-overlay"
+      onClick={onClose}
     >
+      <div className="absolute inset-0 bg-black/35 backdrop-blur-md" data-testid="asset-preview-backdrop" />
       <section
         aria-modal="true"
-        className="relative grid h-full w-full max-w-none overflow-hidden rounded-none border border-white/10 bg-zinc-950 shadow-[0_24px_80px_rgba(0,0,0,0.55)] md:grid-cols-[minmax(0,1fr)_360px]"
+        className="relative z-10 flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-white/10 bg-zinc-950/95 shadow-[0_24px_80px_rgba(0,0,0,0.55)] ring-1 ring-white/10 backdrop-blur-xl md:flex-row"
+        onClick={(event) => event.stopPropagation()}
         role="dialog"
       >
         <button
@@ -149,16 +153,16 @@ export function AssetPreviewModal({
         >
           <X size={18} />
         </button>
-        <div className="grid min-h-0 place-items-center bg-black" data-testid="asset-preview-stage">
+        <div className="relative flex h-64 min-h-[16rem] w-full flex-shrink-0 items-center justify-center bg-black/45 md:h-auto md:w-1/2" data-testid="asset-preview-stage">
           {displayUrl && asset.mimeType.startsWith("image/") ? (
-            <img alt="" className="max-h-full max-w-full object-contain" src={displayUrl} />
+            <img alt="" className="max-h-[calc(100%-2rem)] max-w-[calc(100%-2rem)] object-contain" src={displayUrl} />
           ) : displayUrl && asset.mimeType.startsWith("video/") ? (
-            <video className="max-h-full max-w-full" controls preload="metadata" src={displayUrl} />
+            <video className="max-h-[calc(100%-2rem)] max-w-[calc(100%-2rem)]" controls preload="metadata" src={displayUrl} />
           ) : (
             <div className="px-8 text-center text-sm text-slate-500">该素材类型暂不支持预览。</div>
           )}
         </div>
-        <div className="flex min-h-0 flex-col p-5">
+        <div className="flex min-h-0 w-full flex-col overflow-y-auto overscroll-contain p-5 md:w-1/2">
           <div className="pr-12">
             <div className="text-xs uppercase tracking-[0.18em] text-sky-300">{kindLabel(asset.kind)}</div>
             <h2 className="mt-2 break-words text-xl font-semibold text-white">{title}</h2>
@@ -230,6 +234,8 @@ export function AssetPreviewModal({
       </section>
     </div>
   );
+
+  return typeof document !== "undefined" ? createPortal(modal, document.body) : modal;
 }
 
 function Info({ label, value }: { label: string; value: string }) {
