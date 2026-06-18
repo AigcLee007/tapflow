@@ -532,13 +532,30 @@ describe("AssetLibraryPage", () => {
       pointerType: "mouse",
     });
 
+    const shell = screen.getByTestId("asset-library-shell");
+    vi.spyOn(shell, "getBoundingClientRect").mockReturnValue({
+      bottom: 700,
+      height: 600,
+      left: 100,
+      right: 900,
+      top: 100,
+      width: 800,
+      x: 100,
+      y: 100,
+      toJSON: () => ({}),
+    });
+    fireEvent.scroll(window);
     const toolbar = screen.getByTestId("asset-selection-floating-toolbar");
 
     expect(screen.queryByTestId("asset-selection-top-bar")).toBeNull();
+    expect(shell.className).toContain("relative");
+    expect(toolbar.className).toContain("fixed");
     expect(toolbar.className).toContain("left-1/2");
-    expect(toolbar.className).toContain("bottom-8");
-    expect(toolbar.style.left).toBe("");
-    expect(toolbar.style.top).toBe("");
+    expect(toolbar.className).toContain("bottom-6");
+    expect(toolbar.className).toContain("bg-[#10131c]/95");
+    expect(toolbar.className).not.toContain("bg-white/95");
+    expect(toolbar.style.left).toBe("500px");
+    expect(toolbar.style.bottom).toBe("92px");
     expect(screen.getByText("2 个")).toBeTruthy();
     expect(toolbar.querySelector('[aria-label="取消选择"]')).toBeTruthy();
     expect(toolbar.querySelector('[aria-label="全选"]')).toBeTruthy();
@@ -603,13 +620,27 @@ describe("AssetLibraryPage", () => {
       pointerType: "mouse",
     });
 
+    const shell = screen.getByTestId("asset-library-shell");
+    vi.spyOn(shell, "getBoundingClientRect").mockReturnValue({
+      bottom: 700,
+      height: 600,
+      left: 100,
+      right: 900,
+      top: 100,
+      width: 800,
+      x: 100,
+      y: 100,
+      toJSON: () => ({}),
+    });
+    fireEvent.scroll(window);
     const toolbar = screen.getByTestId("asset-selection-floating-toolbar");
 
     expect(screen.getByText("2 个")).toBeTruthy();
+    expect(toolbar.className).toContain("fixed");
     expect(toolbar.className).toContain("left-1/2");
-    expect(toolbar.className).toContain("bottom-8");
-    expect(toolbar.style.left).toBe("");
-    expect(toolbar.style.top).toBe("");
+    expect(toolbar.className).toContain("bottom-6");
+    expect(toolbar.style.left).toBe("500px");
+    expect(toolbar.style.bottom).toBe("92px");
   });
 
   test("does not select assets or open previews for tiny pointer movement on a tile", () => {

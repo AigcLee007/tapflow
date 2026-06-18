@@ -114,4 +114,31 @@ describe("AssetPreviewModal", () => {
       await saveRequest.promise;
     });
   });
+
+  it("fills the current asset-library viewport instead of the whole page viewport", async () => {
+    listWorkspaceProjectsMock.mockResolvedValue([]);
+    getAssetVariantUrlMock.mockResolvedValue({
+      expiresAt: "2026-05-19T01:00:00.000Z",
+      method: "GET",
+      url: "https://example.test/asset-1-preview.webp",
+      variantKey: "preview",
+    });
+
+    render(<AssetPreviewModal asset={asset} onClose={() => undefined} onUpdated={() => undefined} />);
+
+    await waitFor(() => {
+      expect(getAssetVariantUrlMock).toHaveBeenCalledWith("asset-1", "preview");
+    });
+
+    const overlay = screen.getByTestId("asset-preview-overlay");
+    const panel = screen.getByRole("dialog");
+    const imageStage = screen.getByTestId("asset-preview-stage");
+
+    expect(overlay.className).toContain("fixed");
+    expect(overlay.className).toContain("inset-x-6");
+    expect(overlay.className).not.toContain("inset-0");
+    expect(panel.className).toContain("h-[calc(100%-32px)]");
+    expect(panel.className).toContain("max-w-none");
+    expect(imageStage.className).toContain("min-h-0");
+  });
 });

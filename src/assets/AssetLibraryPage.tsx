@@ -37,9 +37,11 @@ function AssetLibraryLoadingState() {
 export function AssetLibraryPage() {
   const { authenticated, sessionId, tenant, user } = useAuth();
   const library = useAssetLibrary();
+  const shellRef = React.useRef<HTMLElement | null>(null);
   const [previewAsset, setPreviewAsset] = useState<AssetItem | null>(null);
   const [selectedAssetIds, setSelectedAssetIds] = useState<Set<string>>(() => new Set());
   const [confirmingBulkDelete, setConfirmingBulkDelete] = useState(false);
+  const [visibleShellFrame, setVisibleShellFrame] = useState({ bottom: 24, centerX: 0, left: 24, right: 24, top: 0 });
 
   const identityKey =
     authenticated && tenant && user ? `${user.id}:${tenant.id}:${sessionId ?? "none"}` : "anonymous";
@@ -70,6 +72,35 @@ export function AssetLibraryPage() {
       return next.size === current.size ? current : next;
     });
   }, [library.assets]);
+
+  React.useLayoutEffect(() => {
+    const updateVisibleFrame = () => {
+      const shell = shellRef.current;
+      if (!shell || typeof window === "undefined") return;
+      const rect = shell.getBoundingClientRect();
+      const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+      const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+      const visibleLeft = Math.max(rect.left, 0);
+      const visibleRight = Math.min(rect.right, viewportWidth);
+      const visibleTop = Math.max(rect.top, 0);
+      const visibleBottom = Math.min(rect.bottom, viewportHeight);
+      setVisibleShellFrame({
+        bottom: Math.max(24, viewportHeight - visibleBottom + 24),
+        centerX: visibleLeft + Math.max(0, visibleRight - visibleLeft) / 2,
+        left: visibleLeft,
+        right: Math.max(0, viewportWidth - visibleRight),
+        top: Math.max(0, visibleTop),
+      });
+    };
+
+    updateVisibleFrame();
+    window.addEventListener("resize", updateVisibleFrame);
+    window.addEventListener("scroll", updateVisibleFrame, true);
+    return () => {
+      window.removeEventListener("resize", updateVisibleFrame);
+      window.removeEventListener("scroll", updateVisibleFrame, true);
+    };
+  }, []);
 
   const refresh = () => {
     void library.refresh();
@@ -169,7 +200,11 @@ export function AssetLibraryPage() {
     library.selectedMediaTab === "image" ? "图片" : library.selectedMediaTab === "video" ? "视频" : "音频";
 
   return (
-    <section className="min-h-[calc(100vh-92px)] overflow-hidden rounded border border-white/10 bg-[#0b0d14] shadow-2xl shadow-black/20">
+    <section
+      className="relative min-h-[calc(100vh-92px)] overflow-hidden rounded border border-white/10 bg-[#0b0d14] shadow-2xl shadow-black/20"
+      data-testid="asset-library-shell"
+      ref={shellRef}
+    >
       <div className="flex flex-col md:flex-row">
         <AssetFolderSidebar
           favoriteOnly={library.favoriteOnly}
@@ -272,31 +307,36 @@ export function AssetLibraryPage() {
           asset={previewAsset}
           onClose={() => setPreviewAsset(null)}
           onUpdated={refresh}
+          viewportFrame={visibleShellFrame}
         />
       )}
       {!library.loading && selectedAssets.length > 0 && (
         <div
-          className="fixed bottom-8 left-1/2 z-[1700] flex -translate-x-1/2 items-center gap-1 rounded-full border border-slate-200/70 bg-white/95 p-1 text-slate-700 shadow-[0_10px_32px_rgba(0,0,0,0.22)] backdrop-blur"
+          className="fixed bottom-6 left-1/2 z-[1700] flex -translate-x-1/2 items-center gap-1 rounded-2xl border border-white/10 bg-[#10131c]/95 p-1 text-slate-100 shadow-[0_18px_52px_rgba(0,0,0,0.45)] ring-1 ring-sky-300/10 backdrop-blur-xl"
           data-testid="asset-selection-floating-toolbar"
+          style={{
+            bottom: visibleShellFrame.bottom,
+            left: visibleShellFrame.centerX || undefined,
+          }}
         >
-          <span className="px-2 text-xs font-bold text-slate-500 whitespace-nowrap">{selectedAssets.length} 个</span>
-          <button aria-label="取消选择" className="grid h-9 w-9 place-items-center rounded-full hover:bg-slate-100" onClick={clearSelectedAssets} title="取消选择" type="button">
+          <span className="whitespace-nowrap px-2 text-xs font-bold text-sky-100">{selectedAssets.length} 个</span>
+          <button aria-label="取消选择" className="grid h-9 w-9 place-items-center rounded-xl text-slate-300 hover:bg-white/[0.08] hover:text-white" onClick={clearSelectedAssets} title="取消选择" type="button">
             <X size={18} />
           </button>
-          <span className="h-5 w-px bg-slate-200" />
-          <button aria-label="全选" className="grid h-9 w-9 place-items-center rounded-full text-blue-500 hover:bg-blue-50" onClick={selectAllVisibleAssets} title="全选" type="button">
+          <span className="h-5 w-px bg-white/10" />
+          <button aria-label="全选" className="grid h-9 w-9 place-items-center rounded-xl text-sky-300 hover:bg-sky-300/10 hover:text-sky-100" onClick={selectAllVisibleAssets} title="全选" type="button">
             <CheckSquare size={18} />
           </button>
-          <span className="h-5 w-px bg-slate-200" />
-          <button aria-label="收藏" className="grid h-9 w-9 place-items-center rounded-full text-amber-500 hover:bg-amber-50" onClick={() => void favoriteSelectedAssets()} title="收藏" type="button">
+          <span className="h-5 w-px bg-white/10" />
+          <button aria-label="收藏" className="grid h-9 w-9 place-items-center rounded-xl text-amber-300 hover:bg-amber-300/10 hover:text-amber-100" onClick={() => void favoriteSelectedAssets()} title="收藏" type="button">
             <Star size={18} />
           </button>
-          <span className="h-5 w-px bg-slate-200" />
-          <button aria-label="下载原图" className="grid h-9 w-9 place-items-center rounded-full text-emerald-500 hover:bg-emerald-50" onClick={() => void downloadSelectedAssets()} title="下载原图" type="button">
+          <span className="h-5 w-px bg-white/10" />
+          <button aria-label="下载原图" className="grid h-9 w-9 place-items-center rounded-xl text-emerald-300 hover:bg-emerald-300/10 hover:text-emerald-100" onClick={() => void downloadSelectedAssets()} title="下载原图" type="button">
             <Download size={18} />
           </button>
-          <span className="h-5 w-px bg-slate-200" />
-          <button aria-label="删除" className="grid h-9 w-9 place-items-center rounded-full text-red-500 hover:bg-red-50" onClick={() => setConfirmingBulkDelete(true)} title="删除" type="button">
+          <span className="h-5 w-px bg-white/10" />
+          <button aria-label="删除" className="grid h-9 w-9 place-items-center rounded-xl text-red-300 hover:bg-red-400/10 hover:text-red-100" onClick={() => setConfirmingBulkDelete(true)} title="删除" type="button">
             <Trash2 size={18} />
           </button>
         </div>

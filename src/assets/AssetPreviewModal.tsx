@@ -17,10 +17,12 @@ export function AssetPreviewModal({
   asset,
   onClose,
   onUpdated,
+  viewportFrame,
 }: {
   asset: AssetItem;
   onClose: () => void;
   onUpdated: () => void;
+  viewportFrame?: { bottom: number; left: number; right: number; top: number };
 }) {
   const [projects, setProjects] = useState<WorkspaceProject[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState(asset.projectId ?? "");
@@ -131,8 +133,21 @@ export function AssetPreviewModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[1500] grid place-items-center bg-black/70 p-4 backdrop-blur-sm">
-      <section className="relative grid max-h-[92vh] w-full max-w-5xl overflow-hidden rounded border border-white/10 bg-zinc-950 shadow-2xl md:grid-cols-[minmax(0,1.4fr)_360px]">
+    <div
+      className="fixed inset-x-6 z-[1500] grid place-items-center bg-black/78 p-4 backdrop-blur-md"
+      data-testid="asset-preview-overlay"
+      style={{
+        bottom: viewportFrame?.bottom ?? 24,
+        left: viewportFrame?.left ?? undefined,
+        right: viewportFrame?.right ?? undefined,
+        top: viewportFrame?.top ?? 0,
+      }}
+    >
+      <section
+        aria-modal="true"
+        className="relative grid h-[calc(100%-32px)] w-[calc(100%-32px)] max-w-none overflow-hidden rounded border border-white/10 bg-zinc-950 shadow-[0_24px_80px_rgba(0,0,0,0.55)] md:grid-cols-[minmax(0,1fr)_360px]"
+        role="dialog"
+      >
         <button
           aria-label="关闭预览"
           className="absolute right-3 top-3 z-20 inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-black/65 text-slate-300 hover:bg-black hover:text-white"
@@ -142,11 +157,11 @@ export function AssetPreviewModal({
         >
           <X size={18} />
         </button>
-        <div className="grid min-h-[360px] place-items-center bg-black">
+        <div className="grid min-h-0 place-items-center bg-black" data-testid="asset-preview-stage">
           {displayUrl && asset.mimeType.startsWith("image/") ? (
-            <img alt="" className="max-h-[82vh] max-w-full object-contain" src={displayUrl} />
+            <img alt="" className="max-h-full max-w-full object-contain" src={displayUrl} />
           ) : displayUrl && asset.mimeType.startsWith("video/") ? (
-            <video className="max-h-[82vh] max-w-full" controls preload="metadata" src={displayUrl} />
+            <video className="max-h-full max-w-full" controls preload="metadata" src={displayUrl} />
           ) : (
             <div className="px-8 text-center text-sm text-slate-500">该素材类型暂不支持预览。</div>
           )}

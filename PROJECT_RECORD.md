@@ -144,6 +144,16 @@ As of 2026-06-13:
   - `npm test -- src/assets/AssetLibraryPage.test.tsx`
   - `npm run build`
 
+## 2026-06-18 - Asset Library Overlay Position Polish
+
+- Anchored the `/assets` bulk-selection toolbar to the currently visible asset library viewport instead of the whole browser viewport, so it stays inside the current library window while scrolling.
+- Restyled the bulk toolbar from a white pill to a dark translucent AI Flow control surface with project-consistent borders, shadows, dividers, and hover states.
+- Anchored the asset preview overlay to the currently visible asset library viewport and expanded the preview dialog to fill that window, giving double-click image preview a much larger image stage.
+- Added focused regressions for panel-relative toolbar positioning, dark toolbar styling, and viewport-filling asset preview overlay layout.
+- validation:
+  - `npm test -- src/assets/AssetLibraryPage.test.tsx src/assets/AssetPreviewModal.test.tsx`
+  - `npm run build`
+
 ## 2026-06-18 - Asset Library Drag Selection Deep Optimization
 
 - Compared the `/assets` drag-select interaction against `D:\gpt-iamge-2\src\components\TaskGrid.tsx` and moved the current implementation toward the same smoother interaction model.
