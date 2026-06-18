@@ -8,7 +8,6 @@ import {
   HelpCircle,
   Home,
   LogOut,
-  Settings,
   Shield,
   UserRound,
 } from "lucide-react";
@@ -23,7 +22,10 @@ import {
   WORKSPACE_ROUTE,
 } from "./routes";
 import { BrandMark } from "./brand/BrandMark";
+import { canAccessOperationsConsole, resolveProductRole } from "../auth/productRoles";
 import { useAuth } from "../auth/useAuth";
+import { getAvailableCredits, getMembershipLabel } from "../billing/billingDisplay";
+import { useBillingSummarySnapshot } from "../billing/useBillingSummarySnapshot";
 import { MenuSurface } from "../components/menu/MenuSurface";
 import {
   MENU_DIVIDER_CLASS,
@@ -56,7 +58,7 @@ function getInitial(displayName?: string | null, email?: string | null) {
 }
 
 export function WorkspaceShell({ children }: { children: React.ReactNode }) {
-  const { logout, permissions, tenant, user } = useAuth();
+  const { authenticated, logout, permissions, roles, tenant, user } = useAuth();
   const accountLayer = useDismissibleLayer("workspace-shell-account");
   const [locationKey, setLocationKey] = useState(() =>
     typeof window === "undefined" ? HOME_ROUTE : `${window.location.pathname}${window.location.hash}`,
@@ -65,7 +67,11 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const tenantName = displayTenantName(tenant?.name);
   const displayName = user?.displayName || user?.email || "用户";
   const userEmail = user?.email || "";
-  const canAdmin = permissions.includes("admin:system");
+  const productRole = resolveProductRole({ permissions, roles });
+  const canAdmin = canAccessOperationsConsole(productRole);
+  const billingSummary = useBillingSummarySnapshot(Boolean(authenticated && tenant && user));
+  const availableCredits = getAvailableCredits(billingSummary);
+  const membershipLabel = getMembershipLabel(billingSummary?.membership?.tier);
 
   useEffect(() => {
     const handleLocationChange = () => setLocationKey(`${window.location.pathname}${window.location.hash}`);
@@ -172,10 +178,10 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
                   <div className="flex items-center justify-between text-sm text-slate-300">
                     <span>积分余额</span>
                     <span className="rounded-full bg-cyan-400/15 px-2 py-0.5 text-xs font-semibold text-cyan-200">
-                      FREE
+                      {membershipLabel}
                     </span>
                   </div>
-                  <div className="mt-2 text-2xl font-semibold text-white">0</div>
+                  <div className="mt-2 text-2xl font-semibold text-white">{availableCredits.toLocaleString()}</div>
                   <div className="mt-3 h-1.5 rounded-full bg-white/10">
                     <div className="h-full w-1/6 rounded-full bg-cyan-300" />
                   </div>
@@ -185,8 +191,14 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
 
                 <div className="space-y-1">
                   <MenuItem icon={UserRound} label="账户管理" onClick={() => goTo(ACCOUNT_ROUTE)} />
-                  {canAdmin ? <MenuItem icon={Shield} label="管理后台" onClick={() => goTo(ADMIN_ROUTE)} /> : null}
-                  <MenuItem icon={Settings} label="连接与模型" onClick={() => goTo("/account/ai-settings")} />
+                  {canAdmin ? (
+                    <MenuItem
+                      ariaLabel="Operations Admin Console"
+                      icon={Shield}
+                      label="运营后台"
+                      onClick={() => goTo(ADMIN_ROUTE)}
+                    />
+                  ) : null}
                   <MenuItem icon={HelpCircle} label="帮助中心" onClick={() => undefined} />
                   <MenuItem
                     danger
@@ -230,11 +242,13 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
 }
 
 function MenuItem({
+  ariaLabel,
   danger,
   icon: Icon,
   label,
   onClick,
 }: {
+  ariaLabel?: string;
   danger?: boolean;
   icon: React.ComponentType<{ size?: number }>;
   label: string;
@@ -242,6 +256,7 @@ function MenuItem({
 }) {
   return (
     <button
+      aria-label={ariaLabel}
       className={`${MENU_ITEM_CLASS} h-[38px] ${danger ? "text-red-100 hover:bg-red-500/15" : ""}`}
       onClick={onClick}
       type="button"

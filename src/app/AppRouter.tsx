@@ -16,6 +16,8 @@ import { WorkbenchPage } from "../workbench/WorkbenchPage";
 import { HomePage } from "../workspace/HomePage";
 import { WorkspacePage } from "../workspace/WorkspacePage";
 import { WorkspaceShell } from "./WorkspaceShell";
+import { canAccessOperationsConsole, canAccessProviderOperations, resolveProductRole } from "../auth/productRoles";
+import { useAuth } from "../auth/useAuth";
 import {
   ACCOUNT_ROUTE,
   ACCOUNT_AI_SETTINGS_ROUTE,
@@ -73,11 +75,17 @@ function Redirect({ to }: { to: string }) {
 }
 
 function ProtectedRoutes({ pathname }: { pathname: string }) {
+  const { permissions, roles } = useAuth();
+  const productRole = resolveProductRole({ permissions, roles });
+
   if (pathname === ROOT_ROUTE || isCompatibilityRoute(pathname) || isNonUserFacingRoute(pathname)) {
     return <Redirect to={HOME_ROUTE} />;
   }
 
   if (pathname === ADMIN_ROUTE || pathname.startsWith(`${ADMIN_ROUTE}/`)) {
+    if (!canAccessOperationsConsole(productRole)) {
+      return <Redirect to={ACCOUNT_ROUTE} />;
+    }
     return <AdminPage />;
   }
 
@@ -109,6 +117,9 @@ function ProtectedRoutes({ pathname }: { pathname: string }) {
     pathname === ACCOUNT_AI_SETTINGS_ROUTE ||
     pathname.startsWith(`${ACCOUNT_AI_SETTINGS_ROUTE}/`)
   ) {
+    if (!canAccessProviderOperations(productRole)) {
+      return <Redirect to={ACCOUNT_ROUTE} />;
+    }
     return <AiSettingsPage />;
   }
 
@@ -116,6 +127,9 @@ function ProtectedRoutes({ pathname }: { pathname: string }) {
     pathname === ACCOUNT_INSPECTION_ROUTE ||
     pathname.startsWith(`${ACCOUNT_INSPECTION_ROUTE}/`)
   ) {
+    if (!canAccessOperationsConsole(productRole)) {
+      return <Redirect to={ACCOUNT_ROUTE} />;
+    }
     return <InspectionDashboardPage />;
   }
 
@@ -123,6 +137,9 @@ function ProtectedRoutes({ pathname }: { pathname: string }) {
     pathname === ACCOUNT_TEMPLATE_LIBRARY_ROUTE ||
     pathname.startsWith(`${ACCOUNT_TEMPLATE_LIBRARY_ROUTE}/`)
   ) {
+    if (!canAccessProviderOperations(productRole)) {
+      return <Redirect to={ACCOUNT_ROUTE} />;
+    }
     return <TemplateLibraryPage />;
   }
 
@@ -130,6 +147,9 @@ function ProtectedRoutes({ pathname }: { pathname: string }) {
     pathname === ACCOUNT_PROVIDER_SETTINGS_ROUTE ||
     pathname.startsWith(`${ACCOUNT_PROVIDER_SETTINGS_ROUTE}/`)
   ) {
+    if (!canAccessProviderOperations(productRole)) {
+      return <Redirect to={ACCOUNT_ROUTE} />;
+    }
     return <ProviderSettingsPage />;
   }
 

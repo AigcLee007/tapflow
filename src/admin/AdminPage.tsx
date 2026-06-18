@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, RefreshCw, Search } from "lucide-react";
+import { CreditCard, Loader2, Network, RefreshCw, Search, ShieldCheck, SlidersHorizontal, Users } from "lucide-react";
 
+import { canAccessOperationsConsole, resolveProductRole } from "../auth/productRoles";
 import { useAuth } from "../auth/useAuth";
 import {
   createAdminRedeemCode,
@@ -30,6 +31,16 @@ const VALIDITY_OPTIONS = [
   { label: "长期", mode: "lifetime" as const },
 ];
 
+const OPS_MODULES = [
+  { description: "查看、搜索和定位所有创作者账号。", icon: Users, label: "用户管理", scope: "管理员" },
+  { description: "调整普通、白银、黄金、至尊会员等级。", icon: ShieldCheck, label: "会员管理", scope: "管理员" },
+  { description: "按 1 个月、3 个月、1 年或长期发放积分。", icon: CreditCard, label: "积分发放", scope: "管理员" },
+  { description: "查看生成消耗、退款和异常记录。", icon: Search, label: "用量审计", scope: "管理员" },
+  { description: "管理产品模型和线路，默认仅超级管理员。", icon: SlidersHorizontal, label: "模型线路管理", scope: "超级管理员" },
+  { description: "管理供应商连接和密钥，默认仅超级管理员。", icon: Network, label: "供应商连接管理", scope: "超级管理员" },
+  { description: "任命和移除管理员账号，仅超级管理员。", icon: ShieldCheck, label: "管理员账号管理", scope: "超级管理员" },
+] as const;
+
 function formatDate(value: string | null): string {
   if (!value) return "-";
   const date = new Date(value);
@@ -46,8 +57,9 @@ function JsonBlock({ value }: { value: unknown }) {
 }
 
 export function AdminPage() {
-  const { permissions, tenant } = useAuth();
-  const isAdmin = permissions.includes("admin:system");
+  const { permissions, roles, tenant } = useAuth();
+  const productRole = resolveProductRole({ permissions, roles });
+  const isAdmin = canAccessOperationsConsole(productRole);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -260,6 +272,26 @@ export function AdminPage() {
           </button>
         </div>
       </header>
+
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        {OPS_MODULES.map((module) => {
+          const Icon = module.icon;
+          return (
+            <div className="rounded border border-white/10 bg-white/[0.04] p-4" key={module.label}>
+              <div className="flex items-start gap-3">
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded border border-white/10 bg-white/[0.06] text-slate-200">
+                  <Icon size={17} />
+                </span>
+                <div className="min-w-0">
+                  <div className="font-medium text-white">{module.label}</div>
+                  <div className="mt-1 text-xs text-cyan-200">{module.scope}</div>
+                  <p className="mt-2 text-xs leading-5 text-slate-400">{module.description}</p>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </section>
 
       {topError ? (
         <div className="rounded border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">

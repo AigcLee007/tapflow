@@ -112,6 +112,37 @@ As of 2026-06-13:
   - `npx vitest run src/auth/AuthProvider.test.tsx`
   - `npm run test --workspace @aigc-flow/api -- env.test.ts`
 
+## 2026-06-18 - B+ Single-Creator Operations Console Follow-up
+
+- Added product-role helpers for the single-creator SaaS permission model:
+  - `super_admin` has full platform privileges.
+  - `admin` can access the operations console and user/usage management surfaces.
+  - `creator` remains the normal end-user role.
+- Updated the shared authenticated shell so creator accounts no longer see provider/model connection entries in the user menu, while admin-capable users see an operations-console entry.
+- Synced the user dropdown billing summary with the v2 billing API so it shows available credits and membership tier instead of stale placeholder account data.
+- Reworked the billing usage table around creator-facing billing fields:
+  - time
+  - event type
+  - product model / route label
+  - generation parameters
+  - quantity
+  - credits
+  - settlement/refund status
+- Removed technical billing details from the normal billing table presentation, including workflow task ids, idempotency keys, raw usage ids, and backend operation labels.
+- Added route protection so creator accounts are redirected away from admin, provider connection, model settings, template-library, and inspection surfaces.
+- Added the B+ operations-console information architecture to the admin page:
+  - user management
+  - membership management
+  - credit grants
+  - usage audit
+  - model route management
+  - provider connection management
+  - administrator account management
+- Implementation plan recorded at `docs/superpowers/plans/2026-06-18-b-plus-operations-console.md`.
+- Validation:
+  - `npx vitest run src/app/WorkspaceShell.test.tsx src/billing/BillingCenterPage.test.tsx`
+  - `npm run build`
+
 ## 2026-06-18 - Workbench Follow-up: Fixed Composer, Preview Fit, and Deletion Actions
 
 - Tightened the standalone `/workbench` desktop shell so the header consumes less vertical space and the two-column desktop layout gives the left parameter dock more usable height.

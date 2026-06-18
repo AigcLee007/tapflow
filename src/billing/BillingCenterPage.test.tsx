@@ -96,4 +96,50 @@ describe("BillingCenterPage", () => {
     expect(screen.getByText("20 点")).toBeTruthy();
     expect(screen.getByText("100 点")).toBeTruthy();
   });
+
+  test("renders creator-friendly usage records without technical identifiers", async () => {
+    listBillingUsageEventsMock.mockResolvedValue({
+      items: [
+        {
+          billableCents: 8,
+          createdAt: "2026-06-18T13:22:08.000Z",
+          eventType: "workbench.image.generate",
+          id: "usage-1",
+          idempotencyKey: "workbench:usage:tenant:generation",
+          metadata: {
+            aspectRatio: "16:9",
+            imageSize: "4k",
+            modelLabel: "Nano Banana Pro 线路一",
+            requestedCount: 2,
+          },
+          modality: "image",
+          modelId: "pixellelabs.nano-banana-pro",
+          nodeRunId: null,
+          rawCost: null,
+          routeId: "route-1",
+          status: "settled",
+          unitType: "image_generation",
+          units: "2",
+          workflowRunId: "workflow-run-technical-id",
+        },
+      ],
+      page: 1,
+      pageSize: 20,
+    });
+
+    render(
+      <AuthContext.Provider value={createAuthState()}>
+        <BillingCenterPage />
+      </AuthContext.Provider>,
+    );
+
+    expect(await screen.findByText("图片生成")).toBeTruthy();
+    expect(screen.getByText("Nano Banana Pro 线路一")).toBeTruthy();
+    expect(screen.getByText("16:9 - 4K")).toBeTruthy();
+    expect(screen.getByText("2")).toBeTruthy();
+    expect(screen.getByText("8")).toBeTruthy();
+    expect(screen.getByText("已结算")).toBeTruthy();
+    expect(screen.queryByText("workflow-run-technical-id")).toBeNull();
+    expect(screen.queryByText("workbench:usage:tenant:generation")).toBeNull();
+  });
 });

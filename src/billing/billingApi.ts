@@ -70,6 +70,7 @@ export type BillingUsageEvent = {
   eventType: string;
   id: string;
   idempotencyKey: string;
+  metadata: Record<string, unknown>;
   modality: string;
   modelId: string | null;
   nodeRunId: string | null;

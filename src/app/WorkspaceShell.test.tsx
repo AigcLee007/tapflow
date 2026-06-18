@@ -1,9 +1,19 @@
 import React from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { AuthContext, type AuthState } from "../auth/useAuth";
 import { WorkspaceShell } from "./WorkspaceShell";
+
+const getBillingSummaryMock = vi.fn();
+
+vi.mock("../billing/billingApi", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../billing/billingApi")>();
+  return {
+    ...actual,
+    getBillingSummary: () => getBillingSummaryMock(),
+  };
+});
 
 function createAuthState(overrides: Partial<AuthState> = {}): AuthState {
   return {
@@ -45,6 +55,36 @@ function renderShell(authState = createAuthState()) {
 }
 
 describe("WorkspaceShell", () => {
+  beforeEach(() => {
+    getBillingSummaryMock.mockResolvedValue({
+      account: {
+        balanceCents: 120,
+        createdAt: "2026-06-18T00:00:00.000Z",
+        currency: "credits",
+        id: "billing-1",
+        reservedCents: 0,
+        status: "active",
+        tenantId: "tenant-1",
+        updatedAt: "2026-06-18T00:00:00.000Z",
+      },
+      creditGrants: {
+        availableCredits: 120,
+        expiringSoonCredits: 0,
+        lifetimeCredits: 120,
+        reservedCredits: 0,
+      },
+      ledgerTotals: { refundCents: 0, reserveCents: 0, settleCents: 0 },
+      membership: { discountMultiplier: 0.9, tier: "gold" },
+      usageTotals: {
+        eventCount: 0,
+        pendingCount: 0,
+        rawCostTotal: "0",
+        settledCount: 0,
+        totalBillableCents: 0,
+      },
+    });
+  });
+
   test("renders primary creator navigation", () => {
     renderShell();
 
@@ -89,4 +129,26 @@ describe("WorkspaceShell", () => {
     fireEvent.pointerDown(document.body);
     expect(screen.queryByRole("button", { name: "账户管理" })).toBeNull();
   });
+
+  test("hides model connection entry for creators and syncs billing state", async () => {
+    renderShell();
+
+    fireEvent.click(screen.getByRole("button", { name: /test@example.com/ }));
+
+    expect(screen.queryByRole("button", { name: /Provider|Model/ })).toBeNull();
+    expect(await screen.findByText("120")).toBeTruthy();
+    expect(await screen.findByText(/Gold/i)).toBeTruthy();
+  });
+
+  test("shows operations console for admins", () => {
+    renderShell(createAuthState({
+      permissions: ["admin:system"],
+      roles: ["tenant_admin"],
+    }));
+
+    fireEvent.click(screen.getByRole("button", { name: /test@example.com/ }));
+
+    expect(screen.getByRole("button", { name: /Admin|Operations/i })).toBeTruthy();
+  });
+
 });
