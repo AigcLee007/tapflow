@@ -188,26 +188,39 @@ function CompletedResultThumbnail({
   generationId,
   onSelectResult,
   result,
+  sequenceLabel,
 }: {
   generationId: string;
   onSelectResult: (result: WorkbenchResult) => void;
   result: WorkbenchResult;
+  sequenceLabel?: string;
 }) {
   const previewUrl = useResultPreviewUrl(result);
 
   return (
     <button
-      className="overflow-hidden rounded-[16px] border border-white/8 bg-black/20"
+      className="group relative overflow-hidden rounded-[16px] border border-white/8 bg-[#090b11]"
       data-testid={`workbench-completed-result-thumb-${generationId}`}
       onClick={() => onSelectResult(result)}
       type="button"
     >
+      {sequenceLabel ? (
+        <span
+          className="pointer-events-none absolute left-2 top-2 z-10 inline-flex h-6 min-w-[28px] items-center justify-center rounded-full border border-black/30 bg-black/72 px-2 text-[10px] font-black text-white shadow-[0_10px_24px_rgba(0,0,0,0.34)]"
+          data-testid={`workbench-result-sequence-${generationId}-${result.id}`}
+        >
+          {sequenceLabel}
+        </span>
+      ) : null}
       {previewUrl ? (
-        <img
-          alt={result.originalFilename || "Workbench result"}
-          className="h-full min-h-[156px] w-full object-cover"
-          src={previewUrl}
-        />
+        <div className="flex min-h-[156px] items-center justify-center bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.05),transparent_58%),linear-gradient(180deg,rgba(15,18,25,0.98),rgba(8,10,14,0.98))] p-2.5">
+          <img
+            alt={result.originalFilename || "Workbench result"}
+            className="h-full max-h-[196px] w-full rounded-[12px] object-contain transition duration-300 group-hover:scale-[1.015]"
+            data-testid={`workbench-result-image-${generationId}-${result.id}`}
+            src={previewUrl}
+          />
+        </div>
       ) : (
         <div className="grid min-h-[156px] place-items-center rounded-[16px] border border-dashed border-white/10 bg-black/15 text-xs text-slate-500">
           暂无预览
@@ -232,16 +245,25 @@ function BatchChildSlot({
   if (result && previewUrl) {
     return (
       <button
-        className="overflow-hidden rounded-[14px] border border-white/8 bg-black/20"
+        className="group relative overflow-hidden rounded-[14px] border border-white/8 bg-[#090b11]"
         data-testid={`workbench-batch-child-result-${generationId}-${child.batchIndex}`}
         onClick={() => onSelectResult(result)}
         type="button"
       >
-        <img
-          alt={result.originalFilename || "Workbench result"}
-          className="h-[132px] w-full object-cover"
-          src={previewUrl}
-        />
+        <span
+          className="pointer-events-none absolute left-2 top-2 z-10 inline-flex h-6 min-w-[28px] items-center justify-center rounded-full border border-black/30 bg-black/72 px-2 text-[10px] font-black text-white shadow-[0_10px_24px_rgba(0,0,0,0.34)]"
+          data-testid={`workbench-batch-child-badge-${generationId}-${child.batchIndex}`}
+        >
+          {child.batchIndex + 1}
+        </span>
+        <div className="flex h-[132px] items-center justify-center bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.05),transparent_58%),linear-gradient(180deg,rgba(15,18,25,0.98),rgba(8,10,14,0.98))] p-2">
+          <img
+            alt={result.originalFilename || "Workbench result"}
+            className="h-full w-full rounded-[10px] object-contain transition duration-300 group-hover:scale-[1.015]"
+            data-testid={`workbench-batch-child-image-${generationId}-${child.batchIndex}`}
+            src={previewUrl}
+          />
+        </div>
       </button>
     );
   }
@@ -404,11 +426,13 @@ function DesktopActiveTaskItem({
           type="button"
         >
           {previewUrl ? (
-            <img
-              alt={result?.originalFilename || "Workbench result"}
-              className="h-[68px] w-[68px] object-cover"
-              src={previewUrl}
-            />
+            <div className="flex h-[68px] w-[68px] items-center justify-center bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.05),transparent_58%),linear-gradient(180deg,rgba(15,18,25,0.98),rgba(8,10,14,0.98))] p-1.5">
+              <img
+                alt={result?.originalFilename || "Workbench result"}
+                className="h-full w-full rounded-[8px] object-contain"
+                src={previewUrl}
+              />
+            </div>
           ) : (
             <div className="grid h-[68px] w-[68px] place-items-center text-[11px] text-slate-500">
               {formatStatus(generation.status)}
@@ -503,12 +527,13 @@ function DesktopCompletedResultCard({
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-2">
-              {displayResults.map((item) => (
+              {displayResults.map((item, index) => (
                 <CompletedResultThumbnail
                   generationId={generation.id}
                   key={item.id}
                   onSelectResult={onSelectResult}
                   result={item}
+                  sequenceLabel={String(index + 1)}
                 />
               ))}
             </div>
@@ -516,17 +541,19 @@ function DesktopCompletedResultCard({
         </>
       ) : (
         <button
-          className="overflow-hidden rounded-[16px] border border-white/8 bg-black/20"
+          className="overflow-hidden rounded-[16px] border border-white/8 bg-[#090b11]"
           disabled={!result}
           onClick={() => result && onSelectResult(result)}
           type="button"
         >
           {previewUrl ? (
-            <img
-            alt={result?.originalFilename || "Workbench result"}
-            className="h-full min-h-[156px] w-full object-cover"
-            src={previewUrl}
-            />
+            <div className="flex min-h-[156px] items-center justify-center bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.05),transparent_58%),linear-gradient(180deg,rgba(15,18,25,0.98),rgba(8,10,14,0.98))] p-2.5">
+              <img
+                alt={result?.originalFilename || "Workbench result"}
+                className="h-full max-h-[220px] w-full rounded-[12px] object-contain"
+                src={previewUrl}
+              />
+            </div>
           ) : (
             <div className="grid min-h-[156px] place-items-center rounded-[16px] border border-dashed border-white/10 bg-black/15 text-xs text-slate-500">
             暂无预览

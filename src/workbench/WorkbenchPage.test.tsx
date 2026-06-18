@@ -636,6 +636,10 @@ describe("WorkbenchPage", () => {
     expect(screen.getByAltText("done-multi-1.png")).toBeTruthy();
     expect(screen.getByAltText("done-multi-2.png")).toBeTruthy();
     expect(screen.getAllByTestId("workbench-completed-result-thumb-done-multi").length).toBe(2);
+    expect(screen.getByTestId("workbench-result-sequence-done-multi-done-multi-result-1").textContent).toBe("1");
+    expect(screen.getByTestId("workbench-result-sequence-done-multi-done-multi-result-2").textContent).toBe("2");
+    expect(screen.getByTestId("workbench-result-image-done-multi-done-multi-result-1").className).toContain("object-contain");
+    expect(screen.getByTestId("workbench-result-image-done-multi-done-multi-result-2").className).toContain("object-contain");
   });
 
   test("shows creator-facing generation parameters instead of raw model and route keys", async () => {
@@ -941,6 +945,8 @@ describe("WorkbenchPage", () => {
 
     expect((await screen.findByTestId("workbench-batch-progress-batch-1")).textContent).toContain("1/2");
     expect(screen.getByAltText("one.png")).toBeTruthy();
+    expect(screen.getByTestId("workbench-batch-child-badge-batch-1-0").textContent).toBe("1");
+    expect(screen.getByTestId("workbench-batch-child-image-batch-1-0").className).toContain("object-contain");
     expect(screen.getByTestId("workbench-batch-child-placeholder-batch-1-1")).toBeTruthy();
   });
 });
