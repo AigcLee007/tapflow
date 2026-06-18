@@ -572,7 +572,63 @@ describe("WorkbenchPage", () => {
     expect(await screen.findByTestId("workbench-completed-rail")).toBeTruthy();
     expect(screen.getByTestId("workbench-completed-history-list").className).toContain("grid-cols-1");
     expect(screen.getByTestId("workbench-completed-history-item-done-1")).toBeTruthy();
-    expect(screen.getByTestId("workbench-completed-history-item-done-1").className).toContain("grid-cols-[120px_minmax(0,1fr)]");
+    expect(screen.getByTestId("workbench-completed-history-item-done-1").className).toContain("grid-cols-[minmax(120px,252px)_minmax(0,1fr)]");
+  });
+
+  test("renders multiple result previews inside one completed workbench generation card when quantity is greater than one", async () => {
+    listWorkbenchGenerationsMock.mockResolvedValue({
+      generations: [
+        createGeneration({
+          id: "done-multi",
+          prompt: "done-multi",
+          requestedCount: 2,
+          status: "succeeded",
+          results: [
+            {
+              assetId: "done-multi-asset-1",
+              createdAt: new Date().toISOString(),
+              downloadUrl: "https://example.com/done-multi-1.png",
+              downloadUrlExpiresAt: null,
+              height: 1024,
+              id: "done-multi-result-1",
+              metadata: {},
+              mimeType: "image/png",
+              originalFilename: "done-multi-1.png",
+              previewUrl: "https://example.com/done-multi-1.png",
+              previewUrlExpiresAt: null,
+              sortOrder: 0,
+              status: "available",
+              width: 1024,
+            },
+            {
+              assetId: "done-multi-asset-2",
+              createdAt: new Date().toISOString(),
+              downloadUrl: "https://example.com/done-multi-2.png",
+              downloadUrlExpiresAt: null,
+              height: 1024,
+              id: "done-multi-result-2",
+              metadata: {},
+              mimeType: "image/png",
+              originalFilename: "done-multi-2.png",
+              previewUrl: "https://example.com/done-multi-2.png",
+              previewUrlExpiresAt: null,
+              sortOrder: 1,
+              status: "available",
+              width: 1024,
+            },
+          ],
+        }),
+      ],
+      nextCursor: null,
+    });
+
+    setRoute("/workbench");
+    renderRouter();
+
+    expect(await screen.findByTestId("workbench-completed-history-item-done-multi")).toBeTruthy();
+    expect(screen.getByAltText("done-multi-1.png")).toBeTruthy();
+    expect(screen.getByAltText("done-multi-2.png")).toBeTruthy();
+    expect(screen.getAllByTestId("workbench-completed-result-thumb-done-multi").length).toBe(2);
   });
 
   test("shows creator-facing generation parameters instead of raw model and route keys", async () => {

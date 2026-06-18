@@ -172,6 +172,39 @@ function useResultPreviewUrl(result: WorkbenchResult | null) {
   return result?.previewUrl || fallbackUrl || result?.downloadUrl || null;
 }
 
+function CompletedResultThumbnail({
+  generationId,
+  onSelectResult,
+  result,
+}: {
+  generationId: string;
+  onSelectResult: (result: WorkbenchResult) => void;
+  result: WorkbenchResult;
+}) {
+  const previewUrl = useResultPreviewUrl(result);
+
+  return (
+    <button
+      className="overflow-hidden rounded-[16px] border border-white/8 bg-black/20"
+      data-testid={`workbench-completed-result-thumb-${generationId}`}
+      onClick={() => onSelectResult(result)}
+      type="button"
+    >
+      {previewUrl ? (
+        <img
+          alt={result.originalFilename || "Workbench result"}
+          className="h-full min-h-[156px] w-full object-cover"
+          src={previewUrl}
+        />
+      ) : (
+        <div className="grid min-h-[156px] place-items-center rounded-[16px] border border-dashed border-white/10 bg-black/15 text-xs text-slate-500">
+          暂无预览
+        </div>
+      )}
+    </button>
+  );
+}
+
 function useViewportWidth() {
   const [width, setWidth] = React.useState(() =>
     typeof window === "undefined" ? 1280 : window.innerWidth,
@@ -299,11 +332,11 @@ function DesktopActiveTaskItem({
         type="button"
       >
         {previewUrl ? (
-          <img
+            <img
             alt={result?.originalFilename || "Workbench result"}
             className="h-[68px] w-[68px] object-cover"
             src={previewUrl}
-          />
+            />
         ) : (
           <div className="grid h-[68px] w-[68px] place-items-center text-[11px] text-slate-500">
             {formatStatus(generation.status)}
@@ -366,30 +399,44 @@ function DesktopCompletedResultCard({
 }) {
   const result = getPrimaryResult(generation);
   const previewUrl = useResultPreviewUrl(result);
+  const hasMultipleResults = generation.results.length > 1;
 
   return (
     <article
-      className="grid grid-cols-[120px_minmax(0,1fr)] gap-3 rounded-[20px] border border-white/8 bg-black/20 p-3"
+      className="grid grid-cols-[minmax(120px,252px)_minmax(0,1fr)] gap-3 rounded-[20px] border border-white/8 bg-black/20 p-3"
       data-testid={`workbench-completed-history-item-${generation.id}`}
     >
-      <button
-        className="overflow-hidden rounded-[16px] border border-white/8 bg-black/20"
-        disabled={!result}
-        onClick={() => result && onSelectResult(result)}
-        type="button"
-      >
-        {previewUrl ? (
-          <img
+      {hasMultipleResults ? (
+        <div className="grid grid-cols-2 gap-2">
+          {generation.results.map((item) => (
+            <CompletedResultThumbnail
+              generationId={generation.id}
+              key={item.id}
+              onSelectResult={onSelectResult}
+              result={item}
+            />
+          ))}
+        </div>
+      ) : (
+        <button
+          className="overflow-hidden rounded-[16px] border border-white/8 bg-black/20"
+          disabled={!result}
+          onClick={() => result && onSelectResult(result)}
+          type="button"
+        >
+          {previewUrl ? (
+            <img
             alt={result?.originalFilename || "Workbench result"}
             className="h-full min-h-[156px] w-full object-cover"
             src={previewUrl}
-          />
-        ) : (
-          <div className="grid min-h-[156px] place-items-center rounded-[16px] border border-dashed border-white/10 bg-black/15 text-xs text-slate-500">
+            />
+          ) : (
+            <div className="grid min-h-[156px] place-items-center rounded-[16px] border border-dashed border-white/10 bg-black/15 text-xs text-slate-500">
             暂无预览
-          </div>
-        )}
-      </button>
+            </div>
+          )}
+        </button>
+      )}
 
       <div className="flex min-w-0 flex-col justify-between gap-3">
         <div>
