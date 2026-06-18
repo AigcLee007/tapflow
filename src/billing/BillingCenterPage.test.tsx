@@ -49,7 +49,14 @@ describe("BillingCenterPage", () => {
         tenantId: "tenant-1",
         updatedAt: "2026-06-12T00:00:00.000Z",
       },
+      creditGrants: {
+        availableCredits: 120,
+        expiringSoonCredits: 20,
+        lifetimeCredits: 100,
+        reservedCredits: 5,
+      },
       ledgerTotals: { refundCents: 0, reserveCents: 0, settleCents: 0 },
+      membership: { discountMultiplier: 0.9, tier: "gold" },
       usageTotals: {
         eventCount: 0,
         pendingCount: 0,
@@ -84,5 +91,9 @@ describe("BillingCenterPage", () => {
     await waitFor(() => {
       expect(getBillingSummaryMock).toHaveBeenCalled();
     });
+    expect(screen.getByText(/黄金会员|Gold/i)).toBeTruthy();
+    expect(screen.getByText(/9 折|0.9/i)).toBeTruthy();
+    expect(screen.getByText("20 点")).toBeTruthy();
+    expect(screen.getByText("100 点")).toBeTruthy();
   });
 });

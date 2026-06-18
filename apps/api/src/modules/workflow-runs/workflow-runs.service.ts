@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  applyMembershipDiscount,
   BillingService,
   BillingServiceError,
   createPgPool,
+  resolveMembershipDiscount,
   safeRecordAuditLog,
   withTenantTransaction,
 } from "@aigc-flow/db";
@@ -765,6 +767,7 @@ export class WorkflowRunsService {
             : runtimeFlow.compiled_graph_json.nodes;
         const payloadsToEnqueue: NodeExecuteJobPayload[] = [];
         const nodeRunIds: string[] = [];
+        const membership = await this.loadMembershipDiscount(client, context.tenantId);
 
         for (const node of nodesToRun) {
           const isEntryNode =
@@ -774,6 +777,8 @@ export class WorkflowRunsService {
           const nodeRunId = randomUUID();
           nodeRunIds.push(nodeRunId);
           const estimatedCost = this.estimateNodeReserveCents(node, routeContexts, pricingRows);
+          const originalCredits = estimatedCost.amountCents;
+          const discountedCredits = applyMembershipDiscount(originalCredits, membership);
           if (estimatedCost.unit && estimatedCost.amountCents <= 0) {
             throw new WorkflowRunsApiError(
               422,
@@ -817,8 +822,12 @@ export class WorkflowRunsService {
             isEntryNode ? "runnable" : "pending",
             JSON.stringify(node.config ?? {}),
             JSON.stringify({
-              estimatedCredits: estimatedCost.amountCents,
-              estimatedCents: estimatedCost.amountCents,
+              estimatedCredits: discountedCredits,
+              estimatedCents: discountedCredits,
+              discountMultiplier: membership.multiplier,
+              membershipTier: membership.tier,
+              originalCredits,
+              originalCents: originalCredits,
               pricingFallbackLevel: estimatedCost.fallbackLevel,
               pricingMatch: estimatedCost.pricingMatch,
               pricingQuantity: estimatedCost.quantity,
@@ -844,20 +853,24 @@ export class WorkflowRunsService {
             "workflow node_run row inserted",
           );
 
-          if (estimatedCost.amountCents > 0) {
+          if (discountedCredits > 0) {
             const reserveStartedAt = Date.now();
             let reserve;
             try {
               reserve = await this.billingService.reserveUsageWithClient(client, context.tenantId, {
-                amountCents: estimatedCost.amountCents,
+                amountCents: discountedCredits,
                 description: `${node.type} reserved`,
                 idempotencyKey: `reserve:${context.tenantId}:${run.id}:${nodeRunId}`,
                 metadata: {
+                  discountMultiplier: membership.multiplier,
+                  discountedCredits,
                   flowId: runtimeFlow.flow_id,
                   flowVersionId: runtimeFlow.current_version_id,
+                  membershipTier: membership.tier,
                   nodeId: node.id,
                   nodeRunId,
                   nodeType: node.type,
+                  originalCredits,
                   pricingFallbackLevel: estimatedCost.fallbackLevel,
                   pricingMatch: estimatedCost.pricingMatch,
                   pricingQuantity: estimatedCost.quantity,
@@ -891,7 +904,7 @@ export class WorkflowRunsService {
                     balanceCredits,
                     nodeId: node.id,
                     nodeRunId,
-                    requiredCredits: estimatedCost.amountCents,
+                    requiredCredits: discountedCredits,
                     reservedCredits,
                     workflowRunId: run.id,
                   },
@@ -909,8 +922,9 @@ export class WorkflowRunsService {
             [
               nodeRunId,
               JSON.stringify({
-                reservedCredits: estimatedCost.amountCents,
-                reservedCents: estimatedCost.amountCents,
+                estimatedCredits: discountedCredits,
+                reservedCredits: discountedCredits,
+                reservedCents: discountedCredits,
                 reserveLedgerId: reserve.id,
                 reserveStatus: "reserved",
               }),
@@ -921,7 +935,7 @@ export class WorkflowRunsService {
                 billingReserveMs: Date.now() - reserveStartedAt,
                 flowId,
                 nodeRunId,
-                reservedCents: estimatedCost.amountCents,
+                reservedCents: discountedCredits,
                 runMode,
                 targetNodeId,
                 tenantId: context.tenantId,
@@ -1396,6 +1410,19 @@ export class WorkflowRunsService {
       `,
     );
     return result.rows;
+  }
+
+  private async loadMembershipDiscount(client: PoolClient, tenantId: string) {
+    const result = await client.query<{ membership_tier: string }>(
+      `
+        SELECT membership_tier
+        FROM billing_accounts
+        WHERE tenant_id = $1::uuid
+        LIMIT 1
+      `,
+      [tenantId],
+    );
+    return resolveMembershipDiscount(result.rows[0]?.membership_tier);
   }
 
   private async loadRouteRuntimeContexts(

@@ -49,6 +49,19 @@ Current deployment baseline:
 
 ## Current Key Status Snapshot
 
+As of 2026-06-18:
+
+- Single-creator SaaS user/billing direction implemented in the v2 path: normal login no longer asks creators for tenant ID, and the account page no longer exposes internal user IDs, tenant IDs, raw roles, or raw permissions to normal users.
+- Billing now has membership-tier semantics for `standard`, `silver`, `gold`, and `platinum`, with generation reserve discounts of 100%, 95%, 90%, and 80% respectively.
+- Billing schema now includes expiring credit grants and per-reserve grant allocations, so credits can be issued as 1-month, 3-month, 1-year, custom, or lifetime batches and spent from expiring grants before lifetime grants.
+- Admin user management is being formalized for platform operations: system admins can search across users, update a user's membership tier for a selected workspace, and issue expiring credit grants.
+- Workbench and workflow-run reservations now apply membership discounts before reserving credits, and worker settlement/refund metadata includes `reserveLedgerId` so reserved grant allocations can be settled or released.
+- Validation:
+  - `npx vitest run src/auth/AuthPages.test.tsx src/account/AccountPage.test.tsx src/billing/BillingCenterPage.test.tsx` passed.
+  - `npm run test --workspace @aigc-flow/db -- billing.test.ts` passed available tests; DB-backed tests were skipped because no local `DATABASE_URL` is configured.
+  - `npm run test --workspace @aigc-flow/api -- admin.test.ts workbench-service.test.ts` passed workbench tests; admin DB-backed tests were skipped because no local `DATABASE_URL` is configured.
+  - `npm run build --workspace @aigc-flow/api`, `npm run build --workspace @aigc-flow/worker`, and `npm run build` passed.
+
 As of 2026-06-13:
 
 - TapNow-style visual alignment work has been iterated several rounds on canvas layout, add-node menus, user menus, and node title density

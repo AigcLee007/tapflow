@@ -2,8 +2,10 @@ import { randomUUID } from "node:crypto";
 import { afterAll, describe, expect, test } from "vitest";
 
 import {
+  applyMembershipDiscount,
   BillingService,
   createPgPool,
+  resolveMembershipDiscount,
   withTenantTransaction,
 } from "../src/index.js";
 import { runMigrations } from "../src/migrator.js";
@@ -18,6 +20,22 @@ afterAll(() => {
   } else {
     process.env.DATABASE_URL = originalDatabaseUrl;
   }
+});
+
+describe("membership discounts", () => {
+  test("resolveMembershipDiscount returns the supported creator tier multipliers", () => {
+    expect(resolveMembershipDiscount("standard")).toEqual({ multiplier: 1, tier: "standard" });
+    expect(resolveMembershipDiscount("silver")).toEqual({ multiplier: 0.95, tier: "silver" });
+    expect(resolveMembershipDiscount("gold")).toEqual({ multiplier: 0.9, tier: "gold" });
+    expect(resolveMembershipDiscount("platinum")).toEqual({ multiplier: 0.8, tier: "platinum" });
+    expect(resolveMembershipDiscount("unknown")).toEqual({ multiplier: 1, tier: "standard" });
+  });
+
+  test("applyMembershipDiscount keeps four decimal credit precision", () => {
+    expect(applyMembershipDiscount(10, resolveMembershipDiscount("silver"))).toBe(9.5);
+    expect(applyMembershipDiscount(2.55555, resolveMembershipDiscount("gold"))).toBe(2.3);
+    expect(applyMembershipDiscount(1.23456, resolveMembershipDiscount("platinum"))).toBe(0.9876);
+  });
 });
 
 async function seedBillingTenant(
@@ -84,6 +102,55 @@ describeWithDatabase("billing migration, RLS, and idempotency", () => {
         ]);
       } finally {
         await pool.end();
+      }
+    });
+  });
+
+  test("single creator billing schema includes membership fields and credit grants", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({ connectionString: await createAppDatabaseUrl() });
+
+        const accountColumns = await adminPool.query<{ column_name: string }>(
+          `
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = 'billing_accounts'
+              AND column_name IN (
+                'membership_tier',
+                'membership_tier_source',
+                'membership_tier_expires_at'
+              )
+            ORDER BY column_name ASC
+          `,
+        );
+        expect(accountColumns.rows.map((row) => row.column_name)).toEqual([
+          "membership_tier",
+          "membership_tier_expires_at",
+          "membership_tier_source",
+        ]);
+
+        const tables = await adminPool.query<{ table_name: string }>(
+          `
+            SELECT table_name
+            FROM information_schema.tables
+            WHERE table_schema = 'public'
+              AND table_name IN ('billing_credit_grants', 'billing_credit_reservations')
+            ORDER BY table_name ASC
+          `,
+        );
+        expect(tables.rows.map((row) => row.table_name)).toEqual([
+          "billing_credit_grants",
+          "billing_credit_reservations",
+        ]);
+      } finally {
+        await appPool.end();
+        await adminPool.end();
       }
     });
   });

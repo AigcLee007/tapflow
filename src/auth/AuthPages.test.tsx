@@ -49,18 +49,25 @@ describe("auth pages", () => {
     fireEvent.change(screen.getByLabelText("密码"), {
       target: { value: "secret-pass" },
     });
-    fireEvent.change(screen.getByLabelText("租户 ID"), {
-      target: { value: "tenant-1" },
-    });
+    expect(screen.queryByText("租户 ID")).toBeNull();
+    expect(screen.queryByLabelText(/tenant/i)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "进入工作区" }));
 
     await waitFor(() => {
       expect(login).toHaveBeenCalledWith({
         email: "creator@example.com",
         password: "secret-pass",
-        tenantId: "tenant-1",
       });
     });
+  });
+
+  test("does not ask creators for a tenant id on login", () => {
+    renderWithAuth(<LoginPage />);
+
+    expect(screen.getByLabelText("邮箱")).toBeTruthy();
+    expect(screen.getByLabelText("密码")).toBeTruthy();
+    expect(screen.queryByText("租户 ID")).toBeNull();
+    expect(screen.queryByLabelText(/tenant/i)).toBeNull();
   });
 
   test("keeps register actions inside the same compact auth shell and switches back to login", () => {

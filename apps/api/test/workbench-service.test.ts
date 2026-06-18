@@ -298,4 +298,107 @@ describe("WorkbenchService generation deletion", () => {
     });
     expect(reserveUsageWithClient).toHaveBeenCalledTimes(1);
   });
+
+  test("createGeneration applies membership discount before reserving credits", async () => {
+    const client = {
+      query: vi.fn(async (sql: string) => {
+        if (
+          sql === "BEGIN" ||
+          sql === "COMMIT" ||
+          sql === "ROLLBACK" ||
+          sql.includes("set_config('app.tenant_id'") ||
+          sql.includes("set_config('app.user_id'")
+        ) {
+          return { rows: [] };
+        }
+        if (sql.includes("FROM ai_routes AS route")) {
+          return { rows: [{ min_charge_credits: "10", route_id: "route-1" }] };
+        }
+        if (sql.includes("SELECT membership_tier")) {
+          return { rows: [{ membership_tier: "gold" }] };
+        }
+        if (sql.includes("INSERT INTO workbench_generations")) {
+          return {
+            rows: [{
+              batch_id: null,
+              batch_index: null,
+              batch_role: "single",
+              charged_credits: null,
+              created_at: "2026-06-18T00:00:00.000Z",
+              display_mode: "merged",
+              error_json: null,
+              estimated_credits: "9",
+              finished_at: null,
+              id: "11111111-1111-4111-8111-111111111111",
+              model_id: "pixellelabs.nano-banana-pro",
+              params_json: {},
+              parent_generation_id: null,
+              prompt: "discount prompt",
+              reference_asset_ids: [],
+              reference_upload_ids: [],
+              requested_count: 1,
+              reserve_ledger_id: "reserve-ledger-1",
+              reserved_credits: "9",
+              route_key: "image.pixellelabs.nano-banana-pro",
+              session_id: null,
+              started_at: null,
+              status: "queued",
+              updated_at: "2026-06-18T00:00:00.000Z",
+              batch_total: null,
+            }],
+          };
+        }
+        return { rows: [] };
+      }),
+      release: vi.fn(),
+    };
+    const pool = {
+      connect: vi.fn(async () => client),
+    };
+    const generationQueue = {
+      add: vi.fn(async () => ({ id: "job-1" })),
+    };
+    const reserveUsageWithClient = vi.fn(async () => ({ id: "reserve-ledger-1" }));
+    const service = new WorkbenchService({
+      billingService: {
+        reserveUsageWithClient,
+      } as never,
+      generationQueue: generationQueue as never,
+      pool: pool as never,
+    });
+
+    const created = await service.createGeneration(
+      {
+        tenantId: "22222222-2222-4222-8222-222222222222",
+        traceId: "trace-1",
+        userId: "44444444-4444-4444-8444-444444444444",
+      },
+      {
+        displayMode: "merged",
+        modelId: "pixellelabs.nano-banana-pro",
+        params: {},
+        prompt: "discount prompt",
+        referenceAssetIds: [],
+        referenceUploadIds: [],
+        requestedCount: 1,
+        routeKey: "image.pixellelabs.nano-banana-pro",
+      },
+    );
+
+    expect(created.estimatedCredits).toBe(9);
+    expect(created.reservedCredits).toBe(9);
+    expect(reserveUsageWithClient).toHaveBeenCalledWith(
+      client,
+      "22222222-2222-4222-8222-222222222222",
+      expect.objectContaining({
+        amountCents: 9,
+        metadata: expect.objectContaining({
+          discountMultiplier: 0.9,
+          discountedCredits: 9,
+          membershipTier: "gold",
+          originalCredits: 10,
+        }),
+      }),
+    );
+  });
 });

@@ -15,10 +15,20 @@ export type BillingSummary = {
   account: BillingAccount;
   availableCredits?: number;
   balanceCredits?: number;
+  creditGrants?: {
+    availableCredits: number;
+    expiringSoonCredits: number;
+    lifetimeCredits: number;
+    reservedCredits: number;
+  };
   ledgerTotals: {
     refundCents: number;
     reserveCents: number;
     settleCents: number;
+  };
+  membership?: {
+    discountMultiplier: number;
+    tier: "standard" | "silver" | "gold" | "platinum";
   };
   reservedCredits?: number;
   thisMonthUsageCredits?: number;

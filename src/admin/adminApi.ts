@@ -1,8 +1,12 @@
-import { apiGet, apiPost } from "../services/v2HttpClient";
+import { apiGet, apiPatch, apiPost } from "../services/v2HttpClient";
+
+export type MembershipTier = "standard" | "silver" | "gold" | "platinum";
 
 export type AdminMembership = {
   availableCredits: number;
   balanceCredits: number;
+  membershipTier?: MembershipTier;
+  membershipTierExpiresAt?: string | null;
   membershipStatus: string;
   reservedCredits: number;
   roleKey: string;
@@ -41,6 +45,13 @@ export type AdminGrantCreditsResponse = {
     id: string;
     idempotencyKey: string | null;
   };
+};
+
+export type AdminUpdateMembershipTierResponse = {
+  membershipTier: MembershipTier;
+  membershipTierExpiresAt: string | null;
+  targetUserId: string;
+  tenantId: string;
 };
 
 export type AdminRedeemCodeResponse = {
@@ -111,14 +122,35 @@ export function getAdminUser(userId: string): Promise<AdminUser> {
 
 export function grantAdminCredits(input: {
   credits: number;
+  expiresAt?: string;
   reason: string;
   targetUserId: string;
   tenantId: string;
+  validityDays?: number;
+  validityMode?: "months" | "days" | "lifetime" | "custom";
+  validityMonths?: number;
 }): Promise<AdminGrantCreditsResponse> {
   return apiPost<AdminGrantCreditsResponse>(`/admin/users/${input.targetUserId}/grant-credits`, {
     credits: input.credits,
+    expiresAt: input.expiresAt,
     reason: input.reason,
     tenantId: input.tenantId,
+    validityDays: input.validityDays,
+    validityMode: input.validityMode,
+    validityMonths: input.validityMonths,
+  });
+}
+
+export function updateAdminMembershipTier(input: {
+  expiresAt?: string;
+  targetUserId: string;
+  tenantId?: string;
+  tier: MembershipTier;
+}): Promise<AdminUpdateMembershipTierResponse> {
+  return apiPatch<AdminUpdateMembershipTierResponse>(`/admin/users/${input.targetUserId}/membership-tier`, {
+    expiresAt: input.expiresAt,
+    tenantId: input.tenantId,
+    tier: input.tier,
   });
 }
 

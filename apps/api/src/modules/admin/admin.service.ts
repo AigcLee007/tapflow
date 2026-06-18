@@ -6,10 +6,11 @@ import {
   createPgPool,
   hashBillingRedeemCode,
   safeRecordAuditLog,
+  type MembershipTier,
   type BillingLedgerView,
   withTenantTransaction,
 } from "@aigc-flow/db";
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 
 import type { RequestContext } from "../../http/request-context.js";
 import { hashPassword } from "../auth/password.js";
@@ -27,6 +28,8 @@ type AdminUserRow = {
 
 type AdminMembershipRow = {
   balance_cents: string | null;
+  membership_tier: string | null;
+  membership_tier_expires_at: string | null;
   membership_status: string;
   reserved_cents: string | null;
   role_key: string;
@@ -70,6 +73,8 @@ export type AdminContext = RequestContext;
 export type AdminUserMembershipView = {
   availableCredits: number;
   balanceCredits: number;
+  membershipTier: MembershipTier;
+  membershipTierExpiresAt: string | null;
   membershipStatus: string;
   reservedCredits: number;
   roleKey: string;
@@ -151,6 +156,49 @@ function parseNumericString(value: string | null | undefined): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function normalizeMembershipTier(value: string | null | undefined): MembershipTier {
+  return value === "silver" || value === "gold" || value === "platinum" ? value : "standard";
+}
+
+async function setAdminTenantContext(
+  client: PoolClient,
+  context: { tenantId: string; userId: string | null },
+): Promise<void> {
+  await client.query("SELECT set_config('app.tenant_id', $1, true)", [context.tenantId]);
+  await client.query("SELECT set_config('app.user_id', $1, true)", [context.userId ?? ""]);
+  await client.query("SELECT set_config('app.is_system_admin', 'true', true)");
+}
+
+function addDays(base: Date, days: number): Date {
+  const next = new Date(base.getTime());
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
+}
+
+function addMonths(base: Date, months: number): Date {
+  const next = new Date(base.getTime());
+  next.setUTCMonth(next.getUTCMonth() + months);
+  return next;
+}
+
+function resolveCreditGrantExpiresAt(input: {
+  expiresAt?: string;
+  validityDays?: number;
+  validityMode?: "months" | "days" | "lifetime" | "custom";
+  validityMonths?: number;
+}): string | null {
+  const mode = input.validityMode ?? "lifetime";
+  if (mode === "lifetime") return null;
+  if (mode === "custom") {
+    return input.expiresAt?.trim() || null;
+  }
+  const now = new Date();
+  if (mode === "days") {
+    return addDays(now, input.validityDays ?? 30).toISOString();
+  }
+  return addMonths(now, input.validityMonths ?? 1).toISOString();
+}
+
 function summarizeErrorJson(errorJson: Record<string, unknown> | null): string | null {
   if (!errorJson) return null;
   if (typeof errorJson.message === "string" && errorJson.message.trim()) {
@@ -175,6 +223,8 @@ function mapMembership(row: AdminMembershipRow): AdminUserMembershipView {
   return {
     availableCredits: Math.max(balanceCredits - reservedCredits, 0),
     balanceCredits,
+    membershipTier: normalizeMembershipTier(row.membership_tier),
+    membershipTierExpiresAt: row.membership_tier_expires_at,
     membershipStatus: row.membership_status,
     reservedCredits,
     roleKey: row.role_key,
@@ -251,8 +301,12 @@ export class AdminApiService {
     const query = input?.query?.trim() ?? "";
     const likeQuery = query ? `%${query.replace(/\s+/g, "%")}%` : null;
 
-    const users = await withTenantTransaction<{ rows: AdminUserRow[] }>(tenantContext, async (client) => {
-      return client.query<AdminUserRow>(
+    const client = await this.pool.connect();
+    let users: { rows: AdminUserRow[] };
+    try {
+      await client.query("BEGIN");
+      await setAdminTenantContext(client, tenantContext);
+      users = await client.query<AdminUserRow>(
         `
           SELECT
             users.id::text AS id,
@@ -261,21 +315,23 @@ export class AdminApiService {
             users.status,
             users.email_verified_at::text AS email_verified_at,
             users.created_at::text AS created_at
-          FROM tenant_memberships
-          JOIN users
-            ON users.id = tenant_memberships.user_id
-          WHERE tenant_memberships.tenant_id = $1::uuid
-            AND (
-              $2::text IS NULL
-              OR users.email ILIKE $2::text
-              OR COALESCE(users.display_name, '') ILIKE $2::text
-            )
+          FROM users
+          WHERE
+            $1::text IS NULL
+            OR users.email ILIKE $1::text
+            OR COALESCE(users.display_name, '') ILIKE $1::text
           ORDER BY users.created_at DESC, users.id DESC
-          LIMIT $3::int
+          LIMIT $2::int
         `,
-        [context.tenantId, likeQuery, limit],
+        [likeQuery, limit],
       );
-    }, this.pool);
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
 
     const membershipsByUserId = await this.loadMembershipsByUserIds(tenantContext, users.rows.map((row) => row.id));
 
@@ -290,8 +346,12 @@ export class AdminApiService {
     userId: string,
   ): Promise<AdminUserView> {
     const tenantContext = requireTenantContext(context);
-    const user = await withTenantTransaction<{ rows: AdminUserRow[] }>(tenantContext, async (client) => {
-      return client.query<AdminUserRow>(
+    const client = await this.pool.connect();
+    let user: { rows: AdminUserRow[] };
+    try {
+      await client.query("BEGIN");
+      await setAdminTenantContext(client, tenantContext);
+      user = await client.query<AdminUserRow>(
         `
           SELECT
             users.id::text AS id,
@@ -300,16 +360,19 @@ export class AdminApiService {
             users.status,
             users.email_verified_at::text AS email_verified_at,
             users.created_at::text AS created_at
-          FROM tenant_memberships
-          JOIN users
-            ON users.id = tenant_memberships.user_id
-          WHERE tenant_memberships.tenant_id = $1::uuid
-            AND users.id = $2::uuid
+          FROM users
+          WHERE users.id = $1::uuid
           LIMIT 1
         `,
-        [context.tenantId, userId],
+        [userId],
       );
-    }, this.pool);
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
 
     const row = user.rows[0];
     if (!row) {
@@ -324,10 +387,14 @@ export class AdminApiService {
     context: AdminContext,
     input: {
       credits: number;
+      expiresAt?: string;
       idempotencyKey?: string;
       reason: string;
       targetUserId: string;
       tenantId: string;
+      validityDays?: number;
+      validityMode?: "months" | "days" | "lifetime" | "custom";
+      validityMonths?: number;
     },
   ): Promise<{
     account: {
@@ -339,12 +406,12 @@ export class AdminApiService {
     ledgerEntry: BillingLedgerView;
   }> {
     const tenantContext = requireTenantContext(context);
-    if (input.tenantId !== tenantContext.tenantId) {
-      throw new AdminApiError(403, "TENANT_SCOPE_MISMATCH", "当前管理操作仅允许在当前工作区内执行");
-    }
-
-    const membership = await withTenantTransaction<{ rows: Array<{ exists_flag: number }> }>(tenantContext, async (client) => {
-      return client.query<{ exists_flag: number }>(
+    const client = await this.pool.connect();
+    let membership: { rows: Array<{ exists_flag: number }> };
+    try {
+      await client.query("BEGIN");
+      await setAdminTenantContext(client, tenantContext);
+      membership = await client.query<{ exists_flag: number }>(
         `
           SELECT 1 AS exists_flag
           FROM tenant_memberships
@@ -354,13 +421,20 @@ export class AdminApiService {
         `,
         [input.tenantId, input.targetUserId],
       );
-    }, this.pool);
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
 
     if (!membership.rows[0]) {
-      throw new AdminApiError(404, "TENANT_MEMBERSHIP_NOT_FOUND", "该用户不属于指定工作区");
+      throw new AdminApiError(404, "TENANT_MEMBERSHIP_NOT_FOUND", "Target user does not belong to the selected workspace.");
     }
 
     const idempotencyKey = input.idempotencyKey?.trim() || `admin-grant:${input.tenantId}:${input.targetUserId}:${randomUUID()}`;
+    const creditExpiresAt = resolveCreditGrantExpiresAt(input);
     let ledgerEntry: BillingLedgerView;
     try {
       ledgerEntry = await this.billingService.creditAccount(
@@ -370,13 +444,15 @@ export class AdminApiService {
         },
         {
           amountCents: input.credits,
-          description: `Admin grant test credits: ${input.reason.trim()}`,
+          description: `Admin grant credits: ${input.reason.trim()}`,
           entryType: "admin_credit",
           idempotencyKey,
           metadata: {
             adminActorUserId: context.userId,
+            creditExpiresAt,
             reason: input.reason.trim(),
             targetUserId: input.targetUserId,
+            validityMode: input.validityMode ?? "lifetime",
           },
         },
       );
@@ -399,11 +475,13 @@ export class AdminApiService {
         actorUserId: context.userId,
         ipHash: context.ipHash,
         metadata: {
+          creditExpiresAt,
           credits: input.credits,
           idempotencyKey,
           reason: input.reason.trim(),
           targetUserId: input.targetUserId,
           tenantId: input.tenantId,
+          validityMode: input.validityMode ?? "lifetime",
         },
         requestId: context.requestId,
         resourceId: input.targetUserId,
@@ -417,13 +495,116 @@ export class AdminApiService {
 
     return {
       account: {
-        availableCredits: Math.max(summary.account.balanceCents - summary.account.reservedCents, 0),
+        availableCredits: summary.creditGrants.availableCredits,
         balanceCredits: summary.account.balanceCents,
-        reservedCredits: summary.account.reservedCents,
+        reservedCredits: summary.creditGrants.reservedCredits,
         tenantId: input.tenantId,
       },
       ledgerEntry,
     };
+  }
+
+  async updateMembershipTier(
+    context: AdminContext,
+    input: {
+      expiresAt?: string;
+      targetUserId: string;
+      tenantId?: string;
+      tier: MembershipTier;
+    },
+  ): Promise<{
+    membershipTier: MembershipTier;
+    membershipTierExpiresAt: string | null;
+    targetUserId: string;
+    tenantId: string;
+  }> {
+    const tenantContext = requireTenantContext(context);
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await setAdminTenantContext(client, tenantContext);
+
+      const membership = await client.query<{ tenant_id: string }>(
+        `
+          SELECT tenant_id::text AS tenant_id
+          FROM tenant_memberships
+          WHERE user_id = $1::uuid
+            AND status = 'active'
+            AND ($2::uuid IS NULL OR tenant_id = $2::uuid)
+          ORDER BY created_at ASC, id ASC
+          LIMIT 1
+        `,
+        [input.targetUserId, input.tenantId ?? null],
+      );
+      const tenantId = membership.rows[0]?.tenant_id;
+      if (!tenantId) {
+        throw new AdminApiError(404, "TENANT_MEMBERSHIP_NOT_FOUND", "Target user does not belong to the selected workspace.");
+      }
+
+      const updated = await client.query<{
+        membership_tier: string;
+        membership_tier_expires_at: string | null;
+        tenant_id: string;
+      }>(
+        `
+          UPDATE billing_accounts
+          SET
+            membership_tier = $2,
+            membership_tier_source = 'admin_override',
+            membership_tier_overridden_by = $3::uuid,
+            membership_tier_overridden_at = now(),
+            membership_tier_expires_at = $4::timestamptz,
+            updated_at = now()
+          WHERE tenant_id = $1::uuid
+          RETURNING
+            tenant_id::text AS tenant_id,
+            membership_tier,
+            membership_tier_expires_at::text AS membership_tier_expires_at
+        `,
+        [tenantId, input.tier, context.userId, input.expiresAt ?? null],
+      );
+      if (!updated.rows[0]) {
+        throw new AdminApiError(404, "BILLING_ACCOUNT_NOT_FOUND", "Billing account was not found for the selected workspace.");
+      }
+
+      await client.query("COMMIT");
+
+      await safeRecordAuditLog(
+        {
+          action: "admin.user.update_membership_tier",
+          actorType: "user",
+          actorUserId: context.userId,
+          ipHash: context.ipHash,
+          metadata: {
+            expiresAt: input.expiresAt ?? null,
+            targetUserId: input.targetUserId,
+            tier: input.tier,
+          },
+          requestId: context.requestId,
+          resourceId: input.targetUserId,
+          resourceType: "user",
+          tenantId,
+          traceId: context.traceId,
+          userAgent: context.userAgent,
+        },
+        { pool: this.pool },
+      ).catch(() => undefined);
+
+      return {
+        membershipTier: normalizeMembershipTier(updated.rows[0].membership_tier),
+        membershipTierExpiresAt: updated.rows[0].membership_tier_expires_at,
+        targetUserId: input.targetUserId,
+        tenantId,
+      };
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      if (error instanceof AdminApiError) {
+        throw error;
+      }
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async createRedeemCode(
@@ -819,8 +1000,12 @@ export class AdminApiService {
       return result;
     }
 
-    const memberships = await withTenantTransaction<{ rows: AdminMembershipRow[] }>(context, async (client) => {
-      return client.query<AdminMembershipRow>(
+    const client = await this.pool.connect();
+    let memberships: { rows: AdminMembershipRow[] };
+    try {
+      await client.query("BEGIN");
+      await setAdminTenantContext(client, context);
+      memberships = await client.query<AdminMembershipRow>(
         `
           SELECT
             tenant_memberships.user_id::text AS user_id,
@@ -830,19 +1015,26 @@ export class AdminApiService {
             tenants.name AS tenant_name,
             tenants.status AS tenant_status,
             billing_accounts.balance_cents::text AS balance_cents,
-            billing_accounts.reserved_cents::text AS reserved_cents
+            billing_accounts.reserved_cents::text AS reserved_cents,
+            billing_accounts.membership_tier,
+            billing_accounts.membership_tier_expires_at::text AS membership_tier_expires_at
           FROM tenant_memberships
           JOIN tenants
             ON tenants.id = tenant_memberships.tenant_id
           LEFT JOIN billing_accounts
             ON billing_accounts.tenant_id = tenant_memberships.tenant_id
-          WHERE tenant_memberships.tenant_id = $1::uuid
-            AND tenant_memberships.user_id = ANY($2::uuid[])
+          WHERE tenant_memberships.user_id = ANY($1::uuid[])
           ORDER BY tenant_memberships.created_at ASC, tenant_memberships.id ASC
         `,
-        [context.tenantId, userIds],
+        [userIds],
       );
-    }, this.pool);
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
 
     for (const row of memberships.rows) {
       const existing = result.get(row.user_id) ?? [];

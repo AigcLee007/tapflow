@@ -384,6 +384,116 @@ describeWithDatabase("admin api", () => {
     });
   });
 
+  test("system admin can search users outside current tenant and manage membership billing", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({ connectionString: await createAppDatabaseUrl() });
+        const api = buildTestApp(appPool);
+
+        const adminUser = await registerUser(api, {
+          displayName: "Ops Admin",
+          email: adminEmail,
+          tenantName: "Ops Tenant",
+        });
+        const targetUser = await registerUser(api, {
+          displayName: "Global Search User",
+          email: "global-search-user@example.com",
+          tenantName: "Creator Tenant",
+        });
+        const adminLogin = await api.inject({
+          method: "POST",
+          payload: {
+            email: adminEmail,
+            password: "StrongPass123!",
+            tenantId: adminUser.currentTenant.id,
+          },
+          url: "/api/v2/auth/login",
+        });
+        expect(adminLogin.statusCode).toBe(200);
+
+        const search = await api.inject({
+          headers: {
+            authorization: `Bearer ${adminLogin.json().accessToken}`,
+          },
+          method: "GET",
+          url: "/api/v2/admin/users?query=global-search-user",
+        });
+        expect(search.statusCode).toBe(200);
+        expect(search.json().items[0]).toMatchObject({
+          email: "global-search-user@example.com",
+        });
+        expect(search.json().items[0].memberships[0]).toMatchObject({
+          tenantId: targetUser.currentTenant.id,
+        });
+
+        const tier = await api.inject({
+          headers: {
+            authorization: `Bearer ${adminLogin.json().accessToken}`,
+          },
+          method: "PATCH",
+          payload: {
+            tenantId: targetUser.currentTenant.id,
+            tier: "gold",
+          },
+          url: `/api/v2/admin/users/${targetUser.user.id}/membership-tier`,
+        });
+        expect(tier.statusCode).toBe(200);
+        expect(tier.json()).toMatchObject({
+          membershipTier: "gold",
+          tenantId: targetUser.currentTenant.id,
+        });
+
+        const grant = await api.inject({
+          headers: {
+            authorization: `Bearer ${adminLogin.json().accessToken}`,
+          },
+          method: "POST",
+          payload: {
+            credits: 100,
+            reason: "three month package",
+            tenantId: targetUser.currentTenant.id,
+            validityMode: "months",
+            validityMonths: 3,
+          },
+          url: `/api/v2/admin/users/${targetUser.user.id}/grant-credits`,
+        });
+        expect(grant.statusCode).toBe(200);
+
+        const account = await adminPool.query<{ membership_tier: string }>(
+          `
+            SELECT membership_tier
+            FROM billing_accounts
+            WHERE tenant_id = $1::uuid
+          `,
+          [targetUser.currentTenant.id],
+        );
+        expect(account.rows[0]?.membership_tier).toBe("gold");
+
+        const grants = await adminPool.query<{ expires_at: string | null }>(
+          `
+            SELECT expires_at::text AS expires_at
+            FROM billing_credit_grants
+            WHERE tenant_id = $1::uuid
+              AND source_type = 'admin_grant'
+            ORDER BY created_at DESC
+            LIMIT 1
+          `,
+          [targetUser.currentTenant.id],
+        );
+        expect(grants.rows[0]?.expires_at).toBeTruthy();
+
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
   test("admin password reset allows the user to log in with the returned temporary password", async () => {
     await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
       process.env.DATABASE_URL = databaseUrl;

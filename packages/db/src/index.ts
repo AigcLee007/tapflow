@@ -12,9 +12,11 @@ export {
   type AuditLogView,
 } from "./audit.js";
 export {
+  applyMembershipDiscount,
   BillingService,
   BillingServiceError,
   hashBillingRedeemCode,
+  resolveMembershipDiscount,
   type BillingAccountView,
   type BillingLedgerView,
   type BillingListOptions,
@@ -25,6 +27,8 @@ export {
   type CreatePaymentInput,
   type DebitAccountInput,
   type ModelPricingView,
+  type MembershipDiscount,
+  type MembershipTier,
   type RedeemCodeInput,
   type RefundUsageInput,
   type ReserveUsageInput,

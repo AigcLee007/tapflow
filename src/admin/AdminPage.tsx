@@ -9,10 +9,26 @@ import {
   listAdminWorkflowRuns,
   resetAdminPassword,
   searchAdminUsers,
+  updateAdminMembershipTier,
   type AdminUser,
   type AdminWorkflowRun,
   type AdminWorkflowRunDetail,
+  type MembershipTier,
 } from "./adminApi";
+
+const MEMBERSHIP_OPTIONS: Array<{ label: string; tier: MembershipTier }> = [
+  { label: "普通用户", tier: "standard" },
+  { label: "白银会员", tier: "silver" },
+  { label: "黄金会员", tier: "gold" },
+  { label: "至尊会员", tier: "platinum" },
+];
+
+const VALIDITY_OPTIONS = [
+  { label: "1个月", mode: "months" as const, months: 1 },
+  { label: "3个月", mode: "months" as const, months: 3 },
+  { label: "1年", mode: "months" as const, months: 12 },
+  { label: "长期", mode: "lifetime" as const },
+];
 
 function formatDate(value: string | null): string {
   if (!value) return "-";
@@ -40,7 +56,10 @@ export function AdminPage() {
   const [grantReason, setGrantReason] = useState("staging 测试点数");
   const [grantCreditsValue, setGrantCreditsValue] = useState("1000");
   const [grantTenantId, setGrantTenantId] = useState("");
+  const [grantValidity, setGrantValidity] = useState(VALIDITY_OPTIONS[1]);
   const [grantMessage, setGrantMessage] = useState<string | null>(null);
+  const [membershipMessage, setMembershipMessage] = useState<string | null>(null);
+  const [membershipTier, setMembershipTier] = useState<MembershipTier>("standard");
   const [redeemCreditsValue, setRedeemCreditsValue] = useState("1000");
   const [redeemMaxRedemptions, setRedeemMaxRedemptions] = useState("1");
   const [redeemTenantId, setRedeemTenantId] = useState("");
@@ -140,6 +159,7 @@ export function AdminPage() {
     if (selectedUser) {
       setGrantTenantId(selectedUser.memberships[0]?.tenantId ?? tenant?.id ?? "");
       setRedeemTenantId(selectedUser.memberships[0]?.tenantId ?? tenant?.id ?? "");
+      setMembershipTier(selectedUser.memberships[0]?.membershipTier ?? "standard");
     }
   }, [selectedUser, tenant?.id]);
 
@@ -160,6 +180,8 @@ export function AdminPage() {
         reason: grantReason,
         targetUserId: selectedUser.id,
         tenantId: grantTenantId.trim(),
+        validityMode: grantValidity.mode,
+        validityMonths: "months" in grantValidity ? grantValidity.months : undefined,
       });
       setGrantMessage(
         `发放成功。当前可用 ${response.account.availableCredits} 点，已占用 ${response.account.reservedCredits} 点。`,
@@ -167,6 +189,22 @@ export function AdminPage() {
       await loadUsers();
     } catch (grantError) {
       setGrantMessage(grantError instanceof Error ? grantError.message : "发放点数失败。");
+    }
+  }
+
+  async function handleUpdateMembershipTier() {
+    if (!selectedUser) return;
+    setMembershipMessage(null);
+    try {
+      const response = await updateAdminMembershipTier({
+        targetUserId: selectedUser.id,
+        tenantId: grantTenantId.trim() || undefined,
+        tier: membershipTier,
+      });
+      setMembershipMessage(`会员等级已更新：${response.membershipTier}`);
+      await loadUsers();
+    } catch (membershipError) {
+      setMembershipMessage(membershipError instanceof Error ? membershipError.message : "会员等级更新失败。");
     }
   }
 
@@ -333,6 +371,33 @@ export function AdminPage() {
                   <div className="rounded border border-white/10 bg-black/20 p-4">
                     <h3 className="font-medium text-white">发放测试点数</h3>
                     <div className="mt-3 space-y-3">
+                      <div className="rounded border border-white/10 bg-black/20 p-3">
+                        <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Membership</div>
+                        <div className="mt-3 grid grid-cols-2 gap-2">
+                          {MEMBERSHIP_OPTIONS.map((option) => (
+                            <button
+                              className={`h-9 rounded border px-3 text-xs ${
+                                membershipTier === option.tier
+                                  ? "border-sky-300/40 bg-sky-500/15 text-sky-100"
+                                  : "border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]"
+                              }`}
+                              key={option.tier}
+                              onClick={() => setMembershipTier(option.tier)}
+                              type="button"
+                            >
+                              {option.label}
+                            </button>
+                          ))}
+                        </div>
+                        <button
+                          className="mt-3 inline-flex h-9 items-center justify-center rounded border border-sky-300/25 bg-sky-500/10 px-3 text-xs text-sky-100 hover:bg-sky-500/20"
+                          onClick={() => void handleUpdateMembershipTier()}
+                          type="button"
+                        >
+                          保存会员等级
+                        </button>
+                        {membershipMessage ? <div className="mt-2 text-xs text-slate-300">{membershipMessage}</div> : null}
+                      </div>
                       <input
                         className="h-10 w-full rounded border border-white/10 bg-black/25 px-3 text-sm text-white"
                         onChange={(event) => setGrantTenantId(event.target.value)}
@@ -351,6 +416,25 @@ export function AdminPage() {
                         placeholder="原因"
                         value={grantReason}
                       />
+                      <div>
+                        <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Credit validity</div>
+                        <div className="grid grid-cols-4 gap-2">
+                          {VALIDITY_OPTIONS.map((option) => (
+                            <button
+                              className={`h-9 rounded border px-2 text-xs ${
+                                grantValidity.label === option.label
+                                  ? "border-emerald-300/40 bg-emerald-500/15 text-emerald-100"
+                                  : "border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]"
+                              }`}
+                              key={option.label}
+                              onClick={() => setGrantValidity(option)}
+                              type="button"
+                            >
+                              {option.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                       <button
                         className="inline-flex h-10 items-center justify-center rounded border border-emerald-300/25 bg-emerald-500/10 px-4 text-sm text-emerald-100 hover:bg-emerald-500/20"
                         onClick={() => void handleGrantCredits()}

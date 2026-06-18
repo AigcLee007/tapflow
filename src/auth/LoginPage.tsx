@@ -217,7 +217,6 @@ export function LoginPage() {
   const { authenticated, login } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [tenantId, setTenantId] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -235,7 +234,6 @@ export function LoginPage() {
       await login({
         email,
         password,
-        tenantId: tenantId.trim() || undefined,
       });
       navigate(getReturnTo());
     } catch (submitError) {
@@ -271,12 +269,6 @@ export function LoginPage() {
           required
           type="password"
           value={password}
-        />
-        <AuthField
-          label="租户 ID"
-          onChange={setTenantId}
-          placeholder="选填"
-          value={tenantId}
         />
         <AuthPrimaryButton disabled={submitting}>
           {submitting ? "正在进入..." : "进入工作区"}

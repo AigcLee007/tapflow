@@ -710,6 +710,7 @@ export class WorkbenchGenerationService {
       idempotencyKey: `workbench:settle:${tenantId}:${generation.id}`,
       metadata: {
         generationId: generation.id,
+        reserveLedgerId: generation.reserve_ledger_id,
         source: "workbench",
       },
       reservedAmountCents: reservedCredits,
@@ -748,6 +749,7 @@ export class WorkbenchGenerationService {
       idempotencyKey: `workbench:refund:${tenantId}:${generation.id}`,
       metadata: {
         generationId: generation.id,
+        reserveLedgerId: generation.reserve_ledger_id,
         source: "workbench",
       },
       usageEventId: null,

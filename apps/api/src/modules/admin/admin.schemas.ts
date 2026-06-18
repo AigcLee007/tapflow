@@ -11,9 +11,19 @@ export const adminUserParamsSchema = z.object({
 
 export const adminGrantCreditsSchema = z.object({
   credits: z.coerce.number().int().positive().max(1_000_000_000),
+  expiresAt: z.string().datetime().optional(),
   idempotencyKey: z.string().trim().min(1).max(255).optional(),
   reason: z.string().trim().min(1).max(500),
   tenantId: z.string().uuid(),
+  validityDays: z.coerce.number().int().positive().max(3650).optional(),
+  validityMode: z.enum(["months", "days", "lifetime", "custom"]).default("lifetime"),
+  validityMonths: z.coerce.number().int().positive().max(120).optional(),
+});
+
+export const adminUpdateMembershipTierSchema = z.object({
+  expiresAt: z.string().datetime().optional(),
+  tenantId: z.string().uuid().optional(),
+  tier: z.enum(["standard", "silver", "gold", "platinum"]),
 });
 
 export const adminCreateRedeemCodeSchema = z.object({
@@ -43,6 +53,7 @@ export const adminWorkflowRunParamsSchema = z.object({
 export type AdminUsersQuery = z.infer<typeof adminUsersQuerySchema>;
 export type AdminUserParams = z.infer<typeof adminUserParamsSchema>;
 export type AdminGrantCreditsInput = z.infer<typeof adminGrantCreditsSchema>;
+export type AdminUpdateMembershipTierInput = z.infer<typeof adminUpdateMembershipTierSchema>;
 export type AdminCreateRedeemCodeInput = z.infer<typeof adminCreateRedeemCodeSchema>;
 export type AdminResetPasswordInput = z.infer<typeof adminResetPasswordSchema>;
 export type AdminWorkflowRunsQuery = z.infer<typeof adminWorkflowRunsQuerySchema>;

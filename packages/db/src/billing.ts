@@ -11,6 +11,9 @@ export type BillingAccountRecord = {
   currency: string;
   id: string;
   metadata: Record<string, unknown>;
+  membership_tier: string;
+  membership_tier_expires_at: string | null;
+  membership_tier_source: string;
   reserved_cents: string;
   status: string;
   tenant_id: string;
@@ -61,6 +64,9 @@ export type BillingAccountView = {
   currency: string;
   id: string;
   metadata: Record<string, unknown>;
+  membershipTier: MembershipTier;
+  membershipTierExpiresAt: string | null;
+  membershipTierSource: string;
   reservedCents: number;
   status: string;
   tenantId: string;
@@ -107,10 +113,20 @@ export type BillingLedgerView = {
 
 export type BillingSummaryView = {
   account: BillingAccountView;
+  creditGrants: {
+    availableCredits: number;
+    expiringSoonCredits: number;
+    lifetimeCredits: number;
+    reservedCredits: number;
+  };
   ledgerTotals: {
     refundCents: number;
     reserveCents: number;
     settleCents: number;
+  };
+  membership: {
+    discountMultiplier: number;
+    tier: MembershipTier;
   };
   usageTotals: {
     eventCount: number;
@@ -267,9 +283,34 @@ export class BillingServiceError extends Error {
   }
 }
 
+export type MembershipTier = "standard" | "silver" | "gold" | "platinum";
+
+export type MembershipDiscount = {
+  multiplier: number;
+  tier: MembershipTier;
+};
+
 function parseNumericString(value: string): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+export function resolveMembershipDiscount(value: string | null | undefined): MembershipDiscount {
+  if (value === "silver") {
+    return { multiplier: 0.95, tier: "silver" };
+  }
+  if (value === "gold") {
+    return { multiplier: 0.9, tier: "gold" };
+  }
+  if (value === "platinum") {
+    return { multiplier: 0.8, tier: "platinum" };
+  }
+  return { multiplier: 1, tier: "standard" };
+}
+
+export function applyMembershipDiscount(amountCredits: number, discount: MembershipDiscount): number {
+  const discounted = amountCredits * discount.multiplier;
+  return Math.round(discounted * 10_000) / 10_000;
 }
 
 function normalizeDecimalValue(value: string | number | null | undefined): string | null {
@@ -296,6 +337,9 @@ function mapBillingAccount(row: BillingAccountRecord): BillingAccountView {
     currency: row.currency,
     id: row.id,
     metadata: row.metadata ?? {},
+    membershipTier: resolveMembershipDiscount(row.membership_tier).tier,
+    membershipTierExpiresAt: row.membership_tier_expires_at,
+    membershipTierSource: row.membership_tier_source,
     reservedCents: parseNumericString(row.reserved_cents),
     status: row.status,
     tenantId: row.tenant_id,
@@ -416,6 +460,11 @@ type LedgerConflictComparable = {
   usageEventId: string | null;
 };
 
+type CreditGrantAllocation = {
+  amountCredits: number;
+  grantId: string;
+};
+
 function assertUsageEventConflictSafe(
   existing: UsageEventView,
   input: UsageEventConflictComparable,
@@ -516,31 +565,7 @@ export class BillingService {
     input: ReserveUsageInput,
   ): Promise<BillingLedgerView> {
     return withTenantTransaction(context, async (client) => {
-      const account = await this.getOrCreateBillingAccountForUpdateInTransaction(client, context.tenantId);
-      this.assertAvailableBalance(account, input.amountCents);
-      return this.createLedgerEntryInTransaction(client, {
-        amountCents: input.amountCents,
-        applyAccountMutation: async () => {
-          await client.query(
-            `
-              UPDATE billing_accounts
-              SET
-                reserved_cents = reserved_cents + $2::numeric,
-                updated_at = now()
-              WHERE id = $1::uuid
-            `,
-            [account.id, input.amountCents],
-          );
-        },
-        billingAccountId: account.id,
-        currency: input.currency ?? account.currency,
-        description: input.description ?? null,
-        entryType: "reserve",
-        idempotencyKey: input.idempotencyKey,
-        metadata: input.metadata ?? {},
-        tenantId: context.tenantId,
-        usageEventId: null,
-      });
+      return this.reserveUsageWithClient(client, context.tenantId, input);
     }, this.pool);
   }
 
@@ -550,10 +575,10 @@ export class BillingService {
     input: ReserveUsageInput,
   ): Promise<BillingLedgerView> {
     const account = await this.getOrCreateBillingAccountForUpdateInTransaction(client, tenantId);
-    this.assertAvailableBalance(account, input.amountCents);
+    const allocations = await this.allocateCreditGrantsForReserve(client, tenantId, input.amountCents);
     return this.createLedgerEntryInTransaction(client, {
       amountCents: input.amountCents,
-      applyAccountMutation: async () => {
+      applyAccountMutation: async (ledgerEntry) => {
         await client.query(
           `
             UPDATE billing_accounts
@@ -564,13 +589,21 @@ export class BillingService {
           `,
           [account.id, input.amountCents],
         );
+        await this.createCreditReservationsForLedger(client, {
+          allocations,
+          ledgerId: ledgerEntry.id,
+          tenantId,
+        });
       },
       billingAccountId: account.id,
       currency: input.currency ?? account.currency,
       description: input.description ?? null,
       entryType: "reserve",
       idempotencyKey: input.idempotencyKey,
-      metadata: input.metadata ?? {},
+      metadata: {
+        ...(input.metadata ?? {}),
+        creditGrantAllocations: allocations,
+      },
       tenantId,
       usageEventId: null,
     });
@@ -581,46 +614,7 @@ export class BillingService {
     input: SettleUsageInput,
   ): Promise<BillingLedgerView> {
     return withTenantTransaction(context, async (client) => {
-      const account = await this.getOrCreateBillingAccountInTransaction(client, context.tenantId);
-      const usageEvent = await this.getUsageEventOrThrow(client, input.usageEventId);
-
-      const ledgerEntry = await this.createLedgerEntryInTransaction(client, {
-        amountCents: input.amountCents,
-        applyAccountMutation: async () => {
-          await client.query(
-            `
-              UPDATE billing_accounts
-              SET
-                balance_cents = balance_cents - $2::numeric,
-                reserved_cents = GREATEST(reserved_cents - $3::numeric, 0),
-                updated_at = now()
-              WHERE id = $1::uuid
-            `,
-            [account.id, input.amountCents, input.reservedAmountCents ?? 0],
-          );
-
-          await client.query(
-            `
-              UPDATE usage_events
-              SET
-                status = 'settled',
-                billable_cents = $2::numeric
-              WHERE id = $1::uuid
-            `,
-            [usageEvent.id, input.amountCents],
-          );
-        },
-        billingAccountId: account.id,
-        currency: input.currency ?? account.currency,
-        description: input.description ?? null,
-        entryType: "settle",
-        idempotencyKey: input.idempotencyKey,
-        metadata: input.metadata ?? {},
-        tenantId: context.tenantId,
-        usageEventId: usageEvent.id,
-      });
-
-      return ledgerEntry;
+      return this.settleUsageWithClient(client, context.tenantId, input);
     }, this.pool);
   }
 
@@ -657,6 +651,10 @@ export class BillingService {
           `,
           [usageEvent.id, input.amountCents],
         );
+        await this.settleCreditReservations(client, tenantId, {
+          reserveLedgerId: this.resolveReserveLedgerId(input.metadata),
+          usageEventId: usageEvent.id,
+        });
       },
       billingAccountId: account.id,
       currency: input.currency ?? account.currency,
@@ -674,35 +672,7 @@ export class BillingService {
     input: RefundUsageInput,
   ): Promise<BillingLedgerView> {
     return withTenantTransaction(context, async (client) => {
-      const account = await this.getOrCreateBillingAccountInTransaction(client, context.tenantId);
-      const usageEventId = input.usageEventId ?? null;
-      if (usageEventId) {
-        await this.getUsageEventOrThrow(client, usageEventId);
-      }
-
-      return this.createLedgerEntryInTransaction(client, {
-        amountCents: input.amountCents,
-        applyAccountMutation: async () => {
-          await client.query(
-            `
-              UPDATE billing_accounts
-              SET
-                reserved_cents = GREATEST(reserved_cents - $2::numeric, 0),
-                updated_at = now()
-              WHERE id = $1::uuid
-            `,
-            [account.id, input.amountCents],
-          );
-        },
-        billingAccountId: account.id,
-        currency: input.currency ?? account.currency,
-        description: input.description ?? null,
-        entryType: "refund",
-        idempotencyKey: input.idempotencyKey,
-        metadata: input.metadata ?? {},
-        tenantId: context.tenantId,
-        usageEventId,
-      });
+      return this.refundUsageWithClient(client, context.tenantId, input);
     }, this.pool);
   }
 
@@ -781,16 +751,49 @@ export class BillingService {
         `,
         [context.tenantId],
       );
+      const creditGrantTotalsResult = await client.query<{
+        available_credits: string;
+        expiring_soon_credits: string;
+        lifetime_credits: string;
+        reserved_credits: string;
+      }>(
+        `
+          SELECT
+            COALESCE(SUM(GREATEST(remaining_credits - reserved_credits, 0))
+              FILTER (WHERE status = 'active' AND (expires_at IS NULL OR expires_at > now())), 0)::text AS available_credits,
+            COALESCE(SUM(reserved_credits)
+              FILTER (WHERE status = 'active' AND (expires_at IS NULL OR expires_at > now())), 0)::text AS reserved_credits,
+            COALESCE(SUM(GREATEST(remaining_credits - reserved_credits, 0))
+              FILTER (WHERE status = 'active' AND expires_at > now() AND expires_at <= now() + interval '30 days'), 0)::text AS expiring_soon_credits,
+            COALESCE(SUM(GREATEST(remaining_credits - reserved_credits, 0))
+              FILTER (WHERE status = 'active' AND expires_at IS NULL), 0)::text AS lifetime_credits
+          FROM billing_credit_grants
+          WHERE tenant_id = $1::uuid
+        `,
+        [context.tenantId],
+      );
 
       const usageTotals = usageTotalsResult.rows[0];
       const ledgerTotals = ledgerTotalsResult.rows[0];
+      const creditGrantTotals = creditGrantTotalsResult.rows[0];
+      const membership = resolveMembershipDiscount(account.membershipTier);
 
       return {
         account,
+        creditGrants: {
+          availableCredits: parseNumericString(creditGrantTotals?.available_credits ?? "0"),
+          expiringSoonCredits: parseNumericString(creditGrantTotals?.expiring_soon_credits ?? "0"),
+          lifetimeCredits: parseNumericString(creditGrantTotals?.lifetime_credits ?? "0"),
+          reservedCredits: parseNumericString(creditGrantTotals?.reserved_credits ?? "0"),
+        },
         ledgerTotals: {
           refundCents: parseNumericString(ledgerTotals?.refund_cents ?? "0"),
           reserveCents: parseNumericString(ledgerTotals?.reserve_cents ?? "0"),
           settleCents: parseNumericString(ledgerTotals?.settle_cents ?? "0"),
+        },
+        membership: {
+          discountMultiplier: membership.multiplier,
+          tier: membership.tier,
         },
         usageTotals: {
           eventCount: usageTotals?.event_count ?? 0,
@@ -1180,6 +1183,9 @@ export class BillingService {
           currency,
           balance_cents::text AS balance_cents,
           reserved_cents::text AS reserved_cents,
+          membership_tier,
+          membership_tier_source,
+          membership_tier_expires_at::text AS membership_tier_expires_at,
           status,
           metadata,
           created_at::text AS created_at,
@@ -1200,6 +1206,9 @@ export class BillingService {
           currency,
           balance_cents::text AS balance_cents,
           reserved_cents::text AS reserved_cents,
+          membership_tier,
+          membership_tier_source,
+          membership_tier_expires_at::text AS membership_tier_expires_at,
           status,
           metadata,
           created_at::text AS created_at,
@@ -1232,6 +1241,9 @@ export class BillingService {
           currency,
           balance_cents::text AS balance_cents,
           reserved_cents::text AS reserved_cents,
+          membership_tier,
+          membership_tier_source,
+          membership_tier_expires_at::text AS membership_tier_expires_at,
           status,
           metadata,
           created_at::text AS created_at,
@@ -1262,6 +1274,234 @@ export class BillingService {
     }
   }
 
+  private async allocateCreditGrantsForReserve(
+    client: PoolClient,
+    tenantId: string,
+    amountCredits: number,
+  ): Promise<CreditGrantAllocation[]> {
+    if (amountCredits <= 0) {
+      return [];
+    }
+
+    const grants = await client.query<{
+      id: string;
+      remaining_credits: string;
+      reserved_credits: string;
+    }>(
+      `
+        SELECT
+          id::text AS id,
+          remaining_credits::text AS remaining_credits,
+          reserved_credits::text AS reserved_credits
+        FROM billing_credit_grants
+        WHERE tenant_id = $1::uuid
+          AND status = 'active'
+          AND (expires_at IS NULL OR expires_at > now())
+          AND remaining_credits > reserved_credits
+        ORDER BY expires_at ASC NULLS LAST, created_at ASC, id ASC
+        FOR UPDATE
+      `,
+      [tenantId],
+    );
+
+    let remaining = amountCredits;
+    const allocations: CreditGrantAllocation[] = [];
+    for (const grant of grants.rows) {
+      if (remaining <= 0) break;
+      const available = Math.max(
+        parseNumericString(grant.remaining_credits) - parseNumericString(grant.reserved_credits),
+        0,
+      );
+      if (available <= 0) continue;
+      const amount = Math.min(available, remaining);
+      allocations.push({
+        amountCredits: Math.round(amount * 10_000) / 10_000,
+        grantId: grant.id,
+      });
+      remaining = Math.round((remaining - amount) * 10_000) / 10_000;
+    }
+
+    if (remaining > 0) {
+      throw new BillingServiceError(
+        402,
+        "INSUFFICIENT_BALANCE",
+        "Insufficient unexpired billing balance for this operation",
+      );
+    }
+
+    for (const allocation of allocations) {
+      await client.query(
+        `
+          UPDATE billing_credit_grants
+          SET
+            reserved_credits = reserved_credits + $2::numeric,
+            updated_at = now()
+          WHERE id = $1::uuid
+        `,
+        [allocation.grantId, allocation.amountCredits],
+      );
+    }
+
+    return allocations;
+  }
+
+  private async createCreditReservationsForLedger(
+    client: PoolClient,
+    input: {
+      allocations: CreditGrantAllocation[];
+      ledgerId: string;
+      tenantId: string;
+    },
+  ): Promise<void> {
+    for (const allocation of input.allocations) {
+      await client.query(
+        `
+          INSERT INTO billing_credit_reservations (
+            tenant_id,
+            billing_ledger_id,
+            credit_grant_id,
+            amount_credits,
+            status,
+            metadata,
+            updated_at
+          )
+          VALUES ($1::uuid, $2::uuid, $3::uuid, $4::numeric, 'reserved', '{}'::jsonb, now())
+        `,
+        [input.tenantId, input.ledgerId, allocation.grantId, allocation.amountCredits],
+      );
+    }
+  }
+
+  private resolveCreditGrantSourceType(entryType: string): "admin_grant" | "migration" | "payment" | "redeem" {
+    if (entryType === "redeem") return "redeem";
+    if (entryType === "payment") return "payment";
+    if (entryType === "migration") return "migration";
+    return "admin_grant";
+  }
+
+  private resolveCreditGrantExpiresAt(metadata: Record<string, unknown> | undefined): string | null {
+    const expiresAt = metadata?.creditExpiresAt ?? metadata?.expiresAt;
+    return typeof expiresAt === "string" && expiresAt.trim() ? expiresAt.trim() : null;
+  }
+
+  private resolveReserveLedgerId(metadata: Record<string, unknown> | undefined): string | null {
+    const reserveLedgerId = metadata?.reserveLedgerId;
+    return typeof reserveLedgerId === "string" && reserveLedgerId.trim() ? reserveLedgerId.trim() : null;
+  }
+
+  private async settleCreditReservations(
+    client: PoolClient,
+    tenantId: string,
+    input: {
+      reserveLedgerId: string | null;
+      usageEventId: string;
+    },
+  ): Promise<void> {
+    if (!input.reserveLedgerId) return;
+    const reservations = await client.query<{
+      amount_credits: string;
+      credit_grant_id: string;
+      id: string;
+    }>(
+      `
+        SELECT
+          id::text AS id,
+          credit_grant_id::text AS credit_grant_id,
+          amount_credits::text AS amount_credits
+        FROM billing_credit_reservations
+        WHERE tenant_id = $1::uuid
+          AND billing_ledger_id = $2::uuid
+          AND status = 'reserved'
+        FOR UPDATE
+      `,
+      [tenantId, input.reserveLedgerId],
+    );
+
+    for (const reservation of reservations.rows) {
+      const amount = parseNumericString(reservation.amount_credits);
+      await client.query(
+        `
+          UPDATE billing_credit_grants
+          SET
+            remaining_credits = GREATEST(remaining_credits - $2::numeric, 0),
+            reserved_credits = GREATEST(reserved_credits - $2::numeric, 0),
+            status = CASE
+              WHEN GREATEST(remaining_credits - $2::numeric, 0) <= 0 THEN 'exhausted'
+              ELSE status
+            END,
+            updated_at = now()
+          WHERE id = $1::uuid
+        `,
+        [reservation.credit_grant_id, amount],
+      );
+      await client.query(
+        `
+          UPDATE billing_credit_reservations
+          SET
+            status = 'settled',
+            usage_event_id = $3::uuid,
+            updated_at = now()
+          WHERE tenant_id = $1::uuid
+            AND id = $2::uuid
+        `,
+        [tenantId, reservation.id, input.usageEventId],
+      );
+    }
+  }
+
+  private async refundCreditReservations(
+    client: PoolClient,
+    tenantId: string,
+    input: {
+      reserveLedgerId: string | null;
+    },
+  ): Promise<void> {
+    if (!input.reserveLedgerId) return;
+    const reservations = await client.query<{
+      amount_credits: string;
+      credit_grant_id: string;
+      id: string;
+    }>(
+      `
+        SELECT
+          id::text AS id,
+          credit_grant_id::text AS credit_grant_id,
+          amount_credits::text AS amount_credits
+        FROM billing_credit_reservations
+        WHERE tenant_id = $1::uuid
+          AND billing_ledger_id = $2::uuid
+          AND status = 'reserved'
+        FOR UPDATE
+      `,
+      [tenantId, input.reserveLedgerId],
+    );
+
+    for (const reservation of reservations.rows) {
+      const amount = parseNumericString(reservation.amount_credits);
+      await client.query(
+        `
+          UPDATE billing_credit_grants
+          SET
+            reserved_credits = GREATEST(reserved_credits - $2::numeric, 0),
+            updated_at = now()
+          WHERE id = $1::uuid
+        `,
+        [reservation.credit_grant_id, amount],
+      );
+      await client.query(
+        `
+          UPDATE billing_credit_reservations
+          SET
+            status = 'refunded',
+            updated_at = now()
+          WHERE tenant_id = $1::uuid
+            AND id = $2::uuid
+        `,
+        [tenantId, reservation.id],
+      );
+    }
+  }
+
   private async creditAccountWithClient(
     client: PoolClient,
     tenantId: string,
@@ -1280,6 +1520,50 @@ export class BillingService {
             WHERE id = $1::uuid
           `,
           [account.id, input.amountCents],
+        );
+        await client.query(
+          `
+            INSERT INTO billing_credit_grants (
+              tenant_id,
+              billing_account_id,
+              source_type,
+              source_id,
+              original_credits,
+              remaining_credits,
+              reserved_credits,
+              expires_at,
+              status,
+              metadata,
+              created_at,
+              updated_at
+            )
+            VALUES (
+              $1::uuid,
+              $2::uuid,
+              $3,
+              $4,
+              $5::numeric,
+              $5::numeric,
+              0,
+              $6::timestamptz,
+              CASE WHEN $5::numeric <= 0 THEN 'exhausted' ELSE 'active' END,
+              $7::jsonb,
+              now(),
+              now()
+            )
+          `,
+          [
+            tenantId,
+            account.id,
+            this.resolveCreditGrantSourceType(input.entryType),
+            input.idempotencyKey,
+            input.amountCents,
+            this.resolveCreditGrantExpiresAt(input.metadata),
+            JSON.stringify({
+              ...input.metadata,
+              ledgerEntryType: input.entryType,
+            }),
+          ],
         );
       },
       billingAccountId: account.id,
@@ -1438,7 +1722,7 @@ export class BillingService {
     client: PoolClient,
     input: {
       amountCents: number;
-      applyAccountMutation: () => Promise<void>;
+      applyAccountMutation: (ledgerEntry: BillingLedgerView) => Promise<void>;
       billingAccountId: string;
       currency: string;
       description: string | null;
@@ -1514,8 +1798,9 @@ export class BillingService {
       return existing;
     }
 
-    await input.applyAccountMutation();
-    return mapLedgerEntry(inserted.rows[0]);
+    const ledgerEntry = mapLedgerEntry(inserted.rows[0]);
+    await input.applyAccountMutation(ledgerEntry);
+    return ledgerEntry;
   }
 
   private async getUsageEventOrThrow(

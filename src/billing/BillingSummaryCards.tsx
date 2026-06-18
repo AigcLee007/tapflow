@@ -1,38 +1,55 @@
 import React from "react";
-import { CircleDollarSign, LockKeyhole, ReceiptText, TrendingDown } from "lucide-react";
+import { CircleDollarSign, Clock3, Infinity, LockKeyhole } from "lucide-react";
 
 import type { BillingSummary } from "./billingApi";
 
 const formatCredits = (value: number) => `${value.toLocaleString()} 点`;
 
+function membershipLabel(tier?: string) {
+  if (tier === "silver") return "白银会员";
+  if (tier === "gold") return "黄金会员";
+  if (tier === "platinum") return "至尊会员";
+  return "普通用户";
+}
+
+function discountLabel(multiplier?: number) {
+  if (!multiplier || multiplier >= 1) return "暂无生成折扣";
+  const discount = Math.round(multiplier * 100) / 10;
+  return `${discount} 折生成`;
+}
+
 export function BillingSummaryCards({ summary }: { summary: BillingSummary | null }) {
   const account = summary?.account;
-  const available = Math.max((account?.balanceCents ?? 0) - (account?.reservedCents ?? 0), 0);
+  const fallbackAvailable = Math.max((account?.balanceCents ?? 0) - (account?.reservedCents ?? 0), 0);
+  const available = summary?.creditGrants?.availableCredits ?? fallbackAvailable;
+  const reserved = summary?.creditGrants?.reservedCredits ?? account?.reservedCents ?? 0;
+  const expiringSoon = summary?.creditGrants?.expiringSoonCredits ?? 0;
+  const lifetime = summary?.creditGrants?.lifetimeCredits ?? available;
 
   const cards = [
     {
       icon: CircleDollarSign,
-      label: "当前余额",
-      value: formatCredits(account?.balanceCents ?? 0),
-      hint: `可用 ${formatCredits(available)}`,
+      label: "可用积分",
+      value: formatCredits(available),
+      hint: `预占 ${formatCredits(reserved)}`,
     },
     {
       icon: LockKeyhole,
-      label: "任务预占",
-      value: formatCredits(account?.reservedCents ?? 0),
-      hint: "运行中的生成任务会先预占额度",
+      label: "会员等级",
+      value: membershipLabel(summary?.membership?.tier),
+      hint: discountLabel(summary?.membership?.discountMultiplier),
     },
     {
-      icon: TrendingDown,
-      label: "本月用量",
-      value: formatCredits(summary?.usageTotals.totalBillableCents ?? 0),
-      hint: `已结算 ${summary?.usageTotals.settledCount ?? 0} 次`,
+      icon: Clock3,
+      label: "30 天内过期",
+      value: formatCredits(expiringSoon),
+      hint: "系统会优先消耗最快过期的积分",
     },
     {
-      icon: ReceiptText,
-      label: "账单流水",
-      value: formatCredits(summary?.ledgerTotals.settleCents ?? 0),
-      hint: `已退款 ${formatCredits(summary?.ledgerTotals.refundCents ?? 0)}`,
+      icon: Infinity,
+      label: "长期积分",
+      value: formatCredits(lifetime),
+      hint: "长期积分会在限时积分之后消耗",
     },
   ];
 

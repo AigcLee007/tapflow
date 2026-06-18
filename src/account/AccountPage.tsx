@@ -1,11 +1,24 @@
 import React from "react";
-import { Activity, Boxes, Loader2, LogOut, RefreshCw, Settings2, Sparkles, UserRound } from "lucide-react";
+import {
+  Activity,
+  Boxes,
+  CreditCard,
+  Loader2,
+  LogOut,
+  RefreshCw,
+  Settings2,
+  Shield,
+  Sparkles,
+  UserRound,
+} from "lucide-react";
 
 import {
   ACCOUNT_AI_SETTINGS_ROUTE,
   ACCOUNT_INSPECTION_ROUTE,
   ACCOUNT_PROVIDER_SETTINGS_ROUTE,
   ACCOUNT_TEMPLATE_LIBRARY_ROUTE,
+  ADMIN_ROUTE,
+  BILLING_ROUTE,
 } from "../app/routes";
 import { useAuth } from "../auth/useAuth";
 
@@ -26,11 +39,6 @@ function InfoCard({
   );
 }
 
-function displayTenantName(name?: string | null) {
-  if (!name) return "-";
-  return name.replace(/'s Workspace$/i, " 的工作区");
-}
-
 function statusLabel(status?: string | null) {
   if (status === "active") return "正常";
   if (status === "disabled") return "已停用";
@@ -38,8 +46,22 @@ function statusLabel(status?: string | null) {
   return status || "-";
 }
 
+function membershipLabel(plan?: string | null) {
+  if (plan === "silver") return "白银会员";
+  if (plan === "gold") return "黄金会员";
+  if (plan === "platinum") return "至尊会员";
+  return "普通用户";
+}
+
+function membershipDiscount(plan?: string | null) {
+  if (plan === "silver") return "生成积分 9.5 折";
+  if (plan === "gold") return "生成积分 9 折";
+  if (plan === "platinum") return "生成积分 8 折";
+  return "暂无生成折扣";
+}
+
 export function AccountPage() {
-  const { loading, logout, permissions, refreshMe, roles, tenant, user } = useAuth();
+  const { loading, logout, permissions, refreshMe, tenant, user } = useAuth();
   const canManageProviderSettings = permissions.includes("admin:system");
 
   if (loading && !user) {
@@ -64,7 +86,7 @@ export function AccountPage() {
             </div>
             <h1 className="mt-4 text-3xl font-semibold text-white">账户管理</h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-              管理你的个人资料、工作区身份和模型连接入口。
+              管理你的个人资料、会员权益、积分额度和创作设置。
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -92,29 +114,34 @@ export function AccountPage() {
         </div>
       </header>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)]">
         <div className="rounded border border-white/10 bg-white/[0.04] p-5">
-          <h2 className="text-lg font-semibold text-white">当前身份</h2>
-          <p className="mt-1 text-sm text-slate-500">用于登录、权限判断和团队协作的账号信息。</p>
+          <h2 className="text-lg font-semibold text-white">个人资料</h2>
+          <p className="mt-1 text-sm text-slate-500">用于登录和接收账户通知的基础资料。</p>
           <div className="mt-4 grid gap-3 md:grid-cols-2">
             <InfoCard label="邮箱" value={user?.email || "-"} />
             <InfoCard label="显示名称" value={user?.displayName || "-"} />
-            <InfoCard label="用户 ID" value={user?.id || "-"} />
             <InfoCard label="状态" value={statusLabel(user?.status)} />
-            <InfoCard label="角色" value={roles.join(", ") || "-"} wide />
-            <InfoCard label="权限" value={permissions.join(", ") || "-"} wide />
+            <InfoCard label="当前套餐" value={tenant?.plan || "free"} />
           </div>
         </div>
 
         <div className="rounded border border-white/10 bg-white/[0.04] p-5">
-          <h2 className="text-lg font-semibold text-white">工作区信息</h2>
-          <p className="mt-1 text-sm text-slate-500">当前项目、素材、计费和模型配置所属的租户空间。</p>
+          <h2 className="text-lg font-semibold text-white">会员权益</h2>
+          <p className="mt-1 text-sm text-slate-500">会员等级会影响生成任务的实际积分消耗。</p>
           <div className="mt-4 grid gap-3">
-            <InfoCard label="工作区" value={displayTenantName(tenant?.name)} />
-            <InfoCard label="工作区 ID" value={tenant?.id || "-"} />
-            <InfoCard label="标识" value={tenant?.slug || "-"} />
-            <InfoCard label="套餐" value={tenant?.plan || "-"} />
-            <InfoCard label="状态" value={statusLabel(tenant?.status)} />
+            <InfoCard label="会员等级" value={membershipLabel(tenant?.plan)} />
+            <InfoCard label="生成权益" value={membershipDiscount(tenant?.plan)} />
+            <button
+              className="inline-flex h-10 items-center justify-center gap-2 rounded border border-cyan-300/25 bg-cyan-500/10 px-4 text-sm font-medium text-cyan-100 hover:bg-cyan-500/20"
+              onClick={() => {
+                window.location.assign(BILLING_ROUTE);
+              }}
+              type="button"
+            >
+              <CreditCard size={15} />
+              查看积分与账单
+            </button>
           </div>
         </div>
       </div>
@@ -122,10 +149,20 @@ export function AccountPage() {
       {canManageProviderSettings ? (
         <section className="rounded border border-white/10 bg-white/[0.04] p-5">
           <div className="flex flex-col gap-1">
-            <h2 className="text-lg font-semibold text-white">模型与连接</h2>
-            <p className="text-sm text-slate-500">管理产品模型、供应商连接和初始化模板。</p>
+            <h2 className="text-lg font-semibold text-white">管理员工具</h2>
+            <p className="text-sm text-slate-500">管理模型配置、供应商连接、初始化模板和运营后台。</p>
           </div>
-          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+            <button
+              className="flex min-h-24 flex-col items-start justify-between rounded border border-rose-300/25 bg-rose-500/10 p-4 text-left text-rose-100 hover:bg-rose-500/20"
+              onClick={() => {
+                window.location.assign(ADMIN_ROUTE);
+              }}
+              type="button"
+            >
+              <Shield size={18} />
+              <span className="text-sm font-semibold">运营后台</span>
+            </button>
             <button
               className="flex min-h-24 flex-col items-start justify-between rounded border border-sky-300/25 bg-sky-500/10 p-4 text-left text-sky-100 hover:bg-sky-500/20"
               onClick={() => {

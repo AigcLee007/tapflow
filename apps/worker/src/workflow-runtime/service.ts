@@ -212,6 +212,7 @@ type UsageRecordInput = {
   outputTokens: number | null;
   providerId?: string | null;
   rawCost?: string | number | null;
+  reserveLedgerId?: string | null;
   routeId?: string | null;
   totalTokens: number | null;
   unitType?: string | null;
@@ -1385,6 +1386,7 @@ export class WorkflowNodeExecutionService {
           outputTokens: pollResult.usage?.outputTokens ?? null,
           providerId: pollResult.providerId ?? null,
           rawCost: pollResult.usage?.rawCost ?? null,
+          reserveLedgerId: this.getReserveLedgerId(currentNodeRun),
           routeId: pollResult.routeId ?? null,
           totalTokens: pollResult.usage?.totalTokens ?? null,
           unitType: "output_count",
@@ -1561,6 +1563,7 @@ export class WorkflowNodeExecutionService {
           outputTokens: result.usage.outputTokens,
           providerId: result.providerId ?? null,
           rawCost: result.usage.rawCost ?? null,
+          reserveLedgerId: this.getReserveLedgerId(nodeRun),
           routeId: result.routeId ?? null,
           totalTokens: result.usage.totalTokens,
           workflowRunId: workflowRun.id,
@@ -1795,6 +1798,7 @@ export class WorkflowNodeExecutionService {
         outputTokens: result.usage?.outputTokens ?? null,
         providerId: result.providerId ?? null,
         rawCost: result.usage?.rawCost ?? null,
+        reserveLedgerId: this.getReserveLedgerId(nodeRun),
         routeId: result.routeId ?? null,
         totalTokens: result.usage?.totalTokens ?? null,
         unitType: "output_count",
@@ -2349,6 +2353,11 @@ export class WorkflowNodeExecutionService {
     return typeof reserved === "number" && Number.isFinite(reserved) ? Math.max(0, reserved) : 0;
   }
 
+  private getReserveLedgerId(nodeRun: NodeRunRecord): string | null {
+    const reserveLedgerId = nodeRun.cost_json?.reserveLedgerId;
+    return typeof reserveLedgerId === "string" && reserveLedgerId.trim() ? reserveLedgerId.trim() : null;
+  }
+
   private async recordUsageForNode(
     client: PoolClient,
     tenantId: string,
@@ -2384,6 +2393,7 @@ export class WorkflowNodeExecutionService {
       metadata: {
         modality: input.modality,
         nodeRunId: input.nodeRunId,
+        reserveLedgerId: input.reserveLedgerId ?? null,
         workflowRunId: input.workflowRunId,
       },
       reservedAmountCents: input.billableCents,
@@ -2721,6 +2731,7 @@ export class WorkflowNodeExecutionService {
         metadata: {
           nodeId: row.node_id,
           nodeRunId: row.id,
+          reserveLedgerId: typeof row.cost_json?.reserveLedgerId === "string" ? row.cost_json.reserveLedgerId : null,
           workflowRunId,
         },
       });

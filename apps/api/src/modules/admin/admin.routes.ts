@@ -10,6 +10,7 @@ import {
   type AdminCreateRedeemCodeInput,
   type AdminGrantCreditsInput,
   type AdminResetPasswordInput,
+  type AdminUpdateMembershipTierInput,
   type AdminUserParams,
   type AdminUsersQuery,
   type AdminWorkflowRunParams,
@@ -17,6 +18,7 @@ import {
   adminCreateRedeemCodeSchema,
   adminGrantCreditsSchema,
   adminResetPasswordSchema,
+  adminUpdateMembershipTierSchema,
   adminUserParamsSchema,
   adminUsersQuerySchema,
   adminWorkflowRunParamsSchema,
@@ -132,10 +134,37 @@ export function registerAdminRoutes(app: FastifyInstance): void {
         return reply.send(
           await app.adminService.grantCredits(request.ctx, {
             credits: body.credits,
+            expiresAt: body.expiresAt,
             idempotencyKey: body.idempotencyKey,
             reason: body.reason,
             targetUserId: params.userId,
             tenantId: body.tenantId,
+            validityDays: body.validityDays,
+            validityMode: body.validityMode,
+            validityMonths: body.validityMonths,
+          }),
+        );
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.patch(
+    "/api/v2/admin/users/:userId/membership-tier",
+    {
+      preHandler: adminHandlers,
+    },
+    async (request, reply) => {
+      try {
+        const params = parseParams<AdminUserParams>(request, adminUserParamsSchema);
+        const body = parseBody<AdminUpdateMembershipTierInput>(request, adminUpdateMembershipTierSchema);
+        return reply.send(
+          await app.adminService.updateMembershipTier(request.ctx, {
+            expiresAt: body.expiresAt,
+            targetUserId: params.userId,
+            tenantId: body.tenantId,
+            tier: body.tier,
           }),
         );
       } catch (error) {

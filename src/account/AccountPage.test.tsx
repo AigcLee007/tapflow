@@ -42,11 +42,47 @@ describe("AccountPage", () => {
     );
 
     expect(screen.getByRole("heading", { name: "账户管理" })).toBeTruthy();
-    expect(screen.getByText("管理你的个人资料、工作区身份和模型连接入口。")).toBeTruthy();
-    expect(screen.getByText("当前身份")).toBeTruthy();
-    expect(screen.getByText("工作区信息")).toBeTruthy();
+    expect(screen.getByText("管理你的个人资料、会员权益、积分额度和创作设置。")).toBeTruthy();
+    expect(screen.getByText("个人资料")).toBeTruthy();
+    expect(screen.getByText("会员权益")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "运营后台" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "模型中心" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Provider Connections" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "退出登录" })).toBeTruthy();
+  });
+
+  test("shows creator account details without internal tenant diagnostics", () => {
+    render(
+      <AuthContext.Provider
+        value={{
+          ...createAuthState(),
+          permissions: ["project:read"],
+          roles: ["tenant_owner"],
+          tenant: {
+            id: "tenant-1",
+            name: "Lee's Workspace",
+            plan: "free",
+            slug: "lee-workspace",
+            status: "active",
+          },
+          user: {
+            displayName: "Lee",
+            email: "lee@example.com",
+            id: "user-1",
+            status: "active",
+          },
+        }}
+      >
+        <AccountPage />
+      </AuthContext.Provider>,
+    );
+
+    expect(screen.getByText("lee@example.com")).toBeTruthy();
+    expect(screen.getByText("普通用户")).toBeTruthy();
+    expect(screen.queryByText("tenant-1")).toBeNull();
+    expect(screen.queryByText("user-1")).toBeNull();
+    expect(screen.queryByText("lee-workspace")).toBeNull();
+    expect(screen.queryByText("tenant_owner")).toBeNull();
+    expect(screen.queryByText("project:read")).toBeNull();
   });
 });

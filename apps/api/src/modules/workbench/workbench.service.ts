@@ -1,6 +1,12 @@
 import { randomUUID } from "node:crypto";
 
-import { BillingService, createPgPool, withTenantTransaction } from "@aigc-flow/db";
+import {
+  applyMembershipDiscount,
+  BillingService,
+  createPgPool,
+  resolveMembershipDiscount,
+  withTenantTransaction,
+} from "@aigc-flow/db";
 import type { Queue } from "bullmq";
 import type { Pool, PoolClient } from "pg";
 import type { StorageProvider } from "@aigc-flow/storage";
@@ -398,7 +404,9 @@ export class WorkbenchService {
       await this.assertReferenceAssetsExist(client, context.tenantId, input.referenceAssetIds);
       await this.assertReferenceUploadsExist(client, context.tenantId, input.referenceUploadIds);
       const pricing = await this.lookupRoutePricing(client, context.tenantId, input.routeKey);
-      const estimatedCredits = Math.max(0, toNumber(pricing.min_charge_credits) * input.requestedCount);
+      const originalCredits = Math.max(0, toNumber(pricing.min_charge_credits) * input.requestedCount);
+      const membership = await this.loadMembershipDiscount(client, context.tenantId);
+      const estimatedCredits = applyMembershipDiscount(originalCredits, membership);
       const idempotencySuffix = input.idempotencyKey ?? randomUUID();
 
       const reserveLedger = await this.billingService.reserveUsageWithClient(client, context.tenantId, {
@@ -407,6 +415,10 @@ export class WorkbenchService {
         idempotencyKey: `workbench:reserve:${context.tenantId}:${idempotencySuffix}`,
         metadata: {
           modelId: input.modelId,
+          discountMultiplier: membership.multiplier,
+          discountedCredits: estimatedCredits,
+          membershipTier: membership.tier,
+          originalCredits,
           requestedCount: input.requestedCount,
           routeId: pricing.route_id,
           routeKey: input.routeKey,
@@ -1127,6 +1139,19 @@ export class WorkbenchService {
       throw new WorkbenchApiError(400, "PRICING_NOT_FOUND", "The selected workbench route does not have pricing configured.");
     }
     return row;
+  }
+
+  private async loadMembershipDiscount(client: PoolClient, tenantId: string) {
+    const result = await client.query<{ membership_tier: string }>(
+      `
+        SELECT membership_tier
+        FROM billing_accounts
+        WHERE tenant_id = $1::uuid
+        LIMIT 1
+      `,
+      [tenantId],
+    );
+    return resolveMembershipDiscount(result.rows[0]?.membership_tier);
   }
 
   private async createProjectForWorkbenchResult(client: PoolClient, context: WorkbenchContext, projectName: string): Promise<string> {
