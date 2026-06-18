@@ -1,4 +1,4 @@
-import { V2HttpError, apiGet, apiPost, getStoredAccessToken } from "./v2HttpClient";
+import { V2HttpError, apiDelete, apiGet, apiPost, getStoredAccessToken } from "./v2HttpClient";
 
 export type WorkbenchDisplayMode = "merged" | "separate";
 
@@ -139,6 +139,18 @@ export function getWorkbenchGeneration(generationId: string): Promise<WorkbenchG
 
 export function retryWorkbenchGeneration(generationId: string): Promise<WorkbenchGenerationView> {
   return apiPost<WorkbenchGenerationView>(`/workbench/generations/${encodeURIComponent(generationId)}/retry`, {});
+}
+
+export function deleteWorkbenchGeneration(generationId: string): Promise<{
+  deleted: boolean;
+  generationId: string;
+  ok: true;
+}> {
+  return apiDelete<{
+    deleted: boolean;
+    generationId: string;
+    ok: true;
+  }>(`/workbench/generations/${encodeURIComponent(generationId)}`);
 }
 
 export function sendWorkbenchResultToProject(

@@ -35,8 +35,8 @@ export function WorkbenchResultSheet({ onClose, onSendToProject, result }: Props
   return (
     <div className="fixed inset-0 z-50 bg-black/92 text-white" data-testid="workbench-result-fullscreen">
       <button aria-label="关闭结果详情" className="absolute inset-0 cursor-zoom-out" onClick={onClose} type="button" />
-      <section className="relative z-10 flex h-full w-full flex-col p-4 md:p-6">
-        <div className="flex shrink-0 items-center justify-between gap-3">
+      <section className="relative z-10 flex h-full w-full flex-col overflow-hidden px-4 py-3 md:px-6 md:py-4">
+        <div className="flex h-14 shrink-0 items-center justify-between gap-3">
           <div className="text-base font-black">结果详情</div>
           <button
             aria-label="关闭"
@@ -48,11 +48,15 @@ export function WorkbenchResultSheet({ onClose, onSendToProject, result }: Props
           </button>
         </div>
 
-        <div className="relative z-10 grid min-h-0 flex-1 place-items-center px-0 py-4 md:px-6">
+        <div
+          className="relative z-10 grid min-h-0 flex-1 place-items-center overflow-hidden px-0 py-2 md:px-6"
+          data-testid="workbench-result-fullscreen-stage"
+        >
           {imageUrl ? (
             <img
               alt={result.originalFilename || "Workbench result"}
-              className="max-h-full max-w-full rounded-[18px] object-contain shadow-[0_28px_90px_rgba(0,0,0,0.55)]"
+              className="block h-auto max-h-[calc(100vh-168px)] w-auto max-w-[calc(100vw-48px)] rounded-[18px] object-contain shadow-[0_28px_90px_rgba(0,0,0,0.55)]"
+              data-testid="workbench-result-fullscreen-image"
               src={imageUrl}
             />
           ) : (
@@ -62,7 +66,7 @@ export function WorkbenchResultSheet({ onClose, onSendToProject, result }: Props
           )}
         </div>
 
-        <div className="relative z-10 mx-auto grid w-full max-w-[520px] shrink-0 grid-cols-2 gap-3">
+        <div className="relative z-10 mx-auto grid h-16 w-full max-w-[520px] shrink-0 grid-cols-2 items-center gap-3">
           <a
             className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-white/[0.10] text-sm font-bold text-white transition hover:bg-white/[0.16]"
             href={result.downloadUrl || imageUrl || "#"}

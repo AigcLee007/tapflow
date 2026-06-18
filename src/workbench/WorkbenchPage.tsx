@@ -5,9 +5,12 @@ import {
   ChevronRight,
   Clock3,
   Coins,
+  Download,
+  ImagePlus,
   PanelLeftClose,
   Share2,
   Sparkles,
+  Trash2,
 } from "lucide-react";
 
 import { BrandMark } from "../app/brand/BrandMark";
@@ -119,6 +122,29 @@ function GenerationParameterLine({
       <span>尺寸：{summary.sizeLabel}</span>
       <span>数量：{generation.requestedCount}</span>
     </div>
+  );
+}
+
+const RESULT_ACTION_BUTTON_CLASS =
+  "inline-flex h-10 min-w-[116px] items-center justify-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3 text-xs font-bold text-slate-200 transition hover:bg-white/[0.10]";
+
+function WorkbenchPillButton({
+  children,
+  className = "",
+  onClick,
+}: {
+  children: React.ReactNode;
+  className?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className={`${RESULT_ACTION_BUTTON_CLASS} ${className}`.trim()}
+      onClick={onClick}
+      type="button"
+    >
+      {children}
+    </button>
   );
 }
 
@@ -246,12 +272,14 @@ function WorkbenchStage({
 function DesktopActiveTaskItem({
   generation,
   models,
+  onDelete,
   onReuseParams,
   onRetry,
   onSelectResult,
 }: {
   generation: WorkbenchGeneration;
   models: ImageModelConfig[];
+  onDelete: (generationId: string) => void;
   onReuseParams: (generation: WorkbenchGeneration) => void;
   onRetry: (generationId: string) => void;
   onSelectResult: (result: WorkbenchResult) => void;
@@ -304,6 +332,14 @@ function DesktopActiveTaskItem({
         >
           复用参数
         </button>
+        <button
+          aria-label="删除任务"
+          className="h-8 rounded-full border border-red-400/20 bg-red-500/10 px-3 text-[11px] font-bold text-red-100 transition hover:bg-red-500/18"
+          onClick={() => onDelete(generation.id)}
+          type="button"
+        >
+          删除任务
+        </button>
       </div>
     </article>
   );
@@ -312,15 +348,21 @@ function DesktopActiveTaskItem({
 function DesktopCompletedResultCard({
   generation,
   models,
+  onDelete,
+  onDownloadOriginal,
   onReuseParams,
   onRetry,
   onSelectResult,
+  onUseAsReference,
 }: {
   generation: WorkbenchGeneration;
   models: ImageModelConfig[];
+  onDelete: (generationId: string) => void;
+  onDownloadOriginal: (result: WorkbenchResult) => void;
   onReuseParams: (generation: WorkbenchGeneration) => void;
   onRetry: (generationId: string) => void;
   onSelectResult: (result: WorkbenchResult) => void;
+  onUseAsReference: (result: WorkbenchResult) => void;
 }) {
   const result = getPrimaryResult(generation);
   const previewUrl = useResultPreviewUrl(result);
@@ -366,21 +408,32 @@ function DesktopCompletedResultCard({
           </div>
         </div>
 
-        <div className="flex gap-2">
-          <button
-            className="h-9 rounded-full border border-white/10 bg-white/[0.06] px-3 text-xs font-bold text-white"
-            onClick={() => onRetry(generation.id)}
-            type="button"
+        <div className="flex flex-wrap gap-2">
+        <WorkbenchPillButton className="bg-white/[0.06] text-white" onClick={() => onRetry(generation.id)}>
+          再次生成
+        </WorkbenchPillButton>
+        <WorkbenchPillButton className="bg-white/[0.03] text-slate-300" onClick={() => onReuseParams(generation)}>
+          复用参数
+        </WorkbenchPillButton>
+          {result ? (
+            <>
+              <WorkbenchPillButton onClick={() => onDownloadOriginal(result)}>
+                <Download size={13} />
+                下载原图
+              </WorkbenchPillButton>
+              <WorkbenchPillButton onClick={() => onUseAsReference(result)}>
+                <ImagePlus size={13} />
+                引用参考
+              </WorkbenchPillButton>
+            </>
+          ) : null}
+          <WorkbenchPillButton
+            className="border-red-400/20 bg-red-500/10 text-red-100 hover:bg-red-500/18"
+            onClick={() => onDelete(generation.id)}
           >
-            再次生成
-          </button>
-          <button
-            className="h-9 rounded-full border border-white/10 bg-white/[0.03] px-3 text-xs font-bold text-slate-300"
-            onClick={() => onReuseParams(generation)}
-            type="button"
-          >
-            复用参数
-          </button>
+            <Trash2 size={13} />
+            删除记录
+          </WorkbenchPillButton>
         </div>
       </div>
     </article>
@@ -462,16 +515,22 @@ function DesktopResultsWorkspace({
   activeGenerations,
   completedGenerations,
   models,
+  onDeleteGeneration,
+  onDownloadOriginal,
   onReuseParams,
   onRetry,
   onSelectResult,
+  onUseAsReference,
 }: {
   activeGenerations: WorkbenchGeneration[];
   completedGenerations: WorkbenchGeneration[];
   models: ImageModelConfig[];
+  onDeleteGeneration: (generationId: string) => void;
+  onDownloadOriginal: (result: WorkbenchResult) => void;
   onReuseParams: (generation: WorkbenchGeneration) => void;
   onRetry: (generationId: string) => void;
   onSelectResult: (result: WorkbenchResult) => void;
+  onUseAsReference: (result: WorkbenchResult) => void;
 }) {
   return (
     <section
@@ -519,6 +578,7 @@ function DesktopResultsWorkspace({
                   generation={generation}
                   key={generation.id}
                   models={models}
+                  onDelete={onDeleteGeneration}
                   onReuseParams={onReuseParams}
                   onRetry={onRetry}
                   onSelectResult={onSelectResult}
@@ -558,9 +618,12 @@ function DesktopResultsWorkspace({
                     <DesktopCompletedResultCard
                       generation={generation}
                       models={models}
+                      onDelete={onDeleteGeneration}
+                      onDownloadOriginal={onDownloadOriginal}
                       onReuseParams={onReuseParams}
                       onRetry={onRetry}
                       onSelectResult={onSelectResult}
+                      onUseAsReference={onUseAsReference}
                     />
                   </div>
                 ))}
@@ -575,7 +638,7 @@ function DesktopResultsWorkspace({
 
 export function WorkbenchPage() {
   const { models } = useImageModelCatalog();
-  const { error, generations, loading, retry, submit, submitting } = useWorkbenchGenerations();
+  const { error, generations, loading, remove, retry, submit, submitting } = useWorkbenchGenerations();
   const [draft, setDraft] = React.useState(() => createDefaultWorkbenchDraft());
   const [selectedResult, setSelectedResult] = React.useState<WorkbenchResult | null>(null);
   const [sendDialogOpen, setSendDialogOpen] = React.useState(false);
@@ -620,6 +683,32 @@ export function WorkbenchPage() {
     [selectedResult],
   );
 
+  const handleDownloadOriginal = React.useCallback(async (result: WorkbenchResult) => {
+    const url = result.assetId
+      ? await getAssetVariantUrl(result.assetId).then((signed) => signed.url).catch(() => result.downloadUrl || result.previewUrl)
+      : result.downloadUrl || result.previewUrl;
+    if (!url) return;
+    window.open(url, "_blank", "noopener,noreferrer");
+  }, []);
+
+  const handleUseAsReference = React.useCallback((result: WorkbenchResult) => {
+    if (!result.assetId) return;
+    setDraft((current) => {
+      const nextReferenceAssetIds = [
+        result.assetId,
+        ...current.referenceAssetIds.filter((assetId) => assetId !== result.assetId),
+      ].slice(0, 10);
+      return {
+        ...current,
+        referenceAssetIds: nextReferenceAssetIds,
+      };
+    });
+  }, []);
+
+  const handleDeleteGeneration = React.useCallback((generationId: string) => {
+    void remove(generationId);
+  }, [remove]);
+
   const featuredGeneration = getFeaturedGeneration(generations);
   const activeGenerations = React.useMemo(
     () => getWorkbenchActiveGenerations(generations),
@@ -637,7 +726,10 @@ export function WorkbenchPage() {
     >
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:44px_44px] opacity-[0.08]" />
 
-      <header className="relative z-10 flex items-center justify-between gap-4 px-4 pb-2 pt-3 md:px-5 md:pb-3 md:pt-4">
+      <header
+        className="relative z-10 flex h-[78px] items-center justify-between gap-4 px-4 py-2 md:px-5"
+        data-testid="workbench-header"
+      >
         <div className="flex min-w-0 items-center gap-4">
           <button
             aria-label="返回首页"
@@ -653,12 +745,12 @@ export function WorkbenchPage() {
             onClick={() => navigate(WORKSPACE_ROUTE)}
             type="button"
           >
-            <BrandMark showCaption={false} size="canvas" />
+            <BrandMark showCaption={false} size="compact" />
             <span className="min-w-0">
               <span className="block text-[11px] font-black uppercase tracking-[0.22em] text-cyan-300">
                 Workbench
               </span>
-              <span className="block truncate text-[32px] font-black leading-none text-white md:text-[34px]">
+              <span className="block truncate text-[26px] font-black leading-none text-white md:text-[30px]">
                 创作工作台
               </span>
             </span>
@@ -698,7 +790,7 @@ export function WorkbenchPage() {
         </div>
       </header>
 
-      <div className="relative z-10 px-4 pb-4 md:px-6 md:pb-6">
+      <div className="relative z-10 px-4 pb-4 md:px-5">
         {error ? (
           <div className="mb-4 rounded-[18px] border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
             {error}
@@ -707,7 +799,7 @@ export function WorkbenchPage() {
 
         {isDesktop ? (
           <div
-            className="h-[calc(100vh-112px)] w-full overflow-hidden lg:grid lg:grid-cols-[minmax(84px,3fr)_minmax(0,7fr)] lg:gap-4"
+            className="h-[calc(100vh-94px)] w-full overflow-hidden lg:grid lg:grid-cols-[minmax(430px,3fr)_minmax(0,7fr)] lg:gap-4"
             data-testid="workbench-desktop-layout"
           >
             <DesktopLeftDock
@@ -724,9 +816,12 @@ export function WorkbenchPage() {
               activeGenerations={activeGenerations}
               completedGenerations={completedGenerations}
               models={models}
+              onDeleteGeneration={handleDeleteGeneration}
+              onDownloadOriginal={handleDownloadOriginal}
               onReuseParams={reuseParams}
               onRetry={(generationId) => void retry(generationId)}
               onSelectResult={setSelectedResult}
+              onUseAsReference={handleUseAsReference}
             />
           </div>
         ) : (
@@ -767,9 +862,12 @@ export function WorkbenchPage() {
                         generation={generation}
                         key={generation.id}
                         models={models}
+                        onDelete={handleDeleteGeneration}
+                        onDownloadOriginal={handleDownloadOriginal}
                         onReuseParams={reuseParams}
                         onRetry={(generationId) => void retry(generationId)}
                         onSelectResult={setSelectedResult}
+                        onUseAsReference={handleUseAsReference}
                       />
                     ))}
                   </div>

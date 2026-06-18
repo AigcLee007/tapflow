@@ -131,7 +131,7 @@ export class WorkbenchGenerationService {
       { tenantId: input.tenantId, userId: null },
       async (client): Promise<WorkbenchGenerationRecord | null> => {
         const generation = await this.lockGeneration(client, input.tenantId, input.generationId);
-        if (generation.status === "succeeded") {
+        if (generation.status === "succeeded" || generation.status === "canceled") {
           return null;
         }
         if ((generation.status === "running" || generation.status === "waiting_provider") && !this.isStaleGeneration(generation)) {
@@ -183,6 +183,11 @@ export class WorkbenchGenerationService {
       await withTenantTransaction(
         { tenantId: input.tenantId, userId: null },
         async (client) => {
+          const writable = await this.assertGenerationStillWritable(client, input.tenantId, generation.id);
+          if (!writable) {
+            return;
+          }
+
           const assetRefs = await this.assetStore.persistOutputs(client, {
             kind: "image",
             nodeRunId: null,
@@ -258,6 +263,7 @@ export class WorkbenchGenerationService {
         FROM workbench_generations
         WHERE tenant_id = $1::uuid
           AND id = $2::uuid
+          AND deleted_at IS NULL
         LIMIT 1
         FOR UPDATE
       `,
@@ -269,6 +275,28 @@ export class WorkbenchGenerationService {
       throw new Error(`Workbench generation not found: ${generationId}`);
     }
     return row;
+  }
+
+  private async assertGenerationStillWritable(
+    client: PoolClient,
+    tenantId: string,
+    generationId: string,
+  ): Promise<boolean> {
+    const result = await client.query<{ id: string }>(
+      `
+        SELECT id::text AS id
+        FROM workbench_generations
+        WHERE tenant_id = $1::uuid
+          AND id = $2::uuid
+          AND deleted_at IS NULL
+          AND status <> 'canceled'
+        LIMIT 1
+        FOR UPDATE
+      `,
+      [tenantId, generationId],
+    );
+
+    return result.rows.length > 0;
   }
 
   private async markGenerationRunning(client: PoolClient, tenantId: string, generationId: string) {

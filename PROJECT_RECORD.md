@@ -82,6 +82,37 @@ As of 2026-06-13:
 - desktop `/workbench` has now been restructured into a fixed three-pane docked workstation: the desktop shell reads as `3:5:2`, the left parameter dock keeps the existing composer UI with a pinned footer action area, the center pane is split into current-task stage plus recent-task window capped to the newest 8 operational tasks, and the right dock now shows completed-only history with no active generations mixed into that rail
 - `/assets` drag multi-select now uses a floating contextual toolbar at the user's selection endpoint instead of a sticky top bulk bar, with cancel, select all, favorite, download original, and delete actions available next to the selection
 - `/assets` drag multi-select has been further reworked against the smoother `D:\gpt-iamge-2` task-grid interaction pattern: selection now uses page coordinates, drag thresholding, hit slop, body-level text-selection suppression, auto-scroll near viewport edges, and a fixed screen-centered floating toolbar instead of edge-sensitive selection-bound positioning
+- standalone `/workbench` follow-up fixes are in place: desktop left parameter dock now keeps the generate action visible at 100% browser zoom, fullscreen result preview constrains images by viewport longest-side fit, completed cards expose download/reference/delete actions, and active stuck tasks can be soft-deleted/canceled with reservation refund protection
+
+## 2026-06-18 - Workbench Follow-up: Fixed Composer, Preview Fit, and Deletion Actions
+
+- Tightened the standalone `/workbench` desktop shell so the header consumes less vertical space and the two-column desktop layout gives the left parameter dock more usable height.
+- Reduced the workbench composer vertical density while preserving the existing UI structure:
+  - compact reference strip
+  - shorter prompt field
+  - tighter model/route/parameter rows
+  - pinned cost card and generate button footer
+- Verified at a 1920 x 900 desktop viewport that the left generate button remains fully visible without page scrolling.
+- Changed fullscreen result preview so original images are rendered with `object-contain`, explicit `h-auto/w-auto`, and viewport-based max width/height constraints, preventing wide images from being clipped.
+- Added completed-result actions:
+  - download original
+  - use result as next-round reference
+  - delete record
+- Added active-task deletion so stale queued/running/waiting tasks can be removed from the workbench UI.
+- Added server-side soft deletion for `workbench_generations`:
+  - `deleted_at`
+  - `deleted_by`
+  - visible-row indexes
+- Deleting active workbench generations now marks them `canceled`, hides them from list/detail APIs, and releases open reservations when the generation has not been settled.
+- Worker execution now re-checks that a workbench generation is still visible and not canceled before persisting outputs or settling billing, preventing deleted tasks from writing successful results later.
+- Validation:
+  - `npm run test --workspace @aigc-flow/api -- workbench-service.test.ts`
+  - `npm run test --workspace @aigc-flow/worker -- workbench-generation.service.test.ts`
+  - `npx vitest run src/workbench/WorkbenchPage.test.tsx src/workbench/workbenchDesktopLayout.test.ts src/workbench/workbenchReferences.test.ts`
+  - `npm run build --workspace @aigc-flow/api`
+  - `npm run build --workspace @aigc-flow/worker`
+  - `npm run build`
+  - Playwright visual check at 1920 x 900: left generate button visible; fullscreen preview fits stage and viewport
 
 ## 2026-06-18 - Workbench Three-Pane Docked Desktop Layout
 

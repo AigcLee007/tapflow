@@ -265,7 +265,7 @@ function ReferenceImageCard({
   const imageUrl = preview.localPreviewUrl || preview.previewUrl;
   return (
     <div
-      className="group relative h-[74px] w-[74px] shrink-0 cursor-grab overflow-hidden rounded-[11px] border border-[#4c5667] bg-[#182031] active:cursor-grabbing"
+      className="group relative h-[54px] w-[54px] shrink-0 cursor-grab overflow-hidden rounded-[9px] border border-[#4c5667] bg-[#182031] active:cursor-grabbing"
       data-testid={`workbench-reference-card-${index}`}
       draggable
       onDragEnd={onDragEnd}
@@ -313,11 +313,11 @@ function ReferenceImageCard({
 function EmptyReferenceTile({ onClick }: { onClick: () => void }) {
   return (
     <button
-      className="grid h-[74px] w-[74px] shrink-0 place-items-center rounded-[11px] border border-[#46546b] bg-[#192336] text-slate-300 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]"
+      className="grid h-[54px] w-[54px] shrink-0 place-items-center rounded-[9px] border border-[#46546b] bg-[#192336] text-slate-300 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]"
       onClick={onClick}
       type="button"
     >
-      <span className="grid h-[45px] w-[45px] place-items-center rounded-[9px] border border-dashed border-[#8a99ad] text-[22px] font-light leading-none">+</span>
+      <span className="grid h-[34px] w-[34px] place-items-center rounded-[8px] border border-dashed border-[#8a99ad] text-[20px] font-light leading-none">+</span>
     </button>
   );
 }
@@ -480,7 +480,7 @@ export function WorkbenchComposer({
     return () => {
       active = false;
     };
-  }, [draft.referenceAssetIds, referencePreviews]);
+  }, [draft.referenceAssetIds]);
 
   const insertMention = React.useCallback((index: number) => {
     const caret = promptRef.current?.selectionStart ?? draft.prompt.length;
@@ -587,18 +587,18 @@ export function WorkbenchComposer({
   }, [handleUploadComplete, handleUploadStart, visibleReferenceIds.length]);
 
   const scrollBodyClassName = compact
-    ? "flex min-h-0 flex-col gap-3 overflow-y-auto"
-    : "flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1";
+    ? "flex min-h-0 flex-col gap-3 overflow-y-auto overscroll-contain"
+    : "flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto overscroll-contain pr-1";
 
   return (
     <aside
       data-testid="workbench-composer"
-      className={`workbench-composer flex min-h-0 flex-col overflow-hidden border-white/8 bg-[#101014] px-4 py-3 text-white ${
+      className={`workbench-composer flex h-full min-h-0 flex-col overflow-hidden border-white/8 bg-[#101014] px-2.5 py-2 text-white ${
         compact ? "max-h-[88vh]" : "border-r"
       }`}
     >
       <div data-testid="workbench-composer-scroll-body" className={scrollBodyClassName}>
-      <section className="rounded-[8px] border border-dashed border-[#334153] bg-[#11151b] p-3">
+      <section className="rounded-[8px] border border-dashed border-[#334153] bg-[#11151b] p-2">
         <input
           accept="image/*"
           className="hidden"
@@ -607,7 +607,7 @@ export function WorkbenchComposer({
           ref={fileInputRef}
           type="file"
         />
-        <div className="mb-2 flex items-center justify-between">
+        <div className="mb-1.5 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="text-[12px] font-bold text-slate-200">{TEXT.reference}</span>
             <span className="rounded-[5px] border border-[#315c9e] bg-[#17253b] px-1.5 py-0.5 text-[11px] font-black leading-none text-[#d7e8ff]">
@@ -640,7 +640,7 @@ export function WorkbenchComposer({
         </div>
 
         <div
-          className="flex min-h-[82px] gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="flex min-h-[60px] gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           data-scrollbar="visible"
           data-testid="workbench-reference-strip"
           onScroll={updateReferenceScroll}
@@ -714,7 +714,7 @@ export function WorkbenchComposer({
         ) : null}
       </section>
 
-      <section className="grid gap-2">
+      <section className="grid gap-1.5">
         <div className="flex items-center justify-between">
           <span className="text-[12px] font-bold text-slate-300">{TEXT.prompt}</span>
           <button className="flex items-center gap-1 text-[12px] font-black text-[#ffd928]" type="button">
@@ -724,16 +724,16 @@ export function WorkbenchComposer({
         </div>
         <textarea
           aria-label="Prompt"
-          className="min-h-[96px] resize-y rounded-[10px] border border-[#3d3d42] bg-[#1d1d1f] px-3 py-3 text-[13px] font-medium leading-6 text-white outline-none placeholder:text-slate-500 focus:border-[#60606a]"
+          className="min-h-[66px] resize-y rounded-[9px] border border-[#3d3d42] bg-[#1d1d1f] px-3 py-1.5 text-[13px] font-medium leading-5 text-white outline-none placeholder:text-slate-500 focus:border-[#60606a]"
           onChange={(event) => onChangeDraft({ prompt: event.target.value })}
           placeholder={TEXT.promptPlaceholder}
           ref={promptRef}
           value={draft.prompt}
         />
-        <p className="text-[11px] leading-5 text-slate-400">{TEXT.referenceHint}</p>
+        <p className="text-[10px] leading-4 text-slate-400">{TEXT.referenceHint}</p>
       </section>
 
-      <section className="grid gap-2">
+      <section className="grid gap-1.5">
         <span className="text-[11px] font-bold text-slate-500">{TEXT.imageModel}</span>
         <WorkbenchSelect
           icon={<Sparkles size={14} />}
@@ -850,9 +850,9 @@ export function WorkbenchComposer({
 
       <div
         data-testid="workbench-composer-footer"
-        className={`shrink-0 ${compact ? "pt-3" : "mt-3 border-t border-white/8 bg-[#101014] pt-3"}`}
+        className={`shrink-0 ${compact ? "pt-3" : "mt-1.5 border-t border-white/8 bg-[#101014] pt-1.5"}`}
       >
-      <section className="rounded-[11px] border border-[#6b5d0b] bg-[#171605] p-3 shadow-[inset_0_0_0_1px_rgba(255,224,32,0.08)]">
+      <section className="rounded-[10px] border border-[#6b5d0b] bg-[#171605] p-2 shadow-[inset_0_0_0_1px_rgba(255,224,32,0.08)]">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="text-[11px] font-bold text-slate-300">{TEXT.currentConfig}</div>
@@ -861,7 +861,7 @@ export function WorkbenchComposer({
             </div>
             <div className="mt-1 text-[11px] text-slate-500">{TEXT.unitPrice}</div>
           </div>
-          <div className="flex h-[34px] min-w-[70px] items-center justify-center gap-1 rounded-[8px] border border-[#8a7207] bg-[#1d1902] px-2 text-[17px] font-black text-[#ffdd25]">
+          <div className="flex h-[32px] min-w-[68px] items-center justify-center gap-1 rounded-[8px] border border-[#8a7207] bg-[#1d1902] px-2 text-[16px] font-black text-[#ffdd25]">
             <Coins size={15} />
             {estimatedCredits.toFixed(1)}
           </div>
@@ -871,7 +871,7 @@ export function WorkbenchComposer({
 
       <button
         aria-label={TEXT.start}
-        className="flex h-[45px] w-full items-center justify-center gap-2 rounded-[8px] bg-gradient-to-r from-[#b515ff] via-[#7c29ff] to-[#236dff] text-[14px] font-black text-white shadow-[0_12px_30px_rgba(82,57,255,0.35)] transition disabled:cursor-not-allowed disabled:bg-none disabled:bg-[#3a465b] disabled:text-slate-400 disabled:shadow-none"
+        className="mt-1.5 flex h-[40px] w-full items-center justify-center gap-2 rounded-[8px] bg-gradient-to-r from-[#b515ff] via-[#7c29ff] to-[#236dff] text-[14px] font-black text-white shadow-[0_12px_30px_rgba(82,57,255,0.35)] transition disabled:cursor-not-allowed disabled:bg-none disabled:bg-[#3a465b] disabled:text-slate-400 disabled:shadow-none"
         disabled={isGenerating || !draft.prompt.trim() || !draft.routeKey}
         onClick={() => {
           onGenerate();

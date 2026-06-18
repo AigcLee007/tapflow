@@ -2,6 +2,7 @@ import React from "react";
 
 import {
   createWorkbenchGeneration,
+  deleteWorkbenchGeneration,
   getWorkbenchGeneration,
   listWorkbenchGenerations,
   retryWorkbenchGeneration,
@@ -153,10 +154,18 @@ export function useWorkbenchGenerations() {
     return created;
   }, [pollGeneration]);
 
+  const remove = React.useCallback(async (generationId: string) => {
+    await deleteWorkbenchGeneration(generationId);
+    pollingIdsRef.current.delete(generationId);
+    setGenerations((current) => current.filter((generation) => generation.id !== generationId));
+    setError(null);
+  }, []);
+
   return {
     error,
     generations,
     loading,
+    remove,
     refresh,
     retry,
     submitting,

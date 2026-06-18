@@ -201,6 +201,7 @@ export class WorkbenchService {
             finished_at::text AS finished_at
           FROM workbench_generations
           WHERE tenant_id = $1::uuid
+            AND deleted_at IS NULL
             AND ($2::timestamptz IS NULL OR created_at < $2::timestamptz)
           ORDER BY created_at DESC, id DESC
           LIMIT $3::int
@@ -247,6 +248,7 @@ export class WorkbenchService {
           FROM workbench_generations
           WHERE tenant_id = $1::uuid
             AND id = $2::uuid
+            AND deleted_at IS NULL
           LIMIT 1
         `,
         [context.tenantId, generationId],
@@ -474,6 +476,72 @@ export class WorkbenchService {
     });
   }
 
+  async deleteGeneration(context: WorkbenchContext, generationId: string) {
+    return withTenantTransaction(context, async (client) => {
+      const result = await client.query<WorkbenchGenerationRow>(
+        `
+          UPDATE workbench_generations
+          SET
+            deleted_at = now(),
+            deleted_by = $3::uuid,
+            status = CASE
+              WHEN status IN ('pending', 'queued', 'running', 'waiting_provider') THEN 'canceled'
+              ELSE status
+            END,
+            finished_at = CASE
+              WHEN status IN ('pending', 'queued', 'running', 'waiting_provider') THEN COALESCE(finished_at, now())
+              ELSE finished_at
+            END,
+            error_json = CASE
+              WHEN status IN ('pending', 'queued', 'running', 'waiting_provider') THEN '{"code":"WORKBENCH_GENERATION_DELETED","message":"Workbench generation was deleted by the user."}'::jsonb
+              ELSE error_json
+            END,
+            updated_at = now()
+          WHERE tenant_id = $1::uuid
+            AND id = $2::uuid
+            AND deleted_at IS NULL
+          RETURNING
+            id::text AS id,
+            session_id::text AS session_id,
+            prompt,
+            model_id,
+            route_key,
+            params_json,
+            reference_asset_ids::text[] AS reference_asset_ids,
+            reference_upload_ids::text[] AS reference_upload_ids,
+            requested_count,
+            display_mode,
+            estimated_credits::text AS estimated_credits,
+            charged_credits::text AS charged_credits,
+            reserved_credits::text AS reserved_credits,
+            reserve_ledger_id::text AS reserve_ledger_id,
+            status,
+            error_json,
+            created_at::text AS created_at,
+            updated_at::text AS updated_at,
+            started_at::text AS started_at,
+            finished_at::text AS finished_at
+        `,
+        [context.tenantId, generationId, context.userId],
+      );
+
+      const row = result.rows[0];
+      if (!row?.id) {
+        throw new WorkbenchApiError(404, "WORKBENCH_GENERATION_NOT_FOUND", "Workbench generation not found.");
+      }
+
+      if (["pending", "queued", "running", "waiting_provider", "canceled"].includes(row.status)) {
+        await this.refundOpenReservation(client, context.tenantId, row);
+      }
+
+      return {
+        deleted: true,
+        generationId: row.id,
+        ok: true,
+      };
+    }, this.pool);
+  }
+
   async sendResultToProject(
     context: WorkbenchContext,
     resultId: string,
@@ -642,6 +710,37 @@ export class WorkbenchService {
         preview_url: previewUrl,
       };
     }));
+  }
+
+  private async refundOpenReservation(client: PoolClient, tenantId: string, generation: WorkbenchGenerationRow) {
+    const reservedCredits = toNumber(generation.reserved_credits);
+    if (reservedCredits <= 0 || generation.charged_credits !== null) {
+      return;
+    }
+
+    const refundLedger = await this.billingService.refundUsageWithClient(client, tenantId, {
+      amountCents: reservedCredits,
+      description: "Workbench image generation reservation released after deletion",
+      idempotencyKey: `workbench:delete-refund:${tenantId}:${generation.id}`,
+      metadata: {
+        generationId: generation.id,
+        source: "workbench",
+      },
+      usageEventId: null,
+    });
+
+    await client.query(
+      `
+        UPDATE workbench_generations
+        SET
+          charged_credits = 0,
+          refund_ledger_id = $3::uuid,
+          updated_at = now()
+        WHERE tenant_id = $1::uuid
+          AND id = $2::uuid
+      `,
+      [tenantId, generation.id, refundLedger.id],
+    );
   }
 
   private async assertReferenceAssetsExist(client: PoolClient, tenantId: string, assetIds: string[]) {

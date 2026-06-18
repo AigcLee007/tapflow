@@ -169,6 +169,21 @@ export function registerWorkbenchRoutes(app: FastifyInstance): void {
     },
   );
 
+  app.delete(
+    "/api/v2/workbench/generations/:generationId",
+    {
+      preHandler: [...authHandlers, requirePermission("flow:run")],
+    },
+    async (request, reply) => {
+      try {
+        const params = workbenchGenerationIdParamsSchema.parse(request.params) as WorkbenchGenerationIdParams;
+        return reply.send(await app.workbenchService.deleteGeneration(getWorkbenchContext(request), params.generationId));
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
   app.post(
     "/api/v2/workbench/generations/:generationId/retry",
     {

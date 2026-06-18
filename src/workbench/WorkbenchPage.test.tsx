@@ -9,6 +9,7 @@ const useImageModelCatalogMock = vi.fn();
 const listAiModelRoutesMock = vi.fn();
 const listWorkbenchGenerationsMock = vi.fn();
 const createWorkbenchGenerationMock = vi.fn();
+const deleteWorkbenchGenerationMock = vi.fn();
 const getWorkbenchGenerationMock = vi.fn();
 const retryWorkbenchGenerationMock = vi.fn();
 const uploadWorkbenchReferenceFileMock = vi.fn();
@@ -36,6 +37,7 @@ vi.mock("../services/v2WorkbenchApi", async () => {
   return {
     ...actual,
     createWorkbenchGeneration: (...args: unknown[]) => createWorkbenchGenerationMock(...args),
+    deleteWorkbenchGeneration: (...args: unknown[]) => deleteWorkbenchGenerationMock(...args),
     getWorkbenchGeneration: (...args: unknown[]) => getWorkbenchGenerationMock(...args),
     listWorkbenchGenerations: (...args: unknown[]) => listWorkbenchGenerationsMock(...args),
     retryWorkbenchGeneration: (...args: unknown[]) => retryWorkbenchGenerationMock(...args),
@@ -122,6 +124,10 @@ function renderRouter() {
 describe("WorkbenchPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 1440,
+    });
     URL.createObjectURL = vi.fn(() => "blob:local-ref-preview");
 
     useImageModelCatalogMock.mockReturnValue({
@@ -168,6 +174,7 @@ describe("WorkbenchPage", () => {
       nextCursor: null,
     });
     createWorkbenchGenerationMock.mockResolvedValue(createGeneration({ id: "generation-created", status: "succeeded" }));
+    deleteWorkbenchGenerationMock.mockResolvedValue({ ok: true });
     getWorkbenchGenerationMock.mockImplementation(async (generationId: string) =>
       createGeneration({ id: generationId, status: "succeeded" }),
     );
@@ -504,7 +511,7 @@ describe("WorkbenchPage", () => {
     renderRouter();
 
     expect(await screen.findByTestId("workbench-page")).toBeTruthy();
-    expect(screen.getByTestId("workbench-desktop-layout").className).toContain("lg:grid-cols-[minmax(84px,3fr)_minmax(0,7fr)]");
+    expect(screen.getByTestId("workbench-desktop-layout").className).toContain("lg:grid-cols-[minmax(430px,3fr)_minmax(0,7fr)]");
     expect(screen.getByTestId("workbench-active-band")).toBeTruthy();
     expect(screen.getByTestId("workbench-completed-rail")).toBeTruthy();
     expect(screen.getAllByTestId("workbench-active-item").length).toBe(1);
@@ -518,10 +525,15 @@ describe("WorkbenchPage", () => {
 
     expect(await screen.findByTestId("workbench-page")).toBeTruthy();
     expect(screen.getByTestId("workbench-page").className).toContain("h-screen");
-    expect(screen.getByTestId("workbench-desktop-layout").className).toContain("h-[calc(100vh-112px)]");
+    expect(screen.getByTestId("workbench-header").className).toContain("h-[78px]");
+    expect(screen.getByTestId("workbench-desktop-layout").className).toContain("h-[calc(100vh-94px)]");
     expect(screen.getByTestId("workbench-left-dock").className).toContain("h-full");
+    expect(screen.getByTestId("workbench-composer").className).toContain("h-full");
+    expect(screen.getByTestId("workbench-composer").className).toContain("px-2.5");
+    expect(screen.getByTestId("workbench-composer-scroll-body").className).toContain("overscroll-contain");
+    expect(screen.getByTestId("workbench-composer-scroll-body").className).toContain("flex-1");
     expect(screen.getByTestId("workbench-results-scroll-area").className).toContain("overflow-y-auto");
-    expect(screen.getByTestId("workbench-composer-footer")).toBeTruthy();
+    expect(screen.getByTestId("workbench-composer-footer").className).toContain("shrink-0");
   });
 
   test("renders completed desktop results as horizontal cards in a single-column rail", async () => {
@@ -667,5 +679,101 @@ describe("WorkbenchPage", () => {
     const detailImages = screen.getAllByAltText("detail.png");
     expect(detailImages.some((image) => image.getAttribute("src") === "https://example.com/asset-result-detail-1-original.png")).toBe(true);
     expect(screen.getByTestId("workbench-result-fullscreen").className).toContain("fixed inset-0");
+    expect(screen.getByTestId("workbench-result-fullscreen-image").className).toContain("h-auto");
+    expect(screen.getByTestId("workbench-result-fullscreen-image").className).toContain("max-h-[calc(100vh-168px)]");
+    expect(screen.getByTestId("workbench-result-fullscreen-image").className).toContain("w-auto");
+    expect(screen.getByTestId("workbench-result-fullscreen-image").className).toContain("max-w-[calc(100vw-48px)]");
+  });
+
+  test("completed result cards expose download original, use as reference, and delete record actions", async () => {
+    const openMock = vi.fn();
+    vi.stubGlobal("open", openMock);
+    getAssetVariantUrlMock.mockImplementation(async (assetId: string, variantKey?: string) => ({
+      expiresAt: new Date(Date.now() + 900000).toISOString(),
+      method: "GET",
+      url: variantKey === "preview"
+        ? `https://example.com/${assetId}-preview.webp`
+        : `https://example.com/${assetId}-original.png`,
+      variantKey: variantKey ?? null,
+    }));
+    listWorkbenchGenerationsMock.mockResolvedValue({
+      generations: [
+        createGeneration({
+          id: "done-actions",
+          prompt: "done actions",
+          results: [
+            {
+              assetId: "asset-actions",
+              createdAt: new Date().toISOString(),
+              downloadUrl: "https://example.com/asset-actions-cached.png",
+              downloadUrlExpiresAt: null,
+              height: 1024,
+              id: "result-actions",
+              metadata: {},
+              mimeType: "image/png",
+              originalFilename: "actions.png",
+              previewUrl: "https://example.com/asset-actions-preview.webp",
+              previewUrlExpiresAt: null,
+              sortOrder: 0,
+              status: "available",
+              width: 1024,
+            },
+          ],
+          status: "succeeded",
+        }),
+      ],
+      nextCursor: null,
+    });
+
+    setRoute("/workbench");
+    renderRouter();
+
+    expect(await screen.findByTestId("workbench-completed-history-item-done-actions")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "下载原图" }));
+    await waitFor(() => {
+      expect(getAssetVariantUrlMock).toHaveBeenCalledWith("asset-actions");
+      expect(openMock).toHaveBeenCalledWith("https://example.com/asset-actions-original.png", "_blank", "noopener,noreferrer");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "引用参考" }));
+    expect((await screen.findByAltText("参考图1")).getAttribute("src")).toBe("https://example.com/asset-actions-preview.webp");
+
+    fireEvent.click(screen.getByRole("button", { name: "删除记录" }));
+    await waitFor(() => {
+      expect(deleteWorkbenchGenerationMock).toHaveBeenCalledWith("done-actions");
+      expect(screen.queryByTestId("workbench-completed-history-item-done-actions")).toBeNull();
+    });
+  });
+
+  test("active task cards expose a delete action for stuck queued tasks", async () => {
+    getWorkbenchGenerationMock.mockImplementation(async (generationId: string) =>
+      createGeneration({
+        createdAt: "2026-06-17T10:00:00.000Z",
+        id: generationId,
+        prompt: "stuck queued",
+        status: "queued",
+      }),
+    );
+    listWorkbenchGenerationsMock.mockResolvedValue({
+      generations: [
+        createGeneration({
+          createdAt: "2026-06-17T10:00:00.000Z",
+          id: "queued-stuck",
+          prompt: "stuck queued",
+          status: "queued",
+        }),
+      ],
+      nextCursor: null,
+    });
+
+    setRoute("/workbench");
+    renderRouter();
+
+    expect(await screen.findByText("stuck queued")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "删除任务" }));
+    await waitFor(() => {
+      expect(deleteWorkbenchGenerationMock).toHaveBeenCalledWith("queued-stuck");
+      expect(screen.queryByText("stuck queued")).toBeNull();
+    });
   });
 });

@@ -167,4 +167,33 @@ describe("WorkbenchGenerationService", () => {
       modelId: null,
     });
   });
+
+  test("does not persist outputs when the workbench generation was deleted while provider work was running", async () => {
+    const client = {
+      query: vi.fn(async (sql: string) => {
+        if (sql.includes("deleted_at IS NULL") && sql.includes("status <> 'canceled'")) {
+          return { rows: [] };
+        }
+        return { rows: [] };
+      }),
+    };
+    const service = new WorkbenchGenerationService({
+      assetBucket: "test-bucket",
+      assetStore: {} as never,
+      mediaRuntime: {} as never,
+      pool: {} as never,
+    });
+
+    const shouldContinue = await (service as unknown as {
+      assertGenerationStillWritable(client: typeof client, tenantId: string, generationId: string): Promise<boolean>;
+    }).assertGenerationStillWritable(
+      client,
+      "00000000-0000-4000-8000-000000000001",
+      "00000000-0000-4000-8000-000000000011",
+    );
+
+    expect(shouldContinue).toBe(false);
+    expect(client.query.mock.calls[0]?.[0]).toContain("deleted_at IS NULL");
+    expect(client.query.mock.calls[0]?.[0]).toContain("status <> 'canceled'");
+  });
 });
