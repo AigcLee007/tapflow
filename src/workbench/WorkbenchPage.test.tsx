@@ -1226,11 +1226,10 @@ describe("WorkbenchPage", () => {
     const detailImages = screen.getAllByAltText("detail.png");
     expect(detailImages.some((image) => image.getAttribute("src") === "https://example.com/asset-result-detail-1-original.png")).toBe(true);
     expect(screen.getByTestId("workbench-result-fullscreen").className).toContain("fixed inset-0");
-    expect(screen.getByTestId("workbench-result-fullscreen-image").className).toContain("h-auto");
-    expect(screen.getByTestId("workbench-result-fullscreen-image").className).toContain("max-h-[calc(100dvh-240px)]");
-    expect(screen.getByTestId("workbench-result-fullscreen-image").className).toContain("md:max-h-[calc(100vh-220px)]");
-    expect(screen.getByTestId("workbench-result-fullscreen-image").className).toContain("w-auto");
-    expect(screen.getByTestId("workbench-result-fullscreen-image").className).toContain("md:max-w-[calc(100vw-160px)]");
+    expect(screen.getByTestId("workbench-result-fullscreen-stage").textContent).not.toBeNull();
+    expect(screen.getByTestId("workbench-result-fullscreen-image").className).toContain("h-full");
+    expect(screen.getByTestId("workbench-result-fullscreen-image").className).toContain("w-full");
+    expect(screen.getByTestId("workbench-result-fullscreen-image").className).toContain("object-contain");
   });
 
   test("supports switching images inside fullscreen preview for the same desktop batch", async () => {
@@ -1432,7 +1431,7 @@ describe("WorkbenchPage", () => {
     expect(await screen.findByTestId("workbench-result-fullscreen")).toBeTruthy();
     expect(screen.getByTestId("workbench-result-fullscreen").className).toContain("bg-black");
     expect(screen.getByTestId("workbench-result-fullscreen-actions").className).toContain("pb-[calc(env(safe-area-inset-bottom,0px)+88px)]");
-    expect(screen.getByTestId("workbench-result-fullscreen-image").className).toContain("max-h-[calc(100dvh-240px)]");
+    expect(screen.getByTestId("workbench-result-fullscreen-stage").className).toContain("flex-1");
   });
 
   test("uses ratio-aware mobile thumbnail mosaics for wide three and four image batches", async () => {

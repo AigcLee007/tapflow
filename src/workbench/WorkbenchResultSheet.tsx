@@ -11,6 +11,7 @@ type Props = {
   onRegenerate: () => void;
   onUseAsReference: (result: WorkbenchResult) => void;
   result: WorkbenchResult | null;
+  selectedResultId?: string | null;
 };
 
 export function WorkbenchResultSheet({
@@ -20,23 +21,28 @@ export function WorkbenchResultSheet({
   onRegenerate,
   onUseAsReference,
   result,
+  selectedResultId = null,
 }: Props) {
   const availableBatchResults = React.useMemo(
     () => batchResults.filter((item) => item.assetId || item.downloadUrl || item.previewUrl),
     [batchResults],
   );
-  const [activeIndex, setActiveIndex] = React.useState(0);
+  const [activeResultId, setActiveResultId] = React.useState<string | null>(selectedResultId ?? result?.id ?? null);
   const [originalUrl, setOriginalUrl] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (!result) {
-      setActiveIndex(0);
+      setActiveResultId(null);
       return;
     }
-    const nextIndex = availableBatchResults.findIndex((item) => item.id === result.id);
-    setActiveIndex(nextIndex >= 0 ? nextIndex : 0);
-  }, [availableBatchResults, result]);
+    setActiveResultId(selectedResultId ?? result.id);
+  }, [result, selectedResultId]);
 
+  const activeIndex = React.useMemo(() => {
+    if (!availableBatchResults.length) return -1;
+    if (!activeResultId) return 0;
+    return availableBatchResults.findIndex((item) => item.id === activeResultId);
+  }, [activeResultId, availableBatchResults]);
   const activeResult = availableBatchResults[activeIndex] ?? result;
 
   React.useEffect(() => {
@@ -60,11 +66,18 @@ export function WorkbenchResultSheet({
   const canNavigateBatch = availableBatchResults.length > 1;
 
   const goPrev = () => {
-    setActiveIndex((current) => (current - 1 + availableBatchResults.length) % availableBatchResults.length);
+    if (!availableBatchResults.length) return;
+    const nextIndex =
+      activeIndex >= 0
+        ? (activeIndex - 1 + availableBatchResults.length) % availableBatchResults.length
+        : availableBatchResults.length - 1;
+    setActiveResultId(availableBatchResults[nextIndex]?.id ?? null);
   };
 
   const goNext = () => {
-    setActiveIndex((current) => (current + 1) % availableBatchResults.length);
+    if (!availableBatchResults.length) return;
+    const nextIndex = activeIndex >= 0 ? (activeIndex + 1) % availableBatchResults.length : 0;
+    setActiveResultId(availableBatchResults[nextIndex]?.id ?? null);
   };
 
   return (
@@ -101,7 +114,7 @@ export function WorkbenchResultSheet({
           data-testid="workbench-result-fullscreen-stage"
         >
           {imageUrl ? (
-            <div className="relative flex items-center justify-center">
+            <div className="relative flex h-[calc(100dvh-240px)] w-[calc(100vw-48px)] items-center justify-center md:h-[calc(100vh-220px)] md:w-[calc(100vw-160px)]">
               {canNavigateBatch ? (
                 <button
                   aria-label="Previous image"
@@ -116,7 +129,7 @@ export function WorkbenchResultSheet({
 
               <img
                 alt={activeResult.originalFilename || "Workbench result"}
-                className="block h-auto max-h-[calc(100dvh-240px)] w-auto max-w-[calc(100vw-48px)] rounded-[18px] object-contain shadow-[0_28px_90px_rgba(0,0,0,0.55)] md:max-h-[calc(100vh-220px)] md:max-w-[calc(100vw-160px)]"
+                className="block h-full w-full rounded-[18px] object-contain shadow-[0_28px_90px_rgba(0,0,0,0.55)]"
                 data-testid="workbench-result-fullscreen-image"
                 src={imageUrl}
               />
@@ -158,7 +171,7 @@ export function WorkbenchResultSheet({
                         : "border-white/10 opacity-80 hover:opacity-100"
                     }`}
                     key={item.id}
-                    onClick={() => setActiveIndex(index)}
+                    onClick={() => setActiveResultId(item.id)}
                     type="button"
                   >
                     {thumbUrl ? (

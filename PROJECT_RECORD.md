@@ -61,6 +61,13 @@ As of 2026-06-20:
 
 As of 2026-06-19:
 
+- desktop `/workbench` fullscreen preview received another desktop-specific correction:
+  - fullscreen batch navigation now tracks the explicitly selected result id instead of relying on a mutable local index, so left/right switching and thumbnail switching stay aligned with the clicked image.
+  - the fullscreen preview stage now uses a fixed viewport-sized contain box, so desktop images render by longest-edge complete display instead of appearing like a cropped strip.
+- validation:
+  - `npm run test -- src/workbench/WorkbenchPage.test.tsx`
+  - `npm run build`
+
 - desktop `/workbench` preview and result metadata received a follow-up polish:
   - desktop result-card metadata now uses plain creator-facing spacing between `模型 / 线路 / 比例 / 尺寸 / 时间`, removing the broken separator glyph from the right feed.
   - fullscreen preview now preserves more vertical room on desktop so wide images display more completely.

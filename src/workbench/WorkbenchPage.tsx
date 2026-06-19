@@ -1084,6 +1084,7 @@ export function WorkbenchPage() {
           }}
           onUseAsReference={handleUseAsReference}
           result={selectedResult}
+          selectedResultId={selectedResult?.id ?? null}
         />
       </section>
     );
@@ -1264,6 +1265,7 @@ export function WorkbenchPage() {
         }}
         onUseAsReference={handleUseAsReference}
         result={selectedResult}
+        selectedResultId={selectedResult?.id ?? null}
       />
     </section>
   );
