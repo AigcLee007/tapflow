@@ -7,11 +7,18 @@ import type { WorkbenchResult } from "./workbenchTypes";
 type Props = {
   batchResults?: WorkbenchResult[];
   onClose: () => void;
+  onDownloadOriginal: (result: WorkbenchResult) => void;
   onSendToProject: (result: WorkbenchResult) => void;
   result: WorkbenchResult | null;
 };
 
-export function WorkbenchResultSheet({ batchResults = [], onClose, onSendToProject, result }: Props) {
+export function WorkbenchResultSheet({
+  batchResults = [],
+  onClose,
+  onDownloadOriginal,
+  onSendToProject,
+  result,
+}: Props) {
   const availableBatchResults = React.useMemo(
     () => batchResults.filter((item) => item.assetId || item.downloadUrl || item.previewUrl),
     [batchResults],
@@ -170,15 +177,14 @@ export function WorkbenchResultSheet({ batchResults = [], onClose, onSendToProje
           ) : null}
 
           <div className="grid h-16 w-full grid-cols-2 items-center gap-3">
-            <a
+            <button
               className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-white/[0.10] text-sm font-bold text-white transition hover:bg-white/[0.16]"
-              href={activeResult.downloadUrl || imageUrl || "#"}
-              rel="noreferrer"
-              target="_blank"
+              onClick={() => onDownloadOriginal(activeResult)}
+              type="button"
             >
               <Download size={16} />
               Download
-            </a>
+            </button>
             <button
               className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-white text-sm font-black text-black transition hover:bg-slate-100"
               onClick={() => onSendToProject(activeResult)}

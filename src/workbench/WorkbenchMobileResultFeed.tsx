@@ -9,7 +9,7 @@ type Props = {
   getDisplayResults: (generation: WorkbenchGeneration) => WorkbenchResult[];
   models: ImageModelConfig[];
   onDeleteGeneration: (generationId: string) => void;
-  onDownloadOriginal: (result: WorkbenchResult) => void;
+  onDownloadOriginal: (result: WorkbenchResult, generation: WorkbenchGeneration) => void;
   onSelectPreview: (generationId: string, result: WorkbenchResult) => void;
   onSelectResult: (result: WorkbenchResult) => void;
   onUseAsReference: (result: WorkbenchResult) => void;

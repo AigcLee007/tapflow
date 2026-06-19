@@ -18,6 +18,7 @@ import { useAuth } from "../auth/useAuth";
 import { getAvailableCredits } from "../billing/billingDisplay";
 import { useBillingSummarySnapshot } from "../billing/useBillingSummarySnapshot";
 import type { ImageModelConfig } from "../config/imageModels";
+import { downloadOriginalImage } from "../flowCanvas/utils/imageDownload";
 import { useImageModelCatalog } from "../hooks/useImageModelCatalog";
 import { sendWorkbenchResultToProject } from "../services/v2WorkbenchApi";
 import { SendToProjectDialog } from "./SendToProjectDialog";
@@ -51,6 +52,12 @@ function getGenerationDisplayResults(generation: WorkbenchGeneration): Workbench
 
 function getPrimaryResult(generation: WorkbenchGeneration): WorkbenchResult | null {
   return getGenerationDisplayResults(generation)[0] ?? null;
+}
+
+function getGenerationResultSequence(generation: WorkbenchGeneration, result: WorkbenchResult): number {
+  const results = getGenerationDisplayResults(generation);
+  const index = results.findIndex((item) => item.id === result.id);
+  return index >= 0 ? index + 1 : 1;
 }
 
 function getFeaturedGeneration(generations: WorkbenchGeneration[]) {
@@ -510,6 +517,7 @@ function DesktopActiveTaskItem({
   generation,
   models,
   onDelete,
+  onDownloadOriginal,
   onReuseParams,
   onRetry,
   onSelectResult,
@@ -518,6 +526,7 @@ function DesktopActiveTaskItem({
   generation: WorkbenchGeneration;
   models: ImageModelConfig[];
   onDelete: (generationId: string) => void;
+  onDownloadOriginal: (result: WorkbenchResult, generation: WorkbenchGeneration) => void;
   onReuseParams: (generation: WorkbenchGeneration) => void;
   onRetry: (generationId: string) => void;
   onSelectResult: (result: WorkbenchResult) => void;
@@ -531,14 +540,14 @@ function DesktopActiveTaskItem({
     (item: WorkbenchResult) => (
       <ResultActionTray
         generationId={generation.id}
-        onDownloadOriginal={() => window.open(item.downloadUrl || item.previewUrl || "", "_blank", "noopener,noreferrer")}
+        onDownloadOriginal={() => onDownloadOriginal(item, generation)}
         onRetry={() => onRetry(generation.id)}
         onReuseParams={() => onReuseParams(generation)}
         onUseAsReference={() => onUseAsReference(item)}
         result={item}
       />
     ),
-    [generation, onRetry, onReuseParams, onUseAsReference],
+    [generation, onDownloadOriginal, onRetry, onReuseParams, onUseAsReference],
   );
   const selectedChild = generation.batch?.children[selectedBatchIndex] ?? generation.batch?.children.find((child) => child.results[0]) ?? null;
   const selectedBatchResult = selectedChild?.results[0] ?? null;
@@ -640,7 +649,7 @@ function DesktopCompletedResultCard({
   generation: WorkbenchGeneration;
   models: ImageModelConfig[];
   onDelete: (generationId: string) => void;
-  onDownloadOriginal: (result: WorkbenchResult) => void;
+  onDownloadOriginal: (result: WorkbenchResult, generation: WorkbenchGeneration) => void;
   onReuseParams: (generation: WorkbenchGeneration) => void;
   onRetry: (generationId: string) => void;
   onSelectResult: (result: WorkbenchResult) => void;
@@ -740,7 +749,7 @@ function DesktopCompletedResultCard({
             </DesktopResultActionButton>
             <DesktopResultActionButton
               ariaLabel="下载原图"
-              onClick={() => void onDownloadOriginal(selectedDisplayResult)}
+              onClick={() => void onDownloadOriginal(selectedDisplayResult, generation)}
             >
               <Download size={15} />
               下载原图
@@ -805,7 +814,7 @@ function DesktopResultsWorkspace({
   completedGenerations: WorkbenchGeneration[];
   models: ImageModelConfig[];
   onDeleteGeneration: (generationId: string) => void;
-  onDownloadOriginal: (result: WorkbenchResult) => void;
+  onDownloadOriginal: (result: WorkbenchResult, generation: WorkbenchGeneration) => void;
   onReuseParams: (generation: WorkbenchGeneration) => void;
   onRetry: (generationId: string) => void;
   onSelectResult: (result: WorkbenchResult) => void;
@@ -858,6 +867,7 @@ function DesktopResultsWorkspace({
                   key={generation.id}
                   models={models}
                   onDelete={onDeleteGeneration}
+                  onDownloadOriginal={onDownloadOriginal}
                   onReuseParams={onReuseParams}
                   onRetry={onRetry}
                   onSelectResult={onSelectResult}
@@ -923,6 +933,7 @@ export function WorkbenchPage() {
   const [draft, setDraft] = React.useState(() => createDefaultWorkbenchDraft());
   const [selectedResult, setSelectedResult] = React.useState<WorkbenchResult | null>(null);
   const [selectedResultBatch, setSelectedResultBatch] = React.useState<WorkbenchResult[]>([]);
+  const [selectedResultGeneration, setSelectedResultGeneration] = React.useState<WorkbenchGeneration | null>(null);
   const [sendDialogOpen, setSendDialogOpen] = React.useState(false);
   const viewportWidth = useViewportWidth();
   const isDesktop = viewportWidth >= 1024;
@@ -962,17 +973,25 @@ export function WorkbenchPage() {
       setSendDialogOpen(false);
       setSelectedResult(null);
       setSelectedResultBatch([]);
+      setSelectedResultGeneration(null);
       navigate(`/projects/${created.projectId}`);
     },
     [selectedResult],
   );
 
-  const handleDownloadOriginal = React.useCallback(async (result: WorkbenchResult) => {
-    const url = result.assetId
-      ? await getAssetVariantUrl(result.assetId).then((signed) => signed.url).catch(() => result.downloadUrl || result.previewUrl)
-      : result.downloadUrl || result.previewUrl;
-    if (!url) return;
-    window.open(url, "_blank", "noopener,noreferrer");
+  const handleDownloadOriginal = React.useCallback(async (
+    result: WorkbenchResult,
+    generation?: WorkbenchGeneration,
+  ) => {
+    const fallbackUrl = result.downloadUrl || result.previewUrl || "";
+    if (!result.assetId && !fallbackUrl) return;
+    await downloadOriginalImage({
+      assetId: result.assetId,
+      fallbackUrl,
+      mimeType: result.mimeType,
+      prompt: generation?.prompt,
+      sequence: generation ? getGenerationResultSequence(generation, result) : 1,
+    });
   }, []);
 
   const handleUseAsReference = React.useCallback((result: WorkbenchResult) => {
@@ -999,6 +1018,7 @@ export function WorkbenchPage() {
     );
     setSelectedResult(result);
     setSelectedResultBatch(matchedGeneration ? getGenerationDisplayResults(matchedGeneration) : [result]);
+    setSelectedResultGeneration(matchedGeneration ?? null);
   }, [generations]);
 
   const featuredGeneration = getFeaturedGeneration(generations);
@@ -1055,7 +1075,9 @@ export function WorkbenchPage() {
           onClose={() => {
             setSelectedResult(null);
             setSelectedResultBatch([]);
+            setSelectedResultGeneration(null);
           }}
+          onDownloadOriginal={(result) => void handleDownloadOriginal(result, selectedResultGeneration ?? undefined)}
           onSendToProject={() => setSendDialogOpen(true)}
           result={selectedResult}
         />
@@ -1230,7 +1252,9 @@ export function WorkbenchPage() {
         onClose={() => {
           setSelectedResult(null);
           setSelectedResultBatch([]);
+          setSelectedResultGeneration(null);
         }}
+        onDownloadOriginal={(result) => void handleDownloadOriginal(result, selectedResultGeneration ?? undefined)}
         onSendToProject={() => setSendDialogOpen(true)}
         result={selectedResult}
       />

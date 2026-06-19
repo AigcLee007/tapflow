@@ -28,7 +28,7 @@ type Props = {
   models: ImageModelConfig[];
   onChangeDraft: (patch: Partial<WorkbenchDraft>) => void;
   onDeleteGeneration: (generationId: string) => void;
-  onDownloadOriginal: (result: WorkbenchResult) => void;
+  onDownloadOriginal: (result: WorkbenchResult, generation: WorkbenchGeneration) => void;
   onGenerate: () => void;
   onOpenResult: (result: WorkbenchResult) => void;
   onUseAsReference: (result: WorkbenchResult) => void;

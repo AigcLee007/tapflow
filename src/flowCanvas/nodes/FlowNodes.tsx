@@ -4394,17 +4394,21 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
 
   const handleDownloadResult = useCallback((url: string, index: number) => {
     const result = visibleResultItems[index];
+    const indexedAssetId = Array.isArray(d.assetIds) ? String(d.assetIds[index] || '') : '';
     const resultAssetId = getPreferredImageDownloadAssetId({
+      fallbackUrl: url,
       resultId: result?.id,
+      resultAssetId: indexedAssetId,
       runtimeAssetId: runtimeImageAssets[index]?.assetId,
     });
     void downloadOriginalImage({
       assetId: resultAssetId,
       fallbackUrl: url,
-      filenameBase: `image-${id}-result-${index + 1}-${Date.now()}`,
       mimeType: d.mimeType,
+      prompt: String(d.generationPrompt || ''),
+      sequence: index + 1,
     });
-  }, [d.mimeType, id, runtimeImageAssets, visibleResultItems]);
+  }, [d.assetIds, d.generationPrompt, d.mimeType, runtimeImageAssets, visibleResultItems]);
 
   const appendPromptToken = useCallback(
     (nextText: string, patch?: Partial<FlowNodeData>) => {
@@ -5089,17 +5093,20 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const handleDownload = useCallback(() => {
     if (!effectiveThumbnailUrl) return;
     const downloadAssetId = getPreferredImageDownloadAssetId({
+      fallbackUrl: String(effectiveThumbnailUrl),
       nodeAssetId: assetId,
       resultId: coverResult?.id,
+      resultAssetId: Array.isArray(d.assetIds) ? String(d.assetIds[activeResultIndex] || '') : '',
       runtimeAssetId: runtimeImageAssets[activeResultIndex]?.assetId,
     });
     void downloadOriginalImage({
       assetId: downloadAssetId,
       fallbackUrl: String(effectiveThumbnailUrl),
-      filenameBase: `image-${id}-${Date.now()}`,
       mimeType: d.mimeType,
+      prompt: String(d.generationPrompt || ''),
+      sequence: activeResultIndex + 1,
     });
-  }, [activeResultIndex, assetId, coverResult?.id, d.mimeType, effectiveThumbnailUrl, id, runtimeImageAssets]);
+  }, [activeResultIndex, assetId, coverResult?.id, d.assetIds, d.generationPrompt, d.mimeType, effectiveThumbnailUrl, runtimeImageAssets]);
 
   const handleStepBack = useCallback(async () => {
     const history = Array.isArray(d.editHistory) ? (d.editHistory as string[]) : [];

@@ -1,4 +1,3 @@
-import { getAssetDownloadUrl } from "../../assets/assetApi";
 import { downloadImage } from "./imageUtils";
 
 export function getAssetIdFromResultId(resultId: unknown): string {
@@ -6,8 +5,32 @@ export function getAssetIdFromResultId(resultId: unknown): string {
   return value.startsWith("asset:") ? value.slice("asset:".length).trim() : "";
 }
 
+export function getAssetIdFromAssetUrl(url: unknown): string {
+  const value = typeof url === "string" ? url.trim() : "";
+  if (!value) return "";
+
+  try {
+    const parsed = new URL(value, typeof window === "undefined" ? "http://localhost" : window.location.href);
+    const bytesMatch = parsed.pathname.match(/\/api\/v2\/assets\/([^/]+)\/bytes(?:\/|$)/);
+    if (bytesMatch?.[1]) return decodeURIComponent(bytesMatch[1]);
+
+    const objectMatch = parsed.pathname.match(/\/assets\/([^/]+)\//);
+    if (objectMatch?.[1]) return decodeURIComponent(objectMatch[1]);
+  } catch {
+    const clean = value.split(/[?#]/)[0] || "";
+    const bytesMatch = clean.match(/\/api\/v2\/assets\/([^/]+)\/bytes(?:\/|$)/);
+    if (bytesMatch?.[1]) return decodeURIComponent(bytesMatch[1]);
+
+    const objectMatch = clean.match(/\/assets\/([^/]+)\//);
+    if (objectMatch?.[1]) return decodeURIComponent(objectMatch[1]);
+  }
+
+  return "";
+}
+
 export function getPreferredImageDownloadAssetId(input: {
   nodeAssetId?: string | null;
+  fallbackUrl?: string | null;
   resultAssetId?: string | null;
   resultId?: unknown;
   runtimeAssetId?: string | null;
@@ -16,7 +39,8 @@ export function getPreferredImageDownloadAssetId(input: {
     getAssetIdFromResultId(input.resultId) ||
     String(input.resultAssetId || "").trim() ||
     String(input.runtimeAssetId || "").trim() ||
-    String(input.nodeAssetId || "").trim()
+    String(input.nodeAssetId || "").trim() ||
+    getAssetIdFromAssetUrl(input.fallbackUrl)
   );
 }
 
@@ -44,30 +68,69 @@ export function getImageExtensionFromUrl(url: unknown, fallbackMimeType?: unknow
   return getImageExtensionFromMimeType(fallbackMimeType);
 }
 
+function pad2(value: number): string {
+  return String(value).padStart(2, "0");
+}
+
+function formatAittcoDownloadDate(date = new Date()): string {
+  return [
+    date.getFullYear(),
+    pad2(date.getMonth() + 1),
+    pad2(date.getDate()),
+  ].join("");
+}
+
+function sanitizePromptFilenamePart(prompt: unknown): string {
+  const value = typeof prompt === "string" ? prompt : "";
+  return value
+    .replace(/[@#][^\s，。,.!?！？、；;：:（）()【】\[\]{}<>《》]+/g, "")
+    .replace(/[\\/:*?"<>|，。,.!?！？、；;：:（）()【】\[\]{}《》]/g, "")
+    .replace(/\s+/g, "")
+    .trim()
+    .slice(0, 12);
+}
+
+export function buildAittcoImageDownloadFilename(input: {
+  date?: Date;
+  extension: string;
+  prompt?: string | null;
+  sequence?: number | null;
+}): string {
+  const extension = String(input.extension || "png").replace(/^\.+/, "") || "png";
+  const promptPart = sanitizePromptFilenamePart(input.prompt) || "作品";
+  const brand = promptPart === "作品" ? "Aittco" : "AIttco";
+  const sequence = Math.max(1, Math.floor(Number(input.sequence || 1)));
+  return `${brand}_${formatAittcoDownloadDate(input.date)}_${promptPart}_${pad2(sequence)}.${extension}`;
+}
+
 export async function resolveOriginalImageDownloadUrl(input: {
   assetId?: string | null;
   fallbackUrl: string;
 }): Promise<string> {
-  const assetId = String(input.assetId || "").trim();
+  const assetId = String(input.assetId || "").trim() || getAssetIdFromAssetUrl(input.fallbackUrl);
   if (!assetId) return input.fallbackUrl;
-  try {
-    const download = await getAssetDownloadUrl(assetId);
-    return download.url || input.fallbackUrl;
-  } catch {
-    return input.fallbackUrl;
-  }
+  return `/api/v2/assets/${encodeURIComponent(assetId)}/bytes`;
 }
 
 export async function downloadOriginalImage(input: {
   assetId?: string | null;
   fallbackUrl: string;
-  filenameBase: string;
+  filenameBase?: string;
   mimeType?: string | null;
+  prompt?: string | null;
+  sequence?: number | null;
 }): Promise<void> {
   const url = await resolveOriginalImageDownloadUrl({
     assetId: input.assetId,
     fallbackUrl: input.fallbackUrl,
   });
   const extension = getImageExtensionFromUrl(url, input.mimeType);
-  await downloadImage(url, `${input.filenameBase}.${extension}`);
+  const filename = input.filenameBase
+    ? `${input.filenameBase}.${extension}`
+    : buildAittcoImageDownloadFilename({
+        extension,
+        prompt: input.prompt,
+        sequence: input.sequence,
+      });
+  await downloadImage(url, filename);
 }

@@ -2776,3 +2776,13 @@ Validation completed:
 - validation:
   - `npm run test -- src/workbench/WorkbenchPage.test.tsx`
   - `npm run build`
+
+## 2026-06-19 - Direct Image Download Naming Fix
+
+- changed canvas and workbench original-image downloads to prefer the authenticated same-origin asset bytes endpoint instead of opening transient OSS signed URLs in a new browser tab
+- added fallback parsing for historical canvas result URLs so old OSS object paths can still resolve their asset id and download through `/api/v2/assets/:assetId/bytes`
+- replaced the download fallback behavior so CORS failures use a hidden download anchor instead of `window.open`
+- standardized downloaded image filenames as `AIttco_YYYYMMDD_提示词前12字_序号.扩展名`, with the no-prompt fallback `Aittco_YYYYMMDD_作品_01.png`
+- validation:
+  - `npm run test -- src/flowCanvas/utils/imageDownload.test.ts src/flowCanvas/utils/imageUtils.test.ts src/workbench/WorkbenchPage.test.tsx`
+  - `npm run build`

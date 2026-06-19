@@ -16,6 +16,7 @@ const uploadWorkbenchReferenceFileMock = vi.fn();
 const getAssetMock = vi.fn();
 const getAssetVariantUrlMock = vi.fn();
 const getBillingSummaryMock = vi.fn();
+const downloadOriginalImageMock = vi.fn();
 
 vi.mock("../auth/AuthGate", () => ({
   AuthGate: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -60,6 +61,14 @@ vi.mock("../billing/billingApi", async () => {
   return {
     ...actual,
     getBillingSummary: (...args: unknown[]) => getBillingSummaryMock(...args),
+  };
+});
+
+vi.mock("../flowCanvas/utils/imageDownload", async () => {
+  const actual = await vi.importActual("../flowCanvas/utils/imageDownload");
+  return {
+    ...actual,
+    downloadOriginalImage: (...args: unknown[]) => downloadOriginalImageMock(...args),
   };
 });
 
@@ -145,6 +154,7 @@ describe("WorkbenchPage", () => {
       value: 1440,
     });
     URL.createObjectURL = vi.fn(() => "blob:local-ref-preview");
+    downloadOriginalImageMock.mockReset();
 
     useImageModelCatalogMock.mockReturnValue({
       error: null,
@@ -737,9 +747,15 @@ describe("WorkbenchPage", () => {
     expect(await screen.findByTestId("workbench-completed-history-item-done-actions")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "下载原图" }));
     await waitFor(() => {
-      expect(getAssetVariantUrlMock).toHaveBeenCalledWith("asset-actions");
-      expect(openMock).toHaveBeenCalledWith("https://example.com/asset-actions-original.png", "_blank", "noopener,noreferrer");
+      expect(downloadOriginalImageMock).toHaveBeenCalledWith({
+        assetId: "asset-actions",
+        fallbackUrl: "https://example.com/asset-actions-cached.png",
+        mimeType: "image/png",
+        prompt: "done actions",
+        sequence: 1,
+      });
     });
+    expect(openMock).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "引用参考" }));
     expect((await screen.findByAltText("参考图1")).getAttribute("src")).toBe("https://example.com/asset-actions-preview.webp");

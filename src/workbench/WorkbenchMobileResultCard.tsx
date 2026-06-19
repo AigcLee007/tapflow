@@ -8,7 +8,7 @@ type Props = {
   generation: WorkbenchGeneration;
   models: ImageModelConfig[];
   onDelete: (generationId: string) => void;
-  onDownloadOriginal: (result: WorkbenchResult) => void;
+  onDownloadOriginal: (result: WorkbenchResult, generation: WorkbenchGeneration) => void;
   onSelectPreview: (generationId: string, result: WorkbenchResult) => void;
   onSelectResult: (result: WorkbenchResult) => void;
   onUseAsReference: (result: WorkbenchResult) => void;
@@ -141,7 +141,7 @@ export function WorkbenchMobileResultCard({
                     <button
                       className="flex h-10 items-center gap-2 rounded-[12px] px-3 text-left text-[12px] font-bold text-white hover:bg-white/[0.06]"
                       onClick={() => {
-                        onDownloadOriginal(selected);
+                        onDownloadOriginal(selected, generation);
                         setMenuOpen(false);
                       }}
                       type="button"

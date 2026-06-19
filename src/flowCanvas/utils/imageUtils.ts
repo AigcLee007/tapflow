@@ -92,20 +92,25 @@ export function canvasToBlobUrl(canvas: HTMLCanvasElement, type = 'image/png', q
 
 // Download Image
 export async function downloadImage(url: string, filename: string): Promise<void> {
-  try {
-    const blob = await imageUrlToBlob(url);
-    const objectUrl = URL.createObjectURL(blob);
+  const clickDownloadAnchor = (href: string) => {
     const a = document.createElement('a');
-    a.href = objectUrl;
+    a.href = href;
     a.download = filename;
+    a.rel = 'noopener noreferrer';
+    a.style.display = 'none';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
+  };
+
+  try {
+    const blob = await imageUrlToBlob(url);
+    const objectUrl = URL.createObjectURL(blob);
+    clickDownloadAnchor(objectUrl);
     setTimeout(() => URL.revokeObjectURL(objectUrl), 100);
   } catch (err) {
     console.error('Download failed:', err);
-    // Fallback: try opening in new tab
-    window.open(url, '_blank');
+    clickDownloadAnchor(url);
   }
 }
 
