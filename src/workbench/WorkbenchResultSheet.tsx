@@ -81,7 +81,7 @@ export function WorkbenchResultSheet({
           <div>
             <div className="text-base font-black">结果预览</div>
             {canNavigateBatch ? (
-              <div className="mt-1 text-[12px] text-slate-400">
+              <div className="mt-1 text-[12px] text-slate-400" data-testid="workbench-result-fullscreen-counter">
                 {activeIndex + 1} / {availableBatchResults.length}
               </div>
             ) : null}
@@ -116,7 +116,7 @@ export function WorkbenchResultSheet({
 
               <img
                 alt={activeResult.originalFilename || "Workbench result"}
-                className="block h-auto max-h-[calc(100dvh-220px)] w-auto max-w-[calc(100vw-48px)] rounded-[18px] object-contain shadow-[0_28px_90px_rgba(0,0,0,0.55)] md:max-h-[calc(100vh-180px)]"
+                className="block h-auto max-h-[calc(100dvh-240px)] w-auto max-w-[calc(100vw-48px)] rounded-[18px] object-contain shadow-[0_28px_90px_rgba(0,0,0,0.55)] md:max-h-[calc(100vh-220px)] md:max-w-[calc(100vw-160px)]"
                 data-testid="workbench-result-fullscreen-image"
                 src={imageUrl}
               />

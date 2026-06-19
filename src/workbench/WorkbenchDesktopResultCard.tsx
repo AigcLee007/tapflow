@@ -48,7 +48,7 @@ function getParameterLine(generation: WorkbenchGeneration, models: ImageModelCon
     aspectRatio,
     size,
     createdTime,
-  ].filter(Boolean).join(" 路 ");
+  ].filter(Boolean).join("  ");
 }
 
 function getStatusLine(generation: WorkbenchGeneration, results: WorkbenchResult[]) {

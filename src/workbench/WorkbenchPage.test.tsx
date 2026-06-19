@@ -906,10 +906,8 @@ describe("WorkbenchPage", () => {
     renderRouter();
 
     const meta = await screen.findByTestId("workbench-generation-params-friendly-meta");
-    expect(meta.textContent).toContain("Nano Banana Pro");
-    expect(meta.textContent).toContain("线路一");
-    expect(meta.textContent).toContain("16:9");
-    expect(meta.textContent).toContain("4K");
+    expect(meta.textContent).toContain("Nano Banana Pro  线路一  16:9  4K");
+    expect(meta.textContent).not.toContain(" 路 ");
     expect(screen.queryByText("pixellelabs.nano-banana-pro")).toBeNull();
     expect(screen.queryByText("image.pixellelabs.nano-banana-pro")).toBeNull();
   });
@@ -1229,9 +1227,73 @@ describe("WorkbenchPage", () => {
     expect(detailImages.some((image) => image.getAttribute("src") === "https://example.com/asset-result-detail-1-original.png")).toBe(true);
     expect(screen.getByTestId("workbench-result-fullscreen").className).toContain("fixed inset-0");
     expect(screen.getByTestId("workbench-result-fullscreen-image").className).toContain("h-auto");
-    expect(screen.getByTestId("workbench-result-fullscreen-image").className).toContain("max-h-[calc(100dvh-220px)]");
+    expect(screen.getByTestId("workbench-result-fullscreen-image").className).toContain("max-h-[calc(100dvh-240px)]");
+    expect(screen.getByTestId("workbench-result-fullscreen-image").className).toContain("md:max-h-[calc(100vh-220px)]");
     expect(screen.getByTestId("workbench-result-fullscreen-image").className).toContain("w-auto");
-    expect(screen.getByTestId("workbench-result-fullscreen-image").className).toContain("max-w-[calc(100vw-48px)]");
+    expect(screen.getByTestId("workbench-result-fullscreen-image").className).toContain("md:max-w-[calc(100vw-160px)]");
+  });
+
+  test("supports switching images inside fullscreen preview for the same desktop batch", async () => {
+    getAssetVariantUrlMock.mockImplementation(async (assetId: string, variantKey?: string) => ({
+      expiresAt: new Date(Date.now() + 900000).toISOString(),
+      method: "GET",
+      url: variantKey === "preview"
+        ? `https://example.com/${assetId}-preview.webp`
+        : `https://example.com/${assetId}-original.png`,
+      variantKey: variantKey ?? null,
+    }));
+    listWorkbenchGenerationsMock.mockResolvedValue({
+      generations: [
+        createGeneration({
+          id: "desktop-preview-batch",
+          params: { aspect_ratio: "21:9", size: "2k" },
+          requestedCount: 4,
+          status: "succeeded",
+          results: [0, 1, 2, 3].map((index) => ({
+            assetId: `desktop-preview-asset-${index + 1}`,
+            createdAt: new Date().toISOString(),
+            downloadUrl: null,
+            downloadUrlExpiresAt: null,
+            height: 878,
+            id: `desktop-preview-result-${index + 1}`,
+            metadata: {},
+            mimeType: "image/png",
+            originalFilename: `desktop-preview-${index + 1}.png`,
+            previewUrl: `https://example.com/desktop-preview-${index + 1}-thumb.webp`,
+            previewUrlExpiresAt: null,
+            sortOrder: index,
+            status: "available",
+            width: 2048,
+          })),
+        }),
+      ],
+      nextCursor: null,
+    });
+
+    setRoute("/workbench");
+    renderRouter();
+
+    fireEvent.click(await screen.findByTestId("workbench-desktop-thumb-desktop-preview-batch-desktop-preview-result-3"));
+
+    await screen.findByTestId("workbench-result-fullscreen");
+    expect(screen.getByTestId("workbench-result-fullscreen-counter").textContent).toBe("3 / 4");
+    expect(screen.getByTestId("workbench-result-fullscreen-image").getAttribute("src")).toBe(
+      "https://example.com/desktop-preview-asset-3-original.png",
+    );
+
+    fireEvent.click(screen.getByTestId("workbench-result-fullscreen-prev"));
+    await waitFor(() => {
+      expect(screen.getByTestId("workbench-result-fullscreen-image").getAttribute("src")).toBe(
+        "https://example.com/desktop-preview-asset-2-original.png",
+      );
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Preview image 2" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("workbench-result-fullscreen-image").getAttribute("src")).toBe(
+        "https://example.com/desktop-preview-asset-2-original.png",
+      );
+    });
   });
 
   test("supports switching images inside fullscreen preview for the same mobile batch", async () => {
@@ -1370,7 +1432,7 @@ describe("WorkbenchPage", () => {
     expect(await screen.findByTestId("workbench-result-fullscreen")).toBeTruthy();
     expect(screen.getByTestId("workbench-result-fullscreen").className).toContain("bg-black");
     expect(screen.getByTestId("workbench-result-fullscreen-actions").className).toContain("pb-[calc(env(safe-area-inset-bottom,0px)+88px)]");
-    expect(screen.getByTestId("workbench-result-fullscreen-image").className).toContain("max-h-[calc(100dvh-220px)]");
+    expect(screen.getByTestId("workbench-result-fullscreen-image").className).toContain("max-h-[calc(100dvh-240px)]");
   });
 
   test("uses ratio-aware mobile thumbnail mosaics for wide three and four image batches", async () => {
