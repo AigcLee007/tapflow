@@ -1009,6 +1009,53 @@ export function WorkbenchPage() {
   const featuredPrimaryResultForMobile = featuredGenerationForMobile ? getPrimaryResult(featuredGenerationForMobile) : null;
   const featuredPreviewUrlForMobile = useResultPreviewUrl(featuredPrimaryResultForMobile);
 
+  if (isMobile) {
+    return (
+      <section
+        className="relative h-[100dvh] overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(73,149,255,0.16),transparent_24%),radial-gradient(circle_at_top_right,rgba(63,233,255,0.10),transparent_22%),linear-gradient(180deg,#07090e,#0b0d13_44%,#090b10)] text-white"
+        data-testid="workbench-page"
+      >
+        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:44px_44px] opacity-[0.08]" />
+        <div className="relative z-10 h-full">
+          <WorkbenchMobileShell
+            draft={draft}
+            error={error}
+            featuredPreviewUrl={featuredPreviewUrlForMobile}
+            generations={generations}
+            getDisplayResults={getGenerationDisplayResults}
+            getFeaturedGeneration={getFeaturedGeneration}
+            getPrimaryResult={getPrimaryResult}
+            isGenerating={submitting}
+            loading={loading}
+            models={models}
+            onChangeDraft={(patch) => setDraft((current) => ({ ...current, ...patch }))}
+            onDeleteGeneration={handleDeleteGeneration}
+            onDownloadOriginal={handleDownloadOriginal}
+            onGenerate={() => void submit(draft)}
+            onOpenResult={openResultPreview}
+            onUseAsReference={handleUseAsReference}
+            routeLabel={routeLabel}
+          />
+        </div>
+
+        <SendToProjectDialog
+          onClose={() => setSendDialogOpen(false)}
+          onConfirm={(input) => void handleSendToProject(input)}
+          open={sendDialogOpen}
+        />
+        <WorkbenchResultSheet
+          batchResults={selectedResultBatch}
+          onClose={() => {
+            setSelectedResult(null);
+            setSelectedResultBatch([]);
+          }}
+          onSendToProject={() => setSendDialogOpen(true)}
+          result={selectedResult}
+        />
+      </section>
+    );
+  }
+
   return (
     <section
       className="relative h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(73,149,255,0.16),transparent_24%),radial-gradient(circle_at_top_right,rgba(63,233,255,0.10),transparent_22%),linear-gradient(180deg,#07090e,#0b0d13_44%,#090b10)] text-white"
@@ -1112,26 +1159,6 @@ export function WorkbenchPage() {
               onUseAsReference={handleUseAsReference}
             />
           </div>
-        ) : isMobile ? (
-          <WorkbenchMobileShell
-            draft={draft}
-            error={error}
-            featuredPreviewUrl={featuredPreviewUrlForMobile}
-            generations={generations}
-            getDisplayResults={getGenerationDisplayResults}
-            getFeaturedGeneration={getFeaturedGeneration}
-            getPrimaryResult={getPrimaryResult}
-            isGenerating={submitting}
-            loading={loading}
-            models={models}
-            onChangeDraft={(patch) => setDraft((current) => ({ ...current, ...patch }))}
-            onDeleteGeneration={handleDeleteGeneration}
-            onDownloadOriginal={handleDownloadOriginal}
-            onGenerate={() => void submit(draft)}
-            onOpenResult={openResultPreview}
-            onUseAsReference={handleUseAsReference}
-            routeLabel={routeLabel}
-          />
         ) : (
           <div className="grid min-h-[calc(100vh-96px)] w-full gap-5 md:grid-cols-[390px_minmax(0,1fr)] xl:grid-cols-[390px_minmax(780px,1fr)_360px]">
             <div className="hidden min-h-0 overflow-hidden rounded-[26px] border border-white/8 bg-[#0f1015]/92 shadow-[0_26px_80px_rgba(0,0,0,0.28)] md:block">

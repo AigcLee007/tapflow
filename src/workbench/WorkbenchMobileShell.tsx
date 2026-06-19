@@ -1,12 +1,18 @@
 import React from "react";
-import { Coins, History, Sparkles } from "lucide-react";
+import { ChevronLeft, Coins, History } from "lucide-react";
 
 import { BrandMark } from "../app/brand/BrandMark";
+import { HOME_ROUTE } from "../app/routes";
 import type { ImageModelConfig } from "../config/imageModels";
 import { WorkbenchMobileBottomDock } from "./WorkbenchMobileBottomDock";
 import { WorkbenchMobileParameterSheet } from "./WorkbenchMobileParameterSheet";
 import { WorkbenchMobileResultFeed } from "./WorkbenchMobileResultFeed";
 import type { WorkbenchDraft, WorkbenchGeneration, WorkbenchResult } from "./workbenchTypes";
+
+function navigate(path: string) {
+  window.history.pushState(null, "", path);
+  window.dispatchEvent(new PopStateEvent("popstate"));
+}
 
 type Props = {
   draft: WorkbenchDraft;
@@ -20,11 +26,11 @@ type Props = {
   loading: boolean;
   models: ImageModelConfig[];
   onChangeDraft: (patch: Partial<WorkbenchDraft>) => void;
+  onDeleteGeneration: (generationId: string) => void;
   onDownloadOriginal: (result: WorkbenchResult) => void;
   onGenerate: () => void;
   onOpenResult: (result: WorkbenchResult) => void;
   onUseAsReference: (result: WorkbenchResult) => void;
-  onDeleteGeneration: (generationId: string) => void;
   routeLabel: string;
 };
 
@@ -71,27 +77,51 @@ export function WorkbenchMobileShell({
   }, []);
 
   return (
-    <>
-      <div className="md:hidden">
-        <div className="mb-4 flex items-center justify-between gap-3">
+    <div
+      className="flex h-[100dvh] min-h-0 flex-col overflow-hidden md:hidden"
+      data-testid="workbench-mobile-shell"
+    >
+      <header
+        className="flex h-[74px] shrink-0 items-center justify-between gap-3 px-4 pt-3"
+        data-testid="workbench-mobile-header"
+      >
+        <div className="flex min-w-0 items-center gap-3">
+          <button
+            aria-label="返回首页"
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.06] text-slate-200 transition hover:bg-white/[0.12]"
+            onClick={() => navigate(HOME_ROUTE)}
+            type="button"
+          >
+            <ChevronLeft size={18} />
+          </button>
           <div className="flex min-w-0 items-center gap-3">
             <BrandMark showCaption={false} size="compact" />
             <div className="min-w-0">
               <div className="text-[11px] font-black uppercase tracking-[0.22em] text-cyan-300">Workbench</div>
-              <div className="truncate text-[22px] font-black leading-none text-white">创作工作台</div>
+              <div className="truncate text-[26px] font-black leading-none text-white">创作工作台</div>
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="flex h-9 items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.05] px-3 text-[12px] font-black text-[#ffe35a]">
-              <Coins size={13} />
-              19071
-            </div>
-            <button className="grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-white/[0.05] text-slate-200" type="button">
-              <History size={15} />
-            </button>
           </div>
         </div>
 
+        <div className="flex shrink-0 items-center gap-2">
+          <div className="flex h-10 items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.05] px-3 text-[12px] font-black text-[#ffe35a]">
+            <Coins size={13} />
+            19071
+          </div>
+          <button
+            aria-label="历史"
+            className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-white/[0.05] text-slate-200"
+            type="button"
+          >
+            <History size={15} />
+          </button>
+        </div>
+      </header>
+
+      <div
+        className="min-h-0 flex-1 overflow-y-auto px-4 pb-[132px] pt-2"
+        data-testid="workbench-mobile-scroll-area"
+      >
         {error ? (
           <div className="mb-4 rounded-[18px] border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
             {error}
@@ -134,11 +164,8 @@ export function WorkbenchMobileShell({
             ) : (
               <div className="grid h-[280px] place-items-center rounded-[20px] border border-dashed border-white/10 bg-black/20 px-6 text-center">
                 <div>
-                  <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-white text-black">
-                    <Sparkles size={20} />
-                  </div>
                   <div className="mt-4 text-[16px] font-bold text-white">从提示词开始创作</div>
-                  <div className="mt-2 text-[13px] leading-6 text-slate-400">结果会优先显示在这里，下面保留最近任务和已完成作品。</div>
+                  <div className="mt-2 text-[13px] leading-6 text-slate-400">结果会优先显示在这里，下方保留最近任务和已完成作品。</div>
                 </div>
               </div>
             )}
@@ -176,6 +203,6 @@ export function WorkbenchMobileShell({
         onGenerate={onGenerate}
         open={sheetOpen}
       />
-    </>
+    </div>
   );
 }

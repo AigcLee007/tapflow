@@ -35,7 +35,7 @@ export function WorkbenchMobileResultFeed({
   );
 
   return (
-    <section className="grid gap-4 pb-[132px]" data-testid="workbench-mobile-result-feed">
+    <section className="grid gap-4" data-testid="workbench-mobile-result-feed">
       {generations.length === 0 ? (
         <div className="grid min-h-[220px] place-items-center rounded-[24px] border border-dashed border-white/10 bg-white/[0.03] px-6 text-center">
           <div>

@@ -247,10 +247,28 @@ describe("WorkbenchPage", () => {
 
     expect(await screen.findByTestId("workbench-page")).toBeTruthy();
     expect(screen.getByTestId("workbench-mobile-bottom-dock")).toBeTruthy();
+    expect(screen.getByTestId("workbench-mobile-create-bar")).toBeTruthy();
+    expect(screen.getByText("描述你想要生成的图片")).toBeTruthy();
     expect(screen.getByText("Nano Banana Pro")).toBeTruthy();
-    expect(screen.getByText((content) => content.includes("1:1") && content.includes("2K"))).toBeTruthy();
+    expect(screen.getByText("1:1")).toBeTruthy();
+    expect(screen.getByText("2K")).toBeTruthy();
     expect(screen.getByTestId("workbench-mobile-generate-button")).toBeTruthy();
     expect(screen.queryByTestId("workbench-mobile-legacy-launcher")).toBeNull();
+  });
+
+  test("renders a single compact mobile header and dedicated scroll container", async () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 390,
+    });
+
+    setRoute("/workbench");
+    renderRouter();
+
+    expect(await screen.findByTestId("workbench-mobile-shell")).toBeTruthy();
+    expect(screen.getByTestId("workbench-mobile-header")).toBeTruthy();
+    expect(screen.getAllByText("创作工作台")).toHaveLength(1);
+    expect(screen.getByTestId("workbench-mobile-scroll-area")).toBeTruthy();
   });
 
   test("opens the mobile parameter sheet from the bottom creation dock", async () => {
@@ -262,7 +280,7 @@ describe("WorkbenchPage", () => {
     renderRouter();
 
     expect(await screen.findByTestId("workbench-mobile-bottom-dock")).toBeTruthy();
-    fireEvent.click(screen.getByTestId("workbench-mobile-open-sheet"));
+    fireEvent.click(screen.getByTestId("workbench-mobile-create-bar"));
     expect(await screen.findByTestId("workbench-mobile-parameter-sheet")).toBeTruthy();
     expect(screen.getByLabelText("Prompt")).toBeTruthy();
     expect(screen.getByTestId("workbench-composer")).toBeTruthy();

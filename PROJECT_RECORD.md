@@ -51,6 +51,11 @@ Current deployment baseline:
 
 As of 2026-06-18:
 
+- mobile `/workbench` shell has been refit for the approved phone workflow: mobile now uses a single compact top navigation header, a dedicated middle scroll container for results, and a JiMeng-style bottom creation bar that opens the existing mobile creation panel instead of duplicating a heavy summary dock; the current mobile creation panel content itself was intentionally preserved.
+- Validation:
+  - `npm run test -- src/workbench/WorkbenchPage.test.tsx` passed.
+  - `npm run build` passed.
+
 - mobile `/workbench` second-stage polish is now in place on top of the new mobile shell: fullscreen result preview supports same-batch left/right switching with a bottom thumbnail rail, the mobile reference strip has stronger thumbnail treatment with clearer `@图N` insertion affordances plus mobile-style swipe feedback, and mobile result cards now separate active vs completed sections with cleaner creator-facing parameter chips and a more product-like action menu.
 - Validation:
   - `npm run test -- src/workbench/WorkbenchPage.test.tsx` passed.
