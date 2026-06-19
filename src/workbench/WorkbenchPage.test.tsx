@@ -1,4 +1,4 @@
-import React from "react";
+﻿import React from "react";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -106,6 +106,29 @@ function createGeneration(overrides: Record<string, unknown> = {}) {
     startedAt: null,
     status: "queued",
     updatedAt: new Date().toISOString(),
+    ...overrides,
+  };
+}
+
+function createResult(
+  idBase: string,
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    assetId: `${idBase}-asset`,
+    createdAt: new Date().toISOString(),
+    downloadUrl: `https://example.com/${idBase}.png`,
+    downloadUrlExpiresAt: null,
+    height: 1024,
+    id: `${idBase}-result`,
+    metadata: {},
+    mimeType: "image/png",
+    originalFilename: `${idBase}.png`,
+    previewUrl: `https://example.com/${idBase}.png`,
+    previewUrlExpiresAt: null,
+    sortOrder: 0,
+    status: "available",
+    width: 1024,
     ...overrides,
   };
 }
@@ -883,16 +906,221 @@ describe("WorkbenchPage", () => {
     renderRouter();
 
     const meta = await screen.findByTestId("workbench-generation-params-friendly-meta");
-    expect(meta.textContent).toContain("模型：Nano Banana Pro");
-    expect(meta.textContent).toContain("线路：线路一");
-    expect(meta.textContent).toContain("比例：16:9");
-    expect(meta.textContent).toContain("尺寸：4K");
-    expect(meta.textContent).toContain("数量：2");
+    expect(meta.textContent).toContain("Nano Banana Pro");
+    expect(meta.textContent).toContain("线路一");
+    expect(meta.textContent).toContain("16:9");
+    expect(meta.textContent).toContain("4K");
     expect(screen.queryByText("pixellelabs.nano-banana-pro")).toBeNull();
     expect(screen.queryByText("image.pixellelabs.nano-banana-pro")).toBeNull();
   });
 
-  test("renders four completed images in one visible thumbnail strip with a single selected action tray", async () => {
+  test("renders desktop workbench results as a single unified feed without active/completed sections", async () => {
+    listWorkbenchGenerationsMock.mockResolvedValue({
+      generations: [
+        createGeneration({
+          createdAt: "2026-06-20T08:00:00.000Z",
+          id: "desktop-0",
+          prompt: "desktop prompt 0",
+          status: "running",
+        }),
+        createGeneration({
+          createdAt: "2026-06-20T09:00:00.000Z",
+          id: "desktop-1",
+          prompt: "desktop prompt 1",
+          results: [createResult("desktop-1")],
+          status: "succeeded",
+        }),
+        createGeneration({
+          createdAt: "2026-06-20T10:00:00.000Z",
+          id: "desktop-2",
+          prompt: "desktop prompt 2",
+          status: "queued",
+        }),
+        createGeneration({
+          createdAt: "2026-06-20T11:00:00.000Z",
+          id: "desktop-3",
+          prompt: "desktop prompt 3",
+          results: [createResult("desktop-3")],
+          status: "succeeded",
+        }),
+        createGeneration({
+          createdAt: "2026-06-20T12:00:00.000Z",
+          id: "desktop-4",
+          prompt: "desktop prompt 4",
+          status: "failed",
+        }),
+      ],
+      nextCursor: null,
+    });
+
+    setRoute("/workbench");
+    renderRouter();
+
+    const feed = await screen.findByTestId("workbench-desktop-result-feed");
+    expect(screen.queryByText("Current Tasks")).toBeNull();
+    expect(screen.queryByText("Completed")).toBeNull();
+    await waitFor(() => {
+      expect(within(feed).queryAllByTestId("workbench-desktop-feed-card")).toHaveLength(4);
+    });
+    expect(screen.getByText("desktop prompt 4")).toBeTruthy();
+    expect(screen.queryByText("desktop prompt 0")).toBeNull();
+  });
+
+  test("loads 4 more desktop feed records when scrolling to the bottom", async () => {
+    listWorkbenchGenerationsMock.mockResolvedValue({
+      generations: Array.from({ length: 10 }, (_, index) =>
+        createGeneration({
+          createdAt: `2026-06-20T${String(8 + index).padStart(2, "0")}:02:00.000Z`,
+          id: `desktop-history-${index}`,
+          prompt: `desktop history ${index}`,
+          results: [createResult(`desktop-history-${index}`)],
+          status: "succeeded",
+        }),
+      ),
+      nextCursor: null,
+    });
+
+    setRoute("/workbench");
+    renderRouter();
+
+    const feed = await screen.findByTestId("workbench-desktop-result-feed");
+    const scrollArea = screen.getByTestId("workbench-desktop-result-scroll-area");
+
+    await waitFor(() => {
+      expect(within(feed).getAllByTestId("workbench-desktop-feed-card")).toHaveLength(4);
+    });
+    expect(screen.getByText("desktop history 9")).toBeTruthy();
+    expect(screen.queryByText("desktop history 5")).toBeNull();
+
+    Object.defineProperty(scrollArea, "clientHeight", { configurable: true, value: 600 });
+    Object.defineProperty(scrollArea, "scrollHeight", { configurable: true, value: 1200 });
+    Object.defineProperty(scrollArea, "scrollTop", { configurable: true, value: 620, writable: true });
+    fireEvent.scroll(scrollArea);
+
+    await waitFor(() => {
+      expect(within(feed).queryAllByTestId("workbench-desktop-feed-card")).toHaveLength(8);
+    });
+    expect(screen.getByText("desktop history 5")).toBeTruthy();
+    expect(screen.queryByText("desktop history 1")).toBeNull();
+  });
+
+  test("renders desktop wide three and four image cards with the approved mosaic layout", async () => {
+    const wideResult = (generationId: string, index: number, width = 1792, height = 1024) =>
+      createResult(`${generationId}-${index}`, {
+        assetId: `${generationId}-asset-${index}`,
+        height,
+        id: `${generationId}-result-${index}`,
+        originalFilename: `${generationId}-${index}.png`,
+        previewUrl: `https://example.com/${generationId}-${index}.png`,
+        sortOrder: index,
+        width,
+      });
+
+    listWorkbenchGenerationsMock.mockResolvedValue({
+      generations: [
+        createGeneration({
+          createdAt: "2026-06-20T10:00:00.000Z",
+          id: "desktop-wide-three",
+          params: { aspect_ratio: "16:9", size: "2k" },
+          prompt: "desktop wide three",
+          requestedCount: 3,
+          results: [
+            wideResult("desktop-wide-three", 0),
+            wideResult("desktop-wide-three", 1),
+            wideResult("desktop-wide-three", 2),
+          ],
+          status: "succeeded",
+        }),
+        createGeneration({
+          createdAt: "2026-06-20T11:00:00.000Z",
+          id: "desktop-wide-four",
+          params: { aspect_ratio: "21:9", size: "2k" },
+          prompt: "desktop wide four",
+          requestedCount: 4,
+          results: [
+            wideResult("desktop-wide-four", 0, 2048, 878),
+            wideResult("desktop-wide-four", 1, 2048, 878),
+            wideResult("desktop-wide-four", 2, 2048, 878),
+            wideResult("desktop-wide-four", 3, 2048, 878),
+          ],
+          status: "succeeded",
+        }),
+      ],
+      nextCursor: null,
+    });
+
+    setRoute("/workbench");
+    renderRouter();
+
+    expect(await screen.findByTestId("workbench-desktop-mosaic-desktop-wide-three")).toBeTruthy();
+    expect(screen.getByTestId("workbench-desktop-mosaic-desktop-wide-three").className).toContain("grid-cols-2");
+    expect(document.getElementById("workbench-desktop-feed-slot-desktop-wide-three-2")?.className).toContain("aspect-[16/9]");
+    expect(screen.getByTestId("workbench-desktop-feed-image-desktop-wide-three-desktop-wide-three-result-2").className).toContain("object-cover");
+
+    expect(screen.getByTestId("workbench-desktop-mosaic-desktop-wide-four").className).toContain("grid-cols-2");
+    expect(document.getElementById("workbench-desktop-feed-slot-desktop-wide-four-0")?.className).toContain("aspect-[21/9]");
+    expect(screen.getAllByTestId("workbench-desktop-feed-slot-desktop-wide-four")).toHaveLength(4);
+  });
+
+  test("desktop result cards use a menu action model instead of an always-open button panel", async () => {
+    listWorkbenchGenerationsMock.mockResolvedValue({
+      generations: [
+        createGeneration({
+          createdAt: "2026-06-20T11:00:00.000Z",
+          id: "desktop-menu-actions",
+          prompt: "desktop menu actions",
+          results: [createResult("desktop-menu-actions")],
+          status: "succeeded",
+        }),
+      ],
+      nextCursor: null,
+    });
+
+    setRoute("/workbench");
+    renderRouter();
+
+    expect(await screen.findByTestId("workbench-desktop-feed-card-desktop-menu-actions")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "下载原图" })).toBeNull();
+
+    fireEvent.click(screen.getByLabelText("打开结果菜单-desktop-menu-actions"));
+
+    expect(screen.getByRole("button", { name: "下载原图" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "引用参考" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "重新生成" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "删除记录" })).toBeTruthy();
+  });
+
+  test("desktop feed thumbnails open fullscreen preview directly", async () => {
+    getAssetVariantUrlMock.mockImplementation(async (assetId: string, variantKey?: string) => ({
+      expiresAt: new Date(Date.now() + 900000).toISOString(),
+      method: "GET",
+      url: variantKey === "preview"
+        ? `https://example.com/${assetId}-preview.webp`
+        : `https://example.com/${assetId}-original.png`,
+      variantKey: variantKey ?? null,
+    }));
+    listWorkbenchGenerationsMock.mockResolvedValue({
+      generations: [
+        createGeneration({
+          createdAt: "2026-06-20T11:00:00.000Z",
+          id: "desktop-preview",
+          prompt: "desktop preview",
+          results: [createResult("desktop-preview")],
+          status: "succeeded",
+        }),
+      ],
+      nextCursor: null,
+    });
+
+    setRoute("/workbench");
+    renderRouter();
+
+    fireEvent.click(await screen.findByTestId("workbench-desktop-thumb-desktop-preview-desktop-preview-result"));
+
+    expect(await screen.findByTestId("workbench-result-fullscreen")).toBeTruthy();
+  });
+
+  test("renders four completed images inside one desktop feed mosaic card", async () => {
     listWorkbenchGenerationsMock.mockResolvedValue({
       generations: [
         createGeneration({
@@ -923,11 +1151,10 @@ describe("WorkbenchPage", () => {
     setRoute("/workbench");
     renderRouter();
 
-    expect(await screen.findByTestId("workbench-completed-history-item-done-quad")).toBeTruthy();
-    expect(screen.getAllByTestId("workbench-completed-result-thumb-done-quad").length).toBe(4);
-    expect(screen.getByTestId("workbench-result-thumb-row-done-quad").children.length).toBe(4);
-    expect(screen.getByTestId("workbench-result-action-panel-done-quad")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "select-result-done-quad-result-2" })).toBeTruthy();
+    expect(await screen.findByTestId("workbench-desktop-feed-card-done-quad")).toBeTruthy();
+    expect(screen.getAllByTestId("workbench-desktop-feed-slot-done-quad").length).toBe(4);
+    expect(screen.getByTestId("workbench-desktop-mosaic-done-quad").className).toContain("grid-cols-2");
+    expect(screen.getByTestId("workbench-desktop-thumb-done-quad-done-quad-result-2")).toBeTruthy();
   });
 
   test("keeps the desktop composer footer action area separate from the scroll body", async () => {
@@ -1208,7 +1435,7 @@ describe("WorkbenchPage", () => {
     expect(screen.getByTestId("workbench-mobile-feed-image-mobile-wide-four-mobile-wide-four-result-1").className).toContain("object-cover");
   });
 
-  test("completed result cards expose download original, use as reference, and delete record actions", async () => {
+  test("desktop feed cards expose download original, use as reference, and delete record actions", async () => {
     const openMock = vi.fn();
     vi.stubGlobal("open", openMock);
     getAssetVariantUrlMock.mockImplementation(async (assetId: string, variantKey?: string) => ({
@@ -1251,8 +1478,9 @@ describe("WorkbenchPage", () => {
     setRoute("/workbench");
     renderRouter();
 
-    expect(await screen.findByTestId("workbench-completed-history-item-done-actions")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "下载原图" }));
+    expect(await screen.findByTestId("workbench-desktop-feed-card-done-actions")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("workbench-desktop-menu-trigger-done-actions"));
+    fireEvent.click(screen.getByTestId("workbench-desktop-menu-download-done-actions"));
     await waitFor(() => {
       expect(downloadOriginalImageMock).toHaveBeenCalledWith({
         assetId: "asset-actions",
@@ -1264,13 +1492,15 @@ describe("WorkbenchPage", () => {
     });
     expect(openMock).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: "引用参考" }));
+    fireEvent.click(screen.getByTestId("workbench-desktop-menu-trigger-done-actions"));
+    fireEvent.click(screen.getByTestId("workbench-desktop-menu-reference-done-actions"));
     expect((await screen.findByAltText("参考图1")).getAttribute("src")).toBe("https://example.com/asset-actions-preview.webp");
 
-    fireEvent.click(screen.getByRole("button", { name: "删除记录-done-actions" }));
+    fireEvent.click(screen.getByTestId("workbench-desktop-menu-trigger-done-actions"));
+    fireEvent.click(screen.getByTestId("workbench-desktop-menu-delete-done-actions"));
     await waitFor(() => {
       expect(deleteWorkbenchGenerationMock).toHaveBeenCalledWith("done-actions");
-      expect(screen.queryByTestId("workbench-completed-history-item-done-actions")).toBeNull();
+      expect(screen.queryByTestId("workbench-desktop-feed-card-done-actions")).toBeNull();
     });
   });
 
@@ -1298,11 +1528,12 @@ describe("WorkbenchPage", () => {
     setRoute("/workbench");
     renderRouter();
 
-    expect(await screen.findByText("stuck queued")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "删除任务" }));
+    expect(await screen.findByTestId("workbench-desktop-feed-card-queued-stuck")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("workbench-desktop-menu-trigger-queued-stuck"));
+    fireEvent.click(screen.getByTestId("workbench-desktop-menu-delete-queued-stuck"));
     await waitFor(() => {
       expect(deleteWorkbenchGenerationMock).toHaveBeenCalledWith("queued-stuck");
-      expect(screen.queryByText("stuck queued")).toBeNull();
+      expect(screen.queryByTestId("workbench-desktop-feed-card-queued-stuck")).toBeNull();
     });
   });
 
@@ -1393,16 +1624,12 @@ describe("WorkbenchPage", () => {
     setRoute("/workbench");
     renderRouter();
 
-    expect((await screen.findByTestId("workbench-batch-progress-batch-1")).textContent).toContain("1/2");
-    expect(screen.getByTestId("workbench-batch-stage-batch-1")).toBeTruthy();
-    expect(screen.getByTestId("workbench-batch-thumb-row-batch-1")).toBeTruthy();
-    expect(screen.getAllByAltText("one.png").length).toBeGreaterThan(0);
-    expect(screen.getByTestId("workbench-batch-child-badge-batch-1-0").textContent).toBe("1");
-    expect(screen.getByTestId("workbench-batch-child-image-batch-1-0").className).toContain("object-contain");
-    expect(screen.getByRole("button", { name: "再次生成-result-1" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "复用参数-result-1" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "下载原图-result-1" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "引用参考-result-1" })).toBeTruthy();
-    expect(screen.getByTestId("workbench-batch-child-placeholder-batch-1-1")).toBeTruthy();
+    const card = await screen.findByTestId("workbench-desktop-feed-card-batch-1");
+    expect(card.textContent).toContain("共2张");
+    expect(card.textContent).toContain("共2张");
+    expect(screen.getAllByTestId("workbench-desktop-feed-slot-batch-1")).toHaveLength(2);
+    expect(card.textContent).toContain("已完成1张");
+    expect(card.textContent).toContain("已完成1张");
   });
 });
+

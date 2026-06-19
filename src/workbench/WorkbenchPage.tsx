@@ -23,11 +23,8 @@ import { useImageModelCatalog } from "../hooks/useImageModelCatalog";
 import { sendWorkbenchResultToProject } from "../services/v2WorkbenchApi";
 import { SendToProjectDialog } from "./SendToProjectDialog";
 import { WorkbenchComposer } from "./WorkbenchComposer";
+import { WorkbenchDesktopResultFeed } from "./WorkbenchDesktopResultFeed";
 import { createDefaultWorkbenchDraft } from "./workbenchModelParams";
-import {
-  getWorkbenchActiveGenerations,
-  getWorkbenchCompletedGenerations,
-} from "./workbenchDesktopLayout";
 import { WorkbenchMobileShell } from "./WorkbenchMobileShell";
 import { WorkbenchResultSheet } from "./WorkbenchResultSheet";
 import { useWorkbenchGenerations } from "./useWorkbenchGenerations";
@@ -1027,13 +1024,15 @@ export function WorkbenchPage() {
     setSelectedResultGeneration(matchedGeneration ?? null);
   }, [generations]);
 
+  const openResultPreviewForGeneration = React.useCallback((generation: WorkbenchGeneration, result: WorkbenchResult) => {
+    setSelectedResult(result);
+    setSelectedResultBatch(getGenerationDisplayResults(generation));
+    setSelectedResultGeneration(generation);
+  }, []);
+
   const featuredGeneration = getFeaturedGeneration(generations);
-  const activeGenerations = React.useMemo(
-    () => getWorkbenchActiveGenerations(generations),
-    [generations],
-  );
-  const completedGenerations = React.useMemo(
-    () => getWorkbenchCompletedGenerations(generations),
+  const desktopFeedGenerations = React.useMemo(
+    () => generations.slice().sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
     [generations],
   );
   const routeLabel = React.useMemo(() => formatRouteLabel(draft.routeKey), [draft.routeKey]);
@@ -1181,15 +1180,14 @@ export function WorkbenchPage() {
               onGenerate={() => void submit(draft)}
             />
 
-            <DesktopResultsWorkspace
-              activeGenerations={activeGenerations}
-              completedGenerations={completedGenerations}
+            <WorkbenchDesktopResultFeed
+              generations={desktopFeedGenerations}
+              getDisplayResults={getGenerationDisplayResults}
               models={models}
               onDeleteGeneration={handleDeleteGeneration}
               onDownloadOriginal={handleDownloadOriginal}
-              onReuseParams={reuseParams}
-              onRetry={(generationId) => void retry(generationId)}
-              onSelectResult={openResultPreview}
+              onRegenerate={handleRegenerateFromGeneration}
+              onSelectPreview={openResultPreviewForGeneration}
               onUseAsReference={handleUseAsReference}
             />
           </div>

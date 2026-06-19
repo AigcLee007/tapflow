@@ -51,6 +51,16 @@ Current deployment baseline:
 
 As of 2026-06-19:
 
+- desktop `/workbench` result flow now follows the approved unified-feed structure instead of the old `当前任务 / 已完成结果` split:
+  - the right side is now one chronological desktop creation feed that matches the mobile mental model more closely.
+  - desktop feed first render shows the newest 4 records and loads 4 more when the user scrolls to the bottom.
+  - desktop result cards now reuse the shared ratio-aware mosaic layout rules used by mobile for 1 / 2 / 3 / 4 image batches, including wide and ultra-wide arrangements.
+  - desktop card actions moved into a compact top-right overflow menu (`下载原图 / 引用参考 / 重新生成 / 删除记录`) instead of the older always-open desktop action strip.
+  - clicking a desktop thumbnail now opens the fullscreen preview directly, keeping the desktop and mobile review flows aligned.
+- validation:
+  - `npm run test -- src/workbench/WorkbenchPage.test.tsx`
+  - `npm run build`
+
 - Creator-facing desktop UI labels and entry density were tightened based on screenshot review:
   - top navigation now names `/workbench` as `生图工作台` and `/workspace` as `无限画布`.
   - home quick-entry labels now mirror those product names.
