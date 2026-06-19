@@ -1031,9 +1031,6 @@ export function WorkbenchPage() {
     [generations],
   );
   const routeLabel = React.useMemo(() => formatRouteLabel(draft.routeKey), [draft.routeKey]);
-  const featuredGenerationForMobile = React.useMemo(() => getFeaturedGeneration(generations), [generations]);
-  const featuredPrimaryResultForMobile = featuredGenerationForMobile ? getPrimaryResult(featuredGenerationForMobile) : null;
-  const featuredPreviewUrlForMobile = useResultPreviewUrl(featuredPrimaryResultForMobile);
 
   if (isMobile) {
     return (
@@ -1047,13 +1044,9 @@ export function WorkbenchPage() {
             availableCredits={availableCredits}
             draft={draft}
             error={error}
-            featuredPreviewUrl={featuredPreviewUrlForMobile}
             generations={generations}
             getDisplayResults={getGenerationDisplayResults}
-            getFeaturedGeneration={getFeaturedGeneration}
-            getPrimaryResult={getPrimaryResult}
             isGenerating={submitting}
-            loading={loading}
             models={models}
             onChangeDraft={(patch) => setDraft((current) => ({ ...current, ...patch }))}
             onDeleteGeneration={handleDeleteGeneration}

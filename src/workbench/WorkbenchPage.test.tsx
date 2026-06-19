@@ -1,5 +1,5 @@
 import React from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { AppRouter } from "../app/AppRouter";
@@ -284,8 +284,9 @@ describe("WorkbenchPage", () => {
 
     expect(await screen.findByTestId("workbench-page")).toBeTruthy();
     expect(screen.getByTestId("workbench-mobile-bottom-dock")).toBeTruthy();
-    expect(screen.getByTestId("workbench-mobile-create-bar")).toBeTruthy();
-    expect(screen.getByText("图片生成")).toBeTruthy();
+    const createBar = screen.getByTestId("workbench-mobile-create-bar");
+    expect(createBar).toBeTruthy();
+    expect(within(createBar).getByText("图片生成")).toBeTruthy();
     expect(screen.getByText("请描述画面内容")).toBeTruthy();
     expect(screen.getByTestId("workbench-mobile-create-bar").textContent).not.toContain("Nano Banana Pro");
     expect(screen.getByTestId("workbench-mobile-create-bar").textContent).not.toContain("1:1");
@@ -354,7 +355,7 @@ describe("WorkbenchPage", () => {
     expect(screen.getByTestId("workbench-composer")).toBeTruthy();
   });
 
-  test("renders a grouped mobile result feed for multi-image generations", async () => {
+  test("renders a single mobile creation-feed card for multi-image generations", async () => {
     Object.defineProperty(window, "innerWidth", {
       configurable: true,
       value: 390,
@@ -388,13 +389,15 @@ describe("WorkbenchPage", () => {
     setRoute("/workbench");
     renderRouter();
 
-    expect(await screen.findByTestId("workbench-mobile-result-feed")).toBeTruthy();
+    const feed = await screen.findByTestId("workbench-mobile-result-feed");
+    expect(within(feed).getAllByTestId("workbench-mobile-creation-feed-card")).toHaveLength(1);
     expect(screen.getAllByAltText("mobile-done-quad-1.png").length).toBeGreaterThan(0);
-    expect(screen.getByText((content) => content.includes("同批 4 张"))).toBeTruthy();
+    expect(screen.getAllByTestId("workbench-mobile-feed-slot-mobile-done-quad")).toHaveLength(4);
+    expect(screen.getByText("共4张，已完成")).toBeTruthy();
     expect(screen.getByLabelText("打开结果菜单-mobile-done-quad")).toBeTruthy();
   });
 
-  test("switches the selected mobile multi-image preview without opening fullscreen", async () => {
+  test("opens the tapped mobile feed image directly in fullscreen preview", async () => {
     Object.defineProperty(window, "innerWidth", {
       configurable: true,
       value: 390,
@@ -449,10 +452,121 @@ describe("WorkbenchPage", () => {
 
     expect(await screen.findByTestId("workbench-mobile-result-feed")).toBeTruthy();
     fireEvent.click(screen.getByTestId("workbench-mobile-thumb-mobile-switch-mobile-switch-result-2"));
-    expect(screen.queryByTestId("workbench-result-fullscreen")).toBeNull();
-    expect(screen.getByTestId("workbench-mobile-stage-image-mobile-switch").getAttribute("src")).toBe(
-      "https://example.com/mobile-switch-2.png",
-    );
+    await screen.findByTestId("workbench-result-fullscreen");
+    await waitFor(() => {
+      expect(screen.getByTestId("workbench-result-fullscreen-image").getAttribute("src")).toBe(
+        "https://example.com/mobile-switch-asset-2.png",
+      );
+    });
+  });
+
+  test("renders mobile workbench as one chronological creation feed with pending batch placeholders", async () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 390,
+    });
+    const olderCreatedAt = "2026-06-19T08:00:00.000Z";
+    const newerCreatedAt = "2026-06-19T09:00:00.000Z";
+    const newestActiveGeneration = createGeneration({
+      createdAt: newerCreatedAt,
+      id: "mobile-newest-active",
+      params: { aspect_ratio: "9:16", size: "2k" },
+      prompt: "动物运动会，3D风格",
+      requestedCount: 4,
+      status: "running",
+      results: [
+        {
+          assetId: "mobile-newest-active-asset-1",
+          createdAt: newerCreatedAt,
+          downloadUrl: "https://example.com/mobile-newest-active-1.png",
+          downloadUrlExpiresAt: null,
+          height: 1024,
+          id: "mobile-newest-active-result-1",
+          metadata: {},
+          mimeType: "image/png",
+          originalFilename: "mobile-newest-active-1.png",
+          previewUrl: "https://example.com/mobile-newest-active-1.png",
+          previewUrlExpiresAt: null,
+          sortOrder: 0,
+          status: "available",
+          width: 1024,
+        },
+        {
+          assetId: "mobile-newest-active-asset-2",
+          createdAt: newerCreatedAt,
+          downloadUrl: "https://example.com/mobile-newest-active-2.png",
+          downloadUrlExpiresAt: null,
+          height: 1024,
+          id: "mobile-newest-active-result-2",
+          metadata: {},
+          mimeType: "image/png",
+          originalFilename: "mobile-newest-active-2.png",
+          previewUrl: "https://example.com/mobile-newest-active-2.png",
+          previewUrlExpiresAt: null,
+          sortOrder: 1,
+          status: "available",
+          width: 1024,
+        },
+      ],
+    });
+    listWorkbenchGenerationsMock.mockResolvedValue({
+      generations: [
+        newestActiveGeneration,
+        createGeneration({
+          createdAt: olderCreatedAt,
+          id: "mobile-older-done",
+          params: { aspect_ratio: "1:1", size: "1k" },
+          prompt: "赛博城市夜景",
+          requestedCount: 1,
+          status: "succeeded",
+          results: [
+            {
+              assetId: "mobile-older-done-asset-1",
+              createdAt: olderCreatedAt,
+              downloadUrl: "https://example.com/mobile-older-done-1.png",
+              downloadUrlExpiresAt: null,
+              height: 1024,
+              id: "mobile-older-done-result-1",
+              metadata: {},
+              mimeType: "image/png",
+              originalFilename: "mobile-older-done-1.png",
+              previewUrl: "https://example.com/mobile-older-done-1.png",
+              previewUrlExpiresAt: null,
+              sortOrder: 0,
+              status: "available",
+              width: 1024,
+            },
+          ],
+        }),
+      ],
+      nextCursor: null,
+    });
+    getWorkbenchGenerationMock.mockResolvedValue(newestActiveGeneration);
+
+    setRoute("/workbench");
+    renderRouter();
+
+    expect(await screen.findByTestId("workbench-mobile-shell")).toBeTruthy();
+    expect(screen.getByTestId("workbench-mobile-header")).toBeTruthy();
+    expect(screen.getByTestId("workbench-mobile-bottom-dock")).toBeTruthy();
+    expect(screen.queryByTestId("workbench-mobile-current-stage")).toBeNull();
+    expect(screen.queryByText("Current Tasks")).toBeNull();
+    expect(screen.queryByText("Completed")).toBeNull();
+
+    const feed = screen.getByTestId("workbench-mobile-result-feed");
+    const cards = within(feed).getAllByTestId("workbench-mobile-creation-feed-card");
+    expect(cards).toHaveLength(2);
+    expect(cards[0]?.textContent).toContain("赛博城市夜景");
+    expect(cards[1]?.textContent).toContain("动物运动会，3D风格");
+    expect(cards[1]?.textContent).toContain("图片生成");
+    expect(cards[1]?.textContent).toContain("Nano Banana Pro");
+    expect(cards[1]?.textContent).toContain("线路一");
+    expect(cards[1]?.textContent).toContain("9:16");
+    expect(cards[1]?.textContent).toContain("2K");
+    expect(cards[1]?.textContent).toContain("共4张");
+    expect(cards[1]?.textContent).toContain("正在生成");
+    expect(screen.getAllByTestId("workbench-mobile-feed-slot-mobile-newest-active")).toHaveLength(4);
+    expect(screen.getAllByTestId("workbench-mobile-feed-pending-slot-mobile-newest-active")).toHaveLength(2);
   });
 
   test("shows creator-facing generation parameters instead of raw model and route keys", async () => {
@@ -679,7 +793,6 @@ describe("WorkbenchPage", () => {
 
     expect(await screen.findByTestId("workbench-mobile-result-feed")).toBeTruthy();
     fireEvent.click(screen.getByTestId("workbench-mobile-thumb-mobile-preview-batch-mobile-preview-result-2"));
-    fireEvent.click(screen.getByTestId("workbench-mobile-stage-image-mobile-preview-batch"));
 
     await screen.findByTestId("workbench-result-fullscreen");
     expect(screen.getByTestId("workbench-result-fullscreen-image").getAttribute("src")).toBe(

@@ -1,5 +1,5 @@
 import React from "react";
-import { Download, ImagePlus, MoreHorizontal, Trash2 } from "lucide-react";
+import { Clock3, Download, ImagePlus, MoreHorizontal, Trash2 } from "lucide-react";
 
 import type { ImageModelConfig } from "../config/imageModels";
 import type { WorkbenchGeneration, WorkbenchResult } from "./workbenchTypes";
@@ -16,6 +16,10 @@ type Props = {
   selectedResultId?: string | null;
 };
 
+type FeedSlot =
+  | { index: number; kind: "result"; result: WorkbenchResult }
+  | { index: number; kind: "pending" | "failed" };
+
 function getModelLabel(modelId: string, models: ImageModelConfig[]) {
   return models.find((model) => model.id === modelId)?.label || modelId;
 }
@@ -28,37 +32,58 @@ function getRouteLabel(routeKey: string) {
   return "线路一";
 }
 
-function getStatusLabel(status: string) {
-  switch (status) {
-    case "succeeded":
-      return "已完成";
-    case "failed":
-      return "失败";
-    case "running":
-      return "生成中";
-    case "waiting_provider":
-      return "等待上游";
-    case "queued":
-      return "排队中";
-    case "pending":
-      return "准备中";
-    case "canceled":
-      return "已取消";
-    default:
-      return status;
-  }
+function isTerminalFailed(status: string) {
+  return status === "failed" || status === "canceled";
 }
 
-function getSummaryChips(generation: WorkbenchGeneration, models: ImageModelConfig[]) {
+function getSortedResults(results: WorkbenchResult[]) {
+  return results
+    .slice()
+    .sort((left, right) => Number(left.sortOrder ?? 0) - Number(right.sortOrder ?? 0));
+}
+
+function getSlotCount(generation: WorkbenchGeneration, results: WorkbenchResult[]) {
+  return Math.max(
+    1,
+    Number(generation.requestedCount || 0),
+    Number(generation.batch?.totalCount || 0),
+    results.length,
+  );
+}
+
+function buildSlots(generation: WorkbenchGeneration, results: WorkbenchResult[]): FeedSlot[] {
+  const sortedResults = getSortedResults(results);
+  const total = getSlotCount(generation, sortedResults);
+  return Array.from({ length: total }, (_, index) => {
+    const result = sortedResults[index];
+    if (result) return { index, kind: "result", result };
+    return { index, kind: isTerminalFailed(generation.status) ? "failed" : "pending" };
+  });
+}
+
+function getStatusLine(generation: WorkbenchGeneration, results: WorkbenchResult[]) {
+  if (generation.status === "failed") return "生成失败";
+  if (generation.status === "canceled") return "已取消";
+
+  const total = getSlotCount(generation, results);
+  const completed = generation.batch?.completedCount ?? results.length;
+  const running = generation.batch?.runningCount ?? (generation.status === "running" || generation.status === "waiting_provider" ? 1 : 0);
+
+  if (generation.status === "succeeded") return `共${total}张，已完成`;
+  if (completed > 0 && completed < total) return `共${total}张，已完成${completed}张，正在生成${Math.max(1, total - completed)}张...`;
+  if (running > 0 || generation.status === "queued" || generation.status === "pending") return `共${total}张，正在生成第${Math.min(completed + 1, total)}张...`;
+  return `共${total}张，处理中...`;
+}
+
+function getParameterLine(generation: WorkbenchGeneration, models: ImageModelConfig[]) {
   const size = String(generation.params.size || generation.params.imageSize || "1k").toUpperCase();
   const aspectRatio = String(generation.params.aspect_ratio || generation.params.aspectRatio || "1:1");
   return [
-    `模型 ${getModelLabel(generation.modelId, models)}`,
-    `线路 ${getRouteLabel(generation.routeKey)}`,
-    `比例 ${aspectRatio}`,
-    `尺寸 ${size}`,
-    `数量 ${generation.requestedCount}`,
-  ];
+    getModelLabel(generation.modelId, models),
+    getRouteLabel(generation.routeKey),
+    aspectRatio,
+    size,
+  ].filter(Boolean).join(" · ");
 }
 
 export function WorkbenchMobileResultCard({
@@ -72,159 +97,136 @@ export function WorkbenchMobileResultCard({
   results,
   selectedResultId,
 }: Props) {
-  const selected = results.find((item) => item.id === selectedResultId) ?? results[0] ?? null;
   const [menuOpen, setMenuOpen] = React.useState(false);
-  const isDone = generation.status === "succeeded";
-  const summaryChips = getSummaryChips(generation, models);
+  const sortedResults = React.useMemo(() => getSortedResults(results), [results]);
+  const selected = sortedResults.find((item) => item.id === selectedResultId) ?? sortedResults[0] ?? null;
+  const slots = React.useMemo(() => buildSlots(generation, sortedResults), [generation, sortedResults]);
+  const statusLine = getStatusLine(generation, sortedResults);
+  const parameterLine = getParameterLine(generation, models);
+  const prompt = generation.prompt.trim() || "未命名创作";
 
   return (
     <article
-      className={`overflow-hidden rounded-[24px] border backdrop-blur-sm ${
-        isDone
-          ? "border-white/10 bg-[linear-gradient(180deg,rgba(20,24,34,0.94),rgba(11,14,21,0.98))]"
-          : "border-cyan-300/18 bg-[linear-gradient(180deg,rgba(15,25,36,0.94),rgba(10,15,23,0.98))] shadow-[0_0_0_1px_rgba(34,211,238,0.06)]"
-      }`}
+      className="relative overflow-visible rounded-[22px] border border-white/8 bg-transparent"
+      data-testid="workbench-mobile-creation-feed-card"
     >
-      <button
-        className="flex w-full items-center justify-center bg-[#0b0d12] px-3 pt-3"
-        onClick={() => selected && onSelectResult(selected)}
-        type="button"
-      >
-        {selected?.previewUrl ? (
-          <img
-            alt={selected.originalFilename || "Workbench result"}
-            className="max-h-[300px] w-full rounded-[18px] object-contain"
-            data-testid={`workbench-mobile-stage-image-${generation.id}`}
-            src={selected.previewUrl}
-          />
-        ) : (
-          <div className="grid h-[240px] w-full place-items-center rounded-[18px] border border-dashed border-white/10 text-sm text-slate-500">
-            暂无预览
+      <div className="mb-2 flex items-start justify-between gap-3 px-1">
+        <div className="min-w-0">
+          <div className="text-[12px] font-bold leading-none text-slate-500">图片生成</div>
+          <div className="mt-2 line-clamp-2 text-[15px] font-bold leading-5 text-white">{prompt}</div>
+          <div className="mt-1 flex max-w-full items-center gap-1.5 overflow-hidden text-[11px] font-bold leading-none text-slate-500">
+            <span className="truncate">{parameterLine}</span>
           </div>
-        )}
-      </button>
+        </div>
 
-      <div className="px-4 pb-4 pt-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span
-                className={`rounded-full px-2.5 py-1 text-[10px] font-black tracking-[0.08em] ${
-                  isDone ? "bg-emerald-400/12 text-emerald-200" : "bg-cyan-300/12 text-cyan-200"
-                }`}
-              >
-                {getStatusLabel(generation.status)}
-              </span>
-              {results.length > 1 ? (
-                <span className="rounded-full border border-white/10 bg-white/[0.05] px-2.5 py-1 text-[10px] font-black text-slate-300">
-                  同批 {results.length} 张
-                </span>
+        <div className="relative shrink-0">
+          <button
+            aria-label={`打开结果菜单-${generation.id}`}
+            className="grid h-9 w-9 place-items-center rounded-full border border-white/8 bg-white/[0.04] text-slate-300 transition hover:bg-white/[0.10]"
+            onClick={() => setMenuOpen((value) => !value)}
+            type="button"
+          >
+            <MoreHorizontal size={15} />
+          </button>
+
+          {menuOpen ? (
+            <div className="absolute right-0 top-[calc(100%+8px)] z-20 grid min-w-[168px] gap-1 rounded-[16px] border border-white/10 bg-[#11151d] p-2 shadow-[0_20px_40px_rgba(0,0,0,0.45)]">
+              {selected ? (
+                <>
+                  <button
+                    className="flex h-10 items-center gap-2 rounded-[12px] px-3 text-left text-[12px] font-bold text-white hover:bg-white/[0.06]"
+                    onClick={() => {
+                      onDownloadOriginal(selected, generation);
+                      setMenuOpen(false);
+                    }}
+                    type="button"
+                  >
+                    <Download size={14} />
+                    下载原图
+                  </button>
+                  <button
+                    className="flex h-10 items-center gap-2 rounded-[12px] px-3 text-left text-[12px] font-bold text-white hover:bg-white/[0.06]"
+                    onClick={() => {
+                      onUseAsReference(selected);
+                      setMenuOpen(false);
+                    }}
+                    type="button"
+                  >
+                    <ImagePlus size={14} />
+                    引用参考
+                  </button>
+                </>
               ) : null}
+              <button
+                className="flex h-10 items-center gap-2 rounded-[12px] px-3 text-left text-[12px] font-bold text-red-100 hover:bg-red-500/14"
+                onClick={() => {
+                  onDelete(generation.id);
+                  setMenuOpen(false);
+                }}
+                type="button"
+              >
+                <Trash2 size={14} />
+                删除记录
+              </button>
             </div>
-            <div className="mt-2 line-clamp-2 text-[14px] font-bold leading-5 text-white">{generation.prompt}</div>
-          </div>
-
-          <div className="relative shrink-0">
-            <button
-              aria-label={`打开结果菜单-${generation.id}`}
-              className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-white/[0.05] text-slate-200 transition hover:bg-white/[0.10]"
-              onClick={() => setMenuOpen((value) => !value)}
-              type="button"
-            >
-              <MoreHorizontal size={16} />
-            </button>
-
-            {menuOpen ? (
-              <div className="absolute right-0 top-[calc(100%+8px)] z-20 grid min-w-[168px] gap-1 rounded-[16px] border border-white/10 bg-[#11151d] p-2 shadow-[0_20px_40px_rgba(0,0,0,0.45)]">
-                {selected ? (
-                  <>
-                    <button
-                      className="flex h-10 items-center gap-2 rounded-[12px] px-3 text-left text-[12px] font-bold text-white hover:bg-white/[0.06]"
-                      onClick={() => {
-                        onDownloadOriginal(selected, generation);
-                        setMenuOpen(false);
-                      }}
-                      type="button"
-                    >
-                      <Download size={14} />
-                      下载原图
-                    </button>
-                    <button
-                      className="flex h-10 items-center gap-2 rounded-[12px] px-3 text-left text-[12px] font-bold text-white hover:bg-white/[0.06]"
-                      onClick={() => {
-                        onUseAsReference(selected);
-                        setMenuOpen(false);
-                      }}
-                      type="button"
-                    >
-                      <ImagePlus size={14} />
-                      引用参考
-                    </button>
-                  </>
-                ) : null}
-                <button
-                  className="flex h-10 items-center gap-2 rounded-[12px] px-3 text-left text-[12px] font-bold text-red-100 hover:bg-red-500/14"
-                  onClick={() => {
-                    onDelete(generation.id);
-                    setMenuOpen(false);
-                  }}
-                  type="button"
-                >
-                  <Trash2 size={14} />
-                  删除记录
-                </button>
-              </div>
-            ) : null}
-          </div>
+          ) : null}
         </div>
+      </div>
 
-        <div className="mt-3 flex flex-wrap gap-2">
-          {summaryChips.map((chip) => (
-            <span
-              className="rounded-full border border-white/8 bg-white/[0.04] px-2.5 py-1 text-[11px] font-bold text-slate-300"
-              key={chip}
-            >
-              {chip}
-            </span>
-          ))}
-        </div>
-
-        {results.length > 1 ? (
-          <div className="mt-3">
-            <div className="mb-2 flex items-center justify-between">
-              <div className="text-[11px] font-black tracking-[0.08em] text-slate-400">批次缩略图</div>
-              <div className="text-[11px] text-slate-500">点按切换上方选中图</div>
-            </div>
-            <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-              {results.map((result, index) => (
-                <button
-                  className={`relative shrink-0 overflow-hidden rounded-[16px] border bg-[#0b0d12] ${
-                    result.id === selected?.id
-                      ? "border-cyan-300/70 shadow-[0_0_0_1px_rgba(103,232,249,0.28)]"
-                      : "border-white/8"
-                  }`}
-                  data-testid={`workbench-mobile-thumb-${generation.id}-${result.id}`}
-                  key={result.id}
-                  onClick={() => onSelectPreview(generation.id, result)}
-                  type="button"
-                >
-                  <span className="absolute left-2 top-2 z-10 rounded-full bg-black/70 px-1.5 py-0.5 text-[10px] font-black text-white">
-                    {index + 1}
-                  </span>
-                  {result.previewUrl ? (
-                    <img
-                      alt={result.originalFilename || "Workbench result"}
-                      className="h-[86px] w-[86px] object-cover"
-                      src={result.previewUrl}
-                    />
-                  ) : (
-                    <div className="grid h-[86px] w-[86px] place-items-center text-[10px] text-slate-500">等待中</div>
-                  )}
-                </button>
-              ))}
-            </div>
+      <div className="overflow-x-auto rounded-[6px] border border-white/8 bg-[#090b10] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div
+          className="grid min-w-full"
+          style={{ gridTemplateColumns: `repeat(${slots.length}, minmax(${slots.length > 4 ? "76px" : "0"}, 1fr))` }}
+        >
+        {slots.map((slot) => (
+          <div
+            className="relative aspect-[3/4] min-w-0 overflow-hidden border-r border-black/55 last:border-r-0"
+            data-testid={`workbench-mobile-feed-slot-${generation.id}`}
+            key={`${generation.id}-${slot.index}`}
+          >
+            {slot.kind === "result" ? (
+              <button
+                className="block h-full w-full"
+                data-testid={`workbench-mobile-thumb-${generation.id}-${slot.result.id}`}
+                onClick={() => {
+                  onSelectPreview(generation.id, slot.result);
+                  onSelectResult(slot.result);
+                }}
+                type="button"
+              >
+                {slot.result.previewUrl ? (
+                  <img
+                    alt={slot.result.originalFilename || "Workbench result"}
+                    className="h-full w-full object-cover"
+                    data-testid={`workbench-mobile-feed-image-${generation.id}-${slot.result.id}`}
+                    src={slot.result.previewUrl}
+                  />
+                ) : (
+                  <div className="h-full w-full bg-[linear-gradient(135deg,rgba(42,49,68,0.92),rgba(12,14,20,0.98))]" />
+                )}
+              </button>
+            ) : (
+              <div
+                className={`h-full w-full ${
+                  slot.kind === "failed"
+                    ? "bg-[linear-gradient(135deg,rgba(95,32,42,0.86),rgba(18,12,16,0.98))]"
+                    : "animate-pulse bg-[radial-gradient(circle_at_24%_20%,rgba(255,255,255,0.16),transparent_18%),linear-gradient(135deg,rgba(47,55,78,0.92),rgba(96,73,92,0.58),rgba(18,21,30,0.98))]"
+                }`}
+                data-testid={
+                  slot.kind === "failed"
+                    ? `workbench-mobile-feed-failed-slot-${generation.id}`
+                    : `workbench-mobile-feed-pending-slot-${generation.id}`
+                }
+              />
+            )}
           </div>
-        ) : null}
+        ))}
+        </div>
+      </div>
+
+      <div className="mt-2 flex items-center gap-1.5 px-1 text-[11px] font-medium text-slate-500">
+        <Clock3 size={12} />
+        <span>{statusLine}</span>
       </div>
     </article>
   );

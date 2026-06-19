@@ -51,6 +51,15 @@ Current deployment baseline:
 
 As of 2026-06-19:
 
+- mobile `/workbench` result area was rebuilt into the approved single chronological creation feed while preserving the existing top header, bottom creation bar, and mobile parameter sheet:
+  - the old large current-stage card and separate `Current Tasks` / `Completed` mobile sections were removed.
+  - generations now sort by `createdAt` ascending so newer work appears near the bottom input bar.
+  - each feed card shows creator-facing model/route/aspect/size metadata, fixed output slots, immediate completed thumbnails, and pending/failed placeholders for unfinished batch outputs.
+  - tapping a completed mobile feed image now opens the fullscreen original preview directly, while same-batch left/right navigation remains available there.
+- Validation:
+  - `npm run test -- src/workbench/WorkbenchPage.test.tsx` passed.
+  - `npm run build` passed.
+
 - Runtime frontend version reminder is in place for long-lived browser tabs:
   - `npm run build` now writes `dist/version.json` with build version, commit, and timestamp metadata.
   - the built `index.html` receives `window.__TAPFLOW_BUILD_VERSION__` so the running page knows its boot version.
