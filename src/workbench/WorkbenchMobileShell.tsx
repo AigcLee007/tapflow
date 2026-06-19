@@ -1,5 +1,5 @@
 import React from "react";
-import { ChevronLeft, Coins, History } from "lucide-react";
+import { ChevronLeft, Coins } from "lucide-react";
 
 import { BrandMark } from "../app/brand/BrandMark";
 import { HOME_ROUTE } from "../app/routes";
@@ -88,11 +88,11 @@ export function WorkbenchMobileShell({
         <div className="flex min-w-0 items-center gap-3">
           <button
             aria-label="返回首页"
-            className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.06] text-slate-200 transition hover:bg-white/[0.12]"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.06] text-slate-200 transition hover:bg-white/[0.12]"
             onClick={() => navigate(HOME_ROUTE)}
             type="button"
           >
-            <ChevronLeft size={18} />
+            <ChevronLeft size={16} />
           </button>
           <div className="flex min-w-0 items-center gap-3">
             <BrandMark showCaption={false} size="compact" />
@@ -108,13 +108,6 @@ export function WorkbenchMobileShell({
             <Coins size={13} />
             19071
           </div>
-          <button
-            aria-label="历史"
-            className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-white/[0.05] text-slate-200"
-            type="button"
-          >
-            <History size={15} />
-          </button>
         </div>
       </header>
 

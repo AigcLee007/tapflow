@@ -255,8 +255,9 @@ describe("WorkbenchPage", () => {
     expect(screen.getByTestId("workbench-mobile-create-bar").textContent).not.toContain("2K");
     expect(screen.getByTestId("workbench-mobile-bottom-dock").textContent).not.toContain("线路");
     expect(screen.getByTestId("workbench-mobile-bottom-dock").textContent).not.toContain("轻触打开完整创作面板");
-    expect(screen.getByTestId("workbench-mobile-create-bar").className).toContain("h-[50px]");
-    expect(screen.getByTestId("workbench-mobile-generate-button")).toBeTruthy();
+    expect(screen.getByTestId("workbench-mobile-create-bar").className).toContain("h-11");
+    expect(screen.queryByTestId("workbench-mobile-generate-button")).toBeNull();
+    expect(screen.queryByLabelText("打开参考图")).toBeNull();
     expect(screen.queryByTestId("workbench-mobile-legacy-launcher")).toBeNull();
   });
 
@@ -272,6 +273,8 @@ describe("WorkbenchPage", () => {
     expect(await screen.findByTestId("workbench-mobile-shell")).toBeTruthy();
     expect(screen.getByTestId("workbench-mobile-header")).toBeTruthy();
     expect(screen.getAllByText("创作工作台")).toHaveLength(1);
+    expect(screen.getByLabelText("返回首页").className).toContain("h-9");
+    expect(screen.queryByLabelText("历史")).toBeNull();
     expect(screen.getByTestId("workbench-mobile-scroll-area").className).toContain("overflow-x-hidden");
     expect(screen.getByTestId("workbench-mobile-scroll-area").className).toContain("overscroll-y-contain");
   });

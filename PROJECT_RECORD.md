@@ -73,6 +73,14 @@ As of 2026-06-18:
   - `npm run test -- src/workbench/WorkbenchPage.test.tsx` passed.
   - `npm run build` passed.
 
+- mobile `/workbench` follow-up adjusted the reviewed phone chrome:
+  - top-left back button was reduced from the oversized circle treatment.
+  - top-right history icon button was removed.
+  - bottom dock now keeps only the reference image's single pill input (`图片生成 > 请描述画面内容`) instead of a multi-control bottom bar.
+- Validation:
+  - `npm run test -- src/workbench/WorkbenchPage.test.tsx` passed.
+  - `npm run build` passed.
+
 - mobile `/workbench` shell has been refit for the approved phone workflow: mobile now uses a single compact top navigation header, a dedicated middle scroll container for results, and a JiMeng-style bottom creation bar that opens the existing mobile creation panel instead of duplicating a heavy summary dock; the current mobile creation panel content itself was intentionally preserved.
 - Validation:
   - `npm run test -- src/workbench/WorkbenchPage.test.tsx` passed.
