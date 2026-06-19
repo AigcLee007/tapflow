@@ -690,6 +690,7 @@ export class WorkbenchGenerationService {
       metadata: {
         displayMode: generation.display_mode,
         generationId: generation.id,
+        modelKey: generation.model_id,
         productModelId: generation.model_id,
         requestedCount: generation.requested_count,
         routeKey: generation.route_key,

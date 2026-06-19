@@ -183,6 +183,30 @@ As of 2026-06-13:
   - `npx vitest run src/app/WorkspaceShell.test.tsx src/billing/BillingCenterPage.test.tsx`
   - `npm run build`
 
+## 2026-06-19 - Billing Activity Feed Merge and Model-Line Label Cleanup
+
+- Merged the creator billing history presentation into a single user-facing activity table instead of separate `用量记录` and `账单流水` sections.
+- The new billing table now follows the approved single-creator format:
+  - time
+  - event
+  - model line
+  - parameters
+  - quantity
+  - credit delta
+  - status
+- Hidden technical fields from the creator-facing billing UI:
+  - backend model keys such as `pixellelabs.nano-banana-pro`
+  - raw model UUIDs
+  - idempotency keys
+  - reserve rows that would duplicate a later settlement row
+- Added creator-facing route/model label resolution so billing rows prefer product labels like `Nano Banana Pro 线路一` instead of backend ids.
+- Added frontend catalog-backed fallback mapping so historical billing rows can still resolve model and route labels even when usage metadata is incomplete.
+- Added worker-side billing metadata snapshots for new usage records so future workbench/workflow billing events carry `routeKey` and `modelKey` context for safer creator-facing display.
+- Validation:
+  - attempted `cmd /c npx vitest run src/billing/billingActivity.test.ts src/billing/BillingCenterPage.test.tsx`
+  - local test run is currently blocked in this session by filesystem write restrictions when Vitest tries to write `node_modules/.vite-temp/*`
+  - `npm run build` should be re-run in a writable session before release confirmation
+
 ## 2026-06-18 - Workbench Follow-up: Fixed Composer, Preview Fit, and Deletion Actions
 
 - Tightened the standalone `/workbench` desktop shell so the header consumes less vertical space and the two-column desktop layout gives the left parameter dock more usable height.

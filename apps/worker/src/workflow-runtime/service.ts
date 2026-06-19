@@ -202,6 +202,7 @@ type PreparedNodeExecutionResult =
 type ProviderExecutionOutcome = NodeExecutionOutcome | MediaProviderOutcome;
 
 type UsageRecordInput = {
+  metadata?: Record<string, unknown>;
   billableCents: number;
   eventType: string;
   idempotencyKey: string;
@@ -214,6 +215,8 @@ type UsageRecordInput = {
   rawCost?: string | number | null;
   reserveLedgerId?: string | null;
   routeId?: string | null;
+  routeKey?: string | null;
+  modelKey?: string | null;
   totalTokens: number | null;
   unitType?: string | null;
   units?: number | null;
@@ -1380,6 +1383,7 @@ export class WorkflowNodeExecutionService {
             currentNode.type === "video.generate" ? "video" : "image",
           ),
           inputTokens: pollResult.usage?.inputTokens ?? null,
+          modelKey: pollResult.modelKey ?? null,
           modality: currentNode.type === "video.generate" ? "video" : "image",
           modelId: pollResult.modelId ?? null,
           nodeRunId: currentNodeRun.id,
@@ -1388,6 +1392,7 @@ export class WorkflowNodeExecutionService {
           rawCost: pollResult.usage?.rawCost ?? null,
           reserveLedgerId: this.getReserveLedgerId(currentNodeRun),
           routeId: pollResult.routeId ?? null,
+          routeKey: pollResult.routeKey ?? null,
           totalTokens: pollResult.usage?.totalTokens ?? null,
           unitType: "output_count",
           units: outputJson.assets && Array.isArray(outputJson.assets) ? outputJson.assets.length : 0,
@@ -1557,6 +1562,7 @@ export class WorkflowNodeExecutionService {
           eventType: "ai.text.generate",
           idempotencyKey: this.buildUsageIdempotencyKey(context.tenantId, workflowRun.id, nodeRun.id, "text"),
           inputTokens: result.usage.inputTokens,
+          modelKey: result.modelKey ?? null,
           modality: "text",
           modelId: result.modelId ?? null,
           nodeRunId: nodeRun.id,
@@ -1565,6 +1571,7 @@ export class WorkflowNodeExecutionService {
           rawCost: result.usage.rawCost ?? null,
           reserveLedgerId: this.getReserveLedgerId(nodeRun),
           routeId: result.routeId ?? null,
+          routeKey: result.routeKey ?? null,
           totalTokens: result.usage.totalTokens,
           workflowRunId: workflowRun.id,
         }),
@@ -1792,6 +1799,10 @@ export class WorkflowNodeExecutionService {
           kind,
         ),
         inputTokens: result.usage?.inputTokens ?? null,
+        metadata: {
+          sourceNodeType: node.type,
+        },
+        modelKey: result.modelKey ?? null,
         modality: kind,
         modelId: result.modelId ?? null,
         nodeRunId: nodeRun.id,
@@ -1800,6 +1811,7 @@ export class WorkflowNodeExecutionService {
         rawCost: result.usage?.rawCost ?? null,
         reserveLedgerId: this.getReserveLedgerId(nodeRun),
         routeId: result.routeId ?? null,
+        routeKey: result.routeKey ?? null,
         totalTokens: result.usage?.totalTokens ?? null,
         unitType: "output_count",
         units: outputJson.assets && Array.isArray(outputJson.assets) ? outputJson.assets.length : 0,
@@ -2370,7 +2382,10 @@ export class WorkflowNodeExecutionService {
       idempotencyKey: input.idempotencyKey,
       inputTokens: input.inputTokens,
       metadata: {
+        ...(input.metadata ?? {}),
+        modelKey: input.modelKey ?? null,
         nodeRunId: input.nodeRunId,
+        routeKey: input.routeKey ?? null,
         workflowRunId: input.workflowRunId,
       },
       modality: input.modality,
@@ -2393,9 +2408,10 @@ export class WorkflowNodeExecutionService {
       metadata: {
         modality: input.modality,
         nodeRunId: input.nodeRunId,
-        reserveLedgerId: input.reserveLedgerId ?? null,
-        workflowRunId: input.workflowRunId,
-      },
+          reserveLedgerId: input.reserveLedgerId ?? null,
+          routeKey: input.routeKey ?? null,
+          workflowRunId: input.workflowRunId,
+        },
       reservedAmountCents: input.billableCents,
       usageEventId: usageEvent.id,
     });

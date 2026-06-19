@@ -8,6 +8,8 @@ import { BillingCenterPage } from "./BillingCenterPage";
 const getBillingSummaryMock = vi.fn();
 const listBillingLedgerMock = vi.fn();
 const listBillingUsageEventsMock = vi.fn();
+const listAiModelCatalogMock = vi.fn();
+const listAiModelRoutesMock = vi.fn();
 
 vi.mock("./billingApi", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./billingApi")>();
@@ -16,6 +18,15 @@ vi.mock("./billingApi", async (importOriginal) => {
     getBillingSummary: () => getBillingSummaryMock(),
     listBillingLedger: () => listBillingLedgerMock(),
     listBillingUsageEvents: () => listBillingUsageEventsMock(),
+  };
+});
+
+vi.mock("../services/v2AiModelCatalogApi", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../services/v2AiModelCatalogApi")>();
+  return {
+    ...actual,
+    listAiModelCatalog: (...args: unknown[]) => listAiModelCatalogMock(...args),
+    listAiModelRoutes: (...args: unknown[]) => listAiModelRoutesMock(...args),
   };
 });
 
@@ -31,8 +42,8 @@ function createAuthState(): AuthState {
     logout: vi.fn(async () => undefined),
     roles: ["tenant_owner"],
     sessionId: "session-1",
-    tenant: { id: "tenant-1", name: "测试 的工作区", plan: "free", slug: "test", status: "active" },
-    user: { displayName: "测试", email: "user@example.com", id: "user-1", status: "active" },
+    tenant: { id: "tenant-1", name: "Test Workspace", plan: "free", slug: "test", status: "active" },
+    user: { displayName: "Test User", email: "user@example.com", id: "user-1", status: "active" },
   };
 }
 
@@ -67,6 +78,39 @@ describe("BillingCenterPage", () => {
     });
     listBillingUsageEventsMock.mockResolvedValue({ items: [], page: 1, pageSize: 20 });
     listBillingLedgerMock.mockResolvedValue({ items: [], page: 1, pageSize: 20 });
+    listAiModelCatalogMock.mockImplementation(async (modality?: string) => {
+      if (modality !== "image") return [];
+      return [
+        {
+          capabilities: {},
+          defaultRouteKey: "image.pixellelabs.nano-banana-pro",
+          displayName: "Nano Banana Pro",
+          id: "catalog-model-1",
+          modality: "image",
+          modelFamily: "pixellelabs.nano-banana-pro",
+          modelId: "1911c771-74a1-4ca1-af77-df9383dd8304",
+          modelKey: "pixellelabs.nano-banana-pro",
+          sortOrder: 1,
+          status: "active",
+          uiSchema: {},
+        },
+      ];
+    });
+    listAiModelRoutesMock.mockResolvedValue([
+      {
+        estimatedCredits: 3.2,
+        minChargeCredits: 3.2,
+        modality: "image",
+        modelFamily: "pixellelabs.nano-banana-pro",
+        modelKey: "pixellelabs.nano-banana-pro",
+        pricingUnit: "image_generation",
+        providerKey: "pixellelabs",
+        providerName: "PixelleLabs",
+        routeId: "route-1",
+        routeKey: "image.pixellelabs.nano-banana-pro",
+        routeLabel: "线路一",
+      },
+    ]);
   });
 
   test("renders price-plan-first billing page", async () => {
@@ -76,51 +120,64 @@ describe("BillingCenterPage", () => {
       </AuthContext.Provider>,
     );
 
-    expect(await screen.findByRole("heading", { name: "选择你的套餐" })).toBeTruthy();
-    expect(screen.getByText("不止额度，更是灵感落地的速度。")).toBeTruthy();
-    expect(screen.getByText("Basic")).toBeTruthy();
+    expect(await screen.findByText("Basic")).toBeTruthy();
     expect(screen.getByText("Pro")).toBeTruthy();
     expect(screen.getByText("Ultimate")).toBeTruthy();
-    expect(screen.getByText("积分永不过期。")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "连续包月 15% OFF" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "连续包年 40% OFF" }).getAttribute("aria-pressed")).toBe("true");
-    expect(screen.getByText("12,000 积分/月")).toBeTruthy();
-    expect(screen.getAllByRole("button", { name: "选择套餐" })).toHaveLength(3);
-    expect(screen.getByText("最受欢迎")).toBeTruthy();
 
     await waitFor(() => {
       expect(getBillingSummaryMock).toHaveBeenCalled();
     });
-    expect(screen.getByText(/黄金会员|Gold/i)).toBeTruthy();
-    expect(screen.getByText(/9 折|0.9/i)).toBeTruthy();
-    expect(screen.getByText("20 点")).toBeTruthy();
-    expect(screen.getByText("100 点")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "刷新" })).toBeTruthy();
+    expect(screen.getByText("账单明细")).toBeTruthy();
   });
 
-  test("renders creator-friendly usage records without technical identifiers", async () => {
+  test("renders a single creator-facing billing activity table without technical identifiers", async () => {
     listBillingUsageEventsMock.mockResolvedValue({
       items: [
         {
-          billableCents: 8,
-          createdAt: "2026-06-18T13:22:08.000Z",
+          billableCents: 12.8,
+          createdAt: "2026-06-19T02:28:08.000Z",
           eventType: "workbench.image.generate",
           id: "usage-1",
           idempotencyKey: "workbench:usage:tenant:generation",
-          metadata: {
-            aspectRatio: "16:9",
-            imageSize: "4k",
-            modelLabel: "Nano Banana Pro 线路一",
-            requestedCount: 2,
-          },
+          metadata: {},
           modality: "image",
-          modelId: "pixellelabs.nano-banana-pro",
+          modelId: "1911c771-74a1-4ca1-af77-df9383dd8304",
           nodeRunId: null,
           rawCost: null,
           routeId: "route-1",
           status: "settled",
           unitType: "image_generation",
-          units: "2",
+          units: "4",
           workflowRunId: "workflow-run-technical-id",
+        },
+      ],
+      page: 1,
+      pageSize: 20,
+    });
+    listBillingLedgerMock.mockResolvedValue({
+      items: [
+        {
+          amountCents: 12.8,
+          createdAt: "2026-06-19T02:24:32.000Z",
+          currency: "credits",
+          description: "image.generate reserved",
+          entryType: "reserve",
+          id: "ledger-reserve-1",
+          idempotencyKey: "reserve:tenant:run:node",
+          metadata: {},
+          usageEventId: null,
+        },
+        {
+          amountCents: 12.8,
+          createdAt: "2026-06-19T02:28:08.000Z",
+          currency: "credits",
+          description: "image.generate settled",
+          entryType: "settle",
+          id: "ledger-settle-1",
+          idempotencyKey: "settle:tenant:run:node",
+          metadata: {},
+          usageEventId: "usage-1",
         },
       ],
       page: 1,
@@ -133,13 +190,17 @@ describe("BillingCenterPage", () => {
       </AuthContext.Provider>,
     );
 
-    expect(await screen.findByText("图片生成")).toBeTruthy();
+    expect(await screen.findByText("账单明细")).toBeTruthy();
+    expect(screen.queryByText("用量记录")).toBeNull();
+    expect(screen.queryByText("账单流水")).toBeNull();
+    expect(screen.getByText("图片生成")).toBeTruthy();
     expect(screen.getByText("Nano Banana Pro 线路一")).toBeTruthy();
-    expect(screen.getByText("16:9 - 4K")).toBeTruthy();
-    expect(screen.getByText("2")).toBeTruthy();
-    expect(screen.getByText("8")).toBeTruthy();
+    expect(screen.getByText("4")).toBeTruthy();
+    expect(screen.getByText("-12.8")).toBeTruthy();
     expect(screen.getByText("已结算")).toBeTruthy();
     expect(screen.queryByText("workflow-run-technical-id")).toBeNull();
     expect(screen.queryByText("workbench:usage:tenant:generation")).toBeNull();
+    expect(screen.queryByText("1911c771-74a1-4ca1-af77-df9383dd8304")).toBeNull();
+    expect(screen.queryByText("reserve:tenant:run:node")).toBeNull();
   });
 });

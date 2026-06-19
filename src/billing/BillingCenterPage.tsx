@@ -2,9 +2,14 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Check, Flame, Loader2, RefreshCw, Zap } from "lucide-react";
 
 import { useAuth } from "../auth/useAuth";
-import { BillingLedgerTable } from "./BillingLedgerTable";
+import {
+  buildBillingActivityRows,
+  getEmptyBillingDisplayCatalog,
+  loadBillingDisplayCatalog,
+  type BillingDisplayCatalog,
+} from "./billingActivity";
+import { BillingActivityTable } from "./BillingActivityTable";
 import { BillingSummaryCards } from "./BillingSummaryCards";
-import { BillingUsageTable } from "./BillingUsageTable";
 import { RechargePanel } from "./RechargePanel";
 import { RedeemCodeBox } from "./RedeemCodeBox";
 import {
@@ -53,6 +58,7 @@ export function BillingCenterPage() {
   const [summary, setSummary] = useState<BillingSummary | null>(null);
   const [ledger, setLedger] = useState<BillingLedgerEntry[]>([]);
   const [usage, setUsage] = useState<BillingUsageEvent[]>([]);
+  const [displayCatalog, setDisplayCatalog] = useState<BillingDisplayCatalog>(() => getEmptyBillingDisplayCatalog());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const requestSequenceRef = useRef(0);
@@ -113,6 +119,19 @@ export function BillingCenterPage() {
     void refresh();
   }, [identityKey, refresh]);
 
+  useEffect(() => {
+    let active = true;
+    void loadBillingDisplayCatalog()
+      .then((catalog) => {
+        if (!active) return;
+        setDisplayCatalog(catalog);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const showLocalQaHint =
     import.meta.env.DEV &&
     !loading &&
@@ -122,6 +141,10 @@ export function BillingCenterPage() {
     summary.account.reservedCents === 0 &&
     usage.length === 0 &&
     ledger.length === 0;
+  const activityRows = useMemo(
+    () => buildBillingActivityRows(usage, ledger, displayCatalog),
+    [displayCatalog, ledger, usage],
+  );
 
   return (
     <div className="relative -mx-6 -my-9 min-h-[calc(100vh-80px)] overflow-hidden px-6 py-16 sm:px-8 lg:py-20">
@@ -234,8 +257,7 @@ export function BillingCenterPage() {
 
       <div className="relative mx-auto mt-4 grid max-w-[1760px] gap-4 xl:grid-cols-[1fr_360px]">
         <div className="space-y-4">
-          <BillingUsageTable items={usage} />
-          <BillingLedgerTable items={ledger} />
+          <BillingActivityTable items={activityRows} />
         </div>
         <div className="space-y-4">
           <RedeemCodeBox onRedeemed={refresh} />
