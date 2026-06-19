@@ -530,6 +530,91 @@ describe("WorkbenchPage", () => {
     expect(screen.getByTestId("workbench-result-fullscreen-image").className).toContain("max-w-[calc(100vw-48px)]");
   });
 
+  test("supports switching images inside fullscreen preview for the same mobile batch", async () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 390,
+    });
+    getAssetVariantUrlMock.mockImplementation(async (assetId: string, variantKey?: string) => ({
+      expiresAt: new Date(Date.now() + 900000).toISOString(),
+      method: "GET",
+      url: variantKey === "preview"
+        ? `https://example.com/${assetId}-preview.webp`
+        : `https://example.com/${assetId}-original.png`,
+      variantKey: variantKey ?? null,
+    }));
+    listWorkbenchGenerationsMock.mockResolvedValue({
+      generations: [
+        createGeneration({
+          id: "mobile-preview-batch",
+          requestedCount: 2,
+          status: "succeeded",
+          results: [
+            {
+              assetId: "mobile-preview-asset-1",
+              createdAt: new Date().toISOString(),
+              downloadUrl: null,
+              downloadUrlExpiresAt: null,
+              height: 1024,
+              id: "mobile-preview-result-1",
+              metadata: {},
+              mimeType: "image/png",
+              originalFilename: "mobile-preview-1.png",
+              previewUrl: "https://example.com/mobile-preview-1-thumb.webp",
+              previewUrlExpiresAt: null,
+              sortOrder: 0,
+              status: "available",
+              width: 1024,
+            },
+            {
+              assetId: "mobile-preview-asset-2",
+              createdAt: new Date().toISOString(),
+              downloadUrl: null,
+              downloadUrlExpiresAt: null,
+              height: 1024,
+              id: "mobile-preview-result-2",
+              metadata: {},
+              mimeType: "image/png",
+              originalFilename: "mobile-preview-2.png",
+              previewUrl: "https://example.com/mobile-preview-2-thumb.webp",
+              previewUrlExpiresAt: null,
+              sortOrder: 1,
+              status: "available",
+              width: 1024,
+            },
+          ],
+        }),
+      ],
+      nextCursor: null,
+    });
+
+    setRoute("/workbench");
+    renderRouter();
+
+    expect(await screen.findByTestId("workbench-mobile-result-feed")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("workbench-mobile-thumb-mobile-preview-batch-mobile-preview-result-2"));
+    fireEvent.click(screen.getByTestId("workbench-mobile-stage-image-mobile-preview-batch"));
+
+    await screen.findByTestId("workbench-result-fullscreen");
+    expect(screen.getByTestId("workbench-result-fullscreen-image").getAttribute("src")).toBe(
+      "https://example.com/mobile-preview-asset-2-original.png",
+    );
+
+    fireEvent.click(screen.getByTestId("workbench-result-fullscreen-prev"));
+    await waitFor(() => {
+      expect(screen.getByTestId("workbench-result-fullscreen-image").getAttribute("src")).toBe(
+        "https://example.com/mobile-preview-asset-1-original.png",
+      );
+    });
+
+    fireEvent.click(screen.getByTestId("workbench-result-fullscreen-next"));
+    await waitFor(() => {
+      expect(screen.getByTestId("workbench-result-fullscreen-image").getAttribute("src")).toBe(
+        "https://example.com/mobile-preview-asset-2-original.png",
+      );
+    });
+  });
+
   test("completed result cards expose download original, use as reference, and delete record actions", async () => {
     const openMock = vi.fn();
     vi.stubGlobal("open", openMock);

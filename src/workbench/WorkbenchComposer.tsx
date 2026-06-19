@@ -243,6 +243,7 @@ function WorkbenchSelect({
 }
 
 function ReferenceImageCard({
+  compact = false,
   assetId,
   index,
   onDragEnd,
@@ -252,6 +253,7 @@ function ReferenceImageCard({
   onRemove,
   preview,
 }: {
+  compact?: boolean;
   assetId: string;
   index: number;
   onDragEnd: () => void;
@@ -264,7 +266,9 @@ function ReferenceImageCard({
   const imageUrl = preview.localPreviewUrl || preview.previewUrl;
   return (
     <div
-      className="group relative h-[54px] w-[54px] shrink-0 cursor-grab overflow-hidden rounded-[9px] border border-[#4c5667] bg-[#182031] active:cursor-grabbing"
+      className={`group relative shrink-0 cursor-grab overflow-hidden border border-[#4c5667] bg-[#182031] active:cursor-grabbing ${
+        compact ? "h-[88px] w-[72px] snap-start rounded-[14px]" : "h-[54px] w-[54px] rounded-[9px]"
+      }`}
       data-testid={`workbench-reference-card-${index}`}
       draggable
       onDragEnd={onDragEnd}
@@ -282,20 +286,32 @@ function ReferenceImageCard({
       }}
     >
       {imageUrl ? (
-        <img alt={`${TEXT.reference}${index}`} className="h-full w-full object-cover" src={imageUrl} />
+        <img
+          alt={`${TEXT.reference}${index}`}
+          className="h-full w-full object-cover"
+          src={imageUrl}
+        />
       ) : (
         <div className="grid h-full place-items-center text-[11px] font-bold text-slate-500">
           {preview.loading ? TEXT.loading : TEXT.noPreview}
         </div>
       )}
-      <button
-        className="absolute inset-0"
-        onClick={onInsertMention}
-        title={`${TEXT.insertReference} @${TEXT.imagePrefix}${index}`}
-        type="button"
-      />
-      <div className="absolute bottom-1.5 left-1.5 rounded-[5px] bg-black/70 px-1.5 py-0.5 text-[11px] font-black leading-none text-white ring-1 ring-white/15">
-        {TEXT.imagePrefix}{index}
+      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/68 to-transparent px-1.5 pb-1.5 pt-8">
+        <div className="flex items-center justify-between gap-1">
+          <div className="rounded-[6px] bg-black/50 px-1.5 py-0.5 text-[10px] font-black leading-none text-white ring-1 ring-white/15">
+            {TEXT.imagePrefix}{index}
+          </div>
+          <button
+            className={`rounded-full border border-white/15 bg-white/10 px-2 py-1 text-[10px] font-black leading-none text-white transition hover:bg-white hover:text-black ${
+              compact ? "min-w-[44px]" : ""
+            }`}
+            onClick={onInsertMention}
+            title={`${TEXT.insertReference} @${TEXT.imagePrefix}${index}`}
+            type="button"
+          >
+            @{TEXT.imagePrefix}{index}
+          </button>
+        </div>
       </div>
       <button
         aria-label={`${TEXT.removeReference}${index}`}
@@ -309,14 +325,16 @@ function ReferenceImageCard({
   );
 }
 
-function EmptyReferenceTile({ onClick }: { onClick: () => void }) {
+function EmptyReferenceTile({ compact = false, onClick }: { compact?: boolean; onClick: () => void }) {
   return (
     <button
-      className="grid h-[54px] w-[54px] shrink-0 place-items-center rounded-[9px] border border-[#46546b] bg-[#192336] text-slate-300 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]"
+      className={`grid shrink-0 place-items-center border border-[#46546b] bg-[#192336] text-slate-300 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)] ${
+        compact ? "h-[88px] w-[72px] snap-start rounded-[14px]" : "h-[54px] w-[54px] rounded-[9px]"
+      }`}
       onClick={onClick}
       type="button"
     >
-      <span className="grid h-[34px] w-[34px] place-items-center rounded-[8px] border border-dashed border-[#8a99ad] text-[20px] font-light leading-none">+</span>
+      <span className={`grid place-items-center border border-dashed border-[#8a99ad] font-light leading-none ${compact ? "h-[42px] w-[42px] rounded-[12px] text-[22px]" : "h-[34px] w-[34px] rounded-[8px] text-[20px]"}`}>+</span>
     </button>
   );
 }
@@ -593,7 +611,7 @@ export function WorkbenchComposer({
       }`}
     >
       <div data-testid="workbench-composer-scroll-body" className={scrollBodyClassName}>
-      <section className="rounded-[8px] border border-dashed border-[#334153] bg-[#11151b] p-2">
+      <section className={`rounded-[8px] border border-dashed border-[#334153] bg-[#11151b] ${compact ? "p-2.5" : "p-2"}`}>
         <input
           accept="image/*"
           className="hidden"
@@ -634,17 +652,21 @@ export function WorkbenchComposer({
           </div>
         </div>
 
+        <div className="relative">
         <div
-          className="flex min-h-[60px] gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className={`flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
+            compact ? "min-h-[94px] snap-x snap-mandatory overscroll-x-contain pr-3" : "min-h-[60px]"
+          }`}
           data-scrollbar="visible"
           data-testid="workbench-reference-strip"
           onScroll={updateReferenceScroll}
           ref={referenceStripRef}
         >
-          {visibleReferenceIds.length === 0 ? <EmptyReferenceTile onClick={openUpload} /> : null}
+          {visibleReferenceIds.length === 0 ? <EmptyReferenceTile compact={compact} onClick={openUpload} /> : null}
           {visibleReferenceIds.map((assetId, index) => (
             <ReferenceImageCard
               assetId={assetId}
+              compact={compact}
               index={index + 1}
               key={assetId}
               onDragEnd={() => {
@@ -670,42 +692,70 @@ export function WorkbenchComposer({
             />
           ))}
         </div>
+        {compact && visibleReferenceIds.length > 0 ? (
+          <>
+            <div className="pointer-events-none absolute inset-y-0 left-0 w-5 bg-gradient-to-r from-[#11151b] to-transparent" />
+            <div className="pointer-events-none absolute inset-y-0 right-0 w-5 bg-gradient-to-l from-[#11151b] to-transparent" />
+          </>
+        ) : null}
+        </div>
         {referenceScroll.overflow ? (
-          <div
-            className="mt-1 grid h-[10px] grid-cols-[14px_minmax(0,1fr)_14px] items-center rounded-[3px] bg-[#202832]"
-            data-testid="workbench-reference-scrollbar"
-          >
-            <button
-              aria-label="Scroll references left"
-              className="grid h-full place-items-center text-[#6f7884] hover:text-slate-200"
-              data-testid="workbench-reference-scrollbar-prev"
-              onClick={() => scrollReferenceStrip(-1)}
-              type="button"
-            >
-              <span className="h-0 w-0 border-y-[4px] border-r-[5px] border-y-transparent border-r-current" />
-            </button>
+          compact ? (
             <div
-              className="h-[8px] rounded-[3px] bg-[#29323c] px-[2px]"
-              data-testid="workbench-reference-scrollbar-track"
-              onClick={jumpReferenceStrip}
+              className="mt-2 flex items-center gap-2"
+              data-testid="workbench-reference-scrollbar"
             >
               <div
-                className="h-[6px] cursor-grab rounded-[3px] bg-[#6f7884] active:cursor-grabbing"
-                data-testid="workbench-reference-scrollbar-thumb"
-                onPointerDown={dragReferenceThumb}
-                style={{ marginLeft: `${referenceScroll.left}%`, width: `${referenceScroll.width}%` }}
-              />
+                className="relative h-[4px] flex-1 rounded-full bg-white/10"
+                data-testid="workbench-reference-scrollbar-track"
+                onClick={jumpReferenceStrip}
+              >
+                <div
+                  className="absolute top-0 h-[4px] cursor-grab rounded-full bg-cyan-300/80 shadow-[0_0_10px_rgba(103,232,249,0.38)] active:cursor-grabbing"
+                  data-testid="workbench-reference-scrollbar-thumb"
+                  onPointerDown={dragReferenceThumb}
+                  style={{ left: `${referenceScroll.left}%`, width: `${referenceScroll.width}%` }}
+                />
+              </div>
+              <div className="text-[10px] font-bold text-slate-500">滑动切换</div>
             </div>
-            <button
-              aria-label="Scroll references right"
-              className="grid h-full place-items-center text-[#6f7884] hover:text-slate-200"
-              data-testid="workbench-reference-scrollbar-next"
-              onClick={() => scrollReferenceStrip(1)}
-              type="button"
+          ) : (
+            <div
+              className="mt-1 grid h-[10px] grid-cols-[14px_minmax(0,1fr)_14px] items-center rounded-[3px] bg-[#202832]"
+              data-testid="workbench-reference-scrollbar"
             >
-              <span className="h-0 w-0 border-y-[4px] border-l-[5px] border-y-transparent border-l-current" />
-            </button>
-          </div>
+              <button
+                aria-label="Scroll references left"
+                className="grid h-full place-items-center text-[#6f7884] hover:text-slate-200"
+                data-testid="workbench-reference-scrollbar-prev"
+                onClick={() => scrollReferenceStrip(-1)}
+                type="button"
+              >
+                <span className="h-0 w-0 border-y-[4px] border-r-[5px] border-y-transparent border-r-current" />
+              </button>
+              <div
+                className="h-[8px] rounded-[3px] bg-[#29323c] px-[2px]"
+                data-testid="workbench-reference-scrollbar-track"
+                onClick={jumpReferenceStrip}
+              >
+                <div
+                  className="h-[6px] cursor-grab rounded-[3px] bg-[#6f7884] active:cursor-grabbing"
+                  data-testid="workbench-reference-scrollbar-thumb"
+                  onPointerDown={dragReferenceThumb}
+                  style={{ marginLeft: `${referenceScroll.left}%`, width: `${referenceScroll.width}%` }}
+                />
+              </div>
+              <button
+                aria-label="Scroll references right"
+                className="grid h-full place-items-center text-[#6f7884] hover:text-slate-200"
+                data-testid="workbench-reference-scrollbar-next"
+                onClick={() => scrollReferenceStrip(1)}
+                type="button"
+              >
+                <span className="h-0 w-0 border-y-[4px] border-l-[5px] border-y-transparent border-l-current" />
+              </button>
+            </div>
+          )
         ) : null}
       </section>
 

@@ -27,6 +27,13 @@ export function WorkbenchMobileResultFeed({
   onUseAsReference,
   selectedResultIds,
 }: Props) {
+  const activeGenerations = generations.filter((generation) =>
+    generation.status !== "succeeded" && generation.status !== "failed" && generation.status !== "canceled",
+  );
+  const completedGenerations = generations.filter((generation) =>
+    generation.status === "succeeded" || generation.status === "failed" || generation.status === "canceled",
+  );
+
   return (
     <section className="grid gap-4 pb-[132px]" data-testid="workbench-mobile-result-feed">
       {generations.length === 0 ? (
@@ -38,20 +45,61 @@ export function WorkbenchMobileResultFeed({
         </div>
       ) : null}
 
-      {generations.map((generation) => (
-        <WorkbenchMobileResultCard
-          generation={generation}
-          key={generation.id}
-          models={models}
-          onDelete={onDeleteGeneration}
-          onDownloadOriginal={onDownloadOriginal}
-          onSelectPreview={onSelectPreview}
-          onSelectResult={onSelectResult}
-          onUseAsReference={onUseAsReference}
-          results={getDisplayResults(generation)}
-          selectedResultId={selectedResultIds[generation.id] ?? null}
-        />
-      ))}
+      {activeGenerations.length > 0 ? (
+        <div className="grid gap-3">
+          <div className="flex items-center justify-between px-1">
+            <div>
+              <div className="text-[11px] font-black uppercase tracking-[0.18em] text-cyan-300">Current Tasks</div>
+              <div className="mt-1 text-[14px] font-bold text-white">正在进行或等待中的任务</div>
+            </div>
+            <div className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2.5 py-1 text-[10px] font-black text-cyan-200">
+              {activeGenerations.length}
+            </div>
+          </div>
+          {activeGenerations.map((generation) => (
+            <WorkbenchMobileResultCard
+              generation={generation}
+              key={generation.id}
+              models={models}
+              onDelete={onDeleteGeneration}
+              onDownloadOriginal={onDownloadOriginal}
+              onSelectPreview={onSelectPreview}
+              onSelectResult={onSelectResult}
+              onUseAsReference={onUseAsReference}
+              results={getDisplayResults(generation)}
+              selectedResultId={selectedResultIds[generation.id] ?? null}
+            />
+          ))}
+        </div>
+      ) : null}
+
+      {completedGenerations.length > 0 ? (
+        <div className="grid gap-3">
+          <div className="flex items-center justify-between px-1">
+            <div>
+              <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">Completed</div>
+              <div className="mt-1 text-[14px] font-bold text-white">最近完成的结果</div>
+            </div>
+            <div className="rounded-full border border-white/10 bg-white/[0.05] px-2.5 py-1 text-[10px] font-black text-slate-300">
+              {completedGenerations.length}
+            </div>
+          </div>
+          {completedGenerations.map((generation) => (
+            <WorkbenchMobileResultCard
+              generation={generation}
+              key={generation.id}
+              models={models}
+              onDelete={onDeleteGeneration}
+              onDownloadOriginal={onDownloadOriginal}
+              onSelectPreview={onSelectPreview}
+              onSelectResult={onSelectResult}
+              onUseAsReference={onUseAsReference}
+              results={getDisplayResults(generation)}
+              selectedResultId={selectedResultIds[generation.id] ?? null}
+            />
+          ))}
+        </div>
+      ) : null}
     </section>
   );
 }

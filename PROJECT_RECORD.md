@@ -51,6 +51,11 @@ Current deployment baseline:
 
 As of 2026-06-18:
 
+- mobile `/workbench` second-stage polish is now in place on top of the new mobile shell: fullscreen result preview supports same-batch left/right switching with a bottom thumbnail rail, the mobile reference strip has stronger thumbnail treatment with clearer `@图N` insertion affordances plus mobile-style swipe feedback, and mobile result cards now separate active vs completed sections with cleaner creator-facing parameter chips and a more product-like action menu.
+- Validation:
+  - `npm run test -- src/workbench/WorkbenchPage.test.tsx` passed.
+  - `npm run build` passed.
+
 - Single-creator SaaS user/billing direction implemented in the v2 path: normal login no longer asks creators for tenant ID, and the account page no longer exposes internal user IDs, tenant IDs, raw roles, or raw permissions to normal users.
 - Billing now has membership-tier semantics for `standard`, `silver`, `gold`, and `platinum`, with generation reserve discounts of 100%, 95%, 90%, and 80% respectively.
 - Billing schema now includes expiring credit grants and per-reserve grant allocations, so credits can be issued as 1-month, 3-month, 1-year, custom, or lifetime batches and spent from expiring grants before lifetime grants.

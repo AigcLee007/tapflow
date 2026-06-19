@@ -51,6 +51,16 @@ export function WorkbenchMobileShell({
   const [selectedResultIds, setSelectedResultIds] = React.useState<Record<string, string | null>>({});
   const featuredGeneration = getFeaturedGeneration(generations);
   const featuredResult = featuredGeneration ? getPrimaryResult(featuredGeneration) : null;
+  const featuredDisplayResults = React.useMemo(
+    () => (featuredGeneration ? getDisplayResults(featuredGeneration) : []),
+    [featuredGeneration, getDisplayResults],
+  );
+  const featuredSelectedResult = React.useMemo(() => {
+    if (!featuredGeneration) return featuredResult;
+    const selectedId = selectedResultIds[featuredGeneration.id];
+    return featuredDisplayResults.find((result) => result.id === selectedId) ?? featuredResult;
+  }, [featuredDisplayResults, featuredGeneration, featuredResult, selectedResultIds]);
+  const featuredPreviewUrlResolved = featuredSelectedResult?.previewUrl || featuredPreviewUrl;
   const modelLabel = models.find((model) => model.id === draft.modelId)?.label || draft.modelId;
 
   const handleSelectPreview = React.useCallback((generationId: string, result: WorkbenchResult) => {
@@ -105,16 +115,16 @@ export function WorkbenchMobileShell({
               <div className="grid h-[280px] place-items-center rounded-[20px] border border-white/8 bg-black/20 text-sm text-slate-400">
                 正在加载工作台内容...
               </div>
-            ) : featuredResult && featuredPreviewUrl ? (
+            ) : featuredSelectedResult && featuredPreviewUrlResolved ? (
               <button
                 className="block w-full overflow-hidden rounded-[20px] border border-white/10 bg-black/30 text-left"
-                onClick={() => onOpenResult(featuredResult)}
+                onClick={() => featuredSelectedResult && onOpenResult(featuredSelectedResult)}
                 type="button"
               >
                 <img
-                  alt={featuredResult.originalFilename || "Workbench result"}
+                  alt={featuredSelectedResult.originalFilename || "Workbench result"}
                   className="max-h-[320px] w-full object-contain"
-                  src={featuredPreviewUrl}
+                  src={featuredPreviewUrlResolved}
                 />
                 <div className="px-4 pb-4 pt-3">
                   <div className="line-clamp-2 text-[15px] font-bold text-white">{featuredGeneration?.prompt}</div>

@@ -918,6 +918,7 @@ export function WorkbenchPage() {
   const { error, generations, loading, remove, retry, submit, submitting } = useWorkbenchGenerations();
   const [draft, setDraft] = React.useState(() => createDefaultWorkbenchDraft());
   const [selectedResult, setSelectedResult] = React.useState<WorkbenchResult | null>(null);
+  const [selectedResultBatch, setSelectedResultBatch] = React.useState<WorkbenchResult[]>([]);
   const [sendDialogOpen, setSendDialogOpen] = React.useState(false);
   const viewportWidth = useViewportWidth();
   const isDesktop = viewportWidth >= 1024;
@@ -954,6 +955,7 @@ export function WorkbenchPage() {
       const created = await sendWorkbenchResultToProject(selectedResult.id, input);
       setSendDialogOpen(false);
       setSelectedResult(null);
+      setSelectedResultBatch([]);
       navigate(`/projects/${created.projectId}`);
     },
     [selectedResult],
@@ -984,6 +986,14 @@ export function WorkbenchPage() {
   const handleDeleteGeneration = React.useCallback((generationId: string) => {
     void remove(generationId);
   }, [remove]);
+
+  const openResultPreview = React.useCallback((result: WorkbenchResult) => {
+    const matchedGeneration = generations.find((generation) =>
+      getGenerationDisplayResults(generation).some((item) => item.id === result.id),
+    );
+    setSelectedResult(result);
+    setSelectedResultBatch(matchedGeneration ? getGenerationDisplayResults(matchedGeneration) : [result]);
+  }, [generations]);
 
   const featuredGeneration = getFeaturedGeneration(generations);
   const activeGenerations = React.useMemo(
@@ -1098,7 +1108,7 @@ export function WorkbenchPage() {
               onDownloadOriginal={handleDownloadOriginal}
               onReuseParams={reuseParams}
               onRetry={(generationId) => void retry(generationId)}
-              onSelectResult={setSelectedResult}
+              onSelectResult={openResultPreview}
               onUseAsReference={handleUseAsReference}
             />
           </div>
@@ -1118,7 +1128,7 @@ export function WorkbenchPage() {
             onDeleteGeneration={handleDeleteGeneration}
             onDownloadOriginal={handleDownloadOriginal}
             onGenerate={() => void submit(draft)}
-            onOpenResult={setSelectedResult}
+            onOpenResult={openResultPreview}
             onUseAsReference={handleUseAsReference}
             routeLabel={routeLabel}
           />
@@ -1137,7 +1147,7 @@ export function WorkbenchPage() {
             <WorkbenchStage
               generation={featuredGeneration}
               loading={loading}
-              onSelectResult={setSelectedResult}
+              onSelectResult={openResultPreview}
             />
 
             <div className="md:col-start-2 xl:col-start-3">
@@ -1164,7 +1174,7 @@ export function WorkbenchPage() {
                         onDownloadOriginal={handleDownloadOriginal}
                         onReuseParams={reuseParams}
                         onRetry={(generationId) => void retry(generationId)}
-                        onSelectResult={setSelectedResult}
+                        onSelectResult={openResultPreview}
                         onUseAsReference={handleUseAsReference}
                       />
                     ))}
@@ -1182,7 +1192,11 @@ export function WorkbenchPage() {
         open={sendDialogOpen}
       />
       <WorkbenchResultSheet
-        onClose={() => setSelectedResult(null)}
+        batchResults={selectedResultBatch}
+        onClose={() => {
+          setSelectedResult(null);
+          setSelectedResultBatch([]);
+        }}
         onSendToProject={() => setSendDialogOpen(true)}
         result={selectedResult}
       />
