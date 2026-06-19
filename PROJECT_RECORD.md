@@ -2817,3 +2817,10 @@ Validation completed:
   - 4-image ultra-wide batches use a 2x2 JiMeng-style grid with matching pending placeholders
 - validation:
   - `npm run test -- src/workbench/WorkbenchPage.test.tsx`
+
+- follow-up cache refinement:
+  - added a 5-minute `sessionStorage` UI snapshot for workbench generations so closing and reopening `/workbench` in the same browser session restores the latest result feed immediately even after the in-memory cache is gone
+  - kept the server list endpoint authoritative by refreshing in the background after restoring the snapshot
+  - added regression coverage for session cache restoration and test cache isolation
+- validation:
+  - `npm run test -- src/workbench/WorkbenchPage.test.tsx`

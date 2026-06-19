@@ -12,7 +12,9 @@ import { buildWorkbenchRequestParams } from "./workbenchModelParams";
 import { getReferencedAssetIdsForPrompt } from "./workbenchReferences";
 import type { WorkbenchDraft } from "./workbenchTypes";
 
-const WORKBENCH_GENERATION_CACHE_TTL_MS = 15_000;
+const WORKBENCH_GENERATION_MEMORY_CACHE_TTL_MS = 15_000;
+const WORKBENCH_GENERATION_SESSION_CACHE_TTL_MS = 5 * 60 * 1000;
+const WORKBENCH_GENERATION_SESSION_CACHE_KEY = "tapflow.workbench.generations.v1";
 
 let generationMemoryCache: {
   generations: WorkbenchGenerationView[];
@@ -23,9 +25,57 @@ export function clearWorkbenchGenerationMemoryCache() {
   generationMemoryCache = null;
 }
 
+function clearWorkbenchGenerationSessionCache() {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.removeItem(WORKBENCH_GENERATION_SESSION_CACHE_KEY);
+  } catch {
+    // Ignore storage failures; server data remains authoritative.
+  }
+}
+
+function readWorkbenchGenerationSessionCache() {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(WORKBENCH_GENERATION_SESSION_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as {
+      generations?: unknown;
+      updatedAt?: unknown;
+    };
+    if (
+      typeof parsed.updatedAt !== "number"
+      || Date.now() - parsed.updatedAt > WORKBENCH_GENERATION_SESSION_CACHE_TTL_MS
+      || !Array.isArray(parsed.generations)
+    ) {
+      clearWorkbenchGenerationSessionCache();
+      return null;
+    }
+    return parsed.generations as WorkbenchGenerationView[];
+  } catch {
+    clearWorkbenchGenerationSessionCache();
+    return null;
+  }
+}
+
+function writeWorkbenchGenerationSessionCache(generations: WorkbenchGenerationView[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(
+      WORKBENCH_GENERATION_SESSION_CACHE_KEY,
+      JSON.stringify({
+        generations,
+        updatedAt: Date.now(),
+      }),
+    );
+  } catch {
+    // Ignore quota/private-mode failures; memory cache still improves soft navigation.
+  }
+}
+
 function readWorkbenchGenerationMemoryCache() {
   if (!generationMemoryCache) return null;
-  if (Date.now() - generationMemoryCache.updatedAt > WORKBENCH_GENERATION_CACHE_TTL_MS) {
+  if (Date.now() - generationMemoryCache.updatedAt > WORKBENCH_GENERATION_MEMORY_CACHE_TTL_MS) {
     generationMemoryCache = null;
     return null;
   }
@@ -37,6 +87,20 @@ function writeWorkbenchGenerationMemoryCache(generations: WorkbenchGenerationVie
     generations,
     updatedAt: Date.now(),
   };
+  writeWorkbenchGenerationSessionCache(generations);
+}
+
+function readWorkbenchGenerationCache() {
+  const memoryCache = readWorkbenchGenerationMemoryCache();
+  if (memoryCache) return memoryCache;
+  const sessionCache = readWorkbenchGenerationSessionCache();
+  if (sessionCache) {
+    generationMemoryCache = {
+      generations: sessionCache,
+      updatedAt: Date.now(),
+    };
+  }
+  return sessionCache;
 }
 
 function mergeGeneration(
@@ -136,7 +200,7 @@ export function useWorkbenchGenerations() {
 
   React.useEffect(() => {
     let active = true;
-    const cachedGenerations = readWorkbenchGenerationMemoryCache();
+    const cachedGenerations = readWorkbenchGenerationCache();
     if (cachedGenerations) {
       setGenerations(cachedGenerations);
       setLoading(false);

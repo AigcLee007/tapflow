@@ -157,6 +157,7 @@ describe("WorkbenchPage", () => {
     URL.createObjectURL = vi.fn(() => "blob:local-ref-preview");
     downloadOriginalImageMock.mockReset();
     clearWorkbenchGenerationMemoryCache();
+    window.sessionStorage.clear();
 
     useImageModelCatalogMock.mockReturnValue({
       error: null,
@@ -499,6 +500,54 @@ describe("WorkbenchPage", () => {
     expect(await screen.findByText("cached mobile prompt")).toBeTruthy();
     expect(screen.queryByText("正在加载工作台内容...")).toBeNull();
     expect(listWorkbenchGenerationsMock).toHaveBeenCalledTimes(2);
+  });
+
+  test("restores mobile workbench generations from session storage after memory cache is gone", async () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 390,
+    });
+    const cachedGeneration = createGeneration({
+      id: "mobile-session-cache-generation",
+      prompt: "session cached prompt",
+      status: "succeeded",
+      results: [
+        {
+          assetId: "mobile-session-cache-asset",
+          createdAt: "2026-06-19T08:00:00.000Z",
+          downloadUrl: "https://example.com/mobile-session-cache.png",
+          downloadUrlExpiresAt: null,
+          height: 1024,
+          id: "mobile-session-cache-result",
+          metadata: {},
+          mimeType: "image/png",
+          originalFilename: "mobile-session-cache.png",
+          previewUrl: "https://example.com/mobile-session-cache.png",
+          previewUrlExpiresAt: null,
+          sortOrder: 0,
+          status: "available",
+          width: 1024,
+        },
+      ],
+    });
+    listWorkbenchGenerationsMock.mockResolvedValue({
+      generations: [cachedGeneration],
+      nextCursor: null,
+    });
+
+    setRoute("/workbench");
+    const firstRender = renderRouter();
+    expect(await screen.findByText("session cached prompt")).toBeTruthy();
+    firstRender.unmount();
+
+    clearWorkbenchGenerationMemoryCache();
+    listWorkbenchGenerationsMock.mockImplementation(() => new Promise(() => undefined));
+    setRoute("/workbench");
+    renderRouter();
+
+    expect(await screen.findByText("session cached prompt")).toBeTruthy();
+    expect(screen.queryByText("正在加载工作台内容...")).toBeNull();
+    expect(window.sessionStorage.getItem("tapflow.workbench.generations.v1")).toContain("session cached prompt");
   });
 
   test("opens the tapped mobile feed image directly in fullscreen preview", async () => {
