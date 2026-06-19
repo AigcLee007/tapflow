@@ -237,6 +237,77 @@ describe("WorkbenchPage", () => {
     expect(screen.getByRole("button", { name: "立即开始创作" })).toBeTruthy();
   });
 
+  test("renders a mobile-first bottom creation dock instead of the legacy floating composer button", async () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 390,
+    });
+    setRoute("/workbench");
+    renderRouter();
+
+    expect(await screen.findByTestId("workbench-page")).toBeTruthy();
+    expect(screen.getByTestId("workbench-mobile-bottom-dock")).toBeTruthy();
+    expect(screen.getByText("Nano Banana Pro")).toBeTruthy();
+    expect(screen.getByText((content) => content.includes("1:1") && content.includes("2K"))).toBeTruthy();
+    expect(screen.getByTestId("workbench-mobile-generate-button")).toBeTruthy();
+    expect(screen.queryByTestId("workbench-mobile-legacy-launcher")).toBeNull();
+  });
+
+  test("opens the mobile parameter sheet from the bottom creation dock", async () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 390,
+    });
+    setRoute("/workbench");
+    renderRouter();
+
+    expect(await screen.findByTestId("workbench-mobile-bottom-dock")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("workbench-mobile-open-sheet"));
+    expect(await screen.findByTestId("workbench-mobile-parameter-sheet")).toBeTruthy();
+    expect(screen.getByLabelText("Prompt")).toBeTruthy();
+    expect(screen.getByTestId("workbench-composer")).toBeTruthy();
+  });
+
+  test("renders a grouped mobile result feed for multi-image generations", async () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 390,
+    });
+    listWorkbenchGenerationsMock.mockResolvedValue({
+      generations: [
+        createGeneration({
+          id: "mobile-done-quad",
+          requestedCount: 4,
+          status: "succeeded",
+          results: [0, 1, 2, 3].map((index) => ({
+            assetId: `mobile-done-quad-asset-${index + 1}`,
+            createdAt: new Date().toISOString(),
+            downloadUrl: `https://example.com/mobile-done-quad-${index + 1}.png`,
+            downloadUrlExpiresAt: null,
+            height: 1024,
+            id: `mobile-done-quad-result-${index + 1}`,
+            metadata: {},
+            mimeType: "image/png",
+            originalFilename: `mobile-done-quad-${index + 1}.png`,
+            previewUrl: `https://example.com/mobile-done-quad-${index + 1}.png`,
+            previewUrlExpiresAt: null,
+            sortOrder: index,
+            status: "available",
+            width: 1024,
+          })),
+        }),
+      ],
+      nextCursor: null,
+    });
+    setRoute("/workbench");
+    renderRouter();
+
+    expect(await screen.findByTestId("workbench-mobile-result-feed")).toBeTruthy();
+    expect(screen.getAllByAltText("mobile-done-quad-1.png").length).toBeGreaterThan(0);
+    expect(screen.getByText((content) => content.includes("4张"))).toBeTruthy();
+    expect(screen.getByLabelText("打开结果菜单-mobile-done-quad")).toBeTruthy();
+  });
+
   test("shows creator-facing generation parameters instead of raw model and route keys", async () => {
     listWorkbenchGenerationsMock.mockResolvedValue({
       generations: [

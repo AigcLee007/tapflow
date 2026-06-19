@@ -2665,3 +2665,23 @@ Validation completed:
 - validation:
   - `npm run test -- src/workbench/WorkbenchPage.test.tsx`
   - `npm run build`
+
+## 2026-06-19 - Mobile Workbench First-Pass Optimization
+
+- rebuilt the phone-width `/workbench` experience away from the old single floating launcher into a mobile-first creation shell
+- added a persistent mobile bottom creation dock with:
+  - model and route summary
+  - ratio / size / quantity summary
+  - always-visible primary generate action
+- added a dedicated mobile parameter sheet instead of relying on the old launcher-only interaction
+- added a mobile result feed that groups completed work into touch-friendly cards and keeps the latest stage visible above the feed
+- added mobile result-card overflow actions for download, use-as-reference, and delete
+- kept the existing backend workbench flow unchanged:
+  - generation submission
+  - billing
+  - temporary reference upload
+  - result polling
+  - asset delivery
+- validation:
+  - `npm run test -- src/workbench/WorkbenchPage.test.tsx`
+  - `npm run build`

@@ -24,7 +24,7 @@ import {
   getWorkbenchActiveGenerations,
   getWorkbenchCompletedGenerations,
 } from "./workbenchDesktopLayout";
-import { WorkbenchMobileComposer } from "./WorkbenchMobileComposer";
+import { WorkbenchMobileShell } from "./WorkbenchMobileShell";
 import { WorkbenchResultSheet } from "./WorkbenchResultSheet";
 import { useWorkbenchGenerations } from "./useWorkbenchGenerations";
 import type { WorkbenchDraft, WorkbenchGeneration, WorkbenchResult } from "./workbenchTypes";
@@ -994,6 +994,10 @@ export function WorkbenchPage() {
     () => getWorkbenchCompletedGenerations(generations),
     [generations],
   );
+  const routeLabel = React.useMemo(() => formatRouteLabel(draft.routeKey), [draft.routeKey]);
+  const featuredGenerationForMobile = React.useMemo(() => getFeaturedGeneration(generations), [generations]);
+  const featuredPrimaryResultForMobile = featuredGenerationForMobile ? getPrimaryResult(featuredGenerationForMobile) : null;
+  const featuredPreviewUrlForMobile = useResultPreviewUrl(featuredPrimaryResultForMobile);
 
   return (
     <section
@@ -1098,6 +1102,26 @@ export function WorkbenchPage() {
               onUseAsReference={handleUseAsReference}
             />
           </div>
+        ) : isMobile ? (
+          <WorkbenchMobileShell
+            draft={draft}
+            error={error}
+            featuredPreviewUrl={featuredPreviewUrlForMobile}
+            generations={generations}
+            getDisplayResults={getGenerationDisplayResults}
+            getFeaturedGeneration={getFeaturedGeneration}
+            getPrimaryResult={getPrimaryResult}
+            isGenerating={submitting}
+            loading={loading}
+            models={models}
+            onChangeDraft={(patch) => setDraft((current) => ({ ...current, ...patch }))}
+            onDeleteGeneration={handleDeleteGeneration}
+            onDownloadOriginal={handleDownloadOriginal}
+            onGenerate={() => void submit(draft)}
+            onOpenResult={setSelectedResult}
+            onUseAsReference={handleUseAsReference}
+            routeLabel={routeLabel}
+          />
         ) : (
           <div className="grid min-h-[calc(100vh-96px)] w-full gap-5 md:grid-cols-[390px_minmax(0,1fr)] xl:grid-cols-[390px_minmax(780px,1fr)_360px]">
             <div className="hidden min-h-0 overflow-hidden rounded-[26px] border border-white/8 bg-[#0f1015]/92 shadow-[0_26px_80px_rgba(0,0,0,0.28)] md:block">
@@ -1151,16 +1175,6 @@ export function WorkbenchPage() {
           </div>
         )}
       </div>
-
-      {isMobile ? (
-        <WorkbenchMobileComposer
-          draft={draft}
-          isGenerating={submitting}
-          models={models}
-          onChangeDraft={(patch) => setDraft((current) => ({ ...current, ...patch }))}
-          onGenerate={() => void submit(draft)}
-        />
-      ) : null}
 
       <SendToProjectDialog
         onClose={() => setSendDialogOpen(false)}
