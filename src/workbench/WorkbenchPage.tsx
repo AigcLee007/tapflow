@@ -934,6 +934,7 @@ export function WorkbenchPage() {
   const [selectedResult, setSelectedResult] = React.useState<WorkbenchResult | null>(null);
   const [selectedResultBatch, setSelectedResultBatch] = React.useState<WorkbenchResult[]>([]);
   const [selectedResultGeneration, setSelectedResultGeneration] = React.useState<WorkbenchGeneration | null>(null);
+  const [mobileParameterSheetRequest, setMobileParameterSheetRequest] = React.useState(0);
   const [sendDialogOpen, setSendDialogOpen] = React.useState(false);
   const viewportWidth = useViewportWidth();
   const isDesktop = viewportWidth >= 1024;
@@ -1012,6 +1013,11 @@ export function WorkbenchPage() {
     void remove(generationId);
   }, [remove]);
 
+  const handleRegenerateFromGeneration = React.useCallback((generation: WorkbenchGeneration) => {
+    reuseParams(generation);
+    setMobileParameterSheetRequest((value) => value + 1);
+  }, [reuseParams]);
+
   const openResultPreview = React.useCallback((result: WorkbenchResult) => {
     const matchedGeneration = generations.find((generation) =>
       getGenerationDisplayResults(generation).some((item) => item.id === result.id),
@@ -1053,7 +1059,9 @@ export function WorkbenchPage() {
             onDownloadOriginal={handleDownloadOriginal}
             onGenerate={() => void submit(draft)}
             onOpenResult={openResultPreview}
+            onRegenerate={handleRegenerateFromGeneration}
             onUseAsReference={handleUseAsReference}
+            openParameterSheetRequest={mobileParameterSheetRequest}
             routeLabel={routeLabel}
           />
         </div>
@@ -1071,7 +1079,11 @@ export function WorkbenchPage() {
             setSelectedResultGeneration(null);
           }}
           onDownloadOriginal={(result) => void handleDownloadOriginal(result, selectedResultGeneration ?? undefined)}
-          onSendToProject={() => setSendDialogOpen(true)}
+          onRegenerate={() => {
+            if (!selectedResultGeneration) return;
+            handleRegenerateFromGeneration(selectedResultGeneration);
+          }}
+          onUseAsReference={handleUseAsReference}
           result={selectedResult}
         />
       </section>
@@ -1248,7 +1260,11 @@ export function WorkbenchPage() {
           setSelectedResultGeneration(null);
         }}
         onDownloadOriginal={(result) => void handleDownloadOriginal(result, selectedResultGeneration ?? undefined)}
-        onSendToProject={() => setSendDialogOpen(true)}
+        onRegenerate={() => {
+          if (!selectedResultGeneration) return;
+          handleRegenerateFromGeneration(selectedResultGeneration);
+        }}
+        onUseAsReference={handleUseAsReference}
         result={selectedResult}
       />
     </section>

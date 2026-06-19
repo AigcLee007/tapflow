@@ -1,5 +1,5 @@
 import React from "react";
-import { Clock3, Download, ImagePlus, MoreHorizontal, Trash2 } from "lucide-react";
+import { Clock3, Download, ImagePlus, MoreHorizontal, RotateCcw, Trash2 } from "lucide-react";
 
 import type { ImageModelConfig } from "../config/imageModels";
 import type { WorkbenchGeneration, WorkbenchResult } from "./workbenchTypes";
@@ -9,6 +9,7 @@ type Props = {
   models: ImageModelConfig[];
   onDelete: (generationId: string) => void;
   onDownloadOriginal: (result: WorkbenchResult, generation: WorkbenchGeneration) => void;
+  onRegenerate: (generation: WorkbenchGeneration) => void;
   onSelectPreview: (generationId: string, result: WorkbenchResult) => void;
   onSelectResult: (result: WorkbenchResult) => void;
   onUseAsReference: (result: WorkbenchResult) => void;
@@ -78,12 +79,20 @@ function getStatusLine(generation: WorkbenchGeneration, results: WorkbenchResult
 function getParameterLine(generation: WorkbenchGeneration, models: ImageModelConfig[]) {
   const size = String(generation.params.size || generation.params.imageSize || "1k").toUpperCase();
   const aspectRatio = String(generation.params.aspect_ratio || generation.params.aspectRatio || "1:1");
+  const createdTime = formatGenerationTime(generation.createdAt);
   return [
     getModelLabel(generation.modelId, models),
     getRouteLabel(generation.routeKey),
     aspectRatio,
     size,
+    createdTime,
   ].filter(Boolean).join(" · ");
+}
+
+function formatGenerationTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
 export function WorkbenchMobileResultCard({
@@ -91,6 +100,7 @@ export function WorkbenchMobileResultCard({
   models,
   onDelete,
   onDownloadOriginal,
+  onRegenerate,
   onSelectPreview,
   onSelectResult,
   onUseAsReference,
@@ -158,6 +168,17 @@ export function WorkbenchMobileResultCard({
                 </>
               ) : null}
               <button
+                className="flex h-10 items-center gap-2 rounded-[12px] px-3 text-left text-[12px] font-bold text-white hover:bg-white/[0.06]"
+                onClick={() => {
+                  onRegenerate(generation);
+                  setMenuOpen(false);
+                }}
+                type="button"
+              >
+                <RotateCcw size={14} />
+                重新生成
+              </button>
+              <button
                 className="flex h-10 items-center gap-2 rounded-[12px] px-3 text-left text-[12px] font-bold text-red-100 hover:bg-red-500/14"
                 onClick={() => {
                   onDelete(generation.id);
@@ -199,6 +220,7 @@ export function WorkbenchMobileResultCard({
                     alt={slot.result.originalFilename || "Workbench result"}
                     className="h-full w-full object-cover"
                     data-testid={`workbench-mobile-feed-image-${generation.id}-${slot.result.id}`}
+                    loading="lazy"
                     src={slot.result.previewUrl}
                   />
                 ) : (

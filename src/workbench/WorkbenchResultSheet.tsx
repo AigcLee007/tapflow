@@ -1,5 +1,5 @@
 import React from "react";
-import { ChevronLeft, ChevronRight, Download, Send, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, ImagePlus, RotateCcw, X } from "lucide-react";
 
 import { getAssetVariantUrl } from "../assets/assetApi";
 import type { WorkbenchResult } from "./workbenchTypes";
@@ -8,7 +8,8 @@ type Props = {
   batchResults?: WorkbenchResult[];
   onClose: () => void;
   onDownloadOriginal: (result: WorkbenchResult) => void;
-  onSendToProject: (result: WorkbenchResult) => void;
+  onRegenerate: () => void;
+  onUseAsReference: (result: WorkbenchResult) => void;
   result: WorkbenchResult | null;
 };
 
@@ -16,7 +17,8 @@ export function WorkbenchResultSheet({
   batchResults = [],
   onClose,
   onDownloadOriginal,
-  onSendToProject,
+  onRegenerate,
+  onUseAsReference,
   result,
 }: Props) {
   const availableBatchResults = React.useMemo(
@@ -77,7 +79,7 @@ export function WorkbenchResultSheet({
       <section className="relative z-10 flex h-full w-full flex-col overflow-hidden px-4 py-3 md:px-6 md:py-4">
         <div className="flex h-14 shrink-0 items-center justify-between gap-3">
           <div>
-            <div className="text-base font-black">Result Preview</div>
+            <div className="text-base font-black">结果预览</div>
             {canNavigateBatch ? (
               <div className="mt-1 text-[12px] text-slate-400">
                 {activeIndex + 1} / {availableBatchResults.length}
@@ -176,22 +178,30 @@ export function WorkbenchResultSheet({
             </div>
           ) : null}
 
-          <div className="grid h-16 w-full grid-cols-2 items-center gap-3">
+          <div className="grid h-16 w-full grid-cols-3 items-center gap-2">
             <button
-              className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-white/[0.10] text-sm font-bold text-white transition hover:bg-white/[0.16]"
+              className="inline-flex h-12 items-center justify-center gap-1.5 rounded-full bg-white/[0.10] px-2 text-[12px] font-bold text-white transition hover:bg-white/[0.16]"
               onClick={() => onDownloadOriginal(activeResult)}
               type="button"
             >
               <Download size={16} />
-              Download
+              下载原图
             </button>
             <button
-              className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-white text-sm font-black text-black transition hover:bg-slate-100"
-              onClick={() => onSendToProject(activeResult)}
+              className="inline-flex h-12 items-center justify-center gap-1.5 rounded-full bg-white/[0.10] px-2 text-[12px] font-bold text-white transition hover:bg-white/[0.16]"
+              onClick={() => onUseAsReference(activeResult)}
               type="button"
             >
-              <Send size={16} />
-              Send To Canvas
+              <ImagePlus size={16} />
+              引用参考
+            </button>
+            <button
+              className="inline-flex h-12 items-center justify-center gap-1.5 rounded-full bg-white px-2 text-[12px] font-black text-black transition hover:bg-slate-100"
+              onClick={onRegenerate}
+              type="button"
+            >
+              <RotateCcw size={16} />
+              重新生成
             </button>
           </div>
         </div>

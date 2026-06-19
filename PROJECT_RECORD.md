@@ -51,6 +51,16 @@ Current deployment baseline:
 
 As of 2026-06-19:
 
+- mobile `/workbench` creation feed received a focused usability pass after screenshot review:
+  - feed metadata now includes generated time beside model/route/aspect/size.
+  - phone workbench opens at the newest task by scrolling the feed to the bottom.
+  - mobile history rendering is windowed to the newest 8 records first, with older records revealed as users scroll upward.
+  - result-card menus now include `重新生成`, which refills the mobile creation panel with the previous prompt, references, model, and parameters.
+  - fullscreen result preview now uses the title `结果预览` and exposes only `下载原图`, `引用参考`, and `重新生成` actions.
+- Validation:
+  - `npm run test -- src/workbench/WorkbenchPage.test.tsx` passed.
+  - `npm run build` passed.
+
 - mobile `/workbench` result area was rebuilt into the approved single chronological creation feed while preserving the existing top header, bottom creation bar, and mobile parameter sheet:
   - the old large current-stage card and separate `Current Tasks` / `Completed` mobile sections were removed.
   - generations now sort by `createdAt` ascending so newer work appears near the bottom input bar.

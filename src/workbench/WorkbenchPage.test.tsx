@@ -569,6 +569,122 @@ describe("WorkbenchPage", () => {
     expect(screen.getAllByTestId("workbench-mobile-feed-pending-slot-mobile-newest-active")).toHaveLength(2);
   });
 
+  test("shows generated time and lazy-renders older mobile feed records when scrolling upward", async () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 390,
+    });
+    const scrollToMock = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+      configurable: true,
+      value: scrollToMock,
+    });
+    listWorkbenchGenerationsMock.mockResolvedValue({
+      generations: Array.from({ length: 10 }, (_, index) =>
+        createGeneration({
+          createdAt: `2026-06-19T${String(8 + index).padStart(2, "0")}:02:00`,
+          id: `mobile-history-${index}`,
+          params: { aspect_ratio: "16:9", size: "2k" },
+          prompt: `history prompt ${index}`,
+          requestedCount: 1,
+          results: [
+            {
+              assetId: `mobile-history-asset-${index}`,
+              createdAt: `2026-06-19T${String(8 + index).padStart(2, "0")}:02:00`,
+              downloadUrl: `https://example.com/mobile-history-${index}.png`,
+              downloadUrlExpiresAt: null,
+              height: 1024,
+              id: `mobile-history-result-${index}`,
+              metadata: {},
+              mimeType: "image/png",
+              originalFilename: `mobile-history-${index}.png`,
+              previewUrl: `https://example.com/mobile-history-${index}.png`,
+              previewUrlExpiresAt: null,
+              sortOrder: 0,
+              status: "available",
+              width: 1024,
+            },
+          ],
+          status: "succeeded",
+        }),
+      ),
+      nextCursor: null,
+    });
+
+    setRoute("/workbench");
+    renderRouter();
+
+    const feed = await screen.findByTestId("workbench-mobile-result-feed");
+    await waitFor(() => {
+      expect(scrollToMock).toHaveBeenCalled();
+    });
+    expect(within(feed).getAllByTestId("workbench-mobile-creation-feed-card")).toHaveLength(8);
+    expect(screen.queryByText("history prompt 0")).toBeNull();
+    expect(screen.getByText("history prompt 9")).toBeTruthy();
+    expect(screen.getByText((content) =>
+      content.includes("Nano Banana Pro")
+      && content.includes("16:9")
+      && content.includes("2K")
+      && content.includes("17:02"),
+    )).toBeTruthy();
+
+    fireEvent.scroll(screen.getByTestId("workbench-mobile-scroll-area"), { target: { scrollTop: 0 } });
+
+    await waitFor(() => {
+      expect(within(feed).getAllByTestId("workbench-mobile-creation-feed-card")).toHaveLength(10);
+    });
+    expect(screen.getByText("history prompt 0")).toBeTruthy();
+  });
+
+  test("mobile feed regenerate action refills the prompt and opens the parameter sheet", async () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 390,
+    });
+    listWorkbenchGenerationsMock.mockResolvedValue({
+      generations: [
+        createGeneration({
+          id: "mobile-regenerate",
+          params: { aspect_ratio: "9:16", size: "4k" },
+          prompt: "mobile regenerate prompt",
+          requestedCount: 2,
+          results: [
+            {
+              assetId: "mobile-regenerate-asset",
+              createdAt: new Date().toISOString(),
+              downloadUrl: "https://example.com/mobile-regenerate.png",
+              downloadUrlExpiresAt: null,
+              height: 1024,
+              id: "mobile-regenerate-result",
+              metadata: {},
+              mimeType: "image/png",
+              originalFilename: "mobile-regenerate.png",
+              previewUrl: "https://example.com/mobile-regenerate.png",
+              previewUrlExpiresAt: null,
+              sortOrder: 0,
+              status: "available",
+              width: 1024,
+            },
+          ],
+          status: "succeeded",
+        }),
+      ],
+      nextCursor: null,
+    });
+
+    setRoute("/workbench");
+    renderRouter();
+
+    expect(await screen.findByText("mobile regenerate prompt")).toBeTruthy();
+    fireEvent.click(screen.getByLabelText("打开结果菜单-mobile-regenerate"));
+    fireEvent.click(screen.getByRole("button", { name: "重新生成" }));
+
+    expect(await screen.findByTestId("workbench-mobile-parameter-sheet")).toBeTruthy();
+    expect((screen.getByLabelText("Prompt") as HTMLTextAreaElement).value).toBe("mobile regenerate prompt");
+    expect(screen.getByRole("button", { name: "画面比例 9:16" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "画质尺寸 4K" })).toBeTruthy();
+  });
+
   test("shows creator-facing generation parameters instead of raw model and route keys", async () => {
     listWorkbenchGenerationsMock.mockResolvedValue({
       generations: [
@@ -795,6 +911,12 @@ describe("WorkbenchPage", () => {
     fireEvent.click(screen.getByTestId("workbench-mobile-thumb-mobile-preview-batch-mobile-preview-result-2"));
 
     await screen.findByTestId("workbench-result-fullscreen");
+    expect(screen.getByText("结果预览")).toBeTruthy();
+    expect(screen.queryByText("Result Preview")).toBeNull();
+    expect(screen.queryByText("Send To Canvas")).toBeNull();
+    expect(screen.getByRole("button", { name: "下载原图" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "引用参考" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "重新生成" })).toBeTruthy();
     expect(screen.getByTestId("workbench-result-fullscreen-image").getAttribute("src")).toBe(
       "https://example.com/mobile-preview-asset-2-original.png",
     );
@@ -812,6 +934,10 @@ describe("WorkbenchPage", () => {
         "https://example.com/mobile-preview-asset-2-original.png",
       );
     });
+
+    fireEvent.click(screen.getByRole("button", { name: "重新生成" }));
+    expect(await screen.findByTestId("workbench-mobile-parameter-sheet")).toBeTruthy();
+    expect((screen.getByLabelText("Prompt") as HTMLTextAreaElement).value).toBe("Product poster");
   });
 
   test("completed result cards expose download original, use as reference, and delete record actions", async () => {

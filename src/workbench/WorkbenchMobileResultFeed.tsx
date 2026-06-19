@@ -10,6 +10,7 @@ type Props = {
   models: ImageModelConfig[];
   onDeleteGeneration: (generationId: string) => void;
   onDownloadOriginal: (result: WorkbenchResult, generation: WorkbenchGeneration) => void;
+  onRegenerate: (generation: WorkbenchGeneration) => void;
   onSelectPreview: (generationId: string, result: WorkbenchResult) => void;
   onSelectResult: (result: WorkbenchResult) => void;
   onUseAsReference: (result: WorkbenchResult) => void;
@@ -22,6 +23,7 @@ export function WorkbenchMobileResultFeed({
   models,
   onDeleteGeneration,
   onDownloadOriginal,
+  onRegenerate,
   onSelectPreview,
   onSelectResult,
   onUseAsReference,
@@ -56,6 +58,7 @@ export function WorkbenchMobileResultFeed({
           models={models}
           onDelete={onDeleteGeneration}
           onDownloadOriginal={onDownloadOriginal}
+          onRegenerate={onRegenerate}
           onSelectPreview={onSelectPreview}
           onSelectResult={onSelectResult}
           onUseAsReference={onUseAsReference}
