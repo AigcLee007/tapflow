@@ -2730,6 +2730,17 @@ Validation completed:
   - `npm run test -- src/workbench/WorkbenchPage.test.tsx`
   - `npm run build`
 
+## 2026-06-19 - AI Gateway Route Metadata Build Fix
+
+- fixed the staging Docker build failure where `tapflow-worker` could not compile after billing activity usage records started reading `modelKey` and `routeKey` from AI Gateway results
+- added `routeKey` to text/media gateway results and `modelKey` / `routeKey` to provider polling results so workflow billing usage records can use stable route metadata across text, image, video, and async polling paths
+- added focused AI Gateway regression coverage for route metadata on `generateText`, `generateImage`, `generateVideo`, and `pollTask`
+- validation:
+  - `npm run test --workspace @aigc-flow/ai-gateway-core -- runtime.test.ts -t "ai gateway includes route metadata for billing usage records"`
+  - `npm run build --workspace @aigc-flow/ai-gateway-core`
+  - `npm run build --workspace @aigc-flow/worker`
+  - `npm run build`
+
 ## 2026-06-19 - Mobile Workbench First-Pass Optimization
 
 - rebuilt the phone-width `/workbench` experience away from the old single floating launcher into a mobile-first creation shell

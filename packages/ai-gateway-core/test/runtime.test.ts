@@ -2281,6 +2281,7 @@ describe("route resolver and ai gateway", () => {
       modelKey: "gpt-test",
       outputText: "hello from adapter",
       providerKey: "openai-compatible",
+      routeKey: "default",
       status: "succeeded",
     });
   });
@@ -2329,7 +2330,116 @@ describe("route resolver and ai gateway", () => {
         },
       ],
       providerKey: "openai-compatible",
+      routeKey: "default",
       status: "succeeded",
+    });
+  });
+
+  test("ai gateway includes route metadata for billing usage records", async () => {
+    const gateway = new AiGateway({
+      "openai-compatible": {
+        async generateText() {
+          return {
+            modelKey: "gpt-test",
+            outputText: "hello from adapter",
+            providerRequest: { ok: true },
+            providerResponse: { ok: true },
+            usage: {
+              inputTokens: 1,
+              outputTokens: 1,
+              totalTokens: 2,
+            },
+          };
+        },
+        async generateImage() {
+          return {
+            modelKey: "image-test",
+            outputs: [{ mimeType: "image/png", url: "https://example.com/generated.png" }],
+            providerRequest: { ok: true },
+            providerResponse: { ok: true },
+            status: "succeeded" as const,
+            usage: {
+              inputTokens: 2,
+              outputTokens: 1,
+              totalTokens: 3,
+            },
+          };
+        },
+        async generateVideo() {
+          return {
+            modelKey: "video-test",
+            outputs: [],
+            providerRequest: { ok: true },
+            providerResponse: { ok: true },
+            providerTaskId: "provider-video-task",
+            status: "waiting_provider" as const,
+            usage: {
+              inputTokens: 3,
+              outputTokens: null,
+              totalTokens: 3,
+            },
+          };
+        },
+        async pollTask() {
+          return {
+            outputs: [{ mimeType: "image/png", url: "https://example.com/polled.png" }],
+            providerRequest: { ok: true },
+            providerResponse: { ok: true },
+            status: "succeeded" as const,
+            usage: {
+              inputTokens: null,
+              outputTokens: 1,
+              totalTokens: 1,
+            },
+          };
+        },
+      },
+    });
+    const route = makeRoute({ routeId: "route-billing", routeKey: "image.billing-route" });
+
+    await expect(
+      gateway.generateText({
+        apiKey: "sk-test-secret",
+        request: { messages: [{ content: "hello", role: "user" }] },
+        route,
+      }),
+    ).resolves.toMatchObject({
+      modelKey: "gpt-test",
+      routeId: "route-billing",
+      routeKey: "image.billing-route",
+    });
+    await expect(
+      gateway.generateImage({
+        apiKey: "sk-test-secret",
+        request: { prompt: "draw" },
+        route,
+      }),
+    ).resolves.toMatchObject({
+      modelKey: "image-test",
+      routeId: "route-billing",
+      routeKey: "image.billing-route",
+    });
+    await expect(
+      gateway.generateVideo({
+        apiKey: "sk-test-secret",
+        request: { prompt: "animate" },
+        route,
+      }),
+    ).resolves.toMatchObject({
+      modelKey: "video-test",
+      routeId: "route-billing",
+      routeKey: "image.billing-route",
+    });
+    await expect(
+      gateway.pollTask({
+        apiKey: "sk-test-secret",
+        request: { providerTaskId: "provider-task" },
+        route,
+      }),
+    ).resolves.toMatchObject({
+      modelKey: "gpt-test",
+      routeId: "route-billing",
+      routeKey: "image.billing-route",
     });
   });
 

@@ -146,6 +146,7 @@ export class AiGateway {
       providerRequest: result.providerRequest,
       providerResponse: result.providerResponse,
       routeId: options.route.routeId,
+      routeKey: options.route.routeKey,
       status: "succeeded",
       usage: result.usage,
     };
@@ -233,6 +234,7 @@ export class AiGateway {
       providerTaskId: result.providerTaskId ?? providerTaskIds[0] ?? null,
       providerTaskIds: providerTaskIds.length > 0 ? providerTaskIds : null,
       routeId: options.route.routeId,
+      routeKey: options.route.routeKey,
       status: result.status,
       usage: results.length === 1 ? result.usage : sumUsage(results),
     };
@@ -264,6 +266,7 @@ export class AiGateway {
       providerResponse: result.providerResponse,
       providerTaskId: result.providerTaskId ?? null,
       routeId: options.route.routeId,
+      routeKey: options.route.routeKey,
       status: result.status,
       usage: result.usage,
     };
@@ -288,8 +291,10 @@ export class AiGateway {
     return {
       ...result,
       modelId: options.route.model.id,
+      modelKey: result.modelKey ?? context.modelKey,
       providerId: options.route.provider.id,
       routeId: options.route.routeId,
+      routeKey: options.route.routeKey,
     };
   }
 

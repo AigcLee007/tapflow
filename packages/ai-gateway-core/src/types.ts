@@ -53,6 +53,7 @@ export type AiGatewayTextResult = {
   providerRequest: unknown;
   providerResponse: unknown;
   routeId?: string | null;
+  routeKey?: string | null;
   status: "succeeded";
   usage: AiGatewayUsage;
 };
@@ -111,6 +112,7 @@ export type ProviderTaskResult = {
   error?: Record<string, unknown> | null;
   mimeType?: string | null;
   modelId?: string | null;
+  modelKey?: string | null;
   outputBase64?: string[] | null;
   outputUrls?: string[] | null;
   outputs?: MediaOutput[] | null;
@@ -119,6 +121,7 @@ export type ProviderTaskResult = {
   providerResponse?: unknown;
   providerTaskId?: string | null;
   routeId?: string | null;
+  routeKey?: string | null;
   status: "pending" | "running" | "succeeded" | "failed";
   usage?: AiGatewayUsage | null;
 };
@@ -134,6 +137,7 @@ export type AiGatewayMediaResult = {
   providerTaskId?: string | null;
   providerTaskIds?: string[] | null;
   routeId?: string | null;
+  routeKey?: string | null;
   status: "succeeded" | "waiting_provider" | "failed";
   usage?: AiGatewayUsage | null;
 };
