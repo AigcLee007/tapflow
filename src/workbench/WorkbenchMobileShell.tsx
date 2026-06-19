@@ -78,7 +78,7 @@ export function WorkbenchMobileShell({
 
   return (
     <div
-      className="flex h-[100dvh] min-h-0 flex-col overflow-hidden md:hidden"
+      className="flex h-[100dvh] min-h-0 flex-col overflow-hidden bg-[#07090e] md:hidden"
       data-testid="workbench-mobile-shell"
     >
       <header
@@ -119,7 +119,7 @@ export function WorkbenchMobileShell({
       </header>
 
       <div
-        className="min-h-0 flex-1 overflow-y-auto px-4 pb-[132px] pt-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain px-4 pb-[126px] pt-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
         data-testid="workbench-mobile-scroll-area"
       >
         {error ? (
@@ -137,7 +137,7 @@ export function WorkbenchMobileShell({
               </div>
             </div>
             <div className="rounded-full border border-white/10 bg-white/[0.06] px-3 py-1 text-[11px] font-bold text-slate-300">
-              {draft.quantity}张
+              {draft.quantity} 张
             </div>
           </div>
           <div className="p-4">
@@ -158,14 +158,18 @@ export function WorkbenchMobileShell({
                 />
                 <div className="px-4 pb-4 pt-3">
                   <div className="line-clamp-2 text-[15px] font-bold text-white">{featuredGeneration?.prompt}</div>
-                  <div className="mt-2 text-[12px] text-slate-400">{modelLabel} · {routeLabel}</div>
+                  <div className="mt-2 text-[12px] text-slate-400">
+                    {modelLabel} · {routeLabel}
+                  </div>
                 </div>
               </button>
             ) : (
               <div className="grid h-[280px] place-items-center rounded-[20px] border border-dashed border-white/10 bg-black/20 px-6 text-center">
                 <div>
                   <div className="mt-4 text-[16px] font-bold text-white">从提示词开始创作</div>
-                  <div className="mt-2 text-[13px] leading-6 text-slate-400">结果会优先显示在这里，下方保留最近任务和已完成作品。</div>
+                  <div className="mt-2 text-[13px] leading-6 text-slate-400">
+                    结果会优先显示在这里，下方保留最近任务和已完成作品。
+                  </div>
                 </div>
               </div>
             )}

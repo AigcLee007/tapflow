@@ -117,7 +117,7 @@ export function WorkbenchMobileResultCard({
               </span>
               {results.length > 1 ? (
                 <span className="rounded-full border border-white/10 bg-white/[0.05] px-2.5 py-1 text-[10px] font-black text-slate-300">
-                  同批{results.length}张
+                  同批 {results.length} 张
                 </span>
               ) : null}
             </div>
@@ -195,7 +195,7 @@ export function WorkbenchMobileResultCard({
               <div className="text-[11px] font-black tracking-[0.08em] text-slate-400">批次缩略图</div>
               <div className="text-[11px] text-slate-500">点按切换上方选中图</div>
             </div>
-            <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
               {results.map((result, index) => (
                 <button
                   className={`relative shrink-0 overflow-hidden rounded-[16px] border bg-[#0b0d12] ${

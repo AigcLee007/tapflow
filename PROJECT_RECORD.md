@@ -51,6 +51,11 @@ Current deployment baseline:
 
 As of 2026-06-18:
 
+- mobile `/workbench` shell received a corrective follow-up for the approved phone skeleton: the bottom creation dock now reads as a much lighter JiMeng-style single-line input bar instead of a heavy summary card, mobile scroll containers now hide browser scrollbar artifacts more aggressively, and the mobile shell / result feed / parameter sheet files were normalized to clean creator-facing Chinese copy after recent encoding regressions.
+- Validation:
+  - `npm run test -- src/workbench/WorkbenchPage.test.tsx` passed.
+  - `npm run build` passed.
+
 - mobile `/workbench` shell has been refit for the approved phone workflow: mobile now uses a single compact top navigation header, a dedicated middle scroll container for results, and a JiMeng-style bottom creation bar that opens the existing mobile creation panel instead of duplicating a heavy summary dock; the current mobile creation panel content itself was intentionally preserved.
 - Validation:
   - `npm run test -- src/workbench/WorkbenchPage.test.tsx` passed.

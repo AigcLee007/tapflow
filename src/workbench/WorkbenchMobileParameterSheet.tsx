@@ -29,7 +29,7 @@ export function WorkbenchMobileParameterSheet({
   return (
     <div className="fixed inset-0 z-50 md:hidden" data-testid="workbench-mobile-parameter-sheet">
       <button
-        aria-label="关闭移动端工作台参数面板"
+        aria-label="关闭移动工作台参数面板"
         className="absolute inset-0 bg-black/62"
         onClick={onClose}
         type="button"
@@ -41,7 +41,7 @@ export function WorkbenchMobileParameterSheet({
             <div className="mt-1 text-[18px] font-black text-white">移动创作面板</div>
           </div>
           <button
-            aria-label="关闭移动端工作台参数面板"
+            aria-label="关闭移动工作台参数面板"
             className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-white/[0.05] text-slate-100"
             onClick={onClose}
             type="button"
@@ -49,7 +49,7 @@ export function WorkbenchMobileParameterSheet({
             <X size={16} />
           </button>
         </div>
-        <div className="max-h-[calc(92vh-73px)] overflow-y-auto">
+        <div className="max-h-[calc(92vh-73px)] overflow-y-auto overscroll-y-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           <WorkbenchComposer
             compact
             draft={draft}

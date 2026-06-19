@@ -40,7 +40,9 @@ export function WorkbenchMobileResultFeed({
         <div className="grid min-h-[220px] place-items-center rounded-[24px] border border-dashed border-white/10 bg-white/[0.03] px-6 text-center">
           <div>
             <div className="text-[16px] font-bold text-white">开始你的第一张作品</div>
-            <div className="mt-2 text-[13px] leading-6 text-slate-400">设置提示词、模型和参数后，生成结果会优先出现在这里。</div>
+            <div className="mt-2 text-[13px] leading-6 text-slate-400">
+              设置提示词、模型和参数后，生成结果会优先出现在这里。
+            </div>
           </div>
         </div>
       ) : null}
