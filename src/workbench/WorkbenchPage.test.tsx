@@ -308,6 +308,67 @@ describe("WorkbenchPage", () => {
     expect(screen.getByLabelText("打开结果菜单-mobile-done-quad")).toBeTruthy();
   });
 
+  test("switches the selected mobile multi-image preview without opening fullscreen", async () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 390,
+    });
+    listWorkbenchGenerationsMock.mockResolvedValue({
+      generations: [
+        createGeneration({
+          id: "mobile-switch",
+          requestedCount: 2,
+          status: "succeeded",
+          results: [
+            {
+              assetId: "mobile-switch-asset-1",
+              createdAt: new Date().toISOString(),
+              downloadUrl: "https://example.com/mobile-switch-1.png",
+              downloadUrlExpiresAt: null,
+              height: 1024,
+              id: "mobile-switch-result-1",
+              metadata: {},
+              mimeType: "image/png",
+              originalFilename: "mobile-switch-1.png",
+              previewUrl: "https://example.com/mobile-switch-1.png",
+              previewUrlExpiresAt: null,
+              sortOrder: 0,
+              status: "available",
+              width: 1024,
+            },
+            {
+              assetId: "mobile-switch-asset-2",
+              createdAt: new Date().toISOString(),
+              downloadUrl: "https://example.com/mobile-switch-2.png",
+              downloadUrlExpiresAt: null,
+              height: 1024,
+              id: "mobile-switch-result-2",
+              metadata: {},
+              mimeType: "image/png",
+              originalFilename: "mobile-switch-2.png",
+              previewUrl: "https://example.com/mobile-switch-2.png",
+              previewUrlExpiresAt: null,
+              sortOrder: 1,
+              status: "available",
+              width: 1024,
+            },
+          ],
+        }),
+      ],
+      nextCursor: null,
+    });
+
+    setRoute("/workbench");
+    renderRouter();
+
+    expect(await screen.findByTestId("workbench-mobile-result-feed")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("workbench-mobile-thumb-mobile-switch-mobile-switch-result-2"));
+    expect(screen.queryByTestId("workbench-result-fullscreen")).toBeNull();
+    expect(screen.getByTestId("workbench-mobile-stage-image-mobile-switch").getAttribute("src")).toBe(
+      "https://example.com/mobile-switch-2.png",
+    );
+  });
+
   test("shows creator-facing generation parameters instead of raw model and route keys", async () => {
     listWorkbenchGenerationsMock.mockResolvedValue({
       generations: [

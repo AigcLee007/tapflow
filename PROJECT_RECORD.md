@@ -2685,3 +2685,10 @@ Validation completed:
 - validation:
   - `npm run test -- src/workbench/WorkbenchPage.test.tsx`
   - `npm run build`
+
+- follow-up refinement:
+  - mobile multi-image result cards now separate thumbnail selection from fullscreen preview
+  - tapping a mobile thumbnail updates the selected preview inside the card without forcing the fullscreen result sheet
+  - this improves phone-side multi-image review flow and reduces accidental fullscreen interruptions during result comparison
+- validation:
+  - `npm run test -- src/workbench/WorkbenchPage.test.tsx`

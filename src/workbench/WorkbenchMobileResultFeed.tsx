@@ -10,9 +10,10 @@ type Props = {
   models: ImageModelConfig[];
   onDeleteGeneration: (generationId: string) => void;
   onDownloadOriginal: (result: WorkbenchResult) => void;
+  onSelectPreview: (generationId: string, result: WorkbenchResult) => void;
   onSelectResult: (result: WorkbenchResult) => void;
   onUseAsReference: (result: WorkbenchResult) => void;
-  selectedResultId: string | null;
+  selectedResultIds: Record<string, string | null>;
 };
 
 export function WorkbenchMobileResultFeed({
@@ -21,9 +22,10 @@ export function WorkbenchMobileResultFeed({
   models,
   onDeleteGeneration,
   onDownloadOriginal,
+  onSelectPreview,
   onSelectResult,
   onUseAsReference,
-  selectedResultId,
+  selectedResultIds,
 }: Props) {
   return (
     <section className="grid gap-4 pb-[132px]" data-testid="workbench-mobile-result-feed">
@@ -43,10 +45,11 @@ export function WorkbenchMobileResultFeed({
           models={models}
           onDelete={onDeleteGeneration}
           onDownloadOriginal={onDownloadOriginal}
+          onSelectPreview={onSelectPreview}
           onSelectResult={onSelectResult}
           onUseAsReference={onUseAsReference}
           results={getDisplayResults(generation)}
-          selectedResultId={selectedResultId}
+          selectedResultId={selectedResultIds[generation.id] ?? null}
         />
       ))}
     </section>

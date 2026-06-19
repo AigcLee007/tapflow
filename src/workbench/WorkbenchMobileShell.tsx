@@ -48,9 +48,17 @@ export function WorkbenchMobileShell({
   routeLabel,
 }: Props) {
   const [sheetOpen, setSheetOpen] = React.useState(false);
+  const [selectedResultIds, setSelectedResultIds] = React.useState<Record<string, string | null>>({});
   const featuredGeneration = getFeaturedGeneration(generations);
   const featuredResult = featuredGeneration ? getPrimaryResult(featuredGeneration) : null;
   const modelLabel = models.find((model) => model.id === draft.modelId)?.label || draft.modelId;
+
+  const handleSelectPreview = React.useCallback((generationId: string, result: WorkbenchResult) => {
+    setSelectedResultIds((current) => ({
+      ...current,
+      [generationId]: result.id,
+    }));
+  }, []);
 
   return (
     <>
@@ -133,9 +141,10 @@ export function WorkbenchMobileShell({
           models={models}
           onDeleteGeneration={onDeleteGeneration}
           onDownloadOriginal={onDownloadOriginal}
+          onSelectPreview={handleSelectPreview}
           onSelectResult={onOpenResult}
           onUseAsReference={onUseAsReference}
-          selectedResultId={featuredResult?.id ?? null}
+          selectedResultIds={selectedResultIds}
         />
       </div>
 

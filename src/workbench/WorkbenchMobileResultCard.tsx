@@ -9,6 +9,7 @@ type Props = {
   models: ImageModelConfig[];
   onDelete: (generationId: string) => void;
   onDownloadOriginal: (result: WorkbenchResult) => void;
+  onSelectPreview: (generationId: string, result: WorkbenchResult) => void;
   onSelectResult: (result: WorkbenchResult) => void;
   onUseAsReference: (result: WorkbenchResult) => void;
   results: WorkbenchResult[];
@@ -30,6 +31,7 @@ export function WorkbenchMobileResultCard({
   models,
   onDelete,
   onDownloadOriginal,
+  onSelectPreview,
   onSelectResult,
   onUseAsReference,
   results,
@@ -49,6 +51,7 @@ export function WorkbenchMobileResultCard({
           <img
             alt={selected.originalFilename || "Workbench result"}
             className="max-h-[248px] w-full rounded-[16px] object-contain"
+            data-testid={`workbench-mobile-stage-image-${generation.id}`}
             src={selected.previewUrl}
           />
         ) : (
@@ -124,8 +127,9 @@ export function WorkbenchMobileResultCard({
                 className={`relative shrink-0 overflow-hidden rounded-[14px] border ${
                   result.id === selected?.id ? "border-cyan-300/70" : "border-white/8"
                 } bg-[#0b0d12]`}
+                data-testid={`workbench-mobile-thumb-${generation.id}-${result.id}`}
                 key={result.id}
-                onClick={() => onSelectResult(result)}
+                onClick={() => onSelectPreview(generation.id, result)}
                 type="button"
               >
                 <span className="absolute left-2 top-2 z-10 rounded-full bg-black/70 px-1.5 py-0.5 text-[10px] font-black text-white">
