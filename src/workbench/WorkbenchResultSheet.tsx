@@ -68,7 +68,7 @@ export function WorkbenchResultSheet({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/92 text-white" data-testid="workbench-result-fullscreen">
+    <div className="fixed inset-0 z-50 bg-black text-white" data-testid="workbench-result-fullscreen">
       <button
         aria-label="Close result preview"
         className="absolute inset-0 cursor-zoom-out"
@@ -116,7 +116,7 @@ export function WorkbenchResultSheet({
 
               <img
                 alt={activeResult.originalFilename || "Workbench result"}
-                className="block h-auto max-h-[calc(100vh-168px)] w-auto max-w-[calc(100vw-48px)] rounded-[18px] object-contain shadow-[0_28px_90px_rgba(0,0,0,0.55)]"
+                className="block h-auto max-h-[calc(100dvh-220px)] w-auto max-w-[calc(100vw-48px)] rounded-[18px] object-contain shadow-[0_28px_90px_rgba(0,0,0,0.55)] md:max-h-[calc(100vh-180px)]"
                 data-testid="workbench-result-fullscreen-image"
                 src={imageUrl}
               />
@@ -140,7 +140,10 @@ export function WorkbenchResultSheet({
           )}
         </div>
 
-        <div className="relative z-10 mx-auto flex w-full max-w-[620px] shrink-0 flex-col gap-3 pb-safe">
+        <div
+          className="relative z-10 mx-auto flex w-full max-w-[620px] shrink-0 flex-col gap-3 rounded-t-[28px] bg-black/88 pb-[calc(env(safe-area-inset-bottom,0px)+88px)] pt-3 backdrop-blur-xl md:pb-safe"
+          data-testid="workbench-result-fullscreen-actions"
+        >
           {canNavigateBatch ? (
             <div className="flex items-center gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {availableBatchResults.map((item, index) => {
@@ -178,7 +181,7 @@ export function WorkbenchResultSheet({
             </div>
           ) : null}
 
-          <div className="grid h-16 w-full grid-cols-3 items-center gap-2">
+          <div className="grid h-14 w-full grid-cols-3 items-center gap-2 px-1">
             <button
               className="inline-flex h-12 items-center justify-center gap-1.5 rounded-full bg-white/[0.10] px-2 text-[12px] font-bold text-white transition hover:bg-white/[0.16]"
               onClick={() => onDownloadOriginal(activeResult)}

@@ -33,7 +33,7 @@ type Props = {
   routeLabel: string;
 };
 
-const MOBILE_FEED_PAGE_SIZE = 8;
+const MOBILE_FEED_PAGE_SIZE = 4;
 
 export function WorkbenchMobileShell({
   availableCredits,

@@ -12,6 +12,33 @@ import { buildWorkbenchRequestParams } from "./workbenchModelParams";
 import { getReferencedAssetIdsForPrompt } from "./workbenchReferences";
 import type { WorkbenchDraft } from "./workbenchTypes";
 
+const WORKBENCH_GENERATION_CACHE_TTL_MS = 15_000;
+
+let generationMemoryCache: {
+  generations: WorkbenchGenerationView[];
+  updatedAt: number;
+} | null = null;
+
+export function clearWorkbenchGenerationMemoryCache() {
+  generationMemoryCache = null;
+}
+
+function readWorkbenchGenerationMemoryCache() {
+  if (!generationMemoryCache) return null;
+  if (Date.now() - generationMemoryCache.updatedAt > WORKBENCH_GENERATION_CACHE_TTL_MS) {
+    generationMemoryCache = null;
+    return null;
+  }
+  return generationMemoryCache.generations;
+}
+
+function writeWorkbenchGenerationMemoryCache(generations: WorkbenchGenerationView[]) {
+  generationMemoryCache = {
+    generations,
+    updatedAt: Date.now(),
+  };
+}
+
 function mergeGeneration(
   items: WorkbenchGenerationView[],
   next: WorkbenchGenerationView,
@@ -56,6 +83,7 @@ export function useWorkbenchGenerations() {
     try {
       const result = await listWorkbenchGenerations({ limit: 30 });
       setGenerations(result.generations);
+      writeWorkbenchGenerationMemoryCache(result.generations);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "加载工作台历史失败");
@@ -78,7 +106,11 @@ export function useWorkbenchGenerations() {
             throw new Error("生成状态返回为空，正在重试");
           }
           failedPolls = 0;
-          setGenerations((current) => mergeGeneration(current, next));
+          setGenerations((current) => {
+            const merged = mergeGeneration(current, next);
+            writeWorkbenchGenerationMemoryCache(merged);
+            return merged;
+          });
           if (isSucceededWithoutResults(next) && emptyResultPolls < 6) {
             emptyResultPolls += 1;
             await new Promise((resolve) => window.setTimeout(resolve, 1200));
@@ -104,11 +136,23 @@ export function useWorkbenchGenerations() {
 
   React.useEffect(() => {
     let active = true;
-    setLoading(true);
+    const cachedGenerations = readWorkbenchGenerationMemoryCache();
+    if (cachedGenerations) {
+      setGenerations(cachedGenerations);
+      setLoading(false);
+      cachedGenerations
+        .filter((generation) => !isBatchTerminal(generation))
+        .forEach((generation) => {
+          void pollGeneration(generation.id);
+        });
+    } else {
+      setLoading(true);
+    }
     void listWorkbenchGenerations({ limit: 30 })
       .then((result) => {
         if (!active) return;
         setGenerations(result.generations);
+        writeWorkbenchGenerationMemoryCache(result.generations);
         setError(null);
         result.generations
           .filter((generation) => !isBatchTerminal(generation))
@@ -141,7 +185,11 @@ export function useWorkbenchGenerations() {
         requestedCount: draft.quantity,
         routeKey: draft.routeKey,
       });
-      setGenerations((current) => mergeGeneration(current, created));
+      setGenerations((current) => {
+        const merged = mergeGeneration(current, created);
+        writeWorkbenchGenerationMemoryCache(merged);
+        return merged;
+      });
       setError(null);
       if (!isBatchTerminal(created)) {
         void pollGeneration(created.id);
@@ -157,7 +205,11 @@ export function useWorkbenchGenerations() {
 
   const retry = React.useCallback(async (generationId: string) => {
     const created = await retryWorkbenchGeneration(generationId);
-    setGenerations((current) => mergeGeneration(current, created));
+    setGenerations((current) => {
+      const merged = mergeGeneration(current, created);
+      writeWorkbenchGenerationMemoryCache(merged);
+      return merged;
+    });
     if (!isBatchTerminal(created)) {
       void pollGeneration(created.id);
     }
@@ -167,7 +219,11 @@ export function useWorkbenchGenerations() {
   const remove = React.useCallback(async (generationId: string) => {
     await deleteWorkbenchGeneration(generationId);
     pollingIdsRef.current.delete(generationId);
-    setGenerations((current) => current.filter((generation) => generation.id !== generationId));
+    setGenerations((current) => {
+      const next = current.filter((generation) => generation.id !== generationId);
+      writeWorkbenchGenerationMemoryCache(next);
+      return next;
+    });
     setError(null);
   }, []);
 

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { AppRouter } from "../app/AppRouter";
 import { AuthContext, type AuthState } from "../auth/useAuth";
+import { clearWorkbenchGenerationMemoryCache } from "./useWorkbenchGenerations";
 
 const useImageModelCatalogMock = vi.fn();
 const listAiModelRoutesMock = vi.fn();
@@ -155,6 +156,7 @@ describe("WorkbenchPage", () => {
     });
     URL.createObjectURL = vi.fn(() => "blob:local-ref-preview");
     downloadOriginalImageMock.mockReset();
+    clearWorkbenchGenerationMemoryCache();
 
     useImageModelCatalogMock.mockReturnValue({
       error: null,
@@ -397,6 +399,108 @@ describe("WorkbenchPage", () => {
     expect(screen.getByLabelText("打开结果菜单-mobile-done-quad")).toBeTruthy();
   });
 
+  test("initial mobile result feed renders only the newest four cards and loads older cards when scrolled to top", async () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 390,
+    });
+    const generations = Array.from({ length: 6 }, (_, index) =>
+      createGeneration({
+        createdAt: `2026-06-19T08:0${index}:00.000Z`,
+        id: `mobile-feed-${index}`,
+        prompt: `mobile prompt ${index}`,
+        status: "succeeded",
+        results: [
+          {
+            assetId: `mobile-feed-asset-${index}`,
+            createdAt: `2026-06-19T08:0${index}:00.000Z`,
+            downloadUrl: `https://example.com/mobile-feed-${index}.png`,
+            downloadUrlExpiresAt: null,
+            height: 1024,
+            id: `mobile-feed-result-${index}`,
+            metadata: {},
+            mimeType: "image/png",
+            originalFilename: `mobile-feed-${index}.png`,
+            previewUrl: `https://example.com/mobile-feed-${index}.png`,
+            previewUrlExpiresAt: null,
+            sortOrder: 0,
+            status: "available",
+            width: 1024,
+          },
+        ],
+      }),
+    );
+    listWorkbenchGenerationsMock.mockResolvedValue({
+      generations,
+      nextCursor: null,
+    });
+
+    setRoute("/workbench");
+    renderRouter();
+
+    const feed = await screen.findByTestId("workbench-mobile-result-feed");
+    expect(within(feed).getAllByTestId("workbench-mobile-creation-feed-card")).toHaveLength(4);
+    expect(screen.queryByText("mobile prompt 0")).toBeNull();
+    expect(screen.queryByText("mobile prompt 1")).toBeNull();
+    expect(screen.getByText("mobile prompt 2")).toBeTruthy();
+    expect(screen.getByText("mobile prompt 5")).toBeTruthy();
+
+    fireEvent.scroll(screen.getByTestId("workbench-mobile-scroll-area"), {
+      currentTarget: { scrollTop: 0 },
+    });
+
+    expect(within(feed).getAllByTestId("workbench-mobile-creation-feed-card")).toHaveLength(6);
+    expect(screen.getByText("mobile prompt 0")).toBeTruthy();
+    expect(screen.getByText("mobile prompt 1")).toBeTruthy();
+  });
+
+  test("reopens the mobile workbench from the short-lived generation cache while refreshing in the background", async () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 390,
+    });
+    const cachedGeneration = createGeneration({
+      id: "mobile-cache-generation",
+      prompt: "cached mobile prompt",
+      status: "succeeded",
+      results: [
+        {
+          assetId: "mobile-cache-asset",
+          createdAt: "2026-06-19T08:00:00.000Z",
+          downloadUrl: "https://example.com/mobile-cache.png",
+          downloadUrlExpiresAt: null,
+          height: 1024,
+          id: "mobile-cache-result",
+          metadata: {},
+          mimeType: "image/png",
+          originalFilename: "mobile-cache.png",
+          previewUrl: "https://example.com/mobile-cache.png",
+          previewUrlExpiresAt: null,
+          sortOrder: 0,
+          status: "available",
+          width: 1024,
+        },
+      ],
+    });
+    listWorkbenchGenerationsMock.mockResolvedValue({
+      generations: [cachedGeneration],
+      nextCursor: null,
+    });
+
+    setRoute("/workbench");
+    const firstRender = renderRouter();
+    expect(await screen.findByText("cached mobile prompt")).toBeTruthy();
+    firstRender.unmount();
+
+    listWorkbenchGenerationsMock.mockImplementation(() => new Promise(() => undefined));
+    setRoute("/workbench");
+    renderRouter();
+
+    expect(await screen.findByText("cached mobile prompt")).toBeTruthy();
+    expect(screen.queryByText("正在加载工作台内容...")).toBeNull();
+    expect(listWorkbenchGenerationsMock).toHaveBeenCalledTimes(2);
+  });
+
   test("opens the tapped mobile feed image directly in fullscreen preview", async () => {
     Object.defineProperty(window, "innerWidth", {
       configurable: true,
@@ -618,7 +722,7 @@ describe("WorkbenchPage", () => {
     await waitFor(() => {
       expect(scrollToMock).toHaveBeenCalled();
     });
-    expect(within(feed).getAllByTestId("workbench-mobile-creation-feed-card")).toHaveLength(8);
+    expect(within(feed).getAllByTestId("workbench-mobile-creation-feed-card")).toHaveLength(4);
     expect(screen.queryByText("history prompt 0")).toBeNull();
     expect(screen.getByText("history prompt 9")).toBeTruthy();
     expect(screen.getByText((content) =>
@@ -627,6 +731,14 @@ describe("WorkbenchPage", () => {
       && content.includes("2K")
       && content.includes("17:02"),
     )).toBeTruthy();
+
+    fireEvent.scroll(screen.getByTestId("workbench-mobile-scroll-area"), { target: { scrollTop: 0 } });
+
+    await waitFor(() => {
+      expect(within(feed).getAllByTestId("workbench-mobile-creation-feed-card")).toHaveLength(8);
+    });
+    expect(screen.getByText("history prompt 2")).toBeTruthy();
+    expect(screen.queryByText("history prompt 0")).toBeNull();
 
     fireEvent.scroll(screen.getByTestId("workbench-mobile-scroll-area"), { target: { scrollTop: 0 } });
 
@@ -841,7 +953,7 @@ describe("WorkbenchPage", () => {
     expect(detailImages.some((image) => image.getAttribute("src") === "https://example.com/asset-result-detail-1-original.png")).toBe(true);
     expect(screen.getByTestId("workbench-result-fullscreen").className).toContain("fixed inset-0");
     expect(screen.getByTestId("workbench-result-fullscreen-image").className).toContain("h-auto");
-    expect(screen.getByTestId("workbench-result-fullscreen-image").className).toContain("max-h-[calc(100vh-168px)]");
+    expect(screen.getByTestId("workbench-result-fullscreen-image").className).toContain("max-h-[calc(100dvh-220px)]");
     expect(screen.getByTestId("workbench-result-fullscreen-image").className).toContain("w-auto");
     expect(screen.getByTestId("workbench-result-fullscreen-image").className).toContain("max-w-[calc(100vw-48px)]");
   });
@@ -938,6 +1050,113 @@ describe("WorkbenchPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "重新生成" }));
     expect(await screen.findByTestId("workbench-mobile-parameter-sheet")).toBeTruthy();
     expect((screen.getByLabelText("Prompt") as HTMLTextAreaElement).value).toBe("Product poster");
+  });
+
+  test("keeps mobile fullscreen preview actions above the bottom dock safe area", async () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 390,
+    });
+    listWorkbenchGenerationsMock.mockResolvedValue({
+      generations: [
+        createGeneration({
+          id: "mobile-preview-safe-area",
+          status: "succeeded",
+          results: [
+            {
+              assetId: "mobile-preview-safe-asset",
+              createdAt: new Date().toISOString(),
+              downloadUrl: "https://example.com/mobile-preview-safe.png",
+              downloadUrlExpiresAt: null,
+              height: 1024,
+              id: "mobile-preview-safe-result",
+              metadata: {},
+              mimeType: "image/png",
+              originalFilename: "mobile-preview-safe.png",
+              previewUrl: "https://example.com/mobile-preview-safe.png",
+              previewUrlExpiresAt: null,
+              sortOrder: 0,
+              status: "available",
+              width: 1024,
+            },
+          ],
+        }),
+      ],
+      nextCursor: null,
+    });
+
+    setRoute("/workbench");
+    renderRouter();
+
+    expect(await screen.findByTestId("workbench-mobile-result-feed")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("workbench-mobile-thumb-mobile-preview-safe-area-mobile-preview-safe-result"));
+
+    expect(await screen.findByTestId("workbench-result-fullscreen")).toBeTruthy();
+    expect(screen.getByTestId("workbench-result-fullscreen").className).toContain("bg-black");
+    expect(screen.getByTestId("workbench-result-fullscreen-actions").className).toContain("pb-[calc(env(safe-area-inset-bottom,0px)+88px)]");
+    expect(screen.getByTestId("workbench-result-fullscreen-image").className).toContain("max-h-[calc(100dvh-220px)]");
+  });
+
+  test("uses ratio-aware mobile thumbnail mosaics for wide three and four image batches", async () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 390,
+    });
+    const wideResult = (generationId: string, index: number, width = 1792, height = 1024) => ({
+      assetId: `${generationId}-asset-${index}`,
+      createdAt: new Date().toISOString(),
+      downloadUrl: `https://example.com/${generationId}-${index}.png`,
+      downloadUrlExpiresAt: null,
+      height,
+      id: `${generationId}-result-${index}`,
+      metadata: {},
+      mimeType: "image/png",
+      originalFilename: `${generationId}-${index}.png`,
+      previewUrl: `https://example.com/${generationId}-${index}.png`,
+      previewUrlExpiresAt: null,
+      sortOrder: index,
+      status: "available",
+      width,
+    });
+    listWorkbenchGenerationsMock.mockResolvedValue({
+      generations: [
+        createGeneration({
+          id: "mobile-wide-three",
+          params: { aspect_ratio: "16:9", size: "2k" },
+          requestedCount: 3,
+          status: "succeeded",
+          results: [wideResult("mobile-wide-three", 0), wideResult("mobile-wide-three", 1), wideResult("mobile-wide-three", 2)],
+        }),
+        createGeneration({
+          id: "mobile-wide-four",
+          params: { aspect_ratio: "21:9", size: "2k" },
+          requestedCount: 4,
+          status: "succeeded",
+          results: [
+            wideResult("mobile-wide-four", 0, 2048, 878),
+            wideResult("mobile-wide-four", 1, 2048, 878),
+            wideResult("mobile-wide-four", 2, 2048, 878),
+            wideResult("mobile-wide-four", 3, 2048, 878),
+          ],
+        }),
+      ],
+      nextCursor: null,
+    });
+
+    setRoute("/workbench");
+    renderRouter();
+
+    expect(await screen.findByTestId("workbench-mobile-mosaic-mobile-wide-three")).toBeTruthy();
+    expect(screen.getByTestId("workbench-mobile-mosaic-mobile-wide-three").className).toContain("grid-cols-2");
+    expect(document.getElementById("workbench-mobile-feed-slot-mobile-wide-three-2")?.className).toContain("col-span-1");
+    expect(document.getElementById("workbench-mobile-feed-slot-mobile-wide-three-2")?.className).toContain("aspect-[16/9]");
+    expect(screen.getByTestId("workbench-mobile-feed-image-mobile-wide-three-mobile-wide-three-result-2").className).toContain("object-cover");
+
+    expect(screen.getByTestId("workbench-mobile-mosaic-mobile-wide-four").className).toContain("grid-cols-2");
+    expect(screen.getAllByTestId("workbench-mobile-feed-slot-mobile-wide-four")).toHaveLength(4);
+    expect(document.getElementById("workbench-mobile-feed-slot-mobile-wide-four-0")?.className).toContain("aspect-[21/9]");
+    expect(document.getElementById("workbench-mobile-feed-slot-mobile-wide-four-1")?.className).toContain("aspect-[21/9]");
+    expect(screen.getByTestId("workbench-mobile-feed-image-mobile-wide-four-mobile-wide-four-result-1").className).toContain("object-cover");
   });
 
   test("completed result cards expose download original, use as reference, and delete record actions", async () => {

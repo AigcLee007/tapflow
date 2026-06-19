@@ -21,6 +21,12 @@ type FeedSlot =
   | { index: number; kind: "result"; result: WorkbenchResult }
   | { index: number; kind: "pending" | "failed" };
 
+type MobileMosaicLayout = {
+  containerClassName: string;
+  imageClassName: string;
+  slotClassNames: string[];
+};
+
 function getModelLabel(modelId: string, models: ImageModelConfig[]) {
   return models.find((model) => model.id === modelId)?.label || modelId;
 }
@@ -60,6 +66,67 @@ function buildSlots(generation: WorkbenchGeneration, results: WorkbenchResult[])
     if (result) return { index, kind: "result", result };
     return { index, kind: isTerminalFailed(generation.status) ? "failed" : "pending" };
   });
+}
+
+function readAspectRatio(generation: WorkbenchGeneration, results: WorkbenchResult[]) {
+  const firstResultWithDimensions = results.find((result) => result.width && result.height);
+  if (firstResultWithDimensions?.width && firstResultWithDimensions.height) {
+    return firstResultWithDimensions.width / firstResultWithDimensions.height;
+  }
+  const rawRatio = String(generation.params.aspect_ratio || generation.params.aspectRatio || "");
+  const [rawWidth, rawHeight] = rawRatio.split(":").map((value) => Number(value));
+  if (rawWidth > 0 && rawHeight > 0) return rawWidth / rawHeight;
+  return 1;
+}
+
+function getMobileMosaicLayout(
+  generation: WorkbenchGeneration,
+  results: WorkbenchResult[],
+  slotCount: number,
+): MobileMosaicLayout {
+  const ratio = readAspectRatio(generation, results);
+  const isWide = ratio >= 1.45;
+  const isUltraWide = ratio >= 2;
+  const wideAspect = isUltraWide ? "aspect-[21/9]" : "aspect-[16/9]";
+
+  if (slotCount <= 1) {
+    return {
+      containerClassName: "grid gap-0 overflow-hidden rounded-[6px] border border-white/8 bg-[#090b10]",
+      imageClassName: isWide ? "object-cover" : "object-contain",
+      slotClassNames: [`${isWide ? wideAspect : "aspect-[4/5]"} w-full`],
+    };
+  }
+
+  if (slotCount === 2) {
+    const useStack = isWide;
+    return {
+      containerClassName: `grid gap-px overflow-hidden rounded-[6px] border border-white/8 bg-black ${useStack ? "grid-cols-1" : "grid-cols-2"}`,
+      imageClassName: "object-cover",
+      slotClassNames: Array.from({ length: 2 }, () => (useStack ? `${wideAspect} w-full` : "aspect-[3/4] w-full")),
+    };
+  }
+
+  if (slotCount === 3 && isWide) {
+    return {
+      containerClassName: "grid grid-cols-2 gap-px overflow-hidden rounded-[6px] border border-white/8 bg-black",
+      imageClassName: "object-cover",
+      slotClassNames: [wideAspect, wideAspect, `col-span-1 ${wideAspect}`],
+    };
+  }
+
+  if (slotCount === 3) {
+    return {
+      containerClassName: "grid grid-cols-3 gap-px overflow-hidden rounded-[6px] border border-white/8 bg-black",
+      imageClassName: "object-cover",
+      slotClassNames: Array.from({ length: 3 }, () => "aspect-[3/4]"),
+    };
+  }
+
+  return {
+    containerClassName: "grid grid-cols-2 gap-px overflow-hidden rounded-[6px] border border-white/8 bg-black",
+    imageClassName: "object-cover",
+    slotClassNames: Array.from({ length: slotCount }, () => (isWide ? wideAspect : "aspect-[4/3]")),
+  };
 }
 
 function getStatusLine(generation: WorkbenchGeneration, results: WorkbenchResult[]) {
@@ -111,6 +178,10 @@ export function WorkbenchMobileResultCard({
   const sortedResults = React.useMemo(() => getSortedResults(results), [results]);
   const selected = sortedResults.find((item) => item.id === selectedResultId) ?? sortedResults[0] ?? null;
   const slots = React.useMemo(() => buildSlots(generation, sortedResults), [generation, sortedResults]);
+  const mosaicLayout = React.useMemo(
+    () => getMobileMosaicLayout(generation, sortedResults, slots.length),
+    [generation, sortedResults, slots.length],
+  );
   const statusLine = getStatusLine(generation, sortedResults);
   const parameterLine = getParameterLine(generation, models);
   const prompt = generation.prompt.trim() || "未命名创作";
@@ -194,15 +265,16 @@ export function WorkbenchMobileResultCard({
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-[6px] border border-white/8 bg-[#090b10] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <div
-          className="grid min-w-full"
-          style={{ gridTemplateColumns: `repeat(${slots.length}, minmax(${slots.length > 4 ? "76px" : "0"}, 1fr))` }}
-        >
+      <div
+        className={mosaicLayout.containerClassName}
+        data-testid={`workbench-mobile-mosaic-${generation.id}`}
+      >
         {slots.map((slot) => (
           <div
-            className="relative aspect-[3/4] min-w-0 overflow-hidden border-r border-black/55 last:border-r-0"
+            className={`relative min-w-0 overflow-hidden bg-[#0d1118] ${mosaicLayout.slotClassNames[slot.index] || mosaicLayout.slotClassNames[0]}`}
             data-testid={`workbench-mobile-feed-slot-${generation.id}`}
+            data-slot-index={slot.index}
+            id={`workbench-mobile-feed-slot-${generation.id}-${slot.index}`}
             key={`${generation.id}-${slot.index}`}
           >
             {slot.kind === "result" ? (
@@ -218,7 +290,7 @@ export function WorkbenchMobileResultCard({
                 {slot.result.previewUrl ? (
                   <img
                     alt={slot.result.originalFilename || "Workbench result"}
-                    className="h-full w-full object-cover"
+                    className={`h-full w-full ${mosaicLayout.imageClassName}`}
                     data-testid={`workbench-mobile-feed-image-${generation.id}-${slot.result.id}`}
                     loading="lazy"
                     src={slot.result.previewUrl}
@@ -243,7 +315,6 @@ export function WorkbenchMobileResultCard({
             )}
           </div>
         ))}
-        </div>
       </div>
 
       <div className="mt-2 flex items-center gap-1.5 px-1 text-[11px] font-medium text-slate-500">

@@ -2805,3 +2805,15 @@ Validation completed:
 - validation:
   - `npm run test -- src/flowCanvas/utils/imageDownload.test.ts src/flowCanvas/utils/imageUtils.test.ts src/workbench/WorkbenchPage.test.tsx`
   - `npm run build`
+
+## 2026-06-19 - Mobile Workbench Preview And Feed Refinement
+
+- fixed the mobile result fullscreen preview so the action buttons sit above the bottom workbench dock safe area instead of overlapping the underlying creation bar
+- added a short-lived in-memory workbench generation cache so reopening `/workbench` within a few seconds shows the latest feed immediately while still refreshing in the background
+- reduced the mobile feed initial render window to the latest 4 records and loads 4 older records at a time when the user scrolls upward
+- replaced the mobile feed thumbnail strip with ratio-aware mosaics:
+  - single wide images keep their wide crop instead of being forced into a portrait tile
+  - 3-image wide batches use the JiMeng-style two-up plus one-below arrangement
+  - 4-image ultra-wide batches use a 2x2 JiMeng-style grid with matching pending placeholders
+- validation:
+  - `npm run test -- src/workbench/WorkbenchPage.test.tsx`
