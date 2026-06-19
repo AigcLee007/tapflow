@@ -2767,3 +2767,12 @@ Validation completed:
   - this improves phone-side multi-image review flow and reduces accidental fullscreen interruptions during result comparison
 - validation:
   - `npm run test -- src/workbench/WorkbenchPage.test.tsx`
+
+## 2026-06-19 - Workbench Billing Balance Source Fix
+
+- fixed `/workbench` desktop and mobile headers so the credit pill reads the authenticated tenant billing summary instead of a stale hardcoded demo balance
+- aligned workbench balance formatting with the existing workspace account menu helper, so a zero-balance account now shows `0` consistently across `/home` and `/workbench`
+- added regression coverage that mocks a zero credit balance and asserts both desktop and mobile workbench headers no longer render the old `19071` placeholder
+- validation:
+  - `npm run test -- src/workbench/WorkbenchPage.test.tsx`
+  - `npm run build`

@@ -15,6 +15,7 @@ const retryWorkbenchGenerationMock = vi.fn();
 const uploadWorkbenchReferenceFileMock = vi.fn();
 const getAssetMock = vi.fn();
 const getAssetVariantUrlMock = vi.fn();
+const getBillingSummaryMock = vi.fn();
 
 vi.mock("../auth/AuthGate", () => ({
   AuthGate: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -51,6 +52,14 @@ vi.mock("../assets/assetApi", async () => {
     ...actual,
     getAsset: (...args: unknown[]) => getAssetMock(...args),
     getAssetVariantUrl: (...args: unknown[]) => getAssetVariantUrlMock(...args),
+  };
+});
+
+vi.mock("../billing/billingApi", async () => {
+  const actual = await vi.importActual("../billing/billingApi");
+  return {
+    ...actual,
+    getBillingSummary: (...args: unknown[]) => getBillingSummaryMock(...args),
   };
 });
 
@@ -203,6 +212,24 @@ describe("WorkbenchPage", () => {
       originalFilename: "ref.png",
       previewUrl: "blob:local-ref-preview",
     });
+    getBillingSummaryMock.mockResolvedValue({
+      account: {
+        balanceCents: 0,
+        currency: "credits",
+        reservedCents: 0,
+        status: "active",
+      },
+      availableCredits: 0,
+      creditGrants: {
+        availableCredits: 0,
+        expiringCredits: 0,
+        expiringCreditsExpireAt: null,
+        lifetimeCredits: 0,
+      },
+      membership: {
+        tier: "standard",
+      },
+    });
   });
 
   test("renders /workbench as a fullscreen studio route outside the shared shell", async () => {
@@ -277,6 +304,29 @@ describe("WorkbenchPage", () => {
     expect(screen.queryByLabelText("历史")).toBeNull();
     expect(screen.getByTestId("workbench-mobile-scroll-area").className).toContain("overflow-x-hidden");
     expect(screen.getByTestId("workbench-mobile-scroll-area").className).toContain("overscroll-y-contain");
+  });
+
+  test("uses the real billing balance in desktop and mobile workbench headers", async () => {
+    setRoute("/workbench");
+    renderRouter();
+
+    await waitFor(() => {
+      expect(getBillingSummaryMock).toHaveBeenCalled();
+    });
+    expect(screen.getByTestId("workbench-credit-balance").textContent).toBe("0");
+    expect(screen.queryByText("19071")).toBeNull();
+
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 390,
+    });
+    setRoute("/workbench");
+    renderRouter();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("workbench-mobile-credit-balance").textContent).toBe("0");
+    });
+    expect(screen.queryByText("19071")).toBeNull();
   });
 
   test("opens the mobile parameter sheet from the bottom creation dock", async () => {

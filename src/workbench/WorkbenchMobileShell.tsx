@@ -15,6 +15,7 @@ function navigate(path: string) {
 }
 
 type Props = {
+  availableCredits: number;
   draft: WorkbenchDraft;
   error: string | null;
   featuredPreviewUrl: string | null;
@@ -35,6 +36,7 @@ type Props = {
 };
 
 export function WorkbenchMobileShell({
+  availableCredits,
   draft,
   error,
   featuredPreviewUrl,
@@ -106,7 +108,7 @@ export function WorkbenchMobileShell({
         <div className="flex shrink-0 items-center gap-2">
           <div className="flex h-10 items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.05] px-3 text-[12px] font-black text-[#ffe35a]">
             <Coins size={13} />
-            19071
+            <span data-testid="workbench-mobile-credit-balance">{availableCredits.toLocaleString()}</span>
           </div>
         </div>
       </header>

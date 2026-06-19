@@ -14,6 +14,9 @@ import {
 import { BrandMark } from "../app/brand/BrandMark";
 import { HOME_ROUTE, WORKSPACE_ROUTE } from "../app/routes";
 import { getAssetVariantUrl } from "../assets/assetApi";
+import { useAuth } from "../auth/useAuth";
+import { getAvailableCredits } from "../billing/billingDisplay";
+import { useBillingSummarySnapshot } from "../billing/useBillingSummarySnapshot";
 import type { ImageModelConfig } from "../config/imageModels";
 import { useImageModelCatalog } from "../hooks/useImageModelCatalog";
 import { sendWorkbenchResultToProject } from "../services/v2WorkbenchApi";
@@ -914,6 +917,7 @@ function DesktopResultsWorkspace({
 }
 
 export function WorkbenchPage() {
+  const { authenticated, tenant, user } = useAuth();
   const { models } = useImageModelCatalog();
   const { error, generations, loading, remove, retry, submit, submitting } = useWorkbenchGenerations();
   const [draft, setDraft] = React.useState(() => createDefaultWorkbenchDraft());
@@ -923,6 +927,8 @@ export function WorkbenchPage() {
   const viewportWidth = useViewportWidth();
   const isDesktop = viewportWidth >= 1024;
   const isMobile = viewportWidth < 768;
+  const billingSummary = useBillingSummarySnapshot(Boolean(authenticated && tenant && user));
+  const availableCredits = getAvailableCredits(billingSummary);
 
   React.useEffect(() => {
     if (models.length === 0) return;
@@ -1018,6 +1024,7 @@ export function WorkbenchPage() {
         <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:44px_44px] opacity-[0.08]" />
         <div className="relative z-10 h-full">
           <WorkbenchMobileShell
+            availableCredits={availableCredits}
             draft={draft}
             error={error}
             featuredPreviewUrl={featuredPreviewUrlForMobile}
@@ -1101,7 +1108,7 @@ export function WorkbenchPage() {
           </div>
           <div className="flex h-10 items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-4 text-sm font-black text-[#ffe35a]">
             <Coins size={14} />
-            19071
+            <span data-testid="workbench-credit-balance">{availableCredits.toLocaleString()}</span>
           </div>
           <button
             aria-label="历史"
