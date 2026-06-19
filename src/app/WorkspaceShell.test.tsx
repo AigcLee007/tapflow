@@ -1,5 +1,5 @@
 import React from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { AuthContext, type AuthState } from "../auth/useAuth";
@@ -88,7 +88,9 @@ describe("WorkspaceShell", () => {
   test("renders primary creator navigation", () => {
     renderShell();
 
-    expect(screen.getByRole("button", { name: /AI Flow/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "返回首页" })).toBeTruthy();
+    expect(screen.queryByText("AI Flow")).toBeNull();
+    expect(screen.queryByText("测试工作区")).toBeNull();
     expect(screen.getAllByRole("button", { name: /主页/ }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole("button", { name: /生图工作台/ }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole("button", { name: /无限画布/ }).length).toBeGreaterThan(0);
@@ -109,10 +111,19 @@ describe("WorkspaceShell", () => {
 
     renderShell();
 
-    fireEvent.click(screen.getByRole("button", { name: /AI Flow/i }));
+    fireEvent.click(screen.getByRole("button", { name: "返回首页" }));
 
     expect(window.location.pathname).toBe("/home");
     expect(screen.queryByRole("menu", { name: /项目菜单/ })).toBeNull();
+  });
+
+  test("renders a compact account trigger with only the initial and chevron visible", () => {
+    renderShell();
+
+    const accountTrigger = screen.getByRole("button", { name: /打开账户菜单/ });
+    expect(within(accountTrigger).getByText("测")).toBeTruthy();
+    expect(within(accountTrigger).queryByText("测试用户")).toBeNull();
+    expect(within(accountTrigger).queryByText("test@example.com")).toBeNull();
   });
 
   test("opens the account menu separately", () => {

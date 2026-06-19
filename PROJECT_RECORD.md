@@ -1,6 +1,6 @@
 ﻿# Project Record
 
-Last updated: 2026-06-19
+Last updated: 2026-06-20
 Maintainers: project team + Codex sessions
 
 ## Purpose
@@ -48,6 +48,16 @@ Current deployment baseline:
 - env file: `/opt/aittco/env/tapflow.staging.env`
 
 ## Current Key Status Snapshot
+
+As of 2026-06-20:
+
+- Home/global top navigation received the requested compact chrome pass:
+  - the left brand trigger now shows only the round Aittco logo and no longer displays the `AI Flow` text or workspace subtitle in the header.
+  - the account menu trigger now shows only the avatar initial and chevron while keeping the full account details inside the dropdown.
+- Validation:
+  - `npx vitest run src/app/WorkspaceShell.test.tsx` passed.
+  - `npx vitest run src/app/WorkspaceShell.test.tsx src/workspace/HomePage.test.tsx` passed.
+  - `npm run build` passed.
 
 As of 2026-06-19:
 

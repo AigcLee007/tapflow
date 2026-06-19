@@ -94,16 +94,13 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
       <header className="sticky top-0 z-40 border-b border-white/8 bg-[#0b0b0d]/95 backdrop-blur-xl">
         <div className="mx-auto flex h-20 max-w-[1840px] items-center justify-between gap-4 px-6">
           <button
-            aria-label={`AI Flow ${tenantName}`}
-            className="flex min-w-0 items-center gap-4 text-left"
+            aria-label="返回首页"
+            className="grid h-12 w-12 shrink-0 place-items-center rounded-full text-left transition hover:bg-white/[0.06]"
             onClick={() => goTo(HOME_ROUTE)}
             type="button"
+            title={tenantName}
           >
             <BrandMark size="canvas" showCaption={false} />
-            <span className="min-w-0">
-              <span className="block truncate text-xl font-semibold text-white">AI Flow</span>
-              <span className="block truncate text-sm text-slate-500">{tenantName}</span>
-            </span>
           </button>
 
           <nav className="hidden items-center gap-3 rounded-full md:flex">
@@ -141,16 +138,12 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
               ref={accountLayer.triggerRef as React.RefObject<HTMLButtonElement>}
               aria-expanded={accountLayer.open}
               aria-label={`${displayName} ${userEmail} 打开账户菜单`}
-              className="inline-flex h-14 items-center gap-3 rounded-full border border-white/10 bg-white/[0.06] pl-2 pr-4 text-left transition hover:bg-white/[0.10]"
+              className="inline-flex h-14 items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] pl-2 pr-3 text-left transition hover:bg-white/[0.10]"
               onClick={accountLayer.toggle}
               type="button"
             >
               <span className="grid h-10 w-10 place-items-center rounded-full bg-white/[0.10] text-sm font-semibold text-white">
                 {getInitial(user?.displayName, user?.email)}
-              </span>
-              <span className="hidden min-w-0 sm:block">
-                <span className="block max-w-36 truncate text-sm font-medium text-white">{displayName}</span>
-                <span className="block max-w-36 truncate text-xs text-slate-500">{userEmail}</span>
               </span>
               <ChevronDown
                 size={17}
