@@ -4,7 +4,6 @@ import { BrandTransition } from "../app/brand/BrandTransition";
 import { ProjectGrid } from "./ProjectGrid";
 import { ProjectTabs } from "./ProjectTabs";
 import { ProjectToolbar } from "./ProjectToolbar";
-import { WorkspaceHeader } from "./WorkspaceHeader";
 import { useWorkspaceProjects } from "./useWorkspaceProjects";
 import { deleteWorkspaceProject, updateWorkspaceProject, type WorkspaceProject } from "./workspaceApi";
 
@@ -73,14 +72,12 @@ export function WorkspacePage() {
   };
 
   return (
-    <div className="relative -mx-6 -my-9 min-h-[calc(100vh-80px)] overflow-hidden px-5 py-14 sm:px-6 lg:py-16">
+    <div className="relative -mx-6 -my-9 min-h-[calc(100vh-80px)] overflow-hidden px-5 py-5 sm:px-6 lg:py-6">
       <div className="absolute inset-0 bg-[#0b0b0d]" />
       <div className="absolute inset-0 opacity-35 [background-image:radial-gradient(rgba(148,163,184,0.36)_1.2px,transparent_1.2px)] [background-size:36px_36px]" />
       <div className="absolute left-0 top-0 h-[520px] w-[760px] bg-[radial-gradient(circle_at_25%_30%,rgba(34,211,238,0.12),transparent_46%)]" />
 
       <section className="relative mx-auto max-w-[1440px] space-y-5">
-        <WorkspaceHeader projects={projects} />
-
         <div className="rounded-[26px] border border-white/10 bg-white/[0.04] p-4">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <ProjectTabs onChange={setScope} scope={scope} />

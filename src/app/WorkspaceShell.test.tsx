@@ -90,7 +90,10 @@ describe("WorkspaceShell", () => {
 
     expect(screen.getByRole("button", { name: /AI Flow/i })).toBeTruthy();
     expect(screen.getAllByRole("button", { name: /主页/ }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole("button", { name: /工作空间/ }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: /生图工作台/ }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: /无限画布/ }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: /^工作台$/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^工作空间$/ })).toBeNull();
     expect(screen.getAllByRole("button", { name: /素材库/ }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole("button", { name: /价格方案/ }).length).toBeGreaterThan(0);
   });

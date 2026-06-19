@@ -1,6 +1,6 @@
 ﻿# Project Record
 
-Last updated: 2026-06-18
+Last updated: 2026-06-19
 Maintainers: project team + Codex sessions
 
 ## Purpose
@@ -48,6 +48,17 @@ Current deployment baseline:
 - env file: `/opt/aittco/env/tapflow.staging.env`
 
 ## Current Key Status Snapshot
+
+As of 2026-06-19:
+
+- Creator-facing desktop UI labels and entry density were tightened based on screenshot review:
+  - top navigation now names `/workbench` as `生图工作台` and `/workspace` as `无限画布`.
+  - home quick-entry labels now mirror those product names.
+  - `/workspace` no longer renders the large `我的工作空间` hero banner, so project filters and project cards start near the top of the page.
+  - `/billing` no longer renders the large `选择你的套餐` hero banner or hero refresh button, so plan tabs and pricing cards start near the top of the page.
+- Validation:
+  - `npx vitest run src/app/WorkspaceShell.test.tsx src/workspace/WorkspacePage.test.tsx src/billing/BillingCenterPage.test.tsx src/workspace/HomePage.test.tsx` passed.
+  - `npm run build` passed.
 
 As of 2026-06-18:
 

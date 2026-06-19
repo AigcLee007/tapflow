@@ -67,9 +67,9 @@ describe("HomePage", () => {
     expect(screen.getByText("能力预览")).toBeTruthy();
     expect(screen.getByText("继续最近项目")).toBeTruthy();
     expect(screen.getByRole("button", { name: "AI 视频" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "图像生成" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "生图工作台" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "智能抠图" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "批量工作流" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "无限画布" })).toBeTruthy();
     expect(screen.getAllByText("Visual Strategy").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "所有项目" })).toBeTruthy();
   });

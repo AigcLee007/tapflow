@@ -69,19 +69,20 @@ describe("BillingCenterPage", () => {
     listBillingLedgerMock.mockResolvedValue({ items: [], page: 1, pageSize: 20 });
   });
 
-  test("renders price-plan-first billing page", async () => {
+  test("renders plans directly without the old billing hero banner", async () => {
     render(
       <AuthContext.Provider value={createAuthState()}>
         <BillingCenterPage />
       </AuthContext.Provider>,
     );
 
-    expect(await screen.findByRole("heading", { name: "选择你的套餐" })).toBeTruthy();
-    expect(screen.getByText("不止额度，更是灵感落地的速度。")).toBeTruthy();
-    expect(screen.getByText("Basic")).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "选择你的套餐" })).toBeNull();
+    expect(screen.queryByText("不止额度，更是灵感落地的速度。")).toBeNull();
+    expect(screen.queryByText("积分永不过期。")).toBeNull();
+    expect(screen.queryByRole("button", { name: "刷新" })).toBeNull();
+    expect(await screen.findByText("Basic")).toBeTruthy();
     expect(screen.getByText("Pro")).toBeTruthy();
     expect(screen.getByText("Ultimate")).toBeTruthy();
-    expect(screen.getByText("积分永不过期。")).toBeTruthy();
     expect(screen.getByRole("button", { name: "连续包月 15% OFF" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "连续包年 40% OFF" }).getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByText("12,000 积分/月")).toBeTruthy();

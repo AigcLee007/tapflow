@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, Flame, Loader2, RefreshCw, Zap } from "lucide-react";
+import { Check, Flame, Zap } from "lucide-react";
 
 import { useAuth } from "../auth/useAuth";
 import { BillingLedgerTable } from "./BillingLedgerTable";
@@ -124,36 +124,13 @@ export function BillingCenterPage() {
     ledger.length === 0;
 
   return (
-    <div className="relative -mx-6 -my-9 min-h-[calc(100vh-80px)] overflow-hidden px-6 py-16 sm:px-8 lg:py-20">
+    <div className="relative -mx-6 -my-9 min-h-[calc(100vh-80px)] overflow-hidden px-6 py-6 sm:px-8 lg:py-8">
       <div className="absolute inset-0 bg-[#0b0b0d]" />
       <div className="absolute inset-0 opacity-25 [background-image:radial-gradient(rgba(148,163,184,0.28)_1.2px,transparent_1.2px)] [background-size:38px_38px]" />
       <div className="absolute right-[-120px] top-[-180px] h-[520px] w-[680px] bg-[radial-gradient(circle_at_50%_50%,rgba(45,212,191,0.13),transparent_62%)]" />
 
-      <header className="relative mx-auto max-w-[1760px]">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <h1 className="text-5xl font-semibold leading-[1.06] text-white sm:text-[58px] lg:text-[72px]">
-              选择你的套餐
-            </h1>
-            <p className="mt-5 max-w-3xl text-xl leading-8 text-slate-300 sm:text-2xl sm:leading-9">
-              不止额度，更是灵感落地的速度。
-            </p>
-            <p className="mt-3 max-w-3xl text-xl leading-8 text-slate-400 sm:text-2xl sm:leading-9">
-              积分永不过期。
-            </p>
-          </div>
-          <button
-            className="inline-flex h-12 w-fit items-center justify-center gap-2 rounded-[14px] border border-white/10 bg-white/10 px-5 text-sm text-white hover:bg-white/15 disabled:opacity-60"
-            disabled={loading}
-            onClick={() => void refresh()}
-            type="button"
-          >
-            {loading ? <Loader2 className="animate-spin" size={15} /> : <RefreshCw size={15} />}
-            刷新
-          </button>
-        </div>
-
-        <div className="mt-20 inline-flex max-w-full flex-wrap rounded-[24px] border border-white/12 bg-[#19191b] p-2 text-base font-semibold text-slate-300 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] sm:mt-28 sm:text-lg">
+      <section className="relative mx-auto max-w-[1760px]">
+        <div className="inline-flex max-w-full flex-wrap rounded-[24px] border border-white/12 bg-[#19191b] p-2 text-base font-semibold text-slate-300 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] sm:text-lg">
           <button className="h-14 rounded-[18px] px-6 text-slate-300 hover:text-white sm:px-8" type="button">
             连续包月 15% OFF
           </button>
@@ -212,7 +189,7 @@ export function BillingCenterPage() {
             </section>
           ))}
         </div>
-      </header>
+      </section>
 
       {error && (
         <div className="relative mx-auto mt-6 max-w-[1760px] rounded border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-200">
