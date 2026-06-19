@@ -68,16 +68,16 @@ describe("WorkspacePage", () => {
     mockWorkspaceProjects();
   });
 
-  test("renders a project-first premium workspace with unified control bar", () => {
+  test("renders projects directly without the old workspace hero banner", () => {
     render(<WorkspacePage />);
 
     expect(screen.queryByRole("heading", { name: "今天要做点什么？" })).toBeNull();
     expect(screen.queryByText("开始一段灵感对话...")).toBeNull();
-    expect(screen.getByRole("heading", { name: "我的工作空间" })).toBeTruthy();
-    expect(screen.getByText("继续最近编辑、筛选项目并进入画布。")).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "我的工作空间" })).toBeNull();
+    expect(screen.queryByText("继续最近编辑、筛选项目并进入画布。")).toBeNull();
     expect(
-      screen.getByText((_, element) => element?.textContent?.replace(/\s+/g, " ").trim() === "共 1 个项目"),
-    ).toBeTruthy();
+      screen.queryByText((_, element) => element?.textContent?.replace(/\s+/g, " ").trim() === "共 1 个项目"),
+    ).toBeNull();
     expect(screen.getByRole("button", { name: "个人" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "团队项目" })).toBeTruthy();
     expect(screen.getByPlaceholderText("搜索")).toBeTruthy();

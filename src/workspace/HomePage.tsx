@@ -17,9 +17,9 @@ import type { WorkspaceProject } from "./workspaceApi";
 
 const quickPrompts = [
   { icon: Video, label: "AI 视频", description: "快速进入视频创作链路" },
-  { icon: Images, label: "图像生成", description: "从灵感到成图更快起步" },
+  { icon: Images, label: "生图工作台", description: "从灵感到成图更快起步" },
   { icon: Scissors, label: "智能抠图", description: "轻量处理素材细节" },
-  { icon: Layers3, label: "批量工作流", description: "把重复流程变成稳定产能" },
+  { icon: Layers3, label: "无限画布", description: "把复杂创作流程铺开编排" },
 ];
 
 function navigate(path: string) {
@@ -54,7 +54,7 @@ export function HomePage() {
             </h1>
 
             <p className="mt-4 max-w-[620px] text-[15px] leading-7 text-slate-300">
-              在一个工作区里统一组织项目、素材、画布和模型线路，让创作更快、更稳、更像正式生产流程。
+              在一个创作空间里统一组织生图工作台、无限画布、素材和模型线路，让创作更快、更稳、更像正式生产流程。
             </p>
 
             <div className="mt-6 rounded-[24px] border border-white/10 bg-black/20 p-4">
