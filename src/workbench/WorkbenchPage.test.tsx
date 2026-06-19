@@ -248,7 +248,7 @@ describe("WorkbenchPage", () => {
     expect(await screen.findByTestId("workbench-page")).toBeTruthy();
     expect(screen.getByTestId("workbench-mobile-bottom-dock")).toBeTruthy();
     expect(screen.getByTestId("workbench-mobile-create-bar")).toBeTruthy();
-    expect(screen.getByText("描述你想要生成的图片")).toBeTruthy();
+    expect(screen.getByText("请描述画面内容")).toBeTruthy();
     expect(screen.getByText("Nano Banana Pro")).toBeTruthy();
     expect(screen.getByText("1:1")).toBeTruthy();
     expect(screen.getByText("2K")).toBeTruthy();
