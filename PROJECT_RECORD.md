@@ -1,6 +1,6 @@
 ﻿# Project Record
 
-Last updated: 2026-06-18
+Last updated: 2026-06-19
 Maintainers: project team + Codex sessions
 
 ## Purpose
@@ -48,6 +48,18 @@ Current deployment baseline:
 - env file: `/opt/aittco/env/tapflow.staging.env`
 
 ## Current Key Status Snapshot
+
+As of 2026-06-19:
+
+- Runtime frontend version reminder is in place for long-lived browser tabs:
+  - `npm run build` now writes `dist/version.json` with build version, commit, and timestamp metadata.
+  - the built `index.html` receives `window.__TAPFLOW_BUILD_VERSION__` so the running page knows its boot version.
+  - the React app checks `/version.json` with no-store cache semantics every 1 hour.
+  - when the deployed server version differs from the running page version, users see a global `发现新版本` refresh prompt.
+  - `scripts/serve-dist.cjs` now serves `version.json` with `no-store, no-cache, must-revalidate`.
+- Validation:
+  - `npx vitest run scripts/write-build-version.test.ts scripts/serve-dist.test.ts src/app/version/versionReminder.test.ts src/app/version/AppVersionReminder.test.tsx` passed.
+  - `npm run build` was attempted but is currently blocked by unrelated billing worktree state: `src/billing/BillingCenterPage.tsx` imports `./BillingLedgerTable` while `src/billing/BillingLedgerTable.tsx` and `src/billing/BillingUsageTable.tsx` are deleted in the working tree.
 
 As of 2026-06-18:
 

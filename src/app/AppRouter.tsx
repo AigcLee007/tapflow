@@ -15,6 +15,7 @@ import { FlowProjectPage } from "../flowCanvas/FlowProjectPage";
 import { WorkbenchPage } from "../workbench/WorkbenchPage";
 import { HomePage } from "../workspace/HomePage";
 import { WorkspacePage } from "../workspace/WorkspacePage";
+import { AppVersionReminder } from "./version/AppVersionReminder";
 import { WorkspaceShell } from "./WorkspaceShell";
 import { canAccessOperationsConsole, canAccessProviderOperations, resolveProductRole } from "../auth/productRoles";
 import { useAuth } from "../auth/useAuth";
@@ -164,26 +165,39 @@ export function AppRouter() {
   const pathname = usePathname();
 
   if (pathname === LOGIN_ROUTE) {
-    return <LoginPage />;
+    return (
+      <>
+        <LoginPage />
+        <AppVersionReminder />
+      </>
+    );
   }
 
   if (pathname === REGISTER_ROUTE) {
-    return <RegisterPage />;
+    return (
+      <>
+        <RegisterPage />
+        <AppVersionReminder />
+      </>
+    );
   }
 
   return (
-    <AuthGate>
-      {isProjectRoute(pathname) ? (
-        getProjectMode(pathname) === "workbench" ? <Redirect to={WORKBENCH_ROUTE} /> : <FlowProjectPage />
-      ) : pathname === WORKBENCH_ROUTE || pathname.startsWith(`${WORKBENCH_ROUTE}/`) ? (
-        <WorkbenchPage />
-      ) : (
-        <WorkspaceShell>
-          <div className="app-route-transition" key={pathname}>
-            <ProtectedRoutes pathname={pathname} />
-          </div>
-        </WorkspaceShell>
-      )}
-    </AuthGate>
+    <>
+      <AuthGate>
+        {isProjectRoute(pathname) ? (
+          getProjectMode(pathname) === "workbench" ? <Redirect to={WORKBENCH_ROUTE} /> : <FlowProjectPage />
+        ) : pathname === WORKBENCH_ROUTE || pathname.startsWith(`${WORKBENCH_ROUTE}/`) ? (
+          <WorkbenchPage />
+        ) : (
+          <WorkspaceShell>
+            <div className="app-route-transition" key={pathname}>
+              <ProtectedRoutes pathname={pathname} />
+            </div>
+          </WorkspaceShell>
+        )}
+      </AuthGate>
+      <AppVersionReminder />
+    </>
   );
 }

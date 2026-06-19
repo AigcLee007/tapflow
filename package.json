@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node scripts/write-build-version.cjs",
     "preview": "vite preview",
     "legacy:server": "node server.cjs",
     "legacy:start": "concurrently \"npm run legacy:server\" \"npm run dev\"",
