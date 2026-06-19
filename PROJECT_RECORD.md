@@ -56,6 +56,11 @@ As of 2026-06-18:
   - `npm run test -- src/workbench/WorkbenchPage.test.tsx` passed.
   - `npm run build` passed.
 
+- mobile `/workbench` bottom creation dock received an additional corrective pass after device review: the dock is now one horizontal bar only, with reference button + single-line prompt entry + start button; model/route/aspect/size/quantity summary text was removed from the bottom dock so it no longer wraps into a heavy card.
+- Validation:
+  - `npm run test -- src/workbench/WorkbenchPage.test.tsx` passed.
+  - `npm run build` passed.
+
 - mobile `/workbench` shell has been refit for the approved phone workflow: mobile now uses a single compact top navigation header, a dedicated middle scroll container for results, and a JiMeng-style bottom creation bar that opens the existing mobile creation panel instead of duplicating a heavy summary dock; the current mobile creation panel content itself was intentionally preserved.
 - Validation:
   - `npm run test -- src/workbench/WorkbenchPage.test.tsx` passed.

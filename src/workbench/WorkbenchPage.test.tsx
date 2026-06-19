@@ -250,9 +250,12 @@ describe("WorkbenchPage", () => {
     expect(screen.getByTestId("workbench-mobile-create-bar")).toBeTruthy();
     expect(screen.getByText("图片生成")).toBeTruthy();
     expect(screen.getByText("请描述画面内容")).toBeTruthy();
-    expect(screen.getByTestId("workbench-mobile-create-bar").textContent).toContain("Nano Banana Pro");
-    expect(screen.getByTestId("workbench-mobile-create-bar").textContent).toContain("1:1");
-    expect(screen.getByTestId("workbench-mobile-create-bar").textContent).toContain("2K");
+    expect(screen.getByTestId("workbench-mobile-create-bar").textContent).not.toContain("Nano Banana Pro");
+    expect(screen.getByTestId("workbench-mobile-create-bar").textContent).not.toContain("1:1");
+    expect(screen.getByTestId("workbench-mobile-create-bar").textContent).not.toContain("2K");
+    expect(screen.getByTestId("workbench-mobile-bottom-dock").textContent).not.toContain("线路");
+    expect(screen.getByTestId("workbench-mobile-bottom-dock").textContent).not.toContain("轻触打开完整创作面板");
+    expect(screen.getByTestId("workbench-mobile-create-bar").className).toContain("h-[50px]");
     expect(screen.getByTestId("workbench-mobile-generate-button")).toBeTruthy();
     expect(screen.queryByTestId("workbench-mobile-legacy-launcher")).toBeNull();
   });
