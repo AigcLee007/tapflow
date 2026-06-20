@@ -109,6 +109,7 @@ type AdminAnnouncementRow = {
   ends_at: string | null;
   id: string;
   image_url: string | null;
+  is_read: boolean | null;
   link_url: string | null;
   pinned: boolean;
   published_at: string | null;
@@ -238,6 +239,7 @@ export type AdminAnnouncementView = {
   endsAt: string | null;
   id: string;
   imageUrl: string | null;
+  isRead: boolean;
   linkUrl: string | null;
   pinned: boolean;
   publishedAt: string | null;
@@ -439,6 +441,7 @@ function generateTemporaryPassword(): string {
 
 function mapRedeemCode(row: AdminRedeemCodeRow): AdminRedeemCodeView {
   const metadataReason = row.reason;
+  const isFullyRedeemed = row.redeemed_count >= row.max_redemptions;
   return {
     code: row.code,
     createdAt: row.created_at,
@@ -450,7 +453,7 @@ function mapRedeemCode(row: AdminRedeemCodeRow): AdminRedeemCodeView {
     maxRedemptions: row.max_redemptions,
     reason: metadataReason,
     redeemedCount: row.redeemed_count,
-    status: row.status,
+    status: isFullyRedeemed ? "redeemed" : "unredeemed",
     tenantId: row.tenant_id,
     tenantName: row.tenant_name,
   };
@@ -485,6 +488,7 @@ function mapAnnouncement(row: AdminAnnouncementRow): AdminAnnouncementView {
     endsAt: row.ends_at,
     id: row.id,
     imageUrl: row.image_url,
+    isRead: Boolean(row.is_read),
     linkUrl: row.link_url,
     pinned: Boolean(row.pinned),
     publishedAt: row.published_at,
@@ -777,6 +781,198 @@ export class AdminApiService {
       },
       ledgerEntry,
     };
+  }
+
+  async adjustCredits(
+    context: AdminContext,
+    input: {
+      credits: number;
+      direction: "add" | "subtract";
+      idempotencyKey?: string;
+      reason: string;
+      targetUserId: string;
+      tenantId: string;
+    },
+  ): Promise<{
+    account: {
+      availableCredits: number;
+      balanceCredits: number;
+      reservedCredits: number;
+      tenantId: string;
+    };
+    ledgerEntry: BillingLedgerView;
+  }> {
+    const tenantContext = requireTenantContext(context);
+    const hasSuperAdminSource = context.roles.includes("system_admin") || context.roles.includes("admin_email");
+    if (!hasSuperAdminSource) {
+      throw new AdminApiError(403, "SUPER_ADMIN_REQUIRED", "Only super admins can manually adjust user credits.");
+    }
+
+    const membership = await withTenantTransaction<{ rows: Array<{ exists_flag: number }> }>(tenantContext, async (client) => {
+      return client.query<{ exists_flag: number }>(
+        `
+          SELECT 1 AS exists_flag
+          FROM tenant_memberships
+          WHERE tenant_id = $1::uuid
+            AND user_id = $2::uuid
+          LIMIT 1
+        `,
+        [input.tenantId, input.targetUserId],
+      );
+    }, this.pool);
+    if (!membership.rows[0]) {
+      throw new AdminApiError(404, "TENANT_MEMBERSHIP_NOT_FOUND", "Target user does not belong to the selected workspace.");
+    }
+
+    const idempotencyKey = input.idempotencyKey?.trim() || `admin-adjust:${input.direction}:${input.tenantId}:${input.targetUserId}:${randomUUID()}`;
+    let ledgerEntry: BillingLedgerView;
+    try {
+      const payload = {
+        amountCents: input.credits,
+        description: `Admin ${input.direction === "add" ? "add" : "subtract"} credits: ${input.reason.trim()}`,
+        entryType: input.direction === "add" ? "admin_credit" : "admin_debit",
+        idempotencyKey,
+        metadata: {
+          adminActorUserId: context.userId,
+          adjustmentDirection: input.direction,
+          reason: input.reason.trim(),
+          targetUserId: input.targetUserId,
+        },
+      };
+      ledgerEntry = input.direction === "add"
+        ? await this.billingService.creditAccount({ tenantId: input.tenantId, userId: context.userId }, payload)
+        : await this.billingService.debitAccount({ tenantId: input.tenantId, userId: context.userId }, payload);
+    } catch (error) {
+      if (error instanceof BillingServiceError) {
+        throw new AdminApiError(error.statusCode, error.code, error.message);
+      }
+      throw error;
+    }
+
+    const summary = await this.billingService.getBillingSummary({
+      tenantId: input.tenantId,
+      userId: context.userId,
+    });
+
+    await safeRecordAuditLog(
+      {
+        action: input.direction === "add" ? "admin.user.adjust_credits.add" : "admin.user.adjust_credits.subtract",
+        actorType: "user",
+        actorUserId: context.userId,
+        ipHash: context.ipHash,
+        metadata: {
+          credits: input.credits,
+          direction: input.direction,
+          idempotencyKey,
+          reason: input.reason.trim(),
+          targetUserId: input.targetUserId,
+          tenantId: input.tenantId,
+        },
+        requestId: context.requestId,
+        resourceId: input.targetUserId,
+        resourceType: "user",
+        tenantId: input.tenantId,
+        traceId: context.traceId,
+        userAgent: context.userAgent,
+      },
+      { pool: this.pool },
+    ).catch(() => undefined);
+
+    return {
+      account: {
+        availableCredits: summary.creditGrants.availableCredits,
+        balanceCredits: summary.account.balanceCents,
+        reservedCredits: summary.creditGrants.reservedCredits,
+        tenantId: input.tenantId,
+      },
+      ledgerEntry,
+    };
+  }
+
+  async updateUserStatus(
+    context: AdminContext,
+    input: {
+      status: "active" | "disabled";
+      targetUserId: string;
+    },
+  ): Promise<Pick<AdminUserView, "id" | "status">> {
+    const tenantContext = requireTenantContext(context);
+    const hasSuperAdminSource = context.roles.includes("system_admin") || context.roles.includes("admin_email");
+    if (!hasSuperAdminSource) {
+      throw new AdminApiError(403, "SUPER_ADMIN_REQUIRED", "Only super admins can update user status.");
+    }
+    if (input.targetUserId === context.userId && input.status === "disabled") {
+      throw new AdminApiError(409, "CANNOT_DISABLE_SELF", "Super admins cannot disable their own account.");
+    }
+
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await setAdminTenantContext(client, tenantContext);
+      const updated = await client.query<{ id: string; status: string }>(
+        `
+          UPDATE users
+          SET status = $2, updated_at = now()
+          WHERE id = $1::uuid
+          RETURNING id::text AS id, status
+        `,
+        [input.targetUserId, input.status],
+      );
+      if (!updated.rows[0]) {
+        throw new AdminApiError(404, "USER_NOT_FOUND", "User not found.");
+      }
+      if (input.status === "disabled") {
+        await client.query(
+          `
+            UPDATE auth_sessions
+            SET status = 'revoked', revoked_at = COALESCE(revoked_at, now())
+            WHERE user_id = $1::uuid
+              AND status = 'active'
+          `,
+          [input.targetUserId],
+        );
+        await client.query(
+          `
+            UPDATE refresh_tokens
+            SET revoked_at = COALESCE(revoked_at, now())
+            WHERE user_id = $1::uuid
+              AND revoked_at IS NULL
+          `,
+          [input.targetUserId],
+        );
+      }
+      await client.query("COMMIT");
+
+      await safeRecordAuditLog(
+        {
+          action: "admin.user.update_status",
+          actorType: "user",
+          actorUserId: context.userId,
+          ipHash: context.ipHash,
+          metadata: {
+            status: input.status,
+            targetUserId: input.targetUserId,
+          },
+          requestId: context.requestId,
+          resourceId: input.targetUserId,
+          resourceType: "user",
+          tenantId: tenantContext.tenantId,
+          traceId: context.traceId,
+          userAgent: context.userAgent,
+        },
+        { pool: this.pool },
+      ).catch(() => undefined);
+
+      return updated.rows[0];
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      if (error instanceof AdminApiError) {
+        throw error;
+      }
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async updateMembershipTier(
@@ -1135,6 +1331,76 @@ export class AdminApiService {
     }
   }
 
+  async deleteRedeemCode(context: AdminContext, codeId: string): Promise<void> {
+    const tenantContext = requireTenantContext(context);
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await setAdminTenantContext(client, tenantContext);
+      const existing = await client.query<{
+        id: string;
+        redeemed_count: number;
+        tenant_id: string | null;
+      }>(
+        `
+          SELECT
+            id::text AS id,
+            tenant_id::text AS tenant_id,
+            redeemed_count
+          FROM billing_redeem_codes
+          WHERE id = $1::uuid
+          LIMIT 1
+          FOR UPDATE
+        `,
+        [codeId],
+      );
+      const row = existing.rows[0];
+      if (!row) {
+        throw new AdminApiError(404, "REDEEM_CODE_NOT_FOUND", "Redeem code not found.");
+      }
+      if (row.redeemed_count > 0) {
+        throw new AdminApiError(409, "REDEEM_CODE_ALREADY_REDEEMED", "Redeemed codes cannot be deleted.");
+      }
+      await client.query(
+        `
+          DELETE FROM billing_redeem_codes
+          WHERE id = $1::uuid
+            AND redeemed_count = 0
+        `,
+        [codeId],
+      );
+      await client.query("COMMIT");
+
+      await safeRecordAuditLog(
+        {
+          action: "admin.redeem_code.delete",
+          actorType: "user",
+          actorUserId: context.userId,
+          ipHash: context.ipHash,
+          metadata: {
+            codeId,
+            tenantId: row.tenant_id,
+          },
+          requestId: context.requestId,
+          resourceId: codeId,
+          resourceType: "billing_redeem_code",
+          tenantId: row.tenant_id ?? tenantContext.tenantId,
+          traceId: context.traceId,
+          userAgent: context.userAgent,
+        },
+        { pool: this.pool },
+      ).catch(() => undefined);
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      if (error instanceof AdminApiError) {
+        throw error;
+      }
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   async updateUserRole(
     context: AdminContext,
     input: {
@@ -1468,6 +1734,7 @@ export class AdminApiService {
             announcements.ends_at::text AS ends_at,
             announcements.created_by::text AS created_by,
             users.email AS created_by_email,
+            false AS is_read,
             announcements.created_at::text AS created_at,
             announcements.updated_at::text AS updated_at
           FROM announcements
@@ -1549,6 +1816,7 @@ export class AdminApiService {
             ends_at::text AS ends_at,
             created_by::text AS created_by,
             NULL::text AS created_by_email,
+            false AS is_read,
             created_at::text AS created_at,
             updated_at::text AS updated_at
         `,
@@ -1607,6 +1875,7 @@ export class AdminApiService {
             ends_at::text AS ends_at,
             created_by::text AS created_by,
             NULL::text AS created_by_email,
+            false AS is_read,
             created_at::text AS created_at,
             updated_at::text AS updated_at
           FROM announcements
@@ -1658,6 +1927,7 @@ export class AdminApiService {
             ends_at::text AS ends_at,
             created_by::text AS created_by,
             NULL::text AS created_by_email,
+            false AS is_read,
             created_at::text AS created_at,
             updated_at::text AS updated_at
         `,
@@ -1729,11 +1999,16 @@ export class AdminApiService {
             announcements.ends_at::text AS ends_at,
             announcements.created_by::text AS created_by,
             users.email AS created_by_email,
+            (announcement_reads.id IS NOT NULL) AS is_read,
             announcements.created_at::text AS created_at,
             announcements.updated_at::text AS updated_at
           FROM announcements
           LEFT JOIN users
             ON users.id = announcements.created_by
+          LEFT JOIN announcement_reads
+            ON announcement_reads.announcement_id = announcements.id
+           AND announcement_reads.tenant_id = announcements.tenant_id
+           AND announcement_reads.user_id = $4::uuid
           WHERE announcements.tenant_id = $1::uuid
             AND announcements.status = 'published'
             AND announcements.audience = ANY($2::text[])
@@ -1742,10 +2017,58 @@ export class AdminApiService {
           ORDER BY announcements.pinned DESC, announcements.published_at DESC NULLS LAST, announcements.created_at DESC, announcements.id DESC
           LIMIT $3::int
         `,
-        [tenantContext.tenantId, audiences, limit],
+        [tenantContext.tenantId, audiences, limit, context.userId],
       );
       return {
         items: result.rows.map(mapAnnouncement),
+      };
+    }, this.pool);
+  }
+
+  async markAnnouncementRead(
+    context: AdminContext,
+    announcementId: string,
+  ): Promise<{ announcementId: string; readAt: string }> {
+    const tenantContext = requireTenantContext(context);
+    if (!context.userId) {
+      throw new AdminApiError(401, "UNAUTHORIZED", "Please sign in before reading announcements.");
+    }
+
+    return withTenantTransaction(tenantContext, async (client) => {
+      const existing = await client.query<{ id: string }>(
+        `
+          SELECT id::text AS id
+          FROM announcements
+          WHERE id = $1::uuid
+            AND tenant_id = $2::uuid
+            AND status = 'published'
+          LIMIT 1
+        `,
+        [announcementId, tenantContext.tenantId],
+      );
+      if (!existing.rows[0]) {
+        throw new AdminApiError(404, "ANNOUNCEMENT_NOT_FOUND", "Announcement not found.");
+      }
+
+      const read = await client.query<{ read_at: string }>(
+        `
+          INSERT INTO announcement_reads (
+            tenant_id,
+            announcement_id,
+            user_id,
+            read_at
+          )
+          VALUES ($1::uuid, $2::uuid, $3::uuid, now())
+          ON CONFLICT (tenant_id, announcement_id, user_id)
+          DO UPDATE SET read_at = EXCLUDED.read_at
+          RETURNING read_at::text AS read_at
+        `,
+        [tenantContext.tenantId, announcementId, context.userId],
+      );
+
+      return {
+        announcementId,
+        readAt: read.rows[0]?.read_at ?? new Date().toISOString(),
       };
     }, this.pool);
   }

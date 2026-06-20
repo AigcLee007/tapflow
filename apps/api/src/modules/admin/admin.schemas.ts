@@ -20,6 +20,18 @@ export const adminGrantCreditsSchema = z.object({
   validityMonths: z.coerce.number().int().positive().max(120).optional(),
 });
 
+export const adminAdjustCreditsSchema = z.object({
+  credits: z.coerce.number().int().positive().max(1_000_000_000),
+  direction: z.enum(["add", "subtract"]),
+  idempotencyKey: z.string().trim().min(1).max(255).optional(),
+  reason: z.string().trim().min(1).max(500),
+  tenantId: z.string().uuid(),
+});
+
+export const adminUpdateUserStatusSchema = z.object({
+  status: z.enum(["active", "disabled"]),
+});
+
 export const adminUpdateMembershipTierSchema = z.object({
   expiresAt: z.string().datetime().optional(),
   tenantId: z.string().uuid().optional(),
@@ -94,6 +106,8 @@ export const adminAiRouteStatsQuerySchema = z.object({
 export type AdminUsersQuery = z.infer<typeof adminUsersQuerySchema>;
 export type AdminUserParams = z.infer<typeof adminUserParamsSchema>;
 export type AdminGrantCreditsInput = z.infer<typeof adminGrantCreditsSchema>;
+export type AdminAdjustCreditsInput = z.infer<typeof adminAdjustCreditsSchema>;
+export type AdminUpdateUserStatusInput = z.infer<typeof adminUpdateUserStatusSchema>;
 export type AdminUpdateMembershipTierInput = z.infer<typeof adminUpdateMembershipTierSchema>;
 export type AdminCreateRedeemCodeInput = z.infer<typeof adminCreateRedeemCodeSchema>;
 export type AdminRedeemCodesQuery = z.infer<typeof adminRedeemCodesQuerySchema>;

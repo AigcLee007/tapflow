@@ -31,6 +31,7 @@ import { useBillingSummarySnapshot } from "../billing/useBillingSummarySnapshot"
 import {
   getAdminAiRouteStats,
   listPublishedAnnouncements,
+  markAnnouncementRead,
   type AdminAiRouteStats,
   type AdminAnnouncement,
 } from "../admin/adminApi";
@@ -101,6 +102,7 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const billingSummary = useBillingSummarySnapshot(Boolean(authenticated && tenant && user));
   const availableCredits = getAvailableCredits(billingSummary);
   const membershipLabel = getMembershipLabel(billingSummary?.membership?.tier);
+  const hasUnreadAnnouncements = announcements.some((notice) => !notice.isRead);
 
   useEffect(() => {
     const handleLocationChange = () => setLocationKey(`${window.location.pathname}${window.location.hash}`);
@@ -156,6 +158,20 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
     setMonitorPanelOpen(false);
   };
 
+  const toggleNoticePanel = () => {
+    const nextOpen = !noticeLayer.open;
+    noticeLayer.toggle();
+    if (!nextOpen) return;
+    const unreadIds = announcements.filter((notice) => !notice.isRead).map((notice) => notice.id);
+    if (unreadIds.length === 0) return;
+    setAnnouncements((current) => current.map((notice) => ({ ...notice, isRead: true })));
+    void Promise.all(unreadIds.map((id) => markAnnouncementRead(id))).catch(() => {
+      void listPublishedAnnouncements({ limit: 10 })
+        .then((response) => setAnnouncements(response.items))
+        .catch(() => undefined);
+    });
+  };
+
   return (
     <div className="min-h-screen bg-[#0b0b0d] text-slate-100">
       <header className="sticky top-0 z-40 border-b border-white/8 bg-[#0b0b0d]/95 backdrop-blur-xl">
@@ -198,11 +214,11 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
               ref={noticeLayer.triggerRef as React.RefObject<HTMLButtonElement>}
               aria-expanded={noticeLayer.open}
               className="relative hidden h-11 w-11 place-items-center rounded-full text-slate-300 transition hover:bg-white/[0.08] hover:text-white sm:grid"
-              onClick={noticeLayer.toggle}
+              onClick={toggleNoticePanel}
               type="button"
             >
               <Bell size={22} />
-              {announcements.length ? (
+              {hasUnreadAnnouncements ? (
                 <span className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full border border-[#0b0b0d] bg-cyan-300" />
               ) : null}
             </button>

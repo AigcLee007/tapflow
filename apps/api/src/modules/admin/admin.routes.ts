@@ -7,6 +7,7 @@ import {
   requireTenant,
 } from "../../http/auth-middleware.js";
 import {
+  type AdminAdjustCreditsInput,
   type AdminCreateRedeemCodeInput,
   type AdminAiRouteStatsQuery,
   type AdminAnnouncementParams,
@@ -19,10 +20,12 @@ import {
   type AdminUpdateMembershipTierInput,
   type AdminUpdateAnnouncementInput,
   type AdminUpdateUserRoleInput,
+  type AdminUpdateUserStatusInput,
   type AdminUserParams,
   type AdminUsersQuery,
   type AdminWorkflowRunParams,
   type AdminWorkflowRunsQuery,
+  adminAdjustCreditsSchema,
   adminAiRouteStatsQuerySchema,
   adminAnnouncementParamsSchema,
   adminAnnouncementsQuerySchema,
@@ -35,6 +38,7 @@ import {
   adminUpdateMembershipTierSchema,
   adminUpdateAnnouncementSchema,
   adminUpdateUserRoleSchema,
+  adminUpdateUserStatusSchema,
   adminUserParamsSchema,
   adminUsersQuerySchema,
   adminWorkflowRunParamsSchema,
@@ -127,6 +131,21 @@ export function registerAdminRoutes(app: FastifyInstance): void {
     },
   );
 
+  app.post(
+    "/api/v2/announcements/:announcementId/read",
+    {
+      preHandler: authenticatedTenantHandlers,
+    },
+    async (request, reply) => {
+      try {
+        const params = parseParams<AdminAnnouncementParams>(request, adminAnnouncementParamsSchema);
+        return reply.send(await app.adminService.markAnnouncementRead(request.ctx, params.announcementId));
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
   app.get(
     "/api/v2/admin/users",
     {
@@ -177,6 +196,52 @@ export function registerAdminRoutes(app: FastifyInstance): void {
             validityDays: body.validityDays,
             validityMode: body.validityMode,
             validityMonths: body.validityMonths,
+          }),
+        );
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.post(
+    "/api/v2/admin/users/:userId/adjust-credits",
+    {
+      preHandler: adminHandlers,
+    },
+    async (request, reply) => {
+      try {
+        const params = parseParams<AdminUserParams>(request, adminUserParamsSchema);
+        const body = parseBody<AdminAdjustCreditsInput>(request, adminAdjustCreditsSchema);
+        return reply.send(
+          await app.adminService.adjustCredits(request.ctx, {
+            credits: body.credits,
+            direction: body.direction,
+            idempotencyKey: body.idempotencyKey,
+            reason: body.reason,
+            targetUserId: params.userId,
+            tenantId: body.tenantId,
+          }),
+        );
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.patch(
+    "/api/v2/admin/users/:userId/status",
+    {
+      preHandler: adminHandlers,
+    },
+    async (request, reply) => {
+      try {
+        const params = parseParams<AdminUserParams>(request, adminUserParamsSchema);
+        const body = parseBody<AdminUpdateUserStatusInput>(request, adminUpdateUserStatusSchema);
+        return reply.send(
+          await app.adminService.updateUserStatus(request.ctx, {
+            status: body.status,
+            targetUserId: params.userId,
           }),
         );
       } catch (error) {
@@ -269,6 +334,22 @@ export function registerAdminRoutes(app: FastifyInstance): void {
       try {
         const params = parseParams<AdminRedeemCodeParams>(request, adminRedeemCodeParamsSchema);
         return reply.send(await app.adminService.listRedeemCodeRedemptions(request.ctx, params.codeId));
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.delete(
+    "/api/v2/admin/redeem-codes/:codeId",
+    {
+      preHandler: adminHandlers,
+    },
+    async (request, reply) => {
+      try {
+        const params = parseParams<AdminRedeemCodeParams>(request, adminRedeemCodeParamsSchema);
+        await app.adminService.deleteRedeemCode(request.ctx, params.codeId);
+        return reply.code(204).send();
       } catch (error) {
         return handleRouteError(error, request, reply);
       }

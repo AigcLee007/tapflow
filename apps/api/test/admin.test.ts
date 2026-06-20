@@ -852,7 +852,7 @@ describeWithDatabase("admin api", () => {
           credits: 150,
           maxRedemptions: 1,
           redeemedCount: 1,
-          status: "active",
+          status: "redeemed",
         });
 
         const redemptions = await api.inject({
@@ -868,6 +868,86 @@ describeWithDatabase("admin api", () => {
           userDisplayName: "Redeem User",
           userEmail: "redeem-user@example.com",
         });
+
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("admin can delete only unredeemed redeem codes", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({ connectionString: await createAppDatabaseUrl() });
+        const api = buildTestApp(appPool);
+
+        const adminUser = await registerUser(api, {
+          email: adminEmail,
+          tenantName: "Ops Tenant",
+        });
+        const targetUser = await registerUser(api, {
+          email: "delete-redeem-user@example.com",
+          tenantName: "Redeem Delete Tenant",
+        });
+        const adminLogin = await api.inject({
+          method: "POST",
+          payload: {
+            email: adminEmail,
+            password: "StrongPass123!",
+            tenantId: adminUser.currentTenant.id,
+          },
+          url: "/api/v2/auth/login",
+        });
+        expect(adminLogin.statusCode).toBe(200);
+
+        const unused = await api.inject({
+          headers: { authorization: `Bearer ${adminLogin.json().accessToken}` },
+          method: "POST",
+          payload: {
+            credits: 10,
+            maxRedemptions: 1,
+            tenantId: targetUser.currentTenant.id,
+          },
+          url: "/api/v2/admin/redeem-codes",
+        });
+        expect(unused.statusCode).toBe(201);
+        const deleteUnused = await api.inject({
+          headers: { authorization: `Bearer ${adminLogin.json().accessToken}` },
+          method: "DELETE",
+          url: `/api/v2/admin/redeem-codes/${unused.json().id}`,
+        });
+        expect(deleteUnused.statusCode).toBe(204);
+
+        const used = await api.inject({
+          headers: { authorization: `Bearer ${adminLogin.json().accessToken}` },
+          method: "POST",
+          payload: {
+            credits: 10,
+            maxRedemptions: 1,
+            tenantId: targetUser.currentTenant.id,
+          },
+          url: "/api/v2/admin/redeem-codes",
+        });
+        expect(used.statusCode).toBe(201);
+        const redeem = await api.inject({
+          headers: { authorization: `Bearer ${targetUser.accessToken}` },
+          method: "POST",
+          payload: { code: used.json().code },
+          url: "/api/v2/billing/redeem",
+        });
+        expect(redeem.statusCode).toBe(201);
+        const deleteUsed = await api.inject({
+          headers: { authorization: `Bearer ${adminLogin.json().accessToken}` },
+          method: "DELETE",
+          url: `/api/v2/admin/redeem-codes/${used.json().id}`,
+        });
+        expect(deleteUsed.statusCode).toBe(409);
 
         await api.close();
       } finally {
@@ -938,8 +1018,31 @@ describeWithDatabase("admin api", () => {
         });
         expect(feed.statusCode).toBe(200);
         expect(feed.json().items[0]).toMatchObject({
+          isRead: false,
           pinned: true,
           status: "published",
+          title: "Model update",
+        });
+
+        const markRead = await api.inject({
+          headers: {
+            authorization: `Bearer ${adminLogin.json().accessToken}`,
+          },
+          method: "POST",
+          url: `/api/v2/announcements/${create.json().id}/read`,
+        });
+        expect(markRead.statusCode).toBe(200);
+
+        const readFeed = await api.inject({
+          headers: {
+            authorization: `Bearer ${adminLogin.json().accessToken}`,
+          },
+          method: "GET",
+          url: "/api/v2/announcements",
+        });
+        expect(readFeed.statusCode).toBe(200);
+        expect(readFeed.json().items[0]).toMatchObject({
+          isRead: true,
           title: "Model update",
         });
 
@@ -1138,6 +1241,91 @@ describeWithDatabase("admin api", () => {
         expect(userRow.rows[0]?.status).toBe("active");
         expect(userRow.rows[0]?.email_verified_at).toBeTruthy();
         expect(userRow.rows[0]?.password_hash).not.toBe(reset.json().passwordShownOnce);
+
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("system admin can disable users and manually add or subtract credits", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({ connectionString: await createAppDatabaseUrl() });
+        const api = buildTestApp(appPool);
+
+        const adminUser = await registerUser(api, {
+          email: adminEmail,
+          tenantName: "Ops Tenant",
+        });
+        const targetUser = await registerUser(api, {
+          email: "disabled-user@example.com",
+          tenantName: "Disable Tenant",
+        });
+        const adminLogin = await api.inject({
+          method: "POST",
+          payload: {
+            email: adminEmail,
+            password: "StrongPass123!",
+            tenantId: adminUser.currentTenant.id,
+          },
+          url: "/api/v2/auth/login",
+        });
+        expect(adminLogin.statusCode).toBe(200);
+
+        const addCredits = await api.inject({
+          headers: { authorization: `Bearer ${adminLogin.json().accessToken}` },
+          method: "POST",
+          payload: {
+            credits: 300,
+            direction: "add",
+            reason: "manual add",
+            tenantId: targetUser.currentTenant.id,
+          },
+          url: `/api/v2/admin/users/${targetUser.user.id}/adjust-credits`,
+        });
+        expect(addCredits.statusCode).toBe(200);
+        expect(addCredits.json().account.balanceCredits).toBe(300);
+
+        const subtractCredits = await api.inject({
+          headers: { authorization: `Bearer ${adminLogin.json().accessToken}` },
+          method: "POST",
+          payload: {
+            credits: 120,
+            direction: "subtract",
+            reason: "manual subtract",
+            tenantId: targetUser.currentTenant.id,
+          },
+          url: `/api/v2/admin/users/${targetUser.user.id}/adjust-credits`,
+        });
+        expect(subtractCredits.statusCode).toBe(200);
+        expect(subtractCredits.json().account.balanceCredits).toBe(180);
+
+        const disable = await api.inject({
+          headers: { authorization: `Bearer ${adminLogin.json().accessToken}` },
+          method: "PATCH",
+          payload: { status: "disabled" },
+          url: `/api/v2/admin/users/${targetUser.user.id}/status`,
+        });
+        expect(disable.statusCode).toBe(200);
+        expect(disable.json().status).toBe("disabled");
+
+        const disabledLogin = await api.inject({
+          method: "POST",
+          payload: {
+            email: "disabled-user@example.com",
+            password: "StrongPass123!",
+            tenantId: targetUser.currentTenant.id,
+          },
+          url: "/api/v2/auth/login",
+        });
+        expect(disabledLogin.statusCode).toBe(401);
 
         await api.close();
       } finally {

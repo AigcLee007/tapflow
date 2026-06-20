@@ -1584,6 +1584,7 @@ export class BillingService {
   ): Promise<BillingLedgerView> {
     const account = await this.getOrCreateBillingAccountForUpdateInTransaction(client, tenantId);
     this.assertAvailableBalance(account, input.amountCents);
+    const allocations = await this.allocateCreditGrantsForReserve(client, tenantId, input.amountCents);
     return this.createLedgerEntryInTransaction(client, {
       amountCents: input.amountCents,
       applyAccountMutation: async () => {
@@ -1597,13 +1598,32 @@ export class BillingService {
           `,
           [account.id, input.amountCents],
         );
+        for (const allocation of allocations) {
+          await client.query(
+            `
+              UPDATE billing_credit_grants
+              SET
+                remaining_credits = GREATEST(remaining_credits - $2::numeric, 0),
+                status = CASE
+                  WHEN GREATEST(remaining_credits - $2::numeric, 0) <= 0 THEN 'exhausted'
+                  ELSE status
+                END,
+                updated_at = now()
+              WHERE id = $1::uuid
+            `,
+            [allocation.grantId, allocation.amountCredits],
+          );
+        }
       },
       billingAccountId: account.id,
       currency: account.currency,
       description: input.description ?? null,
       entryType: input.entryType,
       idempotencyKey: input.idempotencyKey,
-      metadata: input.metadata ?? {},
+      metadata: {
+        ...(input.metadata ?? {}),
+        creditGrantAllocations: allocations,
+      },
       tenantId,
       usageEventId: null,
     });

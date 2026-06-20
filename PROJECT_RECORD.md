@@ -83,6 +83,12 @@ As of 2026-06-20:
   - staging/production must run the compiled DB migrator before restarting the worker/API path.
   - follow-up migration fix restored applied migration `000030_admin_announcements.sql` to its original checksum; announcement pinning remains in `000031_admin_announcements_interactions.sql` so production migrator can advance to the redeem-code migration.
 
+- Operations console user and notification controls:
+  - added server-side announcement read receipts so opening the bell marks notices read and clears the unread dot across refreshes.
+  - redeem-code history now exposes user-facing `已兑换/未兑换` semantics and permits deleting only unredeemed codes.
+  - super admins can disable/enable user accounts; disabling revokes active sessions and prevents login.
+  - super admins can manually add or subtract credits through audited billing ledger entries; debits also reduce active credit grants to keep expiry totals aligned.
+
 - Shared product logo usage was aligned to the latest screenshot request:
   - `BrandMark` now loads `/logo-2.png` explicitly, which is the 300x200 horizontal Aittco logo asset.
   - homepage header, standalone workbench header, mobile workbench header, and canvas top-left project logo now inherit the horizontal 300:200 logo proportions instead of the older square/circular mark.

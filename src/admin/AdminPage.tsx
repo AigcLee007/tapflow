@@ -26,9 +26,11 @@ import {
 import { canAccessOperationsConsole, resolveProductRole } from "../auth/productRoles";
 import { useAuth } from "../auth/useAuth";
 import {
+  adjustAdminCredits,
   createAdminAnnouncement,
   createAdminRedeemCode,
   deleteAdminAnnouncement,
+  deleteAdminRedeemCode,
   getAdminAiRouteStats,
   getAdminWorkflowRun,
   grantAdminCredits,
@@ -41,6 +43,7 @@ import {
   updateAdminAnnouncement,
   updateAdminMembershipTier,
   updateAdminUserRole,
+  updateAdminUserStatus,
   type AdminAiRouteStats,
   type AdminAnnouncement,
   type AdminRedeemCode,
@@ -147,13 +150,21 @@ function productRoleLabel(role: ReturnType<typeof resolveProductRole>): string {
 }
 
 function statusTone(status?: string | null) {
-  if (status === "active" || status === "published" || status === "succeeded" || status === "settled") {
+  if (status === "active" || status === "published" || status === "succeeded" || status === "settled" || status === "unredeemed") {
     return "border-emerald-300/20 bg-emerald-500/10 text-emerald-100";
   }
-  if (status === "failed" || status === "archived" || status === "inactive") {
+  if (status === "failed" || status === "archived" || status === "inactive" || status === "disabled" || status === "redeemed") {
     return "border-amber-300/20 bg-amber-500/10 text-amber-100";
   }
   return "border-white/10 bg-white/[0.06] text-slate-200";
+}
+
+function redeemStatusLabel(status?: string | null): string {
+  return status === "redeemed" ? "已兑换" : "未兑换";
+}
+
+function userStatusLabel(status?: string | null): string {
+  return status === "disabled" ? "已停用" : "正常";
 }
 
 function MetricCard({
@@ -228,6 +239,8 @@ export function AdminPage() {
   const [grantCreditsValue, setGrantCreditsValue] = useState("1000");
   const [grantReason, setGrantReason] = useState("运营发放积分");
   const [grantValidity, setGrantValidity] = useState(VALIDITY_OPTIONS[1]);
+  const [adjustCreditsValue, setAdjustCreditsValue] = useState("100");
+  const [adjustReason, setAdjustReason] = useState("运营手动调整");
 
   const [redeemCodes, setRedeemCodes] = useState<AdminRedeemCode[]>([]);
   const [selectedRedeemCodeId, setSelectedRedeemCodeId] = useState<string | null>(null);
@@ -459,6 +472,41 @@ export function AdminPage() {
     }
   }
 
+  async function handleAdjustCredits(direction: "add" | "subtract") {
+    if (!selectedUser || !selectedMembership) return;
+    setMessage("");
+    setError("");
+    try {
+      await adjustAdminCredits({
+        credits: Number.parseInt(adjustCreditsValue, 10) || 0,
+        direction,
+        reason: adjustReason,
+        targetUserId: selectedUser.id,
+        tenantId: selectedMembership.tenantId,
+      });
+      setMessage(direction === "add" ? "积分已增加" : "积分已减少");
+      await Promise.all([loadUsers(), loadOperationalData()]);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "积分调整失败");
+    }
+  }
+
+  async function handleUserStatus(status: "active" | "disabled") {
+    if (!selectedUser) return;
+    setMessage("");
+    setError("");
+    try {
+      await updateAdminUserStatus({
+        status,
+        targetUserId: selectedUser.id,
+      });
+      setMessage(status === "disabled" ? "用户账号已停用" : "用户账号已启用");
+      await loadUsers();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "用户状态更新失败");
+    }
+  }
+
   async function handleCreateRedeemCode() {
     const tenantIdForCode = selectedMembership?.tenantId ?? tenant?.id;
     if (!tenantIdForCode) return;
@@ -477,6 +525,20 @@ export function AdminPage() {
       setSelectedRedeemCodeId(response.id);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "兑换码创建失败");
+    }
+  }
+
+  async function handleDeleteRedeemCode(code: AdminRedeemCode) {
+    if (code.status === "redeemed") return;
+    setMessage("");
+    setError("");
+    try {
+      await deleteAdminRedeemCode(code.id);
+      setMessage("未兑换的兑换码已删除");
+      setSelectedRedeemCodeId((current) => (current === code.id ? null : current));
+      await loadOperationalData();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "兑换码删除失败");
     }
   }
 
@@ -741,7 +803,10 @@ export function AdminPage() {
                     <div className="min-w-0">
                       <div className="truncate font-medium text-white">{user.displayName || user.email}</div>
                       <div className="truncate text-xs text-slate-400">{user.email}</div>
-                      <div className="mt-2 text-xs text-slate-500">最近登录 {formatDate(user.lastLoginAt)}</div>
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                        <span>最近登录 {formatDate(user.lastLoginAt)}</span>
+                        <span className={`rounded-full border px-2 py-0.5 ${statusTone(user.status)}`}>{userStatusLabel(user.status)}</span>
+                      </div>
                     </div>
                     <div className="text-right text-xs text-slate-300">
                       <div>{roleLabel(membership?.roleKey)}</div>
@@ -779,6 +844,7 @@ export function AdminPage() {
             <div className="text-sm font-medium text-white">{selectedUser.displayName || selectedUser.email}</div>
             <div className="mt-2 text-sm text-slate-400">{selectedUser.email}</div>
             <div className="mt-3 grid gap-2 text-sm text-slate-300">
+              <div>账号状态：{userStatusLabel(selectedUser.status)}</div>
               <div>身份：{roleLabel(selectedMembership.roleKey)}</div>
               <div>会员：{membershipLabel(selectedMembership.membershipTier)}</div>
               <div>最近登录：{formatDate(selectedUser.lastLoginAt)}</div>
@@ -833,6 +899,23 @@ export function AdminPage() {
               <button className={buttonClass} onClick={() => void handleGrantCredits()} type="button">
                 发放积分
               </button>
+              {isSuperAdmin ? (
+                <div className="mt-2 rounded border border-white/10 bg-white/[0.03] p-3">
+                  <div className="text-xs font-medium text-slate-300">手动调整积分</div>
+                  <div className="mt-3 grid gap-2">
+                    <input className={inputClass} onChange={(event) => setAdjustCreditsValue(event.target.value)} value={adjustCreditsValue} />
+                    <input className={inputClass} onChange={(event) => setAdjustReason(event.target.value)} value={adjustReason} />
+                    <div className="grid grid-cols-2 gap-2">
+                      <button className={buttonClass} onClick={() => void handleAdjustCredits("add")} type="button">
+                        增加积分
+                      </button>
+                      <button className={`${buttonClass} border-amber-300/20 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20`} onClick={() => void handleAdjustCredits("subtract")} type="button">
+                        减少积分
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
           <div className="rounded border border-white/10 bg-black/20 p-4">
@@ -841,6 +924,15 @@ export function AdminPage() {
               <KeyRound size={15} />
               重置临时密码
             </button>
+            {isSuperAdmin ? (
+              <button
+                className={`${buttonClass} mt-3 ${selectedUser.status === "disabled" ? "" : "border-red-300/20 bg-red-500/10 text-red-100 hover:bg-red-500/20"}`}
+                onClick={() => void handleUserStatus(selectedUser.status === "disabled" ? "active" : "disabled")}
+                type="button"
+              >
+                {selectedUser.status === "disabled" ? "启用用户账号" : "停用用户账号"}
+              </button>
+            ) : null}
           </div>
         </div>
       </SectionCard>
@@ -969,7 +1061,7 @@ export function AdminPage() {
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-mono text-sm font-semibold text-white">{code.code ?? "历史兑换码未保存明文"}</span>
                         <span className={`rounded-full border px-2 py-0.5 text-xs ${statusTone(code.status)}`}>
-                          {code.status}
+                          {redeemStatusLabel(code.status)}
                         </span>
                       </div>
                       <div className="mt-1 text-sm text-slate-300">{formatNumber(code.credits)} 点</div>
@@ -996,6 +1088,19 @@ export function AdminPage() {
                       >
                         <Copy size={14} />
                       </button>
+                      {code.status !== "redeemed" ? (
+                        <button
+                          aria-label="删除未兑换兑换码"
+                          className="grid h-8 w-8 place-items-center rounded border border-red-300/20 bg-red-500/10 text-red-100 hover:bg-red-500/20"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void handleDeleteRedeemCode(code);
+                          }}
+                          type="button"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      ) : null}
                     </div>
                   </div>
                 </div>
@@ -1005,7 +1110,7 @@ export function AdminPage() {
               <div className="text-sm font-medium text-white">使用记录</div>
               {selectedRedeemCode ? (
                 <div className="mt-3 text-xs text-slate-400">
-                  {selectedRedeemCode.tenantName || "当前租户"} · {selectedRedeemCode.status}
+                  {selectedRedeemCode.tenantName || "当前租户"} · {redeemStatusLabel(selectedRedeemCode.status)}
                 </div>
               ) : null}
               <div className="mt-3 space-y-2">

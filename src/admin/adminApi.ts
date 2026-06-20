@@ -59,6 +59,13 @@ export type AdminGrantCreditsResponse = {
   };
 };
 
+export type AdminAdjustCreditsResponse = AdminGrantCreditsResponse;
+
+export type AdminUpdateUserStatusResponse = {
+  id: string;
+  status: string;
+};
+
 export type AdminUpdateMembershipTierResponse = {
   membershipTier: MembershipTier;
   membershipTierExpiresAt: string | null;
@@ -129,6 +136,7 @@ export type AdminAnnouncement = {
   endsAt: string | null;
   id: string;
   imageUrl: string | null;
+  isRead: boolean;
   linkUrl: string | null;
   pinned: boolean;
   publishedAt: string | null;
@@ -232,6 +240,30 @@ export function grantAdminCredits(input: {
   });
 }
 
+export function adjustAdminCredits(input: {
+  credits: number;
+  direction: "add" | "subtract";
+  reason: string;
+  targetUserId: string;
+  tenantId: string;
+}): Promise<AdminAdjustCreditsResponse> {
+  return apiPost<AdminAdjustCreditsResponse>(`/admin/users/${input.targetUserId}/adjust-credits`, {
+    credits: input.credits,
+    direction: input.direction,
+    reason: input.reason,
+    tenantId: input.tenantId,
+  });
+}
+
+export function updateAdminUserStatus(input: {
+  status: "active" | "disabled";
+  targetUserId: string;
+}): Promise<AdminUpdateUserStatusResponse> {
+  return apiPatch<AdminUpdateUserStatusResponse>(`/admin/users/${input.targetUserId}/status`, {
+    status: input.status,
+  });
+}
+
 export function updateAdminMembershipTier(input: {
   expiresAt?: string;
   targetUserId: string;
@@ -285,6 +317,10 @@ export function createAdminRedeemCode(input: {
   tenantId?: string;
 }): Promise<AdminRedeemCodeResponse> {
   return apiPost<AdminRedeemCodeResponse>("/admin/redeem-codes", input);
+}
+
+export function deleteAdminRedeemCode(codeId: string): Promise<void> {
+  return apiDelete<void>(`/admin/redeem-codes/${encodeURIComponent(codeId)}`);
 }
 
 export function resetAdminPassword(input: {
@@ -343,6 +379,15 @@ export function listPublishedAnnouncements(input?: {
   if (input?.limit) params.set("limit", String(input.limit));
   return apiGet<{ items: AdminAnnouncement[] }>(
     `/announcements${params.size ? `?${params.toString()}` : ""}`,
+  );
+}
+
+export function markAnnouncementRead(announcementId: string): Promise<{
+  announcementId: string;
+  readAt: string;
+}> {
+  return apiPost<{ announcementId: string; readAt: string }>(
+    `/announcements/${encodeURIComponent(announcementId)}/read`,
   );
 }
 
