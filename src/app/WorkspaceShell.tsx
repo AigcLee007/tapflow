@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import {
+  Activity,
   Bell,
   Box,
   ChevronDown,
@@ -248,12 +249,13 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
               <div className="relative hidden lg:block">
               <button
                 aria-label="模型线路监控"
-                className="peer/route-monitor inline-flex h-11 items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-3 text-xs font-semibold text-slate-200 transition hover:bg-white/[0.10] focus:bg-white/[0.10]"
+                className="peer/route-monitor relative grid h-11 w-11 place-items-center rounded-full text-slate-300 transition hover:bg-white/[0.08] hover:text-white focus:bg-white/[0.08] focus:text-white"
                 onClick={() => goTo(`${ADMIN_ROUTE}#monitor`)}
                 type="button"
+                title="模型线路监控"
               >
-                <span className="h-2 w-2 rounded-full bg-emerald-300" />
-                线路 {routeStats?.summary.successRate ?? 0}% · {routeStats?.summary.averageLatencyMs ?? "-"}ms
+                <Activity size={22} />
+                <span className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full border border-[#0b0b0d] bg-emerald-300" />
               </button>
               <div className="pointer-events-none absolute right-0 top-[calc(100%+10px)] z-50 hidden w-[520px] rounded border border-white/10 bg-[#171717] p-4 text-sm opacity-0 shadow-2xl shadow-black/40 transition peer-hover/route-monitor:block peer-hover/route-monitor:opacity-100 peer-focus/route-monitor:block peer-focus/route-monitor:opacity-100">
                 <div className="flex items-start justify-between gap-4">
