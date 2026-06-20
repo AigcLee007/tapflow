@@ -49,18 +49,6 @@ export function WorkbenchDesktopResultFeed({
       className="flex h-full min-h-0 flex-col overflow-hidden rounded-[26px] border border-white/10 bg-[linear-gradient(180deg,rgba(16,21,31,0.96),rgba(10,13,19,0.98))] shadow-[0_26px_80px_rgba(0,0,0,0.26)]"
       data-testid="workbench-desktop-result-feed"
     >
-      <div className="flex items-center justify-between border-b border-white/8 px-5 py-4">
-        <div>
-          <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">
-            Results Workspace
-          </div>
-          <div className="mt-1 text-sm font-bold text-white">创作结果流</div>
-        </div>
-        <span className="rounded-full border border-white/10 bg-white/[0.06] px-3 py-1 text-xs font-bold text-slate-300">
-          {generations.length}
-        </span>
-      </div>
-
       <div
         className="min-h-0 flex-1 overflow-y-auto p-4"
         data-testid="workbench-desktop-result-scroll-area"
@@ -69,7 +57,7 @@ export function WorkbenchDesktopResultFeed({
       >
         <div className="grid gap-4">
           {visibleGenerations.length === 0 ? (
-            <div className="grid min-h-[320px] place-items-center rounded-[20px] border border-dashed border-white/10 bg-black/15 text-center">
+            <div className="grid min-h-[260px] place-items-center rounded-[20px] border border-dashed border-white/10 bg-black/15 text-center">
               <div className="px-5">
                 <div className="text-sm font-bold text-white">还没有创作记录</div>
                 <div className="mt-2 text-sm leading-6 text-slate-400">

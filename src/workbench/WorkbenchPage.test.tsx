@@ -351,7 +351,11 @@ describe("WorkbenchPage", () => {
     await waitFor(() => {
       expect(getBillingSummaryMock).toHaveBeenCalled();
     });
-    expect(screen.getByTestId("workbench-credit-balance").textContent).toBe("0");
+    expect(screen.queryByTestId("workbench-credit-balance")).toBeNull();
+    expect(screen.queryByText("沉浸式创作空间")).toBeNull();
+    expect(screen.queryByLabelText("历史")).toBeNull();
+    expect(screen.queryByLabelText("通知")).toBeNull();
+    expect(screen.queryByLabelText("分享")).toBeNull();
     expect(screen.queryByText("19071")).toBeNull();
 
     Object.defineProperty(window, "innerWidth", {
@@ -365,6 +369,24 @@ describe("WorkbenchPage", () => {
       expect(screen.getByTestId("workbench-mobile-credit-balance").textContent).toBe("0");
     });
     expect(screen.queryByText("19071")).toBeNull();
+  });
+
+  test("removes the desktop quick action rail and lifts result content directly to the top", async () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 1440,
+    });
+    setRoute("/workbench");
+    renderRouter();
+
+    await screen.findByTestId("workbench-desktop-result-feed");
+    const scrollArea = screen.getByTestId("workbench-desktop-result-scroll-area");
+    expect(screen.queryByText("Results Workspace")).toBeNull();
+    expect(screen.queryByText("创作结果流")).toBeNull();
+    expect(screen.queryByLabelText("历史")).toBeNull();
+    expect(screen.queryByLabelText("通知")).toBeNull();
+    expect(screen.queryByLabelText("分享")).toBeNull();
+    expect(scrollArea.className).toContain("p-4");
   });
 
   test("opens the mobile parameter sheet from the bottom creation dock", async () => {

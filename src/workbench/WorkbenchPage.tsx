@@ -1,13 +1,8 @@
 import React from "react";
 import {
-  Bell,
   ChevronLeft,
-  Clock3,
-  Coins,
   Download,
   ImagePlus,
-  Share2,
-  Sparkles,
   Trash2,
 } from "lucide-react";
 
@@ -1128,37 +1123,6 @@ export function WorkbenchPage() {
           </button>
         </div>
 
-        <div className="hidden items-center gap-3 md:flex">
-          <div className="flex h-10 items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3.5 text-xs font-bold text-white/90">
-            <Sparkles className="text-cyan-300" size={15} />
-            沉浸式创作空间
-          </div>
-          <div className="flex h-10 items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-4 text-sm font-black text-[#ffe35a]">
-            <Coins size={14} />
-            <span data-testid="workbench-credit-balance">{availableCredits.toLocaleString()}</span>
-          </div>
-          <button
-            aria-label="历史"
-            className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-white/[0.05] text-slate-200 transition hover:bg-white/[0.12]"
-            type="button"
-          >
-            <Clock3 size={16} />
-          </button>
-          <button
-            aria-label="通知"
-            className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-white/[0.05] text-slate-200 transition hover:bg-white/[0.12]"
-            type="button"
-          >
-            <Bell size={16} />
-          </button>
-          <button
-            aria-label="分享"
-            className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-white/[0.05] text-slate-200 transition hover:bg-white/[0.12]"
-            type="button"
-          >
-            <Share2 size={16} />
-          </button>
-        </div>
       </header>
 
       <div className="relative z-10 px-4 pb-4 md:px-5">

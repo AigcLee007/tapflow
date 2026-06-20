@@ -51,6 +51,13 @@ Current deployment baseline:
 
 As of 2026-06-20:
 
+- desktop `/workbench` received the screenshot-directed Scheme 3 subtraction pass on desktop only:
+  - removed the entire top-right desktop workbench header action rail, including `沉浸式创作空间`, the desktop credit pill, and the `历史 / 通知 / 分享` icon buttons.
+  - removed the desktop right-column result panel header chrome, so the result feed now starts directly at the scrollable content without the `Results Workspace / 创作结果流 / count` strip.
+  - kept the existing mobile workbench header and mobile balance pill behavior unchanged.
+- Validation:
+  - `npx vitest run src/workbench/WorkbenchPage.test.tsx src/workbench/WorkbenchDesktopResultFeed.test.tsx` passed.
+
 - Brand logo and transition surfaces received the Scheme B cleanup:
   - all shared `BrandMark` renderings now treat `/logo-2.png` as a transparent PNG, removing the previous black/framed logo surface and heavy logo box shadows.
   - project/canvas transition loading now uses a floating transparent logo with a soft ambient glow instead of a rectangular loading card.
