@@ -1,6 +1,6 @@
 ﻿# Project Record
 
-Last updated: 2026-06-20
+Last updated: 2026-06-21
 Maintainers: project team + Codex sessions
 
 ## Purpose
@@ -48,6 +48,13 @@ Current deployment baseline:
 - env file: `/opt/aittco/env/tapflow.staging.env`
 
 ## Current Key Status Snapshot
+
+As of 2026-06-21:
+
+- Staging deployment config now forwards `WORKER_IMAGE_VARIANTS_MODE` into the container environment through `docker-compose.staging.yml`, so server env-file changes can switch image variant handling between `sync` and `async` without another code change.
+- `docs/STAGING_ENV_TEMPLATE.md` now documents `WORKER_IMAGE_VARIANTS_MODE = async` as the recommended staging setting for faster first-result delivery when original asset persistence can complete before preview/thumb variants finish in the background.
+- Operational note:
+  - after pulling this change to `/opt/aittco/tapflow`, add `WORKER_IMAGE_VARIANTS_MODE=async` to `/opt/aittco/env/tapflow.staging.env` and restart `tapflow-worker`
 
 As of 2026-06-20:
 

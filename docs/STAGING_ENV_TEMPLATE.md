@@ -41,6 +41,7 @@ Do not commit real secrets into repository files.
 - `REDIS_URL = <secret: Upstash Redis TCP connection string>`
 - `QUEUE_PREFIX = aigc-flow:staging`
 - `WORKER_CONCURRENCY = 1`
+- `WORKER_IMAGE_VARIANTS_MODE = async`
 - `Redis provider = Upstash Redis`
 - `Password/TLS enabled = Yes`
 - `Isolated from prod = Yes`
