@@ -5645,6 +5645,12 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       className={`flow-image-node${isMultiSelecting ? ' flow-node-multi-selecting' : ''}`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onDoubleClick={(event) => {
+        if (!effectiveThumbnailUrl) return;
+        event.preventDefault();
+        event.stopPropagation();
+        setFullscreenOpen(true);
+      }}
     >
       <NodeLabel nodeId={id} icon={<ImageIcon size={14} />} label={String(d.title || 'Image')} fallbackLabel="Image" />
 

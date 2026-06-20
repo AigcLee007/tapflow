@@ -110,12 +110,12 @@ export function WorkbenchResultSheet({
         </div>
 
         <div
-          className="relative z-10 grid min-h-0 flex-1 place-items-center overflow-hidden px-0 py-2 md:px-6 md:pb-[164px]"
+          className="relative z-10 grid min-h-0 flex-1 place-items-center overflow-hidden px-0 py-1 md:px-6 md:pb-[128px]"
           data-testid="workbench-result-fullscreen-stage"
         >
           {imageUrl ? (
             <div
-              className="relative flex h-[calc(100dvh-240px)] w-[calc(100vw-48px)] items-center justify-center md:h-[calc(100vh-260px)] md:w-[calc(100vw-120px)]"
+              className="relative flex h-[calc(100dvh-212px)] w-[calc(100vw-48px)] items-center justify-center md:h-[calc(100vh-196px)] md:w-[calc(100vw-120px)]"
               data-testid="workbench-result-fullscreen-image-shell"
             >
               {canNavigateBatch ? (
@@ -157,7 +157,7 @@ export function WorkbenchResultSheet({
         </div>
 
         <div
-          className="relative z-10 mx-auto flex w-full max-w-[620px] shrink-0 flex-col gap-3 rounded-t-[28px] bg-black/88 pb-[calc(env(safe-area-inset-bottom,0px)+88px)] pt-3 backdrop-blur-xl md:absolute md:bottom-8 md:left-1/2 md:w-[min(100%,980px)] md:max-w-[980px] md:-translate-x-1/2 md:rounded-[28px] md:px-8 md:pb-8"
+          className="relative z-10 mx-auto flex w-full max-w-[620px] shrink-0 flex-col gap-3 rounded-t-[28px] bg-black/88 pb-[calc(env(safe-area-inset-bottom,0px)+88px)] pt-3 backdrop-blur-xl md:absolute md:bottom-2 md:left-1/2 md:w-[min(100%,980px)] md:max-w-[980px] md:-translate-x-1/2 md:rounded-[28px] md:px-8 md:pb-5"
           data-testid="workbench-result-fullscreen-actions"
         >
           {canNavigateBatch ? (

@@ -301,6 +301,16 @@ describe("WorkbenchPage", () => {
     expect(screen.getByRole("button", { name: "立即开始创作" })).toBeTruthy();
   });
 
+  test("removes workbench-only multi-image display mode controls on desktop", async () => {
+    setRoute("/workbench");
+    renderRouter();
+
+    await screen.findByTestId("workbench-composer");
+
+    expect(screen.queryByRole("button", { name: "合并显示" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "多节点显示" })).toBeNull();
+  });
+
   test("renders a mobile-first bottom creation dock instead of the legacy floating composer button", async () => {
     Object.defineProperty(window, "innerWidth", {
       configurable: true,
@@ -351,10 +361,10 @@ describe("WorkbenchPage", () => {
     await waitFor(() => {
       expect(getBillingSummaryMock).toHaveBeenCalled();
     });
-    expect(screen.queryByTestId("workbench-credit-balance")).toBeNull();
+    expect(screen.getByTestId("workbench-credit-balance").textContent).toContain("0");
     expect(screen.queryByText("沉浸式创作空间")).toBeNull();
     expect(screen.queryByLabelText("历史")).toBeNull();
-    expect(screen.queryByLabelText("通知")).toBeNull();
+    expect(screen.getByTestId("workbench-notification-button")).toBeTruthy();
     expect(screen.queryByLabelText("分享")).toBeNull();
     expect(screen.queryByText("19071")).toBeNull();
 
@@ -384,7 +394,7 @@ describe("WorkbenchPage", () => {
     expect(screen.queryByText("Results Workspace")).toBeNull();
     expect(screen.queryByText("创作结果流")).toBeNull();
     expect(screen.queryByLabelText("历史")).toBeNull();
-    expect(screen.queryByLabelText("通知")).toBeNull();
+    expect(screen.getByTestId("workbench-notification-button")).toBeTruthy();
     expect(screen.queryByLabelText("分享")).toBeNull();
     expect(scrollArea.className).toContain("p-4");
   });
@@ -1250,13 +1260,14 @@ describe("WorkbenchPage", () => {
     expect(detailImages.some((image) => image.getAttribute("src") === "https://example.com/asset-result-detail-1-original.png")).toBe(true);
     expect(screen.getByTestId("workbench-result-fullscreen").className).toContain("fixed inset-0");
     expect(screen.getByTestId("workbench-result-fullscreen-stage").textContent).not.toBeNull();
-    expect(screen.getByTestId("workbench-result-fullscreen-stage").className).toContain("md:pb-[164px]");
+    expect(screen.getByTestId("workbench-result-fullscreen-stage").className).toContain("md:pb-[128px]");
     expect(screen.getByTestId("workbench-result-fullscreen-image").className).toContain("h-full");
     expect(screen.getByTestId("workbench-result-fullscreen-image").className).toContain("w-full");
     expect(screen.getByTestId("workbench-result-fullscreen-image").className).toContain("object-contain");
+    expect(screen.getByTestId("workbench-result-fullscreen-image-shell").className).toContain("md:h-[calc(100vh-196px)]");
     expect(screen.getByTestId("workbench-result-fullscreen-image-shell").className).toContain("md:w-[calc(100vw-120px)]");
     expect(screen.getByTestId("workbench-result-fullscreen-actions").className).toContain("md:absolute");
-    expect(screen.getByTestId("workbench-result-fullscreen-actions").className).toContain("md:bottom-8");
+    expect(screen.getByTestId("workbench-result-fullscreen-actions").className).toContain("md:bottom-2");
   });
 
   test("supports switching images inside fullscreen preview for the same desktop batch", async () => {

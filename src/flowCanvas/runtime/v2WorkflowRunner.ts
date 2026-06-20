@@ -631,6 +631,27 @@ async function resolveAssetRefs(outputJson: Record<string, unknown> | null): Pro
   return result;
 }
 
+function resolveAssetRefsFromEventPayload(payload: Record<string, unknown>): FlowRuntimeAssetRef[] {
+  const outputJson = payload.outputJson;
+  const assets = outputJson && typeof outputJson === 'object' && Array.isArray((outputJson as { assets?: unknown }).assets)
+    ? (outputJson as { assets: unknown[] }).assets
+    : [];
+
+  return assets
+    .filter(isAssetLike)
+    .map((asset) => ({
+      assetId: asset.assetId,
+      downloadUrl: typeof asset.downloadUrl === 'string' && asset.downloadUrl.trim()
+        ? asset.downloadUrl
+        : `/api/v2/assets/${asset.assetId}/bytes?variantKey=preview`,
+      expiresAt: null,
+      height: asset.height ?? null,
+      kind: asset.kind,
+      mimeType: asset.mimeType,
+      width: asset.width ?? null,
+    }));
+}
+
 async function applyWorkflowRunSnapshot(snapshot: GetWorkflowRunResponse): Promise<void> {
   const scope = resolveRunScope(snapshot.workflowRun.inputJson);
   const scopedNodeRuns = filterNodeRunsForScope(snapshot.nodeRuns, scope);
@@ -767,6 +788,39 @@ function applyRunEvent(event: V2WorkflowRunEventView): void {
         progress: 0,
         status: 'failed',
       } as Partial<FlowNodeData>);
+    }
+  }
+
+  if (event.eventType === 'node.run.succeeded' && nodeId) {
+    const nodeType = typeof event.payload.nodeType === 'string' ? event.payload.nodeType : '';
+    const isMediaNode = nodeType === 'image.generate' || nodeType === 'video.generate';
+    if (isMediaNode) {
+      const assetRefs = resolveAssetRefsFromEventPayload(event.payload);
+      if (assetRefs.length > 0) {
+        persistNodeOutputsFromRun([
+          {
+            attempt: 1,
+            costJson: {},
+            createdAt: event.createdAt,
+            errorJson: null,
+            finishedAt: event.createdAt,
+            id: event.nodeRunId || `event-${event.id}`,
+            inputJson: {},
+            maxAttempts: 1,
+            nodeId,
+            nodeType,
+            outputJson: null,
+            providerTaskId: null,
+            startedAt: event.createdAt,
+            status: 'succeeded',
+            tenantId: event.tenantId,
+            updatedAt: event.createdAt,
+            workflowRunId: event.workflowRunId,
+          },
+        ], {
+          [nodeId]: assetRefs,
+        });
+      }
     }
   }
 

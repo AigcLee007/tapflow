@@ -51,6 +51,18 @@ Current deployment baseline:
 
 As of 2026-06-20:
 
+- implemented the screenshot-directed workbench/workspace/canvas UI refinement pass:
+  - removed the workbench-only multi-image display toggle controls for quantity greater than 1 on desktop and mobile, without changing the canvas multi-image controls.
+  - simplified workbench reference thumbnails to image-first tiles with a small numeric badge and click-to-insert mention behavior.
+  - expanded the workbench fullscreen preview image area and moved the action panel lower.
+  - project cover thumbnails now prefer the clearer `preview` variant and fall back to `thumb` for speed compatibility.
+  - workspace project creation now auto-generates a default `新项目 MM-DD HH:mm` name and opens the canvas directly.
+  - canvas media node success events now carry output assets so generated images can hydrate before the whole workflow run finishes.
+  - double-clicking a canvas image node opens fullscreen preview.
+  - removed the canvas top-right share button and restored clean Chinese toolbar labels.
+  - restored the workbench desktop top-right credit balance and notification button.
+- Validation:
+  - `npx vitest run src/workbench/WorkbenchPage.test.tsx src/workspace/WorkspacePage.test.tsx src/flowCanvas/runtime/v2WorkflowRunner.test.ts src/flowCanvas/canvas/FlowTopToolbar.test.tsx` passed.
 - desktop `/workbench` received the screenshot-directed Scheme 3 subtraction pass on desktop only:
   - removed the entire top-right desktop workbench header action rail, including `沉浸式创作空间`, the desktop credit pill, and the `历史 / 通知 / 分享` icon buttons.
   - removed the desktop right-column result panel header chrome, so the result feed now starts directly at the scrollable content without the `Results Workspace / 创作结果流 / count` strip.

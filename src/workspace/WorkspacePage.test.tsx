@@ -90,6 +90,24 @@ describe("WorkspacePage", () => {
     expect(screen.getAllByText("Visual Strategy").length).toBeGreaterThan(0);
   });
 
+  test("creates a default-named project and opens it without asking for a name first", async () => {
+    const createProject = vi.fn(async () => ({ project: { ...project, id: "created-project" } }));
+    mockWorkspaceProjects({ createProject });
+
+    render(<WorkspacePage />);
+
+    fireEvent.click(screen.getAllByRole("button", { name: /新建项目|鏂板缓椤圭洰/ })[0]!);
+
+    await waitFor(() => {
+      expect(createProject).toHaveBeenCalledWith({
+        description: null,
+        name: expect.stringMatching(/^新项目 \d{2}-\d{2} \d{2}:\d{2}$/),
+      });
+    });
+    expect(window.location.pathname).toBe("/projects/created-project");
+    expect(screen.queryByPlaceholderText("项目名称")).toBeNull();
+  });
+
   test("opens a project action menu and renames the project", async () => {
     const refresh = vi.fn(async () => undefined);
     mockWorkspaceProjects({ refresh });

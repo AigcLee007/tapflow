@@ -415,8 +415,8 @@ export class ProjectsService {
           FROM asset_variants
           WHERE tenant_id = a.tenant_id
             AND asset_id = a.id
-            AND variant_key IN ('thumb', 'preview')
-          ORDER BY CASE variant_key WHEN 'thumb' THEN 0 WHEN 'preview' THEN 1 ELSE 2 END
+            AND variant_key IN ('preview', 'thumb')
+          ORDER BY CASE variant_key WHEN 'preview' THEN 0 WHEN 'thumb' THEN 1 ELSE 2 END
           LIMIT 1
         ) av ON true
         WHERE a.tenant_id = $1::uuid

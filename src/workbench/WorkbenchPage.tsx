@@ -1,8 +1,12 @@
 import React from "react";
 import {
+  Bell,
   ChevronLeft,
+  Coins,
   Download,
   ImagePlus,
+  Share2,
+  Sparkles,
   Trash2,
 } from "lucide-react";
 
@@ -1123,6 +1127,25 @@ export function WorkbenchPage() {
           </button>
         </div>
 
+        <div className="hidden items-center gap-2 md:flex">
+          <div
+            className="flex h-10 items-center gap-2 rounded-[16px] border border-white/10 bg-white/[0.06] px-3.5 text-sm font-black text-[#ffe35a]"
+            data-testid="workbench-credit-balance"
+            title="当前点数"
+          >
+            <Coins size={14} />
+            <span>{availableCredits.toLocaleString()}</span>
+          </div>
+          <button
+            aria-label="通知"
+            className="relative flex h-10 items-center gap-2 rounded-[16px] border border-white/10 bg-white/[0.06] px-3.5 text-sm font-bold text-slate-100 transition hover:bg-white/[0.12]"
+            data-testid="workbench-notification-button"
+            type="button"
+          >
+            <Bell size={15} />
+            <span>通知</span>
+          </button>
+        </div>
       </header>
 
       <div className="relative z-10 px-4 pb-4 md:px-5">

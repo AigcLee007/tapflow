@@ -1301,6 +1301,99 @@ describe('v2WorkflowRunner', () => {
     });
   });
 
+  test('node succeeded stream event hydrates generated assets before the whole workflow finishes', async () => {
+    useFlowCanvasStore.setState({
+      backendFlowId: '11111111-1111-1111-1111-111111111111',
+      backendProjectId: 'project-1',
+    });
+    const node = useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, {
+      batchCount: 2,
+      generationPrompt: 'two images',
+      routeKey: 'image.default',
+      title: 'Image',
+    });
+    let onEvent: ((event: any) => void) | undefined;
+
+    createWorkflowRunMock.mockResolvedValue({
+      runId: 'run-progressive-assets',
+      status: 'running',
+    });
+    getWorkflowRunMock.mockResolvedValue({
+      nodeRuns: [
+        {
+          attempt: 1,
+          costJson: {},
+          createdAt: '2026-05-17T00:00:00.000Z',
+          errorJson: null,
+          finishedAt: null,
+          id: 'node-run-progressive-assets',
+          inputJson: {},
+          maxAttempts: 3,
+          nodeId: node.id,
+          nodeType: 'image.generate',
+          outputJson: null,
+          providerTaskId: null,
+          startedAt: null,
+          status: 'running',
+          tenantId: 'tenant-1',
+          updatedAt: '2026-05-17T00:00:00.000Z',
+          workflowRunId: 'run-progressive-assets',
+        },
+      ],
+      workflowRun: {
+        canceledAt: null,
+        createdAt: '2026-05-17T00:00:00.000Z',
+        createdBy: 'user-1',
+        errorJson: null,
+        finishedAt: null,
+        flowId: '11111111-1111-1111-1111-111111111111',
+        flowVersionId: 'version-1',
+        id: 'run-progressive-assets',
+        idempotencyKey: null,
+        inputJson: { runMode: 'target_node', targetNodeId: node.id },
+        outputJson: null,
+        startedAt: null,
+        status: 'running',
+        tenantId: 'tenant-1',
+        updatedAt: '2026-05-17T00:00:00.000Z',
+      },
+    });
+    streamWorkflowRunMock.mockImplementation((_runId, options) => {
+      onEvent = options.onEvent;
+      return { close: vi.fn() };
+    });
+
+    await runBackendWorkflow({ runMode: 'target_node', targetNodeId: node.id });
+    onEvent?.({
+      createdAt: '2026-05-17T00:00:03.000Z',
+      eventType: 'node.run.succeeded',
+      id: 'event-node-progressive-assets',
+      nodeRunId: 'node-run-progressive-assets',
+      payload: {
+        nodeId: node.id,
+        nodeType: 'image.generate',
+        outputJson: {
+          assets: [
+            { assetId: 'asset-progressive-1', height: 1024, kind: 'image', mimeType: 'image/png', width: 1024 },
+            { assetId: 'asset-progressive-2', height: 1024, kind: 'image', mimeType: 'image/png', width: 1024 },
+          ],
+        },
+        status: 'succeeded',
+      },
+      sequence: 8,
+      tenantId: 'tenant-1',
+      workflowRunId: 'run-progressive-assets',
+    });
+
+    await vi.waitFor(() => {
+      expect(useFlowCanvasStore.getState().nodes.find((item) => item.id === node.id)?.data.assetId)
+        .toBe('asset-progressive-1');
+    });
+    const updatedNode = useFlowCanvasStore.getState().nodes.find((item) => item.id === node.id);
+    expect(updatedNode?.data.generatedResults).toHaveLength(2);
+    expect(updatedNode?.data.thumbnailUrl).toBe('/api/v2/assets/asset-progressive-1/bytes?variantKey=preview');
+  });
+
   test('split_nodes mode creates child image nodes and suppresses duplicate parent filmstrip batch state', async () => {
     const parent = useFlowCanvasStore.getState().addNode('image', { x: 80, y: 120 }, {
       batchCount: 2,

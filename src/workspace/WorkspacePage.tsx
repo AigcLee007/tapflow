@@ -84,8 +84,12 @@ export function WorkspacePage() {
             <ProjectToolbar
               disabled={loading}
               onCreate={() => {
-                const target = document.querySelector<HTMLButtonElement>("[data-create-project-trigger='true']");
-                target?.click();
+                const now = new Date();
+                const pad = (value: number) => String(value).padStart(2, "0");
+                void createAndOpen({
+                  description: null,
+                  name: `新项目 ${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`,
+                });
               }}
               onQueryChange={setQuery}
               onRefresh={() => void refresh()}

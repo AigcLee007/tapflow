@@ -9,7 +9,6 @@ import {
   ChevronRight,
   Megaphone,
   RefreshCw,
-  Share2,
   Sparkles,
   X,
 } from "lucide-react";
@@ -92,7 +91,6 @@ export const FlowTopToolbar: React.FC<{
   const [projectMenuPosition, setProjectMenuPosition] = useState<{ left: number; top: number } | null>(null);
   const [showDeleteProjectConfirm, setShowDeleteProjectConfirm] = useState(false);
   const [deleteProjectError, setDeleteProjectError] = useState<string | null>(null);
-  const [shareCopied, setShareCopied] = useState(false);
   const projectMenuLayer = useDismissibleLayer("canvas-toolbar-project");
   const notificationLayer = useDismissibleLayer("canvas-toolbar-notifications");
   const titleInputRef = useRef<HTMLInputElement | null>(null);
@@ -181,14 +179,6 @@ export const FlowTopToolbar: React.FC<{
 
   const markAllRead = () => {
     markAnnouncementsRead(announcements.map((item) => item.id));
-  };
-
-  const copyShareLink = () => {
-    if (typeof window === "undefined") return;
-    const url = window.location.href;
-    void navigator.clipboard?.writeText(url).catch(() => undefined);
-    setShareCopied(true);
-    window.setTimeout(() => setShareCopied(false), 1500);
   };
 
   const focusTitleInput = useCallback(() => {
@@ -515,14 +505,6 @@ export const FlowTopToolbar: React.FC<{
             ) : null}
           </div>
 
-          <button
-            type="button"
-            style={shareButtonStyle}
-            title={shareCopied ? "已复制链接" : "分享"}
-            onClick={copyShareLink}
-          >
-            <Share2 size={17} />
-          </button>
         </div>
 
         {selectedAnnouncement ? (
@@ -673,19 +655,6 @@ const topPillStyle: React.CSSProperties = {
   color: "#fff",
   fontSize: 13,
   fontWeight: 820,
-  cursor: "pointer",
-  boxShadow: "0 12px 34px rgba(0,0,0,0.34), inset 0 1px 0 rgba(255,255,255,0.06)",
-};
-
-const shareButtonStyle: React.CSSProperties = {
-  width: 42,
-  height: 42,
-  border: "none",
-  borderRadius: "50%",
-  display: "grid",
-  placeItems: "center",
-  background: "rgba(43,43,49,0.96)",
-  color: "#fff",
   cursor: "pointer",
   boxShadow: "0 12px 34px rgba(0,0,0,0.34), inset 0 1px 0 rgba(255,255,255,0.06)",
 };
@@ -936,3 +905,4 @@ const confirmButtonStyle: React.CSSProperties = {
   fontWeight: 800,
   cursor: "pointer",
 };
+

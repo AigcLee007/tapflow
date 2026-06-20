@@ -2540,6 +2540,7 @@ export class WorkflowNodeExecutionService {
       payload: {
         nodeId: currentNode.id,
         nodeType: currentNode.type,
+        outputJson,
         status: "succeeded",
       },
       tenantId: context.tenantId,

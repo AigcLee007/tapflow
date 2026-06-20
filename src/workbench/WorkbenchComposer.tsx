@@ -1,5 +1,5 @@
 import React from "react";
-import { ChevronDown, Coins, Sparkles, Trash2, Upload, Wand2, X } from "lucide-react";
+import { ChevronDown, Sparkles, Trash2, Upload, Wand2, X } from "lucide-react";
 
 import { getAsset, getAssetVariantUrl, type AssetDownloadUrlResponse, type AssetItem } from "../assets/assetApi";
 import { MenuSurface } from "../components/menu/MenuSurface";
@@ -59,9 +59,7 @@ const TEXT = {
   insertReference: "\u5f15\u7528",
   loading: "\u52a0\u8f7d\u4e2d",
   loadingRoute: "\u7ebf\u8def\u52a0\u8f7d\u4e2d",
-  mergeDisplay: "\u5408\u5e76\u663e\u793a",
   model: "\u6a21\u578b",
-  multiDisplay: "\u591a\u56fe\u663e\u793a",
   noPreview: "\u6682\u65e0\u9884\u89c8",
   optimize: "\u4f18\u5316 (0.5 \u91d1\u5e01)",
   prompt: "\u63d0\u793a\u8bcd",
@@ -72,7 +70,6 @@ const TEXT = {
   removeReference: "\u79fb\u9664\u53c2\u8003\u56fe",
   route: "\u7ebf\u8def",
   routeOne: "\u7ebf\u8def\u4e00",
-  separateDisplay: "\u591a\u8282\u70b9\u663e\u793a",
   start: "\u7acb\u5373\u5f00\u59cb\u521b\u4f5c",
   submitting: "\u751f\u6210\u4e2d...",
   unitPrice: "\u5355\u5f20 4.0 \u70b9\uff0c\u6700\u7ec8\u6309\u6570\u91cf\u81ea\u52a8\u5408\u8ba1\u3002",
@@ -296,23 +293,18 @@ function ReferenceImageCard({
           {preview.loading ? TEXT.loading : TEXT.noPreview}
         </div>
       )}
-      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/68 to-transparent px-1.5 pb-1.5 pt-8">
-        <div className="flex items-center justify-between gap-1">
-          <div className="rounded-[6px] bg-black/50 px-1.5 py-0.5 text-[10px] font-black leading-none text-white ring-1 ring-white/15">
-            {TEXT.imagePrefix}{index}
-          </div>
-          <button
-            className={`rounded-full border border-white/15 bg-white/10 px-2 py-1 text-[10px] font-black leading-none text-white transition hover:bg-white hover:text-black ${
-              compact ? "min-w-[44px]" : ""
-            }`}
-            onClick={onInsertMention}
-            title={`${TEXT.insertReference} @${TEXT.imagePrefix}${index}`}
-            type="button"
-          >
-            @{TEXT.imagePrefix}{index}
-          </button>
-        </div>
-      </div>
+      <button
+        aria-label={`${TEXT.insertReference} @${TEXT.imagePrefix}${index}`}
+        className="absolute inset-0 rounded-[inherit] text-left"
+        onClick={onInsertMention}
+        title={`${TEXT.insertReference} @${TEXT.imagePrefix}${index}`}
+        type="button"
+      >
+        <span className="absolute left-1.5 top-1.5 rounded-[6px] bg-black/68 px-1.5 py-0.5 text-[10px] font-black leading-none text-white ring-1 ring-white/15">
+          {index}
+        </span>
+        <span className="sr-only">@{TEXT.imagePrefix}{index}</span>
+      </button>
       <button
         aria-label={`${TEXT.removeReference}${index}`}
         className="absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-full bg-black/65 text-white opacity-0 transition group-hover:opacity-90 focus:opacity-90 hover:bg-white hover:text-black"
@@ -865,32 +857,6 @@ export function WorkbenchComposer({
         </section>
       ) : null}
 
-      {draft.quantity > 1 ? (
-        <section className="grid grid-cols-2 gap-2">
-          <button
-            className={`h-9 rounded-[7px] border text-[12px] font-bold ${
-              draft.displayMode === "merged"
-                ? "border-[#f0d72d]/45 bg-[#2b2609] text-[#ffe653]"
-                : "border-white/10 bg-white/[0.03] text-slate-400"
-            }`}
-            onClick={() => onChangeDraft({ displayMode: "merged" })}
-            type="button"
-          >
-            {TEXT.mergeDisplay}
-          </button>
-          <button
-            className={`h-9 rounded-[7px] border text-[12px] font-bold ${
-              draft.displayMode === "separate"
-                ? "border-[#f0d72d]/45 bg-[#2b2609] text-[#ffe653]"
-                : "border-white/10 bg-white/[0.03] text-slate-400"
-            }`}
-            onClick={() => onChangeDraft({ displayMode: "separate" })}
-            type="button"
-          >
-            {TEXT.separateDisplay}
-          </button>
-        </section>
-      ) : null}
       </div>
 
       <div
