@@ -51,6 +51,17 @@ Current deployment baseline:
 
 As of 2026-06-20:
 
+- Added the first formal performance instrumentation pass for workbench image generation:
+  - `DatabaseMediaRuntime` now emits structured `media.generate.*` and `media.poll.*` logs with stable correlation fields such as `generationId`, `routeKey`, `tenantId`, `nodeRunId`, `workflowRunId`, and `traceId`.
+  - `MediaAssetStore` now emits structured `asset.persist.*` and `asset.variant.*` stage logs for provider output download, original upload, asset row insert, variant generation, variant upload, variant row insert, and per-asset completion.
+  - `WorkbenchGenerationService` now emits `workbench.generation.*` summary logs covering generation start, provider completion, asset persistence completion, final success, and failure.
+  - frontend workbench generation flow now records browser performance marks/measures for submit, generation-created, preview-url-ready, and first-image-visible timing via shared workbench performance helpers.
+- Validation:
+  - `npx vitest run packages/ai-gateway-core/test/runtime.test.ts -t "database media runtime emits structured performance logs for generate and poll calls"` passed.
+  - `npx vitest run apps/worker/test/media-asset-store.test.ts apps/worker/test/workbench-generation.service.test.ts` passed.
+  - `npx vitest run src/performance/performanceMarks.test.ts src/workbench/useWorkbenchPerformance.test.tsx src/workbench/WorkbenchPage.test.tsx -t "marks submit and generation-created performance events when creating a workbench generation"` passed.
+  - `npm run build` passed.
+
 - implemented the screenshot-directed workbench/workspace/canvas UI refinement pass:
   - removed the workbench-only multi-image display toggle controls for quantity greater than 1 on desktop and mobile, without changing the canvas multi-image controls.
   - simplified workbench reference thumbnails to image-first tiles with a small numeric badge and click-to-insert mention behavior.

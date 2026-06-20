@@ -8,6 +8,7 @@ import type { PoolClient } from "pg";
 import sharp from "sharp";
 
 import type { MediaOutput } from "@aigc-flow/ai-gateway-core";
+import type { WorkerLogger } from "../logger.js";
 import { createImageVariants } from "./media-variants.js";
 
 export type FetchResponseLike = {
@@ -40,6 +41,13 @@ export type PersistedAssetTiming = {
 
 export type MediaVariantQueue = {
   add(name: string, payload: Record<string, unknown>): Promise<unknown>;
+};
+
+type AssetPersistenceLogContext = {
+  generationId?: string | null;
+  logger?: WorkerLogger | null;
+  routeKey?: string | null;
+  traceId?: string | null;
 };
 
 function elapsedMs(startedAt: number): number {
@@ -222,6 +230,7 @@ export class MediaAssetStore {
       tenantId: string;
       workflowRunId: string | null;
     },
+    logContext?: AssetPersistenceLogContext,
   ): Promise<AssetRef[]> {
     const assetRefs: AssetRef[] = [];
 
@@ -230,6 +239,21 @@ export class MediaAssetStore {
       if (!output) {
         continue;
       }
+
+      const persistStartedAt = Date.now();
+      logContext?.logger?.info(
+        {
+          event: "asset.persist.started",
+          generationId: logContext.generationId ?? null,
+          index,
+          nodeRunId: input.nodeRunId,
+          routeKey: logContext.routeKey ?? null,
+          tenantId: input.tenantId,
+          traceId: logContext.traceId ?? null,
+          workflowRunId: input.workflowRunId,
+        },
+        "asset persistence started",
+      );
 
       const downloadStartedAt = Date.now();
       const binary = await resolveOutputBinary(this.fetchFn, input.kind, output, index);
@@ -248,6 +272,23 @@ export class MediaAssetStore {
         filename: binary.filename,
         tenantId: input.tenantId,
       });
+      logContext?.logger?.info(
+        {
+          assetId,
+          durationMs: providerOutputDownloadMs,
+          event: "asset.persist.output_download.finished",
+          generationId: logContext.generationId ?? null,
+          mimeType: binary.mimeType,
+          nodeRunId: input.nodeRunId,
+          objectKey,
+          routeKey: logContext.routeKey ?? null,
+          sizeBytes: binary.body.byteLength,
+          tenantId: input.tenantId,
+          traceId: logContext.traceId ?? null,
+          workflowRunId: input.workflowRunId,
+        },
+        "asset output download finished",
+      );
       const checksumSha256 = createHash("sha256").update(binary.body).digest("hex");
 
       const originalUploadStartedAt = Date.now();
@@ -262,6 +303,22 @@ export class MediaAssetStore {
         },
       });
       const assetOriginalUploadMs = elapsedMs(originalUploadStartedAt);
+      logContext?.logger?.info(
+        {
+          assetId,
+          bucket: this.assetBucket,
+          durationMs: assetOriginalUploadMs,
+          event: "asset.persist.original_upload.finished",
+          generationId: logContext.generationId ?? null,
+          nodeRunId: input.nodeRunId,
+          objectKey,
+          routeKey: logContext.routeKey ?? null,
+          tenantId: input.tenantId,
+          traceId: logContext.traceId ?? null,
+          workflowRunId: input.workflowRunId,
+        },
+        "asset original upload finished",
+      );
 
       const assetDbInsertStartedAt = Date.now();
       await client.query(
@@ -333,6 +390,22 @@ export class MediaAssetStore {
         ],
       );
       const assetDbInsertMs = elapsedMs(assetDbInsertStartedAt);
+      logContext?.logger?.info(
+        {
+          assetId,
+          durationMs: assetDbInsertMs,
+          event: "asset.persist.db_insert.finished",
+          generationId: logContext.generationId ?? null,
+          height,
+          nodeRunId: input.nodeRunId,
+          routeKey: logContext.routeKey ?? null,
+          tenantId: input.tenantId,
+          traceId: logContext.traceId ?? null,
+          width,
+          workflowRunId: input.workflowRunId,
+        },
+        "asset db insert finished",
+      );
 
       const variantProcessingStartedAt = Date.now();
       if (input.kind === "image" && this.variantMode === "async") {
@@ -348,6 +421,21 @@ export class MediaAssetStore {
           body: binary.body,
           mimeType: binary.mimeType,
         });
+        logContext?.logger?.info(
+          {
+            assetId,
+            durationMs: elapsedMs(variantProcessingStartedAt),
+            event: "asset.variant.generate.finished",
+            generationId: logContext.generationId ?? null,
+            nodeRunId: input.nodeRunId,
+            routeKey: logContext.routeKey ?? null,
+            tenantId: input.tenantId,
+            traceId: logContext.traceId ?? null,
+            variantCount: variants.length,
+            workflowRunId: input.workflowRunId,
+          },
+          "asset variant generation finished",
+        );
 
         for (const variant of variants) {
           const variantObjectKey = buildAssetObjectKey({
@@ -356,6 +444,7 @@ export class MediaAssetStore {
             tenantId: input.tenantId,
           });
 
+          const variantUploadStartedAt = Date.now();
           await this.storageProvider.putObject({
             body: variant.body,
             bucket: this.assetBucket,
@@ -368,7 +457,25 @@ export class MediaAssetStore {
               ...(input.workflowRunId ? { workflowRunId: input.workflowRunId } : {}),
             },
           });
+          const variantUploadMs = elapsedMs(variantUploadStartedAt);
+          logContext?.logger?.info(
+            {
+              assetId,
+              bucket: this.assetBucket,
+              durationMs: variantUploadMs,
+              event: "asset.variant.upload.finished",
+              generationId: logContext.generationId ?? null,
+              nodeRunId: input.nodeRunId,
+              routeKey: logContext.routeKey ?? null,
+              tenantId: input.tenantId,
+              traceId: logContext.traceId ?? null,
+              variantKey: variant.variantKey,
+              workflowRunId: input.workflowRunId,
+            },
+            "asset variant upload finished",
+          );
 
+          const variantDbInsertStartedAt = Date.now();
           await client.query(
             `
               INSERT INTO asset_variants (
@@ -419,9 +526,39 @@ export class MediaAssetStore {
               }),
             ],
           );
+          const variantDbInsertMs = elapsedMs(variantDbInsertStartedAt);
+          logContext?.logger?.info(
+            {
+              assetId,
+              durationMs: variantDbInsertMs,
+              event: "asset.variant.db_insert.finished",
+              generationId: logContext.generationId ?? null,
+              nodeRunId: input.nodeRunId,
+              routeKey: logContext.routeKey ?? null,
+              tenantId: input.tenantId,
+              traceId: logContext.traceId ?? null,
+              variantKey: variant.variantKey,
+              workflowRunId: input.workflowRunId,
+            },
+            "asset variant db insert finished",
+          );
         }
       }
       const assetVariantProcessingMs = elapsedMs(variantProcessingStartedAt);
+      logContext?.logger?.info(
+        {
+          assetId,
+          durationMs: elapsedMs(persistStartedAt),
+          event: "asset.persist.completed",
+          generationId: logContext.generationId ?? null,
+          nodeRunId: input.nodeRunId,
+          routeKey: logContext.routeKey ?? null,
+          tenantId: input.tenantId,
+          traceId: logContext.traceId ?? null,
+          workflowRunId: input.workflowRunId,
+        },
+        "asset persistence completed",
+      );
 
       assetRefs.push({
         assetId,

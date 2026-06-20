@@ -108,6 +108,16 @@ function normalizeTaskOutputs(taskResult: ProviderTaskResult): MediaOutput[] {
   return [];
 }
 
+function sumAssetPersistTotalMs(
+  refs: Array<{ timing?: { asset_db_insert_ms: number; asset_original_upload_ms: number; asset_variant_processing_ms: number; provider_output_download_ms: number } }>,
+) {
+  return refs.reduce((total, ref) => total
+    + (ref.timing?.asset_db_insert_ms ?? 0)
+    + (ref.timing?.asset_original_upload_ms ?? 0)
+    + (ref.timing?.asset_variant_processing_ms ?? 0)
+    + (ref.timing?.provider_output_download_ms ?? 0), 0);
+}
+
 export class WorkbenchGenerationService {
   readonly assetBucket: string;
   readonly assetStore: MediaAssetStore;
@@ -133,6 +143,7 @@ export class WorkbenchGenerationService {
     input: WorkbenchGenerateJobPayload,
     logger?: WorkerLogger,
   ): Promise<ProcessorResult> {
+    const executionStartedAt = Date.now();
     const generation = await withTenantTransaction(
       { tenantId: input.tenantId, userId: null },
       async (client): Promise<WorkbenchGenerationRecord | null> => {
@@ -171,12 +182,46 @@ export class WorkbenchGenerationService {
     }
 
     try {
+      const generationUpdatedAtMs = Date.parse(generation.updated_at);
+      const queueWaitMs = Number.isFinite(generationUpdatedAtMs)
+        ? Math.max(0, executionStartedAt - generationUpdatedAtMs)
+        : 0;
+      logger?.info(
+        {
+          event: "workbench.generation.started",
+          generationId: generation.id,
+          queueWaitMs,
+          routeKey: generation.route_key,
+          tenantId: input.tenantId,
+          traceId: input.traceId ?? null,
+        },
+        "workbench generation started",
+      );
+
+      const providerStartedAt = Date.now();
       const result = generation.status === "waiting_provider" && generation.provider_task_id
         ? {
             providerTaskId: generation.provider_task_id,
             status: "waiting_provider" as const,
           }
-        : await this.createProviderTask(input.tenantId, generation);
+        : await this.createProviderTask(input.tenantId, generation, {
+            logger,
+            traceId: input.traceId ?? null,
+          });
+      const providerLatencyMs = Math.max(0, Date.now() - providerStartedAt);
+      logger?.info(
+        {
+          event: "workbench.generation.provider_completed",
+          generationId: generation.id,
+          providerLatencyMs,
+          providerTaskId: result.providerTaskId ?? result.providerTaskIds?.[0] ?? null,
+          routeKey: generation.route_key,
+          status: result.status,
+          tenantId: input.tenantId,
+          traceId: input.traceId ?? null,
+        },
+        "workbench generation provider completed",
+      );
 
       const providerTaskId = result.providerTaskId || result.providerTaskIds?.[0] || null;
       if (result.status === "waiting_provider" && providerTaskId) {
@@ -190,6 +235,10 @@ export class WorkbenchGenerationService {
         },
         generation,
         result,
+        {
+          logger,
+          traceId: input.traceId ?? null,
+        },
       );
 
       if (outputs.length === 0) {
@@ -204,6 +253,7 @@ export class WorkbenchGenerationService {
             return;
           }
 
+          const assetPersistStartedAt = Date.now();
           const assetRefs = await this.assetStore.persistOutputs(client, {
             kind: "image",
             nodeRunId: null,
@@ -211,7 +261,25 @@ export class WorkbenchGenerationService {
             projectId: null,
             tenantId: input.tenantId,
             workflowRunId: null,
+          }, {
+            generationId: generation.id,
+            logger,
+            routeKey: generation.route_key,
+            traceId: input.traceId ?? null,
           });
+          const assetPersistTotalMs = Math.max(0, Date.now() - assetPersistStartedAt);
+          logger?.info(
+            {
+              assetPersistTotalMs,
+              event: "workbench.generation.assets_persisted",
+              generationId: generation.id,
+              resultCount: assetRefs.length,
+              routeKey: generation.route_key,
+              tenantId: input.tenantId,
+              traceId: input.traceId ?? null,
+            },
+            "workbench generation assets persisted",
+          );
 
           await this.insertResults(client, input.tenantId, generation.id, assetRefs);
           await this.markGenerationSucceeded(client, input.tenantId, generation.id);
@@ -221,11 +289,40 @@ export class WorkbenchGenerationService {
           } else {
             await this.settleGeneration(client, input.tenantId, generation, assetRefs.length);
           }
+
+          logger?.info(
+            {
+              assetPersistTotalMs: Math.max(assetPersistTotalMs, sumAssetPersistTotalMs(assetRefs)),
+              event: "workbench.generation.finished",
+              generationId: generation.id,
+              providerLatencyMs,
+              queueWaitMs,
+              resultCount: assetRefs.length,
+              routeKey: generation.route_key,
+              runDurationMs: Math.max(0, Date.now() - executionStartedAt),
+              tenantId: input.tenantId,
+              totalDurationMs: Math.max(0, Date.now() - executionStartedAt),
+              traceId: input.traceId ?? null,
+            },
+            "workbench generation finished",
+          );
         },
         this.pool,
       );
     } catch (error) {
       await this.failGeneration(input.tenantId, generation, error);
+      logger?.info(
+        {
+          errorMessage: error instanceof Error ? error.message : String(error),
+          event: "workbench.generation.failed",
+          generationId: generation.id,
+          routeKey: generation.route_key,
+          tenantId: input.tenantId,
+          totalDurationMs: Math.max(0, Date.now() - executionStartedAt),
+          traceId: input.traceId ?? null,
+        },
+        "workbench generation failed",
+      );
       logger?.error(
         {
           err: error instanceof Error ? error.message : String(error),
@@ -523,6 +620,10 @@ export class WorkbenchGenerationService {
   private async createProviderTask(
     tenantId: string,
     generation: WorkbenchGenerationRecord,
+    instrumentation?: {
+      logger?: WorkerLogger;
+      traceId?: string | null;
+    },
   ): Promise<{
     outputs?: MediaOutput[] | null;
     providerTaskId?: string | null;
@@ -548,6 +649,11 @@ export class WorkbenchGenerationService {
         model: generation.model_id,
         prompt: generation.prompt,
         routeKey: generation.route_key,
+      },
+      {
+        generationId: generation.id,
+        logger: instrumentation?.logger,
+        traceId: instrumentation?.traceId ?? null,
       },
     );
   }
@@ -581,6 +687,10 @@ export class WorkbenchGenerationService {
       status: "failed" | "succeeded" | "waiting_provider";
       usage?: { inputTokens: number | null; outputTokens: number | null; rawCost?: string | number | null; totalTokens: number | null } | null;
     },
+    instrumentation?: {
+      logger?: WorkerLogger;
+      traceId?: string | null;
+    },
   ): Promise<MediaOutput[]> {
     if (result.status === "succeeded") {
       return Array.isArray(result.outputs) ? result.outputs : [];
@@ -611,6 +721,11 @@ export class WorkbenchGenerationService {
             model: generation.model_id,
             providerTaskId,
             routeKey: generation.route_key,
+          },
+          {
+            generationId: generation.id,
+            logger: instrumentation?.logger,
+            traceId: instrumentation?.traceId ?? null,
           },
         );
         if (polled.status === "failed") {

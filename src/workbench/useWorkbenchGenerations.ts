@@ -10,6 +10,7 @@ import {
 } from "../services/v2WorkbenchApi";
 import { buildWorkbenchRequestParams } from "./workbenchModelParams";
 import { getReferencedAssetIdsForPrompt } from "./workbenchReferences";
+import { createWorkbenchGenerationTracker } from "./useWorkbenchPerformance";
 import type { WorkbenchDraft } from "./workbenchTypes";
 
 const WORKBENCH_GENERATION_MEMORY_CACHE_TTL_MS = 15_000;
@@ -137,6 +138,7 @@ function isBatchTerminal(generation: WorkbenchGenerationView) {
 
 export function useWorkbenchGenerations() {
   const pollingIdsRef = React.useRef(new Set<string>());
+  const trackerRef = React.useRef(createWorkbenchGenerationTracker());
   const [generations, setGenerations] = React.useState<WorkbenchGenerationView[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -169,6 +171,7 @@ export function useWorkbenchGenerations() {
           if (!next?.id) {
             throw new Error("生成状态返回为空，正在重试");
           }
+          trackerRef.current.markPreviewReady(next);
           failedPolls = 0;
           setGenerations((current) => {
             const merged = mergeGeneration(current, next);
@@ -239,8 +242,11 @@ export function useWorkbenchGenerations() {
   const submit = React.useCallback(async (draft: WorkbenchDraft) => {
     setSubmitting(true);
     try {
+      const submitGenerationId = crypto.randomUUID();
+      trackerRef.current.markSubmit(submitGenerationId);
       const created = await createWorkbenchGeneration({
         displayMode: draft.displayMode,
+        idempotencyKey: submitGenerationId,
         modelId: draft.modelId,
         params: buildWorkbenchRequestParams(draft),
         prompt: draft.prompt.trim(),
@@ -249,6 +255,8 @@ export function useWorkbenchGenerations() {
         requestedCount: draft.quantity,
         routeKey: draft.routeKey,
       });
+      trackerRef.current.markGenerationCreated(created, submitGenerationId);
+      trackerRef.current.markPreviewReady(created);
       setGenerations((current) => {
         const merged = mergeGeneration(current, created);
         writeWorkbenchGenerationMemoryCache(merged);
@@ -269,6 +277,8 @@ export function useWorkbenchGenerations() {
 
   const retry = React.useCallback(async (generationId: string) => {
     const created = await retryWorkbenchGeneration(generationId);
+    trackerRef.current.markGenerationCreated(created);
+    trackerRef.current.markPreviewReady(created);
     setGenerations((current) => {
       const merged = mergeGeneration(current, created);
       writeWorkbenchGenerationMemoryCache(merged);
@@ -300,5 +310,6 @@ export function useWorkbenchGenerations() {
     retry,
     submitting,
     submit,
+    tracker: trackerRef.current,
   };
 }

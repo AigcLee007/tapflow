@@ -3,6 +3,7 @@ import React from "react";
 import type { ImageModelConfig } from "../config/imageModels";
 import type { WorkbenchGeneration, WorkbenchResult } from "./workbenchTypes";
 import { WorkbenchMobileResultCard } from "./WorkbenchMobileResultCard";
+import type { WorkbenchPerformanceTracker } from "./useWorkbenchPerformance";
 
 type Props = {
   generations: WorkbenchGeneration[];
@@ -13,6 +14,7 @@ type Props = {
   onRegenerate: (generation: WorkbenchGeneration) => void;
   onSelectPreview: (generationId: string, result: WorkbenchResult) => void;
   onSelectResult: (result: WorkbenchResult) => void;
+  performanceTracker?: WorkbenchPerformanceTracker | null;
   onUseAsReference: (result: WorkbenchResult) => void;
   selectedResultIds: Record<string, string | null>;
 };
@@ -26,6 +28,7 @@ export function WorkbenchMobileResultFeed({
   onRegenerate,
   onSelectPreview,
   onSelectResult,
+  performanceTracker,
   onUseAsReference,
   selectedResultIds,
 }: Props) {
@@ -61,6 +64,7 @@ export function WorkbenchMobileResultFeed({
           onRegenerate={onRegenerate}
           onSelectPreview={onSelectPreview}
           onSelectResult={onSelectResult}
+          performanceTracker={performanceTracker}
           onUseAsReference={onUseAsReference}
           results={getDisplayResults(generation)}
           selectedResultId={selectedResultIds[generation.id] ?? null}

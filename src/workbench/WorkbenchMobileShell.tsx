@@ -7,6 +7,7 @@ import type { ImageModelConfig } from "../config/imageModels";
 import { WorkbenchMobileBottomDock } from "./WorkbenchMobileBottomDock";
 import { WorkbenchMobileParameterSheet } from "./WorkbenchMobileParameterSheet";
 import { WorkbenchMobileResultFeed } from "./WorkbenchMobileResultFeed";
+import type { WorkbenchPerformanceTracker } from "./useWorkbenchPerformance";
 import type { WorkbenchDraft, WorkbenchGeneration, WorkbenchResult } from "./workbenchTypes";
 
 function navigate(path: string) {
@@ -27,6 +28,7 @@ type Props = {
   onDownloadOriginal: (result: WorkbenchResult, generation: WorkbenchGeneration) => void;
   onGenerate: () => void;
   onOpenResult: (result: WorkbenchResult) => void;
+  performanceTracker?: WorkbenchPerformanceTracker | null;
   onRegenerate: (generation: WorkbenchGeneration) => void;
   onUseAsReference: (result: WorkbenchResult) => void;
   openParameterSheetRequest: number;
@@ -48,6 +50,7 @@ export function WorkbenchMobileShell({
   onDownloadOriginal,
   onGenerate,
   onOpenResult,
+  performanceTracker,
   onRegenerate,
   onUseAsReference,
   openParameterSheetRequest,
@@ -167,6 +170,7 @@ export function WorkbenchMobileShell({
           }}
           onSelectPreview={handleSelectPreview}
           onSelectResult={onOpenResult}
+          performanceTracker={performanceTracker}
           onUseAsReference={onUseAsReference}
           selectedResultIds={selectedResultIds}
         />

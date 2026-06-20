@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import { once } from "node:events";
 
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { AiGateway } from "../src/ai-gateway.js";
 import { AiGatewayError } from "../src/errors.js";
@@ -2750,6 +2750,139 @@ describe("route resolver and ai gateway", () => {
     );
 
     expect(capturedTimeout).toBe(30000);
+  });
+
+  test("database media runtime emits structured performance logs for generate and poll calls", async () => {
+    const { DatabaseMediaRuntime } = await import("../src/database-media-runtime.js");
+    const logger = {
+      error: vi.fn(),
+      info: vi.fn(),
+    };
+    const runtime = new DatabaseMediaRuntime({
+      aiGateway: new AiGateway({
+        "openai-compatible": {
+          async generateImage() {
+            return {
+              modelKey: "image-test",
+              outputs: [{ mimeType: "image/png", url: "https://example.com/generated.png" }],
+              providerRequest: {},
+              providerResponse: {},
+              status: "succeeded" as const,
+              usage: { inputTokens: 1, outputTokens: 2, totalTokens: 3 },
+            };
+          },
+          async pollTask() {
+            return {
+              outputs: [{ mimeType: "image/png", url: "https://example.com/polled.png" }],
+              providerRequest: {},
+              providerResponse: {},
+              providerTaskId: "task-1",
+              status: "succeeded" as const,
+              usage: { inputTokens: 1, outputTokens: 2, totalTokens: 3 },
+            };
+          },
+        },
+      }),
+      credentialVault: {
+        getSecretForProviderCall() {
+          return "sk-test-secret";
+        },
+      } as never,
+      pool: {} as never,
+      routeResolver: {
+        resolveMediaRoute({ routes }: { routes: ResolvedRoute[] }) {
+          return routes[0];
+        },
+      } as never,
+    });
+
+    Object.defineProperty(runtime, "listRuntimeRoutes", {
+      value: async () => [
+        makeRoute({
+          credential: {
+            authTag: Buffer.from("tag"),
+            encryptedSecret: Buffer.from("secret"),
+            id: "credential-1",
+            nonce: Buffer.from("nonce"),
+          },
+          model: {
+            id: "model-structured-log",
+            modelKey: "image-test",
+          },
+          routeId: "route-structured-log",
+          routeKey: "image.structured-log",
+        }),
+      ],
+    });
+    Object.defineProperty(runtime, "insertAiCallLog", {
+      value: async () => undefined,
+    });
+
+    await runtime.generateImage(
+      {
+        tenantId: "tenant-structured-log",
+        userId: "user-structured-log",
+      },
+      {
+        prompt: "structured performance logs",
+        routeKey: "image.structured-log",
+      },
+      {
+        generationId: "generation-structured-log",
+        logger,
+        nodeRunId: "node-run-structured-log",
+        traceId: "trace-structured-log",
+        workflowRunId: "workflow-run-structured-log",
+      } as never,
+    );
+
+    await runtime.pollTask(
+      {
+        tenantId: "tenant-structured-log",
+        userId: "user-structured-log",
+      },
+      "image",
+      {
+        providerTaskId: "task-1",
+        routeKey: "image.structured-log",
+      },
+      {
+        generationId: "generation-structured-log",
+        logger,
+        nodeRunId: "node-run-structured-log",
+        traceId: "trace-structured-log",
+        workflowRunId: "workflow-run-structured-log",
+      } as never,
+    );
+
+    const infoCalls = logger.info.mock.calls;
+    expect(infoCalls.map((call) => call[0]?.event)).toEqual(
+      expect.arrayContaining([
+        "media.generate.started",
+        "media.generate.finished",
+        "media.poll.started",
+        "media.poll.finished",
+      ]),
+    );
+    expect(infoCalls.find((call) => call[0]?.event === "media.generate.finished")?.[0]).toMatchObject({
+      durationMs: expect.any(Number),
+      generationId: "generation-structured-log",
+      modelId: "model-structured-log",
+      nodeRunId: "node-run-structured-log",
+      routeKey: "image.structured-log",
+      tenantId: "tenant-structured-log",
+      traceId: "trace-structured-log",
+      workflowRunId: "workflow-run-structured-log",
+    });
+    expect(infoCalls.find((call) => call[0]?.event === "media.poll.finished")?.[0]).toMatchObject({
+      durationMs: expect.any(Number),
+      generationId: "generation-structured-log",
+      providerTaskId: "task-1",
+      routeKey: "image.structured-log",
+      tenantId: "tenant-structured-log",
+      traceId: "trace-structured-log",
+      workflowRunId: "workflow-run-structured-log",
+    });
   });
 
   test("ai gateway image timeout falls back to provider capabilities timeoutMs", async () => {

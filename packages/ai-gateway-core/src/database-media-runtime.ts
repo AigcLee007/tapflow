@@ -16,6 +16,11 @@ import type {
   VideoGenerationRequest,
 } from "./types.js";
 
+type RuntimeLogger = {
+  error: (fields: Record<string, unknown>, message: string) => void;
+  info: (fields: Record<string, unknown>, message: string) => void;
+};
+
 type RuntimeContext = {
   tenantId: string;
   userId: string | null;
@@ -89,6 +94,23 @@ type AiCallLogInsertInput = {
   workflowRunId?: string | null;
 };
 
+type RuntimeLogMetadata = {
+  generationId?: string | null;
+  logger?: RuntimeLogger | null;
+  nodeRunId?: string | null;
+  requestConfigOverride?: Record<string, unknown>;
+  traceId?: string | null;
+  workflowRunId?: string | null;
+};
+
+function emitRuntimeLog(
+  logger: RuntimeLogger | null | undefined,
+  fields: Record<string, unknown>,
+  message: string,
+) {
+  logger?.info(fields, message);
+}
+
 export class DatabaseMediaRuntime {
   readonly aiGateway: AiGateway;
   readonly credentialVault: CredentialVault;
@@ -110,11 +132,7 @@ export class DatabaseMediaRuntime {
   async generateImage(
     context: RuntimeContext,
     request: ImageGenerationRequest,
-    metadata?: {
-      nodeRunId?: string | null;
-      requestConfigOverride?: Record<string, unknown>;
-      workflowRunId?: string | null;
-    },
+    metadata?: RuntimeLogMetadata,
   ): Promise<AiGatewayMediaResult> {
     return this.callGenerate(
       context,
@@ -134,11 +152,7 @@ export class DatabaseMediaRuntime {
   async generateVideo(
     context: RuntimeContext,
     request: VideoGenerationRequest,
-    metadata?: {
-      nodeRunId?: string | null;
-      requestConfigOverride?: Record<string, unknown>;
-      workflowRunId?: string | null;
-    },
+    metadata?: RuntimeLogMetadata,
   ): Promise<AiGatewayMediaResult> {
     return this.callGenerate(
       context,
@@ -159,10 +173,7 @@ export class DatabaseMediaRuntime {
     context: RuntimeContext,
     modality: "image" | "video",
     request: PollTaskRequest,
-    metadata?: {
-      nodeRunId?: string | null;
-      workflowRunId?: string | null;
-    },
+    metadata?: Omit<RuntimeLogMetadata, "requestConfigOverride">,
   ): Promise<ProviderTaskResult> {
     const selectedRoute = request.routeId
       ? await this.getRuntimeRouteById(context, request.routeId)
@@ -170,6 +181,22 @@ export class DatabaseMediaRuntime {
 
     const apiKey = this.getApiKeyForRoute(selectedRoute);
     const startedAt = Date.now();
+
+    emitRuntimeLog(
+      metadata?.logger,
+      {
+        event: "media.poll.started",
+        generationId: metadata?.generationId ?? null,
+        modelId: selectedRoute.model.id,
+        nodeRunId: metadata?.nodeRunId ?? null,
+        providerTaskId: request.providerTaskId,
+        routeKey: selectedRoute.routeKey,
+        tenantId: context.tenantId,
+        traceId: metadata?.traceId ?? null,
+        workflowRunId: metadata?.workflowRunId ?? null,
+      },
+      "media poll started",
+    );
 
     try {
       const result = await this.aiGateway.pollTask({
@@ -220,6 +247,24 @@ export class DatabaseMediaRuntime {
         workflowRunId: metadata?.workflowRunId ?? null,
       });
 
+      emitRuntimeLog(
+        metadata?.logger,
+        {
+          durationMs: Date.now() - startedAt,
+          event: "media.poll.finished",
+          generationId: metadata?.generationId ?? null,
+          modelId: selectedRoute.model.id,
+          nodeRunId: metadata?.nodeRunId ?? null,
+          outputCount: result.outputs?.length ?? 0,
+          providerTaskId: result.providerTaskId ?? request.providerTaskId,
+          routeKey: selectedRoute.routeKey,
+          tenantId: context.tenantId,
+          traceId: metadata?.traceId ?? null,
+          workflowRunId: metadata?.workflowRunId ?? null,
+        },
+        "media poll finished",
+      );
+
       return result;
     } catch (error) {
       const normalizedError = this.toAiGatewayError(error);
@@ -257,6 +302,23 @@ export class DatabaseMediaRuntime {
         upstreamModelSnapshot: selectedRoute.upstreamModel ?? null,
         workflowRunId: metadata?.workflowRunId ?? null,
       });
+      emitRuntimeLog(
+        metadata?.logger,
+        {
+          durationMs: Date.now() - startedAt,
+          errorCode: normalizedError.code,
+          event: "media.poll.failed",
+          generationId: metadata?.generationId ?? null,
+          modelId: selectedRoute.model.id,
+          nodeRunId: metadata?.nodeRunId ?? null,
+          providerTaskId: request.providerTaskId,
+          routeKey: selectedRoute.routeKey,
+          tenantId: context.tenantId,
+          traceId: metadata?.traceId ?? null,
+          workflowRunId: metadata?.workflowRunId ?? null,
+        },
+        "media poll failed",
+      );
       throw normalizedError;
     }
   }
@@ -266,11 +328,7 @@ export class DatabaseMediaRuntime {
     modality: "image" | "video",
     routeKey: string | null,
     request: ImageGenerationRequest | VideoGenerationRequest,
-    metadata: {
-      nodeRunId?: string | null;
-      requestConfigOverride?: Record<string, unknown>;
-      workflowRunId?: string | null;
-    } | undefined,
+    metadata: RuntimeLogMetadata | undefined,
     caller: (selectedRoute: ResolvedRoute, apiKey: string) => Promise<AiGatewayMediaResult>,
   ): Promise<AiGatewayMediaResult> {
     const selectedRoute = await this.resolveRoute(context, modality, routeKey);
@@ -285,6 +343,22 @@ export class DatabaseMediaRuntime {
       : selectedRoute;
     const apiKey = this.getApiKeyForRoute(selectedRoute);
     const startedAt = Date.now();
+
+    emitRuntimeLog(
+      metadata?.logger,
+      {
+        event: "media.generate.started",
+        generationId: metadata?.generationId ?? null,
+        inputAssetCount: request.inputAssets?.length ?? 0,
+        modelId: selectedRoute.model.id,
+        nodeRunId: metadata?.nodeRunId ?? null,
+        routeKey: selectedRoute.routeKey,
+        tenantId: context.tenantId,
+        traceId: metadata?.traceId ?? null,
+        workflowRunId: metadata?.workflowRunId ?? null,
+      },
+      "media generate started",
+    );
 
     try {
       const result = await caller(routeForCall, apiKey);
@@ -325,6 +399,25 @@ export class DatabaseMediaRuntime {
         workflowRunId: metadata?.workflowRunId ?? null,
       });
 
+      emitRuntimeLog(
+        metadata?.logger,
+        {
+          durationMs: Date.now() - startedAt,
+          event: "media.generate.finished",
+          generationId: metadata?.generationId ?? null,
+          inputAssetCount: request.inputAssets?.length ?? 0,
+          modelId: selectedRoute.model.id,
+          nodeRunId: metadata?.nodeRunId ?? null,
+          outputCount: result.outputs?.length ?? 0,
+          providerTaskId: result.providerTaskId ?? null,
+          routeKey: selectedRoute.routeKey,
+          tenantId: context.tenantId,
+          traceId: metadata?.traceId ?? null,
+          workflowRunId: metadata?.workflowRunId ?? null,
+        },
+        "media generate finished",
+      );
+
       return result;
     } catch (error) {
       const normalizedError = this.toAiGatewayError(error);
@@ -364,6 +457,23 @@ export class DatabaseMediaRuntime {
         upstreamModelSnapshot: selectedRoute.upstreamModel ?? null,
         workflowRunId: metadata?.workflowRunId ?? null,
       });
+      emitRuntimeLog(
+        metadata?.logger,
+        {
+          durationMs: Date.now() - startedAt,
+          errorCode: normalizedError.code,
+          event: "media.generate.failed",
+          generationId: metadata?.generationId ?? null,
+          inputAssetCount: request.inputAssets?.length ?? 0,
+          modelId: selectedRoute.model.id,
+          nodeRunId: metadata?.nodeRunId ?? null,
+          routeKey: selectedRoute.routeKey,
+          tenantId: context.tenantId,
+          traceId: metadata?.traceId ?? null,
+          workflowRunId: metadata?.workflowRunId ?? null,
+        },
+        "media generate failed",
+      );
       throw normalizedError;
     }
   }

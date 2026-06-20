@@ -8,6 +8,7 @@ import {
   getSortedWorkbenchResults,
   getWorkbenchMosaicLayout,
 } from "./workbenchResultLayouts";
+import type { WorkbenchPerformanceTracker } from "./useWorkbenchPerformance";
 
 type Props = {
   generation: WorkbenchGeneration;
@@ -17,6 +18,7 @@ type Props = {
   onDownloadOriginal: (result: WorkbenchResult, generation: WorkbenchGeneration) => void;
   onRegenerate: (generation: WorkbenchGeneration) => void;
   onSelectPreview: (generation: WorkbenchGeneration, result: WorkbenchResult) => void;
+  performanceTracker?: WorkbenchPerformanceTracker | null;
   onUseAsReference: (result: WorkbenchResult) => void;
 };
 
@@ -78,6 +80,7 @@ export function WorkbenchDesktopResultCard({
   onDownloadOriginal,
   onRegenerate,
   onSelectPreview,
+  performanceTracker,
   onUseAsReference,
 }: Props) {
   const [menuOpen, setMenuOpen] = React.useState(false);
@@ -207,6 +210,13 @@ export function WorkbenchDesktopResultCard({
                       className={`h-full w-full ${mosaicLayout.imageClassName}`}
                       data-testid={`workbench-desktop-feed-image-${generation.id}-${slot.result.id}`}
                       loading="lazy"
+                      onLoad={() => {
+                        performanceTracker?.markFirstImageLoadStart(generation.id, slot.result.id, slot.result.assetId);
+                        performanceTracker?.markFirstImageLoadEnd(generation.id, slot.result.id, slot.result.assetId);
+                        window.requestAnimationFrame(() => {
+                          performanceTracker?.markFirstImageVisible(generation.id, slot.result.id, slot.result.assetId);
+                        });
+                      }}
                       src={slot.result.previewUrl}
                     />
                   ) : (

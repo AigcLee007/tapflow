@@ -2,6 +2,7 @@
 import sharp from "sharp";
 
 import type { StorageProvider } from "@aigc-flow/storage";
+import type { WorkerLogger } from "../src/logger.js";
 
 import { MediaAssetStore } from "../src/workflow-runtime/media-asset-store.js";
 
@@ -49,6 +50,67 @@ async function createPngBuffer(): Promise<Buffer> {
 }
 
 describe("MediaAssetStore", () => {
+  test("emits structured stage logs for persisted image outputs", async () => {
+    const client = {
+      query: vi.fn(async () => ({ rows: [] })),
+    };
+    const storageProvider = new MemoryStorageProvider();
+    const logger: WorkerLogger = {
+      error: vi.fn(),
+      info: vi.fn(),
+    };
+    const store = new MediaAssetStore({
+      assetBucket: "test-bucket",
+      storageProvider,
+    });
+
+    const refs = await store.persistOutputs(
+      client as never,
+      {
+        kind: "image",
+        nodeRunId: "00000000-0000-4000-8000-000000000002",
+        outputs: [
+          {
+            base64: (await createPngBuffer()).toString("base64"),
+            mimeType: "image/png",
+          },
+        ],
+        projectId: "00000000-0000-4000-8000-000000000003",
+        tenantId: "00000000-0000-4000-8000-000000000004",
+        workflowRunId: "00000000-0000-4000-8000-000000000005",
+      },
+      {
+        generationId: "generation-1",
+        logger,
+        routeKey: "image.default",
+        traceId: "trace-1",
+      },
+    );
+
+    expect(refs).toHaveLength(1);
+    const infoCalls = (logger.info as ReturnType<typeof vi.fn>).mock.calls;
+    expect(infoCalls.map((call) => call[0]?.event)).toEqual(
+      expect.arrayContaining([
+        "asset.persist.started",
+        "asset.persist.output_download.finished",
+        "asset.persist.original_upload.finished",
+        "asset.persist.db_insert.finished",
+        "asset.variant.generate.finished",
+        "asset.variant.upload.finished",
+        "asset.variant.db_insert.finished",
+        "asset.persist.completed",
+      ]),
+    );
+    expect(infoCalls.find((call) => call[0]?.event === "asset.persist.completed")?.[0]).toMatchObject({
+      assetId: refs[0].assetId,
+      durationMs: expect.any(Number),
+      generationId: "generation-1",
+      routeKey: "image.default",
+      tenantId: "00000000-0000-4000-8000-000000000004",
+      traceId: "trace-1",
+    });
+  });
+
   test("returns per-asset persistence timing for media outputs", async () => {
     const client = {
       query: vi.fn(async () => ({ rows: [] })),

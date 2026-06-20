@@ -925,7 +925,7 @@ function DesktopResultsWorkspace({
 export function WorkbenchPage() {
   const { authenticated, tenant, user } = useAuth();
   const { models } = useImageModelCatalog();
-  const { error, generations, loading, remove, retry, submit, submitting } = useWorkbenchGenerations();
+  const { error, generations, loading, remove, retry, submit, submitting, tracker } = useWorkbenchGenerations();
   const [draft, setDraft] = React.useState(() => createDefaultWorkbenchDraft());
   const [selectedResult, setSelectedResult] = React.useState<WorkbenchResult | null>(null);
   const [selectedResultBatch, setSelectedResultBatch] = React.useState<WorkbenchResult[]>([]);
@@ -1057,6 +1057,7 @@ export function WorkbenchPage() {
             onDownloadOriginal={handleDownloadOriginal}
             onGenerate={() => void submit(draft)}
             onOpenResult={openResultPreview}
+            performanceTracker={tracker}
             onRegenerate={handleRegenerateFromGeneration}
             onUseAsReference={handleUseAsReference}
             openParameterSheetRequest={mobileParameterSheetRequest}
@@ -1176,6 +1177,7 @@ export function WorkbenchPage() {
               onDownloadOriginal={handleDownloadOriginal}
               onRegenerate={handleRegenerateFromGeneration}
               onSelectPreview={openResultPreviewForGeneration}
+              performanceTracker={tracker}
               onUseAsReference={handleUseAsReference}
             />
           </div>

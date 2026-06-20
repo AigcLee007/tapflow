@@ -8,6 +8,7 @@ import {
   getSortedWorkbenchResults,
   getWorkbenchMosaicLayout,
 } from "./workbenchResultLayouts";
+import type { WorkbenchPerformanceTracker } from "./useWorkbenchPerformance";
 
 type Props = {
   generation: WorkbenchGeneration;
@@ -17,6 +18,7 @@ type Props = {
   onRegenerate: (generation: WorkbenchGeneration) => void;
   onSelectPreview: (generationId: string, result: WorkbenchResult) => void;
   onSelectResult: (result: WorkbenchResult) => void;
+  performanceTracker?: WorkbenchPerformanceTracker | null;
   onUseAsReference: (result: WorkbenchResult) => void;
   results: WorkbenchResult[];
   selectedResultId?: string | null;
@@ -84,6 +86,7 @@ export function WorkbenchMobileResultCard({
   onRegenerate,
   onSelectPreview,
   onSelectResult,
+  performanceTracker,
   onUseAsReference,
   results,
   selectedResultId,
@@ -207,6 +210,13 @@ export function WorkbenchMobileResultCard({
                     className={`h-full w-full ${mosaicLayout.imageClassName}`}
                     data-testid={`workbench-mobile-feed-image-${generation.id}-${slot.result.id}`}
                     loading="lazy"
+                    onLoad={() => {
+                      performanceTracker?.markFirstImageLoadStart(generation.id, slot.result.id, slot.result.assetId);
+                      performanceTracker?.markFirstImageLoadEnd(generation.id, slot.result.id, slot.result.assetId);
+                      window.requestAnimationFrame(() => {
+                        performanceTracker?.markFirstImageVisible(generation.id, slot.result.id, slot.result.assetId);
+                      });
+                    }}
                     src={slot.result.previewUrl}
                   />
                 ) : (

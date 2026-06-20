@@ -11,3 +11,8 @@ export function markMeasure(name: string, start: string, end: string): void {
     // Performance marks are diagnostics only.
   }
 }
+
+export function clearPerformanceMeasure(name: string): void {
+  if (typeof performance === "undefined" || typeof performance.clearMeasures !== "function") return;
+  performance.clearMeasures(name);
+}

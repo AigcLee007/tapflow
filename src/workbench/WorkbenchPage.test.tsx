@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 import { AppRouter } from "../app/AppRouter";
 import { AuthContext, type AuthState } from "../auth/useAuth";
 import { clearWorkbenchGenerationMemoryCache } from "./useWorkbenchGenerations";
+import * as performanceMarks from "../performance/performanceMarks";
 
 const useImageModelCatalogMock = vi.fn();
 const listAiModelRoutesMock = vi.fn();
@@ -1208,6 +1209,38 @@ describe("WorkbenchPage", () => {
     expect(screen.queryByRole("button", { name: "收起参数面板" })).toBeNull();
     expect(screen.queryByRole("button", { name: "展开参数面板" })).toBeNull();
     expect(screen.getByRole("button", { name: "立即开始创作" })).toBeTruthy();
+  });
+
+  test("marks submit and generation-created performance events when creating a workbench generation", async () => {
+    const markNowSpy = vi.spyOn(performanceMarks, "markNow").mockImplementation(() => undefined);
+    const markMeasureSpy = vi.spyOn(performanceMarks, "markMeasure").mockImplementation(() => undefined);
+
+    createWorkbenchGenerationMock.mockResolvedValue(
+      createGeneration({
+        id: "generation-created-perf",
+        status: "succeeded",
+      }),
+    );
+
+    setRoute("/workbench");
+    renderRouter();
+
+    fireEvent.change(await screen.findByLabelText("Prompt"), {
+      target: { value: "performance prompt" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "立即开始创作" }));
+
+    await waitFor(() => {
+      expect(createWorkbenchGenerationMock).toHaveBeenCalled();
+    });
+
+    expect(markNowSpy).toHaveBeenCalledWith(expect.stringContaining("workbench-submit-click"));
+    expect(markNowSpy).toHaveBeenCalledWith(expect.stringContaining("workbench-generation-created"));
+    expect(markMeasureSpy).toHaveBeenCalledWith(
+      expect.stringContaining("workbench-submit-to-created"),
+      expect.stringContaining("workbench-submit-click"),
+      expect.stringContaining("workbench-generation-created"),
+    );
   });
 
   test("opens selected workbench results in a fullscreen original-image preview", async () => {

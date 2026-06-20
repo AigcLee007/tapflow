@@ -2,6 +2,7 @@ import React from "react";
 
 import type { ImageModelConfig } from "../config/imageModels";
 import { WorkbenchDesktopResultCard } from "./WorkbenchDesktopResultCard";
+import type { WorkbenchPerformanceTracker } from "./useWorkbenchPerformance";
 import type { WorkbenchGeneration, WorkbenchResult } from "./workbenchTypes";
 
 type Props = {
@@ -12,6 +13,7 @@ type Props = {
   onDownloadOriginal: (result: WorkbenchResult, generation: WorkbenchGeneration) => void;
   onRegenerate: (generation: WorkbenchGeneration) => void;
   onSelectPreview: (generation: WorkbenchGeneration, result: WorkbenchResult) => void;
+  performanceTracker?: WorkbenchPerformanceTracker | null;
   onUseAsReference: (result: WorkbenchResult) => void;
 };
 
@@ -25,6 +27,7 @@ export function WorkbenchDesktopResultFeed({
   onDownloadOriginal,
   onRegenerate,
   onSelectPreview,
+  performanceTracker,
   onUseAsReference,
 }: Props) {
   const [visibleCount, setVisibleCount] = React.useState(DESKTOP_FEED_PAGE_SIZE);
@@ -77,6 +80,7 @@ export function WorkbenchDesktopResultFeed({
               onDownloadOriginal={onDownloadOriginal}
               onRegenerate={onRegenerate}
               onSelectPreview={onSelectPreview}
+              performanceTracker={performanceTracker}
               onUseAsReference={onUseAsReference}
             />
           ))}
