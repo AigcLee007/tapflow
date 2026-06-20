@@ -76,7 +76,7 @@ type AdminNodeRunRow = {
 };
 
 type AdminRedeemCodeRow = {
-  code: string;
+  code: string | null;
   created_at: string;
   created_by_email: string | null;
   created_by_name: string | null;
@@ -205,7 +205,7 @@ export type AdminWorkflowRunDetailView = {
 };
 
 export type AdminRedeemCodeView = {
-  code: string;
+  code: string | null;
   createdAt: string;
   createdByEmail: string | null;
   createdByName: string | null;
@@ -935,6 +935,7 @@ export class AdminApiService {
             `
               INSERT INTO billing_redeem_codes (
                 tenant_id,
+                code,
                 code_hash,
                 credits,
                 status,
@@ -946,12 +947,13 @@ export class AdminApiService {
               VALUES (
                 $1::uuid,
                 $2,
-                $3::numeric,
+                $3,
+                $4::numeric,
                 'active',
-                $4::int,
-                $5::timestamptz,
-                $6::uuid,
-                $7::jsonb
+                $5::int,
+                $6::timestamptz,
+                $7::uuid,
+                $8::jsonb
               )
               RETURNING
                 id::text AS id,
@@ -962,6 +964,7 @@ export class AdminApiService {
             `,
             [
               tenantId ?? null,
+              plaintextCode,
               codeHash,
               input.credits,
               input.maxRedemptions,

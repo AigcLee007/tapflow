@@ -70,6 +70,11 @@ As of 2026-06-20:
   - `npm run build` passed.
   - `npx vitest run apps/api/test/admin.test.ts -t "includes user credit expiry and usage audit fields"` skipped because local `DATABASE_URL` is not configured.
 
+- Operations console redeem-code hotfix:
+  - added migration `000032_billing_redeem_code_plaintext.sql` so `billing_redeem_codes.code` exists before the admin redeem-code history API selects it.
+  - new admin-created redeem codes now persist the plaintext code alongside `code_hash` for admin history/copy actions; historical rows without plaintext stay visible with copy disabled.
+  - staging/production must run the compiled DB migrator before restarting the worker/API path.
+
 - Shared product logo usage was aligned to the latest screenshot request:
   - `BrandMark` now loads `/logo-2.png` explicitly, which is the 300x200 horizontal Aittco logo asset.
   - homepage header, standalone workbench header, mobile workbench header, and canvas top-left project logo now inherit the horizontal 300:200 logo proportions instead of the older square/circular mark.

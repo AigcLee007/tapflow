@@ -93,7 +93,7 @@ export type AdminUpdateUserRoleResponse = {
 };
 
 export type AdminRedeemCode = {
-  code: string;
+  code: string | null;
   createdAt: string;
   createdByEmail: string | null;
   createdByName: string | null;

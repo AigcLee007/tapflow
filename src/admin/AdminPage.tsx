@@ -967,7 +967,7 @@ export function AdminPage() {
                   <div className="flex items-start justify-between gap-3">
                     <button className="min-w-0 flex-1 text-left" type="button">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-mono text-sm font-semibold text-white">{code.code}</span>
+                        <span className="font-mono text-sm font-semibold text-white">{code.code ?? "历史兑换码未保存明文"}</span>
                         <span className={`rounded-full border px-2 py-0.5 text-xs ${statusTone(code.status)}`}>
                           {code.status}
                         </span>
@@ -981,11 +981,16 @@ export function AdminPage() {
                       <div>{formatDate(code.createdAt)}</div>
                       </div>
                       <button
-                        aria-label={`复制兑换码 ${code.code}`}
-                        className="grid h-8 w-8 place-items-center rounded border border-white/10 bg-white/[0.05] text-slate-200 hover:bg-white/[0.12]"
+                        aria-label={code.code ? `复制兑换码 ${code.code}` : "历史兑换码未保存明文"}
+                        className={`grid h-8 w-8 place-items-center rounded border border-white/10 bg-white/[0.05] text-slate-200 hover:bg-white/[0.12] ${
+                          code.code ? "" : "cursor-not-allowed opacity-40"
+                        }`}
+                        disabled={!code.code}
                         onClick={(event) => {
                           event.stopPropagation();
-                          void copyText(code.code, "兑换码");
+                          if (code.code) {
+                            void copyText(code.code, "兑换码");
+                          }
                         }}
                         type="button"
                       >
