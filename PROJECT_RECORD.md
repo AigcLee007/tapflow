@@ -74,6 +74,7 @@ As of 2026-06-20:
   - added migration `000032_billing_redeem_code_plaintext.sql` so `billing_redeem_codes.code` exists before the admin redeem-code history API selects it.
   - new admin-created redeem codes now persist the plaintext code alongside `code_hash` for admin history/copy actions; historical rows without plaintext stay visible with copy disabled.
   - staging/production must run the compiled DB migrator before restarting the worker/API path.
+  - follow-up migration fix restored applied migration `000030_admin_announcements.sql` to its original checksum; announcement pinning remains in `000031_admin_announcements_interactions.sql` so production migrator can advance to the redeem-code migration.
 
 - Shared product logo usage was aligned to the latest screenshot request:
   - `BrandMark` now loads `/logo-2.png` explicitly, which is the 300x200 horizontal Aittco logo asset.
