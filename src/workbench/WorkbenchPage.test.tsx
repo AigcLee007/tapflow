@@ -1227,9 +1227,13 @@ describe("WorkbenchPage", () => {
     expect(detailImages.some((image) => image.getAttribute("src") === "https://example.com/asset-result-detail-1-original.png")).toBe(true);
     expect(screen.getByTestId("workbench-result-fullscreen").className).toContain("fixed inset-0");
     expect(screen.getByTestId("workbench-result-fullscreen-stage").textContent).not.toBeNull();
+    expect(screen.getByTestId("workbench-result-fullscreen-stage").className).toContain("md:pb-[164px]");
     expect(screen.getByTestId("workbench-result-fullscreen-image").className).toContain("h-full");
     expect(screen.getByTestId("workbench-result-fullscreen-image").className).toContain("w-full");
     expect(screen.getByTestId("workbench-result-fullscreen-image").className).toContain("object-contain");
+    expect(screen.getByTestId("workbench-result-fullscreen-image-shell").className).toContain("md:w-[calc(100vw-120px)]");
+    expect(screen.getByTestId("workbench-result-fullscreen-actions").className).toContain("md:absolute");
+    expect(screen.getByTestId("workbench-result-fullscreen-actions").className).toContain("md:bottom-8");
   });
 
   test("supports switching images inside fullscreen preview for the same desktop batch", async () => {

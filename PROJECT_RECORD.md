@@ -61,6 +61,13 @@ As of 2026-06-20:
 
 As of 2026-06-19:
 
+- desktop `/workbench` fullscreen preview received a layout pass to match the latest review markup:
+  - the desktop image stage now reserves a larger viewport-sized display box so previewed originals read bigger and clearer while still using full `contain` behavior.
+  - the desktop bottom action strip (`下载原图 / 引用参考 / 重新生成`) now sits lower as a detached floating band, leaving a clearer black buffer area below the image like the approved reference.
+- validation:
+  - `npm run test -- src/workbench/WorkbenchPage.test.tsx`
+  - `npm run build`
+
 - desktop `/workbench` fullscreen preview received another desktop-specific correction:
   - fullscreen batch navigation now tracks the explicitly selected result id instead of relying on a mutable local index, so left/right switching and thumbnail switching stay aligned with the clicked image.
   - the fullscreen preview stage now uses a fixed viewport-sized contain box, so desktop images render by longest-edge complete display instead of appearing like a cropped strip.
