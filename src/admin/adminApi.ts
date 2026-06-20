@@ -1,4 +1,4 @@
-import { apiGet, apiPatch, apiPost } from "../services/v2HttpClient";
+import { apiDelete, apiGet, apiPatch, apiPost } from "../services/v2HttpClient";
 
 export type MembershipTier = "standard" | "silver" | "gold" | "platinum";
 
@@ -93,6 +93,7 @@ export type AdminUpdateUserRoleResponse = {
 };
 
 export type AdminRedeemCode = {
+  code: string;
   createdAt: string;
   createdByEmail: string | null;
   createdByName: string | null;
@@ -129,6 +130,7 @@ export type AdminAnnouncement = {
   id: string;
   imageUrl: string | null;
   linkUrl: string | null;
+  pinned: boolean;
   publishedAt: string | null;
   startsAt: string | null;
   status: AnnouncementStatus;
@@ -334,12 +336,23 @@ export function listAdminAnnouncements(input?: {
   );
 }
 
+export function listPublishedAnnouncements(input?: {
+  limit?: number;
+}): Promise<{ items: AdminAnnouncement[] }> {
+  const params = new URLSearchParams();
+  if (input?.limit) params.set("limit", String(input.limit));
+  return apiGet<{ items: AdminAnnouncement[] }>(
+    `/announcements${params.size ? `?${params.toString()}` : ""}`,
+  );
+}
+
 export function createAdminAnnouncement(input: {
   audience: AnnouncementAudience;
   body: string;
   endsAt?: string | null;
   imageUrl?: string | null;
   linkUrl?: string | null;
+  pinned?: boolean;
   startsAt?: string | null;
   status: AnnouncementStatus;
   title: string;
@@ -355,12 +368,17 @@ export function updateAdminAnnouncement(
     endsAt: string | null;
     imageUrl: string | null;
     linkUrl: string | null;
+    pinned: boolean;
     startsAt: string | null;
     status: AnnouncementStatus;
     title: string;
   }>,
 ): Promise<AdminAnnouncement> {
   return apiPatch<AdminAnnouncement>(`/admin/announcements/${encodeURIComponent(announcementId)}`, input);
+}
+
+export function deleteAdminAnnouncement(announcementId: string): Promise<void> {
+  return apiDelete<void>(`/admin/announcements/${encodeURIComponent(announcementId)}`);
 }
 
 export function getAdminAiRouteStats(input?: {

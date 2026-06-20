@@ -107,6 +107,25 @@ export function registerAdminRoutes(app: FastifyInstance): void {
     requireTenant,
     requirePermission("admin:system"),
   ];
+  const authenticatedTenantHandlers = [
+    requireAuth,
+    requireTenant,
+  ];
+
+  app.get(
+    "/api/v2/announcements",
+    {
+      preHandler: authenticatedTenantHandlers,
+    },
+    async (request, reply) => {
+      try {
+        const query = parseQuery<AdminAnnouncementsQuery>(request, adminAnnouncementsQuerySchema);
+        return reply.send(await app.adminService.listPublishedAnnouncements(request.ctx, query));
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
 
   app.get(
     "/api/v2/admin/users",
@@ -317,6 +336,22 @@ export function registerAdminRoutes(app: FastifyInstance): void {
         const params = parseParams<AdminAnnouncementParams>(request, adminAnnouncementParamsSchema);
         const body = parseBody<AdminUpdateAnnouncementInput>(request, adminUpdateAnnouncementSchema);
         return reply.send(await app.adminService.updateAnnouncement(request.ctx, params.announcementId, body));
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.delete(
+    "/api/v2/admin/announcements/:announcementId",
+    {
+      preHandler: adminHandlers,
+    },
+    async (request, reply) => {
+      try {
+        const params = parseParams<AdminAnnouncementParams>(request, adminAnnouncementParamsSchema);
+        await app.adminService.deleteAnnouncement(request.ctx, params.announcementId);
+        return reply.code(204).send();
       } catch (error) {
         return handleRouteError(error, request, reply);
       }

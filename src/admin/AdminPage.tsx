@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   Bell,
+  Copy,
   CreditCard,
   ExternalLink,
   KeyRound,
@@ -12,6 +13,9 @@ import {
   Search,
   ShieldCheck,
   SlidersHorizontal,
+  Pin,
+  PinOff,
+  Trash2,
   Users,
 } from "lucide-react";
 
@@ -24,6 +28,7 @@ import { useAuth } from "../auth/useAuth";
 import {
   createAdminAnnouncement,
   createAdminRedeemCode,
+  deleteAdminAnnouncement,
   getAdminAiRouteStats,
   getAdminWorkflowRun,
   grantAdminCredits,
@@ -238,6 +243,7 @@ export function AdminPage() {
     body: "",
     imageUrl: "",
     linkUrl: "",
+    pinned: false,
     status: "draft" as AnnouncementStatus,
     title: "",
   });
@@ -484,6 +490,7 @@ export function AdminPage() {
         body: announcementForm.body,
         imageUrl: announcementForm.imageUrl.trim() || null,
         linkUrl: announcementForm.linkUrl.trim() || null,
+        pinned: announcementForm.pinned,
         status: announcementForm.status,
         title: announcementForm.title,
       });
@@ -492,6 +499,7 @@ export function AdminPage() {
         body: "",
         imageUrl: "",
         linkUrl: "",
+        pinned: false,
         status: "draft",
         title: "",
       });
@@ -511,6 +519,53 @@ export function AdminPage() {
       await loadOperationalData();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "通知公告更新失败");
+    }
+  }
+
+  async function handleAnnouncementStatus(announcement: AdminAnnouncement, status: AnnouncementStatus) {
+    setMessage("");
+    setError("");
+    try {
+      await updateAdminAnnouncement(announcement.id, { status });
+      setMessage(status === "published" ? "通知公告已发布" : "通知公告已更新");
+      await loadOperationalData();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "通知公告更新失败");
+    }
+  }
+
+  async function handleToggleAnnouncementPinned(announcement: AdminAnnouncement) {
+    setMessage("");
+    setError("");
+    try {
+      await updateAdminAnnouncement(announcement.id, { pinned: !announcement.pinned });
+      setMessage(announcement.pinned ? "通知公告已取消置顶" : "通知公告已置顶");
+      await loadOperationalData();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "通知公告更新失败");
+    }
+  }
+
+  async function handleDeleteAnnouncement(announcement: AdminAnnouncement) {
+    setMessage("");
+    setError("");
+    try {
+      await deleteAdminAnnouncement(announcement.id);
+      setMessage("通知公告已删除");
+      await loadOperationalData();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "通知公告删除失败");
+    }
+  }
+
+  async function copyText(value: string, label: string) {
+    if (!value) return;
+    try {
+      await navigator.clipboard?.writeText(value);
+      setMessage(`${label}已复制`);
+      setError("");
+    } catch {
+      setError("复制失败，请手动复制");
     }
   }
 
@@ -883,7 +938,17 @@ export function AdminPage() {
             {lastGeneratedCode ? (
               <div className="rounded border border-emerald-300/20 bg-emerald-500/10 p-3">
                 <div className="text-xs text-emerald-200">已生成兑换码</div>
-                <div className="mt-1 font-mono text-lg font-semibold text-white">{lastGeneratedCode}</div>
+                <div className="mt-2 flex items-center justify-between gap-3">
+                  <div className="font-mono text-lg font-semibold text-white">{lastGeneratedCode}</div>
+                  <button
+                    aria-label="复制新兑换码"
+                    className="grid h-9 w-9 place-items-center rounded border border-emerald-300/20 bg-emerald-300/10 text-emerald-100 hover:bg-emerald-300/20"
+                    onClick={() => void copyText(lastGeneratedCode, "兑换码")}
+                    type="button"
+                  >
+                    <Copy size={15} />
+                  </button>
+                </div>
               </div>
             ) : null}
           </div>
@@ -892,25 +957,43 @@ export function AdminPage() {
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
             <div className="space-y-2">
               {redeemCodes.map((code) => (
-                <button
+                <div
                   className={`w-full rounded border px-4 py-3 text-left ${
                     code.id === selectedRedeemCodeId ? "border-sky-300/40 bg-sky-500/10" : "border-white/10 bg-black/20"
                   }`}
                   key={code.id}
                   onClick={() => setSelectedRedeemCodeId(code.id)}
-                  type="button"
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="font-medium text-white">{formatNumber(code.credits)} 点</div>
+                    <button className="min-w-0 flex-1 text-left" type="button">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono text-sm font-semibold text-white">{code.code}</span>
+                        <span className={`rounded-full border px-2 py-0.5 text-xs ${statusTone(code.status)}`}>
+                          {code.status}
+                        </span>
+                      </div>
+                      <div className="mt-1 text-sm text-slate-300">{formatNumber(code.credits)} 点</div>
                       <div className="mt-1 text-xs text-slate-400">{code.reason || "无备注"} · 创建人 {code.createdByEmail || "-"}</div>
-                    </div>
-                    <div className="text-right text-xs text-slate-300">
+                    </button>
+                    <div className="flex shrink-0 items-start gap-3 text-right text-xs text-slate-300">
+                      <div>
                       <div>{code.redeemedCount}/{code.maxRedemptions}</div>
                       <div>{formatDate(code.createdAt)}</div>
+                      </div>
+                      <button
+                        aria-label={`复制兑换码 ${code.code}`}
+                        className="grid h-8 w-8 place-items-center rounded border border-white/10 bg-white/[0.05] text-slate-200 hover:bg-white/[0.12]"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void copyText(code.code, "兑换码");
+                        }}
+                        type="button"
+                      >
+                        <Copy size={14} />
+                      </button>
                     </div>
                   </div>
-                </button>
+                </div>
               ))}
             </div>
             <div className="rounded border border-white/10 bg-black/20 p-4">
@@ -953,6 +1036,17 @@ export function AdminPage() {
             <Field label="图片 URL">
               <input className={inputClass} onChange={(event) => setAnnouncementForm((current) => ({ ...current, imageUrl: event.target.value }))} value={announcementForm.imageUrl} />
             </Field>
+            <button
+              className={`h-10 rounded border px-3 text-left text-sm ${
+                announcementForm.pinned
+                  ? "border-cyan-300/40 bg-cyan-500/15 text-cyan-100"
+                  : "border-white/10 bg-white/[0.04] text-slate-300"
+              }`}
+              onClick={() => setAnnouncementForm((current) => ({ ...current, pinned: !current.pinned }))}
+              type="button"
+            >
+              {announcementForm.pinned ? "已置顶：首页铃铛优先展示" : "不置顶"}
+            </button>
             <div className="grid grid-cols-2 gap-3">
               <Field label="状态">
                 <div className="grid grid-cols-3 gap-2">
@@ -1011,7 +1105,14 @@ export function AdminPage() {
               <div className="rounded border border-white/10 bg-black/20 p-4" key={announcement.id}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <div className="font-medium text-white">{announcement.title}</div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="font-medium text-white">{announcement.title}</div>
+                      {announcement.pinned ? (
+                        <span className="rounded-full border border-cyan-300/30 bg-cyan-400/10 px-2 py-0.5 text-xs text-cyan-100">
+                          置顶
+                        </span>
+                      ) : null}
+                    </div>
                     <div className="mt-1 text-sm text-slate-400">{announcement.body}</div>
                     <div className="mt-2 text-xs text-slate-500">创建人 {announcement.createdByEmail || "-"} · {formatDate(announcement.createdAt)}</div>
                   </div>
@@ -1019,11 +1120,24 @@ export function AdminPage() {
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {announcement.linkUrl ? <a className={buttonClass} href={announcement.linkUrl} rel="noreferrer" target="_blank"><ExternalLink size={14} />打开链接</a> : null}
+                  <button className={buttonClass} onClick={() => void handleToggleAnnouncementPinned(announcement)} type="button">
+                    {announcement.pinned ? <PinOff size={14} /> : <Pin size={14} />}
+                    {announcement.pinned ? "取消置顶" : "置顶"}
+                  </button>
+                  {announcement.status !== "published" ? (
+                    <button className={buttonClass} onClick={() => void handleAnnouncementStatus(announcement, "published")} type="button">
+                      发布
+                    </button>
+                  ) : null}
                   {announcement.status !== "archived" ? (
                     <button className={buttonClass} onClick={() => void handleArchiveAnnouncement(announcement)} type="button">
                       归档
                     </button>
                   ) : null}
+                  <button className={`${buttonClass} border-red-300/20 bg-red-500/10 text-red-100 hover:bg-red-500/20`} onClick={() => void handleDeleteAnnouncement(announcement)} type="button">
+                    <Trash2 size={14} />
+                    删除
+                  </button>
                 </div>
               </div>
             ))}

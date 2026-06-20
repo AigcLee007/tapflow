@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS announcements (
   body text NOT NULL,
   link_url text,
   image_url text,
+  pinned boolean NOT NULL DEFAULT false,
   status text NOT NULL DEFAULT 'draft',
   audience text NOT NULL DEFAULT 'all',
   published_at timestamptz,
@@ -19,6 +20,9 @@ CREATE TABLE IF NOT EXISTS announcements (
 
 CREATE INDEX IF NOT EXISTS announcements_tenant_status_created_at_idx
   ON announcements (tenant_id, status, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS announcements_tenant_status_pinned_published_idx
+  ON announcements (tenant_id, status, pinned DESC, published_at DESC, created_at DESC);
 
 ALTER TABLE announcements ENABLE ROW LEVEL SECURITY;
 ALTER TABLE announcements FORCE ROW LEVEL SECURITY;

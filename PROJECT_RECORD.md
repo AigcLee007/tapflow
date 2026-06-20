@@ -238,6 +238,18 @@ As of 2026-06-13:
 - workbench multi-image generation now uses parent batch rows plus one-image child generation rows, allowing each image to appear as soon as its child task finishes while preserving grouped creator-facing batch cards, partial-progress polling, and single parent-level billing settlement/refund semantics
 - v2 auth refresh now coalesces concurrent frontend refresh attempts, proactively refreshes near-expiring access tokens, avoids clearing login state on transient server errors, and honors configured token TTL values
 
+## 2026-06-20 - Operations Admin Interaction Fixes
+
+- completed the operations console interaction loop after the first B+ admin rollout:
+  - route monitor top-bar pill now exposes a hover/focus reliability panel with per-line success rate, success/total count, and average latency
+  - redeem-code history now returns and displays the actual historical code value and adds copy buttons for newly generated and historical codes
+  - announcements now support pinned state, publish/archive/delete operations, a user-facing published announcement feed, and a top-bar bell panel with link/image support
+- added a follow-up migration for already-deployed databases so `announcements.pinned` is added after the original announcements migration has run
+- validation:
+  - `npm run build`
+  - `npm run build --workspace @aigc-flow/api`
+  - `npx vitest run apps/api/test/admin.test.ts` skipped locally because no `DATABASE_URL` is configured
+
 ## 2026-06-18 - Auth Refresh Stability Upgrade
 
 - Added frontend v2 auth refresh single-flight behavior so concurrent API calls share one `/api/v2/auth/refresh` request instead of racing the same rotating refresh token.

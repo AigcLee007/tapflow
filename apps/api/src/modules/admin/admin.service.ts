@@ -76,6 +76,7 @@ type AdminNodeRunRow = {
 };
 
 type AdminRedeemCodeRow = {
+  code: string;
   created_at: string;
   created_by_email: string | null;
   created_by_name: string | null;
@@ -109,6 +110,7 @@ type AdminAnnouncementRow = {
   id: string;
   image_url: string | null;
   link_url: string | null;
+  pinned: boolean;
   published_at: string | null;
   starts_at: string | null;
   status: string;
@@ -203,6 +205,7 @@ export type AdminWorkflowRunDetailView = {
 };
 
 export type AdminRedeemCodeView = {
+  code: string;
   createdAt: string;
   createdByEmail: string | null;
   createdByName: string | null;
@@ -236,6 +239,7 @@ export type AdminAnnouncementView = {
   id: string;
   imageUrl: string | null;
   linkUrl: string | null;
+  pinned: boolean;
   publishedAt: string | null;
   startsAt: string | null;
   status: "draft" | "published" | "archived";
@@ -436,6 +440,7 @@ function generateTemporaryPassword(): string {
 function mapRedeemCode(row: AdminRedeemCodeRow): AdminRedeemCodeView {
   const metadataReason = row.reason;
   return {
+    code: row.code,
     createdAt: row.created_at,
     createdByEmail: row.created_by_email,
     createdByName: row.created_by_name,
@@ -481,6 +486,7 @@ function mapAnnouncement(row: AdminAnnouncementRow): AdminAnnouncementView {
     id: row.id,
     imageUrl: row.image_url,
     linkUrl: row.link_url,
+    pinned: Boolean(row.pinned),
     publishedAt: row.published_at,
     startsAt: row.starts_at,
     status: normalizeAnnouncementStatus(row.status),
@@ -1053,6 +1059,7 @@ export class AdminApiService {
             billing_redeem_codes.id::text AS id,
             billing_redeem_codes.tenant_id::text AS tenant_id,
             tenants.name AS tenant_name,
+            billing_redeem_codes.code,
             billing_redeem_codes.credits::text AS credits,
             billing_redeem_codes.status,
             billing_redeem_codes.max_redemptions,
@@ -1450,6 +1457,7 @@ export class AdminApiService {
             announcements.body,
             announcements.link_url,
             announcements.image_url,
+            announcements.pinned,
             announcements.status,
             announcements.audience,
             announcements.published_at::text AS published_at,
@@ -1464,7 +1472,7 @@ export class AdminApiService {
             ON users.id = announcements.created_by
           WHERE announcements.tenant_id = $1::uuid
             AND ($2::text IS NULL OR announcements.status = $2::text)
-          ORDER BY announcements.created_at DESC, announcements.id DESC
+          ORDER BY announcements.pinned DESC, announcements.published_at DESC NULLS LAST, announcements.created_at DESC, announcements.id DESC
           LIMIT $3::int
         `,
         [tenantContext.tenantId, input?.status ?? null, limit],
@@ -1483,6 +1491,7 @@ export class AdminApiService {
       endsAt?: string | null;
       imageUrl?: string | null;
       linkUrl?: string | null;
+      pinned?: boolean;
       startsAt?: string | null;
       status: "draft" | "published" | "archived";
       title: string;
@@ -1498,6 +1507,7 @@ export class AdminApiService {
             body,
             link_url,
             image_url,
+            pinned,
             status,
             audience,
             published_at,
@@ -1514,10 +1524,11 @@ export class AdminApiService {
             $5,
             $6,
             $7,
-            CASE WHEN $6 = 'published' THEN now() ELSE NULL END,
-            $8::timestamptz,
+            $8,
+            CASE WHEN $7 = 'published' THEN now() ELSE NULL END,
             $9::timestamptz,
-            $10::uuid,
+            $10::timestamptz,
+            $11::uuid,
             now()
           )
           RETURNING
@@ -1527,6 +1538,7 @@ export class AdminApiService {
             body,
             link_url,
             image_url,
+            pinned,
             status,
             audience,
             published_at::text AS published_at,
@@ -1543,6 +1555,7 @@ export class AdminApiService {
           input.body.trim(),
           input.linkUrl?.trim() || null,
           input.imageUrl?.trim() || null,
+          Boolean(input.pinned),
           input.status,
           input.audience,
           input.startsAt ?? null,
@@ -1566,6 +1579,7 @@ export class AdminApiService {
       endsAt: string | null;
       imageUrl: string | null;
       linkUrl: string | null;
+      pinned: boolean;
       startsAt: string | null;
       status: "draft" | "published" | "archived";
       title: string;
@@ -1582,6 +1596,7 @@ export class AdminApiService {
             body,
             link_url,
             image_url,
+            pinned,
             status,
             audience,
             published_at::text AS published_at,
@@ -1614,13 +1629,14 @@ export class AdminApiService {
             image_url = $6,
             status = $7,
             audience = $8,
+            pinned = $9,
             published_at = CASE
               WHEN $7 = 'published' AND published_at IS NULL THEN now()
               WHEN $7 <> 'published' THEN NULL
               ELSE published_at
             END,
-            starts_at = $9::timestamptz,
-            ends_at = $10::timestamptz,
+            starts_at = $10::timestamptz,
+            ends_at = $11::timestamptz,
             updated_at = now()
           WHERE id = $1::uuid
             AND tenant_id = $2::uuid
@@ -1631,6 +1647,7 @@ export class AdminApiService {
             body,
             link_url,
             image_url,
+            pinned,
             status,
             audience,
             published_at::text AS published_at,
@@ -1650,11 +1667,83 @@ export class AdminApiService {
           input.imageUrl === undefined ? row.image_url : input.imageUrl?.trim() || null,
           nextStatus,
           input.audience ?? normalizeAnnouncementAudience(row.audience),
+          input.pinned ?? Boolean(row.pinned),
           input.startsAt === undefined ? row.starts_at : input.startsAt,
           input.endsAt === undefined ? row.ends_at : input.endsAt,
         ],
       );
       return mapAnnouncement(result.rows[0]);
+    }, this.pool);
+  }
+
+  async deleteAnnouncement(context: AdminContext, announcementId: string): Promise<void> {
+    const tenantContext = requireTenantContext(context);
+    await withTenantTransaction(tenantContext, async (client) => {
+      const result = await client.query(
+        `
+          DELETE FROM announcements
+          WHERE id = $1::uuid
+            AND tenant_id = $2::uuid
+        `,
+        [announcementId, tenantContext.tenantId],
+      );
+      if (result.rowCount === 0) {
+        throw new AdminApiError(404, "ANNOUNCEMENT_NOT_FOUND", "Announcement not found");
+      }
+    }, this.pool);
+  }
+
+  async listPublishedAnnouncements(
+    context: AdminContext,
+    input?: {
+      limit?: number;
+    },
+  ): Promise<{
+    items: AdminAnnouncementView[];
+  }> {
+    const tenantContext = requireTenantContext(context);
+    const limit = Math.max(1, Math.min(input?.limit ?? 10, 50));
+    const canSeeAdminAnnouncements =
+      context.permissions.includes("admin:system") ||
+      context.roles.includes("tenant_admin") ||
+      context.roles.includes("system_admin");
+    const audiences = canSeeAdminAnnouncements ? ["all", "admin"] : ["all", "creator"];
+    return withTenantTransaction(tenantContext, async (client) => {
+      const result = await client.query<AdminAnnouncementRow>(
+        `
+          SELECT
+            announcements.id::text AS id,
+            announcements.tenant_id::text AS tenant_id,
+            announcements.title,
+            announcements.body,
+            announcements.link_url,
+            announcements.image_url,
+            announcements.pinned,
+            announcements.status,
+            announcements.audience,
+            announcements.published_at::text AS published_at,
+            announcements.starts_at::text AS starts_at,
+            announcements.ends_at::text AS ends_at,
+            announcements.created_by::text AS created_by,
+            users.email AS created_by_email,
+            announcements.created_at::text AS created_at,
+            announcements.updated_at::text AS updated_at
+          FROM announcements
+          LEFT JOIN users
+            ON users.id = announcements.created_by
+          WHERE announcements.tenant_id = $1::uuid
+            AND announcements.status = 'published'
+            AND announcements.audience = ANY($2::text[])
+            AND (announcements.starts_at IS NULL OR announcements.starts_at <= now())
+            AND (announcements.ends_at IS NULL OR announcements.ends_at > now())
+          ORDER BY announcements.pinned DESC, announcements.published_at DESC NULLS LAST, announcements.created_at DESC, announcements.id DESC
+          LIMIT $3::int
+        `,
+        [tenantContext.tenantId, audiences, limit],
+      );
+      return {
+        items: result.rows.map(mapAnnouncement),
+      };
     }, this.pool);
   }
 

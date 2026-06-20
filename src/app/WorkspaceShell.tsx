@@ -4,6 +4,7 @@ import {
   Box,
   ChevronDown,
   CreditCard,
+  ExternalLink,
   FolderKanban,
   HelpCircle,
   Home,
@@ -26,7 +27,12 @@ import { canAccessOperationsConsole, resolveProductRole } from "../auth/productR
 import { useAuth } from "../auth/useAuth";
 import { getAvailableCredits, getMembershipLabel } from "../billing/billingDisplay";
 import { useBillingSummarySnapshot } from "../billing/useBillingSummarySnapshot";
-import { getAdminAiRouteStats, type AdminAiRouteStats } from "../admin/adminApi";
+import {
+  getAdminAiRouteStats,
+  listPublishedAnnouncements,
+  type AdminAiRouteStats,
+  type AdminAnnouncement,
+} from "../admin/adminApi";
 import { MenuSurface } from "../components/menu/MenuSurface";
 import {
   MENU_DIVIDER_CLASS,
@@ -64,6 +70,17 @@ function getProductRoleLabel(role: ReturnType<typeof resolveProductRole>) {
   return "创作者";
 }
 
+function formatShellDate(value?: string | null): string {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString();
+}
+
+function routeDisplayName(route: AdminAiRouteStats["routes"][number]): string {
+  return [route.modelDisplayName, route.routeLabel].filter(Boolean).join(" ") || route.routeKey || "模型线路";
+}
+
 export function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const { authenticated, logout, permissions, roles, tenant, user } = useAuth();
   const accountLayer = useDismissibleLayer("workspace-shell-account");
@@ -71,6 +88,9 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
     typeof window === "undefined" ? HOME_ROUTE : `${window.location.pathname}${window.location.hash}`,
   );
   const [routeStats, setRouteStats] = useState<AdminAiRouteStats | null>(null);
+  const [announcements, setAnnouncements] = useState<AdminAnnouncement[]>([]);
+  const [monitorPanelOpen, setMonitorPanelOpen] = useState(false);
+  const noticeLayer = useDismissibleLayer("workspace-shell-notices");
   const currentPath = typeof window === "undefined" ? WORKSPACE_ROUTE : window.location.pathname;
   const tenantName = displayTenantName(tenant?.name);
   const displayName = user?.displayName || user?.email || "用户";
@@ -109,10 +129,30 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
     };
   }, [canAdmin, locationKey]);
 
+  useEffect(() => {
+    if (!authenticated || !tenant || !user) {
+      setAnnouncements([]);
+      return;
+    }
+    let cancelled = false;
+    void listPublishedAnnouncements({ limit: 10 })
+      .then((response) => {
+        if (!cancelled) setAnnouncements(response.items);
+      })
+      .catch(() => {
+        if (!cancelled) setAnnouncements([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [authenticated, locationKey, tenant, user]);
+
   const goTo = (path: string) => {
     navigate(path);
     setLocationKey(`${window.location.pathname}${window.location.hash}`);
     accountLayer.closeLayer();
+    noticeLayer.closeLayer();
+    setMonitorPanelOpen(false);
   };
 
   return (
@@ -154,22 +194,105 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
           <div className="relative flex min-w-0 items-center gap-4">
             <button
               aria-label="通知"
-              className="hidden h-11 w-11 place-items-center rounded-full text-slate-300 transition hover:bg-white/[0.08] hover:text-white sm:grid"
+              ref={noticeLayer.triggerRef as React.RefObject<HTMLButtonElement>}
+              aria-expanded={noticeLayer.open}
+              className="relative hidden h-11 w-11 place-items-center rounded-full text-slate-300 transition hover:bg-white/[0.08] hover:text-white sm:grid"
+              onClick={noticeLayer.toggle}
               type="button"
             >
               <Bell size={22} />
+              {announcements.length ? (
+                <span className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full border border-[#0b0b0d] bg-cyan-300" />
+              ) : null}
             </button>
 
+            {noticeLayer.open ? (
+              <MenuSurface
+                ref={noticeLayer.ref as React.RefObject<HTMLDivElement>}
+                className="absolute right-[156px] top-[calc(100%+14px)] w-[380px] p-4"
+                role="menu"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-sm font-semibold text-white">通知公告</div>
+                  {canAdmin ? (
+                    <button className="rounded border border-white/10 bg-white/[0.05] px-2 py-1 text-xs text-slate-200 hover:bg-white/[0.12]" onClick={() => goTo(`${ADMIN_ROUTE}#announcements`)} type="button">
+                      管理
+                    </button>
+                  ) : null}
+                </div>
+                <div className="mt-3 max-h-[420px] space-y-2 overflow-y-auto">
+                  {announcements.map((notice) => (
+                    <div className="rounded-[14px] border border-white/10 bg-white/[0.04] p-3" key={notice.id}>
+                      <div className="flex items-center gap-2">
+                        <div className="truncate text-sm font-semibold text-white">{notice.title}</div>
+                        {notice.pinned ? <span className="shrink-0 rounded-full bg-cyan-400/15 px-2 py-0.5 text-[10px] font-semibold text-cyan-100">置顶</span> : null}
+                      </div>
+                      <div className="mt-1 line-clamp-3 text-xs leading-5 text-slate-300">{notice.body}</div>
+                      {notice.imageUrl ? <img alt="" className="mt-3 max-h-28 w-full rounded-lg object-cover" src={notice.imageUrl} /> : null}
+                      <div className="mt-3 flex items-center justify-between gap-3 text-xs text-slate-500">
+                        <span>{formatShellDate(notice.publishedAt || notice.createdAt)}</span>
+                        {notice.linkUrl ? (
+                          <a className="inline-flex items-center gap-1 text-cyan-200 hover:text-cyan-100" href={notice.linkUrl} rel="noreferrer" target="_blank">
+                            打开 <ExternalLink size={12} />
+                          </a>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))}
+                  {!announcements.length ? <div className="rounded-[14px] border border-white/10 bg-white/[0.04] p-4 text-sm text-slate-400">暂无通知公告</div> : null}
+                </div>
+              </MenuSurface>
+            ) : null}
+
             {canAdmin ? (
+              <div className="relative hidden lg:block">
               <button
                 aria-label="模型线路监控"
-                className="hidden h-11 items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-3 text-xs font-semibold text-slate-200 transition hover:bg-white/[0.10] lg:inline-flex"
+                className="peer/route-monitor inline-flex h-11 items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-3 text-xs font-semibold text-slate-200 transition hover:bg-white/[0.10] focus:bg-white/[0.10]"
                 onClick={() => goTo(`${ADMIN_ROUTE}#monitor`)}
                 type="button"
               >
                 <span className="h-2 w-2 rounded-full bg-emerald-300" />
                 线路 {routeStats?.summary.successRate ?? 0}% · {routeStats?.summary.averageLatencyMs ?? "-"}ms
               </button>
+              <div className="pointer-events-none absolute right-0 top-[calc(100%+10px)] z-50 hidden w-[520px] rounded border border-white/10 bg-[#171717] p-4 text-sm opacity-0 shadow-2xl shadow-black/40 transition peer-hover/route-monitor:block peer-hover/route-monitor:opacity-100 peer-focus/route-monitor:block peer-focus/route-monitor:opacity-100">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="text-base font-semibold text-white">{routeStats?.summary.windowMinutes ?? 30}min</div>
+                    <div className="mt-1 text-xs text-slate-400">成功率=成功调用/总调用；平均耗时=全部调用平均耗时</div>
+                  </div>
+                  <div className="rounded border border-white/10 bg-white/[0.05] px-2 py-1 text-xs text-slate-200">
+                    查看全部
+                  </div>
+                </div>
+                <div className="mt-4 grid grid-cols-[minmax(0,1fr)_88px_72px_72px] gap-3 text-xs text-slate-400">
+                  <div>模型线路</div>
+                  <div>成功率</div>
+                  <div>成功/总量</div>
+                  <div className="text-right">平均耗时</div>
+                </div>
+                <div className="mt-2 space-y-2">
+                  {(routeStats?.routes ?? []).slice(0, 8).map((route) => (
+                    <div className="grid grid-cols-[minmax(0,1fr)_88px_72px_72px] items-center gap-3 text-xs" key={route.routeId ?? route.routeKey ?? routeDisplayName(route)}>
+                      <div className="truncate text-white">{routeDisplayName(route)}</div>
+                      <div className="flex items-center gap-2">
+                        <span className="h-2 flex-1 overflow-hidden rounded-full bg-white/10">
+                          <span className="block h-full rounded-full bg-emerald-400" style={{ width: `${Math.max(0, Math.min(route.successRate, 100))}%` }} />
+                        </span>
+                        <span className="w-9 text-right font-semibold text-cyan-200">{route.successRate}%</span>
+                      </div>
+                      <div className="text-slate-300">{route.successfulCalls}/{route.totalCalls}</div>
+                      <div className="text-right text-slate-300">{route.averageLatencyMs ?? "-"}ms</div>
+                    </div>
+                  ))}
+                  {!routeStats?.routes.length ? (
+                    <div className="rounded border border-white/10 bg-white/[0.04] p-3 text-xs text-slate-400">
+                      最近 30 分钟暂无模型线路调用记录。
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+              </div>
             ) : null}
 
             <button

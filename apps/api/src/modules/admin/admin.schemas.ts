@@ -79,6 +79,7 @@ export const adminCreateAnnouncementSchema = z.object({
   endsAt: z.string().datetime().nullable().optional(),
   imageUrl: z.string().trim().url().nullable().optional(),
   linkUrl: z.string().trim().url().nullable().optional(),
+  pinned: z.coerce.boolean().default(false),
   startsAt: z.string().datetime().nullable().optional(),
   status: z.enum(["draft", "published", "archived"]).default("draft"),
   title: z.string().trim().min(1).max(200),

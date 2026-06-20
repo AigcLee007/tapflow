@@ -847,6 +847,7 @@ describeWithDatabase("admin api", () => {
         });
         expect(list.statusCode).toBe(200);
         expect(list.json().items[0]).toMatchObject({
+          code: createRedeemCode.json().code,
           createdByEmail: adminEmail,
           credits: 150,
           maxRedemptions: 1,
@@ -911,6 +912,7 @@ describeWithDatabase("admin api", () => {
             body: "New image model line is available.",
             imageUrl: "https://example.com/notice.png",
             linkUrl: "https://example.com/changelog",
+            pinned: true,
             status: "published",
             title: "Model update",
           },
@@ -922,6 +924,21 @@ describeWithDatabase("admin api", () => {
           body: "New image model line is available.",
           imageUrl: "https://example.com/notice.png",
           linkUrl: "https://example.com/changelog",
+          pinned: true,
+          status: "published",
+          title: "Model update",
+        });
+
+        const feed = await api.inject({
+          headers: {
+            authorization: `Bearer ${adminLogin.json().accessToken}`,
+          },
+          method: "GET",
+          url: "/api/v2/announcements",
+        });
+        expect(feed.statusCode).toBe(200);
+        expect(feed.json().items[0]).toMatchObject({
+          pinned: true,
           status: "published",
           title: "Model update",
         });
@@ -932,6 +949,7 @@ describeWithDatabase("admin api", () => {
           },
           method: "PATCH",
           payload: {
+            pinned: false,
             status: "archived",
             title: "Archived model update",
           },
@@ -939,6 +957,7 @@ describeWithDatabase("admin api", () => {
         });
         expect(patch.statusCode).toBe(200);
         expect(patch.json()).toMatchObject({
+          pinned: false,
           status: "archived",
           title: "Archived model update",
         });
@@ -953,9 +972,19 @@ describeWithDatabase("admin api", () => {
         expect(list.statusCode).toBe(200);
         expect(list.json().items[0]).toMatchObject({
           createdByEmail: adminEmail,
+          pinned: false,
           status: "archived",
           title: "Archived model update",
         });
+
+        const remove = await api.inject({
+          headers: {
+            authorization: `Bearer ${adminLogin.json().accessToken}`,
+          },
+          method: "DELETE",
+          url: `/api/v2/admin/announcements/${create.json().id}`,
+        });
+        expect(remove.statusCode).toBe(204);
 
         await api.close();
       } finally {
