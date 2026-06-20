@@ -137,6 +137,7 @@ export function createWorkerRuntime(options?: {
     }),
     mediaRuntime,
     pool,
+    variantQueue: assetImageVariantQueue,
   });
 
   const registration = registerWorkerQueues({

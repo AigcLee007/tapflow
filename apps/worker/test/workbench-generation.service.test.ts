@@ -55,19 +55,22 @@ describe("WorkbenchGenerationService", () => {
     const service = new WorkbenchGenerationService({
       assetBucket: "test-bucket",
       assetStore: {
-        persistOutputs: vi.fn(async () => [
-          {
-            assetId: "asset-structured-1",
-            kind: "image",
-            mimeType: "image/png",
-            timing: {
-              asset_db_insert_ms: 8,
-              asset_original_upload_ms: 14,
-              asset_variant_processing_ms: 22,
-              provider_output_download_ms: 6,
+        persistOutputs: vi.fn(async () => ({
+          deferredVariantJobs: [],
+          refs: [
+            {
+              assetId: "asset-structured-1",
+              kind: "image",
+              mimeType: "image/png",
+              timing: {
+                asset_db_insert_ms: 8,
+                asset_original_upload_ms: 14,
+                asset_variant_processing_ms: 22,
+                provider_output_download_ms: 6,
+              },
             },
-          },
-        ]),
+          ],
+        })),
       } as never,
       billingService: {
         recordUsageEventWithClient: vi.fn(async () => ({ id: "usage-structured-1" })),
@@ -166,6 +169,113 @@ describe("WorkbenchGenerationService", () => {
       tenantId: "tenant-structured-1",
       totalDurationMs: expect.any(Number),
       traceId: "trace-structured-1",
+    });
+  });
+
+  test("enqueues deferred variant jobs only after transactional work completes", async () => {
+    const variantQueue = {
+      add: vi.fn(async () => ({ id: "variant-job-1" })),
+    };
+    const service = new WorkbenchGenerationService({
+      assetBucket: "test-bucket",
+      assetStore: {
+        persistOutputs: vi.fn(async () => ({
+          deferredVariantJobs: [
+            {
+              assetId: "asset-deferred-1",
+              tenantId: "tenant-deferred-1",
+            },
+          ],
+          refs: [
+            {
+              assetId: "asset-deferred-1",
+              kind: "image",
+              mimeType: "image/png",
+            },
+          ],
+        })),
+      } as never,
+      billingService: {
+        recordUsageEventWithClient: vi.fn(async () => ({ id: "usage-deferred-1" })),
+        settleUsageWithClient: vi.fn(async () => ({ id: "settle-deferred-1" })),
+      } as never,
+      mediaRuntime: {
+        generateImage: vi.fn(async () => ({
+          outputs: [{ base64: "data:image/png;base64,AAAA", mimeType: "image/png" }],
+          status: "succeeded" as const,
+        })),
+        pollTask: vi.fn(),
+      } as never,
+      pool: {} as never,
+      variantQueue,
+    });
+
+    Object.defineProperty(service, "lockGeneration", {
+      value: vi.fn(async () => ({
+        batch_id: null,
+        batch_index: null,
+        batch_role: "single",
+        batch_total: null,
+        charged_credits: null,
+        created_by: "user-deferred-1",
+        display_mode: "merged",
+        estimated_credits: "1",
+        id: "generation-deferred-1",
+        model_id: "model-deferred-1",
+        params_json: {},
+        parent_generation_id: null,
+        prompt: "deferred logs",
+        provider_task_id: null,
+        reference_asset_ids: [],
+        reference_upload_ids: [],
+        requested_count: 1,
+        reserve_ledger_id: "reserve-deferred-1",
+        reserved_credits: "1",
+        route_key: "image.deferred-log",
+        session_id: null,
+        status: "queued",
+        tenant_id: "tenant-deferred-1",
+        updated_at: new Date(Date.now() - 1_000).toISOString(),
+      })),
+    });
+    Object.defineProperty(service, "markGenerationRunning", {
+      value: vi.fn(async () => undefined),
+    });
+    Object.defineProperty(service, "assertGenerationStillWritable", {
+      value: vi.fn(async () => true),
+    });
+    Object.defineProperty(service, "insertResults", {
+      value: vi.fn(async () => []),
+    });
+    Object.defineProperty(service, "markGenerationSucceeded", {
+      value: vi.fn(async () => undefined),
+    });
+    Object.defineProperty(service, "settleGeneration", {
+      value: vi.fn(async () => undefined),
+    });
+
+    const client = {
+      query: vi.fn(async () => ({ rows: [] })),
+      release: vi.fn(),
+    };
+    const pool = {
+      connect: vi.fn(async () => client),
+    };
+    Object.defineProperty(service, "pool", {
+      value: pool,
+    });
+
+    await service.executeGeneration(
+      {
+        generationId: "generation-deferred-1",
+        tenantId: "tenant-deferred-1",
+        traceId: "trace-deferred-1",
+      },
+    );
+
+    expect(variantQueue.add).toHaveBeenCalledWith("asset.image-variants.create", {
+      assetId: "asset-deferred-1",
+      tenantId: "tenant-deferred-1",
     });
   });
 

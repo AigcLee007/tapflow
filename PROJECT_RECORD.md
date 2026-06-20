@@ -55,6 +55,12 @@ As of 2026-06-21:
 - `docs/STAGING_ENV_TEMPLATE.md` now documents `WORKER_IMAGE_VARIANTS_MODE = async` as the recommended staging setting for faster first-result delivery when original asset persistence can complete before preview/thumb variants finish in the background.
 - Operational note:
   - after pulling this change to `/opt/aittco/tapflow`, add `WORKER_IMAGE_VARIANTS_MODE=async` to `/opt/aittco/env/tapflow.staging.env` and restart `tapflow-worker`
+- Fixed the async image-variant timing race in the worker path:
+  - `MediaAssetStore` no longer enqueues `asset.image-variant` jobs from inside the same database transaction that inserts the `assets` row.
+  - workbench generation and workflow runtime now defer variant queue pushes until after the surrounding transaction commits, which prevents transient `Asset not found for image variant processing` failures under async variant mode.
+- Validation:
+  - `npx vitest run apps/worker/test/media-asset-store.test.ts apps/worker/test/workbench-generation.service.test.ts apps/worker/test/worker.test.ts` passed.
+  - `npm run build` passed.
 
 As of 2026-06-20:
 

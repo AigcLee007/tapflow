@@ -33,6 +33,7 @@ import type { WorkerLogger } from "../logger.js";
 import type { ProcessorResult } from "../processors/shared.js";
 import {
   type AssetRef,
+  type DeferredVariantJob,
   type FetchLike,
   type MediaVariantQueue,
   MediaAssetStore,
@@ -107,6 +108,7 @@ type ProviderPollQueueLike = {
 
 type RuntimeExecutionResult = {
   auditLogs: AuditLogInput[];
+  deferredVariantJobs: DeferredVariantJob[];
   errorToThrow?: Error;
   nodeEnqueuePayloads: NodeExecuteJobPayload[];
   pollEnqueuePayloads: Array<{
@@ -138,11 +140,13 @@ type SerializableAssetRef = Omit<AssetRef, "timing">;
 
 type PersistedMediaOutput = {
   assetTimings: Array<Record<string, number | string>>;
+  deferredVariantJobs: DeferredVariantJob[];
   outputJson: Record<string, unknown>;
 };
 
 type NodeExecutionOutcome =
   | {
+      deferredVariantJobs?: DeferredVariantJob[];
       usageRecord?: UsageRecordInput;
       outputJson: Record<string, unknown>;
       type: "succeeded";
@@ -657,6 +661,7 @@ function resolveOutputNodeOutput(upstreamOutputs: Array<Record<string, unknown> 
 export class WorkflowNodeExecutionService {
   readonly assetStore: MediaAssetStore;
   readonly billingService: BillingService;
+  readonly imageVariantQueue: MediaVariantQueue | null;
   readonly mediaGenerationRuntime: MediaGenerationRuntimeLike;
   readonly nodeExecuteQueues: NodeExecuteQueueMapLike;
   readonly nodeExecuteQueue: NodeExecuteQueueLike;
@@ -690,6 +695,7 @@ export class WorkflowNodeExecutionService {
     this.billingService = options.billingService ?? new BillingService({
       pool: options.pool,
     });
+    this.imageVariantQueue = options.imageVariantQueue ?? null;
     this.mediaGenerationRuntime = options.mediaGenerationRuntime;
     this.nodeExecuteQueue = options.nodeExecuteQueue;
     this.nodeExecuteQueues = {
@@ -773,6 +779,14 @@ export class WorkflowNodeExecutionService {
       await this.providerPollQueue.add(QUEUE_NAMES.providerPoll, instruction.payload, {
         delay: instruction.delayMs,
       });
+    }
+
+    for (const job of execution.deferredVariantJobs) {
+      if (!this.imageVariantQueue) {
+        throw new Error("imageVariantQueue is required when deferred variant jobs are present");
+      }
+      assertLightweightJobPayload(job);
+      await this.imageVariantQueue.add("asset.image-variants.create", job);
     }
   }
 
@@ -1015,6 +1029,7 @@ export class WorkflowNodeExecutionService {
 
         return {
           auditLogs: [],
+          deferredVariantJobs: [],
           nodeEnqueuePayloads: [],
           pollEnqueuePayloads: resolvedOutcome.pollPayloads.map((payload) => ({
             delayMs: this.pollDelayMs,
@@ -1034,6 +1049,7 @@ export class WorkflowNodeExecutionService {
         resolvedOutcome.outputJson,
         resolvedOutcome.type === "succeeded" ? resolvedOutcome.usageRecord : undefined,
         logger,
+        resolvedOutcome.type === "succeeded" ? (resolvedOutcome.deferredVariantJobs ?? []) : [],
       );
 
       logger.info(
@@ -1047,6 +1063,7 @@ export class WorkflowNodeExecutionService {
 
       return {
         auditLogs: successResult.auditLogs,
+        deferredVariantJobs: successResult.deferredVariantJobs,
         nodeEnqueuePayloads: successResult.nodeEnqueuePayloads,
         pollEnqueuePayloads: [],
         processorResult: prepared.processorResult,
@@ -1103,6 +1120,7 @@ export class WorkflowNodeExecutionService {
         });
         return {
           auditLogs: [],
+          deferredVariantJobs: [],
           nodeEnqueuePayloads: [],
           pollEnqueuePayloads: [
             {
@@ -1125,6 +1143,7 @@ export class WorkflowNodeExecutionService {
 
       return {
         auditLogs: [],
+        deferredVariantJobs: [],
         errorToThrow: error instanceof Error ? error : new Error(String(error)),
         nodeEnqueuePayloads: [],
         pollEnqueuePayloads: [],
@@ -1175,6 +1194,7 @@ export class WorkflowNodeExecutionService {
         if (Number.isFinite(reconcileUntil) && Date.now() < reconcileUntil) {
           return {
             auditLogs: [],
+            deferredVariantJobs: [],
             nodeEnqueuePayloads: [],
             pollEnqueuePayloads: [
               {
@@ -1206,6 +1226,7 @@ export class WorkflowNodeExecutionService {
         await this.failNodeAndWorkflow(client, workflowRun.id, currentNodeRun.id, input.tenantId, normalized);
         return {
           auditLogs: [],
+          deferredVariantJobs: [],
           nodeEnqueuePayloads: [],
           pollEnqueuePayloads: [],
           processorResult: {
@@ -1272,6 +1293,7 @@ export class WorkflowNodeExecutionService {
 
           return {
             auditLogs: [],
+            deferredVariantJobs: [],
             nodeEnqueuePayloads: [],
             pollEnqueuePayloads: [
               {
@@ -1300,6 +1322,7 @@ export class WorkflowNodeExecutionService {
           await this.failNodeAndWorkflow(client, workflowRun.id, currentNodeRun.id, input.tenantId, normalized);
           return {
             auditLogs: [],
+            deferredVariantJobs: [],
             errorToThrow: new Error(normalized.message),
             nodeEnqueuePayloads: [],
             pollEnqueuePayloads: [],
@@ -1349,6 +1372,7 @@ export class WorkflowNodeExecutionService {
           });
           return {
             auditLogs: [],
+            deferredVariantJobs: [],
             nodeEnqueuePayloads: [],
             pollEnqueuePayloads: [],
             processorResult: {
@@ -1362,7 +1386,7 @@ export class WorkflowNodeExecutionService {
         }
 
         const aggregatedOutputs = completedTasks.flatMap((task) => task.outputs ?? []);
-        const outputJson = await this.persistProviderResult(
+        const persistedMedia = await this.persistProviderResult(
           client,
           currentNode,
           workflowRun,
@@ -1373,6 +1397,7 @@ export class WorkflowNodeExecutionService {
             outputs: aggregatedOutputs,
           },
         );
+        const outputJson = persistedMedia.outputJson;
         const usageRecord = this.buildUsageRecord({
           billableCents: this.getReservedCents(currentNodeRun),
           eventType: currentNode.type === "video.generate" ? "ai.video.generate" : "ai.image.generate",
@@ -1408,6 +1433,7 @@ export class WorkflowNodeExecutionService {
           outputJson,
           usageRecord,
           logger,
+          persistedMedia.deferredVariantJobs,
         );
 
         logger.info(
@@ -1422,6 +1448,7 @@ export class WorkflowNodeExecutionService {
 
         return {
           auditLogs: successResult.auditLogs,
+          deferredVariantJobs: successResult.deferredVariantJobs,
           nodeEnqueuePayloads: successResult.nodeEnqueuePayloads,
           pollEnqueuePayloads: [],
           processorResult: {
@@ -1437,6 +1464,7 @@ export class WorkflowNodeExecutionService {
         await this.failNodeAndWorkflow(client, workflowRun.id, currentNodeRun.id, input.tenantId, normalized);
         return {
           auditLogs: [],
+          deferredVariantJobs: [],
           errorToThrow: error instanceof Error ? error : new Error(String(error)),
           nodeEnqueuePayloads: [],
           pollEnqueuePayloads: [],
@@ -1461,6 +1489,7 @@ export class WorkflowNodeExecutionService {
   ): RuntimeExecutionResult {
     return {
       auditLogs: [],
+      deferredVariantJobs: [],
       nodeEnqueuePayloads: [],
       pollEnqueuePayloads: [],
       processorResult: {
@@ -1789,6 +1818,7 @@ export class WorkflowNodeExecutionService {
     );
 
     return {
+      deferredVariantJobs: persistedMedia.deferredVariantJobs,
       usageRecord: this.buildUsageRecord({
         billableCents: this.getReservedCents(nodeRun),
         eventType: kind === "image" ? "ai.image.generate" : "ai.video.generate",
@@ -1941,8 +1971,8 @@ export class WorkflowNodeExecutionService {
     runtimeFlow: RuntimeFlowRecord,
     nodeRun: NodeRunRecord,
     result: ProviderTaskResult,
-  ): Promise<Record<string, unknown>> {
-    const persistedMedia = await this.persistMediaOutputs(
+  ): Promise<PersistedMediaOutput> {
+    return this.persistMediaOutputs(
       client,
       node.type === "video.generate" ? "video" : "image",
       workflowRun,
@@ -1955,7 +1985,6 @@ export class WorkflowNodeExecutionService {
         result.mimeType ?? null,
       ),
     );
-    return persistedMedia.outputJson;
   }
 
   private async persistMediaOutputs(
@@ -1966,7 +1995,7 @@ export class WorkflowNodeExecutionService {
     nodeRun: NodeRunRecord,
     outputs: MediaOutput[],
   ): Promise<PersistedMediaOutput> {
-    const assets = await this.assetStore.persistOutputs(client, {
+    const persistedAssets = await this.assetStore.persistOutputs(client, {
       kind,
       nodeRunId: nodeRun.id,
       outputs,
@@ -1974,6 +2003,7 @@ export class WorkflowNodeExecutionService {
       tenantId: workflowRun.tenant_id,
       workflowRunId: workflowRun.id,
     });
+    const assets = persistedAssets.refs;
     const assetTimings = assets
       .filter((asset) => asset.timing)
       .map((asset) => ({
@@ -1987,6 +2017,7 @@ export class WorkflowNodeExecutionService {
 
     return {
       assetTimings,
+      deferredVariantJobs: persistedAssets.deferredVariantJobs,
       outputJson: {
         assets: serializableAssets,
         flowId: runtimeFlow.flow_id,
@@ -2475,8 +2506,10 @@ export class WorkflowNodeExecutionService {
     outputJson: Record<string, unknown>,
     usageRecord?: UsageRecordInput,
     logger?: WorkerLogger,
+    deferredVariantJobs: DeferredVariantJob[] = [],
   ): Promise<{
     auditLogs: AuditLogInput[];
+    deferredVariantJobs: DeferredVariantJob[];
     nodeEnqueuePayloads: NodeExecuteJobPayload[];
   }> {
     let auditLogs: AuditLogInput[] = [];
@@ -2571,6 +2604,7 @@ export class WorkflowNodeExecutionService {
     await this.finalizeWorkflowRunIfComplete(client, workflowRun.id, context.tenantId);
     return {
       auditLogs,
+      deferredVariantJobs,
       nodeEnqueuePayloads: enqueuePayloads,
     };
   }

@@ -43,6 +43,16 @@ export type MediaVariantQueue = {
   add(name: string, payload: Record<string, unknown>): Promise<unknown>;
 };
 
+export type DeferredVariantJob = {
+  assetId: string;
+  tenantId: string;
+};
+
+export type PersistOutputsResult = {
+  deferredVariantJobs: DeferredVariantJob[];
+  refs: AssetRef[];
+};
+
 type AssetPersistenceLogContext = {
   generationId?: string | null;
   logger?: WorkerLogger | null;
@@ -231,8 +241,9 @@ export class MediaAssetStore {
       workflowRunId: string | null;
     },
     logContext?: AssetPersistenceLogContext,
-  ): Promise<AssetRef[]> {
+  ): Promise<PersistOutputsResult> {
     const assetRefs: AssetRef[] = [];
+    const deferredVariantJobs: DeferredVariantJob[] = [];
 
     for (let index = 0; index < input.outputs.length; index += 1) {
       const output = input.outputs[index];
@@ -412,7 +423,7 @@ export class MediaAssetStore {
         if (!this.variantQueue) {
           throw new Error("variantQueue is required when MediaAssetStore variantMode is async");
         }
-        await this.variantQueue.add("asset.image-variants.create", {
+        deferredVariantJobs.push({
           assetId,
           tenantId: input.tenantId,
         });
@@ -576,6 +587,9 @@ export class MediaAssetStore {
       });
     }
 
-    return assetRefs;
+    return {
+      deferredVariantJobs,
+      refs: assetRefs,
+    };
   }
 }

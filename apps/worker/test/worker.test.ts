@@ -835,7 +835,7 @@ describe("worker skeleton", () => {
 
     expect(workerClose).toHaveBeenCalledTimes(WORKER_QUEUE_NAMES.length);
     expect(eventsClose).toHaveBeenCalledTimes(WORKER_QUEUE_NAMES.length);
-    expect(queueClose).toHaveBeenCalledTimes(6);
+    expect(queueClose).toHaveBeenCalledTimes(7);
   });
 });
 

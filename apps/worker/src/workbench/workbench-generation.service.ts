@@ -9,7 +9,10 @@ import type { Pool, PoolClient } from "pg";
 
 import type { WorkerLogger } from "../logger.js";
 import type { ProcessorResult } from "../processors/shared.js";
-import { MediaAssetStore } from "../workflow-runtime/media-asset-store.js";
+import {
+  type DeferredVariantJob,
+  MediaAssetStore,
+} from "../workflow-runtime/media-asset-store.js";
 
 type WorkbenchGenerateJobPayload = {
   generationId: string;
@@ -124,6 +127,7 @@ export class WorkbenchGenerationService {
   readonly billingService: BillingService;
   readonly mediaRuntime: MediaRuntimeLike;
   readonly pool: Pool;
+  readonly variantQueue: { add: (name: string, payload: Record<string, unknown>) => Promise<unknown> } | null;
 
   constructor(options: {
     assetBucket: string;
@@ -131,12 +135,14 @@ export class WorkbenchGenerationService {
     billingService?: BillingService;
     mediaRuntime: MediaRuntimeLike;
     pool?: Pool;
+    variantQueue?: { add: (name: string, payload: Record<string, unknown>) => Promise<unknown> } | null;
   }) {
     this.pool = options.pool ?? createPgPool();
     this.billingService = options.billingService ?? new BillingService({ pool: this.pool });
     this.mediaRuntime = options.mediaRuntime;
     this.assetStore = options.assetStore;
     this.assetBucket = options.assetBucket;
+    this.variantQueue = options.variantQueue ?? null;
   }
 
   async executeGeneration(
@@ -245,6 +251,7 @@ export class WorkbenchGenerationService {
         throw new Error("Workbench generation completed without any image outputs.");
       }
 
+      let deferredVariantJobs: DeferredVariantJob[] = [];
       await withTenantTransaction(
         { tenantId: input.tenantId, userId: null },
         async (client) => {
@@ -254,7 +261,7 @@ export class WorkbenchGenerationService {
           }
 
           const assetPersistStartedAt = Date.now();
-          const assetRefs = await this.assetStore.persistOutputs(client, {
+          const persistedAssets = await this.assetStore.persistOutputs(client, {
             kind: "image",
             nodeRunId: null,
             outputs,
@@ -267,6 +274,8 @@ export class WorkbenchGenerationService {
             routeKey: generation.route_key,
             traceId: input.traceId ?? null,
           });
+          const assetRefs = persistedAssets.refs;
+          deferredVariantJobs = persistedAssets.deferredVariantJobs;
           const assetPersistTotalMs = Math.max(0, Date.now() - assetPersistStartedAt);
           logger?.info(
             {
@@ -309,6 +318,7 @@ export class WorkbenchGenerationService {
         },
         this.pool,
       );
+      await this.enqueueDeferredVariantJobs(deferredVariantJobs);
     } catch (error) {
       await this.failGeneration(input.tenantId, generation, error);
       logger?.info(
@@ -343,6 +353,18 @@ export class WorkbenchGenerationService {
       tenantId: input.tenantId,
       traceId: input.traceId ?? null,
     };
+  }
+
+  private async enqueueDeferredVariantJobs(jobs: DeferredVariantJob[]): Promise<void> {
+    if (jobs.length === 0) {
+      return;
+    }
+    if (!this.variantQueue) {
+      throw new Error("variantQueue is required when deferred variant jobs are present");
+    }
+    for (const job of jobs) {
+      await this.variantQueue.add("asset.image-variants.create", job);
+    }
   }
 
   private isStaleGeneration(generation: WorkbenchGenerationRecord) {

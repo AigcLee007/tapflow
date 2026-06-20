@@ -64,7 +64,7 @@ describe("MediaAssetStore", () => {
       storageProvider,
     });
 
-    const refs = await store.persistOutputs(
+    const result = await store.persistOutputs(
       client as never,
       {
         kind: "image",
@@ -87,6 +87,7 @@ describe("MediaAssetStore", () => {
       },
     );
 
+    const refs = result.refs;
     expect(refs).toHaveLength(1);
     const infoCalls = (logger.info as ReturnType<typeof vi.fn>).mock.calls;
     expect(infoCalls.map((call) => call[0]?.event)).toEqual(
@@ -121,7 +122,7 @@ describe("MediaAssetStore", () => {
       storageProvider,
     });
 
-    const refs = await store.persistOutputs(client as never, {
+    const result = await store.persistOutputs(client as never, {
       kind: "image",
       nodeRunId: "00000000-0000-4000-8000-000000000002",
       outputs: [
@@ -135,6 +136,7 @@ describe("MediaAssetStore", () => {
       workflowRunId: "00000000-0000-4000-8000-000000000005",
     });
 
+    const refs = result.refs;
     expect(refs).toHaveLength(1);
     expect(refs[0].timing).toEqual({
       asset_db_insert_ms: expect.any(Number),
@@ -163,7 +165,7 @@ describe("MediaAssetStore", () => {
       variantQueue,
     });
 
-    const refs = await store.persistOutputs(client as never, {
+    const result = await store.persistOutputs(client as never, {
       kind: "image",
       nodeRunId: "00000000-0000-4000-8000-000000000012",
       outputs: [
@@ -177,15 +179,55 @@ describe("MediaAssetStore", () => {
       workflowRunId: "00000000-0000-4000-8000-000000000015",
     });
 
+    const refs = result.refs;
     expect(refs).toHaveLength(1);
     expect(storageProvider.objects.size).toBe(1);
-    expect(variantQueue.add).toHaveBeenCalledWith(
-      "asset.image-variants.create",
+    expect(variantQueue.add).not.toHaveBeenCalled();
+    expect(result.deferredVariantJobs).toEqual([
       {
         assetId: refs[0].assetId,
         tenantId: "00000000-0000-4000-8000-000000000014",
       },
-    );
+    ]);
     expect(refs[0].timing?.asset_variant_processing_ms).toBeGreaterThanOrEqual(0);
+  });
+
+  test("returns deferred variant jobs instead of enqueueing them inside async asset persistence", async () => {
+    const client = {
+      query: vi.fn(async () => ({ rows: [] })),
+    };
+    const variantQueue = {
+      add: vi.fn(async () => ({ id: "variant-job-1" })),
+    };
+    const storageProvider = new MemoryStorageProvider();
+    const store = new MediaAssetStore({
+      assetBucket: "test-bucket",
+      storageProvider,
+      variantMode: "async",
+      variantQueue,
+    });
+
+    const result = await store.persistOutputs(client as never, {
+      kind: "image",
+      nodeRunId: "00000000-0000-4000-8000-000000000022",
+      outputs: [
+        {
+          base64: (await createPngBuffer()).toString("base64"),
+          mimeType: "image/png",
+        },
+      ],
+      projectId: "00000000-0000-4000-8000-000000000023",
+      tenantId: "00000000-0000-4000-8000-000000000024",
+      workflowRunId: "00000000-0000-4000-8000-000000000025",
+    });
+
+    expect(variantQueue.add).not.toHaveBeenCalled();
+    expect(result.refs).toHaveLength(1);
+    expect(result.deferredVariantJobs).toEqual([
+      {
+        assetId: result.refs[0]?.assetId,
+        tenantId: "00000000-0000-4000-8000-000000000024",
+      },
+    ]);
   });
 });
