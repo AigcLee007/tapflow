@@ -1,7 +1,6 @@
 import { BillingService, createPgPool, withTenantTransaction } from "@aigc-flow/db";
 import type {
   AssetReferenceInput,
-  DatabaseMediaRuntime,
   MediaOutput,
   ProviderTaskResult,
 } from "@aigc-flow/ai-gateway-core";
@@ -11,6 +10,7 @@ import type { WorkerLogger } from "../logger.js";
 import type { ProcessorResult } from "../processors/shared.js";
 import {
   type DeferredVariantJob,
+  type MediaVariantQueue,
   MediaAssetStore,
 } from "../workflow-runtime/media-asset-store.js";
 
@@ -20,7 +20,49 @@ type WorkbenchGenerateJobPayload = {
   traceId?: string;
 };
 
-type MediaRuntimeLike = Pick<DatabaseMediaRuntime, "generateImage" | "pollTask">;
+type MediaRuntimeLike = {
+  generateImage: (
+    context: { tenantId: string; userId: string | null },
+    request: {
+      inputAssets?: AssetReferenceInput[] | null;
+      metadata?: Record<string, unknown> | null;
+      model?: string | null;
+      prompt: string;
+      routeKey?: string | null;
+    },
+    metadata?: {
+      generationId?: string | null;
+      logger?: WorkerLogger | null;
+      traceId?: string | null;
+    },
+  ) => Promise<{
+    outputs?: MediaOutput[] | null;
+    providerTaskId?: string | null;
+    providerTaskIds?: string[] | null;
+    routeId?: string | null;
+    status: "failed" | "succeeded" | "waiting_provider";
+    usage?: {
+      inputTokens: number | null;
+      outputTokens: number | null;
+      rawCost?: string | number | null;
+      totalTokens: number | null;
+    } | null;
+  }>;
+  pollTask: (
+    context: { tenantId: string; userId: string | null },
+    modality: "image" | "video",
+    request: {
+      model?: string | null;
+      providerTaskId: string;
+      routeKey?: string | null;
+    },
+    metadata?: {
+      generationId?: string | null;
+      logger?: WorkerLogger | null;
+      traceId?: string | null;
+    },
+  ) => Promise<ProviderTaskResult>;
+};
 
 type WorkbenchGenerationRecord = {
   batch_id: string | null;
@@ -98,6 +140,31 @@ function buildMetadataParams(
   };
 }
 
+function collectReferenceImageInputs(referenceAssets: AssetReferenceInput[]): string[] {
+  const values = referenceAssets.flatMap((asset) => {
+    const metadata = isRecord(asset.metadata) ? asset.metadata : {};
+    return [
+      metadata.url,
+      metadata.uri,
+      metadata.fileUri,
+      metadata.file_url,
+      metadata.signedUrl,
+      metadata.signed_url,
+      metadata.publicUrl,
+      metadata.public_url,
+      metadata.base64,
+    ];
+  });
+
+  return Array.from(
+    new Set(
+      values
+        .map((value) => (typeof value === "string" ? value.trim() : ""))
+        .filter(Boolean),
+    ),
+  );
+}
+
 function normalizeTaskOutputs(taskResult: ProviderTaskResult): MediaOutput[] {
   if (Array.isArray(taskResult.outputs) && taskResult.outputs.length > 0) {
     return taskResult.outputs;
@@ -127,7 +194,7 @@ export class WorkbenchGenerationService {
   readonly billingService: BillingService;
   readonly mediaRuntime: MediaRuntimeLike;
   readonly pool: Pool;
-  readonly variantQueue: { add: (name: string, payload: Record<string, unknown>) => Promise<unknown> } | null;
+  readonly variantQueue: MediaVariantQueue | null;
 
   constructor(options: {
     assetBucket: string;
@@ -135,7 +202,7 @@ export class WorkbenchGenerationService {
     billingService?: BillingService;
     mediaRuntime: MediaRuntimeLike;
     pool?: Pool;
-    variantQueue?: { add: (name: string, payload: Record<string, unknown>) => Promise<unknown> } | null;
+    variantQueue?: MediaVariantQueue | null;
   }) {
     this.pool = options.pool ?? createPgPool();
     this.billingService = options.billingService ?? new BillingService({ pool: this.pool });
@@ -655,6 +722,7 @@ export class WorkbenchGenerationService {
     usage?: { inputTokens: number | null; outputTokens: number | null; rawCost?: string | number | null; totalTokens: number | null } | null;
   }> {
     const referenceAssets = await this.loadReferenceAssetsForGeneration(tenantId, generation);
+    const referenceImages = collectReferenceImageInputs(referenceAssets);
     return this.mediaRuntime.generateImage(
       {
         tenantId,
@@ -664,6 +732,7 @@ export class WorkbenchGenerationService {
         inputAssets: referenceAssets,
         metadata: {
           params: buildMetadataParams(generation),
+          ...(referenceImages.length > 0 ? { referenceImages } : {}),
           referenceAssetIds: generation.reference_asset_ids,
           referenceUploadIds: generation.reference_upload_ids,
           source: "workbench",

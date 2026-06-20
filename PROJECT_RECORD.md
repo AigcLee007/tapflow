@@ -51,6 +51,15 @@ Current deployment baseline:
 
 As of 2026-06-21:
 
+- Fixed workbench image-to-image compatibility for the MouxiHub `Nano Banana Pro` official T3 route (`image.mouxihub.nano-banana-pro.t3`):
+  - `apps/worker/src/workbench/workbench-generation.service.ts` now mirrors hydrated workbench reference assets into `metadata.referenceImages` in addition to `inputAssets` before calling the media runtime.
+  - This aligns workbench provider requests more closely with the already-working canvas path, so async OpenAI-compatible edit routes can reliably detect reference images and stay on the image-edit path instead of degrading toward text-only generation behavior.
+  - Added a worker regression test proving that persisted asset URLs and temporary upload data URLs both propagate into `metadata.referenceImages` for workbench provider requests.
+- Validation:
+  - `npm run test --workspace @aigc-flow/worker -- workbench-generation.service.test.ts` passed.
+  - `npm run build --workspace @aigc-flow/ai-gateway-core` passed.
+  - `npm run build --workspace @aigc-flow/worker` passed.
+
 - Staging deployment config now forwards `WORKER_IMAGE_VARIANTS_MODE` into the container environment through `docker-compose.staging.yml`, so server env-file changes can switch image variant handling between `sync` and `async` without another code change.
 - `docs/STAGING_ENV_TEMPLATE.md` now documents `WORKER_IMAGE_VARIANTS_MODE = async` as the recommended staging setting for faster first-result delivery when original asset persistence can complete before preview/thumb variants finish in the background.
 - Operational note:

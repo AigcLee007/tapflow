@@ -505,4 +505,94 @@ describe("WorkbenchGenerationService", () => {
     });
     expect(mediaRuntime.generateImage.mock.calls[0]?.[1]?.metadata?.params?.n).toBeUndefined();
   });
+
+  test("workbench provider requests mirror hydrated references into metadata.referenceImages", async () => {
+    const mediaRuntime = {
+      generateImage: vi.fn(async () => ({
+        outputs: [{ base64: "data:image/png;base64,AAAA" }],
+        status: "succeeded" as const,
+      })),
+      pollTask: vi.fn(),
+    };
+    const service = new WorkbenchGenerationService({
+      assetBucket: "test-bucket",
+      assetStore: {} as never,
+      mediaRuntime,
+      pool: {} as never,
+    });
+
+    Object.defineProperty(service, "loadReferenceAssetsForGeneration", {
+      value: vi.fn(async () => ([
+        {
+          assetId: "asset-reference-1",
+          metadata: {
+            signedUrl: "https://assets.example/reference-1.png",
+            url: "https://assets.example/reference-1.png",
+          },
+          mimeType: "image/png",
+        },
+        {
+          assetId: "temp-upload-1",
+          metadata: {
+            base64: "data:image/png;base64,dGVtcC1pbWFnZQ==",
+            source: "workbench-temp-upload",
+            url: "data:image/png;base64,dGVtcC1pbWFnZQ==",
+          },
+          mimeType: "image/png",
+        },
+      ])),
+    });
+
+    await (service as unknown as {
+      createProviderTask(
+        tenantId: string,
+        generation: {
+          batch_role: "single";
+          created_by: string | null;
+          display_mode: "merged";
+          id: string;
+          model_id: string;
+          params_json: Record<string, unknown>;
+          prompt: string;
+          reference_asset_ids: string[];
+          reference_upload_ids: string[];
+          requested_count: number;
+          route_key: string;
+        },
+      ): Promise<unknown>;
+    }).createProviderTask(
+      "00000000-0000-4000-8000-000000000001",
+      {
+        batch_role: "single",
+        created_by: "00000000-0000-4000-8000-000000000009",
+        display_mode: "merged",
+        id: "00000000-0000-4000-8000-000000000051",
+        model_id: "pixellelabs.nano-banana-pro",
+        params_json: { aspect_ratio: "1:1" },
+        prompt: "edit with workbench references",
+        reference_asset_ids: ["00000000-0000-4000-8000-000000000061"],
+        reference_upload_ids: ["00000000-0000-4000-8000-000000000071"],
+        requested_count: 1,
+        route_key: "image.mouxihub.nano-banana-pro.t3",
+      },
+    );
+
+    expect(mediaRuntime.generateImage).toHaveBeenCalledTimes(1);
+    expect(mediaRuntime.generateImage.mock.calls[0]?.[1]).toMatchObject({
+      inputAssets: [
+        {
+          assetId: "asset-reference-1",
+        },
+        {
+          assetId: "temp-upload-1",
+        },
+      ],
+      metadata: {
+        referenceImages: [
+          "https://assets.example/reference-1.png",
+          "data:image/png;base64,dGVtcC1pbWFnZQ==",
+        ],
+      },
+    });
+  });
 });
