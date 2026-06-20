@@ -18,6 +18,14 @@ export type AdminMembership = {
   tenantName: string;
   tenantStatus: string;
   totalCreditGrants?: number;
+  creditLedger?: Array<{
+    amountCredits: number;
+    createdAt: string;
+    description: string | null;
+    direction: "credit" | "debit";
+    entryType: string;
+    id: string;
+  }>;
   usageAudit?: {
     latestUsageAt: string | null;
     settledCredits: number;

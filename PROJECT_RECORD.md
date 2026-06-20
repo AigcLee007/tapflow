@@ -88,6 +88,7 @@ As of 2026-06-20:
   - redeem-code history now exposes user-facing `已兑换/未兑换` semantics and permits deleting only unredeemed codes.
   - super admins can disable/enable user accounts; disabling revokes active sessions and prevents login.
   - super admins can manually add or subtract credits through audited billing ledger entries; debits also reduce active credit grants to keep expiry totals aligned.
+  - user detail now includes recent credit ledger changes, and the admin-account tab now lists only admin/super-admin accounts instead of all creators.
 
 - Shared product logo usage was aligned to the latest screenshot request:
   - `BrandMark` now loads `/logo-2.png` explicitly, which is the 300x200 horizontal Aittco logo asset.

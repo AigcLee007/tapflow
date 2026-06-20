@@ -409,6 +409,20 @@ describeWithDatabase("admin api", () => {
         expect(summary.json().balanceCredits).toBe(250);
         expect(summary.json().availableCredits).toBe(250);
 
+        const searchAfterGrant = await api.inject({
+          headers: {
+            authorization: `Bearer ${adminLogin.json().accessToken}`,
+          },
+          method: "GET",
+          url: "/api/v2/admin/users?query=Searchable",
+        });
+        expect(searchAfterGrant.statusCode).toBe(200);
+        expect(searchAfterGrant.json().items[0].memberships[0].creditLedger[0]).toMatchObject({
+          amountCredits: 250,
+          direction: "credit",
+          entryType: "admin_credit",
+        });
+
         const createRedeemCode = await api.inject({
           headers: {
             authorization: `Bearer ${adminLogin.json().accessToken}`,

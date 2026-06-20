@@ -167,6 +167,16 @@ function userStatusLabel(status?: string | null): string {
   return status === "disabled" ? "已停用" : "正常";
 }
 
+function creditLedgerLabel(entryType?: string | null): string {
+  if (entryType === "admin_credit") return "管理员增加";
+  if (entryType === "admin_debit") return "管理员减少";
+  if (entryType === "redeem") return "兑换码充值";
+  if (entryType === "payment") return "账单充值";
+  if (entryType === "refund") return "退款返还";
+  if (entryType === "settle") return "生成消耗";
+  return entryType || "积分变化";
+}
+
 function MetricCard({
   label,
   value,
@@ -935,11 +945,38 @@ export function AdminPage() {
             ) : null}
           </div>
         </div>
+        <div className="mt-4 rounded border border-white/10 bg-black/20 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-sm font-medium text-white">积分变化明细</div>
+            <div className="text-xs text-slate-500">最近 10 条</div>
+          </div>
+          <div className="mt-3 space-y-2">
+            {(selectedMembership.creditLedger ?? []).map((entry) => (
+              <div className="grid gap-2 rounded border border-white/10 bg-white/[0.03] px-3 py-2 text-sm md:grid-cols-[150px_minmax(0,1fr)_96px]" key={entry.id}>
+                <div className="text-slate-400">{formatDate(entry.createdAt)}</div>
+                <div className="min-w-0">
+                  <div className="font-medium text-white">{creditLedgerLabel(entry.entryType)}</div>
+                  <div className="truncate text-xs text-slate-500">{entry.description || "-"}</div>
+                </div>
+                <div className={`text-right font-semibold ${entry.direction === "debit" ? "text-amber-200" : "text-emerald-200"}`}>
+                  {entry.direction === "debit" ? "-" : "+"}{formatNumber(entry.amountCredits)}
+                </div>
+              </div>
+            ))}
+            {!(selectedMembership.creditLedger ?? []).length ? (
+              <div className="rounded border border-dashed border-white/10 p-4 text-sm text-slate-400">暂无积分变化记录。</div>
+            ) : null}
+          </div>
+        </div>
       </SectionCard>
     );
   }
 
   function renderAdmins() {
+    const adminUsers = users.filter((user) => {
+      const role = user.memberships[0]?.roleKey;
+      return role === "tenant_admin" || role === "system_admin";
+    });
     return (
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
         <SectionCard title="管理员账号">
@@ -955,7 +992,7 @@ export function AdminPage() {
                 </tr>
               </thead>
               <tbody>
-                {users.map((user) => {
+                {adminUsers.map((user) => {
                   const membership = user.memberships[0];
                   return (
                     <tr
@@ -973,6 +1010,7 @@ export function AdminPage() {
                 })}
               </tbody>
             </table>
+            {!adminUsers.length ? <div className="px-3 py-6 text-sm text-slate-400">暂无管理员账号。</div> : null}
           </div>
         </SectionCard>
         <SectionCard title="身份调整">

@@ -46,6 +46,15 @@ type AdminMembershipRow = {
   used_credits: string | null;
 };
 
+type AdminCreditLedgerRow = {
+  amount_cents: string;
+  created_at: string;
+  description: string | null;
+  entry_type: string;
+  id: string;
+  tenant_id: string;
+};
+
 type AdminWorkflowRunRow = {
   created_at: string;
   created_by: string | null;
@@ -153,6 +162,14 @@ export type AdminUserMembershipView = {
   tenantName: string;
   tenantStatus: string;
   totalCreditGrants: number;
+  creditLedger: Array<{
+    amountCredits: number;
+    createdAt: string;
+    description: string | null;
+    direction: "credit" | "debit";
+    entryType: string;
+    id: string;
+  }>;
   usageAudit: {
     latestUsageAt: string | null;
     settledCredits: number;
@@ -377,6 +394,7 @@ function mapMembership(row: AdminMembershipRow): AdminUserMembershipView {
     activeCreditGrantCount,
     availableCredits: Math.max(balanceCredits - reservedCredits, 0),
     balanceCredits,
+    creditLedger: [],
     creditGrantCount: activeCreditGrantCount,
     latestUsageAt: row.latest_usage_at,
     membershipTier: normalizeMembershipTier(row.membership_tier),
@@ -2147,6 +2165,7 @@ export class AdminApiService {
 
     const client = await this.pool.connect();
     let memberships: { rows: AdminMembershipRow[] };
+    let ledgerRows: AdminCreditLedgerRow[] = [];
     try {
       await client.query("BEGIN");
       await setAdminTenantContext(client, context);
@@ -2204,6 +2223,42 @@ export class AdminApiService {
         `,
         [userIds],
       );
+      const tenantIds = Array.from(new Set(memberships.rows.map((row) => row.tenant_id)));
+      if (tenantIds.length > 0) {
+        const ledger = await client.query<AdminCreditLedgerRow>(
+          `
+            SELECT
+              id::text AS id,
+              tenant_id::text AS tenant_id,
+              entry_type,
+              amount_cents::text AS amount_cents,
+              description,
+              created_at::text AS created_at
+            FROM (
+              SELECT
+                billing_ledger.*,
+                ROW_NUMBER() OVER (
+                  PARTITION BY tenant_id
+                  ORDER BY created_at DESC, id DESC
+                ) AS ledger_rank
+              FROM billing_ledger
+              WHERE tenant_id = ANY($1::uuid[])
+                AND entry_type IN (
+                  'admin_credit',
+                  'admin_debit',
+                  'redeem',
+                  'payment',
+                  'refund',
+                  'settle'
+                )
+            ) AS ranked_ledger
+            WHERE ledger_rank <= 10
+            ORDER BY tenant_id, created_at DESC, id DESC
+          `,
+          [tenantIds],
+        );
+        ledgerRows = ledger.rows;
+      }
       await client.query("COMMIT");
     } catch (error) {
       await client.query("ROLLBACK").catch(() => undefined);
@@ -2212,9 +2267,26 @@ export class AdminApiService {
       client.release();
     }
 
+    const ledgerByTenantId = new Map<string, AdminUserMembershipView["creditLedger"]>();
+    for (const row of ledgerRows) {
+      const existing = ledgerByTenantId.get(row.tenant_id) ?? [];
+      const direction = row.entry_type === "settle" || row.entry_type === "admin_debit" ? "debit" : "credit";
+      existing.push({
+        amountCredits: parseNumericString(row.amount_cents),
+        createdAt: row.created_at,
+        description: row.description,
+        direction,
+        entryType: row.entry_type,
+        id: row.id,
+      });
+      ledgerByTenantId.set(row.tenant_id, existing);
+    }
+
     for (const row of memberships.rows) {
       const existing = result.get(row.user_id) ?? [];
-      existing.push(mapMembership(row));
+      const membership = mapMembership(row);
+      membership.creditLedger = ledgerByTenantId.get(row.tenant_id) ?? [];
+      existing.push(membership);
       result.set(row.user_id, existing);
     }
 
