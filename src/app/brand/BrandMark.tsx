@@ -34,7 +34,7 @@ export function BrandMark({
     >
       <span
         className={[
-          "brand-mark__orb brand-mark__orb--bare grid shrink-0 place-items-center overflow-hidden rounded-none",
+          "brand-mark__orb brand-mark__orb--transparent grid shrink-0 place-items-center overflow-visible rounded-none",
           sizeClass[size],
         ].join(" ")}
         data-testid="brand-mark-orb"

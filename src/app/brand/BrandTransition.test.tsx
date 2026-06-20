@@ -19,17 +19,27 @@ describe("BrandTransition", () => {
     expect(screen.getByTestId("brand-transition").getAttribute("data-variant")).toBe("canvas");
   });
 
+  test("floats the transparent logo without a rectangular loading card", () => {
+    render(<BrandTransition label="Opening project canvas..." variant="canvas" />);
+
+    const core = screen.getByTestId("brand-transition-core");
+    expect(core.className).toContain("brand-transition__float");
+    expect(core.className).not.toContain("brand-transition__core");
+    expect(screen.getByRole("img", { name: "Aittco" }).getAttribute("src")).toBe("/logo-2.png");
+    expect(screen.getByTestId("brand-mark-orb").className).toContain("brand-mark__orb--transparent");
+  });
+
   test("supports inline mode for contextual loading areas", () => {
     render(<BrandTransition label="Loading project..." variant="workspace" mode="inline" />);
 
     expect(screen.getByTestId("brand-transition").getAttribute("data-mode")).toBe("inline");
   });
 
-  test("uses the enlarged cinematic animated brand mark", () => {
+  test("uses a static transparent brand mark for transition states", () => {
     render(<BrandTransition label="Loading workspace..." variant="workspace" />);
 
     expect(screen.getByTestId("brand-mark").getAttribute("data-size")).toBe("large");
-    expect(screen.getByTestId("brand-mark-infinity-particle")).toBeTruthy();
-    expect(screen.getByTestId("brand-mark-infinity-center-pulse")).toBeTruthy();
+    expect(screen.queryByTestId("brand-mark-infinity-particle")).toBeNull();
+    expect(screen.queryByTestId("brand-mark-infinity-center-pulse")).toBeNull();
   });
 });

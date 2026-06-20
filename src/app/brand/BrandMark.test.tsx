@@ -13,6 +13,15 @@ describe("BrandMark", () => {
     expect(logo.getAttribute("src")).toBe("/logo-2.png");
   });
 
+  test("renders the transparent PNG without a framed logo surface", () => {
+    render(<BrandMark />);
+
+    const orb = screen.getByTestId("brand-mark-orb");
+    expect(orb.className).toContain("brand-mark__orb--transparent");
+    expect(orb.className).not.toContain("brand-mark__orb--bare");
+    expect(orb.className).not.toContain("rounded-full");
+  });
+
   test("supports 300 by 200 ratio compact and canvas sizes", () => {
     const { rerender } = render(<BrandMark size="compact" />);
     expect(screen.getByTestId("brand-mark").getAttribute("data-size")).toBe("compact");

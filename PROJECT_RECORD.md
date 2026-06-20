@@ -51,6 +51,13 @@ Current deployment baseline:
 
 As of 2026-06-20:
 
+- Brand logo and transition surfaces received the Scheme B cleanup:
+  - all shared `BrandMark` renderings now treat `/logo-2.png` as a transparent PNG, removing the previous black/framed logo surface and heavy logo box shadows.
+  - project/canvas transition loading now uses a floating transparent logo with a soft ambient glow instead of a rectangular loading card.
+  - transition states now avoid overlaying the animated infinity particle layer on top of the provided logo asset.
+- Validation:
+  - `npx vitest run src/app/brand/BrandMark.test.tsx src/app/brand/BrandTransition.test.tsx src/flowCanvas/FlowProjectPage.test.tsx` passed.
+
 - Operations Console B implementation is in progress on the v2 admin path:
   - `/admin` has been rebuilt as a production-oriented operations console with modules for overview, user management, admin account management, credits/redeem codes, announcements, usage audit, model routes, provider connections, and system monitoring.
   - admin identity is now explicit in the admin console and account dropdown: `system_admin` / `ADMIN_EMAILS` resolve to super admin, while `admin:system` resolves to admin.

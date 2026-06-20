@@ -213,26 +213,21 @@ body.asset-drag-selecting * {
 
 .brand-mark__orb {
   position: relative;
-  background:
-    radial-gradient(circle at 50% 45%, rgba(255,255,255,0.08), rgba(255,255,255,0.01) 60%),
-    rgba(8, 10, 16, 0.9);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  background: transparent;
+  box-shadow: none;
 }
 
-.brand-mark__orb--bare {
+.brand-mark__orb--transparent {
   border: none;
   padding: 0;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.09),
-    0 16px 38px rgba(0, 0, 0, 0.42),
-    0 0 24px rgba(89, 124, 255, 0.16);
+  box-shadow: none;
 }
 
 .brand-mark__logo {
   position: relative;
   z-index: 1;
-  padding: 14%;
-  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.55));
+  padding: 0;
+  filter: drop-shadow(0 12px 28px rgba(0, 0, 0, 0.48));
 }
 
 .brand-mark__infinity {
@@ -371,28 +366,28 @@ body.asset-drag-selecting * {
   animation: brand-transition-grid 1.8s linear infinite alternate;
 }
 
-.brand-transition__core {
+.brand-transition__float {
   position: relative;
   display: grid;
   place-items: center;
-  gap: 16px;
-  min-width: 320px;
-  padding: 40px 32px;
+  gap: 14px;
+  min-width: min(320px, calc(100vw - 48px));
+  padding: 0;
   text-align: center;
+  animation: brand-transition-float-in 420ms ease-out both;
 }
 
 .brand-transition__pulse {
   position: absolute;
-  width: 260px;
-  height: 260px;
+  top: 18px;
+  width: 280px;
+  height: 160px;
   border-radius: 999px;
-  background: linear-gradient(
-    135deg,
-    rgba(56, 189, 248, 0.2),
-    rgba(244, 114, 182, 0.18),
-    rgba(250, 204, 21, 0.14)
-  );
-  filter: blur(28px);
+  background:
+    radial-gradient(circle at 35% 45%, rgba(56, 189, 248, 0.28), transparent 52%),
+    radial-gradient(circle at 65% 45%, rgba(244, 114, 182, 0.22), transparent 52%),
+    radial-gradient(circle at 50% 62%, rgba(250, 204, 21, 0.16), transparent 58%);
+  filter: blur(34px);
   animation: brand-transition-breathe 2.25s ease-in-out infinite;
 }
 
@@ -417,6 +412,17 @@ body.asset-drag-selecting * {
   color: rgba(203, 213, 225, 0.62);
   font-size: 12px;
   font-weight: 600;
+}
+
+@keyframes brand-transition-float-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
