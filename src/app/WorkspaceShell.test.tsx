@@ -86,23 +86,31 @@ describe("WorkspaceShell", () => {
   });
 
   test("renders primary creator navigation", () => {
-    renderShell();
+    const { container } = renderShell();
 
     expect(screen.getByRole("button", { name: "返回首页" })).toBeTruthy();
     expect(screen.queryByText("AI Flow")).toBeNull();
     expect(screen.queryByText("测试工作区")).toBeNull();
-    expect(screen.getAllByRole("button", { name: /主页/ }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole("button", { name: /生图工作台/ }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole("button", { name: /无限画布/ }).length).toBeGreaterThan(0);
+    const desktopNav = container.querySelector("header nav.hidden");
+    expect(desktopNav).toBeTruthy();
+    expect(within(desktopNav as HTMLElement).getAllByRole("button").map((button) => button.textContent)).toEqual([
+      "主页",
+      "无限画布",
+      "生图工作台",
+      "素材库",
+      "账单充值",
+    ]);
     expect(screen.queryByRole("button", { name: /^工作台$/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /^工作空间$/ })).toBeNull();
     expect(screen.getAllByRole("button", { name: /素材库/ }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole("button", { name: /价格方案/ }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: /账单充值/ }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: /价格方案/ })).toBeNull();
   });
 
   test("renders the shared brand mark instead of the legacy cyan square icon", () => {
     renderShell();
-    expect(screen.getByTestId("brand-mark")).toBeTruthy();
+    expect(screen.getByTestId("brand-mark").getAttribute("data-size")).toBe("header");
+    expect(screen.getByTestId("brand-mark-orb").className).toContain("h-24 w-24");
     expect(screen.queryByText("Workflow")).toBeNull();
   });
 

@@ -51,6 +51,15 @@ Current deployment baseline:
 
 As of 2026-06-20:
 
+- Home/global top navigation received the latest screenshot-directed polish:
+  - the header Aittco logo now uses a dedicated larger header mark size while keeping the existing 300x300 logo asset, avoiding blurry CSS-only scaling.
+  - the creator navigation order now places `无限画布` before `生图工作台`.
+  - the billing entry is now labeled `账单充值` instead of `价格方案`.
+  - the mobile shell navigation grid now uses five columns to match the five creator entries.
+- Validation:
+  - `npx vitest run src/app/WorkspaceShell.test.tsx` passed.
+  - `npm run build` passed.
+
 - Home/global top navigation received the requested compact chrome pass:
   - the left brand trigger now shows only the round Aittco logo and no longer displays the `AI Flow` text or workspace subtitle in the header.
   - the account menu trigger now shows only the avatar initial and chevron while keeping the full account details inside the dropdown.

@@ -42,10 +42,10 @@ function navigate(path: string) {
 
 const navItems = [
   { icon: Home, label: "主页", path: HOME_ROUTE },
-  { icon: Box, label: "生图工作台", path: WORKBENCH_ROUTE },
   { icon: FolderKanban, label: "无限画布", path: WORKSPACE_ROUTE },
+  { icon: Box, label: "生图工作台", path: WORKBENCH_ROUTE },
   { icon: Box, label: "素材库", path: ASSETS_ROUTE },
-  { icon: CreditCard, label: "价格方案", path: BILLING_ROUTE },
+  { icon: CreditCard, label: "账单充值", path: BILLING_ROUTE },
 ];
 
 function displayTenantName(name?: string | null) {
@@ -92,15 +92,15 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-[#0b0b0d] text-slate-100">
       <header className="sticky top-0 z-40 border-b border-white/8 bg-[#0b0b0d]/95 backdrop-blur-xl">
-        <div className="mx-auto flex h-20 max-w-[1840px] items-center justify-between gap-4 px-6">
+        <div className="mx-auto flex h-28 max-w-[1840px] items-center justify-between gap-4 px-6">
           <button
             aria-label="返回首页"
-            className="grid h-12 w-12 shrink-0 place-items-center rounded-full text-left transition hover:bg-white/[0.06]"
+            className="grid h-24 w-24 shrink-0 place-items-center rounded-full text-left transition hover:bg-white/[0.06]"
             onClick={() => goTo(HOME_ROUTE)}
             type="button"
             title={tenantName}
           >
-            <BrandMark size="canvas" showCaption={false} />
+            <BrandMark size="header" showCaption={false} />
           </button>
 
           <nav className="hidden items-center gap-3 rounded-full md:flex">
@@ -208,7 +208,7 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
 
-        <nav className="grid grid-cols-4 border-t border-white/8 md:hidden">
+        <nav className="grid grid-cols-5 border-t border-white/8 md:hidden">
           {navItems.map((item) => {
             const Icon = item.icon;
             const active = currentPath === item.path;

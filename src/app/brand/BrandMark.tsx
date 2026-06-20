@@ -1,10 +1,11 @@
 import React, { useId } from "react";
 
-type BrandMarkSize = "compact" | "canvas" | "large";
+type BrandMarkSize = "compact" | "canvas" | "header" | "large";
 
 const sizeClass: Record<BrandMarkSize, string> = {
   compact: "h-9 w-9",
   canvas: "h-12 w-12",
+  header: "h-24 w-24",
   large: "h-40 w-40",
 };
 
