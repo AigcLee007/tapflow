@@ -51,6 +51,18 @@ Current deployment baseline:
 
 As of 2026-06-20:
 
+- Operations Console B implementation is in progress on the v2 admin path:
+  - `/admin` has been rebuilt as a production-oriented operations console with modules for overview, user management, admin account management, credits/redeem codes, announcements, usage audit, model routes, provider connections, and system monitoring.
+  - admin identity is now explicit in the admin console and account dropdown: `system_admin` / `ADMIN_EMAILS` resolve to super admin, while `admin:system` resolves to admin.
+  - admin user management now surfaces credit balance, used credits, expiring credit grants, usage audit summary, and last login time.
+  - redeem codes now have admin list and redemption-record APIs so generated codes, usage count, user, and redemption time are visible.
+  - announcement management now has a tenant-scoped database table and admin create/update/list APIs with title, body, link, image, status, and audience fields.
+  - route reliability stats now aggregate recent `ai_call_logs` success rate and latency for the admin monitor and top-bar admin indicator.
+- Validation:
+  - `npm run build --workspace @aigc-flow/api` passed.
+  - `npm run build` passed.
+  - `npx vitest run apps/api/test/admin.test.ts -t "includes user credit expiry and usage audit fields"` skipped because local `DATABASE_URL` is not configured.
+
 - Shared product logo usage was aligned to the latest screenshot request:
   - `BrandMark` now loads `/logo-2.png` explicitly, which is the 300x200 horizontal Aittco logo asset.
   - homepage header, standalone workbench header, mobile workbench header, and canvas top-left project logo now inherit the horizontal 300:200 logo proportions instead of the older square/circular mark.

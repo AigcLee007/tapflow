@@ -181,6 +181,78 @@ async function addMembership(
   );
 }
 
+async function createTestAiRoute(
+  pool: ReturnType<typeof createPgPool>,
+  input: {
+    routeLabel?: string;
+    routeKey?: string;
+    tenantId: string;
+  },
+) {
+  const provider = await pool.query<{ id: string }>(
+    `
+      INSERT INTO ai_providers (key, name, kind, status, default_base_url, capabilities, updated_at)
+      VALUES ($1, 'PixelleLabs', 'openai-compatible', 'active', 'https://example.invalid', '{}'::jsonb, now())
+      ON CONFLICT (key) DO UPDATE
+      SET updated_at = now()
+      RETURNING id::text AS id
+    `,
+    [`provider-${randomUUID()}`],
+  );
+  const model = await pool.query<{ id: string }>(
+    `
+      INSERT INTO ai_models (provider_id, model_key, display_name, modality, capabilities, status, updated_at)
+      VALUES ($1::uuid, $2, 'Nano Banana Pro', 'image', '{}'::jsonb, 'active', now())
+      RETURNING id::text AS id
+    `,
+    [provider.rows[0]?.id, `nano-banana-pro-${randomUUID()}`],
+  );
+  const route = await pool.query<{ id: string }>(
+    `
+      INSERT INTO ai_routes (
+        tenant_id,
+        provider_id,
+        model_id,
+        route_key,
+        route_label,
+        modality,
+        status,
+        request_config,
+        pricing,
+        rate_limit,
+        updated_at
+      )
+      VALUES (
+        $1::uuid,
+        $2::uuid,
+        $3::uuid,
+        $4,
+        $5,
+        'image',
+        'active',
+        '{}'::jsonb,
+        '{}'::jsonb,
+        '{}'::jsonb,
+        now()
+      )
+      RETURNING id::text AS id
+    `,
+    [
+      input.tenantId,
+      provider.rows[0]?.id,
+      model.rows[0]?.id,
+      input.routeKey ?? `image.test.${randomUUID()}`,
+      input.routeLabel ?? "线路一",
+    ],
+  );
+
+  return {
+    modelId: model.rows[0]?.id,
+    providerId: provider.rows[0]?.id,
+    routeId: route.rows[0]?.id,
+  };
+}
+
 describeWithDatabase("admin api", () => {
   test("admin endpoints require auth and admin permission", async () => {
     await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
@@ -485,6 +557,480 @@ describeWithDatabase("admin api", () => {
           [targetUser.currentTenant.id],
         );
         expect(grants.rows[0]?.expires_at).toBeTruthy();
+
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("includes user credit expiry and usage audit fields", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({ connectionString: await createAppDatabaseUrl() });
+        const api = buildTestApp(appPool);
+
+        const adminUser = await registerUser(api, {
+          email: adminEmail,
+          tenantName: "Ops Tenant",
+        });
+        const targetUser = await registerUser(api, {
+          displayName: "Audited Creator",
+          email: "audited-creator@example.com",
+          tenantName: "Audited Tenant",
+        });
+        const adminLogin = await api.inject({
+          method: "POST",
+          payload: {
+            email: adminEmail,
+            password: "StrongPass123!",
+            tenantId: adminUser.currentTenant.id,
+          },
+          url: "/api/v2/auth/login",
+        });
+        expect(adminLogin.statusCode).toBe(200);
+
+        const targetLogin = await api.inject({
+          method: "POST",
+          payload: {
+            email: "audited-creator@example.com",
+            password: "StrongPass123!",
+            tenantId: targetUser.currentTenant.id,
+          },
+          url: "/api/v2/auth/login",
+        });
+        expect(targetLogin.statusCode).toBe(200);
+
+        const grant = await api.inject({
+          headers: {
+            authorization: `Bearer ${adminLogin.json().accessToken}`,
+          },
+          method: "POST",
+          payload: {
+            credits: 300,
+            reason: "three month package",
+            tenantId: targetUser.currentTenant.id,
+            validityMode: "months",
+            validityMonths: 3,
+          },
+          url: `/api/v2/admin/users/${targetUser.user.id}/grant-credits`,
+        });
+        expect(grant.statusCode).toBe(200);
+
+        const account = await adminPool.query<{ id: string }>(
+          `
+            SELECT id::text AS id
+            FROM billing_accounts
+            WHERE tenant_id = $1::uuid
+          `,
+          [targetUser.currentTenant.id],
+        );
+        const usageEventId = randomUUID();
+        await adminPool.query(
+          `
+            INSERT INTO usage_events (
+              id,
+              tenant_id,
+              event_type,
+              modality,
+              status,
+              idempotency_key,
+              billable_cents,
+              metadata
+            )
+            VALUES (
+              $1::uuid,
+              $2::uuid,
+              'image_generation',
+              'image',
+              'settled',
+              $3,
+              120,
+              '{}'::jsonb
+            )
+          `,
+          [usageEventId, targetUser.currentTenant.id, `usage:${randomUUID()}`],
+        );
+        await adminPool.query(
+          `
+            INSERT INTO billing_ledger (
+              tenant_id,
+              billing_account_id,
+              usage_event_id,
+              entry_type,
+              amount_cents,
+              currency,
+              idempotency_key,
+              description,
+              metadata
+            )
+            VALUES (
+              $1::uuid,
+              $2::uuid,
+              $3::uuid,
+              'settle',
+              120,
+              'USD',
+              $4,
+              'test usage settlement',
+              '{}'::jsonb
+            )
+          `,
+          [targetUser.currentTenant.id, account.rows[0]?.id, usageEventId, `settle:${randomUUID()}`],
+        );
+
+        const search = await api.inject({
+          headers: {
+            authorization: `Bearer ${adminLogin.json().accessToken}`,
+          },
+          method: "GET",
+          url: "/api/v2/admin/users?query=audited-creator",
+        });
+        expect(search.statusCode).toBe(200);
+        const user = search.json().items[0];
+        expect(user.lastLoginAt).toBeTruthy();
+        expect(user.memberships[0]).toMatchObject({
+          balanceCredits: 300,
+          availableCredits: 300,
+          usedCredits: 120,
+        });
+        expect(user.memberships[0].nextCreditExpiresAt).toBeTruthy();
+        expect(user.memberships[0].creditGrantCount).toBeGreaterThan(0);
+        expect(user.memberships[0].usageAudit).toMatchObject({
+          settledEvents: 1,
+          settledCredits: 120,
+        });
+
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("system admin can promote and demote admin accounts", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({ connectionString: await createAppDatabaseUrl() });
+        const api = buildTestApp(appPool);
+
+        const adminUser = await registerUser(api, {
+          email: adminEmail,
+          tenantName: "Ops Tenant",
+        });
+        const targetUser = await registerUser(api, {
+          email: "future-admin@example.com",
+          tenantName: "Creator Tenant",
+        });
+        const adminLogin = await api.inject({
+          method: "POST",
+          payload: {
+            email: adminEmail,
+            password: "StrongPass123!",
+            tenantId: adminUser.currentTenant.id,
+          },
+          url: "/api/v2/auth/login",
+        });
+        expect(adminLogin.statusCode).toBe(200);
+
+        const promote = await api.inject({
+          headers: {
+            authorization: `Bearer ${adminLogin.json().accessToken}`,
+          },
+          method: "PATCH",
+          payload: {
+            roleKey: "tenant_admin",
+            tenantId: targetUser.currentTenant.id,
+          },
+          url: `/api/v2/admin/users/${targetUser.user.id}/role`,
+        });
+        expect(promote.statusCode).toBe(200);
+        expect(promote.json()).toMatchObject({
+          roleKey: "tenant_admin",
+          targetUserId: targetUser.user.id,
+          tenantId: targetUser.currentTenant.id,
+        });
+
+        const row = await adminPool.query<{ role_key: string }>(
+          `
+            SELECT role_key
+            FROM tenant_memberships
+            WHERE tenant_id = $1::uuid
+              AND user_id = $2::uuid
+          `,
+          [targetUser.currentTenant.id, targetUser.user.id],
+        );
+        expect(row.rows[0]?.role_key).toBe("tenant_admin");
+
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("lists redeem codes and redemption users", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({ connectionString: await createAppDatabaseUrl() });
+        const api = buildTestApp(appPool);
+
+        const adminUser = await registerUser(api, {
+          email: adminEmail,
+          tenantName: "Ops Tenant",
+        });
+        const targetUser = await registerUser(api, {
+          displayName: "Redeem User",
+          email: "redeem-user@example.com",
+          tenantName: "Redeem Tenant",
+        });
+        const adminLogin = await api.inject({
+          method: "POST",
+          payload: {
+            email: adminEmail,
+            password: "StrongPass123!",
+            tenantId: adminUser.currentTenant.id,
+          },
+          url: "/api/v2/auth/login",
+        });
+        expect(adminLogin.statusCode).toBe(200);
+
+        const createRedeemCode = await api.inject({
+          headers: {
+            authorization: `Bearer ${adminLogin.json().accessToken}`,
+          },
+          method: "POST",
+          payload: {
+            credits: 150,
+            maxRedemptions: 1,
+            reason: "ops code",
+            tenantId: targetUser.currentTenant.id,
+          },
+          url: "/api/v2/admin/redeem-codes",
+        });
+        expect(createRedeemCode.statusCode).toBe(201);
+
+        const redeem = await api.inject({
+          headers: {
+            authorization: `Bearer ${targetUser.accessToken}`,
+          },
+          method: "POST",
+          payload: {
+            code: createRedeemCode.json().code,
+          },
+          url: "/api/v2/billing/redeem",
+        });
+        expect(redeem.statusCode).toBe(201);
+
+        const list = await api.inject({
+          headers: {
+            authorization: `Bearer ${adminLogin.json().accessToken}`,
+          },
+          method: "GET",
+          url: "/api/v2/admin/redeem-codes",
+        });
+        expect(list.statusCode).toBe(200);
+        expect(list.json().items[0]).toMatchObject({
+          createdByEmail: adminEmail,
+          credits: 150,
+          maxRedemptions: 1,
+          redeemedCount: 1,
+          status: "active",
+        });
+
+        const redemptions = await api.inject({
+          headers: {
+            authorization: `Bearer ${adminLogin.json().accessToken}`,
+          },
+          method: "GET",
+          url: `/api/v2/admin/redeem-codes/${createRedeemCode.json().id}/redemptions`,
+        });
+        expect(redemptions.statusCode).toBe(200);
+        expect(redemptions.json().items[0]).toMatchObject({
+          billingLedgerId: redeem.json().ledgerEntry.id,
+          userDisplayName: "Redeem User",
+          userEmail: "redeem-user@example.com",
+        });
+
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("manages announcements", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({ connectionString: await createAppDatabaseUrl() });
+        const api = buildTestApp(appPool);
+
+        const adminUser = await registerUser(api, {
+          email: adminEmail,
+          tenantName: "Ops Tenant",
+        });
+        const adminLogin = await api.inject({
+          method: "POST",
+          payload: {
+            email: adminEmail,
+            password: "StrongPass123!",
+            tenantId: adminUser.currentTenant.id,
+          },
+          url: "/api/v2/auth/login",
+        });
+        expect(adminLogin.statusCode).toBe(200);
+
+        const create = await api.inject({
+          headers: {
+            authorization: `Bearer ${adminLogin.json().accessToken}`,
+          },
+          method: "POST",
+          payload: {
+            audience: "all",
+            body: "New image model line is available.",
+            imageUrl: "https://example.com/notice.png",
+            linkUrl: "https://example.com/changelog",
+            status: "published",
+            title: "Model update",
+          },
+          url: "/api/v2/admin/announcements",
+        });
+        expect(create.statusCode).toBe(201);
+        expect(create.json()).toMatchObject({
+          audience: "all",
+          body: "New image model line is available.",
+          imageUrl: "https://example.com/notice.png",
+          linkUrl: "https://example.com/changelog",
+          status: "published",
+          title: "Model update",
+        });
+
+        const patch = await api.inject({
+          headers: {
+            authorization: `Bearer ${adminLogin.json().accessToken}`,
+          },
+          method: "PATCH",
+          payload: {
+            status: "archived",
+            title: "Archived model update",
+          },
+          url: `/api/v2/admin/announcements/${create.json().id}`,
+        });
+        expect(patch.statusCode).toBe(200);
+        expect(patch.json()).toMatchObject({
+          status: "archived",
+          title: "Archived model update",
+        });
+
+        const list = await api.inject({
+          headers: {
+            authorization: `Bearer ${adminLogin.json().accessToken}`,
+          },
+          method: "GET",
+          url: "/api/v2/admin/announcements",
+        });
+        expect(list.statusCode).toBe(200);
+        expect(list.json().items[0]).toMatchObject({
+          createdByEmail: adminEmail,
+          status: "archived",
+          title: "Archived model update",
+        });
+
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("returns ai route reliability stats", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({ connectionString: await createAppDatabaseUrl() });
+        const api = buildTestApp(appPool);
+
+        const adminUser = await registerUser(api, {
+          email: adminEmail,
+          tenantName: "Ops Tenant",
+        });
+        const route = await createTestAiRoute(adminPool, {
+          routeLabel: "线路一",
+          tenantId: adminUser.currentTenant.id,
+        });
+        await adminPool.query(
+          `
+            INSERT INTO ai_call_logs (
+              tenant_id,
+              provider_id,
+              model_id,
+              route_id,
+              status,
+              latency_ms,
+              error,
+              created_at
+            )
+            VALUES
+              ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'succeeded', 1000, NULL, now()),
+              ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'failed', 2000, '{"message":"timeout"}'::jsonb, now())
+          `,
+          [adminUser.currentTenant.id, route.providerId, route.modelId, route.routeId],
+        );
+        const adminLogin = await api.inject({
+          method: "POST",
+          payload: {
+            email: adminEmail,
+            password: "StrongPass123!",
+            tenantId: adminUser.currentTenant.id,
+          },
+          url: "/api/v2/auth/login",
+        });
+        expect(adminLogin.statusCode).toBe(200);
+
+        const stats = await api.inject({
+          headers: {
+            authorization: `Bearer ${adminLogin.json().accessToken}`,
+          },
+          method: "GET",
+          url: "/api/v2/admin/ai/route-stats?windowMinutes=30",
+        });
+        expect(stats.statusCode).toBe(200);
+        expect(stats.json().summary).toMatchObject({
+          averageLatencyMs: 1500,
+          successRate: 50,
+          totalCalls: 2,
+        });
+        expect(stats.json().routes[0]).toMatchObject({
+          averageLatencyMs: 1500,
+          routeLabel: "线路一",
+          successfulCalls: 1,
+          totalCalls: 2,
+        });
 
         await api.close();
       } finally {

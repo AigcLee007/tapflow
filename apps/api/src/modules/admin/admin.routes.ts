@@ -8,17 +8,33 @@ import {
 } from "../../http/auth-middleware.js";
 import {
   type AdminCreateRedeemCodeInput,
+  type AdminAiRouteStatsQuery,
+  type AdminAnnouncementParams,
+  type AdminAnnouncementsQuery,
+  type AdminCreateAnnouncementInput,
   type AdminGrantCreditsInput,
+  type AdminRedeemCodeParams,
+  type AdminRedeemCodesQuery,
   type AdminResetPasswordInput,
   type AdminUpdateMembershipTierInput,
+  type AdminUpdateAnnouncementInput,
+  type AdminUpdateUserRoleInput,
   type AdminUserParams,
   type AdminUsersQuery,
   type AdminWorkflowRunParams,
   type AdminWorkflowRunsQuery,
+  adminAiRouteStatsQuerySchema,
+  adminAnnouncementParamsSchema,
+  adminAnnouncementsQuerySchema,
+  adminCreateAnnouncementSchema,
   adminCreateRedeemCodeSchema,
   adminGrantCreditsSchema,
+  adminRedeemCodeParamsSchema,
+  adminRedeemCodesQuerySchema,
   adminResetPasswordSchema,
   adminUpdateMembershipTierSchema,
+  adminUpdateAnnouncementSchema,
+  adminUpdateUserRoleSchema,
   adminUserParamsSchema,
   adminUsersQuerySchema,
   adminWorkflowRunParamsSchema,
@@ -173,6 +189,43 @@ export function registerAdminRoutes(app: FastifyInstance): void {
     },
   );
 
+  app.patch(
+    "/api/v2/admin/users/:userId/role",
+    {
+      preHandler: adminHandlers,
+    },
+    async (request, reply) => {
+      try {
+        const params = parseParams<AdminUserParams>(request, adminUserParamsSchema);
+        const body = parseBody<AdminUpdateUserRoleInput>(request, adminUpdateUserRoleSchema);
+        return reply.send(
+          await app.adminService.updateUserRole(request.ctx, {
+            roleKey: body.roleKey,
+            targetUserId: params.userId,
+            tenantId: body.tenantId,
+          }),
+        );
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.get(
+    "/api/v2/admin/redeem-codes",
+    {
+      preHandler: adminHandlers,
+    },
+    async (request, reply) => {
+      try {
+        const query = parseQuery<AdminRedeemCodesQuery>(request, adminRedeemCodesQuerySchema);
+        return reply.send(await app.adminService.listRedeemCodes(request.ctx, query));
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
   app.post(
     "/api/v2/admin/redeem-codes",
     {
@@ -182,6 +235,21 @@ export function registerAdminRoutes(app: FastifyInstance): void {
       try {
         const body = parseBody<AdminCreateRedeemCodeInput>(request, adminCreateRedeemCodeSchema);
         return reply.code(201).send(await app.adminService.createRedeemCode(request.ctx, body));
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.get(
+    "/api/v2/admin/redeem-codes/:codeId/redemptions",
+    {
+      preHandler: adminHandlers,
+    },
+    async (request, reply) => {
+      try {
+        const params = parseParams<AdminRedeemCodeParams>(request, adminRedeemCodeParamsSchema);
+        return reply.send(await app.adminService.listRedeemCodeRedemptions(request.ctx, params.codeId));
       } catch (error) {
         return handleRouteError(error, request, reply);
       }
@@ -203,6 +271,67 @@ export function registerAdminRoutes(app: FastifyInstance): void {
             userId: params.userId,
           }),
         );
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.get(
+    "/api/v2/admin/announcements",
+    {
+      preHandler: adminHandlers,
+    },
+    async (request, reply) => {
+      try {
+        const query = parseQuery<AdminAnnouncementsQuery>(request, adminAnnouncementsQuerySchema);
+        return reply.send(await app.adminService.listAnnouncements(request.ctx, query));
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.post(
+    "/api/v2/admin/announcements",
+    {
+      preHandler: adminHandlers,
+    },
+    async (request, reply) => {
+      try {
+        const body = parseBody<AdminCreateAnnouncementInput>(request, adminCreateAnnouncementSchema);
+        return reply.code(201).send(await app.adminService.createAnnouncement(request.ctx, body));
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.patch(
+    "/api/v2/admin/announcements/:announcementId",
+    {
+      preHandler: adminHandlers,
+    },
+    async (request, reply) => {
+      try {
+        const params = parseParams<AdminAnnouncementParams>(request, adminAnnouncementParamsSchema);
+        const body = parseBody<AdminUpdateAnnouncementInput>(request, adminUpdateAnnouncementSchema);
+        return reply.send(await app.adminService.updateAnnouncement(request.ctx, params.announcementId, body));
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.get(
+    "/api/v2/admin/ai/route-stats",
+    {
+      preHandler: adminHandlers,
+    },
+    async (request, reply) => {
+      try {
+        const query = parseQuery<AdminAiRouteStatsQuery>(request, adminAiRouteStatsQuerySchema);
+        return reply.send(await app.adminService.getAiRouteStats(request.ctx, query));
       } catch (error) {
         return handleRouteError(error, request, reply);
       }

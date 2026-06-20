@@ -1,21 +1,63 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { CreditCard, Loader2, Network, RefreshCw, Search, ShieldCheck, SlidersHorizontal, Users } from "lucide-react";
+import {
+  Activity,
+  Bell,
+  CreditCard,
+  ExternalLink,
+  KeyRound,
+  Loader2,
+  Megaphone,
+  Network,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+  SlidersHorizontal,
+  Users,
+} from "lucide-react";
 
+import {
+  ACCOUNT_AI_SETTINGS_ROUTE,
+  ACCOUNT_PROVIDER_SETTINGS_ROUTE,
+} from "../app/routes";
 import { canAccessOperationsConsole, resolveProductRole } from "../auth/productRoles";
 import { useAuth } from "../auth/useAuth";
 import {
+  createAdminAnnouncement,
   createAdminRedeemCode,
+  getAdminAiRouteStats,
   getAdminWorkflowRun,
   grantAdminCredits,
+  listAdminAnnouncements,
+  listAdminRedeemCodeRedemptions,
+  listAdminRedeemCodes,
   listAdminWorkflowRuns,
   resetAdminPassword,
   searchAdminUsers,
+  updateAdminAnnouncement,
   updateAdminMembershipTier,
+  updateAdminUserRole,
+  type AdminAiRouteStats,
+  type AdminAnnouncement,
+  type AdminRedeemCode,
+  type AdminRedeemCodeRedemption,
   type AdminUser,
   type AdminWorkflowRun,
   type AdminWorkflowRunDetail,
+  type AnnouncementAudience,
+  type AnnouncementStatus,
   type MembershipTier,
 } from "./adminApi";
+
+type OpsTab =
+  | "overview"
+  | "users"
+  | "admins"
+  | "credits"
+  | "announcements"
+  | "usage"
+  | "models"
+  | "providers"
+  | "monitor";
 
 const MEMBERSHIP_OPTIONS: Array<{ label: string; tier: MembershipTier }> = [
   { label: "普通用户", tier: "standard" },
@@ -31,28 +73,134 @@ const VALIDITY_OPTIONS = [
   { label: "长期", mode: "lifetime" as const },
 ];
 
-const OPS_MODULES = [
-  { description: "查看、搜索和定位所有创作者账号。", icon: Users, label: "用户管理", scope: "管理员" },
-  { description: "调整普通、白银、黄金、至尊会员等级。", icon: ShieldCheck, label: "会员管理", scope: "管理员" },
-  { description: "按 1 个月、3 个月、1 年或长期发放积分。", icon: CreditCard, label: "积分发放", scope: "管理员" },
-  { description: "查看生成消耗、退款和异常记录。", icon: Search, label: "用量审计", scope: "管理员" },
-  { description: "管理产品模型和线路，默认仅超级管理员。", icon: SlidersHorizontal, label: "模型线路管理", scope: "超级管理员" },
-  { description: "管理供应商连接和密钥，默认仅超级管理员。", icon: Network, label: "供应商连接管理", scope: "超级管理员" },
-  { description: "任命和移除管理员账号，仅超级管理员。", icon: ShieldCheck, label: "管理员账号管理", scope: "超级管理员" },
-] as const;
+const ROLE_OPTIONS = [
+  { label: "创作者", roleKey: "flow_developer" as const },
+  { label: "管理员", roleKey: "tenant_admin" as const },
+  { label: "超级管理员", roleKey: "system_admin" as const },
+];
 
-function formatDate(value: string | null): string {
+const TABS: Array<{
+  icon: React.ComponentType<{ size?: number }>;
+  id: OpsTab;
+  label: string;
+  superOnly?: boolean;
+}> = [
+  { icon: Activity, id: "overview", label: "总览" },
+  { icon: Users, id: "users", label: "用户管理" },
+  { icon: ShieldCheck, id: "admins", label: "管理员账号", superOnly: true },
+  { icon: CreditCard, id: "credits", label: "积分与兑换码" },
+  { icon: Megaphone, id: "announcements", label: "通知公告" },
+  { icon: Search, id: "usage", label: "用量审计" },
+  { icon: SlidersHorizontal, id: "models", label: "模型线路", superOnly: true },
+  { icon: Network, id: "providers", label: "供应商连接", superOnly: true },
+  { icon: Activity, id: "monitor", label: "系统监控" },
+];
+
+const inputClass =
+  "h-10 w-full rounded border border-white/10 bg-black/25 px-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-sky-300/50";
+const textareaClass =
+  "min-h-[96px] w-full rounded border border-white/10 bg-black/25 px-3 py-2 text-sm text-white outline-none placeholder:text-slate-500 focus:border-sky-300/50";
+const buttonClass =
+  "inline-flex h-10 items-center justify-center gap-2 rounded border border-white/10 bg-white/10 px-4 text-sm text-white hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50";
+
+function getTabFromHash(): OpsTab {
+  if (typeof window === "undefined") return "overview";
+  const hash = window.location.hash.replace("#", "") as OpsTab;
+  return TABS.some((tab) => tab.id === hash) ? hash : "overview";
+}
+
+function navigate(path: string) {
+  window.history.pushState(null, "", path);
+  window.dispatchEvent(new PopStateEvent("popstate"));
+}
+
+function formatDate(value?: string | null): string {
   if (!value) return "-";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString();
 }
 
-function JsonBlock({ value }: { value: unknown }) {
+function formatNumber(value?: number | null): string {
+  return Number(value ?? 0).toLocaleString();
+}
+
+function membershipLabel(value?: MembershipTier | null): string {
+  return MEMBERSHIP_OPTIONS.find((item) => item.tier === value)?.label ?? "普通用户";
+}
+
+function roleLabel(roleKey?: string | null): string {
+  if (roleKey === "system_admin") return "超级管理员";
+  if (roleKey === "tenant_admin") return "管理员";
+  return "创作者";
+}
+
+function productRoleLabel(role: ReturnType<typeof resolveProductRole>): string {
+  if (role === "super_admin") return "超级管理员";
+  if (role === "admin") return "管理员";
+  return "创作者";
+}
+
+function statusTone(status?: string | null) {
+  if (status === "active" || status === "published" || status === "succeeded" || status === "settled") {
+    return "border-emerald-300/20 bg-emerald-500/10 text-emerald-100";
+  }
+  if (status === "failed" || status === "archived" || status === "inactive") {
+    return "border-amber-300/20 bg-amber-500/10 text-amber-100";
+  }
+  return "border-white/10 bg-white/[0.06] text-slate-200";
+}
+
+function MetricCard({
+  label,
+  value,
+  hint,
+}: {
+  hint?: string;
+  label: string;
+  value: string | number;
+}) {
   return (
-    <pre className="overflow-x-auto rounded border border-white/10 bg-black/30 p-3 text-xs text-slate-300">
-      {JSON.stringify(value, null, 2)}
-    </pre>
+    <div className="rounded border border-white/10 bg-white/[0.04] p-4">
+      <div className="text-xs text-slate-500">{label}</div>
+      <div className="mt-2 text-2xl font-semibold text-white">{value}</div>
+      {hint ? <div className="mt-2 text-xs text-slate-400">{hint}</div> : null}
+    </div>
+  );
+}
+
+function SectionCard({
+  children,
+  title,
+  action,
+}: {
+  action?: React.ReactNode;
+  children: React.ReactNode;
+  title: string;
+}) {
+  return (
+    <section className="rounded border border-white/10 bg-white/[0.04] p-5">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-lg font-semibold text-white">{title}</h2>
+        {action}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function Field({
+  children,
+  label,
+}: {
+  children: React.ReactNode;
+  label: string;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1.5 block text-xs font-medium text-slate-400">{label}</span>
+      {children}
+    </label>
   );
 }
 
@@ -60,618 +208,962 @@ export function AdminPage() {
   const { permissions, roles, tenant } = useAuth();
   const productRole = resolveProductRole({ permissions, roles });
   const isAdmin = canAccessOperationsConsole(productRole);
+  const isSuperAdmin = productRole === "super_admin";
+
+  const [activeTab, setActiveTab] = useState<OpsTab>(() => getTabFromHash());
   const [query, setQuery] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
-  const [grantReason, setGrantReason] = useState("staging 测试点数");
-  const [grantCreditsValue, setGrantCreditsValue] = useState("1000");
-  const [grantTenantId, setGrantTenantId] = useState("");
-  const [grantValidity, setGrantValidity] = useState(VALIDITY_OPTIONS[1]);
-  const [grantMessage, setGrantMessage] = useState<string | null>(null);
-  const [membershipMessage, setMembershipMessage] = useState<string | null>(null);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
   const [membershipTier, setMembershipTier] = useState<MembershipTier>("standard");
+  const [roleKey, setRoleKey] = useState<"system_admin" | "tenant_admin" | "flow_developer">("flow_developer");
+  const [grantCreditsValue, setGrantCreditsValue] = useState("1000");
+  const [grantReason, setGrantReason] = useState("运营发放积分");
+  const [grantValidity, setGrantValidity] = useState(VALIDITY_OPTIONS[1]);
+
+  const [redeemCodes, setRedeemCodes] = useState<AdminRedeemCode[]>([]);
+  const [selectedRedeemCodeId, setSelectedRedeemCodeId] = useState<string | null>(null);
+  const [redemptions, setRedemptions] = useState<AdminRedeemCodeRedemption[]>([]);
   const [redeemCreditsValue, setRedeemCreditsValue] = useState("1000");
   const [redeemMaxRedemptions, setRedeemMaxRedemptions] = useState("1");
-  const [redeemTenantId, setRedeemTenantId] = useState("");
-  const [redeemReason, setRedeemReason] = useState("管理员创建测试兑换码");
-  const [redeemMessage, setRedeemMessage] = useState<string | null>(null);
-  const [passwordMessage, setPasswordMessage] = useState<string | null>(null);
+  const [redeemReason, setRedeemReason] = useState("运营兑换码");
+  const [lastGeneratedCode, setLastGeneratedCode] = useState("");
+
+  const [announcements, setAnnouncements] = useState<AdminAnnouncement[]>([]);
+  const [announcementForm, setAnnouncementForm] = useState({
+    audience: "all" as AnnouncementAudience,
+    body: "",
+    imageUrl: "",
+    linkUrl: "",
+    status: "draft" as AnnouncementStatus,
+    title: "",
+  });
+
   const [workflowRuns, setWorkflowRuns] = useState<AdminWorkflowRun[]>([]);
-  const [workflowStatusFilter, setWorkflowStatusFilter] = useState("");
-  const [workflowError, setWorkflowError] = useState<string | null>(null);
-  const [workflowLoading, setWorkflowLoading] = useState(false);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [selectedRunDetail, setSelectedRunDetail] = useState<AdminWorkflowRunDetail | null>(null);
-  const [selectedRunLoading, setSelectedRunLoading] = useState(false);
+  const [routeStats, setRouteStats] = useState<AdminAiRouteStats | null>(null);
+  const [loadingOps, setLoadingOps] = useState(false);
 
   const selectedUser = useMemo(
     () => users.find((user) => user.id === selectedUserId) ?? null,
     [selectedUserId, users],
   );
+  const selectedMembership = selectedUser?.memberships[0] ?? null;
+  const selectedRedeemCode = useMemo(
+    () => redeemCodes.find((code) => code.id === selectedRedeemCodeId) ?? null,
+    [redeemCodes, selectedRedeemCodeId],
+  );
+
+  const totals = useMemo(() => {
+    const memberships = users.flatMap((user) => user.memberships);
+    return {
+      admins: memberships.filter((membership) => membership.roleKey === "tenant_admin" || membership.roleKey === "system_admin").length,
+      availableCredits: memberships.reduce((sum, item) => sum + item.availableCredits, 0),
+      expiringUsers: memberships.filter((item) => item.nextCreditExpiresAt).length,
+      users: users.length,
+      usedCredits: memberships.reduce((sum, item) => sum + (item.usedCredits ?? 0), 0),
+    };
+  }, [users]);
 
   const loadUsers = useCallback(async () => {
-    if (!isAdmin) {
-      setUsers([]);
-      return;
-    }
-    setLoading(true);
-    setError(null);
+    if (!isAdmin) return;
+    setUsersLoading(true);
+    setError("");
     try {
-      const response = await searchAdminUsers(query);
+      const response = await searchAdminUsers(query, 50);
       setUsers(response.items);
       setSelectedUserId((current) => current ?? response.items[0]?.id ?? null);
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "用户列表加载失败。");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "用户列表加载失败");
     } finally {
-      setLoading(false);
+      setUsersLoading(false);
     }
   }, [isAdmin, query]);
 
-  const loadWorkflowRuns = useCallback(async () => {
-    if (!isAdmin) {
-      setWorkflowRuns([]);
-      return;
-    }
-    setWorkflowLoading(true);
-    setWorkflowError(null);
+  const loadOperationalData = useCallback(async () => {
+    if (!isAdmin) return;
+    setLoadingOps(true);
+    setError("");
     try {
-      const response = await listAdminWorkflowRuns({
-        limit: 20,
-        status: workflowStatusFilter || undefined,
-      });
-      setWorkflowRuns(response.items);
-      setSelectedRunId((current) => current ?? response.items[0]?.id ?? null);
-    } catch (loadError) {
-      setWorkflowError(loadError instanceof Error ? loadError.message : "任务列表加载失败。");
+      const [codes, notices, stats, runs] = await Promise.all([
+        listAdminRedeemCodes({ limit: 50 }),
+        listAdminAnnouncements({ limit: 50 }),
+        getAdminAiRouteStats({ windowMinutes: 30 }),
+        listAdminWorkflowRuns({ limit: 30 }),
+      ]);
+      setRedeemCodes(codes.items);
+      setSelectedRedeemCodeId((current) => current ?? codes.items[0]?.id ?? null);
+      setAnnouncements(notices.items);
+      setRouteStats(stats);
+      setWorkflowRuns(runs.items);
+      setSelectedRunId((current) => current ?? runs.items[0]?.id ?? null);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "运营数据加载失败");
     } finally {
-      setWorkflowLoading(false);
+      setLoadingOps(false);
     }
-  }, [isAdmin, workflowStatusFilter]);
+  }, [isAdmin]);
 
   useEffect(() => {
     void loadUsers();
   }, [loadUsers]);
 
   useEffect(() => {
-    void loadWorkflowRuns();
-  }, [loadWorkflowRuns]);
+    void loadOperationalData();
+  }, [loadOperationalData]);
 
   useEffect(() => {
-    if (!selectedRunId || !isAdmin) {
-      setSelectedRunDetail(null);
+    if (!selectedUser) return;
+    const membership = selectedUser.memberships[0] ?? null;
+    setMembershipTier(membership?.membershipTier ?? "standard");
+    setRoleKey(
+      membership?.roleKey === "system_admin" || membership?.roleKey === "tenant_admin"
+        ? membership.roleKey
+        : "flow_developer",
+    );
+  }, [selectedUser]);
+
+  useEffect(() => {
+    if (!selectedRedeemCodeId) {
+      setRedemptions([]);
       return;
     }
     let cancelled = false;
-    setSelectedRunLoading(true);
-    void getAdminWorkflowRun(selectedRunId)
-      .then((detail) => {
-        if (!cancelled) {
-          setSelectedRunDetail(detail);
-        }
+    void listAdminRedeemCodeRedemptions(selectedRedeemCodeId)
+      .then((response) => {
+        if (!cancelled) setRedemptions(response.items);
       })
-      .catch((detailError) => {
-        if (!cancelled) {
-          setWorkflowError(detailError instanceof Error ? detailError.message : "任务详情加载失败。");
-          setSelectedRunDetail(null);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setSelectedRunLoading(false);
-        }
+      .catch((cause) => {
+        if (!cancelled) setError(cause instanceof Error ? cause.message : "兑换记录加载失败");
       });
     return () => {
       cancelled = true;
     };
-  }, [isAdmin, selectedRunId]);
+  }, [selectedRedeemCodeId]);
 
   useEffect(() => {
-    if (selectedUser) {
-      setGrantTenantId(selectedUser.memberships[0]?.tenantId ?? tenant?.id ?? "");
-      setRedeemTenantId(selectedUser.memberships[0]?.tenantId ?? tenant?.id ?? "");
-      setMembershipTier(selectedUser.memberships[0]?.membershipTier ?? "standard");
+    if (!selectedRunId) {
+      setSelectedRunDetail(null);
+      return;
     }
-  }, [selectedUser, tenant?.id]);
+    let cancelled = false;
+    void getAdminWorkflowRun(selectedRunId)
+      .then((detail) => {
+        if (!cancelled) setSelectedRunDetail(detail);
+      })
+      .catch((cause) => {
+        if (!cancelled) setError(cause instanceof Error ? cause.message : "用量详情加载失败");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedRunId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.history.replaceState(null, "", `${window.location.pathname}#${activeTab}`);
+  }, [activeTab]);
+
+  useEffect(() => {
+    const currentTab = TABS.find((tab) => tab.id === activeTab);
+    if (currentTab?.superOnly && !isSuperAdmin) {
+      setActiveTab("overview");
+    }
+  }, [activeTab, isSuperAdmin]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const syncTabFromLocation = () => setActiveTab(getTabFromHash());
+    window.addEventListener("popstate", syncTabFromLocation);
+    window.addEventListener("hashchange", syncTabFromLocation);
+    return () => {
+      window.removeEventListener("popstate", syncTabFromLocation);
+      window.removeEventListener("hashchange", syncTabFromLocation);
+    };
+  }, []);
 
   if (!isAdmin) {
     return (
       <section className="rounded border border-amber-400/20 bg-amber-400/10 p-5 text-sm text-amber-100">
-        当前管理后台仅对配置在 <code>ADMIN_EMAILS</code> 中的邮箱开放。
+        当前账号没有运营后台权限。
       </section>
     );
   }
 
-  async function handleGrantCredits() {
-    if (!selectedUser || !grantTenantId.trim()) return;
-    setGrantMessage(null);
+  async function refreshAll() {
+    setMessage("");
+    await Promise.all([loadUsers(), loadOperationalData()]);
+  }
+
+  async function handleMembershipSave() {
+    if (!selectedUser || !selectedMembership) return;
+    setMessage("");
+    setError("");
     try {
-      const response = await grantAdminCredits({
-        credits: Number.parseInt(grantCreditsValue, 10) || 0,
-        reason: grantReason,
+      await updateAdminMembershipTier({
         targetUserId: selectedUser.id,
-        tenantId: grantTenantId.trim(),
-        validityMode: grantValidity.mode,
-        validityMonths: "months" in grantValidity ? grantValidity.months : undefined,
+        tenantId: selectedMembership.tenantId,
+        tier: membershipTier,
       });
-      setGrantMessage(
-        `发放成功。当前可用 ${response.account.availableCredits} 点，已占用 ${response.account.reservedCredits} 点。`,
-      );
+      setMessage("会员等级已更新");
       await loadUsers();
-    } catch (grantError) {
-      setGrantMessage(grantError instanceof Error ? grantError.message : "发放点数失败。");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "会员等级更新失败");
     }
   }
 
-  async function handleUpdateMembershipTier() {
-    if (!selectedUser) return;
-    setMembershipMessage(null);
+  async function handleRoleSave() {
+    if (!selectedUser || !selectedMembership) return;
+    setMessage("");
+    setError("");
     try {
-      const response = await updateAdminMembershipTier({
+      await updateAdminUserRole({
+        roleKey,
         targetUserId: selectedUser.id,
-        tenantId: grantTenantId.trim() || undefined,
-        tier: membershipTier,
+        tenantId: selectedMembership.tenantId,
       });
-      setMembershipMessage(`会员等级已更新：${response.membershipTier}`);
+      setMessage("用户身份已更新");
       await loadUsers();
-    } catch (membershipError) {
-      setMembershipMessage(membershipError instanceof Error ? membershipError.message : "会员等级更新失败。");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "用户身份更新失败");
+    }
+  }
+
+  async function handleGrantCredits() {
+    if (!selectedUser || !selectedMembership) return;
+    setMessage("");
+    setError("");
+    try {
+      await grantAdminCredits({
+        credits: Number.parseInt(grantCreditsValue, 10) || 0,
+        reason: grantReason,
+        targetUserId: selectedUser.id,
+        tenantId: selectedMembership.tenantId,
+        validityMode: grantValidity.mode,
+        validityMonths: "months" in grantValidity ? grantValidity.months : undefined,
+      });
+      setMessage("积分已发放");
+      await Promise.all([loadUsers(), loadOperationalData()]);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "积分发放失败");
     }
   }
 
   async function handleCreateRedeemCode() {
-    setRedeemMessage(null);
+    const tenantIdForCode = selectedMembership?.tenantId ?? tenant?.id;
+    if (!tenantIdForCode) return;
+    setMessage("");
+    setError("");
     try {
       const response = await createAdminRedeemCode({
         credits: Number.parseInt(redeemCreditsValue, 10) || 0,
         maxRedemptions: Number.parseInt(redeemMaxRedemptions, 10) || 1,
         reason: redeemReason,
-        tenantId: redeemTenantId.trim() || undefined,
+        tenantId: tenantIdForCode,
       });
-      setRedeemMessage(`兑换码已创建，请及时复制：${response.code}`);
-    } catch (redeemError) {
-      setRedeemMessage(redeemError instanceof Error ? redeemError.message : "创建兑换码失败。");
+      setLastGeneratedCode(response.code);
+      setMessage("兑换码已生成");
+      await loadOperationalData();
+      setSelectedRedeemCodeId(response.id);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "兑换码创建失败");
+    }
+  }
+
+  async function handleCreateAnnouncement() {
+    if (!announcementForm.title.trim() || !announcementForm.body.trim()) return;
+    setMessage("");
+    setError("");
+    try {
+      await createAdminAnnouncement({
+        audience: announcementForm.audience,
+        body: announcementForm.body,
+        imageUrl: announcementForm.imageUrl.trim() || null,
+        linkUrl: announcementForm.linkUrl.trim() || null,
+        status: announcementForm.status,
+        title: announcementForm.title,
+      });
+      setAnnouncementForm({
+        audience: "all",
+        body: "",
+        imageUrl: "",
+        linkUrl: "",
+        status: "draft",
+        title: "",
+      });
+      setMessage("通知公告已保存");
+      await loadOperationalData();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "通知公告保存失败");
+    }
+  }
+
+  async function handleArchiveAnnouncement(announcement: AdminAnnouncement) {
+    setMessage("");
+    setError("");
+    try {
+      await updateAdminAnnouncement(announcement.id, { status: "archived" });
+      setMessage("通知公告已归档");
+      await loadOperationalData();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "通知公告更新失败");
     }
   }
 
   async function handleResetPassword() {
     if (!selectedUser) return;
-    setPasswordMessage(null);
+    setMessage("");
+    setError("");
     try {
       const response = await resetAdminPassword({ userId: selectedUser.id });
-      setPasswordMessage(`已为 ${response.user.email} 生成一次性临时密码：${response.passwordShownOnce}`);
-    } catch (resetError) {
-      setPasswordMessage(resetError instanceof Error ? resetError.message : "重置密码失败。");
+      setMessage(`临时密码：${response.passwordShownOnce}`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "重置密码失败");
     }
   }
 
-  const topError = error ?? workflowError;
-  const selectedRunError = selectedRunDetail?.workflowRun.errorJson;
+  const visibleTabs = TABS.filter((tab) => !tab.superOnly || isSuperAdmin);
 
   return (
     <div className="space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="text-xs uppercase tracking-[0.24em] text-rose-300">管理后台</div>
+          <div className="text-xs uppercase tracking-[0.24em] text-cyan-300">运营后台</div>
           <h1 className="mt-2 text-2xl font-semibold text-white">运营管理台</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
-            你可以在这里搜索用户、查看余额、发放测试点数、创建兑换码、重置密码，以及排查最近失败的工作流任务。
+            当前身份、用户积分、兑换码、公告、用量审计和模型线路健康都集中在这里。
           </p>
         </div>
-        <div className="flex gap-2">
-          <button
-            className="inline-flex h-10 items-center gap-2 rounded border border-white/10 bg-white/10 px-4 text-sm text-white hover:bg-white/15"
-            onClick={() => {
-              void Promise.all([loadUsers(), loadWorkflowRuns()]);
-            }}
-            type="button"
-          >
-            <RefreshCw size={15} />
+        <div className="flex flex-wrap gap-2">
+          <button className={buttonClass} onClick={() => void refreshAll()} type="button">
+            {loadingOps || usersLoading ? <Loader2 className="animate-spin" size={15} /> : <RefreshCw size={15} />}
             刷新
           </button>
         </div>
       </header>
 
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        {OPS_MODULES.map((module) => {
-          const Icon = module.icon;
-          return (
-            <div className="rounded border border-white/10 bg-white/[0.04] p-4" key={module.label}>
-              <div className="flex items-start gap-3">
-                <span className="grid h-9 w-9 shrink-0 place-items-center rounded border border-white/10 bg-white/[0.06] text-slate-200">
-                  <Icon size={17} />
-                </span>
-                <div className="min-w-0">
-                  <div className="font-medium text-white">{module.label}</div>
-                  <div className="mt-1 text-xs text-cyan-200">{module.scope}</div>
-                  <p className="mt-2 text-xs leading-5 text-slate-400">{module.description}</p>
-                </div>
-              </div>
-            </div>
-          );
-        })}
+      <section className="grid gap-3 lg:grid-cols-[minmax(220px,0.7fr)_minmax(0,1.3fr)]">
+        <div className="rounded border border-white/10 bg-white/[0.04] p-4">
+          <div className="text-sm font-medium text-white">当前身份</div>
+          <div className="mt-3 text-2xl font-semibold text-white">{productRoleLabel(productRole)}</div>
+          <div className="mt-2 text-sm leading-6 text-slate-400">
+            {productRole === "super_admin"
+              ? roles.includes("system_admin")
+                ? "来源：system_admin 角色。拥有所有运营和系统配置权限。"
+                : "来源：ADMIN_EMAILS 启动超级管理员。建议上线后再分配正式管理员账号。"
+              : "来源：admin:system 权限。可查看用户、积分、公告和审计。"}
+          </div>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <MetricCard label="用户数" value={totals.users} />
+          <MetricCard label="管理员数" value={totals.admins} />
+          <MetricCard label="可用积分" value={formatNumber(totals.availableCredits)} />
+          <MetricCard label="线路成功率" value={`${routeStats?.summary.successRate ?? 0}%`} hint="最近30分钟" />
+        </div>
       </section>
 
-      {topError ? (
-        <div className="rounded border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
-          {topError}
-        </div>
-      ) : null}
+      {error ? <div className="rounded border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">{error}</div> : null}
+      {message ? <div className="rounded border border-emerald-400/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">{message}</div> : null}
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(320px,0.9fr)_minmax(0,1.1fr)]">
-        <section className="space-y-4 rounded border border-white/10 bg-white/[0.04] p-5">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative min-w-[240px] flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={15} />
-              <input
-                className="h-10 w-full rounded border border-white/10 bg-black/25 pl-9 pr-3 text-sm text-white outline-none ring-0 placeholder:text-slate-500"
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="搜索邮箱或显示名称"
-                value={query}
-              />
-            </div>
+      <nav className="flex gap-2 overflow-x-auto rounded border border-white/10 bg-white/[0.03] p-2">
+        {visibleTabs.map((tab) => {
+          const Icon = tab.icon;
+          const active = activeTab === tab.id;
+          return (
             <button
-              className="inline-flex h-10 items-center gap-2 rounded border border-white/10 bg-white/10 px-4 text-sm text-white hover:bg-white/15"
-              onClick={() => void loadUsers()}
+              className={`inline-flex h-10 shrink-0 items-center gap-2 rounded px-3 text-sm transition ${
+                active ? "bg-white text-slate-950" : "text-slate-300 hover:bg-white/[0.08] hover:text-white"
+              }`}
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
               type="button"
             >
-              {loading ? <Loader2 className="animate-spin" size={15} /> : <Search size={15} />}
-              搜索
+              <Icon size={15} />
+              {tab.label}
             </button>
-          </div>
+          );
+        })}
+      </nav>
 
+      {activeTab === "overview" ? renderOverview() : null}
+      {activeTab === "users" ? renderUsers() : null}
+      {activeTab === "admins" ? renderAdmins() : null}
+      {activeTab === "credits" ? renderCredits() : null}
+      {activeTab === "announcements" ? renderAnnouncements() : null}
+      {activeTab === "usage" ? renderUsage() : null}
+      {activeTab === "models" ? renderModelRoutes() : null}
+      {activeTab === "providers" ? renderProviders() : null}
+      {activeTab === "monitor" ? renderMonitor() : null}
+    </div>
+  );
+
+  function renderOverview() {
+    return (
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(340px,0.9fr)]">
+        <SectionCard title="运营概览">
+          <div className="grid gap-3 md:grid-cols-3">
+            <MetricCard label="已使用积分" value={formatNumber(totals.usedCredits)} />
+            <MetricCard label="有积分到期的用户" value={totals.expiringUsers} />
+            <MetricCard label="兑换码" value={redeemCodes.length} />
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            {routeStats?.routes.slice(0, 4).map((route) => (
+              <div className="rounded border border-white/10 bg-black/20 p-4" key={route.routeId ?? route.routeKey ?? "unknown"}>
+                <div className="font-medium text-white">{route.modelDisplayName || "模型"} {route.routeLabel || "线路"}</div>
+                <div className="mt-2 text-sm text-slate-400">
+                  成功率 {route.successRate}% · {route.successfulCalls}/{route.totalCalls} · 平均 {route.averageLatencyMs ?? "-"} ms
+                </div>
+              </div>
+            ))}
+            {!routeStats?.routes.length ? (
+              <div className="rounded border border-dashed border-white/10 p-5 text-sm text-slate-400">
+                最近30分钟还没有模型线路调用记录。
+              </div>
+            ) : null}
+          </div>
+        </SectionCard>
+        <SectionCard title="最近公告">
+          <div className="space-y-2">
+            {announcements.slice(0, 5).map((announcement) => (
+              <div className="rounded border border-white/10 bg-black/20 px-4 py-3" key={announcement.id}>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="font-medium text-white">{announcement.title}</div>
+                  <span className={`rounded-full border px-2 py-0.5 text-xs ${statusTone(announcement.status)}`}>
+                    {announcement.status}
+                  </span>
+                </div>
+                <div className="mt-1 text-xs text-slate-400">{formatDate(announcement.updatedAt)}</div>
+              </div>
+            ))}
+            {!announcements.length ? <div className="text-sm text-slate-400">还没有通知公告。</div> : null}
+          </div>
+        </SectionCard>
+      </div>
+    );
+  }
+
+  function renderUsers() {
+    return (
+      <div className="grid gap-4 xl:grid-cols-[minmax(360px,0.95fr)_minmax(0,1.05fr)]">
+        <SectionCard
+          title="用户管理"
+          action={
+            <div className="flex gap-2">
+              <div className="relative min-w-[240px]">
+                <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={15} />
+                <input
+                  className={`${inputClass} pl-9`}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="搜索邮箱或名称"
+                  value={query}
+                />
+              </div>
+              <button className={buttonClass} onClick={() => void loadUsers()} type="button">
+                {usersLoading ? <Loader2 className="animate-spin" size={15} /> : <Search size={15} />}
+                搜索
+              </button>
+            </div>
+          }
+        >
           <div className="space-y-2">
             {users.map((user) => {
+              const membership = user.memberships[0];
               const active = user.id === selectedUserId;
               return (
                 <button
                   className={`w-full rounded border px-4 py-3 text-left transition ${
-                    active
-                      ? "border-sky-300/30 bg-sky-400/10"
-                      : "border-white/10 bg-black/20 hover:border-white/20 hover:bg-white/[0.05]"
+                    active ? "border-sky-300/40 bg-sky-500/10" : "border-white/10 bg-black/20 hover:bg-white/[0.05]"
                   }`}
                   key={user.id}
                   onClick={() => setSelectedUserId(user.id)}
                   type="button"
                 >
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <div className="font-medium text-white">{user.displayName || user.email}</div>
-                      <div className="text-xs text-slate-400">{user.email}</div>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="truncate font-medium text-white">{user.displayName || user.email}</div>
+                      <div className="truncate text-xs text-slate-400">{user.email}</div>
+                      <div className="mt-2 text-xs text-slate-500">最近登录 {formatDate(user.lastLoginAt)}</div>
                     </div>
-                    <div className="text-right text-xs text-slate-400">
-                      <div>{user.status}</div>
-                      <div>{user.memberships.length} 个工作区</div>
+                    <div className="text-right text-xs text-slate-300">
+                      <div>{roleLabel(membership?.roleKey)}</div>
+                      <div className="mt-1">{formatNumber(membership?.availableCredits)} 点</div>
                     </div>
                   </div>
                 </button>
               );
             })}
-            {!loading && users.length === 0 ? (
-              <div className="rounded border border-dashed border-white/10 px-4 py-6 text-sm text-slate-400">
-                当前搜索条件下没有匹配用户。
-              </div>
-            ) : null}
+            {!usersLoading && users.length === 0 ? <div className="text-sm text-slate-400">没有匹配用户。</div> : null}
           </div>
-        </section>
-
-        <section className="space-y-4">
-          <div className="rounded border border-white/10 bg-white/[0.04] p-5">
-            <h2 className="text-lg font-semibold text-white">已选用户</h2>
-            {selectedUser ? (
-              <div className="mt-4 space-y-4">
-                <div className="grid gap-3 md:grid-cols-2">
-                  <div className="rounded border border-white/10 bg-black/20 p-4 text-sm text-slate-200">
-                    <div className="text-xs uppercase tracking-[0.18em] text-slate-500">邮箱</div>
-                    <div className="mt-2 break-all">{selectedUser.email}</div>
-                  </div>
-                  <div className="rounded border border-white/10 bg-black/20 p-4 text-sm text-slate-200">
-                    <div className="text-xs uppercase tracking-[0.18em] text-slate-500">状态</div>
-                    <div className="mt-2">{selectedUser.status}</div>
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  {selectedUser.memberships.map((membership) => (
-                    <div className="rounded border border-white/10 bg-black/20 p-4" key={membership.tenantId}>
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <div className="font-medium text-white">{membership.tenantName}</div>
-                          <div className="mt-1 text-xs text-slate-400">{membership.tenantId}</div>
-                        </div>
-                        <div className="grid grid-cols-3 gap-3 text-right text-sm text-slate-200">
-                          <div>
-                            <div className="text-xs uppercase tracking-[0.16em] text-slate-500">余额</div>
-                            <div className="mt-1">{membership.balanceCredits} 点</div>
-                          </div>
-                          <div>
-                            <div className="text-xs uppercase tracking-[0.16em] text-slate-500">已占用</div>
-                            <div className="mt-1">{membership.reservedCredits} 点</div>
-                          </div>
-                          <div>
-                            <div className="text-xs uppercase tracking-[0.16em] text-slate-500">可用</div>
-                            <div className="mt-1">{membership.availableCredits} 点</div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="grid gap-4 xl:grid-cols-2">
-                  <div className="rounded border border-white/10 bg-black/20 p-4">
-                    <h3 className="font-medium text-white">发放测试点数</h3>
-                    <div className="mt-3 space-y-3">
-                      <div className="rounded border border-white/10 bg-black/20 p-3">
-                        <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Membership</div>
-                        <div className="mt-3 grid grid-cols-2 gap-2">
-                          {MEMBERSHIP_OPTIONS.map((option) => (
-                            <button
-                              className={`h-9 rounded border px-3 text-xs ${
-                                membershipTier === option.tier
-                                  ? "border-sky-300/40 bg-sky-500/15 text-sky-100"
-                                  : "border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]"
-                              }`}
-                              key={option.tier}
-                              onClick={() => setMembershipTier(option.tier)}
-                              type="button"
-                            >
-                              {option.label}
-                            </button>
-                          ))}
-                        </div>
-                        <button
-                          className="mt-3 inline-flex h-9 items-center justify-center rounded border border-sky-300/25 bg-sky-500/10 px-3 text-xs text-sky-100 hover:bg-sky-500/20"
-                          onClick={() => void handleUpdateMembershipTier()}
-                          type="button"
-                        >
-                          保存会员等级
-                        </button>
-                        {membershipMessage ? <div className="mt-2 text-xs text-slate-300">{membershipMessage}</div> : null}
-                      </div>
-                      <input
-                        className="h-10 w-full rounded border border-white/10 bg-black/25 px-3 text-sm text-white"
-                        onChange={(event) => setGrantTenantId(event.target.value)}
-                        placeholder="工作区 ID"
-                        value={grantTenantId}
-                      />
-                      <input
-                        className="h-10 w-full rounded border border-white/10 bg-black/25 px-3 text-sm text-white"
-                        onChange={(event) => setGrantCreditsValue(event.target.value)}
-                        placeholder="点数"
-                        value={grantCreditsValue}
-                      />
-                      <input
-                        className="h-10 w-full rounded border border-white/10 bg-black/25 px-3 text-sm text-white"
-                        onChange={(event) => setGrantReason(event.target.value)}
-                        placeholder="原因"
-                        value={grantReason}
-                      />
-                      <div>
-                        <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Credit validity</div>
-                        <div className="grid grid-cols-4 gap-2">
-                          {VALIDITY_OPTIONS.map((option) => (
-                            <button
-                              className={`h-9 rounded border px-2 text-xs ${
-                                grantValidity.label === option.label
-                                  ? "border-emerald-300/40 bg-emerald-500/15 text-emerald-100"
-                                  : "border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]"
-                              }`}
-                              key={option.label}
-                              onClick={() => setGrantValidity(option)}
-                              type="button"
-                            >
-                              {option.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      <button
-                        className="inline-flex h-10 items-center justify-center rounded border border-emerald-300/25 bg-emerald-500/10 px-4 text-sm text-emerald-100 hover:bg-emerald-500/20"
-                        onClick={() => void handleGrantCredits()}
-                        type="button"
-                      >
-                        发放点数
-                      </button>
-                      {grantMessage ? <div className="text-sm text-slate-300">{grantMessage}</div> : null}
-                    </div>
-                  </div>
-
-                  <div className="rounded border border-white/10 bg-black/20 p-4">
-                    <h3 className="font-medium text-white">重置密码</h3>
-                    <p className="mt-2 text-sm text-slate-400">
-                      这会生成一个临时密码，并在需要时自动激活用户、标记邮箱已验证。请仅在确认身份后执行。
-                    </p>
-                    <button
-                      className="mt-3 inline-flex h-10 items-center justify-center rounded border border-amber-300/25 bg-amber-500/10 px-4 text-sm text-amber-100 hover:bg-amber-500/20"
-                      onClick={() => void handleResetPassword()}
-                      type="button"
-                    >
-                      重置密码
-                    </button>
-                    {passwordMessage ? (
-                      <div className="mt-3 rounded border border-white/10 bg-black/30 p-3 text-sm text-slate-200">
-                        {passwordMessage}
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="mt-4 text-sm text-slate-400">请选择一位用户以查看余额并执行操作。</div>
-            )}
-          </div>
-
-          <div className="rounded border border-white/10 bg-white/[0.04] p-5">
-            <h2 className="text-lg font-semibold text-white">创建兑换码</h2>
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
-              <input
-                className="h-10 rounded border border-white/10 bg-black/25 px-3 text-sm text-white"
-                onChange={(event) => setRedeemTenantId(event.target.value)}
-                placeholder="工作区 ID（可选）"
-                value={redeemTenantId}
-              />
-              <input
-                className="h-10 rounded border border-white/10 bg-black/25 px-3 text-sm text-white"
-                onChange={(event) => setRedeemCreditsValue(event.target.value)}
-                placeholder="点数"
-                value={redeemCreditsValue}
-              />
-              <input
-                className="h-10 rounded border border-white/10 bg-black/25 px-3 text-sm text-white"
-                onChange={(event) => setRedeemMaxRedemptions(event.target.value)}
-                placeholder="最大兑换次数"
-                value={redeemMaxRedemptions}
-              />
-              <input
-                className="h-10 rounded border border-white/10 bg-black/25 px-3 text-sm text-white md:col-span-2"
-                onChange={(event) => setRedeemReason(event.target.value)}
-                placeholder="原因"
-                value={redeemReason}
-              />
-            </div>
-            <button
-              className="mt-3 inline-flex h-10 items-center justify-center rounded border border-sky-300/25 bg-sky-500/10 px-4 text-sm text-sky-100 hover:bg-sky-500/20"
-              onClick={() => void handleCreateRedeemCode()}
-              type="button"
-            >
-              创建兑换码
-            </button>
-            {redeemMessage ? (
-              <div className="mt-3 rounded border border-white/10 bg-black/30 p-3 text-sm text-slate-200">
-                {redeemMessage}
-              </div>
-            ) : null}
-          </div>
-        </section>
+        </SectionCard>
+        {renderSelectedUserPanel()}
       </div>
+    );
+  }
 
-      <section className="grid gap-4 xl:grid-cols-[minmax(360px,0.9fr)_minmax(0,1.1fr)]">
-        <div className="rounded border border-white/10 bg-white/[0.04] p-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold text-white">最近失败任务</h2>
-            <div className="flex gap-2">
-              <input
-                className="h-10 rounded border border-white/10 bg-black/25 px-3 text-sm text-white"
-                onChange={(event) => setWorkflowStatusFilter(event.target.value)}
-                placeholder="状态筛选"
-                value={workflowStatusFilter}
-              />
-              <button
-                className="inline-flex h-10 items-center gap-2 rounded border border-white/10 bg-white/10 px-4 text-sm text-white hover:bg-white/15"
-                onClick={() => void loadWorkflowRuns()}
-                type="button"
-              >
-                {workflowLoading ? <Loader2 className="animate-spin" size={15} /> : <RefreshCw size={15} />}
-                刷新
+  function renderSelectedUserPanel() {
+    if (!selectedUser || !selectedMembership) {
+      return (
+        <SectionCard title="用户详情">
+          <div className="text-sm text-slate-400">请选择一个用户。</div>
+        </SectionCard>
+      );
+    }
+    return (
+      <SectionCard title="用户详情">
+        <div className="grid gap-3 md:grid-cols-3">
+          <MetricCard label="积分总额" value={formatNumber(selectedMembership.balanceCredits)} />
+          <MetricCard label="已使用" value={formatNumber(selectedMembership.usedCredits)} />
+          <MetricCard label="最近到期" value={formatDate(selectedMembership.nextCreditExpiresAt)} />
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <div className="rounded border border-white/10 bg-black/20 p-4">
+            <div className="text-sm font-medium text-white">{selectedUser.displayName || selectedUser.email}</div>
+            <div className="mt-2 text-sm text-slate-400">{selectedUser.email}</div>
+            <div className="mt-3 grid gap-2 text-sm text-slate-300">
+              <div>身份：{roleLabel(selectedMembership.roleKey)}</div>
+              <div>会员：{membershipLabel(selectedMembership.membershipTier)}</div>
+              <div>最近登录：{formatDate(selectedUser.lastLoginAt)}</div>
+              <div>用量：{selectedMembership.usageAudit?.settledEvents ?? 0} 次 / {formatNumber(selectedMembership.usageAudit?.settledCredits)} 点</div>
+            </div>
+          </div>
+          <div className="rounded border border-white/10 bg-black/20 p-4">
+            <div className="text-sm font-medium text-white">会员等级</div>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              {MEMBERSHIP_OPTIONS.map((option) => (
+                <button
+                  className={`h-9 rounded border px-3 text-xs ${
+                    membershipTier === option.tier
+                      ? "border-sky-300/40 bg-sky-500/15 text-sky-100"
+                      : "border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]"
+                  }`}
+                  key={option.tier}
+                  onClick={() => setMembershipTier(option.tier)}
+                  type="button"
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            <button className={`${buttonClass} mt-3`} onClick={() => void handleMembershipSave()} type="button">
+              保存会员等级
+            </button>
+          </div>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <div className="rounded border border-white/10 bg-black/20 p-4">
+            <div className="text-sm font-medium text-white">发放积分</div>
+            <div className="mt-3 grid gap-3">
+              <input className={inputClass} onChange={(event) => setGrantCreditsValue(event.target.value)} value={grantCreditsValue} />
+              <input className={inputClass} onChange={(event) => setGrantReason(event.target.value)} value={grantReason} />
+              <div className="grid grid-cols-4 gap-2">
+                {VALIDITY_OPTIONS.map((option) => (
+                  <button
+                    className={`h-9 rounded border px-2 text-xs ${
+                      grantValidity.label === option.label
+                        ? "border-emerald-300/40 bg-emerald-500/15 text-emerald-100"
+                        : "border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]"
+                    }`}
+                    key={option.label}
+                    onClick={() => setGrantValidity(option)}
+                    type="button"
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              <button className={buttonClass} onClick={() => void handleGrantCredits()} type="button">
+                发放积分
               </button>
             </div>
           </div>
-
-          <div className="mt-4 space-y-2">
-            {workflowRuns.map((run) => {
-              const active = run.id === selectedRunId;
-              return (
-                <button
-                  className={`w-full rounded border px-4 py-3 text-left transition ${
-                    active
-                      ? "border-rose-300/30 bg-rose-400/10"
-                      : "border-white/10 bg-black/20 hover:border-white/20 hover:bg-white/[0.05]"
-                  }`}
-                  key={run.id}
-                  onClick={() => setSelectedRunId(run.id)}
-                  type="button"
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="truncate font-medium text-white">{run.id}</div>
-                      <div className="mt-1 text-xs text-slate-400">
-                        {run.runMode} / {run.status} / target {run.targetNodeId || "-"}
-                      </div>
-                      {run.errorSummary ? (
-                        <div className="mt-2 text-xs text-rose-200">{run.errorSummary}</div>
-                      ) : null}
-                    </div>
-                    <div className="text-right text-xs text-slate-400">
-                      <div>{formatDate(run.createdAt)}</div>
-                      <div>{run.failedNodeRunCount} 个失败节点</div>
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
-            {!workflowLoading && workflowRuns.length === 0 ? (
-              <div className="rounded border border-dashed border-white/10 px-4 py-6 text-sm text-slate-400">
-                当前筛选条件下没有任务记录。
-              </div>
-            ) : null}
+          <div className="rounded border border-white/10 bg-black/20 p-4">
+            <div className="text-sm font-medium text-white">账户操作</div>
+            <button className={`${buttonClass} mt-3`} onClick={() => void handleResetPassword()} type="button">
+              <KeyRound size={15} />
+              重置临时密码
+            </button>
           </div>
         </div>
+      </SectionCard>
+    );
+  }
 
-        <div className="rounded border border-white/10 bg-white/[0.04] p-5">
-          <h2 className="text-lg font-semibold text-white">任务详情</h2>
-          {selectedRunLoading ? (
-            <div className="mt-4 inline-flex items-center gap-3 text-sm text-slate-300">
-              <Loader2 className="animate-spin" size={16} />
-              正在加载任务详情...
-            </div>
-          ) : selectedRunDetail ? (
-            <div className="mt-4 space-y-4">
-              <div className="grid gap-3 md:grid-cols-2">
-                <div className="rounded border border-white/10 bg-black/20 p-4 text-sm text-slate-200">
-                  <div className="text-xs uppercase tracking-[0.18em] text-slate-500">状态</div>
-                  <div className="mt-2">{selectedRunDetail.workflowRun.status}</div>
-                </div>
-                <div className="rounded border border-white/10 bg-black/20 p-4 text-sm text-slate-200">
-                  <div className="text-xs uppercase tracking-[0.18em] text-slate-500">目标节点</div>
-                  <div className="mt-2 break-all">{selectedRunDetail.workflowRun.targetNodeId || "-"}</div>
-                </div>
-              </div>
-
-              {selectedRunError ? (
-                <div>
-                  <div className="mb-2 text-sm font-medium text-white">工作流错误信息</div>
-                  <JsonBlock value={selectedRunError} />
-                </div>
-              ) : null}
-
-              <div className="space-y-3">
-                {selectedRunDetail.nodeRuns.map((nodeRun) => (
-                  <div className="rounded border border-white/10 bg-black/20 p-4" key={nodeRun.id}>
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <div className="font-medium text-white">
-                          {nodeRun.nodeType} / {nodeRun.nodeId}
-                        </div>
-                        <div className="mt-1 text-xs text-slate-400">
-                          {nodeRun.status} / 开始 {formatDate(nodeRun.startedAt)} / 结束 {formatDate(nodeRun.finishedAt)}
-                        </div>
-                      </div>
-                    </div>
-                    {nodeRun.errorJson ? (
-                      <div className="mt-3">
-                        <div className="mb-2 text-xs uppercase tracking-[0.16em] text-slate-500">error_json</div>
-                        <JsonBlock value={nodeRun.errorJson} />
-                      </div>
-                    ) : null}
-                    {nodeRun.outputSummary ? (
-                      <div className="mt-3">
-                        <div className="mb-2 text-xs uppercase tracking-[0.16em] text-slate-500">输出摘要</div>
-                        <pre className="overflow-x-auto rounded border border-white/10 bg-black/30 p-3 text-xs text-slate-300">
-                          {nodeRun.outputSummary}
-                        </pre>
-                      </div>
-                    ) : null}
-                  </div>
+  function renderAdmins() {
+    return (
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <SectionCard title="管理员账号">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px] text-left text-sm">
+              <thead className="text-xs text-slate-500">
+                <tr>
+                  <th className="px-3 py-2">用户</th>
+                  <th className="px-3 py-2">当前身份</th>
+                  <th className="px-3 py-2">会员</th>
+                  <th className="px-3 py-2">最近登录</th>
+                  <th className="px-3 py-2">积分</th>
+                </tr>
+              </thead>
+              <tbody>
+                {users.map((user) => {
+                  const membership = user.memberships[0];
+                  return (
+                    <tr
+                      className="cursor-pointer border-t border-white/8 hover:bg-white/[0.03]"
+                      key={user.id}
+                      onClick={() => setSelectedUserId(user.id)}
+                    >
+                      <td className="px-3 py-3 text-white">{user.email}</td>
+                      <td className="px-3 py-3 text-slate-300">{roleLabel(membership?.roleKey)}</td>
+                      <td className="px-3 py-3 text-slate-300">{membershipLabel(membership?.membershipTier)}</td>
+                      <td className="px-3 py-3 text-slate-300">{formatDate(user.lastLoginAt)}</td>
+                      <td className="px-3 py-3 text-slate-300">{formatNumber(membership?.availableCredits)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </SectionCard>
+        <SectionCard title="身份调整">
+          {selectedUser && selectedMembership ? (
+            <div className="space-y-3">
+              <div className="text-sm text-slate-300">{selectedUser.email}</div>
+              <div className="grid gap-2">
+                {ROLE_OPTIONS.map((option) => (
+                  <button
+                    className={`h-10 rounded border px-3 text-left text-sm ${
+                      roleKey === option.roleKey
+                        ? "border-sky-300/40 bg-sky-500/15 text-sky-100"
+                        : "border-white/10 bg-black/20 text-slate-300"
+                    }`}
+                    key={option.roleKey}
+                    onClick={() => setRoleKey(option.roleKey)}
+                    type="button"
+                  >
+                    {option.label}
+                  </button>
                 ))}
+              </div>
+              <button className={buttonClass} onClick={() => void handleRoleSave()} type="button">
+                保存身份
+              </button>
+              <div className="text-xs leading-5 text-slate-500">
+                超级管理员可以提升用户为管理员；管理员可以看用户和运营数据，但不能管理系统级线路和供应商连接。
               </div>
             </div>
           ) : (
-            <div className="mt-4 text-sm text-slate-400">请选择一条任务记录以查看失败详情。</div>
+            <div className="text-sm text-slate-400">请选择用户。</div>
           )}
+        </SectionCard>
+      </div>
+    );
+  }
+
+  function renderCredits() {
+    return (
+      <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
+        <SectionCard title="创建兑换码">
+          <div className="grid gap-3">
+            <Field label="点数">
+              <input className={inputClass} onChange={(event) => setRedeemCreditsValue(event.target.value)} value={redeemCreditsValue} />
+            </Field>
+            <Field label="可使用次数">
+              <input className={inputClass} onChange={(event) => setRedeemMaxRedemptions(event.target.value)} value={redeemMaxRedemptions} />
+            </Field>
+            <Field label="备注">
+              <input className={inputClass} onChange={(event) => setRedeemReason(event.target.value)} value={redeemReason} />
+            </Field>
+            <button className={buttonClass} onClick={() => void handleCreateRedeemCode()} type="button">
+              创建兑换码
+            </button>
+            {lastGeneratedCode ? (
+              <div className="rounded border border-emerald-300/20 bg-emerald-500/10 p-3">
+                <div className="text-xs text-emerald-200">已生成兑换码</div>
+                <div className="mt-1 font-mono text-lg font-semibold text-white">{lastGeneratedCode}</div>
+              </div>
+            ) : null}
+          </div>
+        </SectionCard>
+        <SectionCard title="兑换码记录">
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+            <div className="space-y-2">
+              {redeemCodes.map((code) => (
+                <button
+                  className={`w-full rounded border px-4 py-3 text-left ${
+                    code.id === selectedRedeemCodeId ? "border-sky-300/40 bg-sky-500/10" : "border-white/10 bg-black/20"
+                  }`}
+                  key={code.id}
+                  onClick={() => setSelectedRedeemCodeId(code.id)}
+                  type="button"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-medium text-white">{formatNumber(code.credits)} 点</div>
+                      <div className="mt-1 text-xs text-slate-400">{code.reason || "无备注"} · 创建人 {code.createdByEmail || "-"}</div>
+                    </div>
+                    <div className="text-right text-xs text-slate-300">
+                      <div>{code.redeemedCount}/{code.maxRedemptions}</div>
+                      <div>{formatDate(code.createdAt)}</div>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+            <div className="rounded border border-white/10 bg-black/20 p-4">
+              <div className="text-sm font-medium text-white">使用记录</div>
+              {selectedRedeemCode ? (
+                <div className="mt-3 text-xs text-slate-400">
+                  {selectedRedeemCode.tenantName || "当前租户"} · {selectedRedeemCode.status}
+                </div>
+              ) : null}
+              <div className="mt-3 space-y-2">
+                {redemptions.map((item) => (
+                  <div className="rounded border border-white/10 bg-white/[0.03] px-3 py-2" key={item.id}>
+                    <div className="text-sm text-white">{item.userDisplayName || item.userEmail || "-"}</div>
+                    <div className="mt-1 text-xs text-slate-400">{formatDate(item.createdAt)}</div>
+                  </div>
+                ))}
+                {selectedRedeemCode && redemptions.length === 0 ? <div className="text-sm text-slate-400">还没有用户使用。</div> : null}
+              </div>
+            </div>
+          </div>
+        </SectionCard>
+      </div>
+    );
+  }
+
+  function renderAnnouncements() {
+    return (
+      <div className="grid gap-4 xl:grid-cols-[420px_minmax(0,1fr)]">
+        <SectionCard title="发布通知公告">
+          <div className="grid gap-3">
+            <Field label="标题">
+              <input className={inputClass} onChange={(event) => setAnnouncementForm((current) => ({ ...current, title: event.target.value }))} value={announcementForm.title} />
+            </Field>
+            <Field label="正文">
+              <textarea className={textareaClass} onChange={(event) => setAnnouncementForm((current) => ({ ...current, body: event.target.value }))} value={announcementForm.body} />
+            </Field>
+            <Field label="链接">
+              <input className={inputClass} onChange={(event) => setAnnouncementForm((current) => ({ ...current, linkUrl: event.target.value }))} value={announcementForm.linkUrl} />
+            </Field>
+            <Field label="图片 URL">
+              <input className={inputClass} onChange={(event) => setAnnouncementForm((current) => ({ ...current, imageUrl: event.target.value }))} value={announcementForm.imageUrl} />
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="状态">
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { label: "草稿", value: "draft" as AnnouncementStatus },
+                    { label: "发布", value: "published" as AnnouncementStatus },
+                    { label: "归档", value: "archived" as AnnouncementStatus },
+                  ].map((option) => (
+                    <button
+                      className={`h-9 rounded border px-2 text-xs ${
+                        announcementForm.status === option.value
+                          ? "border-sky-300/40 bg-sky-500/15 text-sky-100"
+                          : "border-white/10 bg-white/[0.04] text-slate-300"
+                      }`}
+                      key={option.value}
+                      onClick={() => setAnnouncementForm((current) => ({ ...current, status: option.value }))}
+                      type="button"
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+              <Field label="对象">
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { label: "全部", value: "all" as AnnouncementAudience },
+                    { label: "创作者", value: "creator" as AnnouncementAudience },
+                    { label: "管理员", value: "admin" as AnnouncementAudience },
+                  ].map((option) => (
+                    <button
+                      className={`h-9 rounded border px-2 text-xs ${
+                        announcementForm.audience === option.value
+                          ? "border-sky-300/40 bg-sky-500/15 text-sky-100"
+                          : "border-white/10 bg-white/[0.04] text-slate-300"
+                      }`}
+                      key={option.value}
+                      onClick={() => setAnnouncementForm((current) => ({ ...current, audience: option.value }))}
+                      type="button"
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+            </div>
+            <button className={buttonClass} onClick={() => void handleCreateAnnouncement()} type="button">
+              <Bell size={15} />
+              保存公告
+            </button>
+          </div>
+        </SectionCard>
+        <SectionCard title="公告管理">
+          <div className="space-y-2">
+            {announcements.map((announcement) => (
+              <div className="rounded border border-white/10 bg-black/20 p-4" key={announcement.id}>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="font-medium text-white">{announcement.title}</div>
+                    <div className="mt-1 text-sm text-slate-400">{announcement.body}</div>
+                    <div className="mt-2 text-xs text-slate-500">创建人 {announcement.createdByEmail || "-"} · {formatDate(announcement.createdAt)}</div>
+                  </div>
+                  <span className={`rounded-full border px-2 py-0.5 text-xs ${statusTone(announcement.status)}`}>{announcement.status}</span>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {announcement.linkUrl ? <a className={buttonClass} href={announcement.linkUrl} rel="noreferrer" target="_blank"><ExternalLink size={14} />打开链接</a> : null}
+                  {announcement.status !== "archived" ? (
+                    <button className={buttonClass} onClick={() => void handleArchiveAnnouncement(announcement)} type="button">
+                      归档
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+            {!announcements.length ? <div className="text-sm text-slate-400">还没有公告。</div> : null}
+          </div>
+        </SectionCard>
+      </div>
+    );
+  }
+
+  function renderUsage() {
+    return (
+      <div className="grid gap-4 xl:grid-cols-[minmax(360px,0.9fr)_minmax(0,1.1fr)]">
+        <SectionCard title="用量审计">
+          <div className="space-y-2">
+            {workflowRuns.map((run) => (
+              <button
+                className={`w-full rounded border px-4 py-3 text-left ${run.id === selectedRunId ? "border-sky-300/40 bg-sky-500/10" : "border-white/10 bg-black/20"}`}
+                key={run.id}
+                onClick={() => setSelectedRunId(run.id)}
+                type="button"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="font-medium text-white">{run.runMode}</div>
+                    <div className="mt-1 text-xs text-slate-400">{run.status} · {run.errorSummary || "无错误摘要"}</div>
+                  </div>
+                  <div className="text-right text-xs text-slate-400">{formatDate(run.createdAt)}</div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </SectionCard>
+        <SectionCard title="审计详情">
+          {selectedRunDetail ? (
+            <div className="space-y-3">
+              <div className="grid gap-3 md:grid-cols-3">
+                <MetricCard label="状态" value={selectedRunDetail.workflowRun.status} />
+                <MetricCard label="节点数" value={selectedRunDetail.workflowRun.nodeRunCount} />
+                <MetricCard label="失败节点" value={selectedRunDetail.workflowRun.failedNodeRunCount} />
+              </div>
+              {selectedRunDetail.nodeRuns.map((node) => (
+                <div className="rounded border border-white/10 bg-black/20 p-4" key={node.id}>
+                  <div className="font-medium text-white">{node.nodeType}</div>
+                  <div className="mt-1 text-sm text-slate-400">{node.status} · {formatDate(node.startedAt)} - {formatDate(node.finishedAt)}</div>
+                  {node.errorJson ? <pre className="mt-3 max-h-48 overflow-auto rounded bg-black/30 p-3 text-xs text-slate-300">{JSON.stringify(node.errorJson, null, 2)}</pre> : null}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-sm text-slate-400">请选择一条记录。</div>
+          )}
+        </SectionCard>
+      </div>
+    );
+  }
+
+  function renderModelRoutes() {
+    return (
+      <SectionCard title="模型线路管理">
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="rounded border border-white/10 bg-black/20 p-4">
+            <div className="text-sm font-medium text-white">模型中心</div>
+            <p className="mt-2 text-sm leading-6 text-slate-400">
+              管理产品模型、用户看到的线路名称、默认线路、价格、状态和线路测试。
+            </p>
+            <button className={`${buttonClass} mt-4`} onClick={() => navigate(ACCOUNT_AI_SETTINGS_ROUTE)} type="button">
+              <SlidersHorizontal size={15} />
+              打开模型中心
+            </button>
+          </div>
+          <div className="rounded border border-white/10 bg-black/20 p-4">
+            <div className="text-sm font-medium text-white">当前线路状态</div>
+            <div className="mt-3 space-y-2">
+              {routeStats?.routes.slice(0, 5).map((route) => (
+                <div className="rounded border border-white/10 bg-white/[0.03] px-3 py-2" key={route.routeId ?? route.routeKey ?? "route"}>
+                  <div className="text-sm text-white">{route.modelDisplayName || "模型"} {route.routeLabel || "线路"}</div>
+                  <div className="text-xs text-slate-400">成功率 {route.successRate}% · 平均 {route.averageLatencyMs ?? "-"} ms</div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
-      </section>
-    </div>
-  );
+      </SectionCard>
+    );
+  }
+
+  function renderProviders() {
+    return (
+      <SectionCard title="供应商连接管理">
+        <div className="rounded border border-white/10 bg-black/20 p-4">
+          <div className="text-sm font-medium text-white">供应商连接</div>
+          <p className="mt-2 text-sm leading-6 text-slate-400">
+            管理供应商资源、API Key、Base URL、运行连接、连接测试和被哪些线路复用。
+          </p>
+          <button className={`${buttonClass} mt-4`} onClick={() => navigate(ACCOUNT_PROVIDER_SETTINGS_ROUTE)} type="button">
+            <Network size={15} />
+            打开供应商连接
+          </button>
+        </div>
+      </SectionCard>
+    );
+  }
+
+  function renderMonitor() {
+    return (
+      <SectionCard title="系统监控">
+        <div className="grid gap-3 md:grid-cols-4">
+          <MetricCard label="总调用" value={routeStats?.summary.totalCalls ?? 0} />
+          <MetricCard label="成功率" value={`${routeStats?.summary.successRate ?? 0}%`} />
+          <MetricCard label="平均耗时" value={`${routeStats?.summary.averageLatencyMs ?? "-"} ms`} />
+          <MetricCard label="失败" value={routeStats?.summary.failedCalls ?? 0} />
+        </div>
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full min-w-[820px] text-left text-sm">
+            <thead className="text-xs text-slate-500">
+              <tr>
+                <th className="px-3 py-2">线路</th>
+                <th className="px-3 py-2">模型</th>
+                <th className="px-3 py-2">成功率</th>
+                <th className="px-3 py-2">成功/总数</th>
+                <th className="px-3 py-2">平均耗时</th>
+                <th className="px-3 py-2">最近失败</th>
+              </tr>
+            </thead>
+            <tbody>
+              {routeStats?.routes.map((route) => (
+                <tr className="border-t border-white/8" key={route.routeId ?? route.routeKey ?? "unknown"}>
+                  <td className="px-3 py-3 text-white">{route.routeLabel || "-"}</td>
+                  <td className="px-3 py-3 text-slate-300">{route.modelDisplayName || "-"}</td>
+                  <td className="px-3 py-3 text-slate-300">{route.successRate}%</td>
+                  <td className="px-3 py-3 text-slate-300">{route.successfulCalls}/{route.totalCalls}</td>
+                  <td className="px-3 py-3 text-slate-300">{route.averageLatencyMs ?? "-"} ms</td>
+                  <td className="px-3 py-3 text-slate-300">{formatDate(route.lastFailureAt)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </SectionCard>
+    );
+  }
 }

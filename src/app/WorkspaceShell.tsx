@@ -26,6 +26,7 @@ import { canAccessOperationsConsole, resolveProductRole } from "../auth/productR
 import { useAuth } from "../auth/useAuth";
 import { getAvailableCredits, getMembershipLabel } from "../billing/billingDisplay";
 import { useBillingSummarySnapshot } from "../billing/useBillingSummarySnapshot";
+import { getAdminAiRouteStats, type AdminAiRouteStats } from "../admin/adminApi";
 import { MenuSurface } from "../components/menu/MenuSurface";
 import {
   MENU_DIVIDER_CLASS,
@@ -57,12 +58,19 @@ function getInitial(displayName?: string | null, email?: string | null) {
   return (displayName || email || "U").trim().charAt(0).toUpperCase();
 }
 
+function getProductRoleLabel(role: ReturnType<typeof resolveProductRole>) {
+  if (role === "super_admin") return "超级管理员";
+  if (role === "admin") return "管理员";
+  return "创作者";
+}
+
 export function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const { authenticated, logout, permissions, roles, tenant, user } = useAuth();
   const accountLayer = useDismissibleLayer("workspace-shell-account");
   const [locationKey, setLocationKey] = useState(() =>
     typeof window === "undefined" ? HOME_ROUTE : `${window.location.pathname}${window.location.hash}`,
   );
+  const [routeStats, setRouteStats] = useState<AdminAiRouteStats | null>(null);
   const currentPath = typeof window === "undefined" ? WORKSPACE_ROUTE : window.location.pathname;
   const tenantName = displayTenantName(tenant?.name);
   const displayName = user?.displayName || user?.email || "用户";
@@ -82,6 +90,24 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
       window.removeEventListener("hashchange", handleLocationChange);
     };
   }, []);
+
+  useEffect(() => {
+    if (!canAdmin) {
+      setRouteStats(null);
+      return;
+    }
+    let cancelled = false;
+    void getAdminAiRouteStats({ windowMinutes: 30 })
+      .then((stats) => {
+        if (!cancelled) setRouteStats(stats);
+      })
+      .catch(() => {
+        if (!cancelled) setRouteStats(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canAdmin, locationKey]);
 
   const goTo = (path: string) => {
     navigate(path);
@@ -134,6 +160,18 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
               <Bell size={22} />
             </button>
 
+            {canAdmin ? (
+              <button
+                aria-label="模型线路监控"
+                className="hidden h-11 items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-3 text-xs font-semibold text-slate-200 transition hover:bg-white/[0.10] lg:inline-flex"
+                onClick={() => goTo(`${ADMIN_ROUTE}#monitor`)}
+                type="button"
+              >
+                <span className="h-2 w-2 rounded-full bg-emerald-300" />
+                线路 {routeStats?.summary.successRate ?? 0}% · {routeStats?.summary.averageLatencyMs ?? "-"}ms
+              </button>
+            ) : null}
+
             <button
               ref={accountLayer.triggerRef as React.RefObject<HTMLButtonElement>}
               aria-expanded={accountLayer.open}
@@ -177,6 +215,9 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
                   <div className="mt-2 text-2xl font-semibold text-white">{availableCredits.toLocaleString()}</div>
                   <div className="mt-3 h-1.5 rounded-full bg-white/10">
                     <div className="h-full w-1/6 rounded-full bg-cyan-300" />
+                  </div>
+                  <div className="mt-3 text-xs text-slate-400">
+                    身份：{getProductRoleLabel(productRole)}
                   </div>
                 </div>
 

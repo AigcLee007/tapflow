@@ -3,16 +3,27 @@ import { apiGet, apiPatch, apiPost } from "../services/v2HttpClient";
 export type MembershipTier = "standard" | "silver" | "gold" | "platinum";
 
 export type AdminMembership = {
+  activeCreditGrantCount?: number;
   availableCredits: number;
   balanceCredits: number;
+  creditGrantCount?: number;
+  latestUsageAt?: string | null;
   membershipTier?: MembershipTier;
   membershipTierExpiresAt?: string | null;
   membershipStatus: string;
+  nextCreditExpiresAt?: string | null;
   reservedCredits: number;
   roleKey: string;
   tenantId: string;
   tenantName: string;
   tenantStatus: string;
+  totalCreditGrants?: number;
+  usageAudit?: {
+    latestUsageAt: string | null;
+    settledCredits: number;
+    settledEvents: number;
+  };
+  usedCredits?: number;
 };
 
 export type AdminUser = {
@@ -21,6 +32,7 @@ export type AdminUser = {
   email: string;
   emailVerifiedAt: string | null;
   id: string;
+  lastLoginAt?: string | null;
   memberships: AdminMembership[];
   status: string;
 };
@@ -71,6 +83,83 @@ export type AdminResetPasswordResponse = {
     emailVerifiedAt: string | null;
     id: string;
     status: string;
+  };
+};
+
+export type AdminUpdateUserRoleResponse = {
+  roleKey: string;
+  targetUserId: string;
+  tenantId: string;
+};
+
+export type AdminRedeemCode = {
+  createdAt: string;
+  createdByEmail: string | null;
+  createdByName: string | null;
+  credits: number;
+  expiresAt: string | null;
+  id: string;
+  maxRedemptions: number;
+  reason: string | null;
+  redeemedCount: number;
+  status: string;
+  tenantId: string | null;
+  tenantName: string | null;
+};
+
+export type AdminRedeemCodeRedemption = {
+  billingLedgerId: string | null;
+  createdAt: string;
+  id: string;
+  userDisplayName: string | null;
+  userEmail: string | null;
+  userId: string | null;
+};
+
+export type AnnouncementStatus = "draft" | "published" | "archived";
+export type AnnouncementAudience = "all" | "creator" | "admin";
+
+export type AdminAnnouncement = {
+  audience: AnnouncementAudience;
+  body: string;
+  createdAt: string;
+  createdBy: string | null;
+  createdByEmail: string | null;
+  endsAt: string | null;
+  id: string;
+  imageUrl: string | null;
+  linkUrl: string | null;
+  publishedAt: string | null;
+  startsAt: string | null;
+  status: AnnouncementStatus;
+  tenantId: string;
+  title: string;
+  updatedAt: string;
+};
+
+export type AdminAiRouteStats = {
+  routes: Array<{
+    averageLatencyMs: number | null;
+    failedCalls: number;
+    lastError: Record<string, unknown> | null;
+    lastFailureAt: string | null;
+    lastSuccessAt: string | null;
+    modelDisplayName: string | null;
+    providerName: string | null;
+    routeId: string | null;
+    routeKey: string | null;
+    routeLabel: string | null;
+    successRate: number;
+    successfulCalls: number;
+    totalCalls: number;
+  }>;
+  summary: {
+    averageLatencyMs: number | null;
+    failedCalls: number;
+    successRate: number;
+    successfulCalls: number;
+    totalCalls: number;
+    windowMinutes: number;
   };
 };
 
@@ -154,6 +243,37 @@ export function updateAdminMembershipTier(input: {
   });
 }
 
+export function updateAdminUserRole(input: {
+  roleKey: "system_admin" | "tenant_admin" | "flow_developer";
+  targetUserId: string;
+  tenantId: string;
+}): Promise<AdminUpdateUserRoleResponse> {
+  return apiPatch<AdminUpdateUserRoleResponse>(`/admin/users/${input.targetUserId}/role`, {
+    roleKey: input.roleKey,
+    tenantId: input.tenantId,
+  });
+}
+
+export function listAdminRedeemCodes(input?: {
+  limit?: number;
+  status?: string;
+}): Promise<{ items: AdminRedeemCode[] }> {
+  const params = new URLSearchParams();
+  if (input?.limit) params.set("limit", String(input.limit));
+  if (input?.status?.trim()) params.set("status", input.status.trim());
+  return apiGet<{ items: AdminRedeemCode[] }>(
+    `/admin/redeem-codes${params.size ? `?${params.toString()}` : ""}`,
+  );
+}
+
+export function listAdminRedeemCodeRedemptions(codeId: string): Promise<{
+  items: AdminRedeemCodeRedemption[];
+}> {
+  return apiGet<{ items: AdminRedeemCodeRedemption[] }>(
+    `/admin/redeem-codes/${encodeURIComponent(codeId)}/redemptions`,
+  );
+}
+
 export function createAdminRedeemCode(input: {
   code?: string;
   credits: number;
@@ -200,4 +320,55 @@ export function listAdminWorkflowRuns(input?: {
 
 export function getAdminWorkflowRun(runId: string): Promise<AdminWorkflowRunDetail> {
   return apiGet<AdminWorkflowRunDetail>(`/admin/workflow-runs/${runId}`);
+}
+
+export function listAdminAnnouncements(input?: {
+  limit?: number;
+  status?: AnnouncementStatus;
+}): Promise<{ items: AdminAnnouncement[] }> {
+  const params = new URLSearchParams();
+  if (input?.limit) params.set("limit", String(input.limit));
+  if (input?.status) params.set("status", input.status);
+  return apiGet<{ items: AdminAnnouncement[] }>(
+    `/admin/announcements${params.size ? `?${params.toString()}` : ""}`,
+  );
+}
+
+export function createAdminAnnouncement(input: {
+  audience: AnnouncementAudience;
+  body: string;
+  endsAt?: string | null;
+  imageUrl?: string | null;
+  linkUrl?: string | null;
+  startsAt?: string | null;
+  status: AnnouncementStatus;
+  title: string;
+}): Promise<AdminAnnouncement> {
+  return apiPost<AdminAnnouncement>("/admin/announcements", input);
+}
+
+export function updateAdminAnnouncement(
+  announcementId: string,
+  input: Partial<{
+    audience: AnnouncementAudience;
+    body: string;
+    endsAt: string | null;
+    imageUrl: string | null;
+    linkUrl: string | null;
+    startsAt: string | null;
+    status: AnnouncementStatus;
+    title: string;
+  }>,
+): Promise<AdminAnnouncement> {
+  return apiPatch<AdminAnnouncement>(`/admin/announcements/${encodeURIComponent(announcementId)}`, input);
+}
+
+export function getAdminAiRouteStats(input?: {
+  windowMinutes?: number;
+}): Promise<AdminAiRouteStats> {
+  const params = new URLSearchParams();
+  if (input?.windowMinutes) params.set("windowMinutes", String(input.windowMinutes));
+  return apiGet<AdminAiRouteStats>(
+    `/admin/ai/route-stats${params.size ? `?${params.toString()}` : ""}`,
+  );
 }

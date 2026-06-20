@@ -35,8 +35,22 @@ export const adminCreateRedeemCodeSchema = z.object({
   tenantId: z.string().uuid().optional(),
 });
 
+export const adminRedeemCodesQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+  status: z.string().trim().min(1).max(64).optional(),
+});
+
+export const adminRedeemCodeParamsSchema = z.object({
+  codeId: z.string().uuid(),
+});
+
 export const adminResetPasswordSchema = z.object({
   password: z.string().min(8).max(256).optional(),
+});
+
+export const adminUpdateUserRoleSchema = z.object({
+  roleKey: z.enum(["system_admin", "tenant_admin", "flow_developer"]),
+  tenantId: z.string().uuid(),
 });
 
 export const adminWorkflowRunsQuerySchema = z.object({
@@ -50,11 +64,45 @@ export const adminWorkflowRunParamsSchema = z.object({
   runId: z.string().uuid(),
 });
 
+export const adminAnnouncementsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+  status: z.enum(["draft", "published", "archived"]).optional(),
+});
+
+export const adminAnnouncementParamsSchema = z.object({
+  announcementId: z.string().uuid(),
+});
+
+export const adminCreateAnnouncementSchema = z.object({
+  audience: z.enum(["all", "creator", "admin"]).default("all"),
+  body: z.string().trim().min(1).max(10_000),
+  endsAt: z.string().datetime().nullable().optional(),
+  imageUrl: z.string().trim().url().nullable().optional(),
+  linkUrl: z.string().trim().url().nullable().optional(),
+  startsAt: z.string().datetime().nullable().optional(),
+  status: z.enum(["draft", "published", "archived"]).default("draft"),
+  title: z.string().trim().min(1).max(200),
+});
+
+export const adminUpdateAnnouncementSchema = adminCreateAnnouncementSchema.partial();
+
+export const adminAiRouteStatsQuerySchema = z.object({
+  windowMinutes: z.coerce.number().int().min(1).max(24 * 60).default(30),
+});
+
 export type AdminUsersQuery = z.infer<typeof adminUsersQuerySchema>;
 export type AdminUserParams = z.infer<typeof adminUserParamsSchema>;
 export type AdminGrantCreditsInput = z.infer<typeof adminGrantCreditsSchema>;
 export type AdminUpdateMembershipTierInput = z.infer<typeof adminUpdateMembershipTierSchema>;
 export type AdminCreateRedeemCodeInput = z.infer<typeof adminCreateRedeemCodeSchema>;
+export type AdminRedeemCodesQuery = z.infer<typeof adminRedeemCodesQuerySchema>;
+export type AdminRedeemCodeParams = z.infer<typeof adminRedeemCodeParamsSchema>;
 export type AdminResetPasswordInput = z.infer<typeof adminResetPasswordSchema>;
+export type AdminUpdateUserRoleInput = z.infer<typeof adminUpdateUserRoleSchema>;
 export type AdminWorkflowRunsQuery = z.infer<typeof adminWorkflowRunsQuerySchema>;
 export type AdminWorkflowRunParams = z.infer<typeof adminWorkflowRunParamsSchema>;
+export type AdminAnnouncementsQuery = z.infer<typeof adminAnnouncementsQuerySchema>;
+export type AdminAnnouncementParams = z.infer<typeof adminAnnouncementParamsSchema>;
+export type AdminCreateAnnouncementInput = z.infer<typeof adminCreateAnnouncementSchema>;
+export type AdminUpdateAnnouncementInput = z.infer<typeof adminUpdateAnnouncementSchema>;
+export type AdminAiRouteStatsQuery = z.infer<typeof adminAiRouteStatsQuerySchema>;

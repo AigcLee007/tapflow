@@ -6,7 +6,7 @@ export function resolveProductRole(input: {
 }): ProductRole {
   const roles = input.roles ?? [];
   const permissions = input.permissions ?? [];
-  if (roles.includes("system_admin")) {
+  if (roles.includes("system_admin") || roles.includes("admin_email")) {
     return "super_admin";
   }
   if (permissions.includes("admin:system")) {
