@@ -8,15 +8,26 @@ describe("BrandMark", () => {
   test("renders the logo with an accessible label", () => {
     render(<BrandMark />);
 
-    expect(screen.getByRole("img", { name: "Aittco" })).toBeTruthy();
+    const logo = screen.getByRole("img", { name: "Aittco" });
+    expect(logo).toBeTruthy();
+    expect(logo.getAttribute("src")).toBe("/logo-2.png");
   });
 
-  test("supports compact and canvas sizes", () => {
+  test("supports 300 by 200 ratio compact and canvas sizes", () => {
     const { rerender } = render(<BrandMark size="compact" />);
     expect(screen.getByTestId("brand-mark").getAttribute("data-size")).toBe("compact");
+    expect(screen.getByTestId("brand-mark-orb").className).toContain("h-8 w-12");
 
     rerender(<BrandMark size="canvas" />);
     expect(screen.getByTestId("brand-mark").getAttribute("data-size")).toBe("canvas");
+    expect(screen.getByTestId("brand-mark-orb").className).toContain("h-12 w-[72px]");
+  });
+
+  test("supports a 300 by 200 ratio header logo", () => {
+    render(<BrandMark size="header" />);
+
+    expect(screen.getByTestId("brand-mark").getAttribute("data-size")).toBe("header");
+    expect(screen.getByTestId("brand-mark-orb").className).toContain("h-20 w-[120px]");
   });
 
   test("can render without the text caption inside tight canvas chrome", () => {

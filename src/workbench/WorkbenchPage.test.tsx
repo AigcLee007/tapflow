@@ -274,6 +274,7 @@ describe("WorkbenchPage", () => {
 
     expect(await screen.findByTestId("workbench-page")).toBeTruthy();
     expect(screen.getByLabelText("Prompt")).toBeTruthy();
+    expect(screen.getByRole("img", { name: "Aittco" }).getAttribute("src")).toBe("/logo-2.png");
     expect(screen.queryByRole("button", { name: /AI Flow/i })).toBeNull();
     expect(screen.queryByText("WORKBENCH")).toBeNull();
   });

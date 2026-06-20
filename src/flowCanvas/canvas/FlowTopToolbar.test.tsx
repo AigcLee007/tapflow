@@ -74,7 +74,9 @@ describe("FlowTopToolbar", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("brand-mark").getAttribute("data-size")).toBe("canvas");
+      expect(screen.getByTestId("brand-mark-orb").className).toContain("h-12 w-[72px]");
       expect(screen.getByRole("img", { name: "Aittco" })).toBeTruthy();
+      expect(screen.getByRole("img", { name: "Aittco" }).getAttribute("src")).toBe("/logo-2.png");
       expect(screen.getByDisplayValue("测试项目")).toBeTruthy();
     });
   });

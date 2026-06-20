@@ -51,8 +51,15 @@ Current deployment baseline:
 
 As of 2026-06-20:
 
+- Shared product logo usage was aligned to the latest screenshot request:
+  - `BrandMark` now loads `/logo-2.png` explicitly, which is the 300x200 horizontal Aittco logo asset.
+  - homepage header, standalone workbench header, mobile workbench header, and canvas top-left project logo now inherit the horizontal 300:200 logo proportions instead of the older square/circular mark.
+- Validation:
+  - `npx vitest run src/app/brand/BrandMark.test.tsx src/app/WorkspaceShell.test.tsx src/flowCanvas/canvas/FlowTopToolbar.test.tsx src/workbench/WorkbenchPage.test.tsx` passed.
+  - `npm run build` is currently blocked by unrelated in-progress admin worktree state: Vite reports `Could not resolve "../admin/AdminPage" from "src/app/AppRouter.tsx"` even though `src/admin/AdminPage.tsx` exists in the working tree.
+
 - Home/global top navigation received the latest screenshot-directed polish:
-  - the header Aittco logo now uses a dedicated larger header mark size while keeping the existing 300x300 logo asset, avoiding blurry CSS-only scaling.
+  - the header Aittco logo now uses a dedicated larger header mark size while keeping the requested high-resolution logo asset, avoiding blurry CSS-only scaling.
   - the creator navigation order now places `无限画布` before `生图工作台`.
   - the billing entry is now labeled `账单充值` instead of `价格方案`.
   - the mobile shell navigation grid now uses five columns to match the five creator entries.

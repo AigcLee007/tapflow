@@ -95,7 +95,7 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
         <div className="mx-auto flex h-28 max-w-[1840px] items-center justify-between gap-4 px-6">
           <button
             aria-label="返回首页"
-            className="grid h-24 w-24 shrink-0 place-items-center rounded-full text-left transition hover:bg-white/[0.06]"
+            className="grid h-20 w-[120px] shrink-0 place-items-center rounded-[18px] text-left transition hover:bg-white/[0.06]"
             onClick={() => goTo(HOME_ROUTE)}
             type="button"
             title={tenantName}

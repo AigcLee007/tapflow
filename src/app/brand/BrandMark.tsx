@@ -3,10 +3,10 @@ import React, { useId } from "react";
 type BrandMarkSize = "compact" | "canvas" | "header" | "large";
 
 const sizeClass: Record<BrandMarkSize, string> = {
-  compact: "h-9 w-9",
-  canvas: "h-12 w-12",
-  header: "h-24 w-24",
-  large: "h-40 w-40",
+  compact: "h-8 w-12",
+  canvas: "h-12 w-[72px]",
+  header: "h-20 w-[120px]",
+  large: "h-40 w-60",
 };
 
 const INFINITY_PATH_D =
@@ -34,7 +34,7 @@ export function BrandMark({
     >
       <span
         className={[
-          "brand-mark__orb brand-mark__orb--bare grid shrink-0 place-items-center overflow-hidden rounded-full",
+          "brand-mark__orb brand-mark__orb--bare grid shrink-0 place-items-center overflow-hidden rounded-none",
           sizeClass[size],
         ].join(" ")}
         data-testid="brand-mark-orb"
@@ -44,7 +44,7 @@ export function BrandMark({
           className="brand-mark__logo h-full w-full object-contain"
           decoding="async"
           draggable={false}
-          src="/logo.png"
+          src="/logo-2.png"
         />
         {animated ? (
           <svg

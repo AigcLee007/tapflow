@@ -110,7 +110,8 @@ describe("WorkspaceShell", () => {
   test("renders the shared brand mark instead of the legacy cyan square icon", () => {
     renderShell();
     expect(screen.getByTestId("brand-mark").getAttribute("data-size")).toBe("header");
-    expect(screen.getByTestId("brand-mark-orb").className).toContain("h-24 w-24");
+    expect(screen.getByTestId("brand-mark-orb").className).toContain("h-20 w-[120px]");
+    expect(screen.getByRole("img", { name: "Aittco" }).getAttribute("src")).toBe("/logo-2.png");
     expect(screen.queryByText("Workflow")).toBeNull();
   });
 
