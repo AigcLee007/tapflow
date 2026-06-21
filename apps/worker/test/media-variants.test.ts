@@ -23,8 +23,8 @@ describe("createImageVariants", () => {
 
     expect(variants.map((item) => item.variantKey)).toEqual(["thumb", "preview"]);
     expect(variants[0]?.mimeType).toBe("image/webp");
-    expect(variants[0]?.width).toBeLessThanOrEqual(320);
-    expect(variants[0]?.height).toBeLessThanOrEqual(320);
+    expect(variants[0]?.width).toBe(640);
+    expect(variants[0]?.height).toBe(407);
     expect(variants[1]?.width).toBeLessThanOrEqual(1024);
     expect(variants[1]?.height).toBeLessThanOrEqual(1024);
     expect(variants[0]?.body.byteLength).toBeLessThan(original.byteLength);

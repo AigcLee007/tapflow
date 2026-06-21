@@ -18,6 +18,15 @@ Maintainers: project team + Codex sessions
   - `npm run build`
   - `npm run test --workspace @aigc-flow/api` currently has an unrelated existing failure in `test/ai-gateway.schemas.test.ts` (`Either modelId or modelFamily must be provided`).
 
+## 2026-06-21 - Sharper Asset Thumbnails
+
+- increased generated image thumbnail variants from 320px to 640px on the longest edge and raised WebP thumbnail quality from 72 to 80.
+- applied the same thumbnail setting to both worker-generated output assets and direct asset-library image uploads.
+- note: existing asset thumbnail variants remain at their previously generated resolution until a variant backfill/regeneration job is run.
+- validation:
+  - `npm run test --workspace @aigc-flow/worker -- media-variants.test.ts`
+  - `npm run test --workspace @aigc-flow/api -- test/assets.test.ts -t "upload-bytes creates preview variants"` was skipped locally because the API database-backed test suite requires database env.
+
 ## 2026-06-21 - Original Download Cross-Origin Navigation Fix
 
 - fixed a regression where original image downloads could open the Rainyun/OSS signed object URL as an image page instead of downloading the file.

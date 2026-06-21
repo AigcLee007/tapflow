@@ -291,7 +291,7 @@ async function createUploadImageVariants(input: {
 
   try {
     const [thumb, preview] = await Promise.all([
-      buildUploadWebpVariant(input.body, "thumb", 320, 72),
+      buildUploadWebpVariant(input.body, "thumb", 640, 80),
       buildUploadWebpVariant(input.body, "preview", 1024, 78),
     ]);
 

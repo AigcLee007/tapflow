@@ -45,7 +45,7 @@ export async function createImageVariants(input: {
   }
 
   const [thumb, preview] = await Promise.all([
-    buildWebpVariant(input.body, "thumb", 320, 72),
+    buildWebpVariant(input.body, "thumb", 640, 80),
     buildWebpVariant(input.body, "preview", 1024, 78),
   ]);
 

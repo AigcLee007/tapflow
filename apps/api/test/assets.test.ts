@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, describe, expect, test } from "vitest";
+import sharp from "sharp";
 
 import { createPgPool, withTenantTransaction } from "@aigc-flow/db";
 import type { StorageProvider } from "@aigc-flow/storage";
@@ -783,6 +784,16 @@ describeWithDatabase("assets v2", () => {
         const api = buildTestApp(appPool, storageProvider);
 
         const owner = await registerOwner(api, "variant-upload-owner@example.com", "Variant Upload Owner");
+        const largePngBuffer = await sharp({
+          create: {
+            background: { r: 20, g: 80, b: 160, alpha: 1 },
+            channels: 4,
+            height: 1200,
+            width: 1200,
+          },
+        })
+          .png()
+          .toBuffer();
 
         const created = await api.inject({
           headers: {
@@ -793,7 +804,7 @@ describeWithDatabase("assets v2", () => {
             kind: "image",
             mimeType: "image/png",
             originalFilename: "variant-upload.png",
-            sizeBytes: SMALL_PNG_BUFFER.length,
+            sizeBytes: largePngBuffer.length,
           },
           url: "/api/v2/assets/presigned-upload",
         });
@@ -807,7 +818,7 @@ describeWithDatabase("assets v2", () => {
             "x-asset-upload-content-type": "image/png",
           },
           method: "POST",
-          payload: SMALL_PNG_BUFFER,
+          payload: largePngBuffer,
           url: `/api/v2/assets/${createdBody.asset.id}/upload-bytes`,
         });
         expect(proxied.statusCode).toBe(204);
@@ -833,6 +844,28 @@ describeWithDatabase("assets v2", () => {
         expect(previewResponse.statusCode).toBe(200);
         expect(previewResponse.json().variantKey).toBe("preview");
         expect(previewResponse.json().url).toContain("preview.webp");
+
+        const variants = await appPool.query<{ height: number; variant_key: string; width: number }>(
+          `
+            SELECT height, variant_key, width
+            FROM asset_variants
+            WHERE asset_id = $1::uuid
+            ORDER BY variant_key ASC
+          `,
+          [createdBody.asset.id],
+        );
+        expect(variants.rows).toEqual([
+          expect.objectContaining({
+            height: 640,
+            variant_key: "thumb",
+            width: 640,
+          }),
+          expect.objectContaining({
+            height: 1024,
+            variant_key: "preview",
+            width: 1024,
+          }),
+        ]);
 
         await api.close();
       } finally {
