@@ -51,6 +51,14 @@ Current deployment baseline:
 
 As of 2026-06-21:
 
+- Fixed standalone workbench reference-image compatibility for the MouxiHub `Nano Banana Pro` official T3 route (`image.mouxihub.nano-banana-pro.t3`) by removing `quality` and `moderation` from workbench-side request params for that route only:
+  - root-cause evidence from upstream relay comparisons showed the same `2k` model and `image[]` payload produced normal reference-aware token usage on canvas, but workbench requests collapsed to near text-only token usage when `quality=auto` and `moderation=auto` were present.
+  - `apps/worker/src/workbench/workbench-generation.service.ts` now strips those two params while keeping reference assets, mirrored `metadata.referenceImages`, aspect ratio, size, and output format intact for the T3 workbench path.
+  - added a regression test proving the T3 workbench request still forwards reference images but omits `quality` and `moderation`, and updated the debug-summary test to match the new expected payload.
+- Validation:
+  - `npm run test --workspace @aigc-flow/worker -- workbench-generation.service.test.ts` passed.
+  - `npm run build --workspace @aigc-flow/worker` passed.
+
 - Added targeted debug instrumentation for the MouxiHub `Nano Banana Pro` official T3 route (`image.mouxihub.nano-banana-pro.t3`) to compare standalone workbench vs canvas reference-image requests end to end:
   - `apps/worker/src/workbench/workbench-generation.service.ts` now logs `workbench.generation.request_debug` with prompt, route, selected image params, reference image counts, and whether workbench references arrived as signed URLs or data URLs.
   - `apps/worker/src/workflow-runtime/service.ts` now logs `workflow.image.request_debug` for canvas/image-node executions on the same T3 route, using the same summary fields so workbench and canvas runs can be compared directly.

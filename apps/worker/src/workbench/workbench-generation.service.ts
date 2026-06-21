@@ -132,12 +132,18 @@ function buildMetadataParams(
   generation: WorkbenchGenerationRecord,
 ): Record<string, unknown> {
   const params = isRecord(generation.params_json) ? generation.params_json : {};
+  const normalizedRouteKey = generation.route_key.trim().toLowerCase();
   const requestedCount = generation.batch_role === "child" ? 1 : generation.requested_count;
-  return {
+  const nextParams: Record<string, unknown> = {
     ...params,
     ...(generation.display_mode ? { displayMode: generation.display_mode } : {}),
     ...(requestedCount > 1 ? { n: requestedCount } : {}),
   };
+  if (normalizedRouteKey === "image.mouxihub.nano-banana-pro.t3") {
+    delete nextParams.quality;
+    delete nextParams.moderation;
+  }
+  return nextParams;
 }
 
 function collectReferenceImageInputs(referenceAssets: AssetReferenceInput[]): string[] {
