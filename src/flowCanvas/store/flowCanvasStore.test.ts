@@ -164,6 +164,40 @@ describe('flowCanvasStore upstream image references', () => {
     ]);
   });
 
+  it('rebuilds upstream refs when a temporary reference upload restores its local preview url later', () => {
+    const source = useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, {
+      mimeType: 'image/png',
+      referenceUploadId: 'reference-upload-1',
+      source: 'canvas-upload',
+      title: 'Temporary Reference',
+    });
+    const target = useFlowCanvasStore.getState().addNode('image', { x: 400, y: 0 }, { title: 'Target Image' });
+
+    useFlowCanvasStore.getState().onConnect({
+      source: source.id,
+      sourceHandle: 'right',
+      target: target.id,
+      targetHandle: 'left',
+    });
+
+    expect(useFlowCanvasStore.getState().graphIndex.upstreamImageRefsByNodeId[target.id]).toBeUndefined();
+
+    useFlowCanvasStore.getState().updateNodeData(source.id, {
+      originalImageUrl: 'blob:http://localhost/reference-preview',
+      thumbnailUrl: 'blob:http://localhost/reference-preview',
+    });
+
+    expect(useFlowCanvasStore.getState().graphIndex.upstreamImageRefsByNodeId[target.id]).toEqual([
+      expect.objectContaining({
+        id: source.id,
+        imageUrl: 'blob:http://localhost/reference-preview',
+        key: `upstream:${source.id}`,
+        source: 'upstream',
+        title: 'Temporary Reference',
+      }),
+    ]);
+  });
+
   it('merges template graph into canvas and clears prior selection', () => {
     const existing = useFlowCanvasStore.getState().addNode(
       'text',

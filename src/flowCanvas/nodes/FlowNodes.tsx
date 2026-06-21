@@ -3891,13 +3891,17 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
         if (cancelled || !previewUrl) return;
         objectUrl = previewUrl;
         setAssetPreviewUrl(previewUrl);
+        updateNodeData(id, {
+          originalImageUrl: previewUrl,
+          thumbnailUrl: previewUrl,
+        });
       })
       .catch(() => undefined);
     return () => {
       cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [assetId, persistedThumbnailUrl, referenceUploadId, runtimeThumbnailUrl]);
+  }, [assetId, id, referenceUploadId, runtimeThumbnailUrl, updateNodeData]);
   const effectiveThumbnailUrl = runtimeThumbnailUrl
     || (persistedThumbnailNeedsRefresh ? '' : persistedThumbnailUrl)
     || assetPreviewUrl;
@@ -4378,7 +4382,9 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       });
       return;
     }
-    const referenceImages = referenceChips.map((item) => item.imageUrl);
+    const referenceImages = referenceChips
+      .map((item) => item.imageUrl)
+      .filter((url) => !String(url || '').trim().toLowerCase().startsWith('blob:'));
     updateNodeData(id, { referenceImages, routeKey: selectedRuntimeRoute.routeKey });
     void runBackendWorkflow({ runMode: 'target_node', targetNodeId: id }).catch(() => undefined);
   };

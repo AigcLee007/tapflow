@@ -3,6 +3,15 @@
 Last updated: 2026-06-21
 Maintainers: project team + Codex sessions
 
+## 2026-06-22 - Canvas Temporary Reference Connection Preview Fix
+
+- fixed canvas temporary reference-upload image nodes so restored local preview URLs are written back into node data, allowing the graph index to expose connected upstream references in the next image node's reference chips.
+- kept provider submission safe by filtering browser-local `blob:` preview URLs out of `referenceImages`; backend workflow execution continues to use the durable `referenceUploadId` input asset path.
+- added graph-index regression coverage for temporary reference uploads whose local preview URL is restored after the edge already exists.
+- validation:
+  - `npm run test -- src/flowCanvas/store/flowCanvasStore.test.ts src/flowCanvas/runtime/graphExecutor.test.ts src/flowCanvas/services/flowProjectApi.test.ts src/flowCanvas/utils/referenceImageLocalCache.test.ts src/flowCanvas/utils/localImageUpload.test.ts`
+  - `npm run build`
+
 ## 2026-06-22 - GPT-Image-2 Workbench Reference Params Alignment
 
 - aligned standalone workbench GPT-Image-2 line one reference-image requests with the canvas/provider edit payload shape by normalizing size tiers plus aspect ratios into explicit OpenAI-compatible pixel sizes before worker submission.
