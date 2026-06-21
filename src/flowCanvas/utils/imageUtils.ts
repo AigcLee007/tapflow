@@ -102,13 +102,21 @@ export function triggerBrowserDownload(url: string, filename: string): void {
 }
 
 // Download Image
-export async function downloadImage(url: string, filename: string): Promise<void> {
+export async function downloadImage(
+  url: string,
+  filename: string,
+  options: { fallbackToUrl?: boolean } = {},
+): Promise<void> {
+  const fallbackToUrl = options.fallbackToUrl ?? true;
   try {
     const blob = await imageUrlToBlob(url);
     const objectUrl = URL.createObjectURL(blob);
     triggerBrowserDownload(objectUrl, filename);
     setTimeout(() => URL.revokeObjectURL(objectUrl), 100);
   } catch (err) {
+    if (!fallbackToUrl) {
+      throw err;
+    }
     console.error('Download failed:', err);
     triggerBrowserDownload(url, filename);
   }

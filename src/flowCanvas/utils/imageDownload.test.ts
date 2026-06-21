@@ -39,7 +39,7 @@ describe("imageDownload", () => {
     })).toBe("selected-result-asset");
   });
 
-  it("downloads the original asset from a presigned url instead of proxying full bytes", async () => {
+  it("downloads the original asset from a presigned url without navigating to the object page", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-19T09:08:07.000Z"));
     getAssetDownloadUrlMock.mockResolvedValue({
@@ -65,11 +65,12 @@ describe("imageDownload", () => {
     });
 
     expect(getAssetDownloadUrlMock).toHaveBeenCalledWith("asset-pig");
-    expect(triggerBrowserDownloadMock).toHaveBeenCalledWith(
+    expect(downloadImageMock).toHaveBeenCalledWith(
       "https://oss.test/original-pig.png?signature=abc",
       "AIttco_20260619_happypigspor_02.png",
+      { fallbackToUrl: false },
     );
-    expect(downloadImageMock).not.toHaveBeenCalled();
+    expect(triggerBrowserDownloadMock).not.toHaveBeenCalled();
   });
 
   it("deduplicates repeated original asset downloads while the first one is still preparing", async () => {
@@ -109,7 +110,7 @@ describe("imageDownload", () => {
     });
     await Promise.all([first, second]);
 
-    expect(triggerBrowserDownloadMock).toHaveBeenCalledTimes(1);
+    expect(downloadImageMock).toHaveBeenCalledTimes(1);
   });
 
   it("falls back to the visible url when an original asset url is unavailable", async () => {

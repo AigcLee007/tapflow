@@ -28,8 +28,8 @@ describe("downloadImage", () => {
     vi.stubGlobal("open", openMock);
 
     await downloadImage(
-      "https://tapflow-staging-assets.oss-ap-northeast-1.aliyuncs.com/tenants/t/assets/asset-1/original.png?signature=abc",
-      "AIttco_20260619_动物运动会_01.png",
+      "https://storage.test/tenants/t/assets/asset-1/original.png?signature=abc",
+      "AIttco_20260619_image_01.png",
     );
 
     expect(fetchMock).toHaveBeenCalledOnce();
@@ -37,9 +37,29 @@ describe("downloadImage", () => {
     expect(clickMock).toHaveBeenCalledOnce();
     expect(openMock).not.toHaveBeenCalled();
     expect(clickedHref).toBe(
-      "https://tapflow-staging-assets.oss-ap-northeast-1.aliyuncs.com/tenants/t/assets/asset-1/original.png?signature=abc",
+      "https://storage.test/tenants/t/assets/asset-1/original.png?signature=abc",
     );
-    expect(clickedDownload).toBe("AIttco_20260619_动物运动会_01.png");
+    expect(clickedDownload).toBe("AIttco_20260619_image_01.png");
     expect(document.body.querySelector("a")).toBeNull();
+  });
+
+  it("can disable direct url fallback so callers avoid navigating to cross-origin image pages", async () => {
+    const consoleErrorMock = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const fetchMock = vi.fn(async () => {
+      throw new Error("CORS blocked");
+    });
+    const clickMock = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(downloadImage(
+      "https://art.cn-nb1.rains3.com/tenants/t/assets/asset-1/original.png?signature=abc",
+      "AIttco_20260621_image_01.png",
+      { fallbackToUrl: false },
+    )).rejects.toThrow("CORS blocked");
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(clickMock).not.toHaveBeenCalled();
+    expect(consoleErrorMock).not.toHaveBeenCalled();
   });
 });

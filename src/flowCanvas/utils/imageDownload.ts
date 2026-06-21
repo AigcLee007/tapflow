@@ -1,5 +1,5 @@
 import { getAssetDownloadUrl } from "../../assets/assetApi";
-import { downloadImage, triggerBrowserDownload } from "./imageUtils";
+import { downloadImage } from "./imageUtils";
 
 const activeOriginalDownloads = new Map<string, Promise<void>>();
 let downloadNoticeTimer: number | undefined;
@@ -187,8 +187,13 @@ async function performOriginalImageDownload(input: {
         sequence: input.sequence,
       });
   if (assetId && url && !url.startsWith("/api/v2/")) {
-    triggerBrowserDownload(url, filename);
-    return;
+    try {
+      await downloadImage(url, filename, { fallbackToUrl: false });
+      return;
+    } catch {
+      await downloadImage(await resolveOriginalImageDownloadUrl({ assetId, fallbackUrl }), filename);
+      return;
+    }
   }
   await downloadImage(url, filename);
 }

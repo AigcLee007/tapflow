@@ -3,6 +3,15 @@
 Last updated: 2026-06-21
 Maintainers: project team + Codex sessions
 
+## 2026-06-21 - Original Download Cross-Origin Navigation Fix
+
+- fixed a regression where original image downloads could open the Rainyun/OSS signed object URL as an image page instead of downloading the file.
+- root cause: browsers can ignore the frontend `download` attribute for cross-origin image URLs when the object-storage response does not force `Content-Disposition: attachment`.
+- the shared download helper now fetches signed object URLs into a blob URL before triggering the browser download, and disables direct URL fallback for signed object downloads so failed cross-origin fetches fall back to authenticated `/api/v2/assets/:assetId/bytes` instead of navigating away.
+- validation:
+  - `npm run test -- src/flowCanvas/utils/imageDownload.test.ts src/flowCanvas/utils/imageUtils.test.ts src/workbench/WorkbenchPage.test.tsx`
+  - `npm run build`
+
 ## 2026-06-21 - Faster Original Image Download UX
 
 - optimized the shared original-image download path used by both canvas and standalone workbench:
