@@ -51,6 +51,17 @@ Current deployment baseline:
 
 As of 2026-06-21:
 
+- Added targeted debug instrumentation for the MouxiHub `Nano Banana Pro` official T3 route (`image.mouxihub.nano-banana-pro.t3`) to compare standalone workbench vs canvas reference-image requests end to end:
+  - `apps/worker/src/workbench/workbench-generation.service.ts` now logs `workbench.generation.request_debug` with prompt, route, selected image params, reference image counts, and whether workbench references arrived as signed URLs or data URLs.
+  - `apps/worker/src/workflow-runtime/service.ts` now logs `workflow.image.request_debug` for canvas/image-node executions on the same T3 route, using the same summary fields so workbench and canvas runs can be compared directly.
+  - `packages/ai-gateway-core/src/database-media-runtime.ts` now logs `media.generate.request_debug` after the provider request is built, including provider model, whether the request actually used the edit endpoint, and the image-count summary that will reach the upstream relay.
+  - This instrumentation is intentionally summary-only: no API keys and no full image payload bytes are written to logs.
+- Validation:
+  - `npm run test --workspace @aigc-flow/worker -- workbench-generation.service.test.ts` passed.
+  - `npx vitest run packages/ai-gateway-core/test/runtime.test.ts -t "database media runtime emits T3 request debug summaries for image edits"` passed.
+  - `npm run build --workspace @aigc-flow/worker` passed.
+  - `npm run build --workspace @aigc-flow/ai-gateway-core` passed.
+
 - Fixed workbench image-to-image compatibility for the MouxiHub `Nano Banana Pro` official T3 route (`image.mouxihub.nano-banana-pro.t3`):
   - `apps/worker/src/workbench/workbench-generation.service.ts` now mirrors hydrated workbench reference assets into `metadata.referenceImages` in addition to `inputAssets` before calling the media runtime.
   - This aligns workbench provider requests more closely with the already-working canvas path, so async OpenAI-compatible edit routes can reliably detect reference images and stay on the image-edit path instead of degrading toward text-only generation behavior.

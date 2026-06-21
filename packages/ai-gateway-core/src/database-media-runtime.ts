@@ -8,6 +8,7 @@ import { AiGatewayError } from "./errors.js";
 import { redactValue } from "./redaction.js";
 import { RouteResolver } from "./route-resolver.js";
 import type {
+  AssetReferenceInput,
   AiGatewayMediaResult,
   ImageGenerationRequest,
   PollTaskRequest,
@@ -109,6 +110,100 @@ function emitRuntimeLog(
   message: string,
 ) {
   logger?.info(fields, message);
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function classifyReferenceValue(value: unknown): string {
+  const text = typeof value === "string" ? value.trim() : "";
+  if (!text) return "unknown";
+  if (/^data:/i.test(text)) return "dataUrl";
+  if (/^https?:\/\//i.test(text)) return "httpsUrl";
+  if (/^[a-z0-9+/=]+$/i.test(text) && text.length > 32) return "base64";
+  return "other";
+}
+
+function classifyInputAssetKind(asset: AssetReferenceInput): string {
+  const metadata = asRecord(asset.metadata);
+  const candidates = [
+    metadata.base64,
+    metadata.url,
+    metadata.signedUrl,
+    metadata.uri,
+    metadata.fileUri,
+    metadata.publicUrl,
+  ];
+  for (const candidate of candidates) {
+    const kind = classifyReferenceValue(candidate);
+    if (kind !== "unknown") {
+      return kind === "httpsUrl" ? "signedUrl" : kind;
+    }
+  }
+  return "unknown";
+}
+
+function pickDebugParams(metadata: Record<string, unknown> | null | undefined): Record<string, unknown> {
+  const params = asRecord(asRecord(metadata).params);
+  const next: Record<string, unknown> = {};
+  for (const key of ["size", "imageSize", "image_size", "aspect_ratio", "aspectRatio", "quality", "moderation", "output_format"]) {
+    const value = params[key];
+    if (value !== undefined && value !== null && value !== "") {
+      next[key] = value;
+    }
+  }
+  return next;
+}
+
+function maybeEmitT3RequestDebug(
+  logger: RuntimeLogger | null | undefined,
+  context: RuntimeContext,
+  request: ImageGenerationRequest | VideoGenerationRequest,
+  routeKey: string,
+  metadata: RuntimeLogMetadata | undefined,
+  result?: AiGatewayMediaResult,
+) {
+  if (routeKey !== "image.mouxihub.nano-banana-pro.t3") {
+    return;
+  }
+
+  const requestMetadata = asRecord(request.metadata);
+  const providerRequest = asRecord(result?.providerRequest);
+  const providerBody = asRecord(providerRequest.body);
+  const referenceImages = Array.isArray(requestMetadata.referenceImages) ? requestMetadata.referenceImages : [];
+
+  emitRuntimeLog(
+    logger,
+    {
+      event: "media.generate.request_debug",
+      generationId: metadata?.generationId ?? null,
+      inputAssetCount: request.inputAssets?.length ?? 0,
+      inputAssetKinds: Array.isArray(request.inputAssets) ? request.inputAssets.map(classifyInputAssetKind) : [],
+      metadataReferenceImageCount: referenceImages.length,
+      metadataReferenceImageKinds: referenceImages.map(classifyReferenceValue),
+      model: request.model ?? null,
+      params: pickDebugParams(request.metadata),
+      prompt: request.prompt,
+      providerImageCount:
+        typeof providerBody.imageCount === "number"
+          ? providerBody.imageCount
+          : null,
+      providerModel: typeof providerBody.model === "string" ? providerBody.model : null,
+      providerPrompt: typeof providerBody.prompt === "string" ? providerBody.prompt : null,
+      providerUsesEditEndpoint:
+        typeof providerRequest.url === "string"
+          ? providerRequest.url.includes("/images/edits")
+          : null,
+      routeKey,
+      source: typeof requestMetadata.source === "string" ? requestMetadata.source : "workflow",
+      tenantId: context.tenantId,
+      traceId: metadata?.traceId ?? null,
+      workflowRunId: metadata?.workflowRunId ?? null,
+      nodeRunId: metadata?.nodeRunId ?? null,
+    },
+    "media generate request debug",
+  );
 }
 
 export class DatabaseMediaRuntime {
@@ -362,6 +457,7 @@ export class DatabaseMediaRuntime {
 
     try {
       const result = await caller(routeForCall, apiKey);
+      maybeEmitT3RequestDebug(metadata?.logger, context, request, selectedRoute.routeKey, metadata, result);
 
       await this.insertAiCallLog({
         adapterKindSnapshot:

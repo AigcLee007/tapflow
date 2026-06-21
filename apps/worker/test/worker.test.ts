@@ -1372,6 +1372,196 @@ describeWithDatabase("workflow node execution", () => {
     });
   });
 
+  test("image.generate emits T3 request debug summary for workflow runs", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({
+          connectionString: await createAppDatabaseUrl(),
+        });
+
+        const referenceAssetId = "00000000-0000-4000-8000-000000000201";
+        const seeded = await seedWorkflowRuntime(appPool, {
+          inputNodeStatus: "succeeded",
+          middleNodeConfig: {
+            generationPrompt: "图一女孩穿印有图二图案的衣服",
+            params: {
+              aspect_ratio: "16:9",
+              quality: "auto",
+              size: "2k",
+            },
+            referenceImages: ["https://assets.example/reference-1.png"],
+            routeKey: "image.mouxihub.nano-banana-pro.t3",
+          },
+          middleNodeStatus: "runnable",
+          middleNodeType: "image.generate",
+        });
+
+        await withTenantTransaction(
+          { tenantId: seeded.tenantId, userId: seeded.userId },
+          async (client) => {
+            await client.query(
+              `
+                INSERT INTO assets (
+                  id,
+                  tenant_id,
+                  project_id,
+                  owner_user_id,
+                  kind,
+                  mime_type,
+                  bucket,
+                  object_key,
+                  original_filename,
+                  status,
+                  source
+                )
+                VALUES (
+                  $1::uuid,
+                  $2::uuid,
+                  $3::uuid,
+                  $4::uuid,
+                  'image',
+                  'image/png',
+                  'test-bucket',
+                  'tenants/reference/debug.png',
+                  'debug.png',
+                  'available',
+                  'upload'
+                )
+              `,
+              [referenceAssetId, seeded.tenantId, seeded.projectId, seeded.userId],
+            );
+            await client.query(
+              `
+                UPDATE flow_versions
+                SET compiled_graph_json = $2::jsonb
+                WHERE id = $1::uuid
+              `,
+              [
+                seeded.flowVersionId,
+                JSON.stringify({
+                  edges: [
+                    { source: "reference", target: "image" },
+                  ],
+                  entryNodeIds: ["reference"],
+                  nodes: [
+                    {
+                      config: {
+                        assetId: referenceAssetId,
+                        mimeType: "image/png",
+                      },
+                      dependencies: [],
+                      dependents: ["image"],
+                      id: "reference",
+                      type: "image.asset",
+                    },
+                    {
+                      config: {
+                        generationPrompt: "图一女孩穿印有图二图案的衣服",
+                        params: {
+                          aspect_ratio: "16:9",
+                          quality: "auto",
+                          size: "2k",
+                        },
+                        referenceImages: ["https://assets.example/reference-1.png"],
+                        routeKey: "image.mouxihub.nano-banana-pro.t3",
+                      },
+                      dependencies: ["reference"],
+                      dependents: [],
+                      id: "image",
+                      type: "image.generate",
+                    },
+                  ],
+                  outputNodeIds: ["image"],
+                  schemaVersion: "v2",
+                }),
+              ],
+            );
+          },
+          appPool,
+        );
+
+        const service = createWorkflowService({
+          mediaGenerationRuntime: {
+            async generateImage() {
+              return {
+                modelKey: "image-model",
+                outputs: [
+                  {
+                    base64: Buffer.from("fake image bytes").toString("base64"),
+                    mimeType: "image/png",
+                    width: 512,
+                  },
+                ],
+                providerKey: "mock-provider",
+                providerRequest: {},
+                providerResponse: { accepted: true },
+                status: "succeeded" as const,
+                usage: {
+                  inputTokens: 5,
+                  outputTokens: 1,
+                  totalTokens: 6,
+                },
+              };
+            },
+            async generateVideo() {
+              throw new Error("not used");
+            },
+            async pollTask() {
+              throw new Error("not used");
+            },
+          },
+          nodeQueue: createFakeNodeExecuteQueue(),
+          pollQueue: createFakeProviderPollQueue(),
+          pool: appPool,
+          storageProvider: new MemoryStorageProvider(),
+        });
+
+        const logger = createTestLogger();
+        await processNodeExecuteJob(
+          {
+            data: {
+              nodeRunId: seeded.middleNodeRunId,
+              tenantId: seeded.tenantId,
+              traceId: "trace-workflow-debug",
+              workflowRunId: seeded.workflowRunId,
+            },
+            id: "job-image-debug",
+            queueName: QUEUE_NAMES.nodeExecute,
+          } as never,
+          logger,
+          { executionService: service },
+        );
+
+        expect(logger.info).toHaveBeenCalledWith(
+          expect.objectContaining({
+            event: "workflow.image.request_debug",
+            inputAssetCount: 1,
+            inputAssetKinds: ["signedUrl"],
+            metadataReferenceImageCount: 1,
+            metadataReferenceImageKinds: ["httpsUrl"],
+            params: {
+              aspect_ratio: "16:9",
+              quality: "auto",
+              size: "2k",
+            },
+            routeKey: "image.mouxihub.nano-banana-pro.t3",
+            traceId: "trace-workflow-debug",
+            workflowRunId: seeded.workflowRunId,
+          }),
+          "workflow image request debug",
+        );
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
   test("target image node receives static text prompt, image asset reference, and batch count", async () => {
     await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
       process.env.DATABASE_URL = databaseUrl;

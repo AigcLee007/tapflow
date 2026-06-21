@@ -165,6 +165,45 @@ function collectReferenceImageInputs(referenceAssets: AssetReferenceInput[]): st
   );
 }
 
+function classifyReferenceValue(value: unknown): string {
+  const text = typeof value === "string" ? value.trim() : "";
+  if (!text) return "unknown";
+  if (/^data:/i.test(text)) return "dataUrl";
+  if (/^https?:\/\//i.test(text)) return "httpsUrl";
+  if (/^[a-z0-9+/=]+$/i.test(text) && text.length > 32) return "base64";
+  return "other";
+}
+
+function classifyInputAssetKind(asset: AssetReferenceInput): string {
+  const metadata = isRecord(asset.metadata) ? asset.metadata : {};
+  const candidates = [
+    metadata.base64,
+    metadata.url,
+    metadata.signedUrl,
+    metadata.uri,
+    metadata.fileUri,
+    metadata.publicUrl,
+  ];
+  for (const candidate of candidates) {
+    const kind = classifyReferenceValue(candidate);
+    if (kind !== "unknown") {
+      return kind === "httpsUrl" ? "signedUrl" : kind;
+    }
+  }
+  return "unknown";
+}
+
+function pickDebugParams(params: Record<string, unknown>): Record<string, unknown> {
+  const next: Record<string, unknown> = {};
+  for (const key of ["size", "imageSize", "image_size", "aspect_ratio", "aspectRatio", "quality", "moderation", "output_format"]) {
+    const value = params[key];
+    if (value !== undefined && value !== null && value !== "") {
+      next[key] = value;
+    }
+  }
+  return next;
+}
+
 function normalizeTaskOutputs(taskResult: ProviderTaskResult): MediaOutput[] {
   if (Array.isArray(taskResult.outputs) && taskResult.outputs.length > 0) {
     return taskResult.outputs;
@@ -723,6 +762,25 @@ export class WorkbenchGenerationService {
   }> {
     const referenceAssets = await this.loadReferenceAssetsForGeneration(tenantId, generation);
     const referenceImages = collectReferenceImageInputs(referenceAssets);
+    const metadataParams = buildMetadataParams(generation);
+    instrumentation?.logger?.info(
+      {
+        event: "workbench.generation.request_debug",
+        generationId: generation.id,
+        inputAssetCount: referenceAssets.length,
+        inputAssetKinds: referenceAssets.map(classifyInputAssetKind),
+        metadataReferenceImageCount: referenceImages.length,
+        metadataReferenceImageKinds: referenceImages.map(classifyReferenceValue),
+        model: generation.model_id,
+        params: pickDebugParams(metadataParams),
+        prompt: generation.prompt,
+        routeKey: generation.route_key,
+        source: "workbench",
+        tenantId,
+        traceId: instrumentation?.traceId ?? null,
+      },
+      "workbench image request debug",
+    );
     return this.mediaRuntime.generateImage(
       {
         tenantId,
@@ -731,7 +789,7 @@ export class WorkbenchGenerationService {
       {
         inputAssets: referenceAssets,
         metadata: {
-          params: buildMetadataParams(generation),
+          params: metadataParams,
           ...(referenceImages.length > 0 ? { referenceImages } : {}),
           referenceAssetIds: generation.reference_asset_ids,
           referenceUploadIds: generation.reference_upload_ids,

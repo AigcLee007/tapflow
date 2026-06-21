@@ -4,6 +4,7 @@ import { once } from "node:events";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { AiGateway } from "../src/ai-gateway.js";
+import { DatabaseMediaRuntime } from "../src/database-media-runtime.js";
 import { AiGatewayError } from "../src/errors.js";
 import { OpenAiCompatibleTextAdapter } from "../src/openai-compatible-text-adapter.js";
 import { PixelleLabsGeminiImageAdapter } from "../src/pixellelabs-gemini-image-adapter.js";
@@ -2883,6 +2884,152 @@ describe("route resolver and ai gateway", () => {
       traceId: "trace-structured-log",
       workflowRunId: "workflow-run-structured-log",
     });
+  });
+
+  test("database media runtime emits T3 request debug summaries for image edits", async () => {
+    const logger = {
+      error: vi.fn(),
+      info: vi.fn(),
+    };
+    const runtime = new DatabaseMediaRuntime({
+      aiGateway: {
+        generateImage: vi.fn(async () => ({
+          modelKey: "gemini-3.1-flash-image-preview-2k",
+          outputs: [],
+          providerRequest: {
+            url: "https://api.mouxihub.com/v1/images/edits?async=true",
+            body: {
+              hasMask: false,
+              imageCount: 2,
+              model: "gemini-3.1-flash-image-preview-2k",
+              prompt: "图一女孩穿印有图二图案的衣服",
+            },
+          },
+          providerResponse: {},
+          providerTaskId: "task-debug-1",
+          status: "waiting_provider" as const,
+          usage: { inputTokens: null, outputTokens: null, totalTokens: null },
+        })),
+        pollTask: vi.fn(),
+      } as never,
+      credentialVault: {
+        getSecretForProviderCall: vi.fn(() => "sk-test-secret"),
+      } as never,
+      pool: {} as never,
+      routeResolver: {
+        resolveMediaRoute: vi.fn(() => makeRoute({
+          model: { id: "model-debug-1", modelKey: "pixellelabs.nano-banana-pro" },
+          provider: {
+            defaultBaseUrl: "https://api.mouxihub.com",
+            id: "provider-debug-1",
+            key: "mouxihub-openai",
+            kind: "openai-compatible",
+            name: "MouxiHub",
+          },
+          requestConfig: {
+            async: true,
+          },
+          routeId: "route-debug-1",
+          routeKey: "image.mouxihub.nano-banana-pro.t3",
+          upstreamModel: "gemini-3.1-flash-image-preview-2k",
+        })),
+      } as never,
+    });
+
+    Object.defineProperty(runtime, "insertAiCallLog", {
+      value: vi.fn(async () => undefined),
+    });
+    Object.defineProperty(runtime, "resolveRoute", {
+      value: vi.fn(async () => makeRoute({
+        credential: {
+          authTag: Buffer.from("auth-tag"),
+          encryptedSecret: Buffer.from("secret"),
+          id: "credential-debug-1",
+          nonce: Buffer.from("nonce"),
+        },
+        model: { id: "model-debug-1", modelKey: "pixellelabs.nano-banana-pro" },
+        provider: {
+          defaultBaseUrl: "https://api.mouxihub.com",
+          id: "provider-debug-1",
+          key: "mouxihub-openai",
+          kind: "openai-compatible",
+          name: "MouxiHub",
+        },
+        requestConfig: {
+          async: true,
+        },
+        routeId: "route-debug-1",
+        routeKey: "image.mouxihub.nano-banana-pro.t3",
+        upstreamModel: "gemini-3.1-flash-image-preview-2k",
+      })),
+    });
+
+    await runtime.generateImage(
+      {
+        tenantId: "tenant-debug-1",
+        userId: "user-debug-1",
+      },
+      {
+        inputAssets: [
+          {
+            assetId: "asset-1",
+            metadata: {
+              signedUrl: "https://assets.example/reference-1.png",
+              url: "https://assets.example/reference-1.png",
+            },
+          },
+          {
+            assetId: "upload-1",
+            metadata: {
+              base64: "data:image/png;base64,dGVtcA==",
+              url: "data:image/png;base64,dGVtcA==",
+            },
+          },
+        ],
+        model: "pixellelabs.nano-banana-pro",
+        metadata: {
+          params: {
+            aspect_ratio: "16:9",
+            moderation: "auto",
+            output_format: "png",
+            quality: "auto",
+            size: "2k",
+          },
+          referenceImages: [
+            "https://assets.example/reference-1.png",
+            "data:image/png;base64,dGVtcA==",
+          ],
+          source: "workbench",
+        },
+        prompt: "图一女孩穿印有图二图案的衣服",
+        routeKey: "image.mouxihub.nano-banana-pro.t3",
+      },
+      {
+        generationId: "generation-debug-1",
+        logger,
+        traceId: "trace-debug-1",
+      } as never,
+    );
+
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "media.generate.request_debug",
+        generationId: "generation-debug-1",
+        inputAssetCount: 2,
+        inputAssetKinds: ["signedUrl", "dataUrl"],
+        metadataReferenceImageCount: 2,
+        metadataReferenceImageKinds: ["httpsUrl", "dataUrl"],
+        providerImageCount: 2,
+        providerModel: "gemini-3.1-flash-image-preview-2k",
+        providerPrompt: "图一女孩穿印有图二图案的衣服",
+        providerUsesEditEndpoint: true,
+        routeKey: "image.mouxihub.nano-banana-pro.t3",
+        source: "workbench",
+        tenantId: "tenant-debug-1",
+        traceId: "trace-debug-1",
+      }),
+      "media generate request debug",
+    );
   });
 
   test("ai gateway image timeout falls back to provider capabilities timeoutMs", async () => {

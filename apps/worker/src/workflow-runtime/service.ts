@@ -614,6 +614,46 @@ function buildImageRequest(
   };
 }
 
+function classifyReferenceDebugValue(value: unknown): string {
+  const text = typeof value === "string" ? value.trim() : "";
+  if (!text) return "unknown";
+  if (/^data:/i.test(text)) return "dataUrl";
+  if (/^https?:\/\//i.test(text)) return "httpsUrl";
+  if (/^[a-z0-9+/=]+$/i.test(text) && text.length > 32) return "base64";
+  return "other";
+}
+
+function classifyRequestInputAssetKind(asset: AssetReferenceInput): string {
+  const metadata = isPlainObject(asset.metadata) ? asset.metadata : {};
+  const candidates = [
+    metadata.base64,
+    metadata.url,
+    metadata.signedUrl,
+    metadata.uri,
+    metadata.fileUri,
+    metadata.publicUrl,
+  ];
+  for (const candidate of candidates) {
+    const kind = classifyReferenceDebugValue(candidate);
+    if (kind !== "unknown") {
+      return kind === "httpsUrl" ? "signedUrl" : kind;
+    }
+  }
+  return "unknown";
+}
+
+function pickImageRequestDebugParams(metadata: Record<string, unknown> | null | undefined): Record<string, unknown> {
+  const params = isPlainObject(metadata?.params) ? metadata.params as Record<string, unknown> : {};
+  const next: Record<string, unknown> = {};
+  for (const key of ["size", "imageSize", "image_size", "aspect_ratio", "aspectRatio", "quality", "moderation", "output_format"]) {
+    const value = params[key];
+    if (value !== undefined && value !== null && value !== "") {
+      next[key] = value;
+    }
+  }
+  return next;
+}
+
 export const __workerTestUtils = {
   buildAiRuntimeDiagnostic,
   buildImageRequest,
@@ -1612,6 +1652,30 @@ export class WorkflowNodeExecutionService {
     if (node.type === "image.generate") {
       const request = buildImageRequest(upstreamOutputs, node.config ?? {});
       await this.hydrateInputAssetUrls(workflowRun.tenant_id, request.inputAssets ?? []);
+      if (request.routeKey === "image.mouxihub.nano-banana-pro.t3") {
+        const metadata = isPlainObject(request.metadata) ? request.metadata : {};
+        const referenceImages = Array.isArray(metadata.referenceImages) ? metadata.referenceImages : [];
+        logger.info(
+          {
+            event: "workflow.image.request_debug",
+            inputAssetCount: request.inputAssets?.length ?? 0,
+            inputAssetKinds: Array.isArray(request.inputAssets) ? request.inputAssets.map(classifyRequestInputAssetKind) : [],
+            model: request.model ?? null,
+            metadataReferenceImageCount: referenceImages.length,
+            metadataReferenceImageKinds: referenceImages.map(classifyReferenceDebugValue),
+            nodeRunId: nodeRun.id,
+            params: pickImageRequestDebugParams(metadata),
+            prompt: request.prompt,
+            routeKey: request.routeKey,
+            source: typeof metadata.source === "string" ? metadata.source : "workflow",
+            targetNodeId: node.id,
+            tenantId: context.tenantId,
+            traceId: context.traceId ?? null,
+            workflowRunId: workflowRun.id,
+          },
+          "workflow image request debug",
+        );
+      }
       const providerStartedAt = Date.now();
       logger.info(
         {
