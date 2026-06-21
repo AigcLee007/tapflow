@@ -3,6 +3,21 @@
 Last updated: 2026-06-21
 Maintainers: project team + Codex sessions
 
+## 2026-06-21 - Temporary Reference Images for Canvas Uploads
+
+- changed new canvas local image uploads to use the same temporary reference-upload path as the standalone image workbench instead of creating asset-library records.
+- added local IndexedDB preview caching for canvas temporary reference uploads so the same browser can restore a preview when the draft only contains a `referenceUploadId`.
+- updated workflow compilation/runtime handling so reference-upload image nodes compile as static image inputs and worker execution hydrates them from `workbench_reference_uploads` before provider calls.
+- added a migration to make temporary reference uploads expire after 7 days by default and extend still-active 24-hour records to the new retention window.
+- generation outputs continue to persist through the existing asset pipeline and remain visible in `/assets`.
+- validation:
+  - `npm run test -- src/flowCanvas/services/flowProjectApi.test.ts src/flowCanvas/utils/referenceImageLocalCache.test.ts src/flowCanvas/utils/localImageUpload.test.ts`
+  - `npm run test --workspace @aigc-flow/workflow-core`
+  - `npm run test --workspace @aigc-flow/worker`
+  - `npm run test --workspace @aigc-flow/db`
+  - `npm run build`
+  - `npm run test --workspace @aigc-flow/api` currently has an unrelated existing failure in `test/ai-gateway.schemas.test.ts` (`Either modelId or modelFamily must be provided`).
+
 ## 2026-06-21 - Original Download Cross-Origin Navigation Fix
 
 - fixed a regression where original image downloads could open the Rainyun/OSS signed object URL as an image page instead of downloading the file.

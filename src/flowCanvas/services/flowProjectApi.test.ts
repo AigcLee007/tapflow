@@ -110,6 +110,44 @@ describe("sanitizeFlowDraftGraph", () => {
     });
   });
 
+  it("keeps temporary reference upload ids while stripping local preview urls", () => {
+    const graph: FlowDraftGraph = {
+      edges: [],
+      nodes: [
+        {
+          data: {
+            mimeType: "image/png",
+            naturalHeight: 768,
+            naturalWidth: 1024,
+            originalImageUrl: "blob:http://localhost/reference",
+            referenceUploadExpiresAt: "2026-06-28T00:00:00.000Z",
+            referenceUploadId: "00000000-0000-4000-8000-000000000031",
+            source: "canvas-upload",
+            thumbnailUrl: "blob:http://localhost/reference",
+            title: "Reference",
+          },
+          id: "reference-node",
+          type: "image",
+        },
+      ],
+      viewport: { x: 0, y: 0, zoom: 1 },
+    };
+
+    expect(sanitizeFlowDraftGraph(graph).nodes[0]).toEqual({
+      data: {
+        mimeType: "image/png",
+        naturalHeight: 768,
+        naturalWidth: 1024,
+        referenceUploadExpiresAt: "2026-06-28T00:00:00.000Z",
+        referenceUploadId: "00000000-0000-4000-8000-000000000031",
+        source: "canvas-upload",
+        title: "Reference",
+      },
+      id: "reference-node",
+      type: "image",
+    });
+  });
+
   it("keeps sourceAssetId with crop/grid metadata while stripping transient urls", () => {
     const graph: FlowDraftGraph = {
       edges: [],

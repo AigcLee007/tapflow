@@ -178,4 +178,31 @@ describe("@aigc-flow/workflow-core", () => {
     const imageNode = compiled.nodes.find((node) => node.id === "imageNode");
     expect(imageNode?.type).toBe("image.generate");
   });
+
+  test("normalizes uploaded reference image nodes to static image assets", () => {
+    const graph: FlowGraph = {
+      edges: [
+        { source: "reference", target: "imageNode" },
+      ],
+      nodes: [
+        {
+          id: "reference",
+          type: "image",
+          data: {
+            kind: "image",
+            mimeType: "image/png",
+            referenceUploadId: "00000000-0000-4000-8000-000000000031",
+            source: "canvas-upload",
+          },
+        },
+        { id: "imageNode", type: "image", data: { generationPrompt: "use the reference" } },
+      ],
+    };
+
+    const compiled = compileGraph(graph);
+    const referenceNode = compiled.nodes.find((node) => node.id === "reference");
+    const imageNode = compiled.nodes.find((node) => node.id === "imageNode");
+    expect(referenceNode?.type).toBe("image.asset");
+    expect(imageNode?.type).toBe("image.generate");
+  });
 });

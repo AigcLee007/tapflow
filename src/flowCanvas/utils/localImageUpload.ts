@@ -4,16 +4,22 @@ import {
   uploadAssetFile,
   type AssetItem,
 } from "../../assets/assetApi";
+import { uploadReferenceImageFile, type ReferenceUploadView } from "../../services/referenceUploadsApi";
 import type { FlowNodeData } from "../types";
 import { buildAssetBackedNodeData } from "./assetNodeData";
 import { getImageNaturalSize } from "./imageUtils";
 import { FLOW_NODE_DEFAULT_SIZES, fitMediaNodeToShortSide } from "./nodeSizing";
+import { cacheReferenceImagePreview } from "./referenceImageLocalCache";
 
 type LocalImageUploadInput = {
   file: File;
   projectId?: string | null;
   source: string;
   title?: string;
+};
+
+type LocalReferenceUploadInput = Omit<LocalImageUploadInput, "projectId"> & {
+  localPreviewUrl?: string | null;
 };
 
 type ImmediateLocalImageInput = Omit<LocalImageUploadInput, "projectId"> & {
@@ -126,6 +132,63 @@ export async function uploadLocalImageAndBuildAssetNodeData(
       source: input.source,
       title: input.title || input.file.name.replace(/\.[^.]+$/, "") || asset.title || "图片",
     }),
+  };
+}
+
+export async function uploadLocalImageAndBuildReferenceNodeData(
+  input: LocalReferenceUploadInput & {
+    natural?: { h: number; w: number } | null;
+  },
+): Promise<{
+  nodeData: Partial<FlowNodeData>;
+  upload: ReferenceUploadView;
+}> {
+  const upload = await uploadReferenceImageFile({
+    file: input.file,
+    height: input.natural?.h ?? null,
+    localPreviewUrl: input.localPreviewUrl ?? null,
+    width: input.natural?.w ?? null,
+  });
+  void cacheReferenceImagePreview({
+    blob: input.file,
+    expiresAt: upload.expiresAt,
+    mimeType: upload.mimeType,
+    referenceUploadId: upload.id,
+  }).catch(() => undefined);
+  const previewUrl = input.localPreviewUrl || upload.previewUrl || undefined;
+  const naturalWidth = input.natural?.w ?? upload.width ?? null;
+  const naturalHeight = input.natural?.h ?? upload.height ?? null;
+  const fittedSize =
+    naturalWidth && naturalHeight
+      ? fitMediaNodeToShortSide(naturalWidth, naturalHeight)
+      : null;
+
+  return {
+    upload,
+    nodeData: {
+      activeResultIndex: undefined,
+      assetId: undefined,
+      assetIds: undefined,
+      coverResultId: undefined,
+      errorMessage: undefined,
+      favoriteResultIds: undefined,
+      generatedResults: undefined,
+      generationStatus: "done",
+      lastGenerationSnapshot: undefined,
+      mimeType: upload.mimeType || input.file.type || "image/*",
+      ...(previewUrl ? { originalImageUrl: previewUrl, thumbnailUrl: previewUrl } : {}),
+      referenceUploadExpiresAt: upload.expiresAt,
+      referenceUploadId: upload.id,
+      source: input.source,
+      status: "success",
+      title: input.title || input.file.name.replace(/\.[^.]+$/, "") || upload.originalFilename || "图片",
+      uploadErrorMessage: undefined,
+      uploadStatus: "done",
+      ...(naturalWidth ? { naturalWidth } : {}),
+      ...(naturalHeight ? { naturalHeight } : {}),
+      ...(naturalWidth && naturalHeight ? { aspectRatio: naturalWidth / naturalHeight } : {}),
+      ...(fittedSize ? { width: fittedSize.width, height: fittedSize.height } : {}),
+    },
   };
 }
 

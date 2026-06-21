@@ -123,6 +123,7 @@ function sanitizeGraphValue(value: unknown, assetBacked: boolean): unknown {
 function isAssetBackedNodeData(value: Record<string, unknown>) {
   return (
     typeof value.assetId === "string" ||
+    typeof value.referenceUploadId === "string" ||
     typeof value.sourceAssetId === "string" ||
     typeof value.thumbnailAssetId === "string" ||
     (Array.isArray(value.assetIds) && value.assetIds.some((item) => typeof item === "string" && item.trim()))

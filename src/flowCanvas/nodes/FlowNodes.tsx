@@ -115,9 +115,10 @@ import {
   createImmediateLocalImageNodeData,
   createLocalPreviewObjectUrl,
   measureLocalImageNodeData,
-  uploadLocalImageAndBuildAssetNodeData,
+  uploadLocalImageAndBuildReferenceNodeData,
 } from '../utils/localImageUpload';
 import { persistDerivedImageAsset, type DerivedImageSourceType } from '../utils/persistDerivedImageAsset';
+import { getCachedReferenceImageObjectUrl } from '../utils/referenceImageLocalCache';
 import { downloadOriginalImage, getPreferredImageDownloadAssetId } from '../utils/imageDownload';
 import {
   buildFailedDerivedImagePatch,
@@ -3853,6 +3854,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const [assetPreviewUrl, setAssetPreviewUrl] = useState('');
   const [imageLoadState, setImageLoadState] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle');
   const assetId = typeof d.assetId === 'string' ? d.assetId : '';
+  const referenceUploadId = typeof d.referenceUploadId === 'string' ? d.referenceUploadId : '';
   const persistedThumbnailUrl = String(d.thumbnailUrl || '');
   const persistedThumbnailNeedsRefresh = isAuthenticatedAssetBytesUrl(persistedThumbnailUrl);
   useEffect(() => {
@@ -3880,6 +3882,22 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       cancelled = true;
     };
   }, [assetId, id, persistedThumbnailNeedsRefresh, persistedThumbnailUrl, runtimeThumbnailUrl, updateNodeData]);
+  useEffect(() => {
+    if (!referenceUploadId || assetId || runtimeThumbnailUrl || persistedThumbnailUrl) return;
+    let cancelled = false;
+    let objectUrl = '';
+    void getCachedReferenceImageObjectUrl(referenceUploadId)
+      .then((previewUrl) => {
+        if (cancelled || !previewUrl) return;
+        objectUrl = previewUrl;
+        setAssetPreviewUrl(previewUrl);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [assetId, persistedThumbnailUrl, referenceUploadId, runtimeThumbnailUrl]);
   const effectiveThumbnailUrl = runtimeThumbnailUrl
     || (persistedThumbnailNeedsRefresh ? '' : persistedThumbnailUrl)
     || assetPreviewUrl;
@@ -5067,10 +5085,10 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
 
     void (async () => {
       try {
-        const uploaded = await uploadLocalImageAndBuildAssetNodeData({
+        const uploaded = await uploadLocalImageAndBuildReferenceNodeData({
           file,
+          localPreviewUrl: activePreviewUrl,
           natural: measuredNatural,
-          projectId: backendProjectId,
           source: 'node-upload',
           title,
         });
@@ -6893,7 +6911,6 @@ export const UploadNodeComponent = memo(function UploadNode({
   selected,
 }: NodeProps<FlowNode>) {
   const d = data;
-  const backendProjectId = useFlowCanvasStore((s) => s.backendProjectId);
   const replaceNode = useFlowCanvasStore((s) => s.replaceNode);
   const updateNodeData = useFlowCanvasStore((s) => s.updateNodeData);
   const [hovered, setHovered] = useState(false);
@@ -6951,10 +6968,10 @@ export const UploadNodeComponent = memo(function UploadNode({
 
     void (async () => {
       try {
-        const uploaded = await uploadLocalImageAndBuildAssetNodeData({
+        const uploaded = await uploadLocalImageAndBuildReferenceNodeData({
           file,
+          localPreviewUrl: activePreviewUrl,
           natural: measuredNatural,
-          projectId: backendProjectId,
           source: 'node-upload',
           title,
         });
@@ -6972,7 +6989,7 @@ export const UploadNodeComponent = memo(function UploadNode({
         useFlowCanvasStore.getState().updateNodeData(id, buildLocalUploadFailureNodeData(error));
       }
     })();
-  }, [backendProjectId, d.title, id, replaceNode]);
+  }, [d.title, id, replaceNode]);
 
   const handleFileChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];

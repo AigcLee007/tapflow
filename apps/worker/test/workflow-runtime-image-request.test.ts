@@ -153,6 +153,95 @@ describe("buildImageRequest", () => {
     ]);
   });
 
+  test("builds target-node upstream outputs from temporary reference upload configs", () => {
+    const outputs = __workerTestUtils.getDependencyOutputs(
+      {
+        config: { routeKey: "image.default" },
+        dependencies: ["reference"],
+        dependents: [],
+        id: "image",
+        type: "image.generate",
+      },
+      [],
+      {
+        compiled_graph_json: {
+          edges: [
+            { source: "reference", target: "image" },
+          ],
+          entryNodeIds: ["reference"],
+          nodes: [
+            {
+              config: {
+                mimeType: "image/png",
+                naturalHeight: 768,
+                naturalWidth: 1024,
+                referenceUploadId: "00000000-0000-4000-8000-000000000031",
+              },
+              dependencies: [],
+              dependents: ["image"],
+              id: "reference",
+              type: "image.asset",
+            },
+          ],
+          outputNodeIds: ["image"],
+          schemaVersion: "v2",
+        },
+      },
+    );
+
+    expect(outputs).toEqual([
+      {
+        assets: [
+          expect.objectContaining({
+            assetId: "00000000-0000-4000-8000-000000000031",
+            kind: "image",
+            metadata: expect.objectContaining({
+              referenceUploadId: "00000000-0000-4000-8000-000000000031",
+              source: "temporary-reference-upload",
+            }),
+            mimeType: "image/png",
+          }),
+        ],
+      },
+    ]);
+  });
+
+  test("forwards temporary reference uploads as provider input assets", () => {
+    const request = __workerTestUtils.buildImageRequest(
+      [
+        {
+          assets: [
+            {
+              assetId: "00000000-0000-4000-8000-000000000031",
+              kind: "image",
+              metadata: {
+                base64: "data:image/png;base64,dGVtcC1pbWFnZQ==",
+                referenceUploadId: "00000000-0000-4000-8000-000000000031",
+                source: "temporary-reference-upload",
+                url: "data:image/png;base64,dGVtcC1pbWFnZQ==",
+              },
+              mimeType: "image/png",
+            },
+          ],
+        },
+      ],
+      {
+        generationPrompt: "turn the reference into a poster",
+        routeKey: "image.default",
+      },
+    );
+
+    expect(request.inputAssets).toEqual([
+      expect.objectContaining({
+        assetId: "00000000-0000-4000-8000-000000000031",
+        metadata: expect.objectContaining({
+          base64: "data:image/png;base64,dGVtcC1pbWFnZQ==",
+          source: "temporary-reference-upload",
+        }),
+      }),
+    ]);
+  });
+
   test("forwards batchCount as provider image count metadata", () => {
     const request = __workerTestUtils.buildImageRequest(
       [{ prompt: "a black kitten" }],

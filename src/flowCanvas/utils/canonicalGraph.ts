@@ -113,6 +113,7 @@ function stripTransientValue(value: unknown, scope: "edge" | "node" | "node-data
 function hasDurableAssetRef(value: Record<string, unknown>): boolean {
   return (
     typeof value.assetId === "string" ||
+    typeof value.referenceUploadId === "string" ||
     typeof value.sourceAssetId === "string" ||
     typeof value.thumbnailAssetId === "string" ||
     (Array.isArray(value.assetIds) && value.assetIds.some((item) => typeof item === "string" && item.trim()))

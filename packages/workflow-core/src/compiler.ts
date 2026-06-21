@@ -11,11 +11,21 @@ function sortStrings(values: Iterable<string>): string[] {
   return [...values].sort((left, right) => left.localeCompare(right));
 }
 
-function normalizeNodeType(type: string): string {
+function hasStaticImageReference(data: Record<string, unknown> | undefined): boolean {
+  if (!data) return false;
+  if (typeof data.referenceUploadId === "string" && data.referenceUploadId.trim()) return true;
+  if (typeof data.assetId === "string" && data.assetId.trim()) return true;
+  return Array.isArray(data.assetIds) && data.assetIds.some((item) => typeof item === "string" && item.trim());
+}
+
+function normalizeNodeType(type: string, data?: Record<string, unknown>): string {
   if (type === "text") {
     return "text.generate";
   }
   if (type === "image") {
+    if (hasStaticImageReference(data)) {
+      return "image.asset";
+    }
     return "image.generate";
   }
   if (type === "video") {
@@ -60,7 +70,7 @@ export function compileGraph(graph: FlowGraph): CompiledWorkflow {
       dependencies: sortStrings(dependencies.get(nodeId) ?? []),
       dependents: sortStrings(dependents.get(nodeId) ?? []),
       id: node.id,
-      type: normalizeNodeType(node.type),
+      type: normalizeNodeType(node.type, node.data),
     };
   });
 

@@ -4,11 +4,16 @@ const uploadAssetFileMock = vi.fn();
 const getAssetVariantUrlMock = vi.fn();
 const getAssetDownloadUrlMock = vi.fn();
 const getImageNaturalSizeMock = vi.fn();
+const uploadReferenceImageFileMock = vi.fn();
 
 vi.mock('../../assets/assetApi', () => ({
   getAssetDownloadUrl: (...args: unknown[]) => getAssetDownloadUrlMock(...args),
   getAssetVariantUrl: (...args: unknown[]) => getAssetVariantUrlMock(...args),
   uploadAssetFile: (...args: unknown[]) => uploadAssetFileMock(...args),
+}));
+
+vi.mock('../../services/referenceUploadsApi', () => ({
+  uploadReferenceImageFile: (...args: unknown[]) => uploadReferenceImageFileMock(...args),
 }));
 
 vi.mock('./imageUtils', () => ({
@@ -21,6 +26,7 @@ describe('createImmediateLocalImageNodeData', () => {
     getAssetVariantUrlMock.mockReset();
     getAssetDownloadUrlMock.mockReset();
     getImageNaturalSizeMock.mockReset();
+    uploadReferenceImageFileMock.mockReset();
   });
 
   it('returns blob-backed node data without decoding or uploading', async () => {
@@ -66,92 +72,86 @@ describe('createImmediateLocalImageNodeData', () => {
   });
 });
 
-describe('uploadLocalImageAndBuildAssetNodeData', () => {
+describe('uploadLocalImageAndBuildReferenceNodeData', () => {
   beforeEach(() => {
     uploadAssetFileMock.mockReset();
     getAssetVariantUrlMock.mockReset();
     getAssetDownloadUrlMock.mockReset();
     getImageNaturalSizeMock.mockReset();
+    uploadReferenceImageFileMock.mockReset();
   });
 
-  it('hydrates uploaded local images with a usable preview url', async () => {
-    uploadAssetFileMock.mockResolvedValue({
-      durationMs: null,
+  it('stores uploaded local images as temporary references instead of assets', async () => {
+    uploadReferenceImageFileMock.mockResolvedValue({
+      createdAt: '2026-06-21T00:00:00.000Z',
+      expiresAt: '2026-06-28T00:00:00.000Z',
       height: 768,
-      id: 'asset-1',
+      id: 'reference-upload-1',
       mimeType: 'image/png',
       originalFilename: 'cat.png',
-      previewUrl: undefined,
-      source: 'upload',
-      title: 'cat',
+      previewUrl: null,
+      sizeBytes: 3,
       width: 1024,
     });
-    getAssetVariantUrlMock.mockResolvedValue({
-      expiresAt: '2026-06-11T12:00:00.000Z',
-      method: 'GET',
-      url: 'https://cdn.test/asset-1-preview.png',
-      variantKey: 'preview',
-    });
 
-    const { uploadLocalImageAndBuildAssetNodeData } = await import('./localImageUpload');
+    const { uploadLocalImageAndBuildReferenceNodeData } = await import('./localImageUpload');
     const file = new File(['cat'], 'cat.png', { type: 'image/png' });
 
-    const result = await uploadLocalImageAndBuildAssetNodeData({
+    const result = await uploadLocalImageAndBuildReferenceNodeData({
       file,
+      localPreviewUrl: 'blob://cat-preview',
       natural: { h: 768, w: 1024 },
-      projectId: '11111111-1111-1111-1111-111111111111',
       source: 'node-upload',
       title: 'Cat',
     });
 
-    expect(uploadAssetFileMock).toHaveBeenCalledWith({
+    expect(uploadReferenceImageFileMock).toHaveBeenCalledWith({
       file,
-      kind: 'image',
-      projectId: '11111111-1111-1111-1111-111111111111',
+      height: 768,
+      localPreviewUrl: 'blob://cat-preview',
+      width: 1024,
     });
+    expect(uploadAssetFileMock).not.toHaveBeenCalled();
     expect(result.nodeData).toMatchObject({
-      assetId: 'asset-1',
-      originalImageUrl: 'https://cdn.test/asset-1-preview.png',
-      thumbnailUrl: 'https://cdn.test/asset-1-preview.png',
+      assetId: undefined,
+      assetIds: undefined,
+      originalImageUrl: 'blob://cat-preview',
+      referenceUploadId: 'reference-upload-1',
+      source: 'node-upload',
+      thumbnailUrl: 'blob://cat-preview',
       title: 'Cat',
+      uploadStatus: 'done',
     });
     expect(getImageNaturalSizeMock).not.toHaveBeenCalled();
   });
 
-  it('falls back to the original download url when preview is unavailable', async () => {
-    uploadAssetFileMock.mockResolvedValue({
-      durationMs: null,
+  it('falls back to the server preview url when no local preview is available', async () => {
+    uploadReferenceImageFileMock.mockResolvedValue({
+      createdAt: '2026-06-21T00:00:00.000Z',
+      expiresAt: '2026-06-28T00:00:00.000Z',
       height: 512,
-      id: 'asset-2',
+      id: 'reference-upload-2',
       mimeType: 'image/png',
       originalFilename: 'dog.png',
-      previewUrl: undefined,
-      source: 'upload',
-      title: 'dog',
+      previewUrl: 'https://cdn.test/temp-reference-2.png',
+      sizeBytes: 3,
       width: 512,
     });
-    getAssetVariantUrlMock.mockRejectedValue(new Error('missing preview variant'));
-    getAssetDownloadUrlMock.mockResolvedValue({
-      expiresAt: '2026-06-11T12:00:00.000Z',
-      method: 'GET',
-      url: 'https://cdn.test/asset-2-original.png',
-    });
 
-    const { uploadLocalImageAndBuildAssetNodeData } = await import('./localImageUpload');
+    const { uploadLocalImageAndBuildReferenceNodeData } = await import('./localImageUpload');
     const file = new File(['dog'], 'dog.png', { type: 'image/png' });
 
-    const result = await uploadLocalImageAndBuildAssetNodeData({
+    const result = await uploadLocalImageAndBuildReferenceNodeData({
       file,
       natural: { h: 512, w: 512 },
-      projectId: null,
       source: 'canvas-upload',
       title: 'Dog',
     });
 
     expect(result.nodeData).toMatchObject({
-      assetId: 'asset-2',
-      originalImageUrl: 'https://cdn.test/asset-2-original.png',
-      thumbnailUrl: 'https://cdn.test/asset-2-original.png',
+      originalImageUrl: 'https://cdn.test/temp-reference-2.png',
+      referenceUploadId: 'reference-upload-2',
+      thumbnailUrl: 'https://cdn.test/temp-reference-2.png',
     });
   });
 });

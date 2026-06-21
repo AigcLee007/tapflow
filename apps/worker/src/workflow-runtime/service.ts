@@ -376,6 +376,7 @@ function extractAssetInputs(upstreamOutputs: Array<Record<string, unknown> | nul
         durationMs: typeof asset.durationMs === "number" ? asset.durationMs : null,
         height: typeof asset.height === "number" ? asset.height : null,
         kind: typeof asset.kind === "string" ? asset.kind : null,
+        metadata: isPlainObject(asset.metadata) ? asset.metadata : null,
         mimeType: typeof asset.mimeType === "string" ? asset.mimeType : null,
         width: typeof asset.width === "number" ? asset.width : null,
       });
@@ -403,7 +404,11 @@ function extractStaticTextFromConfig(config: Record<string, unknown>): string {
 
 function extractAssetOutputsFromConfig(config: Record<string, unknown>): AssetReferenceInput[] {
   const assetIds = new Set<string>();
+  const referenceUploadId = typeof config.referenceUploadId === "string" ? config.referenceUploadId.trim() : "";
   const directAssetId = typeof config.assetId === "string" ? config.assetId.trim() : "";
+  if (referenceUploadId) {
+    assetIds.add(referenceUploadId);
+  }
   if (directAssetId) {
     assetIds.add(directAssetId);
   }
@@ -418,29 +423,38 @@ function extractAssetOutputsFromConfig(config: Record<string, unknown>): AssetRe
     assetIds.add(config.sourceAssetId.trim());
   }
 
-  return [...assetIds].map((assetId) => ({
-    assetId,
-    durationMs: typeof config.durationMs === "number" ? config.durationMs : null,
-    height:
-      typeof config.naturalHeight === "number"
-        ? config.naturalHeight
-        : typeof config.height === "number"
-          ? config.height
-          : null,
-    kind:
-      typeof config.kind === "string"
-        ? config.kind
-        : typeof config.mimeType === "string" && config.mimeType.startsWith("video/")
-          ? "video"
-          : "image",
-    mimeType: typeof config.mimeType === "string" ? config.mimeType : null,
-    width:
-      typeof config.naturalWidth === "number"
-        ? config.naturalWidth
-        : typeof config.width === "number"
-          ? config.width
-          : null,
-  }));
+  return [...assetIds].map((assetId) => {
+    const isTemporaryReference = referenceUploadId && assetId === referenceUploadId;
+    return {
+      assetId,
+      durationMs: typeof config.durationMs === "number" ? config.durationMs : null,
+      height:
+        typeof config.naturalHeight === "number"
+          ? config.naturalHeight
+          : typeof config.height === "number"
+            ? config.height
+            : null,
+      kind:
+        typeof config.kind === "string"
+          ? config.kind
+          : typeof config.mimeType === "string" && config.mimeType.startsWith("video/")
+            ? "video"
+            : "image",
+      metadata: isTemporaryReference
+        ? {
+            referenceUploadId,
+            source: "temporary-reference-upload",
+          }
+        : null,
+      mimeType: typeof config.mimeType === "string" ? config.mimeType : null,
+      width:
+        typeof config.naturalWidth === "number"
+          ? config.naturalWidth
+          : typeof config.width === "number"
+            ? config.width
+            : null,
+    };
+  });
 }
 
 function buildOutputFromNodeConfig(node: CompiledWorkflowNode | undefined): Record<string, unknown> | null {
@@ -2246,9 +2260,10 @@ export class WorkflowNodeExecutionService {
     tenantId: string,
     inputAssets: AssetReferenceInput[],
   ): Promise<void> {
+    await this.hydrateTemporaryReferenceUploads(tenantId, inputAssets);
     const missingUrlAssets = inputAssets.filter((asset) => {
       const metadata = isPlainObject(asset.metadata) ? asset.metadata : {};
-      return asset.assetId && !metadata.url && !metadata.signedUrl && !metadata.publicUrl;
+      return asset.assetId && !metadata.referenceUploadId && !metadata.url && !metadata.signedUrl && !metadata.publicUrl;
     });
     if (missingUrlAssets.length === 0) {
       return;
@@ -2285,6 +2300,103 @@ export class WorkflowNodeExecutionService {
         url: signed.url,
       };
     }
+  }
+
+  private async hydrateTemporaryReferenceUploads(
+    tenantId: string,
+    inputAssets: AssetReferenceInput[],
+  ): Promise<void> {
+    const referenceUploadIds = Array.from(new Set(inputAssets
+      .map((asset) => {
+        const metadata = isPlainObject(asset.metadata) ? asset.metadata : {};
+        return typeof metadata.referenceUploadId === "string" && metadata.referenceUploadId.trim()
+          ? metadata.referenceUploadId.trim()
+          : "";
+      })
+      .filter(Boolean)));
+    if (referenceUploadIds.length === 0) {
+      return;
+    }
+
+    const uploads = await withTenantTransaction(
+      { tenantId, userId: null },
+      async (client) => this.loadTemporaryReferenceUploads(client, tenantId, referenceUploadIds),
+      this.pool,
+    );
+
+    for (const asset of inputAssets) {
+      const metadata = isPlainObject(asset.metadata) ? asset.metadata : {};
+      const referenceUploadId = typeof metadata.referenceUploadId === "string" ? metadata.referenceUploadId.trim() : "";
+      if (!referenceUploadId) continue;
+      const upload = uploads.get(referenceUploadId);
+      if (!upload) continue;
+      const dataUrl = `data:${upload.mimeType};base64,${upload.bytesBase64}`;
+      asset.kind = asset.kind ?? "image";
+      asset.mimeType = asset.mimeType ?? upload.mimeType;
+      asset.width = asset.width ?? upload.width ?? null;
+      asset.height = asset.height ?? upload.height ?? null;
+      asset.metadata = {
+        ...metadata,
+        base64: dataUrl,
+        originalFilename: upload.originalFilename,
+        source: metadata.source ?? "temporary-reference-upload",
+        url: dataUrl,
+      };
+    }
+  }
+
+  private async loadTemporaryReferenceUploads(
+    client: PoolClient,
+    tenantId: string,
+    referenceUploadIds: string[],
+  ): Promise<Map<string, {
+    bytesBase64: string;
+    height: number | null;
+    id: string;
+    mimeType: string;
+    originalFilename: string | null;
+    width: number | null;
+  }>> {
+    if (referenceUploadIds.length === 0) {
+      return new Map();
+    }
+
+    const result = await client.query<{
+      bytes_base64: string;
+      height: number | null;
+      id: string;
+      mime_type: string;
+      original_filename: string | null;
+      width: number | null;
+    }>(
+      `
+        SELECT
+          id::text AS id,
+          original_filename,
+          mime_type,
+          width,
+          height,
+          encode(bytes, 'base64') AS bytes_base64
+        FROM workbench_reference_uploads
+        WHERE tenant_id = $1::uuid
+          AND id = ANY($2::uuid[])
+          AND status IN ('active', 'used')
+          AND expires_at > now()
+      `,
+      [tenantId, referenceUploadIds],
+    );
+
+    return new Map(result.rows.map((row) => [
+      row.id,
+      {
+        bytesBase64: row.bytes_base64,
+        height: row.height,
+        id: row.id,
+        mimeType: row.mime_type,
+        originalFilename: row.original_filename,
+        width: row.width,
+      },
+    ]));
   }
 
   private async loadAssetStorageLookups(
