@@ -19,6 +19,18 @@ Rule for future updates:
 
 - after each meaningful product, infrastructure, deployment, or staging-validation change, update this file in the same task or immediately after
 
+## 2026-06-21 - Workbench MouxiHub T3 Reference Image Bytes Fix
+
+- fixed the OpenAI-compatible image adapter so multiline / wrapped `data:image/...;base64,...` reference images are decoded as real image bytes before being sent as multipart edit inputs
+- this targets the `/workbench` Nano Banana Pro line two MouxiHub T3 path, where temporary workbench reference uploads are hydrated as data URLs before the adapter submits `/v1/images/edits`
+- added regression coverage that verifies a workbench-style data URL reference is sent to MouxiHub multipart edits with the original PNG header bytes, not a corrupted literal data URL payload
+- validation:
+  - `npm run test --workspace @aigc-flow/ai-gateway-core -- runtime.test.ts`
+  - `npm run build --workspace @aigc-flow/ai-gateway-core`
+  - `npm run test --workspace @aigc-flow/worker -- workbench-generation.service.test.ts`
+  - `npm run build --workspace @aigc-flow/worker`
+  - `npm run build`
+
 ## Current Product Status
 
 Repository direction:

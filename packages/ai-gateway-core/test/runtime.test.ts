@@ -796,6 +796,80 @@ describe("openai-compatible text adapter", () => {
     await server.close();
   });
 
+  test("generateImage preserves workbench data URL reference bytes for MouxiHub async edits", async () => {
+    const pngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9MbugAAAAASUVORK5CYII=";
+    const wrappedBase64 = `${pngBase64.slice(0, 24)}\n${pngBase64.slice(24, 56)}\r\n${pngBase64.slice(56)}`;
+    const pngHeader = Buffer.from("89504e470d0a1a0a", "hex").toString("binary");
+
+    const server = await withHttpServer(async (request, response) => {
+      expect(request.url).toBe("/v1/images/edits?async=true");
+      expect(request.headers["content-type"]).toContain("multipart/form-data");
+
+      const chunks: Buffer[] = [];
+      for await (const chunk of request) {
+        chunks.push(Buffer.from(chunk));
+      }
+      const body = Buffer.concat(chunks).toString("binary");
+      expect(body).toContain('name="image[]"');
+      expect(body).toContain(pngHeader);
+
+      response.setHeader("content-type", "application/json");
+      response.end(JSON.stringify({ code: "success", message: "", data: "task-workbench-data-url" }));
+    });
+
+    const adapter = new OpenAiCompatibleTextAdapter();
+    const result = await adapter.generateImage(
+      {
+        apiKey: "sk-test-secret",
+        baseUrl: server.url,
+        modelKey: "gemini-3-pro-image-preview",
+        providerKey: "mouxihub-openai",
+        requestConfig: {
+          async: true,
+          editPath: "/v1/images/edits",
+          modelBySize: {
+            "1K": "gemini-3.1-flash-image-preview",
+            "2K": "gemini-3.1-flash-image-preview-2k",
+            "4K": "gemini-3.1-flash-image-preview-4k",
+          },
+          path: "/v1/images/generations",
+          responseFormat: null,
+        },
+        routeId: "route-t3",
+        routeKey: "image.mouxihub.nano-banana-pro.t3",
+        timeoutMs: 5_000,
+      },
+      {
+        inputAssets: [
+          {
+            assetId: "workbench-upload-1",
+            metadata: {
+              base64: `data:image/png;base64,${wrappedBase64}`,
+              url: `data:image/png;base64,${wrappedBase64}`,
+            },
+            mimeType: "image/png",
+          },
+        ],
+        metadata: {
+          params: {
+            imageSize: "2K",
+          },
+          referenceImages: [`data:image/png;base64,${wrappedBase64}`],
+          source: "workbench",
+        },
+        prompt: "edit with workbench reference",
+      },
+    );
+
+    expect(result).toMatchObject({
+      modelKey: "gemini-3.1-flash-image-preview-2k",
+      providerTaskId: "task-workbench-data-url",
+      status: "waiting_provider",
+    });
+
+    await server.close();
+  });
+
   test("generateImage submits MouxiHub GPT-Image-2 async edits through multipart endpoint with provider base model and tier-aware result model", async () => {
     const server = await withHttpServer(async (request, response) => {
       expect(request.url).toBe("/v1/images/edits?async=true");

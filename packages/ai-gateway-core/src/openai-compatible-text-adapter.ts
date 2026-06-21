@@ -413,12 +413,12 @@ async function imageInputToBlob(
     };
   }
 
-  const dataUriMatch = /^data:([^;,]+)?(;base64)?,(.*)$/i.exec(input);
+  const dataUriMatch = /^data:([^;,]+)?(;base64)?,([\s\S]*)$/i.exec(input);
   if (dataUriMatch) {
     const mimeType = dataUriMatch[1] || "image/png";
     const payload = dataUriMatch[3] || "";
     const bytes = dataUriMatch[2]
-      ? Buffer.from(payload, "base64")
+      ? Buffer.from(payload.replace(/\s+/g, ""), "base64")
       : Buffer.from(decodeURIComponent(payload), "utf8");
     return {
       blob: new Blob([bytes], { type: mimeType }),
