@@ -90,27 +90,27 @@ export function canvasToBlobUrl(canvas: HTMLCanvasElement, type = 'image/png', q
   });
 }
 
+export function triggerBrowserDownload(url: string, filename: string): void {
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.rel = 'noopener noreferrer';
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
 // Download Image
 export async function downloadImage(url: string, filename: string): Promise<void> {
-  const clickDownloadAnchor = (href: string) => {
-    const a = document.createElement('a');
-    a.href = href;
-    a.download = filename;
-    a.rel = 'noopener noreferrer';
-    a.style.display = 'none';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-  };
-
   try {
     const blob = await imageUrlToBlob(url);
     const objectUrl = URL.createObjectURL(blob);
-    clickDownloadAnchor(objectUrl);
+    triggerBrowserDownload(objectUrl, filename);
     setTimeout(() => URL.revokeObjectURL(objectUrl), 100);
   } catch (err) {
     console.error('Download failed:', err);
-    clickDownloadAnchor(url);
+    triggerBrowserDownload(url, filename);
   }
 }
 

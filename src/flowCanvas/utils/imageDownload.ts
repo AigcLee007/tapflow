@@ -1,4 +1,52 @@
-import { downloadImage } from "./imageUtils";
+import { getAssetDownloadUrl } from "../../assets/assetApi";
+import { downloadImage, triggerBrowserDownload } from "./imageUtils";
+
+const activeOriginalDownloads = new Map<string, Promise<void>>();
+let downloadNoticeTimer: number | undefined;
+
+function getOriginalDownloadKey(input: { assetId?: string | null; fallbackUrl: string }): string {
+  const assetId = String(input.assetId || "").trim() || getAssetIdFromAssetUrl(input.fallbackUrl);
+  return assetId ? `asset:${assetId}` : `url:${input.fallbackUrl}`;
+}
+
+function showDownloadNotice(message: string): void {
+  if (typeof document === "undefined") return;
+
+  const noticeId = "aittco-original-download-notice";
+  let notice = document.getElementById(noticeId);
+  if (!notice) {
+    notice = document.createElement("div");
+    notice.id = noticeId;
+    notice.setAttribute("role", "status");
+    notice.setAttribute("aria-live", "polite");
+    Object.assign(notice.style, {
+      position: "fixed",
+      right: "18px",
+      bottom: "18px",
+      zIndex: "9999",
+      maxWidth: "min(320px, calc(100vw - 36px))",
+      border: "1px solid rgba(255,255,255,0.14)",
+      borderRadius: "14px",
+      background: "rgba(8, 12, 18, 0.92)",
+      boxShadow: "0 18px 42px rgba(0,0,0,0.34)",
+      color: "#f8fafc",
+      fontSize: "13px",
+      fontWeight: "700",
+      lineHeight: "1.35",
+      padding: "11px 14px",
+      pointerEvents: "none",
+      backdropFilter: "blur(12px)",
+    });
+    document.body.appendChild(notice);
+  }
+
+  notice.textContent = message;
+  if (downloadNoticeTimer) window.clearTimeout(downloadNoticeTimer);
+  downloadNoticeTimer = window.setTimeout(() => {
+    notice?.remove();
+    downloadNoticeTimer = undefined;
+  }, 1800);
+}
 
 export function getAssetIdFromResultId(resultId: unknown): string {
   const value = typeof resultId === "string" ? resultId.trim() : "";
@@ -112,7 +160,7 @@ export async function resolveOriginalImageDownloadUrl(input: {
   return `/api/v2/assets/${encodeURIComponent(assetId)}/bytes`;
 }
 
-export async function downloadOriginalImage(input: {
+async function performOriginalImageDownload(input: {
   assetId?: string | null;
   fallbackUrl: string;
   filenameBase?: string;
@@ -120,10 +168,16 @@ export async function downloadOriginalImage(input: {
   prompt?: string | null;
   sequence?: number | null;
 }): Promise<void> {
-  const url = await resolveOriginalImageDownloadUrl({
-    assetId: input.assetId,
-    fallbackUrl: input.fallbackUrl,
-  });
+  const fallbackUrl = input.fallbackUrl;
+  const assetId = String(input.assetId || "").trim() || getAssetIdFromAssetUrl(fallbackUrl);
+  const url = assetId
+    ? await getAssetDownloadUrl(assetId)
+        .then((result) => String(result.url || "").trim() || resolveOriginalImageDownloadUrl({ assetId, fallbackUrl }))
+        .catch(() => resolveOriginalImageDownloadUrl({ assetId, fallbackUrl }))
+    : await resolveOriginalImageDownloadUrl({
+        assetId: input.assetId,
+        fallbackUrl,
+      });
   const extension = getImageExtensionFromUrl(url, input.mimeType);
   const filename = input.filenameBase
     ? `${input.filenameBase}.${extension}`
@@ -132,5 +186,40 @@ export async function downloadOriginalImage(input: {
         prompt: input.prompt,
         sequence: input.sequence,
       });
+  if (assetId && url && !url.startsWith("/api/v2/")) {
+    triggerBrowserDownload(url, filename);
+    return;
+  }
   await downloadImage(url, filename);
+}
+
+export async function downloadOriginalImage(input: {
+  assetId?: string | null;
+  fallbackUrl: string;
+  filenameBase?: string;
+  mimeType?: string | null;
+  prompt?: string | null;
+  sequence?: number | null;
+}): Promise<void> {
+  const key = getOriginalDownloadKey(input);
+  const active = activeOriginalDownloads.get(key);
+  if (active) {
+    showDownloadNotice("原图下载已在准备中...");
+    return active;
+  }
+
+  showDownloadNotice("正在准备原图下载...");
+  const downloadPromise = performOriginalImageDownload(input)
+    .then(() => {
+      showDownloadNotice("已开始下载原图");
+    })
+    .catch((error) => {
+      showDownloadNotice("原图下载启动失败，请稍后重试");
+      throw error;
+    })
+    .finally(() => {
+      activeOriginalDownloads.delete(key);
+    });
+  activeOriginalDownloads.set(key, downloadPromise);
+  return downloadPromise;
 }

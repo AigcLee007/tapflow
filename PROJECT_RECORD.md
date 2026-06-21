@@ -3,6 +3,17 @@
 Last updated: 2026-06-21
 Maintainers: project team + Codex sessions
 
+## 2026-06-21 - Faster Original Image Download UX
+
+- optimized the shared original-image download path used by both canvas and standalone workbench:
+  - `downloadOriginalImage` now prefers the authenticated asset `download-url` API and triggers the returned signed object-storage URL directly, avoiding the previous full image byte fetch through `/api/v2/assets/:assetId/bytes` before the browser showed any download response.
+  - the previous same-origin `/bytes` download remains as a fallback when a signed URL cannot be created, and visible preview/download URLs still work for non-asset cases.
+  - repeated clicks for the same original image are deduplicated while the first download is preparing, preventing users from accidentally starting multiple identical downloads.
+  - a short-lived page notice now appears immediately after clicking download so users see that the original image download is being prepared.
+- validation:
+  - `npm run test -- src/flowCanvas/utils/imageDownload.test.ts src/flowCanvas/utils/imageUtils.test.ts src/workbench/WorkbenchPage.test.tsx`
+  - `npm run build`
+
 ## Purpose
 
 This file is the root-level running project record for the current TapFlow v2 product path.
