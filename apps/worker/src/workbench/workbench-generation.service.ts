@@ -4,6 +4,7 @@ import type {
   MediaOutput,
   ProviderTaskResult,
 } from "@aigc-flow/ai-gateway-core";
+import { normalizeOpenAiCompatibleImageSize } from "@aigc-flow/ai-gateway-core";
 import type { Pool, PoolClient } from "pg";
 
 import type { WorkerLogger } from "../logger.js";
@@ -130,15 +131,37 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function buildMetadataParams(
   generation: WorkbenchGenerationRecord,
+  referenceAssetCount = 0,
 ): Record<string, unknown> {
   const params = isRecord(generation.params_json) ? generation.params_json : {};
   const normalizedRouteKey = generation.route_key.trim().toLowerCase();
+  const normalizedModelId = generation.model_id.trim().toLowerCase();
   const requestedCount = generation.batch_role === "child" ? 1 : generation.requested_count;
   const nextParams: Record<string, unknown> = {
     ...params,
     ...(generation.display_mode ? { displayMode: generation.display_mode } : {}),
     ...(requestedCount > 1 ? { n: requestedCount } : {}),
   };
+  if (normalizedModelId === "gpt-image-2" && normalizedRouteKey === "image.gpt-image-2" && referenceAssetCount > 0) {
+    const size = typeof nextParams.size === "string"
+      ? nextParams.size
+      : typeof nextParams.imageSize === "string"
+        ? nextParams.imageSize
+        : typeof nextParams.image_size === "string"
+          ? nextParams.image_size
+          : null;
+    const aspectRatio = typeof nextParams.aspect_ratio === "string"
+      ? nextParams.aspect_ratio
+      : typeof nextParams.aspectRatio === "string"
+        ? nextParams.aspectRatio
+        : "1:1";
+    const normalizedSize = normalizeOpenAiCompatibleImageSize(size, aspectRatio);
+    if (normalizedSize) {
+      nextParams.size = normalizedSize;
+      delete nextParams.imageSize;
+      delete nextParams.image_size;
+    }
+  }
   if (normalizedRouteKey === "image.mouxihub.nano-banana-pro.t3") {
     delete nextParams.quality;
     delete nextParams.moderation;
@@ -768,7 +791,7 @@ export class WorkbenchGenerationService {
   }> {
     const referenceAssets = await this.loadReferenceAssetsForGeneration(tenantId, generation);
     const referenceImages = collectReferenceImageInputs(referenceAssets);
-    const metadataParams = buildMetadataParams(generation);
+    const metadataParams = buildMetadataParams(generation, referenceAssets.length);
     instrumentation?.logger?.info(
       {
         event: "workbench.generation.request_debug",

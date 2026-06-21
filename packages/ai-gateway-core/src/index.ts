@@ -48,6 +48,7 @@ export type {
 export { validateAiPluginManifest } from "./plugins/plugin-manifest.js";
 export { redactString, redactValue } from "./redaction.js";
 export { RouteResolver } from "./route-resolver.js";
+export { normalizeOpenAiCompatibleImageSize } from "./image-size.js";
 export type {
   AiGatewayMediaResult,
   AiGatewayTextResult,

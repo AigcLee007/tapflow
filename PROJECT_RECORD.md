@@ -3,6 +3,18 @@
 Last updated: 2026-06-21
 Maintainers: project team + Codex sessions
 
+## 2026-06-22 - GPT-Image-2 Workbench Reference Params Alignment
+
+- aligned standalone workbench GPT-Image-2 line one reference-image requests with the canvas/provider edit payload shape by normalizing size tiers plus aspect ratios into explicit OpenAI-compatible pixel sizes before worker submission.
+- reused the AI Gateway OpenAI image size normalization helper instead of duplicating size math in the worker, so combinations such as `4k + 3:2` resolve consistently to `3520x2352`.
+- scoped the change to official `image.gpt-image-2` workbench generations with hydrated reference images; Nano Banana, text-to-image workbench requests, and GPT-Image-2 provider-side size-routing lines keep their existing parameter shape.
+- validation:
+  - `npm run build --workspace @aigc-flow/ai-gateway-core`
+  - `npm run test --workspace @aigc-flow/worker -- workbench-generation.service.test.ts`
+  - `npm run test --workspace @aigc-flow/ai-gateway-core`
+  - `npm run build --workspace @aigc-flow/worker`
+  - `npm run build`
+
 ## 2026-06-21 - Temporary Reference Images for Canvas Uploads
 
 - changed new canvas local image uploads to use the same temporary reference-upload path as the standalone image workbench instead of creating asset-library records.

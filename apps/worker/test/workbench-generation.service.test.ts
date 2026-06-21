@@ -691,6 +691,174 @@ describe("WorkbenchGenerationService", () => {
     expect(mediaRuntime.generateImage.mock.calls[0]?.[1]?.metadata?.params).not.toHaveProperty("moderation");
   });
 
+  test("normalizes GPT-Image-2 workbench reference params to canvas edit payload shape", async () => {
+    const mediaRuntime = {
+      generateImage: vi.fn(async () => ({
+        outputs: [{ base64: "data:image/png;base64,AAAA" }],
+        status: "succeeded" as const,
+      })),
+      pollTask: vi.fn(),
+    };
+    const service = new WorkbenchGenerationService({
+      assetBucket: "test-bucket",
+      assetStore: {} as never,
+      mediaRuntime,
+      pool: {} as never,
+    });
+
+    Object.defineProperty(service, "loadReferenceAssetsForGeneration", {
+      value: vi.fn(async () => ([
+        {
+          assetId: "temp-upload-1",
+          metadata: {
+            base64: "data:image/png;base64,dGVtcC1pbWFnZQ==",
+            source: "workbench-temp-upload",
+            url: "data:image/png;base64,dGVtcC1pbWFnZQ==",
+          },
+          mimeType: "image/png",
+        },
+      ])),
+    });
+
+    await (service as unknown as {
+      createProviderTask(
+        tenantId: string,
+        generation: {
+          batch_role: "single";
+          created_by: string | null;
+          display_mode: "merged";
+          id: string;
+          model_id: string;
+          params_json: Record<string, unknown>;
+          prompt: string;
+          reference_asset_ids: string[];
+          reference_upload_ids: string[];
+          requested_count: number;
+          route_key: string;
+        },
+      ): Promise<unknown>;
+    }).createProviderTask(
+      "00000000-0000-4000-8000-000000000001",
+      {
+        batch_role: "single",
+        created_by: "00000000-0000-4000-8000-000000000009",
+        display_mode: "merged",
+        id: "00000000-0000-4000-8000-000000000054",
+        model_id: "gpt-image-2",
+        params_json: {
+          aspect_ratio: "3:2",
+          moderation: "auto",
+          output_format: "png",
+          quality: "auto",
+          size: "4k",
+        },
+        prompt: "edit with gpt image reference",
+        reference_asset_ids: [],
+        reference_upload_ids: ["00000000-0000-4000-8000-000000000071"],
+        requested_count: 1,
+        route_key: "image.gpt-image-2",
+      },
+    );
+
+    expect(mediaRuntime.generateImage).toHaveBeenCalledTimes(1);
+    expect(mediaRuntime.generateImage.mock.calls[0]?.[1]).toMatchObject({
+      metadata: {
+        params: {
+          aspect_ratio: "3:2",
+          moderation: "auto",
+          output_format: "png",
+          quality: "auto",
+          size: "3520x2352",
+        },
+        referenceImages: [
+          "data:image/png;base64,dGVtcC1pbWFnZQ==",
+        ],
+      },
+      model: "gpt-image-2",
+      routeKey: "image.gpt-image-2",
+    });
+  });
+
+  test("keeps GPT-Image-2 provider-side size-routing workbench params as tiers", async () => {
+    const mediaRuntime = {
+      generateImage: vi.fn(async () => ({
+        outputs: [{ base64: "data:image/png;base64,AAAA" }],
+        status: "succeeded" as const,
+      })),
+      pollTask: vi.fn(),
+    };
+    const service = new WorkbenchGenerationService({
+      assetBucket: "test-bucket",
+      assetStore: {} as never,
+      mediaRuntime,
+      pool: {} as never,
+    });
+
+    Object.defineProperty(service, "loadReferenceAssetsForGeneration", {
+      value: vi.fn(async () => ([
+        {
+          assetId: "temp-upload-1",
+          metadata: {
+            base64: "data:image/png;base64,dGVtcC1pbWFnZQ==",
+            source: "workbench-temp-upload",
+            url: "data:image/png;base64,dGVtcC1pbWFnZQ==",
+          },
+          mimeType: "image/png",
+        },
+      ])),
+    });
+
+    await (service as unknown as {
+      createProviderTask(
+        tenantId: string,
+        generation: {
+          batch_role: "single";
+          created_by: string | null;
+          display_mode: "merged";
+          id: string;
+          model_id: string;
+          params_json: Record<string, unknown>;
+          prompt: string;
+          reference_asset_ids: string[];
+          reference_upload_ids: string[];
+          requested_count: number;
+          route_key: string;
+        },
+      ): Promise<unknown>;
+    }).createProviderTask(
+      "00000000-0000-4000-8000-000000000001",
+      {
+        batch_role: "single",
+        created_by: "00000000-0000-4000-8000-000000000009",
+        display_mode: "merged",
+        id: "00000000-0000-4000-8000-000000000055",
+        model_id: "gpt-image-2",
+        params_json: {
+          aspect_ratio: "3:2",
+          output_format: "png",
+          size: "4k",
+        },
+        prompt: "edit with provider-routed gpt image reference",
+        reference_asset_ids: [],
+        reference_upload_ids: ["00000000-0000-4000-8000-000000000071"],
+        requested_count: 1,
+        route_key: "image.gpt-image-2.line3",
+      },
+    );
+
+    expect(mediaRuntime.generateImage.mock.calls[0]?.[1]).toMatchObject({
+      metadata: {
+        params: {
+          aspect_ratio: "3:2",
+          output_format: "png",
+          size: "4k",
+        },
+      },
+      model: "gpt-image-2",
+      routeKey: "image.gpt-image-2.line3",
+    });
+  });
+
   test("emits T3 request debug summary for workbench reference payloads", async () => {
     const logger = {
       error: vi.fn(),
