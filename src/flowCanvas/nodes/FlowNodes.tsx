@@ -3853,6 +3853,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const runtimeThumbnailUrl = runtimeImageAssets[0]?.downloadUrl || '';
   const [assetPreviewUrl, setAssetPreviewUrl] = useState('');
   const [imageLoadState, setImageLoadState] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle');
+  const [referencePreviewUrlsByKey, setReferencePreviewUrlsByKey] = useState<Record<string, string>>({});
   const assetId = typeof d.assetId === 'string' ? d.assetId : '';
   const referenceUploadId = typeof d.referenceUploadId === 'string' ? d.referenceUploadId : '';
   const persistedThumbnailUrl = String(d.thumbnailUrl || '');
@@ -4062,13 +4063,61 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       mentionLabel: `Image ${index + 1}`,
     }));
   }, [rawReferenceChips, referenceOrder]);
+  const referenceUploadPreviewKey = referenceChips
+    .map((item) => `${item.key}:${item.source === 'upstream' ? String(item.referenceUploadId || '').trim() : ''}`)
+    .join('|');
+  useEffect(() => {
+    const referenceUploads = referenceChips
+      .map((item) => ({
+        key: item.key,
+        referenceUploadId: item.source === 'upstream' ? String(item.referenceUploadId || '').trim() : '',
+      }))
+      .filter((item) => item.referenceUploadId);
+    if (referenceUploads.length === 0) {
+      setReferencePreviewUrlsByKey((current) => (Object.keys(current).length === 0 ? current : {}));
+      return;
+    }
+
+    let cancelled = false;
+    const ownedUrls: string[] = [];
+    void Promise.all(
+      referenceUploads.map(async (item) => {
+        const previewUrl = await getCachedReferenceImageObjectUrl(item.referenceUploadId).catch(() => null);
+        return previewUrl ? { key: item.key, previewUrl } : null;
+      }),
+    )
+      .then((items) => {
+        if (cancelled) {
+          items.forEach((item) => {
+            if (item?.previewUrl) URL.revokeObjectURL(item.previewUrl);
+          });
+          return;
+        }
+        const nextUrls: Record<string, string> = {};
+        items.forEach((item) => {
+          if (!item?.previewUrl) return;
+          ownedUrls.push(item.previewUrl);
+          nextUrls[item.key] = item.previewUrl;
+        });
+        setReferencePreviewUrlsByKey(nextUrls);
+      });
+
+    return () => {
+      cancelled = true;
+      ownedUrls.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [referenceUploadPreviewKey]);
+  const getReferenceDisplayImageUrl = useCallback(
+    (refItem: (typeof referenceChips)[number]) => referencePreviewUrlsByKey[refItem.key] || refItem.imageUrl,
+    [referencePreviewUrlsByKey],
+  );
   const promptReferences = useMemo<PromptReference[]>(
     () => referenceChips.map((item) => ({
       key: item.key,
       label: item.mentionLabel,
-      imageUrl: item.imageUrl,
+      imageUrl: getReferenceDisplayImageUrl(item),
     })),
-    [referenceChips],
+    [getReferenceDisplayImageUrl, referenceChips],
   );
   const connectedMentionItems = upstreamImageRefs.filter((item) => {
     const query = mentionQuery.trim().toLowerCase();
@@ -6014,100 +6063,102 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
             >
               <ImageIcon size={16} />
             </button>
-            {referenceChips.slice(0, 8).map((refItem) => (
-              <div
-                key={refItem.key}
-                draggable
-                onClick={() => {
-                  if (suppressReferenceClickRef.current) return;
-                  if (promptLexicalEditorRef.current) {
-                    promptLexicalEditorRef.current.insertReference(refItem.mentionLabel);
-                  } else {
-                    insertReferenceMention(refItem.mentionLabel);
-                  }
-                }}
-                onDragStart={(event) => {
-                  event.stopPropagation();
-                  suppressReferenceClickRef.current = true;
-                  setDraggingReferenceKey(refItem.key);
-                  event.dataTransfer.setData('application/x-flow-reference-chip', refItem.key);
-                  event.dataTransfer.setData('text/plain', refItem.key);
-                  event.dataTransfer.effectAllowed = 'move';
-                }}
-                onDragOver={(event) => {
-                  event.preventDefault();
-                  event.dataTransfer.dropEffect = 'move';
-                }}
-                onDrop={(event) => {
-                  event.preventDefault();
-                  handleReferenceDrop(refItem.key);
-                }}
-                onDragEnd={() => {
-                  setDraggingReferenceKey(null);
-                  window.setTimeout(() => {
-                    suppressReferenceClickRef.current = false;
-                  }, 0);
-                }}
-                onMouseEnter={() => setHoveredReferenceKey(refItem.key)}
-                onMouseLeave={() => setHoveredReferenceKey(null)}
-                style={{
-                  position: 'relative',
-                  width: 44,
-                  height: 44,
-                  borderRadius: 13,
-                  cursor: draggingReferenceKey === refItem.key ? 'grabbing' : 'pointer',
-                  opacity: draggingReferenceKey === refItem.key ? 0.55 : 1,
-                  transition: 'opacity 140ms ease, transform 140ms ease',
-                  transform: hoveredReferenceKey === refItem.key ? 'translateY(-1px)' : 'translateY(0)',
-                }}
-              >
-                <img
-                  src={refItem.imageUrl}
-                  alt={refItem.title}
-                  style={{ width: 44, height: 44, borderRadius: 13, objectFit: 'cover', border: '1px solid rgba(255,255,255,0.2)', boxShadow: '0 8px 20px rgba(0,0,0,0.3)' }}
-                />
-                {hoveredReferenceKey === refItem.key && (
-                  <>
-                    <div
-                      style={{
-                        position: 'absolute',
-                        left: '50%',
-                        bottom: 'calc(100% + 10px)',
-                        transform: 'translateX(-50%)',
-                        width: 112,
-                        padding: 4,
-                        borderRadius: 15,
-                        background: 'rgba(35,35,35,0.82)',
-                        border: '1px solid rgba(255,255,255,0.12)',
-                        boxShadow: '0 14px 34px rgba(0,0,0,0.44)',
-                        backdropFilter: 'blur(12px)',
-                        zIndex: 1200,
-                        pointerEvents: 'none',
-                      }}
-                    >
-                      <img src={refItem.imageUrl} alt="" style={{ width: '100%', height: 96, borderRadius: 12, objectFit: 'cover', display: 'block' }} />
-                      <div style={{ marginTop: 4, color: '#fff', fontSize: 13, fontWeight: 800, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        @{refItem.mentionLabel}
+            {referenceChips.slice(0, 8).map((refItem) => {
+              const displayImageUrl = getReferenceDisplayImageUrl(refItem);
+              return (
+                <div
+                  key={refItem.key}
+                  draggable
+                  onClick={() => {
+                    if (suppressReferenceClickRef.current) return;
+                    if (promptLexicalEditorRef.current) {
+                      promptLexicalEditorRef.current.insertReference(refItem.mentionLabel);
+                    } else {
+                      insertReferenceMention(refItem.mentionLabel);
+                    }
+                  }}
+                  onDragStart={(event) => {
+                    event.stopPropagation();
+                    suppressReferenceClickRef.current = true;
+                    setDraggingReferenceKey(refItem.key);
+                    event.dataTransfer.setData('application/x-flow-reference-chip', refItem.key);
+                    event.dataTransfer.setData('text/plain', refItem.key);
+                    event.dataTransfer.effectAllowed = 'move';
+                  }}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = 'move';
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    handleReferenceDrop(refItem.key);
+                  }}
+                  onDragEnd={() => {
+                    setDraggingReferenceKey(null);
+                    window.setTimeout(() => {
+                      suppressReferenceClickRef.current = false;
+                    }, 0);
+                  }}
+                  onMouseEnter={() => setHoveredReferenceKey(refItem.key)}
+                  onMouseLeave={() => setHoveredReferenceKey(null)}
+                  style={{
+                    position: 'relative',
+                    width: 44,
+                    height: 44,
+                    borderRadius: 13,
+                    cursor: draggingReferenceKey === refItem.key ? 'grabbing' : 'pointer',
+                    opacity: draggingReferenceKey === refItem.key ? 0.55 : 1,
+                    transition: 'opacity 140ms ease, transform 140ms ease',
+                    transform: hoveredReferenceKey === refItem.key ? 'translateY(-1px)' : 'translateY(0)',
+                  }}
+                >
+                  <img
+                    src={displayImageUrl}
+                    alt={refItem.title}
+                    style={{ width: 44, height: 44, borderRadius: 13, objectFit: 'cover', border: '1px solid rgba(255,255,255,0.2)', boxShadow: '0 8px 20px rgba(0,0,0,0.3)' }}
+                  />
+                  {hoveredReferenceKey === refItem.key && (
+                    <>
+                      <div
+                        style={{
+                          position: 'absolute',
+                          left: '50%',
+                          bottom: 'calc(100% + 10px)',
+                          transform: 'translateX(-50%)',
+                          width: 112,
+                          padding: 4,
+                          borderRadius: 15,
+                          background: 'rgba(35,35,35,0.82)',
+                          border: '1px solid rgba(255,255,255,0.12)',
+                          boxShadow: '0 14px 34px rgba(0,0,0,0.44)',
+                          backdropFilter: 'blur(12px)',
+                          zIndex: 1200,
+                          pointerEvents: 'none',
+                        }}
+                      >
+                        <img src={displayImageUrl} alt="" style={{ width: '100%', height: 96, borderRadius: 12, objectFit: 'cover', display: 'block' }} />
+                        <div style={{ marginTop: 4, color: '#fff', fontSize: 13, fontWeight: 800, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          @{refItem.mentionLabel}
+                        </div>
                       </div>
-                    </div>
-                    <button
-                      type="button"
-                      className="nodrag nopan"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        handleRemoveReference(refItem);
-                      }}
-                      style={{
-                        position: 'absolute',
-                        top: -7,
-                        right: -7,
-                        width: 22,
-                        height: 22,
-                        borderRadius: '50%',
-                        border: '1px solid rgba(255,255,255,0.24)',
-                        background: 'rgba(12,12,14,0.92)',
-                        color: '#f8fafc',
-                        display: 'flex',
+                      <button
+                        type="button"
+                        className="nodrag nopan"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleRemoveReference(refItem);
+                        }}
+                        style={{
+                          position: 'absolute',
+                          top: -7,
+                          right: -7,
+                          width: 22,
+                          height: 22,
+                          borderRadius: '50%',
+                          border: '1px solid rgba(255,255,255,0.24)',
+                          background: 'rgba(12,12,14,0.92)',
+                          color: '#f8fafc',
+                          display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         fontSize: 16,
@@ -6123,8 +6174,9 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
                     </button>
                   </>
                 )}
-              </div>
-            ))}
+                </div>
+              );
+            })}
             <button
               type="button"
               className="nodrag nopan"

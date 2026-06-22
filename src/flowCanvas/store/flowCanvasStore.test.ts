@@ -192,6 +192,7 @@ describe('flowCanvasStore upstream image references', () => {
         id: source.id,
         imageUrl: 'blob:http://localhost/reference-preview',
         key: `upstream:${source.id}`,
+        referenceUploadId: 'reference-upload-1',
         source: 'upstream',
         title: 'Temporary Reference',
       }),

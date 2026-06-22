@@ -54,6 +54,7 @@ export interface FlowUpstreamImageRef {
   id: string;
   edgeId: string;
   imageUrl: string;
+  referenceUploadId?: string;
   title: string;
   source: 'upstream';
 }
@@ -290,12 +291,14 @@ const buildGraphIndex = (
     const sourceNode = nodesById.get(edge.source);
     const sourceImageUrl = getNodeReferenceImageUrl(sourceNode, nodeOutputByNodeId[edge.source]);
     if (sourceNode && isImageNode(sourceNode) && sourceImageUrl) {
+      const sourceReferenceUploadId = String(sourceNode.data.referenceUploadId || '').trim();
       const refs = upstreamImageRefsByNodeId[edge.target] || [];
       refs.push({
         key: `upstream:${sourceNode.id}`,
         id: sourceNode.id,
         edgeId: edge.id,
         imageUrl: sourceImageUrl,
+        ...(sourceReferenceUploadId ? { referenceUploadId: sourceReferenceUploadId } : {}),
         title: String(sourceNode.data.title || '参考图'),
         source: 'upstream',
       });

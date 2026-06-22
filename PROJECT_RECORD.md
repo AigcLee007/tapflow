@@ -3,6 +3,15 @@
 Last updated: 2026-06-21
 Maintainers: project team + Codex sessions
 
+## 2026-06-22 - Canvas Temporary Reference Chip Preview Ownership
+
+- fixed connected temporary reference chips so downstream image nodes receive the upstream `referenceUploadId` and create their own local IndexedDB object URL for chip thumbnails and hover previews instead of reusing an upstream node's revocable `blob:` URL.
+- kept prompt/editor display recoverable after refresh while preserving provider submission safety: browser-local `blob:` URLs are still filtered out of generation `referenceImages`.
+- added graph-index regression coverage that verifies temporary reference uploads propagate their stable reference-upload identity through connected upstream refs.
+- validation:
+  - `npm run test -- src/flowCanvas/store/flowCanvasStore.test.ts src/flowCanvas/runtime/graphExecutor.test.ts src/flowCanvas/services/flowProjectApi.test.ts src/flowCanvas/utils/referenceImageLocalCache.test.ts src/flowCanvas/utils/localImageUpload.test.ts`
+  - `npm run build`
+
 ## 2026-06-22 - Canvas Temporary Reference Connection Preview Fix
 
 - fixed canvas temporary reference-upload image nodes so restored local preview URLs are written back into node data, allowing the graph index to expose connected upstream references in the next image node's reference chips.
