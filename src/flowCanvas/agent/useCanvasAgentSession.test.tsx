@@ -56,7 +56,7 @@ describe("useCanvasAgentSession", () => {
 
     const { result } = renderHook(() => useCanvasAgentSession());
     await act(async () => {
-      await result.current.sendPrompt("帮我生成图片");
+      await result.current.sendPrompt("帮我整理当前画布结构");
     });
 
     expect(result.current.messages.at(-1)?.content).toBe("服务端计划");
@@ -182,7 +182,7 @@ describe("useCanvasAgentSession", () => {
 
     const { result } = renderHook(() => useCanvasAgentSession());
     await act(async () => {
-      await result.current.sendPrompt("Help me make a forest sports day image");
+      await result.current.sendPrompt("Help me organize this canvas");
     });
 
     expect(result.current.currentPlan).toBeNull();
@@ -203,10 +203,28 @@ describe("useCanvasAgentSession", () => {
 
     const { result } = renderHook(() => useCanvasAgentSession());
     await act(async () => {
-      await result.current.sendPrompt("Help me make a forest sports day image");
+      await result.current.sendPrompt("Help me organize this canvas");
     });
 
     expect(result.current.currentPlan?.reply).toContain("Prepare");
     expect(result.current.status).toBe("awaiting_approval");
+  });
+
+  it("does not downgrade production image requests to planner or offline node creation when executor is unavailable", async () => {
+    vi.stubEnv("VITE_AGENT_OFFLINE_FALLBACK", "true");
+    mockCreateAgentSession.mockResolvedValue({ id: "session-1" });
+    mockExecuteAgentTurnStream.mockResolvedValue({ ok: false, status: 503 });
+    mockOpenAgentTurnStream.mockResolvedValue({ ok: true, status: 200 });
+
+    const { result } = renderHook(() => useCanvasAgentSession());
+    await act(async () => {
+      await result.current.sendPrompt("我要生成一套对比 Nano Banana Pro 和 GPT-Image-2 生图效果的套图，需要 3 张");
+    });
+
+    expect(mockOpenAgentTurnStream).not.toHaveBeenCalled();
+    expect(mockCreateAgentTurn).not.toHaveBeenCalled();
+    expect(result.current.currentPlan).toBeNull();
+    expect(result.current.status).toBe("error");
+    expect(result.current.error).toContain("真实 Agent 执行器");
   });
 });

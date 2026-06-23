@@ -3202,3 +3202,13 @@ Validation completed:
 - Validation:
   - `npm test -- src/auth/AuthProvider.test.tsx`
   - `npm test -- src/auth/AuthGate.test.tsx src/flowCanvas/FlowProjectPage.test.tsx`
+
+## 2026-06-24 - Agent Production Request Fallback Guard
+
+- Fixed a misleading Agent behavior where production image requests could fall back to the basic planner and only create a prompt node plus an image node.
+- Added production image intent detection for prompts involving generation, comparison, batch images,套图, Nano Banana, and GPT-Image.
+- Frontend now refuses to downgrade production image tasks to planner/offline node creation when the executor stream is unavailable.
+- Backend deterministic planner now rejects production image requests with `AGENT_EXECUTOR_REQUIRED` instead of returning the fixed "basic text-to-image production flow" node plan.
+- This makes executor misconfiguration visible to the user instead of pretending that a real generation task was completed.
+- Validation:
+  - `npm test -- src/flowCanvas/agent/useCanvasAgentSession.test.tsx apps/api/test/agent-production-intent.test.ts apps/api/test/agent.service.production-intent.test.ts`

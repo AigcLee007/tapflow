@@ -6,6 +6,7 @@ import { z } from "zod";
 import type { ApiEnv } from "../../config/env.js";
 import { AgentPlannerRuntimeError, AgentPlannerService } from "./agent-planner.service.js";
 import { AgentExecutorError, type AgentExecutorService } from "./agent-executor.service.js";
+import { isProductionImageAgentPrompt } from "./agent-production-intent.js";
 import { formatAgentToolEvent } from "./agent-tool-events.js";
 import type {
   ApproveAgentToolCallInput,
@@ -492,6 +493,13 @@ export class AgentService {
 
   private async planTurn(context: AgentContext, prompt: string, snapshot: CanvasAgentSnapshotInput): Promise<PlannerOutput> {
     if (!this.env.agentPlannerEnabled) {
+      if (isProductionImageAgentPrompt(prompt)) {
+        throw new AgentApiError(
+          503,
+          "AGENT_EXECUTOR_REQUIRED",
+          "真实 Agent 执行器不可用，无法完成生成、对比或套图类生产任务。请先启用 Agent Executor、文本大脑模型和生图线路。",
+        );
+      }
       return buildDeterministicPlan(prompt, snapshot);
     }
 
@@ -500,6 +508,13 @@ export class AgentService {
     } catch (error) {
       if (error instanceof AgentPlannerRuntimeError) {
         if (this.env.agentPlannerFallbackEnabled) {
+          if (isProductionImageAgentPrompt(prompt)) {
+            throw new AgentApiError(
+              503,
+              "AGENT_EXECUTOR_REQUIRED",
+              "真实 Agent 执行器不可用，无法完成生成、对比或套图类生产任务。请先启用 Agent Executor、文本大脑模型和生图线路。",
+            );
+          }
           return buildDeterministicPlan(prompt, snapshot);
         }
         const statusCode = error.code === "AGENT_TEXT_ROUTE_NOT_CONFIGURED" ? 500 : 502;

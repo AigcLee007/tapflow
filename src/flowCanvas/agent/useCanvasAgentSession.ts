@@ -14,6 +14,7 @@ import {
 import { readAgentToolEventStream } from "./canvasAgentToolEvents";
 import type { CanvasAgentToolEvent, CanvasAgentToolTimelineItem } from "./canvasAgentToolTypes";
 import { placeAgentGeneratedAssetsOnCanvas } from "./canvasAgentOps";
+import { isProductionImageAgentPrompt } from "./canvasAgentProductionIntent";
 import { planOfflineCanvasAgentTurn } from "./offlineCanvasAgentPlanner";
 import type { CanvasAgentPlannerOutput } from "./canvasAgentTypes";
 
@@ -122,6 +123,7 @@ export function useCanvasAgentSession() {
     const trimmed = prompt.trim();
     if (!trimmed) return;
     const allowOfflineFallback = import.meta.env.VITE_AGENT_OFFLINE_FALLBACK === "true";
+    const requiresProductionExecutor = isProductionImageAgentPrompt(trimmed);
     const useStreaming = import.meta.env.VITE_AGENT_STREAMING !== "false";
 
     setError(null);
@@ -172,6 +174,9 @@ export function useCanvasAgentSession() {
             await readAgentToolEventStream(response, applyToolEvent);
             return;
           }
+          if (requiresProductionExecutor) {
+            throw new Error("真实 Agent 执行器不可用，无法完成生成、对比或套图类生产任务。请先确认服务器已启用 Agent Executor、文本大脑模型和生图线路。");
+          }
           if (response.status !== 404 && response.status !== 503) {
             throw new V2HttpError({
               message: `Request failed with status ${response.status}`,
@@ -180,6 +185,9 @@ export function useCanvasAgentSession() {
           }
         } catch (executorError) {
           streamFailedMessage = executorError instanceof Error ? executorError.message : String(executorError);
+          if (requiresProductionExecutor) {
+            throw executorError;
+          }
         }
 
         let receivedPlan = false;
