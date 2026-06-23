@@ -52,9 +52,10 @@ afterAll(() => {
 function buildTestApp(
   pool: ReturnType<typeof createPgPool>,
   overrides?: Partial<ApiEnv>,
-  textRuntime?: { generateText: ReturnType<typeof vi.fn> },
+  agentExecutorService?: { executeTurn: ReturnType<typeof vi.fn> },
 ) {
   return buildApp({
+    agentExecutorService: agentExecutorService as never,
     env: { ...testEnv, ...overrides },
     logger: false,
     pool,
@@ -190,6 +191,73 @@ describeWithDatabase("agent routes", () => {
         expect(String(response.headers["content-type"])).toContain("text/event-stream");
         expect(response.body).toContain("event: plan");
         expect(response.body).toContain("event: done");
+
+        await app.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("streams executor events when an executor service is configured", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({ connectionString: await createAppDatabaseUrl() });
+        const executor = {
+          executeTurn: vi.fn(async (_context, input) => {
+            await input.onEvent({ content: "开始执行。", type: "message_delta" });
+            await input.onEvent({ toolCallKey: "tool-1", toolName: "generate_image", type: "tool_started" });
+            await input.onEvent({ result: { status: "succeeded" }, toolCallKey: "tool-1", type: "tool_result" });
+            await input.onEvent({ finalText: "执行完成。", turnId: "turn-1", type: "turn_completed" });
+            return {
+              finalText: "执行完成。",
+              sessionId: input.sessionId,
+              toolResults: [],
+              turnId: "turn-1",
+            };
+          }),
+        };
+        const app = buildTestApp(appPool, {}, executor);
+        const owner = await registerOwner(app, "agent-execute-stream@example.com", "Agent Execute Stream");
+
+        const session = await app.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` },
+          method: "POST",
+          payload: { flowId: null, projectId: null, title: "Execute Stream Session" },
+          url: "/api/v2/agent/sessions",
+        });
+        expect(session.statusCode).toBe(201);
+        const sessionId = session.json().id;
+
+        const response = await app.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` },
+          method: "POST",
+          payload: {
+            prompt: "生成一张图",
+            snapshot: {
+              edges: [],
+              flowId: null,
+              nodeOutputs: {},
+              nodes: [],
+              projectId: null,
+              selectedNodeIds: [],
+              viewport: { x: 0, y: 0, zoom: 1 },
+            },
+          },
+          url: `/api/v2/agent/sessions/${sessionId}/turns/execute/stream`,
+        });
+
+        expect(response.statusCode).toBe(200);
+        expect(response.body).toContain("event: message_delta");
+        expect(response.body).toContain("event: tool_started");
+        expect(response.body).toContain("event: tool_result");
+        expect(response.body).toContain("event: turn_completed");
+        expect(JSON.stringify(response.body)).not.toMatch(/baseUrl|apiKey|Authorization|provider_key|upstream_model/);
 
         await app.close();
       } finally {

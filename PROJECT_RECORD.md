@@ -1414,6 +1414,24 @@ Notes:
   - `npm run build --workspace @aigc-flow/db`
   - `npm run build --workspace @aigc-flow/api`
   - `npm run build`
+
+## 2026-06-23 - Agent Tool-Calling Executor Backend Tasks 5-9
+
+- Continued Scheme B implementation on branch `codex/agent-tool-executor-foundation`.
+- Completed the backend executor loop slice:
+  - added a workflow launcher adapter that starts Agent image tools through the existing workflow run service instead of calling providers directly
+  - added an Agent tool runner for `generate_image` and `generate_image_batch`, including persisted tool-call lifecycle transitions and partial-success batch handling
+  - added executor prompt, provider-neutral tool registry metadata, continuation context, and SSE event formatting
+  - added `AgentExecutorService` to call the configured text route, parse tool-call JSON, validate policy/cost, run tools, observe results, and continue the same turn until final text or round limit
+  - added `/api/v2/agent/sessions/:sessionId/turns/execute/stream` while keeping the existing planner stream route intact
+- Safety notes:
+  - Agent generation still goes through workflow/billing/assets infrastructure; no browser/provider direct path was added
+  - if no runnable canvas flow/target node is available, image tool execution fails closed with `AGENT_WORKFLOW_TARGET_REQUIRED`
+  - executor prompts and returned results avoid exposing provider/base URL/API key/raw route/upstream model details
+- Validation:
+  - `npm run test --workspace @aigc-flow/api -- agent-tool-runner.test.ts agent-executor.test.ts agent.test.ts`
+  - `npm run build --workspace @aigc-flow/api`
+  - `npm run build`
 - Validation notes:
   - all focused frontend tests passed locally
   - all three API integration suites were skipped locally because DB env is still not present in this session

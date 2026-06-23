@@ -63,3 +63,5 @@ export type AgentSessionIdParams = z.infer<typeof agentSessionIdParamsSchema>;
 export type CanvasAgentSnapshotInput = z.infer<typeof canvasAgentSnapshotSchema>;
 export type CreateAgentSessionInput = z.infer<typeof createAgentSessionSchema>;
 export type CreateAgentTurnInput = z.infer<typeof createAgentTurnSchema>;
+export const executeAgentTurnSchema = createAgentTurnSchema;
+export type ExecuteAgentTurnInput = z.infer<typeof executeAgentTurnSchema>;

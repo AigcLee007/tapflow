@@ -6,9 +6,11 @@ import {
   type AgentSessionIdParams,
   type CreateAgentSessionInput,
   type CreateAgentTurnInput,
+  type ExecuteAgentTurnInput,
   agentSessionIdParamsSchema,
   createAgentSessionSchema,
   createAgentTurnSchema,
+  executeAgentTurnSchema,
 } from "./agent.schemas.js";
 import { AgentApiError } from "./agent.service.js";
 
@@ -125,6 +127,30 @@ export function registerAgentRoutes(app: FastifyInstance): void {
         const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
         const body = parseBody<CreateAgentTurnInput>(request, createAgentTurnSchema);
         return reply.code(201).send(await app.agentService.createTurn(getAgentContext(request), params.sessionId, body));
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.post(
+    "/api/v2/agent/sessions/:sessionId/turns/execute/stream",
+    {
+      preHandler: [...authHandlers, requirePermission("flow:run")],
+    },
+    async (request, reply) => {
+      try {
+        const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
+        const body = parseBody<ExecuteAgentTurnInput>(request, executeAgentTurnSchema);
+        const streamBody = await app.agentService.buildExecuteTurnStream(getAgentContext(request), params.sessionId, body);
+
+        reply.raw.setHeader("cache-control", "no-cache");
+        reply.raw.setHeader("connection", "keep-alive");
+        reply.raw.setHeader("content-type", "text/event-stream; charset=utf-8");
+        reply.hijack();
+        reply.raw.write(streamBody);
+        reply.raw.end();
+        return reply;
       } catch (error) {
         return handleRouteError(error, request, reply);
       }

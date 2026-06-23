@@ -7,7 +7,7 @@ import Fastify, {
   type FastifyRequest,
 } from "fastify";
 
-import { CredentialVault } from "@aigc-flow/ai-gateway-core";
+import { CredentialVault, DatabaseTextGenerationRuntime } from "@aigc-flow/ai-gateway-core";
 import { createPgPool } from "@aigc-flow/db";
 import {
   QUEUE_NAMES,
@@ -25,6 +25,10 @@ import { registerAdminRoutes } from "./modules/admin/admin.routes.js";
 import { AdminApiService } from "./modules/admin/admin.service.js";
 import { registerAgentRoutes } from "./modules/agent/agent.routes.js";
 import { AgentService } from "./modules/agent/agent.service.js";
+import { AgentCostEstimator, DatabaseAgentCostEstimatorRepository } from "./modules/agent/agent-cost-estimator.js";
+import { AgentExecutorService, DatabaseAgentExecutorRepository } from "./modules/agent/agent-executor.service.js";
+import { AgentToolRunner, DatabaseAgentToolRunnerRepository } from "./modules/agent/agent-tool-runner.js";
+import { AgentWorkflowLauncher } from "./modules/agent/agent-workflow-launcher.js";
 import { registerAiGatewayAdminRoutes } from "./modules/ai-gateway/ai-gateway.routes.js";
 import { AiGatewayAdminService } from "./modules/ai-gateway/ai-gateway.service.js";
 import { registerAiModelCatalogRoutes } from "./modules/ai-model-catalog/ai-model-catalog.routes.js";
@@ -124,6 +128,7 @@ export function buildApp(options?: {
   queueHealthService?: QueueHealthService;
   storageProvider?: StorageProvider;
   workflowRunsService?: WorkflowRunsService;
+  agentExecutorService?: AgentExecutorService;
 }) {
   const env = options?.env ?? getApiEnv();
   const ownedPool = !options?.pool;
@@ -159,7 +164,6 @@ export function buildApp(options?: {
     pool,
   });
   const adminService = new AdminApiService({ pool });
-  const agentService = new AgentService({ env, pool });
   const aiGatewayService = new AiGatewayAdminService({
     credentialVault,
     pool,
@@ -209,6 +213,33 @@ export function buildApp(options?: {
       },
       pool,
     });
+  const agentWorkflowLauncher = new AgentWorkflowLauncher({ workflowRunsService });
+  const agentToolRunner = new AgentToolRunner({
+    launcher: agentWorkflowLauncher,
+    repository: new DatabaseAgentToolRunnerRepository({ pool }),
+  });
+  const agentCostEstimator = new AgentCostEstimator(
+    new DatabaseAgentCostEstimatorRepository({ pool }),
+  );
+  const agentTextRuntime = new DatabaseTextGenerationRuntime({
+    credentialVault,
+    pool,
+  });
+  const agentExecutorService =
+    options?.agentExecutorService ??
+    new AgentExecutorService({
+      costEstimator: agentCostEstimator,
+      env,
+      repository: new DatabaseAgentExecutorRepository({ pool }),
+      textRuntime: agentTextRuntime,
+      toolRunner: agentToolRunner,
+    });
+  const agentService = new AgentService({
+    env,
+    executorService: agentExecutorService,
+    pool,
+    textRuntime: agentTextRuntime,
+  });
   const workbenchService = new WorkbenchService({
     generationQueue: workbenchGenerateQueue ?? null,
     pool,

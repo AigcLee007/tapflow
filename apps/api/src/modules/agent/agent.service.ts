@@ -5,6 +5,8 @@ import { z } from "zod";
 
 import type { ApiEnv } from "../../config/env.js";
 import { AgentPlannerRuntimeError, AgentPlannerService } from "./agent-planner.service.js";
+import type { AgentExecutorService } from "./agent-executor.service.js";
+import { formatAgentToolEvent } from "./agent-tool-events.js";
 import type { CanvasAgentSnapshotInput, CreateAgentSessionInput, CreateAgentTurnInput } from "./agent.schemas.js";
 
 type PgPool = Pool;
@@ -260,16 +262,19 @@ export class AgentApiError extends Error {
 
 export class AgentService {
   readonly env: ApiEnv;
+  readonly executorService: Pick<AgentExecutorService, "executeTurn"> | null;
   readonly plannerService: AgentPlannerService<PlannerOutput>;
   readonly pool: PgPool;
   readonly textRuntime: Pick<DatabaseTextGenerationRuntime, "generateText">;
 
   constructor(options: {
     env: ApiEnv;
+    executorService?: Pick<AgentExecutorService, "executeTurn"> | null;
     pool?: PgPool;
     textRuntime?: Pick<DatabaseTextGenerationRuntime, "generateText">;
   }) {
     this.env = options.env;
+    this.executorService = options.executorService ?? null;
     this.pool = options.pool ?? createPgPool();
     this.textRuntime =
       options.textRuntime ??
@@ -426,6 +431,22 @@ export class AgentService {
       formatStreamEvent("plan", result),
       formatStreamEvent("done", { sessionId: result.sessionId, turnId: result.turnId }),
     ].join("");
+  }
+
+  async buildExecuteTurnStream(context: AgentContext, sessionId: string, input: CreateAgentTurnInput) {
+    if (!this.executorService) {
+      throw new AgentApiError(503, "AGENT_EXECUTOR_NOT_CONFIGURED", "Agent executor is not configured.");
+    }
+
+    const chunks: string[] = [];
+    await this.executorService.executeTurn(context, {
+      ...input,
+      onEvent(event) {
+        chunks.push(formatAgentToolEvent(event));
+      },
+      sessionId,
+    });
+    return chunks.join("");
   }
 
   private async planTurn(context: AgentContext, prompt: string, snapshot: CanvasAgentSnapshotInput): Promise<PlannerOutput> {
