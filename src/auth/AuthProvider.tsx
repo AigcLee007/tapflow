@@ -16,11 +16,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const requestSequenceRef = useRef(0);
+  const sessionRef = useRef<AuthSession | null>(null);
 
-  const loadCurrentSession = useCallback(async () => {
+  useEffect(() => {
+    sessionRef.current = session;
+  }, [session]);
+
+  const loadCurrentSession = useCallback(async (options?: { silent?: boolean }) => {
     const requestId = requestSequenceRef.current + 1;
     requestSequenceRef.current = requestId;
-    setLoading(true);
+    if (!options?.silent) {
+      setLoading(true);
+    }
     setError(null);
     try {
       if (!getStoredAccessToken() && getStoredRefreshToken()) {
@@ -37,14 +44,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const nextSession = await v2AuthClient.getMe();
       if (requestSequenceRef.current === requestId) {
         setSession(nextSession);
+        sessionRef.current = nextSession;
       }
     } catch (loadError) {
       const isUnauthorized = loadError instanceof V2HttpError && loadError.status === 401;
       if (isUnauthorized) {
         clearStoredAuth();
       }
-      if (requestSequenceRef.current === requestId) {
+      if (requestSequenceRef.current === requestId && (!options?.silent || isUnauthorized)) {
         setSession(null);
+        sessionRef.current = null;
       }
       if (
         requestSequenceRef.current === requestId &&
@@ -66,7 +75,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
     const handleAuthChange = () => {
-      void loadCurrentSession();
+      void loadCurrentSession({ silent: Boolean(sessionRef.current?.user) });
     };
     window.addEventListener(V2_AUTH_CHANGE_EVENT, handleAuthChange);
     window.addEventListener("storage", handleAuthChange);

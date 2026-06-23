@@ -3191,3 +3191,14 @@ Validation completed:
   - `git diff --check` passed
 - Remaining rollout work:
   - staging smoke test still requires deployed text/image routes, pricing, billing balance, Redis/worker, and object storage
+
+## 2026-06-24 - Canvas Flicker Auth Refresh Stabilization
+
+- Investigated staging canvas flicker where the project repeatedly returned to the branded "opening canvas" loading screen and then re-entered the canvas.
+- Server logs showed the core canvas APIs were returning 200, but `/api/v2/auth/me` appeared between repeated project/flow/draft load cycles, pointing to frontend remounting rather than backend draft failures.
+- Fixed `AuthProvider` so an auth-change event while a user is already authenticated refreshes the current session silently instead of setting global `loading=true`.
+- This keeps `AuthGate` from replacing the mounted canvas with the auth loading transition during token/session refreshes.
+- Added regression coverage proving authenticated children stay mounted during a silent auth-change session refresh.
+- Validation:
+  - `npm test -- src/auth/AuthProvider.test.tsx`
+  - `npm test -- src/auth/AuthGate.test.tsx src/flowCanvas/FlowProjectPage.test.tsx`
