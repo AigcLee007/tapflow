@@ -302,6 +302,51 @@ describe("WorkbenchPage", () => {
     expect(screen.getByRole("button", { name: "立即开始创作" })).toBeTruthy();
   });
 
+  test("waits for pending reference uploads before allowing workbench generation", async () => {
+    let resolveUpload: ((value: { id: string; originalFilename: string; previewUrl: string | null }) => void) | null = null;
+    uploadWorkbenchReferenceFileMock.mockImplementation(
+      () => new Promise((resolve) => {
+        resolveUpload = resolve as typeof resolveUpload;
+      }),
+    );
+
+    setRoute("/workbench");
+    renderRouter();
+
+    await screen.findByTestId("workbench-composer");
+    fireEvent.change(screen.getByLabelText("Prompt"), {
+      target: { value: "小女孩穿红色衣服" },
+    });
+    const uploadInput = document.querySelector('input[type="file"][multiple]') as HTMLInputElement | null;
+    expect(uploadInput).toBeTruthy();
+    const file = new File(["ref"], "ref.png", { type: "image/png" });
+    fireEvent.change(uploadInput!, { target: { files: [file] } });
+
+    const generateButton = screen.getByRole("button", { name: "立即开始创作" });
+    expect(generateButton).toHaveProperty("disabled", true);
+    fireEvent.click(generateButton);
+    expect(createWorkbenchGenerationMock).not.toHaveBeenCalled();
+
+    resolveUpload?.({
+      id: "22222222-2222-4222-8222-222222222222",
+      originalFilename: "ref.png",
+      previewUrl: "blob:local-ref-preview",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("workbench-reference-card-1")).toBeTruthy();
+      expect(generateButton).toHaveProperty("disabled", false);
+    });
+
+    fireEvent.click(generateButton);
+
+    await waitFor(() => {
+      expect(createWorkbenchGenerationMock).toHaveBeenCalledWith(expect.objectContaining({
+        referenceUploadIds: ["22222222-2222-4222-8222-222222222222"],
+      }));
+    });
+  });
+
   test("removes workbench-only multi-image display mode controls on desktop", async () => {
     setRoute("/workbench");
     renderRouter();

@@ -2976,6 +2976,26 @@ Validation completed:
   - `npm run test -- src/workbench/WorkbenchPage.test.tsx src/workbench/workbenchReferences.test.ts`
   - `npm run build`
 
+## 2026-06-23 - Canvas And Workbench Reference Upload Regression Fixes
+
+- fixed a canvas temporary-reference preview regression where freshly uploaded reference images could show `预览加载失败` until a full page refresh
+- root cause and change:
+  - the canvas upload flow was revoking blob-backed local preview URLs immediately after upload success
+  - when the persisted node preview still pointed at that same blob URL, the node lost its first-render image source before any later recovery path could repopulate it
+  - added guarded preview URL cleanup so only truly unused local blob URLs are revoked
+- fixed a workbench reference-upload race where users could start generation before newly added temporary references had finished uploading
+- root cause and change:
+  - the workbench submit action only depended on prompt and route readiness, so a fast click during upload could send a request without the expected `referenceUploadIds`
+  - this made `Nano Banana Pro 线路二（官方T3）` behave like the reference image was ignored even though the worker-side forwarding path was already correct
+  - the workbench generate button is now disabled while temporary reference uploads are still pending
+- added focused regression coverage for:
+  - preserving blob previews that are still persisted on canvas image nodes
+  - blocking workbench generation until pending reference uploads have resolved and been included in the request
+- validation:
+  - `npm test -- src/workbench/WorkbenchPage.test.tsx`
+  - `npm test -- src/flowCanvas/utils/localImageUpload.test.ts`
+  - `npm run build`
+
 ## 2026-06-17 - Fullscreen Workbench Studio Shell
 
 - changed `/workbench` so it now renders outside `WorkspaceShell` instead of inheriting the homepage/global navigation shell

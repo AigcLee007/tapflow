@@ -106,6 +106,24 @@ export async function createLocalPreviewObjectUrl(file: File): Promise<string | 
   }
 }
 
+export function revokeUnusedLocalPreviewUrls(input: {
+  activePreviewUrl?: string | null;
+  persistedPreviewUrl?: string | null;
+  sourceUrl?: string | null;
+}) {
+  const urls = [input.sourceUrl, input.activePreviewUrl]
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .filter((value) => value.startsWith("blob:"));
+  const persisted = typeof input.persistedPreviewUrl === "string" ? input.persistedPreviewUrl.trim() : "";
+  const keep = persisted.startsWith("blob:") ? persisted : "";
+
+  Array.from(new Set(urls))
+    .filter((url) => url && url !== keep)
+    .forEach((url) => {
+      URL.revokeObjectURL(url);
+    });
+}
+
 export async function uploadLocalImageAndBuildAssetNodeData(
   input: LocalImageUploadInput & {
     natural?: { h: number; w: number } | null;

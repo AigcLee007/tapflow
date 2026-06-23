@@ -360,6 +360,7 @@ export function WorkbenchComposer({
     [draft.referenceAssetIds, draft.referenceUploadIds, pendingReferenceIds],
   );
   const estimatedCredits = getEstimatedCredits(draft);
+  const hasPendingReferenceUploads = pendingReferenceIds.length > 0;
 
   const updateReferenceScroll = React.useCallback(() => {
     const element = referenceStripRef.current;
@@ -866,7 +867,7 @@ export function WorkbenchComposer({
       <button
         aria-label={TEXT.start}
         className="flex h-[42px] w-full items-center justify-center gap-2 rounded-[8px] bg-gradient-to-r from-[#b515ff] via-[#7c29ff] to-[#236dff] text-[14px] font-black text-white shadow-[0_12px_30px_rgba(82,57,255,0.35)] transition disabled:cursor-not-allowed disabled:bg-none disabled:bg-[#3a465b] disabled:text-slate-400 disabled:shadow-none"
-        disabled={isGenerating || !draft.prompt.trim() || !draft.routeKey}
+        disabled={isGenerating || hasPendingReferenceUploads || !draft.prompt.trim() || !draft.routeKey}
         onClick={() => {
           onGenerate();
           onAfterGenerate?.();

@@ -115,6 +115,7 @@ import {
   createImmediateLocalImageNodeData,
   createLocalPreviewObjectUrl,
   measureLocalImageNodeData,
+  revokeUnusedLocalPreviewUrls,
   uploadLocalImageAndBuildReferenceNodeData,
 } from '../utils/localImageUpload';
 import { persistDerivedImageAsset, type DerivedImageSourceType } from '../utils/persistDerivedImageAsset';
@@ -5155,8 +5156,11 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
           uploadErrorMessage: undefined,
           uploadStatus: 'done',
         });
-        URL.revokeObjectURL(localObjectUrl);
-        if (activePreviewUrl !== localObjectUrl) URL.revokeObjectURL(activePreviewUrl);
+        revokeUnusedLocalPreviewUrls({
+          activePreviewUrl,
+          persistedPreviewUrl: String(uploaded.nodeData.thumbnailUrl || uploaded.nodeData.originalImageUrl || ''),
+          sourceUrl: localObjectUrl,
+        });
       } catch (error) {
         updateNodeData(id, buildLocalUploadFailureNodeData(error));
       }
@@ -7041,8 +7045,11 @@ export const UploadNodeComponent = memo(function UploadNode({
           uploadErrorMessage: undefined,
           uploadStatus: 'done',
         });
-        URL.revokeObjectURL(localObjectUrl);
-        if (activePreviewUrl !== localObjectUrl) URL.revokeObjectURL(activePreviewUrl);
+        revokeUnusedLocalPreviewUrls({
+          activePreviewUrl,
+          persistedPreviewUrl: String(uploaded.nodeData.thumbnailUrl || uploaded.nodeData.originalImageUrl || ''),
+          sourceUrl: localObjectUrl,
+        });
       } catch (error) {
         useFlowCanvasStore.getState().updateNodeData(id, buildLocalUploadFailureNodeData(error));
       }

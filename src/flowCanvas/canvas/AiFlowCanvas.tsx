@@ -51,6 +51,7 @@ import {
   createImmediateLocalImageNodeData,
   createLocalPreviewObjectUrl,
   measureLocalImageNodeData,
+  revokeUnusedLocalPreviewUrls,
   uploadLocalImageAndBuildReferenceNodeData,
 } from '../utils/localImageUpload';
 import { getImageNaturalSize } from '../utils/imageUtils';
@@ -589,8 +590,11 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled }) =>
               uploadErrorMessage: undefined,
               uploadStatus: 'done',
             });
-            if (source.url.startsWith('blob:')) URL.revokeObjectURL(source.url);
-            if (activePreviewUrl !== source.url) URL.revokeObjectURL(activePreviewUrl);
+            revokeUnusedLocalPreviewUrls({
+              activePreviewUrl,
+              persistedPreviewUrl: String(uploaded.nodeData.thumbnailUrl || uploaded.nodeData.originalImageUrl || ''),
+              sourceUrl: source.url,
+            });
           } catch (error) {
             useFlowCanvasStore.getState().updateNodeData(createdNode.id, buildLocalUploadFailureNodeData(error));
           }

@@ -70,6 +70,31 @@ describe('createImmediateLocalImageNodeData', () => {
       uploadStatus: 'failed',
     });
   });
+
+  it('does not revoke a preview url that is still being persisted on the node', async () => {
+    const revokeObjectURL = vi.fn();
+    const previousUrl = globalThis.URL.revokeObjectURL;
+    Object.defineProperty(globalThis.URL, 'revokeObjectURL', {
+      configurable: true,
+      value: revokeObjectURL,
+    });
+
+    const { revokeUnusedLocalPreviewUrls } = await import('./localImageUpload');
+
+    revokeUnusedLocalPreviewUrls({
+      activePreviewUrl: 'blob://preview',
+      persistedPreviewUrl: 'blob://preview',
+      sourceUrl: 'blob://source',
+    });
+
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob://source');
+    expect(revokeObjectURL).not.toHaveBeenCalledWith('blob://preview');
+
+    Object.defineProperty(globalThis.URL, 'revokeObjectURL', {
+      configurable: true,
+      value: previousUrl,
+    });
+  });
 });
 
 describe('uploadLocalImageAndBuildReferenceNodeData', () => {
