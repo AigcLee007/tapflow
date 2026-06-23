@@ -3112,3 +3112,32 @@ Validation completed:
   - added regression coverage for session cache restoration and test cache isolation
 - validation:
   - `npm run test -- src/workbench/WorkbenchPage.test.tsx`
+
+## 2026-06-23 - Agent Tool-Calling Executor Upgrade Plan
+
+- Added the detailed Scheme B Agent upgrade plan at `docs/superpowers/plans/2026-06-23-agent-tool-calling-executor-upgrade.md`.
+- The plan upgrades the current Canvas Agent from a JSON planner into a server-side tool-calling production executor:
+  - text model remains the Agent brain
+  - generation tools map to existing workflow/billing/assets execution
+  - generated assets are fed back to the Agent as safe references
+  - frontend shows a streaming tool timeline and friendly model/line labels only
+- The plan intentionally sits between the first-stage Agent implementation plan and the final-stage Agent plan, so the final memory/recipe/governance work can build on a real executor loop instead of a plan-only Agent.
+- Follow-up update:
+  - added the post-Scheme-B upgrade path to Scheme C at the end of the same plan
+  - Scheme C is defined as the Canvas Production Director Agent, extending Scheme B with memory, canvas operation tools, storyboard planning, QA/repair, recipes, safe model/route recommendation, controlled automation, and admin observability
+
+## 2026-06-23 - Agent Tool-Calling Executor Foundation Tasks 1-4
+
+- Started Scheme B implementation on branch `codex/agent-tool-executor-foundation`.
+- Completed the first foundation slice:
+  - extended `agent_tool_calls` with executor-ready fields for session linkage, tool-call keys, normalized arguments/results, cost estimates, workflow/node run links, lifecycle timestamps, and workflow indexes
+  - added Agent tool schemas for `generate_image`, `generate_image_batch`, and `continue_generation`
+  - added Agent tool policy checks for approval, generated item limits, credit limits, round limits, disabled tools, and continuation safety
+  - added safe Agent asset references that expose only `assetId`, friendly labels, dimensions, and prompt summaries
+  - added Agent generation cost estimation using active route pricing and size-tier metadata, failing closed with `PRICING_NOT_FOUND`
+- Validation:
+  - `npm run test --workspace @aigc-flow/api -- agent-asset-references.test.ts agent-tool-schemas.test.ts agent-tool-policy.test.ts agent-cost-estimator.test.ts`
+  - `npm run test --workspace @aigc-flow/db -- agent-tool-calls.test.ts` skipped locally because no database test env was configured
+  - `npm run build --workspace @aigc-flow/db`
+  - `npm run build --workspace @aigc-flow/api`
+  - `npm run build`
