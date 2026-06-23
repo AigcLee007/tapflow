@@ -242,6 +242,20 @@ Relay D:
 - `AGENT_TEXT_ROUTE_KEY = text.gpt-5-5`
 - `Agent planner note = keep false until the GPT-5.5 text template is installed, published, and smoke-tested; false uses deterministic planning only`
 
+## 9.2 Agent Executor
+
+- `AGENT_EXECUTOR_ENABLED = false`
+- `AGENT_EXECUTOR_REQUIRE_APPROVAL = true`
+- `AGENT_EXECUTOR_MAX_TOOL_ROUNDS = 8`
+- `AGENT_EXECUTOR_MAX_GENERATED_ITEMS = 8`
+- `AGENT_EXECUTOR_MAX_ESTIMATED_CREDITS = 50`
+- `AGENT_EXECUTOR_TURN_TIMEOUT_MS = 300000`
+- `AGENT_EXECUTOR_TOOL_TIMEOUT_MS = 180000`
+- `AGENT_EXECUTOR_ALLOW_BATCH_IMAGE = true`
+- `AGENT_EXECUTOR_ALLOW_IMAGE_EDIT = false`
+- `AGENT_EXECUTOR_ALLOW_VIDEO = false`
+- `Agent executor note = keep false until text and image routes are installed, pricing is verified, and staging smoke tests pass. Fast rollback is setting AGENT_EXECUTOR_ENABLED=false.`
+
 ---
 
 ## 10. Deployment

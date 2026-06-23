@@ -52,6 +52,38 @@ export async function openAgentTurnStream(sessionId: string, input: {
   });
 }
 
+export async function executeAgentTurnStream(sessionId: string, input: {
+  prompt: string;
+  snapshot: CanvasAgentSnapshot;
+}) {
+  const token = getStoredAccessToken();
+  return fetch(`/api/v2/agent/sessions/${sessionId}/turns/execute/stream`, {
+    body: JSON.stringify(input),
+    cache: "no-store",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: token.startsWith("Bearer ") ? token : `Bearer ${token}` } : {}),
+    },
+    method: "POST",
+  });
+}
+
+export async function approveAgentToolCallStream(sessionId: string, input: {
+  toolCallKey: string;
+  turnId: string;
+}) {
+  const token = getStoredAccessToken();
+  return fetch(`/api/v2/agent/sessions/${sessionId}/tool-calls/approve/stream`, {
+    body: JSON.stringify(input),
+    cache: "no-store",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: token.startsWith("Bearer ") ? token : `Bearer ${token}` } : {}),
+    },
+    method: "POST",
+  });
+}
+
 export async function readAgentSseStream(
   response: Response,
   handlers: {

@@ -166,4 +166,116 @@ describe("AgentExecutorService", () => {
       code: "AGENT_EXECUTOR_MAX_ROUNDS",
     });
   });
+
+  it("pauses before credit tools when approval is required", async () => {
+    const events: unknown[] = [];
+    const toolRunner = {
+      runToolCall: vi.fn(),
+    };
+    const executor = new AgentExecutorService({
+      costEstimator: {
+        estimateGenerateImage: vi.fn().mockResolvedValue({ totalCredits: 4 }),
+        estimateGenerateImageBatch: vi.fn(),
+      },
+      limits: { requireApproval: true },
+      repository: {
+        createAssistantMessage: vi.fn(),
+        createTurn: vi.fn().mockResolvedValue({ turnId: "turn-1" }),
+        createUserMessage: vi.fn().mockResolvedValue({ messageId: "message-1" }),
+        markTurnFailed: vi.fn(),
+        markTurnSucceeded: vi.fn(),
+      },
+      textRuntime: {
+        generateText: vi.fn().mockResolvedValue({
+          outputText: JSON.stringify({
+            toolCalls: [
+              {
+                arguments: { prompt: "one", size: "1K" },
+                toolCallKey: "tool-call-1",
+                toolName: "generate_image",
+              },
+            ],
+          }),
+        }),
+      },
+      toolRunner,
+    });
+
+    const result = await executor.executeTurn(context, {
+      onEvent: (event) => events.push(event),
+      prompt: "生成",
+      sessionId: "session-1",
+      snapshot,
+    });
+
+    expect(toolRunner.runToolCall).not.toHaveBeenCalled();
+    expect(events).toContainEqual(expect.objectContaining({
+      toolCallKey: "tool-call-1",
+      turnId: "turn-1",
+      type: "approval_required",
+    }));
+    expect(result.finalText).toContain("Confirm");
+  });
+
+  it("resumes an approved credit tool from the stored pending turn", async () => {
+    const toolRunner = {
+      runToolCall: vi.fn().mockResolvedValue({
+        assetRefs: [{ assetId: "asset-1", kind: "image", label: "Round 1 image 1", promptSummary: "", refId: "round-1-image-1" }],
+        failures: [],
+        status: "succeeded",
+        toolCallId: "tool-db-1",
+        workflowRunIds: ["workflow-1"],
+      }),
+    };
+    const repository = {
+      createAssistantMessage: vi.fn(),
+      createTurn: vi.fn().mockResolvedValue({ turnId: "turn-1" }),
+      createUserMessage: vi.fn().mockResolvedValue({ messageId: "message-1" }),
+      markTurnFailed: vi.fn(),
+      markTurnSucceeded: vi.fn(),
+      readPendingApproval: vi.fn().mockResolvedValue({
+        costEstimate: { totalCredits: 4 },
+        pendingToolCall: {
+          arguments: { prompt: "forest sports day", size: "1K" },
+          toolCallKey: "tool-call-1",
+          toolName: "generate_image",
+        },
+        snapshot,
+      }),
+    };
+    const executor = new AgentExecutorService({
+      costEstimator: {
+        estimateGenerateImage: vi.fn().mockResolvedValue({ totalCredits: 4 }),
+        estimateGenerateImageBatch: vi.fn(),
+      },
+      limits: { requireApproval: true },
+      repository,
+      textRuntime: {
+        generateText: vi.fn(),
+      },
+      toolRunner,
+    });
+
+    const events: unknown[] = [];
+    const result = await executor.approveToolCall(context, {
+      onEvent: (event) => events.push(event),
+      sessionId: "session-1",
+      toolCallKey: "tool-call-1",
+      turnId: "turn-1",
+    });
+
+    expect(repository.readPendingApproval).toHaveBeenCalledWith({
+      sessionId: "session-1",
+      tenantId: "tenant-1",
+      toolCallKey: "tool-call-1",
+      turnId: "turn-1",
+    });
+    expect(toolRunner.runToolCall).toHaveBeenCalledWith(context, expect.objectContaining({
+      executionTarget: { flowId: "flow-1", targetNodeId: "image-node-1" },
+      turnId: "turn-1",
+    }));
+    expect(events).toContainEqual(expect.objectContaining({ toolCallKey: "tool-call-1", type: "tool_started" }));
+    expect(events).toContainEqual(expect.objectContaining({ toolCallKey: "tool-call-1", type: "tool_result" }));
+    expect(result.toolResults[0]?.assetRefs[0]?.assetId).toBe("asset-1");
+  });
 });

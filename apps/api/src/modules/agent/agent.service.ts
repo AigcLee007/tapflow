@@ -5,9 +5,14 @@ import { z } from "zod";
 
 import type { ApiEnv } from "../../config/env.js";
 import { AgentPlannerRuntimeError, AgentPlannerService } from "./agent-planner.service.js";
-import type { AgentExecutorService } from "./agent-executor.service.js";
+import { AgentExecutorError, type AgentExecutorService } from "./agent-executor.service.js";
 import { formatAgentToolEvent } from "./agent-tool-events.js";
-import type { CanvasAgentSnapshotInput, CreateAgentSessionInput, CreateAgentTurnInput } from "./agent.schemas.js";
+import type {
+  ApproveAgentToolCallInput,
+  CanvasAgentSnapshotInput,
+  CreateAgentSessionInput,
+  CreateAgentTurnInput,
+} from "./agent.schemas.js";
 
 type PgPool = Pool;
 
@@ -262,14 +267,14 @@ export class AgentApiError extends Error {
 
 export class AgentService {
   readonly env: ApiEnv;
-  readonly executorService: Pick<AgentExecutorService, "executeTurn"> | null;
+  readonly executorService: Pick<AgentExecutorService, "approveToolCall" | "executeTurn"> | null;
   readonly plannerService: AgentPlannerService<PlannerOutput>;
   readonly pool: PgPool;
   readonly textRuntime: Pick<DatabaseTextGenerationRuntime, "generateText">;
 
   constructor(options: {
     env: ApiEnv;
-    executorService?: Pick<AgentExecutorService, "executeTurn"> | null;
+    executorService?: Pick<AgentExecutorService, "approveToolCall" | "executeTurn"> | null;
     pool?: PgPool;
     textRuntime?: Pick<DatabaseTextGenerationRuntime, "generateText">;
   }) {
@@ -434,18 +439,54 @@ export class AgentService {
   }
 
   async buildExecuteTurnStream(context: AgentContext, sessionId: string, input: CreateAgentTurnInput) {
+    if (!this.env.agentExecutorEnabled) {
+      throw new AgentApiError(503, "AGENT_EXECUTOR_DISABLED", "Agent executor is disabled.");
+    }
     if (!this.executorService) {
       throw new AgentApiError(503, "AGENT_EXECUTOR_NOT_CONFIGURED", "Agent executor is not configured.");
     }
 
     const chunks: string[] = [];
-    await this.executorService.executeTurn(context, {
-      ...input,
-      onEvent(event) {
-        chunks.push(formatAgentToolEvent(event));
-      },
-      sessionId,
-    });
+    try {
+      await this.executorService.executeTurn(context, {
+        ...input,
+        onEvent(event) {
+          chunks.push(formatAgentToolEvent(event));
+        },
+        sessionId,
+      });
+    } catch (error) {
+      if (error instanceof AgentExecutorError) {
+        throw new AgentApiError(error.statusCode, error.code, error.message);
+      }
+      throw error;
+    }
+    return chunks.join("");
+  }
+
+  async buildApproveToolCallStream(context: AgentContext, sessionId: string, input: ApproveAgentToolCallInput) {
+    if (!this.env.agentExecutorEnabled) {
+      throw new AgentApiError(503, "AGENT_EXECUTOR_DISABLED", "Agent executor is disabled.");
+    }
+    if (!this.executorService) {
+      throw new AgentApiError(503, "AGENT_EXECUTOR_NOT_CONFIGURED", "Agent executor is not configured.");
+    }
+
+    const chunks: string[] = [];
+    try {
+      await this.executorService.approveToolCall(context, {
+        ...input,
+        onEvent(event) {
+          chunks.push(formatAgentToolEvent(event));
+        },
+        sessionId,
+      });
+    } catch (error) {
+      if (error instanceof AgentExecutorError) {
+        throw new AgentApiError(error.statusCode, error.code, error.message);
+      }
+      throw error;
+    }
     return chunks.join("");
   }
 

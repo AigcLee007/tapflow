@@ -1,6 +1,7 @@
 import { getBackendRunLaunchErrorMessage } from "../runtime/v2WorkflowRunner";
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
 import type { CanvasAgentOp } from "./canvasAgentTypes";
+import type { CanvasAgentToolAssetRef } from "./canvasAgentToolTypes";
 
 type ApplyInput = {
   ops: CanvasAgentOp[];
@@ -94,4 +95,38 @@ export async function applyCanvasAgentOps(input: ApplyInput): Promise<ApplyResul
     ok: errors.length === 0,
     ranNodeIds,
   };
+}
+
+export function placeAgentGeneratedAssetsOnCanvas(input: {
+  assets: CanvasAgentToolAssetRef[];
+  sessionId: string | null;
+  toolCallId: string;
+  turnId: string | null;
+}) {
+  const createdNodeIds: string[] = [];
+  const state = useFlowCanvasStore.getState();
+  const baseX = -state.viewport.x / state.viewport.zoom + 120;
+  const baseY = -state.viewport.y / state.viewport.zoom + 160;
+
+  input.assets.forEach((asset, index) => {
+    if (asset.kind !== "image") return;
+    const node = useFlowCanvasStore.getState().addNode(
+      "image",
+      { x: baseX + index * 340, y: baseY },
+      {
+        agent: {
+          sessionId: input.sessionId,
+          toolCallId: input.toolCallId,
+          turnId: input.turnId,
+        },
+        assetId: asset.assetId,
+        promptSummary: asset.promptSummary,
+        title: asset.label,
+      },
+      { preserveSelection: true, selected: index === 0 },
+    );
+    createdNodeIds.push(node.id);
+  });
+
+  return { createdNodeIds };
 }

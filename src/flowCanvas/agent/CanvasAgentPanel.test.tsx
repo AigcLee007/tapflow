@@ -7,12 +7,16 @@ import { CanvasAgentPanel } from "./CanvasAgentPanel";
 
 const mockCreateAgentSession = vi.fn();
 const mockCreateAgentTurn = vi.fn();
+const mockApproveAgentToolCallStream = vi.fn();
+const mockExecuteAgentTurnStream = vi.fn();
 const mockOpenAgentTurnStream = vi.fn();
 const mockReadAgentSseStream = vi.fn();
 
 vi.mock("./canvasAgentApi", () => ({
+  approveAgentToolCallStream: (...args: unknown[]) => mockApproveAgentToolCallStream(...args),
   createAgentSession: (...args: unknown[]) => mockCreateAgentSession(...args),
   createAgentTurn: (...args: unknown[]) => mockCreateAgentTurn(...args),
+  executeAgentTurnStream: (...args: unknown[]) => mockExecuteAgentTurnStream(...args),
   openAgentTurnStream: (...args: unknown[]) => mockOpenAgentTurnStream(...args),
   readAgentSseStream: (...args: unknown[]) => mockReadAgentSseStream(...args),
 }));
@@ -23,9 +27,12 @@ describe("CanvasAgentPanel", () => {
     useFlowCanvasStore.getState().newProject();
     mockCreateAgentSession.mockReset();
     mockCreateAgentTurn.mockReset();
+    mockApproveAgentToolCallStream.mockReset();
+    mockExecuteAgentTurnStream.mockReset();
     mockOpenAgentTurnStream.mockReset();
     mockReadAgentSseStream.mockReset();
     mockCreateAgentSession.mockResolvedValue({ id: "session-1" });
+    mockExecuteAgentTurnStream.mockResolvedValue({ ok: false, status: 503 });
     mockOpenAgentTurnStream.mockResolvedValue({ ok: false, status: 503 });
     mockCreateAgentTurn.mockResolvedValue({
       approvalRequired: true,

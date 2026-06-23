@@ -4,9 +4,11 @@ import { ZodError } from "zod";
 import { requireAuth, requirePermission, requireTenant } from "../../http/auth-middleware.js";
 import {
   type AgentSessionIdParams,
+  type ApproveAgentToolCallInput,
   type CreateAgentSessionInput,
   type CreateAgentTurnInput,
   type ExecuteAgentTurnInput,
+  approveAgentToolCallSchema,
   agentSessionIdParamsSchema,
   createAgentSessionSchema,
   createAgentTurnSchema,
@@ -143,6 +145,30 @@ export function registerAgentRoutes(app: FastifyInstance): void {
         const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
         const body = parseBody<ExecuteAgentTurnInput>(request, executeAgentTurnSchema);
         const streamBody = await app.agentService.buildExecuteTurnStream(getAgentContext(request), params.sessionId, body);
+
+        reply.raw.setHeader("cache-control", "no-cache");
+        reply.raw.setHeader("connection", "keep-alive");
+        reply.raw.setHeader("content-type", "text/event-stream; charset=utf-8");
+        reply.hijack();
+        reply.raw.write(streamBody);
+        reply.raw.end();
+        return reply;
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.post(
+    "/api/v2/agent/sessions/:sessionId/tool-calls/approve/stream",
+    {
+      preHandler: [...authHandlers, requirePermission("flow:run")],
+    },
+    async (request, reply) => {
+      try {
+        const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
+        const body = parseBody<ApproveAgentToolCallInput>(request, approveAgentToolCallSchema);
+        const streamBody = await app.agentService.buildApproveToolCallStream(getAgentContext(request), params.sessionId, body);
 
         reply.raw.setHeader("cache-control", "no-cache");
         reply.raw.setHeader("connection", "keep-alive");

@@ -4,6 +4,7 @@ import { Bot, X } from "lucide-react";
 import { CanvasAgentComposer } from "./CanvasAgentComposer";
 import { CanvasAgentPlanCard } from "./CanvasAgentPlanCard";
 import { CanvasAgentTaskCard } from "./CanvasAgentTaskCard";
+import { CanvasAgentToolTimeline } from "./CanvasAgentToolTimeline";
 import type { CanvasAgentPlannerOutput } from "./canvasAgentTypes";
 import { useCanvasAgentSession } from "./useCanvasAgentSession";
 
@@ -159,6 +160,13 @@ export function CanvasAgentPanel(props: {
             {message.content}
           </div>
         ))}
+
+        <CanvasAgentToolTimeline
+          items={session.toolTimeline}
+          onApprove={session.approveToolCall}
+          onCancel={session.cancelToolCall}
+          onPlaceAssets={session.placeToolAssetsOnCanvas}
+        />
 
         {session.currentPlan ? (
           <CanvasAgentPlanCard

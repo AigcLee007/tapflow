@@ -3,7 +3,17 @@ import { useCallback, useMemo, useState } from "react";
 import { V2HttpError } from "../../services/v2HttpClient";
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
 import { buildCanvasAgentSnapshot } from "./canvasAgentSnapshot";
-import { createAgentSession, createAgentTurn, openAgentTurnStream, readAgentSseStream } from "./canvasAgentApi";
+import {
+  approveAgentToolCallStream,
+  createAgentSession,
+  createAgentTurn,
+  executeAgentTurnStream,
+  openAgentTurnStream,
+  readAgentSseStream,
+} from "./canvasAgentApi";
+import { readAgentToolEventStream } from "./canvasAgentToolEvents";
+import type { CanvasAgentToolEvent, CanvasAgentToolTimelineItem } from "./canvasAgentToolTypes";
+import { placeAgentGeneratedAssetsOnCanvas } from "./canvasAgentOps";
 import { planOfflineCanvasAgentTurn } from "./offlineCanvasAgentPlanner";
 import type { CanvasAgentPlannerOutput } from "./canvasAgentTypes";
 
@@ -20,7 +30,7 @@ type ApplyResult = {
   ranNodeIds: string[];
 };
 
-type SessionStatus = "awaiting_approval" | "error" | "executing" | "idle" | "thinking";
+type SessionStatus = "awaiting_approval" | "error" | "executing" | "executing_tool" | "idle" | "thinking";
 
 function createMessage(role: CanvasAgentMessage["role"], content: string): CanvasAgentMessage {
   return {
@@ -36,7 +46,77 @@ export function useCanvasAgentSession() {
   const [error, setError] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [status, setStatus] = useState<SessionStatus>("idle");
+  const [toolTimeline, setToolTimeline] = useState<CanvasAgentToolTimelineItem[]>([]);
   const [usedOfflineFallback, setUsedOfflineFallback] = useState(false);
+
+  const applyToolEvent = useCallback((event: CanvasAgentToolEvent) => {
+    if (event.type === "message_delta") {
+      if (!event.content.trim()) return;
+      setMessages((current) => [...current, createMessage("assistant", event.content)]);
+      return;
+    }
+
+    if (event.type === "tool_started") {
+      setStatus("executing_tool");
+      setToolTimeline((current) => {
+        const existing = current.find((item) => item.toolCallKey === event.toolCallKey);
+        const nextItem: CanvasAgentToolTimelineItem = {
+          assetRefs: existing?.assetRefs ?? [],
+          estimate: existing?.estimate,
+          placedNodeIds: existing?.placedNodeIds,
+          status: "running",
+          title: event.toolName === "generate_image_batch" ? "Batch image generation" : "Image generation",
+          toolCallKey: event.toolCallKey,
+          toolName: event.toolName,
+          turnId: existing?.turnId,
+        };
+        return [...current.filter((item) => item.toolCallKey !== event.toolCallKey), nextItem];
+      });
+      return;
+    }
+
+    if (event.type === "approval_required") {
+      setStatus("awaiting_approval");
+      setToolTimeline((current) => current.map((item) => item.toolCallKey === event.toolCallKey
+        ? { ...item, estimate: event.estimate, status: "awaiting_approval", turnId: event.turnId }
+        : item));
+      return;
+    }
+
+    if (event.type === "tool_result") {
+      const result = event.result && typeof event.result === "object"
+        ? event.result as Record<string, unknown>
+        : {};
+      const assetRefs = Array.isArray(result.assetRefs)
+        ? result.assetRefs as CanvasAgentToolTimelineItem["assetRefs"]
+        : [];
+      const failed = result.status === "failed";
+      setToolTimeline((current) => current.map((item) => item.toolCallKey === event.toolCallKey
+        ? {
+            ...item,
+            assetRefs,
+            result: event.result,
+            status: failed ? "failed" : "succeeded",
+            turnId: item.turnId,
+          }
+        : item));
+      return;
+    }
+
+    if (event.type === "turn_completed") {
+      if (event.finalText.trim()) {
+        setMessages((current) => [...current, createMessage("assistant", event.finalText)]);
+      }
+      setStatus("idle");
+      return;
+    }
+
+    if (event.type === "turn_failed") {
+      setError(event.message);
+      setMessages((current) => [...current, createMessage("system", event.message)]);
+      setStatus("error");
+    }
+  }, []);
 
   const sendPrompt = useCallback(async (prompt: string) => {
     const trimmed = prompt.trim();
@@ -46,6 +126,7 @@ export function useCanvasAgentSession() {
 
     setError(null);
     setUsedOfflineFallback(false);
+    setToolTimeline([]);
     setStatus("thinking");
     setMessages((current) => [...current, createMessage("user", trimmed)]);
 
@@ -85,6 +166,22 @@ export function useCanvasAgentSession() {
 
       let streamFailedMessage: string | null = null;
       if (useStreaming && resolvedSessionId) {
+        try {
+          const response = await executeAgentTurnStream(resolvedSessionId, { prompt: trimmed, snapshot });
+          if (response.ok) {
+            await readAgentToolEventStream(response, applyToolEvent);
+            return;
+          }
+          if (response.status !== 404 && response.status !== 503) {
+            throw new V2HttpError({
+              message: `Request failed with status ${response.status}`,
+              status: response.status,
+            });
+          }
+        } catch (executorError) {
+          streamFailedMessage = executorError instanceof Error ? executorError.message : String(executorError);
+        }
+
         let receivedPlan = false;
         try {
           const response = await openAgentTurnStream(resolvedSessionId, { prompt: trimmed, snapshot });
@@ -151,6 +248,61 @@ export function useCanvasAgentSession() {
     setError(null);
   }, []);
 
+  const approveToolCall = useCallback(async (toolCallKey: string) => {
+    const item = toolTimeline.find((candidate) => candidate.toolCallKey === toolCallKey);
+    if (!sessionId || !item?.turnId) {
+      setError("Agent approval is missing its session or turn reference.");
+      return;
+    }
+
+    setError(null);
+    setStatus("executing_tool");
+    try {
+      const response = await approveAgentToolCallStream(sessionId, {
+        toolCallKey,
+        turnId: item.turnId,
+      });
+      if (!response.ok) {
+        throw new V2HttpError({
+          message: `Request failed with status ${response.status}`,
+          status: response.status,
+        });
+      }
+      await readAgentToolEventStream(response, applyToolEvent);
+    } catch (approvalError) {
+      const message = approvalError instanceof Error ? approvalError.message : String(approvalError);
+      setError(message);
+      setToolTimeline((current) => current.map((candidate) => candidate.toolCallKey === toolCallKey
+        ? { ...candidate, error: message, status: "failed" }
+        : candidate));
+      setStatus("error");
+    }
+  }, [applyToolEvent, sessionId, toolTimeline]);
+
+  const cancelToolCall = useCallback((toolCallKey: string) => {
+    setToolTimeline((current) => current.map((item) => item.toolCallKey === toolCallKey
+      ? { ...item, error: "Cancelled by user", status: "failed" }
+      : item));
+    setStatus("idle");
+    setMessages((current) => [...current, createMessage("assistant", "Cancelled. No credits were used for this Agent tool.")]);
+  }, []);
+
+  const placeToolAssetsOnCanvas = useCallback((toolCallKey: string) => {
+    const item = toolTimeline.find((candidate) => candidate.toolCallKey === toolCallKey);
+    if (!item || item.assetRefs.length === 0) return;
+    const placed = placeAgentGeneratedAssetsOnCanvas({
+      assets: item.assetRefs,
+      sessionId,
+      toolCallId: typeof (item.result as { toolCallId?: unknown } | null)?.toolCallId === "string"
+        ? (item.result as { toolCallId: string }).toolCallId
+        : toolCallKey,
+      turnId: item.turnId ?? null,
+    });
+    setToolTimeline((current) => current.map((candidate) => candidate.toolCallKey === toolCallKey
+      ? { ...candidate, placedNodeIds: placed.createdNodeIds }
+      : candidate));
+  }, [sessionId, toolTimeline]);
+
   const executeCurrentPlan = useCallback(
     async (
       executor: (plan: CanvasAgentPlannerOutput) => Promise<ApplyResult>,
@@ -194,15 +346,19 @@ export function useCanvasAgentSession() {
   return useMemo(
     () => ({
       cancelCurrentPlan,
+      approveToolCall,
+      cancelToolCall,
       currentPlan,
       error,
       executeCurrentPlan,
       messages,
+      placeToolAssetsOnCanvas,
       sendPrompt,
       sessionId,
       status,
       usedOfflineFallback,
+      toolTimeline,
     }),
-    [cancelCurrentPlan, currentPlan, error, executeCurrentPlan, messages, sendPrompt, sessionId, status, usedOfflineFallback],
+    [approveToolCall, cancelCurrentPlan, cancelToolCall, currentPlan, error, executeCurrentPlan, messages, placeToolAssetsOnCanvas, sendPrompt, sessionId, status, usedOfflineFallback, toolTimeline],
   );
 }

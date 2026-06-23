@@ -230,6 +230,15 @@ export function buildApp(options?: {
     new AgentExecutorService({
       costEstimator: agentCostEstimator,
       env,
+      limits: {
+        allowBatchImage: env.agentExecutorAllowBatchImage,
+        allowImageEdit: env.agentExecutorAllowImageEdit,
+        allowVideo: env.agentExecutorAllowVideo,
+        maxEstimatedCredits: env.agentExecutorMaxEstimatedCredits,
+        maxGeneratedItems: env.agentExecutorMaxGeneratedItems,
+        maxToolRounds: env.agentExecutorMaxToolRounds,
+        requireApproval: env.agentExecutorRequireApproval,
+      },
       repository: new DatabaseAgentExecutorRepository({ pool }),
       textRuntime: agentTextRuntime,
       toolRunner: agentToolRunner,

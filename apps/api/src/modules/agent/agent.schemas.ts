@@ -59,7 +59,13 @@ export const createAgentTurnSchema = z.object({
   snapshot: canvasAgentSnapshotSchema,
 });
 
+export const approveAgentToolCallSchema = z.object({
+  toolCallKey: z.string().trim().min(1).max(200),
+  turnId: z.string().uuid(),
+});
+
 export type AgentSessionIdParams = z.infer<typeof agentSessionIdParamsSchema>;
+export type ApproveAgentToolCallInput = z.infer<typeof approveAgentToolCallSchema>;
 export type CanvasAgentSnapshotInput = z.infer<typeof canvasAgentSnapshotSchema>;
 export type CreateAgentSessionInput = z.infer<typeof createAgentSessionSchema>;
 export type CreateAgentTurnInput = z.infer<typeof createAgentTurnSchema>;

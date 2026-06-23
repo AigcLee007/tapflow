@@ -1,6 +1,16 @@
 export type ApiEnv = {
   accessTokenTtlSeconds: number;
   adminEmails: string[];
+  agentExecutorAllowBatchImage?: boolean;
+  agentExecutorAllowImageEdit?: boolean;
+  agentExecutorAllowVideo?: boolean;
+  agentExecutorEnabled?: boolean;
+  agentExecutorMaxEstimatedCredits?: number;
+  agentExecutorMaxGeneratedItems?: number;
+  agentExecutorMaxToolRounds?: number;
+  agentExecutorRequireApproval?: boolean;
+  agentExecutorToolTimeoutMs?: number;
+  agentExecutorTurnTimeoutMs?: number;
   agentPlannerFallbackEnabled: boolean;
   agentPlannerEnabled: boolean;
   agentPlannerRepairAttempts: number;
@@ -78,6 +88,15 @@ function parsePositiveIntegerEnv(name: string, value: string | undefined, fallba
   return parsed;
 }
 
+function parsePositiveNumberEnv(name: string, value: string | undefined, fallback: number): number {
+  const raw = value?.trim() ?? "";
+  const parsed = raw ? Number(raw) : fallback;
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`${name} must be a positive number when provided`);
+  }
+  return parsed;
+}
+
 export function getApiEnv(): ApiEnv {
   const nodeEnv = process.env.NODE_ENV?.trim() || "development";
   const isProduction = nodeEnv === "production";
@@ -136,6 +155,56 @@ export function getApiEnv(): ApiEnv {
     45_000,
   );
   const agentTextRouteKey = process.env.AGENT_TEXT_ROUTE_KEY?.trim() || "text.default";
+  const agentExecutorEnabled = parseBooleanEnv(
+    "AGENT_EXECUTOR_ENABLED",
+    process.env.AGENT_EXECUTOR_ENABLED,
+    false,
+  );
+  const agentExecutorRequireApproval = parseBooleanEnv(
+    "AGENT_EXECUTOR_REQUIRE_APPROVAL",
+    process.env.AGENT_EXECUTOR_REQUIRE_APPROVAL,
+    true,
+  );
+  const agentExecutorMaxToolRounds = parsePositiveIntegerEnv(
+    "AGENT_EXECUTOR_MAX_TOOL_ROUNDS",
+    process.env.AGENT_EXECUTOR_MAX_TOOL_ROUNDS,
+    8,
+  );
+  const agentExecutorMaxGeneratedItems = parsePositiveIntegerEnv(
+    "AGENT_EXECUTOR_MAX_GENERATED_ITEMS",
+    process.env.AGENT_EXECUTOR_MAX_GENERATED_ITEMS,
+    8,
+  );
+  const agentExecutorMaxEstimatedCredits = parsePositiveNumberEnv(
+    "AGENT_EXECUTOR_MAX_ESTIMATED_CREDITS",
+    process.env.AGENT_EXECUTOR_MAX_ESTIMATED_CREDITS,
+    50,
+  );
+  const agentExecutorTurnTimeoutMs = parsePositiveIntegerEnv(
+    "AGENT_EXECUTOR_TURN_TIMEOUT_MS",
+    process.env.AGENT_EXECUTOR_TURN_TIMEOUT_MS,
+    300_000,
+  );
+  const agentExecutorToolTimeoutMs = parsePositiveIntegerEnv(
+    "AGENT_EXECUTOR_TOOL_TIMEOUT_MS",
+    process.env.AGENT_EXECUTOR_TOOL_TIMEOUT_MS,
+    180_000,
+  );
+  const agentExecutorAllowBatchImage = parseBooleanEnv(
+    "AGENT_EXECUTOR_ALLOW_BATCH_IMAGE",
+    process.env.AGENT_EXECUTOR_ALLOW_BATCH_IMAGE,
+    true,
+  );
+  const agentExecutorAllowImageEdit = parseBooleanEnv(
+    "AGENT_EXECUTOR_ALLOW_IMAGE_EDIT",
+    process.env.AGENT_EXECUTOR_ALLOW_IMAGE_EDIT,
+    false,
+  );
+  const agentExecutorAllowVideo = parseBooleanEnv(
+    "AGENT_EXECUTOR_ALLOW_VIDEO",
+    process.env.AGENT_EXECUTOR_ALLOW_VIDEO,
+    false,
+  );
   const authRateLimitMax = parsePositiveIntegerEnv(
     "AUTH_RATE_LIMIT_MAX",
     process.env.AUTH_RATE_LIMIT_MAX,
@@ -229,6 +298,16 @@ export function getApiEnv(): ApiEnv {
   return {
     accessTokenTtlSeconds,
     adminEmails,
+    agentExecutorAllowBatchImage,
+    agentExecutorAllowImageEdit,
+    agentExecutorAllowVideo,
+    agentExecutorEnabled,
+    agentExecutorMaxEstimatedCredits,
+    agentExecutorMaxGeneratedItems,
+    agentExecutorMaxToolRounds,
+    agentExecutorRequireApproval,
+    agentExecutorToolTimeoutMs,
+    agentExecutorTurnTimeoutMs,
     agentPlannerFallbackEnabled,
     agentPlannerEnabled,
     agentPlannerRepairAttempts,

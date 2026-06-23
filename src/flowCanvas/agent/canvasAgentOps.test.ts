@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
-import { applyCanvasAgentOps } from "./canvasAgentOps";
+import { applyCanvasAgentOps, placeAgentGeneratedAssetsOnCanvas } from "./canvasAgentOps";
 
 describe("applyCanvasAgentOps", () => {
   beforeEach(() => {
@@ -50,5 +50,30 @@ describe("applyCanvasAgentOps", () => {
     });
 
     expect(runNode).not.toHaveBeenCalled();
+  });
+
+  it("places generated asset refs as image nodes without persisted URLs", () => {
+    const result = placeAgentGeneratedAssetsOnCanvas({
+      assets: [
+        {
+          assetId: "asset-1",
+          kind: "image",
+          label: "Round 1 image 1",
+          promptSummary: "forest sports day",
+          refId: "round-1-image-1",
+        },
+      ],
+      sessionId: "session-1",
+      toolCallId: "tool-1",
+      turnId: "turn-1",
+    });
+
+    expect(result.createdNodeIds).toHaveLength(1);
+    const node = useFlowCanvasStore.getState().nodes[0]!;
+    expect(node.data).toMatchObject({
+      assetId: "asset-1",
+      title: "Round 1 image 1",
+    });
+    expect(JSON.stringify(node.data)).not.toMatch(/https?:\/\/|data:|blob:|base64/i);
   });
 });

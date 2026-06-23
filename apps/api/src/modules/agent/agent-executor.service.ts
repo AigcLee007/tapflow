@@ -47,14 +47,28 @@ type ExecutorRepository = {
     tenantId: string;
     turnId: string;
   }): Promise<void>;
+  readPendingApproval(input: {
+    sessionId: string;
+    tenantId: string;
+    toolCallKey: string;
+    turnId: string;
+  }): Promise<{
+    costEstimate: Record<string, unknown> | null;
+    pendingToolCall: unknown;
+    snapshot: CanvasAgentSnapshotInput;
+  } | null>;
 };
 
 type TextRuntimeLike = Pick<DatabaseTextGenerationRuntime, "generateText">;
 
 type AgentExecutorLimits = {
+  allowBatchImage: boolean;
+  allowImageEdit: boolean;
+  allowVideo: boolean;
   maxEstimatedCredits: number;
   maxGeneratedItems: number;
   maxToolRounds: number;
+  requireApproval: boolean;
 };
 
 export type AgentExecutorTurnInput = {
@@ -68,6 +82,13 @@ export type AgentExecutorTurnResult = {
   finalText: string;
   sessionId: string;
   toolResults: AgentToolRunResult[];
+  turnId: string;
+};
+
+export type AgentExecutorApproveInput = {
+  onEvent?: (event: AgentToolEvent) => void | Promise<void>;
+  sessionId: string;
+  toolCallKey: string;
   turnId: string;
 };
 
@@ -148,6 +169,49 @@ export class DatabaseAgentExecutorRepository implements ExecutorRepository {
     }, this.pool);
   }
 
+  async readPendingApproval(input: {
+    sessionId: string;
+    tenantId: string;
+    toolCallKey: string;
+    turnId: string;
+  }): Promise<{
+    costEstimate: Record<string, unknown> | null;
+    pendingToolCall: unknown;
+    snapshot: CanvasAgentSnapshotInput;
+  } | null> {
+    return withTenantTransaction({ tenantId: input.tenantId, userId: null }, async (client) => {
+      const result = await client.query<{
+        plan_json: Record<string, unknown>;
+        snapshot_json: CanvasAgentSnapshotInput;
+      }>(
+        `
+          SELECT plan_json, snapshot_json
+          FROM agent_turns
+          WHERE tenant_id = $1::uuid
+            AND session_id = $2::uuid
+            AND id = $3::uuid
+            AND status = 'planned'
+          LIMIT 1
+        `,
+        [input.tenantId, input.sessionId, input.turnId],
+      );
+      if (result.rowCount === 0) return null;
+      const row = result.rows[0]!;
+      const pendingToolCall = row.plan_json?.pendingToolCall;
+      const pendingKey = pendingToolCall && typeof pendingToolCall === "object"
+        ? (pendingToolCall as Record<string, unknown>).toolCallKey
+        : null;
+      if (pendingKey !== input.toolCallKey) return null;
+      return {
+        costEstimate: row.plan_json?.costEstimate && typeof row.plan_json.costEstimate === "object"
+          ? row.plan_json.costEstimate as Record<string, unknown>
+          : null,
+        pendingToolCall,
+        snapshot: row.snapshot_json,
+      };
+    }, this.pool);
+  }
+
   private async insertMessage(
     tenantId: string,
     sessionId: string,
@@ -182,9 +246,13 @@ export class AgentExecutorService {
     toolRunner: Pick<AgentToolRunner, "runToolCall">;
   }) {
     this.limits = {
+      allowBatchImage: options.limits?.allowBatchImage ?? true,
+      allowImageEdit: options.limits?.allowImageEdit ?? false,
+      allowVideo: options.limits?.allowVideo ?? false,
       maxEstimatedCredits: options.limits?.maxEstimatedCredits ?? 50,
       maxGeneratedItems: options.limits?.maxGeneratedItems ?? 8,
       maxToolRounds: options.limits?.maxToolRounds ?? 8,
+      requireApproval: options.limits?.requireApproval ?? false,
     };
     this.routeKey = options.env?.agentTextRouteKey ?? "text.default";
   }
@@ -249,22 +317,54 @@ export class AgentExecutorService {
         for (const call of parsed.toolCalls) {
           await input.onEvent?.({ toolCallKey: call.toolCallKey, toolName: call.toolName, type: "tool_started" });
           const costEstimate = await this.estimateCost(context, call);
-          evaluateAgentToolPolicy({
+          const policy = evaluateAgentToolPolicy({
             call,
             estimatedCredits: costEstimate?.totalCredits ?? 0,
             generatedItemCount: estimateGeneratedItemCount(call),
             limits: {
-              allowBatchImage: true,
-              allowImageEdit: false,
-              allowVideo: false,
+              allowBatchImage: this.limits.allowBatchImage,
+              allowImageEdit: this.limits.allowImageEdit,
+              allowVideo: this.limits.allowVideo,
               maxEstimatedCredits: this.limits.maxEstimatedCredits,
               maxGeneratedItems: this.limits.maxGeneratedItems,
               maxToolRounds: this.limits.maxToolRounds,
-              requireApproval: false,
+              requireApproval: this.limits.requireApproval,
             },
             successfulGenerationCount: toolResults.filter((result) => result.assetRefs.length > 0).length,
             toolRoundsUsed: round,
           });
+          if (policy.requiresApproval) {
+            await input.onEvent?.({
+              estimate: costEstimate,
+              toolCallKey: call.toolCallKey,
+              turnId: turn.turnId,
+              type: "approval_required",
+            });
+            const finalText = "Confirm the estimated credits to continue this Agent production step.";
+            await this.options.repository.createAssistantMessage({
+              content: finalText,
+              metadata: { approvalRequired: true, executor: true },
+              sessionId: input.sessionId,
+              tenantId: context.tenantId,
+            });
+            await this.options.repository.markTurnSucceeded({
+              planJson: {
+                approvalRequired: true,
+                executor: true,
+                pendingToolCall: call,
+                costEstimate,
+              },
+              tenantId: context.tenantId,
+              turnId: turn.turnId,
+            });
+            await input.onEvent?.({ finalText, turnId: turn.turnId, type: "turn_completed" });
+            return {
+              finalText,
+              sessionId: input.sessionId,
+              toolResults,
+              turnId: turn.turnId,
+            };
+          }
           const result = await this.options.toolRunner.runToolCall(context, {
             call,
             costEstimate,
@@ -290,6 +390,76 @@ export class AgentExecutorService {
     }
 
     throw new AgentExecutorError(400, "AGENT_EXECUTOR_MAX_ROUNDS", "Agent executor reached the maximum tool rounds.");
+  }
+
+  async approveToolCall(context: RuntimeContext, input: AgentExecutorApproveInput): Promise<AgentExecutorTurnResult> {
+    const pending = await this.options.repository.readPendingApproval({
+      sessionId: input.sessionId,
+      tenantId: context.tenantId,
+      toolCallKey: input.toolCallKey,
+      turnId: input.turnId,
+    });
+    if (!pending) {
+      throw new AgentExecutorError(404, "AGENT_TOOL_APPROVAL_NOT_FOUND", "Agent tool approval was not found or is no longer pending.");
+    }
+
+    const call = parseAgentToolCall(pending.pendingToolCall);
+    const costEstimate = await this.estimateCost(context, call);
+    evaluateAgentToolPolicy({
+      call,
+      estimatedCredits: costEstimate?.totalCredits ?? 0,
+      generatedItemCount: estimateGeneratedItemCount(call),
+      limits: {
+        allowBatchImage: this.limits.allowBatchImage,
+        allowImageEdit: this.limits.allowImageEdit,
+        allowVideo: this.limits.allowVideo,
+        maxEstimatedCredits: this.limits.maxEstimatedCredits,
+        maxGeneratedItems: this.limits.maxGeneratedItems,
+        maxToolRounds: this.limits.maxToolRounds,
+        requireApproval: false,
+      },
+      successfulGenerationCount: 0,
+      toolRoundsUsed: 0,
+    });
+
+    await input.onEvent?.({ toolCallKey: call.toolCallKey, toolName: call.toolName, type: "tool_started" });
+    const result = await this.options.toolRunner.runToolCall(context, {
+      call,
+      costEstimate,
+      executionTarget: resolveExecutionTarget(pending.snapshot),
+      roundIndex: 1,
+      sessionId: input.sessionId,
+      turnId: input.turnId,
+    });
+    await input.onEvent?.({ result, toolCallKey: call.toolCallKey, type: "tool_result" });
+
+    const finalText = result.assetRefs.length > 0
+      ? "Agent production step submitted successfully. You can place the generated result on the canvas when it is ready."
+      : "Agent production step finished, but no generated asset was returned.";
+    assertAgentOutputSafe({ finalText, toolResults: [result] });
+    await this.options.repository.createAssistantMessage({
+      content: finalText,
+      metadata: { approvedToolCallKey: call.toolCallKey, executor: true },
+      sessionId: input.sessionId,
+      tenantId: context.tenantId,
+    });
+    await this.options.repository.markTurnSucceeded({
+      planJson: {
+        approvedToolCallKey: call.toolCallKey,
+        executor: true,
+        finalText,
+        toolResults: [result],
+      },
+      tenantId: context.tenantId,
+      turnId: input.turnId,
+    });
+    await input.onEvent?.({ finalText, turnId: input.turnId, type: "turn_completed" });
+    return {
+      finalText,
+      sessionId: input.sessionId,
+      toolResults: [result],
+      turnId: input.turnId,
+    };
   }
 
   private async estimateCost(context: RuntimeContext, call: ParsedAgentToolCall) {

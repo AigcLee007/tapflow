@@ -3159,3 +3159,35 @@ Validation completed:
   - `npm run build --workspace @aigc-flow/db`
   - `npm run build --workspace @aigc-flow/api`
   - `npm run build`
+
+## 2026-06-23 - Agent Executor Rollout UI And Approval Tasks 10-16
+
+- Continued Scheme B on branch `codex/agent-tool-executor-foundation`.
+- Completed the rollout/configuration slice:
+  - added executor feature flags, round/item/credit limits, timeout defaults, and allow-list switches for batch image/image edit/video tools
+  - propagated executor env variables through `docker-compose.staging.yml`
+  - documented safe staging defaults and rollback in `docs/STAGING_ENV_TEMPLATE.md`
+  - kept `AGENT_EXECUTOR_ENABLED=false` as the fast rollback path to the older planner stream
+- Completed the frontend execution slice:
+  - added typed executor SSE events and API clients for execute and approve streams
+  - upgraded the Agent session hook to prefer executor streaming and fall back to planner streaming when executor is disabled or unavailable
+  - added a safe tool timeline with running/approval/success/failure states, estimated credit confirmation, and generated asset references
+  - hid provider/baseUrl/API key/route key/upstream model internals from creator-facing Agent UI
+- Completed the approval and canvas integration slice:
+  - executor now pauses before credit tools when approval is required and emits `approval_required` with a server turn id
+  - approval resumes through a backend stream using only `turnId + toolCallKey`; the backend reloads the persisted pending tool call, re-estimates cost, rechecks policy, and runs the existing workflow/billing/assets path
+  - successful generated asset refs can be placed onto the canvas as image nodes
+  - Agent-created image nodes store `assetId` plus Agent session/turn/tool metadata only, not signed URLs, blob URLs, data URLs, or base64
+- Validation:
+  - `npm run test --workspace @aigc-flow/api -- agent-executor.test.ts`
+  - `npm test -- src/flowCanvas/agent/useCanvasAgentSession.test.tsx src/flowCanvas/agent/CanvasAgentToolTimeline.test.tsx src/flowCanvas/agent/canvasAgentApi.test.ts src/flowCanvas/agent/canvasAgentToolEvents.test.ts src/flowCanvas/agent/canvasAgentOps.test.ts`
+- Final Task 16 validation:
+  - `npm run test --workspace @aigc-flow/api -- agent.test.ts agent-executor.test.ts agent-tool-schemas.test.ts agent-tool-policy.test.ts agent-tool-runner.test.ts agent-asset-references.test.ts agent-cost-estimator.test.ts env.test.ts` passed with DB-backed `agent.test.ts` skipped by the repo's existing missing-DB-env guard
+  - `npm run test --workspace @aigc-flow/db -- agent-tool-calls.test.ts` skipped by the repo's existing missing-DB-env guard
+  - `npm test -- src/flowCanvas/agent/canvasAgentToolEvents.test.ts src/flowCanvas/agent/canvasAgentApi.test.ts src/flowCanvas/agent/useCanvasAgentSession.test.tsx src/flowCanvas/agent/CanvasAgentToolTimeline.test.tsx src/flowCanvas/agent/CanvasAgentPanel.test.tsx src/flowCanvas/agent/canvasAgentOps.test.ts` passed
+  - `npm run build --workspace @aigc-flow/db` passed
+  - `npm run build --workspace @aigc-flow/api` passed
+  - `npm run build` passed with existing Vite chunk-size/dynamic-import warnings
+  - `git diff --check` passed
+- Remaining rollout work:
+  - staging smoke test still requires deployed text/image routes, pricing, billing balance, Redis/worker, and object storage

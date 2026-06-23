@@ -39,4 +39,32 @@ describe("getApiEnv", () => {
     expect(env.accessTokenTtlSeconds).toBe(1800);
     expect(env.refreshTokenTtlSeconds).toBe(1209600);
   });
+
+  test("reads agent executor rollout limits from production environment variables", () => {
+    withRequiredProductionEnv({
+      AGENT_EXECUTOR_ALLOW_BATCH_IMAGE: "true",
+      AGENT_EXECUTOR_ALLOW_IMAGE_EDIT: "false",
+      AGENT_EXECUTOR_ALLOW_VIDEO: "false",
+      AGENT_EXECUTOR_ENABLED: "true",
+      AGENT_EXECUTOR_MAX_ESTIMATED_CREDITS: "30.5",
+      AGENT_EXECUTOR_MAX_GENERATED_ITEMS: "4",
+      AGENT_EXECUTOR_MAX_TOOL_ROUNDS: "5",
+      AGENT_EXECUTOR_REQUIRE_APPROVAL: "true",
+      AGENT_EXECUTOR_TOOL_TIMEOUT_MS: "120000",
+      AGENT_EXECUTOR_TURN_TIMEOUT_MS: "240000",
+    });
+
+    const env = getApiEnv();
+
+    expect(env.agentExecutorEnabled).toBe(true);
+    expect(env.agentExecutorRequireApproval).toBe(true);
+    expect(env.agentExecutorMaxToolRounds).toBe(5);
+    expect(env.agentExecutorMaxGeneratedItems).toBe(4);
+    expect(env.agentExecutorMaxEstimatedCredits).toBe(30.5);
+    expect(env.agentExecutorTurnTimeoutMs).toBe(240000);
+    expect(env.agentExecutorToolTimeoutMs).toBe(120000);
+    expect(env.agentExecutorAllowBatchImage).toBe(true);
+    expect(env.agentExecutorAllowImageEdit).toBe(false);
+    expect(env.agentExecutorAllowVideo).toBe(false);
+  });
 });
