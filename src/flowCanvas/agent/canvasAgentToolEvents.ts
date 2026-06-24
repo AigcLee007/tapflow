@@ -19,6 +19,13 @@ function parseEventChunk(chunk: string): CanvasAgentToolEvent | null {
 
 export function normalizeAgentToolEvent(event: string, data: unknown): CanvasAgentToolEvent {
   const record = data && typeof data === "object" ? data as Record<string, unknown> : {};
+  if (event === "thinking_status") {
+    return {
+      detail: typeof record.detail === "string" ? record.detail : undefined,
+      label: String(record.label ?? ""),
+      type: "thinking_status",
+    };
+  }
   if (event === "message_delta") {
     return { content: String(record.content ?? ""), type: "message_delta" };
   }
@@ -27,6 +34,31 @@ export function normalizeAgentToolEvent(event: string, data: unknown): CanvasAge
       toolCallKey: String(record.toolCallKey ?? ""),
       toolName: String(record.toolName ?? ""),
       type: "tool_started",
+    };
+  }
+  if (event === "task_created") {
+    return {
+      taskId: String(record.taskId ?? ""),
+      title: String(record.title ?? ""),
+      toolCallKey: String(record.toolCallKey ?? ""),
+      toolName: String(record.toolName ?? ""),
+      type: "task_created",
+    };
+  }
+  if (event === "workflow_run_linked") {
+    return {
+      nodeRunId: typeof record.nodeRunId === "string" ? record.nodeRunId : undefined,
+      toolCallKey: String(record.toolCallKey ?? ""),
+      type: "workflow_run_linked",
+      workflowRunId: String(record.workflowRunId ?? ""),
+    };
+  }
+  if (event === "artifact_created") {
+    return {
+      assetRef: record.assetRef as CanvasAgentToolEvent["assetRef"],
+      taskId: String(record.taskId ?? ""),
+      toolCallKey: String(record.toolCallKey ?? ""),
+      type: "artifact_created",
     };
   }
   if (event === "tool_progress") {

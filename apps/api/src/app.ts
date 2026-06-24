@@ -24,6 +24,7 @@ import { AuditApiService } from "./modules/audit/audit.service.js";
 import { registerAdminRoutes } from "./modules/admin/admin.routes.js";
 import { AdminApiService } from "./modules/admin/admin.service.js";
 import { registerAgentRoutes } from "./modules/agent/agent.routes.js";
+import { AgentRunSettingsService } from "./modules/agent/agent-run-settings.service.js";
 import { AgentService } from "./modules/agent/agent.service.js";
 import { AgentCostEstimator, DatabaseAgentCostEstimatorRepository } from "./modules/agent/agent-cost-estimator.js";
 import { AgentExecutorService, DatabaseAgentExecutorRepository } from "./modules/agent/agent-executor.service.js";
@@ -221,6 +222,10 @@ export function buildApp(options?: {
   const agentCostEstimator = new AgentCostEstimator(
     new DatabaseAgentCostEstimatorRepository({ pool }),
   );
+  const agentRunSettingsService = new AgentRunSettingsService({
+    catalogService: aiModelCatalogService,
+    costEstimator: agentCostEstimator,
+  });
   const agentTextRuntime = new DatabaseTextGenerationRuntime({
     credentialVault,
     pool,
@@ -244,9 +249,11 @@ export function buildApp(options?: {
       toolRunner: agentToolRunner,
     });
   const agentService = new AgentService({
+    aiModelCatalogService,
     env,
     executorService: agentExecutorService,
     pool,
+    runSettingsService: agentRunSettingsService,
     textRuntime: agentTextRuntime,
   });
   const workbenchService = new WorkbenchService({

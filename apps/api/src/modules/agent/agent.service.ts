@@ -7,7 +7,11 @@ import type { ApiEnv } from "../../config/env.js";
 import { AgentPlannerRuntimeError, AgentPlannerService } from "./agent-planner.service.js";
 import { AgentExecutorError, type AgentExecutorService } from "./agent-executor.service.js";
 import { isProductionImageAgentPrompt } from "./agent-production-intent.js";
+import { AgentEventService, toAgentRepositoryError } from "./agent-event.service.js";
+import type { AgentRunSettingsService } from "./agent-run-settings.service.js";
+import { AgentSessionRepository } from "./agent-session.repository.js";
 import { formatAgentToolEvent } from "./agent-tool-events.js";
+import type { AiModelCatalogService } from "../ai-model-catalog/ai-model-catalog.service.js";
 import type {
   ApproveAgentToolCallInput,
   CanvasAgentSnapshotInput,
@@ -268,20 +272,31 @@ export class AgentApiError extends Error {
 
 export class AgentService {
   readonly env: ApiEnv;
+  readonly eventService: AgentEventService;
   readonly executorService: Pick<AgentExecutorService, "approveToolCall" | "executeTurn"> | null;
   readonly plannerService: AgentPlannerService<PlannerOutput>;
   readonly pool: PgPool;
+  readonly runSettingsService: Pick<AgentRunSettingsService, "estimateImageRunSettings" | "listImageRunSettings">;
+  readonly sessionRepository: AgentSessionRepository;
   readonly textRuntime: Pick<DatabaseTextGenerationRuntime, "generateText">;
 
   constructor(options: {
+    aiModelCatalogService?: Pick<AiModelCatalogService, "listModels" | "listRoutesForModel">;
     env: ApiEnv;
     executorService?: Pick<AgentExecutorService, "approveToolCall" | "executeTurn"> | null;
     pool?: PgPool;
+    runSettingsService: Pick<AgentRunSettingsService, "estimateImageRunSettings" | "listImageRunSettings">;
     textRuntime?: Pick<DatabaseTextGenerationRuntime, "generateText">;
   }) {
     this.env = options.env;
     this.executorService = options.executorService ?? null;
     this.pool = options.pool ?? createPgPool();
+    this.runSettingsService = options.runSettingsService;
+    this.sessionRepository = new AgentSessionRepository({ pool: this.pool });
+    this.eventService = new AgentEventService({
+      pool: this.pool,
+      repository: this.sessionRepository,
+    });
     this.textRuntime =
       options.textRuntime ??
       new DatabaseTextGenerationRuntime({
@@ -354,6 +369,67 @@ export class AgentService {
 
       return this.mapSession(result.rows[0]!);
     }, this.pool);
+  }
+
+  async listSessions(
+    context: AgentContext,
+    filter: { flowId?: string | null; limit?: number; projectId?: string | null },
+  ) {
+    try {
+      return await this.sessionRepository.listSessions(context, filter);
+    } catch (error) {
+      return toAgentRepositoryError(error);
+    }
+  }
+
+  async getSessionHistory(context: AgentContext, sessionId: string) {
+    try {
+      return await this.sessionRepository.getSessionHistory(context, sessionId);
+    } catch (error) {
+      return toAgentRepositoryError(error);
+    }
+  }
+
+  async getSessionEvents(context: AgentContext, sessionId: string, afterSeq = 0) {
+    try {
+      return await this.eventService.getReplay(context, sessionId, afterSeq);
+    } catch (error) {
+      return toAgentRepositoryError(error);
+    }
+  }
+
+  async listImageRunSettings(context: AgentContext) {
+    return this.runSettingsService.listImageRunSettings(context);
+  }
+
+  async estimateImageRunSettings(
+    context: AgentContext,
+    input: {
+      routeKey: string;
+      size: "1K" | "2K" | "4K";
+    },
+  ) {
+    return this.runSettingsService.estimateImageRunSettings(context, input);
+  }
+
+  async buildSessionEventsStream(context: AgentContext, sessionId: string, afterSeq = 0) {
+    try {
+      return await this.eventService.buildReplayStream(context, sessionId, afterSeq);
+    } catch (error) {
+      return toAgentRepositoryError(error);
+    }
+  }
+
+  async appendMessage(
+    context: AgentContext,
+    sessionId: string,
+    input: { content: string; metadata?: Record<string, unknown> },
+  ) {
+    try {
+      return await this.sessionRepository.appendUserMessage(context, sessionId, input);
+    } catch (error) {
+      return toAgentRepositoryError(error);
+    }
   }
 
   async createTurn(context: AgentContext, sessionId: string, input: CreateAgentTurnInput) {
@@ -451,7 +527,8 @@ export class AgentService {
     try {
       await this.executorService.executeTurn(context, {
         ...input,
-        onEvent(event) {
+        onEvent: async (event) => {
+          await this.eventService.appendToolEvent(context, sessionId, event);
           chunks.push(formatAgentToolEvent(event));
         },
         sessionId,
@@ -477,7 +554,8 @@ export class AgentService {
     try {
       await this.executorService.approveToolCall(context, {
         ...input,
-        onEvent(event) {
+        onEvent: async (event) => {
+          await this.eventService.appendToolEvent(context, sessionId, event);
           chunks.push(formatAgentToolEvent(event));
         },
         sessionId,

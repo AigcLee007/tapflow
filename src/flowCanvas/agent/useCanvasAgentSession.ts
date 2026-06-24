@@ -8,16 +8,21 @@ import {
   approveAgentToolCallStream,
   createAgentSession,
   createAgentTurn,
+  getAgentImageRunSettings,
   executeAgentTurnStream,
   openAgentTurnStream,
   readAgentSseStream,
 } from "./canvasAgentApi";
+import type { CanvasAgentActivityItem } from "./CanvasAgentActivityTimeline";
 import { readAgentToolEventStream } from "./canvasAgentToolEvents";
+import type { AgentImageRunSettingsSelection } from "./agentRunSettings";
+import { buildReplayMessages, buildToolTimelineFromSessionEvents, deriveReplaySessionStatus } from "./agentReplayState";
 import type { CanvasAgentToolEvent, CanvasAgentToolTimelineItem } from "./canvasAgentToolTypes";
 import { placeAgentGeneratedAssetsOnCanvas } from "./canvasAgentOps";
 import { isProductionImageAgentPrompt } from "./canvasAgentProductionIntent";
 import { planOfflineCanvasAgentTurn } from "./offlineCanvasAgentPlanner";
 import type { CanvasAgentPlannerOutput } from "./canvasAgentTypes";
+import type { AgentSessionEvent } from "./canvasAgentApi";
 
 export type CanvasAgentMessage = {
   content: string;
@@ -35,6 +40,12 @@ type ApplyResult = {
 type SessionStatus = "awaiting_approval" | "error" | "executing" | "executing_tool" | "idle" | "thinking";
 
 const DEFAULT_AGENT_IMAGE_ROUTE_KEY = "image.default";
+
+function getToolTitle(toolName: string) {
+  if (toolName === "generate_image_batch") return "Batch image generation";
+  if (toolName === "edit_image") return "Image edit";
+  return "Image generation";
+}
 
 function createMessage(role: CanvasAgentMessage["role"], content: string): CanvasAgentMessage {
   return {
@@ -90,8 +101,23 @@ export function useCanvasAgentSession() {
   const [status, setStatus] = useState<SessionStatus>("idle");
   const [toolTimeline, setToolTimeline] = useState<CanvasAgentToolTimelineItem[]>([]);
   const [usedOfflineFallback, setUsedOfflineFallback] = useState(false);
+  const [activityTimeline, setActivityTimeline] = useState<CanvasAgentActivityItem[]>([]);
+
+  const appendActivity = useCallback((item: CanvasAgentActivityItem) => {
+    setActivityTimeline((current) => [...current, item]);
+  }, []);
 
   const applyToolEvent = useCallback((event: CanvasAgentToolEvent) => {
+    if (event.type === "thinking_status") {
+      appendActivity({
+        detail: event.detail,
+        id: `thinking-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        label: event.label,
+        state: "active",
+      });
+      return;
+    }
+
     if (event.type === "message_delta") {
       if (!event.content.trim()) return;
       setMessages((current) => [...current, createMessage("assistant", event.content)]);
@@ -100,6 +126,12 @@ export function useCanvasAgentSession() {
 
     if (event.type === "tool_started") {
       setStatus("executing_tool");
+      appendActivity({
+        detail: "The Agent has created the execution task and started running it.",
+        id: `tool-start-${event.toolCallKey}`,
+        label: "Submitting generation task",
+        state: "active",
+      });
       setToolTimeline((current) => {
         const existing = current.find((item) => item.toolCallKey === event.toolCallKey);
         const nextItem: CanvasAgentToolTimelineItem = {
@@ -107,7 +139,8 @@ export function useCanvasAgentSession() {
           estimate: existing?.estimate,
           placedNodeIds: existing?.placedNodeIds,
           status: "running",
-          title: event.toolName === "generate_image_batch" ? "Batch image generation" : "Image generation",
+          taskId: existing?.taskId,
+          title: getToolTitle(event.toolName),
           toolCallKey: event.toolCallKey,
           toolName: event.toolName,
           turnId: existing?.turnId,
@@ -117,11 +150,66 @@ export function useCanvasAgentSession() {
       return;
     }
 
+    if (event.type === "task_created") {
+      setToolTimeline((current) => current.map((item) => item.toolCallKey === event.toolCallKey
+        ? {
+            ...item,
+            taskId: event.taskId,
+            title: event.title || item.title,
+            toolName: event.toolName || item.toolName,
+          }
+        : item));
+      return;
+    }
+
+    if (event.type === "workflow_run_linked") {
+      appendActivity({
+        detail: `Workflow run ${event.workflowRunId} is now attached to this Agent step.`,
+        id: `workflow-${event.toolCallKey}-${event.workflowRunId}`,
+        label: "Waiting for model result",
+        state: "active",
+      });
+      return;
+    }
+
+    if (event.type === "artifact_created") {
+      setToolTimeline((current) => current.map((item) => {
+        if (item.toolCallKey !== event.toolCallKey) return item;
+        const alreadyPresent = item.assetRefs.some((asset) => asset.refId === event.assetRef.refId);
+        return {
+          ...item,
+          assetRefs: alreadyPresent ? item.assetRefs : [...item.assetRefs, event.assetRef],
+          taskId: event.taskId || item.taskId,
+        };
+      }));
+      return;
+    }
+
     if (event.type === "approval_required") {
       setStatus("awaiting_approval");
+      appendActivity({
+        detail: "The Agent needs your confirmation before spending credits.",
+        id: `approval-${event.toolCallKey}`,
+        label: "Waiting for parameter confirmation",
+        state: "active",
+      });
       setToolTimeline((current) => current.map((item) => item.toolCallKey === event.toolCallKey
         ? { ...item, estimate: event.estimate, status: "awaiting_approval", turnId: event.turnId }
         : item));
+      void getAgentImageRunSettings()
+        .then((response) => {
+          setToolTimeline((current) => current.map((item) => item.toolCallKey === event.toolCallKey
+            ? {
+                ...item,
+                estimate: {
+                  ...(item.estimate ?? {}),
+                  ...(event.estimate ?? {}),
+                  imageRunSettings: response.models,
+                },
+              }
+            : item));
+        })
+        .catch(() => {});
       return;
     }
 
@@ -133,6 +221,14 @@ export function useCanvasAgentSession() {
         ? result.assetRefs as CanvasAgentToolTimelineItem["assetRefs"]
         : [];
       const failed = result.status === "failed";
+      appendActivity({
+        detail: failed
+          ? "The upstream generation step did not return a usable result."
+          : "The result is back and ready to save or place on the canvas.",
+        id: `result-${event.toolCallKey}`,
+        label: failed ? "Generation failed" : "Saving result",
+        state: failed ? "failed" : "completed",
+      });
       setToolTimeline((current) => current.map((item) => {
         if (item.toolCallKey !== event.toolCallKey) return item;
         const shouldAutoPlace = !failed && assetRefs.length > 0 && !item.placedNodeIds?.length;
@@ -147,9 +243,11 @@ export function useCanvasAgentSession() {
         return {
           ...item,
           assetRefs,
+          estimate: item.estimate,
           placedNodeIds: placed?.createdNodeIds ?? item.placedNodeIds,
           result: event.result,
           status: failed ? "failed" : "succeeded",
+          taskId: typeof result.toolCallId === "string" ? result.toolCallId : item.taskId,
           turnId: item.turnId,
         };
       }));
@@ -160,6 +258,12 @@ export function useCanvasAgentSession() {
       if (event.finalText.trim()) {
         setMessages((current) => [...current, createMessage("assistant", event.finalText)]);
       }
+      appendActivity({
+        detail: "This Agent turn has finished.",
+        id: `turn-complete-${event.turnId}`,
+        label: "Completed",
+        state: "completed",
+      });
       setStatus("idle");
       return;
     }
@@ -167,8 +271,22 @@ export function useCanvasAgentSession() {
     if (event.type === "turn_failed") {
       setError(event.message);
       setMessages((current) => [...current, createMessage("system", event.message)]);
+      appendActivity({
+        detail: event.message,
+        id: `turn-failed-${event.turnId ?? Date.now()}`,
+        label: "Execution failed",
+        state: "failed",
+      });
       setStatus("error");
     }
+  }, [appendActivity]);
+
+  const hydrateReplayEvents = useCallback((events: AgentSessionEvent[]) => {
+    setToolTimeline(buildToolTimelineFromSessionEvents(events));
+    const replayState = deriveReplaySessionStatus(events);
+    setStatus(replayState.status);
+    setError(replayState.error);
+    setMessages((current) => buildReplayMessages(current, events));
   }, []);
 
   const sendPrompt = useCallback(async (prompt: string) => {
@@ -181,8 +299,15 @@ export function useCanvasAgentSession() {
     setError(null);
     setUsedOfflineFallback(false);
     setToolTimeline([]);
+    setActivityTimeline([]);
     setStatus("thinking");
     setMessages((current) => [...current, createMessage("user", trimmed)]);
+    appendActivity({
+      detail: "The Agent accepted the prompt and started working.",
+      id: `request-${Date.now()}`,
+      label: "Understanding request",
+      state: "active",
+    });
 
     try {
       const state = useFlowCanvasStore.getState();
@@ -313,7 +438,7 @@ export function useCanvasAgentSession() {
     setError(null);
   }, []);
 
-  const approveToolCall = useCallback(async (toolCallKey: string) => {
+  const approveToolCall = useCallback(async (toolCallKey: string, selection?: AgentImageRunSettingsSelection) => {
     const item = toolTimeline.find((candidate) => candidate.toolCallKey === toolCallKey);
     if (!sessionId || !item?.turnId) {
       setError("Agent approval is missing its session or turn reference.");
@@ -322,8 +447,18 @@ export function useCanvasAgentSession() {
 
     setError(null);
     setStatus("executing_tool");
+    setToolTimeline((current) => current.map((candidate) => candidate.toolCallKey === toolCallKey
+      ? {
+          ...candidate,
+          estimate: {
+            ...(candidate.estimate ?? {}),
+            currentSelection: selection,
+          },
+        }
+      : candidate));
     try {
       const response = await approveAgentToolCallStream(sessionId, {
+        settings: selection,
         toolCallKey,
         turnId: item.turnId,
       });
@@ -416,14 +551,17 @@ export function useCanvasAgentSession() {
       currentPlan,
       error,
       executeCurrentPlan,
+      hydrateReplayEvents,
       messages,
+      activityTimeline,
       placeToolAssetsOnCanvas,
       sendPrompt,
       sessionId,
+      setSessionId,
       status,
       usedOfflineFallback,
       toolTimeline,
     }),
-    [approveToolCall, cancelCurrentPlan, cancelToolCall, currentPlan, error, executeCurrentPlan, messages, placeToolAssetsOnCanvas, sendPrompt, sessionId, status, usedOfflineFallback, toolTimeline],
+    [activityTimeline, approveToolCall, cancelCurrentPlan, cancelToolCall, currentPlan, error, executeCurrentPlan, hydrateReplayEvents, messages, placeToolAssetsOnCanvas, sendPrompt, sessionId, setSessionId, status, usedOfflineFallback, toolTimeline],
   );
 }

@@ -18,9 +18,15 @@ export const agentImageSizeSchema = z.enum(["1K", "2K", "4K"]);
 
 export const generateImageToolArgsSchema = z.object({
   id: z.string().trim().min(1).max(80).optional(),
+  aspectRatio: z.string().trim().max(20).optional(),
+  format: z.enum(["jpeg", "png", "webp"]).optional(),
   modelDisplayName: z.string().trim().max(120).optional(),
+  moderation: z.enum(["auto", "low"]).optional(),
+  n: z.number().int().positive().max(4).optional(),
   prompt: z.string().trim().min(1).max(4000),
+  quality: z.string().trim().max(40).optional(),
   referenceRefs: z.array(friendlyStringSchema.max(120)).max(8).optional(),
+  routeKey: z.string().trim().max(200).optional(),
   routeLabel: z.string().trim().max(120).optional(),
   size: agentImageSizeSchema.optional(),
 }).strict();
@@ -28,13 +34,35 @@ export const generateImageToolArgsSchema = z.object({
 export const generateImageBatchToolArgsSchema = z.object({
   images: z.array(
     z.object({
+      aspectRatio: z.string().trim().max(20).optional(),
+      format: z.enum(["jpeg", "png", "webp"]).optional(),
       id: z.string().trim().min(1).max(80).optional(),
+      modelDisplayName: z.string().trim().max(120).optional(),
+      moderation: z.enum(["auto", "low"]).optional(),
+      n: z.number().int().positive().max(4).optional(),
       prompt: z.string().trim().min(1).max(4000),
+      quality: z.string().trim().max(40).optional(),
       referenceRefs: z.array(friendlyStringSchema.max(120)).max(8).optional(),
+      routeKey: z.string().trim().max(200).optional(),
+      routeLabel: z.string().trim().max(120).optional(),
       size: agentImageSizeSchema.optional(),
     }).strict(),
   ).min(2).max(8),
   sharedStyle: z.string().trim().max(1000).optional(),
+}).strict();
+
+export const editImageToolArgsSchema = z.object({
+  aspectRatio: z.string().trim().max(20).optional(),
+  format: z.enum(["jpeg", "png", "webp"]).optional(),
+  modelDisplayName: z.string().trim().max(120).optional(),
+  moderation: z.enum(["auto", "low"]).optional(),
+  n: z.number().int().positive().max(4).optional(),
+  prompt: z.string().trim().min(1).max(4000),
+  quality: z.string().trim().max(40).optional(),
+  referenceRefs: z.array(friendlyStringSchema.max(120)).min(1).max(8),
+  routeKey: z.string().trim().max(200).optional(),
+  routeLabel: z.string().trim().max(120).optional(),
+  size: agentImageSizeSchema.optional(),
 }).strict();
 
 export const continueGenerationToolArgsSchema = z.object({
@@ -53,6 +81,11 @@ export const agentToolCallSchema = z.discriminatedUnion("toolName", [
     toolName: z.literal("generate_image_batch"),
   }).strict(),
   z.object({
+    arguments: editImageToolArgsSchema,
+    toolCallKey: z.string().trim().min(1).max(200),
+    toolName: z.literal("edit_image"),
+  }).strict(),
+  z.object({
     arguments: continueGenerationToolArgsSchema,
     toolCallKey: z.string().trim().min(1).max(200),
     toolName: z.literal("continue_generation"),
@@ -62,6 +95,7 @@ export const agentToolCallSchema = z.discriminatedUnion("toolName", [
 export type AgentToolName = z.infer<typeof agentToolNameSchema>;
 export type GenerateImageToolArgs = z.infer<typeof generateImageToolArgsSchema>;
 export type GenerateImageBatchToolArgs = z.infer<typeof generateImageBatchToolArgsSchema>;
+export type EditImageToolArgs = z.infer<typeof editImageToolArgsSchema>;
 export type ContinueGenerationToolArgs = z.infer<typeof continueGenerationToolArgsSchema>;
 export type ParsedAgentToolCall = z.infer<typeof agentToolCallSchema>;
 

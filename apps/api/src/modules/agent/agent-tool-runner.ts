@@ -34,6 +34,10 @@ export type AgentToolRunResult = {
   status: "failed" | "partial_success" | "succeeded";
   toolCallId: string;
   workflowRunIds: string[];
+  workflowRuns?: Array<{
+    nodeRunId?: string | null;
+    workflowRunId: string;
+  }>;
 };
 
 type AgentToolCallCreateInput = {
@@ -175,6 +179,17 @@ export class AgentToolRunner {
             input.call.arguments.referenceRefs,
           ),
         ];
+      } else if (input.call.toolName === "edit_image") {
+        launched = [
+          await this.launchOne(
+            context,
+            input,
+            record.id,
+            input.call.arguments.prompt,
+            input.call.arguments.size,
+            input.call.arguments.referenceRefs,
+          ),
+        ];
       } else if (input.call.toolName === "generate_image_batch") {
         launched = await this.launchBatch(context, input as AgentToolRunInput & {
           call: Extract<ParsedAgentToolCall, { toolName: "generate_image_batch" }>;
@@ -205,6 +220,10 @@ export class AgentToolRunner {
         failures,
         status,
         toolCallId: record.id,
+        workflowRuns: successes.map((result) => ({
+          nodeRunId: result.nodeRunId ?? null,
+          workflowRunId: result.workflowRunId,
+        })),
         workflowRunIds: successes.map((result) => result.workflowRunId),
       };
     } catch (error) {
@@ -219,6 +238,7 @@ export class AgentToolRunner {
         failures: [{ ...normalized, toolCallKey: input.call.toolCallKey }],
         status: "failed",
         toolCallId: record.id,
+        workflowRuns: [],
         workflowRunIds: [],
       };
     }

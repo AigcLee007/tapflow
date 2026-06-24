@@ -1,7 +1,9 @@
 import React from "react";
 
 import { CanvasAgentAssetRefStrip } from "./CanvasAgentAssetRefStrip";
+import { CanvasAgentParameterCard } from "./CanvasAgentParameterCard";
 import type { CanvasAgentToolTimelineItem } from "./canvasAgentToolTypes";
+import type { AgentImageRunSettingsSelection } from "./agentRunSettings";
 
 function getStatusText(status: CanvasAgentToolTimelineItem["status"]) {
   if (status === "running") return "Running";
@@ -10,14 +12,29 @@ function getStatusText(status: CanvasAgentToolTimelineItem["status"]) {
   return "Completed";
 }
 
+function buildRunSummary(item: CanvasAgentToolTimelineItem) {
+  const selection = item.estimate?.currentSelection;
+  if (!selection) return null;
+  const sizeRatio = [selection.size, selection.aspectRatio].filter(Boolean).join(" · ");
+  const referenceCount = item.estimate?.referenceRefs?.length ?? 0;
+  return {
+    model: selection.modelDisplayName,
+    referenceSummary: referenceCount > 0 ? `${referenceCount} references` : null,
+    route: selection.routeLabel,
+    sizeRatio,
+  };
+}
+
 export function CanvasAgentToolCard(props: {
   item: CanvasAgentToolTimelineItem;
-  onApprove?: (toolCallKey: string) => void;
+  onApprove?: (toolCallKey: string, selection?: AgentImageRunSettingsSelection) => void;
   onCancel?: (toolCallKey: string) => void;
   onPlaceAssets?: (toolCallKey: string) => void;
 }) {
   const approval = props.item.status === "awaiting_approval";
   const canPlaceAssets = props.item.status === "succeeded" && props.item.assetRefs.length > 0;
+  const approvalModels = props.item.estimate?.imageRunSettings ?? [];
+  const runSummary = buildRunSummary(props.item);
   return (
     <article
       style={{
@@ -35,7 +52,20 @@ export function CanvasAgentToolCard(props: {
           <div style={{ color: "#94a3b8", fontSize: 11 }}>{getStatusText(props.item.status)}</div>
         </div>
       </div>
-      {props.item.estimate ? (
+      {props.item.taskId ? (
+        <div style={{ color: "#64748b", fontSize: 11 }}>Task ID: {props.item.taskId}</div>
+      ) : null}
+      {runSummary ? (
+        <div style={{ display: "grid", gap: 4 }}>
+          <div style={{ color: "#e2e8f0", fontSize: 12, fontWeight: 700 }}>{runSummary.model}</div>
+          <div style={{ color: "#94a3b8", fontSize: 11 }}>{runSummary.route}</div>
+          <div style={{ color: "#94a3b8", fontSize: 11 }}>
+            {runSummary.sizeRatio}
+            {runSummary.referenceSummary ? ` · ${runSummary.referenceSummary}` : ""}
+          </div>
+        </div>
+      ) : null}
+      {props.item.estimate && approvalModels.length === 0 ? (
         <div style={{ color: "#facc15", fontSize: 12 }}>Estimated credits ready for confirmation.</div>
       ) : null}
       <CanvasAgentAssetRefStrip assets={props.item.assetRefs} />
@@ -43,7 +73,15 @@ export function CanvasAgentToolCard(props: {
       {props.item.placedNodeIds?.length ? (
         <div style={{ color: "#86efac", fontSize: 12 }}>Placed on canvas.</div>
       ) : null}
-      {approval ? (
+      {approval && approvalModels.length > 0 ? (
+        <CanvasAgentParameterCard
+          models={approvalModels}
+          onCancel={() => props.onCancel?.(props.item.toolCallKey)}
+          onConfirm={(selection) => props.onApprove?.(props.item.toolCallKey, selection)}
+          referenceRefs={props.item.estimate?.referenceRefs}
+        />
+      ) : null}
+      {approval && approvalModels.length === 0 ? (
         <div style={{ display: "flex", gap: 8 }}>
           <button onClick={() => props.onApprove?.(props.item.toolCallKey)} type="button">Approve</button>
           <button onClick={() => props.onCancel?.(props.item.toolCallKey)} type="button">Cancel</button>

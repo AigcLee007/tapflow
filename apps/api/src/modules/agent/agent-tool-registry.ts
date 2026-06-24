@@ -26,6 +26,15 @@ export function getAgentToolRegistryForModel(): AgentToolDefinition[] {
       },
     },
     {
+      description: "Edit an image using one or more existing reference images through the existing TapFlow workflow pipeline.",
+      name: "edit_image",
+      parameters: {
+        prompt: "Editing prompt describing the requested transformation.",
+        referenceRefs: "One or more friendly asset references used as editing inputs.",
+        size: "Optional quality tier: 1K, 2K, or 4K.",
+      },
+    },
+    {
       description: "Continue the same production turn after observing generated assets.",
       name: "continue_generation",
       parameters: {

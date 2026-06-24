@@ -1,6 +1,7 @@
 import { apiGet, apiPost, getStoredAccessToken } from "../../services/v2HttpClient";
 
 import type { CanvasAgentPlannerOutput, CanvasAgentSnapshot } from "./canvasAgentTypes";
+import type { AgentImageRunSettingsResponse, AgentImageRunSettingsSelection } from "./agentRunSettings";
 
 export type AgentSessionView = {
   createdAt: string;
@@ -12,9 +13,56 @@ export type AgentSessionView = {
   updatedAt?: string;
 };
 
+export type AgentHistoryMessage = {
+  content: string;
+  createdAt: string;
+  id: string;
+  metadata?: Record<string, unknown>;
+  role: "assistant" | "system" | "user";
+  sessionId: string;
+};
+
+export type AgentHistoryTurn = {
+  createdAt: string;
+  errorJson?: unknown;
+  id: string;
+  planJson?: unknown;
+  sessionId: string;
+  snapshotJson?: unknown;
+  status: string;
+  updatedAt: string;
+};
+
+export type AgentSessionHistoryResponse = {
+  messages: AgentHistoryMessage[];
+  session: AgentSessionView;
+  turns: AgentHistoryTurn[];
+};
+
+export type AgentSessionEvent = {
+  createdAt: string;
+  eventJson: Record<string, unknown>;
+  eventType: string;
+  id: string;
+  seq: number;
+  sessionId: string;
+  taskId: string | null;
+  turnId: string | null;
+};
+
+export type AgentSessionEventsResponse = {
+  events: AgentSessionEvent[];
+};
+
 export type CreateAgentTurnResponse = CanvasAgentPlannerOutput & {
   sessionId: string;
   turnId: string;
+};
+
+export type AgentImageRunSettingsEstimateResponse = {
+  estimatedCredits: number;
+  routeKey: string;
+  size: "1K" | "2K" | "4K";
 };
 
 export function createAgentSession(input: {
@@ -29,11 +77,57 @@ export function getAgentSession(sessionId: string) {
   return apiGet<AgentSessionView>(`/agent/sessions/${sessionId}`);
 }
 
+export function listAgentSessions(input?: {
+  flowId?: string | null;
+  limit?: number;
+  projectId?: string | null;
+}) {
+  const query = new URLSearchParams();
+  if (input?.projectId !== undefined) query.set("projectId", input.projectId ?? "");
+  if (input?.flowId !== undefined) query.set("flowId", input.flowId ?? "");
+  if (input?.limit !== undefined) query.set("limit", String(input.limit));
+  const suffix = query.size > 0 ? `?${query.toString()}` : "";
+  return apiGet<AgentSessionView[]>(`/agent/sessions${suffix}`);
+}
+
+export function getAgentSessionHistory(sessionId: string) {
+  return apiGet<AgentSessionHistoryResponse>(`/agent/sessions/${sessionId}/history`);
+}
+
+export function getAgentSessionEvents(sessionId: string, input?: { afterSeq?: number }) {
+  const query = new URLSearchParams();
+  if (input?.afterSeq !== undefined) query.set("afterSeq", String(input.afterSeq));
+  const suffix = query.size > 0 ? `?${query.toString()}` : "";
+  return apiGet<AgentSessionEventsResponse>(`/agent/sessions/${sessionId}/events${suffix}`);
+}
+
+export function createAgentMessage(sessionId: string, input: {
+  content: string;
+  metadata?: Record<string, unknown>;
+}) {
+  return apiPost<AgentHistoryMessage>(`/agent/sessions/${sessionId}/messages`, input);
+}
+
 export function createAgentTurn(sessionId: string, input: {
   prompt: string;
   snapshot: CanvasAgentSnapshot;
 }) {
   return apiPost<CreateAgentTurnResponse>(`/agent/sessions/${sessionId}/turns`, input);
+}
+
+export function getAgentImageRunSettings() {
+  return apiGet<AgentImageRunSettingsResponse>("/agent/run-settings/image");
+}
+
+export function estimateAgentImageRunSettings(input: {
+  routeKey: string;
+  size: "1K" | "2K" | "4K";
+}) {
+  const query = new URLSearchParams({
+    routeKey: input.routeKey,
+    size: input.size,
+  });
+  return apiGet<AgentImageRunSettingsEstimateResponse>(`/agent/run-settings/image/estimate?${query.toString()}`);
 }
 
 export async function openAgentTurnStream(sessionId: string, input: {
@@ -69,6 +163,7 @@ export async function executeAgentTurnStream(sessionId: string, input: {
 }
 
 export async function approveAgentToolCallStream(sessionId: string, input: {
+  settings?: AgentImageRunSettingsSelection;
   toolCallKey: string;
   turnId: string;
 }) {
@@ -84,9 +179,24 @@ export async function approveAgentToolCallStream(sessionId: string, input: {
   });
 }
 
+export async function openAgentSessionEventStream(sessionId: string, input?: { afterSeq?: number }) {
+  const token = getStoredAccessToken();
+  const query = new URLSearchParams();
+  if (input?.afterSeq !== undefined) query.set("afterSeq", String(input.afterSeq));
+  const suffix = query.size > 0 ? `?${query.toString()}` : "";
+  return fetch(`/api/v2/agent/sessions/${sessionId}/events/stream${suffix}`, {
+    cache: "no-store",
+    headers: {
+      ...(token ? { Authorization: token.startsWith("Bearer ") ? token : `Bearer ${token}` } : {}),
+    },
+    method: "GET",
+  });
+}
+
 export async function readAgentSseStream(
   response: Response,
   handlers: {
+    onEvent?: (data: unknown) => void;
     onDone?: (data: unknown) => void;
     onError?: (data: unknown) => void;
     onMessage?: (data: unknown) => void;
@@ -108,6 +218,7 @@ export async function readAgentSseStream(
       const dataLine = chunk.match(/^data: (.+)$/m)?.[1];
       const data = dataLine ? JSON.parse(dataLine) : null;
       if (event === "message") handlers.onMessage?.(data);
+      if (event === "event") handlers.onEvent?.(data);
       if (event === "plan") handlers.onPlan?.(data);
       if (event === "done") handlers.onDone?.(data);
       if (event === "error") handlers.onError?.(data);

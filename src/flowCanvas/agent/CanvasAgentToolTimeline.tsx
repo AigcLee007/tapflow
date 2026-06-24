@@ -1,11 +1,12 @@
 import React from "react";
 
 import { CanvasAgentToolCard } from "./CanvasAgentToolCard";
+import type { AgentImageRunSettingsSelection } from "./agentRunSettings";
 import type { CanvasAgentToolTimelineItem } from "./canvasAgentToolTypes";
 
 export function CanvasAgentToolTimeline(props: {
   items: CanvasAgentToolTimelineItem[];
-  onApprove?: (toolCallKey: string) => void;
+  onApprove?: (toolCallKey: string, selection?: AgentImageRunSettingsSelection) => void;
   onCancel?: (toolCallKey: string) => void;
   onPlaceAssets?: (toolCallKey: string) => void;
 }) {

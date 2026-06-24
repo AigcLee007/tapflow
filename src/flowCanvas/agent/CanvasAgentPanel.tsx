@@ -1,11 +1,17 @@
 import React from "react";
 import { Bot, X } from "lucide-react";
 
+import { CanvasAgentConversationList } from "./CanvasAgentConversationList";
+import { CanvasAgentActivityTimeline } from "./CanvasAgentActivityTimeline";
 import { CanvasAgentComposer } from "./CanvasAgentComposer";
 import { CanvasAgentPlanCard } from "./CanvasAgentPlanCard";
 import { CanvasAgentTaskCard } from "./CanvasAgentTaskCard";
+import { CanvasAgentThread } from "./CanvasAgentThread";
 import { CanvasAgentToolTimeline } from "./CanvasAgentToolTimeline";
 import type { CanvasAgentPlannerOutput } from "./canvasAgentTypes";
+import { listAgentSessions } from "./canvasAgentApi";
+import { useAgentConversationHistory } from "./useAgentConversationHistory";
+import { useAgentEventStream } from "./useAgentEventStream";
 import { useCanvasAgentSession } from "./useCanvasAgentSession";
 
 type ApplyResult = {
@@ -38,11 +44,43 @@ export function CanvasAgentPanel(props: {
   open: boolean;
 }) {
   const session = useCanvasAgentSession();
+  const directorEnabled = import.meta.env.VITE_AGENT_DIRECTOR_ENABLED === "true";
+  const history = useAgentConversationHistory(session.sessionId);
+  const eventStream = useAgentEventStream(session.sessionId);
+  const [sessionList, setSessionList] = React.useState<Array<{
+    createdAt: string;
+    flowId: string | null;
+    id: string;
+    projectId: string | null;
+    status?: string;
+    title: string;
+    updatedAt?: string;
+  }>>([]);
 
   if (!props.open) return null;
 
   const busy = session.status === "thinking" || session.status === "executing";
   const statusCopy = getStatusCopy(session.status, session.usedOfflineFallback);
+
+  React.useEffect(() => {
+    void listAgentSessions({ limit: 10 }).then((sessions) => {
+      setSessionList(sessions);
+      if (!directorEnabled || session.sessionId || sessions.length === 0) return;
+      session.setSessionId?.(sessions[0]!.id);
+    }).catch(() => setSessionList([]));
+  }, [directorEnabled, session]);
+
+  React.useEffect(() => {
+    if (!session.sessionId || !directorEnabled) return;
+    void history.refresh();
+    void eventStream.connect().catch(() => {});
+  }, [directorEnabled, eventStream, history, session.sessionId]);
+
+  React.useEffect(() => {
+    if (!directorEnabled) return;
+    if (eventStream.events.length === 0) return;
+    session.hydrateReplayEvents(eventStream.events);
+  }, [directorEnabled, eventStream.events, session]);
 
   return (
     <aside
@@ -91,6 +129,9 @@ export function CanvasAgentPanel(props: {
           <div>
             <div style={{ color: "#f8fafc", fontSize: 16, fontWeight: 800 }}>TapFlow Agent</div>
             <div style={{ color: "rgba(226,232,240,0.58)", fontSize: 12 }}>{statusCopy}</div>
+            <div style={{ color: "rgba(148,163,184,0.9)", fontSize: 11, marginTop: 4 }}>
+              {directorEnabled ? "Director Runtime (preview)" : "Classic Agent"}
+            </div>
           </div>
         </div>
         <button
@@ -114,6 +155,10 @@ export function CanvasAgentPanel(props: {
       </header>
 
       <div style={{ overflowY: "auto", padding: 16, display: "grid", gap: 14, alignContent: "start" }}>
+        {directorEnabled ? (
+          <CanvasAgentConversationList activeSessionId={session.sessionId} sessions={sessionList} />
+        ) : null}
+
         {session.messages.length === 0 ? (
           <section
             style={{
@@ -132,34 +177,12 @@ export function CanvasAgentPanel(props: {
           </section>
         ) : null}
 
-        {session.messages.map((message) => (
-          <div
-            key={message.id}
-            style={{
-              justifySelf: message.role === "user" ? "end" : "stretch",
-              maxWidth: message.role === "user" ? "88%" : "100%",
-              padding: "12px 14px",
-              borderRadius: 16,
-              background:
-                message.role === "user"
-                  ? "rgba(248,250,252,0.92)"
-                  : message.role === "system"
-                    ? "rgba(249,115,22,0.12)"
-                    : "rgba(255,255,255,0.04)",
-              color:
-                message.role === "user"
-                  ? "#09090f"
-                  : message.role === "system"
-                    ? "#fdba74"
-                    : "#f8fafc",
-              fontSize: 13,
-              lineHeight: 1.6,
-              whiteSpace: "pre-wrap",
-            }}
-          >
-            {message.content}
-          </div>
-        ))}
+        <CanvasAgentThread
+          events={directorEnabled ? eventStream.events : []}
+          messages={directorEnabled && history.messages.length > 0 ? history.messages : session.messages}
+        />
+
+        <CanvasAgentActivityTimeline items={session.activityTimeline ?? []} />
 
         <CanvasAgentToolTimeline
           items={session.toolTimeline}

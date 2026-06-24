@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { buildAgentExecutorSystemPrompt } from "../src/modules/agent/agent-executor-prompt.js";
-import { getAgentToolRegistryForModel } from "../src/modules/agent/agent-tool-registry.js";
 import { AgentExecutorService } from "../src/modules/agent/agent-executor.service.js";
+import { getAgentToolRegistryForModel } from "../src/modules/agent/agent-tool-registry.js";
 
 const context = {
   tenantId: "tenant-1",
@@ -49,9 +49,10 @@ describe("AgentExecutorService", () => {
         createUserMessage: vi.fn().mockResolvedValue({ messageId: "message-1" }),
         markTurnFailed: vi.fn(),
         markTurnSucceeded: vi.fn(),
+        readPendingApproval: vi.fn(),
       },
       textRuntime: {
-        generateText: vi.fn().mockResolvedValue({ outputText: "我会先帮你梳理生产步骤。" }),
+        generateText: vi.fn().mockResolvedValue({ outputText: "I will first organize the production steps." }),
       },
       toolRunner: {
         runToolCall: vi.fn(),
@@ -59,21 +60,21 @@ describe("AgentExecutorService", () => {
     });
 
     const result = await executor.executeTurn(context, {
-      prompt: "帮我规划",
+      prompt: "Help me plan the next step",
       sessionId: "session-1",
       snapshot,
     });
 
-    expect(result.finalText).toContain("生产步骤");
+    expect(result.finalText).toContain("production steps");
     expect(result.toolResults).toHaveLength(0);
   });
 
-  it("executes a single image tool call and continues with safe tool context", async () => {
+  it("emits visible status events and workflow linkage during image execution", async () => {
     const generateText = vi
       .fn()
       .mockResolvedValueOnce({
         outputText: JSON.stringify({
-          reply: "先生成基础图。",
+          reply: "Starting the first image generation.",
           toolCalls: [
             {
               arguments: { prompt: "forest sports day", size: "1K" },
@@ -86,7 +87,7 @@ describe("AgentExecutorService", () => {
       .mockResolvedValueOnce({
         outputText: JSON.stringify({
           final: true,
-          reply: "基础图已提交生成。",
+          reply: "The base image has been submitted.",
         }),
       });
     const toolRunner = {
@@ -94,6 +95,8 @@ describe("AgentExecutorService", () => {
         assetRefs: [{ assetId: "asset-1", kind: "image", label: "Round 1 image 1", promptSummary: "", refId: "round-1-image-1" }],
         status: "succeeded",
         toolCallId: "tool-db-1",
+        workflowRunIds: ["workflow-1"],
+        workflowRuns: [{ nodeRunId: "node-1", workflowRunId: "workflow-1" }],
       }),
     };
 
@@ -108,13 +111,16 @@ describe("AgentExecutorService", () => {
         createUserMessage: vi.fn().mockResolvedValue({ messageId: "message-1" }),
         markTurnFailed: vi.fn(),
         markTurnSucceeded: vi.fn(),
+        readPendingApproval: vi.fn(),
       },
       textRuntime: { generateText },
       toolRunner,
     });
 
+    const events: unknown[] = [];
     const result = await executor.executeTurn(context, {
-      prompt: "生成森林运动会",
+      onEvent: (event) => events.push(event),
+      prompt: "Generate a forest sports day image",
       sessionId: "session-1",
       snapshot,
     });
@@ -123,6 +129,31 @@ describe("AgentExecutorService", () => {
       executionTarget: { flowId: "flow-1", targetNodeId: "image-node-1" },
     }));
     expect(generateText).toHaveBeenCalledTimes(2);
+    expect(events).toContainEqual(expect.objectContaining({
+      label: "Understanding request",
+      type: "thinking_status",
+    }));
+    expect(events).toContainEqual(expect.objectContaining({
+      label: "Creating task card",
+      type: "thinking_status",
+    }));
+    expect(events).toContainEqual(expect.objectContaining({
+      taskId: "tool-db-1",
+      title: "Image generation",
+      toolCallKey: "tool-call-1",
+      type: "task_created",
+    }));
+    expect(events).toContainEqual(expect.objectContaining({
+      toolCallKey: "tool-call-1",
+      type: "workflow_run_linked",
+      workflowRunId: "workflow-1",
+    }));
+    expect(events).toContainEqual(expect.objectContaining({
+      assetRef: expect.objectContaining({ assetId: "asset-1" }),
+      taskId: "tool-db-1",
+      toolCallKey: "tool-call-1",
+      type: "artifact_created",
+    }));
     expect(JSON.stringify(result)).not.toMatch(/baseUrl|apiKey|Authorization|provider_key|upstream_model/);
   });
 
@@ -156,6 +187,7 @@ describe("AgentExecutorService", () => {
         status: "succeeded",
         toolCallId: "tool-db-1",
         workflowRunIds: ["workflow-1"],
+        workflowRuns: [{ nodeRunId: "node-1", workflowRunId: "workflow-1" }],
       }),
     };
     const executor = new AgentExecutorService({
@@ -169,6 +201,7 @@ describe("AgentExecutorService", () => {
         createUserMessage: vi.fn().mockResolvedValue({ messageId: "message-1" }),
         markTurnFailed: vi.fn(),
         markTurnSucceeded: vi.fn(),
+        readPendingApproval: vi.fn(),
       },
       textRuntime: { generateText },
       toolRunner,
@@ -197,6 +230,7 @@ describe("AgentExecutorService", () => {
       createUserMessage: vi.fn().mockResolvedValue({ messageId: "message-1" }),
       markTurnFailed: vi.fn(),
       markTurnSucceeded: vi.fn(),
+      readPendingApproval: vi.fn(),
     };
     const executor = new AgentExecutorService({
       costEstimator: {
@@ -239,6 +273,7 @@ describe("AgentExecutorService", () => {
         createUserMessage: vi.fn().mockResolvedValue({ messageId: "message-1" }),
         markTurnFailed: vi.fn(),
         markTurnSucceeded: vi.fn(),
+        readPendingApproval: vi.fn(),
       },
       textRuntime: {
         generateText: vi.fn().mockResolvedValue({
@@ -254,12 +289,12 @@ describe("AgentExecutorService", () => {
         }),
       },
       toolRunner: {
-        runToolCall: vi.fn().mockResolvedValue({ assetRefs: [], status: "succeeded", toolCallId: "tool-db-1" }),
+        runToolCall: vi.fn().mockResolvedValue({ assetRefs: [], status: "succeeded", toolCallId: "tool-db-1", workflowRunIds: [], workflowRuns: [] }),
       },
     });
 
     await expect(executor.executeTurn(context, {
-      prompt: "一直生成",
+      prompt: "Keep generating forever",
       sessionId: "session-1",
       snapshot,
     })).rejects.toMatchObject({
@@ -284,6 +319,7 @@ describe("AgentExecutorService", () => {
         createUserMessage: vi.fn().mockResolvedValue({ messageId: "message-1" }),
         markTurnFailed: vi.fn(),
         markTurnSucceeded: vi.fn(),
+        readPendingApproval: vi.fn(),
       },
       textRuntime: {
         generateText: vi.fn().mockResolvedValue({
@@ -303,13 +339,16 @@ describe("AgentExecutorService", () => {
 
     const result = await executor.executeTurn(context, {
       onEvent: (event) => events.push(event),
-      prompt: "生成",
+      prompt: "Generate one image",
       sessionId: "session-1",
       snapshot,
     });
 
     expect(toolRunner.runToolCall).not.toHaveBeenCalled();
     expect(events).toContainEqual(expect.objectContaining({
+      estimate: expect.objectContaining({
+        referenceRefs: [],
+      }),
       toolCallKey: "tool-call-1",
       turnId: "turn-1",
       type: "approval_required",
@@ -325,6 +364,7 @@ describe("AgentExecutorService", () => {
         status: "succeeded",
         toolCallId: "tool-db-1",
         workflowRunIds: ["workflow-1"],
+        workflowRuns: [{ nodeRunId: "node-1", workflowRunId: "workflow-1" }],
       }),
     };
     const repository = {
@@ -360,6 +400,13 @@ describe("AgentExecutorService", () => {
     const result = await executor.approveToolCall(context, {
       onEvent: (event) => events.push(event),
       sessionId: "session-1",
+      settings: {
+        aspectRatio: "16:9",
+        modelDisplayName: "Nano Banana Pro",
+        routeKey: "image.mouxihub.nano-banana-pro.t3",
+        routeLabel: "线路二（官方T3）",
+        size: "4K",
+      },
       toolCallKey: "tool-call-1",
       turnId: "turn-1",
     });
@@ -371,11 +418,232 @@ describe("AgentExecutorService", () => {
       turnId: "turn-1",
     });
     expect(toolRunner.runToolCall).toHaveBeenCalledWith(context, expect.objectContaining({
+      call: expect.objectContaining({
+        arguments: expect.objectContaining({
+          aspectRatio: "16:9",
+          modelDisplayName: "Nano Banana Pro",
+          routeKey: "image.mouxihub.nano-banana-pro.t3",
+          routeLabel: "线路二（官方T3）",
+          size: "4K",
+        }),
+      }),
       executionTarget: { flowId: "flow-1", targetNodeId: "image-node-1" },
       turnId: "turn-1",
     }));
     expect(events).toContainEqual(expect.objectContaining({ toolCallKey: "tool-call-1", type: "tool_started" }));
     expect(events).toContainEqual(expect.objectContaining({ toolCallKey: "tool-call-1", type: "tool_result" }));
     expect(result.toolResults[0]?.assetRefs[0]?.assetId).toBe("asset-1");
+  });
+
+  it("applies approved settings to every image in a pending batch generation", async () => {
+    const toolRunner = {
+      runToolCall: vi.fn().mockResolvedValue({
+        assetRefs: [{ assetId: "asset-batch-1", kind: "image", label: "Batch image 1", promptSummary: "", refId: "round-1-image-1" }],
+        failures: [],
+        status: "succeeded",
+        toolCallId: "tool-db-batch-1",
+        workflowRunIds: ["workflow-batch-1"],
+        workflowRuns: [{ nodeRunId: "node-batch-1", workflowRunId: "workflow-batch-1" }],
+      }),
+    };
+    const repository = {
+      createAssistantMessage: vi.fn(),
+      createTurn: vi.fn().mockResolvedValue({ turnId: "turn-1" }),
+      createUserMessage: vi.fn().mockResolvedValue({ messageId: "message-1" }),
+      markTurnFailed: vi.fn(),
+      markTurnSucceeded: vi.fn(),
+      readPendingApproval: vi.fn().mockResolvedValue({
+        costEstimate: { totalCredits: 8 },
+        pendingToolCall: {
+          arguments: {
+            images: [
+              { prompt: "image one", size: "1K" },
+              { prompt: "image two", size: "2K" },
+            ],
+            sharedStyle: "forest sports day",
+          },
+          toolCallKey: "tool-batch-1",
+          toolName: "generate_image_batch",
+        },
+        snapshot,
+      }),
+    };
+    const executor = new AgentExecutorService({
+      costEstimator: {
+        estimateGenerateImage: vi.fn().mockResolvedValue({ totalCredits: 4 }),
+        estimateGenerateImageBatch: vi.fn().mockResolvedValue({ totalCredits: 8 }),
+      },
+      limits: { requireApproval: true },
+      repository,
+      textRuntime: {
+        generateText: vi.fn(),
+      },
+      toolRunner,
+    });
+
+    await executor.approveToolCall(context, {
+      sessionId: "session-1",
+      settings: {
+        aspectRatio: "16:9",
+        modelDisplayName: "Nano Banana Pro",
+        routeKey: "image.mouxihub.nano-banana-pro.t3",
+        routeLabel: "线路二（官方T3）",
+        size: "4K",
+      },
+      toolCallKey: "tool-batch-1",
+      turnId: "turn-1",
+    });
+
+    expect(toolRunner.runToolCall).toHaveBeenCalledWith(context, expect.objectContaining({
+      call: expect.objectContaining({
+        arguments: expect.objectContaining({
+          images: [
+            expect.objectContaining({
+              aspectRatio: "16:9",
+              modelDisplayName: "Nano Banana Pro",
+              routeKey: "image.mouxihub.nano-banana-pro.t3",
+              routeLabel: "线路二（官方T3）",
+              size: "4K",
+            }),
+            expect.objectContaining({
+              aspectRatio: "16:9",
+              modelDisplayName: "Nano Banana Pro",
+              routeKey: "image.mouxihub.nano-banana-pro.t3",
+              routeLabel: "线路二（官方T3）",
+              size: "4K",
+            }),
+          ],
+        }),
+      }),
+    }));
+  });
+
+  it("applies approved settings to a pending edit image tool call", async () => {
+    const toolRunner = {
+      runToolCall: vi.fn().mockResolvedValue({
+        assetRefs: [{ assetId: "asset-edit-1", kind: "image", label: "Edited image 1", promptSummary: "", refId: "round-1-image-1" }],
+        failures: [],
+        status: "succeeded",
+        toolCallId: "tool-db-edit-1",
+        workflowRunIds: ["workflow-edit-1"],
+        workflowRuns: [{ nodeRunId: "node-edit-1", workflowRunId: "workflow-edit-1" }],
+      }),
+    };
+    const repository = {
+      createAssistantMessage: vi.fn(),
+      createTurn: vi.fn().mockResolvedValue({ turnId: "turn-1" }),
+      createUserMessage: vi.fn().mockResolvedValue({ messageId: "message-1" }),
+      markTurnFailed: vi.fn(),
+      markTurnSucceeded: vi.fn(),
+      readPendingApproval: vi.fn().mockResolvedValue({
+        costEstimate: { totalCredits: 4 },
+        pendingToolCall: {
+          arguments: {
+            prompt: "turn this into a poster",
+            referenceRefs: ["asset:1"],
+            size: "1K",
+          },
+          toolCallKey: "tool-edit-1",
+          toolName: "edit_image",
+        },
+        snapshot,
+      }),
+    };
+    const executor = new AgentExecutorService({
+      costEstimator: {
+        estimateGenerateImage: vi.fn().mockResolvedValue({ totalCredits: 5 }),
+        estimateGenerateImageBatch: vi.fn(),
+      },
+      limits: { allowImageEdit: true, requireApproval: true },
+      repository,
+      textRuntime: {
+        generateText: vi.fn(),
+      },
+      toolRunner,
+    });
+
+    await executor.approveToolCall(context, {
+      sessionId: "session-1",
+      settings: {
+        aspectRatio: "16:9",
+        modelDisplayName: "Nano Banana Pro",
+        routeKey: "image.pixellelabs.nano-banana-pro",
+        routeLabel: "线路一",
+        size: "4K",
+      },
+      toolCallKey: "tool-edit-1",
+      turnId: "turn-1",
+    });
+
+    expect(toolRunner.runToolCall).toHaveBeenCalledWith(context, expect.objectContaining({
+      call: expect.objectContaining({
+        arguments: expect.objectContaining({
+          aspectRatio: "16:9",
+          prompt: "turn this into a poster",
+          referenceRefs: ["asset:1"],
+          routeKey: "image.pixellelabs.nano-banana-pro",
+          routeLabel: "线路一",
+          size: "4K",
+        }),
+      }),
+    }));
+  });
+
+  it("includes reference refs in approval events for edit image tasks", async () => {
+    const events: unknown[] = [];
+    const toolRunner = {
+      runToolCall: vi.fn(),
+    };
+    const executor = new AgentExecutorService({
+      costEstimator: {
+        estimateGenerateImage: vi.fn().mockResolvedValue({ totalCredits: 5 }),
+        estimateGenerateImageBatch: vi.fn(),
+      },
+      limits: { allowImageEdit: true, requireApproval: true },
+      repository: {
+        createAssistantMessage: vi.fn(),
+        createTurn: vi.fn().mockResolvedValue({ turnId: "turn-1" }),
+        createUserMessage: vi.fn().mockResolvedValue({ messageId: "message-1" }),
+        markTurnFailed: vi.fn(),
+        markTurnSucceeded: vi.fn(),
+        readPendingApproval: vi.fn(),
+      },
+      textRuntime: {
+        generateText: vi.fn().mockResolvedValue({
+          outputText: JSON.stringify({
+            toolCalls: [
+              {
+                arguments: {
+                  prompt: "turn this into a poster",
+                  referenceRefs: ["round-1-image-1", "asset:2"],
+                  size: "1K",
+                },
+                toolCallKey: "tool-edit-1",
+                toolName: "edit_image",
+              },
+            ],
+          }),
+        }),
+      },
+      toolRunner,
+    });
+
+    await executor.executeTurn(context, {
+      onEvent: (event) => events.push(event),
+      prompt: "Edit the selected image into a poster",
+      sessionId: "session-1",
+      snapshot,
+    });
+
+    expect(events).toContainEqual(expect.objectContaining({
+      estimate: expect.objectContaining({
+        referenceRefs: ["round-1-image-1", "asset:2"],
+        totalCredits: 5,
+      }),
+      toolCallKey: "tool-edit-1",
+      turnId: "turn-1",
+      type: "approval_required",
+    }));
+    expect(toolRunner.runToolCall).not.toHaveBeenCalled();
   });
 });

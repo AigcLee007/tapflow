@@ -1,14 +1,19 @@
 import React from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
 import { CanvasAgentPanel } from "./CanvasAgentPanel";
 
+const mockApproveAgentToolCallStream = vi.fn();
 const mockCreateAgentSession = vi.fn();
 const mockCreateAgentTurn = vi.fn();
-const mockApproveAgentToolCallStream = vi.fn();
 const mockExecuteAgentTurnStream = vi.fn();
+const mockGetAgentImageRunSettings = vi.fn();
+const mockGetAgentSessionEvents = vi.fn();
+const mockGetAgentSessionHistory = vi.fn();
+const mockListAgentSessions = vi.fn();
+const mockOpenAgentSessionEventStream = vi.fn();
 const mockOpenAgentTurnStream = vi.fn();
 const mockReadAgentSseStream = vi.fn();
 
@@ -17,32 +22,271 @@ vi.mock("./canvasAgentApi", () => ({
   createAgentSession: (...args: unknown[]) => mockCreateAgentSession(...args),
   createAgentTurn: (...args: unknown[]) => mockCreateAgentTurn(...args),
   executeAgentTurnStream: (...args: unknown[]) => mockExecuteAgentTurnStream(...args),
+  getAgentImageRunSettings: (...args: unknown[]) => mockGetAgentImageRunSettings(...args),
+  getAgentSessionEvents: (...args: unknown[]) => mockGetAgentSessionEvents(...args),
+  getAgentSessionHistory: (...args: unknown[]) => mockGetAgentSessionHistory(...args),
+  listAgentSessions: (...args: unknown[]) => mockListAgentSessions(...args),
+  openAgentSessionEventStream: (...args: unknown[]) => mockOpenAgentSessionEventStream(...args),
   openAgentTurnStream: (...args: unknown[]) => mockOpenAgentTurnStream(...args),
   readAgentSseStream: (...args: unknown[]) => mockReadAgentSseStream(...args),
 }));
+
+vi.mock("./canvasAgentToolEvents", async () => {
+  const actual = await vi.importActual<typeof import("./canvasAgentToolEvents")>("./canvasAgentToolEvents");
+  return {
+    ...actual,
+    readAgentToolEventStream: vi.fn(),
+  };
+  it("restores replayed tool cards for the latest session in director mode", async () => {
+    vi.stubEnv("VITE_AGENT_DIRECTOR_ENABLED", "true");
+    mockListAgentSessions.mockResolvedValue([
+      {
+        createdAt: "2026-06-24T00:00:00Z",
+        flowId: "flow-1",
+        id: "session-1",
+        projectId: "project-1",
+        title: "Recent Agent Session",
+        updatedAt: "2026-06-24T00:01:00Z",
+      },
+    ]);
+    mockGetAgentSessionHistory.mockResolvedValue({
+      messages: [
+        {
+          content: "Please generate a cover",
+          createdAt: "2026-06-24T00:00:00Z",
+          id: "m1",
+          role: "user",
+          sessionId: "session-1",
+        },
+      ],
+      session: {
+        createdAt: "2026-06-24T00:00:00Z",
+        flowId: "flow-1",
+        id: "session-1",
+        projectId: "project-1",
+        title: "Recent Agent Session",
+        updatedAt: "2026-06-24T00:01:00Z",
+      },
+      turns: [],
+    });
+    mockGetAgentSessionEvents.mockResolvedValue({
+      events: [
+        {
+          createdAt: "2026-06-24T00:00:01Z",
+          eventJson: { toolCallKey: "tool-1", toolName: "generate_image" },
+          eventType: "tool_started",
+          id: "e1",
+          seq: 1,
+          sessionId: "session-1",
+          taskId: null,
+          turnId: null,
+        },
+        {
+          createdAt: "2026-06-24T00:00:02Z",
+          eventJson: {
+            taskId: "task-1",
+            title: "Image generation",
+            toolCallKey: "tool-1",
+            toolName: "generate_image",
+          },
+          eventType: "task_created",
+          id: "e2",
+          seq: 2,
+          sessionId: "session-1",
+          taskId: "task-1",
+          turnId: null,
+        },
+        {
+          createdAt: "2026-06-24T00:00:03Z",
+          eventJson: {
+            result: {
+              assetRefs: [
+                {
+                  assetId: "asset-1",
+                  kind: "image",
+                  label: "Replay image",
+                  promptSummary: "",
+                  refId: "asset-ref-1",
+                },
+              ],
+              status: "succeeded",
+              toolCallId: "task-1",
+            },
+            toolCallKey: "tool-1",
+          },
+          eventType: "tool_result",
+          id: "e3",
+          seq: 3,
+          sessionId: "session-1",
+          taskId: "task-1",
+          turnId: null,
+        },
+      ],
+    });
+
+    render(<CanvasAgentPanel open onClose={vi.fn()} onConfirmPlan={vi.fn()} />);
+
+    expect(await screen.findByText("Task ID: task-1")).toBeTruthy();
+    expect(screen.getByText("Completed")).toBeTruthy();
+    expect(screen.getByText("Replay image")).toBeTruthy();
+  });
+
+  it("restores replayed approval and error states for the latest session", async () => {
+    vi.stubEnv("VITE_AGENT_DIRECTOR_ENABLED", "true");
+    mockListAgentSessions.mockResolvedValue([
+      {
+        createdAt: "2026-06-24T00:00:00Z",
+        flowId: "flow-1",
+        id: "session-1",
+        projectId: "project-1",
+        title: "Recent Agent Session",
+        updatedAt: "2026-06-24T00:01:00Z",
+      },
+    ]);
+    mockGetAgentSessionHistory.mockResolvedValue({
+      messages: [],
+      session: {
+        createdAt: "2026-06-24T00:00:00Z",
+        flowId: "flow-1",
+        id: "session-1",
+        projectId: "project-1",
+        title: "Recent Agent Session",
+        updatedAt: "2026-06-24T00:01:00Z",
+      },
+      turns: [],
+    });
+    mockGetAgentSessionEvents.mockResolvedValue({
+      events: [
+        {
+          createdAt: "2026-06-24T00:00:01Z",
+          eventJson: { toolCallKey: "tool-edit-1", toolName: "edit_image" },
+          eventType: "tool_started",
+          id: "r1",
+          seq: 1,
+          sessionId: "session-1",
+          taskId: null,
+          turnId: null,
+        },
+        {
+          createdAt: "2026-06-24T00:00:02Z",
+          eventJson: {
+            estimate: { referenceRefs: ["round-1-image-1"], totalCredits: 4 },
+            toolCallKey: "tool-edit-1",
+            turnId: "turn-1",
+          },
+          eventType: "approval_required",
+          id: "r2",
+          seq: 2,
+          sessionId: "session-1",
+          taskId: null,
+          turnId: "turn-1",
+        },
+        {
+          createdAt: "2026-06-24T00:00:03Z",
+          eventJson: {
+            code: "AGENT_EXECUTOR_FAILED",
+            message: "Provider timeout",
+            turnId: "turn-1",
+          },
+          eventType: "turn_failed",
+          id: "r3",
+          seq: 3,
+          sessionId: "session-1",
+          taskId: null,
+          turnId: "turn-1",
+        },
+      ],
+    });
+
+    render(<CanvasAgentPanel open onClose={vi.fn()} onConfirmPlan={vi.fn()} />);
+
+    expect(await screen.findByText("Failed")).toBeTruthy();
+    expect(screen.getAllByText("Provider timeout").length).toBeGreaterThan(0);
+  });
+});
 
 describe("CanvasAgentPanel", () => {
   beforeEach(() => {
     vi.unstubAllEnvs();
     useFlowCanvasStore.getState().newProject();
+    mockApproveAgentToolCallStream.mockReset();
     mockCreateAgentSession.mockReset();
     mockCreateAgentTurn.mockReset();
-    mockApproveAgentToolCallStream.mockReset();
     mockExecuteAgentTurnStream.mockReset();
+    mockGetAgentImageRunSettings.mockReset();
+    mockGetAgentSessionEvents.mockReset();
+    mockGetAgentSessionHistory.mockReset();
+    mockListAgentSessions.mockReset();
+    mockOpenAgentSessionEventStream.mockReset();
     mockOpenAgentTurnStream.mockReset();
     mockReadAgentSseStream.mockReset();
+
     mockCreateAgentSession.mockResolvedValue({ id: "session-1" });
-    mockExecuteAgentTurnStream.mockResolvedValue({ ok: false, status: 503 });
-    mockOpenAgentTurnStream.mockResolvedValue({ ok: false, status: 503 });
     mockCreateAgentTurn.mockResolvedValue({
       approvalRequired: true,
       evidence: [],
-      plan: [{ reason: "test", step: "创建节点" }],
+      plan: [{ reason: "test", step: "Create nodes" }],
       proposedOps: [],
-      reply: "服务端计划",
+      reply: "Server plan",
       sessionId: "session-1",
       turnId: "turn-1",
     });
+    mockExecuteAgentTurnStream.mockResolvedValue({ ok: false, status: 503 });
+    mockGetAgentImageRunSettings.mockResolvedValue({
+      models: [
+        {
+          aspectRatios: ["1:1", "16:9"],
+          defaultRouteKey: "image.pixellelabs.nano-banana-pro",
+          displayName: "Nano Banana Pro",
+          modelFamily: "pixellelabs.nano-banana-pro",
+          modelKey: "gemini-3-pro-image-preview",
+          qualityOptions: [],
+          quantityOptions: [1],
+          routes: [
+            {
+              estimatedCredits: 4,
+              routeKey: "image.pixellelabs.nano-banana-pro",
+              routeLabel: "线路一",
+              sizes: [
+                { credits: 4, size: "1K" },
+                { credits: 4.5, size: "2K" },
+                { credits: 5, size: "4K" },
+              ],
+            },
+          ],
+          sizes: ["1K", "2K", "4K"],
+        },
+      ],
+    });
+    mockGetAgentSessionEvents.mockResolvedValue({ events: [] });
+    mockGetAgentSessionHistory.mockResolvedValue({
+      messages: [],
+      session: null,
+      turns: [],
+    });
+    mockListAgentSessions.mockResolvedValue([]);
+    mockOpenAgentSessionEventStream.mockResolvedValue({ ok: true, status: 200 });
+    mockOpenAgentTurnStream.mockResolvedValue({ ok: false, status: 503 });
+  });
+
+  it("shows the classic runtime badge when director mode is disabled", async () => {
+    vi.stubEnv("VITE_AGENT_DIRECTOR_ENABLED", "false");
+
+    await act(async () => {
+      render(<CanvasAgentPanel open onClose={vi.fn()} onConfirmPlan={vi.fn()} />);
+    });
+
+    expect(screen.getByText("Classic Agent")).toBeTruthy();
+  });
+
+  it("shows the director runtime badge when director mode is enabled", async () => {
+    vi.stubEnv("VITE_AGENT_DIRECTOR_ENABLED", "true");
+
+    await act(async () => {
+      render(<CanvasAgentPanel open onClose={vi.fn()} onConfirmPlan={vi.fn()} />);
+    });
+
+    expect(screen.getByText("Director Runtime (preview)")).toBeTruthy();
   });
 
   it("shows a server plan and calls confirm handler", async () => {
@@ -56,7 +300,7 @@ describe("CanvasAgentPanel", () => {
     render(<CanvasAgentPanel open onClose={vi.fn()} onConfirmPlan={onConfirmPlan} />);
 
     fireEvent.change(screen.getByPlaceholderText("描述你想完成的生产任务，或引用当前画布内容..."), {
-      target: { value: "帮我做一张森林运动会图片" },
+      target: { value: "Help me create an image flow" },
     });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
 
@@ -71,7 +315,7 @@ describe("CanvasAgentPanel", () => {
     render(<CanvasAgentPanel open onClose={vi.fn()} onConfirmPlan={vi.fn()} />);
 
     fireEvent.change(screen.getByPlaceholderText("描述你想完成的生产任务，或引用当前画布内容..."), {
-      target: { value: "帮我做一张森林运动会图片" },
+      target: { value: "Help me create an image flow" },
     });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
 
@@ -85,14 +329,12 @@ describe("CanvasAgentPanel", () => {
   });
 
   it("surfaces a planner error when fallback is disabled", async () => {
-    mockCreateAgentSession.mockResolvedValue({ id: "session-1" });
-    mockOpenAgentTurnStream.mockResolvedValue({ ok: false, status: 503 });
     mockCreateAgentTurn.mockRejectedValue(new Error("Agent planner unavailable"));
 
     render(<CanvasAgentPanel open onClose={vi.fn()} onConfirmPlan={vi.fn()} />);
 
     fireEvent.change(screen.getByPlaceholderText("描述你想完成的生产任务，或引用当前画布内容..."), {
-      target: { value: "帮我做一张森林运动会图片" },
+      target: { value: "Help me create an image flow" },
     });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
 

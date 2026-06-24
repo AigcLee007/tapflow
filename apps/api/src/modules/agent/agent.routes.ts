@@ -5,14 +5,22 @@ import { requireAuth, requirePermission, requireTenant } from "../../http/auth-m
 import {
   type AgentSessionIdParams,
   type ApproveAgentToolCallInput,
+  type CreateAgentMessageInput,
   type CreateAgentSessionInput,
   type CreateAgentTurnInput,
   type ExecuteAgentTurnInput,
+  type GetAgentEventsQuery,
+  type GetAgentImageRunSettingsEstimateQuery,
+  type ListAgentSessionsQuery,
   approveAgentToolCallSchema,
   agentSessionIdParamsSchema,
+  createAgentMessageSchema,
   createAgentSessionSchema,
   createAgentTurnSchema,
   executeAgentTurnSchema,
+  getAgentEventsQuerySchema,
+  getAgentImageRunSettingsEstimateQuerySchema,
+  listAgentSessionsQuerySchema,
 } from "./agent.schemas.js";
 import { AgentApiError } from "./agent.service.js";
 
@@ -40,6 +48,10 @@ function parseBody<T>(request: FastifyRequest, schema: { parse: (value: unknown)
 
 function parseParams<T>(request: FastifyRequest, schema: { parse: (value: unknown) => T }): T {
   return schema.parse(request.params);
+}
+
+function parseQuery<T>(request: FastifyRequest, schema: { parse: (value: unknown) => T }): T {
+  return schema.parse(request.query);
 }
 
 function getAgentContext(request: FastifyRequest) {
@@ -105,6 +117,50 @@ export function registerAgentRoutes(app: FastifyInstance): void {
   );
 
   app.get(
+    "/api/v2/agent/run-settings/image",
+    {
+      preHandler: [...authHandlers, requirePermission("flow:read")],
+    },
+    async (request, reply) => {
+      try {
+        return reply.send(await app.agentService.listImageRunSettings(getAgentContext(request)));
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.get(
+    "/api/v2/agent/run-settings/image/estimate",
+    {
+      preHandler: [...authHandlers, requirePermission("flow:read")],
+    },
+    async (request, reply) => {
+      try {
+        const query = parseQuery<GetAgentImageRunSettingsEstimateQuery>(request, getAgentImageRunSettingsEstimateQuerySchema);
+        return reply.send(await app.agentService.estimateImageRunSettings(getAgentContext(request), query));
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.get(
+    "/api/v2/agent/sessions",
+    {
+      preHandler: [...authHandlers, requirePermission("flow:read")],
+    },
+    async (request, reply) => {
+      try {
+        const query = parseQuery<ListAgentSessionsQuery>(request, listAgentSessionsQuerySchema);
+        return reply.send(await app.agentService.listSessions(getAgentContext(request), query));
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.get(
     "/api/v2/agent/sessions/:sessionId",
     {
       preHandler: [...authHandlers, requirePermission("flow:read")],
@@ -113,6 +169,87 @@ export function registerAgentRoutes(app: FastifyInstance): void {
       try {
         const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
         return reply.send(await app.agentService.getSession(getAgentContext(request), params.sessionId));
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.get(
+    "/api/v2/agent/sessions/:sessionId/history",
+    {
+      preHandler: [...authHandlers, requirePermission("flow:read")],
+    },
+    async (request, reply) => {
+      try {
+        const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
+        return reply.send(await app.agentService.getSessionHistory(getAgentContext(request), params.sessionId));
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.get(
+    "/api/v2/agent/sessions/:sessionId/events",
+    {
+      preHandler: [...authHandlers, requirePermission("flow:read")],
+    },
+    async (request, reply) => {
+      try {
+        const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
+        const query = parseQuery<GetAgentEventsQuery>(request, getAgentEventsQuerySchema);
+        return reply.send(
+          await app.agentService.getSessionEvents(
+            getAgentContext(request),
+            params.sessionId,
+            query.afterSeq ?? 0,
+          ),
+        );
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.get(
+    "/api/v2/agent/sessions/:sessionId/events/stream",
+    {
+      preHandler: [...authHandlers, requirePermission("flow:read")],
+    },
+    async (request, reply) => {
+      try {
+        const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
+        const query = parseQuery<GetAgentEventsQuery>(request, getAgentEventsQuerySchema);
+        const streamBody = await app.agentService.buildSessionEventsStream(
+          getAgentContext(request),
+          params.sessionId,
+          query.afterSeq ?? 0,
+        );
+
+        reply.raw.setHeader("cache-control", "no-cache");
+        reply.raw.setHeader("connection", "keep-alive");
+        reply.raw.setHeader("content-type", "text/event-stream; charset=utf-8");
+        reply.hijack();
+        reply.raw.write(streamBody);
+        reply.raw.end();
+        return reply;
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.post(
+    "/api/v2/agent/sessions/:sessionId/messages",
+    {
+      preHandler: [...authHandlers, requirePermission("flow:read")],
+    },
+    async (request, reply) => {
+      try {
+        const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
+        const body = parseBody<CreateAgentMessageInput>(request, createAgentMessageSchema);
+        return reply.code(201).send(await app.agentService.appendMessage(getAgentContext(request), params.sessionId, body));
       } catch (error) {
         return handleRouteError(error, request, reply);
       }

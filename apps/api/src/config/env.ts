@@ -1,6 +1,7 @@
 export type ApiEnv = {
   accessTokenTtlSeconds: number;
   adminEmails: string[];
+  agentDirectorEnabled?: boolean;
   agentExecutorAllowBatchImage?: boolean;
   agentExecutorAllowImageEdit?: boolean;
   agentExecutorAllowVideo?: boolean;
@@ -137,6 +138,11 @@ export function getApiEnv(): ApiEnv {
   const agentPlannerEnabled = parseBooleanEnv(
     "AGENT_PLANNER_ENABLED",
     process.env.AGENT_PLANNER_ENABLED,
+    false,
+  );
+  const agentDirectorEnabled = parseBooleanEnv(
+    "AGENT_DIRECTOR_ENABLED",
+    process.env.AGENT_DIRECTOR_ENABLED,
     false,
   );
   const agentPlannerFallbackEnabled = parseBooleanEnv(
@@ -298,6 +304,7 @@ export function getApiEnv(): ApiEnv {
   return {
     accessTokenTtlSeconds,
     adminEmails,
+    agentDirectorEnabled,
     agentExecutorAllowBatchImage,
     agentExecutorAllowImageEdit,
     agentExecutorAllowVideo,

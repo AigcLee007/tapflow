@@ -239,8 +239,11 @@ Relay D:
 ## 9.1 Agent Planner
 
 - `AGENT_PLANNER_ENABLED = false`
+- `AGENT_DIRECTOR_ENABLED = false`
+- `VITE_AGENT_DIRECTOR_ENABLED = false`
 - `AGENT_TEXT_ROUTE_KEY = text.gpt-5-5`
 - `Agent planner note = keep false until the GPT-5.5 text template is installed, published, and smoke-tested; false uses deterministic planning only`
+- `Agent director note = keep both director flags false for dark deployment. When enabled, the panel switches to the Phase 0-1 Director preview shell with durable history/event replay APIs while preserving the classic runtime as rollback.`
 
 ## 9.2 Agent Executor
 

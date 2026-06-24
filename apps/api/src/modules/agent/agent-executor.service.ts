@@ -89,6 +89,17 @@ export type AgentExecutorTurnResult = {
 export type AgentExecutorApproveInput = {
   onEvent?: (event: AgentToolEvent) => void | Promise<void>;
   sessionId: string;
+  settings?: {
+    aspectRatio?: string;
+    format?: "jpeg" | "png" | "webp";
+    modelDisplayName?: string;
+    moderation?: "auto" | "low";
+    n?: number;
+    quality?: string;
+    routeKey?: string;
+    routeLabel?: string;
+    size?: "1K" | "2K" | "4K";
+  };
   toolCallKey: string;
   turnId: string;
 };
@@ -279,6 +290,11 @@ export class AgentExecutorService {
     ];
 
     try {
+      await input.onEvent?.({
+        detail: "Reading the canvas context and preparing the next production step.",
+        label: "Understanding request",
+        type: "thinking_status",
+      });
       for (let round = 0; round <= this.limits.maxToolRounds; round += 1) {
         const runtimeResult = await this.options.textRuntime.generateText(context, {
           maxTokens: 2500,
@@ -336,6 +352,11 @@ export class AgentExecutorService {
         }
 
         for (const call of parsed.toolCalls) {
+          await input.onEvent?.({
+            detail: "A production tool has been prepared and is about to start.",
+            label: "Creating task card",
+            type: "thinking_status",
+          });
           await input.onEvent?.({ toolCallKey: call.toolCallKey, toolName: call.toolName, type: "tool_started" });
           const costEstimate = await this.estimateCost(context, call);
           const policy = evaluateAgentToolPolicy({
@@ -356,7 +377,10 @@ export class AgentExecutorService {
           });
           if (policy.requiresApproval) {
             await input.onEvent?.({
-              estimate: costEstimate,
+              estimate: {
+                ...(costEstimate && typeof costEstimate === "object" ? costEstimate : {}),
+                referenceRefs: getApprovalReferenceRefs(call),
+              },
               toolCallKey: call.toolCallKey,
               turnId: turn.turnId,
               type: "approval_required",
@@ -394,6 +418,29 @@ export class AgentExecutorService {
             sessionId: input.sessionId,
             turnId: turn.turnId,
           });
+          await input.onEvent?.({
+            taskId: result.toolCallId,
+            title: getTaskTitle(call.toolName),
+            toolCallKey: call.toolCallKey,
+            toolName: call.toolName,
+            type: "task_created",
+          });
+          for (const workflowRun of result.workflowRuns ?? []) {
+            await input.onEvent?.({
+              nodeRunId: workflowRun.nodeRunId ?? undefined,
+              toolCallKey: call.toolCallKey,
+              type: "workflow_run_linked",
+              workflowRunId: workflowRun.workflowRunId,
+            });
+          }
+          for (const assetRef of result.assetRefs) {
+            await input.onEvent?.({
+              assetRef,
+              taskId: result.toolCallId,
+              toolCallKey: call.toolCallKey,
+              type: "artifact_created",
+            });
+          }
           toolResults.push(result);
           await input.onEvent?.({ result, toolCallKey: call.toolCallKey, type: "tool_result" });
           messages.push({ content: buildAgentToolContinuationMessage(result), role: "user" as const });
@@ -424,7 +471,7 @@ export class AgentExecutorService {
       throw new AgentExecutorError(404, "AGENT_TOOL_APPROVAL_NOT_FOUND", "Agent tool approval was not found or is no longer pending.");
     }
 
-    const call = parseAgentToolCall(pending.pendingToolCall);
+    const call = applyApprovedSettings(parseAgentToolCall(pending.pendingToolCall), input.settings);
     const costEstimate = await this.estimateCost(context, call);
     evaluateAgentToolPolicy({
       call,
@@ -452,6 +499,21 @@ export class AgentExecutorService {
       sessionId: input.sessionId,
       turnId: input.turnId,
     });
+    await input.onEvent?.({
+      taskId: result.toolCallId,
+      title: getTaskTitle(call.toolName),
+      toolCallKey: call.toolCallKey,
+      toolName: call.toolName,
+      type: "task_created",
+    });
+    for (const assetRef of result.assetRefs) {
+      await input.onEvent?.({
+        assetRef,
+        taskId: result.toolCallId,
+        toolCallKey: call.toolCallKey,
+        type: "artifact_created",
+      });
+    }
     await input.onEvent?.({ result, toolCallKey: call.toolCallKey, type: "tool_result" });
 
     const finalText = result.assetRefs.length > 0
@@ -490,6 +552,12 @@ export class AgentExecutorService {
         tenantId: context.tenantId,
       });
     }
+    if (call.toolName === "edit_image") {
+      return this.options.costEstimator.estimateGenerateImage({
+        ...call.arguments,
+        tenantId: context.tenantId,
+      });
+    }
     if (call.toolName === "generate_image_batch") {
       return this.options.costEstimator.estimateGenerateImageBatch({
         ...call.arguments,
@@ -498,6 +566,22 @@ export class AgentExecutorService {
     }
     return null;
   }
+}
+
+function getApprovalReferenceRefs(call: ParsedAgentToolCall): string[] {
+  if (call.toolName === "generate_image_batch") {
+    return call.arguments.images.flatMap((image) => image.referenceRefs ?? []);
+  }
+  if (call.toolName === "generate_image" || call.toolName === "edit_image") {
+    return call.arguments.referenceRefs ?? [];
+  }
+  return [];
+}
+
+function getTaskTitle(toolName: ParsedAgentToolCall["toolName"]) {
+  if (toolName === "generate_image_batch") return "Batch image generation";
+  if (toolName === "edit_image") return "Image edit";
+  return "Image generation";
 }
 
 function parseExecutorModelOutput(rawText: string): {
@@ -557,6 +641,67 @@ function estimateGeneratedItemCount(call: ParsedAgentToolCall): number {
   if (call.toolName === "generate_image_batch") return call.arguments.images.length;
   if (call.toolName === "generate_image") return 1;
   return 0;
+}
+
+function applyApprovedSettings(
+  call: ParsedAgentToolCall,
+  settings?: AgentExecutorApproveInput["settings"],
+): ParsedAgentToolCall {
+  if (!settings) return call;
+  if (call.toolName === "generate_image_batch") {
+    return {
+      ...call,
+      arguments: {
+        ...call.arguments,
+        images: call.arguments.images.map((image) => ({
+          ...image,
+          aspectRatio: settings.aspectRatio ?? image.aspectRatio,
+          format: settings.format ?? image.format,
+          modelDisplayName: settings.modelDisplayName ?? image.modelDisplayName,
+          moderation: settings.moderation ?? image.moderation,
+          n: settings.n ?? image.n,
+          quality: settings.quality ?? image.quality,
+          routeKey: settings.routeKey ?? image.routeKey,
+          routeLabel: settings.routeLabel ?? image.routeLabel,
+          size: settings.size ?? image.size,
+        })),
+      },
+    };
+  }
+  if (call.toolName === "edit_image") {
+    return {
+      ...call,
+      arguments: {
+        ...call.arguments,
+        aspectRatio: settings.aspectRatio ?? call.arguments.aspectRatio,
+        format: settings.format ?? call.arguments.format,
+        modelDisplayName: settings.modelDisplayName ?? call.arguments.modelDisplayName,
+        moderation: settings.moderation ?? call.arguments.moderation,
+        n: settings.n ?? call.arguments.n,
+        quality: settings.quality ?? call.arguments.quality,
+        routeKey: settings.routeKey ?? call.arguments.routeKey,
+        routeLabel: settings.routeLabel ?? call.arguments.routeLabel,
+        size: settings.size ?? call.arguments.size,
+      },
+    };
+  }
+  if (call.toolName !== "generate_image") return call;
+
+  return {
+    ...call,
+    arguments: {
+      ...call.arguments,
+      aspectRatio: settings.aspectRatio ?? call.arguments.aspectRatio,
+      format: settings.format ?? (call.arguments as { format?: "jpeg" | "png" | "webp" }).format,
+      modelDisplayName: settings.modelDisplayName ?? call.arguments.modelDisplayName,
+      moderation: settings.moderation ?? (call.arguments as { moderation?: "auto" | "low" }).moderation,
+      n: settings.n ?? call.arguments.n,
+      quality: settings.quality ?? call.arguments.quality,
+      routeKey: settings.routeKey ?? call.arguments.routeKey,
+      routeLabel: settings.routeLabel ?? call.arguments.routeLabel,
+      size: settings.size ?? call.arguments.size,
+    },
+  };
 }
 
 function normalizeExecutorError(error: unknown): { code: string; message: string } {

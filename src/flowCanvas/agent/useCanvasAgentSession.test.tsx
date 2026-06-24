@@ -10,6 +10,7 @@ const mockCreateAgentSession = vi.fn();
 const mockCreateAgentTurn = vi.fn();
 const mockApproveAgentToolCallStream = vi.fn();
 const mockExecuteAgentTurnStream = vi.fn();
+const mockGetAgentImageRunSettings = vi.fn();
 const mockOpenAgentTurnStream = vi.fn();
 const mockReadAgentSseStream = vi.fn();
 const mockReadAgentToolEventStream = vi.fn();
@@ -19,6 +20,7 @@ vi.mock("./canvasAgentApi", () => ({
   createAgentSession: (...args: unknown[]) => mockCreateAgentSession(...args),
   createAgentTurn: (...args: unknown[]) => mockCreateAgentTurn(...args),
   executeAgentTurnStream: (...args: unknown[]) => mockExecuteAgentTurnStream(...args),
+  getAgentImageRunSettings: (...args: unknown[]) => mockGetAgentImageRunSettings(...args),
   openAgentTurnStream: (...args: unknown[]) => mockOpenAgentTurnStream(...args),
   readAgentSseStream: (...args: unknown[]) => mockReadAgentSseStream(...args),
 }));
@@ -36,11 +38,60 @@ describe("useCanvasAgentSession", () => {
     mockCreateAgentTurn.mockReset();
     mockApproveAgentToolCallStream.mockReset();
     mockExecuteAgentTurnStream.mockReset();
+    mockGetAgentImageRunSettings.mockReset();
     mockOpenAgentTurnStream.mockReset();
     mockReadAgentSseStream.mockReset();
     mockReadAgentToolEventStream.mockReset();
     mockExecuteAgentTurnStream.mockResolvedValue({ ok: false, status: 503 });
     mockApproveAgentToolCallStream.mockResolvedValue({ ok: true, status: 200 });
+    mockGetAgentImageRunSettings.mockResolvedValue({
+      models: [
+        {
+          aspectRatios: ["1:1", "16:9", "9:16"],
+          defaultRouteKey: "image.pixellelabs.nano-banana-pro",
+          displayName: "Nano Banana Pro",
+          modelFamily: "pixellelabs.nano-banana-pro",
+          modelKey: "gemini-3-pro-image-preview",
+          qualityOptions: [],
+          quantityOptions: [1],
+          routes: [
+            {
+              estimatedCredits: 4,
+              routeKey: "image.pixellelabs.nano-banana-pro",
+              routeLabel: "线路一",
+              sizes: [
+                { credits: 4, size: "1K" },
+                { credits: 4.5, size: "2K" },
+                { credits: 5, size: "4K" },
+              ],
+            },
+          ],
+          sizes: ["1K", "2K", "4K"],
+        },
+        {
+          aspectRatios: ["1:1", "4:3", "3:4"],
+          defaultRouteKey: "image.gpt-image-2.line2",
+          displayName: "GPT-Image-2",
+          modelFamily: "gpt-image-2",
+          modelKey: "gpt-image-2",
+          qualityOptions: [],
+          quantityOptions: [1],
+          routes: [
+            {
+              estimatedCredits: 3,
+              routeKey: "image.gpt-image-2.line2",
+              routeLabel: "线路二",
+              sizes: [
+                { credits: 3, size: "1K" },
+                { credits: 3.5, size: "2K" },
+                { credits: 4, size: "4K" },
+              ],
+            },
+          ],
+          sizes: ["1K", "2K", "4K"],
+        },
+      ],
+    });
   });
 
   it("uses server planning when agent API succeeds", async () => {
@@ -71,6 +122,13 @@ describe("useCanvasAgentSession", () => {
     mockReadAgentToolEventStream.mockImplementation(async (_response, onEvent) => {
       onEvent({ content: "Starting.", type: "message_delta" });
       onEvent({ toolCallKey: "tool-1", toolName: "generate_image", type: "tool_started" });
+      onEvent({ taskId: "tool-db-1", title: "Image generation", toolCallKey: "tool-1", toolName: "generate_image", type: "task_created" });
+      onEvent({
+        assetRef: { assetId: "asset-1", kind: "image", label: "Round 1 image 1", promptSummary: "", refId: "round-1-image-1" },
+        taskId: "tool-db-1",
+        toolCallKey: "tool-1",
+        type: "artifact_created",
+      });
       onEvent({
         result: {
           assetRefs: [{ assetId: "asset-1", kind: "image", label: "Round 1 image 1", promptSummary: "", refId: "round-1-image-1" }],
@@ -88,14 +146,79 @@ describe("useCanvasAgentSession", () => {
     });
 
     expect(result.current.status).toBe("idle");
+    expect(result.current.activityTimeline.some((item) => item.label === "Submitting generation task")).toBe(true);
+    expect(result.current.activityTimeline.some((item) => item.label === "Saving result")).toBe(true);
     expect(result.current.toolTimeline).toEqual([
       expect.objectContaining({
         assetRefs: [expect.objectContaining({ assetId: "asset-1" })],
         status: "succeeded",
+        taskId: "tool-db-1",
         toolCallKey: "tool-1",
       }),
     ]);
     expect(result.current.messages.some((message) => message.content.includes("Done."))).toBe(true);
+  });
+
+  it("records visible activity states before and during execution", async () => {
+    mockCreateAgentSession.mockResolvedValue({ id: "session-1" });
+    mockExecuteAgentTurnStream.mockResolvedValue({ ok: true, status: 200 });
+    mockReadAgentToolEventStream.mockImplementation(async (_response, onEvent) => {
+      onEvent({ detail: "Analyzing canvas context", label: "Understanding request", type: "thinking_status" });
+      onEvent({ toolCallKey: "tool-1", toolName: "generate_image", type: "tool_started" });
+      onEvent({ nodeRunId: "node-1", toolCallKey: "tool-1", type: "workflow_run_linked", workflowRunId: "run-1" });
+      onEvent({
+        result: {
+          assetRefs: [],
+          status: "failed",
+        },
+        toolCallKey: "tool-1",
+        type: "tool_result",
+      });
+      onEvent({ finalText: "Done.", turnId: "turn-1", type: "turn_completed" });
+    });
+
+    const { result } = renderHook(() => useCanvasAgentSession());
+    await act(async () => {
+      await result.current.sendPrompt("Generate an image");
+    });
+
+    expect(result.current.activityTimeline.map((item) => item.label)).toEqual(expect.arrayContaining([
+      "Understanding request",
+      "Submitting generation task",
+      "Waiting for model result",
+      "Generation failed",
+      "Completed",
+    ]));
+  });
+
+  it("labels edit_image approval tasks as image edit cards", async () => {
+    mockCreateAgentSession.mockResolvedValue({ id: "session-1" });
+    mockExecuteAgentTurnStream.mockResolvedValue({ ok: true, status: 200 });
+    mockReadAgentToolEventStream.mockImplementation(async (_response, onEvent) => {
+      onEvent({ toolCallKey: "tool-edit-1", toolName: "edit_image", type: "tool_started" });
+      onEvent({
+        estimate: { referenceRefs: ["round-1-image-1", "asset:2"], totalCredits: 4 },
+        toolCallKey: "tool-edit-1",
+        turnId: "turn-1",
+        type: "approval_required",
+      });
+      onEvent({ finalText: "Confirm edit settings.", turnId: "turn-1", type: "turn_completed" });
+    });
+
+    const { result } = renderHook(() => useCanvasAgentSession());
+    await act(async () => {
+      await result.current.sendPrompt("Edit this selected image");
+    });
+
+    expect(result.current.toolTimeline[0]).toMatchObject({
+      estimate: expect.objectContaining({
+        referenceRefs: ["round-1-image-1", "asset:2"],
+      }),
+      status: "awaiting_approval",
+      title: "Image edit",
+      toolCallKey: "tool-edit-1",
+      toolName: "edit_image",
+    });
   });
 
   it("creates a runnable image node before sending an empty-canvas production prompt", async () => {
@@ -220,16 +343,50 @@ describe("useCanvasAgentSession", () => {
     expect(result.current.toolTimeline[0]?.status).toBe("awaiting_approval");
 
     await act(async () => {
-      await result.current.approveToolCall("tool-1");
+      await result.current.approveToolCall("tool-1", {
+        aspectRatio: "16:9",
+        estimatedCredits: 12,
+        format: "jpeg",
+        modelDisplayName: "Nano Banana Pro",
+        moderation: "low",
+        modality: "image",
+        n: 1,
+        quality: "high",
+        routeKey: "image.mouxihub.nano-banana-pro.t3",
+        routeLabel: "线路二（官方T3）",
+        size: "4K",
+      });
     });
 
     expect(mockApproveAgentToolCallStream).toHaveBeenCalledWith("session-1", {
+      settings: {
+        aspectRatio: "16:9",
+        estimatedCredits: 12,
+        format: "jpeg",
+        modelDisplayName: "Nano Banana Pro",
+        moderation: "low",
+        modality: "image",
+        n: 1,
+        quality: "high",
+        routeKey: "image.mouxihub.nano-banana-pro.t3",
+        routeLabel: "线路二（官方T3）",
+        size: "4K",
+      },
       toolCallKey: "tool-1",
       turnId: "turn-1",
     });
     expect(result.current.toolTimeline[0]).toMatchObject({
+      estimate: expect.objectContaining({
+        currentSelection: expect.objectContaining({
+          aspectRatio: "16:9",
+          modelDisplayName: "Nano Banana Pro",
+          routeLabel: "线路二（官方T3）",
+          size: "4K",
+        }),
+      }),
       assetRefs: [expect.objectContaining({ assetId: "asset-1" })],
       status: "succeeded",
+      taskId: "tool-db-1",
     });
   });
 

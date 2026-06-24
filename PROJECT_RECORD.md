@@ -3,6 +3,161 @@
 Last updated: 2026-06-24
 Maintainers: project team + Codex sessions
 
+## 2026-06-24 - Canvas Director Agent Phase 0-1 Skeleton
+
+- started the approved Canvas Director Phase 0-1 implementation behind safe feature flags instead of replacing the current Agent path outright.
+- added backend Director dark-launch plumbing:
+  - `AGENT_DIRECTOR_ENABLED` env parsing in the API config
+  - new `agent_tasks` and `agent_task_events` tables with tenant-scoped indexes and RLS in migration `000036_agent_tasks_events.sql`
+  - new Agent session/history/event APIs for:
+    - listing sessions
+    - reading durable session history
+    - replaying session events
+    - streaming replay events
+    - appending user messages
+- added a minimal session repository plus event replay service so the new Director shell can reload prior conversation state after refresh instead of relying only on local panel state.
+- added frontend Director preview plumbing:
+  - `VITE_AGENT_DIRECTOR_ENABLED` env flag
+  - runtime badge in the Agent header showing `Classic Agent` vs `Director Runtime (preview)`
+  - minimal conversation list/thread shell
+  - `useAgentConversationHistory` and `useAgentEventStream` hooks for replay-first history/event loading
+- preserved the existing classic Agent path as the rollback/default behavior when the Director flag is off.
+- validation:
+  - `npx vitest --run src/flowCanvas/agent/CanvasAgentPanel.test.tsx src/flowCanvas/agent/useAgentConversationHistory.test.tsx src/flowCanvas/agent/useAgentEventStream.test.tsx`
+  - `npx vitest --run apps/api/test/agent.test.ts` currently skips in this workspace because the repo's DB-backed guard did not detect database env for local execution
+
+## 2026-06-24 - Canvas Director Agent Phase 2 Visible Activity Timeline
+
+- continued the approved Director rollout with the Phase 2 runtime-visibility slice so Agent turns no longer appear static while execution is happening.
+- backend executor now emits explicit user-visible status events during real tool execution:
+  - `thinking_status`
+  - `workflow_run_linked`
+  - existing `tool_started`, `approval_required`, `tool_result`, `turn_completed`, `turn_failed`
+- executor status flow now includes:
+  - immediate "Understanding request" signal at turn start
+  - "Creating task card" before tool execution
+  - workflow run linkage after launch so the UI can show that the model job is in flight
+- tool-runner results now return workflow linkage metadata alongside asset refs so frontend runtime cards can stay connected to the underlying workflow run.
+- frontend Agent session state now keeps a dedicated activity timeline in addition to the existing tool timeline.
+- added a new `CanvasAgentActivityTimeline` component and rendered it in the Agent panel so users can see ordered execution progress such as:
+  - understanding request
+  - submitting generation task
+  - waiting for parameter confirmation
+  - waiting for model result
+  - saving result
+  - completed / failed
+- validation:
+  - `npx vitest --run apps/api/test/agent-executor.test.ts src/flowCanvas/agent/canvasAgentToolEvents.test.ts src/flowCanvas/agent/useCanvasAgentSession.test.tsx src/flowCanvas/agent/CanvasAgentToolTimeline.test.tsx src/flowCanvas/agent/CanvasAgentActivityTimeline.test.tsx src/flowCanvas/agent/CanvasAgentPanel.test.tsx`
+  - `npm run build --workspace @aigc-flow/api`
+  - `npm run build`
+
+## 2026-06-24 - Canvas Director Agent Phase 3 Parameter Confirmation Slice
+
+- started the approved Phase 3 work for Director Agent image execution, focused on the first usable parameter-confirmation slice instead of jumping ahead into the full durable task engine.
+- added backend Agent image run-settings support:
+  - new `AgentRunSettingsService`
+  - `GET /api/v2/agent/run-settings/image`
+  - `GET /api/v2/agent/run-settings/image/estimate`
+- the new Agent run-settings response is intentionally user-facing only:
+  - exposes product model display names, route labels, size tiers, aspect-ratio options, and estimated credits
+  - does not expose provider/baseUrl/api key/upstream model/authorization internals
+- reused the existing AI model catalog and route pricing path so image routes stay aligned with the v2 AI Gateway catalog instead of introducing a second configuration source.
+- added the first Director parameter confirmation UI building block:
+  - `CanvasAgentParameterCard`
+  - route / size / aspect-ratio selection
+  - live credit updates from official route size tiers
+- connected approval-required Agent tool cards to lazily load image run settings and render the new parameter card shell instead of only showing a generic approval message.
+- completed the first end-to-end approval propagation path for image execution:
+  - frontend approval now submits confirmed `routeKey`, `routeLabel`, `size`, `aspectRatio`, and display-name settings
+  - backend approval resume flow now reapplies those user-confirmed values onto the pending `generate_image` tool call before re-estimating cost, rechecking policy, and launching generation
+- expanded the parameter confirmation card from single-model route switching into a multi-model selection surface:
+  - users can now switch between available image models inside the same Agent approval card
+  - selecting a different model resets to that model's default line and size context
+  - route choices and live credit totals now follow the currently selected model instead of staying locked to the first catalog model
+- split the Agent approval parameter surface by model family instead of forcing every model through one generic control layout:
+  - Nano Banana approval now uses the dedicated Nano Banana size/ratio panel
+  - GPT-Image-2 approval now uses the dedicated GPT-Image-2 panel with quality, output format, and moderation controls
+  - GPT-specific confirmation values are now preserved in frontend selection state and accepted by backend approval validation/executor override logic
+- extended approval override propagation to batch image execution:
+  - `generate_image_batch` tool arguments now accept the same user-facing route/model/size/aspect/quality fields as single-image execution
+  - when a batch task is resumed from approval, the confirmed settings are now applied uniformly to every batch image item before cost revalidation and execution
+- this remains an incremental Phase 3 slice rather than the full phase:
+  - image confirmation is now real and executable
+  - batch/image-edit/video-specific parameter confirmation still remains as later Phase 3 follow-up
+- validation:
+  - `npx vitest --run apps/api/test/agent-run-settings.test.ts apps/api/test/agent-executor.test.ts src/flowCanvas/agent/CanvasAgentPanel.test.tsx src/flowCanvas/agent/CanvasAgentParameterCard.test.tsx src/flowCanvas/agent/useCanvasAgentSession.test.tsx src/flowCanvas/agent/CanvasAgentActivityTimeline.test.tsx src/flowCanvas/agent/canvasAgentToolEvents.test.ts`
+  - `npm run build --workspace @aigc-flow/api`
+  - `npm run build`
+
+## 2026-06-24 - Canvas Director Agent Phase 3 Edit Image Approval Alignment
+
+- finished the next Phase 3 follow-up slice by wiring `edit_image` into the same approval override path as image generation instead of leaving it as a partial backend-only change.
+- backend executor, schema, registry, and runner support now treat `edit_image` as a first-class approval-resumable production tool:
+  - approved route/model/size/aspect/quality settings are reapplied before re-estimation and execution
+  - the tool still stays on the existing workflow/billing/asset pipeline instead of introducing a separate image-edit execution path
+- frontend session state now labels `edit_image` tool cards as explicit image-edit work instead of showing them as generic image-generation tasks, keeping the visible Agent activity closer to the real production action.
+- added regression coverage so edit-image approval tasks remain stable as later Phase 3 work continues.
+- validation:
+  - `npx vitest --run src/flowCanvas/agent/useCanvasAgentSession.test.tsx apps/api/test/agent-executor.test.ts apps/api/test/agent-run-settings.test.ts src/flowCanvas/agent/CanvasAgentParameterCard.test.tsx src/flowCanvas/agent/CanvasAgentPanel.test.tsx`
+  - `npm run build --workspace @aigc-flow/api`
+  - `npm run build`
+
+## 2026-06-24 - Canvas Director Agent Edit Image Reference-Aware Approval
+
+- extended the Phase 3 approval UX so `edit_image` tasks no longer hide their reference context during confirmation.
+- backend approval-required events now include a safe `referenceRefs` summary for image-edit and other reference-aware production tasks:
+  - only friendly reference IDs are exposed
+  - no provider internals, signed URLs, base64 payloads, or secret fields are returned
+- frontend Agent approval cards now render those reference refs directly inside the parameter confirmation card, making image-edit confirmations visibly tied to the source images the Agent is about to use.
+- this keeps the Agent panel closer to the expected production-director experience: users can now see both the paid parameters and the editing references before confirming credit spend.
+- validation:
+  - `npx vitest --run apps/api/test/agent-executor.test.ts src/flowCanvas/agent/canvasAgentToolEvents.test.ts src/flowCanvas/agent/CanvasAgentParameterCard.test.tsx src/flowCanvas/agent/useCanvasAgentSession.test.tsx`
+  - `npm run build --workspace @aigc-flow/api`
+  - `npm run build`
+
+## 2026-06-24 - Canvas Director Agent Task Summary Recall
+
+- extended the Agent task cards so confirmed production settings remain visible after approval and after the task completes.
+- successful or pending task cards now show a friendly execution summary built only from user-facing values:
+  - product model display name
+  - route label
+  - size and aspect ratio
+  - reference image count when reference refs were used
+- preserved the confirmed selection in `toolTimeline.estimate.currentSelection` through the post-approval execution flow, so users can still audit what settings were used after the card moves from approval into success/failure states.
+- this improves the replay/review value of the Agent panel without exposing `route_key`, provider names, upstream model names, or other admin/runtime internals.
+- validation:
+  - `npx vitest --run src/flowCanvas/agent/CanvasAgentToolTimeline.test.tsx src/flowCanvas/agent/useCanvasAgentSession.test.tsx src/flowCanvas/agent/CanvasAgentParameterCard.test.tsx src/flowCanvas/agent/CanvasAgentPanel.test.tsx`
+  - `npm run build`
+
+## 2026-06-24 - Canvas Director Agent Durable Task Identity In UI
+
+- started the Phase 4 transition by carrying the durable backend tool-call/task identity into the frontend Agent task timeline instead of leaving completed cards keyed only by ephemeral `toolCallKey`.
+- `tool_result` handling now preserves the persisted backend `toolCallId` as a visible `taskId` on the frontend timeline item.
+- Agent task cards now render that durable identifier as a small user-visible `Task ID` line, which makes it easier to correlate:
+  - frontend task cards
+  - backend replay/debug records
+  - later durable task/event restoration work
+- this keeps the current UI compatible with the upcoming fuller Phase 4 task engine while still avoiding provider/runtime secret leakage.
+- validation:
+  - `npx vitest --run src/flowCanvas/agent/CanvasAgentToolTimeline.test.tsx src/flowCanvas/agent/useCanvasAgentSession.test.tsx src/flowCanvas/agent/CanvasAgentParameterCard.test.tsx src/flowCanvas/agent/CanvasAgentPanel.test.tsx`
+  - `npm run build`
+
+## 2026-06-24 - Canvas Director Agent Task Created / Artifact Created Events
+
+- continued the Phase 4 transition by upgrading the executor event stream from a tool-only view toward a real task/event model.
+- backend executor streams now emit:
+  - `task_created` immediately after a persistent backend tool-call/task record exists
+  - `artifact_created` for each generated asset ref returned by the task
+- frontend SSE parsing and session state now understand those new events while remaining backward-compatible with the older `tool_started` / `tool_result` events.
+- the Agent task timeline now benefits from this in two ways:
+  - durable task identity is attached earlier in the run, not only after result parsing
+  - asset refs can appear as first-class task artifacts instead of being inferred only from the final result payload
+- this is still an incremental Phase 4 step, but it moves the Agent much closer to an event-sourced durable task engine.
+- validation:
+  - `npx vitest --run src/flowCanvas/agent/CanvasAgentToolTimeline.test.tsx src/flowCanvas/agent/useCanvasAgentSession.test.tsx src/flowCanvas/agent/CanvasAgentParameterCard.test.tsx src/flowCanvas/agent/CanvasAgentPanel.test.tsx src/flowCanvas/agent/canvasAgentToolEvents.test.ts apps/api/test/agent-executor.test.ts`
+  - `npm run build --workspace @aigc-flow/api`
+  - `npm run build`
+
 ## 2026-06-24 - Agent Production Tool Execution Alignment
 
 - tightened the real LLM Agent executor so production image requests must produce executable `generate_image` or `generate_image_batch` tool calls instead of returning advice-only text.
@@ -3223,3 +3378,45 @@ Validation completed:
 - This makes executor misconfiguration visible to the user instead of pretending that a real generation task was completed.
 - Validation:
   - `npm test -- src/flowCanvas/agent/useCanvasAgentSession.test.tsx apps/api/test/agent-production-intent.test.ts apps/api/test/agent.service.production-intent.test.ts`
+
+## 2026-06-24 - Agent Durable Task And Artifact Replay
+
+- Extended the Canvas Director Agent replay chain so executor-created task cards and generated artifact cards survive refresh/re-entry instead of only appearing in the live SSE stream.
+- Added `appendSessionEvent(...)` support in `AgentSessionRepository` for durable writes into `agent_task_events`.
+- Added `AgentEventService.appendToolEvent(...)` to normalize executor events into replay-safe persisted records:
+  - persist `tool_started`, `task_created`, `workflow_run_linked`, `artifact_created`, `tool_progress`, `tool_result`, `approval_required`, `turn_completed`, `turn_failed`
+  - intentionally skip transient `thinking_status` and `message_delta` so replay stays focused on durable production state
+- Wired executor and approval streaming in `AgentService` to persist each durable event before emitting it to the frontend stream.
+- Added regression coverage for event persistence mapping, especially durable `taskId` and `assetRef` replay.
+- Validation:
+  - `npx vitest --run apps/api/test/agent-event-service.test.ts apps/api/test/agent-executor.test.ts src/flowCanvas/agent/canvasAgentToolEvents.test.ts src/flowCanvas/agent/useCanvasAgentSession.test.tsx`
+  - `npm run build --workspace @aigc-flow/api`
+  - `npm run build`
+
+## 2026-06-24 - Agent Replay Restores Tool Cards
+
+- Extended the frontend Director replay path so reopening the Agent panel can restore visible task cards from durable session events instead of only showing a raw replay event list.
+- Added `src/flowCanvas/agent/agentReplayState.ts` to rebuild `CanvasAgentToolTimelineItem[]` from replay-safe session events such as `tool_started`, `task_created`, `artifact_created`, `approval_required`, and `tool_result`.
+- Updated `useCanvasAgentSession` with a replay hydration path so replayed task state uses the same task-card data shape as live execution.
+- Updated `CanvasAgentPanel` to auto-bind to the latest Agent session in Director mode when no in-memory session is active, then hydrate replayed task cards from the fetched session events.
+- Added regression coverage proving replay can restore a completed tool card with durable task id and generated asset label after refresh-like re-entry.
+- Validation:
+  - `npx vitest --run src/flowCanvas/agent/agentReplayState.test.ts src/flowCanvas/agent/CanvasAgentPanel.test.tsx src/flowCanvas/agent/useCanvasAgentSession.test.tsx src/flowCanvas/agent/useAgentEventStream.test.tsx`
+  - `npm run build --workspace @aigc-flow/api`
+  - `npm run build`
+
+## 2026-06-24 - Agent Replay Restores Approval And Failure State
+
+- Extended replay hydration so the Director panel now restores not only task cards, but also the latest session state derived from replay events.
+- Added replay-state derivation for:
+  - `awaiting_approval` when the latest durable step is `approval_required`
+  - `executing_tool` while durable task execution events are the latest state
+  - `error` plus replayed system message when the latest durable step is `turn_failed`
+  - `idle` after durable completion/result events
+- Updated `useCanvasAgentSession` replay hydration to restore `status`, `error`, and replayed system error messages alongside the rebuilt tool timeline.
+- Added regression coverage proving replay can rebuild:
+  - an approval card with stored estimate/reference info
+  - a failed task card with visible error text after refresh-like re-entry
+- Validation:
+  - `npx vitest --run src/flowCanvas/agent/agentReplayState.test.ts src/flowCanvas/agent/CanvasAgentPanel.test.tsx src/flowCanvas/agent/useCanvasAgentSession.test.tsx src/flowCanvas/agent/useAgentEventStream.test.tsx`
+  - `npm run build`
