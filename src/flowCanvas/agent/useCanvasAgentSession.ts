@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 
 import { V2HttpError } from "../../services/v2HttpClient";
+import { flushRemoteDraftBeforeRun } from "../runtime/remoteDraftSaveBarrier";
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
 import { buildCanvasAgentSnapshot } from "./canvasAgentSnapshot";
 import {
@@ -33,12 +34,52 @@ type ApplyResult = {
 
 type SessionStatus = "awaiting_approval" | "error" | "executing" | "executing_tool" | "idle" | "thinking";
 
+const DEFAULT_AGENT_IMAGE_ROUTE_KEY = "image.default";
+
 function createMessage(role: CanvasAgentMessage["role"], content: string): CanvasAgentMessage {
   return {
     content,
     id: `${role}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     role,
   };
+}
+
+function getAgentProductionNodePosition() {
+  const state = useFlowCanvasStore.getState();
+  return {
+    x: -state.viewport.x / state.viewport.zoom + 220,
+    y: -state.viewport.y / state.viewport.zoom + 180,
+  };
+}
+
+function prepareProductionImageTargetNode(prompt: string): string | null {
+  if (!isProductionImageAgentPrompt(prompt)) return null;
+  const state = useFlowCanvasStore.getState();
+  const selectedImage = state.nodes.find((node) => node.selected && node.data.kind === "image");
+  if (selectedImage) return selectedImage.id;
+
+  const firstImage = state.nodes.find((node) => node.data.kind === "image");
+  if (firstImage) {
+    state.selectNodesByIds([firstImage.id]);
+    return firstImage.id;
+  }
+
+  const node = state.addNode(
+    "image",
+    getAgentProductionNodePosition(),
+    {
+      agentMetadata: {
+        creationStage: "agent_auto_target",
+        productionLayer: "execution",
+      },
+      generationPrompt: prompt,
+      generationStatus: "idle",
+      routeKey: DEFAULT_AGENT_IMAGE_ROUTE_KEY,
+      title: "Agent 图片生成",
+    },
+    { selected: true },
+  );
+  return node.id;
 }
 
 export function useCanvasAgentSession() {
@@ -145,13 +186,18 @@ export function useCanvasAgentSession() {
 
     try {
       const state = useFlowCanvasStore.getState();
+      const preparedTargetNodeId = prepareProductionImageTargetNode(trimmed);
+      if (preparedTargetNodeId && requiresProductionExecutor) {
+        await flushRemoteDraftBeforeRun();
+      }
+      const latestState = useFlowCanvasStore.getState();
       const snapshot = buildCanvasAgentSnapshot({
-        edges: state.edges,
-        flowId: state.backendFlowId,
-        nodeOutputs: state.nodeOutputByNodeId,
-        nodes: state.nodes,
-        projectId: state.backendProjectId ?? state.projectId ?? null,
-        viewport: state.viewport,
+        edges: latestState.edges,
+        flowId: latestState.backendFlowId,
+        nodeOutputs: latestState.nodeOutputByNodeId,
+        nodes: latestState.nodes,
+        projectId: latestState.backendProjectId ?? latestState.projectId ?? null,
+        viewport: latestState.viewport,
       });
 
       let resolvedSessionId = sessionId;
@@ -159,7 +205,7 @@ export function useCanvasAgentSession() {
         const session = await createAgentSession({
           flowId: state.backendFlowId,
           projectId: state.backendProjectId ?? state.projectId ?? null,
-          title: "Canvas Agent",
+          title: preparedTargetNodeId ? "Canvas Agent Production" : "Canvas Agent",
         });
         resolvedSessionId = session.id;
         setSessionId(session.id);

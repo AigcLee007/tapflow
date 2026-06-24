@@ -107,9 +107,38 @@ export function placeAgentGeneratedAssetsOnCanvas(input: {
   const state = useFlowCanvasStore.getState();
   const baseX = -state.viewport.x / state.viewport.zoom + 120;
   const baseY = -state.viewport.y / state.viewport.zoom + 160;
+  const reusableAgentTarget = state.nodes.find((node) =>
+    node.selected &&
+    node.data.kind === "image" &&
+    typeof node.data.assetId !== "string" &&
+    (node.data.agentMetadata as { creationStage?: unknown } | undefined)?.creationStage === "agent_auto_target",
+  );
 
   input.assets.forEach((asset, index) => {
     if (asset.kind !== "image") return;
+    if (index === 0 && reusableAgentTarget) {
+      useFlowCanvasStore.getState().updateNodeData(reusableAgentTarget.id, {
+        agent: {
+          sessionId: input.sessionId,
+          toolCallId: input.toolCallId,
+          turnId: input.turnId,
+        },
+        agentMetadata: {
+          ...(reusableAgentTarget.data.agentMetadata && typeof reusableAgentTarget.data.agentMetadata === "object"
+            ? reusableAgentTarget.data.agentMetadata
+            : {}),
+          creationStage: "agent_result",
+          productionLayer: "results",
+        },
+        assetId: asset.assetId,
+        generationStatus: "done",
+        promptSummary: asset.promptSummary,
+        status: "succeeded",
+        title: asset.label,
+      });
+      createdNodeIds.push(reusableAgentTarget.id);
+      return;
+    }
     const node = useFlowCanvasStore.getState().addNode(
       "image",
       { x: baseX + index * 340, y: baseY },

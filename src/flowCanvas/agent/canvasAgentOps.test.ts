@@ -76,4 +76,40 @@ describe("applyCanvasAgentOps", () => {
     });
     expect(JSON.stringify(node.data)).not.toMatch(/https?:\/\/|data:|blob:|base64/i);
   });
+
+  it("reuses a selected Agent auto target node for the first generated asset", () => {
+    const target = useFlowCanvasStore.getState().addNode(
+      "image",
+      { x: 0, y: 0 },
+      {
+        agentMetadata: { creationStage: "agent_auto_target", productionLayer: "execution" },
+        generationPrompt: "forest sports day",
+        title: "Agent 图片生成",
+      },
+      { selected: true },
+    );
+
+    const result = placeAgentGeneratedAssetsOnCanvas({
+      assets: [
+        {
+          assetId: "asset-1",
+          kind: "image",
+          label: "Round 1 image 1",
+          promptSummary: "forest sports day",
+          refId: "round-1-image-1",
+        },
+      ],
+      sessionId: "session-1",
+      toolCallId: "tool-1",
+      turnId: "turn-1",
+    });
+
+    expect(result.createdNodeIds).toEqual([target.id]);
+    expect(useFlowCanvasStore.getState().nodes).toHaveLength(1);
+    expect(useFlowCanvasStore.getState().nodes[0]?.data).toMatchObject({
+      assetId: "asset-1",
+      generationStatus: "done",
+      title: "Round 1 image 1",
+    });
+  });
 });

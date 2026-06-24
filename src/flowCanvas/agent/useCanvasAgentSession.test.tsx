@@ -2,6 +2,7 @@ import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { V2HttpError } from "../../services/v2HttpClient";
+import { registerRemoteDraftSaveBarrier, resetRemoteDraftSaveBarrierStateForTests } from "../runtime/remoteDraftSaveBarrier";
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
 import { useCanvasAgentSession } from "./useCanvasAgentSession";
 
@@ -29,6 +30,7 @@ vi.mock("./canvasAgentToolEvents", () => ({
 describe("useCanvasAgentSession", () => {
   beforeEach(() => {
     vi.unstubAllEnvs();
+    resetRemoteDraftSaveBarrierStateForTests();
     useFlowCanvasStore.getState().newProject();
     mockCreateAgentSession.mockReset();
     mockCreateAgentTurn.mockReset();
@@ -94,6 +96,98 @@ describe("useCanvasAgentSession", () => {
       }),
     ]);
     expect(result.current.messages.some((message) => message.content.includes("Done."))).toBe(true);
+  });
+
+  it("creates a runnable image node before sending an empty-canvas production prompt", async () => {
+    useFlowCanvasStore.getState().setBackendFlowBinding({
+      backendFlowId: "flow-1",
+      backendProjectId: "project-1",
+    });
+    mockCreateAgentSession.mockResolvedValue({ id: "session-1" });
+    mockExecuteAgentTurnStream.mockResolvedValue({ ok: true, status: 200 });
+    mockReadAgentToolEventStream.mockImplementation(async (_response, onEvent) => {
+      onEvent({ finalText: "Started.", turnId: "turn-1", type: "turn_completed" });
+    });
+
+    const { result } = renderHook(() => useCanvasAgentSession());
+    await act(async () => {
+      await result.current.sendPrompt("给我生成一张动物运动会图片");
+    });
+
+    const createdNode = useFlowCanvasStore.getState().nodes[0]!;
+    expect(createdNode.data).toMatchObject({
+      generationPrompt: "给我生成一张动物运动会图片",
+      kind: "image",
+    });
+    expect(mockExecuteAgentTurnStream).toHaveBeenCalledWith(
+      "session-1",
+      expect.objectContaining({
+        snapshot: expect.objectContaining({
+          flowId: "flow-1",
+          nodes: [expect.objectContaining({
+            id: createdNode.id,
+            kind: "image",
+            selected: true,
+          })],
+          selectedNodeIds: [createdNode.id],
+        }),
+      }),
+    );
+  });
+
+  it("flushes the remote draft before executing an auto-created Agent target node", async () => {
+    useFlowCanvasStore.getState().setBackendFlowBinding({
+      backendFlowId: "flow-1",
+      backendProjectId: "project-1",
+    });
+    const saveNow = vi.fn().mockResolvedValue(undefined);
+    registerRemoteDraftSaveBarrier(saveNow);
+    mockCreateAgentSession.mockResolvedValue({ id: "session-1" });
+    mockExecuteAgentTurnStream.mockResolvedValue({ ok: true, status: 200 });
+    mockReadAgentToolEventStream.mockImplementation(async (_response, onEvent) => {
+      onEvent({ finalText: "Started.", turnId: "turn-1", type: "turn_completed" });
+    });
+
+    const { result } = renderHook(() => useCanvasAgentSession());
+    await act(async () => {
+      await result.current.sendPrompt("给我生成一张动物运动会图片");
+    });
+
+    expect(saveNow).toHaveBeenCalledTimes(1);
+    expect(mockExecuteAgentTurnStream).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not create an extra image node when a runnable image node already exists", async () => {
+    useFlowCanvasStore.getState().setBackendFlowBinding({
+      backendFlowId: "flow-1",
+      backendProjectId: "project-1",
+    });
+    const existing = useFlowCanvasStore.getState().addNode(
+      "image",
+      { x: 0, y: 0 },
+      { generationPrompt: "old", title: "Existing Image" },
+      { selected: true },
+    );
+    mockCreateAgentSession.mockResolvedValue({ id: "session-1" });
+    mockExecuteAgentTurnStream.mockResolvedValue({ ok: true, status: 200 });
+    mockReadAgentToolEventStream.mockImplementation(async (_response, onEvent) => {
+      onEvent({ finalText: "Started.", turnId: "turn-1", type: "turn_completed" });
+    });
+
+    const { result } = renderHook(() => useCanvasAgentSession());
+    await act(async () => {
+      await result.current.sendPrompt("给我生成一张动物运动会图片");
+    });
+
+    expect(useFlowCanvasStore.getState().nodes).toHaveLength(1);
+    expect(mockExecuteAgentTurnStream).toHaveBeenCalledWith(
+      "session-1",
+      expect.objectContaining({
+        snapshot: expect.objectContaining({
+          selectedNodeIds: [existing.id],
+        }),
+      }),
+    );
   });
 
   it("approves a pending tool call through the backend resume stream", async () => {
