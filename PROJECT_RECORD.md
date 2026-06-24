@@ -118,6 +118,39 @@ Maintainers: project team + Codex sessions
 ## 2026-06-24 - Canvas Director Agent Task Summary Recall
 
 - extended the Agent task cards so confirmed production settings remain visible after approval and after the task completes.
+
+## 2026-06-25 - Agent Multi-Result Continuation Selection
+
+- upgraded Agent continuation from single-result follow-up to multi-result selection so users can combine multiple historical outputs into the next turn instead of only switching one active result.
+- frontend continuation/task-card improvements:
+  - task cards now support selecting multiple generated results with clear `加入/已选` state
+  - continuation actions now adapt to multi-result context, for example `基于已选 2 张结果继续编辑`
+  - continuation payloads now carry:
+    - primary asset id / ref id / label for compatibility
+    - multi-result `assetIds`, `assetRefIds`, and `assetLabels`
+  - Agent thread continuation chips and composer prompts now use normalized Chinese copy instead of corrupted mojibake text
+- backend continuation/runtime improvements:
+  - `createAgentTurn` schema now accepts multi-result continuation arrays while remaining backward compatible with the original single-result fields
+  - executor approval pause/resume now persists and restores continuation context, preventing approved tool resumes from losing the selected history-result references
+  - tool runner now injects all selected continuation asset ids into image generation when explicit reference refs are absent
+- this slice keeps the current v2 Agent path stable while making multi-turn production work feel much closer to an actual director workflow: users can pick several prior results, continue from them, and preserve that context through execution/approval/resume.
+- validation:
+  - `npx vitest --run src/flowCanvas/agent/CanvasAgentToolTimeline.test.tsx src/flowCanvas/agent/useCanvasAgentSession.test.tsx apps/api/test/agent-tool-runner.test.ts apps/api/test/agent-executor.test.ts src/flowCanvas/agent/CanvasAgentThread.test.tsx src/flowCanvas/agent/CanvasAgentComposer.test.tsx src/flowCanvas/agent/CanvasAgentPanel.test.tsx`
+
+## 2026-06-25 - Agent Continuation Carry-Forward And Next-Step Guidance
+
+- deepened the new continuation workflow so a selected historical result set is no longer a one-shot action.
+- frontend session/runtime changes:
+  - added `lastContinuation` session state so the most recent selected continuation result set survives after the prompt is sent
+  - users can now continue sending follow-up requests against the same chosen result set without reselecting assets every time
+  - Agent panel now shows a lightweight `建议下一步` guidance banner whenever a continuation context is active, making it clearer that the next turn can keep using the selected historical outputs
+- replay/director stability:
+  - tightened the Director replay hydration guard so replay events are not re-applied in a loop while the same session remains active
+- user-facing outcome:
+  - the Agent now behaves less like a one-off prompt helper and more like a continuous production assistant that remembers which result group the user is currently iterating on
+- validation:
+  - `npx vitest --run src/flowCanvas/agent/useCanvasAgentSession.test.tsx src/flowCanvas/agent/CanvasAgentPanel.test.tsx`
+  - `npx vitest --run src/flowCanvas/agent/CanvasAgentToolTimeline.test.tsx src/flowCanvas/agent/useCanvasAgentSession.test.tsx apps/api/test/agent-tool-runner.test.ts apps/api/test/agent-executor.test.ts src/flowCanvas/agent/CanvasAgentThread.test.tsx src/flowCanvas/agent/CanvasAgentComposer.test.tsx src/flowCanvas/agent/CanvasAgentPanel.test.tsx`
 - successful or pending task cards now show a friendly execution summary built only from user-facing values:
   - product model display name
   - route label
@@ -3419,4 +3452,83 @@ Validation completed:
   - a failed task card with visible error text after refresh-like re-entry
 - Validation:
   - `npx vitest --run src/flowCanvas/agent/agentReplayState.test.ts src/flowCanvas/agent/CanvasAgentPanel.test.tsx src/flowCanvas/agent/useCanvasAgentSession.test.tsx src/flowCanvas/agent/useAgentEventStream.test.tsx`
+  - `npm run build`
+
+## 2026-06-24 - Multi-Turn Continuation Foundation
+
+- Extended the backend executor context so each new Agent turn now includes prior successful session asset refs in the model-facing execution context.
+- This gives the Agent brain durable, session-local knowledge of previous generated outputs such as `round-1-image-1`, enabling more natural continuation requests like "use the previous result" in later turns.
+- Added executor regression coverage proving previous successful session asset refs are injected into the next turn context.
+- Extended the frontend Agent panel/composer with a controlled draft path so follow-up prompts can be prefilled programmatically.
+- Added a first user-facing continuation shortcut on successful result cards:
+  - `Continue from result` now fills the composer with a continuation prompt containing the friendly result ref and prompt summary
+  - this creates the first direct "historical result -> current turn" bridge in the UI
+- Validation:
+  - `npx vitest --run apps/api/test/agent-executor.test.ts`
+  - `npx vitest --run src/flowCanvas/agent/CanvasAgentComposer.test.tsx src/flowCanvas/agent/CanvasAgentToolTimeline.test.tsx src/flowCanvas/agent/CanvasAgentPanel.test.tsx`
+  - `npm run build --workspace @aigc-flow/api`
+  - `npm run build`
+
+## 2026-06-24 - Multi-Turn Continuation Shortcuts And Composer Stabilization
+
+- Upgraded the first continuation bridge from a single generic result button into a more production-like follow-up action row on successful Agent result cards.
+- Successful result cards now expose four user-facing continuation shortcuts:
+  - `继续编辑`
+  - `做变体`
+  - `做海报`
+  - `做对比图`
+- Each shortcut now prefills the Agent composer with a different structured follow-up prompt built only from safe user-facing result data:
+  - result ref id
+  - friendly result label
+  - prompt summary when available
+- Stabilized the Director panel replay path while doing this work:
+  - cleaned the panel test suite structure
+  - narrowed replay effect dependencies to avoid self-triggered render loops during session binding/hydration
+  - normalized the composer placeholder and helper copy back to proper Chinese text
+- Validation:
+  - `npx vitest --run src/flowCanvas/agent/CanvasAgentPanel.test.tsx src/flowCanvas/agent/CanvasAgentToolTimeline.test.tsx src/flowCanvas/agent/CanvasAgentComposer.test.tsx src/flowCanvas/agent/useCanvasAgentSession.test.tsx`
+  - `npm run build`
+
+## 2026-06-24 - Structured Continuation Context Across Turns
+
+- Extended the continuation flow from a UI-only prompt prefill into a real structured turn context shared by frontend and backend.
+- Successful result follow-up actions now do two things together:
+  - prefill the composer with a continuation prompt
+  - store a structured continuation payload containing:
+    - continuation action
+    - source asset id
+    - source asset ref id
+    - friendly source label
+    - prompt summary
+- Frontend turn submission now sends that continuation payload with the next executor request instead of relying only on natural-language prompt text.
+- Backend executor now:
+  - stores the continuation payload on the persisted user message metadata
+  - injects it into the first-round model context as `activeContinuation`
+  - keeps the older `previousResults` session asset summary alongside this new active continuation layer
+- Agent thread UI now shows a small user-facing continuation chip above the follow-up user message so multi-turn conversations visibly explain which prior result the current turn is based on.
+- This brings the Agent closer to a production-director interaction model:
+  - historical result selection is now explicit
+  - turn-to-turn continuity is now auditable in both model context and UI
+  - no provider/baseUrl/route_key/upstream_model internals are exposed
+- Validation:
+  - `npx vitest --run apps/api/test/agent-executor.test.ts src/flowCanvas/agent/useCanvasAgentSession.test.tsx src/flowCanvas/agent/CanvasAgentThread.test.tsx src/flowCanvas/agent/CanvasAgentPanel.test.tsx src/flowCanvas/agent/CanvasAgentToolTimeline.test.tsx src/flowCanvas/agent/CanvasAgentComposer.test.tsx`
+  - `npm run build`
+
+## 2026-06-25 - Multi-Result Continuation Selection And Reference Injection
+
+- Extended continuation from a single implicit result to explicit per-result selection when one Agent task produces multiple assets.
+- Successful multi-result task cards now support:
+  - showing which result is the current continuation target
+  - switching the active result with `改用 <结果名>`
+  - using that chosen result in follow-up actions such as `基于 <结果名> 继续编辑`
+- Frontend session state now persists `activeAssetRefId` per tool card so the chosen continuation source survives card interactions instead of always falling back to the first asset.
+- Backend execution now uses continuation context more concretely:
+  - when a follow-up image execution does not include explicit `referenceRefs`, `AgentToolRunner` automatically injects the continuation asset id as the upstream reference input
+  - this makes “continue from chosen result” affect the real execution path, not only the visible prompt text
+- This moves the Agent another step closer to a production-director workflow:
+  - users can choose the exact prior result they want to build on
+  - that chosen result now feeds the actual generation call by default
+  - internal provider/baseUrl/route/upstream model data remains hidden
+- Validation:
+  - `npx vitest --run apps/api/test/agent-executor.test.ts apps/api/test/agent-tool-runner.test.ts src/flowCanvas/agent/useCanvasAgentSession.test.tsx src/flowCanvas/agent/CanvasAgentThread.test.tsx src/flowCanvas/agent/CanvasAgentPanel.test.tsx src/flowCanvas/agent/CanvasAgentToolTimeline.test.tsx src/flowCanvas/agent/CanvasAgentComposer.test.tsx`
   - `npm run build`

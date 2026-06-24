@@ -4,6 +4,7 @@ import type { Pool } from "pg";
 
 import type { ApiEnv } from "../../config/env.js";
 import { assertAgentOutputSafe } from "./agent-redaction.js";
+import type { AgentAssetReference } from "./agent-asset-references.js";
 import type { CanvasAgentSnapshotInput } from "./agent.schemas.js";
 import type { AgentCostEstimator } from "./agent-cost-estimator.js";
 import { buildAgentExecutorSystemPrompt, buildAgentExecutorToolRepairPrompt } from "./agent-executor-prompt.js";
@@ -35,6 +36,7 @@ type ExecutorRepository = {
   }): Promise<{ turnId: string }>;
   createUserMessage(input: {
     content: string;
+    metadata?: Record<string, unknown>;
     sessionId: string;
     tenantId: string;
   }): Promise<{ messageId: string }>;
@@ -54,10 +56,15 @@ type ExecutorRepository = {
     toolCallKey: string;
     turnId: string;
   }): Promise<{
+    continuationContext?: AgentExecutorTurnInput["continuationContext"];
     costEstimate: Record<string, unknown> | null;
     pendingToolCall: unknown;
     snapshot: CanvasAgentSnapshotInput;
   } | null>;
+  listSessionAssetRefs(input: {
+    sessionId: string;
+    tenantId: string;
+  }): Promise<AgentAssetReference[]>;
 };
 
 type TextRuntimeLike = Pick<DatabaseTextGenerationRuntime, "generateText">;
@@ -73,6 +80,16 @@ type AgentExecutorLimits = {
 };
 
 export type AgentExecutorTurnInput = {
+  continuationContext?: {
+    action: "compare" | "continue-edit" | "make-poster" | "make-variant";
+    assetId: string;
+    assetIds?: string[];
+    assetLabel: string;
+    assetLabels?: string[];
+    assetRefId: string;
+    assetRefIds?: string[];
+    promptSummary: string;
+  } | null;
   onEvent?: (event: AgentToolEvent) => void | Promise<void>;
   prompt: string;
   sessionId: string;
@@ -123,8 +140,13 @@ export class DatabaseAgentExecutorRepository implements ExecutorRepository {
     this.pool = options?.pool ?? createPgPool();
   }
 
-  async createUserMessage(input: { content: string; sessionId: string; tenantId: string }): Promise<{ messageId: string }> {
-    return this.insertMessage(input.tenantId, input.sessionId, "user", input.content);
+  async createUserMessage(input: {
+    content: string;
+    metadata?: Record<string, unknown>;
+    sessionId: string;
+    tenantId: string;
+  }): Promise<{ messageId: string }> {
+    return this.insertMessage(input.tenantId, input.sessionId, "user", input.content, input.metadata);
   }
 
   async createAssistantMessage(input: {
@@ -187,6 +209,7 @@ export class DatabaseAgentExecutorRepository implements ExecutorRepository {
     toolCallKey: string;
     turnId: string;
   }): Promise<{
+    continuationContext?: AgentExecutorTurnInput["continuationContext"];
     costEstimate: Record<string, unknown> | null;
     pendingToolCall: unknown;
     snapshot: CanvasAgentSnapshotInput;
@@ -215,12 +238,46 @@ export class DatabaseAgentExecutorRepository implements ExecutorRepository {
         : null;
       if (pendingKey !== input.toolCallKey) return null;
       return {
+        continuationContext:
+          row.plan_json?.continuationContext && typeof row.plan_json.continuationContext === "object"
+            ? row.plan_json.continuationContext as AgentExecutorTurnInput["continuationContext"]
+            : null,
         costEstimate: row.plan_json?.costEstimate && typeof row.plan_json.costEstimate === "object"
           ? row.plan_json.costEstimate as Record<string, unknown>
           : null,
         pendingToolCall,
         snapshot: row.snapshot_json,
       };
+    }, this.pool);
+  }
+
+  async listSessionAssetRefs(input: {
+    sessionId: string;
+    tenantId: string;
+  }): Promise<AgentAssetReference[]> {
+    return withTenantTransaction({ tenantId: input.tenantId, userId: null }, async (client) => {
+      const result = await client.query<{
+        asset_refs: AgentAssetReference[] | null;
+      }>(
+        `
+          SELECT result_json->'assetRefs' AS asset_refs
+          FROM agent_tool_calls
+          WHERE tenant_id = $1::uuid
+            AND session_id = $2::uuid
+            AND status = 'succeeded'
+            AND jsonb_typeof(result_json->'assetRefs') = 'array'
+          ORDER BY created_at ASC, id ASC
+        `,
+        [input.tenantId, input.sessionId],
+      );
+
+      return result.rows.flatMap((row) =>
+        Array.isArray(row.asset_refs)
+          ? row.asset_refs.filter((asset): asset is AgentAssetReference =>
+              Boolean(asset && typeof asset === "object" && typeof asset.assetId === "string" && typeof asset.refId === "string"),
+            )
+          : [],
+      );
     }, this.pool);
   }
 
@@ -272,6 +329,7 @@ export class AgentExecutorService {
   async executeTurn(context: RuntimeContext, input: AgentExecutorTurnInput): Promise<AgentExecutorTurnResult> {
     const userMessage = await this.options.repository.createUserMessage({
       content: input.prompt,
+      metadata: input.continuationContext ? { continuationContext: input.continuationContext } : undefined,
       sessionId: input.sessionId,
       tenantId: context.tenantId,
     });
@@ -282,11 +340,23 @@ export class AgentExecutorService {
       userMessageId: userMessage.messageId,
     });
     const toolResults: AgentToolRunResult[] = [];
+    const previousResults = await this.options.repository.listSessionAssetRefs({
+      sessionId: input.sessionId,
+      tenantId: context.tenantId,
+    });
     const requiresProductionTool = isProductionImageAgentPrompt(input.prompt);
     let repairedMissingToolCall = false;
     const messages = [
       { content: buildAgentExecutorSystemPrompt(getAgentToolRegistryForModel()), role: "system" as const },
-      { content: buildUserExecutorContext(input.prompt, input.snapshot), role: "user" as const },
+      {
+        content: buildUserExecutorContext(
+          input.prompt,
+          input.snapshot,
+          [],
+          input.continuationContext,
+        ),
+        role: "user" as const,
+      },
     ];
 
     try {
@@ -298,7 +368,21 @@ export class AgentExecutorService {
       for (let round = 0; round <= this.limits.maxToolRounds; round += 1) {
         const runtimeResult = await this.options.textRuntime.generateText(context, {
           maxTokens: 2500,
-          messages,
+          messages: round === 0
+            ? [
+                messages[0]!,
+                {
+                  content: buildUserExecutorContext(
+                    input.prompt,
+                    input.snapshot,
+                    previousResults,
+                    input.continuationContext,
+                  ),
+                  role: "user" as const,
+                },
+                ...messages.slice(2),
+              ]
+            : messages,
           routeKey: this.routeKey,
           temperature: 0.2,
         });
@@ -395,6 +479,7 @@ export class AgentExecutorService {
             await this.options.repository.markTurnSucceeded({
               planJson: {
                 approvalRequired: true,
+                continuationContext: input.continuationContext ?? null,
                 executor: true,
                 pendingToolCall: call,
                 costEstimate,
@@ -412,6 +497,7 @@ export class AgentExecutorService {
           }
           const result = await this.options.toolRunner.runToolCall(context, {
             call,
+            continuationContext: input.continuationContext,
             costEstimate,
             executionTarget: resolveExecutionTarget(input.snapshot),
             roundIndex: round + 1,
@@ -493,6 +579,7 @@ export class AgentExecutorService {
     await input.onEvent?.({ toolCallKey: call.toolCallKey, toolName: call.toolName, type: "tool_started" });
     const result = await this.options.toolRunner.runToolCall(context, {
       call,
+      continuationContext: pending.continuationContext ?? null,
       costEstimate,
       executionTarget: resolveExecutionTarget(pending.snapshot),
       roundIndex: 1,
@@ -616,14 +703,21 @@ function tryParseJsonObject(rawText: string): Record<string, unknown> | null {
   }
 }
 
-function buildUserExecutorContext(prompt: string, snapshot: CanvasAgentSnapshotInput): string {
+function buildUserExecutorContext(
+  prompt: string,
+  snapshot: CanvasAgentSnapshotInput,
+  previousResults: AgentAssetReference[] = [],
+  continuationContext?: AgentExecutorTurnInput["continuationContext"],
+): string {
   return JSON.stringify({
+    activeContinuation: continuationContext ?? null,
     canvas: {
       flowId: snapshot.flowId,
       nodeCount: snapshot.nodes.length,
       selectedNodeIds: snapshot.selectedNodeIds,
       targetNodeId: resolveExecutionTarget(snapshot).targetNodeId,
     },
+    previousResults,
     prompt,
   });
 }

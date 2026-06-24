@@ -8,8 +8,9 @@ import { CanvasAgentPlanCard } from "./CanvasAgentPlanCard";
 import { CanvasAgentTaskCard } from "./CanvasAgentTaskCard";
 import { CanvasAgentThread } from "./CanvasAgentThread";
 import { CanvasAgentToolTimeline } from "./CanvasAgentToolTimeline";
-import type { CanvasAgentPlannerOutput } from "./canvasAgentTypes";
 import { listAgentSessions } from "./canvasAgentApi";
+import type { CanvasAgentContinuationAction, CanvasAgentToolAssetRef } from "./canvasAgentToolTypes";
+import type { CanvasAgentPlannerOutput } from "./canvasAgentTypes";
 import { useAgentConversationHistory } from "./useAgentConversationHistory";
 import { useAgentEventStream } from "./useAgentEventStream";
 import { useCanvasAgentSession } from "./useCanvasAgentSession";
@@ -21,20 +22,47 @@ type ApplyResult = {
   ranNodeIds: string[];
 };
 
-function getStatusCopy(status: "awaiting_approval" | "error" | "executing" | "idle" | "thinking", usedOfflineFallback: boolean) {
+function getStatusCopy(
+  status: "awaiting_approval" | "error" | "executing" | "idle" | "thinking",
+  usedOfflineFallback: boolean,
+) {
   if (status === "thinking") {
-    return usedOfflineFallback ? "正在使用基础规划模式…" : "正在使用真实大模型理解画布并制定计划…";
+    return usedOfflineFallback ? "正在使用基础规划模式..." : "正在使用真实大模型理解画布并制定计划...";
   }
   if (status === "awaiting_approval") {
     return usedOfflineFallback ? "基础规划已生成，等待你确认。" : "真实 Agent 计划已生成，等待你确认。";
   }
   if (status === "executing") {
-    return "正在执行已确认的画布操作…";
+    return "正在执行已确认的画布操作...";
   }
   if (status === "error") {
     return usedOfflineFallback ? "基础规划执行失败。" : "真实大模型 Agent 调用失败。";
   }
   return usedOfflineFallback ? "当前处于基础规划模式。" : "由真实大模型负责规划，执行前仍由你确认。";
+}
+
+function buildContinuationPrompt(
+  asset: CanvasAgentToolAssetRef,
+  action: CanvasAgentContinuationAction,
+  assets?: CanvasAgentToolAssetRef[],
+) {
+  const selectedAssets = assets && assets.length > 0 ? assets : [asset];
+  const selectedSummary = selectedAssets.map((item) => item.label).join("、");
+  const promptHints = selectedAssets
+    .map((item) => item.promptSummary)
+    .filter((value) => value.trim().length > 0);
+  const promptSuffix = promptHints.length > 0 ? `参考描述：${promptHints.join("；")}` : "";
+
+  if (action === "continue-edit") {
+    return `基于这些结果继续编辑：${selectedSummary}。保留主体和核心构图，按当前目标继续深化。${promptSuffix}`.trim();
+  }
+  if (action === "make-variant") {
+    return `基于这些结果做高质量变体：${selectedSummary}。保持主题一致，但在细节、镜头、氛围上拉开差异。${promptSuffix}`.trim();
+  }
+  if (action === "make-poster") {
+    return `把这些结果升级成海报级成品：${selectedSummary}。强化视觉中心、留白、版式和广告感。${promptSuffix}`.trim();
+  }
+  return `基于这些结果生成一组对比图：${selectedSummary}。突出不同风格、构图或色彩方案。${promptSuffix}`.trim();
 }
 
 export function CanvasAgentPanel(props: {
@@ -43,10 +71,11 @@ export function CanvasAgentPanel(props: {
   onCreateOnlyPlan?: (plan: CanvasAgentPlannerOutput) => Promise<ApplyResult>;
   open: boolean;
 }) {
-  const session = useCanvasAgentSession();
+  const sessionActions = useCanvasAgentSession();
+  const [composerDraft, setComposerDraft] = React.useState("");
   const directorEnabled = import.meta.env.VITE_AGENT_DIRECTOR_ENABLED === "true";
-  const history = useAgentConversationHistory(session.sessionId);
-  const eventStream = useAgentEventStream(session.sessionId);
+  const history = useAgentConversationHistory(sessionActions.sessionId);
+  const eventStream = useAgentEventStream(sessionActions.sessionId);
   const [sessionList, setSessionList] = React.useState<Array<{
     createdAt: string;
     flowId: string | null;
@@ -56,72 +85,85 @@ export function CanvasAgentPanel(props: {
     title: string;
     updatedAt?: string;
   }>>([]);
+  const replayHydratedSessionIdRef = React.useRef<string | null>(null);
 
   if (!props.open) return null;
 
-  const busy = session.status === "thinking" || session.status === "executing";
-  const statusCopy = getStatusCopy(session.status, session.usedOfflineFallback);
+  const busy = sessionActions.status === "thinking" || sessionActions.status === "executing";
+  const statusCopy = getStatusCopy(sessionActions.status, sessionActions.usedOfflineFallback);
+  const activeContinuation = sessionActions.pendingContinuation ?? sessionActions.lastContinuation;
 
   React.useEffect(() => {
-    void listAgentSessions({ limit: 10 }).then((sessions) => {
-      setSessionList(sessions);
-      if (!directorEnabled || session.sessionId || sessions.length === 0) return;
-      session.setSessionId?.(sessions[0]!.id);
-    }).catch(() => setSessionList([]));
-  }, [directorEnabled, session]);
+    void listAgentSessions({ limit: 10 })
+      .then((sessions) => {
+        setSessionList(sessions);
+        if (!directorEnabled || sessionActions.sessionId || sessions.length === 0) return;
+        sessionActions.setSessionId?.(sessions[0]!.id);
+      })
+      .catch(() => setSessionList([]));
+  }, [directorEnabled, sessionActions.sessionId, sessionActions.setSessionId]);
 
   React.useEffect(() => {
-    if (!session.sessionId || !directorEnabled) return;
+    if (!sessionActions.sessionId || !directorEnabled) return;
     void history.refresh();
     void eventStream.connect().catch(() => {});
-  }, [directorEnabled, eventStream, history, session.sessionId]);
+  }, [directorEnabled, eventStream, history, sessionActions.sessionId]);
 
   React.useEffect(() => {
     if (!directorEnabled) return;
+    if (!sessionActions.sessionId) return;
     if (eventStream.events.length === 0) return;
-    session.hydrateReplayEvents(eventStream.events);
-  }, [directorEnabled, eventStream.events, session]);
+    if (replayHydratedSessionIdRef.current === sessionActions.sessionId) return;
+    sessionActions.hydrateReplayEvents(eventStream.events);
+    replayHydratedSessionIdRef.current = sessionActions.sessionId;
+  }, [directorEnabled, eventStream.events, sessionActions.hydrateReplayEvents, sessionActions.sessionId]);
+
+  React.useEffect(() => {
+    if (replayHydratedSessionIdRef.current && replayHydratedSessionIdRef.current !== sessionActions.sessionId) {
+      replayHydratedSessionIdRef.current = null;
+    }
+  }, [sessionActions.sessionId]);
 
   return (
     <aside
       className="nodrag nopan nowheel"
       style={{
-        position: "absolute",
-        top: 14,
-        right: 14,
-        bottom: 14,
-        width: "min(480px, calc(100vw - 28px))",
-        borderRadius: 24,
-        border: "1px solid rgba(255,255,255,0.08)",
-        background: "rgba(10,10,15,0.97)",
-        boxShadow: "0 26px 80px rgba(0,0,0,0.5)",
         backdropFilter: "blur(18px)",
-        zIndex: 80,
+        background: "rgba(10,10,15,0.97)",
+        border: "1px solid rgba(255,255,255,0.08)",
+        borderRadius: 24,
+        bottom: 14,
+        boxShadow: "0 26px 80px rgba(0,0,0,0.5)",
         display: "grid",
         gridTemplateRows: "auto 1fr auto",
         overflow: "hidden",
+        position: "absolute",
+        right: 14,
+        top: 14,
+        width: "min(480px, calc(100vw - 28px))",
+        zIndex: 80,
       }}
     >
       <header
         style={{
-          padding: "16px 16px 14px",
+          alignItems: "center",
           borderBottom: "1px solid rgba(255,255,255,0.08)",
           display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
           gap: 12,
+          justifyContent: "space-between",
+          padding: "16px 16px 14px",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ alignItems: "center", display: "flex", gap: 12 }}>
           <div
             style={{
-              width: 36,
-              height: 36,
-              borderRadius: 18,
               background: "rgba(255,255,255,0.08)",
-              display: "grid",
-              placeItems: "center",
+              borderRadius: 18,
               color: "#f8fafc",
+              display: "grid",
+              height: 36,
+              placeItems: "center",
+              width: 36,
             }}
           >
             <Bot size={18} />
@@ -138,15 +180,15 @@ export function CanvasAgentPanel(props: {
           aria-label="关闭 Agent"
           onClick={props.onClose}
           style={{
-            width: 34,
-            height: 34,
-            borderRadius: 17,
-            border: "1px solid rgba(255,255,255,0.08)",
             background: "transparent",
+            border: "1px solid rgba(255,255,255,0.08)",
+            borderRadius: 17,
             color: "#f8fafc",
             cursor: "pointer",
             display: "grid",
+            height: 34,
             placeItems: "center",
+            width: 34,
           }}
           type="button"
         >
@@ -154,20 +196,20 @@ export function CanvasAgentPanel(props: {
         </button>
       </header>
 
-      <div style={{ overflowY: "auto", padding: 16, display: "grid", gap: 14, alignContent: "start" }}>
+      <div style={{ alignContent: "start", display: "grid", gap: 14, overflowY: "auto", padding: 16 }}>
         {directorEnabled ? (
-          <CanvasAgentConversationList activeSessionId={session.sessionId} sessions={sessionList} />
+          <CanvasAgentConversationList activeSessionId={sessionActions.sessionId} sessions={sessionList} />
         ) : null}
 
-        {session.messages.length === 0 ? (
+        {sessionActions.messages.length === 0 ? (
           <section
             style={{
-              borderRadius: 18,
-              border: "1px solid rgba(255,255,255,0.08)",
               background: "rgba(255,255,255,0.03)",
-              padding: 16,
+              border: "1px solid rgba(255,255,255,0.08)",
+              borderRadius: 18,
               display: "grid",
               gap: 8,
+              padding: 16,
             }}
           >
             <div style={{ color: "#f8fafc", fontSize: 15, fontWeight: 800 }}>从一句目标开始</div>
@@ -179,43 +221,82 @@ export function CanvasAgentPanel(props: {
 
         <CanvasAgentThread
           events={directorEnabled ? eventStream.events : []}
-          messages={directorEnabled && history.messages.length > 0 ? history.messages : session.messages}
+          messages={directorEnabled && history.messages.length > 0 ? history.messages : sessionActions.messages}
         />
 
-        <CanvasAgentActivityTimeline items={session.activityTimeline ?? []} />
+        <CanvasAgentActivityTimeline items={sessionActions.activityTimeline ?? []} />
 
         <CanvasAgentToolTimeline
-          items={session.toolTimeline}
-          onApprove={session.approveToolCall}
-          onCancel={session.cancelToolCall}
-          onPlaceAssets={session.placeToolAssetsOnCanvas}
+          items={sessionActions.toolTimeline}
+          onApprove={sessionActions.approveToolCall}
+          onCancel={sessionActions.cancelToolCall}
+          onContinueFromAsset={(asset, action, assets) => {
+            const selectedAssets = assets && assets.length > 0 ? assets : [asset];
+            const continuation = {
+              action,
+              assetId: asset.assetId,
+              assetIds: selectedAssets.map((item) => item.assetId),
+              assetLabel: asset.label,
+              assetLabels: selectedAssets.map((item) => item.label),
+              assetRefId: asset.refId,
+              assetRefIds: selectedAssets.map((item) => item.refId),
+              promptSummary: asset.promptSummary,
+            };
+            setComposerDraft(buildContinuationPrompt(asset, action, selectedAssets));
+            sessionActions.setPendingContinuation?.(continuation);
+          }}
+          onPlaceAssets={sessionActions.placeToolAssetsOnCanvas}
+          onSelectAssetRef={sessionActions.selectToolAssetRef}
         />
 
-        {session.currentPlan ? (
+        {activeContinuation ? (
+          <section
+            style={{
+              background: "rgba(56,189,248,0.08)",
+              border: "1px solid rgba(56,189,248,0.2)",
+              borderRadius: 16,
+              display: "grid",
+              gap: 6,
+              padding: 12,
+            }}
+          >
+            <div style={{ color: "#bae6fd", fontSize: 12, fontWeight: 800 }}>建议下一步</div>
+            <div style={{ color: "#e0f2fe", fontSize: 12, lineHeight: 1.6 }}>
+              可以直接继续发送，沿用这组历史结果做下一步生产，不需要重新选择参考结果。
+            </div>
+          </section>
+        ) : null}
+
+        {sessionActions.currentPlan ? (
           <CanvasAgentPlanCard
             busy={busy}
-            onCancel={session.cancelCurrentPlan}
+            onCancel={sessionActions.cancelCurrentPlan}
             onConfirm={() => {
-              void session.executeCurrentPlan(props.onConfirmPlan);
+              void sessionActions.executeCurrentPlan(props.onConfirmPlan);
             }}
             onCreateOnly={
               props.onCreateOnlyPlan
                 ? () => {
-                    void session.executeCurrentPlan(props.onCreateOnlyPlan, { omitRunNode: true });
+                    void sessionActions.executeCurrentPlan(props.onCreateOnlyPlan, { omitRunNode: true });
                   }
                 : undefined
             }
-            plan={session.currentPlan}
+            plan={sessionActions.currentPlan}
           />
         ) : null}
 
-        {session.error ? <CanvasAgentTaskCard detail={session.error} status="error" title="最近一次执行失败" /> : null}
+        {sessionActions.error ? (
+          <CanvasAgentTaskCard detail={sessionActions.error} status="error" title="最近一次执行失败" />
+        ) : null}
       </div>
 
       <CanvasAgentComposer
         disabled={busy}
+        draftValue={composerDraft}
+        onChangeDraft={setComposerDraft}
         onSend={async (prompt) => {
-          await session.sendPrompt(prompt);
+          setComposerDraft("");
+          await sessionActions.sendPrompt(prompt);
         }}
       />
     </aside>

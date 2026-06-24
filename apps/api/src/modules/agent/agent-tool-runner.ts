@@ -17,6 +17,16 @@ export type AgentToolExecutionTarget = {
 
 export type AgentToolRunInput = {
   call: ParsedAgentToolCall;
+  continuationContext?: {
+    action: "compare" | "continue-edit" | "make-poster" | "make-variant";
+    assetId: string;
+    assetIds?: string[];
+    assetLabel: string;
+    assetLabels?: string[];
+    assetRefId: string;
+    assetRefIds?: string[];
+    promptSummary: string;
+  } | null;
   costEstimate?: AgentGenerationCostEstimate | null;
   executionTarget: AgentToolExecutionTarget;
   roundIndex: number;
@@ -285,10 +295,20 @@ export class AgentToolRunner {
     referenceRefs?: string[],
     batchIndex?: number,
   ): Promise<AgentImageWorkflowLaunchResult> {
+    const continuationReferenceAssetIds = Array.from(
+      new Set(
+        input.continuationContext?.assetIds?.filter((value): value is string => typeof value === "string" && value.length > 0)
+          ?? (input.continuationContext?.assetId ? [input.continuationContext.assetId] : []),
+      ),
+    );
+    const resolvedReferenceAssetIds =
+      referenceRefs && referenceRefs.length > 0
+        ? referenceRefs
+        : continuationReferenceAssetIds;
     return this.options.launcher.launchImageGeneration(context, {
       flowId: input.executionTarget.flowId,
       prompt,
-      referenceAssetIds: referenceRefs ?? [],
+      referenceAssetIds: resolvedReferenceAssetIds,
       roundIndex: input.roundIndex,
       size,
       targetNodeId: input.executionTarget.targetNodeId,

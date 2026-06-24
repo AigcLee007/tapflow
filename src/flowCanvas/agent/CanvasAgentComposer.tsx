@@ -1,48 +1,58 @@
 import React, { useState } from "react";
 
 export function CanvasAgentComposer(props: {
+  draftValue?: string;
+  onChangeDraft?: (value: string) => void;
   disabled?: boolean;
   onSend: (prompt: string) => Promise<void> | void;
 }) {
-  const [value, setValue] = useState("");
+  const [internalValue, setInternalValue] = useState("");
+  const value = props.draftValue ?? internalValue;
+
+  const updateValue = (nextValue: string) => {
+    props.onChangeDraft?.(nextValue);
+    if (props.draftValue === undefined) {
+      setInternalValue(nextValue);
+    }
+  };
 
   const handleSend = async () => {
     const prompt = value.trim();
     if (!prompt || props.disabled) return;
-    setValue("");
+    updateValue("");
     await props.onSend(prompt);
   };
 
   return (
     <div
       style={{
+        background: "rgba(10,10,15,0.96)",
+        borderTop: "1px solid rgba(255,255,255,0.08)",
         display: "grid",
         gap: 10,
         padding: 14,
-        borderTop: "1px solid rgba(255,255,255,0.08)",
-        background: "rgba(10,10,15,0.96)",
       }}
     >
       <textarea
         disabled={props.disabled}
-        onChange={(event) => setValue(event.target.value)}
+        onChange={(event) => updateValue(event.target.value)}
         placeholder="描述你想完成的生产任务，或引用当前画布内容..."
         rows={4}
         style={{
-          width: "100%",
-          resize: "none",
-          borderRadius: 16,
-          border: "1px solid rgba(255,255,255,0.1)",
           background: "rgba(255,255,255,0.04)",
+          border: "1px solid rgba(255,255,255,0.1)",
+          borderRadius: 16,
           color: "#f8fafc",
-          padding: "12px 14px",
           fontSize: 14,
           lineHeight: 1.5,
           outline: "none",
+          padding: "12px 14px",
+          resize: "none",
+          width: "100%",
         }}
         value={value}
       />
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+      <div style={{ alignItems: "center", display: "flex", gap: 12, justifyContent: "space-between" }}>
         <div style={{ color: "rgba(226,232,240,0.62)", fontSize: 12 }}>
           Agent 会先生成计划，再由你确认执行。
         </div>
@@ -52,15 +62,15 @@ export function CanvasAgentComposer(props: {
             void handleSend();
           }}
           style={{
-            minWidth: 88,
-            height: 38,
-            borderRadius: 19,
-            border: "1px solid rgba(255,255,255,0.08)",
             background: props.disabled || !value.trim() ? "rgba(255,255,255,0.08)" : "#f8fafc",
+            border: "1px solid rgba(255,255,255,0.08)",
+            borderRadius: 19,
             color: props.disabled || !value.trim() ? "rgba(248,250,252,0.55)" : "#09090f",
+            cursor: props.disabled || !value.trim() ? "not-allowed" : "pointer",
             fontSize: 13,
             fontWeight: 800,
-            cursor: props.disabled || !value.trim() ? "not-allowed" : "pointer",
+            height: 38,
+            minWidth: 88,
           }}
           type="button"
         >

@@ -1,6 +1,6 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 
 import { CanvasAgentToolTimeline } from "./CanvasAgentToolTimeline";
 
@@ -60,5 +60,95 @@ describe("CanvasAgentToolTimeline", () => {
     expect(screen.getByText("Nano Banana Pro")).toBeTruthy();
     expect(screen.getByText("线路二（官方T3）")).toBeTruthy();
     expect(screen.getByText("4K · 16:9 · 2 references")).toBeTruthy();
+  });
+
+  it("allows continuing from a generated result", () => {
+    const onContinueFromAsset = vi.fn();
+    render(
+      <CanvasAgentToolTimeline
+        items={[
+          {
+            assetRefs: [{ assetId: "asset-1", kind: "image", label: "Round 1 image 1", promptSummary: "forest sports day", refId: "round-1-image-1" }],
+            status: "succeeded",
+            taskId: "tool-db-1",
+            title: "Image generation",
+            toolCallKey: "tool-1",
+            toolName: "generate_image",
+          },
+        ]}
+        onContinueFromAsset={onContinueFromAsset}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "继续编辑" }));
+    expect(onContinueFromAsset).toHaveBeenCalledWith(
+      expect.objectContaining({
+        assetId: "asset-1",
+        promptSummary: "forest sports day",
+        refId: "round-1-image-1",
+      }),
+      "continue-edit",
+      [expect.objectContaining({ assetId: "asset-1", refId: "round-1-image-1" })],
+    );
+  });
+
+  it("allows continuing from multiple chosen results when a task has multiple assets", () => {
+    const onContinueFromAsset = vi.fn();
+    function TestHarness() {
+      const [items, setItems] = React.useState([
+        {
+          activeAssetRefId: "round-1-image-2",
+          assetRefs: [
+            { assetId: "asset-1", kind: "image" as const, label: "Round 1 image 1", promptSummary: "forest sports day", refId: "round-1-image-1" },
+            { assetId: "asset-2", kind: "image" as const, label: "Round 1 image 2", promptSummary: "poster variant", refId: "round-1-image-2" },
+          ],
+          selectedAssetRefIds: ["round-1-image-2"],
+          status: "succeeded" as const,
+          taskId: "tool-db-2",
+          title: "Batch image generation",
+          toolCallKey: "tool-2",
+          toolName: "generate_image_batch",
+        },
+      ]);
+
+      return (
+        <CanvasAgentToolTimeline
+          items={items}
+          onContinueFromAsset={onContinueFromAsset}
+          onSelectAssetRef={(toolCallKey, refId) => {
+            setItems((current) =>
+              current.map((item) =>
+                item.toolCallKey !== toolCallKey
+                  ? item
+                  : {
+                      ...item,
+                      activeAssetRefId: refId,
+                      selectedAssetRefIds: item.selectedAssetRefIds?.includes(refId)
+                        ? item.selectedAssetRefIds
+                        : [...(item.selectedAssetRefIds ?? []), refId],
+                    },
+              ),
+            );
+          }}
+        />
+      );
+    }
+
+    render(<TestHarness />);
+
+    fireEvent.click(screen.getByRole("button", { name: "加入 Round 1 image 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "基于已选 2 张结果继续编辑" }));
+    expect(onContinueFromAsset).toHaveBeenCalledWith(
+      expect.objectContaining({
+        assetId: "asset-1",
+        promptSummary: "forest sports day",
+        refId: "round-1-image-1",
+      }),
+      "continue-edit",
+      [
+        expect.objectContaining({ assetId: "asset-1", refId: "round-1-image-1" }),
+        expect.objectContaining({ assetId: "asset-2", refId: "round-1-image-2" }),
+      ],
+    );
   });
 });

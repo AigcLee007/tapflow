@@ -2,12 +2,22 @@ import React from "react";
 
 import { CanvasAgentToolCard } from "./CanvasAgentToolCard";
 import type { AgentImageRunSettingsSelection } from "./agentRunSettings";
-import type { CanvasAgentToolTimelineItem } from "./canvasAgentToolTypes";
+import type {
+  CanvasAgentContinuationAction,
+  CanvasAgentToolAssetRef,
+  CanvasAgentToolTimelineItem,
+} from "./canvasAgentToolTypes";
 
 export function CanvasAgentToolTimeline(props: {
   items: CanvasAgentToolTimelineItem[];
   onApprove?: (toolCallKey: string, selection?: AgentImageRunSettingsSelection) => void;
   onCancel?: (toolCallKey: string) => void;
+  onContinueFromAsset?: (
+    asset: CanvasAgentToolAssetRef,
+    action: CanvasAgentContinuationAction,
+    assets?: CanvasAgentToolAssetRef[],
+  ) => void;
+  onSelectAssetRef?: (toolCallKey: string, refId: string) => void;
   onPlaceAssets?: (toolCallKey: string) => void;
 }) {
   if (props.items.length === 0) return null;
@@ -19,7 +29,9 @@ export function CanvasAgentToolTimeline(props: {
           key={item.toolCallKey}
           onApprove={props.onApprove}
           onCancel={props.onCancel}
+          onContinueFromAsset={props.onContinueFromAsset}
           onPlaceAssets={props.onPlaceAssets}
+          onSelectAssetRef={props.onSelectAssetRef}
         />
       ))}
     </section>

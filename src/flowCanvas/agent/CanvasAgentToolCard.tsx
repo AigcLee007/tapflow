@@ -2,7 +2,11 @@ import React from "react";
 
 import { CanvasAgentAssetRefStrip } from "./CanvasAgentAssetRefStrip";
 import { CanvasAgentParameterCard } from "./CanvasAgentParameterCard";
-import type { CanvasAgentToolTimelineItem } from "./canvasAgentToolTypes";
+import type {
+  CanvasAgentContinuationAction,
+  CanvasAgentToolAssetRef,
+  CanvasAgentToolTimelineItem,
+} from "./canvasAgentToolTypes";
 import type { AgentImageRunSettingsSelection } from "./agentRunSettings";
 
 function getStatusText(status: CanvasAgentToolTimelineItem["status"]) {
@@ -25,16 +29,44 @@ function buildRunSummary(item: CanvasAgentToolTimelineItem) {
   };
 }
 
+function getContinuationActions(): Array<{ key: CanvasAgentContinuationAction; label: string }> {
+  return [
+    { key: "continue-edit", label: "继续编辑" },
+    { key: "make-variant", label: "做变体" },
+    { key: "make-poster", label: "做海报" },
+    { key: "compare", label: "做对比图" },
+  ];
+}
+
 export function CanvasAgentToolCard(props: {
   item: CanvasAgentToolTimelineItem;
   onApprove?: (toolCallKey: string, selection?: AgentImageRunSettingsSelection) => void;
   onCancel?: (toolCallKey: string) => void;
+  onContinueFromAsset?: (
+    asset: CanvasAgentToolAssetRef,
+    action: CanvasAgentContinuationAction,
+    assets?: CanvasAgentToolAssetRef[],
+  ) => void;
+  onSelectAssetRef?: (toolCallKey: string, refId: string) => void;
   onPlaceAssets?: (toolCallKey: string) => void;
 }) {
-  const approval = props.item.status === "awaiting_approval";
-  const canPlaceAssets = props.item.status === "succeeded" && props.item.assetRefs.length > 0;
-  const approvalModels = props.item.estimate?.imageRunSettings ?? [];
-  const runSummary = buildRunSummary(props.item);
+  const { item } = props;
+  const approval = item.status === "awaiting_approval";
+  const canPlaceAssets = item.status === "succeeded" && item.assetRefs.length > 0;
+  const canContinue = item.status === "succeeded" && item.assetRefs.length > 0;
+  const approvalModels = item.estimate?.imageRunSettings ?? [];
+  const runSummary = buildRunSummary(item);
+  const primaryAsset = item.assetRefs.find((asset) => asset.refId === item.activeAssetRefId)
+    ?? item.assetRefs[item.assetRefs.length - 1]
+    ?? null;
+  const selectedAssetRefIds = item.selectedAssetRefIds?.length
+    ? item.selectedAssetRefIds
+    : primaryAsset
+      ? [primaryAsset.refId]
+      : [];
+  const selectedAssets = item.assetRefs.filter((asset) => selectedAssetRefIds.includes(asset.refId));
+  const effectiveAssets = selectedAssets.length > 0 ? selectedAssets : primaryAsset ? [primaryAsset] : [];
+
   return (
     <article
       style={{
@@ -48,13 +80,13 @@ export function CanvasAgentToolCard(props: {
     >
       <div style={{ alignItems: "center", display: "flex", justifyContent: "space-between", gap: 10 }}>
         <div>
-          <div style={{ color: "#f8fafc", fontSize: 13, fontWeight: 800 }}>{props.item.title}</div>
-          <div style={{ color: "#94a3b8", fontSize: 11 }}>{getStatusText(props.item.status)}</div>
+          <div style={{ color: "#f8fafc", fontSize: 13, fontWeight: 800 }}>{item.title}</div>
+          <div style={{ color: "#94a3b8", fontSize: 11 }}>{getStatusText(item.status)}</div>
         </div>
       </div>
-      {props.item.taskId ? (
-        <div style={{ color: "#64748b", fontSize: 11 }}>Task ID: {props.item.taskId}</div>
-      ) : null}
+
+      {item.taskId ? <div style={{ color: "#64748b", fontSize: 11 }}>Task ID: {item.taskId}</div> : null}
+
       {runSummary ? (
         <div style={{ display: "grid", gap: 4 }}>
           <div style={{ color: "#e2e8f0", fontSize: 12, fontWeight: 700 }}>{runSummary.model}</div>
@@ -65,30 +97,74 @@ export function CanvasAgentToolCard(props: {
           </div>
         </div>
       ) : null}
-      {props.item.estimate && approvalModels.length === 0 ? (
+
+      {item.estimate && approvalModels.length === 0 ? (
         <div style={{ color: "#facc15", fontSize: 12 }}>Estimated credits ready for confirmation.</div>
       ) : null}
-      <CanvasAgentAssetRefStrip assets={props.item.assetRefs} />
-      {props.item.error ? <div style={{ color: "#fb7185", fontSize: 12 }}>{props.item.error}</div> : null}
-      {props.item.placedNodeIds?.length ? (
-        <div style={{ color: "#86efac", fontSize: 12 }}>Placed on canvas.</div>
-      ) : null}
+
+      <div style={{ display: "grid", gap: 8 }}>
+        <CanvasAgentAssetRefStrip assets={item.assetRefs} />
+        {item.assetRefs.length > 1 ? (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {item.assetRefs.map((asset) => {
+              const selected = selectedAssetRefIds.includes(asset.refId);
+              return (
+                <button
+                  key={asset.refId}
+                  onClick={() => props.onSelectAssetRef?.(item.toolCallKey, asset.refId)}
+                  style={{
+                    background: selected ? "rgba(248,250,252,0.12)" : "transparent",
+                    border: selected ? "1px solid rgba(248,250,252,0.65)" : "1px solid rgba(148,163,184,0.22)",
+                    borderRadius: 999,
+                    color: "#e2e8f0",
+                    fontSize: 11,
+                    padding: "4px 8px",
+                  }}
+                  type="button"
+                >
+                  {selected ? `已选 ${asset.label}` : `加入 ${asset.label}`}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+      </div>
+
+      {item.error ? <div style={{ color: "#fb7185", fontSize: 12 }}>{item.error}</div> : null}
+      {item.placedNodeIds?.length ? <div style={{ color: "#86efac", fontSize: 12 }}>Placed on canvas.</div> : null}
+
       {approval && approvalModels.length > 0 ? (
         <CanvasAgentParameterCard
           models={approvalModels}
-          onCancel={() => props.onCancel?.(props.item.toolCallKey)}
-          onConfirm={(selection) => props.onApprove?.(props.item.toolCallKey, selection)}
-          referenceRefs={props.item.estimate?.referenceRefs}
+          onCancel={() => props.onCancel?.(item.toolCallKey)}
+          onConfirm={(selection) => props.onApprove?.(item.toolCallKey, selection)}
+          referenceRefs={item.estimate?.referenceRefs}
         />
       ) : null}
+
       {approval && approvalModels.length === 0 ? (
         <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={() => props.onApprove?.(props.item.toolCallKey)} type="button">Approve</button>
-          <button onClick={() => props.onCancel?.(props.item.toolCallKey)} type="button">Cancel</button>
+          <button onClick={() => props.onApprove?.(item.toolCallKey)} type="button">Approve</button>
+          <button onClick={() => props.onCancel?.(item.toolCallKey)} type="button">Cancel</button>
         </div>
       ) : null}
-      {canPlaceAssets && !props.item.placedNodeIds?.length ? (
-        <button onClick={() => props.onPlaceAssets?.(props.item.toolCallKey)} type="button">Place on canvas</button>
+
+      {canContinue && primaryAsset ? (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          {getContinuationActions().map((action) => (
+            <button
+              key={action.key}
+              onClick={() => props.onContinueFromAsset?.(primaryAsset, action.key, effectiveAssets)}
+              type="button"
+            >
+              {effectiveAssets.length > 1 ? `基于已选 ${effectiveAssets.length} 张结果${action.label}` : action.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {canPlaceAssets && !item.placedNodeIds?.length ? (
+        <button onClick={() => props.onPlaceAssets?.(item.toolCallKey)} type="button">Place on canvas</button>
       ) : null}
     </article>
   );

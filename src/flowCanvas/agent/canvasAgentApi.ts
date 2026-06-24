@@ -2,6 +2,7 @@ import { apiGet, apiPost, getStoredAccessToken } from "../../services/v2HttpClie
 
 import type { CanvasAgentPlannerOutput, CanvasAgentSnapshot } from "./canvasAgentTypes";
 import type { AgentImageRunSettingsResponse, AgentImageRunSettingsSelection } from "./agentRunSettings";
+import type { CanvasAgentContinuationAction } from "./canvasAgentToolTypes";
 
 export type AgentSessionView = {
   createdAt: string;
@@ -65,6 +66,17 @@ export type AgentImageRunSettingsEstimateResponse = {
   size: "1K" | "2K" | "4K";
 };
 
+export type AgentContinuationContext = {
+  action: CanvasAgentContinuationAction;
+  assetId: string;
+  assetIds?: string[];
+  assetLabel: string;
+  assetLabels?: string[];
+  assetRefId: string;
+  assetRefIds?: string[];
+  promptSummary: string;
+};
+
 export function createAgentSession(input: {
   flowId: string | null;
   projectId: string | null;
@@ -109,6 +121,7 @@ export function createAgentMessage(sessionId: string, input: {
 }
 
 export function createAgentTurn(sessionId: string, input: {
+  continuationContext?: AgentContinuationContext | null;
   prompt: string;
   snapshot: CanvasAgentSnapshot;
 }) {
@@ -131,6 +144,7 @@ export function estimateAgentImageRunSettings(input: {
 }
 
 export async function openAgentTurnStream(sessionId: string, input: {
+  continuationContext?: AgentContinuationContext | null;
   prompt: string;
   snapshot: CanvasAgentSnapshot;
 }) {
@@ -147,6 +161,7 @@ export async function openAgentTurnStream(sessionId: string, input: {
 }
 
 export async function executeAgentTurnStream(sessionId: string, input: {
+  continuationContext?: AgentContinuationContext | null;
   prompt: string;
   snapshot: CanvasAgentSnapshot;
 }) {

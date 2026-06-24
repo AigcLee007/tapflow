@@ -27,6 +27,19 @@ const snapshot = {
   viewport: { x: 0, y: 0, zoom: 1 },
 };
 
+function createExecutorRepository(overrides: Record<string, unknown> = {}) {
+  return {
+    createAssistantMessage: vi.fn(),
+    createTurn: vi.fn().mockResolvedValue({ turnId: "turn-1" }),
+    createUserMessage: vi.fn().mockResolvedValue({ messageId: "message-1" }),
+    listSessionAssetRefs: vi.fn().mockResolvedValue([]),
+    markTurnFailed: vi.fn(),
+    markTurnSucceeded: vi.fn(),
+    readPendingApproval: vi.fn(),
+    ...overrides,
+  };
+}
+
 describe("agent executor prompt and registry", () => {
   it("describes production tools without provider internals", () => {
     const prompt = buildAgentExecutorSystemPrompt(getAgentToolRegistryForModel());
@@ -43,14 +56,7 @@ describe("AgentExecutorService", () => {
         estimateGenerateImage: vi.fn(),
         estimateGenerateImageBatch: vi.fn(),
       },
-      repository: {
-        createAssistantMessage: vi.fn(),
-        createTurn: vi.fn().mockResolvedValue({ turnId: "turn-1" }),
-        createUserMessage: vi.fn().mockResolvedValue({ messageId: "message-1" }),
-        markTurnFailed: vi.fn(),
-        markTurnSucceeded: vi.fn(),
-        readPendingApproval: vi.fn(),
-      },
+      repository: createExecutorRepository(),
       textRuntime: {
         generateText: vi.fn().mockResolvedValue({ outputText: "I will first organize the production steps." }),
       },
@@ -105,14 +111,7 @@ describe("AgentExecutorService", () => {
         estimateGenerateImage: vi.fn().mockResolvedValue({ totalCredits: 4 }),
         estimateGenerateImageBatch: vi.fn(),
       },
-      repository: {
-        createAssistantMessage: vi.fn(),
-        createTurn: vi.fn().mockResolvedValue({ turnId: "turn-1" }),
-        createUserMessage: vi.fn().mockResolvedValue({ messageId: "message-1" }),
-        markTurnFailed: vi.fn(),
-        markTurnSucceeded: vi.fn(),
-        readPendingApproval: vi.fn(),
-      },
+      repository: createExecutorRepository(),
       textRuntime: { generateText },
       toolRunner,
     });
@@ -195,14 +194,7 @@ describe("AgentExecutorService", () => {
         estimateGenerateImage: vi.fn().mockResolvedValue({ totalCredits: 4 }),
         estimateGenerateImageBatch: vi.fn(),
       },
-      repository: {
-        createAssistantMessage: vi.fn(),
-        createTurn: vi.fn().mockResolvedValue({ turnId: "turn-1" }),
-        createUserMessage: vi.fn().mockResolvedValue({ messageId: "message-1" }),
-        markTurnFailed: vi.fn(),
-        markTurnSucceeded: vi.fn(),
-        readPendingApproval: vi.fn(),
-      },
+      repository: createExecutorRepository(),
       textRuntime: { generateText },
       toolRunner,
     });
@@ -224,14 +216,7 @@ describe("AgentExecutorService", () => {
     const toolRunner = {
       runToolCall: vi.fn(),
     };
-    const repository = {
-      createAssistantMessage: vi.fn(),
-      createTurn: vi.fn().mockResolvedValue({ turnId: "turn-1" }),
-      createUserMessage: vi.fn().mockResolvedValue({ messageId: "message-1" }),
-      markTurnFailed: vi.fn(),
-      markTurnSucceeded: vi.fn(),
-      readPendingApproval: vi.fn(),
-    };
+    const repository = createExecutorRepository();
     const executor = new AgentExecutorService({
       costEstimator: {
         estimateGenerateImage: vi.fn(),
@@ -267,14 +252,7 @@ describe("AgentExecutorService", () => {
         estimateGenerateImageBatch: vi.fn(),
       },
       limits: { maxToolRounds: 1 },
-      repository: {
-        createAssistantMessage: vi.fn(),
-        createTurn: vi.fn().mockResolvedValue({ turnId: "turn-1" }),
-        createUserMessage: vi.fn().mockResolvedValue({ messageId: "message-1" }),
-        markTurnFailed: vi.fn(),
-        markTurnSucceeded: vi.fn(),
-        readPendingApproval: vi.fn(),
-      },
+      repository: createExecutorRepository(),
       textRuntime: {
         generateText: vi.fn().mockResolvedValue({
           outputText: JSON.stringify({
@@ -313,14 +291,7 @@ describe("AgentExecutorService", () => {
         estimateGenerateImageBatch: vi.fn(),
       },
       limits: { requireApproval: true },
-      repository: {
-        createAssistantMessage: vi.fn(),
-        createTurn: vi.fn().mockResolvedValue({ turnId: "turn-1" }),
-        createUserMessage: vi.fn().mockResolvedValue({ messageId: "message-1" }),
-        markTurnFailed: vi.fn(),
-        markTurnSucceeded: vi.fn(),
-        readPendingApproval: vi.fn(),
-      },
+      repository: createExecutorRepository(),
       textRuntime: {
         generateText: vi.fn().mockResolvedValue({
           outputText: JSON.stringify({
@@ -367,12 +338,7 @@ describe("AgentExecutorService", () => {
         workflowRuns: [{ nodeRunId: "node-1", workflowRunId: "workflow-1" }],
       }),
     };
-    const repository = {
-      createAssistantMessage: vi.fn(),
-      createTurn: vi.fn().mockResolvedValue({ turnId: "turn-1" }),
-      createUserMessage: vi.fn().mockResolvedValue({ messageId: "message-1" }),
-      markTurnFailed: vi.fn(),
-      markTurnSucceeded: vi.fn(),
+    const repository = createExecutorRepository({
       readPendingApproval: vi.fn().mockResolvedValue({
         costEstimate: { totalCredits: 4 },
         pendingToolCall: {
@@ -382,7 +348,7 @@ describe("AgentExecutorService", () => {
         },
         snapshot,
       }),
-    };
+    });
     const executor = new AgentExecutorService({
       costEstimator: {
         estimateGenerateImage: vi.fn().mockResolvedValue({ totalCredits: 4 }),
@@ -446,12 +412,7 @@ describe("AgentExecutorService", () => {
         workflowRuns: [{ nodeRunId: "node-batch-1", workflowRunId: "workflow-batch-1" }],
       }),
     };
-    const repository = {
-      createAssistantMessage: vi.fn(),
-      createTurn: vi.fn().mockResolvedValue({ turnId: "turn-1" }),
-      createUserMessage: vi.fn().mockResolvedValue({ messageId: "message-1" }),
-      markTurnFailed: vi.fn(),
-      markTurnSucceeded: vi.fn(),
+    const repository = createExecutorRepository({
       readPendingApproval: vi.fn().mockResolvedValue({
         costEstimate: { totalCredits: 8 },
         pendingToolCall: {
@@ -467,7 +428,7 @@ describe("AgentExecutorService", () => {
         },
         snapshot,
       }),
-    };
+    });
     const executor = new AgentExecutorService({
       costEstimator: {
         estimateGenerateImage: vi.fn().mockResolvedValue({ totalCredits: 4 }),
@@ -529,12 +490,7 @@ describe("AgentExecutorService", () => {
         workflowRuns: [{ nodeRunId: "node-edit-1", workflowRunId: "workflow-edit-1" }],
       }),
     };
-    const repository = {
-      createAssistantMessage: vi.fn(),
-      createTurn: vi.fn().mockResolvedValue({ turnId: "turn-1" }),
-      createUserMessage: vi.fn().mockResolvedValue({ messageId: "message-1" }),
-      markTurnFailed: vi.fn(),
-      markTurnSucceeded: vi.fn(),
+    const repository = createExecutorRepository({
       readPendingApproval: vi.fn().mockResolvedValue({
         costEstimate: { totalCredits: 4 },
         pendingToolCall: {
@@ -548,7 +504,7 @@ describe("AgentExecutorService", () => {
         },
         snapshot,
       }),
-    };
+    });
     const executor = new AgentExecutorService({
       costEstimator: {
         estimateGenerateImage: vi.fn().mockResolvedValue({ totalCredits: 5 }),
@@ -600,14 +556,7 @@ describe("AgentExecutorService", () => {
         estimateGenerateImageBatch: vi.fn(),
       },
       limits: { allowImageEdit: true, requireApproval: true },
-      repository: {
-        createAssistantMessage: vi.fn(),
-        createTurn: vi.fn().mockResolvedValue({ turnId: "turn-1" }),
-        createUserMessage: vi.fn().mockResolvedValue({ messageId: "message-1" }),
-        markTurnFailed: vi.fn(),
-        markTurnSucceeded: vi.fn(),
-        readPendingApproval: vi.fn(),
-      },
+      repository: createExecutorRepository(),
       textRuntime: {
         generateText: vi.fn().mockResolvedValue({
           outputText: JSON.stringify({
@@ -645,5 +594,169 @@ describe("AgentExecutorService", () => {
       type: "approval_required",
     }));
     expect(toolRunner.runToolCall).not.toHaveBeenCalled();
+  });
+
+  it("injects previous successful session asset refs into the next executor turn context", async () => {
+    const generateText = vi
+      .fn()
+      .mockResolvedValueOnce({
+        outputText: JSON.stringify({
+          reply: "Continue from the last generated image.",
+          toolCalls: [
+            {
+              arguments: {
+                prompt: "Turn the previous output into a poster",
+                referenceRefs: ["round-1-image-1"],
+                size: "1K",
+              },
+              toolCallKey: "tool-call-1",
+              toolName: "edit_image",
+            },
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({
+        outputText: JSON.stringify({
+          reply: "Editing has started.",
+        }),
+      });
+    const repository = {
+      createAssistantMessage: vi.fn(),
+      createTurn: vi.fn().mockResolvedValue({ turnId: "turn-2" }),
+      createUserMessage: vi.fn().mockResolvedValue({ messageId: "message-2" }),
+      listSessionAssetRefs: vi.fn().mockResolvedValue([
+        {
+          assetId: "asset-1",
+          kind: "image",
+          label: "Round 1 image 1",
+          promptSummary: "forest sports day",
+          refId: "round-1-image-1",
+        },
+      ]),
+      markTurnFailed: vi.fn(),
+      markTurnSucceeded: vi.fn(),
+      readPendingApproval: vi.fn(),
+    };
+    const toolRunner = {
+      runToolCall: vi.fn().mockResolvedValue({
+        assetRefs: [{ assetId: "asset-edit-1", kind: "image", label: "Edited image 1", promptSummary: "", refId: "round-2-image-1" }],
+        failures: [],
+        status: "succeeded",
+        toolCallId: "tool-db-2",
+        workflowRunIds: ["workflow-2"],
+        workflowRuns: [{ nodeRunId: "node-2", workflowRunId: "workflow-2" }],
+      }),
+    };
+
+    const executor = new AgentExecutorService({
+      costEstimator: {
+        estimateGenerateImage: vi.fn().mockResolvedValue({ totalCredits: 5 }),
+        estimateGenerateImageBatch: vi.fn(),
+      },
+      limits: { allowImageEdit: true },
+      repository,
+      textRuntime: { generateText },
+      toolRunner,
+    });
+
+    await executor.executeTurn(context, {
+      prompt: "Use the last generated result and turn it into a poster",
+      sessionId: "session-1",
+      snapshot,
+    });
+
+    const contextPayload = JSON.parse(generateText.mock.calls[0]?.[1]?.messages?.[1]?.content ?? "{}");
+    expect(contextPayload.previousResults).toEqual([
+      expect.objectContaining({
+        assetId: "asset-1",
+        kind: "image",
+        label: "Round 1 image 1",
+        promptSummary: "forest sports day",
+        refId: "round-1-image-1",
+      }),
+    ]);
+    expect(repository.listSessionAssetRefs).toHaveBeenCalledWith({
+      sessionId: "session-1",
+      tenantId: "tenant-1",
+    });
+  });
+
+  it("injects active continuation context into the next executor turn and stores it on the user message", async () => {
+    const repository = createExecutorRepository();
+    const generateText = vi
+      .fn()
+      .mockResolvedValueOnce({
+        outputText: JSON.stringify({
+          reply: "Continue from the chosen result.",
+          toolCalls: [
+            {
+              arguments: {
+                prompt: "Turn the chosen result into a poster",
+                referenceRefs: ["round-1-image-1"],
+                size: "1K",
+              },
+              toolCallKey: "tool-call-1",
+              toolName: "edit_image",
+            },
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({
+        outputText: JSON.stringify({
+          reply: "Editing has started.",
+        }),
+      });
+    const toolRunner = {
+      runToolCall: vi.fn().mockResolvedValue({
+        assetRefs: [{ assetId: "asset-edit-1", kind: "image", label: "Edited image 1", promptSummary: "", refId: "round-2-image-1" }],
+        failures: [],
+        status: "succeeded",
+        toolCallId: "tool-db-2",
+        workflowRunIds: ["workflow-2"],
+        workflowRuns: [{ nodeRunId: "node-2", workflowRunId: "workflow-2" }],
+      }),
+    };
+    const executor = new AgentExecutorService({
+      costEstimator: {
+        estimateGenerateImage: vi.fn().mockResolvedValue({ totalCredits: 5 }),
+        estimateGenerateImageBatch: vi.fn(),
+      },
+      limits: { allowImageEdit: true },
+      repository,
+      textRuntime: { generateText },
+      toolRunner,
+    });
+
+    await executor.executeTurn(context, {
+      continuationContext: {
+        action: "make-poster",
+        assetLabel: "Round 1 image 1",
+        assetRefId: "round-1-image-1",
+        promptSummary: "forest sports day",
+      },
+      prompt: "Turn this result into a poster",
+      sessionId: "session-1",
+      snapshot,
+    });
+
+    const contextPayload = JSON.parse(generateText.mock.calls[0]?.[1]?.messages?.[1]?.content ?? "{}");
+    expect(contextPayload.activeContinuation).toEqual(
+      expect.objectContaining({
+        action: "make-poster",
+        assetLabel: "Round 1 image 1",
+        assetRefId: "round-1-image-1",
+        promptSummary: "forest sports day",
+      }),
+    );
+    expect(repository.createUserMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          continuationContext: expect.objectContaining({
+            action: "make-poster",
+            assetRefId: "round-1-image-1",
+          }),
+        }),
+      }),
+    );
   });
 });

@@ -70,6 +70,16 @@ export const createAgentSessionSchema = z.object({
 });
 
 export const createAgentTurnSchema = z.object({
+  continuationContext: z.object({
+    action: z.enum(["compare", "continue-edit", "make-poster", "make-variant"]),
+    assetId: z.string().trim().min(1).max(200),
+    assetIds: z.array(z.string().trim().min(1).max(200)).max(8).optional(),
+    assetLabel: z.string().trim().min(1).max(200),
+    assetLabels: z.array(z.string().trim().min(1).max(200)).max(8).optional(),
+    assetRefId: z.string().trim().min(1).max(200),
+    assetRefIds: z.array(z.string().trim().min(1).max(200)).max(8).optional(),
+    promptSummary: z.string().trim().max(2000),
+  }).nullable().optional(),
   prompt: z.string().trim().min(1).max(8000),
   snapshot: canvasAgentSnapshotSchema,
 });

@@ -5,30 +5,38 @@ import { flushRemoteDraftBeforeRun } from "../runtime/remoteDraftSaveBarrier";
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
 import { buildCanvasAgentSnapshot } from "./canvasAgentSnapshot";
 import {
+  type AgentContinuationContext,
+  type AgentSessionEvent,
   approveAgentToolCallStream,
   createAgentSession,
   createAgentTurn,
-  getAgentImageRunSettings,
   executeAgentTurnStream,
+  getAgentImageRunSettings,
   openAgentTurnStream,
   readAgentSseStream,
 } from "./canvasAgentApi";
 import type { CanvasAgentActivityItem } from "./CanvasAgentActivityTimeline";
-import { readAgentToolEventStream } from "./canvasAgentToolEvents";
 import type { AgentImageRunSettingsSelection } from "./agentRunSettings";
-import { buildReplayMessages, buildToolTimelineFromSessionEvents, deriveReplaySessionStatus } from "./agentReplayState";
-import type { CanvasAgentToolEvent, CanvasAgentToolTimelineItem } from "./canvasAgentToolTypes";
 import { placeAgentGeneratedAssetsOnCanvas } from "./canvasAgentOps";
 import { isProductionImageAgentPrompt } from "./canvasAgentProductionIntent";
-import { planOfflineCanvasAgentTurn } from "./offlineCanvasAgentPlanner";
 import type { CanvasAgentPlannerOutput } from "./canvasAgentTypes";
-import type { AgentSessionEvent } from "./canvasAgentApi";
+import { readAgentToolEventStream } from "./canvasAgentToolEvents";
+import type {
+  CanvasAgentContinuationAction,
+  CanvasAgentToolEvent,
+  CanvasAgentToolTimelineItem,
+} from "./canvasAgentToolTypes";
+import { buildReplayMessages, buildToolTimelineFromSessionEvents, deriveReplaySessionStatus } from "./agentReplayState";
+import { planOfflineCanvasAgentTurn } from "./offlineCanvasAgentPlanner";
 
 export type CanvasAgentMessage = {
   content: string;
   id: string;
+  metadata?: Record<string, unknown>;
   role: "assistant" | "system" | "user";
 };
+
+type PendingContinuation = AgentContinuationContext;
 
 type ApplyResult = {
   createdNodeIds: string[];
@@ -47,12 +55,24 @@ function getToolTitle(toolName: string) {
   return "Image generation";
 }
 
-function createMessage(role: CanvasAgentMessage["role"], content: string): CanvasAgentMessage {
+function createMessage(
+  role: CanvasAgentMessage["role"],
+  content: string,
+  metadata?: Record<string, unknown>,
+): CanvasAgentMessage {
   return {
     content,
     id: `${role}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    metadata,
     role,
   };
+}
+
+function getContinuationActionLabel(action: CanvasAgentContinuationAction) {
+  if (action === "continue-edit") return "继续编辑";
+  if (action === "make-variant") return "做变体";
+  if (action === "make-poster") return "做海报";
+  return "做对比图";
 }
 
 function getAgentProductionNodePosition() {
@@ -93,6 +113,23 @@ function prepareProductionImageTargetNode(prompt: string): string | null {
   return node.id;
 }
 
+function normalizeSelectedRefIds(item: CanvasAgentToolTimelineItem, nextRefId?: string) {
+  const current = item.selectedAssetRefIds?.length
+    ? item.selectedAssetRefIds
+    : item.activeAssetRefId
+      ? [item.activeAssetRefId]
+      : item.assetRefs[0]
+        ? [item.assetRefs[0].refId]
+        : [];
+
+  if (!nextRefId) return current;
+  if (current.includes(nextRefId)) {
+    const filtered = current.filter((refId) => refId !== nextRefId);
+    return filtered.length > 0 ? filtered : [nextRefId];
+  }
+  return [...current, nextRefId];
+}
+
 export function useCanvasAgentSession() {
   const [messages, setMessages] = useState<CanvasAgentMessage[]>([]);
   const [currentPlan, setCurrentPlan] = useState<CanvasAgentPlannerOutput | null>(null);
@@ -102,6 +139,8 @@ export function useCanvasAgentSession() {
   const [toolTimeline, setToolTimeline] = useState<CanvasAgentToolTimelineItem[]>([]);
   const [usedOfflineFallback, setUsedOfflineFallback] = useState(false);
   const [activityTimeline, setActivityTimeline] = useState<CanvasAgentActivityItem[]>([]);
+  const [pendingContinuation, setPendingContinuation] = useState<PendingContinuation | null>(null);
+  const [lastContinuation, setLastContinuation] = useState<PendingContinuation | null>(null);
 
   const appendActivity = useCallback((item: CanvasAgentActivityItem) => {
     setActivityTimeline((current) => [...current, item]);
@@ -135,9 +174,11 @@ export function useCanvasAgentSession() {
       setToolTimeline((current) => {
         const existing = current.find((item) => item.toolCallKey === event.toolCallKey);
         const nextItem: CanvasAgentToolTimelineItem = {
+          activeAssetRefId: existing?.activeAssetRefId,
           assetRefs: existing?.assetRefs ?? [],
           estimate: existing?.estimate,
           placedNodeIds: existing?.placedNodeIds,
+          selectedAssetRefIds: existing?.selectedAssetRefIds,
           status: "running",
           taskId: existing?.taskId,
           title: getToolTitle(event.toolName),
@@ -176,9 +217,12 @@ export function useCanvasAgentSession() {
       setToolTimeline((current) => current.map((item) => {
         if (item.toolCallKey !== event.toolCallKey) return item;
         const alreadyPresent = item.assetRefs.some((asset) => asset.refId === event.assetRef.refId);
+        const nextAssetRefs = alreadyPresent ? item.assetRefs : [...item.assetRefs, event.assetRef];
         return {
           ...item,
-          assetRefs: alreadyPresent ? item.assetRefs : [...item.assetRefs, event.assetRef],
+          activeAssetRefId: event.assetRef.refId,
+          assetRefs: nextAssetRefs,
+          selectedAssetRefIds: item.selectedAssetRefIds?.length ? item.selectedAssetRefIds : [event.assetRef.refId],
           taskId: event.taskId || item.taskId,
         };
       }));
@@ -242,10 +286,16 @@ export function useCanvasAgentSession() {
           : null;
         return {
           ...item,
+          activeAssetRefId: item.activeAssetRefId ?? assetRefs[assetRefs.length - 1]?.refId,
           assetRefs,
           estimate: item.estimate,
           placedNodeIds: placed?.createdNodeIds ?? item.placedNodeIds,
           result: event.result,
+          selectedAssetRefIds: item.selectedAssetRefIds?.length
+            ? item.selectedAssetRefIds
+            : assetRefs.length > 0
+              ? [assetRefs[0]!.refId]
+              : [],
           status: failed ? "failed" : "succeeded",
           taskId: typeof result.toolCallId === "string" ? result.toolCallId : item.taskId,
           turnId: item.turnId,
@@ -279,7 +329,7 @@ export function useCanvasAgentSession() {
       });
       setStatus("error");
     }
-  }, [appendActivity]);
+  }, [appendActivity, sessionId]);
 
   const hydrateReplayEvents = useCallback((events: AgentSessionEvent[]) => {
     setToolTimeline(buildToolTimelineFromSessionEvents(events));
@@ -301,7 +351,26 @@ export function useCanvasAgentSession() {
     setToolTimeline([]);
     setActivityTimeline([]);
     setStatus("thinking");
-    setMessages((current) => [...current, createMessage("user", trimmed)]);
+    const activeContinuation = pendingContinuation;
+    if (activeContinuation) {
+      setLastContinuation(activeContinuation);
+    }
+    setMessages((current) => [
+      ...current,
+      createMessage(
+        "user",
+        trimmed,
+        activeContinuation
+          ? {
+              continuationContext: {
+                ...activeContinuation,
+                actionLabel: getContinuationActionLabel(activeContinuation.action),
+              },
+            }
+          : undefined,
+      ),
+    ]);
+    setPendingContinuation(null);
     appendActivity({
       detail: "The Agent accepted the prompt and started working.",
       id: `request-${Date.now()}`,
@@ -340,24 +409,24 @@ export function useCanvasAgentSession() {
         setCurrentPlan(plan);
         setMessages((current) => [
           ...current,
-          createMessage(
-            "assistant",
-            usedOfflineFallback ? `[基础规划模式]\n${plan.reply}` : plan.reply,
-          ),
+          createMessage("assistant", usedOfflineFallback ? `[基础规划模式]\n${plan.reply}` : plan.reply),
         ]);
         setStatus("awaiting_approval");
       };
 
-      let streamFailedMessage: string | null = null;
       if (useStreaming && resolvedSessionId) {
         try {
-          const response = await executeAgentTurnStream(resolvedSessionId, { prompt: trimmed, snapshot });
+          const response = await executeAgentTurnStream(resolvedSessionId, {
+            continuationContext: activeContinuation,
+            prompt: trimmed,
+            snapshot,
+          });
           if (response.ok) {
             await readAgentToolEventStream(response, applyToolEvent);
             return;
           }
           if (requiresProductionExecutor) {
-            throw new Error("真实 Agent 执行器不可用，无法完成生成、对比或套图类生产任务。请先确认服务器已启用 Agent Executor、文本大脑模型和生图线路。");
+            throw new Error("真实 Agent 执行器不可用，无法完成生成、对比或套图类生产任务。请先确认服务器已启用 Agent Executor、文本大模型和生图线路。");
           }
           if (response.status !== 404 && response.status !== 503) {
             throw new V2HttpError({
@@ -366,17 +435,19 @@ export function useCanvasAgentSession() {
             });
           }
         } catch (executorError) {
-          streamFailedMessage = executorError instanceof Error ? executorError.message : String(executorError);
           if (requiresProductionExecutor) {
             throw executorError;
           }
         }
 
-        let receivedPlan = false;
         try {
-          const response = await openAgentTurnStream(resolvedSessionId, { prompt: trimmed, snapshot });
+          let receivedPlan = false;
+          const response = await openAgentTurnStream(resolvedSessionId, {
+            continuationContext: activeContinuation,
+            prompt: trimmed,
+            snapshot,
+          });
           if (!response.ok) {
-            streamFailedMessage = `Request failed with status ${response.status}`;
             throw new V2HttpError({
               message: `Request failed with status ${response.status}`,
               status: response.status,
@@ -399,13 +470,19 @@ export function useCanvasAgentSession() {
             return;
           }
         } catch (streamError) {
-          streamFailedMessage = streamError instanceof Error ? streamError.message : String(streamError);
+          if (!allowOfflineFallback && !(streamError instanceof V2HttpError && (streamError.status === 401 || streamError.status === 403))) {
+            // fall through to non-stream call
+          }
         }
       }
 
       if (resolvedSessionId) {
         try {
-          const plan = await createAgentTurn(resolvedSessionId, { prompt: trimmed, snapshot });
+          const plan = await createAgentTurn(resolvedSessionId, {
+            continuationContext: activeContinuation,
+            prompt: trimmed,
+            snapshot,
+          });
           applyPlan(plan);
           return;
         } catch (apiError) {
@@ -430,7 +507,7 @@ export function useCanvasAgentSession() {
       setMessages((current) => [...current, createMessage("system", message)]);
       setStatus("error");
     }
-  }, [sessionId]);
+  }, [appendActivity, applyToolEvent, pendingContinuation, sessionId, usedOfflineFallback]);
 
   const cancelCurrentPlan = useCallback(() => {
     setCurrentPlan(null);
@@ -503,6 +580,20 @@ export function useCanvasAgentSession() {
       : candidate));
   }, [sessionId, toolTimeline]);
 
+  const selectToolAssetRef = useCallback((toolCallKey: string, refId: string) => {
+    setToolTimeline((current) =>
+      current.map((candidate) =>
+        candidate.toolCallKey !== toolCallKey
+          ? candidate
+          : {
+              ...candidate,
+              activeAssetRefId: refId,
+              selectedAssetRefIds: normalizeSelectedRefIds(candidate, refId),
+            },
+      ),
+    );
+  }, []);
+
   const executeCurrentPlan = useCallback(
     async (
       executor: (plan: CanvasAgentPlannerOutput) => Promise<ApplyResult>,
@@ -545,23 +636,48 @@ export function useCanvasAgentSession() {
 
   return useMemo(
     () => ({
-      cancelCurrentPlan,
+      activityTimeline,
       approveToolCall,
+      cancelCurrentPlan,
       cancelToolCall,
       currentPlan,
       error,
       executeCurrentPlan,
       hydrateReplayEvents,
+      lastContinuation,
       messages,
-      activityTimeline,
+      pendingContinuation,
       placeToolAssetsOnCanvas,
+      selectToolAssetRef,
       sendPrompt,
       sessionId,
+      setPendingContinuation,
       setSessionId,
       status,
-      usedOfflineFallback,
       toolTimeline,
+      usedOfflineFallback,
     }),
-    [activityTimeline, approveToolCall, cancelCurrentPlan, cancelToolCall, currentPlan, error, executeCurrentPlan, hydrateReplayEvents, messages, placeToolAssetsOnCanvas, sendPrompt, sessionId, setSessionId, status, usedOfflineFallback, toolTimeline],
+    [
+      activityTimeline,
+      approveToolCall,
+      cancelCurrentPlan,
+      cancelToolCall,
+      currentPlan,
+      error,
+      executeCurrentPlan,
+      hydrateReplayEvents,
+      lastContinuation,
+      messages,
+      pendingContinuation,
+      placeToolAssetsOnCanvas,
+      selectToolAssetRef,
+      sendPrompt,
+      sessionId,
+      setPendingContinuation,
+      setSessionId,
+      status,
+      toolTimeline,
+      usedOfflineFallback,
+    ],
   );
 }

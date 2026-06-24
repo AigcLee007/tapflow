@@ -37,173 +37,24 @@ vi.mock("./canvasAgentToolEvents", async () => {
     ...actual,
     readAgentToolEventStream: vi.fn(),
   };
-  it("restores replayed tool cards for the latest session in director mode", async () => {
-    vi.stubEnv("VITE_AGENT_DIRECTOR_ENABLED", "true");
-    mockListAgentSessions.mockResolvedValue([
-      {
-        createdAt: "2026-06-24T00:00:00Z",
-        flowId: "flow-1",
-        id: "session-1",
-        projectId: "project-1",
-        title: "Recent Agent Session",
-        updatedAt: "2026-06-24T00:01:00Z",
-      },
-    ]);
-    mockGetAgentSessionHistory.mockResolvedValue({
-      messages: [
-        {
-          content: "Please generate a cover",
-          createdAt: "2026-06-24T00:00:00Z",
-          id: "m1",
-          role: "user",
-          sessionId: "session-1",
-        },
-      ],
-      session: {
-        createdAt: "2026-06-24T00:00:00Z",
-        flowId: "flow-1",
-        id: "session-1",
-        projectId: "project-1",
-        title: "Recent Agent Session",
-        updatedAt: "2026-06-24T00:01:00Z",
-      },
-      turns: [],
-    });
-    mockGetAgentSessionEvents.mockResolvedValue({
-      events: [
-        {
-          createdAt: "2026-06-24T00:00:01Z",
-          eventJson: { toolCallKey: "tool-1", toolName: "generate_image" },
-          eventType: "tool_started",
-          id: "e1",
-          seq: 1,
-          sessionId: "session-1",
-          taskId: null,
-          turnId: null,
-        },
-        {
-          createdAt: "2026-06-24T00:00:02Z",
-          eventJson: {
-            taskId: "task-1",
-            title: "Image generation",
-            toolCallKey: "tool-1",
-            toolName: "generate_image",
-          },
-          eventType: "task_created",
-          id: "e2",
-          seq: 2,
-          sessionId: "session-1",
-          taskId: "task-1",
-          turnId: null,
-        },
-        {
-          createdAt: "2026-06-24T00:00:03Z",
-          eventJson: {
-            result: {
-              assetRefs: [
-                {
-                  assetId: "asset-1",
-                  kind: "image",
-                  label: "Replay image",
-                  promptSummary: "",
-                  refId: "asset-ref-1",
-                },
-              ],
-              status: "succeeded",
-              toolCallId: "task-1",
-            },
-            toolCallKey: "tool-1",
-          },
-          eventType: "tool_result",
-          id: "e3",
-          seq: 3,
-          sessionId: "session-1",
-          taskId: "task-1",
-          turnId: null,
-        },
-      ],
-    });
-
-    render(<CanvasAgentPanel open onClose={vi.fn()} onConfirmPlan={vi.fn()} />);
-
-    expect(await screen.findByText("Task ID: task-1")).toBeTruthy();
-    expect(screen.getByText("Completed")).toBeTruthy();
-    expect(screen.getByText("Replay image")).toBeTruthy();
-  });
-
-  it("restores replayed approval and error states for the latest session", async () => {
-    vi.stubEnv("VITE_AGENT_DIRECTOR_ENABLED", "true");
-    mockListAgentSessions.mockResolvedValue([
-      {
-        createdAt: "2026-06-24T00:00:00Z",
-        flowId: "flow-1",
-        id: "session-1",
-        projectId: "project-1",
-        title: "Recent Agent Session",
-        updatedAt: "2026-06-24T00:01:00Z",
-      },
-    ]);
-    mockGetAgentSessionHistory.mockResolvedValue({
-      messages: [],
-      session: {
-        createdAt: "2026-06-24T00:00:00Z",
-        flowId: "flow-1",
-        id: "session-1",
-        projectId: "project-1",
-        title: "Recent Agent Session",
-        updatedAt: "2026-06-24T00:01:00Z",
-      },
-      turns: [],
-    });
-    mockGetAgentSessionEvents.mockResolvedValue({
-      events: [
-        {
-          createdAt: "2026-06-24T00:00:01Z",
-          eventJson: { toolCallKey: "tool-edit-1", toolName: "edit_image" },
-          eventType: "tool_started",
-          id: "r1",
-          seq: 1,
-          sessionId: "session-1",
-          taskId: null,
-          turnId: null,
-        },
-        {
-          createdAt: "2026-06-24T00:00:02Z",
-          eventJson: {
-            estimate: { referenceRefs: ["round-1-image-1"], totalCredits: 4 },
-            toolCallKey: "tool-edit-1",
-            turnId: "turn-1",
-          },
-          eventType: "approval_required",
-          id: "r2",
-          seq: 2,
-          sessionId: "session-1",
-          taskId: null,
-          turnId: "turn-1",
-        },
-        {
-          createdAt: "2026-06-24T00:00:03Z",
-          eventJson: {
-            code: "AGENT_EXECUTOR_FAILED",
-            message: "Provider timeout",
-            turnId: "turn-1",
-          },
-          eventType: "turn_failed",
-          id: "r3",
-          seq: 3,
-          sessionId: "session-1",
-          taskId: null,
-          turnId: "turn-1",
-        },
-      ],
-    });
-
-    render(<CanvasAgentPanel open onClose={vi.fn()} onConfirmPlan={vi.fn()} />);
-
-    expect(await screen.findByText("Failed")).toBeTruthy();
-    expect(screen.getAllByText("Provider timeout").length).toBeGreaterThan(0);
-  });
 });
+
+const composerPlaceholder = "描述你想完成的生产任务，或引用当前画布内容...";
+
+function buildSessionSummary() {
+  return {
+    createdAt: "2026-06-24T00:00:00Z",
+    flowId: "flow-1",
+    id: "session-1",
+    projectId: "project-1",
+    title: "Recent Agent Session",
+    updatedAt: "2026-06-24T00:01:00Z",
+  };
+}
+
+function renderPanel() {
+  return render(<CanvasAgentPanel open onClose={vi.fn()} onConfirmPlan={vi.fn()} />);
+}
 
 describe("CanvasAgentPanel", () => {
   beforeEach(() => {
@@ -273,7 +124,7 @@ describe("CanvasAgentPanel", () => {
     vi.stubEnv("VITE_AGENT_DIRECTOR_ENABLED", "false");
 
     await act(async () => {
-      render(<CanvasAgentPanel open onClose={vi.fn()} onConfirmPlan={vi.fn()} />);
+      renderPanel();
     });
 
     expect(screen.getByText("Classic Agent")).toBeTruthy();
@@ -283,7 +134,7 @@ describe("CanvasAgentPanel", () => {
     vi.stubEnv("VITE_AGENT_DIRECTOR_ENABLED", "true");
 
     await act(async () => {
-      render(<CanvasAgentPanel open onClose={vi.fn()} onConfirmPlan={vi.fn()} />);
+      renderPanel();
     });
 
     expect(screen.getByText("Director Runtime (preview)")).toBeTruthy();
@@ -299,7 +150,7 @@ describe("CanvasAgentPanel", () => {
 
     render(<CanvasAgentPanel open onClose={vi.fn()} onConfirmPlan={onConfirmPlan} />);
 
-    fireEvent.change(screen.getByPlaceholderText("描述你想完成的生产任务，或引用当前画布内容..."), {
+    fireEvent.change(screen.getByPlaceholderText(composerPlaceholder), {
       target: { value: "Help me create an image flow" },
     });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
@@ -312,9 +163,9 @@ describe("CanvasAgentPanel", () => {
   });
 
   it("clears the pending plan when cancel is clicked", async () => {
-    render(<CanvasAgentPanel open onClose={vi.fn()} onConfirmPlan={vi.fn()} />);
+    renderPanel();
 
-    fireEvent.change(screen.getByPlaceholderText("描述你想完成的生产任务，或引用当前画布内容..."), {
+    fireEvent.change(screen.getByPlaceholderText(composerPlaceholder), {
       target: { value: "Help me create an image flow" },
     });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
@@ -331,14 +182,261 @@ describe("CanvasAgentPanel", () => {
   it("surfaces a planner error when fallback is disabled", async () => {
     mockCreateAgentTurn.mockRejectedValue(new Error("Agent planner unavailable"));
 
-    render(<CanvasAgentPanel open onClose={vi.fn()} onConfirmPlan={vi.fn()} />);
+    renderPanel();
 
-    fireEvent.change(screen.getByPlaceholderText("描述你想完成的生产任务，或引用当前画布内容..."), {
+    fireEvent.change(screen.getByPlaceholderText(composerPlaceholder), {
       target: { value: "Help me create an image flow" },
     });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
 
     expect(await screen.findByText("最近一次执行失败")).toBeTruthy();
     expect(screen.getAllByText("Agent planner unavailable").length).toBeGreaterThan(0);
+  });
+
+  it("restores replayed tool cards for the latest session in director mode", async () => {
+    vi.stubEnv("VITE_AGENT_DIRECTOR_ENABLED", "true");
+    mockListAgentSessions.mockResolvedValue([buildSessionSummary()]);
+    mockGetAgentSessionHistory.mockResolvedValue({
+      messages: [
+        {
+          content: "Please generate a cover",
+          createdAt: "2026-06-24T00:00:00Z",
+          id: "m1",
+          role: "user",
+          sessionId: "session-1",
+        },
+      ],
+      session: buildSessionSummary(),
+      turns: [],
+    });
+    mockGetAgentSessionEvents.mockResolvedValue({
+      events: [
+        {
+          createdAt: "2026-06-24T00:00:01Z",
+          eventJson: { toolCallKey: "tool-1", toolName: "generate_image" },
+          eventType: "tool_started",
+          id: "e1",
+          seq: 1,
+          sessionId: "session-1",
+          taskId: null,
+          turnId: null,
+        },
+        {
+          createdAt: "2026-06-24T00:00:02Z",
+          eventJson: {
+            taskId: "task-1",
+            title: "Image generation",
+            toolCallKey: "tool-1",
+            toolName: "generate_image",
+          },
+          eventType: "task_created",
+          id: "e2",
+          seq: 2,
+          sessionId: "session-1",
+          taskId: "task-1",
+          turnId: null,
+        },
+        {
+          createdAt: "2026-06-24T00:00:03Z",
+          eventJson: {
+            result: {
+              assetRefs: [
+                {
+                  assetId: "asset-1",
+                  kind: "image",
+                  label: "Replay image",
+                  promptSummary: "",
+                  refId: "asset-ref-1",
+                },
+              ],
+              status: "succeeded",
+              toolCallId: "task-1",
+            },
+            toolCallKey: "tool-1",
+          },
+          eventType: "tool_result",
+          id: "e3",
+          seq: 3,
+          sessionId: "session-1",
+          taskId: "task-1",
+          turnId: null,
+        },
+      ],
+    });
+
+    renderPanel();
+
+    expect(await screen.findByText("Task ID: task-1")).toBeTruthy();
+    expect(screen.getByText("Completed")).toBeTruthy();
+    expect(screen.getByText("Replay image")).toBeTruthy();
+  });
+
+  it("restores replayed approval and error states for the latest session", async () => {
+    vi.stubEnv("VITE_AGENT_DIRECTOR_ENABLED", "true");
+    mockListAgentSessions.mockResolvedValue([buildSessionSummary()]);
+    mockGetAgentSessionHistory.mockResolvedValue({
+      messages: [],
+      session: buildSessionSummary(),
+      turns: [],
+    });
+    mockGetAgentSessionEvents.mockResolvedValue({
+      events: [
+        {
+          createdAt: "2026-06-24T00:00:01Z",
+          eventJson: { toolCallKey: "tool-edit-1", toolName: "edit_image" },
+          eventType: "tool_started",
+          id: "r1",
+          seq: 1,
+          sessionId: "session-1",
+          taskId: null,
+          turnId: null,
+        },
+        {
+          createdAt: "2026-06-24T00:00:02Z",
+          eventJson: {
+            estimate: { referenceRefs: ["round-1-image-1"], totalCredits: 4 },
+            toolCallKey: "tool-edit-1",
+            turnId: "turn-1",
+          },
+          eventType: "approval_required",
+          id: "r2",
+          seq: 2,
+          sessionId: "session-1",
+          taskId: null,
+          turnId: "turn-1",
+        },
+        {
+          createdAt: "2026-06-24T00:00:03Z",
+          eventJson: {
+            code: "AGENT_EXECUTOR_FAILED",
+            message: "Provider timeout",
+            turnId: "turn-1",
+          },
+          eventType: "turn_failed",
+          id: "r3",
+          seq: 3,
+          sessionId: "session-1",
+          taskId: null,
+          turnId: "turn-1",
+        },
+      ],
+    });
+
+    renderPanel();
+
+    expect(await screen.findByText("Failed")).toBeTruthy();
+    expect(screen.getAllByText("Provider timeout").length).toBeGreaterThan(0);
+  });
+
+  it("fills the composer with a continuation prompt from a replayed result", async () => {
+    vi.stubEnv("VITE_AGENT_DIRECTOR_ENABLED", "true");
+    mockListAgentSessions.mockResolvedValue([buildSessionSummary()]);
+    mockGetAgentSessionHistory.mockResolvedValue({
+      messages: [],
+      session: buildSessionSummary(),
+      turns: [],
+    });
+    mockGetAgentSessionEvents.mockResolvedValue({
+      events: [
+        {
+          createdAt: "2026-06-24T00:00:01Z",
+          eventJson: { toolCallKey: "tool-1", toolName: "generate_image" },
+          eventType: "tool_started",
+          id: "e1",
+          seq: 1,
+          sessionId: "session-1",
+          taskId: null,
+          turnId: null,
+        },
+        {
+          createdAt: "2026-06-24T00:00:02Z",
+          eventJson: {
+            result: {
+              assetRefs: [
+                {
+                  assetId: "asset-1",
+                  kind: "image",
+                  label: "Replay image",
+                  promptSummary: "forest sports day",
+                  refId: "round-1-image-1",
+                },
+              ],
+              status: "succeeded",
+              toolCallId: "task-1",
+            },
+            toolCallKey: "tool-1",
+          },
+          eventType: "tool_result",
+          id: "e2",
+          seq: 2,
+          sessionId: "session-1",
+          taskId: "task-1",
+          turnId: null,
+        },
+      ],
+    });
+
+    renderPanel();
+
+    fireEvent.click(await screen.findByRole("button", { name: "继续编辑" }));
+    await waitFor(() => {
+      expect((screen.getByPlaceholderText(composerPlaceholder) as HTMLTextAreaElement).value).toBe(
+        "基于这些结果继续编辑：Replay image。保留主体和核心构图，按当前目标继续深化。参考描述：forest sports day",
+      );
+    });
+  });
+
+  it("shows a next-step suggestion banner after choosing a continuation result", async () => {
+    vi.stubEnv("VITE_AGENT_DIRECTOR_ENABLED", "true");
+    mockListAgentSessions.mockResolvedValue([buildSessionSummary()]);
+    mockGetAgentSessionHistory.mockResolvedValue({
+      messages: [],
+      session: buildSessionSummary(),
+      turns: [],
+    });
+    mockGetAgentSessionEvents.mockResolvedValue({
+      events: [
+        {
+          createdAt: "2026-06-24T00:00:01Z",
+          eventJson: { toolCallKey: "tool-1", toolName: "generate_image" },
+          eventType: "tool_started",
+          id: "e1",
+          seq: 1,
+          sessionId: "session-1",
+          taskId: null,
+          turnId: null,
+        },
+        {
+          createdAt: "2026-06-24T00:00:02Z",
+          eventJson: {
+            result: {
+              assetRefs: [
+                {
+                  assetId: "asset-1",
+                  kind: "image",
+                  label: "Replay image",
+                  promptSummary: "forest sports day",
+                  refId: "round-1-image-1",
+                },
+              ],
+              status: "succeeded",
+              toolCallId: "task-1",
+            },
+            toolCallKey: "tool-1",
+          },
+          eventType: "tool_result",
+          id: "e2",
+          seq: 2,
+          sessionId: "session-1",
+          taskId: "task-1",
+          turnId: null,
+        },
+      ],
+    });
+
+    renderPanel();
+
+    fireEvent.click(await screen.findByRole("button", { name: "继续编辑" }));
+    expect(await screen.findByText("建议下一步")).toBeTruthy();
   });
 });

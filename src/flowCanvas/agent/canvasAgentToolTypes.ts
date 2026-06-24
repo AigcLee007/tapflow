@@ -17,12 +17,16 @@ export type CanvasAgentToolAssetRef = {
   width?: number;
 };
 
+export type CanvasAgentContinuationAction = "compare" | "continue-edit" | "make-poster" | "make-variant";
+
 export type CanvasAgentToolTimelineItem = {
+  activeAssetRefId?: string;
   assetRefs: CanvasAgentToolAssetRef[];
   error?: string;
   estimate?: CanvasAgentToolApprovalEstimate;
   placedNodeIds?: string[];
   result?: unknown;
+  selectedAssetRefIds?: string[];
   status: "awaiting_approval" | "failed" | "running" | "succeeded";
   taskId?: string;
   title: string;

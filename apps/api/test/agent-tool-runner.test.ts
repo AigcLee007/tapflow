@@ -230,4 +230,47 @@ describe("AgentToolRunner", () => {
     expect(result.failures).toHaveLength(1);
     expect(repository.updateToolCall).toHaveBeenLastCalledWith("tool-db-1", expect.objectContaining({ status: "succeeded" }));
   });
+
+  it("injects active continuation ref into image execution when explicit reference refs are missing", async () => {
+    const repository = {
+      createToolCall: vi.fn().mockResolvedValue({ id: "tool-db-3" }),
+      updateToolCall: vi.fn().mockResolvedValue(undefined),
+    };
+    const launcher = {
+      launchImageGeneration: vi.fn().mockResolvedValue({
+        assetRefs: [{ assetId: "asset-3", kind: "image", label: "Round 2 image 1", promptSummary: "", refId: "round-2-image-1" }],
+        nodeRunId: "node-run-3",
+        status: "succeeded",
+        workflowRunId: "run-3",
+      }),
+    };
+    const runner = new AgentToolRunner({ launcher, repository });
+
+    await runner.runToolCall(context, {
+      call: {
+        arguments: { prompt: "turn this into a poster", size: "1K" },
+        toolCallKey: "call-3",
+        toolName: "generate_image",
+      },
+      continuationContext: {
+        action: "make-poster",
+        assetId: "asset-previous",
+        assetLabel: "Round 1 image 2",
+        assetRefId: "round-1-image-2",
+        promptSummary: "poster variant",
+      },
+      executionTarget: { flowId: "flow-1", targetNodeId: "image-node-1" },
+      roundIndex: 2,
+      sessionId: "session-1",
+      turnId: "turn-2",
+    });
+
+    expect(launcher.launchImageGeneration).toHaveBeenCalledWith(
+      context,
+      expect.objectContaining({
+        prompt: "turn this into a poster",
+        referenceAssetIds: ["asset-previous"],
+      }),
+    );
+  });
 });

@@ -511,4 +511,124 @@ describe("useCanvasAgentSession", () => {
     expect(result.current.status).toBe("error");
     expect(result.current.error).toContain("真实 Agent 执行器");
   });
+
+  it("sends structured continuation context with the next prompt", async () => {
+    mockCreateAgentSession.mockResolvedValue({ id: "session-1" });
+    mockExecuteAgentTurnStream.mockResolvedValue({ ok: true, status: 200 });
+    mockReadAgentToolEventStream.mockImplementation(async (_response, onEvent) => {
+      onEvent({ finalText: "Done.", turnId: "turn-1", type: "turn_completed" });
+    });
+
+    const { result } = renderHook(() => useCanvasAgentSession());
+
+    await act(async () => {
+      result.current.setPendingContinuation?.({
+        action: "make-poster",
+        assetId: "asset-1",
+        assetLabel: "Round 1 image 1",
+        assetRefId: "round-1-image-1",
+        promptSummary: "forest sports day",
+      });
+    });
+
+    await act(async () => {
+      await result.current.sendPrompt("Turn this result into a poster");
+    });
+
+    expect(mockExecuteAgentTurnStream).toHaveBeenCalledWith(
+      "session-1",
+      expect.objectContaining({
+        continuationContext: expect.objectContaining({
+          action: "make-poster",
+          assetId: "asset-1",
+          assetLabel: "Round 1 image 1",
+          assetRefId: "round-1-image-1",
+          promptSummary: "forest sports day",
+        }),
+        prompt: "Turn this result into a poster",
+      }),
+    );
+    expect(result.current.pendingContinuation).toBeNull();
+  });
+
+  it("updates the active asset ref for a multi-result tool before continuation", async () => {
+    const { result } = renderHook(() => useCanvasAgentSession());
+
+    await act(async () => {
+      result.current.hydrateReplayEvents([
+        {
+          createdAt: "2026-06-24T00:00:01Z",
+          eventJson: { toolCallKey: "tool-1", toolName: "generate_image_batch" },
+          eventType: "tool_started",
+          id: "e1",
+          seq: 1,
+          sessionId: "session-1",
+          taskId: null,
+          turnId: null,
+        },
+        {
+          createdAt: "2026-06-24T00:00:02Z",
+          eventJson: {
+            result: {
+              assetRefs: [
+                { assetId: "asset-1", kind: "image", label: "Round 1 image 1", promptSummary: "forest sports day", refId: "round-1-image-1" },
+                { assetId: "asset-2", kind: "image", label: "Round 1 image 2", promptSummary: "poster variant", refId: "round-1-image-2" },
+              ],
+              status: "succeeded",
+              toolCallId: "tool-db-2",
+            },
+            toolCallKey: "tool-1",
+          },
+          eventType: "tool_result",
+          id: "e2",
+          seq: 2,
+          sessionId: "session-1",
+          taskId: "tool-db-2",
+          turnId: null,
+        },
+      ]);
+    });
+
+    await act(async () => {
+      result.current.selectToolAssetRef?.("tool-1", "round-1-image-2");
+    });
+
+    expect(result.current.toolTimeline[0]).toMatchObject({
+      activeAssetRefId: "round-1-image-2",
+    });
+  });
+
+  it("retains the last continuation context after sending so the next turn can reuse the same result set", async () => {
+    mockCreateAgentSession.mockResolvedValue({ id: "session-1" });
+    mockExecuteAgentTurnStream.mockResolvedValue({ ok: true, status: 200 });
+    mockReadAgentToolEventStream.mockImplementation(async (_response, onEvent) => {
+      onEvent({ finalText: "Done.", turnId: "turn-1", type: "turn_completed" });
+    });
+
+    const { result } = renderHook(() => useCanvasAgentSession());
+
+    await act(async () => {
+      result.current.setPendingContinuation?.({
+        action: "make-poster",
+        assetId: "asset-2",
+        assetIds: ["asset-1", "asset-2"],
+        assetLabel: "Round 1 image 2",
+        assetLabels: ["Round 1 image 1", "Round 1 image 2"],
+        assetRefId: "round-1-image-2",
+        assetRefIds: ["round-1-image-1", "round-1-image-2"],
+        promptSummary: "forest sports day",
+      });
+    });
+
+    await act(async () => {
+      await result.current.sendPrompt("Make this into a poster");
+    });
+
+    expect(result.current.pendingContinuation).toBeNull();
+    expect(result.current.lastContinuation).toMatchObject({
+      assetId: "asset-2",
+      assetIds: ["asset-1", "asset-2"],
+      assetRefIds: ["round-1-image-1", "round-1-image-2"],
+    });
+  });
 });
