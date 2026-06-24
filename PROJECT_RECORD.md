@@ -1,7 +1,17 @@
 ﻿# Project Record
 
-Last updated: 2026-06-21
+Last updated: 2026-06-24
 Maintainers: project team + Codex sessions
+
+## 2026-06-24 - Agent Production Tool Execution Alignment
+
+- tightened the real LLM Agent executor so production image requests must produce executable `generate_image` or `generate_image_batch` tool calls instead of returning advice-only text.
+- added a one-shot repair prompt modeled after the reference Agent workflow: if the text model forgets tool calls for an image production request, the executor asks for strict JSON tool output; if it still refuses, the turn fails closed instead of pretending to complete.
+- changed Agent workflow launching to wait for the backend workflow run to reach a terminal state before extracting generated asset references, avoiding "submitted but no asset returned" races.
+- made successful Agent tool results automatically place generated asset nodes on the canvas while preserving asset IDs as the source of truth and avoiding persisted URLs/base64.
+- validation:
+  - `npm run test --workspace @aigc-flow/api -- agent-executor.test.ts agent-tool-runner.test.ts agent-tool-policy.test.ts agent-tool-schemas.test.ts agent-production-intent.test.ts`
+  - `npm test -- src/flowCanvas/agent/useCanvasAgentSession.test.tsx src/flowCanvas/agent/canvasAgentOps.test.ts src/flowCanvas/agent/canvasAgentToolEvents.test.ts src/flowCanvas/agent/CanvasAgentToolTimeline.test.tsx`
 
 ## 2026-06-22 - Canvas Temporary Reference Chip Preview Ownership
 

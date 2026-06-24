@@ -6,7 +6,8 @@ import type { ApiEnv } from "../../config/env.js";
 import { assertAgentOutputSafe } from "./agent-redaction.js";
 import type { CanvasAgentSnapshotInput } from "./agent.schemas.js";
 import type { AgentCostEstimator } from "./agent-cost-estimator.js";
-import { buildAgentExecutorSystemPrompt } from "./agent-executor-prompt.js";
+import { buildAgentExecutorSystemPrompt, buildAgentExecutorToolRepairPrompt } from "./agent-executor-prompt.js";
+import { isProductionImageAgentPrompt } from "./agent-production-intent.js";
 import { buildAgentToolContinuationMessage } from "./agent-tool-context.js";
 import type { AgentToolEvent } from "./agent-tool-events.js";
 import { evaluateAgentToolPolicy } from "./agent-tool-policy.js";
@@ -270,6 +271,8 @@ export class AgentExecutorService {
       userMessageId: userMessage.messageId,
     });
     const toolResults: AgentToolRunResult[] = [];
+    const requiresProductionTool = isProductionImageAgentPrompt(input.prompt);
+    let repairedMissingToolCall = false;
     const messages = [
       { content: buildAgentExecutorSystemPrompt(getAgentToolRegistryForModel()), role: "system" as const },
       { content: buildUserExecutorContext(input.prompt, input.snapshot), role: "user" as const },
@@ -289,6 +292,24 @@ export class AgentExecutorService {
         }
         if (parsed.toolCalls.length === 0) {
           const finalText = parsed.reply || runtimeResult.outputText.trim();
+          if (requiresProductionTool && toolResults.length === 0) {
+            if (!repairedMissingToolCall) {
+              repairedMissingToolCall = true;
+              messages.push({
+                content: buildAgentExecutorToolRepairPrompt({
+                  assistantText: finalText,
+                  userPrompt: input.prompt,
+                }),
+                role: "user" as const,
+              });
+              continue;
+            }
+            throw new AgentExecutorError(
+              422,
+              "AGENT_EXECUTOR_REQUIRES_TOOL_CALL",
+              "Agent text model returned guidance instead of executable image generation tool calls.",
+            );
+          }
           assertAgentOutputSafe({ finalText, toolResults });
           await this.options.repository.createAssistantMessage({
             content: finalText,

@@ -170,6 +170,39 @@ describe("useCanvasAgentSession", () => {
     expect(result.current.toolTimeline[0]?.placedNodeIds).toHaveLength(1);
   });
 
+  it("automatically places successful generated assets onto the canvas", async () => {
+    mockCreateAgentSession.mockResolvedValue({ id: "session-1" });
+    mockExecuteAgentTurnStream.mockResolvedValue({ ok: true, status: 200 });
+    mockReadAgentToolEventStream.mockImplementation(async (_response, onEvent) => {
+      onEvent({ toolCallKey: "tool-1", toolName: "generate_image", type: "tool_started" });
+      onEvent({
+        result: {
+          assetRefs: [{ assetId: "asset-1", kind: "image", label: "Round 1 image 1", promptSummary: "forest", refId: "round-1-image-1" }],
+          status: "succeeded",
+          toolCallId: "tool-db-1",
+        },
+        toolCallKey: "tool-1",
+        type: "tool_result",
+      });
+      onEvent({ finalText: "Done.", turnId: "turn-1", type: "turn_completed" });
+    });
+
+    const { result } = renderHook(() => useCanvasAgentSession());
+    await act(async () => {
+      await result.current.sendPrompt("Generate an image");
+    });
+
+    const createdNode = useFlowCanvasStore.getState().nodes[0]!;
+    expect(createdNode.data).toMatchObject({
+      assetId: "asset-1",
+      title: "Round 1 image 1",
+    });
+    expect(result.current.toolTimeline[0]).toMatchObject({
+      placedNodeIds: [createdNode.id],
+      status: "succeeded",
+    });
+  });
+
   it("shows an error instead of silently falling back when offline fallback is not explicitly enabled", async () => {
     mockCreateAgentSession.mockResolvedValue({ id: "session-1" });
     mockOpenAgentTurnStream.mockResolvedValue({ ok: false, status: 503 });

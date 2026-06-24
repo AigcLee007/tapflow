@@ -126,6 +126,106 @@ describe("AgentExecutorService", () => {
     expect(JSON.stringify(result)).not.toMatch(/baseUrl|apiKey|Authorization|provider_key|upstream_model/);
   });
 
+  it("repairs a production image answer that forgot to call tools", async () => {
+    const generateText = vi
+      .fn()
+      .mockResolvedValueOnce({
+        outputText: "I can help you generate that image. Please confirm the style.",
+      })
+      .mockResolvedValueOnce({
+        outputText: JSON.stringify({
+          reply: "Starting image generation.",
+          toolCalls: [
+            {
+              arguments: { prompt: "forest sports day", size: "1K" },
+              toolCallKey: "tool-call-1",
+              toolName: "generate_image",
+            },
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({
+        outputText: JSON.stringify({
+          reply: "Image generation has started.",
+        }),
+      });
+    const toolRunner = {
+      runToolCall: vi.fn().mockResolvedValue({
+        assetRefs: [{ assetId: "asset-1", kind: "image", label: "Round 1 image 1", promptSummary: "", refId: "round-1-image-1" }],
+        failures: [],
+        status: "succeeded",
+        toolCallId: "tool-db-1",
+        workflowRunIds: ["workflow-1"],
+      }),
+    };
+    const executor = new AgentExecutorService({
+      costEstimator: {
+        estimateGenerateImage: vi.fn().mockResolvedValue({ totalCredits: 4 }),
+        estimateGenerateImageBatch: vi.fn(),
+      },
+      repository: {
+        createAssistantMessage: vi.fn(),
+        createTurn: vi.fn().mockResolvedValue({ turnId: "turn-1" }),
+        createUserMessage: vi.fn().mockResolvedValue({ messageId: "message-1" }),
+        markTurnFailed: vi.fn(),
+        markTurnSucceeded: vi.fn(),
+      },
+      textRuntime: { generateText },
+      toolRunner,
+    });
+
+    await executor.executeTurn(context, {
+      prompt: "Generate an image of a forest sports day",
+      sessionId: "session-1",
+      snapshot,
+    });
+
+    expect(generateText).toHaveBeenCalledTimes(3);
+    expect(generateText.mock.calls[1]?.[1].messages.some((message) =>
+      message.content.includes("must return toolCalls"),
+    )).toBe(true);
+    expect(toolRunner.runToolCall).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails a production image answer when repair still does not produce tools", async () => {
+    const toolRunner = {
+      runToolCall: vi.fn(),
+    };
+    const repository = {
+      createAssistantMessage: vi.fn(),
+      createTurn: vi.fn().mockResolvedValue({ turnId: "turn-1" }),
+      createUserMessage: vi.fn().mockResolvedValue({ messageId: "message-1" }),
+      markTurnFailed: vi.fn(),
+      markTurnSucceeded: vi.fn(),
+    };
+    const executor = new AgentExecutorService({
+      costEstimator: {
+        estimateGenerateImage: vi.fn(),
+        estimateGenerateImageBatch: vi.fn(),
+      },
+      repository,
+      textRuntime: {
+        generateText: vi
+          .fn()
+          .mockResolvedValueOnce({ outputText: "Sure, here is a suggested prompt." })
+          .mockResolvedValueOnce({ outputText: "Please add an image node first." }),
+      },
+      toolRunner,
+    });
+
+    await expect(executor.executeTurn(context, {
+      prompt: "Generate an image of a forest sports day",
+      sessionId: "session-1",
+      snapshot,
+    })).rejects.toMatchObject({
+      code: "AGENT_EXECUTOR_REQUIRES_TOOL_CALL",
+    });
+    expect(toolRunner.runToolCall).not.toHaveBeenCalled();
+    expect(repository.markTurnFailed).toHaveBeenCalledWith(expect.objectContaining({
+      error: expect.objectContaining({ code: "AGENT_EXECUTOR_REQUIRES_TOOL_CALL" }),
+    }));
+  });
+
   it("stops when max rounds is exceeded", async () => {
     const executor = new AgentExecutorService({
       costEstimator: {

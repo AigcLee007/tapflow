@@ -92,15 +92,26 @@ export function useCanvasAgentSession() {
         ? result.assetRefs as CanvasAgentToolTimelineItem["assetRefs"]
         : [];
       const failed = result.status === "failed";
-      setToolTimeline((current) => current.map((item) => item.toolCallKey === event.toolCallKey
-        ? {
-            ...item,
-            assetRefs,
-            result: event.result,
-            status: failed ? "failed" : "succeeded",
-            turnId: item.turnId,
-          }
-        : item));
+      setToolTimeline((current) => current.map((item) => {
+        if (item.toolCallKey !== event.toolCallKey) return item;
+        const shouldAutoPlace = !failed && assetRefs.length > 0 && !item.placedNodeIds?.length;
+        const placed = shouldAutoPlace
+          ? placeAgentGeneratedAssetsOnCanvas({
+              assets: assetRefs,
+              sessionId,
+              toolCallId: typeof result.toolCallId === "string" ? result.toolCallId : event.toolCallKey,
+              turnId: item.turnId ?? null,
+            })
+          : null;
+        return {
+          ...item,
+          assetRefs,
+          placedNodeIds: placed?.createdNodeIds ?? item.placedNodeIds,
+          result: event.result,
+          status: failed ? "failed" : "succeeded",
+          turnId: item.turnId,
+        };
+      }));
       return;
     }
 

@@ -73,6 +73,61 @@ describe("AgentWorkflowLauncher", () => {
     expect(JSON.stringify(result)).not.toMatch(/baseUrl|provider|route_key|upstream_model|Authorization/i);
   });
 
+  it("waits for the target workflow to finish before extracting generated assets", async () => {
+    const createWorkflowRun = vi.fn().mockResolvedValue({ runId: "run-1", status: "pending" });
+    const getWorkflowRun = vi
+      .fn()
+      .mockResolvedValueOnce({
+        nodeRuns: [
+          {
+            id: "node-run-1",
+            nodeId: "image-node-1",
+            outputJson: null,
+            status: "running",
+          },
+        ],
+        workflowRun: { id: "run-1", status: "running" },
+      })
+      .mockResolvedValueOnce({
+        nodeRuns: [
+          {
+            id: "node-run-1",
+            nodeId: "image-node-1",
+            outputJson: {
+              assets: [
+                {
+                  assetId: "asset-1",
+                  kind: "image",
+                  prompt: "safe prompt",
+                },
+              ],
+            },
+            status: "succeeded",
+          },
+        ],
+        workflowRun: { id: "run-1", status: "succeeded" },
+      });
+
+    const launcher = new AgentWorkflowLauncher({
+      pollIntervalMs: 1,
+      workflowRunsService: { createWorkflowRun, getWorkflowRun },
+    });
+
+    const result = await launcher.launchImageGeneration(context, {
+      flowId: "flow-1",
+      prompt: "make a poster",
+      roundIndex: 1,
+      targetNodeId: "image-node-1",
+      toolCallId: "tool-1",
+      toolCallKey: "call-1",
+    });
+
+    expect(getWorkflowRun).toHaveBeenCalledTimes(2);
+    expect(result.assetRefs).toEqual([
+      expect.objectContaining({ assetId: "asset-1", refId: "round-1-image-1" }),
+    ]);
+  });
+
   it("fails closed when no flow target is available", async () => {
     const launcher = new AgentWorkflowLauncher({
       workflowRunsService: {

@@ -62,6 +62,8 @@ export class AgentWorkflowLauncherError extends Error {
 
 export class AgentWorkflowLauncher {
   constructor(private readonly options: {
+    pollIntervalMs?: number;
+    pollTimeoutMs?: number;
     workflowRunsService: WorkflowRunsServiceLike;
   }) {}
 
@@ -92,10 +94,10 @@ export class AgentWorkflowLauncher {
       },
     });
 
-    const details = await this.options.workflowRunsService.getWorkflowRun(
+    const details = await this.waitForWorkflowRun(
       context,
       created.runId,
-    ) as WorkflowRunDetailsLike;
+    );
     const targetNodeRun =
       details.nodeRuns.find((nodeRun) => nodeRun.nodeId === input.targetNodeId) ??
       details.nodeRuns[0] ??
@@ -115,6 +117,40 @@ export class AgentWorkflowLauncher {
       workflowRunId: details.workflowRun.id,
     };
   }
+
+  private async waitForWorkflowRun(
+    context: AgentWorkflowLaunchContext,
+    runId: string,
+  ): Promise<WorkflowRunDetailsLike> {
+    const timeoutMs = this.options.pollTimeoutMs ?? 120_000;
+    const pollIntervalMs = this.options.pollIntervalMs ?? 1_500;
+    const deadline = Date.now() + timeoutMs;
+
+    while (Date.now() <= deadline) {
+      const details = await this.options.workflowRunsService.getWorkflowRun(
+        context,
+        runId,
+      ) as WorkflowRunDetailsLike;
+      if (isTerminalWorkflowStatus(details.workflowRun.status)) {
+        return details;
+      }
+      await delay(pollIntervalMs);
+    }
+
+    throw new AgentWorkflowLauncherError(
+      504,
+      "AGENT_WORKFLOW_TIMEOUT",
+      `Agent workflow did not finish within ${Math.round(timeoutMs / 1000)} seconds.`,
+    );
+  }
+}
+
+function isTerminalWorkflowStatus(status: string): boolean {
+  return ["cancelled", "canceled", "failed", "succeeded"].includes(status);
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function extractAssetsFromNodeRun(nodeRun: WorkflowNodeRunLike | null): Array<{
