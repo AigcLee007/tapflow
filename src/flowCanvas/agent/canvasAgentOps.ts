@@ -97,6 +97,61 @@ export async function applyCanvasAgentOps(input: ApplyInput): Promise<ApplyResul
   };
 }
 
+export function applyServerDraftToCanvas(input: {
+  createdNodeIds?: string[];
+  draft: {
+    graph: {
+      edges: Record<string, unknown>[];
+      nodes: Record<string, unknown>[];
+      viewport: { x: number; y: number; zoom: number };
+    };
+    revision: number;
+  };
+  highlightedNodeIds?: string[];
+}) {
+  const current = useFlowCanvasStore.getState().getProjectSnapshot();
+  const highlighted = new Set([
+    ...(input.createdNodeIds ?? []),
+    ...(input.highlightedNodeIds ?? []),
+  ]);
+
+  const nodes = input.draft.graph.nodes.map((node) => {
+    const nodeRecord = node as Record<string, unknown>;
+    const nodeId = String(nodeRecord.id ?? "");
+    const data =
+      nodeRecord.data && typeof nodeRecord.data === "object" && !Array.isArray(nodeRecord.data)
+        ? nodeRecord.data as Record<string, unknown>
+        : {};
+    const agentMetadata =
+      data.agentMetadata && typeof data.agentMetadata === "object" && !Array.isArray(data.agentMetadata)
+        ? data.agentMetadata as Record<string, unknown>
+        : null;
+
+    return {
+      ...nodeRecord,
+      selected: highlighted.size > 0 ? highlighted.has(nodeId) : Boolean(nodeRecord.selected),
+      data: {
+        ...data,
+        agentMetadata: agentMetadata
+          ? {
+              ...agentMetadata,
+              highlightedAt: highlighted.has(nodeId) ? Date.now() : agentMetadata.highlightedAt,
+            }
+          : data.agentMetadata,
+      },
+    };
+  });
+
+  useFlowCanvasStore.getState().loadProject({
+    ...current,
+    edges: input.draft.graph.edges as never[],
+    nodes: nodes as never[],
+    updatedAt: Date.now(),
+    version: input.draft.revision,
+    viewport: input.draft.graph.viewport,
+  });
+}
+
 export function placeAgentGeneratedAssetsOnCanvas(input: {
   assets: CanvasAgentToolAssetRef[];
   sessionId: string | null;

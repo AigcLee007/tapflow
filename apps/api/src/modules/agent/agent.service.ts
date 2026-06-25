@@ -6,12 +6,14 @@ import { z } from "zod";
 import type { ApiEnv } from "../../config/env.js";
 import { AgentPlannerRuntimeError, AgentPlannerService } from "./agent-planner.service.js";
 import { AgentExecutorError, type AgentExecutorService } from "./agent-executor.service.js";
+import { AgentCanvasService } from "./agent-canvas.service.js";
 import { isProductionImageAgentPrompt } from "./agent-production-intent.js";
 import { AgentEventService, toAgentRepositoryError } from "./agent-event.service.js";
 import type { AgentRunSettingsService } from "./agent-run-settings.service.js";
 import { AgentSessionRepository } from "./agent-session.repository.js";
 import { formatAgentToolEvent } from "./agent-tool-events.js";
 import type { AiModelCatalogService } from "../ai-model-catalog/ai-model-catalog.service.js";
+import type { FlowsService } from "../flows/flows.service.js";
 import type {
   ApproveAgentToolCallInput,
   CanvasAgentSnapshotInput,
@@ -273,29 +275,38 @@ export class AgentApiError extends Error {
 export class AgentService {
   readonly env: ApiEnv;
   readonly eventService: AgentEventService;
+  readonly canvasService: AgentCanvasService;
   readonly executorService: Pick<AgentExecutorService, "approveToolCall" | "executeTurn"> | null;
   readonly plannerService: AgentPlannerService<PlannerOutput>;
   readonly pool: PgPool;
   readonly runSettingsService: Pick<AgentRunSettingsService, "estimateImageRunSettings" | "listImageRunSettings">;
   readonly sessionRepository: AgentSessionRepository;
   readonly textRuntime: Pick<DatabaseTextGenerationRuntime, "generateText">;
+  readonly flowsService: Pick<FlowsService, "getFlowDraft" | "saveFlowDraft">;
 
   constructor(options: {
     aiModelCatalogService?: Pick<AiModelCatalogService, "listModels" | "listRoutesForModel">;
     env: ApiEnv;
     executorService?: Pick<AgentExecutorService, "approveToolCall" | "executeTurn"> | null;
+    flowsService: Pick<FlowsService, "getFlowDraft" | "saveFlowDraft">;
     pool?: PgPool;
     runSettingsService: Pick<AgentRunSettingsService, "estimateImageRunSettings" | "listImageRunSettings">;
     textRuntime?: Pick<DatabaseTextGenerationRuntime, "generateText">;
   }) {
     this.env = options.env;
     this.executorService = options.executorService ?? null;
+    this.flowsService = options.flowsService;
     this.pool = options.pool ?? createPgPool();
     this.runSettingsService = options.runSettingsService;
     this.sessionRepository = new AgentSessionRepository({ pool: this.pool });
     this.eventService = new AgentEventService({
       pool: this.pool,
       repository: this.sessionRepository,
+    });
+    this.canvasService = new AgentCanvasService({
+      eventRepository: this.sessionRepository,
+      flowsService: this.flowsService,
+      sessionRepository: this.sessionRepository,
     });
     this.textRuntime =
       options.textRuntime ??
@@ -430,6 +441,22 @@ export class AgentService {
     } catch (error) {
       return toAgentRepositoryError(error);
     }
+  }
+
+  async applyCanvasOps(
+    context: AgentContext,
+    sessionId: string,
+    input: {
+      expectedRevision?: number;
+      flowId: string;
+      ops: Array<{
+        [key: string]: unknown;
+        type: string;
+      }>;
+      turnId: string;
+    },
+  ) {
+    return this.canvasService.applyOps(context, sessionId, input as Parameters<AgentCanvasService["applyOps"]>[2]);
   }
 
   async createTurn(context: AgentContext, sessionId: string, input: CreateAgentTurnInput) {

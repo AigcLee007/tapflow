@@ -105,8 +105,63 @@ export const approveAgentToolCallSchema = z.object({
   turnId: z.string().uuid(),
 });
 
+export const applyAgentCanvasOpsSchema = z.object({
+  expectedRevision: z.number().int().positive().optional(),
+  flowId: z.string().uuid(),
+  ops: z.array(
+    z.discriminatedUnion("type", [
+      z.object({
+        type: z.literal("add_node"),
+        clientId: z.string().trim().min(1).max(200).optional(),
+        data: z.record(z.string(), z.unknown()),
+        kind: z.enum(["text", "image", "video", "audio", "upload", "image_editor", "group"]),
+        position: z.object({
+          x: z.number().finite(),
+          y: z.number().finite(),
+        }),
+        selected: z.boolean().optional(),
+      }),
+      z.object({
+        type: z.literal("update_node_data"),
+        nodeId: z.string().trim().min(1).max(200),
+        patch: z.record(z.string(), z.unknown()),
+      }),
+      z.object({
+        type: z.literal("delete_nodes"),
+        nodeIds: z.array(z.string().trim().min(1).max(200)).min(1),
+      }),
+      z.object({
+        type: z.literal("connect_nodes"),
+        source: z.string().trim().min(1).max(200),
+        sourceHandle: z.string().trim().min(1).max(120).optional(),
+        target: z.string().trim().min(1).max(200),
+        targetHandle: z.string().trim().min(1).max(120).optional(),
+      }),
+      z.object({
+        type: z.literal("delete_edges"),
+        edgeIds: z.array(z.string().trim().min(1).max(200)).min(1),
+      }),
+      z.object({
+        type: z.literal("select_nodes"),
+        nodeIds: z.array(z.string().trim().min(1).max(200)).min(1),
+      }),
+      z.object({
+        type: z.literal("set_viewport"),
+        viewport: viewportSchema,
+      }),
+      z.object({
+        type: z.literal("run_node"),
+        nodeId: z.string().trim().min(1).max(200),
+        runMode: z.literal("target_node"),
+      }),
+    ]),
+  ).min(1),
+  turnId: z.string().uuid(),
+});
+
 export type AgentSessionIdParams = z.infer<typeof agentSessionIdParamsSchema>;
 export type ApproveAgentToolCallInput = z.infer<typeof approveAgentToolCallSchema>;
+export type ApplyAgentCanvasOpsInput = z.infer<typeof applyAgentCanvasOpsSchema>;
 export type CanvasAgentSnapshotInput = z.infer<typeof canvasAgentSnapshotSchema>;
 export type CreateAgentSessionInput = z.infer<typeof createAgentSessionSchema>;
 export type CreateAgentMessageInput = z.infer<typeof createAgentMessageSchema>;

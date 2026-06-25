@@ -334,6 +334,21 @@ export function useCanvasAgentSession() {
       return;
     }
 
+    if (event.type === "canvas_op_applied") {
+      appendActivity({
+        detail: `Created ${event.createdNodeIds.length} nodes and updated ${event.updatedNodeIds.length} nodes on the canvas.`,
+        id: `canvas-op-${event.turnId ?? Date.now()}`,
+        label: "Canvas updated",
+        state: "completed",
+      });
+      const state = useFlowCanvasStore.getState();
+      const highlightedIds = [...event.createdNodeIds, ...event.updatedNodeIds];
+      if (highlightedIds.length > 0) {
+        state.selectNodesByIds(highlightedIds);
+      }
+      return;
+    }
+
     if (event.type === "turn_completed") {
       if (event.finalText.trim()) {
         setMessages((current) => [...current, createMessage("assistant", event.finalText)]);

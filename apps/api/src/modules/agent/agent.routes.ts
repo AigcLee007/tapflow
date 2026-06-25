@@ -5,6 +5,7 @@ import { requireAuth, requirePermission, requireTenant } from "../../http/auth-m
 import {
   type AgentSessionIdParams,
   type ApproveAgentToolCallInput,
+  type ApplyAgentCanvasOpsInput,
   type CreateAgentMessageInput,
   type CreateAgentSessionInput,
   type CreateAgentTurnInput,
@@ -14,6 +15,7 @@ import {
   type ListAgentSessionsQuery,
   approveAgentToolCallSchema,
   agentSessionIdParamsSchema,
+  applyAgentCanvasOpsSchema,
   createAgentMessageSchema,
   createAgentSessionSchema,
   createAgentTurnSchema,
@@ -266,6 +268,28 @@ export function registerAgentRoutes(app: FastifyInstance): void {
         const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
         const body = parseBody<CreateAgentTurnInput>(request, createAgentTurnSchema);
         return reply.code(201).send(await app.agentService.createTurn(getAgentContext(request), params.sessionId, body));
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.post(
+    "/api/v2/agent/sessions/:sessionId/canvas-ops",
+    {
+      preHandler: [...authHandlers, requirePermission("flow:update")],
+    },
+    async (request, reply) => {
+      try {
+        const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
+        const body = parseBody<ApplyAgentCanvasOpsInput>(request, applyAgentCanvasOpsSchema);
+        return reply.send(
+          await app.agentService.applyCanvasOps(
+            getAgentContext(request),
+            params.sessionId,
+            body,
+          ),
+        );
       } catch (error) {
         return handleRouteError(error, request, reply);
       }

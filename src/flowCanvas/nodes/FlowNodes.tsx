@@ -105,6 +105,7 @@ import { MenuSelect } from '../../components/menu/MenuSelect';
 import { MENU_ITEM_PRIMARY_CLASS, MENU_ITEM_SECONDARY_CLASS } from '../../components/menu/menuStyles';
 import { useDismissibleLayer } from '../../components/menu/useDismissibleLayer';
 import { useAuth } from '../../auth/useAuth';
+import { dispatchOpenAgentSession } from '../agent/agentSessionEvents';
 import { normalizeBackendAssetUrl } from '../../utils/generatedImageStorage';
 import { canNodeReceiveIncoming } from '../rules/connectionRules';
 import { getAssetDownloadUrl, getAssetVariantUrl } from '../../assets/assetApi';
@@ -373,6 +374,83 @@ const nodeWrapper: React.CSSProperties = {
   width: '100%',
   height: '100%',
   // overflow visible so floating panels and labels can escape
+};
+
+const agentBadgeStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 6,
+  padding: '4px 8px',
+  borderRadius: 999,
+  border: '1px solid rgba(56,189,248,0.28)',
+  background: 'rgba(56,189,248,0.10)',
+  color: '#bae6fd',
+  fontSize: 10,
+  fontWeight: 800,
+  lineHeight: 1,
+  letterSpacing: '0.02em',
+};
+
+const agentLinkButtonStyle: React.CSSProperties = {
+  border: 'none',
+  background: 'transparent',
+  color: '#7dd3fc',
+  cursor: 'pointer',
+  padding: 0,
+  fontSize: 10,
+  fontWeight: 700,
+  lineHeight: 1.1,
+};
+
+function getAgentMetadata(data: FlowNodeData | Record<string, unknown>) {
+  const raw = data?.agentMetadata;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const metadata = raw as {
+    agentSessionId?: unknown;
+    agentTurnId?: unknown;
+  };
+  const sessionId = typeof metadata.agentSessionId === 'string' ? metadata.agentSessionId : '';
+  const turnId = typeof metadata.agentTurnId === 'string' ? metadata.agentTurnId : '';
+  if (!sessionId) return null;
+  return {
+    sessionId,
+    turnId: turnId || undefined,
+  };
+}
+
+const AgentNodeBadge: React.FC<{ data: FlowNodeData }> = ({ data }) => {
+  const metadata = getAgentMetadata(data);
+  if (!metadata) return null;
+
+  return (
+    <div
+      className="nodrag nopan nowheel"
+      style={{
+        position: 'absolute',
+        right: 0,
+        bottom: 'calc(100% + 4px)',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 8,
+        zIndex: 30,
+      }}
+    >
+      <span style={agentBadgeStyle}>Agent</span>
+      <button
+        type="button"
+        style={agentLinkButtonStyle}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          dispatchOpenAgentSession(metadata);
+        }}
+        aria-label="查看 Agent 过程"
+        title="查看 Agent 过程"
+      >
+        查看 Agent 过程
+      </button>
+    </div>
+  );
 };
 
 const EditableNodeTitle: React.FC<{
@@ -2902,6 +2980,7 @@ export const TextNodeComponent = memo(function TextNode({
       />
       
       <NodeLabel nodeId={id} icon={<Type size={14} />} label={String(d.title || 'Text')} fallbackLabel="Text" />
+      <AgentNodeBadge data={d} />
 
       <Handle 
         type="target" 
@@ -5730,6 +5809,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       }}
     >
       <NodeLabel nodeId={id} icon={<ImageIcon size={14} />} label={String(d.title || 'Image')} fallbackLabel="Image" />
+      <AgentNodeBadge data={d} />
 
       {showInputHandle && (
         <Handle

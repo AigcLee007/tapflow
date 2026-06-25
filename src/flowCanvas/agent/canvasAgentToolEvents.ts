@@ -92,6 +92,17 @@ export function normalizeAgentToolEvent(event: string, data: unknown): CanvasAge
       type: "tool_result",
     };
   }
+  if (event === "canvas_op_applied") {
+    return {
+      createdNodeIds: Array.isArray(record.createdNodeIds) ? record.createdNodeIds.map((value) => String(value)) : [],
+      edgeIds: Array.isArray(record.edgeIds) ? record.edgeIds.map((value) => String(value)) : [],
+      flowId: String(record.flowId ?? ""),
+      runNodeIds: Array.isArray(record.runNodeIds) ? record.runNodeIds.map((value) => String(value)) : [],
+      turnId: typeof record.turnId === "string" ? record.turnId : undefined,
+      type: "canvas_op_applied",
+      updatedNodeIds: Array.isArray(record.updatedNodeIds) ? record.updatedNodeIds.map((value) => String(value)) : [],
+    };
+  }
   if (event === "approval_required") {
     return {
       estimate: record.estimate,

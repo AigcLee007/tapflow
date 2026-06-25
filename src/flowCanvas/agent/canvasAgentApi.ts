@@ -77,6 +77,35 @@ export type AgentContinuationContext = {
   promptSummary: string;
 };
 
+export type AgentCanvasApplyResponse = {
+  applied: {
+    createdNodeIds: string[];
+    edgeIds: string[];
+    runNodeIds: string[];
+    updatedNodeIds: string[];
+  };
+  draft: {
+    createdAt: string;
+    flowId: string;
+    graph: {
+      edges: Record<string, unknown>[];
+      nodes: Record<string, unknown>[];
+      viewport: {
+        x: number;
+        y: number;
+        zoom: number;
+      };
+    };
+    id: string;
+    lastSavedBy: string | null;
+    projectId: string;
+    revision: number;
+    tenantId: string;
+    updatedAt: string;
+  };
+  event: AgentSessionEvent | null;
+};
+
 export function createAgentSession(input: {
   flowId: string | null;
   projectId: string | null;
@@ -126,6 +155,18 @@ export function createAgentTurn(sessionId: string, input: {
   snapshot: CanvasAgentSnapshot;
 }) {
   return apiPost<CreateAgentTurnResponse>(`/agent/sessions/${sessionId}/turns`, input);
+}
+
+export function applyAgentCanvasOps(
+  sessionId: string,
+  input: {
+    expectedRevision?: number;
+    flowId: string;
+    ops: CanvasAgentPlannerOutput["proposedOps"];
+    turnId: string;
+  },
+) {
+  return apiPost<AgentCanvasApplyResponse>(`/agent/sessions/${sessionId}/canvas-ops`, input);
 }
 
 export function getAgentImageRunSettings() {

@@ -35,7 +35,9 @@ import { FlowContextMenu } from './FlowContextMenu';
 import { FlowLeftAddPanel } from './FlowLeftAddPanel';
 import { CanvasAgentButton } from '../agent/CanvasAgentButton';
 import { CanvasAgentPanel } from '../agent/CanvasAgentPanel';
-import { applyCanvasAgentOps } from '../agent/canvasAgentOps';
+import { applyCanvasAgentOps, applyServerDraftToCanvas } from '../agent/canvasAgentOps';
+import { applyAgentCanvasOps } from '../agent/canvasAgentApi';
+import { OPEN_AGENT_SESSION_EVENT, type OpenAgentSessionDetail } from '../agent/agentSessionEvents';
 import { getAsset, getAssetVariantUrl, listAssets } from '../../assets/assetApi';
 import { getFlowTemplate, recordFlowTemplateUsage } from '../../services/v2FlowTemplatesApi';
 import { listProjectHistory } from '../../services/v2FlowHistoryApi';
@@ -239,6 +241,7 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled }) =>
   const [gridSnapEnabled, setGridSnapEnabled] = useState(false);
   const [activeDockPanel, setActiveDockPanel] = useState<CanvasDockPanelId | null>(null);
   const [agentOpen, setAgentOpen] = useState(false);
+  const [agentSessionFocus, setAgentSessionFocus] = useState<OpenAgentSessionDetail | null>(null);
   const [dockBadgeMetrics, setDockBadgeMetrics] = useState({
     assetTotal: 0,
     historySnapshotCount: 0,
@@ -308,6 +311,22 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled }) =>
   useEffect(() => {
     refreshDockBadges();
   }, [refreshDockBadges]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const handleOpenAgentSession = (event: Event) => {
+      const detail = (event as CustomEvent<OpenAgentSessionDetail>).detail;
+      if (!detail?.sessionId) return;
+      closeContextMenu();
+      closeImageTool();
+      setConnMenu(null);
+      setActiveDockPanel(null);
+      setAgentSessionFocus(detail);
+      setAgentOpen(true);
+    };
+    window.addEventListener(OPEN_AGENT_SESSION_EVENT, handleOpenAgentSession as EventListener);
+    return () => window.removeEventListener(OPEN_AGENT_SESSION_EVENT, handleOpenAgentSession as EventListener);
+  }, [closeContextMenu, closeImageTool]);
 
   const handleNodeDragStart = useCallback((_event: React.MouseEvent, node: Node) => {
     pushHistory();
@@ -895,33 +914,79 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled }) =>
         }}
       />
       <CanvasAgentButton
-        onClick={() => {
+      onClick={() => {
           closeContextMenu();
           closeImageTool();
           setConnMenu(null);
           setActiveDockPanel(null);
+          setAgentSessionFocus(null);
           setAgentOpen(true);
         }}
         status={agentOpen ? 'awaiting' : 'idle'}
       />
       <CanvasAgentPanel
         onClose={() => setAgentOpen(false)}
-        onConfirmPlan={async (plan) =>
-          applyCanvasAgentOps({
+        initialSessionId={agentSessionFocus?.sessionId ?? null}
+        onConfirmPlan={async (plan) => {
+          const sessionId = (plan as { sessionId?: string }).sessionId;
+          const turnId = (plan as { turnId?: string }).turnId;
+          if (backendFlowId && sessionId && turnId) {
+            const response = await applyAgentCanvasOps(sessionId, {
+              flowId: backendFlowId,
+              ops: plan.proposedOps,
+              turnId,
+            });
+            applyServerDraftToCanvas({
+              createdNodeIds: response.applied.createdNodeIds,
+              draft: response.draft,
+              highlightedNodeIds: response.applied.updatedNodeIds,
+            });
+            for (const nodeId of response.applied.runNodeIds) {
+              await runBackendWorkflow({ runMode: 'target_node', targetNodeId: nodeId });
+            }
+            return {
+              createdNodeIds: response.applied.createdNodeIds,
+              errors: [],
+              ok: true,
+              ranNodeIds: response.applied.runNodeIds,
+            };
+          }
+          return applyCanvasAgentOps({
             ops: plan.proposedOps,
             runNode: async (nodeId) => {
               await runBackendWorkflow({ runMode: 'target_node', targetNodeId: nodeId });
             },
-          })
-        }
-        onCreateOnlyPlan={async (plan) =>
-          applyCanvasAgentOps({
-            ops: plan.proposedOps.filter((op) => op.type !== 'run_node'),
+          });
+        }}
+        onCreateOnlyPlan={async (plan) => {
+          const sessionId = (plan as { sessionId?: string }).sessionId;
+          const turnId = (plan as { turnId?: string }).turnId;
+          const createOnlyOps = plan.proposedOps.filter((op) => op.type !== 'run_node');
+          if (backendFlowId && sessionId && turnId) {
+            const response = await applyAgentCanvasOps(sessionId, {
+              flowId: backendFlowId,
+              ops: createOnlyOps,
+              turnId,
+            });
+            applyServerDraftToCanvas({
+              createdNodeIds: response.applied.createdNodeIds,
+              draft: response.draft,
+              highlightedNodeIds: response.applied.updatedNodeIds,
+            });
+            return {
+              createdNodeIds: response.applied.createdNodeIds,
+              errors: [],
+              ok: true,
+              ranNodeIds: [],
+            };
+          }
+          return applyCanvasAgentOps({
+            ops: createOnlyOps,
             runNode: async (nodeId) => {
               await runBackendWorkflow({ runMode: 'target_node', targetNodeId: nodeId });
             },
-          })
-        }
+          });
+        }}
         open={agentOpen}
       />
       <FlowContextMenu />

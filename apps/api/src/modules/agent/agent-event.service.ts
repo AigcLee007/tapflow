@@ -143,6 +143,19 @@ function mapToolEventToSessionEvent(
         sessionId,
         taskId: getTaskIdFromToolResult(event.result),
       };
+    case "canvas_op_applied":
+      return {
+        eventJson: {
+          createdNodeIds: event.createdNodeIds,
+          edgeIds: event.edgeIds,
+          flowId: event.flowId,
+          runNodeIds: event.runNodeIds ?? [],
+          updatedNodeIds: event.updatedNodeIds,
+        },
+        eventType: event.type,
+        sessionId,
+        turnId: event.turnId ?? null,
+      };
     case "approval_required":
       return {
         eventJson: {

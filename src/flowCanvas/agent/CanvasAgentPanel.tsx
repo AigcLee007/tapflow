@@ -8,6 +8,7 @@ import { CanvasAgentPlanCard } from "./CanvasAgentPlanCard";
 import { CanvasAgentTaskCard } from "./CanvasAgentTaskCard";
 import { CanvasAgentThread } from "./CanvasAgentThread";
 import { CanvasAgentToolTimeline } from "./CanvasAgentToolTimeline";
+import { OPEN_AGENT_SESSION_EVENT, type OpenAgentSessionDetail } from "./agentSessionEvents";
 import { listAgentSessions } from "./canvasAgentApi";
 import type { CanvasAgentContinuationAction, CanvasAgentToolAssetRef } from "./canvasAgentToolTypes";
 import type { CanvasAgentPlannerOutput } from "./canvasAgentTypes";
@@ -66,6 +67,7 @@ function buildContinuationPrompt(
 }
 
 export function CanvasAgentPanel(props: {
+  initialSessionId?: string | null;
   onClose: () => void;
   onConfirmPlan: (plan: CanvasAgentPlannerOutput) => Promise<ApplyResult>;
   onCreateOnlyPlan?: (plan: CanvasAgentPlannerOutput) => Promise<ApplyResult>;
@@ -87,11 +89,15 @@ export function CanvasAgentPanel(props: {
   }>>([]);
   const replayHydratedSessionIdRef = React.useRef<string | null>(null);
 
-  if (!props.open) return null;
-
   const busy = sessionActions.status === "thinking" || sessionActions.status === "executing";
   const statusCopy = getStatusCopy(sessionActions.status, sessionActions.usedOfflineFallback);
   const activeContinuation = sessionActions.pendingContinuation ?? sessionActions.lastContinuation;
+
+  React.useEffect(() => {
+    if (props.initialSessionId) {
+      sessionActions.setSessionId?.(props.initialSessionId);
+    }
+  }, [props.initialSessionId, sessionActions.setSessionId]);
 
   React.useEffect(() => {
     void listAgentSessions({ limit: 10 })
@@ -110,6 +116,17 @@ export function CanvasAgentPanel(props: {
   }, [directorEnabled, eventStream, history, sessionActions.sessionId]);
 
   React.useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const handleOpen = (event: Event) => {
+      const detail = (event as CustomEvent<OpenAgentSessionDetail>).detail;
+      if (!detail?.sessionId) return;
+      sessionActions.setSessionId?.(detail.sessionId);
+    };
+    window.addEventListener(OPEN_AGENT_SESSION_EVENT, handleOpen as EventListener);
+    return () => window.removeEventListener(OPEN_AGENT_SESSION_EVENT, handleOpen as EventListener);
+  }, [sessionActions.setSessionId]);
+
+  React.useEffect(() => {
     if (!directorEnabled) return;
     if (!sessionActions.sessionId) return;
     if (eventStream.events.length === 0) return;
@@ -123,6 +140,8 @@ export function CanvasAgentPanel(props: {
       replayHydratedSessionIdRef.current = null;
     }
   }, [sessionActions.sessionId]);
+
+  if (!props.open) return null;
 
   return (
     <aside

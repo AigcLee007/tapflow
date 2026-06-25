@@ -12,9 +12,17 @@ export type AgentSessionListItem = {
   flowId: string | null;
   id: string;
   projectId: string | null;
+  tenantId?: string;
   status: string;
   title: string;
   updatedAt: string;
+};
+
+export type AgentSessionLookup = {
+  flowId: string | null;
+  id: string;
+  projectId: string | null;
+  tenantId: string;
 };
 
 export type AgentHistoryMessage = {
@@ -62,6 +70,7 @@ type SessionRow = {
   id: string;
   project_id: string | null;
   status: string;
+  tenant_id?: string | null;
   title: string;
   updated_at: string;
 };
@@ -187,6 +196,18 @@ export class AgentSessionRepository {
           status: row.status,
           updatedAt: row.updated_at,
         })),
+      };
+    }, this.pool);
+  }
+
+  async getSession(context: AgentContext, sessionId: string): Promise<AgentSessionLookup> {
+    return withTenantTransaction(context, async (client) => {
+      const session = await this.requireSession(client, sessionId);
+      return {
+        flowId: session.flow_id,
+        id: session.id,
+        projectId: session.project_id,
+        tenantId: String(session.tenant_id || context.tenantId),
       };
     }, this.pool);
   }
@@ -346,6 +367,7 @@ export class AgentSessionRepository {
       `
         SELECT
           id::text AS id,
+          tenant_id::text AS tenant_id,
           project_id::text AS project_id,
           flow_id::text AS flow_id,
           title,
@@ -372,6 +394,7 @@ export class AgentSessionRepository {
       flowId: row.flow_id,
       id: row.id,
       projectId: row.project_id,
+      tenantId: row.tenant_id ?? undefined,
       status: row.status,
       title: row.title,
       updatedAt: row.updated_at,

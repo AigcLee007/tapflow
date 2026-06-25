@@ -79,6 +79,8 @@ export type CanvasAgentPlannerOutput = {
   plan: CanvasAgentPlanStep[];
   proposedOps: CanvasAgentOp[];
   reply: string;
+  sessionId?: string;
+  turnId?: string;
 };
 
 export type CanvasAgentSnapshot = {

@@ -43,8 +43,10 @@ export type FlowProductionLayer =
 export interface FlowAgentNodeMetadata {
   agentSessionId?: string;
   agentTurnId?: string;
+  agentTaskId?: string;
   approvalStatus?: 'candidate' | 'approved' | 'rejected';
   creationStage?: string;
+  highlightedAt?: number;
   productionLayer?: FlowProductionLayer;
   sourceEvidenceNodeIds?: string[];
 }

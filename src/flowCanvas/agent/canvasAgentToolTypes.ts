@@ -47,6 +47,15 @@ export type CanvasAgentToolEvent =
   | { type: "artifact_created"; assetRef: CanvasAgentToolAssetRef; taskId: string; toolCallKey: string }
   | { type: "tool_progress"; message: string; toolCallKey: string }
   | { type: "tool_result"; result: unknown; toolCallKey: string }
+  | {
+      type: "canvas_op_applied";
+      createdNodeIds: string[];
+      edgeIds: string[];
+      flowId: string;
+      runNodeIds?: string[];
+      updatedNodeIds: string[];
+      turnId?: string;
+    }
   | { type: "approval_required"; estimate: unknown; toolCallKey: string; turnId: string }
   | { type: "turn_completed"; finalText: string; turnId: string }
   | { type: "turn_failed"; code: string; message: string; turnId?: string };

@@ -1,6 +1,6 @@
 ﻿# Project Record
 
-Last updated: 2026-06-25
+Last updated: 2026-06-26
 Maintainers: project team + Codex sessions
 
 ## 2026-06-25 - Canvas Director Agent Phase 3 Parameter Execution Closure
@@ -160,6 +160,19 @@ Maintainers: project team + Codex sessions
 ## 2026-06-24 - Canvas Director Agent Task Summary Recall
 
 - extended the Agent task cards so confirmed production settings remain visible after approval and after the task completes.
+
+## 2026-06-26 - Canvas Director Agent Phase 5 Canvas Operations And Provenance
+
+- completed the Phase 5 canvas-director slice that makes the Agent operate the canvas through the server-backed draft path instead of only creating local nodes.
+- backend canvas ops now apply approved Agent operations to `flow_drafts`, retry once on revision conflict, and persist a replayable `canvas_op_applied` event in `agent_task_events`.
+- Agent-created or Agent-updated nodes now carry `agentMetadata` provenance with session/turn linkage and a visible highlight timestamp so the canvas can distinguish Agent-authored changes from user edits.
+- the canvas UI now shows a compact `Agent` badge on Agent-authored text/image nodes and a `查看 Agent 过程` action that opens the Agent panel focused on the originating session.
+- the Agent panel and canvas shell now share a stable session-open event path so node clicks can jump back into the correct Agent conversation/thread.
+- validation:
+  - `npm run test --workspace @aigc-flow/api -- agent-canvas-ops.test.ts agent-event-service.test.ts`
+  - `npm run test -- agentCanvasBinding.test.ts FlowNodes.agent-metadata.test.tsx CanvasAgentPanel.test.tsx CanvasAgentIntegration.test.tsx`
+  - `npm run build --workspace @aigc-flow/api`
+  - `npm run build`
 
 ## 2026-06-25 - Agent Multi-Result Continuation Selection
 

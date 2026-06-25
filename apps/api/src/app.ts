@@ -248,14 +248,6 @@ export function buildApp(options?: {
       textRuntime: agentTextRuntime,
       toolRunner: agentToolRunner,
     });
-  const agentService = new AgentService({
-    aiModelCatalogService,
-    env,
-    executorService: agentExecutorService,
-    pool,
-    runSettingsService: agentRunSettingsService,
-    textRuntime: agentTextRuntime,
-  });
   const workbenchService = new WorkbenchService({
     generationQueue: workbenchGenerateQueue ?? null,
     pool,
@@ -272,6 +264,15 @@ export function buildApp(options?: {
     storageProvider,
   });
   const flowsService = new FlowsService({ pool });
+  const agentService = new AgentService({
+    aiModelCatalogService,
+    env,
+    executorService: agentExecutorService,
+    flowsService,
+    pool,
+    runSettingsService: agentRunSettingsService,
+    textRuntime: agentTextRuntime,
+  });
   const flowCommentsService = new FlowCommentsService({ pool });
   const flowHistoryService = new FlowHistoryService({ pool });
   const flowTemplatesService = new FlowTemplatesService({ pool });
