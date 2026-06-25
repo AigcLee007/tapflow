@@ -461,10 +461,7 @@ export class AgentExecutorService {
           });
           if (policy.requiresApproval) {
             await input.onEvent?.({
-              estimate: {
-                ...(costEstimate && typeof costEstimate === "object" ? costEstimate : {}),
-                referenceRefs: getApprovalReferenceRefs(call),
-              },
+              estimate: buildSafeApprovalEstimate(call, costEstimate),
               toolCallKey: call.toolCallKey,
               turnId: turn.turnId,
               type: "approval_required",
@@ -500,33 +497,11 @@ export class AgentExecutorService {
             continuationContext: input.continuationContext,
             costEstimate,
             executionTarget: resolveExecutionTarget(input.snapshot),
+            onEvent: input.onEvent,
             roundIndex: round + 1,
             sessionId: input.sessionId,
             turnId: turn.turnId,
           });
-          await input.onEvent?.({
-            taskId: result.toolCallId,
-            title: getTaskTitle(call.toolName),
-            toolCallKey: call.toolCallKey,
-            toolName: call.toolName,
-            type: "task_created",
-          });
-          for (const workflowRun of result.workflowRuns ?? []) {
-            await input.onEvent?.({
-              nodeRunId: workflowRun.nodeRunId ?? undefined,
-              toolCallKey: call.toolCallKey,
-              type: "workflow_run_linked",
-              workflowRunId: workflowRun.workflowRunId,
-            });
-          }
-          for (const assetRef of result.assetRefs) {
-            await input.onEvent?.({
-              assetRef,
-              taskId: result.toolCallId,
-              toolCallKey: call.toolCallKey,
-              type: "artifact_created",
-            });
-          }
           toolResults.push(result);
           await input.onEvent?.({ result, toolCallKey: call.toolCallKey, type: "tool_result" });
           messages.push({ content: buildAgentToolContinuationMessage(result), role: "user" as const });
@@ -582,25 +557,11 @@ export class AgentExecutorService {
       continuationContext: pending.continuationContext ?? null,
       costEstimate,
       executionTarget: resolveExecutionTarget(pending.snapshot),
+      onEvent: input.onEvent,
       roundIndex: 1,
       sessionId: input.sessionId,
       turnId: input.turnId,
     });
-    await input.onEvent?.({
-      taskId: result.toolCallId,
-      title: getTaskTitle(call.toolName),
-      toolCallKey: call.toolCallKey,
-      toolName: call.toolName,
-      type: "task_created",
-    });
-    for (const assetRef of result.assetRefs) {
-      await input.onEvent?.({
-        assetRef,
-        taskId: result.toolCallId,
-        toolCallKey: call.toolCallKey,
-        type: "artifact_created",
-      });
-    }
     await input.onEvent?.({ result, toolCallKey: call.toolCallKey, type: "tool_result" });
 
     const finalText = result.assetRefs.length > 0
@@ -665,10 +626,40 @@ function getApprovalReferenceRefs(call: ParsedAgentToolCall): string[] {
   return [];
 }
 
-function getTaskTitle(toolName: ParsedAgentToolCall["toolName"]) {
-  if (toolName === "generate_image_batch") return "Batch image generation";
-  if (toolName === "edit_image") return "Image edit";
-  return "Image generation";
+function buildSafeApprovalEstimate(
+  call: ParsedAgentToolCall,
+  costEstimate: Record<string, unknown> | null,
+): Record<string, unknown> {
+  return {
+    items: Array.isArray(costEstimate?.items) ? costEstimate.items : [],
+    referenceRefs: getApprovalReferenceRefs(call),
+    totalCredits: typeof costEstimate?.totalCredits === "number" ? costEstimate.totalCredits : 0,
+    unit: typeof costEstimate?.unit === "string" ? costEstimate.unit : undefined,
+    draftSelection: buildDraftRunSelection(call, costEstimate),
+  };
+}
+
+function buildDraftRunSelection(
+  call: ParsedAgentToolCall,
+  costEstimate: Record<string, unknown> | null,
+): Record<string, unknown> | undefined {
+  if (call.toolName === "continue_generation") return undefined;
+  const args = call.toolName === "generate_image_batch" ? call.arguments.images[0] : call.arguments;
+  if (!args) return undefined;
+  const selection: Record<string, unknown> = {
+    aspectRatio: args.aspectRatio,
+    estimatedCredits: typeof costEstimate?.totalCredits === "number" ? costEstimate.totalCredits : undefined,
+    format: args.format,
+    modelDisplayName: args.modelDisplayName,
+    moderation: args.moderation,
+    modality: "image",
+    n: args.n,
+    quality: args.quality,
+    routeKey: args.routeKey,
+    routeLabel: args.routeLabel,
+    size: args.size,
+  };
+  return compactObject(selection);
 }
 
 function parseExecutorModelOutput(rawText: string): {
@@ -809,4 +800,10 @@ function normalizeExecutorError(error: unknown): { code: string; message: string
     code: "AGENT_EXECUTOR_FAILED",
     message: error instanceof Error ? error.message : String(error),
   };
+}
+
+function compactObject(value: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, item]) => item !== undefined && item !== null && item !== ""),
+  );
 }

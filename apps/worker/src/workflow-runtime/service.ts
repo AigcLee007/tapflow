@@ -550,6 +550,93 @@ function readTrimmedString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function readAgentToolConfig(config: Record<string, unknown>): Record<string, unknown> {
+  return isPlainObject(config.agentTool) ? config.agentTool : {};
+}
+
+function buildAgentToolInputAssets(agentTool: Record<string, unknown>): AssetReferenceInput[] {
+  if (!Array.isArray(agentTool.referenceAssetIds)) {
+    return [];
+  }
+
+  return agentTool.referenceAssetIds.flatMap((value) => {
+    if (typeof value !== "string" || !value.trim()) {
+      return [];
+    }
+    return [{
+      assetId: value.trim(),
+      kind: "image",
+      metadata: { source: "agent-tool-reference" },
+      mimeType: null,
+    }];
+  });
+}
+
+function mergeAssetInputs(
+  upstreamAssets: AssetReferenceInput[],
+  agentAssets: AssetReferenceInput[],
+): AssetReferenceInput[] {
+  const seen = new Set<string>();
+  const merged: AssetReferenceInput[] = [];
+
+  for (const asset of [...upstreamAssets, ...agentAssets]) {
+    if (!asset.assetId || seen.has(asset.assetId)) {
+      continue;
+    }
+    seen.add(asset.assetId);
+    merged.push(asset);
+  }
+
+  return merged;
+}
+
+function withOptionalParam(
+  params: Record<string, unknown>,
+  key: string,
+  value: unknown,
+): Record<string, unknown> {
+  return value === undefined || value === null || value === "" ? params : { ...params, [key]: value };
+}
+
+function buildAgentImageParams(
+  params: Record<string, unknown>,
+  agentTool: Record<string, unknown>,
+): Record<string, unknown> {
+  let next = { ...params };
+  next = withOptionalParam(next, "size", readTrimmedString(agentTool.size));
+  next = withOptionalParam(next, "aspectRatio", readTrimmedString(agentTool.aspectRatio));
+  next = withOptionalParam(next, "quality", readTrimmedString(agentTool.quality));
+  next = withOptionalParam(next, "format", readTrimmedString(agentTool.format));
+  next = withOptionalParam(next, "output_format", readTrimmedString(agentTool.format));
+  next = withOptionalParam(next, "moderation", readTrimmedString(agentTool.moderation));
+  next = withOptionalParam(next, "n", readPositiveInteger(agentTool.n) ?? undefined);
+  return next;
+}
+
+function mergeAgentToolIntoImageNodeConfig(
+  config: Record<string, unknown>,
+  workflowInput: Record<string, unknown>,
+  nodeId: string,
+): Record<string, unknown> {
+  const targetNodeId = getWorkflowInputTargetNodeId(workflowInput);
+  if (targetNodeId && targetNodeId !== nodeId) {
+    return config;
+  }
+  if (!isPlainObject(workflowInput.agentTool)) {
+    return config;
+  }
+  return {
+    ...config,
+    agentTool: workflowInput.agentTool,
+  };
+}
+
+function getWorkflowInputTargetNodeId(workflowInput: Record<string, unknown>): string | null {
+  return typeof workflowInput.targetNodeId === "string" && workflowInput.targetNodeId.trim()
+    ? workflowInput.targetNodeId.trim()
+    : null;
+}
+
 function resolveNestedImageRouteKey(config: Record<string, unknown>): string | null {
   const imageEditRequest = isPlainObject(config.imageEditRequest) ? config.imageEditRequest : null;
   const params = isPlainObject(config.params) ? config.params : null;
@@ -561,7 +648,9 @@ function resolveNestedImageRouteKey(config: Record<string, unknown>): string | n
 }
 
 function resolveImageRequestRouteKey(config: Record<string, unknown>): string {
-  return readTrimmedString(config.routeKey)
+  const agentTool = readAgentToolConfig(config);
+  return readTrimmedString(agentTool.routeKey)
+    ?? readTrimmedString(config.routeKey)
     ?? resolveNestedImageRouteKey(config)
     ?? "image.default";
 }
@@ -571,41 +660,47 @@ function buildImageRequest(
   config: Record<string, unknown>,
 ): ImageGenerationRequest {
   const params = isPlainObject(config.params) ? config.params : {};
+  const agentTool = readAgentToolConfig(config);
+  const agentParams = buildAgentImageParams(params, agentTool);
   const batchCount = readPositiveInteger(config.batchCount)
-    ?? readPositiveInteger(params.n)
+    ?? readPositiveInteger(agentParams.n)
     ?? readPositiveInteger(config.n);
-  const normalizedParams = batchCount ? { ...params, n: batchCount } : params;
+  const normalizedParams = batchCount ? { ...agentParams, n: batchCount } : agentParams;
   const metadata = {
     ...(isPlainObject(config.metadata) ? config.metadata : {}),
     aspectRatio:
-      typeof params.aspectRatio === "string"
-        ? params.aspectRatio
-        : typeof params.aspect_ratio === "string"
-          ? params.aspect_ratio
+      typeof normalizedParams.aspectRatio === "string"
+        ? normalizedParams.aspectRatio
+        : typeof normalizedParams.aspect_ratio === "string"
+          ? normalizedParams.aspect_ratio
           : undefined,
     imageSize:
-      typeof params.imageSize === "string"
-        ? params.imageSize
-        : typeof params.image_size === "string"
-          ? params.image_size
-          : typeof params.size === "string"
-            ? params.size
+      typeof normalizedParams.imageSize === "string"
+        ? normalizedParams.imageSize
+        : typeof normalizedParams.image_size === "string"
+          ? normalizedParams.image_size
+          : typeof normalizedParams.size === "string"
+            ? normalizedParams.size
             : undefined,
     optimizeChineseText:
-      typeof params.optimizeChineseText === "boolean"
-        ? params.optimizeChineseText
-        : typeof params.optimize_chinese_text === "boolean"
-          ? params.optimize_chinese_text
+      typeof normalizedParams.optimizeChineseText === "boolean"
+        ? normalizedParams.optimizeChineseText
+        : typeof normalizedParams.optimize_chinese_text === "boolean"
+          ? normalizedParams.optimize_chinese_text
           : undefined,
     ...(batchCount ? { n: batchCount } : {}),
     params: normalizedParams,
   };
   const routeKey = resolveImageRequestRouteKey(config);
-  const generationPrompt = readTrimmedString(config.generationPrompt);
+  const generationPrompt = readTrimmedString(agentTool.prompt) ?? readTrimmedString(config.generationPrompt);
   const fallbackPrompt = typeof config.prompt === "string" ? config.prompt : "";
+  const inputAssets = mergeAssetInputs(
+    extractAssetInputs(upstreamOutputs),
+    buildAgentToolInputAssets(agentTool),
+  );
 
   return {
-    inputAssets: extractAssetInputs(upstreamOutputs),
+    inputAssets,
     metadata: {
       ...metadata,
       ...(isPlainObject(config.imageEditRequest) ? { imageEditRequest: config.imageEditRequest } : {}),
@@ -1664,7 +1759,12 @@ export class WorkflowNodeExecutionService {
     }
 
     if (node.type === "image.generate") {
-      const request = buildImageRequest(upstreamOutputs, node.config ?? {});
+      const nodeConfig = mergeAgentToolIntoImageNodeConfig(
+        node.config ?? {},
+        workflowRun.input_json ?? {},
+        node.id,
+      );
+      const request = buildImageRequest(upstreamOutputs, nodeConfig);
       await this.hydrateInputAssetUrls(workflowRun.tenant_id, request.inputAssets ?? []);
       if (request.routeKey === "image.mouxihub.nano-banana-pro.t3") {
         const metadata = isPlainObject(request.metadata) ? request.metadata : {};

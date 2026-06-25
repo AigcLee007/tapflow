@@ -259,6 +259,55 @@ describe("buildImageRequest", () => {
     });
   });
 
+  test("applies Agent tool run settings and reference asset ids to provider image requests", () => {
+    const request = __workerTestUtils.buildImageRequest(
+      [],
+      {
+        agentTool: {
+          aspectRatio: "16:9",
+          format: "jpeg",
+          modelDisplayName: "GPT-Image-2",
+          moderation: "low",
+          n: 3,
+          prompt: "make three poster options",
+          quality: "high",
+          referenceAssetIds: ["asset-reference-1", "asset-reference-2"],
+          routeKey: "image.gpt-image-2.line2",
+          routeLabel: "线路二",
+          size: "4K",
+        },
+        generationPrompt: "old node prompt",
+        params: {
+          size: "1K",
+        },
+        routeKey: "image.default",
+      },
+    );
+
+    expect(request).toMatchObject({
+      inputAssets: [
+        expect.objectContaining({ assetId: "asset-reference-1", kind: "image" }),
+        expect.objectContaining({ assetId: "asset-reference-2", kind: "image" }),
+      ],
+      metadata: expect.objectContaining({
+        aspectRatio: "16:9",
+        imageSize: "4K",
+        n: 3,
+        params: expect.objectContaining({
+          aspectRatio: "16:9",
+          format: "jpeg",
+          moderation: "low",
+          n: 3,
+          output_format: "jpeg",
+          quality: "high",
+          size: "4K",
+        }),
+      }),
+      prompt: "make three poster options",
+      routeKey: "image.gpt-image-2.line2",
+    });
+  });
+
   test("forwards image edit request metadata for target-node edit runs", () => {
     const request = __workerTestUtils.buildImageRequest(
       [

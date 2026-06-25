@@ -40,10 +40,17 @@ describe("AgentWorkflowLauncher", () => {
     });
 
     const result = await launcher.launchImageGeneration(context, {
+      aspectRatio: "16:9",
+      format: "png",
       flowId: "flow-1",
+      modelDisplayName: "Nano Banana Pro",
+      n: 2,
       prompt: "make a poster",
+      quality: "high",
       referenceAssetIds: ["asset-ref-1"],
       roundIndex: 2,
+      routeKey: "image.mouxihub.nano-banana-pro.t3",
+      routeLabel: "线路二（官方T3）",
       size: "2K",
       targetNodeId: "image-node-1",
       toolCallId: "tool-1",
@@ -54,8 +61,15 @@ describe("AgentWorkflowLauncher", () => {
       idempotencyKey: "agent:tool-1:call-1",
       input: {
         agentTool: {
+          aspectRatio: "16:9",
+          format: "png",
+          modelDisplayName: "Nano Banana Pro",
+          n: 2,
           prompt: "make a poster",
+          quality: "high",
           referenceAssetIds: ["asset-ref-1"],
+          routeKey: "image.mouxihub.nano-banana-pro.t3",
+          routeLabel: "线路二（官方T3）",
           size: "2K",
           toolCallId: "tool-1",
           toolCallKey: "call-1",
@@ -150,9 +164,279 @@ describe("AgentWorkflowLauncher", () => {
 });
 
 describe("AgentToolRunner", () => {
+  function createRunnerRepositoryMock(toolCallId = "tool-db-1", taskId = "task-db-1") {
+    return {
+      createTask: vi.fn().mockResolvedValue({ id: taskId }),
+      createToolCall: vi.fn().mockResolvedValue({ id: toolCallId }),
+      updateTask: vi.fn().mockResolvedValue(undefined),
+      updateToolCall: vi.fn().mockResolvedValue(undefined),
+    };
+  }
+
+  it("creates a durable image task before launching the workflow", async () => {
+    const operations: string[] = [];
+    const repository = {
+      createTask: vi.fn().mockImplementation(async (input) => {
+        operations.push(`task:${input.taskKey}`);
+        return { id: "task-db-1" };
+      }),
+      createToolCall: vi.fn().mockResolvedValue({ id: "tool-db-1" }),
+      updateTask: vi.fn().mockResolvedValue(undefined),
+      updateToolCall: vi.fn().mockResolvedValue(undefined),
+    };
+    const launcher = {
+      launchImageGeneration: vi.fn().mockImplementation(async (_context, input) => {
+        operations.push("launch");
+        return {
+          assetRefs: [{ assetId: "asset-1", kind: "image", label: "Round 1 image 1", promptSummary: "", refId: "round-1-image-1" }],
+          nodeRunId: "node-run-1",
+          status: "succeeded",
+          workflowRunId: "run-1",
+        };
+      }),
+    };
+    const runner = new AgentToolRunner({ launcher, repository });
+
+    const result = await runner.runToolCall(context, {
+      call: {
+        arguments: { prompt: "make a poster", size: "1K" },
+        toolCallKey: "call-1",
+        toolName: "generate_image",
+      },
+      executionTarget: { flowId: "flow-1", targetNodeId: "image-node-1" },
+      roundIndex: 1,
+      sessionId: "session-1",
+      turnId: "turn-1",
+    });
+
+    expect(repository.createTask).toHaveBeenCalledWith(expect.objectContaining({
+      inputJson: expect.objectContaining({
+        prompt: "make a poster",
+        settings: expect.objectContaining({ size: "1K" }),
+        toolCallKey: "call-1",
+      }),
+      sessionId: "session-1",
+      status: "queued",
+      taskKey: "call-1",
+      taskType: "generate_image",
+      tenantId: "tenant-1",
+      title: "Image generation",
+      turnId: "turn-1",
+    }));
+    expect(operations).toEqual(["task:call-1", "launch"]);
+    expect(launcher.launchImageGeneration).toHaveBeenCalledWith(
+      context,
+      expect.objectContaining({
+        toolCallId: "task-db-1",
+        toolCallKey: "call-1",
+      }),
+    );
+    expect(result.toolCallId).toBe("task-db-1");
+  });
+
+  it("links workflow and asset output back to the durable image task", async () => {
+    const repository = {
+      createTask: vi.fn().mockResolvedValue({ id: "task-db-1" }),
+      createToolCall: vi.fn().mockResolvedValue({ id: "tool-db-1" }),
+      updateTask: vi.fn().mockResolvedValue(undefined),
+      updateToolCall: vi.fn().mockResolvedValue(undefined),
+    };
+    const launcher = {
+      launchImageGeneration: vi.fn().mockResolvedValue({
+        assetRefs: [{ assetId: "asset-1", kind: "image", label: "Round 1 image 1", promptSummary: "", refId: "round-1-image-1" }],
+        nodeRunId: "node-run-1",
+        status: "succeeded",
+        workflowRunId: "run-1",
+      }),
+    };
+    const runner = new AgentToolRunner({ launcher, repository });
+
+    await runner.runToolCall(context, {
+      call: {
+        arguments: { prompt: "make a poster", size: "1K" },
+        toolCallKey: "call-1",
+        toolName: "generate_image",
+      },
+      executionTarget: { flowId: "flow-1", targetNodeId: "image-node-1" },
+      roundIndex: 1,
+      sessionId: "session-1",
+      turnId: "turn-1",
+    });
+
+    expect(repository.updateTask).toHaveBeenCalledWith("task-db-1", expect.objectContaining({
+      outputJson: expect.objectContaining({
+        assetRefs: [expect.objectContaining({ assetId: "asset-1" })],
+        nodeRunId: "node-run-1",
+        workflowRunId: "run-1",
+      }),
+      status: "succeeded",
+      tenantId: "tenant-1",
+    }));
+  });
+
+  it("creates every batch child task before the first workflow launch", async () => {
+    const operations: string[] = [];
+    const repository = {
+      createTask: vi.fn().mockImplementation(async (input) => {
+        operations.push(`task:${input.taskKey}`);
+        return { id: input.taskKey === "batch-1:1" ? "task-db-1" : "task-db-2" };
+      }),
+      createToolCall: vi.fn().mockResolvedValue({ id: "tool-db-batch" }),
+      updateTask: vi.fn().mockResolvedValue(undefined),
+      updateToolCall: vi.fn().mockResolvedValue(undefined),
+    };
+    const launcher = {
+      launchImageGeneration: vi.fn().mockImplementation(async (_context, input) => {
+        operations.push(`launch:${input.toolCallKey}`);
+        return {
+          assetRefs: [{ assetId: `asset-${input.toolCallKey}`, kind: "image", label: "Batch image", promptSummary: "", refId: `ref-${input.toolCallKey}` }],
+          nodeRunId: `node-${input.toolCallKey}`,
+          status: "succeeded",
+          workflowRunId: `run-${input.toolCallKey}`,
+        };
+      }),
+    };
+    const runner = new AgentToolRunner({ launcher, repository });
+
+    const result = await runner.runToolCall(context, {
+      call: {
+        arguments: {
+          images: [
+            { prompt: "one", size: "1K" },
+            { prompt: "two", size: "2K" },
+          ],
+          sharedStyle: "commercial poster",
+        },
+        toolCallKey: "batch-1",
+        toolName: "generate_image_batch",
+      },
+      executionTarget: { flowId: "flow-1", targetNodeId: "image-node-1" },
+      roundIndex: 1,
+      sessionId: "session-1",
+      turnId: "turn-1",
+    });
+
+    expect(repository.createTask).toHaveBeenCalledTimes(2);
+    expect(repository.createTask).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      inputJson: expect.objectContaining({ prompt: "commercial poster\none" }),
+      taskKey: "batch-1:1",
+      taskType: "generate_image_batch_child",
+      title: "Batch image 1",
+    }));
+    expect(repository.createTask).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      inputJson: expect.objectContaining({ prompt: "commercial poster\ntwo" }),
+      taskKey: "batch-1:2",
+      taskType: "generate_image_batch_child",
+      title: "Batch image 2",
+    }));
+    expect(operations.slice(0, 2)).toEqual(["task:batch-1:1", "task:batch-1:2"]);
+    expect(operations[2]?.startsWith("launch:")).toBe(true);
+    expect((result as { tasks?: unknown[] }).tasks).toEqual([
+      expect.objectContaining({ taskId: "task-db-1", toolCallKey: "batch-1:1", status: "succeeded" }),
+      expect.objectContaining({ taskId: "task-db-2", toolCallKey: "batch-1:2", status: "succeeded" }),
+    ]);
+  });
+
+  it("runs batch workflow launches concurrently within the configured limit", async () => {
+    let activeLaunches = 0;
+    let maxActiveLaunches = 0;
+    const repository = {
+      createTask: vi.fn().mockImplementation(async (input) => ({
+        id: `task-${String(input.taskKey).split(":").at(-1)}`,
+      })),
+      createToolCall: vi.fn().mockResolvedValue({ id: "tool-db-batch" }),
+      updateTask: vi.fn().mockResolvedValue(undefined),
+      updateToolCall: vi.fn().mockResolvedValue(undefined),
+    };
+    const launcher = {
+      launchImageGeneration: vi.fn().mockImplementation(async (_context, input) => {
+        activeLaunches += 1;
+        maxActiveLaunches = Math.max(maxActiveLaunches, activeLaunches);
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        activeLaunches -= 1;
+        return {
+          assetRefs: [{ assetId: `asset-${input.toolCallKey}`, kind: "image", label: "Batch image", promptSummary: "", refId: `ref-${input.toolCallKey}` }],
+          nodeRunId: `node-${input.toolCallKey}`,
+          status: "succeeded",
+          workflowRunId: `run-${input.toolCallKey}`,
+        };
+      }),
+    };
+    const runner = new AgentToolRunner({ batchConcurrency: 2, launcher, repository });
+
+    const result = await runner.runToolCall(context, {
+      call: {
+        arguments: {
+          images: [
+            { prompt: "one", size: "1K" },
+            { prompt: "two", size: "1K" },
+            { prompt: "three", size: "1K" },
+            { prompt: "four", size: "1K" },
+          ],
+        },
+        toolCallKey: "batch-concurrent",
+        toolName: "generate_image_batch",
+      },
+      executionTarget: { flowId: "flow-1", targetNodeId: "image-node-1" },
+      roundIndex: 1,
+      sessionId: "session-1",
+      turnId: "turn-1",
+    });
+
+    expect(maxActiveLaunches).toBe(2);
+    expect(result.status).toBe("succeeded");
+    expect(result.assetRefs).toHaveLength(4);
+  });
+
+  it("preserves failed durable task error details for retry", async () => {
+    const repository = {
+      createTask: vi.fn().mockResolvedValue({ id: "task-db-fail" }),
+      createToolCall: vi.fn().mockResolvedValue({ id: "tool-db-fail" }),
+      updateTask: vi.fn().mockResolvedValue(undefined),
+      updateToolCall: vi.fn().mockResolvedValue(undefined),
+    };
+    const launcher = {
+      launchImageGeneration: vi.fn().mockRejectedValue(new AgentWorkflowLauncherError(502, "WORKFLOW_FAILED", "Workflow failed.")),
+    };
+    const runner = new AgentToolRunner({ launcher, repository });
+
+    const result = await runner.runToolCall(context, {
+      call: {
+        arguments: { prompt: "make a poster", size: "1K" },
+        toolCallKey: "call-fail",
+        toolName: "generate_image",
+      },
+      executionTarget: { flowId: "flow-1", targetNodeId: "image-node-1" },
+      roundIndex: 1,
+      sessionId: "session-1",
+      turnId: "turn-1",
+    });
+
+    expect(repository.updateTask).toHaveBeenCalledWith("task-db-fail", expect.objectContaining({
+      errorJson: {
+        code: "WORKFLOW_FAILED",
+        message: "Workflow failed.",
+      },
+      status: "failed",
+      tenantId: "tenant-1",
+    }));
+    expect(result).toMatchObject({
+      failures: [{ code: "WORKFLOW_FAILED", message: "Workflow failed.", toolCallKey: "call-fail" }],
+      status: "failed",
+      tasks: [expect.objectContaining({
+        error: { code: "WORKFLOW_FAILED", message: "Workflow failed." },
+        status: "failed",
+        taskId: "task-db-fail",
+        toolCallKey: "call-fail",
+      })],
+    });
+  });
+
   it("persists status transitions for a single image tool call", async () => {
     const repository = {
+      createTask: vi.fn().mockResolvedValue({ id: "task-db-legacy" }),
       createToolCall: vi.fn().mockResolvedValue({ id: "tool-db-1" }),
+      updateTask: vi.fn().mockResolvedValue(undefined),
       updateToolCall: vi.fn().mockResolvedValue(undefined),
     };
     const launcher = {
@@ -190,11 +474,59 @@ describe("AgentToolRunner", () => {
     expect(result.status).toBe("succeeded");
   });
 
-  it("returns partial success for batch image tool calls", async () => {
-    const repository = {
-      createToolCall: vi.fn().mockResolvedValue({ id: "tool-db-1" }),
-      updateToolCall: vi.fn().mockResolvedValue(undefined),
+  it("passes approved image settings through to the workflow launcher", async () => {
+    const repository = createRunnerRepositoryMock("tool-db-settings", "task-db-settings");
+    const launcher = {
+      launchImageGeneration: vi.fn().mockResolvedValue({
+        assetRefs: [{ assetId: "asset-settings", kind: "image", label: "Round 1 image 1", promptSummary: "", refId: "round-1-image-1" }],
+        nodeRunId: "node-run-settings",
+        status: "succeeded",
+        workflowRunId: "run-settings",
+      }),
     };
+    const runner = new AgentToolRunner({ launcher, repository });
+
+    await runner.runToolCall(context, {
+      call: {
+        arguments: {
+          aspectRatio: "16:9",
+          format: "jpeg",
+          modelDisplayName: "GPT-Image-2",
+          moderation: "low",
+          n: 3,
+          prompt: "make three poster options",
+          quality: "high",
+          routeKey: "image.gpt-image-2.line2",
+          routeLabel: "线路二",
+          size: "4K",
+        },
+        toolCallKey: "call-settings",
+        toolName: "generate_image",
+      },
+      executionTarget: { flowId: "flow-1", targetNodeId: "image-node-1" },
+      roundIndex: 1,
+      sessionId: "session-1",
+      turnId: "turn-1",
+    });
+
+    expect(launcher.launchImageGeneration).toHaveBeenCalledWith(
+      context,
+      expect.objectContaining({
+        aspectRatio: "16:9",
+        format: "jpeg",
+        modelDisplayName: "GPT-Image-2",
+        moderation: "low",
+        n: 3,
+        quality: "high",
+        routeKey: "image.gpt-image-2.line2",
+        routeLabel: "线路二",
+        size: "4K",
+      }),
+    );
+  });
+
+  it("returns partial success for batch image tool calls", async () => {
+    const repository = createRunnerRepositoryMock("tool-db-1", "task-db-batch");
     const launcher = {
       launchImageGeneration: vi
         .fn()
@@ -231,11 +563,82 @@ describe("AgentToolRunner", () => {
     expect(repository.updateToolCall).toHaveBeenLastCalledWith("tool-db-1", expect.objectContaining({ status: "succeeded" }));
   });
 
-  it("injects active continuation ref into image execution when explicit reference refs are missing", async () => {
-    const repository = {
-      createToolCall: vi.fn().mockResolvedValue({ id: "tool-db-3" }),
-      updateToolCall: vi.fn().mockResolvedValue(undefined),
+  it("passes per-image approved batch settings through to the workflow launcher", async () => {
+    const repository = createRunnerRepositoryMock("tool-db-batch-settings", "task-db-batch-settings");
+    const launcher = {
+      launchImageGeneration: vi
+        .fn()
+        .mockResolvedValue({
+          assetRefs: [{ assetId: "asset-batch-settings", kind: "image", label: "Round 1 image 1", promptSummary: "", refId: "round-1-image-1" }],
+          nodeRunId: "node-run-batch-settings",
+          status: "succeeded",
+          workflowRunId: "run-batch-settings",
+        }),
     };
+    const runner = new AgentToolRunner({ launcher, repository });
+
+    await runner.runToolCall(context, {
+      call: {
+        arguments: {
+          images: [
+            {
+              aspectRatio: "1:1",
+              n: 2,
+              prompt: "one",
+              routeKey: "image.nano.line1",
+              routeLabel: "线路一",
+              size: "2K",
+            },
+            {
+              aspectRatio: "9:16",
+              n: 1,
+              prompt: "two",
+              routeKey: "image.nano.line2",
+              routeLabel: "线路二",
+              size: "4K",
+            },
+          ],
+          sharedStyle: "commercial poster",
+        },
+        toolCallKey: "batch-settings",
+        toolName: "generate_image_batch",
+      },
+      executionTarget: { flowId: "flow-1", targetNodeId: "image-node-1" },
+      roundIndex: 1,
+      sessionId: "session-1",
+      turnId: "turn-1",
+    });
+
+    expect(launcher.launchImageGeneration).toHaveBeenNthCalledWith(
+      1,
+      context,
+      expect.objectContaining({
+        aspectRatio: "1:1",
+        n: 2,
+        prompt: "commercial poster\none",
+        routeKey: "image.nano.line1",
+        routeLabel: "线路一",
+        size: "2K",
+        toolCallKey: "batch-settings:1",
+      }),
+    );
+    expect(launcher.launchImageGeneration).toHaveBeenNthCalledWith(
+      2,
+      context,
+      expect.objectContaining({
+        aspectRatio: "9:16",
+        n: 1,
+        prompt: "commercial poster\ntwo",
+        routeKey: "image.nano.line2",
+        routeLabel: "线路二",
+        size: "4K",
+        toolCallKey: "batch-settings:2",
+      }),
+    );
+  });
+
+  it("injects active continuation ref into image execution when explicit reference refs are missing", async () => {
+    const repository = createRunnerRepositoryMock("tool-db-3", "task-db-3");
     const launcher = {
       launchImageGeneration: vi.fn().mockResolvedValue({
         assetRefs: [{ assetId: "asset-3", kind: "image", label: "Round 2 image 1", promptSummary: "", refId: "round-2-image-1" }],

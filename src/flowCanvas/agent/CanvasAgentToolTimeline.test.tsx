@@ -60,6 +60,40 @@ describe("CanvasAgentToolTimeline", () => {
     expect(screen.getByText("Nano Banana Pro")).toBeTruthy();
     expect(screen.getByText("线路二（官方T3）")).toBeTruthy();
     expect(screen.getByText("4K · 16:9 · 2 references")).toBeTruthy();
+    expect(screen.getByText("Estimated credits 12")).toBeTruthy();
+  });
+
+  it("shows draft run settings while waiting for approval", () => {
+    render(
+      <CanvasAgentToolTimeline
+        items={[
+          {
+            assetRefs: [],
+            estimate: {
+              draftSelection: {
+                aspectRatio: "9:16",
+                estimatedCredits: 10.5,
+                modelDisplayName: "GPT-Image-2",
+                modality: "image",
+                n: 3,
+                routeLabel: "线路二",
+                size: "2K",
+              },
+              totalCredits: 10.5,
+            },
+            status: "awaiting_approval",
+            title: "Image generation",
+            toolCallKey: "tool-draft-1",
+            toolName: "generate_image",
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("GPT-Image-2")).toBeTruthy();
+    expect(screen.getByText("线路二")).toBeTruthy();
+    expect(screen.getByText("2K · 9:16 · 3 张")).toBeTruthy();
+    expect(screen.getByText("Estimated credits 10.5")).toBeTruthy();
   });
 
   it("allows continuing from a generated result", () => {

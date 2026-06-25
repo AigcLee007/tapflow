@@ -143,7 +143,7 @@ describe("AgentRunSettingsService", () => {
           modelFamily: "pixellelabs.nano-banana-pro",
           modelKey: "gemini-3-pro-image-preview",
           qualityOptions: [],
-          quantityOptions: [1],
+          quantityOptions: [1, 2, 3],
           routes: [
             {
               estimatedCredits: 4,

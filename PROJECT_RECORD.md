@@ -1,7 +1,49 @@
 ﻿# Project Record
 
-Last updated: 2026-06-24
+Last updated: 2026-06-25
 Maintainers: project team + Codex sessions
+
+## 2026-06-25 - Canvas Director Agent Phase 3 Parameter Execution Closure
+
+- completed the remaining Phase 3 image-parameter confirmation closure for the current Director Agent path.
+- frontend parameter confirmation now supports quantity selection (`1/2/3`) and updates the displayed estimated credits in real time based on selected model, route, size, and quantity.
+- backend Agent run settings now advertises quantity options so production users can actually choose multi-image output before approving paid execution.
+- cost estimation now multiplies single-image requests by `n` and estimates batch image items by each item's own route, size, and quantity.
+- confirmed Agent settings now pass through the whole execution chain:
+  - Agent approval selection
+  - tool runner
+  - workflow run input `agentTool`
+  - worker image request construction
+  - provider-facing metadata/params, including `size`, `aspectRatio`, `quality`, `output_format`, `moderation`, and `n`
+- Agent workflow input and approval events keep provider internals out of the user-facing payload; visible summaries use product model names, route labels, size/aspect/quantity, estimated credits, and reference counts.
+- worker image requests now convert Agent reference asset IDs into provider input assets and merge them with upstream canvas assets without duplicating the same asset ID.
+- task cards and replayed Agent events now preserve draft/confirmed parameter summaries so users can audit what will be used or what was used after refresh.
+- validation:
+  - `npm run test --workspace @aigc-flow/api -- agent-cost-estimator.test.ts agent-tool-runner.test.ts agent-run-settings.test.ts agent-executor.test.ts`
+  - `npm run test --workspace @aigc-flow/worker -- workflow-runtime-image-request.test.ts`
+  - `npm test -- src/flowCanvas/agent/CanvasAgentParameterCard.test.tsx src/flowCanvas/agent/CanvasAgentToolTimeline.test.tsx src/flowCanvas/agent/agentReplayState.test.ts src/flowCanvas/agent/useCanvasAgentSession.test.tsx`
+
+## 2026-06-25 - Canvas Director Agent Phase 4 Durable Image Task Engine
+
+- completed the Phase 4 image-task MVP for the Director Agent path.
+- Agent image production now creates durable `agent_tasks` rows before workflow execution instead of relying only on legacy `agent_tool_calls`.
+- single image and image-edit tool calls now:
+  - create a queued task first
+  - emit `task_created` before provider/workflow launch
+  - mark the task running, succeeded, or failed
+  - persist safe output links including workflow run id, node run id, asset refs, and normalized error details
+- batch image generation now creates all child task rows/cards before launching the first workflow run, then runs child workflow launches concurrently within a bounded runner limit.
+- Agent executor now delegates task lifecycle events to the tool runner so the UI can show task cards before the model/provider result returns.
+- durable Agent event replay now understands `task_completed` and `task_failed`, allowing refresh/re-entry to restore successful and failed child tasks.
+- frontend Agent task state now updates immediately for task completion/failure events while preserving provider/baseUrl/upstream model secrecy.
+- video and compare tools remain intentionally out of this MVP until their real workflow/runtime paths are implemented safely.
+- validation:
+  - `npm run test --workspace @aigc-flow/api -- agent-cost-estimator.test.ts agent-tool-runner.test.ts agent-run-settings.test.ts agent-executor.test.ts agent-event-service.test.ts`
+  - `npm run test --workspace @aigc-flow/worker -- workflow-runtime-image-request.test.ts`
+  - `npm test -- src/flowCanvas/agent/CanvasAgentParameterCard.test.tsx src/flowCanvas/agent/CanvasAgentToolTimeline.test.tsx src/flowCanvas/agent/agentReplayState.test.ts src/flowCanvas/agent/useCanvasAgentSession.test.tsx src/flowCanvas/agent/canvasAgentToolEvents.test.ts`
+  - `npm run build --workspace @aigc-flow/api`
+  - `npm run build --workspace @aigc-flow/worker`
+  - `npm run build` passed with existing Vite chunk-size/dynamic-import warnings
 
 ## 2026-06-24 - Canvas Director Agent Phase 0-1 Skeleton
 

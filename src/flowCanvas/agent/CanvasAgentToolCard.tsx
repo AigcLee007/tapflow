@@ -17,14 +17,19 @@ function getStatusText(status: CanvasAgentToolTimelineItem["status"]) {
 }
 
 function buildRunSummary(item: CanvasAgentToolTimelineItem) {
-  const selection = item.estimate?.currentSelection;
+  const selection = item.estimate?.currentSelection ?? item.estimate?.draftSelection;
   if (!selection) return null;
-  const sizeRatio = [selection.size, selection.aspectRatio].filter(Boolean).join(" · ");
+  const sizeRatio = [
+    selection.size,
+    selection.aspectRatio,
+    selection.n && selection.n > 1 ? `${selection.n} \u5f20` : null,
+  ].filter(Boolean).join(" · ");
   const referenceCount = item.estimate?.referenceRefs?.length ?? 0;
   return {
-    model: selection.modelDisplayName,
+    credits: selection.estimatedCredits ?? item.estimate?.totalCredits ?? null,
+    model: selection.modelDisplayName ?? "Image model",
     referenceSummary: referenceCount > 0 ? `${referenceCount} references` : null,
-    route: selection.routeLabel,
+    route: selection.routeLabel ?? "Selected line",
     sizeRatio,
   };
 }
@@ -95,6 +100,11 @@ export function CanvasAgentToolCard(props: {
             {runSummary.sizeRatio}
             {runSummary.referenceSummary ? ` · ${runSummary.referenceSummary}` : ""}
           </div>
+          {runSummary.credits !== null ? (
+            <div style={{ color: "#facc15", fontSize: 11, fontWeight: 800 }}>
+              Estimated credits {runSummary.credits}
+            </div>
+          ) : null}
         </div>
       ) : null}
 

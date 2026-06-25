@@ -97,12 +97,33 @@ describe("AgentExecutorService", () => {
         }),
       });
     const toolRunner = {
-      runToolCall: vi.fn().mockResolvedValue({
-        assetRefs: [{ assetId: "asset-1", kind: "image", label: "Round 1 image 1", promptSummary: "", refId: "round-1-image-1" }],
-        status: "succeeded",
-        toolCallId: "tool-db-1",
-        workflowRunIds: ["workflow-1"],
-        workflowRuns: [{ nodeRunId: "node-1", workflowRunId: "workflow-1" }],
+      runToolCall: vi.fn().mockImplementation(async (_context, input) => {
+        await input.onEvent?.({
+          taskId: "tool-db-1",
+          title: "Image generation",
+          toolCallKey: "tool-call-1",
+          toolName: "generate_image",
+          type: "task_created",
+        });
+        await input.onEvent?.({
+          nodeRunId: "node-1",
+          toolCallKey: "tool-call-1",
+          type: "workflow_run_linked",
+          workflowRunId: "workflow-1",
+        });
+        await input.onEvent?.({
+          assetRef: { assetId: "asset-1", kind: "image", label: "Round 1 image 1", promptSummary: "", refId: "round-1-image-1" },
+          taskId: "tool-db-1",
+          toolCallKey: "tool-call-1",
+          type: "artifact_created",
+        });
+        return {
+          assetRefs: [{ assetId: "asset-1", kind: "image", label: "Round 1 image 1", promptSummary: "", refId: "round-1-image-1" }],
+          status: "succeeded",
+          toolCallId: "tool-db-1",
+          workflowRunIds: ["workflow-1"],
+          workflowRuns: [{ nodeRunId: "node-1", workflowRunId: "workflow-1" }],
+        };
       }),
     };
 
@@ -153,6 +174,8 @@ describe("AgentExecutorService", () => {
       toolCallKey: "tool-call-1",
       type: "artifact_created",
     }));
+    expect(events.findIndex((event) => (event as { type?: string }).type === "task_created"))
+      .toBeLessThan(events.findIndex((event) => (event as { type?: string }).type === "tool_result"));
     expect(JSON.stringify(result)).not.toMatch(/baseUrl|apiKey|Authorization|provider_key|upstream_model/);
   });
 

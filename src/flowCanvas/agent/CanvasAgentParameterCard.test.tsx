@@ -13,7 +13,7 @@ const models: AgentImageRunSettingsModel[] = [
     modelFamily: "pixellelabs.nano-banana-pro",
     modelKey: "gemini-3-pro-image-preview",
     qualityOptions: [],
-    quantityOptions: [1],
+    quantityOptions: [1, 2, 3],
     routes: [
       {
         estimatedCredits: 4,
@@ -45,7 +45,7 @@ const models: AgentImageRunSettingsModel[] = [
     modelFamily: "gpt-image-2",
     modelKey: "gpt-image-2",
     qualityOptions: ["auto", "high"],
-    quantityOptions: [1],
+    quantityOptions: [1, 2, 3],
     routes: [
       {
         estimatedCredits: 2.5,
@@ -123,6 +123,7 @@ describe("CanvasAgentParameterCard", () => {
     fireEvent.click(screen.getByRole("button", { name: "线路二" }));
     fireEvent.click(screen.getByRole("button", { name: "3:4" }));
     fireEvent.click(screen.getByRole("button", { name: "2K" }));
+    fireEvent.click(screen.getByRole("button", { name: "3 张" }));
     fireEvent.click(screen.getByRole("button", { name: "HIGH" }));
     fireEvent.click(screen.getByRole("button", { name: "JPEG" }));
     fireEvent.click(screen.getByRole("button", { name: "LOW MODERATION" }));
@@ -130,12 +131,12 @@ describe("CanvasAgentParameterCard", () => {
 
     expect(onConfirm).toHaveBeenCalledWith({
       aspectRatio: "3:4",
-      estimatedCredits: 3.5,
+      estimatedCredits: 10.5,
       format: "jpeg",
       modelDisplayName: "GPT-Image-2",
       moderation: "low",
       modality: "image",
-      n: 1,
+      n: 3,
       quality: "high",
       routeKey: "image.gpt-image-2.line2",
       routeLabel: "线路二",
@@ -156,5 +157,21 @@ describe("CanvasAgentParameterCard", () => {
     expect(screen.getByText("Reference images")).toBeTruthy();
     expect(screen.getByText("round-1-image-1")).toBeTruthy();
     expect(screen.getByText("asset:2")).toBeTruthy();
+  });
+
+  it("updates estimated credits when quantity changes", () => {
+    render(
+      <CanvasAgentParameterCard
+        models={models}
+        onCancel={vi.fn()}
+        onConfirm={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("4")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "3 张" }));
+
+    expect(screen.getByText("12")).toBeTruthy();
   });
 });

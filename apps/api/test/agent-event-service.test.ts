@@ -105,6 +105,78 @@ describe("AgentEventService", () => {
     );
   });
 
+  test("persists task completion and failure events for replay", async () => {
+    const appendSessionEvent = vi.fn(async (_context, input) => ({
+      createdAt: "2026-06-24T00:00:00.000Z",
+      eventJson: input.eventJson,
+      eventType: input.eventType,
+      id: "event-task",
+      seq: 3,
+      sessionId: input.sessionId,
+      taskId: input.taskId ?? null,
+      turnId: input.turnId ?? null,
+    }));
+    const service = new AgentEventService({
+      pool: {} as never,
+      repository: {
+        appendSessionEvent,
+        getSessionEvents: vi.fn(),
+      },
+    });
+
+    await service.appendToolEvent(
+      { tenantId: "tenant-1", userId: "user-1" },
+      "session-1",
+      {
+        result: { workflowRunId: "run-1" },
+        taskId: "task-1",
+        toolCallKey: "tool-1",
+        type: "task_completed",
+      },
+    );
+    await service.appendToolEvent(
+      { tenantId: "tenant-1", userId: "user-1" },
+      "session-1",
+      {
+        code: "WORKFLOW_FAILED",
+        message: "Workflow failed.",
+        taskId: "task-2",
+        toolCallKey: "tool-2",
+        type: "task_failed",
+      },
+    );
+
+    expect(appendSessionEvent).toHaveBeenNthCalledWith(
+      1,
+      { tenantId: "tenant-1", userId: "user-1" },
+      expect.objectContaining({
+        eventJson: {
+          result: { workflowRunId: "run-1" },
+          taskId: "task-1",
+          toolCallKey: "tool-1",
+        },
+        eventType: "task_completed",
+        sessionId: "session-1",
+        taskId: "task-1",
+      }),
+    );
+    expect(appendSessionEvent).toHaveBeenNthCalledWith(
+      2,
+      { tenantId: "tenant-1", userId: "user-1" },
+      expect.objectContaining({
+        eventJson: {
+          code: "WORKFLOW_FAILED",
+          message: "Workflow failed.",
+          taskId: "task-2",
+          toolCallKey: "tool-2",
+        },
+        eventType: "task_failed",
+        sessionId: "session-1",
+        taskId: "task-2",
+      }),
+    );
+  });
+
   test("does not persist transient thinking or message delta events", async () => {
     const appendSessionEvent = vi.fn();
     const service = new AgentEventService({

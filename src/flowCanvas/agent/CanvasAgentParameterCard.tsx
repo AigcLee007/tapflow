@@ -54,6 +54,7 @@ export function CanvasAgentParameterCard(props: {
   const [quality, setQuality] = React.useState<"auto" | "high" | "low" | "medium">("auto");
   const [format, setFormat] = React.useState<"jpeg" | "png" | "webp">("png");
   const [moderation, setModeration] = React.useState<"auto" | "low">("auto");
+  const [quantity, setQuantity] = React.useState(initialModel?.quantityOptions[0] ?? 1);
 
   React.useEffect(() => {
     if (!activeModel) return;
@@ -64,13 +65,14 @@ export function CanvasAgentParameterCard(props: {
     setQuality("auto");
     setFormat("png");
     setModeration("auto");
+    setQuantity(activeModel.quantityOptions[0] ?? 1);
   }, [activeModel?.modelKey]);
 
   const activeRoute = React.useMemo<AgentImageRunSettingsRoute | null>(
     () => activeModel?.routes.find((route) => route.routeKey === routeKey) ?? null,
     [activeModel, routeKey],
   );
-  const estimatedCredits = getRouteTierCredits(activeRoute, size);
+  const estimatedCredits = roundCredits(getRouteTierCredits(activeRoute, size) * quantity);
 
   if (!activeModel) return null;
 
@@ -176,6 +178,26 @@ export function CanvasAgentParameterCard(props: {
         />
       )}
 
+      {activeModel.quantityOptions.length > 1 ? (
+        <section style={{ display: "grid", gap: 8 }}>
+          <div style={{ color: "#cbd5e1", fontSize: 12, fontWeight: 700 }}>鏁伴噺</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {activeModel.quantityOptions.map((option) => (
+              <button
+                aria-label={`${option} \u5f20`}
+                aria-pressed={option === quantity}
+                key={option}
+                onClick={() => setQuantity(option)}
+                style={chipStyle(option === quantity)}
+                type="button"
+              >
+                {option} {"\u5f20"}
+              </button>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       <div
         style={{
           alignItems: "center",
@@ -205,7 +227,7 @@ export function CanvasAgentParameterCard(props: {
                 modelDisplayName: activeModel.displayName,
                 moderation: gptModel ? moderation : undefined,
                 modality: "image",
-                n: 1,
+                n: quantity,
                 quality: gptModel ? quality : undefined,
                 routeKey: activeRoute.routeKey,
                 routeLabel: activeRoute.routeLabel,
@@ -221,4 +243,8 @@ export function CanvasAgentParameterCard(props: {
       </div>
     </article>
   );
+}
+
+function roundCredits(value: number): number {
+  return Number(value.toFixed(4));
 }

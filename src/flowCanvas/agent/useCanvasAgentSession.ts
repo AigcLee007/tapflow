@@ -229,6 +229,36 @@ export function useCanvasAgentSession() {
       return;
     }
 
+    if (event.type === "task_completed") {
+      setToolTimeline((current) => current.map((item) => item.toolCallKey === event.toolCallKey
+        ? {
+            ...item,
+            result: event.result ?? item.result,
+            status: "succeeded",
+            taskId: event.taskId || item.taskId,
+          }
+        : item));
+      return;
+    }
+
+    if (event.type === "task_failed") {
+      setToolTimeline((current) => current.map((item) => item.toolCallKey === event.toolCallKey
+        ? {
+            ...item,
+            error: event.message,
+            status: "failed",
+            taskId: event.taskId || item.taskId,
+          }
+        : item));
+      appendActivity({
+        detail: event.message,
+        id: `task-failed-${event.taskId}`,
+        label: "Generation failed",
+        state: "failed",
+      });
+      return;
+    }
+
     if (event.type === "approval_required") {
       setStatus("awaiting_approval");
       appendActivity({

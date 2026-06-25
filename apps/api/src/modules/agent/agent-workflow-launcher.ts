@@ -14,10 +14,18 @@ export type AgentWorkflowLaunchContext = {
 };
 
 export type AgentImageWorkflowLaunchInput = {
+  aspectRatio?: string;
+  format?: "jpeg" | "png" | "webp";
   flowId: string | null;
+  modelDisplayName?: string;
+  moderation?: "auto" | "low";
+  n?: number;
   prompt: string;
+  quality?: string;
   referenceAssetIds?: string[];
   roundIndex: number;
+  routeKey?: string;
+  routeLabel?: string;
   size?: "1K" | "2K" | "4K";
   targetNodeId: string | null;
   toolCallId: string;
@@ -82,13 +90,21 @@ export class AgentWorkflowLauncher {
     const created = await this.options.workflowRunsService.createWorkflowRun(context, input.flowId, {
       idempotencyKey: `agent:${input.toolCallId}:${input.toolCallKey}`,
       input: {
-        agentTool: {
+        agentTool: compactObject({
+          aspectRatio: input.aspectRatio,
+          format: input.format,
+          modelDisplayName: input.modelDisplayName,
+          moderation: input.moderation,
+          n: input.n,
           prompt: input.prompt,
+          quality: input.quality,
           referenceAssetIds: input.referenceAssetIds ?? [],
-          size: input.size ?? null,
+          routeKey: input.routeKey,
+          routeLabel: input.routeLabel,
+          size: input.size,
           toolCallId: input.toolCallId,
           toolCallKey: input.toolCallKey,
-        },
+        }),
         runMode: "target_node",
         targetNodeId: input.targetNodeId,
       },
@@ -151,6 +167,12 @@ function isTerminalWorkflowStatus(status: string): boolean {
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function compactObject<T extends Record<string, unknown>>(value: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, item]) => item !== undefined),
+  ) as Partial<T>;
 }
 
 function extractAssetsFromNodeRun(nodeRun: WorkflowNodeRunLike | null): Array<{

@@ -172,14 +172,15 @@ export class AgentCostEstimator {
       tenantId: input.tenantId,
     });
     const credits = getCreditsForSize(route, input.size);
+    const quantity = readPositiveQuantity(input.n);
     return {
-      items: [buildEstimateItem(route, input.size, credits)],
+      items: [buildEstimateItem(route, input.size, credits, quantity)],
       route: {
         modelKey: route.modelKey,
         providerKey: route.providerKey,
         routeKey: route.routeKey,
       },
-      totalCredits: credits,
+      totalCredits: roundCredits(credits * quantity),
       unit: route.unit,
     };
   }
@@ -189,26 +190,31 @@ export class AgentCostEstimator {
     routeKey?: string;
     routeLabel?: string;
   }): Promise<AgentGenerationCostEstimate> {
-    const route = await this.requireActivePricing({
-      modelDisplayName: input.modelDisplayName,
-      routeKey: input.routeKey,
-      routeLabel: input.routeLabel,
-      tenantId: input.tenantId,
-    });
-    const items = input.images.map((image) => {
+    const estimates = await Promise.all(input.images.map(async (image) => {
+      const route = await this.requireActivePricing({
+        modelDisplayName: image.modelDisplayName ?? input.modelDisplayName,
+        routeKey: image.routeKey ?? input.routeKey,
+        routeLabel: image.routeLabel ?? input.routeLabel,
+        tenantId: input.tenantId,
+      });
       const credits = getCreditsForSize(route, image.size);
-      return buildEstimateItem(route, image.size, credits);
-    });
+      return {
+        item: buildEstimateItem(route, image.size, credits, readPositiveQuantity(image.n)),
+        route,
+      };
+    }));
+    const items = estimates.map((estimate) => estimate.item);
+    const firstRoute = estimates[0]!.route;
 
     return {
       items,
       route: {
-        modelKey: route.modelKey,
-        providerKey: route.providerKey,
-        routeKey: route.routeKey,
+        modelKey: firstRoute.modelKey,
+        providerKey: firstRoute.providerKey,
+        routeKey: firstRoute.routeKey,
       },
-      totalCredits: Number(items.reduce((sum, item) => sum + item.credits * item.quantity, 0).toFixed(4)),
-      unit: route.unit,
+      totalCredits: roundCredits(items.reduce((sum, item) => sum + item.credits * item.quantity, 0)),
+      unit: firstRoute.unit,
     };
   }
 
@@ -227,7 +233,7 @@ export class AgentCostEstimator {
   }
 }
 
-function buildEstimateItem(route: AgentImageRoutePricing, size: string | undefined, credits: number): AgentCostEstimateItem {
+function buildEstimateItem(route: AgentImageRoutePricing, size: string | undefined, credits: number, quantity = 1): AgentCostEstimateItem {
   return {
     credits,
     label: [
@@ -235,7 +241,7 @@ function buildEstimateItem(route: AgentImageRoutePricing, size: string | undefin
       route.routeLabel?.trim() || "Line",
       size ?? "default",
     ].join(" "),
-    quantity: 1,
+    quantity,
   };
 }
 
@@ -250,4 +256,12 @@ function getCreditsForSize(route: AgentImageRoutePricing, size: string | undefin
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function readPositiveQuantity(value: unknown): number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : 1;
+}
+
+function roundCredits(value: number): number {
+  return Number(value.toFixed(4));
 }

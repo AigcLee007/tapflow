@@ -2,6 +2,7 @@ import type { AgentImageRunSettingsModel, AgentImageRunSettingsSelection } from 
 
 export type CanvasAgentToolApprovalEstimate = {
   currentSelection?: AgentImageRunSettingsSelection;
+  draftSelection?: Partial<AgentImageRunSettingsSelection>;
   imageRunSettings?: AgentImageRunSettingsModel[];
   referenceRefs?: string[];
   totalCredits?: number;
@@ -40,6 +41,8 @@ export type CanvasAgentToolEvent =
   | { type: "message_delta"; content: string }
   | { type: "tool_started"; toolCallKey: string; toolName: string }
   | { type: "task_created"; taskId: string; title: string; toolCallKey: string; toolName: string }
+  | { type: "task_completed"; result?: unknown; taskId: string; toolCallKey: string }
+  | { type: "task_failed"; code: string; message: string; taskId: string; toolCallKey: string }
   | { type: "workflow_run_linked"; toolCallKey: string; workflowRunId: string; nodeRunId?: string }
   | { type: "artifact_created"; assetRef: CanvasAgentToolAssetRef; taskId: string; toolCallKey: string }
   | { type: "tool_progress"; message: string; toolCallKey: string }

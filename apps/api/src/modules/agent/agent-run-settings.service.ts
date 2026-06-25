@@ -106,7 +106,7 @@ export class AgentRunSettingsService {
       modelFamily: model.modelFamily,
       modelKey: model.modelKey,
       qualityOptions: [],
-      quantityOptions: [1],
+      quantityOptions: [1, 2, 3],
       routes: filteredRoutes,
       sizes: IMAGE_SIZES,
     };

@@ -45,6 +45,23 @@ export function normalizeAgentToolEvent(event: string, data: unknown): CanvasAge
       type: "task_created",
     };
   }
+  if (event === "task_completed") {
+    return {
+      result: record.result,
+      taskId: String(record.taskId ?? ""),
+      toolCallKey: String(record.toolCallKey ?? ""),
+      type: "task_completed",
+    };
+  }
+  if (event === "task_failed") {
+    return {
+      code: String(record.code ?? "AGENT_TASK_FAILED"),
+      message: String(record.message ?? "Agent task failed."),
+      taskId: String(record.taskId ?? ""),
+      toolCallKey: String(record.toolCallKey ?? ""),
+      type: "task_failed",
+    };
+  }
   if (event === "workflow_run_linked") {
     return {
       nodeRunId: typeof record.nodeRunId === "string" ? record.nodeRunId : undefined,

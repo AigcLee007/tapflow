@@ -101,6 +101,29 @@ function mapToolEventToSessionEvent(
         sessionId,
         taskId: event.taskId,
       };
+    case "task_completed":
+      return {
+        eventJson: {
+          result: toJsonRecord(event.result),
+          taskId: event.taskId,
+          toolCallKey: event.toolCallKey,
+        },
+        eventType: event.type,
+        sessionId,
+        taskId: event.taskId,
+      };
+    case "task_failed":
+      return {
+        eventJson: {
+          code: event.code,
+          message: event.message,
+          taskId: event.taskId,
+          toolCallKey: event.toolCallKey,
+        },
+        eventType: event.type,
+        sessionId,
+        taskId: event.taskId,
+      };
     case "tool_progress":
       return {
         eventJson: {

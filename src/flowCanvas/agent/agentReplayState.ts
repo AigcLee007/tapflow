@@ -97,6 +97,26 @@ export function buildToolTimelineFromSessionEvents(events: AgentSessionEvent[]):
       continue;
     }
 
+    if (event.eventType === "task_completed") {
+      const toolCallKey = typeof payload.toolCallKey === "string" ? payload.toolCallKey : null;
+      if (!toolCallKey) continue;
+      const current = ensureItem(items, toolCallKey, "generate_image");
+      current.status = "succeeded";
+      current.taskId = typeof payload.taskId === "string" ? payload.taskId : current.taskId;
+      current.result = isRecord(payload.result) ? payload.result : current.result;
+      continue;
+    }
+
+    if (event.eventType === "task_failed") {
+      const toolCallKey = typeof payload.toolCallKey === "string" ? payload.toolCallKey : null;
+      if (!toolCallKey) continue;
+      const current = ensureItem(items, toolCallKey, "generate_image");
+      current.error = typeof payload.message === "string" ? payload.message : "Agent task failed.";
+      current.status = "failed";
+      current.taskId = typeof payload.taskId === "string" ? payload.taskId : current.taskId;
+      continue;
+    }
+
     if (event.eventType === "approval_required") {
       const toolCallKey = typeof payload.toolCallKey === "string" ? payload.toolCallKey : null;
       if (!toolCallKey) continue;
@@ -152,6 +172,13 @@ export function deriveReplaySessionStatus(events: AgentSessionEvent[]): {
       };
     }
 
+    if (event.eventType === "task_failed") {
+      return {
+        error: typeof payload.message === "string" ? payload.message : "Agent task failed.",
+        status: "error",
+      };
+    }
+
     if (event.eventType === "approval_required") {
       return {
         error: null,
@@ -172,7 +199,7 @@ export function deriveReplaySessionStatus(events: AgentSessionEvent[]): {
       };
     }
 
-    if (event.eventType === "turn_completed" || event.eventType === "tool_result") {
+    if (event.eventType === "turn_completed" || event.eventType === "tool_result" || event.eventType === "task_completed") {
       return {
         error: null,
         status: "idle",
