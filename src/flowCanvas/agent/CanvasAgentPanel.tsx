@@ -16,6 +16,7 @@ import type { CanvasAgentPlannerOutput } from "./canvasAgentTypes";
 import { useAgentConversationHistory } from "./useAgentConversationHistory";
 import { useAgentEventStream } from "./useAgentEventStream";
 import { useCanvasAgentSession } from "./useCanvasAgentSession";
+import { useFlowCanvasStore } from "../store/flowCanvasStore";
 
 type ApplyResult = {
   createdNodeIds: string[];
@@ -82,6 +83,8 @@ export function CanvasAgentPanel(props: {
   const sessionActions = useCanvasAgentSession();
   const [composerDraft, setComposerDraft] = React.useState("");
   const directorEnabled = import.meta.env.VITE_AGENT_DIRECTOR_ENABLED === "true";
+  const backendFlowId = useFlowCanvasStore((state) => state.backendFlowId);
+  const backendProjectId = useFlowCanvasStore((state) => state.backendProjectId);
   const history = useAgentConversationHistory(sessionActions.sessionId);
   const eventStream = useAgentEventStream(sessionActions.sessionId);
   const [sessionList, setSessionList] = React.useState<Array<{
@@ -106,14 +109,18 @@ export function CanvasAgentPanel(props: {
   }, [props.initialSessionId, sessionActions.setSessionId]);
 
   React.useEffect(() => {
-    void listAgentSessions({ limit: 10 })
+    void listAgentSessions({
+      flowId: backendFlowId,
+      limit: 10,
+      projectId: backendProjectId,
+    })
       .then((sessions) => {
         setSessionList(sessions);
         if (!directorEnabled || sessionActions.sessionId || sessions.length === 0) return;
         sessionActions.setSessionId?.(sessions[0]!.id);
       })
       .catch(() => setSessionList([]));
-  }, [directorEnabled, sessionActions.sessionId, sessionActions.setSessionId]);
+  }, [backendFlowId, backendProjectId, directorEnabled, sessionActions.sessionId, sessionActions.setSessionId]);
 
   React.useEffect(() => {
     if (!sessionActions.sessionId || !directorEnabled) return;

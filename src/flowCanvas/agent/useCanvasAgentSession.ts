@@ -130,6 +130,12 @@ function normalizeSelectedRefIds(item: CanvasAgentToolTimelineItem, nextRefId?: 
   return [...current, nextRefId];
 }
 
+function buildAgentSessionTitle(prompt: string) {
+  const normalized = prompt.replace(/\s+/g, " ").trim();
+  if (!normalized) return "Canvas Agent";
+  return normalized.length > 36 ? `${normalized.slice(0, 36)}...` : normalized;
+}
+
 export function useCanvasAgentSession() {
   const [messages, setMessages] = useState<CanvasAgentMessage[]>([]);
   const [currentPlan, setCurrentPlan] = useState<CanvasAgentPlannerOutput | null>(null);
@@ -444,7 +450,7 @@ export function useCanvasAgentSession() {
         const session = await createAgentSession({
           flowId: state.backendFlowId,
           projectId: state.backendProjectId ?? state.projectId ?? null,
-          title: preparedTargetNodeId ? "Canvas Agent Production" : "Canvas Agent",
+          title: buildAgentSessionTitle(trimmed),
         });
         resolvedSessionId = session.id;
         setSessionId(session.id);

@@ -73,4 +73,26 @@ describe("agent tool schemas", () => {
       toolName: "continue_generation",
     }).toolName).toBe("continue_generation");
   });
+
+  it("normalizes a single-image request that was returned in batch shape", () => {
+    expect(parseAgentToolCall({
+      arguments: {
+        images: [
+          {
+            prompt: "Create a poster for a forest sports day",
+            size: "1K",
+          },
+        ],
+      },
+      toolCallKey: "call_batch_fix",
+      toolName: "generate_image_batch",
+    })).toEqual({
+      arguments: {
+        prompt: "Create a poster for a forest sports day",
+        size: "1K",
+      },
+      toolCallKey: "call_batch_fix",
+      toolName: "generate_image",
+    });
+  });
 });

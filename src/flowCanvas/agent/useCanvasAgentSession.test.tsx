@@ -256,6 +256,11 @@ describe("useCanvasAgentSession", () => {
         }),
       }),
     );
+    expect(mockCreateAgentSession).toHaveBeenCalledWith(expect.objectContaining({
+      flowId: "flow-1",
+      projectId: "project-1",
+      title: "给我生成一张动物运动会图片",
+    }));
   });
 
   it("flushes the remote draft before executing an auto-created Agent target node", async () => {

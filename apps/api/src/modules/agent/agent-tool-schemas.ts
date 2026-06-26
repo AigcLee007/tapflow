@@ -105,5 +105,23 @@ export function parseAgentToolCall(value: unknown): ParsedAgentToolCall {
   } catch (error) {
     throw new Error(`Agent tool call contained internal provider data: ${error instanceof Error ? error.message : String(error)}`);
   }
-  return agentToolCallSchema.parse(value);
+  return agentToolCallSchema.parse(normalizeAgentToolCallShape(value));
+}
+
+function normalizeAgentToolCallShape(value: unknown): unknown {
+  if (!value || typeof value !== "object") return value;
+  const record = value as Record<string, unknown>;
+  if (record.toolName !== "generate_image_batch") return value;
+  const args = record.arguments;
+  if (!args || typeof args !== "object") return value;
+  const images = (args as Record<string, unknown>).images;
+  if (!Array.isArray(images) || images.length !== 1) return value;
+  const firstImage = images[0];
+  if (!firstImage || typeof firstImage !== "object") return value;
+
+  return {
+    arguments: firstImage,
+    toolCallKey: record.toolCallKey,
+    toolName: "generate_image",
+  };
 }

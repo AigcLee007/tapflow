@@ -151,6 +151,25 @@ describe("CanvasAgentPanel", () => {
     expect(screen.getByText("Director Runtime (preview)")).toBeTruthy();
   });
 
+  it("loads conversation history scoped to the current project and flow", async () => {
+    vi.stubEnv("VITE_AGENT_DIRECTOR_ENABLED", "true");
+    useFlowCanvasStore.getState().setBackendFlowBinding({
+      backendFlowId: "flow-1",
+      backendProjectId: "project-1",
+    });
+
+    await act(async () => {
+      renderPanel();
+    });
+
+    await waitFor(() => {
+      expect(mockListAgentSessions).toHaveBeenCalledWith(expect.objectContaining({
+        flowId: "flow-1",
+        projectId: "project-1",
+      }));
+    });
+  });
+
   it("shows a server plan and calls confirm handler", async () => {
     const onConfirmPlan = vi.fn(async () => ({
       createdNodeIds: [],

@@ -3,6 +3,20 @@
 Last updated: 2026-06-26
 Maintainers: project team + Codex sessions
 
+## 2026-06-26 - Director Agent Tool-Call Tolerance And Session History Cleanup
+
+- hardened the Director Agent executor path against a common real-model failure mode where a single-image request is returned in `generate_image_batch` shape with only one image item.
+- backend tool-call parsing now normalizes that one-item batch shape into `generate_image` instead of failing the whole turn immediately on schema mismatch.
+- improved Agent session usability in the canvas UI:
+  - new Agent sessions now use a short title derived from the user's prompt instead of repetitive defaults like `Canvas Agent`
+  - conversation history loading in the Director panel is now scoped to the current `projectId` and `flowId`, reducing unrelated session noise
+- this directly addresses the staging symptoms where:
+  - the real model returned slightly off-spec tool payloads and the panel surfaced raw schema errors
+  - the session history list filled with many indistinguishable `Canvas Agent` items
+- validation:
+  - `npm run test -- apps/api/test/agent-tool-schemas.test.ts src/flowCanvas/agent/useCanvasAgentSession.test.tsx src/flowCanvas/agent/CanvasAgentPanel.test.tsx`
+  - `npm run build` passed with existing Vite chunk-size/dynamic-import warnings
+
 ## 2026-06-26 - Director Frontend Build Flag And Classic Runtime Copy Fix
 
 - fixed the staging deployment gap where `VITE_AGENT_DIRECTOR_ENABLED` was only present as a runtime container env and therefore did not affect the already-built frontend bundle.
