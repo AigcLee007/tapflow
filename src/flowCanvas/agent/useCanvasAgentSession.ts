@@ -5,8 +5,6 @@ import { flushRemoteDraftBeforeRun } from "../runtime/remoteDraftSaveBarrier";
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
 import { buildCanvasAgentSnapshot } from "./canvasAgentSnapshot";
 import {
-  type AgentContinuationContext,
-  type AgentSessionEvent,
   approveAgentToolCallStream,
   createAgentSession,
   createAgentTurn,
@@ -14,19 +12,21 @@ import {
   getAgentImageRunSettings,
   openAgentTurnStream,
   readAgentSseStream,
+  type AgentContinuationContext,
+  type AgentSessionEvent,
 } from "./canvasAgentApi";
 import type { CanvasAgentActivityItem } from "./CanvasAgentActivityTimeline";
+import { buildReplayMessages, buildToolTimelineFromSessionEvents, deriveReplaySessionStatus } from "./agentReplayState";
 import type { AgentImageRunSettingsSelection } from "./agentRunSettings";
 import { placeAgentGeneratedAssetsOnCanvas } from "./canvasAgentOps";
 import { isProductionImageAgentPrompt } from "./canvasAgentProductionIntent";
-import type { CanvasAgentPlannerOutput } from "./canvasAgentTypes";
 import { readAgentToolEventStream } from "./canvasAgentToolEvents";
 import type {
   CanvasAgentContinuationAction,
   CanvasAgentToolEvent,
   CanvasAgentToolTimelineItem,
 } from "./canvasAgentToolTypes";
-import { buildReplayMessages, buildToolTimelineFromSessionEvents, deriveReplaySessionStatus } from "./agentReplayState";
+import type { CanvasAgentPlannerOutput } from "./canvasAgentTypes";
 import { planOfflineCanvasAgentTurn } from "./offlineCanvasAgentPlanner";
 
 export type CanvasAgentMessage = {
@@ -50,9 +50,9 @@ type SessionStatus = "awaiting_approval" | "error" | "executing" | "executing_to
 const DEFAULT_AGENT_IMAGE_ROUTE_KEY = "image.default";
 
 function getToolTitle(toolName: string) {
-  if (toolName === "generate_image_batch") return "Batch image generation";
-  if (toolName === "edit_image") return "Image edit";
-  return "Image generation";
+  if (toolName === "generate_image_batch") return "批量生图";
+  if (toolName === "edit_image") return "图片编辑";
+  return "图片生成";
 }
 
 function createMessage(
@@ -72,7 +72,7 @@ function getContinuationActionLabel(action: CanvasAgentContinuationAction) {
   if (action === "continue-edit") return "继续编辑";
   if (action === "make-variant") return "做变体";
   if (action === "make-poster") return "做海报";
-  return "做对比图";
+  return "生成对比图";
 }
 
 function getAgentProductionNodePosition() {
@@ -132,7 +132,7 @@ function normalizeSelectedRefIds(item: CanvasAgentToolTimelineItem, nextRefId?: 
 
 function buildAgentSessionTitle(prompt: string) {
   const normalized = prompt.replace(/\s+/g, " ").trim();
-  if (!normalized) return "Canvas Agent";
+  if (!normalized) return "TapFlow Agent";
   return normalized.length > 36 ? `${normalized.slice(0, 36)}...` : normalized;
 }
 
@@ -172,9 +172,9 @@ export function useCanvasAgentSession() {
     if (event.type === "tool_started") {
       setStatus("executing_tool");
       appendActivity({
-        detail: "The Agent has created the execution task and started running it.",
+        detail: "Agent 已创建执行任务并开始运行。",
         id: `tool-start-${event.toolCallKey}`,
-        label: "Submitting generation task",
+        label: "正在提交生成任务",
         state: "active",
       });
       setToolTimeline((current) => {
@@ -198,68 +198,82 @@ export function useCanvasAgentSession() {
     }
 
     if (event.type === "task_created") {
-      setToolTimeline((current) => current.map((item) => item.toolCallKey === event.toolCallKey
-        ? {
-            ...item,
-            taskId: event.taskId,
-            title: event.title || item.title,
-            toolName: event.toolName || item.toolName,
-          }
-        : item));
+      setToolTimeline((current) =>
+        current.map((item) =>
+          item.toolCallKey === event.toolCallKey
+            ? {
+                ...item,
+                taskId: event.taskId,
+                title: event.title || item.title,
+                toolName: event.toolName || item.toolName,
+              }
+            : item,
+        ),
+      );
       return;
     }
 
     if (event.type === "workflow_run_linked") {
       appendActivity({
-        detail: `Workflow run ${event.workflowRunId} is now attached to this Agent step.`,
+        detail: `工作流 ${event.workflowRunId} 已关联到当前 Agent 步骤。`,
         id: `workflow-${event.toolCallKey}-${event.workflowRunId}`,
-        label: "Waiting for model result",
+        label: "正在等待模型返回结果",
         state: "active",
       });
       return;
     }
 
     if (event.type === "artifact_created") {
-      setToolTimeline((current) => current.map((item) => {
-        if (item.toolCallKey !== event.toolCallKey) return item;
-        const alreadyPresent = item.assetRefs.some((asset) => asset.refId === event.assetRef.refId);
-        const nextAssetRefs = alreadyPresent ? item.assetRefs : [...item.assetRefs, event.assetRef];
-        return {
-          ...item,
-          activeAssetRefId: event.assetRef.refId,
-          assetRefs: nextAssetRefs,
-          selectedAssetRefIds: item.selectedAssetRefIds?.length ? item.selectedAssetRefIds : [event.assetRef.refId],
-          taskId: event.taskId || item.taskId,
-        };
-      }));
+      setToolTimeline((current) =>
+        current.map((item) => {
+          if (item.toolCallKey !== event.toolCallKey) return item;
+          const alreadyPresent = item.assetRefs.some((asset) => asset.refId === event.assetRef.refId);
+          const nextAssetRefs = alreadyPresent ? item.assetRefs : [...item.assetRefs, event.assetRef];
+          return {
+            ...item,
+            activeAssetRefId: event.assetRef.refId,
+            assetRefs: nextAssetRefs,
+            selectedAssetRefIds: item.selectedAssetRefIds?.length ? item.selectedAssetRefIds : [event.assetRef.refId],
+            taskId: event.taskId || item.taskId,
+          };
+        }),
+      );
       return;
     }
 
     if (event.type === "task_completed") {
-      setToolTimeline((current) => current.map((item) => item.toolCallKey === event.toolCallKey
-        ? {
-            ...item,
-            result: event.result ?? item.result,
-            status: "succeeded",
-            taskId: event.taskId || item.taskId,
-          }
-        : item));
+      setToolTimeline((current) =>
+        current.map((item) =>
+          item.toolCallKey === event.toolCallKey
+            ? {
+                ...item,
+                result: event.result ?? item.result,
+                status: "succeeded",
+                taskId: event.taskId || item.taskId,
+              }
+            : item,
+        ),
+      );
       return;
     }
 
     if (event.type === "task_failed") {
-      setToolTimeline((current) => current.map((item) => item.toolCallKey === event.toolCallKey
-        ? {
-            ...item,
-            error: event.message,
-            status: "failed",
-            taskId: event.taskId || item.taskId,
-          }
-        : item));
+      setToolTimeline((current) =>
+        current.map((item) =>
+          item.toolCallKey === event.toolCallKey
+            ? {
+                ...item,
+                error: event.message,
+                status: "failed",
+                taskId: event.taskId || item.taskId,
+              }
+            : item,
+        ),
+      );
       appendActivity({
         detail: event.message,
         id: `task-failed-${event.taskId}`,
-        label: "Generation failed",
+        label: "生成失败",
         state: "failed",
       });
       return;
@@ -268,83 +282,90 @@ export function useCanvasAgentSession() {
     if (event.type === "approval_required") {
       setStatus("awaiting_approval");
       appendActivity({
-        detail: "The Agent needs your confirmation before spending credits.",
+        detail: "执行付费生成前需要你确认参数与积分。",
         id: `approval-${event.toolCallKey}`,
-        label: "Waiting for parameter confirmation",
+        label: "等待确认参数和积分",
         state: "active",
       });
-      setToolTimeline((current) => current.map((item) => item.toolCallKey === event.toolCallKey
-        ? { ...item, estimate: event.estimate, status: "awaiting_approval", turnId: event.turnId }
-        : item));
+      setToolTimeline((current) =>
+        current.map((item) =>
+          item.toolCallKey === event.toolCallKey
+            ? { ...item, estimate: event.estimate, status: "awaiting_approval", turnId: event.turnId }
+            : item,
+        ),
+      );
       void getAgentImageRunSettings()
         .then((response) => {
-          setToolTimeline((current) => current.map((item) => item.toolCallKey === event.toolCallKey
-            ? {
-                ...item,
-                estimate: {
-                  ...(item.estimate ?? {}),
-                  ...(event.estimate ?? {}),
-                  imageRunSettings: response.models,
-                },
-              }
-            : item));
+          setToolTimeline((current) =>
+            current.map((item) =>
+              item.toolCallKey === event.toolCallKey
+                ? {
+                    ...item,
+                    estimate: {
+                      ...(item.estimate ?? {}),
+                      ...(event.estimate ?? {}),
+                      imageRunSettings: response.models,
+                    },
+                  }
+                : item,
+            ),
+          );
         })
         .catch(() => {});
       return;
     }
 
     if (event.type === "tool_result") {
-      const result = event.result && typeof event.result === "object"
-        ? event.result as Record<string, unknown>
-        : {};
-      const assetRefs = Array.isArray(result.assetRefs)
-        ? result.assetRefs as CanvasAgentToolTimelineItem["assetRefs"]
-        : [];
+      const result = event.result && typeof event.result === "object" ? (event.result as Record<string, unknown>) : {};
+      const assetRefs = Array.isArray(result.assetRefs) ? (result.assetRefs as CanvasAgentToolTimelineItem["assetRefs"]) : [];
       const failed = result.status === "failed";
+
       appendActivity({
-        detail: failed
-          ? "The upstream generation step did not return a usable result."
-          : "The result is back and ready to save or place on the canvas.",
+        detail: failed ? "上游生成步骤没有返回可用结果。" : "结果已返回，正在保存并准备放入画布。",
         id: `result-${event.toolCallKey}`,
-        label: failed ? "Generation failed" : "Saving result",
+        label: failed ? "生成失败" : "正在保存到素材库",
         state: failed ? "failed" : "completed",
       });
-      setToolTimeline((current) => current.map((item) => {
-        if (item.toolCallKey !== event.toolCallKey) return item;
-        const shouldAutoPlace = !failed && assetRefs.length > 0 && !item.placedNodeIds?.length;
-        const placed = shouldAutoPlace
-          ? placeAgentGeneratedAssetsOnCanvas({
-              assets: assetRefs,
-              sessionId,
-              toolCallId: typeof result.toolCallId === "string" ? result.toolCallId : event.toolCallKey,
-              turnId: item.turnId ?? null,
-            })
-          : null;
-        return {
-          ...item,
-          activeAssetRefId: item.activeAssetRefId ?? assetRefs[assetRefs.length - 1]?.refId,
-          assetRefs,
-          estimate: item.estimate,
-          placedNodeIds: placed?.createdNodeIds ?? item.placedNodeIds,
-          result: event.result,
-          selectedAssetRefIds: item.selectedAssetRefIds?.length
-            ? item.selectedAssetRefIds
-            : assetRefs.length > 0
-              ? [assetRefs[0]!.refId]
-              : [],
-          status: failed ? "failed" : "succeeded",
-          taskId: typeof result.toolCallId === "string" ? result.toolCallId : item.taskId,
-          turnId: item.turnId,
-        };
-      }));
+
+      setToolTimeline((current) =>
+        current.map((item) => {
+          if (item.toolCallKey !== event.toolCallKey) return item;
+          const shouldAutoPlace = !failed && assetRefs.length > 0 && !item.placedNodeIds?.length;
+          const placed = shouldAutoPlace
+            ? placeAgentGeneratedAssetsOnCanvas({
+                assets: assetRefs,
+                sessionId,
+                toolCallId: typeof result.toolCallId === "string" ? result.toolCallId : event.toolCallKey,
+                turnId: item.turnId ?? null,
+              })
+            : null;
+
+          return {
+            ...item,
+            activeAssetRefId: item.activeAssetRefId ?? assetRefs[assetRefs.length - 1]?.refId,
+            assetRefs,
+            estimate: item.estimate,
+            placedNodeIds: placed?.createdNodeIds ?? item.placedNodeIds,
+            result: event.result,
+            selectedAssetRefIds: item.selectedAssetRefIds?.length
+              ? item.selectedAssetRefIds
+              : assetRefs.length > 0
+                ? [assetRefs[0]!.refId]
+                : [],
+            status: failed ? "failed" : "succeeded",
+            taskId: typeof result.toolCallId === "string" ? result.toolCallId : item.taskId,
+            turnId: item.turnId,
+          };
+        }),
+      );
       return;
     }
 
     if (event.type === "canvas_op_applied") {
       appendActivity({
-        detail: `Created ${event.createdNodeIds.length} nodes and updated ${event.updatedNodeIds.length} nodes on the canvas.`,
+        detail: `已创建 ${event.createdNodeIds.length} 个节点，更新 ${event.updatedNodeIds.length} 个节点。`,
         id: `canvas-op-${event.turnId ?? Date.now()}`,
-        label: "Canvas updated",
+        label: "正在放入画布",
         state: "completed",
       });
       const state = useFlowCanvasStore.getState();
@@ -360,9 +381,9 @@ export function useCanvasAgentSession() {
         setMessages((current) => [...current, createMessage("assistant", event.finalText)]);
       }
       appendActivity({
-        detail: "This Agent turn has finished.",
+        detail: "这一轮 Agent 任务已完成。",
         id: `turn-complete-${event.turnId}`,
-        label: "Completed",
+        label: "已完成",
         state: "completed",
       });
       setStatus("idle");
@@ -375,7 +396,7 @@ export function useCanvasAgentSession() {
       appendActivity({
         detail: event.message,
         id: `turn-failed-${event.turnId ?? Date.now()}`,
-        label: "Execution failed",
+        label: "执行失败",
         state: "failed",
       });
       setStatus("error");
@@ -423,9 +444,9 @@ export function useCanvasAgentSession() {
     ]);
     setPendingContinuation(null);
     appendActivity({
-      detail: "The Agent accepted the prompt and started working.",
+      detail: "Agent 已接收你的任务并开始处理。",
       id: `request-${Date.now()}`,
-      label: "Understanding request",
+      label: "正在理解需求",
       state: "active",
     });
 
@@ -477,7 +498,7 @@ export function useCanvasAgentSession() {
             return;
           }
           if (requiresProductionExecutor) {
-            throw new Error("真实 Agent 执行器不可用，无法完成生成、对比或套图类生产任务。请先确认服务器已启用 Agent Executor、文本大模型和生图线路。");
+            throw new Error("真实 Agent 执行器不可用，无法完成生图、对比或套图类生产任务。请先确认服务器已启用 Agent Executor、文本模型和生图线路。");
           }
           if (response.status !== 404 && response.status !== 503) {
             throw new V2HttpError({
@@ -507,9 +528,11 @@ export function useCanvasAgentSession() {
 
           await readAgentSseStream(response, {
             onError: (data) => {
-              throw new Error(typeof data === "object" && data && "message" in (data as Record<string, unknown>)
-                ? String((data as Record<string, unknown>).message)
-                : "Agent planning stream failed.");
+              throw new Error(
+                typeof data === "object" && data && "message" in (data as Record<string, unknown>)
+                  ? String((data as Record<string, unknown>).message)
+                  : "Agent 规划流失败。",
+              );
             },
             onPlan: (data) => {
               receivedPlan = true;
@@ -537,10 +560,7 @@ export function useCanvasAgentSession() {
           applyPlan(plan);
           return;
         } catch (apiError) {
-          if (
-            apiError instanceof V2HttpError &&
-            (apiError.status === 401 || apiError.status === 403)
-          ) {
+          if (apiError instanceof V2HttpError && (apiError.status === 401 || apiError.status === 403)) {
             throw apiError;
           }
           if (!allowOfflineFallback) {
@@ -569,21 +589,25 @@ export function useCanvasAgentSession() {
   const approveToolCall = useCallback(async (toolCallKey: string, selection?: AgentImageRunSettingsSelection) => {
     const item = toolTimeline.find((candidate) => candidate.toolCallKey === toolCallKey);
     if (!sessionId || !item?.turnId) {
-      setError("Agent approval is missing its session or turn reference.");
+      setError("Agent 缺少会话或 turn 引用，无法继续确认。");
       return;
     }
 
     setError(null);
     setStatus("executing_tool");
-    setToolTimeline((current) => current.map((candidate) => candidate.toolCallKey === toolCallKey
-      ? {
-          ...candidate,
-          estimate: {
-            ...(candidate.estimate ?? {}),
-            currentSelection: selection,
-          },
-        }
-      : candidate));
+    setToolTimeline((current) =>
+      current.map((candidate) =>
+        candidate.toolCallKey === toolCallKey
+          ? {
+              ...candidate,
+              estimate: {
+                ...(candidate.estimate ?? {}),
+                currentSelection: selection,
+              },
+            }
+          : candidate,
+      ),
+    );
     try {
       const response = await approveAgentToolCallStream(sessionId, {
         settings: selection,
@@ -600,19 +624,21 @@ export function useCanvasAgentSession() {
     } catch (approvalError) {
       const message = approvalError instanceof Error ? approvalError.message : String(approvalError);
       setError(message);
-      setToolTimeline((current) => current.map((candidate) => candidate.toolCallKey === toolCallKey
-        ? { ...candidate, error: message, status: "failed" }
-        : candidate));
+      setToolTimeline((current) =>
+        current.map((candidate) =>
+          candidate.toolCallKey === toolCallKey ? { ...candidate, error: message, status: "failed" } : candidate,
+        ),
+      );
       setStatus("error");
     }
   }, [applyToolEvent, sessionId, toolTimeline]);
 
   const cancelToolCall = useCallback((toolCallKey: string) => {
-    setToolTimeline((current) => current.map((item) => item.toolCallKey === toolCallKey
-      ? { ...item, error: "Cancelled by user", status: "failed" }
-      : item));
+    setToolTimeline((current) =>
+      current.map((item) => (item.toolCallKey === toolCallKey ? { ...item, error: "已取消", status: "failed" } : item)),
+    );
     setStatus("idle");
-    setMessages((current) => [...current, createMessage("assistant", "Cancelled. No credits were used for this Agent tool.")]);
+    setMessages((current) => [...current, createMessage("assistant", "已取消，本次 Agent 工具未消耗积分。")]);
   }, []);
 
   const placeToolAssetsOnCanvas = useCallback((toolCallKey: string) => {
@@ -621,14 +647,17 @@ export function useCanvasAgentSession() {
     const placed = placeAgentGeneratedAssetsOnCanvas({
       assets: item.assetRefs,
       sessionId,
-      toolCallId: typeof (item.result as { toolCallId?: unknown } | null)?.toolCallId === "string"
-        ? (item.result as { toolCallId: string }).toolCallId
-        : toolCallKey,
+      toolCallId:
+        typeof (item.result as { toolCallId?: unknown } | null)?.toolCallId === "string"
+          ? (item.result as { toolCallId: string }).toolCallId
+          : toolCallKey,
       turnId: item.turnId ?? null,
     });
-    setToolTimeline((current) => current.map((candidate) => candidate.toolCallKey === toolCallKey
-      ? { ...candidate, placedNodeIds: placed.createdNodeIds }
-      : candidate));
+    setToolTimeline((current) =>
+      current.map((candidate) =>
+        candidate.toolCallKey === toolCallKey ? { ...candidate, placedNodeIds: placed.createdNodeIds } : candidate,
+      ),
+    );
   }, [sessionId, toolTimeline]);
 
   const selectToolAssetRef = useCallback((toolCallKey: string, refId: string) => {
@@ -671,7 +700,7 @@ export function useCanvasAgentSession() {
         if (result.ranNodeIds.length > 0) fragments.push(`启动了 ${result.ranNodeIds.length} 个生成任务`);
         setMessages((current) => [
           ...current,
-          createMessage("assistant", fragments.length > 0 ? `计划已执行：${fragments.join("，")}。` : "计划已执行。"),
+          createMessage("assistant", fragments.length > 0 ? `计划已执行：${fragments.join("；")}。` : "计划已执行。"),
         ]);
         setCurrentPlan(null);
         setStatus("idle");

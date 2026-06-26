@@ -154,7 +154,7 @@ describe("CanvasAgentParameterCard", () => {
       />,
     );
 
-    expect(screen.getByText("Reference images")).toBeTruthy();
+    expect(screen.getByText("参考素材")).toBeTruthy();
     expect(screen.getByText("round-1-image-1")).toBeTruthy();
     expect(screen.getByText("asset:2")).toBeTruthy();
   });

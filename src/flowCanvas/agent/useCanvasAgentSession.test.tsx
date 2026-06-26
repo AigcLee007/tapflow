@@ -122,7 +122,7 @@ describe("useCanvasAgentSession", () => {
     mockReadAgentToolEventStream.mockImplementation(async (_response, onEvent) => {
       onEvent({ content: "Starting.", type: "message_delta" });
       onEvent({ toolCallKey: "tool-1", toolName: "generate_image", type: "tool_started" });
-      onEvent({ taskId: "tool-db-1", title: "Image generation", toolCallKey: "tool-1", toolName: "generate_image", type: "task_created" });
+      onEvent({ taskId: "tool-db-1", title: "图片生成", toolCallKey: "tool-1", toolName: "generate_image", type: "task_created" });
       onEvent({
         assetRef: { assetId: "asset-1", kind: "image", label: "Round 1 image 1", promptSummary: "", refId: "round-1-image-1" },
         taskId: "tool-db-1",
@@ -146,8 +146,8 @@ describe("useCanvasAgentSession", () => {
     });
 
     expect(result.current.status).toBe("idle");
-    expect(result.current.activityTimeline.some((item) => item.label === "Submitting generation task")).toBe(true);
-    expect(result.current.activityTimeline.some((item) => item.label === "Saving result")).toBe(true);
+    expect(result.current.activityTimeline.some((item) => item.label === "正在提交生成任务")).toBe(true);
+    expect(result.current.activityTimeline.some((item) => item.label === "正在保存到素材库")).toBe(true);
     expect(result.current.toolTimeline).toEqual([
       expect.objectContaining({
         assetRefs: [expect.objectContaining({ assetId: "asset-1" })],
@@ -182,13 +182,9 @@ describe("useCanvasAgentSession", () => {
       await result.current.sendPrompt("Generate an image");
     });
 
-    expect(result.current.activityTimeline.map((item) => item.label)).toEqual(expect.arrayContaining([
-      "Understanding request",
-      "Submitting generation task",
-      "Waiting for model result",
-      "Generation failed",
-      "Completed",
-    ]));
+    expect(result.current.activityTimeline.map((item) => item.label)).toEqual(
+      expect.arrayContaining(["Understanding request", "正在提交生成任务", "正在等待模型返回结果", "生成失败", "已完成"]),
+    );
   });
 
   it("labels edit_image approval tasks as image edit cards", async () => {
@@ -215,7 +211,7 @@ describe("useCanvasAgentSession", () => {
         referenceRefs: ["round-1-image-1", "asset:2"],
       }),
       status: "awaiting_approval",
-      title: "Image edit",
+      title: "图片编辑",
       toolCallKey: "tool-edit-1",
       toolName: "edit_image",
     });
@@ -247,20 +243,18 @@ describe("useCanvasAgentSession", () => {
       expect.objectContaining({
         snapshot: expect.objectContaining({
           flowId: "flow-1",
-          nodes: [expect.objectContaining({
-            id: createdNode.id,
-            kind: "image",
-            selected: true,
-          })],
+          nodes: [expect.objectContaining({ id: createdNode.id, kind: "image", selected: true })],
           selectedNodeIds: [createdNode.id],
         }),
       }),
     );
-    expect(mockCreateAgentSession).toHaveBeenCalledWith(expect.objectContaining({
-      flowId: "flow-1",
-      projectId: "project-1",
-      title: "给我生成一张动物运动会图片",
-    }));
+    expect(mockCreateAgentSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        flowId: "flow-1",
+        projectId: "project-1",
+        title: "给我生成一张动物运动会图片",
+      }),
+    );
   });
 
   it("flushes the remote draft before executing an auto-created Agent target node", async () => {
@@ -514,7 +508,7 @@ describe("useCanvasAgentSession", () => {
     expect(mockCreateAgentTurn).not.toHaveBeenCalled();
     expect(result.current.currentPlan).toBeNull();
     expect(result.current.status).toBe("error");
-    expect(result.current.error).toContain("真实 Agent 执行器");
+    expect(result.current.error).toContain("真实 Agent 执行器不可用");
   });
 
   it("sends structured continuation context with the next prompt", async () => {

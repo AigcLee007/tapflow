@@ -39,7 +39,7 @@ vi.mock("./canvasAgentToolEvents", async () => {
   };
 });
 
-const composerPlaceholder = "描述你想完成的生产任务，或引用当前画布内容...";
+const composerPlaceholder = "描述你想完成的创作任务，或者继续刚才的结果...";
 
 function buildSessionSummary() {
   return {
@@ -120,39 +120,20 @@ describe("CanvasAgentPanel", () => {
     mockOpenAgentTurnStream.mockResolvedValue({ ok: false, status: 503 });
   });
 
-  it("shows the classic runtime badge when director mode is disabled", async () => {
-    vi.stubEnv("VITE_AGENT_DIRECTOR_ENABLED", "false");
-
+  it("renders the new workspace shell instead of old debug labels", async () => {
     await act(async () => {
       renderPanel();
     });
 
-    expect(screen.getByText("Classic Agent")).toBeTruthy();
-  });
-
-  it("does not show director-specific status copy while classic runtime is active", async () => {
-    vi.stubEnv("VITE_AGENT_DIRECTOR_ENABLED", "false");
-
-    await act(async () => {
-      renderPanel();
-    });
-
-    expect(screen.getByText("Classic Agent")).toBeTruthy();
-    expect(screen.queryByText("正在使用真实大模型理解画布并制定计划...")).toBeNull();
-  });
-
-  it("shows the director runtime badge when director mode is enabled", async () => {
-    vi.stubEnv("VITE_AGENT_DIRECTOR_ENABLED", "true");
-
-    await act(async () => {
-      renderPanel();
-    });
-
-    expect(screen.getByText("Director Runtime (preview)")).toBeTruthy();
+    expect(screen.getAllByText("TapFlow Agent").length).toBeGreaterThan(0);
+    expect(screen.getByText("Canvas Director")).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "对话" })).toBeTruthy();
+    expect(screen.queryByText("Classic Agent")).toBeNull();
+    expect(screen.queryByText("Director Runtime (preview)")).toBeNull();
+    expect(screen.queryByText("Replay Events")).toBeNull();
   });
 
   it("loads conversation history scoped to the current project and flow", async () => {
-    vi.stubEnv("VITE_AGENT_DIRECTOR_ENABLED", "true");
     useFlowCanvasStore.getState().setBackendFlowBinding({
       backendFlowId: "flow-1",
       backendProjectId: "project-1",
@@ -163,10 +144,12 @@ describe("CanvasAgentPanel", () => {
     });
 
     await waitFor(() => {
-      expect(mockListAgentSessions).toHaveBeenCalledWith(expect.objectContaining({
-        flowId: "flow-1",
-        projectId: "project-1",
-      }));
+      expect(mockListAgentSessions).toHaveBeenCalledWith(
+        expect.objectContaining({
+          flowId: "flow-1",
+          projectId: "project-1",
+        }),
+      );
     });
   });
 
@@ -180,14 +163,19 @@ describe("CanvasAgentPanel", () => {
 
     render(<CanvasAgentPanel open onClose={vi.fn()} onConfirmPlan={onConfirmPlan} />);
 
-    fireEvent.change(screen.getByPlaceholderText(composerPlaceholder), {
-      target: { value: "Help me create an image flow" },
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText(composerPlaceholder), {
+        target: { value: "Help me create an image flow" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "发送" }));
     });
-    fireEvent.click(screen.getByRole("button", { name: "发送" }));
 
-    expect(await screen.findByRole("button", { name: "确认执行" })).toBeTruthy();
+    expect((await screen.findAllByText("Server plan")).length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "确认执行" })).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "确认执行" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "确认执行" }));
+    });
 
     await waitFor(() => expect(onConfirmPlan).toHaveBeenCalledTimes(1));
   });
@@ -195,14 +183,18 @@ describe("CanvasAgentPanel", () => {
   it("clears the pending plan when cancel is clicked", async () => {
     renderPanel();
 
-    fireEvent.change(screen.getByPlaceholderText(composerPlaceholder), {
-      target: { value: "Help me create an image flow" },
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText(composerPlaceholder), {
+        target: { value: "Help me create an image flow" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "发送" }));
     });
-    fireEvent.click(screen.getByRole("button", { name: "发送" }));
 
     expect(await screen.findByRole("button", { name: "取消" })).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    });
 
     await waitFor(() => {
       expect(screen.queryByRole("button", { name: "确认执行" })).toBeNull();
@@ -214,17 +206,18 @@ describe("CanvasAgentPanel", () => {
 
     renderPanel();
 
-    fireEvent.change(screen.getByPlaceholderText(composerPlaceholder), {
-      target: { value: "Help me create an image flow" },
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText(composerPlaceholder), {
+        target: { value: "Help me create an image flow" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "发送" }));
     });
-    fireEvent.click(screen.getByRole("button", { name: "发送" }));
 
-    expect(await screen.findByText("最近一次执行失败")).toBeTruthy();
+    expect(await screen.findByText("Agent 执行失败")).toBeTruthy();
     expect(screen.getAllByText("Agent planner unavailable").length).toBeGreaterThan(0);
   });
 
-  it("restores replayed tool cards for the latest session in director mode", async () => {
-    vi.stubEnv("VITE_AGENT_DIRECTOR_ENABLED", "true");
+  it("restores replayed results and friendly copy for the latest session", async () => {
     mockListAgentSessions.mockResolvedValue([buildSessionSummary()]);
     mockGetAgentSessionHistory.mockResolvedValue({
       messages: [
@@ -254,21 +247,6 @@ describe("CanvasAgentPanel", () => {
         {
           createdAt: "2026-06-24T00:00:02Z",
           eventJson: {
-            taskId: "task-1",
-            title: "Image generation",
-            toolCallKey: "tool-1",
-            toolName: "generate_image",
-          },
-          eventType: "task_created",
-          id: "e2",
-          seq: 2,
-          sessionId: "session-1",
-          taskId: "task-1",
-          turnId: null,
-        },
-        {
-          createdAt: "2026-06-24T00:00:03Z",
-          eventJson: {
             result: {
               assetRefs: [
                 {
@@ -296,13 +274,12 @@ describe("CanvasAgentPanel", () => {
 
     renderPanel();
 
-    expect(await screen.findByText("Task ID: task-1")).toBeTruthy();
-    expect(screen.getByText("Completed")).toBeTruthy();
-    expect(screen.getByText("Replay image")).toBeTruthy();
+    expect(await screen.findByText("Please generate a cover")).toBeTruthy();
+    expect(await screen.findByText("Replay image")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "继续编辑" })).toBeTruthy();
   });
 
   it("restores replayed approval and error states for the latest session", async () => {
-    vi.stubEnv("VITE_AGENT_DIRECTOR_ENABLED", "true");
     mockListAgentSessions.mockResolvedValue([buildSessionSummary()]);
     mockGetAgentSessionHistory.mockResolvedValue({
       messages: [],
@@ -354,12 +331,11 @@ describe("CanvasAgentPanel", () => {
 
     renderPanel();
 
-    expect(await screen.findByText("Failed")).toBeTruthy();
+    expect(await screen.findByText("Agent 执行失败")).toBeTruthy();
     expect(screen.getAllByText("Provider timeout").length).toBeGreaterThan(0);
   });
 
   it("fills the composer with a continuation prompt from a replayed result", async () => {
-    vi.stubEnv("VITE_AGENT_DIRECTOR_ENABLED", "true");
     mockListAgentSessions.mockResolvedValue([buildSessionSummary()]);
     mockGetAgentSessionHistory.mockResolvedValue({
       messages: [],
@@ -417,7 +393,6 @@ describe("CanvasAgentPanel", () => {
   });
 
   it("shows a next-step suggestion banner after choosing a continuation result", async () => {
-    vi.stubEnv("VITE_AGENT_DIRECTOR_ENABLED", "true");
     mockListAgentSessions.mockResolvedValue([buildSessionSummary()]);
     mockGetAgentSessionHistory.mockResolvedValue({
       messages: [],

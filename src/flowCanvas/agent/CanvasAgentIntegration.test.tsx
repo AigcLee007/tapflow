@@ -106,6 +106,7 @@ describe("Canvas agent integration", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "打开 Agent" }));
 
-    expect(await screen.findByText("TapFlow Agent")).toBeTruthy();
+    expect((await screen.findAllByText("TapFlow Agent")).length).toBeGreaterThan(0);
+    expect(screen.getByRole("tab", { name: "对话" })).toBeTruthy();
   });
 });

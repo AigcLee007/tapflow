@@ -1,16 +1,67 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 
-import type { CanvasAgentArtifactRefChip } from "./agentArtifactRefs";
+import { buildAgentArtifactRefChips, type CanvasAgentArtifactRefChip } from "./agentArtifactRefs";
+import { CanvasAgentModelRoutePicker } from "./CanvasAgentModelRoutePicker";
+import { CanvasAgentReferenceChips } from "./CanvasAgentReferenceChips";
+import type { AgentReferenceChip } from "./CanvasAgentWorkspaceTypes";
+import type { AgentImageRunSettingsModel } from "./agentRunSettings";
+import { getRouteTierCredits } from "./agentRunSettings";
+
+function findDefaultModel(models: AgentImageRunSettingsModel[]) {
+  return models[0] ?? null;
+}
+
+function findDefaultRoute(model: AgentImageRunSettingsModel | null) {
+  if (!model) return null;
+  if (model.defaultRouteKey) {
+    return model.routes.find((route) => route.routeKey === model.defaultRouteKey) ?? model.routes[0] ?? null;
+  }
+  return model.routes[0] ?? null;
+}
+
+function normalizeArtifactRefs(referenceRefs?: CanvasAgentArtifactRefChip[]): AgentReferenceChip[] {
+  return (referenceRefs ?? []).map((ref) => ({
+    id: `artifact-${ref.refId}`,
+    kind: "artifact" as const,
+    label: ref.label,
+    refId: ref.refId,
+  }));
+}
 
 export function CanvasAgentComposer(props: {
-  draftValue?: string;
-  onChangeDraft?: (value: string) => void;
   disabled?: boolean;
-  referenceRefs?: CanvasAgentArtifactRefChip[];
+  draftValue?: string;
+  estimatedCreditsOverride?: number | null;
+  models?: AgentImageRunSettingsModel[];
+  onChangeDraft?: (value: string) => void;
   onSend: (prompt: string) => Promise<void> | void;
+  referenceChips?: AgentReferenceChip[];
+  referenceRefs?: CanvasAgentArtifactRefChip[];
 }) {
   const [internalValue, setInternalValue] = useState("");
+  const [selectedModelKey, setSelectedModelKey] = useState<string | null>(props.models?.[0]?.modelKey ?? null);
+  const [selectedRouteKey, setSelectedRouteKey] = useState<string | null>(
+    findDefaultRoute(findDefaultModel(props.models ?? []))?.routeKey ?? null,
+  );
+  const [selectedSize, setSelectedSize] = useState<"1K" | "2K" | "4K">("1K");
   const value = props.draftValue ?? internalValue;
+
+  const availableModels = props.models ?? [];
+  const activeModel = useMemo(
+    () => availableModels.find((model) => model.modelKey === selectedModelKey) ?? availableModels[0] ?? null,
+    [availableModels, selectedModelKey],
+  );
+  const activeRoute = useMemo(
+    () => activeModel?.routes.find((route) => route.routeKey === selectedRouteKey) ?? findDefaultRoute(activeModel),
+    [activeModel, selectedRouteKey],
+  );
+  const estimatedCredits = props.estimatedCreditsOverride ?? getRouteTierCredits(activeRoute, selectedSize);
+
+  const mergedReferenceChips = useMemo(() => {
+    const base = props.referenceChips ?? [];
+    const artifacts = normalizeArtifactRefs(props.referenceRefs);
+    return [...base, ...artifacts];
+  }, [props.referenceChips, props.referenceRefs]);
 
   const updateValue = (nextValue: string) => {
     props.onChangeDraft?.(nextValue);
@@ -37,38 +88,69 @@ export function CanvasAgentComposer(props: {
         background: "rgba(10,10,15,0.96)",
         borderTop: "1px solid rgba(255,255,255,0.08)",
         display: "grid",
-        gap: 10,
+        gap: 12,
         padding: 14,
       }}
     >
-      {props.referenceRefs?.length ? (
+      {mergedReferenceChips.length > 0 ? (
+        <CanvasAgentReferenceChips
+          chips={mergedReferenceChips}
+          disabled={props.disabled}
+          onInsertRef={(chip) => {
+            if (chip.refId) {
+              insertReference(chip.refId);
+            }
+          }}
+        />
+      ) : null}
+
+      {availableModels.length > 0 ? (
+        <CanvasAgentModelRoutePicker
+          models={availableModels}
+          onSelectModel={(modelKey) => {
+            setSelectedModelKey(modelKey);
+            const nextModel = availableModels.find((model) => model.modelKey === modelKey) ?? null;
+            setSelectedRouteKey(findDefaultRoute(nextModel)?.routeKey ?? null);
+          }}
+          onSelectRoute={setSelectedRouteKey}
+          routeKey={selectedRouteKey}
+          selectedModelKey={selectedModelKey}
+        />
+      ) : null}
+
+      {activeModel ? (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-          {props.referenceRefs.map((ref) => (
-            <button
-              key={ref.refId}
-              disabled={props.disabled}
-              onClick={() => insertReference(ref.refId)}
-              style={{
-                background: "rgba(255,255,255,0.06)",
-                border: "1px solid rgba(255,255,255,0.08)",
-                borderRadius: 999,
-                color: "#f8fafc",
-                cursor: props.disabled ? "not-allowed" : "pointer",
-                fontSize: 12,
-                fontWeight: 700,
-                padding: "4px 10px",
-              }}
-              type="button"
-            >
-              {ref.label}
-            </button>
-          ))}
+          {activeModel.sizes.map((size) => {
+            const active = size === selectedSize;
+            return (
+              <button
+                aria-label={size}
+                key={size}
+                onClick={() => setSelectedSize(size)}
+                style={{
+                  background: active ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.04)",
+                  border: `1px solid ${active ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.08)"}`,
+                  borderRadius: 14,
+                  color: "#f8fafc",
+                  cursor: "pointer",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  minHeight: 36,
+                  padding: "0 12px",
+                }}
+                type="button"
+              >
+                {size}
+              </button>
+            );
+          })}
         </div>
       ) : null}
+
       <textarea
         disabled={props.disabled}
         onChange={(event) => updateValue(event.target.value)}
-        placeholder="描述你想完成的生产任务，或引用当前画布内容..."
+        placeholder="描述你想完成的创作任务，或者继续刚才的结果..."
         rows={4}
         style={{
           background: "rgba(255,255,255,0.04)",
@@ -84,9 +166,17 @@ export function CanvasAgentComposer(props: {
         }}
         value={value}
       />
+
       <div style={{ alignItems: "center", display: "flex", gap: 12, justifyContent: "space-between" }}>
-        <div style={{ color: "rgba(226,232,240,0.62)", fontSize: 12 }}>
-          Agent 会先生成计划，再由你确认执行。
+        <div style={{ display: "grid", gap: 4 }}>
+          <div style={{ color: "rgba(226,232,240,0.62)", fontSize: 12 }}>
+            Agent 会先理解任务，再引导你确认参数与积分。
+          </div>
+          {activeModel && activeRoute ? (
+            <div style={{ color: "#f8fafc", fontSize: 12, fontWeight: 700 }}>
+              {activeModel.displayName} · {activeRoute.routeLabel} · 预计积分 {estimatedCredits}
+            </div>
+          ) : null}
         </div>
         <button
           disabled={props.disabled || !value.trim()}
@@ -111,4 +201,14 @@ export function CanvasAgentComposer(props: {
       </div>
     </div>
   );
+}
+
+export function buildComposerArtifactRefs(
+  refs: Array<{
+    assetId: string;
+    label: string;
+    refId: string;
+  }>,
+) {
+  return buildAgentArtifactRefChips(refs);
 }

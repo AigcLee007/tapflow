@@ -29,13 +29,13 @@ function asAssetRef(value: unknown): CanvasAgentToolAssetRef | null {
 }
 
 function asEstimate(value: unknown): CanvasAgentToolApprovalEstimate | undefined {
-  return isRecord(value) ? value as CanvasAgentToolApprovalEstimate : undefined;
+  return isRecord(value) ? (value as CanvasAgentToolApprovalEstimate) : undefined;
 }
 
 function getToolTitle(toolName: string) {
-  if (toolName === "generate_image_batch") return "Batch image generation";
-  if (toolName === "edit_image") return "Image edit";
-  return "Image generation";
+  if (toolName === "generate_image_batch") return "批量生图";
+  if (toolName === "edit_image") return "图片编辑";
+  return "图片生成";
 }
 
 function ensureItem(
@@ -78,9 +78,8 @@ export function buildToolTimelineFromSessionEvents(events: AgentSessionEvent[]):
       if (!toolCallKey) continue;
       const current = ensureItem(items, toolCallKey, toolName);
       current.taskId = typeof payload.taskId === "string" ? payload.taskId : current.taskId;
-      current.title = typeof payload.title === "string" && payload.title.trim().length > 0
-        ? payload.title
-        : current.title;
+      current.title =
+        typeof payload.title === "string" && payload.title.trim().length > 0 ? payload.title : current.title;
       current.toolName = toolName;
       continue;
     }
@@ -111,7 +110,7 @@ export function buildToolTimelineFromSessionEvents(events: AgentSessionEvent[]):
       const toolCallKey = typeof payload.toolCallKey === "string" ? payload.toolCallKey : null;
       if (!toolCallKey) continue;
       const current = ensureItem(items, toolCallKey, "generate_image");
-      current.error = typeof payload.message === "string" ? payload.message : "Agent task failed.";
+      current.error = typeof payload.message === "string" ? payload.message : "Agent 任务失败。";
       current.status = "failed";
       current.taskId = typeof payload.taskId === "string" ? payload.taskId : current.taskId;
       continue;
@@ -134,7 +133,9 @@ export function buildToolTimelineFromSessionEvents(events: AgentSessionEvent[]):
       const result = isRecord(payload.result) ? payload.result : {};
       const status = result.status === "failed" ? "failed" : "succeeded";
       const assetRefs = Array.isArray(result.assetRefs)
-        ? result.assetRefs.map((value) => asAssetRef(value)).filter((value): value is CanvasAgentToolAssetRef => value !== null)
+        ? result.assetRefs
+            .map((value) => asAssetRef(value))
+            .filter((value): value is CanvasAgentToolAssetRef => value !== null)
         : [];
       current.assetRefs = assetRefs.length > 0 ? assetRefs : current.assetRefs;
       current.result = result;
@@ -167,14 +168,14 @@ export function deriveReplaySessionStatus(events: AgentSessionEvent[]): {
 
     if (event.eventType === "turn_failed") {
       return {
-        error: typeof payload.message === "string" ? payload.message : "Agent execution failed.",
+        error: typeof payload.message === "string" ? payload.message : "Agent 执行失败。",
         status: "error",
       };
     }
 
     if (event.eventType === "task_failed") {
       return {
-        error: typeof payload.message === "string" ? payload.message : "Agent task failed.",
+        error: typeof payload.message === "string" ? payload.message : "Agent 任务失败。",
         status: "error",
       };
     }

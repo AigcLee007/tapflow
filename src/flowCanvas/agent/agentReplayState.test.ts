@@ -20,7 +20,7 @@ describe("buildToolTimelineFromSessionEvents", () => {
         createdAt: "2026-06-24T00:00:01Z",
         eventJson: {
           taskId: "task-1",
-          title: "Image generation",
+          title: "图片生成",
           toolCallKey: "tool-1",
           toolName: "generate_image",
         },
@@ -83,7 +83,7 @@ describe("buildToolTimelineFromSessionEvents", () => {
         assetRefs: [expect.objectContaining({ assetId: "asset-1", label: "Replay image" })],
         status: "succeeded",
         taskId: "task-1",
-        title: "Image generation",
+        title: "图片生成",
         toolCallKey: "tool-1",
         toolName: "generate_image",
       }),
@@ -143,7 +143,7 @@ describe("buildToolTimelineFromSessionEvents", () => {
           totalCredits: 4,
         }),
         status: "awaiting_approval",
-        title: "Image edit",
+        title: "图片编辑",
         toolCallKey: "tool-approve-1",
         toolName: "edit_image",
         turnId: "turn-approve-1",
@@ -285,6 +285,7 @@ describe("buildToolTimelineFromSessionEvents", () => {
       expect.objectContaining({
         status: "running",
         toolCallKey: "batch-1",
+        title: "批量生图",
       }),
       expect.objectContaining({
         assetRefs: [expect.objectContaining({ assetId: "asset-1" })],

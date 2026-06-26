@@ -3,6 +3,26 @@
 Last updated: 2026-06-26
 Maintainers: project team + Codex sessions
 
+## 2026-06-26 - Agent Workspace V2 Redesign
+
+- rebuilt the Agent frontend into a right-side production workspace modeled on the approved V2 redesign while preserving the existing TapFlow v2 server-side executor, session, task, asset, billing, and workflow architecture.
+- replaced the old split debug-style panel with a unified creator-facing workspace shell:
+  - `对话 / 历史 / 连接配置 / 日志` tabs
+  - docked workspace header and shell state
+  - production composer with reference chips, friendly model/线路 selection, and visible credits context
+  - one unified conversation timeline for messages, progress, parameter confirmation, tool execution, results, and errors
+- added dedicated workspace view components for conversation, history, connections, logs, model-route picking, result cards, and timeline rendering.
+- normalized replay/session hydration so refresh and history reopening rebuild the same user-facing workspace state instead of exposing fragmented internal runtime sections.
+- kept creator UI clean by hiding provider/vendor internals such as route keys, provider keys, upstream model names, adapter labels, and base URLs from the normal Agent workspace surfaces.
+- aligned continuation/reference behavior with the product rules:
+  - selected canvas nodes surface as reference chips
+  - previous Agent outputs surface as continuation chips/actions
+  - old upstream image-node prompt text is not reused as hidden prompt input
+- validation:
+  - `npm test -- src/flowCanvas/agent/agentWorkspaceTimeline.test.ts src/flowCanvas/agent/CanvasAgentTabs.test.tsx src/flowCanvas/agent/CanvasAgentWorkspaceShell.test.tsx src/flowCanvas/agent/CanvasAgentConversationView.test.tsx src/flowCanvas/agent/CanvasAgentHistoryView.test.tsx src/flowCanvas/agent/CanvasAgentComposer.test.tsx src/flowCanvas/agent/CanvasAgentModelRoutePicker.test.tsx src/flowCanvas/agent/CanvasAgentTimeline.test.tsx src/flowCanvas/agent/CanvasAgentResultCard.test.tsx src/flowCanvas/agent/CanvasAgentParameterCard.test.tsx src/flowCanvas/agent/CanvasAgentPanel.test.tsx src/flowCanvas/agent/CanvasAgentIntegration.test.tsx` passed
+  - `npm test -- src/flowCanvas/agent/useCanvasAgentSession.test.tsx src/flowCanvas/agent/agentReplayState.test.ts` passed
+  - `npm run build` passed with existing Vite chunk-size and dynamic-import warnings only
+
 ## 2026-06-26 - Director Agent Tool-Call Tolerance And Session History Cleanup
 
 - hardened the Director Agent executor path against a common real-model failure mode where a single-image request is returned in `generate_image_batch` shape with only one image item.

@@ -132,7 +132,7 @@ export function CanvasAgentParameterCard(props: {
 
       {props.referenceRefs?.length ? (
         <section style={{ display: "grid", gap: 8 }}>
-          <div style={{ color: "#cbd5e1", fontSize: 12, fontWeight: 700 }}>Reference images</div>
+          <div style={{ color: "#cbd5e1", fontSize: 12, fontWeight: 700 }}>参考素材</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {props.referenceRefs.map((ref) => (
               <span
@@ -180,18 +180,18 @@ export function CanvasAgentParameterCard(props: {
 
       {activeModel.quantityOptions.length > 1 ? (
         <section style={{ display: "grid", gap: 8 }}>
-          <div style={{ color: "#cbd5e1", fontSize: 12, fontWeight: 700 }}>鏁伴噺</div>
+          <div style={{ color: "#cbd5e1", fontSize: 12, fontWeight: 700 }}>数量</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             {activeModel.quantityOptions.map((option) => (
               <button
-                aria-label={`${option} \u5f20`}
+                aria-label={`${option} 张`}
                 aria-pressed={option === quantity}
                 key={option}
                 onClick={() => setQuantity(option)}
                 style={chipStyle(option === quantity)}
                 type="button"
               >
-                {option} {"\u5f20"}
+                {option} 张
               </button>
             ))}
           </div>
@@ -210,7 +210,7 @@ export function CanvasAgentParameterCard(props: {
         }}
       >
         <div>
-          <div style={{ color: "#94a3b8", fontSize: 11, fontWeight: 700 }}>预计点数</div>
+          <div style={{ color: "#94a3b8", fontSize: 11, fontWeight: 700 }}>预计积分</div>
           <div style={{ color: "#f8fafc", fontSize: 18, fontWeight: 800 }}>{estimatedCredits}</div>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
