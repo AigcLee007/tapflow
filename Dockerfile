@@ -3,6 +3,9 @@ FROM node:22-alpine as builder
 
 WORKDIR /app
 
+ARG VITE_AGENT_DIRECTOR_ENABLED=false
+ENV VITE_AGENT_DIRECTOR_ENABLED=$VITE_AGENT_DIRECTOR_ENABLED
+
 # Copy package files
 COPY package.json package-lock.json ./
 COPY apps/api/package.json ./apps/api/package.json

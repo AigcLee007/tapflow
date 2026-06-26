@@ -83,7 +83,10 @@ services:
       <<: *tapflow-env
 
   tapflow-frontend:
-    build: .
+    build:
+      context: .
+      args:
+        VITE_AGENT_DIRECTOR_ENABLED: ${VITE_AGENT_DIRECTOR_ENABLED:-false}
     restart: unless-stopped
     command: ["node", "scripts/serve-dist.cjs", "5188"]
     environment:

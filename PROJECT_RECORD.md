@@ -3,6 +3,19 @@
 Last updated: 2026-06-26
 Maintainers: project team + Codex sessions
 
+## 2026-06-26 - Director Frontend Build Flag And Classic Runtime Copy Fix
+
+- fixed the staging deployment gap where `VITE_AGENT_DIRECTOR_ENABLED` was only present as a runtime container env and therefore did not affect the already-built frontend bundle.
+- Docker frontend build wiring now passes `VITE_AGENT_DIRECTOR_ENABLED` into the image build stage so `tapflow-frontend` can actually ship the Director UI when staging enables it.
+- `docker-compose.staging.yml` now forwards the Director flag through `build.args` for the frontend service instead of relying only on runtime env injection.
+- tightened the Agent panel runtime copy so `Classic Agent` no longer shows Director-specific "real model planning" language when the classic runtime is still active.
+- added regression coverage for:
+  - Dockerfile build-time Director env injection
+  - Classic runtime status copy not impersonating Director mode
+- validation:
+  - `npm run test -- src/flowCanvas/agent/CanvasAgentPanel.test.tsx scripts/dockerfile-env.test.ts`
+  - `npm run build` passed with existing Vite chunk-size/dynamic-import warnings
+
 ## 2026-06-26 - Canvas Director Agent Phase 6 Multi-Turn Artifact Refs
 
 - completed the Phase 6 continuity slice so Agent follow-up production now reuses stable artifact refs instead of leaking old prompt text or depending on transient URL-like inputs.

@@ -26,8 +26,17 @@ type ApplyResult = {
 
 function getStatusCopy(
   status: "awaiting_approval" | "error" | "executing" | "idle" | "thinking",
+  directorEnabled: boolean,
   usedOfflineFallback: boolean,
 ) {
+  if (!directorEnabled) {
+    if (status === "thinking") return "Classic Agent 正在处理你的请求...";
+    if (status === "awaiting_approval") return "Classic Agent 已生成计划，等待你确认。";
+    if (status === "executing") return "Classic Agent 正在执行已确认的画布操作...";
+    if (status === "error") return "Classic Agent 执行失败。";
+    return "当前处于 Classic Agent 模式。";
+  }
+
   if (status === "thinking") {
     return usedOfflineFallback ? "正在使用基础规划模式..." : "正在使用真实大模型理解画布并制定计划...";
   }
@@ -87,7 +96,7 @@ export function CanvasAgentPanel(props: {
   const replayHydratedSessionIdRef = React.useRef<string | null>(null);
 
   const busy = sessionActions.status === "thinking" || sessionActions.status === "executing";
-  const statusCopy = getStatusCopy(sessionActions.status, sessionActions.usedOfflineFallback);
+  const statusCopy = getStatusCopy(sessionActions.status, directorEnabled, sessionActions.usedOfflineFallback);
   const activeContinuation = sessionActions.pendingContinuation ?? sessionActions.lastContinuation;
 
   React.useEffect(() => {

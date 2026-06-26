@@ -130,6 +130,17 @@ describe("CanvasAgentPanel", () => {
     expect(screen.getByText("Classic Agent")).toBeTruthy();
   });
 
+  it("does not show director-specific status copy while classic runtime is active", async () => {
+    vi.stubEnv("VITE_AGENT_DIRECTOR_ENABLED", "false");
+
+    await act(async () => {
+      renderPanel();
+    });
+
+    expect(screen.getByText("Classic Agent")).toBeTruthy();
+    expect(screen.queryByText("正在使用真实大模型理解画布并制定计划...")).toBeNull();
+  });
+
   it("shows the director runtime badge when director mode is enabled", async () => {
     vi.stubEnv("VITE_AGENT_DIRECTOR_ENABLED", "true");
 
