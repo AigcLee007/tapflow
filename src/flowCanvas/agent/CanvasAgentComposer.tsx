@@ -1,9 +1,12 @@
 import React, { useState } from "react";
 
+import type { CanvasAgentArtifactRefChip } from "./agentArtifactRefs";
+
 export function CanvasAgentComposer(props: {
   draftValue?: string;
   onChangeDraft?: (value: string) => void;
   disabled?: boolean;
+  referenceRefs?: CanvasAgentArtifactRefChip[];
   onSend: (prompt: string) => Promise<void> | void;
 }) {
   const [internalValue, setInternalValue] = useState("");
@@ -14,6 +17,11 @@ export function CanvasAgentComposer(props: {
     if (props.draftValue === undefined) {
       setInternalValue(nextValue);
     }
+  };
+
+  const insertReference = (refId: string) => {
+    const nextValue = value.trim().length > 0 ? `${value.trim()} ${refId}` : refId;
+    updateValue(nextValue);
   };
 
   const handleSend = async () => {
@@ -33,6 +41,30 @@ export function CanvasAgentComposer(props: {
         padding: 14,
       }}
     >
+      {props.referenceRefs?.length ? (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          {props.referenceRefs.map((ref) => (
+            <button
+              key={ref.refId}
+              disabled={props.disabled}
+              onClick={() => insertReference(ref.refId)}
+              style={{
+                background: "rgba(255,255,255,0.06)",
+                border: "1px solid rgba(255,255,255,0.08)",
+                borderRadius: 999,
+                color: "#f8fafc",
+                cursor: props.disabled ? "not-allowed" : "pointer",
+                fontSize: 12,
+                fontWeight: 700,
+                padding: "4px 10px",
+              }}
+              type="button"
+            >
+              {ref.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
       <textarea
         disabled={props.disabled}
         onChange={(event) => updateValue(event.target.value)}

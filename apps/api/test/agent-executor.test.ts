@@ -694,10 +694,10 @@ describe("AgentExecutorService", () => {
         assetId: "asset-1",
         kind: "image",
         label: "Round 1 image 1",
-        promptSummary: "forest sports day",
         refId: "round-1-image-1",
       }),
     ]);
+    expect(contextPayload.previousResults?.[0]).not.toHaveProperty("promptSummary");
     expect(repository.listSessionAssetRefs).toHaveBeenCalledWith({
       sessionId: "session-1",
       tenantId: "tenant-1",
@@ -705,7 +705,17 @@ describe("AgentExecutorService", () => {
   });
 
   it("injects active continuation context into the next executor turn and stores it on the user message", async () => {
-    const repository = createExecutorRepository();
+    const repository = createExecutorRepository({
+      listSessionAssetRefs: vi.fn().mockResolvedValue([
+        {
+          assetId: "asset-1",
+          kind: "image",
+          label: "Round 1 image 1",
+          promptSummary: "forest sports day",
+          refId: "round-1-image-1",
+        },
+      ]),
+    });
     const generateText = vi
       .fn()
       .mockResolvedValueOnce({
@@ -768,9 +778,18 @@ describe("AgentExecutorService", () => {
         action: "make-poster",
         assetLabel: "Round 1 image 1",
         assetRefId: "round-1-image-1",
-        promptSummary: "forest sports day",
       }),
     );
+    expect(contextPayload.activeContinuation).not.toHaveProperty("promptSummary");
+    expect(contextPayload.previousResults?.[0]).toEqual(
+      expect.objectContaining({
+        assetId: "asset-1",
+        kind: "image",
+        label: "Round 1 image 1",
+        refId: "round-1-image-1",
+      }),
+    );
+    expect(contextPayload.previousResults?.[0]).not.toHaveProperty("promptSummary");
     expect(repository.createUserMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         metadata: expect.objectContaining({

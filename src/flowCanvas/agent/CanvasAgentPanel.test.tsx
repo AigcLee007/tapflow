@@ -381,7 +381,7 @@ describe("CanvasAgentPanel", () => {
     fireEvent.click(await screen.findByRole("button", { name: "继续编辑" }));
     await waitFor(() => {
       expect((screen.getByPlaceholderText(composerPlaceholder) as HTMLTextAreaElement).value).toBe(
-        "基于这些结果继续编辑：Replay image。保留主体和核心构图，按当前目标继续深化。参考描述：forest sports day",
+        "基于这些结果继续编辑：Replay image。保留主体和核心构图，按当前目标继续深化。",
       );
     });
   });

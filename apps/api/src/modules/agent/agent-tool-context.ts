@@ -8,7 +8,6 @@ export function buildAgentToolContinuationMessage(result: AgentToolRunResult): s
         assetId: asset.assetId,
         kind: asset.kind,
         label: asset.label,
-        promptSummary: asset.promptSummary,
         refId: asset.refId,
       })),
       failures: result.failures,

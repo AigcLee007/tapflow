@@ -74,7 +74,6 @@ export type AgentContinuationContext = {
   assetLabels?: string[];
   assetRefId: string;
   assetRefIds?: string[];
-  promptSummary: string;
 };
 
 export type AgentCanvasApplyResponse = {

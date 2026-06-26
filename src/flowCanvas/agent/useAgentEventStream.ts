@@ -44,7 +44,7 @@ export function useAgentEventStream(sessionId: string | null) {
         setEvents((current) => mergeUniqueById(current, [data as AgentSessionEvent]));
       },
     });
-  }, [events, sessionId]);
+  }, [sessionId]);
 
   return useMemo(() => ({
     connect,

@@ -527,7 +527,6 @@ describe("useCanvasAgentSession", () => {
         assetId: "asset-1",
         assetLabel: "Round 1 image 1",
         assetRefId: "round-1-image-1",
-        promptSummary: "forest sports day",
       });
     });
 
@@ -543,11 +542,11 @@ describe("useCanvasAgentSession", () => {
           assetId: "asset-1",
           assetLabel: "Round 1 image 1",
           assetRefId: "round-1-image-1",
-          promptSummary: "forest sports day",
         }),
         prompt: "Turn this result into a poster",
       }),
     );
+    expect(mockExecuteAgentTurnStream.mock.calls[0]?.[1]?.continuationContext).not.toHaveProperty("promptSummary");
     expect(result.current.pendingContinuation).toBeNull();
   });
 

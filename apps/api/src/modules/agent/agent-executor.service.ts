@@ -88,7 +88,6 @@ export type AgentExecutorTurnInput = {
     assetLabels?: string[];
     assetRefId: string;
     assetRefIds?: string[];
-    promptSummary: string;
   } | null;
   onEvent?: (event: AgentToolEvent) => void | Promise<void>;
   prompt: string;
@@ -700,15 +699,32 @@ function buildUserExecutorContext(
   previousResults: AgentAssetReference[] = [],
   continuationContext?: AgentExecutorTurnInput["continuationContext"],
 ): string {
+  const safeContinuation = continuationContext
+    ? {
+        action: continuationContext.action,
+        assetId: continuationContext.assetId,
+        assetIds: continuationContext.assetIds,
+        assetLabel: continuationContext.assetLabel,
+        assetLabels: continuationContext.assetLabels,
+        assetRefId: continuationContext.assetRefId,
+        assetRefIds: continuationContext.assetRefIds,
+      }
+    : null;
+  const previousResultRefs = previousResults.map((asset) => ({
+    assetId: asset.assetId,
+    kind: asset.kind,
+    label: asset.label,
+    refId: asset.refId,
+  }));
   return JSON.stringify({
-    activeContinuation: continuationContext ?? null,
+    activeContinuation: safeContinuation,
     canvas: {
       flowId: snapshot.flowId,
       nodeCount: snapshot.nodes.length,
       selectedNodeIds: snapshot.selectedNodeIds,
       targetNodeId: resolveExecutionTarget(snapshot).targetNodeId,
     },
-    previousResults,
+    previousResults: previousResultRefs,
     prompt,
   });
 }

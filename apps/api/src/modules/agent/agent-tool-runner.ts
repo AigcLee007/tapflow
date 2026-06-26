@@ -26,7 +26,6 @@ export type AgentToolRunInput = {
     assetLabels?: string[];
     assetRefId: string;
     assetRefIds?: string[];
-    promptSummary: string;
   } | null;
   costEstimate?: AgentGenerationCostEstimate | null;
   executionTarget: AgentToolExecutionTarget;

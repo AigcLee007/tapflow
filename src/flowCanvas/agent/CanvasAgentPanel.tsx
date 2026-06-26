@@ -8,6 +8,7 @@ import { CanvasAgentPlanCard } from "./CanvasAgentPlanCard";
 import { CanvasAgentTaskCard } from "./CanvasAgentTaskCard";
 import { CanvasAgentThread } from "./CanvasAgentThread";
 import { CanvasAgentToolTimeline } from "./CanvasAgentToolTimeline";
+import { buildAgentArtifactRefChips } from "./agentArtifactRefs";
 import { OPEN_AGENT_SESSION_EVENT, type OpenAgentSessionDetail } from "./agentSessionEvents";
 import { listAgentSessions } from "./canvasAgentApi";
 import type { CanvasAgentContinuationAction, CanvasAgentToolAssetRef } from "./canvasAgentToolTypes";
@@ -49,21 +50,17 @@ function buildContinuationPrompt(
 ) {
   const selectedAssets = assets && assets.length > 0 ? assets : [asset];
   const selectedSummary = selectedAssets.map((item) => item.label).join("、");
-  const promptHints = selectedAssets
-    .map((item) => item.promptSummary)
-    .filter((value) => value.trim().length > 0);
-  const promptSuffix = promptHints.length > 0 ? `参考描述：${promptHints.join("；")}` : "";
 
   if (action === "continue-edit") {
-    return `基于这些结果继续编辑：${selectedSummary}。保留主体和核心构图，按当前目标继续深化。${promptSuffix}`.trim();
+    return `基于这些结果继续编辑：${selectedSummary}。保留主体和核心构图，按当前目标继续深化。`;
   }
   if (action === "make-variant") {
-    return `基于这些结果做高质量变体：${selectedSummary}。保持主题一致，但在细节、镜头、氛围上拉开差异。${promptSuffix}`.trim();
+    return `基于这些结果做高质量变体：${selectedSummary}。保持主题一致，但在细节、镜头、氛围上拉开差异。`;
   }
   if (action === "make-poster") {
-    return `把这些结果升级成海报级成品：${selectedSummary}。强化视觉中心、留白、版式和广告感。${promptSuffix}`.trim();
+    return `把这些结果升级成海报级成品：${selectedSummary}。强化视觉中心、留白、版式和广告感。`;
   }
-  return `基于这些结果生成一组对比图：${selectedSummary}。突出不同风格、构图或色彩方案。${promptSuffix}`.trim();
+  return `基于这些结果生成一组对比图：${selectedSummary}。突出不同风格、构图或色彩方案。`;
 }
 
 export function CanvasAgentPanel(props: {
@@ -259,7 +256,6 @@ export function CanvasAgentPanel(props: {
               assetLabels: selectedAssets.map((item) => item.label),
               assetRefId: asset.refId,
               assetRefIds: selectedAssets.map((item) => item.refId),
-              promptSummary: asset.promptSummary,
             };
             setComposerDraft(buildContinuationPrompt(asset, action, selectedAssets));
             sessionActions.setPendingContinuation?.(continuation);
@@ -312,6 +308,15 @@ export function CanvasAgentPanel(props: {
       <CanvasAgentComposer
         disabled={busy}
         draftValue={composerDraft}
+        referenceRefs={activeContinuation
+          ? buildAgentArtifactRefChips(
+              (activeContinuation.assetRefIds?.length ? activeContinuation.assetRefIds : [activeContinuation.assetRefId]).map((refId, index) => ({
+                assetId: activeContinuation.assetIds?.[index] ?? activeContinuation.assetId,
+                label: activeContinuation.assetLabels?.[index] ?? activeContinuation.assetLabel,
+                refId,
+              })),
+            )
+          : undefined}
         onChangeDraft={setComposerDraft}
         onSend={async (prompt) => {
           setComposerDraft("");

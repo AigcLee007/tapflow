@@ -3,6 +3,26 @@
 Last updated: 2026-06-26
 Maintainers: project team + Codex sessions
 
+## 2026-06-26 - Canvas Director Agent Phase 6 Multi-Turn Artifact Refs
+
+- completed the Phase 6 continuity slice so Agent follow-up production now reuses stable artifact refs instead of leaking old prompt text or depending on transient URL-like inputs.
+- backend executor/tool context hardening:
+  - executor model context now injects only safe previous-result ref data: `assetId`, `kind`, `label`, `refId`
+  - active continuation context is now reduced to stable asset/ref identity fields only
+  - continuation/tool-result payloads no longer include historical `promptSummary` in the model loop
+  - image continuation execution keeps using asset ids / ref ids, not raw URLs, base64 payloads, or provider internals
+- frontend continuation UX improvements:
+  - Agent composer now supports clickable artifact ref chips for replayed continuation results
+  - continuation prompt copy is now built from selected result labels only, without carrying forward stale prompt text from earlier image nodes
+  - when a continuation references multiple historical outputs, the composer now surfaces the full selected ref set instead of only the primary result
+- replay/director stability:
+  - event-stream replay remains session-scoped and no longer rehydrates with prompt-summary leakage into continuation requests
+  - refresh/re-entry continues to restore prior result refs so users can keep iterating without re-uploading references
+- this keeps the product aligned with the rule that reference-image history may provide reference assets only; old upstream prompt text must not be reused as hidden generation input.
+- validation:
+  - `npm run test -- src/flowCanvas/agent/CanvasAgentComposer.test.tsx src/flowCanvas/agent/CanvasAgentPanel.test.tsx src/flowCanvas/agent/agentArtifactRefs.test.ts src/flowCanvas/agent/useAgentEventStream.test.tsx src/flowCanvas/agent/useCanvasAgentSession.test.tsx apps/api/test/agent-executor.test.ts`
+  - `npm run build` passed with existing Vite chunk-size/dynamic-import warnings
+
 ## 2026-06-25 - Canvas Director Agent Phase 3 Parameter Execution Closure
 
 - completed the remaining Phase 3 image-parameter confirmation closure for the current Director Agent path.
