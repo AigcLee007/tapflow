@@ -17,6 +17,18 @@ Maintainers: project team + Codex sessions
   - `npm run test -- apps/api/test/agent-tool-schemas.test.ts src/flowCanvas/agent/useCanvasAgentSession.test.tsx src/flowCanvas/agent/CanvasAgentPanel.test.tsx`
   - `npm run build` passed with existing Vite chunk-size/dynamic-import warnings
 
+## 2026-06-26 - Agent Workspace V2 Redesign Documents
+
+- documented the next Agent rebuild direction as `Agent Workspace V2`, using `basketikun/infinite-canvas` as the UX reference while preserving TapFlow v2 server-side sessions, assets, billing, workflow execution, and AI Gateway routing.
+- added a formal design spec covering:
+  - right-side docked Agent workspace
+  - conversation/history/config/log tabs
+  - production composer with references, model/line selection, parameters, and credits
+  - unified user-facing timeline for progress, parameters, tool execution, results, and errors
+  - strict requirement that provider internals, base URLs, route keys, upstream models, and credentials stay out of normal creator UI
+- added an implementation plan that breaks the redesign into testable tasks from timeline adapter and shell components through composer, history, integration tests, local UI verification, build, and push.
+- no production code behavior was changed in this documentation-only step.
+
 ## 2026-06-26 - Director Frontend Build Flag And Classic Runtime Copy Fix
 
 - fixed the staging deployment gap where `VITE_AGENT_DIRECTOR_ENABLED` was only present as a runtime container env and therefore did not affect the already-built frontend bundle.
