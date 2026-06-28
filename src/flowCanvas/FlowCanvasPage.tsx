@@ -207,6 +207,7 @@ const FlowCanvasPage: React.FC<{
   saveStatus?: CanvasSaveStatusView;
 }> = ({ saveStatus }) => {
   const [cullingEnabled, setCullingEnabled] = useState(true);
+  const [agentOpen, setAgentOpen] = useState(false);
   const toggleCulling = useCallback(() => setCullingEnabled((v) => !v), []);
 
   useFlowShortcuts();
@@ -219,11 +220,12 @@ const FlowCanvasPage: React.FC<{
       <FlowTopToolbar
         onToggleCulling={toggleCulling}
         cullingEnabled={cullingEnabled}
+        hideUtilityActions={agentOpen}
         saveStatus={saveStatus}
       />
       <div style={{ flex: 1, position: 'relative' }}>
         <ReactFlowProvider>
-          <AiFlowCanvas cullingEnabled={cullingEnabled} />
+          <AiFlowCanvas cullingEnabled={cullingEnabled} onAgentOpenChange={setAgentOpen} />
           {isDebugOverlayEnabled() && <StatsOverlay />}
           {isDebugOverlayEnabled() && <BackendRunOverlay />}
           <EmptyState />

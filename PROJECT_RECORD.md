@@ -3666,3 +3666,17 @@ Validation completed:
 - Validation:
   - `npx vitest --run apps/api/test/agent-executor.test.ts apps/api/test/agent-tool-runner.test.ts src/flowCanvas/agent/useCanvasAgentSession.test.tsx src/flowCanvas/agent/CanvasAgentThread.test.tsx src/flowCanvas/agent/CanvasAgentPanel.test.tsx src/flowCanvas/agent/CanvasAgentToolTimeline.test.tsx src/flowCanvas/agent/CanvasAgentComposer.test.tsx`
   - `npm run build`
+
+## 2026-06-28 - Agent Panel Utility Actions Hide Fix
+
+- Fixed the canvas top-right utility chrome so `积分` and `通知` no longer overlap the Agent workspace when the Agent panel is open.
+- The Agent open/close state is now lifted to `FlowCanvasPage`, then passed down in two directions:
+  - into `AiFlowCanvas` so the canvas can notify the page when the Agent opens or closes
+  - into `FlowTopToolbar` so the toolbar can hide only the top-right utility actions while the Agent is visible
+- The left-side project title / project menu remains visible, so users can still keep orientation in the canvas while the Agent is open.
+- Added regression coverage for:
+  - page-level toolbar visibility changes when Agent state changes
+  - toolbar-level hiding of credits and notifications when utility actions are disabled
+- Validation:
+  - `npm test -- src/flowCanvas/FlowCanvasPage.test.tsx src/flowCanvas/canvas/FlowTopToolbar.test.tsx`
+  - `npm test -- src/flowCanvas/agent/CanvasAgentIntegration.test.tsx src/flowCanvas/agent/CanvasAgentPanel.test.tsx`

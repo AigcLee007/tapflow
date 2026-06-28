@@ -135,6 +135,24 @@ describe("FlowTopToolbar", () => {
     expect(screen.getByText("全部已读")).toBeTruthy();
   });
 
+  test("hides the top-right credits and notification actions when utility actions are disabled", async () => {
+    render(
+      <FlowTopToolbar
+        cullingEnabled
+        hideUtilityActions
+        onToggleCulling={vi.fn()}
+        saveStatus={{ label: "已保存到云端", status: "saved" }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "通知" })).toBeNull();
+    });
+
+    expect(screen.getByRole("button", { name: "打开项目菜单" })).toBeTruthy();
+    expect(screen.getByDisplayValue("测试项目")).toBeTruthy();
+  });
+
   test("opens a custom dark confirmation sheet before deleting a project", async () => {
     deleteWorkspaceProjectMock.mockResolvedValue(undefined);
     vi.useFakeTimers();

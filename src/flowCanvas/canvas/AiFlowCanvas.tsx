@@ -205,9 +205,10 @@ const collectImageSources = (data: DataTransfer | ClipboardEvent['clipboardData'
 
 interface AiFlowCanvasProps {
   cullingEnabled: boolean;
+  onAgentOpenChange?: (open: boolean) => void;
 }
 
-export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled }) => {
+export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled, onAgentOpenChange }) => {
   const nodes = useFlowCanvasStore((s) => s.nodes);
   const edges = useFlowCanvasStore((s) => s.edges);
   const viewport = useFlowCanvasStore((s) => s.viewport);
@@ -257,6 +258,11 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled }) =>
 
   const connectingNodeRef = useRef<string | null>(null);
   const canvasRootRef = useRef<HTMLDivElement>(null);
+
+  const updateAgentOpen = useCallback((open: boolean) => {
+    setAgentOpen(open);
+    onAgentOpenChange?.(open);
+  }, [onAgentOpenChange]);
 
   useEffect(() => {
     if (!isMultiSelecting) return;
@@ -322,11 +328,11 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled }) =>
       setConnMenu(null);
       setActiveDockPanel(null);
       setAgentSessionFocus(detail);
-      setAgentOpen(true);
+      updateAgentOpen(true);
     };
     window.addEventListener(OPEN_AGENT_SESSION_EVENT, handleOpenAgentSession as EventListener);
     return () => window.removeEventListener(OPEN_AGENT_SESSION_EVENT, handleOpenAgentSession as EventListener);
-  }, [closeContextMenu, closeImageTool]);
+  }, [closeContextMenu, closeImageTool, updateAgentOpen]);
 
   const handleNodeDragStart = useCallback((_event: React.MouseEvent, node: Node) => {
     pushHistory();
@@ -914,18 +920,18 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled }) =>
         }}
       />
       <CanvasAgentButton
-      onClick={() => {
+        onClick={() => {
           closeContextMenu();
           closeImageTool();
           setConnMenu(null);
           setActiveDockPanel(null);
           setAgentSessionFocus(null);
-          setAgentOpen(true);
+          updateAgentOpen(true);
         }}
         status={agentOpen ? 'awaiting' : 'idle'}
       />
       <CanvasAgentPanel
-        onClose={() => setAgentOpen(false)}
+        onClose={() => updateAgentOpen(false)}
         initialSessionId={agentSessionFocus?.sessionId ?? null}
         onConfirmPlan={async (plan) => {
           const sessionId = (plan as { sessionId?: string }).sessionId;

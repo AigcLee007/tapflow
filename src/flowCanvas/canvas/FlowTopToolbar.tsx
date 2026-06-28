@@ -77,9 +77,10 @@ function navigate(path: string) {
 
 export const FlowTopToolbar: React.FC<{
   cullingEnabled: boolean;
+  hideUtilityActions?: boolean;
   onToggleCulling: () => void;
   saveStatus?: CanvasSaveStatusView;
-}> = memo(function FlowTopToolbar({ saveStatus }) {
+}> = memo(function FlowTopToolbar({ hideUtilityActions = false, saveStatus }) {
   const projectTitle = useFlowCanvasStore((s) => s.projectTitle);
   const setProjectTitle = useFlowCanvasStore((s) => s.setProjectTitle);
   const [points, setPoints] = useState(0);
@@ -426,7 +427,7 @@ export const FlowTopToolbar: React.FC<{
           </div>
         </div>
 
-        <div style={rightClusterStyle}>
+        {!hideUtilityActions ? <div style={rightClusterStyle}>
           <button type="button" style={topPillStyle} title="当前点数">
             <Sparkles size={17} />
             <span>{pointsLoading ? "..." : formatToolbarPoint(points)}</span>
@@ -505,7 +506,7 @@ export const FlowTopToolbar: React.FC<{
             ) : null}
           </div>
 
-        </div>
+        </div> : null}
 
         {selectedAnnouncement ? (
           <div style={announcementOverlayStyle} onMouseDown={() => setSelectedAnnouncement(null)}>

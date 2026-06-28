@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import FlowCanvasPage from "./FlowCanvasPage";
@@ -13,11 +13,23 @@ vi.mock("@xyflow/react", () => ({
 }));
 
 vi.mock("./canvas/AiFlowCanvas", () => ({
-  AiFlowCanvas: () => <div data-testid="canvas-surface" />,
+  AiFlowCanvas: ({ onAgentOpenChange }: { onAgentOpenChange?: (open: boolean) => void }) => (
+    <div>
+      <div data-testid="canvas-surface" />
+      <button onClick={() => onAgentOpenChange?.(true)} type="button">
+        打开 Agent
+      </button>
+      <button onClick={() => onAgentOpenChange?.(false)} type="button">
+        关闭 Agent
+      </button>
+    </div>
+  ),
 }));
 
 vi.mock("./canvas/FlowTopToolbar", () => ({
-  FlowTopToolbar: () => <div data-testid="flow-top-toolbar" />,
+  FlowTopToolbar: ({ hideUtilityActions }: { hideUtilityActions?: boolean }) => (
+    <div data-testid="flow-top-toolbar" data-hide-utility-actions={hideUtilityActions ? "yes" : "no"} />
+  ),
 }));
 
 describe("FlowCanvasPage", () => {
@@ -33,5 +45,17 @@ describe("FlowCanvasPage", () => {
     expect(screen.getByRole("button", { name: "文生视频" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "图片生成" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "打开模板" })).toBeTruthy();
+  });
+
+  test("hides top-right utility actions while the Agent panel is open", () => {
+    render(<FlowCanvasPage />);
+
+    expect(screen.getByTestId("flow-top-toolbar").getAttribute("data-hide-utility-actions")).toBe("no");
+
+    fireEvent.click(screen.getByRole("button", { name: "打开 Agent" }));
+    expect(screen.getByTestId("flow-top-toolbar").getAttribute("data-hide-utility-actions")).toBe("yes");
+
+    fireEvent.click(screen.getByRole("button", { name: "关闭 Agent" }));
+    expect(screen.getByTestId("flow-top-toolbar").getAttribute("data-hide-utility-actions")).toBe("no");
   });
 });
