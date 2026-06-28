@@ -4,7 +4,7 @@ import { PanelRightClose, Plus, Sparkles } from "lucide-react";
 import type { AgentWorkspaceTab } from "./CanvasAgentWorkspaceTypes";
 import { CanvasAgentTabs } from "./CanvasAgentTabs";
 
-const CANVAS_TOP_CHROME_CLEARANCE = 88;
+const CANVAS_TOP_CHROME_CLEARANCE = 16;
 
 export function CanvasAgentWorkspaceShell(props: {
   activeTab: AgentWorkspaceTab;

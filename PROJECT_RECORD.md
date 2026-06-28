@@ -3680,3 +3680,13 @@ Validation completed:
 - Validation:
   - `npm test -- src/flowCanvas/FlowCanvasPage.test.tsx src/flowCanvas/canvas/FlowTopToolbar.test.tsx`
   - `npm test -- src/flowCanvas/agent/CanvasAgentIntegration.test.tsx src/flowCanvas/agent/CanvasAgentPanel.test.tsx`
+
+## 2026-06-28 - Agent Workspace Top Clearance Tightening
+
+- Reduced the fixed top clearance of the Agent dock shell so the panel no longer leaves a large empty strip above its own header.
+- The workspace shell now sits much closer to the canvas top chrome while still keeping a small visual breathing room.
+- Updated the shell regression test to assert the tighter top offset.
+- Validation:
+  - `npm test -- src/flowCanvas/agent/CanvasAgentWorkspaceShell.test.tsx`
+  - `npm test -- src/flowCanvas/FlowCanvasPage.test.tsx src/flowCanvas/canvas/FlowTopToolbar.test.tsx src/flowCanvas/agent/CanvasAgentIntegration.test.tsx src/flowCanvas/agent/CanvasAgentPanel.test.tsx`
+  - `npm run build`

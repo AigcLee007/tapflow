@@ -25,7 +25,7 @@ describe("CanvasAgentWorkspaceShell", () => {
 
     const shell = container.firstElementChild as HTMLElement | null;
     expect(shell).toBeTruthy();
-    expect(shell?.style.top).toBe("88px");
+    expect(shell?.style.top).toBe("16px");
   });
 
   it("collapses when collapse button is clicked", () => {
