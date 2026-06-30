@@ -1,7 +1,63 @@
 ﻿# Project Record
 
-Last updated: 2026-06-26
+Last updated: 2026-06-30
 Maintainers: project team + Codex sessions
+
+## 2026-06-30 - TapFlow Agent Canvas Tooling And Graph Context Upgrade
+
+- completed the backend half of the infinite-canvas-style Agent upgrade so the executor can now understand and apply first-class canvas operations through the v2 server-authoritative path.
+- extended the Agent tool contract to include canvas structure actions:
+  - `create_canvas_nodes`
+  - `update_canvas_node`
+  - `connect_canvas_nodes`
+  - `select_canvas_nodes`
+  - `run_canvas_node`
+- promoted those canvas tools into the model-facing registry and executor prompt so the model can propose graph edits explicitly instead of hiding them inside generic generation turns.
+- updated agent policy to treat pure canvas layout actions as `safe_write`, canvas node updates as `confirmed_write`, and node execution as `credit_required`.
+- replaced the old planner context dump with a graph-aware summary that includes selected, upstream, and downstream node summaries instead of only mirroring the raw snapshot.
+- wired canvas tool execution through `AgentCanvasService`, so approved canvas ops now persist to the authoritative flow draft and emit replayable session events.
+- unified the agent bootstrap so the API shares a single session repository and canvas service instance across executor, canvas ops, and session replay paths.
+- added and updated tests covering:
+  - canvas tool schema parsing
+  - canvas tool policy classification
+  - graph context summarization
+  - canvas tool execution
+  - executor prompt/tool registry visibility
+- validation:
+  - `npm run test --workspace @aigc-flow/api -- agent-tool-schemas.test.ts agent-tool-policy.canvas.test.ts agent-context-builder.canvas.test.ts agent-tool-runner.test.ts agent-executor.test.ts agent-canvas-ops.test.ts`
+  - `npm run build --workspace @aigc-flow/api`
+  - `npm run build`
+  - `npm run test --workspace @aigc-flow/api`
+
+## 2026-06-30 - Agent Workspace State Machine And Canvas Confirmation Alignment
+
+- aligned the TapFlow Agent workspace interaction model with the approved infinite-canvas-style copilot direction without changing the existing v2 backend contract.
+- introduced an explicit frontend workspace state machine for the Agent panel:
+  - `idle`
+  - `reading_context`
+  - `thinking`
+  - `plan_ready`
+  - `awaiting_canvas_confirm`
+  - `applying_canvas_ops`
+  - `awaiting_credit_confirm`
+  - `running_workflow`
+  - `asset_ready`
+  - `failed`
+  - `replay`
+- refactored the Agent session hook to derive legacy coarse status from the new workspace state while preserving existing session, replay, tool approval, and streaming behavior.
+- updated the Agent UI surfaces to use the richer state model:
+  - workspace shell header now reflects compact state labels
+  - composer enable/disable behavior now follows workspace state instead of loose busy flags
+  - composer shows a compact state-specific hint while preserving the current draft
+  - conversation view supports state-specific busy copy
+  - plan execution now distinguishes `创建流程` from `创建并执行`
+- added a dedicated pending canvas operation card that summarizes node creation, node updates, connections, run count, and credit-impact warning before agent-driven canvas writes.
+- timeline generation now includes pending canvas operations when the agent is waiting for canvas confirmation, which makes the panel read like a canvas operator instead of a generic chat box.
+- replay hydration now restores a richer workspace state so reopened sessions land in a more faithful UI mode.
+- validation:
+  - `npm test -- src/flowCanvas/agent/canvasAgentStateMachine.test.ts src/flowCanvas/agent/CanvasAgentCanvasOpsCard.test.tsx src/flowCanvas/agent/CanvasAgentComposer.test.tsx src/flowCanvas/agent/CanvasAgentPlanCard.test.tsx src/flowCanvas/agent/CanvasAgentConversationView.test.tsx src/flowCanvas/agent/CanvasAgentPanel.test.tsx src/flowCanvas/agent/useCanvasAgentSession.test.tsx`
+    - all targeted tests passed except one panel test selector ambiguity during the last focused run before the final test fix
+  - `npm run build` passed with the existing chunk-size and dynamic-import warnings only
 
 ## 2026-06-26 - Agent Workspace V2 Redesign
 
@@ -3690,3 +3746,32 @@ Validation completed:
   - `npm test -- src/flowCanvas/agent/CanvasAgentWorkspaceShell.test.tsx`
   - `npm test -- src/flowCanvas/FlowCanvasPage.test.tsx src/flowCanvas/canvas/FlowTopToolbar.test.tsx src/flowCanvas/agent/CanvasAgentIntegration.test.tsx src/flowCanvas/agent/CanvasAgentPanel.test.tsx`
   - `npm run build`
+## 2026-06-30 - TapFlow Agent External Bridge Hardening
+
+- continued the infinite-canvas-level agent upgrade by turning the new `apps/tapflow-agent` workspace into a real, testable stdin/stdout bridge instead of a partially wired stub.
+- extracted the bridge logic into a reusable `src/bridge.ts` module so the JSON-RPC handling can be tested without spawning the process shell.
+- added a focused Vitest config plus a bridge test that verifies:
+  - the bridge can lazily create an Agent session when no session id is provided
+  - canvas ops are forwarded through the authenticated TapFlow API
+  - the bridge returns the canonical JSON-RPC tool response shape
+- removed the unused `@modelcontextprotocol/sdk` dependency from the bridge package for now so the package stays aligned with the current minimal transport implementation and does not advertise a dependency it does not actually use yet.
+- added a root `dev:tapflow-agent` script for local bridge execution.
+- validation still pending after the bridge refactor in this turn:
+  - `npm run build --workspace @aigc-flow/tapflow-agent`
+  - `npm test --workspace @aigc-flow/tapflow-agent`
+  - `npm run build`
+
+## 2026-06-30 - TapFlow Agent Staging Smoke Entry And Deployment Hooks
+
+- finished the last missing piece for server-realistic agent validation by adding an explicit smoke entry and deployment-facing documentation for the `apps/tapflow-agent` bridge package.
+- added root-level scripts:
+  - `start:tapflow-agent`
+  - `smoke:tapflow-agent`
+- added `scripts/smoke-tapflow-agent.ts` to exercise the authenticated agent session + canvas-op flow against a real TapFlow API endpoint without leaking tokens.
+- documented the bridge smoke flow in `docs/staging-runbook.md` so staging operators now have a repeatable command for the real-environment agent check.
+- added bridge environment placeholders to `docs/STAGING_ENV_TEMPLATE.md` so the deployment checklist now includes the bridge variables needed for testing.
+- validation:
+  - `npm run build`
+  - `npm run build --workspace @aigc-flow/tapflow-agent`
+  - `npm test --workspace @aigc-flow/tapflow-agent`
+  - `npm run test --workspace @aigc-flow/api -- agent-tool-schemas.test.ts agent-tool-policy.canvas.test.ts agent-context-builder.canvas.test.ts agent-tool-runner.test.ts agent-executor.test.ts agent-canvas-ops.test.ts`

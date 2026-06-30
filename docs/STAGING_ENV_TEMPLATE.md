@@ -259,6 +259,15 @@ Relay D:
 - `AGENT_EXECUTOR_ALLOW_VIDEO = false`
 - `Agent executor note = keep false until text and image routes are installed, pricing is verified, and staging smoke tests pass. Fast rollback is setting AGENT_EXECUTOR_ENABLED=false.`
 
+## 9.3 TapFlow Agent Bridge
+
+- `TAPFLOW_API_URL = https://api-art.aittco.com`
+- `TAPFLOW_PROJECT_ID = <project id>`
+- `TAPFLOW_FLOW_ID = <flow id>`
+- `TAPFLOW_ACCESS_TOKEN = <short-lived user token for smoke testing>`
+- `TAPFLOW_AGENT_SESSION_ID = <optional existing agent session id>`
+- `TapFlow agent note = use these values only for local or staging smoke validation; do not commit real tokens`
+
 ---
 
 ## 10. Deployment

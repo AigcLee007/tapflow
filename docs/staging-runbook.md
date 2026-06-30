@@ -75,6 +75,36 @@ Perform these checks after a performance-related deployment:
 6. **Verify grid virtualization:** Open `/assets` with at least 100 images; scroll and confirm rendering remains responsive without a long blank grid.
 7. **Diagnostic marks:** Check browser Console/Performance for `asset-library-refresh` and `workspace-projects-refresh` measures.
 
+## TapFlow Agent Smoke
+
+Use this after deploying the agent bridge package and before broader manual testing:
+
+```bash
+TAPFLOW_API_URL=https://api-art.aittco.com \
+TAPFLOW_ACCESS_TOKEN=<token> \
+TAPFLOW_PROJECT_URL=https://art.aittco.com/projects/<project-id>/canvas \
+npm run smoke:tapflow-agent
+```
+
+If you need to reuse an existing session:
+
+```bash
+TAPFLOW_API_URL=https://api-art.aittco.com \
+TAPFLOW_ACCESS_TOKEN=<token> \
+TAPFLOW_PROJECT_ID=<project-id> \
+TAPFLOW_FLOW_ID=<flow-id> \
+TAPFLOW_AGENT_SESSION_ID=<session-id> \
+npm run smoke:tapflow-agent
+```
+
+Expected result:
+
+- the session is created or reused
+- `POST /api/v2/agent/sessions/:sessionId/canvas-ops` returns `canvas_op_applied`
+- the returned draft revision advances
+- `TAPFLOW_PROJECT_URL` is enough to resolve the target project and flow
+- no secret material appears in the output
+
 ## Notes
 
 - Target-node runs must not use `flows FOR UPDATE`.
