@@ -18,7 +18,7 @@ const models = [
       {
         estimatedCredits: 4,
         routeKey: "image.nano.line1",
-        routeLabel: "线路一",
+        routeLabel: "Line 1",
         sizes: [
           { credits: 4, size: "1K" as const },
           { credits: 4.5, size: "2K" as const },
@@ -54,7 +54,9 @@ describe("CanvasAgentComposer", () => {
       />,
     );
 
-    expect((screen.getByPlaceholderText("描述你想完成的创作任务，或者继续刚才的结果...") as HTMLTextAreaElement).disabled).toBe(disabled);
+    expect(
+      (screen.getByPlaceholderText("描述你想完成的创作任务，或者继续刚才的结果...") as HTMLTextAreaElement).disabled,
+    ).toBe(disabled);
   });
 
   it("renders a controlled draft value and updates it", () => {
@@ -75,7 +77,7 @@ describe("CanvasAgentComposer", () => {
     expect(onChangeDraft).toHaveBeenCalledWith("Use round-1-image-1 to make a poster");
   });
 
-  it("renders reference chips and lets them be inserted into the draft", () => {
+  it("renders reference chips directly above the prompt", () => {
     const onChangeDraft = vi.fn();
     render(
       <CanvasAgentComposer
@@ -84,18 +86,19 @@ describe("CanvasAgentComposer", () => {
         onChangeDraft={onChangeDraft}
         onSend={vi.fn()}
         referenceChips={[
-          { id: "node-1", kind: "canvas_node", label: "选中图片 1", refId: "round-1-image-1" },
-          { id: "node-2", kind: "artifact", label: "上一轮结果 1", refId: "round-1-image-2" },
+          { id: "node-1", kind: "canvas_node", label: "Selected image 1", refId: "round-1-image-1" },
+          { id: "node-2", kind: "artifact", label: "Previous result 1", refId: "round-1-image-2" },
         ]}
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "选中图片 1" }));
+    expect(screen.getByTestId("agent-composer-reference-strip")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Selected image 1" }));
 
     expect(onChangeDraft).toHaveBeenCalledWith("round-1-image-1");
   });
 
-  it("shows friendly model, route and estimated credits", () => {
+  it("keeps model settings secondary until expanded", () => {
     render(
       <CanvasAgentComposer
         draftValue="Make this into a poster"
@@ -105,13 +108,18 @@ describe("CanvasAgentComposer", () => {
       />,
     );
 
-    expect(screen.getByText("Nano Banana Pro")).toBeTruthy();
-    expect(screen.getByText("线路一")).toBeTruthy();
-    expect(screen.getByText((content) => content.includes("预计积分") && content.includes("4"))).toBeTruthy();
+    expect(screen.getByText((content) => content.includes("Nano Banana Pro"))).toBeTruthy();
+    expect(screen.getByText((content) => content.includes("Estimated credits") && content.includes("4"))).toBeTruthy();
+    expect(screen.queryByTestId("agent-composer-settings-panel")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Expand model settings" }));
+
+    expect(screen.getByTestId("agent-composer-settings-panel")).toBeTruthy();
+    expect(screen.getByText("Line 1")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "4K" }));
 
-    expect(screen.getByText((content) => content.includes("预计积分") && content.includes("5"))).toBeTruthy();
+    expect(screen.getByText((content) => content.includes("Estimated credits") && content.includes("5"))).toBeTruthy();
   });
 
   it("shows a compact busy hint while preserving the current draft", () => {
@@ -125,10 +133,10 @@ describe("CanvasAgentComposer", () => {
       />,
     );
 
-    expect(screen.getByText("已提交生成任务")).toBeTruthy();
-    expect((screen.getByPlaceholderText("描述你想完成的创作任务，或者继续刚才的结果...") as HTMLTextAreaElement).value).toBe(
-      "Keep my existing prompt",
-    );
+    expect(screen.getByText("Generation submitted")).toBeTruthy();
+    expect(
+      (screen.getByPlaceholderText("描述你想完成的创作任务，或者继续刚才的结果...") as HTMLTextAreaElement).value,
+    ).toBe("Keep my existing prompt");
   });
 
   it("appends multiple reference chips into the current draft", () => {

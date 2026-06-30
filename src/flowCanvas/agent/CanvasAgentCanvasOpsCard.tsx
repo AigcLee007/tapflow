@@ -24,21 +24,21 @@ export function CanvasAgentCanvasOpsCard(props: CanvasAgentCanvasOpsCardProps) {
       title:
         typeof op.data.title === "string" && op.data.title.trim().length > 0
           ? op.data.title
-          : `新${op.kind}节点`,
+          : `New ${op.kind} node`,
     }));
 
   return (
     <section
       style={{
-        background: "rgba(255,255,255,0.03)",
+        background: "rgba(255,255,255,0.035)",
         border: "1px solid rgba(255,255,255,0.08)",
-        borderRadius: 16,
+        borderRadius: 14,
         display: "grid",
-        gap: 10,
-        padding: 12,
+        gap: 9,
+        padding: "11px 12px",
       }}
     >
-      <div style={{ color: "#f8fafc", fontSize: 13, fontWeight: 800 }}>待确认画布操作</div>
+      <div style={{ color: "#f8fafc", fontSize: 13, fontWeight: 800 }}>Canvas changes ready</div>
 
       <div
         style={{
@@ -59,7 +59,7 @@ export function CanvasAgentCanvasOpsCard(props: CanvasAgentCanvasOpsCardProps) {
 
       {createdNodeLabels.length > 0 ? (
         <div style={{ display: "grid", gap: 6 }}>
-          <div style={{ color: "rgba(248,250,252,0.75)", fontSize: 12, fontWeight: 700 }}>将创建的节点</div>
+          <div style={{ color: "rgba(248,250,252,0.75)", fontSize: 12, fontWeight: 700 }}>New nodes</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             {createdNodeLabels.map((item) => (
               <div
@@ -82,7 +82,7 @@ export function CanvasAgentCanvasOpsCard(props: CanvasAgentCanvasOpsCardProps) {
 
       {hasRunNode ? (
         <div style={{ color: "#facc15", fontSize: 12, fontWeight: 700 }}>
-          执行会进入积分预估或扣费确认流程
+          Running nodes will continue into credit confirmation or execution.
         </div>
       ) : null}
 
@@ -103,12 +103,7 @@ export function CanvasAgentCanvasOpsCard(props: CanvasAgentCanvasOpsCardProps) {
         >
           创建并执行
         </button>
-        <button
-          disabled={props.busy}
-          onClick={props.onCancel}
-          style={ghostButtonStyle(props.busy)}
-          type="button"
-        >
+        <button disabled={props.busy} onClick={props.onCancel} style={ghostButtonStyle(props.busy)} type="button">
           取消
         </button>
       </div>
@@ -120,14 +115,14 @@ function primaryButtonStyle(disabled?: boolean): React.CSSProperties {
   return {
     background: disabled ? "rgba(255,255,255,0.08)" : "#f8fafc",
     border: "1px solid rgba(255,255,255,0.08)",
-    borderRadius: 19,
+    borderRadius: 18,
     color: disabled ? "rgba(248,250,252,0.45)" : "#09090f",
     cursor: disabled ? "not-allowed" : "pointer",
     fontSize: 13,
     fontWeight: 800,
-    height: 38,
+    height: 36,
     minWidth: 104,
-    padding: "0 16px",
+    padding: "0 14px",
   };
 }
 
@@ -142,13 +137,13 @@ function ghostButtonStyle(disabled?: boolean): React.CSSProperties {
   return {
     background: "transparent",
     border: "1px solid rgba(255,255,255,0.12)",
-    borderRadius: 19,
+    borderRadius: 18,
     color: disabled ? "rgba(248,250,252,0.45)" : "#f8fafc",
     cursor: disabled ? "not-allowed" : "pointer",
     fontSize: 13,
     fontWeight: 700,
-    height: 38,
-    minWidth: 88,
-    padding: "0 16px",
+    height: 36,
+    minWidth: 76,
+    padding: "0 14px",
   };
 }

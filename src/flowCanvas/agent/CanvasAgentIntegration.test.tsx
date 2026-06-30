@@ -12,12 +12,7 @@ vi.mock("@xyflow/react", async () => {
     BackgroundVariant: { Dots: "dots" },
     MiniMap: () => null,
     ReactFlow: ({ children, onPaneClick, onPaneContextMenu, ...props }: any) => (
-      <div
-        data-testid="react-flow"
-        onClick={onPaneClick}
-        onContextMenu={onPaneContextMenu}
-        {...props}
-      >
+      <div data-testid="react-flow" onClick={onPaneClick} onContextMenu={onPaneContextMenu} {...props}>
         {children}
       </div>
     ),
@@ -107,6 +102,9 @@ describe("Canvas agent integration", () => {
     fireEvent.click(screen.getByRole("button", { name: "打开 Agent" }));
 
     expect((await screen.findAllByText("TapFlow Agent")).length).toBeGreaterThan(0);
-    expect(screen.getByRole("tab", { name: "对话" })).toBeTruthy();
+    expect(screen.getByText("Canvas Copilot")).toBeTruthy();
+    expect(screen.queryByRole("tab", { name: "对话" })).toBeNull();
+    expect(screen.getByTestId("agent-shell-utility-nav")).toBeTruthy();
+    expect(screen.getByTestId("agent-panel-conversation")).toBeTruthy();
   });
 });

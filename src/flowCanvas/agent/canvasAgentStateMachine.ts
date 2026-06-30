@@ -28,17 +28,17 @@ export type CanvasAgentWorkspaceEvent =
   | { type: "reset" };
 
 export const CANVAS_AGENT_STATE_LABELS: Record<CanvasAgentWorkspaceState, string> = {
-  applying_canvas_ops: "更新画布",
-  asset_ready: "结果已生成",
-  awaiting_canvas_confirm: "确认画布操作",
-  awaiting_credit_confirm: "确认积分",
-  failed: "出错",
-  idle: "就绪",
-  plan_ready: "等待确认",
-  reading_context: "读取画布",
-  replay: "查看历史",
-  running_workflow: "生成中",
-  thinking: "规划中",
+  applying_canvas_ops: "Writing canvas changes",
+  asset_ready: "Result ready",
+  awaiting_canvas_confirm: "Waiting for canvas approval",
+  awaiting_credit_confirm: "Waiting for credit approval",
+  failed: "Needs attention",
+  idle: "Ready",
+  plan_ready: "Waiting for approval",
+  reading_context: "Reading canvas",
+  replay: "Viewing history",
+  running_workflow: "Generating",
+  thinking: "Planning",
 };
 
 function isActiveState(state: CanvasAgentWorkspaceState) {
@@ -108,9 +108,9 @@ export function isCanvasAgentBusyState(state: CanvasAgentWorkspaceState) {
 }
 
 export function getCanvasAgentBusyHint(state: CanvasAgentWorkspaceState) {
-  if (state === "reading_context") return "正在读取当前画布和选区";
-  if (state === "thinking") return "正在规划可编辑流程";
-  if (state === "applying_canvas_ops") return "正在写入服务端画布草稿";
-  if (state === "running_workflow") return "已提交生成任务";
+  if (state === "reading_context") return "Reading canvas context";
+  if (state === "thinking") return "Planning editable canvas steps";
+  if (state === "applying_canvas_ops") return "Writing canvas changes";
+  if (state === "running_workflow") return "Generation submitted";
   return null;
 }

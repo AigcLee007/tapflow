@@ -261,7 +261,10 @@ export function CanvasAgentPanel(props: {
       width={workspace.width}
     >
       {workspace.activeTab === "chat" ? (
-        <div style={{ display: "grid", gridTemplateRows: "1fr auto auto", height: "100%", minHeight: 0 }}>
+        <div
+          data-testid="agent-panel-conversation"
+          style={{ display: "grid", gridTemplateRows: "1fr auto auto", height: "100%", minHeight: 0 }}
+        >
           <CanvasAgentConversationView
             busy={busy}
             busyLabel={getCanvasAgentBusyHint(sessionActions.workspaceState)}

@@ -1,7 +1,21 @@
 ﻿# Project Record
 
-Last updated: 2026-06-30
+Last updated: 2026-07-01
 Maintainers: project team + Codex sessions
+
+## 2026-07-01 - Infinite Canvas Style Agent Copilot UI Rewrite
+
+- rewired the default Agent panel toward the infinite-canvas-style Canvas Copilot interaction model instead of the previous tab-heavy right-side workspace.
+- removed the first-viewport `对话 / 历史 / 连接配置 / 日志` primary tab strip from the default Agent surface and replaced it with compact utility actions for history, connections, and logs.
+- changed the Agent shell header to a compact `TapFlow Agent / Canvas Copilot` presentation with state copy and docked canvas behavior.
+- made the conversation stream the primary surface and moved the composer into a prompt-first bottom dock with selected/reference chips directly above the prompt.
+- collapsed model, route, and size controls behind the secondary `Model` affordance so generation settings no longer dominate the Agent entry state.
+- simplified the empty state and action previews so the panel reads like a canvas copilot that can create, connect, and run nodes rather than a generic debug console.
+- repaired the Agent result card user-facing copy from mojibake to clean UTF-8 Chinese labels.
+- tightened replay continuation tests to wait for rendered Agent results before invoking continuation actions, removing parallel test flakiness.
+- validation:
+  - `npm test -- src/flowCanvas/agent` passed: 31 test files, 104 tests.
+  - `npm run build` passed with existing Browserslist, chunk-size, and dynamic-import warnings only.
 
 ## 2026-06-30 - TapFlow Agent Canvas Tooling And Graph Context Upgrade
 

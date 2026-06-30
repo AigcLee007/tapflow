@@ -18,17 +18,12 @@ describe("reduceCanvasAgentWorkspaceState", () => {
   });
 
   it("keeps canvas confirmation separate from credit approval", () => {
-    expect(
-      reduceCanvasAgentWorkspaceState("thinking", {
-        type: "canvas_confirm_requested",
-      }),
-    ).toBe("awaiting_canvas_confirm");
-
-    expect(
-      reduceCanvasAgentWorkspaceState("thinking", {
-        type: "credit_approval_required",
-      }),
-    ).toBe("awaiting_credit_confirm");
+    expect(reduceCanvasAgentWorkspaceState("thinking", { type: "canvas_confirm_requested" })).toBe(
+      "awaiting_canvas_confirm",
+    );
+    expect(reduceCanvasAgentWorkspaceState("thinking", { type: "credit_approval_required" })).toBe(
+      "awaiting_credit_confirm",
+    );
   });
 
   it("moves from plan approval to canvas application and then to workflow running", () => {
@@ -37,10 +32,7 @@ describe("reduceCanvasAgentWorkspaceState", () => {
     state = reduceCanvasAgentWorkspaceState(state, { type: "canvas_confirmed" });
     expect(state).toBe("applying_canvas_ops");
 
-    state = reduceCanvasAgentWorkspaceState(state, {
-      type: "canvas_ops_applied",
-      hasRunOps: true,
-    });
+    state = reduceCanvasAgentWorkspaceState(state, { type: "canvas_ops_applied", hasRunOps: true });
     expect(state).toBe("running_workflow");
   });
 
@@ -66,17 +58,17 @@ describe("reduceCanvasAgentWorkspaceState", () => {
 
   it("uses short user-facing labels for every workspace state", () => {
     expect(CANVAS_AGENT_STATE_LABELS).toMatchObject({
-      applying_canvas_ops: "更新画布",
-      asset_ready: "结果已生成",
-      awaiting_canvas_confirm: "确认画布操作",
-      awaiting_credit_confirm: "确认积分",
-      failed: "出错",
-      idle: "就绪",
-      plan_ready: "等待确认",
-      reading_context: "读取画布",
-      replay: "查看历史",
-      running_workflow: "生成中",
-      thinking: "规划中",
+      applying_canvas_ops: "Writing canvas changes",
+      asset_ready: "Result ready",
+      awaiting_canvas_confirm: "Waiting for canvas approval",
+      awaiting_credit_confirm: "Waiting for credit approval",
+      failed: "Needs attention",
+      idle: "Ready",
+      plan_ready: "Waiting for approval",
+      reading_context: "Reading canvas",
+      replay: "Viewing history",
+      running_workflow: "Generating",
+      thinking: "Planning",
     });
   });
 });

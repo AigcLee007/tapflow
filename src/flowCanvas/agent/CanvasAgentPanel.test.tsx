@@ -39,8 +39,6 @@ vi.mock("./canvasAgentToolEvents", async () => {
   };
 });
 
-const composerPlaceholder = "描述你想完成的创作任务，或者继续刚才的结果...";
-
 function buildSessionSummary() {
   return {
     createdAt: "2026-06-24T00:00:00Z",
@@ -126,8 +124,13 @@ describe("CanvasAgentPanel", () => {
     });
 
     expect(screen.getAllByText("TapFlow Agent").length).toBeGreaterThan(0);
-    expect(screen.getByText("Canvas Director")).toBeTruthy();
-    expect(screen.getByRole("tab", { name: "对话" })).toBeTruthy();
+    expect(screen.getByText("Canvas Copilot")).toBeTruthy();
+    expect(screen.queryByRole("tab", { name: "对话" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "连接配置" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "日志" })).toBeNull();
+    expect(screen.getByTestId("agent-shell-utility-nav")).toBeTruthy();
+    expect(screen.getByTestId("agent-panel-conversation")).toBeTruthy();
+    expect(screen.getByTestId("agent-composer-dock")).toBeTruthy();
     expect(screen.queryByText("Classic Agent")).toBeNull();
     expect(screen.queryByText("Director Runtime (preview)")).toBeNull();
     expect(screen.queryByText("Replay Events")).toBeNull();
@@ -172,7 +175,7 @@ describe("CanvasAgentPanel", () => {
       evidence: [],
       plan: [{ reason: "test", step: "Create nodes" }],
       proposedOps: [
-        { data: { title: "封面图" }, kind: "image", position: { x: 10, y: 20 }, type: "add_node" },
+        { data: { title: "Cover image" }, kind: "image", position: { x: 10, y: 20 }, type: "add_node" },
         { type: "run_node", nodeId: "image-1", runMode: "target_node" },
       ],
       reply: "Server plan",
@@ -183,7 +186,7 @@ describe("CanvasAgentPanel", () => {
     render(<CanvasAgentPanel open onClose={vi.fn()} onConfirmPlan={onConfirmPlan} onCreateOnlyPlan={onCreateOnlyPlan} />);
 
     await act(async () => {
-      fireEvent.change(screen.getByPlaceholderText(composerPlaceholder), {
+      fireEvent.change(screen.getByLabelText("Agent prompt"), {
         target: { value: "Help me create an image flow" },
       });
       fireEvent.click(screen.getByRole("button", { name: "发送" }));
@@ -204,7 +207,7 @@ describe("CanvasAgentPanel", () => {
     renderPanel();
 
     await act(async () => {
-      fireEvent.change(screen.getByPlaceholderText(composerPlaceholder), {
+      fireEvent.change(screen.getByLabelText("Agent prompt"), {
         target: { value: "Help me create an image flow" },
       });
       fireEvent.click(screen.getByRole("button", { name: "发送" }));
@@ -227,7 +230,7 @@ describe("CanvasAgentPanel", () => {
     renderPanel();
 
     await act(async () => {
-      fireEvent.change(screen.getByPlaceholderText(composerPlaceholder), {
+      fireEvent.change(screen.getByLabelText("Agent prompt"), {
         target: { value: "Help me create an image flow" },
       });
       fireEvent.click(screen.getByRole("button", { name: "发送" }));
@@ -404,9 +407,10 @@ describe("CanvasAgentPanel", () => {
 
     renderPanel();
 
+    await screen.findByText("Replay image");
     fireEvent.click(await screen.findByRole("button", { name: "继续编辑" }));
     await waitFor(() => {
-      expect((screen.getByPlaceholderText(composerPlaceholder) as HTMLTextAreaElement).value).toBe(
+      expect((screen.getByLabelText("Agent prompt") as HTMLTextAreaElement).value).toBe(
         "基于这些结果继续编辑：Replay image。保留主体和核心构图，按当前目标继续深化。",
       );
     });
@@ -461,6 +465,7 @@ describe("CanvasAgentPanel", () => {
 
     renderPanel();
 
+    await screen.findByText("Replay image");
     fireEvent.click(await screen.findByRole("button", { name: "继续编辑" }));
     expect(await screen.findByText("建议下一步")).toBeTruthy();
   });

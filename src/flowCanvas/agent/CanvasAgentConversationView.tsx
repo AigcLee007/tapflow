@@ -20,41 +20,24 @@ export function CanvasAgentConversationView(props: {
 }) {
   if (props.items.length === 0) {
     return (
-      <div style={{ display: "grid", gap: 16, height: "100%", overflowY: "auto", padding: 16 }}>
+      <div style={{ display: "grid", height: "100%", overflowY: "auto", padding: "18px 16px" }}>
         <section
+          data-testid="agent-conversation-empty-state"
           style={{
-            background: "rgba(255,255,255,0.03)",
-            border: "1px solid rgba(255,255,255,0.08)",
-            borderRadius: 22,
+            alignSelf: "end",
+            background: "transparent",
+            border: "1px dashed rgba(255,255,255,0.12)",
+            borderRadius: 16,
             display: "grid",
-            gap: 10,
-            padding: 18,
+            gap: 6,
+            padding: "14px 12px",
           }}
         >
-          <div style={{ color: "#f8fafc", fontSize: 18, fontWeight: 800 }}>TapFlow Agent</div>
-          <div style={{ color: "rgba(226,232,240,0.72)", fontSize: 13, lineHeight: 1.7 }}>
-            One canvas, every production step
+          <div style={{ color: "#f8fafc", fontSize: 13, fontWeight: 800 }}>
+            Pick nodes or describe the next canvas step.
           </div>
-          <div style={{ display: "grid", gap: 8, marginTop: 6 }}>
-            {[
-              "试试：生成一张动物运动会海报",
-              "把选中的图片做成三张风格变体",
-              "基于刚才的结果继续做电商主图",
-            ].map((suggestion) => (
-              <div
-                key={suggestion}
-                style={{
-                  background: "rgba(255,255,255,0.04)",
-                  border: "1px solid rgba(255,255,255,0.08)",
-                  borderRadius: 14,
-                  color: "#e2e8f0",
-                  fontSize: 12,
-                  padding: "10px 12px",
-                }}
-              >
-                {suggestion}
-              </div>
-            ))}
+          <div style={{ color: "rgba(226,232,240,0.62)", fontSize: 12, lineHeight: 1.6 }}>
+            Agent reads the current selection, proposes canvas edits, and waits before applying changes.
           </div>
         </section>
       </div>
@@ -62,7 +45,10 @@ export function CanvasAgentConversationView(props: {
   }
 
   return (
-    <div style={{ display: "grid", gap: 12, height: "100%", overflowY: "auto", padding: 16 }}>
+    <div
+      data-testid="agent-conversation-stream"
+      style={{ display: "grid", gap: 10, height: "100%", overflowY: "auto", padding: "14px 16px" }}
+    >
       <CanvasAgentTimeline
         items={props.items}
         onApprove={props.onApprove}
@@ -72,7 +58,7 @@ export function CanvasAgentConversationView(props: {
       />
       {props.busy ? (
         <div style={{ color: "rgba(148,163,184,0.9)", fontSize: 12, paddingBottom: 4 }}>
-          {props.busyLabel ?? "Agent 正在继续处理这一轮任务..."}
+          {props.busyLabel ?? "Agent is working on this turn..."}
         </div>
       ) : null}
     </div>

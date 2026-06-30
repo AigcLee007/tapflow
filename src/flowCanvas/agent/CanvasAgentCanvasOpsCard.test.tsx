@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { CanvasAgentCanvasOpsCard } from "./CanvasAgentCanvasOpsCard";
 
 describe("CanvasAgentCanvasOpsCard", () => {
-  it("shows create and run as separate actions when run ops are present", () => {
+  it("shows a compact canvas action preview with separate create and run actions", () => {
     const onCreateOnly = vi.fn();
     const onCreateAndRun = vi.fn();
 
@@ -15,7 +15,7 @@ describe("CanvasAgentCanvasOpsCard", () => {
         onCreateOnly={onCreateOnly}
         ops={[
           {
-            data: { title: "海报文案" },
+            data: { title: "Poster copy" },
             kind: "text",
             position: { x: 80, y: 120 },
             type: "add_node",
@@ -29,8 +29,8 @@ describe("CanvasAgentCanvasOpsCard", () => {
       />,
     );
 
-    expect(screen.getByText("待确认画布操作")).toBeTruthy();
-    expect(screen.getByText("执行会进入积分预估或扣费确认流程")).toBeTruthy();
+    expect(screen.getByText("Canvas changes ready")).toBeTruthy();
+    expect(screen.getByText("Running nodes will continue into credit confirmation or execution.")).toBeTruthy();
     expect((screen.getByRole("button", { name: "创建流程" }) as HTMLButtonElement).disabled).toBe(false);
     expect((screen.getByRole("button", { name: "创建并执行" }) as HTMLButtonElement).disabled).toBe(false);
 

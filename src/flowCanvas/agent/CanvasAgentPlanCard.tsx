@@ -18,20 +18,22 @@ export function CanvasAgentPlanCard(props: {
   return (
     <section
       style={{
-        borderRadius: 18,
+        background: "rgba(255,255,255,0.035)",
         border: "1px solid rgba(255,255,255,0.08)",
-        background: "linear-gradient(180deg, rgba(20,20,28,0.96) 0%, rgba(12,12,18,0.98) 100%)",
-        padding: 16,
+        borderRadius: 16,
         display: "grid",
-        gap: 12,
+        gap: 10,
+        padding: 12,
       }}
     >
-      <div style={{ color: "#f8fafc", fontSize: 16, fontWeight: 800 }}>待确认计划</div>
-      <div style={{ color: "rgba(226,232,240,0.86)", fontSize: 13, lineHeight: 1.6 }}>{props.plan.reply}</div>
+      <div style={{ color: "#f8fafc", fontSize: 13, fontWeight: 800 }}>
+        Agent will make these canvas changes
+      </div>
+      <div style={{ color: "rgba(226,232,240,0.86)", fontSize: 13, lineHeight: 1.55 }}>{props.plan.reply}</div>
 
       {props.plan.evidence.length > 0 ? (
         <div style={{ display: "grid", gap: 6 }}>
-          <div style={{ color: "rgba(248,250,252,0.75)", fontSize: 12, fontWeight: 700 }}>证据</div>
+          <div style={{ color: "rgba(248,250,252,0.75)", fontSize: 12, fontWeight: 700 }}>Context used</div>
           {props.plan.evidence.map((item, index) => (
             <div key={`${item.type}-${index}`} style={{ color: "rgba(226,232,240,0.72)", fontSize: 12, lineHeight: 1.5 }}>
               {item.summary}
@@ -40,31 +42,31 @@ export function CanvasAgentPlanCard(props: {
         </div>
       ) : null}
 
-      <div style={{ display: "grid", gap: 8 }}>
-        <div style={{ color: "rgba(248,250,252,0.75)", fontSize: 12, fontWeight: 700 }}>执行步骤</div>
+      <div style={{ display: "grid", gap: 7 }}>
+        <div style={{ color: "rgba(248,250,252,0.75)", fontSize: 12, fontWeight: 700 }}>Plan</div>
         {props.plan.plan.map((step, index) => (
-          <div key={`${step.step}-${index}`} style={{ display: "grid", gap: 3 }}>
+          <div key={`${step.step}-${index}`} style={{ display: "grid", gap: 2 }}>
             <div style={{ color: "#f8fafc", fontSize: 13, fontWeight: 700 }}>{step.step}</div>
-            <div style={{ color: "rgba(226,232,240,0.68)", fontSize: 12, lineHeight: 1.5 }}>{step.reason}</div>
+            <div style={{ color: "rgba(226,232,240,0.68)", fontSize: 12, lineHeight: 1.45 }}>{step.reason}</div>
           </div>
         ))}
       </div>
 
       <div
         style={{
-          display: "grid",
-          gap: 4,
-          padding: 12,
-          borderRadius: 14,
           background: "rgba(255,255,255,0.04)",
+          borderRadius: 12,
           color: "rgba(226,232,240,0.78)",
+          display: "grid",
           fontSize: 12,
+          gap: 4,
+          padding: 10,
         }}
       >
         <div>新增节点：{summary.addNodeCount}</div>
         <div>修改节点：{summary.updateNodeCount}</div>
-        <div>连接关系：{summary.connectCount}</div>
-        <div>执行任务：{summary.creditRunCount}</div>
+        <div>创建连线：{summary.connectCount}</div>
+        <div>执行节点：{summary.creditRunCount}</div>
       </div>
 
       {props.plan.costEstimate ? (
@@ -73,7 +75,7 @@ export function CanvasAgentPlanCard(props: {
         </div>
       ) : null}
 
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
         <button
           disabled={props.busy || createOnlyDisabled || !props.onCreateOnly}
           onClick={props.onCreateOnly}
@@ -90,12 +92,7 @@ export function CanvasAgentPlanCard(props: {
         >
           创建并执行
         </button>
-        <button
-          disabled={props.busy}
-          onClick={props.onCancel}
-          style={ghostActionStyle(props.busy)}
-          type="button"
-        >
+        <button disabled={props.busy} onClick={props.onCancel} style={ghostActionStyle(props.busy)} type="button">
           取消
         </button>
       </div>
@@ -105,16 +102,16 @@ export function CanvasAgentPlanCard(props: {
 
 function primaryActionStyle(disabled?: boolean): React.CSSProperties {
   return {
-    minWidth: 104,
-    height: 38,
-    borderRadius: 19,
-    border: "1px solid rgba(255,255,255,0.08)",
     background: disabled ? "rgba(255,255,255,0.08)" : "#f8fafc",
+    border: "1px solid rgba(255,255,255,0.08)",
+    borderRadius: 18,
     color: disabled ? "rgba(248,250,252,0.5)" : "#09090f",
-    fontWeight: 800,
-    fontSize: 13,
     cursor: disabled ? "not-allowed" : "pointer",
-    padding: "0 16px",
+    fontSize: 13,
+    fontWeight: 800,
+    height: 36,
+    minWidth: 104,
+    padding: "0 14px",
   };
 }
 
@@ -127,15 +124,15 @@ function secondaryActionStyle(disabled?: boolean): React.CSSProperties {
 
 function ghostActionStyle(disabled?: boolean): React.CSSProperties {
   return {
-    minWidth: 88,
-    height: 38,
-    borderRadius: 19,
-    border: "1px solid rgba(255,255,255,0.12)",
     background: "transparent",
+    border: "1px solid rgba(255,255,255,0.12)",
+    borderRadius: 18,
     color: disabled ? "rgba(248,250,252,0.45)" : "#f8fafc",
-    fontWeight: 700,
-    fontSize: 13,
     cursor: disabled ? "not-allowed" : "pointer",
-    padding: "0 16px",
+    fontSize: 13,
+    fontWeight: 700,
+    height: 36,
+    minWidth: 76,
+    padding: "0 14px",
   };
 }

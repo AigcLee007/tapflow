@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { CanvasAgentConversationView } from "./CanvasAgentConversationView";
 
 describe("CanvasAgentConversationView", () => {
-  it("renders the empty production state", () => {
+  it("renders a sparse empty copilot state", () => {
     render(
       <CanvasAgentConversationView
         busy={false}
@@ -14,8 +14,9 @@ describe("CanvasAgentConversationView", () => {
       />,
     );
 
-    expect(screen.getByText("TapFlow Agent")).toBeTruthy();
-    expect(screen.getByText("One canvas, every production step")).toBeTruthy();
+    expect(screen.getByTestId("agent-conversation-empty-state")).toBeTruthy();
+    expect(screen.getByText("Pick nodes or describe the next canvas step.")).toBeTruthy();
+    expect(screen.queryByText("One canvas, every production step")).toBeNull();
   });
 
   it("renders timeline messages and statuses", () => {
@@ -23,29 +24,30 @@ describe("CanvasAgentConversationView", () => {
       <CanvasAgentConversationView
         busy={false}
         items={[
-          { content: "帮我生成海报", id: "m1", kind: "message", role: "user" },
-          { id: "s1", kind: "status", state: "active", title: "正在理解需求" },
+          { content: "Help me make a poster", id: "m1", kind: "message", role: "user" },
+          { id: "s1", kind: "status", state: "active", title: "Reading the selected canvas context" },
         ]}
         onApprove={vi.fn()}
         onCancel={vi.fn()}
       />,
     );
 
-    expect(screen.getByText("帮我生成海报")).toBeTruthy();
-    expect(screen.getByText("正在理解需求")).toBeTruthy();
+    expect(screen.getByText("Help me make a poster")).toBeTruthy();
+    expect(screen.getByText("Reading the selected canvas context")).toBeTruthy();
+    expect(screen.getByTestId("agent-conversation-stream")).toBeTruthy();
   });
 
   it("shows a state-specific busy hint while the workflow is running", () => {
     render(
       <CanvasAgentConversationView
         busy
-        busyLabel="已提交生成任务"
-        items={[{ content: "继续生成", id: "m1", kind: "message", role: "user" }]}
+        busyLabel="Generation submitted"
+        items={[{ content: "Continue generating", id: "m1", kind: "message", role: "user" }]}
         onApprove={vi.fn()}
         onCancel={vi.fn()}
       />,
     );
 
-    expect(screen.getByText("已提交生成任务")).toBeTruthy();
+    expect(screen.getByText("Generation submitted")).toBeTruthy();
   });
 });
