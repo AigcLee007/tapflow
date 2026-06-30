@@ -13,6 +13,7 @@ import { CanvasAgentHistoryView } from "./CanvasAgentHistoryView";
 import { CanvasAgentLogView } from "./CanvasAgentLogView";
 import { CanvasAgentPlanCard } from "./CanvasAgentPlanCard";
 import type { AgentReferenceChip } from "./CanvasAgentWorkspaceTypes";
+import { getCanvasAgentBusyHint, isCanvasAgentBusyState } from "./canvasAgentStateMachine";
 import { CanvasAgentWorkspaceShell } from "./CanvasAgentWorkspaceShell";
 import { useAgentConversationHistory } from "./useAgentConversationHistory";
 import { useAgentEventStream } from "./useAgentEventStream";
@@ -85,9 +86,12 @@ export function CanvasAgentPanel(props: {
   onClose: () => void;
   onConfirmPlan: (plan: CanvasAgentPlannerOutput) => Promise<ApplyResult>;
   onCreateOnlyPlan?: (plan: CanvasAgentPlannerOutput) => Promise<ApplyResult>;
+  onServerDraftApplied?: () => void | Promise<void>;
   open: boolean;
 }) {
-  const sessionActions = useCanvasAgentSession();
+  const sessionActions = useCanvasAgentSession({
+    onServerDraftApplied: props.onServerDraftApplied,
+  });
   const workspace = useAgentWorkspacePanel();
   const [composerDraft, setComposerDraft] = React.useState("");
   const backendFlowId = useFlowCanvasStore((state) => state.backendFlowId);
@@ -107,10 +111,7 @@ export function CanvasAgentPanel(props: {
   }>>([]);
   const replayHydratedSessionIdRef = React.useRef<string | null>(null);
 
-  const busy =
-    sessionActions.status === "thinking" ||
-    sessionActions.status === "executing" ||
-    sessionActions.status === "executing_tool";
+  const busy = isCanvasAgentBusyState(sessionActions.workspaceState);
   const activeContinuation = sessionActions.pendingContinuation ?? sessionActions.lastContinuation;
 
   React.useEffect(() => {
@@ -200,6 +201,7 @@ export function CanvasAgentPanel(props: {
     () =>
       buildAgentWorkspaceTimeline({
         activityItems: sessionActions.activityTimeline ?? [],
+        currentPlanOps: sessionActions.currentPlan?.proposedOps,
         error: sessionActions.error,
         messages:
           history.messages.length > 0
@@ -211,13 +213,16 @@ export function CanvasAgentPanel(props: {
               }))
             : sessionActions.messages,
         toolItems: sessionActions.toolTimeline,
+        workspaceState: sessionActions.workspaceState,
       }),
     [
       history.messages,
       sessionActions.activityTimeline,
+      sessionActions.currentPlan,
       sessionActions.error,
       sessionActions.messages,
       sessionActions.toolTimeline,
+      sessionActions.workspaceState,
     ],
   );
 
@@ -252,12 +257,14 @@ export function CanvasAgentPanel(props: {
         sessionActions.setSessionId?.(null);
         workspace.setActiveTab("chat");
       }}
+      workspaceState={sessionActions.workspaceState}
       width={workspace.width}
     >
       {workspace.activeTab === "chat" ? (
         <div style={{ display: "grid", gridTemplateRows: "1fr auto auto", height: "100%", minHeight: 0 }}>
           <CanvasAgentConversationView
             busy={busy}
+            busyLabel={getCanvasAgentBusyHint(sessionActions.workspaceState)}
             items={timelineItems}
             onApprove={sessionActions.approveToolCall}
             onCancel={sessionActions.cancelToolCall}
@@ -319,7 +326,6 @@ export function CanvasAgentPanel(props: {
           ) : null}
 
           <CanvasAgentComposer
-            disabled={busy}
             draftValue={composerDraft}
             models={modelOptions}
             onChangeDraft={setComposerDraft}
@@ -328,6 +334,7 @@ export function CanvasAgentPanel(props: {
               await sessionActions.sendPrompt(prompt);
             }}
             referenceChips={[...selectedReferenceChips, ...continuationChips]}
+            workspaceState={sessionActions.workspaceState}
           />
         </div>
       ) : null}

@@ -205,7 +205,8 @@ export type CanvasSaveStatusView = {
 const FlowCanvasPage: React.FC<{
   enableLocalPersistence?: boolean;
   saveStatus?: CanvasSaveStatusView;
-}> = ({ saveStatus }) => {
+  onServerDraftApplied?: () => void | Promise<void>;
+}> = ({ onServerDraftApplied, saveStatus }) => {
   const [cullingEnabled, setCullingEnabled] = useState(true);
   const [agentOpen, setAgentOpen] = useState(false);
   const toggleCulling = useCallback(() => setCullingEnabled((v) => !v), []);
@@ -225,7 +226,11 @@ const FlowCanvasPage: React.FC<{
       />
       <div style={{ flex: 1, position: 'relative' }}>
         <ReactFlowProvider>
-          <AiFlowCanvas cullingEnabled={cullingEnabled} onAgentOpenChange={setAgentOpen} />
+          <AiFlowCanvas
+            cullingEnabled={cullingEnabled}
+            onAgentOpenChange={setAgentOpen}
+            onServerDraftApplied={onServerDraftApplied}
+          />
           {isDebugOverlayEnabled() && <StatsOverlay />}
           {isDebugOverlayEnabled() && <BackendRunOverlay />}
           <EmptyState />

@@ -14,6 +14,7 @@ export type AgentToolEvent =
       createdNodeIds: string[];
       edgeIds: string[];
       flowId: string;
+      toolCallKey?: string;
       runNodeIds?: string[];
       updatedNodeIds: string[];
       turnId?: string;

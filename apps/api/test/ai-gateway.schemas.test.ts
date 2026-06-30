@@ -22,6 +22,7 @@ describe("ai-gateway schemas", () => {
     for (const routeKey of routeKeys) {
       const parsed = createRouteSchema.parse({
         modality: "image",
+        modelFamily: "image",
         providerId: "00000000-0000-0000-0000-000000000000",
         routeKey,
       });
@@ -71,6 +72,7 @@ describe("ai-gateway schemas", () => {
     expect(() =>
       createRouteSchema.parse({
         modality: "image",
+        modelFamily: "image",
         providerId: "11111111-1111-1111-1111-111111111111",
         routeKey: "image default",
       }),

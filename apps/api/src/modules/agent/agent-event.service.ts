@@ -149,6 +149,7 @@ function mapToolEventToSessionEvent(
           createdNodeIds: event.createdNodeIds,
           edgeIds: event.edgeIds,
           flowId: event.flowId,
+          toolCallKey: event.toolCallKey ?? null,
           runNodeIds: event.runNodeIds ?? [],
           updatedNodeIds: event.updatedNodeIds,
         },

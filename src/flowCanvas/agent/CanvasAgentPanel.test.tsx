@@ -160,8 +160,27 @@ describe("CanvasAgentPanel", () => {
       ok: true,
       ranNodeIds: [],
     }));
+    const onCreateOnlyPlan = vi.fn(async () => ({
+      createdNodeIds: [],
+      errors: [],
+      ok: true,
+      ranNodeIds: [],
+    }));
 
-    render(<CanvasAgentPanel open onClose={vi.fn()} onConfirmPlan={onConfirmPlan} />);
+    mockCreateAgentTurn.mockResolvedValue({
+      approvalRequired: true,
+      evidence: [],
+      plan: [{ reason: "test", step: "Create nodes" }],
+      proposedOps: [
+        { data: { title: "封面图" }, kind: "image", position: { x: 10, y: 20 }, type: "add_node" },
+        { type: "run_node", nodeId: "image-1", runMode: "target_node" },
+      ],
+      reply: "Server plan",
+      sessionId: "session-1",
+      turnId: "turn-1",
+    });
+
+    render(<CanvasAgentPanel open onClose={vi.fn()} onConfirmPlan={onConfirmPlan} onCreateOnlyPlan={onCreateOnlyPlan} />);
 
     await act(async () => {
       fireEvent.change(screen.getByPlaceholderText(composerPlaceholder), {
@@ -171,10 +190,11 @@ describe("CanvasAgentPanel", () => {
     });
 
     expect((await screen.findAllByText("Server plan")).length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: "确认执行" })).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "创建流程" }).length).toBeGreaterThan(0);
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "确认执行" }));
+      const createAndRunButtons = screen.getAllByRole("button", { name: "创建并执行" });
+      fireEvent.click(createAndRunButtons[createAndRunButtons.length - 1]!);
     });
 
     await waitFor(() => expect(onConfirmPlan).toHaveBeenCalledTimes(1));
@@ -197,7 +217,7 @@ describe("CanvasAgentPanel", () => {
     });
 
     await waitFor(() => {
-      expect(screen.queryByRole("button", { name: "确认执行" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "创建流程" })).toBeNull();
     });
   });
 

@@ -201,6 +201,7 @@ export function FlowProjectPage() {
     <>
       <FlowCanvasPage
         enableLocalPersistence={false}
+        onServerDraftApplied={() => void projectState.reload()}
         saveStatus={{
           error: autosave.error,
           icon: <StatusIcon status={autosave.status} />,

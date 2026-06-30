@@ -1,6 +1,8 @@
 import type { CanvasAgentActivityItem } from "./CanvasAgentActivityTimeline";
 import type { AgentImageRunSettingsModel } from "./agentRunSettings";
+import type { CanvasAgentWorkspaceState } from "./canvasAgentStateMachine";
 import type { CanvasAgentToolAssetRef, CanvasAgentToolTimelineItem } from "./canvasAgentToolTypes";
+import type { CanvasAgentOp } from "./canvasAgentTypes";
 import type { CanvasAgentMessage } from "./useCanvasAgentSession";
 
 export type AgentWorkspaceTab = "chat" | "history" | "connections" | "logs";
@@ -35,6 +37,11 @@ export type AgentWorkspaceTimelineItem =
     }
   | {
       id: string;
+      kind: "canvas_ops";
+      ops: CanvasAgentOp[];
+    }
+  | {
+      id: string;
       kind: "parameter";
       models: AgentImageRunSettingsModel[];
       referenceRefs?: string[];
@@ -65,7 +72,9 @@ export type AgentWorkspaceTimelineItem =
 
 export type BuildAgentWorkspaceTimelineInput = {
   activityItems: CanvasAgentActivityItem[];
+  currentPlanOps?: CanvasAgentOp[];
   error: string | null;
   messages: CanvasAgentMessage[];
   toolItems: CanvasAgentToolTimelineItem[];
+  workspaceState?: CanvasAgentWorkspaceState;
 };

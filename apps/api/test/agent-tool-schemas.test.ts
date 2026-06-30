@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   agentToolCallSchema,
+  agentToolNameSchema,
   generateImageBatchToolArgsSchema,
   generateImageToolArgsSchema,
   parseAgentToolCall,
@@ -93,6 +94,50 @@ describe("agent tool schemas", () => {
       },
       toolCallKey: "call_batch_fix",
       toolName: "generate_image",
+    });
+  });
+
+  it("parses canvas tool calls", () => {
+    expect(agentToolNameSchema.parse("create_canvas_nodes")).toBe("create_canvas_nodes");
+    expect(parseAgentToolCall({
+      arguments: {
+        nodes: [
+          {
+            clientId: "prompt-1",
+            data: { title: "Prompt", text: "cat poster" },
+            kind: "text",
+            position: { x: 10, y: 20 },
+            selected: true,
+          },
+        ],
+      },
+      toolCallKey: "canvas-1",
+      toolName: "create_canvas_nodes",
+    })).toMatchObject({
+      arguments: {
+        nodes: [
+          expect.objectContaining({
+            clientId: "prompt-1",
+            kind: "text",
+          }),
+        ],
+      },
+      toolName: "create_canvas_nodes",
+    });
+
+    expect(parseAgentToolCall({
+      arguments: {
+        connections: [
+          {
+            source: "client:prompt-1",
+            target: "client:image-1",
+          },
+        ],
+      },
+      toolCallKey: "canvas-2",
+      toolName: "connect_canvas_nodes",
+    })).toMatchObject({
+      toolName: "connect_canvas_nodes",
     });
   });
 });

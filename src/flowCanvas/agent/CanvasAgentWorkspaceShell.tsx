@@ -2,6 +2,8 @@ import React from "react";
 import { PanelRightClose, Plus, Sparkles } from "lucide-react";
 
 import type { AgentWorkspaceTab } from "./CanvasAgentWorkspaceTypes";
+import type { CanvasAgentWorkspaceState } from "./canvasAgentStateMachine";
+import { CANVAS_AGENT_STATE_LABELS } from "./canvasAgentStateMachine";
 import { CanvasAgentTabs } from "./CanvasAgentTabs";
 
 const CANVAS_TOP_CHROME_CLEARANCE = 16;
@@ -13,6 +15,7 @@ export function CanvasAgentWorkspaceShell(props: {
   onChangeTab: (tab: AgentWorkspaceTab) => void;
   onCollapse: () => void;
   onNewChat: () => void;
+  workspaceState?: CanvasAgentWorkspaceState;
   width?: number;
 }) {
   const width = props.width ?? 420;
@@ -65,7 +68,7 @@ export function CanvasAgentWorkspaceShell(props: {
               Canvas Director
             </div>
             <div style={{ color: props.busy ? "#93c5fd" : "rgba(148,163,184,0.84)", fontSize: 11 }}>
-              {props.busy ? "正在处理当前任务" : "准备继续你的画布生产任务"}
+              {props.workspaceState ? CANVAS_AGENT_STATE_LABELS[props.workspaceState] : props.busy ? "正在处理当前任务" : "准备继续你的画布生产任务"}
             </div>
           </div>
         </div>

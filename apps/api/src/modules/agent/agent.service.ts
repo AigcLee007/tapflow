@@ -291,6 +291,8 @@ export class AgentService {
     flowsService: Pick<FlowsService, "getFlowDraft" | "saveFlowDraft">;
     pool?: PgPool;
     runSettingsService: Pick<AgentRunSettingsService, "estimateImageRunSettings" | "listImageRunSettings">;
+    canvasService?: AgentCanvasService;
+    sessionRepository?: AgentSessionRepository;
     textRuntime?: Pick<DatabaseTextGenerationRuntime, "generateText">;
   }) {
     this.env = options.env;
@@ -298,12 +300,12 @@ export class AgentService {
     this.flowsService = options.flowsService;
     this.pool = options.pool ?? createPgPool();
     this.runSettingsService = options.runSettingsService;
-    this.sessionRepository = new AgentSessionRepository({ pool: this.pool });
+    this.sessionRepository = options.sessionRepository ?? new AgentSessionRepository({ pool: this.pool });
     this.eventService = new AgentEventService({
       pool: this.pool,
       repository: this.sessionRepository,
     });
-    this.canvasService = new AgentCanvasService({
+    this.canvasService = options.canvasService ?? new AgentCanvasService({
       eventRepository: this.sessionRepository,
       flowsService: this.flowsService,
       sessionRepository: this.sessionRepository,

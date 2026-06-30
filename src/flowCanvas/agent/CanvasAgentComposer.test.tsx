@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { CanvasAgentComposer } from "./CanvasAgentComposer";
+import type { CanvasAgentWorkspaceState } from "./canvasAgentStateMachine";
 
 const models = [
   {
@@ -30,6 +31,32 @@ const models = [
 ];
 
 describe("CanvasAgentComposer", () => {
+  it.each<{
+    disabled: boolean;
+    state: CanvasAgentWorkspaceState;
+  }>([
+    { disabled: false, state: "idle" },
+    { disabled: false, state: "asset_ready" },
+    { disabled: false, state: "failed" },
+    { disabled: false, state: "replay" },
+    { disabled: true, state: "reading_context" },
+    { disabled: true, state: "thinking" },
+    { disabled: true, state: "applying_canvas_ops" },
+    { disabled: true, state: "running_workflow" },
+  ])("disables input according to workspace state $state", ({ disabled, state }) => {
+    render(
+      <CanvasAgentComposer
+        draftValue="Make this into a poster"
+        models={models}
+        onChangeDraft={vi.fn()}
+        onSend={vi.fn()}
+        workspaceState={state}
+      />,
+    );
+
+    expect((screen.getByPlaceholderText("描述你想完成的创作任务，或者继续刚才的结果...") as HTMLTextAreaElement).disabled).toBe(disabled);
+  });
+
   it("renders a controlled draft value and updates it", () => {
     const onChangeDraft = vi.fn();
     render(
@@ -85,6 +112,23 @@ describe("CanvasAgentComposer", () => {
     fireEvent.click(screen.getByRole("button", { name: "4K" }));
 
     expect(screen.getByText((content) => content.includes("预计积分") && content.includes("5"))).toBeTruthy();
+  });
+
+  it("shows a compact busy hint while preserving the current draft", () => {
+    render(
+      <CanvasAgentComposer
+        draftValue="Keep my existing prompt"
+        models={models}
+        onChangeDraft={vi.fn()}
+        onSend={vi.fn()}
+        workspaceState="running_workflow"
+      />,
+    );
+
+    expect(screen.getByText("已提交生成任务")).toBeTruthy();
+    expect((screen.getByPlaceholderText("描述你想完成的创作任务，或者继续刚才的结果...") as HTMLTextAreaElement).value).toBe(
+      "Keep my existing prompt",
+    );
   });
 
   it("appends multiple reference chips into the current draft", () => {

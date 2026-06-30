@@ -8,6 +8,8 @@ export const agentToolNameSchema = z.enum([
   "edit_image",
   "create_canvas_nodes",
   "update_canvas_node",
+  "connect_canvas_nodes",
+  "select_canvas_nodes",
   "run_canvas_node",
   "continue_generation",
 ]);
@@ -69,6 +71,46 @@ export const continueGenerationToolArgsSchema = z.object({
   reason: z.string().trim().min(1).max(1000),
 }).strict();
 
+export const createCanvasNodesToolArgsSchema = z.object({
+  nodes: z.array(
+    z.object({
+      clientId: z.string().trim().min(1).max(80).optional(),
+      data: z.record(z.string(), z.unknown()).default({}),
+      kind: z.enum(["text", "image", "video", "audio", "upload", "image_editor", "group"]),
+      position: z.object({
+        x: z.number().finite(),
+        y: z.number().finite(),
+      }),
+      selected: z.boolean().optional(),
+    }).strict(),
+  ).min(1).max(12),
+}).strict();
+
+export const updateCanvasNodeToolArgsSchema = z.object({
+  nodeId: z.string().trim().min(1).max(200),
+  patch: z.record(z.string(), z.unknown()),
+}).strict();
+
+export const connectCanvasNodesToolArgsSchema = z.object({
+  connections: z.array(
+    z.object({
+      source: z.string().trim().min(1).max(200),
+      sourceHandle: z.string().trim().min(1).max(120).optional(),
+      target: z.string().trim().min(1).max(200),
+      targetHandle: z.string().trim().min(1).max(120).optional(),
+    }).strict(),
+  ).min(1).max(24),
+}).strict();
+
+export const selectCanvasNodesToolArgsSchema = z.object({
+  nodeIds: z.array(z.string().trim().min(1).max(200)).min(1).max(24),
+}).strict();
+
+export const runCanvasNodeToolArgsSchema = z.object({
+  nodeId: z.string().trim().min(1).max(200),
+  runMode: z.literal("target_node").default("target_node"),
+}).strict();
+
 export const agentToolCallSchema = z.discriminatedUnion("toolName", [
   z.object({
     arguments: generateImageToolArgsSchema,
@@ -86,6 +128,31 @@ export const agentToolCallSchema = z.discriminatedUnion("toolName", [
     toolName: z.literal("edit_image"),
   }).strict(),
   z.object({
+    arguments: createCanvasNodesToolArgsSchema,
+    toolCallKey: z.string().trim().min(1).max(200),
+    toolName: z.literal("create_canvas_nodes"),
+  }).strict(),
+  z.object({
+    arguments: updateCanvasNodeToolArgsSchema,
+    toolCallKey: z.string().trim().min(1).max(200),
+    toolName: z.literal("update_canvas_node"),
+  }).strict(),
+  z.object({
+    arguments: connectCanvasNodesToolArgsSchema,
+    toolCallKey: z.string().trim().min(1).max(200),
+    toolName: z.literal("connect_canvas_nodes"),
+  }).strict(),
+  z.object({
+    arguments: selectCanvasNodesToolArgsSchema,
+    toolCallKey: z.string().trim().min(1).max(200),
+    toolName: z.literal("select_canvas_nodes"),
+  }).strict(),
+  z.object({
+    arguments: runCanvasNodeToolArgsSchema,
+    toolCallKey: z.string().trim().min(1).max(200),
+    toolName: z.literal("run_canvas_node"),
+  }).strict(),
+  z.object({
     arguments: continueGenerationToolArgsSchema,
     toolCallKey: z.string().trim().min(1).max(200),
     toolName: z.literal("continue_generation"),
@@ -96,6 +163,11 @@ export type AgentToolName = z.infer<typeof agentToolNameSchema>;
 export type GenerateImageToolArgs = z.infer<typeof generateImageToolArgsSchema>;
 export type GenerateImageBatchToolArgs = z.infer<typeof generateImageBatchToolArgsSchema>;
 export type EditImageToolArgs = z.infer<typeof editImageToolArgsSchema>;
+export type CreateCanvasNodesToolArgs = z.infer<typeof createCanvasNodesToolArgsSchema>;
+export type UpdateCanvasNodeToolArgs = z.infer<typeof updateCanvasNodeToolArgsSchema>;
+export type ConnectCanvasNodesToolArgs = z.infer<typeof connectCanvasNodesToolArgsSchema>;
+export type SelectCanvasNodesToolArgs = z.infer<typeof selectCanvasNodesToolArgsSchema>;
+export type RunCanvasNodeToolArgs = z.infer<typeof runCanvasNodeToolArgsSchema>;
 export type ContinueGenerationToolArgs = z.infer<typeof continueGenerationToolArgsSchema>;
 export type ParsedAgentToolCall = z.infer<typeof agentToolCallSchema>;
 

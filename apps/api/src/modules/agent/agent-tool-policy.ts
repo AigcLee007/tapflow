@@ -10,7 +10,7 @@ export type AgentToolPolicyLimits = {
   requireApproval: boolean;
 };
 
-export type AgentToolPermissionLevel = "safe_write" | "credit_required";
+export type AgentToolPermissionLevel = "safe_write" | "confirmed_write" | "credit_required";
 
 export type AgentToolPolicyResult = {
   allowed: true;
@@ -72,6 +72,34 @@ export function evaluateAgentToolPolicy(input: {
       allowed: true,
       permissionLevel: "safe_write",
       requiresApproval: false,
+    };
+  }
+
+  if (
+    input.call.toolName === "create_canvas_nodes" ||
+    input.call.toolName === "connect_canvas_nodes" ||
+    input.call.toolName === "select_canvas_nodes"
+  ) {
+    return {
+      allowed: true,
+      permissionLevel: "safe_write",
+      requiresApproval: false,
+    };
+  }
+
+  if (input.call.toolName === "update_canvas_node") {
+    return {
+      allowed: true,
+      permissionLevel: "confirmed_write",
+      requiresApproval: input.limits.requireApproval,
+    };
+  }
+
+  if (input.call.toolName === "run_canvas_node") {
+    return {
+      allowed: true,
+      permissionLevel: "credit_required",
+      requiresApproval: input.limits.requireApproval,
     };
   }
 

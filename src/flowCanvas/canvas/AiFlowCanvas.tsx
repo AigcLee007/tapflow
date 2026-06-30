@@ -206,9 +206,10 @@ const collectImageSources = (data: DataTransfer | ClipboardEvent['clipboardData'
 interface AiFlowCanvasProps {
   cullingEnabled: boolean;
   onAgentOpenChange?: (open: boolean) => void;
+  onServerDraftApplied?: () => void | Promise<void>;
 }
 
-export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled, onAgentOpenChange }) => {
+export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled, onAgentOpenChange, onServerDraftApplied }) => {
   const nodes = useFlowCanvasStore((s) => s.nodes);
   const edges = useFlowCanvasStore((s) => s.edges);
   const viewport = useFlowCanvasStore((s) => s.viewport);
@@ -933,6 +934,7 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled, onAg
       <CanvasAgentPanel
         onClose={() => updateAgentOpen(false)}
         initialSessionId={agentSessionFocus?.sessionId ?? null}
+        onServerDraftApplied={onServerDraftApplied}
         onConfirmPlan={async (plan) => {
           const sessionId = (plan as { sessionId?: string }).sessionId;
           const turnId = (plan as { turnId?: string }).turnId;

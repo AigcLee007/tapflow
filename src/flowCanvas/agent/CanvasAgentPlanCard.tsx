@@ -12,7 +12,8 @@ export function CanvasAgentPlanCard(props: {
 }) {
   const summary = summarizeCanvasAgentOps(props.plan.proposedOps);
   const hasRunNode = props.plan.proposedOps.some((op) => op.type === "run_node");
-  const confirmLabel = hasRunNode ? "确认并生成" : "确认执行";
+  const createOnlyDisabled = summary.addNodeCount + summary.updateNodeCount + summary.connectCount === 0;
+  const createAndRunDisabled = !hasRunNode;
 
   return (
     <section
@@ -74,23 +75,21 @@ export function CanvasAgentPlanCard(props: {
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <button
-          disabled={props.busy}
-          onClick={props.onConfirm}
-          style={primaryActionStyle(props.busy)}
+          disabled={props.busy || createOnlyDisabled || !props.onCreateOnly}
+          onClick={props.onCreateOnly}
+          style={secondaryActionStyle(props.busy || createOnlyDisabled || !props.onCreateOnly)}
           type="button"
         >
-          {confirmLabel}
+          创建流程
         </button>
-        {hasRunNode && props.onCreateOnly ? (
-          <button
-            disabled={props.busy}
-            onClick={props.onCreateOnly}
-            style={secondaryActionStyle(props.busy)}
-            type="button"
-          >
-            只创建节点不生成
-          </button>
-        ) : null}
+        <button
+          disabled={props.busy || createAndRunDisabled}
+          onClick={props.onConfirm}
+          style={primaryActionStyle(props.busy || createAndRunDisabled)}
+          type="button"
+        >
+          创建并执行
+        </button>
         <button
           disabled={props.busy}
           onClick={props.onCancel}

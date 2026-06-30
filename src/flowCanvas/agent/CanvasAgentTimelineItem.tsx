@@ -3,6 +3,7 @@ import React from "react";
 import type { AgentWorkspaceTimelineItem } from "./CanvasAgentWorkspaceTypes";
 import type { AgentImageRunSettingsSelection } from "./agentRunSettings";
 import type { CanvasAgentContinuationAction, CanvasAgentToolAssetRef } from "./canvasAgentToolTypes";
+import { CanvasAgentCanvasOpsCard } from "./CanvasAgentCanvasOpsCard";
 import { CanvasAgentParameterCard } from "./CanvasAgentParameterCard";
 import { CanvasAgentResultCard } from "./CanvasAgentResultCard";
 
@@ -70,6 +71,10 @@ export function CanvasAgentTimelineItem(props: {
         referenceRefs={item.referenceRefs}
       />
     );
+  }
+
+  if (item.kind === "canvas_ops") {
+    return <CanvasAgentCanvasOpsCard onCancel={() => {}} ops={item.ops} />;
   }
 
   if (item.kind === "tool") {

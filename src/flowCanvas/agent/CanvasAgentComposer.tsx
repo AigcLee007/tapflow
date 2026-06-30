@@ -6,6 +6,11 @@ import { CanvasAgentReferenceChips } from "./CanvasAgentReferenceChips";
 import type { AgentReferenceChip } from "./CanvasAgentWorkspaceTypes";
 import type { AgentImageRunSettingsModel } from "./agentRunSettings";
 import { getRouteTierCredits } from "./agentRunSettings";
+import {
+  getCanvasAgentBusyHint,
+  shouldDisableCanvasAgentComposer,
+  type CanvasAgentWorkspaceState,
+} from "./canvasAgentStateMachine";
 
 function findDefaultModel(models: AgentImageRunSettingsModel[]) {
   return models[0] ?? null;
@@ -37,6 +42,7 @@ export function CanvasAgentComposer(props: {
   onSend: (prompt: string) => Promise<void> | void;
   referenceChips?: AgentReferenceChip[];
   referenceRefs?: CanvasAgentArtifactRefChip[];
+  workspaceState?: CanvasAgentWorkspaceState;
 }) {
   const [internalValue, setInternalValue] = useState("");
   const [selectedModelKey, setSelectedModelKey] = useState<string | null>(props.models?.[0]?.modelKey ?? null);
@@ -56,6 +62,8 @@ export function CanvasAgentComposer(props: {
     [activeModel, selectedRouteKey],
   );
   const estimatedCredits = props.estimatedCreditsOverride ?? getRouteTierCredits(activeRoute, selectedSize);
+  const disabled = props.disabled ?? (props.workspaceState ? shouldDisableCanvasAgentComposer(props.workspaceState) : false);
+  const busyHint = props.workspaceState ? getCanvasAgentBusyHint(props.workspaceState) : null;
 
   const mergedReferenceChips = useMemo(() => {
     const base = props.referenceChips ?? [];
@@ -77,7 +85,7 @@ export function CanvasAgentComposer(props: {
 
   const handleSend = async () => {
     const prompt = value.trim();
-    if (!prompt || props.disabled) return;
+    if (!prompt || disabled) return;
     updateValue("");
     await props.onSend(prompt);
   };
@@ -95,7 +103,7 @@ export function CanvasAgentComposer(props: {
       {mergedReferenceChips.length > 0 ? (
         <CanvasAgentReferenceChips
           chips={mergedReferenceChips}
-          disabled={props.disabled}
+          disabled={disabled}
           onInsertRef={(chip) => {
             if (chip.refId) {
               insertReference(chip.refId);
@@ -148,7 +156,7 @@ export function CanvasAgentComposer(props: {
       ) : null}
 
       <textarea
-        disabled={props.disabled}
+        disabled={disabled}
         onChange={(event) => updateValue(event.target.value)}
         placeholder="描述你想完成的创作任务，或者继续刚才的结果..."
         rows={4}
@@ -170,7 +178,7 @@ export function CanvasAgentComposer(props: {
       <div style={{ alignItems: "center", display: "flex", gap: 12, justifyContent: "space-between" }}>
         <div style={{ display: "grid", gap: 4 }}>
           <div style={{ color: "rgba(226,232,240,0.62)", fontSize: 12 }}>
-            Agent 会先理解任务，再引导你确认参数与积分。
+            {busyHint ?? "Agent 会先理解任务，再引导你确认参数与积分。"}
           </div>
           {activeModel && activeRoute ? (
             <div style={{ color: "#f8fafc", fontSize: 12, fontWeight: 700 }}>
@@ -179,16 +187,16 @@ export function CanvasAgentComposer(props: {
           ) : null}
         </div>
         <button
-          disabled={props.disabled || !value.trim()}
+          disabled={disabled || !value.trim()}
           onClick={() => {
             void handleSend();
           }}
           style={{
-            background: props.disabled || !value.trim() ? "rgba(255,255,255,0.08)" : "#f8fafc",
+            background: disabled || !value.trim() ? "rgba(255,255,255,0.08)" : "#f8fafc",
             border: "1px solid rgba(255,255,255,0.08)",
             borderRadius: 19,
-            color: props.disabled || !value.trim() ? "rgba(248,250,252,0.55)" : "#09090f",
-            cursor: props.disabled || !value.trim() ? "not-allowed" : "pointer",
+            color: disabled || !value.trim() ? "rgba(248,250,252,0.55)" : "#09090f",
+            cursor: disabled || !value.trim() ? "not-allowed" : "pointer",
             fontSize: 13,
             fontWeight: 800,
             height: 38,

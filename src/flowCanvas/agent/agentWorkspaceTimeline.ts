@@ -66,6 +66,18 @@ export function buildAgentWorkspaceTimeline(
     });
   }
 
+  if (
+    input.currentPlanOps &&
+    input.currentPlanOps.length > 0 &&
+    (input.workspaceState === "plan_ready" || input.workspaceState === "awaiting_canvas_confirm")
+  ) {
+    items.push({
+      id: "canvas-ops-pending",
+      kind: "canvas_ops",
+      ops: input.currentPlanOps,
+    });
+  }
+
   for (const tool of input.toolItems) {
     if (tool.status === "awaiting_approval" && tool.estimate?.imageRunSettings?.length) {
       items.push({

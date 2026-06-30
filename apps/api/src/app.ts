@@ -28,6 +28,8 @@ import { AgentRunSettingsService } from "./modules/agent/agent-run-settings.serv
 import { AgentService } from "./modules/agent/agent.service.js";
 import { AgentCostEstimator, DatabaseAgentCostEstimatorRepository } from "./modules/agent/agent-cost-estimator.js";
 import { AgentExecutorService, DatabaseAgentExecutorRepository } from "./modules/agent/agent-executor.service.js";
+import { AgentCanvasService } from "./modules/agent/agent-canvas.service.js";
+import { AgentSessionRepository } from "./modules/agent/agent-session.repository.js";
 import { AgentToolRunner, DatabaseAgentToolRunnerRepository } from "./modules/agent/agent-tool-runner.js";
 import { AgentWorkflowLauncher } from "./modules/agent/agent-workflow-launcher.js";
 import { registerAiGatewayAdminRoutes } from "./modules/ai-gateway/ai-gateway.routes.js";
@@ -214,8 +216,16 @@ export function buildApp(options?: {
       },
       pool,
     });
+  const flowsService = new FlowsService({ pool });
   const agentWorkflowLauncher = new AgentWorkflowLauncher({ workflowRunsService });
+  const agentSessionRepository = new AgentSessionRepository({ pool });
+  const agentCanvasService = new AgentCanvasService({
+    eventRepository: agentSessionRepository,
+    flowsService,
+    sessionRepository: agentSessionRepository,
+  });
   const agentToolRunner = new AgentToolRunner({
+    canvasService: agentCanvasService,
     launcher: agentWorkflowLauncher,
     repository: new DatabaseAgentToolRunnerRepository({ pool }),
   });
@@ -263,13 +273,14 @@ export function buildApp(options?: {
     pool,
     storageProvider,
   });
-  const flowsService = new FlowsService({ pool });
   const agentService = new AgentService({
     aiModelCatalogService,
     env,
     executorService: agentExecutorService,
+    canvasService: agentCanvasService,
     flowsService,
     pool,
+    sessionRepository: agentSessionRepository,
     runSettingsService: agentRunSettingsService,
     textRuntime: agentTextRuntime,
   });

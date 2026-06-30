@@ -643,6 +643,9 @@ function buildDraftRunSelection(
   costEstimate: Record<string, unknown> | null,
 ): Record<string, unknown> | undefined {
   if (call.toolName === "continue_generation") return undefined;
+  if (call.toolName !== "generate_image" && call.toolName !== "generate_image_batch" && call.toolName !== "edit_image") {
+    return undefined;
+  }
   const args = call.toolName === "generate_image_batch" ? call.arguments.images[0] : call.arguments;
   if (!args) return undefined;
   const selection: Record<string, unknown> = {

@@ -10,6 +10,7 @@ import type {
   AgentWorkflowLaunchContext,
   AgentWorkflowLauncher,
 } from "./agent-workflow-launcher.js";
+import type { AgentCanvasService, AgentCanvasOp, ApplyAgentCanvasOpsResult } from "./agent-canvas.service.js";
 
 export type AgentToolExecutionTarget = {
   flowId: string | null;
@@ -37,6 +38,7 @@ export type AgentToolRunInput = {
 
 export type AgentToolRunResult = {
   assetRefs: AgentAssetReference[];
+  canvasOps?: ApplyAgentCanvasOpsResult["applied"];
   failures: Array<{
     code: string;
     message: string;
@@ -70,6 +72,7 @@ type AgentToolCallCreateInput = {
   costEstimateJson?: Record<string, unknown>;
   createdBy: string | null;
   sessionId: string;
+  permissionLevel?: "safe_write" | "confirmed_write" | "credit_required";
   status: string;
   tenantId: string;
   toolCallKey: string;
@@ -113,6 +116,7 @@ type AgentToolRunnerRepository = {
 };
 
 type AgentWorkflowLauncherLike = Pick<AgentWorkflowLauncher, "launchImageGeneration">;
+type AgentCanvasServiceLike = Pick<AgentCanvasService, "applyOps">;
 
 type AgentImageTaskLaunchResult = AgentImageWorkflowLaunchResult & {
   taskId: string;
@@ -167,11 +171,11 @@ export class DatabaseAgentToolRunnerRepository implements AgentToolRunnerReposit
         `
           INSERT INTO agent_tool_calls (
             tenant_id,
-            session_id,
-            turn_id,
-            tool_call_key,
-            tool_name,
-            permission_level,
+          session_id,
+          turn_id,
+          tool_call_key,
+          tool_name,
+          permission_level,
             status,
             arguments_json,
             input_json,
@@ -188,6 +192,7 @@ export class DatabaseAgentToolRunnerRepository implements AgentToolRunnerReposit
           input.turnId,
           input.toolCallKey,
           input.toolName,
+          input.permissionLevel ?? "credit_required",
           input.status,
           JSON.stringify(input.argumentsJson),
           JSON.stringify(input.costEstimateJson ?? {}),
@@ -257,6 +262,7 @@ export class AgentToolRunner {
 
   constructor(private readonly options: {
     batchConcurrency?: number;
+    canvasService?: AgentCanvasServiceLike;
     launcher: AgentWorkflowLauncherLike;
     repository: AgentToolRunnerRepository;
   }) {
@@ -271,6 +277,7 @@ export class AgentToolRunner {
       argumentsJson: input.call.arguments,
       costEstimateJson: input.costEstimate as Record<string, unknown> | undefined,
       createdBy: context.userId,
+      permissionLevel: isCanvasTool(input.call.toolName) ? "safe_write" : "credit_required",
       sessionId: input.sessionId,
       status: "planned",
       tenantId: context.tenantId,
@@ -282,6 +289,50 @@ export class AgentToolRunner {
     await this.options.repository.updateToolCall(record.id, { status: "running", tenantId: context.tenantId });
 
     try {
+      if (isCanvasTool(input.call.toolName)) {
+        if (!this.options.canvasService) {
+          throw new Error("Agent canvas service is not configured.");
+        }
+        if (!input.executionTarget.flowId) {
+          throw new Error("Agent canvas tool requires a flow id.");
+        }
+        const ops = buildCanvasOpsFromToolCall(input.call);
+        const applied = await this.options.canvasService.applyOps(context, input.sessionId, {
+          flowId: input.executionTarget.flowId,
+          ops,
+          turnId: input.turnId,
+        });
+        const canvasResult = extractCanvasResult(applied);
+        await input.onEvent?.({
+          createdNodeIds: canvasResult.createdNodeIds,
+          edgeIds: canvasResult.edgeIds,
+          flowId: input.executionTarget.flowId,
+          runNodeIds: canvasResult.runNodeIds,
+          toolCallKey: input.call.toolCallKey,
+          type: "canvas_op_applied",
+          updatedNodeIds: canvasResult.updatedNodeIds,
+        });
+        const resultJson = {
+          canvasOps: canvasResult,
+          status: "succeeded",
+        };
+        await this.options.repository.updateToolCall(record.id, {
+          resultJson,
+          status: "succeeded",
+          tenantId: context.tenantId,
+        });
+        return {
+          assetRefs: [],
+          canvasOps: canvasResult,
+          failures: [],
+          status: "succeeded",
+          tasks: [],
+          toolCallId: record.id,
+          workflowRuns: [],
+          workflowRunIds: [],
+        };
+      }
+
       let launched: Array<AgentImageTaskLaunchResult | { error: { code: string; message: string; taskId?: string; toolCallKey: string } }> = [];
       if (input.call.toolName === "generate_image") {
         launched = [
@@ -625,6 +676,66 @@ export class AgentToolRunner {
       toolCallKey: task.taskKey,
     };
   }
+}
+
+function isCanvasTool(toolName: ParsedAgentToolCall["toolName"]): boolean {
+  return toolName === "create_canvas_nodes" ||
+    toolName === "update_canvas_node" ||
+    toolName === "connect_canvas_nodes" ||
+    toolName === "select_canvas_nodes" ||
+    toolName === "run_canvas_node";
+}
+
+function buildCanvasOpsFromToolCall(call: ParsedAgentToolCall): AgentCanvasOp[] {
+  if (call.toolName === "create_canvas_nodes") {
+    return call.arguments.nodes.map((node) => ({
+      type: "add_node",
+      clientId: node.clientId,
+      data: node.data,
+      kind: node.kind,
+      position: node.position,
+      selected: node.selected,
+    }));
+  }
+
+  if (call.toolName === "update_canvas_node") {
+    return [{
+      patch: call.arguments.patch,
+      nodeId: call.arguments.nodeId,
+      type: "update_node_data",
+    }];
+  }
+
+  if (call.toolName === "connect_canvas_nodes") {
+    return call.arguments.connections.map((connection) => ({
+      source: connection.source,
+      sourceHandle: connection.sourceHandle,
+      target: connection.target,
+      targetHandle: connection.targetHandle,
+      type: "connect_nodes",
+    }));
+  }
+
+  if (call.toolName === "select_canvas_nodes") {
+    return [{
+      nodeIds: call.arguments.nodeIds,
+      type: "select_nodes",
+    }];
+  }
+
+  if (call.toolName === "run_canvas_node") {
+    return [{
+      nodeId: call.arguments.nodeId,
+      runMode: call.arguments.runMode,
+      type: "run_node",
+    }];
+  }
+
+  return [];
+}
+
+function extractCanvasResult(applied: ApplyAgentCanvasOpsResult): ApplyAgentCanvasOpsResult["applied"] {
+  return applied.applied;
 }
 
 function normalizeToolError(error: unknown): { code: string; message: string } {

@@ -20,6 +20,11 @@ import { buildReplayMessages, buildToolTimelineFromSessionEvents, deriveReplaySe
 import type { AgentImageRunSettingsSelection } from "./agentRunSettings";
 import { placeAgentGeneratedAssetsOnCanvas } from "./canvasAgentOps";
 import { isProductionImageAgentPrompt } from "./canvasAgentProductionIntent";
+import {
+  reduceCanvasAgentWorkspaceState,
+  type CanvasAgentWorkspaceEvent,
+  type CanvasAgentWorkspaceState,
+} from "./canvasAgentStateMachine";
 import { readAgentToolEventStream } from "./canvasAgentToolEvents";
 import type {
   CanvasAgentContinuationAction,
@@ -37,6 +42,10 @@ export type CanvasAgentMessage = {
 };
 
 type PendingContinuation = AgentContinuationContext;
+
+type UseCanvasAgentSessionOptions = {
+  onServerDraftApplied?: () => void | Promise<void>;
+};
 
 type ApplyResult = {
   createdNodeIds: string[];
@@ -136,12 +145,23 @@ function buildAgentSessionTitle(prompt: string) {
   return normalized.length > 36 ? `${normalized.slice(0, 36)}...` : normalized;
 }
 
-export function useCanvasAgentSession() {
+function getWorkspaceStatus(state: CanvasAgentWorkspaceState): SessionStatus {
+  if (state === "failed") return "error";
+  if (state === "reading_context" || state === "thinking") return "thinking";
+  if (state === "applying_canvas_ops") return "executing";
+  if (state === "running_workflow") return "executing_tool";
+  if (state === "plan_ready" || state === "awaiting_canvas_confirm" || state === "awaiting_credit_confirm") {
+    return "awaiting_approval";
+  }
+  return "idle";
+}
+
+export function useCanvasAgentSession(options: UseCanvasAgentSessionOptions = {}) {
   const [messages, setMessages] = useState<CanvasAgentMessage[]>([]);
   const [currentPlan, setCurrentPlan] = useState<CanvasAgentPlannerOutput | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [status, setStatus] = useState<SessionStatus>("idle");
+  const [workspaceState, setWorkspaceState] = useState<CanvasAgentWorkspaceState>("idle");
   const [toolTimeline, setToolTimeline] = useState<CanvasAgentToolTimelineItem[]>([]);
   const [usedOfflineFallback, setUsedOfflineFallback] = useState(false);
   const [activityTimeline, setActivityTimeline] = useState<CanvasAgentActivityItem[]>([]);
@@ -151,6 +171,18 @@ export function useCanvasAgentSession() {
   const appendActivity = useCallback((item: CanvasAgentActivityItem) => {
     setActivityTimeline((current) => [...current, item]);
   }, []);
+
+  const transitionWorkspaceState = useCallback((event: CanvasAgentWorkspaceEvent) => {
+    setWorkspaceState((current) => reduceCanvasAgentWorkspaceState(current, event));
+  }, []);
+
+  const failSession = useCallback((message: string) => {
+    setError(message);
+    setMessages((current) => [...current, createMessage("system", message)]);
+    setWorkspaceState("failed");
+  }, []);
+
+  const onServerDraftApplied = options.onServerDraftApplied;
 
   const applyToolEvent = useCallback((event: CanvasAgentToolEvent) => {
     if (event.type === "thinking_status") {
@@ -170,7 +202,7 @@ export function useCanvasAgentSession() {
     }
 
     if (event.type === "tool_started") {
-      setStatus("executing_tool");
+      transitionWorkspaceState({ type: "workflow_started" });
       appendActivity({
         detail: "Agent 已创建执行任务并开始运行。",
         id: `tool-start-${event.toolCallKey}`,
@@ -280,7 +312,7 @@ export function useCanvasAgentSession() {
     }
 
     if (event.type === "approval_required") {
-      setStatus("awaiting_approval");
+      transitionWorkspaceState({ type: "credit_approval_required" });
       appendActivity({
         detail: "执行付费生成前需要你确认参数与积分。",
         id: `approval-${event.toolCallKey}`,
@@ -358,10 +390,18 @@ export function useCanvasAgentSession() {
           };
         }),
       );
+
+      if (!failed && assetRefs.length > 0) {
+        transitionWorkspaceState({ type: "asset_created" });
+      }
       return;
     }
 
     if (event.type === "canvas_op_applied") {
+      transitionWorkspaceState({
+        hasRunOps: (event.runNodeIds?.length ?? 0) > 0,
+        type: "canvas_ops_applied",
+      });
       appendActivity({
         detail: `已创建 ${event.createdNodeIds.length} 个节点，更新 ${event.updatedNodeIds.length} 个节点。`,
         id: `canvas-op-${event.turnId ?? Date.now()}`,
@@ -373,6 +413,7 @@ export function useCanvasAgentSession() {
       if (highlightedIds.length > 0) {
         state.selectNodesByIds(highlightedIds);
       }
+      void onServerDraftApplied?.();
       return;
     }
 
@@ -386,27 +427,25 @@ export function useCanvasAgentSession() {
         label: "已完成",
         state: "completed",
       });
-      setStatus("idle");
+      transitionWorkspaceState({ type: "turn_completed" });
       return;
     }
 
     if (event.type === "turn_failed") {
-      setError(event.message);
-      setMessages((current) => [...current, createMessage("system", event.message)]);
       appendActivity({
         detail: event.message,
         id: `turn-failed-${event.turnId ?? Date.now()}`,
         label: "执行失败",
         state: "failed",
       });
-      setStatus("error");
+      failSession(event.message);
     }
-  }, [appendActivity, sessionId]);
+  }, [appendActivity, failSession, onServerDraftApplied, sessionId, transitionWorkspaceState]);
 
   const hydrateReplayEvents = useCallback((events: AgentSessionEvent[]) => {
     setToolTimeline(buildToolTimelineFromSessionEvents(events));
     const replayState = deriveReplaySessionStatus(events);
-    setStatus(replayState.status);
+    setWorkspaceState(replayState.workspaceState);
     setError(replayState.error);
     setMessages((current) => buildReplayMessages(current, events));
   }, []);
@@ -422,11 +461,13 @@ export function useCanvasAgentSession() {
     setUsedOfflineFallback(false);
     setToolTimeline([]);
     setActivityTimeline([]);
-    setStatus("thinking");
+    setWorkspaceState("reading_context");
+
     const activeContinuation = pendingContinuation;
     if (activeContinuation) {
       setLastContinuation(activeContinuation);
     }
+
     setMessages((current) => [
       ...current,
       createMessage(
@@ -446,7 +487,7 @@ export function useCanvasAgentSession() {
     appendActivity({
       detail: "Agent 已接收你的任务并开始处理。",
       id: `request-${Date.now()}`,
-      label: "正在理解需求",
+      label: "正在读取当前画布和选区",
       state: "active",
     });
 
@@ -456,6 +497,7 @@ export function useCanvasAgentSession() {
       if (preparedTargetNodeId && requiresProductionExecutor) {
         await flushRemoteDraftBeforeRun();
       }
+
       const latestState = useFlowCanvasStore.getState();
       const snapshot = buildCanvasAgentSnapshot({
         edges: latestState.edges,
@@ -464,6 +506,14 @@ export function useCanvasAgentSession() {
         nodes: latestState.nodes,
         projectId: latestState.backendProjectId ?? latestState.projectId ?? null,
         viewport: latestState.viewport,
+      });
+
+      transitionWorkspaceState({ type: "context_ready" });
+      appendActivity({
+        detail: "正在整理选中节点、上游依赖和当前画布结构。",
+        id: `planning-${Date.now()}`,
+        label: "正在规划可编辑流程",
+        state: "active",
       });
 
       let resolvedSessionId = sessionId;
@@ -478,12 +528,13 @@ export function useCanvasAgentSession() {
       }
 
       const applyPlan = (plan: CanvasAgentPlannerOutput) => {
+        const hasRunOps = plan.proposedOps.some((op) => op.type === "run_node");
         setCurrentPlan(plan);
         setMessages((current) => [
           ...current,
           createMessage("assistant", usedOfflineFallback ? `[基础规划模式]\n${plan.reply}` : plan.reply),
         ]);
-        setStatus("awaiting_approval");
+        setWorkspaceState(hasRunOps ? "awaiting_canvas_confirm" : "plan_ready");
       };
 
       if (useStreaming && resolvedSessionId) {
@@ -574,15 +625,13 @@ export function useCanvasAgentSession() {
       applyPlan(offlinePlan);
     } catch (planError) {
       const message = planError instanceof Error ? planError.message : String(planError);
-      setError(message);
-      setMessages((current) => [...current, createMessage("system", message)]);
-      setStatus("error");
+      failSession(message);
     }
-  }, [appendActivity, applyToolEvent, pendingContinuation, sessionId, usedOfflineFallback]);
+  }, [appendActivity, applyToolEvent, failSession, pendingContinuation, sessionId, transitionWorkspaceState, usedOfflineFallback]);
 
   const cancelCurrentPlan = useCallback(() => {
     setCurrentPlan(null);
-    setStatus("idle");
+    setWorkspaceState("idle");
     setError(null);
   }, []);
 
@@ -594,7 +643,7 @@ export function useCanvasAgentSession() {
     }
 
     setError(null);
-    setStatus("executing_tool");
+    transitionWorkspaceState({ type: "credit_approved" });
     setToolTimeline((current) =>
       current.map((candidate) =>
         candidate.toolCallKey === toolCallKey
@@ -608,6 +657,7 @@ export function useCanvasAgentSession() {
           : candidate,
       ),
     );
+
     try {
       const response = await approveAgentToolCallStream(sessionId, {
         settings: selection,
@@ -623,21 +673,22 @@ export function useCanvasAgentSession() {
       await readAgentToolEventStream(response, applyToolEvent);
     } catch (approvalError) {
       const message = approvalError instanceof Error ? approvalError.message : String(approvalError);
-      setError(message);
       setToolTimeline((current) =>
         current.map((candidate) =>
           candidate.toolCallKey === toolCallKey ? { ...candidate, error: message, status: "failed" } : candidate,
         ),
       );
-      setStatus("error");
+      failSession(message);
     }
-  }, [applyToolEvent, sessionId, toolTimeline]);
+  }, [applyToolEvent, failSession, sessionId, toolTimeline, transitionWorkspaceState]);
 
   const cancelToolCall = useCallback((toolCallKey: string) => {
     setToolTimeline((current) =>
-      current.map((item) => (item.toolCallKey === toolCallKey ? { ...item, error: "已取消", status: "failed" } : item)),
+      current.map((item) =>
+        item.toolCallKey === toolCallKey ? { ...item, error: "已取消", status: "failed" } : item,
+      ),
     );
-    setStatus("idle");
+    setWorkspaceState("idle");
     setMessages((current) => [...current, createMessage("assistant", "已取消，本次 Agent 工具未消耗积分。")]);
   }, []);
 
@@ -681,7 +732,13 @@ export function useCanvasAgentSession() {
     ) => {
       if (!currentPlan) return;
       setError(null);
-      setStatus("executing");
+      transitionWorkspaceState({ type: "canvas_confirmed" });
+      appendActivity({
+        detail: "Agent 正在把确认后的节点和连线写入画布。",
+        id: `apply-${Date.now()}`,
+        label: "正在写入服务端画布草稿",
+        state: "active",
+      });
 
       try {
         const planToRun = options?.omitRunNode
@@ -695,24 +752,25 @@ export function useCanvasAgentSession() {
           throw new Error(result.errors[0]?.message || "Agent 执行失败。");
         }
 
+        setWorkspaceState(result.ranNodeIds.length > 0 ? "running_workflow" : "idle");
+
         const fragments: string[] = [];
         if (result.createdNodeIds.length > 0) fragments.push(`创建了 ${result.createdNodeIds.length} 个节点`);
         if (result.ranNodeIds.length > 0) fragments.push(`启动了 ${result.ranNodeIds.length} 个生成任务`);
         setMessages((current) => [
           ...current,
-          createMessage("assistant", fragments.length > 0 ? `计划已执行：${fragments.join("；")}。` : "计划已执行。"),
+          createMessage("assistant", fragments.length > 0 ? `计划已执行：${fragments.join("，")}。` : "计划已执行。"),
         ]);
         setCurrentPlan(null);
-        setStatus("idle");
       } catch (executionError) {
         const message = executionError instanceof Error ? executionError.message : String(executionError);
-        setError(message);
-        setMessages((current) => [...current, createMessage("system", `执行失败：${message}`)]);
-        setStatus("error");
+        failSession(`执行失败：${message}`);
       }
     },
-    [currentPlan],
+    [appendActivity, currentPlan, failSession, transitionWorkspaceState],
   );
+
+  const status = useMemo(() => getWorkspaceStatus(workspaceState), [workspaceState]);
 
   return useMemo(
     () => ({
@@ -736,6 +794,7 @@ export function useCanvasAgentSession() {
       status,
       toolTimeline,
       usedOfflineFallback,
+      workspaceState,
     }),
     [
       activityTimeline,
@@ -758,6 +817,7 @@ export function useCanvasAgentSession() {
       status,
       toolTimeline,
       usedOfflineFallback,
+      workspaceState,
     ],
   );
 }

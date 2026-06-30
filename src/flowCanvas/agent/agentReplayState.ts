@@ -161,6 +161,7 @@ export function buildToolTimelineFromSessionEvents(events: AgentSessionEvent[]):
 export function deriveReplaySessionStatus(events: AgentSessionEvent[]): {
   error: string | null;
   status: "awaiting_approval" | "error" | "executing_tool" | "idle";
+  workspaceState: "awaiting_credit_confirm" | "failed" | "replay" | "running_workflow";
 } {
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index]!;
@@ -170,6 +171,7 @@ export function deriveReplaySessionStatus(events: AgentSessionEvent[]): {
       return {
         error: typeof payload.message === "string" ? payload.message : "Agent 执行失败。",
         status: "error",
+        workspaceState: "failed",
       };
     }
 
@@ -177,6 +179,7 @@ export function deriveReplaySessionStatus(events: AgentSessionEvent[]): {
       return {
         error: typeof payload.message === "string" ? payload.message : "Agent 任务失败。",
         status: "error",
+        workspaceState: "failed",
       };
     }
 
@@ -184,6 +187,7 @@ export function deriveReplaySessionStatus(events: AgentSessionEvent[]): {
       return {
         error: null,
         status: "awaiting_approval",
+        workspaceState: "awaiting_credit_confirm",
       };
     }
 
@@ -197,6 +201,7 @@ export function deriveReplaySessionStatus(events: AgentSessionEvent[]): {
       return {
         error: null,
         status: "executing_tool",
+        workspaceState: "running_workflow",
       };
     }
 
@@ -204,6 +209,7 @@ export function deriveReplaySessionStatus(events: AgentSessionEvent[]): {
       return {
         error: null,
         status: "idle",
+        workspaceState: "replay",
       };
     }
   }
@@ -211,6 +217,7 @@ export function deriveReplaySessionStatus(events: AgentSessionEvent[]): {
   return {
     error: null,
     status: "idle",
+    workspaceState: "replay",
   };
 }
 

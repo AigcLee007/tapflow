@@ -629,4 +629,33 @@ describe("useCanvasAgentSession", () => {
       assetRefIds: ["round-1-image-1", "round-1-image-2"],
     });
   });
+
+  it("notifies the host when server-applied canvas ops should refresh the draft", async () => {
+    mockCreateAgentSession.mockResolvedValue({ id: "session-1" });
+    mockExecuteAgentTurnStream.mockResolvedValue({ ok: true, status: 200 });
+    mockReadAgentToolEventStream.mockImplementation(async (_response, onEvent) => {
+      onEvent({
+        createdNodeIds: ["node-1"],
+        edgeIds: ["edge-1"],
+        flowId: "flow-1",
+        toolCallKey: "tool-1",
+        type: "canvas_op_applied",
+        updatedNodeIds: ["node-2"],
+      });
+      onEvent({ finalText: "Done.", turnId: "turn-1", type: "turn_completed" });
+    });
+    const onServerDraftApplied = vi.fn();
+
+    const { result } = renderHook(() =>
+      useCanvasAgentSession({
+        onServerDraftApplied,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.sendPrompt("Organize this canvas");
+    });
+
+    expect(onServerDraftApplied).toHaveBeenCalledTimes(1);
+  });
 });

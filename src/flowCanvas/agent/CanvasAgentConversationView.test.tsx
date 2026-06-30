@@ -34,4 +34,18 @@ describe("CanvasAgentConversationView", () => {
     expect(screen.getByText("帮我生成海报")).toBeTruthy();
     expect(screen.getByText("正在理解需求")).toBeTruthy();
   });
+
+  it("shows a state-specific busy hint while the workflow is running", () => {
+    render(
+      <CanvasAgentConversationView
+        busy
+        busyLabel="已提交生成任务"
+        items={[{ content: "继续生成", id: "m1", kind: "message", role: "user" }]}
+        onApprove={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("已提交生成任务")).toBeTruthy();
+  });
 });

@@ -7,6 +7,7 @@ import { CanvasAgentTimeline } from "./CanvasAgentTimeline";
 
 export function CanvasAgentConversationView(props: {
   busy: boolean;
+  busyLabel?: string | null;
   items: AgentWorkspaceTimelineItem[];
   onApprove?: (toolCallKey: string, selection?: AgentImageRunSettingsSelection) => void;
   onCancel?: (toolCallKey: string) => void;
@@ -71,7 +72,7 @@ export function CanvasAgentConversationView(props: {
       />
       {props.busy ? (
         <div style={{ color: "rgba(148,163,184,0.9)", fontSize: 12, paddingBottom: 4 }}>
-          Agent 正在继续处理这一轮任务...
+          {props.busyLabel ?? "Agent 正在继续处理这一轮任务..."}
         </div>
       ) : null}
     </div>
