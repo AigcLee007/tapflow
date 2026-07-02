@@ -2,6 +2,7 @@ import { apiGet, apiPost, getStoredAccessToken } from "../../services/v2HttpClie
 
 import type { CanvasAgentPlannerOutput, CanvasAgentSnapshot } from "./canvasAgentTypes";
 import type { AgentImageRunSettingsResponse, AgentImageRunSettingsSelection } from "./agentRunSettings";
+import type { AgentReferenceContext } from "./agentReferenceContext";
 import type { CanvasAgentContinuationAction } from "./canvasAgentToolTypes";
 
 export type AgentSessionView = {
@@ -76,6 +77,13 @@ export type AgentContinuationContext = {
   assetRefIds?: string[];
 };
 
+export type AgentTurnRequestInput = {
+  continuationContext?: AgentContinuationContext | null;
+  prompt: string;
+  referenceContext?: AgentReferenceContext;
+  snapshot: CanvasAgentSnapshot;
+};
+
 export type AgentCanvasApplyResponse = {
   applied: {
     createdNodeIds: string[];
@@ -148,11 +156,7 @@ export function createAgentMessage(sessionId: string, input: {
   return apiPost<AgentHistoryMessage>(`/agent/sessions/${sessionId}/messages`, input);
 }
 
-export function createAgentTurn(sessionId: string, input: {
-  continuationContext?: AgentContinuationContext | null;
-  prompt: string;
-  snapshot: CanvasAgentSnapshot;
-}) {
+export function createAgentTurn(sessionId: string, input: AgentTurnRequestInput) {
   return apiPost<CreateAgentTurnResponse>(`/agent/sessions/${sessionId}/turns`, input);
 }
 
@@ -183,11 +187,7 @@ export function estimateAgentImageRunSettings(input: {
   return apiGet<AgentImageRunSettingsEstimateResponse>(`/agent/run-settings/image/estimate?${query.toString()}`);
 }
 
-export async function openAgentTurnStream(sessionId: string, input: {
-  continuationContext?: AgentContinuationContext | null;
-  prompt: string;
-  snapshot: CanvasAgentSnapshot;
-}) {
+export async function openAgentTurnStream(sessionId: string, input: AgentTurnRequestInput) {
   const token = getStoredAccessToken();
   return fetch(`/api/v2/agent/sessions/${sessionId}/turns/stream`, {
     body: JSON.stringify(input),
@@ -200,11 +200,7 @@ export async function openAgentTurnStream(sessionId: string, input: {
   });
 }
 
-export async function executeAgentTurnStream(sessionId: string, input: {
-  continuationContext?: AgentContinuationContext | null;
-  prompt: string;
-  snapshot: CanvasAgentSnapshot;
-}) {
+export async function executeAgentTurnStream(sessionId: string, input: AgentTurnRequestInput) {
   const token = getStoredAccessToken();
   return fetch(`/api/v2/agent/sessions/${sessionId}/turns/execute/stream`, {
     body: JSON.stringify(input),

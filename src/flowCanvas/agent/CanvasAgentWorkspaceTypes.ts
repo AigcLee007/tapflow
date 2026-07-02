@@ -17,6 +17,11 @@ export type AgentReferenceChip = {
   refId?: string;
 };
 
+export type SendableAgentReferenceChip = AgentReferenceChip & {
+  assetId: string;
+  refId: string;
+};
+
 export type AgentResultAsset = CanvasAgentToolAssetRef;
 
 export type AgentWorkspaceTimelineItem =
