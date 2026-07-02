@@ -1,7 +1,18 @@
 ﻿# Project Record
 
-Last updated: 2026-07-01
+Last updated: 2026-07-02
 Maintainers: project team + Codex sessions
+
+## 2026-07-02 - Agent Panel Handdrawn V1
+
+- rebuilt the creator Agent panel around the approved hand-drawn right-side workspace direction: ordered icon toolbar, central chat stream, bottom composer, upload references, and inline result cards.
+- added and hardened structured Agent reference context from composer/panel state through the v2 Agent turn payloads, with current-turn uploads, selected canvas image refs, and continuation refs represented by safe `assetId` + `refId` values.
+- kept reference and generated media on the v2 asset path; request/reference context payloads do not carry `previewUrl`, signed URLs, `blob:`, `data:`, base64 media, `File`, or `Blob` values.
+- polished the Phase 1 creator-facing Agent UI copy: Chinese state labels, compact empty chat state, ordered toolbar labels, result thumbnails/dimensions/status, and follow-up actions.
+- validation:
+  - `npm test -- src/flowCanvas/agent/CanvasAgentWorkspaceShell.test.tsx src/flowCanvas/agent/CanvasAgentComposer.test.tsx src/flowCanvas/agent/CanvasAgentReferenceUploadButton.test.tsx src/flowCanvas/agent/CanvasAgentPanel.test.tsx src/flowCanvas/agent/CanvasAgentConversationView.test.tsx src/flowCanvas/agent/CanvasAgentResultCard.test.tsx src/flowCanvas/agent/agentWorkspaceTimeline.test.ts src/flowCanvas/agent/useCanvasAgentSession.test.tsx src/flowCanvas/agent/canvasAgentApi.test.ts` passed on 2026-07-02: 9 test files, 65 tests.
+  - `npm run test --workspace @aigc-flow/api -- agent-schemas.test.ts agent-reference-context.test.ts agent-executor.test.ts agent-tool-runner.test.ts agent-tool-schemas.test.ts` passed on 2026-07-02: 5 test files, 68 tests.
+  - `npm run build` passed on 2026-07-02 with existing Browserslist, chunk-size, and dynamic-import warnings only.
 
 ## 2026-07-01 - Infinite Canvas Style Agent Copilot UI Rewrite
 
