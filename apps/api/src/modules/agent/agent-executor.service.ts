@@ -68,6 +68,10 @@ type ExecutorRepository = {
     sessionId: string;
     tenantId: string;
   }): Promise<AgentAssetReference[]>;
+  readSessionScope(input: {
+    sessionId: string;
+    tenantId: string;
+  }): Promise<{ projectId: string | null }>;
 };
 
 type TextRuntimeLike = Pick<DatabaseTextGenerationRuntime, "generateText">;
@@ -208,6 +212,28 @@ export class DatabaseAgentExecutorRepository implements ExecutorRepository {
     }, this.pool);
   }
 
+  async readSessionScope(input: {
+    sessionId: string;
+    tenantId: string;
+  }): Promise<{ projectId: string | null }> {
+    return withTenantTransaction({ tenantId: input.tenantId, userId: null }, async (client) => {
+      const result = await client.query<{ project_id: string | null }>(
+        `
+          SELECT project_id::text AS project_id
+          FROM agent_sessions
+          WHERE tenant_id = $1::uuid
+            AND id = $2::uuid
+          LIMIT 1
+        `,
+        [input.tenantId, input.sessionId],
+      );
+      if (result.rowCount === 0) {
+        throw new AgentExecutorError(404, "AGENT_SESSION_NOT_FOUND", "Agent session was not found.");
+      }
+      return { projectId: result.rows[0]!.project_id };
+    }, this.pool);
+  }
+
   async readPendingApproval(input: {
     sessionId: string;
     tenantId: string;
@@ -337,8 +363,19 @@ export class AgentExecutorService {
   }
 
   async executeTurn(context: RuntimeContext, input: AgentExecutorTurnInput): Promise<AgentExecutorTurnResult> {
+    const sessionScope = await this.options.repository.readSessionScope({
+      sessionId: input.sessionId,
+      tenantId: context.tenantId,
+    });
+    if (input.snapshot.projectId && input.snapshot.projectId !== sessionScope.projectId) {
+      throw new AgentExecutorError(
+        400,
+        "AGENT_SESSION_PROJECT_MISMATCH",
+        "Agent turn snapshot project does not match the server session project.",
+      );
+    }
     await this.options.referenceAssetRepository?.validateImageReferences({
-      projectId: input.snapshot.projectId,
+      projectId: sessionScope.projectId,
       referenceContext: input.referenceContext,
       tenantId: context.tenantId,
     });
@@ -557,6 +594,15 @@ export class AgentExecutorService {
     if (!pending) {
       throw new AgentExecutorError(404, "AGENT_TOOL_APPROVAL_NOT_FOUND", "Agent tool approval was not found or is no longer pending.");
     }
+    const sessionScope = await this.options.repository.readSessionScope({
+      sessionId: input.sessionId,
+      tenantId: context.tenantId,
+    });
+    await this.options.referenceAssetRepository?.validateImageReferences({
+      projectId: sessionScope.projectId,
+      referenceContext: pending.referenceContext,
+      tenantId: context.tenantId,
+    });
 
     const call = applyApprovedSettings(parseAgentToolCall(pending.pendingToolCall), input.settings);
     const costEstimate = await this.estimateCost(context, call);

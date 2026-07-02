@@ -69,6 +69,7 @@ function createExecutorRepository(overrides: Record<string, unknown> = {}) {
     markTurnFailed: vi.fn(),
     markTurnSucceeded: vi.fn(),
     readPendingApproval: vi.fn(),
+    readSessionScope: vi.fn().mockResolvedValue({ projectId: snapshot.projectId }),
     ...overrides,
   };
 }
@@ -346,6 +347,114 @@ describe("AgentExecutorService", () => {
     }));
     const callInput = toolRunner.runToolCall.mock.calls[0]?.[1];
     expect(callInput.previousResults?.[0]).not.toHaveProperty("promptSummary");
+  });
+
+  it("validates references against the server session project when the snapshot project is missing", async () => {
+    const referenceAssetRepository = {
+      validateImageReferences: vi.fn().mockResolvedValue(undefined),
+    };
+    const repository = createExecutorRepository({
+      readSessionScope: vi.fn().mockResolvedValue({ projectId: "server-project-1" }),
+    });
+    const toolRunner = {
+      runToolCall: vi.fn().mockResolvedValue({
+        assetRefs: [],
+        status: "succeeded",
+        toolCallId: "tool-db-1",
+        workflowRunIds: [],
+        workflowRuns: [],
+      }),
+    };
+    const executor = new AgentExecutorService({
+      costEstimator: {
+        estimateGenerateImage: vi.fn().mockResolvedValue({ totalCredits: 4 }),
+        estimateGenerateImageBatch: vi.fn(),
+      },
+      referenceAssetRepository,
+      repository,
+      textRuntime: {
+        generateText: vi
+          .fn()
+          .mockResolvedValueOnce({
+            outputText: JSON.stringify({
+              toolCalls: [
+                {
+                  arguments: { prompt: "use upload", referenceRefs: ["upload-1"], size: "1K" },
+                  toolCallKey: "tool-call-1",
+                  toolName: "generate_image",
+                },
+              ],
+            }),
+          })
+          .mockResolvedValueOnce({ outputText: JSON.stringify({ reply: "Started." }) }),
+      },
+      toolRunner,
+    });
+
+    await executor.executeTurn(context, {
+      prompt: "Use my uploaded image",
+      referenceContext: {
+        items: [
+          { assetId: "asset-upload-1", kind: "upload", label: "Upload 1", refId: "upload-1" },
+        ],
+      },
+      sessionId: "session-1",
+      snapshot: { ...snapshot, projectId: null },
+    });
+
+    expect(repository.readSessionScope).toHaveBeenCalledWith({
+      sessionId: "session-1",
+      tenantId: "tenant-1",
+    });
+    expect(referenceAssetRepository.validateImageReferences).toHaveBeenCalledWith({
+      projectId: "server-project-1",
+      referenceContext: {
+        items: [
+          { assetId: "asset-upload-1", kind: "upload", label: "Upload 1", refId: "upload-1" },
+        ],
+      },
+      tenantId: "tenant-1",
+    });
+  });
+
+  it("rejects a spoofed snapshot project id before model execution", async () => {
+    const referenceAssetRepository = {
+      validateImageReferences: vi.fn(),
+    };
+    const repository = createExecutorRepository({
+      readSessionScope: vi.fn().mockResolvedValue({ projectId: "server-project-1" }),
+    });
+    const generateText = vi.fn();
+    const toolRunner = {
+      runToolCall: vi.fn(),
+    };
+    const executor = new AgentExecutorService({
+      costEstimator: {
+        estimateGenerateImage: vi.fn(),
+        estimateGenerateImageBatch: vi.fn(),
+      },
+      referenceAssetRepository,
+      repository,
+      textRuntime: { generateText },
+      toolRunner,
+    });
+
+    await expect(executor.executeTurn(context, {
+      prompt: "Use a spoofed project",
+      referenceContext: {
+        items: [
+          { assetId: "asset-upload-1", kind: "upload", label: "Upload 1", refId: "upload-1" },
+        ],
+      },
+      sessionId: "session-1",
+      snapshot: { ...snapshot, projectId: "client-project-2" },
+    })).rejects.toMatchObject({
+      code: "AGENT_SESSION_PROJECT_MISMATCH",
+      statusCode: 400,
+    });
+    expect(referenceAssetRepository.validateImageReferences).not.toHaveBeenCalled();
+    expect(generateText).not.toHaveBeenCalled();
+    expect(toolRunner.runToolCall).not.toHaveBeenCalled();
   });
 
   it("repairs a production image answer that forgot to call tools", async () => {
@@ -722,6 +831,76 @@ describe("AgentExecutorService", () => {
     }));
   });
 
+  it("revalidates pending approval references against the server session project before running the tool", async () => {
+    const referenceAssetRepository = {
+      validateImageReferences: vi.fn().mockResolvedValue(undefined),
+    };
+    const toolRunner = {
+      runToolCall: vi.fn().mockResolvedValue({
+        assetRefs: [],
+        status: "succeeded",
+        toolCallId: "tool-db-1",
+        workflowRunIds: [],
+        workflowRuns: [],
+      }),
+    };
+    const repository = createExecutorRepository({
+      readPendingApproval: vi.fn().mockResolvedValue({
+        costEstimate: { totalCredits: 4 },
+        pendingToolCall: {
+          arguments: {
+            prompt: "use references",
+            referenceRefs: ["upload-1"],
+            size: "1K",
+          },
+          toolCallKey: "tool-call-1",
+          toolName: "generate_image",
+        },
+        referenceContext: {
+          items: [
+            { assetId: "asset-upload-1", kind: "upload", label: "Upload 1", refId: "upload-1" },
+          ],
+        },
+        snapshot,
+      }),
+      readSessionScope: vi.fn().mockResolvedValue({ projectId: "server-project-1" }),
+    });
+    const executor = new AgentExecutorService({
+      costEstimator: {
+        estimateGenerateImage: vi.fn().mockResolvedValue({ totalCredits: 4 }),
+        estimateGenerateImageBatch: vi.fn(),
+      },
+      referenceAssetRepository,
+      repository,
+      textRuntime: {
+        generateText: vi.fn(),
+      },
+      toolRunner,
+    });
+
+    await executor.approveToolCall(context, {
+      sessionId: "session-1",
+      toolCallKey: "tool-call-1",
+      turnId: "turn-1",
+    });
+
+    expect(repository.readSessionScope).toHaveBeenCalledWith({
+      sessionId: "session-1",
+      tenantId: "tenant-1",
+    });
+    expect(referenceAssetRepository.validateImageReferences).toHaveBeenCalledWith({
+      projectId: "server-project-1",
+      referenceContext: {
+        items: [
+          { assetId: "asset-upload-1", kind: "upload", label: "Upload 1", refId: "upload-1" },
+        ],
+      },
+      tenantId: "tenant-1",
+    });
+    expect(referenceAssetRepository.validateImageReferences.mock.invocationCallOrder[0])
+      .toBeLessThan(toolRunner.runToolCall.mock.invocationCallOrder[0]);
+  });
+
   it("applies approved settings to every image in a pending batch generation", async () => {
     const toolRunner = {
       runToolCall: vi.fn().mockResolvedValue({
@@ -957,6 +1136,7 @@ describe("AgentExecutorService", () => {
       markTurnFailed: vi.fn(),
       markTurnSucceeded: vi.fn(),
       readPendingApproval: vi.fn(),
+      readSessionScope: vi.fn().mockResolvedValue({ projectId: snapshot.projectId }),
     };
     const toolRunner = {
       runToolCall: vi.fn().mockResolvedValue({
