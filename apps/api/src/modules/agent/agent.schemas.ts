@@ -69,6 +69,30 @@ export const createAgentSessionSchema = z.object({
   title: z.string().trim().min(1).max(120).optional(),
 });
 
+const agentReferenceContextItemSchema = z.object({
+  assetId: z.string().trim().min(1).max(200),
+  kind: z.enum(["artifact", "canvas_node", "upload"]),
+  label: z.string().trim().min(1).max(120),
+  nodeId: z.string().trim().min(1).max(200).optional(),
+  refId: z.string().trim().min(1).max(120),
+}).strict();
+
+export const agentReferenceContextSchema = z.object({
+  items: z.array(agentReferenceContextItemSchema).max(8).default([]),
+}).strict().superRefine((value, ctx) => {
+  const seen = new Set<string>();
+  value.items.forEach((item, index) => {
+    if (seen.has(item.refId)) {
+      ctx.addIssue({
+        code: "custom",
+        message: "referenceContext.items must use unique refId values",
+        path: ["items", index, "refId"],
+      });
+    }
+    seen.add(item.refId);
+  });
+});
+
 export const createAgentTurnSchema = z.object({
   continuationContext: z.object({
     action: z.enum(["compare", "continue-edit", "make-poster", "make-variant"]),
@@ -80,6 +104,7 @@ export const createAgentTurnSchema = z.object({
     assetRefIds: z.array(z.string().trim().min(1).max(200)).max(8).optional(),
   }).nullable().optional(),
   prompt: z.string().trim().min(1).max(8000),
+  referenceContext: agentReferenceContextSchema.optional(),
   snapshot: canvasAgentSnapshotSchema,
 });
 
@@ -165,6 +190,7 @@ export type CanvasAgentSnapshotInput = z.infer<typeof canvasAgentSnapshotSchema>
 export type CreateAgentSessionInput = z.infer<typeof createAgentSessionSchema>;
 export type CreateAgentMessageInput = z.infer<typeof createAgentMessageSchema>;
 export type CreateAgentTurnInput = z.infer<typeof createAgentTurnSchema>;
+export type AgentReferenceContextInput = z.infer<typeof agentReferenceContextSchema>;
 export type GetAgentEventsQuery = z.infer<typeof getAgentEventsQuerySchema>;
 export type GetAgentImageRunSettingsEstimateQuery = z.infer<typeof getAgentImageRunSettingsEstimateQuerySchema>;
 export type ListAgentSessionsQuery = z.infer<typeof listAgentSessionsQuerySchema>;

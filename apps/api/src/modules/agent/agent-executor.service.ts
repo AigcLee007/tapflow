@@ -5,7 +5,7 @@ import type { Pool } from "pg";
 import type { ApiEnv } from "../../config/env.js";
 import { assertAgentOutputSafe } from "./agent-redaction.js";
 import type { AgentAssetReference } from "./agent-asset-references.js";
-import type { CanvasAgentSnapshotInput } from "./agent.schemas.js";
+import type { AgentReferenceContextInput, CanvasAgentSnapshotInput } from "./agent.schemas.js";
 import type { AgentCostEstimator } from "./agent-cost-estimator.js";
 import { buildAgentExecutorSystemPrompt, buildAgentExecutorToolRepairPrompt } from "./agent-executor-prompt.js";
 import { isProductionImageAgentPrompt } from "./agent-production-intent.js";
@@ -91,6 +91,7 @@ export type AgentExecutorTurnInput = {
   } | null;
   onEvent?: (event: AgentToolEvent) => void | Promise<void>;
   prompt: string;
+  referenceContext?: AgentReferenceContextInput;
   sessionId: string;
   snapshot: CanvasAgentSnapshotInput;
 };
@@ -326,9 +327,13 @@ export class AgentExecutorService {
   }
 
   async executeTurn(context: RuntimeContext, input: AgentExecutorTurnInput): Promise<AgentExecutorTurnResult> {
+    const safeReferenceContext = buildSafeReferenceContext(input.referenceContext);
     const userMessage = await this.options.repository.createUserMessage({
       content: input.prompt,
-      metadata: input.continuationContext ? { continuationContext: input.continuationContext } : undefined,
+      metadata: compactObject({
+        continuationContext: input.continuationContext,
+        referenceContext: safeReferenceContext,
+      }),
       sessionId: input.sessionId,
       tenantId: context.tenantId,
     });
@@ -353,6 +358,7 @@ export class AgentExecutorService {
           input.snapshot,
           [],
           input.continuationContext,
+          input.referenceContext,
         ),
         role: "user" as const,
       },
@@ -376,6 +382,7 @@ export class AgentExecutorService {
                     input.snapshot,
                     previousResults,
                     input.continuationContext,
+                    input.referenceContext,
                   ),
                   role: "user" as const,
                 },
@@ -701,6 +708,7 @@ function buildUserExecutorContext(
   snapshot: CanvasAgentSnapshotInput,
   previousResults: AgentAssetReference[] = [],
   continuationContext?: AgentExecutorTurnInput["continuationContext"],
+  referenceContext?: AgentReferenceContextInput,
 ): string {
   const safeContinuation = continuationContext
     ? {
@@ -719,6 +727,7 @@ function buildUserExecutorContext(
     label: asset.label,
     refId: asset.refId,
   }));
+  const safeReferenceContext = buildSafeReferenceContext(referenceContext);
   return JSON.stringify({
     activeContinuation: safeContinuation,
     canvas: {
@@ -729,7 +738,20 @@ function buildUserExecutorContext(
     },
     previousResults: previousResultRefs,
     prompt,
+    references: safeReferenceContext?.items ?? [],
   });
+}
+
+function buildSafeReferenceContext(referenceContext?: AgentReferenceContextInput): AgentReferenceContextInput | undefined {
+  if (!referenceContext) return undefined;
+  return {
+    items: referenceContext.items.map((item) => ({
+      assetId: item.assetId,
+      kind: item.kind,
+      label: item.label,
+      refId: item.refId,
+    })),
+  };
 }
 
 function resolveExecutionTarget(snapshot: CanvasAgentSnapshotInput) {

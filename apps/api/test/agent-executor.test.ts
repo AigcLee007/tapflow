@@ -45,7 +45,8 @@ describe("agent executor prompt and registry", () => {
     const prompt = buildAgentExecutorSystemPrompt(getAgentToolRegistryForModel());
     expect(prompt).toContain("generate_image");
     expect(prompt).toContain("generate_image_batch");
-    expect(prompt).not.toMatch(/baseUrl|apiKey|Authorization|provider_key|upstream_model|route_key/i);
+    expect(prompt).toContain("Never invent referenceRefs");
+    expect(prompt).not.toMatch(/baseUrl|apiKey|provider_key|upstream_model|route_key/i);
   });
 });
 
@@ -800,5 +801,94 @@ describe("AgentExecutorService", () => {
         }),
       }),
     );
+  });
+
+  it("injects safe current references into context and stores them on the user message", async () => {
+    const repository = createExecutorRepository();
+    const generateText = vi.fn().mockResolvedValue({
+      outputText: "I can use the listed references by refId.",
+    });
+    const executor = new AgentExecutorService({
+      costEstimator: {
+        estimateGenerateImage: vi.fn(),
+        estimateGenerateImageBatch: vi.fn(),
+      },
+      repository,
+      textRuntime: { generateText },
+      toolRunner: {
+        runToolCall: vi.fn(),
+      },
+    });
+
+    await executor.executeTurn(context, {
+      prompt: "Use these references for the next image",
+      referenceContext: {
+        items: [
+          {
+            assetId: "asset-ref-1",
+            kind: "artifact",
+            label: "Reference image 1",
+            previewUrl: "https://cdn.example.test/signed-preview",
+            refId: "current-ref-1",
+            signed: true,
+          },
+          {
+            assetId: "asset-ref-2",
+            baseUrl: "https://provider.example.test",
+            kind: "canvas_node",
+            label: "Reference image 2",
+            nodeId: "node-ref-2",
+            refId: "current-ref-2",
+            headers: {
+              Authorization: "Bearer secret-token",
+            },
+            apiKey: "secret-api-key",
+          },
+        ],
+      },
+      sessionId: "session-1",
+      snapshot,
+    });
+
+    const contextPayload = JSON.parse(generateText.mock.calls[0]?.[1]?.messages?.[1]?.content ?? "{}");
+    expect(contextPayload.references).toEqual([
+      {
+        assetId: "asset-ref-1",
+        kind: "artifact",
+        label: "Reference image 1",
+        refId: "current-ref-1",
+      },
+      {
+        assetId: "asset-ref-2",
+        kind: "canvas_node",
+        label: "Reference image 2",
+        refId: "current-ref-2",
+      },
+    ]);
+    expect(JSON.stringify(contextPayload)).not.toMatch(/previewUrl|signed|baseUrl|apiKey|Authorization|secret-token|secret-api-key/);
+    expect(repository.createUserMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          referenceContext: expect.objectContaining({
+            items: [
+              expect.objectContaining({
+                assetId: "asset-ref-1",
+                kind: "artifact",
+                label: "Reference image 1",
+                refId: "current-ref-1",
+              }),
+              expect.objectContaining({
+                assetId: "asset-ref-2",
+                kind: "canvas_node",
+                label: "Reference image 2",
+                refId: "current-ref-2",
+              }),
+            ],
+          }),
+        }),
+      }),
+    );
+    const metadata = repository.createUserMessage.mock.calls[0]?.[0]?.metadata;
+    expect(JSON.stringify(metadata)).not.toMatch(/previewUrl|signed|baseUrl|apiKey|Authorization|secret-token|secret-api-key/);
   });
 });
