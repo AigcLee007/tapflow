@@ -28,6 +28,7 @@ import { AgentRunSettingsService } from "./modules/agent/agent-run-settings.serv
 import { AgentService } from "./modules/agent/agent.service.js";
 import { AgentCostEstimator, DatabaseAgentCostEstimatorRepository } from "./modules/agent/agent-cost-estimator.js";
 import { AgentExecutorService, DatabaseAgentExecutorRepository } from "./modules/agent/agent-executor.service.js";
+import { AgentReferenceAssetRepository } from "./modules/agent/agent-reference-context.js";
 import { AgentCanvasService } from "./modules/agent/agent-canvas.service.js";
 import { AgentSessionRepository } from "./modules/agent/agent-session.repository.js";
 import { AgentToolRunner, DatabaseAgentToolRunnerRepository } from "./modules/agent/agent-tool-runner.js";
@@ -119,6 +120,32 @@ function registerSecurityBaseline(app: FastifyInstance, env: ApiEnv): void {
     },
     max: env.apiRateLimitMax ?? 1000,
     timeWindow: env.apiRateLimitWindowMs ?? 60_000,
+  });
+}
+
+export function buildAgentExecutorService(options: {
+  costEstimator: Pick<AgentCostEstimator, "estimateGenerateImage" | "estimateGenerateImageBatch">;
+  env: ApiEnv;
+  pool: PgPool;
+  textRuntime: Pick<DatabaseTextGenerationRuntime, "generateText">;
+  toolRunner: Pick<AgentToolRunner, "runToolCall">;
+}): AgentExecutorService {
+  return new AgentExecutorService({
+    costEstimator: options.costEstimator,
+    env: options.env,
+    limits: {
+      allowBatchImage: options.env.agentExecutorAllowBatchImage,
+      allowImageEdit: options.env.agentExecutorAllowImageEdit,
+      allowVideo: options.env.agentExecutorAllowVideo,
+      maxEstimatedCredits: options.env.agentExecutorMaxEstimatedCredits,
+      maxGeneratedItems: options.env.agentExecutorMaxGeneratedItems,
+      maxToolRounds: options.env.agentExecutorMaxToolRounds,
+      requireApproval: options.env.agentExecutorRequireApproval,
+    },
+    referenceAssetRepository: new AgentReferenceAssetRepository({ pool: options.pool }),
+    repository: new DatabaseAgentExecutorRepository({ pool: options.pool }),
+    textRuntime: options.textRuntime,
+    toolRunner: options.toolRunner,
   });
 }
 
@@ -242,19 +269,10 @@ export function buildApp(options?: {
   });
   const agentExecutorService =
     options?.agentExecutorService ??
-    new AgentExecutorService({
+    buildAgentExecutorService({
       costEstimator: agentCostEstimator,
       env,
-      limits: {
-        allowBatchImage: env.agentExecutorAllowBatchImage,
-        allowImageEdit: env.agentExecutorAllowImageEdit,
-        allowVideo: env.agentExecutorAllowVideo,
-        maxEstimatedCredits: env.agentExecutorMaxEstimatedCredits,
-        maxGeneratedItems: env.agentExecutorMaxGeneratedItems,
-        maxToolRounds: env.agentExecutorMaxToolRounds,
-        requireApproval: env.agentExecutorRequireApproval,
-      },
-      repository: new DatabaseAgentExecutorRepository({ pool }),
+      pool,
       textRuntime: agentTextRuntime,
       toolRunner: agentToolRunner,
     });

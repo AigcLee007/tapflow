@@ -6,6 +6,7 @@ import { z } from "zod";
 import type { ApiEnv } from "../../config/env.js";
 import { AgentPlannerRuntimeError, AgentPlannerService } from "./agent-planner.service.js";
 import { AgentExecutorError, type AgentExecutorService } from "./agent-executor.service.js";
+import { AgentReferenceResolutionError } from "./agent-reference-context.js";
 import { AgentCanvasService } from "./agent-canvas.service.js";
 import { isProductionImageAgentPrompt } from "./agent-production-intent.js";
 import { AgentEventService, toAgentRepositoryError } from "./agent-event.service.js";
@@ -563,10 +564,7 @@ export class AgentService {
         sessionId,
       });
     } catch (error) {
-      if (error instanceof AgentExecutorError) {
-        throw new AgentApiError(error.statusCode, error.code, error.message);
-      }
-      throw error;
+      throw normalizeAgentExecutorApiError(error);
     }
     return chunks.join("");
   }
@@ -590,10 +588,7 @@ export class AgentService {
         sessionId,
       });
     } catch (error) {
-      if (error instanceof AgentExecutorError) {
-        throw new AgentApiError(error.statusCode, error.code, error.message);
-      }
-      throw error;
+      throw normalizeAgentExecutorApiError(error);
     }
     return chunks.join("");
   }
@@ -697,4 +692,11 @@ export class AgentService {
       updatedAt: row.updated_at,
     };
   }
+}
+
+function normalizeAgentExecutorApiError(error: unknown): AgentApiError {
+  if (error instanceof AgentExecutorError || error instanceof AgentReferenceResolutionError) {
+    return new AgentApiError(error.statusCode, error.code, error.message);
+  }
+  throw error;
 }

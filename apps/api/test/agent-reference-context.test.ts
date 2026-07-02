@@ -100,6 +100,13 @@ describe("agent reference context resolver", () => {
 });
 
 describe("AgentReferenceAssetRepository", () => {
+  const assetUpload1 = "00000000-0000-0000-0000-000000000101";
+  const assetFile1 = "00000000-0000-0000-0000-000000000102";
+  const assetProcessing1 = "00000000-0000-0000-0000-000000000103";
+  const assetOtherProject1 = "00000000-0000-0000-0000-000000000104";
+  const project1 = "00000000-0000-0000-0000-000000000201";
+  const project2 = "00000000-0000-0000-0000-000000000202";
+
   function createRepository(rows: Array<{
     id: string;
     kind: string;
@@ -117,24 +124,42 @@ describe("AgentReferenceAssetRepository", () => {
   it("accepts available image assets in the same tenant and project", async () => {
     const { query, repository } = createRepository([
       {
-        id: "asset-upload-1",
+        id: assetUpload1,
         kind: "image",
-        project_id: "project-1",
+        project_id: project1,
         status: "available",
       },
     ]);
 
     await expect(repository.validateImageReferences({
-      projectId: "project-1",
+      projectId: project1,
       referenceContext: {
         items: [
-          { assetId: "asset-upload-1", kind: "upload", label: "Upload 1", refId: "upload-1" },
+          { assetId: assetUpload1, kind: "upload", label: "Upload 1", refId: "upload-1" },
         ],
       },
       tenantId: "tenant-1",
     })).resolves.toBeUndefined();
 
-    expect(query).toHaveBeenCalledWith(expect.stringContaining("FROM assets"), ["tenant-1", ["asset-upload-1"]]);
+    expect(query).toHaveBeenCalledWith(expect.stringContaining("FROM assets"), ["tenant-1", [assetUpload1]]);
+  });
+
+  it("rejects malformed asset ids without querying the pool", async () => {
+    const { query, repository } = createRepository([]);
+
+    await expect(repository.validateImageReferences({
+      referenceContext: {
+        items: [
+          { assetId: "asset-upload-1", kind: "upload", label: "Malformed", refId: "upload-1" },
+        ],
+      },
+      tenantId: "tenant-1",
+    })).rejects.toMatchObject({
+      code: "AGENT_REFERENCE_INVALID_ASSET_ID",
+      statusCode: 400,
+    });
+
+    expect(query).not.toHaveBeenCalled();
   });
 
   it("rejects missing assets with a reference error", async () => {
@@ -143,7 +168,7 @@ describe("AgentReferenceAssetRepository", () => {
     await expect(repository.validateImageReferences({
       referenceContext: {
         items: [
-          { assetId: "asset-missing", kind: "upload", label: "Missing", refId: "upload-1" },
+          { assetId: "00000000-0000-0000-0000-000000000199", kind: "upload", label: "Missing", refId: "upload-1" },
         ],
       },
       tenantId: "tenant-1",
@@ -156,18 +181,18 @@ describe("AgentReferenceAssetRepository", () => {
   it("rejects non-image assets", async () => {
     const { repository } = createRepository([
       {
-        id: "asset-file-1",
+        id: assetFile1,
         kind: "file",
-        project_id: "project-1",
+        project_id: project1,
         status: "available",
       },
     ]);
 
     await expect(repository.validateImageReferences({
-      projectId: "project-1",
+      projectId: project1,
       referenceContext: {
         items: [
-          { assetId: "asset-file-1", kind: "upload", label: "File", refId: "upload-1" },
+          { assetId: assetFile1, kind: "upload", label: "File", refId: "upload-1" },
         ],
       },
       tenantId: "tenant-1",
@@ -180,18 +205,18 @@ describe("AgentReferenceAssetRepository", () => {
   it("rejects unavailable assets", async () => {
     const { repository } = createRepository([
       {
-        id: "asset-processing-1",
+        id: assetProcessing1,
         kind: "image",
-        project_id: "project-1",
+        project_id: project1,
         status: "processing",
       },
     ]);
 
     await expect(repository.validateImageReferences({
-      projectId: "project-1",
+      projectId: project1,
       referenceContext: {
         items: [
-          { assetId: "asset-processing-1", kind: "upload", label: "Processing", refId: "upload-1" },
+          { assetId: assetProcessing1, kind: "upload", label: "Processing", refId: "upload-1" },
         ],
       },
       tenantId: "tenant-1",
@@ -204,18 +229,18 @@ describe("AgentReferenceAssetRepository", () => {
   it("rejects assets tied to a different project when a project id is supplied", async () => {
     const { repository } = createRepository([
       {
-        id: "asset-other-project-1",
+        id: assetOtherProject1,
         kind: "image",
-        project_id: "project-2",
+        project_id: project2,
         status: "available",
       },
     ]);
 
     await expect(repository.validateImageReferences({
-      projectId: "project-1",
+      projectId: project1,
       referenceContext: {
         items: [
-          { assetId: "asset-other-project-1", kind: "upload", label: "Other Project", refId: "upload-1" },
+          { assetId: assetOtherProject1, kind: "upload", label: "Other Project", refId: "upload-1" },
         ],
       },
       tenantId: "tenant-1",

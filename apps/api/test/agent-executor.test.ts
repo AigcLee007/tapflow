@@ -1,7 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 
+import type { ApiEnv } from "../src/config/env.js";
+import { buildAgentExecutorService } from "../src/app.js";
+import {
+  AgentReferenceAssetRepository,
+  AgentReferenceResolutionError,
+} from "../src/modules/agent/agent-reference-context.js";
 import { buildAgentExecutorSystemPrompt } from "../src/modules/agent/agent-executor-prompt.js";
 import { AgentExecutorService } from "../src/modules/agent/agent-executor.service.js";
+import { AgentApiError, AgentService } from "../src/modules/agent/agent.service.js";
 import { getAgentToolRegistryForModel } from "../src/modules/agent/agent-tool-registry.js";
 
 const context = {
@@ -25,6 +32,32 @@ const snapshot = {
   projectId: "00000000-0000-0000-0000-000000000001",
   selectedNodeIds: ["image-node-1"],
   viewport: { x: 0, y: 0, zoom: 1 },
+};
+
+const testEnv: ApiEnv = {
+  accessTokenTtlSeconds: 900,
+  adminEmails: [],
+  agentDirectorEnabled: false,
+  agentExecutorEnabled: true,
+  agentPlannerFallbackEnabled: false,
+  agentPlannerEnabled: false,
+  agentPlannerRepairAttempts: 1,
+  agentPlannerTimeoutMs: 45_000,
+  agentTextRouteKey: "text.default",
+  credentialKeyVersion: "v1",
+  credentialMasterKey: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+  jwtAccessSecret: "test_access_secret_1234567890",
+  jwtRefreshSecret: "test_refresh_secret_1234567890",
+  nodeEnv: "test",
+  queuePrefix: "test-prefix",
+  redisUrl: "redis://localhost:6379",
+  refreshTokenTtlSeconds: 604800,
+  s3AccessKeyId: "test-access",
+  s3Bucket: "test-bucket",
+  s3Endpoint: "http://localhost:9000",
+  s3ForcePathStyle: true,
+  s3Region: "us-east-1",
+  s3SecretAccessKey: "test-secret",
 };
 
 function createExecutorRepository(overrides: Record<string, unknown> = {}) {
@@ -51,6 +84,72 @@ describe("agent executor prompt and registry", () => {
 });
 
 describe("AgentExecutorService", () => {
+  it("app construction seam wires reference asset validation into the executor", () => {
+    const executor = buildAgentExecutorService({
+      costEstimator: {
+        estimateGenerateImage: vi.fn(),
+        estimateGenerateImageBatch: vi.fn(),
+      },
+      env: testEnv,
+      pool: { query: vi.fn() } as never,
+      textRuntime: {
+        generateText: vi.fn(),
+      },
+      toolRunner: {
+        runToolCall: vi.fn(),
+      },
+    });
+
+    expect((executor as never as { options: { referenceAssetRepository?: unknown } }).options.referenceAssetRepository)
+      .toBeInstanceOf(AgentReferenceAssetRepository);
+  });
+
+  it("converts reference validation failures in execute streams to structured API errors", async () => {
+    const service = new AgentService({
+      env: testEnv,
+      executorService: {
+        executeTurn: vi.fn().mockRejectedValue(
+          new AgentReferenceResolutionError(
+            "bad-asset-id",
+            "AGENT_REFERENCE_INVALID_ASSET_ID",
+            "Agent reference asset id is invalid: bad-asset-id",
+          ),
+        ),
+        approveToolCall: vi.fn(),
+      },
+      flowsService: {
+        getFlowDraft: vi.fn(),
+        saveFlowDraft: vi.fn(),
+      },
+      pool: { query: vi.fn() } as never,
+      runSettingsService: {
+        estimateImageRunSettings: vi.fn(),
+        listImageRunSettings: vi.fn(),
+      },
+    });
+
+    let caught: unknown;
+    try {
+      await service.buildExecuteTurnStream(context, "session-1", {
+        prompt: "Use bad reference",
+        referenceContext: {
+          items: [
+            { assetId: "bad-asset-id", kind: "upload", label: "Bad", refId: "upload-1" },
+          ],
+        },
+        snapshot,
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(AgentApiError);
+    expect(caught).toMatchObject({
+      code: "AGENT_REFERENCE_INVALID_ASSET_ID",
+      statusCode: 400,
+    });
+  });
+
   it("returns a text-only answer without running tools", async () => {
     const executor = new AgentExecutorService({
       costEstimator: {

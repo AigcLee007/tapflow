@@ -40,6 +40,14 @@ export class AgentReferenceAssetRepository {
   }): Promise<void> {
     const assetIds = dedupe((input.referenceContext?.items ?? []).map((item) => item.assetId));
     if (assetIds.length === 0) return;
+    const malformedAssetId = assetIds.find((assetId) => !isUuid(assetId));
+    if (malformedAssetId) {
+      throw new AgentReferenceResolutionError(
+        malformedAssetId,
+        "AGENT_REFERENCE_INVALID_ASSET_ID",
+        `Agent reference asset id is invalid: ${malformedAssetId}`,
+      );
+    }
 
     const result = await this.pool.query<{
       id: string;
@@ -151,4 +159,8 @@ function dedupe(values: string[]): string[] {
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }
