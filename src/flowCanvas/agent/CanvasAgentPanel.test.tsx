@@ -220,6 +220,48 @@ describe("CanvasAgentPanel", () => {
     expect(screen.queryByText("参考图 1")).toBeNull();
   });
 
+  it("updates selected canvas references when selection changes without changing count", async () => {
+    useFlowCanvasStore.getState().setBackendFlowBinding({
+      backendFlowId: "flow-1",
+      backendProjectId: "project-1",
+    });
+    const first = useFlowCanvasStore
+      .getState()
+      .addNode("image", { x: 0, y: 0 }, { assetId: "asset-selected-a", title: "Selected A" });
+    const second = useFlowCanvasStore
+      .getState()
+      .addNode("image", { x: 120, y: 0 }, { assetId: "asset-selected-b", title: "Selected B" });
+    useFlowCanvasStore.getState().selectNodesByIds([first.id]);
+
+    renderPanel();
+
+    await act(async () => {
+      useFlowCanvasStore.getState().selectNodesByIds([second.id]);
+    });
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText("Agent prompt"), { target: { value: "Use selected image" } });
+      fireEvent.click(screen.getByRole("button", { name: "发送" }));
+    });
+
+    await waitFor(() => {
+      expect(mockCreateAgentTurn).toHaveBeenCalled();
+    });
+    const referenceItems = mockCreateAgentTurn.mock.calls.at(-1)?.[1]?.referenceContext?.items ?? [];
+    expect(referenceItems).toEqual([
+      expect.objectContaining({
+        assetId: "asset-selected-b",
+      }),
+    ]);
+    expect(referenceItems).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          assetId: "asset-selected-a",
+        }),
+      ]),
+    );
+  });
+
   it("shows a server plan and calls confirm handler", async () => {
     const onConfirmPlan = vi.fn(async () => ({
       createdNodeIds: [],

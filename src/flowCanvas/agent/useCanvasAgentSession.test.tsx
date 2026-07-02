@@ -657,6 +657,38 @@ describe("useCanvasAgentSession", () => {
     });
   });
 
+  it("clears pending and last continuation context together", async () => {
+    mockCreateAgentSession.mockResolvedValue({ id: "session-1" });
+    mockExecuteAgentTurnStream.mockResolvedValue({ ok: true, status: 200 });
+    mockReadAgentToolEventStream.mockImplementation(async (_response, onEvent) => {
+      onEvent({ finalText: "Done.", turnId: "turn-1", type: "turn_completed" });
+    });
+
+    const { result } = renderHook(() => useCanvasAgentSession());
+
+    await act(async () => {
+      result.current.setPendingContinuation?.({
+        action: "make-poster",
+        assetId: "asset-1",
+        assetLabel: "Round 1 image 1",
+        assetRefId: "round-1-image-1",
+      });
+    });
+
+    await act(async () => {
+      await result.current.sendPrompt("Make this into a poster");
+    });
+
+    expect(result.current.lastContinuation).toMatchObject({ assetId: "asset-1" });
+
+    await act(async () => {
+      result.current.clearContinuation?.();
+    });
+
+    expect(result.current.pendingContinuation).toBeNull();
+    expect(result.current.lastContinuation).toBeNull();
+  });
+
   it("notifies the host when server-applied canvas ops should refresh the draft", async () => {
     mockCreateAgentSession.mockResolvedValue({ id: "session-1" });
     mockExecuteAgentTurnStream.mockResolvedValue({ ok: true, status: 200 });

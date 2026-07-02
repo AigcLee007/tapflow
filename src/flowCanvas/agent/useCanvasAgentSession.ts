@@ -181,6 +181,11 @@ export function useCanvasAgentSession(options: UseCanvasAgentSessionOptions = {}
     setWorkspaceState((current) => reduceCanvasAgentWorkspaceState(current, event));
   }, []);
 
+  const clearContinuation = useCallback(() => {
+    setPendingContinuation(null);
+    setLastContinuation(null);
+  }, []);
+
   const failSession = useCallback((message: string) => {
     setError(message);
     setMessages((current) => [...current, createMessage("system", message)]);
@@ -786,6 +791,7 @@ export function useCanvasAgentSession(options: UseCanvasAgentSessionOptions = {}
       approveToolCall,
       cancelCurrentPlan,
       cancelToolCall,
+      clearContinuation,
       currentPlan,
       error,
       executeCurrentPlan,
@@ -809,6 +815,7 @@ export function useCanvasAgentSession(options: UseCanvasAgentSessionOptions = {}
       approveToolCall,
       cancelCurrentPlan,
       cancelToolCall,
+      clearContinuation,
       currentPlan,
       error,
       executeCurrentPlan,

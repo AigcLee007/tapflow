@@ -100,7 +100,17 @@ export function CanvasAgentPanel(props: {
   const [uploadError, setUploadError] = React.useState<string | null>(null);
   const backendFlowId = useFlowCanvasStore((state) => state.backendFlowId);
   const backendProjectId = useFlowCanvasStore((state) => state.backendProjectId);
-  const selectedNodeCount = useFlowCanvasStore((state) => state.selectedNodeCount);
+  const selectedReferenceKey = useFlowCanvasStore((state) =>
+    JSON.stringify(
+      state.nodes
+        .filter((node) => node.selected)
+        .map((node) => ({
+          assetId: typeof node.data.assetId === "string" ? node.data.assetId : null,
+          id: node.id,
+          kind: node.data.kind,
+        })),
+    ),
+  );
   const history = useAgentConversationHistory(sessionActions.sessionId);
   const eventStream = useAgentEventStream(sessionActions.sessionId);
   const [availableModels, setAvailableModels] = React.useState<ReturnType<typeof getEmptyModels>>([]);
@@ -180,7 +190,7 @@ export function CanvasAgentPanel(props: {
     }
   }, [sessionActions.sessionId]);
 
-  const selectedReferenceChips = React.useMemo(() => buildSelectedCanvasReferenceChips(), [selectedNodeCount]);
+  const selectedReferenceChips = React.useMemo(() => buildSelectedCanvasReferenceChips(), [selectedReferenceKey]);
 
   const continuationChips = React.useMemo(() => {
     if (!activeContinuation) return [];
@@ -266,7 +276,7 @@ export function CanvasAgentPanel(props: {
       onCollapse={props.onClose}
       onNewChat={() => {
         sessionActions.setSessionId?.(null);
-        sessionActions.setPendingContinuation?.(null);
+        sessionActions.clearContinuation?.();
         setUploadedReferences([]);
         setUploadError(null);
         setComposerDraft("");
@@ -382,7 +392,7 @@ export function CanvasAgentPanel(props: {
           activeSessionId={sessionActions.sessionId}
           onNewChat={() => {
             sessionActions.setSessionId?.(null);
-            sessionActions.setPendingContinuation?.(null);
+            sessionActions.clearContinuation?.();
             setUploadedReferences([]);
             setUploadError(null);
             setComposerDraft("");
