@@ -149,23 +149,23 @@ export function CanvasAgentComposer(props: {
       <div style={{ alignItems: "center", display: "flex", gap: 8, justifyContent: "space-between" }}>
         <div style={{ display: "grid", gap: 4, minWidth: 0 }}>
           <div style={{ color: "rgba(226,232,240,0.62)", fontSize: 12, lineHeight: 1.25 }}>
-            {busyHint ?? "Tell Agent what to change on the canvas."}
+            {busyHint ?? "告诉 Agent 你要在画布上做什么。"}
           </div>
           {activeModel && activeRoute ? (
             <div style={{ color: "#f8fafc", fontSize: 12, fontWeight: 700, lineHeight: 1.25 }}>
-              {activeModel.displayName} · {selectedSize} · Estimated credits {estimatedCredits}
+              {activeModel.displayName} · {selectedSize} · 预计消耗 {estimatedCredits} 积分
             </div>
           ) : null}
         </div>
 
         {availableModels.length > 0 ? (
           <button
-            aria-label={settingsOpen ? "Collapse model settings" : "Expand model settings"}
+            aria-label={settingsOpen ? "收起模型设置" : "展开模型设置"}
             onClick={() => setSettingsOpen((open) => !open)}
             style={compactButtonStyle()}
             type="button"
           >
-            Model
+            模型
           </button>
         ) : null}
 

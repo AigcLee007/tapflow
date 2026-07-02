@@ -114,17 +114,17 @@ describe("CanvasAgentComposer", () => {
     );
 
     expect(screen.getByText((content) => content.includes("Nano Banana Pro"))).toBeTruthy();
-    expect(screen.getByText((content) => content.includes("Estimated credits") && content.includes("4"))).toBeTruthy();
+    expect(screen.getByText((content) => content.includes("预计消耗") && content.includes("4"))).toBeTruthy();
     expect(screen.queryByTestId("agent-composer-settings-panel")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Expand model settings" }));
+    fireEvent.click(screen.getByRole("button", { name: "展开模型设置" }));
 
     expect(screen.getByTestId("agent-composer-settings-panel")).toBeTruthy();
     expect(screen.getByText("Line 1")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "4K" }));
 
-    expect(screen.getByText((content) => content.includes("Estimated credits") && content.includes("5"))).toBeTruthy();
+    expect(screen.getByText((content) => content.includes("预计消耗") && content.includes("5"))).toBeTruthy();
   });
 
   it("shows a compact busy hint while preserving the current draft", () => {
