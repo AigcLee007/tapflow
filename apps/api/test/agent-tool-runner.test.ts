@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { AgentWorkflowLauncher, AgentWorkflowLauncherError } from "../src/modules/agent/agent-workflow-launcher.js";
-import { AgentToolRunner } from "../src/modules/agent/agent-tool-runner.js";
+import { AgentToolRunner, DatabaseAgentToolRunnerRepository } from "../src/modules/agent/agent-tool-runner.js";
 
 const context = {
   requestId: "req-1",
@@ -870,5 +870,74 @@ describe("AgentToolRunner", () => {
     });
     expect(repository.createTask).not.toHaveBeenCalled();
     expect(launcher.launchImageGeneration).not.toHaveBeenCalled();
+  });
+});
+
+describe("DatabaseAgentToolRunnerRepository", () => {
+  function createMockPool(rowsByQuery: Array<unknown[]> = []) {
+    const queries: Array<{ params?: unknown[]; sql: string }> = [];
+    const client = {
+      query: vi.fn(async (sql: string, params?: unknown[]) => {
+        queries.push({ params, sql });
+        if (
+          sql === "BEGIN" ||
+          sql === "COMMIT" ||
+          sql === "ROLLBACK" ||
+          sql.includes("set_config('app.tenant_id'") ||
+          sql.includes("set_config('app.user_id'")
+        ) {
+          return { rows: [] };
+        }
+        const placeholderMatches = [...sql.matchAll(/\$(\d+)/g)];
+        const expectedParamCount = placeholderMatches.reduce((max, match) => Math.max(max, Number(match[1])), 0);
+        if ((params?.length ?? 0) !== expectedParamCount) {
+          throw new Error(`Expected ${expectedParamCount} params but received ${params?.length ?? 0}`);
+        }
+        const rows = rowsByQuery.shift() ?? [];
+        return { rows };
+      }),
+      release: vi.fn(),
+    };
+
+    return {
+      client,
+      pool: {
+        connect: vi.fn(async () => client),
+      },
+      queries,
+    };
+  }
+
+  it("persists tool calls with aligned SQL placeholders for permission level and payload json", async () => {
+    const { pool, queries } = createMockPool([[{ id: "tool-db-1" }]]);
+    const repository = new DatabaseAgentToolRunnerRepository({ pool: pool as never });
+
+    const result = await repository.createToolCall({
+      argumentsJson: { prompt: "make a poster", size: "1K" },
+      costEstimateJson: { totalCredits: 5 },
+      createdBy: "33333333-3333-4333-8333-333333333333",
+      permissionLevel: "safe_write",
+      sessionId: "11111111-1111-4111-8111-111111111111",
+      status: "planned",
+      tenantId: "22222222-2222-4222-8222-222222222222",
+      toolCallKey: "call-1",
+      toolName: "generate_image",
+      turnId: "44444444-4444-4444-8444-444444444444",
+    });
+
+    expect(result).toEqual({ id: "tool-db-1" });
+    const insertQuery = queries.find((entry) => entry.sql.includes("INSERT INTO agent_tool_calls"));
+    expect(insertQuery?.params).toEqual([
+      "22222222-2222-4222-8222-222222222222",
+      "11111111-1111-4111-8111-111111111111",
+      "44444444-4444-4444-8444-444444444444",
+      "call-1",
+      "generate_image",
+      "safe_write",
+      "planned",
+      JSON.stringify({ prompt: "make a poster", size: "1K" }),
+      JSON.stringify({ totalCredits: 5 }),
+      "33333333-3333-4333-8333-333333333333",
+    ]);
   });
 });

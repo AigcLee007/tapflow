@@ -203,7 +203,7 @@ export class DatabaseAgentToolRunnerRepository implements AgentToolRunnerReposit
             created_by,
             updated_at
           )
-          VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, 'credit_required', $6, $7::jsonb, $7::jsonb, $8::jsonb, $9::uuid, now())
+          VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8::jsonb, $8::jsonb, $9::jsonb, $10::uuid, now())
           RETURNING id::text AS id
         `,
         [

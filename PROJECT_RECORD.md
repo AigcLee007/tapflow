@@ -1,7 +1,17 @@
 ﻿# Project Record
 
-Last updated: 2026-07-02
+Last updated: 2026-07-03
 Maintainers: project team + Codex sessions
+
+## 2026-07-03 - Agent Executor Tool Call SQL Bind Fix
+
+- fixed a production Agent executor failure in the durable `agent_tool_calls` insert path where the SQL placeholder count no longer matched the bound parameter array during approved tool execution.
+- restored correct persistence of `permission_level`, `status`, `arguments_json`, `input_json`, `cost_estimate_json`, and `created_by` for executor-created tool calls, which unblocks `approveToolCall` from failing with Postgres `08P01` bind errors.
+- added a repository-level regression test that validates SQL placeholder counts against the bound parameter array so future changes to the durable Agent tool-call insert cannot silently reintroduce this mismatch.
+- validation:
+  - `npm run test --workspace @aigc-flow/api -- agent-tool-runner.test.ts` passed on 2026-07-03: 1 test file, 18 tests.
+  - `npm run test --workspace @aigc-flow/api` passed on 2026-07-03: 25 test files passed, 139 tests passed, 16 files skipped by existing suite guards.
+  - `npm run build` passed on 2026-07-03 with existing Browserslist, chunk-size, and dynamic-import warnings only.
 
 ## 2026-07-02 - Agent Panel Handdrawn V1
 
