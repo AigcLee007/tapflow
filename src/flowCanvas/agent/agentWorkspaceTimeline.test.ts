@@ -9,7 +9,7 @@ describe("buildAgentWorkspaceTimeline", () => {
         { id: "status-1", label: "Understanding request", state: "active", detail: "Reading canvas context." },
       ],
       error: null,
-      messages: [{ id: "user-1", role: "user", content: "生成一张动物运动会海报" }],
+      messages: [{ id: "user-1", role: "user", content: "生成一张运动会海报" }],
       toolItems: [
         {
           assetRefs: [],
@@ -27,7 +27,8 @@ describe("buildAgentWorkspaceTimeline", () => {
     expect(timeline.map((item) => item.kind)).toEqual(["message", "status", "tool"]);
     expect(timeline[0]).toMatchObject({ kind: "message", role: "user" });
     expect(timeline[1]).toMatchObject({ kind: "status", title: "正在理解需求" });
-    expect(timeline[2]).toMatchObject({ kind: "tool", toolCallKey: "tool-1" });
+    expect(timeline[2]).toMatchObject({ kind: "tool", summary: "执行前需要确认模型、参数和积分。", toolCallKey: "tool-1" });
+    expect(JSON.stringify(timeline)).not.toMatch(/[锟閸檤]/);
   });
 
   it("converts successful tool assets into a result item", () => {
@@ -38,7 +39,7 @@ describe("buildAgentWorkspaceTimeline", () => {
       toolItems: [
         {
           activeAssetRefId: "ref-1",
-          assetRefs: [{ assetId: "asset-1", kind: "image", label: "结果 1", promptSummary: "", refId: "ref-1" }],
+          assetRefs: [{ assetId: "asset-1", kind: "image", label: "生成图 1", promptSummary: "", refId: "ref-1" }],
           placedNodeIds: ["node-1"],
           status: "succeeded",
           title: "Image generation",
@@ -50,7 +51,7 @@ describe("buildAgentWorkspaceTimeline", () => {
 
     expect(timeline).toHaveLength(1);
     expect(timeline[0]).toMatchObject({
-      assets: [{ assetId: "asset-1", label: "结果 1", refId: "ref-1" }],
+      assets: [{ assetId: "asset-1", label: "生成图 1", refId: "ref-1" }],
       kind: "result",
       placedNodeIds: ["node-1"],
     });
@@ -65,6 +66,6 @@ describe("buildAgentWorkspaceTimeline", () => {
     });
 
     expect(JSON.stringify(timeline)).not.toContain("workflow_run_linked");
-    expect(timeline[0]).toMatchObject({ kind: "status", title: "正在等待模型返回结果" });
+    expect(timeline[0]).toMatchObject({ kind: "status", title: "正在等待模型结果" });
   });
 });

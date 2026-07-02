@@ -58,17 +58,17 @@ describe("reduceCanvasAgentWorkspaceState", () => {
 
   it("uses short user-facing labels for every workspace state", () => {
     expect(CANVAS_AGENT_STATE_LABELS).toMatchObject({
-      applying_canvas_ops: "Writing canvas changes",
-      asset_ready: "Result ready",
-      awaiting_canvas_confirm: "Waiting for canvas approval",
-      awaiting_credit_confirm: "Waiting for credit approval",
-      failed: "Needs attention",
-      idle: "Ready",
-      plan_ready: "Waiting for approval",
-      reading_context: "Reading canvas",
-      replay: "Viewing history",
-      running_workflow: "Generating",
-      thinking: "Planning",
+      applying_canvas_ops: "更新画布",
+      asset_ready: "结果已生成",
+      awaiting_canvas_confirm: "确认画布操作",
+      awaiting_credit_confirm: "确认积分",
+      failed: "出错",
+      idle: "就绪",
+      plan_ready: "等待确认",
+      reading_context: "读取画布",
+      replay: "查看历史",
+      running_workflow: "生成中",
+      thinking: "规划中",
     });
   });
 });

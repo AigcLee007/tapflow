@@ -15,8 +15,17 @@ describe("CanvasAgentConversationView", () => {
     );
 
     expect(screen.getByTestId("agent-conversation-empty-state")).toBeTruthy();
-    expect(screen.getByText("Pick nodes or describe the next canvas step.")).toBeTruthy();
+    expect(screen.getByText("告诉 Agent 你想在画布上完成什么。")).toBeTruthy();
     expect(screen.queryByText("One canvas, every production step")).toBeNull();
+    expect(document.body.textContent).not.toMatch(/[锟閸檤]/);
+  });
+
+  it("keeps the chat stream compact and free of raw replay debug blocks", () => {
+    render(<CanvasAgentConversationView busy={false} items={[]} />);
+
+    expect(screen.getByText("告诉 Agent 你想在画布上完成什么。")).toBeTruthy();
+    expect(screen.queryByText("Replay Events")).toBeNull();
+    expect(document.body.textContent).not.toMatch(/[锟閸檤]/);
   });
 
   it("renders timeline messages and statuses", () => {
@@ -41,13 +50,13 @@ describe("CanvasAgentConversationView", () => {
     render(
       <CanvasAgentConversationView
         busy
-        busyLabel="Generation submitted"
+        busyLabel="生成任务已提交"
         items={[{ content: "Continue generating", id: "m1", kind: "message", role: "user" }]}
         onApprove={vi.fn()}
         onCancel={vi.fn()}
       />,
     );
 
-    expect(screen.getByText("Generation submitted")).toBeTruthy();
+    expect(screen.getByText("生成任务已提交")).toBeTruthy();
   });
 });

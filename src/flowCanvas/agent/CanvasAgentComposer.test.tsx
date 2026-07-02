@@ -138,7 +138,7 @@ describe("CanvasAgentComposer", () => {
       />,
     );
 
-    expect(screen.getByText("Generation submitted")).toBeTruthy();
+    expect(screen.getByText("生成任务已提交")).toBeTruthy();
     expect((screen.getByPlaceholderText(PROMPT_PLACEHOLDER) as HTMLTextAreaElement).value).toBe(
       "Keep my existing prompt",
     );

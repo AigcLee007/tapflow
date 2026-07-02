@@ -22,6 +22,7 @@ export function CanvasAgentTimelineItem(props: {
 
   if (item.kind === "message") {
     const isUser = item.role === "user";
+    const roleLabel = isUser ? "你" : item.role === "assistant" ? "Agent" : "系统";
     return (
       <div
         style={{
@@ -29,14 +30,15 @@ export function CanvasAgentTimelineItem(props: {
           borderRadius: 18,
           color: isUser ? "#09090f" : "#f8fafc",
           display: "grid",
-          gap: 8,
+          gap: 6,
           justifySelf: isUser ? "end" : "stretch",
           lineHeight: 1.6,
           maxWidth: isUser ? "88%" : "100%",
-          padding: "12px 14px",
+          padding: "10px 14px 12px",
           whiteSpace: "pre-wrap",
         }}
       >
+        <div style={{ fontSize: 11, fontWeight: 800, opacity: 0.68 }}>{roleLabel}</div>
         <div style={{ fontSize: 13 }}>{item.content}</div>
       </div>
     );
@@ -46,15 +48,17 @@ export function CanvasAgentTimelineItem(props: {
     return (
       <div
         style={{
-          background: "rgba(59,130,246,0.1)",
-          border: "1px solid rgba(96,165,250,0.22)",
+          background: item.state === "failed" ? "rgba(127,29,29,0.22)" : "rgba(59,130,246,0.1)",
+          border: `1px solid ${item.state === "failed" ? "rgba(248,113,113,0.26)" : "rgba(96,165,250,0.22)"}`,
           borderRadius: 16,
           display: "grid",
           gap: 4,
           padding: "10px 12px",
         }}
       >
-        <div style={{ color: "#dbeafe", fontSize: 12, fontWeight: 800 }}>{item.title}</div>
+        <div style={{ color: item.state === "failed" ? "#fecaca" : "#dbeafe", fontSize: 12, fontWeight: 800 }}>
+          {item.title}
+        </div>
         {item.detail ? (
           <div style={{ color: "rgba(226,232,240,0.74)", fontSize: 12, lineHeight: 1.5 }}>{item.detail}</div>
         ) : null}

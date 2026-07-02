@@ -34,10 +34,10 @@ export function CanvasAgentConversationView(props: {
           }}
         >
           <div style={{ color: "#f8fafc", fontSize: 13, fontWeight: 800 }}>
-            Pick nodes or describe the next canvas step.
+            告诉 Agent 你想在画布上完成什么。
           </div>
           <div style={{ color: "rgba(226,232,240,0.62)", fontSize: 12, lineHeight: 1.6 }}>
-            Agent reads the current selection, proposes canvas edits, and waits before applying changes.
+            可以选中节点、上传参考图，或直接描述下一步。
           </div>
         </section>
       </div>
@@ -58,7 +58,7 @@ export function CanvasAgentConversationView(props: {
       />
       {props.busy ? (
         <div style={{ color: "rgba(148,163,184,0.9)", fontSize: 12, paddingBottom: 4 }}>
-          {props.busyLabel ?? "Agent is working on this turn..."}
+          {props.busyLabel ?? "Agent 正在处理这一轮..."}
         </div>
       ) : null}
     </div>
