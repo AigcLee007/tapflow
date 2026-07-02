@@ -1,5 +1,5 @@
 import React from "react";
-import { History, PanelRightClose, Plug, Plus, ScrollText, Sparkles } from "lucide-react";
+import { History, MessageCircle, PanelRightClose, Plus, ScrollText, Sparkles } from "lucide-react";
 
 import type { AgentWorkspaceTab } from "./CanvasAgentWorkspaceTypes";
 import type { CanvasAgentWorkspaceState } from "./canvasAgentStateMachine";
@@ -7,10 +7,17 @@ import { CANVAS_AGENT_STATE_LABELS } from "./canvasAgentStateMachine";
 
 const CANVAS_TOP_CHROME_CLEARANCE = 16;
 
-const utilityItems: Array<{ icon: React.ElementType; id: Exclude<AgentWorkspaceTab, "chat">; label: string }> = [
-  { icon: History, id: "history", label: "History" },
-  { icon: Plug, id: "connections", label: "Connections" },
-  { icon: ScrollText, id: "logs", label: "Logs" },
+const toolbarItems: Array<{
+  icon: React.ElementType;
+  label: string;
+  onClickKind: "collapse" | "new" | "tab";
+  tab?: AgentWorkspaceTab;
+}> = [
+  { icon: ScrollText, label: "日志", onClickKind: "tab", tab: "logs" },
+  { icon: MessageCircle, label: "对话", onClickKind: "tab", tab: "chat" },
+  { icon: History, label: "历史", onClickKind: "tab", tab: "history" },
+  { icon: Plus, label: "新对话", onClickKind: "new" },
+  { icon: PanelRightClose, label: "收起 Agent", onClickKind: "collapse" },
 ];
 
 export function CanvasAgentWorkspaceShell(props: {
@@ -92,63 +99,53 @@ export function CanvasAgentWorkspaceShell(props: {
           </div>
         </div>
 
-        <div style={{ alignItems: "center", display: "flex", flex: "0 0 auto", gap: 8 }}>
-          <button aria-label="New chat" onClick={props.onNewChat} style={iconButtonStyle()} type="button">
-            <Plus size={16} />
-          </button>
-          <button aria-label="Collapse Agent" onClick={props.onCollapse} style={iconButtonStyle()} type="button">
-            <PanelRightClose size={16} />
-          </button>
-        </div>
-      </header>
-
-      <div style={{ display: "grid", gridTemplateRows: "auto 1fr", minHeight: 0, overflow: "hidden" }}>
         <div
-          data-testid="agent-shell-utility-nav"
-          style={{ alignItems: "center", display: "flex", gap: 8, padding: "0 16px 10px" }}
+          data-testid="agent-shell-toolbar"
+          style={{ alignItems: "center", display: "flex", flex: "0 0 auto", gap: 8 }}
         >
-          {utilityItems.map((item) => {
-            const active = props.activeTab === item.id;
+          {toolbarItems.map((item) => {
             const Icon = item.icon;
+            const active = item.tab ? props.activeTab === item.tab : false;
             return (
               <button
                 aria-label={item.label}
-                key={item.id}
-                onClick={() => props.onChangeTab(active ? "chat" : item.id)}
-                style={{
-                  alignItems: "center",
-                  background: active ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.035)",
-                  border: `1px solid ${active ? "rgba(255,255,255,0.16)" : "rgba(255,255,255,0.07)"}`,
-                  borderRadius: 13,
-                  color: active ? "#f8fafc" : "rgba(226,232,240,0.7)",
-                  cursor: "pointer",
-                  display: "inline-flex",
-                  height: 30,
-                  justifyContent: "center",
-                  width: 34,
+                key={item.label}
+                onClick={() => {
+                  if (item.onClickKind === "collapse") {
+                    props.onCollapse();
+                    return;
+                  }
+                  if (item.onClickKind === "new") {
+                    props.onNewChat();
+                    return;
+                  }
+                  if (item.tab) {
+                    props.onChangeTab(item.tab);
+                  }
                 }}
+                style={iconButtonStyle(active)}
                 title={item.label}
                 type="button"
               >
-                <Icon size={15} />
+                <Icon size={16} />
               </button>
             );
           })}
         </div>
+      </header>
 
-        <div data-testid="agent-shell-composer-dock" style={{ minHeight: 0, overflow: "hidden" }}>
-          {props.children}
-        </div>
+      <div data-testid="agent-shell-composer-dock" style={{ minHeight: 0, overflow: "hidden" }}>
+        {props.children}
       </div>
     </aside>
   );
 }
 
-function iconButtonStyle(): React.CSSProperties {
+function iconButtonStyle(active = false): React.CSSProperties {
   return {
     alignItems: "center",
-    background: "rgba(255,255,255,0.04)",
-    border: "1px solid rgba(255,255,255,0.08)",
+    background: active ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.04)",
+    border: `1px solid ${active ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.08)"}`,
     borderRadius: 16,
     color: "#f8fafc",
     cursor: "pointer",

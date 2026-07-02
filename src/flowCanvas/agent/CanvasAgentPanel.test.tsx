@@ -139,7 +139,14 @@ describe("CanvasAgentPanel", () => {
     expect(screen.queryByRole("tab", { name: "对话" })).toBeNull();
     expect(screen.queryByRole("tab", { name: "连接配置" })).toBeNull();
     expect(screen.queryByRole("tab", { name: "日志" })).toBeNull();
-    expect(screen.getByTestId("agent-shell-utility-nav")).toBeTruthy();
+    const toolbar = screen.getByTestId("agent-shell-toolbar");
+    expect(Array.from(toolbar.querySelectorAll("button")).map((button) => button.getAttribute("aria-label"))).toEqual([
+      "日志",
+      "对话",
+      "历史",
+      "新对话",
+      "收起 Agent",
+    ]);
     expect(screen.getByTestId("agent-panel-conversation")).toBeTruthy();
     expect(screen.getByTestId("agent-composer-dock")).toBeTruthy();
     expect(screen.queryByText("Classic Agent")).toBeNull();
