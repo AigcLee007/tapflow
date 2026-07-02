@@ -375,6 +375,7 @@ export class AgentExecutorService {
       );
     }
     await this.options.referenceAssetRepository?.validateImageReferences({
+      continuationContext: input.continuationContext,
       projectId: sessionScope.projectId,
       referenceContext: input.referenceContext,
       tenantId: context.tenantId,
@@ -599,6 +600,7 @@ export class AgentExecutorService {
       tenantId: context.tenantId,
     });
     await this.options.referenceAssetRepository?.validateImageReferences({
+      continuationContext: pending.continuationContext ?? null,
       projectId: sessionScope.projectId,
       referenceContext: pending.referenceContext,
       tenantId: context.tenantId,

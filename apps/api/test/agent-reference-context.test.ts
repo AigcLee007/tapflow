@@ -104,6 +104,7 @@ describe("AgentReferenceAssetRepository", () => {
   const assetFile1 = "00000000-0000-0000-0000-000000000102";
   const assetProcessing1 = "00000000-0000-0000-0000-000000000103";
   const assetOtherProject1 = "00000000-0000-0000-0000-000000000104";
+  const assetContinuation1 = "00000000-0000-0000-0000-000000000105";
   const project1 = "00000000-0000-0000-0000-000000000201";
   const project2 = "00000000-0000-0000-0000-000000000202";
 
@@ -144,6 +145,42 @@ describe("AgentReferenceAssetRepository", () => {
     expect(query).toHaveBeenCalledWith(expect.stringContaining("FROM assets"), ["tenant-1", [assetUpload1]]);
   });
 
+  it("validates continuation asset ids together with current references", async () => {
+    const { query, repository } = createRepository([
+      {
+        id: assetUpload1,
+        kind: "image",
+        project_id: project1,
+        status: "available",
+      },
+      {
+        id: assetContinuation1,
+        kind: "image",
+        project_id: project1,
+        status: "available",
+      },
+    ]);
+
+    await expect(repository.validateImageReferences({
+      continuationContext: {
+        action: "continue-edit",
+        assetId: assetContinuation1,
+        assetIds: [assetContinuation1, assetUpload1],
+        assetLabel: "Continuation",
+        assetRefId: "round-1-image-1",
+      },
+      projectId: project1,
+      referenceContext: {
+        items: [
+          { assetId: assetUpload1, kind: "upload", label: "Upload 1", refId: "upload-1" },
+        ],
+      },
+      tenantId: "tenant-1",
+    })).resolves.toBeUndefined();
+
+    expect(query).toHaveBeenCalledWith(expect.stringContaining("FROM assets"), ["tenant-1", [assetUpload1, assetContinuation1]]);
+  });
+
   it("rejects malformed asset ids without querying the pool", async () => {
     const { query, repository } = createRepository([]);
 
@@ -160,6 +197,100 @@ describe("AgentReferenceAssetRepository", () => {
     });
 
     expect(query).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed continuation asset ids without querying the pool", async () => {
+    const { query, repository } = createRepository([]);
+
+    await expect(repository.validateImageReferences({
+      continuationContext: {
+        action: "make-variant",
+        assetId: "asset-continuation-1",
+        assetLabel: "Continuation",
+        assetRefId: "round-1-image-1",
+      },
+      tenantId: "tenant-1",
+    })).rejects.toMatchObject({
+      code: "AGENT_REFERENCE_INVALID_ASSET_ID",
+      statusCode: 400,
+    });
+
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it("rejects non-image continuation assets", async () => {
+    const { repository } = createRepository([
+      {
+        id: assetFile1,
+        kind: "file",
+        project_id: project1,
+        status: "available",
+      },
+    ]);
+
+    await expect(repository.validateImageReferences({
+      continuationContext: {
+        action: "continue-edit",
+        assetId: assetFile1,
+        assetLabel: "File",
+        assetRefId: "round-1-image-1",
+      },
+      projectId: project1,
+      tenantId: "tenant-1",
+    })).rejects.toMatchObject({
+      code: "AGENT_REFERENCE_INVALID_KIND",
+      statusCode: 400,
+    });
+  });
+
+  it("rejects unavailable continuation assets", async () => {
+    const { repository } = createRepository([
+      {
+        id: assetProcessing1,
+        kind: "image",
+        project_id: project1,
+        status: "processing",
+      },
+    ]);
+
+    await expect(repository.validateImageReferences({
+      continuationContext: {
+        action: "continue-edit",
+        assetId: assetProcessing1,
+        assetLabel: "Processing",
+        assetRefId: "round-1-image-1",
+      },
+      projectId: project1,
+      tenantId: "tenant-1",
+    })).rejects.toMatchObject({
+      code: "AGENT_REFERENCE_UNAVAILABLE",
+      statusCode: 400,
+    });
+  });
+
+  it("rejects continuation assets tied to a different project", async () => {
+    const { repository } = createRepository([
+      {
+        id: assetOtherProject1,
+        kind: "image",
+        project_id: project2,
+        status: "available",
+      },
+    ]);
+
+    await expect(repository.validateImageReferences({
+      continuationContext: {
+        action: "continue-edit",
+        assetId: assetOtherProject1,
+        assetLabel: "Other Project",
+        assetRefId: "round-1-image-1",
+      },
+      projectId: project1,
+      tenantId: "tenant-1",
+    })).rejects.toMatchObject({
+      code: "AGENT_REFERENCE_PROJECT_MISMATCH",
+      statusCode: 400,
+    });
   });
 
   it("rejects missing assets with a reference error", async () => {

@@ -34,11 +34,15 @@ export class AgentReferenceAssetRepository {
   }
 
   async validateImageReferences(input: {
+    continuationContext?: AgentReferenceResolverInput["continuationContext"];
     projectId?: string | null;
     referenceContext?: AgentReferenceContextInput;
     tenantId: string;
   }): Promise<void> {
-    const assetIds = dedupe((input.referenceContext?.items ?? []).map((item) => item.assetId));
+    const assetIds = dedupe([
+      ...(input.referenceContext?.items ?? []).map((item) => item.assetId),
+      ...collectContinuationAssetIds(input.continuationContext),
+    ]);
     if (assetIds.length === 0) return;
     const malformedAssetId = assetIds.find((assetId) => !isUuid(assetId));
     if (malformedAssetId) {

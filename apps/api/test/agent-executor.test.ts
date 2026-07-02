@@ -407,6 +407,7 @@ describe("AgentExecutorService", () => {
       tenantId: "tenant-1",
     });
     expect(referenceAssetRepository.validateImageReferences).toHaveBeenCalledWith({
+      continuationContext: undefined,
       projectId: "server-project-1",
       referenceContext: {
         items: [
@@ -453,6 +454,47 @@ describe("AgentExecutorService", () => {
       statusCode: 400,
     });
     expect(referenceAssetRepository.validateImageReferences).not.toHaveBeenCalled();
+    expect(generateText).not.toHaveBeenCalled();
+    expect(toolRunner.runToolCall).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed continuation asset ids before model execution", async () => {
+    const pool = { query: vi.fn() };
+    const repository = createExecutorRepository({
+      readSessionScope: vi.fn().mockResolvedValue({ projectId: "server-project-1" }),
+    });
+    const generateText = vi.fn();
+    const toolRunner = {
+      runToolCall: vi.fn(),
+    };
+    const executor = new AgentExecutorService({
+      costEstimator: {
+        estimateGenerateImage: vi.fn(),
+        estimateGenerateImageBatch: vi.fn(),
+      },
+      referenceAssetRepository: new AgentReferenceAssetRepository({ pool: pool as never }),
+      repository,
+      textRuntime: { generateText },
+      toolRunner,
+    });
+
+    await expect(executor.executeTurn(context, {
+      continuationContext: {
+        action: "continue-edit",
+        assetId: "asset-continuation-1",
+        assetLabel: "Continuation",
+        assetRefId: "round-1-image-1",
+      },
+      prompt: "Continue editing this result",
+      sessionId: "session-1",
+      snapshot: { ...snapshot, projectId: null },
+    })).rejects.toMatchObject({
+      code: "AGENT_REFERENCE_INVALID_ASSET_ID",
+      statusCode: 400,
+    });
+
+    expect(pool.query).not.toHaveBeenCalled();
+    expect(repository.createUserMessage).not.toHaveBeenCalled();
     expect(generateText).not.toHaveBeenCalled();
     expect(toolRunner.runToolCall).not.toHaveBeenCalled();
   });
@@ -889,12 +931,78 @@ describe("AgentExecutorService", () => {
       tenantId: "tenant-1",
     });
     expect(referenceAssetRepository.validateImageReferences).toHaveBeenCalledWith({
+      continuationContext: null,
       projectId: "server-project-1",
       referenceContext: {
         items: [
           { assetId: "asset-upload-1", kind: "upload", label: "Upload 1", refId: "upload-1" },
         ],
       },
+      tenantId: "tenant-1",
+    });
+    expect(referenceAssetRepository.validateImageReferences.mock.invocationCallOrder[0])
+      .toBeLessThan(toolRunner.runToolCall.mock.invocationCallOrder[0]);
+  });
+
+  it("revalidates pending approval continuation references before running the tool", async () => {
+    const referenceAssetRepository = {
+      validateImageReferences: vi.fn().mockResolvedValue(undefined),
+    };
+    const toolRunner = {
+      runToolCall: vi.fn().mockResolvedValue({
+        assetRefs: [],
+        status: "succeeded",
+        toolCallId: "tool-db-1",
+        workflowRunIds: [],
+        workflowRuns: [],
+      }),
+    };
+    const continuationContext = {
+      action: "continue-edit" as const,
+      assetId: "00000000-0000-0000-0000-000000000105",
+      assetLabel: "Continuation",
+      assetRefId: "round-1-image-1",
+    };
+    const repository = createExecutorRepository({
+      readPendingApproval: vi.fn().mockResolvedValue({
+        continuationContext,
+        costEstimate: { totalCredits: 4 },
+        pendingToolCall: {
+          arguments: {
+            prompt: "continue from previous",
+            referenceRefs: ["round-1-image-1"],
+            size: "1K",
+          },
+          toolCallKey: "tool-call-1",
+          toolName: "generate_image",
+        },
+        snapshot,
+      }),
+      readSessionScope: vi.fn().mockResolvedValue({ projectId: "server-project-1" }),
+    });
+    const executor = new AgentExecutorService({
+      costEstimator: {
+        estimateGenerateImage: vi.fn().mockResolvedValue({ totalCredits: 4 }),
+        estimateGenerateImageBatch: vi.fn(),
+      },
+      referenceAssetRepository,
+      repository,
+      textRuntime: {
+        generateText: vi.fn(),
+      },
+      toolRunner,
+    });
+
+    await executor.approveToolCall(context, {
+      sessionId: "session-1",
+      toolCallKey: "tool-call-1",
+      turnId: "turn-1",
+    });
+
+    expect(referenceAssetRepository.validateImageReferences).toHaveBeenCalledWith({
+      continuationContext,
+      projectId: "server-project-1",
+      referenceContext: undefined,
       tenantId: "tenant-1",
     });
     expect(referenceAssetRepository.validateImageReferences.mock.invocationCallOrder[0])
