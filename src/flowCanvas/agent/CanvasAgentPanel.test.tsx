@@ -16,6 +16,7 @@ const mockListAgentSessions = vi.fn();
 const mockOpenAgentSessionEventStream = vi.fn();
 const mockOpenAgentTurnStream = vi.fn();
 const mockReadAgentSseStream = vi.fn();
+const mockUploadAssetFile = vi.fn();
 
 vi.mock("./canvasAgentApi", () => ({
   approveAgentToolCallStream: (...args: unknown[]) => mockApproveAgentToolCallStream(...args),
@@ -38,6 +39,10 @@ vi.mock("./canvasAgentToolEvents", async () => {
     readAgentToolEventStream: vi.fn(),
   };
 });
+
+vi.mock("../../assets/assetApi", () => ({
+  uploadAssetFile: (...args: unknown[]) => mockUploadAssetFile(...args),
+}));
 
 function buildSessionSummary() {
   return {
@@ -69,6 +74,7 @@ describe("CanvasAgentPanel", () => {
     mockOpenAgentSessionEventStream.mockReset();
     mockOpenAgentTurnStream.mockReset();
     mockReadAgentSseStream.mockReset();
+    mockUploadAssetFile.mockReset();
 
     mockCreateAgentSession.mockResolvedValue({ id: "session-1" });
     mockCreateAgentTurn.mockResolvedValue({
@@ -116,6 +122,11 @@ describe("CanvasAgentPanel", () => {
     mockListAgentSessions.mockResolvedValue([]);
     mockOpenAgentSessionEventStream.mockResolvedValue({ ok: true, status: 200 });
     mockOpenAgentTurnStream.mockResolvedValue({ ok: false, status: 503 });
+    mockUploadAssetFile.mockResolvedValue({
+      id: "asset-upload-1",
+      previewUrl: "https://signed.example/ref",
+      title: "ref.png",
+    });
   });
 
   it("renders the new workspace shell instead of old debug labels", async () => {
@@ -154,6 +165,59 @@ describe("CanvasAgentPanel", () => {
         }),
       );
     });
+  });
+
+  it("merges uploaded references into the sent referenceContext and clears them after send", async () => {
+    useFlowCanvasStore.getState().setBackendFlowBinding({
+      backendFlowId: "flow-1",
+      backendProjectId: "project-1",
+    });
+    mockCreateAgentTurn.mockResolvedValue({
+      approvalRequired: false,
+      evidence: [],
+      plan: [],
+      proposedOps: [],
+      reply: "ok",
+      sessionId: "session-1",
+      turnId: "turn-1",
+    });
+
+    const { container } = renderPanel();
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement | null;
+    expect(input).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.change(input!, {
+        target: {
+          files: [new File(["image"], "ref.png", { type: "image/png" })],
+        },
+      });
+    });
+
+    expect(await screen.findByText("参考图 1")).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText("Agent prompt"), { target: { value: "Use ref" } });
+      fireEvent.click(screen.getByRole("button", { name: "发送" }));
+    });
+
+    await waitFor(() => {
+      expect(mockCreateAgentTurn).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          referenceContext: {
+            items: [expect.objectContaining({ assetId: "asset-upload-1", refId: "upload-1" })],
+          },
+        }),
+      );
+    });
+    expect(JSON.stringify(mockCreateAgentTurn.mock.calls.at(-1)?.[1])).not.toMatch(/previewUrl|signed\.example/i);
+    expect(mockUploadAssetFile).toHaveBeenCalledWith({
+      file: expect.objectContaining({ name: "ref.png" }),
+      kind: "image",
+      projectId: "project-1",
+    });
+    expect(screen.queryByText("参考图 1")).toBeNull();
   });
 
   it("shows a server plan and calls confirm handler", async () => {

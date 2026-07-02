@@ -15,6 +15,7 @@ import {
   type AgentContinuationContext,
   type AgentSessionEvent,
 } from "./canvasAgentApi";
+import type { AgentReferenceContext } from "./agentReferenceContext";
 import type { CanvasAgentActivityItem } from "./CanvasAgentActivityTimeline";
 import { buildReplayMessages, buildToolTimelineFromSessionEvents, deriveReplaySessionStatus } from "./agentReplayState";
 import type { AgentImageRunSettingsSelection } from "./agentRunSettings";
@@ -45,6 +46,10 @@ type PendingContinuation = AgentContinuationContext;
 
 type UseCanvasAgentSessionOptions = {
   onServerDraftApplied?: () => void | Promise<void>;
+};
+
+type SendPromptOptions = {
+  referenceContext?: AgentReferenceContext;
 };
 
 type ApplyResult = {
@@ -450,7 +455,7 @@ export function useCanvasAgentSession(options: UseCanvasAgentSessionOptions = {}
     setMessages((current) => buildReplayMessages(current, events));
   }, []);
 
-  const sendPrompt = useCallback(async (prompt: string) => {
+  const sendPrompt = useCallback(async (prompt: string, options?: SendPromptOptions) => {
     const trimmed = prompt.trim();
     if (!trimmed) return;
     const allowOfflineFallback = import.meta.env.VITE_AGENT_OFFLINE_FALLBACK === "true";
@@ -542,6 +547,7 @@ export function useCanvasAgentSession(options: UseCanvasAgentSessionOptions = {}
           const response = await executeAgentTurnStream(resolvedSessionId, {
             continuationContext: activeContinuation,
             prompt: trimmed,
+            referenceContext: options?.referenceContext,
             snapshot,
           });
           if (response.ok) {
@@ -568,6 +574,7 @@ export function useCanvasAgentSession(options: UseCanvasAgentSessionOptions = {}
           const response = await openAgentTurnStream(resolvedSessionId, {
             continuationContext: activeContinuation,
             prompt: trimmed,
+            referenceContext: options?.referenceContext,
             snapshot,
           });
           if (!response.ok) {
@@ -606,6 +613,7 @@ export function useCanvasAgentSession(options: UseCanvasAgentSessionOptions = {}
           const plan = await createAgentTurn(resolvedSessionId, {
             continuationContext: activeContinuation,
             prompt: trimmed,
+            referenceContext: options?.referenceContext,
             snapshot,
           });
           applyPlan(plan);

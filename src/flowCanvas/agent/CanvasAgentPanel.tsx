@@ -1,5 +1,6 @@
 import React from "react";
 
+import { AGENT_REFERENCE_LIMIT, buildAgentReferenceContext } from "./agentReferenceContext";
 import { buildAgentArtifactRefChips } from "./agentArtifactRefs";
 import { buildAgentWorkspaceTimeline } from "./agentWorkspaceTimeline";
 import { OPEN_AGENT_SESSION_EVENT, type OpenAgentSessionDetail } from "./agentSessionEvents";
@@ -77,6 +78,7 @@ function buildSelectedCanvasReferenceChips(): AgentReferenceChip[] {
         kind: "canvas_node",
         label,
         nodeId: node.id,
+        refId: kind === "image" && typeof node.data.assetId === "string" ? `canvas-${imageIndex}` : undefined,
       } satisfies AgentReferenceChip;
     });
 }
@@ -94,6 +96,8 @@ export function CanvasAgentPanel(props: {
   });
   const workspace = useAgentWorkspacePanel();
   const [composerDraft, setComposerDraft] = React.useState("");
+  const [uploadedReferences, setUploadedReferences] = React.useState<AgentReferenceChip[]>([]);
+  const [uploadError, setUploadError] = React.useState<string | null>(null);
   const backendFlowId = useFlowCanvasStore((state) => state.backendFlowId);
   const backendProjectId = useFlowCanvasStore((state) => state.backendProjectId);
   const selectedNodeCount = useFlowCanvasStore((state) => state.selectedNodeCount);
@@ -189,13 +193,20 @@ export function CanvasAgentPanel(props: {
       refId,
     }));
 
-    return buildAgentArtifactRefChips(refs).map((ref, index) => ({
+    const artifactChips = buildAgentArtifactRefChips(refs);
+    return artifactChips.map((ref, index) => ({
+      assetId: refs[index]?.assetId,
       id: `continuation-${ref.refId}-${index}`,
       kind: "artifact" as const,
       label: `上一轮结果 ${index + 1}`,
       refId: ref.refId,
     }));
   }, [activeContinuation]);
+
+  const composerReferenceChips = React.useMemo(
+    () => [...selectedReferenceChips, ...continuationChips, ...uploadedReferences],
+    [continuationChips, selectedReferenceChips, uploadedReferences],
+  );
 
   const timelineItems = React.useMemo(
     () =>
@@ -255,6 +266,10 @@ export function CanvasAgentPanel(props: {
       onCollapse={props.onClose}
       onNewChat={() => {
         sessionActions.setSessionId?.(null);
+        sessionActions.setPendingContinuation?.(null);
+        setUploadedReferences([]);
+        setUploadError(null);
+        setComposerDraft("");
         workspace.setActiveTab("chat");
       }}
       workspaceState={sessionActions.workspaceState}
@@ -328,15 +343,35 @@ export function CanvasAgentPanel(props: {
             </div>
           ) : null}
 
+          {uploadError ? (
+            <div role="alert" style={{ color: "#fecaca", fontSize: 12, padding: "0 16px 8px" }}>
+              {uploadError}
+            </div>
+          ) : null}
+
           <CanvasAgentComposer
             draftValue={composerDraft}
             models={modelOptions}
             onChangeDraft={setComposerDraft}
+            onRemoveReference={(chip) => {
+              setUploadedReferences((refs) => refs.filter((item) => item.id !== chip.id));
+            }}
             onSend={async (prompt) => {
               setComposerDraft("");
-              await sessionActions.sendPrompt(prompt);
+              const referenceContext = buildAgentReferenceContext({
+                chips: composerReferenceChips,
+                continuationContext: activeContinuation,
+              });
+              await sessionActions.sendPrompt(prompt, { referenceContext });
+              setUploadedReferences([]);
             }}
-            referenceChips={[...selectedReferenceChips, ...continuationChips]}
+            onUploadError={setUploadError}
+            onUploadReferences={(chips) => {
+              setUploadError(null);
+              setUploadedReferences((refs) => [...refs, ...chips].slice(0, AGENT_REFERENCE_LIMIT));
+            }}
+            projectId={backendProjectId}
+            referenceChips={composerReferenceChips}
             workspaceState={sessionActions.workspaceState}
           />
         </div>
@@ -347,6 +382,10 @@ export function CanvasAgentPanel(props: {
           activeSessionId={sessionActions.sessionId}
           onNewChat={() => {
             sessionActions.setSessionId?.(null);
+            sessionActions.setPendingContinuation?.(null);
+            setUploadedReferences([]);
+            setUploadError(null);
+            setComposerDraft("");
             workspace.setActiveTab("chat");
           }}
           onOpenSession={(sessionId) => {

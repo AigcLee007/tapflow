@@ -549,6 +549,33 @@ describe("useCanvasAgentSession", () => {
     expect(result.current.pendingContinuation).toBeNull();
   });
 
+  it("passes referenceContext to executor stream when sending a prompt", async () => {
+    mockCreateAgentSession.mockResolvedValue({ id: "session-1" });
+    mockExecuteAgentTurnStream.mockResolvedValue({ ok: true, status: 200 });
+    mockReadAgentToolEventStream.mockImplementation(async (_response, onEvent) => {
+      onEvent({ finalText: "Done.", turnId: "turn-1", type: "turn_completed" });
+    });
+
+    const { result } = renderHook(() => useCanvasAgentSession());
+
+    await act(async () => {
+      await result.current.sendPrompt("Use reference", {
+        referenceContext: {
+          items: [{ assetId: "asset-upload-1", kind: "upload", label: "参考图 1", refId: "upload-1" }],
+        },
+      });
+    });
+
+    expect(mockExecuteAgentTurnStream).toHaveBeenCalledWith(
+      "session-1",
+      expect.objectContaining({
+        referenceContext: {
+          items: [expect.objectContaining({ assetId: "asset-upload-1", refId: "upload-1" })],
+        },
+      }),
+    );
+  });
+
   it("updates the active asset ref for a multi-result tool before continuation", async () => {
     const { result } = renderHook(() => useCanvasAgentSession());
 
