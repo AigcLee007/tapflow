@@ -829,4 +829,46 @@ describe("AgentToolRunner", () => {
       }),
     }));
   });
+
+  it("validates every batch child ref before creating child tasks", async () => {
+    const repository = {
+      createTask: vi.fn().mockResolvedValue({ id: "task-should-not-exist" }),
+      createToolCall: vi.fn().mockResolvedValue({ id: "tool-db-batch-invalid-ref" }),
+      updateTask: vi.fn().mockResolvedValue(undefined),
+      updateToolCall: vi.fn().mockResolvedValue(undefined),
+    };
+    const launcher = {
+      launchImageGeneration: vi.fn(),
+    };
+    const runner = new AgentToolRunner({ launcher, repository });
+
+    const result = await runner.runToolCall(context, {
+      call: {
+        arguments: {
+          images: [
+            { prompt: "one", referenceRefs: ["upload-1"], size: "1K" },
+            { prompt: "two", referenceRefs: ["missing-ref"], size: "1K" },
+          ],
+        },
+        toolCallKey: "batch-invalid-ref",
+        toolName: "generate_image_batch",
+      },
+      executionTarget: { flowId: "flow-1", targetNodeId: "image-node-1" },
+      referenceContext: {
+        items: [
+          { assetId: "asset-upload-1", kind: "upload", label: "Upload 1", refId: "upload-1" },
+        ],
+      },
+      roundIndex: 2,
+      sessionId: "session-1",
+      turnId: "turn-2",
+    });
+
+    expect(result).toMatchObject({
+      failures: [{ code: "AGENT_REFERENCE_NOT_FOUND", toolCallKey: "batch-invalid-ref" }],
+      status: "failed",
+    });
+    expect(repository.createTask).not.toHaveBeenCalled();
+    expect(launcher.launchImageGeneration).not.toHaveBeenCalled();
+  });
 });

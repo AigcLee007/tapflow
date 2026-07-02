@@ -437,38 +437,44 @@ export class AgentToolRunner {
     input: AgentToolRunInput & { call: Extract<ParsedAgentToolCall, { toolName: "generate_image_batch" }> },
     toolCallId: string,
   ): Promise<Array<AgentImageTaskLaunchResult | { error: { code: string; message: string; taskId?: string; toolCallKey: string } }>> {
+    const plannedImages = input.call.arguments.images.map((image, index) => {
+      const toolCallKey = `${input.call.toolCallKey}:${index + 1}`;
+      const prompt = input.call.arguments.sharedStyle
+        ? `${input.call.arguments.sharedStyle}\n${image.prompt}`
+        : image.prompt;
+      const referenceAssetIds = this.resolveReferenceAssetIds(input, image.referenceRefs);
+      return {
+        image,
+        prompt,
+        referenceAssetIds,
+        toolCallKey,
+      };
+    });
     const plannedTasks = await Promise.all(
-      input.call.arguments.images.map((image, index) => {
-        const toolCallKey = `${input.call.toolCallKey}:${index + 1}`;
-        const prompt = input.call.arguments.sharedStyle
-          ? `${input.call.arguments.sharedStyle}\n${image.prompt}`
-          : image.prompt;
-        const referenceAssetIds = this.resolveReferenceAssetIds(input, image.referenceRefs);
+      plannedImages.map((planned, index) => {
         return this.createImageTask(context, input, {
           batchIndex: index,
-          prompt,
-          referenceAssetIds,
-          settings: image,
-          taskKey: toolCallKey,
+          prompt: planned.prompt,
+          referenceAssetIds: planned.referenceAssetIds,
+          settings: planned.image,
+          taskKey: planned.toolCallKey,
           taskType: "generate_image_batch_child",
           title: `Batch image ${index + 1}`,
           toolName: "generate_image_batch",
         });
       }),
     );
-    return mapWithConcurrency(input.call.arguments.images, this.batchConcurrency, async (image, index) => {
+    return mapWithConcurrency(plannedImages, this.batchConcurrency, async (planned, index) => {
       const task = plannedTasks[index]!;
       try {
         return await this.launchOne(
           context,
           input,
           task.id,
-          input.call.arguments.sharedStyle
-            ? `${input.call.arguments.sharedStyle}\n${image.prompt}`
-            : image.prompt,
-          image,
-          image.referenceRefs,
-          undefined,
+          planned.prompt,
+          planned.image,
+          planned.image.referenceRefs,
+          planned.referenceAssetIds,
           index,
           task.id,
         );
