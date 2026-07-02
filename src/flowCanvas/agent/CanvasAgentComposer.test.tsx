@@ -5,6 +5,8 @@ import { describe, expect, it, vi } from "vitest";
 import { CanvasAgentComposer } from "./CanvasAgentComposer";
 import type { CanvasAgentWorkspaceState } from "./canvasAgentStateMachine";
 
+const PROMPT_PLACEHOLDER = "描述你想完成的创作任务，或继续刚才的结果...";
+
 const models = [
   {
     aspectRatios: ["1:1", "16:9"],
@@ -54,9 +56,7 @@ describe("CanvasAgentComposer", () => {
       />,
     );
 
-    expect(
-      (screen.getByPlaceholderText("描述你想完成的创作任务，或者继续刚才的结果...") as HTMLTextAreaElement).disabled,
-    ).toBe(disabled);
+    expect((screen.getByPlaceholderText(PROMPT_PLACEHOLDER) as HTMLTextAreaElement).disabled).toBe(disabled);
   });
 
   it("renders a controlled draft value and updates it", () => {
@@ -70,14 +70,14 @@ describe("CanvasAgentComposer", () => {
       />,
     );
 
-    const input = screen.getByPlaceholderText("描述你想完成的创作任务，或者继续刚才的结果...");
+    const input = screen.getByPlaceholderText(PROMPT_PLACEHOLDER);
     expect((input as HTMLTextAreaElement).value).toBe("Use round-1-image-1 as reference");
 
     fireEvent.change(input, { target: { value: "Use round-1-image-1 to make a poster" } });
     expect(onChangeDraft).toHaveBeenCalledWith("Use round-1-image-1 to make a poster");
   });
 
-  it("renders reference chips directly above the prompt", () => {
+  it("renders reference chips directly above the prompt with upload and send actions", () => {
     const onChangeDraft = vi.fn();
     render(
       <CanvasAgentComposer
@@ -92,7 +92,12 @@ describe("CanvasAgentComposer", () => {
       />,
     );
 
-    expect(screen.getByTestId("agent-composer-reference-strip")).toBeTruthy();
+    const referenceStrip = screen.getByTestId("agent-composer-reference-strip");
+    const prompt = screen.getByPlaceholderText(PROMPT_PLACEHOLDER);
+    expect(referenceStrip.compareDocumentPosition(prompt) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByRole("button", { name: "上传参考图" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "发送" })).toBeTruthy();
+
     fireEvent.click(screen.getByRole("button", { name: "Selected image 1" }));
 
     expect(onChangeDraft).toHaveBeenCalledWith("round-1-image-1");
@@ -134,9 +139,9 @@ describe("CanvasAgentComposer", () => {
     );
 
     expect(screen.getByText("Generation submitted")).toBeTruthy();
-    expect(
-      (screen.getByPlaceholderText("描述你想完成的创作任务，或者继续刚才的结果...") as HTMLTextAreaElement).value,
-    ).toBe("Keep my existing prompt");
+    expect((screen.getByPlaceholderText(PROMPT_PLACEHOLDER) as HTMLTextAreaElement).value).toBe(
+      "Keep my existing prompt",
+    );
   });
 
   it("appends multiple reference chips into the current draft", () => {

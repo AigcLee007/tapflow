@@ -3,6 +3,7 @@ import React, { useMemo, useState } from "react";
 import { buildAgentArtifactRefChips, type CanvasAgentArtifactRefChip } from "./agentArtifactRefs";
 import { CanvasAgentModelRoutePicker } from "./CanvasAgentModelRoutePicker";
 import { CanvasAgentReferenceChips } from "./CanvasAgentReferenceChips";
+import { CanvasAgentReferenceUploadButton } from "./CanvasAgentReferenceUploadButton";
 import type { AgentReferenceChip } from "./CanvasAgentWorkspaceTypes";
 import type { AgentImageRunSettingsModel } from "./agentRunSettings";
 import { getRouteTierCredits } from "./agentRunSettings";
@@ -12,7 +13,7 @@ import {
   type CanvasAgentWorkspaceState,
 } from "./canvasAgentStateMachine";
 
-const PROMPT_PLACEHOLDER = "描述你想完成的创作任务，或者继续刚才的结果...";
+const PROMPT_PLACEHOLDER = "描述你想完成的创作任务，或继续刚才的结果...";
 
 function findDefaultModel(models: AgentImageRunSettingsModel[]) {
   return models[0] ?? null;
@@ -41,7 +42,11 @@ export function CanvasAgentComposer(props: {
   estimatedCreditsOverride?: number | null;
   models?: AgentImageRunSettingsModel[];
   onChangeDraft?: (value: string) => void;
+  onRemoveReference?: (chip: AgentReferenceChip) => void;
   onSend: (prompt: string) => Promise<void> | void;
+  onUploadError?: (message: string) => void;
+  onUploadReferences?: (chips: AgentReferenceChip[]) => void;
+  projectId?: string | null;
   referenceChips?: AgentReferenceChip[];
   referenceRefs?: CanvasAgentArtifactRefChip[];
   workspaceState?: CanvasAgentWorkspaceState;
@@ -113,6 +118,8 @@ export function CanvasAgentComposer(props: {
             onInsertRef={(chip) => {
               if (chip.refId) insertReference(chip.refId);
             }}
+            onRemoveRef={props.onRemoveReference}
+            removableKinds={["upload"]}
           />
         </div>
       ) : null}
@@ -161,6 +168,14 @@ export function CanvasAgentComposer(props: {
             Model
           </button>
         ) : null}
+
+        <CanvasAgentReferenceUploadButton
+          disabled={disabled || !props.onUploadReferences}
+          existingCount={mergedReferenceChips.length}
+          onError={props.onUploadError}
+          onUploaded={(chips) => props.onUploadReferences?.(chips)}
+          projectId={props.projectId}
+        />
 
         <button
           disabled={disabled || !value.trim()}
