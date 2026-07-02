@@ -1,3 +1,6 @@
+import { createPgPool } from "@aigc-flow/db";
+import type { Pool } from "pg";
+
 import type { AgentReferenceContextInput } from "./agent.schemas.js";
 
 export type AgentReferenceResolverInput = {
@@ -13,12 +16,75 @@ export type AgentReferenceResolverInput = {
 };
 
 export class AgentReferenceResolutionError extends Error {
-  readonly code = "AGENT_REFERENCE_NOT_FOUND";
+  readonly code: string;
   readonly statusCode = 400;
 
-  constructor(reference: string) {
-    super(`Agent reference not found: ${reference}`);
+  constructor(reference: string, code = "AGENT_REFERENCE_NOT_FOUND", message?: string) {
+    super(message ?? `Agent reference not found: ${reference}`);
+    this.code = code;
     this.name = "AgentReferenceResolutionError";
+  }
+}
+
+export class AgentReferenceAssetRepository {
+  readonly pool: Pool;
+
+  constructor(options?: { pool?: Pool }) {
+    this.pool = options?.pool ?? createPgPool();
+  }
+
+  async validateImageReferences(input: {
+    projectId?: string | null;
+    referenceContext?: AgentReferenceContextInput;
+    tenantId: string;
+  }): Promise<void> {
+    const assetIds = dedupe((input.referenceContext?.items ?? []).map((item) => item.assetId));
+    if (assetIds.length === 0) return;
+
+    const result = await this.pool.query<{
+      id: string;
+      kind: string;
+      project_id: string | null;
+      status: string;
+    }>(
+      `
+        SELECT id::text AS id, kind, project_id::text AS project_id, status
+        FROM assets
+        WHERE tenant_id = $1::uuid
+          AND id = ANY($2::uuid[])
+          AND deleted_at IS NULL
+      `,
+      [input.tenantId, assetIds],
+    );
+    const assetsById = new Map(result.rows.map((row) => [row.id, row]));
+
+    for (const assetId of assetIds) {
+      const asset = assetsById.get(assetId);
+      if (!asset) {
+        throw new AgentReferenceResolutionError(assetId);
+      }
+      if (asset.kind !== "image") {
+        throw new AgentReferenceResolutionError(
+          assetId,
+          "AGENT_REFERENCE_INVALID_KIND",
+          `Agent reference is not an image asset: ${assetId}`,
+        );
+      }
+      if (asset.status !== "available") {
+        throw new AgentReferenceResolutionError(
+          assetId,
+          "AGENT_REFERENCE_UNAVAILABLE",
+          `Agent reference is not available: ${assetId}`,
+        );
+      }
+      if (input.projectId && asset.project_id && asset.project_id !== input.projectId) {
+        throw new AgentReferenceResolutionError(
+          assetId,
+          "AGENT_REFERENCE_PROJECT_MISMATCH",
+          `Agent reference does not belong to this project: ${assetId}`,
+        );
+      }
+    }
   }
 }
 

@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
+  AgentReferenceAssetRepository,
   AgentReferenceResolutionError,
   resolveAgentReferenceAssetIds,
 } from "../src/modules/agent/agent-reference-context.js";
@@ -95,5 +96,132 @@ describe("agent reference context resolver", () => {
     });
 
     expect(resolved).toEqual(["asset-upload-1", "asset-previous", "asset-continuation"]);
+  });
+});
+
+describe("AgentReferenceAssetRepository", () => {
+  function createRepository(rows: Array<{
+    id: string;
+    kind: string;
+    project_id: string | null;
+    status: string;
+  }>) {
+    const query = vi.fn().mockResolvedValue({ rows });
+    const pool = { query };
+    return {
+      query,
+      repository: new AgentReferenceAssetRepository({ pool: pool as never }),
+    };
+  }
+
+  it("accepts available image assets in the same tenant and project", async () => {
+    const { query, repository } = createRepository([
+      {
+        id: "asset-upload-1",
+        kind: "image",
+        project_id: "project-1",
+        status: "available",
+      },
+    ]);
+
+    await expect(repository.validateImageReferences({
+      projectId: "project-1",
+      referenceContext: {
+        items: [
+          { assetId: "asset-upload-1", kind: "upload", label: "Upload 1", refId: "upload-1" },
+        ],
+      },
+      tenantId: "tenant-1",
+    })).resolves.toBeUndefined();
+
+    expect(query).toHaveBeenCalledWith(expect.stringContaining("FROM assets"), ["tenant-1", ["asset-upload-1"]]);
+  });
+
+  it("rejects missing assets with a reference error", async () => {
+    const { repository } = createRepository([]);
+
+    await expect(repository.validateImageReferences({
+      referenceContext: {
+        items: [
+          { assetId: "asset-missing", kind: "upload", label: "Missing", refId: "upload-1" },
+        ],
+      },
+      tenantId: "tenant-1",
+    })).rejects.toMatchObject({
+      code: "AGENT_REFERENCE_NOT_FOUND",
+      statusCode: 400,
+    });
+  });
+
+  it("rejects non-image assets", async () => {
+    const { repository } = createRepository([
+      {
+        id: "asset-file-1",
+        kind: "file",
+        project_id: "project-1",
+        status: "available",
+      },
+    ]);
+
+    await expect(repository.validateImageReferences({
+      projectId: "project-1",
+      referenceContext: {
+        items: [
+          { assetId: "asset-file-1", kind: "upload", label: "File", refId: "upload-1" },
+        ],
+      },
+      tenantId: "tenant-1",
+    })).rejects.toMatchObject({
+      code: "AGENT_REFERENCE_INVALID_KIND",
+      statusCode: 400,
+    });
+  });
+
+  it("rejects unavailable assets", async () => {
+    const { repository } = createRepository([
+      {
+        id: "asset-processing-1",
+        kind: "image",
+        project_id: "project-1",
+        status: "processing",
+      },
+    ]);
+
+    await expect(repository.validateImageReferences({
+      projectId: "project-1",
+      referenceContext: {
+        items: [
+          { assetId: "asset-processing-1", kind: "upload", label: "Processing", refId: "upload-1" },
+        ],
+      },
+      tenantId: "tenant-1",
+    })).rejects.toMatchObject({
+      code: "AGENT_REFERENCE_UNAVAILABLE",
+      statusCode: 400,
+    });
+  });
+
+  it("rejects assets tied to a different project when a project id is supplied", async () => {
+    const { repository } = createRepository([
+      {
+        id: "asset-other-project-1",
+        kind: "image",
+        project_id: "project-2",
+        status: "available",
+      },
+    ]);
+
+    await expect(repository.validateImageReferences({
+      projectId: "project-1",
+      referenceContext: {
+        items: [
+          { assetId: "asset-other-project-1", kind: "upload", label: "Other Project", refId: "upload-1" },
+        ],
+      },
+      tenantId: "tenant-1",
+    })).rejects.toMatchObject({
+      code: "AGENT_REFERENCE_PROJECT_MISMATCH",
+      statusCode: 400,
+    });
   });
 });

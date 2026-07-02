@@ -180,6 +180,75 @@ describe("AgentExecutorService", () => {
     expect(JSON.stringify(result)).not.toMatch(/baseUrl|apiKey|Authorization|provider_key|upstream_model/);
   });
 
+  it("passes previous results and current references to tool execution", async () => {
+    const repository = createExecutorRepository({
+      listSessionAssetRefs: vi.fn().mockResolvedValue([
+        {
+          assetId: "asset-previous-1",
+          kind: "image",
+          label: "Round 1 image 1",
+          promptSummary: "previous secret prompt",
+          refId: "round-1-image-1",
+        },
+      ]),
+    });
+    const toolRunner = {
+      runToolCall: vi.fn().mockResolvedValue({
+        assetRefs: [],
+        status: "succeeded",
+        toolCallId: "tool-db-1",
+        workflowRunIds: [],
+        workflowRuns: [],
+      }),
+    };
+    const executor = new AgentExecutorService({
+      costEstimator: {
+        estimateGenerateImage: vi.fn().mockResolvedValue({ totalCredits: 4 }),
+        estimateGenerateImageBatch: vi.fn(),
+      },
+      repository,
+      textRuntime: {
+        generateText: vi
+          .fn()
+          .mockResolvedValueOnce({
+            outputText: JSON.stringify({
+              toolCalls: [
+                {
+                  arguments: {
+                    prompt: "make a new image with the uploaded reference",
+                    referenceRefs: ["upload-1", "round-1-image-1"],
+                    size: "1K",
+                  },
+                  toolCallKey: "tool-call-1",
+                  toolName: "generate_image",
+                },
+              ],
+            }),
+          })
+          .mockResolvedValueOnce({ outputText: JSON.stringify({ reply: "Started." }) }),
+      },
+      toolRunner,
+    });
+
+    await executor.executeTurn(context, {
+      prompt: "Use my uploaded image",
+      referenceContext: {
+        items: [
+          { assetId: "asset-upload-1", kind: "upload", label: "Upload 1", refId: "upload-1" },
+        ],
+      },
+      sessionId: "session-1",
+      snapshot,
+    });
+
+    expect(toolRunner.runToolCall).toHaveBeenCalledWith(context, expect.objectContaining({
+      previousResults: [expect.objectContaining({ refId: "round-1-image-1" })],
+      referenceContext: { items: [expect.objectContaining({ assetId: "asset-upload-1", refId: "upload-1" })] },
+    }));
+    const callInput = toolRunner.runToolCall.mock.calls[0]?.[1];
+    expect(callInput.previousResults?.[0]).not.toHaveProperty("promptSummary");
+  });
+
   it("repairs a production image answer that forgot to call tools", async () => {
     const generateText = vi
       .fn()
@@ -351,6 +420,77 @@ describe("AgentExecutorService", () => {
     expect(result.finalText).toContain("Confirm");
   });
 
+  it("stores reference context and safe previous results when approval is required", async () => {
+    const repository = createExecutorRepository({
+      listSessionAssetRefs: vi.fn().mockResolvedValue([
+        {
+          assetId: "asset-previous-1",
+          kind: "image",
+          label: "Round 1 image 1",
+          promptSummary: "previous secret prompt",
+          refId: "round-1-image-1",
+        },
+      ]),
+    });
+    const executor = new AgentExecutorService({
+      costEstimator: {
+        estimateGenerateImage: vi.fn().mockResolvedValue({ totalCredits: 4 }),
+        estimateGenerateImageBatch: vi.fn(),
+      },
+      limits: { requireApproval: true },
+      repository,
+      textRuntime: {
+        generateText: vi.fn().mockResolvedValue({
+          outputText: JSON.stringify({
+            toolCalls: [
+              {
+                arguments: {
+                  prompt: "use references",
+                  referenceRefs: ["upload-1", "round-1-image-1"],
+                  size: "1K",
+                },
+                toolCallKey: "tool-call-1",
+                toolName: "generate_image",
+              },
+            ],
+          }),
+        }),
+      },
+      toolRunner: {
+        runToolCall: vi.fn(),
+      },
+    });
+
+    await executor.executeTurn(context, {
+      prompt: "Generate one image",
+      referenceContext: {
+        items: [
+          { assetId: "asset-upload-1", kind: "upload", label: "Upload 1", refId: "upload-1" },
+        ],
+      },
+      sessionId: "session-1",
+      snapshot,
+    });
+
+    expect(repository.markTurnSucceeded).toHaveBeenCalledWith(expect.objectContaining({
+      planJson: expect.objectContaining({
+        previousResults: [
+          expect.objectContaining({
+            assetId: "asset-previous-1",
+            kind: "image",
+            label: "Round 1 image 1",
+            refId: "round-1-image-1",
+          }),
+        ],
+        referenceContext: {
+          items: [expect.objectContaining({ assetId: "asset-upload-1", refId: "upload-1" })],
+        },
+      }),
+    }));
+    const planJson = repository.markTurnSucceeded.mock.calls[0]?.[0]?.planJson;
+    expect(planJson.previousResults?.[0]).not.toHaveProperty("promptSummary");
+  });
+
   it("resumes an approved credit tool from the stored pending turn", async () => {
     const toolRunner = {
       runToolCall: vi.fn().mockResolvedValue({
@@ -423,6 +563,64 @@ describe("AgentExecutorService", () => {
     expect(events).toContainEqual(expect.objectContaining({ toolCallKey: "tool-call-1", type: "tool_started" }));
     expect(events).toContainEqual(expect.objectContaining({ toolCallKey: "tool-call-1", type: "tool_result" }));
     expect(result.toolResults[0]?.assetRefs[0]?.assetId).toBe("asset-1");
+  });
+
+  it("passes stored reference context and previous results when approving a pending tool", async () => {
+    const toolRunner = {
+      runToolCall: vi.fn().mockResolvedValue({
+        assetRefs: [],
+        status: "succeeded",
+        toolCallId: "tool-db-1",
+        workflowRunIds: [],
+        workflowRuns: [],
+      }),
+    };
+    const repository = createExecutorRepository({
+      readPendingApproval: vi.fn().mockResolvedValue({
+        costEstimate: { totalCredits: 4 },
+        pendingToolCall: {
+          arguments: {
+            prompt: "use references",
+            referenceRefs: ["upload-1", "round-1-image-1"],
+            size: "1K",
+          },
+          toolCallKey: "tool-call-1",
+          toolName: "generate_image",
+        },
+        previousResults: [
+          { assetId: "asset-previous-1", kind: "image", label: "Round 1 image 1", refId: "round-1-image-1" },
+        ],
+        referenceContext: {
+          items: [
+            { assetId: "asset-upload-1", kind: "upload", label: "Upload 1", refId: "upload-1" },
+          ],
+        },
+        snapshot,
+      }),
+    });
+    const executor = new AgentExecutorService({
+      costEstimator: {
+        estimateGenerateImage: vi.fn().mockResolvedValue({ totalCredits: 4 }),
+        estimateGenerateImageBatch: vi.fn(),
+      },
+      limits: { requireApproval: true },
+      repository,
+      textRuntime: {
+        generateText: vi.fn(),
+      },
+      toolRunner,
+    });
+
+    await executor.approveToolCall(context, {
+      sessionId: "session-1",
+      toolCallKey: "tool-call-1",
+      turnId: "turn-1",
+    });
+
+    expect(toolRunner.runToolCall).toHaveBeenCalledWith(context, expect.objectContaining({
+      previousResults: [expect.objectContaining({ refId: "round-1-image-1" })],
+      referenceContext: { items: [expect.objectContaining({ assetId: "asset-upload-1", refId: "upload-1" })] },
+    }));
   });
 
   it("applies approved settings to every image in a pending batch generation", async () => {

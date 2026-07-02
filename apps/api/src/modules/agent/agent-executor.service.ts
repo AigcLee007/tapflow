@@ -12,6 +12,7 @@ import { isProductionImageAgentPrompt } from "./agent-production-intent.js";
 import { buildAgentToolContinuationMessage } from "./agent-tool-context.js";
 import type { AgentToolEvent } from "./agent-tool-events.js";
 import { evaluateAgentToolPolicy } from "./agent-tool-policy.js";
+import type { AgentReferenceAssetRepository } from "./agent-reference-context.js";
 import { getAgentToolRegistryForModel } from "./agent-tool-registry.js";
 import { parseAgentToolCall, type ParsedAgentToolCall } from "./agent-tool-schemas.js";
 import type { AgentToolRunner, AgentToolRunResult } from "./agent-tool-runner.js";
@@ -59,6 +60,8 @@ type ExecutorRepository = {
     continuationContext?: AgentExecutorTurnInput["continuationContext"];
     costEstimate: Record<string, unknown> | null;
     pendingToolCall: unknown;
+    previousResults?: SafeAgentAssetReference[];
+    referenceContext?: AgentReferenceContextInput;
     snapshot: CanvasAgentSnapshotInput;
   } | null>;
   listSessionAssetRefs(input: {
@@ -68,6 +71,8 @@ type ExecutorRepository = {
 };
 
 type TextRuntimeLike = Pick<DatabaseTextGenerationRuntime, "generateText">;
+
+type SafeAgentAssetReference = Pick<AgentAssetReference, "assetId" | "kind" | "label" | "refId">;
 
 type AgentExecutorLimits = {
   allowBatchImage: boolean;
@@ -212,6 +217,8 @@ export class DatabaseAgentExecutorRepository implements ExecutorRepository {
     continuationContext?: AgentExecutorTurnInput["continuationContext"];
     costEstimate: Record<string, unknown> | null;
     pendingToolCall: unknown;
+    previousResults?: SafeAgentAssetReference[];
+    referenceContext?: AgentReferenceContextInput;
     snapshot: CanvasAgentSnapshotInput;
   } | null> {
     return withTenantTransaction({ tenantId: input.tenantId, userId: null }, async (client) => {
@@ -246,6 +253,8 @@ export class DatabaseAgentExecutorRepository implements ExecutorRepository {
           ? row.plan_json.costEstimate as Record<string, unknown>
           : null,
         pendingToolCall,
+        previousResults: readSafePreviousResults(row.plan_json?.previousResults),
+        referenceContext: readSafeReferenceContext(row.plan_json?.referenceContext),
         snapshot: row.snapshot_json,
       };
     }, this.pool);
@@ -310,6 +319,7 @@ export class AgentExecutorService {
     costEstimator: Pick<AgentCostEstimator, "estimateGenerateImage" | "estimateGenerateImageBatch">;
     env?: ApiEnv;
     limits?: Partial<AgentExecutorLimits>;
+    referenceAssetRepository?: Pick<AgentReferenceAssetRepository, "validateImageReferences">;
     repository: ExecutorRepository;
     textRuntime: TextRuntimeLike;
     toolRunner: Pick<AgentToolRunner, "runToolCall">;
@@ -327,6 +337,11 @@ export class AgentExecutorService {
   }
 
   async executeTurn(context: RuntimeContext, input: AgentExecutorTurnInput): Promise<AgentExecutorTurnResult> {
+    await this.options.referenceAssetRepository?.validateImageReferences({
+      projectId: input.snapshot.projectId,
+      referenceContext: input.referenceContext,
+      tenantId: context.tenantId,
+    });
     const safeReferenceContext = buildSafeReferenceContext(input.referenceContext);
     const userMessage = await this.options.repository.createUserMessage({
       content: input.prompt,
@@ -348,6 +363,7 @@ export class AgentExecutorService {
       sessionId: input.sessionId,
       tenantId: context.tenantId,
     });
+    const safePreviousResults = buildSafePreviousResults(previousResults);
     const requiresProductionTool = isProductionImageAgentPrompt(input.prompt);
     let repairedMissingToolCall = false;
     const messages = [
@@ -380,7 +396,7 @@ export class AgentExecutorService {
                   content: buildUserExecutorContext(
                     input.prompt,
                     input.snapshot,
-                    previousResults,
+                    safePreviousResults,
                     input.continuationContext,
                     input.referenceContext,
                   ),
@@ -486,6 +502,8 @@ export class AgentExecutorService {
                 executor: true,
                 pendingToolCall: call,
                 costEstimate,
+                previousResults: safePreviousResults,
+                referenceContext: safeReferenceContext ?? null,
               },
               tenantId: context.tenantId,
               turnId: turn.turnId,
@@ -504,6 +522,8 @@ export class AgentExecutorService {
             costEstimate,
             executionTarget: resolveExecutionTarget(input.snapshot),
             onEvent: input.onEvent,
+            previousResults: safePreviousResults,
+            referenceContext: input.referenceContext,
             roundIndex: round + 1,
             sessionId: input.sessionId,
             turnId: turn.turnId,
@@ -564,6 +584,8 @@ export class AgentExecutorService {
       costEstimate,
       executionTarget: resolveExecutionTarget(pending.snapshot),
       onEvent: input.onEvent,
+      previousResults: pending.previousResults ?? [],
+      referenceContext: pending.referenceContext ?? undefined,
       roundIndex: 1,
       sessionId: input.sessionId,
       turnId: input.turnId,
@@ -706,7 +728,7 @@ function tryParseJsonObject(rawText: string): Record<string, unknown> | null {
 function buildUserExecutorContext(
   prompt: string,
   snapshot: CanvasAgentSnapshotInput,
-  previousResults: AgentAssetReference[] = [],
+  previousResults: SafeAgentAssetReference[] = [],
   continuationContext?: AgentExecutorTurnInput["continuationContext"],
   referenceContext?: AgentReferenceContextInput,
 ): string {
@@ -742,6 +764,15 @@ function buildUserExecutorContext(
   });
 }
 
+function buildSafePreviousResults(previousResults: AgentAssetReference[]): SafeAgentAssetReference[] {
+  return previousResults.map((asset) => ({
+    assetId: asset.assetId,
+    kind: asset.kind,
+    label: asset.label,
+    refId: asset.refId,
+  }));
+}
+
 function buildSafeReferenceContext(referenceContext?: AgentReferenceContextInput): AgentReferenceContextInput | undefined {
   if (!referenceContext) return undefined;
   return {
@@ -752,6 +783,56 @@ function buildSafeReferenceContext(referenceContext?: AgentReferenceContextInput
       refId: item.refId,
     })),
   };
+}
+
+function readSafeReferenceContext(value: unknown): AgentReferenceContextInput | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const items = (value as { items?: unknown }).items;
+  if (!Array.isArray(items)) return undefined;
+  return {
+    items: items.flatMap((item) => {
+      if (!item || typeof item !== "object") return [];
+      const record = item as Record<string, unknown>;
+      if (
+        typeof record.assetId !== "string" ||
+        typeof record.kind !== "string" ||
+        typeof record.label !== "string" ||
+        typeof record.refId !== "string"
+      ) {
+        return [];
+      }
+      if (record.kind !== "artifact" && record.kind !== "canvas_node" && record.kind !== "upload") return [];
+      return [{
+        assetId: record.assetId,
+        kind: record.kind,
+        label: record.label,
+        refId: record.refId,
+      }];
+    }),
+  };
+}
+
+function readSafePreviousResults(value: unknown): SafeAgentAssetReference[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const record = item as Record<string, unknown>;
+    if (
+      typeof record.assetId !== "string" ||
+      typeof record.kind !== "string" ||
+      typeof record.label !== "string" ||
+      typeof record.refId !== "string"
+    ) {
+      return [];
+    }
+    if (record.kind !== "image" && record.kind !== "video") return [];
+    return [{
+      assetId: record.assetId,
+      kind: record.kind,
+      label: record.label,
+      refId: record.refId,
+    }];
+  });
 }
 
 function resolveExecutionTarget(snapshot: CanvasAgentSnapshotInput) {
