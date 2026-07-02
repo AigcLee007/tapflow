@@ -456,6 +456,11 @@ describe("AgentToolRunner", () => {
         toolName: "generate_image",
       },
       executionTarget: { flowId: "flow-1", targetNodeId: "image-node-1" },
+      referenceContext: {
+        items: [
+          { assetId: "asset-ref-1", kind: "upload", label: "Reference", refId: "upload-1" },
+        ],
+      },
       roundIndex: 1,
       sessionId: "session-1",
       turnId: "turn-1",
@@ -472,6 +477,80 @@ describe("AgentToolRunner", () => {
     expect(repository.updateToolCall).toHaveBeenCalledWith("tool-db-1", expect.objectContaining({ status: "running" }));
     expect(repository.updateToolCall).toHaveBeenCalledWith("tool-db-1", expect.objectContaining({ status: "succeeded" }));
     expect(result.status).toBe("succeeded");
+  });
+
+  it("resolves generate_image referenceRefs before workflow launch and stores safe task input", async () => {
+    const repository = createRunnerRepositoryMock("tool-db-ref", "task-db-ref");
+    const launcher = {
+      launchImageGeneration: vi.fn().mockResolvedValue({
+        assetRefs: [{ assetId: "asset-1", kind: "image", label: "Round 1 image 1", promptSummary: "", refId: "round-1-image-1" }],
+        nodeRunId: "node-run-ref",
+        status: "succeeded",
+        workflowRunId: "run-ref",
+      }),
+    };
+    const runner = new AgentToolRunner({ launcher, repository });
+
+    await runner.runToolCall(context, {
+      call: {
+        arguments: { prompt: "make a poster", referenceRefs: ["upload-1"], size: "1K" },
+        toolCallKey: "call-ref",
+        toolName: "generate_image",
+      },
+      executionTarget: { flowId: "flow-1", targetNodeId: "image-node-1" },
+      referenceContext: {
+        items: [
+          { assetId: "asset-upload-1", kind: "upload", label: "Upload 1", refId: "upload-1" },
+        ],
+      },
+      roundIndex: 1,
+      sessionId: "session-1",
+      turnId: "turn-1",
+    });
+
+    expect(launcher.launchImageGeneration).toHaveBeenCalledWith(
+      context,
+      expect.objectContaining({
+        referenceAssetIds: ["asset-upload-1"],
+      }),
+    );
+    expect(repository.createTask).toHaveBeenCalledWith(expect.objectContaining({
+      inputJson: expect.objectContaining({
+        referenceAssetIds: ["asset-upload-1"],
+        referenceRefs: ["upload-1"],
+      }),
+    }));
+  });
+
+  it("fails generate_image without launching when a reference ref is unknown", async () => {
+    const repository = createRunnerRepositoryMock("tool-db-unknown", "task-db-unknown");
+    const launcher = {
+      launchImageGeneration: vi.fn(),
+    };
+    const runner = new AgentToolRunner({ launcher, repository });
+
+    const result = await runner.runToolCall(context, {
+      call: {
+        arguments: { prompt: "make a poster", referenceRefs: ["missing-ref"], size: "1K" },
+        toolCallKey: "call-unknown",
+        toolName: "generate_image",
+      },
+      executionTarget: { flowId: "flow-1", targetNodeId: "image-node-1" },
+      referenceContext: {
+        items: [
+          { assetId: "asset-upload-1", kind: "upload", label: "Upload 1", refId: "upload-1" },
+        ],
+      },
+      roundIndex: 1,
+      sessionId: "session-1",
+      turnId: "turn-1",
+    });
+
+    expect(result).toMatchObject({
+      failures: [{ code: "AGENT_REFERENCE_NOT_FOUND", toolCallKey: "call-unknown" }],
+      status: "failed",
+    });
+    expect(launcher.launchImageGeneration).not.toHaveBeenCalled();
   });
 
   it("passes approved image settings through to the workflow launcher", async () => {
@@ -675,5 +754,79 @@ describe("AgentToolRunner", () => {
         referenceAssetIds: ["asset-previous"],
       }),
     );
+  });
+
+  it("resolves batch child image refs independently", async () => {
+    const repository = {
+      createTask: vi.fn().mockImplementation(async (input) => ({
+        id: input.taskKey === "batch-refs:1" ? "task-db-1" : "task-db-2",
+      })),
+      createToolCall: vi.fn().mockResolvedValue({ id: "tool-db-batch-refs" }),
+      updateTask: vi.fn().mockResolvedValue(undefined),
+      updateToolCall: vi.fn().mockResolvedValue(undefined),
+    };
+    const launcher = {
+      launchImageGeneration: vi.fn().mockImplementation(async (_context, input) => ({
+        assetRefs: [{ assetId: `asset-${input.toolCallKey}`, kind: "image", label: "Batch image", promptSummary: "", refId: `ref-${input.toolCallKey}` }],
+        nodeRunId: `node-${input.toolCallKey}`,
+        status: "succeeded",
+        workflowRunId: `run-${input.toolCallKey}`,
+      })),
+    };
+    const runner = new AgentToolRunner({ batchConcurrency: 1, launcher, repository });
+
+    await runner.runToolCall(context, {
+      call: {
+        arguments: {
+          images: [
+            { prompt: "one", referenceRefs: ["upload-1"], size: "1K" },
+            { prompt: "two", referenceRefs: ["round-1-image-1"], size: "1K" },
+          ],
+        },
+        toolCallKey: "batch-refs",
+        toolName: "generate_image_batch",
+      },
+      executionTarget: { flowId: "flow-1", targetNodeId: "image-node-1" },
+      previousResults: [
+        { assetId: "asset-previous-1", refId: "round-1-image-1" },
+      ],
+      referenceContext: {
+        items: [
+          { assetId: "asset-upload-1", kind: "upload", label: "Upload 1", refId: "upload-1" },
+        ],
+      },
+      roundIndex: 2,
+      sessionId: "session-1",
+      turnId: "turn-2",
+    });
+
+    expect(launcher.launchImageGeneration).toHaveBeenNthCalledWith(
+      1,
+      context,
+      expect.objectContaining({
+        referenceAssetIds: ["asset-upload-1"],
+        toolCallKey: "batch-refs:1",
+      }),
+    );
+    expect(launcher.launchImageGeneration).toHaveBeenNthCalledWith(
+      2,
+      context,
+      expect.objectContaining({
+        referenceAssetIds: ["asset-previous-1"],
+        toolCallKey: "batch-refs:2",
+      }),
+    );
+    expect(repository.createTask).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      inputJson: expect.objectContaining({
+        referenceAssetIds: ["asset-upload-1"],
+        referenceRefs: ["upload-1"],
+      }),
+    }));
+    expect(repository.createTask).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      inputJson: expect.objectContaining({
+        referenceAssetIds: ["asset-previous-1"],
+        referenceRefs: ["round-1-image-1"],
+      }),
+    }));
   });
 });

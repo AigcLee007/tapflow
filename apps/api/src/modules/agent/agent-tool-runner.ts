@@ -3,8 +3,13 @@ import type { Pool } from "pg";
 
 import type { AgentGenerationCostEstimate } from "./agent-cost-estimator.js";
 import type { AgentAssetReference } from "./agent-asset-references.js";
+import {
+  resolveAgentReferenceAssetIds,
+  type AgentReferenceResolverInput,
+} from "./agent-reference-context.js";
 import type { AgentToolEvent } from "./agent-tool-events.js";
 import type { ParsedAgentToolCall } from "./agent-tool-schemas.js";
+import type { AgentReferenceContextInput } from "./agent.schemas.js";
 import type {
   AgentImageWorkflowLaunchResult,
   AgentWorkflowLaunchContext,
@@ -30,6 +35,8 @@ export type AgentToolRunInput = {
   } | null;
   costEstimate?: AgentGenerationCostEstimate | null;
   executionTarget: AgentToolExecutionTarget;
+  previousResults?: Array<{ assetId: string; refId: string }>;
+  referenceContext?: AgentReferenceContextInput;
   roundIndex: number;
   sessionId: string;
   turnId: string;
@@ -121,6 +128,19 @@ type AgentCanvasServiceLike = Pick<AgentCanvasService, "applyOps">;
 type AgentImageTaskLaunchResult = AgentImageWorkflowLaunchResult & {
   taskId: string;
   toolCallKey: string;
+};
+
+type AgentImageLaunchSettings = {
+  aspectRatio?: string;
+  format?: "jpeg" | "png" | "webp";
+  modelDisplayName?: string;
+  moderation?: "auto" | "low";
+  n?: number;
+  quality?: string;
+  referenceRefs?: string[];
+  routeKey?: string;
+  routeLabel?: string;
+  size?: "1K" | "2K" | "4K";
 };
 
 export class DatabaseAgentToolRunnerRepository implements AgentToolRunnerRepository {
@@ -423,9 +443,11 @@ export class AgentToolRunner {
         const prompt = input.call.arguments.sharedStyle
           ? `${input.call.arguments.sharedStyle}\n${image.prompt}`
           : image.prompt;
+        const referenceAssetIds = this.resolveReferenceAssetIds(input, image.referenceRefs);
         return this.createImageTask(context, input, {
           batchIndex: index,
           prompt,
+          referenceAssetIds,
           settings: image,
           taskKey: toolCallKey,
           taskType: "generate_image_batch_child",
@@ -446,6 +468,7 @@ export class AgentToolRunner {
             : image.prompt,
           image,
           image.referenceRefs,
+          undefined,
           index,
           task.id,
         );
@@ -478,26 +501,19 @@ export class AgentToolRunner {
     input: AgentToolRunInput,
     toolCallId: string,
     prompt: string,
-    settings?: {
-      aspectRatio?: string;
-      format?: "jpeg" | "png" | "webp";
-      modelDisplayName?: string;
-      moderation?: "auto" | "low";
-      n?: number;
-      quality?: string;
-      routeKey?: string;
-      routeLabel?: string;
-      size?: "1K" | "2K" | "4K";
-    },
+    settings?: AgentImageLaunchSettings,
     referenceRefs?: string[],
+    resolvedReferenceAssetIds?: string[],
     batchIndex?: number,
     precreatedTaskId?: string,
   ): Promise<AgentImageTaskLaunchResult> {
+    const referenceAssetIds = resolvedReferenceAssetIds ?? this.resolveReferenceAssetIds(input, referenceRefs);
     const task = precreatedTaskId
       ? { id: precreatedTaskId, toolCallKey: batchIndex === undefined ? input.call.toolCallKey : `${input.call.toolCallKey}:${batchIndex + 1}` }
       : await this.createImageTask(context, input, {
           batchIndex,
           prompt,
+          referenceAssetIds,
           settings,
           taskKey: batchIndex === undefined ? input.call.toolCallKey : `${input.call.toolCallKey}:${batchIndex + 1}`,
           taskType: input.call.toolName,
@@ -505,16 +521,6 @@ export class AgentToolRunner {
           toolName: input.call.toolName,
         });
     await this.options.repository.updateTask(task.id, { status: "running", tenantId: context.tenantId });
-    const continuationReferenceAssetIds = Array.from(
-      new Set(
-        input.continuationContext?.assetIds?.filter((value): value is string => typeof value === "string" && value.length > 0)
-          ?? (input.continuationContext?.assetId ? [input.continuationContext.assetId] : []),
-      ),
-    );
-    const resolvedReferenceAssetIds =
-      referenceRefs && referenceRefs.length > 0
-        ? referenceRefs
-        : continuationReferenceAssetIds;
     const result = await this.options.launcher.launchImageGeneration(context, {
       aspectRatio: settings?.aspectRatio,
       flowId: input.executionTarget.flowId,
@@ -524,7 +530,7 @@ export class AgentToolRunner {
       n: settings?.n,
       prompt,
       quality: settings?.quality,
-      referenceAssetIds: resolvedReferenceAssetIds,
+      referenceAssetIds,
       roundIndex: input.roundIndex,
       routeKey: settings?.routeKey,
       routeLabel: settings?.routeLabel,
@@ -575,21 +581,13 @@ export class AgentToolRunner {
     context: AgentWorkflowLaunchContext,
     input: AgentToolRunInput,
     prompt: string,
-    settings?: {
-      aspectRatio?: string;
-      format?: "jpeg" | "png" | "webp";
-      modelDisplayName?: string;
-      moderation?: "auto" | "low";
-      n?: number;
-      quality?: string;
-      routeKey?: string;
-      routeLabel?: string;
-      size?: "1K" | "2K" | "4K";
-    },
+    settings?: AgentImageLaunchSettings,
     referenceRefs?: string[],
   ): Promise<AgentImageTaskLaunchResult | { error: { code: string; message: string; taskId: string; toolCallKey: string } }> {
+    const referenceAssetIds = this.resolveReferenceAssetIds(input, referenceRefs);
     const task = await this.createImageTask(context, input, {
       prompt,
+      referenceAssetIds,
       settings,
       taskKey: input.call.toolCallKey,
       taskType: input.call.toolName,
@@ -604,6 +602,7 @@ export class AgentToolRunner {
         prompt,
         settings,
         referenceRefs,
+        referenceAssetIds,
         undefined,
         task.id,
       );
@@ -636,17 +635,8 @@ export class AgentToolRunner {
     task: {
       batchIndex?: number;
       prompt: string;
-      settings?: {
-        aspectRatio?: string;
-        format?: "jpeg" | "png" | "webp";
-        modelDisplayName?: string;
-        moderation?: "auto" | "low";
-        n?: number;
-        quality?: string;
-        routeKey?: string;
-        routeLabel?: string;
-        size?: "1K" | "2K" | "4K";
-      };
+      referenceAssetIds?: string[];
+      settings?: AgentImageLaunchSettings;
       taskKey: string;
       taskType: string;
       title: string;
@@ -655,7 +645,7 @@ export class AgentToolRunner {
   ) {
     const created = await this.options.repository.createTask({
       createdBy: context.userId,
-      inputJson: buildTaskInputJson(input, task.prompt, task.settings, task.batchIndex),
+      inputJson: buildTaskInputJson(input, task.prompt, task.settings, task.batchIndex, task.referenceAssetIds),
       sessionId: input.sessionId,
       status: "queued",
       taskKey: task.taskKey,
@@ -675,6 +665,15 @@ export class AgentToolRunner {
       id: created.id,
       toolCallKey: task.taskKey,
     };
+  }
+
+  private resolveReferenceAssetIds(input: AgentToolRunInput, requestedRefs?: string[]): string[] {
+    return resolveAgentReferenceAssetIds({
+      continuationContext: input.continuationContext,
+      previousResults: input.previousResults,
+      referenceContext: input.referenceContext,
+      requestedRefs,
+    } satisfies AgentReferenceResolverInput);
   }
 }
 
@@ -754,18 +753,9 @@ function normalizeToolError(error: unknown): { code: string; message: string } {
 function buildTaskInputJson(
   input: AgentToolRunInput,
   prompt: string,
-  settings?: {
-    aspectRatio?: string;
-    format?: "jpeg" | "png" | "webp";
-    modelDisplayName?: string;
-    moderation?: "auto" | "low";
-    n?: number;
-    quality?: string;
-    routeKey?: string;
-    routeLabel?: string;
-    size?: "1K" | "2K" | "4K";
-  },
+  settings?: AgentImageLaunchSettings,
   batchIndex?: number,
+  referenceAssetIds?: string[],
 ): Record<string, unknown> {
   return compactRecord({
     batchIndex,
@@ -775,6 +765,7 @@ function buildTaskInputJson(
     referenceRefs: settings && "referenceRefs" in settings && Array.isArray(settings.referenceRefs)
       ? settings.referenceRefs
       : undefined,
+    referenceAssetIds: referenceAssetIds && referenceAssetIds.length > 0 ? referenceAssetIds : undefined,
     roundIndex: input.roundIndex,
     settings: compactRecord({
       aspectRatio: settings?.aspectRatio,
