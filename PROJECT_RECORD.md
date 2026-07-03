@@ -3770,6 +3770,15 @@ Validation completed:
   - `npx vitest --run apps/api/test/agent-executor.test.ts apps/api/test/agent-tool-runner.test.ts src/flowCanvas/agent/useCanvasAgentSession.test.tsx src/flowCanvas/agent/CanvasAgentThread.test.tsx src/flowCanvas/agent/CanvasAgentPanel.test.tsx src/flowCanvas/agent/CanvasAgentToolTimeline.test.tsx src/flowCanvas/agent/CanvasAgentComposer.test.tsx`
   - `npm run build`
 
+## 2026-07-03 - Agent Batch Tool Items Alias Fix
+
+- Fixed a real Agent executor failure where the text model returned `generate_image_batch.arguments.items` for a multi-image request such as `生成一套动物森林运动会的套图`, while the server tool schema only accepted `arguments.images`.
+- Added a schema normalization path that maps batch `items` into canonical `images` before strict validation, while preserving the existing validation limits and provider-secret redaction checks.
+- Added regression coverage for the exact `items`-instead-of-`images` shape so this model output no longer fails with a raw Zod validation list in the Agent panel.
+- Validation:
+  - `npm test -- apps/api/test/agent-tool-schemas.test.ts`
+  - `npm run build --workspace @aigc-flow/api`
+
 ## 2026-07-03 - Agent Approval Stream Failure Fix
 
 - Fixed the Agent executor stream path so `turns/execute/stream` and `tool-calls/approve/stream` write SSE chunks as soon as tool events are emitted instead of buffering the entire tool execution before sending a response.

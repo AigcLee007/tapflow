@@ -186,7 +186,19 @@ function normalizeAgentToolCallShape(value: unknown): unknown {
   if (record.toolName !== "generate_image_batch") return value;
   const args = record.arguments;
   if (!args || typeof args !== "object") return value;
-  const images = (args as Record<string, unknown>).images;
+  const argRecord = args as Record<string, unknown>;
+  const images = Array.isArray(argRecord.images) ? argRecord.images : argRecord.items;
+  if (argRecord.images === undefined && Array.isArray(argRecord.items)) {
+    const { items: _items, ...rest } = argRecord;
+    return {
+      arguments: {
+        ...rest,
+        images: argRecord.items,
+      },
+      toolCallKey: record.toolCallKey,
+      toolName: "generate_image_batch",
+    };
+  }
   if (!Array.isArray(images) || images.length !== 1) return value;
   const firstImage = images[0];
   if (!firstImage || typeof firstImage !== "object") return value;

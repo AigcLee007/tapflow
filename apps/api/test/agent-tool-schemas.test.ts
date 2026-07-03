@@ -97,6 +97,42 @@ describe("agent tool schemas", () => {
     });
   });
 
+  it("normalizes batch image items returned by the model into images", () => {
+    expect(parseAgentToolCall({
+      arguments: {
+        items: [
+          {
+            prompt: "A rabbit sprinting through a forest sports day track",
+            size: "1K",
+          },
+          {
+            prompt: "A bear lifting weights in a forest sports day arena",
+            size: "1K",
+          },
+        ],
+        sharedStyle: "same playful forest sports day illustration series",
+      },
+      toolCallKey: "call_batch_items_fix",
+      toolName: "generate_image_batch",
+    })).toEqual({
+      arguments: {
+        images: [
+          {
+            prompt: "A rabbit sprinting through a forest sports day track",
+            size: "1K",
+          },
+          {
+            prompt: "A bear lifting weights in a forest sports day arena",
+            size: "1K",
+          },
+        ],
+        sharedStyle: "same playful forest sports day illustration series",
+      },
+      toolCallKey: "call_batch_items_fix",
+      toolName: "generate_image_batch",
+    });
+  });
+
   it("parses canvas tool calls", () => {
     expect(agentToolNameSchema.parse("create_canvas_nodes")).toBe("create_canvas_nodes");
     expect(parseAgentToolCall({
