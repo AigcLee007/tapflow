@@ -3770,6 +3770,17 @@ Validation completed:
   - `npx vitest --run apps/api/test/agent-executor.test.ts apps/api/test/agent-tool-runner.test.ts src/flowCanvas/agent/useCanvasAgentSession.test.tsx src/flowCanvas/agent/CanvasAgentThread.test.tsx src/flowCanvas/agent/CanvasAgentPanel.test.tsx src/flowCanvas/agent/CanvasAgentToolTimeline.test.tsx src/flowCanvas/agent/CanvasAgentComposer.test.tsx`
   - `npm run build`
 
+## 2026-07-03 - Agent Batch Shared Settings Normalization
+
+- Fixed another real Agent executor schema failure for batch image requests where the text model placed image settings such as `size`, `routeKey`, or `routeLabel` at `generate_image_batch.arguments` instead of inside each image item.
+- Batch tool call normalization now treats those top-level image settings as shared defaults and copies them into every generated image prompt, while preserving per-image overrides.
+- This keeps strict validation intact after normalization and prevents multi-image prompts like `我要做一套动物运动会的场景套图` from failing on `Unrecognized key: "size"`.
+- Validation:
+  - `npm test -- apps/api/test/agent-tool-schemas.test.ts`
+  - `npm test -- apps/api/test/agent-tool-schemas.test.ts apps/api/test/agent-executor.test.ts`
+  - `npm run build --workspace @aigc-flow/api`
+  - `npm run build`
+
 ## 2026-07-03 - Agent Batch Tool Items Alias Fix
 
 - Fixed a real Agent executor failure where the text model returned `generate_image_batch.arguments.items` for a multi-image request such as `生成一套动物森林运动会的套图`, while the server tool schema only accepted `arguments.images`.

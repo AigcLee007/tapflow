@@ -171,6 +171,19 @@ export type RunCanvasNodeToolArgs = z.infer<typeof runCanvasNodeToolArgsSchema>;
 export type ContinueGenerationToolArgs = z.infer<typeof continueGenerationToolArgsSchema>;
 export type ParsedAgentToolCall = z.infer<typeof agentToolCallSchema>;
 
+const batchImageSharedArgumentKeys = [
+  "aspectRatio",
+  "format",
+  "modelDisplayName",
+  "moderation",
+  "n",
+  "quality",
+  "referenceRefs",
+  "routeKey",
+  "routeLabel",
+  "size",
+] as const;
+
 export function parseAgentToolCall(value: unknown): ParsedAgentToolCall {
   try {
     assertAgentOutputSafe(value);
@@ -187,20 +200,18 @@ function normalizeAgentToolCallShape(value: unknown): unknown {
   const args = record.arguments;
   if (!args || typeof args !== "object") return value;
   const argRecord = args as Record<string, unknown>;
-  const images = Array.isArray(argRecord.images) ? argRecord.images : argRecord.items;
-  if (argRecord.images === undefined && Array.isArray(argRecord.items)) {
-    const { items: _items, ...rest } = argRecord;
+  const images = Array.isArray(argRecord.images) ? argRecord.images : Array.isArray(argRecord.items) ? argRecord.items : null;
+  if (!Array.isArray(images)) return value;
+  const normalizedArguments = normalizeAgentBatchArguments(argRecord, images);
+  const normalizedImages = normalizedArguments.images;
+  if (!Array.isArray(normalizedImages) || normalizedImages.length !== 1) {
     return {
-      arguments: {
-        ...rest,
-        images: argRecord.items,
-      },
+      arguments: normalizedArguments,
       toolCallKey: record.toolCallKey,
       toolName: "generate_image_batch",
     };
   }
-  if (!Array.isArray(images) || images.length !== 1) return value;
-  const firstImage = images[0];
+  const firstImage = normalizedImages[0];
   if (!firstImage || typeof firstImage !== "object") return value;
 
   return {
@@ -208,4 +219,27 @@ function normalizeAgentToolCallShape(value: unknown): unknown {
     toolCallKey: record.toolCallKey,
     toolName: "generate_image",
   };
+}
+
+function normalizeBatchImages(argRecord: Record<string, unknown>, images: unknown[]): unknown[] {
+  const sharedSettings = Object.fromEntries(
+    batchImageSharedArgumentKeys.flatMap((key) => argRecord[key] === undefined ? [] : [[key, argRecord[key]]]),
+  );
+  return images.map((image) => {
+    if (!image || typeof image !== "object" || Array.isArray(image)) return image;
+    return {
+      ...sharedSettings,
+      ...(image as Record<string, unknown>),
+    };
+  });
+}
+
+function normalizeAgentBatchArguments(argRecord: Record<string, unknown>, images: unknown[]): Record<string, unknown> {
+  const normalized: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(argRecord)) {
+    if (key === "images" || key === "items" || (batchImageSharedArgumentKeys as readonly string[]).includes(key)) continue;
+    normalized[key] = item;
+  }
+  normalized.images = normalizeBatchImages(argRecord, images);
+  return normalized;
 }
