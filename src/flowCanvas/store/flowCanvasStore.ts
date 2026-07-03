@@ -52,6 +52,7 @@ interface HistoryEntry {
 export interface FlowUpstreamImageRef {
   key: string;
   id: string;
+  assetId?: string;
   edgeId: string;
   imageUrl: string;
   referenceUploadId?: string;
@@ -266,6 +267,23 @@ const getNodeReferenceImageUrl = (
   return String(runtimeAssetUrl || '').trim();
 };
 
+const getNodeReferenceAssetId = (
+  node: FlowNode | undefined,
+  runtimeNodeOutput?: FlowRuntimeNodeOutput,
+) => {
+  if (!node || !isImageNode(node)) return '';
+  const nodeAssetId = String(node.data.assetId || '').trim();
+  if (nodeAssetId) return nodeAssetId;
+  const nodeAssetIds = Array.isArray(node.data.assetIds)
+    ? (node.data.assetIds as unknown[]).map((item) => String(item || '').trim()).filter(Boolean)
+    : [];
+  if (nodeAssetIds[0]) return nodeAssetIds[0];
+  const runtimeAssetId = Array.isArray(runtimeNodeOutput?.assets)
+    ? runtimeNodeOutput.assets.find((asset) => asset.kind === 'image' && asset.assetId)?.assetId || ''
+    : '';
+  return String(runtimeAssetId || '').trim();
+};
+
 const appendReferenceOrderKey = (referenceOrder: unknown, key: string) => {
   const current = Array.isArray(referenceOrder)
     ? referenceOrder.map((item) => String(item || '')).filter(Boolean)
@@ -289,13 +307,16 @@ const buildGraphIndex = (
     hasIncomingEdgesByNodeId[edge.target] = true;
 
     const sourceNode = nodesById.get(edge.source);
-    const sourceImageUrl = getNodeReferenceImageUrl(sourceNode, nodeOutputByNodeId[edge.source]);
+    const sourceRuntimeOutput = nodeOutputByNodeId[edge.source];
+    const sourceImageUrl = getNodeReferenceImageUrl(sourceNode, sourceRuntimeOutput);
     if (sourceNode && isImageNode(sourceNode) && sourceImageUrl) {
       const sourceReferenceUploadId = String(sourceNode.data.referenceUploadId || '').trim();
+      const sourceAssetId = getNodeReferenceAssetId(sourceNode, sourceRuntimeOutput);
       const refs = upstreamImageRefsByNodeId[edge.target] || [];
       refs.push({
         key: `upstream:${sourceNode.id}`,
         id: sourceNode.id,
+        ...(sourceAssetId ? { assetId: sourceAssetId } : {}),
         edgeId: edge.id,
         imageUrl: sourceImageUrl,
         ...(sourceReferenceUploadId ? { referenceUploadId: sourceReferenceUploadId } : {}),

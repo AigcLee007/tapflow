@@ -47,9 +47,10 @@ import {
   Play,
   Ungroup,
   Blocks,
-  Star
+  Star,
+  GripVertical
 } from 'lucide-react';
-import type { FlowImageGenerationSnapshot, FlowNodeData, FlowNodeKind } from '../types';
+import type { FlowImageGenerationSnapshot, FlowImageReferenceComparisonSource, FlowNodeData, FlowNodeKind } from '../types';
 import { useFlowCanvasStore, type FlowDerivedEditCounts, type FlowUpstreamImageRef } from '../store/flowCanvasStore';
 import { runImageEdit, type ImageEditType } from '../runtime/graphExecutor';
 import { markBackendRunLaunchFailed, runBackendWorkflow } from '../runtime/v2WorkflowRunner';
@@ -138,6 +139,11 @@ import { persistDerivedImageAsset, type DerivedImageSourceType } from '../utils/
 import { getCachedReferenceImageObjectUrl } from '../utils/referenceImageLocalCache';
 import { downloadOriginalImage, getPreferredImageDownloadAssetId } from '../utils/imageDownload';
 import { resolveImageViewerFileSizeBytes } from '../utils/imageViewerFileSize';
+import {
+  buildImageViewerComparisonSource,
+  formatImageViewerDateTime,
+  readImageViewerComparisonSource,
+} from '../utils/imageViewerComparison';
 import {
   buildFailedDerivedImagePatch,
   buildOptimisticDerivedImageNodeData,
@@ -1060,13 +1066,6 @@ const FloatingToolbar: React.FC<{ children: React.ReactNode }> = ({ children }) 
   );
 };
 
-const formatImageViewerDate = (timestamp?: number) => {
-  const date = timestamp ? new Date(timestamp) : new Date();
-  if (Number.isNaN(date.getTime())) return '';
-  const pad = (value: number) => String(value).padStart(2, '0');
-  return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())}`;
-};
-
 const formatImageViewerBytes = (bytes?: number | null) => {
   if (!Number.isFinite(Number(bytes)) || Number(bytes) <= 0) return '--';
   const value = Number(bytes);
@@ -1110,6 +1109,8 @@ const inferImageViewerQuality = (size?: string, naturalWidth?: number, naturalHe
 interface ImageFullscreenOverlayProps {
   imageUrl: string;
   assetId?: string | null;
+  comparisonFallbackUrl?: string;
+  comparisonSource?: FlowImageReferenceComparisonSource | null;
   onClose: () => void;
   onDownload: () => void;
   prompt?: string;
@@ -1126,6 +1127,8 @@ interface ImageFullscreenOverlayProps {
 const ImageFullscreenOverlay: React.FC<ImageFullscreenOverlayProps> = ({
   imageUrl,
   assetId,
+  comparisonFallbackUrl,
+  comparisonSource,
   onClose,
   onDownload,
   prompt,
@@ -1142,15 +1145,20 @@ const ImageFullscreenOverlay: React.FC<ImageFullscreenOverlayProps> = ({
   const [fileSize, setFileSize] = React.useState<string>(formatImageViewerBytes(estimateDataUrlBytes(imageUrl)));
   const [copiedVisible, setCopiedVisible] = React.useState(false);
   const [promptHovered, setPromptHovered] = React.useState(false);
+  const [comparisonActive, setComparisonActive] = React.useState(false);
+  const [comparisonImageUrl, setComparisonImageUrl] = React.useState('');
+  const [comparisonSplit, setComparisonSplit] = React.useState(50);
+  const comparisonFrameRef = React.useRef<HTMLDivElement>(null);
   const creator = user?.displayName || user?.email || '当前用户';
   const cleanPrompt = String(prompt || '').trim();
   const displayPrompt = cleanPrompt || '暂无提示词';
+  const canCompareOriginal = isGenerated && !!comparisonImageUrl;
   const infoRows = [
     ...(isGenerated ? [{ label: '模型', value: modelLabel || snapshot?.modelId || '--' }] : []),
     { label: '质量', value: inferImageViewerQuality(snapshot?.size || size, naturalWidth, naturalHeight) },
     ...(isGenerated ? [{ label: '宽高比', value: formatViewerRatio(snapshot?.aspectRatio || aspectRatio, naturalWidth, naturalHeight) }] : []),
     { label: '文件大小', value: fileSize },
-    { label: '日期', value: formatImageViewerDate(snapshot?.generatedAt || createdAt) },
+    { label: '日期', value: formatImageViewerDateTime(snapshot?.generatedAt || createdAt) },
     { label: '创建者', value: creator },
   ];
 
@@ -1182,6 +1190,62 @@ const ImageFullscreenOverlay: React.FC<ImageFullscreenOverlayProps> = ({
       disposed = true;
     };
   }, [assetId, imageUrl]);
+
+  React.useEffect(() => {
+    let disposed = false;
+    const fallbackUrl = String(comparisonFallbackUrl || '').trim();
+    setComparisonImageUrl(fallbackUrl);
+    setComparisonActive(false);
+
+    if (!isGenerated || !comparisonSource) {
+      setComparisonImageUrl('');
+      return;
+    }
+
+    const comparisonAssetId = String(comparisonSource.assetId || '').trim();
+    if (!comparisonAssetId) return;
+
+    void getAssetVariantUrl(comparisonAssetId, 'preview')
+      .catch(() => getAssetDownloadUrl(comparisonAssetId))
+      .then((download) => {
+        if (disposed) return;
+        const signedUrl = String(download.url || '').trim();
+        setComparisonImageUrl(signedUrl || fallbackUrl);
+      })
+      .catch(() => {
+        if (!disposed) setComparisonImageUrl(fallbackUrl);
+      });
+
+    return () => {
+      disposed = true;
+    };
+  }, [comparisonFallbackUrl, comparisonSource, isGenerated]);
+
+  React.useEffect(() => {
+    if (!canCompareOriginal) setComparisonActive(false);
+  }, [canCompareOriginal]);
+
+  const updateComparisonSplitFromClientX = useCallback((clientX: number) => {
+    const rect = comparisonFrameRef.current?.getBoundingClientRect();
+    if (!rect || rect.width <= 0) return;
+    const percent = ((clientX - rect.left) / rect.width) * 100;
+    setComparisonSplit(Math.min(92, Math.max(8, percent)));
+  }, []);
+
+  const handleComparisonPointerDown = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    updateComparisonSplitFromClientX(event.clientX);
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      updateComparisonSplitFromClientX(moveEvent.clientX);
+    };
+    const handlePointerUp = () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+    };
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+  }, [updateComparisonSplitFromClientX]);
 
   const handleCopyPrompt = useCallback(() => {
     void navigator.clipboard?.writeText(cleanPrompt || displayPrompt).catch(() => undefined);
@@ -1245,19 +1309,99 @@ const ImageFullscreenOverlay: React.FC<ImageFullscreenOverlayProps> = ({
               transform: 'scale(1.08)',
             }}
           />
-          <img
-            src={imageUrl}
-            alt="Fullscreen"
-            draggable={false}
-            style={{
-              position: 'relative',
-              zIndex: 1,
-              width: '100%',
-              height: '100%',
-              objectFit: 'contain',
-              display: 'block',
-            }}
-          />
+          {comparisonActive && comparisonImageUrl ? (
+            <div
+              ref={comparisonFrameRef}
+              style={{
+                position: 'relative',
+                zIndex: 1,
+                width: '100%',
+                height: '100%',
+                overflow: 'hidden',
+              }}
+            >
+              <img
+                src={comparisonImageUrl}
+                alt="Original reference"
+                draggable={false}
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'contain',
+                  display: 'block',
+                }}
+              />
+              <img
+                src={imageUrl}
+                alt="Generated result"
+                draggable={false}
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'contain',
+                  display: 'block',
+                  clipPath: `inset(0 ${100 - comparisonSplit}% 0 0)`,
+                }}
+              />
+              <div
+                aria-hidden="true"
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  bottom: 0,
+                  left: `${comparisonSplit}%`,
+                  width: 2,
+                  transform: 'translateX(-1px)',
+                  background: 'rgba(255,255,255,0.82)',
+                  boxShadow: '0 0 0 1px rgba(0,0,0,0.22), 0 0 22px rgba(0,0,0,0.38)',
+                }}
+              />
+              <button
+                type="button"
+                onPointerDown={handleComparisonPointerDown}
+                aria-label="拖动调整原图对比"
+                title="拖动调整原图对比"
+                style={{
+                  position: 'absolute',
+                  top: '50%',
+                  left: `${comparisonSplit}%`,
+                  width: 48,
+                  height: 48,
+                  transform: 'translate(-50%, -50%)',
+                  borderRadius: '50%',
+                  border: '1px solid rgba(255,255,255,0.24)',
+                  background: 'rgba(42,38,33,0.82)',
+                  color: '#fff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'ew-resize',
+                  boxShadow: '0 12px 30px rgba(0,0,0,0.38), inset 0 1px 0 rgba(255,255,255,0.16)',
+                  touchAction: 'none',
+                }}
+              >
+                <GripVertical size={23} strokeWidth={2.2} />
+              </button>
+            </div>
+          ) : (
+            <img
+              src={imageUrl}
+              alt="Fullscreen"
+              draggable={false}
+              style={{
+                position: 'relative',
+                zIndex: 1,
+                width: '100%',
+                height: '100%',
+                objectFit: 'contain',
+                display: 'block',
+              }}
+            />
+          )}
         </div>
 
         <aside
@@ -1424,11 +1568,34 @@ const ImageFullscreenOverlay: React.FC<ImageFullscreenOverlayProps> = ({
             </div>
           </div>
 
+          {canCompareOriginal && (
+            <button
+              type="button"
+              onClick={() => setComparisonActive((value) => !value)}
+              style={{
+                marginTop: 18,
+                width: '100%',
+                height: 48,
+                flex: '0 0 48px',
+                borderRadius: 10,
+                border: '1px solid rgba(255,255,255,0.1)',
+                background: comparisonActive ? 'rgba(48,48,48,0.92)' : 'rgba(31,31,31,0.96)',
+                color: 'rgba(255,255,255,0.8)',
+                fontSize: 17,
+                fontWeight: 700,
+                cursor: 'pointer',
+                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06)',
+              }}
+            >
+              {comparisonActive ? '返回生成图' : '原图对比'}
+            </button>
+          )}
+
           <button
             type="button"
             onClick={onDownload}
             style={{
-              marginTop: 18,
+              marginTop: canCompareOriginal ? 14 : 18,
               width: '100%',
               height: 48,
               flex: '0 0 48px',
@@ -1451,7 +1618,7 @@ const ImageFullscreenOverlay: React.FC<ImageFullscreenOverlayProps> = ({
               position: 'absolute',
               top: 64,
               right: 10,
-              bottom: 78,
+              bottom: canCompareOriginal ? 140 : 78,
               width: 9,
               borderRadius: 999,
               background: 'rgba(139,143,153,0.88)',
@@ -4219,6 +4386,25 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     })),
     [getReferenceDisplayImageUrl, referenceChips],
   );
+  const generationSnapshot = d.lastGenerationSnapshot as FlowImageGenerationSnapshot | undefined;
+  const imageViewerComparisonSource = useMemo(() => {
+    const snapshotSource = readImageViewerComparisonSource(generationSnapshot?.referenceComparison);
+    if (snapshotSource) return snapshotSource;
+    if (!isGeneratedImageNode) return null;
+    if (Number(generationSnapshot?.referenceImageCount || 0) <= 0) return null;
+    return buildImageViewerComparisonSource(referenceChips);
+  }, [generationSnapshot?.referenceComparison, generationSnapshot?.referenceImageCount, isGeneratedImageNode, referenceChips]);
+  const imageViewerComparisonFallbackUrl = useMemo(() => {
+    if (!imageViewerComparisonSource) return '';
+    const match = referenceChips.find((item) => item.key === imageViewerComparisonSource.key)
+      || (imageViewerComparisonSource.nodeId
+        ? referenceChips.find((item) => item.key === `upstream:${imageViewerComparisonSource.nodeId}`)
+        : undefined)
+      || (imageViewerComparisonSource.assetId
+        ? referenceChips.find((item) => item.key === `asset:${imageViewerComparisonSource.assetId}`)
+        : undefined);
+    return match ? getReferenceDisplayImageUrl(match) : '';
+  }, [getReferenceDisplayImageUrl, imageViewerComparisonSource, referenceChips]);
   const connectedMentionItems = upstreamImageRefs.filter((item) => {
     const query = mentionQuery.trim().toLowerCase();
     if (!query) return true;
@@ -4534,7 +4720,11 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     const referenceImages = referenceChips
       .map((item) => item.imageUrl)
       .filter((url) => !String(url || '').trim().toLowerCase().startsWith('blob:'));
-    updateNodeData(id, { referenceImages, routeKey: selectedRuntimeRoute.routeKey });
+    updateNodeData(id, {
+      generationReferenceComparison: buildImageViewerComparisonSource(referenceChips),
+      referenceImages,
+      routeKey: selectedRuntimeRoute.routeKey,
+    });
     void runBackendWorkflow({ runMode: 'target_node', targetNodeId: id }).catch(() => undefined);
   };
 
@@ -6060,17 +6250,19 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
               resultAssetId: Array.isArray(d.assetIds) ? String(d.assetIds[activeResultIndex] || '') : '',
               runtimeAssetId: runtimeImageAssets[activeResultIndex]?.assetId,
             })}
+            comparisonFallbackUrl={imageViewerComparisonFallbackUrl}
+            comparisonSource={imageViewerComparisonSource}
             onClose={() => setFullscreenOpen(false)}
             onDownload={handleDownload}
-            prompt={isGeneratedImageNode ? String((d.lastGenerationSnapshot as FlowImageGenerationSnapshot | undefined)?.prompt || d.generationPrompt || '') : ''}
-            modelLabel={modelOptions.find((model) => model.id === String((d.lastGenerationSnapshot as FlowImageGenerationSnapshot | undefined)?.modelId || currentModelId))?.label || String((d.lastGenerationSnapshot as FlowImageGenerationSnapshot | undefined)?.modelId || currentModelId)}
-            size={String((d.lastGenerationSnapshot as FlowImageGenerationSnapshot | undefined)?.size || currentSize)}
-            aspectRatio={String((d.lastGenerationSnapshot as FlowImageGenerationSnapshot | undefined)?.aspectRatio || currentRatio)}
+            prompt={isGeneratedImageNode ? String(generationSnapshot?.prompt || d.generationPrompt || '') : ''}
+            modelLabel={modelOptions.find((model) => model.id === String(generationSnapshot?.modelId || currentModelId))?.label || String(generationSnapshot?.modelId || currentModelId)}
+            size={String(generationSnapshot?.size || currentSize)}
+            aspectRatio={String(generationSnapshot?.aspectRatio || currentRatio)}
             naturalWidth={typeof d.naturalWidth === 'number' ? d.naturalWidth : undefined}
             naturalHeight={typeof d.naturalHeight === 'number' ? d.naturalHeight : undefined}
             createdAt={typeof d.createdAt === 'number' ? d.createdAt : undefined}
             isGenerated={isGeneratedImageNode}
-            snapshot={d.lastGenerationSnapshot as FlowImageGenerationSnapshot | undefined}
+            snapshot={generationSnapshot}
           />
         )}
 

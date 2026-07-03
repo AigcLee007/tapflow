@@ -3,6 +3,15 @@
 Last updated: 2026-07-04
 Maintainers: project team + Codex sessions
 
+## 2026-07-04 - Image Viewer Original Comparison
+
+- added first-reference original comparison metadata for image-to-image generations so the fullscreen viewer can show an `原图对比` control only when a generated image has reference inputs.
+- added a draggable split-view comparison in the fullscreen viewer, using the first reference image as the original side and keeping text-to-image results without the comparison button.
+- changed fullscreen image metadata timestamps from date-only to minute-level date/time display.
+- validation:
+  - `npm run test -- src/flowCanvas/utils/imageViewerComparison.test.ts src/flowCanvas/runtime/v2WorkflowRunner.test.ts src/flowCanvas/store/flowCanvasStore.test.ts src/flowCanvas/utils/imageViewerFileSize.test.ts src/flowCanvas/nodes/FlowNodes.agent-metadata.test.tsx src/flowCanvas/nodes/ImageMoreMenu.test.tsx` passed on 2026-07-04: 6 test files, 45 tests.
+  - `npm run build` passed on 2026-07-04 with existing Browserslist, chunk-size, and dynamic-import warnings only.
+
 ## 2026-07-04 - Image Viewer Original File Size Fix
 
 - fixed the fullscreen image viewer information panel so file size is based on the original asset `sizeBytes` when an `assetId` is available, matching the file that the download button retrieves.

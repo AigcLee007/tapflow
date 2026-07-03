@@ -81,6 +81,14 @@ export interface FlowRuntimeNodeOutput {
   text?: string | null;
 }
 
+export interface FlowImageReferenceComparisonSource {
+  key: string;
+  source: 'asset' | 'upstream';
+  assetId?: string;
+  nodeId?: string;
+  label?: string;
+}
+
 export interface FlowImageGenerationSnapshot {
   modelId: string;
   routeId?: string;
@@ -90,6 +98,7 @@ export interface FlowImageGenerationSnapshot {
   quality?: string;
   n?: number;
   referenceImageCount: number;
+  referenceComparison?: FlowImageReferenceComparisonSource | null;
   activeCommandId?: string;
   generatedAt: number;
 }
@@ -151,6 +160,7 @@ export interface FlowNodeData {
   routeId?: string;
   referenceAssetItemIds?: string[];
   referenceOrder?: string[];
+  generationReferenceComparison?: FlowImageReferenceComparisonSource | null;
   activeCommandId?: string;
   generatedResults?: FlowImageResultItem[];
   activeResultIndex?: number;

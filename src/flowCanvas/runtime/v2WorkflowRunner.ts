@@ -23,6 +23,10 @@ import type {
   FlowRuntimeAssetRef,
   FlowRuntimeNodeOutput,
 } from '../types';
+import {
+  buildImageViewerComparisonSourceFromReferenceKeys,
+  readImageViewerComparisonSource,
+} from '../utils/imageViewerComparison';
 import { flushRemoteDraftBeforeRun, shouldFlushRemoteDraftBeforeRun } from './remoteDraftSaveBarrier';
 
 const RUNNER_ENABLED = String(import.meta.env.VITE_USE_V2_WORKFLOW_RUNNER ?? 'true').toLowerCase() !== 'false';
@@ -422,6 +426,12 @@ function buildImageGenerationSnapshot(
       ? readString((nodeData.lastGenerationSnapshot as Partial<FlowImageGenerationSnapshot>).modelId)
       : undefined)
     || '';
+  const referenceComparison =
+    readImageViewerComparisonSource(nodeData.generationReferenceComparison)
+    || buildImageViewerComparisonSourceFromReferenceKeys({
+      referenceAssetItemIds: nodeData.referenceAssetItemIds,
+      referenceOrder: nodeData.referenceOrder,
+    });
 
   return {
     activeCommandId: readString(nodeData.activeCommandId),
@@ -431,6 +441,7 @@ function buildImageGenerationSnapshot(
     n: readPositiveInteger(nodeData.batchCount) || readPositiveInteger(params.n) || assetRefs.length || 1,
     prompt,
     quality: readString(params.quality),
+    ...(referenceComparison ? { referenceComparison } : {}),
     referenceImageCount: countReferenceImages(nodeData),
     routeId: readString(nodeData.routeId) || readString(nodeData.routeKey),
     size: readString(params.size) || readString(params.imageSize) || readString(params.image_size),
