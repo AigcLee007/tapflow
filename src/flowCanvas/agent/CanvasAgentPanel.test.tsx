@@ -415,6 +415,36 @@ describe("CanvasAgentPanel", () => {
     expect(screen.getByRole("button", { name: "继续编辑" })).toBeTruthy();
   });
 
+  it("starts a genuinely new chat instead of reopening the latest replayed session", async () => {
+    mockListAgentSessions.mockResolvedValue([buildSessionSummary()]);
+    mockGetAgentSessionHistory.mockResolvedValue({
+      messages: [
+        {
+          content: "Please generate a cover",
+          createdAt: "2026-06-24T00:00:00Z",
+          id: "m1",
+          role: "user",
+          sessionId: "session-1",
+        },
+      ],
+      session: buildSessionSummary(),
+      turns: [],
+    });
+    mockGetAgentSessionEvents.mockResolvedValue({ events: [] });
+
+    renderPanel();
+
+    expect(await screen.findByText("Please generate a cover")).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "新对话" }));
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText("Please generate a cover")).toBeNull();
+    });
+  });
+
   it("restores replayed approval and error states for the latest session", async () => {
     mockListAgentSessions.mockResolvedValue([buildSessionSummary()]);
     mockGetAgentSessionHistory.mockResolvedValue({

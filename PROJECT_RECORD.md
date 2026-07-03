@@ -3,6 +3,18 @@
 Last updated: 2026-07-03
 Maintainers: project team + Codex sessions
 
+## 2026-07-03 - Agent Panel New Chat And Frontend API Proxy Fix
+
+- fixed the Agent panel new-chat action so it clears the active session, replayed history, tool timeline, continuation context, and composer state without immediately reopening the latest saved session.
+- added history-state cleanup when the active Agent session becomes empty, preventing stale replay messages from remaining visible after starting a new conversation.
+- added a production static frontend `/api` proxy in `scripts/serve-dist.cjs` so direct access through the frontend service can reach `/api/v2/*` instead of falling through to the SPA/static server.
+- wired `tapflow-frontend` to proxy to `http://tapflow-api:3366` in `docker-compose.staging.yml`.
+- validation:
+  - `npm test -- src/flowCanvas/agent/CanvasAgentPanel.test.tsx` passed on 2026-07-03: 1 test file, 12 tests.
+  - `npm test -- scripts/serve-dist.test.ts` passed on 2026-07-03: 1 test file, 3 tests.
+  - `npm test -- src/flowCanvas/agent/useCanvasAgentSession.test.tsx src/flowCanvas/agent/useAgentConversationHistory.test.tsx` passed on 2026-07-03: 2 test files, 20 tests.
+  - `npm run build` passed on 2026-07-03 with existing Browserslist, chunk-size, and dynamic-import warnings only.
+
 ## 2026-07-03 - Agent Executor Tool Call SQL Bind Fix
 
 - fixed a production Agent executor failure in the durable `agent_tool_calls` insert path where the SQL placeholder count no longer matched the bound parameter array during approved tool execution.

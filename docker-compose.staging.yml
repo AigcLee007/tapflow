@@ -92,6 +92,7 @@ services:
     environment:
       FRONTEND_HOST: 0.0.0.0
       FRONTEND_PORT: 5188
+      API_PROXY_TARGET: ${API_PROXY_TARGET:-http://tapflow-api:3366}
       VITE_AGENT_DIRECTOR_ENABLED: ${VITE_AGENT_DIRECTOR_ENABLED:-false}
     ports:
       - "127.0.0.1:${FRONTEND_HOST_PORT:-5188}:5188"

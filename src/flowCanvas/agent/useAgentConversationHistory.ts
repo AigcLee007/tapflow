@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   type AgentHistoryMessage,
@@ -12,6 +12,14 @@ export function useAgentConversationHistory(sessionId: string | null) {
   const [messages, setMessages] = useState<AgentHistoryMessage[]>([]);
   const [session, setSession] = useState<AgentSessionView | null>(null);
   const [turns, setTurns] = useState<AgentHistoryTurn[]>([]);
+
+  useEffect(() => {
+    if (sessionId) return;
+    setLoading(false);
+    setMessages([]);
+    setSession(null);
+    setTurns([]);
+  }, [sessionId]);
 
   const refresh = useCallback(async () => {
     if (!sessionId) {

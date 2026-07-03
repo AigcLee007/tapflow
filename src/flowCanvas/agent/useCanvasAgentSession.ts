@@ -186,6 +186,19 @@ export function useCanvasAgentSession(options: UseCanvasAgentSessionOptions = {}
     setLastContinuation(null);
   }, []);
 
+  const resetSession = useCallback(() => {
+    setActivityTimeline([]);
+    setCurrentPlan(null);
+    setError(null);
+    setLastContinuation(null);
+    setMessages([]);
+    setPendingContinuation(null);
+    setSessionId(null);
+    setToolTimeline([]);
+    setUsedOfflineFallback(false);
+    setWorkspaceState("idle");
+  }, []);
+
   const failSession = useCallback((message: string) => {
     setError(message);
     setMessages((current) => [...current, createMessage("system", message)]);
@@ -800,6 +813,7 @@ export function useCanvasAgentSession(options: UseCanvasAgentSessionOptions = {}
       messages,
       pendingContinuation,
       placeToolAssetsOnCanvas,
+      resetSession,
       selectToolAssetRef,
       sendPrompt,
       sessionId,
@@ -824,6 +838,7 @@ export function useCanvasAgentSession(options: UseCanvasAgentSessionOptions = {}
       messages,
       pendingContinuation,
       placeToolAssetsOnCanvas,
+      resetSession,
       selectToolAssetRef,
       sendPrompt,
       sessionId,

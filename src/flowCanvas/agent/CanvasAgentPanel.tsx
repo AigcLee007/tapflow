@@ -123,13 +123,24 @@ export function CanvasAgentPanel(props: {
     title: string;
     updatedAt?: string;
   }>>([]);
+  const autoOpenLatestSessionRef = React.useRef(true);
+  const sessionScopeRef = React.useRef<string | null>(null);
   const replayHydratedSessionIdRef = React.useRef<string | null>(null);
 
   const busy = isCanvasAgentBusyState(sessionActions.workspaceState);
   const activeContinuation = sessionActions.pendingContinuation ?? sessionActions.lastContinuation;
 
   React.useEffect(() => {
+    const scopeKey = `${backendProjectId ?? ""}:${backendFlowId ?? ""}`;
+    if (sessionScopeRef.current !== scopeKey) {
+      sessionScopeRef.current = scopeKey;
+      autoOpenLatestSessionRef.current = true;
+    }
+  }, [backendFlowId, backendProjectId]);
+
+  React.useEffect(() => {
     if (props.initialSessionId) {
+      autoOpenLatestSessionRef.current = false;
       sessionActions.setSessionId?.(props.initialSessionId);
     }
   }, [props.initialSessionId, sessionActions.setSessionId]);
@@ -142,7 +153,8 @@ export function CanvasAgentPanel(props: {
     })
       .then((sessions) => {
         setSessionList(sessions);
-        if (!sessionActions.sessionId && sessions[0]) {
+        if (!sessionActions.sessionId && autoOpenLatestSessionRef.current && sessions[0]) {
+          autoOpenLatestSessionRef.current = false;
           sessionActions.setSessionId?.(sessions[0].id);
         }
       })
@@ -169,6 +181,7 @@ export function CanvasAgentPanel(props: {
     const handleOpen = (event: Event) => {
       const detail = (event as CustomEvent<OpenAgentSessionDetail>).detail;
       if (!detail?.sessionId) return;
+      autoOpenLatestSessionRef.current = false;
       sessionActions.setSessionId?.(detail.sessionId);
     };
 
@@ -275,8 +288,9 @@ export function CanvasAgentPanel(props: {
       onChangeTab={workspace.setActiveTab}
       onCollapse={props.onClose}
       onNewChat={() => {
-        sessionActions.setSessionId?.(null);
-        sessionActions.clearContinuation?.();
+        autoOpenLatestSessionRef.current = false;
+        replayHydratedSessionIdRef.current = null;
+        sessionActions.resetSession?.();
         setUploadedReferences([]);
         setUploadError(null);
         setComposerDraft("");
