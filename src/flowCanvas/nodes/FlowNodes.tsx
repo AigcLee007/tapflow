@@ -86,7 +86,20 @@ import { ImageGenerateToolbar } from './ImageGenerateToolbar';
 import { ImagePromptActionRow } from './ImagePromptActionRow';
 import type { OutpaintDirection } from './ImageOutpaintOverlay';
 import type { ImageSplitPiece } from './ImageSplitOverlay';
-import { IMAGE_MENU_ITEM_MIN_HEIGHT, IMAGE_MENU_SURFACE_Z_INDEX } from './imageMenuStyles';
+import {
+  IMAGE_FLOATING_TOOLBAR_BUTTON_SIZE,
+  IMAGE_FLOATING_TOOLBAR_DIVIDER_HEIGHT,
+  IMAGE_FLOATING_TOOLBAR_GAP,
+  IMAGE_FLOATING_TOOLBAR_ICON_SIZE,
+  IMAGE_FLOATING_TOOLBAR_INNER_PADDING,
+  IMAGE_FLOATING_TOOLBAR_ITEM_GAP,
+  IMAGE_FLOATING_TOOLBAR_MORE_DOT_SIZE,
+  IMAGE_FLOATING_TOOLBAR_PADDING,
+  IMAGE_FLOATING_TOOLBAR_RADIUS,
+  IMAGE_FLOATING_TOOLBAR_TOOLTIP_FONT_SIZE,
+  IMAGE_MENU_ITEM_MIN_HEIGHT,
+  IMAGE_MENU_SURFACE_Z_INDEX,
+} from './imageMenuStyles';
 import { PromptLexicalEditor, type PromptLexicalEditorHandle, type PromptReference } from './PromptLexicalEditor';
 import {
   applySlashCommandToPrompt,
@@ -1015,11 +1028,11 @@ const topFloatingBarBase: React.CSSProperties = {
   left: '50%',
   background: 'rgba(38,38,38,0.98)', // Uniform color
   border: '1px solid rgba(255,255,255,0.1)',
-  borderRadius: 24,
-  padding: '6px 16px',
+  borderRadius: IMAGE_FLOATING_TOOLBAR_RADIUS,
+  padding: IMAGE_FLOATING_TOOLBAR_PADDING,
   display: 'flex',
   alignItems: 'center',
-  gap: 16,
+  gap: IMAGE_FLOATING_TOOLBAR_GAP,
   boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
   backdropFilter: 'blur(20px)',
   zIndex: 100,
@@ -5885,21 +5898,21 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       {/* Section */}
       {hasImage && showNodeEditor && (() => {
         const tools = [
-          { id: 'crop', icon: <Crop size={22} strokeWidth={1.5} />, label: '裁剪' },
-          { id: 'multiAngle', icon: <Box size={22} strokeWidth={1.5} />, label: '多角度' },
-          { id: 'repaint', icon: <Wand2 size={22} strokeWidth={1.5} />, label: '重绘' },
-          { id: 'lighting', icon: <Flashlight size={22} strokeWidth={1.5} />, label: '打光' },
-          { id: 'more', icon: <MoreHorizontal size={22} strokeWidth={1.5} />, label: '更多' },
+          { id: 'crop', icon: <Crop size={IMAGE_FLOATING_TOOLBAR_ICON_SIZE} strokeWidth={1.5} />, label: '裁剪' },
+          { id: 'multiAngle', icon: <Box size={IMAGE_FLOATING_TOOLBAR_ICON_SIZE} strokeWidth={1.5} />, label: '多角度' },
+          { id: 'repaint', icon: <Wand2 size={IMAGE_FLOATING_TOOLBAR_ICON_SIZE} strokeWidth={1.5} />, label: '重绘' },
+          { id: 'lighting', icon: <Flashlight size={IMAGE_FLOATING_TOOLBAR_ICON_SIZE} strokeWidth={1.5} />, label: '打光' },
+          { id: 'more', icon: <MoreHorizontal size={IMAGE_FLOATING_TOOLBAR_ICON_SIZE} strokeWidth={1.5} />, label: '更多' },
         ];
         const hasEditHistory = Array.isArray(d.editHistory) && d.editHistory.length > 0;
         const actions = [
-          { id: 'historyBack', icon: <RotateCcw size={22} strokeWidth={1.5} />, label: '回退上一步', disabled: !hasEditHistory },
-          { id: 'download', icon: <Download size={22} strokeWidth={1.5} />, label: '下载' },
-          { id: 'fullscreen', icon: <Expand size={22} strokeWidth={1.5} />, label: '全屏查看' },
+          { id: 'historyBack', icon: <RotateCcw size={IMAGE_FLOATING_TOOLBAR_ICON_SIZE} strokeWidth={1.5} />, label: '回退上一步', disabled: !hasEditHistory },
+          { id: 'download', icon: <Download size={IMAGE_FLOATING_TOOLBAR_ICON_SIZE} strokeWidth={1.5} />, label: '下载' },
+          { id: 'fullscreen', icon: <Expand size={IMAGE_FLOATING_TOOLBAR_ICON_SIZE} strokeWidth={1.5} />, label: '全屏查看' },
         ];
         return (
           <FloatingToolbar>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '2px 6px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: IMAGE_FLOATING_TOOLBAR_ITEM_GAP, padding: IMAGE_FLOATING_TOOLBAR_INNER_PADDING }}>
               {tools.map((t) => (
                 <div key={t.id} className="flow-image-toolbar-item" style={{ position: 'relative', display: 'flex', justifyContent: 'center' }}>
                   <div className="flow-image-toolbar-tooltip" style={{
@@ -5907,10 +5920,10 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
                       bottom: 'calc(100% + 14px)',
                       background: 'rgba(40,40,40,0.95)',
                       border: '1px solid rgba(255,255,255,0.08)',
-                      borderRadius: 16,
-                      padding: '6px 14px',
+                      borderRadius: 12,
+                      padding: '5px 10px',
                       color: '#fff',
-                      fontSize: 13,
+                      fontSize: IMAGE_FLOATING_TOOLBAR_TOOLTIP_FONT_SIZE,
                       fontWeight: 500,
                       whiteSpace: 'nowrap',
                       zIndex: 200,
@@ -5930,8 +5943,8 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
                     onClick={() => handleToolAction(t.id)}
                     style={{
                       position: 'relative',
-                      width: 44,
-                      height: 44,
+                      width: IMAGE_FLOATING_TOOLBAR_BUTTON_SIZE,
+                      height: IMAGE_FLOATING_TOOLBAR_BUTTON_SIZE,
                       borderRadius: '50%',
                       border: '1px solid transparent',
                       background: 'transparent',
@@ -5947,10 +5960,10 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
                     {t.id === 'more' && (
                       <div style={{ 
                         position: 'absolute', 
-                        top: 6, 
-                        right: 8, 
-                        width: 6, 
-                        height: 6, 
+                        top: 5,
+                        right: 7,
+                        width: IMAGE_FLOATING_TOOLBAR_MORE_DOT_SIZE,
+                        height: IMAGE_FLOATING_TOOLBAR_MORE_DOT_SIZE,
                         borderRadius: '50%', 
                         background: '#0ea5e9',
                         boxShadow: '0 0 4px #0ea5e9'
@@ -5961,7 +5974,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
               ))}
 
               {/* Divider */}
-              <div style={{ width: 1, height: 24, background: 'rgba(255,255,255,0.12)', margin: '0 6px' }} />
+              <div style={{ width: 1, height: IMAGE_FLOATING_TOOLBAR_DIVIDER_HEIGHT, background: 'rgba(255,255,255,0.12)', margin: '0 4px' }} />
 
               {actions.map((t) => (
                 <div key={t.id} className="flow-image-toolbar-item" style={{ position: 'relative', display: 'flex', justifyContent: 'center' }}>
@@ -5970,10 +5983,10 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
                       bottom: 'calc(100% + 14px)',
                       background: 'rgba(40,40,40,0.95)',
                       border: '1px solid rgba(255,255,255,0.08)',
-                      borderRadius: 16,
-                      padding: '6px 14px',
+                      borderRadius: 12,
+                      padding: '5px 10px',
                       color: '#fff',
-                      fontSize: 13,
+                      fontSize: IMAGE_FLOATING_TOOLBAR_TOOLTIP_FONT_SIZE,
                       fontWeight: 500,
                       whiteSpace: 'nowrap',
                       zIndex: 200,
@@ -5989,8 +6002,8 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
                     }}
                     disabled={t.disabled}
                     style={{
-                      width: 44,
-                      height: 44,
+                      width: IMAGE_FLOATING_TOOLBAR_BUTTON_SIZE,
+                      height: IMAGE_FLOATING_TOOLBAR_BUTTON_SIZE,
                       borderRadius: '50%',
                       border: '1px solid transparent',
                       background: 'transparent',
@@ -6137,11 +6150,11 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       {shouldShowPromptEditor && (
         <FloatingPromptBar variant="image">
           <div ref={promptBarRef} style={{ position: 'relative' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, minHeight: 42 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, minHeight: 36 }}>
             <button
               type="button"
               className="nodrag nopan"
-              style={{ ...topToolbarBtn, background: 'rgba(255,255,255,0.06)', borderRadius: 12, padding: '8px 10px', border: '1px solid rgba(255,255,255,0.08)' }}
+              style={{ ...topToolbarBtn, width: 36, height: 36, background: 'rgba(255,255,255,0.06)', borderRadius: 10, padding: 0, border: '1px solid rgba(255,255,255,0.08)' }}
               onClick={() => setAssetMenuOpen((value) => !value)}
               title="引用素材"
             >
@@ -6187,9 +6200,9 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
                   onMouseLeave={() => setHoveredReferenceKey(null)}
                   style={{
                     position: 'relative',
-                    width: 44,
-                    height: 44,
-                    borderRadius: 13,
+                    width: 36,
+                    height: 36,
+                    borderRadius: 10,
                     cursor: draggingReferenceKey === refItem.key ? 'grabbing' : 'pointer',
                     opacity: draggingReferenceKey === refItem.key ? 0.55 : 1,
                     transition: 'opacity 140ms ease, transform 140ms ease',
@@ -6199,7 +6212,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
                   <img
                     src={displayImageUrl}
                     alt={refItem.title}
-                    style={{ width: 44, height: 44, borderRadius: 13, objectFit: 'cover', border: '1px solid rgba(255,255,255,0.2)', boxShadow: '0 8px 20px rgba(0,0,0,0.3)' }}
+                    style={{ width: 36, height: 36, borderRadius: 10, objectFit: 'cover', border: '1px solid rgba(255,255,255,0.2)', boxShadow: '0 8px 20px rgba(0,0,0,0.3)' }}
                   />
                   {hoveredReferenceKey === refItem.key && (
                     <>
@@ -6234,10 +6247,10 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
                         }}
                         style={{
                           position: 'absolute',
-                          top: -7,
-                          right: -7,
-                          width: 22,
-                          height: 22,
+                          top: -6,
+                          right: -6,
+                          width: 20,
+                          height: 20,
                           borderRadius: '50%',
                           border: '1px solid rgba(255,255,255,0.24)',
                           background: 'rgba(12,12,14,0.92)',
@@ -6264,14 +6277,14 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
             <button
               type="button"
               className="nodrag nopan"
-              style={{ ...topToolbarBtn, background: 'rgba(255,255,255,0.06)', borderRadius: 12, padding: '8px 10px', border: '1px solid rgba(255,255,255,0.08)' }}
+              style={{ ...topToolbarBtn, width: 36, height: 36, background: 'rgba(255,255,255,0.06)', borderRadius: 10, padding: 0, border: '1px solid rgba(255,255,255,0.08)' }}
               onClick={() => setAssetMenuOpen(true)}
               title="添加更多素材"
             >
               <Plus size={16} />
             </button>
             {referenceChips.length === 0 && (
-              <span style={{ fontSize: 13, color: '#94a3b8' }}>暂无引用，输入 @ 添加素材</span>
+              <span style={{ fontSize: 12, color: '#94a3b8' }}>暂无引用，输入 @ 添加素材</span>
             )}
           </div>
 

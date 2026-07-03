@@ -1,7 +1,16 @@
 ﻿# Project Record
 
-Last updated: 2026-07-03
+Last updated: 2026-07-04
 Maintainers: project team + Codex sessions
+
+## 2026-07-04 - Canvas Toolbar And Prompt Bar Density Tightening
+
+- tightened the selected image floating toolbar so canvas edit actions use smaller shared tokens: 36px buttons, 18px icons, lower padding, tighter gaps, and smaller tooltips.
+- compacted the bottom floating prompt editor density across text/image/video variants, with the image prompt bar reduced to `clamp(560px, 44vw, 820px)`, 128px minimum height, 15px editor text, 28px controls, and smaller reference chips.
+- reduced image prompt reference thumbnails, mention pills, prompt action row spacing, and credit/send controls so the editor reads as a compact canvas control instead of a large modal panel.
+- validation:
+  - `npm run test -- src/flowCanvas/utils/promptBarDensity.test.ts src/flowCanvas/nodes/ImageGenerateToolbar.test.tsx src/flowCanvas/nodes/imageMenuStyles.test.ts src/flowCanvas/nodes/ImagePromptActionRow.test.tsx` passed on 2026-07-04: 4 test files, 9 tests.
+  - `npm run build` passed on 2026-07-04 with existing Browserslist, chunk-size, and dynamic-import warnings only.
 
 ## 2026-07-03 - Agent Panel New Chat And Frontend API Proxy Fix
 

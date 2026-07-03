@@ -51,26 +51,26 @@ const mentionPattern = /@Image\s+\d+/g;
 const referencePillStyle = (hovered: boolean): React.CSSProperties => ({
   display: 'inline-flex',
   alignItems: 'center',
-  gap: 5,
-  height: 28,
-  maxWidth: 172,
-  padding: hovered ? '3px 7px 3px 4px' : '3px 8px 3px 4px',
+  gap: 4,
+  height: 24,
+  maxWidth: 150,
+  padding: hovered ? '2px 6px 2px 4px' : '2px 7px 2px 4px',
   margin: '0 2px',
-  borderRadius: 7,
+  borderRadius: 6,
   border: hovered ? '1px solid rgba(255,255,255,0.2)' : '1px solid rgba(255,255,255,0.08)',
   background: hovered ? 'rgba(255,255,255,0.13)' : 'rgba(255,255,255,0.08)',
   color: '#f8fafc',
-  fontSize: 18,
+  fontSize: 14,
   fontWeight: 760,
   lineHeight: 1,
-  verticalAlign: '-4px',
+  verticalAlign: '-3px',
   boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08)',
   userSelect: 'none',
 });
 
 const removeButtonStyle: React.CSSProperties = {
-  width: 16,
-  height: 16,
+  width: 14,
+  height: 14,
   borderRadius: '50%',
   border: 'none',
   background: 'rgba(0,0,0,0.35)',
@@ -80,7 +80,7 @@ const removeButtonStyle: React.CSSProperties = {
   justifyContent: 'center',
   padding: 0,
   cursor: 'pointer',
-  fontSize: 14,
+  fontSize: 12,
   lineHeight: 1,
 };
 
@@ -112,7 +112,7 @@ const ReferenceChip: React.FC<{
         src={imageUrl}
         alt=""
         draggable={false}
-        style={{ width: 20, height: 20, borderRadius: 5, objectFit: 'cover', flex: '0 0 auto' }}
+        style={{ width: 18, height: 18, borderRadius: 5, objectFit: 'cover', flex: '0 0 auto' }}
       />
       {hovered && (
         <button type="button" tabIndex={-1} onMouseDown={(event) => event.preventDefault()} onClick={remove} style={removeButtonStyle}>

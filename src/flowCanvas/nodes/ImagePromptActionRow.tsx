@@ -34,7 +34,7 @@ export function ImagePromptActionRow({
         flexWrap: 'nowrap',
         alignItems: 'center',
         justifyContent: 'space-between',
-        gap: 14,
+        gap: 10,
         width: '100%',
       }}
     >
@@ -43,7 +43,7 @@ export function ImagePromptActionRow({
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 8,
+          gap: 6,
           flex: '0 0 auto',
           flexShrink: 0,
           minWidth: 0,

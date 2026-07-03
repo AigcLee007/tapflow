@@ -26,7 +26,7 @@ describe('ImageGenerateToolbar', () => {
 
     expect(root.style.height).toBe(`${IMAGE_GENERATE_TOOLBAR_HEIGHT}px`);
     expect(root.style.borderRadius).toBe('999px');
-    expect(root.style.padding).toBe('0px 3px 0px 9px');
+    expect(root.style.padding).toBe('0px 3px 0px 8px');
     expect(credits.style.minWidth).toBe(`${IMAGE_GENERATE_TOOLBAR_CREDITS_MIN_WIDTH}px`);
     expect(credits.style.flexDirection).toBe('row');
     expect(credits.style.whiteSpace).toBe('nowrap');
