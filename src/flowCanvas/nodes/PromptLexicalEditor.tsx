@@ -60,7 +60,7 @@ const referencePillStyle = (hovered: boolean): React.CSSProperties => ({
   border: hovered ? '1px solid rgba(255,255,255,0.2)' : '1px solid rgba(255,255,255,0.08)',
   background: hovered ? 'rgba(255,255,255,0.13)' : 'rgba(255,255,255,0.08)',
   color: '#f8fafc',
-  fontSize: 14,
+  fontSize: 13,
   fontWeight: 760,
   lineHeight: 1,
   verticalAlign: '-3px',

@@ -24,7 +24,7 @@ describe('promptBarDensity', () => {
   test('uses one shared compact density for editor text and controls', () => {
     expect(promptBarBaseDensity).toMatchObject({
       padding: '12px 16px 12px',
-      editorFontSize: 15,
+      editorFontSize: 14,
       editorLineHeight: 1.32,
       controlHeight: 28,
       actionButtonSize: 24,

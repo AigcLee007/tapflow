@@ -94,8 +94,10 @@ import {
   IMAGE_FLOATING_TOOLBAR_INNER_PADDING,
   IMAGE_FLOATING_TOOLBAR_ITEM_GAP,
   IMAGE_FLOATING_TOOLBAR_MORE_DOT_SIZE,
+  IMAGE_FLOATING_TOOLBAR_NODE_GAP,
   IMAGE_FLOATING_TOOLBAR_PADDING,
   IMAGE_FLOATING_TOOLBAR_RADIUS,
+  IMAGE_FLOATING_TOOLBAR_TEXT_BUTTON_PADDING,
   IMAGE_FLOATING_TOOLBAR_TOOLTIP_FONT_SIZE,
   IMAGE_MENU_ITEM_MIN_HEIGHT,
   IMAGE_MENU_SURFACE_Z_INDEX,
@@ -1024,7 +1026,7 @@ const FloatingPromptBar: React.FC<{ children: React.ReactNode; variant?: PromptB
 
 const topFloatingBarBase: React.CSSProperties = {
   position: 'absolute',
-  bottom: 'calc(100% + 48px)', // Increased gap to avoid overlapping NodeLabel
+  bottom: `calc(100% + ${IMAGE_FLOATING_TOOLBAR_NODE_GAP}px)`,
   left: '50%',
   background: 'rgba(38,38,38,0.98)', // Uniform color
   border: '1px solid rgba(255,255,255,0.1)',
@@ -2959,7 +2961,7 @@ export const TextNodeComponent = memo(function TextNode({
   const toolbarBtnStyle = (active?: boolean): React.CSSProperties => ({
     ...topToolbarBtn,
     color: active ? '#fff' : '#94a3b8',
-    padding: '6px 10px',
+    padding: IMAGE_FLOATING_TOOLBAR_TEXT_BUTTON_PADDING,
     borderRadius: 99,
     background: active ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
   });
@@ -5974,7 +5976,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
               ))}
 
               {/* Divider */}
-              <div style={{ width: 1, height: IMAGE_FLOATING_TOOLBAR_DIVIDER_HEIGHT, background: 'rgba(255,255,255,0.12)', margin: '0 4px' }} />
+              <div style={{ width: 1, height: IMAGE_FLOATING_TOOLBAR_DIVIDER_HEIGHT, background: 'rgba(255,255,255,0.12)', margin: '0 2px' }} />
 
               {actions.map((t) => (
                 <div key={t.id} className="flow-image-toolbar-item" style={{ position: 'relative', display: 'flex', justifyContent: 'center' }}>

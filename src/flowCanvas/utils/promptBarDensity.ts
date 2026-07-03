@@ -29,7 +29,7 @@ export const promptBarBaseDensity = {
   borderRadius: 18,
   padding: '12px 16px 12px',
   gap: 10,
-  editorFontSize: 15,
+  editorFontSize: 14,
   editorLineHeight: 1.32,
   bottomRowMarginTop: 0,
   controlHeight: 28,
