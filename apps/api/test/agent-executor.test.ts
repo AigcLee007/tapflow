@@ -127,6 +127,10 @@ describe("AgentExecutorService", () => {
         estimateImageRunSettings: vi.fn(),
         listImageRunSettings: vi.fn(),
       },
+      sessionRepository: {
+        appendSessionEvent: vi.fn().mockResolvedValue({}),
+        getSessionEvents: vi.fn().mockResolvedValue([]),
+      } as never,
     });
 
     let caught: unknown;
@@ -149,6 +153,77 @@ describe("AgentExecutorService", () => {
       code: "AGENT_REFERENCE_INVALID_ASSET_ID",
       statusCode: 400,
     });
+  });
+
+  it("streams approval events as soon as the executor emits them", async () => {
+    let releaseExecutor: (() => void) | null = null;
+    const executorBlocked = new Promise<void>((resolve) => {
+      releaseExecutor = resolve;
+    });
+    const service = new AgentService({
+      env: testEnv,
+      executorService: {
+        approveToolCall: vi.fn().mockImplementation(async (_context, input) => {
+          await input.onEvent?.({
+            toolCallKey: "tool-call-1",
+            toolName: "generate_image",
+            type: "tool_started",
+          });
+          await executorBlocked;
+          await input.onEvent?.({
+            finalText: "Queued",
+            turnId: input.turnId,
+            type: "turn_completed",
+          });
+          return {
+            finalText: "Queued",
+            sessionId: input.sessionId,
+            toolResults: [],
+            turnId: input.turnId,
+          };
+        }),
+        executeTurn: vi.fn(),
+      },
+      flowsService: {
+        getFlowDraft: vi.fn(),
+        saveFlowDraft: vi.fn(),
+      },
+      pool: { query: vi.fn() } as never,
+      runSettingsService: {
+        estimateImageRunSettings: vi.fn(),
+        listImageRunSettings: vi.fn(),
+      },
+      sessionRepository: {
+        appendSessionEvent: vi.fn().mockResolvedValue({}),
+        getSessionEvents: vi.fn().mockResolvedValue([]),
+      } as never,
+    });
+
+    const chunks: string[] = [];
+    let settled = false;
+    const streaming = service.streamApproveToolCallEvents(
+      context,
+      "session-1",
+      {
+        toolCallKey: "tool-call-1",
+        turnId: "turn-1",
+      },
+      (chunk) => {
+        chunks.push(chunk);
+      },
+    ).finally(() => {
+      settled = true;
+    });
+
+    await vi.waitFor(() => {
+      expect(chunks.join("")).toContain("event: tool_started");
+    });
+    expect(settled).toBe(false);
+
+    releaseExecutor?.();
+    await streaming;
+
+    expect(chunks.join("")).toContain("event: turn_completed");
   });
 
   it("returns a text-only answer without running tools", async () => {

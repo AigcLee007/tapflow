@@ -3770,6 +3770,22 @@ Validation completed:
   - `npx vitest --run apps/api/test/agent-executor.test.ts apps/api/test/agent-tool-runner.test.ts src/flowCanvas/agent/useCanvasAgentSession.test.tsx src/flowCanvas/agent/CanvasAgentThread.test.tsx src/flowCanvas/agent/CanvasAgentPanel.test.tsx src/flowCanvas/agent/CanvasAgentToolTimeline.test.tsx src/flowCanvas/agent/CanvasAgentComposer.test.tsx`
   - `npm run build`
 
+## 2026-07-03 - Agent Approval Stream Failure Fix
+
+- Fixed the Agent executor stream path so `turns/execute/stream` and `tool-calls/approve/stream` write SSE chunks as soon as tool events are emitted instead of buffering the entire tool execution before sending a response.
+- This specifically addresses the approval-step failure where the UI could reach `approval_required`, but clicking confirm could show a browser-level `Failed to fetch` before any structured Agent event reached the panel.
+- Stream errors after the SSE connection starts now return a structured `turn_failed` event to the Agent UI.
+- Hardened the production static frontend `/api` proxy for Agent SSE POST requests:
+  - approval POST bodies are proxied through to the API
+  - `text/event-stream` chunks pass back through the frontend container
+  - hop-by-hop request/response headers are stripped so proxy-only headers do not leak across the API boundary
+- Validation:
+  - `npm test -- apps/api/test/agent-executor.test.ts`
+  - `npm test -- apps/api/test/agent.test.ts apps/api/test/agent-executor.test.ts`
+  - `npm test -- scripts/serve-dist.test.ts`
+  - `npm run build --workspace @aigc-flow/api`
+  - `npm run build`
+
 ## 2026-06-28 - Agent Panel Utility Actions Hide Fix
 
 - Fixed the canvas top-right utility chrome so `积分` and `通知` no longer overlap the Agent workspace when the Agent panel is open.

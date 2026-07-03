@@ -25,6 +25,7 @@ import {
   listAgentSessionsQuerySchema,
 } from "./agent.schemas.js";
 import { AgentApiError } from "./agent.service.js";
+import { formatAgentToolEvent } from "./agent-tool-events.js";
 
 function sendError(
   request: FastifyRequest,
@@ -98,6 +99,41 @@ function handleRouteError(
     "agent route failed",
   );
   return sendError(request, reply, 500, "INTERNAL_ERROR", "Service is temporarily unavailable.");
+}
+
+function startAgentSse(reply: FastifyReply) {
+  reply.raw.setHeader("cache-control", "no-cache");
+  reply.raw.setHeader("connection", "keep-alive");
+  reply.raw.setHeader("content-type", "text/event-stream; charset=utf-8");
+  reply.hijack();
+}
+
+function writeAgentSseFailure(error: unknown, request: FastifyRequest, reply: FastifyReply) {
+  const normalized = error instanceof AgentApiError
+    ? { code: error.code, message: error.message }
+    : {
+        code: "INTERNAL_ERROR",
+        message: "Service is temporarily unavailable.",
+      };
+
+  if (!(error instanceof AgentApiError)) {
+    request.log.error(
+      {
+        err: error,
+        requestId: request.ctx.requestId,
+        tenantId: request.ctx.tenantId,
+        traceId: request.ctx.traceId,
+        userId: request.ctx.userId,
+      },
+      "agent stream route failed",
+    );
+  }
+
+  reply.raw.write(formatAgentToolEvent({
+    code: normalized.code,
+    message: normalized.message,
+    type: "turn_failed",
+  }));
 }
 
 export function registerAgentRoutes(app: FastifyInstance): void {
@@ -305,14 +341,21 @@ export function registerAgentRoutes(app: FastifyInstance): void {
       try {
         const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
         const body = parseBody<ExecuteAgentTurnInput>(request, executeAgentTurnSchema);
-        const streamBody = await app.agentService.buildExecuteTurnStream(getAgentContext(request), params.sessionId, body);
-
-        reply.raw.setHeader("cache-control", "no-cache");
-        reply.raw.setHeader("connection", "keep-alive");
-        reply.raw.setHeader("content-type", "text/event-stream; charset=utf-8");
-        reply.hijack();
-        reply.raw.write(streamBody);
-        reply.raw.end();
+        startAgentSse(reply);
+        try {
+          await app.agentService.streamExecuteTurnEvents(
+            getAgentContext(request),
+            params.sessionId,
+            body,
+            (chunk) => {
+              reply.raw.write(chunk);
+            },
+          );
+        } catch (streamError) {
+          writeAgentSseFailure(streamError, request, reply);
+        } finally {
+          reply.raw.end();
+        }
         return reply;
       } catch (error) {
         return handleRouteError(error, request, reply);
@@ -329,14 +372,21 @@ export function registerAgentRoutes(app: FastifyInstance): void {
       try {
         const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
         const body = parseBody<ApproveAgentToolCallInput>(request, approveAgentToolCallSchema);
-        const streamBody = await app.agentService.buildApproveToolCallStream(getAgentContext(request), params.sessionId, body);
-
-        reply.raw.setHeader("cache-control", "no-cache");
-        reply.raw.setHeader("connection", "keep-alive");
-        reply.raw.setHeader("content-type", "text/event-stream; charset=utf-8");
-        reply.hijack();
-        reply.raw.write(streamBody);
-        reply.raw.end();
+        startAgentSse(reply);
+        try {
+          await app.agentService.streamApproveToolCallEvents(
+            getAgentContext(request),
+            params.sessionId,
+            body,
+            (chunk) => {
+              reply.raw.write(chunk);
+            },
+          );
+        } catch (streamError) {
+          writeAgentSseFailure(streamError, request, reply);
+        } finally {
+          reply.raw.end();
+        }
         return reply;
       } catch (error) {
         return handleRouteError(error, request, reply);

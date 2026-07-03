@@ -546,6 +546,19 @@ export class AgentService {
   }
 
   async buildExecuteTurnStream(context: AgentContext, sessionId: string, input: CreateAgentTurnInput) {
+    const chunks: string[] = [];
+    await this.streamExecuteTurnEvents(context, sessionId, input, (chunk) => {
+      chunks.push(chunk);
+    });
+    return chunks.join("");
+  }
+
+  async streamExecuteTurnEvents(
+    context: AgentContext,
+    sessionId: string,
+    input: CreateAgentTurnInput,
+    writeChunk: (chunk: string) => void | Promise<void>,
+  ) {
     if (!this.env.agentExecutorEnabled) {
       throw new AgentApiError(503, "AGENT_EXECUTOR_DISABLED", "Agent executor is disabled.");
     }
@@ -553,23 +566,34 @@ export class AgentService {
       throw new AgentApiError(503, "AGENT_EXECUTOR_NOT_CONFIGURED", "Agent executor is not configured.");
     }
 
-    const chunks: string[] = [];
     try {
       await this.executorService.executeTurn(context, {
         ...input,
         onEvent: async (event) => {
           await this.eventService.appendToolEvent(context, sessionId, event);
-          chunks.push(formatAgentToolEvent(event));
+          await writeChunk(formatAgentToolEvent(event));
         },
         sessionId,
       });
     } catch (error) {
       throw normalizeAgentExecutorApiError(error);
     }
-    return chunks.join("");
   }
 
   async buildApproveToolCallStream(context: AgentContext, sessionId: string, input: ApproveAgentToolCallInput) {
+    const chunks: string[] = [];
+    await this.streamApproveToolCallEvents(context, sessionId, input, (chunk) => {
+      chunks.push(chunk);
+    });
+    return chunks.join("");
+  }
+
+  async streamApproveToolCallEvents(
+    context: AgentContext,
+    sessionId: string,
+    input: ApproveAgentToolCallInput,
+    writeChunk: (chunk: string) => void | Promise<void>,
+  ) {
     if (!this.env.agentExecutorEnabled) {
       throw new AgentApiError(503, "AGENT_EXECUTOR_DISABLED", "Agent executor is disabled.");
     }
@@ -577,20 +601,18 @@ export class AgentService {
       throw new AgentApiError(503, "AGENT_EXECUTOR_NOT_CONFIGURED", "Agent executor is not configured.");
     }
 
-    const chunks: string[] = [];
     try {
       await this.executorService.approveToolCall(context, {
         ...input,
         onEvent: async (event) => {
           await this.eventService.appendToolEvent(context, sessionId, event);
-          chunks.push(formatAgentToolEvent(event));
+          await writeChunk(formatAgentToolEvent(event));
         },
         sessionId,
       });
     } catch (error) {
       throw normalizeAgentExecutorApiError(error);
     }
-    return chunks.join("");
   }
 
   private async planTurn(context: AgentContext, prompt: string, snapshot: CanvasAgentSnapshotInput): Promise<PlannerOutput> {

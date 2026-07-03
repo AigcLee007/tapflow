@@ -9,6 +9,16 @@ const host = process.env.FRONTEND_HOST || '127.0.0.1';
 
 const distDir = path.join(__dirname, '..', 'dist');
 const indexFile = path.join(distDir, 'index.html');
+const HOP_BY_HOP_HEADERS = new Set([
+  'connection',
+  'keep-alive',
+  'proxy-authenticate',
+  'proxy-authorization',
+  'te',
+  'trailer',
+  'transfer-encoding',
+  'upgrade',
+]);
 
 function resolveApiProxyTarget() {
   const explicitTarget =
@@ -29,6 +39,16 @@ function resolveStaticCacheControl(filePath, paths = { distDir, indexFile }) {
   return 'public, max-age=3600';
 }
 
+function withoutHopByHopHeaders(headers) {
+  const safeHeaders = {};
+  for (const [name, value] of Object.entries(headers)) {
+    if (!HOP_BY_HOP_HEADERS.has(name.toLowerCase())) {
+      safeHeaders[name] = value;
+    }
+  }
+  return safeHeaders;
+}
+
 function createApp() {
   const app = express();
 
@@ -39,12 +59,11 @@ function createApp() {
     const targetUrl = new URL(req.originalUrl, target);
     const client = targetUrl.protocol === 'https:' ? https : http;
     const headers = {
-      ...req.headers,
+      ...withoutHopByHopHeaders(req.headers),
       host: targetUrl.host,
       'x-forwarded-host': req.headers.host || '',
       'x-forwarded-proto': req.protocol,
     };
-    delete headers.connection;
 
     const proxyRequest = client.request(
       {
@@ -57,7 +76,7 @@ function createApp() {
       },
       (proxyResponse) => {
         res.statusCode = proxyResponse.statusCode || 502;
-        for (const [name, value] of Object.entries(proxyResponse.headers)) {
+        for (const [name, value] of Object.entries(withoutHopByHopHeaders(proxyResponse.headers))) {
           if (value !== undefined) {
             res.setHeader(name, value);
           }
@@ -65,6 +84,10 @@ function createApp() {
         proxyResponse.pipe(res);
       },
     );
+
+    req.on('aborted', () => {
+      proxyRequest.destroy();
+    });
 
     proxyRequest.on('error', (error) => {
       if (res.headersSent) {
