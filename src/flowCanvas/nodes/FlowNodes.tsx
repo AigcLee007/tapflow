@@ -123,7 +123,7 @@ import { useAuth } from '../../auth/useAuth';
 import { dispatchOpenAgentSession } from '../agent/agentSessionEvents';
 import { normalizeBackendAssetUrl } from '../../utils/generatedImageStorage';
 import { canNodeReceiveIncoming } from '../rules/connectionRules';
-import { getAssetDownloadUrl, getAssetVariantUrl } from '../../assets/assetApi';
+import { getAsset, getAssetDownloadUrl, getAssetVariantUrl } from '../../assets/assetApi';
 import { listAiModelCatalog, listAiModelRoutes, type AiModelCatalogItem } from '../../services/v2AiModelCatalogApi';
 import { buildAssetBackedNodeData } from '../utils/assetNodeData';
 import {
@@ -137,6 +137,7 @@ import {
 import { persistDerivedImageAsset, type DerivedImageSourceType } from '../utils/persistDerivedImageAsset';
 import { getCachedReferenceImageObjectUrl } from '../utils/referenceImageLocalCache';
 import { downloadOriginalImage, getPreferredImageDownloadAssetId } from '../utils/imageDownload';
+import { resolveImageViewerFileSizeBytes } from '../utils/imageViewerFileSize';
 import {
   buildFailedDerivedImagePatch,
   buildOptimisticDerivedImageNodeData,
@@ -1108,6 +1109,7 @@ const inferImageViewerQuality = (size?: string, naturalWidth?: number, naturalHe
 
 interface ImageFullscreenOverlayProps {
   imageUrl: string;
+  assetId?: string | null;
   onClose: () => void;
   onDownload: () => void;
   prompt?: string;
@@ -1123,6 +1125,7 @@ interface ImageFullscreenOverlayProps {
 
 const ImageFullscreenOverlay: React.FC<ImageFullscreenOverlayProps> = ({
   imageUrl,
+  assetId,
   onClose,
   onDownload,
   prompt,
@@ -1161,22 +1164,24 @@ const ImageFullscreenOverlay: React.FC<ImageFullscreenOverlayProps> = ({
 
   React.useEffect(() => {
     let disposed = false;
-    const estimated = estimateDataUrlBytes(imageUrl);
-    if (estimated) {
-      setFileSize(formatImageViewerBytes(estimated));
+    const dataUrlBytes = estimateDataUrlBytes(imageUrl);
+    if (dataUrlBytes && !assetId) {
+      setFileSize(formatImageViewerBytes(dataUrlBytes));
       return;
     }
-    void imageUrlToBlob(imageUrl)
-      .then((blob) => {
-        if (!disposed) setFileSize(formatImageViewerBytes(blob.size));
-      })
-      .catch(() => {
-        if (!disposed) setFileSize('--');
+    void resolveImageViewerFileSizeBytes({
+      assetId,
+      imageUrl,
+      loadAssetSize: getAsset,
+      loadImageBlob: imageUrlToBlob,
+    })
+      .then((bytes) => {
+        if (!disposed) setFileSize(bytes ? formatImageViewerBytes(bytes) : '--');
       });
     return () => {
       disposed = true;
     };
-  }, [imageUrl]);
+  }, [assetId, imageUrl]);
 
   const handleCopyPrompt = useCallback(() => {
     void navigator.clipboard?.writeText(cleanPrompt || displayPrompt).catch(() => undefined);
@@ -6048,6 +6053,13 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
         {fullscreenOpen && effectiveThumbnailUrl && (
           <ImageFullscreenOverlay
             imageUrl={String(effectiveThumbnailUrl)}
+            assetId={getPreferredImageDownloadAssetId({
+              fallbackUrl: String(effectiveThumbnailUrl),
+              nodeAssetId: assetId,
+              resultId: coverResult?.id,
+              resultAssetId: Array.isArray(d.assetIds) ? String(d.assetIds[activeResultIndex] || '') : '',
+              runtimeAssetId: runtimeImageAssets[activeResultIndex]?.assetId,
+            })}
             onClose={() => setFullscreenOpen(false)}
             onDownload={handleDownload}
             prompt={isGeneratedImageNode ? String((d.lastGenerationSnapshot as FlowImageGenerationSnapshot | undefined)?.prompt || d.generationPrompt || '') : ''}

@@ -3,6 +3,13 @@
 Last updated: 2026-07-04
 Maintainers: project team + Codex sessions
 
+## 2026-07-04 - Image Viewer Original File Size Fix
+
+- fixed the fullscreen image viewer information panel so file size is based on the original asset `sizeBytes` when an `assetId` is available, matching the file that the download button retrieves.
+- kept a safe fallback to the displayed image URL blob size for local/transient images or when asset metadata is unavailable.
+- validation:
+  - `npm run test -- src/flowCanvas/utils/imageViewerFileSize.test.ts src/flowCanvas/nodes/FlowNodes.agent-metadata.test.tsx src/flowCanvas/nodes/ImageMoreMenu.test.tsx` passed on 2026-07-04: 3 test files, 5 tests.
+
 ## 2026-07-04 - Canvas Toolbar And Prompt Bar Density Tightening
 
 - tightened the selected image floating toolbar so canvas edit actions use smaller shared tokens: 36px buttons, 18px icons, lower padding, tighter gaps, and smaller tooltips.
