@@ -50,7 +50,13 @@ import {
   Star,
   GripVertical
 } from 'lucide-react';
-import type { FlowImageGenerationSnapshot, FlowImageReferenceComparisonSource, FlowNodeData, FlowNodeKind } from '../types';
+import type {
+  FlowImageGenerationSnapshot,
+  FlowImageReferenceComparisonSource,
+  FlowMultiImageDisplayMode,
+  FlowNodeData,
+  FlowNodeKind,
+} from '../types';
 import { useFlowCanvasStore, type FlowDerivedEditCounts, type FlowUpstreamImageRef } from '../store/flowCanvasStore';
 import { runImageEdit, type ImageEditType } from '../runtime/graphExecutor';
 import { markBackendRunLaunchFailed, runBackendWorkflow } from '../runtime/v2WorkflowRunner';
@@ -80,7 +86,6 @@ import { getImageNaturalSize, imageUrlToBlob } from '../utils/imageUtils';
 import type { LightDirection } from './ImageLightingOverlay';
 import type { MultiAngleId } from './ImageMultiAngleOverlay';
 import { ImageMoreMenu, type ImageMoreMenuAction } from './ImageMoreMenu';
-import { MultiImageDisplayModeToggle } from './MultiImageDisplayModeToggle';
 import { GptImage2ParamPanel } from './GptImage2ParamPanel';
 import { NanoBananaParamPanel } from './NanoBananaParamPanel';
 import { ImageGenerateToolbar } from './ImageGenerateToolbar';
@@ -3793,6 +3798,11 @@ const AUTHENTICATED_ASSET_BYTES_URL_RE = /(?:^|\/)api\/v2\/assets\/[^/]+\/bytes(
 const isAuthenticatedAssetBytesUrl = (value: unknown): boolean =>
   typeof value === 'string' && AUTHENTICATED_ASSET_BYTES_URL_RE.test(value.trim());
 
+const MULTI_IMAGE_MODE_LABELS: Record<FlowMultiImageDisplayMode, string> = {
+  combined: '合并显示',
+  split_nodes: '多节点显示',
+};
+
 const ImageNodeLite = memo(function ImageNodeLite({
   id,
   data,
@@ -3849,7 +3859,7 @@ const ImageNodeLite = memo(function ImageNodeLite({
             draggable={false}
             decoding="async"
             loading="eager"
-            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none' }}
+            style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', pointerEvents: 'none', background: '#0b0b0f' }}
           />
         ) : (
           <div style={{ ...placeholderArea(height), height: '100%' }}>
@@ -3927,7 +3937,7 @@ const ImageNodeCard = memo(function ImageNodeCard({
             loading="eager"
             onLoad={onImageLoad}
             onError={onImageError}
-            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+            style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', background: '#0b0b0f' }}
           />
           {imageLoadState === 'error' && (
             <div style={imageLoadErrorStyle}>预览加载失败</div>
@@ -6821,7 +6831,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
                       border: '1px solid rgba(255, 255, 255, 0.08)',
                       boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
                       zIndex: 1000,
-                      minWidth: 44,
+                      minWidth: (d.batchCount || 1) > 1 ? 118 : 44,
                     }}>
                       {[4, 3, 2, 1].map(num => (
                         <button
@@ -6847,6 +6857,40 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
                           {num}x
                         </button>
                       ))}
+                      {(d.batchCount || 1) > 1 && (
+                        <>
+                          <div style={{ height: 1, background: 'rgba(255,255,255,0.1)', margin: '2px 2px' }} />
+                          {(Object.keys(MULTI_IMAGE_MODE_LABELS) as FlowMultiImageDisplayMode[]).map((mode) => {
+                            const active = multiImageDisplayMode === mode;
+                            return (
+                              <button
+                                key={mode}
+                                type="button"
+                                onClick={() => {
+                                  updateNodeData(id, { multiImageDisplayMode: mode });
+                                  setShowBatchSelector(false);
+                                }}
+                                className="flow-batch-option"
+                                style={{
+                                  background: active ? 'rgba(255,255,255,0.08)' : 'transparent',
+                                  border: 'none',
+                                  color: active ? '#fff' : '#94a3b8',
+                                  fontSize: 12,
+                                  fontWeight: 700,
+                                  padding: '8px 10px',
+                                  borderRadius: 10,
+                                  cursor: 'pointer',
+                                  textAlign: 'center',
+                                  transition: 'all 0.2s',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                {MULTI_IMAGE_MODE_LABELS[mode]}
+                              </button>
+                            );
+                          })}
+                        </>
+                      )}
                     </div>
                   )}
 
@@ -6876,14 +6920,6 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
                     {d.batchCount || 1}x
                   </button>
                 </div>
-              )}
-              multiImageModeControl={(
-                (d.batchCount || 1) > 1 ? (
-                  <MultiImageDisplayModeToggle
-                    mode={multiImageDisplayMode}
-                    onChange={(mode) => updateNodeData(id, { multiImageDisplayMode: mode })}
-                  />
-                ) : undefined
               )}
               onGenerate={handleGenerate}
             />

@@ -101,4 +101,37 @@ describe("FlowNodes agent metadata", () => {
     expect(screen.queryByText(/provider/i)).toBeNull();
     expect(screen.queryByText(/baseurl/i)).toBeNull();
   });
+
+  it("renders the main image thumbnail without cropping", () => {
+    const { container } = render(
+      <ImageNodeComponent
+        id="image-preview-1"
+        selected={false}
+        data={{
+          createdAt: 1,
+          generationStatus: "done",
+          height: 170,
+          kind: "image",
+          naturalHeight: 1024,
+          naturalWidth: 1024,
+          status: "success",
+          thumbnailUrl: "https://cdn.test/square-preview.png",
+          title: "Square Preview",
+          updatedAt: 1,
+          width: 170,
+        } as any}
+        dragging={false}
+        zIndex={1}
+        isConnectable
+        type="image"
+        xPos={0}
+        yPos={0}
+      />,
+    );
+
+    const image = container.querySelector('img[src="https://cdn.test/square-preview.png"]') as HTMLImageElement | null;
+
+    expect(image).toBeTruthy();
+    expect(image?.style.objectFit).toBe("contain");
+  });
 });

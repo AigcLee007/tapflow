@@ -921,11 +921,14 @@ describe('v2WorkflowRunner', () => {
         routeId: 'route-image-default',
         size: '2k',
       }),
+      aspectRatio: 512 / 384,
+      height: 170,
       mimeType: 'image/png',
       naturalHeight: 384,
       naturalWidth: 512,
       source: 'generated',
       status: 'success',
+      width: 227,
       workflowLaunchStatus: 'asset_visible',
       workflowLaunchUpdatedAt: expect.any(Number),
     });
@@ -1404,6 +1407,13 @@ describe('v2WorkflowRunner', () => {
     const updatedNode = useFlowCanvasStore.getState().nodes.find((item) => item.id === node.id);
     expect(updatedNode?.data.generatedResults).toHaveLength(2);
     expect(updatedNode?.data.thumbnailUrl).toBe('/api/v2/assets/asset-progressive-1/bytes?variantKey=preview');
+    expect(updatedNode?.data).toMatchObject({
+      aspectRatio: 1,
+      height: 170,
+      naturalHeight: 1024,
+      naturalWidth: 1024,
+      width: 170,
+    });
   });
 
   test('split_nodes mode creates child image nodes and suppresses duplicate parent filmstrip batch state', async () => {
@@ -1486,6 +1496,13 @@ describe('v2WorkflowRunner', () => {
     expect(children).toHaveLength(2);
     expect(refreshedParent?.data.generatedResults).toBeUndefined();
     expect(refreshedParent?.data.thumbnailUrl).toBe('https://cdn.test/asset-parent-1-preview.png?X-Amz-Signature=signed');
+    expect(refreshedParent?.data).toMatchObject({
+      aspectRatio: 768 / 1024,
+      height: 227,
+      naturalHeight: 1024,
+      naturalWidth: 768,
+      width: 170,
+    });
   });
 
   test('failed target-node snapshot clears generating state on the node', async () => {

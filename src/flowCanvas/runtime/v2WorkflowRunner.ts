@@ -27,6 +27,7 @@ import {
   buildImageViewerComparisonSourceFromReferenceKeys,
   readImageViewerComparisonSource,
 } from '../utils/imageViewerComparison';
+import { fitMediaNodeToShortSide } from '../utils/nodeSizing';
 import { flushRemoteDraftBeforeRun, shouldFlushRemoteDraftBeforeRun } from './remoteDraftSaveBarrier';
 
 const RUNNER_ENABLED = String(import.meta.env.VITE_USE_V2_WORKFLOW_RUNNER ?? 'true').toLowerCase() !== 'false';
@@ -448,6 +449,28 @@ function buildImageGenerationSnapshot(
   };
 }
 
+function buildGeneratedMediaSizePatch(
+  asset: Pick<FlowRuntimeAssetRef, 'height' | 'width'>,
+): Pick<FlowNodeData, 'aspectRatio' | 'height' | 'naturalHeight' | 'naturalWidth' | 'width'> | null {
+  const naturalWidth = typeof asset.width === 'number' && Number.isFinite(asset.width) && asset.width > 0
+    ? asset.width
+    : null;
+  const naturalHeight = typeof asset.height === 'number' && Number.isFinite(asset.height) && asset.height > 0
+    ? asset.height
+    : null;
+  if (!naturalWidth || !naturalHeight) {
+    return null;
+  }
+  const fitted = fitMediaNodeToShortSide(naturalWidth, naturalHeight);
+  return {
+    aspectRatio: naturalWidth / naturalHeight,
+    height: fitted.height,
+    naturalHeight,
+    naturalWidth,
+    width: fitted.width,
+  };
+}
+
 function buildGeneratedAssetNodePatch(
   nodeRun: PersistableNodeRun,
   assetRefs: FlowRuntimeAssetRef[],
@@ -468,6 +491,7 @@ function buildGeneratedAssetNodePatch(
   const currentData = currentNode?.data ?? {};
   const generatedAt = Date.now();
   const generatedResults = isImageNode ? buildGeneratedResults(assetRefs, generatedAt) : [];
+  const mediaSizePatch = buildGeneratedMediaSizePatch(primaryAsset);
 
   return {
     ...(isImageNode && generatedResults.length > 0
@@ -488,8 +512,10 @@ function buildGeneratedAssetNodePatch(
     latestNodeRunId: nodeRun.id,
     latestWorkflowRunId: nodeRun.workflowRunId,
     mimeType: primaryAsset.mimeType,
-    naturalHeight: primaryAsset.height ?? undefined,
-    naturalWidth: primaryAsset.width ?? undefined,
+    ...(mediaSizePatch ?? {
+      naturalHeight: primaryAsset.height ?? undefined,
+      naturalWidth: primaryAsset.width ?? undefined,
+    }),
     progress: 100,
     source: 'generated',
     status: 'success',
@@ -512,6 +538,7 @@ function buildSplitModeParentNodePatch(
   const currentNode = useFlowCanvasStore.getState().nodes.find((node) => node.id === nodeRun.nodeId);
   const currentData = currentNode?.data ?? {};
   const generatedAt = Date.now();
+  const mediaSizePatch = buildGeneratedMediaSizePatch(primaryAsset);
 
   return {
     activeResultIndex: undefined,
@@ -527,8 +554,10 @@ function buildSplitModeParentNodePatch(
     latestNodeRunId: nodeRun.id,
     latestWorkflowRunId: nodeRun.workflowRunId,
     mimeType: primaryAsset.mimeType,
-    naturalHeight: primaryAsset.height ?? undefined,
-    naturalWidth: primaryAsset.width ?? undefined,
+    ...(mediaSizePatch ?? {
+      naturalHeight: primaryAsset.height ?? undefined,
+      naturalWidth: primaryAsset.width ?? undefined,
+    }),
     progress: 100,
     source: 'generated',
     status: 'success',

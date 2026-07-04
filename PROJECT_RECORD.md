@@ -3,6 +3,16 @@
 Last updated: 2026-07-04
 Maintainers: project team + Codex sessions
 
+## 2026-07-04 - Canvas Batch Image Node Display Fix
+
+- moved multi-image display mode selection into the image quantity menu for batch counts greater than one, so the bottom prompt action row no longer gains an extra wide control that can overflow the editor.
+- added an action-row fallback layout that moves any future batch display-mode control into a secondary row instead of forcing it into the primary model/settings/quantity/generate row.
+- changed main canvas image previews to `object-fit: contain` so thumbnails are shown completely instead of cropped, while keeping small result/reference chips unchanged.
+- updated generated asset hydration to write `width`, `height`, and `aspectRatio` from the asset's real dimensions, aligning generated 1:1 nodes to the same canvas display size.
+- validation:
+  - `npm test -- src/flowCanvas/nodes/ImagePromptActionRow.test.tsx src/flowCanvas/nodes/FlowNodes.agent-metadata.test.tsx src/flowCanvas/runtime/v2WorkflowRunner.test.ts` passed on 2026-07-04: 3 test files, 30 tests.
+  - `npm run build` passed on 2026-07-04 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-04 - Image Viewer Comparison Bounds Fix
 
 - fixed fullscreen original-comparison edge behavior by calculating the generated image's actual `object-fit: contain` display rectangle and constraining the comparison stage to that visible image area.
