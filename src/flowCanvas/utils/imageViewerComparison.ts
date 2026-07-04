@@ -18,6 +18,50 @@ const parseKeyValue = (key: string, prefix: string) => {
   return key.slice(prefix.length).trim();
 };
 
+export type ImageViewerRect = {
+  height: number;
+  left: number;
+  top: number;
+  width: number;
+};
+
+const isPositiveFinite = (value: unknown) => Number.isFinite(Number(value)) && Number(value) > 0;
+
+export function calculateContainedImageRect(input: {
+  containerHeight?: number | null;
+  containerWidth?: number | null;
+  imageNaturalHeight?: number | null;
+  imageNaturalWidth?: number | null;
+}): ImageViewerRect {
+  const containerWidth = Number(input.containerWidth || 0);
+  const containerHeight = Number(input.containerHeight || 0);
+  if (!isPositiveFinite(containerWidth) || !isPositiveFinite(containerHeight)) {
+    return { height: 0, left: 0, top: 0, width: 0 };
+  }
+
+  const imageNaturalWidth = Number(input.imageNaturalWidth || 0);
+  const imageNaturalHeight = Number(input.imageNaturalHeight || 0);
+  if (!isPositiveFinite(imageNaturalWidth) || !isPositiveFinite(imageNaturalHeight)) {
+    return { height: containerHeight, left: 0, top: 0, width: containerWidth };
+  }
+
+  const scale = Math.min(containerWidth / imageNaturalWidth, containerHeight / imageNaturalHeight);
+  const width = imageNaturalWidth * scale;
+  const height = imageNaturalHeight * scale;
+  return {
+    height,
+    left: (containerWidth - width) / 2,
+    top: (containerHeight - height) / 2,
+    width,
+  };
+}
+
+export function getComparisonSplitPercentFromClientX(clientX: number, rect: Pick<ImageViewerRect, 'left' | 'width'>) {
+  if (!isPositiveFinite(rect.width)) return 50;
+  const percent = ((clientX - rect.left) / rect.width) * 100;
+  return Math.min(100, Math.max(0, percent));
+}
+
 export function formatImageViewerDateTime(timestamp?: number | null) {
   const date = timestamp === undefined || timestamp === null ? new Date() : new Date(timestamp);
   if (Number.isNaN(date.getTime())) return '';

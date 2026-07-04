@@ -141,7 +141,9 @@ import { downloadOriginalImage, getPreferredImageDownloadAssetId } from '../util
 import { resolveImageViewerFileSizeBytes } from '../utils/imageViewerFileSize';
 import {
   buildImageViewerComparisonSource,
+  calculateContainedImageRect,
   formatImageViewerDateTime,
+  getComparisonSplitPercentFromClientX,
   readImageViewerComparisonSource,
 } from '../utils/imageViewerComparison';
 import {
@@ -1148,11 +1150,25 @@ const ImageFullscreenOverlay: React.FC<ImageFullscreenOverlayProps> = ({
   const [comparisonActive, setComparisonActive] = React.useState(false);
   const [comparisonImageUrl, setComparisonImageUrl] = React.useState('');
   const [comparisonSplit, setComparisonSplit] = React.useState(50);
+  const [comparisonFrameSize, setComparisonFrameSize] = React.useState({ height: 0, width: 0 });
+  const [loadedGeneratedSize, setLoadedGeneratedSize] = React.useState({ height: 0, width: 0 });
   const comparisonFrameRef = React.useRef<HTMLDivElement>(null);
+  const comparisonStageRef = React.useRef<HTMLDivElement>(null);
   const creator = user?.displayName || user?.email || '当前用户';
   const cleanPrompt = String(prompt || '').trim();
   const displayPrompt = cleanPrompt || '暂无提示词';
   const canCompareOriginal = isGenerated && !!comparisonImageUrl;
+  const generatedImageWidth = naturalWidth || loadedGeneratedSize.width;
+  const generatedImageHeight = naturalHeight || loadedGeneratedSize.height;
+  const comparisonStageRect = React.useMemo(
+    () => calculateContainedImageRect({
+      containerHeight: comparisonFrameSize.height,
+      containerWidth: comparisonFrameSize.width,
+      imageNaturalHeight: generatedImageHeight,
+      imageNaturalWidth: generatedImageWidth,
+    }),
+    [comparisonFrameSize.height, comparisonFrameSize.width, generatedImageHeight, generatedImageWidth],
+  );
   const infoRows = [
     ...(isGenerated ? [{ label: '模型', value: modelLabel || snapshot?.modelId || '--' }] : []),
     { label: '质量', value: inferImageViewerQuality(snapshot?.size || size, naturalWidth, naturalHeight) },
@@ -1225,11 +1241,41 @@ const ImageFullscreenOverlay: React.FC<ImageFullscreenOverlayProps> = ({
     if (!canCompareOriginal) setComparisonActive(false);
   }, [canCompareOriginal]);
 
+  React.useEffect(() => {
+    setLoadedGeneratedSize({
+      height: naturalHeight || 0,
+      width: naturalWidth || 0,
+    });
+  }, [naturalHeight, naturalWidth]);
+
+  React.useLayoutEffect(() => {
+    if (!comparisonActive) return;
+    const element = comparisonFrameRef.current;
+    if (!element) return;
+
+    const syncFrameSize = () => {
+      const rect = element.getBoundingClientRect();
+      setComparisonFrameSize({
+        height: Math.max(0, rect.height),
+        width: Math.max(0, rect.width),
+      });
+    };
+
+    syncFrameSize();
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(syncFrameSize);
+      observer.observe(element);
+      return () => observer.disconnect();
+    }
+
+    window.addEventListener('resize', syncFrameSize);
+    return () => window.removeEventListener('resize', syncFrameSize);
+  }, [comparisonActive]);
+
   const updateComparisonSplitFromClientX = useCallback((clientX: number) => {
-    const rect = comparisonFrameRef.current?.getBoundingClientRect();
+    const rect = comparisonStageRef.current?.getBoundingClientRect();
     if (!rect || rect.width <= 0) return;
-    const percent = ((clientX - rect.left) / rect.width) * 100;
-    setComparisonSplit(Math.min(92, Math.max(8, percent)));
+    setComparisonSplit(getComparisonSplitPercentFromClientX(clientX, rect));
   }, []);
 
   const handleComparisonPointerDown = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
@@ -1320,78 +1366,116 @@ const ImageFullscreenOverlay: React.FC<ImageFullscreenOverlayProps> = ({
                 overflow: 'hidden',
               }}
             >
-              <img
-                src={comparisonImageUrl}
-                alt="Original reference"
-                draggable={false}
-                style={{
-                  position: 'absolute',
-                  inset: 0,
-                  width: '100%',
-                  height: '100%',
-                  objectFit: 'contain',
-                  display: 'block',
-                }}
-              />
-              <img
-                src={imageUrl}
-                alt="Generated result"
-                draggable={false}
-                style={{
-                  position: 'absolute',
-                  inset: 0,
-                  width: '100%',
-                  height: '100%',
-                  objectFit: 'contain',
-                  display: 'block',
-                  clipPath: `inset(0 ${100 - comparisonSplit}% 0 0)`,
-                }}
-              />
               <div
-                aria-hidden="true"
+                ref={comparisonStageRef}
                 style={{
                   position: 'absolute',
-                  top: 0,
-                  bottom: 0,
-                  left: `${comparisonSplit}%`,
-                  width: 2,
-                  transform: 'translateX(-1px)',
-                  background: 'rgba(255,255,255,0.82)',
-                  boxShadow: '0 0 0 1px rgba(0,0,0,0.22), 0 0 22px rgba(0,0,0,0.38)',
-                }}
-              />
-              <button
-                type="button"
-                onPointerDown={handleComparisonPointerDown}
-                aria-label="拖动调整原图对比"
-                title="拖动调整原图对比"
-                style={{
-                  position: 'absolute',
-                  top: '50%',
-                  left: `${comparisonSplit}%`,
-                  width: 48,
-                  height: 48,
-                  transform: 'translate(-50%, -50%)',
-                  borderRadius: '50%',
-                  border: '1px solid rgba(255,255,255,0.24)',
-                  background: 'rgba(42,38,33,0.82)',
-                  color: '#fff',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'ew-resize',
-                  boxShadow: '0 12px 30px rgba(0,0,0,0.38), inset 0 1px 0 rgba(255,255,255,0.16)',
-                  touchAction: 'none',
+                  left: comparisonStageRect.left,
+                  top: comparisonStageRect.top,
+                  width: comparisonStageRect.width,
+                  height: comparisonStageRect.height,
+                  overflow: 'visible',
                 }}
               >
-                <GripVertical size={23} strokeWidth={2.2} />
-              </button>
+                <div
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    overflow: 'hidden',
+                  }}
+                >
+                  <img
+                    src={comparisonImageUrl}
+                    alt="Original reference"
+                    draggable={false}
+                    style={{
+                      position: 'absolute',
+                      inset: 0,
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
+                      display: 'block',
+                    }}
+                  />
+                  <img
+                    src={imageUrl}
+                    alt="Generated result"
+                    draggable={false}
+                    onLoad={(event) => {
+                      const image = event.currentTarget;
+                      if (image.naturalWidth > 0 && image.naturalHeight > 0) {
+                        setLoadedGeneratedSize({
+                          height: image.naturalHeight,
+                          width: image.naturalWidth,
+                        });
+                      }
+                    }}
+                    style={{
+                      position: 'absolute',
+                      inset: 0,
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
+                      display: 'block',
+                      clipPath: `inset(0 ${100 - comparisonSplit}% 0 0)`,
+                    }}
+                  />
+                </div>
+                <div
+                  aria-hidden="true"
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    bottom: 0,
+                    left: `${comparisonSplit}%`,
+                    width: 2,
+                    transform: 'translateX(-1px)',
+                    background: 'rgba(255,255,255,0.82)',
+                    boxShadow: '0 0 0 1px rgba(0,0,0,0.22), 0 0 22px rgba(0,0,0,0.38)',
+                  }}
+                />
+                <button
+                  type="button"
+                  onPointerDown={handleComparisonPointerDown}
+                  aria-label="拖动调整原图对比"
+                  title="拖动调整原图对比"
+                  style={{
+                    position: 'absolute',
+                    top: '50%',
+                    left: `${comparisonSplit}%`,
+                    width: 48,
+                    height: 48,
+                    transform: 'translate(-50%, -50%)',
+                    borderRadius: '50%',
+                    border: '1px solid rgba(255,255,255,0.24)',
+                    background: 'rgba(42,38,33,0.82)',
+                    color: '#fff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'ew-resize',
+                    boxShadow: '0 12px 30px rgba(0,0,0,0.38), inset 0 1px 0 rgba(255,255,255,0.16)',
+                    touchAction: 'none',
+                  }}
+                >
+                  <GripVertical size={23} strokeWidth={2.2} />
+                </button>
+              </div>
             </div>
           ) : (
             <img
               src={imageUrl}
               alt="Fullscreen"
               draggable={false}
+              onLoad={(event) => {
+                const image = event.currentTarget;
+                if (image.naturalWidth > 0 && image.naturalHeight > 0) {
+                  setLoadedGeneratedSize({
+                    height: image.naturalHeight,
+                    width: image.naturalWidth,
+                  });
+                }
+              }}
               style={{
                 position: 'relative',
                 zIndex: 1,

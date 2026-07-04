@@ -1,7 +1,9 @@
 import { describe, expect, test } from 'vitest';
 import {
   buildImageViewerComparisonSource,
+  calculateContainedImageRect,
   formatImageViewerDateTime,
+  getComparisonSplitPercentFromClientX,
 } from './imageViewerComparison';
 
 describe('image viewer comparison helpers', () => {
@@ -59,5 +61,43 @@ describe('image viewer comparison helpers', () => {
 
   test('does not create comparison source for text-to-image references', () => {
     expect(buildImageViewerComparisonSource([])).toBeNull();
+  });
+
+  test('calculates the visible object-fit contain rect for wide generated images', () => {
+    expect(calculateContainedImageRect({
+      containerHeight: 800,
+      containerWidth: 1000,
+      imageNaturalHeight: 900,
+      imageNaturalWidth: 1600,
+    })).toEqual({
+      height: 562.5,
+      left: 0,
+      top: 118.75,
+      width: 1000,
+    });
+  });
+
+  test('calculates the visible object-fit contain rect for tall generated images', () => {
+    expect(calculateContainedImageRect({
+      containerHeight: 800,
+      containerWidth: 1000,
+      imageNaturalHeight: 1600,
+      imageNaturalWidth: 900,
+    })).toEqual({
+      height: 800,
+      left: 275,
+      top: 0,
+      width: 450,
+    });
+  });
+
+  test('maps split dragging to the contained image rect edges', () => {
+    const rect = { height: 800, left: 275, top: 0, width: 450 };
+
+    expect(getComparisonSplitPercentFromClientX(200, rect)).toBe(0);
+    expect(getComparisonSplitPercentFromClientX(275, rect)).toBe(0);
+    expect(getComparisonSplitPercentFromClientX(500, rect)).toBe(50);
+    expect(getComparisonSplitPercentFromClientX(725, rect)).toBe(100);
+    expect(getComparisonSplitPercentFromClientX(800, rect)).toBe(100);
   });
 });

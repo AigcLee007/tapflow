@@ -3,6 +3,14 @@
 Last updated: 2026-07-04
 Maintainers: project team + Codex sessions
 
+## 2026-07-04 - Image Viewer Comparison Bounds Fix
+
+- fixed fullscreen original-comparison edge behavior by calculating the generated image's actual `object-fit: contain` display rectangle and constraining the comparison stage to that visible image area.
+- changed comparison rendering so the original reference fills the generated-image rectangle with `cover`, while the generated result is clipped inside the same stage from 0% to 100%.
+- validation:
+  - `npm run test -- src/flowCanvas/utils/imageViewerComparison.test.ts src/flowCanvas/utils/imageViewerFileSize.test.ts src/flowCanvas/nodes/FlowNodes.agent-metadata.test.tsx src/flowCanvas/nodes/ImageMoreMenu.test.tsx` passed on 2026-07-04: 4 test files, 12 tests.
+  - `npm run build` passed on 2026-07-04 with existing Browserslist, chunk-size, and dynamic-import warnings only.
+
 ## 2026-07-04 - Image Viewer Original Comparison
 
 - added first-reference original comparison metadata for image-to-image generations so the fullscreen viewer can show an `原图对比` control only when a generated image has reference inputs.
