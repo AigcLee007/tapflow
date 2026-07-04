@@ -129,7 +129,7 @@ import { useAuth } from '../../auth/useAuth';
 import { dispatchOpenAgentSession } from '../agent/agentSessionEvents';
 import { normalizeBackendAssetUrl } from '../../utils/generatedImageStorage';
 import { canNodeReceiveIncoming } from '../rules/connectionRules';
-import { getAsset, getAssetDownloadUrl, getAssetVariantUrl, type AssetItem } from '../../assets/assetApi';
+import { getAsset, getAssetDownloadUrl, getAssetVariantUrl, uploadAssetFile, type AssetItem } from '../../assets/assetApi';
 import { listAiModelCatalog, listAiModelRoutes, type AiModelCatalogItem } from '../../services/v2AiModelCatalogApi';
 import { buildAssetBackedNodeData } from '../utils/assetNodeData';
 import {
@@ -5619,9 +5619,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       const pendingUploads: Array<{ assetId: string; file: File; localPreviewUrl: string }> = [];
       try {
         const uploadSeed = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-        const localPreviewUrls = await Promise.all(
-          imageFiles.map(async (file) => (await createLocalPreviewObjectUrl(file).catch(() => null)) || URL.createObjectURL(file)),
-        );
+        const localPreviewUrls = imageFiles.map((file) => URL.createObjectURL(file));
         imageFiles.forEach((file, index) => {
           pendingUploads.push({
             assetId: `pending-reference-${uploadSeed}-${index}`,
@@ -7100,7 +7098,9 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
         </FloatingPromptBar>
       )}
 
-      {d.errorMessage && <div style={errorBar}>⚠{d.errorMessage}</div>}
+      {(d.errorMessage || d.uploadErrorMessage) && (
+        <div style={errorBar}>⚠{String(d.errorMessage || d.uploadErrorMessage)}</div>
+      )}
     </div>
   );
 });

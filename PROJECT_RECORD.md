@@ -5,6 +5,12 @@ Maintainers: project team + Codex sessions
 
 ## 2026-07-04 - Canvas Reference Source Picker
 
+- fixed the prompt-bar local reference upload path so selected files create visible pending reference chips immediately from local `blob:` URLs, even when browser image decoding is slow or stalled.
+- restored the missing `uploadAssetFile` import used by local reference uploads and surfaced upload failures through the image node error bar instead of failing silently.
+- added a regression test covering the file-selection path with a stalled `createImageBitmap` preview decode.
+- validation:
+  - `npm test -- src/flowCanvas/nodes/FlowNodes.agent-metadata.test.tsx` passed on 2026-07-04: 1 test file, 5 tests.
+
 - fixed local canvas reference uploads so selecting a file immediately shows a local preview reference chip while the asset upload runs, instead of appearing to do nothing until the network round trip finishes.
 - added image-file extension fallback for reference uploads so browser-provided empty or generic MIME types on `.png`, `.jpg`, `.webp`, `.gif`, and `.avif` files no longer get silently ignored.
 - updated worker image request assembly so image-node `referenceAssetItemIds` are merged into provider `inputAssets` using `referenceOrder`, making uploaded/local asset references affect real generation just like upstream canvas references.

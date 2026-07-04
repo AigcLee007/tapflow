@@ -1,9 +1,23 @@
 import React from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ImageNodeComponent, TextNodeComponent } from "./FlowNodes";
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
+
+const assetApiMocks = vi.hoisted(() => ({
+  getAsset: vi.fn(),
+  getAssetDownloadUrl: vi.fn(),
+  getAssetVariantUrl: vi.fn(),
+  uploadAssetFile: vi.fn(),
+}));
+
+vi.mock("../../assets/assetApi", () => ({
+  getAsset: (...args: unknown[]) => assetApiMocks.getAsset(...args),
+  getAssetDownloadUrl: (...args: unknown[]) => assetApiMocks.getAssetDownloadUrl(...args),
+  getAssetVariantUrl: (...args: unknown[]) => assetApiMocks.getAssetVariantUrl(...args),
+  uploadAssetFile: (...args: unknown[]) => assetApiMocks.uploadAssetFile(...args),
+}));
 
 vi.mock("@xyflow/react", async () => {
   const React = await import("react");
@@ -23,6 +37,10 @@ vi.mock("@xyflow/react", async () => {
 describe("FlowNodes agent metadata", () => {
   beforeEach(() => {
     useFlowCanvasStore.getState().newProject();
+    assetApiMocks.getAsset.mockReset();
+    assetApiMocks.getAssetDownloadUrl.mockReset();
+    assetApiMocks.getAssetVariantUrl.mockReset();
+    assetApiMocks.uploadAssetFile.mockReset();
   });
 
   it("renders an Agent badge and opens session detail for text nodes", () => {
@@ -190,5 +208,78 @@ describe("FlowNodes agent metadata", () => {
       batchCount: 2,
       multiImageDisplayMode: "combined",
     });
+  });
+
+  it("shows a pending reference chip immediately after choosing a local reference image", async () => {
+    const previousCreateObjectURL = URL.createObjectURL;
+    const previousCreateImageBitmap = globalThis.createImageBitmap;
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn(() => "blob://pending-reference"),
+    });
+    Object.defineProperty(globalThis, "createImageBitmap", {
+      configurable: true,
+      value: vi.fn(() => new Promise(() => undefined)),
+    });
+    assetApiMocks.uploadAssetFile.mockReturnValue(new Promise(() => undefined));
+
+    try {
+      useFlowCanvasStore.getState().addNode(
+        "image",
+        { x: 0, y: 0 },
+        {
+          createdAt: 1,
+          generationPrompt: "",
+          generationStatus: "idle",
+          height: 170,
+          kind: "image",
+          status: "idle",
+          title: "Reference Target",
+          updatedAt: 1,
+          width: 170,
+        } as any,
+        { selected: true },
+      );
+      const node = useFlowCanvasStore.getState().nodes[0];
+
+      const { container } = render(
+        <ImageNodeComponent
+          id={node.id}
+          selected
+          data={node.data as any}
+          dragging={false}
+          zIndex={1}
+          isConnectable
+          type="image"
+          xPos={0}
+          yPos={0}
+        />,
+      );
+
+      const referenceInput = container.querySelector('input[type="file"][multiple]') as HTMLInputElement | null;
+      expect(referenceInput).toBeTruthy();
+
+      fireEvent.change(referenceInput!, {
+        target: {
+          files: [new File(["cat"], "cat.png", { type: "image/png" })],
+        },
+      });
+
+      await waitFor(() => {
+        expect(container.querySelector('img[src="blob://pending-reference"]')).toBeTruthy();
+      });
+      expect(assetApiMocks.uploadAssetFile).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: "image" }),
+      );
+    } finally {
+      Object.defineProperty(URL, "createObjectURL", {
+        configurable: true,
+        value: previousCreateObjectURL,
+      });
+      Object.defineProperty(globalThis, "createImageBitmap", {
+        configurable: true,
+        value: previousCreateImageBitmap,
+      });
+    }
   });
 });
