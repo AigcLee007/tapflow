@@ -3921,3 +3921,11 @@ Validation completed:
   - `npm run build --workspace @aigc-flow/tapflow-agent`
   - `npm test --workspace @aigc-flow/tapflow-agent`
   - `npm run test --workspace @aigc-flow/api -- agent-tool-schemas.test.ts agent-tool-policy.canvas.test.ts agent-context-builder.canvas.test.ts agent-tool-runner.test.ts agent-executor.test.ts agent-canvas-ops.test.ts`
+
+## 2026-07-04 - Canvas Reference Picker White-Screen Fix
+
+- fixed the production white-screen crash caused by `connectNodes` being called inside `src/flowCanvas/nodes/FlowNodes.tsx` without being read from the flow canvas store.
+- the image-node reference picker now safely reuses the shared store action before linking an upstream canvas image source into the current node.
+- validation:
+  - `npm test -- src/flowCanvas/nodes/ReferenceSourcePicker.test.tsx src/flowCanvas/utils/referenceSourceResolver.test.ts`
+  - `npm run build`

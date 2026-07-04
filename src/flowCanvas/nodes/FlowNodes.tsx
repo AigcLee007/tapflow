@@ -4148,6 +4148,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const updateNodeData = useFlowCanvasStore((s) => s.updateNodeData);
   const addNodeAndEdge = useFlowCanvasStore((s) => s.addNodeAndEdge);
   const removeEdgesByIds = useFlowCanvasStore((s) => s.removeEdgesByIds);
+  const connectNodes = useFlowCanvasStore((s) => s.connectNodes);
   const backendProjectId = useFlowCanvasStore((s) => s.backendProjectId);
   const activeImageTool = useFlowCanvasStore((s) => s.activeImageTool);
   const openImageTool = useFlowCanvasStore((s) => s.openImageTool);
