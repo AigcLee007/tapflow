@@ -706,6 +706,24 @@ const flickerStyles = `
   100% { transform: translateX(140%); opacity: 0.1; }
 }
 
+@keyframes flow-generating-drift {
+  0% { transform: translate3d(-6%, -4%, 0) rotate(0deg) scale(1.04); filter: hue-rotate(0deg); }
+  50% { transform: translate3d(5%, 3%, 0) rotate(8deg) scale(1.12); filter: hue-rotate(16deg); }
+  100% { transform: translate3d(-6%, -4%, 0) rotate(0deg) scale(1.04); filter: hue-rotate(0deg); }
+}
+
+@keyframes flow-generating-scan {
+  0% { transform: translateY(-120%); opacity: 0; }
+  20% { opacity: 0.5; }
+  80% { opacity: 0.32; }
+  100% { transform: translateY(120%); opacity: 0; }
+}
+
+@keyframes flow-generating-border {
+  0%, 100% { box-shadow: inset 0 0 0 1px rgba(125,211,252,0.18), 0 0 22px rgba(14,165,233,0.14); }
+  50% { box-shadow: inset 0 0 0 1px rgba(186,230,253,0.42), 0 0 42px rgba(56,189,248,0.24); }
+}
+
 @keyframes flow-image-skeleton-pulse {
   0%, 100% { opacity: 0.52; transform: scale(0.985); }
   50% { opacity: 0.86; transform: scale(1); }
@@ -2102,78 +2120,98 @@ const textSkeletonStack: React.CSSProperties = {
 const imageGeneratingOverlay: React.CSSProperties = {
   position: 'absolute',
   inset: 0,
-  background: 'linear-gradient(180deg, rgba(21,21,21,0.74), rgba(12,12,12,0.88))',
+  background: '#06121f',
   display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
+  alignItems: 'stretch',
+  justifyContent: 'stretch',
   pointerEvents: 'none',
   zIndex: 8,
   overflow: 'hidden',
 };
 
-const imageGeneratingSkeleton: React.CSSProperties = {
-  position: 'relative',
-  zIndex: 2,
-  width: 'min(78%, 260px)',
-  minHeight: 112,
-  display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'center',
-  justifyContent: 'center',
-  gap: 10,
-  borderRadius: 18,
-  border: '1px solid rgba(255,255,255,0.08)',
-  background: 'rgba(34,34,34,0.58)',
-  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06), 0 16px 34px rgba(0,0,0,0.26)',
-  animation: 'flow-image-skeleton-pulse 1.45s ease-in-out infinite',
-};
-
 const imageGeneratingLabel: React.CSSProperties = {
-  maxWidth: 'calc(100% - 28px)',
-  color: 'rgba(255,255,255,0.82)',
-  fontSize: 12,
-  fontWeight: 760,
-  lineHeight: 1.35,
+  position: 'absolute',
+  top: 12,
+  left: 12,
+  zIndex: 5,
+  maxWidth: 'calc(100% - 24px)',
+  height: 30,
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 7,
+  padding: '0 12px',
+  borderRadius: 999,
+  border: '1px solid rgba(186,230,253,0.22)',
+  background: 'rgba(5,22,36,0.64)',
+  color: '#dff7ff',
+  fontSize: 13,
+  fontWeight: 850,
+  lineHeight: 1,
   overflow: 'hidden',
-  textAlign: 'center',
   textOverflow: 'ellipsis',
   whiteSpace: 'nowrap',
+  backdropFilter: 'blur(10px)',
+  boxShadow: '0 10px 28px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.12)',
 };
 
-const imageGeneratingIconBox: React.CSSProperties = {
-  width: 34,
-  height: 34,
-  borderRadius: 11,
-  border: '1px solid rgba(255,255,255,0.13)',
-  background: 'rgba(255,255,255,0.045)',
-  color: 'rgba(255,255,255,0.42)',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
+const imageGeneratingPreview: React.CSSProperties = {
+  position: 'absolute',
+  inset: 0,
+  zIndex: 1,
+  borderRadius: 16,
+  overflow: 'hidden',
+  background:
+    'radial-gradient(circle at 18% 24%, rgba(125,211,252,0.48), transparent 28%), radial-gradient(circle at 78% 18%, rgba(59,130,246,0.36), transparent 34%), radial-gradient(circle at 62% 76%, rgba(20,184,166,0.30), transparent 28%), linear-gradient(135deg, #06111e 0%, #08243b 46%, #0f172a 100%)',
+  animation: 'flow-generating-border 1.9s ease-in-out infinite',
 };
 
-const imageGeneratingLine: React.CSSProperties = {
-  width: 58,
-  height: 5,
-  borderRadius: 999,
-  background: 'rgba(255,255,255,0.12)',
+const imageGeneratingOrb: React.CSSProperties = {
+  position: 'absolute',
+  inset: '-28%',
+  zIndex: 1,
+  background:
+    'conic-gradient(from 135deg at 50% 50%, rgba(14,165,233,0.0), rgba(125,211,252,0.42), rgba(37,99,235,0.12), rgba(20,184,166,0.38), rgba(14,165,233,0.0))',
+  opacity: 0.82,
+  filter: 'blur(12px) saturate(1.25)',
+  animation: 'flow-generating-drift 5.8s ease-in-out infinite',
 };
 
-const imageGeneratingLineShort: React.CSSProperties = {
-  ...imageGeneratingLine,
-  width: 38,
-  opacity: 0.72,
+const imageGeneratingTexture: React.CSSProperties = {
+  position: 'absolute',
+  inset: 0,
+  zIndex: 2,
+  opacity: 0.22,
+  backgroundImage:
+    'linear-gradient(115deg, transparent 0%, rgba(255,255,255,0.08) 42%, transparent 58%), repeating-linear-gradient(90deg, rgba(255,255,255,0.055) 0 1px, transparent 1px 4px)',
+  mixBlendMode: 'screen',
 };
 
 const imageGeneratingSheen: React.CSSProperties = {
   position: 'absolute',
-  top: 0,
-  bottom: 0,
   left: 0,
-  width: '40%',
-  background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.11), transparent)',
-  transform: 'translateX(-120%)',
-  animation: 'flow-image-sheen 1.9s linear infinite',
+  right: 0,
+  top: 0,
+  zIndex: 3,
+  height: '42%',
+  background: 'linear-gradient(180deg, transparent, rgba(186,230,253,0.24), transparent)',
+  transform: 'translateY(-120%)',
+  animation: 'flow-generating-scan 2.25s linear infinite',
+};
+
+const imageGeneratingVignette: React.CSSProperties = {
+  position: 'absolute',
+  inset: 0,
+  zIndex: 4,
+  background: 'radial-gradient(circle at 50% 45%, transparent 34%, rgba(0,0,0,0.36) 100%)',
+};
+
+const imageGeneratingLabelDot: React.CSSProperties = {
+  width: 7,
+  height: 7,
+  borderRadius: '50%',
+  background: '#67e8f9',
+  boxShadow: '0 0 14px rgba(103,232,249,0.85)',
+  animation: 'flow-image-dot 1.1s ease-in-out infinite',
 };
 
 const errorBar: React.CSSProperties = {
@@ -3962,6 +4000,12 @@ const ImageNodeCard = memo(function ImageNodeCard({
   const generationRunLabel = typeof d.generationRunLabel === 'string' && d.generationRunLabel.trim()
     ? d.generationRunLabel.trim()
     : '正在生成图片';
+  const generationProgress = typeof d.progress === 'number' && Number.isFinite(d.progress)
+    ? Math.max(0, Math.min(99, Math.round(d.progress)))
+    : 0;
+  const generationStatusLabel = generationProgress > 0
+    ? `${generationProgress}% 生成中`
+    : generationRunLabel;
 
   return (
     <div
@@ -4040,18 +4084,19 @@ const ImageNodeCard = memo(function ImageNodeCard({
 
       {isGenerating && (
         <div style={imageGeneratingOverlay}>
-          <div style={imageGeneratingSheen} />
-          <div style={imageGeneratingSkeleton}>
-            <div style={imageGeneratingIconBox}>
-              <ImageIcon size={18} strokeWidth={1.6} />
+          <div className="flow-generating-preview" style={imageGeneratingPreview}>
+            <div className="flow-generating-orb" style={imageGeneratingOrb} />
+            <div style={imageGeneratingTexture} />
+            <div style={imageGeneratingSheen} />
+            <div style={imageGeneratingVignette} />
+            <div style={imageGeneratingLabel}>
+              <span style={imageGeneratingLabelDot} />
+              {generationStatusLabel}
             </div>
-            <div style={imageGeneratingLabel}>{generationRunLabel}</div>
-            <div style={imageGeneratingLine} />
-            <div style={imageGeneratingLineShort} />
           </div>
         </div>
       )}
-      {isGenerating && <div style={progressBar(d.progress || 0)} />}
+      {isGenerating && <div style={progressBar(generationProgress)} />}
     </div>
   );
 });

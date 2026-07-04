@@ -1,7 +1,15 @@
 ﻿# Project Record
 
-Last updated: 2026-07-04
+Last updated: 2026-07-05
 Maintainers: project team + Codex sessions
+
+## 2026-07-05 - Canvas Image Generation Animation
+
+- upgraded image-node generation feedback from a static gray skeleton to an animated in-node preview surface with flowing cyan/blue light, scan motion, breathing border, and a progress/status pill.
+- kept the animation scoped inside the node so canvas size, handles, prompt controls, and final image replacement behavior are unchanged.
+- added regression coverage for the animated generating preview surface and progress label.
+- validation:
+  - `npm test -- src/flowCanvas/nodes/FlowNodes.agent-metadata.test.tsx` passed on 2026-07-05: 1 test file, 9 tests.
 
 ## 2026-07-04 - Canvas Reference Source Picker
 

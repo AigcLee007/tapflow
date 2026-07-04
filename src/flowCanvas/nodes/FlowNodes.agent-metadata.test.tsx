@@ -180,6 +180,36 @@ describe("FlowNodes agent metadata", () => {
     expect(image?.style.objectFit).toBe("contain");
   });
 
+  it("renders the image generation state as an animated preview surface", () => {
+    const { container } = render(
+      <ImageNodeComponent
+        id="image-generating-1"
+        selected={false}
+        data={{
+          createdAt: 1,
+          generationStatus: "generating",
+          height: 220,
+          kind: "image",
+          progress: 5,
+          status: "running",
+          title: "Generating Preview",
+          updatedAt: 1,
+          width: 320,
+        } as any}
+        dragging={false}
+        zIndex={1}
+        isConnectable
+        type="image"
+        xPos={0}
+        yPos={0}
+      />,
+    );
+
+    expect(container.querySelector(".flow-generating-preview")).toBeTruthy();
+    expect(container.querySelector(".flow-generating-orb")).toBeTruthy();
+    expect(screen.getByText("5% 生成中")).toBeTruthy();
+  });
+
   it("keeps the image quantity menu open until a batch display mode is selected", () => {
     useFlowCanvasStore.getState().addNode(
       "image",
