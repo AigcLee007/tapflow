@@ -5,6 +5,12 @@ Maintainers: project team + Codex sessions
 
 ## 2026-07-04 - Canvas Reference Source Picker
 
+- hardened agent-side reference uploads so a successful image upload is still returned even when the follow-up metadata enrichment call cannot run because of permission or transient API failure.
+- this prevents the `上传参考图` action from failing after storage upload completion, which keeps the Agent reference chip flow usable in creator workspaces that only have asset create access.
+- validation:
+  - `npm test -- src/assets/assetApi.test.ts src/flowCanvas/agent/CanvasAgentReferenceUploadButton.test.tsx src/flowCanvas/agent/CanvasAgentComposer.test.tsx` passed on 2026-07-04.
+  - `npm run build` passed on 2026-07-04 with existing Browserslist, chunk-size, and dynamic-import warnings only.
+
 - fixed canvas reference selection so choosing a canvas image from the picker now resolves the node directly and creates the expected upstream reference even before it has already been wired into the graph.
 - added a local preview fallback path for reference uploads so newly uploaded image references remain visible even when the immediate asset response has no `previewUrl` yet.
 - updated reference chip resolution to prefer the locally cached preview for asset references, which keeps the image reference strip visible during the upload-to-library handoff.

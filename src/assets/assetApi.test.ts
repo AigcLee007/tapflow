@@ -140,6 +140,72 @@ describe("uploadAssetFile", () => {
       title: "cat.png",
     });
   });
+
+  it("keeps a successful upload usable when metadata enrichment fails", async () => {
+    class FakeImage {
+      naturalHeight = 1536;
+      naturalWidth = 864;
+      onerror: null | ((error?: unknown) => void) = null;
+      onload: null | (() => void) = null;
+
+      set src(_value: string) {
+        queueMicrotask(() => {
+          this.onload?.();
+        });
+      }
+    }
+
+    vi.stubGlobal("Image", FakeImage as unknown as typeof Image);
+    const createObjectURL = vi.fn(() => "blob://cat");
+    const revokeObjectURL = vi.fn();
+    stubUrlObjectApi(createObjectURL, revokeObjectURL);
+
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    apiPostMock
+      .mockResolvedValueOnce({
+        asset: {
+          durationMs: null,
+          height: 768,
+          id: "asset-1",
+          mimeType: "image/png",
+          originalFilename: "cat.png",
+          previewUrl: undefined,
+          source: "upload",
+          title: null,
+          width: 1024,
+        },
+        upload: {
+          expiresAt: "2026-06-11T12:00:00.000Z",
+          headers: { "content-type": "image/png" },
+          method: "PUT",
+          url: "https://storage.test/direct-upload",
+        },
+      })
+      .mockResolvedValueOnce({
+        durationMs: null,
+        height: 768,
+        id: "asset-1",
+        mimeType: "image/png",
+        originalFilename: "cat.png",
+        previewUrl: undefined,
+        source: "upload",
+        title: null,
+        width: 1024,
+      });
+    apiPatchMock.mockRejectedValueOnce(new Error("Forbidden"));
+
+    const { uploadAssetFile } = await import("./assetApi");
+    const file = new File(["cat"], "cat.png", { type: "image/png" });
+    const result = await uploadAssetFile({ file, kind: "image", projectId: "project-1" });
+
+    expect(result).toMatchObject({
+      id: "asset-1",
+      title: "cat.png",
+    });
+    expect(apiPatchMock).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("readImageDimensions", () => {

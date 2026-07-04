@@ -217,10 +217,18 @@ export async function uploadAssetFile(input: {
     ...(dimensions ? { height: dimensions.height, width: dimensions.width } : {}),
     sizeBytes: file.size,
   });
-  return updateAssetMetadata(completed.id, {
-    source: 'upload',
-    title: completed.title || file.name,
-  });
+  try {
+    return await updateAssetMetadata(completed.id, {
+      source: 'upload',
+      title: completed.title || file.name,
+    });
+  } catch {
+    return {
+      ...completed,
+      source: 'upload',
+      title: completed.title || file.name,
+    };
+  }
 }
 
 export function kindFromMimeType(mimeType: string): AssetKind {
