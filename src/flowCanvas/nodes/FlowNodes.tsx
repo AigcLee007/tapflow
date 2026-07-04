@@ -129,7 +129,7 @@ import { useAuth } from '../../auth/useAuth';
 import { dispatchOpenAgentSession } from '../agent/agentSessionEvents';
 import { normalizeBackendAssetUrl } from '../../utils/generatedImageStorage';
 import { canNodeReceiveIncoming } from '../rules/connectionRules';
-import { getAsset, getAssetDownloadUrl, getAssetVariantUrl } from '../../assets/assetApi';
+import { getAsset, getAssetDownloadUrl, getAssetVariantUrl, type AssetItem } from '../../assets/assetApi';
 import { listAiModelCatalog, listAiModelRoutes, type AiModelCatalogItem } from '../../services/v2AiModelCatalogApi';
 import { buildAssetBackedNodeData } from '../utils/assetNodeData';
 import {
@@ -142,6 +142,7 @@ import {
 } from '../utils/localImageUpload';
 import { persistDerivedImageAsset, type DerivedImageSourceType } from '../utils/persistDerivedImageAsset';
 import { getCachedReferenceImageObjectUrl } from '../utils/referenceImageLocalCache';
+import { ReferenceSourcePicker } from './ReferenceSourcePicker';
 import { downloadOriginalImage, getPreferredImageDownloadAssetId } from '../utils/imageDownload';
 import { resolveImageViewerFileSizeBytes } from '../utils/imageViewerFileSize';
 import {
@@ -151,6 +152,7 @@ import {
   getComparisonSplitPercentFromClientX,
   readImageViewerComparisonSource,
 } from '../utils/imageViewerComparison';
+import { resolveReferenceChips } from '../utils/referenceSourceResolver';
 import {
   buildFailedDerivedImagePatch,
   buildOptimisticDerivedImageNodeData,
@@ -4209,6 +4211,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const [aiConfirmType, setAiConfirmType] = useState<Extract<ImageEditType, 'enhance' | 'removeBackground'> | null>(null);
 
   const { connectionNodeId } = useConnection();
+  const referenceFileInputRef = useRef<HTMLInputElement>(null);
   const runtimeImageAssets = Array.isArray(runtimeNodeOutput?.assets)
     ? runtimeNodeOutput.assets.filter((asset) => asset.kind === 'image' && asset.downloadUrl)
     : [];
@@ -4216,6 +4219,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const [assetPreviewUrl, setAssetPreviewUrl] = useState('');
   const [imageLoadState, setImageLoadState] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle');
   const [referencePreviewUrlsByKey, setReferencePreviewUrlsByKey] = useState<Record<string, string>>({});
+  const [referenceAssetItemsById, setReferenceAssetItemsById] = useState<Record<string, AssetItem>>({});
   const assetId = typeof d.assetId === 'string' ? d.assetId : '';
   const referenceUploadId = typeof d.referenceUploadId === 'string' ? d.referenceUploadId : '';
   const persistedThumbnailUrl = String(d.thumbnailUrl || '');
@@ -4397,34 +4401,62 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const recentAssetItemIds = Array.isArray((p.recentReferenceAssetItemIds as unknown[] | undefined))
     ? (p.recentReferenceAssetItemIds as unknown[]).map((item) => String(item || ''))
     : [];
-  const referencedAssetItems = referencedAssetItemIds
-    .map((itemId) => folderItems.find((item) => item.id === itemId))
-    .filter((item): item is (typeof folderItems)[number] => Boolean(item));
-  const rawReferenceChips = [
-    ...upstreamImageRefs,
-    ...referencedAssetItems.map((item) => ({
-      key: `asset:${item.id}`,
-      id: item.id,
-      imageUrl: item.imageUrl,
-      title: item.title,
-      source: 'asset' as const,
-    })),
-  ];
+  const referenceAssetItemIdsKey = referencedAssetItemIds.join('|');
+  useEffect(() => {
+    if (referencedAssetItemIds.length === 0) {
+      setReferenceAssetItemsById((current) => (Object.keys(current).length === 0 ? current : {}));
+      return;
+    }
+
+    const activeIds = new Set(referencedAssetItemIds);
+    setReferenceAssetItemsById((current) => {
+      const next: Record<string, AssetItem> = {};
+      Object.keys(current).forEach((assetId) => {
+        if (activeIds.has(assetId)) {
+          next[assetId] = current[assetId];
+        }
+      });
+      return next;
+    });
+
+    const missingIds = referencedAssetItemIds.filter((assetId) => !referenceAssetItemsById[assetId]);
+    if (missingIds.length === 0) return;
+
+    let cancelled = false;
+    void Promise.all(
+      missingIds.map(async (assetId) => {
+        const asset = await getAsset(assetId).catch(() => null);
+        return asset ? { assetId, asset } : null;
+      }),
+    ).then((items) => {
+      if (cancelled) return;
+      setReferenceAssetItemsById((current) => {
+        const next = { ...current };
+        items.forEach((item) => {
+          if (!item) return;
+          next[item.assetId] = item.asset;
+        });
+        return next;
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [referenceAssetItemIdsKey]);
   const referenceOrder = Array.isArray(d.referenceOrder)
     ? (d.referenceOrder as string[]).map((item) => String(item))
     : [];
-  const referenceChips = useMemo(() => {
-    const orderIndex = new Map(referenceOrder.map((key, index) => [key, index]));
-    return [...rawReferenceChips].sort((a, b) => {
-      const ai = orderIndex.has(a.key) ? orderIndex.get(a.key)! : Number.MAX_SAFE_INTEGER;
-      const bi = orderIndex.has(b.key) ? orderIndex.get(b.key)! : Number.MAX_SAFE_INTEGER;
-      if (ai !== bi) return ai - bi;
-      return rawReferenceChips.findIndex((item) => item.key === a.key) - rawReferenceChips.findIndex((item) => item.key === b.key);
-    }).map((item, index) => ({
-      ...item,
-      mentionLabel: `Image ${index + 1}`,
-    }));
-  }, [rawReferenceChips, referenceOrder]);
+  const referenceChips = useMemo(
+    () =>
+      resolveReferenceChips({
+        assetItemsById: referenceAssetItemsById,
+        referenceAssetItemIds: referencedAssetItemIds,
+        referenceOrder,
+        upstreamImageRefs,
+      }),
+    [referenceAssetItemsById, referencedAssetItemIds, referenceOrder, upstreamImageRefs],
+  );
   const referenceUploadPreviewKey = referenceChips
     .map((item) => `${item.key}:${item.source === 'upstream' ? String(item.referenceUploadId || '').trim() : ''}`)
     .join('|');
@@ -5249,14 +5281,12 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
 
   const handlePickAssetRef = useCallback(
     (itemId: string) => {
-      const item = folderItems.find((candidate) => candidate.id === itemId);
       const itemKey = `asset:${itemId}`;
       const next = Array.from(new Set([...referencedAssetItemIds, itemId]));
       const nextRecent = [itemId, ...recentAssetItemIds.filter((idValue) => idValue !== itemId)].slice(0, 8);
-      const nextOrder = Array.from(new Set([...referenceChips.map((refItem) => refItem.key), itemKey]));
-      const mentionLabel = referenceChips.find((refItem) => refItem.key === itemKey)?.mentionLabel || `Image ${nextOrder.indexOf(itemKey) + 1}`;
+      const nextOrder = Array.from(new Set([...referenceOrder, itemKey]));
+      const mentionLabel = `Image ${nextOrder.indexOf(itemKey) + 1}`;
       updateNodeData(id, {
-        generationPrompt: item ? getPromptWithMentionLabel(mentionLabel) : d.generationPrompt,
         referenceAssetItemIds: next,
         referenceOrder: nextOrder,
         params: {
@@ -5264,28 +5294,27 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
           recentReferenceAssetItemIds: nextRecent,
         },
       });
+      insertReferenceMention(mentionLabel);
       setAssetMenuOpen(false);
       setMentionQuery('');
       setAssetMenuIndex(0);
     },
-    [d.generationPrompt, folderItems, getPromptWithMentionLabel, id, p, recentAssetItemIds, referenceChips, referencedAssetItemIds, updateNodeData],
+    [id, insertReferenceMention, p, recentAssetItemIds, referenceOrder, referencedAssetItemIds, updateNodeData],
   );
 
   const handlePickConnectedRef = useCallback(
     (nodeId: string) => {
       const item = upstreamImageRefs.find((candidate) => candidate.id === nodeId);
       if (!item) return;
-      const nextOrder = Array.from(new Set([...referenceChips.map((refItem) => refItem.key), item.key]));
-      const mentionLabel = referenceChips.find((refItem) => refItem.key === item.key)?.mentionLabel || `Image ${nextOrder.indexOf(item.key) + 1}`;
-      updateNodeData(id, {
-        generationPrompt: getPromptWithMentionLabel(mentionLabel),
-        referenceOrder: nextOrder,
-      });
+      const nextOrder = Array.from(new Set([...referenceOrder, item.key]));
+      const mentionLabel = `Image ${nextOrder.indexOf(item.key) + 1}`;
+      connectNodes(nodeId, id);
+      insertReferenceMention(mentionLabel);
       setAssetMenuOpen(false);
       setMentionQuery('');
       setAssetMenuIndex(0);
     },
-    [getPromptWithMentionLabel, id, referenceChips, upstreamImageRefs, updateNodeData],
+    [connectNodes, id, insertReferenceMention, referenceOrder, upstreamImageRefs],
   );
 
   const handleRemoveAssetRef = useCallback(
@@ -5465,6 +5494,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     [
       assetMenuIndex,
       assetMenuOpen,
+      connectNodes,
       mentionCandidates,
       filteredSlashCommands,
       handleInsertSlashCommand,
@@ -5480,6 +5510,60 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
 
   const handleUploadClick = () => {
     fileInputRef.current?.click();
+  };
+
+  const handleReferenceUploadClick = () => {
+    referenceFileInputRef.current?.click();
+  };
+
+  const handleReferenceFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    const input = e.target;
+    input.value = '';
+    const imageFiles = files.filter((file) => file.type.startsWith('image/'));
+    if (imageFiles.length === 0) return;
+
+    void (async () => {
+      try {
+        const uploadedAssets = await Promise.all(
+          imageFiles.map((file) => uploadAssetFile({ file, kind: 'image', projectId: backendProjectId })),
+        );
+        const uploadedAssetIds = uploadedAssets.map((asset) => asset.id);
+        const uploadedKeys = uploadedAssetIds.map((assetId) => `asset:${assetId}`);
+        const nextAssetIds = Array.from(new Set([...referencedAssetItemIds, ...uploadedAssetIds]));
+        const nextOrder = Array.from(new Set([...referenceOrder, ...uploadedKeys]));
+        const nextRecent = Array.from(new Set([...uploadedAssetIds, ...recentAssetItemIds])).slice(0, 8);
+
+        setReferenceAssetItemsById((current) => {
+          const next = { ...current };
+          uploadedAssets.forEach((asset) => {
+            next[asset.id] = asset;
+          });
+          return next;
+        });
+
+        updateNodeData(id, {
+          referenceAssetItemIds: nextAssetIds,
+          referenceOrder: nextOrder,
+          params: {
+            ...p,
+            recentReferenceAssetItemIds: nextRecent,
+          },
+          uploadErrorMessage: undefined,
+          uploadStatus: 'done',
+        });
+
+        uploadedAssets.forEach((asset) => {
+          const mentionLabel = `Image ${nextOrder.indexOf(`asset:${asset.id}`) + 1}`;
+          insertReferenceMention(mentionLabel);
+        });
+      } catch (error) {
+        updateNodeData(id, {
+          uploadErrorMessage: error instanceof Error && error.message.trim() ? error.message : '参考图上传失败',
+          uploadStatus: 'failed',
+        });
+      }
+    })();
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -6192,6 +6276,14 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
         accept="image/*"
         onChange={handleFileChange}
       />
+      <input
+        ref={referenceFileInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        style={{ display: 'none' }}
+        onChange={handleReferenceFileChange}
+      />
 
       {/* Section */}
       {hasImage && showNodeEditor && (() => {
@@ -6462,10 +6554,10 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
               type="button"
               className="nodrag nopan"
               style={{ ...topToolbarBtn, width: 36, height: 36, background: 'rgba(255,255,255,0.06)', borderRadius: 10, padding: 0, border: '1px solid rgba(255,255,255,0.08)' }}
-              onClick={() => setAssetMenuOpen((value) => !value)}
-              title="引用素材"
+              onClick={handleReferenceUploadClick}
+              title="上传参考图"
             >
-              <ImageIcon size={16} />
+              <Upload size={16} />
             </button>
             {referenceChips.slice(0, 8).map((refItem) => {
               const displayImageUrl = getReferenceDisplayImageUrl(refItem);
@@ -6585,8 +6677,12 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
               type="button"
               className="nodrag nopan"
               style={{ ...topToolbarBtn, width: 36, height: 36, background: 'rgba(255,255,255,0.06)', borderRadius: 10, padding: 0, border: '1px solid rgba(255,255,255,0.08)' }}
-              onClick={() => setAssetMenuOpen(true)}
-              title="添加更多素材"
+              onClick={() => {
+                setMentionQuery('');
+                setAssetMenuIndex(0);
+                setAssetMenuOpen(true);
+              }}
+              title="添加参考图"
             >
               <Plus size={16} />
             </button>
@@ -6595,154 +6691,64 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
             )}
           </div>
 
-          {(assetMenuOpen || slashMenuOpen) && (
+          {slashMenuOpen && (
             <div
               className="sleek-scroll-y"
               style={{
                 position: 'absolute',
                 left: -80,
                 top: 54,
-                width: assetMenuOpen ? 480 : 420,
-                maxHeight: assetMenuOpen ? 540 : 240,
+                width: 420,
+                maxHeight: 240,
                 overflowY: 'auto',
                 borderRadius: 18,
                 border: '1px solid rgba(255,255,255,0.11)',
                 background: 'rgba(47,47,47,0.98)',
                 marginBottom: 0,
-                padding: assetMenuOpen ? '10px 10px 14px' : 8,
+                padding: 8,
                 boxShadow: '0 18px 48px rgba(0,0,0,0.42)',
                 backdropFilter: 'blur(18px)',
                 zIndex: 1600,
               }}
             >
-              {slashMenuOpen && (
-                <>
-                  {filteredSlashCommands.map((command) => (
-                    <button
-                      key={command.id}
-                      type="button"
-                      className="nodrag nopan"
-                      onClick={() => handleInsertSlashCommand(command.id)}
-                      style={{
-                        width: '100%',
-                        border: 'none',
-                        borderRadius: 10,
-                        background: filteredSlashCommands[slashMenuIndex]?.id === command.id ? 'rgba(255,255,255,0.09)' : 'transparent',
-                        color: '#e2e8f0',
-                        textAlign: 'left',
-                        padding: '8px 10px',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <div style={{ fontSize: 13, fontWeight: 700 }}>/ {command.label}</div>
-                      <div style={{ marginTop: 2, fontSize: 11, color: '#94a3b8' }}>{command.prompt}</div>
-                    </button>
-                  ))}
-                </>
-              )}
-              {assetMenuOpen && (
-                <>
-                  {connectedMentionItems.length > 0 && (
-                    <>
-                      <div style={{ padding: '2px 0 6px', color: 'rgba(255,255,255,0.48)', fontSize: 14, fontWeight: 800 }}>已连接节点</div>
-                      <div style={{ borderTop: '4px solid #ff455a', background: 'rgba(255,255,255,0.03)', margin: '0 -4px 12px', padding: '8px 4px 6px' }}>
-                        {connectedMentionItems.map((item) => {
-                          const active = mentionCandidates[assetMenuIndex]?.kind === 'upstream' && mentionCandidates[assetMenuIndex]?.id === item.id;
-                          return (
-                            <button
-                              key={item.id}
-                              type="button"
-                              className="nodrag nopan"
-                              onClick={() => handlePickConnectedRef(item.id)}
-                              style={{
-                                width: '100%',
-                                height: 56,
-                                border: 'none',
-                                borderRadius: 12,
-                                background: active ? 'rgba(255,255,255,0.1)' : 'transparent',
-                                color: '#f8fafc',
-                                textAlign: 'left',
-                                padding: '7px 8px',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 14,
-                              }}
-                            >
-                              <img src={item.imageUrl} alt="" style={{ width: 36, height: 36, borderRadius: 7, objectFit: 'cover' }} />
-                              <span style={{ flex: 1, fontSize: 22, fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.title || '参考图'}</span>
-                              <ImageIcon size={20} color="rgba(255,255,255,0.45)" />
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </>
-                  )}
-                  <div style={{ padding: '0 0 8px', color: 'rgba(255,255,255,0.48)', fontSize: 14, fontWeight: 800 }}>个人素材库</div>
-                  {folders.slice(0, 3).map((folder, index) => (
-                    <button
-                      key={folder.id}
-                      type="button"
-                      className="nodrag nopan"
-                      style={{
-                        width: '100%',
-                        height: 56,
-                        border: 'none',
-                        borderRadius: 12,
-                        background: 'transparent',
-                        color: '#f8fafc',
-                        textAlign: 'left',
-                        padding: '7px 8px',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 16,
-                      }}
-                    >
-                      <span style={{ width: 36, height: 28, borderRadius: 6, background: 'linear-gradient(#d7d7d7,#9d9d9d)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.55)' }} />
-                      <span style={{ flex: 1, fontSize: 22, fontWeight: 760 }}>{folder.name || ['Favorites', 'Character', 'Scene'][index] || '素材夹'}</span>
-                      <ChevronRight size={22} color="rgba(255,255,255,0.45)" />
-                    </button>
-                  ))}
-                  {(filteredRecentMentionItems.length > 0 || filteredLibraryMentionItems.length > 0) && (
-                    <>
-                      <div style={{ padding: '8px 8px 4px', color: 'rgba(255,255,255,0.42)', fontSize: 15, fontWeight: 760 }}>… 还有 {filteredMentionItems.length} 个结果</div>
-                      {[...filteredRecentMentionItems, ...filteredLibraryMentionItems].slice(0, 6).map((item) => {
-                        const active = mentionCandidates[assetMenuIndex]?.kind === 'asset' && mentionCandidates[assetMenuIndex]?.id === item.id;
-                        return (
-                          <button
-                            key={item.id}
-                            type="button"
-                            className="nodrag nopan"
-                            onClick={() => handlePickAssetRef(item.id)}
-                            style={{
-                              width: '100%',
-                              height: 48,
-                              border: 'none',
-                              borderRadius: 12,
-                              background: active ? 'rgba(255,255,255,0.1)' : 'transparent',
-                              color: '#f8fafc',
-                              textAlign: 'left',
-                              padding: '6px 8px',
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 12,
-                            }}
-                          >
-                            <img src={item.imageUrl} alt="" style={{ width: 34, height: 34, borderRadius: 7, objectFit: 'cover' }} />
-                            <span style={{ flex: 1, fontSize: 17, fontWeight: 760, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.title || '素材'}</span>
-                            <ImageIcon size={18} color="rgba(255,255,255,0.45)" />
-                          </button>
-                        );
-                      })}
-                    </>
-                  )}
-                  <div style={{ height: 1, background: 'rgba(255,255,255,0.12)', margin: '12px 0' }} />
-                  <div style={{ padding: '0 0 4px', color: 'rgba(255,255,255,0.48)', fontSize: 14, fontWeight: 800 }}>团队素材库</div>
-                </>
-              )}
+              {filteredSlashCommands.map((command) => (
+                <button
+                  key={command.id}
+                  type="button"
+                  className="nodrag nopan"
+                  onClick={() => handleInsertSlashCommand(command.id)}
+                  style={{
+                    width: '100%',
+                    border: 'none',
+                    borderRadius: 10,
+                    background: filteredSlashCommands[slashMenuIndex]?.id === command.id ? 'rgba(255,255,255,0.09)' : 'transparent',
+                    color: '#e2e8f0',
+                    textAlign: 'left',
+                    padding: '8px 10px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <div style={{ fontSize: 13, fontWeight: 700 }}>/ {command.label}</div>
+                  <div style={{ marginTop: 2, fontSize: 11, color: '#94a3b8' }}>{command.prompt}</div>
+                </button>
+              ))}
             </div>
+          )}
+
+          {assetMenuOpen && (
+            <ReferenceSourcePicker
+              currentNodeId={id}
+              open={assetMenuOpen}
+              query={mentionQuery}
+              onClose={() => {
+                setAssetMenuOpen(false);
+                setMentionQuery('');
+                setAssetMenuIndex(0);
+              }}
+              onPickAsset={handlePickAssetRef}
+              onPickCanvasNode={handlePickConnectedRef}
+              onUploadReference={handleReferenceUploadClick}
+            />
           )}
 
           <div style={richPromptShell}>

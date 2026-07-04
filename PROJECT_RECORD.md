@@ -3,6 +3,16 @@
 Last updated: 2026-07-04
 Maintainers: project team + Codex sessions
 
+## 2026-07-04 - Canvas Reference Source Picker
+
+- replaced the image-node placeholder reference menu with a real `ReferenceSourcePicker` surface that can add references from current canvas image nodes, recent asset-library images, or direct upload, while keeping the picker mounted only when opened.
+- wired the prompt-bar `+` affordance to the source picker and changed the left prompt icon into a true reference-upload entry point that uploads image files and appends them as references on the active image node.
+- centralized reference-chip resolution through `referenceSourceResolver` so canvas references and asset-backed references share the same ordering and labeling logic.
+- added focused regression coverage for the new reference source resolution helper and the picker UI.
+- validation:
+  - `npm test -- src/flowCanvas/utils/referenceSourceResolver.test.ts src/flowCanvas/nodes/ReferenceSourcePicker.test.tsx` passed on 2026-07-04: 2 test files, 4 tests.
+  - `npm run build` passed on 2026-07-04 with existing Browserslist, chunk-size, and dynamic-import warnings only.
+
 ## 2026-07-04 - Image Parameter Popover And Batch Mode Refinement
 
 - compacted the Nano Banana and GPT-image-2 parameter popovers by reducing the fixed menu width, panel padding, control heights, ratio tile heights, gaps, and radius sizes so the size/ratio controls read as a coordinated canvas menu instead of a large panel.
