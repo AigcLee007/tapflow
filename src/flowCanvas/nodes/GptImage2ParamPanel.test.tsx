@@ -121,9 +121,47 @@ describe('GptImage2ParamPanel', () => {
     const panel = screen.getByTestId('gpt-image-2-param-panel') as HTMLDivElement;
     const mediumChip = screen.getByRole('button', { name: 'MEDIUM' }) as HTMLButtonElement;
 
-    expect(panel.style.gap).toBe('20px');
-    expect(panel.style.gridTemplateColumns).toBe('minmax(0, 1.55fr) minmax(320px, 1fr)');
-    expect(mediumChip.style.fontSize).toBe('14px');
+    expect(panel.style.gap).toBe('14px');
+    expect(panel.style.gridTemplateColumns).toBe('minmax(0, 1.45fr) minmax(284px, 1fr)');
+    expect(mediumChip.style.fontSize).toBe('13px');
     expect(mediumChip.style.whiteSpace).toBe('nowrap');
+  });
+
+  test('uses the compact shared image parameter density', () => {
+    render(
+      <GptImage2ParamPanel
+        format="png"
+        moderation="auto"
+        quality="auto"
+        ratio="16:9"
+        ratios={['1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3', '21:9']}
+        size="2k"
+        sizes={['auto', '1k', '2k', '4k']}
+        onChangeFormat={vi.fn()}
+        onChangeModeration={vi.fn()}
+        onChangeQuality={vi.fn()}
+        onChangeRatio={vi.fn()}
+        onChangeSize={vi.fn()}
+      />,
+    );
+
+    const panel = screen.getByTestId('gpt-image-2-param-panel');
+    const leftZone = screen.getByTestId('gpt-image-2-left-zone');
+    const sizeRail = screen.getByTestId('gpt-image-2-size-rail');
+    const ratioGrid = screen.getByTestId('gpt-image-2-ratio-grid');
+    const activeRatio = screen.getByRole('button', { name: '16:9' });
+    const sizeButton = screen.getByRole('button', { name: '2K' });
+
+    expect(panel.style.gap).toBe('14px');
+    expect(panel.style.gridTemplateColumns).toBe('minmax(0, 1.45fr) minmax(284px, 1fr)');
+    expect(leftZone.style.gap).toBe('9px');
+    expect(sizeRail.style.borderRadius).toBe('14px');
+    expect(sizeButton.style.height).toBe('40px');
+    expect(sizeButton.style.fontSize).toBe('16px');
+    expect(ratioGrid.style.gap).toBe('4px');
+    expect(ratioGrid.style.padding).toBe('8px');
+    expect(ratioGrid.style.borderRadius).toBe('18px');
+    expect(activeRatio.style.minHeight).toBe('58px');
+    expect(activeRatio.style.borderRadius).toBe('14px');
   });
 });

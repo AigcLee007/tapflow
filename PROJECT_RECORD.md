@@ -3,6 +3,15 @@
 Last updated: 2026-07-04
 Maintainers: project team + Codex sessions
 
+## 2026-07-04 - Image Parameter Popover And Batch Mode Refinement
+
+- compacted the Nano Banana and GPT-image-2 parameter popovers by reducing the fixed menu width, panel padding, control heights, ratio tile heights, gaps, and radius sizes so the size/ratio controls read as a coordinated canvas menu instead of a large panel.
+- changed the image quantity menu so selecting a batch count greater than one defaults to `多节点显示`, keeps the menu open, and closes only after the user explicitly chooses `合并显示` or `多节点显示`.
+- added focused regression coverage for compact parameter density and the batch-count display-mode confirmation flow.
+- validation:
+  - `npm test -- src/flowCanvas/nodes/NanoBananaParamPanel.test.tsx src/flowCanvas/nodes/GptImage2ParamPanel.test.tsx src/flowCanvas/nodes/FlowNodes.agent-metadata.test.tsx` passed on 2026-07-04: 3 test files, 14 tests.
+  - `npm run build` passed on 2026-07-04 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-04 - Canvas Batch Image Node Display Fix
 
 - moved multi-image display mode selection into the image quantity menu for batch counts greater than one, so the bottom prompt action row no longer gains an extra wide control that can overflow the editor.

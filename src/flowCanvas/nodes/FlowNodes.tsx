@@ -2769,7 +2769,7 @@ const ImageSettingsDropup: React.FC<ImageSettingsDropupProps> = ({
   const [hoveredRatio, setHoveredRatio] = useState<string | null>(null);
   const isNanoBanana = isNanoBananaImageModelId(String(modelId || ''));
   const isGptImage2 = isGptImage2ModelId(String(modelId || ''));
-  const menuWidth = isNanoBanana ? 636 : isGptImage2 ? 760 : 480;
+  const menuWidth = isNanoBanana ? 520 : isGptImage2 ? 660 : 420;
   const { menuRef, position, updatePosition, wrapRef } = useFixedImageDropup(open, setOpen, menuWidth);
 
   const safeSize = String(size || '1k').toLowerCase();
@@ -2785,7 +2785,7 @@ const ImageSettingsDropup: React.FC<ImageSettingsDropupProps> = ({
         <ChevronDown size={14} color="#a1a1aa" />
       </button>
       {open && position ? createPortal(
-        <div ref={menuRef} style={buildFixedImageMenuSurface(position, { width: menuWidth, padding: isNanoBanana ? 20 : 18 })} className="nodrag nopan nowheel">
+        <div ref={menuRef} style={buildFixedImageMenuSurface(position, { width: menuWidth, padding: isNanoBanana ? 14 : 14 })} className="nodrag nopan nowheel">
           {isNanoBanana ? (
             <NanoBananaParamPanel
               ratio={ratio}
@@ -4181,6 +4181,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const reactFlow = useReactFlow();
   const [hovered, setHovered] = useState(false);
   const [showBatchSelector, setShowBatchSelector] = useState(false);
+  const [pendingBatchCount, setPendingBatchCount] = useState<number | null>(null);
   const [fullscreenOpen, setFullscreenOpen] = useState(false);
   const moreMenuLayer = useDismissibleLayer(`image-node-more-${id}`);
   const [moreMenuPosition, setMoreMenuPosition] = useState<{ left: number; top: number } | null>(null);
@@ -4603,6 +4604,11 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
         ? [{ id: 'result-single', url: effectiveThumbnailUrl, createdAt: Date.now() }]
         : []);
   const multiImageDisplayMode = d.multiImageDisplayMode === 'split_nodes' ? 'split_nodes' : 'combined';
+  const effectiveBatchCount = pendingBatchCount ?? (d.batchCount || 1);
+  const effectiveMultiImageDisplayMode =
+    pendingBatchCount !== null && effectiveBatchCount > 1
+      ? 'split_nodes'
+      : multiImageDisplayMode;
   const shouldSuppressDuplicateResultStrip =
     multiImageDisplayMode === 'split_nodes' &&
     d.latestMultiImageDelivery === 'split_nodes';
@@ -4757,6 +4763,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   useEffect(() => {
     if (!isMultiSelecting) return;
     setShowBatchSelector(false);
+    setPendingBatchCount(null);
     moreMenuLayer.closeLayer();
     setAssetMenuOpen(false);
     setSlashMenuOpen(false);
@@ -6816,7 +6823,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
               quantityControl={(
                 <div style={{ position: 'relative' }}>
                   {showBatchSelector && (
-                    <div style={{
+                    <div data-testid="image-batch-menu" style={{
                       position: 'absolute',
                       bottom: 'calc(100% + 12px)',
                       left: '50%',
@@ -6831,20 +6838,25 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
                       border: '1px solid rgba(255, 255, 255, 0.08)',
                       boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
                       zIndex: 1000,
-                      minWidth: (d.batchCount || 1) > 1 ? 118 : 44,
+                      minWidth: effectiveBatchCount > 1 ? 118 : 44,
                     }}>
                       {[4, 3, 2, 1].map(num => (
                         <button
                           key={num}
                           onClick={() => {
-                            updateNodeData(id, { batchCount: num });
+                            setPendingBatchCount(num);
+                            if (num > 1) {
+                              updateNodeData(id, { batchCount: num, multiImageDisplayMode: 'split_nodes' });
+                              return;
+                            }
+                            updateNodeData(id, { batchCount: num, multiImageDisplayMode: undefined });
                             setShowBatchSelector(false);
                           }}
                           className="flow-batch-option"
                           style={{
-                            background: (d.batchCount || 1) === num ? 'rgba(255,255,255,0.08)' : 'transparent',
+                            background: effectiveBatchCount === num ? 'rgba(255,255,255,0.08)' : 'transparent',
                             border: 'none',
-                            color: (d.batchCount || 1) === num ? '#fff' : '#64748b',
+                            color: effectiveBatchCount === num ? '#fff' : '#64748b',
                             fontSize: 13,
                             fontWeight: 500,
                             padding: '8px 0',
@@ -6857,17 +6869,18 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
                           {num}x
                         </button>
                       ))}
-                      {(d.batchCount || 1) > 1 && (
+                      {effectiveBatchCount > 1 && (
                         <>
                           <div style={{ height: 1, background: 'rgba(255,255,255,0.1)', margin: '2px 2px' }} />
                           {(Object.keys(MULTI_IMAGE_MODE_LABELS) as FlowMultiImageDisplayMode[]).map((mode) => {
-                            const active = multiImageDisplayMode === mode;
+                            const active = effectiveMultiImageDisplayMode === mode;
                             return (
                               <button
                                 key={mode}
                                 type="button"
                                 onClick={() => {
-                                  updateNodeData(id, { multiImageDisplayMode: mode });
+                                  updateNodeData(id, { batchCount: effectiveBatchCount, multiImageDisplayMode: mode });
+                                  setPendingBatchCount(null);
                                   setShowBatchSelector(false);
                                 }}
                                 className="flow-batch-option"
@@ -6895,7 +6908,12 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
                   )}
 
                   <button
-                    onClick={() => setShowBatchSelector(!showBatchSelector)}
+                    onClick={() => {
+                      if (!showBatchSelector) {
+                        setPendingBatchCount(null);
+                      }
+                      setShowBatchSelector(!showBatchSelector);
+                    }}
                     className="flow-batch-btn"
                     title="生成数量"
                     style={{
@@ -6917,7 +6935,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
                       transition: 'all 0.2s',
                     }}
                   >
-                    {d.batchCount || 1}x
+                    {effectiveBatchCount}x
                   </button>
                 </div>
               )}

@@ -134,4 +134,61 @@ describe("FlowNodes agent metadata", () => {
     expect(image).toBeTruthy();
     expect(image?.style.objectFit).toBe("contain");
   });
+
+  it("keeps the image quantity menu open until a batch display mode is selected", () => {
+    useFlowCanvasStore.getState().addNode(
+      "image",
+      { x: 0, y: 0 },
+      {
+        createdAt: 1,
+        generationPrompt: "test prompt",
+        generationStatus: "idle",
+        height: 170,
+        kind: "image",
+        modelId: "pixellelabs.nano-banana-pro",
+        params: {
+          aspect_ratio: "1:1",
+          size: "1k",
+        },
+        routeKey: "image.default",
+        status: "idle",
+        title: "Batch Image",
+        updatedAt: 1,
+        width: 170,
+      } as any,
+      { selected: true },
+    );
+    const node = useFlowCanvasStore.getState().nodes[0];
+
+    render(
+      <ImageNodeComponent
+        id={node.id}
+        selected
+        data={node.data as any}
+        dragging={false}
+        zIndex={1}
+        isConnectable
+        type="image"
+        xPos={0}
+        yPos={0}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "1x" }));
+    fireEvent.click(screen.getByRole("button", { name: "2x" }));
+
+    expect(screen.getByTestId("image-batch-menu")).toBeTruthy();
+    expect(useFlowCanvasStore.getState().nodes[0]?.data).toMatchObject({
+      batchCount: 2,
+      multiImageDisplayMode: "split_nodes",
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "合并显示" }));
+
+    expect(screen.queryByTestId("image-batch-menu")).toBeNull();
+    expect(useFlowCanvasStore.getState().nodes[0]?.data).toMatchObject({
+      batchCount: 2,
+      multiImageDisplayMode: "combined",
+    });
+  });
 });

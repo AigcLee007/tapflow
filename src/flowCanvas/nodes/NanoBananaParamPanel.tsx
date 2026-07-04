@@ -16,17 +16,17 @@ const formatSizeLabel = (value: string) => String(value || '').trim().toUpperCas
 const ratioPreviewStyle = (ratioValue: string, active: boolean): React.CSSProperties => {
   const [rw, rh] = ratioValue.split(':').map((part) => Math.max(1, Number(part) || 1));
   const wide = rw >= rh;
-  const maxW = wide ? 24 : 14;
-  const maxH = wide ? 14 : 24;
+  const maxW = wide ? 20 : 12;
+  const maxH = wide ? 12 : 20;
   const scale = Math.min(maxW / rw, maxH / rh);
 
   return {
     width: Math.max(8, rw * scale),
     height: Math.max(8, rh * scale),
-    borderRadius: 4,
-    border: active ? '1.6px solid rgba(255,255,255,0.96)' : '1.6px solid rgba(255,255,255,0.38)',
+    borderRadius: 3,
+    border: active ? '1.5px solid rgba(255,255,255,0.96)' : '1.5px solid rgba(255,255,255,0.38)',
     background: active ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.03)',
-    boxShadow: active ? '0 0 10px rgba(255,255,255,0.12)' : 'none',
+    boxShadow: active ? '0 0 8px rgba(255,255,255,0.1)' : 'none',
   };
 };
 
@@ -41,16 +41,17 @@ export function NanoBananaParamPanel({
   const orderedRatios = PANEL_RATIO_ORDER.filter((item) => ratios.includes(item));
 
   return (
-    <div data-testid="nano-banana-param-panel" style={{ display: 'grid', gap: 16 }}>
-      <section data-testid="nano-banana-quality-section" style={{ display: 'grid', gap: 10 }}>
-        <div style={{ color: 'rgba(255,255,255,0.72)', fontSize: 14, fontWeight: 700 }}>画质</div>
+    <div data-testid="nano-banana-param-panel" style={{ display: 'grid', gap: 10 }}>
+      <section data-testid="nano-banana-quality-section" style={{ display: 'grid', gap: 6 }}>
+        <div style={{ color: 'rgba(255,255,255,0.72)', fontSize: 13, fontWeight: 700 }}>画质</div>
         <div
+          data-testid="nano-banana-quality-rail"
           style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-            gap: 4,
-            padding: 4,
-            borderRadius: 20,
+            gap: 3,
+            padding: 3,
+            borderRadius: 14,
             background: 'rgba(255,255,255,0.045)',
             border: '1px solid rgba(255,255,255,0.05)',
           }}
@@ -64,12 +65,12 @@ export function NanoBananaParamPanel({
                 aria-label={formatSizeLabel(item)}
                 onClick={() => onChangeSize(item)}
                 style={{
-                  height: 58,
+                  height: 40,
                   border: '1px solid rgba(255,255,255,0.06)',
-                  borderRadius: 18,
+                  borderRadius: 12,
                   background: active ? 'rgba(255,255,255,0.11)' : 'transparent',
                   color: active ? '#f8fafc' : 'rgba(255,255,255,0.62)',
-                  fontSize: 20,
+                  fontSize: 16,
                   fontWeight: active ? 800 : 700,
                   cursor: 'pointer',
                 }}
@@ -81,15 +82,16 @@ export function NanoBananaParamPanel({
         </div>
       </section>
 
-      <section data-testid="nano-banana-ratio-section" style={{ display: 'grid', gap: 10 }}>
-        <div style={{ color: 'rgba(255,255,255,0.72)', fontSize: 14, fontWeight: 700 }}>比例</div>
+      <section data-testid="nano-banana-ratio-section" style={{ display: 'grid', gap: 6 }}>
+        <div style={{ color: 'rgba(255,255,255,0.72)', fontSize: 13, fontWeight: 700 }}>比例</div>
         <div
+          data-testid="nano-banana-ratio-grid"
           style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(5, minmax(0, 1fr))',
-            gap: 10,
-            padding: 14,
-            borderRadius: 28,
+            gap: 4,
+            padding: 8,
+            borderRadius: 18,
             background: 'rgba(255,255,255,0.045)',
             border: '1px solid rgba(255,255,255,0.05)',
             overflow: 'hidden',
@@ -106,8 +108,8 @@ export function NanoBananaParamPanel({
                 data-testid="nano-banana-ratio-item"
                 onClick={() => onChangeRatio(item)}
                 style={{
-                  minHeight: 86,
-                  borderRadius: 22,
+                  minHeight: 58,
+                  borderRadius: 14,
                   border: active ? '1px solid rgba(255,255,255,0.12)' : '1px solid transparent',
                   background: active ? 'rgba(255,255,255,0.09)' : 'transparent',
                   color: active ? '#ffffff' : 'rgba(255,255,255,0.5)',
@@ -115,12 +117,12 @@ export function NanoBananaParamPanel({
                   flexDirection: 'column',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: 9,
+                  gap: 5,
                   cursor: 'pointer',
                 }}
               >
                 <span style={ratioPreviewStyle(item, active)} />
-                <span style={{ fontSize: 13, fontWeight: active ? 800 : 600, lineHeight: 1 }}>{item}</span>
+                <span style={{ fontSize: 12, fontWeight: active ? 800 : 600, lineHeight: 1 }}>{item}</span>
               </button>
             );
           })}
