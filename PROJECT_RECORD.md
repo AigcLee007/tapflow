@@ -5,6 +5,12 @@ Maintainers: project team + Codex sessions
 
 ## 2026-07-04 - Canvas Reference Source Picker
 
+- changed reference insertion behavior so adding references through upload, recent assets, or canvas-source picker no longer auto-writes `@Image ...` tokens into the prompt editor.
+- kept explicit mention insertion available when the user clicks an existing reference chip or confirms a candidate while actively typing an `@` mention.
+- added regression coverage for local reference upload completion leaving `generationPrompt` unchanged while still attaching the uploaded asset reference.
+- validation:
+  - `npm test -- src/flowCanvas/nodes/FlowNodes.agent-metadata.test.tsx` passed on 2026-07-04: 1 test file, 6 tests.
+
 - fixed the prompt-bar local reference upload path so selected files create visible pending reference chips immediately from local `blob:` URLs, even when browser image decoding is slow or stalled.
 - restored the missing `uploadAssetFile` import used by local reference uploads and surfaced upload failures through the image node error bar instead of failing silently.
 - added a regression test covering the file-selection path with a stalled `createImageBitmap` preview decode.

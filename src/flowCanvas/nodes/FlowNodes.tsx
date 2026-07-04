@@ -5247,6 +5247,13 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     [id, savePromptSelectionFromTextarea, updateNodeData],
   );
 
+  const isPromptMentionSelectionActive = useCallback(() => {
+    const currentPrompt = promptValueRef.current;
+    const selection = promptTextareaRef.current ? savePromptSelectionFromTextarea() : promptSelectionRef.current;
+    const caret = Math.max(0, Math.min(selection.start, currentPrompt.length));
+    return /@([^\s@/]*)$/.test(currentPrompt.slice(0, caret));
+  }, [savePromptSelectionFromTextarea]);
+
   const handlePromptBeforeInput = useCallback(
     (event: React.FormEvent<HTMLDivElement>) => {
       if (event.defaultPrevented) return;
@@ -5353,12 +5360,11 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   );
 
   const handlePickAssetRef = useCallback(
-    (itemId: string) => {
+    (itemId: string, options?: { insertMention?: boolean }) => {
       const itemKey = `asset:${itemId}`;
       const next = Array.from(new Set([...referencedAssetItemIds, itemId]));
       const nextRecent = [itemId, ...recentAssetItemIds.filter((idValue) => idValue !== itemId)].slice(0, 8);
       const nextOrder = Array.from(new Set([...referenceOrder, itemKey]));
-      const mentionLabel = `Image ${nextOrder.indexOf(itemKey) + 1}`;
       updateNodeData(id, {
         referenceAssetItemIds: next,
         referenceOrder: nextOrder,
@@ -5367,7 +5373,9 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
           recentReferenceAssetItemIds: nextRecent,
         },
       });
-      insertReferenceMention(mentionLabel);
+      if (options?.insertMention) {
+        insertReferenceMention(`Image ${nextOrder.indexOf(itemKey) + 1}`);
+      }
       setAssetMenuOpen(false);
       setMentionQuery('');
       setAssetMenuIndex(0);
@@ -5376,7 +5384,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   );
 
   const handlePickConnectedRef = useCallback(
-    (nodeId: string) => {
+    (nodeId: string, options?: { insertMention?: boolean }) => {
       const item = resolveReferenceSourceSelectionByNodeId({
         currentNodeId: id,
         nodeId,
@@ -5385,7 +5393,6 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       });
       if (!item) return;
       const nextOrder = Array.from(new Set([...referenceOrder, item.key]));
-      const mentionLabel = `Image ${nextOrder.indexOf(item.key) + 1}`;
       if (item.source === 'canvas') {
         connectNodes(nodeId, id);
       }
@@ -5395,7 +5402,9 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
           [item.referenceUploadId]: item.imageUrl,
         }));
       }
-      insertReferenceMention(mentionLabel);
+      if (options?.insertMention) {
+        insertReferenceMention(`Image ${nextOrder.indexOf(item.key) + 1}`);
+      }
       setAssetMenuOpen(false);
       setMentionQuery('');
       setAssetMenuIndex(0);
@@ -5572,8 +5581,8 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
         if (event.key === 'Enter') {
           event.preventDefault();
           const target = mentionCandidates[assetMenuIndex] || mentionCandidates[0];
-          if (target?.kind === 'upstream') handlePickConnectedRef(target.id);
-          if (target?.kind === 'asset') handlePickAssetRef(target.id);
+          if (target?.kind === 'upstream') handlePickConnectedRef(target.id, { insertMention: true });
+          if (target?.kind === 'asset') handlePickAssetRef(target.id, { insertMention: true });
         }
       }
     },
@@ -5687,11 +5696,6 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
           },
           uploadErrorMessage: undefined,
           uploadStatus: 'done',
-        });
-
-        uploadedAssets.forEach((asset) => {
-          const mentionLabel = `Image ${nextOrder.indexOf(`asset:${asset.id}`) + 1}`;
-          insertReferenceMention(mentionLabel);
         });
       } catch (error) {
         setPendingReferenceAssetItemsById((current) => {
@@ -6891,8 +6895,8 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
                 setMentionQuery('');
                 setAssetMenuIndex(0);
               }}
-              onPickAsset={handlePickAssetRef}
-              onPickCanvasNode={handlePickConnectedRef}
+              onPickAsset={(assetId) => handlePickAssetRef(assetId, { insertMention: isPromptMentionSelectionActive() })}
+              onPickCanvasNode={(nodeId) => handlePickConnectedRef(nodeId, { insertMention: isPromptMentionSelectionActive() })}
               onUploadReference={handleReferenceUploadClick}
             />
           )}

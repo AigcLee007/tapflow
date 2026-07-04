@@ -282,4 +282,87 @@ describe("FlowNodes agent metadata", () => {
       });
     }
   });
+
+  it("does not insert a prompt mention when a local reference upload finishes", async () => {
+    const previousCreateObjectURL = URL.createObjectURL;
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn(() => "blob://uploaded-reference"),
+    });
+    assetApiMocks.uploadAssetFile.mockResolvedValue({
+      createdAt: "2026-07-04T00:00:00.000Z",
+      deletedAt: null,
+      durationMs: null,
+      favorite: false,
+      height: 1024,
+      id: "asset-upload-1",
+      kind: "image",
+      metadata: {},
+      mimeType: "image/png",
+      originalFilename: "cat.png",
+      previewUrl: "https://cdn.test/cat-preview.png",
+      sizeBytes: 3,
+      tags: [],
+      title: "cat",
+      updatedAt: "2026-07-04T00:00:00.000Z",
+      width: 1024,
+    });
+
+    try {
+      useFlowCanvasStore.getState().addNode(
+        "image",
+        { x: 0, y: 0 },
+        {
+          createdAt: 1,
+          generationPrompt: "",
+          generationStatus: "idle",
+          height: 170,
+          kind: "image",
+          status: "idle",
+          title: "Reference Target",
+          updatedAt: 1,
+          width: 170,
+        } as any,
+        { selected: true },
+      );
+      const node = useFlowCanvasStore.getState().nodes[0];
+
+      const { container } = render(
+        <ImageNodeComponent
+          id={node.id}
+          selected
+          data={node.data as any}
+          dragging={false}
+          zIndex={1}
+          isConnectable
+          type="image"
+          xPos={0}
+          yPos={0}
+        />,
+      );
+
+      const referenceInput = container.querySelector('input[type="file"][multiple]') as HTMLInputElement | null;
+      expect(referenceInput).toBeTruthy();
+
+      fireEvent.change(referenceInput!, {
+        target: {
+          files: [new File(["cat"], "cat.png", { type: "image/png" })],
+        },
+      });
+
+      await waitFor(() => {
+        expect(useFlowCanvasStore.getState().nodes[0]?.data.uploadStatus).toBe("done");
+      });
+
+      expect(useFlowCanvasStore.getState().nodes[0]?.data).toMatchObject({
+        generationPrompt: "",
+        referenceAssetItemIds: ["asset-upload-1"],
+      });
+    } finally {
+      Object.defineProperty(URL, "createObjectURL", {
+        configurable: true,
+        value: previousCreateObjectURL,
+      });
+    }
+  });
 });
