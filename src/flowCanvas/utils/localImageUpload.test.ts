@@ -71,6 +71,14 @@ describe('createImmediateLocalImageNodeData', () => {
     });
   });
 
+  it('accepts image files by extension when the browser does not provide a mime type', async () => {
+    const { isLocalImageFile } = await import('./localImageUpload');
+
+    expect(isLocalImageFile(new File(['png'], 'reference.PNG', { type: '' }))).toBe(true);
+    expect(isLocalImageFile(new File(['webp'], 'reference.webp', { type: 'application/octet-stream' }))).toBe(true);
+    expect(isLocalImageFile(new File(['txt'], 'notes.txt', { type: '' }))).toBe(false);
+  });
+
   it('does not revoke a preview url that is still being persisted on the node', async () => {
     const revokeObjectURL = vi.fn();
     const previousUrl = globalThis.URL.revokeObjectURL;

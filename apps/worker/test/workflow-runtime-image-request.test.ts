@@ -308,6 +308,34 @@ describe("buildImageRequest", () => {
     });
   });
 
+  test("forwards image node reference asset ids as provider input assets", () => {
+    const request = __workerTestUtils.buildImageRequest(
+      [
+        {
+          assets: [
+            {
+              assetId: "upstream-reference",
+              kind: "image",
+              mimeType: "image/png",
+            },
+          ],
+        },
+      ],
+      {
+        generationPrompt: "use all selected references",
+        referenceAssetItemIds: ["asset-b", "asset-a"],
+        referenceOrder: ["asset:asset-a", "upstream:node-1", "asset:asset-b", "asset:asset-missing"],
+        routeKey: "image.default",
+      },
+    );
+
+    expect(request.inputAssets).toEqual([
+      expect.objectContaining({ assetId: "asset-a", kind: "image" }),
+      expect.objectContaining({ assetId: "upstream-reference", kind: "image" }),
+      expect.objectContaining({ assetId: "asset-b", kind: "image" }),
+    ]);
+  });
+
   test("forwards image edit request metadata for target-node edit runs", () => {
     const request = __workerTestUtils.buildImageRequest(
       [

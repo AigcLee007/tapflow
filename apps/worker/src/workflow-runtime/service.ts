@@ -572,14 +572,31 @@ function buildAgentToolInputAssets(agentTool: Record<string, unknown>): AssetRef
   });
 }
 
+function buildNodeReferenceInputAssets(config: Record<string, unknown>): AssetReferenceInput[] {
+  if (!Array.isArray(config.referenceAssetItemIds)) {
+    return [];
+  }
+
+  return config.referenceAssetItemIds.flatMap((value) => {
+    if (typeof value !== "string" || !value.trim()) {
+      return [];
+    }
+    return [{
+      assetId: value.trim(),
+      kind: "image",
+      metadata: { source: "node-reference-asset" },
+      mimeType: null,
+    }];
+  });
+}
+
 function mergeAssetInputs(
-  upstreamAssets: AssetReferenceInput[],
-  agentAssets: AssetReferenceInput[],
+  ...groups: AssetReferenceInput[][]
 ): AssetReferenceInput[] {
   const seen = new Set<string>();
   const merged: AssetReferenceInput[] = [];
 
-  for (const asset of [...upstreamAssets, ...agentAssets]) {
+  for (const asset of groups.flat()) {
     if (!asset.assetId || seen.has(asset.assetId)) {
       continue;
     }
@@ -588,6 +605,47 @@ function mergeAssetInputs(
   }
 
   return merged;
+}
+
+function mergeImageReferenceInputAssets(input: {
+  agentAssets: AssetReferenceInput[];
+  config: Record<string, unknown>;
+  nodeAssets: AssetReferenceInput[];
+  upstreamAssets: AssetReferenceInput[];
+}): AssetReferenceInput[] {
+  const referenceOrder = Array.isArray(input.config.referenceOrder)
+    ? input.config.referenceOrder.map((item) => String(item || "").trim()).filter(Boolean)
+    : [];
+  if (referenceOrder.length === 0) {
+    return mergeAssetInputs(input.upstreamAssets, input.nodeAssets, input.agentAssets);
+  }
+
+  const nodeAssetsById = new Map(input.nodeAssets.map((asset) => [asset.assetId, asset]));
+  const ordered: AssetReferenceInput[] = [];
+  let upstreamInserted = false;
+
+  for (const key of referenceOrder) {
+    if (key.startsWith("asset:")) {
+      const assetId = key.slice("asset:".length).trim();
+      const asset = nodeAssetsById.get(assetId);
+      if (asset) {
+        ordered.push(asset);
+      }
+      continue;
+    }
+
+    if (key.startsWith("upstream:") && !upstreamInserted) {
+      upstreamInserted = true;
+      ordered.push(...input.upstreamAssets);
+    }
+  }
+
+  return mergeAssetInputs(
+    ordered,
+    upstreamInserted ? [] : input.upstreamAssets,
+    input.nodeAssets,
+    input.agentAssets,
+  );
 }
 
 function withOptionalParam(
@@ -694,10 +752,12 @@ function buildImageRequest(
   const routeKey = resolveImageRequestRouteKey(config);
   const generationPrompt = readTrimmedString(agentTool.prompt) ?? readTrimmedString(config.generationPrompt);
   const fallbackPrompt = typeof config.prompt === "string" ? config.prompt : "";
-  const inputAssets = mergeAssetInputs(
-    extractAssetInputs(upstreamOutputs),
-    buildAgentToolInputAssets(agentTool),
-  );
+  const inputAssets = mergeImageReferenceInputAssets({
+    agentAssets: buildAgentToolInputAssets(agentTool),
+    config,
+    nodeAssets: buildNodeReferenceInputAssets(config),
+    upstreamAssets: extractAssetInputs(upstreamOutputs),
+  });
 
   return {
     inputAssets,

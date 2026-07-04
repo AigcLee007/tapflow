@@ -5,6 +5,16 @@ Maintainers: project team + Codex sessions
 
 ## 2026-07-04 - Canvas Reference Source Picker
 
+- fixed local canvas reference uploads so selecting a file immediately shows a local preview reference chip while the asset upload runs, instead of appearing to do nothing until the network round trip finishes.
+- added image-file extension fallback for reference uploads so browser-provided empty or generic MIME types on `.png`, `.jpg`, `.webp`, `.gif`, and `.avif` files no longer get silently ignored.
+- updated worker image request assembly so image-node `referenceAssetItemIds` are merged into provider `inputAssets` using `referenceOrder`, making uploaded/local asset references affect real generation just like upstream canvas references.
+- validation:
+  - `npm test -- src/flowCanvas/utils/localImageUpload.test.ts`
+  - `npm test -- src/flowCanvas/utils/referenceSourceResolver.test.ts`
+  - `npm test --workspace @aigc-flow/worker -- workflow-runtime-image-request.test.ts`
+  - `npm run build --workspace @aigc-flow/worker`
+  - `npm run build` passed with existing Browserslist, chunk-size, and dynamic-import warnings only.
+
 - hardened agent-side reference uploads so a successful image upload is still returned even when the follow-up metadata enrichment call cannot run because of permission or transient API failure.
 - this prevents the `上传参考图` action from failing after storage upload completion, which keeps the Agent reference chip flow usable in creator workspaces that only have asset create access.
 - validation:

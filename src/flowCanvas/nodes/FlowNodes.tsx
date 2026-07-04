@@ -136,6 +136,7 @@ import {
   buildLocalUploadFailureNodeData,
   createImmediateLocalImageNodeData,
   createLocalPreviewObjectUrl,
+  isLocalImageFile,
   measureLocalImageNodeData,
   revokeUnusedLocalPreviewUrls,
   uploadLocalImageAndBuildReferenceNodeData,
@@ -238,6 +239,43 @@ const isTransientDraftUrl = (value: string) => {
   const trimmed = value.trim().toLowerCase();
   return trimmed.startsWith('blob:') || trimmed.startsWith('data:') || SIGNED_URL_RE.test(value);
 };
+
+function createPendingReferenceAssetItem(input: {
+  assetId: string;
+  file: File;
+  previewUrl: string;
+}): AssetItem {
+  const now = new Date().toISOString();
+  return {
+    bucket: '',
+    checksumSha256: null,
+    createdAt: now,
+    deletedAt: null,
+    description: null,
+    durationMs: null,
+    favorite: false,
+    height: null,
+    id: input.assetId,
+    kind: 'image',
+    metadata: {},
+    mimeType: input.file.type || 'image/*',
+    objectKey: '',
+    originalFilename: input.file.name || null,
+    ownerUserId: null,
+    previewUrl: input.previewUrl,
+    projectId: null,
+    sizeBytes: input.file.size,
+    source: 'upload',
+    status: 'uploading',
+    storageProvider: '',
+    tags: [],
+    tenantId: '',
+    title: input.file.name || '参考图',
+    updatedAt: now,
+    variants: [],
+    width: null,
+  };
+}
 
 const useNodeSelectionState = (nodeId: string, selected?: boolean) => {
   const selectedNodeCount = useFlowCanvasStore((s) => s.selectedNodeCount);
@@ -4223,6 +4261,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const [imageLoadState, setImageLoadState] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle');
   const [referencePreviewUrlsByKey, setReferencePreviewUrlsByKey] = useState<Record<string, string>>({});
   const [referenceAssetItemsById, setReferenceAssetItemsById] = useState<Record<string, AssetItem>>({});
+  const [pendingReferenceAssetItemsById, setPendingReferenceAssetItemsById] = useState<Record<string, AssetItem>>({});
   const assetId = typeof d.assetId === 'string' ? d.assetId : '';
   const referenceUploadId = typeof d.referenceUploadId === 'string' ? d.referenceUploadId : '';
   const persistedThumbnailUrl = String(d.thumbnailUrl || '');
@@ -4450,16 +4489,41 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const referenceOrder = Array.isArray(d.referenceOrder)
     ? (d.referenceOrder as string[]).map((item) => String(item))
     : [];
+  const pendingReferenceAssetItemIds = useMemo(
+    () => Object.keys(pendingReferenceAssetItemsById),
+    [pendingReferenceAssetItemsById],
+  );
+  const displayedReferenceAssetItemIds = useMemo(
+    () => [...referencedAssetItemIds, ...pendingReferenceAssetItemIds],
+    [pendingReferenceAssetItemIds, referencedAssetItemIds],
+  );
+  const displayedReferenceOrder = useMemo(
+    () => [
+      ...referenceOrder,
+      ...pendingReferenceAssetItemIds.map((assetId) => `asset:${assetId}`),
+    ],
+    [pendingReferenceAssetItemIds, referenceOrder],
+  );
   const referenceChips = useMemo(
     () =>
       resolveReferenceChips({
-        assetItemsById: referenceAssetItemsById,
+        assetItemsById: {
+          ...referenceAssetItemsById,
+          ...pendingReferenceAssetItemsById,
+        },
         referenceAssetPreviewUrlsById,
-        referenceAssetItemIds: referencedAssetItemIds,
-        referenceOrder,
+        referenceAssetItemIds: displayedReferenceAssetItemIds,
+        referenceOrder: displayedReferenceOrder,
         upstreamImageRefs,
       }),
-    [referenceAssetItemsById, referenceAssetPreviewUrlsById, referencedAssetItemIds, referenceOrder, upstreamImageRefs],
+    [
+      displayedReferenceAssetItemIds,
+      displayedReferenceOrder,
+      pendingReferenceAssetItemsById,
+      referenceAssetItemsById,
+      referenceAssetPreviewUrlsById,
+      upstreamImageRefs,
+    ],
   );
   useEffect(() => {
     if (referencedAssetItemIds.length === 0) {
@@ -5542,14 +5606,46 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     const files = Array.from(e.target.files ?? []);
     const input = e.target;
     input.value = '';
-    const imageFiles = files.filter((file) => file.type.startsWith('image/'));
-    if (imageFiles.length === 0) return;
+    const imageFiles = files.filter(isLocalImageFile);
+    if (imageFiles.length === 0) {
+      updateNodeData(id, {
+        uploadErrorMessage: '请选择图片文件作为参考图',
+        uploadStatus: 'failed',
+      });
+      return;
+    }
 
     void (async () => {
+      const pendingUploads: Array<{ assetId: string; file: File; localPreviewUrl: string }> = [];
       try {
+        const uploadSeed = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
         const localPreviewUrls = await Promise.all(
-          imageFiles.map(async (file) => (await createLocalPreviewObjectUrl(file)) || URL.createObjectURL(file)),
+          imageFiles.map(async (file) => (await createLocalPreviewObjectUrl(file).catch(() => null)) || URL.createObjectURL(file)),
         );
+        imageFiles.forEach((file, index) => {
+          pendingUploads.push({
+            assetId: `pending-reference-${uploadSeed}-${index}`,
+            file,
+            localPreviewUrl: localPreviewUrls[index] || '',
+          });
+        });
+
+        setPendingReferenceAssetItemsById((current) => {
+          const next = { ...current };
+          pendingUploads.forEach((item) => {
+            next[item.assetId] = createPendingReferenceAssetItem({
+              assetId: item.assetId,
+              file: item.file,
+              previewUrl: item.localPreviewUrl,
+            });
+          });
+          return next;
+        });
+        updateNodeData(id, {
+          uploadErrorMessage: undefined,
+          uploadStatus: 'uploading',
+        });
+
         const uploadedAssets = await Promise.all(
           imageFiles.map((file) => uploadAssetFile({ file, kind: 'image', projectId: backendProjectId })),
         );
@@ -5576,6 +5672,13 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
           });
           return next;
         });
+        setPendingReferenceAssetItemsById((current) => {
+          const next = { ...current };
+          pendingUploads.forEach((item) => {
+            delete next[item.assetId];
+          });
+          return next;
+        });
 
         updateNodeData(id, {
           referenceAssetItemIds: nextAssetIds,
@@ -5593,6 +5696,16 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
           insertReferenceMention(mentionLabel);
         });
       } catch (error) {
+        setPendingReferenceAssetItemsById((current) => {
+          const next = { ...current };
+          pendingUploads.forEach((item) => {
+            delete next[item.assetId];
+            if (item.localPreviewUrl.startsWith('blob:')) {
+              URL.revokeObjectURL(item.localPreviewUrl);
+            }
+          });
+          return next;
+        });
         updateNodeData(id, {
           uploadErrorMessage: error instanceof Error && error.message.trim() ? error.message : '参考图上传失败',
           uploadStatus: 'failed',

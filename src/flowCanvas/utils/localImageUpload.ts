@@ -26,6 +26,12 @@ type ImmediateLocalImageInput = Omit<LocalImageUploadInput, "projectId"> & {
   objectUrl: string;
 };
 
+const IMAGE_FILE_EXTENSION_RE = /\.(?:avif|gif|jpe?g|png|webp)$/i;
+
+export function isLocalImageFile(file: File): boolean {
+  return file.type.startsWith("image/") || IMAGE_FILE_EXTENSION_RE.test(file.name);
+}
+
 export function createImmediateLocalImageNodeData(input: ImmediateLocalImageInput): {
   localObjectUrl: string;
   nodeData: Partial<FlowNodeData>;
@@ -82,7 +88,7 @@ export async function measureLocalImageNodeData(objectUrl: string): Promise<Part
 }
 
 export async function createLocalPreviewObjectUrl(file: File): Promise<string | null> {
-  if (!file.type.startsWith("image/")) return null;
+  if (!isLocalImageFile(file)) return null;
   if (typeof createImageBitmap !== "function") return null;
 
   const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
