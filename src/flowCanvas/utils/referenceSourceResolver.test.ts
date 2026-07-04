@@ -1,6 +1,10 @@
 ﻿import { describe, expect, it } from 'vitest';
 
-import { buildCanvasImageReferenceSources, resolveReferenceChips } from './referenceSourceResolver';
+import {
+  buildCanvasImageReferenceSources,
+  resolveReferenceChips,
+  resolveReferenceSourceSelectionByNodeId,
+} from './referenceSourceResolver';
 
 describe('referenceSourceResolver', () => {
   it('orders resolved reference chips by referenceOrder and keeps asset previews intact', () => {
@@ -109,6 +113,62 @@ describe('referenceSourceResolver', () => {
         key: 'canvas:source-node',
         nodeId: 'source-node',
         title: 'Source image',
+      }),
+    ]);
+  });
+
+  it('resolves canvas picker selection even when the node is not yet upstream connected', () => {
+    const selection = resolveReferenceSourceSelectionByNodeId({
+      currentNodeId: 'current-node',
+      nodeId: 'source-node',
+      nodes: [
+        {
+          data: {
+            kind: 'image',
+            originalImageUrl: 'https://cdn.test/original.png',
+            title: 'Source image',
+            updatedAt: 2,
+          },
+          id: 'source-node',
+          type: 'image',
+        } as never,
+      ],
+      upstreamImageRefs: [],
+    });
+
+    expect(selection).toMatchObject({
+      imageUrl: 'https://cdn.test/original.png',
+      key: 'upstream:source-node',
+      nodeId: 'source-node',
+      source: 'canvas',
+      title: 'Source image',
+    });
+  });
+
+  it('uses a local preview fallback when asset preview data is missing', () => {
+    const chips = resolveReferenceChips({
+      assetItemsById: {
+        'asset-1': {
+          id: 'asset-1',
+          originalFilename: 'asset-1.png',
+          previewUrl: undefined,
+          title: 'Asset One',
+        },
+      },
+      referenceAssetItemIds: ['asset-1'],
+      referenceAssetPreviewUrlsById: {
+        'asset-1': 'blob://asset-1-preview',
+      },
+      referenceOrder: ['asset:asset-1'],
+      upstreamImageRefs: [],
+    });
+
+    expect(chips).toEqual([
+      expect.objectContaining({
+        imageUrl: 'blob://asset-1-preview',
+        key: 'asset:asset-1',
+        source: 'asset',
+        title: 'Asset One',
       }),
     ]);
   });

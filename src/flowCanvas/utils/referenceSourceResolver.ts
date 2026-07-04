@@ -7,6 +7,7 @@ type ReferenceAssetItemMap = Record<string, AssetItem | undefined>;
 
 type ResolveReferenceChipsInput = {
   assetItemsById?: ReferenceAssetItemMap;
+  referenceAssetPreviewUrlsById?: Record<string, string | undefined>;
   referenceAssetItemIds?: unknown;
   referenceOrder?: unknown;
   upstreamImageRefs?: readonly FlowUpstreamImageRef[];
@@ -31,6 +32,16 @@ export type CanvasImageReferenceSource = {
   nodeId: string;
   referenceUploadId?: string;
   source: 'canvas';
+  title: string;
+};
+
+export type CanvasReferenceSelection = {
+  edgeId?: string;
+  imageUrl: string;
+  key: string;
+  nodeId: string;
+  referenceUploadId?: string;
+  source: 'canvas' | 'upstream';
   title: string;
 };
 
@@ -129,10 +140,48 @@ export function buildCanvasImageReferenceSources(
     .map(({ sortValue, ...item }) => item);
 }
 
+export function resolveReferenceSourceSelectionByNodeId(
+  input: BuildCanvasImageReferenceSourcesInput & {
+    nodeId?: string | null;
+    upstreamImageRefs?: readonly FlowUpstreamImageRef[];
+  },
+): CanvasReferenceSelection | null {
+  const nodeId = readCleanString(input.nodeId);
+  if (!nodeId) return null;
+
+  const upstreamMatch = Array.isArray(input.upstreamImageRefs)
+    ? input.upstreamImageRefs.find((item) => readCleanString(item.id) === nodeId)
+    : undefined;
+  if (upstreamMatch) {
+    return {
+      edgeId: readCleanString(upstreamMatch.edgeId) || undefined,
+      imageUrl: readCleanString(upstreamMatch.imageUrl),
+      key: readCleanString(upstreamMatch.key) || `upstream:${nodeId}`,
+      nodeId,
+      referenceUploadId: readCleanString(upstreamMatch.referenceUploadId) || undefined,
+      source: 'upstream',
+      title: readCleanString(upstreamMatch.title) || '图片',
+    };
+  }
+
+  const canvasMatch = buildCanvasImageReferenceSources(input).find((item) => item.nodeId === nodeId);
+  if (!canvasMatch) return null;
+  return {
+    edgeId: undefined,
+    imageUrl: canvasMatch.imageUrl,
+    key: `upstream:${canvasMatch.nodeId}`,
+    nodeId: canvasMatch.nodeId,
+    referenceUploadId: canvasMatch.referenceUploadId,
+    source: 'canvas',
+    title: canvasMatch.title,
+  };
+}
+
 export function resolveReferenceChips(
   input: ResolveReferenceChipsInput,
 ): ResolvedReferenceChip[] {
   const assetItemsById = input.assetItemsById || {};
+  const referenceAssetPreviewUrlsById = input.referenceAssetPreviewUrlsById || {};
   const referenceOrder = Array.isArray(input.referenceOrder)
     ? input.referenceOrder.map((item) => readCleanString(item)).filter(Boolean)
     : [];
@@ -166,7 +215,7 @@ export function resolveReferenceChips(
   referenceAssetItemIds.forEach((assetId, sourceIndex) => {
     const asset = assetItemsById[assetId];
     const key = `asset:${assetId}`;
-    const imageUrl = readCleanString(asset?.previewUrl);
+    const imageUrl = readCleanString(asset?.previewUrl) || readCleanString(referenceAssetPreviewUrlsById[assetId]);
     if (!asset || !imageUrl) return;
     rawItems.push({
       assetId,

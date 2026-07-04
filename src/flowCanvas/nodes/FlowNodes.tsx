@@ -152,7 +152,7 @@ import {
   getComparisonSplitPercentFromClientX,
   readImageViewerComparisonSource,
 } from '../utils/imageViewerComparison';
-import { resolveReferenceChips } from '../utils/referenceSourceResolver';
+import { resolveReferenceChips, resolveReferenceSourceSelectionByNodeId } from '../utils/referenceSourceResolver';
 import {
   buildFailedDerivedImagePatch,
   buildOptimisticDerivedImageNodeData,
@@ -4149,6 +4149,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const addNodeAndEdge = useFlowCanvasStore((s) => s.addNodeAndEdge);
   const removeEdgesByIds = useFlowCanvasStore((s) => s.removeEdgesByIds);
   const connectNodes = useFlowCanvasStore((s) => s.connectNodes);
+  const nodes = useFlowCanvasStore((s) => s.nodes);
   const backendProjectId = useFlowCanvasStore((s) => s.backendProjectId);
   const activeImageTool = useFlowCanvasStore((s) => s.activeImageTool);
   const openImageTool = useFlowCanvasStore((s) => s.openImageTool);
@@ -4196,6 +4197,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const [slashMenuIndex, setSlashMenuIndex] = useState(0);
   const [hoveredReferenceKey, setHoveredReferenceKey] = useState<string | null>(null);
   const [draggingReferenceKey, setDraggingReferenceKey] = useState<string | null>(null);
+  const [referenceAssetPreviewUrlsById, setReferenceAssetPreviewUrlsById] = useState<Record<string, string>>({});
   const { isMultiSelecting, showSingleNodeControls } = useNodeSelectionState(id, selected);
   const runtimeNodeOutput = useFlowCanvasStore((s) => s.nodeOutputByNodeId[id]);
   const runtimeNodeStatus = useFlowCanvasStore((s) => s.nodeRunStatusByNodeId[id]);
@@ -4452,12 +4454,18 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     () =>
       resolveReferenceChips({
         assetItemsById: referenceAssetItemsById,
+        referenceAssetPreviewUrlsById,
         referenceAssetItemIds: referencedAssetItemIds,
         referenceOrder,
         upstreamImageRefs,
       }),
-    [referenceAssetItemsById, referencedAssetItemIds, referenceOrder, upstreamImageRefs],
+    [referenceAssetItemsById, referenceAssetPreviewUrlsById, referencedAssetItemIds, referenceOrder, upstreamImageRefs],
   );
+  useEffect(() => {
+    if (referencedAssetItemIds.length === 0) {
+      setReferenceAssetPreviewUrlsById((current) => (Object.keys(current).length === 0 ? current : {}));
+    }
+  }, [referencedAssetItemIds.length]);
   const referenceUploadPreviewKey = referenceChips
     .map((item) => `${item.key}:${item.source === 'upstream' ? String(item.referenceUploadId || '').trim() : ''}`)
     .join('|');
@@ -5305,17 +5313,30 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
 
   const handlePickConnectedRef = useCallback(
     (nodeId: string) => {
-      const item = upstreamImageRefs.find((candidate) => candidate.id === nodeId);
+      const item = resolveReferenceSourceSelectionByNodeId({
+        currentNodeId: id,
+        nodeId,
+        nodes,
+        upstreamImageRefs,
+      });
       if (!item) return;
       const nextOrder = Array.from(new Set([...referenceOrder, item.key]));
       const mentionLabel = `Image ${nextOrder.indexOf(item.key) + 1}`;
-      connectNodes(nodeId, id);
+      if (item.source === 'canvas') {
+        connectNodes(nodeId, id);
+      }
+      if (item.source === 'canvas' && item.referenceUploadId) {
+        setReferenceAssetPreviewUrlsById((current) => ({
+          ...current,
+          [item.referenceUploadId]: item.imageUrl,
+        }));
+      }
       insertReferenceMention(mentionLabel);
       setAssetMenuOpen(false);
       setMentionQuery('');
       setAssetMenuIndex(0);
     },
-    [connectNodes, id, insertReferenceMention, referenceOrder, upstreamImageRefs],
+    [connectNodes, id, insertReferenceMention, nodes, referenceOrder, upstreamImageRefs],
   );
 
   const handleRemoveAssetRef = useCallback(
@@ -5526,6 +5547,9 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
 
     void (async () => {
       try {
+        const localPreviewUrls = await Promise.all(
+          imageFiles.map(async (file) => (await createLocalPreviewObjectUrl(file)) || URL.createObjectURL(file)),
+        );
         const uploadedAssets = await Promise.all(
           imageFiles.map((file) => uploadAssetFile({ file, kind: 'image', projectId: backendProjectId })),
         );
@@ -5539,6 +5563,16 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
           const next = { ...current };
           uploadedAssets.forEach((asset) => {
             next[asset.id] = asset;
+          });
+          return next;
+        });
+        setReferenceAssetPreviewUrlsById((current) => {
+          const next = { ...current };
+          uploadedAssets.forEach((asset, index) => {
+            const previewUrl = String(asset.previewUrl || localPreviewUrls[index] || '').trim();
+            if (previewUrl) {
+              next[asset.id] = previewUrl;
+            }
           });
           return next;
         });

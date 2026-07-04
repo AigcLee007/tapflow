@@ -5,6 +5,13 @@ Maintainers: project team + Codex sessions
 
 ## 2026-07-04 - Canvas Reference Source Picker
 
+- fixed canvas reference selection so choosing a canvas image from the picker now resolves the node directly and creates the expected upstream reference even before it has already been wired into the graph.
+- added a local preview fallback path for reference uploads so newly uploaded image references remain visible even when the immediate asset response has no `previewUrl` yet.
+- updated reference chip resolution to prefer the locally cached preview for asset references, which keeps the image reference strip visible during the upload-to-library handoff.
+- validation:
+  - `npm test -- src/flowCanvas/utils/referenceSourceResolver.test.ts src/flowCanvas/nodes/ReferenceSourcePicker.test.tsx src/flowCanvas/utils/localImageUpload.test.ts` passed on 2026-07-04: 3 test files, 11 tests.
+  - `npm run build` passed on 2026-07-04 with existing Browserslist, chunk-size, and dynamic-import warnings only.
+
 - replaced the image-node placeholder reference menu with a real `ReferenceSourcePicker` surface that can add references from current canvas image nodes, recent asset-library images, or direct upload, while keeping the picker mounted only when opened.
 - wired the prompt-bar `+` affordance to the source picker and changed the left prompt icon into a true reference-upload entry point that uploads image files and appends them as references on the active image node.
 - centralized reference-chip resolution through `referenceSourceResolver` so canvas references and asset-backed references share the same ordering and labeling logic.
