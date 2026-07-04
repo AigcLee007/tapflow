@@ -5,6 +5,11 @@ Maintainers: project team + Codex sessions
 
 ## 2026-07-04 - Canvas Reference Source Picker
 
+- hardened the reference picker mode split so the `+` add-reference menu never inserts `@Image ...` into the prompt, while the `@` mention menu can still insert references explicitly.
+- added regression coverage for both recent-asset picks and canvas-image picks from the `+` add-reference picker leaving `generationPrompt` unchanged.
+- validation:
+  - `npm test -- src/flowCanvas/nodes/FlowNodes.agent-metadata.test.tsx` passed on 2026-07-04: 1 test file, 8 tests.
+
 - changed reference insertion behavior so adding references through upload, recent assets, or canvas-source picker no longer auto-writes `@Image ...` tokens into the prompt editor.
 - kept explicit mention insertion available when the user clicks an existing reference chip or confirms a candidate while actively typing an `@` mention.
 - added regression coverage for local reference upload completion leaving `generationPrompt` unchanged while still attaching the uploaded asset reference.

@@ -11,6 +11,7 @@ const assetApiMocks = vi.hoisted(() => ({
   getAssetVariantUrl: vi.fn(),
   uploadAssetFile: vi.fn(),
 }));
+const useAssetLibraryMock = vi.hoisted(() => vi.fn());
 
 vi.mock("../../assets/assetApi", () => ({
   getAsset: (...args: unknown[]) => assetApiMocks.getAsset(...args),
@@ -18,10 +19,14 @@ vi.mock("../../assets/assetApi", () => ({
   getAssetVariantUrl: (...args: unknown[]) => assetApiMocks.getAssetVariantUrl(...args),
   uploadAssetFile: (...args: unknown[]) => assetApiMocks.uploadAssetFile(...args),
 }));
+vi.mock("../../assets/useAssetLibrary", () => ({
+  useAssetLibrary: () => useAssetLibraryMock(),
+}));
 
 vi.mock("@xyflow/react", async () => {
   const React = await import("react");
   return {
+    addEdge: (edge: any, edges: any[]) => [...edges, { id: edge.id || "edge-test", ...edge }],
     Handle: () => null,
     NodeResizer: () => null,
     Position: { Left: "left", Right: "right" },
@@ -41,6 +46,28 @@ describe("FlowNodes agent metadata", () => {
     assetApiMocks.getAssetDownloadUrl.mockReset();
     assetApiMocks.getAssetVariantUrl.mockReset();
     assetApiMocks.uploadAssetFile.mockReset();
+    useAssetLibraryMock.mockReset();
+    useAssetLibraryMock.mockReturnValue({
+      assets: [],
+      error: null,
+      favoriteOnly: false,
+      folders: [],
+      groupedAssets: [],
+      loading: false,
+      mediaCounts: { all: 0, audio: 0, image: 0, video: 0 },
+      page: 1,
+      pageSize: 30,
+      query: "",
+      refresh: vi.fn(async () => undefined),
+      selectedFolderId: null,
+      selectedMediaTab: "image",
+      setFavoriteOnly: vi.fn(),
+      setQuery: vi.fn(),
+      setSelectedFolderId: vi.fn(),
+      setSelectedMediaTab: vi.fn(),
+      total: 0,
+      updateAssetOptimistically: vi.fn(),
+    });
   });
 
   it("renders an Agent badge and opens session detail for text nodes", () => {
@@ -364,5 +391,136 @@ describe("FlowNodes agent metadata", () => {
         value: previousCreateObjectURL,
       });
     }
+  });
+
+  it("does not insert a prompt mention when picking a recent asset from the add-reference picker", () => {
+    useAssetLibraryMock.mockReturnValue({
+      assets: [{
+        createdAt: "2026-07-04T00:00:00.000Z",
+        id: "asset-picker-1",
+        kind: "image",
+        originalFilename: "library-cat.png",
+        previewUrl: "https://cdn.test/library-cat.png",
+        title: "Library Cat",
+        updatedAt: "2026-07-04T00:00:00.000Z",
+      }],
+      error: null,
+      favoriteOnly: false,
+      folders: [],
+      groupedAssets: [],
+      loading: false,
+      mediaCounts: { all: 1, audio: 0, image: 1, video: 0 },
+      page: 1,
+      pageSize: 30,
+      query: "",
+      refresh: vi.fn(async () => undefined),
+      selectedFolderId: null,
+      selectedMediaTab: "image",
+      setFavoriteOnly: vi.fn(),
+      setQuery: vi.fn(),
+      setSelectedFolderId: vi.fn(),
+      setSelectedMediaTab: vi.fn(),
+      total: 1,
+      updateAssetOptimistically: vi.fn(),
+    });
+    useFlowCanvasStore.getState().addNode(
+      "image",
+      { x: 0, y: 0 },
+      {
+        createdAt: 1,
+        generationPrompt: "",
+        generationStatus: "idle",
+        height: 170,
+        kind: "image",
+        status: "idle",
+        title: "Reference Target",
+        updatedAt: 1,
+        width: 170,
+      } as any,
+      { selected: true },
+    );
+    const node = useFlowCanvasStore.getState().nodes[0];
+
+    render(
+      <ImageNodeComponent
+        id={node.id}
+        selected
+        data={node.data as any}
+        dragging={false}
+        zIndex={1}
+        isConnectable
+        type="image"
+        xPos={0}
+        yPos={0}
+      />,
+    );
+
+    fireEvent.click(screen.getByTitle("添加参考图"));
+    fireEvent.click(screen.getByRole("button", { name: /Library Cat/ }));
+
+    expect(useFlowCanvasStore.getState().nodes[0]?.data).toMatchObject({
+      generationPrompt: "",
+      referenceAssetItemIds: ["asset-picker-1"],
+    });
+  });
+
+  it("does not insert a prompt mention when picking a canvas image from the add-reference picker", () => {
+    const source = useFlowCanvasStore.getState().addNode(
+      "image",
+      { x: 0, y: 0 },
+      {
+        createdAt: 1,
+        generationStatus: "done",
+        height: 170,
+        kind: "image",
+        status: "success",
+        thumbnailUrl: "https://cdn.test/canvas-source.png",
+        title: "Canvas Source",
+        updatedAt: 2,
+        width: 170,
+      } as any,
+    );
+    const target = useFlowCanvasStore.getState().addNode(
+      "image",
+      { x: 240, y: 0 },
+      {
+        createdAt: 1,
+        generationPrompt: "",
+        generationStatus: "idle",
+        height: 170,
+        kind: "image",
+        status: "idle",
+        title: "Reference Target",
+        updatedAt: 1,
+        width: 170,
+      } as any,
+      { selected: true },
+    );
+
+    render(
+      <ImageNodeComponent
+        id={target.id}
+        selected
+        data={target.data as any}
+        dragging={false}
+        zIndex={1}
+        isConnectable
+        type="image"
+        xPos={0}
+        yPos={0}
+      />,
+    );
+
+    fireEvent.click(screen.getByTitle("添加参考图"));
+    fireEvent.click(screen.getByRole("button", { name: /Canvas Source/ }));
+
+    const nextTarget = useFlowCanvasStore.getState().nodes.find((item) => item.id === target.id);
+    expect(nextTarget?.data.generationPrompt).toBe("");
+    expect(useFlowCanvasStore.getState().edges).toEqual([
+      expect.objectContaining({
+        source: source.id,
+        target: target.id,
+      }),
+    ]);
   });
 });

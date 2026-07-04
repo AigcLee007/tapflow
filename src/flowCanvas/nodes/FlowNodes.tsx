@@ -4228,6 +4228,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const moreMenuLayer = useDismissibleLayer(`image-node-more-${id}`);
   const [moreMenuPosition, setMoreMenuPosition] = useState<{ left: number; top: number } | null>(null);
   const [assetMenuOpen, setAssetMenuOpen] = useState(false);
+  const [assetMenuMode, setAssetMenuMode] = useState<'picker' | 'mention'>('picker');
   const [slashMenuOpen, setSlashMenuOpen] = useState(false);
   const [mentionQuery, setMentionQuery] = useState('');
   const [slashQuery, setSlashQuery] = useState('');
@@ -4996,6 +4997,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       const mentionToken = extractMentionQuery(nextText, caret);
       if (mentionToken !== null) {
         setMentionQuery(mentionToken);
+        setAssetMenuMode('mention');
         setAssetMenuOpen(true);
         setAssetMenuIndex((index) => {
           if (mentionCandidates.length === 0) return 0;
@@ -5003,6 +5005,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
         });
       } else {
         setMentionQuery('');
+        setAssetMenuMode('picker');
         setAssetMenuOpen(false);
       }
 
@@ -5246,13 +5249,6 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     },
     [id, savePromptSelectionFromTextarea, updateNodeData],
   );
-
-  const isPromptMentionSelectionActive = useCallback(() => {
-    const currentPrompt = promptValueRef.current;
-    const selection = promptTextareaRef.current ? savePromptSelectionFromTextarea() : promptSelectionRef.current;
-    const caret = Math.max(0, Math.min(selection.start, currentPrompt.length));
-    return /@([^\s@/]*)$/.test(currentPrompt.slice(0, caret));
-  }, [savePromptSelectionFromTextarea]);
 
   const handlePromptBeforeInput = useCallback(
     (event: React.FormEvent<HTMLDivElement>) => {
@@ -5541,6 +5537,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
         if (assetMenuOpen || slashMenuOpen) {
           event.preventDefault();
           setAssetMenuOpen(false);
+          setAssetMenuMode('picker');
           setSlashMenuOpen(false);
           setMentionQuery('');
           setSlashQuery('');
@@ -6830,6 +6827,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
               onClick={() => {
                 setMentionQuery('');
                 setAssetMenuIndex(0);
+                setAssetMenuMode('picker');
                 setAssetMenuOpen(true);
               }}
               title="添加参考图"
@@ -6894,9 +6892,10 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
                 setAssetMenuOpen(false);
                 setMentionQuery('');
                 setAssetMenuIndex(0);
+                setAssetMenuMode('picker');
               }}
-              onPickAsset={(assetId) => handlePickAssetRef(assetId, { insertMention: isPromptMentionSelectionActive() })}
-              onPickCanvasNode={(nodeId) => handlePickConnectedRef(nodeId, { insertMention: isPromptMentionSelectionActive() })}
+              onPickAsset={(assetId) => handlePickAssetRef(assetId, { insertMention: assetMenuMode === 'mention' })}
+              onPickCanvasNode={(nodeId) => handlePickConnectedRef(nodeId, { insertMention: assetMenuMode === 'mention' })}
               onUploadReference={handleReferenceUploadClick}
             />
           )}
