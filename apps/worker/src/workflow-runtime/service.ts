@@ -824,12 +824,55 @@ function pickImageRequestDebugParams(metadata: Record<string, unknown> | null | 
   return next;
 }
 
+function normalizeMediaOutputs(
+  outputs: Array<Record<string, unknown> | MediaOutput | null | undefined>,
+  outputUrls: string[] = [],
+  outputBase64: string[] = [],
+  mimeType: string | null = null,
+): MediaOutput[] {
+  const normalized: MediaOutput[] = [];
+
+  for (const output of outputs) {
+    if (!output || !isPlainObject(output)) {
+      continue;
+    }
+
+    normalized.push({
+      ...(typeof output.base64 === "string" ? { base64: output.base64 } : {}),
+      ...(typeof output.durationMs === "number" ? { durationMs: output.durationMs } : {}),
+      ...(typeof output.filename === "string" ? { filename: output.filename } : {}),
+      ...(typeof output.height === "number" ? { height: output.height } : {}),
+      ...(typeof output.localFilePath === "string" ? { localFilePath: output.localFilePath } : {}),
+      ...(typeof output.mimeType === "string" ? { mimeType: output.mimeType } : mimeType ? { mimeType } : {}),
+      ...(typeof output.url === "string" ? { url: output.url } : {}),
+      ...(typeof output.width === "number" ? { width: output.width } : {}),
+    });
+  }
+
+  for (const url of outputUrls) {
+    normalized.push({
+      mimeType,
+      url,
+    });
+  }
+
+  for (const base64 of outputBase64) {
+    normalized.push({
+      base64,
+      mimeType,
+    });
+  }
+
+  return normalized;
+}
+
 export const __workerTestUtils = {
   buildAiRuntimeDiagnostic,
   buildImageRequest,
   buildMediaUsageMetadata,
   buildVideoRequest,
   getDependencyOutputs: getDependencyOutputsFromRuntimeGraph,
+  normalizeMediaOutputs,
   resolveImageRequestRouteKey,
 };
 
@@ -2355,39 +2398,7 @@ export class WorkflowNodeExecutionService {
     outputBase64: string[] = [],
     mimeType: string | null = null,
   ): MediaOutput[] {
-    const normalized: MediaOutput[] = [];
-
-    for (const output of outputs) {
-      if (!output || !isPlainObject(output)) {
-        continue;
-      }
-
-      normalized.push({
-        base64: typeof output.base64 === "string" ? output.base64 : null,
-        durationMs: typeof output.durationMs === "number" ? output.durationMs : null,
-        filename: typeof output.filename === "string" ? output.filename : null,
-        height: typeof output.height === "number" ? output.height : null,
-        mimeType: typeof output.mimeType === "string" ? output.mimeType : mimeType,
-        url: typeof output.url === "string" ? output.url : null,
-        width: typeof output.width === "number" ? output.width : null,
-      });
-    }
-
-    for (const url of outputUrls) {
-      normalized.push({
-        mimeType,
-        url,
-      });
-    }
-
-    for (const base64 of outputBase64) {
-      normalized.push({
-        base64,
-        mimeType,
-      });
-    }
-
-    return normalized;
+    return normalizeMediaOutputs(outputs, outputUrls, outputBase64, mimeType);
   }
 
   private async persistProviderResult(

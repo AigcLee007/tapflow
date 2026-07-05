@@ -515,6 +515,29 @@ afterAll(() => {
 });
 
 describe("worker skeleton", () => {
+  test("media output normalization preserves worker-local render file paths", () => {
+    const outputs = (__workerTestUtils as {
+      normalizeMediaOutputs: (
+        outputs: Array<Record<string, unknown>>,
+      ) => Array<Record<string, unknown>>;
+    }).normalizeMediaOutputs([
+      {
+        durationMs: 4200,
+        localFilePath: "C:/render/output.mp4",
+        mimeType: "video/mp4",
+      },
+    ]);
+
+    expect(outputs).toEqual([
+      expect.objectContaining({
+        durationMs: 4200,
+        localFilePath: "C:/render/output.mp4",
+        mimeType: "video/mp4",
+      }),
+    ]);
+    expect(JSON.stringify(outputs)).not.toContain("base64");
+  });
+
   test("video.generate request uses exported video editor prompt and timeline asset ids", () => {
     const request = (__workerTestUtils as {
       buildVideoRequest: (

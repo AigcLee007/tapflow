@@ -3,6 +3,24 @@
 Last updated: 2026-07-05
 Maintainers: project team + Codex sessions
 
+## 2026-07-05 - Video Editor Local Render Output Phase 21
+
+- added the asset-pipeline foundation for worker-local rendered media:
+  - `MediaOutput` now supports a worker-internal `localFilePath` field.
+  - `MediaAssetStore` can read local rendered media files, infer safe filenames/mime types, upload them through the existing object-storage path, insert normal `assets` rows, and return standard asset refs.
+  - worker media-output normalization preserves `localFilePath` internally while avoiding null `base64` fields in serialized output.
+- kept the path aligned with v2 asset rules:
+  - local FFmpeg output files can now be persisted without converting large videos to base64.
+  - no workflow wiring, browser-local export, new pricing unit, database schema change, provider route behavior, or frontend draft persistence change was added.
+- validation:
+  - red test observed on 2026-07-05: `npm run test --workspace @aigc-flow/worker -- test/media-asset-store.test.ts` failed because local file outputs still required URL/base64.
+  - red test observed on 2026-07-05: `npm run test --workspace @aigc-flow/worker -- test/worker.test.ts` failed because media-output normalization did not expose/preserve `localFilePath`.
+  - `npm run test --workspace @aigc-flow/worker -- test/media-asset-store.test.ts test/worker.test.ts` passed on 2026-07-05: 2 files, 14 tests passed, 14 database-backed tests skipped by the existing local-DB guard.
+  - `npm run build --workspace @aigc-flow/ai-gateway-core` passed on 2026-07-05.
+  - `npm run build --workspace @aigc-flow/worker` passed on 2026-07-05 after rebuilding `ai-gateway-core` declarations first.
+  - `npm run build` passed on 2026-07-05 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+  - `git diff --check` passed on 2026-07-05.
+
 ## 2026-07-05 - Video Editor FFmpeg Executor Phase 20
 
 - added a worker-side FFmpeg execution boundary for `剪辑工程` render plans:

@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { basename } from "node:path";
 
 import {
   buildAssetObjectKey,
@@ -104,6 +106,29 @@ function mimeTypeToExtension(mimeType: string): string {
   }
 }
 
+function filenameToMimeType(filename: string): string | null {
+  const normalized = filename.toLowerCase();
+  if (normalized.endsWith(".jpg") || normalized.endsWith(".jpeg")) {
+    return "image/jpeg";
+  }
+  if (normalized.endsWith(".png")) {
+    return "image/png";
+  }
+  if (normalized.endsWith(".webp")) {
+    return "image/webp";
+  }
+  if (normalized.endsWith(".mp4")) {
+    return "video/mp4";
+  }
+  if (normalized.endsWith(".webm")) {
+    return "video/webm";
+  }
+  if (normalized.endsWith(".mov")) {
+    return "video/quicktime";
+  }
+  return null;
+}
+
 function parseBase64Payload(input: string): {
   buffer: Buffer;
   mimeType: string | null;
@@ -134,6 +159,13 @@ function inferFilename(options: {
   }
 
   if (options.url) {
+    if (/^[a-z]:[\\/]/i.test(options.url) || options.url.includes("\\")) {
+      const localFilename = basename(options.url);
+      if (localFilename && localFilename !== ".") {
+        return localFilename;
+      }
+    }
+
     try {
       const parsed = new URL(options.url);
       const pathname = parsed.pathname.split("/").filter(Boolean).pop();
@@ -141,7 +173,10 @@ function inferFilename(options: {
         return pathname;
       }
     } catch {
-      // Ignore URL parsing failures and use the generated fallback below.
+      const localFilename = basename(options.url);
+      if (localFilename && localFilename !== "." && localFilename !== options.url) {
+        return localFilename;
+      }
     }
   }
 
@@ -159,6 +194,22 @@ async function resolveOutputBinary(
   filename: string;
   mimeType: string;
 }> {
+  if (output.localFilePath?.trim()) {
+    const localFilePath = output.localFilePath.trim();
+    const mimeType = output.mimeType?.trim() || filenameToMimeType(localFilePath) || defaultMimeType(kind);
+    return {
+      body: await readFile(localFilePath),
+      filename: inferFilename({
+        explicitFilename: output.filename ?? null,
+        index,
+        kind,
+        mimeType,
+        url: localFilePath,
+      }),
+      mimeType,
+    };
+  }
+
   if (output.url?.trim()) {
     const response = await fetchFn(output.url.trim());
     if (!response.ok) {
