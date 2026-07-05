@@ -3,6 +3,7 @@ import { Box, Film, Grid3X3, Maximize2 } from 'lucide-react';
 import { Handle, NodeResizer, Position, type Node, type NodeProps } from '@xyflow/react';
 
 import type { FlowNodeData, FlowStoryboardCell } from '../types';
+import { normalizeStoryboardData } from '../utils/storyboardNodeData';
 
 type FlowNode = Node<FlowNodeData>;
 
@@ -97,7 +98,8 @@ export const StoryboardNodeComponent = memo(function StoryboardNodeComponent({
   data,
   selected,
 }: NodeProps<FlowNode>) {
-  const cells = data.storyboard?.cells ?? [];
+  const storyboard = normalizeStoryboardData(data.storyboard);
+  const cells = storyboard.cells;
   const previewCells = getStoryboardPreviewCells(cells);
   const filledCount = cells.filter((cell) => cell.assetId).length;
 

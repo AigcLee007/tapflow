@@ -52,7 +52,7 @@ describe('production suite nodes', () => {
     );
 
     expect(screen.getByText('故事板')).toBeTruthy();
-    expect(screen.getByText('1/2')).toBeTruthy();
+    expect(screen.getByText('1/6')).toBeTruthy();
   });
 
   it('renders director desk and video editor open actions', () => {
