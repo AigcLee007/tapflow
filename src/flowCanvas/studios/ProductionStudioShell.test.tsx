@@ -135,6 +135,59 @@ describe('ProductionStudioShell', () => {
     expect(JSON.stringify(latestPatch)).not.toMatch(/blob:|data:/);
   });
 
+  it('captures a new shot from the selected director camera', () => {
+    const onUpdateNodeData = vi.fn();
+    const nodeWithTwoCameras = {
+      ...directorNode,
+      data: {
+        ...directorNode.data,
+        director3d: {
+          ...directorNode.data.director3d,
+          cameras: [
+            directorNode.data.director3d.cameras[0],
+            {
+              id: 'camera-2',
+              name: '侧面跟拍',
+              position: [2, 1.6, 4],
+              target: [0, 1, 0],
+              durationMs: 5200,
+              focalMm: 70,
+              prompt: '从侧面跟拍角色穿过场景',
+            },
+          ],
+        },
+      },
+    };
+
+    render(
+      <ProductionStudioShell
+        studio="director3d"
+        node={nodeWithTwoCameras as any}
+        onClose={vi.fn()}
+        onUpdateNodeData={onUpdateNodeData}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '选择对象 侧面跟拍' }));
+    fireEvent.click(screen.getByRole('button', { name: '捕获镜头段' }));
+
+    expect(onUpdateNodeData).toHaveBeenCalledWith('director-node', {
+      director3d: expect.objectContaining({
+        shots: expect.arrayContaining([
+          expect.objectContaining({
+            cameraId: 'camera-2',
+            durationMs: 5200,
+            id: 'shot-2',
+            motion: 'static',
+            prompt: '从侧面跟拍角色穿过场景',
+            startMs: 3000,
+          }),
+        ]),
+      }),
+    });
+    expect(JSON.stringify(onUpdateNodeData.mock.calls.at(-1)?.[1])).not.toMatch(/blob:|data:/);
+  });
+
   it('emits structured director patches for selected actor inspector edits', () => {
     const onUpdateNodeData = vi.fn();
     render(

@@ -182,17 +182,19 @@ function buildDirectorCamera(index: number): FlowDirector3dData['cameras'][numbe
 
 function buildDirectorShot(
   index: number,
-  cameraId: string,
+  camera: DirectorCamera,
   previousShots: FlowDirector3dData['shots'],
 ): FlowDirector3dData['shots'][number] {
   const number = index + 1;
   const startMs = previousShots.reduce((sum, shot) => sum + Math.max(0, Number(shot.durationMs) || 0), 0);
+  const durationMs = Math.max(0, Number(camera.durationMs) || 3000);
   return {
     id: `shot-${number}`,
-    cameraId,
+    cameraId: camera.id,
     startMs,
-    durationMs: 3000,
+    durationMs,
     motion: 'static',
+    ...(camera.prompt?.trim() ? { prompt: camera.prompt.trim() } : {}),
   };
 }
 
@@ -343,12 +345,16 @@ function DirectorDeskContent({
   const captureShot = () => {
     const fallbackCamera = cameras[0] ? null : buildDirectorCamera(0);
     const nextCameras = fallbackCamera ? [fallbackCamera] : cameras;
-    const cameraId = nextCameras[0]?.id || 'camera-1';
+    const shotCamera = selected?.type === 'camera'
+      ? nextCameras.find((camera) => camera.id === selected.id) ?? nextCameras[0]
+      : nextCameras[0];
+    const nextShot = buildDirectorShot(shots.length, shotCamera, shots);
     updateDirector({
       ...director,
       cameras: nextCameras,
-      shots: [...shots, buildDirectorShot(shots.length, cameraId, shots)],
+      shots: [...shots, nextShot],
     });
+    setSelected({ type: 'shot', id: nextShot.id });
   };
   const patchActor = (actorId: string, patch: Partial<DirectorActor>) => {
     updateDirector({

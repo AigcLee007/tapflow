@@ -3,6 +3,21 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - 3D Director Desk Selected Camera Capture Phase 31
+
+- made `3D导演台` shot capture use the selected camera instead of always falling back to the first camera:
+  - `捕获镜头段` now binds the new shot to the currently selected camera when one is selected.
+  - captured shots inherit safe camera-level duration and prompt metadata, giving downstream canvas synthesis/storyboard sync a better shot seed.
+  - the studio switches selection to the newly captured shot so the shot inspector is immediately ready for timing, motion, and prompt edits.
+- kept v2 safety boundaries unchanged:
+  - this remains a free local/studio draft edit of structured `director3d` data only.
+  - no media URL, browser-local export, billing mutation, API route, database migration, worker behavior, or provider-secret exposure was added.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx` failed because capture still created `shot-2` from `camera-1` and dropped selected-camera duration/prompt metadata.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/studios/DirectorDeskThreeViewport.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-06: 3 files, 36 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+  - `git diff --check` passed on 2026-07-06.
+
 ## 2026-07-06 - 3D Director Desk Transform Inspector Phase 30
 
 - expanded the canvas-native `3D导演台` inspector into a usable staging control surface:
