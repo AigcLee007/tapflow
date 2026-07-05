@@ -3,6 +3,22 @@
 Last updated: 2026-07-05
 Maintainers: project team + Codex sessions
 
+## 2026-07-05 - Video Editor Local Render Service Phase 22
+
+- added a standalone worker-local render service for future `剪辑工程` export execution:
+  - `VideoEditorLocalRenderService` hydrates render-plan `assetIds` from object storage through `StorageProvider.getObject`.
+  - input assets are written into a temporary render directory, then Phase 20 FFmpeg args/runner are invoked.
+  - the service returns a Phase 21-compatible local-file `MediaOutput` with duration, dimensions, mime type, and `localFilePath`.
+  - input temp files are cleaned up in `finally`; output files remain available for the caller to persist through `MediaAssetStore`.
+- kept the implementation as a safe service boundary:
+  - no workflow wiring, billing mutation, API route, frontend export, provider route behavior, database schema change, or canvas draft change was added.
+- validation:
+  - red test observed on 2026-07-05: `npm run test --workspace @aigc-flow/worker -- test/video-editor-local-render-service.test.ts` failed because `video-editor-local-render-service.ts` did not exist.
+  - `npm run test --workspace @aigc-flow/worker -- test/video-editor-local-render-service.test.ts test/video-editor-ffmpeg-executor.test.ts test/video-editor-render-plan.test.ts` passed on 2026-07-05: 3 files, 11 tests.
+  - `npm run build --workspace @aigc-flow/worker` passed on 2026-07-05.
+  - `npm run build` passed on 2026-07-05 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+  - `git diff --check` passed on 2026-07-05.
+
 ## 2026-07-05 - Video Editor Local Render Output Phase 21
 
 - added the asset-pipeline foundation for worker-local rendered media:
