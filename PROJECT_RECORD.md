@@ -3,6 +3,21 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - Video Editor Subtitle Store Coverage Phase 39
+
+- added canvas-store regression coverage for selected subtitle editing in `剪辑工程`:
+  - the test opens the video editor studio from the real canvas event path.
+  - it verifies subtitle text edits, start-time edits, and subtitle deletion persist back into the canvas node data.
+  - it keeps the existing safe-data assertion that `videoEditor` patches do not introduce `blob:` or `data:` URLs.
+- kept product/runtime boundaries unchanged:
+  - no production behavior, asset write path, billing path, API route, database migration, worker behavior, or provider-secret surface changed in this slice.
+  - this Phase documents that the Phase 38 subtitle UI also works through the canvas store persistence path.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx -t "selected video subtitle"` first failed because the fixture had no subtitle row to select.
+  - `npm test -- src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx -t "selected video subtitle"` passed on 2026-07-06: 1 selected test.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-06: 2 files, 46 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-06 - Video Editor Subtitle Editing Phase 38
 
 - added selected-subtitle editing to the `剪辑工程` studio:

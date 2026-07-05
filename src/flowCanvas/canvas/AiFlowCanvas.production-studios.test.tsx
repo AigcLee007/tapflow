@@ -218,6 +218,20 @@ const videoNodeWithClip = {
   },
 };
 
+const videoNodeWithSubtitle = {
+  ...videoNodeWithClip,
+  data: {
+    ...videoNodeWithClip.data,
+    videoEditor: {
+      ...videoNodeWithClip.data.videoEditor,
+      timeline: {
+        ...videoNodeWithClip.data.videoEditor.timeline,
+        subtitles: [{ id: 'sub-1', text: '第一句旁白', startMs: 0, endMs: 1200 }],
+      },
+    },
+  },
+};
+
 const directorNodeWithThreeShots = {
   ...directorNode,
   data: {
@@ -818,6 +832,51 @@ describe('AiFlowCanvas production studios', () => {
     const node = useFlowCanvasStore.getState().nodes.find((item) => item.id === 'video-node');
     expect(node?.data.videoEditor?.timeline.clips).toEqual([]);
     expect(node?.data.videoEditor?.timeline.durationMs).toBe(0);
+    expect(JSON.stringify(node?.data.videoEditor)).not.toMatch(/blob:|data:/);
+  });
+
+  it('persists selected video subtitle edits through the canvas store', () => {
+    useFlowCanvasStore.getState().loadProject({
+      id: 'project-1',
+      title: '项目',
+      nodes: [videoNodeWithSubtitle as any],
+      edges: [],
+      viewport: { x: 0, y: 0, zoom: 1 },
+      version: 1,
+      updatedAt: 1,
+    });
+
+    render(<AiFlowCanvas cullingEnabled={false} />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(OPEN_PRODUCTION_STUDIO_EVENT, {
+          detail: { nodeId: 'video-node', studio: 'video_editor' },
+        }),
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '选择字幕 sub-1' }));
+    fireEvent.change(screen.getByLabelText('字幕文本'), { target: { value: '新的字幕文本' } });
+
+    let node = useFlowCanvasStore.getState().nodes.find((item) => item.id === 'video-node');
+    expect(node?.data.videoEditor?.timeline.subtitles[0]).toMatchObject({
+      id: 'sub-1',
+      text: '新的字幕文本',
+    });
+
+    fireEvent.change(screen.getByLabelText('字幕开始（秒）'), { target: { value: '0.8' } });
+    node = useFlowCanvasStore.getState().nodes.find((item) => item.id === 'video-node');
+    expect(node?.data.videoEditor?.timeline.subtitles[0]).toMatchObject({
+      id: 'sub-1',
+      startMs: 800,
+      endMs: 2000,
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '删除字幕' }));
+    node = useFlowCanvasStore.getState().nodes.find((item) => item.id === 'video-node');
+    expect(node?.data.videoEditor?.timeline.subtitles).toEqual([]);
+    expect(node?.data.videoEditor?.timeline.durationMs).toBe(3000);
     expect(JSON.stringify(node?.data.videoEditor)).not.toMatch(/blob:|data:/);
   });
 
