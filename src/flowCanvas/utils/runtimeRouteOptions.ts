@@ -1,4 +1,6 @@
 import type { V2RuntimeRouteItem } from '../../services/v2AiRoutesApi';
+import type { FlowImageGenerationMode } from '../types';
+import { normalizeImageGenerationMode } from './imageGenerationModes';
 
 export type RuntimeRouteOption = {
   estimatedCredits: number | null;
@@ -10,6 +12,7 @@ export type RuntimeRouteOption = {
   providerKey: string;
   providerName: string;
   routeKey: string;
+  supportedGenerationModes?: FlowImageGenerationMode[];
   userFacingLabel?: string;
 };
 
@@ -86,6 +89,14 @@ export function getOfficialFallbackImageRuntimeRoutes(modelId: string): RuntimeR
   return OFFICIAL_FALLBACK_IMAGE_RUNTIME_ROUTES_BY_MODEL_ID[String(modelId || '').trim()] ?? [];
 }
 
+export function normalizeSupportedImageGenerationModes(value: unknown): FlowImageGenerationMode[] {
+  const rawModes = Array.isArray(value) ? value : [];
+  const modes = rawModes
+    .map((item) => normalizeImageGenerationMode(item))
+    .filter((mode, index, array) => array.indexOf(mode) === index);
+  return modes.length > 0 ? modes : ['standard'];
+}
+
 export function mapImageRuntimeRouteOptions(items: V2RuntimeRouteItem[]): RuntimeRouteOption[] {
   const seen = new Set<string>();
   const result: RuntimeRouteOption[] = [];
@@ -112,6 +123,7 @@ export function mapImageRuntimeRouteOptions(items: V2RuntimeRouteItem[]): Runtim
       providerKey: item.providerKey,
       providerName: item.providerName,
       routeKey,
+      supportedGenerationModes: normalizeSupportedImageGenerationModes(item.capabilities?.supportedGenerationModes),
     });
   }
 

@@ -3,6 +3,24 @@
 Last updated: 2026-07-05
 Maintainers: project team + Codex sessions
 
+## 2026-07-05 - Production Image Mode Capability And Pricing Phase 8
+
+- added AI Gateway runtime route capabilities for production image generation modes:
+  - `/api/v2/ai/routes` now exposes safe `capabilities.supportedGenerationModes` merged from `ai_models.capabilities` and `ai_routes.request_config.capabilities`.
+  - `/api/v2/ai/model-catalog/:modelKey/routes` exposes the same safe mode capability shape for the model-scoped route list used by image nodes.
+  - capability output is restricted to known image modes: `standard`, `panorama_360`, `wraparound_270`, and `subject_orbit_270`; provider/request-config internals stay server-side.
+- added frontend route-option mapping for supported image generation modes, defaulting routes without explicit capabilities to `standard` only.
+- added image-node UI guarding so unsupported 360°/270° modes are not offered for the active route, and stale unsupported production mode selections reset to `standard` after route metadata loads.
+- added workflow-run preflight for production image modes:
+  - unsupported production modes fail locally with `UNSUPPORTED_GENERATION_MODE` before draft flush / workflow creation.
+  - production modes without resolvable active pricing fail locally with `PRICING_NOT_FOUND` before workflow creation.
+  - standard image generation keeps the existing pricing/billing behavior.
+- validation:
+  - `npm test --workspace @aigc-flow/api -- test/ai-gateway.service.test.ts test/ai-model-catalog.service.test.ts` passed on 2026-07-05: 2 test files, 2 tests.
+  - `npm run build --workspace @aigc-flow/api` passed on 2026-07-05.
+  - `npm test -- src/services/v2AiRoutesApi.test.ts src/services/v2AiModelCatalogApi.test.ts src/flowCanvas/utils/runtimeRouteOptions.test.ts src/flowCanvas/utils/modelCatalogOptions.test.ts src/flowCanvas/utils/imageGenerationModeSupport.test.ts src/flowCanvas/runtime/v2WorkflowRunner.test.ts src/flowCanvas/nodes/ImagePromptActionRow.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-05: 8 test files, 62 tests.
+  - `npm run build` passed on 2026-07-05 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-05 - Director Desk Three Viewport Phase 7
 
 - replaced the CSS-only `3D导演台` central viewport placeholder with a real Three.js viewport component.

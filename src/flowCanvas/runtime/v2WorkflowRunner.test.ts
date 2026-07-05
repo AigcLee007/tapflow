@@ -470,6 +470,94 @@ describe('v2WorkflowRunner', () => {
     });
   });
 
+  test('production image mode preflight blocks unsupported route capabilities before creating a run', async () => {
+    useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, {
+      generationMode: 'panorama_360',
+      params: {
+        generationMode: 'panorama_360',
+      },
+      routeKey: 'image.default',
+      title: 'Unsupported panorama',
+    });
+    const nodeId = useFlowCanvasStore.getState().nodes[0]?.id as string;
+    listRuntimeRoutesMock.mockResolvedValueOnce([
+      {
+        capabilities: {
+          supportedGenerationModes: ['standard'],
+        },
+        estimatedCredits: 100,
+        minChargeCredits: 100,
+        modality: 'image',
+        modelDisplayName: 'Mock Image',
+        modelKey: 'mock-image',
+        pricingUnit: 'image_generation',
+        providerKey: 'mock-provider',
+        providerName: 'Mock Provider',
+        routeKey: 'image.default',
+      },
+    ]);
+
+    await expect(runBackendWorkflow({ runMode: 'target_node', targetNodeId: nodeId }))
+      .rejects.toThrow('UNSUPPORTED_GENERATION_MODE');
+
+    expect(createWorkflowRunMock).not.toHaveBeenCalled();
+    expect(useFlowCanvasStore.getState().nodes[0]?.data).toMatchObject({
+      errorCode: 'UNSUPPORTED_GENERATION_MODE',
+      generationStatus: 'error',
+      status: 'failed',
+    });
+  });
+
+  test('production image mode preflight blocks missing route pricing before creating a run', async () => {
+    useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, {
+      generationMode: 'wraparound_270',
+      params: {
+        generationMode: 'wraparound_270',
+      },
+      routeKey: 'image.production',
+      title: 'Unpriced wraparound',
+    });
+    const nodeId = useFlowCanvasStore.getState().nodes[0]?.id as string;
+    listRuntimeRoutesMock.mockResolvedValueOnce([
+      {
+        capabilities: {
+          supportedGenerationModes: ['standard', 'wraparound_270'],
+        },
+        estimatedCredits: null,
+        minChargeCredits: null,
+        modality: 'image',
+        modelDisplayName: 'Mock Image',
+        modelKey: 'mock-image',
+        pricingUnit: 'image_generation',
+        providerKey: 'mock-provider',
+        providerName: 'Mock Provider',
+        routeKey: 'image.production',
+      },
+    ]);
+    listBillingPricingMock.mockResolvedValueOnce([
+      {
+        active: true,
+        id: 'pricing-text-default',
+        minChargeCredits: 12,
+        model: 'default',
+        provider: 'default',
+        route: 'default',
+        unit: 'text_generation',
+        unitCredits: 12,
+      },
+    ]);
+
+    await expect(runBackendWorkflow({ runMode: 'target_node', targetNodeId: nodeId }))
+      .rejects.toThrow('PRICING_NOT_FOUND');
+
+    expect(createWorkflowRunMock).not.toHaveBeenCalled();
+    expect(useFlowCanvasStore.getState().nodes[0]?.data).toMatchObject({
+      errorCode: 'PRICING_NOT_FOUND',
+      generationStatus: 'error',
+      status: 'failed',
+    });
+  });
+
   test('markBackendRunLaunchFailed exposes workflow launch errors on the target node', () => {
     useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, {
       generationStatus: 'generating',

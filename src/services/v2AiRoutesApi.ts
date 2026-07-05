@@ -1,6 +1,11 @@
 import { apiGet } from "./v2HttpClient";
 
+export type V2RuntimeRouteCapabilities = {
+  supportedGenerationModes?: string[];
+};
+
 export type V2RuntimeRouteItem = {
+  capabilities?: V2RuntimeRouteCapabilities;
   estimatedCredits: number | null;
   minChargeCredits: number | null;
   modality: string;

@@ -29,6 +29,8 @@ import {
   buildImageViewerComparisonSourceFromReferenceKeys,
   readImageViewerComparisonSource,
 } from '../utils/imageViewerComparison';
+import { normalizeImageGenerationMode } from '../utils/imageGenerationModes';
+import { resolveImageGenerationModeRunBlocker } from '../utils/imageGenerationModeSupport';
 import { fitMediaNodeToShortSide } from '../utils/nodeSizing';
 import { flushRemoteDraftBeforeRun, shouldFlushRemoteDraftBeforeRun } from './remoteDraftSaveBarrier';
 
@@ -236,6 +238,45 @@ function resolveEstimatedCredits(input: {
   return null;
 }
 
+function readImageGenerationModeForPreflight(node: { data?: Partial<FlowNodeData> }): FlowImageGenerationMode {
+  const params = node.data?.params && typeof node.data.params === 'object'
+    ? node.data.params as Record<string, unknown>
+    : {};
+  return normalizeImageGenerationMode(node.data?.generationMode || params.generationMode);
+}
+
+function isProductionImageGenerationMode(mode: FlowImageGenerationMode): boolean {
+  return mode !== 'standard';
+}
+
+function markNodeBlockedByPreflight(
+  nodeId: string,
+  code: 'PRICING_NOT_FOUND' | 'UNSUPPORTED_GENERATION_MODE',
+  message: string,
+): void {
+  useFlowCanvasStore.getState().updateNodeData(nodeId, {
+    errorCode: code,
+    errorMessage: message,
+    generationStatus: 'error',
+    status: 'failed',
+  } as Partial<FlowNodeData>);
+  useFlowCanvasStore.setState((currentState) => ({
+    nodeRunStatusByNodeId: {
+      ...currentState.nodeRunStatusByNodeId,
+      [nodeId]: 'failed',
+    },
+    nodeOutputByNodeId: {
+      ...currentState.nodeOutputByNodeId,
+      [nodeId]: {
+        ...currentState.nodeOutputByNodeId[nodeId],
+        errorMessage: message,
+      },
+    },
+    runError: message,
+    runStatus: 'failed',
+  }));
+}
+
 function formatCredits(value: number): string {
   return `${Math.max(0, Math.floor(value))} pts`;
 }
@@ -309,6 +350,34 @@ async function reserveCreditsForTargetNode(nodeId: string): Promise<CreditPrefli
       getBillingPricingRows(),
     ]);
     const estimatedCredits = resolveEstimatedCredits({ node, pricingRows, routes });
+    const kind = getNodeKindForPricing(node);
+    const routeKey = getRouteKeyForPricing(node);
+    const route = routeKey
+      ? routes.find((item) => item.modality === kind && item.routeKey === routeKey) ?? null
+      : null;
+    const generationMode = kind === 'image' ? readImageGenerationModeForPreflight(node) : 'standard';
+    if (kind === 'image' && isProductionImageGenerationMode(generationMode)) {
+      const blocker = resolveImageGenerationModeRunBlocker({
+        mode: generationMode,
+        route: route
+          ? {
+              estimatedCredits,
+              minChargeCredits: route.minChargeCredits,
+              routeKey: route.routeKey,
+              supportedGenerationModes: route.capabilities?.supportedGenerationModes as FlowImageGenerationMode[] | undefined,
+            }
+          : null,
+      });
+      if (blocker) {
+        markNodeBlockedByPreflight(nodeId, blocker.code, blocker.message);
+        throw buildRunLaunchError(blocker.message);
+      }
+      if (!estimatedCredits || estimatedCredits <= 0) {
+        const message = `PRICING_NOT_FOUND: Route ${routeKey || 'unknown'} has no active pricing for ${generationMode}.`;
+        markNodeBlockedByPreflight(nodeId, 'PRICING_NOT_FOUND', message);
+        throw buildRunLaunchError(message);
+      }
+    }
     if (!estimatedCredits || estimatedCredits <= 0) {
       return null;
     }

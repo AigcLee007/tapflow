@@ -15,6 +15,9 @@ export type AiModelCatalogItem = {
 };
 
 export type AiModelCatalogRoute = {
+  capabilities?: {
+    supportedGenerationModes?: string[];
+  };
   estimatedCredits: number | null;
   minChargeCredits: number | null;
   modality: string;

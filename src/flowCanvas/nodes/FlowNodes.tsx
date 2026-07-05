@@ -185,6 +185,7 @@ import {
   buildImageGenerationModeParamPatch,
   normalizeImageGenerationMode,
 } from '../utils/imageGenerationModes';
+import { isImageGenerationModeSupportedByRoute } from '../utils/imageGenerationModeSupport';
 
 type FlowNode = Node<FlowNodeData>;
 
@@ -4485,6 +4486,8 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
 
   const selectedRuntimeRoute = selectedModelRuntimeRoute;
   const visibleRuntimeRoutes = modelRuntimeRoutes;
+  const selectableGenerationModeOptions = IMAGE_GENERATION_MODE_OPTIONS.filter((option) =>
+    isImageGenerationModeSupportedByRoute(option.mode, selectedRuntimeRoute));
   const currentPointCost =
     getOfficialImageRouteSizeCredits(currentRouteKey, currentSize)
     ?? getOfficialImageRouteSizeCredits(selectedRuntimeRoute?.routeKey, currentSize)
@@ -4883,6 +4886,19 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     if (d.routeId === selectedRoute.id) return;
     updateNodeData(id, { routeId: selectedRoute.id });
   }, [d.routeId, id, selectedRoute, updateNodeData]);
+
+  useEffect(() => {
+    if (scopedRouteState.loading) return;
+    if (isImageGenerationModeSupportedByRoute(currentGenerationMode, selectedRuntimeRoute)) return;
+    const modePatch = buildImageGenerationModeParamPatch('standard');
+    updateNodeData(id, {
+      generationMode: 'standard',
+      params: {
+        ...((d.params || {}) as Record<string, unknown>),
+        ...modePatch,
+      },
+    });
+  }, [currentGenerationMode, d.params, id, scopedRouteState.loading, selectedRuntimeRoute, updateNodeData]);
 
   useEffect(() => {
     const onMouseDown = (event: MouseEvent) => {
@@ -7162,7 +7178,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
                   <MenuSelect
                     label={`图片生成模式 ${id}`}
                     onChange={(value) => setGenerationMode(normalizeImageGenerationMode(value))}
-                    options={IMAGE_GENERATION_MODE_OPTIONS.map((option) => ({
+                    options={selectableGenerationModeOptions.map((option) => ({
                       label: option.label,
                       value: option.mode,
                     }))}
