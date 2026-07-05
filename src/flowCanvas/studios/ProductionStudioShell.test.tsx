@@ -423,6 +423,29 @@ describe('ProductionStudioShell', () => {
     expect(JSON.stringify(onCreateCanvasNodeFromStudio.mock.calls)).not.toMatch(/blob:|data:/);
   });
 
+  it('requests video editor sync from storyboard asset cells', () => {
+    const onSyncStoryboardToVideoEditor = vi.fn();
+    render(
+      <ProductionStudioShell
+        studio="storyboard"
+        node={storyboardNode as any}
+        onClose={vi.fn()}
+        onSyncStoryboardToVideoEditor={onSyncStoryboardToVideoEditor}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '同步到剪辑工程' }));
+
+    expect(onSyncStoryboardToVideoEditor).toHaveBeenCalledWith({
+      sourceStoryboardNodeId: 'storyboard-node',
+      sourceStoryboardNodePosition: { x: 0, y: 0 },
+      storyboard: expect.objectContaining({
+        cells: expect.arrayContaining([expect.objectContaining({ id: 'cell-1', assetId: 'asset-1' })]),
+      }),
+    });
+    expect(JSON.stringify(onSyncStoryboardToVideoEditor.mock.calls[0]?.[0])).not.toMatch(/blob:|data:/);
+  });
+
   it('renders video editor shell and closes on Escape', () => {
     const onClose = vi.fn();
     render(<ProductionStudioShell studio="video_editor" node={videoNode as any} onClose={onClose} />);

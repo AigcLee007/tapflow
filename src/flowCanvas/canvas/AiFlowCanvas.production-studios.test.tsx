@@ -162,6 +162,20 @@ const storyboardNode = {
   },
 };
 
+const storyboardAssetNode = {
+  ...storyboardNode,
+  data: {
+    ...storyboardNode.data,
+    storyboard: {
+      ...storyboardNode.data.storyboard,
+      cells: [
+        { id: 'cell-1', shotNo: 1, title: '开场', prompt: '旧提示词', assetId: 'asset-story-1' },
+        { id: 'cell-2', shotNo: 2, title: '近景', assetId: 'asset-story-2' },
+      ],
+    },
+  },
+};
+
 const videoNode = {
   id: 'video-node',
   type: 'video_editor',
@@ -470,6 +484,89 @@ describe('AiFlowCanvas production studios', () => {
     expect(imageNodes[0]?.position).toEqual({ x: 500, y: 160 });
     expect(imageNodes[0]?.data.generationPrompt).toBe('旧提示词');
     expect(JSON.stringify(imageNodes.map((node) => node.data))).not.toMatch(/blob:|data:/);
+  });
+
+  it('syncs storyboard asset cells into an existing video editor node', () => {
+    useFlowCanvasStore.getState().loadProject({
+      id: 'project-1',
+      title: '项目',
+      nodes: [storyboardAssetNode as any, videoNode as any],
+      edges: [],
+      viewport: { x: 0, y: 0, zoom: 1 },
+      version: 1,
+      updatedAt: 1,
+    });
+
+    render(<AiFlowCanvas cullingEnabled={false} />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(OPEN_PRODUCTION_STUDIO_EVENT, {
+          detail: { nodeId: 'storyboard-node', studio: 'storyboard' },
+        }),
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '同步到剪辑工程' }));
+
+    const state = useFlowCanvasStore.getState();
+    const videoNodes = state.nodes.filter((item) => item.type === 'video_editor');
+    const node = state.nodes.find((item) => item.id === 'video-node');
+    expect(videoNodes).toHaveLength(1);
+    expect(node?.data.videoEditor?.timeline.clips).toEqual([
+      expect.objectContaining({
+        assetId: 'asset-story-1',
+        kind: 'image',
+        sourceStoryboardNodeId: 'storyboard-node',
+        storyboardCellId: 'cell-1',
+        storyboardShotNo: 1,
+      }),
+      expect.objectContaining({
+        assetId: 'asset-story-2',
+        kind: 'image',
+        sourceStoryboardNodeId: 'storyboard-node',
+        storyboardCellId: 'cell-2',
+        storyboardShotNo: 2,
+      }),
+    ]);
+    expect(node?.data.videoEditor?.timeline.durationMs).toBe(6000);
+    expect(JSON.stringify(node?.data.videoEditor)).not.toMatch(/blob:|data:/);
+  });
+
+  it('creates a video editor node when syncing storyboard assets without an existing editor', () => {
+    useFlowCanvasStore.getState().loadProject({
+      id: 'project-1',
+      title: '项目',
+      nodes: [storyboardAssetNode as any],
+      edges: [],
+      viewport: { x: 0, y: 0, zoom: 1 },
+      version: 1,
+      updatedAt: 1,
+    });
+
+    render(<AiFlowCanvas cullingEnabled={false} />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(OPEN_PRODUCTION_STUDIO_EVENT, {
+          detail: { nodeId: 'storyboard-node', studio: 'storyboard' },
+        }),
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '同步到剪辑工程' }));
+
+    const node = useFlowCanvasStore.getState().nodes.find((item) => item.type === 'video_editor');
+    expect(node?.position).toEqual({ x: 500, y: 160 });
+    expect(node?.selected).toBe(true);
+    expect(node?.data.title).toBe('故事板剪辑工程');
+    expect(node?.data.videoEditor?.timeline.clips[0]).toMatchObject({
+      assetId: 'asset-story-1',
+      kind: 'image',
+      sourceStoryboardNodeId: 'storyboard-node',
+      storyboardCellId: 'cell-1',
+    });
+    expect(JSON.stringify(node?.data.videoEditor)).not.toMatch(/blob:|data:/);
   });
 
   it('persists video editor clip edits through the canvas store', () => {

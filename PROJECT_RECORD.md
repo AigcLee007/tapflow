@@ -3,6 +3,22 @@
 Last updated: 2026-07-05
 Maintainers: project team + Codex sessions
 
+## 2026-07-05 - Storyboard Asset Sync To Video Editor Phase 12
+
+- added storyboard-to-video-editor sync for the canvas-native `故事板` studio:
+  - `同步到剪辑工程` is enabled when storyboard cells already reference saved `assetId` values.
+  - if a `剪辑工程` node already exists, its timeline receives image clips for the current storyboard asset cells.
+  - if no `剪辑工程` node exists, the canvas creates a selected `故事板剪辑工程` node beside the storyboard and seeds its timeline.
+- added `storyboardVideoSync` utility coverage:
+  - converts asset-backed storyboard cells into timeline image clips.
+  - preserves existing non-storyboard clips, audio, subtitles, aspect, resolution, and exported asset id.
+  - replaces previous clips synced from the same storyboard so repeated syncs do not duplicate timeline entries.
+- kept the action non-billable preparation work only; it does not create assets, enqueue workflow runs, reserve credits, settle usage, refund credits, or bypass the later server-side video export path.
+- kept synced timeline data draft-safe: clips store `assetId`, storyboard node id, cell id, shot number, and optional prompt/title metadata, with no `blob:`, `data:`, base64, `File`, `Blob`, or long-lived signed URL values.
+- validation:
+  - `npm test -- src/flowCanvas/utils/storyboardVideoSync.test.ts src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-05: 3 test files, 27 tests.
+  - `npm run build` passed on 2026-07-05 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-05 - Storyboard Image Node Creation Phase 11
 
 - added image-node creation actions inside the canvas-native `故事板` studio:

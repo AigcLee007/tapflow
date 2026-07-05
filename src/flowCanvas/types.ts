@@ -138,6 +138,11 @@ export interface FlowVideoEditorData {
       volume?: number;
       transitionOut?: { type: string; durationMs: number };
       transform?: { scale: number; x: number; y: number; rotate: number };
+      sourceStoryboardNodeId?: string;
+      storyboardCellId?: string;
+      storyboardShotNo?: number;
+      storyboardTitle?: string;
+      storyboardPrompt?: string;
     }>;
     durationMs: number;
     subtitles: Array<{

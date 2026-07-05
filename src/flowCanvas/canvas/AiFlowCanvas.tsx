@@ -36,6 +36,7 @@ import {
   ProductionStudioShell,
   type StudioCanvasNodeRequest,
   type StudioStoryboardSyncRequest,
+  type StudioStoryboardVideoSyncRequest,
 } from '../studios/ProductionStudioShell';
 import {
   OPEN_PRODUCTION_STUDIO_EVENT,
@@ -62,6 +63,7 @@ import { buildAssetBackedNodeData, buildMeasuredAssetNodePatch } from '../utils/
 import { getCanvasDockBadge, getCanvasDockDrawerLayout, type CanvasDockPanelId } from '../utils/canvasDockPanel';
 import { FLOW_NODE_DEFAULT_SIZES, fitMediaNodeToShortSide } from '../utils/nodeSizing';
 import { buildStoryboardPatchFromDirectorShot } from '../utils/storyboardDirectorSync';
+import { buildVideoEditorFromStoryboardAssets } from '../utils/storyboardVideoSync';
 import { offsetTemplateGraphForInsert } from '../utils/templateGraph';
 import { canConnectFlowNodes } from '../rules/connectionRules';
 import {
@@ -780,6 +782,36 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled, onAg
     [addNode, updateNodeData],
   );
 
+  const handleSyncStoryboardToVideoEditor = useCallback(
+    (request: StudioStoryboardVideoSyncRequest) => {
+      const videoEditorNode = useFlowCanvasStore.getState().nodes.find((node) => node.type === 'video_editor');
+      const videoEditor = buildVideoEditorFromStoryboardAssets({
+        sourceStoryboardNodeId: request.sourceStoryboardNodeId,
+        storyboard: request.storyboard,
+        videoEditor: videoEditorNode?.data.videoEditor,
+      });
+
+      if (videoEditorNode) {
+        updateNodeData(videoEditorNode.id, { videoEditor });
+        return;
+      }
+
+      addNode(
+        'video_editor',
+        {
+          x: request.sourceStoryboardNodePosition.x + 420,
+          y: request.sourceStoryboardNodePosition.y + 40,
+        },
+        {
+          title: '故事板剪辑工程',
+          videoEditor,
+        },
+        { selected: true },
+      );
+    },
+    [addNode, updateNodeData],
+  );
+
   const handleFocusCommentNode = useCallback((nodeId: string) => {
     const node = nodes.find((item) => item.id === nodeId);
     if (!node) return;
@@ -1099,6 +1131,7 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled, onAg
           node={activeProductionStudioNode}
           onCreateCanvasNodeFromStudio={handleCreateCanvasNodeFromStudio}
           onSyncDirectorShotToStoryboard={handleSyncDirectorShotToStoryboard}
+          onSyncStoryboardToVideoEditor={handleSyncStoryboardToVideoEditor}
           onUpdateNodeData={updateNodeData}
           studio={activeProductionStudio.studio}
           onClose={() => setActiveProductionStudio(null)}

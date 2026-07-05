@@ -30,11 +30,18 @@ export type StudioStoryboardSyncRequest = {
   sourceDirectorNodePosition: { x: number; y: number };
 };
 
+export type StudioStoryboardVideoSyncRequest = {
+  sourceStoryboardNodeId: string;
+  sourceStoryboardNodePosition: { x: number; y: number };
+  storyboard: NonNullable<FlowNodeData['storyboard']>;
+};
+
 interface ProductionStudioShellProps {
   node: FlowNode;
   onClose: () => void;
   onCreateCanvasNodeFromStudio?: (request: StudioCanvasNodeRequest) => void;
   onSyncDirectorShotToStoryboard?: (request: StudioStoryboardSyncRequest) => void;
+  onSyncStoryboardToVideoEditor?: (request: StudioStoryboardVideoSyncRequest) => void;
   onUpdateNodeData?: (nodeId: string, patch: Partial<FlowNodeData>) => void;
   studio: ProductionStudioKind;
 }
@@ -50,6 +57,7 @@ export const ProductionStudioShell: React.FC<ProductionStudioShellProps> = ({
   onClose,
   onCreateCanvasNodeFromStudio,
   onSyncDirectorShotToStoryboard,
+  onSyncStoryboardToVideoEditor,
   onUpdateNodeData,
   studio,
 }) => {
@@ -101,6 +109,7 @@ export const ProductionStudioShell: React.FC<ProductionStudioShellProps> = ({
             nodeId={node.id}
             nodePosition={node.position}
             onCreateCanvasNodeFromStudio={onCreateCanvasNodeFromStudio}
+            onSyncStoryboardToVideoEditor={onSyncStoryboardToVideoEditor}
             onUpdateNodeData={onUpdateNodeData}
           />
         ) : (
@@ -479,16 +488,19 @@ function StoryboardContent({
   nodeId,
   nodePosition,
   onCreateCanvasNodeFromStudio,
+  onSyncStoryboardToVideoEditor,
   onUpdateNodeData,
 }: {
   data?: FlowNodeData['storyboard'];
   nodeId: string;
   nodePosition: { x: number; y: number };
   onCreateCanvasNodeFromStudio?: (request: StudioCanvasNodeRequest) => void;
+  onSyncStoryboardToVideoEditor?: (request: StudioStoryboardVideoSyncRequest) => void;
   onUpdateNodeData?: (nodeId: string, patch: Partial<FlowNodeData>) => void;
 }) {
   const storyboard = normalizeStoryboardData(data);
   const selectedCell = storyboard.cells[storyboard.selectedIndex] ?? storyboard.cells[0];
+  const hasStoryboardAssets = storyboard.cells.some((cell) => cell.assetId);
   const updateStoryboard = (nextStoryboard: typeof storyboard) => {
     onUpdateNodeData?.(nodeId, { storyboard: nextStoryboard });
   };
@@ -536,6 +548,14 @@ function StoryboardContent({
       if (!request) return;
       batchIndex += 1;
       onCreateCanvasNodeFromStudio?.(request);
+    });
+  };
+  const syncStoryboardToVideoEditor = () => {
+    if (!hasStoryboardAssets) return;
+    onSyncStoryboardToVideoEditor?.({
+      sourceStoryboardNodeId: nodeId,
+      sourceStoryboardNodePosition: nodePosition,
+      storyboard,
     });
   };
 
@@ -618,6 +638,21 @@ function StoryboardContent({
           >
             <Grid3X3 size={14} />
             生成全部镜头
+          </button>
+          <button
+            type="button"
+            aria-label="同步到剪辑工程"
+            disabled={!hasStoryboardAssets}
+            style={{
+              ...toolButtonStyle,
+              gridColumn: '1 / -1',
+              opacity: hasStoryboardAssets ? 1 : 0.45,
+              cursor: hasStoryboardAssets ? 'pointer' : 'not-allowed',
+            }}
+            onClick={syncStoryboardToVideoEditor}
+          >
+            <Film size={14} />
+            同步到剪辑工程
           </button>
         </div>
       </aside>
