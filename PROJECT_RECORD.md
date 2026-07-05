@@ -3,6 +3,25 @@
 Last updated: 2026-07-05
 Maintainers: project team + Codex sessions
 
+## 2026-07-05 - Canvas Production Suite Phase 1
+
+- added v2 canvas contracts and safe default draft data for `storyboard`, `director3d`, and `video_editor` nodes.
+- exposed `故事板`, `3D导演台`, and `剪辑工程` in the left add panel, right-click pane menu, React Flow node registry, and canvas agent add-node policy.
+- added image generation modes for `standard`, `panorama_360`, `wraparound_270`, and `subject_orbit_270`, with UI labels for `360°全景`, `270°环绕`, and `主体三面展开`.
+- wired image-node mode selection into structured `params.panorama` / `params.wraparound`, and preserved production-mode metadata in generated image snapshots and worker provider metadata.
+- added storyboard normalization so cells are asset-reference based and unsafe transient media fields such as `blob:` or `data:` URLs are not persisted in storyboard data.
+- validation:
+  - `npm test -- src/flowCanvas/utils/nodeFactory.test.ts src/flowCanvas/utils/imageGenerationModes.test.ts src/flowCanvas/utils/storyboardNodeData.test.ts src/flowCanvas/nodes/ProductionNodes.test.tsx src/flowCanvas/nodes/ImagePromptActionRow.test.tsx src/flowCanvas/canvas/FlowLeftAddPanel.test.tsx src/flowCanvas/canvas/FlowContextMenu.test.tsx src/flowCanvas/agent/canvasAgentPolicy.test.ts src/flowCanvas/runtime/v2WorkflowRunner.test.ts` passed on 2026-07-05: 9 test files, 52 tests.
+  - `npm run test --workspace @aigc-flow/worker -- workflow-runtime-image-request.test.ts` passed on 2026-07-05: 1 test file, 13 tests.
+  - `npm run build` passed on 2026-07-05 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-05 - Canvas Production Suite Design
+
+- analyzed the current v2 canvas/workflow/assets/billing foundation for adding 360° panorama generation, 270° wraparound generation, 3D Director Desk, storyboard, and video editing.
+- compared the requested references (`MagicalCanvas`, `TapCanvas`, `infinite-canvas`, and `zerocut-director-desk`) and selected a v2-compatible canvas-native production-suite direction rather than a separate forked app or preset-only patch.
+- wrote the approved design spec at `docs/superpowers/specs/2026-07-05-canvas-production-suite-design.md`, covering UI, node model, studio surfaces, asset persistence, AI Gateway/workflow integration, billing, phased implementation, validation, and non-goals.
+- no product code was changed in this step; implementation planning is the next step.
+
 ## 2026-07-05 - Canvas Image Generation Animation
 
 - upgraded image-node generation feedback from a static gray skeleton to an animated in-node preview surface with flowing cyan/blue light, scan motion, breathing border, and a progress/status pill.
