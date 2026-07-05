@@ -3,6 +3,22 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - Video Editor Asset Binding Phase 43
+
+- connected selected `剪辑工程` video clips and audio tracks to the v2 asset library:
+  - selected image/video clips now load same-kind asset candidates from `listAssets`.
+  - selected audio tracks now load audio asset candidates from `listAssets`.
+  - candidate binding updates only `videoEditor.timeline.clips[].assetId` or `videoEditor.timeline.audio[].assetId`.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - the picker requests candidates with `includePreviewUrls: false`.
+  - no signed URL, preview URL, `blob:`, `data:`, base64, generated media, browser-local export, direct asset write, billing mutation, API route, database migration, worker behavior, or provider-secret exposure was added.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "binds a selected"` first failed because the video editor did not call `listAssets`.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "binds a selected"` passed on 2026-07-06: 2 selected tests.
+  - `npm test -- src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx -t "asset binding"` passed on 2026-07-06: 2 selected tests.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-06: 2 files, 54 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-06 - Video Editor Clip Audio Controls Phase 42
 
 - exposed video-clip source audio controls in the `剪辑工程` studio:

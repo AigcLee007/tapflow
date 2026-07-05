@@ -6,6 +6,12 @@ import { AiFlowCanvas } from './AiFlowCanvas';
 import { useFlowCanvasStore } from '../store/flowCanvasStore';
 import { OPEN_PRODUCTION_STUDIO_EVENT } from '../studios/productionStudioEvents';
 
+const assetApiMocks = vi.hoisted(() => ({
+  getAsset: vi.fn(),
+  getAssetVariantUrl: vi.fn(),
+  listAssets: vi.fn(),
+}));
+
 vi.mock('@xyflow/react', async () => {
   const React = await import('react');
   return {
@@ -92,9 +98,9 @@ vi.mock('../agent/CanvasAgentPanel', () => ({
 }));
 
 vi.mock('../../assets/assetApi', () => ({
-  getAsset: vi.fn(),
-  getAssetVariantUrl: vi.fn(),
-  listAssets: vi.fn(async () => ({ items: [], total: 0 })),
+  getAsset: (...args: unknown[]) => assetApiMocks.getAsset(...args),
+  getAssetVariantUrl: (...args: unknown[]) => assetApiMocks.getAssetVariantUrl(...args),
+  listAssets: (...args: unknown[]) => assetApiMocks.listAssets(...args),
 }));
 
 vi.mock('../../services/v2FlowTemplatesApi', () => ({
@@ -263,6 +269,10 @@ const directorNodeWithThreeShots = {
 
 describe('AiFlowCanvas production studios', () => {
   beforeEach(() => {
+    assetApiMocks.getAsset.mockReset();
+    assetApiMocks.getAssetVariantUrl.mockReset();
+    assetApiMocks.listAssets.mockReset();
+    assetApiMocks.listAssets.mockImplementation(() => new Promise(() => undefined));
     useFlowCanvasStore.getState().loadProject({
       id: 'project-1',
       title: '项目',
@@ -853,6 +863,48 @@ describe('AiFlowCanvas production studios', () => {
     expect(JSON.stringify(node?.data.videoEditor)).not.toMatch(/blob:|data:/);
   });
 
+  it('persists selected video clip asset binding through the canvas store', async () => {
+    assetApiMocks.listAssets.mockResolvedValueOnce({
+      items: [{ id: 'asset-video-2', kind: 'video', title: '替换视频' }],
+      page: 1,
+      pageSize: 6,
+      total: 1,
+    });
+    useFlowCanvasStore.getState().loadProject({
+      id: 'project-1',
+      title: '项目',
+      nodes: [videoNodeWithClip as any],
+      edges: [],
+      viewport: { x: 0, y: 0, zoom: 1 },
+      version: 1,
+      updatedAt: 1,
+    });
+
+    render(<AiFlowCanvas cullingEnabled={false} />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(OPEN_PRODUCTION_STUDIO_EVENT, {
+          detail: { nodeId: 'video-node', studio: 'video_editor' },
+        }),
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '选择片段 clip-1' }));
+    fireEvent.click(await screen.findByRole('button', { name: '绑定素材 asset-video-2' }));
+
+    const node = useFlowCanvasStore.getState().nodes.find((item) => item.id === 'video-node');
+    expect(node?.data.videoEditor?.timeline.clips[0]).toMatchObject({
+      id: 'clip-1',
+      assetId: 'asset-video-2',
+    });
+    expect(assetApiMocks.listAssets).toHaveBeenCalledWith(expect.objectContaining({
+      includePreviewUrls: false,
+      kind: 'video',
+    }));
+    expect(JSON.stringify(node?.data.videoEditor)).not.toMatch(/blob:|data:|https?:\/\//);
+  });
+
   it('persists selected video clip deletion through the canvas store', () => {
     useFlowCanvasStore.getState().loadProject({
       id: 'project-1',
@@ -966,6 +1018,48 @@ describe('AiFlowCanvas production studios', () => {
       volume: 0.4,
     });
     expect(JSON.stringify(node?.data.videoEditor)).not.toMatch(/blob:|data:/);
+  });
+
+  it('persists selected audio asset binding through the canvas store', async () => {
+    assetApiMocks.listAssets.mockResolvedValueOnce({
+      items: [{ id: 'asset-audio-2', kind: 'audio', title: '替换配乐' }],
+      page: 1,
+      pageSize: 6,
+      total: 1,
+    });
+    useFlowCanvasStore.getState().loadProject({
+      id: 'project-1',
+      title: '项目',
+      nodes: [videoNodeWithAudio as any],
+      edges: [],
+      viewport: { x: 0, y: 0, zoom: 1 },
+      version: 1,
+      updatedAt: 1,
+    });
+
+    render(<AiFlowCanvas cullingEnabled={false} />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(OPEN_PRODUCTION_STUDIO_EVENT, {
+          detail: { nodeId: 'video-node', studio: 'video_editor' },
+        }),
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '选择音频 audio-1' }));
+    fireEvent.click(await screen.findByRole('button', { name: '绑定素材 asset-audio-2' }));
+
+    const node = useFlowCanvasStore.getState().nodes.find((item) => item.id === 'video-node');
+    expect(node?.data.videoEditor?.timeline.audio[0]).toMatchObject({
+      id: 'audio-1',
+      assetId: 'asset-audio-2',
+    });
+    expect(assetApiMocks.listAssets).toHaveBeenCalledWith(expect.objectContaining({
+      includePreviewUrls: false,
+      kind: 'audio',
+    }));
+    expect(JSON.stringify(node?.data.videoEditor)).not.toMatch(/blob:|data:|https?:\/\//);
   });
 
   it('creates a runnable video node from the video editor export request', () => {

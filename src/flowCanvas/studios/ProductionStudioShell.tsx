@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { ArrowLeft, ArrowRight, Box, Camera, Film, Grid3X3, ImagePlus, Layers3, Play, Plus, Trash2, X } from 'lucide-react';
 import type { Node } from '@xyflow/react';
 
+import { listAssets, type AssetItem } from '../../assets/assetApi';
 import type { FlowDirector3dData, FlowNodeData, FlowVideoEditorData } from '../types';
 import { normalizeStoryboardData, patchStoryboardCell } from '../utils/storyboardNodeData';
 import { DirectorDeskThreeViewport } from './DirectorDeskThreeViewport';
@@ -965,6 +966,44 @@ function VideoEditorContent({
   const selectedSubtitle = selectedSubtitleId
     ? subtitles.find((subtitle) => subtitle.id === selectedSubtitleId) ?? null
     : null;
+  const selectedAssetKind = selectedAudio ? 'audio' : selectedClip?.kind ?? null;
+  const [assetCandidates, setAssetCandidates] = useState<AssetItem[]>([]);
+  const [assetCandidatesError, setAssetCandidatesError] = useState<string | null>(null);
+  const [assetCandidatesLoading, setAssetCandidatesLoading] = useState(false);
+  useEffect(() => {
+    if (!selectedAssetKind) {
+      setAssetCandidates([]);
+      setAssetCandidatesError(null);
+      setAssetCandidatesLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setAssetCandidatesLoading(true);
+    setAssetCandidatesError(null);
+    listAssets({
+      includePreviewUrls: false,
+      kind: selectedAssetKind,
+      page: 1,
+      pageSize: 6,
+    })
+      .then((response) => {
+        if (cancelled) return;
+        setAssetCandidates((response.items || []).filter((asset) => asset.kind === selectedAssetKind));
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setAssetCandidates([]);
+        setAssetCandidatesError('素材加载失败');
+      })
+      .finally(() => {
+        if (!cancelled) setAssetCandidatesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedAssetKind]);
   const updateVideoEditor = (nextVideoEditor: FlowVideoEditorData) => {
     onUpdateNodeData?.(nodeId, { videoEditor: nextVideoEditor });
   };
@@ -1079,6 +1118,10 @@ function VideoEditorContent({
     const volume = Math.max(0, Math.min(2, Number(value) || 0));
     patchClip(selectedClip.id, (clip) => ({ ...clip, volume }));
   };
+  const bindSelectedClipAsset = (assetId: string) => {
+    if (!selectedClip) return;
+    patchClip(selectedClip.id, (clip) => ({ ...clip, assetId }));
+  };
   const deleteSelectedClip = () => {
     if (!selectedClip) return;
     const nextTimeline = {
@@ -1102,6 +1145,10 @@ function VideoEditorContent({
     if (!selectedAudio) return;
     const volume = Math.max(0, Math.min(2, Number(value) || 0));
     patchAudio(selectedAudio.id, (item) => ({ ...item, volume }));
+  };
+  const bindSelectedAudioAsset = (assetId: string) => {
+    if (!selectedAudio) return;
+    patchAudio(selectedAudio.id, (item) => ({ ...item, assetId }));
   };
   const deleteSelectedAudio = () => {
     if (!selectedAudio) return;
@@ -1207,6 +1254,13 @@ function VideoEditorContent({
           <>
             <MetricRow label="当前音频" value={selectedAudio.id} />
             <MetricRow label="素材" value={selectedAudio.assetId} />
+            <AssetCandidateList
+              candidates={assetCandidates}
+              error={assetCandidatesError}
+              loading={assetCandidatesLoading}
+              onBind={bindSelectedAudioAsset}
+              selectedAssetId={selectedAudio.assetId}
+            />
             <label style={fieldLabelStyle}>
               <span>音频开始（秒）</span>
               <input
@@ -1252,6 +1306,13 @@ function VideoEditorContent({
           <>
             <MetricRow label="当前片段" value={selectedClip.id} />
             <MetricRow label="素材" value={selectedClip.assetId} />
+            <AssetCandidateList
+              candidates={assetCandidates}
+              error={assetCandidatesError}
+              loading={assetCandidatesLoading}
+              onBind={bindSelectedClipAsset}
+              selectedAssetId={selectedClip.assetId}
+            />
             <label style={fieldLabelStyle}>
               <span>片段开始（秒）</span>
               <input
@@ -1456,6 +1517,49 @@ function VideoEditorContent({
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+function AssetCandidateList({
+  candidates,
+  error,
+  loading,
+  onBind,
+  selectedAssetId,
+}: {
+  candidates: AssetItem[];
+  error: string | null;
+  loading: boolean;
+  onBind: (assetId: string) => void;
+  selectedAssetId: string;
+}) {
+  return (
+    <div style={assetCandidateWrapStyle}>
+      <span>素材库候选</span>
+      {loading ? <EmptyLine label="正在读取素材库" /> : null}
+      {error ? <EmptyLine label={error} /> : null}
+      {!loading && !error && candidates.length === 0 ? <EmptyLine label="暂无同类型素材" /> : null}
+      {candidates.length ? (
+        <div style={assetCandidateListStyle}>
+          {candidates.map((asset) => {
+            const selected = asset.id === selectedAssetId;
+            return (
+              <button
+                key={asset.id}
+                aria-label={`绑定素材 ${asset.id}`}
+                disabled={selected}
+                onClick={() => onBind(asset.id)}
+                style={assetCandidateButtonStyle(selected)}
+                type="button"
+              >
+                <strong>{asset.title || asset.originalFilename || asset.id}</strong>
+                <small>{selected ? '已绑定' : asset.id}</small>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1899,6 +2003,34 @@ const metricRowStyle: React.CSSProperties = {
   fontSize: 12,
   color: '#cbd5e1',
 };
+
+const assetCandidateWrapStyle: React.CSSProperties = {
+  display: 'grid',
+  gap: 7,
+  marginTop: 10,
+  color: '#cbd5e1',
+  fontSize: 12,
+  fontWeight: 800,
+};
+
+const assetCandidateListStyle: React.CSSProperties = {
+  display: 'grid',
+  gap: 6,
+};
+
+const assetCandidateButtonStyle = (selected: boolean): React.CSSProperties => ({
+  minHeight: 38,
+  width: '100%',
+  display: 'grid',
+  gap: 3,
+  border: selected ? '1px solid rgba(45,212,191,0.7)' : '1px solid rgba(255,255,255,0.1)',
+  borderRadius: 8,
+  background: selected ? 'rgba(20,184,166,0.16)' : '#0f172a',
+  color: '#f8fafc',
+  cursor: selected ? 'default' : 'pointer',
+  padding: '6px 8px',
+  textAlign: 'left',
+});
 
 const emptyLineStyle: React.CSSProperties = {
   color: '#94a3b8',

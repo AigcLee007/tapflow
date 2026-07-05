@@ -1,7 +1,13 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ProductionStudioShell } from './ProductionStudioShell';
+
+const listAssetsMock = vi.hoisted(() => vi.fn());
+
+vi.mock('../../assets/assetApi', () => ({
+  listAssets: (...args: unknown[]) => listAssetsMock(...args),
+}));
 
 const directorNode = {
   id: 'director-node',
@@ -70,6 +76,11 @@ const videoNode = {
 };
 
 describe('ProductionStudioShell', () => {
+  beforeEach(() => {
+    listAssetsMock.mockReset();
+    listAssetsMock.mockImplementation(() => new Promise(() => undefined));
+  });
+
   it('renders the 3D director desk shell with scene panels', () => {
     const onClose = vi.fn();
     render(<ProductionStudioShell studio="director3d" node={directorNode as any} onClose={onClose} />);
@@ -1038,6 +1049,45 @@ describe('ProductionStudioShell', () => {
     expect(JSON.stringify(onUpdateNodeData.mock.calls)).not.toMatch(/blob:|data:/);
   });
 
+  it('binds a selected video clip to a library asset id', async () => {
+    listAssetsMock.mockResolvedValueOnce({
+      items: [{ id: 'asset-video-2', kind: 'video', title: '替换视频' }],
+      page: 1,
+      pageSize: 6,
+      total: 1,
+    });
+    const onUpdateNodeData = vi.fn();
+    render(
+      <ProductionStudioShell
+        studio="video_editor"
+        node={videoNode as any}
+        onClose={vi.fn()}
+        onUpdateNodeData={onUpdateNodeData}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '选择片段 clip-1' }));
+
+    await waitFor(() => {
+      expect(listAssetsMock).toHaveBeenCalledWith(expect.objectContaining({
+        includePreviewUrls: false,
+        kind: 'video',
+        page: 1,
+        pageSize: 6,
+      }));
+    });
+    fireEvent.click(await screen.findByRole('button', { name: '绑定素材 asset-video-2' }));
+
+    expect(onUpdateNodeData).toHaveBeenLastCalledWith('video-node', {
+      videoEditor: expect.objectContaining({
+        timeline: expect.objectContaining({
+          clips: expect.arrayContaining([expect.objectContaining({ id: 'clip-1', assetId: 'asset-video-2' })]),
+        }),
+      }),
+    });
+    expect(JSON.stringify(onUpdateNodeData.mock.calls)).not.toMatch(/blob:|data:|https?:\/\//);
+  });
+
   it('emits safe video editor patches for selected subtitle editing and deletion', () => {
     const onUpdateNodeData = vi.fn();
     render(
@@ -1177,6 +1227,59 @@ describe('ProductionStudioShell', () => {
     });
 
     expect(JSON.stringify(onUpdateNodeData.mock.calls)).not.toMatch(/blob:|data:/);
+  });
+
+  it('binds a selected audio track to a library asset id', async () => {
+    listAssetsMock.mockResolvedValueOnce({
+      items: [{ id: 'asset-audio-2', kind: 'audio', title: '替换配乐' }],
+      page: 1,
+      pageSize: 6,
+      total: 1,
+    });
+    const onUpdateNodeData = vi.fn();
+    const videoNodeWithAudio = {
+      ...videoNode,
+      data: {
+        ...videoNode.data,
+        videoEditor: {
+          ...videoNode.data.videoEditor,
+          timeline: {
+            ...videoNode.data.videoEditor.timeline,
+            audio: [{ id: 'audio-1', assetId: 'placeholder-audio-1', track: 1, startMs: 0, inMs: 0, outMs: 3000, volume: 1 }],
+          },
+        },
+      },
+    };
+
+    render(
+      <ProductionStudioShell
+        studio="video_editor"
+        node={videoNodeWithAudio as any}
+        onClose={vi.fn()}
+        onUpdateNodeData={onUpdateNodeData}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '选择音频 audio-1' }));
+
+    await waitFor(() => {
+      expect(listAssetsMock).toHaveBeenCalledWith(expect.objectContaining({
+        includePreviewUrls: false,
+        kind: 'audio',
+        page: 1,
+        pageSize: 6,
+      }));
+    });
+    fireEvent.click(await screen.findByRole('button', { name: '绑定素材 asset-audio-2' }));
+
+    expect(onUpdateNodeData).toHaveBeenLastCalledWith('video-node', {
+      videoEditor: expect.objectContaining({
+        timeline: expect.objectContaining({
+          audio: expect.arrayContaining([expect.objectContaining({ id: 'audio-1', assetId: 'asset-audio-2' })]),
+        }),
+      }),
+    });
+    expect(JSON.stringify(onUpdateNodeData.mock.calls)).not.toMatch(/blob:|data:|https?:\/\//);
   });
 
   it('emits safe video editor patches for selected clip transition settings', () => {
