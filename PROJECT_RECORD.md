@@ -3,6 +3,22 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - Video Editor Audio Track Editing Phase 40
+
+- added selected-audio editing to the `剪辑工程` studio:
+  - users can add an audio track from the studio toolbar.
+  - audio timeline rows are selectable and expose start time, duration, and volume controls in the inspector.
+  - selected audio can be deleted while timeline duration is recalculated across clips, audio, and subtitles.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - edits persist only as structured `videoEditor.timeline.audio[]` draft data.
+  - no generated media, `blob:`, `data:`, base64, browser-local export, direct asset write, billing mutation, API route, database migration, worker behavior, or provider-secret exposure was added.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "audio track"` first failed because there was no accessible `添加音频` action.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "audio track"` passed on 2026-07-06: 1 selected test.
+  - `npm test -- src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx -t "audio track"` passed on 2026-07-06: 1 selected test.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-06: 2 files, 48 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-06 - Video Editor Subtitle Store Coverage Phase 39
 
 - added canvas-store regression coverage for selected subtitle editing in `剪辑工程`:

@@ -1060,6 +1060,92 @@ describe('ProductionStudioShell', () => {
     expect(JSON.stringify(onUpdateNodeData.mock.calls)).not.toMatch(/blob:|data:/);
   });
 
+  it('emits safe video editor patches for audio track adding and selected audio edits', () => {
+    const onUpdateNodeData = vi.fn();
+    const { rerender } = render(
+      <ProductionStudioShell
+        studio="video_editor"
+        node={videoNode as any}
+        onClose={vi.fn()}
+        onUpdateNodeData={onUpdateNodeData}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '添加音频' }));
+    expect(onUpdateNodeData).toHaveBeenCalledWith('video-node', {
+      videoEditor: expect.objectContaining({
+        timeline: expect.objectContaining({
+          audio: expect.arrayContaining([
+            expect.objectContaining({
+              assetId: 'placeholder-audio-1',
+              id: 'audio-1',
+              inMs: 0,
+              outMs: 3000,
+              startMs: 0,
+              track: 1,
+              volume: 1,
+            }),
+          ]),
+          durationMs: 3000,
+        }),
+      }),
+    });
+
+    const videoNodeWithAudio = {
+      ...videoNode,
+      data: {
+        ...videoNode.data,
+        videoEditor: {
+          ...videoNode.data.videoEditor,
+          timeline: {
+            ...videoNode.data.videoEditor.timeline,
+            audio: [{ id: 'audio-1', assetId: 'placeholder-audio-1', track: 1, startMs: 0, inMs: 0, outMs: 3000, volume: 1 }],
+          },
+        },
+      },
+    };
+    rerender(
+      <ProductionStudioShell
+        studio="video_editor"
+        node={videoNodeWithAudio as any}
+        onClose={vi.fn()}
+        onUpdateNodeData={onUpdateNodeData}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '选择音频 audio-1' }));
+    fireEvent.change(screen.getByLabelText('音频开始（秒）'), { target: { value: '1.2' } });
+    expect(onUpdateNodeData).toHaveBeenLastCalledWith('video-node', {
+      videoEditor: expect.objectContaining({
+        timeline: expect.objectContaining({
+          audio: expect.arrayContaining([expect.objectContaining({ id: 'audio-1', startMs: 1200 })]),
+          durationMs: 4200,
+        }),
+      }),
+    });
+
+    fireEvent.change(screen.getByLabelText('音频时长（秒）'), { target: { value: '2.4' } });
+    expect(onUpdateNodeData).toHaveBeenLastCalledWith('video-node', {
+      videoEditor: expect.objectContaining({
+        timeline: expect.objectContaining({
+          audio: expect.arrayContaining([expect.objectContaining({ id: 'audio-1', outMs: 2400 })]),
+          durationMs: 3000,
+        }),
+      }),
+    });
+
+    fireEvent.change(screen.getByLabelText('音量'), { target: { value: '0.35' } });
+    expect(onUpdateNodeData).toHaveBeenLastCalledWith('video-node', {
+      videoEditor: expect.objectContaining({
+        timeline: expect.objectContaining({
+          audio: expect.arrayContaining([expect.objectContaining({ id: 'audio-1', volume: 0.35 })]),
+        }),
+      }),
+    });
+
+    expect(JSON.stringify(onUpdateNodeData.mock.calls)).not.toMatch(/blob:|data:/);
+  });
+
   it('emits safe video editor patches for selected clip transition settings', () => {
     const onUpdateNodeData = vi.fn();
     const { rerender } = render(

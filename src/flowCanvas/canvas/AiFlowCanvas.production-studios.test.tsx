@@ -232,6 +232,20 @@ const videoNodeWithSubtitle = {
   },
 };
 
+const videoNodeWithAudio = {
+  ...videoNodeWithClip,
+  data: {
+    ...videoNodeWithClip.data,
+    videoEditor: {
+      ...videoNodeWithClip.data.videoEditor,
+      timeline: {
+        ...videoNodeWithClip.data.videoEditor.timeline,
+        audio: [{ id: 'audio-1', assetId: 'asset-audio-1', track: 1, startMs: 0, inMs: 0, outMs: 3000, volume: 1 }],
+      },
+    },
+  },
+};
+
 const directorNodeWithThreeShots = {
   ...directorNode,
   data: {
@@ -877,6 +891,46 @@ describe('AiFlowCanvas production studios', () => {
     node = useFlowCanvasStore.getState().nodes.find((item) => item.id === 'video-node');
     expect(node?.data.videoEditor?.timeline.subtitles).toEqual([]);
     expect(node?.data.videoEditor?.timeline.durationMs).toBe(3000);
+    expect(JSON.stringify(node?.data.videoEditor)).not.toMatch(/blob:|data:/);
+  });
+
+  it('persists video audio track edits through the canvas store', () => {
+    useFlowCanvasStore.getState().loadProject({
+      id: 'project-1',
+      title: '项目',
+      nodes: [videoNodeWithAudio as any],
+      edges: [],
+      viewport: { x: 0, y: 0, zoom: 1 },
+      version: 1,
+      updatedAt: 1,
+    });
+
+    render(<AiFlowCanvas cullingEnabled={false} />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(OPEN_PRODUCTION_STUDIO_EVENT, {
+          detail: { nodeId: 'video-node', studio: 'video_editor' },
+        }),
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '选择音频 audio-1' }));
+    fireEvent.change(screen.getByLabelText('音频开始（秒）'), { target: { value: '1.5' } });
+
+    let node = useFlowCanvasStore.getState().nodes.find((item) => item.id === 'video-node');
+    expect(node?.data.videoEditor?.timeline.audio[0]).toMatchObject({
+      id: 'audio-1',
+      startMs: 1500,
+    });
+    expect(node?.data.videoEditor?.timeline.durationMs).toBe(4500);
+
+    fireEvent.change(screen.getByLabelText('音量'), { target: { value: '0.4' } });
+    node = useFlowCanvasStore.getState().nodes.find((item) => item.id === 'video-node');
+    expect(node?.data.videoEditor?.timeline.audio[0]).toMatchObject({
+      id: 'audio-1',
+      volume: 0.4,
+    });
     expect(JSON.stringify(node?.data.videoEditor)).not.toMatch(/blob:|data:/);
   });
 
