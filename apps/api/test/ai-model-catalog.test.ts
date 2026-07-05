@@ -102,6 +102,101 @@ async function registerOwner(
 }
 
 describeWithDatabase("ai model catalog API", () => {
+  test("publishes the internal video editor FFmpeg route into the safe runtime catalog", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({
+          connectionString: await createAppDatabaseUrl(),
+        });
+        const api = buildTestApp(appPool);
+        const owner = await registerOwner(api, "video-catalog-owner@example.com", "Video Catalog Owner");
+
+        const pluginList = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "GET",
+          url: "/api/v2/admin/ai/plugins?modality=video",
+        });
+        expect(pluginList.statusCode).toBe(200);
+        expect(pluginList.json()).toEqual([
+          expect.objectContaining({
+            credentials: expect.objectContaining({
+              fields: [],
+              required: false,
+              type: "bearer",
+            }),
+            packageKey: "tapflow.video-editor-ffmpeg",
+          }),
+        ]);
+
+        const install = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "POST",
+          payload: {
+            publishImmediately: true,
+          },
+          url: "/api/v2/admin/ai/plugins/tapflow.video-editor-ffmpeg/install",
+        });
+        expect(install.statusCode).toBe(201);
+
+        const catalog = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "GET",
+          url: "/api/v2/ai/model-catalog?modality=video",
+        });
+        expect(catalog.statusCode).toBe(200);
+        expect(catalog.json()).toEqual([
+          expect.objectContaining({
+            defaultRouteKey: "video.editor.ffmpeg",
+            modality: "video",
+            modelFamily: "tapflow.video-editor",
+            modelKey: "video-editor-ffmpeg",
+          }),
+        ]);
+
+        const routes = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "GET",
+          url: "/api/v2/ai/model-catalog/video-editor-ffmpeg/routes",
+        });
+        expect(routes.statusCode).toBe(200);
+        expect(routes.json()).toEqual([
+          expect.objectContaining({
+            capabilities: {
+              supportedGenerationModes: ["standard"],
+              supportedVideoWorkflows: ["video_editor_export"],
+            },
+            estimatedCredits: 50,
+            minChargeCredits: 50,
+            pricingUnit: "video_generation",
+            providerKey: "tapflow-local-render",
+            routeKey: "video.editor.ffmpeg",
+          }),
+        ]);
+        expect(JSON.stringify(routes.json())).not.toContain("videoEditorRenderEngine");
+        expect(JSON.stringify(routes.json())).not.toContain("internalRender");
+        expect(JSON.stringify(routes.json())).not.toContain("requestConfig");
+
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
   test("returns published models and only the selected model routes", async () => {
     await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
       process.env.DATABASE_URL = databaseUrl;

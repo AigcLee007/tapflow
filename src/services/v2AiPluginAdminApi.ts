@@ -16,6 +16,17 @@ export type AiPluginInstall = {
 };
 
 export type AiPluginSummary = {
+  credentials: {
+    fields: Array<{
+      key: string;
+      label: string;
+      placeholder?: string;
+      required: boolean;
+      secret: boolean;
+    }>;
+    required: boolean;
+    type: "bearer";
+  };
   description: string;
   displayName: string;
   install: AiPluginInstall | null;

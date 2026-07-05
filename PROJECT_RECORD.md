@@ -3,6 +3,21 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - Video Editor FFmpeg Discoverability Phase 26
+
+- made the internal `tapflow.video-editor-ffmpeg` template easier to publish and use from admin/runtime surfaces:
+  - AI plugin admin summaries now expose safe credential metadata (`credentials.required`, field descriptors, and type) without leaking secrets.
+  - Template Library hides credential-name/API-key inputs for credential-free templates and installs `tapflow.video-editor-ffmpeg` without sending an empty `credential` payload.
+  - runtime video model catalog coverage now proves a published `video.editor.ffmpeg` route appears with `supportedVideoWorkflows: ["video_editor_export"]`, `video_generation` pricing, and no internal render-engine fields in the normal frontend response.
+- kept v2 boundaries unchanged:
+  - no database migration, pricing unit, provider secret exposure, browser-local export path, or canvas draft storage change was added.
+  - internal `videoEditorRenderEngine` remains stored server-side in route `request_config` and is not exposed by `/api/v2/ai/model-catalog/:modelKey/routes`.
+- validation:
+  - `npm test -- src/services/v2AiPluginAdminApi.test.ts src/account/TemplateLibraryPage.test.tsx` passed on 2026-07-06: 2 files, 3 tests.
+  - `npm run test --workspace @aigc-flow/api -- test/ai-plugins.service.test.ts test/ai-model-catalog.test.ts test/ai-plugins.test.ts` passed on 2026-07-06: 7 non-DB service tests passed; 4 DB-backed API tests skipped by the existing local DB guard.
+  - `npm run build --workspace @aigc-flow/api` passed on 2026-07-06.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-06 - Video Editor Export Default Route Phase 25
 
 - connected the canvas-native `剪辑工程` export action to the Phase 24 FFmpeg route template:

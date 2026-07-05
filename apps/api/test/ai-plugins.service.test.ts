@@ -4,9 +4,42 @@ import { mouxiHubGptImage2Line3Manifest } from "../../../packages/ai-gateway-cor
 import { mouxiHubGptImage2Line4Manifest } from "../../../packages/ai-gateway-core/src/plugins/manifests/mouxihub-gpt-image-2-line4.js";
 import { mouxiHubNanoBananaProT3Manifest } from "../../../packages/ai-gateway-core/src/plugins/manifests/mouxihub-nano-banana-pro-t3.js";
 import { siphonLabGpt55TextManifest } from "../../../packages/ai-gateway-core/src/plugins/manifests/siphonlab-gpt-5-5-text.js";
+import { tapflowVideoEditorFfmpegManifest } from "../../../packages/ai-gateway-core/src/plugins/manifests/tapflow-video-editor-ffmpeg.js";
 import { AiPluginService } from "../src/modules/ai-plugins/ai-plugins.service.js";
 
 describe("AiPluginService route install statements", () => {
+  test("marks credential-free video editor FFmpeg plugin summaries as not requiring credentials", () => {
+    const service = new AiPluginService({
+      credentialVault: {} as never,
+      pool: {} as never,
+    });
+
+    const summary = (
+      service as unknown as {
+        mapManifestSummary: (
+          manifest: typeof tapflowVideoEditorFfmpegManifest,
+          install: null,
+        ) => {
+          credentials: {
+            fields: unknown[];
+            required: boolean;
+            type: string;
+          };
+          packageKey: string;
+        };
+      }
+    ).mapManifestSummary(tapflowVideoEditorFfmpegManifest, null);
+
+    expect(summary).toMatchObject({
+      credentials: {
+        fields: [],
+        required: false,
+        type: "bearer",
+      },
+      packageKey: "tapflow.video-editor-ffmpeg",
+    });
+  });
+
   test("uses provider adapter kind for MouxiHub T3 connection instead of async route mode", async () => {
     const service = new AiPluginService({
       credentialVault: {} as never,

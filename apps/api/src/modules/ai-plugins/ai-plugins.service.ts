@@ -47,6 +47,17 @@ type AiRouteInsertStatement = {
 };
 
 export type AiPluginSummaryView = {
+  credentials: {
+    fields: Array<{
+      key: string;
+      label: string;
+      placeholder?: string;
+      required: boolean;
+      secret: boolean;
+    }>;
+    required: boolean;
+    type: AiPluginManifest["credentials"]["type"];
+  };
   description: string;
   displayName: string;
   install: PluginInstallView | null;
@@ -330,6 +341,17 @@ export class AiPluginService {
     install: PluginInstallView | null,
   ): AiPluginSummaryView {
     return {
+      credentials: {
+        fields: manifest.credentials.fields.map((field) => ({
+          key: field.key,
+          label: field.label,
+          ...(field.placeholder ? { placeholder: field.placeholder } : {}),
+          required: field.required,
+          secret: field.secret,
+        })),
+        required: manifest.credentials.fields.some((field) => field.required),
+        type: manifest.credentials.type,
+      },
       description: manifest.description,
       displayName: manifest.displayName,
       install,
