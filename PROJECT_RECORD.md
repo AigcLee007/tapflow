@@ -3,6 +3,23 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - 3D Director Desk Shot Viewport Phase 37
+
+- connected the `3D导演台` Three.js viewport to the existing shot timeline data:
+  - `DirectorDeskThreeViewport` now receives `director3d.shots` alongside actors and cameras.
+  - captured `cameraSnapshot` poses are visualized as shot markers and target lines, with selected shots highlighted separately from static camera markers.
+  - the viewport exposes selected-shot metadata for regression coverage and shows the captured snapshot/camera label in the viewport overlay.
+- kept v2 storage, billing, and asset boundaries unchanged:
+  - this is a read-only studio visualization of already persisted structured `director3d` draft data.
+  - no generated media, `blob:`, `data:`, base64, browser-local export, direct asset write, billing mutation, API route, database migration, worker behavior, or provider-secret exposure was added.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/DirectorDeskThreeViewport.test.tsx src/flowCanvas/studios/ProductionStudioShell.test.tsx` failed because the viewport exposed no `data-shot-count` or selected-shot metadata.
+  - `npm test -- src/flowCanvas/studios/DirectorDeskThreeViewport.test.tsx src/flowCanvas/studios/ProductionStudioShell.test.tsx` passed on 2026-07-06: 2 files, 28 tests.
+  - browser smoke against a temporary shot-aware director viewport page passed on 2026-07-06: renderer `three`, shot count `2`, selected shot `shot-2`, selected snapshot position `1.5,2.25,4.75`, screenshot pixel sampling nonblank at `1580x889`.
+  - `npm run build --workspace @aigc-flow/worker` passed on 2026-07-06.
+  - `npm test -- src/flowCanvas/studios/DirectorDeskThreeViewport.test.tsx src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx src/flowCanvas/utils/storyboardDirectorSync.test.ts` passed on 2026-07-06: 4 files, 49 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-06 - Video Editor FFmpeg Transition Filters Phase 36
 
 - moved `剪辑工程` transition support from metadata into local FFmpeg render arguments:

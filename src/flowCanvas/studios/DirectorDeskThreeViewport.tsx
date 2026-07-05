@@ -8,11 +8,20 @@ type DirectorViewportSelectionType = 'actor' | 'camera' | 'shot';
 interface DirectorDeskThreeViewportProps {
   actors: FlowDirector3dData['actors'];
   cameras: FlowDirector3dData['cameras'];
+  shots: FlowDirector3dData['shots'];
   selectedId: string | null;
   selectedType: DirectorViewportSelectionType | null;
 }
 
 type ViewportSize = { width: number; height: number };
+type DirectorVector = [number, number, number];
+type DirectorShotPose = {
+  id: string;
+  label: string;
+  position: DirectorVector;
+  target: DirectorVector;
+  selected: boolean;
+};
 
 const getViewportSize = (container: HTMLDivElement): ViewportSize => {
   const rect = container.getBoundingClientRect();
@@ -25,11 +34,17 @@ const getViewportSize = (container: HTMLDivElement): ViewportSize => {
 export const DirectorDeskThreeViewport: React.FC<DirectorDeskThreeViewportProps> = ({
   actors,
   cameras,
+  shots,
   selectedId,
   selectedType,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [rendererMode, setRendererMode] = useState<'pending' | 'three' | 'fallback'>('pending');
+  const shotPoses = React.useMemo(
+    () => buildShotPoses(shots, cameras, selectedId, selectedType),
+    [cameras, selectedId, selectedType, shots],
+  );
+  const selectedShotPose = shotPoses.find((shot) => shot.selected) ?? null;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -100,6 +115,15 @@ export const DirectorDeskThreeViewport: React.FC<DirectorDeskThreeViewportProps>
         root.add(cameraGroup);
       });
 
+      shotPoses.forEach((shotPose, index) => {
+        const shotGroup = createShotGroup(shotPose.selected, index);
+        const [x, y, z] = shotPose.position;
+        shotGroup.position.set(x, y, z);
+        shotGroup.lookAt(shotPose.target[0], shotPose.target[1], shotPose.target[2]);
+        root.add(shotGroup);
+        root.add(createShotTargetLine(shotPose));
+      });
+
       const resize = () => {
         if (!renderer) return;
         const nextSize = getViewportSize(container);
@@ -148,7 +172,7 @@ export const DirectorDeskThreeViewport: React.FC<DirectorDeskThreeViewportProps>
         if (canvas.parentElement === container) container.removeChild(canvas);
       }
     };
-  }, [actors, cameras, selectedId, selectedType]);
+  }, [actors, cameras, selectedId, selectedType, shotPoses]);
 
   return (
     <div
@@ -158,13 +182,47 @@ export const DirectorDeskThreeViewport: React.FC<DirectorDeskThreeViewportProps>
       data-camera-count={cameras.length}
       data-renderer={rendererMode}
       data-selected-id={selectedId ?? ''}
+      data-selected-shot-camera-position={selectedShotPose ? selectedShotPose.position.join(',') : ''}
+      data-selected-shot-id={selectedShotPose?.id ?? ''}
+      data-shot-count={shots.length}
       data-testid="director-three-viewport"
       style={viewportHostStyle}
     >
       <div style={viewportGlowStyle} />
+      {selectedShotPose ? <div style={selectedShotLabelStyle}>{selectedShotPose.label}</div> : null}
     </div>
   );
 };
+
+function buildShotPoses(
+  shots: FlowDirector3dData['shots'],
+  cameras: FlowDirector3dData['cameras'],
+  selectedId: string | null,
+  selectedType: DirectorViewportSelectionType | null,
+): DirectorShotPose[] {
+  return shots.map((shot, index) => {
+    const camera = cameras.find((candidate) => candidate.id === shot.cameraId) ?? cameras[0] ?? null;
+    const cameraPosition = normalizeVector(camera?.position, [0, 1.8, 5 + index * 0.42]);
+    const cameraTarget = normalizeVector(camera?.target, [0, 1, 0]);
+    const snapshot = shot.cameraSnapshot;
+    const label = snapshot?.name?.trim() || camera?.name?.trim() || `Shot ${index + 1}`;
+    return {
+      id: shot.id,
+      label,
+      position: normalizeVector(snapshot?.position, cameraPosition),
+      selected: selectedType === 'shot' && selectedId === shot.id,
+      target: normalizeVector(snapshot?.target, cameraTarget),
+    };
+  });
+}
+
+function normalizeVector(value: unknown, fallback: DirectorVector): DirectorVector {
+  if (!Array.isArray(value)) return fallback;
+  return [0, 1, 2].map((index) => {
+    const axisValue = Number(value[index]);
+    return Number.isFinite(axisValue) ? axisValue : fallback[index];
+  }) as DirectorVector;
+}
 
 function createActorGroup(selected: boolean) {
   const group = new THREE.Group();
@@ -223,6 +281,52 @@ function createCameraGroup(selected: boolean) {
   return group;
 }
 
+function createShotGroup(selected: boolean, index: number) {
+  const group = new THREE.Group();
+  const baseColor = selected ? 0xfacc15 : 0xfb7185;
+  const marker = new THREE.Mesh(
+    new THREE.SphereGeometry(selected ? 0.12 : 0.09, 20, 14),
+    new THREE.MeshStandardMaterial({
+      color: baseColor,
+      emissive: baseColor,
+      emissiveIntensity: selected ? 0.32 : 0.16,
+      roughness: 0.42,
+      metalness: 0.08,
+    }),
+  );
+  group.add(marker);
+
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(selected ? 0.27 : 0.21, 0.012, 10, 36),
+    new THREE.MeshBasicMaterial({ color: baseColor, transparent: true, opacity: selected ? 0.88 : 0.48 }),
+  );
+  ring.rotation.x = Math.PI / 2;
+  group.add(ring);
+
+  const tick = new THREE.Mesh(
+    new THREE.BoxGeometry(0.045, 0.26 + index * 0.015, 0.045),
+    new THREE.MeshBasicMaterial({ color: baseColor, transparent: true, opacity: selected ? 0.78 : 0.46 }),
+  );
+  tick.position.y = 0.18;
+  group.add(tick);
+  return group;
+}
+
+function createShotTargetLine(shotPose: DirectorShotPose) {
+  const lineGeometry = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(...shotPose.position),
+    new THREE.Vector3(...shotPose.target),
+  ]);
+  return new THREE.Line(
+    lineGeometry,
+    new THREE.LineBasicMaterial({
+      color: shotPose.selected ? 0xfacc15 : 0xfb7185,
+      transparent: true,
+      opacity: shotPose.selected ? 0.7 : 0.32,
+    }),
+  );
+}
+
 const viewportHostStyle: React.CSSProperties = {
   position: 'relative',
   width: '100%',
@@ -236,4 +340,22 @@ const viewportGlowStyle: React.CSSProperties = {
   inset: 0,
   pointerEvents: 'none',
   background: 'radial-gradient(circle at 52% 42%, rgba(56,189,248,0.14), transparent 42%)',
+};
+
+const selectedShotLabelStyle: React.CSSProperties = {
+  position: 'absolute',
+  left: 12,
+  bottom: 12,
+  maxWidth: 'min(260px, calc(100% - 24px))',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+  border: '1px solid rgba(250,204,21,0.34)',
+  borderRadius: 8,
+  background: 'rgba(15,23,42,0.74)',
+  color: '#fde68a',
+  fontSize: 11,
+  fontWeight: 800,
+  padding: '6px 8px',
+  pointerEvents: 'none',
 };

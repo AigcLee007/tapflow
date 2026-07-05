@@ -83,9 +83,20 @@ describe('ProductionStudioShell', () => {
     expect(screen.getByText('主镜头')).toBeTruthy();
     expect(screen.getByTestId('director-three-viewport').getAttribute('data-actor-count')).toBe('1');
     expect(screen.getByTestId('director-three-viewport').getAttribute('data-camera-count')).toBe('1');
+    expect(screen.getByTestId('director-three-viewport').getAttribute('data-shot-count')).toBe('1');
 
     fireEvent.click(screen.getByRole('button', { name: '关闭工作台' }));
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('feeds selected director shots into the 3D viewport', () => {
+    render(<ProductionStudioShell studio="director3d" node={directorNode as any} onClose={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: '选择镜头段 1' }));
+
+    const viewport = screen.getByTestId('director-three-viewport');
+    expect(viewport.getAttribute('data-shot-count')).toBe('1');
+    expect(viewport.getAttribute('data-selected-shot-id')).toBe('shot-1');
   });
 
   it('emits structured director patches for actor, camera, and shot actions', () => {
