@@ -3,6 +3,21 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - GPT-Image Fallback Production Modes Phase 29
+
+- aligned frontend GPT-Image-2 official fallback routes with the backend production-mode capabilities:
+  - `getOfficialFallbackImageRuntimeRoutes("gpt-image-2")` now exposes `standard`, `panorama_360`, `wraparound_270`, and `subject_orbit_270` for both line one and line two.
+  - fallback route tests now protect the line-one / line-two-only behavior while also checking the production-mode capability list.
+  - preflight coverage now proves fallback capability support still requires active route pricing, so production modes do not become free or bypass billing.
+- kept runtime/catalog source-of-truth behavior unchanged:
+  - when API route/catalog data exists, it still drives supported modes and pricing.
+  - no API, worker, database, storage, provider credential, or canvas draft shape change was added.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/utils/runtimeRouteOptions.test.ts src/flowCanvas/utils/imageGenerationModeSupport.test.ts` failed because GPT-Image-2 fallback routes had no `supportedGenerationModes`.
+  - `npm test -- src/flowCanvas/utils/runtimeRouteOptions.test.ts src/flowCanvas/utils/imageGenerationModeSupport.test.ts src/flowCanvas/runtime/v2WorkflowRunner.test.ts` passed on 2026-07-06: 3 files, 35 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+  - `git diff --check` passed on 2026-07-06.
+
 ## 2026-07-06 - Production Image Mode Prompt Augmentation Phase 28
 
 - moved 360/270 image modes one step closer to visible output quality:

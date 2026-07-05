@@ -68,4 +68,18 @@ describe('imageGenerationModeSupport', () => {
       }),
     })).toBeNull();
   });
+
+  test('still requires pricing when a fallback route declares production mode support', () => {
+    expect(resolveImageGenerationModeRunBlocker({
+      mode: 'panorama_360',
+      route: route({
+        estimatedCredits: null,
+        minChargeCredits: null,
+        routeKey: 'image.gpt-image-2',
+        supportedGenerationModes: ['standard', 'panorama_360', 'wraparound_270', 'subject_orbit_270'],
+      }),
+    })).toMatchObject({
+      code: 'PRICING_NOT_FOUND',
+    });
+  });
 });

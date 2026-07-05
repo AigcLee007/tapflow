@@ -73,5 +73,9 @@ describe('mapImageRuntimeRouteOptions', () => {
       'image.gpt-image-2',
       'image.gpt-image-2.line2',
     ]);
+    expect(options.map((item) => item.supportedGenerationModes)).toEqual([
+      ['standard', 'panorama_360', 'wraparound_270', 'subject_orbit_270'],
+      ['standard', 'panorama_360', 'wraparound_270', 'subject_orbit_270'],
+    ]);
   });
 });

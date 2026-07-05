@@ -16,6 +16,13 @@ export type RuntimeRouteOption = {
   userFacingLabel?: string;
 };
 
+const GPT_IMAGE_2_PRODUCTION_MODES: FlowImageGenerationMode[] = [
+  'standard',
+  'panorama_360',
+  'wraparound_270',
+  'subject_orbit_270',
+];
+
 const OFFICIAL_FALLBACK_IMAGE_RUNTIME_ROUTES_BY_MODEL_ID: Record<string, RuntimeRouteOption[]> = {
   'pixellelabs.nano-banana-pro': [
     {
@@ -68,6 +75,7 @@ const OFFICIAL_FALLBACK_IMAGE_RUNTIME_ROUTES_BY_MODEL_ID: Record<string, Runtime
       providerKey: '',
       providerName: '',
       routeKey: 'image.gpt-image-2',
+      supportedGenerationModes: GPT_IMAGE_2_PRODUCTION_MODES,
       userFacingLabel: 'GPT-Image-2 线路一',
     },
     {
@@ -80,6 +88,7 @@ const OFFICIAL_FALLBACK_IMAGE_RUNTIME_ROUTES_BY_MODEL_ID: Record<string, Runtime
       providerKey: '',
       providerName: '',
       routeKey: 'image.gpt-image-2.line2',
+      supportedGenerationModes: GPT_IMAGE_2_PRODUCTION_MODES,
       userFacingLabel: 'GPT-Image-2 线路二',
     },
   ],
