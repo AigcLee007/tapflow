@@ -6,7 +6,9 @@ import {
   Box,
   CheckSquare,
   Copy,
+  Film,
   FolderPlus,
+  Grid3X3,
   Image as ImageIcon,
   List,
   Lock,
@@ -73,7 +75,9 @@ const PANE_ADD_ITEMS: PaneAddItem[] = [
   { kind: 'image', icon: <ImageIcon size={18} strokeWidth={1.75} />, label: '图片' },
   { kind: 'video', icon: <Video size={18} strokeWidth={1.75} />, label: '视频' },
   { kind: 'audio', icon: <Music size={18} strokeWidth={1.75} />, label: '音频' },
-  { icon: <Box size={18} strokeWidth={1.75} />, label: '3D 世界', beta: true, disabled: true },
+  { kind: 'director3d', icon: <Box size={18} strokeWidth={1.75} />, label: '3D导演台', desc: '场景、机位和镜头调度', beta: true },
+  { kind: 'storyboard', icon: <Grid3X3 size={18} strokeWidth={1.75} />, label: '故事板', desc: '分镜、镜头和素材引用', beta: true },
+  { kind: 'video_editor', icon: <Film size={18} strokeWidth={1.75} />, label: '剪辑工程', desc: '时间线、字幕和导出', beta: true },
 ];
 
 const PANE_RESOURCE_ITEMS: PaneAddItem[] = [

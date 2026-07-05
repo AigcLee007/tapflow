@@ -9,6 +9,9 @@ const ALLOWED_NODE_KINDS = new Set<FlowNodeKind>([
   "audio",
   "upload",
   "image_editor",
+  "storyboard",
+  "director3d",
+  "video_editor",
   "group",
 ]);
 

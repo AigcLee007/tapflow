@@ -7,7 +7,9 @@ import {
   Box,
   CircleHelp,
   Clock3,
+  Film,
   Folder,
+  Grid3X3,
   Image as ImageIcon,
   LayoutList,
   List,
@@ -51,7 +53,7 @@ const ADD_NODE_FLYOUT_BOTTOM_LINE_OFFSET = 76;
 const USER_MENU_WIDTH = 224;
 
 type AddEntry = {
-  kind: FlowNodeKind | 'world3d' | 'playlist';
+  kind: FlowNodeKind | 'playlist';
   label: string;
   desc?: string;
   icon: React.ReactNode;
@@ -64,10 +66,12 @@ const PRIMARY_ITEMS: AddEntry[] = [
   { kind: 'image', label: '图片', icon: <ImageIcon size={18} strokeWidth={1.75} /> },
   { kind: 'video', label: '视频', icon: <PlaySquare size={18} strokeWidth={1.8} /> },
   { kind: 'audio', label: '音频', icon: <Music size={18} strokeWidth={1.8} /> },
-  { kind: 'world3d', label: '3D 世界', icon: <Box size={18} strokeWidth={1.75} />, beta: true, disabled: true },
+  { kind: 'director3d', label: '3D导演台', desc: '场景、机位和镜头调度', icon: <Box size={18} strokeWidth={1.75} />, beta: true },
 ];
 
 const TOOL_ITEMS: AddEntry[] = [
+  { kind: 'storyboard', label: '故事板', desc: '分镜、镜头和素材引用', icon: <Grid3X3 size={18} strokeWidth={1.75} />, beta: true },
+  { kind: 'video_editor', label: '剪辑工程', desc: '时间线、字幕和导出', icon: <Film size={18} strokeWidth={1.75} />, beta: true },
   { kind: 'playlist', label: '播放列表', icon: <LayoutList size={18} strokeWidth={1.75} />, beta: true, disabled: true },
   { kind: 'image_editor', label: '图片编辑节点', icon: <Wand2 size={18} strokeWidth={1.8} /> },
 ];
@@ -77,7 +81,18 @@ const RESOURCE_ITEMS: AddEntry[] = [
 ];
 
 const isFlowNodeKind = (kind: AddEntry['kind']): kind is FlowNodeKind =>
-  ['text', 'image', 'video', 'audio', 'upload', 'image_editor', 'group'].includes(kind);
+  [
+    'text',
+    'image',
+    'video',
+    'audio',
+    'upload',
+    'image_editor',
+    'storyboard',
+    'director3d',
+    'video_editor',
+    'group',
+  ].includes(kind);
 
 const navigateTo = (path: string) => {
   window.location.href = path;

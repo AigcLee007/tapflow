@@ -62,4 +62,19 @@ describe("FlowLeftAddPanel", () => {
     expect(screen.queryByText("添加节点")).toBeNull();
     expect(screen.getByText("user@example.com")).toBeTruthy();
   });
+
+  test("shows production suite entries as enabled add-node actions", async () => {
+    render(
+      <AuthContext.Provider value={createAuthState()}>
+        <FlowLeftAddPanel />
+      </AuthContext.Provider>,
+    );
+
+    fireEvent.mouseEnter(screen.getByTitle("添加节点"));
+
+    expect(await screen.findByText("3D导演台")).toBeTruthy();
+    expect((screen.getByRole("button", { name: /3D导演台/ }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole("button", { name: /故事板/ }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole("button", { name: /剪辑工程/ }) as HTMLButtonElement).disabled).toBe(false);
+  });
 });
