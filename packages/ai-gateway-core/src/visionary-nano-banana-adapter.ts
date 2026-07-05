@@ -1,5 +1,6 @@
 import { AiGatewayError } from "./errors.js";
 import type { ProviderAdapter } from "./provider-adapter.js";
+import { buildProductionImagePrompt } from "./production-image-prompt.js";
 import type {
   AssetReferenceInput,
   ImageGenerationRequest,
@@ -177,7 +178,7 @@ export class VisionaryNanoBananaAdapter implements ProviderAdapter {
       imageSize,
       model,
       optimizeChineseText,
-      prompt: request.prompt,
+      prompt: buildProductionImagePrompt(request.prompt, metadata),
       replyType: "json",
     };
     if (images.length > 0) {

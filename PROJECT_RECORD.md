@@ -3,6 +3,24 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - Production Image Mode Prompt Augmentation Phase 28
+
+- moved 360/270 image modes one step closer to visible output quality:
+  - added a shared AI Gateway prompt helper for `panorama_360`, `wraparound_270`, and `subject_orbit_270`.
+  - OpenAI-compatible image routes now append deterministic 360 panorama / 270 wraparound instructions to both Images API and Responses API image prompts.
+  - PixelleLabs Gemini image routes and Visionary Nano Banana routes now apply the same production-mode prompt augmentation before provider calls.
+  - `standard` and unknown modes keep the original user prompt unchanged.
+- kept v2 boundaries unchanged:
+  - no database migration, new pricing unit, worker billing change, canvas draft media storage, browser-local persistence, or provider-secret exposure was added.
+  - structured `generationMode`, `panorama`, and `wraparound` metadata remains intact; this phase only improves provider-facing instructions.
+- validation:
+  - red test observed on 2026-07-06: `npm run test --workspace @aigc-flow/ai-gateway-core -- production-image-prompt.test.ts` failed because the prompt helper did not exist.
+  - red test observed on 2026-07-06: `npm run test --workspace @aigc-flow/ai-gateway-core -- runtime.test.ts production-image-prompt.test.ts` failed because OpenAI-compatible, PixelleLabs, and Visionary image adapters still sent raw prompts for production modes.
+  - `npm run test --workspace @aigc-flow/ai-gateway-core -- production-image-prompt.test.ts runtime.test.ts plugin-registry.test.ts` passed on 2026-07-06: 3 files, 75 tests.
+  - `npm run build --workspace @aigc-flow/ai-gateway-core` passed on 2026-07-06.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+  - `git diff --check` passed on 2026-07-06.
+
 ## 2026-07-06 - Production Image Mode Route Capabilities Phase 27
 
 - published real GPT-Image-2 image-generation route capabilities for the canvas production modes:

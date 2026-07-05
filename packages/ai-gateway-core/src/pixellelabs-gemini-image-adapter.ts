@@ -1,5 +1,6 @@
 import { AiGatewayError } from "./errors.js";
 import type { ProviderAdapter } from "./provider-adapter.js";
+import { buildProductionImagePrompt } from "./production-image-prompt.js";
 import type {
   AssetReferenceInput,
   ImageGenerationRequest,
@@ -183,7 +184,9 @@ export class PixelleLabsGeminiImageAdapter implements ProviderAdapter {
       ...collectAssetImageInputs(request.inputAssets),
     ]);
 
-    const parts: Array<Record<string, unknown>> = [{ text: request.prompt }];
+    const parts: Array<Record<string, unknown>> = [{
+      text: buildProductionImagePrompt(request.prompt, metadata),
+    }];
     for (const image of images) {
       const inlineImage = parseDataUriImage(image);
       if (inlineImage) {

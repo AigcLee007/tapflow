@@ -443,6 +443,54 @@ describe("openai-compatible text adapter", () => {
     await server.close();
   });
 
+  test("generateImage adds panorama production instructions to OpenAI image prompts", async () => {
+    let submittedPrompt = "";
+    const server = await withHttpServer(async (request, response) => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of request) {
+        chunks.push(Buffer.from(chunk));
+      }
+      const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;
+      submittedPrompt = String(body.prompt);
+
+      response.setHeader("content-type", "application/json");
+      response.end(JSON.stringify({ data: [{ url: "https://example.test/panorama.png" }] }));
+    });
+
+    const adapter = new OpenAiCompatibleTextAdapter();
+    await adapter.generateImage(
+      {
+        apiKey: "sk-test-secret",
+        baseUrl: server.url,
+        modelKey: "gpt-image-2",
+        providerKey: "openai-compatible",
+        requestConfig: {},
+        routeId: "route-1",
+        routeKey: "image.gpt-image-2",
+        timeoutMs: 5_000,
+      },
+      {
+        metadata: {
+          params: {
+            generationMode: "panorama_360",
+            panorama: {
+              continuity: "seamless",
+              projectionHint: "equirectangular",
+              subjectType: "scene",
+            },
+          },
+        },
+        prompt: "future city courtyard",
+      },
+    );
+
+    expect(submittedPrompt).toContain("future city courtyard");
+    expect(submittedPrompt).toContain("360-degree equirectangular panorama");
+    expect(submittedPrompt).toContain("seamless left-right continuity");
+
+    await server.close();
+  });
+
   test("generateImage keeps non-gpt-image-2 size tiers unchanged", async () => {
     const server = await withHttpServer(async (request, response) => {
       const chunks: Buffer[] = [];
@@ -1994,6 +2042,55 @@ describe("visionary nano banana adapter", () => {
     ]);
   });
 
+  test("adds subject orbit production instructions to Nano Banana prompts", async () => {
+    const calls: Array<{ body: Record<string, unknown> }> = [];
+    const adapter = new VisionaryNanoBananaAdapter({
+      fetchImplementation: (async (_input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+        calls.push({
+          body: JSON.parse(String(init?.body || "{}")) as Record<string, unknown>,
+        });
+        return new Response(
+          JSON.stringify({
+            results: [{ url: "https://visionary.beer/api/generations/subject-orbit/display" }],
+            status: "succeeded",
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }) as unknown as typeof fetch,
+    });
+
+    await adapter.generateImage(
+      {
+        apiKey: "sk-visionary",
+        baseUrl: "https://visionary.beer",
+        modelKey: "nano-banana-pro",
+        providerKey: "visionary",
+        requestConfig: { path: "/v1/api/nano-banana" },
+        routeId: "route-1",
+        routeKey: "image.nano-banana-pro",
+        timeoutMs: 5_000,
+      },
+      {
+        metadata: {
+          params: {
+            generationMode: "subject_orbit_270",
+            wraparound: {
+              coverageDegrees: 270,
+              layout: "three_panel_sheet",
+              panels: 3,
+              subjectType: "subject",
+            },
+          },
+        },
+        prompt: "red travel backpack",
+      },
+    );
+
+    expect(String(calls[0]?.body.prompt)).toContain("red travel backpack");
+    expect(String(calls[0]?.body.prompt)).toContain("three-panel subject orbit sheet");
+    expect(String(calls[0]?.body.prompt)).toContain("front, three-quarter, and side/back views");
+  });
+
   test("rejects unsupported Nano Banana model names", async () => {
     const adapter = new VisionaryNanoBananaAdapter({
       fetchImplementation: (async () => {
@@ -2119,6 +2216,71 @@ describe("pixellelabs gemini image adapter", () => {
       ],
       status: "succeeded",
     });
+  });
+
+  test("adds 270 wraparound production instructions to Gemini prompts", async () => {
+    const calls: Array<{ body: Record<string, unknown> }> = [];
+    const adapter = new PixelleLabsGeminiImageAdapter({
+      fetchImplementation: (async (_input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+        calls.push({
+          body: JSON.parse(String(init?.body || "{}")) as Record<string, unknown>,
+        });
+        return new Response(
+          JSON.stringify({
+            candidates: [
+              {
+                content: {
+                  parts: [
+                    {
+                      inlineData: {
+                        data: "iVBORw0KGgo=",
+                        mimeType: "image/png",
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }) as unknown as typeof fetch,
+    });
+
+    await adapter.generateImage(
+      {
+        apiKey: "sk-pixelle",
+        baseUrl: "https://api.pixellelabs.com",
+        modelKey: "gemini-3-pro-image-preview",
+        providerKey: "pixellelabs",
+        requestConfig: {
+          path: "/v1beta/models/gemini-3-pro-image-preview:generateContent",
+        },
+        routeId: "route-1",
+        routeKey: "image.pixellelabs.nano-banana-pro",
+        timeoutMs: 5_000,
+      },
+      {
+        metadata: {
+          params: {
+            generationMode: "wraparound_270",
+            wraparound: {
+              coverageDegrees: 270,
+              layout: "continuous",
+              panels: 3,
+              subjectType: "scene",
+            },
+          },
+        },
+        prompt: "ancient library hall",
+      },
+    );
+
+    const contents = calls[0]?.body.contents as Array<{ parts?: Array<{ text?: string }> }> | undefined;
+    const text = contents?.[0]?.parts?.[0]?.text ?? "";
+    expect(text).toContain("ancient library hall");
+    expect(text).toContain("270-degree wraparound environment");
+    expect(text).toContain("three connected sides");
   });
 
   test("includes input asset urls as Gemini fileData references", async () => {
