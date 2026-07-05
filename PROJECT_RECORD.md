@@ -3,6 +3,24 @@
 Last updated: 2026-07-05
 Maintainers: project team + Codex sessions
 
+## 2026-07-05 - Director Desk Three Viewport Phase 7
+
+- replaced the CSS-only `3D导演台` central viewport placeholder with a real Three.js viewport component.
+- added `DirectorDeskThreeViewport` under `src/flowCanvas/studios/` to render a live WebGL scene with:
+  - grid floor
+  - axis helper
+  - placeholder humanoid actors from `director3d.actors`
+  - camera markers/frustums from `director3d.cameras`
+  - selected actor/camera highlight metadata
+- kept the viewport visual/staging-only and non-billable; no AI rendering, export, asset creation, draft mutation, or billing workflow was added by the Three.js canvas itself.
+- added jsdom fallback behavior so unit tests and constrained environments keep a mounted viewport host instead of crashing on missing WebGL.
+- validation:
+  - `npm test -- src/flowCanvas/studios/DirectorDeskThreeViewport.test.tsx src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-05: 3 test files, 14 tests.
+  - `npm run build` passed on 2026-07-05 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+  - Playwright smoke against `output/playwright/director-viewport-smoke.html` passed on 2026-07-05:
+    - desktop viewport: renderer `three`, canvas `980x620`, nonblank sampled pixels, screenshot `output/playwright/director-viewport-desktop.png`.
+    - mobile viewport: renderer `three`, canvas `390x844`, nonblank sampled pixels, screenshot `output/playwright/director-viewport-mobile.png`.
+
 ## 2026-07-05 - Director Desk Inspector Editing Phase 6
 
 - added selectable actor, camera, and shot rows inside the canvas-native `3D导演台` studio.

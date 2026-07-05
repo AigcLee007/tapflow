@@ -81,6 +81,8 @@ describe('ProductionStudioShell', () => {
     expect(screen.getByText('镜头轨道')).toBeTruthy();
     expect(screen.getByText('角色 A')).toBeTruthy();
     expect(screen.getByText('主镜头')).toBeTruthy();
+    expect(screen.getByTestId('director-three-viewport').getAttribute('data-actor-count')).toBe('1');
+    expect(screen.getByTestId('director-three-viewport').getAttribute('data-camera-count')).toBe('1');
 
     fireEvent.click(screen.getByRole('button', { name: '关闭工作台' }));
     expect(onClose).toHaveBeenCalledTimes(1);

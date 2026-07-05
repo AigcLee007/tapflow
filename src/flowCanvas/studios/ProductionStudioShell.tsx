@@ -4,6 +4,7 @@ import type { Node } from '@xyflow/react';
 
 import type { FlowDirector3dData, FlowNodeData, FlowVideoEditorData } from '../types';
 import { normalizeStoryboardData, patchStoryboardCell } from '../utils/storyboardNodeData';
+import { DirectorDeskThreeViewport } from './DirectorDeskThreeViewport';
 import type { ProductionStudioKind } from './productionStudioEvents';
 
 type FlowNode = Node<FlowNodeData>;
@@ -300,9 +301,12 @@ function DirectorDeskContent({
           <span style={pillStyle}>{data?.scene.gridVisible === false ? '网格关闭' : '网格开启'}</span>
         </div>
         <div style={directorViewportStyle}>
-          <div style={axisHelperStyle}>XYZ</div>
-          <div style={actorMarkerStyle} />
-          <div style={cameraMarkerStyle} />
+          <DirectorDeskThreeViewport
+            actors={actors}
+            cameras={cameras}
+            selectedId={selected?.id ?? null}
+            selectedType={selected?.type ?? null}
+          />
         </div>
       </main>
 
@@ -797,36 +801,6 @@ const directorViewportStyle: React.CSSProperties = {
   backgroundImage:
     'linear-gradient(rgba(148,163,184,0.14) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,0.14) 1px, transparent 1px)',
   backgroundSize: '32px 32px',
-};
-
-const axisHelperStyle: React.CSSProperties = {
-  position: 'absolute',
-  right: 14,
-  bottom: 12,
-  color: '#f59e0b',
-  fontSize: 11,
-  fontWeight: 800,
-};
-
-const actorMarkerStyle: React.CSSProperties = {
-  position: 'absolute',
-  left: '45%',
-  top: '38%',
-  width: 30,
-  height: 54,
-  borderRadius: 8,
-  border: '2px solid #22c55e',
-  background: 'rgba(34,197,94,0.18)',
-};
-
-const cameraMarkerStyle: React.CSSProperties = {
-  position: 'absolute',
-  left: '57%',
-  top: '48%',
-  width: 42,
-  height: 28,
-  clipPath: 'polygon(0 25%, 62% 25%, 100% 0, 100% 100%, 62% 75%, 0 75%)',
-  background: '#38bdf8',
 };
 
 const bottomRailStyle: React.CSSProperties = {
