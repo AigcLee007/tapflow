@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Box, Camera, Film, Grid3X3, Layers3, Play, Plus, X } from 'lucide-react';
+import { Box, Camera, Film, Grid3X3, ImagePlus, Layers3, Play, Plus, X } from 'lucide-react';
 import type { Node } from '@xyflow/react';
 
 import type { FlowDirector3dData, FlowNodeData, FlowVideoEditorData } from '../types';
@@ -16,9 +16,16 @@ type DirectorActor = FlowDirector3dData['actors'][number];
 type DirectorCamera = FlowDirector3dData['cameras'][number];
 type DirectorShot = FlowDirector3dData['shots'][number];
 
+export type StudioCanvasNodeRequest = {
+  kind: 'image';
+  position: { x: number; y: number };
+  data: Partial<FlowNodeData>;
+};
+
 interface ProductionStudioShellProps {
   node: FlowNode;
   onClose: () => void;
+  onCreateCanvasNodeFromStudio?: (request: StudioCanvasNodeRequest) => void;
   onUpdateNodeData?: (nodeId: string, patch: Partial<FlowNodeData>) => void;
   studio: ProductionStudioKind;
 }
@@ -29,7 +36,13 @@ const studioTitleByKind: Record<ProductionStudioKind, string> = {
   video_editor: '剪辑工程',
 };
 
-export const ProductionStudioShell: React.FC<ProductionStudioShellProps> = ({ node, onClose, onUpdateNodeData, studio }) => {
+export const ProductionStudioShell: React.FC<ProductionStudioShellProps> = ({
+  node,
+  onClose,
+  onCreateCanvasNodeFromStudio,
+  onUpdateNodeData,
+  studio,
+}) => {
   const title = node.data.title || studioTitleByKind[studio];
 
   useEffect(() => {
@@ -67,6 +80,8 @@ export const ProductionStudioShell: React.FC<ProductionStudioShellProps> = ({ no
           <DirectorDeskContent
             data={node.data.director3d}
             nodeId={node.id}
+            nodePosition={node.position}
+            onCreateCanvasNodeFromStudio={onCreateCanvasNodeFromStudio}
             onUpdateNodeData={onUpdateNodeData}
           />
         ) : studio === 'storyboard' ? (
@@ -208,10 +223,14 @@ function buildVideoSubtitle(
 function DirectorDeskContent({
   data,
   nodeId,
+  nodePosition,
+  onCreateCanvasNodeFromStudio,
   onUpdateNodeData,
 }: {
   data?: FlowDirector3dData;
   nodeId: string;
+  nodePosition: { x: number; y: number };
+  onCreateCanvasNodeFromStudio?: (request: StudioCanvasNodeRequest) => void;
   onUpdateNodeData?: (nodeId: string, patch: Partial<FlowNodeData>) => void;
 }) {
   const director = normalizeDirector3dData(data);
@@ -255,6 +274,49 @@ function DirectorDeskContent({
   const selectedActor = selected?.type === 'actor' ? actors.find((actor) => actor.id === selected.id) ?? null : null;
   const selectedCamera = selected?.type === 'camera' ? cameras.find((camera) => camera.id === selected.id) ?? null : null;
   const selectedShot = selected?.type === 'shot' ? shots.find((shot) => shot.id === selected.id) ?? null : null;
+  const targetShot = selectedShot ?? shots[0] ?? null;
+  const targetShotIndex = targetShot ? Math.max(0, shots.findIndex((shot) => shot.id === targetShot.id)) : -1;
+  const targetCamera = targetShot
+    ? cameras.find((camera) => camera.id === targetShot.cameraId) ?? cameras[0] ?? null
+    : null;
+  const synthesizeShotToCanvas = () => {
+    if (!targetShot || !targetCamera) return;
+    const shotNumber = targetShotIndex + 1;
+    const prompt =
+      targetShot.prompt ||
+      targetCamera.prompt ||
+      `基于 ${targetCamera.name || `镜头 ${shotNumber}`} 生成导演台镜头画面`;
+    onCreateCanvasNodeFromStudio?.({
+      kind: 'image',
+      position: {
+        x: nodePosition.x + 420,
+        y: nodePosition.y + 40,
+      },
+      data: {
+        title: `镜头 ${shotNumber} 生成图`,
+        generationMode: 'standard',
+        generationPrompt: prompt,
+        params: {
+          director3d: {
+            sourceDirectorNodeId: nodeId,
+            cameraId: targetCamera.id,
+            shotId: targetShot.id,
+            camera: {
+              name: targetCamera.name,
+              position: targetCamera.position,
+              target: targetCamera.target,
+              ...(typeof targetCamera.focalMm === 'number' ? { focalMm: targetCamera.focalMm } : {}),
+              ...(typeof targetCamera.fov === 'number' ? { fov: targetCamera.fov } : {}),
+            },
+            durationMs: targetShot.durationMs,
+            motion: targetShot.motion || 'static',
+            prompt,
+            startMs: targetShot.startMs,
+          },
+        },
+      },
+    });
+  };
 
   return (
     <div style={directorLayoutStyle}>
@@ -329,10 +391,26 @@ function DirectorDeskContent({
       <div style={bottomRailStyle}>
         <div style={railHeaderStyle}>
           <PanelTitle icon={<Play size={15} />} title="镜头轨道" />
-          <button type="button" aria-label="捕获镜头段" style={railButtonStyle} onClick={captureShot}>
-            <Camera size={14} />
-            捕获镜头段
-          </button>
+          <div style={railActionsStyle}>
+            <button type="button" aria-label="捕获镜头段" style={railButtonStyle} onClick={captureShot}>
+              <Camera size={14} />
+              捕获镜头段
+            </button>
+            <button
+              type="button"
+              aria-label="合成到画布"
+              disabled={!targetShot || !targetCamera}
+              style={{
+                ...railButtonStyle,
+                opacity: targetShot && targetCamera ? 1 : 0.45,
+                cursor: targetShot && targetCamera ? 'pointer' : 'not-allowed',
+              }}
+              onClick={synthesizeShotToCanvas}
+            >
+              <ImagePlus size={14} />
+              合成到画布
+            </button>
+          </div>
         </div>
         <div style={shotStripStyle}>
           {shots.length ? (
@@ -915,6 +993,12 @@ const railHeaderStyle: React.CSSProperties = {
   alignItems: 'center',
   justifyContent: 'space-between',
   gap: 10,
+};
+
+const railActionsStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
 };
 
 const railButtonStyle: React.CSSProperties = {

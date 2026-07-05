@@ -131,8 +131,8 @@ const directorNode = {
       version: 1,
       scene: { gridVisible: true, units: 'meters' },
       actors: [],
-      cameras: [{ id: 'camera-1', name: '主镜头', position: [0, 2, 6], target: [0, 1, 0] }],
-      shots: [],
+      cameras: [{ id: 'camera-1', name: '主镜头', position: [0, 2, 6], target: [0, 1, 0], prompt: '俯拍建立空间关系' }],
+      shots: [{ id: 'shot-1', cameraId: 'camera-1', startMs: 0, durationMs: 3000, motion: 'static' }],
     },
   },
 };
@@ -259,6 +259,49 @@ describe('AiFlowCanvas production studios', () => {
     const node = useFlowCanvasStore.getState().nodes.find((item) => item.id === 'director-node');
     expect(node?.data.director3d?.cameras[0]?.prompt).toBe('俯拍建立空间关系');
     expect(JSON.stringify(node?.data.director3d)).not.toMatch(/blob:|data:/);
+  });
+
+  it('creates a downstream image node from a director shot through the canvas store', () => {
+    render(<AiFlowCanvas cullingEnabled={false} />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(OPEN_PRODUCTION_STUDIO_EVENT, {
+          detail: { nodeId: 'director-node', studio: 'director3d' },
+        }),
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '选择镜头段 1' }));
+    fireEvent.click(screen.getByRole('button', { name: '合成到画布' }));
+
+    const imageNode = useFlowCanvasStore
+      .getState()
+      .nodes.find((item) => item.type === 'image' && item.data.params?.director3d);
+    expect(imageNode?.position).toEqual({ x: 540, y: 120 });
+    expect(imageNode?.selected).toBe(true);
+    expect(imageNode?.data).toMatchObject({
+      kind: 'image',
+      title: '镜头 1 生成图',
+      generationMode: 'standard',
+      generationPrompt: '俯拍建立空间关系',
+      params: {
+        director3d: {
+          sourceDirectorNodeId: 'director-node',
+          cameraId: 'camera-1',
+          shotId: 'shot-1',
+          camera: {
+            name: '主镜头',
+            position: [0, 2, 6],
+            target: [0, 1, 0],
+          },
+          durationMs: 3000,
+          motion: 'static',
+          startMs: 0,
+        },
+      },
+    });
+    expect(JSON.stringify(imageNode?.data)).not.toMatch(/blob:|data:/);
   });
 
   it('persists storyboard prompt edits through the canvas store', () => {

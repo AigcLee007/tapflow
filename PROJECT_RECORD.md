@@ -3,6 +3,18 @@
 Last updated: 2026-07-05
 Maintainers: project team + Codex sessions
 
+## 2026-07-05 - Director Desk Synthesize To Canvas Phase 9
+
+- added the first canvas synthesis action inside the `3D导演台` studio:
+  - `合成到画布` turns the selected director shot, or the first available shot, into a downstream image node beside the director node.
+  - the created image node inherits the shot prompt first, then camera prompt, then a safe fallback prompt.
+  - the image node stores structured `params.director3d` metadata with source director node id, camera id, shot id, camera position/target/focal data, motion, start time, and duration.
+- kept this action as non-billable preparation work only; it does not create assets, start workflow runs, reserve credits, or bypass the existing server-side generation and billing path.
+- kept generated canvas data draft-safe: no `blob:`, `data:`, base64, `File`, `Blob`, or long-lived signed URL values are written by the synthesis action.
+- validation:
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx` passed on 2026-07-05: 1 test file, 9 tests.
+  - `npm test -- src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-05: 1 test file, 6 tests.
+
 ## 2026-07-05 - Production Image Mode Capability And Pricing Phase 8
 
 - added AI Gateway runtime route capabilities for production image generation modes:

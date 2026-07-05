@@ -32,7 +32,7 @@ import {
   StoryboardNodeComponent,
   VideoEditorNodeComponent,
 } from '../nodes/ProductionNodes';
-import { ProductionStudioShell } from '../studios/ProductionStudioShell';
+import { ProductionStudioShell, type StudioCanvasNodeRequest } from '../studios/ProductionStudioShell';
 import {
   OPEN_PRODUCTION_STUDIO_EVENT,
   type OpenProductionStudioDetail,
@@ -730,6 +730,13 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled, onAg
     [backendProjectId, getCanvasCenterFlowPosition, mergeTemplateGraph],
   );
 
+  const handleCreateCanvasNodeFromStudio = useCallback(
+    (request: StudioCanvasNodeRequest) => {
+      addNode(request.kind, request.position, request.data, { selected: true });
+    },
+    [addNode],
+  );
+
   const handleFocusCommentNode = useCallback((nodeId: string) => {
     const node = nodes.find((item) => item.id === nodeId);
     if (!node) return;
@@ -1047,6 +1054,7 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled, onAg
       {activeProductionStudio && activeProductionStudioNode && (
         <ProductionStudioShell
           node={activeProductionStudioNode}
+          onCreateCanvasNodeFromStudio={handleCreateCanvasNodeFromStudio}
           onUpdateNodeData={updateNodeData}
           studio={activeProductionStudio.studio}
           onClose={() => setActiveProductionStudio(null)}

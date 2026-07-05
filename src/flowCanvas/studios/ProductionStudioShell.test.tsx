@@ -200,6 +200,74 @@ describe('ProductionStudioShell', () => {
     });
   });
 
+  it('requests a safe downstream image node from the selected director shot', () => {
+    const onCreateCanvasNodeFromStudio = vi.fn();
+    const nodeWithPromptedShot = {
+      ...directorNode,
+      data: {
+        ...directorNode.data,
+        director3d: {
+          ...directorNode.data.director3d,
+          cameras: [
+            {
+              ...directorNode.data.director3d.cameras[0],
+              focalMm: 50,
+              fov: 38,
+              prompt: '低机位环绕主角',
+            },
+          ],
+          shots: [
+            {
+              ...directorNode.data.director3d.shots[0],
+              durationMs: 4200,
+              motion: 'dolly',
+              prompt: '镜头缓慢推进',
+            },
+          ],
+        },
+      },
+    };
+
+    render(
+      <ProductionStudioShell
+        studio="director3d"
+        node={nodeWithPromptedShot as any}
+        onClose={vi.fn()}
+        onCreateCanvasNodeFromStudio={onCreateCanvasNodeFromStudio}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '选择镜头段 1' }));
+    fireEvent.click(screen.getByRole('button', { name: '合成到画布' }));
+
+    expect(onCreateCanvasNodeFromStudio).toHaveBeenCalledWith({
+      kind: 'image',
+      position: { x: 420, y: 40 },
+      data: expect.objectContaining({
+        title: '镜头 1 生成图',
+        generationPrompt: '镜头缓慢推进',
+        generationMode: 'standard',
+        params: expect.objectContaining({
+          director3d: expect.objectContaining({
+            sourceDirectorNodeId: 'director-node',
+            cameraId: 'camera-1',
+            shotId: 'shot-1',
+            motion: 'dolly',
+            durationMs: 4200,
+            camera: expect.objectContaining({
+              focalMm: 50,
+              fov: 38,
+              name: '主镜头',
+              position: [0, 2, 6],
+              target: [0, 1, 0],
+            }),
+          }),
+        }),
+      }),
+    });
+    expect(JSON.stringify(onCreateCanvasNodeFromStudio.mock.calls[0]?.[0])).not.toMatch(/blob:|data:/);
+  });
+
   it('renders storyboard shell with selected shot context', () => {
     render(<ProductionStudioShell studio="storyboard" node={storyboardNode as any} onClose={vi.fn()} />);
 
