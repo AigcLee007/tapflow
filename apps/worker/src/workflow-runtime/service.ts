@@ -826,6 +826,7 @@ function pickImageRequestDebugParams(metadata: Record<string, unknown> | null | 
 export const __workerTestUtils = {
   buildAiRuntimeDiagnostic,
   buildImageRequest,
+  buildMediaUsageMetadata,
   buildVideoRequest,
   getDependencyOutputs: getDependencyOutputsFromRuntimeGraph,
   resolveImageRequestRouteKey,
@@ -953,16 +954,46 @@ function buildVideoEditorRequestMetadata(videoEditor: Record<string, unknown> | 
   };
 }
 
+function countTimelineAssetRefs(items: unknown): number {
+  if (!Array.isArray(items)) {
+    return 0;
+  }
+  return items.filter((item) => isPlainObject(item) && readTrimmedString(item.assetId)).length;
+}
+
+function buildVideoEditorExportMetadata(videoEditor: Record<string, unknown> | null): Record<string, unknown> | null {
+  if (!videoEditor) {
+    return null;
+  }
+  const timeline = isPlainObject(videoEditor.timeline) ? videoEditor.timeline : {};
+  return {
+    ...(readTrimmedString(videoEditor.sourceVideoEditorNodeId)
+      ? { sourceVideoEditorNodeId: readTrimmedString(videoEditor.sourceVideoEditorNodeId) }
+      : {}),
+    ...(readTrimmedString(videoEditor.aspect) ? { aspect: readTrimmedString(videoEditor.aspect) } : {}),
+    ...(readTrimmedString(videoEditor.resolution) ? { resolution: readTrimmedString(videoEditor.resolution) } : {}),
+    billingUnit: "video_generation",
+    durationMs: readFiniteNumberOrNull(timeline.durationMs) ?? 0,
+    source: "video_editor_export",
+    timelineAssetCounts: {
+      audio: countTimelineAssetRefs(timeline.audio),
+      clips: countTimelineAssetRefs(timeline.clips),
+    },
+  };
+}
+
 function buildVideoRequest(
   upstreamOutputs: Array<Record<string, unknown> | null>,
   config: Record<string, unknown>,
 ): VideoGenerationRequest {
   const videoEditor = readVideoEditorConfig(config);
   const videoEditorMetadata = buildVideoEditorRequestMetadata(videoEditor);
+  const videoEditorExportMetadata = buildVideoEditorExportMetadata(videoEditor);
   const baseMetadata = isPlainObject(config.metadata) ? config.metadata : {};
   const metadata = {
     ...baseMetadata,
     ...(videoEditorMetadata ? { videoEditor: videoEditorMetadata } : {}),
+    ...(videoEditorExportMetadata ? { videoEditorExport: videoEditorExportMetadata } : {}),
   };
   const fallbackPrompt = readTrimmedString(config.generationPrompt)
     ?? readTrimmedString(config.prompt)
@@ -982,6 +1013,18 @@ function buildVideoRequest(
     prompt: extractPromptFromUpstreamOutputs(upstreamOutputs, fallbackPrompt),
     routeKey: typeof config.routeKey === "string" ? config.routeKey : null,
   };
+}
+
+function buildMediaUsageMetadata(
+  kind: "image" | "video",
+  node: Pick<CompiledWorkflowNode, "config" | "type">,
+): Record<string, unknown> {
+  const base = { sourceNodeType: node.type };
+  if (kind !== "video") {
+    return base;
+  }
+  const videoEditorExport = buildVideoEditorExportMetadata(readVideoEditorConfig(node.config ?? {}));
+  return videoEditorExport ? { ...base, videoEditorExport } : base;
 }
 
 function resolveInputNodeOutput(
@@ -2208,9 +2251,7 @@ export class WorkflowNodeExecutionService {
           kind,
         ),
         inputTokens: result.usage?.inputTokens ?? null,
-        metadata: {
-          sourceNodeType: node.type,
-        },
+        metadata: buildMediaUsageMetadata(kind, node),
         modelKey: result.modelKey ?? null,
         modality: kind,
         modelId: result.modelId ?? null,

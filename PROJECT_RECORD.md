@@ -3,6 +3,21 @@
 Last updated: 2026-07-05
 Maintainers: project team + Codex sessions
 
+## 2026-07-05 - Video Editor Export Intent Phase 16
+
+- added sanitized `videoEditorExport` metadata for exported `video` nodes:
+  - provider `video.generate` requests now identify the run as `source: video_editor_export`.
+  - usage-event metadata now carries the same export context for billing/admin interpretation.
+  - metadata includes source video editor node id, aspect, resolution, duration, `video_generation` billing unit, and clip/audio asset counts.
+- kept the implementation on the existing v2 video generation path; no new routes, tables, pricing enum values, provider secrets, asset-write shortcuts, or frontend billing mutations were added.
+- kept metadata draft/runtime-safe by copying only structured fields and asserting no `blob:`, `data:`, base64, `File`, `Blob`, or long-lived signed URL values in focused worker tests.
+- validation:
+  - red test observed on 2026-07-05: `npm run test --workspace @aigc-flow/worker -- test/worker.test.ts` failed because `metadata.videoEditorExport` and `buildMediaUsageMetadata` were not present.
+  - `npm run test --workspace @aigc-flow/worker -- test/worker.test.ts` passed on 2026-07-05: 1 test file, 8 tests passed, 14 database-backed tests skipped because local DB env was unavailable.
+  - `npm run build --workspace @aigc-flow/worker` passed on 2026-07-05.
+  - `npm run build` passed on 2026-07-05 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+  - `git diff --check` passed on 2026-07-05.
+
 ## 2026-07-05 - Video Editor Runtime Request Phase 15
 
 - adapted the worker video request builder for video editor exports:

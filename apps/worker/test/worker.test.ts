@@ -564,8 +564,64 @@ describe("worker skeleton", () => {
           durationMs: 7000,
         }),
       }),
+      videoEditorExport: expect.objectContaining({
+        billingUnit: "video_generation",
+        durationMs: 7000,
+        source: "video_editor_export",
+        sourceVideoEditorNodeId: "video-editor-1",
+        timelineAssetCounts: {
+          audio: 1,
+          clips: 2,
+        },
+      }),
     }));
     expect(JSON.stringify(request)).not.toMatch(/blob:|data:/);
+  });
+
+  test("video editor export usage metadata identifies billing context", () => {
+    const metadata = (__workerTestUtils as {
+      buildMediaUsageMetadata: (
+        kind: "image" | "video",
+        node: { config: Record<string, unknown>; type: string },
+      ) => Record<string, unknown>;
+    }).buildMediaUsageMetadata("video", {
+      config: {
+        params: {
+          videoEditor: {
+            sourceVideoEditorNodeId: "video-editor-1",
+            aspect: "16:9",
+            resolution: "1920x1080",
+            timeline: {
+              audio: [
+                { id: "audio-1", assetId: "asset-audio-1", track: 2, startMs: 0, inMs: 0, outMs: 3000, volume: 0.8 },
+              ],
+              clips: [
+                { id: "clip-1", assetId: "asset-image-1", kind: "image", track: 1, startMs: 0, inMs: 0, outMs: 3000, speed: 1 },
+                { id: "clip-2", assetId: "asset-video-2", kind: "video", track: 1, startMs: 3000, inMs: 200, outMs: 4200, speed: 1 },
+              ],
+              durationMs: 7000,
+              subtitles: [],
+            },
+          },
+        },
+      },
+      type: "video.generate",
+    });
+
+    expect(metadata).toMatchObject({
+      sourceNodeType: "video.generate",
+      videoEditorExport: expect.objectContaining({
+        billingUnit: "video_generation",
+        durationMs: 7000,
+        source: "video_editor_export",
+        sourceVideoEditorNodeId: "video-editor-1",
+        timelineAssetCounts: {
+          audio: 1,
+          clips: 2,
+        },
+      }),
+    });
+    expect(JSON.stringify(metadata)).not.toMatch(/blob:|data:/);
   });
 
   test("registers the expected queue names", () => {
