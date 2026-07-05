@@ -84,4 +84,19 @@ describe('DirectorDeskThreeViewport', () => {
     expect(viewport.getAttribute('data-selected-shot-camera-position')).toBe('1.5,2.25,4.75');
     expect(screen.getByText('Captured orbit')).toBeTruthy();
   });
+
+  it('keeps scene background selection metadata in the viewport host', () => {
+    render(
+      <DirectorDeskThreeViewport
+        actors={[]}
+        cameras={[]}
+        shots={[]}
+        selectedId="background"
+        selectedType="scene"
+      />,
+    );
+
+    const viewport = screen.getByTestId('director-three-viewport');
+    expect(viewport.getAttribute('data-selected-id')).toBe('background');
+  });
 });

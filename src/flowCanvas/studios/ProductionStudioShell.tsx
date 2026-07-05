@@ -12,6 +12,7 @@ type FlowNode = Node<FlowNodeData>;
 type DirectorSelection =
   | { type: 'actor'; id: string }
   | { type: 'camera'; id: string }
+  | { type: 'scene'; id: 'background' }
   | { type: 'shot'; id: string };
 type DirectorActor = FlowDirector3dData['actors'][number];
 type DirectorCamera = FlowDirector3dData['cameras'][number];
@@ -471,11 +472,13 @@ function DirectorDeskContent({
   const selectedActor = selected?.type === 'actor' ? actors.find((actor) => actor.id === selected.id) ?? null : null;
   const selectedCamera = selected?.type === 'camera' ? cameras.find((camera) => camera.id === selected.id) ?? null : null;
   const selectedShot = selected?.type === 'shot' ? shots.find((shot) => shot.id === selected.id) ?? null : null;
+  const selectedSceneBackground = selected?.type === 'scene' && selected.id === 'background';
+  const selectedImageAssetTarget = selectedActor || selectedSceneBackground ? selected : null;
   const [actorAssetCandidates, setActorAssetCandidates] = useState<AssetItem[]>([]);
   const [actorAssetCandidatesError, setActorAssetCandidatesError] = useState<string | null>(null);
   const [actorAssetCandidatesLoading, setActorAssetCandidatesLoading] = useState(false);
   useEffect(() => {
-    if (!selectedActor) {
+    if (!selectedImageAssetTarget) {
       setActorAssetCandidates([]);
       setActorAssetCandidatesError(null);
       setActorAssetCandidatesLoading(false);
@@ -507,7 +510,7 @@ function DirectorDeskContent({
     return () => {
       cancelled = true;
     };
-  }, [selectedActor?.id]);
+  }, [selectedImageAssetTarget?.id, selectedImageAssetTarget?.type]);
   const selectedShotIndex = selectedShot ? shots.findIndex((shot) => shot.id === selectedShot.id) : -1;
   const targetShot = selectedShot ?? shots[0] ?? null;
   const targetShotIndex = targetShot ? Math.max(0, shots.findIndex((shot) => shot.id === targetShot.id)) : -1;
@@ -532,9 +535,21 @@ function DirectorDeskContent({
     const nextSelection = nextShots[Math.min(selectedShotIndex, nextShots.length - 1)] ?? null;
     setSelected(nextSelection ? { type: 'shot', id: nextSelection.id } : null);
   };
+  const patchScene = (patch: Partial<FlowDirector3dData['scene']>) => {
+    updateDirector({
+      ...director,
+      scene: {
+        ...director.scene,
+        ...patch,
+      },
+    });
+  };
   const bindSelectedActorAsset = (assetId: string) => {
     if (!selectedActor) return;
     patchActor(selectedActor.id, { assetId, kind: 'image_plane' });
+  };
+  const bindSceneBackgroundAsset = (assetId: string) => {
+    patchScene({ backgroundAssetId: assetId });
   };
   const synthesizeShotToCanvas = () => {
     if (!targetShot || !targetCamera) return;
@@ -594,6 +609,13 @@ function DirectorDeskContent({
       <aside style={panelStyle}>
         <PanelTitle icon={<Layers3 size={15} />} title="场景对象" />
         <div style={listStyle}>
+          <StudioSelectableListItem
+            ariaLabel="选择对象 场景背景"
+            label="场景背景"
+            meta={director.scene.backgroundAssetId ? '已绑定' : '未绑定'}
+            onClick={() => setSelected({ type: 'scene', id: 'background' })}
+            selected={selectedSceneBackground}
+          />
           {actors.map((actor) => (
             <StudioSelectableListItem
               key={actor.id}
@@ -657,9 +679,11 @@ function DirectorDeskContent({
           actorAssetCandidatesLoading={actorAssetCandidatesLoading}
           camera={selectedCamera}
           onBindActorAsset={bindSelectedActorAsset}
+          onBindSceneBackgroundAsset={bindSceneBackgroundAsset}
           onPatchActor={patchActor}
           onPatchCamera={patchCamera}
           onPatchShot={patchShot}
+          scene={selectedSceneBackground ? director.scene : null}
           shot={selectedShot}
         />
       </aside>
@@ -1666,9 +1690,11 @@ function DirectorInspector({
   actorAssetCandidatesLoading,
   camera,
   onBindActorAsset,
+  onBindSceneBackgroundAsset,
   onPatchActor,
   onPatchCamera,
   onPatchShot,
+  scene,
   shot,
 }: {
   actor: DirectorActor | null;
@@ -1677,9 +1703,11 @@ function DirectorInspector({
   actorAssetCandidatesLoading: boolean;
   camera: DirectorCamera | null;
   onBindActorAsset: (assetId: string) => void;
+  onBindSceneBackgroundAsset: (assetId: string) => void;
   onPatchActor: (actorId: string, patch: Partial<DirectorActor>) => void;
   onPatchCamera: (cameraId: string, patch: Partial<DirectorCamera>) => void;
   onPatchShot: (shotId: string, patch: Partial<DirectorShot>) => void;
+  scene: FlowDirector3dData['scene'] | null;
   shot: DirectorShot | null;
 }) {
   if (actor) {
@@ -1741,6 +1769,21 @@ function DirectorInspector({
           onChange={(axis, value) => onPatchActor(actor.id, {
             scale: patchDirectorVectorAxis(actor.scale, axis, value, [1, 1, 1], { min: 0.1 }),
           })}
+        />
+      </div>
+    );
+  }
+
+  if (scene) {
+    return (
+      <div style={inspectorFormStyle}>
+        <MetricRow label="背景素材" value={scene.backgroundAssetId || '未绑定'} />
+        <AssetCandidateList
+          candidates={actorAssetCandidates}
+          error={actorAssetCandidatesError}
+          loading={actorAssetCandidatesLoading}
+          onBind={onBindSceneBackgroundAsset}
+          selectedAssetId={scene.backgroundAssetId || ''}
         />
       </div>
     );

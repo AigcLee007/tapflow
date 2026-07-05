@@ -3,6 +3,24 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - Director Desk Scene Background Asset Binding Phase 47
+
+- connected the `3D导演台` scene background to the v2 asset library:
+  - the director object list now includes a selectable `场景背景` row.
+  - selecting the scene background loads image asset candidates from `listAssets`.
+  - binding a candidate updates only `director3d.scene.backgroundAssetId`.
+  - the Three.js viewport selection type now accepts the scene-background selection metadata used by the studio shell.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - the picker requests candidates with `includePreviewUrls: false`.
+  - no signed URL, preview URL, `blob:`, `data:`, base64, generated media, browser-local export, direct asset write, billing mutation, API route, database migration, worker behavior, or provider-secret exposure was added.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "director scene background"` first failed because there was no selectable scene background entry.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "director scene background"` passed on 2026-07-06: 1 selected test.
+  - `npm test -- src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx -t "scene background asset"` passed on 2026-07-06: 1 selected test.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-06: 2 files, 60 tests.
+  - `npm test -- src/flowCanvas/studios/DirectorDeskThreeViewport.test.tsx src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-06: 3 files, 63 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-06 - Director Desk Actor Asset Binding Phase 46
 
 - connected selected `3D导演台` actors to the v2 asset library:

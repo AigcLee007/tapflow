@@ -3,7 +3,7 @@ import * as THREE from 'three';
 
 import type { FlowDirector3dData } from '../types';
 
-type DirectorViewportSelectionType = 'actor' | 'camera' | 'shot';
+type DirectorViewportSelectionType = 'actor' | 'camera' | 'scene' | 'shot';
 
 interface DirectorDeskThreeViewportProps {
   actors: FlowDirector3dData['actors'];
