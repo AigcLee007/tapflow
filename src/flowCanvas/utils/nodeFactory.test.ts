@@ -18,5 +18,36 @@ describe('nodeFactory route defaults', () => {
     expect(node.data.modelId).toBe('gpt-5.5');
     expect(node.data.routeKey).toBe('text.gpt-5-5');
   });
-});
 
+  it('creates a storyboard node with asset-id based cells', () => {
+    const node = createFlowNode('storyboard', { x: 10, y: 20 });
+
+    expect(node.type).toBe('storyboard');
+    expect(node.data.kind).toBe('storyboard');
+    expect(node.data.storyboard).toMatchObject({
+      aspect: '16:9',
+      grid: '3x2',
+      selectedIndex: 0,
+    });
+    expect(node.data.storyboard?.cells).toHaveLength(6);
+    expect(JSON.stringify(node.data.storyboard)).not.toMatch(/blob:|data:/);
+  });
+
+  it('creates director and video editor nodes with empty structured documents', () => {
+    const director = createFlowNode('director3d', { x: 0, y: 0 });
+    const editor = createFlowNode('video_editor', { x: 0, y: 0 });
+
+    expect(director.data.director3d).toMatchObject({
+      version: 1,
+      scene: { gridVisible: true, units: 'meters' },
+      actors: [],
+      cameras: [],
+      shots: [],
+    });
+    expect(editor.data.videoEditor).toMatchObject({
+      version: 1,
+      aspect: '16:9',
+      resolution: '1920x1080',
+    });
+  });
+});

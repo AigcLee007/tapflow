@@ -7,6 +7,9 @@ export const FLOW_NODE_DEFAULT_SIZES = {
   audio: { width: 302, height: 170 },
   upload: { width: 260, height: 210 },
   imageEditor: { width: FLOW_NODE_BASE_SIZE, height: FLOW_NODE_BASE_SIZE },
+  storyboard: { width: 360, height: 260 },
+  director3d: { width: 340, height: 220 },
+  videoEditor: { width: 360, height: 220 },
 };
 
 export function parseAspectRatio(ratio: unknown): number | null {
