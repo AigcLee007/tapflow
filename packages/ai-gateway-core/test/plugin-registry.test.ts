@@ -21,8 +21,59 @@ describe("AI plugin registry", () => {
       "pixellelabs.nano-banana-2",
       "mouxihub.nano-banana-pro-t3",
       "pixellelabs.nano-banana-pro",
+      "tapflow.video-editor-ffmpeg",
     ]);
-    expect(BUILTIN_AI_PLUGIN_MANIFESTS).toHaveLength(8);
+    expect(BUILTIN_AI_PLUGIN_MANIFESTS).toHaveLength(9);
+  });
+
+  test("returns TapFlow video editor FFmpeg export manifest", () => {
+    const manifest = builtinAiPluginRegistry.require("tapflow.video-editor-ffmpeg");
+
+    expect(manifest.displayName).toBe("Video Editor FFmpeg Export");
+    expect(manifest.modality).toBe("video");
+    expect(manifest.provider).toMatchObject({
+      defaultBaseUrl: "internal://tapflow-video-renderer",
+      key: "tapflow-local-render",
+      kind: "mock",
+    });
+    expect(manifest.credentials.fields).toEqual([]);
+    expect(manifest.models).toEqual([
+      expect.objectContaining({
+        defaultRouteKey: "video.editor.ffmpeg",
+        displayName: "Video Editor FFmpeg",
+        modality: "video",
+        modelFamily: "tapflow.video-editor",
+        modelKey: "video-editor-ffmpeg",
+      }),
+    ]);
+    expect(manifest.routes).toEqual([
+      expect.objectContaining({
+        mode: "sync",
+        modelFamily: "tapflow.video-editor",
+        modelKey: "video-editor-ffmpeg",
+        path: "/internal/video-editor/render",
+        requestConfig: expect.objectContaining({
+          apiMode: "internal-render",
+          capabilities: {
+            supportedVideoWorkflows: ["video_editor_export"],
+            videoEditorRenderEngine: "ffmpeg",
+          },
+          path: "/internal/video-editor/render",
+        }),
+        routeKey: "video.editor.ffmpeg",
+        routeLabel: "FFmpeg Export",
+      }),
+    ]);
+    expect(manifest.pricing).toEqual([
+      expect.objectContaining({
+        minChargeCredits: 50,
+        model: "video-editor-ffmpeg",
+        provider: "tapflow-local-render",
+        route: "video.editor.ffmpeg",
+        unit: "video_generation",
+        unitCredits: 50,
+      }),
+    ]);
   });
 
   test("returns MouxiHub Nano Banana Pro official T3 async route manifest", () => {

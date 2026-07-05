@@ -1,7 +1,27 @@
 ﻿# Project Record
 
-Last updated: 2026-07-05
+Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
+
+## 2026-07-06 - Video Editor FFmpeg Route Template Phase 24
+
+- added an installable AI Gateway plugin template for the canvas-native `剪辑工程` server-side FFmpeg export route:
+  - built-in package key: `tapflow.video-editor-ffmpeg`.
+  - product model key: `video-editor-ffmpeg`.
+  - route key: `video.editor.ffmpeg`.
+  - the route persists `request_config.capabilities.supportedVideoWorkflows: ["video_editor_export"]` and `videoEditorRenderEngine: "ffmpeg"`, matching the Phase 23 worker-local render gate.
+  - installing and publishing the template creates the normal provider/model/route/catalog/pricing records through the existing plugin install service.
+- kept billing and runtime behavior aligned with the v2 architecture:
+  - pricing uses the existing `video_generation` unit at 50 credits.
+  - no new pricing unit, database migration, environment variable, browser-local export path, provider secret exposure, or canvas draft storage change was added.
+  - the template requires no credential; local FFmpeg execution remains selected by server-side route capability before any external provider adapter call.
+- validation:
+  - red test observed on 2026-07-06: `npm run test --workspace @aigc-flow/ai-gateway-core -- plugin-registry.test.ts` failed because `tapflow.video-editor-ffmpeg` was not registered.
+  - `npm run test --workspace @aigc-flow/ai-gateway-core -- plugin-registry.test.ts` passed on 2026-07-06: 1 file, 11 tests.
+  - `npm run test --workspace @aigc-flow/api -- test/ai-plugins.test.ts` ran on 2026-07-06 with 2 DB-backed tests skipped by the existing local DB guard.
+  - `npm run build --workspace @aigc-flow/ai-gateway-core` passed on 2026-07-06.
+  - `npm run build --workspace @aigc-flow/api` passed on 2026-07-06.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
 
 ## 2026-07-05 - Video Editor Local Render Workflow Phase 23
 
