@@ -49,6 +49,64 @@ describe("buildVideoEditorFfmpegArgs", () => {
     expect(args.slice(-7)).toEqual(["-map", "[vout]", "-map", "[aout]", "-t", "7.000", "C:/render/output.mp4"]);
   });
 
+  test("applies single-clip fade transition filters", () => {
+    const args = buildVideoEditorFfmpegArgs({
+      assetFiles: {
+        "asset-image-1": "C:/render/image.png",
+      },
+      outputPath: "C:/render/output.mp4",
+      plan: {
+        ...plan,
+        assetIds: ["asset-image-1"],
+        audio: [],
+        clips: [
+          {
+            ...plan.clips[0],
+            transitionOut: { durationMs: 750, type: "fade" },
+          },
+        ],
+        output: { durationMs: 3000, height: 1080, mimeType: "video/mp4", width: 1920 },
+        subtitles: [],
+      },
+    });
+
+    const filter = args[args.indexOf("-filter_complex") + 1];
+    expect(filter).toContain("fade=t=out:st=2.250:d=0.750");
+    expect(filter).toContain("[vbase]");
+    expect(filter).not.toContain("concat=n=1");
+  });
+
+  test("applies crossfade filters between adjacent clips", () => {
+    const args = buildVideoEditorFfmpegArgs({
+      assetFiles: {
+        "asset-image-1": "C:/render/image.png",
+        "asset-video-2": "C:/render/video.mp4",
+      },
+      outputPath: "C:/render/output.mp4",
+      plan: {
+        ...plan,
+        audio: [],
+        clips: [
+          {
+            ...plan.clips[0],
+            transitionOut: { durationMs: 750, type: "crossfade" },
+          },
+          {
+            ...plan.clips[1],
+            muted: false,
+          },
+        ],
+        output: { durationMs: 6250, height: 1080, mimeType: "video/mp4", width: 1920 },
+        subtitles: [],
+      },
+    });
+
+    const filter = args[args.indexOf("-filter_complex") + 1];
+    expect(filter).toContain("xfade=transition=fade:duration=0.750:offset=2.250");
+    expect(filter).toContain("[vbase]");
+    expect(filter).not.toContain("concat=n=2");
+  });
+
   test("rejects render plans when a local file is missing for an asset id", () => {
     expect(() => buildVideoEditorFfmpegArgs({
       assetFiles: { "asset-image-1": "C:/render/image.png" },

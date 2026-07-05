@@ -109,17 +109,49 @@ function buildClipFilters(input: {
 }): string[] {
   const filters: string[] = [];
   input.clips.forEach((clip, index) => {
+    const fadeOut = clip.transitionOut?.type === "fade" && clip.transitionOut.durationMs > 0
+      ? `,fade=t=out:st=${seconds(Math.max(0, clip.effectiveDurationMs - clip.transitionOut.durationMs))}:d=${seconds(clip.transitionOut.durationMs)}`
+      : "";
     filters.push(
       `[${index}:v]scale=${input.width}:${input.height}:force_original_aspect_ratio=decrease,` +
-      `pad=${input.width}:${input.height}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p[v${index}]`,
+      `pad=${input.width}:${input.height}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p${fadeOut}[v${index}]`,
     );
     if (clip.muted) {
       return;
     }
   });
 
-  const clipLabels = input.clips.map((_, index) => `[v${index}]`).join("");
-  filters.push(`${clipLabels}concat=n=${input.clips.length}:v=1:a=0[vbase]`);
+  if (input.clips.length === 1) {
+    filters.push("[v0]copy[vbase]");
+    return filters;
+  }
+
+  const hasCrossfade = input.clips.some((clip, index) => index < input.clips.length - 1 && clip.transitionOut?.type === "crossfade");
+  if (!hasCrossfade) {
+    const clipLabels = input.clips.map((_, index) => `[v${index}]`).join("");
+    filters.push(`${clipLabels}concat=n=${input.clips.length}:v=1:a=0[vbase]`);
+    return filters;
+  }
+
+  let inputLabel = "[v0]";
+  let cumulativeDurationMs = input.clips[0]?.effectiveDurationMs ?? 0;
+  for (let index = 1; index < input.clips.length; index += 1) {
+    const previousClip = input.clips[index - 1];
+    const clip = input.clips[index];
+    const outputLabel = index === input.clips.length - 1 ? "[vbase]" : `[vxfade${index}]`;
+    if (previousClip.transitionOut?.type === "crossfade" && previousClip.transitionOut.durationMs > 0) {
+      const transitionDurationMs = Math.min(previousClip.transitionOut.durationMs, cumulativeDurationMs, clip.effectiveDurationMs);
+      const offsetMs = Math.max(0, cumulativeDurationMs - transitionDurationMs);
+      filters.push(
+        `${inputLabel}[v${index}]xfade=transition=fade:duration=${seconds(transitionDurationMs)}:offset=${seconds(offsetMs)}${outputLabel}`,
+      );
+      cumulativeDurationMs += Math.max(0, clip.effectiveDurationMs - transitionDurationMs);
+    } else {
+      filters.push(`${inputLabel}[v${index}]concat=n=2:v=1:a=0${outputLabel}`);
+      cumulativeDurationMs += clip.effectiveDurationMs;
+    }
+    inputLabel = outputLabel;
+  }
   return filters;
 }
 

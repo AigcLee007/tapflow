@@ -3,6 +3,22 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - Video Editor FFmpeg Transition Filters Phase 36
+
+- moved `剪辑工程` transition support from metadata into local FFmpeg render arguments:
+  - single-clip `fade` transitions now emit `fade=t=out` video filters with safe computed start/duration values.
+  - adjacent `crossfade` transitions now emit chained `xfade=transition=fade` filters and avoid plain `concat` for transitioned pairs.
+  - no-transition timelines keep the existing deterministic concat/export behavior.
+- kept v2 billing and asset boundaries unchanged:
+  - this only changes worker-local render filter construction for the existing `video.editor.ffmpeg` route.
+  - no new route, pricing shortcut, direct asset write, browser-local export, database migration, provider credential surface, or frontend-visible secret was added.
+- validation:
+  - red test observed on 2026-07-06: `npm run test --workspace @aigc-flow/worker -- video-editor-ffmpeg-executor.test.ts` failed because generated filters still used plain `concat` and had no `fade` / `xfade`.
+  - `npm run test --workspace @aigc-flow/worker -- video-editor-ffmpeg-executor.test.ts` passed on 2026-07-06: 1 file, 6 tests.
+  - `npm run test --workspace @aigc-flow/worker -- video-editor-ffmpeg-executor.test.ts video-editor-render-plan.test.ts worker.test.ts` passed on 2026-07-06: 3 files, 21 tests run with existing filtered/skipped tests.
+  - `npm run build --workspace @aigc-flow/worker` passed on 2026-07-06.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-06 - Video Editor Clip Transition Metadata Phase 35
 
 - added the first canvas-native transition controls to `剪辑工程`:
