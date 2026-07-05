@@ -1,4 +1,7 @@
 import { randomUUID } from "node:crypto";
+import { mkdir, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { afterAll, describe, expect, test, vi } from "vitest";
 import sharp from "sharp";
 
@@ -453,6 +456,7 @@ function createWorkflowService(options: {
   textGenerationRuntime?: {
     generateText: (context: { tenantId: string; userId: string | null }, request: unknown, metadata?: unknown) => Promise<AiGatewayTextResultLike>;
   };
+  videoEditorLocalRenderService?: ConstructorParameters<typeof WorkflowNodeExecutionService>[0]["videoEditorLocalRenderService"];
 }) {
   return new WorkflowNodeExecutionService({
     assetBucket: "test-bucket",
@@ -489,6 +493,7 @@ function createWorkflowService(options: {
         };
       },
     },
+    videoEditorLocalRenderService: options.videoEditorLocalRenderService,
   });
 }
 
@@ -656,6 +661,60 @@ describe("worker skeleton", () => {
     });
     expect((metadata.videoEditorExport as Record<string, unknown>).renderPlan).toBeUndefined();
     expect(JSON.stringify(metadata)).not.toMatch(/blob:|data:/);
+  });
+
+  test("video editor local render engine is enabled only by server-side route capabilities", () => {
+    const readVideoEditorRenderEngine = (__workerTestUtils as {
+      readVideoEditorRenderEngine?: (requestConfig: Record<string, unknown> | null) => "ffmpeg" | null;
+    }).readVideoEditorRenderEngine;
+
+    expect(typeof readVideoEditorRenderEngine).toBe("function");
+    expect(readVideoEditorRenderEngine?.({
+      capabilities: {
+        supportedVideoWorkflows: ["video_editor_export"],
+        videoEditorRenderEngine: "ffmpeg",
+      },
+    })).toBe("ffmpeg");
+    expect(readVideoEditorRenderEngine?.({
+      capabilities: {
+        supportedVideoWorkflows: ["video_editor_export"],
+        videoEditorRenderEngine: "browser",
+      },
+    })).toBeNull();
+    expect(readVideoEditorRenderEngine?.({
+      videoEditorRenderEngine: "ffmpeg",
+    })).toBeNull();
+    expect(readVideoEditorRenderEngine?.({
+      capabilities: {
+        videoEditorRenderEngine: "ffmpeg",
+      },
+    })).toBeNull();
+  });
+
+  test("video editor local render cleanup only targets render output temp directories", () => {
+    const localOutputDirFromRenderResult = (__workerTestUtils as {
+      localOutputDirFromRenderResult?: (result: {
+        output: { localFilePath?: string | null };
+      }) => string | null;
+    }).localOutputDirFromRenderResult;
+    const safeDir = join(tmpdir(), `tapflow-video-render-output-${randomUUID()}`);
+
+    expect(typeof localOutputDirFromRenderResult).toBe("function");
+    expect(localOutputDirFromRenderResult?.({
+      output: {
+        localFilePath: join(safeDir, "rendered-output.mp4"),
+      },
+    })).toBe(safeDir);
+    expect(localOutputDirFromRenderResult?.({
+      output: {
+        localFilePath: join(process.cwd(), "rendered-output.mp4"),
+      },
+    })).toBeNull();
+    expect(localOutputDirFromRenderResult?.({
+      output: {
+        localFilePath: "rendered-output.mp4",
+      },
+    })).toBeNull();
   });
 
   test("registers the expected queue names", () => {
@@ -2099,6 +2158,404 @@ describeWithDatabase("workflow node execution", () => {
           "traceId",
           "workflowRunId",
         ]);
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("video.generate editor export uses route-enabled local ffmpeg render and persists an asset", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({
+          connectionString: await createAppDatabaseUrl(),
+        });
+
+        const imageAssetId = "00000000-0000-4000-8000-000000000701";
+        const seeded = await seedWorkflowRuntime(appPool, {
+          inputNodeStatus: "succeeded",
+          middleNodeConfig: {
+            generationPrompt: "render editor timeline",
+            params: {
+              videoEditor: {
+                aspect: "16:9",
+                resolution: "1920x1080",
+                sourceVideoEditorNodeId: "video-editor-1",
+                timeline: {
+                  audio: [],
+                  clips: [
+                    {
+                      assetId: imageAssetId,
+                      id: "clip-1",
+                      inMs: 0,
+                      kind: "image",
+                      outMs: 3000,
+                      speed: 1,
+                      startMs: 0,
+                      track: 0,
+                    },
+                  ],
+                  durationMs: 3000,
+                  subtitles: [],
+                },
+              },
+            },
+            routeKey: "video.editor.ffmpeg",
+          },
+          middleNodeStatus: "runnable",
+          middleNodeType: "video.generate",
+        });
+        const storageProvider = new MemoryStorageProvider();
+        storageProvider.objects.set("test-bucket/tenants/source/editor-image.png", {
+          body: Buffer.from("fake image bytes"),
+          contentType: "image/png",
+          metadata: {},
+        });
+
+        await withTenantTransaction(
+          { tenantId: seeded.tenantId, userId: seeded.userId },
+          async (client) => {
+            await client.query(
+              `
+                INSERT INTO ai_providers (id, key, name, kind, status, default_base_url, capabilities, updated_at)
+                VALUES (
+                  $1::uuid,
+                  'local-ffmpeg-provider',
+                  'Local FFmpeg',
+                  'mock',
+                  'active',
+                  'https://provider.invalid',
+                  '{}'::jsonb,
+                  now()
+                )
+              `,
+              ["00000000-0000-4000-8000-000000000702"],
+            );
+            await client.query(
+              `
+                INSERT INTO ai_models (id, provider_id, model_key, display_name, modality, capabilities, status, updated_at)
+                VALUES (
+                  $1::uuid,
+                  $2::uuid,
+                  'local-ffmpeg',
+                  'Local FFmpeg',
+                  'video',
+                  '{"supportedVideoWorkflows":["video_editor_export"]}'::jsonb,
+                  'active',
+                  now()
+                )
+              `,
+              ["00000000-0000-4000-8000-000000000703", "00000000-0000-4000-8000-000000000702"],
+            );
+            await client.query(
+              `
+                INSERT INTO ai_routes (tenant_id, provider_id, model_id, route_key, modality, status, request_config, pricing, rate_limit, updated_at)
+                VALUES (
+                  $1::uuid,
+                  $2::uuid,
+                  $3::uuid,
+                  'video.editor.ffmpeg',
+                  'video',
+                  'active',
+                  '{"capabilities":{"supportedVideoWorkflows":["video_editor_export"],"videoEditorRenderEngine":"ffmpeg"}}'::jsonb,
+                  '{}'::jsonb,
+                  '{}'::jsonb,
+                  now()
+                )
+              `,
+              [seeded.tenantId, "00000000-0000-4000-8000-000000000702", "00000000-0000-4000-8000-000000000703"],
+            );
+            await client.query(
+              `
+                INSERT INTO assets (
+                  id,
+                  tenant_id,
+                  project_id,
+                  owner_user_id,
+                  kind,
+                  mime_type,
+                  bucket,
+                  object_key,
+                  original_filename,
+                  width,
+                  height,
+                  status,
+                  source
+                )
+                VALUES (
+                  $1::uuid,
+                  $2::uuid,
+                  $3::uuid,
+                  $4::uuid,
+                  'image',
+                  'image/png',
+                  'test-bucket',
+                  'tenants/source/editor-image.png',
+                  'editor-image.png',
+                  1920,
+                  1080,
+                  'available',
+                  'upload'
+                )
+              `,
+              [imageAssetId, seeded.tenantId, seeded.projectId, seeded.userId],
+            );
+          },
+          appPool,
+        );
+
+        const localRenderTempDirs: string[] = [];
+        const render = vi.fn(async ({ plan }: { plan: { output: { durationMs: number; height: number; width: number } } }) => {
+          const outputPath = join(tmpdir(), `tapflow-video-render-output-${randomUUID()}`, "rendered-output.mp4");
+          localRenderTempDirs.push(dirname(outputPath));
+          await mkdir(dirname(outputPath), { recursive: true });
+          await writeFile(outputPath, Buffer.from("rendered local video"));
+          return {
+            output: {
+              durationMs: plan.output.durationMs,
+              height: plan.output.height,
+              localFilePath: outputPath,
+              mimeType: "video/mp4",
+              width: plan.output.width,
+            },
+            tempDir: "already-cleaned-input-dir",
+          };
+        });
+        const generateVideo = vi.fn(async () => {
+          throw new Error("provider video generation should not be called");
+        });
+        const nodeQueue = createFakeNodeExecuteQueue();
+        const service = createWorkflowService({
+          mediaGenerationRuntime: {
+            async generateImage() {
+              throw new Error("not used");
+            },
+            generateVideo,
+            async pollTask() {
+              throw new Error("not used");
+            },
+          },
+          nodeQueue,
+          pollQueue: createFakeProviderPollQueue(),
+          pool: appPool,
+          storageProvider,
+          videoEditorLocalRenderService: {
+            render,
+          },
+        });
+
+        await processNodeExecuteJob(
+          {
+            data: {
+              nodeRunId: seeded.middleNodeRunId,
+              tenantId: seeded.tenantId,
+              traceId: "trace-local-video-render",
+              workflowRunId: seeded.workflowRunId,
+            },
+            id: "job-local-video-render",
+            queueName: QUEUE_NAMES.nodeExecute,
+          } as never,
+          createTestLogger(),
+          { executionService: service },
+        );
+
+        const state = await withTenantTransaction(
+          { tenantId: seeded.tenantId, userId: seeded.userId },
+          async (client) => {
+            const nodeRun = await client.query<{ status: string; output_json: Record<string, unknown> }>(
+              "SELECT status, output_json FROM node_runs WHERE id = $1::uuid",
+              [seeded.middleNodeRunId],
+            );
+            const assets = await client.query<{ count: number }>(
+              "SELECT COUNT(*)::int AS count FROM assets WHERE workflow_run_id = $1::uuid AND kind = 'video'",
+              [seeded.workflowRunId],
+            );
+            const usage = await client.query<{ event_type: string; metadata: Record<string, unknown>; unit_type: string; units: string }>(
+              "SELECT event_type, metadata, unit_type, units::text AS units FROM usage_events WHERE workflow_run_id = $1::uuid",
+              [seeded.workflowRunId],
+            );
+            return {
+              assets: assets.rows[0]?.count ?? 0,
+              nodeRun: nodeRun.rows[0],
+              usage: usage.rows[0],
+            };
+          },
+          appPool,
+        );
+
+        expect(render).toHaveBeenCalledTimes(1);
+        expect(render.mock.calls[0]?.[0]).toMatchObject({
+          assetLookups: expect.any(Map),
+          tenantId: seeded.tenantId,
+          workflowRunId: seeded.workflowRunId,
+        });
+        expect(generateVideo).not.toHaveBeenCalled();
+        expect(state.nodeRun.status).toBe("succeeded");
+        expect(state.assets).toBe(1);
+        expect(state.nodeRun.output_json.assets).toHaveLength(1);
+        expect(state.nodeRun.output_json.assets[0]).toMatchObject({
+          durationMs: 3000,
+          height: 1080,
+          kind: "video",
+          mimeType: "video/mp4",
+          width: 1920,
+        });
+        expect(JSON.stringify(state.nodeRun.output_json)).not.toMatch(/base64|localFilePath|rendered-output/);
+        expect(state.usage).toMatchObject({
+          event_type: "ai.video.generate",
+          unit_type: "output_count",
+          units: "1.000000",
+        });
+        expect(state.usage.metadata.videoEditorExport).toMatchObject({
+          billingUnit: "video_generation",
+          source: "video_editor_export",
+          sourceVideoEditorNodeId: "video-editor-1",
+        });
+        for (const dir of localRenderTempDirs) {
+          await expect(stat(dir)).rejects.toThrow();
+        }
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("video.generate editor export without internal render engine keeps provider guard behavior", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({
+          connectionString: await createAppDatabaseUrl(),
+        });
+
+        const seeded = await seedWorkflowRuntime(appPool, {
+          inputNodeStatus: "succeeded",
+          middleNodeConfig: {
+            generationPrompt: "render editor timeline",
+            params: {
+              videoEditor: {
+                timeline: {
+                  audio: [],
+                  clips: [
+                    {
+                      assetId: "00000000-0000-4000-8000-000000000801",
+                      id: "clip-1",
+                      inMs: 0,
+                      kind: "image",
+                      outMs: 3000,
+                      speed: 1,
+                      startMs: 0,
+                      track: 0,
+                    },
+                  ],
+                  durationMs: 3000,
+                  subtitles: [],
+                },
+              },
+            },
+            routeKey: "video.editor.provider",
+          },
+          middleNodeStatus: "runnable",
+          middleNodeType: "video.generate",
+        });
+        await withTenantTransaction(
+          { tenantId: seeded.tenantId, userId: seeded.userId },
+          async (client) => {
+            await client.query(
+              `
+                INSERT INTO ai_providers (id, key, name, kind, status, default_base_url, capabilities, updated_at)
+                VALUES ($1::uuid, 'provider-video', 'Provider Video', 'mock', 'active', 'https://provider.invalid', '{}'::jsonb, now())
+              `,
+              ["00000000-0000-4000-8000-000000000802"],
+            );
+            await client.query(
+              `
+                INSERT INTO ai_models (id, provider_id, model_key, display_name, modality, capabilities, status, updated_at)
+                VALUES ($1::uuid, $2::uuid, 'provider-video-model', 'Provider Video', 'video', '{"supportedVideoWorkflows":["video_editor_export"]}'::jsonb, 'active', now())
+              `,
+              ["00000000-0000-4000-8000-000000000803", "00000000-0000-4000-8000-000000000802"],
+            );
+            await client.query(
+              `
+                INSERT INTO ai_routes (tenant_id, provider_id, model_id, route_key, modality, status, request_config, pricing, rate_limit, updated_at)
+                VALUES (
+                  $1::uuid,
+                  $2::uuid,
+                  $3::uuid,
+                  'video.editor.provider',
+                  'video',
+                  'active',
+                  '{"capabilities":{"supportedVideoWorkflows":["video_editor_export"]}}'::jsonb,
+                  '{}'::jsonb,
+                  '{}'::jsonb,
+                  now()
+                )
+              `,
+              [seeded.tenantId, "00000000-0000-4000-8000-000000000802", "00000000-0000-4000-8000-000000000803"],
+            );
+          },
+          appPool,
+        );
+
+        const render = vi.fn(async () => {
+          throw new Error("local render should not be used");
+        });
+        const generateVideo = vi.fn(async () => {
+          throw new AiGatewayError({
+            code: "UNSUPPORTED_VIDEO_EDITOR_EXPORT",
+            message: "Route video.editor.provider does not support video editor export.",
+            statusCode: 422,
+          });
+        });
+        const service = createWorkflowService({
+          mediaGenerationRuntime: {
+            async generateImage() {
+              throw new Error("not used");
+            },
+            generateVideo,
+            async pollTask() {
+              throw new Error("not used");
+            },
+          },
+          nodeQueue: createFakeNodeExecuteQueue(),
+          pollQueue: createFakeProviderPollQueue(),
+          pool: appPool,
+          storageProvider: new MemoryStorageProvider(),
+          videoEditorLocalRenderService: {
+            render,
+          },
+        });
+
+        await expect(
+          processNodeExecuteJob(
+            {
+              data: {
+                nodeRunId: seeded.middleNodeRunId,
+                tenantId: seeded.tenantId,
+                traceId: "trace-provider-guard",
+                workflowRunId: seeded.workflowRunId,
+              },
+              id: "job-provider-guard",
+              queueName: QUEUE_NAMES.nodeExecute,
+            } as never,
+            createTestLogger(),
+            { executionService: service },
+          ),
+        ).rejects.toThrow("Route video.editor.provider does not support video editor export.");
+
+        expect(render).not.toHaveBeenCalled();
+        expect(generateVideo).toHaveBeenCalledTimes(1);
       } finally {
         await appPool.end();
         await adminPool.end();

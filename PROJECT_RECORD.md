@@ -3,6 +3,25 @@
 Last updated: 2026-07-05
 Maintainers: project team + Codex sessions
 
+## 2026-07-05 - Video Editor Local Render Workflow Phase 23
+
+- wired `剪辑工程` exported `video.generate` nodes into the worker-local FFmpeg render path:
+  - worker reads the selected video route's server-side `request_config.capabilities`.
+  - local rendering is enabled only when the route declares both `supportedVideoWorkflows: ["video_editor_export"]` and `videoEditorRenderEngine: "ffmpeg"`.
+  - routes without the internal render engine continue through the existing provider runtime path and existing `UNSUPPORTED_VIDEO_EDITOR_EXPORT` guard behavior.
+  - local render outputs are persisted through the existing `MediaAssetStore` object-storage + `assets` pipeline and settle through the existing `ai.video.generate` usage path.
+  - rendered output temp directories are deleted after asset persistence; cleanup is limited to `tapflow-video-render-output-*` temp directories.
+- kept v2 safety boundaries intact:
+  - no browser-local export, new pricing unit, database schema change, frontend billing mutation, provider secret exposure, base64 canvas persistence, or signed-URL draft persistence was added.
+  - render plans are rebuilt from structured `params.videoEditor` data in the worker rather than trusting client-supplied metadata as the source of truth.
+- validation:
+  - red test observed on 2026-07-05: `npm run test --workspace @aigc-flow/worker -- test/worker.test.ts` failed because `readVideoEditorRenderEngine` was not implemented/exported.
+  - red test observed on 2026-07-05: `npm run test --workspace @aigc-flow/worker -- test/worker.test.ts` failed because local render cleanup did not yet expose/guard the cleanup directory helper.
+  - `npm run test --workspace @aigc-flow/worker -- test/worker.test.ts test/video-editor-local-render-service.test.ts test/video-editor-ffmpeg-executor.test.ts test/video-editor-render-plan.test.ts test/media-asset-store.test.ts` passed on 2026-07-05: 5 files, 27 tests passed, 16 DB-backed worker tests skipped by the existing local DB guard.
+  - `npm run build --workspace @aigc-flow/worker` passed on 2026-07-05.
+  - `npm run build` passed on 2026-07-05 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+  - `git diff --check` passed on 2026-07-05.
+
 ## 2026-07-05 - Video Editor Local Render Service Phase 22
 
 - added a standalone worker-local render service for future `剪辑工程` export execution:

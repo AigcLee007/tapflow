@@ -1,3 +1,6 @@
+import { rm } from "node:fs/promises";
+import { basename, dirname, isAbsolute } from "node:path";
+
 import {
   BillingService,
   createPgPool,
@@ -38,6 +41,11 @@ import {
   type MediaVariantQueue,
   MediaAssetStore,
 } from "./media-asset-store.js";
+import {
+  VideoEditorLocalRenderService,
+  type VideoEditorLocalRenderResult,
+  type VideoEditorRenderAssetLookup,
+} from "./video-editor-local-render-service.js";
 import { buildVideoEditorRenderPlan } from "./video-editor-render-plan.js";
 
 type WorkflowRunRecord = {
@@ -87,6 +95,8 @@ type WorkflowExecutionContext = {
 type WorkflowRunMode = "flow" | "target_node";
 const UNKNOWN_PROVIDER_RECONCILE_PREFIX = "timeout-unknown:";
 const UNKNOWN_PROVIDER_RECONCILE_WINDOW_MS = 10 * 60 * 1000;
+const VIDEO_EDITOR_EXPORT_WORKFLOW = "video_editor_export";
+const VIDEO_EDITOR_FFMPEG_RENDER_ENGINE = "ffmpeg";
 
 type TextGenerationRuntimeLike = Pick<DatabaseTextGenerationRuntime, "generateText">;
 type MediaGenerationRuntimeLike = Pick<DatabaseMediaRuntime, "generateImage" | "generateVideo" | "pollTask">;
@@ -137,6 +147,11 @@ type AssetStorageLookup = {
   width?: number | null;
 };
 
+type VideoEditorRenderRouteCapability = {
+  renderEngine: "ffmpeg" | null;
+  routeKey: string;
+};
+
 type SerializableAssetRef = Omit<AssetRef, "timing">;
 
 type PersistedMediaOutput = {
@@ -175,6 +190,7 @@ type AiGatewayMediaResultWithTaskIds = AiGatewayMediaResult & {
 };
 
 type MediaProviderOutcome = {
+  cleanupDir?: string | null;
   kind: "image" | "video";
   node: CompiledWorkflowNode;
   nodeRun: NodeRunRecord;
@@ -714,6 +730,40 @@ function resolveImageRequestRouteKey(config: Record<string, unknown>): string {
     ?? "image.default";
 }
 
+function resolveVideoRequestRouteKey(config: Record<string, unknown>): string {
+  return readTrimmedString(config.routeKey) ?? "video.default";
+}
+
+function readVideoEditorRenderEngine(requestConfig: Record<string, unknown> | null): "ffmpeg" | null {
+  const capabilities = isPlainObject(requestConfig?.capabilities) ? requestConfig.capabilities : {};
+  const supportedVideoWorkflows = Array.isArray(capabilities.supportedVideoWorkflows)
+    ? capabilities.supportedVideoWorkflows.map((item) => String(item || "").trim())
+    : [];
+  if (!supportedVideoWorkflows.includes(VIDEO_EDITOR_EXPORT_WORKFLOW)) {
+    return null;
+  }
+  return capabilities.videoEditorRenderEngine === VIDEO_EDITOR_FFMPEG_RENDER_ENGINE
+    ? VIDEO_EDITOR_FFMPEG_RENDER_ENGINE
+    : null;
+}
+
+function readVideoEditorExportRenderPlan(request: VideoGenerationRequest): unknown | null {
+  const metadata = isPlainObject(request.metadata) ? request.metadata : {};
+  const videoEditorExport = isPlainObject(metadata.videoEditorExport) ? metadata.videoEditorExport : {};
+  return videoEditorExport.source === VIDEO_EDITOR_EXPORT_WORKFLOW ? videoEditorExport.renderPlan ?? null : null;
+}
+
+function localOutputDirFromRenderResult(result: VideoEditorLocalRenderResult): string | null {
+  const localFilePath = typeof result.output.localFilePath === "string" ? result.output.localFilePath.trim() : "";
+  if (!localFilePath) {
+    return null;
+  }
+  const outputDir = dirname(localFilePath);
+  return isAbsolute(outputDir) && basename(outputDir).startsWith("tapflow-video-render-output-")
+    ? outputDir
+    : null;
+}
+
 function buildImageRequest(
   upstreamOutputs: Array<Record<string, unknown> | null>,
   config: Record<string, unknown>,
@@ -872,7 +922,9 @@ export const __workerTestUtils = {
   buildMediaUsageMetadata,
   buildVideoRequest,
   getDependencyOutputs: getDependencyOutputsFromRuntimeGraph,
+  localOutputDirFromRenderResult,
   normalizeMediaOutputs,
+  readVideoEditorRenderEngine,
   resolveImageRequestRouteKey,
 };
 
@@ -1111,6 +1163,7 @@ export class WorkflowNodeExecutionService {
   readonly pool: Pool;
   readonly providerPollQueue: ProviderPollQueueLike;
   readonly textGenerationRuntime: TextGenerationRuntimeLike;
+  readonly videoEditorLocalRenderService: Pick<VideoEditorLocalRenderService, "render">;
 
   constructor(options: {
     assetBucket: string;
@@ -1126,6 +1179,7 @@ export class WorkflowNodeExecutionService {
     providerPollQueue: ProviderPollQueueLike;
     storageProvider: StorageProvider;
     textGenerationRuntime: TextGenerationRuntimeLike;
+    videoEditorLocalRenderService?: Pick<VideoEditorLocalRenderService, "render">;
   }) {
     this.assetStore = new MediaAssetStore({
       assetBucket: options.assetBucket,
@@ -1148,6 +1202,9 @@ export class WorkflowNodeExecutionService {
     this.pool = options.pool ?? createPgPool();
     this.providerPollQueue = options.providerPollQueue;
     this.textGenerationRuntime = options.textGenerationRuntime;
+    this.videoEditorLocalRenderService = options.videoEditorLocalRenderService ?? new VideoEditorLocalRenderService({
+      storageProvider: options.storageProvider,
+    });
   }
 
   async executeNode(
@@ -1421,8 +1478,10 @@ export class WorkflowNodeExecutionService {
         return this.noOpResult(QUEUE_NAMES.nodeExecute, prepared.input);
       }
 
-      const resolvedOutcome = outcome.type === "media_provider_succeeded"
-        ? await this.mapMediaOutcome(
+      let resolvedOutcome: NodeExecutionOutcome;
+      if (outcome.type === "media_provider_succeeded") {
+        try {
+          resolvedOutcome = await this.mapMediaOutcome(
             client,
             currentNode,
             workflowRun,
@@ -1432,8 +1491,15 @@ export class WorkflowNodeExecutionService {
             outcome.result,
             outcome.kind,
             logger,
-          )
-        : outcome;
+          );
+        } finally {
+          if (outcome.cleanupDir) {
+            await rm(outcome.cleanupDir, { force: true, recursive: true });
+          }
+        }
+      } else {
+        resolvedOutcome = outcome;
+      }
 
       if (resolvedOutcome.type === "waiting_provider") {
         const primaryProviderTaskId = resolvedOutcome.pollPayloads[0]?.providerTaskId ?? null;
@@ -2134,6 +2200,19 @@ export class WorkflowNodeExecutionService {
 
     if (node.type === "video.generate") {
       const request = buildVideoRequest(upstreamOutputs, node.config ?? {});
+      const localRenderOutcome = await this.maybeRenderVideoEditorExportLocally(request, node, workflowRun, context, logger);
+      if (localRenderOutcome) {
+        return {
+          cleanupDir: localRenderOutcome.cleanupDir,
+          kind: "video",
+          node,
+          nodeRun,
+          result: localRenderOutcome.result,
+          runtimeFlow,
+          type: "media_provider_succeeded",
+          workflowRun,
+        };
+      }
       await this.hydrateInputAssetUrls(workflowRun.tenant_id, request.inputAssets ?? []);
       const providerStartedAt = Date.now();
       logger.info(
@@ -2205,7 +2284,9 @@ export class WorkflowNodeExecutionService {
     kind: "image" | "video",
     logger: WorkerLogger,
   ): Promise<NodeExecutionOutcome> {
-    const routeKey = resolveImageRequestRouteKey(node.config);
+    const routeKey = kind === "video"
+      ? resolveVideoRequestRouteKey(node.config ?? {})
+      : resolveImageRequestRouteKey(node.config);
     const providerFinishedAt = Date.now();
 
     if (result.status === "waiting_provider") {
@@ -2463,6 +2544,88 @@ export class WorkflowNodeExecutionService {
         projectId: runtimeFlow.project_id,
         targetNodeId: nodeRun.node_id,
         workflowRunId: workflowRun.id,
+      },
+    };
+  }
+
+  private async maybeRenderVideoEditorExportLocally(
+    request: VideoGenerationRequest,
+    node: CompiledWorkflowNode,
+    workflowRun: WorkflowRunRecord,
+    context: WorkflowExecutionContext,
+    logger: WorkerLogger,
+  ): Promise<{ cleanupDir: string | null; result: AiGatewayMediaResult } | null> {
+    if (!readVideoEditorExportRenderPlan(request)) {
+      return null;
+    }
+    const videoEditor = readVideoEditorConfig(node.config ?? {});
+    if (!videoEditor) {
+      return null;
+    }
+
+    const routeKey = resolveVideoRequestRouteKey(node.config ?? {});
+    const capability = await withTenantTransaction(
+      { tenantId: context.tenantId, userId: null },
+      async (client) => this.loadVideoEditorRenderRouteCapability(client, context.tenantId, routeKey),
+      this.pool,
+    );
+    if (capability?.renderEngine !== VIDEO_EDITOR_FFMPEG_RENDER_ENGINE) {
+      return null;
+    }
+
+    const plan = buildVideoEditorRenderPlan(videoEditor);
+    logger.info(
+      {
+        event: "workflow.video_editor.local_render.started",
+        renderAssetCount: plan.assetIds.length,
+        renderEngine: VIDEO_EDITOR_FFMPEG_RENDER_ENGINE,
+        routeKey,
+        targetNodeId: node.id,
+        tenantId: context.tenantId,
+        traceId: context.traceId,
+        workflowRunId: workflowRun.id,
+      },
+      "workflow video editor local render started",
+    );
+    const assetLookups = await withTenantTransaction(
+      { tenantId: context.tenantId, userId: null },
+      async (client) => this.loadAssetStorageLookups(client, context.tenantId, plan.assetIds),
+      this.pool,
+    );
+    const renderResult = await this.videoEditorLocalRenderService.render({
+      assetLookups: assetLookups as Map<string, VideoEditorRenderAssetLookup>,
+      plan,
+      tenantId: context.tenantId,
+      workflowRunId: workflowRun.id,
+    });
+    logger.info(
+      {
+        event: "workflow.video_editor.local_render.finished",
+        outputDurationMs: renderResult.output.durationMs ?? null,
+        outputHeight: renderResult.output.height ?? null,
+        outputMimeType: renderResult.output.mimeType ?? null,
+        outputWidth: renderResult.output.width ?? null,
+        renderEngine: VIDEO_EDITOR_FFMPEG_RENDER_ENGINE,
+        routeKey,
+        targetNodeId: node.id,
+        tenantId: context.tenantId,
+        traceId: context.traceId,
+        workflowRunId: workflowRun.id,
+      },
+      "workflow video editor local render finished",
+    );
+
+    return {
+      cleanupDir: localOutputDirFromRenderResult(renderResult),
+      result: {
+        modelKey: "video-editor-ffmpeg",
+        outputs: [renderResult.output],
+        providerKey: "local",
+        providerRequest: { renderEngine: VIDEO_EDITOR_FFMPEG_RENDER_ENGINE },
+        providerResponse: { status: "rendered" },
+        routeKey,
+        status: "succeeded",
+        usage: null,
       },
     };
   }
@@ -2808,6 +2971,49 @@ export class WorkflowNodeExecutionService {
         width: row.width,
       },
     ]));
+  }
+
+  private async loadVideoEditorRenderRouteCapability(
+    client: PoolClient,
+    tenantId: string,
+    routeKey: string,
+  ): Promise<VideoEditorRenderRouteCapability | null> {
+    const result = await client.query<{
+      request_config: Record<string, unknown>;
+      route_key: string;
+    }>(
+      `
+        SELECT
+          route.route_key,
+          COALESCE(route.request_config, '{}'::jsonb) AS request_config
+        FROM ai_routes AS route
+        JOIN ai_providers AS provider
+          ON provider.id = route.provider_id
+        LEFT JOIN ai_models AS model
+          ON model.id = route.model_id
+        WHERE route.status = 'active'
+          AND route.modality = 'video'
+          AND route.route_key = $1
+          AND (route.tenant_id = $2::uuid OR route.tenant_id IS NULL)
+          AND provider.status = 'active'
+          AND (route.model_id IS NULL OR model.status = 'active')
+        ORDER BY
+          CASE WHEN route.tenant_id = $2::uuid THEN 0 ELSE 1 END ASC,
+          route.updated_at DESC,
+          route.id ASC
+        LIMIT 1
+      `,
+      [routeKey, tenantId],
+    );
+    const row = result.rows[0];
+    if (!row) {
+      return null;
+    }
+
+    return {
+      renderEngine: readVideoEditorRenderEngine(row.request_config),
+      routeKey: row.route_key,
+    };
   }
 
   private async getRuntimeFlow(
