@@ -561,4 +561,42 @@ describe('ProductionStudioShell', () => {
 
     expect(JSON.stringify(onUpdateNodeData.mock.calls)).not.toMatch(/blob:|data:/);
   });
+
+  it('exports a safe video node request from the video editor timeline', () => {
+    const onCreateCanvasNodeFromStudio = vi.fn();
+    render(
+      <ProductionStudioShell
+        studio="video_editor"
+        node={videoNode as any}
+        onClose={vi.fn()}
+        onCreateCanvasNodeFromStudio={onCreateCanvasNodeFromStudio}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '导出到画布' }));
+
+    expect(onCreateCanvasNodeFromStudio).toHaveBeenCalledWith({
+      kind: 'video',
+      position: { x: 420, y: 40 },
+      data: expect.objectContaining({
+        durationMs: 3000,
+        generationPrompt: '根据剪辑工程时间线生成视频',
+        params: {
+          videoEditor: expect.objectContaining({
+            sourceVideoEditorNodeId: 'video-node',
+            timeline: expect.objectContaining({
+              clips: [
+                expect.objectContaining({
+                  assetId: 'asset-video-1',
+                  id: 'clip-1',
+                }),
+              ],
+            }),
+          }),
+        },
+        title: '剪辑工程导出',
+      }),
+    });
+    expect(JSON.stringify(onCreateCanvasNodeFromStudio.mock.calls[0]?.[0])).not.toMatch(/blob:|data:/);
+  });
 });

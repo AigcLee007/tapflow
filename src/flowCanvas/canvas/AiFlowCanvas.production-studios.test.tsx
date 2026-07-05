@@ -677,4 +677,42 @@ describe('AiFlowCanvas production studios', () => {
     expect(node?.data.videoEditor?.timeline.durationMs).toBe(0);
     expect(JSON.stringify(node?.data.videoEditor)).not.toMatch(/blob:|data:/);
   });
+
+  it('creates a runnable video node from the video editor export request', () => {
+    useFlowCanvasStore.getState().loadProject({
+      id: 'project-1',
+      title: '项目',
+      nodes: [videoNodeWithClip as any],
+      edges: [],
+      viewport: { x: 0, y: 0, zoom: 1 },
+      version: 1,
+      updatedAt: 1,
+    });
+    render(<AiFlowCanvas cullingEnabled={false} />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(OPEN_PRODUCTION_STUDIO_EVENT, {
+          detail: { nodeId: 'video-node', studio: 'video_editor' },
+        }),
+      );
+    });
+    fireEvent.click(screen.getByRole('button', { name: '导出到画布' }));
+
+    const state = useFlowCanvasStore.getState();
+    const exported = state.nodes.find((item) => item.type === 'video' && item.data.title === '剪辑工程导出');
+    expect(exported).toBeTruthy();
+    expect(exported?.position).toEqual({ x: 600, y: 200 });
+    expect(exported?.selected).toBe(true);
+    expect(exported?.data.routeKey).toBe('video.default');
+    expect(exported?.data.params).toEqual({
+      videoEditor: expect.objectContaining({
+        sourceVideoEditorNodeId: 'video-node',
+        timeline: expect.objectContaining({
+          clips: [expect.objectContaining({ assetId: 'asset-video-1' })],
+        }),
+      }),
+    });
+    expect(JSON.stringify(exported?.data)).not.toMatch(/blob:|data:/);
+  });
 });

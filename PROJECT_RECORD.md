@@ -3,6 +3,18 @@
 Last updated: 2026-07-05
 Maintainers: project team + Codex sessions
 
+## 2026-07-05 - Video Editor Export Node Phase 14
+
+- added a canvas export action inside the canvas-native `剪辑工程` studio:
+  - `导出到画布` creates a downstream selected `video` node beside the video editor node.
+  - the created node keeps the existing `video.default` route from the node factory, so later execution uses the normal v2 target-node workflow path.
+  - the video node receives a concise prompt, project duration, and structured `params.videoEditor` metadata with source video editor node id, aspect, resolution, and timeline snapshot.
+- kept the action non-billable preparation work only; it does not create assets, enqueue workflow runs, reserve credits, settle usage, refund credits, or bypass the existing video generation billing flow.
+- kept exported timeline data draft-safe and asset-reference based; the export tests assert no `blob:`, `data:`, base64, `File`, `Blob`, or long-lived signed URL values are written by this action.
+- validation:
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-05: 2 test files, 30 tests.
+  - `npm run build` passed on 2026-07-05 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-05 - Video Editor Clip Editing Phase 13
 
 - added selectable timeline clips inside the canvas-native `剪辑工程` studio:

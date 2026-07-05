@@ -17,7 +17,7 @@ type DirectorCamera = FlowDirector3dData['cameras'][number];
 type DirectorShot = FlowDirector3dData['shots'][number];
 
 export type StudioCanvasNodeRequest = {
-  kind: 'image';
+  kind: 'image' | 'video';
   position: { x: number; y: number };
   data: Partial<FlowNodeData>;
 };
@@ -116,6 +116,8 @@ export const ProductionStudioShell: React.FC<ProductionStudioShellProps> = ({
           <VideoEditorContent
             data={node.data.videoEditor}
             nodeId={node.id}
+            nodePosition={node.position}
+            onCreateCanvasNodeFromStudio={onCreateCanvasNodeFromStudio}
             onUpdateNodeData={onUpdateNodeData}
           />
         )}
@@ -671,10 +673,14 @@ function StoryboardContent({
 function VideoEditorContent({
   data,
   nodeId,
+  nodePosition,
+  onCreateCanvasNodeFromStudio,
   onUpdateNodeData,
 }: {
   data?: FlowVideoEditorData;
   nodeId: string;
+  nodePosition: { x: number; y: number };
+  onCreateCanvasNodeFromStudio?: (request: StudioCanvasNodeRequest) => void;
   onUpdateNodeData?: (nodeId: string, patch: Partial<FlowNodeData>) => void;
 }) {
   const videoEditor = normalizeVideoEditorData(data);
@@ -740,6 +746,28 @@ function VideoEditorContent({
     updateTimeline({ ...nextTimeline, durationMs: getTimelineDurationMs(nextTimeline) });
     setSelectedClipId(null);
   };
+  const exportVideoToCanvas = () => {
+    onCreateCanvasNodeFromStudio?.({
+      kind: 'video',
+      position: {
+        x: nodePosition.x + 420,
+        y: nodePosition.y + 40,
+      },
+      data: {
+        title: '剪辑工程导出',
+        durationMs: timeline.durationMs,
+        generationPrompt: '根据剪辑工程时间线生成视频',
+        params: {
+          videoEditor: {
+            sourceVideoEditorNodeId: nodeId,
+            aspect: videoEditor.aspect,
+            resolution: videoEditor.resolution,
+            timeline,
+          },
+        },
+      },
+    });
+  };
 
   return (
     <div style={videoLayoutStyle}>
@@ -760,6 +788,10 @@ function VideoEditorContent({
           <button type="button" aria-label="添加字幕" style={toolButtonStyle} onClick={addSubtitle}>
             <Plus size={14} />
             添加字幕
+          </button>
+          <button type="button" aria-label="导出到画布" style={toolButtonStyle} onClick={exportVideoToCanvas}>
+            <Film size={14} />
+            导出到画布
           </button>
         </div>
       </aside>
