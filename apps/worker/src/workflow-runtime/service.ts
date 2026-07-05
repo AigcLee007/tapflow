@@ -995,6 +995,7 @@ function sanitizeVideoEditorTimelineItem(item: unknown): Record<string, unknown>
   if (!isPlainObject(item)) {
     return null;
   }
+  const transitionOut = sanitizeVideoEditorTransitionOut(item.transitionOut);
   return {
     ...(readTrimmedString(item.id) ? { id: readTrimmedString(item.id) } : {}),
     ...(readTrimmedString(item.assetId) ? { assetId: readTrimmedString(item.assetId) } : {}),
@@ -1004,7 +1005,23 @@ function sanitizeVideoEditorTimelineItem(item: unknown): Record<string, unknown>
     ...(readFiniteNumberOrNull(item.inMs) !== null ? { inMs: readFiniteNumberOrNull(item.inMs) } : {}),
     ...(readFiniteNumberOrNull(item.outMs) !== null ? { outMs: readFiniteNumberOrNull(item.outMs) } : {}),
     ...(readFiniteNumberOrNull(item.speed) !== null ? { speed: readFiniteNumberOrNull(item.speed) } : {}),
+    ...(transitionOut ? { transitionOut } : {}),
     ...(readFiniteNumberOrNull(item.volume) !== null ? { volume: readFiniteNumberOrNull(item.volume) } : {}),
+  };
+}
+
+function sanitizeVideoEditorTransitionOut(value: unknown): Record<string, unknown> | null {
+  if (!isPlainObject(value)) {
+    return null;
+  }
+  const type = value.type === "fade" || value.type === "crossfade" ? value.type : null;
+  const durationMs = readFiniteNumberOrNull(value.durationMs);
+  if (!type || durationMs === null || durationMs <= 0) {
+    return null;
+  }
+  return {
+    durationMs: Math.round(durationMs),
+    type,
   };
 }
 

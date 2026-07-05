@@ -994,6 +994,89 @@ describe('ProductionStudioShell', () => {
     expect(JSON.stringify(onUpdateNodeData.mock.calls)).not.toMatch(/blob:|data:/);
   });
 
+  it('emits safe video editor patches for selected clip transition settings', () => {
+    const onUpdateNodeData = vi.fn();
+    const { rerender } = render(
+      <ProductionStudioShell
+        studio="video_editor"
+        node={videoNode as any}
+        onClose={vi.fn()}
+        onUpdateNodeData={onUpdateNodeData}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '选择片段 clip-1' }));
+    fireEvent.click(screen.getByRole('button', { name: '淡入淡出' }));
+    expect(onUpdateNodeData).toHaveBeenCalledWith('video-node', {
+      videoEditor: expect.objectContaining({
+        timeline: expect.objectContaining({
+          clips: expect.arrayContaining([
+            expect.objectContaining({
+              id: 'clip-1',
+              transitionOut: { durationMs: 500, type: 'fade' },
+            }),
+          ]),
+        }),
+      }),
+    });
+
+    const videoNodeWithTransition = {
+      ...videoNode,
+      data: {
+        ...videoNode.data,
+        videoEditor: {
+          ...videoNode.data.videoEditor,
+          timeline: {
+            ...videoNode.data.videoEditor.timeline,
+            clips: [
+              {
+                ...videoNode.data.videoEditor.timeline.clips[0],
+                transitionOut: { durationMs: 500, type: 'fade' },
+              },
+            ],
+          },
+        },
+      },
+    };
+    rerender(
+      <ProductionStudioShell
+        studio="video_editor"
+        node={videoNodeWithTransition as any}
+        onClose={vi.fn()}
+        onUpdateNodeData={onUpdateNodeData}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText('转场时长（秒）'), { target: { value: '1.2' } });
+    expect(onUpdateNodeData).toHaveBeenLastCalledWith('video-node', {
+      videoEditor: expect.objectContaining({
+        timeline: expect.objectContaining({
+          clips: expect.arrayContaining([
+            expect.objectContaining({
+              id: 'clip-1',
+              transitionOut: { durationMs: 1200, type: 'fade' },
+            }),
+          ]),
+        }),
+      }),
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '无转场' }));
+    expect(onUpdateNodeData).toHaveBeenLastCalledWith('video-node', {
+      videoEditor: expect.objectContaining({
+        timeline: expect.objectContaining({
+          clips: expect.arrayContaining([
+            expect.not.objectContaining({
+              transitionOut: expect.anything(),
+            }),
+          ]),
+        }),
+      }),
+    });
+
+    expect(JSON.stringify(onUpdateNodeData.mock.calls)).not.toMatch(/blob:|data:/);
+  });
+
   it('exports a safe video node request from the video editor timeline', () => {
     const onCreateCanvasNodeFromStudio = vi.fn();
     render(

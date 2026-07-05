@@ -566,7 +566,7 @@ describe("worker skeleton", () => {
               { id: "audio-1", assetId: "asset-audio-1", track: 2, startMs: 0, inMs: 0, outMs: 3000, volume: 0.8 },
             ],
             clips: [
-              { id: "clip-1", assetId: "asset-image-1", kind: "image", track: 1, startMs: 0, inMs: 0, outMs: 3000, speed: 1 },
+              { id: "clip-1", assetId: "asset-image-1", kind: "image", track: 1, startMs: 0, inMs: 0, outMs: 3000, speed: 1, transitionOut: { type: "fade", durationMs: 750 } },
               { id: "clip-2", assetId: "asset-video-2", kind: "video", track: 1, startMs: 3000, inMs: 200, outMs: 4200, speed: 1 },
             ],
             durationMs: 7000,
@@ -589,6 +589,10 @@ describe("worker skeleton", () => {
         aspect: "16:9",
         resolution: "1920x1080",
         timeline: expect.objectContaining({
+          clips: [
+            expect.objectContaining({ transitionOut: { durationMs: 750, type: "fade" } }),
+            expect.objectContaining({ id: "clip-2" }),
+          ],
           durationMs: 7000,
         }),
       }),
@@ -604,6 +608,10 @@ describe("worker skeleton", () => {
             width: 1920,
           }),
           renderer: "ffmpeg",
+          clips: [
+            expect.objectContaining({ transitionOut: { durationMs: 750, type: "fade" } }),
+            expect.objectContaining({ id: "clip-2" }),
+          ],
         }),
         source: "video_editor_export",
         sourceVideoEditorNodeId: "video-editor-1",

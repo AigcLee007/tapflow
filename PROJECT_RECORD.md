@@ -3,6 +3,24 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - Video Editor Clip Transition Metadata Phase 35
+
+- added the first canvas-native transition controls to `剪辑工程`:
+  - selected clips can now set `无转场`, `淡入淡出`, or `叠化`, with editable transition duration in seconds.
+  - transition edits persist as safe structured `timeline.clips[].transitionOut` metadata and are preserved when exporting the video editor timeline to a runnable video node.
+  - the worker video-editor render plan and video request metadata now preserve `fade` / `crossfade` transition metadata for the existing `video.editor.ffmpeg` export route.
+- kept v2 safety and billing boundaries unchanged:
+  - this commit defines and carries transition metadata only; it does not add a new route, pricing shortcut, direct asset write, browser-local export, database migration, or provider credential surface.
+  - actual video export still uses the existing video workflow node, pricing preflight/reserve/settle/refund path, worker execution, and asset persistence.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "transition"` failed because the `淡入淡出` control did not exist.
+  - red tests observed on 2026-07-06: `npm run test --workspace @aigc-flow/worker -- video-editor-render-plan.test.ts worker.test.ts -t "video.generate request uses exported video editor prompt|normalizes asset-backed"` failed because `transitionOut` was stripped from render plans and request metadata.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-06: 2 files, 43 tests.
+  - `npm run test --workspace @aigc-flow/worker -- video-editor-render-plan.test.ts worker.test.ts` passed on 2026-07-06: 2 files, 15 tests run with existing filtered/skipped tests.
+  - `npm run build --workspace @aigc-flow/worker` passed on 2026-07-06.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/studios/DirectorDeskThreeViewport.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx src/flowCanvas/utils/storyboardDirectorSync.test.ts` passed on 2026-07-06: 4 files, 47 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-06 - 3D Director Desk Shot Timeline Controls Phase 34
 
 - made `3D导演台` shot timelines editable as an ordered shot list:

@@ -15,7 +15,7 @@ describe("buildVideoEditorRenderPlan", () => {
           { id: "audio-1", assetId: "asset-audio-1", track: 2, startMs: 500, inMs: 100, outMs: 5100, volume: 0.8 },
         ],
         clips: [
-          { id: "clip-1", assetId: "asset-image-1", kind: "image", track: 1, startMs: 0, inMs: 0, outMs: 3000, speed: 1 },
+          { id: "clip-1", assetId: "asset-image-1", kind: "image", track: 1, startMs: 0, inMs: 0, outMs: 3000, speed: 1, transitionOut: { type: "fade", durationMs: 750 } },
           { id: "clip-2", assetId: "asset-video-2", kind: "video", track: 1, startMs: 3000, inMs: 200, outMs: 4200, speed: 2, muted: true, volume: 0.25 },
         ],
         durationMs: 7000,
@@ -43,6 +43,7 @@ describe("buildVideoEditorRenderPlan", () => {
       muted: true,
       volume: 0.25,
     });
+    expect(plan.clips[0].transitionOut).toEqual({ durationMs: 750, type: "fade" });
     expect(plan.audio[0]).toMatchObject({
       assetId: "asset-audio-1",
       durationMs: 5000,

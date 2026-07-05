@@ -27,6 +27,10 @@ export type VideoEditorRenderClipPlan = {
   readonly speed: number;
   readonly startMs: number;
   readonly track: number;
+  readonly transitionOut?: {
+    readonly durationMs: number;
+    readonly type: "fade" | "crossfade";
+  };
   readonly volume: number | null;
 };
 
@@ -133,6 +137,24 @@ function normalizeClipKind(value: unknown): "image" | "video" {
   return value === "image" || value === "video" ? value : "video";
 }
 
+function normalizeTransitionOut(value: unknown, clipDurationMs: number): VideoEditorRenderClipPlan["transitionOut"] {
+  if (!isPlainObject(value)) {
+    return undefined;
+  }
+  const type = value.type === "fade" || value.type === "crossfade" ? value.type : null;
+  if (!type) {
+    return undefined;
+  }
+  const durationMs = readNonNegativeNumber(value.durationMs, 0);
+  if (durationMs <= 0) {
+    return undefined;
+  }
+  return {
+    durationMs: Math.min(Math.round(durationMs), Math.round(clipDurationMs)),
+    type,
+  };
+}
+
 function normalizeClip(item: unknown): VideoEditorRenderClipPlan | null {
   if (!isPlainObject(item)) {
     return null;
@@ -153,6 +175,7 @@ function normalizeClip(item: unknown): VideoEditorRenderClipPlan | null {
     );
   }
 
+  const transitionOut = normalizeTransitionOut(item.transitionOut, durationMs);
   return {
     assetId,
     durationMs,
@@ -165,6 +188,7 @@ function normalizeClip(item: unknown): VideoEditorRenderClipPlan | null {
     speed,
     startMs: readNonNegativeNumber(item.startMs, 0),
     track: readTrack(item.track),
+    ...(transitionOut ? { transitionOut } : {}),
     volume: typeof item.volume === "number" && Number.isFinite(item.volume) && item.volume >= 0 ? item.volume : null,
   };
 }

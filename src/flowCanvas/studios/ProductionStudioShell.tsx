@@ -19,8 +19,11 @@ type DirectorCameraSnapshot = NonNullable<DirectorShot['cameraSnapshot']>;
 type DirectorVector = [number, number, number];
 type DirectorVectorAxis = 0 | 1 | 2;
 type DirectorShotMotion = NonNullable<DirectorShot['motion']>;
+type VideoEditorClip = FlowVideoEditorData['timeline']['clips'][number];
+type VideoEditorTransitionOut = NonNullable<VideoEditorClip['transitionOut']>;
 
 const VIDEO_EDITOR_EXPORT_ROUTE_KEY = 'video.editor.ffmpeg';
+const DEFAULT_VIDEO_TRANSITION_DURATION_MS = 500;
 const DEFAULT_DIRECTOR_CAMERA_FOCAL_MM = 35;
 const DIRECTOR_AXIS_LABELS = ['X', 'Y', 'Z'] as const;
 const DIRECTOR_SHOT_MOTION_OPTIONS: Array<{ label: string; value: DirectorShotMotion }> = [
@@ -304,6 +307,19 @@ function normalizeVideoEditorData(data?: FlowVideoEditorData): FlowVideoEditorDa
 function getClipDurationMs(clip: FlowVideoEditorData['timeline']['clips'][number]) {
   const rawDuration = Number(clip.outMs) - Number(clip.inMs);
   return Math.max(0, Number.isFinite(rawDuration) ? rawDuration : 0);
+}
+
+function getClipTransitionDurationSeconds(transitionOut?: VideoEditorTransitionOut) {
+  const durationMs = Number(transitionOut?.durationMs);
+  return Math.max(0, Number.isFinite(durationMs) ? Math.round(durationMs / 100) / 10 : 0);
+}
+
+function buildVideoTransitionOut(type: string, durationMs: number): VideoEditorTransitionOut | undefined {
+  if (type !== 'fade' && type !== 'crossfade') return undefined;
+  return {
+    durationMs: Math.max(0, Math.round(durationMs)),
+    type,
+  };
 }
 
 function getTimelineEndMs(clips: FlowVideoEditorData['timeline']['clips']) {
@@ -951,6 +967,28 @@ function VideoEditorContent({
     const durationMs = Math.round(Math.max(0, Number(value) || 0) * 1000);
     patchClip(selectedClip.id, (clip) => ({ ...clip, outMs: Math.max(0, Number(clip.inMs) || 0) + durationMs }));
   };
+  const setSelectedClipTransition = (type: 'none' | 'fade' | 'crossfade') => {
+    if (!selectedClip) return;
+    patchClip(selectedClip.id, (clip) => {
+      const { transitionOut: _transitionOut, ...rest } = clip;
+      if (type === 'none') return rest;
+      return {
+        ...rest,
+        transitionOut: buildVideoTransitionOut(
+          type,
+          clip.transitionOut?.durationMs ?? DEFAULT_VIDEO_TRANSITION_DURATION_MS,
+        ),
+      };
+    });
+  };
+  const setSelectedClipTransitionDurationSeconds = (value: string) => {
+    if (!selectedClip?.transitionOut) return;
+    const durationMs = Math.round(Math.max(0, Number(value) || 0) * 1000);
+    patchClip(selectedClip.id, (clip) => ({
+      ...clip,
+      transitionOut: buildVideoTransitionOut(clip.transitionOut?.type || 'fade', durationMs),
+    }));
+  };
   const deleteSelectedClip = () => {
     if (!selectedClip) return;
     const nextTimeline = {
@@ -1049,6 +1087,43 @@ function VideoEditorContent({
                 value={Math.round(getClipDurationMs(selectedClip) / 100) / 10}
               />
             </label>
+            <div style={fieldLabelStyle}>
+              <span>转场</span>
+              <div aria-label="转场" role="group" style={motionButtonGroupStyle}>
+                {[
+                  { label: '无转场', value: 'none' },
+                  { label: '淡入淡出', value: 'fade' },
+                  { label: '叠化', value: 'crossfade' },
+                ].map((option) => {
+                  const selected = (selectedClip.transitionOut?.type ?? 'none') === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      aria-pressed={selected}
+                      onClick={() => setSelectedClipTransition(option.value as 'none' | 'fade' | 'crossfade')}
+                      style={motionButtonStyle(selected)}
+                      type="button"
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            {selectedClip.transitionOut ? (
+              <label style={fieldLabelStyle}>
+                <span>转场时长（秒）</span>
+                <input
+                  aria-label="转场时长（秒）"
+                  min={0}
+                  onChange={(event) => setSelectedClipTransitionDurationSeconds(event.target.value)}
+                  step={0.1}
+                  style={textInputStyle}
+                  type="number"
+                  value={getClipTransitionDurationSeconds(selectedClip.transitionOut)}
+                />
+              </label>
+            ) : null}
             <button type="button" aria-label="删除片段" style={{ ...toolButtonStyle, marginTop: 10 }} onClick={deleteSelectedClip}>
               删除片段
             </button>
