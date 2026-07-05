@@ -3,6 +3,25 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - Production Image Mode Route Capabilities Phase 27
+
+- published real GPT-Image-2 image-generation route capabilities for the canvas production modes:
+  - `image.gpt-image-2` and `image.gpt-image-2.line2` now declare `supportedGenerationModes: ["standard", "panorama_360", "wraparound_270", "subject_orbit_270"]` in server-side route `request_config.capabilities`.
+  - plugin install payload coverage now proves those capabilities are persisted into `ai_routes.request_config` instead of relying on frontend-only assumptions.
+  - model catalog regression coverage now expects installed GPT-Image-2 routes to expose the four public modes while still hiding raw `requestConfig`.
+- kept v2 boundaries unchanged:
+  - no database migration, new pricing unit, worker execution path, canvas draft media storage, browser-local persistence, or provider-secret exposure was added.
+  - runtime catalog safety still flows through the existing whitelist for public `supportedGenerationModes`.
+- validation:
+  - red test observed on 2026-07-06: `npm run test --workspace @aigc-flow/ai-gateway-core -- plugin-registry.test.ts` failed because GPT-Image-2 routes did not declare production image mode capabilities.
+  - red test observed on 2026-07-06: `npm run test --workspace @aigc-flow/api -- test/ai-plugins.service.test.ts test/ai-model-catalog.test.ts test/ai-model-catalog.service.test.ts` failed because installed GPT-Image-2 route request config had no `capabilities.supportedGenerationModes`.
+  - `npm run test --workspace @aigc-flow/ai-gateway-core -- plugin-registry.test.ts` passed on 2026-07-06: 1 file, 11 tests.
+  - `npm run test --workspace @aigc-flow/api -- test/ai-plugins.service.test.ts test/ai-model-catalog.test.ts test/ai-model-catalog.service.test.ts` passed on 2026-07-06: 9 non-DB tests passed; 3 DB-backed model-catalog tests skipped by the existing local DB guard.
+  - `npm run build --workspace @aigc-flow/ai-gateway-core` passed on 2026-07-06.
+  - `npm run build --workspace @aigc-flow/api` passed on 2026-07-06.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+  - `git diff --check` passed on 2026-07-06.
+
 ## 2026-07-06 - Video Editor FFmpeg Discoverability Phase 26
 
 - made the internal `tapflow.video-editor-ffmpeg` template easier to publish and use from admin/runtime surfaces:

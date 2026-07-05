@@ -206,6 +206,14 @@ describe("AI plugin registry", () => {
         modelKey: "gpt-image-2",
         path: "/images/generations",
         requestConfig: expect.objectContaining({
+          capabilities: {
+            supportedGenerationModes: [
+              "standard",
+              "panorama_360",
+              "wraparound_270",
+              "subject_orbit_270",
+            ],
+          },
           editPath: "/images/edits",
           path: "/images/generations",
         }),
@@ -218,6 +226,14 @@ describe("AI plugin registry", () => {
         path: "/responses",
         requestConfig: expect.objectContaining({
           apiMode: "responses",
+          capabilities: {
+            supportedGenerationModes: [
+              "standard",
+              "panorama_360",
+              "wraparound_270",
+              "subject_orbit_270",
+            ],
+          },
           model: "gpt-5.5",
           path: "/responses",
         }),

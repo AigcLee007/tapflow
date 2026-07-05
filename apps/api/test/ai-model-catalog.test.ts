@@ -102,6 +102,101 @@ async function registerOwner(
 }
 
 describeWithDatabase("ai model catalog API", () => {
+  test("publishes GPT-Image-2 production image modes into the safe runtime catalog", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({
+          connectionString: await createAppDatabaseUrl(),
+        });
+        const api = buildTestApp(appPool);
+        const owner = await registerOwner(api, "gpt-image-production-owner@example.com", "GPT Image Production Owner");
+
+        const install = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "POST",
+          payload: {
+            credential: {
+              name: "GPT Image Catalog Key",
+              secret: "gpt-image-catalog-secret",
+            },
+            publishImmediately: true,
+          },
+          url: "/api/v2/admin/ai/plugins/openai-compatible.gpt-image-2/install",
+        });
+        expect(install.statusCode).toBe(201);
+
+        const catalog = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "GET",
+          url: "/api/v2/ai/model-catalog?modality=image",
+        });
+        expect(catalog.statusCode).toBe(200);
+        expect(catalog.json()).toEqual([
+          expect.objectContaining({
+            defaultRouteKey: "image.gpt-image-2",
+            modality: "image",
+            modelFamily: "gpt-image-2",
+            modelKey: "gpt-image-2",
+          }),
+        ]);
+
+        const routes = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "GET",
+          url: "/api/v2/ai/model-catalog/gpt-image-2/routes",
+        });
+        expect(routes.statusCode).toBe(200);
+        expect(routes.json()).toEqual([
+          expect.objectContaining({
+            capabilities: {
+              supportedGenerationModes: [
+                "standard",
+                "panorama_360",
+                "wraparound_270",
+                "subject_orbit_270",
+              ],
+              supportedVideoWorkflows: [],
+            },
+            pricingUnit: "image_generation",
+            providerKey: "openai-compatible",
+            routeKey: "image.gpt-image-2",
+          }),
+          expect.objectContaining({
+            capabilities: {
+              supportedGenerationModes: [
+                "standard",
+                "panorama_360",
+                "wraparound_270",
+                "subject_orbit_270",
+              ],
+              supportedVideoWorkflows: [],
+            },
+            pricingUnit: "image_generation",
+            providerKey: "openai-compatible",
+            routeKey: "image.gpt-image-2.line2",
+          }),
+        ]);
+        expect(JSON.stringify(routes.json())).not.toContain("requestConfig");
+
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
   test("publishes the internal video editor FFmpeg route into the safe runtime catalog", async () => {
     await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
       process.env.DATABASE_URL = databaseUrl;
