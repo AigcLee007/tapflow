@@ -771,6 +771,41 @@ describe('ProductionStudioShell', () => {
     expect(JSON.stringify(latestPatch)).not.toMatch(/blob:|data:/);
   });
 
+  it('binds a selected storyboard cell to a library image asset id', async () => {
+    listAssetsMock.mockResolvedValueOnce({
+      items: [{ id: 'asset-image-2', kind: 'image', title: '替换分镜图' }],
+      page: 1,
+      pageSize: 6,
+      total: 1,
+    });
+    const onUpdateNodeData = vi.fn();
+    render(
+      <ProductionStudioShell
+        studio="storyboard"
+        node={storyboardNode as any}
+        onClose={vi.fn()}
+        onUpdateNodeData={onUpdateNodeData}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(listAssetsMock).toHaveBeenCalledWith(expect.objectContaining({
+        includePreviewUrls: false,
+        kind: 'image',
+        page: 1,
+        pageSize: 6,
+      }));
+    });
+    fireEvent.click(await screen.findByRole('button', { name: '绑定素材 asset-image-2' }));
+
+    expect(onUpdateNodeData).toHaveBeenLastCalledWith('storyboard-node', {
+      storyboard: expect.objectContaining({
+        cells: expect.arrayContaining([expect.objectContaining({ id: 'cell-2', assetId: 'asset-image-2' })]),
+      }),
+    });
+    expect(JSON.stringify(onUpdateNodeData.mock.calls)).not.toMatch(/blob:|data:|https?:\/\//);
+  });
+
   it('requests an image node from the selected storyboard cell', () => {
     const onCreateCanvasNodeFromStudio = vi.fn();
     render(

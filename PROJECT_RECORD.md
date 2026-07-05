@@ -3,6 +3,22 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - Storyboard Asset Binding Phase 44
+
+- connected selected `故事板` cells to the v2 asset library:
+  - selected storyboard cells now load image asset candidates from `listAssets`.
+  - binding a candidate writes only the selected cell `assetId`.
+  - existing storyboard sheet composition and storyboard-to-video-editor sync can now be driven from asset-backed cells created inside the storyboard studio.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - the picker requests candidates with `includePreviewUrls: false`.
+  - no signed URL, preview URL, `blob:`, `data:`, base64, generated media, browser-local export, direct asset write, billing mutation, API route, database migration, worker behavior, or provider-secret exposure was added.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "storyboard cell to a library"` first failed because storyboard did not call `listAssets`.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "storyboard cell to a library"` passed on 2026-07-06: 1 selected test.
+  - `npm test -- src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx -t "storyboard cell asset binding"` passed on 2026-07-06: 1 selected test.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-06: 2 files, 56 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-06 - Video Editor Asset Binding Phase 43
 
 - connected selected `剪辑工程` video clips and audio tracks to the v2 asset library:

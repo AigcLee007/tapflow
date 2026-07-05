@@ -725,8 +725,49 @@ function StoryboardContent({
   const storyboard = normalizeStoryboardData(data);
   const selectedCell = storyboard.cells[storyboard.selectedIndex] ?? storyboard.cells[0];
   const hasStoryboardAssets = storyboard.cells.some((cell) => cell.assetId);
+  const [storyboardAssetCandidates, setStoryboardAssetCandidates] = useState<AssetItem[]>([]);
+  const [storyboardAssetCandidatesError, setStoryboardAssetCandidatesError] = useState<string | null>(null);
+  const [storyboardAssetCandidatesLoading, setStoryboardAssetCandidatesLoading] = useState(false);
+  useEffect(() => {
+    if (!selectedCell) {
+      setStoryboardAssetCandidates([]);
+      setStoryboardAssetCandidatesError(null);
+      setStoryboardAssetCandidatesLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setStoryboardAssetCandidatesLoading(true);
+    setStoryboardAssetCandidatesError(null);
+    listAssets({
+      includePreviewUrls: false,
+      kind: 'image',
+      page: 1,
+      pageSize: 6,
+    })
+      .then((response) => {
+        if (cancelled) return;
+        setStoryboardAssetCandidates((response.items || []).filter((asset) => asset.kind === 'image'));
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setStoryboardAssetCandidates([]);
+        setStoryboardAssetCandidatesError('素材加载失败');
+      })
+      .finally(() => {
+        if (!cancelled) setStoryboardAssetCandidatesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCell?.id]);
   const updateStoryboard = (nextStoryboard: typeof storyboard) => {
     onUpdateNodeData?.(nodeId, { storyboard: nextStoryboard });
+  };
+  const bindSelectedStoryboardAsset = (assetId: string) => {
+    if (!selectedCell) return;
+    updateStoryboard(patchStoryboardCell(storyboard, storyboard.selectedIndex, { assetId }));
   };
   const buildStoryboardImageRequest = (
     cell: typeof storyboard.cells[number],
@@ -850,6 +891,15 @@ function StoryboardContent({
         <PanelTitle icon={<Camera size={15} />} title="选中分镜" />
         <MetricRow label="编号" value={selectedCell ? `镜头 ${selectedCell.shotNo}` : '-'} />
         <MetricRow label="画幅" value={selectedCell?.aspect || storyboard.aspect} />
+        {selectedCell ? (
+          <AssetCandidateList
+            candidates={storyboardAssetCandidates}
+            error={storyboardAssetCandidatesError}
+            loading={storyboardAssetCandidatesLoading}
+            onBind={bindSelectedStoryboardAsset}
+            selectedAssetId={selectedCell.assetId || ''}
+          />
+        ) : null}
         <label style={fieldLabelStyle}>
           <span>分镜标题</span>
           <input

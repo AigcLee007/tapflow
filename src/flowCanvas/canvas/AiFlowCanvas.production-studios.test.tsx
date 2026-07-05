@@ -518,6 +518,47 @@ describe('AiFlowCanvas production studios', () => {
     expect(JSON.stringify(node?.data.storyboard)).not.toMatch(/blob:|data:/);
   });
 
+  it('persists selected storyboard cell asset binding through the canvas store', async () => {
+    assetApiMocks.listAssets.mockResolvedValueOnce({
+      items: [{ id: 'asset-image-2', kind: 'image', title: '替换分镜图' }],
+      page: 1,
+      pageSize: 6,
+      total: 1,
+    });
+    useFlowCanvasStore.getState().loadProject({
+      id: 'project-1',
+      title: '项目',
+      nodes: [storyboardNode as any],
+      edges: [],
+      viewport: { x: 0, y: 0, zoom: 1 },
+      version: 1,
+      updatedAt: 1,
+    });
+
+    render(<AiFlowCanvas cullingEnabled={false} />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(OPEN_PRODUCTION_STUDIO_EVENT, {
+          detail: { nodeId: 'storyboard-node', studio: 'storyboard' },
+        }),
+      );
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: '绑定素材 asset-image-2' }));
+
+    const node = useFlowCanvasStore.getState().nodes.find((item) => item.id === 'storyboard-node');
+    expect(node?.data.storyboard?.cells[0]).toMatchObject({
+      id: 'cell-1',
+      assetId: 'asset-image-2',
+    });
+    expect(assetApiMocks.listAssets).toHaveBeenCalledWith(expect.objectContaining({
+      includePreviewUrls: false,
+      kind: 'image',
+    }));
+    expect(JSON.stringify(node?.data.storyboard)).not.toMatch(/blob:|data:|https?:\/\//);
+  });
+
   it('creates an image node from the selected storyboard cell through the canvas store', () => {
     useFlowCanvasStore.getState().loadProject({
       id: 'project-1',
