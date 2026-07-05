@@ -3,6 +3,21 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - Storyboard Sheet Canvas Output Phase 32
+
+- added a canvas-native `合成故事板图` action in the `故事板` studio:
+  - asset-backed storyboard cells can now create a downstream `image` node for a storyboard sheet/composition output.
+  - the generated node stores structured `params.storyboardSheet` metadata with `sourceStoryboardNodeId`, grid/aspect, shot numbers, cell ids, prompts, titles, and asset ids.
+  - the request prompt asks for a storyboard layout that preserves shot order, numbering, and titles.
+- kept v2 safety and billing boundaries unchanged:
+  - the action only creates a normal image workflow node; actual generation still uses existing image-node execution, route pricing, reserve/settle/refund, worker, and asset persistence.
+  - no generated media, `blob:`, `data:`, preview URL, browser-local export, direct asset write, billing mutation, API route, database migration, worker behavior, or provider-secret exposure was added.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx` failed because the `合成故事板图` action did not exist.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/studios/DirectorDeskThreeViewport.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-06: 3 files, 38 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+  - `git diff --check` passed on 2026-07-06.
+
 ## 2026-07-06 - 3D Director Desk Selected Camera Capture Phase 31
 
 - made `3D导演台` shot capture use the selected camera instead of always falling back to the first camera:

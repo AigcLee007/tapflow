@@ -501,6 +501,62 @@ describe('AiFlowCanvas production studios', () => {
     expect(JSON.stringify(imageNodes.map((node) => node.data))).not.toMatch(/blob:|data:/);
   });
 
+  it('creates a storyboard sheet image node through the canvas store', () => {
+    useFlowCanvasStore.getState().loadProject({
+      id: 'project-1',
+      title: '项目',
+      nodes: [storyboardAssetNode as any],
+      edges: [],
+      viewport: { x: 0, y: 0, zoom: 1 },
+      version: 1,
+      updatedAt: 1,
+    });
+
+    render(<AiFlowCanvas cullingEnabled={false} />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(OPEN_PRODUCTION_STUDIO_EVENT, {
+          detail: { nodeId: 'storyboard-node', studio: 'storyboard' },
+        }),
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '合成故事板图' }));
+
+    const sheetNode = useFlowCanvasStore
+      .getState()
+      .nodes.find((item) => item.type === 'image' && item.data.params?.storyboardSheet);
+    expect(sheetNode?.position).toEqual({ x: 500, y: 160 });
+    expect(sheetNode?.selected).toBe(true);
+    expect(sheetNode?.data).toMatchObject({
+      kind: 'image',
+      title: '故事板合成图',
+      generationMode: 'standard',
+      params: {
+        storyboardSheet: {
+          sourceStoryboardNodeId: 'storyboard-node',
+          aspect: '16:9',
+          grid: '3x2',
+          cells: [
+            expect.objectContaining({
+              assetId: 'asset-story-1',
+              cellId: 'cell-1',
+              shotNo: 1,
+            }),
+            expect.objectContaining({
+              assetId: 'asset-story-2',
+              cellId: 'cell-2',
+              shotNo: 2,
+            }),
+          ],
+        },
+      },
+    });
+    expect(sheetNode?.data.generationPrompt).toContain('将以下分镜合成为一张故事板排版图');
+    expect(JSON.stringify(sheetNode?.data)).not.toMatch(/blob:|data:/);
+  });
+
   it('syncs storyboard asset cells into an existing video editor node', () => {
     useFlowCanvasStore.getState().loadProject({
       id: 'project-1',

@@ -641,6 +641,47 @@ describe('ProductionStudioShell', () => {
     expect(JSON.stringify(onCreateCanvasNodeFromStudio.mock.calls)).not.toMatch(/blob:|data:/);
   });
 
+  it('requests a storyboard sheet image node from asset-backed cells', () => {
+    const onCreateCanvasNodeFromStudio = vi.fn();
+    render(
+      <ProductionStudioShell
+        studio="storyboard"
+        node={storyboardNode as any}
+        onClose={vi.fn()}
+        onCreateCanvasNodeFromStudio={onCreateCanvasNodeFromStudio}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '合成故事板图' }));
+
+    expect(onCreateCanvasNodeFromStudio).toHaveBeenCalledWith({
+      kind: 'image',
+      position: { x: 420, y: 40 },
+      data: expect.objectContaining({
+        title: '故事板合成图',
+        generationMode: 'standard',
+        generationPrompt: expect.stringContaining('将以下分镜合成为一张故事板排版图'),
+        params: expect.objectContaining({
+          storyboardSheet: expect.objectContaining({
+            sourceStoryboardNodeId: 'storyboard-node',
+            aspect: '16:9',
+            grid: '3x2',
+            cells: [
+              expect.objectContaining({
+                assetId: 'asset-1',
+                cellId: 'cell-1',
+                prompt: '城市远景',
+                shotNo: 1,
+                title: '开场',
+              }),
+            ],
+          }),
+        }),
+      }),
+    });
+    expect(JSON.stringify(onCreateCanvasNodeFromStudio.mock.calls[0]?.[0])).not.toMatch(/blob:|data:/);
+  });
+
   it('requests video editor sync from storyboard asset cells', () => {
     const onSyncStoryboardToVideoEditor = vi.fn();
     render(

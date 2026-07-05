@@ -629,6 +629,47 @@ function StoryboardContent({
       onCreateCanvasNodeFromStudio?.(request);
     });
   };
+  const createStoryboardSheetImageNode = () => {
+    const assetCells = storyboard.cells.filter((cell) => cell.assetId);
+    if (!assetCells.length) return;
+    const promptLines = assetCells.map((cell) => {
+      const title = cell.title?.trim() || `镜头 ${cell.shotNo}`;
+      const prompt = cell.prompt?.trim() || '沿用绑定素材画面';
+      return `${cell.shotNo}. ${title}: ${prompt}`;
+    });
+
+    onCreateCanvasNodeFromStudio?.({
+      kind: 'image',
+      position: {
+        x: nodePosition.x + 420,
+        y: nodePosition.y + 40,
+      },
+      data: {
+        title: '故事板合成图',
+        generationMode: 'standard',
+        generationPrompt: `将以下分镜合成为一张故事板排版图，保留镜头编号、标题和画面顺序。\n${promptLines.join('\n')}`,
+        params: {
+          storyboardSheet: {
+            sourceStoryboardNodeId: nodeId,
+            aspect: storyboard.aspect,
+            grid: storyboard.grid,
+            cells: assetCells.map((cell) => ({
+              assetId: cell.assetId,
+              cellId: cell.id,
+              shotNo: cell.shotNo,
+              ...(cell.title ? { title: cell.title } : {}),
+              ...(cell.prompt ? { prompt: cell.prompt } : {}),
+              ...(cell.aspect ? { aspect: cell.aspect } : { aspect: storyboard.aspect }),
+              ...(cell.directorCameraId ? { directorCameraId: cell.directorCameraId } : {}),
+              ...(cell.directorShotId ? { directorShotId: cell.directorShotId } : {}),
+              ...(cell.sourceAssetId ? { sourceAssetId: cell.sourceAssetId } : {}),
+              ...(cell.sourceNodeId ? { sourceNodeId: cell.sourceNodeId } : {}),
+            })),
+          },
+        },
+      },
+    });
+  };
   const syncStoryboardToVideoEditor = () => {
     if (!hasStoryboardAssets) return;
     onSyncStoryboardToVideoEditor?.({
@@ -717,6 +758,21 @@ function StoryboardContent({
           >
             <Grid3X3 size={14} />
             生成全部镜头
+          </button>
+          <button
+            type="button"
+            aria-label="合成故事板图"
+            disabled={!hasStoryboardAssets}
+            style={{
+              ...toolButtonStyle,
+              gridColumn: '1 / -1',
+              opacity: hasStoryboardAssets ? 1 : 0.45,
+              cursor: hasStoryboardAssets ? 'pointer' : 'not-allowed',
+            }}
+            onClick={createStoryboardSheetImageNode}
+          >
+            <ImagePlus size={14} />
+            合成故事板图
           </button>
           <button
             type="button"
