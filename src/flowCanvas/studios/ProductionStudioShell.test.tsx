@@ -581,6 +581,7 @@ describe('ProductionStudioShell', () => {
       data: expect.objectContaining({
         durationMs: 3000,
         generationPrompt: '根据剪辑工程时间线生成视频',
+        routeKey: 'video.editor.ffmpeg',
         params: {
           videoEditor: expect.objectContaining({
             sourceVideoEditorNodeId: 'video-node',

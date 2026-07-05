@@ -704,7 +704,7 @@ describe('AiFlowCanvas production studios', () => {
     expect(exported).toBeTruthy();
     expect(exported?.position).toEqual({ x: 600, y: 200 });
     expect(exported?.selected).toBe(true);
-    expect(exported?.data.routeKey).toBe('video.default');
+    expect(exported?.data.routeKey).toBe('video.editor.ffmpeg');
     expect(exported?.data.params).toEqual({
       videoEditor: expect.objectContaining({
         sourceVideoEditorNodeId: 'video-node',

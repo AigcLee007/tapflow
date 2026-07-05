@@ -3,6 +3,18 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - Video Editor Export Default Route Phase 25
+
+- connected the canvas-native `剪辑工程` export action to the Phase 24 FFmpeg route template:
+  - `导出到画布` now creates the downstream `video` node with `routeKey: "video.editor.ffmpeg"`.
+  - the exported node still uses the existing v2 target-node run path, so billing reserve/settle/refund, pricing lookup, draft flush, workflow execution, worker rendering, and asset persistence remain server-side.
+  - execution still fails closed unless the `tapflow.video-editor-ffmpeg` template has been installed/published and pricing exists for the route.
+- kept storage and billing boundaries unchanged:
+  - no browser-local export, new database table, new pricing unit, asset-write shortcut, provider secret exposure, base64 draft storage, or local authoritative persistence was added.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` failed because exported video nodes still used `video.default`.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-06: 2 files, 30 tests.
+
 ## 2026-07-06 - Video Editor FFmpeg Route Template Phase 24
 
 - added an installable AI Gateway plugin template for the canvas-native `剪辑工程` server-side FFmpeg export route:

@@ -16,6 +16,8 @@ type DirectorActor = FlowDirector3dData['actors'][number];
 type DirectorCamera = FlowDirector3dData['cameras'][number];
 type DirectorShot = FlowDirector3dData['shots'][number];
 
+const VIDEO_EDITOR_EXPORT_ROUTE_KEY = 'video.editor.ffmpeg';
+
 export type StudioCanvasNodeRequest = {
   kind: 'image' | 'video';
   position: { x: number; y: number };
@@ -757,6 +759,7 @@ function VideoEditorContent({
         title: '剪辑工程导出',
         durationMs: timeline.durationMs,
         generationPrompt: '根据剪辑工程时间线生成视频',
+        routeKey: VIDEO_EDITOR_EXPORT_ROUTE_KEY,
         params: {
           videoEditor: {
             sourceVideoEditorNodeId: nodeId,
