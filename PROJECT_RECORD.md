@@ -3,6 +3,19 @@
 Last updated: 2026-07-05
 Maintainers: project team + Codex sessions
 
+## 2026-07-05 - Director Desk Scene Editing Phase 4
+
+- added first real 3D Director Desk editing actions inside the canvas-native `3D导演台` studio:
+  - `添加角色` appends a structured placeholder humanoid actor.
+  - `添加镜头` appends a structured camera with position/target/focal metadata.
+  - `捕获镜头段` appends a structured shot linked to the current camera.
+- wired these actions through the existing `ProductionStudioShell` -> `updateNodeData` path so director scene edits persist in `director3d` node data.
+- kept this slice staging-only and non-billable; no Three.js transform runtime, AI rendering, export, asset creation, or billing workflow was added.
+- ensured director patches remain structured JSON and do not persist transient `blob:`, `data:`, base64, `File`, or `Blob` media.
+- validation:
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-05: 2 test files, 8 tests.
+  - `npm run build` passed on 2026-07-05 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-05 - Storyboard Studio Editing Phase 3
 
 - added real editing controls to the canvas-native `故事板` studio: storyboard cells can now be selected and the selected cell title/prompt can be edited.

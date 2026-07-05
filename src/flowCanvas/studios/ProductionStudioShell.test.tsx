@@ -86,6 +86,53 @@ describe('ProductionStudioShell', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it('emits structured director patches for actor, camera, and shot actions', () => {
+    const onUpdateNodeData = vi.fn();
+    render(
+      <ProductionStudioShell
+        studio="director3d"
+        node={directorNode as any}
+        onClose={vi.fn()}
+        onUpdateNodeData={onUpdateNodeData}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '添加角色' }));
+    expect(onUpdateNodeData).toHaveBeenCalledWith('director-node', {
+      director3d: expect.objectContaining({
+        actors: expect.arrayContaining([
+          expect.objectContaining({
+            kind: 'placeholder_humanoid',
+            name: '角色 2',
+            visible: true,
+          }),
+        ]),
+      }),
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '添加镜头' }));
+    expect(onUpdateNodeData).toHaveBeenCalledWith('director-node', {
+      director3d: expect.objectContaining({
+        cameras: expect.arrayContaining([expect.objectContaining({ id: 'camera-2', name: '镜头 2' })]),
+      }),
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '捕获镜头段' }));
+    expect(onUpdateNodeData).toHaveBeenCalledWith('director-node', {
+      director3d: expect.objectContaining({
+        shots: expect.arrayContaining([
+          expect.objectContaining({
+            cameraId: 'camera-1',
+            motion: 'static',
+          }),
+        ]),
+      }),
+    });
+
+    const latestPatch = onUpdateNodeData.mock.calls.at(-1)?.[1];
+    expect(JSON.stringify(latestPatch)).not.toMatch(/blob:|data:/);
+  });
+
   it('renders storyboard shell with selected shot context', () => {
     render(<ProductionStudioShell studio="storyboard" node={storyboardNode as any} onClose={vi.fn()} />);
 

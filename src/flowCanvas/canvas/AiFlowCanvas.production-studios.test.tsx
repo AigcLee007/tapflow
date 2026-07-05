@@ -193,6 +193,28 @@ describe('AiFlowCanvas production studios', () => {
     expect(screen.queryByRole('dialog', { name: '3D导演台' })).toBeNull();
   });
 
+  it('persists director actor edits through the canvas store', () => {
+    render(<AiFlowCanvas cullingEnabled={false} />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(OPEN_PRODUCTION_STUDIO_EVENT, {
+          detail: { nodeId: 'director-node', studio: 'director3d' },
+        }),
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '添加角色' }));
+
+    const node = useFlowCanvasStore.getState().nodes.find((item) => item.id === 'director-node');
+    expect(node?.data.director3d?.actors[0]).toMatchObject({
+      kind: 'placeholder_humanoid',
+      name: '角色 1',
+      visible: true,
+    });
+    expect(JSON.stringify(node?.data.director3d)).not.toMatch(/blob:|data:/);
+  });
+
   it('persists storyboard prompt edits through the canvas store', () => {
     useFlowCanvasStore.getState().loadProject({
       id: 'project-1',

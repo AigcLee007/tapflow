@@ -56,7 +56,11 @@ export const ProductionStudioShell: React.FC<ProductionStudioShellProps> = ({ no
         </header>
 
         {studio === 'director3d' ? (
-          <DirectorDeskContent data={node.data.director3d} />
+          <DirectorDeskContent
+            data={node.data.director3d}
+            nodeId={node.id}
+            onUpdateNodeData={onUpdateNodeData}
+          />
         ) : studio === 'storyboard' ? (
           <StoryboardContent
             data={node.data.storyboard}
@@ -71,10 +75,90 @@ export const ProductionStudioShell: React.FC<ProductionStudioShellProps> = ({ no
   );
 };
 
-function DirectorDeskContent({ data }: { data?: FlowDirector3dData }) {
-  const actors = data?.actors ?? [];
-  const cameras = data?.cameras ?? [];
-  const shots = data?.shots ?? [];
+function normalizeDirector3dData(data?: FlowDirector3dData): FlowDirector3dData {
+  return {
+    version: 1,
+    scene: {
+      ...(data?.scene.backgroundAssetId ? { backgroundAssetId: data.scene.backgroundAssetId } : {}),
+      gridVisible: data?.scene.gridVisible !== false,
+      units: 'meters',
+    },
+    actors: Array.isArray(data?.actors) ? data.actors : [],
+    cameras: Array.isArray(data?.cameras) ? data.cameras : [],
+    shots: Array.isArray(data?.shots) ? data.shots : [],
+  };
+}
+
+function buildDirectorActor(index: number): FlowDirector3dData['actors'][number] {
+  const number = index + 1;
+  return {
+    id: `actor-${number}`,
+    name: `角色 ${number}`,
+    kind: 'placeholder_humanoid',
+    position: [index * 0.8, 0, 0],
+    rotation: [0, 0, 0],
+    scale: [1, 1, 1],
+    visible: true,
+    locked: false,
+  };
+}
+
+function buildDirectorCamera(index: number): FlowDirector3dData['cameras'][number] {
+  const number = index + 1;
+  return {
+    id: `camera-${number}`,
+    name: `镜头 ${number}`,
+    position: [0, 1.8, 5 + index],
+    target: [0, 1, 0],
+    focalMm: 35,
+    durationMs: 3000,
+  };
+}
+
+function buildDirectorShot(
+  index: number,
+  cameraId: string,
+  previousShots: FlowDirector3dData['shots'],
+): FlowDirector3dData['shots'][number] {
+  const number = index + 1;
+  const startMs = previousShots.reduce((sum, shot) => sum + Math.max(0, Number(shot.durationMs) || 0), 0);
+  return {
+    id: `shot-${number}`,
+    cameraId,
+    startMs,
+    durationMs: 3000,
+    motion: 'static',
+  };
+}
+
+function DirectorDeskContent({
+  data,
+  nodeId,
+  onUpdateNodeData,
+}: {
+  data?: FlowDirector3dData;
+  nodeId: string;
+  onUpdateNodeData?: (nodeId: string, patch: Partial<FlowNodeData>) => void;
+}) {
+  const director = normalizeDirector3dData(data);
+  const actors = director.actors;
+  const cameras = director.cameras;
+  const shots = director.shots;
+  const updateDirector = (nextDirector: FlowDirector3dData) => {
+    onUpdateNodeData?.(nodeId, { director3d: nextDirector });
+  };
+  const addActor = () => updateDirector({ ...director, actors: [...actors, buildDirectorActor(actors.length)] });
+  const addCamera = () => updateDirector({ ...director, cameras: [...cameras, buildDirectorCamera(cameras.length)] });
+  const captureShot = () => {
+    const fallbackCamera = cameras[0] ? null : buildDirectorCamera(0);
+    const nextCameras = fallbackCamera ? [fallbackCamera] : cameras;
+    const cameraId = nextCameras[0]?.id || 'camera-1';
+    updateDirector({
+      ...director,
+      cameras: nextCameras,
+      shots: [...shots, buildDirectorShot(shots.length, cameraId, shots)],
+    });
+  };
 
   return (
     <div style={directorLayoutStyle}>
@@ -89,10 +173,16 @@ function DirectorDeskContent({ data }: { data?: FlowDirector3dData }) {
           ))}
           {actors.length === 0 && cameras.length === 0 ? <EmptyLine label="暂无对象" /> : null}
         </div>
-        <button type="button" style={toolButtonStyle}>
-          <Plus size={14} />
-          添加对象
-        </button>
+        <div style={directorActionGridStyle}>
+          <button type="button" aria-label="添加角色" style={toolButtonStyle} onClick={addActor}>
+            <Plus size={14} />
+            添加角色
+          </button>
+          <button type="button" aria-label="添加镜头" style={toolButtonStyle} onClick={addCamera}>
+            <Camera size={14} />
+            添加镜头
+          </button>
+        </div>
       </aside>
 
       <main style={viewportWrapStyle}>
@@ -116,7 +206,13 @@ function DirectorDeskContent({ data }: { data?: FlowDirector3dData }) {
       </aside>
 
       <div style={bottomRailStyle}>
-        <PanelTitle icon={<Play size={15} />} title="镜头轨道" />
+        <div style={railHeaderStyle}>
+          <PanelTitle icon={<Play size={15} />} title="镜头轨道" />
+          <button type="button" aria-label="捕获镜头段" style={railButtonStyle} onClick={captureShot}>
+            <Camera size={14} />
+            捕获镜头段
+          </button>
+        </div>
         <div style={shotStripStyle}>
           {shots.length ? (
             shots.map((shot, index) => (
@@ -488,6 +584,12 @@ const emptyLineStyle: React.CSSProperties = {
   padding: '8px 0',
 };
 
+const directorActionGridStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: '1fr 1fr',
+  gap: 8,
+};
+
 const toolButtonStyle: React.CSSProperties = {
   height: 32,
   width: '100%',
@@ -501,6 +603,29 @@ const toolButtonStyle: React.CSSProperties = {
   color: '#f8fafc',
   fontSize: 12,
   fontWeight: 800,
+};
+
+const railHeaderStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 10,
+};
+
+const railButtonStyle: React.CSSProperties = {
+  height: 30,
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 6,
+  border: '1px solid rgba(255,255,255,0.1)',
+  borderRadius: 8,
+  background: '#1f2937',
+  color: '#f8fafc',
+  padding: '0 10px',
+  fontSize: 12,
+  fontWeight: 800,
+  cursor: 'pointer',
 };
 
 const pillStyle: React.CSSProperties = {
