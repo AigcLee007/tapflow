@@ -207,6 +207,14 @@ function getTimelineEndMs(clips: FlowVideoEditorData['timeline']['clips']) {
   );
 }
 
+function getSubtitleTimelineEndMs(subtitles: FlowVideoEditorData['timeline']['subtitles']) {
+  return subtitles.reduce((endMs, subtitle) => Math.max(endMs, Math.max(0, Number(subtitle.endMs) || 0)), 0);
+}
+
+function getTimelineDurationMs(timeline: FlowVideoEditorData['timeline']) {
+  return Math.max(getTimelineEndMs(timeline.clips), getSubtitleTimelineEndMs(timeline.subtitles));
+}
+
 function buildVideoClip(
   kind: 'image' | 'video',
   clips: FlowVideoEditorData['timeline']['clips'],
@@ -674,6 +682,8 @@ function VideoEditorContent({
   const clips = timeline.clips;
   const audio = timeline.audio;
   const subtitles = timeline.subtitles;
+  const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
+  const selectedClip = selectedClipId ? clips.find((clip) => clip.id === selectedClipId) ?? null : null;
   const updateVideoEditor = (nextVideoEditor: FlowVideoEditorData) => {
     onUpdateNodeData?.(nodeId, { videoEditor: nextVideoEditor });
   };
@@ -682,23 +692,53 @@ function VideoEditorContent({
   };
   const addClip = (kind: 'image' | 'video') => {
     const nextClip = buildVideoClip(kind, clips);
+    const nextTimeline = { ...timeline, clips: [...clips, nextClip] };
     updateTimeline({
-      ...timeline,
-      clips: [...clips, nextClip],
-      durationMs: Math.max(timeline.durationMs, nextClip.startMs + getClipDurationMs(nextClip)),
+      ...nextTimeline,
+      durationMs: getTimelineDurationMs(nextTimeline),
     });
+    setSelectedClipId(nextClip.id);
   };
   const addSubtitle = () => {
     const nextSubtitle = buildVideoSubtitle(subtitles);
+    const nextTimeline = { ...timeline, subtitles: [...subtitles, nextSubtitle] };
     updateTimeline({
-      ...timeline,
-      durationMs: Math.max(timeline.durationMs, nextSubtitle.endMs),
-      subtitles: [...subtitles, nextSubtitle],
+      ...nextTimeline,
+      durationMs: getTimelineDurationMs(nextTimeline),
     });
   };
   const setDurationSeconds = (value: string) => {
     const seconds = Math.max(0, Number(value) || 0);
     updateTimeline({ ...timeline, durationMs: Math.round(seconds * 1000) });
+  };
+  const patchClip = (
+    clipId: string,
+    patcher: (clip: FlowVideoEditorData['timeline']['clips'][number]) => FlowVideoEditorData['timeline']['clips'][number],
+  ) => {
+    const nextTimeline = {
+      ...timeline,
+      clips: clips.map((clip) => (clip.id === clipId ? patcher(clip) : clip)),
+    };
+    updateTimeline({ ...nextTimeline, durationMs: getTimelineDurationMs(nextTimeline) });
+  };
+  const setSelectedClipStartSeconds = (value: string) => {
+    if (!selectedClip) return;
+    const startMs = Math.round(Math.max(0, Number(value) || 0) * 1000);
+    patchClip(selectedClip.id, (clip) => ({ ...clip, startMs }));
+  };
+  const setSelectedClipDurationSeconds = (value: string) => {
+    if (!selectedClip) return;
+    const durationMs = Math.round(Math.max(0, Number(value) || 0) * 1000);
+    patchClip(selectedClip.id, (clip) => ({ ...clip, outMs: Math.max(0, Number(clip.inMs) || 0) + durationMs }));
+  };
+  const deleteSelectedClip = () => {
+    if (!selectedClip) return;
+    const nextTimeline = {
+      ...timeline,
+      clips: clips.filter((clip) => clip.id !== selectedClip.id),
+    };
+    updateTimeline({ ...nextTimeline, durationMs: getTimelineDurationMs(nextTimeline) });
+    setSelectedClipId(null);
   };
 
   return (
@@ -734,6 +774,41 @@ function VideoEditorContent({
         <MetricRow label="画幅" value={videoEditor.aspect} />
         <MetricRow label="分辨率" value={videoEditor.resolution} />
         <MetricRow label="时长" value={`${Math.round(timeline.durationMs / 100) / 10}s`} />
+        {selectedClip ? (
+          <>
+            <MetricRow label="当前片段" value={selectedClip.id} />
+            <MetricRow label="素材" value={selectedClip.assetId} />
+            <label style={fieldLabelStyle}>
+              <span>片段开始（秒）</span>
+              <input
+                aria-label="片段开始（秒）"
+                min={0}
+                onChange={(event) => setSelectedClipStartSeconds(event.target.value)}
+                step={0.1}
+                style={textInputStyle}
+                type="number"
+                value={Math.round(selectedClip.startMs / 100) / 10}
+              />
+            </label>
+            <label style={fieldLabelStyle}>
+              <span>片段时长（秒）</span>
+              <input
+                aria-label="片段时长（秒）"
+                min={0}
+                onChange={(event) => setSelectedClipDurationSeconds(event.target.value)}
+                step={0.1}
+                style={textInputStyle}
+                type="number"
+                value={Math.round(getClipDurationMs(selectedClip) / 100) / 10}
+              />
+            </label>
+            <button type="button" aria-label="删除片段" style={{ ...toolButtonStyle, marginTop: 10 }} onClick={deleteSelectedClip}>
+              删除片段
+            </button>
+          </>
+        ) : (
+          <EmptyLine label="选择时间线片段后编辑" />
+        )}
         <label style={fieldLabelStyle}>
           <span>工程时长（秒）</span>
           <input
@@ -752,10 +827,16 @@ function VideoEditorContent({
         <div style={timelineStyle}>
           {clips.length ? (
             clips.map((clip) => (
-              <div key={clip.id} style={clipItemStyle}>
+              <button
+                key={clip.id}
+                type="button"
+                aria-label={`选择片段 ${clip.id}`}
+                onClick={() => setSelectedClipId(clip.id)}
+                style={clipButtonStyle(selectedClipId === clip.id)}
+              >
                 <strong>{clip.id}</strong>
                 <span>{clip.kind}</span>
-              </div>
+              </button>
             ))
           ) : (
             <EmptyLine label="暂无剪辑片段" />
@@ -1304,12 +1385,22 @@ const clipItemStyle: React.CSSProperties = {
   height: 52,
   borderRadius: 8,
   background: '#1d4ed8',
+  border: '1px solid rgba(147,197,253,0.24)',
+  color: '#f8fafc',
   display: 'grid',
   alignContent: 'center',
   gap: 4,
   padding: '0 10px',
   fontSize: 11,
+  textAlign: 'left',
 };
+
+const clipButtonStyle = (selected: boolean): React.CSSProperties => ({
+  ...clipItemStyle,
+  cursor: 'pointer',
+  border: selected ? '1px solid rgba(191,219,254,0.85)' : clipItemStyle.border,
+  background: selected ? '#1e40af' : clipItemStyle.background,
+});
 
 const subtitleItemStyle: React.CSSProperties = {
   minWidth: 132,

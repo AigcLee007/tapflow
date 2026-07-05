@@ -3,6 +3,20 @@
 Last updated: 2026-07-05
 Maintainers: project team + Codex sessions
 
+## 2026-07-05 - Video Editor Clip Editing Phase 13
+
+- added selectable timeline clips inside the canvas-native `剪辑工程` studio:
+  - timeline clips are now buttons with a selected state.
+  - selecting a clip exposes its source asset, start time, and duration in the right inspector.
+  - `片段开始（秒）` updates `clip.startMs`.
+  - `片段时长（秒）` updates `clip.outMs` while preserving `clip.inMs`.
+  - `删除片段` removes the selected clip and recalculates timeline duration from remaining clips/subtitles.
+- kept these actions inside the existing `ProductionStudioShell` -> `updateNodeData` canvas-store path; no new canvas shell, backend workflow, asset creation, or billing operation was added.
+- kept timeline edits draft-safe and asset-reference based; patches stay in structured `videoEditor.timeline` JSON and do not persist `blob:`, `data:`, base64, `File`, `Blob`, or long-lived signed URL values.
+- validation:
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-05: 2 test files, 28 tests.
+  - `npm run build` passed on 2026-07-05 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-05 - Storyboard Asset Sync To Video Editor Phase 12
 
 - added storyboard-to-video-editor sync for the canvas-native `故事板` studio:

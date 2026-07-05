@@ -515,4 +515,50 @@ describe('ProductionStudioShell', () => {
     const latestPatch = onUpdateNodeData.mock.calls.at(-1)?.[1];
     expect(JSON.stringify(latestPatch)).not.toMatch(/blob:|data:/);
   });
+
+  it('emits safe video editor patches for selected clip timing and deletion', () => {
+    const onUpdateNodeData = vi.fn();
+    render(
+      <ProductionStudioShell
+        studio="video_editor"
+        node={videoNode as any}
+        onClose={vi.fn()}
+        onUpdateNodeData={onUpdateNodeData}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '选择片段 clip-1' }));
+
+    fireEvent.change(screen.getByLabelText('片段开始（秒）'), { target: { value: '1.5' } });
+    expect(onUpdateNodeData).toHaveBeenCalledWith('video-node', {
+      videoEditor: expect.objectContaining({
+        timeline: expect.objectContaining({
+          clips: expect.arrayContaining([expect.objectContaining({ id: 'clip-1', startMs: 1500 })]),
+          durationMs: 4500,
+        }),
+      }),
+    });
+
+    fireEvent.change(screen.getByLabelText('片段时长（秒）'), { target: { value: '4.2' } });
+    expect(onUpdateNodeData).toHaveBeenCalledWith('video-node', {
+      videoEditor: expect.objectContaining({
+        timeline: expect.objectContaining({
+          clips: expect.arrayContaining([expect.objectContaining({ id: 'clip-1', outMs: 4200 })]),
+          durationMs: 4200,
+        }),
+      }),
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '删除片段' }));
+    expect(onUpdateNodeData).toHaveBeenCalledWith('video-node', {
+      videoEditor: expect.objectContaining({
+        timeline: expect.objectContaining({
+          clips: [],
+          durationMs: 1200,
+        }),
+      }),
+    });
+
+    expect(JSON.stringify(onUpdateNodeData.mock.calls)).not.toMatch(/blob:|data:/);
+  });
 });

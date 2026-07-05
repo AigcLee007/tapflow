@@ -203,6 +203,21 @@ const videoNode = {
   },
 };
 
+const videoNodeWithClip = {
+  ...videoNode,
+  data: {
+    ...videoNode.data,
+    videoEditor: {
+      ...videoNode.data.videoEditor,
+      timeline: {
+        ...videoNode.data.videoEditor.timeline,
+        clips: [{ id: 'clip-1', assetId: 'asset-video-1', kind: 'video', track: 1, startMs: 0, inMs: 0, outMs: 3000, speed: 1 }],
+        durationMs: 3000,
+      },
+    },
+  },
+};
+
 describe('AiFlowCanvas production studios', () => {
   beforeEach(() => {
     useFlowCanvasStore.getState().loadProject({
@@ -597,6 +612,69 @@ describe('AiFlowCanvas production studios', () => {
       kind: 'image',
       assetId: 'placeholder-image-1',
     });
+    expect(JSON.stringify(node?.data.videoEditor)).not.toMatch(/blob:|data:/);
+  });
+
+  it('persists selected video clip duration edits through the canvas store', () => {
+    useFlowCanvasStore.getState().loadProject({
+      id: 'project-1',
+      title: '项目',
+      nodes: [videoNodeWithClip as any],
+      edges: [],
+      viewport: { x: 0, y: 0, zoom: 1 },
+      version: 1,
+      updatedAt: 1,
+    });
+
+    render(<AiFlowCanvas cullingEnabled={false} />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(OPEN_PRODUCTION_STUDIO_EVENT, {
+          detail: { nodeId: 'video-node', studio: 'video_editor' },
+        }),
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '选择片段 clip-1' }));
+    fireEvent.change(screen.getByLabelText('片段时长（秒）'), { target: { value: '4.5' } });
+
+    const node = useFlowCanvasStore.getState().nodes.find((item) => item.id === 'video-node');
+    expect(node?.data.videoEditor?.timeline.clips[0]).toMatchObject({
+      id: 'clip-1',
+      outMs: 4500,
+    });
+    expect(node?.data.videoEditor?.timeline.durationMs).toBe(4500);
+    expect(JSON.stringify(node?.data.videoEditor)).not.toMatch(/blob:|data:/);
+  });
+
+  it('persists selected video clip deletion through the canvas store', () => {
+    useFlowCanvasStore.getState().loadProject({
+      id: 'project-1',
+      title: '项目',
+      nodes: [videoNodeWithClip as any],
+      edges: [],
+      viewport: { x: 0, y: 0, zoom: 1 },
+      version: 1,
+      updatedAt: 1,
+    });
+
+    render(<AiFlowCanvas cullingEnabled={false} />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(OPEN_PRODUCTION_STUDIO_EVENT, {
+          detail: { nodeId: 'video-node', studio: 'video_editor' },
+        }),
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '选择片段 clip-1' }));
+    fireEvent.click(screen.getByRole('button', { name: '删除片段' }));
+
+    const node = useFlowCanvasStore.getState().nodes.find((item) => item.id === 'video-node');
+    expect(node?.data.videoEditor?.timeline.clips).toEqual([]);
+    expect(node?.data.videoEditor?.timeline.durationMs).toBe(0);
     expect(JSON.stringify(node?.data.videoEditor)).not.toMatch(/blob:|data:/);
   });
 });
