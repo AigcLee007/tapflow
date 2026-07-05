@@ -316,6 +316,11 @@ function getClipTransitionDurationSeconds(transitionOut?: VideoEditorTransitionO
   return Math.max(0, Number.isFinite(durationMs) ? Math.round(durationMs / 100) / 10 : 0);
 }
 
+function getClipVolume(clip: VideoEditorClip) {
+  const volume = Number(clip.volume);
+  return Number.isFinite(volume) && volume >= 0 ? volume : 1;
+}
+
 function buildVideoTransitionOut(type: string, durationMs: number): VideoEditorTransitionOut | undefined {
   if (type !== 'fade' && type !== 'crossfade') return undefined;
   return {
@@ -1065,6 +1070,15 @@ function VideoEditorContent({
       transitionOut: buildVideoTransitionOut(clip.transitionOut?.type || 'fade', durationMs),
     }));
   };
+  const setSelectedClipMuted = (muted: boolean) => {
+    if (!selectedClip || selectedClip.kind !== 'video') return;
+    patchClip(selectedClip.id, (clip) => ({ ...clip, muted }));
+  };
+  const setSelectedClipVolume = (value: string) => {
+    if (!selectedClip || selectedClip.kind !== 'video') return;
+    const volume = Math.max(0, Math.min(2, Number(value) || 0));
+    patchClip(selectedClip.id, (clip) => ({ ...clip, volume }));
+  };
   const deleteSelectedClip = () => {
     if (!selectedClip) return;
     const nextTimeline = {
@@ -1262,6 +1276,32 @@ function VideoEditorContent({
                 value={Math.round(getClipDurationMs(selectedClip) / 100) / 10}
               />
             </label>
+            {selectedClip.kind === 'video' ? (
+              <>
+                <label style={checkboxFieldStyle}>
+                  <input
+                    aria-label="片段静音"
+                    checked={selectedClip.muted === true}
+                    onChange={(event) => setSelectedClipMuted(event.target.checked)}
+                    type="checkbox"
+                  />
+                  <span>片段静音</span>
+                </label>
+                <label style={fieldLabelStyle}>
+                  <span>片段音量</span>
+                  <input
+                    aria-label="片段音量"
+                    max={2}
+                    min={0}
+                    onChange={(event) => setSelectedClipVolume(event.target.value)}
+                    step={0.05}
+                    style={textInputStyle}
+                    type="number"
+                    value={getClipVolume(selectedClip)}
+                  />
+                </label>
+              </>
+            ) : null}
             <div style={fieldLabelStyle}>
               <span>转场</span>
               <div aria-label="转场" role="group" style={motionButtonGroupStyle}>

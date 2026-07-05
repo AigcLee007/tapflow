@@ -1005,6 +1005,39 @@ describe('ProductionStudioShell', () => {
     expect(JSON.stringify(onUpdateNodeData.mock.calls)).not.toMatch(/blob:|data:/);
   });
 
+  it('emits safe video editor patches for selected video clip audio settings', () => {
+    const onUpdateNodeData = vi.fn();
+    render(
+      <ProductionStudioShell
+        studio="video_editor"
+        node={videoNode as any}
+        onClose={vi.fn()}
+        onUpdateNodeData={onUpdateNodeData}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '选择片段 clip-1' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: '片段静音' }));
+    expect(onUpdateNodeData).toHaveBeenLastCalledWith('video-node', {
+      videoEditor: expect.objectContaining({
+        timeline: expect.objectContaining({
+          clips: expect.arrayContaining([expect.objectContaining({ id: 'clip-1', muted: true })]),
+        }),
+      }),
+    });
+
+    fireEvent.change(screen.getByLabelText('片段音量'), { target: { value: '0.65' } });
+    expect(onUpdateNodeData).toHaveBeenLastCalledWith('video-node', {
+      videoEditor: expect.objectContaining({
+        timeline: expect.objectContaining({
+          clips: expect.arrayContaining([expect.objectContaining({ id: 'clip-1', volume: 0.65 })]),
+        }),
+      }),
+    });
+
+    expect(JSON.stringify(onUpdateNodeData.mock.calls)).not.toMatch(/blob:|data:/);
+  });
+
   it('emits safe video editor patches for selected subtitle editing and deletion', () => {
     const onUpdateNodeData = vi.fn();
     render(

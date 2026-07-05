@@ -3,6 +3,22 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - Video Editor Clip Audio Controls Phase 42
+
+- exposed video-clip source audio controls in the `剪辑工程` studio:
+  - selected video clips now show a `片段静音` checkbox.
+  - selected video clips now show a bounded `片段音量` control matching the worker export volume range.
+  - image clips remain unchanged and do not show video-only audio controls.
+- connected the controls to safe structured `videoEditor.timeline.clips[]` draft patches so Phase 41 FFmpeg clip-audio mixing can be driven from the studio UI.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - no generated media, `blob:`, `data:`, base64, browser-local export, direct asset write, billing mutation, API route, database migration, worker behavior, or provider-secret exposure was added.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "video clip audio settings"` first failed because `片段静音` was not available.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "video clip audio settings"` passed on 2026-07-06: 1 selected test.
+  - `npm test -- src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx -t "video clip audio settings"` passed on 2026-07-06: 1 selected test.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-06: 2 files, 50 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-06 - Video Editor FFmpeg Clip Audio Mix Phase 41
 
 - improved `剪辑工程` FFmpeg export so unmuted video clips with explicit clip volume now contribute their source audio to the final mix.

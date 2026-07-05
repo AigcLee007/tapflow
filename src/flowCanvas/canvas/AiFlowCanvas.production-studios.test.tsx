@@ -819,6 +819,40 @@ describe('AiFlowCanvas production studios', () => {
     expect(JSON.stringify(node?.data.videoEditor)).not.toMatch(/blob:|data:/);
   });
 
+  it('persists selected video clip audio settings through the canvas store', () => {
+    useFlowCanvasStore.getState().loadProject({
+      id: 'project-1',
+      title: '项目',
+      nodes: [videoNodeWithClip as any],
+      edges: [],
+      viewport: { x: 0, y: 0, zoom: 1 },
+      version: 1,
+      updatedAt: 1,
+    });
+
+    render(<AiFlowCanvas cullingEnabled={false} />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(OPEN_PRODUCTION_STUDIO_EVENT, {
+          detail: { nodeId: 'video-node', studio: 'video_editor' },
+        }),
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '选择片段 clip-1' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: '片段静音' }));
+    fireEvent.change(screen.getByLabelText('片段音量'), { target: { value: '0.55' } });
+
+    const node = useFlowCanvasStore.getState().nodes.find((item) => item.id === 'video-node');
+    expect(node?.data.videoEditor?.timeline.clips[0]).toMatchObject({
+      id: 'clip-1',
+      muted: true,
+      volume: 0.55,
+    });
+    expect(JSON.stringify(node?.data.videoEditor)).not.toMatch(/blob:|data:/);
+  });
+
   it('persists selected video clip deletion through the canvas store', () => {
     useFlowCanvasStore.getState().loadProject({
       id: 'project-1',
