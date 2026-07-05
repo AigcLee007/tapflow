@@ -8,6 +8,7 @@ type DirectorViewportSelectionType = 'actor' | 'camera' | 'scene' | 'shot';
 interface DirectorDeskThreeViewportProps {
   actors: FlowDirector3dData['actors'];
   cameras: FlowDirector3dData['cameras'];
+  scene?: FlowDirector3dData['scene'];
   shots: FlowDirector3dData['shots'];
   selectedId: string | null;
   selectedType: DirectorViewportSelectionType | null;
@@ -34,12 +35,15 @@ const getViewportSize = (container: HTMLDivElement): ViewportSize => {
 export const DirectorDeskThreeViewport: React.FC<DirectorDeskThreeViewportProps> = ({
   actors,
   cameras,
+  scene: directorScene,
   shots,
   selectedId,
   selectedType,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [rendererMode, setRendererMode] = useState<'pending' | 'three' | 'fallback'>('pending');
+  const assetActorCount = actors.filter((actor) => actor.visible && Boolean(actor.assetId)).length;
+  const backgroundAssetId = directorScene?.backgroundAssetId || '';
   const shotPoses = React.useMemo(
     () => buildShotPoses(shots, cameras, selectedId, selectedType),
     [cameras, selectedId, selectedType, shots],
@@ -179,8 +183,10 @@ export const DirectorDeskThreeViewport: React.FC<DirectorDeskThreeViewportProps>
       ref={containerRef}
       aria-label="3D导演视口"
       data-actor-count={actors.filter((actor) => actor.visible).length}
+      data-asset-actor-count={assetActorCount}
       data-camera-count={cameras.length}
       data-renderer={rendererMode}
+      data-scene-background-asset-id={backgroundAssetId}
       data-selected-id={selectedId ?? ''}
       data-selected-shot-camera-position={selectedShotPose ? selectedShotPose.position.join(',') : ''}
       data-selected-shot-id={selectedShotPose?.id ?? ''}
@@ -189,6 +195,12 @@ export const DirectorDeskThreeViewport: React.FC<DirectorDeskThreeViewportProps>
       style={viewportHostStyle}
     >
       <div style={viewportGlowStyle} />
+      {backgroundAssetId || assetActorCount ? (
+        <div style={assetHudStyle}>
+          {backgroundAssetId ? <span>背景 {backgroundAssetId}</span> : null}
+          {assetActorCount ? <span>资产角色 {assetActorCount}</span> : null}
+        </div>
+      ) : null}
       {selectedShotPose ? <div style={selectedShotLabelStyle}>{selectedShotPose.label}</div> : null}
     </div>
   );
@@ -340,6 +352,20 @@ const viewportGlowStyle: React.CSSProperties = {
   inset: 0,
   pointerEvents: 'none',
   background: 'radial-gradient(circle at 52% 42%, rgba(56,189,248,0.14), transparent 42%)',
+};
+
+const assetHudStyle: React.CSSProperties = {
+  position: 'absolute',
+  top: 12,
+  right: 12,
+  display: 'grid',
+  gap: 5,
+  justifyItems: 'end',
+  maxWidth: 'min(280px, calc(100% - 24px))',
+  color: '#bfdbfe',
+  fontSize: 11,
+  fontWeight: 800,
+  pointerEvents: 'none',
 };
 
 const selectedShotLabelStyle: React.CSSProperties = {

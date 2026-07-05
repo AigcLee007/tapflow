@@ -659,6 +659,7 @@ function DirectorDeskContent({
           <DirectorDeskThreeViewport
             actors={actors}
             cameras={cameras}
+            scene={director.scene}
             shots={shots}
             selectedId={selected?.id ?? null}
             selectedType={selected?.type ?? null}

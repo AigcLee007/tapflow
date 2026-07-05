@@ -99,4 +99,45 @@ describe('DirectorDeskThreeViewport', () => {
     const viewport = screen.getByTestId('director-three-viewport');
     expect(viewport.getAttribute('data-selected-id')).toBe('background');
   });
+
+  it('exposes asset-backed actor and scene background metadata', () => {
+    render(
+      <DirectorDeskThreeViewport
+        actors={[
+          {
+            id: 'actor-asset',
+            name: 'Asset actor',
+            kind: 'image_plane',
+            assetId: 'asset-actor-image-1',
+            position: [0, 0, 0],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1],
+            visible: true,
+            locked: false,
+          },
+          {
+            id: 'actor-placeholder',
+            name: 'Placeholder actor',
+            kind: 'placeholder_humanoid',
+            position: [1, 0, 0],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1],
+            visible: true,
+            locked: false,
+          },
+        ]}
+        cameras={[]}
+        scene={{ backgroundAssetId: 'asset-scene-bg-1', gridVisible: true, units: 'meters' }}
+        shots={[]}
+        selectedId="background"
+        selectedType="scene"
+      />,
+    );
+
+    const viewport = screen.getByTestId('director-three-viewport');
+    expect(viewport.getAttribute('data-asset-actor-count')).toBe('1');
+    expect(viewport.getAttribute('data-scene-background-asset-id')).toBe('asset-scene-bg-1');
+    expect(screen.getByText('背景 asset-scene-bg-1')).toBeTruthy();
+    expect(screen.getByText('资产角色 1')).toBeTruthy();
+  });
 });

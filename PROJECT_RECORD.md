@@ -3,6 +3,22 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - Director Desk Asset Viewport Metadata Phase 48
+
+- made asset-backed `3D导演台` state visible in the director viewport layer:
+  - `DirectorDeskThreeViewport` now receives the director scene metadata.
+  - the viewport exposes data attributes for asset-backed visible actors and bound scene background asset ids.
+  - a compact non-interactive viewport HUD shows the bound background asset id and asset-backed actor count, so asset binding is visible beyond the inspector fields.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - this is a read-only visualization of existing structured `director3d` draft metadata.
+  - no signed URL, preview URL, `blob:`, `data:`, base64, generated media, browser-local export, direct asset write, billing mutation, API route, database migration, worker behavior, or provider-secret exposure was added.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/DirectorDeskThreeViewport.test.tsx -t "asset-backed actor"` first failed because the viewport exposed no asset actor/background metadata.
+  - `npm test -- src/flowCanvas/studios/DirectorDeskThreeViewport.test.tsx -t "asset-backed actor"` passed on 2026-07-06: 1 selected test.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "asset-backed director scene metadata"` passed on 2026-07-06: 1 selected test.
+  - `npm test -- src/flowCanvas/studios/DirectorDeskThreeViewport.test.tsx src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-06: 3 files, 65 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-06 - Director Desk Scene Background Asset Binding Phase 47
 
 - connected the `3D导演台` scene background to the v2 asset library:

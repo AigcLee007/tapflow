@@ -401,6 +401,41 @@ describe('ProductionStudioShell', () => {
     expect(JSON.stringify(latestPatch)).not.toMatch(/blob:|data:|https?:\/\//);
   });
 
+  it('feeds asset-backed director scene metadata into the 3D viewport', () => {
+    const assetBackedDirectorNode = {
+      ...directorNode,
+      data: {
+        ...directorNode.data,
+        director3d: {
+          ...directorNode.data.director3d,
+          scene: {
+            ...directorNode.data.director3d.scene,
+            backgroundAssetId: 'asset-scene-bg-1',
+          },
+          actors: [
+            {
+              ...directorNode.data.director3d.actors[0],
+              assetId: 'asset-actor-image-1',
+              kind: 'image_plane',
+            },
+          ],
+        },
+      },
+    };
+
+    render(
+      <ProductionStudioShell
+        studio="director3d"
+        node={assetBackedDirectorNode as any}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const viewport = screen.getByTestId('director-three-viewport');
+    expect(viewport.getAttribute('data-asset-actor-count')).toBe('1');
+    expect(viewport.getAttribute('data-scene-background-asset-id')).toBe('asset-scene-bg-1');
+  });
+
   it('emits safe transform patches for selected director actors', () => {
     const onUpdateNodeData = vi.fn();
     render(
