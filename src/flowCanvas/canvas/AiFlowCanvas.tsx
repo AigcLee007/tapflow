@@ -27,6 +27,11 @@ import {
   UploadNodeComponent,
   VideoNodeComponent,
 } from '../nodes/FlowNodes';
+import {
+  Director3dNodeComponent,
+  StoryboardNodeComponent,
+  VideoEditorNodeComponent,
+} from '../nodes/ProductionNodes';
 import { SmartEdgeComponent } from '../edges/SmartEdge';
 import { useFlowCanvasStore } from '../store/flowCanvasStore';
 import { CanvasAssetPanel, CanvasCommentPanel, CanvasDockDrawer, CanvasDockEmptyState, CanvasHistoryPanel, CanvasTemplatePanel } from '../panels';
@@ -109,6 +114,9 @@ const nodeTypes: NodeTypes = {
   audio: AudioNodeComponent,
   upload: UploadNodeComponent,
   image_editor: ImageEditorNodeComponent,
+  storyboard: StoryboardNodeComponent,
+  director3d: Director3dNodeComponent,
+  video_editor: VideoEditorNodeComponent,
   group: GroupNodeComponent,
 };
 
