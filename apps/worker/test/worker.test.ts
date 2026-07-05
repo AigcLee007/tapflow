@@ -567,6 +567,16 @@ describe("worker skeleton", () => {
       videoEditorExport: expect.objectContaining({
         billingUnit: "video_generation",
         durationMs: 7000,
+        renderPlan: expect.objectContaining({
+          assetIds: ["asset-image-1", "asset-video-2", "asset-audio-1"],
+          output: expect.objectContaining({
+            durationMs: 7000,
+            height: 1080,
+            mimeType: "video/mp4",
+            width: 1920,
+          }),
+          renderer: "ffmpeg",
+        }),
         source: "video_editor_export",
         sourceVideoEditorNodeId: "video-editor-1",
         timelineAssetCounts: {
@@ -621,6 +631,7 @@ describe("worker skeleton", () => {
         },
       }),
     });
+    expect((metadata.videoEditorExport as Record<string, unknown>).renderPlan).toBeUndefined();
     expect(JSON.stringify(metadata)).not.toMatch(/blob:|data:/);
   });
 

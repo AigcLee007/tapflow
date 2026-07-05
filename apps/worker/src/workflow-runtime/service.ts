@@ -38,6 +38,7 @@ import {
   type MediaVariantQueue,
   MediaAssetStore,
 } from "./media-asset-store.js";
+import { buildVideoEditorRenderPlan } from "./video-editor-render-plan.js";
 
 type WorkflowRunRecord = {
   error_json: Record<string, unknown> | null;
@@ -961,11 +962,15 @@ function countTimelineAssetRefs(items: unknown): number {
   return items.filter((item) => isPlainObject(item) && readTrimmedString(item.assetId)).length;
 }
 
-function buildVideoEditorExportMetadata(videoEditor: Record<string, unknown> | null): Record<string, unknown> | null {
+function buildVideoEditorExportMetadata(
+  videoEditor: Record<string, unknown> | null,
+  options: { includeRenderPlan?: boolean } = {},
+): Record<string, unknown> | null {
   if (!videoEditor) {
     return null;
   }
   const timeline = isPlainObject(videoEditor.timeline) ? videoEditor.timeline : {};
+  const renderPlan = options.includeRenderPlan ? buildVideoEditorRenderPlan(videoEditor) : null;
   return {
     ...(readTrimmedString(videoEditor.sourceVideoEditorNodeId)
       ? { sourceVideoEditorNodeId: readTrimmedString(videoEditor.sourceVideoEditorNodeId) }
@@ -974,6 +979,7 @@ function buildVideoEditorExportMetadata(videoEditor: Record<string, unknown> | n
     ...(readTrimmedString(videoEditor.resolution) ? { resolution: readTrimmedString(videoEditor.resolution) } : {}),
     billingUnit: "video_generation",
     durationMs: readFiniteNumberOrNull(timeline.durationMs) ?? 0,
+    ...(renderPlan ? { renderPlan } : {}),
     source: "video_editor_export",
     timelineAssetCounts: {
       audio: countTimelineAssetRefs(timeline.audio),
@@ -988,7 +994,7 @@ function buildVideoRequest(
 ): VideoGenerationRequest {
   const videoEditor = readVideoEditorConfig(config);
   const videoEditorMetadata = buildVideoEditorRequestMetadata(videoEditor);
-  const videoEditorExportMetadata = buildVideoEditorExportMetadata(videoEditor);
+  const videoEditorExportMetadata = buildVideoEditorExportMetadata(videoEditor, { includeRenderPlan: true });
   const baseMetadata = isPlainObject(config.metadata) ? config.metadata : {};
   const metadata = {
     ...baseMetadata,

@@ -3,6 +3,23 @@
 Last updated: 2026-07-05
 Maintainers: project team + Codex sessions
 
+## 2026-07-05 - Video Editor Render Plan Phase 19
+
+- added the first server-side render planning boundary for `剪辑工程` exports in the worker:
+  - `buildVideoEditorRenderPlan` now normalizes asset-backed clips, audio, subtitles, output resolution, duration, and ordered asset ids into an FFmpeg-oriented plan.
+  - empty timelines and transient references such as `blob:`, `data:`, `http://`, or `https://` fail before provider/runtime execution.
+  - `video.generate` export requests now include `metadata.videoEditorExport.renderPlan` for future internal renderer routes.
+- kept billing/admin metadata intentionally small:
+  - usage-event metadata still carries only the video-editor export summary and does not include the full render plan.
+  - no browser-local export, new pricing unit, asset-write shortcut, provider secret exposure, Docker image change, FFmpeg execution, or billing mutation was added.
+- validation:
+  - red test observed on 2026-07-05: `npm run test --workspace @aigc-flow/worker -- test/video-editor-render-plan.test.ts` failed because `video-editor-render-plan.ts` did not exist.
+  - red test observed on 2026-07-05: `npm run test --workspace @aigc-flow/worker -- test/worker.test.ts` failed because video-editor export metadata did not include `renderPlan`.
+  - `npm run test --workspace @aigc-flow/worker -- test/video-editor-render-plan.test.ts test/worker.test.ts` passed on 2026-07-05: 2 files, 12 tests passed, 14 database-backed tests skipped by the existing local-DB guard.
+  - `npm run build --workspace @aigc-flow/worker` passed on 2026-07-05.
+  - `npm run build` passed on 2026-07-05 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+  - `git diff --check` passed on 2026-07-05.
+
 ## 2026-07-05 - Video Editor Export Runtime Guard Phase 18
 
 - added a second fail-closed guard inside `packages/ai-gateway-core`:
