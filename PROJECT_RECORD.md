@@ -3,6 +3,19 @@
 Last updated: 2026-07-05
 Maintainers: project team + Codex sessions
 
+## 2026-07-05 - Video Editor Runtime Request Phase 15
+
+- adapted the worker video request builder for video editor exports:
+  - `video.generate` requests now use `generationPrompt` as the static prompt fallback when there is no upstream text output.
+  - `params.videoEditor.timeline.clips` and `params.videoEditor.timeline.audio` are converted into `VideoGenerationRequest.inputAssets` with `assetId`, timing, kind, and timeline metadata.
+  - `metadata.videoEditor` now carries a whitelisted timeline snapshot with source node id, aspect, resolution, clip/audio timing, and subtitles for future provider/runtime adapters.
+- kept this on the existing v2 video generation path; it does not add new billing behavior, routes, tables, provider secrets, asset writes, or frontend-visible credentials.
+- kept request metadata draft/runtime-safe by copying only structured fields needed for editing and asserting no `blob:`, `data:`, base64, `File`, `Blob`, or long-lived signed URL values in the worker request test.
+- validation:
+  - `npm run test --workspace @aigc-flow/worker -- test/worker.test.ts` passed on 2026-07-05: 1 test file, 7 tests passed, 14 database-backed tests skipped because local DB env was unavailable.
+  - `npm run build --workspace @aigc-flow/worker` passed on 2026-07-05.
+  - `npm run build` passed on 2026-07-05 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-05 - Video Editor Export Node Phase 14
 
 - added a canvas export action inside the canvas-native `剪辑工程` studio:

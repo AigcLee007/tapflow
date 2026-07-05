@@ -826,19 +826,160 @@ function pickImageRequestDebugParams(metadata: Record<string, unknown> | null | 
 export const __workerTestUtils = {
   buildAiRuntimeDiagnostic,
   buildImageRequest,
+  buildVideoRequest,
   getDependencyOutputs: getDependencyOutputsFromRuntimeGraph,
   resolveImageRequestRouteKey,
 };
+
+function readVideoEditorConfig(config: Record<string, unknown>): Record<string, unknown> | null {
+  const params = isPlainObject(config.params) ? config.params : {};
+  return isPlainObject(params.videoEditor) ? params.videoEditor : null;
+}
+
+function readFiniteNumberOrNull(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function readTimelineDurationMs(item: Record<string, unknown>): number | null {
+  const inMs = readFiniteNumberOrNull(item.inMs);
+  const outMs = readFiniteNumberOrNull(item.outMs);
+  if (inMs === null || outMs === null) {
+    return null;
+  }
+  return Math.max(0, outMs - inMs);
+}
+
+function buildVideoEditorTimelineAssets(videoEditor: Record<string, unknown> | null): AssetReferenceInput[] {
+  const timeline = isPlainObject(videoEditor?.timeline) ? videoEditor.timeline : {};
+  const clips = Array.isArray(timeline.clips) ? timeline.clips : [];
+  const audio = Array.isArray(timeline.audio) ? timeline.audio : [];
+  const assets: AssetReferenceInput[] = [];
+
+  for (const clip of clips) {
+    if (!isPlainObject(clip) || typeof clip.assetId !== "string" || !clip.assetId.trim()) {
+      continue;
+    }
+    assets.push({
+      assetId: clip.assetId.trim(),
+      durationMs: readTimelineDurationMs(clip),
+      kind: readTrimmedString(clip.kind) ?? "video",
+      metadata: {
+        clipId: readTrimmedString(clip.id),
+        source: "video-editor-timeline",
+        startMs: readFiniteNumberOrNull(clip.startMs),
+        track: readFiniteNumberOrNull(clip.track),
+      },
+      mimeType: null,
+    });
+  }
+
+  for (const item of audio) {
+    if (!isPlainObject(item) || typeof item.assetId !== "string" || !item.assetId.trim()) {
+      continue;
+    }
+    assets.push({
+      assetId: item.assetId.trim(),
+      durationMs: readTimelineDurationMs(item),
+      kind: "audio",
+      metadata: {
+        audioId: readTrimmedString(item.id),
+        source: "video-editor-timeline",
+        startMs: readFiniteNumberOrNull(item.startMs),
+        track: readFiniteNumberOrNull(item.track),
+      },
+      mimeType: null,
+    });
+  }
+
+  return assets;
+}
+
+function sanitizeVideoEditorTimelineItem(item: unknown): Record<string, unknown> | null {
+  if (!isPlainObject(item)) {
+    return null;
+  }
+  return {
+    ...(readTrimmedString(item.id) ? { id: readTrimmedString(item.id) } : {}),
+    ...(readTrimmedString(item.assetId) ? { assetId: readTrimmedString(item.assetId) } : {}),
+    ...(readTrimmedString(item.kind) ? { kind: readTrimmedString(item.kind) } : {}),
+    ...(readFiniteNumberOrNull(item.track) !== null ? { track: readFiniteNumberOrNull(item.track) } : {}),
+    ...(readFiniteNumberOrNull(item.startMs) !== null ? { startMs: readFiniteNumberOrNull(item.startMs) } : {}),
+    ...(readFiniteNumberOrNull(item.inMs) !== null ? { inMs: readFiniteNumberOrNull(item.inMs) } : {}),
+    ...(readFiniteNumberOrNull(item.outMs) !== null ? { outMs: readFiniteNumberOrNull(item.outMs) } : {}),
+    ...(readFiniteNumberOrNull(item.speed) !== null ? { speed: readFiniteNumberOrNull(item.speed) } : {}),
+    ...(readFiniteNumberOrNull(item.volume) !== null ? { volume: readFiniteNumberOrNull(item.volume) } : {}),
+  };
+}
+
+function sanitizeVideoEditorSubtitle(item: unknown): Record<string, unknown> | null {
+  if (!isPlainObject(item)) {
+    return null;
+  }
+  return {
+    ...(readTrimmedString(item.id) ? { id: readTrimmedString(item.id) } : {}),
+    ...(typeof item.text === "string" ? { text: item.text } : {}),
+    ...(readFiniteNumberOrNull(item.startMs) !== null ? { startMs: readFiniteNumberOrNull(item.startMs) } : {}),
+    ...(readFiniteNumberOrNull(item.endMs) !== null ? { endMs: readFiniteNumberOrNull(item.endMs) } : {}),
+  };
+}
+
+function buildVideoEditorRequestMetadata(videoEditor: Record<string, unknown> | null): Record<string, unknown> | null {
+  if (!videoEditor) {
+    return null;
+  }
+  const timeline = isPlainObject(videoEditor.timeline) ? videoEditor.timeline : {};
+  const clips = Array.isArray(timeline.clips)
+    ? timeline.clips.map(sanitizeVideoEditorTimelineItem).filter((item): item is Record<string, unknown> => item !== null)
+    : [];
+  const audio = Array.isArray(timeline.audio)
+    ? timeline.audio.map(sanitizeVideoEditorTimelineItem).filter((item): item is Record<string, unknown> => item !== null)
+    : [];
+  const subtitles = Array.isArray(timeline.subtitles)
+    ? timeline.subtitles.map(sanitizeVideoEditorSubtitle).filter((item): item is Record<string, unknown> => item !== null)
+    : [];
+
+  return {
+    ...(readTrimmedString(videoEditor.sourceVideoEditorNodeId)
+      ? { sourceVideoEditorNodeId: readTrimmedString(videoEditor.sourceVideoEditorNodeId) }
+      : {}),
+    ...(readTrimmedString(videoEditor.aspect) ? { aspect: readTrimmedString(videoEditor.aspect) } : {}),
+    ...(readTrimmedString(videoEditor.resolution) ? { resolution: readTrimmedString(videoEditor.resolution) } : {}),
+    timeline: {
+      audio,
+      clips,
+      durationMs: readFiniteNumberOrNull(timeline.durationMs) ?? 0,
+      subtitles,
+    },
+  };
+}
 
 function buildVideoRequest(
   upstreamOutputs: Array<Record<string, unknown> | null>,
   config: Record<string, unknown>,
 ): VideoGenerationRequest {
+  const videoEditor = readVideoEditorConfig(config);
+  const videoEditorMetadata = buildVideoEditorRequestMetadata(videoEditor);
+  const baseMetadata = isPlainObject(config.metadata) ? config.metadata : {};
+  const metadata = {
+    ...baseMetadata,
+    ...(videoEditorMetadata ? { videoEditor: videoEditorMetadata } : {}),
+  };
+  const fallbackPrompt = readTrimmedString(config.generationPrompt)
+    ?? readTrimmedString(config.prompt)
+    ?? "";
+
   return {
-    inputAssets: extractAssetInputs(upstreamOutputs),
-    metadata: isPlainObject(config.metadata) ? config.metadata : null,
-    model: typeof config.model === "string" ? config.model : null,
-    prompt: extractPromptFromUpstreamOutputs(upstreamOutputs, typeof config.prompt === "string" ? config.prompt : ""),
+    inputAssets: mergeAssetInputs(
+      extractAssetInputs(upstreamOutputs),
+      buildVideoEditorTimelineAssets(videoEditor),
+    ),
+    metadata: Object.keys(metadata).length > 0 ? metadata : null,
+    model: typeof config.model === "string"
+      ? config.model
+      : typeof config.modelId === "string"
+        ? config.modelId
+        : null,
+    prompt: extractPromptFromUpstreamOutputs(upstreamOutputs, fallbackPrompt),
     routeKey: typeof config.routeKey === "string" ? config.routeKey : null,
   };
 }
