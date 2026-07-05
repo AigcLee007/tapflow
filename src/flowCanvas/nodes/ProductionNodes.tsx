@@ -3,6 +3,7 @@ import { Box, Film, Grid3X3, Maximize2 } from 'lucide-react';
 import { Handle, NodeResizer, Position, type Node, type NodeProps } from '@xyflow/react';
 
 import type { FlowNodeData, FlowStoryboardCell } from '../types';
+import { openProductionStudio, type ProductionStudioKind } from '../studios/productionStudioEvents';
 import { normalizeStoryboardData } from '../utils/storyboardNodeData';
 
 type FlowNode = Node<FlowNodeData>;
@@ -94,8 +95,18 @@ function getStoryboardPreviewCells(cells: FlowStoryboardCell[]) {
       }));
 }
 
+function handleOpenStudio(
+  event: React.MouseEvent<HTMLButtonElement>,
+  nodeId: string,
+  studio: ProductionStudioKind,
+) {
+  event.stopPropagation();
+  openProductionStudio({ nodeId, studio });
+}
+
 export const StoryboardNodeComponent = memo(function StoryboardNodeComponent({
   data,
+  id,
   selected,
 }: NodeProps<FlowNode>) {
   const storyboard = normalizeStoryboardData(data.storyboard);
@@ -113,7 +124,7 @@ export const StoryboardNodeComponent = memo(function StoryboardNodeComponent({
         </span>
       </div>
       <div style={bodyStyle}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 12 }}>
           {previewCells.map((cell) => (
             <div
               key={cell.id}
@@ -134,6 +145,16 @@ export const StoryboardNodeComponent = memo(function StoryboardNodeComponent({
             </div>
           ))}
         </div>
+        <button
+          type="button"
+          className="nodrag nopan"
+          style={actionButtonStyle}
+          aria-label="打开故事板"
+          onClick={(event) => handleOpenStudio(event, id, 'storyboard')}
+        >
+          <Maximize2 size={13} />
+          打开故事板
+        </button>
       </div>
     </NodeChrome>
   );
@@ -141,6 +162,7 @@ export const StoryboardNodeComponent = memo(function StoryboardNodeComponent({
 
 export const Director3dNodeComponent = memo(function Director3dNodeComponent({
   data,
+  id,
   selected,
 }: NodeProps<FlowNode>) {
   return (
@@ -151,7 +173,13 @@ export const Director3dNodeComponent = memo(function Director3dNodeComponent({
       </div>
       <div style={bodyStyle}>
         <div style={previewPanelStyle} />
-        <button type="button" style={actionButtonStyle} aria-label="打开导演台">
+        <button
+          type="button"
+          className="nodrag nopan"
+          style={actionButtonStyle}
+          aria-label="打开导演台"
+          onClick={(event) => handleOpenStudio(event, id, 'director3d')}
+        >
           打开导演台
         </button>
       </div>
@@ -161,6 +189,7 @@ export const Director3dNodeComponent = memo(function Director3dNodeComponent({
 
 export const VideoEditorNodeComponent = memo(function VideoEditorNodeComponent({
   data,
+  id,
   selected,
 }: NodeProps<FlowNode>) {
   return (
@@ -175,7 +204,13 @@ export const VideoEditorNodeComponent = memo(function VideoEditorNodeComponent({
           <div style={{ height: 12, borderRadius: 8, background: '#16a34a', width: '62%' }} />
           <div style={{ height: 12, borderRadius: 8, background: '#f59e0b', width: '90%' }} />
         </div>
-        <button type="button" style={actionButtonStyle} aria-label="打开剪辑器">
+        <button
+          type="button"
+          className="nodrag nopan"
+          style={actionButtonStyle}
+          aria-label="打开剪辑器"
+          onClick={(event) => handleOpenStudio(event, id, 'video_editor')}
+        >
           <Maximize2 size={13} />
           打开剪辑器
         </button>

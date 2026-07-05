@@ -50,4 +50,10 @@ describe('nodeFactory route defaults', () => {
       resolution: '1920x1080',
     });
   });
+
+  it('uses clean Chinese titles for production nodes', () => {
+    expect(createFlowNode('storyboard', { x: 0, y: 0 }).data.title).toBe('故事板');
+    expect(createFlowNode('director3d', { x: 0, y: 0 }).data.title).toBe('3D导演台');
+    expect(createFlowNode('video_editor', { x: 0, y: 0 }).data.title).toBe('剪辑工程');
+  });
 });

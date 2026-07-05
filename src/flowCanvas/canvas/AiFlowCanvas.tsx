@@ -32,6 +32,12 @@ import {
   StoryboardNodeComponent,
   VideoEditorNodeComponent,
 } from '../nodes/ProductionNodes';
+import { ProductionStudioShell } from '../studios/ProductionStudioShell';
+import {
+  OPEN_PRODUCTION_STUDIO_EVENT,
+  type OpenProductionStudioDetail,
+  type ProductionStudioKind,
+} from '../studios/productionStudioEvents';
 import { SmartEdgeComponent } from '../edges/SmartEdge';
 import { useFlowCanvasStore } from '../store/flowCanvasStore';
 import { CanvasAssetPanel, CanvasCommentPanel, CanvasDockDrawer, CanvasDockEmptyState, CanvasHistoryPanel, CanvasTemplatePanel } from '../panels';
@@ -252,6 +258,10 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled, onAg
   const [activeDockPanel, setActiveDockPanel] = useState<CanvasDockPanelId | null>(null);
   const [agentOpen, setAgentOpen] = useState(false);
   const [agentSessionFocus, setAgentSessionFocus] = useState<OpenAgentSessionDetail | null>(null);
+  const [activeProductionStudio, setActiveProductionStudio] = useState<{
+    nodeId: string;
+    studio: ProductionStudioKind;
+  } | null>(null);
   const [dockBadgeMetrics, setDockBadgeMetrics] = useState({
     assetTotal: 0,
     historySnapshotCount: 0,
@@ -342,6 +352,32 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled, onAg
     window.addEventListener(OPEN_AGENT_SESSION_EVENT, handleOpenAgentSession as EventListener);
     return () => window.removeEventListener(OPEN_AGENT_SESSION_EVENT, handleOpenAgentSession as EventListener);
   }, [closeContextMenu, closeImageTool, updateAgentOpen]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const handleOpenProductionStudio = (event: Event) => {
+      const detail = (event as CustomEvent<OpenProductionStudioDetail>).detail;
+      if (!detail?.nodeId || !detail.studio) return;
+      const targetNode = nodes.find((node) => node.id === detail.nodeId);
+      if (!targetNode) return;
+      closeContextMenu();
+      closeImageTool();
+      setConnMenu(null);
+      setActiveDockPanel(null);
+      setAgentSessionFocus(null);
+      updateAgentOpen(false);
+      setActiveProductionStudio({ nodeId: targetNode.id, studio: detail.studio });
+    };
+
+    window.addEventListener(OPEN_PRODUCTION_STUDIO_EVENT, handleOpenProductionStudio as EventListener);
+    return () => window.removeEventListener(OPEN_PRODUCTION_STUDIO_EVENT, handleOpenProductionStudio as EventListener);
+  }, [closeContextMenu, closeImageTool, nodes, updateAgentOpen]);
+
+  useEffect(() => {
+    if (!activeProductionStudio) return;
+    if (nodes.some((node) => node.id === activeProductionStudio.nodeId)) return;
+    setActiveProductionStudio(null);
+  }, [activeProductionStudio, nodes]);
 
   const handleNodeDragStart = useCallback((_event: React.MouseEvent, node: Node) => {
     pushHistory();
@@ -771,6 +807,9 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled, onAg
     viewportWidth: typeof window === 'undefined' ? 1440 : window.innerWidth,
     viewportHeight: typeof window === 'undefined' ? 900 : window.innerHeight,
   });
+  const activeProductionStudioNode = activeProductionStudio
+    ? nodes.find((node) => node.id === activeProductionStudio.nodeId) ?? null
+    : null;
 
   return (
     <div
@@ -1005,6 +1044,13 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled, onAg
         }}
         open={agentOpen}
       />
+      {activeProductionStudio && activeProductionStudioNode && (
+        <ProductionStudioShell
+          node={activeProductionStudioNode}
+          studio={activeProductionStudio.studio}
+          onClose={() => setActiveProductionStudio(null)}
+        />
+      )}
       <FlowContextMenu />
 
       {connMenu && (

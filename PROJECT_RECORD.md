@@ -3,6 +3,21 @@
 Last updated: 2026-07-05
 Maintainers: project team + Codex sessions
 
+## 2026-07-05 - Canvas Production Studio Shells Phase 2
+
+- added canvas-native studio open events for `storyboard`, `director3d`, and `video_editor` nodes, so production nodes can open their workspace without becoming separate product shells.
+- added a full-screen `ProductionStudioShell` overlay scoped to the current project canvas:
+  - `3D导演台` shows scene objects, a director viewport grid, object properties, and a shot rail.
+  - `故事板` shows storyboard cells plus selected-shot context.
+  - `剪辑工程` shows an asset bin, preview monitor, timeline, and export/settings inspector shell.
+- kept this slice editing-only and non-billable; no export, generation, billing reserve, or asset-write workflow was added.
+- kept studio state local to the overlay and only read structured node data, avoiding transient `blob:`, `data:`, base64, `File`, or `Blob` persistence.
+- added regression coverage for production-node open actions, studio layouts, Escape/close behavior, canvas event integration, and production node default labels.
+- validation:
+  - `npm test -- src/flowCanvas/nodes/ProductionNodes.test.tsx src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx src/flowCanvas/utils/nodeFactory.test.ts` passed on 2026-07-05: 4 test files, 13 tests.
+  - `npm run build` passed on 2026-07-05 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+  - local in-app browser smoke could not be completed because Browser Use blocked reloading `http://localhost:64043/` under its URL policy.
+
 ## 2026-07-05 - Canvas Production Suite Phase 1
 
 - added v2 canvas contracts and safe default draft data for `storyboard`, `director3d`, and `video_editor` nodes.
