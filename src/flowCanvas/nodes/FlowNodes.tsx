@@ -51,6 +51,7 @@ import {
   GripVertical
 } from 'lucide-react';
 import type {
+  FlowImageGenerationMode,
   FlowImageGenerationSnapshot,
   FlowImageReferenceComparisonSource,
   FlowMultiImageDisplayMode,
@@ -179,6 +180,11 @@ import {
 import { getNodeSelectionMode } from '../utils/nodeSelectionMode';
 import { resolveEditableImageSource } from '../utils/editableImageSource';
 import { useEditableImageObjectUrl } from '../utils/useEditableImageObjectUrl';
+import {
+  IMAGE_GENERATION_MODE_OPTIONS,
+  buildImageGenerationModeParamPatch,
+  normalizeImageGenerationMode,
+} from '../utils/imageGenerationModes';
 
 type FlowNode = Node<FlowNodeData>;
 
@@ -4462,6 +4468,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const aspectOptions = Array.from(new Set([...defaultRatios, ...extraRatios]));
 
   const p = (d.params || {}) as Record<string, any>;
+  const currentGenerationMode = normalizeImageGenerationMode(d.generationMode || p.generationMode);
   const currentSize = String(p.size || p.imageSize || sizeOptions[0] || '1k').toLowerCase();
   const currentRatio = String(p.aspectRatio || p.aspect_ratio || aspectOptions[0] || '1:1');
   const dynamicParamFields = getCatalogUiFields(selectedCatalogModel?.uiSchema);
@@ -4817,6 +4824,17 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     }
     updateNodeData(id, patch);
   };
+
+  const setGenerationMode = useCallback((mode: FlowImageGenerationMode) => {
+    const modePatch = buildImageGenerationModeParamPatch(mode);
+    updateNodeData(id, {
+      generationMode: mode,
+      params: {
+        ...((d.params || {}) as Record<string, unknown>),
+        ...modePatch,
+      },
+    });
+  }, [d.params, id, updateNodeData]);
 
   const applyModelSelection = useCallback(
     (modelId: string) => {
@@ -7137,6 +7155,20 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
                   >
                     {effectiveBatchCount}x
                   </button>
+                </div>
+              )}
+              generationModeControl={(
+                <div style={{ minWidth: 128 }}>
+                  <MenuSelect
+                    label={`图片生成模式 ${id}`}
+                    onChange={(value) => setGenerationMode(normalizeImageGenerationMode(value))}
+                    options={IMAGE_GENERATION_MODE_OPTIONS.map((option) => ({
+                      label: option.label,
+                      value: option.mode,
+                    }))}
+                    size="compact"
+                    value={currentGenerationMode}
+                  />
                 </div>
               )}
               onGenerate={handleGenerate}

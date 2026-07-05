@@ -9,6 +9,7 @@ type ImagePromptActionRowProps = {
   modelControl: React.ReactNode;
   settingsControl: React.ReactNode;
   quantityControl: React.ReactNode;
+  generationModeControl?: React.ReactNode;
   multiImageModeControl?: React.ReactNode;
   onGenerate: () => void;
 };
@@ -20,12 +21,13 @@ export function ImagePromptActionRow({
   modelControl,
   settingsControl,
   quantityControl,
+  generationModeControl,
   multiImageModeControl,
   onGenerate,
 }: ImagePromptActionRowProps) {
-  const showMultiImageMode = batchCount > 1 && Boolean(multiImageModeControl);
+  const showSecondaryRow = (batchCount > 1 && Boolean(multiImageModeControl)) || Boolean(generationModeControl);
 
-  if (showMultiImageMode) {
+  if (showSecondaryRow) {
     return (
       <div
         data-testid="image-prompt-action-row"
@@ -98,10 +100,12 @@ export function ImagePromptActionRow({
           style={{
             display: 'flex',
             alignSelf: 'flex-start',
+            gap: 6,
             maxWidth: '100%',
           }}
         >
-          {multiImageModeControl}
+          {generationModeControl}
+          {batchCount > 1 ? multiImageModeControl : null}
         </div>
       </div>
     );

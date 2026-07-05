@@ -53,4 +53,22 @@ describe('ImagePromptActionRow', () => {
     expect(spacer.textContent).toBe('');
     expect(screen.queryByTestId('image-prompt-action-row-secondary')).toBeNull();
   });
+
+  test('renders generation mode control on the secondary row', () => {
+    render(
+      <ImagePromptActionRow
+        batchCount={1}
+        creditsValue="10"
+        isGenerating={false}
+        modelControl={<button type="button">模型</button>}
+        settingsControl={<button type="button">设置</button>}
+        quantityControl={<button type="button">1x</button>}
+        generationModeControl={<button type="button">360°全景</button>}
+        onGenerate={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: '360°全景' })).toBeTruthy();
+    expect(screen.getByTestId('image-prompt-action-row-secondary')).toBeTruthy();
+  });
 });

@@ -16,10 +16,12 @@ import {
 import { getBillingSummary, listBillingPricing, type BillingPricingRow } from '../../billing/billingApi';
 import { useFlowCanvasStore } from '../store/flowCanvasStore';
 import type {
+  FlowImageGenerationMode,
   FlowImageGenerationSnapshot,
   FlowImageResultItem,
   FlowMultiImageDisplayMode,
   FlowNodeData,
+  FlowProductionSubjectType,
   FlowRuntimeAssetRef,
   FlowRuntimeNodeOutput,
 } from '../types';
@@ -433,13 +435,27 @@ function buildImageGenerationSnapshot(
       referenceAssetItemIds: nodeData.referenceAssetItemIds,
       referenceOrder: nodeData.referenceOrder,
     });
+  const generationMode = readString(nodeData.generationMode) || readString(params.generationMode);
+  const panorama = params.panorama && typeof params.panorama === 'object'
+    ? params.panorama as Record<string, unknown>
+    : null;
+  const wraparound = params.wraparound && typeof params.wraparound === 'object'
+    ? params.wraparound as Record<string, unknown>
+    : null;
+  const productionSubjectType =
+    readString(wraparound?.subjectType)
+    || readString(panorama?.subjectType);
 
   return {
     activeCommandId: readString(nodeData.activeCommandId),
     aspectRatio: readString(params.aspect_ratio) || readString(params.aspectRatio) || readString(nodeData.aspectRatio),
     generatedAt,
+    ...(generationMode ? { generationMode: generationMode as FlowImageGenerationMode } : {}),
     modelId,
     n: readPositiveInteger(nodeData.batchCount) || readPositiveInteger(params.n) || assetRefs.length || 1,
+    ...(productionSubjectType === 'scene' || productionSubjectType === 'subject'
+      ? { productionSubjectType: productionSubjectType as FlowProductionSubjectType }
+      : {}),
     prompt,
     quality: readString(params.quality),
     ...(referenceComparison ? { referenceComparison } : {}),

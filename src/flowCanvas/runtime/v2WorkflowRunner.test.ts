@@ -783,8 +783,15 @@ describe('v2WorkflowRunner', () => {
       modelId: 'mock-image',
       params: {
         aspect_ratio: '4:3',
+        generationMode: 'wraparound_270',
         quality: 'high',
         size: '2k',
+        wraparound: {
+          coverageDegrees: 270,
+          layout: 'continuous',
+          panels: 3,
+          subjectType: 'scene',
+        },
       },
       referenceOrder: ['asset:ref-1'],
       generationReferenceComparison: {
@@ -907,8 +914,10 @@ describe('v2WorkflowRunner', () => {
       generationStatus: 'done',
       lastGenerationSnapshot: expect.objectContaining({
         aspectRatio: '4:3',
+        generationMode: 'wraparound_270',
         modelId: 'mock-image',
         n: 2,
+        productionSubjectType: 'scene',
         prompt: 'a quiet studio product photo',
         quality: 'high',
         referenceComparison: {
