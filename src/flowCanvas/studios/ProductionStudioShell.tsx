@@ -471,6 +471,43 @@ function DirectorDeskContent({
   const selectedActor = selected?.type === 'actor' ? actors.find((actor) => actor.id === selected.id) ?? null : null;
   const selectedCamera = selected?.type === 'camera' ? cameras.find((camera) => camera.id === selected.id) ?? null : null;
   const selectedShot = selected?.type === 'shot' ? shots.find((shot) => shot.id === selected.id) ?? null : null;
+  const [actorAssetCandidates, setActorAssetCandidates] = useState<AssetItem[]>([]);
+  const [actorAssetCandidatesError, setActorAssetCandidatesError] = useState<string | null>(null);
+  const [actorAssetCandidatesLoading, setActorAssetCandidatesLoading] = useState(false);
+  useEffect(() => {
+    if (!selectedActor) {
+      setActorAssetCandidates([]);
+      setActorAssetCandidatesError(null);
+      setActorAssetCandidatesLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setActorAssetCandidatesLoading(true);
+    setActorAssetCandidatesError(null);
+    listAssets({
+      includePreviewUrls: false,
+      kind: 'image',
+      page: 1,
+      pageSize: 6,
+    })
+      .then((response) => {
+        if (cancelled) return;
+        setActorAssetCandidates((response.items || []).filter((asset) => asset.kind === 'image'));
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setActorAssetCandidates([]);
+        setActorAssetCandidatesError('素材加载失败');
+      })
+      .finally(() => {
+        if (!cancelled) setActorAssetCandidatesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedActor?.id]);
   const selectedShotIndex = selectedShot ? shots.findIndex((shot) => shot.id === selectedShot.id) : -1;
   const targetShot = selectedShot ?? shots[0] ?? null;
   const targetShotIndex = targetShot ? Math.max(0, shots.findIndex((shot) => shot.id === targetShot.id)) : -1;
@@ -494,6 +531,10 @@ function DirectorDeskContent({
     updateDirector({ ...director, shots: nextShots });
     const nextSelection = nextShots[Math.min(selectedShotIndex, nextShots.length - 1)] ?? null;
     setSelected(nextSelection ? { type: 'shot', id: nextSelection.id } : null);
+  };
+  const bindSelectedActorAsset = (assetId: string) => {
+    if (!selectedActor) return;
+    patchActor(selectedActor.id, { assetId, kind: 'image_plane' });
   };
   const synthesizeShotToCanvas = () => {
     if (!targetShot || !targetCamera) return;
@@ -611,7 +652,11 @@ function DirectorDeskContent({
         <MetricRow label="单位" value={data?.scene.units || 'meters'} />
         <DirectorInspector
           actor={selectedActor}
+          actorAssetCandidates={actorAssetCandidates}
+          actorAssetCandidatesError={actorAssetCandidatesError}
+          actorAssetCandidatesLoading={actorAssetCandidatesLoading}
           camera={selectedCamera}
+          onBindActorAsset={bindSelectedActorAsset}
           onPatchActor={patchActor}
           onPatchCamera={patchCamera}
           onPatchShot={patchShot}
@@ -1616,14 +1661,22 @@ function AssetCandidateList({
 
 function DirectorInspector({
   actor,
+  actorAssetCandidates,
+  actorAssetCandidatesError,
+  actorAssetCandidatesLoading,
   camera,
+  onBindActorAsset,
   onPatchActor,
   onPatchCamera,
   onPatchShot,
   shot,
 }: {
   actor: DirectorActor | null;
+  actorAssetCandidates: AssetItem[];
+  actorAssetCandidatesError: string | null;
+  actorAssetCandidatesLoading: boolean;
   camera: DirectorCamera | null;
+  onBindActorAsset: (assetId: string) => void;
   onPatchActor: (actorId: string, patch: Partial<DirectorActor>) => void;
   onPatchCamera: (cameraId: string, patch: Partial<DirectorCamera>) => void;
   onPatchShot: (shotId: string, patch: Partial<DirectorShot>) => void;
@@ -1632,6 +1685,14 @@ function DirectorInspector({
   if (actor) {
     return (
       <div style={inspectorFormStyle}>
+        <MetricRow label="素材" value={actor.assetId || '未绑定'} />
+        <AssetCandidateList
+          candidates={actorAssetCandidates}
+          error={actorAssetCandidatesError}
+          loading={actorAssetCandidatesLoading}
+          onBind={onBindActorAsset}
+          selectedAssetId={actor.assetId || ''}
+        />
         <label style={fieldLabelStyle}>
           <span>对象名称</span>
           <input

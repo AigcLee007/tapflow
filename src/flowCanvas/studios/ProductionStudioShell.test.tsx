@@ -315,6 +315,51 @@ describe('ProductionStudioShell', () => {
     expect(JSON.stringify(latestPatch)).not.toMatch(/blob:|data:/);
   });
 
+  it('binds selected director actors to image assets without persisting preview URLs', async () => {
+    listAssetsMock.mockResolvedValueOnce({
+      items: [{ id: 'asset-actor-image-2', kind: 'image', title: '角色参考图' }],
+      page: 1,
+      pageSize: 6,
+      total: 1,
+    });
+    const onUpdateNodeData = vi.fn();
+    render(
+      <ProductionStudioShell
+        studio="director3d"
+        node={directorNode as any}
+        onClose={vi.fn()}
+        onUpdateNodeData={onUpdateNodeData}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '选择对象 角色 A' }));
+
+    await waitFor(() => {
+      expect(listAssetsMock).toHaveBeenCalledWith(expect.objectContaining({
+        includePreviewUrls: false,
+        kind: 'image',
+        page: 1,
+        pageSize: 6,
+      }));
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: '绑定素材 asset-actor-image-2' }));
+
+    const latestPatch = onUpdateNodeData.mock.calls.at(-1)?.[1];
+    expect(latestPatch).toEqual({
+      director3d: expect.objectContaining({
+        actors: expect.arrayContaining([
+          expect.objectContaining({
+            assetId: 'asset-actor-image-2',
+            id: 'actor-1',
+            kind: 'image_plane',
+          }),
+        ]),
+      }),
+    });
+    expect(JSON.stringify(latestPatch)).not.toMatch(/blob:|data:|https?:\/\//);
+  });
+
   it('emits safe transform patches for selected director actors', () => {
     const onUpdateNodeData = vi.fn();
     render(

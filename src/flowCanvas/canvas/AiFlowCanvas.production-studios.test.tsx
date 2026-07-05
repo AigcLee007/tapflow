@@ -324,6 +324,42 @@ describe('AiFlowCanvas production studios', () => {
     expect(JSON.stringify(node?.data.director3d)).not.toMatch(/blob:|data:/);
   });
 
+  it('persists director actor asset binding through the canvas store', async () => {
+    assetApiMocks.listAssets.mockResolvedValueOnce({
+      items: [{ id: 'asset-actor-image-2', kind: 'image', title: '角色参考图' }],
+      page: 1,
+      pageSize: 6,
+      total: 1,
+    });
+    render(<AiFlowCanvas cullingEnabled={false} />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(OPEN_PRODUCTION_STUDIO_EVENT, {
+          detail: { nodeId: 'director-node', studio: 'director3d' },
+        }),
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '添加角色' }));
+    fireEvent.click(screen.getByRole('button', { name: '选择对象 角色 1' }));
+    fireEvent.click(await screen.findByRole('button', { name: '绑定素材 asset-actor-image-2' }));
+
+    const node = useFlowCanvasStore.getState().nodes.find((item) => item.id === 'director-node');
+    expect(assetApiMocks.listAssets).toHaveBeenCalledWith(expect.objectContaining({
+      includePreviewUrls: false,
+      kind: 'image',
+      page: 1,
+      pageSize: 6,
+    }));
+    expect(node?.data.director3d?.actors[0]).toMatchObject({
+      assetId: 'asset-actor-image-2',
+      id: 'actor-1',
+      kind: 'image_plane',
+    });
+    expect(JSON.stringify(node?.data.director3d)).not.toMatch(/blob:|data:|https?:\/\//);
+  });
+
   it('persists director camera inspector edits through the canvas store', () => {
     render(<AiFlowCanvas cullingEnabled={false} />);
 

@@ -3,6 +3,22 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - Director Desk Actor Asset Binding Phase 46
+
+- connected selected `3D导演台` actors to the v2 asset library:
+  - selecting an actor now loads image asset candidates from `listAssets`.
+  - binding a candidate updates only that actor's `assetId` and switches the actor kind to `image_plane`.
+  - the canvas store path now preserves the same asset-backed actor metadata when the studio is opened from the real canvas event.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - the picker requests candidates with `includePreviewUrls: false`.
+  - no signed URL, preview URL, `blob:`, `data:`, base64, generated media, browser-local export, direct asset write, billing mutation, API route, database migration, worker behavior, or provider-secret exposure was added.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "binds selected director actors"` first failed because director actor selection did not call `listAssets`.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "binds selected director actors"` passed on 2026-07-06: 1 selected test.
+  - `npm test -- src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx -t "director actor asset"` passed on 2026-07-06: 1 selected test.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-06: 2 files, 58 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-06 - Storyboard Generation Result Sync Phase 45
 
 - closed the storyboard generation loop:
