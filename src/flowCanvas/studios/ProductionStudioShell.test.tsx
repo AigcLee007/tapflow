@@ -176,6 +176,12 @@ describe('ProductionStudioShell', () => {
         shots: expect.arrayContaining([
           expect.objectContaining({
             cameraId: 'camera-2',
+            cameraSnapshot: expect.objectContaining({
+              focalMm: 70,
+              name: '侧面跟拍',
+              position: [2, 1.6, 4],
+              target: [0, 1, 0],
+            }),
             durationMs: 5200,
             id: 'shot-2',
             motion: 'static',
@@ -186,6 +192,68 @@ describe('ProductionStudioShell', () => {
       }),
     });
     expect(JSON.stringify(onUpdateNodeData.mock.calls.at(-1)?.[1])).not.toMatch(/blob:|data:/);
+  });
+
+  it('uses the captured camera snapshot when synthesizing a director shot', () => {
+    const onCreateCanvasNodeFromStudio = vi.fn();
+    const nodeWithSnapshotShot = {
+      ...directorNode,
+      data: {
+        ...directorNode.data,
+        director3d: {
+          ...directorNode.data.director3d,
+          cameras: [
+            {
+              ...directorNode.data.director3d.cameras[0],
+              focalMm: 28,
+              position: [9, 9, 9],
+              target: [1, 1, 1],
+            },
+          ],
+          shots: [
+            {
+              ...directorNode.data.director3d.shots[0],
+              cameraSnapshot: {
+                focalMm: 55,
+                name: '捕获时主镜头',
+                position: [0.5, 2.2, 5.5],
+                target: [0, 1.1, 0],
+              },
+            },
+          ],
+        },
+      },
+    };
+
+    render(
+      <ProductionStudioShell
+        studio="director3d"
+        node={nodeWithSnapshotShot as any}
+        onClose={vi.fn()}
+        onCreateCanvasNodeFromStudio={onCreateCanvasNodeFromStudio}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '选择镜头段 1' }));
+    fireEvent.click(screen.getByRole('button', { name: '合成到画布' }));
+
+    expect(onCreateCanvasNodeFromStudio).toHaveBeenCalledWith({
+      kind: 'image',
+      position: { x: 420, y: 40 },
+      data: expect.objectContaining({
+        params: expect.objectContaining({
+          director3d: expect.objectContaining({
+            camera: expect.objectContaining({
+              focalMm: 55,
+              name: '捕获时主镜头',
+              position: [0.5, 2.2, 5.5],
+              target: [0, 1.1, 0],
+            }),
+          }),
+        }),
+      }),
+    });
+    expect(JSON.stringify(onCreateCanvasNodeFromStudio.mock.calls[0]?.[0])).not.toMatch(/blob:|data:/);
   });
 
   it('emits structured director patches for selected actor inspector edits', () => {

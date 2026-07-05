@@ -3,6 +3,22 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - 3D Director Desk Shot Camera Snapshots Phase 33
+
+- made `3D导演台` shot capture preserve the selected camera pose at capture time:
+  - captured shots now store a safe structured `cameraSnapshot` with camera name, position, target, focal length, and fov when available.
+  - `合成到画布` now prefers the captured snapshot for downstream image-node `params.director3d.camera`, so later camera moves do not silently change already captured shot semantics.
+  - director-to-storyboard sync now prefers the captured camera name for storyboard cell titles.
+- kept v2 safety and billing boundaries unchanged:
+  - snapshots store only structured numbers and ids/names; no generated media, `blob:`, `data:`, preview URL, file object, browser-local export, direct asset write, billing mutation, API route, database migration, worker behavior, or provider-secret exposure was added.
+  - generated outputs still flow through existing image workflow nodes, route pricing, reserve/settle/refund, worker execution, and asset persistence.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx` failed because captured shots did not store a `cameraSnapshot`.
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/utils/storyboardDirectorSync.test.ts` failed because storyboard cell titles still used the current camera name.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/utils/storyboardDirectorSync.test.ts` passed on 2026-07-06: 2 files, 25 tests.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/studios/DirectorDeskThreeViewport.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx src/flowCanvas/utils/storyboardDirectorSync.test.ts` passed on 2026-07-06: 4 files, 42 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-06 - Storyboard Sheet Canvas Output Phase 32
 
 - added a canvas-native `合成故事板图` action in the `故事板` studio:

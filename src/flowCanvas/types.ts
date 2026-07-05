@@ -100,6 +100,13 @@ export interface FlowDirector3dData {
     prompt?: string;
   }>;
   shots: Array<{
+    cameraSnapshot?: {
+      name?: string;
+      position: [number, number, number];
+      target: [number, number, number];
+      focalMm?: number;
+      fov?: number;
+    };
     id: string;
     cameraId: string;
     startMs: number;

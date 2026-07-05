@@ -81,4 +81,32 @@ describe('storyboardDirectorSync', () => {
     expect(result.cells[0]).toMatchObject({ title: '开场', prompt: '已有提示词' });
     expect(JSON.stringify(result)).not.toMatch(/blob:|data:/);
   });
+
+  it('uses captured camera snapshot naming for storyboard cell titles', () => {
+    const result = buildStoryboardPatchFromDirectorShot({
+      camera: { ...camera, name: '当前已移动镜头' },
+      shot: {
+        ...shot,
+        cameraSnapshot: {
+          name: '捕获时镜头',
+          position: [0, 2, 5],
+          target: [0, 1, 0],
+          focalMm: 55,
+        },
+        prompt: undefined,
+        targetStoryboardCellId: undefined,
+      },
+      shotIndex: 2,
+      sourceDirectorNodeId: 'director-node',
+      storyboard,
+    });
+
+    expect(result.cells[1]).toMatchObject({
+      directorCameraId: 'camera-1',
+      directorShotId: 'shot-1',
+      prompt: '俯拍建立空间关系',
+      title: '镜头 3 · 捕获时镜头',
+    });
+    expect(JSON.stringify(result)).not.toMatch(/blob:|data:/);
+  });
 });

@@ -15,6 +15,7 @@ type DirectorSelection =
 type DirectorActor = FlowDirector3dData['actors'][number];
 type DirectorCamera = FlowDirector3dData['cameras'][number];
 type DirectorShot = FlowDirector3dData['shots'][number];
+type DirectorCameraSnapshot = NonNullable<DirectorShot['cameraSnapshot']>;
 type DirectorVector = [number, number, number];
 type DirectorVectorAxis = 0 | 1 | 2;
 type DirectorShotMotion = NonNullable<DirectorShot['motion']>;
@@ -180,6 +181,33 @@ function buildDirectorCamera(index: number): FlowDirector3dData['cameras'][numbe
   };
 }
 
+function buildDirectorCameraSnapshot(camera: DirectorCamera): DirectorCameraSnapshot {
+  return {
+    ...(camera.name?.trim() ? { name: camera.name.trim() } : {}),
+    position: normalizeDirectorVector(camera.position, [0, 1.8, 5]),
+    target: normalizeDirectorVector(camera.target, [0, 1, 0]),
+    ...(typeof camera.focalMm === 'number' && Number.isFinite(camera.focalMm) ? { focalMm: camera.focalMm } : {}),
+    ...(typeof camera.fov === 'number' && Number.isFinite(camera.fov) ? { fov: camera.fov } : {}),
+  };
+}
+
+function getShotCameraSnapshot(shot: DirectorShot, camera: DirectorCamera): DirectorCameraSnapshot {
+  if (shot.cameraSnapshot) {
+    return {
+      ...(shot.cameraSnapshot.name?.trim() ? { name: shot.cameraSnapshot.name.trim() } : {}),
+      position: normalizeDirectorVector(shot.cameraSnapshot.position, [0, 1.8, 5]),
+      target: normalizeDirectorVector(shot.cameraSnapshot.target, [0, 1, 0]),
+      ...(typeof shot.cameraSnapshot.focalMm === 'number' && Number.isFinite(shot.cameraSnapshot.focalMm)
+        ? { focalMm: shot.cameraSnapshot.focalMm }
+        : {}),
+      ...(typeof shot.cameraSnapshot.fov === 'number' && Number.isFinite(shot.cameraSnapshot.fov)
+        ? { fov: shot.cameraSnapshot.fov }
+        : {}),
+    };
+  }
+  return buildDirectorCameraSnapshot(camera);
+}
+
 function buildDirectorShot(
   index: number,
   camera: DirectorCamera,
@@ -191,6 +219,7 @@ function buildDirectorShot(
   return {
     id: `shot-${number}`,
     cameraId: camera.id,
+    cameraSnapshot: buildDirectorCameraSnapshot(camera),
     startMs,
     durationMs,
     motion: 'static',
@@ -385,10 +414,11 @@ function DirectorDeskContent({
   const synthesizeShotToCanvas = () => {
     if (!targetShot || !targetCamera) return;
     const shotNumber = targetShotIndex + 1;
+    const cameraSnapshot = getShotCameraSnapshot(targetShot, targetCamera);
     const prompt =
       targetShot.prompt ||
       targetCamera.prompt ||
-      `基于 ${targetCamera.name || `镜头 ${shotNumber}`} 生成导演台镜头画面`;
+      `基于 ${cameraSnapshot.name || targetCamera.name || `镜头 ${shotNumber}`} 生成导演台镜头画面`;
     onCreateCanvasNodeFromStudio?.({
       kind: 'image',
       position: {
@@ -405,11 +435,11 @@ function DirectorDeskContent({
             cameraId: targetCamera.id,
             shotId: targetShot.id,
             camera: {
-              name: targetCamera.name,
-              position: targetCamera.position,
-              target: targetCamera.target,
-              ...(typeof targetCamera.focalMm === 'number' ? { focalMm: targetCamera.focalMm } : {}),
-              ...(typeof targetCamera.fov === 'number' ? { fov: targetCamera.fov } : {}),
+              ...(cameraSnapshot.name ? { name: cameraSnapshot.name } : { name: targetCamera.name }),
+              position: cameraSnapshot.position,
+              target: cameraSnapshot.target,
+              ...(typeof cameraSnapshot.focalMm === 'number' ? { focalMm: cameraSnapshot.focalMm } : {}),
+              ...(typeof cameraSnapshot.fov === 'number' ? { fov: cameraSnapshot.fov } : {}),
             },
             durationMs: targetShot.durationMs,
             motion: targetShot.motion || 'static',
@@ -423,7 +453,10 @@ function DirectorDeskContent({
   const syncShotToStoryboard = () => {
     if (!targetShot || !targetCamera) return;
     onSyncDirectorShotToStoryboard?.({
-      camera: targetCamera,
+      camera: {
+        ...targetCamera,
+        ...getShotCameraSnapshot(targetShot, targetCamera),
+      },
       shot: targetShot,
       shotIndex: targetShotIndex,
       sourceDirectorNodeId: nodeId,

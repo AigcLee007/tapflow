@@ -37,13 +37,14 @@ export function buildStoryboardPatchFromDirectorShot({
     shot.prompt ||
     camera.prompt ||
     `基于 ${camera.name || `镜头 ${shotIndex + 1}`} 规划分镜画面`;
+  const cameraName = shot.cameraSnapshot?.name || camera.name || camera.id;
   const patched = patchStoryboardCell(normalized, cellIndex, {
     aspect: normalized.aspect,
     directorCameraId: camera.id,
     directorShotId: shot.id,
     prompt,
     sourceNodeId: sourceDirectorNodeId,
-    title: `镜头 ${shotIndex + 1} · ${camera.name || camera.id}`,
+    title: `镜头 ${shotIndex + 1} · ${cameraName}`,
   });
 
   return {
