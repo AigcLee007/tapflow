@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Box, Camera, Film, Grid3X3, Layers3, Play, Plus, X } from 'lucide-react';
 import type { Node } from '@xyflow/react';
 
@@ -7,6 +7,13 @@ import { normalizeStoryboardData, patchStoryboardCell } from '../utils/storyboar
 import type { ProductionStudioKind } from './productionStudioEvents';
 
 type FlowNode = Node<FlowNodeData>;
+type DirectorSelection =
+  | { type: 'actor'; id: string }
+  | { type: 'camera'; id: string }
+  | { type: 'shot'; id: string };
+type DirectorActor = FlowDirector3dData['actors'][number];
+type DirectorCamera = FlowDirector3dData['cameras'][number];
+type DirectorShot = FlowDirector3dData['shots'][number];
 
 interface ProductionStudioShellProps {
   node: FlowNode;
@@ -210,6 +217,7 @@ function DirectorDeskContent({
   const actors = director.actors;
   const cameras = director.cameras;
   const shots = director.shots;
+  const [selected, setSelected] = useState<DirectorSelection | null>(null);
   const updateDirector = (nextDirector: FlowDirector3dData) => {
     onUpdateNodeData?.(nodeId, { director3d: nextDirector });
   };
@@ -225,6 +233,27 @@ function DirectorDeskContent({
       shots: [...shots, buildDirectorShot(shots.length, cameraId, shots)],
     });
   };
+  const patchActor = (actorId: string, patch: Partial<DirectorActor>) => {
+    updateDirector({
+      ...director,
+      actors: actors.map((actor) => (actor.id === actorId ? { ...actor, ...patch } : actor)),
+    });
+  };
+  const patchCamera = (cameraId: string, patch: Partial<DirectorCamera>) => {
+    updateDirector({
+      ...director,
+      cameras: cameras.map((camera) => (camera.id === cameraId ? { ...camera, ...patch } : camera)),
+    });
+  };
+  const patchShot = (shotId: string, patch: Partial<DirectorShot>) => {
+    updateDirector({
+      ...director,
+      shots: shots.map((shot) => (shot.id === shotId ? { ...shot, ...patch } : shot)),
+    });
+  };
+  const selectedActor = selected?.type === 'actor' ? actors.find((actor) => actor.id === selected.id) ?? null : null;
+  const selectedCamera = selected?.type === 'camera' ? cameras.find((camera) => camera.id === selected.id) ?? null : null;
+  const selectedShot = selected?.type === 'shot' ? shots.find((shot) => shot.id === selected.id) ?? null : null;
 
   return (
     <div style={directorLayoutStyle}>
@@ -232,10 +261,24 @@ function DirectorDeskContent({
         <PanelTitle icon={<Layers3 size={15} />} title="场景对象" />
         <div style={listStyle}>
           {actors.map((actor) => (
-            <StudioListItem key={actor.id} label={actor.name} meta={actor.visible ? '可见' : '隐藏'} />
+            <StudioSelectableListItem
+              key={actor.id}
+              ariaLabel={`选择对象 ${actor.name}`}
+              label={actor.name}
+              meta={actor.visible ? '可见' : '隐藏'}
+              onClick={() => setSelected({ type: 'actor', id: actor.id })}
+              selected={selected?.type === 'actor' && selected.id === actor.id}
+            />
           ))}
           {cameras.map((camera) => (
-            <StudioListItem key={camera.id} label={camera.name} meta="镜头" />
+            <StudioSelectableListItem
+              key={camera.id}
+              ariaLabel={`选择对象 ${camera.name}`}
+              label={camera.name}
+              meta="镜头"
+              onClick={() => setSelected({ type: 'camera', id: camera.id })}
+              selected={selected?.type === 'camera' && selected.id === camera.id}
+            />
           ))}
           {actors.length === 0 && cameras.length === 0 ? <EmptyLine label="暂无对象" /> : null}
         </div>
@@ -269,6 +312,14 @@ function DirectorDeskContent({
         <MetricRow label="镜头" value={String(cameras.length)} />
         <MetricRow label="镜头段" value={String(shots.length)} />
         <MetricRow label="单位" value={data?.scene.units || 'meters'} />
+        <DirectorInspector
+          actor={selectedActor}
+          camera={selectedCamera}
+          onPatchActor={patchActor}
+          onPatchCamera={patchCamera}
+          onPatchShot={patchShot}
+          shot={selectedShot}
+        />
       </aside>
 
       <div style={bottomRailStyle}>
@@ -282,10 +333,16 @@ function DirectorDeskContent({
         <div style={shotStripStyle}>
           {shots.length ? (
             shots.map((shot, index) => (
-              <div key={shot.id} style={shotItemStyle}>
+              <button
+                key={shot.id}
+                type="button"
+                aria-label={`选择镜头段 ${index + 1}`}
+                onClick={() => setSelected({ type: 'shot', id: shot.id })}
+                style={shotButtonStyle(selected?.type === 'shot' && selected.id === shot.id)}
+              >
                 <strong>镜头 {index + 1}</strong>
                 <span>{Math.round(shot.durationMs / 100) / 10}s</span>
-              </div>
+              </button>
             ))
           ) : (
             <EmptyLine label="暂无镜头段" />
@@ -479,6 +536,95 @@ function VideoEditorContent({
   );
 }
 
+function DirectorInspector({
+  actor,
+  camera,
+  onPatchActor,
+  onPatchCamera,
+  onPatchShot,
+  shot,
+}: {
+  actor: DirectorActor | null;
+  camera: DirectorCamera | null;
+  onPatchActor: (actorId: string, patch: Partial<DirectorActor>) => void;
+  onPatchCamera: (cameraId: string, patch: Partial<DirectorCamera>) => void;
+  onPatchShot: (shotId: string, patch: Partial<DirectorShot>) => void;
+  shot: DirectorShot | null;
+}) {
+  if (actor) {
+    return (
+      <div style={inspectorFormStyle}>
+        <label style={fieldLabelStyle}>
+          <span>对象名称</span>
+          <input
+            aria-label="对象名称"
+            onChange={(event) => onPatchActor(actor.id, { name: event.target.value })}
+            style={textInputStyle}
+            type="text"
+            value={actor.name}
+          />
+        </label>
+        <label style={checkboxFieldStyle}>
+          <input
+            aria-label="对象可见"
+            checked={actor.visible}
+            onChange={(event) => onPatchActor(actor.id, { visible: event.target.checked })}
+            type="checkbox"
+          />
+          <span>对象可见</span>
+        </label>
+        <label style={checkboxFieldStyle}>
+          <input
+            aria-label="对象锁定"
+            checked={actor.locked}
+            onChange={(event) => onPatchActor(actor.id, { locked: event.target.checked })}
+            type="checkbox"
+          />
+          <span>对象锁定</span>
+        </label>
+      </div>
+    );
+  }
+
+  if (camera) {
+    return (
+      <div style={inspectorFormStyle}>
+        <MetricRow label="当前镜头" value={camera.name} />
+        <label style={fieldLabelStyle}>
+          <span>镜头提示词</span>
+          <textarea
+            aria-label="镜头提示词"
+            onChange={(event) => onPatchCamera(camera.id, { prompt: event.target.value })}
+            placeholder="描述这个镜头的构图、运动或情绪"
+            style={textareaStyle}
+            value={camera.prompt || ''}
+          />
+        </label>
+      </div>
+    );
+  }
+
+  if (shot) {
+    return (
+      <div style={inspectorFormStyle}>
+        <MetricRow label="当前段落" value={shot.id} />
+        <label style={fieldLabelStyle}>
+          <span>镜头段提示词</span>
+          <textarea
+            aria-label="镜头段提示词"
+            onChange={(event) => onPatchShot(shot.id, { prompt: event.target.value })}
+            placeholder="描述这一段镜头如何推进或转场"
+            style={textareaStyle}
+            value={shot.prompt || ''}
+          />
+        </label>
+      </div>
+    );
+  }
+
+  return <EmptyLine label="选择对象、镜头或镜头段后编辑属性" />;
+}
+
 function PanelTitle({ icon, title }: { icon: React.ReactNode; title: string }) {
   return (
     <div style={panelTitleStyle}>
@@ -494,6 +640,27 @@ function StudioListItem({ label, meta }: { label: string; meta: string }) {
       <span>{label}</span>
       <small>{meta}</small>
     </div>
+  );
+}
+
+function StudioSelectableListItem({
+  ariaLabel,
+  label,
+  meta,
+  onClick,
+  selected,
+}: {
+  ariaLabel: string;
+  label: string;
+  meta: string;
+  onClick: () => void;
+  selected: boolean;
+}) {
+  return (
+    <button type="button" aria-label={ariaLabel} style={listItemButtonStyle(selected)} onClick={onClick}>
+      <span>{label}</span>
+      <small>{meta}</small>
+    </button>
   );
 }
 
@@ -700,6 +867,15 @@ const listItemStyle: React.CSSProperties = {
   color: '#f8fafc',
 };
 
+const listItemButtonStyle = (selected: boolean): React.CSSProperties => ({
+  ...listItemStyle,
+  width: '100%',
+  border: selected ? '1px solid rgba(56,189,248,0.62)' : '1px solid transparent',
+  background: selected ? 'rgba(56,189,248,0.14)' : listItemStyle.background,
+  cursor: 'pointer',
+  textAlign: 'left',
+});
+
 const metricRowStyle: React.CSSProperties = {
   minHeight: 32,
   display: 'flex',
@@ -715,6 +891,22 @@ const emptyLineStyle: React.CSSProperties = {
   color: '#94a3b8',
   fontSize: 12,
   padding: '8px 0',
+};
+
+const inspectorFormStyle: React.CSSProperties = {
+  display: 'grid',
+  gap: 10,
+  marginTop: 12,
+};
+
+const checkboxFieldStyle: React.CSSProperties = {
+  minHeight: 30,
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  color: '#cbd5e1',
+  fontSize: 12,
+  fontWeight: 800,
 };
 
 const directorActionGridStyle: React.CSSProperties = {
@@ -797,6 +989,15 @@ const shotItemStyle: React.CSSProperties = {
   padding: '0 10px',
   fontSize: 11,
 };
+
+const shotButtonStyle = (selected: boolean): React.CSSProperties => ({
+  ...shotItemStyle,
+  color: '#f8fafc',
+  cursor: 'pointer',
+  textAlign: 'left',
+  border: selected ? '1px solid rgba(56,189,248,0.7)' : shotItemStyle.border,
+  background: selected ? '#0f3b57' : shotItemStyle.background,
+});
 
 const storyGridStyle: React.CSSProperties = {
   display: 'grid',

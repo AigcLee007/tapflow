@@ -3,6 +3,22 @@
 Last updated: 2026-07-05
 Maintainers: project team + Codex sessions
 
+## 2026-07-05 - Director Desk Inspector Editing Phase 6
+
+- added selectable actor, camera, and shot rows inside the canvas-native `3D导演台` studio.
+- added a compact inspector that persists basic director staging metadata:
+  - actor rename through `对象名称`
+  - actor visibility through `对象可见`
+  - actor lock state through `对象锁定`
+  - camera prompt through `镜头提示词`
+  - shot prompt through `镜头段提示词`
+- kept inspector selection as local UI state while all real scene edits persist through the existing `ProductionStudioShell` -> `updateNodeData` path into structured `director3d` node data.
+- kept this slice staging-only and non-billable; no Three.js transform runtime, AI rendering, export, asset creation, or billing workflow was added.
+- ensured director patches remain structured JSON and do not persist transient `blob:`, `data:`, base64, `File`, or `Blob` media.
+- validation:
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-05: 2 test files, 13 tests.
+  - `npm run build` passed on 2026-07-05 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-05 - Video Editor Studio Editing Phase 5
 
 - added first real timeline editing actions inside the canvas-native `剪辑工程` studio:

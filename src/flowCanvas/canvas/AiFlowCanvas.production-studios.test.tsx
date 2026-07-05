@@ -242,6 +242,25 @@ describe('AiFlowCanvas production studios', () => {
     expect(JSON.stringify(node?.data.director3d)).not.toMatch(/blob:|data:/);
   });
 
+  it('persists director camera inspector edits through the canvas store', () => {
+    render(<AiFlowCanvas cullingEnabled={false} />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(OPEN_PRODUCTION_STUDIO_EVENT, {
+          detail: { nodeId: 'director-node', studio: 'director3d' },
+        }),
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '选择对象 主镜头' }));
+    fireEvent.change(screen.getByLabelText('镜头提示词'), { target: { value: '俯拍建立空间关系' } });
+
+    const node = useFlowCanvasStore.getState().nodes.find((item) => item.id === 'director-node');
+    expect(node?.data.director3d?.cameras[0]?.prompt).toBe('俯拍建立空间关系');
+    expect(JSON.stringify(node?.data.director3d)).not.toMatch(/blob:|data:/);
+  });
+
   it('persists storyboard prompt edits through the canvas store', () => {
     useFlowCanvasStore.getState().loadProject({
       id: 'project-1',

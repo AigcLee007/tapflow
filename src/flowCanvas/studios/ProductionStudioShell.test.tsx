@@ -133,6 +133,71 @@ describe('ProductionStudioShell', () => {
     expect(JSON.stringify(latestPatch)).not.toMatch(/blob:|data:/);
   });
 
+  it('emits structured director patches for selected actor inspector edits', () => {
+    const onUpdateNodeData = vi.fn();
+    render(
+      <ProductionStudioShell
+        studio="director3d"
+        node={directorNode as any}
+        onClose={vi.fn()}
+        onUpdateNodeData={onUpdateNodeData}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '选择对象 角色 A' }));
+    fireEvent.change(screen.getByLabelText('对象名称'), { target: { value: '主角 A' } });
+    expect(onUpdateNodeData).toHaveBeenCalledWith('director-node', {
+      director3d: expect.objectContaining({
+        actors: expect.arrayContaining([expect.objectContaining({ id: 'actor-1', name: '主角 A' })]),
+      }),
+    });
+
+    fireEvent.click(screen.getByRole('checkbox', { name: '对象可见' }));
+    expect(onUpdateNodeData).toHaveBeenCalledWith('director-node', {
+      director3d: expect.objectContaining({
+        actors: expect.arrayContaining([expect.objectContaining({ id: 'actor-1', visible: false })]),
+      }),
+    });
+
+    fireEvent.click(screen.getByRole('checkbox', { name: '对象锁定' }));
+    expect(onUpdateNodeData).toHaveBeenCalledWith('director-node', {
+      director3d: expect.objectContaining({
+        actors: expect.arrayContaining([expect.objectContaining({ id: 'actor-1', locked: true })]),
+      }),
+    });
+
+    const latestPatch = onUpdateNodeData.mock.calls.at(-1)?.[1];
+    expect(JSON.stringify(latestPatch)).not.toMatch(/blob:|data:/);
+  });
+
+  it('emits structured director patches for selected camera and shot prompt edits', () => {
+    const onUpdateNodeData = vi.fn();
+    render(
+      <ProductionStudioShell
+        studio="director3d"
+        node={directorNode as any}
+        onClose={vi.fn()}
+        onUpdateNodeData={onUpdateNodeData}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '选择对象 主镜头' }));
+    fireEvent.change(screen.getByLabelText('镜头提示词'), { target: { value: '低机位环绕主角' } });
+    expect(onUpdateNodeData).toHaveBeenCalledWith('director-node', {
+      director3d: expect.objectContaining({
+        cameras: expect.arrayContaining([expect.objectContaining({ id: 'camera-1', prompt: '低机位环绕主角' })]),
+      }),
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '选择镜头段 1' }));
+    fireEvent.change(screen.getByLabelText('镜头段提示词'), { target: { value: '镜头缓慢推进' } });
+    expect(onUpdateNodeData).toHaveBeenCalledWith('director-node', {
+      director3d: expect.objectContaining({
+        shots: expect.arrayContaining([expect.objectContaining({ id: 'shot-1', prompt: '镜头缓慢推进' })]),
+      }),
+    });
+  });
+
   it('renders storyboard shell with selected shot context', () => {
     render(<ProductionStudioShell studio="storyboard" node={storyboardNode as any} onClose={vi.fn()} />);
 
