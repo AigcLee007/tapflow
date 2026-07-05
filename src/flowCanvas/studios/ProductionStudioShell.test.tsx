@@ -172,6 +172,92 @@ describe('ProductionStudioShell', () => {
     expect(JSON.stringify(latestPatch)).not.toMatch(/blob:|data:/);
   });
 
+  it('emits safe transform patches for selected director actors', () => {
+    const onUpdateNodeData = vi.fn();
+    render(
+      <ProductionStudioShell
+        studio="director3d"
+        node={directorNode as any}
+        onClose={vi.fn()}
+        onUpdateNodeData={onUpdateNodeData}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '选择对象 角色 A' }));
+    fireEvent.change(screen.getByLabelText('位置 X'), { target: { value: '1.25' } });
+    expect(onUpdateNodeData).toHaveBeenCalledWith('director-node', {
+      director3d: expect.objectContaining({
+        actors: expect.arrayContaining([expect.objectContaining({ id: 'actor-1', position: [1.25, 0, 0] })]),
+      }),
+    });
+
+    fireEvent.change(screen.getByLabelText('旋转 Y'), { target: { value: '45' } });
+    expect(onUpdateNodeData).toHaveBeenCalledWith('director-node', {
+      director3d: expect.objectContaining({
+        actors: expect.arrayContaining([expect.objectContaining({ id: 'actor-1', rotation: [0, 45, 0] })]),
+      }),
+    });
+
+    fireEvent.change(screen.getByLabelText('缩放 Z'), { target: { value: '2.5' } });
+    expect(onUpdateNodeData).toHaveBeenCalledWith('director-node', {
+      director3d: expect.objectContaining({
+        actors: expect.arrayContaining([expect.objectContaining({ id: 'actor-1', scale: [1, 1, 2.5] })]),
+      }),
+    });
+
+    fireEvent.change(screen.getByLabelText('位置 X'), { target: { value: 'Infinity' } });
+    expect(onUpdateNodeData).toHaveBeenLastCalledWith('director-node', {
+      director3d: expect.objectContaining({
+        actors: expect.arrayContaining([expect.objectContaining({ id: 'actor-1', position: [0, 0, 0] })]),
+      }),
+    });
+
+    expect(JSON.stringify(onUpdateNodeData.mock.calls)).not.toMatch(/blob:|data:/);
+  });
+
+  it('falls back to safe actor transform values for malformed director drafts', () => {
+    const onUpdateNodeData = vi.fn();
+    const malformedDirectorNode = {
+      ...directorNode,
+      data: {
+        ...directorNode.data,
+        director3d: {
+          ...directorNode.data.director3d,
+          actors: [
+            {
+              ...directorNode.data.director3d.actors[0],
+              position: undefined,
+              rotation: ['bad', 10, null],
+              scale: undefined,
+            },
+          ],
+        },
+      },
+    };
+
+    render(
+      <ProductionStudioShell
+        studio="director3d"
+        node={malformedDirectorNode as any}
+        onClose={vi.fn()}
+        onUpdateNodeData={onUpdateNodeData}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '选择对象 角色 A' }));
+    expect((screen.getByLabelText('位置 X') as HTMLInputElement).value).toBe('0');
+    expect((screen.getByLabelText('旋转 Y') as HTMLInputElement).value).toBe('10');
+    expect((screen.getByLabelText('缩放 Z') as HTMLInputElement).value).toBe('1');
+
+    fireEvent.change(screen.getByLabelText('位置 X'), { target: { value: '3' } });
+    expect(onUpdateNodeData).toHaveBeenCalledWith('director-node', {
+      director3d: expect.objectContaining({
+        actors: expect.arrayContaining([expect.objectContaining({ id: 'actor-1', position: [3, 0, 0] })]),
+      }),
+    });
+    expect(JSON.stringify(onUpdateNodeData.mock.calls)).not.toMatch(/blob:|data:/);
+  });
+
   it('emits structured director patches for selected camera and shot prompt edits', () => {
     const onUpdateNodeData = vi.fn();
     render(
@@ -198,6 +284,85 @@ describe('ProductionStudioShell', () => {
         shots: expect.arrayContaining([expect.objectContaining({ id: 'shot-1', prompt: '镜头缓慢推进' })]),
       }),
     });
+  });
+
+  it('emits safe pose patches for selected director cameras', () => {
+    const onUpdateNodeData = vi.fn();
+    render(
+      <ProductionStudioShell
+        studio="director3d"
+        node={directorNode as any}
+        onClose={vi.fn()}
+        onUpdateNodeData={onUpdateNodeData}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '选择对象 主镜头' }));
+    fireEvent.change(screen.getByLabelText('镜头位置 Z'), { target: { value: '7.5' } });
+    expect(onUpdateNodeData).toHaveBeenCalledWith('director-node', {
+      director3d: expect.objectContaining({
+        cameras: expect.arrayContaining([expect.objectContaining({ id: 'camera-1', position: [0, 2, 7.5] })]),
+      }),
+    });
+
+    fireEvent.change(screen.getByLabelText('注视目标 Y'), { target: { value: '1.4' } });
+    expect(onUpdateNodeData).toHaveBeenCalledWith('director-node', {
+      director3d: expect.objectContaining({
+        cameras: expect.arrayContaining([expect.objectContaining({ id: 'camera-1', target: [0, 1.4, 0] })]),
+      }),
+    });
+
+    fireEvent.change(screen.getByLabelText('焦距 mm'), { target: { value: '85' } });
+    expect(onUpdateNodeData).toHaveBeenCalledWith('director-node', {
+      director3d: expect.objectContaining({
+        cameras: expect.arrayContaining([expect.objectContaining({ id: 'camera-1', focalMm: 85 })]),
+      }),
+    });
+
+    fireEvent.change(screen.getByLabelText('焦距 mm'), { target: { value: 'nope' } });
+    expect(onUpdateNodeData).toHaveBeenLastCalledWith('director-node', {
+      director3d: expect.objectContaining({
+        cameras: expect.arrayContaining([expect.objectContaining({ id: 'camera-1', focalMm: 35 })]),
+      }),
+    });
+
+    expect(JSON.stringify(onUpdateNodeData.mock.calls)).not.toMatch(/blob:|data:/);
+  });
+
+  it('emits safe timing and motion patches for selected director shots', () => {
+    const onUpdateNodeData = vi.fn();
+    render(
+      <ProductionStudioShell
+        studio="director3d"
+        node={directorNode as any}
+        onClose={vi.fn()}
+        onUpdateNodeData={onUpdateNodeData}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '选择镜头段 1' }));
+    fireEvent.change(screen.getByLabelText('镜头段时长（秒）'), { target: { value: '4.8' } });
+    expect(onUpdateNodeData).toHaveBeenCalledWith('director-node', {
+      director3d: expect.objectContaining({
+        shots: expect.arrayContaining([expect.objectContaining({ id: 'shot-1', durationMs: 4800 })]),
+      }),
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '环绕' }));
+    expect(onUpdateNodeData).toHaveBeenCalledWith('director-node', {
+      director3d: expect.objectContaining({
+        shots: expect.arrayContaining([expect.objectContaining({ id: 'shot-1', motion: 'orbit' })]),
+      }),
+    });
+
+    fireEvent.change(screen.getByLabelText('镜头段时长（秒）'), { target: { value: '-2' } });
+    expect(onUpdateNodeData).toHaveBeenLastCalledWith('director-node', {
+      director3d: expect.objectContaining({
+        shots: expect.arrayContaining([expect.objectContaining({ id: 'shot-1', durationMs: 0 })]),
+      }),
+    });
+
+    expect(JSON.stringify(onUpdateNodeData.mock.calls)).not.toMatch(/blob:|data:/);
   });
 
   it('requests a safe downstream image node from the selected director shot', () => {

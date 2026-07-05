@@ -15,8 +15,20 @@ type DirectorSelection =
 type DirectorActor = FlowDirector3dData['actors'][number];
 type DirectorCamera = FlowDirector3dData['cameras'][number];
 type DirectorShot = FlowDirector3dData['shots'][number];
+type DirectorVector = [number, number, number];
+type DirectorVectorAxis = 0 | 1 | 2;
+type DirectorShotMotion = NonNullable<DirectorShot['motion']>;
 
 const VIDEO_EDITOR_EXPORT_ROUTE_KEY = 'video.editor.ffmpeg';
+const DEFAULT_DIRECTOR_CAMERA_FOCAL_MM = 35;
+const DIRECTOR_AXIS_LABELS = ['X', 'Y', 'Z'] as const;
+const DIRECTOR_SHOT_MOTION_OPTIONS: Array<{ label: string; value: DirectorShotMotion }> = [
+  { label: '固定', value: 'static' },
+  { label: '推进', value: 'dolly' },
+  { label: '环绕', value: 'orbit' },
+  { label: '摇移', value: 'pan' },
+  { label: '自定义', value: 'custom_path' },
+];
 
 export type StudioCanvasNodeRequest = {
   kind: 'image' | 'video';
@@ -182,6 +194,55 @@ function buildDirectorShot(
     durationMs: 3000,
     motion: 'static',
   };
+}
+
+function finiteNumberFromInput(value: string, fallback: number, options?: { max?: number; min?: number }) {
+  if (value.trim() === '') return fallback;
+  const next = Number(value);
+  if (!Number.isFinite(next)) return fallback;
+  const min = options?.min ?? -Infinity;
+  const max = options?.max ?? Infinity;
+  return Math.min(max, Math.max(min, next));
+}
+
+function normalizeDirectorVector(value: unknown, fallback: DirectorVector): DirectorVector {
+  if (!Array.isArray(value)) return fallback;
+  return DIRECTOR_AXIS_LABELS.map((_, index) => {
+    const axisValue = Number(value[index]);
+    return Number.isFinite(axisValue) ? axisValue : fallback[index];
+  }) as DirectorVector;
+}
+
+function patchDirectorVectorAxis(
+  value: unknown,
+  axis: DirectorVectorAxis,
+  rawValue: string,
+  fallback: DirectorVector,
+  options?: { max?: number; min?: number },
+): DirectorVector {
+  const next = normalizeDirectorVector(value, fallback);
+  next[axis] = finiteNumberFromInput(rawValue, next[axis], options);
+  return next;
+}
+
+function getDirectorCameraFocalMm(camera: DirectorCamera) {
+  return Number.isFinite(Number(camera.focalMm)) ? Number(camera.focalMm) : DEFAULT_DIRECTOR_CAMERA_FOCAL_MM;
+}
+
+function getShotDurationSeconds(shot: DirectorShot) {
+  const durationMs = Number(shot.durationMs);
+  return Math.max(0, Number.isFinite(durationMs) ? Math.round(durationMs / 100) / 10 : 0);
+}
+
+function durationMsFromSecondsInput(value: string, fallbackDurationMs: number) {
+  const fallbackSeconds = Math.max(0, Number(fallbackDurationMs) || 0) / 1000;
+  return Math.round(finiteNumberFromInput(value, fallbackSeconds, { min: 0 }) * 1000);
+}
+
+function normalizeDirectorShotMotion(value: unknown): DirectorShotMotion {
+  return DIRECTOR_SHOT_MOTION_OPTIONS.some((option) => option.value === value)
+    ? (value as DirectorShotMotion)
+    : 'static';
 }
 
 function normalizeVideoEditorData(data?: FlowVideoEditorData): FlowVideoEditorData {
@@ -934,6 +995,27 @@ function DirectorInspector({
           />
           <span>对象锁定</span>
         </label>
+        <DirectorVectorInputGroup
+          label="位置"
+          value={actor.position}
+          onChange={(axis, value) => onPatchActor(actor.id, {
+            position: patchDirectorVectorAxis(actor.position, axis, value, [0, 0, 0]),
+          })}
+        />
+        <DirectorVectorInputGroup
+          label="旋转"
+          value={actor.rotation}
+          onChange={(axis, value) => onPatchActor(actor.id, {
+            rotation: patchDirectorVectorAxis(actor.rotation, axis, value, [0, 0, 0]),
+          })}
+        />
+        <DirectorVectorInputGroup
+          label="缩放"
+          value={actor.scale}
+          onChange={(axis, value) => onPatchActor(actor.id, {
+            scale: patchDirectorVectorAxis(actor.scale, axis, value, [1, 1, 1], { min: 0.1 }),
+          })}
+        />
       </div>
     );
   }
@@ -942,6 +1024,37 @@ function DirectorInspector({
     return (
       <div style={inspectorFormStyle}>
         <MetricRow label="当前镜头" value={camera.name} />
+        <DirectorVectorInputGroup
+          inputLabelPrefix="镜头位置"
+          label="镜头位置"
+          value={camera.position}
+          onChange={(axis, value) => onPatchCamera(camera.id, {
+            position: patchDirectorVectorAxis(camera.position, axis, value, [0, 1.8, 5]),
+          })}
+        />
+        <DirectorVectorInputGroup
+          inputLabelPrefix="注视目标"
+          label="注视目标"
+          value={camera.target}
+          onChange={(axis, value) => onPatchCamera(camera.id, {
+            target: patchDirectorVectorAxis(camera.target, axis, value, [0, 1, 0]),
+          })}
+        />
+        <label style={fieldLabelStyle}>
+          <span>焦距 mm</span>
+          <input
+            aria-label="焦距 mm"
+            min={1}
+            max={300}
+            onChange={(event) => onPatchCamera(camera.id, {
+              focalMm: finiteNumberFromInput(event.target.value, getDirectorCameraFocalMm(camera), { min: 1, max: 300 }),
+            })}
+            step={1}
+            style={textInputStyle}
+            type="number"
+            value={getDirectorCameraFocalMm(camera)}
+          />
+        </label>
         <label style={fieldLabelStyle}>
           <span>镜头提示词</span>
           <textarea
@@ -961,6 +1074,39 @@ function DirectorInspector({
       <div style={inspectorFormStyle}>
         <MetricRow label="当前段落" value={shot.id} />
         <label style={fieldLabelStyle}>
+          <span>镜头段时长（秒）</span>
+          <input
+            aria-label="镜头段时长（秒）"
+            min={0}
+            onChange={(event) => onPatchShot(shot.id, {
+              durationMs: durationMsFromSecondsInput(event.target.value, shot.durationMs),
+            })}
+            step={0.1}
+            style={textInputStyle}
+            type="number"
+            value={getShotDurationSeconds(shot)}
+          />
+        </label>
+        <div style={fieldLabelStyle}>
+          <span>镜头运动</span>
+          <div aria-label="镜头运动" role="group" style={motionButtonGroupStyle}>
+            {DIRECTOR_SHOT_MOTION_OPTIONS.map((option) => {
+              const selected = normalizeDirectorShotMotion(shot.motion) === option.value;
+              return (
+                <button
+                  key={option.value}
+                  aria-pressed={selected}
+                  onClick={() => onPatchShot(shot.id, { motion: option.value })}
+                  style={motionButtonStyle(selected)}
+                  type="button"
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <label style={fieldLabelStyle}>
           <span>镜头段提示词</span>
           <textarea
             aria-label="镜头段提示词"
@@ -975,6 +1121,40 @@ function DirectorInspector({
   }
 
   return <EmptyLine label="选择对象、镜头或镜头段后编辑属性" />;
+}
+
+function DirectorVectorInputGroup({
+  inputLabelPrefix,
+  label,
+  onChange,
+  value,
+}: {
+  inputLabelPrefix?: string;
+  label: string;
+  onChange: (axis: DirectorVectorAxis, value: string) => void;
+  value: DirectorVector;
+}) {
+  const normalizedValue = normalizeDirectorVector(value, label === '缩放' ? [1, 1, 1] : [0, 0, 0]);
+  return (
+    <div style={fieldLabelStyle}>
+      <span>{label}</span>
+      <div style={vectorGridStyle}>
+        {DIRECTOR_AXIS_LABELS.map((axisLabel, axisIndex) => (
+          <label key={axisLabel} style={axisFieldStyle}>
+            <span>{axisLabel}</span>
+            <input
+              aria-label={`${inputLabelPrefix || label} ${axisLabel}`}
+              onChange={(event) => onChange(axisIndex as DirectorVectorAxis, event.target.value)}
+              step={0.1}
+              style={axisInputStyle}
+              type="number"
+              value={normalizedValue[axisIndex]}
+            />
+          </label>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function PanelTitle({ icon, title }: { icon: React.ReactNode; title: string }) {
@@ -1364,6 +1544,32 @@ const fieldLabelStyle: React.CSSProperties = {
   marginTop: 12,
 };
 
+const vectorGridStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+  gap: 6,
+};
+
+const axisFieldStyle: React.CSSProperties = {
+  display: 'grid',
+  gap: 4,
+  color: '#94a3b8',
+  fontSize: 10,
+  fontWeight: 800,
+};
+
+const axisInputStyle: React.CSSProperties = {
+  height: 30,
+  minWidth: 0,
+  borderRadius: 8,
+  border: '1px solid rgba(255,255,255,0.1)',
+  background: '#0f172a',
+  color: '#f8fafc',
+  padding: '0 6px',
+  fontSize: 11,
+  outline: 'none',
+};
+
 const textInputStyle: React.CSSProperties = {
   height: 34,
   borderRadius: 8,
@@ -1374,6 +1580,24 @@ const textInputStyle: React.CSSProperties = {
   fontSize: 12,
   outline: 'none',
 };
+
+const motionButtonGroupStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+  gap: 6,
+};
+
+const motionButtonStyle = (selected: boolean): React.CSSProperties => ({
+  height: 30,
+  border: selected ? '1px solid rgba(56,189,248,0.72)' : '1px solid rgba(255,255,255,0.1)',
+  borderRadius: 8,
+  background: selected ? 'rgba(56,189,248,0.18)' : '#0f172a',
+  color: selected ? '#e0f2fe' : '#cbd5e1',
+  cursor: 'pointer',
+  fontSize: 11,
+  fontWeight: 800,
+  padding: '0 6px',
+});
 
 const textareaStyle: React.CSSProperties = {
   minHeight: 118,

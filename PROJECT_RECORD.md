@@ -3,6 +3,23 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - 3D Director Desk Transform Inspector Phase 30
+
+- expanded the canvas-native `3D导演台` inspector into a usable staging control surface:
+  - selected actors can now edit position, rotation, and scale as finite three-axis numeric tuples.
+  - selected cameras can now edit camera position, target, and focal length.
+  - selected shots can now edit duration and motion type through compact buttons rather than a native select.
+  - malformed legacy director drafts fall back to safe numeric defaults instead of crashing the studio.
+- kept v2 safety boundaries unchanged:
+  - all edits remain free local/studio draft edits and persist only as structured `director3d` node data.
+  - no generated media, `blob:`, `data:`, file objects, provider credentials, API route internals, billing shortcut, database migration, or worker behavior was added.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx` failed because actor/camera/shot transform controls did not exist.
+  - red test observed on 2026-07-06: malformed actor transform data crashed `DirectorVectorInputGroup` before safe defaults were applied.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/studios/DirectorDeskThreeViewport.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-06: 3 files, 35 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+  - `git diff --check` passed on 2026-07-06.
+
 ## 2026-07-06 - GPT-Image Fallback Production Modes Phase 29
 
 - aligned frontend GPT-Image-2 official fallback routes with the backend production-mode capabilities:
