@@ -158,6 +158,9 @@ export interface FlowVideoEditorData {
       startMs: number;
       endMs: number;
       style?: Record<string, unknown>;
+      sourceStoryboardNodeId?: string;
+      storyboardCellId?: string;
+      storyboardShotNo?: number;
     }>;
   };
 }

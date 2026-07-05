@@ -41,7 +41,6 @@ describe('storyboardVideoSync', () => {
       resolution: '1920x1080',
       timeline: {
         audio: videoEditor.timeline.audio,
-        subtitles: videoEditor.timeline.subtitles,
       },
     });
     expect(next.timeline.clips).toEqual([
@@ -75,6 +74,37 @@ describe('storyboardVideoSync', () => {
     expect(JSON.stringify(next)).not.toMatch(/blob:|data:/);
   });
 
+  it('creates storyboard subtitles aligned to synced image clips', () => {
+    const next = buildVideoEditorFromStoryboardAssets({
+      sourceStoryboardNodeId: 'storyboard-node',
+      storyboard,
+      videoEditor,
+    });
+
+    expect(next.timeline.subtitles).toEqual([
+      videoEditor.timeline.subtitles[0],
+      {
+        id: 'storyboard-subtitle-storyboard-node-cell-1',
+        text: storyboard.cells[0].title,
+        startMs: 3000,
+        endMs: 6000,
+        sourceStoryboardNodeId: 'storyboard-node',
+        storyboardCellId: 'cell-1',
+        storyboardShotNo: 1,
+      },
+      {
+        id: 'storyboard-subtitle-storyboard-node-cell-2',
+        text: storyboard.cells[1].title,
+        startMs: 6000,
+        endMs: 9000,
+        sourceStoryboardNodeId: 'storyboard-node',
+        storyboardCellId: 'cell-2',
+        storyboardShotNo: 2,
+      },
+    ]);
+    expect(JSON.stringify(next.timeline.subtitles)).not.toMatch(/blob:|data:|https?:\/\//);
+  });
+
   it('replaces previous clips from the same storyboard instead of duplicating them', () => {
     const first = buildVideoEditorFromStoryboardAssets({
       sourceStoryboardNodeId: 'storyboard-node',
@@ -101,6 +131,16 @@ describe('storyboardVideoSync', () => {
       storyboardTitle: '开场更新',
       startMs: 3000,
     });
+    expect(second.timeline.subtitles).toEqual([
+      videoEditor.timeline.subtitles[0],
+      expect.objectContaining({
+        id: 'storyboard-subtitle-storyboard-node-cell-1',
+        sourceStoryboardNodeId: 'storyboard-node',
+        storyboardCellId: 'cell-1',
+        startMs: 3000,
+        endMs: 6000,
+      }),
+    ]);
     expect(JSON.stringify(second)).not.toMatch(/blob:|data:/);
   });
 });

@@ -803,6 +803,24 @@ describe('AiFlowCanvas production studios', () => {
         storyboardShotNo: 2,
       }),
     ]);
+    expect(node?.data.videoEditor?.timeline.subtitles).toEqual([
+      expect.objectContaining({
+        id: 'storyboard-subtitle-storyboard-node-cell-1',
+        sourceStoryboardNodeId: 'storyboard-node',
+        storyboardCellId: 'cell-1',
+        storyboardShotNo: 1,
+        startMs: 0,
+        endMs: 3000,
+      }),
+      expect.objectContaining({
+        id: 'storyboard-subtitle-storyboard-node-cell-2',
+        sourceStoryboardNodeId: 'storyboard-node',
+        storyboardCellId: 'cell-2',
+        storyboardShotNo: 2,
+        startMs: 3000,
+        endMs: 6000,
+      }),
+    ]);
     expect(node?.data.videoEditor?.timeline.durationMs).toBe(6000);
     expect(JSON.stringify(node?.data.videoEditor)).not.toMatch(/blob:|data:/);
   });

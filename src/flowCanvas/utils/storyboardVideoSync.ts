@@ -2,6 +2,7 @@ import type { FlowStoryboardData, FlowVideoEditorData } from '../types';
 import { normalizeStoryboardData } from './storyboardNodeData';
 
 type VideoClip = FlowVideoEditorData['timeline']['clips'][number];
+type VideoSubtitle = FlowVideoEditorData['timeline']['subtitles'][number];
 
 const DEFAULT_STORYBOARD_IMAGE_DURATION_MS = 3000;
 
@@ -51,6 +52,9 @@ export function buildVideoEditorFromStoryboardAssets(input: {
   const preservedClips = videoEditor.timeline.clips.filter(
     (clip) => clip.sourceStoryboardNodeId !== sourceStoryboardNodeId,
   );
+  const preservedSubtitles = videoEditor.timeline.subtitles.filter(
+    (subtitle) => subtitle.sourceStoryboardNodeId !== sourceStoryboardNodeId,
+  );
   const firstStartMs = getTimelineClipEndMs(preservedClips);
   const storyboardClips = storyboard.cells
     .filter((cell) => cell.assetId)
@@ -70,16 +74,35 @@ export function buildVideoEditorFromStoryboardAssets(input: {
       ...(cell.prompt ? { storyboardPrompt: cell.prompt } : {}),
     }));
   const clips = [...preservedClips, ...storyboardClips];
+  const storyboardSubtitles = storyboardClips
+    .map((clip): VideoSubtitle | null => {
+      const cell = storyboard.cells.find((candidate) => candidate.id === clip.storyboardCellId);
+      if (!cell) return null;
+      const text = cell.title?.trim() || cell.prompt?.trim();
+      if (!text) return null;
+      return {
+        id: `storyboard-subtitle-${cleanIdSegment(sourceStoryboardNodeId)}-${cleanIdSegment(cell.id)}`,
+        text,
+        startMs: clip.startMs,
+        endMs: clip.startMs + getClipDurationMs(clip),
+        sourceStoryboardNodeId,
+        storyboardCellId: cell.id,
+        storyboardShotNo: cell.shotNo,
+      };
+    })
+    .filter((subtitle): subtitle is VideoSubtitle => Boolean(subtitle));
+  const subtitles = [...preservedSubtitles, ...storyboardSubtitles];
 
   return {
     ...videoEditor,
     timeline: {
       ...videoEditor.timeline,
       clips,
+      subtitles,
       durationMs: Math.max(
         videoEditor.timeline.durationMs,
         getTimelineClipEndMs(clips),
-        getSubtitleEndMs(videoEditor.timeline.subtitles),
+        getSubtitleEndMs(subtitles),
       ),
     },
   };

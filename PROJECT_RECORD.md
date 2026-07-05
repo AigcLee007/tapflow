@@ -3,6 +3,22 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - Storyboard To Video Editor Subtitle Sync Phase 49
+
+- extended the storyboard-to-video editor sync so storyboard cells now also produce aligned subtitles:
+  - subtitles are derived from storyboard cell title first, then prompt text if title is missing.
+  - each generated subtitle carries structured storyboard source metadata (`sourceStoryboardNodeId`, `storyboardCellId`, `storyboardShotNo`).
+  - resyncing the same storyboard source replaces old same-source subtitles instead of duplicating them.
+  - the video editor timeline duration now reflects the synced subtitle end time as well as the clips.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - this only reshapes existing structured canvas draft data.
+  - no signed URL, preview URL, `blob:`, `data:`, base64, generated media, browser-local export, direct asset write, billing mutation, API route, database migration, worker behavior, or provider-secret exposure was added.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/utils/storyboardVideoSync.test.ts` first failed because storyboard sync did not generate aligned subtitles or replace stale same-source subtitles.
+  - `npm test -- src/flowCanvas/utils/storyboardVideoSync.test.ts` passed on 2026-07-06: 3 tests.
+  - `npm test -- src/flowCanvas/utils/storyboardVideoSync.test.ts src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-06: 64 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-06 - Director Desk Asset Viewport Metadata Phase 48
 
 - made asset-backed `3D导演台` state visible in the director viewport layer:
