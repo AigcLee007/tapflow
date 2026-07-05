@@ -37,6 +37,8 @@ FROM node:22-alpine
 
 WORKDIR /app
 
+RUN apk add --no-cache ffmpeg
+
 # Copy workspace manifests
 COPY package.json package-lock.json ./
 COPY apps/api/package.json ./apps/api/package.json

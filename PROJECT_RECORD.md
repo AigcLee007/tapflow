@@ -3,6 +3,23 @@
 Last updated: 2026-07-05
 Maintainers: project team + Codex sessions
 
+## 2026-07-05 - Video Editor FFmpeg Executor Phase 20
+
+- added a worker-side FFmpeg execution boundary for `剪辑工程` render plans:
+  - `buildVideoEditorFfmpegArgs` turns Phase 19 render plans plus local asset file paths into deterministic FFmpeg arguments.
+  - the command builder rejects missing local asset files, scales/pads clips to the target output size, concatenates video clips, escapes subtitle text for `drawtext`, and creates a mixed audio output label.
+  - `runVideoEditorFfmpeg` wraps child-process execution with hidden Windows windows, bounded stderr capture, success resolution, spawn failure errors, and non-zero exit errors.
+- prepared the deployed worker runtime for the eventual renderer:
+  - the production Docker image now installs the `ffmpeg` Alpine package.
+- kept the boundary conservative:
+  - no workflow wiring, asset download, asset persistence, pricing unit, provider route behavior, browser-local export, frontend billing mutation, or database schema change was added.
+- validation:
+  - red test observed on 2026-07-05: `npm run test --workspace @aigc-flow/worker -- test/video-editor-ffmpeg-executor.test.ts` failed because `video-editor-ffmpeg-executor.ts` did not exist.
+  - `npm run test --workspace @aigc-flow/worker -- test/video-editor-ffmpeg-executor.test.ts test/video-editor-render-plan.test.ts test/worker.test.ts` passed on 2026-07-05: 3 files, 16 tests passed, 14 database-backed tests skipped by the existing local-DB guard.
+  - `npm run build --workspace @aigc-flow/worker` passed on 2026-07-05.
+  - `npm run build` passed on 2026-07-05 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+  - `git diff --check` passed on 2026-07-05; Git reports the pre-existing Dockerfile CRLF normalization warning.
+
 ## 2026-07-05 - Video Editor Render Plan Phase 19
 
 - added the first server-side render planning boundary for `剪辑工程` exports in the worker:
