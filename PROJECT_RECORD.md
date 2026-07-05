@@ -3,6 +3,20 @@
 Last updated: 2026-07-05
 Maintainers: project team + Codex sessions
 
+## 2026-07-05 - Video Editor Studio Editing Phase 5
+
+- added first real timeline editing actions inside the canvas-native `剪辑工程` studio:
+  - `添加图片片段` appends a structured image clip placeholder backed by an `assetId` field.
+  - `添加视频片段` appends a structured video clip placeholder backed by an `assetId` field.
+  - `添加字幕` appends a structured subtitle item.
+  - `工程时长（秒）` updates timeline duration in milliseconds.
+- wired these actions through the existing `ProductionStudioShell` -> `updateNodeData` path so timeline edits persist in `videoEditor` node data.
+- kept this slice editing-only and non-billable; no server export, asset creation, AI generation, or billing workflow was added.
+- ensured video editor patches remain structured JSON and do not persist transient `blob:`, `data:`, base64, `File`, or `Blob` media.
+- validation:
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-05: 2 test files, 10 tests.
+  - `npm run build` passed on 2026-07-05 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-05 - Director Desk Scene Editing Phase 4
 
 - added first real 3D Director Desk editing actions inside the canvas-native `3D导演台` studio:

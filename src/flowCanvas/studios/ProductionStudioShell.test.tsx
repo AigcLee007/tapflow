@@ -191,4 +191,59 @@ describe('ProductionStudioShell', () => {
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  it('emits safe video editor patches for clips, subtitles, and duration edits', () => {
+    const onUpdateNodeData = vi.fn();
+    render(
+      <ProductionStudioShell
+        studio="video_editor"
+        node={videoNode as any}
+        onClose={vi.fn()}
+        onUpdateNodeData={onUpdateNodeData}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '添加图片片段' }));
+    expect(onUpdateNodeData).toHaveBeenCalledWith('video-node', {
+      videoEditor: expect.objectContaining({
+        timeline: expect.objectContaining({
+          clips: expect.arrayContaining([
+            expect.objectContaining({ id: 'clip-2', assetId: 'placeholder-image-2', kind: 'image' }),
+          ]),
+        }),
+      }),
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '添加视频片段' }));
+    expect(onUpdateNodeData).toHaveBeenCalledWith('video-node', {
+      videoEditor: expect.objectContaining({
+        timeline: expect.objectContaining({
+          clips: expect.arrayContaining([
+            expect.objectContaining({ id: 'clip-2', assetId: 'placeholder-video-2', kind: 'video' }),
+          ]),
+        }),
+      }),
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '添加字幕' }));
+    expect(onUpdateNodeData).toHaveBeenCalledWith('video-node', {
+      videoEditor: expect.objectContaining({
+        timeline: expect.objectContaining({
+          subtitles: expect.arrayContaining([
+            expect.objectContaining({ id: 'subtitle-2', text: '字幕 2' }),
+          ]),
+        }),
+      }),
+    });
+
+    fireEvent.change(screen.getByLabelText('工程时长（秒）'), { target: { value: '12.5' } });
+    expect(onUpdateNodeData).toHaveBeenCalledWith('video-node', {
+      videoEditor: expect.objectContaining({
+        timeline: expect.objectContaining({ durationMs: 12500 }),
+      }),
+    });
+
+    const latestPatch = onUpdateNodeData.mock.calls.at(-1)?.[1];
+    expect(JSON.stringify(latestPatch)).not.toMatch(/blob:|data:/);
+  });
 });

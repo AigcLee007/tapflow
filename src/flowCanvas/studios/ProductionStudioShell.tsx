@@ -68,7 +68,11 @@ export const ProductionStudioShell: React.FC<ProductionStudioShellProps> = ({ no
             onUpdateNodeData={onUpdateNodeData}
           />
         ) : (
-          <VideoEditorContent data={node.data.videoEditor} />
+          <VideoEditorContent
+            data={node.data.videoEditor}
+            nodeId={node.id}
+            onUpdateNodeData={onUpdateNodeData}
+          />
         )}
       </section>
     </div>
@@ -128,6 +132,68 @@ function buildDirectorShot(
     startMs,
     durationMs: 3000,
     motion: 'static',
+  };
+}
+
+function normalizeVideoEditorData(data?: FlowVideoEditorData): FlowVideoEditorData {
+  return {
+    version: 1,
+    aspect: data?.aspect ?? '16:9',
+    ...(data?.exportedAssetId ? { exportedAssetId: data.exportedAssetId } : {}),
+    resolution: data?.resolution ?? '1920x1080',
+    timeline: {
+      audio: Array.isArray(data?.timeline?.audio) ? data.timeline.audio : [],
+      clips: Array.isArray(data?.timeline?.clips) ? data.timeline.clips : [],
+      durationMs: Math.max(0, Number(data?.timeline?.durationMs) || 0),
+      subtitles: Array.isArray(data?.timeline?.subtitles) ? data.timeline.subtitles : [],
+    },
+  };
+}
+
+function getClipDurationMs(clip: FlowVideoEditorData['timeline']['clips'][number]) {
+  const rawDuration = Number(clip.outMs) - Number(clip.inMs);
+  return Math.max(0, Number.isFinite(rawDuration) ? rawDuration : 0);
+}
+
+function getTimelineEndMs(clips: FlowVideoEditorData['timeline']['clips']) {
+  return clips.reduce(
+    (endMs, clip) => Math.max(endMs, Math.max(0, Number(clip.startMs) || 0) + getClipDurationMs(clip)),
+    0,
+  );
+}
+
+function buildVideoClip(
+  kind: 'image' | 'video',
+  clips: FlowVideoEditorData['timeline']['clips'],
+): FlowVideoEditorData['timeline']['clips'][number] {
+  const number = clips.length + 1;
+  const durationMs = kind === 'image' ? 3000 : 4000;
+  return {
+    id: `clip-${number}`,
+    assetId: `placeholder-${kind}-${number}`,
+    kind,
+    track: 1,
+    startMs: getTimelineEndMs(clips),
+    inMs: 0,
+    outMs: durationMs,
+    speed: 1,
+    ...(kind === 'video' ? { volume: 1 } : {}),
+  };
+}
+
+function buildVideoSubtitle(
+  subtitles: FlowVideoEditorData['timeline']['subtitles'],
+): FlowVideoEditorData['timeline']['subtitles'][number] {
+  const number = subtitles.length + 1;
+  const previousEndMs = subtitles.reduce(
+    (endMs, subtitle) => Math.max(endMs, Math.max(0, Number(subtitle.endMs) || 0)),
+    0,
+  );
+  return {
+    id: `subtitle-${number}`,
+    text: `字幕 ${number}`,
+    startMs: previousEndMs,
+    endMs: previousEndMs + 1500,
   };
 }
 
@@ -301,11 +367,46 @@ function StoryboardContent({
   );
 }
 
-function VideoEditorContent({ data }: { data?: FlowVideoEditorData }) {
-  const timeline = data?.timeline;
-  const clips = timeline?.clips ?? [];
-  const audio = timeline?.audio ?? [];
-  const subtitles = timeline?.subtitles ?? [];
+function VideoEditorContent({
+  data,
+  nodeId,
+  onUpdateNodeData,
+}: {
+  data?: FlowVideoEditorData;
+  nodeId: string;
+  onUpdateNodeData?: (nodeId: string, patch: Partial<FlowNodeData>) => void;
+}) {
+  const videoEditor = normalizeVideoEditorData(data);
+  const timeline = videoEditor.timeline;
+  const clips = timeline.clips;
+  const audio = timeline.audio;
+  const subtitles = timeline.subtitles;
+  const updateVideoEditor = (nextVideoEditor: FlowVideoEditorData) => {
+    onUpdateNodeData?.(nodeId, { videoEditor: nextVideoEditor });
+  };
+  const updateTimeline = (nextTimeline: FlowVideoEditorData['timeline']) => {
+    updateVideoEditor({ ...videoEditor, timeline: nextTimeline });
+  };
+  const addClip = (kind: 'image' | 'video') => {
+    const nextClip = buildVideoClip(kind, clips);
+    updateTimeline({
+      ...timeline,
+      clips: [...clips, nextClip],
+      durationMs: Math.max(timeline.durationMs, nextClip.startMs + getClipDurationMs(nextClip)),
+    });
+  };
+  const addSubtitle = () => {
+    const nextSubtitle = buildVideoSubtitle(subtitles);
+    updateTimeline({
+      ...timeline,
+      durationMs: Math.max(timeline.durationMs, nextSubtitle.endMs),
+      subtitles: [...subtitles, nextSubtitle],
+    });
+  };
+  const setDurationSeconds = (value: string) => {
+    const seconds = Math.max(0, Number(value) || 0);
+    updateTimeline({ ...timeline, durationMs: Math.round(seconds * 1000) });
+  };
 
   return (
     <div style={videoLayoutStyle}>
@@ -314,6 +415,20 @@ function VideoEditorContent({ data }: { data?: FlowVideoEditorData }) {
         <StudioListItem label={`${clips.length} 个画面素材`} meta="clips" />
         <StudioListItem label={`${audio.length} 条音频`} meta="audio" />
         <StudioListItem label={`${subtitles.length} 条字幕`} meta="subtitles" />
+        <div style={videoActionStackStyle}>
+          <button type="button" aria-label="添加图片片段" style={toolButtonStyle} onClick={() => addClip('image')}>
+            <Plus size={14} />
+            添加图片片段
+          </button>
+          <button type="button" aria-label="添加视频片段" style={toolButtonStyle} onClick={() => addClip('video')}>
+            <Film size={14} />
+            添加视频片段
+          </button>
+          <button type="button" aria-label="添加字幕" style={toolButtonStyle} onClick={addSubtitle}>
+            <Plus size={14} />
+            添加字幕
+          </button>
+        </div>
       </aside>
       <main style={previewPanelStyle}>
         <PanelTitle icon={<Play size={15} />} title="预览监看" />
@@ -323,9 +438,21 @@ function VideoEditorContent({ data }: { data?: FlowVideoEditorData }) {
       </main>
       <aside style={panelStyle}>
         <PanelTitle icon={<Box size={15} />} title="参数检查" />
-        <MetricRow label="画幅" value={data?.aspect || '16:9'} />
-        <MetricRow label="分辨率" value={data?.resolution || '1920x1080'} />
-        <MetricRow label="时长" value={`${Math.round((timeline?.durationMs ?? 0) / 100) / 10}s`} />
+        <MetricRow label="画幅" value={videoEditor.aspect} />
+        <MetricRow label="分辨率" value={videoEditor.resolution} />
+        <MetricRow label="时长" value={`${Math.round(timeline.durationMs / 100) / 10}s`} />
+        <label style={fieldLabelStyle}>
+          <span>工程时长（秒）</span>
+          <input
+            aria-label="工程时长（秒）"
+            min={0}
+            onChange={(event) => setDurationSeconds(event.target.value)}
+            step={0.1}
+            style={textInputStyle}
+            type="number"
+            value={Math.round(timeline.durationMs / 100) / 10}
+          />
+        </label>
       </aside>
       <div style={bottomRailStyle}>
         <PanelTitle icon={<Film size={15} />} title="时间线" />
@@ -340,6 +467,12 @@ function VideoEditorContent({ data }: { data?: FlowVideoEditorData }) {
           ) : (
             <EmptyLine label="暂无剪辑片段" />
           )}
+          {subtitles.map((subtitle) => (
+            <div key={subtitle.id} style={subtitleItemStyle}>
+              <strong>{subtitle.text}</strong>
+              <span>{Math.round((subtitle.endMs - subtitle.startMs) / 100) / 10}s</span>
+            </div>
+          ))}
         </div>
       </div>
     </div>
@@ -590,6 +723,12 @@ const directorActionGridStyle: React.CSSProperties = {
   gap: 8,
 };
 
+const videoActionStackStyle: React.CSSProperties = {
+  display: 'grid',
+  gap: 8,
+  marginTop: 10,
+};
+
 const toolButtonStyle: React.CSSProperties = {
   height: 32,
   width: '100%',
@@ -745,6 +884,19 @@ const clipItemStyle: React.CSSProperties = {
   height: 52,
   borderRadius: 8,
   background: '#1d4ed8',
+  display: 'grid',
+  alignContent: 'center',
+  gap: 4,
+  padding: '0 10px',
+  fontSize: 11,
+};
+
+const subtitleItemStyle: React.CSSProperties = {
+  minWidth: 132,
+  height: 52,
+  borderRadius: 8,
+  background: '#7c2d12',
+  border: '1px solid rgba(251,146,60,0.24)',
   display: 'grid',
   alignContent: 'center',
   gap: 4,

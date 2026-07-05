@@ -162,6 +162,33 @@ const storyboardNode = {
   },
 };
 
+const videoNode = {
+  id: 'video-node',
+  type: 'video_editor',
+  position: { x: 180, y: 160 },
+  data: {
+    kind: 'video_editor',
+    title: '剪辑工程',
+    width: 360,
+    height: 220,
+    status: 'idle',
+    generationStatus: 'idle',
+    createdAt: 1,
+    updatedAt: 1,
+    videoEditor: {
+      version: 1,
+      aspect: '16:9',
+      resolution: '1920x1080',
+      timeline: {
+        audio: [],
+        clips: [],
+        durationMs: 0,
+        subtitles: [],
+      },
+    },
+  },
+};
+
 describe('AiFlowCanvas production studios', () => {
   beforeEach(() => {
     useFlowCanvasStore.getState().loadProject({
@@ -241,5 +268,36 @@ describe('AiFlowCanvas production studios', () => {
     const node = useFlowCanvasStore.getState().nodes.find((item) => item.id === 'storyboard-node');
     expect(node?.data.storyboard?.cells[0]?.prompt).toBe('新的故事板提示词');
     expect(JSON.stringify(node?.data.storyboard)).not.toMatch(/blob:|data:/);
+  });
+
+  it('persists video editor clip edits through the canvas store', () => {
+    useFlowCanvasStore.getState().loadProject({
+      id: 'project-1',
+      title: '项目',
+      nodes: [videoNode as any],
+      edges: [],
+      viewport: { x: 0, y: 0, zoom: 1 },
+      version: 1,
+      updatedAt: 1,
+    });
+
+    render(<AiFlowCanvas cullingEnabled={false} />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(OPEN_PRODUCTION_STUDIO_EVENT, {
+          detail: { nodeId: 'video-node', studio: 'video_editor' },
+        }),
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '添加图片片段' }));
+
+    const node = useFlowCanvasStore.getState().nodes.find((item) => item.id === 'video-node');
+    expect(node?.data.videoEditor?.timeline.clips[0]).toMatchObject({
+      kind: 'image',
+      assetId: 'placeholder-image-1',
+    });
+    expect(JSON.stringify(node?.data.videoEditor)).not.toMatch(/blob:|data:/);
   });
 });
