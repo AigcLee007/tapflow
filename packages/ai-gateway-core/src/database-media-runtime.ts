@@ -104,6 +104,8 @@ type RuntimeLogMetadata = {
   workflowRunId?: string | null;
 };
 
+const VIDEO_EDITOR_EXPORT_WORKFLOW = "video_editor_export";
+
 function emitRuntimeLog(
   logger: RuntimeLogger | null | undefined,
   fields: Record<string, unknown>,
@@ -114,6 +116,38 @@ function emitRuntimeLog(
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function isVideoEditorExportRequest(request: ImageGenerationRequest | VideoGenerationRequest): boolean {
+  const metadata = asRecord(request.metadata);
+  const videoEditorExport = asRecord(metadata.videoEditorExport);
+  return videoEditorExport.source === VIDEO_EDITOR_EXPORT_WORKFLOW;
+}
+
+function routeSupportsVideoEditorExport(route: ResolvedRoute): boolean {
+  const capabilities = asRecord(route.requestConfig.capabilities);
+  const supportedVideoWorkflows = Array.isArray(capabilities.supportedVideoWorkflows)
+    ? capabilities.supportedVideoWorkflows
+    : [];
+  return supportedVideoWorkflows
+    .map((item) => String(item || "").trim())
+    .includes(VIDEO_EDITOR_EXPORT_WORKFLOW);
+}
+
+function assertRouteSupportsRuntimeMediaRequest(
+  modality: "image" | "video",
+  route: ResolvedRoute,
+  request: ImageGenerationRequest | VideoGenerationRequest,
+): void {
+  if (modality !== "video" || !isVideoEditorExportRequest(request) || routeSupportsVideoEditorExport(route)) {
+    return;
+  }
+
+  throw new AiGatewayError({
+    code: "UNSUPPORTED_VIDEO_EDITOR_EXPORT",
+    message: `Route ${route.routeKey} does not support video editor export.`,
+    statusCode: 422,
+  });
 }
 
 function classifyReferenceValue(value: unknown): string {
@@ -436,6 +470,7 @@ export class DatabaseMediaRuntime {
           },
         }
       : selectedRoute;
+    assertRouteSupportsRuntimeMediaRequest(modality, routeForCall, request);
     const apiKey = this.getApiKeyForRoute(selectedRoute);
     const startedAt = Date.now();
 

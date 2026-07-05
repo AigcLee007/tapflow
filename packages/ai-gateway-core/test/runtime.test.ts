@@ -2827,6 +2827,77 @@ describe("route resolver and ai gateway", () => {
     expect(capturedTimeout).toBe(30000);
   });
 
+  test("database media runtime blocks video editor exports on routes without workflow support", async () => {
+    const generateVideo = vi.fn(async () => ({
+      modelKey: "video-test",
+      outputs: [{ mimeType: "video/mp4", url: "https://example.com/video.mp4" }],
+      providerRequest: {},
+      providerResponse: {},
+      status: "succeeded" as const,
+      usage: { inputTokens: null, outputTokens: null, totalTokens: null },
+    }));
+    const runtime = new DatabaseMediaRuntime({
+      aiGateway: new AiGateway({
+        "openai-compatible": {
+          generateVideo,
+        },
+      }),
+      credentialVault: {
+        getSecretForProviderCall() {
+          return "sk-test-secret";
+        },
+      } as never,
+      pool: {} as never,
+      routeResolver: {
+        resolveMediaRoute({ routes }: { routes: ResolvedRoute[] }) {
+          return routes[0];
+        },
+      } as never,
+    });
+
+    Object.defineProperty(runtime, "listRuntimeRoutes", {
+      value: async () => [
+        makeRoute({
+          credential: {
+            authTag: Buffer.from("tag"),
+            encryptedSecret: Buffer.from("secret"),
+            id: "credential-1",
+            nonce: Buffer.from("nonce"),
+          },
+          requestConfig: {
+            capabilities: {
+              supportedVideoWorkflows: [],
+            },
+          },
+          routeKey: "video.default",
+        }),
+      ],
+    });
+    Object.defineProperty(runtime, "insertAiCallLog", {
+      value: async () => undefined,
+    });
+
+    await expect(runtime.generateVideo(
+      {
+        tenantId: "tenant-1",
+        userId: "user-1",
+      },
+      {
+        metadata: {
+          videoEditorExport: {
+            source: "video_editor_export",
+          },
+        },
+        prompt: "export timeline",
+        routeKey: "video.default",
+      },
+    )).rejects.toMatchObject({
+      code: "UNSUPPORTED_VIDEO_EDITOR_EXPORT",
+    });
+
+    expect(generateVideo).not.toHaveBeenCalled();
+  });
+
   test("database media runtime emits structured performance logs for generate and poll calls", async () => {
     const { DatabaseMediaRuntime } = await import("../src/database-media-runtime.js");
     const logger = {

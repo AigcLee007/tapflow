@@ -3,6 +3,22 @@
 Last updated: 2026-07-05
 Maintainers: project team + Codex sessions
 
+## 2026-07-05 - Video Editor Export Runtime Guard Phase 18
+
+- added a second fail-closed guard inside `packages/ai-gateway-core`:
+  - `DatabaseMediaRuntime.generateVideo` now detects `metadata.videoEditorExport.source: video_editor_export`.
+  - if the resolved route request config does not include `capabilities.supportedVideoWorkflows: ["video_editor_export"]`, the runtime throws `UNSUPPORTED_VIDEO_EDITOR_EXPORT` before calling the provider adapter.
+  - request-config overrides are checked after merge, so diagnostic/runtime calls use the effective route configuration.
+- kept the runtime boundary conservative:
+  - no FFmpeg renderer, new export queue, new pricing unit, database table, provider secret path, browser-local export, or asset-write shortcut was added.
+  - unsupported editor-export jobs use the existing worker failure path and reservation refund behavior.
+- validation:
+  - red test observed on 2026-07-05: `npm run test --workspace @aigc-flow/ai-gateway-core -- test/runtime.test.ts` failed because editor-export video requests still reached the provider adapter.
+  - build failure observed on 2026-07-05: `npm run build --workspace @aigc-flow/ai-gateway-core` failed until `UNSUPPORTED_VIDEO_EDITOR_EXPORT` was added to `AiGatewayErrorCode`.
+  - `npm run test --workspace @aigc-flow/ai-gateway-core -- test/runtime.test.ts` passed on 2026-07-05: 1 file, 57 tests.
+  - `npm run build --workspace @aigc-flow/ai-gateway-core` passed on 2026-07-05.
+  - `npm run build` passed on 2026-07-05 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-05 - Video Editor Export Capability Preflight Phase 17
 
 - added fail-closed route capability checks for `剪辑工程` exported video nodes:
