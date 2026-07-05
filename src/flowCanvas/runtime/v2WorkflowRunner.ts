@@ -249,9 +249,38 @@ function isProductionImageGenerationMode(mode: FlowImageGenerationMode): boolean
   return mode !== 'standard';
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function hasVideoEditorExportMetadata(node: { data?: Partial<FlowNodeData>; type?: string }): boolean {
+  if (getNodeKindForPricing(node) !== 'video') {
+    return false;
+  }
+  const params = isRecord(node.data?.params) ? node.data.params : {};
+  return isRecord(params.videoEditor);
+}
+
+function resolveVideoEditorExportRunBlocker(input: {
+  route: V2RuntimeRouteItem | null;
+  routeKey: string | null;
+}): { code: 'UNSUPPORTED_VIDEO_EDITOR_EXPORT'; message: string } | null {
+  const supportedWorkflows = Array.isArray(input.route?.capabilities?.supportedVideoWorkflows)
+    ? input.route.capabilities.supportedVideoWorkflows
+    : [];
+  if (supportedWorkflows.includes('video_editor_export')) {
+    return null;
+  }
+  const routeKey = input.routeKey || input.route?.routeKey || 'unknown';
+  return {
+    code: 'UNSUPPORTED_VIDEO_EDITOR_EXPORT',
+    message: `UNSUPPORTED_VIDEO_EDITOR_EXPORT: Route ${routeKey} does not support video editor export.`,
+  };
+}
+
 function markNodeBlockedByPreflight(
   nodeId: string,
-  code: 'PRICING_NOT_FOUND' | 'UNSUPPORTED_GENERATION_MODE',
+  code: 'PRICING_NOT_FOUND' | 'UNSUPPORTED_GENERATION_MODE' | 'UNSUPPORTED_VIDEO_EDITOR_EXPORT',
   message: string,
 ): void {
   useFlowCanvasStore.getState().updateNodeData(nodeId, {
@@ -376,6 +405,16 @@ async function reserveCreditsForTargetNode(nodeId: string): Promise<CreditPrefli
         const message = `PRICING_NOT_FOUND: Route ${routeKey || 'unknown'} has no active pricing for ${generationMode}.`;
         markNodeBlockedByPreflight(nodeId, 'PRICING_NOT_FOUND', message);
         throw buildRunLaunchError(message);
+      }
+    }
+    if (kind === 'video' && hasVideoEditorExportMetadata(node)) {
+      const blocker = resolveVideoEditorExportRunBlocker({
+        route,
+        routeKey,
+      });
+      if (blocker) {
+        markNodeBlockedByPreflight(nodeId, blocker.code, blocker.message);
+        throw buildRunLaunchError(blocker.message);
       }
     }
     if (!estimatedCredits || estimatedCredits <= 0) {

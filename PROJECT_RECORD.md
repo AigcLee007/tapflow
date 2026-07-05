@@ -3,6 +3,27 @@
 Last updated: 2026-07-05
 Maintainers: project team + Codex sessions
 
+## 2026-07-05 - Video Editor Export Capability Preflight Phase 17
+
+- added fail-closed route capability checks for `剪辑工程` exported video nodes:
+  - `video.generate` nodes carrying `params.videoEditor` now require the selected runtime route to declare `supportedVideoWorkflows: ["video_editor_export"]`.
+  - unsupported editor-export routes fail with `UNSUPPORTED_VIDEO_EDITOR_EXPORT` before `workflow_runs`, `node_runs`, billing reservations, or queue jobs are created.
+  - frontend target-node runs perform the same local preflight before remote draft flush / workflow creation, so users get an immediate node-level failure state.
+- extended safe AI route capability exposure:
+  - `/api/v2/ai/routes` and model-scoped route lists now expose allowlisted `capabilities.supportedVideoWorkflows`.
+  - only `video_editor_export` is surfaced; internal provider/request-config workflow names are filtered out.
+- kept billing and runtime boundaries unchanged:
+  - no new `media_export` pricing unit, database table, provider secret path, browser-local export, asset-write shortcut, or frontend billing mutation was added.
+  - existing `video_generation` pricing remains the billing unit for runnable video nodes.
+- validation:
+  - red test observed on 2026-07-05: `npm run test --workspace @aigc-flow/api -- test/workflow-pricing-resolver.test.ts` failed because `assertNodeRouteSupportsRuntimeRequest` did not exist.
+  - red test observed on 2026-07-05: `npm run test --workspace @aigc-flow/api -- test/ai-gateway.service.test.ts test/ai-model-catalog.service.test.ts` failed because route capability output did not include `supportedVideoWorkflows`.
+  - red test observed on 2026-07-05: `npm test -- src/flowCanvas/runtime/v2WorkflowRunner.test.ts` failed because unsupported video-editor exports still reached workflow creation.
+  - `npm run test --workspace @aigc-flow/api -- test/workflow-pricing-resolver.test.ts test/ai-gateway.service.test.ts test/ai-model-catalog.service.test.ts` passed on 2026-07-05: 3 files, 13 tests.
+  - `npm test -- src/flowCanvas/runtime/v2WorkflowRunner.test.ts` passed on 2026-07-05: 1 file, 28 tests.
+  - `npm run build --workspace @aigc-flow/api` passed on 2026-07-05.
+  - `npm run build` passed on 2026-07-05 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-05 - Video Editor Export Intent Phase 16
 
 - added sanitized `videoEditorExport` metadata for exported `video` nodes:

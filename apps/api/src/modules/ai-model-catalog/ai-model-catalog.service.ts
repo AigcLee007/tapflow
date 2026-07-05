@@ -18,6 +18,9 @@ const KNOWN_IMAGE_GENERATION_MODES = new Set([
   "wraparound_270",
   "subject_orbit_270",
 ]);
+const KNOWN_VIDEO_WORKFLOWS = new Set([
+  "video_editor_export",
+]);
 
 type ModelCatalogRecord = {
   capabilities: Record<string, unknown>;
@@ -66,6 +69,7 @@ export type ModelCatalogItemView = {
 export type ModelCatalogRouteView = {
   capabilities: {
     supportedGenerationModes: string[];
+    supportedVideoWorkflows: string[];
   };
   estimatedCredits: number | null;
   minChargeCredits: number | null;
@@ -328,6 +332,16 @@ function readSupportedGenerationModes(source: unknown): string[] {
     .filter(Boolean);
 }
 
+function readSupportedVideoWorkflows(source: unknown): string[] {
+  const direct = source && typeof source === "object"
+    ? (source as { supportedVideoWorkflows?: unknown }).supportedVideoWorkflows
+    : undefined;
+  return (Array.isArray(direct) ? direct : [])
+    .map((item) => String(item || "").trim())
+    .filter((item) => KNOWN_VIDEO_WORKFLOWS.has(item))
+    .filter(Boolean);
+}
+
 function mergeModelRouteCapabilities(input: {
   modelCapabilities?: Record<string, unknown> | null;
   requestConfig?: Record<string, unknown> | null;
@@ -339,8 +353,13 @@ function mergeModelRouteCapabilities(input: {
     ...readSupportedGenerationModes(input.modelCapabilities),
     ...readSupportedGenerationModes(routeCapabilities),
   ]));
+  const supportedVideoWorkflows = Array.from(new Set([
+    ...readSupportedVideoWorkflows(input.modelCapabilities),
+    ...readSupportedVideoWorkflows(routeCapabilities),
+  ]));
 
   return {
     supportedGenerationModes: supportedGenerationModes.length > 0 ? supportedGenerationModes : ["standard"],
+    supportedVideoWorkflows,
   };
 }

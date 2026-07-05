@@ -18,10 +18,12 @@ describe("AiGatewayAdminService runtime route list", () => {
                 model_display_name: "Mock Image",
                 model_capabilities: {
                   supportedGenerationModes: ["standard", "panorama_360"],
+                  supportedVideoWorkflows: ["video_editor_export"],
                 },
           request_config: {
             capabilities: {
               supportedGenerationModes: ["standard", "wraparound_270", "raw-secret-mode"],
+              supportedVideoWorkflows: ["video_editor_export", "internal-render-mode"],
             },
             unsafeInternalFlag: "server-only",
           },
@@ -52,6 +54,7 @@ describe("AiGatewayAdminService runtime route list", () => {
       expect.objectContaining({
         capabilities: {
           supportedGenerationModes: ["standard", "panorama_360", "wraparound_270"],
+          supportedVideoWorkflows: ["video_editor_export"],
         },
         estimatedCredits: 180,
         minChargeCredits: 180,

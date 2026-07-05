@@ -2,6 +2,7 @@ import { apiGet } from "./v2HttpClient";
 
 export type V2RuntimeRouteCapabilities = {
   supportedGenerationModes?: string[];
+  supportedVideoWorkflows?: string[];
 };
 
 export type V2RuntimeRouteItem = {

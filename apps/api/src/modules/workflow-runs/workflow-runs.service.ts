@@ -112,6 +112,9 @@ export type ResolvedNodePricing = {
 };
 
 type RouteRuntimeContext = {
+  capabilities: {
+    supportedVideoWorkflows: string[];
+  };
   modelKey: string;
   providerKey: string;
   routeKey: string;
@@ -240,6 +243,8 @@ const DEFAULT_ROUTE_BY_NODE_TYPE: Record<string, string> = {
   "text.generate": "text.gpt-5-5",
   "video.generate": "video.default",
 };
+const SUPPORTED_VIDEO_EDITOR_EXPORT_WORKFLOW = "video_editor_export";
+const KNOWN_VIDEO_WORKFLOWS = new Set([SUPPORTED_VIDEO_EDITOR_EXPORT_WORKFLOW]);
 const UNIT_BY_NODE_TYPE: Record<string, string> = {
   "image.generate": "image_generation",
   "text.generate": "text_generation",
@@ -371,6 +376,29 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function readSupportedVideoWorkflows(source: unknown): string[] {
+  const direct = isRecord(source) ? source.supportedVideoWorkflows : undefined;
+  return (Array.isArray(direct) ? direct : [])
+    .map((item) => String(item || "").trim())
+    .filter((item) => KNOWN_VIDEO_WORKFLOWS.has(item))
+    .filter(Boolean);
+}
+
+function mergeRouteRuntimeCapabilities(input: {
+  modelCapabilities?: Record<string, unknown> | null;
+  requestConfig?: Record<string, unknown> | null;
+}): RouteRuntimeContext["capabilities"] {
+  const routeCapabilities = isRecord(input.requestConfig?.capabilities)
+    ? input.requestConfig.capabilities
+    : {};
+  return {
+    supportedVideoWorkflows: Array.from(new Set([
+      ...readSupportedVideoWorkflows(input.modelCapabilities),
+      ...readSupportedVideoWorkflows(routeCapabilities),
+    ])),
+  };
+}
+
 function readTrimmedString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
@@ -389,6 +417,34 @@ export function resolveConfiguredRouteKey(node: Pick<CompiledWorkflow["nodes"][n
 
 function resolveEffectiveRouteKey(node: Pick<CompiledWorkflow["nodes"][number], "config" | "type">): string {
   return resolveConfiguredRouteKey(node) ?? DEFAULT_ROUTE_BY_NODE_TYPE[node.type] ?? "default";
+}
+
+function hasVideoEditorExportMetadata(node: Pick<CompiledWorkflow["nodes"][number], "config" | "type">): boolean {
+  if (node.type !== "video.generate") {
+    return false;
+  }
+  const config = isRecord(node.config) ? node.config : {};
+  const params = isRecord(config.params) ? config.params : {};
+  return isRecord(params.videoEditor);
+}
+
+export function assertNodeRouteSupportsRuntimeRequest(input: {
+  node: Pick<CompiledWorkflow["nodes"][number], "config" | "id" | "type">;
+  routeContext: RouteRuntimeContext | null;
+}): void {
+  if (!hasVideoEditorExportMetadata(input.node)) {
+    return;
+  }
+  const supportedVideoWorkflows = input.routeContext?.capabilities.supportedVideoWorkflows ?? [];
+  if (supportedVideoWorkflows.includes(SUPPORTED_VIDEO_EDITOR_EXPORT_WORKFLOW)) {
+    return;
+  }
+
+  throw new WorkflowRunsApiError(
+    422,
+    "UNSUPPORTED_VIDEO_EDITOR_EXPORT",
+    `UNSUPPORTED_VIDEO_EDITOR_EXPORT: Route ${input.routeContext?.routeKey ?? resolveEffectiveRouteKey(input.node)} does not support video editor export for node ${input.node.id}.`,
+  );
 }
 
 function readPositiveInteger(value: unknown): number | null {
@@ -682,6 +738,19 @@ export class WorkflowRunsService {
           }
         }
 
+        const nodesToRun =
+          runMode === "target_node" && targetNode
+            ? [targetNode]
+            : runtimeFlow.compiled_graph_json.nodes;
+
+        for (const node of nodesToRun) {
+          const effectiveRoute = resolveEffectiveRouteKey(node);
+          assertNodeRouteSupportsRuntimeRequest({
+            node,
+            routeContext: routeContexts.get(effectiveRoute) ?? null,
+          });
+        }
+
         const runId = randomUUID();
         const runInsertStartedAt = Date.now();
         const runInsert = await client.query<WorkflowRunRecord>(
@@ -761,10 +830,6 @@ export class WorkflowRunsService {
           workflowRunId: run.id,
         });
 
-        const nodesToRun =
-          runMode === "target_node" && targetNode
-            ? [targetNode]
-            : runtimeFlow.compiled_graph_json.nodes;
         const payloadsToEnqueue: NodeExecuteJobPayload[] = [];
         const nodeRunIds: string[] = [];
         const membership = await this.loadMembershipDiscount(client, context.tenantId);
@@ -1441,8 +1506,10 @@ export class WorkflowRunsService {
     }
 
     const result = await client.query<{
+      model_capabilities: Record<string, unknown>;
       model_key: string;
       provider_key: string;
+      request_config: Record<string, unknown>;
       route_key: string;
       tenant_id: string | null;
     }>(
@@ -1451,6 +1518,8 @@ export class WorkflowRunsService {
           route.route_key,
           provider.key AS provider_key,
           model.model_key,
+          COALESCE(model.capabilities, '{}'::jsonb) AS model_capabilities,
+          COALESCE(route.request_config, '{}'::jsonb) AS request_config,
           route.tenant_id::text AS tenant_id
         FROM ai_routes AS route
         JOIN ai_providers AS provider
@@ -1471,6 +1540,10 @@ export class WorkflowRunsService {
     const contexts = new Map<string, RouteRuntimeContext>();
     for (const row of result.rows) {
       contexts.set(row.route_key, {
+        capabilities: mergeRouteRuntimeCapabilities({
+          modelCapabilities: row.model_capabilities,
+          requestConfig: row.request_config,
+        }),
         modelKey: row.model_key || "default",
         providerKey: row.provider_key || "default",
         routeKey: row.route_key,

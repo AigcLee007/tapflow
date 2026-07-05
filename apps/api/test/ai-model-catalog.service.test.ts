@@ -29,6 +29,7 @@ describe("AiModelCatalogService route list", () => {
                 modality: "image",
                 model_capabilities: {
                   supportedGenerationModes: ["standard", "panorama_360"],
+                  supportedVideoWorkflows: ["video_editor_export"],
                 },
                 model_family: "mock-image",
                 model_key: "mock-image",
@@ -38,6 +39,7 @@ describe("AiModelCatalogService route list", () => {
                 request_config: {
                   capabilities: {
                     supportedGenerationModes: ["wraparound_270", "unsupported-provider-internal-mode"],
+                    supportedVideoWorkflows: ["video_editor_export", "internal-render-mode"],
                   },
                 },
                 route_id: "route-1",
@@ -64,6 +66,7 @@ describe("AiModelCatalogService route list", () => {
     expect(routes[0]).toMatchObject({
       capabilities: {
         supportedGenerationModes: ["standard", "panorama_360", "wraparound_270"],
+        supportedVideoWorkflows: ["video_editor_export"],
       },
       estimatedCredits: 180,
       minChargeCredits: 180,

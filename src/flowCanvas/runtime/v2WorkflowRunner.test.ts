@@ -558,6 +558,56 @@ describe('v2WorkflowRunner', () => {
     });
   });
 
+  test('video editor export preflight blocks unsupported route capabilities before saving draft or creating a run', async () => {
+    const saveBarrier = vi.fn(async () => {});
+    registerRemoteDraftSaveBarrier(saveBarrier);
+    useFlowCanvasStore.getState().addNode('video', { x: 0, y: 0 }, {
+      params: {
+        videoEditor: {
+          aspect: '16:9',
+          resolution: '1920x1080',
+          sourceVideoEditorNodeId: 'editor-1',
+          timeline: {
+            audio: [],
+            clips: [],
+            durationMs: 3000,
+            subtitles: [],
+          },
+        },
+      },
+      routeKey: 'video.default',
+      title: 'Editor export',
+    });
+    const nodeId = useFlowCanvasStore.getState().nodes[0]?.id as string;
+    listRuntimeRoutesMock.mockResolvedValueOnce([
+      {
+        capabilities: {
+          supportedVideoWorkflows: [],
+        },
+        estimatedCredits: 800,
+        minChargeCredits: 800,
+        modality: 'video',
+        modelDisplayName: 'Mock Video',
+        modelKey: 'mock-video',
+        pricingUnit: 'video_generation',
+        providerKey: 'mock-provider',
+        providerName: 'Mock Provider',
+        routeKey: 'video.default',
+      },
+    ]);
+
+    await expect(runBackendWorkflow({ runMode: 'target_node', targetNodeId: nodeId }))
+      .rejects.toThrow('UNSUPPORTED_VIDEO_EDITOR_EXPORT');
+
+    expect(saveBarrier).not.toHaveBeenCalled();
+    expect(createWorkflowRunMock).not.toHaveBeenCalled();
+    expect(useFlowCanvasStore.getState().nodes[0]?.data).toMatchObject({
+      errorCode: 'UNSUPPORTED_VIDEO_EDITOR_EXPORT',
+      generationStatus: 'error',
+      status: 'failed',
+    });
+  });
+
   test('markBackendRunLaunchFailed exposes workflow launch errors on the target node', () => {
     useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, {
       generationStatus: 'generating',
