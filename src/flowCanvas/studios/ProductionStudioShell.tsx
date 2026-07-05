@@ -3,7 +3,7 @@ import { Box, Camera, Film, Grid3X3, Layers3, Play, Plus, X } from 'lucide-react
 import type { Node } from '@xyflow/react';
 
 import type { FlowDirector3dData, FlowNodeData, FlowVideoEditorData } from '../types';
-import { normalizeStoryboardData } from '../utils/storyboardNodeData';
+import { normalizeStoryboardData, patchStoryboardCell } from '../utils/storyboardNodeData';
 import type { ProductionStudioKind } from './productionStudioEvents';
 
 type FlowNode = Node<FlowNodeData>;
@@ -11,6 +11,7 @@ type FlowNode = Node<FlowNodeData>;
 interface ProductionStudioShellProps {
   node: FlowNode;
   onClose: () => void;
+  onUpdateNodeData?: (nodeId: string, patch: Partial<FlowNodeData>) => void;
   studio: ProductionStudioKind;
 }
 
@@ -20,7 +21,7 @@ const studioTitleByKind: Record<ProductionStudioKind, string> = {
   video_editor: '剪辑工程',
 };
 
-export const ProductionStudioShell: React.FC<ProductionStudioShellProps> = ({ node, onClose, studio }) => {
+export const ProductionStudioShell: React.FC<ProductionStudioShellProps> = ({ node, onClose, onUpdateNodeData, studio }) => {
   const title = node.data.title || studioTitleByKind[studio];
 
   useEffect(() => {
@@ -57,7 +58,11 @@ export const ProductionStudioShell: React.FC<ProductionStudioShellProps> = ({ no
         {studio === 'director3d' ? (
           <DirectorDeskContent data={node.data.director3d} />
         ) : studio === 'storyboard' ? (
-          <StoryboardContent data={node.data.storyboard} />
+          <StoryboardContent
+            data={node.data.storyboard}
+            nodeId={node.id}
+            onUpdateNodeData={onUpdateNodeData}
+          />
         ) : (
           <VideoEditorContent data={node.data.videoEditor} />
         )}
@@ -129,9 +134,20 @@ function DirectorDeskContent({ data }: { data?: FlowDirector3dData }) {
   );
 }
 
-function StoryboardContent({ data }: { data?: FlowNodeData['storyboard'] }) {
+function StoryboardContent({
+  data,
+  nodeId,
+  onUpdateNodeData,
+}: {
+  data?: FlowNodeData['storyboard'];
+  nodeId: string;
+  onUpdateNodeData?: (nodeId: string, patch: Partial<FlowNodeData>) => void;
+}) {
   const storyboard = normalizeStoryboardData(data);
   const selectedCell = storyboard.cells[storyboard.selectedIndex] ?? storyboard.cells[0];
+  const updateStoryboard = (nextStoryboard: typeof storyboard) => {
+    onUpdateNodeData?.(nodeId, { storyboard: nextStoryboard });
+  };
 
   return (
     <div style={storyboardLayoutStyle}>
@@ -139,8 +155,11 @@ function StoryboardContent({ data }: { data?: FlowNodeData['storyboard'] }) {
         <PanelTitle icon={<Grid3X3 size={15} />} title="分镜格" />
         <div style={storyGridStyle}>
           {storyboard.cells.map((cell, index) => (
-            <div
+            <button
+              type="button"
+              aria-label={`选择镜头 ${cell.shotNo}`}
               key={cell.id}
+              onClick={() => updateStoryboard({ ...storyboard, selectedIndex: index })}
               style={{
                 ...storyCellStyle,
                 borderColor: index === storyboard.selectedIndex ? '#38bdf8' : 'rgba(255,255,255,0.11)',
@@ -148,16 +167,39 @@ function StoryboardContent({ data }: { data?: FlowNodeData['storyboard'] }) {
             >
               <span>镜头 {cell.shotNo}</span>
               <strong>{cell.title || (cell.assetId ? '已绑定素材' : '空镜头')}</strong>
-            </div>
+            </button>
           ))}
         </div>
       </main>
       <aside style={panelStyle}>
         <PanelTitle icon={<Camera size={15} />} title="选中分镜" />
         <MetricRow label="编号" value={selectedCell ? `镜头 ${selectedCell.shotNo}` : '-'} />
-        <MetricRow label="标题" value={selectedCell?.title || '-'} />
         <MetricRow label="画幅" value={selectedCell?.aspect || storyboard.aspect} />
-        <div style={promptPreviewStyle}>{selectedCell?.prompt || '未填写提示词'}</div>
+        <label style={fieldLabelStyle}>
+          <span>分镜标题</span>
+          <input
+            aria-label="分镜标题"
+            value={selectedCell?.title || ''}
+            onChange={(event) =>
+              updateStoryboard(patchStoryboardCell(storyboard, storyboard.selectedIndex, { title: event.target.value }))
+            }
+            placeholder="填写镜头标题"
+            style={textInputStyle}
+            type="text"
+          />
+        </label>
+        <label style={fieldLabelStyle}>
+          <span>分镜提示词</span>
+          <textarea
+            aria-label="分镜提示词"
+            value={selectedCell?.prompt || ''}
+            onChange={(event) =>
+              updateStoryboard(patchStoryboardCell(storyboard, storyboard.selectedIndex, { prompt: event.target.value }))
+            }
+            placeholder="描述这一格要生成或承接的画面"
+            style={textareaStyle}
+          />
+        </label>
       </aside>
     </div>
   );
@@ -503,22 +545,47 @@ const storyCellStyle: React.CSSProperties = {
   borderRadius: 8,
   border: '1px solid rgba(255,255,255,0.11)',
   background: '#0f172a',
+  color: '#f8fafc',
+  cursor: 'pointer',
   display: 'grid',
   alignContent: 'space-between',
   gap: 8,
   padding: 10,
   fontSize: 12,
+  textAlign: 'left',
 };
 
-const promptPreviewStyle: React.CSSProperties = {
-  minHeight: 96,
+const fieldLabelStyle: React.CSSProperties = {
+  display: 'grid',
+  gap: 6,
+  color: '#cbd5e1',
+  fontSize: 12,
+  fontWeight: 800,
+  marginTop: 12,
+};
+
+const textInputStyle: React.CSSProperties = {
+  height: 34,
   borderRadius: 8,
+  border: '1px solid rgba(255,255,255,0.1)',
   background: '#0f172a',
-  color: '#dbeafe',
+  color: '#f8fafc',
+  padding: '0 10px',
+  fontSize: 12,
+  outline: 'none',
+};
+
+const textareaStyle: React.CSSProperties = {
+  minHeight: 118,
+  resize: 'vertical',
+  borderRadius: 8,
+  border: '1px solid rgba(255,255,255,0.1)',
+  background: '#0f172a',
+  color: '#f8fafc',
   padding: 10,
   fontSize: 12,
   lineHeight: 1.5,
-  marginTop: 12,
+  outline: 'none',
 };
 
 const previewPanelStyle: React.CSSProperties = {

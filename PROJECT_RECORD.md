@@ -3,6 +3,16 @@
 Last updated: 2026-07-05
 Maintainers: project team + Codex sessions
 
+## 2026-07-05 - Storyboard Studio Editing Phase 3
+
+- added real editing controls to the canvas-native `故事板` studio: storyboard cells can now be selected and the selected cell title/prompt can be edited.
+- wired the storyboard studio back to the existing canvas store through `updateNodeData`, so edits persist as structured `storyboard` node data in the project flow draft path.
+- kept the slice editing-only and non-billable; no generation, asset creation, storyboard sheet composition, or billing reserve/settle path was added.
+- reused `normalizeStoryboardData` and `patchStoryboardCell` so storyboard patches remain asset-reference/metadata based and do not persist transient `blob:`, `data:`, base64, `File`, or `Blob` values.
+- validation:
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx src/flowCanvas/utils/storyboardNodeData.test.ts` passed on 2026-07-05: 3 test files, 8 tests.
+  - `npm run build` passed on 2026-07-05 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-05 - Canvas Production Studio Shells Phase 2
 
 - added canvas-native studio open events for `storyboard`, `director3d`, and `video_editor` nodes, so production nodes can open their workspace without becoming separate product shells.

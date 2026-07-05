@@ -137,6 +137,31 @@ const directorNode = {
   },
 };
 
+const storyboardNode = {
+  id: 'storyboard-node',
+  type: 'storyboard',
+  position: { x: 80, y: 120 },
+  data: {
+    kind: 'storyboard',
+    title: '故事板',
+    width: 360,
+    height: 260,
+    status: 'idle',
+    generationStatus: 'idle',
+    createdAt: 1,
+    updatedAt: 1,
+    storyboard: {
+      aspect: '16:9',
+      grid: '3x2',
+      selectedIndex: 0,
+      cells: [
+        { id: 'cell-1', shotNo: 1, title: '开场', prompt: '旧提示词' },
+        { id: 'cell-2', shotNo: 2 },
+      ],
+    },
+  },
+};
+
 describe('AiFlowCanvas production studios', () => {
   beforeEach(() => {
     useFlowCanvasStore.getState().loadProject({
@@ -166,5 +191,33 @@ describe('AiFlowCanvas production studios', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '关闭工作台' }));
     expect(screen.queryByRole('dialog', { name: '3D导演台' })).toBeNull();
+  });
+
+  it('persists storyboard prompt edits through the canvas store', () => {
+    useFlowCanvasStore.getState().loadProject({
+      id: 'project-1',
+      title: '项目',
+      nodes: [storyboardNode as any],
+      edges: [],
+      viewport: { x: 0, y: 0, zoom: 1 },
+      version: 1,
+      updatedAt: 1,
+    });
+
+    render(<AiFlowCanvas cullingEnabled={false} />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(OPEN_PRODUCTION_STUDIO_EVENT, {
+          detail: { nodeId: 'storyboard-node', studio: 'storyboard' },
+        }),
+      );
+    });
+
+    fireEvent.change(screen.getByLabelText('分镜提示词'), { target: { value: '新的故事板提示词' } });
+
+    const node = useFlowCanvasStore.getState().nodes.find((item) => item.id === 'storyboard-node');
+    expect(node?.data.storyboard?.cells[0]?.prompt).toBe('新的故事板提示词');
+    expect(JSON.stringify(node?.data.storyboard)).not.toMatch(/blob:|data:/);
   });
 });

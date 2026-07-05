@@ -1047,6 +1047,7 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled, onAg
       {activeProductionStudio && activeProductionStudioNode && (
         <ProductionStudioShell
           node={activeProductionStudioNode}
+          onUpdateNodeData={updateNodeData}
           studio={activeProductionStudio.studio}
           onClose={() => setActiveProductionStudio(null)}
         />

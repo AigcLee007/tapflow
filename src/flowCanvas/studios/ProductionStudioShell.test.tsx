@@ -97,6 +97,39 @@ describe('ProductionStudioShell', () => {
     expect(screen.getByText('角色回头')).toBeTruthy();
   });
 
+  it('emits safe storyboard patches for cell selection and selected-cell edits', () => {
+    const onUpdateNodeData = vi.fn();
+    render(
+      <ProductionStudioShell
+        studio="storyboard"
+        node={storyboardNode as any}
+        onClose={vi.fn()}
+        onUpdateNodeData={onUpdateNodeData}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '选择镜头 1' }));
+    expect(onUpdateNodeData).toHaveBeenCalledWith('storyboard-node', {
+      storyboard: expect.objectContaining({ selectedIndex: 0 }),
+    });
+
+    fireEvent.change(screen.getByLabelText('分镜标题'), { target: { value: '新的开场' } });
+    expect(onUpdateNodeData).toHaveBeenCalledWith('storyboard-node', {
+      storyboard: expect.objectContaining({
+        cells: expect.arrayContaining([expect.objectContaining({ id: 'cell-2', title: '新的开场' })]),
+      }),
+    });
+
+    fireEvent.change(screen.getByLabelText('分镜提示词'), { target: { value: '新的镜头提示词' } });
+    const latestPatch = onUpdateNodeData.mock.calls.at(-1)?.[1];
+    expect(latestPatch).toMatchObject({
+      storyboard: expect.objectContaining({
+        cells: expect.arrayContaining([expect.objectContaining({ id: 'cell-2', prompt: '新的镜头提示词' })]),
+      }),
+    });
+    expect(JSON.stringify(latestPatch)).not.toMatch(/blob:|data:/);
+  });
+
   it('renders video editor shell and closes on Escape', () => {
     const onClose = vi.fn();
     render(<ProductionStudioShell studio="video_editor" node={videoNode as any} onClose={onClose} />);
