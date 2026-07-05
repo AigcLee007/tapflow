@@ -3,6 +3,20 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - Video Editor FFmpeg Clip Audio Mix Phase 41
+
+- improved `剪辑工程` FFmpeg export so unmuted video clips with explicit clip volume now contribute their source audio to the final mix.
+- standalone audio tracks and video clip audio are delayed by their timeline `startMs`, gain-adjusted by their structured `volume`, and mixed into the same `[aout]` stream.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - this only changes worker-local FFmpeg argument construction for the existing `video.editor.ffmpeg` route.
+  - no new route, pricing shortcut, direct asset write, browser-local export, database migration, API surface, or provider credential exposure was added.
+  - legacy video clips without explicit `volume` keep the previous behavior to avoid referencing missing source audio streams.
+- validation:
+  - red test observed on 2026-07-06: `npm run test --workspace @aigc-flow/worker -- video-editor-ffmpeg-executor.test.ts -t "mixes unmuted"` first failed because the FFmpeg filter only mixed standalone audio tracks.
+  - `npm run test --workspace @aigc-flow/worker -- video-editor-ffmpeg-executor.test.ts video-editor-render-plan.test.ts` passed on 2026-07-06: 2 files, 11 tests.
+  - `npm run build --workspace @aigc-flow/worker` passed on 2026-07-06.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-06 - Video Editor Audio Track Editing Phase 40
 
 - added selected-audio editing to the `剪辑工程` studio:

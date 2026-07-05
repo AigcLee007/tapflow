@@ -178,13 +178,25 @@ function buildSubtitleFilters(subtitles: VideoEditorRenderSubtitlePlan[]): strin
 function buildAudioFilter(input: {
   audio: VideoEditorRenderAudioPlan[];
   audioInputStartIndex: number;
+  clips: VideoEditorRenderClipPlan[];
 }): string {
-  if (input.audio.length === 0) {
+  const labels: string[] = [];
+  const filters: string[] = [];
+  input.clips.forEach((clip, index) => {
+    if (clip.kind !== "video" || clip.muted || clip.volume === null) {
+      return;
+    }
+    const label = `[clipa${index}]`;
+    labels.push(label);
+    filters.push(
+      `[${index}:a]volume=${clip.volume.toFixed(3)},adelay=${Math.round(clip.startMs)}|${Math.round(clip.startMs)}${label}`,
+    );
+  });
+
+  if (input.audio.length === 0 && labels.length === 0) {
     return "anullsrc=channel_layout=stereo:sample_rate=48000[aout]";
   }
 
-  const labels: string[] = [];
-  const filters: string[] = [];
   input.audio.forEach((audio, index) => {
     const inputIndex = input.audioInputStartIndex + index;
     const label = `[a${index}]`;
@@ -193,7 +205,7 @@ function buildAudioFilter(input: {
       `[${inputIndex}:a]volume=${audio.volume.toFixed(3)},adelay=${Math.round(audio.startMs)}|${Math.round(audio.startMs)}${label}`,
     );
   });
-  filters.push(`${labels.join("")}amix=inputs=${input.audio.length}:normalize=0[aout]`);
+  filters.push(`${labels.join("")}amix=inputs=${labels.length}:normalize=0[aout]`);
   return filters.join(";");
 }
 
@@ -219,6 +231,7 @@ export function buildVideoEditorFfmpegArgs(input: BuildVideoEditorFfmpegArgsInpu
     buildAudioFilter({
       audio,
       audioInputStartIndex: clips.length,
+      clips,
     }),
   ];
 

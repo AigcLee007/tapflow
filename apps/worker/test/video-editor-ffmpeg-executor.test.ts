@@ -107,6 +107,38 @@ describe("buildVideoEditorFfmpegArgs", () => {
     expect(filter).not.toContain("concat=n=2");
   });
 
+  test("mixes unmuted video clip audio with standalone audio tracks", () => {
+    const args = buildVideoEditorFfmpegArgs({
+      assetFiles: {
+        "asset-audio-1": "C:/render/music.m4a",
+        "asset-video-2": "C:/render/video.mp4",
+      },
+      outputPath: "C:/render/output.mp4",
+      plan: {
+        ...plan,
+        assetIds: ["asset-video-2", "asset-audio-1"],
+        audio: [
+          { assetId: "asset-audio-1", durationMs: 3000, id: "audio-1", inMs: 0, outMs: 3000, startMs: 500, track: 1, volume: 0.25 },
+        ],
+        clips: [
+          {
+            ...plan.clips[1],
+            muted: false,
+            startMs: 1000,
+            volume: 0.45,
+          },
+        ],
+        output: { durationMs: 5000, height: 1080, mimeType: "video/mp4", width: 1920 },
+        subtitles: [],
+      },
+    });
+
+    const filter = args[args.indexOf("-filter_complex") + 1];
+    expect(filter).toContain("[0:a]volume=0.450,adelay=1000|1000[clipa0]");
+    expect(filter).toContain("[1:a]volume=0.250,adelay=500|500[a0]");
+    expect(filter).toContain("[clipa0][a0]amix=inputs=2:normalize=0[aout]");
+  });
+
   test("rejects render plans when a local file is missing for an asset id", () => {
     expect(() => buildVideoEditorFfmpegArgs({
       assetFiles: { "asset-image-1": "C:/render/image.png" },
