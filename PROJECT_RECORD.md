@@ -3,6 +3,21 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - Video Editor Subtitle Editing Phase 38
+
+- added selected-subtitle editing to the `剪辑工程` studio:
+  - subtitle timeline items are now selectable controls instead of read-only labels.
+  - the right inspector can edit the selected subtitle text, start time, and end time.
+  - selected subtitles can be deleted while preserving the existing timeline duration calculation across clips and subtitles.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - edits persist only as structured `videoEditor.timeline.subtitles[]` draft data.
+  - no generated media, `blob:`, `data:`, base64, browser-local export, direct asset write, billing mutation, API route, database migration, worker behavior, or provider-secret exposure was added.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "selected subtitle"` failed because subtitle rows had no accessible selection control.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "selected subtitle"` passed on 2026-07-06: 1 selected test.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-06: 2 files, 45 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-06 - 3D Director Desk Shot Viewport Phase 37
 
 - connected the `3D导演台` Three.js viewport to the existing shot timeline data:

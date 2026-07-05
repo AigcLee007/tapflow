@@ -20,6 +20,7 @@ type DirectorVector = [number, number, number];
 type DirectorVectorAxis = 0 | 1 | 2;
 type DirectorShotMotion = NonNullable<DirectorShot['motion']>;
 type VideoEditorClip = FlowVideoEditorData['timeline']['clips'][number];
+type VideoEditorSubtitle = FlowVideoEditorData['timeline']['subtitles'][number];
 type VideoEditorTransitionOut = NonNullable<VideoEditorClip['transitionOut']>;
 
 const VIDEO_EDITOR_EXPORT_ROUTE_KEY = 'video.editor.ffmpeg';
@@ -920,7 +921,11 @@ function VideoEditorContent({
   const audio = timeline.audio;
   const subtitles = timeline.subtitles;
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
+  const [selectedSubtitleId, setSelectedSubtitleId] = useState<string | null>(null);
   const selectedClip = selectedClipId ? clips.find((clip) => clip.id === selectedClipId) ?? null : null;
+  const selectedSubtitle = selectedSubtitleId
+    ? subtitles.find((subtitle) => subtitle.id === selectedSubtitleId) ?? null
+    : null;
   const updateVideoEditor = (nextVideoEditor: FlowVideoEditorData) => {
     onUpdateNodeData?.(nodeId, { videoEditor: nextVideoEditor });
   };
@@ -935,6 +940,7 @@ function VideoEditorContent({
       durationMs: getTimelineDurationMs(nextTimeline),
     });
     setSelectedClipId(nextClip.id);
+    setSelectedSubtitleId(null);
   };
   const addSubtitle = () => {
     const nextSubtitle = buildVideoSubtitle(subtitles);
@@ -943,6 +949,8 @@ function VideoEditorContent({
       ...nextTimeline,
       durationMs: getTimelineDurationMs(nextTimeline),
     });
+    setSelectedClipId(null);
+    setSelectedSubtitleId(nextSubtitle.id);
   };
   const setDurationSeconds = (value: string) => {
     const seconds = Math.max(0, Number(value) || 0);
@@ -955,6 +963,16 @@ function VideoEditorContent({
     const nextTimeline = {
       ...timeline,
       clips: clips.map((clip) => (clip.id === clipId ? patcher(clip) : clip)),
+    };
+    updateTimeline({ ...nextTimeline, durationMs: getTimelineDurationMs(nextTimeline) });
+  };
+  const patchSubtitle = (
+    subtitleId: string,
+    patcher: (subtitle: VideoEditorSubtitle) => VideoEditorSubtitle,
+  ) => {
+    const nextTimeline = {
+      ...timeline,
+      subtitles: subtitles.map((subtitle) => (subtitle.id === subtitleId ? patcher(subtitle) : subtitle)),
     };
     updateTimeline({ ...nextTimeline, durationMs: getTimelineDurationMs(nextTimeline) });
   };
@@ -998,6 +1016,32 @@ function VideoEditorContent({
     };
     updateTimeline({ ...nextTimeline, durationMs: getTimelineDurationMs(nextTimeline) });
     setSelectedClipId(null);
+  };
+  const setSelectedSubtitleText = (value: string) => {
+    if (!selectedSubtitle) return;
+    patchSubtitle(selectedSubtitle.id, (subtitle) => ({ ...subtitle, text: value }));
+  };
+  const setSelectedSubtitleStartSeconds = (value: string) => {
+    if (!selectedSubtitle) return;
+    const startMs = Math.round(Math.max(0, Number(value) || 0) * 1000);
+    patchSubtitle(selectedSubtitle.id, (subtitle) => {
+      const durationMs = Math.max(0, Number(subtitle.endMs) - Number(subtitle.startMs));
+      return { ...subtitle, startMs, endMs: startMs + durationMs };
+    });
+  };
+  const setSelectedSubtitleEndSeconds = (value: string) => {
+    if (!selectedSubtitle) return;
+    const endMs = Math.round(Math.max(0, Number(value) || 0) * 1000);
+    patchSubtitle(selectedSubtitle.id, (subtitle) => ({ ...subtitle, startMs: Math.min(subtitle.startMs, endMs), endMs }));
+  };
+  const deleteSelectedSubtitle = () => {
+    if (!selectedSubtitle) return;
+    const nextTimeline = {
+      ...timeline,
+      subtitles: subtitles.filter((subtitle) => subtitle.id !== selectedSubtitle.id),
+    };
+    updateTimeline({ ...nextTimeline, durationMs: getTimelineDurationMs(nextTimeline) });
+    setSelectedSubtitleId(null);
   };
   const exportVideoToCanvas = () => {
     onCreateCanvasNodeFromStudio?.({
@@ -1129,6 +1173,46 @@ function VideoEditorContent({
               删除片段
             </button>
           </>
+        ) : selectedSubtitle ? (
+          <>
+            <MetricRow label="当前字幕" value={selectedSubtitle.id} />
+            <label style={fieldLabelStyle}>
+              <span>字幕文本</span>
+              <textarea
+                aria-label="字幕文本"
+                onChange={(event) => setSelectedSubtitleText(event.target.value)}
+                style={textareaStyle}
+                value={selectedSubtitle.text}
+              />
+            </label>
+            <label style={fieldLabelStyle}>
+              <span>字幕开始（秒）</span>
+              <input
+                aria-label="字幕开始（秒）"
+                min={0}
+                onChange={(event) => setSelectedSubtitleStartSeconds(event.target.value)}
+                step={0.1}
+                style={textInputStyle}
+                type="number"
+                value={Math.round(selectedSubtitle.startMs / 100) / 10}
+              />
+            </label>
+            <label style={fieldLabelStyle}>
+              <span>字幕结束（秒）</span>
+              <input
+                aria-label="字幕结束（秒）"
+                min={0}
+                onChange={(event) => setSelectedSubtitleEndSeconds(event.target.value)}
+                step={0.1}
+                style={textInputStyle}
+                type="number"
+                value={Math.round(selectedSubtitle.endMs / 100) / 10}
+              />
+            </label>
+            <button type="button" aria-label="删除字幕" style={{ ...toolButtonStyle, marginTop: 10 }} onClick={deleteSelectedSubtitle}>
+              删除字幕
+            </button>
+          </>
         ) : (
           <EmptyLine label="选择时间线片段后编辑" />
         )}
@@ -1154,7 +1238,10 @@ function VideoEditorContent({
                 key={clip.id}
                 type="button"
                 aria-label={`选择片段 ${clip.id}`}
-                onClick={() => setSelectedClipId(clip.id)}
+                onClick={() => {
+                  setSelectedClipId(clip.id);
+                  setSelectedSubtitleId(null);
+                }}
                 style={clipButtonStyle(selectedClipId === clip.id)}
               >
                 <strong>{clip.id}</strong>
@@ -1165,10 +1252,19 @@ function VideoEditorContent({
             <EmptyLine label="暂无剪辑片段" />
           )}
           {subtitles.map((subtitle) => (
-            <div key={subtitle.id} style={subtitleItemStyle}>
+            <button
+              key={subtitle.id}
+              type="button"
+              aria-label={`选择字幕 ${subtitle.id}`}
+              onClick={() => {
+                setSelectedClipId(null);
+                setSelectedSubtitleId(subtitle.id);
+              }}
+              style={subtitleButtonStyle(selectedSubtitleId === subtitle.id)}
+            >
               <strong>{subtitle.text}</strong>
               <span>{Math.round((subtitle.endMs - subtitle.startMs) / 100) / 10}s</span>
-            </div>
+            </button>
           ))}
         </div>
       </div>
@@ -1908,3 +2004,12 @@ const subtitleItemStyle: React.CSSProperties = {
   padding: '0 10px',
   fontSize: 11,
 };
+
+const subtitleButtonStyle = (selected: boolean): React.CSSProperties => ({
+  ...subtitleItemStyle,
+  color: '#f8fafc',
+  cursor: 'pointer',
+  textAlign: 'left',
+  border: selected ? '1px solid rgba(251,191,36,0.75)' : subtitleItemStyle.border,
+  background: selected ? '#9a3412' : subtitleItemStyle.background,
+});

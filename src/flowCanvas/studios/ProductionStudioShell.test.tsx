@@ -1005,6 +1005,61 @@ describe('ProductionStudioShell', () => {
     expect(JSON.stringify(onUpdateNodeData.mock.calls)).not.toMatch(/blob:|data:/);
   });
 
+  it('emits safe video editor patches for selected subtitle editing and deletion', () => {
+    const onUpdateNodeData = vi.fn();
+    render(
+      <ProductionStudioShell
+        studio="video_editor"
+        node={videoNode as any}
+        onClose={vi.fn()}
+        onUpdateNodeData={onUpdateNodeData}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '选择字幕 sub-1' }));
+
+    fireEvent.change(screen.getByLabelText('字幕文本'), { target: { value: '新的字幕文本' } });
+    expect(onUpdateNodeData).toHaveBeenCalledWith('video-node', {
+      videoEditor: expect.objectContaining({
+        timeline: expect.objectContaining({
+          subtitles: expect.arrayContaining([expect.objectContaining({ id: 'sub-1', text: '新的字幕文本' })]),
+        }),
+      }),
+    });
+
+    fireEvent.change(screen.getByLabelText('字幕开始（秒）'), { target: { value: '1.1' } });
+    expect(onUpdateNodeData).toHaveBeenCalledWith('video-node', {
+      videoEditor: expect.objectContaining({
+        timeline: expect.objectContaining({
+          durationMs: 3000,
+          subtitles: expect.arrayContaining([expect.objectContaining({ id: 'sub-1', startMs: 1100, endMs: 2300 })]),
+        }),
+      }),
+    });
+
+    fireEvent.change(screen.getByLabelText('字幕结束（秒）'), { target: { value: '0.4' } });
+    expect(onUpdateNodeData).toHaveBeenLastCalledWith('video-node', {
+      videoEditor: expect.objectContaining({
+        timeline: expect.objectContaining({
+          durationMs: 3000,
+          subtitles: expect.arrayContaining([expect.objectContaining({ id: 'sub-1', startMs: 0, endMs: 400 })]),
+        }),
+      }),
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '删除字幕' }));
+    expect(onUpdateNodeData).toHaveBeenLastCalledWith('video-node', {
+      videoEditor: expect.objectContaining({
+        timeline: expect.objectContaining({
+          durationMs: 3000,
+          subtitles: [],
+        }),
+      }),
+    });
+
+    expect(JSON.stringify(onUpdateNodeData.mock.calls)).not.toMatch(/blob:|data:/);
+  });
+
   it('emits safe video editor patches for selected clip transition settings', () => {
     const onUpdateNodeData = vi.fn();
     const { rerender } = render(
