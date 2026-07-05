@@ -32,6 +32,7 @@ import {
 import { normalizeImageGenerationMode } from '../utils/imageGenerationModes';
 import { resolveImageGenerationModeRunBlocker } from '../utils/imageGenerationModeSupport';
 import { fitMediaNodeToShortSide } from '../utils/nodeSizing';
+import { patchStoryboardCell } from '../utils/storyboardNodeData';
 import { flushRemoteDraftBeforeRun, shouldFlushRemoteDraftBeforeRun } from './remoteDraftSaveBarrier';
 
 const RUNNER_ENABLED = String(import.meta.env.VITE_USE_V2_WORKFLOW_RUNNER ?? 'true').toLowerCase() !== 'false';
@@ -733,6 +734,39 @@ function buildSucceededTextNodePatch(nodeRun: PersistableNodeRun): Partial<FlowN
   };
 }
 
+function syncStoryboardCellFromGeneratedAsset(nodeRun: PersistableNodeRun, assetRefs: FlowRuntimeAssetRef[]): void {
+  if (nodeRun.status !== 'succeeded' || nodeRun.nodeType !== 'image.generate' || assetRefs.length === 0 || !shouldApplyNodeRun(nodeRun)) {
+    return;
+  }
+  const primaryAsset = assetRefs[0];
+  if (!primaryAsset?.assetId) return;
+
+  const store = useFlowCanvasStore.getState();
+  const sourceNode = store.nodes.find((node) => node.id === nodeRun.nodeId);
+  const storyboardRef = sourceNode?.data?.params?.storyboard;
+  if (!storyboardRef || typeof storyboardRef !== 'object') return;
+
+  const ref = storyboardRef as Record<string, unknown>;
+  const sourceStoryboardNodeId = typeof ref.sourceStoryboardNodeId === 'string' ? ref.sourceStoryboardNodeId : '';
+  const cellId = typeof ref.cellId === 'string' ? ref.cellId : '';
+  if (!sourceStoryboardNodeId || !cellId) return;
+
+  const storyboardNode = store.nodes.find((node) => node.id === sourceStoryboardNodeId && node.type === 'storyboard');
+  const storyboard = storyboardNode?.data.storyboard;
+  if (!storyboard) return;
+
+  const cellIndex = storyboard.cells.findIndex((cell) => cell.id === cellId);
+  if (cellIndex < 0) return;
+
+  store.updateNodeData(sourceStoryboardNodeId, {
+    storyboard: patchStoryboardCell(storyboard, cellIndex, {
+      assetId: primaryAsset.assetId,
+      sourceAssetId: primaryAsset.assetId,
+      sourceNodeId: nodeRun.nodeId,
+    }),
+  });
+}
+
 function persistNodeOutputsFromRun(nodeRuns: PersistableNodeRun[], assetRefsByNodeId: Record<string, FlowRuntimeAssetRef[]>): void {
   const { addGeneratedImageChildren, nodes, updateNodeData } = useFlowCanvasStore.getState();
   for (const nodeRun of nodeRuns) {
@@ -769,6 +803,7 @@ function persistNodeOutputsFromRun(nodeRuns: PersistableNodeRun[], assetRefsByNo
       continue;
     }
     updateNodeData(nodeRun.nodeId, nodePatch);
+    syncStoryboardCellFromGeneratedAsset(nodeRun, nodeAssets);
   }
 }
 

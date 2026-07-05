@@ -914,6 +914,88 @@ describe('v2WorkflowRunner', () => {
     expect(useFlowCanvasStore.getState().runError).toContain('余额不足');
   });
 
+  test('successful storyboard image generation writes the result asset back to the storyboard cell', async () => {
+    const storyboardNode = useFlowCanvasStore.getState().addNode('storyboard', { x: 0, y: 0 }, {
+      storyboard: {
+        aspect: '16:9',
+        cells: [
+          { id: 'cell-1', shotNo: 1, title: '开场', prompt: '城市远景' },
+          { id: 'cell-2', shotNo: 2 },
+          { id: 'cell-3', shotNo: 3 },
+          { id: 'cell-4', shotNo: 4 },
+          { id: 'cell-5', shotNo: 5 },
+          { id: 'cell-6', shotNo: 6 },
+        ],
+        grid: '3x2',
+        selectedIndex: 0,
+      },
+    });
+    const imageNode = useFlowCanvasStore.getState().addNode('image', { x: 420, y: 40 }, {
+      generationPrompt: '城市远景',
+      params: {
+        storyboard: {
+          cellId: 'cell-1',
+          shotNo: 1,
+          sourceStoryboardNodeId: storyboardNode.id,
+        },
+      },
+      routeKey: 'image.default',
+    });
+    createWorkflowRunMock.mockResolvedValue({ runId: 'run-storyboard-image', status: 'pending' });
+    getWorkflowRunMock.mockResolvedValue({
+      nodeRuns: [
+        {
+          attempt: 1,
+          costJson: {},
+          createdAt: '2026-05-17T00:00:00.000Z',
+          errorJson: null,
+          finishedAt: '2026-05-17T00:00:01.000Z',
+          id: 'node-run-storyboard-image',
+          inputJson: {},
+          maxAttempts: 3,
+          nodeId: imageNode.id,
+          nodeType: 'image.generate',
+          outputJson: {
+            assets: [{ assetId: 'asset-storyboard-result', kind: 'image', mimeType: 'image/png' }],
+          },
+          providerTaskId: null,
+          startedAt: null,
+          status: 'succeeded',
+          tenantId: 'tenant-1',
+          updatedAt: '2026-05-17T00:00:01.000Z',
+          workflowRunId: 'run-storyboard-image',
+        },
+      ],
+      workflowRun: {
+        canceledAt: null,
+        createdAt: '2026-05-17T00:00:00.000Z',
+        createdBy: 'user-1',
+        errorJson: null,
+        finishedAt: '2026-05-17T00:00:01.000Z',
+        flowId: '11111111-1111-1111-1111-111111111111',
+        flowVersionId: 'version-1',
+        id: 'run-storyboard-image',
+        idempotencyKey: null,
+        inputJson: { runMode: 'target_node', targetNodeId: imageNode.id },
+        outputJson: null,
+        startedAt: null,
+        status: 'succeeded',
+        tenantId: 'tenant-1',
+        updatedAt: '2026-05-17T00:00:01.000Z',
+      },
+    });
+    streamWorkflowRunMock.mockReturnValue({ close: vi.fn() });
+
+    await runBackendWorkflow({ runMode: 'target_node', targetNodeId: imageNode.id });
+
+    const updatedStoryboard = useFlowCanvasStore.getState().nodes.find((node) => node.id === storyboardNode.id);
+    expect(updatedStoryboard?.data.storyboard?.cells[0]).toMatchObject({
+      assetId: 'asset-storyboard-result',
+      id: 'cell-1',
+    });
+    expect(JSON.stringify(updatedStoryboard?.data.storyboard)).not.toMatch(/blob:|data:|https?:\/\//);
+  });
+
   test('asset refs use signed preview urls and stay in runtime state', async () => {
     useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, {
       batchCount: 2,

@@ -3,6 +3,22 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - Storyboard Generation Result Sync Phase 45
+
+- closed the storyboard generation loop:
+  - image nodes created from storyboard cells already carry `params.storyboard.sourceStoryboardNodeId` and `cellId`.
+  - when a matching image generation run succeeds, the runner now writes the returned primary asset id back to that storyboard cell.
+  - the cell also records `sourceNodeId` and `sourceAssetId` so downstream storyboard sheet composition and storyboard-to-video-editor sync stay asset-backed.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - no generated media, signed URL, preview URL, `blob:`, `data:`, base64, browser-local export, direct asset write, billing mutation, API route, database migration, worker behavior, or provider-secret exposure was added.
+  - the billable generation path remains the existing server-side reserve/run/settle workflow.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/runtime/v2WorkflowRunner.test.ts -t "storyboard image generation"` first failed because the generated image asset did not update the storyboard cell.
+  - `npm test -- src/flowCanvas/runtime/v2WorkflowRunner.test.ts -t "storyboard image generation"` passed on 2026-07-06: 1 selected test.
+  - `npm test -- src/flowCanvas/runtime/v2WorkflowRunner.test.ts` passed on 2026-07-06: 29 tests.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-06: 2 files, 56 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-06 - Storyboard Asset Binding Phase 44
 
 - connected selected `故事板` cells to the v2 asset library:
