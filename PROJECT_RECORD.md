@@ -3,6 +3,17 @@
 Last updated: 2026-07-05
 Maintainers: project team + Codex sessions
 
+## 2026-07-05 - Storyboard Image Node Creation Phase 11
+
+- added image-node creation actions inside the canvas-native `故事板` studio:
+  - `生成选中镜头` creates a downstream image node from the selected storyboard cell prompt.
+  - `生成全部镜头` creates downstream image nodes for all storyboard cells that already have prompts, with stable vertical spacing beside the storyboard node.
+  - created image nodes keep `generationMode: standard`, copy the storyboard prompt, and store draft-safe `params.storyboard` metadata with source storyboard node id, cell id, shot number, aspect, and optional director/source ids.
+- kept this action non-billable preparation work only; it does not create assets, enqueue workflow runs, reserve credits, or bypass the existing image-node generation/billing path.
+- validation:
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx` passed on 2026-07-05: 1 test file, 12 tests.
+  - `npm test -- src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-05: 1 test file, 10 tests.
+
 ## 2026-07-05 - Director Desk Storyboard Sync Phase 10
 
 - added a director-shot-to-storyboard sync path for the canvas-native `3D导演台` studio:

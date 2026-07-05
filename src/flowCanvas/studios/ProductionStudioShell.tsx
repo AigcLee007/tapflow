@@ -99,6 +99,8 @@ export const ProductionStudioShell: React.FC<ProductionStudioShellProps> = ({
           <StoryboardContent
             data={node.data.storyboard}
             nodeId={node.id}
+            nodePosition={node.position}
+            onCreateCanvasNodeFromStudio={onCreateCanvasNodeFromStudio}
             onUpdateNodeData={onUpdateNodeData}
           />
         ) : (
@@ -475,16 +477,66 @@ function DirectorDeskContent({
 function StoryboardContent({
   data,
   nodeId,
+  nodePosition,
+  onCreateCanvasNodeFromStudio,
   onUpdateNodeData,
 }: {
   data?: FlowNodeData['storyboard'];
   nodeId: string;
+  nodePosition: { x: number; y: number };
+  onCreateCanvasNodeFromStudio?: (request: StudioCanvasNodeRequest) => void;
   onUpdateNodeData?: (nodeId: string, patch: Partial<FlowNodeData>) => void;
 }) {
   const storyboard = normalizeStoryboardData(data);
   const selectedCell = storyboard.cells[storyboard.selectedIndex] ?? storyboard.cells[0];
   const updateStoryboard = (nextStoryboard: typeof storyboard) => {
     onUpdateNodeData?.(nodeId, { storyboard: nextStoryboard });
+  };
+  const buildStoryboardImageRequest = (
+    cell: typeof storyboard.cells[number],
+    batchIndex = 0,
+  ): StudioCanvasNodeRequest | null => {
+    const prompt = cell.prompt?.trim();
+    if (!prompt) return null;
+    return {
+      kind: 'image',
+      position: {
+        x: nodePosition.x + 420,
+        y: nodePosition.y + 40 + batchIndex * 320,
+      },
+      data: {
+        title: `镜头 ${cell.shotNo} · ${cell.title || '分镜图'}`,
+        generationMode: 'standard',
+        generationPrompt: prompt,
+        params: {
+          storyboard: {
+            sourceStoryboardNodeId: nodeId,
+            cellId: cell.id,
+            shotNo: cell.shotNo,
+            ...(cell.aspect ? { aspect: cell.aspect } : { aspect: storyboard.aspect }),
+            ...(cell.directorCameraId ? { directorCameraId: cell.directorCameraId } : {}),
+            ...(cell.directorShotId ? { directorShotId: cell.directorShotId } : {}),
+            ...(cell.sourceAssetId ? { sourceAssetId: cell.sourceAssetId } : {}),
+            ...(cell.sourceNodeId ? { sourceNodeId: cell.sourceNodeId } : {}),
+          },
+        },
+      },
+    };
+  };
+  const createSelectedCellImageNode = () => {
+    if (!selectedCell) return;
+    const request = buildStoryboardImageRequest(selectedCell);
+    if (!request) return;
+    onCreateCanvasNodeFromStudio?.(request);
+  };
+  const createAllPromptedCellImageNodes = () => {
+    let batchIndex = 0;
+    storyboard.cells.forEach((cell) => {
+      const request = buildStoryboardImageRequest(cell, batchIndex);
+      if (!request) return;
+      batchIndex += 1;
+      onCreateCanvasNodeFromStudio?.(request);
+    });
   };
 
   return (
@@ -538,6 +590,36 @@ function StoryboardContent({
             style={textareaStyle}
           />
         </label>
+        <div style={storyboardActionGridStyle}>
+          <button
+            type="button"
+            aria-label="生成选中镜头"
+            disabled={!selectedCell?.prompt}
+            style={{
+              ...toolButtonStyle,
+              opacity: selectedCell?.prompt ? 1 : 0.45,
+              cursor: selectedCell?.prompt ? 'pointer' : 'not-allowed',
+            }}
+            onClick={createSelectedCellImageNode}
+          >
+            <ImagePlus size={14} />
+            生成选中镜头
+          </button>
+          <button
+            type="button"
+            aria-label="生成全部镜头"
+            disabled={!storyboard.cells.some((cell) => cell.prompt)}
+            style={{
+              ...toolButtonStyle,
+              opacity: storyboard.cells.some((cell) => cell.prompt) ? 1 : 0.45,
+              cursor: storyboard.cells.some((cell) => cell.prompt) ? 'pointer' : 'not-allowed',
+            }}
+            onClick={createAllPromptedCellImageNodes}
+          >
+            <Grid3X3 size={14} />
+            生成全部镜头
+          </button>
+        </div>
       </aside>
     </div>
   );
@@ -1002,6 +1084,13 @@ const directorActionGridStyle: React.CSSProperties = {
   display: 'grid',
   gridTemplateColumns: '1fr 1fr',
   gap: 8,
+};
+
+const storyboardActionGridStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: '1fr 1fr',
+  gap: 8,
+  marginTop: 10,
 };
 
 const videoActionStackStyle: React.CSSProperties = {

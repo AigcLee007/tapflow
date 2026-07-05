@@ -358,6 +358,71 @@ describe('ProductionStudioShell', () => {
     expect(JSON.stringify(latestPatch)).not.toMatch(/blob:|data:/);
   });
 
+  it('requests an image node from the selected storyboard cell', () => {
+    const onCreateCanvasNodeFromStudio = vi.fn();
+    render(
+      <ProductionStudioShell
+        studio="storyboard"
+        node={storyboardNode as any}
+        onClose={vi.fn()}
+        onCreateCanvasNodeFromStudio={onCreateCanvasNodeFromStudio}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '生成选中镜头' }));
+
+    expect(onCreateCanvasNodeFromStudio).toHaveBeenCalledWith({
+      kind: 'image',
+      position: { x: 420, y: 40 },
+      data: expect.objectContaining({
+        title: '镜头 2 · 近景',
+        generationMode: 'standard',
+        generationPrompt: '角色回头',
+        params: expect.objectContaining({
+          storyboard: expect.objectContaining({
+            cellId: 'cell-2',
+            shotNo: 2,
+            sourceStoryboardNodeId: 'storyboard-node',
+          }),
+        }),
+      }),
+    });
+    expect(JSON.stringify(onCreateCanvasNodeFromStudio.mock.calls[0]?.[0])).not.toMatch(/blob:|data:/);
+  });
+
+  it('requests image nodes for all prompted storyboard cells', () => {
+    const onCreateCanvasNodeFromStudio = vi.fn();
+    render(
+      <ProductionStudioShell
+        studio="storyboard"
+        node={storyboardNode as any}
+        onClose={vi.fn()}
+        onCreateCanvasNodeFromStudio={onCreateCanvasNodeFromStudio}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '生成全部镜头' }));
+
+    expect(onCreateCanvasNodeFromStudio).toHaveBeenCalledTimes(2);
+    expect(onCreateCanvasNodeFromStudio).toHaveBeenNthCalledWith(1, {
+      kind: 'image',
+      position: { x: 420, y: 40 },
+      data: expect.objectContaining({
+        title: '镜头 1 · 开场',
+        generationPrompt: '城市远景',
+      }),
+    });
+    expect(onCreateCanvasNodeFromStudio).toHaveBeenNthCalledWith(2, {
+      kind: 'image',
+      position: { x: 420, y: 360 },
+      data: expect.objectContaining({
+        title: '镜头 2 · 近景',
+        generationPrompt: '角色回头',
+      }),
+    });
+    expect(JSON.stringify(onCreateCanvasNodeFromStudio.mock.calls)).not.toMatch(/blob:|data:/);
+  });
+
   it('renders video editor shell and closes on Escape', () => {
     const onClose = vi.fn();
     render(<ProductionStudioShell studio="video_editor" node={videoNode as any} onClose={onClose} />);

@@ -396,6 +396,82 @@ describe('AiFlowCanvas production studios', () => {
     expect(JSON.stringify(node?.data.storyboard)).not.toMatch(/blob:|data:/);
   });
 
+  it('creates an image node from the selected storyboard cell through the canvas store', () => {
+    useFlowCanvasStore.getState().loadProject({
+      id: 'project-1',
+      title: '项目',
+      nodes: [storyboardNode as any],
+      edges: [],
+      viewport: { x: 0, y: 0, zoom: 1 },
+      version: 1,
+      updatedAt: 1,
+    });
+
+    render(<AiFlowCanvas cullingEnabled={false} />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(OPEN_PRODUCTION_STUDIO_EVENT, {
+          detail: { nodeId: 'storyboard-node', studio: 'storyboard' },
+        }),
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '生成选中镜头' }));
+
+    const imageNode = useFlowCanvasStore
+      .getState()
+      .nodes.find((item) => item.type === 'image' && item.data.params?.storyboard);
+    expect(imageNode?.position).toEqual({ x: 500, y: 160 });
+    expect(imageNode?.selected).toBe(true);
+    expect(imageNode?.data).toMatchObject({
+      kind: 'image',
+      title: '镜头 1 · 开场',
+      generationMode: 'standard',
+      generationPrompt: '旧提示词',
+      params: {
+        storyboard: {
+          sourceStoryboardNodeId: 'storyboard-node',
+          cellId: 'cell-1',
+          shotNo: 1,
+        },
+      },
+    });
+    expect(JSON.stringify(imageNode?.data)).not.toMatch(/blob:|data:/);
+  });
+
+  it('creates image nodes from all prompted storyboard cells through the canvas store', () => {
+    useFlowCanvasStore.getState().loadProject({
+      id: 'project-1',
+      title: '项目',
+      nodes: [storyboardNode as any],
+      edges: [],
+      viewport: { x: 0, y: 0, zoom: 1 },
+      version: 1,
+      updatedAt: 1,
+    });
+
+    render(<AiFlowCanvas cullingEnabled={false} />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(OPEN_PRODUCTION_STUDIO_EVENT, {
+          detail: { nodeId: 'storyboard-node', studio: 'storyboard' },
+        }),
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '生成全部镜头' }));
+
+    const imageNodes = useFlowCanvasStore
+      .getState()
+      .nodes.filter((item) => item.type === 'image' && item.data.params?.storyboard);
+    expect(imageNodes).toHaveLength(1);
+    expect(imageNodes[0]?.position).toEqual({ x: 500, y: 160 });
+    expect(imageNodes[0]?.data.generationPrompt).toBe('旧提示词');
+    expect(JSON.stringify(imageNodes.map((node) => node.data))).not.toMatch(/blob:|data:/);
+  });
+
   it('persists video editor clip edits through the canvas store', () => {
     useFlowCanvasStore.getState().loadProject({
       id: 'project-1',
