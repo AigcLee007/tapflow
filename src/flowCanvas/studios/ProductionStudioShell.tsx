@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Box, Camera, Film, Grid3X3, ImagePlus, Layers3, Play, Plus, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Box, Camera, Film, Grid3X3, ImagePlus, Layers3, Play, Plus, Trash2, X } from 'lucide-react';
 import type { Node } from '@xyflow/react';
 
 import type { FlowDirector3dData, FlowNodeData, FlowVideoEditorData } from '../types';
@@ -227,6 +227,16 @@ function buildDirectorShot(
   };
 }
 
+function recalculateDirectorShotStarts(shots: DirectorShot[]): DirectorShot[] {
+  let startMs = 0;
+  return shots.map((shot) => {
+    const durationMs = Math.max(0, Number(shot.durationMs) || 0);
+    const nextShot = { ...shot, durationMs, startMs };
+    startMs += durationMs;
+    return nextShot;
+  });
+}
+
 function finiteNumberFromInput(value: string, fallback: number, options?: { max?: number; min?: number }) {
   if (value.trim() === '') return fallback;
   const next = Number(value);
@@ -400,17 +410,36 @@ function DirectorDeskContent({
   const patchShot = (shotId: string, patch: Partial<DirectorShot>) => {
     updateDirector({
       ...director,
-      shots: shots.map((shot) => (shot.id === shotId ? { ...shot, ...patch } : shot)),
+      shots: recalculateDirectorShotStarts(shots.map((shot) => (shot.id === shotId ? { ...shot, ...patch } : shot))),
     });
   };
   const selectedActor = selected?.type === 'actor' ? actors.find((actor) => actor.id === selected.id) ?? null : null;
   const selectedCamera = selected?.type === 'camera' ? cameras.find((camera) => camera.id === selected.id) ?? null : null;
   const selectedShot = selected?.type === 'shot' ? shots.find((shot) => shot.id === selected.id) ?? null : null;
+  const selectedShotIndex = selectedShot ? shots.findIndex((shot) => shot.id === selectedShot.id) : -1;
   const targetShot = selectedShot ?? shots[0] ?? null;
   const targetShotIndex = targetShot ? Math.max(0, shots.findIndex((shot) => shot.id === targetShot.id)) : -1;
   const targetCamera = targetShot
     ? cameras.find((camera) => camera.id === targetShot.cameraId) ?? cameras[0] ?? null
     : null;
+  const canMoveSelectedShotBackward = Boolean(selectedShot && selectedShotIndex > 0);
+  const canMoveSelectedShotForward = Boolean(selectedShot && selectedShotIndex >= 0 && selectedShotIndex < shots.length - 1);
+  const moveSelectedShot = (offset: -1 | 1) => {
+    if (!selectedShot || selectedShotIndex < 0) return;
+    const nextIndex = selectedShotIndex + offset;
+    if (nextIndex < 0 || nextIndex >= shots.length) return;
+    const nextShots = [...shots];
+    const [movedShot] = nextShots.splice(selectedShotIndex, 1);
+    nextShots.splice(nextIndex, 0, movedShot);
+    updateDirector({ ...director, shots: recalculateDirectorShotStarts(nextShots) });
+  };
+  const deleteSelectedShot = () => {
+    if (!selectedShot) return;
+    const nextShots = recalculateDirectorShotStarts(shots.filter((shot) => shot.id !== selectedShot.id));
+    updateDirector({ ...director, shots: nextShots });
+    const nextSelection = nextShots[Math.min(selectedShotIndex, nextShots.length - 1)] ?? null;
+    setSelected(nextSelection ? { type: 'shot', id: nextSelection.id } : null);
+  };
   const synthesizeShotToCanvas = () => {
     if (!targetShot || !targetCamera) return;
     const shotNumber = targetShotIndex + 1;
@@ -541,6 +570,33 @@ function DirectorDeskContent({
             <button type="button" aria-label="捕获镜头段" style={railButtonStyle} onClick={captureShot}>
               <Camera size={14} />
               捕获镜头段
+            </button>
+            <button
+              type="button"
+              aria-label="镜头前移"
+              disabled={!canMoveSelectedShotBackward}
+              style={railIconButtonStyle(canMoveSelectedShotBackward)}
+              onClick={() => moveSelectedShot(-1)}
+            >
+              <ArrowLeft size={14} />
+            </button>
+            <button
+              type="button"
+              aria-label="镜头后移"
+              disabled={!canMoveSelectedShotForward}
+              style={railIconButtonStyle(canMoveSelectedShotForward)}
+              onClick={() => moveSelectedShot(1)}
+            >
+              <ArrowRight size={14} />
+            </button>
+            <button
+              type="button"
+              aria-label="删除镜头段"
+              disabled={!selectedShot}
+              style={railIconButtonStyle(Boolean(selectedShot))}
+              onClick={deleteSelectedShot}
+            >
+              <Trash2 size={14} />
             </button>
             <button
               type="button"
@@ -1568,6 +1624,14 @@ const railButtonStyle: React.CSSProperties = {
   fontWeight: 800,
   cursor: 'pointer',
 };
+
+const railIconButtonStyle = (enabled: boolean): React.CSSProperties => ({
+  ...railButtonStyle,
+  width: 30,
+  padding: 0,
+  opacity: enabled ? 1 : 0.45,
+  cursor: enabled ? 'pointer' : 'not-allowed',
+});
 
 const pillStyle: React.CSSProperties = {
   height: 24,

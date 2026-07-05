@@ -218,6 +218,21 @@ const videoNodeWithClip = {
   },
 };
 
+const directorNodeWithThreeShots = {
+  ...directorNode,
+  data: {
+    ...directorNode.data,
+    director3d: {
+      ...directorNode.data.director3d,
+      shots: [
+        { id: 'shot-1', cameraId: 'camera-1', startMs: 0, durationMs: 3000, motion: 'static' },
+        { id: 'shot-2', cameraId: 'camera-1', startMs: 3000, durationMs: 5000, motion: 'dolly' },
+        { id: 'shot-3', cameraId: 'camera-1', startMs: 8000, durationMs: 2000, motion: 'pan' },
+      ],
+    },
+  },
+};
+
 describe('AiFlowCanvas production studios', () => {
   beforeEach(() => {
     useFlowCanvasStore.getState().loadProject({
@@ -287,6 +302,46 @@ describe('AiFlowCanvas production studios', () => {
 
     const node = useFlowCanvasStore.getState().nodes.find((item) => item.id === 'director-node');
     expect(node?.data.director3d?.cameras[0]?.prompt).toBe('俯拍建立空间关系');
+    expect(JSON.stringify(node?.data.director3d)).not.toMatch(/blob:|data:/);
+  });
+
+  it('persists director shot timeline reorder and deletion through the canvas store', () => {
+    useFlowCanvasStore.getState().loadProject({
+      id: 'project-1',
+      title: '项目',
+      nodes: [directorNodeWithThreeShots as any],
+      edges: [],
+      viewport: { x: 0, y: 0, zoom: 1 },
+      version: 1,
+      updatedAt: 1,
+    });
+
+    render(<AiFlowCanvas cullingEnabled={false} />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(OPEN_PRODUCTION_STUDIO_EVENT, {
+          detail: { nodeId: 'director-node', studio: 'director3d' },
+        }),
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '选择镜头段 2' }));
+    fireEvent.click(screen.getByRole('button', { name: '镜头前移' }));
+
+    let node = useFlowCanvasStore.getState().nodes.find((item) => item.id === 'director-node');
+    expect(node?.data.director3d?.shots).toEqual([
+      expect.objectContaining({ id: 'shot-2', startMs: 0, durationMs: 5000 }),
+      expect.objectContaining({ id: 'shot-1', startMs: 5000, durationMs: 3000 }),
+      expect.objectContaining({ id: 'shot-3', startMs: 8000, durationMs: 2000 }),
+    ]);
+
+    fireEvent.click(screen.getByRole('button', { name: '删除镜头段' }));
+    node = useFlowCanvasStore.getState().nodes.find((item) => item.id === 'director-node');
+    expect(node?.data.director3d?.shots).toEqual([
+      expect.objectContaining({ id: 'shot-1', startMs: 0, durationMs: 3000 }),
+      expect.objectContaining({ id: 'shot-3', startMs: 3000, durationMs: 2000 }),
+    ]);
     expect(JSON.stringify(node?.data.director3d)).not.toMatch(/blob:|data:/);
   });
 

@@ -486,6 +486,111 @@ describe('ProductionStudioShell', () => {
     expect(JSON.stringify(onUpdateNodeData.mock.calls)).not.toMatch(/blob:|data:/);
   });
 
+  it('reorders and deletes selected director shots while recalculating start times', () => {
+    const onUpdateNodeData = vi.fn();
+    const nodeWithThreeShots = {
+      ...directorNode,
+      data: {
+        ...directorNode.data,
+        director3d: {
+          ...directorNode.data.director3d,
+          shots: [
+            { id: 'shot-1', cameraId: 'camera-1', startMs: 0, durationMs: 3000, motion: 'static' },
+            { id: 'shot-2', cameraId: 'camera-1', startMs: 3000, durationMs: 5000, motion: 'dolly' },
+            { id: 'shot-3', cameraId: 'camera-1', startMs: 8000, durationMs: 2000, motion: 'pan' },
+          ],
+        },
+      },
+    };
+
+    render(
+      <ProductionStudioShell
+        studio="director3d"
+        node={nodeWithThreeShots as any}
+        onClose={vi.fn()}
+        onUpdateNodeData={onUpdateNodeData}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '选择镜头段 2' }));
+    fireEvent.click(screen.getByRole('button', { name: '镜头前移' }));
+
+    expect(onUpdateNodeData).toHaveBeenLastCalledWith('director-node', {
+      director3d: expect.objectContaining({
+        shots: [
+          expect.objectContaining({ id: 'shot-2', startMs: 0, durationMs: 5000 }),
+          expect.objectContaining({ id: 'shot-1', startMs: 5000, durationMs: 3000 }),
+          expect.objectContaining({ id: 'shot-3', startMs: 8000, durationMs: 2000 }),
+        ],
+      }),
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '镜头后移' }));
+    expect(onUpdateNodeData).toHaveBeenLastCalledWith('director-node', {
+      director3d: expect.objectContaining({
+        shots: [
+          expect.objectContaining({ id: 'shot-1', startMs: 0, durationMs: 3000 }),
+          expect.objectContaining({ id: 'shot-3', startMs: 3000, durationMs: 2000 }),
+          expect.objectContaining({ id: 'shot-2', startMs: 5000, durationMs: 5000 }),
+        ],
+      }),
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '删除镜头段' }));
+    expect(onUpdateNodeData).toHaveBeenLastCalledWith('director-node', {
+      director3d: expect.objectContaining({
+        shots: [
+          expect.objectContaining({ id: 'shot-1', startMs: 0, durationMs: 3000 }),
+          expect.objectContaining({ id: 'shot-3', startMs: 3000, durationMs: 2000 }),
+        ],
+      }),
+    });
+
+    expect(JSON.stringify(onUpdateNodeData.mock.calls)).not.toMatch(/blob:|data:/);
+  });
+
+  it('recalculates following director shot start times when a shot duration changes', () => {
+    const onUpdateNodeData = vi.fn();
+    const nodeWithThreeShots = {
+      ...directorNode,
+      data: {
+        ...directorNode.data,
+        director3d: {
+          ...directorNode.data.director3d,
+          shots: [
+            { id: 'shot-1', cameraId: 'camera-1', startMs: 0, durationMs: 3000, motion: 'static' },
+            { id: 'shot-2', cameraId: 'camera-1', startMs: 3000, durationMs: 5000, motion: 'dolly' },
+            { id: 'shot-3', cameraId: 'camera-1', startMs: 8000, durationMs: 2000, motion: 'pan' },
+          ],
+        },
+      },
+    };
+
+    render(
+      <ProductionStudioShell
+        studio="director3d"
+        node={nodeWithThreeShots as any}
+        onClose={vi.fn()}
+        onUpdateNodeData={onUpdateNodeData}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '选择镜头段 1' }));
+    fireEvent.change(screen.getByLabelText('镜头段时长（秒）'), { target: { value: '4.5' } });
+
+    expect(onUpdateNodeData).toHaveBeenLastCalledWith('director-node', {
+      director3d: expect.objectContaining({
+        shots: [
+          expect.objectContaining({ id: 'shot-1', startMs: 0, durationMs: 4500 }),
+          expect.objectContaining({ id: 'shot-2', startMs: 4500, durationMs: 5000 }),
+          expect.objectContaining({ id: 'shot-3', startMs: 9500, durationMs: 2000 }),
+        ],
+      }),
+    });
+
+    expect(JSON.stringify(onUpdateNodeData.mock.calls)).not.toMatch(/blob:|data:/);
+  });
+
   it('requests a safe downstream image node from the selected director shot', () => {
     const onCreateCanvasNodeFromStudio = vi.fn();
     const nodeWithPromptedShot = {

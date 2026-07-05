@@ -3,6 +3,23 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - 3D Director Desk Shot Timeline Controls Phase 34
+
+- made `3D导演台` shot timelines editable as an ordered shot list:
+  - selected shots can now move earlier/later in the rail and can be deleted after explicit selection.
+  - shot `startMs` values are recalculated after reordering, deletion, and duration edits so downstream canvas synthesis and storyboard sync keep coherent timing.
+  - canvas integration now covers persisting shot timeline reorder/delete through the real flow store.
+- kept v2 safety and billing boundaries unchanged:
+  - this remains a local/studio draft edit of structured `director3d` data only.
+  - no generated media, `blob:`, `data:`, preview URL, browser-local export, direct asset write, billing mutation, API route, database migration, worker behavior, or provider-secret exposure was added.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx` failed because the `镜头前移` control did not exist.
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "reorders|recalculates"` failed because duration edits left following shot `startMs` values stale.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx` passed on 2026-07-06: 1 file, 24 tests.
+  - `npm test -- src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-06: 1 file, 17 tests.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/studios/DirectorDeskThreeViewport.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx src/flowCanvas/utils/storyboardDirectorSync.test.ts` passed on 2026-07-06: 4 files, 45 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-06 - 3D Director Desk Shot Camera Snapshots Phase 33
 
 - made `3D导演台` shot capture preserve the selected camera pose at capture time:
