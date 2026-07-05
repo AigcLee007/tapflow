@@ -3,6 +3,17 @@
 Last updated: 2026-07-05
 Maintainers: project team + Codex sessions
 
+## 2026-07-05 - Director Desk Storyboard Sync Phase 10
+
+- added a director-shot-to-storyboard sync path for the canvas-native `3D导演台` studio:
+  - `同步到故事板` sends the selected director shot and camera metadata to the canvas layer.
+  - if a storyboard node already exists, its first matching/empty cell is patched with the shot title, prompt, director camera id, director shot id, and source director node id.
+  - if no storyboard node exists, the canvas creates a `导演分镜板` node beside the director node and writes the first synced shot into its first cell.
+- added `storyboardDirectorSync` utility coverage for target-cell selection and first-empty-cell fallback.
+- kept the sync action non-billable and draft-safe; it does not create assets, start workflow runs, reserve credits, or write `blob:`, `data:`, base64, `File`, `Blob`, or long-lived signed URL values.
+- validation:
+  - `npm test -- src/flowCanvas/utils/storyboardDirectorSync.test.ts src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-05: 3 test files, 20 tests.
+
 ## 2026-07-05 - Director Desk Synthesize To Canvas Phase 9
 
 - added the first canvas synthesis action inside the `3D导演台` studio:

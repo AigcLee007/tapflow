@@ -268,6 +268,52 @@ describe('ProductionStudioShell', () => {
     expect(JSON.stringify(onCreateCanvasNodeFromStudio.mock.calls[0]?.[0])).not.toMatch(/blob:|data:/);
   });
 
+  it('requests storyboard sync from the selected director shot', () => {
+    const onSyncDirectorShotToStoryboard = vi.fn();
+    const nodeWithPromptedShot = {
+      ...directorNode,
+      data: {
+        ...directorNode.data,
+        director3d: {
+          ...directorNode.data.director3d,
+          cameras: [
+            {
+              ...directorNode.data.director3d.cameras[0],
+              prompt: '低机位环绕主角',
+            },
+          ],
+          shots: [
+            {
+              ...directorNode.data.director3d.shots[0],
+              prompt: '镜头缓慢推进',
+            },
+          ],
+        },
+      },
+    };
+
+    render(
+      <ProductionStudioShell
+        studio="director3d"
+        node={nodeWithPromptedShot as any}
+        onClose={vi.fn()}
+        onSyncDirectorShotToStoryboard={onSyncDirectorShotToStoryboard}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '选择镜头段 1' }));
+    fireEvent.click(screen.getByRole('button', { name: '同步到故事板' }));
+
+    expect(onSyncDirectorShotToStoryboard).toHaveBeenCalledWith({
+      camera: expect.objectContaining({ id: 'camera-1', prompt: '低机位环绕主角' }),
+      shot: expect.objectContaining({ id: 'shot-1', prompt: '镜头缓慢推进' }),
+      shotIndex: 0,
+      sourceDirectorNodeId: 'director-node',
+      sourceDirectorNodePosition: { x: 0, y: 0 },
+    });
+    expect(JSON.stringify(onSyncDirectorShotToStoryboard.mock.calls[0]?.[0])).not.toMatch(/blob:|data:/);
+  });
+
   it('renders storyboard shell with selected shot context', () => {
     render(<ProductionStudioShell studio="storyboard" node={storyboardNode as any} onClose={vi.fn()} />);
 

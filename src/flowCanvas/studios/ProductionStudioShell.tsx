@@ -22,10 +22,19 @@ export type StudioCanvasNodeRequest = {
   data: Partial<FlowNodeData>;
 };
 
+export type StudioStoryboardSyncRequest = {
+  camera: DirectorCamera;
+  shot: DirectorShot;
+  shotIndex: number;
+  sourceDirectorNodeId: string;
+  sourceDirectorNodePosition: { x: number; y: number };
+};
+
 interface ProductionStudioShellProps {
   node: FlowNode;
   onClose: () => void;
   onCreateCanvasNodeFromStudio?: (request: StudioCanvasNodeRequest) => void;
+  onSyncDirectorShotToStoryboard?: (request: StudioStoryboardSyncRequest) => void;
   onUpdateNodeData?: (nodeId: string, patch: Partial<FlowNodeData>) => void;
   studio: ProductionStudioKind;
 }
@@ -40,6 +49,7 @@ export const ProductionStudioShell: React.FC<ProductionStudioShellProps> = ({
   node,
   onClose,
   onCreateCanvasNodeFromStudio,
+  onSyncDirectorShotToStoryboard,
   onUpdateNodeData,
   studio,
 }) => {
@@ -82,6 +92,7 @@ export const ProductionStudioShell: React.FC<ProductionStudioShellProps> = ({
             nodeId={node.id}
             nodePosition={node.position}
             onCreateCanvasNodeFromStudio={onCreateCanvasNodeFromStudio}
+            onSyncDirectorShotToStoryboard={onSyncDirectorShotToStoryboard}
             onUpdateNodeData={onUpdateNodeData}
           />
         ) : studio === 'storyboard' ? (
@@ -225,12 +236,14 @@ function DirectorDeskContent({
   nodeId,
   nodePosition,
   onCreateCanvasNodeFromStudio,
+  onSyncDirectorShotToStoryboard,
   onUpdateNodeData,
 }: {
   data?: FlowDirector3dData;
   nodeId: string;
   nodePosition: { x: number; y: number };
   onCreateCanvasNodeFromStudio?: (request: StudioCanvasNodeRequest) => void;
+  onSyncDirectorShotToStoryboard?: (request: StudioStoryboardSyncRequest) => void;
   onUpdateNodeData?: (nodeId: string, patch: Partial<FlowNodeData>) => void;
 }) {
   const director = normalizeDirector3dData(data);
@@ -315,6 +328,16 @@ function DirectorDeskContent({
           },
         },
       },
+    });
+  };
+  const syncShotToStoryboard = () => {
+    if (!targetShot || !targetCamera) return;
+    onSyncDirectorShotToStoryboard?.({
+      camera: targetCamera,
+      shot: targetShot,
+      shotIndex: targetShotIndex,
+      sourceDirectorNodeId: nodeId,
+      sourceDirectorNodePosition: nodePosition,
     });
   };
 
@@ -409,6 +432,20 @@ function DirectorDeskContent({
             >
               <ImagePlus size={14} />
               合成到画布
+            </button>
+            <button
+              type="button"
+              aria-label="同步到故事板"
+              disabled={!targetShot || !targetCamera}
+              style={{
+                ...railButtonStyle,
+                opacity: targetShot && targetCamera ? 1 : 0.45,
+                cursor: targetShot && targetCamera ? 'pointer' : 'not-allowed',
+              }}
+              onClick={syncShotToStoryboard}
+            >
+              <Grid3X3 size={14} />
+              同步到故事板
             </button>
           </div>
         </div>

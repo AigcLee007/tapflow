@@ -304,6 +304,70 @@ describe('AiFlowCanvas production studios', () => {
     expect(JSON.stringify(imageNode?.data)).not.toMatch(/blob:|data:/);
   });
 
+  it('syncs a director shot into an existing storyboard node', () => {
+    useFlowCanvasStore.getState().loadProject({
+      id: 'project-1',
+      title: '项目',
+      nodes: [directorNode as any, storyboardNode as any],
+      edges: [],
+      viewport: { x: 0, y: 0, zoom: 1 },
+      version: 1,
+      updatedAt: 1,
+    });
+
+    render(<AiFlowCanvas cullingEnabled={false} />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(OPEN_PRODUCTION_STUDIO_EVENT, {
+          detail: { nodeId: 'director-node', studio: 'director3d' },
+        }),
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '选择镜头段 1' }));
+    fireEvent.click(screen.getByRole('button', { name: '同步到故事板' }));
+
+    const node = useFlowCanvasStore.getState().nodes.find((item) => item.id === 'storyboard-node');
+    expect(node?.data.storyboard?.selectedIndex).toBe(1);
+    expect(node?.data.storyboard?.cells[1]).toMatchObject({
+      title: '镜头 1 · 主镜头',
+      prompt: '俯拍建立空间关系',
+      directorCameraId: 'camera-1',
+      directorShotId: 'shot-1',
+      sourceNodeId: 'director-node',
+    });
+    expect(JSON.stringify(node?.data.storyboard)).not.toMatch(/blob:|data:/);
+  });
+
+  it('creates a storyboard node when syncing a director shot without an existing storyboard', () => {
+    render(<AiFlowCanvas cullingEnabled={false} />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(OPEN_PRODUCTION_STUDIO_EVENT, {
+          detail: { nodeId: 'director-node', studio: 'director3d' },
+        }),
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '选择镜头段 1' }));
+    fireEvent.click(screen.getByRole('button', { name: '同步到故事板' }));
+
+    const node = useFlowCanvasStore.getState().nodes.find((item) => item.type === 'storyboard');
+    expect(node?.position).toEqual({ x: 540, y: 420 });
+    expect(node?.selected).toBe(true);
+    expect(node?.data.title).toBe('导演分镜板');
+    expect(node?.data.storyboard?.cells[0]).toMatchObject({
+      title: '镜头 1 · 主镜头',
+      prompt: '俯拍建立空间关系',
+      directorCameraId: 'camera-1',
+      directorShotId: 'shot-1',
+      sourceNodeId: 'director-node',
+    });
+    expect(JSON.stringify(node?.data.storyboard)).not.toMatch(/blob:|data:/);
+  });
+
   it('persists storyboard prompt edits through the canvas store', () => {
     useFlowCanvasStore.getState().loadProject({
       id: 'project-1',

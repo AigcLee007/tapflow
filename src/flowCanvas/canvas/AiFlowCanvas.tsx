@@ -32,7 +32,11 @@ import {
   StoryboardNodeComponent,
   VideoEditorNodeComponent,
 } from '../nodes/ProductionNodes';
-import { ProductionStudioShell, type StudioCanvasNodeRequest } from '../studios/ProductionStudioShell';
+import {
+  ProductionStudioShell,
+  type StudioCanvasNodeRequest,
+  type StudioStoryboardSyncRequest,
+} from '../studios/ProductionStudioShell';
 import {
   OPEN_PRODUCTION_STUDIO_EVENT,
   type OpenProductionStudioDetail,
@@ -53,10 +57,11 @@ import { getAsset, getAssetVariantUrl, listAssets } from '../../assets/assetApi'
 import { getFlowTemplate, recordFlowTemplateUsage } from '../../services/v2FlowTemplatesApi';
 import { listProjectHistory } from '../../services/v2FlowHistoryApi';
 import { listFlowComments } from '../../services/v2FlowCommentsApi';
-import type { FlowNodeData } from '../types';
+import type { FlowNodeData, FlowStoryboardData } from '../types';
 import { buildAssetBackedNodeData, buildMeasuredAssetNodePatch } from '../utils/assetNodeData';
 import { getCanvasDockBadge, getCanvasDockDrawerLayout, type CanvasDockPanelId } from '../utils/canvasDockPanel';
 import { FLOW_NODE_DEFAULT_SIZES, fitMediaNodeToShortSide } from '../utils/nodeSizing';
+import { buildStoryboardPatchFromDirectorShot } from '../utils/storyboardDirectorSync';
 import { offsetTemplateGraphForInsert } from '../utils/templateGraph';
 import { canConnectFlowNodes } from '../rules/connectionRules';
 import {
@@ -737,6 +742,44 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled, onAg
     [addNode],
   );
 
+  const handleSyncDirectorShotToStoryboard = useCallback(
+    (request: StudioStoryboardSyncRequest) => {
+      const storyboardNode = useFlowCanvasStore.getState().nodes.find((node) => node.type === 'storyboard');
+      const fallbackStoryboard: FlowStoryboardData = {
+        aspect: '16:9',
+        cells: [],
+        grid: '3x2',
+        selectedIndex: 0,
+      };
+      const storyboard = buildStoryboardPatchFromDirectorShot({
+        camera: request.camera,
+        shot: request.shot,
+        shotIndex: request.shotIndex,
+        sourceDirectorNodeId: request.sourceDirectorNodeId,
+        storyboard: storyboardNode?.data.storyboard || fallbackStoryboard,
+      });
+
+      if (storyboardNode) {
+        updateNodeData(storyboardNode.id, { storyboard });
+        return;
+      }
+
+      addNode(
+        'storyboard',
+        {
+          x: request.sourceDirectorNodePosition.x + 420,
+          y: request.sourceDirectorNodePosition.y + 340,
+        },
+        {
+          storyboard,
+          title: '导演分镜板',
+        },
+        { selected: true },
+      );
+    },
+    [addNode, updateNodeData],
+  );
+
   const handleFocusCommentNode = useCallback((nodeId: string) => {
     const node = nodes.find((item) => item.id === nodeId);
     if (!node) return;
@@ -1055,6 +1098,7 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled, onAg
         <ProductionStudioShell
           node={activeProductionStudioNode}
           onCreateCanvasNodeFromStudio={handleCreateCanvasNodeFromStudio}
+          onSyncDirectorShotToStoryboard={handleSyncDirectorShotToStoryboard}
           onUpdateNodeData={updateNodeData}
           studio={activeProductionStudio.studio}
           onClose={() => setActiveProductionStudio(null)}
