@@ -3,6 +3,21 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - Director Desk Image Synthesis Auto Run Phase 55
+
+- connected `3D导演台` shot synthesis to the existing v2 workflow execution path:
+  - director desk `合成到画布` requests now mark their generated image node with `runAfterCreate`.
+  - `AiFlowCanvas` creates the shot image node and immediately calls `runBackendWorkflow({ runMode: 'target_node', targetNodeId })` for that new node.
+  - the shot image node still carries structured `params.director3d` scene, camera, lens, lighting, actor, and source-shot metadata, so image generation remains asset-backed and workflow-driven.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - no browser-local generation, direct asset write, free execution path, API route, database migration, worker behavior, provider route, or provider-secret exposure was added.
+  - generated media is still produced by the existing workflow/worker asset pipeline and billing reserve/settle/refund path, not by canvas draft JSON.
+- validation:
+  - red tests observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "downstream image node from the selected director shot"` and `npm test -- src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx -t "downstream image node from a director shot"` first failed because director shot image requests did not include `runAfterCreate` and did not call `runBackendWorkflow`.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx src/flowCanvas/utils/storyboardDirectorSync.test.ts` passed on 2026-07-06: 65 tests.
+  - `npm test -- src/flowCanvas/runtime/v2WorkflowRunner.test.ts src/flowCanvas/utils/videoEditorNodeData.test.ts src/flowCanvas/utils/storyboardVideoSync.test.ts` passed on 2026-07-06: 35 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-06 - Video Editor Export Inspector Status Phase 54
 
 - surfaced completed video editor exports in the studio UI:

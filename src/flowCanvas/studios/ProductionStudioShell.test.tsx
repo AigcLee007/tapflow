@@ -262,6 +262,7 @@ describe('ProductionStudioShell', () => {
     expect(onCreateCanvasNodeFromStudio).toHaveBeenCalledWith({
       kind: 'image',
       position: { x: 420, y: 40 },
+      runAfterCreate: true,
       data: expect.objectContaining({
         params: expect.objectContaining({
           director3d: expect.objectContaining({
@@ -777,6 +778,7 @@ describe('ProductionStudioShell', () => {
     expect(onCreateCanvasNodeFromStudio).toHaveBeenCalledWith({
       kind: 'image',
       position: { x: 420, y: 40 },
+      runAfterCreate: true,
       data: expect.objectContaining({
         title: '镜头 1 生成图',
         generationPrompt: '镜头缓慢推进',

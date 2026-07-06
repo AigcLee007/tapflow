@@ -499,6 +499,10 @@ describe('AiFlowCanvas production studios', () => {
       },
     });
     expect(JSON.stringify(imageNode?.data)).not.toMatch(/blob:|data:/);
+    expect(workflowRunnerMocks.runBackendWorkflow).toHaveBeenCalledWith({
+      runMode: 'target_node',
+      targetNodeId: imageNode?.id,
+    });
   });
 
   it('syncs a director shot into an existing storyboard node', () => {

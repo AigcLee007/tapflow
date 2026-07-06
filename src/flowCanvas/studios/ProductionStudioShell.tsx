@@ -524,6 +524,7 @@ function DirectorDeskContent({
         x: nodePosition.x + 420,
         y: nodePosition.y + 40,
       },
+      runAfterCreate: true,
       data: {
         title: `镜头 ${shotNumber} 生成图`,
         generationMode: 'standard',
