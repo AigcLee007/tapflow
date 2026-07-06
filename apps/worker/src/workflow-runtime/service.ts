@@ -917,6 +917,7 @@ function normalizeMediaOutputs(
 }
 
 export const __workerTestUtils = {
+  applyDraftOutputPatchToNodes,
   buildAiRuntimeDiagnostic,
   buildImageRequest,
   buildMediaUsageMetadata,
@@ -931,6 +932,57 @@ export const __workerTestUtils = {
 function readVideoEditorConfig(config: Record<string, unknown>): Record<string, unknown> | null {
   const params = isPlainObject(config.params) ? config.params : {};
   return isPlainObject(params.videoEditor) ? params.videoEditor : null;
+}
+
+function applyDraftOutputPatchToNodes(input: {
+  currentNode: Pick<CompiledWorkflowNode, "config" | "id">;
+  nodes: Array<Record<string, unknown>>;
+  patch: Record<string, unknown>;
+}): { changed: boolean; nodes: Array<Record<string, unknown>> } {
+  const exportedAssetId = readTrimmedString(input.patch.assetId);
+  const sourceVideoEditorNodeId = readTrimmedString(readVideoEditorConfig(input.currentNode.config ?? {})?.sourceVideoEditorNodeId);
+  let changed = false;
+
+  const nodes = input.nodes.map((node) => {
+    const data = isPlainObject(node.data) ? node.data : null;
+    if (node.id === input.currentNode.id && data) {
+      changed = true;
+      return {
+        ...node,
+        data: {
+          ...data,
+          ...input.patch,
+          updatedAt: Date.now(),
+        },
+      };
+    }
+
+    if (
+      exportedAssetId &&
+      sourceVideoEditorNodeId &&
+      node.id === sourceVideoEditorNodeId &&
+      data &&
+      (node.type === "video_editor" || data.kind === "video_editor" || isPlainObject(data.videoEditor))
+    ) {
+      changed = true;
+      const videoEditor = isPlainObject(data.videoEditor) ? data.videoEditor : {};
+      return {
+        ...node,
+        data: {
+          ...data,
+          updatedAt: Date.now(),
+          videoEditor: {
+            ...videoEditor,
+            exportedAssetId,
+          },
+        },
+      };
+    }
+
+    return node;
+  });
+
+  return { changed, nodes };
 }
 
 function readFiniteNumberOrNull(value: unknown): number | null {
@@ -2746,23 +2798,13 @@ export class WorkflowNodeExecutionService {
       return;
     }
 
-    let changed = false;
-    const nodes = graph.nodes.map((node) => {
-      if (node.id !== currentNode.id || !isPlainObject(node.data)) {
-        return node;
-      }
-      changed = true;
-      return {
-        ...node,
-        data: {
-          ...node.data,
-          ...patch,
-          updatedAt: Date.now(),
-        },
-      };
+    const patched = applyDraftOutputPatchToNodes({
+      currentNode,
+      nodes: graph.nodes,
+      patch,
     });
 
-    if (!changed) {
+    if (!patched.changed) {
       return;
     }
 
@@ -2781,7 +2823,7 @@ export class WorkflowNodeExecutionService {
         runtimeFlow.flow_id,
         JSON.stringify({
           ...graph,
-          nodes,
+          nodes: patched.nodes,
         }),
       ],
     );

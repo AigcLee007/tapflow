@@ -3,6 +3,24 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - Video Editor Export Asset Backfill Phase 52
+
+- closed the video editor export result loop in the worker draft patch path:
+  - successful `video.generate` export nodes still receive the normal generated asset patch.
+  - when the export request carries `params.videoEditor.sourceVideoEditorNodeId`, the source `video_editor` node now receives `videoEditor.exportedAssetId`.
+  - the shared draft-node patch helper writes only asset ids and structured status fields back into canvas draft data.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - no browser-local export, direct asset write, free execution path, API route, database migration, provider route, or provider-secret exposure was added.
+  - exported media still comes from the existing worker asset pipeline and billing usage path.
+  - source video editor draft data does not receive `blob:`, `data:`, http URLs, base64, local file paths, or render temp paths.
+- validation:
+  - red test observed on 2026-07-06: `npm run test --workspace @aigc-flow/worker -- worker.test.ts -t "video editor export draft patch"` first failed because the draft patch helper did not exist.
+  - `npm run test --workspace @aigc-flow/worker -- worker.test.ts -t "video editor export draft patch"` passed on 2026-07-06: 1 selected test.
+  - `npm run test --workspace @aigc-flow/worker -- worker.test.ts -t "video editor"` passed on 2026-07-06: 5 selected tests.
+  - `npm run test --workspace @aigc-flow/worker -- video-editor-render-plan.test.ts video-editor-local-render-service.test.ts video-editor-ffmpeg-executor.test.ts` passed on 2026-07-06: 14 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+  - the database-backed worker export test was extended with a `flow_drafts` assertion, but local DB integration tests are skipped when `DATABASE_URL` is unavailable.
+
 ## 2026-07-06 - Video Editor Export Auto Run Phase 51
 
 - connected video editor export to the existing v2 workflow execution path:

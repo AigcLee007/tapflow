@@ -197,11 +197,13 @@ async function seedWorkflowRuntime(
   options?: {
     inputNodeStatus?: string;
     inputOutputJson?: Record<string, unknown> | null;
+    graphJson?: Record<string, unknown>;
     middleNodeConfig?: Record<string, unknown>;
     middleNodeOutputJson?: Record<string, unknown> | null;
     middleNodeStatus?: string;
     middleNodeType?: "text.generate" | "image.generate" | "video.generate";
     outputNodeStatus?: string;
+    workflowInputJson?: Record<string, unknown>;
     workflowStatus?: string;
   },
 ) {
@@ -363,10 +365,31 @@ async function seedWorkflowRuntime(
         flowId,
         flowVersionId,
         options?.workflowStatus ?? "pending",
-        JSON.stringify({ prompt: "hello worker" }),
+        JSON.stringify(options?.workflowInputJson ?? { prompt: "hello worker" }),
         userId,
       ],
     );
+    if (options?.graphJson) {
+      await client.query(
+        `
+          INSERT INTO flow_drafts (
+            tenant_id,
+            project_id,
+            flow_id,
+            graph_json,
+            last_saved_by
+          )
+          VALUES ($1::uuid, $2::uuid, $3::uuid, $4::jsonb, $5::uuid)
+        `,
+        [
+          tenantId,
+          projectId,
+          flowId,
+          JSON.stringify(options.graphJson),
+          userId,
+        ],
+      );
+    }
     await client.query(
       `
         INSERT INTO node_runs (
@@ -669,6 +692,73 @@ describe("worker skeleton", () => {
     });
     expect((metadata.videoEditorExport as Record<string, unknown>).renderPlan).toBeUndefined();
     expect(JSON.stringify(metadata)).not.toMatch(/blob:|data:/);
+  });
+
+  test("video editor export draft patch updates the source editor exported asset id", () => {
+    const applyDraftOutputPatchToNodes = (__workerTestUtils as {
+      applyDraftOutputPatchToNodes?: (input: {
+        currentNode: { config?: Record<string, unknown>; id: string };
+        nodes: Array<Record<string, unknown>>;
+        patch: Record<string, unknown>;
+      }) => { changed: boolean; nodes: Array<Record<string, unknown>> };
+    }).applyDraftOutputPatchToNodes;
+
+    expect(typeof applyDraftOutputPatchToNodes).toBe("function");
+
+    const result = applyDraftOutputPatchToNodes?.({
+      currentNode: {
+        config: {
+          params: {
+            videoEditor: {
+              sourceVideoEditorNodeId: "video-editor-1",
+            },
+          },
+        },
+        id: "video",
+      },
+      nodes: [
+        {
+          data: {
+            kind: "video_editor",
+            videoEditor: {
+              aspect: "16:9",
+              timeline: { audio: [], clips: [], durationMs: 0, subtitles: [] },
+              version: 1,
+            },
+          },
+          id: "video-editor-1",
+          type: "video_editor",
+        },
+        {
+          data: {
+            kind: "video",
+          },
+          id: "video",
+          type: "video",
+        },
+      ],
+      patch: {
+        assetId: "asset-exported-video",
+        assetIds: ["asset-exported-video"],
+        generationStatus: "done",
+        source: "generated",
+        status: "success",
+      },
+    });
+
+    const nodes = result?.nodes as Array<{ data?: Record<string, unknown>; id?: string }>;
+    const sourceEditorNode = nodes.find((node) => node.id === "video-editor-1");
+    const targetVideoNode = nodes.find((node) => node.id === "video");
+
+    expect(result?.changed).toBe(true);
+    expect(targetVideoNode?.data).toMatchObject({
+      assetId: "asset-exported-video",
+      status: "success",
+    });
+    expect(sourceEditorNode?.data?.videoEditor).toMatchObject({
+      exportedAssetId: "asset-exported-video",
+    });
+    expect(JSON.stringify(sourceEditorNode?.data)).not.toMatch(/base64|blob:|data:|https?:\/\//);
   });
 
   test("video editor local render engine is enabled only by server-side route capabilities", () => {
@@ -2187,6 +2277,52 @@ describeWithDatabase("workflow node execution", () => {
 
         const imageAssetId = "00000000-0000-4000-8000-000000000701";
         const seeded = await seedWorkflowRuntime(appPool, {
+          graphJson: {
+            edges: [],
+            nodes: [
+              {
+                data: {
+                  kind: "video_editor",
+                  title: "剪辑台",
+                  videoEditor: {
+                    aspect: "16:9",
+                    resolution: "1920x1080",
+                    timeline: {
+                      audio: [],
+                      clips: [
+                        {
+                          assetId: imageAssetId,
+                          id: "clip-1",
+                          inMs: 0,
+                          kind: "image",
+                          outMs: 3000,
+                          speed: 1,
+                          startMs: 0,
+                          track: 0,
+                        },
+                      ],
+                      durationMs: 3000,
+                      subtitles: [],
+                    },
+                    version: 1,
+                  },
+                },
+                id: "video-editor-1",
+                position: { x: 0, y: 0 },
+                type: "video_editor",
+              },
+              {
+                data: {
+                  kind: "video",
+                  title: "导出视频",
+                },
+                id: "video",
+                position: { x: 360, y: 0 },
+                type: "video",
+              },
+            ],
+            viewport: { x: 0, y: 0, zoom: 1 },
+          },
           inputNodeStatus: "succeeded",
           middleNodeConfig: {
             generationPrompt: "render editor timeline",
@@ -2218,6 +2354,10 @@ describeWithDatabase("workflow node execution", () => {
           },
           middleNodeStatus: "runnable",
           middleNodeType: "video.generate",
+          workflowInputJson: {
+            runMode: "target_node",
+            targetNodeId: "video",
+          },
         });
         const storageProvider = new MemoryStorageProvider();
         storageProvider.objects.set("test-bucket/tenants/source/editor-image.png", {
@@ -2388,8 +2528,13 @@ describeWithDatabase("workflow node execution", () => {
               "SELECT event_type, metadata, unit_type, units::text AS units FROM usage_events WHERE workflow_run_id = $1::uuid",
               [seeded.workflowRunId],
             );
+            const draft = await client.query<{ graph_json: Record<string, unknown> }>(
+              "SELECT graph_json FROM flow_drafts WHERE tenant_id = $1::uuid AND flow_id = $2::uuid",
+              [seeded.tenantId, seeded.flowId],
+            );
             return {
               assets: assets.rows[0]?.count ?? 0,
+              draftGraph: draft.rows[0]?.graph_json,
               nodeRun: nodeRun.rows[0],
               usage: usage.rows[0],
             };
@@ -2425,6 +2570,22 @@ describeWithDatabase("workflow node execution", () => {
           source: "video_editor_export",
           sourceVideoEditorNodeId: "video-editor-1",
         });
+        const draftNodes = Array.isArray(state.draftGraph?.nodes)
+          ? state.draftGraph.nodes as Array<{ data?: Record<string, unknown>; id?: string }>
+          : [];
+        const sourceEditorNode = draftNodes.find((node) => node.id === "video-editor-1");
+        const targetVideoNode = draftNodes.find((node) => node.id === "video");
+        const exportedAssetId = state.nodeRun.output_json.assets[0].assetId;
+        expect(targetVideoNode?.data).toMatchObject({
+          assetId: exportedAssetId,
+          generationStatus: "done",
+          source: "generated",
+          status: "success",
+        });
+        expect(sourceEditorNode?.data?.videoEditor).toMatchObject({
+          exportedAssetId,
+        });
+        expect(JSON.stringify(sourceEditorNode?.data)).not.toMatch(/base64|blob:|data:|https?:\/\/|localFilePath|rendered-output/);
         for (const dir of localRenderTempDirs) {
           await expect(stat(dir)).rejects.toThrow();
         }
