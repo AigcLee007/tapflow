@@ -5217,3 +5217,20 @@ Validation completed:
   - `npm test -- src/flowCanvas/utils/imageGenerationModeSupport.test.ts src/flowCanvas/nodes/FlowNodes.agent-metadata.test.tsx`
   - `npm test -- src/flowCanvas/utils/imageGenerationModeSupport.test.ts src/flowCanvas/utils/runtimeRouteOptions.test.ts src/flowCanvas/utils/modelCatalogOptions.test.ts src/flowCanvas/nodes/FlowNodes.agent-metadata.test.tsx src/flowCanvas/nodes/ImagePromptActionRow.test.tsx scripts/smoke-production-studios.test.ts`
   - `npm run build`
+
+## 2026-07-06 - Production Suite Catalog Smoke
+
+- added a read-only staging smoke for the Scheme C production suite catalog:
+  - `npm run smoke:production-suite-catalog`
+  - the smoke reads the v2 model catalog route metadata for `gpt-image-2` and `video-editor-ffmpeg`.
+  - image routes must expose `standard`, `panorama_360`, `wraparound_270`, and `subject_orbit_270` with positive `image_generation` pricing.
+  - the local FFmpeg video editor route must expose `video_editor_export` with positive `video_generation` pricing.
+- documented the smoke in `docs/staging-runbook.md` and added staging checklist fields in `docs/STAGING_ENV_TEMPLATE.md` so deployment validation covers UI availability, route capability, and billing readiness before manual canvas QA.
+- kept runtime behavior unchanged:
+  - no generation is enqueued by this smoke, no credits are reserved or settled, and no API route, database migration, worker executor, provider credential, asset persistence path, or billing mutation path changed.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- scripts/smoke-production-suite-catalog.test.ts` first failed because the catalog smoke helper module did not exist.
+  - `npm test -- scripts/smoke-production-suite-catalog.test.ts` passed on 2026-07-06: 2 tests.
+  - `npm pkg get scripts.smoke:production-suite-catalog` returned `tsx scripts/smoke-production-suite-catalog.ts`.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+  - live staging execution still requires a deployed API URL and short-lived `TAPFLOW_ACCESS_TOKEN`.
