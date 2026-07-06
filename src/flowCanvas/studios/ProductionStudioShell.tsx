@@ -910,6 +910,7 @@ function StoryboardContent({
         <PanelTitle icon={<Camera size={15} />} title="选中分镜" />
         <MetricRow label="编号" value={selectedCell ? `镜头 ${selectedCell.shotNo}` : '-'} />
         <MetricRow label="画幅" value={selectedCell?.aspect || storyboard.aspect} />
+        {storyboard.composedAssetId ? <MetricRow label="合成资产" value={storyboard.composedAssetId} /> : null}
         {selectedCell ? (
           <AssetCandidateList
             candidates={storyboardAssetCandidates}

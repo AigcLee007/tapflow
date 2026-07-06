@@ -1081,6 +1081,28 @@ describe('ProductionStudioShell', () => {
     expect(JSON.stringify(onCreateCanvasNodeFromStudio.mock.calls[0]?.[0])).not.toMatch(/blob:|data:/);
   });
 
+  it('shows the latest composed storyboard asset id in the storyboard inspector', () => {
+    render(
+      <ProductionStudioShell
+        studio="storyboard"
+        node={{
+          ...storyboardNode,
+          data: {
+            ...storyboardNode.data,
+            storyboard: {
+              ...storyboardNode.data.storyboard,
+              composedAssetId: 'asset-storyboard-sheet',
+            },
+          },
+        } as any}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('合成资产')).toBeTruthy();
+    expect(screen.getByText('asset-storyboard-sheet')).toBeTruthy();
+  });
+
   it('requests video editor sync from storyboard asset cells', () => {
     const onSyncStoryboardToVideoEditor = vi.fn();
     render(

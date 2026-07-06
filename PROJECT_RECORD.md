@@ -3,6 +3,20 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - Storyboard Sheet Asset Visibility Phase 65
+
+- surfaced composed storyboard sheet results in the storyboard studio:
+  - when `storyboard.composedAssetId` is present, the storyboard inspector now shows a `合成资产` row with the persisted asset id.
+  - this mirrors the existing director shot `生成资产` and video editor `导出资产` status rows, closing the visible result loop for storyboard sheet composition.
+- kept the v2 asset and billing model unchanged:
+  - no preview URL, signed URL, `blob:`, `data:`, base64 media, API route, worker path, provider route, pricing value, or billing mutation was added.
+  - storyboard sheet generation still creates a normal image workflow node and relies on the existing reserve/run/settle/refund path; the source storyboard stores only the persisted asset id.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "composed storyboard asset"` first failed because the storyboard inspector did not render the composed asset id.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx src/flowCanvas/runtime/v2WorkflowRunner.test.ts src/flowCanvas/utils/storyboardNodeData.test.ts` passed on 2026-07-06: 98 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+  - `git diff --check` passed on 2026-07-06.
+
 ## 2026-07-06 - Storyboard Draft Asset Normalization Phase 64
 
 - tightened storyboard draft normalization for asset-backed cells and composed storyboard sheets:
