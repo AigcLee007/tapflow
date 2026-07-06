@@ -308,6 +308,7 @@ describe("workflow pricing resolver", () => {
       },
       routeContext: {
         capabilities: {
+          supportedGenerationModes: ["standard"],
           supportedVideoWorkflows: [],
         },
         modelKey: "mock-video",
@@ -315,6 +316,63 @@ describe("workflow pricing resolver", () => {
         routeKey: "video.default",
       },
     })).toThrow("UNSUPPORTED_VIDEO_EDITOR_EXPORT");
+  });
+
+  it("blocks production image modes when the route does not support them", () => {
+    expect(() => assertNodeRouteSupportsRuntimeRequest({
+      node: {
+        config: {
+          params: {
+            generationMode: "panorama_360",
+            panorama: {
+              continuity: "seamless",
+              projectionHint: "equirectangular",
+              subjectType: "scene",
+            },
+          },
+        },
+        id: "panorama-image",
+        type: "image.generate",
+      },
+      routeContext: {
+        capabilities: {
+          supportedGenerationModes: ["standard"],
+          supportedVideoWorkflows: [],
+        },
+        modelKey: "mock-image",
+        providerKey: "mock-provider",
+        routeKey: "image.default",
+      },
+    })).toThrow("UNSUPPORTED_GENERATION_MODE");
+  });
+
+  it("allows production image modes when the route declares support", () => {
+    expect(() => assertNodeRouteSupportsRuntimeRequest({
+      node: {
+        config: {
+          generationMode: "subject_orbit_270",
+          params: {
+            wraparound: {
+              coverageDegrees: 270,
+              layout: "three_panel_sheet",
+              panels: 3,
+              subjectType: "subject",
+            },
+          },
+        },
+        id: "subject-orbit-image",
+        type: "image.generate",
+      },
+      routeContext: {
+        capabilities: {
+          supportedGenerationModes: ["standard", "subject_orbit_270"],
+          supportedVideoWorkflows: [],
+        },
+        modelKey: "mock-image",
+        providerKey: "mock-provider",
+        routeKey: "image.gpt-image-2",
+      },
+    })).not.toThrow();
   });
 
   it("allows video editor export nodes when the route supports editor exports", () => {
@@ -338,6 +396,7 @@ describe("workflow pricing resolver", () => {
       },
       routeContext: {
         capabilities: {
+          supportedGenerationModes: ["standard"],
           supportedVideoWorkflows: ["video_editor_export"],
         },
         modelKey: "mock-video",
@@ -358,6 +417,7 @@ describe("workflow pricing resolver", () => {
       },
       routeContext: {
         capabilities: {
+          supportedGenerationModes: ["standard"],
           supportedVideoWorkflows: [],
         },
         modelKey: "mock-video",

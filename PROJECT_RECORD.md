@@ -3,6 +3,24 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - Production Image Mode Backend Capability Guard Phase 57
+
+- added a server-side workflow run guard for production image generation modes:
+  - `image.generate` nodes now read `generationMode` from top-level config or `params.generationMode`.
+  - `panorama_360`, `wraparound_270`, and `subject_orbit_270` are allowed only when the selected route/model capabilities explicitly include the requested mode.
+  - unsupported production image modes fail closed with `UNSUPPORTED_GENERATION_MODE` before workflow run enqueue/reserve execution continues.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - no frontend-only trust, browser-local generation, direct asset write, pricing fallback bypass, provider route mutation, database migration, worker behavior, or provider-secret exposure was added.
+  - standard image generation remains allowed by default; production modes still require route capability plus existing pricing checks before billable execution.
+- validation:
+  - red test observed on 2026-07-06: `npm run test --workspace @aigc-flow/api -- workflow-pricing-resolver.test.ts` first failed because unsupported `panorama_360` image requests were not rejected by `assertNodeRouteSupportsRuntimeRequest`.
+  - `npm run test --workspace @aigc-flow/api -- workflow-pricing-resolver.test.ts` passed on 2026-07-06: 13 tests.
+  - `npm run test --workspace @aigc-flow/api -- workflow-pricing-resolver.test.ts workflow-runs.test.ts ai-model-catalog.service.test.ts ai-gateway.service.test.ts` passed on 2026-07-06: 15 tests, with DB-backed `workflow-runs.test.ts` skipped because local `DATABASE_URL` was unavailable.
+  - `npm run test --workspace @aigc-flow/ai-gateway-core -- production-image-prompt.test.ts plugin-registry.test.ts` passed on 2026-07-06: 15 tests.
+  - `npm test -- src/flowCanvas/utils/imageGenerationModeSupport.test.ts src/flowCanvas/runtime/v2WorkflowRunner.test.ts` passed on 2026-07-06: 34 tests.
+  - `npm run build --workspace @aigc-flow/api` passed on 2026-07-06.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-06 - Storyboard Image Generation Auto Run Phase 56
 
 - connected storyboard image-producing actions to the existing v2 workflow execution path:

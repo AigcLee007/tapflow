@@ -113,6 +113,7 @@ export type ResolvedNodePricing = {
 
 type RouteRuntimeContext = {
   capabilities: {
+    supportedGenerationModes: string[];
     supportedVideoWorkflows: string[];
   };
   modelKey: string;
@@ -245,6 +246,12 @@ const DEFAULT_ROUTE_BY_NODE_TYPE: Record<string, string> = {
 };
 const SUPPORTED_VIDEO_EDITOR_EXPORT_WORKFLOW = "video_editor_export";
 const KNOWN_VIDEO_WORKFLOWS = new Set([SUPPORTED_VIDEO_EDITOR_EXPORT_WORKFLOW]);
+const KNOWN_IMAGE_GENERATION_MODES = new Set([
+  "standard",
+  "panorama_360",
+  "wraparound_270",
+  "subject_orbit_270",
+]);
 const UNIT_BY_NODE_TYPE: Record<string, string> = {
   "image.generate": "image_generation",
   "text.generate": "text_generation",
@@ -384,6 +391,14 @@ function readSupportedVideoWorkflows(source: unknown): string[] {
     .filter(Boolean);
 }
 
+function readSupportedGenerationModes(source: unknown): string[] {
+  const direct = isRecord(source) ? source.supportedGenerationModes : undefined;
+  return (Array.isArray(direct) ? direct : [])
+    .map((item) => String(item || "").trim())
+    .filter((item) => KNOWN_IMAGE_GENERATION_MODES.has(item))
+    .filter(Boolean);
+}
+
 function mergeRouteRuntimeCapabilities(input: {
   modelCapabilities?: Record<string, unknown> | null;
   requestConfig?: Record<string, unknown> | null;
@@ -391,7 +406,12 @@ function mergeRouteRuntimeCapabilities(input: {
   const routeCapabilities = isRecord(input.requestConfig?.capabilities)
     ? input.requestConfig.capabilities
     : {};
+  const supportedGenerationModes = Array.from(new Set([
+    ...readSupportedGenerationModes(input.modelCapabilities),
+    ...readSupportedGenerationModes(routeCapabilities),
+  ]));
   return {
+    supportedGenerationModes: supportedGenerationModes.length > 0 ? supportedGenerationModes : ["standard"],
     supportedVideoWorkflows: Array.from(new Set([
       ...readSupportedVideoWorkflows(input.modelCapabilities),
       ...readSupportedVideoWorkflows(routeCapabilities),
@@ -428,10 +448,32 @@ function hasVideoEditorExportMetadata(node: Pick<CompiledWorkflow["nodes"][numbe
   return isRecord(params.videoEditor);
 }
 
+function readImageGenerationMode(node: Pick<CompiledWorkflow["nodes"][number], "config" | "type">): string {
+  if (node.type !== "image.generate") {
+    return "standard";
+  }
+  const config = isRecord(node.config) ? node.config : {};
+  const params = isRecord(config.params) ? config.params : {};
+  const rawMode = readTrimmedString(config.generationMode) ?? readTrimmedString(params.generationMode);
+  return rawMode && KNOWN_IMAGE_GENERATION_MODES.has(rawMode) ? rawMode : "standard";
+}
+
 export function assertNodeRouteSupportsRuntimeRequest(input: {
   node: Pick<CompiledWorkflow["nodes"][number], "config" | "id" | "type">;
   routeContext: RouteRuntimeContext | null;
 }): void {
+  const generationMode = readImageGenerationMode(input.node);
+  if (generationMode !== "standard") {
+    const supportedGenerationModes = input.routeContext?.capabilities.supportedGenerationModes ?? ["standard"];
+    if (!supportedGenerationModes.includes(generationMode)) {
+      throw new WorkflowRunsApiError(
+        422,
+        "UNSUPPORTED_GENERATION_MODE",
+        `UNSUPPORTED_GENERATION_MODE: Route ${input.routeContext?.routeKey ?? resolveEffectiveRouteKey(input.node)} does not support ${generationMode} for node ${input.node.id}.`,
+      );
+    }
+  }
+
   if (!hasVideoEditorExportMetadata(input.node)) {
     return;
   }
