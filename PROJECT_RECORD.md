@@ -3,6 +3,22 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - Video Editor Placeholder Export Guard Phase 70
+
+- tightened the video editor export path so unbound placeholder timeline assets cannot enter the paid export flow:
+  - the video editor studio now disables `导出到画布` and shows `请先绑定素材库资产` while any clip/audio still uses a generated `placeholder-image-*`, `placeholder-video-*`, or `placeholder-audio-*` id.
+  - the worker FFmpeg render-plan builder now rejects the same placeholder asset ids as invalid media references, so old drafts or bypassed UI requests fail before local render asset lookup.
+- kept billing and asset persistence boundaries aligned with v2:
+  - no new API route, database migration, provider route, pricing value, local browser persistence, secret exposure, or balance mutation was added.
+  - valid video editor exports still create normal `video.generate` workflow nodes with `video.editor.ffmpeg`, then use the existing server-side reserve/run/settle/refund and persisted asset flow.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx` first failed because placeholder timeline assets still allowed the export button.
+  - red test observed on 2026-07-06: `npm test -- apps/worker/test/video-editor-render-plan.test.ts` first failed because `placeholder-video-1` was accepted as a render asset id.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx src/flowCanvas/runtime/v2WorkflowRunner.test.ts apps/worker/test/video-editor-render-plan.test.ts apps/worker/test/video-editor-local-render-service.test.ts apps/worker/test/video-editor-ffmpeg-executor.test.ts` passed on 2026-07-06: 112 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+  - `npm run build --workspace @aigc-flow/worker` passed on 2026-07-06.
+  - browser smoke passed on 2026-07-06 against `http://127.0.0.1:64043/output/playwright/video-editor-placeholder-smoke.html`: a placeholder-backed video editor rendered `导出到画布` disabled and showed `请先绑定素材库资产`.
+
 ## 2026-07-06 - Director 3D Viewport Browser Smoke Phase 69
 
 - added a repeatable real-browser smoke command for the 3D Director Desk viewport:

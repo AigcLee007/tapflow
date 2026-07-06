@@ -73,6 +73,7 @@ const RESOLUTION_DIMENSIONS: Record<string, { width: number; height: number }> =
   "720x1280": { width: 720, height: 1280 },
   "1080x1920": { width: 1080, height: 1920 },
 };
+const PLACEHOLDER_ASSET_ID_PATTERN = /^placeholder-(?:image|video|audio)-\d+$/i;
 
 function isPlainObject(value: unknown): value is PlainObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -115,6 +116,7 @@ function normalizeAssetId(value: unknown): string | null {
     lower.startsWith("data:") ||
     lower.startsWith("http://") ||
     lower.startsWith("https://") ||
+    PLACEHOLDER_ASSET_ID_PATTERN.test(assetId) ||
     lower.includes(";base64,")
   ) {
     throw new VideoEditorRenderPlanError(

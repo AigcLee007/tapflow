@@ -77,6 +77,20 @@ describe("buildVideoEditorRenderPlan", () => {
     })).toThrow(VideoEditorRenderPlanError);
   });
 
+  test("rejects unbound placeholder asset ids before renderer execution", () => {
+    expect(() => buildVideoEditorRenderPlan({
+      resolution: "1920x1080",
+      timeline: {
+        audio: [],
+        clips: [
+          { id: "clip-1", assetId: "placeholder-video-1", kind: "video", track: 1, startMs: 0, inMs: 0, outMs: 3000, speed: 1 },
+        ],
+        durationMs: 3000,
+        subtitles: [],
+      },
+    })).toThrow(VideoEditorRenderPlanError);
+  });
+
   test("uses 16:9 1080p defaults when editor output settings are missing", () => {
     const plan = buildVideoEditorRenderPlan({
       timeline: {

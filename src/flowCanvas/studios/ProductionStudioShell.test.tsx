@@ -1631,6 +1631,42 @@ describe('ProductionStudioShell', () => {
     expect(JSON.stringify(onCreateCanvasNodeFromStudio.mock.calls[0]?.[0])).not.toMatch(/blob:|data:/);
   });
 
+  it('blocks video editor export until placeholder timeline assets are bound', () => {
+    const onCreateCanvasNodeFromStudio = vi.fn();
+    render(
+      <ProductionStudioShell
+        studio="video_editor"
+        node={{
+          ...videoNode,
+          data: {
+            ...videoNode.data,
+            videoEditor: {
+              ...videoNode.data.videoEditor,
+              timeline: {
+                ...videoNode.data.videoEditor.timeline,
+                clips: [
+                  {
+                    ...videoNode.data.videoEditor.timeline.clips[0],
+                    assetId: 'placeholder-video-1',
+                  },
+                ],
+              },
+            },
+          },
+        } as any}
+        onClose={vi.fn()}
+        onCreateCanvasNodeFromStudio={onCreateCanvasNodeFromStudio}
+      />,
+    );
+
+    const exportButton = screen.getByRole('button', { name: '导出到画布' }) as HTMLButtonElement;
+    expect(exportButton.disabled).toBe(true);
+    expect(screen.getByText('请先绑定素材库资产')).toBeTruthy();
+
+    fireEvent.click(exportButton);
+    expect(onCreateCanvasNodeFromStudio).not.toHaveBeenCalled();
+  });
+
   it('shows the latest exported video asset id in the video editor inspector', () => {
     render(
       <ProductionStudioShell

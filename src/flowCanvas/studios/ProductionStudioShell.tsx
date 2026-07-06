@@ -37,6 +37,7 @@ type VideoEditorSubtitle = FlowVideoEditorData['timeline']['subtitles'][number];
 type VideoEditorTransitionOut = NonNullable<VideoEditorClip['transitionOut']>;
 
 const VIDEO_EDITOR_EXPORT_ROUTE_KEY = 'video.editor.ffmpeg';
+const VIDEO_EDITOR_PLACEHOLDER_ASSET_ID_PATTERN = /^placeholder-(?:image|video|audio)-\d+$/i;
 const DEFAULT_VIDEO_TRANSITION_DURATION_MS = 500;
 const DEFAULT_DIRECTOR_CAMERA_FOCAL_MM = 35;
 const DIRECTOR_AXIS_LABELS = ['X', 'Y', 'Z'] as const;
@@ -356,6 +357,21 @@ function buildVideoAudio(
     outMs: 3000,
     volume: 1,
   };
+}
+
+function getVideoEditorExportBlockReason(videoEditor: FlowVideoEditorData): string | null {
+  const assetIds = [
+    ...videoEditor.timeline.clips.map((clip) => clip.assetId.trim()),
+    ...videoEditor.timeline.audio.map((item) => item.assetId.trim()),
+  ].filter(Boolean);
+
+  if (assetIds.length === 0) {
+    return '请先添加素材片段或音频';
+  }
+  if (assetIds.some((assetId) => VIDEO_EDITOR_PLACEHOLDER_ASSET_ID_PATTERN.test(assetId))) {
+    return '请先绑定素材库资产';
+  }
+  return null;
 }
 
 function DirectorDeskContent({
@@ -1037,6 +1053,8 @@ function VideoEditorContent({
     ? subtitles.find((subtitle) => subtitle.id === selectedSubtitleId) ?? null
     : null;
   const selectedAssetKind = selectedAudio ? 'audio' : selectedClip?.kind ?? null;
+  const exportBlockReason = getVideoEditorExportBlockReason(videoEditor);
+  const canExportVideo = !exportBlockReason;
   const [assetCandidates, setAssetCandidates] = useState<AssetItem[]>([]);
   const [assetCandidatesError, setAssetCandidatesError] = useState<string | null>(null);
   const [assetCandidatesLoading, setAssetCandidatesLoading] = useState(false);
@@ -1256,6 +1274,7 @@ function VideoEditorContent({
     setSelectedSubtitleId(null);
   };
   const exportVideoToCanvas = () => {
+    if (!canExportVideo) return;
     onCreateCanvasNodeFromStudio?.({
       kind: 'video',
       position: {
@@ -1304,7 +1323,18 @@ function VideoEditorContent({
             <Plus size={14} />
             添加字幕
           </button>
-          <button type="button" aria-label="导出到画布" style={toolButtonStyle} onClick={exportVideoToCanvas}>
+          {exportBlockReason ? <EmptyLine label={exportBlockReason} /> : null}
+          <button
+            type="button"
+            aria-label="导出到画布"
+            disabled={!canExportVideo}
+            style={{
+              ...toolButtonStyle,
+              cursor: canExportVideo ? 'pointer' : 'not-allowed',
+              opacity: canExportVideo ? 1 : 0.45,
+            }}
+            onClick={exportVideoToCanvas}
+          >
             <Film size={14} />
             导出到画布
           </button>
