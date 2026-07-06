@@ -3,6 +3,21 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - Worker Director Shot Draft Patch Phase 60
+
+- made director shot generated assets durable from the worker draft patch path:
+  - `applyDraftOutputPatchToNodes` now reads `params.director3d.sourceDirectorNodeId` and `params.director3d.shotId` from successful image generation nodes.
+  - when the target image node output is patched into `flow_drafts.graph_json`, the matching source `director3d.shots[]` entry also receives `generatedAssetId` and `generatedSourceNodeId`.
+  - this mirrors the active frontend runtime sync so director shot results survive even when the browser is not connected to receive workflow events.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - no signed URL, preview URL, local file path, render temp path, `blob:`, `data:`, base64, direct asset write, billing mutation, API route, database migration, provider route, pricing change, or provider-secret exposure was added.
+  - the worker patch stores only persisted asset identifiers in the canvas draft.
+- validation:
+  - red test observed on 2026-07-06: `npm run test --workspace @aigc-flow/worker -- worker.test.ts -t "director shot image draft patch"` first failed because the source director shot did not receive `generatedAssetId`.
+  - `npm run test --workspace @aigc-flow/worker -- worker.test.ts -t "draft patch|video editor"` passed on 2026-07-06: 6 tests.
+  - `npm run build --workspace @aigc-flow/worker` passed on 2026-07-06.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-06 - Director Shot Asset Sync Phase 59
 
 - closed the 3D Director Desk shot synthesis result loop in the frontend runtime:

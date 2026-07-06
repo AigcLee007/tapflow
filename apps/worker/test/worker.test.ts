@@ -761,6 +761,79 @@ describe("worker skeleton", () => {
     expect(JSON.stringify(sourceEditorNode?.data)).not.toMatch(/base64|blob:|data:|https?:\/\//);
   });
 
+  test("director shot image draft patch updates the source shot generated asset id", () => {
+    const applyDraftOutputPatchToNodes = (__workerTestUtils as {
+      applyDraftOutputPatchToNodes?: (input: {
+        currentNode: { config?: Record<string, unknown>; id: string };
+        nodes: Array<Record<string, unknown>>;
+        patch: Record<string, unknown>;
+      }) => { changed: boolean; nodes: Array<Record<string, unknown>> };
+    }).applyDraftOutputPatchToNodes;
+
+    expect(typeof applyDraftOutputPatchToNodes).toBe("function");
+
+    const result = applyDraftOutputPatchToNodes?.({
+      currentNode: {
+        config: {
+          params: {
+            director3d: {
+              sourceDirectorNodeId: "director-1",
+              shotId: "shot-1",
+            },
+          },
+        },
+        id: "image-1",
+      },
+      nodes: [
+        {
+          data: {
+            director3d: {
+              version: 1,
+              scene: { gridVisible: true, units: "meters" },
+              actors: [],
+              cameras: [{ id: "camera-1", name: "Camera 1", position: [0, 1.8, 5], target: [0, 1, 0] }],
+              shots: [{ id: "shot-1", cameraId: "camera-1", startMs: 0, durationMs: 3000, motion: "static" }],
+            },
+            kind: "director3d",
+          },
+          id: "director-1",
+          type: "director3d",
+        },
+        {
+          data: {
+            kind: "image",
+          },
+          id: "image-1",
+          type: "image",
+        },
+      ],
+      patch: {
+        assetId: "asset-director-shot",
+        assetIds: ["asset-director-shot"],
+        generationStatus: "done",
+        source: "generated",
+        status: "success",
+      },
+    });
+
+    const nodes = result?.nodes as Array<{ data?: Record<string, unknown>; id?: string }>;
+    const sourceDirectorNode = nodes.find((node) => node.id === "director-1");
+    const targetImageNode = nodes.find((node) => node.id === "image-1");
+    const director3d = sourceDirectorNode?.data?.director3d as { shots?: Array<Record<string, unknown>> } | undefined;
+
+    expect(result?.changed).toBe(true);
+    expect(targetImageNode?.data).toMatchObject({
+      assetId: "asset-director-shot",
+      status: "success",
+    });
+    expect(director3d?.shots?.[0]).toMatchObject({
+      generatedAssetId: "asset-director-shot",
+      generatedSourceNodeId: "image-1",
+      id: "shot-1",
+    });
+    expect(JSON.stringify(sourceDirectorNode?.data)).not.toMatch(/base64|blob:|data:|https?:\/\//);
+  });
+
   test("video editor local render engine is enabled only by server-side route capabilities", () => {
     const readVideoEditorRenderEngine = (__workerTestUtils as {
       readVideoEditorRenderEngine?: (requestConfig: Record<string, unknown> | null) => "ffmpeg" | null;

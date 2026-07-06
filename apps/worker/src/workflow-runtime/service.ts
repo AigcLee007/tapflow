@@ -934,6 +934,11 @@ function readVideoEditorConfig(config: Record<string, unknown>): Record<string, 
   return isPlainObject(params.videoEditor) ? params.videoEditor : null;
 }
 
+function readDirector3dConfig(config: Record<string, unknown>): Record<string, unknown> | null {
+  const params = isPlainObject(config.params) ? config.params : {};
+  return isPlainObject(params.director3d) ? params.director3d : null;
+}
+
 function applyDraftOutputPatchToNodes(input: {
   currentNode: Pick<CompiledWorkflowNode, "config" | "id">;
   nodes: Array<Record<string, unknown>>;
@@ -941,6 +946,9 @@ function applyDraftOutputPatchToNodes(input: {
 }): { changed: boolean; nodes: Array<Record<string, unknown>> } {
   const exportedAssetId = readTrimmedString(input.patch.assetId);
   const sourceVideoEditorNodeId = readTrimmedString(readVideoEditorConfig(input.currentNode.config ?? {})?.sourceVideoEditorNodeId);
+  const director3dConfig = readDirector3dConfig(input.currentNode.config ?? {});
+  const sourceDirectorNodeId = readTrimmedString(director3dConfig?.sourceDirectorNodeId);
+  const sourceDirectorShotId = readTrimmedString(director3dConfig?.shotId);
   let changed = false;
 
   const nodes = input.nodes.map((node) => {
@@ -975,6 +983,45 @@ function applyDraftOutputPatchToNodes(input: {
             ...videoEditor,
             exportedAssetId,
           },
+        },
+      };
+    }
+
+    if (
+      exportedAssetId &&
+      sourceDirectorNodeId &&
+      sourceDirectorShotId &&
+      node.id === sourceDirectorNodeId &&
+      data &&
+      (node.type === "director3d" || data.kind === "director3d" || isPlainObject(data.director3d))
+    ) {
+      const director3d = isPlainObject(data.director3d) ? data.director3d : {};
+      const shots = Array.isArray(director3d.shots) ? director3d.shots : [];
+      let shotChanged = false;
+      const nextShots = shots.map((shot) => {
+        if (!isPlainObject(shot) || readTrimmedString(shot.id) !== sourceDirectorShotId) {
+          return shot;
+        }
+        shotChanged = true;
+        return {
+          ...shot,
+          generatedAssetId: exportedAssetId,
+          generatedSourceNodeId: input.currentNode.id,
+        };
+      });
+      if (!shotChanged) {
+        return node;
+      }
+      changed = true;
+      return {
+        ...node,
+        data: {
+          ...data,
+          director3d: {
+            ...director3d,
+            shots: nextShots,
+          },
+          updatedAt: Date.now(),
         },
       };
     }
