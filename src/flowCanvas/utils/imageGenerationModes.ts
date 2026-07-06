@@ -45,7 +45,11 @@ export function buildImageGenerationModeParamPatch(modeInput: unknown): Record<s
   const mode = normalizeImageGenerationMode(modeInput);
 
   if (mode === 'standard') {
-    return { generationMode: 'standard' };
+    return {
+      generationMode: 'standard',
+      panorama: undefined,
+      wraparound: undefined,
+    };
   }
 
   if (mode === 'panorama_360') {
@@ -56,11 +60,13 @@ export function buildImageGenerationModeParamPatch(modeInput: unknown): Record<s
         projectionHint: 'equirectangular',
         subjectType: 'scene',
       },
+      wraparound: undefined,
     };
   }
 
   return {
     generationMode: mode,
+    panorama: undefined,
     wraparound: {
       coverageDegrees: 270,
       layout: mode === 'subject_orbit_270' ? 'three_panel_sheet' : 'continuous',

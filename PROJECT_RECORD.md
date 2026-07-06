@@ -3,6 +3,21 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - Image Production Mode Param Cleanup Phase 66
+
+- tightened image generation mode parameter patches for the 360/270 production modes:
+  - switching back to `standard` now clears stale `panorama` and `wraparound` params from the merged image-node params.
+  - switching between `panorama_360`, `wraparound_270`, and `subject_orbit_270` now keeps those mode-specific params mutually exclusive before draft JSON or workflow metadata serialization.
+  - this keeps UI-selected mode, runtime effect, and billing/preflight semantics aligned: a standard image request no longer carries stale 360/270-shaped metadata from an earlier selection.
+- kept v2 billing and asset boundaries unchanged:
+  - no API route, provider route, pricing value, billing mutation, storage behavior, database migration, or secret exposure was added.
+  - the existing reserve/run/settle/refund workflow remains the only billable path for generated outputs.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/utils/imageGenerationModes.test.ts` first failed because standard mode patches left stale `panorama` and `wraparound` params after object merge.
+  - `npm test -- src/flowCanvas/utils/imageGenerationModes.test.ts src/flowCanvas/utils/imageGenerationModeSupport.test.ts src/flowCanvas/runtime/v2WorkflowRunner.test.ts src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-06: 66 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+  - `git diff --check` passed on 2026-07-06.
+
 ## 2026-07-06 - Storyboard Sheet Asset Visibility Phase 65
 
 - surfaced composed storyboard sheet results in the storyboard studio:

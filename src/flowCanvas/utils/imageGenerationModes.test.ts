@@ -37,4 +37,26 @@ describe('imageGenerationModes', () => {
       },
     });
   });
+
+  it('clears stale production mode params when switching modes', () => {
+    const staleParams = {
+      generationMode: 'panorama_360',
+      panorama: { projectionHint: 'equirectangular' },
+      wraparound: { coverageDegrees: 270 },
+    };
+
+    const standardParams = {
+      ...staleParams,
+      ...buildImageGenerationModeParamPatch('standard'),
+    };
+    expect(JSON.stringify(standardParams)).not.toContain('panorama');
+    expect(JSON.stringify(standardParams)).not.toContain('wraparound');
+
+    const wraparoundParams = {
+      ...staleParams,
+      ...buildImageGenerationModeParamPatch('wraparound_270'),
+    };
+    expect(JSON.stringify(wraparoundParams)).not.toContain('panorama');
+    expect(JSON.stringify(wraparoundParams)).toContain('wraparound');
+  });
 });
