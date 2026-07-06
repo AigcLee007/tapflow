@@ -3,6 +3,23 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - Director Desk Asset Drop Binding Phase 76
+
+- added direct asset-library drop binding for 3D Director Desk scene objects:
+  - actor rows now accept `application/x-tapflow-asset-id` drops, patch the target actor `assetId`, and promote the actor to `image_plane`.
+  - the scene background row accepts the same asset-id drop payload and patches `scene.backgroundAssetId`.
+  - dropping onto a target also selects that target so the inspector follows the user's action.
+- kept v2 persistence, generation, and billing boundaries unchanged:
+  - director state stores only asset ids; preview URLs, signed URLs, `blob:`, and `data:` payloads are ignored by the drop path and remain filtered by director data normalization.
+  - no API route, database migration, provider route, pricing value, worker behavior, image generation route, or billing state changed.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx` first failed because dropping an asset on a director actor did not call `onUpdateNodeData`.
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx` first failed because dropping an asset on the director scene background did not call `onUpdateNodeData`.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx` passed on 2026-07-06: 45 tests.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx scripts/smoke-production-studios.test.ts` passed on 2026-07-06: 74 tests.
+  - `npm run smoke:production-studios` passed on 2026-07-06 with `status: ok`.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-06 - Video Editor Timeline Drop Binding Phase 75
 
 - added direct asset-library drop binding for video editor timeline items:

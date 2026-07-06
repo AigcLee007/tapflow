@@ -522,8 +522,37 @@ function DirectorDeskContent({
     if (!selectedActor) return;
     patchActor(selectedActor.id, { assetId, kind: 'image_plane' });
   };
+  const bindActorAssetAtId = (actorId: string, assetId: string) => {
+    patchActor(actorId, { assetId, kind: 'image_plane' });
+    setSelected({ type: 'actor', id: actorId });
+  };
   const bindSceneBackgroundAsset = (assetId: string) => {
     patchScene({ backgroundAssetId: assetId });
+  };
+  const bindSceneBackgroundAssetFromDrop = (assetId: string) => {
+    patchScene({ backgroundAssetId: assetId });
+    setSelected({ type: 'scene', id: 'background' });
+  };
+  const handleDirectorAssetDragOver = (event: React.DragEvent<HTMLButtonElement>) => {
+    if (!Array.from(event.dataTransfer.types || []).includes(ASSET_LIBRARY_DRAG_TYPE)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+  };
+  const handleDirectorActorAssetDrop = (event: React.DragEvent<HTMLButtonElement>, actorId: string) => {
+    if (!Array.from(event.dataTransfer.types || []).includes(ASSET_LIBRARY_DRAG_TYPE)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const assetId = event.dataTransfer.getData(ASSET_LIBRARY_DRAG_TYPE).trim();
+    if (!assetId) return;
+    bindActorAssetAtId(actorId, assetId);
+  };
+  const handleDirectorSceneBackgroundDrop = (event: React.DragEvent<HTMLButtonElement>) => {
+    if (!Array.from(event.dataTransfer.types || []).includes(ASSET_LIBRARY_DRAG_TYPE)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const assetId = event.dataTransfer.getData(ASSET_LIBRARY_DRAG_TYPE).trim();
+    if (!assetId) return;
+    bindSceneBackgroundAssetFromDrop(assetId);
   };
   const synthesizeShotToCanvas = () => {
     if (!targetShot || !targetCamera) return;
@@ -589,6 +618,8 @@ function DirectorDeskContent({
             label="场景背景"
             meta={director.scene.backgroundAssetId ? '已绑定' : '未绑定'}
             onClick={() => setSelected({ type: 'scene', id: 'background' })}
+            onDragOver={handleDirectorAssetDragOver}
+            onDrop={handleDirectorSceneBackgroundDrop}
             selected={selectedSceneBackground}
           />
           {actors.map((actor) => (
@@ -598,6 +629,8 @@ function DirectorDeskContent({
               label={actor.name}
               meta={actor.visible ? '可见' : '隐藏'}
               onClick={() => setSelected({ type: 'actor', id: actor.id })}
+              onDragOver={handleDirectorAssetDragOver}
+              onDrop={(event) => handleDirectorActorAssetDrop(event, actor.id)}
               selected={selected?.type === 'actor' && selected.id === actor.id}
             />
           ))}
@@ -2028,16 +2061,27 @@ function StudioSelectableListItem({
   label,
   meta,
   onClick,
+  onDragOver,
+  onDrop,
   selected,
 }: {
   ariaLabel: string;
   label: string;
   meta: string;
   onClick: () => void;
+  onDragOver?: React.DragEventHandler<HTMLButtonElement>;
+  onDrop?: React.DragEventHandler<HTMLButtonElement>;
   selected: boolean;
 }) {
   return (
-    <button type="button" aria-label={ariaLabel} style={listItemButtonStyle(selected)} onClick={onClick}>
+    <button
+      type="button"
+      aria-label={ariaLabel}
+      style={listItemButtonStyle(selected)}
+      onClick={onClick}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+    >
       <span>{label}</span>
       <small>{meta}</small>
     </button>

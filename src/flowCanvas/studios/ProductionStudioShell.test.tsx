@@ -402,6 +402,74 @@ describe('ProductionStudioShell', () => {
     expect(JSON.stringify(latestPatch)).not.toMatch(/blob:|data:|https?:\/\//);
   });
 
+  it('binds a dropped asset id to the target director actor without storing preview URLs', () => {
+    const onUpdateNodeData = vi.fn();
+    render(
+      <ProductionStudioShell
+        studio="director3d"
+        node={directorNode as any}
+        onClose={vi.fn()}
+        onUpdateNodeData={onUpdateNodeData}
+      />,
+    );
+
+    const dataTransfer = {
+      dropEffect: '',
+      getData: vi.fn((type: string) => {
+        if (type === 'application/x-tapflow-asset-id') return 'asset-actor-drop';
+        if (type === 'text/plain') return 'https://signed.example.com/actor-preview.png';
+        return '';
+      }),
+      types: ['application/x-tapflow-asset-id', 'text/plain'],
+    } as unknown as DataTransfer;
+
+    const actorButton = screen.getByRole('button', { name: /A$/ });
+    fireEvent.dragOver(actorButton, { dataTransfer });
+    fireEvent.drop(actorButton, { dataTransfer });
+
+    expect(onUpdateNodeData).toHaveBeenLastCalledWith('director-node', {
+      director3d: expect.objectContaining({
+        actors: expect.arrayContaining([
+          expect.objectContaining({ id: 'actor-1', assetId: 'asset-actor-drop', kind: 'image_plane' }),
+        ]),
+      }),
+    });
+    expect(JSON.stringify(onUpdateNodeData.mock.calls)).not.toMatch(/blob:|data:|https?:\/\//);
+  });
+
+  it('binds a dropped asset id to the director scene background without storing preview URLs', () => {
+    const onUpdateNodeData = vi.fn();
+    render(
+      <ProductionStudioShell
+        studio="director3d"
+        node={directorNode as any}
+        onClose={vi.fn()}
+        onUpdateNodeData={onUpdateNodeData}
+      />,
+    );
+
+    const dataTransfer = {
+      dropEffect: '',
+      getData: vi.fn((type: string) => {
+        if (type === 'application/x-tapflow-asset-id') return 'asset-scene-bg-drop';
+        if (type === 'text/plain') return 'https://signed.example.com/scene-bg.png';
+        return '';
+      }),
+      types: ['application/x-tapflow-asset-id', 'text/plain'],
+    } as unknown as DataTransfer;
+
+    const sceneButton = screen.getByRole('button', { name: /背景|鑳屾櫙/ });
+    fireEvent.dragOver(sceneButton, { dataTransfer });
+    fireEvent.drop(sceneButton, { dataTransfer });
+
+    expect(onUpdateNodeData).toHaveBeenLastCalledWith('director-node', {
+      director3d: expect.objectContaining({
+        scene: expect.objectContaining({ backgroundAssetId: 'asset-scene-bg-drop' }),
+      }),
+    });
+    expect(JSON.stringify(onUpdateNodeData.mock.calls)).not.toMatch(/blob:|data:|https?:\/\//);
+  });
+
   it('feeds asset-backed director scene metadata into the 3D viewport', () => {
     const assetBackedDirectorNode = {
       ...directorNode,
