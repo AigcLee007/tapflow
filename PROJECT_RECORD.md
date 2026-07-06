@@ -3,6 +3,22 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - Storyboard Sheet Asset Sync Phase 58
+
+- closed the storyboard sheet composition result loop in the frontend runtime:
+  - successful `image.generate` nodes carrying `params.storyboardSheet.sourceStoryboardNodeId` now write the returned primary asset id back to the source storyboard as `storyboard.composedAssetId`.
+  - the existing per-cell storyboard asset sync remains unchanged for `params.storyboard` generation nodes.
+  - the source storyboard update uses the shared storyboard normalizer and stores only the persisted asset id.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - no browser-local generation, direct asset write, signed URL persistence, preview URL persistence, `blob:`, `data:`, base64, API route, database migration, worker behavior, provider route, pricing change, or provider-secret exposure was added.
+  - the composed sheet image is still produced by the existing workflow/worker asset pipeline and billing path.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/runtime/v2WorkflowRunner.test.ts -t "storyboard sheet generation"` first failed because successful sheet generation did not write `composedAssetId` to the source storyboard.
+  - `npm test -- src/flowCanvas/runtime/v2WorkflowRunner.test.ts -t "storyboard"` passed on 2026-07-06: 2 selected tests.
+  - `npm test -- src/flowCanvas/runtime/v2WorkflowRunner.test.ts src/flowCanvas/utils/storyboardNodeData.test.ts src/flowCanvas/utils/storyboardVideoSync.test.ts` passed on 2026-07-06: 36 tests.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx src/flowCanvas/utils/storyboardDirectorSync.test.ts` passed on 2026-07-06: 65 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-06 - Production Image Mode Backend Capability Guard Phase 57
 
 - added a server-side workflow run guard for production image generation modes:

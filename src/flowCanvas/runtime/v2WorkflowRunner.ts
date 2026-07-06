@@ -32,7 +32,7 @@ import {
 import { normalizeImageGenerationMode } from '../utils/imageGenerationModes';
 import { resolveImageGenerationModeRunBlocker } from '../utils/imageGenerationModeSupport';
 import { fitMediaNodeToShortSide } from '../utils/nodeSizing';
-import { patchStoryboardCell } from '../utils/storyboardNodeData';
+import { normalizeStoryboardData, patchStoryboardCell } from '../utils/storyboardNodeData';
 import { normalizeVideoEditorData } from '../utils/videoEditorNodeData';
 import { flushRemoteDraftBeforeRun, shouldFlushRemoteDraftBeforeRun } from './remoteDraftSaveBarrier';
 
@@ -768,6 +768,33 @@ function syncStoryboardCellFromGeneratedAsset(nodeRun: PersistableNodeRun, asset
   });
 }
 
+function syncStoryboardSheetFromGeneratedAsset(nodeRun: PersistableNodeRun, assetRefs: FlowRuntimeAssetRef[]): void {
+  if (nodeRun.status !== 'succeeded' || nodeRun.nodeType !== 'image.generate' || assetRefs.length === 0 || !shouldApplyNodeRun(nodeRun)) {
+    return;
+  }
+  const primaryAsset = assetRefs[0];
+  if (!primaryAsset?.assetId) return;
+
+  const store = useFlowCanvasStore.getState();
+  const sourceNode = store.nodes.find((node) => node.id === nodeRun.nodeId);
+  const storyboardSheetRef = sourceNode?.data?.params?.storyboardSheet;
+  if (!storyboardSheetRef || typeof storyboardSheetRef !== 'object') return;
+
+  const ref = storyboardSheetRef as Record<string, unknown>;
+  const sourceStoryboardNodeId = typeof ref.sourceStoryboardNodeId === 'string' ? ref.sourceStoryboardNodeId : '';
+  if (!sourceStoryboardNodeId) return;
+
+  const storyboardNode = store.nodes.find((node) => node.id === sourceStoryboardNodeId && node.type === 'storyboard');
+  if (!storyboardNode) return;
+
+  store.updateNodeData(sourceStoryboardNodeId, {
+    storyboard: {
+      ...normalizeStoryboardData(storyboardNode.data.storyboard),
+      composedAssetId: primaryAsset.assetId,
+    },
+  });
+}
+
 function syncVideoEditorExportedAsset(nodeRun: PersistableNodeRun, assetRefs: FlowRuntimeAssetRef[]): void {
   if (nodeRun.status !== 'succeeded' || nodeRun.nodeType !== 'video.generate' || assetRefs.length === 0 || !shouldApplyNodeRun(nodeRun)) {
     return;
@@ -831,6 +858,7 @@ function persistNodeOutputsFromRun(nodeRuns: PersistableNodeRun[], assetRefsByNo
     }
     updateNodeData(nodeRun.nodeId, nodePatch);
     syncStoryboardCellFromGeneratedAsset(nodeRun, nodeAssets);
+    syncStoryboardSheetFromGeneratedAsset(nodeRun, nodeAssets);
     syncVideoEditorExportedAsset(nodeRun, nodeAssets);
   }
 }
