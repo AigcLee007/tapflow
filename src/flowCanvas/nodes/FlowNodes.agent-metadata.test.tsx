@@ -607,6 +607,8 @@ describe("FlowNodes agent metadata", () => {
       />,
     );
 
+    expect(screen.getByTestId("image-generate-toolbar-credits").textContent).toContain("未配置");
+
     fireEvent.click(screen.getByRole("button", { name: "开始生成" }));
 
     expect(workflowRunnerMocks.runBackendWorkflow).not.toHaveBeenCalled();

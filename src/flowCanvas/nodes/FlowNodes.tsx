@@ -4495,7 +4495,11 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     getOfficialImageRouteSizeCredits(currentRouteKey, currentSize)
     ?? getOfficialImageRouteSizeCredits(selectedRuntimeRoute?.routeKey, currentSize)
     ?? getImageRoutePointCost(selectedRoute, currentSize);
-  const displayPointCost = getDisplayImageCredits(currentPointCost, d.batchCount);
+  const generationModeRunBlocker = resolveImageGenerationModeRunBlocker({
+    mode: currentGenerationMode,
+    route: selectedRuntimeRoute,
+  });
+  const displayPointCost = generationModeRunBlocker ? null : getDisplayImageCredits(currentPointCost, d.batchCount);
   const referencedAssetItemIds = Array.isArray(d.referenceAssetItemIds)
     ? (d.referenceAssetItemIds as string[])
     : [];
@@ -5006,13 +5010,9 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       });
       return;
     }
-    const generationModeBlocker = resolveImageGenerationModeRunBlocker({
-      mode: currentGenerationMode,
-      route: selectedRuntimeRoute,
-    });
-    if (generationModeBlocker) {
+    if (generationModeRunBlocker) {
       updateNodeData(id, {
-        errorMessage: generationModeBlocker.message,
+        errorMessage: generationModeRunBlocker.message,
         generationStatus: 'error',
         status: 'error',
       });
@@ -7009,7 +7009,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
           <div style={promptBottomRow}>
             <ImagePromptActionRow
               batchCount={d.batchCount || 1}
-              creditsValue={formatImageCredits(displayPointCost ?? 0)}
+              creditsValue={generationModeRunBlocker ? '未配置' : formatImageCredits(displayPointCost ?? 0)}
               isGenerating={isGenerating}
               modelControl={(
                 <ImageModelRouteDropup

@@ -5208,6 +5208,7 @@ Validation completed:
 
 - wired the image-node generate action into the production mode route/pricing support guard before launching a workflow run.
 - 360° panorama and 270° wraparound/subject-orbit modes now fail closed on the canvas when the selected route lacks declared mode support or active pricing, instead of enqueueing a free or unsupported run.
+- the image prompt cost pill now shows `未配置` for blocked production modes instead of showing fallback hardcoded credits that cannot be reserved server-side.
 - kept the error codes visible while localizing the node error messages:
   - `UNSUPPORTED_GENERATION_MODE`
   - `PRICING_NOT_FOUND`
