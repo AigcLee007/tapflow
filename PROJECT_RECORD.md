@@ -3,6 +3,21 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - Worker Storyboard Draft Patch Phase 61
+
+- made storyboard image results durable from the worker draft patch path:
+  - `params.storyboard.sourceStoryboardNodeId` plus `params.storyboard.cellId` now patches the matching source storyboard cell with `assetId`, `sourceAssetId`, and `sourceNodeId`.
+  - `params.storyboardSheet.sourceStoryboardNodeId` now patches the source storyboard with `composedAssetId`.
+  - this mirrors the active frontend runtime sync so storyboard shot images and composed storyboard sheets survive even when the browser is not connected to receive workflow events.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - no signed URL, preview URL, local file path, `blob:`, `data:`, base64, direct asset write, billing mutation, API route, database migration, provider route, pricing change, or provider-secret exposure was added.
+  - the worker patch stores only persisted asset identifiers in the canvas draft.
+- validation:
+  - red tests observed on 2026-07-06: `npm run test --workspace @aigc-flow/worker -- worker.test.ts -t "storyboard .* draft patch"` first failed because source storyboard cells and sheet metadata were not patched from successful image outputs.
+  - `npm run test --workspace @aigc-flow/worker -- worker.test.ts -t "draft patch|video editor|director shot"` passed on 2026-07-06: 8 tests.
+  - `npm run build --workspace @aigc-flow/worker` passed on 2026-07-06.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-06 - Worker Director Shot Draft Patch Phase 60
 
 - made director shot generated assets durable from the worker draft patch path:

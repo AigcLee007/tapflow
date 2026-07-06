@@ -834,6 +834,146 @@ describe("worker skeleton", () => {
     expect(JSON.stringify(sourceDirectorNode?.data)).not.toMatch(/base64|blob:|data:|https?:\/\//);
   });
 
+  test("storyboard image draft patch updates the source cell asset id", () => {
+    const applyDraftOutputPatchToNodes = (__workerTestUtils as {
+      applyDraftOutputPatchToNodes?: (input: {
+        currentNode: { config?: Record<string, unknown>; id: string };
+        nodes: Array<Record<string, unknown>>;
+        patch: Record<string, unknown>;
+      }) => { changed: boolean; nodes: Array<Record<string, unknown>> };
+    }).applyDraftOutputPatchToNodes;
+
+    expect(typeof applyDraftOutputPatchToNodes).toBe("function");
+
+    const result = applyDraftOutputPatchToNodes?.({
+      currentNode: {
+        config: {
+          params: {
+            storyboard: {
+              cellId: "cell-1",
+              sourceStoryboardNodeId: "storyboard-1",
+            },
+          },
+        },
+        id: "image-1",
+      },
+      nodes: [
+        {
+          data: {
+            kind: "storyboard",
+            storyboard: {
+              aspect: "16:9",
+              cells: [
+                { id: "cell-1", shotNo: 1, prompt: "wide city" },
+                { id: "cell-2", shotNo: 2 },
+              ],
+              grid: "3x2",
+              selectedIndex: 0,
+            },
+          },
+          id: "storyboard-1",
+          type: "storyboard",
+        },
+        {
+          data: { kind: "image" },
+          id: "image-1",
+          type: "image",
+        },
+      ],
+      patch: {
+        assetId: "asset-storyboard-cell",
+        assetIds: ["asset-storyboard-cell"],
+        generationStatus: "done",
+        source: "generated",
+        status: "success",
+      },
+    });
+
+    const nodes = result?.nodes as Array<{ data?: Record<string, unknown>; id?: string }>;
+    const sourceStoryboardNode = nodes.find((node) => node.id === "storyboard-1");
+    const targetImageNode = nodes.find((node) => node.id === "image-1");
+    const storyboard = sourceStoryboardNode?.data?.storyboard as { cells?: Array<Record<string, unknown>> } | undefined;
+
+    expect(result?.changed).toBe(true);
+    expect(targetImageNode?.data).toMatchObject({
+      assetId: "asset-storyboard-cell",
+      status: "success",
+    });
+    expect(storyboard?.cells?.[0]).toMatchObject({
+      assetId: "asset-storyboard-cell",
+      id: "cell-1",
+      sourceAssetId: "asset-storyboard-cell",
+      sourceNodeId: "image-1",
+    });
+    expect(JSON.stringify(sourceStoryboardNode?.data)).not.toMatch(/base64|blob:|data:|https?:\/\//);
+  });
+
+  test("storyboard sheet draft patch updates the source storyboard composed asset id", () => {
+    const applyDraftOutputPatchToNodes = (__workerTestUtils as {
+      applyDraftOutputPatchToNodes?: (input: {
+        currentNode: { config?: Record<string, unknown>; id: string };
+        nodes: Array<Record<string, unknown>>;
+        patch: Record<string, unknown>;
+      }) => { changed: boolean; nodes: Array<Record<string, unknown>> };
+    }).applyDraftOutputPatchToNodes;
+
+    expect(typeof applyDraftOutputPatchToNodes).toBe("function");
+
+    const result = applyDraftOutputPatchToNodes?.({
+      currentNode: {
+        config: {
+          params: {
+            storyboardSheet: {
+              sourceStoryboardNodeId: "storyboard-1",
+            },
+          },
+        },
+        id: "image-sheet",
+      },
+      nodes: [
+        {
+          data: {
+            kind: "storyboard",
+            storyboard: {
+              aspect: "16:9",
+              cells: [{ id: "cell-1", shotNo: 1, assetId: "asset-cell-1" }],
+              grid: "3x2",
+              selectedIndex: 0,
+            },
+          },
+          id: "storyboard-1",
+          type: "storyboard",
+        },
+        {
+          data: { kind: "image" },
+          id: "image-sheet",
+          type: "image",
+        },
+      ],
+      patch: {
+        assetId: "asset-storyboard-sheet",
+        assetIds: ["asset-storyboard-sheet"],
+        generationStatus: "done",
+        source: "generated",
+        status: "success",
+      },
+    });
+
+    const nodes = result?.nodes as Array<{ data?: Record<string, unknown>; id?: string }>;
+    const sourceStoryboardNode = nodes.find((node) => node.id === "storyboard-1");
+    const targetImageNode = nodes.find((node) => node.id === "image-sheet");
+
+    expect(result?.changed).toBe(true);
+    expect(targetImageNode?.data).toMatchObject({
+      assetId: "asset-storyboard-sheet",
+      status: "success",
+    });
+    expect(sourceStoryboardNode?.data?.storyboard).toMatchObject({
+      composedAssetId: "asset-storyboard-sheet",
+    });
+    expect(JSON.stringify(sourceStoryboardNode?.data)).not.toMatch(/base64|blob:|data:|https?:\/\//);
+  });
+
   test("video editor local render engine is enabled only by server-side route capabilities", () => {
     const readVideoEditorRenderEngine = (__workerTestUtils as {
       readVideoEditorRenderEngine?: (requestConfig: Record<string, unknown> | null) => "ffmpeg" | null;

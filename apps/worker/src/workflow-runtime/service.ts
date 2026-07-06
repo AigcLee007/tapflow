@@ -939,6 +939,16 @@ function readDirector3dConfig(config: Record<string, unknown>): Record<string, u
   return isPlainObject(params.director3d) ? params.director3d : null;
 }
 
+function readStoryboardCellConfig(config: Record<string, unknown>): Record<string, unknown> | null {
+  const params = isPlainObject(config.params) ? config.params : {};
+  return isPlainObject(params.storyboard) ? params.storyboard : null;
+}
+
+function readStoryboardSheetConfig(config: Record<string, unknown>): Record<string, unknown> | null {
+  const params = isPlainObject(config.params) ? config.params : {};
+  return isPlainObject(params.storyboardSheet) ? params.storyboardSheet : null;
+}
+
 function applyDraftOutputPatchToNodes(input: {
   currentNode: Pick<CompiledWorkflowNode, "config" | "id">;
   nodes: Array<Record<string, unknown>>;
@@ -949,6 +959,10 @@ function applyDraftOutputPatchToNodes(input: {
   const director3dConfig = readDirector3dConfig(input.currentNode.config ?? {});
   const sourceDirectorNodeId = readTrimmedString(director3dConfig?.sourceDirectorNodeId);
   const sourceDirectorShotId = readTrimmedString(director3dConfig?.shotId);
+  const storyboardCellConfig = readStoryboardCellConfig(input.currentNode.config ?? {});
+  const sourceStoryboardCellNodeId = readTrimmedString(storyboardCellConfig?.sourceStoryboardNodeId);
+  const sourceStoryboardCellId = readTrimmedString(storyboardCellConfig?.cellId);
+  const sourceStoryboardSheetNodeId = readTrimmedString(readStoryboardSheetConfig(input.currentNode.config ?? {})?.sourceStoryboardNodeId);
   let changed = false;
 
   const nodes = input.nodes.map((node) => {
@@ -983,6 +997,68 @@ function applyDraftOutputPatchToNodes(input: {
             ...videoEditor,
             exportedAssetId,
           },
+        },
+      };
+    }
+
+    if (
+      exportedAssetId &&
+      sourceStoryboardCellNodeId &&
+      sourceStoryboardCellId &&
+      node.id === sourceStoryboardCellNodeId &&
+      data &&
+      (node.type === "storyboard" || data.kind === "storyboard" || isPlainObject(data.storyboard))
+    ) {
+      const storyboard = isPlainObject(data.storyboard) ? data.storyboard : {};
+      const cells = Array.isArray(storyboard.cells) ? storyboard.cells : [];
+      let cellChanged = false;
+      const nextCells = cells.map((cell) => {
+        if (!isPlainObject(cell) || readTrimmedString(cell.id) !== sourceStoryboardCellId) {
+          return cell;
+        }
+        cellChanged = true;
+        return {
+          ...cell,
+          assetId: exportedAssetId,
+          sourceAssetId: exportedAssetId,
+          sourceNodeId: input.currentNode.id,
+        };
+      });
+      if (!cellChanged) {
+        return node;
+      }
+      changed = true;
+      return {
+        ...node,
+        data: {
+          ...data,
+          storyboard: {
+            ...storyboard,
+            cells: nextCells,
+          },
+          updatedAt: Date.now(),
+        },
+      };
+    }
+
+    if (
+      exportedAssetId &&
+      sourceStoryboardSheetNodeId &&
+      node.id === sourceStoryboardSheetNodeId &&
+      data &&
+      (node.type === "storyboard" || data.kind === "storyboard" || isPlainObject(data.storyboard))
+    ) {
+      const storyboard = isPlainObject(data.storyboard) ? data.storyboard : {};
+      changed = true;
+      return {
+        ...node,
+        data: {
+          ...data,
+          storyboard: {
+            ...storyboard,
+            composedAssetId: exportedAssetId,
+          },
+          updatedAt: Date.now(),
         },
       };
     }
