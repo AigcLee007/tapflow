@@ -3,6 +3,22 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - Video Editor Draft Data Normalization Phase 50
+
+- added a shared video editor draft normalization utility for the production suite:
+  - normalizes clips, audio, subtitles, transitions, transforms, storyboard source metadata, aspect, resolution, and exported asset references into a safe `FlowVideoEditorData` document.
+  - strips transient preview/download/media fields such as `blob:`, `data:`, and signed/http URLs from video editor draft data.
+  - centralizes timeline duration helpers so the studio and storyboard-to-video sync use the same clip/audio/subtitle timing semantics.
+  - keeps explicit draft `durationMs` when reading old documents, while editor mutations recalculate duration from current timeline content.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - this only normalizes existing structured canvas draft data and preserves asset-id based media references.
+  - no generated media, browser-local export, direct asset write, billing mutation, API route, database migration, worker behavior, provider route, or provider-secret exposure was added.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/utils/videoEditorNodeData.test.ts` first failed because the shared video editor normalization utility did not exist.
+  - `npm test -- src/flowCanvas/utils/videoEditorNodeData.test.ts` passed on 2026-07-06: 2 tests.
+  - `npm test -- src/flowCanvas/utils/videoEditorNodeData.test.ts src/flowCanvas/utils/storyboardVideoSync.test.ts src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-06: 66 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-06 - Storyboard To Video Editor Subtitle Sync Phase 49
 
 - extended the storyboard-to-video editor sync so storyboard cells now also produce aligned subtitles:

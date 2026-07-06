@@ -5,6 +5,15 @@ import type { Node } from '@xyflow/react';
 import { listAssets, type AssetItem } from '../../assets/assetApi';
 import type { FlowDirector3dData, FlowNodeData, FlowVideoEditorData } from '../types';
 import { normalizeStoryboardData, patchStoryboardCell } from '../utils/storyboardNodeData';
+import {
+  getVideoAudioDurationMs,
+  getVideoAudioTimelineEndMs,
+  getVideoClipDurationMs,
+  getVideoSubtitleTimelineEndMs,
+  getVideoTimelineClipEndMs,
+  getVideoTimelineDurationMs,
+  normalizeVideoEditorData,
+} from '../utils/videoEditorNodeData';
 import { DirectorDeskThreeViewport } from './DirectorDeskThreeViewport';
 import type { ProductionStudioKind } from './productionStudioEvents';
 
@@ -293,26 +302,6 @@ function normalizeDirectorShotMotion(value: unknown): DirectorShotMotion {
     : 'static';
 }
 
-function normalizeVideoEditorData(data?: FlowVideoEditorData): FlowVideoEditorData {
-  return {
-    version: 1,
-    aspect: data?.aspect ?? '16:9',
-    ...(data?.exportedAssetId ? { exportedAssetId: data.exportedAssetId } : {}),
-    resolution: data?.resolution ?? '1920x1080',
-    timeline: {
-      audio: Array.isArray(data?.timeline?.audio) ? data.timeline.audio : [],
-      clips: Array.isArray(data?.timeline?.clips) ? data.timeline.clips : [],
-      durationMs: Math.max(0, Number(data?.timeline?.durationMs) || 0),
-      subtitles: Array.isArray(data?.timeline?.subtitles) ? data.timeline.subtitles : [],
-    },
-  };
-}
-
-function getClipDurationMs(clip: FlowVideoEditorData['timeline']['clips'][number]) {
-  const rawDuration = Number(clip.outMs) - Number(clip.inMs);
-  return Math.max(0, Number.isFinite(rawDuration) ? rawDuration : 0);
-}
-
 function getClipTransitionDurationSeconds(transitionOut?: VideoEditorTransitionOut) {
   const durationMs = Number(transitionOut?.durationMs);
   return Math.max(0, Number.isFinite(durationMs) ? Math.round(durationMs / 100) / 10 : 0);
@@ -331,37 +320,6 @@ function buildVideoTransitionOut(type: string, durationMs: number): VideoEditorT
   };
 }
 
-function getTimelineEndMs(clips: FlowVideoEditorData['timeline']['clips']) {
-  return clips.reduce(
-    (endMs, clip) => Math.max(endMs, Math.max(0, Number(clip.startMs) || 0) + getClipDurationMs(clip)),
-    0,
-  );
-}
-
-function getSubtitleTimelineEndMs(subtitles: FlowVideoEditorData['timeline']['subtitles']) {
-  return subtitles.reduce((endMs, subtitle) => Math.max(endMs, Math.max(0, Number(subtitle.endMs) || 0)), 0);
-}
-
-function getAudioDurationMs(audio: VideoEditorAudio) {
-  const rawDuration = Number(audio.outMs) - Number(audio.inMs);
-  return Math.max(0, Number.isFinite(rawDuration) ? rawDuration : 0);
-}
-
-function getAudioTimelineEndMs(audio: FlowVideoEditorData['timeline']['audio']) {
-  return audio.reduce(
-    (endMs, item) => Math.max(endMs, Math.max(0, Number(item.startMs) || 0) + getAudioDurationMs(item)),
-    0,
-  );
-}
-
-function getTimelineDurationMs(timeline: FlowVideoEditorData['timeline']) {
-  return Math.max(
-    getTimelineEndMs(timeline.clips),
-    getAudioTimelineEndMs(timeline.audio),
-    getSubtitleTimelineEndMs(timeline.subtitles),
-  );
-}
-
 function buildVideoClip(
   kind: 'image' | 'video',
   clips: FlowVideoEditorData['timeline']['clips'],
@@ -373,7 +331,7 @@ function buildVideoClip(
     assetId: `placeholder-${kind}-${number}`,
     kind,
     track: 1,
-    startMs: getTimelineEndMs(clips),
+    startMs: getVideoTimelineClipEndMs(clips),
     inMs: 0,
     outMs: durationMs,
     speed: 1,
@@ -405,7 +363,7 @@ function buildVideoAudio(
     id: `audio-${number}`,
     assetId: `placeholder-audio-${number}`,
     track: 1,
-    startMs: getAudioTimelineEndMs(audio),
+    startMs: getVideoAudioTimelineEndMs(audio),
     inMs: 0,
     outMs: 3000,
     volume: 1,
@@ -1135,7 +1093,7 @@ function VideoEditorContent({
     const nextTimeline = { ...timeline, clips: [...clips, nextClip] };
     updateTimeline({
       ...nextTimeline,
-      durationMs: getTimelineDurationMs(nextTimeline),
+      durationMs: getVideoTimelineDurationMs(nextTimeline),
     });
     setSelectedClipId(nextClip.id);
     setSelectedAudioId(null);
@@ -1146,7 +1104,7 @@ function VideoEditorContent({
     const nextTimeline = { ...timeline, audio: [...audio, nextAudio] };
     updateTimeline({
       ...nextTimeline,
-      durationMs: getTimelineDurationMs(nextTimeline),
+      durationMs: getVideoTimelineDurationMs(nextTimeline),
     });
     setSelectedAudioId(nextAudio.id);
     setSelectedClipId(null);
@@ -1157,7 +1115,7 @@ function VideoEditorContent({
     const nextTimeline = { ...timeline, subtitles: [...subtitles, nextSubtitle] };
     updateTimeline({
       ...nextTimeline,
-      durationMs: getTimelineDurationMs(nextTimeline),
+      durationMs: getVideoTimelineDurationMs(nextTimeline),
     });
     setSelectedAudioId(null);
     setSelectedClipId(null);
@@ -1175,7 +1133,7 @@ function VideoEditorContent({
       ...timeline,
       clips: clips.map((clip) => (clip.id === clipId ? patcher(clip) : clip)),
     };
-    updateTimeline({ ...nextTimeline, durationMs: getTimelineDurationMs(nextTimeline) });
+    updateTimeline({ ...nextTimeline, durationMs: getVideoTimelineDurationMs(nextTimeline) });
   };
   const patchAudio = (
     audioId: string,
@@ -1185,7 +1143,7 @@ function VideoEditorContent({
       ...timeline,
       audio: audio.map((item) => (item.id === audioId ? patcher(item) : item)),
     };
-    updateTimeline({ ...nextTimeline, durationMs: getTimelineDurationMs(nextTimeline) });
+    updateTimeline({ ...nextTimeline, durationMs: getVideoTimelineDurationMs(nextTimeline) });
   };
   const patchSubtitle = (
     subtitleId: string,
@@ -1195,7 +1153,7 @@ function VideoEditorContent({
       ...timeline,
       subtitles: subtitles.map((subtitle) => (subtitle.id === subtitleId ? patcher(subtitle) : subtitle)),
     };
-    updateTimeline({ ...nextTimeline, durationMs: getTimelineDurationMs(nextTimeline) });
+    updateTimeline({ ...nextTimeline, durationMs: getVideoTimelineDurationMs(nextTimeline) });
   };
   const setSelectedClipStartSeconds = (value: string) => {
     if (!selectedClip) return;
@@ -1248,7 +1206,7 @@ function VideoEditorContent({
       ...timeline,
       clips: clips.filter((clip) => clip.id !== selectedClip.id),
     };
-    updateTimeline({ ...nextTimeline, durationMs: getTimelineDurationMs(nextTimeline) });
+    updateTimeline({ ...nextTimeline, durationMs: getVideoTimelineDurationMs(nextTimeline) });
     setSelectedClipId(null);
   };
   const setSelectedAudioStartSeconds = (value: string) => {
@@ -1276,7 +1234,7 @@ function VideoEditorContent({
       ...timeline,
       audio: audio.filter((item) => item.id !== selectedAudio.id),
     };
-    updateTimeline({ ...nextTimeline, durationMs: getTimelineDurationMs(nextTimeline) });
+    updateTimeline({ ...nextTimeline, durationMs: getVideoTimelineDurationMs(nextTimeline) });
     setSelectedAudioId(null);
   };
   const setSelectedSubtitleText = (value: string) => {
@@ -1302,7 +1260,7 @@ function VideoEditorContent({
       ...timeline,
       subtitles: subtitles.filter((subtitle) => subtitle.id !== selectedSubtitle.id),
     };
-    updateTimeline({ ...nextTimeline, durationMs: getTimelineDurationMs(nextTimeline) });
+    updateTimeline({ ...nextTimeline, durationMs: getVideoTimelineDurationMs(nextTimeline) });
     setSelectedSubtitleId(null);
   };
   const exportVideoToCanvas = () => {
@@ -1402,7 +1360,7 @@ function VideoEditorContent({
                 step={0.1}
                 style={textInputStyle}
                 type="number"
-                value={Math.round(getAudioDurationMs(selectedAudio) / 100) / 10}
+                value={Math.round(getVideoAudioDurationMs(selectedAudio) / 100) / 10}
               />
             </label>
             <label style={fieldLabelStyle}>
@@ -1454,7 +1412,7 @@ function VideoEditorContent({
                 step={0.1}
                 style={textInputStyle}
                 type="number"
-                value={Math.round(getClipDurationMs(selectedClip) / 100) / 10}
+                value={Math.round(getVideoClipDurationMs(selectedClip) / 100) / 10}
               />
             </label>
             {selectedClip.kind === 'video' ? (
@@ -1616,7 +1574,7 @@ function VideoEditorContent({
               style={audioButtonStyle(selectedAudioId === item.id)}
             >
               <strong>{item.id}</strong>
-              <span>{Math.round(getAudioDurationMs(item) / 100) / 10}s</span>
+              <span>{Math.round(getVideoAudioDurationMs(item) / 100) / 10}s</span>
             </button>
           ))}
           {subtitles.map((subtitle) => (
