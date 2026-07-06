@@ -40,6 +40,7 @@ const VIDEO_EDITOR_EXPORT_ROUTE_KEY = 'video.editor.ffmpeg';
 const VIDEO_EDITOR_PLACEHOLDER_ASSET_ID_PATTERN = /^placeholder-(?:image|video|audio)-\d+$/i;
 const DEFAULT_VIDEO_TRANSITION_DURATION_MS = 500;
 const DEFAULT_DIRECTOR_CAMERA_FOCAL_MM = 35;
+const ASSET_LIBRARY_DRAG_TYPE = 'application/x-tapflow-asset-id';
 const DIRECTOR_AXIS_LABELS = ['X', 'Y', 'Z'] as const;
 const DIRECTOR_SHOT_MOTION_OPTIONS: Array<{ label: string; value: DirectorShotMotion }> = [
   { label: '固定', value: 'static' },
@@ -813,6 +814,23 @@ function StoryboardContent({
     if (!selectedCell) return;
     updateStoryboard(patchStoryboardCell(storyboard, storyboard.selectedIndex, { assetId }));
   };
+  const bindStoryboardAssetAtIndex = (index: number, assetId: string) => {
+    const nextStoryboard = patchStoryboardCell(storyboard, index, { assetId });
+    updateStoryboard({ ...nextStoryboard, selectedIndex: index });
+  };
+  const handleStoryboardCellDragOver = (event: React.DragEvent<HTMLButtonElement>) => {
+    if (!Array.from(event.dataTransfer.types || []).includes(ASSET_LIBRARY_DRAG_TYPE)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+  };
+  const handleStoryboardCellDrop = (event: React.DragEvent<HTMLButtonElement>, index: number) => {
+    if (!Array.from(event.dataTransfer.types || []).includes(ASSET_LIBRARY_DRAG_TYPE)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const assetId = event.dataTransfer.getData(ASSET_LIBRARY_DRAG_TYPE).trim();
+    if (!assetId) return;
+    bindStoryboardAssetAtIndex(index, assetId);
+  };
   const buildStoryboardImageRequest = (
     cell: typeof storyboard.cells[number],
     batchIndex = 0,
@@ -922,6 +940,8 @@ function StoryboardContent({
               aria-label={`选择镜头 ${cell.shotNo}`}
               key={cell.id}
               onClick={() => updateStoryboard({ ...storyboard, selectedIndex: index })}
+              onDragOver={handleStoryboardCellDragOver}
+              onDrop={(event) => handleStoryboardCellDrop(event, index)}
               style={{
                 ...storyCellStyle,
                 borderColor: index === storyboard.selectedIndex ? '#38bdf8' : 'rgba(255,255,255,0.11)',

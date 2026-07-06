@@ -3,6 +3,22 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - Storyboard Asset Drop Binding Phase 73
+
+- added direct storyboard-cell drop binding for asset-library image references:
+  - storyboard cells now accept the existing `application/x-tapflow-asset-id` drag type.
+  - dropping an asset onto a specific cell patches that target cell and selects it, instead of relying on the current inspector selection.
+  - the studio still ignores preview/text URL payloads and persists only the cleaned `assetId` through the existing storyboard normalizer.
+- kept v2 persistence and billing boundaries unchanged:
+  - no generated media, preview URL, `blob:`, `data:`, or signed URL is stored in draft JSON.
+  - no API route, database migration, provider route, pricing value, billing mutation, or worker behavior changed.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx` first failed because dropping an asset on a storyboard cell did not call `onUpdateNodeData`.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx` passed on 2026-07-06: 41 tests.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx scripts/smoke-production-studios.test.ts` passed on 2026-07-06: 70 tests.
+  - `npm run smoke:production-studios` passed on 2026-07-06 with `status: ok`.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-06 - Production Studios Image Mode Browser Smoke Phase 72
 
 - extended the real-browser production studios smoke to cover the 360°/270° image production mode UI:

@@ -971,6 +971,40 @@ describe('ProductionStudioShell', () => {
     expect(JSON.stringify(onUpdateNodeData.mock.calls)).not.toMatch(/blob:|data:|https?:\/\//);
   });
 
+  it('binds a dropped asset id to the target storyboard cell without storing preview URLs', () => {
+    const onUpdateNodeData = vi.fn();
+    render(
+      <ProductionStudioShell
+        studio="storyboard"
+        node={storyboardNode as any}
+        onClose={vi.fn()}
+        onUpdateNodeData={onUpdateNodeData}
+      />,
+    );
+
+    const dataTransfer = {
+      dropEffect: '',
+      getData: vi.fn((type: string) => {
+        if (type === 'application/x-tapflow-asset-id') return 'asset-image-drop';
+        if (type === 'text/plain') return 'https://signed.example.com/preview.png';
+        return '';
+      }),
+      types: ['application/x-tapflow-asset-id', 'text/plain'],
+    } as unknown as DataTransfer;
+
+    const firstShotCell = screen.getByRole('button', { name: /1$/ });
+    fireEvent.dragOver(firstShotCell, { dataTransfer });
+    fireEvent.drop(firstShotCell, { dataTransfer });
+
+    expect(onUpdateNodeData).toHaveBeenLastCalledWith('storyboard-node', {
+      storyboard: expect.objectContaining({
+        selectedIndex: 0,
+        cells: expect.arrayContaining([expect.objectContaining({ id: 'cell-1', assetId: 'asset-image-drop' })]),
+      }),
+    });
+    expect(JSON.stringify(onUpdateNodeData.mock.calls)).not.toMatch(/blob:|data:|https?:\/\//);
+  });
+
   it('requests an image node from the selected storyboard cell', () => {
     const onCreateCanvasNodeFromStudio = vi.fn();
     render(
