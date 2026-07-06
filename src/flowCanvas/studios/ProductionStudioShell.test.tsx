@@ -488,12 +488,23 @@ describe('ProductionStudioShell', () => {
         ...directorNode.data,
         director3d: {
           ...directorNode.data.director3d,
+          scene: {
+            ...directorNode.data.director3d.scene,
+            backgroundAssetId: 'https://signed.example.com/scene.png',
+          },
           actors: [
             {
               ...directorNode.data.director3d.actors[0],
+              assetId: 'blob:actor-image',
               position: undefined,
               rotation: ['bad', 10, null],
               scale: undefined,
+            },
+          ],
+          shots: [
+            {
+              ...directorNode.data.director3d.shots[0],
+              generatedAssetId: 'data:image/png;base64,bad',
             },
           ],
         },
@@ -520,7 +531,7 @@ describe('ProductionStudioShell', () => {
         actors: expect.arrayContaining([expect.objectContaining({ id: 'actor-1', position: [3, 0, 0] })]),
       }),
     });
-    expect(JSON.stringify(onUpdateNodeData.mock.calls)).not.toMatch(/blob:|data:/);
+    expect(JSON.stringify(onUpdateNodeData.mock.calls)).not.toMatch(/blob:|data:|https?:\/\//);
   });
 
   it('emits structured director patches for selected camera and shot prompt edits', () => {

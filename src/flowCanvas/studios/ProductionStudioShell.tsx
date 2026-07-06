@@ -4,6 +4,7 @@ import type { Node } from '@xyflow/react';
 
 import { listAssets, type AssetItem } from '../../assets/assetApi';
 import type { FlowDirector3dData, FlowNodeData, FlowVideoEditorData } from '../types';
+import { normalizeDirector3dData } from '../utils/director3dNodeData';
 import { normalizeStoryboardData, patchStoryboardCell } from '../utils/storyboardNodeData';
 import {
   getVideoAudioDurationMs,
@@ -157,20 +158,6 @@ export const ProductionStudioShell: React.FC<ProductionStudioShellProps> = ({
     </div>
   );
 };
-
-function normalizeDirector3dData(data?: FlowDirector3dData): FlowDirector3dData {
-  return {
-    version: 1,
-    scene: {
-      ...(data?.scene.backgroundAssetId ? { backgroundAssetId: data.scene.backgroundAssetId } : {}),
-      gridVisible: data?.scene.gridVisible !== false,
-      units: 'meters',
-    },
-    actors: Array.isArray(data?.actors) ? data.actors : [],
-    cameras: Array.isArray(data?.cameras) ? data.cameras : [],
-    shots: Array.isArray(data?.shots) ? data.shots : [],
-  };
-}
 
 function buildDirectorActor(index: number): FlowDirector3dData['actors'][number] {
   const number = index + 1;
@@ -392,7 +379,7 @@ function DirectorDeskContent({
   const shots = director.shots;
   const [selected, setSelected] = useState<DirectorSelection | null>(null);
   const updateDirector = (nextDirector: FlowDirector3dData) => {
-    onUpdateNodeData?.(nodeId, { director3d: nextDirector });
+    onUpdateNodeData?.(nodeId, { director3d: normalizeDirector3dData(nextDirector) });
   };
   const addActor = () => updateDirector({ ...director, actors: [...actors, buildDirectorActor(actors.length)] });
   const addCamera = () => updateDirector({ ...director, cameras: [...cameras, buildDirectorCamera(cameras.length)] });

@@ -3,6 +3,25 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - Director Desk Draft Normalization Phase 63
+
+- centralized safe normalization for `director3d` draft data:
+  - added `normalizeDirector3dData` to sanitize scene, actor, camera, shot, camera snapshot, generated asset, and source-node metadata.
+  - strips transient media references such as `blob:`, `data:`, and signed/http URLs from director scene backgrounds, actor assets, and generated shot asset fields.
+  - clamps malformed numeric camera/actor/shot values back to safe finite defaults before they can be written back into the flow draft.
+- connected the production studio shell to the shared normalizer:
+  - director desk reads normalized data when rendering.
+  - every director desk `onUpdateNodeData` patch now normalizes the outgoing `director3d` document, so editing an old malformed draft does not re-persist unsafe media references.
+- kept billing and asset boundaries unchanged:
+  - no API route, database migration, provider route, pricing value, workflow execution, or billing mutation was added.
+  - director editing remains free local/studio draft editing; paid image/video output still uses the existing workflow and asset pipeline.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/utils/director3dNodeData.test.ts` first failed because the shared normalizer module did not exist.
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "malformed director drafts"` first failed because old `https:`, `blob:`, and `data:` director fields were written back during an actor edit.
+  - `npm test -- src/flowCanvas/utils/director3dNodeData.test.ts src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/studios/DirectorDeskThreeViewport.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-06: 68 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+  - `git diff --check` passed on 2026-07-06.
+
 ## 2026-07-06 - MouxiHub GPT-Image Production Mode Capabilities Phase 62
 
 - published production image generation capabilities for the MouxiHub GPT-Image-2 async lines:
