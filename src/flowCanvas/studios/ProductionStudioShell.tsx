@@ -1248,6 +1248,25 @@ function VideoEditorContent({
     if (!selectedClip) return;
     patchClip(selectedClip.id, (clip) => ({ ...clip, assetId }));
   };
+  const bindClipAssetAtId = (clipId: string, assetId: string) => {
+    patchClip(clipId, (clip) => ({ ...clip, assetId }));
+    setSelectedClipId(clipId);
+    setSelectedAudioId(null);
+    setSelectedSubtitleId(null);
+  };
+  const handleVideoAssetDragOver = (event: React.DragEvent<HTMLButtonElement>) => {
+    if (!Array.from(event.dataTransfer.types || []).includes(ASSET_LIBRARY_DRAG_TYPE)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+  };
+  const handleClipAssetDrop = (event: React.DragEvent<HTMLButtonElement>, clipId: string) => {
+    if (!Array.from(event.dataTransfer.types || []).includes(ASSET_LIBRARY_DRAG_TYPE)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const assetId = event.dataTransfer.getData(ASSET_LIBRARY_DRAG_TYPE).trim();
+    if (!assetId) return;
+    bindClipAssetAtId(clipId, assetId);
+  };
   const deleteSelectedClip = () => {
     if (!selectedClip) return;
     const nextTimeline = {
@@ -1275,6 +1294,20 @@ function VideoEditorContent({
   const bindSelectedAudioAsset = (assetId: string) => {
     if (!selectedAudio) return;
     patchAudio(selectedAudio.id, (item) => ({ ...item, assetId }));
+  };
+  const bindAudioAssetAtId = (audioId: string, assetId: string) => {
+    patchAudio(audioId, (item) => ({ ...item, assetId }));
+    setSelectedAudioId(audioId);
+    setSelectedClipId(null);
+    setSelectedSubtitleId(null);
+  };
+  const handleAudioAssetDrop = (event: React.DragEvent<HTMLButtonElement>, audioId: string) => {
+    if (!Array.from(event.dataTransfer.types || []).includes(ASSET_LIBRARY_DRAG_TYPE)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const assetId = event.dataTransfer.getData(ASSET_LIBRARY_DRAG_TYPE).trim();
+    if (!assetId) return;
+    bindAudioAssetAtId(audioId, assetId);
   };
   const deleteSelectedAudio = () => {
     if (!selectedAudio) return;
@@ -1634,6 +1667,8 @@ function VideoEditorContent({
                   setSelectedAudioId(null);
                   setSelectedSubtitleId(null);
                 }}
+                onDragOver={handleVideoAssetDragOver}
+                onDrop={(event) => handleClipAssetDrop(event, clip.id)}
                 style={clipButtonStyle(selectedClipId === clip.id)}
               >
                 <strong>{clip.id}</strong>
@@ -1653,6 +1688,8 @@ function VideoEditorContent({
                 setSelectedClipId(null);
                 setSelectedSubtitleId(null);
               }}
+              onDragOver={handleVideoAssetDragOver}
+              onDrop={(event) => handleAudioAssetDrop(event, item.id)}
               style={audioButtonStyle(selectedAudioId === item.id)}
             >
               <strong>{item.id}</strong>

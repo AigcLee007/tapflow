@@ -3,6 +3,22 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - Video Editor Timeline Drop Binding Phase 75
+
+- added direct asset-library drop binding for video editor timeline items:
+  - video/image clips now accept `application/x-tapflow-asset-id` drops and patch the target clip asset id.
+  - audio tracks now accept the same asset-id drop payload and patch the target audio asset id.
+  - dropping onto a timeline item selects that item and clears the other timeline selections.
+- kept v2 persistence, export, and billing boundaries unchanged:
+  - timeline data stores only asset ids; preview URLs, signed URLs, `blob:`, and `data:` values are ignored by the drop path.
+  - no API route, database migration, provider route, pricing value, worker behavior, export route, or billing state changed.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx` first failed because dropping an asset on a video clip did not call `onUpdateNodeData`.
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx` first failed because dropping an asset on an audio track did not call `onUpdateNodeData`.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx` passed on 2026-07-06: 43 tests.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx scripts/smoke-production-studios.test.ts` passed on 2026-07-06: 72 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-06 - Asset Library Drag Payload Phase 74
 
 - completed the asset-library side of storyboard/canvas drag binding:

@@ -1370,6 +1370,41 @@ describe('ProductionStudioShell', () => {
     expect(JSON.stringify(onUpdateNodeData.mock.calls)).not.toMatch(/blob:|data:|https?:\/\//);
   });
 
+  it('binds a dropped asset id to the target video clip without storing preview URLs', () => {
+    const onUpdateNodeData = vi.fn();
+    render(
+      <ProductionStudioShell
+        studio="video_editor"
+        node={videoNode as any}
+        onClose={vi.fn()}
+        onUpdateNodeData={onUpdateNodeData}
+      />,
+    );
+
+    const dataTransfer = {
+      dropEffect: '',
+      getData: vi.fn((type: string) => {
+        if (type === 'application/x-tapflow-asset-id') return 'asset-video-drop';
+        if (type === 'text/plain') return 'https://signed.example.com/video-preview.mp4';
+        return '';
+      }),
+      types: ['application/x-tapflow-asset-id', 'text/plain'],
+    } as unknown as DataTransfer;
+
+    const clipButton = screen.getByRole('button', { name: /clip-1$/ });
+    fireEvent.dragOver(clipButton, { dataTransfer });
+    fireEvent.drop(clipButton, { dataTransfer });
+
+    expect(onUpdateNodeData).toHaveBeenLastCalledWith('video-node', {
+      videoEditor: expect.objectContaining({
+        timeline: expect.objectContaining({
+          clips: expect.arrayContaining([expect.objectContaining({ id: 'clip-1', assetId: 'asset-video-drop' })]),
+        }),
+      }),
+    });
+    expect(JSON.stringify(onUpdateNodeData.mock.calls)).not.toMatch(/blob:|data:|https?:\/\//);
+  });
+
   it('emits safe video editor patches for selected subtitle editing and deletion', () => {
     const onUpdateNodeData = vi.fn();
     render(
@@ -1558,6 +1593,54 @@ describe('ProductionStudioShell', () => {
       videoEditor: expect.objectContaining({
         timeline: expect.objectContaining({
           audio: expect.arrayContaining([expect.objectContaining({ id: 'audio-1', assetId: 'asset-audio-2' })]),
+        }),
+      }),
+    });
+    expect(JSON.stringify(onUpdateNodeData.mock.calls)).not.toMatch(/blob:|data:|https?:\/\//);
+  });
+
+  it('binds a dropped asset id to the target audio track without storing preview URLs', () => {
+    const onUpdateNodeData = vi.fn();
+    const videoNodeWithAudio = {
+      ...videoNode,
+      data: {
+        ...videoNode.data,
+        videoEditor: {
+          ...videoNode.data.videoEditor,
+          timeline: {
+            ...videoNode.data.videoEditor.timeline,
+            audio: [{ id: 'audio-1', assetId: 'placeholder-audio-1', track: 1, startMs: 0, inMs: 0, outMs: 3000, volume: 1 }],
+          },
+        },
+      },
+    };
+    render(
+      <ProductionStudioShell
+        studio="video_editor"
+        node={videoNodeWithAudio as any}
+        onClose={vi.fn()}
+        onUpdateNodeData={onUpdateNodeData}
+      />,
+    );
+
+    const dataTransfer = {
+      dropEffect: '',
+      getData: vi.fn((type: string) => {
+        if (type === 'application/x-tapflow-asset-id') return 'asset-audio-drop';
+        if (type === 'text/plain') return 'https://signed.example.com/audio-preview.mp3';
+        return '';
+      }),
+      types: ['application/x-tapflow-asset-id', 'text/plain'],
+    } as unknown as DataTransfer;
+
+    const audioButton = screen.getByRole('button', { name: /audio-1$/ });
+    fireEvent.dragOver(audioButton, { dataTransfer });
+    fireEvent.drop(audioButton, { dataTransfer });
+
+    expect(onUpdateNodeData).toHaveBeenLastCalledWith('video-node', {
+      videoEditor: expect.objectContaining({
+        timeline: expect.objectContaining({
+          audio: expect.arrayContaining([expect.objectContaining({ id: 'audio-1', assetId: 'asset-audio-drop' })]),
         }),
       }),
     });
