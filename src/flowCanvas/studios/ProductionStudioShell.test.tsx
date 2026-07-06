@@ -1196,6 +1196,28 @@ describe('ProductionStudioShell', () => {
     expect(JSON.stringify(latestPatch)).not.toMatch(/blob:|data:/);
   });
 
+  it('updates video editor output presets including square 1080p', () => {
+    const onUpdateNodeData = vi.fn();
+    render(
+      <ProductionStudioShell
+        studio="video_editor"
+        node={videoNode as any}
+        onClose={vi.fn()}
+        onUpdateNodeData={onUpdateNodeData}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '选择输出规格 1:1 1080p' }));
+
+    expect(onUpdateNodeData).toHaveBeenCalledWith('video-node', {
+      videoEditor: expect.objectContaining({
+        aspect: '1:1',
+        resolution: '1080x1080',
+      }),
+    });
+    expect(JSON.stringify(onUpdateNodeData.mock.calls)).not.toMatch(/blob:|data:/);
+  });
+
   it('emits safe video editor patches for selected clip timing and deletion', () => {
     const onUpdateNodeData = vi.fn();
     render(

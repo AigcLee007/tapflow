@@ -123,7 +123,7 @@ export interface FlowVideoEditorData {
   version: 1;
   aspect: '16:9' | '9:16' | '1:1';
   exportedAssetId?: string;
-  resolution: '1280x720' | '1920x1080' | '720x1280' | '1080x1920';
+  resolution: '1280x720' | '1920x1080' | '720x1280' | '1080x1920' | '1080x1080';
   timeline: {
     audio: Array<{
       id: string;

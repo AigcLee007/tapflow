@@ -145,4 +145,20 @@ describe('videoEditorNodeData', () => {
       },
     });
   });
+
+  it('preserves square video editor output settings supported by the ffmpeg route', () => {
+    const data = normalizeVideoEditorData({
+      aspect: '1:1',
+      resolution: '1080x1080',
+      timeline: {
+        audio: [],
+        clips: [],
+        durationMs: 0,
+        subtitles: [],
+      },
+    });
+
+    expect(data.aspect).toBe('1:1');
+    expect(data.resolution).toBe('1080x1080');
+  });
 });

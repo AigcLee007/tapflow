@@ -72,6 +72,7 @@ const RESOLUTION_DIMENSIONS: Record<string, { width: number; height: number }> =
   "1920x1080": { width: 1920, height: 1080 },
   "720x1280": { width: 720, height: 1280 },
   "1080x1920": { width: 1080, height: 1920 },
+  "1080x1080": { width: 1080, height: 1080 },
 };
 const PLACEHOLDER_ASSET_ID_PATTERN = /^placeholder-(?:image|video|audio)-\d+$/i;
 

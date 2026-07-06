@@ -46,7 +46,9 @@ function normalizeAspect(value: unknown): FlowVideoEditorData['aspect'] {
 }
 
 function normalizeResolution(value: unknown): FlowVideoEditorData['resolution'] {
-  if (value === '1280x720' || value === '720x1280' || value === '1080x1920') return value;
+  if (value === '1280x720' || value === '720x1280' || value === '1080x1920' || value === '1080x1080') {
+    return value;
+  }
   return '1920x1080';
 }
 

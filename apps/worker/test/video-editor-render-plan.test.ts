@@ -110,4 +110,26 @@ describe("buildVideoEditorRenderPlan", () => {
       width: 1920,
     });
   });
+
+  test("uses square 1080p output dimensions for 1:1 editor exports", () => {
+    const plan = buildVideoEditorRenderPlan({
+      aspect: "1:1",
+      resolution: "1080x1080",
+      timeline: {
+        audio: [],
+        clips: [
+          { id: "clip-1", assetId: "asset-image-1", kind: "image", track: 0, startMs: 0, inMs: 0, outMs: 3000, speed: 1 },
+        ],
+        durationMs: 3000,
+        subtitles: [],
+      },
+    });
+
+    expect(plan.output).toMatchObject({
+      durationMs: 3000,
+      height: 1080,
+      mimeType: "video/mp4",
+      width: 1080,
+    });
+  });
 });

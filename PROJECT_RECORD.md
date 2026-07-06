@@ -3,6 +3,22 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - Video Editor Square Output Alignment Phase 71
+
+- aligned the video editor output UI, draft normalization, and FFmpeg render plan with the installed `video.editor.ffmpeg` route capabilities:
+  - `FlowVideoEditorData.resolution` and `normalizeVideoEditorData` now preserve `1080x1080`.
+  - the worker video editor render plan maps `1080x1080` to square 1080p output dimensions.
+  - the video editor studio now exposes compact output preset buttons for `16:9 1080p`, `16:9 720p`, `9:16 1080p`, `9:16 720p`, and `1:1 1080p`.
+- kept billing and asset behavior unchanged:
+  - no API route, database migration, provider route, pricing value, browser persistence, secret exposure, or balance mutation changed.
+  - video editor exports still run through `video.editor.ffmpeg`, `video_generation` pricing, server-side reserve/run/settle/refund, and persisted video assets.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/utils/videoEditorNodeData.test.ts apps/worker/test/video-editor-render-plan.test.ts` first failed because `1080x1080` was normalized/rendered as 1920x1080.
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx` first failed because there was no `选择输出规格 1:1 1080p` control.
+  - `npm test -- src/flowCanvas/utils/videoEditorNodeData.test.ts src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx src/flowCanvas/runtime/v2WorkflowRunner.test.ts apps/worker/test/video-editor-render-plan.test.ts apps/worker/test/video-editor-local-render-service.test.ts apps/worker/test/video-editor-ffmpeg-executor.test.ts` passed on 2026-07-06: 117 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+  - `npm run build --workspace @aigc-flow/worker` passed on 2026-07-06.
+
 ## 2026-07-06 - Video Editor Placeholder Export Guard Phase 70
 
 - tightened the video editor export path so unbound placeholder timeline assets cannot enter the paid export flow:

@@ -48,6 +48,17 @@ const DIRECTOR_SHOT_MOTION_OPTIONS: Array<{ label: string; value: DirectorShotMo
   { label: '摇移', value: 'pan' },
   { label: '自定义', value: 'custom_path' },
 ];
+const VIDEO_EDITOR_OUTPUT_PRESETS: Array<{
+  aspect: FlowVideoEditorData['aspect'];
+  label: string;
+  resolution: FlowVideoEditorData['resolution'];
+}> = [
+  { aspect: '16:9', label: '16:9 1080p', resolution: '1920x1080' },
+  { aspect: '16:9', label: '16:9 720p', resolution: '1280x720' },
+  { aspect: '9:16', label: '9:16 1080p', resolution: '1080x1920' },
+  { aspect: '9:16', label: '9:16 720p', resolution: '720x1280' },
+  { aspect: '1:1', label: '1:1 1080p', resolution: '1080x1080' },
+];
 
 export type StudioCanvasNodeRequest = {
   kind: 'image' | 'video';
@@ -1095,6 +1106,13 @@ function VideoEditorContent({
   const updateVideoEditor = (nextVideoEditor: FlowVideoEditorData) => {
     onUpdateNodeData?.(nodeId, { videoEditor: nextVideoEditor });
   };
+  const setOutputPreset = (preset: (typeof VIDEO_EDITOR_OUTPUT_PRESETS)[number]) => {
+    updateVideoEditor({
+      ...videoEditor,
+      aspect: preset.aspect,
+      resolution: preset.resolution,
+    });
+  };
   const updateTimeline = (nextTimeline: FlowVideoEditorData['timeline']) => {
     updateVideoEditor({ ...videoEditor, timeline: nextTimeline });
   };
@@ -1352,6 +1370,26 @@ function VideoEditorContent({
         <MetricRow label="分辨率" value={videoEditor.resolution} />
         <MetricRow label="时长" value={`${Math.round(timeline.durationMs / 100) / 10}s`} />
         {videoEditor.exportedAssetId ? <MetricRow label="导出资产" value={videoEditor.exportedAssetId} /> : null}
+        <div style={fieldLabelStyle}>
+          <span>输出规格</span>
+          <div aria-label="输出规格" role="group" style={motionButtonGroupStyle}>
+            {VIDEO_EDITOR_OUTPUT_PRESETS.map((preset) => {
+              const selected = videoEditor.aspect === preset.aspect && videoEditor.resolution === preset.resolution;
+              return (
+                <button
+                  key={preset.label}
+                  aria-label={`选择输出规格 ${preset.label}`}
+                  aria-pressed={selected}
+                  onClick={() => setOutputPreset(preset)}
+                  style={motionButtonStyle(selected)}
+                  type="button"
+                >
+                  {preset.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
         {selectedAudio ? (
           <>
             <MetricRow label="当前音频" value={selectedAudio.id} />
