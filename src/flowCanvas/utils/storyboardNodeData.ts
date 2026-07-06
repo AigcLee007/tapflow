@@ -1,5 +1,7 @@
 import type { FlowStoryboardCell, FlowStoryboardData } from '../types';
 
+const TRANSIENT_MEDIA_REF_PATTERN = /(?:blob:|data:|https?:\/\/)/i;
+
 export function getStoryboardGridCellCount(grid: unknown): number {
   if (grid === '2x2') return 4;
   if (grid === '3x3') return 9;
@@ -14,20 +16,32 @@ function normalizeGrid(value: unknown): FlowStoryboardData['grid'] {
   return value === '2x2' || value === '3x3' ? value : '3x2';
 }
 
+function cleanString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function cleanAssetId(value: unknown): string | undefined {
+  const trimmed = cleanString(value);
+  return trimmed && !TRANSIENT_MEDIA_REF_PATTERN.test(trimmed) ? trimmed : undefined;
+}
+
 function cleanCell(value: unknown, index: number): FlowStoryboardCell {
   const input = value && typeof value === 'object' ? value as Record<string, unknown> : {};
   const cell: FlowStoryboardCell = {
-    id: typeof input.id === 'string' && input.id.trim() ? input.id.trim() : `storyboard-cell-${index + 1}`,
+    id: cleanString(input.id) ?? `storyboard-cell-${index + 1}`,
     shotNo: typeof input.shotNo === 'number' && Number.isFinite(input.shotNo)
       ? Math.max(1, Math.trunc(input.shotNo))
       : index + 1,
   };
 
-  for (const key of ['title', 'prompt', 'assetId', 'sourceNodeId', 'sourceAssetId', 'directorCameraId', 'directorShotId'] as const) {
-    const fieldValue = input[key];
-    if (typeof fieldValue === 'string' && fieldValue.trim()) {
-      cell[key] = fieldValue.trim();
-    }
+  for (const key of ['title', 'prompt', 'sourceNodeId', 'directorCameraId', 'directorShotId'] as const) {
+    const fieldValue = cleanString(input[key]);
+    if (fieldValue) cell[key] = fieldValue;
+  }
+
+  for (const key of ['assetId', 'sourceAssetId'] as const) {
+    const fieldValue = cleanAssetId(input[key]);
+    if (fieldValue) cell[key] = fieldValue;
   }
 
   if (input.aspect === '1:1' || input.aspect === '4:3' || input.aspect === '16:9' || input.aspect === '9:16') {
@@ -43,13 +57,12 @@ export function normalizeStoryboardData(value: unknown): FlowStoryboardData {
   const count = getStoryboardGridCellCount(grid);
   const sourceCells = Array.isArray(input.cells) ? input.cells : [];
   const selectedRaw = typeof input.selectedIndex === 'number' ? input.selectedIndex : 0;
+  const composedAssetId = cleanAssetId(input.composedAssetId);
 
   return {
     aspect: normalizeAspect(input.aspect),
     cells: Array.from({ length: count }, (_, index) => cleanCell(sourceCells[index], index)),
-    ...(typeof input.composedAssetId === 'string' && input.composedAssetId.trim()
-      ? { composedAssetId: input.composedAssetId.trim() }
-      : {}),
+    ...(composedAssetId ? { composedAssetId } : {}),
     grid,
     selectedIndex: Math.min(Math.max(0, Math.trunc(selectedRaw)), count - 1),
   };

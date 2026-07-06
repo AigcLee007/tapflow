@@ -9,22 +9,30 @@ import {
 describe('storyboardNodeData', () => {
   it('normalizes unsafe cell media fields away', () => {
     const data = normalizeStoryboardData({
+      composedAssetId: 'https://signed.example.com/storyboard.png',
       grid: '3x2',
       aspect: '16:9',
       selectedIndex: 50,
       cells: [
-        { id: 'a', shotNo: 1, assetId: 'asset-1', imageUrl: 'blob:test', prompt: 'wide shot' },
+        {
+          id: 'a',
+          shotNo: 1,
+          assetId: 'blob:test',
+          sourceAssetId: 'data:image/png;base64,bad',
+          imageUrl: 'blob:test',
+          prompt: 'wide shot',
+        },
       ],
     } as any);
 
     expect(data.selectedIndex).toBe(5);
+    expect(data.composedAssetId).toBeUndefined();
     expect(data.cells[0]).toEqual({
       id: 'a',
       shotNo: 1,
-      assetId: 'asset-1',
       prompt: 'wide shot',
     });
-    expect(JSON.stringify(data)).not.toMatch(/blob:test/);
+    expect(JSON.stringify(data)).not.toMatch(/blob:|data:|https?:\/\//);
   });
 
   it('patches a storyboard cell by index', () => {

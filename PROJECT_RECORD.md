@@ -3,6 +3,21 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - Storyboard Draft Asset Normalization Phase 64
+
+- tightened storyboard draft normalization for asset-backed cells and composed storyboard sheets:
+  - `normalizeStoryboardData` now rejects transient media references in `assetId`, `sourceAssetId`, and `composedAssetId`.
+  - text fields such as title/prompt remain normal trimmed strings, while asset-reference fields must stay recoverable asset identifiers.
+  - patching a storyboard cell continues to preserve safe asset ids but no longer re-persist old `blob:`, `data:`, or signed/http URL values from malformed drafts.
+- kept workflow, billing, and asset persistence unchanged:
+  - storyboard editing remains a free structured-draft operation.
+  - shot generation and storyboard sheet composition still create normal image workflow nodes and use the existing reserve/run/settle/refund path.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/utils/storyboardNodeData.test.ts` first failed because `composedAssetId` and cell asset fields accepted transient URL-like values.
+  - `npm test -- src/flowCanvas/utils/storyboardNodeData.test.ts src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx src/flowCanvas/utils/storyboardVideoSync.test.ts src/flowCanvas/utils/storyboardDirectorSync.test.ts` passed on 2026-07-06: 71 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+  - `git diff --check` passed on 2026-07-06.
+
 ## 2026-07-06 - Director Desk Draft Normalization Phase 63
 
 - centralized safe normalization for `director3d` draft data:
