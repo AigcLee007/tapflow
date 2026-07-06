@@ -50,6 +50,7 @@ const DIRECTOR_SHOT_MOTION_OPTIONS: Array<{ label: string; value: DirectorShotMo
 export type StudioCanvasNodeRequest = {
   kind: 'image' | 'video';
   position: { x: number; y: number };
+  runAfterCreate?: boolean;
   data: Partial<FlowNodeData>;
 };
 
@@ -1270,6 +1271,7 @@ function VideoEditorContent({
         x: nodePosition.x + 420,
         y: nodePosition.y + 40,
       },
+      runAfterCreate: true,
       data: {
         title: '剪辑工程导出',
         durationMs: timeline.durationMs,

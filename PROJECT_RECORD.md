@@ -3,6 +3,21 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - Video Editor Export Auto Run Phase 51
+
+- connected video editor export to the existing v2 workflow execution path:
+  - video editor `导出到画布` requests now mark their generated video node with `runAfterCreate`.
+  - `AiFlowCanvas` creates the export video node and immediately calls `runBackendWorkflow({ runMode: 'target_node', targetNodeId })` for that new node.
+  - the export node still carries `routeKey: video.editor.ffmpeg` plus structured `params.videoEditor` timeline data, so reserve/run/settle/refund and route capability checks remain on the existing backend path.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - no browser-local export, direct asset write, free execution path, API route, database migration, worker behavior, provider route, or provider-secret exposure was added.
+  - exported media is still produced by the existing workflow/worker asset pipeline, not by canvas draft JSON.
+- validation:
+  - red tests observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx -t "export"` first failed because export requests did not include `runAfterCreate` and did not call `runBackendWorkflow`.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx -t "export"` passed on 2026-07-06: 2 selected tests.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx src/flowCanvas/utils/videoEditorNodeData.test.ts src/flowCanvas/utils/storyboardVideoSync.test.ts src/flowCanvas/runtime/v2WorkflowRunner.test.ts` passed on 2026-07-06: 95 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-06 - Video Editor Draft Data Normalization Phase 50
 
 - added a shared video editor draft normalization utility for the production suite:

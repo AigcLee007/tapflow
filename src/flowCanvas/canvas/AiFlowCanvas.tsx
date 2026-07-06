@@ -739,7 +739,10 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled, onAg
 
   const handleCreateCanvasNodeFromStudio = useCallback(
     (request: StudioCanvasNodeRequest) => {
-      addNode(request.kind, request.position, request.data, { selected: true });
+      const node = addNode(request.kind, request.position, request.data, { selected: true });
+      if (request.runAfterCreate) {
+        void runBackendWorkflow({ runMode: 'target_node', targetNodeId: node.id }).catch(() => undefined);
+      }
     },
     [addNode],
   );

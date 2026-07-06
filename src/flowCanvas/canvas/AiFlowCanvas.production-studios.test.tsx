@@ -6,6 +6,10 @@ import { AiFlowCanvas } from './AiFlowCanvas';
 import { useFlowCanvasStore } from '../store/flowCanvasStore';
 import { OPEN_PRODUCTION_STUDIO_EVENT } from '../studios/productionStudioEvents';
 
+const workflowRunnerMocks = vi.hoisted(() => ({
+  runBackendWorkflow: vi.fn(),
+}));
+
 const assetApiMocks = vi.hoisted(() => ({
   getAsset: vi.fn(),
   getAssetVariantUrl: vi.fn(),
@@ -117,7 +121,7 @@ vi.mock('../../services/v2FlowCommentsApi', () => ({
 }));
 
 vi.mock('../runtime/v2WorkflowRunner', () => ({
-  runBackendWorkflow: vi.fn(),
+  runBackendWorkflow: (...args: unknown[]) => workflowRunnerMocks.runBackendWorkflow(...args),
 }));
 
 const directorNode = {
@@ -273,6 +277,8 @@ describe('AiFlowCanvas production studios', () => {
     assetApiMocks.getAssetVariantUrl.mockReset();
     assetApiMocks.listAssets.mockReset();
     assetApiMocks.listAssets.mockImplementation(() => new Promise(() => undefined));
+    workflowRunnerMocks.runBackendWorkflow.mockReset();
+    workflowRunnerMocks.runBackendWorkflow.mockResolvedValue(undefined);
     useFlowCanvasStore.getState().loadProject({
       id: 'project-1',
       title: '项目',
@@ -1190,7 +1196,7 @@ describe('AiFlowCanvas production studios', () => {
     expect(JSON.stringify(node?.data.videoEditor)).not.toMatch(/blob:|data:|https?:\/\//);
   });
 
-  it('creates a runnable video node from the video editor export request', () => {
+  it('creates and runs a video node from the video editor export request', async () => {
     useFlowCanvasStore.getState().loadProject({
       id: 'project-1',
       title: '项目',
@@ -1226,5 +1232,11 @@ describe('AiFlowCanvas production studios', () => {
       }),
     });
     expect(JSON.stringify(exported?.data)).not.toMatch(/blob:|data:/);
+    await vi.waitFor(() => {
+      expect(workflowRunnerMocks.runBackendWorkflow).toHaveBeenCalledWith({
+        runMode: 'target_node',
+        targetNodeId: exported?.id,
+      });
+    });
   });
 });

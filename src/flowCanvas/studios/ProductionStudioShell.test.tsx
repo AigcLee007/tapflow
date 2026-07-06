@@ -1537,6 +1537,7 @@ describe('ProductionStudioShell', () => {
     expect(onCreateCanvasNodeFromStudio).toHaveBeenCalledWith({
       kind: 'video',
       position: { x: 420, y: 40 },
+      runAfterCreate: true,
       data: expect.objectContaining({
         durationMs: 3000,
         generationPrompt: '根据剪辑工程时间线生成视频',
