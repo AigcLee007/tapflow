@@ -3,6 +3,21 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - Subject 270 Prompt Semantics Phase 67
+
+- tightened the provider-facing prompt helper for `subject_orbit_270`:
+  - the AI Gateway prompt now explicitly asks for a `270-degree three-panel subject orbit sheet`.
+  - it keeps the existing front / three-quarter / side-back view requirements, while explicitly saying this is a wraparound/unfolded view sheet rather than a single 270-degree camera angle.
+  - this aligns the subject/character 270 mode with the product wording: `270°环绕展开图` / `主体三面展开`, not a camera-angle preset.
+- kept route, billing, and storage behavior unchanged:
+  - no provider route, pricing value, API route, workflow queue behavior, billing mutation, database migration, or asset persistence behavior was changed.
+  - the selected generation mode still flows through the existing route capability, pricing, reserve/run/settle/refund, and asset-persistence paths.
+- validation:
+  - red test observed on 2026-07-06: `npm run test --workspace @aigc-flow/ai-gateway-core -- production-image-prompt.test.ts` first failed because `subject_orbit_270` did not mention 270-degree subject orbit semantics.
+  - `npm run test --workspace @aigc-flow/ai-gateway-core -- production-image-prompt.test.ts runtime.test.ts` passed on 2026-07-06: 64 tests.
+  - `npm run build --workspace @aigc-flow/ai-gateway-core` passed on 2026-07-06.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-06 - Image Production Mode Param Cleanup Phase 66
 
 - tightened image generation mode parameter patches for the 360/270 production modes:

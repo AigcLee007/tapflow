@@ -58,7 +58,8 @@ describe("buildProductionImagePrompt", () => {
     });
 
     expect(prompt).toContain("red travel backpack");
-    expect(prompt).toContain("three-panel subject orbit sheet");
+    expect(prompt).toContain("270-degree three-panel subject orbit sheet");
     expect(prompt).toContain("front, three-quarter, and side/back views");
+    expect(prompt).toContain("not a single 270-degree camera angle");
   });
 });

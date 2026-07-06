@@ -2,7 +2,7 @@ const PRODUCTION_IMAGE_MODE_INSTRUCTIONS: Record<string, string> = {
   panorama_360:
     "Production mode: create a 360-degree equirectangular panorama of the scene with seamless left-right continuity, consistent horizon, and no cropped single-camera framing.",
   subject_orbit_270:
-    "Production mode: create a three-panel subject orbit sheet showing the same subject across front, three-quarter, and side/back views with consistent identity, scale, lighting, and materials.",
+    "Production mode: create a 270-degree three-panel subject orbit sheet showing the same subject across front, three-quarter, and side/back views with consistent identity, scale, lighting, and materials; this is a wraparound/unfolded view sheet, not a single 270-degree camera angle.",
   wraparound_270:
     "Production mode: create a 270-degree wraparound environment showing three connected sides of the same space as one continuous unfolded view with coherent perspective and matching edges.",
 };
