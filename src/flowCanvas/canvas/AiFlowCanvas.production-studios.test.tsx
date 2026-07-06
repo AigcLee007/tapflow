@@ -680,6 +680,10 @@ describe('AiFlowCanvas production studios', () => {
       },
     });
     expect(JSON.stringify(imageNode?.data)).not.toMatch(/blob:|data:/);
+    expect(workflowRunnerMocks.runBackendWorkflow).toHaveBeenCalledWith({
+      runMode: 'target_node',
+      targetNodeId: imageNode?.id,
+    });
   });
 
   it('creates image nodes from all prompted storyboard cells through the canvas store', () => {
@@ -712,6 +716,10 @@ describe('AiFlowCanvas production studios', () => {
     expect(imageNodes[0]?.position).toEqual({ x: 500, y: 160 });
     expect(imageNodes[0]?.data.generationPrompt).toBe('旧提示词');
     expect(JSON.stringify(imageNodes.map((node) => node.data))).not.toMatch(/blob:|data:/);
+    expect(workflowRunnerMocks.runBackendWorkflow).toHaveBeenCalledWith({
+      runMode: 'target_node',
+      targetNodeId: imageNodes[0]?.id,
+    });
   });
 
   it('creates a storyboard sheet image node through the canvas store', () => {
@@ -768,6 +776,10 @@ describe('AiFlowCanvas production studios', () => {
     });
     expect(sheetNode?.data.generationPrompt).toContain('将以下分镜合成为一张故事板排版图');
     expect(JSON.stringify(sheetNode?.data)).not.toMatch(/blob:|data:/);
+    expect(workflowRunnerMocks.runBackendWorkflow).toHaveBeenCalledWith({
+      runMode: 'target_node',
+      targetNodeId: sheetNode?.id,
+    });
   });
 
   it('syncs storyboard asset cells into an existing video editor node', () => {

@@ -945,6 +945,7 @@ describe('ProductionStudioShell', () => {
     expect(onCreateCanvasNodeFromStudio).toHaveBeenCalledWith({
       kind: 'image',
       position: { x: 420, y: 40 },
+      runAfterCreate: true,
       data: expect.objectContaining({
         title: '镜头 2 · 近景',
         generationMode: 'standard',
@@ -978,6 +979,7 @@ describe('ProductionStudioShell', () => {
     expect(onCreateCanvasNodeFromStudio).toHaveBeenNthCalledWith(1, {
       kind: 'image',
       position: { x: 420, y: 40 },
+      runAfterCreate: true,
       data: expect.objectContaining({
         title: '镜头 1 · 开场',
         generationPrompt: '城市远景',
@@ -986,6 +988,7 @@ describe('ProductionStudioShell', () => {
     expect(onCreateCanvasNodeFromStudio).toHaveBeenNthCalledWith(2, {
       kind: 'image',
       position: { x: 420, y: 360 },
+      runAfterCreate: true,
       data: expect.objectContaining({
         title: '镜头 2 · 近景',
         generationPrompt: '角色回头',
@@ -1010,6 +1013,7 @@ describe('ProductionStudioShell', () => {
     expect(onCreateCanvasNodeFromStudio).toHaveBeenCalledWith({
       kind: 'image',
       position: { x: 420, y: 40 },
+      runAfterCreate: true,
       data: expect.objectContaining({
         title: '故事板合成图',
         generationMode: 'standard',

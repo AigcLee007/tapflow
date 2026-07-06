@@ -3,6 +3,20 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - Storyboard Image Generation Auto Run Phase 56
+
+- connected storyboard image-producing actions to the existing v2 workflow execution path:
+  - `生成选中镜头`, `生成全部镜头`, and `合成故事板图` now mark their generated image nodes with `runAfterCreate`.
+  - `AiFlowCanvas` creates each storyboard image node and immediately calls `runBackendWorkflow({ runMode: 'target_node', targetNodeId })` for the new node.
+  - storyboard image nodes still carry structured `params.storyboard` or `params.storyboardSheet` metadata with source storyboard ids, cell ids, shot numbers, aspect, and asset-id references.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - no browser-local generation, direct asset write, free execution path, API route, database migration, worker behavior, provider route, or provider-secret exposure was added.
+  - generated media is still produced by the existing workflow/worker asset pipeline and billing reserve/settle/refund path, not by canvas draft JSON.
+- validation:
+  - red tests observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "storyboard"` and `npm test -- src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx -t "storyboard"` first failed because storyboard image requests did not include `runAfterCreate` and did not call `runBackendWorkflow`.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "storyboard"` passed on 2026-07-06: 8 selected tests.
+  - `npm test -- src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx -t "storyboard"` passed on 2026-07-06: 9 selected tests.
+
 ## 2026-07-06 - Director Desk Image Synthesis Auto Run Phase 55
 
 - connected `3D导演台` shot synthesis to the existing v2 workflow execution path:

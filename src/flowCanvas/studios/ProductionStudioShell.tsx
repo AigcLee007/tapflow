@@ -811,6 +811,7 @@ function StoryboardContent({
         x: nodePosition.x + 420,
         y: nodePosition.y + 40 + batchIndex * 320,
       },
+      runAfterCreate: true,
       data: {
         title: `镜头 ${cell.shotNo} · ${cell.title || '分镜图'}`,
         generationMode: 'standard',
@@ -860,6 +861,7 @@ function StoryboardContent({
         x: nodePosition.x + 420,
         y: nodePosition.y + 40,
       },
+      runAfterCreate: true,
       data: {
         title: '故事板合成图',
         generationMode: 'standard',
