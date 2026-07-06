@@ -3,6 +3,21 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - Director 3D Viewport Browser Smoke Phase 69
+
+- added a repeatable real-browser smoke command for the 3D Director Desk viewport:
+  - `npm run smoke:director3d` writes an HTTP-served smoke page under `output/playwright/`, starts a temporary local Vite server, opens it through `@playwright/cli`, and checks the actual WebGL canvas.
+  - the smoke covers desktop `1280x720` and mobile `390x844` viewports.
+  - each run verifies `data-renderer="three"`, actor/camera/shot metadata, WebGL availability, and nonblank pixel samples from the rendered canvas.
+  - screenshots are saved to `output/playwright/director-viewport-desktop.png` and `output/playwright/director-viewport-mobile.png`.
+- kept product behavior unchanged:
+  - this adds a verification script and npm smoke command only; no canvas UX, billing, workflow, asset persistence, provider route, pricing, database schema, or auth behavior changed.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- scripts/smoke-director-three-viewport.test.ts` first failed because the smoke script module did not exist.
+  - debugging note: the first real smoke run failed with `spawn EINVAL`; root cause was Node 24 on Windows failing to spawn `.cmd` files directly, so the smoke script now invokes Windows commands through `cmd.exe` while keeping the Playwright code in `--filename` files.
+  - `npm test -- scripts/smoke-director-three-viewport.test.ts` passed on 2026-07-06: 3 tests.
+  - `npm run smoke:director3d` passed on 2026-07-06, with desktop and mobile both reporting `renderer: "three"` and `ok: true`.
+
 ## 2026-07-06 - GPT-Image-2 Four-Line Catalog Verification Phase 68
 
 - added DB-backed model catalog acceptance coverage for the GPT-Image-2 production route set:

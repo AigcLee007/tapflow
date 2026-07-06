@@ -29,6 +29,7 @@
     "start:v2": "concurrently \"npm run start:api\" \"npm run start:worker\"",
     "start": "npm run start:v2",
     "db:migrate": "npm run migrate --workspace @aigc-flow/db",
+    "smoke:director3d": "tsx scripts/smoke-director-three-viewport.ts",
     "migrate:legacy:v2": "tsx scripts/migrate-legacy-v2/migrate.ts",
     "migrate:legacy:v2:dry-run": "tsx scripts/migrate-legacy-v2/migrate.ts --dry-run",
     "migrate:mysql": "node scripts/migrate-json-to-mysql.cjs",
