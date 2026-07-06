@@ -1560,4 +1560,26 @@ describe('ProductionStudioShell', () => {
     });
     expect(JSON.stringify(onCreateCanvasNodeFromStudio.mock.calls[0]?.[0])).not.toMatch(/blob:|data:/);
   });
+
+  it('shows the latest exported video asset id in the video editor inspector', () => {
+    render(
+      <ProductionStudioShell
+        studio="video_editor"
+        node={{
+          ...videoNode,
+          data: {
+            ...videoNode.data,
+            videoEditor: {
+              ...videoNode.data.videoEditor,
+              exportedAssetId: 'asset-exported-video',
+            },
+          },
+        } as any}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('导出资产')).toBeTruthy();
+    expect(screen.getByText('asset-exported-video')).toBeTruthy();
+  });
 });

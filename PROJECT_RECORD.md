@@ -3,6 +3,20 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - Video Editor Export Inspector Status Phase 54
+
+- surfaced completed video editor exports in the studio UI:
+  - the video editor inspector now shows a `导出资产` row when `videoEditor.exportedAssetId` is available.
+  - the row displays only the persisted asset id, matching the asset-backed draft contract.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - no generated media, signed URL, preview URL, `blob:`, `data:`, base64, browser-local export, direct asset write, billing mutation, API route, database migration, worker behavior, provider route, or provider-secret exposure was added.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "latest exported video asset"` first failed because the inspector did not render the exported asset row.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "latest exported video asset"` passed on 2026-07-06: 1 selected test.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/runtime/v2WorkflowRunner.test.ts src/flowCanvas/utils/videoEditorNodeData.test.ts` passed on 2026-07-06: 68 tests.
+  - `npm test -- src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx -t "export"` passed on 2026-07-06: 1 selected test.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-06 - Video Editor Frontend Export Sync Phase 53
 
 - made completed video editor exports visible immediately in the active canvas session:

@@ -1330,6 +1330,7 @@ function VideoEditorContent({
         <MetricRow label="画幅" value={videoEditor.aspect} />
         <MetricRow label="分辨率" value={videoEditor.resolution} />
         <MetricRow label="时长" value={`${Math.round(timeline.durationMs / 100) / 10}s`} />
+        {videoEditor.exportedAssetId ? <MetricRow label="导出资产" value={videoEditor.exportedAssetId} /> : null}
         {selectedAudio ? (
           <>
             <MetricRow label="当前音频" value={selectedAudio.id} />
