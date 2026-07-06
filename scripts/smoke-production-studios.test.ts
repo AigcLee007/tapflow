@@ -11,8 +11,11 @@ describe("production studios smoke script helpers", () => {
     const html = buildProductionStudiosSmokeHtml();
 
     expect(html).toContain("ProductionStudioShell");
+    expect(html).toContain("ImagePromptActionRow");
+    expect(html).toContain("buildImageGenerationModeParamPatch");
     expect(html).toContain("/src/flowCanvas/studios/ProductionStudioShell.tsx");
     expect(html).toContain("data-testid=\"production-studios-smoke-root\"");
+    expect(html).toContain("image-production-mode-smoke");
     expect(html).toContain("video_editor");
     expect(html).not.toContain("data:text/html");
   });
@@ -25,6 +28,8 @@ describe("production studios smoke script helpers", () => {
 
     expect(code).toContain("选择输出规格 1:1 1080p");
     expect(code).toContain("请先绑定素材库资产");
+    expect(code).toContain("图片生成模式 标准");
+    expect(code).toContain("subject_orbit_270");
     expect(code).toContain("合成故事板图");
     expect(code).toContain("request.data?.params?.storyboardSheet?.sourceStoryboardNodeId");
     expect(code).toContain("production-studios-smoke.png");

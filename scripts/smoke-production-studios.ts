@@ -42,9 +42,83 @@ export function buildProductionStudiosSmokeHtml(): string {
     <script type="module">
       import React from 'react';
       import { createRoot } from 'react-dom/client';
+      import { MenuSelect } from '/src/components/menu/MenuSelect.tsx';
+      import { ImagePromptActionRow } from '/src/flowCanvas/nodes/ImagePromptActionRow.tsx';
       import { ProductionStudioShell } from '/src/flowCanvas/studios/ProductionStudioShell.tsx';
+      import {
+        IMAGE_GENERATION_MODE_OPTIONS,
+        buildImageGenerationModeParamPatch,
+        normalizeImageGenerationMode,
+      } from '/src/flowCanvas/utils/imageGenerationModes.ts';
 
       const root = createRoot(document.getElementById('root'));
+      function ImageModeSmoke() {
+        const [mode, setMode] = React.useState('standard');
+        const patch = buildImageGenerationModeParamPatch(mode);
+        const setProductionMode = (value) => {
+          const nextMode = normalizeImageGenerationMode(value);
+          const nextPatch = buildImageGenerationModeParamPatch(nextMode);
+          setMode(nextMode);
+          window.productionStudiosSmokeState.imageModePatches.push({ mode: nextMode, patch: nextPatch });
+        };
+
+        return React.createElement(
+          'div',
+          {
+            'data-testid': 'image-production-mode-smoke',
+            style: {
+              boxSizing: 'border-box',
+              minHeight: '100%',
+              padding: 28,
+              color: '#e2e8f0',
+              fontFamily: 'Inter, system-ui, sans-serif',
+            },
+          },
+          React.createElement('h1', { style: { fontSize: 18, margin: '0 0 14px' } }, '图片生产模式'),
+          React.createElement(ImagePromptActionRow, {
+            batchCount: 1,
+            creditsValue: '24',
+            isGenerating: false,
+            modelControl: React.createElement('button', { type: 'button' }, '模型'),
+            settingsControl: React.createElement('button', { type: 'button' }, '设置'),
+            quantityControl: React.createElement('button', { type: 'button' }, '1x'),
+            generationModeControl: React.createElement(
+              'div',
+              { style: { minWidth: 168 } },
+              React.createElement(MenuSelect, {
+                label: '图片生成模式',
+                onChange: setProductionMode,
+                options: IMAGE_GENERATION_MODE_OPTIONS.map((option) => ({
+                  label: option.label,
+                  value: option.mode,
+                })),
+                size: 'compact',
+                value: mode,
+              }),
+            ),
+            onGenerate: () => {
+              window.productionStudiosSmokeState.imageGenerateClicks.push({ mode, patch });
+            },
+          }),
+          React.createElement(
+            'pre',
+            {
+              'data-testid': 'image-production-mode-patch',
+              style: {
+                marginTop: 18,
+                overflow: 'auto',
+                borderRadius: 12,
+                border: '1px solid rgba(148,163,184,0.2)',
+                background: 'rgba(15,23,42,0.82)',
+                padding: 14,
+                fontSize: 12,
+              },
+            },
+            JSON.stringify({ mode, patch }, null, 2),
+          ),
+        );
+      }
+
       const nodes = {
         director3d: {
           id: 'director-node',
@@ -153,12 +227,18 @@ export function buildProductionStudiosSmokeHtml(): string {
         current: 'director3d',
         patches: [],
         requests: [],
+        imageGenerateClicks: [],
+        imageModePatches: [],
         storyboardSyncs: [],
         storyboardVideoSyncs: [],
       };
 
       window.renderProductionStudioSmoke = (key) => {
         window.productionStudiosSmokeState.current = key;
+        if (key === 'image_modes') {
+          root.render(React.createElement(ImageModeSmoke, { key }));
+          return;
+        }
         const node = nodes[key];
         const studio = key === 'video_editor_placeholder' ? 'video_editor' : key;
         root.render(
@@ -203,6 +283,16 @@ await page.waitForSelector('section[role="dialog"][aria-label="剪辑工程"]', 
 await page.waitForSelector('text=请先绑定素材库资产', { timeout: 15000 });
 const placeholderExportDisabled = await page.locator('button[aria-label="导出到画布"]').isDisabled();
 
+await page.evaluate(() => window.renderProductionStudioSmoke('image_modes'));
+await page.waitForSelector('[data-testid="image-production-mode-smoke"]', { timeout: 15000 });
+await page.locator('button[aria-label="图片生成模式 标准"]').click();
+await page.locator('button[role="menuitem"]').filter({ hasText: '360°全景' }).click();
+await page.waitForSelector('text=panorama_360', { timeout: 15000 });
+await page.locator('button[aria-label="图片生成模式 360°全景"]').click();
+await page.locator('button[role="menuitem"]').filter({ hasText: '主体三面展开' }).click();
+await page.waitForSelector('text=subject_orbit_270', { timeout: 15000 });
+await page.locator('button[aria-label="开始生成"]').click();
+
 const result = await page.evaluate(() => {
   const state = window.productionStudiosSmokeState;
   const videoPatch = state.patches.find((entry) =>
@@ -219,7 +309,30 @@ const result = await page.evaluate(() => {
     request.data?.routeKey === 'video.editor.ffmpeg' &&
     request.data?.params?.videoEditor?.sourceVideoEditorNodeId === 'video-node'
   );
+  const imagePanoramaPatch = state.imageModePatches.find((entry) =>
+    entry.mode === 'panorama_360' &&
+    entry.patch?.generationMode === 'panorama_360' &&
+    entry.patch?.panorama?.projectionHint === 'equirectangular' &&
+    entry.patch?.panorama?.subjectType === 'scene' &&
+    entry.patch?.wraparound === undefined
+  );
+  const imageSubject270Patch = state.imageModePatches.find((entry) =>
+    entry.mode === 'subject_orbit_270' &&
+    entry.patch?.generationMode === 'subject_orbit_270' &&
+    entry.patch?.panorama === undefined &&
+    entry.patch?.wraparound?.coverageDegrees === 270 &&
+    entry.patch?.wraparound?.layout === 'three_panel_sheet' &&
+    entry.patch?.wraparound?.panels === 3 &&
+    entry.patch?.wraparound?.subjectType === 'subject'
+  );
+  const imageGenerateClick = state.imageGenerateClicks.find((entry) =>
+    entry.mode === 'subject_orbit_270' &&
+    entry.patch?.generationMode === 'subject_orbit_270'
+  );
   return {
+    imageGenerateClick: Boolean(imageGenerateClick),
+    imagePanoramaPatch: Boolean(imagePanoramaPatch),
+    imageSubject270Patch: Boolean(imageSubject270Patch),
     patchCount: state.patches.length,
     requestCount: state.requests.length,
     storyboardSheetRequest: Boolean(storyboardSheetRequest),
@@ -232,7 +345,16 @@ result.placeholderExportDisabled = placeholderExportDisabled;
 
 await page.screenshot({ path: ${JSON.stringify(screenshotPath)}, fullPage: true });
 
-if (!result.directorReady || !result.storyboardSheetRequest || !result.videoExportRequest || !result.videoSquarePatch || !result.placeholderExportDisabled) {
+if (
+  !result.directorReady ||
+  !result.imageGenerateClick ||
+  !result.imagePanoramaPatch ||
+  !result.imageSubject270Patch ||
+  !result.storyboardSheetRequest ||
+  !result.videoExportRequest ||
+  !result.videoSquarePatch ||
+  !result.placeholderExportDisabled
+) {
   throw new Error(JSON.stringify(result));
 }
 

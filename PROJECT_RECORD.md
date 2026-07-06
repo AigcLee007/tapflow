@@ -3,6 +3,22 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - Production Studios Image Mode Browser Smoke Phase 72
+
+- extended the real-browser production studios smoke to cover the 360°/270° image production mode UI:
+  - the smoke page now mounts the real `ImagePromptActionRow` and shared `MenuSelect` mode control alongside the studio shell checks.
+  - Chromium clicks `360°全景`, verifies the structured `panorama_360` patch, then clicks `主体三面展开` and verifies the `subject_orbit_270` wraparound patch.
+  - the check confirms stale mode params are absent from the opposite mode (`wraparound` absent for panorama, `panorama` absent for subject 270).
+  - the same smoke still verifies `3D导演台`, storyboard sheet creation, video editor export, square output, and placeholder export blocking.
+- kept product behavior unchanged:
+  - this is browser-level QA coverage only; no route, pricing, provider, database, billing, draft persistence, or asset storage behavior changed.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- scripts/smoke-production-studios.test.ts` first failed because the smoke page/check did not include the image production mode UI.
+  - `npm test -- scripts/smoke-production-studios.test.ts` passed on 2026-07-06: 3 tests.
+  - `npm run smoke:production-studios` passed on 2026-07-06 with `imagePanoramaPatch`, `imageSubject270Patch`, and `imageGenerateClick` all true.
+  - `npm test -- scripts/smoke-production-studios.test.ts src/flowCanvas/utils/imageGenerationModes.test.ts src/flowCanvas/nodes/ImagePromptActionRow.test.tsx` passed on 2026-07-06: 10 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-06 - Video Editor Square Output Alignment Phase 71
 
 - aligned the video editor output UI, draft normalization, and FFmpeg render plan with the installed `video.editor.ffmpeg` route capabilities:
