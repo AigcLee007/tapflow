@@ -3,6 +3,21 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - GPT-Image-2 Four-Line Catalog Verification Phase 68
+
+- added DB-backed model catalog acceptance coverage for the GPT-Image-2 production route set:
+  - the test installs `openai-compatible.gpt-image-2`, `mouxihub.gpt-image-2-line3`, and `mouxihub.gpt-image-2-line4` through the authenticated v2 admin plugin API.
+  - it then verifies `/api/v2/ai/model-catalog/gpt-image-2/routes` returns lines one through four with safe public capabilities for `standard`, `panorama_360`, `wraparound_270`, and `subject_orbit_270`.
+  - the same assertion confirms raw route internals such as `requestConfig` remain absent from the creator-facing model catalog response.
+- kept product behavior unchanged:
+  - this was test coverage only; no provider route, pricing value, database migration, workflow behavior, billing mutation, asset persistence behavior, or frontend model-selection code was changed.
+- validation:
+  - `npm run test --workspace @aigc-flow/api -- ai-model-catalog.test.ts` ran on 2026-07-06 and skipped 4 DB-backed tests because local database test environment was unavailable.
+  - `npm run test --workspace @aigc-flow/api -- ai-plugins.service.test.ts ai-model-catalog.service.test.ts` passed on 2026-07-06: 9 tests.
+  - `npm run test --workspace @aigc-flow/ai-gateway-core -- plugin-registry.test.ts` passed on 2026-07-06: 11 tests.
+  - `npm run build --workspace @aigc-flow/api` passed on 2026-07-06.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-06 - Subject 270 Prompt Semantics Phase 67
 
 - tightened the provider-facing prompt helper for `subject_orbit_270`:

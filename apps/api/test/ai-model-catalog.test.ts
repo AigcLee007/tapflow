@@ -197,6 +197,109 @@ describeWithDatabase("ai model catalog API", () => {
     });
   });
 
+  test("publishes GPT-Image-2 MouxiHub lines three and four into the safe runtime catalog", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({
+          connectionString: await createAppDatabaseUrl(),
+        });
+        const api = buildTestApp(appPool);
+        const owner = await registerOwner(api, "gpt-image-mouxihub-owner@example.com", "GPT Image MouxiHub Owner");
+
+        for (const packageKey of [
+          "openai-compatible.gpt-image-2",
+          "mouxihub.gpt-image-2-line3",
+          "mouxihub.gpt-image-2-line4",
+        ]) {
+          const install = await api.inject({
+            headers: {
+              authorization: `Bearer ${owner.accessToken}`,
+            },
+            method: "POST",
+            payload: {
+              credential: {
+                name: `${packageKey} Catalog Key`,
+                secret: `${packageKey}-catalog-secret`,
+              },
+              publishImmediately: true,
+            },
+            url: `/api/v2/admin/ai/plugins/${packageKey}/install`,
+          });
+          expect(install.statusCode).toBe(201);
+        }
+
+        const routes = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "GET",
+          url: "/api/v2/ai/model-catalog/gpt-image-2/routes",
+        });
+        expect(routes.statusCode).toBe(200);
+
+        const supportedGenerationModes = [
+          "standard",
+          "panorama_360",
+          "wraparound_270",
+          "subject_orbit_270",
+        ];
+        expect(routes.json()).toEqual([
+          expect.objectContaining({
+            capabilities: {
+              supportedGenerationModes,
+              supportedVideoWorkflows: [],
+            },
+            minChargeCredits: 2.5,
+            pricingUnit: "image_generation",
+            providerKey: "openai-compatible",
+            routeKey: "image.gpt-image-2",
+          }),
+          expect.objectContaining({
+            capabilities: {
+              supportedGenerationModes,
+              supportedVideoWorkflows: [],
+            },
+            minChargeCredits: 3,
+            pricingUnit: "image_generation",
+            providerKey: "openai-compatible",
+            routeKey: "image.gpt-image-2.line2",
+          }),
+          expect.objectContaining({
+            capabilities: {
+              supportedGenerationModes,
+              supportedVideoWorkflows: [],
+            },
+            minChargeCredits: 1,
+            pricingUnit: "image_generation",
+            providerKey: "mouxihub-openai",
+            routeKey: "image.gpt-image-2.line3",
+          }),
+          expect.objectContaining({
+            capabilities: {
+              supportedGenerationModes,
+              supportedVideoWorkflows: [],
+            },
+            minChargeCredits: 3,
+            pricingUnit: "image_generation",
+            providerKey: "mouxihub-openai",
+            routeKey: "image.gpt-image-2.line4",
+          }),
+        ]);
+        expect(JSON.stringify(routes.json())).not.toContain("requestConfig");
+
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
   test("publishes the internal video editor FFmpeg route into the safe runtime catalog", async () => {
     await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
       process.env.DATABASE_URL = databaseUrl;
