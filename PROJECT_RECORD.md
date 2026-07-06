@@ -5092,3 +5092,19 @@ Validation completed:
 - validation:
   - `npm test -- src/flowCanvas/nodes/ReferenceSourcePicker.test.tsx src/flowCanvas/utils/referenceSourceResolver.test.ts`
   - `npm run build`
+
+## 2026-07-06 - Production Studios Browser Smoke
+
+- added a repeatable real-browser smoke command for the canvas production studios:
+  - `npm run smoke:production-studios`
+- the smoke page mounts `ProductionStudioShell` through Vite and verifies the Scheme C studio flow in Chromium:
+  - `3D导演台` renders the Three.js viewport hook
+  - `故事板` can create a storyboard sheet image request from asset-backed cells
+  - `剪辑工程` can switch to the `1:1 1080p` output preset and create the `video.editor.ffmpeg` export request
+  - placeholder-only video editor timelines disable export and show `请先绑定素材库资产`
+- the smoke writes artifacts under `output/playwright/` so local QA can inspect the generated page, check code, and screenshot without storing them in the canvas draft graph.
+- validation:
+  - `npm test -- scripts/smoke-production-studios.test.ts`
+  - `npm run smoke:production-studios`
+  - `npm test -- scripts/smoke-production-studios.test.ts src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx`
+  - `npm run build`
