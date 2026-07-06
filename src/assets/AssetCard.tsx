@@ -4,6 +4,8 @@ import { Check, File, Film, Image, MoreHorizontal, Music, Star } from "lucide-re
 import { EntityActionMenu, EntityConfirmDialog, EntityRenameDialog } from "../components/EntityActionMenu";
 import type { AssetItem } from "./assetApi";
 
+const ASSET_LIBRARY_DRAG_TYPE = "application/x-tapflow-asset-id";
+
 function iconFor(asset: AssetItem) {
   if (asset.kind === "image") return <Image size={20} />;
   if (asset.kind === "video") return <Film size={20} />;
@@ -61,6 +63,11 @@ export function AssetCard({
   const [moving, setMoving] = React.useState(false);
   const menuButtonRef = React.useRef<HTMLButtonElement | null>(null);
   const title = asset.title || asset.originalFilename || "未命名素材";
+  const handleDragStart = (event: React.DragEvent<HTMLButtonElement>) => {
+    event.dataTransfer.effectAllowed = "copy";
+    event.dataTransfer.setData(ASSET_LIBRARY_DRAG_TYPE, asset.id);
+    event.dataTransfer.setData("text/plain", asset.id);
+  };
   const menuItems = [
     {
       key: "preview",
@@ -157,7 +164,9 @@ export function AssetCard({
         className="block w-full text-left"
         data-asset-id={asset.id}
         data-asset-selectable="true"
+        draggable
         onClick={() => onOpen(asset)}
+        onDragStart={handleDragStart}
         onPointerDown={(event) => {
           onPointerDown?.(event, asset);
           if (event.defaultPrevented) {

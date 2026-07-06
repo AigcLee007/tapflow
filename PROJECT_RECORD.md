@@ -3,6 +3,20 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - Asset Library Drag Payload Phase 74
+
+- completed the asset-library side of storyboard/canvas drag binding:
+  - asset cards now expose a native drag payload using the existing `application/x-tapflow-asset-id` type.
+  - the payload carries only the persisted asset id, with `text/plain` also set to the same id for safe fallback/debug behavior.
+  - media thumbnails themselves remain `draggable={false}` so the existing asset-library marquee selection behavior is preserved.
+- kept v2 persistence and billing boundaries unchanged:
+  - no preview URL, signed URL, `blob:`, `data:`, generated media, API route, database migration, provider route, pricing value, worker behavior, or billing state changed.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/assets/AssetLibraryPage.test.tsx` first failed because asset cards had no native drag payload.
+  - `npm test -- src/assets/AssetLibraryPage.test.tsx` passed on 2026-07-06: 16 tests.
+  - `npm test -- src/assets/AssetLibraryPage.test.tsx src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx scripts/smoke-production-studios.test.ts` passed on 2026-07-06: 86 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-06 - Storyboard Asset Drop Binding Phase 73
 
 - added direct storyboard-cell drop binding for asset-library image references:
