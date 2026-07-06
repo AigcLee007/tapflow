@@ -35,6 +35,29 @@ describe('storyboardNodeData', () => {
     expect(JSON.stringify(data)).not.toMatch(/blob:|data:|https?:\/\//);
   });
 
+  it('normalizes unsafe storyboard reference ids away', () => {
+    const data = normalizeStoryboardData({
+      grid: '2x2',
+      cells: [
+        {
+          id: 'blob:cell-id',
+          shotNo: 1,
+          sourceNodeId: 'https://signed.example.com/source-node',
+          directorCameraId: 'data:camera-id',
+          directorShotId: 'blob:shot-id',
+          title: 'reference cleanup',
+        },
+      ],
+    } as any);
+
+    expect(data.cells[0]).toEqual({
+      id: 'storyboard-cell-1',
+      shotNo: 1,
+      title: 'reference cleanup',
+    });
+    expect(JSON.stringify(data)).not.toMatch(/blob:|data:|https?:\/\//);
+  });
+
   it('patches a storyboard cell by index', () => {
     const data = normalizeStoryboardData({ grid: '2x2', cells: [] });
     const next = patchStoryboardCell(data, 1, { assetId: 'asset-2', prompt: 'close up' });

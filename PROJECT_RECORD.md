@@ -3,6 +3,22 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - Production Studio Reference Id Sanitization Phase 77
+
+- tightened production studio draft normalization for unsafe reference ids:
+  - storyboard cell ids plus `sourceNodeId`, `directorCameraId`, and `directorShotId` now reject `blob:`, `data:`, and signed/http URL-shaped values.
+  - director actor/camera/shot ids plus shot `cameraId`, `generatedSourceNodeId`, and `targetStoryboardCellId` now use the same safe reference-id filtering.
+  - user-authored titles/prompts remain plain text fields; asset references still persist only as asset ids.
+- kept v2 architecture and billing boundaries unchanged:
+  - no API route, database migration, provider route, pricing value, worker behavior, workflow execution path, asset write path, or billing mutation changed.
+  - this closes an old-draft / imported-graph safety gap without adding browser-local persistence or storing preview/signed URLs in canvas draft JSON.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/utils/storyboardNodeData.test.ts src/flowCanvas/utils/director3dNodeData.test.ts` first failed because unsafe URL-shaped reference ids were preserved.
+  - `npm test -- src/flowCanvas/utils/storyboardNodeData.test.ts src/flowCanvas/utils/director3dNodeData.test.ts` passed on 2026-07-06: 5 tests.
+  - `npm test -- src/flowCanvas/utils/director3dNodeData.test.ts src/flowCanvas/utils/storyboardNodeData.test.ts src/flowCanvas/utils/storyboardDirectorSync.test.ts src/flowCanvas/utils/storyboardVideoSync.test.ts src/flowCanvas/utils/directorVideoSync.test.ts src/flowCanvas/utils/videoEditorNodeData.test.ts src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx src/flowCanvas/runtime/v2WorkflowRunner.test.ts` passed on 2026-07-06: 121 tests.
+  - `npm run smoke:production-studios` passed on 2026-07-06 with `status: ok`.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-06 - Director Desk Asset Drop Binding Phase 76
 
 - added direct asset-library drop binding for 3D Director Desk scene objects:

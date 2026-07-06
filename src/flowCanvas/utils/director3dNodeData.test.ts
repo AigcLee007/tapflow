@@ -110,4 +110,40 @@ describe('director3dNodeData', () => {
     expect(data.shots[0]?.generatedAssetId).toBeUndefined();
     expect(JSON.stringify(data)).not.toMatch(/blob:|data:|https?:\/\//);
   });
+
+  it('normalizes unsafe director reference ids away', () => {
+    const data = normalizeDirector3dData({
+      actors: [
+        {
+          id: 'blob:actor-id',
+          name: 'Unsafe actor id',
+          kind: 'placeholder_humanoid',
+        },
+      ],
+      cameras: [
+        {
+          id: 'https://signed.example.com/camera-id',
+          name: 'Camera URL id',
+        },
+      ],
+      shots: [
+        {
+          id: 'data:shot-id',
+          cameraId: 'https://signed.example.com/camera-id',
+          generatedSourceNodeId: 'blob:image-node-id',
+          targetStoryboardCellId: 'data:storyboard-cell-id',
+        },
+      ],
+    } as any);
+
+    expect(data.actors[0]?.id).toBe('actor-1');
+    expect(data.cameras[0]?.id).toBe('camera-1');
+    expect(data.shots[0]).toMatchObject({
+      id: 'shot-1',
+      cameraId: 'camera-1',
+    });
+    expect(data.shots[0]?.generatedSourceNodeId).toBeUndefined();
+    expect(data.shots[0]?.targetStoryboardCellId).toBeUndefined();
+    expect(JSON.stringify(data)).not.toMatch(/blob:|data:|https?:\/\//);
+  });
 });

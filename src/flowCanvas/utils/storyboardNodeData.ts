@@ -20,22 +20,31 @@ function cleanString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
-function cleanAssetId(value: unknown): string | undefined {
+function cleanReferenceId(value: unknown): string | undefined {
   const trimmed = cleanString(value);
   return trimmed && !TRANSIENT_MEDIA_REF_PATTERN.test(trimmed) ? trimmed : undefined;
+}
+
+function cleanAssetId(value: unknown): string | undefined {
+  return cleanReferenceId(value);
 }
 
 function cleanCell(value: unknown, index: number): FlowStoryboardCell {
   const input = value && typeof value === 'object' ? value as Record<string, unknown> : {};
   const cell: FlowStoryboardCell = {
-    id: cleanString(input.id) ?? `storyboard-cell-${index + 1}`,
+    id: cleanReferenceId(input.id) ?? `storyboard-cell-${index + 1}`,
     shotNo: typeof input.shotNo === 'number' && Number.isFinite(input.shotNo)
       ? Math.max(1, Math.trunc(input.shotNo))
       : index + 1,
   };
 
-  for (const key of ['title', 'prompt', 'sourceNodeId', 'directorCameraId', 'directorShotId'] as const) {
+  for (const key of ['title', 'prompt'] as const) {
     const fieldValue = cleanString(input[key]);
+    if (fieldValue) cell[key] = fieldValue;
+  }
+
+  for (const key of ['sourceNodeId', 'directorCameraId', 'directorShotId'] as const) {
+    const fieldValue = cleanReferenceId(input[key]);
     if (fieldValue) cell[key] = fieldValue;
   }
 

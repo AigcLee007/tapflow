@@ -25,9 +25,13 @@ function isSafeAssetId(value: string): boolean {
   return Boolean(value) && !/^(?:blob:|data:|https?:\/\/)/i.test(value);
 }
 
-function readSafeAssetId(value: unknown): string | undefined {
+function readSafeReferenceId(value: unknown): string | undefined {
   const trimmed = readTrimmedString(value);
   return isSafeAssetId(trimmed) ? trimmed : undefined;
+}
+
+function readSafeAssetId(value: unknown): string | undefined {
+  return readSafeReferenceId(value);
 }
 
 function readNonNegativeInteger(value: unknown, fallback: number): number {
@@ -65,7 +69,7 @@ function normalizeActor(value: unknown, index: number): DirectorActor {
   const pose = readTrimmedString(input.pose);
 
   return {
-    id: readTrimmedString(input.id) || `actor-${index + 1}`,
+    id: readSafeReferenceId(input.id) || `actor-${index + 1}`,
     name: readTrimmedString(input.name) || `Actor ${index + 1}`,
     kind,
     ...(assetId ? { assetId } : {}),
@@ -85,7 +89,7 @@ function normalizeCamera(value: unknown, index: number): DirectorCamera {
   const prompt = readTrimmedString(input.prompt);
 
   return {
-    id: readTrimmedString(input.id) || `camera-${index + 1}`,
+    id: readSafeReferenceId(input.id) || `camera-${index + 1}`,
     name: readTrimmedString(input.name) || `Camera ${index + 1}`,
     position: normalizeVector(input.position, [0, 1.8, 5]),
     target: normalizeVector(input.target, [0, 1, 0]),
@@ -118,12 +122,12 @@ function normalizeCameraSnapshot(
 function normalizeShot(value: unknown, index: number, cameras: DirectorCamera[]): DirectorShot {
   const input = readRecord(value);
   const fallbackCamera = cameras[0] ?? null;
-  const cameraId = readTrimmedString(input.cameraId) || fallbackCamera?.id || `camera-${index + 1}`;
+  const cameraId = readSafeReferenceId(input.cameraId) || fallbackCamera?.id || `camera-${index + 1}`;
   const selectedCamera = cameras.find((camera) => camera.id === cameraId) ?? fallbackCamera;
   const prompt = readTrimmedString(input.prompt);
   const generatedAssetId = readSafeAssetId(input.generatedAssetId);
-  const generatedSourceNodeId = readTrimmedString(input.generatedSourceNodeId);
-  const targetStoryboardCellId = readTrimmedString(input.targetStoryboardCellId);
+  const generatedSourceNodeId = readSafeReferenceId(input.generatedSourceNodeId);
+  const targetStoryboardCellId = readSafeReferenceId(input.targetStoryboardCellId);
   const motion = DIRECTOR_SHOT_MOTIONS.has(input.motion as NonNullable<DirectorShot['motion']>)
     ? input.motion as NonNullable<DirectorShot['motion']>
     : 'static';
@@ -131,7 +135,7 @@ function normalizeShot(value: unknown, index: number, cameras: DirectorCamera[])
 
   return {
     ...(cameraSnapshot ? { cameraSnapshot } : {}),
-    id: readTrimmedString(input.id) || `shot-${index + 1}`,
+    id: readSafeReferenceId(input.id) || `shot-${index + 1}`,
     cameraId,
     startMs: readNonNegativeInteger(input.startMs, 0),
     durationMs: readNonNegativeInteger(input.durationMs, 3000),
