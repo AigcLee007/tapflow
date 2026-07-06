@@ -569,6 +569,67 @@ describe('AiFlowCanvas production studios', () => {
     expect(JSON.stringify(node?.data.storyboard)).not.toMatch(/blob:|data:/);
   });
 
+  it('syncs generated director shots into an existing video editor node', () => {
+    const directorWithGeneratedShots = {
+      ...directorNode,
+      data: {
+        ...directorNode.data,
+        director3d: {
+          ...directorNode.data.director3d,
+          shots: [
+            {
+              ...directorNode.data.director3d.shots[0],
+              durationMs: 4200,
+              generatedAssetId: 'asset-director-shot-1',
+              motion: 'dolly',
+              prompt: '镜头缓慢推进',
+            },
+          ],
+        },
+      },
+    };
+    useFlowCanvasStore.getState().loadProject({
+      id: 'project-1',
+      title: '项目',
+      nodes: [directorWithGeneratedShots as any, videoNode as any],
+      edges: [],
+      viewport: { x: 0, y: 0, zoom: 1 },
+      version: 1,
+      updatedAt: 1,
+    });
+
+    render(<AiFlowCanvas cullingEnabled={false} />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(OPEN_PRODUCTION_STUDIO_EVENT, {
+          detail: { nodeId: 'director-node', studio: 'director3d' },
+        }),
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '同步到剪辑工程' }));
+
+    const node = useFlowCanvasStore.getState().nodes.find((item) => item.id === 'video-node');
+    expect(node?.data.videoEditor?.timeline.clips).toEqual([
+      expect.objectContaining({
+        assetId: 'asset-director-shot-1',
+        directorShotId: 'shot-1',
+        directorShotMotion: 'dolly',
+        kind: 'image',
+        sourceDirectorNodeId: 'director-node',
+      }),
+    ]);
+    expect(node?.data.videoEditor?.timeline.subtitles).toEqual([
+      expect.objectContaining({
+        directorShotId: 'shot-1',
+        sourceDirectorNodeId: 'director-node',
+        text: '镜头缓慢推进',
+      }),
+    ]);
+    expect(JSON.stringify(node?.data.videoEditor)).not.toMatch(/blob:|data:|https?:\/\//);
+  });
+
   it('persists storyboard prompt edits through the canvas store', () => {
     useFlowCanvasStore.getState().loadProject({
       id: 'project-1',

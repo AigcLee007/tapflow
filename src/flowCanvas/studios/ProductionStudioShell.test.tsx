@@ -960,6 +960,48 @@ describe('ProductionStudioShell', () => {
     expect(JSON.stringify(onSyncDirectorShotToStoryboard.mock.calls[0]?.[0])).not.toMatch(/blob:|data:/);
   });
 
+  it('requests video editor sync from generated director shots', () => {
+    const onSyncDirectorShotsToVideoEditor = vi.fn();
+    const nodeWithGeneratedShots = {
+      ...directorNode,
+      data: {
+        ...directorNode.data,
+        director3d: {
+          ...directorNode.data.director3d,
+          shots: [
+            {
+              ...directorNode.data.director3d.shots[0],
+              durationMs: 4200,
+              generatedAssetId: 'asset-director-shot-1',
+              motion: 'dolly',
+              prompt: '镜头缓慢推进',
+            },
+          ],
+        },
+      },
+    };
+
+    render(
+      <ProductionStudioShell
+        studio="director3d"
+        node={nodeWithGeneratedShots as any}
+        onClose={vi.fn()}
+        onSyncDirectorShotsToVideoEditor={onSyncDirectorShotsToVideoEditor}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '同步到剪辑工程' }));
+
+    expect(onSyncDirectorShotsToVideoEditor).toHaveBeenCalledWith({
+      director: expect.objectContaining({
+        shots: [expect.objectContaining({ generatedAssetId: 'asset-director-shot-1', id: 'shot-1' })],
+      }),
+      sourceDirectorNodeId: 'director-node',
+      sourceDirectorNodePosition: { x: 0, y: 0 },
+    });
+    expect(JSON.stringify(onSyncDirectorShotsToVideoEditor.mock.calls[0]?.[0])).not.toMatch(/blob:|data:|https?:\/\//);
+  });
+
   it('renders storyboard shell with selected shot context', () => {
     render(<ProductionStudioShell studio="storyboard" node={storyboardNode as any} onClose={vi.fn()} />);
 

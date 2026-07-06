@@ -7,6 +7,13 @@ type VideoTransitionOut = NonNullable<VideoClip['transitionOut']>;
 type VideoTransform = NonNullable<VideoClip['transform']>;
 
 const TRANSIENT_URL_PATTERN = /(?:blob:|data:|https?:\/\/)/i;
+const DIRECTOR_SHOT_MOTIONS = new Set<NonNullable<VideoClip['directorShotMotion']>>([
+  'static',
+  'dolly',
+  'orbit',
+  'pan',
+  'custom_path',
+]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -100,6 +107,13 @@ function normalizeStoryboardShotNo(value: unknown): number | undefined {
   return Math.max(1, Math.trunc(shotNo));
 }
 
+function normalizeDirectorShotMotion(value: unknown): VideoClip['directorShotMotion'] | undefined {
+  const motion = cleanString(value);
+  return DIRECTOR_SHOT_MOTIONS.has(motion as NonNullable<VideoClip['directorShotMotion']>)
+    ? motion as NonNullable<VideoClip['directorShotMotion']>
+    : undefined;
+}
+
 function normalizeClip(value: unknown, index: number): VideoClip {
   const input = isRecord(value) ? value : {};
   const kind = input.kind === 'video' ? 'video' : 'image';
@@ -108,6 +122,7 @@ function normalizeClip(value: unknown, index: number): VideoClip {
   const transitionOut = normalizeTransitionOut(input.transitionOut);
   const transform = normalizeTransform(input.transform);
   const storyboardShotNo = normalizeStoryboardShotNo(input.storyboardShotNo);
+  const directorShotMotion = normalizeDirectorShotMotion(input.directorShotMotion);
 
   return {
     id: cleanString(input.id) ?? `clip-${index + 1}`,
@@ -124,6 +139,11 @@ function normalizeClip(value: unknown, index: number): VideoClip {
       : {}),
     ...(transitionOut ? { transitionOut } : {}),
     ...(transform ? { transform } : {}),
+    ...(cleanString(input.sourceDirectorNodeId) ? { sourceDirectorNodeId: cleanString(input.sourceDirectorNodeId) } : {}),
+    ...(cleanString(input.directorShotId) ? { directorShotId: cleanString(input.directorShotId) } : {}),
+    ...(cleanString(input.directorCameraId) ? { directorCameraId: cleanString(input.directorCameraId) } : {}),
+    ...(directorShotMotion ? { directorShotMotion } : {}),
+    ...(cleanString(input.directorPrompt) ? { directorPrompt: cleanString(input.directorPrompt) } : {}),
     ...(cleanString(input.sourceStoryboardNodeId) ? { sourceStoryboardNodeId: cleanString(input.sourceStoryboardNodeId) } : {}),
     ...(cleanString(input.storyboardCellId) ? { storyboardCellId: cleanString(input.storyboardCellId) } : {}),
     ...(typeof storyboardShotNo === 'number' ? { storyboardShotNo } : {}),
@@ -161,6 +181,9 @@ function normalizeSubtitle(value: unknown, index: number): VideoSubtitle {
     startMs,
     endMs,
     ...(style ? { style } : {}),
+    ...(cleanString(input.sourceDirectorNodeId) ? { sourceDirectorNodeId: cleanString(input.sourceDirectorNodeId) } : {}),
+    ...(cleanString(input.directorShotId) ? { directorShotId: cleanString(input.directorShotId) } : {}),
+    ...(cleanString(input.directorCameraId) ? { directorCameraId: cleanString(input.directorCameraId) } : {}),
     ...(cleanString(input.sourceStoryboardNodeId) ? { sourceStoryboardNodeId: cleanString(input.sourceStoryboardNodeId) } : {}),
     ...(cleanString(input.storyboardCellId) ? { storyboardCellId: cleanString(input.storyboardCellId) } : {}),
     ...(typeof storyboardShotNo === 'number' ? { storyboardShotNo } : {}),

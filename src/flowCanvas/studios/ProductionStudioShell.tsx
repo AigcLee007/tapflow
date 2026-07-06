@@ -82,11 +82,18 @@ export type StudioStoryboardVideoSyncRequest = {
   storyboard: NonNullable<FlowNodeData['storyboard']>;
 };
 
+export type StudioDirectorVideoSyncRequest = {
+  director: NonNullable<FlowNodeData['director3d']>;
+  sourceDirectorNodeId: string;
+  sourceDirectorNodePosition: { x: number; y: number };
+};
+
 interface ProductionStudioShellProps {
   node: FlowNode;
   onClose: () => void;
   onCreateCanvasNodeFromStudio?: (request: StudioCanvasNodeRequest) => void;
   onSyncDirectorShotToStoryboard?: (request: StudioStoryboardSyncRequest) => void;
+  onSyncDirectorShotsToVideoEditor?: (request: StudioDirectorVideoSyncRequest) => void;
   onSyncStoryboardToVideoEditor?: (request: StudioStoryboardVideoSyncRequest) => void;
   onUpdateNodeData?: (nodeId: string, patch: Partial<FlowNodeData>) => void;
   studio: ProductionStudioKind;
@@ -103,6 +110,7 @@ export const ProductionStudioShell: React.FC<ProductionStudioShellProps> = ({
   onClose,
   onCreateCanvasNodeFromStudio,
   onSyncDirectorShotToStoryboard,
+  onSyncDirectorShotsToVideoEditor,
   onSyncStoryboardToVideoEditor,
   onUpdateNodeData,
   studio,
@@ -147,6 +155,7 @@ export const ProductionStudioShell: React.FC<ProductionStudioShellProps> = ({
             nodePosition={node.position}
             onCreateCanvasNodeFromStudio={onCreateCanvasNodeFromStudio}
             onSyncDirectorShotToStoryboard={onSyncDirectorShotToStoryboard}
+            onSyncDirectorShotsToVideoEditor={onSyncDirectorShotsToVideoEditor}
             onUpdateNodeData={onUpdateNodeData}
           />
         ) : studio === 'storyboard' ? (
@@ -392,6 +401,7 @@ function DirectorDeskContent({
   nodePosition,
   onCreateCanvasNodeFromStudio,
   onSyncDirectorShotToStoryboard,
+  onSyncDirectorShotsToVideoEditor,
   onUpdateNodeData,
 }: {
   data?: FlowDirector3dData;
@@ -399,6 +409,7 @@ function DirectorDeskContent({
   nodePosition: { x: number; y: number };
   onCreateCanvasNodeFromStudio?: (request: StudioCanvasNodeRequest) => void;
   onSyncDirectorShotToStoryboard?: (request: StudioStoryboardSyncRequest) => void;
+  onSyncDirectorShotsToVideoEditor?: (request: StudioDirectorVideoSyncRequest) => void;
   onUpdateNodeData?: (nodeId: string, patch: Partial<FlowNodeData>) => void;
 }) {
   const director = normalizeDirector3dData(data);
@@ -493,6 +504,7 @@ function DirectorDeskContent({
     : null;
   const canMoveSelectedShotBackward = Boolean(selectedShot && selectedShotIndex > 0);
   const canMoveSelectedShotForward = Boolean(selectedShot && selectedShotIndex >= 0 && selectedShotIndex < shots.length - 1);
+  const hasGeneratedShotAssets = shots.some((shot) => Boolean(shot.generatedAssetId));
   const moveSelectedShot = (offset: -1 | 1) => {
     if (!selectedShot || selectedShotIndex < 0) return;
     const nextIndex = selectedShotIndex + offset;
@@ -603,6 +615,14 @@ function DirectorDeskContent({
       },
       shot: targetShot,
       shotIndex: targetShotIndex,
+      sourceDirectorNodeId: nodeId,
+      sourceDirectorNodePosition: nodePosition,
+    });
+  };
+  const syncDirectorShotsToVideoEditor = () => {
+    if (!hasGeneratedShotAssets) return;
+    onSyncDirectorShotsToVideoEditor?.({
+      director,
       sourceDirectorNodeId: nodeId,
       sourceDirectorNodePosition: nodePosition,
     });
@@ -759,6 +779,20 @@ function DirectorDeskContent({
             >
               <Grid3X3 size={14} />
               同步到故事板
+            </button>
+            <button
+              type="button"
+              aria-label="同步到剪辑工程"
+              disabled={!hasGeneratedShotAssets}
+              style={{
+                ...railButtonStyle,
+                opacity: hasGeneratedShotAssets ? 1 : 0.45,
+                cursor: hasGeneratedShotAssets ? 'pointer' : 'not-allowed',
+              }}
+              onClick={syncDirectorShotsToVideoEditor}
+            >
+              <Film size={14} />
+              同步到剪辑工程
             </button>
           </div>
         </div>

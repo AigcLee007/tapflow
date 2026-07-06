@@ -5234,3 +5234,25 @@ Validation completed:
   - `npm pkg get scripts.smoke:production-suite-catalog` returned `tsx scripts/smoke-production-suite-catalog.ts`.
   - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
   - live staging execution still requires a deployed API URL and short-lived `TAPFLOW_ACCESS_TOKEN`.
+
+## 2026-07-06 - Director Shots To Video Editor Sync
+
+- added a direct 3D Director Desk -> video editor sync path:
+  - director shots with persisted `generatedAssetId` values can now be pushed into an existing or newly created `video_editor` node as image clips.
+  - synced clips preserve source metadata including director node id, shot id, camera id, motion, and prompt.
+  - synced subtitles align with the generated director clips and use shot prompts or shot numbering.
+  - re-syncing from the same director replaces previous director-sourced clips/subtitles instead of duplicating them.
+- kept v2 persistence and billing boundaries unchanged:
+  - only safe asset ids are accepted; `blob:`, `data:`, and signed/http URLs are still stripped by director/video normalizers.
+  - this local sync does not enqueue generation, export video, reserve credits, settle billing, create assets, change AI routes, expose provider secrets, or add database schema.
+- extended the production studios browser smoke:
+  - the smoke now clicks the director `同步到剪辑工程` action and verifies the safe sync request includes `asset-director-shot-smoke`.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/utils/directorVideoSync.test.ts` first failed because `directorVideoSync` did not exist.
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "video editor sync from generated director shots"` first failed because the director desk had no `同步到剪辑工程` action.
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx -t "generated director shots"` first failed because the canvas had no director-to-video sync handler.
+  - red test observed on 2026-07-06: `npm test -- scripts/smoke-production-studios.test.ts -t "browser check"` first failed because the browser smoke did not verify `directorVideoSyncRequest`.
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/utils/videoEditorNodeData.test.ts -t "director clip metadata"` first failed because unknown director shot motions were not filtered.
+  - `npm test -- src/flowCanvas/utils/directorVideoSync.test.ts src/flowCanvas/utils/videoEditorNodeData.test.ts src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx scripts/smoke-production-studios.test.ts` passed on 2026-07-06: 81 tests.
+  - `npm run smoke:production-studios` passed on 2026-07-06 with `directorVideoSyncRequest: true`.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.

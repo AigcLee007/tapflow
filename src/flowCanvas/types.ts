@@ -147,6 +147,11 @@ export interface FlowVideoEditorData {
       volume?: number;
       transitionOut?: { type: string; durationMs: number };
       transform?: { scale: number; x: number; y: number; rotate: number };
+      sourceDirectorNodeId?: string;
+      directorShotId?: string;
+      directorCameraId?: string;
+      directorShotMotion?: FlowDirector3dData['shots'][number]['motion'];
+      directorPrompt?: string;
       sourceStoryboardNodeId?: string;
       storyboardCellId?: string;
       storyboardShotNo?: number;
@@ -160,6 +165,9 @@ export interface FlowVideoEditorData {
       startMs: number;
       endMs: number;
       style?: Record<string, unknown>;
+      sourceDirectorNodeId?: string;
+      directorShotId?: string;
+      directorCameraId?: string;
       sourceStoryboardNodeId?: string;
       storyboardCellId?: string;
       storyboardShotNo?: number;

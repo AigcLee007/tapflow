@@ -35,6 +35,7 @@ import {
 import {
   ProductionStudioShell,
   type StudioCanvasNodeRequest,
+  type StudioDirectorVideoSyncRequest,
   type StudioStoryboardSyncRequest,
   type StudioStoryboardVideoSyncRequest,
 } from '../studios/ProductionStudioShell';
@@ -63,6 +64,7 @@ import { buildAssetBackedNodeData, buildMeasuredAssetNodePatch } from '../utils/
 import { getCanvasDockBadge, getCanvasDockDrawerLayout, type CanvasDockPanelId } from '../utils/canvasDockPanel';
 import { FLOW_NODE_DEFAULT_SIZES, fitMediaNodeToShortSide } from '../utils/nodeSizing';
 import { buildStoryboardPatchFromDirectorShot } from '../utils/storyboardDirectorSync';
+import { buildVideoEditorFromDirectorShots } from '../utils/directorVideoSync';
 import { buildVideoEditorFromStoryboardAssets } from '../utils/storyboardVideoSync';
 import { offsetTemplateGraphForInsert } from '../utils/templateGraph';
 import { canConnectFlowNodes } from '../rules/connectionRules';
@@ -815,6 +817,36 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled, onAg
     [addNode, updateNodeData],
   );
 
+  const handleSyncDirectorShotsToVideoEditor = useCallback(
+    (request: StudioDirectorVideoSyncRequest) => {
+      const videoEditorNode = useFlowCanvasStore.getState().nodes.find((node) => node.type === 'video_editor');
+      const videoEditor = buildVideoEditorFromDirectorShots({
+        director: request.director,
+        sourceDirectorNodeId: request.sourceDirectorNodeId,
+        videoEditor: videoEditorNode?.data.videoEditor,
+      });
+
+      if (videoEditorNode) {
+        updateNodeData(videoEditorNode.id, { videoEditor });
+        return;
+      }
+
+      addNode(
+        'video_editor',
+        {
+          x: request.sourceDirectorNodePosition.x + 420,
+          y: request.sourceDirectorNodePosition.y + 40,
+        },
+        {
+          title: '导演剪辑工程',
+          videoEditor,
+        },
+        { selected: true },
+      );
+    },
+    [addNode, updateNodeData],
+  );
+
   const handleFocusCommentNode = useCallback((nodeId: string) => {
     const node = nodes.find((item) => item.id === nodeId);
     if (!node) return;
@@ -1134,6 +1166,7 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled, onAg
           node={activeProductionStudioNode}
           onCreateCanvasNodeFromStudio={handleCreateCanvasNodeFromStudio}
           onSyncDirectorShotToStoryboard={handleSyncDirectorShotToStoryboard}
+          onSyncDirectorShotsToVideoEditor={handleSyncDirectorShotsToVideoEditor}
           onSyncStoryboardToVideoEditor={handleSyncStoryboardToVideoEditor}
           onUpdateNodeData={updateNodeData}
           studio={activeProductionStudio.studio}

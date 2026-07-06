@@ -146,7 +146,7 @@ export function buildProductionStudiosSmokeHtml(): string {
                 },
               ],
               cameras: [{ id: 'camera-1', name: '主镜头', position: [0, 2, 6], target: [0, 1, 0] }],
-              shots: [{ id: 'shot-1', cameraId: 'camera-1', startMs: 0, durationMs: 3000, motion: 'static' }],
+              shots: [{ id: 'shot-1', cameraId: 'camera-1', startMs: 0, durationMs: 3000, motion: 'static', generatedAssetId: 'asset-director-shot-smoke' }],
             },
           },
         },
@@ -231,6 +231,7 @@ export function buildProductionStudiosSmokeHtml(): string {
         requests: [],
         imageGenerateClicks: [],
         imageModePatches: [],
+        directorVideoSyncs: [],
         storyboardSyncs: [],
         storyboardVideoSyncs: [],
       };
@@ -251,6 +252,7 @@ export function buildProductionStudiosSmokeHtml(): string {
             onClose: () => {},
             onCreateCanvasNodeFromStudio: (request) => window.productionStudiosSmokeState.requests.push(request),
             onSyncDirectorShotToStoryboard: (request) => window.productionStudiosSmokeState.storyboardSyncs.push(request),
+            onSyncDirectorShotsToVideoEditor: (request) => window.productionStudiosSmokeState.directorVideoSyncs.push(request),
             onSyncStoryboardToVideoEditor: (request) => window.productionStudiosSmokeState.storyboardVideoSyncs.push(request),
             onUpdateNodeData: (nodeId, patch) => window.productionStudiosSmokeState.patches.push({ nodeId, patch }),
           }),
@@ -283,6 +285,7 @@ async function dispatchAssetDrop(selector, assetId) {
 
 await dispatchAssetDrop('button[aria-label="选择对象 角色 A"]', 'asset-actor-smoke');
 await dispatchAssetDrop('button[aria-label="选择对象 场景背景"]', 'asset-scene-bg-smoke');
+await page.locator('button[aria-label="同步到剪辑工程"]').click();
 
 await page.evaluate(() => window.renderProductionStudioSmoke('storyboard'));
 await page.waitForSelector('section[role="dialog"][aria-label="故事板"]', { timeout: 15000 });
@@ -360,6 +363,13 @@ const result = await page.evaluate(() => {
     request.data?.routeKey === 'video.editor.ffmpeg' &&
     request.data?.params?.videoEditor?.sourceVideoEditorNodeId === 'video-node'
   );
+  const directorVideoSyncRequest = state.directorVideoSyncs.find((request) =>
+    request.sourceDirectorNodeId === 'director-node' &&
+    request.director?.shots?.some?.((shot) =>
+      shot.id === 'shot-1' &&
+      shot.generatedAssetId === 'asset-director-shot-smoke'
+    )
+  );
   const imagePanoramaPatch = state.imageModePatches.find((entry) =>
     entry.mode === 'panorama_360' &&
     entry.patch?.generationMode === 'panorama_360' &&
@@ -383,6 +393,7 @@ const result = await page.evaluate(() => {
   return {
     directorActorDropPatch: Boolean(directorActorDropPatch),
     directorSceneDropPatch: Boolean(directorSceneDropPatch),
+    directorVideoSyncRequest: Boolean(directorVideoSyncRequest),
     imageGenerateClick: Boolean(imageGenerateClick),
     imagePanoramaPatch: Boolean(imagePanoramaPatch),
     imageSubject270Patch: Boolean(imageSubject270Patch),
@@ -405,6 +416,7 @@ if (
   !result.directorReady ||
   !result.directorActorDropPatch ||
   !result.directorSceneDropPatch ||
+  !result.directorVideoSyncRequest ||
   !result.imageGenerateClick ||
   !result.imagePanoramaPatch ||
   !result.imageSubject270Patch ||

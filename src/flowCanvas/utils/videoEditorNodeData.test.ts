@@ -161,4 +161,75 @@ describe('videoEditorNodeData', () => {
     expect(data.aspect).toBe('1:1');
     expect(data.resolution).toBe('1080x1080');
   });
+
+  it('normalizes director clip metadata without allowing transient urls or unknown motions', () => {
+    const data = normalizeVideoEditorData({
+      timeline: {
+        clips: [
+          {
+            id: 'clip-1',
+            assetId: 'asset-director-shot',
+            kind: 'image',
+            startMs: 0,
+            inMs: 0,
+            outMs: 3000,
+            speed: 1,
+            sourceDirectorNodeId: 'director-node',
+            directorShotId: 'shot-1',
+            directorCameraId: 'camera-1',
+            directorShotMotion: 'orbit',
+            directorPrompt: '镜头环绕角色',
+          },
+          {
+            id: 'clip-2',
+            assetId: 'asset-director-shot-2',
+            kind: 'image',
+            sourceDirectorNodeId: 'https://signed.example/director',
+            directorShotId: 'blob:shot',
+            directorCameraId: 'data:camera',
+            directorShotMotion: 'unknown-motion',
+          },
+        ],
+        subtitles: [
+          {
+            id: 'subtitle-1',
+            text: '镜头环绕角色',
+            startMs: 0,
+            endMs: 3000,
+            sourceDirectorNodeId: 'director-node',
+            directorShotId: 'shot-1',
+            directorCameraId: 'camera-1',
+          },
+          {
+            id: 'subtitle-2',
+            text: 'bad',
+            sourceDirectorNodeId: 'https://signed.example/director',
+            directorShotId: 'blob:shot',
+            directorCameraId: 'data:camera',
+          },
+        ],
+      },
+    } as any);
+
+    expect(data.timeline.clips[0]).toMatchObject({
+      sourceDirectorNodeId: 'director-node',
+      directorShotId: 'shot-1',
+      directorCameraId: 'camera-1',
+      directorShotMotion: 'orbit',
+      directorPrompt: '镜头环绕角色',
+    });
+    expect(data.timeline.clips[1]).not.toHaveProperty('sourceDirectorNodeId');
+    expect(data.timeline.clips[1]).not.toHaveProperty('directorShotId');
+    expect(data.timeline.clips[1]).not.toHaveProperty('directorCameraId');
+    expect(data.timeline.clips[1]).not.toHaveProperty('directorShotMotion');
+    expect(data.timeline.subtitles[0]).toMatchObject({
+      sourceDirectorNodeId: 'director-node',
+      directorShotId: 'shot-1',
+      directorCameraId: 'camera-1',
+    });
+    expect(data.timeline.subtitles[1]).not.toHaveProperty('sourceDirectorNodeId');
+    expect(data.timeline.subtitles[1]).not.toHaveProperty('directorShotId');
+    expect(data.timeline.subtitles[1]).not.toHaveProperty('directorCameraId');
+    expect(JSON.stringify(data)).not.toMatch(/blob:|data:|https?:\/\//);
+  });
 });

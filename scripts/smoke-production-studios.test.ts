@@ -35,10 +35,12 @@ describe("production studios smoke script helpers", () => {
     expect(code).toContain("application/x-tapflow-asset-id");
     expect(code).toContain("directorActorDropPatch");
     expect(code).toContain("directorSceneDropPatch");
+    expect(code).toContain("directorVideoSyncRequest");
     expect(code).toContain("storyboardDropPatch");
     expect(code).toContain("videoClipDropPatch");
     expect(code).toContain("videoAudioDropPatch");
     expect(code).toContain("request.data?.params?.storyboardSheet?.sourceStoryboardNodeId");
+    expect(code).toContain("request.director?.shots?.some");
     expect(code).toContain("production-studios-smoke.png");
     expect(code).toContain("throw new Error");
   });
