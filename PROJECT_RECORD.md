@@ -3,6 +3,23 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - MouxiHub GPT-Image Production Mode Capabilities Phase 62
+
+- published production image generation capabilities for the MouxiHub GPT-Image-2 async lines:
+  - `image.gpt-image-2.line3` now declares `standard`, `panorama_360`, `wraparound_270`, and `subject_orbit_270` in `requestConfig.capabilities.supportedGenerationModes`.
+  - `image.gpt-image-2.line4` now declares the same generation mode capabilities.
+  - this lets the existing model catalog, canvas mode selector, frontend preflight, and backend workflow guard treat lines three/four consistently with existing GPT-Image-2 lines when pricing is installed.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - no new billing unit, pricing value, provider credential, frontend hardcoding, draft media storage, API route, database migration, worker behavior, or provider-secret exposure was added.
+  - generation modes remain route capabilities and are still gated by existing route pricing and workflow reserve/settle/refund paths.
+- validation:
+  - red test observed on 2026-07-06: `npm run test --workspace @aigc-flow/ai-gateway-core -- plugin-registry.test.ts` first failed because MouxiHub GPT-Image-2 line three/four manifests did not declare `supportedGenerationModes`.
+  - `npm run test --workspace @aigc-flow/ai-gateway-core -- plugin-registry.test.ts` passed on 2026-07-06: 11 tests.
+  - `npm run test --workspace @aigc-flow/api -- ai-plugins.service.test.ts ai-model-catalog.service.test.ts` passed on 2026-07-06: 9 tests.
+  - `npm run build --workspace @aigc-flow/ai-gateway-core` passed on 2026-07-06.
+  - `npm run build --workspace @aigc-flow/api` passed on 2026-07-06.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-06 - Worker Storyboard Draft Patch Phase 61
 
 - made storyboard image results durable from the worker draft patch path:

@@ -316,6 +316,14 @@ describe("AI plugin registry", () => {
         path: "/v1/images/generations",
         requestConfig: expect.objectContaining({
           async: true,
+          capabilities: {
+            supportedGenerationModes: [
+              "standard",
+              "panorama_360",
+              "wraparound_270",
+              "subject_orbit_270",
+            ],
+          },
           editPath: "/v1/images/edits",
           modelBySize: {
             "1K": "gpt-image-2",
@@ -373,6 +381,14 @@ describe("AI plugin registry", () => {
         path: "/v1/images/generations",
         requestConfig: expect.objectContaining({
           async: true,
+          capabilities: {
+            supportedGenerationModes: [
+              "standard",
+              "panorama_360",
+              "wraparound_270",
+              "subject_orbit_270",
+            ],
+          },
           editPath: "/v1/images/edits",
           modelBySize: {
             "1K": "gpt-image-2-vip",
