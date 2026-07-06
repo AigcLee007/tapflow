@@ -42,7 +42,7 @@ export function resolveImageGenerationModeRunBlocker(input: {
   if (!isImageGenerationModeSupportedByRoute(mode, input.route)) {
     return {
       code: 'UNSUPPORTED_GENERATION_MODE',
-      message: `UNSUPPORTED_GENERATION_MODE: Route ${routeKey} does not support ${mode}.`,
+      message: `UNSUPPORTED_GENERATION_MODE: 当前线路 ${routeKey} 不支持 ${mode}。`,
     };
   }
 
@@ -55,7 +55,7 @@ export function resolveImageGenerationModeRunBlocker(input: {
   if (!estimatedCredits) {
     return {
       code: 'PRICING_NOT_FOUND',
-      message: `PRICING_NOT_FOUND: Route ${routeKey} has no active pricing for ${mode}.`,
+      message: `PRICING_NOT_FOUND: 当前线路 ${routeKey} 缺少 ${mode} 的有效计费配置。`,
     };
   }
 

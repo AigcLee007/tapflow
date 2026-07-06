@@ -5203,3 +5203,16 @@ Validation completed:
   - `npm run smoke:production-studios`
   - `npm test -- scripts/smoke-production-studios.test.ts src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx`
   - `npm run build`
+
+## 2026-07-06 - Production Image Mode Billing Guard
+
+- wired the image-node generate action into the production mode route/pricing support guard before launching a workflow run.
+- 360° panorama and 270° wraparound/subject-orbit modes now fail closed on the canvas when the selected route lacks declared mode support or active pricing, instead of enqueueing a free or unsupported run.
+- kept the error codes visible while localizing the node error messages:
+  - `UNSUPPORTED_GENERATION_MODE`
+  - `PRICING_NOT_FOUND`
+- added a component regression that proves `panorama_360` on an unpriced `GPT-Image-2` fallback route does not call `runBackendWorkflow`.
+- validation:
+  - `npm test -- src/flowCanvas/utils/imageGenerationModeSupport.test.ts src/flowCanvas/nodes/FlowNodes.agent-metadata.test.tsx`
+  - `npm test -- src/flowCanvas/utils/imageGenerationModeSupport.test.ts src/flowCanvas/utils/runtimeRouteOptions.test.ts src/flowCanvas/utils/modelCatalogOptions.test.ts src/flowCanvas/nodes/FlowNodes.agent-metadata.test.tsx src/flowCanvas/nodes/ImagePromptActionRow.test.tsx scripts/smoke-production-studios.test.ts`
+  - `npm run build`

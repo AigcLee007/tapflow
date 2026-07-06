@@ -185,7 +185,10 @@ import {
   buildImageGenerationModeParamPatch,
   normalizeImageGenerationMode,
 } from '../utils/imageGenerationModes';
-import { isImageGenerationModeSupportedByRoute } from '../utils/imageGenerationModeSupport';
+import {
+  isImageGenerationModeSupportedByRoute,
+  resolveImageGenerationModeRunBlocker,
+} from '../utils/imageGenerationModeSupport';
 
 type FlowNode = Node<FlowNodeData>;
 
@@ -4998,6 +5001,18 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     if (!selectedRuntimeRoute?.routeKey) {
       updateNodeData(id, {
         errorMessage: '当前模型未配置运行路由，请先在后台添加对应线路',
+        generationStatus: 'error',
+        status: 'error',
+      });
+      return;
+    }
+    const generationModeBlocker = resolveImageGenerationModeRunBlocker({
+      mode: currentGenerationMode,
+      route: selectedRuntimeRoute,
+    });
+    if (generationModeBlocker) {
+      updateNodeData(id, {
+        errorMessage: generationModeBlocker.message,
         generationStatus: 'error',
         status: 'error',
       });

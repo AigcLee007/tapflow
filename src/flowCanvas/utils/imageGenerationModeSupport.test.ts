@@ -46,6 +46,7 @@ describe('imageGenerationModeSupport', () => {
       route: route({ supportedGenerationModes: ['standard'] }),
     })).toMatchObject({
       code: 'UNSUPPORTED_GENERATION_MODE',
+      message: expect.stringContaining('不支持'),
     });
 
     expect(resolveImageGenerationModeRunBlocker({
@@ -57,6 +58,7 @@ describe('imageGenerationModeSupport', () => {
       }),
     })).toMatchObject({
       code: 'PRICING_NOT_FOUND',
+      message: expect.stringContaining('缺少'),
     });
 
     expect(resolveImageGenerationModeRunBlocker({
