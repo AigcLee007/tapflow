@@ -31,6 +31,13 @@ describe("production studios smoke script helpers", () => {
     expect(code).toContain("图片生成模式 标准");
     expect(code).toContain("subject_orbit_270");
     expect(code).toContain("合成故事板图");
+    expect(code).toContain("dispatchAssetDrop");
+    expect(code).toContain("application/x-tapflow-asset-id");
+    expect(code).toContain("directorActorDropPatch");
+    expect(code).toContain("directorSceneDropPatch");
+    expect(code).toContain("storyboardDropPatch");
+    expect(code).toContain("videoClipDropPatch");
+    expect(code).toContain("videoAudioDropPatch");
     expect(code).toContain("request.data?.params?.storyboardSheet?.sourceStoryboardNodeId");
     expect(code).toContain("production-studios-smoke.png");
     expect(code).toContain("throw new Error");

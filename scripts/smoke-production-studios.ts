@@ -186,7 +186,9 @@ export function buildProductionStudiosSmokeHtml(): string {
               aspect: '16:9',
               resolution: '1920x1080',
               timeline: {
-                audio: [],
+                audio: [
+                  { id: 'audio-1', assetId: 'asset-audio-1', track: 1, startMs: 0, inMs: 0, outMs: 3000, volume: 1 },
+                ],
                 clips: [
                   { id: 'clip-1', assetId: 'asset-video-1', kind: 'video', track: 1, startMs: 0, inMs: 0, outMs: 3000, speed: 1 },
                 ],
@@ -269,12 +271,28 @@ await page.setViewportSize(${JSON.stringify(options.viewport)});
 await page.waitForSelector('[data-testid="director-three-viewport"]', { timeout: 15000 });
 const directorReady = await page.locator('section[role="dialog"][aria-label="3D导演台"]').count();
 
+async function dispatchAssetDrop(selector, assetId) {
+  await page.locator(selector).evaluate((element, targetAssetId) => {
+    const dataTransfer = new DataTransfer();
+    dataTransfer.setData('application/x-tapflow-asset-id', targetAssetId);
+    dataTransfer.setData('text/plain', 'https://signed.example.com/ignored-preview.png');
+    element.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer }));
+    element.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer }));
+  }, assetId);
+}
+
+await dispatchAssetDrop('button[aria-label="选择对象 角色 A"]', 'asset-actor-smoke');
+await dispatchAssetDrop('button[aria-label="选择对象 场景背景"]', 'asset-scene-bg-smoke');
+
 await page.evaluate(() => window.renderProductionStudioSmoke('storyboard'));
 await page.waitForSelector('section[role="dialog"][aria-label="故事板"]', { timeout: 15000 });
+await dispatchAssetDrop('button[aria-label="选择镜头 1"]', 'asset-storyboard-smoke');
 await page.locator('button[aria-label="合成故事板图"]').click();
 
 await page.evaluate(() => window.renderProductionStudioSmoke('video_editor'));
 await page.waitForSelector('section[role="dialog"][aria-label="剪辑工程"]', { timeout: 15000 });
+await dispatchAssetDrop('button[aria-label="选择片段 clip-1"]', 'asset-video-clip-smoke');
+await dispatchAssetDrop('button[aria-label="选择音频 audio-1"]', 'asset-audio-smoke');
 await page.locator('button[aria-label="选择输出规格 1:1 1080p"]').click();
 await page.locator('button[aria-label="导出到画布"]').click();
 
@@ -299,6 +317,39 @@ const result = await page.evaluate(() => {
     entry.nodeId === 'video-node' &&
     entry.patch?.videoEditor?.aspect === '1:1' &&
     entry.patch?.videoEditor?.resolution === '1080x1080'
+  );
+  const directorActorDropPatch = state.patches.find((entry) =>
+    entry.nodeId === 'director-node' &&
+    entry.patch?.director3d?.actors?.some?.((actor) =>
+      actor.id === 'actor-1' &&
+      actor.assetId === 'asset-actor-smoke' &&
+      actor.kind === 'image_plane'
+    )
+  );
+  const directorSceneDropPatch = state.patches.find((entry) =>
+    entry.nodeId === 'director-node' &&
+    entry.patch?.director3d?.scene?.backgroundAssetId === 'asset-scene-bg-smoke'
+  );
+  const storyboardDropPatch = state.patches.find((entry) =>
+    entry.nodeId === 'storyboard-node' &&
+    entry.patch?.storyboard?.cells?.some?.((cell) =>
+      cell.id === 'cell-1' &&
+      cell.assetId === 'asset-storyboard-smoke'
+    )
+  );
+  const videoClipDropPatch = state.patches.find((entry) =>
+    entry.nodeId === 'video-node' &&
+    entry.patch?.videoEditor?.timeline?.clips?.some?.((clip) =>
+      clip.id === 'clip-1' &&
+      clip.assetId === 'asset-video-clip-smoke'
+    )
+  );
+  const videoAudioDropPatch = state.patches.find((entry) =>
+    entry.nodeId === 'video-node' &&
+    entry.patch?.videoEditor?.timeline?.audio?.some?.((audio) =>
+      audio.id === 'audio-1' &&
+      audio.assetId === 'asset-audio-smoke'
+    )
   );
   const storyboardSheetRequest = state.requests.find((request) =>
     request.kind === 'image' &&
@@ -330,12 +381,17 @@ const result = await page.evaluate(() => {
     entry.patch?.generationMode === 'subject_orbit_270'
   );
   return {
+    directorActorDropPatch: Boolean(directorActorDropPatch),
+    directorSceneDropPatch: Boolean(directorSceneDropPatch),
     imageGenerateClick: Boolean(imageGenerateClick),
     imagePanoramaPatch: Boolean(imagePanoramaPatch),
     imageSubject270Patch: Boolean(imageSubject270Patch),
     patchCount: state.patches.length,
     requestCount: state.requests.length,
+    storyboardDropPatch: Boolean(storyboardDropPatch),
     storyboardSheetRequest: Boolean(storyboardSheetRequest),
+    videoAudioDropPatch: Boolean(videoAudioDropPatch),
+    videoClipDropPatch: Boolean(videoClipDropPatch),
     videoExportRequest: Boolean(videoExportRequest),
     videoSquarePatch: Boolean(videoPatch),
   };
@@ -347,10 +403,15 @@ await page.screenshot({ path: ${JSON.stringify(screenshotPath)}, fullPage: true 
 
 if (
   !result.directorReady ||
+  !result.directorActorDropPatch ||
+  !result.directorSceneDropPatch ||
   !result.imageGenerateClick ||
   !result.imagePanoramaPatch ||
   !result.imageSubject270Patch ||
+  !result.storyboardDropPatch ||
   !result.storyboardSheetRequest ||
+  !result.videoAudioDropPatch ||
+  !result.videoClipDropPatch ||
   !result.videoExportRequest ||
   !result.videoSquarePatch ||
   !result.placeholderExportDisabled

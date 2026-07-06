@@ -5187,3 +5187,19 @@ Validation completed:
   - `npm run smoke:production-studios`
   - `npm test -- scripts/smoke-production-studios.test.ts src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx`
   - `npm run build`
+
+## 2026-07-06 - Production Studios Asset Drop Browser Smoke
+
+- extended the production studios real-browser smoke to dispatch `application/x-tapflow-asset-id` drag/drop payloads through the mounted studio UI instead of only checking pre-bound sample assets.
+- the smoke now verifies asset-id patches for:
+  - 3D director actor image-plane binding
+  - 3D director scene background binding
+  - storyboard cell image binding
+  - video editor clip binding
+  - video editor audio track binding
+- the browser check also sends an ignored signed-preview `text/plain` payload so the smoke guards the v2 rule that canvas draft patches persist asset ids, not temporary preview URLs.
+- validation:
+  - `npm test -- scripts/smoke-production-studios.test.ts`
+  - `npm run smoke:production-studios`
+  - `npm test -- scripts/smoke-production-studios.test.ts src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx`
+  - `npm run build`
