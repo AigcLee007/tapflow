@@ -3,6 +3,22 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - Video Editor Frontend Export Sync Phase 53
+
+- made completed video editor exports visible immediately in the active canvas session:
+  - when a `video.generate` export node succeeds, the runtime still applies the generated asset patch to the export video node.
+  - if the export node carries `params.videoEditor.sourceVideoEditorNodeId`, the source `video_editor` node now receives `videoEditor.exportedAssetId` without waiting for a page refresh.
+  - the update reuses the shared video editor normalizer so the source editor draft keeps asset-id based structured data only.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - no browser-local export, direct asset write, free execution path, API route, database migration, worker route, provider route, or provider-secret exposure was added.
+  - runtime preview/poster signed URLs remain in runtime output or the generated video node; the source `video_editor` document only stores `exportedAssetId`.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/runtime/v2WorkflowRunner.test.ts -t "video editor export syncs"` first failed because the source `video_editor` node did not receive `exportedAssetId`.
+  - `npm test -- src/flowCanvas/runtime/v2WorkflowRunner.test.ts -t "video editor export syncs"` passed on 2026-07-06: 1 selected test.
+  - `npm test -- src/flowCanvas/runtime/v2WorkflowRunner.test.ts src/flowCanvas/utils/videoEditorNodeData.test.ts` passed on 2026-07-06: 32 tests.
+  - `npm test -- src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx -t "export"` passed on 2026-07-06: 1 selected test.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-06 - Video Editor Export Asset Backfill Phase 52
 
 - closed the video editor export result loop in the worker draft patch path:

@@ -33,6 +33,7 @@ import { normalizeImageGenerationMode } from '../utils/imageGenerationModes';
 import { resolveImageGenerationModeRunBlocker } from '../utils/imageGenerationModeSupport';
 import { fitMediaNodeToShortSide } from '../utils/nodeSizing';
 import { patchStoryboardCell } from '../utils/storyboardNodeData';
+import { normalizeVideoEditorData } from '../utils/videoEditorNodeData';
 import { flushRemoteDraftBeforeRun, shouldFlushRemoteDraftBeforeRun } from './remoteDraftSaveBarrier';
 
 const RUNNER_ENABLED = String(import.meta.env.VITE_USE_V2_WORKFLOW_RUNNER ?? 'true').toLowerCase() !== 'false';
@@ -767,6 +768,32 @@ function syncStoryboardCellFromGeneratedAsset(nodeRun: PersistableNodeRun, asset
   });
 }
 
+function syncVideoEditorExportedAsset(nodeRun: PersistableNodeRun, assetRefs: FlowRuntimeAssetRef[]): void {
+  if (nodeRun.status !== 'succeeded' || nodeRun.nodeType !== 'video.generate' || assetRefs.length === 0 || !shouldApplyNodeRun(nodeRun)) {
+    return;
+  }
+  const primaryAsset = assetRefs[0];
+  if (!primaryAsset?.assetId) return;
+
+  const store = useFlowCanvasStore.getState();
+  const exportNode = store.nodes.find((node) => node.id === nodeRun.nodeId);
+  const videoEditorParams = isRecord(exportNode?.data?.params) && isRecord(exportNode.data.params.videoEditor)
+    ? exportNode.data.params.videoEditor
+    : null;
+  const sourceVideoEditorNodeId = readString(videoEditorParams?.sourceVideoEditorNodeId);
+  if (!sourceVideoEditorNodeId) return;
+
+  const sourceNode = store.nodes.find((node) => node.id === sourceVideoEditorNodeId && node.type === 'video_editor');
+  if (!sourceNode) return;
+
+  store.updateNodeData(sourceVideoEditorNodeId, {
+    videoEditor: {
+      ...normalizeVideoEditorData(sourceNode.data.videoEditor),
+      exportedAssetId: primaryAsset.assetId,
+    },
+  });
+}
+
 function persistNodeOutputsFromRun(nodeRuns: PersistableNodeRun[], assetRefsByNodeId: Record<string, FlowRuntimeAssetRef[]>): void {
   const { addGeneratedImageChildren, nodes, updateNodeData } = useFlowCanvasStore.getState();
   for (const nodeRun of nodeRuns) {
@@ -804,6 +831,7 @@ function persistNodeOutputsFromRun(nodeRuns: PersistableNodeRun[], assetRefsByNo
     }
     updateNodeData(nodeRun.nodeId, nodePatch);
     syncStoryboardCellFromGeneratedAsset(nodeRun, nodeAssets);
+    syncVideoEditorExportedAsset(nodeRun, nodeAssets);
   }
 }
 

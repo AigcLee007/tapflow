@@ -1335,6 +1335,151 @@ describe('v2WorkflowRunner', () => {
     });
   });
 
+  test('video editor export syncs the generated asset id back to the source editor node', async () => {
+    const editorNode = useFlowCanvasStore.getState().addNode('video_editor', { x: 0, y: 0 }, {
+      title: 'Video Editor',
+      videoEditor: {
+        version: 1,
+        aspect: '16:9',
+        resolution: '1920x1080',
+        timeline: {
+          audio: [],
+          clips: [
+            {
+              id: 'clip-1',
+              assetId: 'source-video-asset',
+              kind: 'video',
+              track: 0,
+              startMs: 0,
+              inMs: 0,
+              outMs: 3000,
+              speed: 1,
+            },
+          ],
+          durationMs: 3000,
+          subtitles: [],
+        },
+      },
+    });
+    const exportNode = useFlowCanvasStore.getState().addNode('video', { x: 420, y: 0 }, {
+      params: {
+        videoEditor: {
+          sourceVideoEditorNodeId: editorNode.id,
+          aspect: '16:9',
+          resolution: '1920x1080',
+          timeline: {
+            audio: [],
+            clips: [
+              {
+                id: 'clip-1',
+                assetId: 'source-video-asset',
+                kind: 'video',
+                track: 0,
+                startMs: 0,
+                inMs: 0,
+                outMs: 3000,
+                speed: 1,
+              },
+            ],
+            durationMs: 3000,
+            subtitles: [],
+          },
+        },
+      },
+      routeKey: 'video.editor.ffmpeg',
+      title: 'Editor Export',
+    });
+    listRuntimeRoutesMock.mockResolvedValueOnce([
+      {
+        capabilities: {
+          supportedVideoWorkflows: ['video_editor_export'],
+        },
+        estimatedCredits: 800,
+        minChargeCredits: 800,
+        modality: 'video',
+        modelDisplayName: 'Local FFmpeg',
+        modelKey: 'local-ffmpeg',
+        pricingUnit: 'video_generation',
+        providerKey: 'local',
+        providerName: 'Local',
+        routeKey: 'video.editor.ffmpeg',
+      },
+    ]);
+    createWorkflowRunMock.mockResolvedValue({
+      runId: 'run-video-editor-export',
+      status: 'pending',
+    });
+    getAssetVariantUrlMock.mockResolvedValue({
+      expiresAt: '2026-05-17T00:15:00.000Z',
+      method: 'GET',
+      url: 'https://cdn.test/video-asset-export-preview.mp4?X-Amz-Signature=signed',
+      variantKey: 'preview',
+    });
+    getWorkflowRunMock.mockResolvedValue({
+      nodeRuns: [
+        {
+          attempt: 1,
+          costJson: {},
+          createdAt: '2026-05-17T00:00:00.000Z',
+          errorJson: null,
+          finishedAt: '2026-05-17T00:00:01.000Z',
+          id: 'node-run-video-editor-export',
+          inputJson: {},
+          maxAttempts: 3,
+          nodeId: exportNode.id,
+          nodeType: 'video.generate',
+          outputJson: {
+            assets: [
+              {
+                assetId: 'video-asset-export',
+                durationMs: 3000,
+                kind: 'video',
+                mimeType: 'video/mp4',
+              },
+            ],
+          },
+          providerTaskId: null,
+          startedAt: null,
+          status: 'succeeded',
+          tenantId: 'tenant-1',
+          updatedAt: '2026-05-17T00:00:01.000Z',
+          workflowRunId: 'run-video-editor-export',
+        },
+      ],
+      workflowRun: {
+        canceledAt: null,
+        createdAt: '2026-05-17T00:00:00.000Z',
+        createdBy: 'user-1',
+        errorJson: null,
+        finishedAt: '2026-05-17T00:00:01.000Z',
+        flowId: '11111111-1111-1111-1111-111111111111',
+        flowVersionId: 'version-1',
+        id: 'run-video-editor-export',
+        idempotencyKey: null,
+        inputJson: { runMode: 'target_node', targetNodeId: exportNode.id },
+        outputJson: null,
+        startedAt: null,
+        status: 'succeeded',
+        tenantId: 'tenant-1',
+        updatedAt: '2026-05-17T00:00:01.000Z',
+      },
+    });
+    streamWorkflowRunMock.mockReturnValue({ close: vi.fn() });
+
+    await runBackendWorkflow({ runMode: 'target_node', targetNodeId: exportNode.id });
+
+    const updatedEditorNode = useFlowCanvasStore.getState().nodes.find((node) => node.id === editorNode.id);
+    const updatedExportNode = useFlowCanvasStore.getState().nodes.find((node) => node.id === exportNode.id);
+    expect(updatedExportNode?.data).toMatchObject({
+      assetId: 'video-asset-export',
+      status: 'success',
+    });
+    expect(updatedEditorNode?.data.videoEditor).toMatchObject({
+      exportedAssetId: 'video-asset-export',
+    });
+    expect(JSON.stringify(updatedEditorNode?.data.videoEditor)).not.toMatch(/blob:|data:|https?:\/\//);
+  });
+
   test('text target-node snapshot clears generating state and applies returned text', async () => {
     useFlowCanvasStore.getState().addNode('text', { x: 0, y: 0 }, {
       generationPrompt: 'analyze this image',
