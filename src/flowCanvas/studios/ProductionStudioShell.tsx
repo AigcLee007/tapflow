@@ -1807,6 +1807,7 @@ function DirectorInspector({
     return (
       <div style={inspectorFormStyle}>
         <MetricRow label="当前段落" value={shot.id} />
+        {shot.generatedAssetId ? <MetricRow label="生成资产" value={shot.generatedAssetId} /> : null}
         <label style={fieldLabelStyle}>
           <span>镜头段时长（秒）</span>
           <input

@@ -795,6 +795,46 @@ function syncStoryboardSheetFromGeneratedAsset(nodeRun: PersistableNodeRun, asse
   });
 }
 
+function syncDirectorShotFromGeneratedAsset(nodeRun: PersistableNodeRun, assetRefs: FlowRuntimeAssetRef[]): void {
+  if (nodeRun.status !== 'succeeded' || nodeRun.nodeType !== 'image.generate' || assetRefs.length === 0 || !shouldApplyNodeRun(nodeRun)) {
+    return;
+  }
+  const primaryAsset = assetRefs[0];
+  if (!primaryAsset?.assetId) return;
+
+  const store = useFlowCanvasStore.getState();
+  const sourceNode = store.nodes.find((node) => node.id === nodeRun.nodeId);
+  const directorParams = isRecord(sourceNode?.data?.params) && isRecord(sourceNode.data.params.director3d)
+    ? sourceNode.data.params.director3d
+    : null;
+  const sourceDirectorNodeId = readString(directorParams?.sourceDirectorNodeId);
+  const shotId = readString(directorParams?.shotId);
+  if (!sourceDirectorNodeId || !shotId) return;
+
+  const directorNode = store.nodes.find((node) => node.id === sourceDirectorNodeId && node.type === 'director3d');
+  const director = directorNode?.data.director3d;
+  if (!director || !Array.isArray(director.shots)) return;
+
+  let didPatchShot = false;
+  const shots = director.shots.map((shot) => {
+    if (shot.id !== shotId) return shot;
+    didPatchShot = true;
+    return {
+      ...shot,
+      generatedAssetId: primaryAsset.assetId,
+      generatedSourceNodeId: nodeRun.nodeId,
+    };
+  });
+  if (!didPatchShot) return;
+
+  store.updateNodeData(sourceDirectorNodeId, {
+    director3d: {
+      ...director,
+      shots,
+    },
+  });
+}
+
 function syncVideoEditorExportedAsset(nodeRun: PersistableNodeRun, assetRefs: FlowRuntimeAssetRef[]): void {
   if (nodeRun.status !== 'succeeded' || nodeRun.nodeType !== 'video.generate' || assetRefs.length === 0 || !shouldApplyNodeRun(nodeRun)) {
     return;
@@ -859,6 +899,7 @@ function persistNodeOutputsFromRun(nodeRuns: PersistableNodeRun[], assetRefsByNo
     updateNodeData(nodeRun.nodeId, nodePatch);
     syncStoryboardCellFromGeneratedAsset(nodeRun, nodeAssets);
     syncStoryboardSheetFromGeneratedAsset(nodeRun, nodeAssets);
+    syncDirectorShotFromGeneratedAsset(nodeRun, nodeAssets);
     syncVideoEditorExportedAsset(nodeRun, nodeAssets);
   }
 }

@@ -693,6 +693,37 @@ describe('ProductionStudioShell', () => {
     expect(JSON.stringify(onUpdateNodeData.mock.calls)).not.toMatch(/blob:|data:/);
   });
 
+  it('shows the generated asset id for a selected director shot', () => {
+    const nodeWithGeneratedShot = {
+      ...directorNode,
+      data: {
+        ...directorNode.data,
+        director3d: {
+          ...directorNode.data.director3d,
+          shots: [
+            {
+              ...directorNode.data.director3d.shots[0],
+              generatedAssetId: 'asset-director-shot',
+              generatedSourceNodeId: 'image-node-1',
+            },
+          ],
+        },
+      },
+    };
+
+    render(
+      <ProductionStudioShell
+        studio="director3d"
+        node={nodeWithGeneratedShot as any}
+        onClose={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '选择镜头段 1' }));
+
+    expect(screen.getByText('asset-director-shot')).toBeTruthy();
+  });
+
   it('recalculates following director shot start times when a shot duration changes', () => {
     const onUpdateNodeData = vi.fn();
     const nodeWithThreeShots = {

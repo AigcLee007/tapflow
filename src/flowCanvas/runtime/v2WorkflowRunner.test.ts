@@ -1081,6 +1081,102 @@ describe('v2WorkflowRunner', () => {
     expect(JSON.stringify(updatedStoryboard?.data.storyboard)).not.toMatch(/blob:|data:|https?:\/\//);
   });
 
+  test('successful director shot image generation writes the result asset back to the director shot', async () => {
+    const directorNode = useFlowCanvasStore.getState().addNode('director3d', { x: 0, y: 0 }, {
+      director3d: {
+        version: 1,
+        scene: { gridVisible: true, units: 'meters' },
+        actors: [],
+        cameras: [
+          {
+            id: 'camera-1',
+            name: 'Camera 1',
+            position: [0, 1.8, 5],
+            target: [0, 1, 0],
+            focalMm: 35,
+            prompt: 'wide studio shot',
+          },
+        ],
+        shots: [
+          {
+            id: 'shot-1',
+            cameraId: 'camera-1',
+            startMs: 0,
+            durationMs: 3000,
+            motion: 'static',
+            prompt: 'wide studio shot',
+          },
+        ],
+      },
+      title: '3D Director',
+    });
+    const imageNode = useFlowCanvasStore.getState().addNode('image', { x: 420, y: 40 }, {
+      generationPrompt: 'wide studio shot',
+      params: {
+        director3d: {
+          sourceDirectorNodeId: directorNode.id,
+          cameraId: 'camera-1',
+          shotId: 'shot-1',
+        },
+      },
+      routeKey: 'image.default',
+    });
+    createWorkflowRunMock.mockResolvedValue({ runId: 'run-director-shot-image', status: 'pending' });
+    getWorkflowRunMock.mockResolvedValue({
+      nodeRuns: [
+        {
+          attempt: 1,
+          costJson: {},
+          createdAt: '2026-05-17T00:00:00.000Z',
+          errorJson: null,
+          finishedAt: '2026-05-17T00:00:01.000Z',
+          id: 'node-run-director-shot-image',
+          inputJson: {},
+          maxAttempts: 3,
+          nodeId: imageNode.id,
+          nodeType: 'image.generate',
+          outputJson: {
+            assets: [{ assetId: 'asset-director-shot', kind: 'image', mimeType: 'image/png' }],
+          },
+          providerTaskId: null,
+          startedAt: null,
+          status: 'succeeded',
+          tenantId: 'tenant-1',
+          updatedAt: '2026-05-17T00:00:01.000Z',
+          workflowRunId: 'run-director-shot-image',
+        },
+      ],
+      workflowRun: {
+        canceledAt: null,
+        createdAt: '2026-05-17T00:00:00.000Z',
+        createdBy: 'user-1',
+        errorJson: null,
+        finishedAt: '2026-05-17T00:00:01.000Z',
+        flowId: '11111111-1111-1111-1111-111111111111',
+        flowVersionId: 'version-1',
+        id: 'run-director-shot-image',
+        idempotencyKey: null,
+        inputJson: { runMode: 'target_node', targetNodeId: imageNode.id },
+        outputJson: null,
+        startedAt: null,
+        status: 'succeeded',
+        tenantId: 'tenant-1',
+        updatedAt: '2026-05-17T00:00:01.000Z',
+      },
+    });
+    streamWorkflowRunMock.mockReturnValue({ close: vi.fn() });
+
+    await runBackendWorkflow({ runMode: 'target_node', targetNodeId: imageNode.id });
+
+    const updatedDirector = useFlowCanvasStore.getState().nodes.find((node) => node.id === directorNode.id);
+    expect(updatedDirector?.data.director3d?.shots[0] as Record<string, unknown>).toMatchObject({
+      generatedAssetId: 'asset-director-shot',
+      generatedSourceNodeId: imageNode.id,
+      id: 'shot-1',
+    });
+    expect(JSON.stringify(updatedDirector?.data.director3d)).not.toMatch(/blob:|data:|https?:\/\//);
+  });
+
   test('asset refs use signed preview urls and stay in runtime state', async () => {
     useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, {
       batchCount: 2,

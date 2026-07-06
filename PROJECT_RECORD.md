@@ -3,6 +3,21 @@
 Last updated: 2026-07-06
 Maintainers: project team + Codex sessions
 
+## 2026-07-06 - Director Shot Asset Sync Phase 59
+
+- closed the 3D Director Desk shot synthesis result loop in the frontend runtime:
+  - successful `image.generate` nodes carrying `params.director3d.sourceDirectorNodeId` and `params.director3d.shotId` now write the returned primary asset id back to the matching director shot as `generatedAssetId`.
+  - the source shot also records `generatedSourceNodeId` so the canvas can trace which downstream image node produced the latest shot result.
+  - the director inspector now shows the generated shot asset id when a shot segment is selected.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - no browser-local generation, direct asset write, signed URL persistence, preview URL persistence, `blob:`, `data:`, base64, API route, database migration, worker behavior, provider route, pricing change, or provider-secret exposure was added.
+  - the shot image is still produced by the existing workflow/worker asset pipeline and billing path; the director node stores only persisted asset identifiers.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/runtime/v2WorkflowRunner.test.ts -t "successful director shot"` first failed because successful director shot generation did not write `generatedAssetId` to the source shot.
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "generated asset id"` first failed because the director shot inspector did not render the generated asset id.
+  - `npm test -- src/flowCanvas/runtime/v2WorkflowRunner.test.ts src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx src/flowCanvas/utils/storyboardDirectorSync.test.ts` passed on 2026-07-06: 98 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-06 - Storyboard Sheet Asset Sync Phase 58
 
 - closed the storyboard sheet composition result loop in the frontend runtime:

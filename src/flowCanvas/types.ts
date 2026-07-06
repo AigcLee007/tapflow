@@ -113,6 +113,8 @@ export interface FlowDirector3dData {
     durationMs: number;
     motion?: 'static' | 'dolly' | 'orbit' | 'pan' | 'custom_path';
     prompt?: string;
+    generatedAssetId?: string;
+    generatedSourceNodeId?: string;
     targetStoryboardCellId?: string;
   }>;
 }
