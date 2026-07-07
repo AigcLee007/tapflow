@@ -3,6 +3,33 @@
 Last updated: 2026-07-07
 Maintainers: project team + Codex sessions
 
+## 2026-07-07 - StoryAI Director Desk Capture And Panorama Stabilization Phase 80
+
+- fixed three real StoryAI 3D director desk usability regressions reported from the canvas:
+  - screenshot actions now keep live camera captures after TapFlow echoes the sanitized `director3d` patch back into the node.
+  - the right capture/export panel's `当前视角截图`, `四方位截图`, and `十二方位截图` actions now save captured images into the active camera's capture list instead of only downloading them.
+  - imported panorama previews now remain live in the editor session after parent draft autosave echoes a safe patch, so the 3D viewport background can actually update.
+- fixed the camera inspector routing that hid capture cards:
+  - `机位视角` now routes the right panel to the camera inspector even when a character was selected before switching view modes.
+  - this prevents captured screenshots from landing in camera state while the UI still shows the character inspector.
+- preserved v2 draft safety:
+  - live `data:` screenshots and `blob:` panorama previews remain browser-session-only.
+  - echoed canvas draft patches still strip `blob:`, `data:`, and `http(s)://` media references from `director3d.storyAiProject`.
+  - durable capture/panorama upload to `/assets` remains a separate follow-up.
+- strengthened regression coverage:
+  - added StoryAI wrapper tests for self-originated safe patch echo, live camera captures, live panorama preview URLs, and capture-panel persistence.
+  - added right-panel routing coverage for camera view with stale character selection.
+  - extended `smoke:director3d` so the Playwright smoke page behaves like the real parent canvas by echoing every `director3d` patch back into the component, then verifies camera capture cards, live panorama preview URLs, safe patches, and nonblank WebGL pixels on desktop and mobile.
+- validation:
+  - red test observed on 2026-07-07: `npm test -- src/flowCanvas/studios/StoryAiDirectorDesk.test.tsx` first failed because echoed safe patches cleared live captures/panorama URLs and the capture panel did not save screenshots to cameras.
+  - red test observed on 2026-07-07: `npm test -- scripts/smoke-director-three-viewport.test.ts` first failed because the browser smoke did not cover camera capture cards or panorama import.
+  - red test observed on 2026-07-07: `npm test -- src/flowCanvas/studios/storyai/editor/store/directorSelectors.test.ts` first failed because camera view could still show the character panel.
+  - `npm test -- src/flowCanvas/studios/storyai/editor/store/directorSelectors.test.ts src/flowCanvas/studios/StoryAiDirectorDesk.test.tsx scripts/smoke-director-three-viewport.test.ts` passed on 2026-07-07: 3 files, 11 tests.
+  - `npm run smoke:director3d` passed on 2026-07-07 with desktop and mobile reporting camera capture cards, live panorama previews, safe `director3d` patches, and nonblank WebGL pixels.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx scripts/smoke-production-studios.test.ts scripts/smoke-director-three-viewport.test.ts src/flowCanvas/studios/StoryAiDirectorDesk.test.tsx src/flowCanvas/studios/storyai/editor/store/directorSelectors.test.ts` passed on 2026-07-07: 5 files, 43 tests.
+  - `npm run smoke:production-studios` passed on 2026-07-07 with director, 360/270 image mode, storyboard, and video-editor smoke checks intact.
+  - `npm run build` passed on 2026-07-07 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-07 - StoryAI 3D Director Desk Replacement Phase 79
 
 - replaced the production-studio `director3d` branch with the StoryAI director desk UI from `AigcLee007/storyai-3d-director-desk`:

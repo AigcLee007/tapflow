@@ -45,41 +45,52 @@ export function buildDirectorViewportSmokeHtml(): string {
       import React from 'react';
       import { createRoot } from 'react-dom/client';
       import { StoryAiDirectorDesk } from '/src/flowCanvas/studios/StoryAiDirectorDesk.tsx';
+      import { useDirectorStore } from '/src/flowCanvas/studios/storyai/editor/store/directorStore.ts';
+
+      const initialDirectorData = {
+        version: 1,
+        scene: { gridVisible: true, units: 'meters' },
+        actors: [
+          {
+            id: 'actor-1',
+            name: 'Actor A',
+            kind: 'placeholder_humanoid',
+            position: [0, 0, 0],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1],
+            visible: true,
+            locked: false,
+          },
+        ],
+        cameras: [{ id: 'camera-1', name: 'Main camera', position: [0, 2.2, 9], target: [0, 1.2, 0] }],
+        shots: [{ id: 'shot-1', cameraId: 'camera-1', startMs: 0, durationMs: 3000, motion: 'static' }],
+      };
 
       window.directorDeskSmokeState = {
         closes: 0,
         patches: [],
       };
+      window.directorDeskSmokeStore = useDirectorStore;
 
-      createRoot(document.getElementById('root')).render(
-        React.createElement(StoryAiDirectorDesk, {
-          data: {
-            version: 1,
-            scene: { gridVisible: true, units: 'meters' },
-            actors: [
-              {
-                id: 'actor-1',
-                name: 'Actor A',
-                kind: 'placeholder_humanoid',
-                position: [0, 0, 0],
-                rotation: [0, 0, 0],
-                scale: [1, 1, 1],
-                visible: true,
-                locked: false,
-              },
-            ],
-            cameras: [{ id: 'camera-1', name: 'Main camera', position: [0, 2.2, 9], target: [0, 1.2, 0] }],
-            shots: [{ id: 'shot-1', cameraId: 'camera-1', startMs: 0, durationMs: 3000, motion: 'static' }],
-          },
-          nodeId: 'director-node',
-          onClose: () => {
-            window.directorDeskSmokeState.closes += 1;
-          },
-          onUpdateNodeData: (nodeId, patch) => {
-            window.directorDeskSmokeState.patches.push({ nodeId, patch });
-          },
-        }),
-      );
+      function SmokeHarness() {
+        const [data, setData] = React.useState(initialDirectorData);
+
+        return React.createElement(StoryAiDirectorDesk, {
+            data,
+            nodeId: 'director-node',
+            onClose: () => {
+              window.directorDeskSmokeState.closes += 1;
+            },
+            onUpdateNodeData: (nodeId, patch) => {
+              window.directorDeskSmokeState.patches.push({ nodeId, patch });
+              if (patch.director3d) {
+                setData(patch.director3d);
+              }
+            },
+          });
+      }
+
+      createRoot(document.getElementById('root')).render(React.createElement(SmokeHarness));
     </script>
   </body>
 </html>
@@ -102,13 +113,88 @@ await page.locator('[data-testid="storyai-add-character"]').click();
 await page.locator('[data-testid="storyai-add-character-mannequin"]').click();
 await page.waitForFunction(() => window.directorDeskSmokeState?.patches?.length > 0, null, { timeout: 15000 });
 
+await page.locator('button[aria-label="当前视角截图"]').first().click();
+await page.waitForFunction(() => {
+  const project = window.directorDeskSmokeStore?.getState?.().project;
+  return Boolean(project?.cameras?.some((camera) => (camera.captures ?? []).length > 0));
+}, null, { timeout: 15000 });
+const capturePanelDebug = await page.evaluate(() => {
+  const project = window.directorDeskSmokeStore?.getState?.().project;
+  return {
+    activeCameraId: project?.activeCameraId ?? null,
+    cameraCaptureCardCount: document.querySelectorAll('.camera-capture-card').length,
+    cameras: project?.cameras?.map((camera) => ({
+      captureCount: (camera.captures ?? []).length,
+      id: camera.id,
+      name: camera.name,
+    })) ?? [],
+    rightPanelText: document.querySelector('[data-testid="storyai-director-right-sidebar"]')?.textContent ?? '',
+  };
+});
+if (capturePanelDebug.cameraCaptureCardCount < 1) {
+  throw new Error(JSON.stringify({ reason: 'camera capture card missing', capturePanelDebug }));
+}
+
+const patchCountAfterCapture = await page.evaluate(() => window.directorDeskSmokeState?.patches?.length ?? 0);
+await page.evaluate(async () => {
+  const input = document.querySelector('input[accept=".jpg,.jpeg,.png,.webp"]');
+  if (!(input instanceof HTMLInputElement)) {
+    throw new Error('missing panorama import input');
+  }
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 64;
+  canvas.height = 32;
+  const context = canvas.getContext('2d');
+  if (!context) {
+    throw new Error('missing 2d context for panorama smoke asset');
+  }
+
+  const gradient = context.createLinearGradient(0, 0, canvas.width, 0);
+  gradient.addColorStop(0, '#1d4ed8');
+  gradient.addColorStop(0.5, '#22c55e');
+  gradient.addColorStop(1, '#f97316');
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, canvas.width, canvas.height);
+
+  const blob = await new Promise((resolve, reject) => {
+    canvas.toBlob((value) => {
+      if (value) {
+        resolve(value);
+      } else {
+        reject(new Error('failed to create panorama smoke blob'));
+      }
+    }, 'image/png');
+  });
+  const file = new File([blob], 'smoke-panorama.png', { type: 'image/png' });
+  const dataTransfer = new DataTransfer();
+  dataTransfer.items.add(file);
+  input.files = dataTransfer.files;
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+});
+await page.waitForFunction((previousPatchCount) => {
+  return (window.directorDeskSmokeState?.patches?.length ?? 0) > previousPatchCount;
+}, patchCountAfterCapture, { timeout: 15000 });
+await page.waitForFunction(() => {
+  const project = window.directorDeskSmokeStore?.getState?.().project;
+  const panoramaAsset = project?.assets?.find((item) => item.id === project.panoramaAssetId);
+  return typeof panoramaAsset?.url === 'string' && /^(?:blob:|data:image)/i.test(panoramaAsset.url);
+}, null, { timeout: 15000 });
+
 const result = await page.evaluate(() => {
   const desk = document.querySelector('[data-testid="storyai-director-desk"]');
   const leftSidebar = document.querySelector('[data-testid="storyai-director-left-sidebar"]');
   const rightSidebar = document.querySelector('[data-testid="storyai-director-right-sidebar"]');
   const toolbar = document.querySelector('[data-testid="storyai-director-toolbar"]');
   const canvas = document.querySelector('[data-testid="storyai-director-canvas"] canvas');
+  const liveProject = window.directorDeskSmokeStore?.getState?.().project;
   const latestPatch = window.directorDeskSmokeState?.patches?.at?.(-1);
+  const cameraCaptureCount =
+    liveProject?.cameras?.reduce((count, camera) => count + (camera.captures ?? []).length, 0) ?? 0;
+  const cameraCaptureCardCount = document.querySelectorAll('.camera-capture-card').length;
+  const cameraCaptureUrl = liveProject?.cameras?.flatMap((camera) => camera.captures ?? [])?.[0]?.dataUrl ?? null;
+  const panoramaAsset = liveProject?.assets?.find((item) => item.id === liveProject.panoramaAssetId);
+  const panoramaAssetUrl = panoramaAsset?.url ?? null;
   if (!desk || !leftSidebar || !rightSidebar || !toolbar || !canvas) {
     return {
       ok: false,
@@ -147,11 +233,26 @@ const result = await page.evaluate(() => {
   });
   const nonblank = pixels.some(([r, g, b, a]) => a > 0 && (r > 16 || g > 16 || b > 34));
   const patchJson = JSON.stringify(latestPatch ?? null);
+  const safePatchHasUnsafeMedia = /(?:blob:|data:|https?:\\/\\/)/i.test(patchJson);
   return {
     actorCount: latestPatch?.patch?.director3d?.actors?.length ?? 0,
-    hasSafePatch: Boolean(latestPatch) && !/(?:blob:|data:|https?:\\/\\/)/i.test(patchJson),
-    ok: nonblank && Boolean(latestPatch) && !/(?:blob:|data:|https?:\\/\\/)/i.test(patchJson),
+    cameraCaptureCardCount,
+    cameraCaptureCount,
+    hasLiveCameraCapture: typeof cameraCaptureUrl === 'string' && /^data:image/i.test(cameraCaptureUrl),
+    hasLivePanoramaPreview: typeof panoramaAssetUrl === 'string' && /^(?:blob:|data:image)/i.test(panoramaAssetUrl),
+    hasSafePatch: Boolean(latestPatch) && !safePatchHasUnsafeMedia,
+    ok:
+      nonblank &&
+      Boolean(latestPatch) &&
+      !safePatchHasUnsafeMedia &&
+      cameraCaptureCardCount > 0 &&
+      cameraCaptureCount > 0 &&
+      typeof cameraCaptureUrl === 'string' &&
+      /^data:image/i.test(cameraCaptureUrl) &&
+      typeof panoramaAssetUrl === 'string' &&
+      /^(?:blob:|data:image)/i.test(panoramaAssetUrl),
     patchNodeId: latestPatch?.nodeId ?? null,
+    panoramaAssetUrl,
     pixels,
     storyAi: {
       leftSidebar: Boolean(leftSidebar),
@@ -165,7 +266,14 @@ const result = await page.evaluate(() => {
 
 await page.screenshot({ path: ${JSON.stringify(screenshotPath)}, fullPage: true });
 
-if (!result.ok || result.patchNodeId !== 'director-node' || result.actorCount < 2) {
+if (
+  !result.ok ||
+  result.patchNodeId !== 'director-node' ||
+  result.actorCount < 2 ||
+  result.cameraCaptureCardCount < 1 ||
+  result.cameraCaptureCount < 1 ||
+  !result.hasLivePanoramaPreview
+) {
   throw new Error(JSON.stringify(result));
 }
 

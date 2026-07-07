@@ -35,6 +35,8 @@ export const StoryAiDirectorDesk: React.FC<StoryAiDirectorDeskProps> = ({
   const setViewMode = useDirectorStore((state) => state.setViewMode);
   const hydratingRef = useRef(false);
   const latestProjectJsonRef = useRef('');
+  const lastNodeIdRef = useRef(nodeId);
+  const selfEchoProjectJsonRef = useRef<string | null>(null);
 
   useEffect(() => {
     initDirectorDeskHostBridge();
@@ -42,9 +44,22 @@ export const StoryAiDirectorDesk: React.FC<StoryAiDirectorDeskProps> = ({
   }, []);
 
   useEffect(() => {
+    if (lastNodeIdRef.current !== nodeId) {
+      lastNodeIdRef.current = nodeId;
+      latestProjectJsonRef.current = '';
+      selfEchoProjectJsonRef.current = null;
+    }
+
     const project = createStoryAiProjectFromDirectorData(data);
+    const projectJson = stringifyProject(project);
+
+    if (projectJson === latestProjectJsonRef.current || projectJson === selfEchoProjectJsonRef.current) {
+      return;
+    }
+
     hydratingRef.current = true;
-    latestProjectJsonRef.current = stringifyProject(project);
+    latestProjectJsonRef.current = projectJson;
+    selfEchoProjectJsonRef.current = null;
     useDirectorStore.getState().replaceProject(project);
     queueMicrotask(() => {
       hydratingRef.current = false;
@@ -57,7 +72,9 @@ export const StoryAiDirectorDesk: React.FC<StoryAiDirectorDeskProps> = ({
       const projectJson = stringifyProject(state.project);
       if (projectJson === latestProjectJsonRef.current) return;
       latestProjectJsonRef.current = projectJson;
-      onUpdateNodeData?.(nodeId, { director3d: createDirectorDataFromStoryAiProject(state.project) });
+      const directorData = createDirectorDataFromStoryAiProject(state.project);
+      selfEchoProjectJsonRef.current = stringifyProject(createStoryAiProjectFromDirectorData(directorData));
+      onUpdateNodeData?.(nodeId, { director3d: directorData });
     });
   }, [nodeId, onUpdateNodeData]);
 

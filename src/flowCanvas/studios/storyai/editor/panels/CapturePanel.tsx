@@ -8,6 +8,8 @@ import { useDirectorStore } from "../store/directorStore";
 export function CapturePanel() {
   const [captureStatus, setCaptureStatus] = useState<string | null>(null);
   const project = useDirectorStore((state) => state.project);
+  const activeCameraId = useDirectorStore((state) => state.project.activeCameraId);
+  const addCameraCaptures = useDirectorStore((state) => state.addCameraCaptures);
   const replaceProject = useDirectorStore((state) => state.replaceProject);
   const saveLatestSnapshot = useDirectorStore((state) => state.saveLatestSnapshot);
   const restoreLatestSnapshot = useDirectorStore((state) => state.restoreLatestSnapshot);
@@ -18,6 +20,7 @@ export function CapturePanel() {
         preset,
         source: "capture-panel",
       });
+      addCameraCaptures(activeCameraId, results.map((result) => result.dataUrl));
       const count = downloadCaptureResults(results);
       setCaptureStatus(`已导出 ${count} 张截图`);
     } catch (error) {

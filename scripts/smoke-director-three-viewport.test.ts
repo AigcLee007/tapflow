@@ -13,6 +13,7 @@ describe("StoryAI director desk smoke script helpers", () => {
     expect(html).toContain("StoryAiDirectorDesk");
     expect(html).toContain("/src/flowCanvas/studios/StoryAiDirectorDesk.tsx");
     expect(html).toContain("directorDeskSmokeState");
+    expect(html).toContain("setData(patch.director3d)");
     expect(html).not.toContain("data:text/html");
   });
 
@@ -26,6 +27,9 @@ describe("StoryAI director desk smoke script helpers", () => {
     expect(code).toContain("readPixels");
     expect(code).toContain("storyai-director-desk");
     expect(code).toContain("storyai-add-character-mannequin");
+    expect(code).toContain("camera-capture-card");
+    expect(code).toContain("DataTransfer");
+    expect(code).toContain("panoramaAssetUrl");
     expect(code).toContain("hasSafePatch");
     expect(code).toContain("director-viewport-desktop.png");
     expect(code).toContain("throw new Error");

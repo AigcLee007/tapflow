@@ -6,6 +6,8 @@ export function selectRightPanelKind(state: DirectorState): RightPanelKind {
     return "scene";
   }
 
+  if (state.viewMode === "camera") return "camera";
+
   if (state.selectedCrowdId) return "character";
 
   const selected = state.project.objects.find((item) => item.id === state.selectedObjectId);
@@ -15,6 +17,5 @@ export function selectRightPanelKind(state: DirectorState): RightPanelKind {
   if (selected?.kind === "character") return "character";
   if (selected?.kind === "prop" || selectedAsset?.sourceType === "model") return "prop";
   if (selected?.kind === "camera") return "camera";
-  if (state.viewMode === "camera") return "camera";
   return "scene";
 }

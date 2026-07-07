@@ -1,10 +1,13 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PerspectiveCamera, Scene } from 'three';
 
 import type { FlowDirector3dData, FlowNodeData } from '../types';
 import { StoryAiDirectorDesk } from './StoryAiDirectorDesk';
+import { CapturePanel } from './storyai/editor/panels/CapturePanel';
+import { clearViewportCaptureHandler, setViewportCaptureHandler } from './storyai/editor/io/captureBridge';
+import { createDefaultDirectorProject, useDirectorStore } from './storyai/editor/store/directorStore';
 
 const hostBridgeMock = vi.hoisted(() => ({
   clear: vi.fn(),
@@ -12,10 +15,20 @@ const hostBridgeMock = vi.hoisted(() => ({
   postCaptures: vi.fn(),
 }));
 
+const screenshotExportMock = vi.hoisted(() => ({
+  downloadCaptureResults: vi.fn((results: unknown[]) => results.length),
+  downloadDataUrl: vi.fn(),
+}));
+
 vi.mock('./storyai/editor/io/hostBridge', () => ({
   clearDirectorDeskHostBridge: hostBridgeMock.clear,
   initDirectorDeskHostBridge: hostBridgeMock.init,
   postDirectorDeskCapturesToHost: hostBridgeMock.postCaptures,
+}));
+
+vi.mock('./storyai/editor/io/screenshotExport', () => ({
+  downloadCaptureResults: screenshotExportMock.downloadCaptureResults,
+  downloadDataUrl: screenshotExportMock.downloadDataUrl,
 }));
 
 vi.mock('@react-three/fiber', () => ({
@@ -77,6 +90,10 @@ describe('StoryAiDirectorDesk', () => {
     hostBridgeMock.clear.mockClear();
     hostBridgeMock.init.mockClear();
     hostBridgeMock.postCaptures.mockClear();
+    screenshotExportMock.downloadCaptureResults.mockClear();
+    screenshotExportMock.downloadDataUrl.mockClear();
+    clearViewportCaptureHandler();
+    useDirectorStore.getState().replaceProject(createDefaultDirectorProject());
   });
 
   it('initializes and clears the StoryAI host bridge like the reference app shell', () => {
@@ -137,6 +154,124 @@ describe('StoryAiDirectorDesk', () => {
     const [, patch] = onUpdateNodeData.mock.calls.at(-1) ?? [];
     expect(patch?.director3d?.actors.length).toBeGreaterThan(1);
     expect(JSON.stringify(patch?.director3d)).not.toMatch(/blob:|data:|https?:\/\//i);
+  });
+
+  it('keeps live camera captures when the parent echoes the safe self-originated patch', async () => {
+    const onUpdateNodeData = vi.fn<(nodeId: string, patch: Partial<FlowNodeData>) => void>();
+
+    const { rerender } = render(
+      <StoryAiDirectorDesk
+        data={undefined}
+        nodeId="director-node"
+        onClose={() => undefined}
+        onUpdateNodeData={onUpdateNodeData}
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('storyai-director-desk')).toBeTruthy());
+
+    const cameraId = useDirectorStore.getState().project.activeCameraId;
+    const objectId = useDirectorStore.getState().project.objects.find((item) => item.kind === 'character')?.id ?? null;
+
+    act(() => {
+      useDirectorStore.getState().selectObject(objectId);
+    });
+
+    onUpdateNodeData.mockClear();
+
+    act(() => {
+      useDirectorStore.getState().addCameraCaptures(cameraId, ['data:image/png;base64,live-capture']);
+    });
+
+    await waitFor(() => expect(onUpdateNodeData).toHaveBeenCalled());
+
+    const [, patch] = onUpdateNodeData.mock.calls.at(-1) ?? [];
+    expect(JSON.stringify(patch?.director3d)).not.toMatch(/data:image/i);
+
+    rerender(
+      <StoryAiDirectorDesk
+        data={patch?.director3d}
+        nodeId="director-node"
+        onClose={() => undefined}
+        onUpdateNodeData={onUpdateNodeData}
+      />,
+    );
+
+    const state = useDirectorStore.getState();
+    const camera = state.project.cameras.find((item) => item.id === cameraId);
+    expect(camera?.captures).toHaveLength(1);
+    expect(camera?.captures?.[0]?.dataUrl).toBe('data:image/png;base64,live-capture');
+    expect(state.selectedObjectId).toBe(objectId);
+  });
+
+  it('keeps live panorama previews when the parent echoes the safe self-originated patch', async () => {
+    const onUpdateNodeData = vi.fn<(nodeId: string, patch: Partial<FlowNodeData>) => void>();
+
+    const { rerender } = render(
+      <StoryAiDirectorDesk
+        data={undefined}
+        nodeId="director-node"
+        onClose={() => undefined}
+        onUpdateNodeData={onUpdateNodeData}
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('storyai-director-desk')).toBeTruthy());
+    onUpdateNodeData.mockClear();
+
+    act(() => {
+      useDirectorStore.getState().addImportedAsset({
+        kind: 'panorama',
+        fileName: 'studio-panorama.png',
+        name: 'Studio panorama',
+        url: 'blob:storyai-live-panorama',
+        projectionMode: 'equirectangular',
+      });
+    });
+
+    await waitFor(() => expect(onUpdateNodeData).toHaveBeenCalled());
+
+    const [, patch] = onUpdateNodeData.mock.calls.at(-1) ?? [];
+    expect(JSON.stringify(patch?.director3d)).not.toMatch(/blob:storyai-live-panorama/i);
+
+    rerender(
+      <StoryAiDirectorDesk
+        data={patch?.director3d}
+        nodeId="director-node"
+        onClose={() => undefined}
+        onUpdateNodeData={onUpdateNodeData}
+      />,
+    );
+
+    const state = useDirectorStore.getState();
+    const panoramaAsset = state.project.assets.find((item) => item.id === state.project.panoramaAssetId);
+    expect(panoramaAsset?.url).toBe('blob:storyai-live-panorama');
+    expect(panoramaAsset?.projectionMode).toBe('equirectangular');
+  });
+
+  it('stores capture panel screenshots on the active camera', async () => {
+    const cameraId = useDirectorStore.getState().project.activeCameraId;
+    setViewportCaptureHandler(async () => [
+      {
+        dataUrl: 'data:image/png;base64,capture-panel-live',
+        fileName: 'current-view.png',
+      },
+    ]);
+
+    const { container } = render(<CapturePanel />);
+    const currentCaptureButton = container.querySelector<HTMLButtonElement>('.capture-action');
+    expect(currentCaptureButton).toBeTruthy();
+
+    fireEvent.click(currentCaptureButton as HTMLButtonElement);
+
+    await waitFor(() => {
+      const camera = useDirectorStore.getState().project.cameras.find((item) => item.id === cameraId);
+      expect(camera?.captures).toHaveLength(1);
+    });
+
+    const camera = useDirectorStore.getState().project.cameras.find((item) => item.id === cameraId);
+    expect(camera?.captures?.[0]?.dataUrl).toBe('data:image/png;base64,capture-panel-live');
+    expect(screenshotExportMock.downloadCaptureResults).toHaveBeenCalledTimes(1);
   });
 });
 
