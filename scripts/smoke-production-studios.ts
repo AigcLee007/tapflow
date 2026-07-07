@@ -270,7 +270,8 @@ export function buildProductionStudiosCheckCode(options: CheckOptions): string {
   const screenshotPath = options.screenshotPath.replaceAll("\\", "/");
   return `(async (page) => {
 await page.setViewportSize(${JSON.stringify(options.viewport)});
-await page.waitForSelector('[data-testid="director-three-viewport"]', { timeout: 15000 });
+await page.waitForSelector('[data-testid="storyai-director-desk"]', { timeout: 15000 });
+await page.waitForSelector('[data-testid="storyai-director-toolbar"]', { timeout: 15000 });
 const directorReady = await page.locator('section[role="dialog"][aria-label="3D导演台"]').count();
 
 async function dispatchAssetDrop(selector, assetId) {
@@ -283,9 +284,16 @@ async function dispatchAssetDrop(selector, assetId) {
   }, assetId);
 }
 
-await dispatchAssetDrop('button[aria-label="选择对象 角色 A"]', 'asset-actor-smoke');
-await dispatchAssetDrop('button[aria-label="选择对象 场景背景"]', 'asset-scene-bg-smoke');
-await page.locator('button[aria-label="同步到剪辑工程"]').click();
+await page.locator('[data-testid="storyai-add-character"]').click();
+await page.locator('[data-testid="storyai-add-character-mannequin"]').click();
+await page.waitForFunction(() =>
+  window.productionStudiosSmokeState.patches.some((entry) =>
+    entry.nodeId === 'director-node' &&
+    entry.patch?.director3d?.actors?.length > 1
+  ),
+  null,
+  { timeout: 15000 },
+);
 
 await page.evaluate(() => window.renderProductionStudioSmoke('storyboard'));
 await page.waitForSelector('section[role="dialog"][aria-label="故事板"]', { timeout: 15000 });
@@ -321,18 +329,16 @@ const result = await page.evaluate(() => {
     entry.patch?.videoEditor?.aspect === '1:1' &&
     entry.patch?.videoEditor?.resolution === '1080x1080'
   );
-  const directorActorDropPatch = state.patches.find((entry) =>
+  const directorStoryAiPatch = state.patches.find((entry) =>
     entry.nodeId === 'director-node' &&
-    entry.patch?.director3d?.actors?.some?.((actor) =>
-      actor.id === 'actor-1' &&
-      actor.assetId === 'asset-actor-smoke' &&
-      actor.kind === 'image_plane'
+    entry.patch?.director3d?.actors?.length > 1 &&
+    entry.patch?.director3d?.storyAiProject?.objects?.some?.((object) =>
+      object.kind === 'character' &&
+      object.name === '角色02'
     )
   );
-  const directorSceneDropPatch = state.patches.find((entry) =>
-    entry.nodeId === 'director-node' &&
-    entry.patch?.director3d?.scene?.backgroundAssetId === 'asset-scene-bg-smoke'
-  );
+  const directorPatchJson = JSON.stringify(directorStoryAiPatch?.patch ?? null);
+  const directorPatchSafe = Boolean(directorStoryAiPatch) && !/(?:blob:|data:|https?:\\/\\/)/i.test(directorPatchJson);
   const storyboardDropPatch = state.patches.find((entry) =>
     entry.nodeId === 'storyboard-node' &&
     entry.patch?.storyboard?.cells?.some?.((cell) =>
@@ -363,13 +369,6 @@ const result = await page.evaluate(() => {
     request.data?.routeKey === 'video.editor.ffmpeg' &&
     request.data?.params?.videoEditor?.sourceVideoEditorNodeId === 'video-node'
   );
-  const directorVideoSyncRequest = state.directorVideoSyncs.find((request) =>
-    request.sourceDirectorNodeId === 'director-node' &&
-    request.director?.shots?.some?.((shot) =>
-      shot.id === 'shot-1' &&
-      shot.generatedAssetId === 'asset-director-shot-smoke'
-    )
-  );
   const imagePanoramaPatch = state.imageModePatches.find((entry) =>
     entry.mode === 'panorama_360' &&
     entry.patch?.generationMode === 'panorama_360' &&
@@ -391,9 +390,8 @@ const result = await page.evaluate(() => {
     entry.patch?.generationMode === 'subject_orbit_270'
   );
   return {
-    directorActorDropPatch: Boolean(directorActorDropPatch),
-    directorSceneDropPatch: Boolean(directorSceneDropPatch),
-    directorVideoSyncRequest: Boolean(directorVideoSyncRequest),
+    directorPatchSafe,
+    directorStoryAiPatch: Boolean(directorStoryAiPatch),
     imageGenerateClick: Boolean(imageGenerateClick),
     imagePanoramaPatch: Boolean(imagePanoramaPatch),
     imageSubject270Patch: Boolean(imageSubject270Patch),
@@ -414,9 +412,8 @@ await page.screenshot({ path: ${JSON.stringify(screenshotPath)}, fullPage: true 
 
 if (
   !result.directorReady ||
-  !result.directorActorDropPatch ||
-  !result.directorSceneDropPatch ||
-  !result.directorVideoSyncRequest ||
+  !result.directorStoryAiPatch ||
+  !result.directorPatchSafe ||
   !result.imageGenerateClick ||
   !result.imagePanoramaPatch ||
   !result.imageSubject270Patch ||
@@ -440,7 +437,11 @@ return JSON.stringify({
 }
 
 export function parsePlaywrightCliJson(value: string): unknown {
-  const parsed = JSON.parse(value);
+  const trimmed = value.trim();
+  if (trimmed.startsWith("### Error")) {
+    throw new Error(trimmed);
+  }
+  const parsed = JSON.parse(trimmed);
   return typeof parsed === "string" ? JSON.parse(parsed) : parsed;
 }
 

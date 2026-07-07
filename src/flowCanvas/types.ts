@@ -72,6 +72,7 @@ export interface FlowStoryboardData {
 
 export interface FlowDirector3dData {
   version: 1;
+  storyAiProject?: Record<string, unknown>;
   scene: {
     backgroundAssetId?: string;
     gridVisible: boolean;

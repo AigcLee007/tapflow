@@ -3,6 +3,30 @@
 Last updated: 2026-07-07
 Maintainers: project team + Codex sessions
 
+## 2026-07-07 - StoryAI 3D Director Desk Replacement Phase 79
+
+- replaced the production-studio `director3d` branch with the StoryAI director desk UI from `AigcLee007/storyai-3d-director-desk`:
+  - added the StoryAI shell, full-bleed 3D canvas, object tree, inspector panels, viewport toolbar, camera/capture panels, character controls, panorama/model import utilities, and scoped StoryAI CSS under `src/flowCanvas/studios/storyai/`.
+  - copied the UE mannequin GLB model and license into `public/models/`.
+  - `ProductionStudioShell` now lets `StoryAiDirectorDesk` own the visible chrome for `director3d` instead of wrapping the old simplified TapFlow director header/viewport.
+  - embedded StoryAI now initializes and clears its host bridge like the reference app shell, preserving theme/session/panorama/capture message handling hooks.
+- added a TapFlow adapter layer for v2 draft safety:
+  - StoryAI project state hydrates from existing `FlowDirector3dData` and writes edits back through `director3d.storyAiProject`.
+  - persisted draft patches keep structured actors, cameras, shots, and a sanitized StoryAI project snapshot.
+  - unsafe `blob:`, `data:`, base64-like media URLs, and signed/http URL-shaped references are stripped before writing to canvas draft JSON.
+  - StoryAI localStorage scene persistence is disabled in the embedded TapFlow path; server-side flow draft data remains the authoritative canvas state.
+- known boundary for this phase:
+  - StoryAI camera captures and local imports can still use browser `data:`/`blob:` URLs inside the live editor session, but they are cleared from persisted TapFlow draft data.
+  - uploading those captures/imported files into the asset library as durable `/assets` records is a separate follow-up, not part of this replacement pass.
+- validation:
+  - red test observed on 2026-07-07: `npm test -- src/flowCanvas/studios/StoryAiDirectorDesk.test.tsx -t "initializes and clears"` first failed because embedded StoryAI did not initialize the reference host bridge.
+  - `npm test -- src/flowCanvas/studios/StoryAiDirectorDesk.test.tsx -t "initializes and clears"` passed on 2026-07-07: 1 selected test.
+  - `npm test -- src/flowCanvas/studios/StoryAiDirectorDesk.test.tsx src/flowCanvas/studios/ProductionStudioShell.test.tsx scripts/smoke-director-three-viewport.test.ts scripts/smoke-production-studios.test.ts` passed on 2026-07-07: 4 files, 39 tests.
+  - `npm test -- src/flowCanvas/nodes/ProductionNodes.test.tsx src/flowCanvas/utils/director3dNodeData.test.ts src/flowCanvas/utils/directorVideoSync.test.ts src/flowCanvas/utils/storyboardDirectorSync.test.ts src/flowCanvas/utils/storyboardVideoSync.test.ts src/flowCanvas/utils/videoEditorNodeData.test.ts` passed on 2026-07-07: 6 files, 16 tests.
+  - `npm run smoke:director3d` passed on 2026-07-07 with desktop and mobile StoryAI landmarks, nonblank WebGL pixels, safe director patches, and screenshots at `output/playwright/director-viewport-desktop.png` and `output/playwright/director-viewport-mobile.png`.
+  - `npm run smoke:production-studios` passed on 2026-07-07 with `directorStoryAiPatch: true`, `directorPatchSafe: true`, storyboard/video/image production-studio smoke checks intact, and screenshot at `output/playwright/production-studios-smoke.png`.
+  - `npm run build` passed on 2026-07-07 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-07 - Production Studio Draft Backfill Sanitization Phase 78
 
 - closed the remaining C-scheme production-suite draft backfill safety gap:

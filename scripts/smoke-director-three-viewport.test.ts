@@ -6,13 +6,13 @@ import {
   parsePlaywrightCliJson,
 } from "./smoke-director-three-viewport";
 
-describe("director three viewport smoke script helpers", () => {
+describe("StoryAI director desk smoke script helpers", () => {
   test("builds an HTTP-served smoke page for the director viewport", () => {
     const html = buildDirectorViewportSmokeHtml();
 
-    expect(html).toContain("DirectorDeskThreeViewport");
-    expect(html).toContain("/src/flowCanvas/studios/DirectorDeskThreeViewport.tsx");
-    expect(html).toContain("data-testid");
+    expect(html).toContain("StoryAiDirectorDesk");
+    expect(html).toContain("/src/flowCanvas/studios/StoryAiDirectorDesk.tsx");
+    expect(html).toContain("directorDeskSmokeState");
     expect(html).not.toContain("data:text/html");
   });
 
@@ -24,16 +24,23 @@ describe("director three viewport smoke script helpers", () => {
 
     expect(code).toContain("getContext(\"webgl2\")");
     expect(code).toContain("readPixels");
+    expect(code).toContain("storyai-director-desk");
+    expect(code).toContain("storyai-add-character-mannequin");
+    expect(code).toContain("hasSafePatch");
     expect(code).toContain("director-viewport-desktop.png");
     expect(code).toContain("throw new Error");
   });
 
   test("parses nested JSON returned by playwright-cli raw run-code", () => {
-    const cliOutput = JSON.stringify(JSON.stringify({ ok: true, renderer: "three" }));
+    const cliOutput = JSON.stringify(JSON.stringify({ ok: true, patchNodeId: "director-node" }));
 
     expect(parsePlaywrightCliJson(cliOutput)).toEqual({
       ok: true,
-      renderer: "three",
+      patchNodeId: "director-node",
     });
+  });
+
+  test("preserves playwright-cli markdown errors instead of hiding them behind a JSON parse error", () => {
+    expect(() => parsePlaywrightCliJson("### Error\n{\"ok\":false}")).toThrow("### Error");
   });
 });

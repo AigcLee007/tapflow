@@ -27,7 +27,7 @@ export function buildDirectorViewportSmokeHtml(): string {
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Director Desk Three Viewport Smoke</title>
+    <title>StoryAI Director Desk Smoke</title>
     <style>
       html,
       body,
@@ -37,22 +37,6 @@ export function buildDirectorViewportSmokeHtml(): string {
         margin: 0;
         background: #050814;
       }
-      body {
-        display: grid;
-        place-items: center;
-      }
-      .stage {
-        width: min(92vw, 980px);
-        height: min(78vh, 620px);
-        border: 1px solid rgba(255, 255, 255, 0.12);
-      }
-      @media (max-width: 640px) {
-        .stage {
-          width: 100vw;
-          height: 100vh;
-          border: 0;
-        }
-      }
     </style>
   </head>
   <body>
@@ -60,68 +44,41 @@ export function buildDirectorViewportSmokeHtml(): string {
     <script type="module">
       import React from 'react';
       import { createRoot } from 'react-dom/client';
-      import { DirectorDeskThreeViewport } from '/src/flowCanvas/studios/DirectorDeskThreeViewport.tsx';
+      import { StoryAiDirectorDesk } from '/src/flowCanvas/studios/StoryAiDirectorDesk.tsx';
 
-      const actors = [
-        {
-          id: 'actor-1',
-          name: 'Actor A',
-          kind: 'placeholder_humanoid',
-          position: [0, 0, 0],
-          rotation: [0, 0, 0],
-          scale: [1, 1, 1],
-          visible: true,
-          locked: false,
-        },
-        {
-          id: 'actor-2',
-          name: 'Actor B',
-          kind: 'image_plane',
-          assetId: 'asset-actor-image-1',
-          position: [0.95, 0, -0.35],
-          rotation: [0, 0.2, 0],
-          scale: [0.86, 0.86, 0.86],
-          visible: true,
-          locked: false,
-        },
-      ];
-      const cameras = [
-        {
-          id: 'camera-1',
-          name: 'Main camera',
-          position: [0, 2, 4],
-          target: [0, 0.8, 0],
-        },
-      ];
-      const shots = [
-        {
-          id: 'shot-1',
-          cameraId: 'camera-1',
-          startMs: 0,
-          durationMs: 3000,
-          motion: 'orbit',
-          cameraSnapshot: {
-            name: 'Smoke orbit',
-            position: [1.5, 2.25, 4.75],
-            target: [0, 1.1, 0],
-            focalMm: 55,
-          },
-        },
-      ];
+      window.directorDeskSmokeState = {
+        closes: 0,
+        patches: [],
+      };
 
       createRoot(document.getElementById('root')).render(
-        React.createElement(
-          'div',
-          { className: 'stage', 'data-testid': 'director-viewport-smoke-stage' },
-          React.createElement(DirectorDeskThreeViewport, {
-            actors,
-            cameras,
-            scene: { backgroundAssetId: 'asset-scene-bg-1', gridVisible: true, units: 'meters' },
-            selectedId: 'shot-1',
-            selectedType: 'shot',
-            shots,
-          }),
-        ),
+        React.createElement(StoryAiDirectorDesk, {
+          data: {
+            version: 1,
+            scene: { gridVisible: true, units: 'meters' },
+            actors: [
+              {
+                id: 'actor-1',
+                name: 'Actor A',
+                kind: 'placeholder_humanoid',
+                position: [0, 0, 0],
+                rotation: [0, 0, 0],
+                scale: [1, 1, 1],
+                visible: true,
+                locked: false,
+              },
+            ],
+            cameras: [{ id: 'camera-1', name: 'Main camera', position: [0, 2.2, 9], target: [0, 1.2, 0] }],
+            shots: [{ id: 'shot-1', cameraId: 'camera-1', startMs: 0, durationMs: 3000, motion: 'static' }],
+          },
+          nodeId: 'director-node',
+          onClose: () => {
+            window.directorDeskSmokeState.closes += 1;
+          },
+          onUpdateNodeData: (nodeId, patch) => {
+            window.directorDeskSmokeState.patches.push({ nodeId, patch });
+          },
+        }),
       );
     </script>
   </body>
@@ -131,16 +88,37 @@ export function buildDirectorViewportSmokeHtml(): string {
 
 export function buildDirectorViewportPixelCheckCode(options: PixelCheckOptions): string {
   const screenshotPath = options.screenshotPath.replaceAll("\\", "/");
+  const sidebarWaitState = options.viewport.width < 700 ? "attached" : "visible";
   return `(async (page) => {
 await page.setViewportSize(${JSON.stringify(options.viewport)});
-await page.waitForSelector('[data-testid="director-three-viewport"] canvas', { timeout: 15000 });
-await page.waitForTimeout(900);
+await page.waitForSelector('[data-testid="storyai-director-desk"]', { timeout: 15000 });
+await page.waitForSelector('[data-testid="storyai-director-left-sidebar"]', { state: ${JSON.stringify(sidebarWaitState)}, timeout: 15000 });
+await page.waitForSelector('[data-testid="storyai-director-right-sidebar"]', { state: ${JSON.stringify(sidebarWaitState)}, timeout: 15000 });
+await page.waitForSelector('[data-testid="storyai-director-toolbar"]', { timeout: 15000 });
+await page.waitForSelector('[data-testid="storyai-director-canvas"] canvas', { timeout: 15000 });
+await page.waitForTimeout(1600);
+
+await page.locator('[data-testid="storyai-add-character"]').click();
+await page.locator('[data-testid="storyai-add-character-mannequin"]').click();
+await page.waitForFunction(() => window.directorDeskSmokeState?.patches?.length > 0, null, { timeout: 15000 });
 
 const result = await page.evaluate(() => {
-  const host = document.querySelector('[data-testid="director-three-viewport"]');
-  const canvas = host?.querySelector('canvas');
-  if (!host || !canvas) {
-    return { ok: false, reason: 'missing canvas', renderer: host?.getAttribute('data-renderer') };
+  const desk = document.querySelector('[data-testid="storyai-director-desk"]');
+  const leftSidebar = document.querySelector('[data-testid="storyai-director-left-sidebar"]');
+  const rightSidebar = document.querySelector('[data-testid="storyai-director-right-sidebar"]');
+  const toolbar = document.querySelector('[data-testid="storyai-director-toolbar"]');
+  const canvas = document.querySelector('[data-testid="storyai-director-canvas"] canvas');
+  const latestPatch = window.directorDeskSmokeState?.patches?.at?.(-1);
+  if (!desk || !leftSidebar || !rightSidebar || !toolbar || !canvas) {
+    return {
+      ok: false,
+      reason: 'missing storyai director landmarks',
+      hasCanvas: Boolean(canvas),
+      hasDesk: Boolean(desk),
+      hasLeftSidebar: Boolean(leftSidebar),
+      hasRightSidebar: Boolean(rightSidebar),
+      hasToolbar: Boolean(toolbar),
+    };
   }
 
   const gl = canvas.getContext("webgl2") || canvas.getContext("webgl");
@@ -148,7 +126,6 @@ const result = await page.evaluate(() => {
     return {
       ok: false,
       reason: 'missing webgl',
-      renderer: host.getAttribute('data-renderer'),
       width: canvas.width,
       height: canvas.height,
     };
@@ -169,13 +146,18 @@ const result = await page.evaluate(() => {
     return Array.from(data);
   });
   const nonblank = pixels.some(([r, g, b, a]) => a > 0 && (r > 16 || g > 16 || b > 34));
+  const patchJson = JSON.stringify(latestPatch ?? null);
   return {
-    actorCount: host.getAttribute('data-actor-count'),
-    cameraCount: host.getAttribute('data-camera-count'),
-    ok: nonblank,
+    actorCount: latestPatch?.patch?.director3d?.actors?.length ?? 0,
+    hasSafePatch: Boolean(latestPatch) && !/(?:blob:|data:|https?:\\/\\/)/i.test(patchJson),
+    ok: nonblank && Boolean(latestPatch) && !/(?:blob:|data:|https?:\\/\\/)/i.test(patchJson),
+    patchNodeId: latestPatch?.nodeId ?? null,
     pixels,
-    renderer: host.getAttribute('data-renderer'),
-    selectedShotId: host.getAttribute('data-selected-shot-id'),
+    storyAi: {
+      leftSidebar: Boolean(leftSidebar),
+      rightSidebar: Boolean(rightSidebar),
+      toolbar: Boolean(toolbar),
+    },
     width: canvas.width,
     height: canvas.height,
   };
@@ -183,7 +165,7 @@ const result = await page.evaluate(() => {
 
 await page.screenshot({ path: ${JSON.stringify(screenshotPath)}, fullPage: true });
 
-if (!result.ok || result.renderer !== 'three') {
+if (!result.ok || result.patchNodeId !== 'director-node' || result.actorCount < 2) {
   throw new Error(JSON.stringify(result));
 }
 
@@ -192,7 +174,11 @@ return JSON.stringify(result);
 }
 
 export function parsePlaywrightCliJson(value: string): unknown {
-  const parsed = JSON.parse(value);
+  const trimmed = value.trim();
+  if (trimmed.startsWith("### Error")) {
+    throw new Error(trimmed);
+  }
+  const parsed = JSON.parse(trimmed);
   return typeof parsed === "string" ? JSON.parse(parsed) : parsed;
 }
 

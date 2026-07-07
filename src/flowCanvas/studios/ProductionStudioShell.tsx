@@ -16,6 +16,7 @@ import {
   normalizeVideoEditorData,
 } from '../utils/videoEditorNodeData';
 import { DirectorDeskThreeViewport } from './DirectorDeskThreeViewport';
+import { StoryAiDirectorDesk } from './StoryAiDirectorDesk';
 import type { ProductionStudioKind } from './productionStudioEvents';
 
 type FlowNode = Node<FlowNodeData>;
@@ -127,6 +128,26 @@ export const ProductionStudioShell: React.FC<ProductionStudioShellProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
 
+  if (studio === 'director3d') {
+    return (
+      <div className="nodrag nopan nowheel" style={directorOverlayStyle}>
+        <section
+          aria-label={title}
+          aria-modal="true"
+          role="dialog"
+          style={directorStoryAiShellStyle}
+        >
+          <StoryAiDirectorDesk
+            data={node.data.director3d}
+            nodeId={node.id}
+            onClose={onClose}
+            onUpdateNodeData={onUpdateNodeData}
+          />
+        </section>
+      </div>
+    );
+  }
+
   return (
     <div className="nodrag nopan nowheel" style={overlayStyle}>
       <section
@@ -148,17 +169,7 @@ export const ProductionStudioShell: React.FC<ProductionStudioShellProps> = ({
           </div>
         </header>
 
-        {studio === 'director3d' ? (
-          <DirectorDeskContent
-            data={node.data.director3d}
-            nodeId={node.id}
-            nodePosition={node.position}
-            onCreateCanvasNodeFromStudio={onCreateCanvasNodeFromStudio}
-            onSyncDirectorShotToStoryboard={onSyncDirectorShotToStoryboard}
-            onSyncDirectorShotsToVideoEditor={onSyncDirectorShotsToVideoEditor}
-            onUpdateNodeData={onUpdateNodeData}
-          />
-        ) : studio === 'storyboard' ? (
+        {studio === 'storyboard' ? (
           <StoryboardContent
             data={node.data.storyboard}
             nodeId={node.id}
@@ -2144,6 +2155,13 @@ const overlayStyle: React.CSSProperties = {
   padding: 16,
 };
 
+const directorOverlayStyle: React.CSSProperties = {
+  ...overlayStyle,
+  background: '#090909',
+  backdropFilter: 'none',
+  padding: 0,
+};
+
 const shellStyle: React.CSSProperties = {
   width: '100%',
   height: '100%',
@@ -2155,6 +2173,14 @@ const shellStyle: React.CSSProperties = {
   background: '#0b0d12',
   color: '#f8fafc',
   boxShadow: '0 24px 80px rgba(0,0,0,0.48)',
+};
+
+const directorStoryAiShellStyle: React.CSSProperties = {
+  width: '100%',
+  height: '100%',
+  overflow: 'hidden',
+  background: '#090909',
+  color: '#f8fafc',
 };
 
 const headerStyle: React.CSSProperties = {

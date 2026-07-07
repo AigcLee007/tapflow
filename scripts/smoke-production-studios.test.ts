@@ -33,14 +33,16 @@ describe("production studios smoke script helpers", () => {
     expect(code).toContain("合成故事板图");
     expect(code).toContain("dispatchAssetDrop");
     expect(code).toContain("application/x-tapflow-asset-id");
-    expect(code).toContain("directorActorDropPatch");
-    expect(code).toContain("directorSceneDropPatch");
-    expect(code).toContain("directorVideoSyncRequest");
+    expect(code).toContain("storyai-add-character-mannequin");
+    expect(code).toContain("directorStoryAiPatch");
+    expect(code).toContain("directorPatchSafe");
     expect(code).toContain("storyboardDropPatch");
     expect(code).toContain("videoClipDropPatch");
     expect(code).toContain("videoAudioDropPatch");
     expect(code).toContain("request.data?.params?.storyboardSheet?.sourceStoryboardNodeId");
-    expect(code).toContain("request.director?.shots?.some");
+    expect(code).not.toContain("directorActorDropPatch");
+    expect(code).not.toContain("directorSceneDropPatch");
+    expect(code).not.toContain("directorVideoSyncRequest");
     expect(code).toContain("production-studios-smoke.png");
     expect(code).toContain("throw new Error");
   });
@@ -49,5 +51,9 @@ describe("production studios smoke script helpers", () => {
     const cliOutput = JSON.stringify(JSON.stringify({ status: "ok" }));
 
     expect(parsePlaywrightCliJson(cliOutput)).toEqual({ status: "ok" });
+  });
+
+  test("preserves playwright-cli markdown errors instead of hiding them behind a JSON parse error", () => {
+    expect(() => parsePlaywrightCliJson("### Error\n{\"status\":\"failed\"}")).toThrow("### Error");
   });
 });
