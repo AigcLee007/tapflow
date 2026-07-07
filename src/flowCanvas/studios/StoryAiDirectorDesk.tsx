@@ -8,7 +8,12 @@ import {
 } from './storyAiDirectorAdapter';
 import { DirectorDeskShell } from './storyai/app/layout/DirectorDeskShell';
 import { DirectorCanvas } from './storyai/editor/canvas/DirectorCanvas';
-import { clearDirectorDeskHostBridge, initDirectorDeskHostBridge } from './storyai/editor/io/hostBridge';
+import {
+  clearDirectorDeskHostBridge,
+  initDirectorDeskHostBridge,
+  setDirectorDeskCaptureHostHandler,
+  type DirectorDeskCaptureHostHandler,
+} from './storyai/editor/io/hostBridge';
 import type { DirectorProject } from './storyai/editor/schema/directorProject';
 import { useDirectorStore } from './storyai/editor/store/directorStore';
 import './storyai/styles/scoped.css';
@@ -17,6 +22,7 @@ interface StoryAiDirectorDeskProps {
   data?: FlowDirector3dData;
   nodeId: string;
   onClose: () => void;
+  onSendCapturesToCanvas?: DirectorDeskCaptureHostHandler;
   onUpdateNodeData?: (nodeId: string, patch: Partial<FlowNodeData>) => void;
 }
 
@@ -29,6 +35,7 @@ export const StoryAiDirectorDesk: React.FC<StoryAiDirectorDeskProps> = ({
   data,
   nodeId,
   onClose,
+  onSendCapturesToCanvas,
   onUpdateNodeData,
 }) => {
   const viewMode = useDirectorStore((state) => state.viewMode);
@@ -42,6 +49,15 @@ export const StoryAiDirectorDesk: React.FC<StoryAiDirectorDeskProps> = ({
     initDirectorDeskHostBridge();
     return () => clearDirectorDeskHostBridge();
   }, []);
+
+  useEffect(() => {
+    if (!onSendCapturesToCanvas) {
+      return;
+    }
+
+    setDirectorDeskCaptureHostHandler(onSendCapturesToCanvas);
+    return () => setDirectorDeskCaptureHostHandler(null);
+  }, [onSendCapturesToCanvas]);
 
   useEffect(() => {
     if (lastNodeIdRef.current !== nodeId) {

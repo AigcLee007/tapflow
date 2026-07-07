@@ -1,10 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ArrowLeft, ArrowRight, Box, Camera, Film, Grid3X3, ImagePlus, Layers3, Play, Plus, Trash2, X } from 'lucide-react';
 import type { Node } from '@xyflow/react';
 
-import { listAssets, type AssetItem } from '../../assets/assetApi';
+import { listAssets, uploadAssetFile, type AssetItem } from '../../assets/assetApi';
 import type { FlowDirector3dData, FlowNodeData, FlowVideoEditorData } from '../types';
+import { buildAssetBackedNodeData } from '../utils/assetNodeData';
 import { normalizeDirector3dData } from '../utils/director3dNodeData';
+import { imageUrlToBlob } from '../utils/imageUtils';
 import { normalizeStoryboardData, patchStoryboardCell } from '../utils/storyboardNodeData';
 import {
   getVideoAudioDurationMs,
@@ -18,6 +20,7 @@ import {
 import { DirectorDeskThreeViewport } from './DirectorDeskThreeViewport';
 import { StoryAiDirectorDesk } from './StoryAiDirectorDesk';
 import type { ProductionStudioKind } from './productionStudioEvents';
+import { useFlowCanvasStore } from '../store/flowCanvasStore';
 
 type FlowNode = Node<FlowNodeData>;
 type DirectorSelection =
@@ -41,6 +44,9 @@ const VIDEO_EDITOR_EXPORT_ROUTE_KEY = 'video.editor.ffmpeg';
 const VIDEO_EDITOR_PLACEHOLDER_ASSET_ID_PATTERN = /^placeholder-(?:image|video|audio)-\d+$/i;
 const DEFAULT_VIDEO_TRANSITION_DURATION_MS = 500;
 const DEFAULT_DIRECTOR_CAMERA_FOCAL_MM = 35;
+const DIRECTOR_CAPTURE_NODE_OFFSET_X = 420;
+const DIRECTOR_CAPTURE_NODE_OFFSET_Y = 40;
+const DIRECTOR_CAPTURE_NODE_GAP_Y = 300;
 const ASSET_LIBRARY_DRAG_TYPE = 'application/x-tapflow-asset-id';
 const DIRECTOR_AXIS_LABELS = ['X', 'Y', 'Z'] as const;
 const DIRECTOR_SHOT_MOTION_OPTIONS: Array<{ label: string; value: DirectorShotMotion }> = [
@@ -97,6 +103,7 @@ interface ProductionStudioShellProps {
   onSyncDirectorShotsToVideoEditor?: (request: StudioDirectorVideoSyncRequest) => void;
   onSyncStoryboardToVideoEditor?: (request: StudioStoryboardVideoSyncRequest) => void;
   onUpdateNodeData?: (nodeId: string, patch: Partial<FlowNodeData>) => void;
+  projectId?: string | null;
   studio: ProductionStudioKind;
 }
 
@@ -114,9 +121,67 @@ export const ProductionStudioShell: React.FC<ProductionStudioShellProps> = ({
   onSyncDirectorShotsToVideoEditor,
   onSyncStoryboardToVideoEditor,
   onUpdateNodeData,
+  projectId,
   studio,
 }) => {
   const title = node.data.title || studioTitleByKind[studio];
+  const backendProjectId = useFlowCanvasStore((state) => state.backendProjectId);
+  const effectiveProjectId = projectId ?? backendProjectId;
+
+  const handleSendDirectorCapturesToCanvas = useCallback(
+    async (captures: Array<{ dataUrl: string; fileName?: string }>) => {
+      if (!onCreateCanvasNodeFromStudio) {
+        return;
+      }
+
+      for (let index = 0; index < captures.length; index += 1) {
+        const capture = captures[index];
+        const dataUrl = typeof capture.dataUrl === 'string' ? capture.dataUrl.trim() : '';
+        if (!dataUrl) {
+          continue;
+        }
+
+        try {
+          const blob = await imageUrlToBlob(dataUrl);
+          const mimeType = blob.type || 'image/png';
+          const fileName = normalizeDirectorCaptureFileName(capture.fileName, index, mimeType);
+          const file = new File([blob], fileName, { type: mimeType });
+          const asset = await uploadAssetFile({
+            file,
+            kind: 'image',
+            projectId: effectiveProjectId ?? null,
+          });
+          const title = titleFromDirectorCaptureFileName(fileName, index);
+
+          onCreateCanvasNodeFromStudio({
+            kind: 'image',
+            position: {
+              x: node.position.x + DIRECTOR_CAPTURE_NODE_OFFSET_X,
+              y: node.position.y + DIRECTOR_CAPTURE_NODE_OFFSET_Y + index * DIRECTOR_CAPTURE_NODE_GAP_Y,
+            },
+            runAfterCreate: false,
+            data: {
+              ...buildAssetBackedNodeData(asset, {
+                previewUrl: '',
+                source: 'director-capture',
+                title,
+              }),
+              params: {
+                directorCapture: {
+                  captureIndex: index + 1,
+                  fileName,
+                  sourceDirectorNodeId: node.id,
+                },
+              },
+            },
+          });
+        } catch (error) {
+          console.error('Failed to upload director desk capture.', error);
+        }
+      }
+    },
+    [effectiveProjectId, node.id, node.position.x, node.position.y, onCreateCanvasNodeFromStudio],
+  );
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -141,6 +206,7 @@ export const ProductionStudioShell: React.FC<ProductionStudioShellProps> = ({
             data={node.data.director3d}
             nodeId={node.id}
             onClose={onClose}
+            onSendCapturesToCanvas={handleSendDirectorCapturesToCanvas}
             onUpdateNodeData={onUpdateNodeData}
           />
         </section>
@@ -191,6 +257,27 @@ export const ProductionStudioShell: React.FC<ProductionStudioShellProps> = ({
     </div>
   );
 };
+
+const DIRECTOR_CAPTURE_EXTENSION_BY_MIME: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+};
+
+function normalizeDirectorCaptureFileName(fileName: string | undefined, index: number, mimeType: string) {
+  const extension = DIRECTOR_CAPTURE_EXTENSION_BY_MIME[mimeType] || 'png';
+  const fallback = `director-capture-${index + 1}.${extension}`;
+  const cleaned = String(fileName || '')
+    .trim()
+    .replace(/[\\/:*?"<>|]+/g, '-')
+    .replace(/\s+/g, ' ');
+  const normalized = cleaned || fallback;
+  return /\.[a-z0-9]{2,5}$/i.test(normalized) ? normalized : `${normalized}.${extension}`;
+}
+
+function titleFromDirectorCaptureFileName(fileName: string, index: number) {
+  return fileName.replace(/\.[^.]+$/, '').trim() || `director-capture-${index + 1}`;
+}
 
 function buildDirectorActor(index: number): FlowDirector3dData['actors'][number] {
   const number = index + 1;

@@ -21,6 +21,13 @@ export interface HostCaptureBatchPayload {
   captures?: HostCaptureItemPayload[];
 }
 
+export type DirectorDeskCaptureHostHandler = (
+  captures: Array<{
+    dataUrl: string;
+    fileName: string;
+  }>
+) => void | Promise<void>;
+
 interface HostConnectedPanorama {
   edgeId: string;
   sourceNodeId: string;
@@ -28,6 +35,7 @@ interface HostConnectedPanorama {
 
 let initialized = false;
 let hostConnectedPanorama: HostConnectedPanorama | null = null;
+let directorDeskCaptureHostHandler: DirectorDeskCaptureHostHandler | null = null;
 let removeUnsubscribe: (() => void) | null = null;
 let suppressNextPanoramaRemovalNotice = false;
 
@@ -149,6 +157,13 @@ export function postDirectorDeskCapturesToHost(
     return;
   }
 
+  if (directorDeskCaptureHostHandler) {
+    void Promise.resolve(directorDeskCaptureHostHandler(normalizedCaptures)).catch((error) => {
+      console.error("Failed to send director desk captures to host.", error);
+    });
+    return;
+  }
+
   window.parent?.postMessage(
     {
       type: "storyai:director-desk-captures-sent",
@@ -158,6 +173,10 @@ export function postDirectorDeskCapturesToHost(
     },
     getHostOrigin()
   );
+}
+
+export function setDirectorDeskCaptureHostHandler(handler: DirectorDeskCaptureHostHandler | null) {
+  directorDeskCaptureHostHandler = handler;
 }
 
 function handleHostMessage(event: MessageEvent) {
@@ -193,6 +212,7 @@ export function clearDirectorDeskHostBridge() {
 
   initialized = false;
   hostConnectedPanorama = null;
+  directorDeskCaptureHostHandler = null;
   suppressNextPanoramaRemovalNotice = false;
   window.removeEventListener("message", handleHostMessage);
   removeUnsubscribe?.();

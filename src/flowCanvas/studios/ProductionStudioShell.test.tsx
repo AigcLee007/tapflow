@@ -5,9 +5,11 @@ import { ProductionStudioShell } from './ProductionStudioShell';
 
 const listAssetsMock = vi.hoisted(() => vi.fn());
 const storyAiDirectorDeskMock = vi.hoisted(() => vi.fn());
+const uploadAssetFileMock = vi.hoisted(() => vi.fn());
 
 vi.mock('../../assets/assetApi', () => ({
   listAssets: (...args: unknown[]) => listAssetsMock(...args),
+  uploadAssetFile: (...args: unknown[]) => uploadAssetFileMock(...args),
 }));
 
 vi.mock('./StoryAiDirectorDesk', () => ({
@@ -23,6 +25,14 @@ vi.mock('./StoryAiDirectorDesk', () => ({
           onClick={() => props.onUpdateNodeData?.(props.nodeId, { director3d: props.data })}
         >
           emit storyai patch
+        </button>
+        <button
+          type="button"
+          onClick={() => props.onSendCapturesToCanvas?.([
+            { dataUrl: 'data:image/png;base64,Y2FwdHVyZQ==', fileName: 'camera-shot.png' },
+          ])}
+        >
+          send storyai capture
         </button>
       </div>
     );
@@ -99,6 +109,7 @@ describe('ProductionStudioShell', () => {
   beforeEach(() => {
     listAssetsMock.mockReset();
     listAssetsMock.mockImplementation(() => new Promise(() => undefined));
+    uploadAssetFileMock.mockReset();
     storyAiDirectorDeskMock.mockClear();
   });
 
@@ -147,6 +158,81 @@ describe('ProductionStudioShell', () => {
     expect(onUpdateNodeData).toHaveBeenCalledWith('director-node', {
       director3d: directorNode.data.director3d,
     });
+  });
+
+  it('uploads StoryAI camera captures before requesting safe image nodes on the canvas', async () => {
+    uploadAssetFileMock.mockResolvedValueOnce({
+      bucket: 'assets',
+      checksumSha256: null,
+      createdAt: '2026-07-07T00:00:00.000Z',
+      deletedAt: null,
+      description: null,
+      durationMs: null,
+      favorite: false,
+      height: 720,
+      id: 'asset-director-capture-1',
+      kind: 'image',
+      metadata: {},
+      mimeType: 'image/png',
+      objectKey: 'captures/camera-shot.png',
+      originalFilename: 'camera-shot.png',
+      ownerUserId: 'user-1',
+      projectId: 'project-1',
+      sizeBytes: 7,
+      source: 'upload',
+      status: 'ready',
+      storageProvider: 's3',
+      tags: [],
+      tenantId: 'tenant-1',
+      title: 'camera-shot.png',
+      updatedAt: '2026-07-07T00:00:00.000Z',
+      variants: [],
+      width: 1280,
+    });
+    const onCreateCanvasNodeFromStudio = vi.fn();
+
+    render(
+      <ProductionStudioShell
+        studio="director3d"
+        node={directorNode as any}
+        onClose={vi.fn()}
+        onCreateCanvasNodeFromStudio={onCreateCanvasNodeFromStudio}
+        projectId="project-1"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'send storyai capture' }));
+
+    await waitFor(() => expect(uploadAssetFileMock).toHaveBeenCalledTimes(1));
+    expect(uploadAssetFileMock).toHaveBeenCalledWith({
+      file: expect.objectContaining({
+        name: 'camera-shot.png',
+        type: 'image/png',
+      }),
+      kind: 'image',
+      projectId: 'project-1',
+    });
+
+    await waitFor(() => expect(onCreateCanvasNodeFromStudio).toHaveBeenCalledTimes(1));
+    expect(onCreateCanvasNodeFromStudio).toHaveBeenCalledWith({
+      kind: 'image',
+      position: { x: 420, y: 40 },
+      runAfterCreate: false,
+      data: expect.objectContaining({
+        assetId: 'asset-director-capture-1',
+        assetIds: ['asset-director-capture-1'],
+        source: 'director-capture',
+        title: 'camera-shot',
+        params: expect.objectContaining({
+          directorCapture: expect.objectContaining({
+            captureIndex: 1,
+            fileName: 'camera-shot.png',
+            sourceDirectorNodeId: 'director-node',
+          }),
+        }),
+      }),
+    });
+    expect(JSON.stringify(onCreateCanvasNodeFromStudio.mock.calls)).not.toMatch(/blob:|data:|base64|https?:\/\//i);
   });
 
   it('renders storyboard shell with selected shot context', () => {

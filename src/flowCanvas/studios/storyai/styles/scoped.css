@@ -2627,6 +2627,7 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+  pointer-events: none;
 }
 
 .storyai-director-desk .camera-capture-actions {
@@ -2644,6 +2645,7 @@
   background: rgb(0 0 0 / 0.72);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
+  z-index: 2;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.16s ease;

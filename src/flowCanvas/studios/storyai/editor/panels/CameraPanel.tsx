@@ -293,6 +293,7 @@ export function CameraPanel() {
                   <button
                     aria-label={`发送到画布 ${capture.name}`}
                     className="camera-capture-action"
+                    data-testid="camera-capture-send-one"
                     type="button"
                     onClick={(event) => {
                       event.stopPropagation();
@@ -379,6 +380,7 @@ export function CameraPanel() {
         </button>
         <button
           className="camera-capture-send-all viewport-toolbar-crowd-confirm"
+          data-testid="camera-capture-send-all"
           type="button"
           onClick={sendAllCapturesToCanvas}
         >

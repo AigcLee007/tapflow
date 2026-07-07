@@ -13,6 +13,7 @@ const hostBridgeMock = vi.hoisted(() => ({
   clear: vi.fn(),
   init: vi.fn(),
   postCaptures: vi.fn(),
+  setCaptureHostHandler: vi.fn(),
 }));
 
 const screenshotExportMock = vi.hoisted(() => ({
@@ -24,6 +25,7 @@ vi.mock('./storyai/editor/io/hostBridge', () => ({
   clearDirectorDeskHostBridge: hostBridgeMock.clear,
   initDirectorDeskHostBridge: hostBridgeMock.init,
   postDirectorDeskCapturesToHost: hostBridgeMock.postCaptures,
+  setDirectorDeskCaptureHostHandler: hostBridgeMock.setCaptureHostHandler,
 }));
 
 vi.mock('./storyai/editor/io/screenshotExport', () => ({
@@ -90,6 +92,7 @@ describe('StoryAiDirectorDesk', () => {
     hostBridgeMock.clear.mockClear();
     hostBridgeMock.init.mockClear();
     hostBridgeMock.postCaptures.mockClear();
+    hostBridgeMock.setCaptureHostHandler.mockClear();
     screenshotExportMock.downloadCaptureResults.mockClear();
     screenshotExportMock.downloadDataUrl.mockClear();
     clearViewportCaptureHandler();

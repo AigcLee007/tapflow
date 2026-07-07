@@ -3,6 +3,24 @@
 Last updated: 2026-07-07
 Maintainers: project team + Codex sessions
 
+## 2026-07-07 - StoryAI Director Desk Capture Send-To-Canvas Phase 81
+
+- fixed the StoryAI 3D director desk camera capture send-to-canvas path:
+  - embedded StoryAI now registers an in-process capture host handler instead of relying only on iframe-style `window.parent.postMessage`.
+  - single camera capture send and all-captures send now reach the TapFlow production-studio shell.
+  - sent captures are converted from live `data:` URLs into `File` objects, uploaded through the existing `/assets` upload path, and inserted onto the canvas as image node requests backed by durable `assetId` references.
+  - created image node requests use `source: director-capture` plus safe `params.directorCapture` metadata and do not carry `data:`, `blob:`, base64, or signed/http preview URLs in the request payload.
+- tightened capture card interaction coverage:
+  - camera capture send buttons now expose stable test ids for smoke coverage.
+  - capture thumbnail media no longer intercepts pointer events over the action layer, and the action layer has an explicit z-index.
+  - `smoke:director3d` now verifies both single-capture send and all-captures send on desktop/mobile in addition to screenshots, panorama import, safe patches, and nonblank WebGL.
+- validation:
+  - red test observed on 2026-07-07: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "uploads StoryAI camera captures"` first failed because StoryAI capture sends never called `uploadAssetFile` or canvas node creation.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/studios/StoryAiDirectorDesk.test.tsx src/flowCanvas/studios/storyai/editor/io/hostBridge.test.ts scripts/smoke-director-three-viewport.test.ts scripts/smoke-production-studios.test.ts` passed on 2026-07-07: 5 files, 45 tests.
+  - `npm run smoke:director3d` passed on 2026-07-07 with desktop/mobile reporting `hasSentCaptures: true`, safe patches, live camera captures, live panorama previews, and nonblank WebGL pixels.
+  - `npm run smoke:production-studios` passed on 2026-07-07 with director, 360/270 image mode, storyboard, and video-editor smoke checks intact.
+  - `npm run build` passed on 2026-07-07 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-07 - StoryAI Director Desk Capture And Panorama Stabilization Phase 80
 
 - fixed three real StoryAI 3D director desk usability regressions reported from the canvas:

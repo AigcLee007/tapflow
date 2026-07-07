@@ -69,6 +69,7 @@ export function buildDirectorViewportSmokeHtml(): string {
       window.directorDeskSmokeState = {
         closes: 0,
         patches: [],
+        sentCaptures: [],
       };
       window.directorDeskSmokeStore = useDirectorStore;
 
@@ -80,6 +81,14 @@ export function buildDirectorViewportSmokeHtml(): string {
             nodeId: 'director-node',
             onClose: () => {
               window.directorDeskSmokeState.closes += 1;
+            },
+            onSendCapturesToCanvas: (captures) => {
+              window.directorDeskSmokeState.sentCaptures.push(
+                ...captures.map((capture) => ({
+                  dataUrlPrefix: String(capture.dataUrl || '').slice(0, 22),
+                  fileName: capture.fileName,
+                })),
+              );
             },
             onUpdateNodeData: (nodeId, patch) => {
               window.directorDeskSmokeState.patches.push({ nodeId, patch });
@@ -134,6 +143,32 @@ const capturePanelDebug = await page.evaluate(() => {
 if (capturePanelDebug.cameraCaptureCardCount < 1) {
   throw new Error(JSON.stringify({ reason: 'camera capture card missing', capturePanelDebug }));
 }
+await page.evaluate(() => {
+  const button = document.querySelector('[data-testid="camera-capture-send-one"]');
+  if (!(button instanceof HTMLButtonElement)) {
+    throw new Error('missing single capture send button');
+  }
+  button.click();
+});
+await page.waitForFunction(() => (window.directorDeskSmokeState?.sentCaptures?.length ?? 0) >= 1, null, { timeout: 15000 });
+await page.evaluate(() => {
+  const tabs = Array.from(document.querySelectorAll('.right-inspector-tabs button'))
+    .filter((item) => item instanceof HTMLButtonElement);
+  const capturesTab = tabs[tabs.length - 1];
+  if (!(capturesTab instanceof HTMLButtonElement)) {
+    throw new Error('missing camera captures tab');
+  }
+  capturesTab.click();
+});
+await page.waitForSelector('[data-testid="camera-capture-send-all"]', { state: 'attached', timeout: 15000 });
+await page.evaluate(() => {
+  const button = document.querySelector('[data-testid="camera-capture-send-all"]');
+  if (!(button instanceof HTMLButtonElement)) {
+    throw new Error('missing all capture send button');
+  }
+  button.click();
+});
+await page.waitForFunction(() => (window.directorDeskSmokeState?.sentCaptures?.length ?? 0) >= 2, null, { timeout: 15000 });
 
 const patchCountAfterCapture = await page.evaluate(() => window.directorDeskSmokeState?.patches?.length ?? 0);
 await page.evaluate(async () => {
@@ -195,6 +230,7 @@ const result = await page.evaluate(() => {
   const cameraCaptureUrl = liveProject?.cameras?.flatMap((camera) => camera.captures ?? [])?.[0]?.dataUrl ?? null;
   const panoramaAsset = liveProject?.assets?.find((item) => item.id === liveProject.panoramaAssetId);
   const panoramaAssetUrl = panoramaAsset?.url ?? null;
+  const sentCaptures = window.directorDeskSmokeState?.sentCaptures ?? [];
   if (!desk || !leftSidebar || !rightSidebar || !toolbar || !canvas) {
     return {
       ok: false,
@@ -240,6 +276,7 @@ const result = await page.evaluate(() => {
     cameraCaptureCount,
     hasLiveCameraCapture: typeof cameraCaptureUrl === 'string' && /^data:image/i.test(cameraCaptureUrl),
     hasLivePanoramaPreview: typeof panoramaAssetUrl === 'string' && /^(?:blob:|data:image)/i.test(panoramaAssetUrl),
+    hasSentCaptures: sentCaptures.length >= 2 && sentCaptures.every((capture) => /^data:image/i.test(capture.dataUrlPrefix)),
     hasSafePatch: Boolean(latestPatch) && !safePatchHasUnsafeMedia,
     ok:
       nonblank &&
@@ -247,6 +284,8 @@ const result = await page.evaluate(() => {
       !safePatchHasUnsafeMedia &&
       cameraCaptureCardCount > 0 &&
       cameraCaptureCount > 0 &&
+      sentCaptures.length >= 2 &&
+      sentCaptures.every((capture) => /^data:image/i.test(capture.dataUrlPrefix)) &&
       typeof cameraCaptureUrl === 'string' &&
       /^data:image/i.test(cameraCaptureUrl) &&
       typeof panoramaAssetUrl === 'string' &&
@@ -254,6 +293,8 @@ const result = await page.evaluate(() => {
     patchNodeId: latestPatch?.nodeId ?? null,
     panoramaAssetUrl,
     pixels,
+    sentCaptureCount: sentCaptures.length,
+    sentCaptures,
     storyAi: {
       leftSidebar: Boolean(leftSidebar),
       rightSidebar: Boolean(rightSidebar),
@@ -272,6 +313,7 @@ if (
   result.actorCount < 2 ||
   result.cameraCaptureCardCount < 1 ||
   result.cameraCaptureCount < 1 ||
+  result.sentCaptureCount < 2 ||
   !result.hasLivePanoramaPreview
 ) {
   throw new Error(JSON.stringify(result));
