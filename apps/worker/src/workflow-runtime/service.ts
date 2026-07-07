@@ -949,6 +949,46 @@ function readStoryboardSheetConfig(config: Record<string, unknown>): Record<stri
   return isPlainObject(params.storyboardSheet) ? params.storyboardSheet : null;
 }
 
+const UNSAFE_DRAFT_MEDIA_PATTERN = /(?:base64|blob:|data:|https?:\/\/)/i;
+const UNSAFE_DRAFT_MEDIA_KEY_PATTERN = /(?:base64|blob|bytes|dataUrl|downloadUrl|file|previewUrl|signedUrl|url)$/i;
+
+function sanitizeProductionStudioDraftValue(value: unknown): unknown {
+  if (typeof value === "string") {
+    return UNSAFE_DRAFT_MEDIA_PATTERN.test(value) ? undefined : value;
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : undefined;
+  }
+  if (typeof value === "boolean" || value === null) {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => sanitizeProductionStudioDraftValue(item))
+      .filter((item) => typeof item !== "undefined");
+  }
+  if (!isPlainObject(value)) {
+    return undefined;
+  }
+
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, entryValue] of Object.entries(value)) {
+    if (UNSAFE_DRAFT_MEDIA_KEY_PATTERN.test(key)) {
+      continue;
+    }
+    const nextValue = sanitizeProductionStudioDraftValue(entryValue);
+    if (typeof nextValue !== "undefined") {
+      sanitized[key] = nextValue;
+    }
+  }
+  return sanitized;
+}
+
+function sanitizeProductionStudioDraftDocument(value: unknown): Record<string, unknown> {
+  const sanitized = sanitizeProductionStudioDraftValue(value);
+  return isPlainObject(sanitized) ? sanitized : {};
+}
+
 function applyDraftOutputPatchToNodes(input: {
   currentNode: Pick<CompiledWorkflowNode, "config" | "id">;
   nodes: Array<Record<string, unknown>>;
@@ -987,7 +1027,7 @@ function applyDraftOutputPatchToNodes(input: {
       (node.type === "video_editor" || data.kind === "video_editor" || isPlainObject(data.videoEditor))
     ) {
       changed = true;
-      const videoEditor = isPlainObject(data.videoEditor) ? data.videoEditor : {};
+      const videoEditor = sanitizeProductionStudioDraftDocument(data.videoEditor);
       return {
         ...node,
         data: {
@@ -1009,7 +1049,7 @@ function applyDraftOutputPatchToNodes(input: {
       data &&
       (node.type === "storyboard" || data.kind === "storyboard" || isPlainObject(data.storyboard))
     ) {
-      const storyboard = isPlainObject(data.storyboard) ? data.storyboard : {};
+      const storyboard = sanitizeProductionStudioDraftDocument(data.storyboard);
       const cells = Array.isArray(storyboard.cells) ? storyboard.cells : [];
       let cellChanged = false;
       const nextCells = cells.map((cell) => {
@@ -1048,7 +1088,7 @@ function applyDraftOutputPatchToNodes(input: {
       data &&
       (node.type === "storyboard" || data.kind === "storyboard" || isPlainObject(data.storyboard))
     ) {
-      const storyboard = isPlainObject(data.storyboard) ? data.storyboard : {};
+      const storyboard = sanitizeProductionStudioDraftDocument(data.storyboard);
       changed = true;
       return {
         ...node,
@@ -1071,7 +1111,7 @@ function applyDraftOutputPatchToNodes(input: {
       data &&
       (node.type === "director3d" || data.kind === "director3d" || isPlainObject(data.director3d))
     ) {
-      const director3d = isPlainObject(data.director3d) ? data.director3d : {};
+      const director3d = sanitizeProductionStudioDraftDocument(data.director3d);
       const shots = Array.isArray(director3d.shots) ? director3d.shots : [];
       let shotChanged = false;
       const nextShots = shots.map((shot) => {

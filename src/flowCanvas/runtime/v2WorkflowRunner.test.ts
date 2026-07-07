@@ -918,9 +918,10 @@ describe('v2WorkflowRunner', () => {
     const storyboardNode = useFlowCanvasStore.getState().addNode('storyboard', { x: 0, y: 0 }, {
       storyboard: {
         aspect: '16:9',
+        composedAssetId: 'https://signed.example.com/old-storyboard-sheet.png',
         cells: [
-          { id: 'cell-1', shotNo: 1, title: '开场', prompt: '城市远景' },
-          { id: 'cell-2', shotNo: 2 },
+          { id: 'cell-1', shotNo: 1, title: '开场', prompt: '城市远景', sourceAssetId: 'data:image/png;base64,old-cell' },
+          { id: 'cell-2', shotNo: 2, assetId: 'blob:old-cell-preview' },
           { id: 'cell-3', shotNo: 3 },
           { id: 'cell-4', shotNo: 4 },
           { id: 'cell-5', shotNo: 5 },
@@ -1000,9 +1001,10 @@ describe('v2WorkflowRunner', () => {
     const storyboardNode = useFlowCanvasStore.getState().addNode('storyboard', { x: 0, y: 0 }, {
       storyboard: {
         aspect: '16:9',
+        composedAssetId: 'data:image/png;base64,old-sheet',
         cells: [
           { assetId: 'asset-cell-1', id: 'cell-1', shotNo: 1, title: '开场', prompt: '城市远景' },
-          { assetId: 'asset-cell-2', id: 'cell-2', shotNo: 2, title: '近景', prompt: '角色回头' },
+          { assetId: 'https://signed.example.com/old-cell-2.png', id: 'cell-2', shotNo: 2, title: '近景', prompt: '角色回头' },
           { id: 'cell-3', shotNo: 3 },
           { id: 'cell-4', shotNo: 4 },
           { id: 'cell-5', shotNo: 5 },
@@ -1085,8 +1087,24 @@ describe('v2WorkflowRunner', () => {
     const directorNode = useFlowCanvasStore.getState().addNode('director3d', { x: 0, y: 0 }, {
       director3d: {
         version: 1,
-        scene: { gridVisible: true, units: 'meters' },
-        actors: [],
+        scene: {
+          backgroundAssetId: 'https://signed.example.com/old-director-bg.png',
+          gridVisible: true,
+          units: 'meters',
+        },
+        actors: [
+          {
+            id: 'actor-1',
+            name: 'Actor 1',
+            kind: 'image_plane',
+            assetId: 'blob:old-actor-preview',
+            position: [0, 0, 0],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1],
+            visible: true,
+            locked: false,
+          },
+        ],
         cameras: [
           {
             id: 'camera-1',
@@ -1105,6 +1123,8 @@ describe('v2WorkflowRunner', () => {
             durationMs: 3000,
             motion: 'static',
             prompt: 'wide studio shot',
+            generatedAssetId: 'data:image/png;base64,old-shot',
+            generatedSourceNodeId: 'https://signed.example.com/old-image-node',
           },
         ],
       },
@@ -1522,6 +1542,7 @@ describe('v2WorkflowRunner', () => {
       videoEditor: {
         version: 1,
         aspect: '16:9',
+        exportedAssetId: 'https://signed.example.com/old-export.mp4',
         resolution: '1920x1080',
         timeline: {
           audio: [],
@@ -1536,9 +1557,26 @@ describe('v2WorkflowRunner', () => {
               outMs: 3000,
               speed: 1,
             },
+            {
+              id: 'clip-unsafe',
+              assetId: 'blob:old-video-preview',
+              kind: 'video',
+              track: 1,
+              startMs: 0,
+              inMs: 0,
+              outMs: 1000,
+              speed: 1,
+            },
           ],
           durationMs: 3000,
-          subtitles: [],
+          subtitles: [
+            {
+              id: 'subtitle-unsafe',
+              text: 'data:image/png;base64,old-subtitle',
+              startMs: 0,
+              endMs: 1000,
+            },
+          ],
         },
       },
     });

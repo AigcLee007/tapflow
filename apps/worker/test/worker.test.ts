@@ -722,7 +722,34 @@ describe("worker skeleton", () => {
             kind: "video_editor",
             videoEditor: {
               aspect: "16:9",
-              timeline: { audio: [], clips: [], durationMs: 0, subtitles: [] },
+              exportedAssetId: "https://signed.example.com/old-export.mp4",
+              timeline: {
+                audio: [
+                  {
+                    id: "audio-1",
+                    assetId: "data:audio/ogg;base64,old",
+                    inMs: 0,
+                    outMs: 1000,
+                    startMs: 0,
+                    track: 0,
+                    volume: 1,
+                  },
+                ],
+                clips: [
+                  {
+                    id: "clip-1",
+                    assetId: "blob:old-video-preview",
+                    inMs: 0,
+                    kind: "video",
+                    outMs: 1000,
+                    speed: 1,
+                    startMs: 0,
+                    track: 0,
+                  },
+                ],
+                durationMs: 1000,
+                subtitles: [{ id: "subtitle-1", text: "https://signed.example.com/subtitle.txt" }],
+              },
               version: 1,
             },
           },
@@ -789,10 +816,36 @@ describe("worker skeleton", () => {
           data: {
             director3d: {
               version: 1,
-              scene: { gridVisible: true, units: "meters" },
-              actors: [],
+              scene: {
+                backgroundAssetId: "https://signed.example.com/old-director-bg.png",
+                gridVisible: true,
+                units: "meters",
+              },
+              actors: [
+                {
+                  assetId: "blob:old-actor-preview",
+                  id: "actor-1",
+                  kind: "image_plane",
+                  locked: false,
+                  name: "Actor 1",
+                  position: [0, 0, 0],
+                  rotation: [0, 0, 0],
+                  scale: [1, 1, 1],
+                  visible: true,
+                },
+              ],
               cameras: [{ id: "camera-1", name: "Camera 1", position: [0, 1.8, 5], target: [0, 1, 0] }],
-              shots: [{ id: "shot-1", cameraId: "camera-1", startMs: 0, durationMs: 3000, motion: "static" }],
+              shots: [
+                {
+                  cameraId: "camera-1",
+                  durationMs: 3000,
+                  generatedAssetId: "data:image/png;base64,old-shot",
+                  generatedSourceNodeId: "https://signed.example.com/old-image-node",
+                  id: "shot-1",
+                  motion: "static",
+                  startMs: 0,
+                },
+              ],
             },
             kind: "director3d",
           },
@@ -863,9 +916,17 @@ describe("worker skeleton", () => {
             kind: "storyboard",
             storyboard: {
               aspect: "16:9",
+              composedAssetId: "https://signed.example.com/old-storyboard-sheet.png",
               cells: [
-                { id: "cell-1", shotNo: 1, prompt: "wide city" },
-                { id: "cell-2", shotNo: 2 },
+                {
+                  assetId: "blob:old-cell-preview",
+                  id: "cell-1",
+                  imageUrl: "data:image/png;base64,old-cell",
+                  prompt: "wide city",
+                  shotNo: 1,
+                  sourceAssetId: "https://signed.example.com/old-cell.png",
+                },
+                { assetId: "blob:old-cell-2", id: "cell-2", shotNo: 2 },
               ],
               grid: "3x2",
               selectedIndex: 0,
@@ -936,7 +997,11 @@ describe("worker skeleton", () => {
             kind: "storyboard",
             storyboard: {
               aspect: "16:9",
-              cells: [{ id: "cell-1", shotNo: 1, assetId: "asset-cell-1" }],
+              cells: [
+                { id: "cell-1", shotNo: 1, assetId: "asset-cell-1" },
+                { id: "cell-2", shotNo: 2, assetId: "https://signed.example.com/old-cell-2.png" },
+              ],
+              composedAssetId: "data:image/png;base64,old-sheet",
               grid: "3x2",
               selectedIndex: 0,
             },

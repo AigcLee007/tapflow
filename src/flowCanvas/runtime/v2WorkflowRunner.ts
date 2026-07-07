@@ -29,6 +29,7 @@ import {
   buildImageViewerComparisonSourceFromReferenceKeys,
   readImageViewerComparisonSource,
 } from '../utils/imageViewerComparison';
+import { normalizeDirector3dData } from '../utils/director3dNodeData';
 import { normalizeImageGenerationMode } from '../utils/imageGenerationModes';
 import { resolveImageGenerationModeRunBlocker } from '../utils/imageGenerationModeSupport';
 import { fitMediaNodeToShortSide } from '../utils/nodeSizing';
@@ -812,8 +813,8 @@ function syncDirectorShotFromGeneratedAsset(nodeRun: PersistableNodeRun, assetRe
   if (!sourceDirectorNodeId || !shotId) return;
 
   const directorNode = store.nodes.find((node) => node.id === sourceDirectorNodeId && node.type === 'director3d');
-  const director = directorNode?.data.director3d;
-  if (!director || !Array.isArray(director.shots)) return;
+  if (!directorNode) return;
+  const director = normalizeDirector3dData(directorNode.data.director3d);
 
   let didPatchShot = false;
   const shots = director.shots.map((shot) => {

@@ -1,7 +1,27 @@
 ﻿# Project Record
 
-Last updated: 2026-07-06
+Last updated: 2026-07-07
 Maintainers: project team + Codex sessions
+
+## 2026-07-07 - Production Studio Draft Backfill Sanitization Phase 78
+
+- closed the remaining C-scheme production-suite draft backfill safety gap:
+  - frontend director-shot image completion now normalizes the whole `director3d` document before writing `generatedAssetId` and `generatedSourceNodeId` back to the source shot.
+  - worker draft output patching now sanitizes source `videoEditor`, `storyboard`, and `director3d` documents before setting exported/composed/generated asset ids.
+  - stale old-draft values such as `blob:`, `data:`, base64 markers, signed/http URLs, URL-shaped preview fields, and file/blob-like payload keys are stripped during output backfill.
+- kept v2 architecture, asset, and billing boundaries unchanged:
+  - no API route, database migration, AI route, model pricing, reserve/settle/refund behavior, or object-storage write path changed.
+  - generated outputs still persist as `/assets` records and production studio draft documents keep asset-id references only.
+- validation:
+  - red test observed on 2026-07-07: `npm test -- src/flowCanvas/runtime/v2WorkflowRunner.test.ts -t "successful director shot image generation writes the result asset back to the director shot|successful storyboard image generation writes the result asset back to the storyboard cell|successful storyboard sheet generation writes the composed asset back to the storyboard node|video editor export syncs the generated asset id back to the source editor node"` first failed because stale director background/actor URL references survived output backfill.
+  - red test observed on 2026-07-07: `npm run test --workspace @aigc-flow/worker -- worker.test.ts -t "draft patch"` first failed because stale video editor, director, storyboard-cell, and storyboard-sheet source documents preserved unsafe media references.
+  - `npm test -- src/flowCanvas/runtime/v2WorkflowRunner.test.ts -t "successful director shot image generation writes the result asset back to the director shot|successful storyboard image generation writes the result asset back to the storyboard cell|successful storyboard sheet generation writes the composed asset back to the storyboard node|video editor export syncs the generated asset id back to the source editor node"` passed on 2026-07-07: 4 tests.
+  - `npm run test --workspace @aigc-flow/worker -- worker.test.ts -t "draft patch"` passed on 2026-07-07: 4 tests.
+  - `npm test -- src/flowCanvas/runtime/v2WorkflowRunner.test.ts src/flowCanvas/utils/director3dNodeData.test.ts src/flowCanvas/utils/storyboardNodeData.test.ts src/flowCanvas/utils/videoEditorNodeData.test.ts` passed on 2026-07-07: 41 tests.
+  - `npm run test --workspace @aigc-flow/worker -- worker.test.ts` passed on 2026-07-07: 15 tests passed, 16 skipped; local Redis emitted a non-fatal ioredis connection warning on stderr.
+  - `npm run smoke:production-studios` passed on 2026-07-07 with `status: ok`.
+  - `npm run smoke:director3d` passed on 2026-07-07 with desktop and mobile reporting `renderer: "three"` and `ok: true`.
+  - `npm run build` passed on 2026-07-07 with existing Browserslist, dynamic-import, and chunk-size warnings only.
 
 ## 2026-07-06 - Production Studio Reference Id Sanitization Phase 77
 
