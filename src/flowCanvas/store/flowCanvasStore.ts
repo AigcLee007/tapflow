@@ -11,7 +11,7 @@ import {
   type Viewport,
 } from '@xyflow/react';
 import { nanoid } from 'nanoid';
-import type { FlowEdgeData, FlowNodeData, FlowNodeKind } from '../types';
+import type { FlowDirector3dData, FlowEdgeData, FlowNodeData, FlowNodeKind, FlowProjectStudios } from '../types';
 import { createFlowNode, duplicateFlowNode } from '../utils/nodeFactory';
 import { canConnectFlowNodes, canCreateNodeFromSource } from '../rules/connectionRules';
 import { buildAssetBackedNodeData } from '../utils/assetNodeData';
@@ -81,6 +81,7 @@ interface FlowProject {
   title: string;
   nodes: FlowNode[];
   edges: FlowEdge[];
+  projectStudios?: FlowProjectStudios;
   viewport: Viewport;
   version: number;
   updatedAt: number;
@@ -97,6 +98,7 @@ interface FlowCanvasState {
 
   nodes: FlowNode[];
   edges: FlowEdge[];
+  projectStudios: FlowProjectStudios;
   graphIndex: FlowGraphIndex;
   selectedNodeCount: number;
   viewport: Viewport;
@@ -157,6 +159,7 @@ interface FlowCanvasState {
   mergeTemplateGraph: (graph: { nodes: FlowNode[]; edges: FlowEdge[] }) => void;
   restoreGraphSnapshot: (graph: { nodes: FlowNode[]; edges: FlowEdge[]; viewport?: Viewport }) => void;
   updateNodeData: (nodeId: string, patch: Partial<FlowNodeData>) => void;
+  updateProjectDirector3d: (director3d: FlowDirector3dData) => void;
   replaceNode: (nodeId: string, input: { data?: Partial<FlowNodeData>; type?: FlowNodeKind }) => void;
   commitNodePositions: (nodes: FlowNode[]) => void;
   lockNode: (nodeId: string, locked: boolean) => void;
@@ -370,6 +373,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
 
   nodes: [],
   edges: [],
+  projectStudios: {},
   graphIndex: EMPTY_GRAPH_INDEX,
   selectedNodeCount: 0,
   viewport: INITIAL_VIEWPORT,
@@ -874,6 +878,16 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
     });
   },
 
+  updateProjectDirector3d: (director3d) => {
+    set((state) => ({
+      projectStudios: {
+        ...state.projectStudios,
+        director3d,
+      },
+      isDirty: true,
+    }));
+  },
+
   replaceNode: (nodeId, input) => {
     set((state) => {
       const nodes = state.nodes.map((node) => {
@@ -1093,6 +1107,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
       projectTitle: project.title || '未命名项目',
       nodes,
       edges,
+      projectStudios: project.projectStudios ?? {},
       graphIndex: buildGraphIndex(nodes, edges, get().nodeOutputByNodeId),
       selectedNodeCount: countSelectedNodes(nodes),
       viewport: project.viewport || INITIAL_VIEWPORT,
@@ -1125,6 +1140,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
       projectTitle,
       nodes,
       edges,
+      projectStudios,
       viewport,
       version,
     } = get();
@@ -1136,6 +1152,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
       title: projectTitle,
       nodes,
       edges,
+      projectStudios,
       viewport,
       version,
       updatedAt: Date.now(),
@@ -1151,6 +1168,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
       projectTitle: '未命名项目',
       nodes: [],
       edges: [],
+      projectStudios: {},
       graphIndex: EMPTY_GRAPH_INDEX,
       selectedNodeCount: 0,
       viewport: INITIAL_VIEWPORT,

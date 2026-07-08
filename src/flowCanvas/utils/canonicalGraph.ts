@@ -48,6 +48,9 @@ export function canonicalizeGraph(graph: FlowDraftGraph): FlowDraftGraph {
   return {
     edges: graph.edges.map((edge) => sortRecord(stripTransientValue(edge, "edge", false) as Record<string, unknown>)),
     nodes: graph.nodes.map((node) => canonicalizeNode(node)),
+    ...(graph.projectStudios
+      ? { projectStudios: sortRecord(stripTransientValue(graph.projectStudios, "node-data", false) as Record<string, unknown>) as FlowDraftGraph["projectStudios"] }
+      : {}),
     viewport: {
       x: Number(graph.viewport?.x ?? 0),
       y: Number(graph.viewport?.y ?? 0),

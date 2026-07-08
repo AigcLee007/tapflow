@@ -1,9 +1,11 @@
 import { apiGet, apiPost, apiPut } from "../../services/v2HttpClient";
 import type { WorkspaceFlow, WorkspaceProject } from "../../workspace/workspaceApi";
+import type { FlowProjectStudios } from "../types";
 
 export type FlowDraftGraph = {
   edges: Record<string, unknown>[];
   nodes: Record<string, unknown>[];
+  projectStudios?: FlowProjectStudios;
   viewport: {
     x: number;
     y: number;
@@ -65,6 +67,9 @@ export function sanitizeFlowDraftGraph(graph: FlowDraftGraph): FlowDraftGraph {
   return {
     edges: graph.edges.map((edge) => sanitizeGraphValue(edge, false) as Record<string, unknown>),
     nodes: graph.nodes.map((node) => sanitizeNodeForDraft(node)),
+    ...(graph.projectStudios
+      ? { projectStudios: sanitizeGraphValue(graph.projectStudios, false) as FlowProjectStudios }
+      : {}),
     viewport: {
       x: graph.viewport.x,
       y: graph.viewport.y,

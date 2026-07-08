@@ -29,6 +29,9 @@ const draftViewportSchema = z.object({
 const draftGraphSchema = z.object({
   edges: z.array(z.record(z.string(), z.unknown())),
   nodes: z.array(z.record(z.string(), z.unknown())),
+  projectStudios: z.object({
+    director3d: z.record(z.string(), z.unknown()).optional(),
+  }).optional(),
   viewport: draftViewportSchema,
 });
 

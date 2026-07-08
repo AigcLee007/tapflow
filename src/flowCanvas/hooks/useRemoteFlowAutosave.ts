@@ -43,6 +43,7 @@ export function useRemoteFlowAutosave(input: {
 }): RemoteFlowAutosaveState {
   const nodes = useFlowCanvasStore((state) => state.nodes);
   const edges = useFlowCanvasStore((state) => state.edges);
+  const projectStudios = useFlowCanvasStore((state) => state.projectStudios);
   const viewport = useFlowCanvasStore((state) => state.viewport);
   const isNodeDragging = useFlowCanvasStore((state) => state.isNodeDragging);
   const markDirty = useFlowCanvasStore((state) => state.markDirty);
@@ -70,9 +71,10 @@ export function useRemoteFlowAutosave(input: {
     () => canonicalizeGraph({
       edges: edges as unknown as Record<string, unknown>[],
       nodes: nodes as unknown as Record<string, unknown>[],
+      ...(projectStudios.director3d ? { projectStudios } : {}),
       viewport,
     }),
-    [edges, nodes, viewport],
+    [edges, nodes, projectStudios, viewport],
   );
 
   const graphKey = useMemo(() => hashGraph(graph), [graph]);
@@ -104,6 +106,7 @@ export function useRemoteFlowAutosave(input: {
     const latestGraph = canonicalizeGraph({
       edges: state.edges as unknown as Record<string, unknown>[],
       nodes: state.nodes as unknown as Record<string, unknown>[],
+      ...(state.projectStudios.director3d ? { projectStudios: state.projectStudios } : {}),
       viewport: state.viewport,
     });
     latestGraphRef.current = latestGraph;

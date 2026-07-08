@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { useReactFlow } from '@xyflow/react';
 import { useFlowCanvasStore } from '../store/flowCanvasStore';
+import { openProjectDirectorDesk } from '../studios/productionStudioEvents';
 import type { FlowNodeKind } from '../types';
 import {
   MENU_BETA_PILL_STYLE,
@@ -75,6 +76,9 @@ const PANE_ADD_ITEMS: PaneAddItem[] = [
   { kind: 'image', icon: <ImageIcon size={18} strokeWidth={1.75} />, label: '图片' },
   { kind: 'video', icon: <Video size={18} strokeWidth={1.75} />, label: '视频' },
   { kind: 'audio', icon: <Music size={18} strokeWidth={1.75} />, label: '音频' },
+];
+
+const PANE_TOOL_ITEMS: PaneAddItem[] = [
   { kind: 'director3d', icon: <Box size={18} strokeWidth={1.75} />, label: '3D导演台', desc: '场景、机位和镜头调度', beta: true },
   { kind: 'storyboard', icon: <Grid3X3 size={18} strokeWidth={1.75} />, label: '故事板', desc: '分镜、镜头和素材引用', beta: true },
   { kind: 'video_editor', icon: <Film size={18} strokeWidth={1.75} />, label: '剪辑工程', desc: '时间线、字幕和导出', beta: true },
@@ -178,6 +182,11 @@ export const FlowContextMenu: React.FC = memo(function FlowContextMenu() {
       active={index === 0 && !item.disabled}
       onClick={() => {
         if (!item.kind || item.disabled) return;
+        if (item.kind === 'director3d') {
+          openProjectDirectorDesk();
+          closeContextMenu();
+          return;
+        }
         handleQuickAdd(item.kind);
       }}
     />
@@ -214,6 +223,8 @@ export const FlowContextMenu: React.FC = memo(function FlowContextMenu() {
         <>
           <div style={paneSectionLabelStyle}>添加节点</div>
           {PANE_ADD_ITEMS.map(renderPaneAddItem)}
+          <div style={paneSectionLabelStyle}>工具</div>
+          {PANE_TOOL_ITEMS.map(renderPaneAddItem)}
           <div style={paneSectionLabelStyle}>添加资源</div>
           {PANE_RESOURCE_ITEMS.map(renderPaneAddItem)}
           {nodes.length > 0 && (

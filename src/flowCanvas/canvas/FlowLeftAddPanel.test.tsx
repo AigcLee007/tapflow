@@ -3,6 +3,8 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
 
 import { AuthContext, type AuthState } from "../../auth/useAuth";
+import { useFlowCanvasStore } from "../store/flowCanvasStore";
+import { OPEN_PRODUCTION_STUDIO_EVENT } from "../studios/productionStudioEvents";
 import { FlowLeftAddPanel } from "./FlowLeftAddPanel";
 
 vi.mock("@xyflow/react", () => ({
@@ -28,13 +30,17 @@ function createAuthState(): AuthState {
   };
 }
 
+function renderPanel() {
+  return render(
+    <AuthContext.Provider value={createAuthState()}>
+      <FlowLeftAddPanel />
+    </AuthContext.Provider>,
+  );
+}
+
 describe("FlowLeftAddPanel", () => {
   test("renders readable dock menu copy", async () => {
-    render(
-      <AuthContext.Provider value={createAuthState()}>
-        <FlowLeftAddPanel />
-      </AuthContext.Provider>,
-    );
+    renderPanel();
 
     fireEvent.mouseEnter(screen.getByTitle("添加节点"));
 
@@ -44,15 +50,12 @@ describe("FlowLeftAddPanel", () => {
     expect(screen.getByText("图片")).toBeTruthy();
     expect(screen.getByText("视频")).toBeTruthy();
     expect(screen.getByText("音频")).toBeTruthy();
+    expect(screen.getByText("工具")).toBeTruthy();
     expect(screen.getByText("资源")).toBeTruthy();
   });
 
   test("closes the add flyout when the user menu opens", async () => {
-    render(
-      <AuthContext.Provider value={createAuthState()}>
-        <FlowLeftAddPanel />
-      </AuthContext.Provider>,
-    );
+    renderPanel();
 
     fireEvent.mouseEnter(screen.getByTitle("添加节点"));
     expect(await screen.findByText("添加节点")).toBeTruthy();
@@ -63,17 +66,31 @@ describe("FlowLeftAddPanel", () => {
     expect(screen.getByText("user@example.com")).toBeTruthy();
   });
 
-  test("shows production suite entries as enabled add-node actions", async () => {
-    render(
-      <AuthContext.Provider value={createAuthState()}>
-        <FlowLeftAddPanel />
-      </AuthContext.Provider>,
-    );
+  test("opens the project director desk as a tool without creating a canvas node", async () => {
+    const listener = vi.fn();
+    window.addEventListener(OPEN_PRODUCTION_STUDIO_EVENT, listener);
+    useFlowCanvasStore.getState().newProject();
+
+    renderPanel();
+
+    fireEvent.mouseEnter(screen.getByTitle("添加节点"));
+    fireEvent.click(await screen.findByRole("button", { name: /3D导演台/ }));
+
+    expect(useFlowCanvasStore.getState().nodes).toEqual([]);
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect((listener.mock.calls[0]?.[0] as CustomEvent).detail).toEqual({
+      scope: "project",
+      studio: "director3d",
+    });
+    window.removeEventListener(OPEN_PRODUCTION_STUDIO_EVENT, listener);
+  });
+
+  test("keeps storyboard and video editor entries as enabled node actions", async () => {
+    renderPanel();
 
     fireEvent.mouseEnter(screen.getByTitle("添加节点"));
 
-    expect(await screen.findByText("3D导演台")).toBeTruthy();
-    expect((screen.getByRole("button", { name: /3D导演台/ }) as HTMLButtonElement).disabled).toBe(false);
+    expect(await screen.findByText("故事板")).toBeTruthy();
     expect((screen.getByRole("button", { name: /故事板/ }) as HTMLButtonElement).disabled).toBe(false);
     expect((screen.getByRole("button", { name: /剪辑工程/ }) as HTMLButtonElement).disabled).toBe(false);
   });

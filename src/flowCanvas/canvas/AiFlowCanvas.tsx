@@ -41,7 +41,7 @@ import {
 } from '../studios/ProductionStudioShell';
 import {
   OPEN_PRODUCTION_STUDIO_EVENT,
-  type OpenProductionStudioDetail,
+  type ProductionStudioOpenDetail,
   type ProductionStudioKind,
 } from '../studios/productionStudioEvents';
 import { SmartEdgeComponent } from '../edges/SmartEdge';
@@ -63,6 +63,7 @@ import type { FlowNodeData, FlowStoryboardData } from '../types';
 import { buildAssetBackedNodeData, buildMeasuredAssetNodePatch } from '../utils/assetNodeData';
 import { getCanvasDockBadge, getCanvasDockDrawerLayout, type CanvasDockPanelId } from '../utils/canvasDockPanel';
 import { FLOW_NODE_DEFAULT_SIZES, fitMediaNodeToShortSide } from '../utils/nodeSizing';
+import { normalizeDirector3dData } from '../utils/director3dNodeData';
 import { buildStoryboardPatchFromDirectorShot } from '../utils/storyboardDirectorSync';
 import { buildVideoEditorFromDirectorShots } from '../utils/directorVideoSync';
 import { buildVideoEditorFromStoryboardAssets } from '../utils/storyboardVideoSync';
@@ -81,6 +82,7 @@ import { runBackendWorkflow } from '../runtime/v2WorkflowRunner';
 
 const CANVAS_MIN_ZOOM = 0.18;
 const CANVAS_MAX_ZOOM = 2.2;
+const PROJECT_DIRECTOR_NODE_ID = 'project-director3d';
 const CONNECTION_MENU_WIDTH = 332;
 const CONNECTION_MENU_HEIGHT = 420;
 const CONNECTION_MENU_MARGIN = 18;
@@ -138,6 +140,29 @@ const nodeTypes: NodeTypes = {
 const edgeTypes: EdgeTypes = {
   smart: SmartEdgeComponent,
 };
+
+function buildProjectDirectorStudioNode(
+  director3d: FlowNodeData['director3d'],
+  position: { x: number; y: number } = { x: 0, y: 0 },
+): Node<FlowNodeData> {
+  const size = FLOW_NODE_DEFAULT_SIZES.director3d;
+  return {
+    id: PROJECT_DIRECTOR_NODE_ID,
+    position,
+    type: 'director3d',
+    data: {
+      createdAt: 0,
+      director3d: normalizeDirector3dData(director3d),
+      generationStatus: 'idle',
+      height: size.height,
+      kind: 'director3d',
+      status: 'idle',
+      title: '3D导演台',
+      updatedAt: 0,
+      width: size.width,
+    },
+  };
+}
 
 type ImportedImageSource = {
   url: string;
@@ -249,6 +274,8 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled, onAg
   const setNodeDragging = useFlowCanvasStore((s) => s.setNodeDragging);
   const addNode = useFlowCanvasStore((s) => s.addNode);
   const updateNodeData = useFlowCanvasStore((s) => s.updateNodeData);
+  const projectStudios = useFlowCanvasStore((s) => s.projectStudios);
+  const updateProjectDirector3d = useFlowCanvasStore((s) => s.updateProjectDirector3d);
   const mergeTemplateGraph = useFlowCanvasStore((s) => s.mergeTemplateGraph);
   const restoreGraphSnapshot = useFlowCanvasStore((s) => s.restoreGraphSnapshot);
   const backendFlowId = useFlowCanvasStore((s) => s.backendFlowId);
@@ -268,7 +295,9 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled, onAg
   const [agentOpen, setAgentOpen] = useState(false);
   const [agentSessionFocus, setAgentSessionFocus] = useState<OpenAgentSessionDetail | null>(null);
   const [activeProductionStudio, setActiveProductionStudio] = useState<{
-    nodeId: string;
+    nodeId?: string;
+    position?: { x: number; y: number };
+    scope: 'node' | 'project';
     studio: ProductionStudioKind;
   } | null>(null);
   const [dockBadgeMetrics, setDockBadgeMetrics] = useState({
@@ -365,8 +394,28 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled, onAg
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
     const handleOpenProductionStudio = (event: Event) => {
-      const detail = (event as CustomEvent<OpenProductionStudioDetail>).detail;
-      if (!detail?.nodeId || !detail.studio) return;
+      const detail = (event as CustomEvent<ProductionStudioOpenDetail>).detail;
+      if (!detail?.studio) return;
+      if (detail.scope === 'project') {
+        if (detail.studio !== 'director3d') return;
+        const zoom = viewport.zoom || 1;
+        closeContextMenu();
+        closeImageTool();
+        setConnMenu(null);
+        setActiveDockPanel(null);
+        setAgentSessionFocus(null);
+        updateAgentOpen(false);
+        setActiveProductionStudio({
+          position: {
+            x: (window.innerWidth / 2 - viewport.x) / zoom,
+            y: (window.innerHeight / 2 - viewport.y) / zoom,
+          },
+          scope: 'project',
+          studio: 'director3d',
+        });
+        return;
+      }
+      if (!detail.nodeId) return;
       const targetNode = nodes.find((node) => node.id === detail.nodeId);
       if (!targetNode) return;
       closeContextMenu();
@@ -375,15 +424,17 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled, onAg
       setActiveDockPanel(null);
       setAgentSessionFocus(null);
       updateAgentOpen(false);
-      setActiveProductionStudio({ nodeId: targetNode.id, studio: detail.studio });
+      setActiveProductionStudio({ nodeId: targetNode.id, scope: 'node', studio: detail.studio });
     };
 
     window.addEventListener(OPEN_PRODUCTION_STUDIO_EVENT, handleOpenProductionStudio as EventListener);
     return () => window.removeEventListener(OPEN_PRODUCTION_STUDIO_EVENT, handleOpenProductionStudio as EventListener);
-  }, [closeContextMenu, closeImageTool, nodes, updateAgentOpen]);
+  }, [closeContextMenu, closeImageTool, nodes, updateAgentOpen, viewport]);
 
   useEffect(() => {
     if (!activeProductionStudio) return;
+    if (activeProductionStudio.scope === 'project') return;
+    if (!activeProductionStudio.nodeId) return;
     if (nodes.some((node) => node.id === activeProductionStudio.nodeId)) return;
     setActiveProductionStudio(null);
   }, [activeProductionStudio, nodes]);
@@ -749,6 +800,14 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled, onAg
     [addNode],
   );
 
+  const handleUpdateProjectStudioNodeData = useCallback(
+    (_nodeId: string, patch: Partial<FlowNodeData>) => {
+      if (!patch.director3d) return;
+      updateProjectDirector3d(normalizeDirector3dData(patch.director3d));
+    },
+    [updateProjectDirector3d],
+  );
+
   const handleSyncDirectorShotToStoryboard = useCallback(
     (request: StudioStoryboardSyncRequest) => {
       const storyboardNode = useFlowCanvasStore.getState().nodes.find((node) => node.type === 'storyboard');
@@ -925,7 +984,9 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled, onAg
     viewportHeight: typeof window === 'undefined' ? 900 : window.innerHeight,
   });
   const activeProductionStudioNode = activeProductionStudio
-    ? nodes.find((node) => node.id === activeProductionStudio.nodeId) ?? null
+    ? activeProductionStudio.scope === 'project'
+      ? buildProjectDirectorStudioNode(projectStudios.director3d, activeProductionStudio.position)
+      : nodes.find((node) => node.id === activeProductionStudio.nodeId) ?? null
     : null;
 
   return (
@@ -1168,7 +1229,7 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled, onAg
           onSyncDirectorShotToStoryboard={handleSyncDirectorShotToStoryboard}
           onSyncDirectorShotsToVideoEditor={handleSyncDirectorShotsToVideoEditor}
           onSyncStoryboardToVideoEditor={handleSyncStoryboardToVideoEditor}
-          onUpdateNodeData={updateNodeData}
+          onUpdateNodeData={activeProductionStudio.scope === 'project' ? handleUpdateProjectStudioNodeData : updateNodeData}
           studio={activeProductionStudio.studio}
           onClose={() => setActiveProductionStudio(null)}
         />

@@ -1,7 +1,23 @@
 ﻿# Project Record
 
-Last updated: 2026-07-07
+Last updated: 2026-07-08
 Maintainers: project team + Codex sessions
+
+## 2026-07-08 - Project-Level 3D Director Desk Entry Phase 82
+
+- changed the new 3D director desk entry from a canvas node creator into a project-level tool opener:
+  - left add flyout keeps the same visible entry but moves `3D导演台` into the `工具` section.
+  - clicking `3D导演台` from the left flyout or pane context menu now opens the default project director desk directly.
+  - the action no longer inserts a visible `director3d` node into the canvas graph.
+- added project-level director desk draft persistence:
+  - canvas store now tracks `projectStudios.director3d` separately from `nodes`.
+  - autosave, local draft recovery, frontend draft sanitization, API draft schema validation, and backend draft normalization preserve `projectStudios.director3d`.
+  - legacy `director3d` nodes remain supported by the existing node-scoped open event for old saved projects.
+- validation:
+  - red tests first failed because the 3D director entry still created a `director3d` node, backend `normalizeDraftGraph` dropped `projectStudios`, and the store had no `updateProjectDirector3d` action.
+  - `npm test -- src/flowCanvas/canvas/FlowLeftAddPanel.test.tsx src/flowCanvas/canvas/FlowContextMenu.test.tsx src/flowCanvas/canvas/AiFlowCanvas.project-director.test.tsx src/flowCanvas/hooks/useRemoteFlowAutosave.test.tsx apps/api/test/flows-draft-graph.test.ts` passed on 2026-07-08: 5 files, 24 tests.
+  - `npm run build` passed on 2026-07-08 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+  - `npm run test --workspace @aigc-flow/api` passed on 2026-07-08: 27 files passed, 152 tests passed, 16 files skipped by existing config.
 
 ## 2026-07-07 - StoryAI Director Desk Capture Send-To-Canvas Phase 81
 

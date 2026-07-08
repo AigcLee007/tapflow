@@ -120,6 +120,10 @@ export interface FlowDirector3dData {
   }>;
 }
 
+export interface FlowProjectStudios {
+  director3d?: FlowDirector3dData;
+}
+
 export interface FlowVideoEditorData {
   version: 1;
   aspect: '16:9' | '9:16' | '1:1';
