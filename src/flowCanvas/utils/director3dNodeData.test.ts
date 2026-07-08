@@ -155,4 +155,105 @@ describe('director3dNodeData', () => {
     expect(data.shots[0]?.targetStoryboardCellId).toBeUndefined();
     expect(JSON.stringify(data)).not.toMatch(/blob:|data:|https?:\/\//);
   });
+
+  it('preserves safe StoryAI project state while stripping transient media urls', () => {
+    const data = normalizeDirector3dData({
+      storyAiProject: {
+        version: 1,
+        scene: {
+          backgroundColor: '#203040',
+          showLabels: false,
+          snapToGrid: true,
+          showGround: false,
+          groundOpacity: 0.18,
+          groundHeight: -1.25,
+          panoramaYaw: 45,
+          panoramaRadius: 90,
+        },
+        assets: [
+          {
+            id: 'asset_1',
+            kind: 'panorama',
+            sourceType: 'image',
+            fileName: 'studio.png',
+            url: 'blob:live-panorama',
+            projectionMode: 'equirectangular',
+          },
+        ],
+        objects: [
+          {
+            id: 'char_default_a',
+            name: '角色01',
+            kind: 'character',
+            color: '#ff3355',
+            visible: true,
+            locked: false,
+            transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
+          },
+          {
+            id: 'cam_object_1',
+            name: '机位01',
+            kind: 'camera',
+            visible: false,
+            locked: false,
+            linkedCameraId: 'cam_1',
+            transform: { position: [0, 2.2, 9], rotation: [0, 0, 0], scale: [1, 1, 1] },
+          },
+        ],
+        cameras: [
+          {
+            id: 'cam_1',
+            name: '机位01',
+            fov: 50,
+            transform: { position: [0, 2.2, 9], rotation: [0, 0, 0], scale: [1, 1, 1] },
+            targetMode: 'manual',
+            target: [0, 1.2, 0],
+            lastCaptureUrl: 'data:image/png;base64,live',
+            captures: [{ id: 'capture_1', dataUrl: 'data:image/png;base64,live' }],
+          },
+        ],
+        activeCameraId: 'cam_1',
+        panoramaAssetId: 'asset_1',
+      },
+      actors: [],
+      cameras: [],
+      shots: [],
+    } as any);
+
+    expect(data.storyAiProject).toMatchObject({
+      version: 1,
+      scene: {
+        backgroundColor: '#203040',
+        showLabels: false,
+        snapToGrid: true,
+        showGround: false,
+        groundOpacity: 0.18,
+        groundHeight: -1.25,
+        panoramaYaw: 45,
+        panoramaRadius: 90,
+      },
+      assets: [
+        {
+          id: 'asset_1',
+          kind: 'panorama',
+          sourceType: 'image',
+          fileName: 'studio.png',
+          projectionMode: 'equirectangular',
+        },
+      ],
+      objects: [
+        {
+          id: 'char_default_a',
+          color: '#ff3355',
+        },
+        {
+          id: 'cam_object_1',
+          visible: false,
+        },
+      ],
+      activeCameraId: 'cam_1',
+      panoramaAssetId: 'asset_1',
+    });
+    expect(JSON.stringify(data.storyAiProject)).not.toMatch(/blob:|data:|https?:\/\//);
+  });
 });

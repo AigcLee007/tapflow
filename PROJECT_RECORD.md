@@ -3,6 +3,22 @@
 Last updated: 2026-07-08
 Maintainers: project team + Codex sessions
 
+## 2026-07-08 - StoryAI Director Project State Fidelity Phase 84
+
+- fixed the project-level StoryAI 3D director desk state-loss regression that made source-project controls appear broken after TapFlow autosave/echo:
+  - `normalizeDirector3dData` now preserves a sanitized `director3d.storyAiProject` snapshot instead of dropping it.
+  - safe StoryAI scene/object/camera fields now survive the TapFlow project-level director desk path, including character color, sky/background color, labels, grid snap, ground toggle, ground opacity/height, panorama settings, camera-object visibility, active camera id, and panorama asset id.
+  - transient browser media references such as `blob:`, `data:`, and signed/http URLs are still stripped before the canvas draft can persist, keeping the v2 asset/draft safety rule intact.
+- strengthened regression coverage:
+  - added direct normalizer coverage for preserving safe StoryAI project state while stripping live media URLs.
+  - extended the project-level 3D director desk canvas test so updates from the StoryAI wrapper persist into `projectStudios.director3d` without creating a canvas node.
+- validation:
+  - `npm test -- src/flowCanvas/canvas/AiFlowCanvas.project-director.test.tsx src/flowCanvas/utils/director3dNodeData.test.ts` passed on 2026-07-08: 2 files, 4 tests.
+  - `npm test -- src/flowCanvas/studios/StoryAiDirectorDesk.test.tsx src/flowCanvas/studios/storyAiDirectorAdapter.test.ts src/flowCanvas/utils/director3dNodeData.test.ts src/flowCanvas/canvas/AiFlowCanvas.project-director.test.tsx` passed on 2026-07-08: 4 files, 12 tests.
+  - `npm test -- scripts/smoke-director-three-viewport.test.ts` passed on 2026-07-08: 1 file, 4 tests.
+  - `npm run smoke:director3d` passed on 2026-07-08 with desktop/mobile reporting nonblank WebGL pixels, live panorama previews, live camera captures, sent captures, safe patches, and `status: ok`.
+  - `npm run build` passed on 2026-07-08 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-08 - StoryAI Director Pose Recovery Phase 83
 
 - fixed the StoryAI 3D director desk character pose system so pose presets and adjustments are no longer decorative:

@@ -17,6 +17,10 @@ function readRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' ? value as Record<string, unknown> : {};
 }
 
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
 function readTrimmedString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
@@ -70,6 +74,45 @@ function normalizePoseControls(value: unknown): Record<string, number> | undefin
   );
 
   return Object.keys(controls).length ? controls : undefined;
+}
+
+function sanitizeStoryAiProjectValue(value: unknown, depth = 0): unknown {
+  if (depth > 8) return undefined;
+  if (value === null || typeof value === 'boolean') return value;
+
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : undefined;
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return /^(?:blob:|data:|https?:\/\/)/i.test(trimmed) ? undefined : value;
+  }
+
+  if (Array.isArray(value)) {
+    const sanitizedItems = value
+      .map((item) => sanitizeStoryAiProjectValue(item, depth + 1))
+      .filter((item) => item !== undefined);
+    return sanitizedItems;
+  }
+
+  if (!isPlainRecord(value)) return undefined;
+
+  const output: Record<string, unknown> = {};
+  Object.entries(value).forEach(([key, entryValue]) => {
+    const sanitized = sanitizeStoryAiProjectValue(entryValue, depth + 1);
+    if (sanitized !== undefined) {
+      output[key] = sanitized;
+    }
+  });
+
+  return output;
+}
+
+function normalizeStoryAiProjectDraft(value: unknown): Record<string, unknown> | undefined {
+  const sanitized = sanitizeStoryAiProjectValue(value);
+  if (!isPlainRecord(sanitized)) return undefined;
+  return Object.keys(sanitized).length ? sanitized : undefined;
 }
 
 function normalizeActor(value: unknown, index: number): DirectorActor {
@@ -165,12 +208,14 @@ export function normalizeDirector3dData(value: unknown): FlowDirector3dData {
   const input = readRecord(value);
   const sceneInput = readRecord(input.scene);
   const backgroundAssetId = readSafeAssetId(sceneInput.backgroundAssetId);
+  const storyAiProject = normalizeStoryAiProjectDraft(input.storyAiProject);
   const cameras = Array.isArray(input.cameras)
     ? input.cameras.map((camera, index) => normalizeCamera(camera, index))
     : [];
 
   return {
     version: 1,
+    ...(storyAiProject ? { storyAiProject } : {}),
     scene: {
       ...(backgroundAssetId ? { backgroundAssetId } : {}),
       gridVisible: sceneInput.gridVisible !== false,
