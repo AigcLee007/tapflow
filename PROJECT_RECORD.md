@@ -3,6 +3,24 @@
 Last updated: 2026-07-08
 Maintainers: project team + Codex sessions
 
+## 2026-07-08 - StoryAI Director Pose Recovery Phase 83
+
+- fixed the StoryAI 3D director desk character pose system so pose presets and adjustments are no longer decorative:
+  - the embedded UE mannequin pose application now canonicalizes GLB bone names before applying neutral rig rotations, body offsets, and pose controls.
+  - this restores actual pose deformation for the current `ue-mannequin-retopology.glb`, whose bones use space-delimited names like `Bip001 Pelvis_03` instead of the underscore-delimited keys used by the pose rig maps.
+- preserved pose state through TapFlow canvas draft snapshots:
+  - `FlowDirector3dData.actors[*]` now carries a safe `poseControls` snapshot alongside the existing `pose` preset id.
+  - the StoryAI adapter writes character rig control values back into `director3d` actor snapshots and rebuilds character rigs from those controls when reopening the director desk.
+  - director draft normalization now keeps only finite numeric pose-control entries and strips malformed values.
+- validation:
+  - red test observed on 2026-07-08: `npm test -- src/flowCanvas/studios/storyai/editor/runtime/ue4Mannequin/ue4MannequinPoseApplication.test.ts` first failed because mannequin bones with space-delimited names never received pose rotations or pelvis offsets.
+  - red test observed on 2026-07-08: `npm test -- src/flowCanvas/studios/storyAiDirectorAdapter.test.ts` first failed because director actor snapshots dropped pose-control values during the StoryAI <-> TapFlow adapter round-trip.
+  - `npm test -- src/flowCanvas/studios/storyai/editor/runtime/ue4Mannequin/ue4MannequinPoseApplication.test.ts` passed on 2026-07-08: 1 test.
+  - `npm test -- src/flowCanvas/studios/storyAiDirectorAdapter.test.ts` passed on 2026-07-08: 1 test.
+  - `npm test -- src/flowCanvas/utils/director3dNodeData.test.ts` passed on 2026-07-08: 2 tests.
+  - `npm test -- src/flowCanvas/studios/StoryAiDirectorDesk.test.tsx` passed on 2026-07-08: 7 tests.
+  - `npm run build` passed on 2026-07-08 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
 ## 2026-07-08 - Project-Level 3D Director Desk Entry Phase 82
 
 - changed the new 3D director desk entry from a canvas node creator into a project-level tool opener:

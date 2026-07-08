@@ -25,6 +25,10 @@ function isBone(object: Object3D): object is Object3D & { isBone: true } {
   return "isBone" in object && object.isBone === true;
 }
 
+function canonicalizeUE4BoneName(name: string) {
+  return name.trim().replace(/\s+/g, "_");
+}
+
 function applyRotationOffset(object: Object3D, rotation: [number, number, number]) {
   object.quaternion.multiply(new Quaternion().setFromEuler(new Euler(rotation[0], rotation[1], rotation[2])));
 }
@@ -35,7 +39,7 @@ export function captureUE4RestPose(scene: Object3D): UE4RestPose {
   scene.traverse((object) => {
     if (!isBone(object)) return;
 
-    restPose[object.name] = {
+    restPose[canonicalizeUE4BoneName(object.name)] = {
       position: [object.position.x, object.position.y, object.position.z],
       quaternion: [object.quaternion.x, object.quaternion.y, object.quaternion.z, object.quaternion.w],
       scale: [object.scale.x, object.scale.y, object.scale.z],
@@ -57,14 +61,15 @@ export function applyUE4RestPoseAndRig(
   scene.traverse((object) => {
     if (!isBone(object)) return;
 
-    const rest = restPose[object.name];
+    const boneName = canonicalizeUE4BoneName(object.name);
+    const rest = restPose[boneName];
     if (!rest) return;
 
     object.position.set(rest.position[0], rest.position[1], rest.position[2]);
     object.quaternion.set(rest.quaternion[0], rest.quaternion[1], rest.quaternion[2], rest.quaternion[3]);
     object.scale.set(rest.scale[0], rest.scale[1], rest.scale[2]);
 
-    const positionOffset = positionOffsets[object.name];
+    const positionOffset = positionOffsets[boneName];
     if (positionOffset) {
       object.position.set(
         rest.position[0] + positionOffset[0],
@@ -73,17 +78,17 @@ export function applyUE4RestPoseAndRig(
       );
     }
 
-    const scale = bodyScales[object.name];
+    const scale = bodyScales[boneName];
     if (scale) {
       object.scale.set(rest.scale[0] * scale[0], rest.scale[1] * scale[1], rest.scale[2] * scale[2]);
     }
 
-    const neutralRotation = neutralRotations[object.name];
+    const neutralRotation = neutralRotations[boneName];
     if (neutralRotation) {
       applyRotationOffset(object, neutralRotation);
     }
 
-    const rotation = poseRotations[object.name];
+    const rotation = poseRotations[boneName];
     if (rotation) {
       applyRotationOffset(object, rotation);
     }

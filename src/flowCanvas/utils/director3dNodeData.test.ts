@@ -22,6 +22,11 @@ describe('director3dNodeData', () => {
           visible: true,
           locked: 'yes',
           pose: ' standing ',
+          poseControls: {
+            ' leftHip.pitch ': 68,
+            'rightKnee.bend': 80,
+            bad: 'nope',
+          },
         },
       ],
       cameras: [
@@ -74,6 +79,10 @@ describe('director3dNodeData', () => {
           visible: true,
           locked: false,
           pose: 'standing',
+          poseControls: {
+            'leftHip.pitch': 68,
+            'rightKnee.bend': 80,
+          },
         },
       ],
       cameras: [

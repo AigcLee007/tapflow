@@ -276,6 +276,49 @@ describe('StoryAiDirectorDesk', () => {
     expect(camera?.captures?.[0]?.dataUrl).toBe('data:image/png;base64,capture-panel-live');
     expect(screenshotExportMock.downloadCaptureResults).toHaveBeenCalledTimes(1);
   });
+
+  it('preserves pose controls when reopening from persisted director3d data', async () => {
+    const onUpdateNodeData = vi.fn<(nodeId: string, patch: Partial<FlowNodeData>) => void>();
+
+    const { unmount } = render(
+      <StoryAiDirectorDesk
+        data={undefined}
+        nodeId="director-node"
+        onClose={() => undefined}
+        onUpdateNodeData={onUpdateNodeData}
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('storyai-director-desk')).toBeTruthy());
+
+    const characterId = useDirectorStore.getState().project.objects.find((item) => item.kind === 'character')?.id;
+    expect(characterId).toBeTruthy();
+
+    act(() => {
+      useDirectorStore.getState().applyPosePreset(characterId as string, 'kneel-one');
+    });
+
+    await waitFor(() => expect(onUpdateNodeData).toHaveBeenCalled());
+
+    const [, patch] = onUpdateNodeData.mock.calls.at(-1) ?? [];
+    unmount();
+
+    useDirectorStore.getState().replaceProject(createDefaultDirectorProject());
+
+    render(
+      <StoryAiDirectorDesk
+        data={patch?.director3d}
+        nodeId="director-node"
+        onClose={() => undefined}
+        onUpdateNodeData={onUpdateNodeData}
+      />,
+    );
+
+    const reopenedCharacter = useDirectorStore.getState().project.objects.find((item) => item.kind === 'character');
+    expect(reopenedCharacter?.characterRig?.posePresetId).toBe('kneel-one');
+    expect(reopenedCharacter?.characterRig?.controls['leftHip.pitch']).toBe(68);
+    expect(reopenedCharacter?.characterRig?.controls['rightKnee.bend']).toBe(80);
+  });
 });
 
 function buildUnsafeDirectorData(): FlowDirector3dData {

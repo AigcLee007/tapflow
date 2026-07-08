@@ -60,6 +60,18 @@ function normalizeVector(
   }) as DirectorVector;
 }
 
+function normalizePoseControls(value: unknown): Record<string, number> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+
+  const controls = Object.fromEntries(
+    Object.entries(value)
+      .filter(([key, controlValue]) => readTrimmedString(key) && typeof controlValue === 'number' && Number.isFinite(controlValue))
+      .map(([key, controlValue]) => [readTrimmedString(key), controlValue]),
+  );
+
+  return Object.keys(controls).length ? controls : undefined;
+}
+
 function normalizeActor(value: unknown, index: number): DirectorActor {
   const input = readRecord(value);
   const kind = input.kind === 'image_plane' || input.kind === 'asset_model'
@@ -67,6 +79,7 @@ function normalizeActor(value: unknown, index: number): DirectorActor {
     : 'placeholder_humanoid';
   const assetId = readSafeAssetId(input.assetId);
   const pose = readTrimmedString(input.pose);
+  const poseControls = normalizePoseControls(input.poseControls);
 
   return {
     id: readSafeReferenceId(input.id) || `actor-${index + 1}`,
@@ -77,6 +90,7 @@ function normalizeActor(value: unknown, index: number): DirectorActor {
     rotation: normalizeVector(input.rotation, [0, 0, 0]),
     scale: normalizeVector(input.scale, [1, 1, 1], { min: 0.1 }),
     ...(pose ? { pose } : {}),
+    ...(poseControls ? { poseControls } : {}),
     visible: typeof input.visible === 'boolean' ? input.visible : true,
     locked: typeof input.locked === 'boolean' ? input.locked : false,
   };

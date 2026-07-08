@@ -87,6 +87,7 @@ export interface FlowDirector3dData {
     rotation: [number, number, number];
     scale: [number, number, number];
     pose?: string;
+    poseControls?: Record<string, number>;
     visible: boolean;
     locked: boolean;
   }>;

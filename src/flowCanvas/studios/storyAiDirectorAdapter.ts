@@ -1,5 +1,6 @@
 import type { FlowDirector3dData } from '../types';
 import { normalizeDirector3dData } from '../utils/director3dNodeData';
+import { MANNEQUIN_POSE_PRESETS } from './storyai/editor/presets/mannequinPosePresets';
 import type {
   CharacterBodyType,
   DirectorAssetRef,
@@ -48,13 +49,15 @@ export function createStoryAiProjectFromDirectorData(data: FlowDirector3dData | 
     locked: actor.locked,
     transform: createTransform(actor.position, actor.rotation, actor.scale),
     ...(actor.kind === 'asset_model' ? { geometryType: 'box' as GeometryPrimitiveType } : {}),
-    ...(actor.kind !== 'asset_model'
-      ? {
-          bodyType: 'mannequin' as CharacterBodyType,
-          characterRig: {
-            rigType: 'ue4-mannequin' as const,
-            posePresetId: actor.pose ?? 'stand',
-            controls: {},
+      ...(actor.kind !== 'asset_model'
+        ? {
+            bodyType: 'mannequin' as CharacterBodyType,
+            characterRig: {
+              rigType: 'ue4-mannequin' as const,
+              posePresetId: actor.pose ?? 'stand',
+            controls: actor.poseControls
+              ? { ...actor.poseControls }
+              : { ...(MANNEQUIN_POSE_PRESETS.find((preset) => preset.id === (actor.pose ?? 'stand'))?.controls ?? {}) },
           },
           color: CHARACTER_COLORS[index % CHARACTER_COLORS.length],
         }
@@ -113,6 +116,9 @@ export function createDirectorDataFromStoryAiProject(project: DirectorProject): 
         rotation: normalizeVector(object.transform.rotation, [0, 0, 0]),
         scale: normalizeVector(object.transform.scale, [1, 1, 1], { min: 0.1 }),
         ...(object.characterRig?.posePresetId ? { pose: object.characterRig.posePresetId } : {}),
+        ...(object.characterRig?.controls && Object.keys(object.characterRig.controls).length
+          ? { poseControls: object.characterRig.controls }
+          : {}),
         visible: object.visible,
         locked: object.locked,
       };
