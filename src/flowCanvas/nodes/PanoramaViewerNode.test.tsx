@@ -1,11 +1,12 @@
 import React from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PanoramaViewerNode } from "./PanoramaViewerNode";
 
 const mockedStoreState = {
   edges: [],
+  updateNodeData: vi.fn(),
   nodes: [
     {
       data: {
@@ -47,6 +48,12 @@ describe("PanoramaViewerNode", () => {
     width: 900,
   };
 
+  const updateNodeDataMock = mockedStoreState.updateNodeData;
+
+  beforeEach(() => {
+    updateNodeDataMock.mockReset();
+  });
+
   it("renders FOV presets and sphere-correction controls for a panorama source", () => {
     render(
       <PanoramaViewerNode
@@ -76,5 +83,25 @@ describe("PanoramaViewerNode", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /expand control panel/i }));
     expect(screen.getByText(/correction/i)).toBeTruthy();
+  });
+
+  it("upgrades persisted viewer sizes that are too small for the panorama layout", async () => {
+    render(
+      <PanoramaViewerNode
+        data={{ ...viewerData, height: 240, width: 360 } as any}
+        id="viewer-1"
+        selected
+      />,
+    );
+
+    await waitFor(() => {
+      expect(updateNodeDataMock).toHaveBeenCalledWith(
+        "viewer-1",
+        expect.objectContaining({
+          height: 540,
+          width: 900,
+        }),
+      );
+    });
   });
 });

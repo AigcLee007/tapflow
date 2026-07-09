@@ -1,4 +1,4 @@
-import React from "react";
+﻿import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -217,6 +217,42 @@ describe("FlowNodes agent metadata", () => {
     expect(container.querySelector(".flow-generating-preview")).toBeTruthy();
     expect(container.querySelector(".flow-generating-orb")).toBeTruthy();
     expect(screen.getByText("5% 生成中")).toBeTruthy();
+  });
+
+  it("does not render a panorama generate entry in the image toolbar", () => {
+    const source = useFlowCanvasStore.getState().addNode(
+      "image",
+      { x: 0, y: 0 },
+      {
+        createdAt: 1,
+        generationPrompt: "city dusk skyline",
+        generationStatus: "done",
+        height: 240,
+        kind: "image",
+        status: "success",
+        thumbnailUrl: "https://cdn.test/panorama-source.png",
+        title: "Panorama Source",
+        updatedAt: 1,
+        width: 260,
+      } as any,
+      { selected: true },
+    );
+
+    render(
+      <ImageNodeComponent
+        id={source.id}
+        selected
+        data={source.data as any}
+        dragging={false}
+        zIndex={1}
+        isConnectable
+        type="image"
+        xPos={0}
+        yPos={0}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "360 鍏ㄦ櫙" })).toBeNull();
   });
 
   it("keeps the image quantity menu open until a batch display mode is selected", () => {
@@ -570,7 +606,7 @@ describe("FlowNodes agent metadata", () => {
       {
         createdAt: 1,
         generationMode: "panorama_360",
-        generationPrompt: "未来城市中庭全景",
+        generationPrompt: "鏈潵鍩庡競涓涵鍏ㄦ櫙",
         generationStatus: "idle",
         height: 220,
         kind: "image",
@@ -619,3 +655,4 @@ describe("FlowNodes agent metadata", () => {
     expect(String(useFlowCanvasStore.getState().nodes[0]?.data.errorMessage)).toContain("PRICING_NOT_FOUND");
   });
 });
+

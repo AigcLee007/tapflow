@@ -21,11 +21,11 @@ import { MenuSurface } from "../../components/menu/MenuSurface";
 import { MENU_DIVIDER_CLASS, MENU_ITEM_CLASS, MENU_ITEM_PRIMARY_CLASS } from "../../components/menu/menuStyles";
 import { useDismissibleLayer } from "../../components/menu/useDismissibleLayer";
 import { getStoredAccessToken, V2_AUTH_CHANGE_EVENT } from "../../services/v2HttpClient";
+import { runBackendWorkflow, markBackendRunLaunchFailed } from "../runtime/v2WorkflowRunner";
+import { PanoramaGeneratePopover } from "../panorama/PanoramaGeneratePopover";
 import { formatPoint } from "../../utils/pointFormat";
 import { createWorkspaceProject, deleteWorkspaceProject, updateWorkspaceProject } from "../../workspace/workspaceApi";
 import type { CanvasSaveStatusView } from "../FlowCanvasPage";
-import { PanoramaGeneratePopover } from "../panorama/PanoramaGeneratePopover";
-import { runBackendWorkflow } from "../runtime/v2WorkflowRunner";
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
 
 const formatToolbarPoint = (value: number) => formatPoint(value).replace(/\.0$/, "");
@@ -86,12 +86,9 @@ export const FlowTopToolbar: React.FC<{
 }> = memo(function FlowTopToolbar({ hideUtilityActions = false, saveStatus }) {
   const projectTitle = useFlowCanvasStore((s) => s.projectTitle);
   const setProjectTitle = useFlowCanvasStore((s) => s.setProjectTitle);
-  const selectedImageNode = useFlowCanvasStore((state) => {
-    const selectedNodes = state.nodes.filter((node) => node.selected);
-    const sourceNode = selectedNodes.length === 1 ? selectedNodes[0] : null;
-    if (!sourceNode) return null;
-    return sourceNode.type === "image" || sourceNode.data.kind === "image" ? sourceNode : null;
-  });
+  const selectedPanoramaSourceNode = useFlowCanvasStore((s) =>
+    s.nodes.find((node) => node.selected && node.type === "image"),
+  );
   const createPanoramaTargetNodeFromSource = useFlowCanvasStore((s) => s.createPanoramaTargetNodeFromSource);
   const [points, setPoints] = useState(0);
   const [pointsLoading, setPointsLoading] = useState(false);
@@ -100,18 +97,14 @@ export const FlowTopToolbar: React.FC<{
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<Announcement | null>(null);
   const [projectMenuBusy, setProjectMenuBusy] = useState<"create" | "delete" | null>(null);
   const [projectMenuPosition, setProjectMenuPosition] = useState<{ left: number; top: number } | null>(null);
+  const [panoramaGeneratePosition, setPanoramaGeneratePosition] = useState<{ left: number; top: number } | null>(null);
   const [showDeleteProjectConfirm, setShowDeleteProjectConfirm] = useState(false);
   const [deleteProjectError, setDeleteProjectError] = useState<string | null>(null);
   const projectMenuLayer = useDismissibleLayer("canvas-toolbar-project");
   const notificationLayer = useDismissibleLayer("canvas-toolbar-notifications");
-  const panoramaLayer = useDismissibleLayer("canvas-toolbar-panorama");
+  const panoramaGenerateLayer = useDismissibleLayer("canvas-toolbar-panorama-generate");
   const titleInputRef = useRef<HTMLInputElement | null>(null);
   const projectId = typeof window === "undefined" ? null : getProjectId(window.location.pathname);
-  const panoramaDisabled = !selectedImageNode;
-  const sourcePromptAvailable = Boolean(String(selectedImageNode?.data.generationPrompt || "").trim());
-  const panoramaCreditLabel = sourcePromptAvailable
-    ? "Billed on your current image route when the run starts."
-    : "Add a generation prompt to the selected image to enable panorama creation.";
 
   const refreshPoints = useCallback(async () => {
     if (!getStoredAccessToken()) {
@@ -273,6 +266,37 @@ export const FlowTopToolbar: React.FC<{
     });
   }, [projectMenuLayer.triggerRef]);
 
+  const updatePanoramaGeneratePosition = useCallback(() => {
+    const triggerRect = panoramaGenerateLayer.triggerRef.current?.getBoundingClientRect();
+    if (!triggerRect || typeof window === "undefined") {
+      setPanoramaGeneratePosition(null);
+      return;
+    }
+
+    const popoverWidth = 300;
+    const centeredLeft = triggerRect.left + triggerRect.width / 2;
+    const minLeft = 18 + popoverWidth / 2;
+    const maxLeft = window.innerWidth - 18 - popoverWidth / 2;
+
+    setPanoramaGeneratePosition({
+      left: Math.min(maxLeft, Math.max(minLeft, centeredLeft)),
+      top: triggerRect.bottom + 14,
+    });
+  }, [panoramaGenerateLayer.triggerRef]);
+
+  const handlePanoramaGenerateSubmit = useCallback(
+    ({ aspectRatio }: { aspectRatio: "2:1" | "21:9" }) => {
+      if (!selectedPanoramaSourceNode) return;
+      const created = createPanoramaTargetNodeFromSource(selectedPanoramaSourceNode.id, aspectRatio);
+      panoramaGenerateLayer.closeLayer();
+      void runBackendWorkflow({
+        runMode: "target_node",
+        targetNodeId: created.id,
+      }).catch((error) => markBackendRunLaunchFailed(created.id, error));
+    },
+    [createPanoramaTargetNodeFromSource, panoramaGenerateLayer, selectedPanoramaSourceNode],
+  );
+
   useLayoutEffect(() => {
     if (!projectMenuLayer.open) {
       setProjectMenuPosition(null);
@@ -290,6 +314,34 @@ export const FlowTopToolbar: React.FC<{
       window.removeEventListener("scroll", syncPosition, true);
     };
   }, [projectMenuLayer.open, updateProjectMenuPosition]);
+
+  useEffect(() => {
+    if (!panoramaGenerateLayer.open) {
+      setPanoramaGeneratePosition(null);
+      return;
+    }
+
+    updatePanoramaGeneratePosition();
+
+    const syncPosition = () => updatePanoramaGeneratePosition();
+    window.addEventListener("resize", syncPosition);
+    window.addEventListener("scroll", syncPosition, true);
+
+    return () => {
+      window.removeEventListener("resize", syncPosition);
+      window.removeEventListener("scroll", syncPosition, true);
+    };
+  }, [panoramaGenerateLayer.open, updatePanoramaGeneratePosition]);
+
+  useEffect(() => {
+    if (panoramaGenerateLayer.open && !selectedPanoramaSourceNode) {
+      panoramaGenerateLayer.closeLayer();
+    }
+  }, [panoramaGenerateLayer.closeLayer, panoramaGenerateLayer.open, selectedPanoramaSourceNode]);
+
+  const panoramaSourceTitle = String(selectedPanoramaSourceNode?.data?.title || "Image");
+  const panoramaSourcePromptAvailable = Boolean(String(selectedPanoramaSourceNode?.data?.generationPrompt || "").trim());
+  const panoramaGenerateEnabled = Boolean(selectedPanoramaSourceNode);
 
   const projectMenu =
     projectMenuLayer.open && projectMenuPosition ? (
@@ -347,6 +399,29 @@ export const FlowTopToolbar: React.FC<{
           <span className={MENU_ITEM_PRIMARY_CLASS}>{projectMenuBusy === "delete" ? "正在删除..." : "删除项目"}</span>
         </button>
       </MenuSurface>
+    ) : null;
+
+  const panoramaGenerateMenu =
+    !hideUtilityActions && panoramaGenerateLayer.open && panoramaGeneratePosition ? (
+      createPortal(
+        <div
+          ref={panoramaGenerateLayer.ref as React.RefObject<HTMLDivElement>}
+          className="fixed z-[2450] -translate-x-1/2"
+          style={{
+            left: panoramaGeneratePosition.left,
+            top: panoramaGeneratePosition.top,
+          }}
+        >
+          <PanoramaGeneratePopover
+            creditLabel="Billed on the selected image route when the run starts."
+            onClose={panoramaGenerateLayer.closeLayer}
+            onSubmit={handlePanoramaGenerateSubmit}
+            sourceNodeTitle={panoramaSourceTitle}
+            sourcePromptAvailable={panoramaSourcePromptAvailable}
+          />
+        </div>,
+        document.body,
+      )
     ) : null;
 
   const deleteProjectConfirm =
@@ -444,52 +519,33 @@ export const FlowTopToolbar: React.FC<{
         </div>
 
         {!hideUtilityActions ? <div style={rightClusterStyle}>
+          {panoramaGenerateEnabled ? (
+            <button
+              type="button"
+              ref={panoramaGenerateLayer.triggerRef as React.RefObject<HTMLButtonElement>}
+              aria-expanded={panoramaGenerateLayer.open}
+              aria-haspopup="dialog"
+              aria-label="360 全景生成"
+              onClick={() => {
+                panoramaGenerateLayer.toggle();
+              }}
+              style={{
+                ...topPillStyle,
+                background: "rgba(14,165,233,0.18)",
+                border: "1px solid rgba(56,189,248,0.3)",
+                color: "#e0f2fe",
+              }}
+              title="360 全景生成"
+            >
+              <Globe2 size={17} />
+              <span>360 全景生成</span>
+            </button>
+          ) : null}
+
           <button type="button" style={topPillStyle} title="当前点数">
             <Sparkles size={17} />
             <span>{pointsLoading ? "..." : formatToolbarPoint(points)}</span>
           </button>
-
-          <div style={notificationHostStyle}>
-            <button
-              type="button"
-              ref={panoramaLayer.triggerRef as React.RefObject<HTMLButtonElement>}
-              style={{
-                ...topPillStyle,
-                ...(panoramaDisabled ? disabledTopPillStyle : null),
-              }}
-              aria-expanded={panoramaLayer.open}
-              aria-haspopup="dialog"
-              aria-label="360 Panorama"
-              disabled={panoramaDisabled}
-              title={panoramaDisabled ? "Select exactly one image node" : "Generate a 360 panorama"}
-              onClick={panoramaLayer.toggle}
-            >
-              <Globe2 size={17} />
-              <span>360 Panorama</span>
-            </button>
-
-            {panoramaLayer.open && selectedImageNode ? (
-              <div
-                ref={panoramaLayer.ref as React.RefObject<HTMLDivElement>}
-                className="absolute right-0 top-[calc(100%+14px)] z-[2400]"
-              >
-                <PanoramaGeneratePopover
-                  creditLabel={panoramaCreditLabel}
-                  onClose={panoramaLayer.closeLayer}
-                  onSubmit={({ aspectRatio }) => {
-                    const created = createPanoramaTargetNodeFromSource(selectedImageNode.id, aspectRatio);
-                    panoramaLayer.closeLayer();
-                    void runBackendWorkflow({
-                      runMode: "target_node",
-                      targetNodeId: created.id,
-                    }).catch(() => undefined);
-                  }}
-                  sourceNodeTitle={String(selectedImageNode.data.title || "Image")}
-                  sourcePromptAvailable={sourcePromptAvailable}
-                />
-              </div>
-            ) : null}
-          </div>
 
           <div style={notificationHostStyle}>
             <button
@@ -604,6 +660,7 @@ export const FlowTopToolbar: React.FC<{
         ) : null}
 
         {projectMenu && typeof document !== "undefined" ? createPortal(projectMenu, document.body) : projectMenu}
+        {panoramaGenerateMenu}
       </div>
       {deleteProjectConfirm}
     </>
@@ -716,11 +773,6 @@ const topPillStyle: React.CSSProperties = {
   fontWeight: 820,
   cursor: "pointer",
   boxShadow: "0 12px 34px rgba(0,0,0,0.34), inset 0 1px 0 rgba(255,255,255,0.06)",
-};
-
-const disabledTopPillStyle: React.CSSProperties = {
-  cursor: "not-allowed",
-  opacity: 0.42,
 };
 
 const notificationHostStyle: React.CSSProperties = {

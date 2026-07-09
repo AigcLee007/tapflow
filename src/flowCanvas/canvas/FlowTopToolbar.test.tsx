@@ -7,13 +7,14 @@ import { FlowTopToolbar } from "./FlowTopToolbar";
 const createWorkspaceProjectMock = vi.fn();
 const updateWorkspaceProjectMock = vi.fn();
 const deleteWorkspaceProjectMock = vi.fn();
-const runBackendWorkflowMock = vi.fn();
-const createPanoramaTargetNodeFromSourceMock = vi.fn();
 const setProjectTitleMock = vi.fn();
+const createPanoramaTargetNodeFromSourceMock = vi.fn();
+const markBackendRunLaunchFailedMock = vi.fn();
+const runBackendWorkflowMock = vi.fn();
 
 const mockedStoreState: {
-  createPanoramaTargetNodeFromSource: typeof createPanoramaTargetNodeFromSourceMock;
   nodes: Array<Record<string, unknown>>;
+  createPanoramaTargetNodeFromSource: typeof createPanoramaTargetNodeFromSourceMock;
   projectTitle: string;
   setProjectTitle: typeof setProjectTitleMock;
 } = {
@@ -34,6 +35,7 @@ vi.mock("../../workspace/workspaceApi", () => ({
 }));
 
 vi.mock("../runtime/v2WorkflowRunner", () => ({
+  markBackendRunLaunchFailed: (...args: unknown[]) => markBackendRunLaunchFailedMock(...args),
   runBackendWorkflow: (...args: unknown[]) => runBackendWorkflowMock(...args),
 }));
 
@@ -54,10 +56,12 @@ describe("FlowTopToolbar", () => {
     createWorkspaceProjectMock.mockReset();
     updateWorkspaceProjectMock.mockReset();
     deleteWorkspaceProjectMock.mockReset();
+    setProjectTitleMock.mockReset();
+    createPanoramaTargetNodeFromSourceMock.mockReset();
+    createPanoramaTargetNodeFromSourceMock.mockReturnValue({ id: "panorama-target-1" });
+    markBackendRunLaunchFailedMock.mockReset();
     runBackendWorkflowMock.mockReset();
     runBackendWorkflowMock.mockResolvedValue(undefined);
-    createPanoramaTargetNodeFromSourceMock.mockReset();
-    setProjectTitleMock.mockReset();
     mockedStoreState.projectTitle = "Test Project";
     mockedStoreState.nodes = [];
     mockedStoreState.setProjectTitle = setProjectTitleMock;
@@ -102,7 +106,16 @@ describe("FlowTopToolbar", () => {
     });
   });
 
-  test("shows a disabled 360 Panorama button when no image node is selected", async () => {
+  test("does not render a 360 panorama generate button without a selected image node", async () => {
+    mockedStoreState.nodes = [
+      {
+        data: { generationPrompt: "city dusk", kind: "image", title: "Image 1" },
+        id: "image-1",
+        selected: false,
+        type: "image",
+      },
+    ];
+
     render(
       <FlowTopToolbar
         cullingEnabled
@@ -111,13 +124,19 @@ describe("FlowTopToolbar", () => {
       />,
     );
 
-    expect((await screen.findByRole("button", { name: /360 Panorama/i }) as HTMLButtonElement).disabled).toBe(true);
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: /360 全景生成/i })).toBeNull();
+    });
   });
 
-  test("enables the 360 Panorama button when exactly one image node is selected", async () => {
+  test("renders a 360 panorama generate button for the selected image node and launches a panorama target run", async () => {
     mockedStoreState.nodes = [
       {
-        data: { generationPrompt: "city dusk", kind: "image", title: "Image 1" },
+        data: {
+          generationPrompt: "city dusk skyline",
+          kind: "image",
+          title: "Image 1",
+        },
         id: "image-1",
         selected: true,
         type: "image",
@@ -132,36 +151,22 @@ describe("FlowTopToolbar", () => {
       />,
     );
 
-    expect((await screen.findByRole("button", { name: /360 Panorama/i }) as HTMLButtonElement).disabled).toBe(false);
-  });
+    fireEvent.click(screen.getByRole("button", { name: "360 全景生成" }));
 
-  test("opens the 360 popover and launches a target-node panorama run", async () => {
-    mockedStoreState.nodes = [
-      {
-        data: { generationPrompt: "city dusk", kind: "image", title: "Image 1" },
-        id: "image-1",
-        selected: true,
-        type: "image",
-      },
-    ];
-    createPanoramaTargetNodeFromSourceMock.mockReturnValue({ id: "panorama-target-1" });
+    expect(await screen.findByRole("dialog", { name: "360 Panorama" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "2:1" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "21:9" })).toBeTruthy();
 
-    render(
-      <FlowTopToolbar
-        cullingEnabled
-        onToggleCulling={vi.fn()}
-        saveStatus={{ label: "Saved", status: "saved" }}
-      />,
-    );
+    fireEvent.click(screen.getByRole("button", { name: "21:9" }));
+    fireEvent.click(screen.getByRole("button", { name: "Generate Panorama" }));
 
-    fireEvent.click(await screen.findByRole("button", { name: /360 Panorama/i }));
-    fireEvent.click(await screen.findByRole("button", { name: "21:9" }));
-    fireEvent.click(screen.getByRole("button", { name: /generate panorama/i }));
-
-    expect(createPanoramaTargetNodeFromSourceMock).toHaveBeenCalledWith("image-1", "21:9");
-    expect(runBackendWorkflowMock).toHaveBeenCalledWith({
-      runMode: "target_node",
-      targetNodeId: "panorama-target-1",
+    await waitFor(() => {
+      expect(createPanoramaTargetNodeFromSourceMock).toHaveBeenCalledWith("image-1", "21:9");
+      expect(runBackendWorkflowMock).toHaveBeenCalledWith({
+        runMode: "target_node",
+        targetNodeId: "panorama-target-1",
+      });
+      expect(markBackendRunLaunchFailedMock).not.toHaveBeenCalled();
     });
   });
 

@@ -7,7 +7,7 @@ export const FLOW_NODE_DEFAULT_SIZES = {
   audio: { width: 302, height: 170 },
   upload: { width: 260, height: 210 },
   imageEditor: { width: FLOW_NODE_BASE_SIZE, height: FLOW_NODE_BASE_SIZE },
-  panoramaViewer: { width: 320, height: 220 },
+  panoramaViewer: { width: 900, height: 540 },
   storyboard: { width: 360, height: 260 },
   director3d: { width: 340, height: 220 },
   videoEditor: { width: 360, height: 220 },

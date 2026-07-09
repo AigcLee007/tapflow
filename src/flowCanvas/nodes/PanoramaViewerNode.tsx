@@ -239,8 +239,8 @@ export const PanoramaViewerNode = memo(function PanoramaViewerNode({
   const sourceData = sourceNode?.data;
   const directUrl = getPanoramaSourceUrl(sourceData);
   const imageUrl = directUrl || fallbackUrl;
-  const width = Number(data.width || FLOW_NODE_DEFAULT_SIZES.panoramaViewer.width);
-  const height = Number(data.height || FLOW_NODE_DEFAULT_SIZES.panoramaViewer.height);
+  const width = Math.max(Number(data.width || FLOW_NODE_DEFAULT_SIZES.panoramaViewer.width), FLOW_NODE_DEFAULT_SIZES.panoramaViewer.width);
+  const height = Math.max(Number(data.height || FLOW_NODE_DEFAULT_SIZES.panoramaViewer.height), FLOW_NODE_DEFAULT_SIZES.panoramaViewer.height);
   const isTargeting = !!connectionNodeId && connectionNodeId !== id;
   const viewerSelected = selected ?? true;
 
@@ -255,6 +255,24 @@ export const PanoramaViewerNode = memo(function PanoramaViewerNode({
   useEffect(() => {
     currentPositionRef.current = currentPosition;
   }, [currentPosition]);
+
+  useEffect(() => {
+    if (!updateNodeData) return;
+
+    const nextPatch: Partial<FlowNodeData> = {};
+    const rawWidth = Number(data.width || 0);
+    const rawHeight = Number(data.height || 0);
+    if (!Number.isFinite(rawWidth) || rawWidth < FLOW_NODE_DEFAULT_SIZES.panoramaViewer.width) {
+      nextPatch.width = FLOW_NODE_DEFAULT_SIZES.panoramaViewer.width;
+    }
+    if (!Number.isFinite(rawHeight) || rawHeight < FLOW_NODE_DEFAULT_SIZES.panoramaViewer.height) {
+      nextPatch.height = FLOW_NODE_DEFAULT_SIZES.panoramaViewer.height;
+    }
+
+    if (Object.keys(nextPatch).length > 0) {
+      updateNodeData(id, nextPatch);
+    }
+  }, [data.height, data.width, id, updateNodeData]);
 
   useEffect(() => {
     if (directUrl || !sourceData?.assetId) {
@@ -417,7 +435,7 @@ export const PanoramaViewerNode = memo(function PanoramaViewerNode({
           frontYawDeg: viewerStateRef.current.frontYawDeg,
           groupNodesAsPanoramaCaptureSet,
           origin: {
-            x: Number(viewerNode?.position.x ?? 0) + Number(data.width || FLOW_NODE_DEFAULT_SIZES.panoramaViewer.width) + 220,
+            x: Number(viewerNode?.position.x ?? 0) + width + 220,
             y: Number(viewerNode?.position.y ?? 0),
           },
           projectId: backendProjectId ?? null,
@@ -485,8 +503,8 @@ export const PanoramaViewerNode = memo(function PanoramaViewerNode({
       <NodeResizer
         handleStyle={{ background: "transparent", borderColor: "transparent" }}
         lineStyle={{ borderColor: "rgba(255,255,255,0.36)" }}
-        minHeight={190}
-        minWidth={280}
+        minHeight={FLOW_NODE_DEFAULT_SIZES.panoramaViewer.height}
+        minWidth={FLOW_NODE_DEFAULT_SIZES.panoramaViewer.width}
       />
 
       <div

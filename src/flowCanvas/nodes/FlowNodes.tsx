@@ -7,7 +7,7 @@
 import React, { memo, useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Handle, Position, useViewport, useConnection, useReactFlow, type NodeProps, type Node, NodeResizer } from '@xyflow/react';
-import { 
+import {
   Type, 
   Image as ImageIcon, 
   Video, 
@@ -4308,6 +4308,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const { isMultiSelecting, showSingleNodeControls } = useNodeSelectionState(id, selected);
   const runtimeNodeOutput = useFlowCanvasStore((s) => s.nodeOutputByNodeId[id]);
   const runtimeNodeStatus = useFlowCanvasStore((s) => s.nodeRunStatusByNodeId[id]);
+  const createPanoramaTargetNodeFromSource = useFlowCanvasStore((s) => s.createPanoramaTargetNodeFromSource);
   const showNodeEditor = showSingleNodeControls;
   const shouldLoadEditorResources = showNodeEditor || activeImageTool?.nodeId === id || fullscreenOpen || assetMenuOpen || slashMenuOpen;
   const imageCatalogState = useImageModelCatalogWhenNeeded(shouldLoadEditorResources);
@@ -6687,7 +6688,10 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
                         (moreMenuLayer.triggerRef as React.MutableRefObject<HTMLButtonElement | null>).current = node;
                       }
                       : undefined}
+                    aria-label={t.label}
+                    title={t.label}
                     onClick={() => handleToolAction(t.id)}
+                    disabled={t.disabled}
                     style={{
                       position: 'relative',
                       width: IMAGE_FLOATING_TOOLBAR_BUTTON_SIZE,
@@ -6695,11 +6699,12 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
                       borderRadius: '50%',
                       border: '1px solid transparent',
                       background: 'transparent',
-                      color: '#e2e8f0',
-                      cursor: 'pointer',
+                      color: t.disabled ? 'rgba(148,163,184,0.35)' : '#e2e8f0',
+                      cursor: t.disabled ? 'not-allowed' : 'pointer',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
+                      opacity: t.disabled ? 0.48 : 1,
                       transition: 'all 0.15s',
                     }}
                   >
