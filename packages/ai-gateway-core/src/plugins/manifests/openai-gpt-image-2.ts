@@ -12,6 +12,13 @@ const lineTwoSizeTiers = {
   "4K": 4,
 };
 
+const supportedProductionImageModes = [
+  "standard",
+  "panorama_360",
+  "wraparound_270",
+  "subject_orbit_270",
+];
+
 export const openAiGptImage2Manifest: AiPluginManifest = {
   credentials: {
     envKeys: ["OPENAI_API_KEY"],
@@ -145,6 +152,9 @@ export const openAiGptImage2Manifest: AiPluginManifest = {
       path: "/images/generations",
       priority: 10,
       requestConfig: {
+        capabilities: {
+          supportedGenerationModes: supportedProductionImageModes,
+        },
         editPath: "/images/edits",
         outputFormat: "png",
         path: "/images/generations",
@@ -164,6 +174,9 @@ export const openAiGptImage2Manifest: AiPluginManifest = {
       priority: 20,
       requestConfig: {
         apiMode: "responses",
+        capabilities: {
+          supportedGenerationModes: supportedProductionImageModes,
+        },
         endpoint: "responses",
         model: "gpt-5.5",
         outputFormat: "png",

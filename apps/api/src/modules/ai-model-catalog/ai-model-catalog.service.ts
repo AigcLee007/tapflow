@@ -12,6 +12,16 @@ type TenantContext = {
   userId: string | null;
 };
 
+const KNOWN_IMAGE_GENERATION_MODES = new Set([
+  "standard",
+  "panorama_360",
+  "wraparound_270",
+  "subject_orbit_270",
+]);
+const KNOWN_VIDEO_WORKFLOWS = new Set([
+  "video_editor_export",
+]);
+
 type ModelCatalogRecord = {
   capabilities: Record<string, unknown>;
   default_route_key: string | null;
@@ -27,6 +37,7 @@ type ModelCatalogRecord = {
 };
 
 type ModelRouteRecord = {
+  model_capabilities: Record<string, unknown>;
   estimated_credits: string | null;
   min_charge_credits: string | null;
   modality: string;
@@ -35,6 +46,7 @@ type ModelRouteRecord = {
   pricing_unit: string | null;
   provider_key: string;
   provider_name: string;
+  request_config: Record<string, unknown>;
   route_id: string;
   route_key: string;
   route_label: string | null;
@@ -55,6 +67,10 @@ export type ModelCatalogItemView = {
 };
 
 export type ModelCatalogRouteView = {
+  capabilities: {
+    supportedGenerationModes: string[];
+    supportedVideoWorkflows: string[];
+  };
   estimatedCredits: number | null;
   minChargeCredits: number | null;
   modality: string;
@@ -200,6 +216,8 @@ export class AiModelCatalogService {
             provider.key AS provider_key,
             provider.name AS provider_name,
             model.model_key,
+            COALESCE(model.capabilities, '{}'::jsonb) AS model_capabilities,
+            COALESCE(route.request_config, '{}'::jsonb) AS request_config,
             pricing.min_charge_credits::text AS min_charge_credits,
             pricing.unit_credits::text AS estimated_credits,
             pricing.unit AS pricing_unit
@@ -286,6 +304,10 @@ function mapModelCatalogItem(row: ModelCatalogRecord): ModelCatalogItemView {
 
 function mapModelCatalogRoute(row: ModelRouteRecord): ModelCatalogRouteView {
   return {
+    capabilities: mergeModelRouteCapabilities({
+      modelCapabilities: row.model_capabilities,
+      requestConfig: row.request_config,
+    }),
     estimatedCredits: row.estimated_credits === null ? null : Number(row.estimated_credits),
     minChargeCredits: row.min_charge_credits === null ? null : Number(row.min_charge_credits),
     modality: row.modality,
@@ -297,5 +319,47 @@ function mapModelCatalogRoute(row: ModelRouteRecord): ModelCatalogRouteView {
     routeId: row.route_id,
     routeKey: row.route_key,
     routeLabel: row.route_label,
+  };
+}
+
+function readSupportedGenerationModes(source: unknown): string[] {
+  const direct = source && typeof source === "object"
+    ? (source as { supportedGenerationModes?: unknown }).supportedGenerationModes
+    : undefined;
+  return (Array.isArray(direct) ? direct : [])
+    .map((item) => String(item || "").trim())
+    .filter((item) => KNOWN_IMAGE_GENERATION_MODES.has(item))
+    .filter(Boolean);
+}
+
+function readSupportedVideoWorkflows(source: unknown): string[] {
+  const direct = source && typeof source === "object"
+    ? (source as { supportedVideoWorkflows?: unknown }).supportedVideoWorkflows
+    : undefined;
+  return (Array.isArray(direct) ? direct : [])
+    .map((item) => String(item || "").trim())
+    .filter((item) => KNOWN_VIDEO_WORKFLOWS.has(item))
+    .filter(Boolean);
+}
+
+function mergeModelRouteCapabilities(input: {
+  modelCapabilities?: Record<string, unknown> | null;
+  requestConfig?: Record<string, unknown> | null;
+}): ModelCatalogRouteView["capabilities"] {
+  const routeCapabilities = input.requestConfig?.capabilities && typeof input.requestConfig.capabilities === "object"
+    ? input.requestConfig.capabilities as Record<string, unknown>
+    : {};
+  const supportedGenerationModes = Array.from(new Set([
+    ...readSupportedGenerationModes(input.modelCapabilities),
+    ...readSupportedGenerationModes(routeCapabilities),
+  ]));
+  const supportedVideoWorkflows = Array.from(new Set([
+    ...readSupportedVideoWorkflows(input.modelCapabilities),
+    ...readSupportedVideoWorkflows(routeCapabilities),
+  ]));
+
+  return {
+    supportedGenerationModes: supportedGenerationModes.length > 0 ? supportedGenerationModes : ["standard"],
+    supportedVideoWorkflows,
   };
 }

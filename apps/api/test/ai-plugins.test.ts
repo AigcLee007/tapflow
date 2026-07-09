@@ -374,4 +374,139 @@ describeWithDatabase("ai plugin admin API", () => {
       }
     });
   });
+
+  test("installs the internal video editor FFmpeg export plugin", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({
+          connectionString: await createAppDatabaseUrl(),
+        });
+        const api = buildTestApp(appPool);
+        const owner = await registerOwner(api, "video-plugin-owner@example.com", "Video Plugin Owner");
+
+        const install = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "POST",
+          payload: {
+            publishImmediately: true,
+          },
+          url: "/api/v2/admin/ai/plugins/tapflow.video-editor-ffmpeg/install",
+        });
+
+        expect(install.statusCode).toBe(201);
+        expect(install.json()).toMatchObject({
+          catalogModelKeys: ["video-editor-ffmpeg"],
+          packageKey: "tapflow.video-editor-ffmpeg",
+          routeKeys: ["video.editor.ffmpeg"],
+          status: "published",
+        });
+        expect(install.json().credentialId).toBeNull();
+
+        const dbState = await adminPool.query<{
+          catalog_default_route_key: string | null;
+          connection_adapter_kind: string | null;
+          connection_base_url: string | null;
+          credential_count: string;
+          pricing_count: string;
+          route_api_mode: string | null;
+          route_capabilities: Record<string, unknown> | null;
+          route_path: string | null;
+          route_upstream_model: string | null;
+        }>(
+          `
+            SELECT
+              (
+                SELECT default_route_key
+                FROM ai_model_catalog
+                WHERE plugin_install_id = $1::uuid
+                  AND model_key = 'video-editor-ffmpeg'
+                LIMIT 1
+              ) AS catalog_default_route_key,
+              (
+                SELECT adapter_kind
+                FROM ai_provider_connections
+                WHERE provider_id = (SELECT provider_id FROM tenant_ai_plugin_installs WHERE id = $1::uuid)
+                LIMIT 1
+              ) AS connection_adapter_kind,
+              (
+                SELECT base_url
+                FROM ai_provider_connections
+                WHERE provider_id = (SELECT provider_id FROM tenant_ai_plugin_installs WHERE id = $1::uuid)
+                LIMIT 1
+              ) AS connection_base_url,
+              (
+                SELECT COUNT(*)::text
+                FROM api_credentials
+                WHERE provider_id = (SELECT provider_id FROM tenant_ai_plugin_installs WHERE id = $1::uuid)
+              ) AS credential_count,
+              (
+                SELECT COUNT(*)::text
+                FROM model_pricing
+                WHERE provider = 'tapflow-local-render'
+                  AND model = 'video-editor-ffmpeg'
+                  AND route = 'video.editor.ffmpeg'
+                  AND unit = 'video_generation'
+                  AND active = true
+              ) AS pricing_count,
+              (
+                SELECT api_mode
+                FROM ai_routes
+                WHERE plugin_install_id = $1::uuid
+                  AND route_key = 'video.editor.ffmpeg'
+                LIMIT 1
+              ) AS route_api_mode,
+              (
+                SELECT request_config->'capabilities'
+                FROM ai_routes
+                WHERE plugin_install_id = $1::uuid
+                  AND route_key = 'video.editor.ffmpeg'
+                LIMIT 1
+              ) AS route_capabilities,
+              (
+                SELECT request_path
+                FROM ai_routes
+                WHERE plugin_install_id = $1::uuid
+                  AND route_key = 'video.editor.ffmpeg'
+                LIMIT 1
+              ) AS route_path,
+              (
+                SELECT upstream_model
+                FROM ai_routes
+                WHERE plugin_install_id = $1::uuid
+                  AND route_key = 'video.editor.ffmpeg'
+                LIMIT 1
+              ) AS route_upstream_model
+          `,
+          [install.json().id],
+        );
+
+        expect(dbState.rows[0]).toEqual({
+          catalog_default_route_key: "video.editor.ffmpeg",
+          connection_adapter_kind: "mock",
+          connection_base_url: "internal://tapflow-video-renderer",
+          credential_count: "0",
+          pricing_count: "1",
+          route_api_mode: "internal-render",
+          route_capabilities: {
+            supportedVideoWorkflows: ["video_editor_export"],
+            videoEditorRenderEngine: "ffmpeg",
+          },
+          route_path: "/internal/video-editor/render",
+          route_upstream_model: "video-editor-ffmpeg",
+        });
+
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
 });

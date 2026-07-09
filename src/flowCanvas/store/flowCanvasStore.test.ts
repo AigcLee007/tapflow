@@ -199,6 +199,42 @@ describe('flowCanvasStore upstream image references', () => {
     ]);
   });
 
+  it('creates a single panorama viewer node for a panorama image and reuses it', () => {
+    const imageNode = useFlowCanvasStore.getState().addNode('image', { x: 80, y: 120 }, {
+      generationMode: 'panorama_360',
+      metadata: {
+        mediaKind: 'pano360',
+        projection: 'equirectangular',
+      },
+      thumbnailUrl: 'https://cdn.test/panorama-preview.png',
+      title: 'Panorama Source',
+    });
+
+    const firstViewerId = (useFlowCanvasStore.getState() as unknown as {
+      ensurePanoramaViewerForImageNode: (nodeId: string) => string;
+    }).ensurePanoramaViewerForImageNode(imageNode.id);
+    const secondViewerId = (useFlowCanvasStore.getState() as unknown as {
+      ensurePanoramaViewerForImageNode: (nodeId: string) => string;
+    }).ensurePanoramaViewerForImageNode(imageNode.id);
+
+    const state = useFlowCanvasStore.getState();
+    const viewerNodes = state.nodes.filter((node) => node.type === 'panorama_viewer');
+
+    expect(firstViewerId).toBe(secondViewerId);
+    expect(viewerNodes).toHaveLength(1);
+    expect(viewerNodes[0]?.data).toMatchObject({
+      kind: 'panorama_viewer',
+      panoramaSourceNodeId: imageNode.id,
+      title: '360 全景查看',
+    });
+    expect(state.edges).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        source: imageNode.id,
+        target: firstViewerId,
+      }),
+    ]));
+  });
+
   it('merges template graph into canvas and clears prior selection', () => {
     const existing = useFlowCanvasStore.getState().addNode(
       'text',

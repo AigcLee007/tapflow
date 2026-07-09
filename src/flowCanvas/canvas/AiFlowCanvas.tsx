@@ -27,6 +27,24 @@ import {
   UploadNodeComponent,
   VideoNodeComponent,
 } from '../nodes/FlowNodes';
+import { PanoramaViewerNode } from '../nodes/PanoramaViewerNode';
+import {
+  Director3dNodeComponent,
+  StoryboardNodeComponent,
+  VideoEditorNodeComponent,
+} from '../nodes/ProductionNodes';
+import {
+  ProductionStudioShell,
+  type StudioCanvasNodeRequest,
+  type StudioDirectorVideoSyncRequest,
+  type StudioStoryboardSyncRequest,
+  type StudioStoryboardVideoSyncRequest,
+} from '../studios/ProductionStudioShell';
+import {
+  OPEN_PRODUCTION_STUDIO_EVENT,
+  type ProductionStudioOpenDetail,
+  type ProductionStudioKind,
+} from '../studios/productionStudioEvents';
 import { SmartEdgeComponent } from '../edges/SmartEdge';
 import { useFlowCanvasStore } from '../store/flowCanvasStore';
 import { CanvasAssetPanel, CanvasCommentPanel, CanvasDockDrawer, CanvasDockEmptyState, CanvasHistoryPanel, CanvasTemplatePanel } from '../panels';
@@ -42,10 +60,14 @@ import { getAsset, getAssetVariantUrl, listAssets } from '../../assets/assetApi'
 import { getFlowTemplate, recordFlowTemplateUsage } from '../../services/v2FlowTemplatesApi';
 import { listProjectHistory } from '../../services/v2FlowHistoryApi';
 import { listFlowComments } from '../../services/v2FlowCommentsApi';
-import type { FlowNodeData } from '../types';
+import type { FlowNodeData, FlowStoryboardData } from '../types';
 import { buildAssetBackedNodeData, buildMeasuredAssetNodePatch } from '../utils/assetNodeData';
 import { getCanvasDockBadge, getCanvasDockDrawerLayout, type CanvasDockPanelId } from '../utils/canvasDockPanel';
 import { FLOW_NODE_DEFAULT_SIZES, fitMediaNodeToShortSide } from '../utils/nodeSizing';
+import { normalizeDirector3dData } from '../utils/director3dNodeData';
+import { buildStoryboardPatchFromDirectorShot } from '../utils/storyboardDirectorSync';
+import { buildVideoEditorFromDirectorShots } from '../utils/directorVideoSync';
+import { buildVideoEditorFromStoryboardAssets } from '../utils/storyboardVideoSync';
 import { offsetTemplateGraphForInsert } from '../utils/templateGraph';
 import { canConnectFlowNodes } from '../rules/connectionRules';
 import {
@@ -61,6 +83,7 @@ import { runBackendWorkflow } from '../runtime/v2WorkflowRunner';
 
 const CANVAS_MIN_ZOOM = 0.18;
 const CANVAS_MAX_ZOOM = 2.2;
+const PROJECT_DIRECTOR_NODE_ID = 'project-director3d';
 const CONNECTION_MENU_WIDTH = 332;
 const CONNECTION_MENU_HEIGHT = 420;
 const CONNECTION_MENU_MARGIN = 18;
@@ -109,12 +132,39 @@ const nodeTypes: NodeTypes = {
   audio: AudioNodeComponent,
   upload: UploadNodeComponent,
   image_editor: ImageEditorNodeComponent,
+  panorama_viewer: PanoramaViewerNode,
+  storyboard: StoryboardNodeComponent,
+  director3d: Director3dNodeComponent,
+  video_editor: VideoEditorNodeComponent,
   group: GroupNodeComponent,
 };
 
 const edgeTypes: EdgeTypes = {
   smart: SmartEdgeComponent,
 };
+
+function buildProjectDirectorStudioNode(
+  director3d: FlowNodeData['director3d'],
+  position: { x: number; y: number } = { x: 0, y: 0 },
+): Node<FlowNodeData> {
+  const size = FLOW_NODE_DEFAULT_SIZES.director3d;
+  return {
+    id: PROJECT_DIRECTOR_NODE_ID,
+    position,
+    type: 'director3d',
+    data: {
+      createdAt: 0,
+      director3d: normalizeDirector3dData(director3d),
+      generationStatus: 'idle',
+      height: size.height,
+      kind: 'director3d',
+      status: 'idle',
+      title: '3D导演台',
+      updatedAt: 0,
+      width: size.width,
+    },
+  };
+}
 
 type ImportedImageSource = {
   url: string;
@@ -226,6 +276,8 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled, onAg
   const setNodeDragging = useFlowCanvasStore((s) => s.setNodeDragging);
   const addNode = useFlowCanvasStore((s) => s.addNode);
   const updateNodeData = useFlowCanvasStore((s) => s.updateNodeData);
+  const projectStudios = useFlowCanvasStore((s) => s.projectStudios);
+  const updateProjectDirector3d = useFlowCanvasStore((s) => s.updateProjectDirector3d);
   const mergeTemplateGraph = useFlowCanvasStore((s) => s.mergeTemplateGraph);
   const restoreGraphSnapshot = useFlowCanvasStore((s) => s.restoreGraphSnapshot);
   const backendFlowId = useFlowCanvasStore((s) => s.backendFlowId);
@@ -244,6 +296,12 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled, onAg
   const [activeDockPanel, setActiveDockPanel] = useState<CanvasDockPanelId | null>(null);
   const [agentOpen, setAgentOpen] = useState(false);
   const [agentSessionFocus, setAgentSessionFocus] = useState<OpenAgentSessionDetail | null>(null);
+  const [activeProductionStudio, setActiveProductionStudio] = useState<{
+    nodeId?: string;
+    position?: { x: number; y: number };
+    scope: 'node' | 'project';
+    studio: ProductionStudioKind;
+  } | null>(null);
   const [dockBadgeMetrics, setDockBadgeMetrics] = useState({
     assetTotal: 0,
     historySnapshotCount: 0,
@@ -334,6 +392,54 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled, onAg
     window.addEventListener(OPEN_AGENT_SESSION_EVENT, handleOpenAgentSession as EventListener);
     return () => window.removeEventListener(OPEN_AGENT_SESSION_EVENT, handleOpenAgentSession as EventListener);
   }, [closeContextMenu, closeImageTool, updateAgentOpen]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const handleOpenProductionStudio = (event: Event) => {
+      const detail = (event as CustomEvent<ProductionStudioOpenDetail>).detail;
+      if (!detail?.studio) return;
+      if (detail.scope === 'project') {
+        if (detail.studio !== 'director3d') return;
+        const zoom = viewport.zoom || 1;
+        closeContextMenu();
+        closeImageTool();
+        setConnMenu(null);
+        setActiveDockPanel(null);
+        setAgentSessionFocus(null);
+        updateAgentOpen(false);
+        setActiveProductionStudio({
+          position: {
+            x: (window.innerWidth / 2 - viewport.x) / zoom,
+            y: (window.innerHeight / 2 - viewport.y) / zoom,
+          },
+          scope: 'project',
+          studio: 'director3d',
+        });
+        return;
+      }
+      if (!detail.nodeId) return;
+      const targetNode = nodes.find((node) => node.id === detail.nodeId);
+      if (!targetNode) return;
+      closeContextMenu();
+      closeImageTool();
+      setConnMenu(null);
+      setActiveDockPanel(null);
+      setAgentSessionFocus(null);
+      updateAgentOpen(false);
+      setActiveProductionStudio({ nodeId: targetNode.id, scope: 'node', studio: detail.studio });
+    };
+
+    window.addEventListener(OPEN_PRODUCTION_STUDIO_EVENT, handleOpenProductionStudio as EventListener);
+    return () => window.removeEventListener(OPEN_PRODUCTION_STUDIO_EVENT, handleOpenProductionStudio as EventListener);
+  }, [closeContextMenu, closeImageTool, nodes, updateAgentOpen, viewport]);
+
+  useEffect(() => {
+    if (!activeProductionStudio) return;
+    if (activeProductionStudio.scope === 'project') return;
+    if (!activeProductionStudio.nodeId) return;
+    if (nodes.some((node) => node.id === activeProductionStudio.nodeId)) return;
+    setActiveProductionStudio(null);
+  }, [activeProductionStudio, nodes]);
 
   const handleNodeDragStart = useCallback((_event: React.MouseEvent, node: Node) => {
     pushHistory();
@@ -686,6 +792,122 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled, onAg
     [backendProjectId, getCanvasCenterFlowPosition, mergeTemplateGraph],
   );
 
+  const handleCreateCanvasNodeFromStudio = useCallback(
+    (request: StudioCanvasNodeRequest) => {
+      const node = addNode(request.kind, request.position, request.data, { selected: true });
+      if (request.runAfterCreate) {
+        void runBackendWorkflow({ runMode: 'target_node', targetNodeId: node.id }).catch(() => undefined);
+      }
+    },
+    [addNode],
+  );
+
+  const handleUpdateProjectStudioNodeData = useCallback(
+    (_nodeId: string, patch: Partial<FlowNodeData>) => {
+      if (!patch.director3d) return;
+      updateProjectDirector3d(normalizeDirector3dData(patch.director3d));
+    },
+    [updateProjectDirector3d],
+  );
+
+  const handleSyncDirectorShotToStoryboard = useCallback(
+    (request: StudioStoryboardSyncRequest) => {
+      const storyboardNode = useFlowCanvasStore.getState().nodes.find((node) => node.type === 'storyboard');
+      const fallbackStoryboard: FlowStoryboardData = {
+        aspect: '16:9',
+        cells: [],
+        grid: '3x2',
+        selectedIndex: 0,
+      };
+      const storyboard = buildStoryboardPatchFromDirectorShot({
+        camera: request.camera,
+        shot: request.shot,
+        shotIndex: request.shotIndex,
+        sourceDirectorNodeId: request.sourceDirectorNodeId,
+        storyboard: storyboardNode?.data.storyboard || fallbackStoryboard,
+      });
+
+      if (storyboardNode) {
+        updateNodeData(storyboardNode.id, { storyboard });
+        return;
+      }
+
+      addNode(
+        'storyboard',
+        {
+          x: request.sourceDirectorNodePosition.x + 420,
+          y: request.sourceDirectorNodePosition.y + 340,
+        },
+        {
+          storyboard,
+          title: '导演分镜板',
+        },
+        { selected: true },
+      );
+    },
+    [addNode, updateNodeData],
+  );
+
+  const handleSyncStoryboardToVideoEditor = useCallback(
+    (request: StudioStoryboardVideoSyncRequest) => {
+      const videoEditorNode = useFlowCanvasStore.getState().nodes.find((node) => node.type === 'video_editor');
+      const videoEditor = buildVideoEditorFromStoryboardAssets({
+        sourceStoryboardNodeId: request.sourceStoryboardNodeId,
+        storyboard: request.storyboard,
+        videoEditor: videoEditorNode?.data.videoEditor,
+      });
+
+      if (videoEditorNode) {
+        updateNodeData(videoEditorNode.id, { videoEditor });
+        return;
+      }
+
+      addNode(
+        'video_editor',
+        {
+          x: request.sourceStoryboardNodePosition.x + 420,
+          y: request.sourceStoryboardNodePosition.y + 40,
+        },
+        {
+          title: '故事板剪辑工程',
+          videoEditor,
+        },
+        { selected: true },
+      );
+    },
+    [addNode, updateNodeData],
+  );
+
+  const handleSyncDirectorShotsToVideoEditor = useCallback(
+    (request: StudioDirectorVideoSyncRequest) => {
+      const videoEditorNode = useFlowCanvasStore.getState().nodes.find((node) => node.type === 'video_editor');
+      const videoEditor = buildVideoEditorFromDirectorShots({
+        director: request.director,
+        sourceDirectorNodeId: request.sourceDirectorNodeId,
+        videoEditor: videoEditorNode?.data.videoEditor,
+      });
+
+      if (videoEditorNode) {
+        updateNodeData(videoEditorNode.id, { videoEditor });
+        return;
+      }
+
+      addNode(
+        'video_editor',
+        {
+          x: request.sourceDirectorNodePosition.x + 420,
+          y: request.sourceDirectorNodePosition.y + 40,
+        },
+        {
+          title: '导演剪辑工程',
+          videoEditor,
+        },
+        { selected: true },
+      );
+    },
+    [addNode, updateNodeData],
+  );
+
   const handleFocusCommentNode = useCallback((nodeId: string) => {
     const node = nodes.find((item) => item.id === nodeId);
     if (!node) return;
@@ -753,6 +975,7 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled, onAg
       case 'video': return '#a78bfa';
       case 'audio': return '#f59e0b';
       case 'image_editor': return '#ec4899';
+      case 'panorama_viewer': return '#22c55e';
       case 'group': return 'rgba(99,102,241,0.32)';
       default: return '#475569';
     }
@@ -763,6 +986,11 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled, onAg
     viewportWidth: typeof window === 'undefined' ? 1440 : window.innerWidth,
     viewportHeight: typeof window === 'undefined' ? 900 : window.innerHeight,
   });
+  const activeProductionStudioNode = activeProductionStudio
+    ? activeProductionStudio.scope === 'project'
+      ? buildProjectDirectorStudioNode(projectStudios.director3d, activeProductionStudio.position)
+      : nodes.find((node) => node.id === activeProductionStudio.nodeId) ?? null
+    : null;
 
   return (
     <div
@@ -997,6 +1225,18 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled, onAg
         }}
         open={agentOpen}
       />
+      {activeProductionStudio && activeProductionStudioNode && (
+        <ProductionStudioShell
+          node={activeProductionStudioNode}
+          onCreateCanvasNodeFromStudio={handleCreateCanvasNodeFromStudio}
+          onSyncDirectorShotToStoryboard={handleSyncDirectorShotToStoryboard}
+          onSyncDirectorShotsToVideoEditor={handleSyncDirectorShotsToVideoEditor}
+          onSyncStoryboardToVideoEditor={handleSyncStoryboardToVideoEditor}
+          onUpdateNodeData={activeProductionStudio.scope === 'project' ? handleUpdateProjectStudioNodeData : updateNodeData}
+          studio={activeProductionStudio.studio}
+          onClose={() => setActiveProductionStudio(null)}
+        />
+      )}
       <FlowContextMenu />
 
       {connMenu && (

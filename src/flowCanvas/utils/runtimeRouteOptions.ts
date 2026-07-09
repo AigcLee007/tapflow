@@ -1,4 +1,6 @@
 import type { V2RuntimeRouteItem } from '../../services/v2AiRoutesApi';
+import type { FlowImageGenerationMode } from '../types';
+import { normalizeImageGenerationMode } from './imageGenerationModes';
 
 export type RuntimeRouteOption = {
   estimatedCredits: number | null;
@@ -10,8 +12,16 @@ export type RuntimeRouteOption = {
   providerKey: string;
   providerName: string;
   routeKey: string;
+  supportedGenerationModes?: FlowImageGenerationMode[];
   userFacingLabel?: string;
 };
+
+const GPT_IMAGE_2_PRODUCTION_MODES: FlowImageGenerationMode[] = [
+  'standard',
+  'panorama_360',
+  'wraparound_270',
+  'subject_orbit_270',
+];
 
 const OFFICIAL_FALLBACK_IMAGE_RUNTIME_ROUTES_BY_MODEL_ID: Record<string, RuntimeRouteOption[]> = {
   'pixellelabs.nano-banana-pro': [
@@ -65,6 +75,7 @@ const OFFICIAL_FALLBACK_IMAGE_RUNTIME_ROUTES_BY_MODEL_ID: Record<string, Runtime
       providerKey: '',
       providerName: '',
       routeKey: 'image.gpt-image-2',
+      supportedGenerationModes: GPT_IMAGE_2_PRODUCTION_MODES,
       userFacingLabel: 'GPT-Image-2 线路一',
     },
     {
@@ -77,6 +88,7 @@ const OFFICIAL_FALLBACK_IMAGE_RUNTIME_ROUTES_BY_MODEL_ID: Record<string, Runtime
       providerKey: '',
       providerName: '',
       routeKey: 'image.gpt-image-2.line2',
+      supportedGenerationModes: GPT_IMAGE_2_PRODUCTION_MODES,
       userFacingLabel: 'GPT-Image-2 线路二',
     },
   ],
@@ -84,6 +96,14 @@ const OFFICIAL_FALLBACK_IMAGE_RUNTIME_ROUTES_BY_MODEL_ID: Record<string, Runtime
 
 export function getOfficialFallbackImageRuntimeRoutes(modelId: string): RuntimeRouteOption[] {
   return OFFICIAL_FALLBACK_IMAGE_RUNTIME_ROUTES_BY_MODEL_ID[String(modelId || '').trim()] ?? [];
+}
+
+export function normalizeSupportedImageGenerationModes(value: unknown): FlowImageGenerationMode[] {
+  const rawModes = Array.isArray(value) ? value : [];
+  const modes = rawModes
+    .map((item) => normalizeImageGenerationMode(item))
+    .filter((mode, index, array) => array.indexOf(mode) === index);
+  return modes.length > 0 ? modes : ['standard'];
 }
 
 export function mapImageRuntimeRouteOptions(items: V2RuntimeRouteItem[]): RuntimeRouteOption[] {
@@ -112,6 +132,7 @@ export function mapImageRuntimeRouteOptions(items: V2RuntimeRouteItem[]): Runtim
       providerKey: item.providerKey,
       providerName: item.providerName,
       routeKey,
+      supportedGenerationModes: normalizeSupportedImageGenerationModes(item.capabilities?.supportedGenerationModes),
     });
   }
 

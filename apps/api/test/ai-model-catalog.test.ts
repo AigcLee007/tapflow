@@ -102,6 +102,299 @@ async function registerOwner(
 }
 
 describeWithDatabase("ai model catalog API", () => {
+  test("publishes GPT-Image-2 production image modes into the safe runtime catalog", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({
+          connectionString: await createAppDatabaseUrl(),
+        });
+        const api = buildTestApp(appPool);
+        const owner = await registerOwner(api, "gpt-image-production-owner@example.com", "GPT Image Production Owner");
+
+        const install = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "POST",
+          payload: {
+            credential: {
+              name: "GPT Image Catalog Key",
+              secret: "gpt-image-catalog-secret",
+            },
+            publishImmediately: true,
+          },
+          url: "/api/v2/admin/ai/plugins/openai-compatible.gpt-image-2/install",
+        });
+        expect(install.statusCode).toBe(201);
+
+        const catalog = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "GET",
+          url: "/api/v2/ai/model-catalog?modality=image",
+        });
+        expect(catalog.statusCode).toBe(200);
+        expect(catalog.json()).toEqual([
+          expect.objectContaining({
+            defaultRouteKey: "image.gpt-image-2",
+            modality: "image",
+            modelFamily: "gpt-image-2",
+            modelKey: "gpt-image-2",
+          }),
+        ]);
+
+        const routes = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "GET",
+          url: "/api/v2/ai/model-catalog/gpt-image-2/routes",
+        });
+        expect(routes.statusCode).toBe(200);
+        expect(routes.json()).toEqual([
+          expect.objectContaining({
+            capabilities: {
+              supportedGenerationModes: [
+                "standard",
+                "panorama_360",
+                "wraparound_270",
+                "subject_orbit_270",
+              ],
+              supportedVideoWorkflows: [],
+            },
+            pricingUnit: "image_generation",
+            providerKey: "openai-compatible",
+            routeKey: "image.gpt-image-2",
+          }),
+          expect.objectContaining({
+            capabilities: {
+              supportedGenerationModes: [
+                "standard",
+                "panorama_360",
+                "wraparound_270",
+                "subject_orbit_270",
+              ],
+              supportedVideoWorkflows: [],
+            },
+            pricingUnit: "image_generation",
+            providerKey: "openai-compatible",
+            routeKey: "image.gpt-image-2.line2",
+          }),
+        ]);
+        expect(JSON.stringify(routes.json())).not.toContain("requestConfig");
+
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("publishes GPT-Image-2 MouxiHub lines three and four into the safe runtime catalog", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({
+          connectionString: await createAppDatabaseUrl(),
+        });
+        const api = buildTestApp(appPool);
+        const owner = await registerOwner(api, "gpt-image-mouxihub-owner@example.com", "GPT Image MouxiHub Owner");
+
+        for (const packageKey of [
+          "openai-compatible.gpt-image-2",
+          "mouxihub.gpt-image-2-line3",
+          "mouxihub.gpt-image-2-line4",
+        ]) {
+          const install = await api.inject({
+            headers: {
+              authorization: `Bearer ${owner.accessToken}`,
+            },
+            method: "POST",
+            payload: {
+              credential: {
+                name: `${packageKey} Catalog Key`,
+                secret: `${packageKey}-catalog-secret`,
+              },
+              publishImmediately: true,
+            },
+            url: `/api/v2/admin/ai/plugins/${packageKey}/install`,
+          });
+          expect(install.statusCode).toBe(201);
+        }
+
+        const routes = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "GET",
+          url: "/api/v2/ai/model-catalog/gpt-image-2/routes",
+        });
+        expect(routes.statusCode).toBe(200);
+
+        const supportedGenerationModes = [
+          "standard",
+          "panorama_360",
+          "wraparound_270",
+          "subject_orbit_270",
+        ];
+        expect(routes.json()).toEqual([
+          expect.objectContaining({
+            capabilities: {
+              supportedGenerationModes,
+              supportedVideoWorkflows: [],
+            },
+            minChargeCredits: 2.5,
+            pricingUnit: "image_generation",
+            providerKey: "openai-compatible",
+            routeKey: "image.gpt-image-2",
+          }),
+          expect.objectContaining({
+            capabilities: {
+              supportedGenerationModes,
+              supportedVideoWorkflows: [],
+            },
+            minChargeCredits: 3,
+            pricingUnit: "image_generation",
+            providerKey: "openai-compatible",
+            routeKey: "image.gpt-image-2.line2",
+          }),
+          expect.objectContaining({
+            capabilities: {
+              supportedGenerationModes,
+              supportedVideoWorkflows: [],
+            },
+            minChargeCredits: 1,
+            pricingUnit: "image_generation",
+            providerKey: "mouxihub-openai",
+            routeKey: "image.gpt-image-2.line3",
+          }),
+          expect.objectContaining({
+            capabilities: {
+              supportedGenerationModes,
+              supportedVideoWorkflows: [],
+            },
+            minChargeCredits: 3,
+            pricingUnit: "image_generation",
+            providerKey: "mouxihub-openai",
+            routeKey: "image.gpt-image-2.line4",
+          }),
+        ]);
+        expect(JSON.stringify(routes.json())).not.toContain("requestConfig");
+
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("publishes the internal video editor FFmpeg route into the safe runtime catalog", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({
+          connectionString: await createAppDatabaseUrl(),
+        });
+        const api = buildTestApp(appPool);
+        const owner = await registerOwner(api, "video-catalog-owner@example.com", "Video Catalog Owner");
+
+        const pluginList = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "GET",
+          url: "/api/v2/admin/ai/plugins?modality=video",
+        });
+        expect(pluginList.statusCode).toBe(200);
+        expect(pluginList.json()).toEqual([
+          expect.objectContaining({
+            credentials: expect.objectContaining({
+              fields: [],
+              required: false,
+              type: "bearer",
+            }),
+            packageKey: "tapflow.video-editor-ffmpeg",
+          }),
+        ]);
+
+        const install = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "POST",
+          payload: {
+            publishImmediately: true,
+          },
+          url: "/api/v2/admin/ai/plugins/tapflow.video-editor-ffmpeg/install",
+        });
+        expect(install.statusCode).toBe(201);
+
+        const catalog = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "GET",
+          url: "/api/v2/ai/model-catalog?modality=video",
+        });
+        expect(catalog.statusCode).toBe(200);
+        expect(catalog.json()).toEqual([
+          expect.objectContaining({
+            defaultRouteKey: "video.editor.ffmpeg",
+            modality: "video",
+            modelFamily: "tapflow.video-editor",
+            modelKey: "video-editor-ffmpeg",
+          }),
+        ]);
+
+        const routes = await api.inject({
+          headers: {
+            authorization: `Bearer ${owner.accessToken}`,
+          },
+          method: "GET",
+          url: "/api/v2/ai/model-catalog/video-editor-ffmpeg/routes",
+        });
+        expect(routes.statusCode).toBe(200);
+        expect(routes.json()).toEqual([
+          expect.objectContaining({
+            capabilities: {
+              supportedGenerationModes: ["standard"],
+              supportedVideoWorkflows: ["video_editor_export"],
+            },
+            estimatedCredits: 50,
+            minChargeCredits: 50,
+            pricingUnit: "video_generation",
+            providerKey: "tapflow-local-render",
+            routeKey: "video.editor.ffmpeg",
+          }),
+        ]);
+        expect(JSON.stringify(routes.json())).not.toContain("videoEditorRenderEngine");
+        expect(JSON.stringify(routes.json())).not.toContain("internalRender");
+        expect(JSON.stringify(routes.json())).not.toContain("requestConfig");
+
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
   test("returns published models and only the selected model routes", async () => {
     await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
       process.env.DATABASE_URL = databaseUrl;

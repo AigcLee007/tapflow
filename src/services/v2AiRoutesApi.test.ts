@@ -22,6 +22,9 @@ describe('v2AiRoutesApi', () => {
       new Response(
         JSON.stringify([
           {
+            capabilities: {
+              supportedGenerationModes: ['standard', 'panorama_360', 'wraparound_270'],
+            },
             estimatedCredits: 100,
             minChargeCredits: 100,
             modality: 'image',
@@ -47,6 +50,9 @@ describe('v2AiRoutesApi', () => {
 
     expect(response).toEqual([
       {
+        capabilities: {
+          supportedGenerationModes: ['standard', 'panorama_360', 'wraparound_270'],
+        },
         estimatedCredits: 100,
         minChargeCredits: 100,
         modality: 'image',

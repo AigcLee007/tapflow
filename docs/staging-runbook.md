@@ -105,6 +105,23 @@ Expected result:
 - `TAPFLOW_PROJECT_URL` is enough to resolve the target project and flow
 - no secret material appears in the output
 
+## Production Suite Catalog Smoke
+
+Use this after installing/publishing the production image routes and the local FFmpeg video editor route, before manual canvas testing:
+
+```bash
+TAPFLOW_API_URL=https://api-art.aittco.com \
+TAPFLOW_ACCESS_TOKEN=<token> \
+npm run smoke:production-suite-catalog
+```
+
+Expected result:
+
+- at least one priced image route exposes `standard`, `panorama_360`, `wraparound_270`, and `subject_orbit_270`
+- `video.editor.ffmpeg` exposes `video_editor_export`
+- both the image production route and the FFmpeg export route have positive route pricing
+- the smoke only reads model catalog route metadata and does not enqueue generation or consume credits
+
 ## Notes
 
 - Target-node runs must not use `flows FOR UPDATE`.

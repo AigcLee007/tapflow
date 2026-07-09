@@ -1,5 +1,6 @@
 import { AiGatewayError } from "./errors.js";
 import { normalizeOpenAiCompatibleImageSize } from "./image-size.js";
+import { buildProductionImagePrompt } from "./production-image-prompt.js";
 import type { ProviderAdapter } from "./provider-adapter.js";
 import type {
   AssetReferenceInput,
@@ -862,10 +863,11 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
       getFirstNumber(lookupRecords, ["outputCompression", "output_compression"]),
       outputFormat,
     );
+    const prompt = buildProductionImagePrompt(request.prompt, metadata);
     const payload: Record<string, unknown> = {
       model,
       n,
-      prompt: request.prompt,
+      prompt,
     };
     if (!isGptImage2Model(model) && requestConfig.responseFormat !== null) {
       payload.response_format = getString(requestConfig.responseFormat ?? requestConfig.response_format) || "b64_json";
@@ -1254,7 +1256,7 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
     if (outputCompression !== null) tool.output_compression = outputCompression;
     if (mask) tool.input_image_mask = { image_url: mask };
 
-    const promptInput = buildPromptInput(request.prompt);
+    const promptInput = buildPromptInput(buildProductionImagePrompt(request.prompt, metadata));
     const payload: Record<string, unknown> = {
       input: images.length > 0
         ? [

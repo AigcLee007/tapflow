@@ -4,6 +4,7 @@ import type {
 } from '../../services/v2AiModelCatalogApi';
 import type { ImageModelConfig } from '../../config/imageModels';
 import type { RuntimeRouteOption } from './runtimeRouteOptions';
+import { normalizeSupportedImageGenerationModes } from './runtimeRouteOptions';
 
 export type ModelCatalogOption = {
   capabilities: Record<string, unknown>;
@@ -244,6 +245,7 @@ export function mapCatalogRoutesToRuntimeOptions(routes: AiModelCatalogRoute[]):
       providerKey: item.providerKey,
       providerName: item.providerName,
       routeKey,
+      supportedGenerationModes: normalizeSupportedImageGenerationModes(item.capabilities?.supportedGenerationModes),
       userFacingLabel: knownUserFacingLabel || `${modelLabel} ${lineLabel}`,
     });
   }

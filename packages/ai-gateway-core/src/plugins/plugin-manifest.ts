@@ -36,6 +36,7 @@ export type AiPluginModelManifest = {
     maxInputImages?: number;
     maxPromptLength?: number;
     supportedAspectRatios?: string[];
+    supportedGenerationModes?: string[];
     supportedSizes?: string[];
     supportsImageEdit?: boolean;
     supportsReferenceImages?: boolean;

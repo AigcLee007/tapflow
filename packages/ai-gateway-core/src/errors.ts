@@ -9,7 +9,8 @@ export type AiGatewayErrorCode =
   | "PROVIDER_INVALID_RESPONSE"
   | "PROVIDER_RATE_LIMIT"
   | "PROVIDER_TIMEOUT"
-  | "ROUTE_NOT_FOUND";
+  | "ROUTE_NOT_FOUND"
+  | "UNSUPPORTED_VIDEO_EDITOR_EXPORT";
 
 export class AiGatewayError extends Error {
   readonly code: AiGatewayErrorCode;

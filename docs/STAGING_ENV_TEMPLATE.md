@@ -268,6 +268,18 @@ Relay D:
 - `TAPFLOW_AGENT_SESSION_ID = <optional existing agent session id>`
 - `TapFlow agent note = use these values only for local or staging smoke validation; do not commit real tokens`
 
+## 9.4 Production Suite Catalog Smoke
+
+- `Production image route supports standard = No`
+- `Production image route supports panorama_360 = No`
+- `Production image route supports wraparound_270 = No`
+- `Production image route supports subject_orbit_270 = No`
+- `Production image route positive pricing verified = No`
+- `tapflow.video-editor-ffmpeg plugin installed = No`
+- `video.editor.ffmpeg route published and visible = No`
+- `video.editor.ffmpeg positive pricing verified = No`
+- `Production suite catalog smoke passed = No`
+
 ---
 
 ## 10. Deployment
@@ -297,6 +309,9 @@ Relay D:
 - [ ] logs contain no secret
 - [ ] restart worker and run again
 - [ ] update pricing and verify next run uses new price
+- [ ] production image route exposes and prices 360/270 production modes
+- [ ] `video.editor.ffmpeg` visible and priced
+- [ ] production suite catalog smoke passed
 
 ---
 

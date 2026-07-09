@@ -31,6 +31,25 @@ describe("validateCanvasAgentPlan", () => {
     expect(result.errors[0]?.code).toBe("UNSUPPORTED_NODE_KIND");
   });
 
+  it.each(["storyboard", "director3d", "video_editor"] as const)(
+    "accepts production suite node kind %s",
+    (kind) => {
+      const result = validateCanvasAgentPlan({
+        availableRouteKeys: new Set(["image.default"]),
+        output: {
+          approvalRequired: true,
+          evidence: [],
+          plan: [],
+          proposedOps: [{ data: {}, kind, position: { x: 0, y: 0 }, type: "add_node" }],
+          reply: "plan",
+        },
+        snapshot,
+      });
+
+      expect(result.ok).toBe(true);
+    },
+  );
+
   it("requires approval for delete and run operations", () => {
     const result = validateCanvasAgentPlan({
       availableRouteKeys: new Set(["image.default"]),

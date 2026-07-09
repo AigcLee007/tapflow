@@ -11,6 +11,9 @@ const assetApiMocks = vi.hoisted(() => ({
   getAssetVariantUrl: vi.fn(),
   uploadAssetFile: vi.fn(),
 }));
+const workflowRunnerMocks = vi.hoisted(() => ({
+  runBackendWorkflow: vi.fn(),
+}));
 const useAssetLibraryMock = vi.hoisted(() => vi.fn());
 
 vi.mock("../../assets/assetApi", () => ({
@@ -21,6 +24,10 @@ vi.mock("../../assets/assetApi", () => ({
 }));
 vi.mock("../../assets/useAssetLibrary", () => ({
   useAssetLibrary: () => useAssetLibraryMock(),
+}));
+vi.mock("../runtime/v2WorkflowRunner", () => ({
+  markBackendRunLaunchFailed: vi.fn(),
+  runBackendWorkflow: (...args: unknown[]) => workflowRunnerMocks.runBackendWorkflow(...args),
 }));
 
 vi.mock("@xyflow/react", async () => {
@@ -46,6 +53,8 @@ describe("FlowNodes agent metadata", () => {
     assetApiMocks.getAssetDownloadUrl.mockReset();
     assetApiMocks.getAssetVariantUrl.mockReset();
     assetApiMocks.uploadAssetFile.mockReset();
+    workflowRunnerMocks.runBackendWorkflow.mockReset();
+    workflowRunnerMocks.runBackendWorkflow.mockResolvedValue(undefined);
     useAssetLibraryMock.mockReset();
     useAssetLibraryMock.mockReturnValue({
       assets: [],
@@ -552,5 +561,61 @@ describe("FlowNodes agent metadata", () => {
         target: target.id,
       }),
     ]);
+  });
+
+  it("blocks production image modes when the selected route has no active pricing", () => {
+    const node = useFlowCanvasStore.getState().addNode(
+      "image",
+      { x: 0, y: 0 },
+      {
+        createdAt: 1,
+        generationMode: "panorama_360",
+        generationPrompt: "未来城市中庭全景",
+        generationStatus: "idle",
+        height: 220,
+        kind: "image",
+        modelId: "gpt-image-2",
+        params: {
+          generationMode: "panorama_360",
+          panorama: {
+            continuity: "seamless",
+            projectionHint: "equirectangular",
+            subjectType: "scene",
+          },
+          size: "1k",
+        },
+        routeKey: "image.gpt-image-2",
+        status: "idle",
+        title: "Panorama",
+        updatedAt: 1,
+        width: 320,
+      } as any,
+      { selected: true },
+    );
+
+    render(
+      <ImageNodeComponent
+        id={node.id}
+        selected
+        data={node.data as any}
+        dragging={false}
+        zIndex={1}
+        isConnectable
+        type="image"
+        xPos={0}
+        yPos={0}
+      />,
+    );
+
+    expect(screen.getByTestId("image-generate-toolbar-credits").textContent).toContain("未配置");
+
+    fireEvent.click(screen.getByRole("button", { name: "开始生成" }));
+
+    expect(workflowRunnerMocks.runBackendWorkflow).not.toHaveBeenCalled();
+    expect(useFlowCanvasStore.getState().nodes[0]?.data).toMatchObject({
+      generationStatus: "error",
+      status: "error",
+    });
+    expect(String(useFlowCanvasStore.getState().nodes[0]?.data.errorMessage)).toContain("PRICING_NOT_FOUND");
   });
 });

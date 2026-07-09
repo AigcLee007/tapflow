@@ -24,17 +24,26 @@ describe("v2AiPluginAdminApi", () => {
 
   test("calls plugin admin endpoints with auth", async () => {
     const fetchMock = vi.fn(async () =>
-      new Response(JSON.stringify([]), {
+      new Response(JSON.stringify([
+        {
+          credentials: {
+            fields: [],
+            required: false,
+            type: "bearer",
+          },
+          packageKey: "tapflow.video-editor-ffmpeg",
+        },
+      ]), {
         headers: { "content-type": "application/json" },
         status: 200,
       }),
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await listAiPlugins("image");
+    const plugins = await listAiPlugins("video");
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/v2/admin/ai/plugins?modality=image",
+      "/api/v2/admin/ai/plugins?modality=video",
       expect.objectContaining({
         headers: expect.objectContaining({
           Authorization: "Bearer test-token",
@@ -42,6 +51,11 @@ describe("v2AiPluginAdminApi", () => {
         method: "GET",
       }),
     );
+    expect(plugins[0]?.credentials).toEqual({
+      fields: [],
+      required: false,
+      type: "bearer",
+    });
   });
 
   test("installs and changes plugin install status", async () => {

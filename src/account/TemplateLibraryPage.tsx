@@ -84,6 +84,9 @@ export function TemplateLibraryPage() {
     () => plugins.find((plugin) => plugin.packageKey === selectedPackageKey) ?? null,
     [plugins, selectedPackageKey],
   );
+  const showCredentialFields = Boolean(
+    selectedPlugin?.credentials.required || selectedPlugin?.credentials.fields.length,
+  );
 
   const refresh = useCallback(async () => {
     if (!canRead) {
@@ -122,16 +125,19 @@ export function TemplateLibraryPage() {
     setError("");
     setMessage("");
     try {
-      const result = await installAiPlugin(selectedPlugin.packageKey, {
+      const installInput = {
         baseUrlOverride: installForm.baseUrlOverride.trim() || undefined,
-        credential: installForm.credentialSecret.trim()
+        ...(showCredentialFields && installForm.credentialSecret.trim()
           ? {
-              name: installForm.credentialName.trim() || undefined,
-              secret: installForm.credentialSecret.trim(),
+              credential: {
+                name: installForm.credentialName.trim() || undefined,
+                secret: installForm.credentialSecret.trim(),
+              },
             }
-          : undefined,
+          : {}),
         publishImmediately: installForm.publishImmediately,
-      });
+      };
+      const result = await installAiPlugin(selectedPlugin.packageKey, installInput);
       setMessage(
         `模板已初始化：${selectedPlugin.displayName}。生成模型 ${result.catalogModelKeys.join(", ") || "-"}；线路 ${result.routeKeys.join(", ") || "-"}`,
       );
@@ -237,6 +243,7 @@ export function TemplateLibraryPage() {
       <div className="flex flex-wrap gap-2">
         {MODALITIES.map((item) => (
           <button
+            aria-label={`template modality ${item.value}`}
             className={`inline-flex h-9 items-center rounded px-3 text-sm ${
               activeModality === item.value
                 ? "bg-sky-400 text-slate-950"
@@ -266,6 +273,7 @@ export function TemplateLibraryPage() {
               const isSelected = plugin.packageKey === selectedPackageKey;
               return (
                 <button
+                  aria-label={`template plugin ${plugin.packageKey}`}
                   className={`w-full rounded border p-4 text-left ${
                     isSelected
                       ? "border-sky-300/40 bg-sky-400/10"
@@ -347,29 +355,35 @@ export function TemplateLibraryPage() {
                         value={installForm.baseUrlOverride}
                       />
                     </label>
-                    <label className="block">
-                      <span className="mb-1.5 block text-xs font-medium text-slate-400">凭证名称</span>
-                      <input
-                        className={inputClass}
-                        onChange={(event) =>
-                          setInstallForm((current) => ({ ...current, credentialName: event.target.value }))
-                        }
-                        placeholder="可选"
-                        value={installForm.credentialName}
-                      />
-                    </label>
-                    <label className="block md:col-span-2">
-                      <span className="mb-1.5 block text-xs font-medium text-slate-400">初始化 API Key</span>
-                      <input
-                        className={inputClass}
-                        onChange={(event) =>
-                          setInstallForm((current) => ({ ...current, credentialSecret: event.target.value }))
-                        }
-                        placeholder="可选。如果留空，模板会创建结构，但你后面需要去连接页补密钥。"
-                        type="password"
-                        value={installForm.credentialSecret}
-                      />
-                    </label>
+                    {showCredentialFields ? (
+                      <>
+                        <label className="block">
+                          <span className="mb-1.5 block text-xs font-medium text-slate-400">凭证名称</span>
+                          <input
+                            aria-label="template credential name"
+                            className={inputClass}
+                            onChange={(event) =>
+                              setInstallForm((current) => ({ ...current, credentialName: event.target.value }))
+                            }
+                            placeholder="可选"
+                            value={installForm.credentialName}
+                          />
+                        </label>
+                        <label className="block md:col-span-2">
+                          <span className="mb-1.5 block text-xs font-medium text-slate-400">初始化 API Key</span>
+                          <input
+                            aria-label="template credential secret"
+                            className={inputClass}
+                            onChange={(event) =>
+                              setInstallForm((current) => ({ ...current, credentialSecret: event.target.value }))
+                            }
+                            placeholder="可选。如果留空，模板会创建结构，但你后面需要去连接页补密钥。"
+                            type="password"
+                            value={installForm.credentialSecret}
+                          />
+                        </label>
+                      </>
+                    ) : null}
                     <label className="flex items-center gap-3 text-sm text-slate-300 md:col-span-2">
                       <input
                         checked={installForm.publishImmediately}
@@ -388,6 +402,7 @@ export function TemplateLibraryPage() {
 
                   <div className="mt-4 flex flex-wrap gap-2">
                     <button
+                      aria-label="install selected template"
                       className="inline-flex h-10 items-center justify-center gap-2 rounded bg-sky-400 px-4 text-sm font-semibold text-slate-950 hover:bg-sky-300 disabled:cursor-not-allowed disabled:opacity-50"
                       disabled={!canManage || busyPackageKey === selectedPlugin.packageKey}
                       onClick={() => void handleInstall()}

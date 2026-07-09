@@ -1,7 +1,1393 @@
 ﻿# Project Record
 
-Last updated: 2026-07-05
+Last updated: 2026-07-09
 Maintainers: project team + Codex sessions
+
+## 2026-07-09 - DramaClaw Nine-Grid Toolbar Migration Phase 85
+
+- migrated the DramaClaw-style `九宫格工具栏` feature set into the v2 TapFlow image-node path without introducing a separate legacy API or local-only canvas persistence:
+  - image-node `更多` menu now includes a dedicated `九宫格工具` secondary panel instead of mixing the nine actions into the main row list.
+  - the panel exposes all nine source-equivalent actions: `多机位九宫格`, `剧情推演四宫格`, `角色脸部三视图`, `产品三视图`, `25宫格连贯分镜`, `电影级光影校正`, `角色三视图生成`, `画面推演 - 3秒后`, and `画面推演 - 5秒前`.
+  - each action preserves the source prompt semantics and aspect-ratio policy from DramaClaw, including `original`, `3:2`, and `16:9` handling.
+- kept the runtime native to the current v2 architecture:
+  - template actions now create a downstream image node through the existing canvas runtime instead of calling a new backend template-edit endpoint.
+  - downstream nodes carry prompt/template metadata, reset generation mode to `standard`, preserve the active route/model selection, and launch through the existing `target_node` workflow run path.
+  - billing remains on the current reserve/settle/refund workflow-run system; no frontend-side credit mutation was introduced.
+- validation:
+  - red tests observed on 2026-07-09:
+    `npm test -- src/flowCanvas/utils/imageTemplateEditActions.test.ts src/flowCanvas/nodes/ImageMoreMenu.test.tsx src/flowCanvas/runtime/graphExecutor.test.ts`
+    first failed because the template action registry did not exist, the image more-menu had no `九宫格工具` panel, and `runImageTemplateEdit` was not implemented.
+  - `npm test -- src/flowCanvas/utils/imageTemplateEditActions.test.ts src/flowCanvas/nodes/ImageMoreMenu.test.tsx src/flowCanvas/runtime/graphExecutor.test.ts` passed on 2026-07-09: 3 files, 7 tests.
+  - `npm test -- src/flowCanvas/runtime/v2WorkflowRunner.test.ts` passed on 2026-07-09: 1 file, 33 tests.
+  - `npm run build` passed on 2026-07-09 with existing Browserslist, css-minify `task` warnings, dynamic-import note, and chunk-size warnings only.
+
+## 2026-07-09 - Panorama 360 Generation And Viewer Migration
+
+- migrated the v2 TapFlow panorama path from a decorative placeholder into a working product flow without changing unrelated image/video/node behavior:
+  - image nodes in `panorama_360` mode now use panorama-safe aspect ratios only: `2:1` and `21:9`.
+  - successful panorama image runs now preserve panorama metadata on runtime asset refs and image nodes, and auto-create or reuse a linked `panorama_viewer` node on the canvas.
+  - asset-library preview now detects panorama metadata and renders a real 360 viewer instead of a flat `<img>`.
+  - image-node more menu now exposes a direct `360 全景查看` action for panorama-capable images, and the connection menu/canvas node registry now support `panorama_viewer`.
+- wired the worker and AI gateway layers to match the frontend/runtime behavior:
+  - worker asset persistence now accepts panorama asset metadata, stores it in `assets.metadata`, and returns it in persisted asset refs.
+  - Nano Banana / Gemini image adapters and related plugin manifests now preserve and publish `2:1` aspect ratio support instead of coercing panorama requests back to `1:1`.
+  - added `@photo-sphere-viewer/core` for the frontend 360 viewer wrapper.
+- validation:
+  - `npx vitest --run src/flowCanvas/rules/connectionRules.test.ts src/flowCanvas/store/flowCanvasStore.test.ts src/flowCanvas/runtime/v2WorkflowRunner.test.ts src/assets/AssetPreviewModal.test.tsx src/flowCanvas/nodes/ImageMoreMenu.test.tsx` passed on 2026-07-09: 5 files, 54 tests.
+  - `npm run test --workspace @aigc-flow/worker -- media-asset-store.test.ts` passed on 2026-07-09: 1 file, 6 tests.
+  - `npm run test --workspace @aigc-flow/ai-gateway-core -- plugin-registry.test.ts runtime.test.ts` passed on 2026-07-09: 2 files, 74 tests.
+  - `npm run build --workspace @aigc-flow/worker` passed on 2026-07-09.
+  - `npm run build --workspace @aigc-flow/ai-gateway-core` passed on 2026-07-09.
+  - `npm run build` passed on 2026-07-09 with existing Browserslist, css-minify `task` warnings, dynamic-import note, and chunk-size warnings only.
+
+## 2026-07-08 - StoryAI Director Project State Fidelity Phase 84
+
+- fixed the project-level StoryAI 3D director desk state-loss regression that made source-project controls appear broken after TapFlow autosave/echo:
+  - `normalizeDirector3dData` now preserves a sanitized `director3d.storyAiProject` snapshot instead of dropping it.
+  - safe StoryAI scene/object/camera fields now survive the TapFlow project-level director desk path, including character color, sky/background color, labels, grid snap, ground toggle, ground opacity/height, panorama settings, camera-object visibility, active camera id, and panorama asset id.
+  - transient browser media references such as `blob:`, `data:`, and signed/http URLs are still stripped before the canvas draft can persist, keeping the v2 asset/draft safety rule intact.
+- strengthened regression coverage:
+  - added direct normalizer coverage for preserving safe StoryAI project state while stripping live media URLs.
+  - extended the project-level 3D director desk canvas test so updates from the StoryAI wrapper persist into `projectStudios.director3d` without creating a canvas node.
+- validation:
+  - `npm test -- src/flowCanvas/canvas/AiFlowCanvas.project-director.test.tsx src/flowCanvas/utils/director3dNodeData.test.ts` passed on 2026-07-08: 2 files, 4 tests.
+  - `npm test -- src/flowCanvas/studios/StoryAiDirectorDesk.test.tsx src/flowCanvas/studios/storyAiDirectorAdapter.test.ts src/flowCanvas/utils/director3dNodeData.test.ts src/flowCanvas/canvas/AiFlowCanvas.project-director.test.tsx` passed on 2026-07-08: 4 files, 12 tests.
+  - `npm test -- scripts/smoke-director-three-viewport.test.ts` passed on 2026-07-08: 1 file, 4 tests.
+  - `npm run smoke:director3d` passed on 2026-07-08 with desktop/mobile reporting nonblank WebGL pixels, live panorama previews, live camera captures, sent captures, safe patches, and `status: ok`.
+  - `npm run build` passed on 2026-07-08 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-08 - StoryAI Director Pose Recovery Phase 83
+
+- fixed the StoryAI 3D director desk character pose system so pose presets and adjustments are no longer decorative:
+  - the embedded UE mannequin pose application now canonicalizes GLB bone names before applying neutral rig rotations, body offsets, and pose controls.
+  - this restores actual pose deformation for the current `ue-mannequin-retopology.glb`, whose bones use space-delimited names like `Bip001 Pelvis_03` instead of the underscore-delimited keys used by the pose rig maps.
+- preserved pose state through TapFlow canvas draft snapshots:
+  - `FlowDirector3dData.actors[*]` now carries a safe `poseControls` snapshot alongside the existing `pose` preset id.
+  - the StoryAI adapter writes character rig control values back into `director3d` actor snapshots and rebuilds character rigs from those controls when reopening the director desk.
+  - director draft normalization now keeps only finite numeric pose-control entries and strips malformed values.
+- validation:
+  - red test observed on 2026-07-08: `npm test -- src/flowCanvas/studios/storyai/editor/runtime/ue4Mannequin/ue4MannequinPoseApplication.test.ts` first failed because mannequin bones with space-delimited names never received pose rotations or pelvis offsets.
+  - red test observed on 2026-07-08: `npm test -- src/flowCanvas/studios/storyAiDirectorAdapter.test.ts` first failed because director actor snapshots dropped pose-control values during the StoryAI <-> TapFlow adapter round-trip.
+  - `npm test -- src/flowCanvas/studios/storyai/editor/runtime/ue4Mannequin/ue4MannequinPoseApplication.test.ts` passed on 2026-07-08: 1 test.
+  - `npm test -- src/flowCanvas/studios/storyAiDirectorAdapter.test.ts` passed on 2026-07-08: 1 test.
+  - `npm test -- src/flowCanvas/utils/director3dNodeData.test.ts` passed on 2026-07-08: 2 tests.
+  - `npm test -- src/flowCanvas/studios/StoryAiDirectorDesk.test.tsx` passed on 2026-07-08: 7 tests.
+  - `npm run build` passed on 2026-07-08 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-08 - Project-Level 3D Director Desk Entry Phase 82
+
+- changed the new 3D director desk entry from a canvas node creator into a project-level tool opener:
+  - left add flyout keeps the same visible entry but moves `3D导演台` into the `工具` section.
+  - clicking `3D导演台` from the left flyout or pane context menu now opens the default project director desk directly.
+  - the action no longer inserts a visible `director3d` node into the canvas graph.
+- added project-level director desk draft persistence:
+  - canvas store now tracks `projectStudios.director3d` separately from `nodes`.
+  - autosave, local draft recovery, frontend draft sanitization, API draft schema validation, and backend draft normalization preserve `projectStudios.director3d`.
+  - legacy `director3d` nodes remain supported by the existing node-scoped open event for old saved projects.
+- validation:
+  - red tests first failed because the 3D director entry still created a `director3d` node, backend `normalizeDraftGraph` dropped `projectStudios`, and the store had no `updateProjectDirector3d` action.
+  - `npm test -- src/flowCanvas/canvas/FlowLeftAddPanel.test.tsx src/flowCanvas/canvas/FlowContextMenu.test.tsx src/flowCanvas/canvas/AiFlowCanvas.project-director.test.tsx src/flowCanvas/hooks/useRemoteFlowAutosave.test.tsx apps/api/test/flows-draft-graph.test.ts` passed on 2026-07-08: 5 files, 24 tests.
+  - `npm run build` passed on 2026-07-08 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+  - `npm run test --workspace @aigc-flow/api` passed on 2026-07-08: 27 files passed, 152 tests passed, 16 files skipped by existing config.
+
+## 2026-07-07 - StoryAI Director Desk Capture Send-To-Canvas Phase 81
+
+- fixed the StoryAI 3D director desk camera capture send-to-canvas path:
+  - embedded StoryAI now registers an in-process capture host handler instead of relying only on iframe-style `window.parent.postMessage`.
+  - single camera capture send and all-captures send now reach the TapFlow production-studio shell.
+  - sent captures are converted from live `data:` URLs into `File` objects, uploaded through the existing `/assets` upload path, and inserted onto the canvas as image node requests backed by durable `assetId` references.
+  - created image node requests use `source: director-capture` plus safe `params.directorCapture` metadata and do not carry `data:`, `blob:`, base64, or signed/http preview URLs in the request payload.
+- tightened capture card interaction coverage:
+  - camera capture send buttons now expose stable test ids for smoke coverage.
+  - capture thumbnail media no longer intercepts pointer events over the action layer, and the action layer has an explicit z-index.
+  - `smoke:director3d` now verifies both single-capture send and all-captures send on desktop/mobile in addition to screenshots, panorama import, safe patches, and nonblank WebGL.
+- validation:
+  - red test observed on 2026-07-07: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "uploads StoryAI camera captures"` first failed because StoryAI capture sends never called `uploadAssetFile` or canvas node creation.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/studios/StoryAiDirectorDesk.test.tsx src/flowCanvas/studios/storyai/editor/io/hostBridge.test.ts scripts/smoke-director-three-viewport.test.ts scripts/smoke-production-studios.test.ts` passed on 2026-07-07: 5 files, 45 tests.
+  - `npm run smoke:director3d` passed on 2026-07-07 with desktop/mobile reporting `hasSentCaptures: true`, safe patches, live camera captures, live panorama previews, and nonblank WebGL pixels.
+  - `npm run smoke:production-studios` passed on 2026-07-07 with director, 360/270 image mode, storyboard, and video-editor smoke checks intact.
+  - `npm run build` passed on 2026-07-07 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-07 - StoryAI Director Desk Capture And Panorama Stabilization Phase 80
+
+- fixed three real StoryAI 3D director desk usability regressions reported from the canvas:
+  - screenshot actions now keep live camera captures after TapFlow echoes the sanitized `director3d` patch back into the node.
+  - the right capture/export panel's `当前视角截图`, `四方位截图`, and `十二方位截图` actions now save captured images into the active camera's capture list instead of only downloading them.
+  - imported panorama previews now remain live in the editor session after parent draft autosave echoes a safe patch, so the 3D viewport background can actually update.
+- fixed the camera inspector routing that hid capture cards:
+  - `机位视角` now routes the right panel to the camera inspector even when a character was selected before switching view modes.
+  - this prevents captured screenshots from landing in camera state while the UI still shows the character inspector.
+- preserved v2 draft safety:
+  - live `data:` screenshots and `blob:` panorama previews remain browser-session-only.
+  - echoed canvas draft patches still strip `blob:`, `data:`, and `http(s)://` media references from `director3d.storyAiProject`.
+  - durable capture/panorama upload to `/assets` remains a separate follow-up.
+- strengthened regression coverage:
+  - added StoryAI wrapper tests for self-originated safe patch echo, live camera captures, live panorama preview URLs, and capture-panel persistence.
+  - added right-panel routing coverage for camera view with stale character selection.
+  - extended `smoke:director3d` so the Playwright smoke page behaves like the real parent canvas by echoing every `director3d` patch back into the component, then verifies camera capture cards, live panorama preview URLs, safe patches, and nonblank WebGL pixels on desktop and mobile.
+- validation:
+  - red test observed on 2026-07-07: `npm test -- src/flowCanvas/studios/StoryAiDirectorDesk.test.tsx` first failed because echoed safe patches cleared live captures/panorama URLs and the capture panel did not save screenshots to cameras.
+  - red test observed on 2026-07-07: `npm test -- scripts/smoke-director-three-viewport.test.ts` first failed because the browser smoke did not cover camera capture cards or panorama import.
+  - red test observed on 2026-07-07: `npm test -- src/flowCanvas/studios/storyai/editor/store/directorSelectors.test.ts` first failed because camera view could still show the character panel.
+  - `npm test -- src/flowCanvas/studios/storyai/editor/store/directorSelectors.test.ts src/flowCanvas/studios/StoryAiDirectorDesk.test.tsx scripts/smoke-director-three-viewport.test.ts` passed on 2026-07-07: 3 files, 11 tests.
+  - `npm run smoke:director3d` passed on 2026-07-07 with desktop and mobile reporting camera capture cards, live panorama previews, safe `director3d` patches, and nonblank WebGL pixels.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx scripts/smoke-production-studios.test.ts scripts/smoke-director-three-viewport.test.ts src/flowCanvas/studios/StoryAiDirectorDesk.test.tsx src/flowCanvas/studios/storyai/editor/store/directorSelectors.test.ts` passed on 2026-07-07: 5 files, 43 tests.
+  - `npm run smoke:production-studios` passed on 2026-07-07 with director, 360/270 image mode, storyboard, and video-editor smoke checks intact.
+  - `npm run build` passed on 2026-07-07 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-07 - StoryAI 3D Director Desk Replacement Phase 79
+
+- replaced the production-studio `director3d` branch with the StoryAI director desk UI from `AigcLee007/storyai-3d-director-desk`:
+  - added the StoryAI shell, full-bleed 3D canvas, object tree, inspector panels, viewport toolbar, camera/capture panels, character controls, panorama/model import utilities, and scoped StoryAI CSS under `src/flowCanvas/studios/storyai/`.
+  - copied the UE mannequin GLB model and license into `public/models/`.
+  - `ProductionStudioShell` now lets `StoryAiDirectorDesk` own the visible chrome for `director3d` instead of wrapping the old simplified TapFlow director header/viewport.
+  - embedded StoryAI now initializes and clears its host bridge like the reference app shell, preserving theme/session/panorama/capture message handling hooks.
+- added a TapFlow adapter layer for v2 draft safety:
+  - StoryAI project state hydrates from existing `FlowDirector3dData` and writes edits back through `director3d.storyAiProject`.
+  - persisted draft patches keep structured actors, cameras, shots, and a sanitized StoryAI project snapshot.
+  - unsafe `blob:`, `data:`, base64-like media URLs, and signed/http URL-shaped references are stripped before writing to canvas draft JSON.
+  - StoryAI localStorage scene persistence is disabled in the embedded TapFlow path; server-side flow draft data remains the authoritative canvas state.
+- known boundary for this phase:
+  - StoryAI camera captures and local imports can still use browser `data:`/`blob:` URLs inside the live editor session, but they are cleared from persisted TapFlow draft data.
+  - uploading those captures/imported files into the asset library as durable `/assets` records is a separate follow-up, not part of this replacement pass.
+- validation:
+  - red test observed on 2026-07-07: `npm test -- src/flowCanvas/studios/StoryAiDirectorDesk.test.tsx -t "initializes and clears"` first failed because embedded StoryAI did not initialize the reference host bridge.
+  - `npm test -- src/flowCanvas/studios/StoryAiDirectorDesk.test.tsx -t "initializes and clears"` passed on 2026-07-07: 1 selected test.
+  - `npm test -- src/flowCanvas/studios/StoryAiDirectorDesk.test.tsx src/flowCanvas/studios/ProductionStudioShell.test.tsx scripts/smoke-director-three-viewport.test.ts scripts/smoke-production-studios.test.ts` passed on 2026-07-07: 4 files, 39 tests.
+  - `npm test -- src/flowCanvas/nodes/ProductionNodes.test.tsx src/flowCanvas/utils/director3dNodeData.test.ts src/flowCanvas/utils/directorVideoSync.test.ts src/flowCanvas/utils/storyboardDirectorSync.test.ts src/flowCanvas/utils/storyboardVideoSync.test.ts src/flowCanvas/utils/videoEditorNodeData.test.ts` passed on 2026-07-07: 6 files, 16 tests.
+  - `npm run smoke:director3d` passed on 2026-07-07 with desktop and mobile StoryAI landmarks, nonblank WebGL pixels, safe director patches, and screenshots at `output/playwright/director-viewport-desktop.png` and `output/playwright/director-viewport-mobile.png`.
+  - `npm run smoke:production-studios` passed on 2026-07-07 with `directorStoryAiPatch: true`, `directorPatchSafe: true`, storyboard/video/image production-studio smoke checks intact, and screenshot at `output/playwright/production-studios-smoke.png`.
+  - `npm run build` passed on 2026-07-07 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-07 - Production Studio Draft Backfill Sanitization Phase 78
+
+- closed the remaining C-scheme production-suite draft backfill safety gap:
+  - frontend director-shot image completion now normalizes the whole `director3d` document before writing `generatedAssetId` and `generatedSourceNodeId` back to the source shot.
+  - worker draft output patching now sanitizes source `videoEditor`, `storyboard`, and `director3d` documents before setting exported/composed/generated asset ids.
+  - stale old-draft values such as `blob:`, `data:`, base64 markers, signed/http URLs, URL-shaped preview fields, and file/blob-like payload keys are stripped during output backfill.
+- kept v2 architecture, asset, and billing boundaries unchanged:
+  - no API route, database migration, AI route, model pricing, reserve/settle/refund behavior, or object-storage write path changed.
+  - generated outputs still persist as `/assets` records and production studio draft documents keep asset-id references only.
+- validation:
+  - red test observed on 2026-07-07: `npm test -- src/flowCanvas/runtime/v2WorkflowRunner.test.ts -t "successful director shot image generation writes the result asset back to the director shot|successful storyboard image generation writes the result asset back to the storyboard cell|successful storyboard sheet generation writes the composed asset back to the storyboard node|video editor export syncs the generated asset id back to the source editor node"` first failed because stale director background/actor URL references survived output backfill.
+  - red test observed on 2026-07-07: `npm run test --workspace @aigc-flow/worker -- worker.test.ts -t "draft patch"` first failed because stale video editor, director, storyboard-cell, and storyboard-sheet source documents preserved unsafe media references.
+  - `npm test -- src/flowCanvas/runtime/v2WorkflowRunner.test.ts -t "successful director shot image generation writes the result asset back to the director shot|successful storyboard image generation writes the result asset back to the storyboard cell|successful storyboard sheet generation writes the composed asset back to the storyboard node|video editor export syncs the generated asset id back to the source editor node"` passed on 2026-07-07: 4 tests.
+  - `npm run test --workspace @aigc-flow/worker -- worker.test.ts -t "draft patch"` passed on 2026-07-07: 4 tests.
+  - `npm test -- src/flowCanvas/runtime/v2WorkflowRunner.test.ts src/flowCanvas/utils/director3dNodeData.test.ts src/flowCanvas/utils/storyboardNodeData.test.ts src/flowCanvas/utils/videoEditorNodeData.test.ts` passed on 2026-07-07: 41 tests.
+  - `npm run test --workspace @aigc-flow/worker -- worker.test.ts` passed on 2026-07-07: 15 tests passed, 16 skipped; local Redis emitted a non-fatal ioredis connection warning on stderr.
+  - `npm run smoke:production-studios` passed on 2026-07-07 with `status: ok`.
+  - `npm run smoke:director3d` passed on 2026-07-07 with desktop and mobile reporting `renderer: "three"` and `ok: true`.
+  - `npm run build` passed on 2026-07-07 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-06 - Production Studio Reference Id Sanitization Phase 77
+
+- tightened production studio draft normalization for unsafe reference ids:
+  - storyboard cell ids plus `sourceNodeId`, `directorCameraId`, and `directorShotId` now reject `blob:`, `data:`, and signed/http URL-shaped values.
+  - director actor/camera/shot ids plus shot `cameraId`, `generatedSourceNodeId`, and `targetStoryboardCellId` now use the same safe reference-id filtering.
+  - user-authored titles/prompts remain plain text fields; asset references still persist only as asset ids.
+- kept v2 architecture and billing boundaries unchanged:
+  - no API route, database migration, provider route, pricing value, worker behavior, workflow execution path, asset write path, or billing mutation changed.
+  - this closes an old-draft / imported-graph safety gap without adding browser-local persistence or storing preview/signed URLs in canvas draft JSON.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/utils/storyboardNodeData.test.ts src/flowCanvas/utils/director3dNodeData.test.ts` first failed because unsafe URL-shaped reference ids were preserved.
+  - `npm test -- src/flowCanvas/utils/storyboardNodeData.test.ts src/flowCanvas/utils/director3dNodeData.test.ts` passed on 2026-07-06: 5 tests.
+  - `npm test -- src/flowCanvas/utils/director3dNodeData.test.ts src/flowCanvas/utils/storyboardNodeData.test.ts src/flowCanvas/utils/storyboardDirectorSync.test.ts src/flowCanvas/utils/storyboardVideoSync.test.ts src/flowCanvas/utils/directorVideoSync.test.ts src/flowCanvas/utils/videoEditorNodeData.test.ts src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx src/flowCanvas/runtime/v2WorkflowRunner.test.ts` passed on 2026-07-06: 121 tests.
+  - `npm run smoke:production-studios` passed on 2026-07-06 with `status: ok`.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-06 - Director Desk Asset Drop Binding Phase 76
+
+- added direct asset-library drop binding for 3D Director Desk scene objects:
+  - actor rows now accept `application/x-tapflow-asset-id` drops, patch the target actor `assetId`, and promote the actor to `image_plane`.
+  - the scene background row accepts the same asset-id drop payload and patches `scene.backgroundAssetId`.
+  - dropping onto a target also selects that target so the inspector follows the user's action.
+- kept v2 persistence, generation, and billing boundaries unchanged:
+  - director state stores only asset ids; preview URLs, signed URLs, `blob:`, and `data:` payloads are ignored by the drop path and remain filtered by director data normalization.
+  - no API route, database migration, provider route, pricing value, worker behavior, image generation route, or billing state changed.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx` first failed because dropping an asset on a director actor did not call `onUpdateNodeData`.
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx` first failed because dropping an asset on the director scene background did not call `onUpdateNodeData`.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx` passed on 2026-07-06: 45 tests.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx scripts/smoke-production-studios.test.ts` passed on 2026-07-06: 74 tests.
+  - `npm run smoke:production-studios` passed on 2026-07-06 with `status: ok`.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-06 - Video Editor Timeline Drop Binding Phase 75
+
+- added direct asset-library drop binding for video editor timeline items:
+  - video/image clips now accept `application/x-tapflow-asset-id` drops and patch the target clip asset id.
+  - audio tracks now accept the same asset-id drop payload and patch the target audio asset id.
+  - dropping onto a timeline item selects that item and clears the other timeline selections.
+- kept v2 persistence, export, and billing boundaries unchanged:
+  - timeline data stores only asset ids; preview URLs, signed URLs, `blob:`, and `data:` values are ignored by the drop path.
+  - no API route, database migration, provider route, pricing value, worker behavior, export route, or billing state changed.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx` first failed because dropping an asset on a video clip did not call `onUpdateNodeData`.
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx` first failed because dropping an asset on an audio track did not call `onUpdateNodeData`.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx` passed on 2026-07-06: 43 tests.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx scripts/smoke-production-studios.test.ts` passed on 2026-07-06: 72 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-06 - Asset Library Drag Payload Phase 74
+
+- completed the asset-library side of storyboard/canvas drag binding:
+  - asset cards now expose a native drag payload using the existing `application/x-tapflow-asset-id` type.
+  - the payload carries only the persisted asset id, with `text/plain` also set to the same id for safe fallback/debug behavior.
+  - media thumbnails themselves remain `draggable={false}` so the existing asset-library marquee selection behavior is preserved.
+- kept v2 persistence and billing boundaries unchanged:
+  - no preview URL, signed URL, `blob:`, `data:`, generated media, API route, database migration, provider route, pricing value, worker behavior, or billing state changed.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/assets/AssetLibraryPage.test.tsx` first failed because asset cards had no native drag payload.
+  - `npm test -- src/assets/AssetLibraryPage.test.tsx` passed on 2026-07-06: 16 tests.
+  - `npm test -- src/assets/AssetLibraryPage.test.tsx src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx scripts/smoke-production-studios.test.ts` passed on 2026-07-06: 86 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-06 - Storyboard Asset Drop Binding Phase 73
+
+- added direct storyboard-cell drop binding for asset-library image references:
+  - storyboard cells now accept the existing `application/x-tapflow-asset-id` drag type.
+  - dropping an asset onto a specific cell patches that target cell and selects it, instead of relying on the current inspector selection.
+  - the studio still ignores preview/text URL payloads and persists only the cleaned `assetId` through the existing storyboard normalizer.
+- kept v2 persistence and billing boundaries unchanged:
+  - no generated media, preview URL, `blob:`, `data:`, or signed URL is stored in draft JSON.
+  - no API route, database migration, provider route, pricing value, billing mutation, or worker behavior changed.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx` first failed because dropping an asset on a storyboard cell did not call `onUpdateNodeData`.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx` passed on 2026-07-06: 41 tests.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx scripts/smoke-production-studios.test.ts` passed on 2026-07-06: 70 tests.
+  - `npm run smoke:production-studios` passed on 2026-07-06 with `status: ok`.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-06 - Production Studios Image Mode Browser Smoke Phase 72
+
+- extended the real-browser production studios smoke to cover the 360°/270° image production mode UI:
+  - the smoke page now mounts the real `ImagePromptActionRow` and shared `MenuSelect` mode control alongside the studio shell checks.
+  - Chromium clicks `360°全景`, verifies the structured `panorama_360` patch, then clicks `主体三面展开` and verifies the `subject_orbit_270` wraparound patch.
+  - the check confirms stale mode params are absent from the opposite mode (`wraparound` absent for panorama, `panorama` absent for subject 270).
+  - the same smoke still verifies `3D导演台`, storyboard sheet creation, video editor export, square output, and placeholder export blocking.
+- kept product behavior unchanged:
+  - this is browser-level QA coverage only; no route, pricing, provider, database, billing, draft persistence, or asset storage behavior changed.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- scripts/smoke-production-studios.test.ts` first failed because the smoke page/check did not include the image production mode UI.
+  - `npm test -- scripts/smoke-production-studios.test.ts` passed on 2026-07-06: 3 tests.
+  - `npm run smoke:production-studios` passed on 2026-07-06 with `imagePanoramaPatch`, `imageSubject270Patch`, and `imageGenerateClick` all true.
+  - `npm test -- scripts/smoke-production-studios.test.ts src/flowCanvas/utils/imageGenerationModes.test.ts src/flowCanvas/nodes/ImagePromptActionRow.test.tsx` passed on 2026-07-06: 10 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-06 - Video Editor Square Output Alignment Phase 71
+
+- aligned the video editor output UI, draft normalization, and FFmpeg render plan with the installed `video.editor.ffmpeg` route capabilities:
+  - `FlowVideoEditorData.resolution` and `normalizeVideoEditorData` now preserve `1080x1080`.
+  - the worker video editor render plan maps `1080x1080` to square 1080p output dimensions.
+  - the video editor studio now exposes compact output preset buttons for `16:9 1080p`, `16:9 720p`, `9:16 1080p`, `9:16 720p`, and `1:1 1080p`.
+- kept billing and asset behavior unchanged:
+  - no API route, database migration, provider route, pricing value, browser persistence, secret exposure, or balance mutation changed.
+  - video editor exports still run through `video.editor.ffmpeg`, `video_generation` pricing, server-side reserve/run/settle/refund, and persisted video assets.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/utils/videoEditorNodeData.test.ts apps/worker/test/video-editor-render-plan.test.ts` first failed because `1080x1080` was normalized/rendered as 1920x1080.
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx` first failed because there was no `选择输出规格 1:1 1080p` control.
+  - `npm test -- src/flowCanvas/utils/videoEditorNodeData.test.ts src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx src/flowCanvas/runtime/v2WorkflowRunner.test.ts apps/worker/test/video-editor-render-plan.test.ts apps/worker/test/video-editor-local-render-service.test.ts apps/worker/test/video-editor-ffmpeg-executor.test.ts` passed on 2026-07-06: 117 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+  - `npm run build --workspace @aigc-flow/worker` passed on 2026-07-06.
+
+## 2026-07-06 - Video Editor Placeholder Export Guard Phase 70
+
+- tightened the video editor export path so unbound placeholder timeline assets cannot enter the paid export flow:
+  - the video editor studio now disables `导出到画布` and shows `请先绑定素材库资产` while any clip/audio still uses a generated `placeholder-image-*`, `placeholder-video-*`, or `placeholder-audio-*` id.
+  - the worker FFmpeg render-plan builder now rejects the same placeholder asset ids as invalid media references, so old drafts or bypassed UI requests fail before local render asset lookup.
+- kept billing and asset persistence boundaries aligned with v2:
+  - no new API route, database migration, provider route, pricing value, local browser persistence, secret exposure, or balance mutation was added.
+  - valid video editor exports still create normal `video.generate` workflow nodes with `video.editor.ffmpeg`, then use the existing server-side reserve/run/settle/refund and persisted asset flow.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx` first failed because placeholder timeline assets still allowed the export button.
+  - red test observed on 2026-07-06: `npm test -- apps/worker/test/video-editor-render-plan.test.ts` first failed because `placeholder-video-1` was accepted as a render asset id.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx src/flowCanvas/runtime/v2WorkflowRunner.test.ts apps/worker/test/video-editor-render-plan.test.ts apps/worker/test/video-editor-local-render-service.test.ts apps/worker/test/video-editor-ffmpeg-executor.test.ts` passed on 2026-07-06: 112 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+  - `npm run build --workspace @aigc-flow/worker` passed on 2026-07-06.
+  - browser smoke passed on 2026-07-06 against `http://127.0.0.1:64043/output/playwright/video-editor-placeholder-smoke.html`: a placeholder-backed video editor rendered `导出到画布` disabled and showed `请先绑定素材库资产`.
+
+## 2026-07-06 - Director 3D Viewport Browser Smoke Phase 69
+
+- added a repeatable real-browser smoke command for the 3D Director Desk viewport:
+  - `npm run smoke:director3d` writes an HTTP-served smoke page under `output/playwright/`, starts a temporary local Vite server, opens it through `@playwright/cli`, and checks the actual WebGL canvas.
+  - the smoke covers desktop `1280x720` and mobile `390x844` viewports.
+  - each run verifies `data-renderer="three"`, actor/camera/shot metadata, WebGL availability, and nonblank pixel samples from the rendered canvas.
+  - screenshots are saved to `output/playwright/director-viewport-desktop.png` and `output/playwright/director-viewport-mobile.png`.
+- kept product behavior unchanged:
+  - this adds a verification script and npm smoke command only; no canvas UX, billing, workflow, asset persistence, provider route, pricing, database schema, or auth behavior changed.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- scripts/smoke-director-three-viewport.test.ts` first failed because the smoke script module did not exist.
+  - debugging note: the first real smoke run failed with `spawn EINVAL`; root cause was Node 24 on Windows failing to spawn `.cmd` files directly, so the smoke script now invokes Windows commands through `cmd.exe` while keeping the Playwright code in `--filename` files.
+  - `npm test -- scripts/smoke-director-three-viewport.test.ts` passed on 2026-07-06: 3 tests.
+  - `npm run smoke:director3d` passed on 2026-07-06, with desktop and mobile both reporting `renderer: "three"` and `ok: true`.
+
+## 2026-07-06 - GPT-Image-2 Four-Line Catalog Verification Phase 68
+
+- added DB-backed model catalog acceptance coverage for the GPT-Image-2 production route set:
+  - the test installs `openai-compatible.gpt-image-2`, `mouxihub.gpt-image-2-line3`, and `mouxihub.gpt-image-2-line4` through the authenticated v2 admin plugin API.
+  - it then verifies `/api/v2/ai/model-catalog/gpt-image-2/routes` returns lines one through four with safe public capabilities for `standard`, `panorama_360`, `wraparound_270`, and `subject_orbit_270`.
+  - the same assertion confirms raw route internals such as `requestConfig` remain absent from the creator-facing model catalog response.
+- kept product behavior unchanged:
+  - this was test coverage only; no provider route, pricing value, database migration, workflow behavior, billing mutation, asset persistence behavior, or frontend model-selection code was changed.
+- validation:
+  - `npm run test --workspace @aigc-flow/api -- ai-model-catalog.test.ts` ran on 2026-07-06 and skipped 4 DB-backed tests because local database test environment was unavailable.
+  - `npm run test --workspace @aigc-flow/api -- ai-plugins.service.test.ts ai-model-catalog.service.test.ts` passed on 2026-07-06: 9 tests.
+  - `npm run test --workspace @aigc-flow/ai-gateway-core -- plugin-registry.test.ts` passed on 2026-07-06: 11 tests.
+  - `npm run build --workspace @aigc-flow/api` passed on 2026-07-06.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-06 - Subject 270 Prompt Semantics Phase 67
+
+- tightened the provider-facing prompt helper for `subject_orbit_270`:
+  - the AI Gateway prompt now explicitly asks for a `270-degree three-panel subject orbit sheet`.
+  - it keeps the existing front / three-quarter / side-back view requirements, while explicitly saying this is a wraparound/unfolded view sheet rather than a single 270-degree camera angle.
+  - this aligns the subject/character 270 mode with the product wording: `270°环绕展开图` / `主体三面展开`, not a camera-angle preset.
+- kept route, billing, and storage behavior unchanged:
+  - no provider route, pricing value, API route, workflow queue behavior, billing mutation, database migration, or asset persistence behavior was changed.
+  - the selected generation mode still flows through the existing route capability, pricing, reserve/run/settle/refund, and asset-persistence paths.
+- validation:
+  - red test observed on 2026-07-06: `npm run test --workspace @aigc-flow/ai-gateway-core -- production-image-prompt.test.ts` first failed because `subject_orbit_270` did not mention 270-degree subject orbit semantics.
+  - `npm run test --workspace @aigc-flow/ai-gateway-core -- production-image-prompt.test.ts runtime.test.ts` passed on 2026-07-06: 64 tests.
+  - `npm run build --workspace @aigc-flow/ai-gateway-core` passed on 2026-07-06.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-06 - Image Production Mode Param Cleanup Phase 66
+
+- tightened image generation mode parameter patches for the 360/270 production modes:
+  - switching back to `standard` now clears stale `panorama` and `wraparound` params from the merged image-node params.
+  - switching between `panorama_360`, `wraparound_270`, and `subject_orbit_270` now keeps those mode-specific params mutually exclusive before draft JSON or workflow metadata serialization.
+  - this keeps UI-selected mode, runtime effect, and billing/preflight semantics aligned: a standard image request no longer carries stale 360/270-shaped metadata from an earlier selection.
+- kept v2 billing and asset boundaries unchanged:
+  - no API route, provider route, pricing value, billing mutation, storage behavior, database migration, or secret exposure was added.
+  - the existing reserve/run/settle/refund workflow remains the only billable path for generated outputs.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/utils/imageGenerationModes.test.ts` first failed because standard mode patches left stale `panorama` and `wraparound` params after object merge.
+  - `npm test -- src/flowCanvas/utils/imageGenerationModes.test.ts src/flowCanvas/utils/imageGenerationModeSupport.test.ts src/flowCanvas/runtime/v2WorkflowRunner.test.ts src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-06: 66 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+  - `git diff --check` passed on 2026-07-06.
+
+## 2026-07-06 - Storyboard Sheet Asset Visibility Phase 65
+
+- surfaced composed storyboard sheet results in the storyboard studio:
+  - when `storyboard.composedAssetId` is present, the storyboard inspector now shows a `合成资产` row with the persisted asset id.
+  - this mirrors the existing director shot `生成资产` and video editor `导出资产` status rows, closing the visible result loop for storyboard sheet composition.
+- kept the v2 asset and billing model unchanged:
+  - no preview URL, signed URL, `blob:`, `data:`, base64 media, API route, worker path, provider route, pricing value, or billing mutation was added.
+  - storyboard sheet generation still creates a normal image workflow node and relies on the existing reserve/run/settle/refund path; the source storyboard stores only the persisted asset id.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "composed storyboard asset"` first failed because the storyboard inspector did not render the composed asset id.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx src/flowCanvas/runtime/v2WorkflowRunner.test.ts src/flowCanvas/utils/storyboardNodeData.test.ts` passed on 2026-07-06: 98 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+  - `git diff --check` passed on 2026-07-06.
+
+## 2026-07-06 - Storyboard Draft Asset Normalization Phase 64
+
+- tightened storyboard draft normalization for asset-backed cells and composed storyboard sheets:
+  - `normalizeStoryboardData` now rejects transient media references in `assetId`, `sourceAssetId`, and `composedAssetId`.
+  - text fields such as title/prompt remain normal trimmed strings, while asset-reference fields must stay recoverable asset identifiers.
+  - patching a storyboard cell continues to preserve safe asset ids but no longer re-persist old `blob:`, `data:`, or signed/http URL values from malformed drafts.
+- kept workflow, billing, and asset persistence unchanged:
+  - storyboard editing remains a free structured-draft operation.
+  - shot generation and storyboard sheet composition still create normal image workflow nodes and use the existing reserve/run/settle/refund path.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/utils/storyboardNodeData.test.ts` first failed because `composedAssetId` and cell asset fields accepted transient URL-like values.
+  - `npm test -- src/flowCanvas/utils/storyboardNodeData.test.ts src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx src/flowCanvas/utils/storyboardVideoSync.test.ts src/flowCanvas/utils/storyboardDirectorSync.test.ts` passed on 2026-07-06: 71 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+  - `git diff --check` passed on 2026-07-06.
+
+## 2026-07-06 - Director Desk Draft Normalization Phase 63
+
+- centralized safe normalization for `director3d` draft data:
+  - added `normalizeDirector3dData` to sanitize scene, actor, camera, shot, camera snapshot, generated asset, and source-node metadata.
+  - strips transient media references such as `blob:`, `data:`, and signed/http URLs from director scene backgrounds, actor assets, and generated shot asset fields.
+  - clamps malformed numeric camera/actor/shot values back to safe finite defaults before they can be written back into the flow draft.
+- connected the production studio shell to the shared normalizer:
+  - director desk reads normalized data when rendering.
+  - every director desk `onUpdateNodeData` patch now normalizes the outgoing `director3d` document, so editing an old malformed draft does not re-persist unsafe media references.
+- kept billing and asset boundaries unchanged:
+  - no API route, database migration, provider route, pricing value, workflow execution, or billing mutation was added.
+  - director editing remains free local/studio draft editing; paid image/video output still uses the existing workflow and asset pipeline.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/utils/director3dNodeData.test.ts` first failed because the shared normalizer module did not exist.
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "malformed director drafts"` first failed because old `https:`, `blob:`, and `data:` director fields were written back during an actor edit.
+  - `npm test -- src/flowCanvas/utils/director3dNodeData.test.ts src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/studios/DirectorDeskThreeViewport.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-06: 68 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+  - `git diff --check` passed on 2026-07-06.
+
+## 2026-07-06 - MouxiHub GPT-Image Production Mode Capabilities Phase 62
+
+- published production image generation capabilities for the MouxiHub GPT-Image-2 async lines:
+  - `image.gpt-image-2.line3` now declares `standard`, `panorama_360`, `wraparound_270`, and `subject_orbit_270` in `requestConfig.capabilities.supportedGenerationModes`.
+  - `image.gpt-image-2.line4` now declares the same generation mode capabilities.
+  - this lets the existing model catalog, canvas mode selector, frontend preflight, and backend workflow guard treat lines three/four consistently with existing GPT-Image-2 lines when pricing is installed.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - no new billing unit, pricing value, provider credential, frontend hardcoding, draft media storage, API route, database migration, worker behavior, or provider-secret exposure was added.
+  - generation modes remain route capabilities and are still gated by existing route pricing and workflow reserve/settle/refund paths.
+- validation:
+  - red test observed on 2026-07-06: `npm run test --workspace @aigc-flow/ai-gateway-core -- plugin-registry.test.ts` first failed because MouxiHub GPT-Image-2 line three/four manifests did not declare `supportedGenerationModes`.
+  - `npm run test --workspace @aigc-flow/ai-gateway-core -- plugin-registry.test.ts` passed on 2026-07-06: 11 tests.
+  - `npm run test --workspace @aigc-flow/api -- ai-plugins.service.test.ts ai-model-catalog.service.test.ts` passed on 2026-07-06: 9 tests.
+  - `npm run build --workspace @aigc-flow/ai-gateway-core` passed on 2026-07-06.
+  - `npm run build --workspace @aigc-flow/api` passed on 2026-07-06.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-06 - Worker Storyboard Draft Patch Phase 61
+
+- made storyboard image results durable from the worker draft patch path:
+  - `params.storyboard.sourceStoryboardNodeId` plus `params.storyboard.cellId` now patches the matching source storyboard cell with `assetId`, `sourceAssetId`, and `sourceNodeId`.
+  - `params.storyboardSheet.sourceStoryboardNodeId` now patches the source storyboard with `composedAssetId`.
+  - this mirrors the active frontend runtime sync so storyboard shot images and composed storyboard sheets survive even when the browser is not connected to receive workflow events.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - no signed URL, preview URL, local file path, `blob:`, `data:`, base64, direct asset write, billing mutation, API route, database migration, provider route, pricing change, or provider-secret exposure was added.
+  - the worker patch stores only persisted asset identifiers in the canvas draft.
+- validation:
+  - red tests observed on 2026-07-06: `npm run test --workspace @aigc-flow/worker -- worker.test.ts -t "storyboard .* draft patch"` first failed because source storyboard cells and sheet metadata were not patched from successful image outputs.
+  - `npm run test --workspace @aigc-flow/worker -- worker.test.ts -t "draft patch|video editor|director shot"` passed on 2026-07-06: 8 tests.
+  - `npm run build --workspace @aigc-flow/worker` passed on 2026-07-06.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-06 - Worker Director Shot Draft Patch Phase 60
+
+- made director shot generated assets durable from the worker draft patch path:
+  - `applyDraftOutputPatchToNodes` now reads `params.director3d.sourceDirectorNodeId` and `params.director3d.shotId` from successful image generation nodes.
+  - when the target image node output is patched into `flow_drafts.graph_json`, the matching source `director3d.shots[]` entry also receives `generatedAssetId` and `generatedSourceNodeId`.
+  - this mirrors the active frontend runtime sync so director shot results survive even when the browser is not connected to receive workflow events.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - no signed URL, preview URL, local file path, render temp path, `blob:`, `data:`, base64, direct asset write, billing mutation, API route, database migration, provider route, pricing change, or provider-secret exposure was added.
+  - the worker patch stores only persisted asset identifiers in the canvas draft.
+- validation:
+  - red test observed on 2026-07-06: `npm run test --workspace @aigc-flow/worker -- worker.test.ts -t "director shot image draft patch"` first failed because the source director shot did not receive `generatedAssetId`.
+  - `npm run test --workspace @aigc-flow/worker -- worker.test.ts -t "draft patch|video editor"` passed on 2026-07-06: 6 tests.
+  - `npm run build --workspace @aigc-flow/worker` passed on 2026-07-06.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-06 - Director Shot Asset Sync Phase 59
+
+- closed the 3D Director Desk shot synthesis result loop in the frontend runtime:
+  - successful `image.generate` nodes carrying `params.director3d.sourceDirectorNodeId` and `params.director3d.shotId` now write the returned primary asset id back to the matching director shot as `generatedAssetId`.
+  - the source shot also records `generatedSourceNodeId` so the canvas can trace which downstream image node produced the latest shot result.
+  - the director inspector now shows the generated shot asset id when a shot segment is selected.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - no browser-local generation, direct asset write, signed URL persistence, preview URL persistence, `blob:`, `data:`, base64, API route, database migration, worker behavior, provider route, pricing change, or provider-secret exposure was added.
+  - the shot image is still produced by the existing workflow/worker asset pipeline and billing path; the director node stores only persisted asset identifiers.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/runtime/v2WorkflowRunner.test.ts -t "successful director shot"` first failed because successful director shot generation did not write `generatedAssetId` to the source shot.
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "generated asset id"` first failed because the director shot inspector did not render the generated asset id.
+  - `npm test -- src/flowCanvas/runtime/v2WorkflowRunner.test.ts src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx src/flowCanvas/utils/storyboardDirectorSync.test.ts` passed on 2026-07-06: 98 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-06 - Storyboard Sheet Asset Sync Phase 58
+
+- closed the storyboard sheet composition result loop in the frontend runtime:
+  - successful `image.generate` nodes carrying `params.storyboardSheet.sourceStoryboardNodeId` now write the returned primary asset id back to the source storyboard as `storyboard.composedAssetId`.
+  - the existing per-cell storyboard asset sync remains unchanged for `params.storyboard` generation nodes.
+  - the source storyboard update uses the shared storyboard normalizer and stores only the persisted asset id.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - no browser-local generation, direct asset write, signed URL persistence, preview URL persistence, `blob:`, `data:`, base64, API route, database migration, worker behavior, provider route, pricing change, or provider-secret exposure was added.
+  - the composed sheet image is still produced by the existing workflow/worker asset pipeline and billing path.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/runtime/v2WorkflowRunner.test.ts -t "storyboard sheet generation"` first failed because successful sheet generation did not write `composedAssetId` to the source storyboard.
+  - `npm test -- src/flowCanvas/runtime/v2WorkflowRunner.test.ts -t "storyboard"` passed on 2026-07-06: 2 selected tests.
+  - `npm test -- src/flowCanvas/runtime/v2WorkflowRunner.test.ts src/flowCanvas/utils/storyboardNodeData.test.ts src/flowCanvas/utils/storyboardVideoSync.test.ts` passed on 2026-07-06: 36 tests.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx src/flowCanvas/utils/storyboardDirectorSync.test.ts` passed on 2026-07-06: 65 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-06 - Production Image Mode Backend Capability Guard Phase 57
+
+- added a server-side workflow run guard for production image generation modes:
+  - `image.generate` nodes now read `generationMode` from top-level config or `params.generationMode`.
+  - `panorama_360`, `wraparound_270`, and `subject_orbit_270` are allowed only when the selected route/model capabilities explicitly include the requested mode.
+  - unsupported production image modes fail closed with `UNSUPPORTED_GENERATION_MODE` before workflow run enqueue/reserve execution continues.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - no frontend-only trust, browser-local generation, direct asset write, pricing fallback bypass, provider route mutation, database migration, worker behavior, or provider-secret exposure was added.
+  - standard image generation remains allowed by default; production modes still require route capability plus existing pricing checks before billable execution.
+- validation:
+  - red test observed on 2026-07-06: `npm run test --workspace @aigc-flow/api -- workflow-pricing-resolver.test.ts` first failed because unsupported `panorama_360` image requests were not rejected by `assertNodeRouteSupportsRuntimeRequest`.
+  - `npm run test --workspace @aigc-flow/api -- workflow-pricing-resolver.test.ts` passed on 2026-07-06: 13 tests.
+  - `npm run test --workspace @aigc-flow/api -- workflow-pricing-resolver.test.ts workflow-runs.test.ts ai-model-catalog.service.test.ts ai-gateway.service.test.ts` passed on 2026-07-06: 15 tests, with DB-backed `workflow-runs.test.ts` skipped because local `DATABASE_URL` was unavailable.
+  - `npm run test --workspace @aigc-flow/ai-gateway-core -- production-image-prompt.test.ts plugin-registry.test.ts` passed on 2026-07-06: 15 tests.
+  - `npm test -- src/flowCanvas/utils/imageGenerationModeSupport.test.ts src/flowCanvas/runtime/v2WorkflowRunner.test.ts` passed on 2026-07-06: 34 tests.
+  - `npm run build --workspace @aigc-flow/api` passed on 2026-07-06.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-06 - Storyboard Image Generation Auto Run Phase 56
+
+- connected storyboard image-producing actions to the existing v2 workflow execution path:
+  - `生成选中镜头`, `生成全部镜头`, and `合成故事板图` now mark their generated image nodes with `runAfterCreate`.
+  - `AiFlowCanvas` creates each storyboard image node and immediately calls `runBackendWorkflow({ runMode: 'target_node', targetNodeId })` for the new node.
+  - storyboard image nodes still carry structured `params.storyboard` or `params.storyboardSheet` metadata with source storyboard ids, cell ids, shot numbers, aspect, and asset-id references.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - no browser-local generation, direct asset write, free execution path, API route, database migration, worker behavior, provider route, or provider-secret exposure was added.
+  - generated media is still produced by the existing workflow/worker asset pipeline and billing reserve/settle/refund path, not by canvas draft JSON.
+- validation:
+  - red tests observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "storyboard"` and `npm test -- src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx -t "storyboard"` first failed because storyboard image requests did not include `runAfterCreate` and did not call `runBackendWorkflow`.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "storyboard"` passed on 2026-07-06: 8 selected tests.
+  - `npm test -- src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx -t "storyboard"` passed on 2026-07-06: 9 selected tests.
+
+## 2026-07-06 - Director Desk Image Synthesis Auto Run Phase 55
+
+- connected `3D导演台` shot synthesis to the existing v2 workflow execution path:
+  - director desk `合成到画布` requests now mark their generated image node with `runAfterCreate`.
+  - `AiFlowCanvas` creates the shot image node and immediately calls `runBackendWorkflow({ runMode: 'target_node', targetNodeId })` for that new node.
+  - the shot image node still carries structured `params.director3d` scene, camera, lens, lighting, actor, and source-shot metadata, so image generation remains asset-backed and workflow-driven.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - no browser-local generation, direct asset write, free execution path, API route, database migration, worker behavior, provider route, or provider-secret exposure was added.
+  - generated media is still produced by the existing workflow/worker asset pipeline and billing reserve/settle/refund path, not by canvas draft JSON.
+- validation:
+  - red tests observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "downstream image node from the selected director shot"` and `npm test -- src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx -t "downstream image node from a director shot"` first failed because director shot image requests did not include `runAfterCreate` and did not call `runBackendWorkflow`.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx src/flowCanvas/utils/storyboardDirectorSync.test.ts` passed on 2026-07-06: 65 tests.
+  - `npm test -- src/flowCanvas/runtime/v2WorkflowRunner.test.ts src/flowCanvas/utils/videoEditorNodeData.test.ts src/flowCanvas/utils/storyboardVideoSync.test.ts` passed on 2026-07-06: 35 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-06 - Video Editor Export Inspector Status Phase 54
+
+- surfaced completed video editor exports in the studio UI:
+  - the video editor inspector now shows a `导出资产` row when `videoEditor.exportedAssetId` is available.
+  - the row displays only the persisted asset id, matching the asset-backed draft contract.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - no generated media, signed URL, preview URL, `blob:`, `data:`, base64, browser-local export, direct asset write, billing mutation, API route, database migration, worker behavior, provider route, or provider-secret exposure was added.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "latest exported video asset"` first failed because the inspector did not render the exported asset row.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "latest exported video asset"` passed on 2026-07-06: 1 selected test.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/runtime/v2WorkflowRunner.test.ts src/flowCanvas/utils/videoEditorNodeData.test.ts` passed on 2026-07-06: 68 tests.
+  - `npm test -- src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx -t "export"` passed on 2026-07-06: 1 selected test.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-06 - Video Editor Frontend Export Sync Phase 53
+
+- made completed video editor exports visible immediately in the active canvas session:
+  - when a `video.generate` export node succeeds, the runtime still applies the generated asset patch to the export video node.
+  - if the export node carries `params.videoEditor.sourceVideoEditorNodeId`, the source `video_editor` node now receives `videoEditor.exportedAssetId` without waiting for a page refresh.
+  - the update reuses the shared video editor normalizer so the source editor draft keeps asset-id based structured data only.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - no browser-local export, direct asset write, free execution path, API route, database migration, worker route, provider route, or provider-secret exposure was added.
+  - runtime preview/poster signed URLs remain in runtime output or the generated video node; the source `video_editor` document only stores `exportedAssetId`.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/runtime/v2WorkflowRunner.test.ts -t "video editor export syncs"` first failed because the source `video_editor` node did not receive `exportedAssetId`.
+  - `npm test -- src/flowCanvas/runtime/v2WorkflowRunner.test.ts -t "video editor export syncs"` passed on 2026-07-06: 1 selected test.
+  - `npm test -- src/flowCanvas/runtime/v2WorkflowRunner.test.ts src/flowCanvas/utils/videoEditorNodeData.test.ts` passed on 2026-07-06: 32 tests.
+  - `npm test -- src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx -t "export"` passed on 2026-07-06: 1 selected test.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-06 - Video Editor Export Asset Backfill Phase 52
+
+- closed the video editor export result loop in the worker draft patch path:
+  - successful `video.generate` export nodes still receive the normal generated asset patch.
+  - when the export request carries `params.videoEditor.sourceVideoEditorNodeId`, the source `video_editor` node now receives `videoEditor.exportedAssetId`.
+  - the shared draft-node patch helper writes only asset ids and structured status fields back into canvas draft data.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - no browser-local export, direct asset write, free execution path, API route, database migration, provider route, or provider-secret exposure was added.
+  - exported media still comes from the existing worker asset pipeline and billing usage path.
+  - source video editor draft data does not receive `blob:`, `data:`, http URLs, base64, local file paths, or render temp paths.
+- validation:
+  - red test observed on 2026-07-06: `npm run test --workspace @aigc-flow/worker -- worker.test.ts -t "video editor export draft patch"` first failed because the draft patch helper did not exist.
+  - `npm run test --workspace @aigc-flow/worker -- worker.test.ts -t "video editor export draft patch"` passed on 2026-07-06: 1 selected test.
+  - `npm run test --workspace @aigc-flow/worker -- worker.test.ts -t "video editor"` passed on 2026-07-06: 5 selected tests.
+  - `npm run test --workspace @aigc-flow/worker -- video-editor-render-plan.test.ts video-editor-local-render-service.test.ts video-editor-ffmpeg-executor.test.ts` passed on 2026-07-06: 14 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+  - the database-backed worker export test was extended with a `flow_drafts` assertion, but local DB integration tests are skipped when `DATABASE_URL` is unavailable.
+
+## 2026-07-06 - Video Editor Export Auto Run Phase 51
+
+- connected video editor export to the existing v2 workflow execution path:
+  - video editor `导出到画布` requests now mark their generated video node with `runAfterCreate`.
+  - `AiFlowCanvas` creates the export video node and immediately calls `runBackendWorkflow({ runMode: 'target_node', targetNodeId })` for that new node.
+  - the export node still carries `routeKey: video.editor.ffmpeg` plus structured `params.videoEditor` timeline data, so reserve/run/settle/refund and route capability checks remain on the existing backend path.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - no browser-local export, direct asset write, free execution path, API route, database migration, worker behavior, provider route, or provider-secret exposure was added.
+  - exported media is still produced by the existing workflow/worker asset pipeline, not by canvas draft JSON.
+- validation:
+  - red tests observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx -t "export"` first failed because export requests did not include `runAfterCreate` and did not call `runBackendWorkflow`.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx -t "export"` passed on 2026-07-06: 2 selected tests.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx src/flowCanvas/utils/videoEditorNodeData.test.ts src/flowCanvas/utils/storyboardVideoSync.test.ts src/flowCanvas/runtime/v2WorkflowRunner.test.ts` passed on 2026-07-06: 95 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-06 - Video Editor Draft Data Normalization Phase 50
+
+- added a shared video editor draft normalization utility for the production suite:
+  - normalizes clips, audio, subtitles, transitions, transforms, storyboard source metadata, aspect, resolution, and exported asset references into a safe `FlowVideoEditorData` document.
+  - strips transient preview/download/media fields such as `blob:`, `data:`, and signed/http URLs from video editor draft data.
+  - centralizes timeline duration helpers so the studio and storyboard-to-video sync use the same clip/audio/subtitle timing semantics.
+  - keeps explicit draft `durationMs` when reading old documents, while editor mutations recalculate duration from current timeline content.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - this only normalizes existing structured canvas draft data and preserves asset-id based media references.
+  - no generated media, browser-local export, direct asset write, billing mutation, API route, database migration, worker behavior, provider route, or provider-secret exposure was added.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/utils/videoEditorNodeData.test.ts` first failed because the shared video editor normalization utility did not exist.
+  - `npm test -- src/flowCanvas/utils/videoEditorNodeData.test.ts` passed on 2026-07-06: 2 tests.
+  - `npm test -- src/flowCanvas/utils/videoEditorNodeData.test.ts src/flowCanvas/utils/storyboardVideoSync.test.ts src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-06: 66 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-06 - Storyboard To Video Editor Subtitle Sync Phase 49
+
+- extended the storyboard-to-video editor sync so storyboard cells now also produce aligned subtitles:
+  - subtitles are derived from storyboard cell title first, then prompt text if title is missing.
+  - each generated subtitle carries structured storyboard source metadata (`sourceStoryboardNodeId`, `storyboardCellId`, `storyboardShotNo`).
+  - resyncing the same storyboard source replaces old same-source subtitles instead of duplicating them.
+  - the video editor timeline duration now reflects the synced subtitle end time as well as the clips.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - this only reshapes existing structured canvas draft data.
+  - no signed URL, preview URL, `blob:`, `data:`, base64, generated media, browser-local export, direct asset write, billing mutation, API route, database migration, worker behavior, or provider-secret exposure was added.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/utils/storyboardVideoSync.test.ts` first failed because storyboard sync did not generate aligned subtitles or replace stale same-source subtitles.
+  - `npm test -- src/flowCanvas/utils/storyboardVideoSync.test.ts` passed on 2026-07-06: 3 tests.
+  - `npm test -- src/flowCanvas/utils/storyboardVideoSync.test.ts src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-06: 64 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-06 - Director Desk Asset Viewport Metadata Phase 48
+
+- made asset-backed `3D导演台` state visible in the director viewport layer:
+  - `DirectorDeskThreeViewport` now receives the director scene metadata.
+  - the viewport exposes data attributes for asset-backed visible actors and bound scene background asset ids.
+  - a compact non-interactive viewport HUD shows the bound background asset id and asset-backed actor count, so asset binding is visible beyond the inspector fields.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - this is a read-only visualization of existing structured `director3d` draft metadata.
+  - no signed URL, preview URL, `blob:`, `data:`, base64, generated media, browser-local export, direct asset write, billing mutation, API route, database migration, worker behavior, or provider-secret exposure was added.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/DirectorDeskThreeViewport.test.tsx -t "asset-backed actor"` first failed because the viewport exposed no asset actor/background metadata.
+  - `npm test -- src/flowCanvas/studios/DirectorDeskThreeViewport.test.tsx -t "asset-backed actor"` passed on 2026-07-06: 1 selected test.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "asset-backed director scene metadata"` passed on 2026-07-06: 1 selected test.
+  - `npm test -- src/flowCanvas/studios/DirectorDeskThreeViewport.test.tsx src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-06: 3 files, 65 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-06 - Director Desk Scene Background Asset Binding Phase 47
+
+- connected the `3D导演台` scene background to the v2 asset library:
+  - the director object list now includes a selectable `场景背景` row.
+  - selecting the scene background loads image asset candidates from `listAssets`.
+  - binding a candidate updates only `director3d.scene.backgroundAssetId`.
+  - the Three.js viewport selection type now accepts the scene-background selection metadata used by the studio shell.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - the picker requests candidates with `includePreviewUrls: false`.
+  - no signed URL, preview URL, `blob:`, `data:`, base64, generated media, browser-local export, direct asset write, billing mutation, API route, database migration, worker behavior, or provider-secret exposure was added.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "director scene background"` first failed because there was no selectable scene background entry.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "director scene background"` passed on 2026-07-06: 1 selected test.
+  - `npm test -- src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx -t "scene background asset"` passed on 2026-07-06: 1 selected test.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-06: 2 files, 60 tests.
+  - `npm test -- src/flowCanvas/studios/DirectorDeskThreeViewport.test.tsx src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-06: 3 files, 63 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-06 - Director Desk Actor Asset Binding Phase 46
+
+- connected selected `3D导演台` actors to the v2 asset library:
+  - selecting an actor now loads image asset candidates from `listAssets`.
+  - binding a candidate updates only that actor's `assetId` and switches the actor kind to `image_plane`.
+  - the canvas store path now preserves the same asset-backed actor metadata when the studio is opened from the real canvas event.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - the picker requests candidates with `includePreviewUrls: false`.
+  - no signed URL, preview URL, `blob:`, `data:`, base64, generated media, browser-local export, direct asset write, billing mutation, API route, database migration, worker behavior, or provider-secret exposure was added.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "binds selected director actors"` first failed because director actor selection did not call `listAssets`.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "binds selected director actors"` passed on 2026-07-06: 1 selected test.
+  - `npm test -- src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx -t "director actor asset"` passed on 2026-07-06: 1 selected test.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-06: 2 files, 58 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-06 - Storyboard Generation Result Sync Phase 45
+
+- closed the storyboard generation loop:
+  - image nodes created from storyboard cells already carry `params.storyboard.sourceStoryboardNodeId` and `cellId`.
+  - when a matching image generation run succeeds, the runner now writes the returned primary asset id back to that storyboard cell.
+  - the cell also records `sourceNodeId` and `sourceAssetId` so downstream storyboard sheet composition and storyboard-to-video-editor sync stay asset-backed.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - no generated media, signed URL, preview URL, `blob:`, `data:`, base64, browser-local export, direct asset write, billing mutation, API route, database migration, worker behavior, or provider-secret exposure was added.
+  - the billable generation path remains the existing server-side reserve/run/settle workflow.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/runtime/v2WorkflowRunner.test.ts -t "storyboard image generation"` first failed because the generated image asset did not update the storyboard cell.
+  - `npm test -- src/flowCanvas/runtime/v2WorkflowRunner.test.ts -t "storyboard image generation"` passed on 2026-07-06: 1 selected test.
+  - `npm test -- src/flowCanvas/runtime/v2WorkflowRunner.test.ts` passed on 2026-07-06: 29 tests.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-06: 2 files, 56 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-06 - Storyboard Asset Binding Phase 44
+
+- connected selected `故事板` cells to the v2 asset library:
+  - selected storyboard cells now load image asset candidates from `listAssets`.
+  - binding a candidate writes only the selected cell `assetId`.
+  - existing storyboard sheet composition and storyboard-to-video-editor sync can now be driven from asset-backed cells created inside the storyboard studio.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - the picker requests candidates with `includePreviewUrls: false`.
+  - no signed URL, preview URL, `blob:`, `data:`, base64, generated media, browser-local export, direct asset write, billing mutation, API route, database migration, worker behavior, or provider-secret exposure was added.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "storyboard cell to a library"` first failed because storyboard did not call `listAssets`.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "storyboard cell to a library"` passed on 2026-07-06: 1 selected test.
+  - `npm test -- src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx -t "storyboard cell asset binding"` passed on 2026-07-06: 1 selected test.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-06: 2 files, 56 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-06 - Video Editor Asset Binding Phase 43
+
+- connected selected `剪辑工程` video clips and audio tracks to the v2 asset library:
+  - selected image/video clips now load same-kind asset candidates from `listAssets`.
+  - selected audio tracks now load audio asset candidates from `listAssets`.
+  - candidate binding updates only `videoEditor.timeline.clips[].assetId` or `videoEditor.timeline.audio[].assetId`.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - the picker requests candidates with `includePreviewUrls: false`.
+  - no signed URL, preview URL, `blob:`, `data:`, base64, generated media, browser-local export, direct asset write, billing mutation, API route, database migration, worker behavior, or provider-secret exposure was added.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "binds a selected"` first failed because the video editor did not call `listAssets`.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "binds a selected"` passed on 2026-07-06: 2 selected tests.
+  - `npm test -- src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx -t "asset binding"` passed on 2026-07-06: 2 selected tests.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-06: 2 files, 54 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-06 - Video Editor Clip Audio Controls Phase 42
+
+- exposed video-clip source audio controls in the `剪辑工程` studio:
+  - selected video clips now show a `片段静音` checkbox.
+  - selected video clips now show a bounded `片段音量` control matching the worker export volume range.
+  - image clips remain unchanged and do not show video-only audio controls.
+- connected the controls to safe structured `videoEditor.timeline.clips[]` draft patches so Phase 41 FFmpeg clip-audio mixing can be driven from the studio UI.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - no generated media, `blob:`, `data:`, base64, browser-local export, direct asset write, billing mutation, API route, database migration, worker behavior, or provider-secret exposure was added.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "video clip audio settings"` first failed because `片段静音` was not available.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "video clip audio settings"` passed on 2026-07-06: 1 selected test.
+  - `npm test -- src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx -t "video clip audio settings"` passed on 2026-07-06: 1 selected test.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-06: 2 files, 50 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-06 - Video Editor FFmpeg Clip Audio Mix Phase 41
+
+- improved `剪辑工程` FFmpeg export so unmuted video clips with explicit clip volume now contribute their source audio to the final mix.
+- standalone audio tracks and video clip audio are delayed by their timeline `startMs`, gain-adjusted by their structured `volume`, and mixed into the same `[aout]` stream.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - this only changes worker-local FFmpeg argument construction for the existing `video.editor.ffmpeg` route.
+  - no new route, pricing shortcut, direct asset write, browser-local export, database migration, API surface, or provider credential exposure was added.
+  - legacy video clips without explicit `volume` keep the previous behavior to avoid referencing missing source audio streams.
+- validation:
+  - red test observed on 2026-07-06: `npm run test --workspace @aigc-flow/worker -- video-editor-ffmpeg-executor.test.ts -t "mixes unmuted"` first failed because the FFmpeg filter only mixed standalone audio tracks.
+  - `npm run test --workspace @aigc-flow/worker -- video-editor-ffmpeg-executor.test.ts video-editor-render-plan.test.ts` passed on 2026-07-06: 2 files, 11 tests.
+  - `npm run build --workspace @aigc-flow/worker` passed on 2026-07-06.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-06 - Video Editor Audio Track Editing Phase 40
+
+- added selected-audio editing to the `剪辑工程` studio:
+  - users can add an audio track from the studio toolbar.
+  - audio timeline rows are selectable and expose start time, duration, and volume controls in the inspector.
+  - selected audio can be deleted while timeline duration is recalculated across clips, audio, and subtitles.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - edits persist only as structured `videoEditor.timeline.audio[]` draft data.
+  - no generated media, `blob:`, `data:`, base64, browser-local export, direct asset write, billing mutation, API route, database migration, worker behavior, or provider-secret exposure was added.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "audio track"` first failed because there was no accessible `添加音频` action.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "audio track"` passed on 2026-07-06: 1 selected test.
+  - `npm test -- src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx -t "audio track"` passed on 2026-07-06: 1 selected test.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-06: 2 files, 48 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-06 - Video Editor Subtitle Store Coverage Phase 39
+
+- added canvas-store regression coverage for selected subtitle editing in `剪辑工程`:
+  - the test opens the video editor studio from the real canvas event path.
+  - it verifies subtitle text edits, start-time edits, and subtitle deletion persist back into the canvas node data.
+  - it keeps the existing safe-data assertion that `videoEditor` patches do not introduce `blob:` or `data:` URLs.
+- kept product/runtime boundaries unchanged:
+  - no production behavior, asset write path, billing path, API route, database migration, worker behavior, or provider-secret surface changed in this slice.
+  - this Phase documents that the Phase 38 subtitle UI also works through the canvas store persistence path.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx -t "selected video subtitle"` first failed because the fixture had no subtitle row to select.
+  - `npm test -- src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx -t "selected video subtitle"` passed on 2026-07-06: 1 selected test.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-06: 2 files, 46 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-06 - Video Editor Subtitle Editing Phase 38
+
+- added selected-subtitle editing to the `剪辑工程` studio:
+  - subtitle timeline items are now selectable controls instead of read-only labels.
+  - the right inspector can edit the selected subtitle text, start time, and end time.
+  - selected subtitles can be deleted while preserving the existing timeline duration calculation across clips and subtitles.
+- kept v2 safety, billing, and asset boundaries unchanged:
+  - edits persist only as structured `videoEditor.timeline.subtitles[]` draft data.
+  - no generated media, `blob:`, `data:`, base64, browser-local export, direct asset write, billing mutation, API route, database migration, worker behavior, or provider-secret exposure was added.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "selected subtitle"` failed because subtitle rows had no accessible selection control.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "selected subtitle"` passed on 2026-07-06: 1 selected test.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-06: 2 files, 45 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-06 - 3D Director Desk Shot Viewport Phase 37
+
+- connected the `3D导演台` Three.js viewport to the existing shot timeline data:
+  - `DirectorDeskThreeViewport` now receives `director3d.shots` alongside actors and cameras.
+  - captured `cameraSnapshot` poses are visualized as shot markers and target lines, with selected shots highlighted separately from static camera markers.
+  - the viewport exposes selected-shot metadata for regression coverage and shows the captured snapshot/camera label in the viewport overlay.
+- kept v2 storage, billing, and asset boundaries unchanged:
+  - this is a read-only studio visualization of already persisted structured `director3d` draft data.
+  - no generated media, `blob:`, `data:`, base64, browser-local export, direct asset write, billing mutation, API route, database migration, worker behavior, or provider-secret exposure was added.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/DirectorDeskThreeViewport.test.tsx src/flowCanvas/studios/ProductionStudioShell.test.tsx` failed because the viewport exposed no `data-shot-count` or selected-shot metadata.
+  - `npm test -- src/flowCanvas/studios/DirectorDeskThreeViewport.test.tsx src/flowCanvas/studios/ProductionStudioShell.test.tsx` passed on 2026-07-06: 2 files, 28 tests.
+  - browser smoke against a temporary shot-aware director viewport page passed on 2026-07-06: renderer `three`, shot count `2`, selected shot `shot-2`, selected snapshot position `1.5,2.25,4.75`, screenshot pixel sampling nonblank at `1580x889`.
+  - `npm run build --workspace @aigc-flow/worker` passed on 2026-07-06.
+  - `npm test -- src/flowCanvas/studios/DirectorDeskThreeViewport.test.tsx src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx src/flowCanvas/utils/storyboardDirectorSync.test.ts` passed on 2026-07-06: 4 files, 49 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-06 - Video Editor FFmpeg Transition Filters Phase 36
+
+- moved `剪辑工程` transition support from metadata into local FFmpeg render arguments:
+  - single-clip `fade` transitions now emit `fade=t=out` video filters with safe computed start/duration values.
+  - adjacent `crossfade` transitions now emit chained `xfade=transition=fade` filters and avoid plain `concat` for transitioned pairs.
+  - no-transition timelines keep the existing deterministic concat/export behavior.
+- kept v2 billing and asset boundaries unchanged:
+  - this only changes worker-local render filter construction for the existing `video.editor.ffmpeg` route.
+  - no new route, pricing shortcut, direct asset write, browser-local export, database migration, provider credential surface, or frontend-visible secret was added.
+- validation:
+  - red test observed on 2026-07-06: `npm run test --workspace @aigc-flow/worker -- video-editor-ffmpeg-executor.test.ts` failed because generated filters still used plain `concat` and had no `fade` / `xfade`.
+  - `npm run test --workspace @aigc-flow/worker -- video-editor-ffmpeg-executor.test.ts` passed on 2026-07-06: 1 file, 6 tests.
+  - `npm run test --workspace @aigc-flow/worker -- video-editor-ffmpeg-executor.test.ts video-editor-render-plan.test.ts worker.test.ts` passed on 2026-07-06: 3 files, 21 tests run with existing filtered/skipped tests.
+  - `npm run build --workspace @aigc-flow/worker` passed on 2026-07-06.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-06 - Video Editor Clip Transition Metadata Phase 35
+
+- added the first canvas-native transition controls to `剪辑工程`:
+  - selected clips can now set `无转场`, `淡入淡出`, or `叠化`, with editable transition duration in seconds.
+  - transition edits persist as safe structured `timeline.clips[].transitionOut` metadata and are preserved when exporting the video editor timeline to a runnable video node.
+  - the worker video-editor render plan and video request metadata now preserve `fade` / `crossfade` transition metadata for the existing `video.editor.ffmpeg` export route.
+- kept v2 safety and billing boundaries unchanged:
+  - this commit defines and carries transition metadata only; it does not add a new route, pricing shortcut, direct asset write, browser-local export, database migration, or provider credential surface.
+  - actual video export still uses the existing video workflow node, pricing preflight/reserve/settle/refund path, worker execution, and asset persistence.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "transition"` failed because the `淡入淡出` control did not exist.
+  - red tests observed on 2026-07-06: `npm run test --workspace @aigc-flow/worker -- video-editor-render-plan.test.ts worker.test.ts -t "video.generate request uses exported video editor prompt|normalizes asset-backed"` failed because `transitionOut` was stripped from render plans and request metadata.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-06: 2 files, 43 tests.
+  - `npm run test --workspace @aigc-flow/worker -- video-editor-render-plan.test.ts worker.test.ts` passed on 2026-07-06: 2 files, 15 tests run with existing filtered/skipped tests.
+  - `npm run build --workspace @aigc-flow/worker` passed on 2026-07-06.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/studios/DirectorDeskThreeViewport.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx src/flowCanvas/utils/storyboardDirectorSync.test.ts` passed on 2026-07-06: 4 files, 47 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-06 - 3D Director Desk Shot Timeline Controls Phase 34
+
+- made `3D导演台` shot timelines editable as an ordered shot list:
+  - selected shots can now move earlier/later in the rail and can be deleted after explicit selection.
+  - shot `startMs` values are recalculated after reordering, deletion, and duration edits so downstream canvas synthesis and storyboard sync keep coherent timing.
+  - canvas integration now covers persisting shot timeline reorder/delete through the real flow store.
+- kept v2 safety and billing boundaries unchanged:
+  - this remains a local/studio draft edit of structured `director3d` data only.
+  - no generated media, `blob:`, `data:`, preview URL, browser-local export, direct asset write, billing mutation, API route, database migration, worker behavior, or provider-secret exposure was added.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx` failed because the `镜头前移` control did not exist.
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "reorders|recalculates"` failed because duration edits left following shot `startMs` values stale.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx` passed on 2026-07-06: 1 file, 24 tests.
+  - `npm test -- src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-06: 1 file, 17 tests.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/studios/DirectorDeskThreeViewport.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx src/flowCanvas/utils/storyboardDirectorSync.test.ts` passed on 2026-07-06: 4 files, 45 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-06 - 3D Director Desk Shot Camera Snapshots Phase 33
+
+- made `3D导演台` shot capture preserve the selected camera pose at capture time:
+  - captured shots now store a safe structured `cameraSnapshot` with camera name, position, target, focal length, and fov when available.
+  - `合成到画布` now prefers the captured snapshot for downstream image-node `params.director3d.camera`, so later camera moves do not silently change already captured shot semantics.
+  - director-to-storyboard sync now prefers the captured camera name for storyboard cell titles.
+- kept v2 safety and billing boundaries unchanged:
+  - snapshots store only structured numbers and ids/names; no generated media, `blob:`, `data:`, preview URL, file object, browser-local export, direct asset write, billing mutation, API route, database migration, worker behavior, or provider-secret exposure was added.
+  - generated outputs still flow through existing image workflow nodes, route pricing, reserve/settle/refund, worker execution, and asset persistence.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx` failed because captured shots did not store a `cameraSnapshot`.
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/utils/storyboardDirectorSync.test.ts` failed because storyboard cell titles still used the current camera name.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/utils/storyboardDirectorSync.test.ts` passed on 2026-07-06: 2 files, 25 tests.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/studios/DirectorDeskThreeViewport.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx src/flowCanvas/utils/storyboardDirectorSync.test.ts` passed on 2026-07-06: 4 files, 42 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-06 - Storyboard Sheet Canvas Output Phase 32
+
+- added a canvas-native `合成故事板图` action in the `故事板` studio:
+  - asset-backed storyboard cells can now create a downstream `image` node for a storyboard sheet/composition output.
+  - the generated node stores structured `params.storyboardSheet` metadata with `sourceStoryboardNodeId`, grid/aspect, shot numbers, cell ids, prompts, titles, and asset ids.
+  - the request prompt asks for a storyboard layout that preserves shot order, numbering, and titles.
+- kept v2 safety and billing boundaries unchanged:
+  - the action only creates a normal image workflow node; actual generation still uses existing image-node execution, route pricing, reserve/settle/refund, worker, and asset persistence.
+  - no generated media, `blob:`, `data:`, preview URL, browser-local export, direct asset write, billing mutation, API route, database migration, worker behavior, or provider-secret exposure was added.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx` failed because the `合成故事板图` action did not exist.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/studios/DirectorDeskThreeViewport.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-06: 3 files, 38 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+  - `git diff --check` passed on 2026-07-06.
+
+## 2026-07-06 - 3D Director Desk Selected Camera Capture Phase 31
+
+- made `3D导演台` shot capture use the selected camera instead of always falling back to the first camera:
+  - `捕获镜头段` now binds the new shot to the currently selected camera when one is selected.
+  - captured shots inherit safe camera-level duration and prompt metadata, giving downstream canvas synthesis/storyboard sync a better shot seed.
+  - the studio switches selection to the newly captured shot so the shot inspector is immediately ready for timing, motion, and prompt edits.
+- kept v2 safety boundaries unchanged:
+  - this remains a free local/studio draft edit of structured `director3d` data only.
+  - no media URL, browser-local export, billing mutation, API route, database migration, worker behavior, or provider-secret exposure was added.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx` failed because capture still created `shot-2` from `camera-1` and dropped selected-camera duration/prompt metadata.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/studios/DirectorDeskThreeViewport.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-06: 3 files, 36 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+  - `git diff --check` passed on 2026-07-06.
+
+## 2026-07-06 - 3D Director Desk Transform Inspector Phase 30
+
+- expanded the canvas-native `3D导演台` inspector into a usable staging control surface:
+  - selected actors can now edit position, rotation, and scale as finite three-axis numeric tuples.
+  - selected cameras can now edit camera position, target, and focal length.
+  - selected shots can now edit duration and motion type through compact buttons rather than a native select.
+  - malformed legacy director drafts fall back to safe numeric defaults instead of crashing the studio.
+- kept v2 safety boundaries unchanged:
+  - all edits remain free local/studio draft edits and persist only as structured `director3d` node data.
+  - no generated media, `blob:`, `data:`, file objects, provider credentials, API route internals, billing shortcut, database migration, or worker behavior was added.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx` failed because actor/camera/shot transform controls did not exist.
+  - red test observed on 2026-07-06: malformed actor transform data crashed `DirectorVectorInputGroup` before safe defaults were applied.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/studios/DirectorDeskThreeViewport.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-06: 3 files, 35 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+  - `git diff --check` passed on 2026-07-06.
+
+## 2026-07-06 - GPT-Image Fallback Production Modes Phase 29
+
+- aligned frontend GPT-Image-2 official fallback routes with the backend production-mode capabilities:
+  - `getOfficialFallbackImageRuntimeRoutes("gpt-image-2")` now exposes `standard`, `panorama_360`, `wraparound_270`, and `subject_orbit_270` for both line one and line two.
+  - fallback route tests now protect the line-one / line-two-only behavior while also checking the production-mode capability list.
+  - preflight coverage now proves fallback capability support still requires active route pricing, so production modes do not become free or bypass billing.
+- kept runtime/catalog source-of-truth behavior unchanged:
+  - when API route/catalog data exists, it still drives supported modes and pricing.
+  - no API, worker, database, storage, provider credential, or canvas draft shape change was added.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/utils/runtimeRouteOptions.test.ts src/flowCanvas/utils/imageGenerationModeSupport.test.ts` failed because GPT-Image-2 fallback routes had no `supportedGenerationModes`.
+  - `npm test -- src/flowCanvas/utils/runtimeRouteOptions.test.ts src/flowCanvas/utils/imageGenerationModeSupport.test.ts src/flowCanvas/runtime/v2WorkflowRunner.test.ts` passed on 2026-07-06: 3 files, 35 tests.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+  - `git diff --check` passed on 2026-07-06.
+
+## 2026-07-06 - Production Image Mode Prompt Augmentation Phase 28
+
+- moved 360/270 image modes one step closer to visible output quality:
+  - added a shared AI Gateway prompt helper for `panorama_360`, `wraparound_270`, and `subject_orbit_270`.
+  - OpenAI-compatible image routes now append deterministic 360 panorama / 270 wraparound instructions to both Images API and Responses API image prompts.
+  - PixelleLabs Gemini image routes and Visionary Nano Banana routes now apply the same production-mode prompt augmentation before provider calls.
+  - `standard` and unknown modes keep the original user prompt unchanged.
+- kept v2 boundaries unchanged:
+  - no database migration, new pricing unit, worker billing change, canvas draft media storage, browser-local persistence, or provider-secret exposure was added.
+  - structured `generationMode`, `panorama`, and `wraparound` metadata remains intact; this phase only improves provider-facing instructions.
+- validation:
+  - red test observed on 2026-07-06: `npm run test --workspace @aigc-flow/ai-gateway-core -- production-image-prompt.test.ts` failed because the prompt helper did not exist.
+  - red test observed on 2026-07-06: `npm run test --workspace @aigc-flow/ai-gateway-core -- runtime.test.ts production-image-prompt.test.ts` failed because OpenAI-compatible, PixelleLabs, and Visionary image adapters still sent raw prompts for production modes.
+  - `npm run test --workspace @aigc-flow/ai-gateway-core -- production-image-prompt.test.ts runtime.test.ts plugin-registry.test.ts` passed on 2026-07-06: 3 files, 75 tests.
+  - `npm run build --workspace @aigc-flow/ai-gateway-core` passed on 2026-07-06.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+  - `git diff --check` passed on 2026-07-06.
+
+## 2026-07-06 - Production Image Mode Route Capabilities Phase 27
+
+- published real GPT-Image-2 image-generation route capabilities for the canvas production modes:
+  - `image.gpt-image-2` and `image.gpt-image-2.line2` now declare `supportedGenerationModes: ["standard", "panorama_360", "wraparound_270", "subject_orbit_270"]` in server-side route `request_config.capabilities`.
+  - plugin install payload coverage now proves those capabilities are persisted into `ai_routes.request_config` instead of relying on frontend-only assumptions.
+  - model catalog regression coverage now expects installed GPT-Image-2 routes to expose the four public modes while still hiding raw `requestConfig`.
+- kept v2 boundaries unchanged:
+  - no database migration, new pricing unit, worker execution path, canvas draft media storage, browser-local persistence, or provider-secret exposure was added.
+  - runtime catalog safety still flows through the existing whitelist for public `supportedGenerationModes`.
+- validation:
+  - red test observed on 2026-07-06: `npm run test --workspace @aigc-flow/ai-gateway-core -- plugin-registry.test.ts` failed because GPT-Image-2 routes did not declare production image mode capabilities.
+  - red test observed on 2026-07-06: `npm run test --workspace @aigc-flow/api -- test/ai-plugins.service.test.ts test/ai-model-catalog.test.ts test/ai-model-catalog.service.test.ts` failed because installed GPT-Image-2 route request config had no `capabilities.supportedGenerationModes`.
+  - `npm run test --workspace @aigc-flow/ai-gateway-core -- plugin-registry.test.ts` passed on 2026-07-06: 1 file, 11 tests.
+  - `npm run test --workspace @aigc-flow/api -- test/ai-plugins.service.test.ts test/ai-model-catalog.test.ts test/ai-model-catalog.service.test.ts` passed on 2026-07-06: 9 non-DB tests passed; 3 DB-backed model-catalog tests skipped by the existing local DB guard.
+  - `npm run build --workspace @aigc-flow/ai-gateway-core` passed on 2026-07-06.
+  - `npm run build --workspace @aigc-flow/api` passed on 2026-07-06.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+  - `git diff --check` passed on 2026-07-06.
+
+## 2026-07-06 - Video Editor FFmpeg Discoverability Phase 26
+
+- made the internal `tapflow.video-editor-ffmpeg` template easier to publish and use from admin/runtime surfaces:
+  - AI plugin admin summaries now expose safe credential metadata (`credentials.required`, field descriptors, and type) without leaking secrets.
+  - Template Library hides credential-name/API-key inputs for credential-free templates and installs `tapflow.video-editor-ffmpeg` without sending an empty `credential` payload.
+  - runtime video model catalog coverage now proves a published `video.editor.ffmpeg` route appears with `supportedVideoWorkflows: ["video_editor_export"]`, `video_generation` pricing, and no internal render-engine fields in the normal frontend response.
+- kept v2 boundaries unchanged:
+  - no database migration, pricing unit, provider secret exposure, browser-local export path, or canvas draft storage change was added.
+  - internal `videoEditorRenderEngine` remains stored server-side in route `request_config` and is not exposed by `/api/v2/ai/model-catalog/:modelKey/routes`.
+- validation:
+  - `npm test -- src/services/v2AiPluginAdminApi.test.ts src/account/TemplateLibraryPage.test.tsx` passed on 2026-07-06: 2 files, 3 tests.
+  - `npm run test --workspace @aigc-flow/api -- test/ai-plugins.service.test.ts test/ai-model-catalog.test.ts test/ai-plugins.test.ts` passed on 2026-07-06: 7 non-DB service tests passed; 4 DB-backed API tests skipped by the existing local DB guard.
+  - `npm run build --workspace @aigc-flow/api` passed on 2026-07-06.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-06 - Video Editor Export Default Route Phase 25
+
+- connected the canvas-native `剪辑工程` export action to the Phase 24 FFmpeg route template:
+  - `导出到画布` now creates the downstream `video` node with `routeKey: "video.editor.ffmpeg"`.
+  - the exported node still uses the existing v2 target-node run path, so billing reserve/settle/refund, pricing lookup, draft flush, workflow execution, worker rendering, and asset persistence remain server-side.
+  - execution still fails closed unless the `tapflow.video-editor-ffmpeg` template has been installed/published and pricing exists for the route.
+- kept storage and billing boundaries unchanged:
+  - no browser-local export, new database table, new pricing unit, asset-write shortcut, provider secret exposure, base64 draft storage, or local authoritative persistence was added.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` failed because exported video nodes still used `video.default`.
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-06: 2 files, 30 tests.
+
+## 2026-07-06 - Video Editor FFmpeg Route Template Phase 24
+
+- added an installable AI Gateway plugin template for the canvas-native `剪辑工程` server-side FFmpeg export route:
+  - built-in package key: `tapflow.video-editor-ffmpeg`.
+  - product model key: `video-editor-ffmpeg`.
+  - route key: `video.editor.ffmpeg`.
+  - the route persists `request_config.capabilities.supportedVideoWorkflows: ["video_editor_export"]` and `videoEditorRenderEngine: "ffmpeg"`, matching the Phase 23 worker-local render gate.
+  - installing and publishing the template creates the normal provider/model/route/catalog/pricing records through the existing plugin install service.
+- kept billing and runtime behavior aligned with the v2 architecture:
+  - pricing uses the existing `video_generation` unit at 50 credits.
+  - no new pricing unit, database migration, environment variable, browser-local export path, provider secret exposure, or canvas draft storage change was added.
+  - the template requires no credential; local FFmpeg execution remains selected by server-side route capability before any external provider adapter call.
+- validation:
+  - red test observed on 2026-07-06: `npm run test --workspace @aigc-flow/ai-gateway-core -- plugin-registry.test.ts` failed because `tapflow.video-editor-ffmpeg` was not registered.
+  - `npm run test --workspace @aigc-flow/ai-gateway-core -- plugin-registry.test.ts` passed on 2026-07-06: 1 file, 11 tests.
+  - `npm run test --workspace @aigc-flow/api -- test/ai-plugins.test.ts` ran on 2026-07-06 with 2 DB-backed tests skipped by the existing local DB guard.
+  - `npm run build --workspace @aigc-flow/ai-gateway-core` passed on 2026-07-06.
+  - `npm run build --workspace @aigc-flow/api` passed on 2026-07-06.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-05 - Video Editor Local Render Workflow Phase 23
+
+- wired `剪辑工程` exported `video.generate` nodes into the worker-local FFmpeg render path:
+  - worker reads the selected video route's server-side `request_config.capabilities`.
+  - local rendering is enabled only when the route declares both `supportedVideoWorkflows: ["video_editor_export"]` and `videoEditorRenderEngine: "ffmpeg"`.
+  - routes without the internal render engine continue through the existing provider runtime path and existing `UNSUPPORTED_VIDEO_EDITOR_EXPORT` guard behavior.
+  - local render outputs are persisted through the existing `MediaAssetStore` object-storage + `assets` pipeline and settle through the existing `ai.video.generate` usage path.
+  - rendered output temp directories are deleted after asset persistence; cleanup is limited to `tapflow-video-render-output-*` temp directories.
+- kept v2 safety boundaries intact:
+  - no browser-local export, new pricing unit, database schema change, frontend billing mutation, provider secret exposure, base64 canvas persistence, or signed-URL draft persistence was added.
+  - render plans are rebuilt from structured `params.videoEditor` data in the worker rather than trusting client-supplied metadata as the source of truth.
+- validation:
+  - red test observed on 2026-07-05: `npm run test --workspace @aigc-flow/worker -- test/worker.test.ts` failed because `readVideoEditorRenderEngine` was not implemented/exported.
+  - red test observed on 2026-07-05: `npm run test --workspace @aigc-flow/worker -- test/worker.test.ts` failed because local render cleanup did not yet expose/guard the cleanup directory helper.
+  - `npm run test --workspace @aigc-flow/worker -- test/worker.test.ts test/video-editor-local-render-service.test.ts test/video-editor-ffmpeg-executor.test.ts test/video-editor-render-plan.test.ts test/media-asset-store.test.ts` passed on 2026-07-05: 5 files, 27 tests passed, 16 DB-backed worker tests skipped by the existing local DB guard.
+  - `npm run build --workspace @aigc-flow/worker` passed on 2026-07-05.
+  - `npm run build` passed on 2026-07-05 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+  - `git diff --check` passed on 2026-07-05.
+
+## 2026-07-05 - Video Editor Local Render Service Phase 22
+
+- added a standalone worker-local render service for future `剪辑工程` export execution:
+  - `VideoEditorLocalRenderService` hydrates render-plan `assetIds` from object storage through `StorageProvider.getObject`.
+  - input assets are written into a temporary render directory, then Phase 20 FFmpeg args/runner are invoked.
+  - the service returns a Phase 21-compatible local-file `MediaOutput` with duration, dimensions, mime type, and `localFilePath`.
+  - input temp files are cleaned up in `finally`; output files remain available for the caller to persist through `MediaAssetStore`.
+- kept the implementation as a safe service boundary:
+  - no workflow wiring, billing mutation, API route, frontend export, provider route behavior, database schema change, or canvas draft change was added.
+- validation:
+  - red test observed on 2026-07-05: `npm run test --workspace @aigc-flow/worker -- test/video-editor-local-render-service.test.ts` failed because `video-editor-local-render-service.ts` did not exist.
+  - `npm run test --workspace @aigc-flow/worker -- test/video-editor-local-render-service.test.ts test/video-editor-ffmpeg-executor.test.ts test/video-editor-render-plan.test.ts` passed on 2026-07-05: 3 files, 11 tests.
+  - `npm run build --workspace @aigc-flow/worker` passed on 2026-07-05.
+  - `npm run build` passed on 2026-07-05 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+  - `git diff --check` passed on 2026-07-05.
+
+## 2026-07-05 - Video Editor Local Render Output Phase 21
+
+- added the asset-pipeline foundation for worker-local rendered media:
+  - `MediaOutput` now supports a worker-internal `localFilePath` field.
+  - `MediaAssetStore` can read local rendered media files, infer safe filenames/mime types, upload them through the existing object-storage path, insert normal `assets` rows, and return standard asset refs.
+  - worker media-output normalization preserves `localFilePath` internally while avoiding null `base64` fields in serialized output.
+- kept the path aligned with v2 asset rules:
+  - local FFmpeg output files can now be persisted without converting large videos to base64.
+  - no workflow wiring, browser-local export, new pricing unit, database schema change, provider route behavior, or frontend draft persistence change was added.
+- validation:
+  - red test observed on 2026-07-05: `npm run test --workspace @aigc-flow/worker -- test/media-asset-store.test.ts` failed because local file outputs still required URL/base64.
+  - red test observed on 2026-07-05: `npm run test --workspace @aigc-flow/worker -- test/worker.test.ts` failed because media-output normalization did not expose/preserve `localFilePath`.
+  - `npm run test --workspace @aigc-flow/worker -- test/media-asset-store.test.ts test/worker.test.ts` passed on 2026-07-05: 2 files, 14 tests passed, 14 database-backed tests skipped by the existing local-DB guard.
+  - `npm run build --workspace @aigc-flow/ai-gateway-core` passed on 2026-07-05.
+  - `npm run build --workspace @aigc-flow/worker` passed on 2026-07-05 after rebuilding `ai-gateway-core` declarations first.
+  - `npm run build` passed on 2026-07-05 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+  - `git diff --check` passed on 2026-07-05.
+
+## 2026-07-05 - Video Editor FFmpeg Executor Phase 20
+
+- added a worker-side FFmpeg execution boundary for `剪辑工程` render plans:
+  - `buildVideoEditorFfmpegArgs` turns Phase 19 render plans plus local asset file paths into deterministic FFmpeg arguments.
+  - the command builder rejects missing local asset files, scales/pads clips to the target output size, concatenates video clips, escapes subtitle text for `drawtext`, and creates a mixed audio output label.
+  - `runVideoEditorFfmpeg` wraps child-process execution with hidden Windows windows, bounded stderr capture, success resolution, spawn failure errors, and non-zero exit errors.
+- prepared the deployed worker runtime for the eventual renderer:
+  - the production Docker image now installs the `ffmpeg` Alpine package.
+- kept the boundary conservative:
+  - no workflow wiring, asset download, asset persistence, pricing unit, provider route behavior, browser-local export, frontend billing mutation, or database schema change was added.
+- validation:
+  - red test observed on 2026-07-05: `npm run test --workspace @aigc-flow/worker -- test/video-editor-ffmpeg-executor.test.ts` failed because `video-editor-ffmpeg-executor.ts` did not exist.
+  - `npm run test --workspace @aigc-flow/worker -- test/video-editor-ffmpeg-executor.test.ts test/video-editor-render-plan.test.ts test/worker.test.ts` passed on 2026-07-05: 3 files, 16 tests passed, 14 database-backed tests skipped by the existing local-DB guard.
+  - `npm run build --workspace @aigc-flow/worker` passed on 2026-07-05.
+  - `npm run build` passed on 2026-07-05 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+  - `git diff --check` passed on 2026-07-05; Git reports the pre-existing Dockerfile CRLF normalization warning.
+
+## 2026-07-05 - Video Editor Render Plan Phase 19
+
+- added the first server-side render planning boundary for `剪辑工程` exports in the worker:
+  - `buildVideoEditorRenderPlan` now normalizes asset-backed clips, audio, subtitles, output resolution, duration, and ordered asset ids into an FFmpeg-oriented plan.
+  - empty timelines and transient references such as `blob:`, `data:`, `http://`, or `https://` fail before provider/runtime execution.
+  - `video.generate` export requests now include `metadata.videoEditorExport.renderPlan` for future internal renderer routes.
+- kept billing/admin metadata intentionally small:
+  - usage-event metadata still carries only the video-editor export summary and does not include the full render plan.
+  - no browser-local export, new pricing unit, asset-write shortcut, provider secret exposure, Docker image change, FFmpeg execution, or billing mutation was added.
+- validation:
+  - red test observed on 2026-07-05: `npm run test --workspace @aigc-flow/worker -- test/video-editor-render-plan.test.ts` failed because `video-editor-render-plan.ts` did not exist.
+  - red test observed on 2026-07-05: `npm run test --workspace @aigc-flow/worker -- test/worker.test.ts` failed because video-editor export metadata did not include `renderPlan`.
+  - `npm run test --workspace @aigc-flow/worker -- test/video-editor-render-plan.test.ts test/worker.test.ts` passed on 2026-07-05: 2 files, 12 tests passed, 14 database-backed tests skipped by the existing local-DB guard.
+  - `npm run build --workspace @aigc-flow/worker` passed on 2026-07-05.
+  - `npm run build` passed on 2026-07-05 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+  - `git diff --check` passed on 2026-07-05.
+
+## 2026-07-05 - Video Editor Export Runtime Guard Phase 18
+
+- added a second fail-closed guard inside `packages/ai-gateway-core`:
+  - `DatabaseMediaRuntime.generateVideo` now detects `metadata.videoEditorExport.source: video_editor_export`.
+  - if the resolved route request config does not include `capabilities.supportedVideoWorkflows: ["video_editor_export"]`, the runtime throws `UNSUPPORTED_VIDEO_EDITOR_EXPORT` before calling the provider adapter.
+  - request-config overrides are checked after merge, so diagnostic/runtime calls use the effective route configuration.
+- kept the runtime boundary conservative:
+  - no FFmpeg renderer, new export queue, new pricing unit, database table, provider secret path, browser-local export, or asset-write shortcut was added.
+  - unsupported editor-export jobs use the existing worker failure path and reservation refund behavior.
+- validation:
+  - red test observed on 2026-07-05: `npm run test --workspace @aigc-flow/ai-gateway-core -- test/runtime.test.ts` failed because editor-export video requests still reached the provider adapter.
+  - build failure observed on 2026-07-05: `npm run build --workspace @aigc-flow/ai-gateway-core` failed until `UNSUPPORTED_VIDEO_EDITOR_EXPORT` was added to `AiGatewayErrorCode`.
+  - `npm run test --workspace @aigc-flow/ai-gateway-core -- test/runtime.test.ts` passed on 2026-07-05: 1 file, 57 tests.
+  - `npm run build --workspace @aigc-flow/ai-gateway-core` passed on 2026-07-05.
+  - `npm run build` passed on 2026-07-05 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-05 - Video Editor Export Capability Preflight Phase 17
+
+- added fail-closed route capability checks for `剪辑工程` exported video nodes:
+  - `video.generate` nodes carrying `params.videoEditor` now require the selected runtime route to declare `supportedVideoWorkflows: ["video_editor_export"]`.
+  - unsupported editor-export routes fail with `UNSUPPORTED_VIDEO_EDITOR_EXPORT` before `workflow_runs`, `node_runs`, billing reservations, or queue jobs are created.
+  - frontend target-node runs perform the same local preflight before remote draft flush / workflow creation, so users get an immediate node-level failure state.
+- extended safe AI route capability exposure:
+  - `/api/v2/ai/routes` and model-scoped route lists now expose allowlisted `capabilities.supportedVideoWorkflows`.
+  - only `video_editor_export` is surfaced; internal provider/request-config workflow names are filtered out.
+- kept billing and runtime boundaries unchanged:
+  - no new `media_export` pricing unit, database table, provider secret path, browser-local export, asset-write shortcut, or frontend billing mutation was added.
+  - existing `video_generation` pricing remains the billing unit for runnable video nodes.
+- validation:
+  - red test observed on 2026-07-05: `npm run test --workspace @aigc-flow/api -- test/workflow-pricing-resolver.test.ts` failed because `assertNodeRouteSupportsRuntimeRequest` did not exist.
+  - red test observed on 2026-07-05: `npm run test --workspace @aigc-flow/api -- test/ai-gateway.service.test.ts test/ai-model-catalog.service.test.ts` failed because route capability output did not include `supportedVideoWorkflows`.
+  - red test observed on 2026-07-05: `npm test -- src/flowCanvas/runtime/v2WorkflowRunner.test.ts` failed because unsupported video-editor exports still reached workflow creation.
+  - `npm run test --workspace @aigc-flow/api -- test/workflow-pricing-resolver.test.ts test/ai-gateway.service.test.ts test/ai-model-catalog.service.test.ts` passed on 2026-07-05: 3 files, 13 tests.
+  - `npm test -- src/flowCanvas/runtime/v2WorkflowRunner.test.ts` passed on 2026-07-05: 1 file, 28 tests.
+  - `npm run build --workspace @aigc-flow/api` passed on 2026-07-05.
+  - `npm run build` passed on 2026-07-05 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-05 - Video Editor Export Intent Phase 16
+
+- added sanitized `videoEditorExport` metadata for exported `video` nodes:
+  - provider `video.generate` requests now identify the run as `source: video_editor_export`.
+  - usage-event metadata now carries the same export context for billing/admin interpretation.
+  - metadata includes source video editor node id, aspect, resolution, duration, `video_generation` billing unit, and clip/audio asset counts.
+- kept the implementation on the existing v2 video generation path; no new routes, tables, pricing enum values, provider secrets, asset-write shortcuts, or frontend billing mutations were added.
+- kept metadata draft/runtime-safe by copying only structured fields and asserting no `blob:`, `data:`, base64, `File`, `Blob`, or long-lived signed URL values in focused worker tests.
+- validation:
+  - red test observed on 2026-07-05: `npm run test --workspace @aigc-flow/worker -- test/worker.test.ts` failed because `metadata.videoEditorExport` and `buildMediaUsageMetadata` were not present.
+  - `npm run test --workspace @aigc-flow/worker -- test/worker.test.ts` passed on 2026-07-05: 1 test file, 8 tests passed, 14 database-backed tests skipped because local DB env was unavailable.
+  - `npm run build --workspace @aigc-flow/worker` passed on 2026-07-05.
+  - `npm run build` passed on 2026-07-05 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+  - `git diff --check` passed on 2026-07-05.
+
+## 2026-07-05 - Video Editor Runtime Request Phase 15
+
+- adapted the worker video request builder for video editor exports:
+  - `video.generate` requests now use `generationPrompt` as the static prompt fallback when there is no upstream text output.
+  - `params.videoEditor.timeline.clips` and `params.videoEditor.timeline.audio` are converted into `VideoGenerationRequest.inputAssets` with `assetId`, timing, kind, and timeline metadata.
+  - `metadata.videoEditor` now carries a whitelisted timeline snapshot with source node id, aspect, resolution, clip/audio timing, and subtitles for future provider/runtime adapters.
+- kept this on the existing v2 video generation path; it does not add new billing behavior, routes, tables, provider secrets, asset writes, or frontend-visible credentials.
+- kept request metadata draft/runtime-safe by copying only structured fields needed for editing and asserting no `blob:`, `data:`, base64, `File`, `Blob`, or long-lived signed URL values in the worker request test.
+- validation:
+  - `npm run test --workspace @aigc-flow/worker -- test/worker.test.ts` passed on 2026-07-05: 1 test file, 7 tests passed, 14 database-backed tests skipped because local DB env was unavailable.
+  - `npm run build --workspace @aigc-flow/worker` passed on 2026-07-05.
+  - `npm run build` passed on 2026-07-05 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-05 - Video Editor Export Node Phase 14
+
+- added a canvas export action inside the canvas-native `剪辑工程` studio:
+  - `导出到画布` creates a downstream selected `video` node beside the video editor node.
+  - the created node keeps the existing `video.default` route from the node factory, so later execution uses the normal v2 target-node workflow path.
+  - the video node receives a concise prompt, project duration, and structured `params.videoEditor` metadata with source video editor node id, aspect, resolution, and timeline snapshot.
+- kept the action non-billable preparation work only; it does not create assets, enqueue workflow runs, reserve credits, settle usage, refund credits, or bypass the existing video generation billing flow.
+- kept exported timeline data draft-safe and asset-reference based; the export tests assert no `blob:`, `data:`, base64, `File`, `Blob`, or long-lived signed URL values are written by this action.
+- validation:
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-05: 2 test files, 30 tests.
+  - `npm run build` passed on 2026-07-05 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-05 - Video Editor Clip Editing Phase 13
+
+- added selectable timeline clips inside the canvas-native `剪辑工程` studio:
+  - timeline clips are now buttons with a selected state.
+  - selecting a clip exposes its source asset, start time, and duration in the right inspector.
+  - `片段开始（秒）` updates `clip.startMs`.
+  - `片段时长（秒）` updates `clip.outMs` while preserving `clip.inMs`.
+  - `删除片段` removes the selected clip and recalculates timeline duration from remaining clips/subtitles.
+- kept these actions inside the existing `ProductionStudioShell` -> `updateNodeData` canvas-store path; no new canvas shell, backend workflow, asset creation, or billing operation was added.
+- kept timeline edits draft-safe and asset-reference based; patches stay in structured `videoEditor.timeline` JSON and do not persist `blob:`, `data:`, base64, `File`, `Blob`, or long-lived signed URL values.
+- validation:
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-05: 2 test files, 28 tests.
+  - `npm run build` passed on 2026-07-05 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-05 - Storyboard Asset Sync To Video Editor Phase 12
+
+- added storyboard-to-video-editor sync for the canvas-native `故事板` studio:
+  - `同步到剪辑工程` is enabled when storyboard cells already reference saved `assetId` values.
+  - if a `剪辑工程` node already exists, its timeline receives image clips for the current storyboard asset cells.
+  - if no `剪辑工程` node exists, the canvas creates a selected `故事板剪辑工程` node beside the storyboard and seeds its timeline.
+- added `storyboardVideoSync` utility coverage:
+  - converts asset-backed storyboard cells into timeline image clips.
+  - preserves existing non-storyboard clips, audio, subtitles, aspect, resolution, and exported asset id.
+  - replaces previous clips synced from the same storyboard so repeated syncs do not duplicate timeline entries.
+- kept the action non-billable preparation work only; it does not create assets, enqueue workflow runs, reserve credits, settle usage, refund credits, or bypass the later server-side video export path.
+- kept synced timeline data draft-safe: clips store `assetId`, storyboard node id, cell id, shot number, and optional prompt/title metadata, with no `blob:`, `data:`, base64, `File`, `Blob`, or long-lived signed URL values.
+- validation:
+  - `npm test -- src/flowCanvas/utils/storyboardVideoSync.test.ts src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-05: 3 test files, 27 tests.
+  - `npm run build` passed on 2026-07-05 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-05 - Storyboard Image Node Creation Phase 11
+
+- added image-node creation actions inside the canvas-native `故事板` studio:
+  - `生成选中镜头` creates a downstream image node from the selected storyboard cell prompt.
+  - `生成全部镜头` creates downstream image nodes for all storyboard cells that already have prompts, with stable vertical spacing beside the storyboard node.
+  - created image nodes keep `generationMode: standard`, copy the storyboard prompt, and store draft-safe `params.storyboard` metadata with source storyboard node id, cell id, shot number, aspect, and optional director/source ids.
+- kept this action non-billable preparation work only; it does not create assets, enqueue workflow runs, reserve credits, or bypass the existing image-node generation/billing path.
+- validation:
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx` passed on 2026-07-05: 1 test file, 12 tests.
+  - `npm test -- src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-05: 1 test file, 10 tests.
+
+## 2026-07-05 - Director Desk Storyboard Sync Phase 10
+
+- added a director-shot-to-storyboard sync path for the canvas-native `3D导演台` studio:
+  - `同步到故事板` sends the selected director shot and camera metadata to the canvas layer.
+  - if a storyboard node already exists, its first matching/empty cell is patched with the shot title, prompt, director camera id, director shot id, and source director node id.
+  - if no storyboard node exists, the canvas creates a `导演分镜板` node beside the director node and writes the first synced shot into its first cell.
+- added `storyboardDirectorSync` utility coverage for target-cell selection and first-empty-cell fallback.
+- kept the sync action non-billable and draft-safe; it does not create assets, start workflow runs, reserve credits, or write `blob:`, `data:`, base64, `File`, `Blob`, or long-lived signed URL values.
+- validation:
+  - `npm test -- src/flowCanvas/utils/storyboardDirectorSync.test.ts src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-05: 3 test files, 20 tests.
+
+## 2026-07-05 - Director Desk Synthesize To Canvas Phase 9
+
+- added the first canvas synthesis action inside the `3D导演台` studio:
+  - `合成到画布` turns the selected director shot, or the first available shot, into a downstream image node beside the director node.
+  - the created image node inherits the shot prompt first, then camera prompt, then a safe fallback prompt.
+  - the image node stores structured `params.director3d` metadata with source director node id, camera id, shot id, camera position/target/focal data, motion, start time, and duration.
+- kept this action as non-billable preparation work only; it does not create assets, start workflow runs, reserve credits, or bypass the existing server-side generation and billing path.
+- kept generated canvas data draft-safe: no `blob:`, `data:`, base64, `File`, `Blob`, or long-lived signed URL values are written by the synthesis action.
+- validation:
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx` passed on 2026-07-05: 1 test file, 9 tests.
+  - `npm test -- src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-05: 1 test file, 6 tests.
+
+## 2026-07-05 - Production Image Mode Capability And Pricing Phase 8
+
+- added AI Gateway runtime route capabilities for production image generation modes:
+  - `/api/v2/ai/routes` now exposes safe `capabilities.supportedGenerationModes` merged from `ai_models.capabilities` and `ai_routes.request_config.capabilities`.
+  - `/api/v2/ai/model-catalog/:modelKey/routes` exposes the same safe mode capability shape for the model-scoped route list used by image nodes.
+  - capability output is restricted to known image modes: `standard`, `panorama_360`, `wraparound_270`, and `subject_orbit_270`; provider/request-config internals stay server-side.
+- added frontend route-option mapping for supported image generation modes, defaulting routes without explicit capabilities to `standard` only.
+- added image-node UI guarding so unsupported 360°/270° modes are not offered for the active route, and stale unsupported production mode selections reset to `standard` after route metadata loads.
+- added workflow-run preflight for production image modes:
+  - unsupported production modes fail locally with `UNSUPPORTED_GENERATION_MODE` before draft flush / workflow creation.
+  - production modes without resolvable active pricing fail locally with `PRICING_NOT_FOUND` before workflow creation.
+  - standard image generation keeps the existing pricing/billing behavior.
+- validation:
+  - `npm test --workspace @aigc-flow/api -- test/ai-gateway.service.test.ts test/ai-model-catalog.service.test.ts` passed on 2026-07-05: 2 test files, 2 tests.
+  - `npm run build --workspace @aigc-flow/api` passed on 2026-07-05.
+  - `npm test -- src/services/v2AiRoutesApi.test.ts src/services/v2AiModelCatalogApi.test.ts src/flowCanvas/utils/runtimeRouteOptions.test.ts src/flowCanvas/utils/modelCatalogOptions.test.ts src/flowCanvas/utils/imageGenerationModeSupport.test.ts src/flowCanvas/runtime/v2WorkflowRunner.test.ts src/flowCanvas/nodes/ImagePromptActionRow.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-05: 8 test files, 62 tests.
+  - `npm run build` passed on 2026-07-05 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-05 - Director Desk Three Viewport Phase 7
+
+- replaced the CSS-only `3D导演台` central viewport placeholder with a real Three.js viewport component.
+- added `DirectorDeskThreeViewport` under `src/flowCanvas/studios/` to render a live WebGL scene with:
+  - grid floor
+  - axis helper
+  - placeholder humanoid actors from `director3d.actors`
+  - camera markers/frustums from `director3d.cameras`
+  - selected actor/camera highlight metadata
+- kept the viewport visual/staging-only and non-billable; no AI rendering, export, asset creation, draft mutation, or billing workflow was added by the Three.js canvas itself.
+- added jsdom fallback behavior so unit tests and constrained environments keep a mounted viewport host instead of crashing on missing WebGL.
+- validation:
+  - `npm test -- src/flowCanvas/studios/DirectorDeskThreeViewport.test.tsx src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-05: 3 test files, 14 tests.
+  - `npm run build` passed on 2026-07-05 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+  - Playwright smoke against `output/playwright/director-viewport-smoke.html` passed on 2026-07-05:
+    - desktop viewport: renderer `three`, canvas `980x620`, nonblank sampled pixels, screenshot `output/playwright/director-viewport-desktop.png`.
+    - mobile viewport: renderer `three`, canvas `390x844`, nonblank sampled pixels, screenshot `output/playwright/director-viewport-mobile.png`.
+
+## 2026-07-05 - Director Desk Inspector Editing Phase 6
+
+- added selectable actor, camera, and shot rows inside the canvas-native `3D导演台` studio.
+- added a compact inspector that persists basic director staging metadata:
+  - actor rename through `对象名称`
+  - actor visibility through `对象可见`
+  - actor lock state through `对象锁定`
+  - camera prompt through `镜头提示词`
+  - shot prompt through `镜头段提示词`
+- kept inspector selection as local UI state while all real scene edits persist through the existing `ProductionStudioShell` -> `updateNodeData` path into structured `director3d` node data.
+- kept this slice staging-only and non-billable; no Three.js transform runtime, AI rendering, export, asset creation, or billing workflow was added.
+- ensured director patches remain structured JSON and do not persist transient `blob:`, `data:`, base64, `File`, or `Blob` media.
+- validation:
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-05: 2 test files, 13 tests.
+  - `npm run build` passed on 2026-07-05 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-05 - Video Editor Studio Editing Phase 5
+
+- added first real timeline editing actions inside the canvas-native `剪辑工程` studio:
+  - `添加图片片段` appends a structured image clip placeholder backed by an `assetId` field.
+  - `添加视频片段` appends a structured video clip placeholder backed by an `assetId` field.
+  - `添加字幕` appends a structured subtitle item.
+  - `工程时长（秒）` updates timeline duration in milliseconds.
+- wired these actions through the existing `ProductionStudioShell` -> `updateNodeData` path so timeline edits persist in `videoEditor` node data.
+- kept this slice editing-only and non-billable; no server export, asset creation, AI generation, or billing workflow was added.
+- ensured video editor patches remain structured JSON and do not persist transient `blob:`, `data:`, base64, `File`, or `Blob` media.
+- validation:
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-05: 2 test files, 10 tests.
+  - `npm run build` passed on 2026-07-05 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-05 - Director Desk Scene Editing Phase 4
+
+- added first real 3D Director Desk editing actions inside the canvas-native `3D导演台` studio:
+  - `添加角色` appends a structured placeholder humanoid actor.
+  - `添加镜头` appends a structured camera with position/target/focal metadata.
+  - `捕获镜头段` appends a structured shot linked to the current camera.
+- wired these actions through the existing `ProductionStudioShell` -> `updateNodeData` path so director scene edits persist in `director3d` node data.
+- kept this slice staging-only and non-billable; no Three.js transform runtime, AI rendering, export, asset creation, or billing workflow was added.
+- ensured director patches remain structured JSON and do not persist transient `blob:`, `data:`, base64, `File`, or `Blob` media.
+- validation:
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx` passed on 2026-07-05: 2 test files, 8 tests.
+  - `npm run build` passed on 2026-07-05 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-05 - Storyboard Studio Editing Phase 3
+
+- added real editing controls to the canvas-native `故事板` studio: storyboard cells can now be selected and the selected cell title/prompt can be edited.
+- wired the storyboard studio back to the existing canvas store through `updateNodeData`, so edits persist as structured `storyboard` node data in the project flow draft path.
+- kept the slice editing-only and non-billable; no generation, asset creation, storyboard sheet composition, or billing reserve/settle path was added.
+- reused `normalizeStoryboardData` and `patchStoryboardCell` so storyboard patches remain asset-reference/metadata based and do not persist transient `blob:`, `data:`, base64, `File`, or `Blob` values.
+- validation:
+  - `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx src/flowCanvas/utils/storyboardNodeData.test.ts` passed on 2026-07-05: 3 test files, 8 tests.
+  - `npm run build` passed on 2026-07-05 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-05 - Canvas Production Studio Shells Phase 2
+
+- added canvas-native studio open events for `storyboard`, `director3d`, and `video_editor` nodes, so production nodes can open their workspace without becoming separate product shells.
+- added a full-screen `ProductionStudioShell` overlay scoped to the current project canvas:
+  - `3D导演台` shows scene objects, a director viewport grid, object properties, and a shot rail.
+  - `故事板` shows storyboard cells plus selected-shot context.
+  - `剪辑工程` shows an asset bin, preview monitor, timeline, and export/settings inspector shell.
+- kept this slice editing-only and non-billable; no export, generation, billing reserve, or asset-write workflow was added.
+- kept studio state local to the overlay and only read structured node data, avoiding transient `blob:`, `data:`, base64, `File`, or `Blob` persistence.
+- added regression coverage for production-node open actions, studio layouts, Escape/close behavior, canvas event integration, and production node default labels.
+- validation:
+  - `npm test -- src/flowCanvas/nodes/ProductionNodes.test.tsx src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx src/flowCanvas/utils/nodeFactory.test.ts` passed on 2026-07-05: 4 test files, 13 tests.
+  - `npm run build` passed on 2026-07-05 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+  - local in-app browser smoke could not be completed because Browser Use blocked reloading `http://localhost:64043/` under its URL policy.
+
+## 2026-07-05 - Canvas Production Suite Phase 1
+
+- added v2 canvas contracts and safe default draft data for `storyboard`, `director3d`, and `video_editor` nodes.
+- exposed `故事板`, `3D导演台`, and `剪辑工程` in the left add panel, right-click pane menu, React Flow node registry, and canvas agent add-node policy.
+- added image generation modes for `standard`, `panorama_360`, `wraparound_270`, and `subject_orbit_270`, with UI labels for `360°全景`, `270°环绕`, and `主体三面展开`.
+- wired image-node mode selection into structured `params.panorama` / `params.wraparound`, and preserved production-mode metadata in generated image snapshots and worker provider metadata.
+- added storyboard normalization so cells are asset-reference based and unsafe transient media fields such as `blob:` or `data:` URLs are not persisted in storyboard data.
+- validation:
+  - `npm test -- src/flowCanvas/utils/nodeFactory.test.ts src/flowCanvas/utils/imageGenerationModes.test.ts src/flowCanvas/utils/storyboardNodeData.test.ts src/flowCanvas/nodes/ProductionNodes.test.tsx src/flowCanvas/nodes/ImagePromptActionRow.test.tsx src/flowCanvas/canvas/FlowLeftAddPanel.test.tsx src/flowCanvas/canvas/FlowContextMenu.test.tsx src/flowCanvas/agent/canvasAgentPolicy.test.ts src/flowCanvas/runtime/v2WorkflowRunner.test.ts` passed on 2026-07-05: 9 test files, 52 tests.
+  - `npm run test --workspace @aigc-flow/worker -- workflow-runtime-image-request.test.ts` passed on 2026-07-05: 1 test file, 13 tests.
+  - `npm run build` passed on 2026-07-05 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-05 - Canvas Production Suite Design
+
+- analyzed the current v2 canvas/workflow/assets/billing foundation for adding 360° panorama generation, 270° wraparound generation, 3D Director Desk, storyboard, and video editing.
+- compared the requested references (`MagicalCanvas`, `TapCanvas`, `infinite-canvas`, and `zerocut-director-desk`) and selected a v2-compatible canvas-native production-suite direction rather than a separate forked app or preset-only patch.
+- wrote the approved design spec at `docs/superpowers/specs/2026-07-05-canvas-production-suite-design.md`, covering UI, node model, studio surfaces, asset persistence, AI Gateway/workflow integration, billing, phased implementation, validation, and non-goals.
+- no product code was changed in this step; implementation planning is the next step.
 
 ## 2026-07-05 - Canvas Image Generation Animation
 
@@ -3977,3 +5363,88 @@ Validation completed:
 - validation:
   - `npm test -- src/flowCanvas/nodes/ReferenceSourcePicker.test.tsx src/flowCanvas/utils/referenceSourceResolver.test.ts`
   - `npm run build`
+
+## 2026-07-06 - Production Studios Browser Smoke
+
+- added a repeatable real-browser smoke command for the canvas production studios:
+  - `npm run smoke:production-studios`
+- the smoke page mounts `ProductionStudioShell` through Vite and verifies the Scheme C studio flow in Chromium:
+  - `3D导演台` renders the Three.js viewport hook
+  - `故事板` can create a storyboard sheet image request from asset-backed cells
+  - `剪辑工程` can switch to the `1:1 1080p` output preset and create the `video.editor.ffmpeg` export request
+  - placeholder-only video editor timelines disable export and show `请先绑定素材库资产`
+- the smoke writes artifacts under `output/playwright/` so local QA can inspect the generated page, check code, and screenshot without storing them in the canvas draft graph.
+- validation:
+  - `npm test -- scripts/smoke-production-studios.test.ts`
+  - `npm run smoke:production-studios`
+  - `npm test -- scripts/smoke-production-studios.test.ts src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx`
+  - `npm run build`
+
+## 2026-07-06 - Production Studios Asset Drop Browser Smoke
+
+- extended the production studios real-browser smoke to dispatch `application/x-tapflow-asset-id` drag/drop payloads through the mounted studio UI instead of only checking pre-bound sample assets.
+- the smoke now verifies asset-id patches for:
+  - 3D director actor image-plane binding
+  - 3D director scene background binding
+  - storyboard cell image binding
+  - video editor clip binding
+  - video editor audio track binding
+- the browser check also sends an ignored signed-preview `text/plain` payload so the smoke guards the v2 rule that canvas draft patches persist asset ids, not temporary preview URLs.
+- validation:
+  - `npm test -- scripts/smoke-production-studios.test.ts`
+  - `npm run smoke:production-studios`
+  - `npm test -- scripts/smoke-production-studios.test.ts src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx`
+  - `npm run build`
+
+## 2026-07-06 - Production Image Mode Billing Guard
+
+- wired the image-node generate action into the production mode route/pricing support guard before launching a workflow run.
+- 360° panorama and 270° wraparound/subject-orbit modes now fail closed on the canvas when the selected route lacks declared mode support or active pricing, instead of enqueueing a free or unsupported run.
+- the image prompt cost pill now shows `未配置` for blocked production modes instead of showing fallback hardcoded credits that cannot be reserved server-side.
+- kept the error codes visible while localizing the node error messages:
+  - `UNSUPPORTED_GENERATION_MODE`
+  - `PRICING_NOT_FOUND`
+- added a component regression that proves `panorama_360` on an unpriced `GPT-Image-2` fallback route does not call `runBackendWorkflow`.
+- validation:
+  - `npm test -- src/flowCanvas/utils/imageGenerationModeSupport.test.ts src/flowCanvas/nodes/FlowNodes.agent-metadata.test.tsx`
+  - `npm test -- src/flowCanvas/utils/imageGenerationModeSupport.test.ts src/flowCanvas/utils/runtimeRouteOptions.test.ts src/flowCanvas/utils/modelCatalogOptions.test.ts src/flowCanvas/nodes/FlowNodes.agent-metadata.test.tsx src/flowCanvas/nodes/ImagePromptActionRow.test.tsx scripts/smoke-production-studios.test.ts`
+  - `npm run build`
+
+## 2026-07-06 - Production Suite Catalog Smoke
+
+- added a read-only staging smoke for the Scheme C production suite catalog:
+  - `npm run smoke:production-suite-catalog`
+  - the smoke reads the v2 model catalog route metadata for `gpt-image-2` and `video-editor-ffmpeg`.
+  - image routes must expose `standard`, `panorama_360`, `wraparound_270`, and `subject_orbit_270` with positive `image_generation` pricing.
+  - the local FFmpeg video editor route must expose `video_editor_export` with positive `video_generation` pricing.
+- documented the smoke in `docs/staging-runbook.md` and added staging checklist fields in `docs/STAGING_ENV_TEMPLATE.md` so deployment validation covers UI availability, route capability, and billing readiness before manual canvas QA.
+- kept runtime behavior unchanged:
+  - no generation is enqueued by this smoke, no credits are reserved or settled, and no API route, database migration, worker executor, provider credential, asset persistence path, or billing mutation path changed.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- scripts/smoke-production-suite-catalog.test.ts` first failed because the catalog smoke helper module did not exist.
+  - `npm test -- scripts/smoke-production-suite-catalog.test.ts` passed on 2026-07-06: 2 tests.
+  - `npm pkg get scripts.smoke:production-suite-catalog` returned `tsx scripts/smoke-production-suite-catalog.ts`.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+  - live staging execution still requires a deployed API URL and short-lived `TAPFLOW_ACCESS_TOKEN`.
+
+## 2026-07-06 - Director Shots To Video Editor Sync
+
+- added a direct 3D Director Desk -> video editor sync path:
+  - director shots with persisted `generatedAssetId` values can now be pushed into an existing or newly created `video_editor` node as image clips.
+  - synced clips preserve source metadata including director node id, shot id, camera id, motion, and prompt.
+  - synced subtitles align with the generated director clips and use shot prompts or shot numbering.
+  - re-syncing from the same director replaces previous director-sourced clips/subtitles instead of duplicating them.
+- kept v2 persistence and billing boundaries unchanged:
+  - only safe asset ids are accepted; `blob:`, `data:`, and signed/http URLs are still stripped by director/video normalizers.
+  - this local sync does not enqueue generation, export video, reserve credits, settle billing, create assets, change AI routes, expose provider secrets, or add database schema.
+- extended the production studios browser smoke:
+  - the smoke now clicks the director `同步到剪辑工程` action and verifies the safe sync request includes `asset-director-shot-smoke`.
+- validation:
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/utils/directorVideoSync.test.ts` first failed because `directorVideoSync` did not exist.
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/studios/ProductionStudioShell.test.tsx -t "video editor sync from generated director shots"` first failed because the director desk had no `同步到剪辑工程` action.
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx -t "generated director shots"` first failed because the canvas had no director-to-video sync handler.
+  - red test observed on 2026-07-06: `npm test -- scripts/smoke-production-studios.test.ts -t "browser check"` first failed because the browser smoke did not verify `directorVideoSyncRequest`.
+  - red test observed on 2026-07-06: `npm test -- src/flowCanvas/utils/videoEditorNodeData.test.ts -t "director clip metadata"` first failed because unknown director shot motions were not filtered.
+  - `npm test -- src/flowCanvas/utils/directorVideoSync.test.ts src/flowCanvas/utils/videoEditorNodeData.test.ts src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx scripts/smoke-production-studios.test.ts` passed on 2026-07-06: 81 tests.
+  - `npm run smoke:production-studios` passed on 2026-07-06 with `directorVideoSyncRequest: true`.
+  - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.

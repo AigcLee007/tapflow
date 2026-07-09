@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  assertNodeRouteSupportsRuntimeRequest,
   resolveConfiguredRouteKey,
   resolveNodePricing,
 } from "../src/modules/workflow-runs/workflow-runs.service.js";
@@ -282,5 +283,147 @@ describe("workflow pricing resolver", () => {
     });
 
     expect(resolved.amountCents).toBe(4.5);
+  });
+
+  it("blocks video editor export nodes when the route does not support editor exports", () => {
+    expect(() => assertNodeRouteSupportsRuntimeRequest({
+      node: {
+        config: {
+          params: {
+            videoEditor: {
+              aspect: "16:9",
+              resolution: "1920x1080",
+              sourceVideoEditorNodeId: "editor-1",
+              timeline: {
+                audio: [],
+                clips: [],
+                durationMs: 3000,
+                subtitles: [],
+              },
+            },
+          },
+        },
+        id: "video-export",
+        type: "video.generate",
+      },
+      routeContext: {
+        capabilities: {
+          supportedGenerationModes: ["standard"],
+          supportedVideoWorkflows: [],
+        },
+        modelKey: "mock-video",
+        providerKey: "mock-provider",
+        routeKey: "video.default",
+      },
+    })).toThrow("UNSUPPORTED_VIDEO_EDITOR_EXPORT");
+  });
+
+  it("blocks production image modes when the route does not support them", () => {
+    expect(() => assertNodeRouteSupportsRuntimeRequest({
+      node: {
+        config: {
+          params: {
+            generationMode: "panorama_360",
+            panorama: {
+              continuity: "seamless",
+              projectionHint: "equirectangular",
+              subjectType: "scene",
+            },
+          },
+        },
+        id: "panorama-image",
+        type: "image.generate",
+      },
+      routeContext: {
+        capabilities: {
+          supportedGenerationModes: ["standard"],
+          supportedVideoWorkflows: [],
+        },
+        modelKey: "mock-image",
+        providerKey: "mock-provider",
+        routeKey: "image.default",
+      },
+    })).toThrow("UNSUPPORTED_GENERATION_MODE");
+  });
+
+  it("allows production image modes when the route declares support", () => {
+    expect(() => assertNodeRouteSupportsRuntimeRequest({
+      node: {
+        config: {
+          generationMode: "subject_orbit_270",
+          params: {
+            wraparound: {
+              coverageDegrees: 270,
+              layout: "three_panel_sheet",
+              panels: 3,
+              subjectType: "subject",
+            },
+          },
+        },
+        id: "subject-orbit-image",
+        type: "image.generate",
+      },
+      routeContext: {
+        capabilities: {
+          supportedGenerationModes: ["standard", "subject_orbit_270"],
+          supportedVideoWorkflows: [],
+        },
+        modelKey: "mock-image",
+        providerKey: "mock-provider",
+        routeKey: "image.gpt-image-2",
+      },
+    })).not.toThrow();
+  });
+
+  it("allows video editor export nodes when the route supports editor exports", () => {
+    expect(() => assertNodeRouteSupportsRuntimeRequest({
+      node: {
+        config: {
+          params: {
+            videoEditor: {
+              sourceVideoEditorNodeId: "editor-1",
+              timeline: {
+                audio: [],
+                clips: [],
+                durationMs: 3000,
+                subtitles: [],
+              },
+            },
+          },
+        },
+        id: "video-export",
+        type: "video.generate",
+      },
+      routeContext: {
+        capabilities: {
+          supportedGenerationModes: ["standard"],
+          supportedVideoWorkflows: ["video_editor_export"],
+        },
+        modelKey: "mock-video",
+        providerKey: "mock-provider",
+        routeKey: "video.default",
+      },
+    })).not.toThrow();
+  });
+
+  it("allows ordinary video nodes without video editor export metadata", () => {
+    expect(() => assertNodeRouteSupportsRuntimeRequest({
+      node: {
+        config: {
+          generationPrompt: "generate a short video",
+        },
+        id: "plain-video",
+        type: "video.generate",
+      },
+      routeContext: {
+        capabilities: {
+          supportedGenerationModes: ["standard"],
+          supportedVideoWorkflows: [],
+        },
+        modelKey: "mock-video",
+        providerKey: "mock-provider",
+        routeKey: "video.default",
+      },
+    })).not.toThrow();
   });
 });

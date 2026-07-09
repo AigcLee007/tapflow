@@ -17,11 +17,51 @@ const NODE_DEFAULTS: Record<
   audio: { label: '音频', ...FLOW_NODE_DEFAULT_SIZES.audio, color: '#94a3b8' },
   upload: { label: '上传', ...FLOW_NODE_DEFAULT_SIZES.upload, color: '#94a3b8' },
   image_editor: { label: '图片编辑器', ...FLOW_NODE_DEFAULT_SIZES.imageEditor, color: '#94a3b8' },
+  panorama_viewer: { label: '360 全景查看', ...FLOW_NODE_DEFAULT_SIZES.panoramaViewer, color: '#94a3b8' },
+  storyboard: { label: '故事板', ...FLOW_NODE_DEFAULT_SIZES.storyboard, color: '#94a3b8' },
+  director3d: { label: '3D导演台', ...FLOW_NODE_DEFAULT_SIZES.director3d, color: '#94a3b8' },
+  video_editor: { label: '剪辑工程', ...FLOW_NODE_DEFAULT_SIZES.videoEditor, color: '#94a3b8' },
   group: { label: '分组', width: 600, height: 400, color: '#6366f1' },
 };
 
 export function getNodeDefaults(kind: FlowNodeKind) {
   return NODE_DEFAULTS[kind] || NODE_DEFAULTS.text;
+}
+
+function buildDefaultStoryboard() {
+  return {
+    aspect: '16:9' as const,
+    cells: Array.from({ length: 6 }, (_, index) => ({
+      id: `storyboard-cell-${index + 1}`,
+      shotNo: index + 1,
+    })),
+    grid: '3x2' as const,
+    selectedIndex: 0,
+  };
+}
+
+function buildDefaultDirector3d() {
+  return {
+    version: 1 as const,
+    scene: { gridVisible: true, units: 'meters' as const },
+    actors: [],
+    cameras: [],
+    shots: [],
+  };
+}
+
+function buildDefaultVideoEditor() {
+  return {
+    version: 1 as const,
+    aspect: '16:9' as const,
+    resolution: '1920x1080' as const,
+    timeline: {
+      audio: [],
+      clips: [],
+      durationMs: 0,
+      subtitles: [],
+    },
+  };
 }
 
 export function createFlowNode(
@@ -51,6 +91,9 @@ export function createFlowNode(
     createdAt: now,
     updatedAt: now,
   };
+  if (kind === 'storyboard') data.storyboard = buildDefaultStoryboard();
+  if (kind === 'director3d') data.director3d = buildDefaultDirector3d();
+  if (kind === 'video_editor') data.videoEditor = buildDefaultVideoEditor();
   Object.assign(data, overrides);
 
   return {

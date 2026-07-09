@@ -452,6 +452,31 @@ describe("AssetLibraryPage", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
+  test("emits asset-id drag payload for canvas and studio drop targets", () => {
+    mockLibrary({
+      assets: [asset],
+      groupedAssets: [{ dateLabel: "2026-06-12", items: [asset] }],
+      mediaCounts: { all: 1, audio: 0, image: 1, video: 0 },
+      total: 1,
+    });
+
+    renderPage();
+
+    const firstButton = screen.getByRole("button", { name: "Asset One" });
+    const dataTransfer = {
+      effectAllowed: "",
+      setData: vi.fn(),
+    } as unknown as DataTransfer;
+
+    expect(firstButton.getAttribute("draggable")).toBe("true");
+    fireEvent.dragStart(firstButton, { dataTransfer });
+
+    expect(dataTransfer.effectAllowed).toBe("copy");
+    expect(dataTransfer.setData).toHaveBeenCalledWith("application/x-tapflow-asset-id", "asset-1");
+    expect(dataTransfer.setData).toHaveBeenCalledWith("text/plain", "asset-1");
+    expect(JSON.stringify((dataTransfer.setData as any).mock.calls)).not.toMatch(/blob:|data:|https?:\/\//);
+  });
+
   test("disables native media drag so browser drag-and-drop does not block marquee selection", () => {
     mockLibrary({
       assets: [asset],

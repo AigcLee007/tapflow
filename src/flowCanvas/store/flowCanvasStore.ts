@@ -11,11 +11,11 @@ import {
   type Viewport,
 } from '@xyflow/react';
 import { nanoid } from 'nanoid';
-import type { FlowEdgeData, FlowNodeData, FlowNodeKind } from '../types';
+import type { FlowDirector3dData, FlowEdgeData, FlowNodeData, FlowNodeKind, FlowProjectStudios } from '../types';
 import { createFlowNode, duplicateFlowNode } from '../utils/nodeFactory';
 import { canConnectFlowNodes, canCreateNodeFromSource } from '../rules/connectionRules';
 import { buildAssetBackedNodeData } from '../utils/assetNodeData';
-import { fitMediaNodeToShortSide } from '../utils/nodeSizing';
+import { FLOW_NODE_DEFAULT_SIZES, fitMediaNodeToShortSide } from '../utils/nodeSizing';
 import type {
   FlowRuntimeNodeOutput,
 } from '../types';
@@ -81,6 +81,7 @@ interface FlowProject {
   title: string;
   nodes: FlowNode[];
   edges: FlowEdge[];
+  projectStudios?: FlowProjectStudios;
   viewport: Viewport;
   version: number;
   updatedAt: number;
@@ -97,6 +98,7 @@ interface FlowCanvasState {
 
   nodes: FlowNode[];
   edges: FlowEdge[];
+  projectStudios: FlowProjectStudios;
   graphIndex: FlowGraphIndex;
   selectedNodeCount: number;
   viewport: Viewport;
@@ -148,6 +150,7 @@ interface FlowCanvasState {
       width?: number | null;
     }>,
   ) => string[];
+  ensurePanoramaViewerForImageNode: (sourceNodeId: string) => string | null;
   getUpstreamNodes: (nodeId: string) => FlowNode[];
   groupSelectedNodes: () => void;
   ungroupSelectedGroups: () => void;
@@ -157,6 +160,7 @@ interface FlowCanvasState {
   mergeTemplateGraph: (graph: { nodes: FlowNode[]; edges: FlowEdge[] }) => void;
   restoreGraphSnapshot: (graph: { nodes: FlowNode[]; edges: FlowEdge[]; viewport?: Viewport }) => void;
   updateNodeData: (nodeId: string, patch: Partial<FlowNodeData>) => void;
+  updateProjectDirector3d: (director3d: FlowDirector3dData) => void;
   replaceNode: (nodeId: string, input: { data?: Partial<FlowNodeData>; type?: FlowNodeKind }) => void;
   commitNodePositions: (nodes: FlowNode[]) => void;
   lockNode: (nodeId: string, locked: boolean) => void;
@@ -291,6 +295,40 @@ const appendReferenceOrderKey = (referenceOrder: unknown, key: string) => {
   return current.includes(key) ? current : [...current, key];
 };
 
+const isPanoramaViewerNode = (node: FlowNode | undefined | null) =>
+  !!node && (node.type === 'panorama_viewer' || node.data.kind === 'panorama_viewer');
+
+const buildPanoramaViewerEdge = (sourceNodeId: string, targetNodeId: string): FlowEdge => ({
+  id: nanoid(12),
+  source: sourceNodeId,
+  sourceHandle: 'out',
+  target: targetNodeId,
+  targetHandle: 'in',
+  type: 'smart',
+  data: { dataType: 'any' as const } satisfies FlowEdgeData,
+});
+
+const buildPanoramaViewerPosition = (sourceNode: FlowNode) => {
+  const sourceWidth = Number(sourceNode.data.width || 260);
+  const sourceHeight = Number(sourceNode.data.height || 200);
+  const viewerHeight = FLOW_NODE_DEFAULT_SIZES.panoramaViewer.height;
+  return {
+    x: sourceNode.position.x + sourceWidth + 160,
+    y: sourceNode.position.y + Math.max(0, Math.round((sourceHeight - viewerHeight) / 2)),
+  };
+};
+
+const findPanoramaViewerForSource = (
+  nodes: FlowNode[],
+  edges: FlowEdge[],
+  sourceNodeId: string,
+): FlowNode | undefined =>
+  nodes.find((node) => {
+    if (!isPanoramaViewerNode(node)) return false;
+    if (node.data.panoramaSourceNodeId === sourceNodeId) return true;
+    return edges.some((edge) => edge.source === sourceNodeId && edge.target === node.id);
+  });
+
 const buildGraphIndex = (
   nodes: FlowNode[],
   edges: FlowEdge[],
@@ -370,6 +408,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
 
   nodes: [],
   edges: [],
+  projectStudios: {},
   graphIndex: EMPTY_GRAPH_INDEX,
   selectedNodeCount: 0,
   viewport: INITIAL_VIEWPORT,
@@ -607,6 +646,93 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
     });
 
     return createdIds;
+  },
+
+  ensurePanoramaViewerForImageNode: (sourceNodeId) => {
+    const sourceNode = get().nodes.find((node) => node.id === sourceNodeId);
+    if (!isImageNode(sourceNode)) {
+      return null;
+    }
+
+    const currentState = get();
+    const existingViewer = findPanoramaViewerForSource(currentState.nodes, currentState.edges, sourceNodeId);
+    const viewerId = existingViewer?.id || null;
+    const connectionTargetId = viewerId || '';
+    const viewerEdgeCount = connectionTargetId
+      ? currentState.edges.filter((edge) => edge.source === sourceNodeId && edge.target === connectionTargetId).length
+      : 0;
+    const needsCreateViewer = !existingViewer;
+    const needsConnectViewer = !needsCreateViewer && viewerEdgeCount === 0;
+    const hasDuplicateViewerEdges = viewerEdgeCount > 1;
+    const needsPatchViewerSource = !!existingViewer && existingViewer.data.panoramaSourceNodeId !== sourceNodeId;
+
+    if (!needsCreateViewer && !needsConnectViewer && !hasDuplicateViewerEdges && !needsPatchViewerSource) {
+      return existingViewer!.id;
+    }
+
+    get().pushHistory();
+
+    let resolvedViewerId: string | null = viewerId;
+    set((state) => {
+      const latestSourceNode = state.nodes.find((node) => node.id === sourceNodeId);
+      if (!isImageNode(latestSourceNode)) {
+        return state;
+      }
+
+      let nextNodes = [...state.nodes];
+      let nextEdges = [...state.edges];
+      let targetViewer = findPanoramaViewerForSource(nextNodes, nextEdges, sourceNodeId);
+
+      if (!targetViewer) {
+        targetViewer = createFlowNode(
+          'panorama_viewer',
+          buildPanoramaViewerPosition(latestSourceNode),
+          {
+            panoramaSourceNodeId: sourceNodeId,
+            title: '360 全景查看',
+          },
+        );
+        nextNodes = [...nextNodes, targetViewer];
+      } else if (targetViewer.data.panoramaSourceNodeId !== sourceNodeId) {
+        nextNodes = nextNodes.map((node) =>
+          node.id === targetViewer!.id
+            ? {
+                ...node,
+                data: {
+                  ...node.data,
+                  panoramaSourceNodeId: sourceNodeId,
+                  updatedAt: Date.now(),
+                },
+              }
+            : node,
+        );
+        targetViewer = nextNodes.find((node) => node.id === targetViewer!.id);
+      }
+
+      if (!targetViewer) {
+        return state;
+      }
+
+      resolvedViewerId = targetViewer.id;
+      const viewerEdges = nextEdges.filter((edge) => edge.source === sourceNodeId && edge.target === targetViewer!.id);
+      if (viewerEdges.length === 0) {
+        nextEdges = [...nextEdges, buildPanoramaViewerEdge(sourceNodeId, targetViewer.id)];
+      } else if (viewerEdges.length > 1) {
+        const keepEdgeId = viewerEdges[0]!.id;
+        nextEdges = nextEdges.filter((edge) =>
+          !(edge.source === sourceNodeId && edge.target === targetViewer!.id && edge.id !== keepEdgeId),
+        );
+      }
+
+      return {
+        nodes: nextNodes,
+        edges: nextEdges,
+        graphIndex: buildGraphIndex(nextNodes, nextEdges, state.nodeOutputByNodeId),
+        isDirty: true,
+      };
+    });
+
+    return resolvedViewerId;
   },
 
   getUpstreamNodes: (nodeId) => {
@@ -874,6 +1000,16 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
     });
   },
 
+  updateProjectDirector3d: (director3d) => {
+    set((state) => ({
+      projectStudios: {
+        ...state.projectStudios,
+        director3d,
+      },
+      isDirty: true,
+    }));
+  },
+
   replaceNode: (nodeId, input) => {
     set((state) => {
       const nodes = state.nodes.map((node) => {
@@ -1093,6 +1229,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
       projectTitle: project.title || '未命名项目',
       nodes,
       edges,
+      projectStudios: project.projectStudios ?? {},
       graphIndex: buildGraphIndex(nodes, edges, get().nodeOutputByNodeId),
       selectedNodeCount: countSelectedNodes(nodes),
       viewport: project.viewport || INITIAL_VIEWPORT,
@@ -1125,6 +1262,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
       projectTitle,
       nodes,
       edges,
+      projectStudios,
       viewport,
       version,
     } = get();
@@ -1136,6 +1274,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
       title: projectTitle,
       nodes,
       edges,
+      projectStudios,
       viewport,
       version,
       updatedAt: Date.now(),
@@ -1151,6 +1290,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
       projectTitle: '未命名项目',
       nodes: [],
       edges: [],
+      projectStudios: {},
       graphIndex: EMPTY_GRAPH_INDEX,
       selectedNodeCount: 0,
       viewport: INITIAL_VIEWPORT,

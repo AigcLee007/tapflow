@@ -13,6 +13,14 @@ import { DEFAULT_TEXT_MODEL_ID } from '../../config/textModels';
 import { getImageNaturalSize, imageUrlToBase64 } from '../utils/imageUtils';
 import { buildImageEditModelMapping } from '../utils/imageEditModelMapping';
 import { resolveEditableImageSource } from '../utils/editableImageSource';
+import { buildImageGenerationModeParamPatch } from '../utils/imageGenerationModes';
+import {
+  buildImageTemplateEditPrompt,
+  getImageTemplateEditAction,
+  type FlowImageTemplateEditActionKey,
+  resolveImageTemplateEditAspectRatio,
+  resolveImageTemplateEditMode,
+} from '../utils/imageTemplateEditActions';
 import {
   FLOW_NODE_DEFAULT_SIZES,
   fitMediaNodeToShortSide,
@@ -35,6 +43,15 @@ export interface RunImageEditParams {
   prompt?: string;
   direction?: 'left' | 'right' | 'top' | 'bottom' | 'all';
   scale?: number;
+  title?: string;
+  modelId?: string;
+  routeId?: string;
+  routeKey?: string;
+  params?: Record<string, any>;
+}
+
+export interface RunImageTemplateEditParams {
+  prompt?: string;
   title?: string;
   modelId?: string;
   routeId?: string;
@@ -525,6 +542,137 @@ function findReusableFailedEditNode(sourceNodeId: string, editType: ImageEditTyp
       node.data.generationStatus === 'error' &&
       !node.data.thumbnailUrl,
   );
+}
+
+function countDerivedTemplateEditResults(sourceNodeId: string, templateActionKey: FlowImageTemplateEditActionKey) {
+  const store = useFlowCanvasStore.getState();
+  const childIds = new Set(
+    store.edges.filter((edge) => edge.source === sourceNodeId).map((edge) => edge.target),
+  );
+  const lastEditType = `template:${templateActionKey}`;
+  return store.nodes.filter((node) => childIds.has(node.id) && node.data.lastEditType === lastEditType).length;
+}
+
+function findReusableFailedTemplateNode(sourceNodeId: string, templateActionKey: FlowImageTemplateEditActionKey) {
+  const store = useFlowCanvasStore.getState();
+  const childIds = new Set(
+    store.edges.filter((edge) => edge.source === sourceNodeId).map((edge) => edge.target),
+  );
+  const lastEditType = `template:${templateActionKey}`;
+  return [...store.nodes].reverse().find(
+    (node) =>
+      childIds.has(node.id) &&
+      node.data.lastEditType === lastEditType &&
+      node.data.generationStatus === 'error' &&
+      !node.data.thumbnailUrl,
+  );
+}
+
+function hasWorkflowUsableSourceAsset(data: Record<string, unknown>) {
+  if (typeof data.assetId === 'string' && data.assetId.trim()) return true;
+  if (typeof data.referenceUploadId === 'string' && data.referenceUploadId.trim()) return true;
+  if (typeof data.sourceAssetId === 'string' && data.sourceAssetId.trim()) return true;
+  return Array.isArray(data.assetIds) && data.assetIds.some((item) => typeof item === 'string' && item.trim());
+}
+
+export async function runImageTemplateEdit(
+  sourceNodeId: string,
+  templateActionKey: FlowImageTemplateEditActionKey,
+  options: RunImageTemplateEditParams = {},
+): Promise<string | undefined> {
+  const store = useFlowCanvasStore.getState();
+  const sourceNode = store.nodes.find((node) => node.id === sourceNodeId);
+  if (!sourceNode) return undefined;
+
+  const sourceData = (sourceNode.data || {}) as Record<string, unknown>;
+  if (!hasWorkflowUsableSourceAsset(sourceData)) {
+    throw new Error('当前图片节点还没有可供后端工作流使用的素材，请先上传或生成并保存为资源。');
+  }
+
+  const action = getImageTemplateEditAction(templateActionKey);
+  const modelId = options.modelId || String(sourceData.modelId || 'nano-banana-2');
+  let routeId = options.routeId || String(sourceData.routeId || '');
+  if (!routeId) {
+    const routeObj = getSelectedImageRoute(modelId);
+    if (routeObj) routeId = routeObj.id;
+  }
+
+  const routeKey =
+    String(options.routeKey || sourceData.routeKey || '').trim()
+    || getImageRouteById(routeId)?.id
+    || routeId
+    || undefined;
+  const promptLabel = String(options.prompt || action.label).trim() || action.label;
+  const prompt = buildImageTemplateEditPrompt(templateActionKey, promptLabel);
+  const aspectRatio = resolveImageTemplateEditAspectRatio(templateActionKey, sourceData);
+  const fallbackAspectRatio =
+    parseAspectRatio(aspectRatio)
+    || (typeof sourceData.aspectRatio === 'number' ? sourceData.aspectRatio : null)
+    || 1;
+  const displaySize = getMediaNodeSizeFromRatioString(aspectRatio, fallbackAspectRatio);
+  const reusableNode = findReusableFailedTemplateNode(sourceNodeId, templateActionKey);
+  const resultIndex = reusableNode
+    ? countDerivedTemplateEditResults(sourceNodeId, templateActionKey)
+    : countDerivedTemplateEditResults(sourceNodeId, templateActionKey) + 1;
+  const imageTemplateEditRequest = {
+    mode: resolveImageTemplateEditMode(templateActionKey),
+    promptLabel,
+    routeKey,
+    sourceNodeId,
+    submittedAt: Date.now(),
+    templateActionKey,
+  };
+  const imageEditRequest = {
+    editType: 'templateEdit',
+    mode: imageTemplateEditRequest.mode,
+    routeKey,
+    sourceNodeId,
+    submittedAt: imageTemplateEditRequest.submittedAt,
+    templateActionKey,
+  };
+  const baseParams = sourceData.params && typeof sourceData.params === 'object'
+    ? sourceData.params as Record<string, unknown>
+    : {};
+  const nextParams: Record<string, unknown> = {
+    ...baseParams,
+    ...(options.params || {}),
+    ...buildImageGenerationModeParamPatch('standard'),
+    aspectRatio,
+    aspect_ratio: aspectRatio,
+  };
+  const nextNodeData: Partial<any> = {
+    ...displaySize,
+    errorMessage: undefined,
+    generationMode: 'standard',
+    generationPrompt: prompt,
+    generationRunLabel: buildImageEditRunLabel(modelId, routeId),
+    generationStatus: 'generating',
+    imageEditRequest,
+    imageTemplateEditRequest,
+    lastEditType: `template:${templateActionKey}`,
+    modelId,
+    params: nextParams,
+    progress: 1,
+    routeId,
+    routeKey,
+    status: 'running',
+    title: options.title || String(reusableNode?.data.title || `${action.titlePrefix}${resultIndex}`),
+  };
+
+  const imageNode = reusableNode || store.addNodeAndEdge(
+    'image',
+    getDerivedImageNodePosition(sourceNode),
+    sourceNodeId,
+    'out',
+    'in',
+    nextNodeData,
+  );
+
+  if (reusableNode) {
+    store.updateNodeData(reusableNode.id, nextNodeData);
+  }
+
+  return imageNode.id;
 }
 
 /**

@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 import { ArrowRight, Download, Star, X } from "lucide-react";
 
 import { MenuSelect } from "../components/menu/MenuSelect";
+import { PanoramaViewer } from "../flowCanvas/panorama/PanoramaViewer";
+import { isPanoramaAssetLike } from "../flowCanvas/panorama/panoramaUtils";
 import { getAssetDownloadUrl, getAssetVariantUrl, updateAssetMetadata, type AssetItem } from "./assetApi";
 import { listWorkspaceProjects, updateWorkspaceProject, type WorkspaceProject } from "../workspace/workspaceApi";
 
@@ -80,6 +82,7 @@ export function AssetPreviewModal({
   const title = asset.title || asset.originalFilename || "未命名素材";
 
   const displayUrl = previewUrl || asset.previewUrl || "";
+  const isPanoramaAsset = isPanoramaAssetLike(asset);
 
   const download = async () => {
     setActionError(null);
@@ -154,7 +157,9 @@ export function AssetPreviewModal({
           <X size={18} />
         </button>
         <div className="relative flex h-64 min-h-[16rem] w-full flex-shrink-0 items-center justify-center bg-black/45 md:h-auto md:w-1/2" data-testid="asset-preview-stage">
-          {displayUrl && asset.mimeType.startsWith("image/") ? (
+          {displayUrl && isPanoramaAsset ? (
+            <PanoramaViewer className="h-full w-full" imageUrl={displayUrl} label={title} />
+          ) : displayUrl && asset.mimeType.startsWith("image/") ? (
             <img alt="" className="max-h-[calc(100%-2rem)] max-w-[calc(100%-2rem)] object-contain" src={displayUrl} />
           ) : displayUrl && asset.mimeType.startsWith("video/") ? (
             <video className="max-h-[calc(100%-2rem)] max-w-[calc(100%-2rem)]" controls preload="metadata" src={displayUrl} />

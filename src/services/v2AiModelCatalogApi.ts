@@ -15,6 +15,10 @@ export type AiModelCatalogItem = {
 };
 
 export type AiModelCatalogRoute = {
+  capabilities?: {
+    supportedGenerationModes?: string[];
+    supportedVideoWorkflows?: string[];
+  };
   estimatedCredits: number | null;
   minChargeCredits: number | null;
   modality: string;

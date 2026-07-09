@@ -470,6 +470,144 @@ describe('v2WorkflowRunner', () => {
     });
   });
 
+  test('production image mode preflight blocks unsupported route capabilities before creating a run', async () => {
+    useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, {
+      generationMode: 'panorama_360',
+      params: {
+        generationMode: 'panorama_360',
+      },
+      routeKey: 'image.default',
+      title: 'Unsupported panorama',
+    });
+    const nodeId = useFlowCanvasStore.getState().nodes[0]?.id as string;
+    listRuntimeRoutesMock.mockResolvedValueOnce([
+      {
+        capabilities: {
+          supportedGenerationModes: ['standard'],
+        },
+        estimatedCredits: 100,
+        minChargeCredits: 100,
+        modality: 'image',
+        modelDisplayName: 'Mock Image',
+        modelKey: 'mock-image',
+        pricingUnit: 'image_generation',
+        providerKey: 'mock-provider',
+        providerName: 'Mock Provider',
+        routeKey: 'image.default',
+      },
+    ]);
+
+    await expect(runBackendWorkflow({ runMode: 'target_node', targetNodeId: nodeId }))
+      .rejects.toThrow('UNSUPPORTED_GENERATION_MODE');
+
+    expect(createWorkflowRunMock).not.toHaveBeenCalled();
+    expect(useFlowCanvasStore.getState().nodes[0]?.data).toMatchObject({
+      errorCode: 'UNSUPPORTED_GENERATION_MODE',
+      generationStatus: 'error',
+      status: 'failed',
+    });
+  });
+
+  test('production image mode preflight blocks missing route pricing before creating a run', async () => {
+    useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, {
+      generationMode: 'wraparound_270',
+      params: {
+        generationMode: 'wraparound_270',
+      },
+      routeKey: 'image.production',
+      title: 'Unpriced wraparound',
+    });
+    const nodeId = useFlowCanvasStore.getState().nodes[0]?.id as string;
+    listRuntimeRoutesMock.mockResolvedValueOnce([
+      {
+        capabilities: {
+          supportedGenerationModes: ['standard', 'wraparound_270'],
+        },
+        estimatedCredits: null,
+        minChargeCredits: null,
+        modality: 'image',
+        modelDisplayName: 'Mock Image',
+        modelKey: 'mock-image',
+        pricingUnit: 'image_generation',
+        providerKey: 'mock-provider',
+        providerName: 'Mock Provider',
+        routeKey: 'image.production',
+      },
+    ]);
+    listBillingPricingMock.mockResolvedValueOnce([
+      {
+        active: true,
+        id: 'pricing-text-default',
+        minChargeCredits: 12,
+        model: 'default',
+        provider: 'default',
+        route: 'default',
+        unit: 'text_generation',
+        unitCredits: 12,
+      },
+    ]);
+
+    await expect(runBackendWorkflow({ runMode: 'target_node', targetNodeId: nodeId }))
+      .rejects.toThrow('PRICING_NOT_FOUND');
+
+    expect(createWorkflowRunMock).not.toHaveBeenCalled();
+    expect(useFlowCanvasStore.getState().nodes[0]?.data).toMatchObject({
+      errorCode: 'PRICING_NOT_FOUND',
+      generationStatus: 'error',
+      status: 'failed',
+    });
+  });
+
+  test('video editor export preflight blocks unsupported route capabilities before saving draft or creating a run', async () => {
+    const saveBarrier = vi.fn(async () => {});
+    registerRemoteDraftSaveBarrier(saveBarrier);
+    useFlowCanvasStore.getState().addNode('video', { x: 0, y: 0 }, {
+      params: {
+        videoEditor: {
+          aspect: '16:9',
+          resolution: '1920x1080',
+          sourceVideoEditorNodeId: 'editor-1',
+          timeline: {
+            audio: [],
+            clips: [],
+            durationMs: 3000,
+            subtitles: [],
+          },
+        },
+      },
+      routeKey: 'video.default',
+      title: 'Editor export',
+    });
+    const nodeId = useFlowCanvasStore.getState().nodes[0]?.id as string;
+    listRuntimeRoutesMock.mockResolvedValueOnce([
+      {
+        capabilities: {
+          supportedVideoWorkflows: [],
+        },
+        estimatedCredits: 800,
+        minChargeCredits: 800,
+        modality: 'video',
+        modelDisplayName: 'Mock Video',
+        modelKey: 'mock-video',
+        pricingUnit: 'video_generation',
+        providerKey: 'mock-provider',
+        providerName: 'Mock Provider',
+        routeKey: 'video.default',
+      },
+    ]);
+
+    await expect(runBackendWorkflow({ runMode: 'target_node', targetNodeId: nodeId }))
+      .rejects.toThrow('UNSUPPORTED_VIDEO_EDITOR_EXPORT');
+
+    expect(saveBarrier).not.toHaveBeenCalled();
+    expect(createWorkflowRunMock).not.toHaveBeenCalled();
+    expect(useFlowCanvasStore.getState().nodes[0]?.data).toMatchObject({
+      errorCode: 'UNSUPPORTED_VIDEO_EDITOR_EXPORT',
+      generationStatus: 'error',
+      status: 'failed',
+    });
+  });
+
   test('markBackendRunLaunchFailed exposes workflow launch errors on the target node', () => {
     useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, {
       generationStatus: 'generating',
@@ -776,6 +914,289 @@ describe('v2WorkflowRunner', () => {
     expect(useFlowCanvasStore.getState().runError).toContain('余额不足');
   });
 
+  test('successful storyboard image generation writes the result asset back to the storyboard cell', async () => {
+    const storyboardNode = useFlowCanvasStore.getState().addNode('storyboard', { x: 0, y: 0 }, {
+      storyboard: {
+        aspect: '16:9',
+        composedAssetId: 'https://signed.example.com/old-storyboard-sheet.png',
+        cells: [
+          { id: 'cell-1', shotNo: 1, title: '开场', prompt: '城市远景', sourceAssetId: 'data:image/png;base64,old-cell' },
+          { id: 'cell-2', shotNo: 2, assetId: 'blob:old-cell-preview' },
+          { id: 'cell-3', shotNo: 3 },
+          { id: 'cell-4', shotNo: 4 },
+          { id: 'cell-5', shotNo: 5 },
+          { id: 'cell-6', shotNo: 6 },
+        ],
+        grid: '3x2',
+        selectedIndex: 0,
+      },
+    });
+    const imageNode = useFlowCanvasStore.getState().addNode('image', { x: 420, y: 40 }, {
+      generationPrompt: '城市远景',
+      params: {
+        storyboard: {
+          cellId: 'cell-1',
+          shotNo: 1,
+          sourceStoryboardNodeId: storyboardNode.id,
+        },
+      },
+      routeKey: 'image.default',
+    });
+    createWorkflowRunMock.mockResolvedValue({ runId: 'run-storyboard-image', status: 'pending' });
+    getWorkflowRunMock.mockResolvedValue({
+      nodeRuns: [
+        {
+          attempt: 1,
+          costJson: {},
+          createdAt: '2026-05-17T00:00:00.000Z',
+          errorJson: null,
+          finishedAt: '2026-05-17T00:00:01.000Z',
+          id: 'node-run-storyboard-image',
+          inputJson: {},
+          maxAttempts: 3,
+          nodeId: imageNode.id,
+          nodeType: 'image.generate',
+          outputJson: {
+            assets: [{ assetId: 'asset-storyboard-result', kind: 'image', mimeType: 'image/png' }],
+          },
+          providerTaskId: null,
+          startedAt: null,
+          status: 'succeeded',
+          tenantId: 'tenant-1',
+          updatedAt: '2026-05-17T00:00:01.000Z',
+          workflowRunId: 'run-storyboard-image',
+        },
+      ],
+      workflowRun: {
+        canceledAt: null,
+        createdAt: '2026-05-17T00:00:00.000Z',
+        createdBy: 'user-1',
+        errorJson: null,
+        finishedAt: '2026-05-17T00:00:01.000Z',
+        flowId: '11111111-1111-1111-1111-111111111111',
+        flowVersionId: 'version-1',
+        id: 'run-storyboard-image',
+        idempotencyKey: null,
+        inputJson: { runMode: 'target_node', targetNodeId: imageNode.id },
+        outputJson: null,
+        startedAt: null,
+        status: 'succeeded',
+        tenantId: 'tenant-1',
+        updatedAt: '2026-05-17T00:00:01.000Z',
+      },
+    });
+    streamWorkflowRunMock.mockReturnValue({ close: vi.fn() });
+
+    await runBackendWorkflow({ runMode: 'target_node', targetNodeId: imageNode.id });
+
+    const updatedStoryboard = useFlowCanvasStore.getState().nodes.find((node) => node.id === storyboardNode.id);
+    expect(updatedStoryboard?.data.storyboard?.cells[0]).toMatchObject({
+      assetId: 'asset-storyboard-result',
+      id: 'cell-1',
+    });
+    expect(JSON.stringify(updatedStoryboard?.data.storyboard)).not.toMatch(/blob:|data:|https?:\/\//);
+  });
+
+  test('successful storyboard sheet generation writes the composed asset back to the storyboard node', async () => {
+    const storyboardNode = useFlowCanvasStore.getState().addNode('storyboard', { x: 0, y: 0 }, {
+      storyboard: {
+        aspect: '16:9',
+        composedAssetId: 'data:image/png;base64,old-sheet',
+        cells: [
+          { assetId: 'asset-cell-1', id: 'cell-1', shotNo: 1, title: '开场', prompt: '城市远景' },
+          { assetId: 'https://signed.example.com/old-cell-2.png', id: 'cell-2', shotNo: 2, title: '近景', prompt: '角色回头' },
+          { id: 'cell-3', shotNo: 3 },
+          { id: 'cell-4', shotNo: 4 },
+          { id: 'cell-5', shotNo: 5 },
+          { id: 'cell-6', shotNo: 6 },
+        ],
+        grid: '3x2',
+        selectedIndex: 0,
+      },
+    });
+    const sheetNode = useFlowCanvasStore.getState().addNode('image', { x: 420, y: 40 }, {
+      generationPrompt: '合成故事板图',
+      params: {
+        storyboardSheet: {
+          sourceStoryboardNodeId: storyboardNode.id,
+          aspect: '16:9',
+          grid: '3x2',
+          cells: [
+            { assetId: 'asset-cell-1', cellId: 'cell-1', shotNo: 1 },
+            { assetId: 'asset-cell-2', cellId: 'cell-2', shotNo: 2 },
+          ],
+        },
+      },
+      routeKey: 'image.default',
+    });
+    createWorkflowRunMock.mockResolvedValue({ runId: 'run-storyboard-sheet', status: 'pending' });
+    getWorkflowRunMock.mockResolvedValue({
+      nodeRuns: [
+        {
+          attempt: 1,
+          costJson: {},
+          createdAt: '2026-05-17T00:00:00.000Z',
+          errorJson: null,
+          finishedAt: '2026-05-17T00:00:01.000Z',
+          id: 'node-run-storyboard-sheet',
+          inputJson: {},
+          maxAttempts: 3,
+          nodeId: sheetNode.id,
+          nodeType: 'image.generate',
+          outputJson: {
+            assets: [{ assetId: 'asset-storyboard-sheet', kind: 'image', mimeType: 'image/png' }],
+          },
+          providerTaskId: null,
+          startedAt: null,
+          status: 'succeeded',
+          tenantId: 'tenant-1',
+          updatedAt: '2026-05-17T00:00:01.000Z',
+          workflowRunId: 'run-storyboard-sheet',
+        },
+      ],
+      workflowRun: {
+        canceledAt: null,
+        createdAt: '2026-05-17T00:00:00.000Z',
+        createdBy: 'user-1',
+        errorJson: null,
+        finishedAt: '2026-05-17T00:00:01.000Z',
+        flowId: '11111111-1111-1111-1111-111111111111',
+        flowVersionId: 'version-1',
+        id: 'run-storyboard-sheet',
+        idempotencyKey: null,
+        inputJson: { runMode: 'target_node', targetNodeId: sheetNode.id },
+        outputJson: null,
+        startedAt: null,
+        status: 'succeeded',
+        tenantId: 'tenant-1',
+        updatedAt: '2026-05-17T00:00:01.000Z',
+      },
+    });
+    streamWorkflowRunMock.mockReturnValue({ close: vi.fn() });
+
+    await runBackendWorkflow({ runMode: 'target_node', targetNodeId: sheetNode.id });
+
+    const updatedStoryboard = useFlowCanvasStore.getState().nodes.find((node) => node.id === storyboardNode.id);
+    expect(updatedStoryboard?.data.storyboard).toMatchObject({
+      composedAssetId: 'asset-storyboard-sheet',
+    });
+    expect(JSON.stringify(updatedStoryboard?.data.storyboard)).not.toMatch(/blob:|data:|https?:\/\//);
+  });
+
+  test('successful director shot image generation writes the result asset back to the director shot', async () => {
+    const directorNode = useFlowCanvasStore.getState().addNode('director3d', { x: 0, y: 0 }, {
+      director3d: {
+        version: 1,
+        scene: {
+          backgroundAssetId: 'https://signed.example.com/old-director-bg.png',
+          gridVisible: true,
+          units: 'meters',
+        },
+        actors: [
+          {
+            id: 'actor-1',
+            name: 'Actor 1',
+            kind: 'image_plane',
+            assetId: 'blob:old-actor-preview',
+            position: [0, 0, 0],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1],
+            visible: true,
+            locked: false,
+          },
+        ],
+        cameras: [
+          {
+            id: 'camera-1',
+            name: 'Camera 1',
+            position: [0, 1.8, 5],
+            target: [0, 1, 0],
+            focalMm: 35,
+            prompt: 'wide studio shot',
+          },
+        ],
+        shots: [
+          {
+            id: 'shot-1',
+            cameraId: 'camera-1',
+            startMs: 0,
+            durationMs: 3000,
+            motion: 'static',
+            prompt: 'wide studio shot',
+            generatedAssetId: 'data:image/png;base64,old-shot',
+            generatedSourceNodeId: 'https://signed.example.com/old-image-node',
+          },
+        ],
+      },
+      title: '3D Director',
+    });
+    const imageNode = useFlowCanvasStore.getState().addNode('image', { x: 420, y: 40 }, {
+      generationPrompt: 'wide studio shot',
+      params: {
+        director3d: {
+          sourceDirectorNodeId: directorNode.id,
+          cameraId: 'camera-1',
+          shotId: 'shot-1',
+        },
+      },
+      routeKey: 'image.default',
+    });
+    createWorkflowRunMock.mockResolvedValue({ runId: 'run-director-shot-image', status: 'pending' });
+    getWorkflowRunMock.mockResolvedValue({
+      nodeRuns: [
+        {
+          attempt: 1,
+          costJson: {},
+          createdAt: '2026-05-17T00:00:00.000Z',
+          errorJson: null,
+          finishedAt: '2026-05-17T00:00:01.000Z',
+          id: 'node-run-director-shot-image',
+          inputJson: {},
+          maxAttempts: 3,
+          nodeId: imageNode.id,
+          nodeType: 'image.generate',
+          outputJson: {
+            assets: [{ assetId: 'asset-director-shot', kind: 'image', mimeType: 'image/png' }],
+          },
+          providerTaskId: null,
+          startedAt: null,
+          status: 'succeeded',
+          tenantId: 'tenant-1',
+          updatedAt: '2026-05-17T00:00:01.000Z',
+          workflowRunId: 'run-director-shot-image',
+        },
+      ],
+      workflowRun: {
+        canceledAt: null,
+        createdAt: '2026-05-17T00:00:00.000Z',
+        createdBy: 'user-1',
+        errorJson: null,
+        finishedAt: '2026-05-17T00:00:01.000Z',
+        flowId: '11111111-1111-1111-1111-111111111111',
+        flowVersionId: 'version-1',
+        id: 'run-director-shot-image',
+        idempotencyKey: null,
+        inputJson: { runMode: 'target_node', targetNodeId: imageNode.id },
+        outputJson: null,
+        startedAt: null,
+        status: 'succeeded',
+        tenantId: 'tenant-1',
+        updatedAt: '2026-05-17T00:00:01.000Z',
+      },
+    });
+    streamWorkflowRunMock.mockReturnValue({ close: vi.fn() });
+
+    await runBackendWorkflow({ runMode: 'target_node', targetNodeId: imageNode.id });
+
+    const updatedDirector = useFlowCanvasStore.getState().nodes.find((node) => node.id === directorNode.id);
+    expect(updatedDirector?.data.director3d?.shots[0] as Record<string, unknown>).toMatchObject({
+      generatedAssetId: 'asset-director-shot',
+      generatedSourceNodeId: imageNode.id,
+      id: 'shot-1',
+    });
+    expect(JSON.stringify(updatedDirector?.data.director3d)).not.toMatch(/blob:|data:|https?:\/\//);
+  });
+
   test('asset refs use signed preview urls and stay in runtime state', async () => {
     useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, {
       batchCount: 2,
@@ -783,8 +1204,15 @@ describe('v2WorkflowRunner', () => {
       modelId: 'mock-image',
       params: {
         aspect_ratio: '4:3',
+        generationMode: 'wraparound_270',
         quality: 'high',
         size: '2k',
+        wraparound: {
+          coverageDegrees: 270,
+          layout: 'continuous',
+          panels: 3,
+          subjectType: 'scene',
+        },
       },
       referenceOrder: ['asset:ref-1'],
       generationReferenceComparison: {
@@ -907,8 +1335,10 @@ describe('v2WorkflowRunner', () => {
       generationStatus: 'done',
       lastGenerationSnapshot: expect.objectContaining({
         aspectRatio: '4:3',
+        generationMode: 'wraparound_270',
         modelId: 'mock-image',
         n: 2,
+        productionSubjectType: 'scene',
         prompt: 'a quiet studio product photo',
         quality: 'high',
         referenceComparison: {
@@ -933,6 +1363,133 @@ describe('v2WorkflowRunner', () => {
       workflowLaunchUpdatedAt: expect.any(Number),
     });
     expect(updatedNode?.data.thumbnailUrl).toBe('https://cdn.test/asset-1-preview.png?X-Amz-Signature=signed');
+  });
+
+  test('successful panorama image runs mark panorama metadata and auto-link a single viewer node', async () => {
+    useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, {
+      generationMode: 'panorama_360',
+      generationPrompt: 'a seamless rooftop city panorama at dusk',
+      modelId: 'mock-image',
+      params: {
+        aspect_ratio: '2:1',
+        generationMode: 'panorama_360',
+        panorama: {
+          continuity: 'seamless',
+          projectionHint: 'equirectangular',
+          subjectType: 'scene',
+        },
+        size: '2k',
+      },
+      routeKey: 'image.default',
+      title: 'Panorama Image',
+    });
+    const imageNodeId = useFlowCanvasStore.getState().nodes[0]?.id as string;
+
+    const panoramaSnapshot = {
+      nodeRuns: [
+        {
+          attempt: 1,
+          costJson: {},
+          createdAt: '2026-05-17T00:00:00.000Z',
+          errorJson: null,
+          finishedAt: null,
+          id: 'node-run-panorama',
+          inputJson: {},
+          maxAttempts: 3,
+          nodeId: imageNodeId,
+          nodeType: 'image.generate',
+          outputJson: {
+            assets: [
+              {
+                assetId: 'asset-panorama',
+                height: 1024,
+                kind: 'image',
+                metadata: {
+                  aspectRatio: '2:1',
+                  generationMode: 'panorama_360',
+                  mediaKind: 'pano360',
+                  projection: 'equirectangular',
+                },
+                mimeType: 'image/png',
+                width: 2048,
+              },
+            ],
+          },
+          providerTaskId: null,
+          startedAt: null,
+          status: 'succeeded',
+          tenantId: 'tenant-1',
+          updatedAt: '2026-05-17T00:00:00.000Z',
+          workflowRunId: 'run-panorama',
+        },
+      ],
+      workflowRun: {
+        canceledAt: null,
+        createdAt: '2026-05-17T00:00:00.000Z',
+        createdBy: 'user-1',
+        errorJson: null,
+        finishedAt: '2026-05-17T00:00:01.000Z',
+        flowId: '11111111-1111-1111-1111-111111111111',
+        flowVersionId: 'version-1',
+        id: 'run-panorama',
+        idempotencyKey: null,
+        inputJson: { runMode: 'target_node', targetNodeId: imageNodeId },
+        outputJson: null,
+        startedAt: null,
+        status: 'succeeded',
+        tenantId: 'tenant-1',
+        updatedAt: '2026-05-17T00:00:01.000Z',
+      },
+    };
+
+    createWorkflowRunMock.mockResolvedValue({
+      runId: 'run-panorama',
+      status: 'pending',
+    });
+    listRuntimeRoutesMock.mockResolvedValueOnce([
+      {
+        capabilities: {
+          supportedGenerationModes: ['standard', 'panorama_360'],
+        },
+        estimatedCredits: 100,
+        minChargeCredits: 100,
+        modality: 'image',
+        modelDisplayName: 'Mock Image',
+        modelKey: 'mock-image',
+        pricingUnit: 'image_generation',
+        providerKey: 'mock-provider',
+        providerName: 'Mock Provider',
+        routeKey: 'image.default',
+      },
+    ]);
+    getWorkflowRunMock.mockResolvedValue(panoramaSnapshot);
+    listFlowWorkflowRunsMock.mockResolvedValue([panoramaSnapshot]);
+    streamWorkflowRunMock.mockReturnValue({ close: vi.fn() });
+
+    await runBackendWorkflow({ runMode: 'target_node', targetNodeId: imageNodeId });
+
+    let state = useFlowCanvasStore.getState();
+    const updatedNode = state.nodes.find((node) => node.id === imageNodeId);
+    expect(updatedNode?.data).toMatchObject({
+      assetId: 'asset-panorama',
+      metadata: {
+        aspectRatio: '2:1',
+        generationMode: 'panorama_360',
+        mediaKind: 'pano360',
+        projection: 'equirectangular',
+      },
+    });
+    expect(state.nodes.filter((node) => node.type === 'panorama_viewer')).toHaveLength(1);
+
+    await recoverFlowTargetNodeRuns('11111111-1111-1111-1111-111111111111');
+
+    state = useFlowCanvasStore.getState();
+    const viewerNodes = state.nodes.filter((node) => node.type === 'panorama_viewer');
+    expect(viewerNodes).toHaveLength(1);
+    expect(viewerNodes[0]?.data).toMatchObject({
+      panoramaSourceNodeId: imageNodeId,
+    });
+    expect(state.edges.filter((edge) => edge.source === imageNodeId && edge.target === viewerNodes[0]?.id)).toHaveLength(1);
   });
 
   test('asset refs fall back to original signed url while preview variant is pending', async () => {
@@ -1104,6 +1661,169 @@ describe('v2WorkflowRunner', () => {
       workflowLaunchStatus: 'asset_visible',
       workflowLaunchUpdatedAt: expect.any(Number),
     });
+  });
+
+  test('video editor export syncs the generated asset id back to the source editor node', async () => {
+    const editorNode = useFlowCanvasStore.getState().addNode('video_editor', { x: 0, y: 0 }, {
+      title: 'Video Editor',
+      videoEditor: {
+        version: 1,
+        aspect: '16:9',
+        exportedAssetId: 'https://signed.example.com/old-export.mp4',
+        resolution: '1920x1080',
+        timeline: {
+          audio: [],
+          clips: [
+            {
+              id: 'clip-1',
+              assetId: 'source-video-asset',
+              kind: 'video',
+              track: 0,
+              startMs: 0,
+              inMs: 0,
+              outMs: 3000,
+              speed: 1,
+            },
+            {
+              id: 'clip-unsafe',
+              assetId: 'blob:old-video-preview',
+              kind: 'video',
+              track: 1,
+              startMs: 0,
+              inMs: 0,
+              outMs: 1000,
+              speed: 1,
+            },
+          ],
+          durationMs: 3000,
+          subtitles: [
+            {
+              id: 'subtitle-unsafe',
+              text: 'data:image/png;base64,old-subtitle',
+              startMs: 0,
+              endMs: 1000,
+            },
+          ],
+        },
+      },
+    });
+    const exportNode = useFlowCanvasStore.getState().addNode('video', { x: 420, y: 0 }, {
+      params: {
+        videoEditor: {
+          sourceVideoEditorNodeId: editorNode.id,
+          aspect: '16:9',
+          resolution: '1920x1080',
+          timeline: {
+            audio: [],
+            clips: [
+              {
+                id: 'clip-1',
+                assetId: 'source-video-asset',
+                kind: 'video',
+                track: 0,
+                startMs: 0,
+                inMs: 0,
+                outMs: 3000,
+                speed: 1,
+              },
+            ],
+            durationMs: 3000,
+            subtitles: [],
+          },
+        },
+      },
+      routeKey: 'video.editor.ffmpeg',
+      title: 'Editor Export',
+    });
+    listRuntimeRoutesMock.mockResolvedValueOnce([
+      {
+        capabilities: {
+          supportedVideoWorkflows: ['video_editor_export'],
+        },
+        estimatedCredits: 800,
+        minChargeCredits: 800,
+        modality: 'video',
+        modelDisplayName: 'Local FFmpeg',
+        modelKey: 'local-ffmpeg',
+        pricingUnit: 'video_generation',
+        providerKey: 'local',
+        providerName: 'Local',
+        routeKey: 'video.editor.ffmpeg',
+      },
+    ]);
+    createWorkflowRunMock.mockResolvedValue({
+      runId: 'run-video-editor-export',
+      status: 'pending',
+    });
+    getAssetVariantUrlMock.mockResolvedValue({
+      expiresAt: '2026-05-17T00:15:00.000Z',
+      method: 'GET',
+      url: 'https://cdn.test/video-asset-export-preview.mp4?X-Amz-Signature=signed',
+      variantKey: 'preview',
+    });
+    getWorkflowRunMock.mockResolvedValue({
+      nodeRuns: [
+        {
+          attempt: 1,
+          costJson: {},
+          createdAt: '2026-05-17T00:00:00.000Z',
+          errorJson: null,
+          finishedAt: '2026-05-17T00:00:01.000Z',
+          id: 'node-run-video-editor-export',
+          inputJson: {},
+          maxAttempts: 3,
+          nodeId: exportNode.id,
+          nodeType: 'video.generate',
+          outputJson: {
+            assets: [
+              {
+                assetId: 'video-asset-export',
+                durationMs: 3000,
+                kind: 'video',
+                mimeType: 'video/mp4',
+              },
+            ],
+          },
+          providerTaskId: null,
+          startedAt: null,
+          status: 'succeeded',
+          tenantId: 'tenant-1',
+          updatedAt: '2026-05-17T00:00:01.000Z',
+          workflowRunId: 'run-video-editor-export',
+        },
+      ],
+      workflowRun: {
+        canceledAt: null,
+        createdAt: '2026-05-17T00:00:00.000Z',
+        createdBy: 'user-1',
+        errorJson: null,
+        finishedAt: '2026-05-17T00:00:01.000Z',
+        flowId: '11111111-1111-1111-1111-111111111111',
+        flowVersionId: 'version-1',
+        id: 'run-video-editor-export',
+        idempotencyKey: null,
+        inputJson: { runMode: 'target_node', targetNodeId: exportNode.id },
+        outputJson: null,
+        startedAt: null,
+        status: 'succeeded',
+        tenantId: 'tenant-1',
+        updatedAt: '2026-05-17T00:00:01.000Z',
+      },
+    });
+    streamWorkflowRunMock.mockReturnValue({ close: vi.fn() });
+
+    await runBackendWorkflow({ runMode: 'target_node', targetNodeId: exportNode.id });
+
+    const updatedEditorNode = useFlowCanvasStore.getState().nodes.find((node) => node.id === editorNode.id);
+    const updatedExportNode = useFlowCanvasStore.getState().nodes.find((node) => node.id === exportNode.id);
+    expect(updatedExportNode?.data).toMatchObject({
+      assetId: 'video-asset-export',
+      status: 'success',
+    });
+    expect(updatedEditorNode?.data.videoEditor).toMatchObject({
+      exportedAssetId: 'video-asset-export',
+    });
+    expect(JSON.stringify(updatedEditorNode?.data.videoEditor)).not.toMatch(/blob:|data:|https?:\/\//);
   });
 
   test('text target-node snapshot clears generating state and applies returned text', async () => {

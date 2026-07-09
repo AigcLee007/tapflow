@@ -1,3 +1,6 @@
+import { rm } from "node:fs/promises";
+import { basename, dirname, isAbsolute } from "node:path";
+
 import {
   BillingService,
   createPgPool,
@@ -38,6 +41,12 @@ import {
   type MediaVariantQueue,
   MediaAssetStore,
 } from "./media-asset-store.js";
+import {
+  VideoEditorLocalRenderService,
+  type VideoEditorLocalRenderResult,
+  type VideoEditorRenderAssetLookup,
+} from "./video-editor-local-render-service.js";
+import { buildVideoEditorRenderPlan } from "./video-editor-render-plan.js";
 
 type WorkflowRunRecord = {
   error_json: Record<string, unknown> | null;
@@ -86,6 +95,8 @@ type WorkflowExecutionContext = {
 type WorkflowRunMode = "flow" | "target_node";
 const UNKNOWN_PROVIDER_RECONCILE_PREFIX = "timeout-unknown:";
 const UNKNOWN_PROVIDER_RECONCILE_WINDOW_MS = 10 * 60 * 1000;
+const VIDEO_EDITOR_EXPORT_WORKFLOW = "video_editor_export";
+const VIDEO_EDITOR_FFMPEG_RENDER_ENGINE = "ffmpeg";
 
 type TextGenerationRuntimeLike = Pick<DatabaseTextGenerationRuntime, "generateText">;
 type MediaGenerationRuntimeLike = Pick<DatabaseMediaRuntime, "generateImage" | "generateVideo" | "pollTask">;
@@ -136,6 +147,11 @@ type AssetStorageLookup = {
   width?: number | null;
 };
 
+type VideoEditorRenderRouteCapability = {
+  renderEngine: "ffmpeg" | null;
+  routeKey: string;
+};
+
 type SerializableAssetRef = Omit<AssetRef, "timing">;
 
 type PersistedMediaOutput = {
@@ -174,6 +190,7 @@ type AiGatewayMediaResultWithTaskIds = AiGatewayMediaResult & {
 };
 
 type MediaProviderOutcome = {
+  cleanupDir?: string | null;
   kind: "image" | "video";
   node: CompiledWorkflowNode;
   nodeRun: NodeRunRecord;
@@ -713,6 +730,40 @@ function resolveImageRequestRouteKey(config: Record<string, unknown>): string {
     ?? "image.default";
 }
 
+function resolveVideoRequestRouteKey(config: Record<string, unknown>): string {
+  return readTrimmedString(config.routeKey) ?? "video.default";
+}
+
+function readVideoEditorRenderEngine(requestConfig: Record<string, unknown> | null): "ffmpeg" | null {
+  const capabilities = isPlainObject(requestConfig?.capabilities) ? requestConfig.capabilities : {};
+  const supportedVideoWorkflows = Array.isArray(capabilities.supportedVideoWorkflows)
+    ? capabilities.supportedVideoWorkflows.map((item) => String(item || "").trim())
+    : [];
+  if (!supportedVideoWorkflows.includes(VIDEO_EDITOR_EXPORT_WORKFLOW)) {
+    return null;
+  }
+  return capabilities.videoEditorRenderEngine === VIDEO_EDITOR_FFMPEG_RENDER_ENGINE
+    ? VIDEO_EDITOR_FFMPEG_RENDER_ENGINE
+    : null;
+}
+
+function readVideoEditorExportRenderPlan(request: VideoGenerationRequest): unknown | null {
+  const metadata = isPlainObject(request.metadata) ? request.metadata : {};
+  const videoEditorExport = isPlainObject(metadata.videoEditorExport) ? metadata.videoEditorExport : {};
+  return videoEditorExport.source === VIDEO_EDITOR_EXPORT_WORKFLOW ? videoEditorExport.renderPlan ?? null : null;
+}
+
+function localOutputDirFromRenderResult(result: VideoEditorLocalRenderResult): string | null {
+  const localFilePath = typeof result.output.localFilePath === "string" ? result.output.localFilePath.trim() : "";
+  if (!localFilePath) {
+    return null;
+  }
+  const outputDir = dirname(localFilePath);
+  return isAbsolute(outputDir) && basename(outputDir).startsWith("tapflow-video-render-output-")
+    ? outputDir
+    : null;
+}
+
 function buildImageRequest(
   upstreamOutputs: Array<Record<string, unknown> | null>,
   config: Record<string, unknown>,
@@ -783,6 +834,53 @@ function buildImageRequest(
   };
 }
 
+const PANORAMA_GENERATION_MODE = "panorama_360";
+const PANORAMA_MEDIA_KIND = "pano360";
+const PANORAMA_DEFAULT_ASPECT_RATIO = "2:1";
+const PANORAMA_DEFAULT_PROJECTION = "equirectangular";
+const PANORAMA_SUPPORTED_ASPECT_RATIOS = new Set(["2:1", "21:9"]);
+
+function normalizePanoramaAspectRatio(value: unknown): string {
+  const normalized = readTrimmedString(value);
+  return normalized && PANORAMA_SUPPORTED_ASPECT_RATIOS.has(normalized)
+    ? normalized
+    : PANORAMA_DEFAULT_ASPECT_RATIO;
+}
+
+function buildPanoramaAssetMetadataForNode(
+  kind: "image" | "video",
+  node: CompiledWorkflowNode,
+): Record<string, string> | undefined {
+  if (kind !== "image" || node.type !== "image.generate" || !isPlainObject(node.config)) {
+    return undefined;
+  }
+  const config = node.config;
+  const params = isPlainObject(config.params) ? config.params : {};
+  const metadata = isPlainObject(config.metadata) ? config.metadata : {};
+  const panorama = isPlainObject(params.panorama) ? params.panorama : {};
+  const generationMode =
+    readTrimmedString(config.generationMode)
+    ?? readTrimmedString(params.generationMode)
+    ?? readTrimmedString(metadata.generationMode);
+
+  if (generationMode !== PANORAMA_GENERATION_MODE) {
+    return undefined;
+  }
+
+  return {
+    aspectRatio: normalizePanoramaAspectRatio(
+      readTrimmedString(metadata.aspectRatio)
+      ?? readTrimmedString(params.aspectRatio)
+      ?? readTrimmedString(params.aspect_ratio),
+    ),
+    generationMode: PANORAMA_GENERATION_MODE,
+    mediaKind: PANORAMA_MEDIA_KIND,
+    projection: readTrimmedString(metadata.projection)
+      ?? readTrimmedString(panorama.projectionHint)
+      ?? PANORAMA_DEFAULT_PROJECTION,
+  };
+}
+
 function classifyReferenceDebugValue(value: unknown): string {
   const text = typeof value === "string" ? value.trim() : "";
   if (!text) return "unknown";
@@ -823,24 +921,490 @@ function pickImageRequestDebugParams(metadata: Record<string, unknown> | null | 
   return next;
 }
 
+function normalizeMediaOutputs(
+  outputs: Array<Record<string, unknown> | MediaOutput | null | undefined>,
+  outputUrls: string[] = [],
+  outputBase64: string[] = [],
+  mimeType: string | null = null,
+): MediaOutput[] {
+  const normalized: MediaOutput[] = [];
+
+  for (const output of outputs) {
+    if (!output || !isPlainObject(output)) {
+      continue;
+    }
+
+    normalized.push({
+      ...(typeof output.base64 === "string" ? { base64: output.base64 } : {}),
+      ...(typeof output.durationMs === "number" ? { durationMs: output.durationMs } : {}),
+      ...(typeof output.filename === "string" ? { filename: output.filename } : {}),
+      ...(typeof output.height === "number" ? { height: output.height } : {}),
+      ...(typeof output.localFilePath === "string" ? { localFilePath: output.localFilePath } : {}),
+      ...(typeof output.mimeType === "string" ? { mimeType: output.mimeType } : mimeType ? { mimeType } : {}),
+      ...(typeof output.url === "string" ? { url: output.url } : {}),
+      ...(typeof output.width === "number" ? { width: output.width } : {}),
+    });
+  }
+
+  for (const url of outputUrls) {
+    normalized.push({
+      mimeType,
+      url,
+    });
+  }
+
+  for (const base64 of outputBase64) {
+    normalized.push({
+      base64,
+      mimeType,
+    });
+  }
+
+  return normalized;
+}
+
 export const __workerTestUtils = {
+  applyDraftOutputPatchToNodes,
   buildAiRuntimeDiagnostic,
   buildImageRequest,
+  buildMediaUsageMetadata,
+  buildVideoRequest,
   getDependencyOutputs: getDependencyOutputsFromRuntimeGraph,
+  localOutputDirFromRenderResult,
+  normalizeMediaOutputs,
+  readVideoEditorRenderEngine,
   resolveImageRequestRouteKey,
 };
+
+function readVideoEditorConfig(config: Record<string, unknown>): Record<string, unknown> | null {
+  const params = isPlainObject(config.params) ? config.params : {};
+  return isPlainObject(params.videoEditor) ? params.videoEditor : null;
+}
+
+function readDirector3dConfig(config: Record<string, unknown>): Record<string, unknown> | null {
+  const params = isPlainObject(config.params) ? config.params : {};
+  return isPlainObject(params.director3d) ? params.director3d : null;
+}
+
+function readStoryboardCellConfig(config: Record<string, unknown>): Record<string, unknown> | null {
+  const params = isPlainObject(config.params) ? config.params : {};
+  return isPlainObject(params.storyboard) ? params.storyboard : null;
+}
+
+function readStoryboardSheetConfig(config: Record<string, unknown>): Record<string, unknown> | null {
+  const params = isPlainObject(config.params) ? config.params : {};
+  return isPlainObject(params.storyboardSheet) ? params.storyboardSheet : null;
+}
+
+const UNSAFE_DRAFT_MEDIA_PATTERN = /(?:base64|blob:|data:|https?:\/\/)/i;
+const UNSAFE_DRAFT_MEDIA_KEY_PATTERN = /(?:base64|blob|bytes|dataUrl|downloadUrl|file|previewUrl|signedUrl|url)$/i;
+
+function sanitizeProductionStudioDraftValue(value: unknown): unknown {
+  if (typeof value === "string") {
+    return UNSAFE_DRAFT_MEDIA_PATTERN.test(value) ? undefined : value;
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : undefined;
+  }
+  if (typeof value === "boolean" || value === null) {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => sanitizeProductionStudioDraftValue(item))
+      .filter((item) => typeof item !== "undefined");
+  }
+  if (!isPlainObject(value)) {
+    return undefined;
+  }
+
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, entryValue] of Object.entries(value)) {
+    if (UNSAFE_DRAFT_MEDIA_KEY_PATTERN.test(key)) {
+      continue;
+    }
+    const nextValue = sanitizeProductionStudioDraftValue(entryValue);
+    if (typeof nextValue !== "undefined") {
+      sanitized[key] = nextValue;
+    }
+  }
+  return sanitized;
+}
+
+function sanitizeProductionStudioDraftDocument(value: unknown): Record<string, unknown> {
+  const sanitized = sanitizeProductionStudioDraftValue(value);
+  return isPlainObject(sanitized) ? sanitized : {};
+}
+
+function applyDraftOutputPatchToNodes(input: {
+  currentNode: Pick<CompiledWorkflowNode, "config" | "id">;
+  nodes: Array<Record<string, unknown>>;
+  patch: Record<string, unknown>;
+}): { changed: boolean; nodes: Array<Record<string, unknown>> } {
+  const exportedAssetId = readTrimmedString(input.patch.assetId);
+  const sourceVideoEditorNodeId = readTrimmedString(readVideoEditorConfig(input.currentNode.config ?? {})?.sourceVideoEditorNodeId);
+  const director3dConfig = readDirector3dConfig(input.currentNode.config ?? {});
+  const sourceDirectorNodeId = readTrimmedString(director3dConfig?.sourceDirectorNodeId);
+  const sourceDirectorShotId = readTrimmedString(director3dConfig?.shotId);
+  const storyboardCellConfig = readStoryboardCellConfig(input.currentNode.config ?? {});
+  const sourceStoryboardCellNodeId = readTrimmedString(storyboardCellConfig?.sourceStoryboardNodeId);
+  const sourceStoryboardCellId = readTrimmedString(storyboardCellConfig?.cellId);
+  const sourceStoryboardSheetNodeId = readTrimmedString(readStoryboardSheetConfig(input.currentNode.config ?? {})?.sourceStoryboardNodeId);
+  let changed = false;
+
+  const nodes = input.nodes.map((node) => {
+    const data = isPlainObject(node.data) ? node.data : null;
+    if (node.id === input.currentNode.id && data) {
+      changed = true;
+      return {
+        ...node,
+        data: {
+          ...data,
+          ...input.patch,
+          updatedAt: Date.now(),
+        },
+      };
+    }
+
+    if (
+      exportedAssetId &&
+      sourceVideoEditorNodeId &&
+      node.id === sourceVideoEditorNodeId &&
+      data &&
+      (node.type === "video_editor" || data.kind === "video_editor" || isPlainObject(data.videoEditor))
+    ) {
+      changed = true;
+      const videoEditor = sanitizeProductionStudioDraftDocument(data.videoEditor);
+      return {
+        ...node,
+        data: {
+          ...data,
+          updatedAt: Date.now(),
+          videoEditor: {
+            ...videoEditor,
+            exportedAssetId,
+          },
+        },
+      };
+    }
+
+    if (
+      exportedAssetId &&
+      sourceStoryboardCellNodeId &&
+      sourceStoryboardCellId &&
+      node.id === sourceStoryboardCellNodeId &&
+      data &&
+      (node.type === "storyboard" || data.kind === "storyboard" || isPlainObject(data.storyboard))
+    ) {
+      const storyboard = sanitizeProductionStudioDraftDocument(data.storyboard);
+      const cells = Array.isArray(storyboard.cells) ? storyboard.cells : [];
+      let cellChanged = false;
+      const nextCells = cells.map((cell) => {
+        if (!isPlainObject(cell) || readTrimmedString(cell.id) !== sourceStoryboardCellId) {
+          return cell;
+        }
+        cellChanged = true;
+        return {
+          ...cell,
+          assetId: exportedAssetId,
+          sourceAssetId: exportedAssetId,
+          sourceNodeId: input.currentNode.id,
+        };
+      });
+      if (!cellChanged) {
+        return node;
+      }
+      changed = true;
+      return {
+        ...node,
+        data: {
+          ...data,
+          storyboard: {
+            ...storyboard,
+            cells: nextCells,
+          },
+          updatedAt: Date.now(),
+        },
+      };
+    }
+
+    if (
+      exportedAssetId &&
+      sourceStoryboardSheetNodeId &&
+      node.id === sourceStoryboardSheetNodeId &&
+      data &&
+      (node.type === "storyboard" || data.kind === "storyboard" || isPlainObject(data.storyboard))
+    ) {
+      const storyboard = sanitizeProductionStudioDraftDocument(data.storyboard);
+      changed = true;
+      return {
+        ...node,
+        data: {
+          ...data,
+          storyboard: {
+            ...storyboard,
+            composedAssetId: exportedAssetId,
+          },
+          updatedAt: Date.now(),
+        },
+      };
+    }
+
+    if (
+      exportedAssetId &&
+      sourceDirectorNodeId &&
+      sourceDirectorShotId &&
+      node.id === sourceDirectorNodeId &&
+      data &&
+      (node.type === "director3d" || data.kind === "director3d" || isPlainObject(data.director3d))
+    ) {
+      const director3d = sanitizeProductionStudioDraftDocument(data.director3d);
+      const shots = Array.isArray(director3d.shots) ? director3d.shots : [];
+      let shotChanged = false;
+      const nextShots = shots.map((shot) => {
+        if (!isPlainObject(shot) || readTrimmedString(shot.id) !== sourceDirectorShotId) {
+          return shot;
+        }
+        shotChanged = true;
+        return {
+          ...shot,
+          generatedAssetId: exportedAssetId,
+          generatedSourceNodeId: input.currentNode.id,
+        };
+      });
+      if (!shotChanged) {
+        return node;
+      }
+      changed = true;
+      return {
+        ...node,
+        data: {
+          ...data,
+          director3d: {
+            ...director3d,
+            shots: nextShots,
+          },
+          updatedAt: Date.now(),
+        },
+      };
+    }
+
+    return node;
+  });
+
+  return { changed, nodes };
+}
+
+function readFiniteNumberOrNull(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function readTimelineDurationMs(item: Record<string, unknown>): number | null {
+  const inMs = readFiniteNumberOrNull(item.inMs);
+  const outMs = readFiniteNumberOrNull(item.outMs);
+  if (inMs === null || outMs === null) {
+    return null;
+  }
+  return Math.max(0, outMs - inMs);
+}
+
+function buildVideoEditorTimelineAssets(videoEditor: Record<string, unknown> | null): AssetReferenceInput[] {
+  const timeline = isPlainObject(videoEditor?.timeline) ? videoEditor.timeline : {};
+  const clips = Array.isArray(timeline.clips) ? timeline.clips : [];
+  const audio = Array.isArray(timeline.audio) ? timeline.audio : [];
+  const assets: AssetReferenceInput[] = [];
+
+  for (const clip of clips) {
+    if (!isPlainObject(clip) || typeof clip.assetId !== "string" || !clip.assetId.trim()) {
+      continue;
+    }
+    assets.push({
+      assetId: clip.assetId.trim(),
+      durationMs: readTimelineDurationMs(clip),
+      kind: readTrimmedString(clip.kind) ?? "video",
+      metadata: {
+        clipId: readTrimmedString(clip.id),
+        source: "video-editor-timeline",
+        startMs: readFiniteNumberOrNull(clip.startMs),
+        track: readFiniteNumberOrNull(clip.track),
+      },
+      mimeType: null,
+    });
+  }
+
+  for (const item of audio) {
+    if (!isPlainObject(item) || typeof item.assetId !== "string" || !item.assetId.trim()) {
+      continue;
+    }
+    assets.push({
+      assetId: item.assetId.trim(),
+      durationMs: readTimelineDurationMs(item),
+      kind: "audio",
+      metadata: {
+        audioId: readTrimmedString(item.id),
+        source: "video-editor-timeline",
+        startMs: readFiniteNumberOrNull(item.startMs),
+        track: readFiniteNumberOrNull(item.track),
+      },
+      mimeType: null,
+    });
+  }
+
+  return assets;
+}
+
+function sanitizeVideoEditorTimelineItem(item: unknown): Record<string, unknown> | null {
+  if (!isPlainObject(item)) {
+    return null;
+  }
+  const transitionOut = sanitizeVideoEditorTransitionOut(item.transitionOut);
+  return {
+    ...(readTrimmedString(item.id) ? { id: readTrimmedString(item.id) } : {}),
+    ...(readTrimmedString(item.assetId) ? { assetId: readTrimmedString(item.assetId) } : {}),
+    ...(readTrimmedString(item.kind) ? { kind: readTrimmedString(item.kind) } : {}),
+    ...(readFiniteNumberOrNull(item.track) !== null ? { track: readFiniteNumberOrNull(item.track) } : {}),
+    ...(readFiniteNumberOrNull(item.startMs) !== null ? { startMs: readFiniteNumberOrNull(item.startMs) } : {}),
+    ...(readFiniteNumberOrNull(item.inMs) !== null ? { inMs: readFiniteNumberOrNull(item.inMs) } : {}),
+    ...(readFiniteNumberOrNull(item.outMs) !== null ? { outMs: readFiniteNumberOrNull(item.outMs) } : {}),
+    ...(readFiniteNumberOrNull(item.speed) !== null ? { speed: readFiniteNumberOrNull(item.speed) } : {}),
+    ...(transitionOut ? { transitionOut } : {}),
+    ...(readFiniteNumberOrNull(item.volume) !== null ? { volume: readFiniteNumberOrNull(item.volume) } : {}),
+  };
+}
+
+function sanitizeVideoEditorTransitionOut(value: unknown): Record<string, unknown> | null {
+  if (!isPlainObject(value)) {
+    return null;
+  }
+  const type = value.type === "fade" || value.type === "crossfade" ? value.type : null;
+  const durationMs = readFiniteNumberOrNull(value.durationMs);
+  if (!type || durationMs === null || durationMs <= 0) {
+    return null;
+  }
+  return {
+    durationMs: Math.round(durationMs),
+    type,
+  };
+}
+
+function sanitizeVideoEditorSubtitle(item: unknown): Record<string, unknown> | null {
+  if (!isPlainObject(item)) {
+    return null;
+  }
+  return {
+    ...(readTrimmedString(item.id) ? { id: readTrimmedString(item.id) } : {}),
+    ...(typeof item.text === "string" ? { text: item.text } : {}),
+    ...(readFiniteNumberOrNull(item.startMs) !== null ? { startMs: readFiniteNumberOrNull(item.startMs) } : {}),
+    ...(readFiniteNumberOrNull(item.endMs) !== null ? { endMs: readFiniteNumberOrNull(item.endMs) } : {}),
+  };
+}
+
+function buildVideoEditorRequestMetadata(videoEditor: Record<string, unknown> | null): Record<string, unknown> | null {
+  if (!videoEditor) {
+    return null;
+  }
+  const timeline = isPlainObject(videoEditor.timeline) ? videoEditor.timeline : {};
+  const clips = Array.isArray(timeline.clips)
+    ? timeline.clips.map(sanitizeVideoEditorTimelineItem).filter((item): item is Record<string, unknown> => item !== null)
+    : [];
+  const audio = Array.isArray(timeline.audio)
+    ? timeline.audio.map(sanitizeVideoEditorTimelineItem).filter((item): item is Record<string, unknown> => item !== null)
+    : [];
+  const subtitles = Array.isArray(timeline.subtitles)
+    ? timeline.subtitles.map(sanitizeVideoEditorSubtitle).filter((item): item is Record<string, unknown> => item !== null)
+    : [];
+
+  return {
+    ...(readTrimmedString(videoEditor.sourceVideoEditorNodeId)
+      ? { sourceVideoEditorNodeId: readTrimmedString(videoEditor.sourceVideoEditorNodeId) }
+      : {}),
+    ...(readTrimmedString(videoEditor.aspect) ? { aspect: readTrimmedString(videoEditor.aspect) } : {}),
+    ...(readTrimmedString(videoEditor.resolution) ? { resolution: readTrimmedString(videoEditor.resolution) } : {}),
+    timeline: {
+      audio,
+      clips,
+      durationMs: readFiniteNumberOrNull(timeline.durationMs) ?? 0,
+      subtitles,
+    },
+  };
+}
+
+function countTimelineAssetRefs(items: unknown): number {
+  if (!Array.isArray(items)) {
+    return 0;
+  }
+  return items.filter((item) => isPlainObject(item) && readTrimmedString(item.assetId)).length;
+}
+
+function buildVideoEditorExportMetadata(
+  videoEditor: Record<string, unknown> | null,
+  options: { includeRenderPlan?: boolean } = {},
+): Record<string, unknown> | null {
+  if (!videoEditor) {
+    return null;
+  }
+  const timeline = isPlainObject(videoEditor.timeline) ? videoEditor.timeline : {};
+  const renderPlan = options.includeRenderPlan ? buildVideoEditorRenderPlan(videoEditor) : null;
+  return {
+    ...(readTrimmedString(videoEditor.sourceVideoEditorNodeId)
+      ? { sourceVideoEditorNodeId: readTrimmedString(videoEditor.sourceVideoEditorNodeId) }
+      : {}),
+    ...(readTrimmedString(videoEditor.aspect) ? { aspect: readTrimmedString(videoEditor.aspect) } : {}),
+    ...(readTrimmedString(videoEditor.resolution) ? { resolution: readTrimmedString(videoEditor.resolution) } : {}),
+    billingUnit: "video_generation",
+    durationMs: readFiniteNumberOrNull(timeline.durationMs) ?? 0,
+    ...(renderPlan ? { renderPlan } : {}),
+    source: "video_editor_export",
+    timelineAssetCounts: {
+      audio: countTimelineAssetRefs(timeline.audio),
+      clips: countTimelineAssetRefs(timeline.clips),
+    },
+  };
+}
 
 function buildVideoRequest(
   upstreamOutputs: Array<Record<string, unknown> | null>,
   config: Record<string, unknown>,
 ): VideoGenerationRequest {
+  const videoEditor = readVideoEditorConfig(config);
+  const videoEditorMetadata = buildVideoEditorRequestMetadata(videoEditor);
+  const videoEditorExportMetadata = buildVideoEditorExportMetadata(videoEditor, { includeRenderPlan: true });
+  const baseMetadata = isPlainObject(config.metadata) ? config.metadata : {};
+  const metadata = {
+    ...baseMetadata,
+    ...(videoEditorMetadata ? { videoEditor: videoEditorMetadata } : {}),
+    ...(videoEditorExportMetadata ? { videoEditorExport: videoEditorExportMetadata } : {}),
+  };
+  const fallbackPrompt = readTrimmedString(config.generationPrompt)
+    ?? readTrimmedString(config.prompt)
+    ?? "";
+
   return {
-    inputAssets: extractAssetInputs(upstreamOutputs),
-    metadata: isPlainObject(config.metadata) ? config.metadata : null,
-    model: typeof config.model === "string" ? config.model : null,
-    prompt: extractPromptFromUpstreamOutputs(upstreamOutputs, typeof config.prompt === "string" ? config.prompt : ""),
+    inputAssets: mergeAssetInputs(
+      extractAssetInputs(upstreamOutputs),
+      buildVideoEditorTimelineAssets(videoEditor),
+    ),
+    metadata: Object.keys(metadata).length > 0 ? metadata : null,
+    model: typeof config.model === "string"
+      ? config.model
+      : typeof config.modelId === "string"
+        ? config.modelId
+        : null,
+    prompt: extractPromptFromUpstreamOutputs(upstreamOutputs, fallbackPrompt),
     routeKey: typeof config.routeKey === "string" ? config.routeKey : null,
   };
+}
+
+function buildMediaUsageMetadata(
+  kind: "image" | "video",
+  node: Pick<CompiledWorkflowNode, "config" | "type">,
+): Record<string, unknown> {
+  const base = { sourceNodeType: node.type };
+  if (kind !== "video") {
+    return base;
+  }
+  const videoEditorExport = buildVideoEditorExportMetadata(readVideoEditorConfig(node.config ?? {}));
+  return videoEditorExport ? { ...base, videoEditorExport } : base;
 }
 
 function resolveInputNodeOutput(
@@ -878,6 +1442,7 @@ export class WorkflowNodeExecutionService {
   readonly pool: Pool;
   readonly providerPollQueue: ProviderPollQueueLike;
   readonly textGenerationRuntime: TextGenerationRuntimeLike;
+  readonly videoEditorLocalRenderService: Pick<VideoEditorLocalRenderService, "render">;
 
   constructor(options: {
     assetBucket: string;
@@ -893,6 +1458,7 @@ export class WorkflowNodeExecutionService {
     providerPollQueue: ProviderPollQueueLike;
     storageProvider: StorageProvider;
     textGenerationRuntime: TextGenerationRuntimeLike;
+    videoEditorLocalRenderService?: Pick<VideoEditorLocalRenderService, "render">;
   }) {
     this.assetStore = new MediaAssetStore({
       assetBucket: options.assetBucket,
@@ -915,6 +1481,9 @@ export class WorkflowNodeExecutionService {
     this.pool = options.pool ?? createPgPool();
     this.providerPollQueue = options.providerPollQueue;
     this.textGenerationRuntime = options.textGenerationRuntime;
+    this.videoEditorLocalRenderService = options.videoEditorLocalRenderService ?? new VideoEditorLocalRenderService({
+      storageProvider: options.storageProvider,
+    });
   }
 
   async executeNode(
@@ -1188,8 +1757,10 @@ export class WorkflowNodeExecutionService {
         return this.noOpResult(QUEUE_NAMES.nodeExecute, prepared.input);
       }
 
-      const resolvedOutcome = outcome.type === "media_provider_succeeded"
-        ? await this.mapMediaOutcome(
+      let resolvedOutcome: NodeExecutionOutcome;
+      if (outcome.type === "media_provider_succeeded") {
+        try {
+          resolvedOutcome = await this.mapMediaOutcome(
             client,
             currentNode,
             workflowRun,
@@ -1199,8 +1770,15 @@ export class WorkflowNodeExecutionService {
             outcome.result,
             outcome.kind,
             logger,
-          )
-        : outcome;
+          );
+        } finally {
+          if (outcome.cleanupDir) {
+            await rm(outcome.cleanupDir, { force: true, recursive: true });
+          }
+        }
+      } else {
+        resolvedOutcome = outcome;
+      }
 
       if (resolvedOutcome.type === "waiting_provider") {
         const primaryProviderTaskId = resolvedOutcome.pollPayloads[0]?.providerTaskId ?? null;
@@ -1901,6 +2479,19 @@ export class WorkflowNodeExecutionService {
 
     if (node.type === "video.generate") {
       const request = buildVideoRequest(upstreamOutputs, node.config ?? {});
+      const localRenderOutcome = await this.maybeRenderVideoEditorExportLocally(request, node, workflowRun, context, logger);
+      if (localRenderOutcome) {
+        return {
+          cleanupDir: localRenderOutcome.cleanupDir,
+          kind: "video",
+          node,
+          nodeRun,
+          result: localRenderOutcome.result,
+          runtimeFlow,
+          type: "media_provider_succeeded",
+          workflowRun,
+        };
+      }
       await this.hydrateInputAssetUrls(workflowRun.tenant_id, request.inputAssets ?? []);
       const providerStartedAt = Date.now();
       logger.info(
@@ -1972,7 +2563,9 @@ export class WorkflowNodeExecutionService {
     kind: "image" | "video",
     logger: WorkerLogger,
   ): Promise<NodeExecutionOutcome> {
-    const routeKey = resolveImageRequestRouteKey(node.config);
+    const routeKey = kind === "video"
+      ? resolveVideoRequestRouteKey(node.config ?? {})
+      : resolveImageRequestRouteKey(node.config);
     const providerFinishedAt = Date.now();
 
     if (result.status === "waiting_provider") {
@@ -2024,6 +2617,7 @@ export class WorkflowNodeExecutionService {
     const persistedMedia = await this.persistMediaOutputs(
       client,
       kind,
+      node,
       workflowRun,
       runtimeFlow,
       nodeRun,
@@ -2067,9 +2661,7 @@ export class WorkflowNodeExecutionService {
           kind,
         ),
         inputTokens: result.usage?.inputTokens ?? null,
-        metadata: {
-          sourceNodeType: node.type,
-        },
+        metadata: buildMediaUsageMetadata(kind, node),
         modelKey: result.modelKey ?? null,
         modality: kind,
         modelId: result.modelId ?? null,
@@ -2167,39 +2759,7 @@ export class WorkflowNodeExecutionService {
     outputBase64: string[] = [],
     mimeType: string | null = null,
   ): MediaOutput[] {
-    const normalized: MediaOutput[] = [];
-
-    for (const output of outputs) {
-      if (!output || !isPlainObject(output)) {
-        continue;
-      }
-
-      normalized.push({
-        base64: typeof output.base64 === "string" ? output.base64 : null,
-        durationMs: typeof output.durationMs === "number" ? output.durationMs : null,
-        filename: typeof output.filename === "string" ? output.filename : null,
-        height: typeof output.height === "number" ? output.height : null,
-        mimeType: typeof output.mimeType === "string" ? output.mimeType : mimeType,
-        url: typeof output.url === "string" ? output.url : null,
-        width: typeof output.width === "number" ? output.width : null,
-      });
-    }
-
-    for (const url of outputUrls) {
-      normalized.push({
-        mimeType,
-        url,
-      });
-    }
-
-    for (const base64 of outputBase64) {
-      normalized.push({
-        base64,
-        mimeType,
-      });
-    }
-
-    return normalized;
+    return normalizeMediaOutputs(outputs, outputUrls, outputBase64, mimeType);
   }
 
   private async persistProviderResult(
@@ -2213,6 +2773,7 @@ export class WorkflowNodeExecutionService {
     return this.persistMediaOutputs(
       client,
       node.type === "video.generate" ? "video" : "image",
+      node,
       workflowRun,
       runtimeFlow,
       nodeRun,
@@ -2228,12 +2789,14 @@ export class WorkflowNodeExecutionService {
   private async persistMediaOutputs(
     client: PoolClient,
     kind: "image" | "video",
+    node: CompiledWorkflowNode,
     workflowRun: WorkflowRunRecord,
     runtimeFlow: RuntimeFlowRecord,
     nodeRun: NodeRunRecord,
     outputs: MediaOutput[],
   ): Promise<PersistedMediaOutput> {
     const persistedAssets = await this.assetStore.persistOutputs(client, {
+      assetMetadata: buildPanoramaAssetMetadataForNode(kind, node),
       kind,
       nodeRunId: nodeRun.id,
       outputs,
@@ -2264,6 +2827,88 @@ export class WorkflowNodeExecutionService {
         projectId: runtimeFlow.project_id,
         targetNodeId: nodeRun.node_id,
         workflowRunId: workflowRun.id,
+      },
+    };
+  }
+
+  private async maybeRenderVideoEditorExportLocally(
+    request: VideoGenerationRequest,
+    node: CompiledWorkflowNode,
+    workflowRun: WorkflowRunRecord,
+    context: WorkflowExecutionContext,
+    logger: WorkerLogger,
+  ): Promise<{ cleanupDir: string | null; result: AiGatewayMediaResult } | null> {
+    if (!readVideoEditorExportRenderPlan(request)) {
+      return null;
+    }
+    const videoEditor = readVideoEditorConfig(node.config ?? {});
+    if (!videoEditor) {
+      return null;
+    }
+
+    const routeKey = resolveVideoRequestRouteKey(node.config ?? {});
+    const capability = await withTenantTransaction(
+      { tenantId: context.tenantId, userId: null },
+      async (client) => this.loadVideoEditorRenderRouteCapability(client, context.tenantId, routeKey),
+      this.pool,
+    );
+    if (capability?.renderEngine !== VIDEO_EDITOR_FFMPEG_RENDER_ENGINE) {
+      return null;
+    }
+
+    const plan = buildVideoEditorRenderPlan(videoEditor);
+    logger.info(
+      {
+        event: "workflow.video_editor.local_render.started",
+        renderAssetCount: plan.assetIds.length,
+        renderEngine: VIDEO_EDITOR_FFMPEG_RENDER_ENGINE,
+        routeKey,
+        targetNodeId: node.id,
+        tenantId: context.tenantId,
+        traceId: context.traceId,
+        workflowRunId: workflowRun.id,
+      },
+      "workflow video editor local render started",
+    );
+    const assetLookups = await withTenantTransaction(
+      { tenantId: context.tenantId, userId: null },
+      async (client) => this.loadAssetStorageLookups(client, context.tenantId, plan.assetIds),
+      this.pool,
+    );
+    const renderResult = await this.videoEditorLocalRenderService.render({
+      assetLookups: assetLookups as Map<string, VideoEditorRenderAssetLookup>,
+      plan,
+      tenantId: context.tenantId,
+      workflowRunId: workflowRun.id,
+    });
+    logger.info(
+      {
+        event: "workflow.video_editor.local_render.finished",
+        outputDurationMs: renderResult.output.durationMs ?? null,
+        outputHeight: renderResult.output.height ?? null,
+        outputMimeType: renderResult.output.mimeType ?? null,
+        outputWidth: renderResult.output.width ?? null,
+        renderEngine: VIDEO_EDITOR_FFMPEG_RENDER_ENGINE,
+        routeKey,
+        targetNodeId: node.id,
+        tenantId: context.tenantId,
+        traceId: context.traceId,
+        workflowRunId: workflowRun.id,
+      },
+      "workflow video editor local render finished",
+    );
+
+    return {
+      cleanupDir: localOutputDirFromRenderResult(renderResult),
+      result: {
+        modelKey: "video-editor-ffmpeg",
+        outputs: [renderResult.output],
+        providerKey: "local",
+        providerRequest: { renderEngine: VIDEO_EDITOR_FFMPEG_RENDER_ENGINE },
+        providerResponse: { status: "rendered" },
+        routeKey,
+        status: "succeeded",
+        usage: null,
       },
     };
   }
@@ -2367,23 +3012,13 @@ export class WorkflowNodeExecutionService {
       return;
     }
 
-    let changed = false;
-    const nodes = graph.nodes.map((node) => {
-      if (node.id !== currentNode.id || !isPlainObject(node.data)) {
-        return node;
-      }
-      changed = true;
-      return {
-        ...node,
-        data: {
-          ...node.data,
-          ...patch,
-          updatedAt: Date.now(),
-        },
-      };
+    const patched = applyDraftOutputPatchToNodes({
+      currentNode,
+      nodes: graph.nodes,
+      patch,
     });
 
-    if (!changed) {
+    if (!patched.changed) {
       return;
     }
 
@@ -2402,7 +3037,7 @@ export class WorkflowNodeExecutionService {
         runtimeFlow.flow_id,
         JSON.stringify({
           ...graph,
-          nodes,
+          nodes: patched.nodes,
         }),
       ],
     );
@@ -2609,6 +3244,49 @@ export class WorkflowNodeExecutionService {
         width: row.width,
       },
     ]));
+  }
+
+  private async loadVideoEditorRenderRouteCapability(
+    client: PoolClient,
+    tenantId: string,
+    routeKey: string,
+  ): Promise<VideoEditorRenderRouteCapability | null> {
+    const result = await client.query<{
+      request_config: Record<string, unknown>;
+      route_key: string;
+    }>(
+      `
+        SELECT
+          route.route_key,
+          COALESCE(route.request_config, '{}'::jsonb) AS request_config
+        FROM ai_routes AS route
+        JOIN ai_providers AS provider
+          ON provider.id = route.provider_id
+        LEFT JOIN ai_models AS model
+          ON model.id = route.model_id
+        WHERE route.status = 'active'
+          AND route.modality = 'video'
+          AND route.route_key = $1
+          AND (route.tenant_id = $2::uuid OR route.tenant_id IS NULL)
+          AND provider.status = 'active'
+          AND (route.model_id IS NULL OR model.status = 'active')
+        ORDER BY
+          CASE WHEN route.tenant_id = $2::uuid THEN 0 ELSE 1 END ASC,
+          route.updated_at DESC,
+          route.id ASC
+        LIMIT 1
+      `,
+      [routeKey, tenantId],
+    );
+    const row = result.rows[0];
+    if (!row) {
+      return null;
+    }
+
+    return {
+      renderEngine: readVideoEditorRenderEngine(row.request_config),
+      routeKey: row.route_key,
+    };
   }
 
   private async getRuntimeFlow(

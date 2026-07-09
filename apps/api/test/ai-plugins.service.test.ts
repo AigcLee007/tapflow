@@ -3,10 +3,44 @@ import { describe, expect, test } from "vitest";
 import { mouxiHubGptImage2Line3Manifest } from "../../../packages/ai-gateway-core/src/plugins/manifests/mouxihub-gpt-image-2-line3.js";
 import { mouxiHubGptImage2Line4Manifest } from "../../../packages/ai-gateway-core/src/plugins/manifests/mouxihub-gpt-image-2-line4.js";
 import { mouxiHubNanoBananaProT3Manifest } from "../../../packages/ai-gateway-core/src/plugins/manifests/mouxihub-nano-banana-pro-t3.js";
+import { openAiGptImage2Manifest } from "../../../packages/ai-gateway-core/src/plugins/manifests/openai-gpt-image-2.js";
 import { siphonLabGpt55TextManifest } from "../../../packages/ai-gateway-core/src/plugins/manifests/siphonlab-gpt-5-5-text.js";
+import { tapflowVideoEditorFfmpegManifest } from "../../../packages/ai-gateway-core/src/plugins/manifests/tapflow-video-editor-ffmpeg.js";
 import { AiPluginService } from "../src/modules/ai-plugins/ai-plugins.service.js";
 
 describe("AiPluginService route install statements", () => {
+  test("marks credential-free video editor FFmpeg plugin summaries as not requiring credentials", () => {
+    const service = new AiPluginService({
+      credentialVault: {} as never,
+      pool: {} as never,
+    });
+
+    const summary = (
+      service as unknown as {
+        mapManifestSummary: (
+          manifest: typeof tapflowVideoEditorFfmpegManifest,
+          install: null,
+        ) => {
+          credentials: {
+            fields: unknown[];
+            required: boolean;
+            type: string;
+          };
+          packageKey: string;
+        };
+      }
+    ).mapManifestSummary(tapflowVideoEditorFfmpegManifest, null);
+
+    expect(summary).toMatchObject({
+      credentials: {
+        fields: [],
+        required: false,
+        type: "bearer",
+      },
+      packageKey: "tapflow.video-editor-ffmpeg",
+    });
+  });
+
   test("uses provider adapter kind for MouxiHub T3 connection instead of async route mode", async () => {
     const service = new AiPluginService({
       credentialVault: {} as never,
@@ -200,6 +234,60 @@ describe("AiPluginService route install statements", () => {
       "gpt-image-2",
       "async",
       "/v1/images/generations",
+    ]);
+  });
+
+  test("persists GPT-Image-2 production image mode capabilities in route request config", () => {
+    const service = new AiPluginService({
+      credentialVault: {} as never,
+      pool: {} as never,
+    });
+    const route = openAiGptImage2Manifest.routes[0];
+    const requestConfig = {
+      ...route.requestConfig,
+      mode: route.mode,
+      path: route.path ?? route.requestConfig.path,
+      timeoutMs: route.timeoutMs,
+    };
+
+    const statement = (
+      service as unknown as {
+        buildRouteInsertStatement: (options: {
+          baseUrlOverride: string | null;
+          connectionId: string | null;
+          credentialId: string | null;
+          installId: string;
+          modelId: string;
+          providerId: string;
+          requestConfig: Record<string, unknown>;
+          route: typeof route;
+          status: string;
+          tenantId: string | null;
+        }) => { sql: string; values: unknown[] };
+      }
+    ).buildRouteInsertStatement({
+      baseUrlOverride: "https://sub.siphonlab.cn/v1",
+      connectionId: "00000000-0000-0000-0000-000000000045",
+      credentialId: "00000000-0000-0000-0000-000000000044",
+      installId: "00000000-0000-0000-0000-000000000046",
+      modelId: "00000000-0000-0000-0000-000000000043",
+      providerId: "00000000-0000-0000-0000-000000000042",
+      requestConfig,
+      route,
+      status: "active",
+      tenantId: null,
+    });
+
+    const persistedRequestConfig = JSON.parse(String(statement.values[9])) as {
+      capabilities?: {
+        supportedGenerationModes?: string[];
+      };
+    };
+    expect(persistedRequestConfig.capabilities?.supportedGenerationModes).toEqual([
+      "standard",
+      "panorama_360",
+      "wraparound_270",
+      "subject_orbit_270",
     ]);
   });
 

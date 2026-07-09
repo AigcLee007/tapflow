@@ -49,6 +49,9 @@ type FlowVersionRecord = {
 type FlowDraftGraph = {
   edges: Record<string, unknown>[];
   nodes: Record<string, unknown>[];
+  projectStudios?: {
+    director3d?: Record<string, unknown>;
+  };
   viewport: {
     x: number;
     y: number;
@@ -212,12 +215,25 @@ function containsLocalPayloadReference(value: unknown, keyPath: string[] = []): 
   return false;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
 export function normalizeDraftGraph(graph: unknown): FlowDraftGraph {
   const input = graph && typeof graph === "object" ? graph as Partial<FlowDraftGraph> : {};
   const viewport = input.viewport && typeof input.viewport === "object" ? input.viewport : EMPTY_DRAFT_GRAPH.viewport;
   return {
     edges: Array.isArray(input.edges) ? input.edges : [],
     nodes: Array.isArray(input.nodes) ? input.nodes : [],
+    ...(isRecord(input.projectStudios)
+      ? {
+          projectStudios: {
+            ...(isRecord(input.projectStudios.director3d)
+              ? { director3d: input.projectStudios.director3d }
+              : {}),
+          },
+        }
+      : {}),
     viewport: {
       x: Number.isFinite(viewport.x) ? Number(viewport.x) : 0,
       y: Number.isFinite(viewport.y) ? Number(viewport.y) : 0,

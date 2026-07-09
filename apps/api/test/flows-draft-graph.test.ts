@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { assertDraftGraphSafe, FlowsApiError } from "../src/modules/flows/flows.service";
+import { assertDraftGraphSafe, FlowsApiError, normalizeDraftGraph } from "../src/modules/flows/flows.service";
 
 describe("assertDraftGraphSafe", () => {
   it("allows asset-backed image nodes with structured metadata", () => {
@@ -101,5 +101,42 @@ describe("assertDraftGraphSafe", () => {
         statusCode: 400,
       }),
     );
+  });
+});
+
+describe("normalizeDraftGraph", () => {
+  it("preserves the project default director desk outside canvas nodes", () => {
+    const graph = normalizeDraftGraph({
+      edges: [],
+      nodes: [],
+      projectStudios: {
+        director3d: {
+          version: 1,
+          scene: { gridVisible: true, units: "meters" },
+          actors: [
+            {
+              id: "actor-1",
+              kind: "placeholder_humanoid",
+              locked: false,
+              name: "角色 1",
+              position: [0, 0, 0],
+              rotation: [0, 0, 0],
+              scale: [1, 1, 1],
+              visible: true,
+            },
+          ],
+          cameras: [],
+          shots: [],
+        },
+      },
+      viewport: { x: 0, y: 0, zoom: 1 },
+    } as any);
+
+    expect(graph.nodes).toEqual([]);
+    expect(graph.projectStudios?.director3d?.actors[0]).toMatchObject({
+      id: "actor-1",
+      kind: "placeholder_humanoid",
+      name: "角色 1",
+    });
   });
 });

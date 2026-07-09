@@ -155,4 +155,37 @@ describe("AssetPreviewModal", () => {
     expect(imageStage.className).toContain("md:w-1/2");
     expect(imageStage.className).toContain("min-h-[16rem]");
   });
+
+  it("renders panorama assets with the panorama viewer shell instead of a plain image tag", async () => {
+    listWorkspaceProjectsMock.mockResolvedValue([]);
+    getAssetVariantUrlMock.mockResolvedValue({
+      expiresAt: "2026-05-19T01:00:00.000Z",
+      method: "GET",
+      url: "https://example.test/panorama-preview.webp",
+      variantKey: "preview",
+    });
+
+    render(
+      <AssetPreviewModal
+        asset={{
+          ...asset,
+          metadata: {
+            aspectRatio: "2:1",
+            generationMode: "panorama_360",
+            mediaKind: "pano360",
+            projection: "equirectangular",
+          },
+        }}
+        onClose={() => undefined}
+        onUpdated={() => undefined}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(getAssetVariantUrlMock).toHaveBeenCalledWith("asset-1", "preview");
+    });
+
+    expect(screen.getByTestId("panorama-viewer-shell")).toBeTruthy();
+    expect(screen.queryByRole("img")).toBeNull();
+  });
 });

@@ -481,6 +481,83 @@ describe("useRemoteFlowAutosave", () => {
     expect(saveFlowDraftMock.mock.calls[0]?.[1].graph.nodes).toHaveLength(2);
   });
 
+  it("saves the project default director desk outside the canvas nodes", async () => {
+    const initialDraft = createDraft(1);
+    loadStoreFromDraft(initialDraft);
+    saveFlowDraftMock.mockResolvedValueOnce({
+      ...initialDraft,
+      graph: {
+        ...initialDraft.graph,
+        projectStudios: {
+          director3d: {
+            version: 1,
+            scene: { gridVisible: true, units: "meters" },
+            actors: [
+              {
+                id: "actor-1",
+                kind: "placeholder_humanoid",
+                locked: false,
+                name: "角色 1",
+                position: [0, 0, 0],
+                rotation: [0, 0, 0],
+                scale: [1, 1, 1],
+                visible: true,
+              },
+            ],
+            cameras: [],
+            shots: [],
+          },
+        },
+      },
+      revision: 2,
+      updatedAt: "2026-05-22T00:00:02.000Z",
+    });
+
+    renderHook(() =>
+      useRemoteFlowAutosave({
+        draft: initialDraft,
+        enabled: true,
+        flowId: "flow-1",
+      }),
+    );
+
+    act(() => {
+      useFlowCanvasStore.getState().updateProjectDirector3d({
+        version: 1,
+        scene: { gridVisible: true, units: "meters" },
+        actors: [
+          {
+            id: "actor-1",
+            kind: "placeholder_humanoid",
+            locked: false,
+            name: "角色 1",
+            position: [0, 0, 0],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1],
+            visible: true,
+          },
+        ],
+        cameras: [],
+        shots: [],
+      });
+    });
+
+    await advanceTimers(1200);
+    await flushPromises();
+
+    expect(saveFlowDraftMock).toHaveBeenCalledTimes(1);
+    expect(saveFlowDraftMock.mock.calls[0]?.[1]).toMatchObject({
+      graph: {
+        nodes: [],
+        projectStudios: {
+          director3d: {
+            actors: [expect.objectContaining({ id: "actor-1", name: "角色 1" })],
+          },
+        },
+      },
+    });
+  });
+
   it("saveNow waits for an in-flight autosave and then persists a newly added target node", async () => {
     const firstSave = deferred<FlowDraft>();
     const secondSave = deferred<FlowDraft>();

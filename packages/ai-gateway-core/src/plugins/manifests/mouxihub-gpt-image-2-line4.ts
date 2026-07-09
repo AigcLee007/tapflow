@@ -35,6 +35,13 @@ const sizeTiers = {
   "4K": 5,
 };
 
+const supportedProductionImageModes = [
+  "standard",
+  "panorama_360",
+  "wraparound_270",
+  "subject_orbit_270",
+];
+
 const sharedUiFields = [
   {
     defaultValue: "1K",
@@ -146,6 +153,9 @@ export const mouxiHubGptImage2Line4Manifest: AiPluginManifest = {
       priority: 40,
       requestConfig: {
         async: true,
+        capabilities: {
+          supportedGenerationModes: supportedProductionImageModes,
+        },
         defaultSize: "1K",
         editPath: "/v1/images/edits",
         imageFieldName: "image",

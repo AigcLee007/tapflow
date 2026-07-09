@@ -16,10 +16,12 @@ import {
 import { getBillingSummary, listBillingPricing, type BillingPricingRow } from '../../billing/billingApi';
 import { useFlowCanvasStore } from '../store/flowCanvasStore';
 import type {
+  FlowImageGenerationMode,
   FlowImageGenerationSnapshot,
   FlowImageResultItem,
   FlowMultiImageDisplayMode,
   FlowNodeData,
+  FlowProductionSubjectType,
   FlowRuntimeAssetRef,
   FlowRuntimeNodeOutput,
 } from '../types';
@@ -27,7 +29,13 @@ import {
   buildImageViewerComparisonSourceFromReferenceKeys,
   readImageViewerComparisonSource,
 } from '../utils/imageViewerComparison';
+import { normalizeDirector3dData } from '../utils/director3dNodeData';
+import { normalizeImageGenerationMode } from '../utils/imageGenerationModes';
+import { resolveImageGenerationModeRunBlocker } from '../utils/imageGenerationModeSupport';
 import { fitMediaNodeToShortSide } from '../utils/nodeSizing';
+import { normalizeStoryboardData, patchStoryboardCell } from '../utils/storyboardNodeData';
+import { normalizeVideoEditorData } from '../utils/videoEditorNodeData';
+import { buildPanoramaMetadata, isPanoramaMetadata, mergePanoramaMetadata } from '../panorama/panoramaUtils';
 import { flushRemoteDraftBeforeRun, shouldFlushRemoteDraftBeforeRun } from './remoteDraftSaveBarrier';
 
 const RUNNER_ENABLED = String(import.meta.env.VITE_USE_V2_WORKFLOW_RUNNER ?? 'true').toLowerCase() !== 'false';
@@ -43,6 +51,7 @@ let billingPricingCache: Promise<BillingPricingRow[]> | null = null;
 type AssetLike = {
   assetId: string;
   kind: string;
+  metadata?: Record<string, string> | null;
   mimeType: string;
   width?: number | null;
   height?: number | null;
@@ -234,6 +243,74 @@ function resolveEstimatedCredits(input: {
   return null;
 }
 
+function readImageGenerationModeForPreflight(node: { data?: Partial<FlowNodeData> }): FlowImageGenerationMode {
+  const params = node.data?.params && typeof node.data.params === 'object'
+    ? node.data.params as Record<string, unknown>
+    : {};
+  return normalizeImageGenerationMode(node.data?.generationMode || params.generationMode);
+}
+
+function isProductionImageGenerationMode(mode: FlowImageGenerationMode): boolean {
+  return mode !== 'standard';
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function hasVideoEditorExportMetadata(node: { data?: Partial<FlowNodeData>; type?: string }): boolean {
+  if (getNodeKindForPricing(node) !== 'video') {
+    return false;
+  }
+  const params = isRecord(node.data?.params) ? node.data.params : {};
+  return isRecord(params.videoEditor);
+}
+
+function resolveVideoEditorExportRunBlocker(input: {
+  route: V2RuntimeRouteItem | null;
+  routeKey: string | null;
+}): { code: 'UNSUPPORTED_VIDEO_EDITOR_EXPORT'; message: string } | null {
+  const supportedWorkflows = Array.isArray(input.route?.capabilities?.supportedVideoWorkflows)
+    ? input.route.capabilities.supportedVideoWorkflows
+    : [];
+  if (supportedWorkflows.includes('video_editor_export')) {
+    return null;
+  }
+  const routeKey = input.routeKey || input.route?.routeKey || 'unknown';
+  return {
+    code: 'UNSUPPORTED_VIDEO_EDITOR_EXPORT',
+    message: `UNSUPPORTED_VIDEO_EDITOR_EXPORT: Route ${routeKey} does not support video editor export.`,
+  };
+}
+
+function markNodeBlockedByPreflight(
+  nodeId: string,
+  code: 'PRICING_NOT_FOUND' | 'UNSUPPORTED_GENERATION_MODE' | 'UNSUPPORTED_VIDEO_EDITOR_EXPORT',
+  message: string,
+): void {
+  useFlowCanvasStore.getState().updateNodeData(nodeId, {
+    errorCode: code,
+    errorMessage: message,
+    generationStatus: 'error',
+    status: 'failed',
+  } as Partial<FlowNodeData>);
+  useFlowCanvasStore.setState((currentState) => ({
+    nodeRunStatusByNodeId: {
+      ...currentState.nodeRunStatusByNodeId,
+      [nodeId]: 'failed',
+    },
+    nodeOutputByNodeId: {
+      ...currentState.nodeOutputByNodeId,
+      [nodeId]: {
+        ...currentState.nodeOutputByNodeId[nodeId],
+        errorMessage: message,
+      },
+    },
+    runError: message,
+    runStatus: 'failed',
+  }));
+}
+
 function formatCredits(value: number): string {
   return `${Math.max(0, Math.floor(value))} pts`;
 }
@@ -307,6 +384,44 @@ async function reserveCreditsForTargetNode(nodeId: string): Promise<CreditPrefli
       getBillingPricingRows(),
     ]);
     const estimatedCredits = resolveEstimatedCredits({ node, pricingRows, routes });
+    const kind = getNodeKindForPricing(node);
+    const routeKey = getRouteKeyForPricing(node);
+    const route = routeKey
+      ? routes.find((item) => item.modality === kind && item.routeKey === routeKey) ?? null
+      : null;
+    const generationMode = kind === 'image' ? readImageGenerationModeForPreflight(node) : 'standard';
+    if (kind === 'image' && isProductionImageGenerationMode(generationMode)) {
+      const blocker = resolveImageGenerationModeRunBlocker({
+        mode: generationMode,
+        route: route
+          ? {
+              estimatedCredits,
+              minChargeCredits: route.minChargeCredits,
+              routeKey: route.routeKey,
+              supportedGenerationModes: route.capabilities?.supportedGenerationModes as FlowImageGenerationMode[] | undefined,
+            }
+          : null,
+      });
+      if (blocker) {
+        markNodeBlockedByPreflight(nodeId, blocker.code, blocker.message);
+        throw buildRunLaunchError(blocker.message);
+      }
+      if (!estimatedCredits || estimatedCredits <= 0) {
+        const message = `PRICING_NOT_FOUND: Route ${routeKey || 'unknown'} has no active pricing for ${generationMode}.`;
+        markNodeBlockedByPreflight(nodeId, 'PRICING_NOT_FOUND', message);
+        throw buildRunLaunchError(message);
+      }
+    }
+    if (kind === 'video' && hasVideoEditorExportMetadata(node)) {
+      const blocker = resolveVideoEditorExportRunBlocker({
+        route,
+        routeKey,
+      });
+      if (blocker) {
+        markNodeBlockedByPreflight(nodeId, blocker.code, blocker.message);
+        throw buildRunLaunchError(blocker.message);
+      }
+    }
     if (!estimatedCredits || estimatedCredits <= 0) {
       return null;
     }
@@ -383,6 +498,16 @@ function readString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
+function readStringRecord(value: unknown): Record<string, string> | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const entries = Object.entries(value)
+    .map(([key, itemValue]) => [key, readString(itemValue)] as const)
+    .filter((entry): entry is readonly [string, string] => Boolean(entry[1]));
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
 function readPositiveInteger(value: unknown): number | undefined {
   const numeric = Number(value);
   return Number.isFinite(numeric) && numeric > 0 ? Math.max(1, Math.floor(numeric)) : undefined;
@@ -406,6 +531,44 @@ function buildGeneratedResults(assetRefs: FlowRuntimeAssetRef[], generatedAt: nu
       id: `asset:${asset.assetId}`,
       url: String(asset.downloadUrl),
     }));
+}
+
+function buildPanoramaNodeMetadata(
+  currentData: Partial<FlowNodeData>,
+  primaryAsset: FlowRuntimeAssetRef | undefined,
+): Record<string, string> | undefined {
+  const currentMetadata = readStringRecord(currentData.metadata);
+  const currentParams = isRecord(currentData.params) ? currentData.params : {};
+  const panoramaParams = isRecord(currentParams.panorama) ? currentParams.panorama : {};
+  const snapshot = isRecord(currentData.lastGenerationSnapshot) ? currentData.lastGenerationSnapshot : {};
+  const assetMetadata = readStringRecord(primaryAsset?.metadata);
+  const fallbackMetadata = buildPanoramaMetadata({
+    aspectRatio:
+      assetMetadata?.aspectRatio
+      || currentMetadata?.aspectRatio
+      || readString(currentParams.aspectRatio)
+      || readString(currentParams.aspect_ratio)
+      || readString(snapshot.aspectRatio),
+    generationMode:
+      assetMetadata?.generationMode
+      || currentMetadata?.generationMode
+      || readString(currentData.generationMode)
+      || readString(currentParams.generationMode)
+      || readString(snapshot.generationMode),
+    projection:
+      assetMetadata?.projection
+      || currentMetadata?.projection
+      || readString(panoramaParams.projectionHint),
+  });
+
+  if (!assetMetadata && !fallbackMetadata && !isPanoramaMetadata(currentMetadata)) {
+    return undefined;
+  }
+
+  return mergePanoramaMetadata(
+    isPanoramaMetadata(currentMetadata) ? currentMetadata : undefined,
+    assetMetadata || fallbackMetadata,
+  );
 }
 
 function buildImageGenerationSnapshot(
@@ -433,13 +596,27 @@ function buildImageGenerationSnapshot(
       referenceAssetItemIds: nodeData.referenceAssetItemIds,
       referenceOrder: nodeData.referenceOrder,
     });
+  const generationMode = readString(nodeData.generationMode) || readString(params.generationMode);
+  const panorama = params.panorama && typeof params.panorama === 'object'
+    ? params.panorama as Record<string, unknown>
+    : null;
+  const wraparound = params.wraparound && typeof params.wraparound === 'object'
+    ? params.wraparound as Record<string, unknown>
+    : null;
+  const productionSubjectType =
+    readString(wraparound?.subjectType)
+    || readString(panorama?.subjectType);
 
   return {
     activeCommandId: readString(nodeData.activeCommandId),
     aspectRatio: readString(params.aspect_ratio) || readString(params.aspectRatio) || readString(nodeData.aspectRatio),
     generatedAt,
+    ...(generationMode ? { generationMode: generationMode as FlowImageGenerationMode } : {}),
     modelId,
     n: readPositiveInteger(nodeData.batchCount) || readPositiveInteger(params.n) || assetRefs.length || 1,
+    ...(productionSubjectType === 'scene' || productionSubjectType === 'subject'
+      ? { productionSubjectType: productionSubjectType as FlowProductionSubjectType }
+      : {}),
     prompt,
     quality: readString(params.quality),
     ...(referenceComparison ? { referenceComparison } : {}),
@@ -492,6 +669,7 @@ function buildGeneratedAssetNodePatch(
   const generatedAt = Date.now();
   const generatedResults = isImageNode ? buildGeneratedResults(assetRefs, generatedAt) : [];
   const mediaSizePatch = buildGeneratedMediaSizePatch(primaryAsset);
+  const panoramaMetadata = isImageNode ? buildPanoramaNodeMetadata(currentData, primaryAsset) : undefined;
 
   return {
     ...(isImageNode && generatedResults.length > 0
@@ -504,6 +682,7 @@ function buildGeneratedAssetNodePatch(
           thumbnailUrl: generatedResults[0]?.url,
         }
       : {}),
+    ...(isImageNode && panoramaMetadata ? { metadata: panoramaMetadata } : {}),
     ...(isVideoNode && primaryAsset.downloadUrl ? { posterUrl: primaryAsset.downloadUrl } : {}),
     assetId: primaryAsset.assetId,
     assetIds: assetRefs.map((asset) => asset.assetId),
@@ -539,6 +718,7 @@ function buildSplitModeParentNodePatch(
   const currentData = currentNode?.data ?? {};
   const generatedAt = Date.now();
   const mediaSizePatch = buildGeneratedMediaSizePatch(primaryAsset);
+  const panoramaMetadata = buildPanoramaNodeMetadata(currentData, primaryAsset);
 
   return {
     activeResultIndex: undefined,
@@ -553,6 +733,7 @@ function buildSplitModeParentNodePatch(
     latestMultiImageDelivery: 'split_nodes',
     latestNodeRunId: nodeRun.id,
     latestWorkflowRunId: nodeRun.workflowRunId,
+    ...(panoramaMetadata ? { metadata: panoramaMetadata } : {}),
     mimeType: primaryAsset.mimeType,
     ...(mediaSizePatch ?? {
       naturalHeight: primaryAsset.height ?? undefined,
@@ -609,8 +790,134 @@ function buildSucceededTextNodePatch(nodeRun: PersistableNodeRun): Partial<FlowN
   };
 }
 
+function syncStoryboardCellFromGeneratedAsset(nodeRun: PersistableNodeRun, assetRefs: FlowRuntimeAssetRef[]): void {
+  if (nodeRun.status !== 'succeeded' || nodeRun.nodeType !== 'image.generate' || assetRefs.length === 0 || !shouldApplyNodeRun(nodeRun)) {
+    return;
+  }
+  const primaryAsset = assetRefs[0];
+  if (!primaryAsset?.assetId) return;
+
+  const store = useFlowCanvasStore.getState();
+  const sourceNode = store.nodes.find((node) => node.id === nodeRun.nodeId);
+  const storyboardRef = sourceNode?.data?.params?.storyboard;
+  if (!storyboardRef || typeof storyboardRef !== 'object') return;
+
+  const ref = storyboardRef as Record<string, unknown>;
+  const sourceStoryboardNodeId = typeof ref.sourceStoryboardNodeId === 'string' ? ref.sourceStoryboardNodeId : '';
+  const cellId = typeof ref.cellId === 'string' ? ref.cellId : '';
+  if (!sourceStoryboardNodeId || !cellId) return;
+
+  const storyboardNode = store.nodes.find((node) => node.id === sourceStoryboardNodeId && node.type === 'storyboard');
+  const storyboard = storyboardNode?.data.storyboard;
+  if (!storyboard) return;
+
+  const cellIndex = storyboard.cells.findIndex((cell) => cell.id === cellId);
+  if (cellIndex < 0) return;
+
+  store.updateNodeData(sourceStoryboardNodeId, {
+    storyboard: patchStoryboardCell(storyboard, cellIndex, {
+      assetId: primaryAsset.assetId,
+      sourceAssetId: primaryAsset.assetId,
+      sourceNodeId: nodeRun.nodeId,
+    }),
+  });
+}
+
+function syncStoryboardSheetFromGeneratedAsset(nodeRun: PersistableNodeRun, assetRefs: FlowRuntimeAssetRef[]): void {
+  if (nodeRun.status !== 'succeeded' || nodeRun.nodeType !== 'image.generate' || assetRefs.length === 0 || !shouldApplyNodeRun(nodeRun)) {
+    return;
+  }
+  const primaryAsset = assetRefs[0];
+  if (!primaryAsset?.assetId) return;
+
+  const store = useFlowCanvasStore.getState();
+  const sourceNode = store.nodes.find((node) => node.id === nodeRun.nodeId);
+  const storyboardSheetRef = sourceNode?.data?.params?.storyboardSheet;
+  if (!storyboardSheetRef || typeof storyboardSheetRef !== 'object') return;
+
+  const ref = storyboardSheetRef as Record<string, unknown>;
+  const sourceStoryboardNodeId = typeof ref.sourceStoryboardNodeId === 'string' ? ref.sourceStoryboardNodeId : '';
+  if (!sourceStoryboardNodeId) return;
+
+  const storyboardNode = store.nodes.find((node) => node.id === sourceStoryboardNodeId && node.type === 'storyboard');
+  if (!storyboardNode) return;
+
+  store.updateNodeData(sourceStoryboardNodeId, {
+    storyboard: {
+      ...normalizeStoryboardData(storyboardNode.data.storyboard),
+      composedAssetId: primaryAsset.assetId,
+    },
+  });
+}
+
+function syncDirectorShotFromGeneratedAsset(nodeRun: PersistableNodeRun, assetRefs: FlowRuntimeAssetRef[]): void {
+  if (nodeRun.status !== 'succeeded' || nodeRun.nodeType !== 'image.generate' || assetRefs.length === 0 || !shouldApplyNodeRun(nodeRun)) {
+    return;
+  }
+  const primaryAsset = assetRefs[0];
+  if (!primaryAsset?.assetId) return;
+
+  const store = useFlowCanvasStore.getState();
+  const sourceNode = store.nodes.find((node) => node.id === nodeRun.nodeId);
+  const directorParams = isRecord(sourceNode?.data?.params) && isRecord(sourceNode.data.params.director3d)
+    ? sourceNode.data.params.director3d
+    : null;
+  const sourceDirectorNodeId = readString(directorParams?.sourceDirectorNodeId);
+  const shotId = readString(directorParams?.shotId);
+  if (!sourceDirectorNodeId || !shotId) return;
+
+  const directorNode = store.nodes.find((node) => node.id === sourceDirectorNodeId && node.type === 'director3d');
+  if (!directorNode) return;
+  const director = normalizeDirector3dData(directorNode.data.director3d);
+
+  let didPatchShot = false;
+  const shots = director.shots.map((shot) => {
+    if (shot.id !== shotId) return shot;
+    didPatchShot = true;
+    return {
+      ...shot,
+      generatedAssetId: primaryAsset.assetId,
+      generatedSourceNodeId: nodeRun.nodeId,
+    };
+  });
+  if (!didPatchShot) return;
+
+  store.updateNodeData(sourceDirectorNodeId, {
+    director3d: {
+      ...director,
+      shots,
+    },
+  });
+}
+
+function syncVideoEditorExportedAsset(nodeRun: PersistableNodeRun, assetRefs: FlowRuntimeAssetRef[]): void {
+  if (nodeRun.status !== 'succeeded' || nodeRun.nodeType !== 'video.generate' || assetRefs.length === 0 || !shouldApplyNodeRun(nodeRun)) {
+    return;
+  }
+  const primaryAsset = assetRefs[0];
+  if (!primaryAsset?.assetId) return;
+
+  const store = useFlowCanvasStore.getState();
+  const exportNode = store.nodes.find((node) => node.id === nodeRun.nodeId);
+  const videoEditorParams = isRecord(exportNode?.data?.params) && isRecord(exportNode.data.params.videoEditor)
+    ? exportNode.data.params.videoEditor
+    : null;
+  const sourceVideoEditorNodeId = readString(videoEditorParams?.sourceVideoEditorNodeId);
+  if (!sourceVideoEditorNodeId) return;
+
+  const sourceNode = store.nodes.find((node) => node.id === sourceVideoEditorNodeId && node.type === 'video_editor');
+  if (!sourceNode) return;
+
+  store.updateNodeData(sourceVideoEditorNodeId, {
+    videoEditor: {
+      ...normalizeVideoEditorData(sourceNode.data.videoEditor),
+      exportedAssetId: primaryAsset.assetId,
+    },
+  });
+}
+
 function persistNodeOutputsFromRun(nodeRuns: PersistableNodeRun[], assetRefsByNodeId: Record<string, FlowRuntimeAssetRef[]>): void {
-  const { addGeneratedImageChildren, nodes, updateNodeData } = useFlowCanvasStore.getState();
+  const { addGeneratedImageChildren, ensurePanoramaViewerForImageNode, nodes, updateNodeData } = useFlowCanvasStore.getState();
   for (const nodeRun of nodeRuns) {
     const nodeAssets = assetRefsByNodeId[nodeRun.nodeId] ?? [];
     const currentNode = nodes.find((node) => node.id === nodeRun.nodeId);
@@ -645,6 +952,20 @@ function persistNodeOutputsFromRun(nodeRuns: PersistableNodeRun[], assetRefsByNo
       continue;
     }
     updateNodeData(nodeRun.nodeId, nodePatch);
+    if (
+      nodeRun.status === 'succeeded'
+      && nodeRun.nodeType === 'image.generate'
+      && (
+        nodeAssets.some((asset) => isPanoramaMetadata(asset.metadata))
+        || isPanoramaMetadata(nodePatch.metadata)
+      )
+    ) {
+      ensurePanoramaViewerForImageNode(nodeRun.nodeId);
+    }
+    syncStoryboardCellFromGeneratedAsset(nodeRun, nodeAssets);
+    syncStoryboardSheetFromGeneratedAsset(nodeRun, nodeAssets);
+    syncDirectorShotFromGeneratedAsset(nodeRun, nodeAssets);
+    syncVideoEditorExportedAsset(nodeRun, nodeAssets);
   }
 }
 
@@ -662,6 +983,7 @@ async function resolveAssetRefs(outputJson: Record<string, unknown> | null): Pro
           expiresAt: download.expiresAt,
           height: asset.height ?? null,
           kind: asset.kind,
+          metadata: readStringRecord(asset.metadata),
           mimeType: asset.mimeType,
           width: asset.width ?? null,
         } satisfies FlowRuntimeAssetRef;
@@ -687,6 +1009,7 @@ function resolveAssetRefsFromEventPayload(payload: Record<string, unknown>): Flo
       expiresAt: null,
       height: asset.height ?? null,
       kind: asset.kind,
+      metadata: readStringRecord(asset.metadata),
       mimeType: asset.mimeType,
       width: asset.width ?? null,
     }));

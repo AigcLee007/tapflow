@@ -37,6 +37,15 @@ type TenantContext = {
 };
 
 const PLATFORM_TENANT_ID: string | null = null;
+const KNOWN_IMAGE_GENERATION_MODES = new Set([
+  "standard",
+  "panorama_360",
+  "wraparound_270",
+  "subject_orbit_270",
+]);
+const KNOWN_VIDEO_WORKFLOWS = new Set([
+  "video_editor_export",
+]);
 
 type ProviderRecord = {
   capabilities: Record<string, unknown>;
@@ -134,10 +143,12 @@ type RuntimeRouteRecord = {
 
 type RuntimeRouteListRecord = {
   modality: string;
+  model_capabilities: Record<string, unknown>;
   model_display_name: string | null;
   model_key: string | null;
   provider_key: string;
   provider_name: string;
+  request_config: Record<string, unknown>;
   route_key: string;
 };
 
@@ -265,6 +276,10 @@ export type RouteView = {
 };
 
 export type RuntimeRouteListItemView = {
+  capabilities: {
+    supportedGenerationModes: string[];
+    supportedVideoWorkflows: string[];
+  };
   estimatedCredits: number | null;
   minChargeCredits: number | null;
   modality: string;
@@ -406,6 +421,48 @@ function mapPricing(row: PricingRecord): PricingView {
     unit: row.unit,
     unitCredits: Number(row.unit_credits),
     updatedAt: row.created_at,
+  };
+}
+
+function readSupportedGenerationModes(source: unknown): string[] {
+  const direct = source && typeof source === "object"
+    ? (source as { supportedGenerationModes?: unknown }).supportedGenerationModes
+    : undefined;
+  return (Array.isArray(direct) ? direct : [])
+    .map((item) => String(item || "").trim())
+    .filter((item) => KNOWN_IMAGE_GENERATION_MODES.has(item))
+    .filter(Boolean);
+}
+
+function readSupportedVideoWorkflows(source: unknown): string[] {
+  const direct = source && typeof source === "object"
+    ? (source as { supportedVideoWorkflows?: unknown }).supportedVideoWorkflows
+    : undefined;
+  return (Array.isArray(direct) ? direct : [])
+    .map((item) => String(item || "").trim())
+    .filter((item) => KNOWN_VIDEO_WORKFLOWS.has(item))
+    .filter(Boolean);
+}
+
+function mergeRuntimeRouteCapabilities(input: {
+  modelCapabilities?: Record<string, unknown> | null;
+  requestConfig?: Record<string, unknown> | null;
+}): RuntimeRouteListItemView["capabilities"] {
+  const routeCapabilities = input.requestConfig?.capabilities && typeof input.requestConfig.capabilities === "object"
+    ? input.requestConfig.capabilities as Record<string, unknown>
+    : {};
+  const supportedGenerationModes = Array.from(new Set([
+    ...readSupportedGenerationModes(input.modelCapabilities),
+    ...readSupportedGenerationModes(routeCapabilities),
+  ]));
+  const supportedVideoWorkflows = Array.from(new Set([
+    ...readSupportedVideoWorkflows(input.modelCapabilities),
+    ...readSupportedVideoWorkflows(routeCapabilities),
+  ]));
+
+  return {
+    supportedGenerationModes: supportedGenerationModes.length > 0 ? supportedGenerationModes : ["standard"],
+    supportedVideoWorkflows,
   };
 }
 
@@ -919,6 +976,8 @@ export class AiGatewayAdminService {
             provider.name AS provider_name,
             model.model_key,
             model.display_name AS model_display_name,
+            COALESCE(model.capabilities, '{}'::jsonb) AS model_capabilities,
+            COALESCE(route.request_config, '{}'::jsonb) AS request_config,
             pricing.min_charge_credits::text AS min_charge_credits,
             pricing.unit AS pricing_unit
           FROM ai_routes AS route
@@ -965,6 +1024,10 @@ export class AiGatewayAdminService {
       );
 
       return result.rows.map((row) => ({
+        capabilities: mergeRuntimeRouteCapabilities({
+          modelCapabilities: row.model_capabilities,
+          requestConfig: row.request_config,
+        }),
         estimatedCredits: row.min_charge_credits === null ? null : Number(row.min_charge_credits),
         minChargeCredits: row.min_charge_credits === null ? null : Number(row.min_charge_credits),
         modality: row.modality,

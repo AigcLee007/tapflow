@@ -259,6 +259,38 @@ describe("buildImageRequest", () => {
     });
   });
 
+  test("forwards panorama and wraparound params into provider metadata", () => {
+    const request = __workerTestUtils.buildImageRequest(
+      [],
+      {
+        generationPrompt: "未来城市中庭",
+        modelId: "nano-banana-pro",
+        params: {
+          generationMode: "wraparound_270",
+          wraparound: {
+            coverageDegrees: 270,
+            layout: "continuous",
+            panels: 3,
+            subjectType: "scene",
+          },
+        },
+        routeKey: "image.default",
+      },
+    );
+
+    expect(request.metadata).toMatchObject({
+      params: expect.objectContaining({
+        generationMode: "wraparound_270",
+        wraparound: expect.objectContaining({
+          coverageDegrees: 270,
+          layout: "continuous",
+          panels: 3,
+          subjectType: "scene",
+        }),
+      }),
+    });
+  });
+
   test("applies Agent tool run settings and reference asset ids to provider image requests", () => {
     const request = __workerTestUtils.buildImageRequest(
       [],

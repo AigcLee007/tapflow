@@ -85,6 +85,9 @@ describe('modelCatalogOptions', () => {
   test('maps only model-scoped routes returned by the catalog route endpoint', () => {
     const routes = mapCatalogRoutesToRuntimeOptions([
       {
+        capabilities: {
+          supportedGenerationModes: ['standard', 'panorama_360'],
+        },
         estimatedCredits: 24,
         minChargeCredits: 24,
         modality: 'image',
@@ -120,6 +123,7 @@ describe('modelCatalogOptions', () => {
         modelKey: 'nano-banana-pro',
         providerName: 'Visionary',
         routeKey: 'image.nano-banana-pro',
+        supportedGenerationModes: ['standard', 'panorama_360'],
       }),
     );
   });

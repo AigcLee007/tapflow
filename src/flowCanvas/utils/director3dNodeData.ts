@@ -1,0 +1,232 @@
+import type { FlowDirector3dData } from '../types';
+
+type DirectorActor = FlowDirector3dData['actors'][number];
+type DirectorCamera = FlowDirector3dData['cameras'][number];
+type DirectorShot = FlowDirector3dData['shots'][number];
+type DirectorVector = [number, number, number];
+
+const DIRECTOR_SHOT_MOTIONS = new Set<NonNullable<DirectorShot['motion']>>([
+  'static',
+  'dolly',
+  'orbit',
+  'pan',
+  'custom_path',
+]);
+
+function readRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' ? value as Record<string, unknown> : {};
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function readTrimmedString(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function isSafeAssetId(value: string): boolean {
+  return Boolean(value) && !/^(?:blob:|data:|https?:\/\/)/i.test(value);
+}
+
+function readSafeReferenceId(value: unknown): string | undefined {
+  const trimmed = readTrimmedString(value);
+  return isSafeAssetId(trimmed) ? trimmed : undefined;
+}
+
+function readSafeAssetId(value: unknown): string | undefined {
+  return readSafeReferenceId(value);
+}
+
+function readNonNegativeInteger(value: unknown, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+  return Math.max(0, Math.round(value));
+}
+
+function readClampedNumber(
+  value: unknown,
+  options: { fallback?: number; max: number; min: number },
+): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return options.fallback;
+  return Math.min(options.max, Math.max(options.min, value));
+}
+
+function normalizeVector(
+  value: unknown,
+  fallback: DirectorVector,
+  options?: { min?: number },
+): DirectorVector {
+  const source = Array.isArray(value) ? value : [];
+  return [0, 1, 2].map((index) => {
+    const value = source[index];
+    const raw = typeof value === 'number' && Number.isFinite(value) ? value : fallback[index];
+    return typeof options?.min === 'number' ? Math.max(options.min, raw) : raw;
+  }) as DirectorVector;
+}
+
+function normalizePoseControls(value: unknown): Record<string, number> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+
+  const controls = Object.fromEntries(
+    Object.entries(value)
+      .filter(([key, controlValue]) => readTrimmedString(key) && typeof controlValue === 'number' && Number.isFinite(controlValue))
+      .map(([key, controlValue]) => [readTrimmedString(key), controlValue]),
+  );
+
+  return Object.keys(controls).length ? controls : undefined;
+}
+
+function sanitizeStoryAiProjectValue(value: unknown, depth = 0): unknown {
+  if (depth > 8) return undefined;
+  if (value === null || typeof value === 'boolean') return value;
+
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : undefined;
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return /^(?:blob:|data:|https?:\/\/)/i.test(trimmed) ? undefined : value;
+  }
+
+  if (Array.isArray(value)) {
+    const sanitizedItems = value
+      .map((item) => sanitizeStoryAiProjectValue(item, depth + 1))
+      .filter((item) => item !== undefined);
+    return sanitizedItems;
+  }
+
+  if (!isPlainRecord(value)) return undefined;
+
+  const output: Record<string, unknown> = {};
+  Object.entries(value).forEach(([key, entryValue]) => {
+    const sanitized = sanitizeStoryAiProjectValue(entryValue, depth + 1);
+    if (sanitized !== undefined) {
+      output[key] = sanitized;
+    }
+  });
+
+  return output;
+}
+
+function normalizeStoryAiProjectDraft(value: unknown): Record<string, unknown> | undefined {
+  const sanitized = sanitizeStoryAiProjectValue(value);
+  if (!isPlainRecord(sanitized)) return undefined;
+  return Object.keys(sanitized).length ? sanitized : undefined;
+}
+
+function normalizeActor(value: unknown, index: number): DirectorActor {
+  const input = readRecord(value);
+  const kind = input.kind === 'image_plane' || input.kind === 'asset_model'
+    ? input.kind
+    : 'placeholder_humanoid';
+  const assetId = readSafeAssetId(input.assetId);
+  const pose = readTrimmedString(input.pose);
+  const poseControls = normalizePoseControls(input.poseControls);
+
+  return {
+    id: readSafeReferenceId(input.id) || `actor-${index + 1}`,
+    name: readTrimmedString(input.name) || `Actor ${index + 1}`,
+    kind,
+    ...(assetId ? { assetId } : {}),
+    position: normalizeVector(input.position, [0, 0, 0]),
+    rotation: normalizeVector(input.rotation, [0, 0, 0]),
+    scale: normalizeVector(input.scale, [1, 1, 1], { min: 0.1 }),
+    ...(pose ? { pose } : {}),
+    ...(poseControls ? { poseControls } : {}),
+    visible: typeof input.visible === 'boolean' ? input.visible : true,
+    locked: typeof input.locked === 'boolean' ? input.locked : false,
+  };
+}
+
+function normalizeCamera(value: unknown, index: number): DirectorCamera {
+  const input = readRecord(value);
+  const focalMm = readClampedNumber(input.focalMm, { min: 1, max: 300 });
+  const fov = readClampedNumber(input.fov, { min: 1, max: 179 });
+  const prompt = readTrimmedString(input.prompt);
+
+  return {
+    id: readSafeReferenceId(input.id) || `camera-${index + 1}`,
+    name: readTrimmedString(input.name) || `Camera ${index + 1}`,
+    position: normalizeVector(input.position, [0, 1.8, 5]),
+    target: normalizeVector(input.target, [0, 1, 0]),
+    ...(typeof focalMm === 'number' ? { focalMm } : {}),
+    ...(typeof fov === 'number' ? { fov } : {}),
+    durationMs: readNonNegativeInteger(input.durationMs, 3000),
+    ...(prompt ? { prompt } : {}),
+  };
+}
+
+function normalizeCameraSnapshot(
+  value: unknown,
+  fallbackCamera: DirectorCamera | null,
+): DirectorShot['cameraSnapshot'] | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const input = readRecord(value);
+  const name = readTrimmedString(input.name);
+  const focalMm = readClampedNumber(input.focalMm, { min: 1, max: 300 });
+  const fov = readClampedNumber(input.fov, { min: 1, max: 179 });
+
+  return {
+    ...(name ? { name } : {}),
+    position: normalizeVector(input.position, fallbackCamera?.position ?? [0, 1.8, 5]),
+    target: normalizeVector(input.target, fallbackCamera?.target ?? [0, 1, 0]),
+    ...(typeof focalMm === 'number' ? { focalMm } : {}),
+    ...(typeof fov === 'number' ? { fov } : {}),
+  };
+}
+
+function normalizeShot(value: unknown, index: number, cameras: DirectorCamera[]): DirectorShot {
+  const input = readRecord(value);
+  const fallbackCamera = cameras[0] ?? null;
+  const cameraId = readSafeReferenceId(input.cameraId) || fallbackCamera?.id || `camera-${index + 1}`;
+  const selectedCamera = cameras.find((camera) => camera.id === cameraId) ?? fallbackCamera;
+  const prompt = readTrimmedString(input.prompt);
+  const generatedAssetId = readSafeAssetId(input.generatedAssetId);
+  const generatedSourceNodeId = readSafeReferenceId(input.generatedSourceNodeId);
+  const targetStoryboardCellId = readSafeReferenceId(input.targetStoryboardCellId);
+  const motion = DIRECTOR_SHOT_MOTIONS.has(input.motion as NonNullable<DirectorShot['motion']>)
+    ? input.motion as NonNullable<DirectorShot['motion']>
+    : 'static';
+  const cameraSnapshot = normalizeCameraSnapshot(input.cameraSnapshot, selectedCamera);
+
+  return {
+    ...(cameraSnapshot ? { cameraSnapshot } : {}),
+    id: readSafeReferenceId(input.id) || `shot-${index + 1}`,
+    cameraId,
+    startMs: readNonNegativeInteger(input.startMs, 0),
+    durationMs: readNonNegativeInteger(input.durationMs, 3000),
+    motion,
+    ...(prompt ? { prompt } : {}),
+    ...(generatedAssetId ? { generatedAssetId } : {}),
+    ...(generatedSourceNodeId ? { generatedSourceNodeId } : {}),
+    ...(targetStoryboardCellId ? { targetStoryboardCellId } : {}),
+  };
+}
+
+export function normalizeDirector3dData(value: unknown): FlowDirector3dData {
+  const input = readRecord(value);
+  const sceneInput = readRecord(input.scene);
+  const backgroundAssetId = readSafeAssetId(sceneInput.backgroundAssetId);
+  const storyAiProject = normalizeStoryAiProjectDraft(input.storyAiProject);
+  const cameras = Array.isArray(input.cameras)
+    ? input.cameras.map((camera, index) => normalizeCamera(camera, index))
+    : [];
+
+  return {
+    version: 1,
+    ...(storyAiProject ? { storyAiProject } : {}),
+    scene: {
+      ...(backgroundAssetId ? { backgroundAssetId } : {}),
+      gridVisible: sceneInput.gridVisible !== false,
+      units: 'meters',
+    },
+    actors: Array.isArray(input.actors)
+      ? input.actors.map((actor, index) => normalizeActor(actor, index))
+      : [],
+    cameras,
+    shots: Array.isArray(input.shots)
+      ? input.shots.map((shot, index) => normalizeShot(shot, index, cameras))
+      : [],
+  };
+}

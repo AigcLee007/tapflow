@@ -21,8 +21,59 @@ describe("AI plugin registry", () => {
       "pixellelabs.nano-banana-2",
       "mouxihub.nano-banana-pro-t3",
       "pixellelabs.nano-banana-pro",
+      "tapflow.video-editor-ffmpeg",
     ]);
-    expect(BUILTIN_AI_PLUGIN_MANIFESTS).toHaveLength(8);
+    expect(BUILTIN_AI_PLUGIN_MANIFESTS).toHaveLength(9);
+  });
+
+  test("returns TapFlow video editor FFmpeg export manifest", () => {
+    const manifest = builtinAiPluginRegistry.require("tapflow.video-editor-ffmpeg");
+
+    expect(manifest.displayName).toBe("Video Editor FFmpeg Export");
+    expect(manifest.modality).toBe("video");
+    expect(manifest.provider).toMatchObject({
+      defaultBaseUrl: "internal://tapflow-video-renderer",
+      key: "tapflow-local-render",
+      kind: "mock",
+    });
+    expect(manifest.credentials.fields).toEqual([]);
+    expect(manifest.models).toEqual([
+      expect.objectContaining({
+        defaultRouteKey: "video.editor.ffmpeg",
+        displayName: "Video Editor FFmpeg",
+        modality: "video",
+        modelFamily: "tapflow.video-editor",
+        modelKey: "video-editor-ffmpeg",
+      }),
+    ]);
+    expect(manifest.routes).toEqual([
+      expect.objectContaining({
+        mode: "sync",
+        modelFamily: "tapflow.video-editor",
+        modelKey: "video-editor-ffmpeg",
+        path: "/internal/video-editor/render",
+        requestConfig: expect.objectContaining({
+          apiMode: "internal-render",
+          capabilities: {
+            supportedVideoWorkflows: ["video_editor_export"],
+            videoEditorRenderEngine: "ffmpeg",
+          },
+          path: "/internal/video-editor/render",
+        }),
+        routeKey: "video.editor.ffmpeg",
+        routeLabel: "FFmpeg Export",
+      }),
+    ]);
+    expect(manifest.pricing).toEqual([
+      expect.objectContaining({
+        minChargeCredits: 50,
+        model: "video-editor-ffmpeg",
+        provider: "tapflow-local-render",
+        route: "video.editor.ffmpeg",
+        unit: "video_generation",
+        unitCredits: 50,
+      }),
+    ]);
   });
 
   test("returns MouxiHub Nano Banana Pro official T3 async route manifest", () => {
@@ -131,6 +182,20 @@ describe("AI plugin registry", () => {
     );
   });
 
+  test("publishes 2:1 aspect ratio support for panorama-capable Nano Banana routes", () => {
+    const manifests = [
+      builtinAiPluginRegistry.require("pixellelabs.nano-banana-pro"),
+      builtinAiPluginRegistry.require("pixellelabs.nano-banana-2"),
+      builtinAiPluginRegistry.require("mouxihub.nano-banana-pro-t3"),
+    ];
+
+    manifests.forEach((manifest) => {
+      expect(manifest.models[0]?.capabilities?.supportedAspectRatios).toContain("2:1");
+      const aspectField = manifest.models[0]?.uiSchema?.fields?.find?.((field: { key?: string }) => field.key === "aspectRatio");
+      expect(aspectField?.options?.map?.((option: { value?: string }) => option.value)).toContain("2:1");
+    });
+  });
+
   test("returns GPT-Image-2 plugin manifest for SiphonLab line one", () => {
     const manifest = builtinAiPluginRegistry.require("openai-compatible.gpt-image-2");
 
@@ -155,6 +220,14 @@ describe("AI plugin registry", () => {
         modelKey: "gpt-image-2",
         path: "/images/generations",
         requestConfig: expect.objectContaining({
+          capabilities: {
+            supportedGenerationModes: [
+              "standard",
+              "panorama_360",
+              "wraparound_270",
+              "subject_orbit_270",
+            ],
+          },
           editPath: "/images/edits",
           path: "/images/generations",
         }),
@@ -167,6 +240,14 @@ describe("AI plugin registry", () => {
         path: "/responses",
         requestConfig: expect.objectContaining({
           apiMode: "responses",
+          capabilities: {
+            supportedGenerationModes: [
+              "standard",
+              "panorama_360",
+              "wraparound_270",
+              "subject_orbit_270",
+            ],
+          },
           model: "gpt-5.5",
           path: "/responses",
         }),
@@ -249,6 +330,14 @@ describe("AI plugin registry", () => {
         path: "/v1/images/generations",
         requestConfig: expect.objectContaining({
           async: true,
+          capabilities: {
+            supportedGenerationModes: [
+              "standard",
+              "panorama_360",
+              "wraparound_270",
+              "subject_orbit_270",
+            ],
+          },
           editPath: "/v1/images/edits",
           modelBySize: {
             "1K": "gpt-image-2",
@@ -306,6 +395,14 @@ describe("AI plugin registry", () => {
         path: "/v1/images/generations",
         requestConfig: expect.objectContaining({
           async: true,
+          capabilities: {
+            supportedGenerationModes: [
+              "standard",
+              "panorama_360",
+              "wraparound_270",
+              "subject_orbit_270",
+            ],
+          },
           editPath: "/v1/images/edits",
           modelBySize: {
             "1K": "gpt-image-2-vip",

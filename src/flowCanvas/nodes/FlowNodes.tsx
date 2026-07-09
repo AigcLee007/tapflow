@@ -51,6 +51,7 @@ import {
   GripVertical
 } from 'lucide-react';
 import type {
+  FlowImageGenerationMode,
   FlowImageGenerationSnapshot,
   FlowImageReferenceComparisonSource,
   FlowMultiImageDisplayMode,
@@ -58,7 +59,7 @@ import type {
   FlowNodeKind,
 } from '../types';
 import { useFlowCanvasStore, type FlowDerivedEditCounts, type FlowUpstreamImageRef } from '../store/flowCanvasStore';
-import { runImageEdit, type ImageEditType } from '../runtime/graphExecutor';
+import { runImageEdit, runImageTemplateEdit, type ImageEditType } from '../runtime/graphExecutor';
 import { markBackendRunLaunchFailed, runBackendWorkflow } from '../runtime/v2WorkflowRunner';
 import { useVideoModelCatalog } from '../../hooks/useVideoModelCatalog';
 import {
@@ -179,6 +180,26 @@ import {
 import { getNodeSelectionMode } from '../utils/nodeSelectionMode';
 import { resolveEditableImageSource } from '../utils/editableImageSource';
 import { useEditableImageObjectUrl } from '../utils/useEditableImageObjectUrl';
+import {
+  IMAGE_GENERATION_MODE_OPTIONS,
+  buildImageGenerationModeParamPatch,
+  normalizeImageGenerationMode,
+} from '../utils/imageGenerationModes';
+import {
+  isImageGenerationModeSupportedByRoute,
+  resolveImageGenerationModeRunBlocker,
+} from '../utils/imageGenerationModeSupport';
+import type { FlowImageTemplateEditActionKey } from '../utils/imageTemplateEditActions';
+import {
+  PANORAMA_DEFAULT_ASPECT_RATIO,
+  PANORAMA_GENERATION_MODE,
+  PANORAMA_SUPPORTED_ASPECT_RATIOS,
+} from '../panorama/panoramaTypes';
+import {
+  isPanoramaAspectRatio,
+  isPanoramaNodeData,
+  resolvePanoramaAspectRatio,
+} from '../panorama/panoramaUtils';
 
 type FlowNode = Node<FlowNodeData>;
 
@@ -4237,9 +4258,11 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const activeImageTool = useFlowCanvasStore((s) => s.activeImageTool);
   const openImageTool = useFlowCanvasStore((s) => s.openImageTool);
   const closeImageTool = useFlowCanvasStore((s) => s.closeImageTool);
+  const ensurePanoramaViewerForImageNode = useFlowCanvasStore((s) => s.ensurePanoramaViewerForImageNode);
   const setCanvasViewport = useFlowCanvasStore((s) => s.setViewport);
   const pushHistory = useFlowCanvasStore((s) => s.pushHistory);
   const leftPanelOpen = useFlowCanvasStore((s) => s.leftPanelOpen);
+  const selectNodesByIds = useFlowCanvasStore((s) => s.selectNodesByIds);
   const upstreamImageRefs = useFlowCanvasStore(
     (s) => s.graphIndex.upstreamImageRefsByNodeId[id] || EMPTY_UPSTREAM_IMAGE_REFS,
   );
@@ -4459,11 +4482,20 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const catalogRatios = getAspectRatioOptionsFromCatalogModel(selectedCatalogModel);
   const extraRatios = catalogRatios.length ? catalogRatios : getImageModelExtraAspectRatios(currentModelId);
   const defaultRatios = ['1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3', '21:9'];
-  const aspectOptions = Array.from(new Set([...defaultRatios, ...extraRatios]));
 
   const p = (d.params || {}) as Record<string, any>;
+  const currentGenerationMode = normalizeImageGenerationMode(d.generationMode || p.generationMode);
+  const standardAspectOptions = Array.from(new Set([...defaultRatios, ...extraRatios]))
+    .filter((ratio) => !isPanoramaAspectRatio(ratio));
+  const aspectOptions = currentGenerationMode === PANORAMA_GENERATION_MODE
+    ? [...PANORAMA_SUPPORTED_ASPECT_RATIOS]
+    : standardAspectOptions;
   const currentSize = String(p.size || p.imageSize || sizeOptions[0] || '1k').toLowerCase();
-  const currentRatio = String(p.aspectRatio || p.aspect_ratio || aspectOptions[0] || '1:1');
+  const rawCurrentRatio = String(p.aspectRatio || p.aspect_ratio || aspectOptions[0] || '1:1');
+  const currentRatio = currentGenerationMode === PANORAMA_GENERATION_MODE
+    ? resolvePanoramaAspectRatio(rawCurrentRatio)
+    : (isPanoramaAspectRatio(rawCurrentRatio) ? (standardAspectOptions[0] || '1:1') : rawCurrentRatio);
+  const showPanoramaViewerAction = isPanoramaNodeData(d) || currentGenerationMode === PANORAMA_GENERATION_MODE;
   const dynamicParamFields = getCatalogUiFields(selectedCatalogModel?.uiSchema);
   const useNanoBananaParamPanel = isNanoBananaImageModelId(currentModelId) && showSize;
   const useGptImage2ParamPanel = isGptImage2ModelId(currentModelId) && showSize;
@@ -4478,11 +4510,17 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
 
   const selectedRuntimeRoute = selectedModelRuntimeRoute;
   const visibleRuntimeRoutes = modelRuntimeRoutes;
+  const selectableGenerationModeOptions = IMAGE_GENERATION_MODE_OPTIONS.filter((option) =>
+    isImageGenerationModeSupportedByRoute(option.mode, selectedRuntimeRoute));
   const currentPointCost =
     getOfficialImageRouteSizeCredits(currentRouteKey, currentSize)
     ?? getOfficialImageRouteSizeCredits(selectedRuntimeRoute?.routeKey, currentSize)
     ?? getImageRoutePointCost(selectedRoute, currentSize);
-  const displayPointCost = getDisplayImageCredits(currentPointCost, d.batchCount);
+  const generationModeRunBlocker = resolveImageGenerationModeRunBlocker({
+    mode: currentGenerationMode,
+    route: selectedRuntimeRoute,
+  });
+  const displayPointCost = generationModeRunBlocker ? null : getDisplayImageCredits(currentPointCost, d.batchCount);
   const referencedAssetItemIds = Array.isArray(d.referenceAssetItemIds)
     ? (d.referenceAssetItemIds as string[])
     : [];
@@ -4818,6 +4856,32 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     updateNodeData(id, patch);
   };
 
+  const setGenerationMode = useCallback((mode: FlowImageGenerationMode) => {
+    const modePatch = buildImageGenerationModeParamPatch(mode);
+    const nextParams: Record<string, unknown> = {
+      ...((d.params || {}) as Record<string, unknown>),
+      ...modePatch,
+    };
+    const nextRatio = mode === PANORAMA_GENERATION_MODE
+      ? (isPanoramaAspectRatio(rawCurrentRatio) ? rawCurrentRatio : PANORAMA_DEFAULT_ASPECT_RATIO)
+      : (isPanoramaAspectRatio(rawCurrentRatio) ? (standardAspectOptions[0] || '1:1') : rawCurrentRatio);
+    nextParams.aspectRatio = nextRatio;
+    nextParams.aspect_ratio = nextRatio;
+    updateNodeData(id, {
+      ...(effectiveThumbnailUrl
+        ? {}
+        : {
+            ...getMediaNodeSizeFromRatioString(
+              nextRatio,
+              parseAspectRatio(nextRatio) || (mode === PANORAMA_GENERATION_MODE ? 2 : 1),
+            ),
+            aspectRatio: parseAspectRatio(nextRatio) || (mode === PANORAMA_GENERATION_MODE ? 2 : 1),
+          }),
+      generationMode: mode,
+      params: nextParams,
+    });
+  }, [d.params, effectiveThumbnailUrl, id, rawCurrentRatio, standardAspectOptions, updateNodeData]);
+
   const applyModelSelection = useCallback(
     (modelId: string) => {
       const normalizedModelId = normalizeImageModelId(modelId);
@@ -4865,6 +4929,49 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     if (d.routeId === selectedRoute.id) return;
     updateNodeData(id, { routeId: selectedRoute.id });
   }, [d.routeId, id, selectedRoute, updateNodeData]);
+
+  useEffect(() => {
+    if (scopedRouteState.loading) return;
+    if (isImageGenerationModeSupportedByRoute(currentGenerationMode, selectedRuntimeRoute)) return;
+    const modePatch = buildImageGenerationModeParamPatch('standard');
+    updateNodeData(id, {
+      generationMode: 'standard',
+      params: {
+        ...((d.params || {}) as Record<string, unknown>),
+        ...modePatch,
+      },
+    });
+  }, [currentGenerationMode, d.params, id, scopedRouteState.loading, selectedRuntimeRoute, updateNodeData]);
+
+  useEffect(() => {
+    const desiredRatio = currentGenerationMode === PANORAMA_GENERATION_MODE
+      ? resolvePanoramaAspectRatio(rawCurrentRatio)
+      : (isPanoramaAspectRatio(rawCurrentRatio) ? (standardAspectOptions[0] || '1:1') : rawCurrentRatio);
+    if (desiredRatio === rawCurrentRatio) return;
+    const nextParams = {
+      ...p,
+      aspectRatio: desiredRatio,
+      aspect_ratio: desiredRatio,
+    };
+    const nextAspectRatioValue = parseAspectRatio(desiredRatio) || (currentGenerationMode === PANORAMA_GENERATION_MODE ? 2 : 1);
+    updateNodeData(id, {
+      ...(effectiveThumbnailUrl
+        ? {}
+        : {
+            ...getMediaNodeSizeFromRatioString(desiredRatio, nextAspectRatioValue),
+            aspectRatio: nextAspectRatioValue,
+          }),
+      params: nextParams,
+    });
+  }, [
+    currentGenerationMode,
+    effectiveThumbnailUrl,
+    id,
+    p,
+    rawCurrentRatio,
+    standardAspectOptions,
+    updateNodeData,
+  ]);
 
   useEffect(() => {
     const onMouseDown = (event: MouseEvent) => {
@@ -4964,6 +5071,14 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     if (!selectedRuntimeRoute?.routeKey) {
       updateNodeData(id, {
         errorMessage: '当前模型未配置运行路由，请先在后台添加对应线路',
+        generationStatus: 'error',
+        status: 'error',
+      });
+      return;
+    }
+    if (generationModeRunBlocker) {
+      updateNodeData(id, {
+        errorMessage: generationModeRunBlocker.message,
         generationStatus: 'error',
         status: 'error',
       });
@@ -6291,8 +6406,48 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     [currentModelId, currentRouteKey, d.modelId, d.params, d.routeId, id],
   );
 
-  const handleMoreMenuSelect = useCallback((action: ImageMoreMenuAction, payload?: { gridSize?: number }) => {
+  const runTemplateAiEdit = useCallback(
+    async (templateActionKey: FlowImageTemplateEditActionKey) => {
+      const targetNodeId = await runImageTemplateEdit(id, templateActionKey, {
+        modelId: String(d.modelId || currentModelId),
+        params: {
+          ...((d.params || {}) as Record<string, any>),
+          size: currentSize,
+        },
+        routeId: typeof d.routeId === 'string' ? d.routeId : undefined,
+        routeKey: currentRouteKey || undefined,
+      });
+      if (targetNodeId) {
+        void runBackendWorkflow({ runMode: 'target_node', targetNodeId })
+          .catch((error) => markBackendRunLaunchFailed(targetNodeId, error));
+      }
+    },
+    [currentModelId, currentRouteKey, currentSize, d.modelId, d.params, d.routeId, id],
+  );
+
+  const handleMoreMenuSelect = useCallback((action: ImageMoreMenuAction, payload?: {
+    gridSize?: number;
+    templateActionKey?: FlowImageTemplateEditActionKey;
+  }) => {
     moreMenuLayer.closeLayer();
+    if (action === 'panoramaViewer') {
+      const viewerNodeId = ensurePanoramaViewerForImageNode(id);
+      if (viewerNodeId) {
+        const snapshot = useFlowCanvasStore.getState();
+        const viewerNode = snapshot.nodes.find((node) => node.id === viewerNodeId);
+        selectNodesByIds([viewerNodeId]);
+        if (viewerNode) {
+          const viewerWidth = Number(viewerNode.data.width || FLOW_NODE_DEFAULT_SIZES.panoramaViewer.width);
+          const viewerHeight = Number(viewerNode.data.height || FLOW_NODE_DEFAULT_SIZES.panoramaViewer.height);
+          void reactFlow.setCenter(
+            viewerNode.position.x + viewerWidth / 2,
+            viewerNode.position.y + viewerHeight / 2,
+            { duration: 180, zoom: Math.max(reactFlow.getViewport().zoom, 0.72) },
+          );
+        }
+      }
+      return;
+    }
     if (action === 'resize') {
       openImageTool(id, 'resize');
     }
@@ -6315,7 +6470,17 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     if (action === 'removeBackground') {
       setAiConfirmType('removeBackground');
     }
-  }, [id, moreMenuLayer, openImageTool, openRepaintOverlay]);
+    if (action === 'templateEdit' && payload?.templateActionKey) {
+      void runTemplateAiEdit(payload.templateActionKey).catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        useFlowCanvasStore.getState().updateNodeData(id, {
+          errorMessage: message,
+          generationStatus: 'error',
+          status: 'failed',
+        });
+      });
+    }
+  }, [ensurePanoramaViewerForImageNode, id, moreMenuLayer, openImageTool, openRepaintOverlay, reactFlow, runTemplateAiEdit, selectNodesByIds]);
 
   const updateMoreMenuPosition = useCallback(() => {
     const triggerRect = moreMenuButtonRef.current?.getBoundingClientRect();
@@ -6612,6 +6777,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
           fixedPosition={moreMenuPosition}
           menuRef={moreMenuLayer.ref as React.RefObject<HTMLDivElement>}
           onSelect={handleMoreMenuSelect}
+          showPanoramaViewer={showPanoramaViewerAction}
         />,
         document.body,
       ) : null}
@@ -6960,7 +7126,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
           <div style={promptBottomRow}>
             <ImagePromptActionRow
               batchCount={d.batchCount || 1}
-              creditsValue={formatImageCredits(displayPointCost ?? 0)}
+              creditsValue={generationModeRunBlocker ? '未配置' : formatImageCredits(displayPointCost ?? 0)}
               isGenerating={isGenerating}
               modelControl={(
                 <ImageModelRouteDropup
@@ -7137,6 +7303,20 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
                   >
                     {effectiveBatchCount}x
                   </button>
+                </div>
+              )}
+              generationModeControl={(
+                <div style={{ minWidth: 128 }}>
+                  <MenuSelect
+                    label={`图片生成模式 ${id}`}
+                    onChange={(value) => setGenerationMode(normalizeImageGenerationMode(value))}
+                    options={selectableGenerationModeOptions.map((option) => ({
+                      label: option.label,
+                      value: option.mode,
+                    }))}
+                    size="compact"
+                    value={currentGenerationMode}
+                  />
                 </div>
               )}
               onGenerate={handleGenerate}

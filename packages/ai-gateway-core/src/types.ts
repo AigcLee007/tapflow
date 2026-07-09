@@ -63,6 +63,7 @@ export type MediaOutput = {
   durationMs?: number | null;
   filename?: string | null;
   height?: number | null;
+  localFilePath?: string | null;
   mimeType?: string | null;
   url?: string | null;
   width?: number | null;

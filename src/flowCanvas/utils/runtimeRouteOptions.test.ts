@@ -7,6 +7,9 @@ describe('mapImageRuntimeRouteOptions', () => {
   test('keeps distinct route keys and pricing hints even when provider/model are the same', () => {
     const input: V2RuntimeRouteItem[] = [
       {
+        capabilities: {
+          supportedGenerationModes: ['standard', 'panorama_360', 'wraparound_270'],
+        },
         estimatedCredits: 100,
         minChargeCredits: 100,
         modality: 'image',
@@ -18,6 +21,9 @@ describe('mapImageRuntimeRouteOptions', () => {
         routeKey: 'image.default',
       },
       {
+        capabilities: {
+          supportedGenerationModes: ['standard'],
+        },
         estimatedCredits: 120,
         minChargeCredits: 120,
         modality: 'image',
@@ -38,6 +44,26 @@ describe('mapImageRuntimeRouteOptions', () => {
       'Mock Image - image.fail',
     ]);
     expect(options.map((item) => item.estimatedCredits)).toEqual([100, 120]);
+    expect(options[0]?.supportedGenerationModes).toEqual(['standard', 'panorama_360', 'wraparound_270']);
+    expect(options[1]?.supportedGenerationModes).toEqual(['standard']);
+  });
+
+  test('falls back to standard-only when a route does not declare generation-mode support', () => {
+    const options = mapImageRuntimeRouteOptions([
+      {
+        estimatedCredits: 100,
+        minChargeCredits: 100,
+        modality: 'image',
+        modelDisplayName: 'Legacy Image',
+        modelKey: 'legacy-image',
+        pricingUnit: 'image_generation',
+        providerKey: 'mock-local-dev',
+        providerName: 'Mock Provider',
+        routeKey: 'image.legacy',
+      },
+    ]);
+
+    expect(options[0]?.supportedGenerationModes).toEqual(['standard']);
   });
 
   test('limits GPT-Image-2 official fallback routes to line one and line two only', () => {
@@ -46,6 +72,10 @@ describe('mapImageRuntimeRouteOptions', () => {
     expect(options.map((item) => item.routeKey)).toEqual([
       'image.gpt-image-2',
       'image.gpt-image-2.line2',
+    ]);
+    expect(options.map((item) => item.supportedGenerationModes)).toEqual([
+      ['standard', 'panorama_360', 'wraparound_270', 'subject_orbit_270'],
+      ['standard', 'panorama_360', 'wraparound_270', 'subject_orbit_270'],
     ]);
   });
 });
