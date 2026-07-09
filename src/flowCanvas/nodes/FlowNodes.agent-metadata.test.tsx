@@ -219,7 +219,7 @@ describe("FlowNodes agent metadata", () => {
     expect(screen.getByText("5% 生成中")).toBeTruthy();
   });
 
-  it.skip("renders a panorama generate entry in the image toolbar and opens the generator popover", async () => {
+  it("renders a panorama generate entry in the image toolbar and switches the node into 360 mode", async () => {
     const source = useFlowCanvasStore.getState().addNode(
       "image",
       { x: 0, y: 0 },
@@ -229,7 +229,9 @@ describe("FlowNodes agent metadata", () => {
         generationStatus: "done",
         height: 240,
         kind: "image",
+        modelId: "gpt-image-2",
         status: "success",
+        routeKey: "image.gpt-image-2",
         thumbnailUrl: "https://cdn.test/panorama-source.png",
         title: "Panorama Source",
         updatedAt: 1,
@@ -254,45 +256,10 @@ describe("FlowNodes agent metadata", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "360 全景生成" }));
 
-    expect(await screen.findByRole("dialog", { name: "360 全景生成" })).toBeTruthy();
+    await screen.findByRole("dialog", { name: "360 全景生成" });
+    expect(useFlowCanvasStore.getState().nodes.find((node) => node.id === source.id)?.data.generationMode).toBe("panorama_360");
     expect(screen.getByRole("button", { name: "2:1" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "21:9" })).toBeTruthy();
-  });
-
-  it("does not render the panorama generate entry in the image toolbar anymore", () => {
-    const source = useFlowCanvasStore.getState().addNode(
-      "image",
-      { x: 0, y: 0 },
-      {
-        createdAt: 1,
-        generationPrompt: "city dusk skyline",
-        generationStatus: "done",
-        height: 240,
-        kind: "image",
-        status: "success",
-        thumbnailUrl: "https://cdn.test/panorama-source.png",
-        title: "Panorama Source",
-        updatedAt: 1,
-        width: 260,
-      } as any,
-      { selected: true },
-    );
-
-    render(
-      <ImageNodeComponent
-        id={source.id}
-        selected
-        data={source.data as any}
-        dragging={false}
-        zIndex={1}
-        isConnectable
-        type="image"
-        xPos={0}
-        yPos={0}
-      />,
-    );
-
-    expect(screen.queryByRole("button", { name: /360 全景生成/i })).toBeNull();
   });
 
   it("keeps the image quantity menu open until a batch display mode is selected", () => {

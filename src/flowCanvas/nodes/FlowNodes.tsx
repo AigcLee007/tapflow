@@ -42,6 +42,7 @@ import {
   Box,
   Wand2,
   Flashlight,
+  Globe2,
   LayoutGrid,
   Rows3,
   Play,
@@ -87,6 +88,7 @@ import { getImageNaturalSize, imageUrlToBlob } from '../utils/imageUtils';
 import type { LightDirection } from './ImageLightingOverlay';
 import type { MultiAngleId } from './ImageMultiAngleOverlay';
 import { ImageMoreMenu, type ImageMoreMenuAction } from './ImageMoreMenu';
+import { PanoramaGeneratePopover } from '../panorama/PanoramaGeneratePopover';
 import { GptImage2ParamPanel } from './GptImage2ParamPanel';
 import { NanoBananaParamPanel } from './NanoBananaParamPanel';
 import { ImageGenerateToolbar } from './ImageGenerateToolbar';
@@ -194,6 +196,7 @@ import {
   PANORAMA_DEFAULT_ASPECT_RATIO,
   PANORAMA_GENERATION_MODE,
   PANORAMA_SUPPORTED_ASPECT_RATIOS,
+  type PanoramaAspectRatio,
 } from '../panorama/panoramaTypes';
 import {
   isPanoramaAspectRatio,
@@ -4258,6 +4261,10 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const activeImageTool = useFlowCanvasStore((s) => s.activeImageTool);
   const openImageTool = useFlowCanvasStore((s) => s.openImageTool);
   const closeImageTool = useFlowCanvasStore((s) => s.closeImageTool);
+  const createPanoramaTargetNodeFromSource = useFlowCanvasStore((s) => s.createPanoramaTargetNodeFromSource) as (
+    sourceNodeId: string,
+    aspectRatio: PanoramaAspectRatio,
+  ) => { id: string };
   const ensurePanoramaViewerForImageNode = useFlowCanvasStore((s) => s.ensurePanoramaViewerForImageNode);
   const setCanvasViewport = useFlowCanvasStore((s) => s.setViewport);
   const pushHistory = useFlowCanvasStore((s) => s.pushHistory);
@@ -4293,6 +4300,9 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const [showBatchSelector, setShowBatchSelector] = useState(false);
   const [pendingBatchCount, setPendingBatchCount] = useState<number | null>(null);
   const [fullscreenOpen, setFullscreenOpen] = useState(false);
+  const panoramaGenerateLayer = useDismissibleLayer(`image-node-panorama-${id}`);
+  const panoramaGenerateButtonRef = useRef<HTMLButtonElement>(null);
+  const [panoramaGeneratePosition, setPanoramaGeneratePosition] = useState<{ left: number; top: number } | null>(null);
   const moreMenuLayer = useDismissibleLayer(`image-node-more-${id}`);
   const [moreMenuPosition, setMoreMenuPosition] = useState<{ left: number; top: number } | null>(null);
   const [assetMenuOpen, setAssetMenuOpen] = useState(false);
@@ -5023,6 +5033,8 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     setShowBatchSelector(false);
     setPendingBatchCount(null);
     moreMenuLayer.closeLayer();
+    panoramaGenerateLayer.closeLayer();
+    setPanoramaGeneratePosition(null);
     setAssetMenuOpen(false);
     setSlashMenuOpen(false);
     setMentionQuery('');
@@ -5032,7 +5044,13 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     if (activeImageTool?.nodeId === id) {
       closeImageTool();
     }
-  }, [activeImageTool?.nodeId, closeImageTool, closeResultStrip, id, isMultiSelecting, moreMenuLayer]);
+  }, [activeImageTool?.nodeId, closeImageTool, closeResultStrip, id, isMultiSelecting, moreMenuLayer, panoramaGenerateLayer]);
+
+  useEffect(() => {
+    if (showNodeEditor) return;
+    panoramaGenerateLayer.closeLayer();
+    setPanoramaGeneratePosition(null);
+  }, [panoramaGenerateLayer, showNodeEditor]);
 
   useEffect(
     () => () => {
@@ -6482,6 +6500,59 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     }
   }, [ensurePanoramaViewerForImageNode, id, moreMenuLayer, openImageTool, openRepaintOverlay, reactFlow, runTemplateAiEdit, selectNodesByIds]);
 
+  const updatePanoramaGeneratePosition = useCallback(() => {
+    const triggerRect = panoramaGenerateButtonRef.current?.getBoundingClientRect();
+    if (!triggerRect || typeof window === 'undefined') {
+      setPanoramaGeneratePosition(null);
+      return;
+    }
+
+    const popoverWidth = 300;
+    const centeredLeft = triggerRect.left + triggerRect.width / 2;
+    const minLeft = 18 + popoverWidth / 2;
+    const maxLeft = window.innerWidth - 18 - popoverWidth / 2;
+    setPanoramaGeneratePosition({
+      left: Math.min(maxLeft, Math.max(minLeft, centeredLeft)),
+      top: triggerRect.bottom + 14,
+    });
+  }, []);
+
+  const openPanoramaGeneratePopover = useCallback(() => {
+    setGenerationMode(PANORAMA_GENERATION_MODE);
+    updatePanoramaGeneratePosition();
+    panoramaGenerateLayer.toggle();
+  }, [panoramaGenerateLayer, setGenerationMode, updatePanoramaGeneratePosition]);
+
+  const handlePanoramaGenerateSubmit = useCallback(
+    ({ aspectRatio }: { aspectRatio: PanoramaAspectRatio }) => {
+      const created = createPanoramaTargetNodeFromSource(id, aspectRatio);
+      panoramaGenerateLayer.closeLayer();
+      setPanoramaGeneratePosition(null);
+      void runBackendWorkflow({
+        runMode: 'target_node',
+        targetNodeId: created.id,
+      }).catch((error) => markBackendRunLaunchFailed(created.id, error));
+    },
+    [createPanoramaTargetNodeFromSource, id, panoramaGenerateLayer],
+  );
+
+  useEffect(() => {
+    if (!panoramaGenerateLayer.open) {
+      setPanoramaGeneratePosition(null);
+      return;
+    }
+
+    updatePanoramaGeneratePosition();
+
+    const syncPosition = () => updatePanoramaGeneratePosition();
+    window.addEventListener('resize', syncPosition);
+    window.addEventListener('scroll', syncPosition, true);
+    return () => {
+      window.removeEventListener('resize', syncPosition);
+      window.removeEventListener('scroll', syncPosition, true);
+    };
+  }, [panoramaGenerateLayer.open, updatePanoramaGeneratePosition]);
+
   const updateMoreMenuPosition = useCallback(() => {
     const triggerRect = moreMenuButtonRef.current?.getBoundingClientRect();
     if (!triggerRect) return;
@@ -6498,7 +6569,12 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     (toolId: string) => {
       if (!effectiveThumbnailUrl) return;
       if (toolId !== 'more') moreMenuLayer.closeLayer();
+      if (toolId !== 'panoramaGenerate') panoramaGenerateLayer.closeLayer();
 
+      if (toolId === 'panoramaGenerate') {
+        openPanoramaGeneratePopover();
+        return;
+      }
       if (toolId === 'crop') {
         openImageTool(id, 'crop');
         return;
@@ -6538,9 +6614,11 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       handleStepBack,
       moreMenuLayer,
       openAnchoredPreviewTool,
+      openPanoramaGeneratePopover,
       openImageTool,
       openRepaintOverlay,
       updateMoreMenuPosition,
+      panoramaGenerateLayer,
     ],
   );
 
@@ -6654,6 +6732,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       {/* Section */}
       {hasImage && showNodeEditor && (() => {
         const tools = [
+          { id: 'panoramaGenerate', icon: <Globe2 size={IMAGE_FLOATING_TOOLBAR_ICON_SIZE} strokeWidth={1.5} />, label: '360 全景生成' },
           { id: 'crop', icon: <Crop size={IMAGE_FLOATING_TOOLBAR_ICON_SIZE} strokeWidth={1.5} />, label: '裁剪' },
           { id: 'multiAngle', icon: <Box size={IMAGE_FLOATING_TOOLBAR_ICON_SIZE} strokeWidth={1.5} />, label: '多角度' },
           { id: 'repaint', icon: <Wand2 size={IMAGE_FLOATING_TOOLBAR_ICON_SIZE} strokeWidth={1.5} />, label: '重绘' },
@@ -6695,6 +6774,11 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
                         moreMenuButtonRef.current = node;
                         (moreMenuLayer.triggerRef as React.MutableRefObject<HTMLButtonElement | null>).current = node;
                       }
+                      : t.id === 'panoramaGenerate'
+                        ? (node) => {
+                          panoramaGenerateButtonRef.current = node;
+                          (panoramaGenerateLayer.triggerRef as React.MutableRefObject<HTMLButtonElement | null>).current = node;
+                        }
                       : undefined}
                     aria-label={t.label}
                     title={t.label}
@@ -6792,6 +6876,29 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
           onSelect={handleMoreMenuSelect}
           showPanoramaViewer={showPanoramaViewerAction}
         />,
+        document.body,
+      ) : null}
+
+      {panoramaGenerateLayer.open && panoramaGeneratePosition && typeof document !== 'undefined' ? createPortal(
+        <div
+          ref={panoramaGenerateLayer.ref as React.RefObject<HTMLDivElement>}
+          className="fixed z-[2450] -translate-x-1/2"
+          style={{
+            left: panoramaGeneratePosition.left,
+            top: panoramaGeneratePosition.top,
+          }}
+        >
+          <PanoramaGeneratePopover
+            creditLabel="生成启动后将按所选图片路线计费。"
+            onClose={() => {
+              panoramaGenerateLayer.closeLayer();
+              setPanoramaGeneratePosition(null);
+            }}
+            onSubmit={handlePanoramaGenerateSubmit}
+            sourceNodeTitle={String(d.title || "图片")}
+            sourcePromptAvailable={Boolean(String(d.generationPrompt || "").trim())}
+          />
+        </div>,
         document.body,
       ) : null}
 

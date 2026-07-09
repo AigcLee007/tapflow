@@ -8,17 +8,12 @@ const createWorkspaceProjectMock = vi.fn();
 const updateWorkspaceProjectMock = vi.fn();
 const deleteWorkspaceProjectMock = vi.fn();
 const setProjectTitleMock = vi.fn();
-const createPanoramaTargetNodeFromSourceMock = vi.fn();
-const markBackendRunLaunchFailedMock = vi.fn();
-const runBackendWorkflowMock = vi.fn();
 
 const mockedStoreState: {
   nodes: Array<Record<string, unknown>>;
-  createPanoramaTargetNodeFromSource: typeof createPanoramaTargetNodeFromSourceMock;
   projectTitle: string;
   setProjectTitle: typeof setProjectTitleMock;
 } = {
-  createPanoramaTargetNodeFromSource: createPanoramaTargetNodeFromSourceMock,
   nodes: [],
   projectTitle: "Test Project",
   setProjectTitle: setProjectTitleMock,
@@ -32,11 +27,6 @@ vi.mock("../../workspace/workspaceApi", () => ({
   createWorkspaceProject: (...args: unknown[]) => createWorkspaceProjectMock(...args),
   updateWorkspaceProject: (...args: unknown[]) => updateWorkspaceProjectMock(...args),
   deleteWorkspaceProject: (...args: unknown[]) => deleteWorkspaceProjectMock(...args),
-}));
-
-vi.mock("../runtime/v2WorkflowRunner", () => ({
-  markBackendRunLaunchFailed: (...args: unknown[]) => markBackendRunLaunchFailedMock(...args),
-  runBackendWorkflow: (...args: unknown[]) => runBackendWorkflowMock(...args),
 }));
 
 vi.mock("../../services/v2HttpClient", () => ({
@@ -57,15 +47,9 @@ describe("FlowTopToolbar", () => {
     updateWorkspaceProjectMock.mockReset();
     deleteWorkspaceProjectMock.mockReset();
     setProjectTitleMock.mockReset();
-    createPanoramaTargetNodeFromSourceMock.mockReset();
-    createPanoramaTargetNodeFromSourceMock.mockReturnValue({ id: "panorama-target-1" });
-    markBackendRunLaunchFailedMock.mockReset();
-    runBackendWorkflowMock.mockReset();
-    runBackendWorkflowMock.mockResolvedValue(undefined);
     mockedStoreState.projectTitle = "Test Project";
     mockedStoreState.nodes = [];
     mockedStoreState.setProjectTitle = setProjectTitleMock;
-    mockedStoreState.createPanoramaTargetNodeFromSource = createPanoramaTargetNodeFromSourceMock;
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => ({
@@ -106,30 +90,7 @@ describe("FlowTopToolbar", () => {
     });
   });
 
-  test.skip("does not render a 360 panorama generate button without a selected image node", async () => {
-    mockedStoreState.nodes = [
-      {
-        data: { generationPrompt: "city dusk", kind: "image", title: "Image 1" },
-        id: "image-1",
-        selected: false,
-        type: "image",
-      },
-    ];
-
-    render(
-      <FlowTopToolbar
-        cullingEnabled
-        onToggleCulling={vi.fn()}
-        saveStatus={{ label: "Saved", status: "saved" }}
-      />,
-    );
-
-    await waitFor(() => {
-      expect(screen.queryByRole("button", { name: /360 全景生成/i })).toBeNull();
-    });
-  });
-
-  test.skip("does not render a 360 panorama generate button in the top toolbar even for a selected image node", async () => {
+  test("does not render a 360 panorama generate button in the top chrome", async () => {
     mockedStoreState.nodes = [
       {
         data: {
@@ -152,68 +113,7 @@ describe("FlowTopToolbar", () => {
     );
 
     await waitFor(() => {
-      expect(screen.queryByRole("button", { name: /360 全景生成/i })).toBeNull();
-    });
-  });
-
-  test("renders a disabled 360 panorama generate button without a selected image node", async () => {
-    mockedStoreState.nodes = [
-      {
-        data: { generationPrompt: "city dusk", kind: "image", title: "Image 1" },
-        id: "image-1",
-        selected: false,
-        type: "image",
-      },
-    ];
-
-    render(
-      <FlowTopToolbar
-        cullingEnabled
-        onToggleCulling={vi.fn()}
-        saveStatus={{ label: "Saved", status: "saved" }}
-      />,
-    );
-
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /360 全景生成/i }).disabled).toBe(true);
-    });
-  });
-
-  test("opens the panorama generator from the top toolbar for a selected image node", async () => {
-    mockedStoreState.nodes = [
-      {
-        data: {
-          generationPrompt: "city dusk skyline",
-          kind: "image",
-          title: "Panorama Source",
-        },
-        id: "image-1",
-        selected: true,
-        type: "image",
-      },
-    ];
-
-    render(
-      <FlowTopToolbar
-        cullingEnabled
-        onToggleCulling={vi.fn()}
-        saveStatus={{ label: "Saved", status: "saved" }}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: /360 全景生成/i }));
-
-    expect(await screen.findByRole("dialog", { name: "360 全景生成" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "2:1" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "21:9" })).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: "21:9" }));
-    fireEvent.click(screen.getByRole("button", { name: "生成全景" }));
-
-    expect(createPanoramaTargetNodeFromSourceMock).toHaveBeenCalledWith("image-1", "21:9");
-    expect(runBackendWorkflowMock).toHaveBeenCalledWith({
-      runMode: "target_node",
-      targetNodeId: "panorama-target-1",
+      expect(screen.queryByRole("button", { name: /360 鍏ㄦ櫙鐢熸垚/i })).toBeNull();
     });
   });
 
@@ -226,9 +126,9 @@ describe("FlowTopToolbar", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "打开项目菜单" }));
+    fireEvent.click(screen.getByRole("button", { name: "鎵撳紑椤圭洰鑿滃崟" }));
 
-    const menu = screen.getByRole("menu", { name: "项目菜单" });
+    const menu = screen.getByRole("menu", { name: "椤圭洰鑿滃崟" });
     expect(menu).toBeTruthy();
     expect(menu.parentElement).toBe(document.body);
     expect(menu.style.position).toBe("fixed");
@@ -236,10 +136,10 @@ describe("FlowTopToolbar", () => {
     expect(menu.style.top).toBe("112px");
     expect(menu.style.width).toBe("288px");
     expect(menu.style.zIndex).toBe("2400");
-    expect(screen.getByRole("menuitem", { name: "返回工作空间" })).toBeTruthy();
-    expect(screen.getByRole("menuitem", { name: "重命名项目" })).toBeTruthy();
-    expect(screen.getByRole("menuitem", { name: "新建项目" })).toBeTruthy();
-    expect(screen.getByRole("menuitem", { name: "删除项目" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "杩斿洖宸ヤ綔绌洪棿" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "閲嶅懡鍚嶉」鐩?" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "鏂板缓椤圭洰" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "鍒犻櫎椤圭洰" })).toBeTruthy();
     expect(screen.getAllByRole("menuitem")[1]?.className).toContain("min-h-[60px]");
     expect(screen.queryByTestId("project-menu-create-icon")).toBeNull();
     expect(screen.queryByTestId("project-menu-delete-icon")).toBeNull();
@@ -260,15 +160,15 @@ describe("FlowTopToolbar", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "打开项目菜单" }));
+    fireEvent.click(screen.getByRole("button", { name: "鎵撳紑椤圭洰鑿滃崟" }));
     expect(screen.getByRole("menu")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "通知" }));
+    fireEvent.click(screen.getByRole("button", { name: "閫氱煡" }));
 
     await waitFor(() => {
       expect(screen.queryAllByRole("menu")).toHaveLength(1);
     });
-    expect(screen.getByText("全部已读")).toBeTruthy();
+    expect(screen.getByText("鍏ㄩ儴宸茶")).toBeTruthy();
   });
 
   test("hides the top-right credits and notification actions when utility actions are disabled", async () => {
@@ -282,10 +182,10 @@ describe("FlowTopToolbar", () => {
     );
 
     await waitFor(() => {
-      expect(screen.queryByRole("button", { name: "通知" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "閫氱煡" })).toBeNull();
     });
 
-    expect(screen.getByRole("button", { name: "打开项目菜单" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "鎵撳紑椤圭洰鑿滃崟" })).toBeTruthy();
     expect(screen.getByDisplayValue("Test Project")).toBeTruthy();
   });
 
@@ -301,12 +201,12 @@ describe("FlowTopToolbar", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "打开项目菜单" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "删除项目" }));
+    fireEvent.click(screen.getByRole("button", { name: "鎵撳紑椤圭洰鑿滃崟" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "鍒犻櫎椤圭洰" }));
 
-    expect(screen.getByRole("dialog", { name: "删除当前项目" })).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "鍒犻櫎褰撳墠椤圭洰" })).toBeTruthy();
     expect(deleteWorkspaceProjectMock).not.toHaveBeenCalled();
-    expect(screen.queryByRole("menu", { name: "项目菜单" })).toBeNull();
+    expect(screen.queryByRole("menu", { name: "椤圭洰鑿滃崟" })).toBeNull();
 
     await act(async () => {
       vi.runOnlyPendingTimers();
@@ -324,18 +224,18 @@ describe("FlowTopToolbar", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "打开项目菜单" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "删除项目" }));
+    fireEvent.click(screen.getByRole("button", { name: "鎵撳紑椤圭洰鑿滃崟" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "鍒犻櫎椤圭洰" }));
 
-    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    fireEvent.click(screen.getByRole("button", { name: "鍙栨秷" }));
 
     await waitFor(() => {
-      expect(screen.queryByRole("dialog", { name: "删除当前项目" })).toBeNull();
+      expect(screen.queryByRole("dialog", { name: "鍒犻櫎褰撳墠椤圭洰" })).toBeNull();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "打开项目菜单" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "删除项目" }));
-    fireEvent.click(screen.getByRole("button", { name: "删除" }));
+    fireEvent.click(screen.getByRole("button", { name: "鎵撳紑椤圭洰鑿滃崟" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "鍒犻櫎椤圭洰" }));
+    fireEvent.click(screen.getByRole("button", { name: "鍒犻櫎" }));
 
     await waitFor(() => {
       expect(deleteWorkspaceProjectMock).toHaveBeenCalledWith("project-1");

@@ -1,7 +1,16 @@
 ﻿# Project Record
 
-Last updated: 2026-07-09
+Last updated: 2026-07-10
 Maintainers: project team + Codex sessions
+
+## 2026-07-10 - Panorama 360 Image-Node Toolbar Fix
+
+- moved the panorama generation entry out of the canvas top chrome and back into the selected image node floating toolbar, matching the current product UX.
+- kept the 360 generate popover wired to the existing `2:1` and `21:9` target-node workflow path and billing preflight, with the selected node switching into `panorama_360` mode when the route supports it.
+- tightened the regression test to use a 360-capable image route so the panorama mode does not get auto-reset during the test harness.
+- validation:
+  - `npm test -- src/flowCanvas/canvas/FlowTopToolbar.test.tsx src/flowCanvas/nodes/FlowNodes.agent-metadata.test.tsx`
+  - `npm run build`
 
 ## 2026-07-09 - Panorama 360 Toolbar Relocation And Viewer Polish
 

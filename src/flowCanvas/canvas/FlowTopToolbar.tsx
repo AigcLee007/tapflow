@@ -1,4 +1,4 @@
-/**
+﻿/**
  * TapNow-style minimal canvas chrome.
  */
 import React, { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -7,7 +7,6 @@ import {
   Bell,
   CheckCheck,
   ChevronRight,
-  Globe2,
   Megaphone,
   RefreshCw,
   Sparkles,
@@ -21,12 +20,9 @@ import { MenuSurface } from "../../components/menu/MenuSurface";
 import { MENU_DIVIDER_CLASS, MENU_ITEM_CLASS, MENU_ITEM_PRIMARY_CLASS } from "../../components/menu/menuStyles";
 import { useDismissibleLayer } from "../../components/menu/useDismissibleLayer";
 import { getStoredAccessToken, V2_AUTH_CHANGE_EVENT } from "../../services/v2HttpClient";
-import { markBackendRunLaunchFailed, runBackendWorkflow } from "../runtime/v2WorkflowRunner";
 import { formatPoint } from "../../utils/pointFormat";
 import { createWorkspaceProject, deleteWorkspaceProject, updateWorkspaceProject } from "../../workspace/workspaceApi";
 import type { CanvasSaveStatusView } from "../FlowCanvasPage";
-import { PanoramaGeneratePopover } from "../panorama/PanoramaGeneratePopover";
-import type { PanoramaAspectRatio } from "../panorama/panoramaTypes";
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
 
 const formatToolbarPoint = (value: number) => formatPoint(value).replace(/\.0$/, "");
@@ -85,43 +81,21 @@ export const FlowTopToolbar: React.FC<{
   onToggleCulling: () => void;
   saveStatus?: CanvasSaveStatusView;
 }> = memo(function FlowTopToolbar({ hideUtilityActions = false, saveStatus }) {
-  const nodes = useFlowCanvasStore((s) => s.nodes);
   const projectTitle = useFlowCanvasStore((s) => s.projectTitle);
   const setProjectTitle = useFlowCanvasStore((s) => s.setProjectTitle);
-  const createPanoramaTargetNodeFromSource = useFlowCanvasStore((s) => s.createPanoramaTargetNodeFromSource) as (
-    sourceNodeId: string,
-    aspectRatio: PanoramaAspectRatio,
-  ) => { id: string };
   const [points, setPoints] = useState(0);
   const [pointsLoading, setPointsLoading] = useState(false);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [seenIds, setSeenIds] = useState<string[]>(() => readSeenAnnouncementIds());
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<Announcement | null>(null);
-  const [panoramaGenerateSourceNodeId, setPanoramaGenerateSourceNodeId] = useState<string | null>(null);
-  const [panoramaGeneratePosition, setPanoramaGeneratePosition] = useState<{ left: number; top: number } | null>(null);
   const [projectMenuBusy, setProjectMenuBusy] = useState<"create" | "delete" | null>(null);
   const [projectMenuPosition, setProjectMenuPosition] = useState<{ left: number; top: number } | null>(null);
   const [showDeleteProjectConfirm, setShowDeleteProjectConfirm] = useState(false);
   const [deleteProjectError, setDeleteProjectError] = useState<string | null>(null);
-  const panoramaGenerateLayer = useDismissibleLayer("canvas-toolbar-panorama");
   const projectMenuLayer = useDismissibleLayer("canvas-toolbar-project");
   const notificationLayer = useDismissibleLayer("canvas-toolbar-notifications");
   const titleInputRef = useRef<HTMLInputElement | null>(null);
   const projectId = typeof window === "undefined" ? null : getProjectId(window.location.pathname);
-
-  const selectedPanoramaSourceNode = useMemo(() => {
-    const selectedNodes = nodes.filter((node) => node.selected);
-    if (selectedNodes.length !== 1) return null;
-    const candidate = selectedNodes[0];
-    if (!candidate) return null;
-    if (candidate.type !== "image" && candidate.data.kind !== "image") return null;
-    return candidate;
-  }, [nodes]);
-
-  const panoramaGenerateActiveNode = useMemo(() => {
-    if (!panoramaGenerateSourceNodeId) return selectedPanoramaSourceNode;
-    return nodes.find((node) => node.id === panoramaGenerateSourceNodeId) || null;
-  }, [nodes, panoramaGenerateSourceNodeId, selectedPanoramaSourceNode]);
 
   const refreshPoints = useCallback(async () => {
     if (!getStoredAccessToken()) {
@@ -208,71 +182,6 @@ export const FlowTopToolbar: React.FC<{
     markAnnouncementsRead(announcements.map((item) => item.id));
   };
 
-  const updatePanoramaGeneratePosition = useCallback(() => {
-    const triggerRect = panoramaGenerateLayer.triggerRef.current?.getBoundingClientRect();
-    if (!triggerRect || typeof window === "undefined") {
-      setPanoramaGeneratePosition(null);
-      return;
-    }
-
-    const popoverWidth = 300;
-    const centeredLeft = triggerRect.left + triggerRect.width / 2;
-    const minLeft = 18 + popoverWidth / 2;
-    const maxLeft = window.innerWidth - 18 - popoverWidth / 2;
-
-    setPanoramaGeneratePosition({
-      left: Math.min(maxLeft, Math.max(minLeft, centeredLeft)),
-      top: triggerRect.bottom + 14,
-    });
-  }, [panoramaGenerateLayer.triggerRef]);
-
-  const handlePanoramaGenerateSubmit = useCallback(
-    ({ aspectRatio }: { aspectRatio: PanoramaAspectRatio }) => {
-      if (!panoramaGenerateSourceNodeId) return;
-      const created = createPanoramaTargetNodeFromSource(panoramaGenerateSourceNodeId, aspectRatio);
-      panoramaGenerateLayer.closeLayer();
-      setPanoramaGenerateSourceNodeId(null);
-      void runBackendWorkflow({
-        runMode: "target_node",
-        targetNodeId: created.id,
-      }).catch((error) => markBackendRunLaunchFailed(created.id, error));
-    },
-    [createPanoramaTargetNodeFromSource, panoramaGenerateLayer, panoramaGenerateSourceNodeId],
-  );
-
-  const openPanoramaGeneratePopover = useCallback(() => {
-    if (!selectedPanoramaSourceNode) return;
-    setPanoramaGenerateSourceNodeId(selectedPanoramaSourceNode.id);
-    updatePanoramaGeneratePosition();
-    panoramaGenerateLayer.toggle();
-  }, [panoramaGenerateLayer, selectedPanoramaSourceNode, updatePanoramaGeneratePosition]);
-
-  useEffect(() => {
-    if (!panoramaGenerateLayer.open) {
-      setPanoramaGeneratePosition(null);
-      setPanoramaGenerateSourceNodeId(null);
-      return;
-    }
-
-    if (!panoramaGenerateActiveNode || (panoramaGenerateActiveNode.type !== "image" && panoramaGenerateActiveNode.data.kind !== "image")) {
-      panoramaGenerateLayer.closeLayer();
-      setPanoramaGeneratePosition(null);
-      setPanoramaGenerateSourceNodeId(null);
-      return;
-    }
-
-    updatePanoramaGeneratePosition();
-
-    const syncPosition = () => updatePanoramaGeneratePosition();
-    window.addEventListener("resize", syncPosition);
-    window.addEventListener("scroll", syncPosition, true);
-
-    return () => {
-      window.removeEventListener("resize", syncPosition);
-      window.removeEventListener("scroll", syncPosition, true);
-    };
-  }, [panoramaGenerateActiveNode, panoramaGenerateLayer.closeLayer, panoramaGenerateLayer.open, updatePanoramaGeneratePosition]);
-
   const focusTitleInput = useCallback(() => {
     projectMenuLayer.closeLayer();
     window.setTimeout(() => {
@@ -282,7 +191,7 @@ export const FlowTopToolbar: React.FC<{
   }, [projectMenuLayer]);
 
   const handleTitleBlur = useCallback(async () => {
-    const normalizedTitle = (projectTitle || "").trim() || "未命名项目";
+    const normalizedTitle = (projectTitle || "").trim() || "鏈懡鍚嶉」鐩?";
     if (normalizedTitle !== projectTitle) {
       setProjectTitle(normalizedTitle);
     }
@@ -296,7 +205,7 @@ export const FlowTopToolbar: React.FC<{
     if (projectMenuBusy) return;
     setProjectMenuBusy("create");
     try {
-      const result = await createWorkspaceProject({ name: "未命名项目" });
+      const result = await createWorkspaceProject({ name: "鏈懡鍚嶉」鐩?" });
       projectMenuLayer.closeLayer();
       navigate(`/projects/${result.project.id}`);
     } finally {
@@ -371,7 +280,7 @@ export const FlowTopToolbar: React.FC<{
       <MenuSurface
         ref={projectMenuLayer.ref as React.RefObject<HTMLDivElement>}
         role="menu"
-        aria-label="项目菜单"
+        aria-label="椤圭洰鑿滃崟"
         className="max-w-[calc(100vw-48px)] overflow-hidden p-0"
         style={{
           position: "fixed",
@@ -390,14 +299,14 @@ export const FlowTopToolbar: React.FC<{
             navigate(WORKSPACE_ROUTE);
           }}
         >
-          <span className={MENU_ITEM_PRIMARY_CLASS}>返回工作空间</span>
+          <span className={MENU_ITEM_PRIMARY_CLASS}>杩斿洖宸ヤ綔绌洪棿</span>
           <ChevronRight size={16} />
         </button>
 
         <div className="my-0 h-px bg-white/8" />
 
         <button type="button" role="menuitem" className={`${MENU_ITEM_CLASS} min-h-[60px] rounded-none px-5`} onClick={focusTitleInput}>
-          <span className={MENU_ITEM_PRIMARY_CLASS}>重命名项目</span>
+          <span className={MENU_ITEM_PRIMARY_CLASS}>閲嶅懡鍚嶉」鐩?</span>
         </button>
 
         <button
@@ -407,7 +316,7 @@ export const FlowTopToolbar: React.FC<{
           onClick={() => void handleCreateProject()}
           disabled={projectMenuBusy === "create"}
         >
-          <span className={MENU_ITEM_PRIMARY_CLASS}>{projectMenuBusy === "create" ? "正在创建..." : "新建项目"}</span>
+          <span className={MENU_ITEM_PRIMARY_CLASS}>{projectMenuBusy === "create" ? "姝ｅ湪鍒涘缓..." : "鏂板缓椤圭洰"}</span>
         </button>
 
         <div className="my-0 h-px bg-white/8" />
@@ -419,7 +328,7 @@ export const FlowTopToolbar: React.FC<{
           onClick={openDeleteProjectConfirm}
           disabled={!projectId || projectMenuBusy === "delete"}
         >
-          <span className={MENU_ITEM_PRIMARY_CLASS}>{projectMenuBusy === "delete" ? "正在删除..." : "删除项目"}</span>
+          <span className={MENU_ITEM_PRIMARY_CLASS}>{projectMenuBusy === "delete" ? "姝ｅ湪鍒犻櫎..." : "鍒犻櫎椤圭洰"}</span>
         </button>
       </MenuSurface>
     ) : null;
@@ -439,12 +348,12 @@ export const FlowTopToolbar: React.FC<{
             <section
               role="dialog"
               aria-modal="true"
-              aria-label="删除当前项目"
+              aria-label="鍒犻櫎褰撳墠椤圭洰"
               className="w-full max-w-[340px] rounded-[24px] border border-white/10 bg-[#17191d]/96 p-5 shadow-[0_28px_72px_rgba(0,0,0,0.48)]"
               onPointerDown={(event) => event.stopPropagation()}
             >
-              <h2 className="text-[18px] font-semibold text-white">删除当前项目</h2>
-              <p className="mt-3 text-[13px] leading-6 text-white/58">删除后项目、画布和相关结果将无法恢复。</p>
+              <h2 className="text-[18px] font-semibold text-white">鍒犻櫎褰撳墠椤圭洰</h2>
+              <p className="mt-3 text-[13px] leading-6 text-white/58">鍒犻櫎鍚庨」鐩€佺敾甯冨拰鐩稿叧缁撴灉灏嗘棤娉曟仮澶嶃€?</p>
               {deleteProjectError ? <p className="mt-3 text-[13px] leading-5 text-red-300">{deleteProjectError}</p> : null}
               <div className="mt-5 flex items-center gap-2">
                 <button
@@ -453,7 +362,7 @@ export const FlowTopToolbar: React.FC<{
                   disabled={projectMenuBusy === "delete"}
                   onClick={() => void handleDeleteProject()}
                 >
-                  {projectMenuBusy === "delete" ? "正在删除..." : "删除"}
+                  {projectMenuBusy === "delete" ? "姝ｅ湪鍒犻櫎..." : "鍒犻櫎"}
                 </button>
                 <button
                   type="button"
@@ -464,7 +373,7 @@ export const FlowTopToolbar: React.FC<{
                     setDeleteProjectError(null);
                   }}
                 >
-                  取消
+                  鍙栨秷
                 </button>
               </div>
             </section>
@@ -483,7 +392,7 @@ export const FlowTopToolbar: React.FC<{
               ref={projectMenuLayer.triggerRef as React.RefObject<HTMLButtonElement>}
               aria-expanded={projectMenuLayer.open}
               aria-haspopup="menu"
-              aria-label="打开项目菜单"
+              aria-label="鎵撳紑椤圭洰鑿滃崟"
               onClick={projectMenuLayer.toggle}
               style={brandMenuButtonStyle}
             >
@@ -493,21 +402,21 @@ export const FlowTopToolbar: React.FC<{
             <div style={titleTextWrapStyle}>
               <input
                 ref={titleInputRef}
-                value={projectTitle || "未命名项目"}
+                value={projectTitle || "鏈懡鍚嶉」鐩?"}
                 onBlur={() => void handleTitleBlur()}
                 onChange={(event) => setProjectTitle(event.target.value)}
                 style={titleInputStyle}
                 spellCheck={false}
-                aria-label="项目名称"
+                aria-label="椤圭洰鍚嶇О"
               />
               <div style={saveStatusStyle(saveStatus?.status)}>
                 {saveStatus?.icon}
-                <span>{saveStatus?.label || "已保存到云端"}</span>
+                <span>{saveStatus?.label || "宸蹭繚瀛樺埌浜戠"}</span>
                 {saveStatus?.status === "failed" && saveStatus.onRetry ? (
                   <button
                     type="button"
                     style={saveRetryButtonStyle}
-                    title={saveStatus.error || "重试同步"}
+                    title={saveStatus.error || "閲嶈瘯鍚屾"}
                     onClick={saveStatus.onRetry}
                   >
                     <RefreshCw size={12} />
@@ -518,33 +427,7 @@ export const FlowTopToolbar: React.FC<{
           </div>
         </div>
 
-        {!hideUtilityActions ? <div style={rightClusterStyle}>
-
-          <button
-            type="button"
-            ref={panoramaGenerateLayer.triggerRef as React.RefObject<HTMLButtonElement>}
-            style={{
-              ...topPillStyle,
-              cursor: selectedPanoramaSourceNode ? "pointer" : "not-allowed",
-              opacity: selectedPanoramaSourceNode ? 1 : 0.56,
-            }}
-            title={
-              selectedPanoramaSourceNode
-                ? `360 全景生成 · ${String(selectedPanoramaSourceNode.data?.title || "图片")}`
-                : "请先选择一张图片"
-            }
-            aria-label="360 全景生成"
-            disabled={!selectedPanoramaSourceNode}
-            onClick={() => {
-              if (!selectedPanoramaSourceNode) return;
-              openPanoramaGeneratePopover();
-            }}
-          >
-            <Globe2 size={17} />
-            <span>360 全景生成</span>
-          </button>
-
-          <button type="button" style={topPillStyle} title="当前点数">
+        {!hideUtilityActions ? <div style={rightClusterStyle}>          <button type="button" style={topPillStyle} title="褰撳墠鐐规暟">
             <Sparkles size={17} />
             <span>{pointsLoading ? "..." : formatToolbarPoint(points)}</span>
           </button>
@@ -556,15 +439,15 @@ export const FlowTopToolbar: React.FC<{
               style={topPillStyle}
               aria-expanded={notificationLayer.open}
               aria-haspopup="menu"
-              aria-label="通知"
-              title="通知"
+              aria-label="閫氱煡"
+              title="閫氱煡"
               onClick={() => {
                 notificationLayer.toggle();
                 void refreshAnnouncements();
               }}
             >
               <Bell size={17} />
-              <span>通知</span>
+              <span>閫氱煡</span>
               {unreadIds.length > 0 ? (
                 <span style={notificationBadgeStyle}>{unreadIds.length > 99 ? "99+" : unreadIds.length}</span>
               ) : null}
@@ -574,13 +457,13 @@ export const FlowTopToolbar: React.FC<{
               <MenuSurface
                 ref={notificationLayer.ref as React.RefObject<HTMLDivElement>}
                 role="menu"
-                aria-label="通知菜单"
+                aria-label="閫氱煡鑿滃崟"
                 className="absolute right-0 top-[calc(100%+14px)] w-[370px] max-w-[calc(100vw-48px)] overflow-hidden p-0"
               >
                 <div style={notificationHeaderStyle}>
                   <div style={notificationHeaderTitleStyle}>
                     <Megaphone size={17} color="#93c5fd" />
-                    <span>通知</span>
+                    <span>閫氱煡</span>
                   </div>
                   <button
                     type="button"
@@ -589,13 +472,13 @@ export const FlowTopToolbar: React.FC<{
                     disabled={announcements.length === 0}
                   >
                     <CheckCheck size={13} />
-                    全部已读
+                    鍏ㄩ儴宸茶
                   </button>
                 </div>
 
                 <div style={notificationListStyle}>
                   {announcements.length === 0 ? (
-                    <div style={emptyNotificationStyle}>暂无公告</div>
+                    <div style={emptyNotificationStyle}>鏆傛棤鍏憡</div>
                   ) : (
                     announcements.map((item) => {
                       const unread = !seenIds.includes(item.id);
@@ -607,8 +490,8 @@ export const FlowTopToolbar: React.FC<{
                           onClick={() => openAnnouncement(item)}
                         >
                           <span style={notificationItemContentStyle}>
-                            <span style={notificationItemTitleStyle}>{item.title || "系统公告"}</span>
-                            {item.pinned ? <span style={pinnedStyle}>置顶</span> : null}
+                            <span style={notificationItemTitleStyle}>{item.title || "绯荤粺鍏憡"}</span>
+                            {item.pinned ? <span style={pinnedStyle}>缃《</span> : null}
                             <span style={notificationItemTextStyle}>{item.content}</span>
                             <span style={notificationDateStyle}>{formatAnnouncementDate(item.date)}</span>
                           </span>
@@ -633,7 +516,7 @@ export const FlowTopToolbar: React.FC<{
                     <Megaphone size={20} />
                   </span>
                   <div style={{ minWidth: 0 }}>
-                    <div style={announcementTitleStyle}>{selectedAnnouncement.title || "系统公告"}</div>
+                    <div style={announcementTitleStyle}>{selectedAnnouncement.title || "绯荤粺鍏憡"}</div>
                     <div style={announcementDateModalStyle}>{formatAnnouncementDate(selectedAnnouncement.date)}</div>
                   </div>
                 </div>
@@ -654,39 +537,14 @@ export const FlowTopToolbar: React.FC<{
 
               <div style={announcementFooterStyle}>
                 <button type="button" style={confirmButtonStyle} onClick={() => setSelectedAnnouncement(null)}>
-                  我知道了
+                  鎴戠煡閬撲簡
                 </button>
               </div>
             </div>
           </div>
         ) : null}
 
-        {projectMenu && typeof document !== "undefined" ? createPortal(projectMenu, document.body) : projectMenu}
-        {panoramaGenerateLayer.open && panoramaGeneratePosition && typeof document !== "undefined"
-          ? createPortal(
-              <div
-                ref={panoramaGenerateLayer.ref as React.RefObject<HTMLDivElement>}
-                className="fixed z-[2450] -translate-x-1/2"
-                style={{
-                  left: panoramaGeneratePosition.left,
-                  top: panoramaGeneratePosition.top,
-                }}
-              >
-                <PanoramaGeneratePopover
-                  creditLabel="生成启动后将按所选图片路线计费。"
-                  onClose={() => {
-                    panoramaGenerateLayer.closeLayer();
-                    setPanoramaGenerateSourceNodeId(null);
-                  }}
-                  onSubmit={handlePanoramaGenerateSubmit}
-                  sourceNodeTitle={String(panoramaGenerateActiveNode?.data?.title || "图片")}
-                  sourcePromptAvailable={Boolean(String(panoramaGenerateActiveNode?.data?.generationPrompt || "").trim())}
-                />
-              </div>,
-              document.body,
-            )
-          : null}
-      </div>
+        {projectMenu && typeof document !== "undefined" ? createPortal(projectMenu, document.body) : projectMenu}      </div>
       {deleteProjectConfirm}
     </>
   );
@@ -1046,4 +904,5 @@ const confirmButtonStyle: React.CSSProperties = {
   fontWeight: 800,
   cursor: "pointer",
 };
+
 
