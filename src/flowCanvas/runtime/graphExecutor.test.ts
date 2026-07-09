@@ -1,6 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, test, vi } from 'vitest';
+
 import { useFlowCanvasStore } from '../store/flowCanvasStore';
-import { mergeImageReferences, runImageEdit } from './graphExecutor';
+import { mergeImageReferences, runImageEdit, runImageTemplateEdit } from './graphExecutor';
 
 const editImageApiMock = vi.fn();
 
@@ -155,5 +156,62 @@ describe('runImageEdit', () => {
     expect(targetNode?.data.generationRunLabel).toBe('正在生成图片');
     expect(String(targetNode?.data.generationRunLabel)).not.toContain('pixellelabs');
     expect(String(targetNode?.data.generationRunLabel)).not.toContain('image.');
+  });
+});
+
+describe('runImageTemplateEdit', () => {
+  beforeEach(() => {
+    useFlowCanvasStore.getState().newProject();
+  });
+
+  test('creates a downstream image node wired to the source asset with the resolved original aspect ratio', async () => {
+    const sourceNode = useFlowCanvasStore.getState().addNode('image', { x: 40, y: 60 }, {
+      assetId: 'asset-source',
+      assetIds: ['asset-source'],
+      mimeType: 'image/png',
+      modelId: 'gpt-image-2',
+      naturalHeight: 1600,
+      naturalWidth: 900,
+      params: {
+        quality: 'medium',
+        size: '2k',
+      },
+      routeKey: 'image.production',
+      thumbnailUrl: 'https://cdn.test/source.png',
+      title: 'Source Frame',
+    });
+
+    const targetNodeId = await runImageTemplateEdit(sourceNode.id, 'multiCameraGrid', {
+      modelId: 'gpt-image-2',
+      routeKey: 'image.production',
+    });
+
+    expect(targetNodeId).toBeTruthy();
+
+    const state = useFlowCanvasStore.getState();
+    const targetNode = state.nodes.find((node) => node.id === targetNodeId);
+
+    expect(state.edges.some((edge) => edge.source === sourceNode.id && edge.target === targetNodeId)).toBe(true);
+    expect(targetNode?.data).toMatchObject({
+      generationPrompt: expect.stringContaining('3x3 director multi-camera contact sheet'),
+      generationStatus: 'generating',
+      imageTemplateEditRequest: {
+        mode: 'multi_camera_nine_grid',
+        routeKey: 'image.production',
+        sourceNodeId: sourceNode.id,
+        templateActionKey: 'multiCameraGrid',
+      },
+      lastEditType: 'template:multiCameraGrid',
+      modelId: 'gpt-image-2',
+      routeKey: 'image.production',
+      status: 'running',
+    });
+    expect(targetNode?.data.params).toMatchObject({
+      aspectRatio: '9:16',
+      quality: 'medium',
+      size: '2k',
+    });
+    expect(targetNode?.data.assetId).toBeUndefined();
+    expect(targetNode?.data.thumbnailUrl).toBeUndefined();
   });
 });

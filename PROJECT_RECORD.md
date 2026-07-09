@@ -3,6 +3,24 @@
 Last updated: 2026-07-09
 Maintainers: project team + Codex sessions
 
+## 2026-07-09 - DramaClaw Nine-Grid Toolbar Migration Phase 85
+
+- migrated the DramaClaw-style `九宫格工具栏` feature set into the v2 TapFlow image-node path without introducing a separate legacy API or local-only canvas persistence:
+  - image-node `更多` menu now includes a dedicated `九宫格工具` secondary panel instead of mixing the nine actions into the main row list.
+  - the panel exposes all nine source-equivalent actions: `多机位九宫格`, `剧情推演四宫格`, `角色脸部三视图`, `产品三视图`, `25宫格连贯分镜`, `电影级光影校正`, `角色三视图生成`, `画面推演 - 3秒后`, and `画面推演 - 5秒前`.
+  - each action preserves the source prompt semantics and aspect-ratio policy from DramaClaw, including `original`, `3:2`, and `16:9` handling.
+- kept the runtime native to the current v2 architecture:
+  - template actions now create a downstream image node through the existing canvas runtime instead of calling a new backend template-edit endpoint.
+  - downstream nodes carry prompt/template metadata, reset generation mode to `standard`, preserve the active route/model selection, and launch through the existing `target_node` workflow run path.
+  - billing remains on the current reserve/settle/refund workflow-run system; no frontend-side credit mutation was introduced.
+- validation:
+  - red tests observed on 2026-07-09:
+    `npm test -- src/flowCanvas/utils/imageTemplateEditActions.test.ts src/flowCanvas/nodes/ImageMoreMenu.test.tsx src/flowCanvas/runtime/graphExecutor.test.ts`
+    first failed because the template action registry did not exist, the image more-menu had no `九宫格工具` panel, and `runImageTemplateEdit` was not implemented.
+  - `npm test -- src/flowCanvas/utils/imageTemplateEditActions.test.ts src/flowCanvas/nodes/ImageMoreMenu.test.tsx src/flowCanvas/runtime/graphExecutor.test.ts` passed on 2026-07-09: 3 files, 7 tests.
+  - `npm test -- src/flowCanvas/runtime/v2WorkflowRunner.test.ts` passed on 2026-07-09: 1 file, 33 tests.
+  - `npm run build` passed on 2026-07-09 with existing Browserslist, css-minify `task` warnings, dynamic-import note, and chunk-size warnings only.
+
 ## 2026-07-09 - Panorama 360 Generation And Viewer Migration
 
 - migrated the v2 TapFlow panorama path from a decorative placeholder into a working product flow without changing unrelated image/video/node behavior:

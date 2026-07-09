@@ -59,7 +59,7 @@ import type {
   FlowNodeKind,
 } from '../types';
 import { useFlowCanvasStore, type FlowDerivedEditCounts, type FlowUpstreamImageRef } from '../store/flowCanvasStore';
-import { runImageEdit, type ImageEditType } from '../runtime/graphExecutor';
+import { runImageEdit, runImageTemplateEdit, type ImageEditType } from '../runtime/graphExecutor';
 import { markBackendRunLaunchFailed, runBackendWorkflow } from '../runtime/v2WorkflowRunner';
 import { useVideoModelCatalog } from '../../hooks/useVideoModelCatalog';
 import {
@@ -189,6 +189,7 @@ import {
   isImageGenerationModeSupportedByRoute,
   resolveImageGenerationModeRunBlocker,
 } from '../utils/imageGenerationModeSupport';
+import type { FlowImageTemplateEditActionKey } from '../utils/imageTemplateEditActions';
 import {
   PANORAMA_DEFAULT_ASPECT_RATIO,
   PANORAMA_GENERATION_MODE,
@@ -6405,7 +6406,29 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     [currentModelId, currentRouteKey, d.modelId, d.params, d.routeId, id],
   );
 
-  const handleMoreMenuSelect = useCallback((action: ImageMoreMenuAction, payload?: { gridSize?: number }) => {
+  const runTemplateAiEdit = useCallback(
+    async (templateActionKey: FlowImageTemplateEditActionKey) => {
+      const targetNodeId = await runImageTemplateEdit(id, templateActionKey, {
+        modelId: String(d.modelId || currentModelId),
+        params: {
+          ...((d.params || {}) as Record<string, any>),
+          size: currentSize,
+        },
+        routeId: typeof d.routeId === 'string' ? d.routeId : undefined,
+        routeKey: currentRouteKey || undefined,
+      });
+      if (targetNodeId) {
+        void runBackendWorkflow({ runMode: 'target_node', targetNodeId })
+          .catch((error) => markBackendRunLaunchFailed(targetNodeId, error));
+      }
+    },
+    [currentModelId, currentRouteKey, currentSize, d.modelId, d.params, d.routeId, id],
+  );
+
+  const handleMoreMenuSelect = useCallback((action: ImageMoreMenuAction, payload?: {
+    gridSize?: number;
+    templateActionKey?: FlowImageTemplateEditActionKey;
+  }) => {
     moreMenuLayer.closeLayer();
     if (action === 'panoramaViewer') {
       const viewerNodeId = ensurePanoramaViewerForImageNode(id);
@@ -6447,7 +6470,17 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     if (action === 'removeBackground') {
       setAiConfirmType('removeBackground');
     }
-  }, [ensurePanoramaViewerForImageNode, id, moreMenuLayer, openImageTool, openRepaintOverlay, reactFlow, selectNodesByIds]);
+    if (action === 'templateEdit' && payload?.templateActionKey) {
+      void runTemplateAiEdit(payload.templateActionKey).catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        useFlowCanvasStore.getState().updateNodeData(id, {
+          errorMessage: message,
+          generationStatus: 'error',
+          status: 'failed',
+        });
+      });
+    }
+  }, [ensurePanoramaViewerForImageNode, id, moreMenuLayer, openImageTool, openRepaintOverlay, reactFlow, runTemplateAiEdit, selectNodesByIds]);
 
   const updateMoreMenuPosition = useCallback(() => {
     const triggerRect = moreMenuButtonRef.current?.getBoundingClientRect();
