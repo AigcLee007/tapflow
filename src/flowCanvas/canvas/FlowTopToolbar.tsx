@@ -7,6 +7,7 @@ import {
   Bell,
   CheckCheck,
   ChevronRight,
+  Globe2,
   Megaphone,
   RefreshCw,
   Sparkles,
@@ -23,6 +24,8 @@ import { getStoredAccessToken, V2_AUTH_CHANGE_EVENT } from "../../services/v2Htt
 import { formatPoint } from "../../utils/pointFormat";
 import { createWorkspaceProject, deleteWorkspaceProject, updateWorkspaceProject } from "../../workspace/workspaceApi";
 import type { CanvasSaveStatusView } from "../FlowCanvasPage";
+import { PanoramaGeneratePopover } from "../panorama/PanoramaGeneratePopover";
+import { runBackendWorkflow } from "../runtime/v2WorkflowRunner";
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
 
 const formatToolbarPoint = (value: number) => formatPoint(value).replace(/\.0$/, "");
@@ -83,6 +86,13 @@ export const FlowTopToolbar: React.FC<{
 }> = memo(function FlowTopToolbar({ hideUtilityActions = false, saveStatus }) {
   const projectTitle = useFlowCanvasStore((s) => s.projectTitle);
   const setProjectTitle = useFlowCanvasStore((s) => s.setProjectTitle);
+  const selectedImageNode = useFlowCanvasStore((state) => {
+    const selectedNodes = state.nodes.filter((node) => node.selected);
+    const sourceNode = selectedNodes.length === 1 ? selectedNodes[0] : null;
+    if (!sourceNode) return null;
+    return sourceNode.type === "image" || sourceNode.data.kind === "image" ? sourceNode : null;
+  });
+  const createPanoramaTargetNodeFromSource = useFlowCanvasStore((s) => s.createPanoramaTargetNodeFromSource);
   const [points, setPoints] = useState(0);
   const [pointsLoading, setPointsLoading] = useState(false);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
@@ -94,8 +104,14 @@ export const FlowTopToolbar: React.FC<{
   const [deleteProjectError, setDeleteProjectError] = useState<string | null>(null);
   const projectMenuLayer = useDismissibleLayer("canvas-toolbar-project");
   const notificationLayer = useDismissibleLayer("canvas-toolbar-notifications");
+  const panoramaLayer = useDismissibleLayer("canvas-toolbar-panorama");
   const titleInputRef = useRef<HTMLInputElement | null>(null);
   const projectId = typeof window === "undefined" ? null : getProjectId(window.location.pathname);
+  const panoramaDisabled = !selectedImageNode;
+  const sourcePromptAvailable = Boolean(String(selectedImageNode?.data.generationPrompt || "").trim());
+  const panoramaCreditLabel = sourcePromptAvailable
+    ? "Billed on your current image route when the run starts."
+    : "Add a generation prompt to the selected image to enable panorama creation.";
 
   const refreshPoints = useCallback(async () => {
     if (!getStoredAccessToken()) {
@@ -436,6 +452,48 @@ export const FlowTopToolbar: React.FC<{
           <div style={notificationHostStyle}>
             <button
               type="button"
+              ref={panoramaLayer.triggerRef as React.RefObject<HTMLButtonElement>}
+              style={{
+                ...topPillStyle,
+                ...(panoramaDisabled ? disabledTopPillStyle : null),
+              }}
+              aria-expanded={panoramaLayer.open}
+              aria-haspopup="dialog"
+              aria-label="360 Panorama"
+              disabled={panoramaDisabled}
+              title={panoramaDisabled ? "Select exactly one image node" : "Generate a 360 panorama"}
+              onClick={panoramaLayer.toggle}
+            >
+              <Globe2 size={17} />
+              <span>360 Panorama</span>
+            </button>
+
+            {panoramaLayer.open && selectedImageNode ? (
+              <div
+                ref={panoramaLayer.ref as React.RefObject<HTMLDivElement>}
+                className="absolute right-0 top-[calc(100%+14px)] z-[2400]"
+              >
+                <PanoramaGeneratePopover
+                  creditLabel={panoramaCreditLabel}
+                  onClose={panoramaLayer.closeLayer}
+                  onSubmit={({ aspectRatio }) => {
+                    const created = createPanoramaTargetNodeFromSource(selectedImageNode.id, aspectRatio);
+                    panoramaLayer.closeLayer();
+                    void runBackendWorkflow({
+                      runMode: "target_node",
+                      targetNodeId: created.id,
+                    }).catch(() => undefined);
+                  }}
+                  sourceNodeTitle={String(selectedImageNode.data.title || "Image")}
+                  sourcePromptAvailable={sourcePromptAvailable}
+                />
+              </div>
+            ) : null}
+          </div>
+
+          <div style={notificationHostStyle}>
+            <button
+              type="button"
               ref={notificationLayer.triggerRef as React.RefObject<HTMLButtonElement>}
               style={topPillStyle}
               aria-expanded={notificationLayer.open}
@@ -658,6 +716,11 @@ const topPillStyle: React.CSSProperties = {
   fontWeight: 820,
   cursor: "pointer",
   boxShadow: "0 12px 34px rgba(0,0,0,0.34), inset 0 1px 0 rgba(255,255,255,0.06)",
+};
+
+const disabledTopPillStyle: React.CSSProperties = {
+  cursor: "not-allowed",
+  opacity: 0.42,
 };
 
 const notificationHostStyle: React.CSSProperties = {

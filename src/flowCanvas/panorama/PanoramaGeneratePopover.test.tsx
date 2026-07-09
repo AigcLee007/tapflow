@@ -33,7 +33,7 @@ describe("PanoramaGeneratePopover", () => {
     );
 
     expect(screen.getByText(/missing generation prompt/i)).toBeTruthy();
-    expect(screen.getByRole("button", { name: /generate panorama/i })).toBeDisabled();
+    expect((screen.getByRole("button", { name: /generate panorama/i }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("submits the selected aspect ratio", () => {

@@ -55,6 +55,7 @@ describe("FlowTopToolbar", () => {
     updateWorkspaceProjectMock.mockReset();
     deleteWorkspaceProjectMock.mockReset();
     runBackendWorkflowMock.mockReset();
+    runBackendWorkflowMock.mockResolvedValue(undefined);
     createPanoramaTargetNodeFromSourceMock.mockReset();
     setProjectTitleMock.mockReset();
     mockedStoreState.projectTitle = "Test Project";
@@ -110,7 +111,7 @@ describe("FlowTopToolbar", () => {
       />,
     );
 
-    expect(await screen.findByRole("button", { name: /360 Panorama/i })).toBeDisabled();
+    expect((await screen.findByRole("button", { name: /360 Panorama/i }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   test("enables the 360 Panorama button when exactly one image node is selected", async () => {
@@ -131,7 +132,37 @@ describe("FlowTopToolbar", () => {
       />,
     );
 
-    expect(await screen.findByRole("button", { name: /360 Panorama/i })).not.toBeDisabled();
+    expect((await screen.findByRole("button", { name: /360 Panorama/i }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  test("opens the 360 popover and launches a target-node panorama run", async () => {
+    mockedStoreState.nodes = [
+      {
+        data: { generationPrompt: "city dusk", kind: "image", title: "Image 1" },
+        id: "image-1",
+        selected: true,
+        type: "image",
+      },
+    ];
+    createPanoramaTargetNodeFromSourceMock.mockReturnValue({ id: "panorama-target-1" });
+
+    render(
+      <FlowTopToolbar
+        cullingEnabled
+        onToggleCulling={vi.fn()}
+        saveStatus={{ label: "Saved", status: "saved" }}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /360 Panorama/i }));
+    fireEvent.click(await screen.findByRole("button", { name: "21:9" }));
+    fireEvent.click(screen.getByRole("button", { name: /generate panorama/i }));
+
+    expect(createPanoramaTargetNodeFromSourceMock).toHaveBeenCalledWith("image-1", "21:9");
+    expect(runBackendWorkflowMock).toHaveBeenCalledWith({
+      runMode: "target_node",
+      targetNodeId: "panorama-target-1",
+    });
   });
 
   test("opens the canvas logo menu as a fixed body-level surface with the narrow minimal layout and closes it on outside click", async () => {

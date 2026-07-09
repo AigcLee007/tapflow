@@ -16,6 +16,8 @@ import { createFlowNode, duplicateFlowNode } from '../utils/nodeFactory';
 import { canConnectFlowNodes, canCreateNodeFromSource } from '../rules/connectionRules';
 import { buildAssetBackedNodeData } from '../utils/assetNodeData';
 import { FLOW_NODE_DEFAULT_SIZES, fitMediaNodeToShortSide } from '../utils/nodeSizing';
+import { buildImageGenerationModeParamPatch } from '../utils/imageGenerationModes';
+import { PANORAMA_GENERATION_MODE, type PanoramaAspectRatio } from '../panorama/panoramaTypes';
 import type {
   FlowRuntimeNodeOutput,
 } from '../types';
@@ -150,8 +152,13 @@ interface FlowCanvasState {
       width?: number | null;
     }>,
   ) => string[];
+  createPanoramaTargetNodeFromSource: (sourceNodeId: string, aspectRatio: PanoramaAspectRatio) => FlowNode;
   ensurePanoramaViewerForImageNode: (sourceNodeId: string) => string | null;
   getUpstreamNodes: (nodeId: string) => FlowNode[];
+  groupNodesAsPanoramaCaptureSet: (
+    nodeIds: string[],
+    groupTitle: string,
+  ) => { groupId: string | null };
   groupSelectedNodes: () => void;
   ungroupSelectedGroups: () => void;
   layoutSelectedGroup: (layout: 'grid' | 'horizontal') => void;
@@ -328,6 +335,29 @@ const findPanoramaViewerForSource = (
     if (node.data.panoramaSourceNodeId === sourceNodeId) return true;
     return edges.some((edge) => edge.source === sourceNodeId && edge.target === node.id);
   });
+
+const buildPanoramaTargetPosition = (sourceNode: FlowNode) => ({
+  x: sourceNode.position.x + Number(sourceNode.data.width || 260) + 160,
+  y: sourceNode.position.y,
+});
+
+const buildGroupBounds = (nodes: FlowNode[]) => {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  nodes.forEach((node) => {
+    const width = Number(node.data.width || 280);
+    const height = Number(node.data.height || 180);
+    minX = Math.min(minX, node.position.x);
+    minY = Math.min(minY, node.position.y);
+    maxX = Math.max(maxX, node.position.x + width);
+    maxY = Math.max(maxY, node.position.y + height);
+  });
+
+  return { maxX, maxY, minX, minY };
+};
 
 const buildGraphIndex = (
   nodes: FlowNode[],
@@ -648,6 +678,78 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
     return createdIds;
   },
 
+  createPanoramaTargetNodeFromSource: (sourceNodeId, aspectRatio) => {
+    const sourceNode = get().nodes.find((node) => node.id === sourceNodeId);
+    if (!isImageNode(sourceNode)) {
+      throw new Error('PANORAMA_SOURCE_NOT_FOUND');
+    }
+
+    get().pushHistory();
+
+    let createdNode: FlowNode | null = null;
+    set((state) => {
+      const latestSourceNode = state.nodes.find((node) => node.id === sourceNodeId);
+      if (!isImageNode(latestSourceNode)) {
+        return state;
+      }
+
+      const sourceParams =
+        latestSourceNode.data.params && typeof latestSourceNode.data.params === 'object'
+          ? latestSourceNode.data.params as Record<string, unknown>
+          : {};
+      const sourcePanorama =
+        sourceParams.panorama && typeof sourceParams.panorama === 'object'
+          ? sourceParams.panorama as Record<string, unknown>
+          : {};
+
+      const created = createFlowNode(
+        'image',
+        buildPanoramaTargetPosition(latestSourceNode),
+        {
+          generationMode: PANORAMA_GENERATION_MODE,
+          generationPrompt: String(latestSourceNode.data.generationPrompt || '').trim(),
+          params: {
+            ...sourceParams,
+            ...buildImageGenerationModeParamPatch(PANORAMA_GENERATION_MODE),
+            aspectRatio,
+            generationMode: PANORAMA_GENERATION_MODE,
+            panorama: {
+              ...sourcePanorama,
+              aspectRatio,
+              continuity: 'seamless',
+              projectionHint: 'equirectangular',
+              subjectType: 'scene',
+            },
+          },
+          referenceOrder: appendReferenceOrderKey(undefined, `upstream:${latestSourceNode.id}`),
+          title: `${String(latestSourceNode.data.title || 'Image')} Panorama`,
+          ...(typeof latestSourceNode.data.modelId === 'string' ? { modelId: latestSourceNode.data.modelId } : {}),
+          ...(typeof latestSourceNode.data.routeKey === 'string' ? { routeKey: latestSourceNode.data.routeKey } : {}),
+        },
+      );
+      created.selected = true;
+      createdNode = created;
+
+      const nodes = [
+        ...state.nodes.map((node) => (node.selected ? { ...node, selected: false } : node)),
+        created,
+      ];
+      const edges = [...state.edges, buildPanoramaViewerEdge(sourceNodeId, created.id)];
+      return {
+        edges,
+        graphIndex: buildGraphIndex(nodes, edges, state.nodeOutputByNodeId),
+        isDirty: true,
+        nodes,
+        selectedNodeCount: countSelectedNodes(nodes),
+      };
+    });
+
+    if (!createdNode) {
+      throw new Error('PANORAMA_TARGET_CREATE_FAILED');
+    }
+    return createdNode;
+  },
+
   ensurePanoramaViewerForImageNode: (sourceNodeId) => {
     const sourceNode = get().nodes.find((node) => node.id === sourceNodeId);
     if (!isImageNode(sourceNode)) {
@@ -741,6 +843,60 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
     return incomingEdges
       .map((edge) => nodes.find((node) => node.id === edge.source))
       .filter(Boolean) as FlowNode[];
+  },
+
+  groupNodesAsPanoramaCaptureSet: (nodeIds, groupTitle) => {
+    const nodeIdSet = new Set(nodeIds);
+    const groupedNodes = get().nodes.filter((node) => nodeIdSet.has(node.id) && node.type !== 'group');
+    if (groupedNodes.length < 2) {
+      return { groupId: null };
+    }
+
+    const { maxX, maxY, minX, minY } = buildGroupBounds(groupedNodes);
+    const padding = 40;
+    const groupX = minX - padding;
+    const groupY = minY - padding;
+    const groupW = maxX - minX + padding * 2;
+    const groupH = maxY - minY + padding * 2;
+
+    const groupNode = createFlowNode('group', { x: groupX, y: groupY }, { title: groupTitle });
+    groupNode.style = { width: groupW, height: groupH };
+    groupNode.data.width = groupW;
+    groupNode.data.height = groupH;
+    groupNode.selected = true;
+
+    get().pushHistory();
+
+    set((state) => {
+      const nodes = state.nodes.map((node) => {
+        if (node.id === groupNode.id) return node;
+        if (!nodeIdSet.has(node.id) || node.type === 'group') {
+          return node.selected ? { ...node, selected: false } : node;
+        }
+        return {
+          ...node,
+          extent: 'parent' as const,
+          parentId: groupNode.id,
+          position: {
+            x: node.position.x - groupX,
+            y: node.position.y - groupY,
+          },
+          selected: false,
+        };
+      });
+      const nextNodes = [
+        groupNode,
+        ...nodes.filter((node) => node.id !== groupNode.id),
+      ];
+      return {
+        graphIndex: buildGraphIndex(nextNodes, state.edges, state.nodeOutputByNodeId),
+        isDirty: true,
+        nodes: nextNodes,
+        selectedNodeCount: countSelectedNodes(nextNodes),
+      };
+    });
+
+    return { groupId: groupNode.id };
   },
 
   groupSelectedNodes: () => {
