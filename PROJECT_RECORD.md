@@ -3,6 +3,16 @@
 Last updated: 2026-07-09
 Maintainers: project team + Codex sessions
 
+## 2026-07-09 - Panorama 360 Topbar Entry And Viewer Size Fix
+
+- restored the primary panorama generation entry to the canvas top toolbar, scoped to the currently selected image node, and removed the duplicate image-node floating-toolbar generate button.
+- kept the existing v2 target-node workflow and billing path intact while continuing to offer `2:1` and `21:9` output selection from the topbar popover.
+- hardened the panorama viewer node so old undersized nodes auto-upgrade to the large 900x540 working surface and cannot be resized below the viewer layout minimum.
+- validation:
+  - `npm test -- src/flowCanvas/canvas/FlowTopToolbar.test.tsx src/flowCanvas/nodes/PanoramaViewerNode.test.tsx`
+  - `npm test -- src/flowCanvas/nodes/FlowNodes.agent-metadata.test.tsx`
+  - `npm run build` failed in this environment with JavaScript heap / memory allocation errors during Vite bundling
+
 ## 2026-07-09 - Panorama 360 Toolbar Entry And DramaClaw-Style Viewer Upgrade
 
 - moved the primary 360 generation entry into the canvas top toolbar with `2:1` and `21:9` selection, keeping the existing v2 target-node workflow path and billing preflight intact.
