@@ -29,6 +29,7 @@ export type AssetRef = {
   durationMs?: number;
   height?: number;
   kind: "image" | "video";
+  metadata?: Record<string, string>;
   mimeType: string;
   timing?: PersistedAssetTiming;
   width?: number;
@@ -284,6 +285,7 @@ export class MediaAssetStore {
   async persistOutputs(
     client: PoolClient,
     input: {
+      assetMetadata?: Record<string, string>;
       kind: "image" | "video";
       nodeRunId: string | null;
       outputs: MediaOutput[];
@@ -383,6 +385,7 @@ export class MediaAssetStore {
       );
 
       const assetDbInsertStartedAt = Date.now();
+      const refMetadata = input.assetMetadata ? { ...input.assetMetadata } : undefined;
       await client.query(
         `
           INSERT INTO assets (
@@ -443,6 +446,7 @@ export class MediaAssetStore {
           height,
           output.durationMs ?? null,
           JSON.stringify({
+            ...(refMetadata ?? {}),
             measuredHeight: measuredDimensions.height,
             measuredWidth: measuredDimensions.width,
             providerHeight: output.height ?? null,
@@ -627,6 +631,7 @@ export class MediaAssetStore {
         durationMs: output.durationMs ?? undefined,
         height: height ?? undefined,
         kind: input.kind,
+        ...(refMetadata ? { metadata: refMetadata } : {}),
         mimeType: binary.mimeType,
         timing: {
           asset_db_insert_ms: assetDbInsertMs,

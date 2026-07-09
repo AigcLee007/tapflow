@@ -27,6 +27,7 @@ import {
   UploadNodeComponent,
   VideoNodeComponent,
 } from '../nodes/FlowNodes';
+import { PanoramaViewerNode } from '../nodes/PanoramaViewerNode';
 import {
   Director3dNodeComponent,
   StoryboardNodeComponent,
@@ -131,6 +132,7 @@ const nodeTypes: NodeTypes = {
   audio: AudioNodeComponent,
   upload: UploadNodeComponent,
   image_editor: ImageEditorNodeComponent,
+  panorama_viewer: PanoramaViewerNode,
   storyboard: StoryboardNodeComponent,
   director3d: Director3dNodeComponent,
   video_editor: VideoEditorNodeComponent,
@@ -973,6 +975,7 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled, onAg
       case 'video': return '#a78bfa';
       case 'audio': return '#f59e0b';
       case 'image_editor': return '#ec4899';
+      case 'panorama_viewer': return '#22c55e';
       case 'group': return 'rgba(99,102,241,0.32)';
       default: return '#475569';
     }

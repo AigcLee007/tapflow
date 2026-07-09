@@ -1,6 +1,6 @@
 import type { AiPluginManifest } from "../plugin-manifest.js";
 
-const aspectRatioOptions = ["1:1", "16:9", "9:16", "21:9", "4:3", "3:4", "3:2", "2:3"].map((value) => ({
+const aspectRatioOptions = ["1:1", "16:9", "9:16", "21:9", "2:1", "4:3", "3:4", "3:2", "2:3"].map((value) => ({
   label: value,
   value,
 }));

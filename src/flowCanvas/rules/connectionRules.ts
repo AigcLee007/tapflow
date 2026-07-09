@@ -2,7 +2,7 @@ import type { Node } from '@xyflow/react';
 import type { FlowNodeData, FlowNodeKind } from '../types';
 
 export type FlowConnectionAction = {
-  kind: Extract<FlowNodeKind, 'text' | 'image' | 'video'>;
+  kind: Extract<FlowNodeKind, 'text' | 'image' | 'video' | 'panorama_viewer'>;
   label: string;
   desc?: string;
   promptSeed?: string;
@@ -19,11 +19,11 @@ export const isUploadedImageNode = (node?: FlowNodeLike | null) => {
   if (!node) return false;
   const data = node.data || {};
   return (
-    getFlowNodeKind(node) === 'image' &&
-    (!!data.thumbnailUrl || !!data.assetId || (Array.isArray(data.assetIds) && data.assetIds.length > 0)) &&
-    !data.lastGenerationSnapshot &&
-    !data.editSourceNodeId &&
-    !data.lastEditType
+    getFlowNodeKind(node) === 'image'
+    && (!!data.thumbnailUrl || !!data.assetId || (Array.isArray(data.assetIds) && data.assetIds.length > 0))
+    && !data.lastGenerationSnapshot
+    && !data.editSourceNodeId
+    && !data.lastEditType
   );
 };
 
@@ -34,23 +34,25 @@ export const canNodeReceiveIncoming = (node?: FlowNodeLike | null) => {
 
 const ALLOWED_TARGETS_BY_SOURCE: Record<string, FlowConnectionAction[]> = {
   text: [
-    { kind: 'text', label: '文本生成', desc: '续写、改写、扩写文案' },
+    { kind: 'text', label: '文本生成', desc: '续写、改写或扩写文案' },
     { kind: 'image', label: '图片生成', desc: '根据文本生成图片' },
     { kind: 'video', label: '视频生成', desc: '根据文本生成视频' },
   ],
   image: [
-    { kind: 'text', label: '图片分析', desc: '图片理解、提示词逆推', promptSeed: '分析这张图片，并提炼可复用的生成提示词。' },
-    { kind: 'image', label: '图片生成', desc: '图生图、图片编辑' },
-    { kind: 'video', label: '视频生成', desc: '图生视频' },
+    { kind: 'text', label: '图片分析', desc: '识别图片内容并反推提示词', promptSeed: '分析这张图片，并提炼可复用的生成提示词。' },
+    { kind: 'image', label: '图片生成', desc: '图生图或继续编辑图片' },
+    { kind: 'video', label: '视频生成', desc: '基于图片生成视频' },
+    { kind: 'panorama_viewer', label: '360 全景查看', desc: '在全景查看器中查看这张图片' },
   ],
   video: [
-    { kind: 'text', label: '视频分析', desc: '视频内容理解、摘要与脚本拆解', promptSeed: '分析这个视频，提炼画面内容、镜头信息和可复用提示词。' },
+    { kind: 'text', label: '视频分析', desc: '理解视频内容并提炼脚本', promptSeed: '分析这个视频，提炼画面内容、镜头信息和可复用提示词。' },
   ],
 };
 
 const ALLOWED_SOURCES_BY_TARGET: Record<string, string[]> = {
   text: ['text', 'image', 'video'],
   image: ['text', 'image'],
+  panorama_viewer: ['image'],
   video: ['text', 'image'],
 };
 

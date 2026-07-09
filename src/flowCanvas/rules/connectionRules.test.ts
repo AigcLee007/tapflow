@@ -26,6 +26,7 @@ describe('connectionRules', () => {
       'text',
       'image',
       'video',
+      'panorama_viewer',
     ]);
     expect(getConnectionActionsForSource(node('video')).map((action) => action.kind)).toEqual(['text']);
   });
@@ -69,5 +70,17 @@ describe('connectionRules', () => {
 
     expect(canNodeReceiveIncoming(generatedImage)).toBe(true);
     expect(canConnectFlowNodes(node('text'), generatedImage).ok).toBe(true);
+  });
+
+  it('lets image nodes connect to panorama viewers while blocking non-image sources', () => {
+    const imageSource = node('image');
+    const textSource = node('text');
+    const panoramaViewer = node('panorama_viewer' as FlowNodeKind);
+
+    expect(getConnectionActionsForSource(imageSource).map((action) => action.kind)).toContain('panorama_viewer');
+    expect(canCreateNodeFromSource(imageSource, 'panorama_viewer' as FlowNodeKind)).toBe(true);
+    expect(canCreateNodeFromSource(textSource, 'panorama_viewer' as FlowNodeKind)).toBe(false);
+    expect(canConnectFlowNodes(imageSource, panoramaViewer).ok).toBe(true);
+    expect(canConnectFlowNodes(textSource, panoramaViewer).ok).toBe(false);
   });
 });

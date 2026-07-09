@@ -35,6 +35,7 @@ import { resolveImageGenerationModeRunBlocker } from '../utils/imageGenerationMo
 import { fitMediaNodeToShortSide } from '../utils/nodeSizing';
 import { normalizeStoryboardData, patchStoryboardCell } from '../utils/storyboardNodeData';
 import { normalizeVideoEditorData } from '../utils/videoEditorNodeData';
+import { buildPanoramaMetadata, isPanoramaMetadata, mergePanoramaMetadata } from '../panorama/panoramaUtils';
 import { flushRemoteDraftBeforeRun, shouldFlushRemoteDraftBeforeRun } from './remoteDraftSaveBarrier';
 
 const RUNNER_ENABLED = String(import.meta.env.VITE_USE_V2_WORKFLOW_RUNNER ?? 'true').toLowerCase() !== 'false';
@@ -50,6 +51,7 @@ let billingPricingCache: Promise<BillingPricingRow[]> | null = null;
 type AssetLike = {
   assetId: string;
   kind: string;
+  metadata?: Record<string, string> | null;
   mimeType: string;
   width?: number | null;
   height?: number | null;
@@ -496,6 +498,16 @@ function readString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
+function readStringRecord(value: unknown): Record<string, string> | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const entries = Object.entries(value)
+    .map(([key, itemValue]) => [key, readString(itemValue)] as const)
+    .filter((entry): entry is readonly [string, string] => Boolean(entry[1]));
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
 function readPositiveInteger(value: unknown): number | undefined {
   const numeric = Number(value);
   return Number.isFinite(numeric) && numeric > 0 ? Math.max(1, Math.floor(numeric)) : undefined;
@@ -519,6 +531,44 @@ function buildGeneratedResults(assetRefs: FlowRuntimeAssetRef[], generatedAt: nu
       id: `asset:${asset.assetId}`,
       url: String(asset.downloadUrl),
     }));
+}
+
+function buildPanoramaNodeMetadata(
+  currentData: Partial<FlowNodeData>,
+  primaryAsset: FlowRuntimeAssetRef | undefined,
+): Record<string, string> | undefined {
+  const currentMetadata = readStringRecord(currentData.metadata);
+  const currentParams = isRecord(currentData.params) ? currentData.params : {};
+  const panoramaParams = isRecord(currentParams.panorama) ? currentParams.panorama : {};
+  const snapshot = isRecord(currentData.lastGenerationSnapshot) ? currentData.lastGenerationSnapshot : {};
+  const assetMetadata = readStringRecord(primaryAsset?.metadata);
+  const fallbackMetadata = buildPanoramaMetadata({
+    aspectRatio:
+      assetMetadata?.aspectRatio
+      || currentMetadata?.aspectRatio
+      || readString(currentParams.aspectRatio)
+      || readString(currentParams.aspect_ratio)
+      || readString(snapshot.aspectRatio),
+    generationMode:
+      assetMetadata?.generationMode
+      || currentMetadata?.generationMode
+      || readString(currentData.generationMode)
+      || readString(currentParams.generationMode)
+      || readString(snapshot.generationMode),
+    projection:
+      assetMetadata?.projection
+      || currentMetadata?.projection
+      || readString(panoramaParams.projectionHint),
+  });
+
+  if (!assetMetadata && !fallbackMetadata && !isPanoramaMetadata(currentMetadata)) {
+    return undefined;
+  }
+
+  return mergePanoramaMetadata(
+    isPanoramaMetadata(currentMetadata) ? currentMetadata : undefined,
+    assetMetadata || fallbackMetadata,
+  );
 }
 
 function buildImageGenerationSnapshot(
@@ -619,6 +669,7 @@ function buildGeneratedAssetNodePatch(
   const generatedAt = Date.now();
   const generatedResults = isImageNode ? buildGeneratedResults(assetRefs, generatedAt) : [];
   const mediaSizePatch = buildGeneratedMediaSizePatch(primaryAsset);
+  const panoramaMetadata = isImageNode ? buildPanoramaNodeMetadata(currentData, primaryAsset) : undefined;
 
   return {
     ...(isImageNode && generatedResults.length > 0
@@ -631,6 +682,7 @@ function buildGeneratedAssetNodePatch(
           thumbnailUrl: generatedResults[0]?.url,
         }
       : {}),
+    ...(isImageNode && panoramaMetadata ? { metadata: panoramaMetadata } : {}),
     ...(isVideoNode && primaryAsset.downloadUrl ? { posterUrl: primaryAsset.downloadUrl } : {}),
     assetId: primaryAsset.assetId,
     assetIds: assetRefs.map((asset) => asset.assetId),
@@ -666,6 +718,7 @@ function buildSplitModeParentNodePatch(
   const currentData = currentNode?.data ?? {};
   const generatedAt = Date.now();
   const mediaSizePatch = buildGeneratedMediaSizePatch(primaryAsset);
+  const panoramaMetadata = buildPanoramaNodeMetadata(currentData, primaryAsset);
 
   return {
     activeResultIndex: undefined,
@@ -680,6 +733,7 @@ function buildSplitModeParentNodePatch(
     latestMultiImageDelivery: 'split_nodes',
     latestNodeRunId: nodeRun.id,
     latestWorkflowRunId: nodeRun.workflowRunId,
+    ...(panoramaMetadata ? { metadata: panoramaMetadata } : {}),
     mimeType: primaryAsset.mimeType,
     ...(mediaSizePatch ?? {
       naturalHeight: primaryAsset.height ?? undefined,
@@ -863,7 +917,7 @@ function syncVideoEditorExportedAsset(nodeRun: PersistableNodeRun, assetRefs: Fl
 }
 
 function persistNodeOutputsFromRun(nodeRuns: PersistableNodeRun[], assetRefsByNodeId: Record<string, FlowRuntimeAssetRef[]>): void {
-  const { addGeneratedImageChildren, nodes, updateNodeData } = useFlowCanvasStore.getState();
+  const { addGeneratedImageChildren, ensurePanoramaViewerForImageNode, nodes, updateNodeData } = useFlowCanvasStore.getState();
   for (const nodeRun of nodeRuns) {
     const nodeAssets = assetRefsByNodeId[nodeRun.nodeId] ?? [];
     const currentNode = nodes.find((node) => node.id === nodeRun.nodeId);
@@ -898,6 +952,16 @@ function persistNodeOutputsFromRun(nodeRuns: PersistableNodeRun[], assetRefsByNo
       continue;
     }
     updateNodeData(nodeRun.nodeId, nodePatch);
+    if (
+      nodeRun.status === 'succeeded'
+      && nodeRun.nodeType === 'image.generate'
+      && (
+        nodeAssets.some((asset) => isPanoramaMetadata(asset.metadata))
+        || isPanoramaMetadata(nodePatch.metadata)
+      )
+    ) {
+      ensurePanoramaViewerForImageNode(nodeRun.nodeId);
+    }
     syncStoryboardCellFromGeneratedAsset(nodeRun, nodeAssets);
     syncStoryboardSheetFromGeneratedAsset(nodeRun, nodeAssets);
     syncDirectorShotFromGeneratedAsset(nodeRun, nodeAssets);
@@ -919,6 +983,7 @@ async function resolveAssetRefs(outputJson: Record<string, unknown> | null): Pro
           expiresAt: download.expiresAt,
           height: asset.height ?? null,
           kind: asset.kind,
+          metadata: readStringRecord(asset.metadata),
           mimeType: asset.mimeType,
           width: asset.width ?? null,
         } satisfies FlowRuntimeAssetRef;
@@ -944,6 +1009,7 @@ function resolveAssetRefsFromEventPayload(payload: Record<string, unknown>): Flo
       expiresAt: null,
       height: asset.height ?? null,
       kind: asset.kind,
+      metadata: readStringRecord(asset.metadata),
       mimeType: asset.mimeType,
       width: asset.width ?? null,
     }));

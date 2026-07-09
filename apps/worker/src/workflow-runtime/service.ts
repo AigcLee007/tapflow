@@ -834,6 +834,53 @@ function buildImageRequest(
   };
 }
 
+const PANORAMA_GENERATION_MODE = "panorama_360";
+const PANORAMA_MEDIA_KIND = "pano360";
+const PANORAMA_DEFAULT_ASPECT_RATIO = "2:1";
+const PANORAMA_DEFAULT_PROJECTION = "equirectangular";
+const PANORAMA_SUPPORTED_ASPECT_RATIOS = new Set(["2:1", "21:9"]);
+
+function normalizePanoramaAspectRatio(value: unknown): string {
+  const normalized = readTrimmedString(value);
+  return normalized && PANORAMA_SUPPORTED_ASPECT_RATIOS.has(normalized)
+    ? normalized
+    : PANORAMA_DEFAULT_ASPECT_RATIO;
+}
+
+function buildPanoramaAssetMetadataForNode(
+  kind: "image" | "video",
+  node: CompiledWorkflowNode,
+): Record<string, string> | undefined {
+  if (kind !== "image" || node.type !== "image.generate" || !isPlainObject(node.config)) {
+    return undefined;
+  }
+  const config = node.config;
+  const params = isPlainObject(config.params) ? config.params : {};
+  const metadata = isPlainObject(config.metadata) ? config.metadata : {};
+  const panorama = isPlainObject(params.panorama) ? params.panorama : {};
+  const generationMode =
+    readTrimmedString(config.generationMode)
+    ?? readTrimmedString(params.generationMode)
+    ?? readTrimmedString(metadata.generationMode);
+
+  if (generationMode !== PANORAMA_GENERATION_MODE) {
+    return undefined;
+  }
+
+  return {
+    aspectRatio: normalizePanoramaAspectRatio(
+      readTrimmedString(metadata.aspectRatio)
+      ?? readTrimmedString(params.aspectRatio)
+      ?? readTrimmedString(params.aspect_ratio),
+    ),
+    generationMode: PANORAMA_GENERATION_MODE,
+    mediaKind: PANORAMA_MEDIA_KIND,
+    projection: readTrimmedString(metadata.projection)
+      ?? readTrimmedString(panorama.projectionHint)
+      ?? PANORAMA_DEFAULT_PROJECTION,
+  };
+}
+
 function classifyReferenceDebugValue(value: unknown): string {
   const text = typeof value === "string" ? value.trim() : "";
   if (!text) return "unknown";
@@ -2570,6 +2617,7 @@ export class WorkflowNodeExecutionService {
     const persistedMedia = await this.persistMediaOutputs(
       client,
       kind,
+      node,
       workflowRun,
       runtimeFlow,
       nodeRun,
@@ -2725,6 +2773,7 @@ export class WorkflowNodeExecutionService {
     return this.persistMediaOutputs(
       client,
       node.type === "video.generate" ? "video" : "image",
+      node,
       workflowRun,
       runtimeFlow,
       nodeRun,
@@ -2740,12 +2789,14 @@ export class WorkflowNodeExecutionService {
   private async persistMediaOutputs(
     client: PoolClient,
     kind: "image" | "video",
+    node: CompiledWorkflowNode,
     workflowRun: WorkflowRunRecord,
     runtimeFlow: RuntimeFlowRecord,
     nodeRun: NodeRunRecord,
     outputs: MediaOutput[],
   ): Promise<PersistedMediaOutput> {
     const persistedAssets = await this.assetStore.persistOutputs(client, {
+      assetMetadata: buildPanoramaAssetMetadataForNode(kind, node),
       kind,
       nodeRunId: nodeRun.id,
       outputs,

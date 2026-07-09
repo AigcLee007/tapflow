@@ -210,6 +210,60 @@ describe("MediaAssetStore", () => {
     expect(refs[0].timing?.provider_output_download_ms).toBeGreaterThanOrEqual(0);
   });
 
+  test("persists panorama asset metadata and returns it in asset refs", async () => {
+    const client = {
+      query: vi.fn(async () => ({ rows: [] })),
+    };
+    const storageProvider = new MemoryStorageProvider();
+    const store = new MediaAssetStore({
+      assetBucket: "test-bucket",
+      storageProvider,
+    });
+
+    const result = await store.persistOutputs(client as never, {
+      assetMetadata: {
+        aspectRatio: "2:1",
+        generationMode: "panorama_360",
+        mediaKind: "pano360",
+        projection: "equirectangular",
+      },
+      kind: "image",
+      nodeRunId: "00000000-0000-4000-8000-000000000102",
+      outputs: [
+        {
+          base64: (await createPngBuffer()).toString("base64"),
+          mimeType: "image/png",
+        },
+      ],
+      projectId: "00000000-0000-4000-8000-000000000103",
+      tenantId: "00000000-0000-4000-8000-000000000104",
+      workflowRunId: "00000000-0000-4000-8000-000000000105",
+    });
+
+    const assetInsertCall = (client.query as ReturnType<typeof vi.fn>).mock.calls.find((call) =>
+      String(call[0]).includes("INSERT INTO assets"),
+    );
+    const persistedMetadata = JSON.parse(String(assetInsertCall?.[1]?.[15] || "{}")) as Record<string, unknown>;
+
+    expect(persistedMetadata).toMatchObject({
+      aspectRatio: "2:1",
+      generationMode: "panorama_360",
+      mediaKind: "pano360",
+      projection: "equirectangular",
+      source: "workflow-runner",
+    });
+    expect(result.refs).toEqual([
+      expect.objectContaining({
+        metadata: {
+          aspectRatio: "2:1",
+          generationMode: "panorama_360",
+          mediaKind: "pano360",
+          projection: "equirectangular",
+        },
+      }),
+    ]);
+  });
+
   test("can return image asset refs after original upload and enqueue variants asynchronously", async () => {
     const client = {
       query: vi.fn(async () => ({ rows: [] })),

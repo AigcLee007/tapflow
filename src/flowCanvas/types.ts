@@ -11,6 +11,7 @@ export type FlowNodeKind =
   | 'audio'
   | 'upload'
   | 'image_editor'
+  | 'panorama_viewer'
   | 'storyboard'
   | 'director3d'
   | 'video_editor'
@@ -210,6 +211,7 @@ export interface FlowRuntimeAssetRef {
   expiresAt?: string | null;
   height?: number | null;
   kind: string;
+  metadata?: Record<string, string>;
   mimeType: string;
   width?: number | null;
 }
@@ -294,6 +296,10 @@ export interface FlowNodeData {
   cols?: number;
   slice?: boolean;
   metadata?: Record<string, string>;
+  panoramaPitch?: number;
+  panoramaSourceNodeId?: string;
+  panoramaYaw?: number;
+  panoramaZoom?: number;
 
   // Embedded generation (TapNow-style)
   generationPrompt?: string;

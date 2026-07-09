@@ -1365,6 +1365,133 @@ describe('v2WorkflowRunner', () => {
     expect(updatedNode?.data.thumbnailUrl).toBe('https://cdn.test/asset-1-preview.png?X-Amz-Signature=signed');
   });
 
+  test('successful panorama image runs mark panorama metadata and auto-link a single viewer node', async () => {
+    useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, {
+      generationMode: 'panorama_360',
+      generationPrompt: 'a seamless rooftop city panorama at dusk',
+      modelId: 'mock-image',
+      params: {
+        aspect_ratio: '2:1',
+        generationMode: 'panorama_360',
+        panorama: {
+          continuity: 'seamless',
+          projectionHint: 'equirectangular',
+          subjectType: 'scene',
+        },
+        size: '2k',
+      },
+      routeKey: 'image.default',
+      title: 'Panorama Image',
+    });
+    const imageNodeId = useFlowCanvasStore.getState().nodes[0]?.id as string;
+
+    const panoramaSnapshot = {
+      nodeRuns: [
+        {
+          attempt: 1,
+          costJson: {},
+          createdAt: '2026-05-17T00:00:00.000Z',
+          errorJson: null,
+          finishedAt: null,
+          id: 'node-run-panorama',
+          inputJson: {},
+          maxAttempts: 3,
+          nodeId: imageNodeId,
+          nodeType: 'image.generate',
+          outputJson: {
+            assets: [
+              {
+                assetId: 'asset-panorama',
+                height: 1024,
+                kind: 'image',
+                metadata: {
+                  aspectRatio: '2:1',
+                  generationMode: 'panorama_360',
+                  mediaKind: 'pano360',
+                  projection: 'equirectangular',
+                },
+                mimeType: 'image/png',
+                width: 2048,
+              },
+            ],
+          },
+          providerTaskId: null,
+          startedAt: null,
+          status: 'succeeded',
+          tenantId: 'tenant-1',
+          updatedAt: '2026-05-17T00:00:00.000Z',
+          workflowRunId: 'run-panorama',
+        },
+      ],
+      workflowRun: {
+        canceledAt: null,
+        createdAt: '2026-05-17T00:00:00.000Z',
+        createdBy: 'user-1',
+        errorJson: null,
+        finishedAt: '2026-05-17T00:00:01.000Z',
+        flowId: '11111111-1111-1111-1111-111111111111',
+        flowVersionId: 'version-1',
+        id: 'run-panorama',
+        idempotencyKey: null,
+        inputJson: { runMode: 'target_node', targetNodeId: imageNodeId },
+        outputJson: null,
+        startedAt: null,
+        status: 'succeeded',
+        tenantId: 'tenant-1',
+        updatedAt: '2026-05-17T00:00:01.000Z',
+      },
+    };
+
+    createWorkflowRunMock.mockResolvedValue({
+      runId: 'run-panorama',
+      status: 'pending',
+    });
+    listRuntimeRoutesMock.mockResolvedValueOnce([
+      {
+        capabilities: {
+          supportedGenerationModes: ['standard', 'panorama_360'],
+        },
+        estimatedCredits: 100,
+        minChargeCredits: 100,
+        modality: 'image',
+        modelDisplayName: 'Mock Image',
+        modelKey: 'mock-image',
+        pricingUnit: 'image_generation',
+        providerKey: 'mock-provider',
+        providerName: 'Mock Provider',
+        routeKey: 'image.default',
+      },
+    ]);
+    getWorkflowRunMock.mockResolvedValue(panoramaSnapshot);
+    listFlowWorkflowRunsMock.mockResolvedValue([panoramaSnapshot]);
+    streamWorkflowRunMock.mockReturnValue({ close: vi.fn() });
+
+    await runBackendWorkflow({ runMode: 'target_node', targetNodeId: imageNodeId });
+
+    let state = useFlowCanvasStore.getState();
+    const updatedNode = state.nodes.find((node) => node.id === imageNodeId);
+    expect(updatedNode?.data).toMatchObject({
+      assetId: 'asset-panorama',
+      metadata: {
+        aspectRatio: '2:1',
+        generationMode: 'panorama_360',
+        mediaKind: 'pano360',
+        projection: 'equirectangular',
+      },
+    });
+    expect(state.nodes.filter((node) => node.type === 'panorama_viewer')).toHaveLength(1);
+
+    await recoverFlowTargetNodeRuns('11111111-1111-1111-1111-111111111111');
+
+    state = useFlowCanvasStore.getState();
+    const viewerNodes = state.nodes.filter((node) => node.type === 'panorama_viewer');
+    expect(viewerNodes).toHaveLength(1);
+    expect(viewerNodes[0]?.data).toMatchObject({
+      panoramaSourceNodeId: imageNodeId,
+    });
+    expect(state.edges.filter((edge) => edge.source === imageNodeId && edge.target === viewerNodes[0]?.id)).toHaveLength(1);
+  });
+
   test('asset refs fall back to original signed url while preview variant is pending', async () => {
     useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, {
       routeKey: 'image.default',

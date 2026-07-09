@@ -2091,6 +2091,54 @@ describe("visionary nano banana adapter", () => {
     expect(String(calls[0]?.body.prompt)).toContain("front, three-quarter, and side/back views");
   });
 
+  test("keeps 2:1 panorama aspect ratios for Nano Banana requests", async () => {
+    const calls: Array<{ body: Record<string, unknown> }> = [];
+    const adapter = new VisionaryNanoBananaAdapter({
+      fetchImplementation: (async (_input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+        calls.push({
+          body: JSON.parse(String(init?.body || "{}")) as Record<string, unknown>,
+        });
+        return new Response(
+          JSON.stringify({
+            results: [{ url: "https://visionary.beer/api/generations/panorama/display" }],
+            status: "succeeded",
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }) as unknown as typeof fetch,
+    });
+
+    await adapter.generateImage(
+      {
+        apiKey: "sk-visionary",
+        baseUrl: "https://visionary.beer",
+        modelKey: "nano-banana-pro",
+        providerKey: "visionary",
+        requestConfig: { path: "/v1/api/nano-banana" },
+        routeId: "route-1",
+        routeKey: "image.nano-banana-pro",
+        timeoutMs: 5_000,
+      },
+      {
+        metadata: {
+          aspectRatio: "2:1",
+          params: {
+            aspect_ratio: "2:1",
+            generationMode: "panorama_360",
+            panorama: {
+              continuity: "seamless",
+              projectionHint: "equirectangular",
+              subjectType: "scene",
+            },
+          },
+        },
+        prompt: "skybridge skyline panorama",
+      },
+    );
+
+    expect(calls[0]?.body.aspectRatio).toBe("2:1");
+  });
+
   test("rejects unsupported Nano Banana model names", async () => {
     const adapter = new VisionaryNanoBananaAdapter({
       fetchImplementation: (async () => {
@@ -2281,6 +2329,69 @@ describe("pixellelabs gemini image adapter", () => {
     expect(text).toContain("ancient library hall");
     expect(text).toContain("270-degree wraparound environment");
     expect(text).toContain("three connected sides");
+  });
+
+  test("keeps 2:1 panorama aspect ratios for PixelleLabs Gemini image requests", async () => {
+    const calls: Array<{ body: Record<string, unknown> }> = [];
+    const adapter = new PixelleLabsGeminiImageAdapter({
+      fetchImplementation: (async (_input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+        calls.push({
+          body: JSON.parse(String(init?.body || "{}")) as Record<string, unknown>,
+        });
+        return new Response(
+          JSON.stringify({
+            candidates: [
+              {
+                content: {
+                  parts: [
+                    {
+                      inlineData: {
+                        data: "iVBORw0KGgo=",
+                        mimeType: "image/png",
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }) as unknown as typeof fetch,
+    });
+
+    await adapter.generateImage(
+      {
+        apiKey: "sk-pixelle",
+        baseUrl: "https://api.pixellelabs.com",
+        modelKey: "gemini-3-pro-image-preview",
+        providerKey: "pixellelabs",
+        requestConfig: {
+          path: "/v1beta/models/gemini-3-pro-image-preview:generateContent",
+        },
+        routeId: "route-1",
+        routeKey: "image.pixellelabs.nano-banana-pro",
+        timeoutMs: 5_000,
+      },
+      {
+        metadata: {
+          aspectRatio: "2:1",
+          params: {
+            aspect_ratio: "2:1",
+            generationMode: "panorama_360",
+            panorama: {
+              continuity: "seamless",
+              projectionHint: "equirectangular",
+              subjectType: "scene",
+            },
+          },
+        },
+        prompt: "floating garden panorama",
+      },
+    );
+
+    const generationConfig = calls[0]?.body.generationConfig as { imageConfig?: { aspectRatio?: string } } | undefined;
+    expect(generationConfig?.imageConfig?.aspectRatio).toBe("2:1");
   });
 
   test("includes input asset urls as Gemini fileData references", async () => {

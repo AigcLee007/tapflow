@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 
 import { ImageMoreMenu } from './ImageMoreMenu';
@@ -20,5 +20,36 @@ describe('ImageMoreMenu', () => {
     expect(menu.style.top).toBe('188px');
     expect(menu.style.width).toBe(`${IMAGE_MODEL_MENU_WIDTH}px`);
     expect(menu.style.zIndex).toBe(String(IMAGE_MENU_SURFACE_Z_INDEX));
+  });
+
+  test('shows the panorama viewer action when requested', () => {
+    render(
+      <ImageMoreMenu
+        fixedPosition={{ left: 420, top: 188 }}
+        onSelect={vi.fn()}
+        showPanoramaViewer
+      />,
+    );
+
+    expect(screen.getByText('360 全景查看')).toBeTruthy();
+    expect(screen.getByText('创建或打开全景查看器')).toBeTruthy();
+  });
+
+  test('opens the template edit panel and emits the selected template action', () => {
+    const onSelect = vi.fn();
+
+    render(
+      <ImageMoreMenu
+        fixedPosition={{ left: 420, top: 188 }}
+        onSelect={onSelect}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /九宫格工具/i }));
+    fireEvent.click(screen.getByRole('button', { name: /多机位九宫格/i }));
+
+    expect(onSelect).toHaveBeenCalledWith('templateEdit', {
+      templateActionKey: 'multiCameraGrid',
+    });
   });
 });

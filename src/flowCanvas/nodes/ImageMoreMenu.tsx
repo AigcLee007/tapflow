@@ -2,6 +2,7 @@ import React from 'react';
 import {
   BadgeCheck,
   Eraser,
+  Globe2,
   Grid3X3,
   ImageOff,
   Maximize2,
@@ -27,16 +28,18 @@ export type ImageMoreMenuAction =
   | 'split'
   | 'enhance'
   | 'resize'
+  | 'panoramaViewer'
   | 'compliance';
 
 interface ImageMoreMenuProps {
   menuRef?: React.RefObject<HTMLDivElement | null>;
   fixedPosition?: { left: number; top: number };
   onSelect: (action: ImageMoreMenuAction, payload?: { gridSize?: number }) => void;
+  showPanoramaViewer?: boolean;
 }
 
-const menuRows: Array<{
-  id: ImageMoreMenuAction;
+const BASE_MENU_ROWS: Array<{
+  id: Exclude<ImageMoreMenuAction, 'split' | 'panoramaViewer' | 'compliance'>;
   label: string;
   description: string;
   icon: React.ReactNode;
@@ -50,7 +53,12 @@ const menuRows: Array<{
   { id: 'removeBackground', label: '抠图', description: '分离主体背景', icon: <ImageOff size={20} /> },
 ];
 
-export const ImageMoreMenu: React.FC<ImageMoreMenuProps> = ({ fixedPosition, menuRef, onSelect }) => {
+export const ImageMoreMenu: React.FC<ImageMoreMenuProps> = ({
+  fixedPosition,
+  menuRef,
+  onSelect,
+  showPanoramaViewer = false,
+}) => {
   return (
     <MenuSurface
       ref={menuRef as React.RefObject<HTMLDivElement>}
@@ -78,7 +86,7 @@ export const ImageMoreMenu: React.FC<ImageMoreMenuProps> = ({ fixedPosition, men
       />
 
       <div className="grid gap-1">
-        {menuRows.map((row) => (
+        {BASE_MENU_ROWS.map((row) => (
           <button
             key={row.id}
             type="button"
@@ -98,6 +106,22 @@ export const ImageMoreMenu: React.FC<ImageMoreMenuProps> = ({ fixedPosition, men
             {row.disabled ? <span className={MENU_ITEM_SECONDARY_CLASS}>待接入</span> : null}
           </button>
         ))}
+
+        {showPanoramaViewer ? (
+          <button
+            type="button"
+            onClick={() => onSelect('panoramaViewer')}
+            className={`${MENU_ITEM_CLASS} min-h-[38px]`}
+          >
+            <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[9px] bg-white/[0.08] text-white/90">
+              <Globe2 size={20} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className={`${MENU_ITEM_PRIMARY_CLASS} block`}>360 全景查看</span>
+              <span className={`${MENU_ITEM_SECONDARY_CLASS} mt-1 block`}>创建或打开全景查看器</span>
+            </span>
+          </button>
+        ) : null}
 
         <div className={MENU_DIVIDER_CLASS} />
 

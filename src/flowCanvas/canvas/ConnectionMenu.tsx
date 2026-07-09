@@ -2,7 +2,7 @@
  * Floating menu shown when a connection is dropped on empty canvas.
  */
 import React, { memo, useEffect, useRef, useState } from 'react';
-import { Box, Image as ImageIcon, List, PlaySquare, Wand2 } from 'lucide-react';
+import { Box, Globe2, Image as ImageIcon, List, PlaySquare, Wand2 } from 'lucide-react';
 import { useReactFlow } from '@xyflow/react';
 import { useFlowCanvasStore } from '../store/flowCanvasStore';
 import type { FlowNodeKind } from '../types';
@@ -30,6 +30,7 @@ const ICON_BY_KIND: Record<string, React.ReactNode> = {
   image: <ImageIcon size={18} strokeWidth={1.75} />,
   video: <PlaySquare size={18} strokeWidth={1.8} />,
   image_editor: <Wand2 size={18} strokeWidth={1.8} />,
+  panorama_viewer: <Globe2 size={18} strokeWidth={1.8} />,
   world3d: <Box size={18} strokeWidth={1.75} />,
 };
 

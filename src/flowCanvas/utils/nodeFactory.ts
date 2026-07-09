@@ -17,6 +17,7 @@ const NODE_DEFAULTS: Record<
   audio: { label: '音频', ...FLOW_NODE_DEFAULT_SIZES.audio, color: '#94a3b8' },
   upload: { label: '上传', ...FLOW_NODE_DEFAULT_SIZES.upload, color: '#94a3b8' },
   image_editor: { label: '图片编辑器', ...FLOW_NODE_DEFAULT_SIZES.imageEditor, color: '#94a3b8' },
+  panorama_viewer: { label: '360 全景查看', ...FLOW_NODE_DEFAULT_SIZES.panoramaViewer, color: '#94a3b8' },
   storyboard: { label: '故事板', ...FLOW_NODE_DEFAULT_SIZES.storyboard, color: '#94a3b8' },
   director3d: { label: '3D导演台', ...FLOW_NODE_DEFAULT_SIZES.director3d, color: '#94a3b8' },
   video_editor: { label: '剪辑工程', ...FLOW_NODE_DEFAULT_SIZES.videoEditor, color: '#94a3b8' },

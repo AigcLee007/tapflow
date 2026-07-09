@@ -1,7 +1,26 @@
 ﻿# Project Record
 
-Last updated: 2026-07-08
+Last updated: 2026-07-09
 Maintainers: project team + Codex sessions
+
+## 2026-07-09 - Panorama 360 Generation And Viewer Migration
+
+- migrated the v2 TapFlow panorama path from a decorative placeholder into a working product flow without changing unrelated image/video/node behavior:
+  - image nodes in `panorama_360` mode now use panorama-safe aspect ratios only: `2:1` and `21:9`.
+  - successful panorama image runs now preserve panorama metadata on runtime asset refs and image nodes, and auto-create or reuse a linked `panorama_viewer` node on the canvas.
+  - asset-library preview now detects panorama metadata and renders a real 360 viewer instead of a flat `<img>`.
+  - image-node more menu now exposes a direct `360 全景查看` action for panorama-capable images, and the connection menu/canvas node registry now support `panorama_viewer`.
+- wired the worker and AI gateway layers to match the frontend/runtime behavior:
+  - worker asset persistence now accepts panorama asset metadata, stores it in `assets.metadata`, and returns it in persisted asset refs.
+  - Nano Banana / Gemini image adapters and related plugin manifests now preserve and publish `2:1` aspect ratio support instead of coercing panorama requests back to `1:1`.
+  - added `@photo-sphere-viewer/core` for the frontend 360 viewer wrapper.
+- validation:
+  - `npx vitest --run src/flowCanvas/rules/connectionRules.test.ts src/flowCanvas/store/flowCanvasStore.test.ts src/flowCanvas/runtime/v2WorkflowRunner.test.ts src/assets/AssetPreviewModal.test.tsx src/flowCanvas/nodes/ImageMoreMenu.test.tsx` passed on 2026-07-09: 5 files, 54 tests.
+  - `npm run test --workspace @aigc-flow/worker -- media-asset-store.test.ts` passed on 2026-07-09: 1 file, 6 tests.
+  - `npm run test --workspace @aigc-flow/ai-gateway-core -- plugin-registry.test.ts runtime.test.ts` passed on 2026-07-09: 2 files, 74 tests.
+  - `npm run build --workspace @aigc-flow/worker` passed on 2026-07-09.
+  - `npm run build --workspace @aigc-flow/ai-gateway-core` passed on 2026-07-09.
+  - `npm run build` passed on 2026-07-09 with existing Browserslist, css-minify `task` warnings, dynamic-import note, and chunk-size warnings only.
 
 ## 2026-07-08 - StoryAI Director Project State Fidelity Phase 84
 

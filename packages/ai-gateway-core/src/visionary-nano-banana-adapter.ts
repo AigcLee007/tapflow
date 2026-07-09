@@ -14,7 +14,7 @@ const SUPPORTED_MODELS = new Set(["nano-banana-pro", "nano-banana-pro-fast"]);
 const DEFAULT_PATH = "/v1/api/nano-banana";
 const DEFAULT_ASPECT_RATIO = "1:1";
 const DEFAULT_IMAGE_SIZE = "2K";
-const VALID_ASPECT_RATIOS = new Set(["1:1", "16:9", "9:16", "21:9", "4:3", "3:4", "3:2", "2:3"]);
+const VALID_ASPECT_RATIOS = new Set(["1:1", "16:9", "9:16", "21:9", "2:1", "4:3", "3:4", "3:2", "2:3"]);
 const VALID_IMAGE_SIZES = new Set(["2K", "4K"]);
 
 function asRecord(value: unknown): Record<string, unknown> {

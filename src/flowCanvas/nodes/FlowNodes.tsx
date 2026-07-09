@@ -189,6 +189,16 @@ import {
   isImageGenerationModeSupportedByRoute,
   resolveImageGenerationModeRunBlocker,
 } from '../utils/imageGenerationModeSupport';
+import {
+  PANORAMA_DEFAULT_ASPECT_RATIO,
+  PANORAMA_GENERATION_MODE,
+  PANORAMA_SUPPORTED_ASPECT_RATIOS,
+} from '../panorama/panoramaTypes';
+import {
+  isPanoramaAspectRatio,
+  isPanoramaNodeData,
+  resolvePanoramaAspectRatio,
+} from '../panorama/panoramaUtils';
 
 type FlowNode = Node<FlowNodeData>;
 
@@ -4247,9 +4257,11 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const activeImageTool = useFlowCanvasStore((s) => s.activeImageTool);
   const openImageTool = useFlowCanvasStore((s) => s.openImageTool);
   const closeImageTool = useFlowCanvasStore((s) => s.closeImageTool);
+  const ensurePanoramaViewerForImageNode = useFlowCanvasStore((s) => s.ensurePanoramaViewerForImageNode);
   const setCanvasViewport = useFlowCanvasStore((s) => s.setViewport);
   const pushHistory = useFlowCanvasStore((s) => s.pushHistory);
   const leftPanelOpen = useFlowCanvasStore((s) => s.leftPanelOpen);
+  const selectNodesByIds = useFlowCanvasStore((s) => s.selectNodesByIds);
   const upstreamImageRefs = useFlowCanvasStore(
     (s) => s.graphIndex.upstreamImageRefsByNodeId[id] || EMPTY_UPSTREAM_IMAGE_REFS,
   );
@@ -4469,12 +4481,20 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const catalogRatios = getAspectRatioOptionsFromCatalogModel(selectedCatalogModel);
   const extraRatios = catalogRatios.length ? catalogRatios : getImageModelExtraAspectRatios(currentModelId);
   const defaultRatios = ['1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3', '21:9'];
-  const aspectOptions = Array.from(new Set([...defaultRatios, ...extraRatios]));
 
   const p = (d.params || {}) as Record<string, any>;
   const currentGenerationMode = normalizeImageGenerationMode(d.generationMode || p.generationMode);
+  const standardAspectOptions = Array.from(new Set([...defaultRatios, ...extraRatios]))
+    .filter((ratio) => !isPanoramaAspectRatio(ratio));
+  const aspectOptions = currentGenerationMode === PANORAMA_GENERATION_MODE
+    ? [...PANORAMA_SUPPORTED_ASPECT_RATIOS]
+    : standardAspectOptions;
   const currentSize = String(p.size || p.imageSize || sizeOptions[0] || '1k').toLowerCase();
-  const currentRatio = String(p.aspectRatio || p.aspect_ratio || aspectOptions[0] || '1:1');
+  const rawCurrentRatio = String(p.aspectRatio || p.aspect_ratio || aspectOptions[0] || '1:1');
+  const currentRatio = currentGenerationMode === PANORAMA_GENERATION_MODE
+    ? resolvePanoramaAspectRatio(rawCurrentRatio)
+    : (isPanoramaAspectRatio(rawCurrentRatio) ? (standardAspectOptions[0] || '1:1') : rawCurrentRatio);
+  const showPanoramaViewerAction = isPanoramaNodeData(d) || currentGenerationMode === PANORAMA_GENERATION_MODE;
   const dynamicParamFields = getCatalogUiFields(selectedCatalogModel?.uiSchema);
   const useNanoBananaParamPanel = isNanoBananaImageModelId(currentModelId) && showSize;
   const useGptImage2ParamPanel = isGptImage2ModelId(currentModelId) && showSize;
@@ -4837,14 +4857,29 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
 
   const setGenerationMode = useCallback((mode: FlowImageGenerationMode) => {
     const modePatch = buildImageGenerationModeParamPatch(mode);
+    const nextParams: Record<string, unknown> = {
+      ...((d.params || {}) as Record<string, unknown>),
+      ...modePatch,
+    };
+    const nextRatio = mode === PANORAMA_GENERATION_MODE
+      ? (isPanoramaAspectRatio(rawCurrentRatio) ? rawCurrentRatio : PANORAMA_DEFAULT_ASPECT_RATIO)
+      : (isPanoramaAspectRatio(rawCurrentRatio) ? (standardAspectOptions[0] || '1:1') : rawCurrentRatio);
+    nextParams.aspectRatio = nextRatio;
+    nextParams.aspect_ratio = nextRatio;
     updateNodeData(id, {
+      ...(effectiveThumbnailUrl
+        ? {}
+        : {
+            ...getMediaNodeSizeFromRatioString(
+              nextRatio,
+              parseAspectRatio(nextRatio) || (mode === PANORAMA_GENERATION_MODE ? 2 : 1),
+            ),
+            aspectRatio: parseAspectRatio(nextRatio) || (mode === PANORAMA_GENERATION_MODE ? 2 : 1),
+          }),
       generationMode: mode,
-      params: {
-        ...((d.params || {}) as Record<string, unknown>),
-        ...modePatch,
-      },
+      params: nextParams,
     });
-  }, [d.params, id, updateNodeData]);
+  }, [d.params, effectiveThumbnailUrl, id, rawCurrentRatio, standardAspectOptions, updateNodeData]);
 
   const applyModelSelection = useCallback(
     (modelId: string) => {
@@ -4906,6 +4941,36 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       },
     });
   }, [currentGenerationMode, d.params, id, scopedRouteState.loading, selectedRuntimeRoute, updateNodeData]);
+
+  useEffect(() => {
+    const desiredRatio = currentGenerationMode === PANORAMA_GENERATION_MODE
+      ? resolvePanoramaAspectRatio(rawCurrentRatio)
+      : (isPanoramaAspectRatio(rawCurrentRatio) ? (standardAspectOptions[0] || '1:1') : rawCurrentRatio);
+    if (desiredRatio === rawCurrentRatio) return;
+    const nextParams = {
+      ...p,
+      aspectRatio: desiredRatio,
+      aspect_ratio: desiredRatio,
+    };
+    const nextAspectRatioValue = parseAspectRatio(desiredRatio) || (currentGenerationMode === PANORAMA_GENERATION_MODE ? 2 : 1);
+    updateNodeData(id, {
+      ...(effectiveThumbnailUrl
+        ? {}
+        : {
+            ...getMediaNodeSizeFromRatioString(desiredRatio, nextAspectRatioValue),
+            aspectRatio: nextAspectRatioValue,
+          }),
+      params: nextParams,
+    });
+  }, [
+    currentGenerationMode,
+    effectiveThumbnailUrl,
+    id,
+    p,
+    rawCurrentRatio,
+    standardAspectOptions,
+    updateNodeData,
+  ]);
 
   useEffect(() => {
     const onMouseDown = (event: MouseEvent) => {
@@ -6342,6 +6407,24 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
 
   const handleMoreMenuSelect = useCallback((action: ImageMoreMenuAction, payload?: { gridSize?: number }) => {
     moreMenuLayer.closeLayer();
+    if (action === 'panoramaViewer') {
+      const viewerNodeId = ensurePanoramaViewerForImageNode(id);
+      if (viewerNodeId) {
+        const snapshot = useFlowCanvasStore.getState();
+        const viewerNode = snapshot.nodes.find((node) => node.id === viewerNodeId);
+        selectNodesByIds([viewerNodeId]);
+        if (viewerNode) {
+          const viewerWidth = Number(viewerNode.data.width || FLOW_NODE_DEFAULT_SIZES.panoramaViewer.width);
+          const viewerHeight = Number(viewerNode.data.height || FLOW_NODE_DEFAULT_SIZES.panoramaViewer.height);
+          void reactFlow.setCenter(
+            viewerNode.position.x + viewerWidth / 2,
+            viewerNode.position.y + viewerHeight / 2,
+            { duration: 180, zoom: Math.max(reactFlow.getViewport().zoom, 0.72) },
+          );
+        }
+      }
+      return;
+    }
     if (action === 'resize') {
       openImageTool(id, 'resize');
     }
@@ -6364,7 +6447,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     if (action === 'removeBackground') {
       setAiConfirmType('removeBackground');
     }
-  }, [id, moreMenuLayer, openImageTool, openRepaintOverlay]);
+  }, [ensurePanoramaViewerForImageNode, id, moreMenuLayer, openImageTool, openRepaintOverlay, reactFlow, selectNodesByIds]);
 
   const updateMoreMenuPosition = useCallback(() => {
     const triggerRect = moreMenuButtonRef.current?.getBoundingClientRect();
@@ -6661,6 +6744,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
           fixedPosition={moreMenuPosition}
           menuRef={moreMenuLayer.ref as React.RefObject<HTMLDivElement>}
           onSelect={handleMoreMenuSelect}
+          showPanoramaViewer={showPanoramaViewerAction}
         />,
         document.body,
       ) : null}

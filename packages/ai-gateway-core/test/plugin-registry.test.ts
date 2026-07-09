@@ -182,6 +182,20 @@ describe("AI plugin registry", () => {
     );
   });
 
+  test("publishes 2:1 aspect ratio support for panorama-capable Nano Banana routes", () => {
+    const manifests = [
+      builtinAiPluginRegistry.require("pixellelabs.nano-banana-pro"),
+      builtinAiPluginRegistry.require("pixellelabs.nano-banana-2"),
+      builtinAiPluginRegistry.require("mouxihub.nano-banana-pro-t3"),
+    ];
+
+    manifests.forEach((manifest) => {
+      expect(manifest.models[0]?.capabilities?.supportedAspectRatios).toContain("2:1");
+      const aspectField = manifest.models[0]?.uiSchema?.fields?.find?.((field: { key?: string }) => field.key === "aspectRatio");
+      expect(aspectField?.options?.map?.((option: { value?: string }) => option.value)).toContain("2:1");
+    });
+  });
+
   test("returns GPT-Image-2 plugin manifest for SiphonLab line one", () => {
     const manifest = builtinAiPluginRegistry.require("openai-compatible.gpt-image-2");
 
