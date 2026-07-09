@@ -235,6 +235,58 @@ describe('flowCanvasStore upstream image references', () => {
     ]));
   });
 
+  it('creates a new downstream panorama image node from a selected source image node', () => {
+    const source = useFlowCanvasStore.getState().addNode('image', { x: 80, y: 120 }, {
+      generationPrompt: 'moonlit forest',
+      routeKey: 'image.default',
+      title: 'Source',
+    });
+
+    const created = (useFlowCanvasStore.getState() as unknown as {
+      createPanoramaTargetNodeFromSource: (sourceNodeId: string, aspectRatio: '2:1' | '21:9') => {
+        data: Record<string, unknown>;
+        id: string;
+      };
+    }).createPanoramaTargetNodeFromSource(source.id, '21:9');
+
+    expect(created.data).toMatchObject({
+      generationMode: 'panorama_360',
+      kind: 'image',
+      params: expect.objectContaining({
+        aspectRatio: '21:9',
+        generationMode: 'panorama_360',
+      }),
+    });
+    expect(useFlowCanvasStore.getState().edges).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        source: source.id,
+        target: created.id,
+      }),
+    ]));
+  });
+
+  it('groups multi-capture result nodes into a panorama capture set', () => {
+    const source = useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, { title: 'A' });
+    const b = useFlowCanvasStore.getState().addNode('image', { x: 220, y: 0 }, { title: 'B' });
+    const c = useFlowCanvasStore.getState().addNode('image', { x: 440, y: 0 }, { title: 'C' });
+    const d = useFlowCanvasStore.getState().addNode('image', { x: 660, y: 0 }, { title: 'D' });
+
+    const grouped = (useFlowCanvasStore.getState() as unknown as {
+      groupNodesAsPanoramaCaptureSet: (nodeIds: string[], groupTitle: string) => {
+        groupId: string;
+      };
+    }).groupNodesAsPanoramaCaptureSet(
+      [source.id, b.id, c.id, d.id],
+      '4-view capture',
+    );
+
+    expect(grouped.groupId).toBeTruthy();
+    const state = useFlowCanvasStore.getState();
+    const groupNode = state.nodes.find((node) => node.id === grouped.groupId);
+    expect(groupNode?.type).toBe('group');
+    expect(groupNode?.data.title).toBe('4-view capture');
+  });
+
   it('merges template graph into canvas and clears prior selection', () => {
     const existing = useFlowCanvasStore.getState().addNode(
       'text',

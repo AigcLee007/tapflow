@@ -7,21 +7,34 @@ import { FlowTopToolbar } from "./FlowTopToolbar";
 const createWorkspaceProjectMock = vi.fn();
 const updateWorkspaceProjectMock = vi.fn();
 const deleteWorkspaceProjectMock = vi.fn();
+const runBackendWorkflowMock = vi.fn();
+const createPanoramaTargetNodeFromSourceMock = vi.fn();
+const setProjectTitleMock = vi.fn();
+
+const mockedStoreState: {
+  createPanoramaTargetNodeFromSource: typeof createPanoramaTargetNodeFromSourceMock;
+  nodes: Array<Record<string, unknown>>;
+  projectTitle: string;
+  setProjectTitle: typeof setProjectTitleMock;
+} = {
+  createPanoramaTargetNodeFromSource: createPanoramaTargetNodeFromSourceMock,
+  nodes: [],
+  projectTitle: "Test Project",
+  setProjectTitle: setProjectTitleMock,
+};
 
 vi.mock("../store/flowCanvasStore", () => ({
-  useFlowCanvasStore: (
-    selector: (state: { projectTitle: string; setProjectTitle: ReturnType<typeof vi.fn> }) => unknown,
-  ) =>
-    selector({
-      projectTitle: "测试项目",
-      setProjectTitle: vi.fn(),
-    }),
+  useFlowCanvasStore: (selector: (state: typeof mockedStoreState) => unknown) => selector(mockedStoreState),
 }));
 
 vi.mock("../../workspace/workspaceApi", () => ({
   createWorkspaceProject: (...args: unknown[]) => createWorkspaceProjectMock(...args),
   updateWorkspaceProject: (...args: unknown[]) => updateWorkspaceProjectMock(...args),
   deleteWorkspaceProject: (...args: unknown[]) => deleteWorkspaceProjectMock(...args),
+}));
+
+vi.mock("../runtime/v2WorkflowRunner", () => ({
+  runBackendWorkflow: (...args: unknown[]) => runBackendWorkflowMock(...args),
 }));
 
 vi.mock("../../services/v2HttpClient", () => ({
@@ -41,6 +54,13 @@ describe("FlowTopToolbar", () => {
     createWorkspaceProjectMock.mockReset();
     updateWorkspaceProjectMock.mockReset();
     deleteWorkspaceProjectMock.mockReset();
+    runBackendWorkflowMock.mockReset();
+    createPanoramaTargetNodeFromSourceMock.mockReset();
+    setProjectTitleMock.mockReset();
+    mockedStoreState.projectTitle = "Test Project";
+    mockedStoreState.nodes = [];
+    mockedStoreState.setProjectTitle = setProjectTitleMock;
+    mockedStoreState.createPanoramaTargetNodeFromSource = createPanoramaTargetNodeFromSourceMock;
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => ({
@@ -68,7 +88,7 @@ describe("FlowTopToolbar", () => {
       <FlowTopToolbar
         cullingEnabled
         onToggleCulling={vi.fn()}
-        saveStatus={{ label: "已保存到云端", status: "saved" }}
+        saveStatus={{ label: "Saved to cloud", status: "saved" }}
       />,
     );
 
@@ -77,8 +97,41 @@ describe("FlowTopToolbar", () => {
       expect(screen.getByTestId("brand-mark-orb").className).toContain("h-12 w-[72px]");
       expect(screen.getByRole("img", { name: "Aittco" })).toBeTruthy();
       expect(screen.getByRole("img", { name: "Aittco" }).getAttribute("src")).toBe("/logo-2.png");
-      expect(screen.getByDisplayValue("测试项目")).toBeTruthy();
+      expect(screen.getByDisplayValue("Test Project")).toBeTruthy();
     });
+  });
+
+  test("shows a disabled 360 Panorama button when no image node is selected", async () => {
+    render(
+      <FlowTopToolbar
+        cullingEnabled
+        onToggleCulling={vi.fn()}
+        saveStatus={{ label: "Saved", status: "saved" }}
+      />,
+    );
+
+    expect(await screen.findByRole("button", { name: /360 Panorama/i })).toBeDisabled();
+  });
+
+  test("enables the 360 Panorama button when exactly one image node is selected", async () => {
+    mockedStoreState.nodes = [
+      {
+        data: { generationPrompt: "city dusk", kind: "image", title: "Image 1" },
+        id: "image-1",
+        selected: true,
+        type: "image",
+      },
+    ];
+
+    render(
+      <FlowTopToolbar
+        cullingEnabled
+        onToggleCulling={vi.fn()}
+        saveStatus={{ label: "Saved", status: "saved" }}
+      />,
+    );
+
+    expect(await screen.findByRole("button", { name: /360 Panorama/i })).not.toBeDisabled();
   });
 
   test("opens the canvas logo menu as a fixed body-level surface with the narrow minimal layout and closes it on outside click", async () => {
@@ -86,7 +139,7 @@ describe("FlowTopToolbar", () => {
       <FlowTopToolbar
         cullingEnabled
         onToggleCulling={vi.fn()}
-        saveStatus={{ label: "已保存到云端", status: "saved" }}
+        saveStatus={{ label: "Saved to cloud", status: "saved" }}
       />,
     );
 
@@ -120,7 +173,7 @@ describe("FlowTopToolbar", () => {
       <FlowTopToolbar
         cullingEnabled
         onToggleCulling={vi.fn()}
-        saveStatus={{ label: "已保存到云端", status: "saved" }}
+        saveStatus={{ label: "Saved to cloud", status: "saved" }}
       />,
     );
 
@@ -141,7 +194,7 @@ describe("FlowTopToolbar", () => {
         cullingEnabled
         hideUtilityActions
         onToggleCulling={vi.fn()}
-        saveStatus={{ label: "已保存到云端", status: "saved" }}
+        saveStatus={{ label: "Saved to cloud", status: "saved" }}
       />,
     );
 
@@ -150,7 +203,7 @@ describe("FlowTopToolbar", () => {
     });
 
     expect(screen.getByRole("button", { name: "打开项目菜单" })).toBeTruthy();
-    expect(screen.getByDisplayValue("测试项目")).toBeTruthy();
+    expect(screen.getByDisplayValue("Test Project")).toBeTruthy();
   });
 
   test("opens a custom dark confirmation sheet before deleting a project", async () => {
@@ -161,7 +214,7 @@ describe("FlowTopToolbar", () => {
       <FlowTopToolbar
         cullingEnabled
         onToggleCulling={vi.fn()}
-        saveStatus={{ label: "已保存到云端", status: "saved" }}
+        saveStatus={{ label: "Saved to cloud", status: "saved" }}
       />,
     );
 
@@ -184,7 +237,7 @@ describe("FlowTopToolbar", () => {
       <FlowTopToolbar
         cullingEnabled
         onToggleCulling={vi.fn()}
-        saveStatus={{ label: "已保存到云端", status: "saved" }}
+        saveStatus={{ label: "Saved to cloud", status: "saved" }}
       />,
     );
 
