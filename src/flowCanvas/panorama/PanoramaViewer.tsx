@@ -93,7 +93,7 @@ export const PanoramaViewer = forwardRef<PanoramaViewerHandle, PanoramaViewerPro
     className,
     fovDeg = DEFAULT_FOV,
     imageUrl,
-    label = "360 全景",
+    label = "360 全景查看器",
     onFovChange,
     onPositionChange,
     onStatusChange,
@@ -237,7 +237,7 @@ export const PanoramaViewer = forwardRef<PanoramaViewerHandle, PanoramaViewerPro
     if (isJsdom()) {
       emitStatus("ready");
       emitPosition({ pitch: 0, yaw: 0 });
-      onFovChange?.(clampPanoramaFov(fovDeg));
+      emitFov(fovToZoomLevel(pendingFovRef.current));
       return;
     }
 
@@ -303,7 +303,7 @@ export const PanoramaViewer = forwardRef<PanoramaViewerHandle, PanoramaViewerPro
       viewer?.destroy?.();
       viewerRef.current = null;
     };
-  }, [applyCorrection, applyFov, emitPosition, emitStatus, fovDeg, imageUrl, onFovChange, selected]);
+  }, [applyCorrection, applyFov, emitFov, emitPosition, emitStatus, imageUrl]);
 
   const overlay = useMemo(() => {
     if (status === "ready") return null;
@@ -315,10 +315,10 @@ export const PanoramaViewer = forwardRef<PanoramaViewerHandle, PanoramaViewerPro
         {status === "loading" ? (
           <div className="flex items-center gap-2 text-sm font-medium">
             <LoaderCircle className="animate-spin" size={16} />
-            Loading panorama...
+            正在加载全景图...
           </div>
         ) : (
-          <div className="text-sm font-medium text-white/70">Panorama failed to load</div>
+          <div className="text-sm font-medium text-white/70">全景图加载失败</div>
         )}
       </div>
     );
@@ -354,7 +354,7 @@ export const PanoramaViewer = forwardRef<PanoramaViewerHandle, PanoramaViewerPro
       </div>
       <button
         type="button"
-        aria-label="Fullscreen panorama"
+        aria-label="全屏查看"
         onClick={requestFullscreen}
         className="absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-black/60 text-white/90 transition hover:bg-black/80"
       >

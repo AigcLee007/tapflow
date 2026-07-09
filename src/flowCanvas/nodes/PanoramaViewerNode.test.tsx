@@ -44,7 +44,7 @@ describe("PanoramaViewerNode", () => {
     panelOpen: true,
     panoramaSourceNodeId: "image-source-1",
     sphereCorrectionDeg: { pitch: 0, roll: 0, yaw: 0 },
-    title: "360 Panorama Viewer",
+    title: "360 全景查看器",
     width: 900,
   };
 
@@ -54,7 +54,7 @@ describe("PanoramaViewerNode", () => {
     updateNodeDataMock.mockReset();
   });
 
-  it("renders FOV presets and sphere-correction controls for a panorama source", () => {
+  it("renders Chinese labels for the panorama controls", () => {
     render(
       <PanoramaViewerNode
         data={viewerData as any}
@@ -63,10 +63,12 @@ describe("PanoramaViewerNode", () => {
       />,
     );
 
-    expect(screen.getAllByText(/^FOV$/i).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/FOV/i)).toBeNull();
+    expect(screen.getAllByText("视角").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: /^20$/i })).toBeTruthy();
-    expect(screen.getByText(/correction/i)).toBeTruthy();
-    expect(screen.getByText(/^Front direction$/i)).toBeTruthy();
+    expect(screen.getByText("球面校正")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "锁定当前视角" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "正前方" })).toBeTruthy();
   });
 
   it("collapses and re-expands the right control panel", () => {
@@ -78,11 +80,11 @@ describe("PanoramaViewerNode", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /collapse control panel/i }));
-    expect(screen.queryByText(/correction/i)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /收起控制面板/i }));
+    expect(screen.queryByText("球面校正")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: /expand control panel/i }));
-    expect(screen.getByText(/correction/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /展开控制面板/i }));
+    expect(screen.getByText("球面校正")).toBeTruthy();
   });
 
   it("upgrades persisted viewer sizes that are too small for the panorama layout", async () => {

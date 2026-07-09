@@ -26,7 +26,7 @@ export function PanoramaViewerModal({
         >
           <X size={18} />
         </button>
-        <PanoramaViewer className="h-full w-full" imageUrl={imageUrl} label={title || '360 全景'} />
+        <PanoramaViewer className="h-full w-full" imageUrl={imageUrl} label={title || '360 全景查看器'} />
       </div>
     </div>
   );

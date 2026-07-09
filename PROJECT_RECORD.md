@@ -3,6 +3,15 @@
 Last updated: 2026-07-09
 Maintainers: project team + Codex sessions
 
+## 2026-07-09 - Panorama 360 Toolbar Relocation And Viewer Polish
+
+- moved the panorama generate entry fully into the canvas top toolbar for the currently selected image node, with the same `2:1` and `21:9` popover flow and the existing v2 target-node workflow/billing path.
+- removed the duplicate panorama generate entry from the image-node floating toolbar so the UI now has a single, clear entry point.
+- localized the panorama viewer node controls to Chinese labels and kept the zoom controls from flashing a loading state when the FOV changes.
+- validation:
+  - `npm test -- src/flowCanvas/canvas/FlowTopToolbar.test.tsx src/flowCanvas/nodes/FlowNodes.agent-metadata.test.tsx src/flowCanvas/nodes/PanoramaViewerNode.test.tsx src/flowCanvas/panorama/PanoramaViewer.test.tsx`
+  - `npm run build`
+
 ## 2026-07-09 - Panorama 360 Topbar Entry And Viewer Size Fix
 
 - restored the primary panorama generation entry to the canvas top toolbar, scoped to the currently selected image node, and removed the duplicate image-node floating-toolbar generate button.

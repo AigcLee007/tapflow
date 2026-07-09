@@ -30,6 +30,7 @@ import {
   getDefaultPanoramaViewerState,
   resolveDirectionYaw,
   wrapPanoramaDegrees,
+  type PanoramaDirection,
 } from "../panorama/panoramaViewerState";
 import { getPanoramaSourceUrl } from "../panorama/panoramaUtils";
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
@@ -58,6 +59,13 @@ type ViewerState = {
 
 const DEFAULT_VIEWER_STATE = getDefaultPanoramaViewerState();
 const DEG_TO_RAD = Math.PI / 180;
+const DIRECTION_LABELS: Record<PanoramaDirection, string> = {
+  front: "正前方",
+  right: "右侧",
+  back: "后方",
+  left: "左侧",
+  seam: "接缝",
+};
 const INVISIBLE_HANDLE_STYLE: React.CSSProperties = {
   background: "transparent",
   border: "none",
@@ -98,9 +106,9 @@ function fovToFocalMm(fovDeg: number) {
 }
 
 function getCaptureButtonLabel(mode: PanoramaCaptureMode) {
-  if (mode === "grid_2x2") return "4-view capture";
-  if (mode === "grid_4x3") return "12-view capture";
-  return "Current view capture";
+  if (mode === "grid_2x2") return "四视角截图";
+  if (mode === "grid_4x3") return "十二视角截图";
+  return "当前视角截图";
 }
 
 function ViewerControlButton({
@@ -356,14 +364,14 @@ export const PanoramaViewerNode = memo(function PanoramaViewerNode({
 
   const setFrontFromCurrentView = useCallback(() => {
     syncFrontYaw(currentPositionRef.current.yawDeg);
-    setStatusText(`Front yaw set to ${currentPositionRef.current.yawDeg.toFixed(1)}°`);
+    setStatusText(`已设置正前方：${currentPositionRef.current.yawDeg.toFixed(1)}°`);
   }, [syncFrontYaw]);
 
   const lockCurrentView = useCallback(() => {
     const nextYaw = wrapPanoramaDegrees(currentPositionRef.current.yawDeg);
     syncFrontYaw(nextYaw);
     viewerRef.current?.rotateTo(0, 0);
-    setStatusText("Current view locked");
+    setStatusText("当前视角已锁定");
   }, [syncFrontYaw]);
 
   const resetCorrection = useCallback(() => {
@@ -397,7 +405,7 @@ export const PanoramaViewerNode = memo(function PanoramaViewerNode({
   }, [persistNodeData]);
 
   const handleViewerStatusChange = useCallback((nextStatus: ViewerStatus) => {
-    setStatusText(nextStatus === "ready" ? "Ready" : nextStatus === "loading" ? "Loading panorama..." : "Panorama failed to load");
+    setStatusText(nextStatus === "ready" ? "已加载" : nextStatus === "loading" ? "正在加载全景图..." : "全景图加载失败");
   }, []);
 
   const handleCapture = useCallback(
@@ -411,7 +419,7 @@ export const PanoramaViewerNode = memo(function PanoramaViewerNode({
 
       captureLockedRef.current = true;
       setCaptureMode(mode);
-      setStatusText(`Capturing ${getCaptureButtonLabel(mode)}...`);
+      setStatusText(`正在截取${getCaptureButtonLabel(mode)}...`);
 
       try {
         const result = await capturePanoramaOutputs({
@@ -441,7 +449,7 @@ export const PanoramaViewerNode = memo(function PanoramaViewerNode({
           projectId: backendProjectId ?? null,
           sourceAssetId: sourceData?.assetId,
           sourceNodeId: sourceNodeId || id,
-          sourceTitle: String(sourceData?.title || data.title || "360 Panorama"),
+          sourceTitle: String(sourceData?.title || data.title || "360 全景"),
           viewerNodeId: id,
         });
 
@@ -451,7 +459,7 @@ export const PanoramaViewerNode = memo(function PanoramaViewerNode({
             : `${result.nodeIds.length} capture created`,
         );
       } catch (error) {
-        setStatusText(error instanceof Error ? error.message : "Capture failed");
+        setStatusText(error instanceof Error ? error.message : "截图失败");
       } finally {
         viewer.setFovDeg(savedFov);
         viewer.rotateTo(savedPosition.yawDeg, savedPosition.pitchDeg);
@@ -496,7 +504,7 @@ export const PanoramaViewerNode = memo(function PanoramaViewerNode({
 
   const liveFov = viewerState.fovDeg;
   const focalMm = Number.isFinite(liveFov) ? fovToFocalMm(liveFov) : null;
-  const title = String(data.title || "360 全景查看");
+  const title = String(data.title || "360 全景查看器");
 
   return (
     <div style={{ height: "100%", position: "relative", width: "100%" }}>
@@ -544,27 +552,27 @@ export const PanoramaViewerNode = memo(function PanoramaViewerNode({
               />
 
               <div className="pointer-events-none absolute left-3 top-3 rounded-full bg-black/34 px-2.5 py-1 text-[10px] tabular-nums text-white/74 backdrop-blur-sm">
-                yaw {currentPosition.yawDeg.toFixed(1)}° · pitch {currentPosition.pitchDeg.toFixed(1)}° · fov {liveFov.toFixed(0)}°{focalMm ? ` · ${focalMm}mm` : ""}
+                方位 {currentPosition.yawDeg.toFixed(1)}° · 俯仰 {currentPosition.pitchDeg.toFixed(1)}° · 视角 {liveFov.toFixed(0)}°{focalMm ? ` · ${focalMm}mm` : ""}
               </div>
 
               <div className="absolute left-1/2 top-3 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full border border-white/[0.08] bg-black/32 px-1.5 py-1 backdrop-blur-sm">
                 <ViewerControlButton
                   disabled={captureMode !== null}
-                  label="Current view capture"
+                  label="当前视角截图"
                   onClick={() => void handleCapture("current")}
                 >
                   {captureMode === "current" ? <LoaderCircle className="animate-spin" size={16} /> : <Camera size={16} />}
                 </ViewerControlButton>
                 <ViewerControlButton
                   disabled={captureMode !== null}
-                  label="4-view capture"
+                  label="四视角截图"
                   onClick={() => void handleCapture("grid_2x2")}
                 >
                   <Grid2x2 size={16} />
                 </ViewerControlButton>
                 <ViewerControlButton
                   disabled={captureMode !== null}
-                  label="12-view capture"
+                  label="十二视角截图"
                   onClick={() => void handleCapture("grid_4x3")}
                 >
                   <Grid3x3 size={16} />
@@ -576,28 +584,28 @@ export const PanoramaViewerNode = memo(function PanoramaViewerNode({
                 onPointerDown={(event) => event.stopPropagation()}
                 onWheel={(event) => event.stopPropagation()}
               >
-                <ViewerControlButton disabled={captureMode !== null} label="Zoom out" onClick={() => zoomBy(10)}>
+                <ViewerControlButton disabled={captureMode !== null} label="缩小" onClick={() => zoomBy(10)}>
                   <ZoomOut size={16} strokeWidth={1.8} />
                 </ViewerControlButton>
-                <ViewerControlButton disabled={captureMode !== null} label="Zoom in" onClick={() => zoomBy(-10)}>
+                <ViewerControlButton disabled={captureMode !== null} label="放大" onClick={() => zoomBy(-10)}>
                   <ZoomIn size={16} strokeWidth={1.8} />
                 </ViewerControlButton>
-                <ViewerControlButton disabled={captureMode !== null} label="Rotate left" onClick={() => viewerRef.current?.rotateBy(-12, 0)}>
+                <ViewerControlButton disabled={captureMode !== null} label="左转" onClick={() => viewerRef.current?.rotateBy(-12, 0)}>
                   <ArrowLeft size={16} strokeWidth={1.8} />
                 </ViewerControlButton>
-                <ViewerControlButton disabled={captureMode !== null} label="Rotate right" onClick={() => viewerRef.current?.rotateBy(12, 0)}>
+                <ViewerControlButton disabled={captureMode !== null} label="右转" onClick={() => viewerRef.current?.rotateBy(12, 0)}>
                   <ArrowRight size={16} strokeWidth={1.8} />
                 </ViewerControlButton>
-                <ViewerControlButton disabled={captureMode !== null} label="Rotate up" onClick={() => viewerRef.current?.rotateBy(0, 8)}>
+                <ViewerControlButton disabled={captureMode !== null} label="上移" onClick={() => viewerRef.current?.rotateBy(0, 8)}>
                   <ArrowUp size={16} strokeWidth={1.8} />
                 </ViewerControlButton>
-                <ViewerControlButton disabled={captureMode !== null} label="Rotate down" onClick={() => viewerRef.current?.rotateBy(0, -8)}>
+                <ViewerControlButton disabled={captureMode !== null} label="下移" onClick={() => viewerRef.current?.rotateBy(0, -8)}>
                   <ArrowDown size={16} strokeWidth={1.8} />
                 </ViewerControlButton>
-                <ViewerControlButton disabled={captureMode !== null} label="Fullscreen" onClick={() => setFullscreenOpen(true)}>
+                <ViewerControlButton disabled={captureMode !== null} label="全屏查看" onClick={() => setFullscreenOpen(true)}>
                   <Maximize2 size={16} strokeWidth={1.8} />
                 </ViewerControlButton>
-                <ViewerControlButton disabled={captureMode !== null} label="Reset view" onClick={resetView}>
+                <ViewerControlButton disabled={captureMode !== null} label="重置视角" onClick={resetView}>
                   <RotateCcw size={16} strokeWidth={1.8} />
                 </ViewerControlButton>
               </div>
@@ -609,8 +617,8 @@ export const PanoramaViewerNode = memo(function PanoramaViewerNode({
                   setPanelOpen(!viewerState.panelOpen);
                 }}
                 onPointerDown={(event) => event.stopPropagation()}
-                title={viewerState.panelOpen ? "Collapse control panel" : "Expand control panel"}
-                aria-label={viewerState.panelOpen ? "Collapse control panel" : "Expand control panel"}
+                title={viewerState.panelOpen ? "收起控制面板" : "展开控制面板"}
+                aria-label={viewerState.panelOpen ? "收起控制面板" : "展开控制面板"}
                 className="nodrag absolute right-2 top-2 z-20 inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/[0.1] bg-black/35 text-white/72 backdrop-blur-sm transition-colors hover:bg-black/50 hover:text-white"
               >
                 {viewerState.panelOpen ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
@@ -624,14 +632,14 @@ export const PanoramaViewerNode = memo(function PanoramaViewerNode({
               >
                 <section className="flex flex-col gap-2">
                   <header className="flex items-center justify-between gap-3 text-[11px] font-medium text-white/70">
-                    <span>FOV</span>
+                    <span>视角</span>
                     <span className="tabular-nums text-white/55">
                       {liveFov.toFixed(0)}° · {focalMm ?? "?"}mm
                     </span>
                   </header>
                   <RangeRow
                     disabled={captureMode !== null}
-                    label="FOV"
+                    label="视角"
                     max={170}
                     min={5}
                     onChange={updateFov}
@@ -660,7 +668,7 @@ export const PanoramaViewerNode = memo(function PanoramaViewerNode({
 
                 <section className="flex flex-col gap-2">
                   <header className="flex items-center justify-between gap-3 text-[11px] font-medium text-white/70">
-                    <span>Sphere correction</span>
+                    <span>球面校正</span>
                     <button
                       type="button"
                       disabled={captureMode !== null}
@@ -671,12 +679,12 @@ export const PanoramaViewerNode = memo(function PanoramaViewerNode({
                       }}
                       onPointerDown={(event) => event.stopPropagation()}
                     >
-                      Reset
+                      重置
                     </button>
                   </header>
                   <RangeRow
                     disabled={captureMode !== null}
-                    label="roll"
+                    label="滚转"
                     max={180}
                     min={-180}
                     onChange={(next) => updateCorrectionAxis("roll", next)}
@@ -684,7 +692,7 @@ export const PanoramaViewerNode = memo(function PanoramaViewerNode({
                   />
                   <RangeRow
                     disabled={captureMode !== null}
-                    label="pitch"
+                    label="俯仰"
                     max={90}
                     min={-90}
                     onChange={(next) => updateCorrectionAxis("pitch", next)}
@@ -692,7 +700,7 @@ export const PanoramaViewerNode = memo(function PanoramaViewerNode({
                   />
                   <RangeRow
                     disabled={captureMode !== null}
-                    label="yaw"
+                    label="方位"
                     max={180}
                     min={-180}
                     onChange={(next) => updateCorrectionAxis("yaw", next)}
@@ -709,18 +717,18 @@ export const PanoramaViewerNode = memo(function PanoramaViewerNode({
                       }}
                       onPointerDown={(event) => event.stopPropagation()}
                     >
-                      Lock current view
+                      锁定当前视角
                     </button>
                   </div>
                 </section>
 
                 <section className="flex flex-col gap-2">
                   <header className="flex items-center justify-between gap-3 text-[11px] font-medium text-white/70">
-                    <span>Front direction</span>
+                    <span>正前方</span>
                     <span className="tabular-nums text-white/55">{viewerState.frontYawDeg.toFixed(1)}°</span>
                   </header>
                   <RangeRow
-                    label="front"
+                    label="前向"
                     max={180}
                     min={-180}
                     onChange={syncFrontYaw}
@@ -737,7 +745,7 @@ export const PanoramaViewerNode = memo(function PanoramaViewerNode({
                       }}
                       onPointerDown={(event) => event.stopPropagation()}
                     >
-                      Set from current view
+                      设为当前视角
                     </button>
                     {(["front", "right", "back", "left", "seam"] as const).map((direction) => (
                       <button
@@ -751,16 +759,16 @@ export const PanoramaViewerNode = memo(function PanoramaViewerNode({
                         }}
                         onPointerDown={(event) => event.stopPropagation()}
                       >
-                        {direction}
+                        {DIRECTION_LABELS[direction]}
                       </button>
                     ))}
                   </div>
                 </section>
 
                 <section className="flex flex-col gap-2">
-                  <header className="text-[11px] font-medium text-white/70">Status</header>
+                  <header className="text-[11px] font-medium text-white/70">状态</header>
                   <div className="rounded-lg border border-white/[0.08] bg-black/24 px-3 py-2 text-[11px] text-white/58">
-                    {statusText || (imageUrl ? "Ready" : "Waiting for panorama source")}
+                    {statusText || (imageUrl ? "已加载" : "等待全景图源")}
                   </div>
                 </section>
               </aside>
@@ -769,7 +777,7 @@ export const PanoramaViewerNode = memo(function PanoramaViewerNode({
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-white/70">
             <Globe2 size={20} />
-            <div className="text-sm font-medium">Connect a panorama image to start viewing</div>
+            <div className="text-sm font-medium">请先连接全景图片以开始查看</div>
           </div>
         )}
       </div>
@@ -778,7 +786,7 @@ export const PanoramaViewerNode = memo(function PanoramaViewerNode({
         <PanoramaViewerModal
           imageUrl={imageUrl}
           onClose={() => setFullscreenOpen(false)}
-          title={String(sourceData?.title || data.title || "360 全景")}
+          title={String(data.title || sourceData?.title || "360 全景查看器")}
         />
       ) : null}
     </div>

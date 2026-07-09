@@ -4308,7 +4308,6 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const { isMultiSelecting, showSingleNodeControls } = useNodeSelectionState(id, selected);
   const runtimeNodeOutput = useFlowCanvasStore((s) => s.nodeOutputByNodeId[id]);
   const runtimeNodeStatus = useFlowCanvasStore((s) => s.nodeRunStatusByNodeId[id]);
-  const createPanoramaTargetNodeFromSource = useFlowCanvasStore((s) => s.createPanoramaTargetNodeFromSource);
   const showNodeEditor = showSingleNodeControls;
   const shouldLoadEditorResources = showNodeEditor || activeImageTool?.nodeId === id || fullscreenOpen || assetMenuOpen || slashMenuOpen;
   const imageCatalogState = useImageModelCatalogWhenNeeded(shouldLoadEditorResources);
@@ -6533,7 +6532,16 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
         moreMenuLayer.toggle();
       }
     },
-    [effectiveThumbnailUrl, handleDownload, handleStepBack, moreMenuLayer, openAnchoredPreviewTool, openImageTool, openRepaintOverlay, updateMoreMenuPosition],
+    [
+      effectiveThumbnailUrl,
+      handleDownload,
+      handleStepBack,
+      moreMenuLayer,
+      openAnchoredPreviewTool,
+      openImageTool,
+      openRepaintOverlay,
+      updateMoreMenuPosition,
+    ],
   );
 
   useEffect(() => {

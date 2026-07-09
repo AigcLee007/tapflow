@@ -32,8 +32,8 @@ describe("PanoramaGeneratePopover", () => {
       />,
     );
 
-    expect(screen.getByText(/missing generation prompt/i)).toBeTruthy();
-    expect((screen.getByRole("button", { name: /generate panorama/i }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(/缺少生成提示词/i)).toBeTruthy();
+    expect((screen.getByRole("button", { name: /生成全景/i }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("submits the selected aspect ratio", () => {
@@ -50,7 +50,7 @@ describe("PanoramaGeneratePopover", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "21:9" }));
-    fireEvent.click(screen.getByRole("button", { name: /generate panorama/i }));
+    fireEvent.click(screen.getByRole("button", { name: /生成全景/i }));
 
     expect(onSubmit).toHaveBeenCalledWith({ aspectRatio: "21:9" });
   });

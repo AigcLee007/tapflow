@@ -62,21 +62,21 @@ const CAPTURE_GAP_X = 24;
 const CAPTURE_GAP_Y = 24;
 
 const FOUR_VIEW_FRAMES: PanoramaCaptureFrameSpec[] = [
-  { label: "Front", pitchDeg: 0, yawOffsetDeg: 0 },
-  { label: "Right", pitchDeg: 0, yawOffsetDeg: 90 },
-  { label: "Back", pitchDeg: 0, yawOffsetDeg: 180 },
-  { label: "Left", pitchDeg: 0, yawOffsetDeg: -90 },
+  { label: "正前方", pitchDeg: 0, yawOffsetDeg: 0 },
+  { label: "右侧", pitchDeg: 0, yawOffsetDeg: 90 },
+  { label: "后方", pitchDeg: 0, yawOffsetDeg: 180 },
+  { label: "左侧", pitchDeg: 0, yawOffsetDeg: -90 },
 ];
 
 const TWELVE_VIEW_PITCHES = [
-  { label: "Top", pitchDeg: 40 },
-  { label: "Middle", pitchDeg: 0 },
-  { label: "Bottom", pitchDeg: -40 },
+  { label: "上方", pitchDeg: 40 },
+  { label: "中间", pitchDeg: 0 },
+  { label: "下方", pitchDeg: -40 },
 ] as const;
 
 export function buildPanoramaCaptureFrames(mode: PanoramaCaptureMode): PanoramaCaptureFrameSpec[] {
   if (mode === "current") {
-    return [{ label: "Current View", pitchDeg: 0, yawOffsetDeg: 0 }];
+    return [{ label: "当前视角", pitchDeg: 0, yawOffsetDeg: 0 }];
   }
 
   if (mode === "grid_2x2") {
@@ -120,14 +120,14 @@ export function buildPanoramaCaptureGridPositions(
 }
 
 export function buildPanoramaCaptureNodeTitle(sourceTitle: string, frameLabel: string): string {
-  const title = String(sourceTitle || "").trim() || "360 Panorama";
+  const title = String(sourceTitle || "").trim() || "360 全景";
   return `${title} - ${frameLabel}`;
 }
 
 export function buildPanoramaCaptureGroupTitle(sourceTitle: string, mode: PanoramaCaptureMode): string {
-  const title = String(sourceTitle || "").trim() || "360 Panorama";
+  const title = String(sourceTitle || "").trim() || "360 全景";
   const suffix =
-    mode === "grid_2x2" ? "4-view capture" : mode === "grid_4x3" ? "12-view capture" : "current view";
+    mode === "grid_2x2" ? "四视角截图" : mode === "grid_4x3" ? "十二视角截图" : "当前视角截图";
   return `${title} - ${suffix}`;
 }
 
