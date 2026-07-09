@@ -10,6 +10,7 @@ export type DerivedImageSourceType =
   | "annotation"
   | "image-edit"
   | "generated-result"
+  | "panorama-capture"
   | "resize";
 
 type PersistDerivedImageAssetInput = {

@@ -296,10 +296,18 @@ export interface FlowNodeData {
   cols?: number;
   slice?: boolean;
   metadata?: Record<string, string>;
+  fovDeg?: number;
+  frontYawDeg?: number;
+  panelOpen?: boolean;
   panoramaPitch?: number;
   panoramaSourceNodeId?: string;
   panoramaYaw?: number;
   panoramaZoom?: number;
+  sphereCorrectionDeg?: {
+    pitch: number;
+    roll: number;
+    yaw: number;
+  };
 
   // Embedded generation (TapNow-style)
   generationPrompt?: string;

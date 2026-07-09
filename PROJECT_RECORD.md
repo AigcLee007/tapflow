@@ -3,6 +3,15 @@
 Last updated: 2026-07-09
 Maintainers: project team + Codex sessions
 
+## 2026-07-09 - Panorama 360 Toolbar Entry And DramaClaw-Style Viewer Upgrade
+
+- moved the primary 360 generation entry into the canvas top toolbar with `2:1` and `21:9` selection, keeping the existing v2 target-node workflow path and billing preflight intact.
+- upgraded the panorama viewer node into a DramaClaw-style working surface with live FOV, sphere correction, front direction, fullscreen, and status controls while preserving the asset preview panorama shell.
+- added current-view, 4-view, and 12-view panorama capture actions that upload standard asset-backed image nodes and auto-group multi-capture outputs on the canvas.
+- validation:
+  - `npm test -- src/flowCanvas/canvas/FlowTopToolbar.test.tsx src/flowCanvas/store/flowCanvasStore.test.ts src/flowCanvas/panorama/PanoramaGeneratePopover.test.tsx src/flowCanvas/panorama/panoramaViewerState.test.ts src/flowCanvas/panorama/panoramaCapture.test.ts src/flowCanvas/nodes/PanoramaViewerNode.test.tsx src/assets/AssetPreviewModal.test.tsx`
+  - `npm run build`
+
 ## 2026-07-09 - DramaClaw Nine-Grid Toolbar Migration Phase 85
 
 - migrated the DramaClaw-style `九宫格工具栏` feature set into the v2 TapFlow image-node path without introducing a separate legacy API or local-only canvas persistence:
