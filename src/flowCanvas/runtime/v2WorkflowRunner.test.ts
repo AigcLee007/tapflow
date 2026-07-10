@@ -653,6 +653,32 @@ describe('v2WorkflowRunner', () => {
     });
   });
 
+  test('markBackendRunLaunchFailed appends panorama generation context for provider failures', () => {
+    useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, {
+      generationMode: 'panorama_360',
+      generationStatus: 'generating',
+      modelId: 'gpt-image-2',
+      params: {
+        aspectRatio: '21:9',
+        generationMode: 'panorama_360',
+        size: '4k',
+      },
+      routeKey: 'image.gpt-image-2.line2',
+      status: 'running',
+      title: 'Panorama',
+    });
+    const nodeId = useFlowCanvasStore.getState().nodes[0]?.id as string;
+
+    markBackendRunLaunchFailed(nodeId, new Error('The provider request failed before a response was received'));
+
+    const errorMessage = String(useFlowCanvasStore.getState().nodes[0]?.data.errorMessage || '');
+    expect(errorMessage).toContain('The provider request failed before a response was received');
+    expect(errorMessage).toContain('routeKey=image.gpt-image-2.line2');
+    expect(errorMessage).toContain('modelId=gpt-image-2');
+    expect(errorMessage).toContain('size=4k');
+    expect(errorMessage).toContain('aspectRatio=21:9');
+  });
+
   test('target-node run fails visibly when the backend snapshot has no target node run', async () => {
     useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, {
       generationStatus: 'generating',

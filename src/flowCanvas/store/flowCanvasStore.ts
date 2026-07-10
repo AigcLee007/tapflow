@@ -17,7 +17,7 @@ import { canConnectFlowNodes, canCreateNodeFromSource } from '../rules/connectio
 import { buildAssetBackedNodeData } from '../utils/assetNodeData';
 import { FLOW_NODE_DEFAULT_SIZES, fitMediaNodeToShortSide } from '../utils/nodeSizing';
 import { buildImageGenerationModeParamPatch } from '../utils/imageGenerationModes';
-import { PANORAMA_GENERATION_MODE, type PanoramaAspectRatio } from '../panorama/panoramaTypes';
+import { PANORAMA_GENERATION_MODE, type PanoramaGenerateSettings } from '../panorama/panoramaTypes';
 import type {
   FlowRuntimeNodeOutput,
 } from '../types';
@@ -152,7 +152,7 @@ interface FlowCanvasState {
       width?: number | null;
     }>,
   ) => string[];
-  createPanoramaTargetNodeFromSource: (sourceNodeId: string, aspectRatio: PanoramaAspectRatio) => FlowNode;
+  createPanoramaTargetNodeFromSource: (sourceNodeId: string, settings: PanoramaGenerateSettings) => FlowNode;
   ensurePanoramaViewerForImageNode: (sourceNodeId: string) => string | null;
   getUpstreamNodes: (nodeId: string) => FlowNode[];
   groupNodesAsPanoramaCaptureSet: (
@@ -678,7 +678,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
     return createdIds;
   },
 
-  createPanoramaTargetNodeFromSource: (sourceNodeId, aspectRatio) => {
+  createPanoramaTargetNodeFromSource: (sourceNodeId, settings) => {
     const sourceNode = get().nodes.find((node) => node.id === sourceNodeId);
     if (!isImageNode(sourceNode)) {
       throw new Error('PANORAMA_SOURCE_NOT_FOUND');
@@ -701,6 +701,10 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
         sourceParams.panorama && typeof sourceParams.panorama === 'object'
           ? sourceParams.panorama as Record<string, unknown>
           : {};
+      const aspectRatio = settings.aspectRatio;
+      const selectedSize = String(settings.size || '1k').toLowerCase();
+      const selectedModelId = String(settings.modelId || latestSourceNode.data.modelId || '').trim();
+      const selectedRouteKey = String(settings.routeKey || latestSourceNode.data.routeKey || '').trim();
 
       const created = createFlowNode(
         'image',
@@ -712,7 +716,11 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
             ...sourceParams,
             ...buildImageGenerationModeParamPatch(PANORAMA_GENERATION_MODE),
             aspectRatio,
+            aspect_ratio: aspectRatio,
             generationMode: PANORAMA_GENERATION_MODE,
+            imageSize: selectedSize,
+            image_size: selectedSize,
+            size: selectedSize,
             panorama: {
               ...sourcePanorama,
               aspectRatio,
@@ -723,8 +731,8 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
           },
           referenceOrder: appendReferenceOrderKey(undefined, `upstream:${latestSourceNode.id}`),
           title: `${String(latestSourceNode.data.title || 'Image')} Panorama`,
-          ...(typeof latestSourceNode.data.modelId === 'string' ? { modelId: latestSourceNode.data.modelId } : {}),
-          ...(typeof latestSourceNode.data.routeKey === 'string' ? { routeKey: latestSourceNode.data.routeKey } : {}),
+          ...(selectedModelId ? { modelId: selectedModelId } : {}),
+          ...(selectedRouteKey ? { routeKey: selectedRouteKey } : {}),
         },
       );
       created.selected = true;

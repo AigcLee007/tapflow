@@ -5,6 +5,14 @@ export const PANORAMA_SUPPORTED_ASPECT_RATIOS = ['2:1', '21:9'] as const;
 export const PANORAMA_DEFAULT_PROJECTION = 'equirectangular' as const;
 
 export type PanoramaAspectRatio = (typeof PANORAMA_SUPPORTED_ASPECT_RATIOS)[number];
+export type PanoramaGenerateSize = '1k' | '2k' | '4k';
+
+export type PanoramaGenerateSettings = {
+  aspectRatio: PanoramaAspectRatio;
+  modelId: string;
+  routeKey: string;
+  size: PanoramaGenerateSize;
+};
 
 export type PanoramaAssetMetadata = {
   aspectRatio?: string;

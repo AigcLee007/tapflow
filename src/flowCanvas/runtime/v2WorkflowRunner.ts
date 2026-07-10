@@ -1263,8 +1263,24 @@ export function getBackendRunLaunchErrorMessage(error: unknown): string {
   return 'Failed to start backend workflow.';
 }
 
+function buildTargetNodeFailureContext(nodeId: string): string {
+  const node = useFlowCanvasStore.getState().nodes.find((item) => item.id === nodeId);
+  const data = node?.data;
+  if (!data || node?.type !== 'image') return '';
+  const params = data.params && typeof data.params === 'object'
+    ? data.params as Record<string, unknown>
+    : {};
+  const generationMode = readString(data.generationMode) || readString(params.generationMode);
+  if (generationMode !== 'panorama_360') return '';
+  const routeKey = readString(data.routeKey) || 'unknown';
+  const modelId = readString(data.modelId) || readString(params.modelId) || 'unknown';
+  const size = readString(params.size) || readString(params.imageSize) || readString(params.image_size) || 'unknown';
+  const aspectRatio = readString(params.aspectRatio) || readString(params.aspect_ratio) || 'unknown';
+  return `\n全景参数：routeKey=${routeKey}, modelId=${modelId}, size=${size}, aspectRatio=${aspectRatio}`;
+}
+
 export function markBackendRunLaunchFailed(nodeId: string, error: unknown): void {
-  const message = getBackendRunLaunchErrorMessage(error);
+  const message = `${getBackendRunLaunchErrorMessage(error)}${buildTargetNodeFailureContext(nodeId)}`;
   useFlowCanvasStore.getState().updateNodeData(nodeId, {
     errorMessage: message,
     generationStatus: 'error',

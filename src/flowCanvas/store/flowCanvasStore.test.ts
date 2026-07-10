@@ -243,18 +243,32 @@ describe('flowCanvasStore upstream image references', () => {
     });
 
     const created = (useFlowCanvasStore.getState() as unknown as {
-      createPanoramaTargetNodeFromSource: (sourceNodeId: string, aspectRatio: '2:1' | '21:9') => {
+      createPanoramaTargetNodeFromSource: (sourceNodeId: string, settings: {
+        aspectRatio: '2:1' | '21:9';
+        modelId: string;
+        routeKey: string;
+        size: '1k' | '2k' | '4k';
+      }) => {
         data: Record<string, unknown>;
         id: string;
       };
-    }).createPanoramaTargetNodeFromSource(source.id, '21:9');
+    }).createPanoramaTargetNodeFromSource(source.id, {
+      aspectRatio: '21:9',
+      modelId: 'gpt-image-2',
+      routeKey: 'image.gpt-image-2.line2',
+      size: '4k',
+    });
 
     expect(created.data).toMatchObject({
       generationMode: 'panorama_360',
       kind: 'image',
+      modelId: 'gpt-image-2',
+      routeKey: 'image.gpt-image-2.line2',
       params: expect.objectContaining({
         aspectRatio: '21:9',
+        aspect_ratio: '21:9',
         generationMode: 'panorama_360',
+        size: '4k',
       }),
     });
     expect(useFlowCanvasStore.getState().edges).toEqual(expect.arrayContaining([

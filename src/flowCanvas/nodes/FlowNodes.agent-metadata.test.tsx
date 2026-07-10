@@ -219,7 +219,7 @@ describe("FlowNodes agent metadata", () => {
     expect(screen.getByText("5% 生成中")).toBeTruthy();
   });
 
-  it("renders a panorama generate entry in the image toolbar and switches the node into 360 mode", async () => {
+  it("renders a panorama generate entry in the image toolbar and creates a configured panorama target node", async () => {
     const source = useFlowCanvasStore.getState().addNode(
       "image",
       { x: 0, y: 0 },
@@ -257,9 +257,29 @@ describe("FlowNodes agent metadata", () => {
     fireEvent.click(screen.getByRole("button", { name: "360 全景生成" }));
 
     await screen.findByRole("dialog", { name: "360 全景生成" });
-    expect(useFlowCanvasStore.getState().nodes.find((node) => node.id === source.id)?.data.generationMode).toBe("panorama_360");
+    expect(useFlowCanvasStore.getState().nodes.find((node) => node.id === source.id)?.data.generationMode).toBeUndefined();
+    expect(screen.getByRole("button", { name: /全景模型 GPT-Image-2/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /全景清晰度 1K/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: "2:1" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "21:9" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "21:9" }));
+    fireEvent.click(screen.getByRole("button", { name: "生成全景" }));
+
+    const created = useFlowCanvasStore.getState().nodes.find((node) => node.id !== source.id && node.type === "image");
+    expect(created?.data).toMatchObject({
+      generationMode: "panorama_360",
+      modelId: "gpt-image-2",
+      routeKey: "image.gpt-image-2",
+      params: expect.objectContaining({
+        aspectRatio: "21:9",
+        size: "1k",
+      }),
+    });
+    expect(workflowRunnerMocks.runBackendWorkflow).toHaveBeenCalledWith({
+      runMode: "target_node",
+      targetNodeId: created?.id,
+    });
   });
 
   it("keeps the image quantity menu open until a batch display mode is selected", () => {

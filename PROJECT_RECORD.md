@@ -3,6 +3,16 @@
 Last updated: 2026-07-10
 Maintainers: project team + Codex sessions
 
+## 2026-07-10 - Panorama Generator Configuration Panel
+
+- kept the image-node floating toolbar as the 360 panorama generation entry and removed the misleading bottom generation-mode selector from the image prompt bar.
+- upgraded the 360 panorama popover into a full generation panel with model, route, size (`1K`, `2K`, `4K`), and panorama ratio (`2:1`, `21:9`) controls.
+- changed panorama target-node creation to use the explicit popover selections for `modelId`, `routeKey`, `size`, and `aspectRatio` instead of inheriting those settings silently from the source image node.
+- appended panorama debug context to launch/provider failure messages, including `routeKey`, `modelId`, `size`, and `aspectRatio`.
+- validation:
+  - `npm test -- src/flowCanvas/panorama/PanoramaGeneratePopover.test.tsx src/flowCanvas/store/flowCanvasStore.test.ts src/flowCanvas/nodes/FlowNodes.agent-metadata.test.tsx src/flowCanvas/runtime/v2WorkflowRunner.test.ts`
+  - `npm run build`
+
 ## 2026-07-10 - Panorama 360 Image-Node Toolbar Fix
 
 - moved the panorama generation entry out of the canvas top chrome and back into the selected image node floating toolbar, matching the current product UX.

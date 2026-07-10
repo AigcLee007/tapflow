@@ -183,7 +183,6 @@ import { getNodeSelectionMode } from '../utils/nodeSelectionMode';
 import { resolveEditableImageSource } from '../utils/editableImageSource';
 import { useEditableImageObjectUrl } from '../utils/useEditableImageObjectUrl';
 import {
-  IMAGE_GENERATION_MODE_OPTIONS,
   buildImageGenerationModeParamPatch,
   normalizeImageGenerationMode,
 } from '../utils/imageGenerationModes';
@@ -196,7 +195,8 @@ import {
   PANORAMA_DEFAULT_ASPECT_RATIO,
   PANORAMA_GENERATION_MODE,
   PANORAMA_SUPPORTED_ASPECT_RATIOS,
-  type PanoramaAspectRatio,
+  type PanoramaGenerateSettings,
+  type PanoramaGenerateSize,
 } from '../panorama/panoramaTypes';
 import {
   isPanoramaAspectRatio,
@@ -2664,6 +2664,11 @@ const getUserFacingRouteLineLabel = (route: RuntimeRouteOption | undefined, inde
   return `线路${ROUTE_NUMBER_LABELS[index] || index + 1}`;
 };
 
+const normalizePanoramaGenerateSize = (value: unknown): PanoramaGenerateSize => {
+  const normalized = String(value || '').trim().toLowerCase();
+  return normalized === '2k' || normalized === '4k' ? normalized : '1k';
+};
+
 interface ImageModelRouteDropupProps {
   modelOptions: Array<{ id: string; label: string; sizeOptions?: string[] }>;
   currentModelId: string;
@@ -4263,7 +4268,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const closeImageTool = useFlowCanvasStore((s) => s.closeImageTool);
   const createPanoramaTargetNodeFromSource = useFlowCanvasStore((s) => s.createPanoramaTargetNodeFromSource) as (
     sourceNodeId: string,
-    aspectRatio: PanoramaAspectRatio,
+    settings: PanoramaGenerateSettings,
   ) => { id: string };
   const ensurePanoramaViewerForImageNode = useFlowCanvasStore((s) => s.ensurePanoramaViewerForImageNode);
   const setCanvasViewport = useFlowCanvasStore((s) => s.setViewport);
@@ -4303,6 +4308,9 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const panoramaGenerateLayer = useDismissibleLayer(`image-node-panorama-${id}`);
   const panoramaGenerateButtonRef = useRef<HTMLButtonElement>(null);
   const [panoramaGeneratePosition, setPanoramaGeneratePosition] = useState<{ left: number; top: number } | null>(null);
+  const [panoramaGenerateModelId, setPanoramaGenerateModelId] = useState('');
+  const [panoramaGenerateRouteKey, setPanoramaGenerateRouteKey] = useState('');
+  const [panoramaGenerateSize, setPanoramaGenerateSize] = useState<PanoramaGenerateSize>('1k');
   const moreMenuLayer = useDismissibleLayer(`image-node-more-${id}`);
   const [moreMenuPosition, setMoreMenuPosition] = useState<{ left: number; top: number } | null>(null);
   const [assetMenuOpen, setAssetMenuOpen] = useState(false);
@@ -4520,8 +4528,22 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
 
   const selectedRuntimeRoute = selectedModelRuntimeRoute;
   const visibleRuntimeRoutes = modelRuntimeRoutes;
-  const selectableGenerationModeOptions = IMAGE_GENERATION_MODE_OPTIONS.filter((option) =>
-    isImageGenerationModeSupportedByRoute(option.mode, selectedRuntimeRoute));
+  const activePanoramaModelId = resolveV2ImageModelId(String(panoramaGenerateModelId || currentModelId));
+  const selectedPanoramaCatalogModel = models.find((model) => model.id === activePanoramaModelId) || null;
+  const panoramaRouteLookupKey = getImageModelCatalogRouteLookupKey(activePanoramaModelId, selectedPanoramaCatalogModel);
+  const panoramaScopedRouteState = useModelScopedImageRoutes(Boolean(panoramaRouteLookupKey), panoramaRouteLookupKey);
+  const panoramaRuntimeRoutes = (
+    panoramaScopedRouteState.routes.length
+      ? panoramaScopedRouteState.routes
+      : getOfficialFallbackImageRuntimeRoutes(activePanoramaModelId)
+  ).filter((route) => isImageGenerationModeSupportedByRoute(PANORAMA_GENERATION_MODE, route));
+  const panoramaRouteOptions = panoramaRuntimeRoutes.map((route, index) => ({
+    label: getUserFacingRouteLabel(route, index),
+    routeKey: route.routeKey,
+  }));
+  const currentPanoramaRouteKey = panoramaRouteOptions.some((route) => route.routeKey === panoramaGenerateRouteKey)
+    ? panoramaGenerateRouteKey
+    : panoramaRouteOptions[0]?.routeKey || '';
   const currentPointCost =
     getOfficialImageRouteSizeCredits(currentRouteKey, currentSize)
     ?? getOfficialImageRouteSizeCredits(selectedRuntimeRoute?.routeKey, currentSize)
@@ -6518,14 +6540,16 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   }, []);
 
   const openPanoramaGeneratePopover = useCallback(() => {
-    setGenerationMode(PANORAMA_GENERATION_MODE);
+    setPanoramaGenerateModelId(currentModelId);
+    setPanoramaGenerateRouteKey(currentRouteKey || selectedRuntimeRoute?.routeKey || '');
+    setPanoramaGenerateSize(normalizePanoramaGenerateSize(currentSize));
     updatePanoramaGeneratePosition();
     panoramaGenerateLayer.toggle();
-  }, [panoramaGenerateLayer, setGenerationMode, updatePanoramaGeneratePosition]);
+  }, [currentModelId, currentRouteKey, currentSize, panoramaGenerateLayer, selectedRuntimeRoute?.routeKey, updatePanoramaGeneratePosition]);
 
   const handlePanoramaGenerateSubmit = useCallback(
-    ({ aspectRatio }: { aspectRatio: PanoramaAspectRatio }) => {
-      const created = createPanoramaTargetNodeFromSource(id, aspectRatio);
+    (settings: PanoramaGenerateSettings) => {
+      const created = createPanoramaTargetNodeFromSource(id, settings);
       panoramaGenerateLayer.closeLayer();
       setPanoramaGeneratePosition(null);
       void runBackendWorkflow({
@@ -6535,6 +6559,13 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     },
     [createPanoramaTargetNodeFromSource, id, panoramaGenerateLayer],
   );
+
+  useEffect(() => {
+    if (!panoramaGenerateLayer.open) return;
+    if (currentPanoramaRouteKey && currentPanoramaRouteKey !== panoramaGenerateRouteKey) {
+      setPanoramaGenerateRouteKey(currentPanoramaRouteKey);
+    }
+  }, [currentPanoramaRouteKey, panoramaGenerateLayer.open, panoramaGenerateRouteKey]);
 
   useEffect(() => {
     if (!panoramaGenerateLayer.open) {
@@ -6890,11 +6921,21 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
         >
           <PanoramaGeneratePopover
             creditLabel="生成启动后将按所选图片路线计费。"
+            initialModelId={activePanoramaModelId}
+            initialRouteKey={currentPanoramaRouteKey}
+            initialSize={panoramaGenerateSize}
+            modelOptions={modelOptions}
             onClose={() => {
               panoramaGenerateLayer.closeLayer();
               setPanoramaGeneratePosition(null);
             }}
+            onModelChange={(modelId) => {
+              setPanoramaGenerateModelId(modelId);
+              setPanoramaGenerateRouteKey('');
+            }}
             onSubmit={handlePanoramaGenerateSubmit}
+            routeOptions={panoramaRouteOptions}
+            routesLoading={panoramaScopedRouteState.loading}
             sourceNodeTitle={String(d.title || "图片")}
             sourcePromptAvailable={Boolean(String(d.generationPrompt || "").trim())}
           />
@@ -7423,20 +7464,6 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
                   >
                     {effectiveBatchCount}x
                   </button>
-                </div>
-              )}
-              generationModeControl={(
-                <div style={{ minWidth: 128 }}>
-                  <MenuSelect
-                    label={`图片生成模式 ${id}`}
-                    onChange={(value) => setGenerationMode(normalizeImageGenerationMode(value))}
-                    options={selectableGenerationModeOptions.map((option) => ({
-                      label: option.label,
-                      value: option.mode,
-                    }))}
-                    size="compact"
-                    value={currentGenerationMode}
-                  />
                 </div>
               )}
               onGenerate={handleGenerate}
