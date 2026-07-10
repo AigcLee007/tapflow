@@ -260,10 +260,13 @@ describe('flowCanvasStore upstream image references', () => {
     });
 
     expect(created.data).toMatchObject({
+      aspectRatio: 21 / 9,
       generationMode: 'panorama_360',
+      height: 170,
       kind: 'image',
       modelId: 'gpt-image-2',
       routeKey: 'image.gpt-image-2.line2',
+      width: 397,
       params: expect.objectContaining({
         aspectRatio: '21:9',
         aspect_ratio: '21:9',
@@ -273,6 +276,10 @@ describe('flowCanvasStore upstream image references', () => {
         size: '4K',
       }),
     });
+    expect(String(created.data.generationPrompt)).toContain('moonlit forest');
+    expect(String(created.data.generationPrompt)).toContain('360-degree equirectangular panorama');
+    expect(String(created.data.generationPrompt)).toContain('left edge and right edge must connect');
+    expect(String(created.data.generationPrompt)).not.toBe('moonlit forest');
     expect(useFlowCanvasStore.getState().edges).toEqual(expect.arrayContaining([
       expect.objectContaining({
         source: source.id,

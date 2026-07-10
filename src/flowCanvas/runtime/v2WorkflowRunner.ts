@@ -498,6 +498,61 @@ function readString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
+const ERROR_DETAIL_REDACT_KEYS = new Set([
+  'api_key',
+  'apikey',
+  'authorization',
+  'credential',
+  'password',
+  'secret',
+  'token',
+]);
+
+function redactErrorDetailValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(redactErrorDetailValue);
+  }
+  if (!isRecord(value)) {
+    return value;
+  }
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => {
+    const normalizedKey = key.toLowerCase().replace(/[^a-z0-9]/g, '');
+    return [
+      key,
+      ERROR_DETAIL_REDACT_KEYS.has(normalizedKey) ? '[redacted]' : redactErrorDetailValue(item),
+    ];
+  }));
+}
+
+function formatProviderErrorDetails(details: unknown): string {
+  if (typeof details === 'string') {
+    return details.trim();
+  }
+  if (details == null) {
+    return '';
+  }
+  try {
+    const serialized = JSON.stringify(redactErrorDetailValue(details));
+    return serialized && serialized !== '{}' ? serialized : '';
+  } catch {
+    return String(details || '').trim();
+  }
+}
+
+function buildNodeFailureMessageFromErrorJson(
+  errorJson: Record<string, unknown> | null | undefined,
+  fallbackMessage = '节点生成失败，请稍后重试。',
+): string {
+  const message = typeof errorJson?.message === 'string' && errorJson.message.trim()
+    ? errorJson.message.trim()
+    : fallbackMessage;
+  const details = formatProviderErrorDetails(errorJson?.details);
+  if (!details) {
+    return message;
+  }
+  return `${message}\nproviderDetails=${details.slice(0, 500)}`;
+}
+
 function readStringRecord(value: unknown): Record<string, string> | undefined {
   if (!isRecord(value)) {
     return undefined;
@@ -749,10 +804,7 @@ function buildSplitModeParentNodePatch(
 }
 
 function getNodeRunErrorMessage(nodeRun: PersistableNodeRun): string {
-  const message = nodeRun.errorJson?.message;
-  return typeof message === 'string' && message.trim()
-    ? message.trim()
-    : '节点生成失败，请稍后重试。';
+  return `${buildNodeFailureMessageFromErrorJson(nodeRun.errorJson)}${buildTargetNodeFailureContext(nodeRun.nodeId)}`;
 }
 
 function buildFailedNodePatch(nodeRun: PersistableNodeRun): Partial<FlowNodeData> | null {
@@ -1132,7 +1184,7 @@ function applyRunEvent(event: V2WorkflowRunEventView): void {
   }
 
   if (event.eventType === 'node.run.failed') {
-    const message = typeof event.payload.message === 'string' ? event.payload.message : '节点生成失败，请稍后重试。';
+    const message = `${buildNodeFailureMessageFromErrorJson(event.payload)}${nodeId ? buildTargetNodeFailureContext(nodeId) : ''}`;
     useFlowCanvasStore.setState((state) => ({
       nodeOutputByNodeId: nodeId
         ? {

@@ -657,6 +657,7 @@ describe('v2WorkflowRunner', () => {
     useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, {
       generationMode: 'panorama_360',
       generationStatus: 'generating',
+      kind: 'image',
       modelId: 'gpt-image-2',
       params: {
         aspectRatio: '21:9',
@@ -687,6 +688,22 @@ describe('v2WorkflowRunner', () => {
       title: 'Image edit result',
     });
     const nodeId = useFlowCanvasStore.getState().nodes[0]?.id as string;
+    listRuntimeRoutesMock.mockResolvedValue([
+      {
+        capabilities: {
+          supportedGenerationModes: ['standard', 'panorama_360'],
+        },
+        estimatedCredits: 100,
+        minChargeCredits: 100,
+        modality: 'image',
+        modelDisplayName: 'GPT Image 2',
+        modelKey: 'gpt-image-2',
+        pricingUnit: 'image_generation',
+        providerKey: 'openai-compatible',
+        providerName: 'OpenAI Compatible',
+        routeKey: 'image.gpt-image-2',
+      },
+    ]);
 
     createWorkflowRunMock.mockResolvedValue({
       runId: 'run-without-target-node-run',
@@ -2251,14 +2268,153 @@ describe('v2WorkflowRunner', () => {
     });
   });
 
+  test('node failed stream event exposes provider details and panorama context immediately', async () => {
+    useFlowCanvasStore.setState({
+      backendFlowId: '11111111-1111-1111-1111-111111111111',
+      backendProjectId: 'project-1',
+    });
+    const node = useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, {
+      generationMode: 'panorama_360',
+      generationStatus: 'generating',
+      kind: 'image',
+      modelId: 'gpt-image-2',
+      params: {
+        aspectRatio: '2:1',
+        generationMode: 'panorama_360',
+        size: '2K',
+      },
+      routeKey: 'image.gpt-image-2.line2',
+      status: 'running',
+      title: 'Panorama image',
+    });
+    let onEvent: ((event: any) => void) | undefined;
+
+    listRuntimeRoutesMock.mockResolvedValue([
+      {
+        capabilities: {
+          supportedGenerationModes: ['standard', 'panorama_360'],
+        },
+        estimatedCredits: 100,
+        minChargeCredits: 100,
+        modality: 'image',
+        modelDisplayName: 'GPT Image 2',
+        modelKey: 'gpt-image-2',
+        pricingUnit: 'image_generation',
+        providerKey: 'openai-compatible',
+        providerName: 'OpenAI Compatible',
+        routeKey: 'image.gpt-image-2.line2',
+      },
+    ]);
+    createWorkflowRunMock.mockResolvedValue({
+      runId: 'run-panorama-failed-stream',
+      status: 'running',
+    });
+    getWorkflowRunMock.mockResolvedValue({
+      nodeRuns: [
+        {
+          attempt: 1,
+          costJson: {},
+          createdAt: '2026-05-17T00:00:00.000Z',
+          errorJson: null,
+          finishedAt: null,
+          id: 'node-run-panorama-failed-stream',
+          inputJson: {},
+          maxAttempts: 3,
+          nodeId: node.id,
+          nodeType: 'image.generate',
+          outputJson: null,
+          providerTaskId: null,
+          startedAt: null,
+          status: 'running',
+          tenantId: 'tenant-1',
+          updatedAt: '2026-05-17T00:00:00.000Z',
+          workflowRunId: 'run-panorama-failed-stream',
+        },
+      ],
+      workflowRun: {
+        canceledAt: null,
+        createdAt: '2026-05-17T00:00:00.000Z',
+        createdBy: 'user-1',
+        errorJson: null,
+        finishedAt: null,
+        flowId: '11111111-1111-1111-1111-111111111111',
+        flowVersionId: 'version-1',
+        id: 'run-panorama-failed-stream',
+        idempotencyKey: null,
+        inputJson: { runMode: 'target_node', targetNodeId: node.id },
+        outputJson: null,
+        startedAt: null,
+        status: 'running',
+        tenantId: 'tenant-1',
+        updatedAt: '2026-05-17T00:00:00.000Z',
+      },
+    });
+    streamWorkflowRunMock.mockImplementation((_runId, options) => {
+      onEvent = options.onEvent;
+      return { close: vi.fn() };
+    });
+
+    await runBackendWorkflow({ runMode: 'target_node', targetNodeId: node.id });
+    onEvent?.({
+      createdAt: '2026-05-17T00:00:03.000Z',
+      eventType: 'node.run.failed',
+      id: 'event-node-panorama-failed',
+      nodeRunId: 'node-run-panorama-failed-stream',
+      payload: {
+        code: 'PROVIDER_CONNECTION_FAILED',
+        details: 'fetch failed',
+        message: 'The provider request failed before a response was received',
+        nodeId: node.id,
+        status: 'failed',
+      },
+      sequence: 8,
+      tenantId: 'tenant-1',
+      workflowRunId: 'run-panorama-failed-stream',
+    });
+
+    await vi.waitFor(() => {
+      const errorMessage = String(useFlowCanvasStore.getState().nodes.find((item) => item.id === node.id)?.data.errorMessage || '');
+      expect(errorMessage).toContain('providerDetails=fetch failed');
+    });
+    const errorMessage = String(useFlowCanvasStore.getState().nodes.find((item) => item.id === node.id)?.data.errorMessage || '');
+    expect(errorMessage).toContain('The provider request failed before a response was received');
+    expect(errorMessage).toContain('routeKey=image.gpt-image-2.line2');
+    expect(errorMessage).toContain('modelId=gpt-image-2');
+    expect(errorMessage).toContain('size=2K');
+    expect(errorMessage).toContain('aspectRatio=2:1');
+  });
+
   test('failed target-node snapshot clears generating state on the node', async () => {
     useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, {
+      generationMode: 'panorama_360',
       generationStatus: 'generating',
+      modelId: 'gpt-image-2',
+      params: {
+        aspectRatio: '21:9',
+        generationMode: 'panorama_360',
+        size: '4K',
+      },
       routeKey: 'image.gpt-image-2',
       status: 'running',
       title: 'GPT Image',
     });
     const nodeId = useFlowCanvasStore.getState().nodes[0]?.id as string;
+    listRuntimeRoutesMock.mockResolvedValue([
+      {
+        capabilities: {
+          supportedGenerationModes: ['standard', 'panorama_360'],
+        },
+        estimatedCredits: 100,
+        minChargeCredits: 100,
+        modality: 'image',
+        modelDisplayName: 'GPT Image 2',
+        modelKey: 'gpt-image-2',
+        pricingUnit: 'image_generation',
+        providerKey: 'openai-compatible',
+        providerName: 'OpenAI Compatible',
+        routeKey: 'image.gpt-image-2',
+      },
+    ]);
 
     createWorkflowRunMock.mockResolvedValue({
       runId: 'run-gpt-image-failed',
@@ -2272,6 +2428,7 @@ describe('v2WorkflowRunner', () => {
           createdAt: '2026-05-17T00:00:00.000Z',
           errorJson: {
             code: 'PROVIDER_BAD_REQUEST',
+            details: 'fetch failed',
             message: 'The provider rejected the request payload',
           },
           finishedAt: '2026-05-17T00:00:02.000Z',
@@ -2295,6 +2452,7 @@ describe('v2WorkflowRunner', () => {
         createdBy: 'user-1',
         errorJson: {
           code: 'PROVIDER_BAD_REQUEST',
+          details: 'fetch failed',
           message: 'The provider rejected the request payload',
         },
         finishedAt: '2026-05-17T00:00:02.000Z',
@@ -2317,10 +2475,15 @@ describe('v2WorkflowRunner', () => {
     const updatedNode = useFlowCanvasStore.getState().nodes.find((node) => node.id === nodeId);
     expect(useFlowCanvasStore.getState().nodeRunStatusByNodeId[nodeId]).toBe('failed');
     expect(updatedNode?.data).toMatchObject({
-      errorMessage: 'The provider rejected the request payload',
       generationStatus: 'error',
       status: 'failed',
     });
+    expect(String(updatedNode?.data.errorMessage || '')).toContain('The provider rejected the request payload');
+    expect(String(updatedNode?.data.errorMessage || '')).toContain('providerDetails=fetch failed');
+    expect(String(updatedNode?.data.errorMessage || '')).toContain('routeKey=image.gpt-image-2');
+    expect(String(updatedNode?.data.errorMessage || '')).toContain('modelId=gpt-image-2');
+    expect(String(updatedNode?.data.errorMessage || '')).toContain('size=4K');
+    expect(String(updatedNode?.data.errorMessage || '')).toContain('aspectRatio=21:9');
   });
 
   test('target-node snapshots do not overwrite completed assets on other nodes', async () => {

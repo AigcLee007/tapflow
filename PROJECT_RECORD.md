@@ -13,6 +13,15 @@ Maintainers: project team + Codex sessions
   - `npm test -- src/flowCanvas/panorama/PanoramaGeneratePopover.test.tsx src/flowCanvas/store/flowCanvasStore.test.ts src/flowCanvas/nodes/FlowNodes.agent-metadata.test.tsx src/flowCanvas/runtime/v2WorkflowRunner.test.ts`
   - `npm run build`
 
+## 2026-07-10 - Panorama Prompt, Ratio, And Failure Diagnostics Fix
+
+- changed panorama target-node creation so the new node visibly carries a panorama-specific generation prompt instead of silently reusing the source prompt text.
+- made newly created panorama target image nodes adopt the selected canvas ratio immediately, including `aspectRatio`, `width`, `height`, `naturalWidth`, and `naturalHeight` for `2:1` and `21:9`.
+- upgraded failed panorama node messaging for both snapshot recovery and live stream events to include sanitized `providerDetails` plus `routeKey`, `modelId`, `size`, and `aspectRatio`, making upstream connection failures diagnosable from the node itself.
+- validation:
+  - `npm test -- src/flowCanvas/store/flowCanvasStore.test.ts src/flowCanvas/panorama/PanoramaGeneratePopover.test.tsx src/flowCanvas/runtime/v2WorkflowRunner.test.ts`
+  - `npm run build`
+
 ## 2026-07-10 - GPT-Image-2 Panorama Capability Backfill
 
 - added GPT-Image-2 `panorama_360`, `wraparound_270`, and `subject_orbit_270` production-mode capabilities to the model-level plugin manifests for the primary GPT-Image-2 package plus Mouxihub lines three and four, so model-scoped route catalogs do not depend only on per-route request config.

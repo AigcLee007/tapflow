@@ -28,6 +28,24 @@ export function resolvePanoramaAspectRatio(value: unknown): string {
   return isPanoramaAspectRatio(value) ? String(value).trim() : PANORAMA_DEFAULT_ASPECT_RATIO;
 }
 
+export function buildPanoramaGenerationPrompt(sourcePrompt: unknown, aspectRatio: unknown): string {
+  const basePrompt = readString(sourcePrompt) || 'Expand the connected reference image into a coherent environment.';
+  const outputRatio = resolvePanoramaAspectRatio(aspectRatio);
+
+  return [
+    basePrompt,
+    '',
+    '360 panorama generation requirements:',
+    `- Output aspect ratio: ${outputRatio}.`,
+    '- Create a full 360-degree equirectangular panorama of the same scene from one fixed camera point.',
+    '- The left edge and right edge must connect seamlessly as the same physical direction with no visible break.',
+    '- Preserve the reference image identity, art style, lighting, material treatment, horizon height, and important fixed fixtures.',
+    '- Extend the unseen environment around the viewer; do not make a flat wide-angle image, ordinary landscape crop, or single-camera shot.',
+    '- Avoid duplicating unique objects, signs, doors, lights, characters, or props at the seam.',
+    '- Keep the scene consistent, spatially continuous, and suitable for a 360 panorama viewer.',
+  ].join('\n');
+}
+
 export function isPanoramaMetadata(value: MetadataLike): value is PanoramaAssetMetadata {
   const metadata = value || {};
   return readString((metadata as Record<string, unknown>).mediaKind) === PANORAMA_MEDIA_KIND

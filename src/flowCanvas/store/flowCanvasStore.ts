@@ -15,9 +15,10 @@ import type { FlowDirector3dData, FlowEdgeData, FlowNodeData, FlowNodeKind, Flow
 import { createFlowNode, duplicateFlowNode } from '../utils/nodeFactory';
 import { canConnectFlowNodes, canCreateNodeFromSource } from '../rules/connectionRules';
 import { buildAssetBackedNodeData } from '../utils/assetNodeData';
-import { FLOW_NODE_DEFAULT_SIZES, fitMediaNodeToShortSide } from '../utils/nodeSizing';
+import { FLOW_NODE_DEFAULT_SIZES, fitMediaNodeToShortSide, getMediaNodeSizeFromRatioString, parseAspectRatio } from '../utils/nodeSizing';
 import { buildImageGenerationModeParamPatch } from '../utils/imageGenerationModes';
 import { PANORAMA_GENERATION_MODE, type PanoramaGenerateSettings } from '../panorama/panoramaTypes';
+import { buildPanoramaGenerationPrompt } from '../panorama/panoramaUtils';
 import type {
   FlowRuntimeNodeOutput,
 } from '../types';
@@ -705,13 +706,21 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
       const selectedSize = String(settings.size || '1k').toUpperCase();
       const selectedModelId = String(settings.modelId || latestSourceNode.data.modelId || '').trim();
       const selectedRouteKey = String(settings.routeKey || latestSourceNode.data.routeKey || '').trim();
+      const aspectRatioValue = parseAspectRatio(aspectRatio) || 2;
+      const displaySize = getMediaNodeSizeFromRatioString(aspectRatio, 2);
+      const naturalWidth = aspectRatio === '21:9' ? 2100 : 2000;
+      const naturalHeight = aspectRatio === '21:9' ? 900 : 1000;
 
       const created = createFlowNode(
         'image',
         buildPanoramaTargetPosition(latestSourceNode),
         {
+          aspectRatio: aspectRatioValue,
           generationMode: PANORAMA_GENERATION_MODE,
-          generationPrompt: String(latestSourceNode.data.generationPrompt || '').trim(),
+          generationPrompt: buildPanoramaGenerationPrompt(latestSourceNode.data.generationPrompt, aspectRatio),
+          height: displaySize.height,
+          naturalHeight,
+          naturalWidth,
           params: {
             ...sourceParams,
             ...buildImageGenerationModeParamPatch(PANORAMA_GENERATION_MODE),
@@ -731,6 +740,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
           },
           referenceOrder: appendReferenceOrderKey(undefined, `upstream:${latestSourceNode.id}`),
           title: `${String(latestSourceNode.data.title || 'Image')} Panorama`,
+          width: displaySize.width,
           ...(selectedModelId ? { modelId: selectedModelId } : {}),
           ...(selectedRouteKey ? { routeKey: selectedRouteKey } : {}),
         },
