@@ -28,14 +28,12 @@ export function resolvePanoramaAspectRatio(value: unknown): string {
   return isPanoramaAspectRatio(value) ? String(value).trim() : PANORAMA_DEFAULT_ASPECT_RATIO;
 }
 
-export function buildPanoramaGenerationPrompt(sourcePrompt: unknown, aspectRatio: unknown): string {
-  const basePrompt = readString(sourcePrompt) || 'Expand the connected reference image into a coherent environment.';
+export function buildPanoramaGenerationPrompt(_sourcePrompt: unknown, aspectRatio: unknown): string {
   const outputRatio = resolvePanoramaAspectRatio(aspectRatio);
 
   return [
-    basePrompt,
-    '',
     '360 panorama generation requirements:',
+    '- Use the connected reference image as the only scene source; do not copy or reinterpret the source node text prompt.',
     `- Output aspect ratio: ${outputRatio}.`,
     '- Create a full 360-degree equirectangular panorama of the same scene from one fixed camera point.',
     '- The left edge and right edge must connect seamlessly as the same physical direction with no visible break.',

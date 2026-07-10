@@ -276,7 +276,8 @@ describe('flowCanvasStore upstream image references', () => {
         size: '4K',
       }),
     });
-    expect(String(created.data.generationPrompt)).toContain('moonlit forest');
+    expect(String(created.data.generationPrompt)).not.toContain('moonlit forest');
+    expect(String(created.data.generationPrompt)).toContain('Use the connected reference image as the only scene source');
     expect(String(created.data.generationPrompt)).toContain('360-degree equirectangular panorama');
     expect(String(created.data.generationPrompt)).toContain('left edge and right edge must connect');
     expect(String(created.data.generationPrompt)).not.toBe('moonlit forest');

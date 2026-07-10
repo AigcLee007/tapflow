@@ -28,6 +28,44 @@ function getString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function pickDiagnosticFields(value: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const key of ["code", "errno", "hostname", "message", "name", "port", "syscall"]) {
+    const item = value[key];
+    if (typeof item === "string" || typeof item === "number") {
+      result[key] = item;
+    }
+  }
+  return result;
+}
+
+function describeProviderFetchFailure(error: unknown): Record<string, unknown> | string {
+  if (!(error instanceof Error)) {
+    return String(error);
+  }
+
+  const details: Record<string, unknown> = {
+    message: error.message,
+    name: error.name,
+  };
+  const cause = (error as Error & { cause?: unknown }).cause;
+  if (cause instanceof Error) {
+    details.cause = {
+      message: cause.message,
+      name: cause.name,
+      ...pickDiagnosticFields(cause as unknown as Record<string, unknown>),
+    };
+  } else if (cause && typeof cause === "object" && !Array.isArray(cause)) {
+    const causeDetails = pickDiagnosticFields(cause as Record<string, unknown>);
+    if (Object.keys(causeDetails).length > 0) {
+      details.cause = causeDetails;
+    }
+  } else if (typeof cause === "string" && cause.trim()) {
+    details.cause = cause.trim();
+  }
+  return details;
+}
+
 function getNestedRecord(...records: Array<Record<string, unknown>>): Record<string, unknown> {
   for (const record of records) {
     const params = asRecord(record.params);
@@ -688,7 +726,7 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
 
       throw new AiGatewayError({
         code: "PROVIDER_INTERNAL_ERROR",
-        details: error instanceof Error ? error.message : String(error),
+        details: describeProviderFetchFailure(error),
         message: "The provider request failed before a response was received",
         providerRequest,
         statusCode: 502,
@@ -789,7 +827,7 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
 
       throw new AiGatewayError({
         code: "PROVIDER_INTERNAL_ERROR",
-        details: error instanceof Error ? error.message : String(error),
+        details: describeProviderFetchFailure(error),
         message: "The provider request failed before a response was received",
         providerRequest,
         statusCode: 502,
@@ -975,7 +1013,7 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
 
       throw new AiGatewayError({
         code: "PROVIDER_INTERNAL_ERROR",
-        details: error instanceof Error ? error.message : String(error),
+        details: describeProviderFetchFailure(error),
         message: "The provider request failed before a response was received",
         providerRequest,
         statusCode: 502,
@@ -1087,7 +1125,7 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
 
       throw new AiGatewayError({
         code: "PROVIDER_INTERNAL_ERROR",
-        details: error instanceof Error ? error.message : String(error),
+        details: describeProviderFetchFailure(error),
         message: "The provider poll request failed before a response was received",
         providerRequest,
         statusCode: 502,
@@ -1312,7 +1350,7 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
 
       throw new AiGatewayError({
         code: "PROVIDER_INTERNAL_ERROR",
-        details: error instanceof Error ? error.message : String(error),
+        details: describeProviderFetchFailure(error),
         message: "The provider request failed before a response was received",
         providerRequest,
         statusCode: 502,

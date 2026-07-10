@@ -18,8 +18,11 @@ Maintainers: project team + Codex sessions
 - changed panorama target-node creation so the new node visibly carries a panorama-specific generation prompt instead of silently reusing the source prompt text.
 - made newly created panorama target image nodes adopt the selected canvas ratio immediately, including `aspectRatio`, `width`, `height`, `naturalWidth`, and `naturalHeight` for `2:1` and `21:9`.
 - upgraded failed panorama node messaging for both snapshot recovery and live stream events to include sanitized `providerDetails` plus `routeKey`, `modelId`, `size`, and `aspectRatio`, making upstream connection failures diagnosable from the node itself.
+- refined the panorama prompt again so the target node no longer copies the source node text prompt; it now tells the model to use the connected reference image as the only scene source.
+- enriched OpenAI-compatible provider pre-response failures with structured fetch cause details such as `code`, `hostname`, `port`, and `syscall`, so server-side network or endpoint failures are easier to diagnose from the node error.
 - validation:
   - `npm test -- src/flowCanvas/store/flowCanvasStore.test.ts src/flowCanvas/panorama/PanoramaGeneratePopover.test.tsx src/flowCanvas/runtime/v2WorkflowRunner.test.ts`
+  - `npm run test --workspace @aigc-flow/ai-gateway-core -- runtime.test.ts`
   - `npm run build`
 
 ## 2026-07-10 - GPT-Image-2 Panorama Capability Backfill

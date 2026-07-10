@@ -1832,6 +1832,50 @@ describe("openai-compatible text adapter", () => {
     await server.close();
   });
 
+  test("generateImage includes fetch failure cause details before provider response", async () => {
+    const fetchError = Object.assign(new TypeError("fetch failed"), {
+      cause: {
+        code: "ENOTFOUND",
+        hostname: "api.provider.test",
+        syscall: "getaddrinfo",
+      },
+    });
+    const adapter = new OpenAiCompatibleTextAdapter({
+      fetchImplementation: (async () => {
+        throw fetchError;
+      }) as typeof fetch,
+    });
+
+    await expect(
+      adapter.generateImage(
+        {
+          apiKey: "sk-test-secret",
+          baseUrl: "https://api.provider.test/v1",
+          modelKey: "gpt-image-1",
+          providerKey: "openai",
+          requestConfig: {},
+          routeId: "route-1",
+          routeKey: "image.openai",
+          timeoutMs: 5_000,
+        },
+        {
+          prompt: "this should fail before response",
+        },
+      ),
+    ).rejects.toMatchObject<Partial<AiGatewayError>>({
+      code: "PROVIDER_INTERNAL_ERROR",
+      details: {
+        cause: {
+          code: "ENOTFOUND",
+          hostname: "api.provider.test",
+          syscall: "getaddrinfo",
+        },
+        message: "fetch failed",
+        name: "TypeError",
+      },
+    });
+  });
+
   test("generateImage throws PROVIDER_INVALID_RESPONSE for empty data", async () => {
     const server = await withHttpServer((_request, response) => {
       response.setHeader("content-type", "application/json");
