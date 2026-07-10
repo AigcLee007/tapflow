@@ -702,7 +702,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
           ? sourceParams.panorama as Record<string, unknown>
           : {};
       const aspectRatio = settings.aspectRatio;
-      const selectedSize = String(settings.size || '1k').toLowerCase();
+      const selectedSize = String(settings.size || '1k').toUpperCase();
       const selectedModelId = String(settings.modelId || latestSourceNode.data.modelId || '').trim();
       const selectedRouteKey = String(settings.routeKey || latestSourceNode.data.routeKey || '').trim();
 

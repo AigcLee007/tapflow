@@ -27,6 +27,16 @@ Maintainers: project team + Codex sessions
   - `npm run test --workspace @aigc-flow/db`
   - `npm run build`
 
+## 2026-07-10 - Panorama Generator Select Interaction Fix
+
+- fixed the 360 panorama generator popover so nested model, route, and size menus no longer close the parent generator panel when clicked.
+- normalized panorama target node size params to uppercase `1K`/`2K`/`4K`, matching GPT-Image-2 plugin sizing and pricing tiers while preserving the existing UI selection values.
+- refreshed the panorama generator regression test to avoid corrupted label text and added coverage for nested select interaction.
+- validation:
+  - `npm test -- src/components/menu/useDismissibleLayer.test.tsx`
+  - `npm test -- src/flowCanvas/store/flowCanvasStore.test.ts`
+  - `npm test -- src/flowCanvas/panorama/PanoramaGeneratePopover.test.tsx`
+
 ## 2026-07-10 - Panorama 360 Image-Node Toolbar Fix
 
 - moved the panorama generation entry out of the canvas top chrome and back into the selected image node floating toolbar, matching the current product UX.

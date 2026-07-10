@@ -29,6 +29,32 @@ function TestMenuPair() {
   );
 }
 
+function TestNestedLayer() {
+  const parent = useDismissibleLayer("parent", { closeOnOtherLayer: false });
+  const child = useDismissibleLayer("child");
+
+  return (
+    <div>
+      <button ref={parent.triggerRef} onClick={parent.toggle}>
+        Open Parent
+      </button>
+      {parent.open ? (
+        <div ref={parent.ref} role="dialog">
+          Parent Layer
+          <button ref={child.triggerRef} onClick={child.toggle}>
+            Open Child
+          </button>
+          {child.open ? (
+            <div ref={child.ref} role="menu">
+              Child Menu
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 describe("useDismissibleLayer", () => {
   test("closes the first layer when a second layer opens", () => {
     render(<TestMenuPair />);
@@ -66,5 +92,13 @@ describe("useDismissibleLayer", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open First" }));
     fireEvent.pointerDown(document.body);
     expect(screen.queryByText("First Menu")).toBeNull();
+  });
+
+  test("keeps a parent dialog open when an inner layer opens", () => {
+    render(<TestNestedLayer />);
+    fireEvent.click(screen.getByRole("button", { name: "Open Parent" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open Child" }));
+    expect(screen.getByText("Parent Layer")).toBeTruthy();
+    expect(screen.getByText("Child Menu")).toBeTruthy();
   });
 });

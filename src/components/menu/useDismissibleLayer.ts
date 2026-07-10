@@ -8,7 +8,12 @@ function publish(nextActiveId: string | null) {
   listeners.forEach((listener) => listener(nextActiveId));
 }
 
-export function useDismissibleLayer(layerKey?: string) {
+type DismissibleLayerOptions = {
+  closeOnOtherLayer?: boolean;
+};
+
+export function useDismissibleLayer(layerKey?: string, options: DismissibleLayerOptions = {}) {
+  const closeOnOtherLayer = options.closeOnOtherLayer ?? true;
   const generatedId = useId();
   const id = layerKey || generatedId;
   const ref = useRef<HTMLElement | null>(null);
@@ -17,6 +22,9 @@ export function useDismissibleLayer(layerKey?: string) {
 
   useEffect(() => {
     const listener = (nextActiveId: string | null) => {
+      if (!closeOnOtherLayer) {
+        return;
+      }
       if (nextActiveId !== id) {
         setOpen(false);
       }
@@ -30,7 +38,7 @@ export function useDismissibleLayer(layerKey?: string) {
         publish(null);
       }
     };
-  }, [id]);
+  }, [closeOnOtherLayer, id]);
 
   useEffect(() => {
     if (!open) {

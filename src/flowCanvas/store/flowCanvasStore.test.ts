@@ -268,7 +268,9 @@ describe('flowCanvasStore upstream image references', () => {
         aspectRatio: '21:9',
         aspect_ratio: '21:9',
         generationMode: 'panorama_360',
-        size: '4k',
+        imageSize: '4K',
+        image_size: '4K',
+        size: '4K',
       }),
     });
     expect(useFlowCanvasStore.getState().edges).toEqual(expect.arrayContaining([
