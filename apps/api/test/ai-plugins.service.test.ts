@@ -291,6 +291,21 @@ describe("AiPluginService route install statements", () => {
     ]);
   });
 
+  test("publishes GPT-Image-2 panorama capability on catalog models themselves", () => {
+    for (const manifest of [
+      openAiGptImage2Manifest,
+      mouxiHubGptImage2Line3Manifest,
+      mouxiHubGptImage2Line4Manifest,
+    ]) {
+      expect(manifest.models[0].capabilities.supportedGenerationModes).toEqual([
+        "standard",
+        "panorama_360",
+        "wraparound_270",
+        "subject_orbit_270",
+      ]);
+    }
+  });
+
   test("builds aligned ai_routes insert parameters for GPT-Image-2 line four template", () => {
     const service = new AiPluginService({
       credentialVault: {} as never,

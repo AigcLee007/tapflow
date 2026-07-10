@@ -24,6 +24,9 @@ describe("buildProductionImagePrompt", () => {
     expect(prompt).toContain("future city courtyard");
     expect(prompt).toContain("360-degree equirectangular panorama");
     expect(prompt).toContain("seamless left-right continuity");
+    expect(prompt).toContain("2:1 equirectangular unwrap");
+    expect(prompt).toContain("Do not create a flat wide-angle image");
+    expect(prompt).toContain("left edge and right edge must connect");
   });
 
   test("adds continuous 270 wraparound environment instructions", () => {

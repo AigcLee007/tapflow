@@ -41,6 +41,7 @@ export const openAiGptImage2Manifest: AiPluginManifest = {
       capabilities: {
         maxInputImages: 10,
         supportedSizes: ["1K", "2K", "4K"],
+        supportedGenerationModes: supportedProductionImageModes,
         supportsImageEdit: true,
         supportsReferenceImages: true,
       },

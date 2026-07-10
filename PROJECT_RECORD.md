@@ -13,6 +13,20 @@ Maintainers: project team + Codex sessions
   - `npm test -- src/flowCanvas/panorama/PanoramaGeneratePopover.test.tsx src/flowCanvas/store/flowCanvasStore.test.ts src/flowCanvas/nodes/FlowNodes.agent-metadata.test.tsx src/flowCanvas/runtime/v2WorkflowRunner.test.ts`
   - `npm run build`
 
+## 2026-07-10 - GPT-Image-2 Panorama Capability Backfill
+
+- added GPT-Image-2 `panorama_360`, `wraparound_270`, and `subject_orbit_270` production-mode capabilities to the model-level plugin manifests for the primary GPT-Image-2 package plus Mouxihub lines three and four, so model-scoped route catalogs do not depend only on per-route request config.
+- added database migration `000037_backfill_gpt_image_2_panorama_modes.sql` to backfill existing GPT-Image-2 `ai_models`, `ai_model_catalog`, and `ai_routes.request_config.capabilities.supportedGenerationModes` rows.
+- strengthened the panorama production prompt with DramaClaw-style constraints for 2:1 equirectangular output, seamless left/right continuity, fixed-camera full-scene interpretation, and avoiding flat wide-angle stills.
+- validation:
+  - `npm run test --workspace @aigc-flow/ai-gateway-core -- production-image-prompt.test.ts`
+  - `npm run build --workspace @aigc-flow/db`
+  - `npm run build --workspace @aigc-flow/ai-gateway-core`
+  - `npm test -- apps/api/test/ai-plugins.service.test.ts`
+  - `npm run test --workspace @aigc-flow/ai-gateway-core`
+  - `npm run test --workspace @aigc-flow/db`
+  - `npm run build`
+
 ## 2026-07-10 - Panorama 360 Image-Node Toolbar Fix
 
 - moved the panorama generation entry out of the canvas top chrome and back into the selected image node floating toolbar, matching the current product UX.
