@@ -15,6 +15,7 @@ import {
 import { ACCOUNT_PROVIDER_SETTINGS_ROUTE } from "../../app/routes";
 import { useAuth } from "../../auth/useAuth";
 import { MenuSelect } from "../../components/menu/MenuSelect";
+import { ModelConfigurationWizard } from "./ModelConfigurationWizard";
 import {
   deleteAdminRoute,
   createAdminRoute,
@@ -40,6 +41,7 @@ import {
   type AiModelCatalogRoute,
   type AiRouteTestResult,
 } from "../../services/v2AiModelCatalogApi";
+import type { BackupRouteWizardInput } from "./modelConfigurationWizardState";
 
 type LoadState = "idle" | "loading" | "ready" | "error";
 type Modality = "image" | "text" | "video";
@@ -125,6 +127,63 @@ function formatHealthLabel(status?: string | null) {
   if (status === "active") return "可用";
   if (status === "inactive") return "停用";
   return status || "-";
+}
+
+function selectedRouteRevision(route: AdminRoute) {
+  const revision = (route.pricing as { configurationRevision?: number } | undefined)?.configurationRevision;
+  return typeof revision === "number" ? revision : 1;
+}
+
+function buildBackupFromRoute(input: {
+  connection: AdminProviderConnection | null;
+  credential: AdminCredential | null;
+  route: AdminRoute;
+  selectedCatalogRoute: AiModelCatalogRoute;
+  selectedProvider: AdminProvider | null;
+  selectedProviderModel: AdminModel | null;
+}): BackupRouteWizardInput | null {
+  const { connection, credential, route, selectedCatalogRoute, selectedProvider, selectedProviderModel } = input;
+  if (!connection || !selectedProvider || !selectedProviderModel) return null;
+
+  return {
+    connection: {
+      baseUrl: connection.baseUrl,
+      environment: connection.environment,
+      id: connection.id,
+      name: connection.name,
+    },
+    credential: credential ? { id: credential.id, name: credential.name, status: credential.status } : null,
+    model: {
+      displayName: selectedProviderModel.displayName,
+      modality: selectedCatalogRoute.modality as "image" | "text" | "video",
+      modelFamily: selectedCatalogRoute.modelFamily ?? selectedProviderModel.modelKey,
+      modelKey: selectedProviderModel.modelKey,
+    },
+    pricing: {
+      minChargeCredits: selectedCatalogRoute.minChargeCredits ?? 0,
+      unit: (selectedCatalogRoute.pricingUnit ?? "text_generation") as
+        | "text_generation"
+        | "image_generation"
+        | "video_generation",
+      unitCredits: selectedCatalogRoute.estimatedCredits ?? 0,
+    },
+    provider: {
+      key: selectedProvider.key,
+      kind: selectedProvider.kind,
+      name: selectedProvider.name,
+    },
+    route: {
+      apiMode: route.apiMode,
+      configurationRevision: selectedRouteRevision(route),
+      id: route.id,
+      key: route.routeKey,
+      requestConfig: route.requestConfig,
+      requestPath: route.requestPath,
+      routeLabel: route.routeLabel,
+      timeoutMs: route.priority,
+      upstreamModel: route.upstreamModel,
+    },
+  };
 }
 
 function JsonPreview({ value }: { value: unknown }) {
@@ -238,6 +297,8 @@ export function AiSettingsPage() {
   const [editor, setEditor] = useState<RouteEditorState>(buildEditorState(null));
   const [createEditor, setCreateEditor] = useState<RouteCreateState | null>(null);
   const [createPanelOpen, setCreatePanelOpen] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [backupWizardInput, setBackupWizardInput] = useState<BackupRouteWizardInput | undefined>();
   const [testingRouteId, setTestingRouteId] = useState("");
   const [savingRouteId, setSavingRouteId] = useState("");
   const [creatingRoute, setCreatingRoute] = useState(false);
@@ -278,6 +339,14 @@ export function AiSettingsPage() {
     () =>
       credentials.find((credential) => credential.id === selectedConnection?.credentialId) ?? null,
     [credentials, selectedConnection?.credentialId],
+  );
+  const selectedProvider = useMemo(
+    () => providers.find((provider) => provider.id === selectedAdminRoute?.providerId) ?? null,
+    [providers, selectedAdminRoute?.providerId],
+  );
+  const selectedProviderModel = useMemo(
+    () => providerModels.find((model) => model.id === selectedAdminRoute?.modelId) ?? null,
+    [providerModels, selectedAdminRoute?.modelId],
   );
   const selectedProviderName = selectedCatalogRoute?.providerName || "-";
   const isSelectedRouteTenantEditable = Boolean(selectedAdminRoute?.tenantId);
@@ -627,6 +696,49 @@ export function AiSettingsPage() {
     setMessage("");
   }
 
+  function closeWizard() {
+    setWizardOpen(false);
+    setBackupWizardInput(undefined);
+  }
+
+  function openNewModelWizard() {
+    setError("");
+    setMessage("");
+    setBackupWizardInput(undefined);
+    setWizardOpen(true);
+  }
+
+  function openBackupWizard() {
+    if (!selectedAdminRoute || !selectedCatalogRoute) {
+      setError("请先选择一条线路后再继续。");
+      return;
+    }
+
+    const backup = buildBackupFromRoute({
+      connection: selectedConnection,
+      credential: selectedCredential,
+      route: selectedAdminRoute,
+      selectedCatalogRoute,
+      selectedProvider,
+      selectedProviderModel,
+    });
+
+    if (!backup) {
+      setError("当前线路缺少可复用的连接或模型信息，请先到高级配置页补齐后再试。");
+      return;
+    }
+
+    setError("");
+    setMessage("");
+    setBackupWizardInput(backup);
+    setWizardOpen(true);
+  }
+
+  async function handleWizardPublished() {
+    closeWizard();
+    await refresh();
+  }
+
   async function handleCreateRoute() {
     if (!selectedModel || !createEditor) return;
     const routeKey = createEditor.routeKey.trim();
@@ -774,7 +886,7 @@ export function AiSettingsPage() {
   return (
     <section className="space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+      <div>
           <div className="text-xs uppercase tracking-[0.24em] text-sky-300">AI GATEWAY</div>
           <h1 className="mt-2 text-2xl font-semibold text-white">模型与线路管理</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
@@ -782,6 +894,10 @@ export function AiSettingsPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <button className={buttonClass} onClick={openNewModelWizard} type="button">
+            <Plus size={15} />
+            配置新模型
+          </button>
           <button
             className={buttonClass}
             onClick={() => navigate(ACCOUNT_PROVIDER_SETTINGS_ROUTE)}
@@ -1460,6 +1576,15 @@ export function AiSettingsPage() {
                         <div className="flex flex-wrap gap-2">
                           <button
                             className={buttonClass}
+                            disabled={!canManage}
+                            onClick={openBackupWizard}
+                            type="button"
+                          >
+                            <Plus size={14} />
+                            使用当前线路配置新模型
+                          </button>
+                          <button
+                            className={buttonClass}
                             disabled={!canManage || testingRouteId === selectedCatalogRoute.routeId}
                             onClick={() => void handleTestRoute(selectedCatalogRoute)}
                             type="button"
@@ -1677,6 +1802,17 @@ export function AiSettingsPage() {
           )}
         </section>
       </div>
+      <ModelConfigurationWizard
+        backupFromRoute={backupWizardInput}
+        connections={connections}
+        credentials={credentials}
+        onClose={closeWizard}
+        onPublished={() => {
+          void handleWizardPublished();
+        }}
+        open={wizardOpen}
+        providers={providers}
+      />
     </section>
   );
 }
