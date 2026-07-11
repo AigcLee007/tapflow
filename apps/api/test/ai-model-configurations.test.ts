@@ -162,6 +162,93 @@ describe("AiModelConfigurationsService", () => {
 });
 
 describeWithDatabase("AiModelConfigurationsService database drafts", () => {
+  test("preserves published install active catalog route and pricing when adding a backup draft", async () => {
+    await withService(async ({ adminPool, service }) => {
+      const live = await service.saveDraft(context, builtInDraft("live"));
+      await adminPool.query("UPDATE tenant_ai_plugin_installs SET status='published' WHERE id=(SELECT plugin_install_id FROM ai_routes WHERE id=$1)", [live.route.id]);
+      await adminPool.query("UPDATE ai_model_catalog SET status='active',default_route_key='legacy.default',sort_order=999 WHERE id=$1", [live.catalog.id]);
+      await adminPool.query("UPDATE ai_routes SET status='active' WHERE id=$1", [live.route.id]);
+      await adminPool.query("UPDATE model_pricing SET active=true,unit_credits=9 WHERE route=$1", [live.route.key]);
+
+      const backup = await service.saveDraft(context, builtInDraft("backup"));
+      expect(backup.route.key).toBe(`${live.route.key}.line2`);
+      const state = await adminPool.query(`SELECT install.status AS install_status,catalog.status AS catalog_status,
+        catalog.default_route_key,catalog.sort_order,route.status AS route_status,pricing.active,pricing.unit_credits::text
+        FROM ai_routes route JOIN tenant_ai_plugin_installs install ON install.id=route.plugin_install_id
+        JOIN ai_model_catalog catalog ON catalog.model_id=route.model_id
+        JOIN model_pricing pricing ON pricing.route=route.route_key WHERE route.id=$1`, [live.route.id]);
+      expect(state.rows[0]).toMatchObject({ install_status: "published", catalog_status: "active", route_status: "active", active: true, unit_credits: "9.0000" });
+      expect(state.rows[0].default_route_key).toBe("image.pixellelabs.nano-banana-pro");
+      expect(state.rows[0].sort_order).toBe(10);
+      const backupPricing = await adminPool.query("SELECT active FROM model_pricing WHERE route=$1", [backup.route.key]);
+      expect(backupPricing.rows[0].active).toBe(false);
+    });
+  });
+
+  test("rejects custom provider and model identity collisions without overwriting built-ins", async () => {
+    await withService(async ({ adminPool, service }) => {
+      await service.saveDraft(context, builtInDraft("identity-seed"));
+      await expect(service.saveDraft(context, {
+        connection: { mode: "create", name: "Collision", baseUrl: "https://evil.example/", environment: "production" },
+        credential: { mode: "create", name: "Collision key", secret: "collision-secret" },
+        custom: { provider: { key: "pixellelabs", kind: "openai-compatible", name: "Replacement" }, model: { displayName: "Replacement", modality: "text", modelFamily: "replacement", modelKey: "gemini-3-pro-image-preview" }, routeDefaults: {} },
+        pricing: { unit: "text_generation", unitCredits: 1, minChargeCredits: 1 },
+        route: { routeLabel: "Collision", upstreamModel: "gemini-3-pro-image-preview" },
+      })).rejects.toMatchObject({ code: "CONFIGURATION_PROVIDER_IDENTITY_CONFLICT" });
+      const provider = await adminPool.query("SELECT kind,default_base_url FROM ai_providers WHERE key='pixellelabs'");
+      expect(provider.rows[0]).toMatchObject({ kind: "pixellelabs-gemini-image", default_base_url: "https://api.pixellelabs.com" });
+    });
+  });
+
+  test("rejects an incompatible custom model identity on a compatible provider", async () => {
+    await withService(async ({ service }) => {
+      const base = {
+        connection: { mode: "create" as const, name: "Custom identity one", baseUrl: "https://custom.example/", environment: "production" },
+        credential: { mode: "create" as const, name: "Custom identity key one", secret: "custom-one" },
+        custom: { provider: { key: "custom-identity", kind: "openai-compatible" as const, name: "Custom Identity" }, model: { displayName: "Shared", modality: "image" as const, modelFamily: "image-family", modelKey: "shared-model" }, routeDefaults: {} },
+        pricing: { unit: "image_generation" as const, unitCredits: 1, minChargeCredits: 1 },
+        route: { routeLabel: "Custom one", upstreamModel: "shared-model" },
+      };
+      await service.saveDraft(context, base);
+      await expect(service.saveDraft(context, {
+        ...base,
+        connection: { ...base.connection, name: "Custom identity two" },
+        credential: { ...base.credential, name: "Custom identity key two" },
+        custom: { ...base.custom, model: { ...base.custom.model, modality: "text", modelFamily: "text-family" } },
+        pricing: { unit: "text_generation", unitCredits: 1, minChargeCredits: 1 },
+      })).rejects.toMatchObject({ code: "CONFIGURATION_MODEL_IDENTITY_CONFLICT" });
+    });
+  });
+
+  test("persists updated pricing JSON and selected connection environment", async () => {
+    await withService(async ({ adminPool, service }) => {
+      const first = await service.saveDraft(context, builtInDraft("environment", {
+        connection: { mode: "create", name: "Staging connection", baseUrl: "https://api.pixellelabs.com/", environment: "staging" },
+      }));
+      const updated = await service.saveDraft(context, builtInDraft("environment-update", {
+        routeId: first.route.id, expectedRevision: 1,
+        connection: { mode: "existing", connectionId: first.connection.id },
+        credential: { mode: "existing", credentialId: first.credential.id },
+        pricing: { unit: "image_generation", unitCredits: 7, minChargeCredits: 6 },
+      }));
+      const row = await adminPool.query("SELECT environment,pricing FROM ai_routes WHERE id=$1", [updated.route.id]);
+      expect(row.rows[0]).toMatchObject({ environment: "staging", pricing: { unitCredits: 7, minChargeCredits: 6, unit: "image_generation" } });
+    });
+  });
+
+  test("allocates deterministic unique line keys for repeated same-line drafts", async () => {
+    await withService(async ({ service }) => {
+      const first = await service.saveDraft(context, builtInDraft("same-line-one"));
+      const second = await service.saveDraft(context, builtInDraft("same-line-two"));
+      const third = await service.saveDraft(context, builtInDraft("same-line-three"));
+      expect([first.route.key, second.route.key, third.route.key]).toEqual([
+        "image.pixellelabs.nano-banana-pro",
+        "image.pixellelabs.nano-banana-pro.line2",
+        "image.pixellelabs.nano-banana-pro.line3",
+      ]);
+    });
+  });
+
   test("built-in draft creates complete inactive records and returns a sanitized nested view", async () => {
     await withService(async ({ adminPool, service }) => {
       const draft = await service.saveDraft(context, builtInDraft("complete"));
