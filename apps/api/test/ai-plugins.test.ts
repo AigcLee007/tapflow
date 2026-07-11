@@ -288,6 +288,22 @@ describeWithDatabase("ai plugin admin API", () => {
           status: "published",
         });
 
+        const serviceContext = { tenantId: owner.currentTenant.id, userId: owner.user.id };
+        const [reinstallResult, deleteResult] = await Promise.allSettled([
+          api.aiPluginService.installPlugin(serviceContext, "pixellelabs.nano-banana-pro", { publishImmediately: true }),
+          api.aiGatewayService.deleteCredential(serviceContext, install.json().credentialId),
+        ]);
+        expect(reinstallResult.status).toBe("fulfilled");
+        expect(deleteResult.status).toBe("rejected");
+        if (deleteResult.status === "rejected") expect(deleteResult.reason).toMatchObject({ code: "CREDENTIAL_IN_USE" });
+        const danglingDeleted = await adminPool.query<{ count: string }>(`SELECT COUNT(*)::text AS count FROM api_credentials credential
+          WHERE credential.status='deleted' AND credential.id=$1 AND (
+            EXISTS (SELECT 1 FROM tenant_ai_plugin_installs install WHERE install.credential_id=credential.id)
+            OR EXISTS (SELECT 1 FROM ai_provider_connections connection WHERE connection.credential_id=credential.id)
+            OR EXISTS (SELECT 1 FROM ai_routes route WHERE route.credential_id=credential.id AND route.deleted_at IS NULL))`,
+          [install.json().credentialId]);
+        expect(danglingDeleted.rows[0].count).toBe("0");
+
         const disable = await api.inject({
           headers: {
             authorization: `Bearer ${owner.accessToken}`,

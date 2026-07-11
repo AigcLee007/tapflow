@@ -9,6 +9,35 @@ import { tapflowVideoEditorFfmpegManifest } from "../../../packages/ai-gateway-c
 import { AiPluginService } from "../src/modules/ai-plugins/ai-plugins.service.js";
 
 describe("AiPluginService route install statements", () => {
+  test("locks and validates an existing platform credential before plugin reuse", async () => {
+    const service = new AiPluginService({ credentialVault: {} as never, pool: {} as never });
+    const queries: Array<{ sql: string; values: unknown[] }> = [];
+    const client = { async query(sql: string, values: unknown[]) {
+      queries.push({ sql, values });
+      return { rows: [{ id: "00000000-0000-0000-0000-000000000004" }] };
+    } };
+    const resolved = await (service as unknown as { resolveCredentialId(
+      client: typeof client, context: { tenantId: string; userId: null }, manifest: typeof openAiGptImage2Manifest,
+      providerId: string, existingCredentialId: string, input: Record<string, never>): Promise<string> }).resolveCredentialId(
+      client, { tenantId: "tenant", userId: null }, openAiGptImage2Manifest,
+      "00000000-0000-0000-0000-000000000002", "00000000-0000-0000-0000-000000000004", {},
+    );
+    expect(resolved).toBe("00000000-0000-0000-0000-000000000004");
+    expect(queries[0].sql).toContain("FOR KEY SHARE");
+    expect(queries[0].sql).toContain("tenant_id IS NULL");
+    expect(queries[0].sql).toContain("provider_id = $2::uuid");
+    expect(queries[0].sql).toContain("status = 'active'");
+  });
+
+  test("rejects missing inactive or mismatched reused plugin credential", async () => {
+    const service = new AiPluginService({ credentialVault: {} as never, pool: {} as never });
+    const client = { async query() { return { rows: [] }; } };
+    await expect((service as unknown as { resolveCredentialId(...args: unknown[]): Promise<string> }).resolveCredentialId(
+      client, { tenantId: "tenant", userId: null }, openAiGptImage2Manifest,
+      "00000000-0000-0000-0000-000000000002", "00000000-0000-0000-0000-000000000004", {},
+    )).rejects.toMatchObject({ code: "PLUGIN_CREDENTIAL_UNAVAILABLE", statusCode: 409 });
+  });
+
   test("marks credential-free video editor FFmpeg plugin summaries as not requiring credentials", () => {
     const service = new AiPluginService({
       credentialVault: {} as never,

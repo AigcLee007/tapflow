@@ -516,7 +516,17 @@ export class AiPluginService {
   ): Promise<string | null> {
     const secret = input.credential?.secret?.trim();
     if (!secret) {
-      return existingCredentialId;
+      if (!existingCredentialId) return null;
+      const existing = await client.query<{ id: string }>(
+        `SELECT id::text AS id FROM api_credentials
+         WHERE id = $1::uuid AND tenant_id IS NULL AND provider_id = $2::uuid AND status = 'active'
+         FOR KEY SHARE`,
+        [existingCredentialId, providerId],
+      );
+      if (!existing.rows[0]) {
+        throw new AiPluginApiError(409, "PLUGIN_CREDENTIAL_UNAVAILABLE", "The installed plugin credential is unavailable");
+      }
+      return existing.rows[0].id;
     }
 
     const encrypted = this.credentialVault.createCredential(secret);
