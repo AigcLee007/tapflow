@@ -23,14 +23,18 @@ describeWithDatabase("ai plugin package migration and RLS", () => {
       const pool = createPgPool();
 
       try {
-        await runMigrations(pool);
+        const migrationResult = await runMigrations(pool);
+        expect(migrationResult.appliedMigrations).toContain(
+          "000038_ai_model_configuration_revisions.sql",
+        );
 
         const columns = await pool.query<{
           column_name: string;
+          column_default: string | null;
           is_nullable: "NO" | "YES";
         }>(
           `
-            SELECT column_name, is_nullable
+            SELECT column_name, column_default, is_nullable
             FROM information_schema.columns
             WHERE table_schema = 'public'
               AND table_name = 'ai_routes'
@@ -40,9 +44,46 @@ describeWithDatabase("ai plugin package migration and RLS", () => {
         );
 
         expect(columns.rows).toEqual([
-          { column_name: "configuration_revision", is_nullable: "NO" },
-          { column_name: "tested_revision", is_nullable: "YES" },
+          {
+            column_default: "1",
+            column_name: "configuration_revision",
+            is_nullable: "NO",
+          },
+          {
+            column_default: null,
+            column_name: "tested_revision",
+            is_nullable: "YES",
+          },
         ]);
+
+        const constraint = await pool.query<{ definition: string }>(
+          `
+            SELECT pg_get_constraintdef(oid) AS definition
+            FROM pg_constraint
+            WHERE conrelid = 'ai_routes'::regclass
+              AND conname = 'ai_routes_tested_revision_valid'
+          `,
+        );
+        expect(constraint.rows).toHaveLength(1);
+        expect(constraint.rows[0]?.definition.replace(/[()\s]+/g, " ").trim()).toBe(
+          "CHECK tested_revision IS NULL OR tested_revision <= configuration_revision",
+        );
+
+        const index = await pool.query<{ indexdef: string }>(
+          `
+            SELECT indexdef
+            FROM pg_indexes
+            WHERE schemaname = 'public'
+              AND tablename = 'ai_routes'
+              AND indexname = 'ai_routes_publish_readiness_idx'
+          `,
+        );
+        expect(index.rows).toHaveLength(1);
+        const indexDefinition = index.rows[0]?.indexdef.replace(/\s+/g, " ") ?? "";
+        expect(indexDefinition).toContain(
+          "(status, configuration_revision, tested_revision)",
+        );
+        expect(indexDefinition).toMatch(/WHERE \(deleted_at IS NULL\)$/);
       } finally {
         await pool.end();
       }
