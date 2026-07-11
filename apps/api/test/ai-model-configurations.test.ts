@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, test } from "vitest";
-import { builtinAiPluginRegistry, CredentialVault } from "@aigc-flow/ai-gateway-core";
+import { AiPluginRegistry, builtinAiPluginRegistry, CredentialVault } from "@aigc-flow/ai-gateway-core";
+import { openAiGptImage2Manifest } from "../../../packages/ai-gateway-core/src/plugins/manifests/openai-gpt-image-2.js";
 import { createPgPool } from "@aigc-flow/db";
 import { runMigrations } from "../../../packages/db/src/migrator.js";
 import { hasDatabaseEnv, withDatabase } from "../../../packages/db/test/helpers.js";
@@ -27,6 +28,11 @@ function builtInDraft(suffix: string, overrides: Record<string, unknown> = {}) {
     route: { routeLabel: `Line ${suffix}`, upstreamModel: "gemini-3-pro-image-preview" },
     ...overrides,
   } as never;
+}
+
+function resolveBuiltIn(input: ReturnType<typeof builtInDraft>, registry = builtinAiPluginRegistry) {
+  const service = new AiModelConfigurationsService({ credentialVault: {} as never, pluginRegistry: registry, pool: {} as never });
+  return (service as unknown as { resolveDefinition(value: typeof input): { model: { modelKey: string }; routeDefaults: { requestPath?: string } } }).resolveDefinition(input);
 }
 
 async function withService(run: (args: {
@@ -109,6 +115,50 @@ describe("AiModelConfigurationsService", () => {
       },
     )).rejects.toMatchObject({ code: "CONFIGURATION_UPSTREAM_MODEL_UNSUPPORTED", statusCode: 400 });
   });
+
+  test("selects GPT-Image-2 line two for upstream gpt-5.5", () => {
+    const resolved = resolveBuiltIn({
+      ...builtInDraft("line-two"),
+      packageKey: "openai-compatible.gpt-image-2",
+      route: { routeLabel: "Line two", upstreamModel: "gpt-5.5" },
+    } as never);
+    expect(resolved).toMatchObject({ model: { modelKey: "gpt-image-2" }, routeDefaults: { requestPath: "/responses" } });
+  });
+
+  test("selects GPT-Image-2 line one for upstream gpt-image-2", () => {
+    const resolved = resolveBuiltIn({
+      ...builtInDraft("line-one"),
+      packageKey: "openai-compatible.gpt-image-2",
+      route: { routeLabel: "Line one", upstreamModel: "gpt-image-2" },
+    } as never);
+    expect(resolved.routeDefaults.requestPath).toBe("/images/generations");
+  });
+
+  test("uses explicit routeKey to disambiguate routes sharing a product model", () => {
+    const resolved = resolveBuiltIn({
+      ...builtInDraft("explicit"),
+      packageKey: "openai-compatible.gpt-image-2",
+      route: { routeKey: "image.gpt-image-2.line2", routeLabel: "Line two", upstreamModel: "gpt-5.5" },
+    } as never);
+    expect(resolved.routeDefaults.requestPath).toBe("/responses");
+  });
+
+  test("rejects ambiguous compatible built-in routes without routeKey", () => {
+    const ambiguousManifest = {
+      ...openAiGptImage2Manifest,
+      packageKey: "test.ambiguous-gpt-image-2",
+      routes: [
+        ...openAiGptImage2Manifest.routes,
+        { ...openAiGptImage2Manifest.routes[0], routeKey: "test.ambiguous.two" },
+      ],
+    };
+    const registry = new AiPluginRegistry([ambiguousManifest]);
+    expect(() => resolveBuiltIn({
+      ...builtInDraft("ambiguous"),
+      packageKey: ambiguousManifest.packageKey,
+      route: { routeLabel: "Ambiguous", upstreamModel: "gpt-image-2" },
+    } as never, registry)).toThrowError(expect.objectContaining({ code: "CONFIGURATION_ROUTE_AMBIGUOUS" }));
+  });
 });
 
 describeWithDatabase("AiModelConfigurationsService database drafts", () => {
@@ -129,8 +179,14 @@ describeWithDatabase("AiModelConfigurationsService database drafts", () => {
 
   test("same provider routes can create distinct credentials", async () => {
     await withService(async ({ service }) => {
-      const first = await service.saveDraft(context, builtInDraft("distinct-a"));
-      const second = await service.saveDraft(context, builtInDraft("distinct-b"));
+      const first = await service.saveDraft(context, builtInDraft("distinct-a", {
+        packageKey: "openai-compatible.gpt-image-2",
+        route: { routeLabel: "Line one", upstreamModel: "gpt-image-2" },
+      }));
+      const second = await service.saveDraft(context, builtInDraft("distinct-b", {
+        packageKey: "openai-compatible.gpt-image-2",
+        route: { routeLabel: "Line two", upstreamModel: "gpt-5.5" },
+      }));
       expect(first.credential.id).not.toBe(second.credential.id);
       expect(first.route.id).not.toBe(second.route.id);
     });
@@ -138,9 +194,14 @@ describeWithDatabase("AiModelConfigurationsService database drafts", () => {
 
   test("multiple routes can explicitly share one existing credential", async () => {
     await withService(async ({ service }) => {
-      const first = await service.saveDraft(context, builtInDraft("shared-a"));
+      const first = await service.saveDraft(context, builtInDraft("shared-a", {
+        packageKey: "openai-compatible.gpt-image-2",
+        route: { routeLabel: "Line one", upstreamModel: "gpt-image-2" },
+      }));
       const second = await service.saveDraft(context, builtInDraft("shared-b", {
+        packageKey: "openai-compatible.gpt-image-2",
         credential: { mode: "existing", credentialId: first.credential.id },
+        route: { routeLabel: "Line two", upstreamModel: "gpt-5.5" },
       }));
       expect(second.credential.id).toBe(first.credential.id);
     });

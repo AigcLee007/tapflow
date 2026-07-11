@@ -50,7 +50,7 @@ export class AiModelConfigurationApiError extends Error {
 type ResolvedDefinition = {
   provider: { key: string; name: string; kind: string; defaultBaseUrl?: string; capabilities?: Record<string, unknown> };
   model: { modelKey: string; displayName: string; modality: "text" | "image" | "video"; modelFamily: string; capabilities?: Record<string, unknown>; uiSchema?: Record<string, unknown>; sortOrder?: number; defaultRouteKey?: string };
-  routeDefaults: { apiMode?: string; mode?: string; requestConfig?: Record<string, unknown>; requestPath?: string; timeoutMs?: number };
+  routeDefaults: { apiMode?: string; mode?: string; requestConfig?: Record<string, unknown>; requestPath?: string; routeKey?: string; timeoutMs?: number };
   manifest: AiPluginManifest | null;
 };
 
@@ -122,21 +122,47 @@ export class AiModelConfigurationsService {
   private resolveDefinition(input: SaveModelConfigurationDraftInput): ResolvedDefinition {
     if ("packageKey" in input) {
       const manifest = this.pluginRegistry.require(input.packageKey);
-      const model = manifest.models.find((candidate) => candidate.modelKey === input.route.upstreamModel);
-      const route = model
-        ? manifest.routes.find((candidate) => candidate.modelKey === model.modelKey)
-        : undefined;
-      if (!model || !route) {
+      const effectiveUpstream = (route: AiPluginManifest["routes"][number]) =>
+        this.stringValue(route.requestConfig, "upstreamModel")
+        ?? this.stringValue(route.requestConfig, "model")
+        ?? this.stringValue(route.requestConfig, "providerBaseModel")
+        ?? route.modelKey;
+      let route: AiPluginManifest["routes"][number] | undefined;
+      if (input.route.routeKey) {
+        route = manifest.routes.find((candidate) => candidate.routeKey === input.route.routeKey);
+        if (!route || effectiveUpstream(route) !== input.route.upstreamModel) {
+          throw new AiModelConfigurationApiError(
+            400,
+            "CONFIGURATION_UPSTREAM_MODEL_UNSUPPORTED",
+            "The selected route does not support this upstream model",
+          );
+        }
+      } else {
+        const matches = manifest.routes.filter((candidate) => effectiveUpstream(candidate) === input.route.upstreamModel);
+        if (matches.length > 1) {
+          throw new AiModelConfigurationApiError(
+            400,
+            "CONFIGURATION_ROUTE_AMBIGUOUS",
+            "Multiple plugin routes support this upstream model; routeKey is required",
+          );
+        }
+        route = matches[0];
+      }
+      if (!route) {
         throw new AiModelConfigurationApiError(
           400,
           "CONFIGURATION_UPSTREAM_MODEL_UNSUPPORTED",
           "The selected upstream model is not supported by this plugin package",
         );
       }
+      const model = manifest.models.find((candidate) => candidate.modelKey === route!.modelKey);
+      if (!model) {
+        throw new AiModelConfigurationApiError(400, "CONFIGURATION_UPSTREAM_MODEL_UNSUPPORTED", "The selected route has no compatible product model");
+      }
       return { provider: manifest.provider, model, manifest, routeDefaults: {
         apiMode: this.stringValue(route.requestConfig, "apiMode") ?? route.mode,
         mode: route.mode, requestConfig: route.requestConfig, requestPath: route.path,
-        timeoutMs: route.timeoutMs,
+        routeKey: route.routeKey, timeoutMs: route.timeoutMs,
       } };
     }
     return { provider: input.custom.provider, model: { ...input.custom.model }, manifest: null, routeDefaults: input.custom.routeDefaults };
@@ -257,7 +283,8 @@ export class AiModelConfigurationsService {
           input.route.upstreamModel,input.route.apiMode ?? definition.routeDefaults.apiMode ?? definition.routeDefaults.mode ?? "sync",requestPath ?? null]);
       return updated.rows[0]!;
     }
-    const routeKey = input.route.routeKey ?? `${definition.model.modality}.${definition.provider.key}.${definition.model.modelKey}.${randomUUID().slice(0,8)}`.toLowerCase().replace(/[^a-z0-9._-]/g,"-");
+    const routeKey = input.route.routeKey ?? definition.routeDefaults.routeKey
+      ?? `${definition.model.modality}.${definition.provider.key}.${definition.model.modelKey}.${randomUUID().slice(0,8)}`.toLowerCase().replace(/[^a-z0-9._-]/g,"-");
     const inserted = await client.query<any>(
       `INSERT INTO ai_routes (tenant_id,provider_id,model_id,credential_id,connection_id,route_key,modality,priority,weight,
        fallback_group,request_config,pricing,rate_limit,status,plugin_install_id,model_family,route_label,environment,
