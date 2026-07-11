@@ -150,6 +150,11 @@ describeWithDatabase("ai route test API", () => {
         expect(successRoute?.id).toBeTruthy();
         expect(failRoute?.id).toBeTruthy();
 
+        const tenantRouteRejected = await api.inject({ headers: { authorization: `Bearer ${owner.accessToken}` },
+          method: "POST", url: `/api/v2/admin/ai/routes/${successRoute?.id}/test` });
+        expect(tenantRouteRejected.statusCode).toBe(404);
+        await adminPool.query("UPDATE ai_routes SET tenant_id=NULL WHERE id=ANY($1::uuid[])", [[successRoute?.id, failRoute?.id]]);
+
         const successTest = await api.inject({
           headers: {
             authorization: `Bearer ${owner.accessToken}`,
@@ -182,6 +187,14 @@ describeWithDatabase("ai route test API", () => {
         });
         expect(JSON.stringify(successTest.json())).not.toContain("mock-route-test-secret");
         expect(JSON.stringify(successTest.json())).not.toContain("iVBORw0KGgo");
+        const successRevision = await adminPool.query(
+          "SELECT configuration_revision,tested_revision,health_status,last_health_checked_at FROM ai_routes WHERE id=$1",
+          [successRoute?.id],
+        );
+        expect(successRevision.rows[0]).toMatchObject({ configuration_revision: 1, tested_revision: 1, health_status: "ok" });
+        expect(successRevision.rows[0].last_health_checked_at).toBeTruthy();
+
+        await adminPool.query("UPDATE ai_routes SET tested_revision=configuration_revision WHERE id=$1", [failRoute?.id]);
 
         const failedTest = await api.inject({
           headers: {
@@ -199,6 +212,12 @@ describeWithDatabase("ai route test API", () => {
         expect(failedTest.json().error).toMatchObject({
           code: "PROVIDER_BAD_REQUEST",
         });
+        const failedRevision = await adminPool.query(
+          "SELECT configuration_revision,tested_revision,health_status,last_health_checked_at FROM ai_routes WHERE id=$1",
+          [failRoute?.id],
+        );
+        expect(failedRevision.rows[0]).toMatchObject({ configuration_revision: 1, tested_revision: null, health_status: "failed" });
+        expect(failedRevision.rows[0].last_health_checked_at).toBeTruthy();
 
         const healthRows = await adminPool.query<{
           error: Record<string, unknown> | null;

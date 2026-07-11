@@ -5531,3 +5531,22 @@ Validation completed:
   - `npm test -- src/flowCanvas/utils/directorVideoSync.test.ts src/flowCanvas/utils/videoEditorNodeData.test.ts src/flowCanvas/studios/ProductionStudioShell.test.tsx src/flowCanvas/canvas/AiFlowCanvas.production-studios.test.tsx scripts/smoke-production-studios.test.ts` passed on 2026-07-06: 81 tests.
   - `npm run smoke:production-studios` passed on 2026-07-06 with `directorVideoSyncRequest: true`.
   - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
+
+## 2026-07-11 - AI Model Configuration Wizard Completion
+
+- completed the Model Center model-configuration wizard rollout so admins can create a product model from a primary entry or by cloning the currently selected route without leaving Model Center.
+- wired `AiSettingsPage` to:
+  - expose the new primary `配置新模型` entry beside the existing secondary `高级配置` entry
+  - open the five-step wizard in blank mode or backup-from-route mode
+  - hydrate backup drafts from the selected route's provider, model, connection, credential, and pricing metadata
+  - refresh Model Center data after a successful publish and close the wizard cleanly
+- expanded the page integration tests to cover:
+  - opening the wizard from the primary entry
+  - reloading admin data after publish
+  - opening a new model draft from the selected route backup action
+- validation:
+  - `npm test -- src/account/ai-settings/AiSettingsPage.test.tsx`
+  - `npm test -- src/services/v2AiModelConfigurationsApi.test.ts src/account/ai-settings/modelConfigurationWizardState.test.ts src/account/ai-settings/ModelConfigurationWizard.test.tsx src/account/ai-settings/AiSettingsPage.test.tsx`
+  - `npm run test --workspace @aigc-flow/api -- ai-model-configurations.schemas.test.ts ai-model-configurations.test.ts ai-gateway.service.test.ts`
+  - `npm run test --workspace @aigc-flow/db -- ai-plugin-packages.test.ts` skipped locally because the database-backed suite had no configured test database environment
+  - `npm run build` passed on 2026-07-11 with existing Browserslist age, dynamic-import, and chunk-size warnings only

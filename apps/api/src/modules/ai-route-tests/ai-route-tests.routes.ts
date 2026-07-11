@@ -93,7 +93,7 @@ export function registerAiRouteTestRoutes(app: FastifyInstance): void {
         const params = routeTestParamsSchema.parse(request.params) as RouteTestParams;
         const body = runRouteTestSchema.parse(request.body ?? {}) as RunRouteTestInput;
         return reply.send(
-          await app.aiRouteTestService.runRouteTest(
+          await app.aiRouteTestService.testAdminDraftRoute(
             getTenantContext(request),
             params.routeId,
             body,

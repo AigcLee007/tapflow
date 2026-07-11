@@ -84,6 +84,7 @@ type RouteRecord = {
   api_mode: string | null;
   base_url_override: string | null;
   connection_id: string | null;
+  configuration_revision: number;
   created_at: string;
   credential_id: string | null;
   deleted_at: string | null;
@@ -107,6 +108,7 @@ type RouteRecord = {
   route_label: string | null;
   status: string;
   tenant_id: string | null;
+  tested_revision: number | null;
   model_family: string | null;
   upstream_model: string | null;
   updated_at: string;
@@ -336,12 +338,14 @@ export type ProviderConnectionView = {
 export class AiGatewayApiError extends Error {
   readonly code: string;
   readonly statusCode: number;
+  readonly details?: unknown;
 
-  constructor(statusCode: number, code: string, message: string) {
+  constructor(statusCode: number, code: string, message: string, details?: unknown) {
     super(message);
     this.code = code;
     this.name = "AiGatewayApiError";
     this.statusCode = statusCode;
+    this.details = details;
   }
 }
 
@@ -513,6 +517,15 @@ function buildNormalizedRouteRequestConfig(input: {
   }
 
   return next;
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value as Record<string, unknown>).sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, nested]) => `${JSON.stringify(key)}:${canonicalJson(nested)}`).join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "undefined";
 }
 
 function buildDuplicatedRouteKey(routeKey: string): string {
@@ -1422,6 +1435,26 @@ export class AiGatewayAdminService {
         upstreamModel: input.upstreamModel === undefined ? existing.upstream_model : input.upstreamModel,
       });
       this.validateRouteConfig(nextRequestConfig);
+      const nextCredentialId = input.credentialId !== undefined ? input.credentialId : existing.credential_id;
+      const nextBaseUrlOverride = input.baseUrlOverride !== undefined ? input.baseUrlOverride?.trim() ?? null : existing.base_url_override;
+      const nextUpstreamModel = input.upstreamModel !== undefined ? input.upstreamModel?.trim() ?? null : existing.upstream_model;
+      const nextApiMode = input.apiMode !== undefined ? input.apiMode?.trim() ?? null : existing.api_mode;
+      const nextRequestPath = input.requestPath !== undefined ? input.requestPath?.trim() ?? null : existing.request_path;
+      const nextPricing = input.pricing ?? existing.pricing;
+      const nextPriority = input.priority ?? existing.priority;
+      const nextWeight = input.weight ?? existing.weight;
+      const nextFallbackGroup = input.fallbackGroup !== undefined ? input.fallbackGroup?.trim() ?? null : existing.fallback_group;
+      const nextIsDefault = input.isDefault ?? existing.is_default;
+      const nextRateLimit = input.rateLimit ?? existing.rate_limit;
+      const nextStatus = input.status?.trim() ?? existing.status;
+      const runtimeChanged = modelId !== existing.model_id || nextCredentialId !== existing.credential_id
+        || nextConnectionId !== existing.connection_id || nextBaseUrlOverride !== existing.base_url_override
+        || nextUpstreamModel !== existing.upstream_model || nextApiMode !== existing.api_mode
+        || nextRequestPath !== existing.request_path || canonicalJson(nextRequestConfig) !== canonicalJson(existing.request_config ?? {})
+        || canonicalJson(nextPricing) !== canonicalJson(existing.pricing ?? {}) || nextPriority !== existing.priority
+        || nextWeight !== existing.weight || nextFallbackGroup !== existing.fallback_group
+        || nextIsDefault !== existing.is_default || canonicalJson(nextRateLimit) !== canonicalJson(existing.rate_limit ?? {})
+        || nextStatus !== existing.status || nextEnvironment !== existing.environment;
 
       const result = await client.query<RouteRecord>(
         `
@@ -1441,12 +1474,14 @@ export class AiGatewayAdminService {
             request_path = $13,
             internal_label = $14,
             admin_notes = $15,
-            is_default = $16::boolean,
+            is_default = CASE WHEN $22::boolean THEN false ELSE $16::boolean END,
             route_label = $17,
             request_config = $18::jsonb,
             pricing = $19::jsonb,
             rate_limit = $20::jsonb,
-            status = $21,
+            status = CASE WHEN $22::boolean THEN 'inactive' ELSE $21 END,
+            configuration_revision = configuration_revision + CASE WHEN $22::boolean THEN 1 ELSE 0 END,
+            tested_revision = CASE WHEN $22::boolean THEN NULL ELSE tested_revision END,
             updated_at = now()
           WHERE id = $1::uuid
           RETURNING
@@ -1457,6 +1492,7 @@ export class AiGatewayAdminService {
             plugin_install_id::text AS plugin_install_id,
             credential_id::text AS credential_id,
             connection_id::text AS connection_id,
+            configuration_revision,
             route_key,
             route_label,
             modality,
@@ -1479,6 +1515,7 @@ export class AiGatewayAdminService {
             pricing,
             rate_limit,
             status,
+            tested_revision,
             created_at::text AS created_at,
             updated_at::text AS updated_at
         `,
@@ -1486,24 +1523,25 @@ export class AiGatewayAdminService {
           routeId,
           modelId,
           nextModelFamily,
-          input.credentialId !== undefined ? input.credentialId : existing.credential_id,
+          nextCredentialId,
           nextConnectionId,
           nextEnvironment,
-          input.priority ?? existing.priority,
-          input.weight ?? existing.weight,
-          input.fallbackGroup !== undefined ? input.fallbackGroup?.trim() ?? null : existing.fallback_group,
-          input.baseUrlOverride !== undefined ? input.baseUrlOverride?.trim() ?? null : existing.base_url_override,
-          input.upstreamModel !== undefined ? input.upstreamModel?.trim() ?? null : existing.upstream_model,
-          input.apiMode !== undefined ? input.apiMode?.trim() ?? null : existing.api_mode,
-          input.requestPath !== undefined ? input.requestPath?.trim() ?? null : existing.request_path,
+          nextPriority,
+          nextWeight,
+          nextFallbackGroup,
+          nextBaseUrlOverride,
+          nextUpstreamModel,
+          nextApiMode,
+          nextRequestPath,
           input.internalLabel !== undefined ? input.internalLabel?.trim() ?? null : existing.internal_label,
           input.adminNotes !== undefined ? input.adminNotes?.trim() ?? null : existing.admin_notes,
-          input.isDefault ?? existing.is_default,
+          nextIsDefault,
           input.routeLabel !== undefined ? input.routeLabel?.trim() ?? null : existing.route_label,
           JSON.stringify(nextRequestConfig),
-          JSON.stringify(input.pricing ?? existing.pricing),
-          JSON.stringify(input.rateLimit ?? existing.rate_limit),
-          input.status?.trim() ?? existing.status,
+          JSON.stringify(nextPricing),
+          JSON.stringify(nextRateLimit),
+          nextStatus,
+          runtimeChanged,
         ],
       );
 
@@ -1970,6 +2008,16 @@ export class AiGatewayAdminService {
     return withTenantTransaction(context, async (client) => {
       const existing = await this.getCredentialRow(client, credentialId);
       this.assertAdminManageableCredential(existing, context.tenantId);
+      const references = await client.query<{ id: string; route_key: string; route_label: string | null }>(
+        `SELECT id::text AS id,route_key,route_label FROM ai_routes
+         WHERE credential_id=$1 AND deleted_at IS NULL ORDER BY route_key LIMIT 20`,
+        [credentialId],
+      );
+      if (references.rows.length) {
+        throw new AiGatewayApiError(409, "CREDENTIAL_IN_USE", "Credential is referenced by non-deleted route configurations", {
+          routes: references.rows.map((route) => ({ id: route.id, key: route.route_key, label: route.route_label })),
+        });
+      }
       const result = await client.query<{ id: string }>(
         `
           UPDATE api_credentials
@@ -2183,6 +2231,7 @@ export class AiGatewayAdminService {
           AND status <> 'deleted'
           AND ($2::uuid IS NULL OR tenant_id = $2::uuid)
         LIMIT 1
+        FOR KEY SHARE
       `,
       [credentialId, tenantId ?? null],
     );
@@ -2204,6 +2253,7 @@ export class AiGatewayAdminService {
           AND tenant_id IS NULL
           AND status <> 'deleted'
         LIMIT 1
+        FOR KEY SHARE
       `,
       [credentialId],
     );
@@ -2229,6 +2279,7 @@ export class AiGatewayAdminService {
           model_family,
           credential_id::text AS credential_id,
           connection_id::text AS connection_id,
+          configuration_revision,
           route_key,
           route_label,
           modality,
@@ -2250,6 +2301,7 @@ export class AiGatewayAdminService {
           pricing,
           rate_limit,
           status,
+          tested_revision,
           created_at::text AS created_at,
           updated_at::text AS updated_at
         FROM ai_routes
@@ -2358,6 +2410,7 @@ export class AiGatewayAdminService {
         WHERE id = $1::uuid
           AND status <> 'deleted'
         LIMIT 1
+        FOR UPDATE
       `,
       [credentialId],
     );

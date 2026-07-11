@@ -1,9 +1,10 @@
 import React from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { AuthContext, type AuthState } from "../../auth/useAuth";
 import { AiSettingsPage } from "./AiSettingsPage";
+import type { ModelConfigurationWizardProps } from "./ModelConfigurationWizard";
 
 const listAiModelCatalogMock = vi.fn();
 const listAiModelRoutesMock = vi.fn();
@@ -13,6 +14,20 @@ const listAdminModelsMock = vi.fn();
 const listAdminProviderConnectionsMock = vi.fn();
 const listAdminCredentialsMock = vi.fn();
 const updateAdminRouteMock = vi.fn();
+const wizardMock = vi.fn();
+
+vi.mock("./ModelConfigurationWizard", () => ({
+  ModelConfigurationWizard: (props: ModelConfigurationWizardProps) => {
+    wizardMock(props);
+    return (
+      <div
+        data-backup-route-id={props.backupFromRoute?.route.id ?? ""}
+        data-open={String(props.open)}
+        data-testid="model-configuration-wizard"
+      />
+    );
+  },
+}));
 
 vi.mock("../../services/v2AiModelCatalogApi", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../services/v2AiModelCatalogApi")>();
@@ -59,7 +74,16 @@ function createAuthState(): AuthState {
 
 describe("AiSettingsPage", () => {
   beforeEach(() => {
+    wizardMock.mockReset();
     updateAdminRouteMock.mockReset();
+    listAiModelCatalogMock.mockReset();
+    listAiModelRoutesMock.mockReset();
+    listAdminRoutesMock.mockReset();
+    listAdminProvidersMock.mockReset();
+    listAdminModelsMock.mockReset();
+    listAdminProviderConnectionsMock.mockReset();
+    listAdminCredentialsMock.mockReset();
+
     listAiModelCatalogMock.mockResolvedValue([
       {
         id: "catalog-1",
@@ -148,6 +172,124 @@ describe("AiSettingsPage", () => {
     listAdminCredentialsMock.mockResolvedValue([]);
   });
 
+  test("opens the model configuration wizard from the primary entry and keeps advanced access visible", async () => {
+    render(
+      <AuthContext.Provider value={createAuthState()}>
+        <AiSettingsPage />
+      </AuthContext.Provider>,
+    );
+
+    expect(await screen.findByRole("button", { name: "配置新模型" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "高级配置" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "配置新模型" }));
+
+    expect((await screen.findByTestId("model-configuration-wizard")).getAttribute("data-open")).toBe("true");
+    expect(wizardMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        open: true,
+        backupFromRoute: undefined,
+      }),
+    );
+  });
+
+  test("publishing from the wizard reloads all admin data and closes the wizard", async () => {
+    let refreshCount = 0;
+    listAiModelCatalogMock.mockImplementation(async () => {
+      refreshCount += 1;
+      return refreshCount === 1
+        ? [
+            {
+              id: "catalog-1",
+              capabilities: {},
+              defaultRouteKey: "image.test.line1",
+              displayName: "Test Image",
+              modality: "image",
+              modelFamily: "test-image",
+              modelId: "model-1",
+              modelKey: "test-image",
+              sortOrder: 1,
+              status: "active",
+              uiSchema: {},
+            },
+          ]
+        : [
+            {
+              id: "catalog-2",
+              capabilities: {},
+              defaultRouteKey: "image.test.line2",
+              displayName: "Test Image 2",
+              modality: "image",
+              modelFamily: "test-image",
+              modelId: "model-2",
+              modelKey: "test-image-2",
+              sortOrder: 2,
+              status: "active",
+              uiSchema: {},
+            },
+          ];
+    });
+    listAiModelRoutesMock.mockImplementation(async () => [
+      {
+        estimatedCredits: 10,
+        minChargeCredits: 10,
+        modality: "image",
+        modelFamily: "test-image",
+        modelKey: "test-image",
+        pricingUnit: "image_generation",
+        providerKey: "openai",
+        providerName: "OpenAI",
+        routeId: "route-1",
+        routeKey: "image.test.line1",
+        routeLabel: "线路一",
+      },
+    ]);
+
+    render(
+      <AuthContext.Provider value={createAuthState()}>
+        <AiSettingsPage />
+      </AuthContext.Provider>,
+    );
+
+    await screen.findByRole("button", { name: "配置新模型" });
+    fireEvent.click(screen.getByRole("button", { name: "配置新模型" }));
+
+    const wizardProps = wizardMock.mock.calls.at(-1)?.[0] as ModelConfigurationWizardProps;
+    await act(async () => {
+      await wizardProps.onPublished({
+        routeId: "route-1",
+        routeKey: "image.test.line2",
+        routeLabel: "线路二",
+        revision: 2,
+      });
+    });
+
+    expect(listAiModelCatalogMock).toHaveBeenCalledTimes(2);
+    expect(listAdminRoutesMock).toHaveBeenCalledTimes(2);
+    expect(listAdminProvidersMock).toHaveBeenCalledTimes(2);
+    expect(listAdminModelsMock).toHaveBeenCalledTimes(2);
+    expect(listAdminProviderConnectionsMock).toHaveBeenCalledTimes(2);
+    expect(listAdminCredentialsMock).toHaveBeenCalledTimes(2);
+    expect((await screen.findByTestId("model-configuration-wizard")).getAttribute("data-open")).toBe("false");
+  });
+
+  test("opens the wizard from a selected route backup entry", async () => {
+    render(
+      <AuthContext.Provider value={createAuthState()}>
+        <AiSettingsPage />
+      </AuthContext.Provider>,
+    );
+
+    await screen.findByRole("button", { name: "配置新模型" });
+    fireEvent.click((await screen.findAllByText("线路一"))[0]);
+    fireEvent.click(screen.getByRole("button", { name: "使用当前线路配置新模型" }));
+
+    const wizardProps = wizardMock.mock.calls.at(-1)?.[0] as ModelConfigurationWizardProps;
+    expect(wizardProps.backupFromRoute?.route.id).toBe("admin-route-1");
+    expect(wizardProps.backupFromRoute?.credential?.id).toBeUndefined();
+    expect((await screen.findByTestId("model-configuration-wizard")).getAttribute("data-open")).toBe("true");
+  });
+
   test("renders route management controls with custom menu triggers", async () => {
     render(
       <AuthContext.Provider value={createAuthState()}>
@@ -224,7 +366,9 @@ describe("AiSettingsPage", () => {
     const disableButton = await screen.findByRole("button", { name: "停用线路" });
     expect(disableButton.hasAttribute("disabled")).toBe(false);
 
-    fireEvent.click(disableButton);
+    await act(async () => {
+      fireEvent.click(disableButton);
+    });
 
     expect(updateAdminRouteMock).toHaveBeenCalledWith("admin-route-1", {
       status: "inactive",
