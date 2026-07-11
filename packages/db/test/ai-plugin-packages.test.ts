@@ -17,6 +17,38 @@ afterAll(() => {
 });
 
 describeWithDatabase("ai plugin package migration and RLS", () => {
+  test("adds AI route configuration revision columns", async () => {
+    await withDatabase(async ({ databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const pool = createPgPool();
+
+      try {
+        await runMigrations(pool);
+
+        const columns = await pool.query<{
+          column_name: string;
+          is_nullable: "NO" | "YES";
+        }>(
+          `
+            SELECT column_name, is_nullable
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'ai_routes'
+              AND column_name IN ('configuration_revision', 'tested_revision')
+            ORDER BY column_name ASC
+          `,
+        );
+
+        expect(columns.rows).toEqual([
+          { column_name: "configuration_revision", is_nullable: "NO" },
+          { column_name: "tested_revision", is_nullable: "YES" },
+        ]);
+      } finally {
+        await pool.end();
+      }
+    });
+  });
+
   test("creates AI plugin tables and extends AI routes", async () => {
     await withDatabase(async ({ databaseUrl }) => {
       process.env.DATABASE_URL = databaseUrl;
