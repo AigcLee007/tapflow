@@ -37,6 +37,7 @@ import { registerAiGatewayAdminRoutes } from "./modules/ai-gateway/ai-gateway.ro
 import { AiGatewayAdminService } from "./modules/ai-gateway/ai-gateway.service.js";
 import { registerAiModelCatalogRoutes } from "./modules/ai-model-catalog/ai-model-catalog.routes.js";
 import { AiModelCatalogService } from "./modules/ai-model-catalog/ai-model-catalog.service.js";
+import { registerAiModelConfigurationRoutes } from "./modules/ai-model-configurations/ai-model-configurations.routes.js";
 import { AiModelConfigurationsService } from "./modules/ai-model-configurations/ai-model-configurations.service.js";
 import { registerAiPluginAdminRoutes } from "./modules/ai-plugins/ai-plugins.routes.js";
 import { AiPluginService } from "./modules/ai-plugins/ai-plugins.service.js";
@@ -419,6 +420,7 @@ export function buildApp(options?: {
   registerAuditRoutes(app);
   registerAiGatewayAdminRoutes(app);
   registerAiModelCatalogRoutes(app);
+  registerAiModelConfigurationRoutes(app);
   registerAiPluginAdminRoutes(app);
   registerAiRouteTestRoutes(app);
   registerAuthRoutes(app);

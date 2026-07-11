@@ -1,10 +1,15 @@
 import { afterAll, describe, expect, test } from "vitest";
+import Fastify from "fastify";
 import { AiPluginRegistry, builtinAiPluginRegistry, CredentialVault } from "@aigc-flow/ai-gateway-core";
 import { openAiGptImage2Manifest } from "../../../packages/ai-gateway-core/src/plugins/manifests/openai-gpt-image-2.js";
 import { createPgPool } from "@aigc-flow/db";
+import type { StorageProvider } from "@aigc-flow/storage";
 import { runMigrations } from "../../../packages/db/src/migrator.js";
 import { hasDatabaseEnv, withDatabase } from "../../../packages/db/test/helpers.js";
 
+import { buildApp } from "../src/app.js";
+import type { ApiEnv } from "../src/config/env.js";
+import { registerAiModelConfigurationRoutes } from "../src/modules/ai-model-configurations/ai-model-configurations.routes.js";
 import {
   AiModelConfigurationApiError,
   AiModelConfigurationsService,
@@ -15,6 +20,126 @@ import { AiGatewayAdminService } from "../src/modules/ai-gateway/ai-gateway.serv
 const originalDatabaseUrl = process.env.DATABASE_URL;
 const describeWithDatabase = hasDatabaseEnv() ? describe : describe.skip;
 const context = { tenantId: "00000000-0000-0000-0000-000000000001", userId: null };
+const configurationAdminEmail = "model-configuration-admin@example.com";
+
+const apiTestEnv: ApiEnv = {
+  accessTokenTtlSeconds: 60 * 15,
+  adminEmails: [configurationAdminEmail],
+  apiRateLimitMax: 1000,
+  apiRateLimitWindowMs: 60_000,
+  authRateLimitMax: 20,
+  authRateLimitWindowMs: 60_000,
+  corsAllowedOrigins: ["http://localhost:5173"],
+  credentialKeyVersion: "v1",
+  credentialMasterKey: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+  jwtAccessSecret: "test_access_secret_1234567890",
+  jwtRefreshSecret: "test_refresh_secret_1234567890",
+  nodeEnv: "test",
+  refreshTokenTtlSeconds: 60 * 60 * 24 * 7,
+  s3AccessKeyId: "test-access",
+  s3Bucket: "test-bucket",
+  s3Endpoint: "http://localhost:9000",
+  s3ForcePathStyle: true,
+  s3Region: "us-east-1",
+  s3SecretAccessKey: "test-secret",
+  securityHeadersEnabled: true,
+  trustProxy: false,
+};
+
+class MemoryStorageProvider implements StorageProvider {
+  async putObject(): Promise<void> {}
+  async headObject() { return { contentLength: null, contentType: null, eTag: null, lastModified: null, metadata: {} }; }
+  async deleteObject(): Promise<void> {}
+  async createPresignedPutUrl() { return { expiresAt: new Date(Date.now() + 900000).toISOString(), headers: {}, method: "PUT" as const, url: "memory://put" }; }
+  async createPresignedGetUrl() { return { expiresAt: new Date(Date.now() + 900000).toISOString(), headers: {}, method: "GET" as const, url: "memory://get" }; }
+}
+
+function buildTestApp(pool: ReturnType<typeof createPgPool>) {
+  return buildApp({ env: apiTestEnv, logger: false, pool, storageProvider: new MemoryStorageProvider() });
+}
+
+async function registerUser(api: ReturnType<typeof buildTestApp>, email: string, tenantName: string) {
+  const response = await api.inject({
+    method: "POST",
+    payload: { email, password: "StrongPass123!", tenantName },
+    url: "/api/v2/auth/register",
+  });
+  expect(response.statusCode).toBe(201);
+  return response.json();
+}
+
+function mockConfigurationDraft(secret: string, overrides: Record<string, unknown> = {}) {
+  return {
+    packageKey: "mock.local-dev.image",
+    connection: { mode: "create", name: "Model Configuration Mock Connection", baseUrl: "https://mock.local/", environment: "production" },
+    credential: { mode: "create", name: "Model Configuration Mock Credential", secret },
+    pricing: { unit: "image_generation", unitCredits: 10, minChargeCredits: 10 },
+    route: { routeKey: "image.default", routeLabel: "Mock success", upstreamModel: "mock-image" },
+    ...overrides,
+  };
+}
+
+describe("ai model configuration route contract", () => {
+  test("requires a system admin and returns sanitized typed errors", async () => {
+    const secret = "route-contract-submitted-secret";
+    const routeId = "123e4567-e89b-42d3-a456-426614174000";
+    const app = Fastify({ logger: false });
+    app.decorateRequest("ctx", null as never);
+    app.addHook("onRequest", async (request) => {
+      const role = request.headers["x-test-role"];
+      const isAdmin = role === "admin";
+      request.ctx = {
+        ipHash: null,
+        isAuthenticated: role !== undefined,
+        permissions: isAdmin ? ["admin:system"] : [],
+        requestId: request.id,
+        roles: isAdmin ? ["owner"] : [],
+        sessionId: null,
+        tenantId: role === undefined ? null : "00000000-0000-0000-0000-000000000001",
+        traceId: "route-contract-trace",
+        userAgent: null,
+        userId: role === undefined ? null : "00000000-0000-0000-0000-000000000002",
+      };
+    });
+    app.decorate("aiModelConfigurationsService", {
+      async publish(_context: unknown, input: { expectedRevision: number }) {
+        if (input.expectedRevision === 99) {
+          throw new AiModelConfigurationApiError(409, "MODEL_CONFIGURATION_CONFLICT", "Model configuration changed; reload and retry");
+        }
+        return { route: { id: routeId, status: "active" } };
+      },
+      async saveDraft(_context: unknown, input: { credential: { secret?: string }; expectedRevision?: number }) {
+        if (input.expectedRevision === 99) {
+          throw new AiModelConfigurationApiError(409, "MODEL_CONFIGURATION_CONFLICT", "Model configuration changed; reload and retry");
+        }
+        return { route: { id: routeId, status: "inactive" } };
+      },
+    } as never);
+    registerAiModelConfigurationRoutes(app);
+
+    const anonymous = await app.inject({ method: "POST", payload: mockConfigurationDraft(secret), url: "/api/v2/admin/ai/model-configurations/draft" });
+    expect(anonymous.statusCode).toBe(401);
+
+    const forbidden = await app.inject({ headers: { "x-test-role": "viewer" }, method: "POST", payload: mockConfigurationDraft(secret), url: "/api/v2/admin/ai/model-configurations/draft" });
+    expect(forbidden.statusCode).toBe(403);
+
+    const invalid = await app.inject({ headers: { "x-test-role": "admin" }, method: "POST", payload: { ...mockConfigurationDraft(secret), pricing: { unit: "image_generation", unitCredits: 0, minChargeCredits: 10 } }, url: "/api/v2/admin/ai/model-configurations/draft" });
+    expect(invalid.statusCode).toBe(400);
+    expect(invalid.json()).toMatchObject({ error: { code: "VALIDATION_ERROR" } });
+    expect(invalid.body).not.toContain(secret);
+
+    const draft = await app.inject({ headers: { "x-test-role": "admin" }, method: "POST", payload: mockConfigurationDraft(secret), url: "/api/v2/admin/ai/model-configurations/draft" });
+    expect(draft.statusCode).toBe(201);
+    expect(draft.body).not.toContain(secret);
+
+    const conflict = await app.inject({ headers: { "x-test-role": "admin" }, method: "POST", payload: { routeId, expectedRevision: 99 }, url: "/api/v2/admin/ai/model-configurations/publish" });
+    expect(conflict.statusCode).toBe(409);
+    expect(conflict.json()).toMatchObject({ error: { code: "MODEL_CONFIGURATION_CONFLICT" } });
+    expect(conflict.body).not.toContain(secret);
+
+    await app.close();
+  });
+});
 
 afterAll(() => {
   if (originalDatabaseUrl === undefined) delete process.env.DATABASE_URL;
@@ -625,6 +750,96 @@ describeWithDatabase("AiModelConfigurationsService database drafts", () => {
         connection: { mode: "existing", connectionId: first.connection.id },
         credential: { mode: "existing", credentialId: first.credential.id },
       }))).rejects.toMatchObject({ code: "MODEL_CONFIGURATION_CONFLICT" });
+    });
+  });
+});
+
+describeWithDatabase("ai model configuration API", () => {
+  test("protects and publishes certified platform drafts without exposing submitted secrets", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({ connectionString: await createAppDatabaseUrl() });
+        const api = buildTestApp(appPool);
+        const secret = "model-configuration-route-secret";
+
+        const anonymous = await api.inject({
+          method: "POST",
+          payload: mockConfigurationDraft(secret),
+          url: "/api/v2/admin/ai/model-configurations/draft",
+        });
+        expect(anonymous.statusCode).toBe(401);
+
+        const nonAdmin = await registerUser(api, "model-configuration-viewer@example.com", "Model Configuration Viewer");
+        const forbidden = await api.inject({
+          headers: { authorization: `Bearer ${nonAdmin.accessToken}` },
+          method: "POST",
+          payload: mockConfigurationDraft(secret),
+          url: "/api/v2/admin/ai/model-configurations/draft",
+        });
+        expect(forbidden.statusCode).toBe(403);
+
+        const admin = await registerUser(api, configurationAdminEmail, "Model Configuration Admin");
+        const invalid = await api.inject({
+          headers: { authorization: `Bearer ${admin.accessToken}` },
+          method: "POST",
+          payload: { ...mockConfigurationDraft(secret), pricing: { unit: "image_generation", unitCredits: 0, minChargeCredits: 10 } },
+          url: "/api/v2/admin/ai/model-configurations/draft",
+        });
+        expect(invalid.statusCode).toBe(400);
+        expect(invalid.json()).toMatchObject({ error: { code: "VALIDATION_ERROR" } });
+        expect(invalid.body).not.toContain(secret);
+
+        const draft = await api.inject({
+          headers: { authorization: `Bearer ${admin.accessToken}` },
+          method: "POST",
+          payload: mockConfigurationDraft(secret),
+          url: "/api/v2/admin/ai/model-configurations/draft",
+        });
+        expect(draft.statusCode).toBe(201);
+        expect(draft.json()).toMatchObject({ route: { status: "inactive", configurationRevision: 1 } });
+        expect(draft.body).not.toContain(secret);
+        expect(draft.body).not.toMatch(/encrypted_secret|auth_tag|authorization/i);
+
+        const routeId = draft.json().route.id as string;
+        const stale = await api.inject({
+          headers: { authorization: `Bearer ${admin.accessToken}` },
+          method: "POST",
+          payload: mockConfigurationDraft(secret, { routeId, expectedRevision: 99 }),
+          url: "/api/v2/admin/ai/model-configurations/draft",
+        });
+        expect(stale.statusCode).toBe(409);
+        expect(stale.json()).toMatchObject({ error: { code: "MODEL_CONFIGURATION_CONFLICT" } });
+        expect(stale.body).not.toContain(secret);
+
+        const testRoute = await api.inject({
+          headers: { authorization: `Bearer ${admin.accessToken}` },
+          method: "POST",
+          payload: { prompt: "certify mock configuration" },
+          url: `/api/v2/admin/ai/routes/${routeId}/test`,
+        });
+        expect(testRoute.statusCode).toBe(200);
+        expect(testRoute.json()).toMatchObject({ routeId, status: "ok" });
+
+        const published = await api.inject({
+          headers: { authorization: `Bearer ${admin.accessToken}` },
+          method: "POST",
+          payload: { routeId, expectedRevision: 1 },
+          url: "/api/v2/admin/ai/model-configurations/publish",
+        });
+        expect(published.statusCode).toBe(200);
+        expect(published.json()).toMatchObject({ route: { id: routeId, status: "active", testedRevision: 1 } });
+        expect(published.body).not.toContain(secret);
+
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
     });
   });
 });
