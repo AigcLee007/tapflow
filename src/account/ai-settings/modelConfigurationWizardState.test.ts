@@ -1,0 +1,165 @@
+import { describe, expect, test } from "vitest";
+
+import {
+  applySavedDraft,
+  buildDraftPayload,
+  createBackupRouteWizardState,
+  createBuiltinWizardState,
+  createCustomWizardState,
+  initialWizardState,
+  pricingUnitForModality,
+  validateWizardStep,
+  WIZARD_STEPS,
+} from "./modelConfigurationWizardState";
+
+const id = "11111111-1111-4111-8111-111111111111";
+
+function validBuiltinState() {
+  return {
+    ...createBuiltinWizardState({
+      displayName: "Example Image",
+      modality: "image",
+      modelFamily: "example",
+      modelKey: "example-image",
+      packageKey: "example.image",
+    }),
+    connection: { baseUrl: "https://api.example.com", environment: "production", mode: "create" as const, name: "Example" },
+    credential: { mode: "create" as const, name: "Example credential", secret: "secret-value" },
+    pricing: { minChargeCredits: 1, unitCredits: 2 },
+    route: { routeLabel: "Line 1", upstreamModel: "example-image" },
+  };
+}
+
+describe("modelConfigurationWizardState", () => {
+  test("defines the five ordered wizard steps", () => {
+    expect(WIZARD_STEPS).toEqual(["model", "connection", "routeCredential", "pricing", "testPublish"]);
+    expect(initialWizardState().credential).toEqual({ mode: "unconfirmed" });
+  });
+
+  test("builds a valid built-in payload without empty advanced fields", () => {
+    const state = {
+      ...validBuiltinState(),
+      route: {
+        apiMode: "",
+        fallbackGroup: " ",
+        priority: undefined,
+        requestConfig: {},
+        requestPath: "",
+        routeKey: "",
+        routeLabel: "Line 1",
+        timeoutMs: undefined,
+        upstreamModel: "example-image",
+        weight: undefined,
+      },
+    };
+
+    expect(buildDraftPayload(state)).toEqual({
+      connection: { baseUrl: "https://api.example.com", environment: "production", mode: "create", name: "Example" },
+      credential: { mode: "create", name: "Example credential", secret: "secret-value" },
+      packageKey: "example.image",
+      pricing: { minChargeCredits: 1, unit: "image_generation", unitCredits: 2 },
+      route: { routeLabel: "Line 1", upstreamModel: "example-image" },
+    });
+  });
+
+  test("builds a valid custom payload", () => {
+    const state = {
+      ...createCustomWizardState({
+        model: { displayName: "Custom Video", modality: "video", modelFamily: "custom-video", modelKey: "custom-video" },
+        provider: { key: "custom", kind: "openai-compatible", name: "Custom Provider" },
+        routeDefaults: {},
+      }),
+      connection: { baseUrl: "https://custom.example.com", environment: "production", mode: "create" as const, name: "Custom" },
+      credential: { credentialId: id, mode: "existing" as const },
+      pricing: { minChargeCredits: 3, unitCredits: 4 },
+      route: { routeLabel: "Line 1", upstreamModel: "custom-video" },
+    };
+
+    expect(buildDraftPayload(state)).toEqual({
+      connection: { baseUrl: "https://custom.example.com", environment: "production", mode: "create", name: "Custom" },
+      credential: { credentialId: id, mode: "existing" },
+      custom: {
+        model: { displayName: "Custom Video", modality: "video", modelFamily: "custom-video", modelKey: "custom-video" },
+        provider: { key: "custom", kind: "openai-compatible", name: "Custom Provider" },
+        routeDefaults: {},
+      },
+      pricing: { minChargeCredits: 3, unit: "video_generation", unitCredits: 4 },
+      route: { routeLabel: "Line 1", upstreamModel: "custom-video" },
+    });
+  });
+
+  test.each([
+    ["model", initialWizardState(), "model"],
+    ["connection", { ...validBuiltinState(), connection: { baseUrl: "", environment: "production", mode: "create" as const, name: "" } }, "connection.name"],
+    ["routeCredential", { ...validBuiltinState(), credential: { mode: "unconfirmed" as const } }, "credential"],
+    ["routeCredential", { ...validBuiltinState(), credential: { mode: "create" as const, name: "", secret: "" } }, "credential.name"],
+    ["routeCredential", { ...validBuiltinState(), credential: { credentialId: "", mode: "existing" as const } }, "credential.credentialId"],
+    ["routeCredential", { ...validBuiltinState(), route: { routeLabel: "", upstreamModel: "" } }, "route.routeLabel"],
+    ["pricing", { ...validBuiltinState(), pricing: { minChargeCredits: 0, unitCredits: -1 } }, "pricing.unitCredits"],
+    ["testPublish", { ...validBuiltinState(), credential: { mode: "unconfirmed" as const } }, "credential"],
+  ] as const)("reports %s validation errors", (step, state, error) => {
+    expect(validateWizardStep(step, state).errors).toContain(error);
+  });
+
+  test("does not require optional advanced route fields", () => {
+    expect(validateWizardStep("testPublish", validBuiltinState())).toEqual({ errors: [], valid: true });
+  });
+
+  test("makes backups re-confirm the credential and never reuse the stable route key", () => {
+    const backup = createBackupRouteWizardState({
+      connection: { baseUrl: "https://api.example.com", environment: "production", id, name: "Existing connection" },
+      credential: { id, name: "Existing credential", status: "active" },
+      model: { displayName: "Example Image", modality: "image", modelFamily: "example", modelKey: "example-image" },
+      packageKey: "example.image",
+      pricing: { minChargeCredits: 1, unit: "image_generation", unitCredits: 2 },
+      provider: { key: "example", kind: "openai-compatible", name: "Example" },
+      route: {
+        apiMode: "sync",
+        configurationRevision: 4,
+        id,
+        key: "example.image.stable",
+        requestConfig: { quality: "high" },
+        requestPath: "/v1/images",
+        routeLabel: "Original line",
+        upstreamModel: "example-image",
+      },
+    });
+
+    expect(backup.connection).toEqual({ connectionId: id, mode: "existing" });
+    expect(backup.credential).toEqual({ mode: "unconfirmed" });
+    expect(backup.route).toMatchObject({
+      apiMode: "sync",
+      requestConfig: { quality: "high" },
+      requestPath: "/v1/images",
+      routeKey: "",
+      routeLabel: "Original line",
+      upstreamModel: "example-image",
+    });
+    expect(backup.pricing.unit).toBe("image_generation");
+    expect(buildDraftPayload(backup)).toBeNull();
+  });
+
+  test("replaces a saved create credential with a sanitized existing selection", () => {
+    const state = validBuiltinState();
+    const saved = {
+      catalog: { id: "catalog-1", status: "inactive" },
+      connection: { baseUrl: "https://api.example.com/", environment: "production", id: "connection-1", name: "Example", status: "inactive" },
+      credential: { id: "credential-1", name: "Example credential", secretFingerprint: "fingerprint", status: "active" },
+      model: { displayName: "Example Image", id: "model-1", modality: "image", modelFamily: "example", modelKey: "example-image" },
+      pricing: { active: false, minChargeCredits: 1, unit: "image_generation" as const, unitCredits: 2 },
+      route: { configurationRevision: 2, id, key: "example.image", status: "inactive", testedRevision: null },
+    };
+
+    const next = applySavedDraft(state, saved);
+
+    expect(next.credential).toEqual({ credentialId: "credential-1", mode: "existing" });
+    expect(JSON.stringify(next)).not.toContain("secret-value");
+    expect(next.saved).toEqual(saved);
+  });
+
+  test("derives pricing units from every supported modality", () => {
+    expect(pricingUnitForModality("text")).toBe("text_generation");
+    expect(pricingUnitForModality("image")).toBe("image_generation");
+    expect(pricingUnitForModality("video")).toBe("video_generation");
+  });
+});
