@@ -7,7 +7,7 @@ import Fastify, {
   type FastifyRequest,
 } from "fastify";
 
-import { CredentialVault, DatabaseTextGenerationRuntime } from "@aigc-flow/ai-gateway-core";
+import { builtinAiPluginRegistry, CredentialVault, DatabaseTextGenerationRuntime } from "@aigc-flow/ai-gateway-core";
 import { createPgPool } from "@aigc-flow/db";
 import {
   QUEUE_NAMES,
@@ -37,6 +37,7 @@ import { registerAiGatewayAdminRoutes } from "./modules/ai-gateway/ai-gateway.ro
 import { AiGatewayAdminService } from "./modules/ai-gateway/ai-gateway.service.js";
 import { registerAiModelCatalogRoutes } from "./modules/ai-model-catalog/ai-model-catalog.routes.js";
 import { AiModelCatalogService } from "./modules/ai-model-catalog/ai-model-catalog.service.js";
+import { AiModelConfigurationsService } from "./modules/ai-model-configurations/ai-model-configurations.service.js";
 import { registerAiPluginAdminRoutes } from "./modules/ai-plugins/ai-plugins.routes.js";
 import { AiPluginService } from "./modules/ai-plugins/ai-plugins.service.js";
 import { registerAiRouteTestRoutes } from "./modules/ai-route-tests/ai-route-tests.routes.js";
@@ -199,6 +200,11 @@ export function buildApp(options?: {
     pool,
   });
   const aiModelCatalogService = new AiModelCatalogService({ pool });
+  const aiModelConfigurationsService = new AiModelConfigurationsService({
+    credentialVault,
+    pluginRegistry: builtinAiPluginRegistry,
+    pool,
+  });
   const aiPluginService = new AiPluginService({
     credentialVault,
     pool,
@@ -317,6 +323,7 @@ export function buildApp(options?: {
   app.decorate("agentService", agentService);
   app.decorate("aiGatewayService", aiGatewayService);
   app.decorate("aiModelCatalogService", aiModelCatalogService);
+  app.decorate("aiModelConfigurationsService", aiModelConfigurationsService);
   app.decorate("aiPluginService", aiPluginService);
   app.decorate("aiRouteTestService", aiRouteTestService);
   app.decorate("auditService", auditService);
