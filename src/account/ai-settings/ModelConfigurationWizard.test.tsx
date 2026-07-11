@@ -80,6 +80,44 @@ describe("ModelConfigurationWizard", () => {
     expect(screen.queryByText("secret-value")).toBeNull();
   });
 
+  test("filters existing credentials by the live selected provider and refreshes when it changes", () => {
+    const providers = [
+      { id: "provider-example", key: "example", kind: "openai-compatible", name: "示例", status: "active", defaultBaseUrl: null, capabilities: {} },
+      { id: "provider-other", key: "other", kind: "openai-compatible", name: "其他", status: "active", defaultBaseUrl: null, capabilities: {} },
+    ];
+    const credentials = [
+      { id: "credential-example", providerId: "provider-example", name: "示例密钥", status: "active", maskedSecret: "****", secretFingerprint: "aaaa", lastUsedAt: null, rotatedAt: null },
+      { id: "credential-other", providerId: "provider-other", name: "其他密钥", status: "active", maskedSecret: "****", secretFingerprint: "bbbb", lastUsedAt: null, rotatedAt: null },
+    ];
+    renderWizard({ providers, credentials });
+    fireEvent.click(screen.getByRole("button", { name: /示例生图/ }));
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+    fireEvent.change(screen.getByLabelText("连接名称"), { target: { value: "连接" } });
+    fireEvent.change(screen.getByLabelText("基础 URL"), { target: { value: "https://api.example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+    fireEvent.click(screen.getByRole("button", { name: "使用已有密钥" }));
+    fireEvent.click(screen.getByRole("button", { name: /现有密钥/ }));
+    expect(screen.getAllByText(/示例密钥/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/其他密钥/)).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "上一步" }));
+    fireEvent.click(screen.getByRole("button", { name: "上一步" }));
+    fireEvent.click(screen.getByRole("button", { name: "自定义 OpenAI 兼容模型" }));
+    fireEvent.change(screen.getByLabelText("提供商标识"), { target: { value: "other" } });
+    fireEvent.change(screen.getByLabelText("提供商名称"), { target: { value: "其他" } });
+    fireEvent.change(screen.getByLabelText("模型名称"), { target: { value: "其他模型" } });
+    fireEvent.change(screen.getByLabelText("模型标识"), { target: { value: "other-model" } });
+    fireEvent.change(screen.getByLabelText("模型系列"), { target: { value: "other" } });
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+    fireEvent.change(screen.getByLabelText("连接名称"), { target: { value: "其他连接" } });
+    fireEvent.change(screen.getByLabelText("基础 URL"), { target: { value: "https://other.example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+    fireEvent.click(screen.getByRole("button", { name: "使用已有密钥" }));
+    fireEvent.click(screen.getByRole("button", { name: /现有密钥/ }));
+    expect(screen.getAllByText(/其他密钥/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/示例密钥/)).toBeNull();
+  });
+
   test("clears new secret after saving a draft", async () => {
     saveDraft.mockResolvedValue(saved);
     renderWizard();
