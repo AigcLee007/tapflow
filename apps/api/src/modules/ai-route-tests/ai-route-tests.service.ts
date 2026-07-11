@@ -378,6 +378,20 @@ export class AiRouteTestService {
         ],
       );
 
+      await client.query(
+        `UPDATE ai_routes SET
+           health_status=$2,
+           last_health_checked_at=now(),
+           tested_revision=CASE
+             WHEN $2='ok' THEN configuration_revision
+             WHEN tested_revision=configuration_revision THEN tested_revision
+             ELSE NULL
+           END,
+           updated_at=now()
+         WHERE id=$1`,
+        [options.route.id, options.status],
+      );
+
       const row = result.rows[0];
       return {
         checkedAt: row.created_at,

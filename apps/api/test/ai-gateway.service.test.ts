@@ -2,6 +2,33 @@ import { describe, expect, test, vi } from "vitest";
 
 import { AiGatewayAdminService } from "../src/modules/ai-gateway/ai-gateway.service.js";
 
+test("credential deletion is blocked with sanitized referencing routes", async () => {
+  const queries: string[] = [];
+  const client = {
+    query: vi.fn(async (sql: string) => {
+      queries.push(sql);
+      if (sql.includes("FROM api_credentials")) return { rows: [{
+        id: "22222222-2222-2222-2222-222222222222", tenant_id: null, provider_id: "33333333-3333-3333-3333-333333333333",
+        name: "Key", encrypted_secret: "cipher", nonce: "nonce", auth_tag: "tag", key_version: "v1",
+        secret_fingerprint: "fingerprint", status: "active", last_used_at: null, rotated_at: null,
+        created_by: null, created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+      }] };
+      if (sql.includes("FROM ai_routes") && sql.includes("credential_id")) return { rows: [{
+        id: "44444444-4444-4444-4444-444444444444", route_key: "image.safe", route_label: "Line one",
+      }] };
+      return { rows: [] };
+    }),
+    release: vi.fn(),
+  };
+  const service = new AiGatewayAdminService({ credentialVault: {}, pool: { connect: async () => client } } as never);
+  const error = await service.deleteCredential({ tenantId: "11111111-1111-1111-1111-111111111111", userId: null },
+    "22222222-2222-2222-2222-222222222222").catch((value) => value);
+  expect(error).toMatchObject({ code: "CREDENTIAL_IN_USE", statusCode: 409,
+    details: { routes: [{ id: "44444444-4444-4444-4444-444444444444", key: "image.safe", label: "Line one" }] } });
+  expect(JSON.stringify(error)).not.toContain("cipher");
+  expect(queries.some((sql) => sql.includes("UPDATE api_credentials"))).toBe(false);
+});
+
 describe("AiGatewayAdminService runtime route list", () => {
   test("exposes safe generation-mode capabilities from model and route config", async () => {
     const client = {

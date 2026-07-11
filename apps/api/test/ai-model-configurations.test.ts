@@ -162,6 +162,82 @@ describe("AiModelConfigurationsService", () => {
 });
 
 describeWithDatabase("AiModelConfigurationsService database drafts", () => {
+  test("requires the current revision to pass a route test before publish and rejects stale publishers", async () => {
+    await withService(async ({ adminPool, service }) => {
+      const draft = await service.saveDraft(context, builtInDraft("publish-guard"));
+
+      await expect(service.publish(context, { routeId: draft.route.id, expectedRevision: 1 }))
+        .rejects.toMatchObject({ code: "MODEL_CONFIGURATION_TEST_REQUIRED", statusCode: 409 });
+
+      await adminPool.query(`UPDATE ai_routes SET tested_revision=configuration_revision,
+        health_status='ok',last_health_checked_at=now() WHERE id=$1`, [draft.route.id]);
+      await adminPool.query("UPDATE ai_provider_connections SET status='active' WHERE id=$1", [draft.connection.id]);
+      await adminPool.query("UPDATE model_pricing SET active=true WHERE route=$1", [draft.route.key]);
+      await expect(service.publish(context, { routeId: draft.route.id, expectedRevision: 99 }))
+        .rejects.toMatchObject({ code: "MODEL_CONFIGURATION_CONFLICT", statusCode: 409 });
+
+      const published = await service.publish(context, { routeId: draft.route.id, expectedRevision: 1 });
+      expect(published.route).toMatchObject({ id: draft.route.id, status: "active", configurationRevision: 1, testedRevision: 1 });
+      const state = await adminPool.query(`SELECT route.status,route.is_default,pricing.active,catalog.status AS catalog_status,
+        catalog.default_route_key,install.status AS install_status FROM ai_routes route
+        JOIN model_pricing pricing ON pricing.route=route.route_key
+        JOIN ai_model_catalog catalog ON catalog.model_id=route.model_id
+        JOIN tenant_ai_plugin_installs install ON install.id=route.plugin_install_id WHERE route.id=$1`, [draft.route.id]);
+      expect(state.rows[0]).toMatchObject({ status: "active", is_default: true, active: true,
+        catalog_status: "active", install_status: "published", default_route_key: draft.route.key });
+    });
+  });
+
+  test("runtime changes invalidate certification and block publish until retested", async () => {
+    await withService(async ({ adminPool, service }) => {
+      const draft = await service.saveDraft(context, builtInDraft("retest"));
+      await adminPool.query("UPDATE ai_routes SET tested_revision=configuration_revision WHERE id=$1", [draft.route.id]);
+      const changed = await service.saveDraft(context, builtInDraft("ignored", {
+        routeId: draft.route.id, expectedRevision: 1,
+        connection: { mode: "existing", connectionId: draft.connection.id },
+        credential: { mode: "existing", credentialId: draft.credential.id },
+        route: { routeLabel: "Friendly only plus runtime", upstreamModel: "gemini-3-pro-image-preview", timeoutMs: 45000 },
+      }));
+      expect(changed.route).toMatchObject({ status: "inactive", configurationRevision: 2, testedRevision: null });
+      await expect(service.publish(context, { routeId: draft.route.id, expectedRevision: 2 }))
+        .rejects.toMatchObject({ code: "MODEL_CONFIGURATION_TEST_REQUIRED" });
+    });
+  });
+
+  test.each([
+    ["credential", "UPDATE api_credentials SET status='inactive' WHERE id=$1"],
+    ["connection", "UPDATE ai_provider_connections SET status='inactive' WHERE id=$1"],
+    ["upstream", "UPDATE ai_routes SET upstream_model=NULL WHERE id=$1"],
+    ["pricing", "UPDATE model_pricing SET unit_credits=0 WHERE route=(SELECT route_key FROM ai_routes WHERE id=$1)"],
+  ])("rejects incomplete publish when %s is unavailable", async (_case, sql) => {
+    await withService(async ({ adminPool, service }) => {
+      const draft = await service.saveDraft(context, builtInDraft(`incomplete-${_case}`));
+      await adminPool.query("UPDATE ai_routes SET tested_revision=configuration_revision WHERE id=$1", [draft.route.id]);
+      const target = _case === "credential" ? draft.credential.id : _case === "connection" ? draft.connection.id : draft.route.id;
+      await adminPool.query(sql, [target]);
+      const error = await service.publish(context, { routeId: draft.route.id, expectedRevision: 1 }).catch((value) => value);
+      expect(error).toMatchObject({ code: "MODEL_CONFIGURATION_INCOMPLETE", statusCode: 400 });
+      expect(JSON.stringify(error)).not.toContain(`secret-incomplete-${_case}`);
+    });
+  });
+
+  test("publishing one route does not deactivate unrelated models or routes", async () => {
+    await withService(async ({ adminPool, service }) => {
+      const unrelated = await service.saveDraft(context, builtInDraft("unrelated", {
+        packageKey: "openai-compatible.gpt-image-2",
+        route: { routeLabel: "Other model", upstreamModel: "gpt-image-2" },
+      }));
+      await adminPool.query("UPDATE ai_routes SET status='active',tested_revision=configuration_revision WHERE id=$1", [unrelated.route.id]);
+      const draft = await service.saveDraft(context, builtInDraft("selected"));
+      await adminPool.query("UPDATE ai_routes SET tested_revision=configuration_revision WHERE id=$1", [draft.route.id]);
+      await adminPool.query("UPDATE ai_provider_connections SET status='active' WHERE id=$1", [draft.connection.id]);
+      await adminPool.query("UPDATE model_pricing SET active=true WHERE route=$1", [draft.route.key]);
+      await service.publish(context, { routeId: draft.route.id, expectedRevision: 1 });
+      const result = await adminPool.query("SELECT status FROM ai_routes WHERE id=$1", [unrelated.route.id]);
+      expect(result.rows[0].status).toBe("active");
+    });
+  });
+
   test("editing an active tested route deactivates route and pricing with submitted values", async () => {
     await withService(async ({ adminPool, service }) => {
       const first = await service.saveDraft(context, builtInDraft("edit-live"));

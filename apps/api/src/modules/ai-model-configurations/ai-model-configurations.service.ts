@@ -9,7 +9,7 @@ import {
 } from "@aigc-flow/ai-gateway-core";
 import { createPgPool, withTenantTransaction } from "@aigc-flow/db";
 
-import type { SaveModelConfigurationDraftInput } from "./ai-model-configurations.schemas.js";
+import type { PublishModelConfigurationInput, SaveModelConfigurationDraftInput } from "./ai-model-configurations.schemas.js";
 
 export type TenantContext = {
   tenantId: string;
@@ -38,12 +38,14 @@ export type ModelConfigurationDraftView = {
 export class AiModelConfigurationApiError extends Error {
   readonly code: string;
   readonly statusCode: number;
+  readonly details?: unknown;
 
-  constructor(statusCode: number, code: string, message: string) {
+  constructor(statusCode: number, code: string, message: string, details?: unknown) {
     super(message);
     this.name = "AiModelConfigurationApiError";
     this.code = code;
     this.statusCode = statusCode;
+    this.details = details;
   }
 }
 
@@ -65,6 +67,69 @@ export class AiModelConfigurationsService {
     this.pool = options.pool ?? createPgPool();
     this.credentialVault = options.credentialVault;
     this.pluginRegistry = options.pluginRegistry ?? builtinAiPluginRegistry;
+  }
+
+  async publish(context: TenantContext, input: PublishModelConfigurationInput): Promise<ModelConfigurationDraftView> {
+    return withTenantTransaction(context, async (client) => {
+      const result = await client.query<any>(
+        `SELECT route.id::text,route.route_key,route.status,route.configuration_revision,route.tested_revision,
+          route.provider_id::text,route.model_id::text,route.plugin_install_id::text,route.credential_id::text,
+          route.connection_id::text,route.upstream_model,route.modality,route.model_family,route.environment,
+          provider.key AS provider_key,model.model_key,model.display_name,model.status AS model_status,
+          catalog.id::text AS catalog_id,catalog.status AS catalog_status,
+          connection.name AS connection_name,connection.base_url,connection.environment AS connection_environment,
+          connection.status AS connection_status,connection.provider_id::text AS connection_provider_id,connection.tenant_id::text AS connection_tenant_id,
+          credential.name AS credential_name,credential.provider_id::text AS credential_provider_id,
+          credential.tenant_id::text AS credential_tenant_id,credential.status AS credential_status,credential.secret_fingerprint,
+          pricing.id::text AS pricing_id,pricing.unit,pricing.unit_credits::text,pricing.min_charge_credits::text,pricing.active AS pricing_active
+         FROM ai_routes route
+         LEFT JOIN ai_providers provider ON provider.id=route.provider_id
+         LEFT JOIN ai_models model ON model.id=route.model_id
+         LEFT JOIN ai_model_catalog catalog ON catalog.model_id=route.model_id AND catalog.tenant_id IS NULL
+         LEFT JOIN ai_provider_connections connection ON connection.id=route.connection_id
+         LEFT JOIN api_credentials credential ON credential.id=route.credential_id
+         LEFT JOIN model_pricing pricing ON pricing.provider=provider.key AND pricing.model=route.upstream_model AND pricing.route=route.route_key
+         WHERE route.id=$1 AND route.tenant_id IS NULL AND route.deleted_at IS NULL
+         FOR UPDATE OF route`, [input.routeId]);
+      const row = result.rows[0];
+      if (!row || row.configuration_revision !== input.expectedRevision) {
+        throw new AiModelConfigurationApiError(409, "MODEL_CONFIGURATION_CONFLICT", "Model configuration changed; reload and retry");
+      }
+      if (row.tested_revision !== row.configuration_revision) {
+        throw new AiModelConfigurationApiError(409, "MODEL_CONFIGURATION_TEST_REQUIRED", "Test the current configuration before publishing");
+      }
+      const missing: string[] = [];
+      if (!row.model_id || row.model_status !== "active" || !row.catalog_id) missing.push("model");
+      if (!row.upstream_model?.trim()) missing.push("upstreamModel");
+      if (!row.credential_id || row.credential_status !== "active" || row.credential_tenant_id !== null
+        || row.credential_provider_id !== row.provider_id) missing.push("credential");
+      if (!row.connection_id || row.connection_status !== "active" || row.connection_tenant_id !== null
+        || row.connection_provider_id !== row.provider_id) missing.push("connection");
+      if (!row.pricing_id || !row.pricing_active || Number(row.unit_credits) <= 0 || Number(row.min_charge_credits) <= 0) {
+        missing.push("pricing");
+      }
+      if (missing.length) {
+        throw new AiModelConfigurationApiError(400, "MODEL_CONFIGURATION_INCOMPLETE", "Model configuration is incomplete", { fields: missing });
+      }
+
+      await client.query("UPDATE ai_routes SET status='active',is_default=true,updated_at=now() WHERE id=$1", [row.id]);
+      await client.query(`UPDATE ai_routes SET is_default=false,updated_at=now() WHERE tenant_id IS NULL AND id<>$1
+        AND modality=$2 AND model_family=$3 AND environment=$4 AND deleted_at IS NULL AND is_default=true`,
+        [row.id,row.modality,row.model_family,row.environment]);
+      await client.query("UPDATE model_pricing SET active=true WHERE id=$1", [row.pricing_id]);
+      await client.query("UPDATE ai_model_catalog SET status='active',default_route_key=$2,updated_at=now() WHERE id=$1", [row.catalog_id,row.route_key]);
+      if (row.plugin_install_id) {
+        await client.query("UPDATE tenant_ai_plugin_installs SET status='published',updated_at=now() WHERE id=$1", [row.plugin_install_id]);
+      }
+      return {
+        route: { id: row.id, key: row.route_key, status: "active", configurationRevision: row.configuration_revision, testedRevision: row.tested_revision },
+        model: { id: row.model_id, modelKey: row.model_key, displayName: row.display_name, modality: row.modality, modelFamily: row.model_family },
+        catalog: { id: row.catalog_id, status: "active" },
+        connection: { id: row.connection_id, name: row.connection_name, baseUrl: row.base_url, environment: row.connection_environment, status: row.connection_status },
+        credential: { id: row.credential_id, name: row.credential_name, providerId: row.credential_provider_id, status: row.credential_status, secretFingerprint: row.secret_fingerprint },
+        pricing: { unit: row.unit, unitCredits: Number(row.unit_credits), minChargeCredits: Number(row.min_charge_credits), active: true },
+      };
+    }, this.pool);
   }
 
   async saveDraft(context: TenantContext, input: SaveModelConfigurationDraftInput): Promise<ModelConfigurationDraftView> {
