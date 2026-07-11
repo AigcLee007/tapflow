@@ -131,6 +131,72 @@ describe("modelConfigurationWizardState", () => {
   });
 
   test.each([
+    [{ ...validBuiltinState(), route: { ...validBuiltinState().route, routeId: id } }, "route.routeId"],
+    [{ ...validBuiltinState(), expectedRevision: 1 }, "expectedRevision"],
+  ] as const)("rejects unpaired edit state: %s", (state, error) => {
+    expect(validateWizardStep("testPublish", state).errors).toContain(error);
+    expect(buildDraftPayload(state)).toBeNull();
+  });
+
+  test("serializes a paired edit revision without truthiness checks", () => {
+    const state = {
+      ...validBuiltinState(),
+      expectedRevision: 1,
+      route: { ...validBuiltinState().route, routeId: id },
+    };
+
+    expect(buildDraftPayload(state)).toMatchObject({ expectedRevision: 1, routeId: id });
+  });
+
+  test.each([
+    [{ routeKey: "-invalid" }, "route.routeKey"],
+    [{ routeKey: "x".repeat(256) }, "route.routeKey"],
+    [{ priority: -1 }, "route.priority"],
+    [{ priority: 1.5 }, "route.priority"],
+    [{ weight: -1 }, "route.weight"],
+    [{ weight: 1.5 }, "route.weight"],
+    [{ timeoutMs: 0 }, "route.timeoutMs"],
+    [{ timeoutMs: 1.5 }, "route.timeoutMs"],
+    [{ timeoutMs: Number.MAX_SAFE_INTEGER + 1 }, "route.timeoutMs"],
+  ])("validates advanced route field %o", (route, error) => {
+    const state = { ...validBuiltinState(), route: { ...validBuiltinState().route, ...route } };
+
+    expect(validateWizardStep("testPublish", state).errors).toContain(error);
+  });
+
+  test.each([
+    [{ minChargeCredits: 0.00001, unitCredits: 1 }, "pricing.minChargeCredits"],
+    [{ minChargeCredits: 1_000_000_001, unitCredits: 1 }, "pricing.minChargeCredits"],
+    [{ minChargeCredits: 1, unitCredits: 0.00001 }, "pricing.unitCredits"],
+    [{ minChargeCredits: 1, unitCredits: 1_000_000_001 }, "pricing.unitCredits"],
+  ])("enforces backend pricing bounds", (pricing, error) => {
+    const state = { ...validBuiltinState(), pricing };
+
+    expect(validateWizardStep("pricing", state).errors).toContain(error);
+  });
+
+  test.each([
+    [{ ...validCustomDefinition, provider: { ...validCustomDefinition.provider, defaultBaseUrl: "ftp://custom.example.com" } }, "custom.provider.defaultBaseUrl"],
+    [{ ...validCustomDefinition, provider: { ...validCustomDefinition.provider, defaultBaseUrl: "https://user:pass@custom.example.com" } }, "custom.provider.defaultBaseUrl"],
+    [{ ...validCustomDefinition, provider: { ...validCustomDefinition.provider, defaultBaseUrl: "https://custom.example.com?token=value" } }, "custom.provider.defaultBaseUrl"],
+    [{ ...validCustomDefinition, provider: { ...validCustomDefinition.provider, defaultBaseUrl: "https://custom.example.com#fragment" } }, "custom.provider.defaultBaseUrl"],
+    [{ ...validCustomDefinition, provider: { ...validCustomDefinition.provider, kind: "" as "openai-compatible" } }, "custom.provider.kind"],
+  ])("validates custom provider advanced fields", (custom, error) => {
+    expect(validateWizardStep("model", validCustomState(custom)).errors).toContain(error);
+  });
+
+  test("clones custom definition data at initialization", () => {
+    const custom: ModelConfigurationCustomDefinition = {
+      ...validCustomDefinition,
+      routeDefaults: { requestConfig: { nested: { quality: "high" } } },
+    };
+    const state = createCustomWizardState(custom);
+    (custom.routeDefaults.requestConfig!.nested as { quality: string }).quality = "low";
+
+    expect(state.modelSource).toMatchObject({ custom: { routeDefaults: { requestConfig: { nested: { quality: "high" } } } } });
+  });
+
+  test.each([
     "not a url",
     "ftp://api.example.com",
     "https://user:password@api.example.com",
@@ -180,6 +246,7 @@ describe("modelConfigurationWizardState", () => {
   });
 
   test("makes backups re-confirm the credential and never reuse the stable route key", () => {
+    const requestConfig = { nested: { quality: "high" } };
     const backup = createBackupRouteWizardState({
       connection: { baseUrl: "https://api.example.com", environment: "production", id, name: "Existing connection" },
       credential: { id, name: "Existing credential", status: "active" },
@@ -192,7 +259,7 @@ describe("modelConfigurationWizardState", () => {
         configurationRevision: 4,
         id,
         key: "example.image.stable",
-        requestConfig: { quality: "high" },
+        requestConfig,
         requestPath: "/v1/images",
         routeLabel: "Original line",
         upstreamModel: "example-image",
@@ -203,7 +270,7 @@ describe("modelConfigurationWizardState", () => {
     expect(backup.credential).toEqual({ mode: "unconfirmed" });
     expect(backup.route).toMatchObject({
       apiMode: "sync",
-      requestConfig: { quality: "high" },
+      requestConfig: { nested: { quality: "high" } },
       requestPath: "/v1/images",
       routeKey: "",
       routeLabel: "Original line",
@@ -211,6 +278,8 @@ describe("modelConfigurationWizardState", () => {
     });
     expect(backup.pricing.unit).toBe("image_generation");
     expect(buildDraftPayload(backup)).toBeNull();
+    requestConfig.nested.quality = "low";
+    expect(backup.route.requestConfig).toEqual({ nested: { quality: "high" } });
   });
 
   test("replaces a saved create credential with a sanitized existing selection", () => {

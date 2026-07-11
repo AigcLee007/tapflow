@@ -119,7 +119,7 @@ export function createBuiltinWizardState(model: BuiltinWizardModel): ModelConfig
 export function createCustomWizardState(custom: ModelConfigurationCustomDefinition): ModelConfigurationWizardState {
   return {
     ...initialWizardState(),
-    modelSource: { custom, type: "custom" },
+    modelSource: { custom: cloneSerializable(custom), type: "custom" },
     pricing: { minChargeCredits: null, unit: pricingUnitForModality(custom.model.modality), unitCredits: null },
     route: { routeLabel: "", upstreamModel: custom.model.modelKey },
   };
@@ -137,7 +137,7 @@ export function createBackupRouteWizardState(existingRoute: BackupRouteWizardInp
         type: "builtin",
       }
     : {
-        custom: existingRoute.custom ?? {
+        custom: cloneSerializable(existingRoute.custom ?? {
           model: existingRoute.model,
           provider: {
             key: existingRoute.provider.key,
@@ -145,7 +145,7 @@ export function createBackupRouteWizardState(existingRoute: BackupRouteWizardInp
             name: existingRoute.provider.name,
           },
           routeDefaults: {},
-        },
+        }),
         type: "custom",
       };
 
@@ -160,7 +160,7 @@ export function createBackupRouteWizardState(existingRoute: BackupRouteWizardInp
     },
     route: {
       ...(nonEmpty(existingRoute.route.apiMode) ? { apiMode: existingRoute.route.apiMode.trim() } : {}),
-      ...(nonEmptyRecord(existingRoute.route.requestConfig) ? { requestConfig: existingRoute.route.requestConfig } : {}),
+      ...(nonEmptyRecord(existingRoute.route.requestConfig) ? { requestConfig: cloneSerializable(existingRoute.route.requestConfig) } : {}),
       ...(nonEmpty(existingRoute.route.requestPath) ? { requestPath: existingRoute.route.requestPath.trim() } : {}),
       routeKey: "",
       routeLabel: existingRoute.route.routeLabel?.trim() || "",
@@ -179,11 +179,17 @@ export function validateWizardStep(step: WizardStep, state: ModelConfigurationWi
       errors.push("model.packageKey");
     } else if (state.modelSource.type === "custom") {
       const { model, provider } = state.modelSource.custom;
-      if (!provider.key.trim()) errors.push("custom.provider.key");
-      if (!provider.name.trim()) errors.push("custom.provider.name");
-      if (!model.displayName.trim()) errors.push("custom.model.displayName");
-      if (!model.modelKey.trim()) errors.push("custom.model.modelKey");
-      if (!model.modelFamily.trim()) errors.push("custom.model.modelFamily");
+      if (!isNonEmptyWithin(provider.key, 100)) errors.push("custom.provider.key");
+      if (!isNonEmptyWithin(provider.name, 255)) errors.push("custom.provider.name");
+      if (provider.kind !== "openai-compatible") errors.push("custom.provider.kind");
+      if (provider.defaultBaseUrl !== undefined && !isValidConnectionBaseUrl(provider.defaultBaseUrl)) {
+        errors.push("custom.provider.defaultBaseUrl");
+      }
+      if (!isNonEmptyWithin(model.displayName, 255)) errors.push("custom.model.displayName");
+      if (!isNonEmptyWithin(model.modelKey, 255)) errors.push("custom.model.modelKey");
+      if (!isNonEmptyWithin(model.modelFamily, 255)) errors.push("custom.model.modelFamily");
+      if (!["text", "image", "video"].includes(model.modality)) errors.push("custom.model.modality");
+      checkCustomRouteDefaults(state.modelSource.custom.routeDefaults, errors);
     }
   };
   const checkConnection = () => {
@@ -206,10 +212,21 @@ export function validateWizardStep(step: WizardStep, state: ModelConfigurationWi
     } else if (!state.credential.credentialId.trim()) {
       errors.push("credential.credentialId");
     }
+    checkAdvancedRouteFields(state.route, errors);
   };
   const checkPricing = () => {
-    if (!isPositive(state.pricing.unitCredits)) errors.push("pricing.unitCredits");
-    if (!isPositive(state.pricing.minChargeCredits)) errors.push("pricing.minChargeCredits");
+    if (!isPricingCredit(state.pricing.unitCredits)) errors.push("pricing.unitCredits");
+    if (!isPricingCredit(state.pricing.minChargeCredits)) errors.push("pricing.minChargeCredits");
+  };
+  const checkEditPair = () => {
+    const hasRouteId = state.route.routeId !== undefined;
+    const hasExpectedRevision = state.expectedRevision !== undefined;
+    if (hasRouteId !== hasExpectedRevision) {
+      errors.push(hasRouteId ? "route.routeId" : "expectedRevision");
+    }
+    if (hasExpectedRevision && (!Number.isSafeInteger(state.expectedRevision) || state.expectedRevision <= 0)) {
+      errors.push("expectedRevision");
+    }
   };
 
   switch (step) {
@@ -230,6 +247,7 @@ export function validateWizardStep(step: WizardStep, state: ModelConfigurationWi
       checkConnection();
       checkRouteCredential();
       checkPricing();
+      checkEditPair();
       break;
   }
   return { errors, valid: errors.length === 0 };
@@ -257,7 +275,9 @@ export function buildDraftPayload(state: ModelConfigurationWizardState): SaveMod
     credential: state.credential.mode === "create"
       ? { ...state.credential, name: state.credential.name.trim(), secret: state.credential.secret.trim() }
       : state.credential,
-    ...(state.route.routeId && state.expectedRevision ? { expectedRevision: state.expectedRevision, routeId: state.route.routeId } : {}),
+    ...(state.route.routeId !== undefined && state.expectedRevision !== undefined
+      ? { expectedRevision: state.expectedRevision, routeId: state.route.routeId }
+      : {}),
     pricing,
     route,
   };
@@ -323,8 +343,8 @@ function modelModality(source: Exclude<ModelSourceState, { type: "unselected" }>
   return source.type === "builtin" ? source.modality : source.custom.model.modality;
 }
 
-function isPositive(value: number | null): value is number {
-  return typeof value === "number" && Number.isFinite(value) && value > 0;
+function isPricingCredit(value: number | null): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0.0001 && value <= 1_000_000_000;
 }
 
 function nonEmpty(value: string | null | undefined): value is string {
@@ -347,4 +367,43 @@ function isValidConnectionBaseUrl(value: string): boolean {
   } catch {
     return false;
   }
+}
+
+function isNonEmptyWithin(value: string, maxLength: number): boolean {
+  const trimmed = value.trim();
+  return trimmed.length > 0 && trimmed.length <= maxLength;
+}
+
+function checkAdvancedRouteFields(route: RouteWizardState, errors: string[]) {
+  if (nonEmpty(route.routeKey) && !/^[a-z0-9](?:[a-z0-9._-]{0,253}[a-z0-9])?$/i.test(route.routeKey.trim())) {
+    errors.push("route.routeKey");
+  }
+  if (route.priority !== undefined && (!Number.isSafeInteger(route.priority) || route.priority < 0)) {
+    errors.push("route.priority");
+  }
+  if (route.weight !== undefined && (!Number.isSafeInteger(route.weight) || route.weight < 0)) {
+    errors.push("route.weight");
+  }
+  if (route.timeoutMs !== undefined && (!Number.isSafeInteger(route.timeoutMs) || route.timeoutMs <= 0)) {
+    errors.push("route.timeoutMs");
+  }
+}
+
+function checkCustomRouteDefaults(
+  defaults: ModelConfigurationCustomDefinition["routeDefaults"],
+  errors: string[],
+) {
+  if (defaults.apiMode !== undefined && !isNonEmptyWithin(defaults.apiMode, 100)) {
+    errors.push("custom.routeDefaults.apiMode");
+  }
+  if (defaults.requestPath !== undefined && !isNonEmptyWithin(defaults.requestPath, 255)) {
+    errors.push("custom.routeDefaults.requestPath");
+  }
+  if (defaults.timeoutMs !== undefined && (!Number.isSafeInteger(defaults.timeoutMs) || defaults.timeoutMs <= 0)) {
+    errors.push("custom.routeDefaults.timeoutMs");
+  }
+}
+
+function cloneSerializable<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
 }

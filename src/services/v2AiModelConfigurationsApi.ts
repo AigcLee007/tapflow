@@ -81,8 +81,8 @@ export type ModelConfigurationDraftResult = {
   };
   credential: {
     id: string;
-    maskedSecret?: string;
     name: string;
+    providerId: string;
     secretFingerprint: string;
     status: string;
   };
@@ -127,8 +127,8 @@ function sanitizeDraftResult(result: ModelConfigurationDraftResult): ModelConfig
     ...result,
     credential: {
       id: result.credential.id,
-      ...(result.credential.maskedSecret === undefined ? {} : { maskedSecret: result.credential.maskedSecret }),
       name: result.credential.name,
+      providerId: result.credential.providerId,
       secretFingerprint: result.credential.secretFingerprint,
       status: result.credential.status,
     },

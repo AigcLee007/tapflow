@@ -23,7 +23,19 @@ describe("v2AiModelConfigurationsApi", () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({
       catalog: { id: "catalog-1", status: "inactive" },
       connection: { baseUrl: "https://api.example.com/", environment: "production", id: "connection-1", name: "Example", status: "inactive" },
-      credential: { id: "credential-1", name: "Example key", secret: "plaintext-must-not-escape", secretFingerprint: "fingerprint", status: "active" },
+      credential: {
+        authTag: "authentication-tag-must-not-escape",
+        encryptedSecret: "encrypted-secret-must-not-escape",
+        id: "credential-1",
+        keyVersion: "v1",
+        maskedSecret: "unsupported",
+        name: "Example key",
+        nonce: "nonce-must-not-escape",
+        providerId: "provider-1",
+        secret: "plaintext-must-not-escape",
+        secretFingerprint: "fingerprint",
+        status: "active",
+      },
       model: { displayName: "Example Image", id: "model-1", modality: "image", modelFamily: "example", modelKey: "example-image" },
       pricing: { active: false, minChargeCredits: 1, unit: "image_generation", unitCredits: 2 },
       route: { configurationRevision: 1, id: routeId, key: "example.image", status: "inactive", testedRevision: null },
@@ -49,17 +61,23 @@ describe("v2AiModelConfigurationsApi", () => {
     expect(saved.credential).toEqual({
       id: "credential-1",
       name: "Example key",
+      providerId: "provider-1",
       secretFingerprint: "fingerprint",
       status: "active",
     });
     expect(saved.credential).not.toHaveProperty("secret");
+    expect(saved.credential).not.toHaveProperty("maskedSecret");
+    expect(saved.credential).not.toHaveProperty("encryptedSecret");
+    expect(saved.credential).not.toHaveProperty("nonce");
+    expect(saved.credential).not.toHaveProperty("authTag");
+    expect(saved.credential).not.toHaveProperty("keyVersion");
   });
 
   test("publishes a tested draft with its expected revision", async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({
       catalog: { id: "catalog-1", status: "active" },
       connection: { baseUrl: "https://api.example.com/", environment: "production", id: "connection-1", name: "Example", status: "active" },
-      credential: { id: "credential-1", maskedSecret: "sk-...", name: "Example key", secretFingerprint: "fingerprint", status: "active" },
+      credential: { id: "credential-1", maskedSecret: "unsupported", name: "Example key", providerId: "provider-1", secretFingerprint: "fingerprint", status: "active" },
       model: { displayName: "Example Image", id: "model-1", modality: "image", modelFamily: "example", modelKey: "example-image" },
       pricing: { active: true, minChargeCredits: 1, unit: "image_generation", unitCredits: 2 },
       route: { configurationRevision: 3, id: routeId, key: "example.image", status: "active", testedRevision: 3 },
