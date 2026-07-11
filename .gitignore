@@ -38,6 +38,7 @@ runtime-logs/
 .tmp-*.png
 tmp_*.png
 tmp_fix_*.ps1
+.worktrees/
 *.zip
 build_log.txt
 error_output.txt
