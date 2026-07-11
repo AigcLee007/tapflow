@@ -111,11 +111,26 @@ export type ModelConfigurationDraftResult = {
 export function saveModelConfigurationDraft(
   input: SaveModelConfigurationDraftInput,
 ): Promise<ModelConfigurationDraftResult> {
-  return apiPost<ModelConfigurationDraftResult>("/admin/ai/model-configurations/draft", input);
+  return apiPost<ModelConfigurationDraftResult>("/admin/ai/model-configurations/draft", input)
+    .then(sanitizeDraftResult);
 }
 
 export function publishModelConfiguration(
   input: PublishModelConfigurationInput,
 ): Promise<ModelConfigurationDraftResult> {
-  return apiPost<ModelConfigurationDraftResult>("/admin/ai/model-configurations/publish", input);
+  return apiPost<ModelConfigurationDraftResult>("/admin/ai/model-configurations/publish", input)
+    .then(sanitizeDraftResult);
+}
+
+function sanitizeDraftResult(result: ModelConfigurationDraftResult): ModelConfigurationDraftResult {
+  return {
+    ...result,
+    credential: {
+      id: result.credential.id,
+      ...(result.credential.maskedSecret === undefined ? {} : { maskedSecret: result.credential.maskedSecret }),
+      name: result.credential.name,
+      secretFingerprint: result.credential.secretFingerprint,
+      status: result.credential.status,
+    },
+  };
 }

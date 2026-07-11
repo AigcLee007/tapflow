@@ -189,7 +189,8 @@ export function validateWizardStep(step: WizardStep, state: ModelConfigurationWi
   const checkConnection = () => {
     if (state.connection.mode === "create") {
       if (!state.connection.name.trim()) errors.push("connection.name");
-      if (!state.connection.baseUrl.trim()) errors.push("connection.baseUrl");
+      if (!isValidConnectionBaseUrl(state.connection.baseUrl)) errors.push("connection.baseUrl");
+      if (!state.connection.environment.trim()) errors.push("connection.environment");
     } else if (!state.connection.connectionId.trim()) {
       errors.push("connection.connectionId");
     }
@@ -332,4 +333,18 @@ function nonEmpty(value: string | null | undefined): value is string {
 
 function nonEmptyRecord(value: Record<string, unknown> | undefined): value is Record<string, unknown> {
   return Boolean(value && Object.keys(value).length > 0);
+}
+
+function isValidConnectionBaseUrl(value: string): boolean {
+  if (!value.trim()) return false;
+  try {
+    const url = new URL(value.trim());
+    return (url.protocol === "http:" || url.protocol === "https:")
+      && !url.username
+      && !url.password
+      && !url.search
+      && !url.hash;
+  } catch {
+    return false;
+  }
 }

@@ -90,12 +90,20 @@ describe("modelConfigurationWizardState", () => {
 
   test.each([
     ["model", initialWizardState(), "model"],
+    ["model", { ...validBuiltinState(), modelSource: { ...validBuiltinState().modelSource, packageKey: "" } }, "model.packageKey"],
     ["connection", { ...validBuiltinState(), connection: { baseUrl: "", environment: "production", mode: "create" as const, name: "" } }, "connection.name"],
+    ["connection", { ...validBuiltinState(), connection: { baseUrl: "https://api.example.com", environment: " ", mode: "create" as const, name: "Example" } }, "connection.environment"],
     ["routeCredential", { ...validBuiltinState(), credential: { mode: "unconfirmed" as const } }, "credential"],
     ["routeCredential", { ...validBuiltinState(), credential: { mode: "create" as const, name: "", secret: "" } }, "credential.name"],
+    ["routeCredential", { ...validBuiltinState(), credential: { mode: "create" as const, name: "Credential", secret: "" } }, "credential.secret"],
+    ["routeCredential", { ...validBuiltinState(), credential: { mode: "create" as const, name: "", secret: "secret-value" } }, "credential.name"],
     ["routeCredential", { ...validBuiltinState(), credential: { credentialId: "", mode: "existing" as const } }, "credential.credentialId"],
     ["routeCredential", { ...validBuiltinState(), route: { routeLabel: "", upstreamModel: "" } }, "route.routeLabel"],
+    ["routeCredential", { ...validBuiltinState(), route: { routeLabel: "Line 1", upstreamModel: "" } }, "route.upstreamModel"],
+    ["routeCredential", { ...validBuiltinState(), route: { routeLabel: "", upstreamModel: "example-image" } }, "route.routeLabel"],
     ["pricing", { ...validBuiltinState(), pricing: { minChargeCredits: 0, unitCredits: -1 } }, "pricing.unitCredits"],
+    ["pricing", { ...validBuiltinState(), pricing: { minChargeCredits: 0, unitCredits: 1 } }, "pricing.minChargeCredits"],
+    ["pricing", { ...validBuiltinState(), pricing: { minChargeCredits: 1, unitCredits: 0 } }, "pricing.unitCredits"],
     ["testPublish", { ...validBuiltinState(), credential: { mode: "unconfirmed" as const } }, "credential"],
   ] as const)("reports %s validation errors", (step, state, error) => {
     expect(validateWizardStep(step, state).errors).toContain(error);
@@ -103,6 +111,21 @@ describe("modelConfigurationWizardState", () => {
 
   test("does not require optional advanced route fields", () => {
     expect(validateWizardStep("testPublish", validBuiltinState())).toEqual({ errors: [], valid: true });
+  });
+
+  test.each([
+    "not a url",
+    "ftp://api.example.com",
+    "https://user:password@api.example.com",
+    "https://api.example.com/v1?model=example",
+    "https://api.example.com/v1#fragment",
+  ])("rejects an invalid connection base URL: %s", (baseUrl) => {
+    const state = {
+      ...validBuiltinState(),
+      connection: { baseUrl, environment: "production", mode: "create" as const, name: "Example" },
+    };
+
+    expect(validateWizardStep("connection", state).errors).toContain("connection.baseUrl");
   });
 
   test("makes backups re-confirm the credential and never reuse the stable route key", () => {
