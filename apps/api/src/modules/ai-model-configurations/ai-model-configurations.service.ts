@@ -75,7 +75,7 @@ export class AiModelConfigurationsService {
         `SELECT route.id::text,route.route_key,route.status,route.configuration_revision,route.tested_revision,
           route.provider_id::text,route.model_id::text,route.plugin_install_id::text,route.credential_id::text,
           route.connection_id::text,route.upstream_model,route.modality,route.model_family,route.environment,
-          provider.key AS provider_key,model.model_key,model.display_name,model.status AS model_status,
+          provider.key AS provider_key,provider.status AS provider_status,model.model_key,model.display_name,model.status AS model_status,
           catalog.id::text AS catalog_id,catalog.status AS catalog_status,
           connection.name AS connection_name,connection.base_url,connection.environment AS connection_environment,
           connection.status AS connection_status,connection.provider_id::text AS connection_provider_id,connection.tenant_id::text AS connection_tenant_id,
@@ -88,7 +88,9 @@ export class AiModelConfigurationsService {
          LEFT JOIN ai_model_catalog catalog ON catalog.model_id=route.model_id AND catalog.tenant_id IS NULL
          LEFT JOIN ai_provider_connections connection ON connection.id=route.connection_id
          LEFT JOIN api_credentials credential ON credential.id=route.credential_id
-         LEFT JOIN model_pricing pricing ON pricing.provider=provider.key AND pricing.model=route.upstream_model AND pricing.route=route.route_key
+         LEFT JOIN model_pricing pricing ON pricing.provider=provider.key AND pricing.model=route.upstream_model
+           AND pricing.route=route.route_key AND pricing.unit=CASE route.modality
+             WHEN 'text' THEN 'text_generation' WHEN 'image' THEN 'image_generation' WHEN 'video' THEN 'video_generation' END
          WHERE route.id=$1 AND route.tenant_id IS NULL AND route.deleted_at IS NULL
          FOR UPDATE OF route`, [input.routeId]);
       const row = result.rows[0];
@@ -99,7 +101,9 @@ export class AiModelConfigurationsService {
         throw new AiModelConfigurationApiError(409, "MODEL_CONFIGURATION_TEST_REQUIRED", "Test the current configuration before publishing");
       }
       const missing: string[] = [];
-      if (!row.model_id || row.model_status !== "active" || !row.catalog_id) missing.push("model");
+      if (!row.provider_id || row.provider_status !== "active") missing.push("provider");
+      if (!row.model_id || row.model_status !== "active") missing.push("model");
+      if (!row.catalog_id) missing.push("catalog");
       if (!row.upstream_model?.trim()) missing.push("upstreamModel");
       if (!row.credential_id || row.credential_status !== "active" || row.credential_tenant_id !== null
         || row.credential_provider_id !== row.provider_id) missing.push("credential");

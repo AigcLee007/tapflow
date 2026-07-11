@@ -221,20 +221,71 @@ describeWithDatabase("AiModelConfigurationsService database drafts", () => {
     });
   });
 
-  test("publishing one route does not deactivate unrelated models or routes", async () => {
+  test.each(["provider", "model", "catalog", "pricing-unit", "credential-provider", "connection-provider", "credential-scope", "connection-scope"])(
+    "rejects incomplete publish for invalid %s linkage",
+    async (invalid) => {
+      await withService(async ({ adminPool, service }) => {
+        const draft = await service.saveDraft(context, builtInDraft(`link-${invalid}`));
+        await adminPool.query("UPDATE ai_routes SET tested_revision=configuration_revision WHERE id=$1", [draft.route.id]);
+        await adminPool.query("UPDATE ai_provider_connections SET status='active' WHERE id=$1", [draft.connection.id]);
+        await adminPool.query("UPDATE model_pricing SET active=true WHERE route=$1 AND unit='image_generation'", [draft.route.key]);
+        if (invalid === "provider") await adminPool.query("UPDATE ai_providers SET status='inactive' WHERE id=(SELECT provider_id FROM ai_routes WHERE id=$1)", [draft.route.id]);
+        if (invalid === "model") await adminPool.query("UPDATE ai_models SET status='inactive' WHERE id=$1", [draft.model.id]);
+        if (invalid === "catalog") await adminPool.query("DELETE FROM ai_model_catalog WHERE id=$1", [draft.catalog.id]);
+        if (invalid === "pricing-unit") await adminPool.query("UPDATE model_pricing SET unit='text_generation' WHERE route=$1", [draft.route.key]);
+        if (invalid.includes("provider")) {
+          const other = await adminPool.query<{ id: string }>("INSERT INTO ai_providers (key,name,kind,status) VALUES ($1,'Other','openai-compatible','active') RETURNING id::text", [`other-${invalid}`]);
+          await adminPool.query(`UPDATE ${invalid.startsWith("credential") ? "api_credentials" : "ai_provider_connections"} SET provider_id=$2 WHERE id=$1`,
+            [invalid.startsWith("credential") ? draft.credential.id : draft.connection.id, other.rows[0].id]);
+        }
+        if (invalid.includes("scope")) {
+          const tenant = await adminPool.query<{ id: string }>("INSERT INTO tenants (name,slug) VALUES ($1,$2) RETURNING id::text", [`Tenant ${invalid}`, `tenant-${invalid}`]);
+          await adminPool.query(`UPDATE ${invalid.startsWith("credential") ? "api_credentials" : "ai_provider_connections"} SET tenant_id=$2 WHERE id=$1`,
+            [invalid.startsWith("credential") ? draft.credential.id : draft.connection.id, tenant.rows[0].id]);
+        }
+        await expect(service.publish(context, { routeId: draft.route.id, expectedRevision: 1 }))
+          .rejects.toMatchObject({ code: "MODEL_CONFIGURATION_INCOMPLETE" });
+      });
+    },
+  );
+
+  test("publishing activates only exact records and preserves unrelated defaults", async () => {
     await withService(async ({ adminPool, service }) => {
       const unrelated = await service.saveDraft(context, builtInDraft("unrelated", {
         packageKey: "openai-compatible.gpt-image-2",
         route: { routeLabel: "Other model", upstreamModel: "gpt-image-2" },
       }));
-      await adminPool.query("UPDATE ai_routes SET status='active',tested_revision=configuration_revision WHERE id=$1", [unrelated.route.id]);
+      await adminPool.query("UPDATE ai_routes SET status='active',is_default=true,tested_revision=configuration_revision WHERE id=$1", [unrelated.route.id]);
+      await adminPool.query("UPDATE ai_model_catalog SET status='active',default_route_key=$2 WHERE id=$1", [unrelated.catalog.id,unrelated.route.key]);
+      const sameProduct = await service.saveDraft(context, builtInDraft("same-product"));
+      await adminPool.query("UPDATE ai_routes SET status='active',is_default=true WHERE id=$1", [sameProduct.route.id]);
+      const otherEnvironment = await service.saveDraft(context, builtInDraft("other-environment", {
+        connection: { mode: "create", name: "Staging", baseUrl: "https://api.pixellelabs.com/", environment: "staging" },
+      }));
+      await adminPool.query("UPDATE ai_routes SET status='active',is_default=true WHERE id=$1", [otherEnvironment.route.id]);
       const draft = await service.saveDraft(context, builtInDraft("selected"));
       await adminPool.query("UPDATE ai_routes SET tested_revision=configuration_revision WHERE id=$1", [draft.route.id]);
       await adminPool.query("UPDATE ai_provider_connections SET status='active' WHERE id=$1", [draft.connection.id]);
-      await adminPool.query("UPDATE model_pricing SET active=true WHERE route=$1", [draft.route.key]);
+      await adminPool.query("UPDATE model_pricing SET active=true WHERE route=$1 AND unit='image_generation'", [draft.route.key]);
+      await adminPool.query(`INSERT INTO model_pricing (provider,model,route,unit,unit_credits,min_charge_credits,active)
+        SELECT provider,model,route,'text_generation',2,2,false FROM model_pricing WHERE route=$1 AND unit='image_generation'`, [draft.route.key]);
       await service.publish(context, { routeId: draft.route.id, expectedRevision: 1 });
-      const result = await adminPool.query("SELECT status FROM ai_routes WHERE id=$1", [unrelated.route.id]);
-      expect(result.rows[0].status).toBe("active");
+      const routes = await adminPool.query("SELECT id::text,status,is_default FROM ai_routes WHERE id=ANY($1::uuid[]) ORDER BY id",
+        [[draft.route.id,sameProduct.route.id,otherEnvironment.route.id,unrelated.route.id]]);
+      const byId = new Map(routes.rows.map((row) => [row.id,row]));
+      expect(byId.get(draft.route.id)).toMatchObject({ status: "active", is_default: true });
+      expect(byId.get(sameProduct.route.id)).toMatchObject({ status: "active", is_default: false });
+      expect(byId.get(otherEnvironment.route.id)).toMatchObject({ status: "active", is_default: true });
+      expect(byId.get(unrelated.route.id)).toMatchObject({ status: "active", is_default: true });
+      const pricing = await adminPool.query("SELECT unit,active FROM model_pricing WHERE route=$1 ORDER BY unit", [draft.route.key]);
+      expect(pricing.rows).toEqual([{ unit: "image_generation", active: true }, { unit: "text_generation", active: false }]);
+      const records = await adminPool.query(`SELECT catalog.id::text AS catalog_id,catalog.status,catalog.default_route_key,
+        install.id::text AS install_id,install.status AS install_status FROM ai_model_catalog catalog
+        JOIN tenant_ai_plugin_installs install ON install.id=catalog.plugin_install_id WHERE catalog.id=$1`, [draft.catalog.id]);
+      expect(records.rows[0]).toMatchObject({ catalog_id: draft.catalog.id, status: "active", default_route_key: draft.route.key,
+        install_status: "published" });
+      const unrelatedCatalog = await adminPool.query("SELECT status,default_route_key FROM ai_model_catalog WHERE id=$1", [unrelated.catalog.id]);
+      expect(unrelatedCatalog.rows[0]).toMatchObject({ status: "active", default_route_key: unrelated.route.key });
     });
   });
 

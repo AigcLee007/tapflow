@@ -1432,11 +1432,20 @@ export class AiGatewayAdminService {
       const nextApiMode = input.apiMode !== undefined ? input.apiMode?.trim() ?? null : existing.api_mode;
       const nextRequestPath = input.requestPath !== undefined ? input.requestPath?.trim() ?? null : existing.request_path;
       const nextPricing = input.pricing ?? existing.pricing;
+      const nextPriority = input.priority ?? existing.priority;
+      const nextWeight = input.weight ?? existing.weight;
+      const nextFallbackGroup = input.fallbackGroup !== undefined ? input.fallbackGroup?.trim() ?? null : existing.fallback_group;
+      const nextIsDefault = input.isDefault ?? existing.is_default;
+      const nextRateLimit = input.rateLimit ?? existing.rate_limit;
+      const nextStatus = input.status?.trim() ?? existing.status;
       const runtimeChanged = modelId !== existing.model_id || nextCredentialId !== existing.credential_id
         || nextConnectionId !== existing.connection_id || nextBaseUrlOverride !== existing.base_url_override
         || nextUpstreamModel !== existing.upstream_model || nextApiMode !== existing.api_mode
         || nextRequestPath !== existing.request_path || JSON.stringify(nextRequestConfig) !== JSON.stringify(existing.request_config ?? {})
-        || JSON.stringify(nextPricing) !== JSON.stringify(existing.pricing ?? {});
+        || JSON.stringify(nextPricing) !== JSON.stringify(existing.pricing ?? {}) || nextPriority !== existing.priority
+        || nextWeight !== existing.weight || nextFallbackGroup !== existing.fallback_group
+        || nextIsDefault !== existing.is_default || JSON.stringify(nextRateLimit) !== JSON.stringify(existing.rate_limit ?? {})
+        || nextStatus !== existing.status || nextEnvironment !== existing.environment;
 
       const result = await client.query<RouteRecord>(
         `
@@ -1456,7 +1465,7 @@ export class AiGatewayAdminService {
             request_path = $13,
             internal_label = $14,
             admin_notes = $15,
-            is_default = $16::boolean,
+            is_default = CASE WHEN $22::boolean THEN false ELSE $16::boolean END,
             route_label = $17,
             request_config = $18::jsonb,
             pricing = $19::jsonb,
@@ -1508,21 +1517,21 @@ export class AiGatewayAdminService {
           nextCredentialId,
           nextConnectionId,
           nextEnvironment,
-          input.priority ?? existing.priority,
-          input.weight ?? existing.weight,
-          input.fallbackGroup !== undefined ? input.fallbackGroup?.trim() ?? null : existing.fallback_group,
+          nextPriority,
+          nextWeight,
+          nextFallbackGroup,
           nextBaseUrlOverride,
           nextUpstreamModel,
           nextApiMode,
           nextRequestPath,
           input.internalLabel !== undefined ? input.internalLabel?.trim() ?? null : existing.internal_label,
           input.adminNotes !== undefined ? input.adminNotes?.trim() ?? null : existing.admin_notes,
-          input.isDefault ?? existing.is_default,
+          nextIsDefault,
           input.routeLabel !== undefined ? input.routeLabel?.trim() ?? null : existing.route_label,
           JSON.stringify(nextRequestConfig),
           JSON.stringify(nextPricing),
-          JSON.stringify(input.rateLimit ?? existing.rate_limit),
-          input.status?.trim() ?? existing.status,
+          JSON.stringify(nextRateLimit),
+          nextStatus,
           runtimeChanged,
         ],
       );
