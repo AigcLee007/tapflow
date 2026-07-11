@@ -118,6 +118,23 @@ describe("ModelConfigurationWizard", () => {
     expect(screen.queryByText(/示例密钥/)).toBeNull();
   });
 
+  test("keeps the existing credential picker disabled when the selected provider is unresolved", () => {
+    renderWizard({ credentials: [{ id: "credential-example", providerId: "provider-example", name: "示例密钥", status: "active", maskedSecret: "****", secretFingerprint: "aaaa", lastUsedAt: null, rotatedAt: null }] });
+    fireEvent.click(screen.getByRole("button", { name: "自定义 OpenAI 兼容模型" }));
+    fireEvent.change(screen.getByLabelText("提供商标识"), { target: { value: "unknown" } });
+    fireEvent.change(screen.getByLabelText("提供商名称"), { target: { value: "未知" } });
+    fireEvent.change(screen.getByLabelText("模型名称"), { target: { value: "未知模型" } });
+    fireEvent.change(screen.getByLabelText("模型标识"), { target: { value: "unknown-model" } });
+    fireEvent.change(screen.getByLabelText("模型系列"), { target: { value: "unknown" } });
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+    fireEvent.change(screen.getByLabelText("连接名称"), { target: { value: "连接" } });
+    fireEvent.change(screen.getByLabelText("基础 URL"), { target: { value: "https://unknown.example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+    fireEvent.click(screen.getByRole("button", { name: "使用已有密钥" }));
+    expect((screen.getByRole("button", { name: /现有密钥/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByText(/示例密钥/)).toBeNull();
+  });
+
   test("clears new secret after saving a draft", async () => {
     saveDraft.mockResolvedValue(saved);
     renderWizard();
@@ -209,5 +226,17 @@ describe("ModelConfigurationWizard", () => {
     fireEvent.pointerDown(prompt.parentElement!.parentElement!);
     expect(view.container.querySelector("[role=dialog]")).toBeTruthy();
     expect(screen.queryByText("放弃未保存的更改？")).toBeNull();
+  });
+
+  test("moves focus into the dialog, traps Tab, and restores focus on close", () => {
+    const trigger = document.createElement("button"); trigger.textContent = "打开配置"; document.body.appendChild(trigger); trigger.focus();
+    const { rerender } = render(<ModelConfigurationWizard open onClose={vi.fn()} onPublished={vi.fn()} />);
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    fireEvent.keyDown(document.activeElement!, { key: "Tab" });
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    rerender(<ModelConfigurationWizard open={false} onClose={vi.fn()} onPublished={vi.fn()} />);
+    expect(document.activeElement).toBe(trigger);
+    trigger.remove();
   });
 });
