@@ -31,6 +31,22 @@ function renderWizard(props: Partial<React.ComponentProps<typeof ModelConfigurat
   return render(<ModelConfigurationWizard open onClose={vi.fn()} onPublished={vi.fn()} {...props} />);
 }
 
+async function fillToFinalStep() {
+  fireEvent.click(screen.getByRole("button", { name: /示例生图/ }));
+  fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+  fireEvent.change(screen.getByLabelText("连接名称"), { target: { value: "示例连接" } });
+  fireEvent.change(screen.getByLabelText("基础 URL"), { target: { value: "https://api.example.com" } });
+  fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+  fireEvent.change(screen.getByLabelText("线路名称"), { target: { value: "线路一" } });
+  fireEvent.click(screen.getByRole("button", { name: "新建密钥" }));
+  fireEvent.change(screen.getByLabelText("密钥名称"), { target: { value: "示例密钥" } });
+  fireEvent.change(screen.getByLabelText("API 密钥"), { target: { value: "secret-value" } });
+  fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+  fireEvent.change(screen.getByLabelText("单价积分"), { target: { value: "2" } });
+  fireEvent.change(screen.getByLabelText("最低积分"), { target: { value: "1" } });
+  fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+}
+
 describe("ModelConfigurationWizard", () => {
   beforeEach(() => { saveDraft.mockReset(); publish.mockReset(); testRoute.mockReset(); });
 
@@ -89,11 +105,71 @@ describe("ModelConfigurationWizard", () => {
     expect(screen.queryByRole("button", { name: "发布" })).toBeNull();
   });
 
+  test("keeps the saved draft editable after a failed test without exposing a secret", async () => {
+    saveDraft.mockResolvedValue(saved);
+    testRoute.mockResolvedValue({ status: "failed", error: { message: "secret-value" } });
+    renderWizard();
+    await fillToFinalStep();
+    fireEvent.click(screen.getByRole("button", { name: "保存草稿" }));
+    await waitFor(() => expect(saveDraft).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole("button", { name: "测试线路" }));
+    await waitFor(() => expect(screen.getByText("测试失败")).toBeTruthy());
+    expect(screen.getByRole("button", { name: "测试线路" })).toBeTruthy();
+    expect(screen.queryByText("secret-value")).toBeNull();
+  });
+
+  test("only enables publish after the current saved revision tests successfully", async () => {
+    saveDraft.mockResolvedValue(saved);
+    testRoute.mockResolvedValue({ status: "ok", error: null });
+    renderWizard();
+    await fillToFinalStep();
+    fireEvent.click(screen.getByRole("button", { name: "保存草稿" }));
+    await waitFor(() => expect(saveDraft).toHaveBeenCalled());
+    expect((screen.getByRole("button", { name: "发布" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "测试线路" }));
+    await waitFor(() => expect(screen.getByText("测试通过")).toBeTruthy());
+    expect((screen.getByRole("button", { name: "发布" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  test("publishes a saved and tested configuration then closes", async () => {
+    const onClose = vi.fn(); const onPublished = vi.fn();
+    saveDraft.mockResolvedValue(saved); testRoute.mockResolvedValue({ status: "ok", error: null }); publish.mockResolvedValue(saved);
+    renderWizard({ onClose, onPublished });
+    await fillToFinalStep();
+    fireEvent.click(screen.getByRole("button", { name: "保存草稿" }));
+    await waitFor(() => expect(saveDraft).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole("button", { name: "测试线路" }));
+    await waitFor(() => expect(screen.getByText("测试通过")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "发布" }));
+    await waitFor(() => expect(onPublished).toHaveBeenCalledWith(saved));
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  test("requires an explicit credential choice for a backup route", () => {
+    renderWizard({ backupFromRoute: { connection: { id, name: "连接", baseUrl: "https://api.example.com", environment: "production" }, model: { displayName: "示例", modality: "image", modelFamily: "example", modelKey: "example-image" }, provider: { key: "example", kind: "openai-compatible", name: "示例" }, pricing: { minChargeCredits: 1, unit: "image_generation", unitCredits: 2 }, route: { id, key: "source-key", configurationRevision: 1 } } });
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+    expect((screen.getByRole("button", { name: "保存草稿" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
   test("prompts before closing dirty work and has no native select", () => {
     const onClose = vi.fn(); const view = renderWizard({ onClose });
     fireEvent.click(screen.getByRole("button", { name: /示例生图/ }));
     fireEvent.keyDown(window, { key: "Escape" });
     expect(screen.getByText("放弃未保存的更改？")).toBeTruthy();
     expect(view.container.querySelector("select")).toBeNull();
+  });
+
+  test("dismisses dirty close confirmation on escape and backdrop click", () => {
+    const view = renderWizard();
+    fireEvent.click(screen.getByRole("button", { name: /示例生图/ }));
+    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByText("放弃未保存的更改？")).toBeNull();
+    fireEvent.keyDown(window, { key: "Escape" });
+    const prompt = screen.getByText("放弃未保存的更改？");
+    fireEvent.pointerDown(prompt.parentElement!.parentElement!);
+    expect(view.container.querySelector("[role=dialog]")).toBeTruthy();
+    expect(screen.queryByText("放弃未保存的更改？")).toBeNull();
   });
 });
