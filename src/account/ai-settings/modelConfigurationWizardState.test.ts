@@ -11,6 +11,7 @@ import {
   validateWizardStep,
   WIZARD_STEPS,
 } from "./modelConfigurationWizardState";
+import type { ModelConfigurationCustomDefinition } from "../../services/v2AiModelConfigurationsApi";
 
 const id = "11111111-1111-4111-8111-111111111111";
 
@@ -29,6 +30,22 @@ function validBuiltinState() {
     route: { routeLabel: "Line 1", upstreamModel: "example-image" },
   };
 }
+
+function validCustomState(custom: ModelConfigurationCustomDefinition) {
+  return {
+    ...createCustomWizardState(custom),
+    connection: { baseUrl: "https://custom.example.com", environment: "production", mode: "create" as const, name: "Custom" },
+    credential: { credentialId: id, mode: "existing" as const },
+    pricing: { minChargeCredits: 3, unitCredits: 4 },
+    route: { routeLabel: "Line 1", upstreamModel: "custom-video" },
+  };
+}
+
+const validCustomDefinition: ModelConfigurationCustomDefinition = {
+  model: { displayName: "Custom Video", modality: "video", modelFamily: "custom-video", modelKey: "custom-video" },
+  provider: { key: "custom", kind: "openai-compatible", name: "Custom Provider" },
+  routeDefaults: {},
+};
 
 describe("modelConfigurationWizardState", () => {
   test("defines the five ordered wizard steps", () => {
@@ -126,6 +143,40 @@ describe("modelConfigurationWizardState", () => {
     };
 
     expect(validateWizardStep("connection", state).errors).toContain("connection.baseUrl");
+  });
+
+  test("requires an existing connection ID", () => {
+    const state = {
+      ...validBuiltinState(),
+      connection: { connectionId: "", mode: "existing" as const },
+    };
+
+    expect(validateWizardStep("connection", state).errors).toContain("connection.connectionId");
+  });
+
+  test.each([
+    [
+      { ...validCustomDefinition, provider: { ...validCustomDefinition.provider, key: "" } },
+      "custom.provider.key",
+    ],
+    [
+      { ...validCustomDefinition, provider: { ...validCustomDefinition.provider, name: "" } },
+      "custom.provider.name",
+    ],
+    [
+      { ...validCustomDefinition, model: { ...validCustomDefinition.model, displayName: "" } },
+      "custom.model.displayName",
+    ],
+    [
+      { ...validCustomDefinition, model: { ...validCustomDefinition.model, modelKey: "" } },
+      "custom.model.modelKey",
+    ],
+    [
+      { ...validCustomDefinition, model: { ...validCustomDefinition.model, modelFamily: "" } },
+      "custom.model.modelFamily",
+    ],
+  ] as const)("requires %s", (custom, error) => {
+    expect(validateWizardStep("model", validCustomState(custom)).errors).toContain(error);
   });
 
   test("makes backups re-confirm the credential and never reuse the stable route key", () => {
