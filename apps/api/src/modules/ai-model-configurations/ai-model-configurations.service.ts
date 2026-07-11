@@ -21,11 +21,13 @@ export type TenantContext = {
 };
 
 export type ModelConfigurationDraftView = {
-  routeId: string;
-  routeKey: string;
-  status: string;
-  configurationRevision: number;
-  testedRevision: number | null;
+  route: {
+    id: string;
+    key: string;
+    status: string;
+    configurationRevision: number;
+    testedRevision: number | null;
+  };
   model: { id: string; modelKey: string; displayName: string; modality: string; modelFamily: string };
   catalog: { id: string; status: string };
   connection: { id: string; name: string; baseUrl: string | null; environment: string; status: string };
@@ -101,8 +103,10 @@ export class AiModelConfigurationsService {
           input.pricing.unitCredits, input.pricing.minChargeCredits, JSON.stringify({ configurationDraft: true })],
       );
       return {
-        routeId: route.id, routeKey: route.route_key, status: route.status,
-        configurationRevision: route.configuration_revision, testedRevision: route.tested_revision,
+        route: {
+          id: route.id, key: route.route_key, status: route.status,
+          configurationRevision: route.configuration_revision, testedRevision: route.tested_revision,
+        },
         model: { id: modelId, modelKey: definition.model.modelKey, displayName: definition.model.displayName,
           modality: definition.model.modality, modelFamily: definition.model.modelFamily },
         catalog: { id: catalogId, status: "inactive" },
@@ -118,8 +122,17 @@ export class AiModelConfigurationsService {
   private resolveDefinition(input: SaveModelConfigurationDraftInput): ResolvedDefinition {
     if ("packageKey" in input) {
       const manifest = this.pluginRegistry.require(input.packageKey);
-      const model = manifest.models.find((candidate) => candidate.modelKey === input.route.upstreamModel) ?? manifest.models[0];
-      const route = manifest.routes.find((candidate) => candidate.modelKey === model.modelKey) ?? manifest.routes[0];
+      const model = manifest.models.find((candidate) => candidate.modelKey === input.route.upstreamModel);
+      const route = model
+        ? manifest.routes.find((candidate) => candidate.modelKey === model.modelKey)
+        : undefined;
+      if (!model || !route) {
+        throw new AiModelConfigurationApiError(
+          400,
+          "CONFIGURATION_UPSTREAM_MODEL_UNSUPPORTED",
+          "The selected upstream model is not supported by this plugin package",
+        );
+      }
       return { provider: manifest.provider, model, manifest, routeDefaults: {
         apiMode: this.stringValue(route.requestConfig, "apiMode") ?? route.mode,
         mode: route.mode, requestConfig: route.requestConfig, requestPath: route.path,
