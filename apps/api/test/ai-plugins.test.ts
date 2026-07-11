@@ -289,20 +289,56 @@ describeWithDatabase("ai plugin admin API", () => {
         });
 
         const serviceContext = { tenantId: owner.currentTenant.id, userId: owner.user.id };
-        const [reinstallResult, deleteResult] = await Promise.allSettled([
-          api.aiPluginService.installPlugin(serviceContext, "pixellelabs.nano-banana-pro", { publishImmediately: true }),
-          api.aiGatewayService.deleteCredential(serviceContext, install.json().credentialId),
-        ]);
-        expect(reinstallResult.status).toBe("fulfilled");
-        expect(deleteResult.status).toBe("rejected");
-        if (deleteResult.status === "rejected") expect(deleteResult.reason).toMatchObject({ code: "CREDENTIAL_IN_USE" });
+        await adminPool.query("UPDATE tenant_ai_plugin_installs SET status='disabled' WHERE id=$1", [install.json().id]);
+        await adminPool.query("UPDATE ai_routes SET status='inactive',deleted_at=now() WHERE plugin_install_id=$1", [install.json().id]);
+        await adminPool.query("UPDATE ai_provider_connections SET status='inactive',credential_id=NULL WHERE metadata->>'installId'=$1", [install.json().id]);
+        const blocker = await adminPool.connect();
+        let reinstallResult: PromiseSettledResult<unknown>;
+        let deleteResult: PromiseSettledResult<unknown>;
+        try {
+          await blocker.query("BEGIN");
+          await blocker.query("SELECT id FROM api_credentials WHERE id=$1 FOR UPDATE", [install.json().credentialId]);
+          const reinstall = api.aiPluginService.installPlugin(serviceContext, "pixellelabs.nano-banana-pro", { publishImmediately: true });
+          for (let attempt = 0; attempt < 100; attempt += 1) {
+            const waiting = await adminPool.query<{ waiting: boolean }>(`SELECT EXISTS (SELECT 1 FROM pg_stat_activity
+              WHERE datname=current_database() AND pid<>pg_backend_pid() AND wait_event_type='Lock'
+                AND query ILIKE '%FOR KEY SHARE%') AS waiting`);
+            if (waiting.rows[0].waiting) break;
+            await new Promise((resolve) => setTimeout(resolve, 10));
+            if (attempt === 99) throw new Error("installPlugin did not reach the credential lock");
+          }
+          const deletion = api.aiGatewayService.deleteCredential(serviceContext, install.json().credentialId);
+          for (let attempt = 0; attempt < 100; attempt += 1) {
+            const waiting = await adminPool.query<{ waiting: boolean }>(`SELECT EXISTS (SELECT 1 FROM pg_stat_activity
+              WHERE datname=current_database() AND pid<>pg_backend_pid() AND wait_event_type='Lock'
+                AND query ILIKE '%FOR UPDATE%') AS waiting`);
+            if (waiting.rows[0].waiting) break;
+            await new Promise((resolve) => setTimeout(resolve, 10));
+            if (attempt === 99) throw new Error("credential deletion did not reach its row lock");
+          }
+          await blocker.query("COMMIT");
+          [reinstallResult, deleteResult] = await Promise.allSettled([reinstall, deletion]);
+        } finally {
+          await blocker.query("ROLLBACK").catch(() => undefined);
+          blocker.release();
+        }
+        const installWon = reinstallResult!.status === "fulfilled" && deleteResult!.status === "rejected";
+        const deleteWon = deleteResult!.status === "fulfilled" && reinstallResult!.status === "rejected";
+        expect(installWon || deleteWon).toBe(true);
+        if (installWon && deleteResult!.status === "rejected") expect(deleteResult!.reason).toMatchObject({ code: "CREDENTIAL_IN_USE" });
+        if (deleteWon && reinstallResult!.status === "rejected") expect(reinstallResult!.reason).toMatchObject({ code: "PLUGIN_CREDENTIAL_UNAVAILABLE" });
         const danglingDeleted = await adminPool.query<{ count: string }>(`SELECT COUNT(*)::text AS count FROM api_credentials credential
           WHERE credential.status='deleted' AND credential.id=$1 AND (
-            EXISTS (SELECT 1 FROM tenant_ai_plugin_installs install WHERE install.credential_id=credential.id)
-            OR EXISTS (SELECT 1 FROM ai_provider_connections connection WHERE connection.credential_id=credential.id)
+            EXISTS (SELECT 1 FROM tenant_ai_plugin_installs install WHERE install.credential_id=credential.id AND install.status IN ('draft','published'))
+            OR EXISTS (SELECT 1 FROM ai_provider_connections connection WHERE connection.credential_id=credential.id AND connection.status<>'deleted')
             OR EXISTS (SELECT 1 FROM ai_routes route WHERE route.credential_id=credential.id AND route.deleted_at IS NULL))`,
           [install.json().credentialId]);
         expect(danglingDeleted.rows[0].count).toBe("0");
+        if (deleteWon) {
+          await api.aiPluginService.installPlugin(serviceContext, "pixellelabs.nano-banana-pro", {
+            credential: { name: "Nano Banana Pro API Key", secret: "pixellelabs-pro-test-secret-restored" }, publishImmediately: true,
+          });
+        }
 
         const disable = await api.inject({
           headers: {
