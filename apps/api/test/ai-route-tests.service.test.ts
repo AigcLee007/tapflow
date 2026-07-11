@@ -18,13 +18,18 @@ function harness(options: { fail?: boolean; race?: boolean } = {}) {
       }
       if (query.includes("INSERT INTO ai_route_health_checks")) return { rows: [{ id: "33333333-3333-3333-3333-333333333333", created_at: "now" }] };
       if (query.includes("SET tested_revision=$2")) {
-        if (state.configurationRevision === args?.[1]) state.testedRevision = args[1] as number;
+        if (state.configurationRevision === args?.[1]) {
+          state.testedRevision = args[1] as number;
+          state.healthStatus = "ok";
+        }
         return { rows: [] };
       }
       if (query.includes("health_status='ok'")) state.healthStatus = "ok";
       if (query.includes("health_status='failed'")) {
-        state.healthStatus = "failed";
-        if (state.testedRevision !== state.configurationRevision) state.testedRevision = null;
+        if (state.configurationRevision === args?.[1]) {
+          state.healthStatus = "failed";
+          state.testedRevision = null;
+        }
       }
       return { rows: [] };
     }),
@@ -52,14 +57,14 @@ describe("AiRouteTestService admin draft certification", () => {
   test("does not certify a newer revision changed during the provider call", async () => {
     const testHarness = harness({ race: true });
     expect((await testHarness.service.testAdminDraftRoute(context, routeId, {})).status).toBe("ok");
-    expect(testHarness.state).toMatchObject({ configurationRevision: 2, testedRevision: null, healthStatus: "ok" });
+    expect(testHarness.state).toMatchObject({ configurationRevision: 2, testedRevision: null, healthStatus: null });
     expect(testHarness.sql.some((query) => query.includes("configuration_revision=$2"))).toBe(true);
   });
 
-  test("failed test preserves valid certification for the unchanged revision", async () => {
+  test("failed current test clears certification for the unchanged revision", async () => {
     const testHarness = harness({ fail: true });
     testHarness.state.testedRevision = 1;
     expect((await testHarness.service.testAdminDraftRoute(context, routeId, {})).status).toBe("failed");
-    expect(testHarness.state).toMatchObject({ configurationRevision: 1, testedRevision: 1, healthStatus: "failed" });
+    expect(testHarness.state).toMatchObject({ configurationRevision: 1, testedRevision: null, healthStatus: "failed" });
   });
 });

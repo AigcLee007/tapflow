@@ -104,7 +104,7 @@ function handleRouteError(
   }
 
   if (error instanceof AiGatewayApiError) {
-    return sendError(request, reply, error.statusCode, error.code, error.message);
+    return sendError(request, reply, error.statusCode, error.code, error.message, error.details);
   }
 
   if (error instanceof AiGatewayError) {

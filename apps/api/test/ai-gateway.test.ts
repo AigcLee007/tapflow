@@ -324,6 +324,19 @@ describeWithDatabase("ai gateway admin API", () => {
         expect(listedCredentials.json()[0]).not.toHaveProperty("nonce");
         expect(listedCredentials.json()[0]).not.toHaveProperty("auth_tag");
 
+        const guardedRoute = await adminPool.query<{ id: string }>(
+          `INSERT INTO ai_routes (provider_id,credential_id,route_key,modality,status,route_label)
+           VALUES ($1,$2,'image.credential-guard','image','inactive','Safe line') RETURNING id::text`,
+          [providerBody.id, createdCredential.json().id],
+        );
+        const guardedDelete = await api.inject({ headers: { authorization: `Bearer ${owner.accessToken}` },
+          method: "DELETE", url: `/api/v2/admin/credentials/${createdCredential.json().id}` });
+        expect(guardedDelete.statusCode).toBe(409);
+        expect(guardedDelete.json().error).toMatchObject({ code: "CREDENTIAL_IN_USE", details: { routes: [{
+          id: guardedRoute.rows[0].id, key: "image.credential-guard", label: "Safe line",
+        }] } });
+        expect(JSON.stringify(guardedDelete.json())).not.toContain("encrypted_secret");
+
         const beforeRotate = await adminPool.query<{
           encrypted_secret_b64: string;
         }>(

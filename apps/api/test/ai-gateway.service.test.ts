@@ -65,6 +65,13 @@ test("preserves tested revision for labels and admin notes only", async () => {
   expect(route.status).toBe("active");
 });
 
+test("preserves tested revision when nested runtime config keys are only reordered", async () => {
+  const harness = routeUpdateHarness();
+  await harness.service.updateRoute({ tenantId: "11111111-1111-1111-1111-111111111111", userId: null }, routeId,
+    { requestConfig: { apiMode: "sync", model: "upstream", path: "/generate" } });
+  expect(harness.getUpdateArgs().at(-1)).toBe(false);
+});
+
 test("credential deletion is blocked with sanitized referencing routes", async () => {
   const queries: string[] = [];
   const client = {

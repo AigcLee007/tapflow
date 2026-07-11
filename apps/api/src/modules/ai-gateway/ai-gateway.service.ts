@@ -519,6 +519,15 @@ function buildNormalizedRouteRequestConfig(input: {
   return next;
 }
 
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value as Record<string, unknown>).sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, nested]) => `${JSON.stringify(key)}:${canonicalJson(nested)}`).join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "undefined";
+}
+
 function buildDuplicatedRouteKey(routeKey: string): string {
   return routeKey.endsWith("-copy") ? `${routeKey}-2` : `${routeKey}-copy`;
 }
@@ -1441,10 +1450,10 @@ export class AiGatewayAdminService {
       const runtimeChanged = modelId !== existing.model_id || nextCredentialId !== existing.credential_id
         || nextConnectionId !== existing.connection_id || nextBaseUrlOverride !== existing.base_url_override
         || nextUpstreamModel !== existing.upstream_model || nextApiMode !== existing.api_mode
-        || nextRequestPath !== existing.request_path || JSON.stringify(nextRequestConfig) !== JSON.stringify(existing.request_config ?? {})
-        || JSON.stringify(nextPricing) !== JSON.stringify(existing.pricing ?? {}) || nextPriority !== existing.priority
+        || nextRequestPath !== existing.request_path || canonicalJson(nextRequestConfig) !== canonicalJson(existing.request_config ?? {})
+        || canonicalJson(nextPricing) !== canonicalJson(existing.pricing ?? {}) || nextPriority !== existing.priority
         || nextWeight !== existing.weight || nextFallbackGroup !== existing.fallback_group
-        || nextIsDefault !== existing.is_default || JSON.stringify(nextRateLimit) !== JSON.stringify(existing.rate_limit ?? {})
+        || nextIsDefault !== existing.is_default || canonicalJson(nextRateLimit) !== canonicalJson(existing.rate_limit ?? {})
         || nextStatus !== existing.status || nextEnvironment !== existing.environment;
 
       const result = await client.query<RouteRecord>(
@@ -2005,7 +2014,7 @@ export class AiGatewayAdminService {
         [credentialId],
       );
       if (references.rows.length) {
-        throw new AiGatewayApiError(409, "CREDENTIAL_IN_USE", "Credential is referenced by active route configurations", {
+        throw new AiGatewayApiError(409, "CREDENTIAL_IN_USE", "Credential is referenced by non-deleted route configurations", {
           routes: references.rows.map((route) => ({ id: route.id, key: route.route_key, label: route.route_label })),
         });
       }

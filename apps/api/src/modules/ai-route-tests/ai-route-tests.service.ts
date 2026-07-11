@@ -424,20 +424,16 @@ export class AiRouteTestService {
 
       if (options.status === "ok") {
         await client.query(
-          `UPDATE ai_routes SET tested_revision=$2,updated_at=now()
+          `UPDATE ai_routes SET tested_revision=$2,health_status='ok',last_health_checked_at=now(),updated_at=now()
            WHERE id=$1 AND configuration_revision=$2`,
           [options.route.id, options.route.configuration_revision],
-        );
-        await client.query(
-          `UPDATE ai_routes SET health_status='ok',last_health_checked_at=now(),updated_at=now() WHERE id=$1`,
-          [options.route.id],
         );
       } else {
         await client.query(
           `UPDATE ai_routes SET health_status='failed',last_health_checked_at=now(),
-             tested_revision=CASE WHEN tested_revision=configuration_revision THEN tested_revision ELSE NULL END,
-             updated_at=now() WHERE id=$1`,
-          [options.route.id],
+             tested_revision=NULL,updated_at=now()
+           WHERE id=$1 AND configuration_revision=$2`,
+          [options.route.id, options.route.configuration_revision],
         );
       }
 

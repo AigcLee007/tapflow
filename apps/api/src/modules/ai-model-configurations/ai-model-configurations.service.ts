@@ -70,7 +70,17 @@ export class AiModelConfigurationsService {
   }
 
   async publish(context: TenantContext, input: PublishModelConfigurationInput): Promise<ModelConfigurationDraftView> {
-    return withTenantTransaction(context, async (client) => {
+    try {
+      return await withTenantTransaction(context, async (client) => {
+      const group = await client.query<{ environment: string; modality: string; model_family: string }>(
+        `SELECT modality,model_family,environment FROM ai_routes
+         WHERE id=$1 AND tenant_id IS NULL AND deleted_at IS NULL`, [input.routeId]);
+      if (!group.rows[0]) {
+        throw new AiModelConfigurationApiError(409, "MODEL_CONFIGURATION_CONFLICT", "Model configuration changed; reload and retry");
+      }
+      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
+        `platform:${group.rows[0].modality}:${group.rows[0].model_family}:${group.rows[0].environment}`,
+      ]);
       const result = await client.query<any>(
         `SELECT route.id::text,route.route_key,route.status,route.configuration_revision,route.tested_revision,
           route.provider_id::text,route.model_id::text,route.plugin_install_id::text,route.credential_id::text,
@@ -86,6 +96,8 @@ export class AiModelConfigurationsService {
          LEFT JOIN ai_providers provider ON provider.id=route.provider_id
          LEFT JOIN ai_models model ON model.id=route.model_id
          LEFT JOIN ai_model_catalog catalog ON catalog.model_id=route.model_id AND catalog.tenant_id IS NULL
+           AND ((route.plugin_install_id IS NULL AND catalog.plugin_install_id IS NULL)
+             OR catalog.plugin_install_id=route.plugin_install_id)
          LEFT JOIN ai_provider_connections connection ON connection.id=route.connection_id
          LEFT JOIN api_credentials credential ON credential.id=route.credential_id
          LEFT JOIN model_pricing pricing ON pricing.provider=provider.key AND pricing.model=route.upstream_model
@@ -108,7 +120,7 @@ export class AiModelConfigurationsService {
       if (!row.credential_id || row.credential_status !== "active" || row.credential_tenant_id !== null
         || row.credential_provider_id !== row.provider_id) missing.push("credential");
       if (!row.connection_id || row.connection_status !== "active" || row.connection_tenant_id !== null
-        || row.connection_provider_id !== row.provider_id) missing.push("connection");
+        || row.connection_provider_id !== row.provider_id || row.connection_environment !== row.environment) missing.push("connection");
       if (!row.pricing_id || !row.pricing_active || Number(row.unit_credits) <= 0 || Number(row.min_charge_credits) <= 0) {
         missing.push("pricing");
       }
@@ -133,7 +145,13 @@ export class AiModelConfigurationsService {
         credential: { id: row.credential_id, name: row.credential_name, providerId: row.credential_provider_id, status: row.credential_status, secretFingerprint: row.secret_fingerprint },
         pricing: { unit: row.unit, unitCredits: Number(row.unit_credits), minChargeCredits: Number(row.min_charge_credits), active: true },
       };
-    }, this.pool);
+      }, this.pool);
+    } catch (error) {
+      if (["40001", "40P01", "55P03"].includes((error as { code?: string }).code ?? "")) {
+        throw new AiModelConfigurationApiError(409, "MODEL_CONFIGURATION_CONFLICT", "Model configuration changed; reload and retry");
+      }
+      throw error;
+    }
   }
 
   async saveDraft(context: TenantContext, input: SaveModelConfigurationDraftInput): Promise<ModelConfigurationDraftView> {

@@ -212,6 +212,18 @@ describeWithDatabase("AiModelConfigurationsService database drafts", () => {
     });
   });
 
+  test("failed test of current revision clears certification and blocks publish", async () => {
+    await withService(async ({ adminPool, appPool, service }) => {
+      const draft = await service.saveDraft(context, builtInDraft("failed-current"));
+      await adminPool.query("UPDATE ai_routes SET tested_revision=configuration_revision WHERE id=$1", [draft.route.id]);
+      const routeTests = new AiRouteTestService({ credentialVault: {} as never,
+        mediaRuntime: { generateImage: async () => { throw new Error("provider failed"); } } as never, pool: appPool });
+      expect((await routeTests.testAdminDraftRoute(context, draft.route.id, {})).status).toBe("failed");
+      await expect(service.publish(context, { routeId: draft.route.id, expectedRevision: 1 }))
+        .rejects.toMatchObject({ code: "MODEL_CONFIGURATION_TEST_REQUIRED" });
+    });
+  });
+
   test("runtime changes invalidate certification and block publish until retested", async () => {
     await withService(async ({ adminPool, service }) => {
       const draft = await service.saveDraft(context, builtInDraft("retest"));
@@ -245,7 +257,7 @@ describeWithDatabase("AiModelConfigurationsService database drafts", () => {
     });
   });
 
-  test.each(["provider", "model", "catalog", "pricing-unit", "credential-provider", "connection-provider", "credential-scope", "connection-scope"])(
+  test.each(["provider", "model", "catalog", "catalog-install", "pricing-unit", "credential-provider", "connection-provider", "credential-scope", "connection-scope", "connection-environment"])(
     "rejects incomplete publish for invalid %s linkage",
     async (invalid) => {
       await withService(async ({ adminPool, service }) => {
@@ -256,7 +268,9 @@ describeWithDatabase("AiModelConfigurationsService database drafts", () => {
         if (invalid === "provider") await adminPool.query("UPDATE ai_providers SET status='inactive' WHERE id=(SELECT provider_id FROM ai_routes WHERE id=$1)", [draft.route.id]);
         if (invalid === "model") await adminPool.query("UPDATE ai_models SET status='inactive' WHERE id=$1", [draft.model.id]);
         if (invalid === "catalog") await adminPool.query("DELETE FROM ai_model_catalog WHERE id=$1", [draft.catalog.id]);
+        if (invalid === "catalog-install") await adminPool.query("UPDATE ai_model_catalog SET plugin_install_id=NULL WHERE id=$1", [draft.catalog.id]);
         if (invalid === "pricing-unit") await adminPool.query("UPDATE model_pricing SET unit='text_generation' WHERE route=$1", [draft.route.key]);
+        if (invalid === "connection-environment") await adminPool.query("UPDATE ai_provider_connections SET environment='staging' WHERE id=$1", [draft.connection.id]);
         if (invalid.includes("provider")) {
           const other = await adminPool.query<{ id: string }>("INSERT INTO ai_providers (key,name,kind,status) VALUES ($1,'Other','openai-compatible','active') RETURNING id::text", [`other-${invalid}`]);
           await adminPool.query(`UPDATE ${invalid.startsWith("credential") ? "api_credentials" : "ai_provider_connections"} SET provider_id=$2 WHERE id=$1`,
