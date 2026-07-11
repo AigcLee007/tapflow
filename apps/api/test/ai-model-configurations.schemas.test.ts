@@ -146,6 +146,23 @@ describe("AI model configuration schemas", () => {
     }
   });
 
+  test("keeps pricing credits within the persistence contract range", () => {
+    for (const pricing of [
+      { ...commonDraft.pricing, unitCredits: 0.00001 },
+      { ...commonDraft.pricing, unitCredits: 1_000_000_001 },
+      { ...commonDraft.pricing, minChargeCredits: 0.00001 },
+      { ...commonDraft.pricing, minChargeCredits: 1_000_000_001 },
+    ]) {
+      expect(() =>
+        saveModelConfigurationDraftSchema.parse({
+          ...commonDraft,
+          packageKey: "openai-compatible.gpt-image-2",
+          pricing,
+        }),
+      ).toThrow();
+    }
+  });
+
   test("requires routeId and expectedRevision together for draft updates", () => {
     expect(() =>
       saveModelConfigurationDraftSchema.parse({
@@ -216,6 +233,44 @@ describe("AI model configuration schemas", () => {
       mode: "create",
       name: "New connection",
     });
+  });
+
+  test("rejects unsafe base URL components", () => {
+    const unsafeBaseUrls = [
+      "ftp://api.example.com/v1",
+      "https://user@api.example.com/v1",
+      "https://user:password@api.example.com/v1",
+      "https://api.example.com/v1?apiKey=synthetic",
+      "https://api.example.com/v1#credentials",
+    ];
+
+    for (const baseUrl of unsafeBaseUrls) {
+      expect(() =>
+        saveModelConfigurationDraftSchema.parse({
+          ...commonDraft,
+          connection: {
+            baseUrl,
+            mode: "create",
+            name: "New connection",
+          },
+          packageKey: "openai-compatible.gpt-image-2",
+        }),
+      ).toThrow();
+    }
+  });
+
+  test("canonicalizes an origin-only base URL with a trailing slash", () => {
+    const parsed = saveModelConfigurationDraftSchema.parse({
+      ...commonDraft,
+      connection: {
+        baseUrl: "https://api.example.com",
+        mode: "create",
+        name: "New connection",
+      },
+      packageKey: "openai-compatible.gpt-image-2",
+    });
+
+    expect(parsed.connection).toMatchObject({ baseUrl: "https://api.example.com/" });
   });
 
   test("accepts an existing connection choice", () => {

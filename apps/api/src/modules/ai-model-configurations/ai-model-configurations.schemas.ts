@@ -7,6 +7,7 @@ const pricingUnitSchema = z.enum([
   "image_generation",
   "video_generation",
 ]);
+const pricingCreditsSchema = z.number().min(0.0001).max(1_000_000_000);
 const routeKeySchema = z
   .string()
   .trim()
@@ -25,6 +26,10 @@ const httpUrlSchema = z
     const protocol = new URL(value).protocol;
     return protocol === "http:" || protocol === "https:";
   }, "URL must use http or https")
+  .refine((value) => {
+    const url = new URL(value);
+    return !url.username && !url.password && !url.search && !url.hash;
+  }, "URL must not contain credentials, query parameters, or a fragment")
   .transform((value) => new URL(value).toString());
 
 const credentialChoiceSchema = z.discriminatedUnion("mode", [
@@ -81,9 +86,9 @@ const routeSchema = z
 
 const pricingSchema = z
   .object({
-    minChargeCredits: z.number().positive(),
+    minChargeCredits: pricingCreditsSchema,
     unit: pricingUnitSchema,
-    unitCredits: z.number().positive(),
+    unitCredits: pricingCreditsSchema,
   })
   .strict();
 
