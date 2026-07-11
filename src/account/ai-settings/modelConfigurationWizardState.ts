@@ -194,21 +194,21 @@ export function validateWizardStep(step: WizardStep, state: ModelConfigurationWi
   };
   const checkConnection = () => {
     if (state.connection.mode === "create") {
-      if (!state.connection.name.trim()) errors.push("connection.name");
+      if (!isNonEmptyWithin(state.connection.name, 255)) errors.push("connection.name");
       if (!isValidConnectionBaseUrl(state.connection.baseUrl)) errors.push("connection.baseUrl");
-      if (!state.connection.environment.trim()) errors.push("connection.environment");
+      if (!isNonEmptyWithin(state.connection.environment, 64)) errors.push("connection.environment");
     } else if (!state.connection.connectionId.trim()) {
       errors.push("connection.connectionId");
     }
   };
   const checkRouteCredential = () => {
-    if (!state.route.routeLabel.trim()) errors.push("route.routeLabel");
-    if (!state.route.upstreamModel.trim()) errors.push("route.upstreamModel");
+    if (!isNonEmptyWithin(state.route.routeLabel, 255)) errors.push("route.routeLabel");
+    if (!isNonEmptyWithin(state.route.upstreamModel, 255)) errors.push("route.upstreamModel");
     if (state.credential.mode === "unconfirmed") {
       errors.push("credential");
     } else if (state.credential.mode === "create") {
-      if (!state.credential.name.trim()) errors.push("credential.name");
-      if (!state.credential.secret.trim()) errors.push("credential.secret");
+      if (!isNonEmptyWithin(state.credential.name, 255)) errors.push("credential.name");
+      if (!isNonEmptyWithin(state.credential.secret, 4000)) errors.push("credential.secret");
     } else if (!state.credential.credentialId.trim()) {
       errors.push("credential.credentialId");
     }
@@ -386,6 +386,15 @@ function checkAdvancedRouteFields(route: RouteWizardState, errors: string[]) {
   }
   if (route.timeoutMs !== undefined && (!Number.isSafeInteger(route.timeoutMs) || route.timeoutMs <= 0)) {
     errors.push("route.timeoutMs");
+  }
+  if (nonEmpty(route.apiMode) && !isNonEmptyWithin(route.apiMode, 100)) {
+    errors.push("route.apiMode");
+  }
+  if (nonEmpty(route.requestPath) && !isNonEmptyWithin(route.requestPath, 255)) {
+    errors.push("route.requestPath");
+  }
+  if (nonEmpty(route.fallbackGroup) && !isNonEmptyWithin(route.fallbackGroup, 255)) {
+    errors.push("route.fallbackGroup");
   }
 }
 

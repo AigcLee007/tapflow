@@ -131,6 +131,21 @@ describe("modelConfigurationWizardState", () => {
   });
 
   test.each([
+    ["connection name", "connection", "connection.name", 255, (value: string) => ({ ...validBuiltinState(), connection: { ...validBuiltinState().connection, name: value } })],
+    ["connection environment", "connection", "connection.environment", 64, (value: string) => ({ ...validBuiltinState(), connection: { ...validBuiltinState().connection, environment: value } })],
+    ["credential name", "routeCredential", "credential.name", 255, (value: string) => ({ ...validBuiltinState(), credential: { mode: "create" as const, name: value, secret: "secret-value" } })],
+    ["credential secret", "routeCredential", "credential.secret", 4000, (value: string) => ({ ...validBuiltinState(), credential: { mode: "create" as const, name: "Example credential", secret: value } })],
+    ["route label", "routeCredential", "route.routeLabel", 255, (value: string) => ({ ...validBuiltinState(), route: { ...validBuiltinState().route, routeLabel: value } })],
+    ["upstream model", "routeCredential", "route.upstreamModel", 255, (value: string) => ({ ...validBuiltinState(), route: { ...validBuiltinState().route, upstreamModel: value } })],
+    ["API mode", "routeCredential", "route.apiMode", 100, (value: string) => ({ ...validBuiltinState(), route: { ...validBuiltinState().route, apiMode: value } })],
+    ["request path", "routeCredential", "route.requestPath", 255, (value: string) => ({ ...validBuiltinState(), route: { ...validBuiltinState().route, requestPath: value } })],
+    ["fallback group", "routeCredential", "route.fallbackGroup", 255, (value: string) => ({ ...validBuiltinState(), route: { ...validBuiltinState().route, fallbackGroup: value } })],
+  ] as const)("enforces the %s maximum length", (_label, step, error, maxLength, stateFor) => {
+    expect(validateWizardStep(step, stateFor("x".repeat(maxLength))).errors).not.toContain(error);
+    expect(validateWizardStep(step, stateFor("x".repeat(maxLength + 1))).errors).toContain(error);
+  });
+
+  test.each([
     [{ ...validBuiltinState(), route: { ...validBuiltinState().route, routeId: id } }, "route.routeId"],
     [{ ...validBuiltinState(), expectedRevision: 1 }, "expectedRevision"],
   ] as const)("rejects unpaired edit state: %s", (state, error) => {
