@@ -228,15 +228,31 @@ describe("ModelConfigurationWizard", () => {
     expect(screen.queryByText("放弃未保存的更改？")).toBeNull();
   });
 
-  test("moves focus into the dialog, traps Tab, and restores focus on close", () => {
+  test("moves focus into the dialog, traps Tab at both boundaries, and restores focus on close", () => {
     const trigger = document.createElement("button"); trigger.textContent = "打开配置"; document.body.appendChild(trigger); trigger.focus();
     const { rerender } = render(<ModelConfigurationWizard open onClose={vi.fn()} onPublished={vi.fn()} />);
     const dialog = screen.getByRole("dialog");
     expect(dialog.contains(document.activeElement)).toBe(true);
-    fireEvent.keyDown(document.activeElement!, { key: "Tab" });
-    expect(dialog.contains(document.activeElement)).toBe(true);
+    const focusable = Array.from(dialog.querySelectorAll<HTMLElement>("button:not([disabled]), input:not([disabled])"));
+    focusable[0].focus(); fireEvent.keyDown(focusable[0], { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(focusable[focusable.length - 1]);
+    focusable[focusable.length - 1].focus(); fireEvent.keyDown(focusable[focusable.length - 1], { key: "Tab" });
+    expect(document.activeElement).toBe(focusable[0]);
     rerender(<ModelConfigurationWizard open={false} onClose={vi.fn()} onPublished={vi.fn()} />);
     expect(document.activeElement).toBe(trigger);
     trigger.remove();
+  });
+
+  test("moves focus into the named confirm dialog and traps its Tab boundaries", () => {
+    renderWizard();
+    fireEvent.click(screen.getByRole("button", { name: /示例生图/ }));
+    fireEvent.keyDown(window, { key: "Escape" });
+    const confirm = screen.getByRole("dialog", { name: "放弃未保存的更改？" });
+    expect(confirm.contains(document.activeElement)).toBe(true);
+    const focusable = Array.from(confirm.querySelectorAll<HTMLElement>("button:not([disabled])"));
+    focusable[0].focus(); fireEvent.keyDown(focusable[0], { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(focusable[focusable.length - 1]);
+    focusable[focusable.length - 1].focus(); fireEvent.keyDown(focusable[focusable.length - 1], { key: "Tab" });
+    expect(document.activeElement).toBe(focusable[0]);
   });
 });
