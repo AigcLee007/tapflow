@@ -109,6 +109,10 @@ export class AiModelConfigurationsService {
       if (!row || row.configuration_revision !== input.expectedRevision) {
         throw new AiModelConfigurationApiError(409, "MODEL_CONFIGURATION_CONFLICT", "Model configuration changed; reload and retry");
       }
+      if (row.modality !== group.rows[0].modality || row.model_family !== group.rows[0].model_family
+        || row.environment !== group.rows[0].environment) {
+        throw new AiModelConfigurationApiError(409, "MODEL_CONFIGURATION_CONFLICT", "Model configuration changed; reload and retry");
+      }
       if (row.tested_revision !== row.configuration_revision) {
         throw new AiModelConfigurationApiError(409, "MODEL_CONFIGURATION_TEST_REQUIRED", "Test the current configuration before publishing");
       }

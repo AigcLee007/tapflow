@@ -10,6 +10,7 @@ const connectionId = "66666666-6666-6666-6666-666666666666";
 
 function routeUpdateHarness() {
   let updateArgs: unknown[] = [];
+  const queries: string[] = [];
   const existing = {
     id: routeId, tenant_id: null, provider_id: providerId, model_id: null, plugin_install_id: null,
     credential_id: null, connection_id: null, configuration_revision: 4, tested_revision: 4,
@@ -22,6 +23,7 @@ function routeUpdateHarness() {
   };
   const client = {
     query: vi.fn(async (sql: string, args?: unknown[]) => {
+      queries.push(sql);
       if (sql.includes("FROM ai_routes") && sql.includes("WHERE id = $1::uuid")) return { rows: [existing] };
       if (sql.includes("FROM ai_models")) return { rows: [{ id: modelId, provider_id: providerId, model_key: "new-family", modality: "image" }] };
       if (sql.includes("FROM api_credentials")) return { rows: [{ id: credentialId }] };
@@ -40,7 +42,7 @@ function routeUpdateHarness() {
     }), release: vi.fn(),
   };
   const pool = { connect: async () => client, query: vi.fn(async () => ({ rows: [] })) };
-  return { service: new AiGatewayAdminService({ credentialVault: {}, pool } as never), getUpdateArgs: () => updateArgs };
+  return { service: new AiGatewayAdminService({ credentialVault: {}, pool } as never), getQueries: () => queries, getUpdateArgs: () => updateArgs };
 }
 
 test.each([
@@ -72,6 +74,12 @@ test("preserves tested revision when nested runtime config keys are only reorder
   expect(harness.getUpdateArgs().at(-1)).toBe(false);
 });
 
+test("credential assignment takes a compatible lock against deletion", async () => {
+  const harness = routeUpdateHarness();
+  await harness.service.updateRoute({ tenantId: "11111111-1111-1111-1111-111111111111", userId: null }, routeId, { credentialId });
+  expect(harness.getQueries().some((sql) => sql.includes("FROM api_credentials") && sql.includes("FOR KEY SHARE"))).toBe(true);
+});
+
 test("credential deletion is blocked with sanitized referencing routes", async () => {
   const queries: string[] = [];
   const client = {
@@ -97,6 +105,7 @@ test("credential deletion is blocked with sanitized referencing routes", async (
     details: { routes: [{ id: "44444444-4444-4444-4444-444444444444", key: "image.safe", label: "Line one" }] } });
   expect(JSON.stringify(error)).not.toContain("cipher");
   expect(queries.some((sql) => sql.includes("UPDATE api_credentials"))).toBe(false);
+  expect(queries.some((sql) => sql.includes("FROM api_credentials") && sql.includes("FOR UPDATE"))).toBe(true);
 });
 
 describe("AiGatewayAdminService runtime route list", () => {

@@ -10,6 +10,7 @@ import {
   AiModelConfigurationsService,
 } from "../src/modules/ai-model-configurations/ai-model-configurations.service.js";
 import { AiRouteTestService } from "../src/modules/ai-route-tests/ai-route-tests.service.js";
+import { AiGatewayAdminService } from "../src/modules/ai-gateway/ai-gateway.service.js";
 
 const originalDatabaseUrl = process.env.DATABASE_URL;
 const describeWithDatabase = hasDatabaseEnv() ? describe : describe.skip;
@@ -62,6 +63,27 @@ async function withService(run: (args: {
 }
 
 describe("AiModelConfigurationsService", () => {
+  test("aborts publish when the locked route moved to a different advisory group", async () => {
+    const queries: string[] = [];
+    const client = { query: async (sql: string) => {
+      queries.push(sql);
+      if (sql.includes("SELECT modality,model_family,environment FROM ai_routes")) {
+        return { rows: [{ modality: "image", model_family: "family", environment: "production" }] };
+      }
+      if (sql.includes("SELECT route.id::text")) {
+        return { rows: [{ id: "00000000-0000-0000-0000-000000000010", configuration_revision: 1,
+          modality: "image", model_family: "family", environment: "staging" }] };
+      }
+      return { rows: [] };
+    }, release() {} };
+    const service = new AiModelConfigurationsService({ credentialVault: {} as never,
+      pool: { connect: async () => client } as never });
+    await expect(service.publish(context, { routeId: "00000000-0000-0000-0000-000000000010", expectedRevision: 1 }))
+      .rejects.toMatchObject({ code: "MODEL_CONFIGURATION_CONFLICT" });
+    expect(queries.some((sql) => sql.includes("pg_advisory_xact_lock"))).toBe(true);
+    expect(queries.some((sql) => /^\s*UPDATE\s/iu.test(sql))).toBe(false);
+  });
+
   test("exposes stable service error details without leaking input secrets", () => {
     const error = new AiModelConfigurationApiError(
       409,
@@ -164,6 +186,30 @@ describe("AiModelConfigurationsService", () => {
 });
 
 describeWithDatabase("AiModelConfigurationsService database drafts", () => {
+  test("credential deletion waits for assignment lock and then observes the committed reference", async () => {
+    await withService(async ({ adminPool, appPool, service }) => {
+      const draft = await service.saveDraft(context, builtInDraft("credential-race"));
+      await adminPool.query("UPDATE ai_routes SET deleted_at=now() WHERE id=$1", [draft.route.id]);
+      const locker = await adminPool.connect();
+      try {
+        await locker.query("BEGIN");
+        await locker.query("SELECT id FROM api_credentials WHERE id=$1 FOR KEY SHARE", [draft.credential.id]);
+        const gateway = new AiGatewayAdminService({ credentialVault: service.credentialVault, pool: appPool });
+        const deletion = gateway.deleteCredential(context, draft.credential.id);
+        const early = await Promise.race([deletion.then(() => "deleted", () => "rejected"),
+          new Promise<string>((resolve) => setTimeout(() => resolve("blocked"), 50))]);
+        expect(early).toBe("blocked");
+        await locker.query(`INSERT INTO ai_routes (provider_id,credential_id,route_key,modality,status)
+          SELECT provider_id,id,$2,'image','inactive' FROM api_credentials WHERE id=$1`, [draft.credential.id, `${draft.route.key}.race`]);
+        await locker.query("COMMIT");
+        await expect(deletion).rejects.toMatchObject({ code: "CREDENTIAL_IN_USE" });
+      } finally {
+        await locker.query("ROLLBACK").catch(() => undefined);
+        locker.release();
+      }
+    });
+  });
+
   test("requires the current revision to pass a route test before publish and rejects stale publishers", async () => {
     await withService(async ({ adminPool, appPool, service }) => {
       const draft = await service.saveDraft(context, builtInDraft("publish-guard"));

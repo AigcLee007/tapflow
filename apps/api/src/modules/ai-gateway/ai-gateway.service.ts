@@ -2231,6 +2231,7 @@ export class AiGatewayAdminService {
           AND status <> 'deleted'
           AND ($2::uuid IS NULL OR tenant_id = $2::uuid)
         LIMIT 1
+        FOR KEY SHARE
       `,
       [credentialId, tenantId ?? null],
     );
@@ -2252,6 +2253,7 @@ export class AiGatewayAdminService {
           AND tenant_id IS NULL
           AND status <> 'deleted'
         LIMIT 1
+        FOR KEY SHARE
       `,
       [credentialId],
     );
@@ -2408,6 +2410,7 @@ export class AiGatewayAdminService {
         WHERE id = $1::uuid
           AND status <> 'deleted'
         LIMIT 1
+        FOR UPDATE
       `,
       [credentialId],
     );
