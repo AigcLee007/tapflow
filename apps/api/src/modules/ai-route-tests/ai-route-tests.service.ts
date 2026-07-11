@@ -27,6 +27,7 @@ type TenantContext = {
 
 type RouteRecord = {
   api_mode: string | null;
+  configuration_revision: number;
   connection_name: string | null;
   id: string;
   modality: "image" | "text" | "video";
@@ -65,22 +66,24 @@ export class AiRouteTestApiError extends Error {
 }
 
 export class AiRouteTestService {
-  readonly mediaRuntime: DatabaseMediaRuntime;
+  readonly mediaRuntime: Pick<DatabaseMediaRuntime, "generateImage" | "generateVideo">;
   readonly pool: Pool;
-  readonly textRuntime: DatabaseTextGenerationRuntime;
+  readonly textRuntime: Pick<DatabaseTextGenerationRuntime, "generateText">;
 
   constructor(options: {
     credentialVault: CredentialVault;
+    mediaRuntime?: Pick<DatabaseMediaRuntime, "generateImage" | "generateVideo">;
     pool?: Pool;
+    textRuntime?: Pick<DatabaseTextGenerationRuntime, "generateText">;
   }) {
     this.pool = options.pool ?? createPgPool();
     const aiGateway = createDefaultAiGateway();
-    this.mediaRuntime = new DatabaseMediaRuntime({
+    this.mediaRuntime = options.mediaRuntime ?? new DatabaseMediaRuntime({
       aiGateway,
       credentialVault: options.credentialVault,
       pool: this.pool,
     });
-    this.textRuntime = new DatabaseTextGenerationRuntime({
+    this.textRuntime = options.textRuntime ?? new DatabaseTextGenerationRuntime({
       aiGateway,
       credentialVault: options.credentialVault,
       pool: this.pool,
@@ -93,6 +96,24 @@ export class AiRouteTestService {
     input: RunRouteTestInput,
   ): Promise<RouteTestResultView> {
     const route = await this.getTenantRoute(context, routeId);
+    return this.testLoadedRoute(context, route, input);
+  }
+
+  async testAdminDraftRoute(
+    context: TenantContext,
+    routeId: string,
+    input: RunRouteTestInput,
+  ): Promise<RouteTestResultView> {
+    // The future HTTP caller must enforce system-admin before entering this platform-only boundary.
+    const route = await this.getPlatformDraftRoute(context, routeId);
+    return this.testLoadedRoute(context, route, input);
+  }
+
+  private async testLoadedRoute(
+    context: TenantContext,
+    route: RouteRecord,
+    input: RunRouteTestInput,
+  ): Promise<RouteTestResultView> {
     const defaultTest = this.findDefaultTest(route.package_key, route.route_key);
     const requestSummary = this.buildRequestSummary(route, defaultTest, input);
     const startedAt = Date.now();
@@ -130,6 +151,28 @@ export class AiRouteTestService {
     }
   }
 
+  private async getPlatformDraftRoute(context: TenantContext, routeId: string): Promise<RouteRecord> {
+    return withTenantTransaction(context, async (client) => {
+      const result = await client.query<RouteRecord>(
+        `SELECT route.id::text AS id,route.route_key,route.route_label,route.modality,route.api_mode,
+          route.upstream_model,route.configuration_revision,provider.key AS provider_key,model.model_key,
+          connection.name AS connection_name,package.package_key
+         FROM ai_routes route JOIN ai_providers provider ON provider.id=route.provider_id
+         LEFT JOIN ai_models model ON model.id=route.model_id
+         LEFT JOIN ai_provider_connections connection ON connection.id=route.connection_id
+         LEFT JOIN tenant_ai_plugin_installs install ON install.id=route.plugin_install_id
+         LEFT JOIN ai_plugin_packages package ON package.id=install.package_id
+         WHERE route.id=$1::uuid AND route.tenant_id IS NULL AND route.deleted_at IS NULL
+           AND provider.status='active' AND (route.model_id IS NULL OR model.status='active') LIMIT 1`,
+        [routeId],
+      );
+      if (!result.rows[0]) {
+        throw new AiRouteTestApiError(404, "ROUTE_NOT_FOUND", "Platform draft route not found");
+      }
+      return result.rows[0];
+    }, this.pool);
+  }
+
   private async getTenantRoute(context: TenantContext, routeId: string): Promise<RouteRecord> {
     return withTenantTransaction(context, async (client) => {
       const result = await client.query<RouteRecord>(
@@ -141,6 +184,7 @@ export class AiRouteTestService {
             route.modality,
             route.api_mode,
             route.upstream_model,
+            route.configuration_revision,
             provider.key AS provider_key,
             model.model_key,
             connection.name AS connection_name,
@@ -378,19 +422,24 @@ export class AiRouteTestService {
         ],
       );
 
-      await client.query(
-        `UPDATE ai_routes SET
-           health_status=$2,
-           last_health_checked_at=now(),
-           tested_revision=CASE
-             WHEN $2='ok' THEN configuration_revision
-             WHEN tested_revision=configuration_revision THEN tested_revision
-             ELSE NULL
-           END,
-           updated_at=now()
-         WHERE id=$1`,
-        [options.route.id, options.status],
-      );
+      if (options.status === "ok") {
+        await client.query(
+          `UPDATE ai_routes SET tested_revision=$2,updated_at=now()
+           WHERE id=$1 AND configuration_revision=$2`,
+          [options.route.id, options.route.configuration_revision],
+        );
+        await client.query(
+          `UPDATE ai_routes SET health_status='ok',last_health_checked_at=now(),updated_at=now() WHERE id=$1`,
+          [options.route.id],
+        );
+      } else {
+        await client.query(
+          `UPDATE ai_routes SET health_status='failed',last_health_checked_at=now(),
+             tested_revision=CASE WHEN tested_revision=configuration_revision THEN tested_revision ELSE NULL END,
+             updated_at=now() WHERE id=$1`,
+          [options.route.id],
+        );
+      }
 
       const row = result.rows[0];
       return {

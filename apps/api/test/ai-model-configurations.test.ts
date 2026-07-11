@@ -9,6 +9,7 @@ import {
   AiModelConfigurationApiError,
   AiModelConfigurationsService,
 } from "../src/modules/ai-model-configurations/ai-model-configurations.service.js";
+import { AiRouteTestService } from "../src/modules/ai-route-tests/ai-route-tests.service.js";
 
 const originalDatabaseUrl = process.env.DATABASE_URL;
 const describeWithDatabase = hasDatabaseEnv() ? describe : describe.skip;
@@ -37,6 +38,7 @@ function resolveBuiltIn(input: ReturnType<typeof builtInDraft>, registry = built
 
 async function withService(run: (args: {
   adminPool: ReturnType<typeof createPgPool>;
+  appPool: ReturnType<typeof createPgPool>;
   service: AiModelConfigurationsService;
 }) => Promise<void>) {
   await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
@@ -51,7 +53,7 @@ async function withService(run: (args: {
         pluginRegistry: builtinAiPluginRegistry,
         pool: appPool,
       });
-      await run({ adminPool, service });
+      await run({ adminPool, appPool, service });
     } finally {
       await appPool.end();
       await adminPool.end();
@@ -163,16 +165,21 @@ describe("AiModelConfigurationsService", () => {
 
 describeWithDatabase("AiModelConfigurationsService database drafts", () => {
   test("requires the current revision to pass a route test before publish and rejects stale publishers", async () => {
-    await withService(async ({ adminPool, service }) => {
+    await withService(async ({ adminPool, appPool, service }) => {
       const draft = await service.saveDraft(context, builtInDraft("publish-guard"));
 
       await expect(service.publish(context, { routeId: draft.route.id, expectedRevision: 1 }))
         .rejects.toMatchObject({ code: "MODEL_CONFIGURATION_TEST_REQUIRED", statusCode: 409 });
 
-      await adminPool.query(`UPDATE ai_routes SET tested_revision=configuration_revision,
-        health_status='ok',last_health_checked_at=now() WHERE id=$1`, [draft.route.id]);
       await adminPool.query("UPDATE ai_provider_connections SET status='active' WHERE id=$1", [draft.connection.id]);
       await adminPool.query("UPDATE model_pricing SET active=true WHERE route=$1", [draft.route.key]);
+      const routeTests = new AiRouteTestService({
+        credentialVault: {} as never,
+        mediaRuntime: { generateImage: async () => ({ modelKey: draft.model.modelKey, outputs: [{ url: "https://example.test/result.png" }], providerKey: "pixellelabs", status: "succeeded" }) } as never,
+        pool: appPool,
+      });
+      const tested = await routeTests.testAdminDraftRoute(context, draft.route.id, { prompt: "test draft" });
+      expect(tested.status).toBe("ok");
       await expect(service.publish(context, { routeId: draft.route.id, expectedRevision: 99 }))
         .rejects.toMatchObject({ code: "MODEL_CONFIGURATION_CONFLICT", statusCode: 409 });
 
@@ -185,6 +192,23 @@ describeWithDatabase("AiModelConfigurationsService database drafts", () => {
         JOIN tenant_ai_plugin_installs install ON install.id=route.plugin_install_id WHERE route.id=$1`, [draft.route.id]);
       expect(state.rows[0]).toMatchObject({ status: "active", is_default: true, active: true,
         catalog_status: "active", install_status: "published", default_route_key: draft.route.key });
+    });
+  });
+
+  test("does not certify a newer revision when configuration changes during an admin draft test", async () => {
+    await withService(async ({ adminPool, appPool, service }) => {
+      const draft = await service.saveDraft(context, builtInDraft("test-race"));
+      const routeTests = new AiRouteTestService({
+        credentialVault: {} as never,
+        mediaRuntime: { generateImage: async () => {
+          await adminPool.query("UPDATE ai_routes SET configuration_revision=configuration_revision+1,tested_revision=NULL WHERE id=$1", [draft.route.id]);
+          return { modelKey: draft.model.modelKey, outputs: [{ url: "https://example.test/result.png" }], providerKey: "pixellelabs", status: "succeeded" };
+        } } as never,
+        pool: appPool,
+      });
+      expect((await routeTests.testAdminDraftRoute(context, draft.route.id, {})).status).toBe("ok");
+      const revision = await adminPool.query("SELECT configuration_revision,tested_revision,health_status FROM ai_routes WHERE id=$1", [draft.route.id]);
+      expect(revision.rows[0]).toMatchObject({ configuration_revision: 2, tested_revision: null, health_status: "ok" });
     });
   });
 
