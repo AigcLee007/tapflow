@@ -162,6 +162,54 @@ describe("AiModelConfigurationsService", () => {
 });
 
 describeWithDatabase("AiModelConfigurationsService database drafts", () => {
+  test("editing an active tested route deactivates route and pricing with submitted values", async () => {
+    await withService(async ({ adminPool, service }) => {
+      const first = await service.saveDraft(context, builtInDraft("edit-live"));
+      await adminPool.query("UPDATE ai_routes SET status='active',tested_revision=configuration_revision WHERE id=$1", [first.route.id]);
+      await adminPool.query("UPDATE model_pricing SET active=true,unit_credits=99,min_charge_credits=98,metadata='{\"live\":true}'::jsonb WHERE route=$1", [first.route.key]);
+      const edited = await service.saveDraft(context, builtInDraft("edit-live-submit", {
+        routeId: first.route.id, expectedRevision: 1,
+        connection: { mode: "existing", connectionId: first.connection.id },
+        credential: { mode: "existing", credentialId: first.credential.id },
+        pricing: { unit: "image_generation", unitCredits: 7, minChargeCredits: 6 },
+      }));
+      expect(edited.route).toMatchObject({ status: "inactive", configurationRevision: 2, testedRevision: null });
+      expect(edited.pricing).toMatchObject({ active: false, unitCredits: 7, minChargeCredits: 6 });
+      const persisted = await adminPool.query(`SELECT route.status,route.tested_revision,pricing.active,
+        pricing.unit_credits::text,pricing.min_charge_credits::text,pricing.metadata
+        FROM ai_routes route JOIN model_pricing pricing ON pricing.route=route.route_key WHERE route.id=$1`, [first.route.id]);
+      expect(persisted.rows[0]).toMatchObject({ status: "inactive", tested_revision: null, active: false,
+        unit_credits: "7.0000", min_charge_credits: "6.0000", metadata: { configurationDraft: true } });
+    });
+  });
+
+  test("rejects custom reuse of matching plugin-owned OpenAI model identity", async () => {
+    await withService(async ({ service }) => {
+      await service.saveDraft(context, builtInDraft("plugin-owned", {
+        packageKey: "openai-compatible.gpt-image-2",
+        route: { routeLabel: "Line one", upstreamModel: "gpt-image-2" },
+      }));
+      await expect(service.saveDraft(context, {
+        connection: { mode: "create", name: "Plugin collision", baseUrl: "https://sub.siphonlab.cn/v1/", environment: "production" },
+        credential: { mode: "create", name: "Plugin collision key", secret: "plugin-collision" },
+        custom: { provider: { key: "openai-compatible", kind: "openai-compatible", name: "Same Kind" }, model: { displayName: "Same Model", modality: "image", modelFamily: "gpt-image-2", modelKey: "gpt-image-2" }, routeDefaults: {} },
+        pricing: { unit: "image_generation", unitCredits: 1, minChargeCredits: 1 },
+        route: { routeLabel: "Custom collision", upstreamModel: "gpt-image-2" },
+      })).rejects.toMatchObject({ code: "CONFIGURATION_MODEL_IDENTITY_CONFLICT" });
+    });
+  });
+
+  test("soft-deleted backup route keys remain occupied during line allocation", async () => {
+    await withService(async ({ adminPool, service }) => {
+      const first = await service.saveDraft(context, builtInDraft("soft-delete-one"));
+      const second = await service.saveDraft(context, builtInDraft("soft-delete-two"));
+      expect(second.route.key).toBe(`${first.route.key}.line2`);
+      await adminPool.query("UPDATE ai_routes SET deleted_at=now() WHERE id=$1", [second.route.id]);
+      const third = await service.saveDraft(context, builtInDraft("soft-delete-three"));
+      expect(third.route.key).toBe(`${first.route.key}.line3`);
+    });
+  });
+
   test("preserves published install active catalog route and pricing when adding a backup draft", async () => {
     await withService(async ({ adminPool, service }) => {
       const live = await service.saveDraft(context, builtInDraft("live"));

@@ -98,12 +98,13 @@ export class AiModelConfigurationsService {
         `INSERT INTO model_pricing (provider, model, route, unit, unit_credits, min_charge_credits, metadata, active)
          VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,false)
          ON CONFLICT (provider,model,route,unit) DO UPDATE SET
-           unit_credits=CASE WHEN model_pricing.active THEN model_pricing.unit_credits ELSE EXCLUDED.unit_credits END,
-           min_charge_credits=CASE WHEN model_pricing.active THEN model_pricing.min_charge_credits ELSE EXCLUDED.min_charge_credits END,
-           metadata=CASE WHEN model_pricing.active THEN model_pricing.metadata ELSE EXCLUDED.metadata END
+           unit_credits=CASE WHEN $8::boolean THEN EXCLUDED.unit_credits WHEN model_pricing.active THEN model_pricing.unit_credits ELSE EXCLUDED.unit_credits END,
+           min_charge_credits=CASE WHEN $8::boolean THEN EXCLUDED.min_charge_credits WHEN model_pricing.active THEN model_pricing.min_charge_credits ELSE EXCLUDED.min_charge_credits END,
+           metadata=CASE WHEN $8::boolean THEN EXCLUDED.metadata WHEN model_pricing.active THEN model_pricing.metadata ELSE EXCLUDED.metadata END,
+           active=CASE WHEN $8::boolean THEN false ELSE model_pricing.active END
          RETURNING active`,
         [definition.provider.key, input.route.upstreamModel, route.route_key, input.pricing.unit,
-          input.pricing.unitCredits, input.pricing.minChargeCredits, JSON.stringify({ configurationDraft: true })],
+          input.pricing.unitCredits, input.pricing.minChargeCredits, JSON.stringify({ configurationDraft: true }), Boolean(input.routeId)],
       );
       return {
         route: {
@@ -192,15 +193,15 @@ export class AiModelConfigurationsService {
   }
 
   private async upsertModel(client: PoolClient, providerId: string, definition: ResolvedDefinition): Promise<string> {
-    const existing = await client.query<{ id: string; modality: string; model_family: string | null }>(
-      `SELECT model.id::text AS id, model.modality, catalog.model_family
+    const existing = await client.query<{ id: string; modality: string; model_family: string | null; plugin_install_id: string | null }>(
+      `SELECT model.id::text AS id, model.modality, catalog.model_family,catalog.plugin_install_id::text
        FROM ai_models AS model LEFT JOIN ai_model_catalog AS catalog
          ON catalog.model_id=model.id AND catalog.tenant_id IS NULL
        WHERE model.provider_id=$1 AND model.model_key=$2 FOR UPDATE OF model`,
       [providerId, definition.model.modelKey]);
     if (existing.rows[0] && !definition.manifest) {
       const row = existing.rows[0];
-      if (row.modality !== definition.model.modality || (row.model_family && row.model_family !== definition.model.modelFamily)) {
+      if (row.plugin_install_id || row.modality !== definition.model.modality || (row.model_family && row.model_family !== definition.model.modelFamily)) {
         throw new AiModelConfigurationApiError(409, "CONFIGURATION_MODEL_IDENTITY_CONFLICT", "Model key is already used by an incompatible model");
       }
       return row.id;
@@ -298,7 +299,7 @@ export class AiModelConfigurationsService {
       }
       const updated = await client.query<any>(
         `UPDATE ai_routes SET provider_id=$2,model_id=$3,credential_id=$4,connection_id=$5,plugin_install_id=$6,
-         modality=$7,priority=$8,weight=$9,fallback_group=$10,request_config=$11::jsonb,model_family=$12,
+         modality=$7,priority=$8,weight=$9,fallback_group=$10,request_config=$11::jsonb,status='inactive',model_family=$12,
          route_label=$13,environment=$14,upstream_model=$15,api_mode=$16,request_path=$17,pricing=$18::jsonb,
          configuration_revision=configuration_revision+1,tested_revision=NULL,updated_at=now()
          WHERE id=$1 RETURNING id::text,route_key,status,configuration_revision,tested_revision`,
@@ -336,7 +337,7 @@ export class AiModelConfigurationsService {
     const rootKey = baseKey.replace(/\.line\d+$/, "");
     await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [rootKey]);
     const result = await client.query<{ route_key: string }>(
-      `SELECT route_key FROM ai_routes WHERE tenant_id IS NULL AND deleted_at IS NULL
+      `SELECT route_key FROM ai_routes WHERE tenant_id IS NULL
        AND (route_key=$1 OR route_key LIKE $1 || '.line%')`, [rootKey]);
     if (result.rows.length === 0) return baseKey;
     const used = new Set(result.rows.map((row) => row.route_key));
