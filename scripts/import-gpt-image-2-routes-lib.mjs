@@ -72,26 +72,31 @@ export function buildImportPlan() {
 export function parseRouteImportCommand(args) {
   if (args.includes("--help")) {
     if (args.length !== 1) throw new Error("--help cannot be combined with other arguments");
-    return { apply: false, help: true, publishDefaultRouteKey: null };
+    return { apply: false, help: true, publishDefaultRouteKey: null, test: false };
   }
 
   const apply = args.includes("--apply");
   const publishIndex = args.indexOf("--publish");
-  if (apply && publishIndex >= 0) {
-    throw new Error("--apply cannot be combined with --publish");
+  const test = args.includes("--test");
+  if ((apply ? 1 : 0) + (publishIndex >= 0 ? 1 : 0) + (test ? 1 : 0) > 1) {
+    throw new Error("--apply, --publish, and --test cannot be combined");
   }
   if (apply) {
     if (args.length !== 1) throw new Error("--apply does not accept additional arguments");
-    return { apply: true, help: false, publishDefaultRouteKey: null };
+    return { apply: true, help: false, publishDefaultRouteKey: null, test: false };
+  }
+  if (test) {
+    if (args.length !== 1) throw new Error("--test does not accept additional arguments");
+    return { apply: false, help: false, publishDefaultRouteKey: null, test: true };
   }
   if (publishIndex >= 0) {
     const routeKey = args[publishIndex + 1]?.trim();
     if (!routeKey) throw new Error("--publish requires a route key to use as the default route");
     if (args.length !== 2) throw new Error("--publish accepts exactly one route key");
-    return { apply: false, help: false, publishDefaultRouteKey: routeKey };
+    return { apply: false, help: false, publishDefaultRouteKey: routeKey, test: false };
   }
   if (args.length > 0) throw new Error(`Unknown argument: ${args[0]}`);
-  return { apply: false, help: false, publishDefaultRouteKey: null };
+  return { apply: false, help: false, publishDefaultRouteKey: null, test: false };
 }
 
 export function readRequiredSecrets(plan, environment = process.env) {

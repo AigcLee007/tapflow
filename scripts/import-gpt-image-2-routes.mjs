@@ -3,6 +3,8 @@
 import { CredentialVault } from "@aigc-flow/ai-gateway-core";
 import { createPgPool, withTenantTransaction } from "@aigc-flow/db";
 
+import { AiRouteTestService } from "../apps/api/dist/modules/ai-route-tests/ai-route-tests.service.js";
+
 import {
   buildImportPlan,
   parseRouteImportCommand,
@@ -16,10 +18,11 @@ const MODEL_FAMILY = "gpt-image-2";
 const MODALITY = "image";
 
 function printUsage() {
-  console.log(`Usage: node scripts/import-gpt-image-2-routes.mjs [--apply | --publish <default-route-key>]
+  console.log(`Usage: node scripts/import-gpt-image-2-routes.mjs [--apply | --test | --publish <default-route-key>]
 
 Default mode validates the existing GPT-Image-2 catalog and prints the pending routes.
 --apply creates two inactive platform routes and their encrypted credentials.
+--test runs provider tests for both imported routes and records their tested revisions.
 --publish activates both imported routes only after their current revisions have passed a route test.
 
 Required only with --apply:
@@ -177,20 +180,18 @@ async function assertNamesAndRouteKeysAvailable(client, plan) {
   const routeKeys = plan.map((route) => route.routeKey);
   const connectionNames = plan.map((route) => route.connectionName);
   const credentialNames = plan.map((route) => route.credentialName);
-  const [routes, connections, credentials] = await Promise.all([
-    client.query(
-      `SELECT route_key FROM ai_routes WHERE tenant_id IS NULL AND route_key = ANY($1::text[])`,
-      [routeKeys],
-    ),
-    client.query(
-      `SELECT name FROM ai_provider_connections WHERE tenant_id IS NULL AND name = ANY($1::text[])`,
-      [connectionNames],
-    ),
-    client.query(
-      `SELECT name FROM api_credentials WHERE tenant_id IS NULL AND name = ANY($1::text[])`,
-      [credentialNames],
-    ),
-  ]);
+  const routes = await client.query(
+    `SELECT route_key FROM ai_routes WHERE tenant_id IS NULL AND route_key = ANY($1::text[])`,
+    [routeKeys],
+  );
+  const connections = await client.query(
+    `SELECT name FROM ai_provider_connections WHERE tenant_id IS NULL AND name = ANY($1::text[])`,
+    [connectionNames],
+  );
+  const credentials = await client.query(
+    `SELECT name FROM api_credentials WHERE tenant_id IS NULL AND name = ANY($1::text[])`,
+    [credentialNames],
+  );
 
   const collisions = [
     ...routes.rows.map((row) => `route:${row.route_key}`),
@@ -484,6 +485,73 @@ async function publishRoutes(pool, context, plan, defaultRouteKey) {
   }, pool);
 }
 
+async function loadImportedRoutes(pool, context, plan) {
+  return withTenantTransaction(context, async (client) => {
+    await assertActorMembership(client, context);
+    const identity = await readExistingIdentity(client);
+    const routeKeys = plan.map((route) => route.routeKey);
+    const result = await client.query(
+      `
+        SELECT id::text AS id, route_key
+        FROM ai_routes
+        WHERE tenant_id IS NULL
+          AND deleted_at IS NULL
+          AND provider_id = $1::uuid
+          AND model_id = $2::uuid
+          AND route_key = ANY($3::text[])
+          AND status IN ('inactive', 'active')
+        ORDER BY route_key
+      `,
+      [identity.providerId, identity.modelId, routeKeys],
+    );
+    if (result.rows.length !== plan.length) {
+      throw new Error("Both imported GPT-Image-2 routes must exist before testing");
+    }
+    return result.rows;
+  }, pool);
+}
+
+function summarizeRouteTest(result) {
+  const error = result.error && typeof result.error === "object"
+    ? {
+        code: typeof result.error.code === "string" ? result.error.code : "ROUTE_TEST_FAILED",
+        message: typeof result.error.message === "string" ? result.error.message : "Route test failed",
+      }
+    : null;
+  return {
+    checkedAt: result.checkedAt,
+    error,
+    latencyMs: result.latencyMs,
+    routeKey: result.routeKey,
+    status: result.status,
+  };
+}
+
+async function testImportedRoutes(pool, context, plan, vault) {
+  const routes = await loadImportedRoutes(pool, context, plan);
+  const routeTestService = new AiRouteTestService({ credentialVault: vault, pool });
+  const results = [];
+
+  for (const route of routes) {
+    try {
+      results.push(summarizeRouteTest(await routeTestService.testAdminDraftRoute(context, route.id, {})));
+    } catch (error) {
+      results.push({
+        checkedAt: null,
+        error: {
+          code: "ROUTE_TEST_EXECUTION_ERROR",
+          message: error instanceof Error ? error.message : "Route test could not run",
+        },
+        latencyMs: null,
+        routeKey: route.route_key,
+        status: "failed",
+      });
+    }
+  }
+
+  return results;
+}
+
 async function main() {
   const options = parseRouteImportCommand(process.argv.slice(2));
   if (options.help) {
@@ -495,6 +563,18 @@ async function main() {
   const pool = createPgPool();
   try {
     const context = await resolveImportContext(pool, process.env);
+    if (options.test) {
+      const vault = new CredentialVault({
+        keyVersion: process.env.CREDENTIAL_KEY_VERSION?.trim() || "v1",
+        masterKey: process.env.CREDENTIAL_MASTER_KEY ?? "",
+      });
+      const results = await testImportedRoutes(pool, context, plan, vault);
+      console.log(JSON.stringify({ mode: "tested", routes: results }, null, 2));
+      if (results.some((result) => result.status !== "ok")) {
+        process.exitCode = 1;
+      }
+      return;
+    }
     if (options.publishDefaultRouteKey) {
       const result = await publishRoutes(pool, context, plan, options.publishDefaultRouteKey);
       console.log(JSON.stringify({

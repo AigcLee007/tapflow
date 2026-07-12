@@ -38,7 +38,16 @@ docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.
 unset MOUXIHUB_GPT_IMAGE_2_API_KEY PIXELLELABS_GPT_IMAGE_2_API_KEY
 ```
 
-The import is transactional and produces two inactive routes. In Model Center, select each new line and run `测试`. Then publish both lines with the intended default line:
+The import is transactional and produces two inactive routes. Canvas route menus intentionally hide inactive routes, so test both imported lines on the server before publication:
+
+```bash
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm \
+  -e TAPFLOW_IMPORT_TENANT_ID \
+  -e TAPFLOW_IMPORT_USER_ID \
+  tapflow-api node scripts/import-gpt-image-2-routes.mjs --test
+```
+
+Then publish both lines with the intended default line:
 
 ```bash
 docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm \

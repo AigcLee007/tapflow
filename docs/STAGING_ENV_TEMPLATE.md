@@ -124,7 +124,7 @@ The importer creates these inactive platform routes for `GPT-Image-2`:
 - `image.gpt-image-2.mouxihub-official`: async `/v1/images/generations`, `12` credits.
 - `image.gpt-image-2.pixellelabs-stable`: sync `/v1/images/generations`, `3` credits.
 
-Run the documented dry-run before applying. Test both inactive lines in Model Center, then use the explicit publish command with the intended default route key. The publish command refuses to activate either line unless its current configuration revision has passed a route test.
+Run the documented dry-run before applying. Run the importer `--test` command for both inactive lines, then use the explicit publish command with the intended default route key. The publish command refuses to activate either line unless its current configuration revision has passed a route test.
 
 ### Text model route
 

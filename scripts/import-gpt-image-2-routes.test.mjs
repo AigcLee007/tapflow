@@ -40,10 +40,21 @@ test("parseRouteImportCommand requires a default route for publication", () => {
     apply: false,
     help: false,
     publishDefaultRouteKey: "image.gpt-image-2.mouxihub-official",
+    test: false,
   });
   assert.throws(() => parseRouteImportCommand(["--publish"]), /requires a route key/);
   assert.throws(
     () => parseRouteImportCommand(["--apply", "--publish", "image.gpt-image-2.mouxihub-official"]),
     /cannot be combined/,
   );
+});
+
+test("parseRouteImportCommand accepts a standalone route test command", () => {
+  assert.deepEqual(parseRouteImportCommand(["--test"]), {
+    apply: false,
+    help: false,
+    publishDefaultRouteKey: null,
+    test: true,
+  });
+  assert.throws(() => parseRouteImportCommand(["--test", "--apply"]), /cannot be combined/);
 });

@@ -7,6 +7,7 @@ Maintainers: project team + Codex sessions
 
 - added a production-image-compatible one-time importer for the MouxiHub async and PixelleLabs sync GPT-Image-2 lines. It reads the two server-only environment variables only during `--apply`, encrypts each API key into a distinct CredentialVault credential, creates a separate platform connection for each route, and leaves both routes and prices inactive until tested.
 - added an explicit `--publish <default-route-key>` command that activates the imported lines only when both current route revisions have passed health tests, then activates matching pricing and selects the requested default line.
+- added an explicit `--test` command for inactive imported routes because canvas route menus correctly exclude unpublished lines. It tests both provider connections server-side and records the same tested-revision guard used by publication.
 - fixed administrator draft route testing so a server-side test can resolve its exact inactive platform route by ID. Normal runtime selection remains restricted to active routes.
 - documented one-time importer variables and the server dry-run/apply/test/publish sequence without committing secrets or injecting those API keys into long-running API/Worker containers.
 - validation:
