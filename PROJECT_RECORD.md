@@ -9,6 +9,7 @@ Maintainers: project team + Codex sessions
 - added an explicit `--publish <default-route-key>` command that activates the imported lines only when both current route revisions have passed health tests, then activates matching pricing and selects the requested default line.
 - added an explicit `--test` command for inactive imported routes because canvas route menus correctly exclude unpublished lines. It tests both provider connections server-side and records the same tested-revision guard used by publication.
 - updated the importer-only GPT-Image-2 test budget to five minutes per line. General Model Center route tests remain capped at 30 seconds, while the importer now matches the production timeout needed by the two selected image providers.
+- aligned canvas display pricing with the imported GPT-Image-2 routes: MouxiHub official is fixed at 12 credits and PixelleLabs stable is fixed at 3 credits for every supported size, matching server-side route pricing.
 - fixed administrator draft route testing so a server-side test can resolve its exact inactive platform route by ID. Normal runtime selection remains restricted to active routes.
 - documented one-time importer variables and the server dry-run/apply/test/publish sequence without committing secrets or injecting those API keys into long-running API/Worker containers.
 - validation:
