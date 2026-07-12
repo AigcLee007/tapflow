@@ -96,7 +96,7 @@ describe("WorkspacePage", () => {
 
     render(<WorkspacePage />);
 
-    fireEvent.click(screen.getAllByRole("button", { name: /新建项目|鏂板缓椤圭洰/ })[0]!);
+    fireEvent.click(screen.getAllByRole("button", { name: "新建项目" })[0]!);
 
     await waitFor(() => {
       expect(createProject).toHaveBeenCalledWith({

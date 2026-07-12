@@ -191,7 +191,7 @@ export const FlowTopToolbar: React.FC<{
   }, [projectMenuLayer]);
 
   const handleTitleBlur = useCallback(async () => {
-    const normalizedTitle = (projectTitle || "").trim() || "鏈懡鍚嶉」鐩?";
+    const normalizedTitle = (projectTitle || "").trim() || "未命名项目";
     if (normalizedTitle !== projectTitle) {
       setProjectTitle(normalizedTitle);
     }
@@ -205,7 +205,7 @@ export const FlowTopToolbar: React.FC<{
     if (projectMenuBusy) return;
     setProjectMenuBusy("create");
     try {
-      const result = await createWorkspaceProject({ name: "鏈懡鍚嶉」鐩?" });
+      const result = await createWorkspaceProject({ name: "未命名项目" });
       projectMenuLayer.closeLayer();
       navigate(`/projects/${result.project.id}`);
     } finally {
@@ -280,7 +280,7 @@ export const FlowTopToolbar: React.FC<{
       <MenuSurface
         ref={projectMenuLayer.ref as React.RefObject<HTMLDivElement>}
         role="menu"
-        aria-label="椤圭洰鑿滃崟"
+        aria-label="项目菜单"
         className="max-w-[calc(100vw-48px)] overflow-hidden p-0"
         style={{
           position: "fixed",
@@ -299,14 +299,14 @@ export const FlowTopToolbar: React.FC<{
             navigate(WORKSPACE_ROUTE);
           }}
         >
-          <span className={MENU_ITEM_PRIMARY_CLASS}>杩斿洖宸ヤ綔绌洪棿</span>
+          <span className={MENU_ITEM_PRIMARY_CLASS}>返回工作空间</span>
           <ChevronRight size={16} />
         </button>
 
         <div className="my-0 h-px bg-white/8" />
 
         <button type="button" role="menuitem" className={`${MENU_ITEM_CLASS} min-h-[60px] rounded-none px-5`} onClick={focusTitleInput}>
-          <span className={MENU_ITEM_PRIMARY_CLASS}>閲嶅懡鍚嶉」鐩?</span>
+          <span className={MENU_ITEM_PRIMARY_CLASS}>重命名项目</span>
         </button>
 
         <button
@@ -316,7 +316,7 @@ export const FlowTopToolbar: React.FC<{
           onClick={() => void handleCreateProject()}
           disabled={projectMenuBusy === "create"}
         >
-          <span className={MENU_ITEM_PRIMARY_CLASS}>{projectMenuBusy === "create" ? "姝ｅ湪鍒涘缓..." : "鏂板缓椤圭洰"}</span>
+          <span className={MENU_ITEM_PRIMARY_CLASS}>{projectMenuBusy === "create" ? "正在创建..." : "新建项目"}</span>
         </button>
 
         <div className="my-0 h-px bg-white/8" />
@@ -328,7 +328,7 @@ export const FlowTopToolbar: React.FC<{
           onClick={openDeleteProjectConfirm}
           disabled={!projectId || projectMenuBusy === "delete"}
         >
-          <span className={MENU_ITEM_PRIMARY_CLASS}>{projectMenuBusy === "delete" ? "姝ｅ湪鍒犻櫎..." : "鍒犻櫎椤圭洰"}</span>
+          <span className={MENU_ITEM_PRIMARY_CLASS}>{projectMenuBusy === "delete" ? "正在删除..." : "删除项目"}</span>
         </button>
       </MenuSurface>
     ) : null;
@@ -348,12 +348,12 @@ export const FlowTopToolbar: React.FC<{
             <section
               role="dialog"
               aria-modal="true"
-              aria-label="鍒犻櫎褰撳墠椤圭洰"
+              aria-label="删除当前项目"
               className="w-full max-w-[340px] rounded-[24px] border border-white/10 bg-[#17191d]/96 p-5 shadow-[0_28px_72px_rgba(0,0,0,0.48)]"
               onPointerDown={(event) => event.stopPropagation()}
             >
-              <h2 className="text-[18px] font-semibold text-white">鍒犻櫎褰撳墠椤圭洰</h2>
-              <p className="mt-3 text-[13px] leading-6 text-white/58">鍒犻櫎鍚庨」鐩€佺敾甯冨拰鐩稿叧缁撴灉灏嗘棤娉曟仮澶嶃€?</p>
+              <h2 className="text-[18px] font-semibold text-white">删除当前项目</h2>
+              <p className="mt-3 text-[13px] leading-6 text-white/58">删除后项目、画布和相关结果将无法恢复。</p>
               {deleteProjectError ? <p className="mt-3 text-[13px] leading-5 text-red-300">{deleteProjectError}</p> : null}
               <div className="mt-5 flex items-center gap-2">
                 <button
@@ -362,7 +362,7 @@ export const FlowTopToolbar: React.FC<{
                   disabled={projectMenuBusy === "delete"}
                   onClick={() => void handleDeleteProject()}
                 >
-                  {projectMenuBusy === "delete" ? "姝ｅ湪鍒犻櫎..." : "鍒犻櫎"}
+                  {projectMenuBusy === "delete" ? "正在删除..." : "删除"}
                 </button>
                 <button
                   type="button"
@@ -373,7 +373,7 @@ export const FlowTopToolbar: React.FC<{
                     setDeleteProjectError(null);
                   }}
                 >
-                  鍙栨秷
+                  取消
                 </button>
               </div>
             </section>
@@ -392,7 +392,7 @@ export const FlowTopToolbar: React.FC<{
               ref={projectMenuLayer.triggerRef as React.RefObject<HTMLButtonElement>}
               aria-expanded={projectMenuLayer.open}
               aria-haspopup="menu"
-              aria-label="鎵撳紑椤圭洰鑿滃崟"
+              aria-label="打开项目菜单"
               onClick={projectMenuLayer.toggle}
               style={brandMenuButtonStyle}
             >
@@ -402,21 +402,21 @@ export const FlowTopToolbar: React.FC<{
             <div style={titleTextWrapStyle}>
               <input
                 ref={titleInputRef}
-                value={projectTitle || "鏈懡鍚嶉」鐩?"}
+                value={projectTitle || "未命名项目"}
                 onBlur={() => void handleTitleBlur()}
                 onChange={(event) => setProjectTitle(event.target.value)}
                 style={titleInputStyle}
                 spellCheck={false}
-                aria-label="椤圭洰鍚嶇О"
+                aria-label="项目名称"
               />
               <div style={saveStatusStyle(saveStatus?.status)}>
                 {saveStatus?.icon}
-                <span>{saveStatus?.label || "宸蹭繚瀛樺埌浜戠"}</span>
+                <span>{saveStatus?.label || "已保存到云端"}</span>
                 {saveStatus?.status === "failed" && saveStatus.onRetry ? (
                   <button
                     type="button"
                     style={saveRetryButtonStyle}
-                    title={saveStatus.error || "閲嶈瘯鍚屾"}
+                    title={saveStatus.error || "重试同步"}
                     onClick={saveStatus.onRetry}
                   >
                     <RefreshCw size={12} />
@@ -427,7 +427,7 @@ export const FlowTopToolbar: React.FC<{
           </div>
         </div>
 
-        {!hideUtilityActions ? <div style={rightClusterStyle}>          <button type="button" style={topPillStyle} title="褰撳墠鐐规暟">
+        {!hideUtilityActions ? <div style={rightClusterStyle}>          <button type="button" style={topPillStyle} title="当前点数">
             <Sparkles size={17} />
             <span>{pointsLoading ? "..." : formatToolbarPoint(points)}</span>
           </button>
@@ -439,15 +439,15 @@ export const FlowTopToolbar: React.FC<{
               style={topPillStyle}
               aria-expanded={notificationLayer.open}
               aria-haspopup="menu"
-              aria-label="閫氱煡"
-              title="閫氱煡"
+              aria-label="通知"
+              title="通知"
               onClick={() => {
                 notificationLayer.toggle();
                 void refreshAnnouncements();
               }}
             >
               <Bell size={17} />
-              <span>閫氱煡</span>
+              <span>通知</span>
               {unreadIds.length > 0 ? (
                 <span style={notificationBadgeStyle}>{unreadIds.length > 99 ? "99+" : unreadIds.length}</span>
               ) : null}
@@ -457,13 +457,13 @@ export const FlowTopToolbar: React.FC<{
               <MenuSurface
                 ref={notificationLayer.ref as React.RefObject<HTMLDivElement>}
                 role="menu"
-                aria-label="閫氱煡鑿滃崟"
+                aria-label="通知菜单"
                 className="absolute right-0 top-[calc(100%+14px)] w-[370px] max-w-[calc(100vw-48px)] overflow-hidden p-0"
               >
                 <div style={notificationHeaderStyle}>
                   <div style={notificationHeaderTitleStyle}>
                     <Megaphone size={17} color="#93c5fd" />
-                    <span>閫氱煡</span>
+                    <span>通知</span>
                   </div>
                   <button
                     type="button"
@@ -472,13 +472,13 @@ export const FlowTopToolbar: React.FC<{
                     disabled={announcements.length === 0}
                   >
                     <CheckCheck size={13} />
-                    鍏ㄩ儴宸茶
+                    全部已读
                   </button>
                 </div>
 
                 <div style={notificationListStyle}>
                   {announcements.length === 0 ? (
-                    <div style={emptyNotificationStyle}>鏆傛棤鍏憡</div>
+                    <div style={emptyNotificationStyle}>暂无公告</div>
                   ) : (
                     announcements.map((item) => {
                       const unread = !seenIds.includes(item.id);
@@ -490,8 +490,8 @@ export const FlowTopToolbar: React.FC<{
                           onClick={() => openAnnouncement(item)}
                         >
                           <span style={notificationItemContentStyle}>
-                            <span style={notificationItemTitleStyle}>{item.title || "绯荤粺鍏憡"}</span>
-                            {item.pinned ? <span style={pinnedStyle}>缃《</span> : null}
+                            <span style={notificationItemTitleStyle}>{item.title || "系统公告"}</span>
+                            {item.pinned ? <span style={pinnedStyle}>置顶</span> : null}
                             <span style={notificationItemTextStyle}>{item.content}</span>
                             <span style={notificationDateStyle}>{formatAnnouncementDate(item.date)}</span>
                           </span>
@@ -516,7 +516,7 @@ export const FlowTopToolbar: React.FC<{
                     <Megaphone size={20} />
                   </span>
                   <div style={{ minWidth: 0 }}>
-                    <div style={announcementTitleStyle}>{selectedAnnouncement.title || "绯荤粺鍏憡"}</div>
+                    <div style={announcementTitleStyle}>{selectedAnnouncement.title || "系统公告"}</div>
                     <div style={announcementDateModalStyle}>{formatAnnouncementDate(selectedAnnouncement.date)}</div>
                   </div>
                 </div>
@@ -537,7 +537,7 @@ export const FlowTopToolbar: React.FC<{
 
               <div style={announcementFooterStyle}>
                 <button type="button" style={confirmButtonStyle} onClick={() => setSelectedAnnouncement(null)}>
-                  鎴戠煡閬撲簡
+                  我知道了
                 </button>
               </div>
             </div>
@@ -904,5 +904,4 @@ const confirmButtonStyle: React.CSSProperties = {
   fontWeight: 800,
   cursor: "pointer",
 };
-
 

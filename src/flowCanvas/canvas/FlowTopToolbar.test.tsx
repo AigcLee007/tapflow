@@ -90,6 +90,24 @@ describe("FlowTopToolbar", () => {
     });
   });
 
+  test("renders readable Chinese project menu labels", async () => {
+    render(
+      <FlowTopToolbar
+        cullingEnabled
+        onToggleCulling={vi.fn()}
+        saveStatus={{ label: "已保存到云端", status: "saved" }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "打开项目菜单" }));
+
+    expect(screen.getByRole("menu", { name: "项目菜单" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "返回工作空间" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "重命名项目" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "新建项目" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "删除项目" })).toBeTruthy();
+  });
+
   test("does not render a 360 panorama generate button in the top chrome", async () => {
     mockedStoreState.nodes = [
       {
@@ -113,7 +131,7 @@ describe("FlowTopToolbar", () => {
     );
 
     await waitFor(() => {
-      expect(screen.queryByRole("button", { name: /360 鍏ㄦ櫙鐢熸垚/i })).toBeNull();
+      expect(screen.queryByRole("button", { name: /360 全景生成/i })).toBeNull();
     });
   });
 
@@ -126,9 +144,9 @@ describe("FlowTopToolbar", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "鎵撳紑椤圭洰鑿滃崟" }));
+    fireEvent.click(screen.getByRole("button", { name: "打开项目菜单" }));
 
-    const menu = screen.getByRole("menu", { name: "椤圭洰鑿滃崟" });
+    const menu = screen.getByRole("menu", { name: "项目菜单" });
     expect(menu).toBeTruthy();
     expect(menu.parentElement).toBe(document.body);
     expect(menu.style.position).toBe("fixed");
@@ -136,10 +154,10 @@ describe("FlowTopToolbar", () => {
     expect(menu.style.top).toBe("112px");
     expect(menu.style.width).toBe("288px");
     expect(menu.style.zIndex).toBe("2400");
-    expect(screen.getByRole("menuitem", { name: "杩斿洖宸ヤ綔绌洪棿" })).toBeTruthy();
-    expect(screen.getByRole("menuitem", { name: "閲嶅懡鍚嶉」鐩?" })).toBeTruthy();
-    expect(screen.getByRole("menuitem", { name: "鏂板缓椤圭洰" })).toBeTruthy();
-    expect(screen.getByRole("menuitem", { name: "鍒犻櫎椤圭洰" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "返回工作空间" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "重命名项目" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "新建项目" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "删除项目" })).toBeTruthy();
     expect(screen.getAllByRole("menuitem")[1]?.className).toContain("min-h-[60px]");
     expect(screen.queryByTestId("project-menu-create-icon")).toBeNull();
     expect(screen.queryByTestId("project-menu-delete-icon")).toBeNull();
@@ -160,15 +178,15 @@ describe("FlowTopToolbar", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "鎵撳紑椤圭洰鑿滃崟" }));
+    fireEvent.click(screen.getByRole("button", { name: "打开项目菜单" }));
     expect(screen.getByRole("menu")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "閫氱煡" }));
+    fireEvent.click(screen.getByRole("button", { name: "通知" }));
 
     await waitFor(() => {
       expect(screen.queryAllByRole("menu")).toHaveLength(1);
     });
-    expect(screen.getByText("鍏ㄩ儴宸茶")).toBeTruthy();
+    expect(screen.getByText("全部已读")).toBeTruthy();
   });
 
   test("hides the top-right credits and notification actions when utility actions are disabled", async () => {
@@ -182,10 +200,10 @@ describe("FlowTopToolbar", () => {
     );
 
     await waitFor(() => {
-      expect(screen.queryByRole("button", { name: "閫氱煡" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "通知" })).toBeNull();
     });
 
-    expect(screen.getByRole("button", { name: "鎵撳紑椤圭洰鑿滃崟" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "打开项目菜单" })).toBeTruthy();
     expect(screen.getByDisplayValue("Test Project")).toBeTruthy();
   });
 
@@ -201,12 +219,12 @@ describe("FlowTopToolbar", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "鎵撳紑椤圭洰鑿滃崟" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "鍒犻櫎椤圭洰" }));
+    fireEvent.click(screen.getByRole("button", { name: "打开项目菜单" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "删除项目" }));
 
-    expect(screen.getByRole("dialog", { name: "鍒犻櫎褰撳墠椤圭洰" })).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "删除当前项目" })).toBeTruthy();
     expect(deleteWorkspaceProjectMock).not.toHaveBeenCalled();
-    expect(screen.queryByRole("menu", { name: "椤圭洰鑿滃崟" })).toBeNull();
+    expect(screen.queryByRole("menu", { name: "项目菜单" })).toBeNull();
 
     await act(async () => {
       vi.runOnlyPendingTimers();
@@ -224,18 +242,18 @@ describe("FlowTopToolbar", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "鎵撳紑椤圭洰鑿滃崟" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "鍒犻櫎椤圭洰" }));
+    fireEvent.click(screen.getByRole("button", { name: "打开项目菜单" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "删除项目" }));
 
-    fireEvent.click(screen.getByRole("button", { name: "鍙栨秷" }));
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
 
     await waitFor(() => {
-      expect(screen.queryByRole("dialog", { name: "鍒犻櫎褰撳墠椤圭洰" })).toBeNull();
+      expect(screen.queryByRole("dialog", { name: "删除当前项目" })).toBeNull();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "鎵撳紑椤圭洰鑿滃崟" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "鍒犻櫎椤圭洰" }));
-    fireEvent.click(screen.getByRole("button", { name: "鍒犻櫎" }));
+    fireEvent.click(screen.getByRole("button", { name: "打开项目菜单" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "删除项目" }));
+    fireEvent.click(screen.getByRole("button", { name: "删除" }));
 
     await waitFor(() => {
       expect(deleteWorkspaceProjectMock).toHaveBeenCalledWith("project-1");
