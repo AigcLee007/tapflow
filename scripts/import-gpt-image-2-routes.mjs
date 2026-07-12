@@ -16,6 +16,7 @@ const PROVIDER_KEY = "openai-compatible";
 const MODEL_KEY = "gpt-image-2";
 const MODEL_FAMILY = "gpt-image-2";
 const MODALITY = "image";
+const IMPORTED_ROUTE_TEST_TIMEOUT_MS = 300_000;
 
 function printUsage() {
   console.log(`Usage: node scripts/import-gpt-image-2-routes.mjs [--apply | --test | --publish <default-route-key>]
@@ -529,7 +530,11 @@ function summarizeRouteTest(result) {
 
 async function testImportedRoutes(pool, context, plan, vault) {
   const routes = await loadImportedRoutes(pool, context, plan);
-  const routeTestService = new AiRouteTestService({ credentialVault: vault, pool });
+  const routeTestService = new AiRouteTestService({
+    credentialVault: vault,
+    pool,
+    routeTestTimeoutMs: IMPORTED_ROUTE_TEST_TIMEOUT_MS,
+  });
   const results = [];
 
   for (const route of routes) {

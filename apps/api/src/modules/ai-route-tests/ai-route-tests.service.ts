@@ -92,15 +92,18 @@ export class AiRouteTestApiError extends Error {
 export class AiRouteTestService {
   readonly mediaRuntime: MediaRuntimeForRouteTest;
   readonly pool: Pool;
+  readonly routeTestTimeoutMs: number;
   readonly textRuntime: Pick<DatabaseTextGenerationRuntime, "generateText">;
 
   constructor(options: {
     credentialVault: CredentialVault;
     mediaRuntime?: MediaRuntimeForRouteTest;
     pool?: Pool;
+    routeTestTimeoutMs?: number;
     textRuntime?: Pick<DatabaseTextGenerationRuntime, "generateText">;
   }) {
     this.pool = options.pool ?? createPgPool();
+    this.routeTestTimeoutMs = options.routeTestTimeoutMs ?? DEFAULT_ROUTE_TEST_TIMEOUT_MS;
     const aiGateway = createDefaultAiGateway();
     this.mediaRuntime = options.mediaRuntime ?? new DatabaseMediaRuntime({
       aiGateway,
@@ -289,7 +292,7 @@ export class AiRouteTestService {
       }, {
         includeInactiveRoute: true,
         requestConfigOverride: {
-          timeoutMs: DEFAULT_ROUTE_TEST_TIMEOUT_MS,
+          timeoutMs: this.routeTestTimeoutMs,
         },
         routeId: route.id,
       });
@@ -302,7 +305,7 @@ export class AiRouteTestService {
       routeKey: route.route_key,
     }, {
       requestConfigOverride: {
-        timeoutMs: DEFAULT_ROUTE_TEST_TIMEOUT_MS,
+        timeoutMs: this.routeTestTimeoutMs,
       },
     });
   }
@@ -322,7 +325,7 @@ export class AiRouteTestService {
       return result;
     }
 
-    const deadline = Date.now() + DEFAULT_ROUTE_TEST_TIMEOUT_MS;
+    const deadline = Date.now() + this.routeTestTimeoutMs;
     while (true) {
       const polled = await this.mediaRuntime.pollTask(
         context,
@@ -335,7 +338,7 @@ export class AiRouteTestService {
         },
         {
           includeInactiveRoute: true,
-          requestConfigOverride: { timeoutMs: DEFAULT_ROUTE_TEST_TIMEOUT_MS },
+          requestConfigOverride: { timeoutMs: this.routeTestTimeoutMs },
         },
       );
       if (polled.status === "succeeded") {
@@ -373,7 +376,7 @@ export class AiRouteTestService {
       providerKey: route.provider_key,
       routeKey: route.route_key,
       testKey: defaultTest?.key ?? null,
-      timeoutMs: DEFAULT_ROUTE_TEST_TIMEOUT_MS,
+      timeoutMs: this.routeTestTimeoutMs,
       upstreamModel: route.upstream_model,
     };
   }

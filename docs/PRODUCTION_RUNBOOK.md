@@ -38,7 +38,7 @@ docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.
 unset MOUXIHUB_GPT_IMAGE_2_API_KEY PIXELLELABS_GPT_IMAGE_2_API_KEY
 ```
 
-The import is transactional and produces two inactive routes. Canvas route menus intentionally hide inactive routes, so test both imported lines on the server before publication:
+The import is transactional and produces two inactive routes. Canvas route menus intentionally hide inactive routes, so test both imported lines on the server before publication. The importer allows up to five minutes per line because these image providers can exceed the 30-second general admin-test budget:
 
 ```bash
 docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm \

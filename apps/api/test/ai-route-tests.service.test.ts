@@ -5,7 +5,12 @@ import { AiRouteTestService } from "../src/modules/ai-route-tests/ai-route-tests
 const context = { tenantId: "11111111-1111-1111-1111-111111111111", userId: null };
 const routeId = "22222222-2222-2222-2222-222222222222";
 
-function harness(options: { async?: boolean; fail?: boolean; race?: boolean } = {}) {
+function harness(options: {
+  async?: boolean;
+  fail?: boolean;
+  race?: boolean;
+  routeTestTimeoutMs?: number;
+} = {}) {
   const state = { configurationRevision: 1, testedRevision: null as number | null, healthStatus: null as string | null };
   const sql: string[] = [];
   const client = {
@@ -45,8 +50,12 @@ function harness(options: { async?: boolean; fail?: boolean; race?: boolean } = 
   }), generateVideo: vi.fn(), pollTask: vi.fn(async () => ({
     modelKey: "mock-image", outputs: [{ url: "https://example.test/image.png" }], providerTaskId: "task-1", status: "succeeded",
   })) };
-  const service = new AiRouteTestService({ credentialVault: {} as never, mediaRuntime: runtime as never,
-    pool: { connect: async () => client } as never });
+  const service = new AiRouteTestService({
+    credentialVault: {} as never,
+    mediaRuntime: runtime as never,
+    pool: { connect: async () => client } as never,
+    routeTestTimeoutMs: options.routeTestTimeoutMs,
+  });
   return { runtime, service, sql, state };
 }
 
@@ -85,6 +94,30 @@ describe("AiRouteTestService admin draft certification", () => {
       expect.objectContaining({
         includeInactiveRoute: true,
         requestConfigOverride: { timeoutMs: 30000 },
+      }),
+    );
+  });
+
+  test("uses an explicit importer timeout for provider calls and polling", async () => {
+    const testHarness = harness({ async: true, routeTestTimeoutMs: 300000 });
+
+    const result = await testHarness.service.testAdminDraftRoute(context, routeId, {});
+
+    expect(result.status).toBe("ok");
+    expect(result.requestSummary.timeoutMs).toBe(300000);
+    expect(testHarness.runtime.generateImage).toHaveBeenCalledWith(
+      context,
+      expect.objectContaining({ routeKey: "image.draft" }),
+      expect.objectContaining({
+        requestConfigOverride: { timeoutMs: 300000 },
+      }),
+    );
+    expect(testHarness.runtime.pollTask).toHaveBeenCalledWith(
+      context,
+      "image",
+      expect.objectContaining({ providerTaskId: "task-1", routeId }),
+      expect.objectContaining({
+        requestConfigOverride: { timeoutMs: 300000 },
       }),
     );
   });
