@@ -1,7 +1,22 @@
 ﻿# Project Record
 
-Last updated: 2026-07-10
+Last updated: 2026-07-12
 Maintainers: project team + Codex sessions
+
+## 2026-07-12 - GPT-Image-2 Secure Route Import And Draft Testing
+
+- added a production-image-compatible one-time importer for the MouxiHub async and PixelleLabs sync GPT-Image-2 lines. It reads the two server-only environment variables only during `--apply`, encrypts each API key into a distinct CredentialVault credential, creates a separate platform connection for each route, and leaves both routes and prices inactive until tested.
+- added an explicit `--publish <default-route-key>` command that activates the imported lines only when both current route revisions have passed health tests, then activates matching pricing and selects the requested default line.
+- fixed administrator draft route testing so a server-side test can resolve its exact inactive platform route by ID. Normal runtime selection remains restricted to active routes.
+- documented one-time importer variables and the server dry-run/apply/test/publish sequence without committing secrets or injecting those API keys into long-running API/Worker containers.
+- validation:
+  - `node --test scripts/import-gpt-image-2-routes.test.mjs` passed: 2 tests.
+  - `node --check scripts/import-gpt-image-2-routes.mjs` passed.
+  - `npm run test --workspace @aigc-flow/api -- ai-route-tests.service.test.ts` passed: 4 tests.
+  - `npm run test --workspace @aigc-flow/ai-gateway-core` passed: 97 tests.
+  - `npm run build --workspace @aigc-flow/ai-gateway-core` passed.
+  - `npm run build` passed with the existing Browserslist, dynamic-import, and chunk-size warnings.
+  - API build in the isolated worktree remains blocked by pre-existing missing workspace links for `@aigc-flow/redis`, `@aigc-flow/storage`, and `@aigc-flow/workflow-core`; the new AI route test type error is not present.
 
 ## 2026-07-10 - Panorama Generator Configuration Panel
 

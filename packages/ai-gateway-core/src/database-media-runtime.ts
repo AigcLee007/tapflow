@@ -97,9 +97,11 @@ type AiCallLogInsertInput = {
 
 type RuntimeLogMetadata = {
   generationId?: string | null;
+  includeInactiveRoute?: boolean;
   logger?: RuntimeLogger | null;
   nodeRunId?: string | null;
   requestConfigOverride?: Record<string, unknown>;
+  routeId?: string | null;
   traceId?: string | null;
   workflowRunId?: string | null;
 };
@@ -302,11 +304,20 @@ export class DatabaseMediaRuntime {
     context: RuntimeContext,
     modality: "image" | "video",
     request: PollTaskRequest,
-    metadata?: Omit<RuntimeLogMetadata, "requestConfigOverride">,
+    metadata?: RuntimeLogMetadata,
   ): Promise<ProviderTaskResult> {
     const selectedRoute = request.routeId
-      ? await this.getRuntimeRouteById(context, request.routeId)
+      ? await this.getRuntimeRouteById(context, request.routeId, Boolean(metadata?.includeInactiveRoute))
       : await this.resolveRoute(context, modality, request.routeKey ?? null);
+    const routeForCall = metadata?.requestConfigOverride
+      ? {
+          ...selectedRoute,
+          requestConfig: {
+            ...selectedRoute.requestConfig,
+            ...metadata.requestConfigOverride,
+          },
+        }
+      : selectedRoute;
 
     const apiKey = this.getApiKeyForRoute(selectedRoute);
     const startedAt = Date.now();
@@ -331,7 +342,7 @@ export class DatabaseMediaRuntime {
       const result = await this.aiGateway.pollTask({
         apiKey,
         request,
-        route: selectedRoute,
+        route: routeForCall,
       });
 
       const normalizedStatus = result.status === "failed" ? "failed" : "succeeded";
@@ -460,7 +471,9 @@ export class DatabaseMediaRuntime {
     metadata: RuntimeLogMetadata | undefined,
     caller: (selectedRoute: ResolvedRoute, apiKey: string) => Promise<AiGatewayMediaResult>,
   ): Promise<AiGatewayMediaResult> {
-    const selectedRoute = await this.resolveRoute(context, modality, routeKey);
+    const selectedRoute = metadata?.routeId
+      ? await this.getRuntimeRouteById(context, metadata.routeId, Boolean(metadata.includeInactiveRoute))
+      : await this.resolveRoute(context, modality, routeKey);
     const routeForCall = metadata?.requestConfigOverride
       ? {
           ...selectedRoute,
@@ -648,8 +661,10 @@ export class DatabaseMediaRuntime {
   private async getRuntimeRouteById(
     context: RuntimeContext,
     routeId: string,
+    includeInactiveRoute = false,
   ): Promise<ResolvedRoute> {
     const routes = await this.listRuntimeRoutes(context, null, {
+      includeInactiveRoute,
       routeId,
     });
     const route = routes[0];
@@ -668,6 +683,7 @@ export class DatabaseMediaRuntime {
     context: RuntimeContext,
     modality: "image" | "video" | null,
     options: {
+      includeInactiveRoute?: boolean;
       routeId?: string | null;
       routeKey?: string | null;
     },
@@ -714,7 +730,7 @@ export class DatabaseMediaRuntime {
             ON c.id = COALESCE(r.credential_id, pc.credential_id)
            AND c.status <> 'deleted'
           WHERE ($1::text IS NULL OR r.modality = $1)
-            AND r.status = 'active'
+            AND ($4::boolean OR r.status = 'active')
             AND p.status = 'active'
             AND ($2::uuid IS NULL OR r.id = $2::uuid)
             AND ($3::text IS NULL OR r.route_key = $3)
@@ -726,7 +742,12 @@ export class DatabaseMediaRuntime {
             r.created_at ASC,
             r.id ASC
         `,
-        [modality, options.routeId ?? null, options.routeKey?.trim() || null],
+        [
+          modality,
+          options.routeId ?? null,
+          options.routeKey?.trim() || null,
+          Boolean(options.includeInactiveRoute && options.routeId),
+        ],
       );
 
       return result.rows.map((row) => {

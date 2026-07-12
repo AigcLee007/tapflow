@@ -14,6 +14,39 @@ Branch: production-readiness
 7. Start worker.
 8. Run smoke tests.
 
+## D1.1 GPT-Image-2 Route Import
+
+Use this only after deploying the release containing `scripts/import-gpt-image-2-routes.mjs`. The two API keys stay in `/opt/aittco/env/tapflow.staging.env`; the normal API and Worker services do not receive them as environment variables.
+
+```bash
+cd /opt/aittco/tapflow
+
+set -a
+. /opt/aittco/env/tapflow.staging.env
+set +a
+
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm \
+  -e MOUXIHUB_GPT_IMAGE_2_API_KEY \
+  -e PIXELLELABS_GPT_IMAGE_2_API_KEY \
+  tapflow-api node scripts/import-gpt-image-2-routes.mjs
+
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm \
+  -e MOUXIHUB_GPT_IMAGE_2_API_KEY \
+  -e PIXELLELABS_GPT_IMAGE_2_API_KEY \
+  tapflow-api node scripts/import-gpt-image-2-routes.mjs --apply
+
+unset MOUXIHUB_GPT_IMAGE_2_API_KEY PIXELLELABS_GPT_IMAGE_2_API_KEY
+```
+
+The import is transactional and produces two inactive routes. In Model Center, select each new line and run `测试`. Then publish both lines with the intended default line:
+
+```bash
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm \
+  tapflow-api node scripts/import-gpt-image-2-routes.mjs --publish image.gpt-image-2.mouxihub-official
+```
+
+Replace the final route key with `image.gpt-image-2.pixellelabs-stable` to use that line as the default. Publication refuses to proceed unless both routes have a successful test for their current configuration revision. Never run the commands with shell tracing enabled.
+
 ## D2. Backup Command Templates
 
 ```bash

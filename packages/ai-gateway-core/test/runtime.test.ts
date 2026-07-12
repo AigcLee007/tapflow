@@ -3108,8 +3108,7 @@ describe("route resolver and ai gateway", () => {
       } as never,
     });
 
-    Object.defineProperty(runtime, "listRuntimeRoutes", {
-      value: async () => [
+    const listRuntimeRoutes = vi.fn(async () => [
         makeRoute({
           credential: {
             authTag: Buffer.from("tag"),
@@ -3119,7 +3118,9 @@ describe("route resolver and ai gateway", () => {
           },
           requestConfig: { timeoutMs: 300000 },
         }),
-      ],
+      ]);
+    Object.defineProperty(runtime, "listRuntimeRoutes", {
+      value: listRuntimeRoutes,
     });
     Object.defineProperty(runtime, "insertAiCallLog", {
       value: async () => undefined,
@@ -3135,13 +3136,47 @@ describe("route resolver and ai gateway", () => {
         routeKey: "image.gpt-image-2",
       },
       {
+        includeInactiveRoute: true,
         requestConfigOverride: {
           timeoutMs: 30000,
         },
+        routeId: "draft-route-1",
       },
     );
 
     expect(capturedTimeout).toBe(30000);
+    expect(listRuntimeRoutes).toHaveBeenCalledWith(
+      { tenantId: "tenant-1", userId: "user-1" },
+      null,
+      { includeInactiveRoute: true, routeId: "draft-route-1" },
+    );
+  });
+
+  test("database media runtime only includes inactive routes for an explicit route-id diagnostic", async () => {
+    const { DatabaseMediaRuntime } = await import("../src/database-media-runtime.js");
+    const queries: Array<{ sql: string; values: unknown[] | undefined }> = [];
+    const client = {
+      query: vi.fn(async (sql: string, values?: unknown[]) => {
+        queries.push({ sql, values });
+        return { rows: [] };
+      }),
+      release: vi.fn(),
+    };
+    const runtime = new DatabaseMediaRuntime({
+      aiGateway: {} as never,
+      credentialVault: {} as never,
+      pool: { connect: async () => client } as never,
+      routeResolver: {} as never,
+    });
+    const listRuntimeRoutes = (runtime as any).listRuntimeRoutes.bind(runtime);
+
+    await listRuntimeRoutes({ tenantId: "tenant-1", userId: "user-1" }, "image", { routeId: "route-1" });
+    await listRuntimeRoutes({ tenantId: "tenant-1", userId: "user-1" }, "image", { includeInactiveRoute: true });
+    await listRuntimeRoutes({ tenantId: "tenant-1", userId: "user-1" }, "image", { includeInactiveRoute: true, routeId: "route-1" });
+
+    const routeQueries = queries.filter((query) => query.sql.includes("FROM ai_routes r"));
+    expect(routeQueries).toHaveLength(3);
+    expect(routeQueries.map((query) => query.values?.[3])).toEqual([false, false, true]);
   });
 
   test("database media runtime blocks video editor exports on routes without workflow support", async () => {

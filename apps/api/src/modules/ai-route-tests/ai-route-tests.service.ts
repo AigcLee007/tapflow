@@ -40,6 +40,7 @@ type RouteRecord = {
 };
 
 const DEFAULT_ROUTE_TEST_TIMEOUT_MS = 30_000;
+const ROUTE_TEST_POLL_INTERVAL_MS = 1_000;
 
 export type RouteTestResultView = {
   checkedAt: string;
@@ -51,6 +52,29 @@ export type RouteTestResultView = {
   routeId: string;
   routeKey: string;
   status: "failed" | "ok";
+};
+
+type MediaRuntimeForRouteTest = Omit<
+  Pick<DatabaseMediaRuntime, "generateImage" | "generateVideo" | "pollTask">,
+  "generateImage" | "pollTask"
+> & {
+  generateImage(
+    context: Parameters<DatabaseMediaRuntime["generateImage"]>[0],
+    request: Parameters<DatabaseMediaRuntime["generateImage"]>[1],
+    metadata?: Parameters<DatabaseMediaRuntime["generateImage"]>[2] & {
+      includeInactiveRoute?: boolean;
+      routeId?: string | null;
+    },
+  ): ReturnType<DatabaseMediaRuntime["generateImage"]>;
+  pollTask(
+    context: Parameters<DatabaseMediaRuntime["pollTask"]>[0],
+    modality: Parameters<DatabaseMediaRuntime["pollTask"]>[1],
+    request: Parameters<DatabaseMediaRuntime["pollTask"]>[2],
+    metadata?: Parameters<DatabaseMediaRuntime["pollTask"]>[3] & {
+      includeInactiveRoute?: boolean;
+      requestConfigOverride?: Record<string, unknown>;
+    },
+  ): ReturnType<DatabaseMediaRuntime["pollTask"]>;
 };
 
 export class AiRouteTestApiError extends Error {
@@ -66,13 +90,13 @@ export class AiRouteTestApiError extends Error {
 }
 
 export class AiRouteTestService {
-  readonly mediaRuntime: Pick<DatabaseMediaRuntime, "generateImage" | "generateVideo">;
+  readonly mediaRuntime: MediaRuntimeForRouteTest;
   readonly pool: Pool;
   readonly textRuntime: Pick<DatabaseTextGenerationRuntime, "generateText">;
 
   constructor(options: {
     credentialVault: CredentialVault;
-    mediaRuntime?: Pick<DatabaseMediaRuntime, "generateImage" | "generateVideo">;
+    mediaRuntime?: MediaRuntimeForRouteTest;
     pool?: Pool;
     textRuntime?: Pick<DatabaseTextGenerationRuntime, "generateText">;
   }) {
@@ -119,7 +143,8 @@ export class AiRouteTestService {
     const startedAt = Date.now();
 
     try {
-      const result = await this.callRuntime(context, route, defaultTest, input);
+      const initialResult = await this.callRuntime(context, route, defaultTest, input);
+      const result = await this.waitForAsyncResult(context, route, input, initialResult);
       const latencyMs = Date.now() - startedAt;
       const responseSummary = this.summarizeSuccess(route, result);
       return this.recordHealthCheck({
@@ -262,9 +287,11 @@ export class AiRouteTestService {
         prompt,
         routeKey: route.route_key,
       }, {
+        includeInactiveRoute: true,
         requestConfigOverride: {
           timeoutMs: DEFAULT_ROUTE_TEST_TIMEOUT_MS,
         },
+        routeId: route.id,
       });
     }
 
@@ -278,6 +305,50 @@ export class AiRouteTestService {
         timeoutMs: DEFAULT_ROUTE_TEST_TIMEOUT_MS,
       },
     });
+  }
+
+  private async waitForAsyncResult(
+    context: TenantContext,
+    route: RouteRecord,
+    input: RunRouteTestInput,
+    result: AiGatewayMediaResult | AiGatewayTextResult,
+  ): Promise<AiGatewayMediaResult | AiGatewayTextResult> {
+    if (
+      route.modality === "text" ||
+      !("providerTaskId" in result) ||
+      result.status !== "waiting_provider" ||
+      !result.providerTaskId
+    ) {
+      return result;
+    }
+
+    const deadline = Date.now() + DEFAULT_ROUTE_TEST_TIMEOUT_MS;
+    while (true) {
+      const polled = await this.mediaRuntime.pollTask(
+        context,
+        route.modality,
+        {
+          model: input.model ?? route.model_key,
+          providerTaskId: result.providerTaskId,
+          routeId: route.id,
+          routeKey: route.route_key,
+        },
+        {
+          includeInactiveRoute: true,
+          requestConfigOverride: { timeoutMs: DEFAULT_ROUTE_TEST_TIMEOUT_MS },
+        },
+      );
+      if (polled.status === "succeeded") {
+        return polled as AiGatewayMediaResult;
+      }
+      if (polled.status === "failed") {
+        throw new AiRouteTestApiError(502, "PROVIDER_TASK_FAILED", "Provider task failed during route test");
+      }
+      if (Date.now() >= deadline) {
+        throw new AiRouteTestApiError(504, "PROVIDER_TASK_TIMEOUT", "Provider task did not finish during route test");
+      }
+      await new Promise((resolve) => setTimeout(resolve, ROUTE_TEST_POLL_INTERVAL_MS));
+    }
   }
 
   private buildRequestSummary(

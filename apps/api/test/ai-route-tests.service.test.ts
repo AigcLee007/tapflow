@@ -5,7 +5,7 @@ import { AiRouteTestService } from "../src/modules/ai-route-tests/ai-route-tests
 const context = { tenantId: "11111111-1111-1111-1111-111111111111", userId: null };
 const routeId = "22222222-2222-2222-2222-222222222222";
 
-function harness(options: { fail?: boolean; race?: boolean } = {}) {
+function harness(options: { async?: boolean; fail?: boolean; race?: boolean } = {}) {
   const state = { configurationRevision: 1, testedRevision: null as number | null, healthStatus: null as string | null };
   const sql: string[] = [];
   const client = {
@@ -38,11 +38,16 @@ function harness(options: { fail?: boolean; race?: boolean } = {}) {
   const runtime = { generateImage: vi.fn(async () => {
     if (options.race) state.configurationRevision += 1;
     if (options.fail) throw new Error("provider failed");
+    if (options.async) {
+      return { modelKey: "mock-image", outputs: [], providerKey: "mock", providerTaskId: "task-1", status: "waiting_provider" };
+    }
     return { modelKey: "mock-image", outputs: [{ url: "https://example.test/image.png" }], providerKey: "mock", status: "succeeded" };
-  }), generateVideo: vi.fn() };
+  }), generateVideo: vi.fn(), pollTask: vi.fn(async () => ({
+    modelKey: "mock-image", outputs: [{ url: "https://example.test/image.png" }], providerTaskId: "task-1", status: "succeeded",
+  })) };
   const service = new AiRouteTestService({ credentialVault: {} as never, mediaRuntime: runtime as never,
     pool: { connect: async () => client } as never });
-  return { service, sql, state };
+  return { runtime, service, sql, state };
 }
 
 describe("AiRouteTestService admin draft certification", () => {
@@ -50,6 +55,11 @@ describe("AiRouteTestService admin draft certification", () => {
     const testHarness = harness();
     expect((await testHarness.service.testAdminDraftRoute(context, routeId, {})).status).toBe("ok");
     expect(testHarness.state).toMatchObject({ configurationRevision: 1, testedRevision: 1, healthStatus: "ok" });
+    expect(testHarness.runtime.generateImage).toHaveBeenCalledWith(
+      context,
+      expect.objectContaining({ routeKey: "image.draft" }),
+      expect.objectContaining({ includeInactiveRoute: true, routeId }),
+    );
     expect(testHarness.sql.some((query) => query.includes("route.tenant_id IS NULL") && query.includes("route.deleted_at IS NULL"))).toBe(true);
     expect(testHarness.sql.some((query) => query.includes("route.status='active'"))).toBe(false);
   });
@@ -59,6 +69,24 @@ describe("AiRouteTestService admin draft certification", () => {
     expect((await testHarness.service.testAdminDraftRoute(context, routeId, {})).status).toBe("ok");
     expect(testHarness.state).toMatchObject({ configurationRevision: 2, testedRevision: null, healthStatus: null });
     expect(testHarness.sql.some((query) => query.includes("configuration_revision=$2"))).toBe(true);
+  });
+
+  test("polls an asynchronous draft until the provider reports success", async () => {
+    const testHarness = harness({ async: true });
+
+    const result = await testHarness.service.testAdminDraftRoute(context, routeId, {});
+
+    expect(result.status).toBe("ok");
+    expect(result.responseSummary.status).toBe("succeeded");
+    expect(testHarness.runtime.pollTask).toHaveBeenCalledWith(
+      context,
+      "image",
+      expect.objectContaining({ providerTaskId: "task-1", routeId }),
+      expect.objectContaining({
+        includeInactiveRoute: true,
+        requestConfigOverride: { timeoutMs: 30000 },
+      }),
+    );
   });
 
   test("failed current test clears certification for the unchanged revision", async () => {

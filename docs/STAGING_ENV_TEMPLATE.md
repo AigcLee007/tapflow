@@ -112,6 +112,20 @@ For staging/private beta, only the following route is required:
   - API protocol: OpenAI-compatible image API
   - Credential: server-side only, stored in CredentialVault
 
+### GPT-Image-2 route importer
+
+The following values are one-time importer inputs. They must remain in the external server env file and must not be added to `x-tapflow-env` because API and Worker runtime resolve credentials from CredentialVault instead.
+
+- `MOUXIHUB_GPT_IMAGE_2_API_KEY = <secret: MouxiHub GPT-Image-2 API key>`
+- `PIXELLELABS_GPT_IMAGE_2_API_KEY = <secret: PixelleLabs GPT-Image-2 API key>`
+
+The importer creates these inactive platform routes for `GPT-Image-2`:
+
+- `image.gpt-image-2.mouxihub-official`: async `/v1/images/generations`, `12` credits.
+- `image.gpt-image-2.pixellelabs-stable`: sync `/v1/images/generations`, `3` credits.
+
+Run the documented dry-run before applying. Test both inactive lines in Model Center, then use the explicit publish command with the intended default route key. The publish command refuses to activate either line unless its current configuration revision has passed a route test.
+
 ### Text model route
 
 - `GPT-5.5`
