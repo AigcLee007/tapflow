@@ -513,6 +513,109 @@ describe("useRemoteFlowAutosave", () => {
     expect(restoredVideoParams).not.toHaveProperty("relativeSignedPreview");
   });
 
+  it("migrates legacy video params before autosave and reloads the canonical contract", async () => {
+    const initialDraft = createDraft(1);
+    saveFlowDraftMock.mockImplementationOnce(async (_flowId, input) => ({
+      ...initialDraft,
+      graph: input.graph,
+      revision: 2,
+      updatedAt: "2026-05-22T00:00:02.000Z",
+    }));
+
+    renderHook(() =>
+      useRemoteFlowAutosave({
+        draft: initialDraft,
+        enabled: true,
+        flowId: "flow-1",
+      }),
+    );
+
+    act(() => {
+      useFlowCanvasStore.setState({
+        nodes: [
+          {
+            id: "video-legacy",
+            position: { x: 0, y: 0 },
+            type: "video",
+            data: {
+              modelId: "veo3.1-4k",
+              routeKey: "video.custom-route",
+              referenceAssetItemIds: ["asset-first", "asset-last"],
+              referenceOrder: ["first", "last"],
+              batchCount: 3,
+              params: {
+                aspect_ratio: "21:9",
+                duration: "6",
+                quality: "4k cinematic",
+                hd: true,
+                n: 3,
+                referenceLabels: ["First Frame", "Last Frame"],
+                localPreview: new Blob(["preview"], { type: "image/webp" }),
+                previewUrl: "blob:http://localhost/video-preview",
+              },
+            },
+          },
+        ] as never[],
+        isDirty: true,
+      });
+    });
+
+    await advanceTimers(1200);
+    await flushPromises();
+
+    const savedVideo = saveFlowDraftMock.mock.calls[0]?.[1].graph.nodes[0];
+    expect(savedVideo?.data).toMatchObject({
+      modelId: "veo3.1-fast-4K",
+      routeKey: "video.custom-route",
+      referenceAssetItemIds: ["asset-first", "asset-last"],
+      referenceOrder: ["first", "last"],
+      params: {
+        videoGeneration: {
+          schemaVersion: 1,
+          mode: "first_last_frame",
+          aspectRatio: "21:9",
+          resolution: "4K",
+          durationSeconds: 6,
+          count: 4,
+          normalization: expect.objectContaining({ requiresUserCorrection: true }),
+        },
+      },
+    });
+    expect(JSON.stringify(savedVideo)).not.toMatch(/blob:|previewUrl|localPreview/);
+    expect(savedVideo?.data).not.toHaveProperty("batchCount");
+
+    act(() => {
+      loadStoreFromDraft({
+        ...initialDraft,
+        graph: saveFlowDraftMock.mock.calls[0]?.[1].graph,
+        revision: 2,
+        updatedAt: "2026-05-22T00:00:02.000Z",
+      });
+    });
+
+    const restoredData = useFlowCanvasStore.getState().nodes[0]?.data;
+    expect(restoredData).toMatchObject({
+      modelId: "veo3.1-fast-4K",
+      routeKey: "video.custom-route",
+      referenceAssetItemIds: ["asset-first", "asset-last"],
+      referenceOrder: ["first", "last"],
+      params: {
+        videoGeneration: {
+          schemaVersion: 1,
+          mode: "first_last_frame",
+          aspectRatio: "21:9",
+          resolution: "4K",
+          durationSeconds: 6,
+          count: 4,
+          normalization: expect.objectContaining({ requiresUserCorrection: true }),
+        },
+      },
+    });
+    expect(restoredData?.params).not.toHaveProperty("aspect_ratio");
+    expect(restoredData?.params).not.toHaveProperty("referenceLabels");
+    expect(restoredData).not.toHaveProperty("batchCount");
+  });
+
   it("saveNow flushes the latest store graph even before the hook observes the new node", async () => {
     const initialDraft = createDraft(1, ["source-image"]);
     loadStoreFromDraft(initialDraft);

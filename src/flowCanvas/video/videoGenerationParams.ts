@@ -90,11 +90,15 @@ export function createDefaultVideoGenerationParams(): VideoGenerationParamsV1 {
  * a fresh object on every call so autosave/hash callers can safely reuse it.
  */
 export function normalizeVideoGenerationParams(data: unknown): VideoGenerationNormalizationResult {
-  const root = asRecord(data);
+  const input = asRecord(data);
+  const root = input ?? {};
   const rootParams = asRecord(root.params);
   const nestedVideoGeneration = asRecord(rootParams?.videoGeneration) || asRecord(root.videoGeneration);
   const source = nestedVideoGeneration || rootParams || root;
   const diagnostics: VideoGenerationDiagnostic[] = [];
+  if (!input) {
+    addDiagnostic(diagnostics, "input", data, "Video generation params must be an object");
+  }
   const persistedCorrection = readPersistedCorrection(source.normalization);
   const defaults = createDefaultVideoGenerationParams();
 

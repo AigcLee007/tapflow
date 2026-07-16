@@ -81,4 +81,75 @@ describe("canonicalizeGraph", () => {
     expect(graph.nodes[0]?.data).not.toHaveProperty("params.videoGeneration.localBlob");
     expect(graph.nodes[0]?.data).not.toHaveProperty("params.videoGeneration.localFile");
   });
+
+  it("migrates legacy video params at the graph persistence boundary without changing other node kinds", () => {
+    const graph = canonicalizeGraph({
+      edges: [],
+      nodes: [
+        {
+          id: "video-legacy",
+          position: { x: 0, y: 0 },
+          type: "video",
+          data: {
+            modelId: "veo3.1-4k",
+            routeKey: "video.custom-route",
+            referenceAssetItemIds: ["asset-first", "asset-last"],
+            referenceOrder: ["first", "last"],
+            batchCount: 3,
+            params: {
+              aspect_ratio: "21:9",
+              duration: "6",
+              quality: "4k cinematic",
+              hd: true,
+              n: 3,
+              referenceLabels: ["First Frame", "Last Frame"],
+              previewUrl: "blob:http://localhost/video-preview",
+            },
+          },
+        },
+        {
+          id: "image-legacy",
+          position: { x: 100, y: 0 },
+          type: "image",
+          data: {
+            batchCount: 3,
+            params: { aspect_ratio: "21:9", quality: "4k cinematic" },
+          },
+        },
+      ],
+      viewport: { x: 0, y: 0, zoom: 1 },
+    });
+
+    expect(graph.nodes[0]?.data).toMatchObject({
+      modelId: "veo3.1-fast-4K",
+      routeKey: "video.custom-route",
+      referenceAssetItemIds: ["asset-first", "asset-last"],
+      referenceOrder: ["first", "last"],
+      params: {
+        videoGeneration: {
+          schemaVersion: 1,
+          mode: "first_last_frame",
+          aspectRatio: "21:9",
+          resolution: "4K",
+          durationSeconds: 6,
+          count: 4,
+          referenceRolesByKey: {
+            first: { role: "first_frame", source: { kind: "asset", id: "asset-first" } },
+            last: { role: "last_frame", source: { kind: "asset", id: "asset-last" } },
+          },
+          normalization: expect.objectContaining({ requiresUserCorrection: true }),
+        },
+      },
+    });
+    expect(graph.nodes[0]?.data).not.toHaveProperty("params.aspect_ratio");
+    expect(graph.nodes[0]?.data).not.toHaveProperty("params.duration");
+    expect(graph.nodes[0]?.data).not.toHaveProperty("params.quality");
+    expect(graph.nodes[0]?.data).not.toHaveProperty("params.n");
+    expect(graph.nodes[0]?.data).not.toHaveProperty("params.referenceLabels");
+    expect(graph.nodes[0]?.data).not.toHaveProperty("batchCount");
+    expect(graph.nodes[1]?.data).toEqual({
+      batchCount: 3,
+      params: { aspect_ratio: "21:9", quality: "4k cinematic" },
+    });
+  });
 });

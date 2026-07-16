@@ -24,6 +24,17 @@ describe("video generation params", () => {
     });
   });
 
+  it.each([null, "invalid", 42, []])(
+    "returns default params with correction diagnostics for a non-object input: %j",
+    (input) => {
+      const result = normalizeVideoGenerationParams(input);
+
+      expect(result.params).toMatchObject(createDefaultVideoGenerationParams());
+      expect(result.requiresUserCorrection).toBe(true);
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({ field: "input" }));
+    },
+  );
+
   it("normalizes legacy params without changing durable node selections", () => {
     const input = {
       modelId: "veo3.1-4k",

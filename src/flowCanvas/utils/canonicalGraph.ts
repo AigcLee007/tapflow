@@ -1,5 +1,6 @@
 import type { FlowDraftGraph } from "../services/flowProjectApi";
 import { isFileLike, isTransientMediaUrl } from "./transientMedia";
+import { normalizeVideoGenerationParams } from "../video/videoGenerationParams";
 
 const TRANSIENT_NODE_DATA_KEYS = new Set([
   "activeNodeRunId",
@@ -43,6 +44,32 @@ const TRANSIENT_NODE_KEYS = new Set([
   "selected",
 ]);
 
+const LEGACY_VIDEO_GENERATION_KEYS = new Set([
+  "aspectRatio",
+  "aspect_ratio",
+  "audio",
+  "batchCount",
+  "cameraMotionId",
+  "contextPaletteRefs",
+  "count",
+  "duration",
+  "durationSeconds",
+  "generateAudio",
+  "generate_audio",
+  "generationMode",
+  "hd",
+  "humanReview",
+  "n",
+  "quality",
+  "referenceLabels",
+  "referenceNodeIds",
+  "referenceRolesByKey",
+  "resolution",
+  "schemaVersion",
+  "videoGeneration",
+  "visualTone",
+]);
+
 export function canonicalizeGraph(graph: FlowDraftGraph): FlowDraftGraph {
   return {
     edges: graph.edges.map((edge) => sortRecord(stripTransientValue(edge, "edge") as Record<string, unknown>)),
@@ -69,7 +96,8 @@ function canonicalizeNode(node: Record<string, unknown>): Record<string, unknown
   for (const key of keys) {
     if (TRANSIENT_NODE_KEYS.has(key)) continue;
     if (key === "data" && isRecord(node.data)) {
-      next.data = sortRecord(stripTransientValue(node.data, "node-data") as Record<string, unknown>);
+      const durableData = stripTransientValue(node.data, "node-data") as Record<string, unknown>;
+      next.data = canonicalizeNodeData(durableData, node.type);
       continue;
     }
     const value = stripTransientValue(node[key], "node");
@@ -78,6 +106,36 @@ function canonicalizeNode(node: Record<string, unknown>): Record<string, unknown
     }
   }
 
+  return next;
+}
+
+function canonicalizeNodeData(data: Record<string, unknown>, nodeType: unknown): Record<string, unknown> {
+  if (nodeType !== "video" && data.kind !== "video") {
+    return sortRecord(data);
+  }
+
+  const normalized = normalizeVideoGenerationParams(data);
+  const existingParams = isRecord(data.params) ? data.params : {};
+  const nextData = stripLegacyVideoGenerationKeys(data);
+  const nextParams = stripLegacyVideoGenerationKeys(existingParams);
+
+  nextParams.videoGeneration = normalized.params;
+  nextData.params = nextParams;
+  if (normalized.modelId) nextData.modelId = normalized.modelId;
+  if (normalized.routeKey) nextData.routeKey = normalized.routeKey;
+  if (normalized.referenceAssetItemIds) nextData.referenceAssetItemIds = normalized.referenceAssetItemIds;
+  if (normalized.referenceOrder) nextData.referenceOrder = normalized.referenceOrder;
+
+  return sortRecord(nextData);
+}
+
+function stripLegacyVideoGenerationKeys(value: Record<string, unknown>): Record<string, unknown> {
+  const next: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (!LEGACY_VIDEO_GENERATION_KEYS.has(key)) {
+      next[key] = entry;
+    }
+  }
   return next;
 }
 
