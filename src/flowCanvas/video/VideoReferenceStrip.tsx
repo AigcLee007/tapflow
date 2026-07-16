@@ -1,5 +1,5 @@
 import { ImagePlus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { ReferenceSourcePicker } from "../nodes/ReferenceSourcePicker";
 import type {
@@ -43,8 +43,21 @@ const ROLE_LABELS: Record<VideoReferenceRole, string> = {
 export function VideoReferenceStrip({ currentNodeId, onChange, onUploadReference, value }: VideoReferenceStripProps) {
   const [activeRole, setActiveRole] = useState<VideoReferenceRole | null>(null);
   const roles = ROLES_BY_MODE[value.videoGeneration.mode];
+  const allowedRolesRef = useRef<readonly VideoReferenceRole[]>(roles);
+  allowedRolesRef.current = roles;
+  const pickerRole = activeRole && roles.includes(activeRole) ? activeRole : null;
+
+  useEffect(() => {
+    if (activeRole && !roles.includes(activeRole)) {
+      setActiveRole(null);
+    }
+  }, [activeRole, roles]);
+
+  const isAllowedRole = (role: VideoReferenceRole) => allowedRolesRef.current.includes(role);
 
   const updateRole = (role: VideoReferenceRole, source: VideoReferenceSource | null) => {
+    if (!isAllowedRole(role)) return;
+
     const referenceRolesByKey = {
       ...value.videoGeneration.referenceRolesByKey,
       [role]: source ? { role, source } : null,
@@ -102,18 +115,18 @@ export function VideoReferenceStrip({ currentNodeId, onChange, onUploadReference
         currentNodeId={currentNodeId}
         onClose={() => setActiveRole(null)}
         onPickAsset={(assetId) => {
-          if (!activeRole || !isSafeReferenceId(assetId)) return;
-          updateRole(activeRole, { kind: "asset", id: assetId });
+          if (!pickerRole || !isAllowedRole(pickerRole) || !isSafeReferenceId(assetId)) return;
+          updateRole(pickerRole, { kind: "asset", id: assetId });
           setActiveRole(null);
         }}
         onPickCanvasNode={(nodeId) => {
-          if (!activeRole || !isSafeReferenceId(nodeId)) return;
-          updateRole(activeRole, { kind: "upstream", id: nodeId });
+          if (!pickerRole || !isAllowedRole(pickerRole) || !isSafeReferenceId(nodeId)) return;
+          updateRole(pickerRole, { kind: "upstream", id: nodeId });
           setActiveRole(null);
         }}
         onUploadReference={onUploadReference}
-        open={activeRole !== null}
-        roleLabel={activeRole ? ROLE_LABELS[activeRole] : undefined}
+        open={pickerRole !== null}
+        roleLabel={pickerRole ? ROLE_LABELS[pickerRole] : undefined}
       />
     </div>
   );

@@ -92,4 +92,82 @@ describe("VideoReferenceStrip", () => {
       }),
     }));
   });
+
+  test("closes an invalidated role picker and ignores its stale selection callback after a mode change", () => {
+    const onChange = vi.fn();
+    const value = createValue();
+    const { rerender } = render(
+      <VideoReferenceStrip currentNodeId="video-node" onChange={onChange} onUploadReference={vi.fn()} value={value} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Select first frame reference" }));
+    const stalePickAsset = pickerProps.current?.onPickAsset as (assetId: string) => void;
+
+    rerender(
+      <VideoReferenceStrip
+        currentNodeId="video-node"
+        onChange={onChange}
+        onUploadReference={vi.fn()}
+        value={{
+          ...value,
+          videoGeneration: {
+            ...value.videoGeneration,
+            mode: "image_to_video",
+          },
+        }}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Pick an asset" })).toBeNull();
+    act(() => stalePickAsset("asset-invalid"));
+
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  test("keeps an active picker when its role remains available after a mode change", () => {
+    const onChange = vi.fn();
+    const defaultVideoGeneration = createDefaultVideoGenerationParams();
+    const value = {
+      ...createValue(),
+      videoGeneration: {
+        ...defaultVideoGeneration,
+        mode: "all_reference" as const,
+      },
+    };
+    const { rerender } = render(
+      <VideoReferenceStrip currentNodeId="video-node" onChange={onChange} onUploadReference={vi.fn()} value={value} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Select subject reference" }));
+    rerender(
+      <VideoReferenceStrip
+        currentNodeId="video-node"
+        onChange={onChange}
+        onUploadReference={vi.fn()}
+        value={{
+          ...value,
+          videoGeneration: {
+            ...value.videoGeneration,
+            mode: "image_reference",
+          },
+        }}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Pick an asset" })).not.toBeNull();
+    act(() => {
+      (pickerProps.current?.onPickAsset as (assetId: string) => void)("asset-subject");
+    });
+
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
+      videoGeneration: expect.objectContaining({
+        referenceRolesByKey: {
+          subject: {
+            role: "subject",
+            source: { kind: "asset", id: "asset-subject" },
+          },
+        },
+      }),
+    }));
+  });
 });
