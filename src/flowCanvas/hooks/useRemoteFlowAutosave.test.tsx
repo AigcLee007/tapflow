@@ -408,6 +408,77 @@ describe("useRemoteFlowAutosave", () => {
     expect(saveFlowDraftMock).not.toHaveBeenCalled();
   });
 
+  it("persists the full video generation contract through autosave", async () => {
+    const initialDraft = createDraft(1);
+    saveFlowDraftMock.mockResolvedValueOnce(createDraft(2));
+
+    renderHook(() =>
+      useRemoteFlowAutosave({
+        draft: initialDraft,
+        enabled: true,
+        flowId: "flow-1",
+      }),
+    );
+
+    act(() => {
+      useFlowCanvasStore.setState({
+        nodes: [
+          {
+            id: "video-1",
+            position: { x: 0, y: 0 },
+            type: "video",
+            data: {
+              modelId: "veo3.1-fast-4K",
+              routeKey: "video.default",
+              params: {
+                videoGeneration: {
+                  schemaVersion: 1,
+                  mode: "text_to_video",
+                  aspectRatio: "16:9",
+                  resolution: "4K",
+                  durationSeconds: 8,
+                  generateAudio: true,
+                  count: 4,
+                  cameraMotionId: "dolly-in",
+                  visualTone: "cinematic_teal",
+                  contextPaletteRefs: [],
+                  humanReview: { status: "not_required" },
+                  referenceRolesByKey: {},
+                },
+              },
+            },
+          },
+        ] as never[],
+        isDirty: true,
+      });
+    });
+
+    await advanceTimers(1200);
+    await flushPromises();
+
+    expect(saveFlowDraftMock).toHaveBeenCalledTimes(1);
+    expect(saveFlowDraftMock.mock.calls[0]?.[1]).toMatchObject({
+      graph: {
+        nodes: [
+          {
+            id: "video-1",
+            data: {
+              params: {
+                videoGeneration: {
+                  schemaVersion: 1,
+                  resolution: "4K",
+                  durationSeconds: 8,
+                  generateAudio: true,
+                  count: 4,
+                },
+              },
+            },
+          },
+        ],
+      },
+    });
+  });
+
   it("saveNow flushes the latest store graph even before the hook observes the new node", async () => {
     const initialDraft = createDraft(1, ["source-image"]);
     loadStoreFromDraft(initialDraft);

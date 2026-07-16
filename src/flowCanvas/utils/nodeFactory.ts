@@ -6,6 +6,7 @@ import type { Node } from '@xyflow/react';
 import type { FlowNodeData, FlowNodeKind } from '../types';
 import { FLOW_NODE_DEFAULT_SIZES } from './nodeSizing';
 import { DEFAULT_TEXT_MODEL_ID, DEFAULT_TEXT_ROUTE_KEY } from '../../config/textModels';
+import { createDefaultVideoGenerationParams } from '../video/videoGenerationParams';
 
 const NODE_DEFAULTS: Record<
   FlowNodeKind,
@@ -91,6 +92,9 @@ export function createFlowNode(
     createdAt: now,
     updatedAt: now,
   };
+  if (kind === 'video') {
+    data.params = { videoGeneration: createDefaultVideoGenerationParams() };
+  }
   if (kind === 'storyboard') data.storyboard = buildDefaultStoryboard();
   if (kind === 'director3d') data.director3d = buildDefaultDirector3d();
   if (kind === 'video_editor') data.videoEditor = buildDefaultVideoEditor();

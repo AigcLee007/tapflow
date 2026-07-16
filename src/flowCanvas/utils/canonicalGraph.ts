@@ -46,10 +46,10 @@ const SIGNED_URL_RE = /[?&](?:x-amz-signature|x-amz-credential|signature|expires
 
 export function canonicalizeGraph(graph: FlowDraftGraph): FlowDraftGraph {
   return {
-    edges: graph.edges.map((edge) => sortRecord(stripTransientValue(edge, "edge", false) as Record<string, unknown>)),
+    edges: graph.edges.map((edge) => sortRecord(stripTransientValue(edge, "edge") as Record<string, unknown>)),
     nodes: graph.nodes.map((node) => canonicalizeNode(node)),
     ...(graph.projectStudios
-      ? { projectStudios: sortRecord(stripTransientValue(graph.projectStudios, "node-data", false) as Record<string, unknown>) as FlowDraftGraph["projectStudios"] }
+      ? { projectStudios: sortRecord(stripTransientValue(graph.projectStudios, "node-data") as Record<string, unknown>) as FlowDraftGraph["projectStudios"] }
       : {}),
     viewport: {
       x: Number(graph.viewport?.x ?? 0),
@@ -70,10 +70,10 @@ function canonicalizeNode(node: Record<string, unknown>): Record<string, unknown
   for (const key of keys) {
     if (TRANSIENT_NODE_KEYS.has(key)) continue;
     if (key === "data" && isRecord(node.data)) {
-      next.data = sortRecord(stripTransientValue(node.data, "node-data", hasDurableAssetRef(node.data)) as Record<string, unknown>);
+      next.data = sortRecord(stripTransientValue(node.data, "node-data") as Record<string, unknown>);
       continue;
     }
-    const value = stripTransientValue(node[key], "node", false);
+    const value = stripTransientValue(node[key], "node");
     if (value !== undefined) {
       next[key] = value;
     }
@@ -82,10 +82,10 @@ function canonicalizeNode(node: Record<string, unknown>): Record<string, unknown
   return next;
 }
 
-function stripTransientValue(value: unknown, scope: "edge" | "node" | "node-data", assetBacked: boolean): unknown {
+function stripTransientValue(value: unknown, scope: "edge" | "node" | "node-data"): unknown {
   if (Array.isArray(value)) {
     return value
-      .map((item) => stripTransientValue(item, scope, assetBacked))
+      .map((item) => stripTransientValue(item, scope))
       .filter((item) => item !== undefined);
   }
 
@@ -95,8 +95,7 @@ function stripTransientValue(value: unknown, scope: "edge" | "node" | "node-data
       if (scope === "node-data" && TRANSIENT_NODE_DATA_KEYS.has(key)) {
         continue;
       }
-      const nestedAssetBacked = assetBacked || (isRecord(value[key]) && hasDurableAssetRef(value[key] as Record<string, unknown>));
-      const nested = stripTransientValue(value[key], scope, nestedAssetBacked);
+      const nested = stripTransientValue(value[key], scope);
       if (nested !== undefined) {
         next[key] = nested;
       }
@@ -107,20 +106,10 @@ function stripTransientValue(value: unknown, scope: "edge" | "node" | "node-data
   if (typeof value === "string") {
     const trimmed = value.trim();
     if (/^(?:blob:|data:)/i.test(trimmed)) return undefined;
-    if (assetBacked && SIGNED_URL_RE.test(trimmed)) return undefined;
+    if (SIGNED_URL_RE.test(trimmed)) return undefined;
   }
 
   return value;
-}
-
-function hasDurableAssetRef(value: Record<string, unknown>): boolean {
-  return (
-    typeof value.assetId === "string" ||
-    typeof value.referenceUploadId === "string" ||
-    typeof value.sourceAssetId === "string" ||
-    typeof value.thumbnailAssetId === "string" ||
-    (Array.isArray(value.assetIds) && value.assetIds.some((item) => typeof item === "string" && item.trim()))
-  );
 }
 
 function sortRecord(record: Record<string, unknown>): Record<string, unknown> {

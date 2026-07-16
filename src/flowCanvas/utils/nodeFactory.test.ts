@@ -13,6 +13,26 @@ describe('nodeFactory route defaults', () => {
     expect(node.data.routeKey).toBe('video.default');
   });
 
+  it('seeds video nodes with the canonical generation params', () => {
+    const node = createFlowNode('video', { x: 20, y: 20 });
+    expect(node.data.params).toEqual({
+      videoGeneration: {
+        schemaVersion: 1,
+        mode: 'text_to_video',
+        aspectRatio: 'auto',
+        resolution: '720P',
+        durationSeconds: 4,
+        generateAudio: false,
+        count: 1,
+        cameraMotionId: null,
+        visualTone: null,
+        contextPaletteRefs: [],
+        humanReview: { status: 'not_required' },
+        referenceRolesByKey: {},
+      },
+    });
+  });
+
   it('sets text node model and routeKey to GPT-5.5 defaults', () => {
     const node = createFlowNode('text', { x: 30, y: 30 });
     expect(node.data.modelId).toBe('gpt-5.5');
