@@ -50,7 +50,7 @@ export type VideoReferenceRoleAssignment = {
 };
 
 export type VideoGenerationDiagnostic = {
-  code: "INVALID_VALUE" | "COUNT_CLAMPED" | "UNSUPPORTED_REFERENCE";
+  code: "INVALID_VALUE" | "COUNT_CLAMPED" | "UNSUPPORTED_REFERENCE" | "CAPABILITY_CORRECTED";
   field: string;
   value?: unknown;
   message: string;
@@ -85,4 +85,41 @@ export type VideoGenerationNormalizationResult = {
   routeKey?: string;
   referenceAssetItemIds?: string[];
   referenceOrder?: string[];
+};
+
+export type VideoGenerationBlocker =
+  | "CATALOG_LOADING"
+  | "NO_VIDEO_GENERATION_ROUTE"
+  | "PRICING_NOT_FOUND"
+  | "UNSUPPORTED_MODE"
+  | "UNSUPPORTED_ASPECT_RATIO"
+  | "UNSUPPORTED_RESOLUTION"
+  | "UNSUPPORTED_AUDIO"
+  | "UNSUPPORTED_COUNT"
+  | "HUMAN_REVIEW_REQUIRED";
+
+export type VideoGenerationCapabilities = {
+  aspectRatios: VideoAspectRatio[];
+  confirmedByRoute: boolean;
+  description?: string;
+  durationStepSeconds: number;
+  estimatedDurationLabel?: string;
+  maxCount: number;
+  maxDurationSeconds: number;
+  minDurationSeconds: number;
+  resolutions: VideoResolution[];
+  supportedModes: VideoGenerationMode[];
+  supportsAudio: boolean;
+  supportsHumanReview: boolean;
+};
+
+export type VideoModelOption = {
+  blocker: VideoGenerationBlocker | null;
+  capabilities: VideoGenerationCapabilities;
+  description?: string;
+  estimatedCredits: number | null;
+  estimatedDurationLabel?: string;
+  id: string;
+  label: string;
+  minChargeCredits: number | null;
 };

@@ -14,11 +14,24 @@ export type AiModelCatalogItem = {
   uiSchema: Record<string, unknown>;
 };
 
-export type AiModelCatalogRoute = {
-  capabilities?: {
+export type AiModelCatalogRouteCapabilities = Record<string, unknown> & {
+    aspectRatios?: string[];
+    description?: string;
+    durationStepSeconds?: number;
+    estimatedDurationLabel?: string;
+    maxCount?: number;
+    maxDurationSeconds?: number;
+    minDurationSeconds?: number;
+    resolutions?: string[];
     supportedGenerationModes?: string[];
+    supportedModes?: string[];
     supportedVideoWorkflows?: string[];
+    supportsAudio?: boolean;
+    supportsHumanReview?: boolean;
   };
+
+export type AiModelCatalogRoute = {
+  capabilities?: AiModelCatalogRouteCapabilities;
   estimatedCredits: number | null;
   minChargeCredits: number | null;
   modality: string;
