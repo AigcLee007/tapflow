@@ -2,7 +2,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ImageNodeComponent, TextNodeComponent } from "./FlowNodes";
+import { ImageNodeComponent, TextNodeComponent, VideoNodeComponent } from "./FlowNodes";
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
 
 const assetApiMocks = vi.hoisted(() => ({
@@ -119,6 +119,47 @@ describe("FlowNodes agent metadata", () => {
     expect(screen.queryByText(/provider/i)).toBeNull();
 
     window.removeEventListener("tapflow:open-agent-session", listener as EventListener);
+  });
+
+  it("recovers the active persisted video result through its asset id", async () => {
+    assetApiMocks.getAssetDownloadUrl.mockResolvedValue({
+      expiresAt: "2026-07-16T00:15:00.000Z",
+      method: "GET",
+      url: "https://cdn.test/video-two.mp4?X-Amz-Signature=fresh",
+    });
+
+    const { container } = render(
+      <VideoNodeComponent
+        id="video-1"
+        selected={false}
+        data={{
+          activeResultIndex: 1,
+          createdAt: 1,
+          generatedResults: [
+            { createdAt: 1, id: "asset:video-one", url: "https://cdn.test/video-one.mp4?X-Amz-Signature=stale" },
+            { createdAt: 1, id: "asset:video-two", url: "blob:http://localhost/video-two" },
+          ],
+          height: 170,
+          kind: "video",
+          posterUrl: "data:video/mp4;base64,unsafe",
+          status: "idle",
+          title: "Video",
+          updatedAt: 1,
+          width: 240,
+        } as any}
+        dragging={false}
+        zIndex={1}
+        isConnectable
+        type="video"
+        xPos={0}
+        yPos={0}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(assetApiMocks.getAssetDownloadUrl).toHaveBeenCalledWith("video-two");
+      expect(container.querySelector("video")?.getAttribute("src")).toBe("https://cdn.test/video-two.mp4?X-Amz-Signature=fresh");
+    });
   });
 
   it("renders the Agent badge for image nodes without leaking provider info", () => {
@@ -682,4 +723,3 @@ describe("FlowNodes agent metadata", () => {
     expect(String(useFlowCanvasStore.getState().nodes[0]?.data.errorMessage)).toContain("PRICING_NOT_FOUND");
   });
 });
-

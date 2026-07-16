@@ -12,6 +12,7 @@ type Props = {
   nodeId: string;
   onGenerate: () => void;
   onUpdate: (patch: Partial<FlowNodeData>) => void;
+  effectivePosterUrl?: string;
   runtimeVideoAssets?: Array<{ downloadUrl?: string | null }>;
 };
 
@@ -22,6 +23,7 @@ export function VideoNodeLegacyComposer({
   nodeId,
   onGenerate,
   onUpdate,
+  effectivePosterUrl: suppliedPosterUrl,
   runtimeVideoAssets = [],
 }: Props) {
   const { models } = useVideoModelCatalog();
@@ -36,7 +38,7 @@ export function VideoNodeLegacyComposer({
   const aspectRatio = String(params.aspect_ratio || aspectOptions[0] || "16:9");
   const duration = String(params.duration || durationOptions[0] || "4");
   const batchCount = Number(data.batchCount || 1);
-  const effectivePosterUrl = String(runtimeVideoAssets[0]?.downloadUrl || data.posterUrl || "");
+  const effectivePosterUrl = String(suppliedPosterUrl || runtimeVideoAssets[0]?.downloadUrl || data.posterUrl || "");
 
   const setParam = (key: string, value: string) => {
     const patch: Partial<FlowNodeData> = { params: { ...params, [key]: value } };

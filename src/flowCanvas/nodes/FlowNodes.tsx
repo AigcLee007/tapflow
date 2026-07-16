@@ -66,6 +66,11 @@ import { VideoNodeComposer } from '../video/VideoNodeComposer';
 import { VideoNodeLegacyComposer } from '../video/VideoNodeLegacyComposer';
 import { VIDEO_COMPOSER_V2_ENABLED } from '../video/videoComposerFeature';
 import {
+  getPersistedVideoResultAssetId,
+  getSafePersistedVideoPosterUrl,
+  getSelectedRuntimeVideoPreviewUrl,
+} from '../video/videoResultPreview';
+import {
   getImageModelById,
   getImageModelCatalogSnapshot,
   getImageModelSizeOptions,
@@ -7501,7 +7506,36 @@ export const VideoNodeComponent = memo(function VideoNode({
   const runtimeVideoAssets = Array.isArray(runtimeNodeOutput?.assets)
     ? runtimeNodeOutput.assets.filter((asset) => asset.kind === 'video' && asset.downloadUrl)
     : [];
-  const effectivePosterUrl = runtimeVideoAssets[0]?.downloadUrl || String(d.posterUrl || '');
+  const persistedResultAssetId = useMemo(
+    () => getPersistedVideoResultAssetId(d),
+    [d.activeResultIndex, d.generatedResults],
+  );
+  const [persistedResultPreview, setPersistedResultPreview] = useState<{
+    assetId: string | null;
+    url: string | null;
+  }>({ assetId: null, url: null });
+
+  useEffect(() => {
+    let cancelled = false;
+    setPersistedResultPreview({ assetId: persistedResultAssetId, url: null });
+    if (!persistedResultAssetId) return () => { cancelled = true; };
+
+    void getAssetDownloadUrl(persistedResultAssetId)
+      .then((response) => {
+        const url = String(response.url || '').trim();
+        if (!cancelled && url) setPersistedResultPreview({ assetId: persistedResultAssetId, url });
+      })
+      .catch(() => undefined);
+
+    return () => { cancelled = true; };
+  }, [persistedResultAssetId]);
+
+  const effectivePosterUrl = (persistedResultPreview.assetId === persistedResultAssetId
+    ? persistedResultPreview.url
+    : null)
+    || getSelectedRuntimeVideoPreviewUrl(runtimeVideoAssets, d.activeResultIndex)
+    || getSafePersistedVideoPosterUrl(d.posterUrl)
+    || '';
   const isGenerating = runtimeNodeStatus === 'pending'
     || runtimeNodeStatus === 'runnable'
     || runtimeNodeStatus === 'running'
@@ -7577,7 +7611,7 @@ export const VideoNodeComponent = memo(function VideoNode({
 
       {showNodeEditor && (VIDEO_COMPOSER_V2_ENABLED
         ? <VideoNodeComposer data={d} generating={isGenerating} nodeId={id} onGenerate={handleGenerate} onUpdate={(patch) => updateNodeData(id, patch)} selected={showNodeEditor} />
-        : <VideoNodeLegacyComposer data={d} generating={isGenerating} nodeId={id} onGenerate={handleGenerate} onUpdate={(patch) => updateNodeData(id, patch)} runtimeVideoAssets={runtimeVideoAssets} />
+        : <VideoNodeLegacyComposer data={d} effectivePosterUrl={effectivePosterUrl} generating={isGenerating} nodeId={id} onGenerate={handleGenerate} onUpdate={(patch) => updateNodeData(id, patch)} runtimeVideoAssets={runtimeVideoAssets} />
       )}
 
       {d.errorMessage && <div style={errorBar}>⚠{d.errorMessage}</div>}
