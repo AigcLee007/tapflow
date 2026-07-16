@@ -85,4 +85,26 @@ describe("VideoNodeComposer", () => {
       aspectRatio: 9 / 16,
     });
   });
+
+  test("does not resize a legacy node when a runtime video result supplies its poster", () => {
+    const onUpdate = vi.fn();
+    const data = { generationPrompt: "", modelId: "veo3.1-fast", params: { aspect_ratio: "16:9", duration: "4" } } as any;
+    render(
+      <VideoNodeLegacyComposer
+        data={data}
+        generating={false}
+        nodeId="video-1"
+        onGenerate={vi.fn()}
+        onUpdate={onUpdate}
+        runtimeVideoAssets={[{ downloadUrl: "https://cdn.test/runtime-output.mp4" }]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "video aspect ratio video-1 16:9" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "9:16" }));
+
+    expect(onUpdate).toHaveBeenCalledWith({
+      params: { aspect_ratio: "9:16", duration: "4" },
+    });
+  });
 });

@@ -7577,7 +7577,7 @@ export const VideoNodeComponent = memo(function VideoNode({
 
       {showNodeEditor && (VIDEO_COMPOSER_V2_ENABLED
         ? <VideoNodeComposer data={d} generating={isGenerating} nodeId={id} onGenerate={handleGenerate} onUpdate={(patch) => updateNodeData(id, patch)} selected={showNodeEditor} />
-        : <VideoNodeLegacyComposer data={d} generating={isGenerating} nodeId={id} onGenerate={handleGenerate} onUpdate={(patch) => updateNodeData(id, patch)} />
+        : <VideoNodeLegacyComposer data={d} generating={isGenerating} nodeId={id} onGenerate={handleGenerate} onUpdate={(patch) => updateNodeData(id, patch)} runtimeVideoAssets={runtimeVideoAssets} />
       )}
 
       {d.errorMessage && <div style={errorBar}>⚠{d.errorMessage}</div>}

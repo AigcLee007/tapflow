@@ -12,10 +12,18 @@ type Props = {
   nodeId: string;
   onGenerate: () => void;
   onUpdate: (patch: Partial<FlowNodeData>) => void;
+  runtimeVideoAssets?: Array<{ downloadUrl?: string | null }>;
 };
 
 /** The retained v1 prompt bar, kept as a rollout rollback path. */
-export function VideoNodeLegacyComposer({ data, generating, nodeId, onGenerate, onUpdate }: Props) {
+export function VideoNodeLegacyComposer({
+  data,
+  generating,
+  nodeId,
+  onGenerate,
+  onUpdate,
+  runtimeVideoAssets = [],
+}: Props) {
   const { models } = useVideoModelCatalog();
   const [showBatchSelector, setShowBatchSelector] = useState(false);
   const modelOptions = models.length
@@ -28,7 +36,7 @@ export function VideoNodeLegacyComposer({ data, generating, nodeId, onGenerate, 
   const aspectRatio = String(params.aspect_ratio || aspectOptions[0] || "16:9");
   const duration = String(params.duration || durationOptions[0] || "4");
   const batchCount = Number(data.batchCount || 1);
-  const effectivePosterUrl = String(data.posterUrl || "");
+  const effectivePosterUrl = String(runtimeVideoAssets[0]?.downloadUrl || data.posterUrl || "");
 
   const setParam = (key: string, value: string) => {
     const patch: Partial<FlowNodeData> = { params: { ...params, [key]: value } };
