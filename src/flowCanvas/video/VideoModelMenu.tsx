@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { AlertCircle, Check, Circle } from "lucide-react";
 
 import { MenuSurface } from "../../components/menu/MenuSurface";
@@ -7,6 +7,7 @@ import {
   MENU_ITEM_PRIMARY_CLASS,
   MENU_ITEM_SECONDARY_CLASS,
 } from "../../components/menu/menuStyles";
+import { useDismissibleLayer } from "../../components/menu/useDismissibleLayer";
 import type { VideoGenerationBlocker, VideoModelOption } from "./videoTypes";
 
 type VideoModelMenuProps = {
@@ -40,12 +41,25 @@ export function VideoModelMenu({
   value,
 }: VideoModelMenuProps) {
   const menuId = useId();
-  const listboxRef = useRef<HTMLDivElement>(null);
+  const layer = useDismissibleLayer("video-model-menu", { onDismiss: onClose });
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const selectedIndex = options.findIndex((option) => option.id === value);
   const [activeIndex, setActiveIndex] = useState(() => selectedIndex >= 0 ? selectedIndex : 0);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
+
+  useEffect(() => {
+    layer.openLayer();
+    return layer.closeLayer;
+  }, [layer.closeLayer, layer.openLayer]);
+
+  const selectOption = (option: VideoModelOption | undefined) => {
+    if (!option || option.blocker) {
+      return;
+    }
+    onChange(option.id);
+    layer.dismissLayer();
+  };
 
   const focusOption = (index: number) => {
     if (options.length === 0) return;
@@ -77,22 +91,19 @@ export function VideoModelMenu({
     }
     if (event.key === "Enter") {
       event.preventDefault();
-      const option = options[activeIndex];
-      if (option && !option.blocker) {
-        onChange(option.id);
-      }
+      selectOption(options[activeIndex]);
       return;
     }
     if (event.key === "Escape") {
       event.preventDefault();
-      onClose?.();
-      listboxRef.current?.blur();
+      layer.dismissLayer();
+      event.currentTarget.blur();
     }
   };
 
   if (loading) {
     return (
-      <MenuSurface aria-label="Loading video models" className="w-[288px] p-2" role="status">
+      <MenuSurface ref={layer.ref as React.RefObject<HTMLDivElement>} aria-label="Loading video models" className="w-[288px] p-2" role="status">
         {[0, 1, 2].map((index) => (
           <div
             key={index}
@@ -112,7 +123,7 @@ export function VideoModelMenu({
 
   if (error) {
     return (
-      <MenuSurface aria-label="Video model catalog error" className="w-[288px] p-2" role="alert">
+      <MenuSurface ref={layer.ref as React.RefObject<HTMLDivElement>} aria-label="Video model catalog error" className="w-[288px] p-2" role="alert">
         <div className="grid gap-2 px-1.5 py-1">
           <span className="text-xs font-bold leading-[1.1] text-white">{error}</span>
           <button
@@ -129,7 +140,7 @@ export function VideoModelMenu({
 
   return (
     <MenuSurface
-      ref={listboxRef}
+      ref={layer.ref as React.RefObject<HTMLDivElement>}
       aria-activedescendant={options[activeIndex] ? `${menuId}-${activeIndex}` : undefined}
       aria-label="Video models"
       className="w-[288px] p-2"
@@ -158,7 +169,7 @@ export function VideoModelMenu({
             id={`${menuId}-${index}`}
             onBlur={() => setFocusedIndex((current) => current === index ? null : current)}
             onClick={() => {
-              if (!disabled) onChange(option.id);
+              selectOption(option);
             }}
             onFocus={() => {
               setActiveIndex(index);

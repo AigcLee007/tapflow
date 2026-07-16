@@ -146,4 +146,89 @@ describe("VideoModelMenu", () => {
 
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  test("closes when a pointer interaction occurs outside the model menu", () => {
+    const onClose = vi.fn();
+    render(
+      <VideoModelMenu
+        error={null}
+        loading={false}
+        onChange={vi.fn()}
+        onClose={onClose}
+        onRetry={vi.fn()}
+        options={[model()]}
+        value={null}
+      />,
+    );
+
+    fireEvent.pointerDown(document.body);
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  test("selecting an enabled option changes the model and closes exactly once", () => {
+    const onChange = vi.fn();
+    const onClose = vi.fn();
+    render(
+      <VideoModelMenu
+        error={null}
+        loading={false}
+        onChange={onChange}
+        onClose={onClose}
+        onRetry={vi.fn()}
+        options={[model({ id: "enabled", label: "Enabled Video" })]}
+        value={null}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("option", { name: /Enabled Video/ }));
+
+    expect(onChange).toHaveBeenCalledOnce();
+    expect(onChange).toHaveBeenCalledWith("enabled");
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  test("does not close or change selection for a disabled option", () => {
+    const onChange = vi.fn();
+    const onClose = vi.fn();
+    render(
+      <VideoModelMenu
+        error={null}
+        loading={false}
+        onChange={onChange}
+        onClose={onClose}
+        onRetry={vi.fn()}
+        options={[model({ blocker: "PRICING_NOT_FOUND", id: "disabled", label: "Disabled Video" })]}
+        value={null}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("option", { name: /Disabled Video/ }));
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  test("keeps the error menu open for an inside retry interaction", () => {
+    const onClose = vi.fn();
+    const onRetry = vi.fn();
+    render(
+      <VideoModelMenu
+        error="Catalog unavailable"
+        loading={false}
+        onChange={vi.fn()}
+        onClose={onClose}
+        onRetry={onRetry}
+        options={[]}
+        value={null}
+      />,
+    );
+
+    const retry = screen.getByRole("button", { name: "Retry" });
+    fireEvent.pointerDown(retry);
+    fireEvent.click(retry);
+
+    expect(onClose).not.toHaveBeenCalled();
+    expect(onRetry).toHaveBeenCalledOnce();
+  });
 });

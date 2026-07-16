@@ -10,6 +10,7 @@ function publish(nextActiveId: string | null) {
 
 type DismissibleLayerOptions = {
   closeOnOtherLayer?: boolean;
+  onDismiss?: () => void;
 };
 
 export function useDismissibleLayer(layerKey?: string, options: DismissibleLayerOptions = {}) {
@@ -18,7 +19,23 @@ export function useDismissibleLayer(layerKey?: string, options: DismissibleLayer
   const id = layerKey || generatedId;
   const ref = useRef<HTMLElement | null>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
+  const onDismissRef = useRef(options.onDismiss);
+  const openRef = useRef(false);
   const [open, setOpen] = useState(false);
+
+  onDismissRef.current = options.onDismiss;
+
+  const dismissLayer = useCallback(() => {
+    const wasOpen = openRef.current;
+    openRef.current = false;
+    if (activeLayerId === id) {
+      publish(null);
+    }
+    setOpen(false);
+    if (wasOpen) {
+      onDismissRef.current?.();
+    }
+  }, [id]);
 
   useEffect(() => {
     const listener = (nextActiveId: string | null) => {
@@ -26,7 +43,7 @@ export function useDismissibleLayer(layerKey?: string, options: DismissibleLayer
         return;
       }
       if (nextActiveId !== id) {
-        setOpen(false);
+        dismissLayer();
       }
     };
 
@@ -38,7 +55,7 @@ export function useDismissibleLayer(layerKey?: string, options: DismissibleLayer
         publish(null);
       }
     };
-  }, [closeOnOtherLayer, id]);
+  }, [closeOnOtherLayer, dismissLayer, id]);
 
   useEffect(() => {
     if (!open) {
@@ -50,20 +67,14 @@ export function useDismissibleLayer(layerKey?: string, options: DismissibleLayer
       if (ref.current?.contains(target) || triggerRef.current?.contains(target)) {
         return;
       }
-      setOpen(false);
-      if (activeLayerId === id) {
-        publish(null);
-      }
+      dismissLayer();
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") {
         return;
       }
-      setOpen(false);
-      if (activeLayerId === id) {
-        publish(null);
-      }
+      dismissLayer();
     };
 
     window.addEventListener("pointerdown", handlePointerDown);
@@ -73,14 +84,16 @@ export function useDismissibleLayer(layerKey?: string, options: DismissibleLayer
       window.removeEventListener("pointerdown", handlePointerDown);
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [id, open]);
+  }, [dismissLayer, open]);
 
   const openLayer = useCallback(() => {
+    openRef.current = true;
     publish(id);
     setOpen(true);
   }, [id]);
 
   const closeLayer = useCallback(() => {
+    openRef.current = false;
     if (activeLayerId === id) {
       publish(null);
     }
@@ -95,5 +108,5 @@ export function useDismissibleLayer(layerKey?: string, options: DismissibleLayer
     openLayer();
   }, [closeLayer, open, openLayer]);
 
-  return { closeLayer, open, openLayer, ref, toggle, triggerRef };
+  return { closeLayer, dismissLayer, open, openLayer, ref, toggle, triggerRef };
 }
