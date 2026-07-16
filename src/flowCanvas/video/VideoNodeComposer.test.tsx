@@ -4,6 +4,8 @@ import { describe, expect, test, vi } from "vitest";
 import { createDefaultVideoGenerationParams } from "./videoGenerationParams";
 import { VideoNodeComposer } from "./VideoNodeComposer";
 import { VideoNodeLegacyComposer } from "./VideoNodeLegacyComposer";
+import { mergeVideoCapabilities } from "./videoGenerationCapabilities";
+import type { VideoModelOption } from "./videoTypes";
 
 vi.mock("./useVideoGenerationCatalog", () => ({
   useVideoGenerationCatalog: () => ({ error: null, loading: true, models: [], retry: vi.fn() }),
@@ -61,6 +63,90 @@ describe("VideoNodeComposer", () => {
     expect(screen.getByLabelText("Video composer").className).toContain("max-md:flex-col");
     expect(screen.getByLabelText("Video composer").className).toContain("max-md:left-0");
     expect(screen.getByLabelText("Choose video model").parentElement?.parentElement?.className).toContain("max-md:flex-col");
+  });
+
+  test("reconciles duration and other params when switching to a narrower model", () => {
+    const onUpdate = vi.fn();
+    const broadModel: VideoModelOption = {
+      blocker: null,
+      capabilities: mergeVideoCapabilities({ confirmedByRoute: true, maxDurationSeconds: 8 }),
+      description: "Broad model",
+      estimatedCredits: 1,
+      estimatedDurationLabel: "Up to 8 seconds",
+      id: "broad-model",
+      label: "Broad model",
+      minChargeCredits: 1,
+    };
+    const narrowModel: VideoModelOption = {
+      blocker: null,
+      capabilities: mergeVideoCapabilities({
+        confirmedByRoute: true,
+        durationStepSeconds: 2,
+        maxDurationSeconds: 4,
+        minDurationSeconds: 2,
+        supportsAudio: false,
+      }),
+      description: "Narrow model",
+      estimatedCredits: 1,
+      estimatedDurationLabel: "Up to 4 seconds",
+      id: "narrow-model",
+      label: "Narrow model",
+      minChargeCredits: 1,
+    };
+    const catalog = { error: null, loading: false, models: [broadModel, narrowModel], retry: vi.fn() };
+    const data = {
+      generationPrompt: "",
+      modelId: broadModel.id,
+      params: {
+        videoGeneration: {
+          ...createDefaultVideoGenerationParams(),
+          durationSeconds: 8,
+          generateAudio: true,
+        },
+      },
+    } as any;
+
+    render(<VideoNodeComposer catalog={catalog} data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={onUpdate} selected />);
+    fireEvent.click(screen.getByRole("button", { name: "Choose video model" }));
+    fireEvent.click(screen.getByRole("option", { name: /Narrow model/ }));
+
+    expect(onUpdate).toHaveBeenCalledWith({
+      modelId: narrowModel.id,
+      params: {
+        videoGeneration: expect.objectContaining({ durationSeconds: 4, generateAudio: false }),
+      },
+    });
+  });
+
+  test("patches an existing invalid draft once when its confirmed route loads", () => {
+    const onUpdate = vi.fn();
+    const model: VideoModelOption = {
+      blocker: null,
+      capabilities: mergeVideoCapabilities({ confirmedByRoute: true, maxDurationSeconds: 4 }),
+      description: "Narrow model",
+      estimatedCredits: 1,
+      id: "narrow-model",
+      label: "Narrow model",
+      minChargeCredits: 1,
+    };
+    const catalog = { error: null, loading: false, models: [model], retry: vi.fn() };
+    const data = {
+      generationPrompt: "",
+      modelId: model.id,
+      params: { videoGeneration: { ...createDefaultVideoGenerationParams(), durationSeconds: 8 } },
+    } as any;
+    const { rerender } = render(<VideoNodeComposer catalog={catalog} data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={onUpdate} selected />);
+
+    expect(onUpdate).toHaveBeenCalledTimes(1);
+    const correctedData = {
+      ...data,
+      params: {
+        ...data.params,
+        videoGeneration: { ...data.params.videoGeneration, durationSeconds: 4 },
+      },
+    };
+    rerender(<VideoNodeComposer catalog={catalog} data={correctedData} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={onUpdate} selected />);
+    expect(onUpdate).toHaveBeenCalledTimes(1);
   });
 
   test("retains the rollback composer model, aspect, duration, HD, count, and generation controls", () => {
