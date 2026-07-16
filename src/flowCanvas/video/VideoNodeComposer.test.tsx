@@ -69,4 +69,20 @@ describe("VideoNodeComposer", () => {
     expect(screen.getByText("高清")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Generate video video-1" })).toBeTruthy();
   });
+
+  test("resizes an ungenerated legacy video node when its aspect ratio changes", () => {
+    const onUpdate = vi.fn();
+    const data = { generationPrompt: "", modelId: "veo3.1-fast", params: { aspect_ratio: "16:9", duration: "4" } } as any;
+    render(<VideoNodeLegacyComposer data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={onUpdate} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "video aspect ratio video-1 16:9" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "9:16" }));
+
+    expect(onUpdate).toHaveBeenCalledWith({
+      params: { aspect_ratio: "9:16", duration: "4" },
+      width: 170,
+      height: 302,
+      aspectRatio: 9 / 16,
+    });
+  });
 });

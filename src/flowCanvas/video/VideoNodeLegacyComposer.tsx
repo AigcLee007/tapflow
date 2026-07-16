@@ -4,6 +4,7 @@ import { MenuSelect } from "../../components/menu/MenuSelect";
 import { useVideoModelCatalog } from "../../hooks/useVideoModelCatalog";
 import type { FlowNodeData } from "../types";
 import { getVideoModelAspectRatioOptions, getVideoModelDurationOptions } from "../../config/videoModels";
+import { getMediaNodeSizeFromRatioString, parseAspectRatio } from "../utils/nodeSizing";
 
 type Props = {
   data: FlowNodeData;
@@ -27,9 +28,17 @@ export function VideoNodeLegacyComposer({ data, generating, nodeId, onGenerate, 
   const aspectRatio = String(params.aspect_ratio || aspectOptions[0] || "16:9");
   const duration = String(params.duration || durationOptions[0] || "4");
   const batchCount = Number(data.batchCount || 1);
+  const effectivePosterUrl = String(data.posterUrl || "");
 
   const setParam = (key: string, value: string) => {
-    onUpdate({ params: { ...params, [key]: value } });
+    const patch: Partial<FlowNodeData> = { params: { ...params, [key]: value } };
+    if (key === "aspect_ratio" && !effectivePosterUrl) {
+      const nextSize = getMediaNodeSizeFromRatioString(value, 16 / 9);
+      patch.width = nextSize.width;
+      patch.height = nextSize.height;
+      patch.aspectRatio = parseAspectRatio(value) || 16 / 9;
+    }
+    onUpdate(patch);
   };
 
   return (
