@@ -83,6 +83,8 @@ function canonicalizeNode(node: Record<string, unknown>): Record<string, unknown
 }
 
 function stripTransientValue(value: unknown, scope: "edge" | "node" | "node-data"): unknown {
+  if (isFileLike(value)) return undefined;
+
   if (Array.isArray(value)) {
     return value
       .map((item) => stripTransientValue(item, scope))
@@ -122,4 +124,12 @@ function sortRecord(record: Record<string, unknown>): Record<string, unknown> {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isFileLike(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false;
+  if (typeof File !== "undefined" && value instanceof File) return true;
+  if (typeof Blob !== "undefined" && value instanceof Blob) return true;
+  const tag = Object.prototype.toString.call(value);
+  return tag === "[object File]" || tag === "[object Blob]";
 }

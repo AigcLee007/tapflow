@@ -94,6 +94,7 @@ export function normalizeVideoGenerationParams(data: unknown): VideoGenerationNo
   const nestedVideoGeneration = asRecord(rootParams?.videoGeneration) || asRecord(root.videoGeneration);
   const source = nestedVideoGeneration || rootParams || root;
   const diagnostics: VideoGenerationDiagnostic[] = [];
+  const persistedCorrection = readPersistedCorrection(source.normalization);
   const defaults = createDefaultVideoGenerationParams();
 
   if (source.schemaVersion !== undefined && source.schemaVersion !== 1) {
@@ -136,6 +137,8 @@ export function normalizeVideoGenerationParams(data: unknown): VideoGenerationNo
     diagnostics,
   );
 
+  const allDiagnostics = [...persistedCorrection.diagnostics, ...diagnostics];
+  const requiresUserCorrection = persistedCorrection.requiresUserCorrection || allDiagnostics.length > 0;
   const params = sanitizeVideoGenerationParams({
     schemaVersion: 1,
     mode,
@@ -149,6 +152,9 @@ export function normalizeVideoGenerationParams(data: unknown): VideoGenerationNo
     contextPaletteRefs,
     humanReview,
     referenceRolesByKey,
+    ...(requiresUserCorrection
+      ? { normalization: { requiresUserCorrection: true as const, diagnostics: allDiagnostics } }
+      : {}),
   }) as VideoGenerationParamsV1;
 
   const modelId = normalizeVideoModelId(readString(root.modelId) || readString(source.modelId));
@@ -156,8 +162,8 @@ export function normalizeVideoGenerationParams(data: unknown): VideoGenerationNo
 
   return {
     params,
-    diagnostics,
-    requiresUserCorrection: diagnostics.length > 0,
+    diagnostics: allDiagnostics,
+    requiresUserCorrection,
     ...(modelId ? { modelId } : {}),
     ...(routeKey ? { routeKey } : {}),
     ...(referenceAssetItemIds.length ? { referenceAssetItemIds } : {}),
@@ -235,11 +241,40 @@ function normalizeCount(
     return 1;
   }
 
-  const rounded = Math.round(numeric);
-  if (rounded === 1 || rounded === 2 || rounded === 4) return rounded;
-  const clamped: VideoCount = rounded <= 1 ? 1 : rounded <= 2 ? 2 : 4;
+  if (VIDEO_COUNTS.includes(numeric as VideoCount)) return numeric as VideoCount;
+  const clamped = VIDEO_COUNTS.reduce((nearest, candidate) => (
+    Math.abs(candidate - numeric) <= Math.abs(nearest - numeric) ? candidate : nearest
+  ));
   addDiagnostic(diagnostics, "count", raw, "Video count was clamped to the nearest supported value", "COUNT_CLAMPED");
   return clamped;
+}
+
+function readPersistedCorrection(value: unknown): {
+  requiresUserCorrection: boolean;
+  diagnostics: VideoGenerationDiagnostic[];
+} {
+  const input = asRecord(value);
+  if (input?.requiresUserCorrection !== true || !Array.isArray(input.diagnostics)) {
+    return { requiresUserCorrection: false, diagnostics: [] };
+  }
+
+  const diagnostics = input.diagnostics.flatMap((entry) => {
+    const diagnostic = asRecord(entry);
+    const code = diagnostic?.code;
+    const field = readString(diagnostic?.field);
+    const message = readString(diagnostic?.message);
+    if (!isVideoGenerationDiagnosticCode(code) || !field || !message) return [];
+
+    const sanitizedValue = sanitizeValue(diagnostic?.value, null);
+    return [{
+      code,
+      field,
+      message,
+      ...(sanitizedValue !== undefined ? { value: sanitizedValue } : {}),
+    }];
+  });
+
+  return { requiresUserCorrection: true, diagnostics };
 }
 
 function normalizeStableToken(
@@ -477,4 +512,8 @@ function isHumanReviewStatus(value: unknown): value is VideoHumanReview["status"
 
 function isVideoReferenceRole(value: unknown): value is VideoReferenceRole {
   return typeof value === "string" && VIDEO_REFERENCE_ROLES.includes(value as VideoReferenceRole);
+}
+
+function isVideoGenerationDiagnosticCode(value: unknown): value is VideoGenerationDiagnostic["code"] {
+  return value === "INVALID_VALUE" || value === "COUNT_CLAMPED" || value === "UNSUPPORTED_REFERENCE";
 }

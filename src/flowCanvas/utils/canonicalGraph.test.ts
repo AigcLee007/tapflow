@@ -36,6 +36,8 @@ describe("canonicalizeGraph", () => {
                   },
                 ],
                 humanReview: { status: "verified", verificationRef: "review-1" },
+                localBlob: new Blob(["preview"], { type: "image/webp" }),
+                localFile: new File(["preview"], "preview.webp", { type: "image/webp" }),
                 referenceRolesByKey: {
                   first: {
                     role: "first_frame",
@@ -76,5 +78,7 @@ describe("canonicalizeGraph", () => {
     expect(JSON.stringify(graph)).not.toMatch(
       /blob:|data:|X-Amz-Signature|posterUrl|previewUrl|transientSignedPreview/,
     );
+    expect(graph.nodes[0]?.data).not.toHaveProperty("params.videoGeneration.localBlob");
+    expect(graph.nodes[0]?.data).not.toHaveProperty("params.videoGeneration.localFile");
   });
 });

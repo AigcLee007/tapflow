@@ -443,6 +443,8 @@ describe("useRemoteFlowAutosave", () => {
                   visualTone: "cinematic_teal",
                   contextPaletteRefs: [],
                   humanReview: { status: "not_required" },
+                  localBlob: new Blob(["preview"], { type: "image/webp" }),
+                  localFile: new File(["preview"], "preview.webp", { type: "image/webp" }),
                   referenceRolesByKey: {},
                 },
               },
@@ -477,6 +479,10 @@ describe("useRemoteFlowAutosave", () => {
         ],
       },
     });
+    const savedVideoParams = saveFlowDraftMock.mock.calls[0]?.[1].graph.nodes[0]?.data
+      .params.videoGeneration;
+    expect(savedVideoParams).not.toHaveProperty("localBlob");
+    expect(savedVideoParams).not.toHaveProperty("localFile");
   });
 
   it("saveNow flushes the latest store graph even before the hook observes the new node", async () => {

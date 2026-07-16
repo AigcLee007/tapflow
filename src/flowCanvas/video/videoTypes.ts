@@ -49,6 +49,18 @@ export type VideoReferenceRoleAssignment = {
   source: VideoReferenceSource;
 };
 
+export type VideoGenerationDiagnostic = {
+  code: "INVALID_VALUE" | "COUNT_CLAMPED" | "UNSUPPORTED_REFERENCE";
+  field: string;
+  value?: unknown;
+  message: string;
+};
+
+export type VideoGenerationCorrection = {
+  requiresUserCorrection: true;
+  diagnostics: VideoGenerationDiagnostic[];
+};
+
 export type VideoGenerationParamsV1 = {
   schemaVersion: 1;
   mode: VideoGenerationMode;
@@ -62,13 +74,7 @@ export type VideoGenerationParamsV1 = {
   contextPaletteRefs: VideoContextPaletteRef[];
   humanReview: VideoHumanReview;
   referenceRolesByKey: Record<string, VideoReferenceRoleAssignment | null>;
-};
-
-export type VideoGenerationDiagnostic = {
-  code: "INVALID_VALUE" | "COUNT_CLAMPED" | "UNSUPPORTED_REFERENCE";
-  field: string;
-  value?: unknown;
-  message: string;
+  normalization?: VideoGenerationCorrection;
 };
 
 export type VideoGenerationNormalizationResult = {

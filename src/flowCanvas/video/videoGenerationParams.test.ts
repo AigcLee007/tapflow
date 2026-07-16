@@ -105,6 +105,12 @@ describe("video generation params", () => {
     expect(result.params.count).toBe(4);
   });
 
+  it("chooses the mathematically nearest legal video count and breaks ties upward", () => {
+    expect(normalizeVideoGenerationParams({ params: { count: 2.6 } }).params.count).toBe(2);
+    expect(normalizeVideoGenerationParams({ params: { count: 1.5 } }).params.count).toBe(2);
+    expect(normalizeVideoGenerationParams({ params: { count: 3 } }).params.count).toBe(4);
+  });
+
   it("reports invalid stored reference roles instead of silently replacing them", () => {
     const result = normalizeVideoGenerationParams({
       params: {
@@ -149,6 +155,21 @@ describe("video generation params", () => {
     expect(input).toEqual(before);
     expect(second.params).toEqual(first.params);
     expect(second.diagnostics).toEqual(first.diagnostics);
+  });
+
+  it("keeps invalid legacy diagnostics observable after a second normalization", () => {
+    const first = normalizeVideoGenerationParams({
+      params: {
+        aspect_ratio: "2:1",
+        duration: "not-a-number",
+        n: 3,
+      },
+    });
+    const second = normalizeVideoGenerationParams(first.params);
+
+    expect(second.params).toEqual(first.params);
+    expect(second.diagnostics).toEqual(first.diagnostics);
+    expect(second.requiresUserCorrection).toBe(first.requiresUserCorrection);
   });
 
   it("removes local and signed URLs recursively while retaining stable IDs", () => {
