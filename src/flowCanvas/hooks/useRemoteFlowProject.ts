@@ -11,6 +11,7 @@ import {
 import { isLocalDraftNewer, readLocalFlowDraft } from "../services/localFlowDraft";
 import { recoverFlowTargetNodeRuns } from "../runtime/v2WorkflowRunner";
 import type { WorkspaceFlow, WorkspaceProject } from "../../workspace/workspaceApi";
+import { canonicalizeGraph } from "../utils/canonicalGraph";
 import { normalizeViewportForCanvasDensity } from "../utils/viewportDensity";
 
 type RemoteFlowProjectState = {
@@ -37,6 +38,10 @@ async function getOrCreateDefaultFlow(project: WorkspaceProject): Promise<Worksp
 }
 
 function resolveDraftForCanvas(serverDraft: FlowDraft): FlowDraft {
+  const canonicalServerDraft: FlowDraft = {
+    ...serverDraft,
+    graph: canonicalizeGraph(serverDraft.graph),
+  };
   const localDraft = readLocalFlowDraft({
     flowId: serverDraft.flowId,
     tenantId: serverDraft.tenantId,
@@ -45,24 +50,24 @@ function resolveDraftForCanvas(serverDraft: FlowDraft): FlowDraft {
   if (
     !isLocalDraftNewer({
       localDraft,
-      serverGraph: serverDraft.graph,
-      serverUpdatedAt: serverDraft.updatedAt,
+      serverGraph: canonicalServerDraft.graph,
+      serverUpdatedAt: canonicalServerDraft.updatedAt,
     }) ||
     !localDraft
   ) {
     return {
-      ...serverDraft,
+      ...canonicalServerDraft,
       graph: {
-        ...serverDraft.graph,
-        viewport: normalizeViewportForCanvasDensity(serverDraft.graph.viewport),
+        ...canonicalServerDraft.graph,
+        viewport: normalizeViewportForCanvasDensity(canonicalServerDraft.graph.viewport),
       },
     };
   }
 
   const resolvedDraft = {
-    ...serverDraft,
-    graph: localDraft.canonicalGraph,
-    revision: localDraft.lastServerRevision ?? serverDraft.revision,
+    ...canonicalServerDraft,
+    graph: canonicalizeGraph(localDraft.canonicalGraph),
+    revision: localDraft.lastServerRevision ?? canonicalServerDraft.revision,
     needsCloudSync: true,
     updatedAt: localDraft.updatedAt,
   };

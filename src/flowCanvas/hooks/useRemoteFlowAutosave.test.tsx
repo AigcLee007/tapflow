@@ -1,4 +1,4 @@
-import { act, renderHook } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { V2HttpError } from "../../services/v2HttpClient";
@@ -6,19 +6,29 @@ import type { FlowDraft } from "../services/flowProjectApi";
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
 import { hashGraph } from "../utils/canonicalGraph";
 import { useRemoteFlowAutosave } from "./useRemoteFlowAutosave";
+import { useRemoteFlowProject } from "./useRemoteFlowProject";
 
 const saveFlowDraftMock = vi.fn();
 const getFlowDraftMock = vi.fn();
+const getProjectMock = vi.fn();
+const listProjectFlowsMock = vi.fn();
+const recoverFlowTargetNodeRunsMock = vi.fn();
 
 vi.mock("../services/flowProjectApi", async () => {
   const actual =
     await vi.importActual<typeof import("../services/flowProjectApi")>("../services/flowProjectApi");
   return {
     ...actual,
+    getProject: (...args: unknown[]) => getProjectMock(...args),
     getFlowDraft: (...args: unknown[]) => getFlowDraftMock(...args),
+    listProjectFlows: (...args: unknown[]) => listProjectFlowsMock(...args),
     saveFlowDraft: (...args: unknown[]) => saveFlowDraftMock(...args),
   };
 });
+
+vi.mock("../runtime/v2WorkflowRunner", () => ({
+  recoverFlowTargetNodeRuns: (...args: unknown[]) => recoverFlowTargetNodeRunsMock(...args),
+}));
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -112,6 +122,9 @@ describe("useRemoteFlowAutosave", () => {
     window.localStorage.clear();
     saveFlowDraftMock.mockReset();
     getFlowDraftMock.mockReset();
+    getProjectMock.mockReset();
+    listProjectFlowsMock.mockReset();
+    recoverFlowTargetNodeRunsMock.mockReset();
     loadStoreFromDraft(createDraft(1));
   });
 
@@ -923,6 +936,80 @@ describe("useRemoteFlowAutosave", () => {
     expect(secondSaveNowSettled).toBe(true);
     await flushPromises();
     expect(saveFlowDraftMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("starts from the canonical graph loaded by the remote project hook and preserves it across save and reload", async () => {
+    vi.useRealTimers();
+    const serverDraft = createDraft(4);
+    serverDraft.graph.nodes = [
+      {
+        id: "video-legacy",
+        position: { x: 0, y: 0 },
+        type: "video",
+        data: {
+          aspect_ratio: "21:9",
+          duration: "6",
+          modelId: "veo3.1-4k",
+          quality: "4k cinematic",
+          referenceAssetItemIds: ["asset-first", "asset-last"],
+          referenceOrder: ["first", "last"],
+          routeKey: "video.route-1",
+        },
+      },
+    ];
+    getProjectMock.mockResolvedValue({ id: "project-1", name: "Project 1" });
+    listProjectFlowsMock.mockResolvedValue([{ id: "flow-1", currentVersionId: null }]);
+    getFlowDraftMock.mockResolvedValue(serverDraft);
+    saveFlowDraftMock.mockImplementation(async (_flowId: string, input: { graph: FlowDraft["graph"] }) => {
+      const savedDraft = {
+        ...serverDraft,
+        graph: input.graph,
+        revision: 5,
+        updatedAt: "2026-05-22T00:00:05.000Z",
+      };
+      getFlowDraftMock.mockResolvedValue(savedDraft);
+      return savedDraft;
+    });
+
+    const { result } = renderHook(() => {
+      const project = useRemoteFlowProject("project-1");
+      const autosave = useRemoteFlowAutosave({
+        draft: project.draft,
+        enabled: !project.loading,
+        flowId: project.flow?.id ?? null,
+      });
+      return { autosave, project };
+    });
+
+    await waitFor(() => expect(result.current.project.loading).toBe(false));
+    expect(saveFlowDraftMock).not.toHaveBeenCalled();
+
+    act(() => {
+      useFlowCanvasStore.getState().updateNodeData("video-legacy", { generationPrompt: "A safe prompt" });
+    });
+    await act(async () => {
+      await result.current.autosave.saveNow();
+    });
+
+    const savedVideo = saveFlowDraftMock.mock.calls[0]?.[1].graph.nodes[0];
+    expect(savedVideo?.data).toMatchObject({
+      modelId: "veo3.1-fast-4K",
+      routeKey: "video.route-1",
+      referenceAssetItemIds: ["asset-first", "asset-last"],
+      referenceOrder: ["first", "last"],
+      params: { videoGeneration: expect.any(Object) },
+    });
+    expect(JSON.stringify(savedVideo)).not.toMatch(/"aspect_ratio"|"duration"|"quality"|blob:|data:/);
+
+    await act(async () => {
+      await result.current.project.reload();
+    });
+    const reloadedVideo = useFlowCanvasStore.getState().nodes.find((node) => node.id === "video-legacy");
+    expect(reloadedVideo?.data).toMatchObject({
+      modelId: "veo3.1-fast-4K",
+      params: { videoGeneration: expect.any(Object) },
+    });
+    expect(JSON.stringify(reloadedVideo)).not.toMatch(/"aspect_ratio"|"duration"|"quality"|blob:|data:/);
   });
 
   it("syncs once when generation completion writes durable output to the target node", async () => {
