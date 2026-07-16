@@ -1,0 +1,236 @@
+{
+  "version": 1,
+  "attribution": "TapFlow original",
+  "items": [
+    {
+      "id": "fixed",
+      "label": "固定镜头",
+      "poster": "v1/fixed.webp",
+      "preview": "v1/fixed.webm",
+      "durationMs": 2500,
+      "version": 1,
+      "attribution": "TapFlow original",
+      "codec": "vp9"
+    },
+    {
+      "id": "follow",
+      "label": "跟随镜头",
+      "poster": "v1/follow.webp",
+      "preview": "v1/follow.webm",
+      "durationMs": 2500,
+      "version": 1,
+      "attribution": "TapFlow original",
+      "codec": "vp9"
+    },
+    {
+      "id": "spiral-up",
+      "label": "螺旋上升",
+      "poster": "v1/spiral-up.webp",
+      "preview": "v1/spiral-up.webm",
+      "durationMs": 2500,
+      "version": 1,
+      "attribution": "TapFlow original",
+      "codec": "vp9"
+    },
+    {
+      "id": "spiral-down",
+      "label": "螺旋下降",
+      "poster": "v1/spiral-down.webp",
+      "preview": "v1/spiral-down.webm",
+      "durationMs": 2500,
+      "version": 1,
+      "attribution": "TapFlow original",
+      "codec": "vp9"
+    },
+    {
+      "id": "tilt-up",
+      "label": "上摇镜头",
+      "poster": "v1/tilt-up.webp",
+      "preview": "v1/tilt-up.webm",
+      "durationMs": 2500,
+      "version": 1,
+      "attribution": "TapFlow original",
+      "codec": "vp9"
+    },
+    {
+      "id": "tilt-down",
+      "label": "下摇镜头",
+      "poster": "v1/tilt-down.webp",
+      "preview": "v1/tilt-down.webm",
+      "durationMs": 2500,
+      "version": 1,
+      "attribution": "TapFlow original",
+      "codec": "vp9"
+    },
+    {
+      "id": "pan-left",
+      "label": "左摇镜头",
+      "poster": "v1/pan-left.webp",
+      "preview": "v1/pan-left.webm",
+      "durationMs": 2500,
+      "version": 1,
+      "attribution": "TapFlow original",
+      "codec": "vp9"
+    },
+    {
+      "id": "pan-right",
+      "label": "右摇镜头",
+      "poster": "v1/pan-right.webp",
+      "preview": "v1/pan-right.webm",
+      "durationMs": 2500,
+      "version": 1,
+      "attribution": "TapFlow original",
+      "codec": "vp9"
+    },
+    {
+      "id": "crane-up",
+      "label": "升降上升",
+      "poster": "v1/crane-up.webp",
+      "preview": "v1/crane-up.webm",
+      "durationMs": 2500,
+      "version": 1,
+      "attribution": "TapFlow original",
+      "codec": "vp9"
+    },
+    {
+      "id": "crane-down",
+      "label": "升降下降",
+      "poster": "v1/crane-down.webp",
+      "preview": "v1/crane-down.webm",
+      "durationMs": 2500,
+      "version": 1,
+      "attribution": "TapFlow original",
+      "codec": "vp9"
+    },
+    {
+      "id": "truck-left",
+      "label": "左移镜头",
+      "poster": "v1/truck-left.webp",
+      "preview": "v1/truck-left.webm",
+      "durationMs": 2500,
+      "version": 1,
+      "attribution": "TapFlow original",
+      "codec": "vp9"
+    },
+    {
+      "id": "truck-right",
+      "label": "右移镜头",
+      "poster": "v1/truck-right.webp",
+      "preview": "v1/truck-right.webm",
+      "durationMs": 2500,
+      "version": 1,
+      "attribution": "TapFlow original",
+      "codec": "vp9"
+    },
+    {
+      "id": "dolly-in",
+      "label": "推进镜头",
+      "poster": "v1/dolly-in.webp",
+      "preview": "v1/dolly-in.webm",
+      "durationMs": 2500,
+      "version": 1,
+      "attribution": "TapFlow original",
+      "codec": "vp9"
+    },
+    {
+      "id": "dolly-out",
+      "label": "拉远镜头",
+      "poster": "v1/dolly-out.webp",
+      "preview": "v1/dolly-out.webm",
+      "durationMs": 2500,
+      "version": 1,
+      "attribution": "TapFlow original",
+      "codec": "vp9"
+    },
+    {
+      "id": "zoom-in",
+      "label": "变焦放大",
+      "poster": "v1/zoom-in.webp",
+      "preview": "v1/zoom-in.webm",
+      "durationMs": 2500,
+      "version": 1,
+      "attribution": "TapFlow original",
+      "codec": "vp9"
+    },
+    {
+      "id": "zoom-out",
+      "label": "变焦缩小",
+      "poster": "v1/zoom-out.webp",
+      "preview": "v1/zoom-out.webm",
+      "durationMs": 2500,
+      "version": 1,
+      "attribution": "TapFlow original",
+      "codec": "vp9"
+    },
+    {
+      "id": "dolly-zoom",
+      "label": "滑轨变焦",
+      "poster": "v1/dolly-zoom.webp",
+      "preview": "v1/dolly-zoom.webm",
+      "durationMs": 2500,
+      "version": 1,
+      "attribution": "TapFlow original",
+      "codec": "vp9"
+    },
+    {
+      "id": "orbit",
+      "label": "环绕镜头",
+      "poster": "v1/orbit.webp",
+      "preview": "v1/orbit.webm",
+      "durationMs": 2500,
+      "version": 1,
+      "attribution": "TapFlow original",
+      "codec": "vp9"
+    },
+    {
+      "id": "roll",
+      "label": "翻滚镜头",
+      "poster": "v1/roll.webp",
+      "preview": "v1/roll.webm",
+      "durationMs": 2500,
+      "version": 1,
+      "attribution": "TapFlow original",
+      "codec": "vp9"
+    },
+    {
+      "id": "fpv",
+      "label": "穿越视角",
+      "poster": "v1/fpv.webp",
+      "preview": "v1/fpv.webm",
+      "durationMs": 2500,
+      "version": 1,
+      "attribution": "TapFlow original",
+      "codec": "vp9"
+    },
+    {
+      "id": "drone",
+      "label": "无人机跟拍",
+      "poster": "v1/drone.webp",
+      "preview": "v1/drone.webm",
+      "durationMs": 2500,
+      "version": 1,
+      "attribution": "TapFlow original",
+      "codec": "vp9"
+    },
+    {
+      "id": "aerial",
+      "label": "航拍俯视",
+      "poster": "v1/aerial.webp",
+      "preview": "v1/aerial.webm",
+      "durationMs": 2500,
+      "version": 1,
+      "attribution": "TapFlow original",
+      "codec": "vp9"
+    },
+    {
+      "id": "handheld",
+      "label": "手持镜头",
+      "poster": "v1/handheld.webp",
+      "preview": "v1/handheld.webm",
+      "durationMs": 2500,
+      "version": 1,
+      "attribution": "TapFlow original",
+      "codec": "vp9"
+    }
+  ]
+}

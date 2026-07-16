@@ -21,6 +21,8 @@
     "dev:seed-billing": "tsx scripts/dev-seed-billing.ts",
     "dev:seed-ai": "tsx scripts/dev-seed-ai.ts",
     "assets:backfill-variants": "node --import tsx ./scripts/backfill-asset-variants.ts",
+    "assets:video-camera": "node scripts/generate-video-camera-assets.mjs",
+    "test:video-camera-assets": "node --test scripts/generate-video-camera-assets.test.mjs",
     "cleanup:stuck-runs": "tsx scripts/cleanup-stuck-workflow-runs.ts",
     "smoke:concurrent-runs": "tsx scripts/smoke-concurrent-target-node-runs.ts",
     "smoke:tapflow-agent": "tsx scripts/smoke-tapflow-agent.ts",
