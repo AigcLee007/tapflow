@@ -5,6 +5,23 @@ const EVENT_NAMES = new Set([
   "preflight_blocked",
 ] as const);
 
+const SAFE_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$/;
+const SAFE_ERROR_CODE = /^[A-Z][A-Z0-9_]{0,63}$/;
+const SENSITIVE_IDENTIFIER_TERM = /(?:prompt|provider|route(?:key)?|secret|credential|token|signature|authorization|auth|apikey|signed|url)/i;
+const SAFE_ERROR_CODES = new Set([
+  "CAPABILITY_CORRECTED",
+  "CATALOG_LOADING",
+  "HUMAN_REVIEW_REQUIRED",
+  "MANIFEST_LOAD_FAILED",
+  "NO_VIDEO_GENERATION_ROUTE",
+  "PRICING_NOT_FOUND",
+  "UNSUPPORTED_ASPECT_RATIO",
+  "UNSUPPORTED_AUDIO",
+  "UNSUPPORTED_COUNT",
+  "UNSUPPORTED_MODE",
+  "UNSUPPORTED_RESOLUTION",
+]);
+
 export type VideoComposerDiagnosticEvent = typeof EVENT_NAMES extends Set<infer T> ? T : never;
 
 export type VideoComposerDiagnostic = {
@@ -21,9 +38,9 @@ export function createVideoComposerDiagnostic(
 ): VideoComposerDiagnostic | null {
   if (!EVENT_NAMES.has(event as VideoComposerDiagnosticEvent)) return null;
   const diagnostic: VideoComposerDiagnostic = { event: event as VideoComposerDiagnosticEvent };
-  const errorCode = stableToken(value.errorCode);
-  const modelId = stableToken(value.modelId);
-  const motionId = stableToken(value.motionId);
+  const errorCode = safeErrorCode(value.errorCode);
+  const modelId = safeIdentifier(value.modelId);
+  const motionId = safeIdentifier(value.motionId);
   if (errorCode) diagnostic.errorCode = errorCode;
   if (modelId) diagnostic.modelId = modelId;
   if (motionId) diagnostic.motionId = motionId;
@@ -38,8 +55,14 @@ export function emitVideoComposerDiagnostic(event: string, value?: Record<string
   return diagnostic;
 }
 
-function stableToken(value: unknown) {
+function safeIdentifier(value: unknown) {
   if (typeof value !== "string") return "";
   const token = value.trim();
-  return token && !/^(?:blob:|data:|https?:\/\/)/i.test(token) ? token : "";
+  return SAFE_IDENTIFIER.test(token) && !SENSITIVE_IDENTIFIER_TERM.test(token) ? token : "";
+}
+
+function safeErrorCode(value: unknown) {
+  if (typeof value !== "string") return "";
+  const token = value.trim();
+  return SAFE_ERROR_CODE.test(token) && SAFE_ERROR_CODES.has(token) ? token : "";
 }

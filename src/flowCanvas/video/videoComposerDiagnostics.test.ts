@@ -34,4 +34,33 @@ describe("video composer diagnostics", () => {
       motionId: "orbit",
     });
   });
+
+  test("rejects sensitive values disguised as diagnostic identifiers", () => {
+    expect(createVideoComposerDiagnostic("catalog_error", {
+      errorCode: "MANIFEST_LOAD_FAILED",
+      modelId: "/assets/video.mp4?X-Amz-Signature=temporary-secret",
+      motionId: "provider-private-model",
+    })).toEqual({
+      event: "catalog_error",
+      errorCode: "MANIFEST_LOAD_FAILED",
+    });
+
+    expect(createVideoComposerDiagnostic("catalog_error", {
+      errorCode: "PRIVATE_PROMPT",
+      modelId: "route-key-video-model",
+      motionId: "dolly-in",
+    })).toEqual({
+      event: "catalog_error",
+      motionId: "dolly-in",
+    });
+  });
+
+  test("preserves the known fail-closed blocker codes", () => {
+    expect(createVideoComposerDiagnostic("preflight_blocked", {
+      errorCode: "NO_VIDEO_GENERATION_ROUTE",
+    })).toEqual({
+      event: "preflight_blocked",
+      errorCode: "NO_VIDEO_GENERATION_ROUTE",
+    });
+  });
 });
