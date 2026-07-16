@@ -7,6 +7,7 @@ import {
   CAMERA_IDS,
   CAMERA_LIBRARY_DIR,
   MANIFEST_PATH,
+  MEDIARECORDER_VP9_MIME_TYPE,
   loadManifest,
 } from "./generate-video-camera-assets.mjs";
 
@@ -16,6 +17,10 @@ const EXPECTED_IDS = [
   "dolly-in", "dolly-out", "zoom-in", "zoom-out", "dolly-zoom", "orbit", "roll",
   "fpv", "drone", "aerial", "handheld",
 ];
+
+test("browser recorder fallback requires VP9 WebM", () => {
+  assert.equal(MEDIARECORDER_VP9_MIME_TYPE, "video/webm;codecs=vp9");
+});
 
 test("camera preview manifest has exactly the supported original motion IDs", () => {
   assert.deepEqual(CAMERA_IDS, EXPECTED_IDS);
@@ -31,7 +36,7 @@ test("camera preview manifest has exactly the supported original motion IDs", ()
     assert.ok(item.durationMs >= 1000 && item.durationMs <= 4000);
     assert.equal(item.version, 1);
     assert.equal(item.attribution, "TapFlow original");
-    assert.ok(["vp9", "vp8"].includes(item.codec), `${item.id} must record its actual WebM codec`);
+    assert.equal(item.codec, "vp9", `${item.id} must record the required VP9 WebM codec`);
     assert.equal(item.poster, `v1/${item.id}.webp`);
     assert.equal(item.preview, `v1/${item.id}.webm`);
 

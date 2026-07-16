@@ -23,6 +23,7 @@ const CAMERA_LABELS = {
 
 export const CAMERA_LIBRARY_DIR = resolve(process.cwd(), "public/video-camera-library");
 export const MANIFEST_PATH = resolve(CAMERA_LIBRARY_DIR, "manifest.v1.json");
+export const MEDIARECORDER_VP9_MIME_TYPE = "video/webm;codecs=vp9";
 const WIDTH = 320;
 const HEIGHT = 180;
 const FPS = 24;
@@ -162,13 +163,13 @@ async function encodeWebmWithMediaRecorder(recorder, id, outputPath) {
   const expression = `(() => new Promise(async (resolve, reject) => {
     const canvas = document.createElement('canvas'); canvas.width = ${WIDTH}; canvas.height = ${HEIGHT};
     const context = canvas.getContext('2d');
-    const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : (MediaRecorder.isTypeSupported('video/webm;codecs=vp8') ? 'video/webm;codecs=vp8' : '');
-    if (!mimeType) { reject(new Error('This browser does not support VP9 or VP8 MediaRecorder WebM encoding.')); return; }
+    const mimeType = ${JSON.stringify(MEDIARECORDER_VP9_MIME_TYPE)};
+    if (!MediaRecorder.isTypeSupported(mimeType)) { reject(new Error('This browser does not support silent VP9 MediaRecorder WebM encoding. Install ffmpeg with libvpx-vp9 or use a VP9-capable Chrome or Edge build.')); return; }
     const chunks = []; const stream = canvas.captureStream(${FPS}); const track = stream.getVideoTracks()[0];
     const mediaRecorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 500000 });
     mediaRecorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data); };
     mediaRecorder.onerror = event => reject(event.error || new Error('MediaRecorder failed'));
-    mediaRecorder.onstop = () => { const reader = new FileReader(); reader.onloadend = () => resolve({ codec: mimeType.includes('vp9') ? 'vp9' : 'vp8', base64: String(reader.result).split(',')[1] }); reader.readAsDataURL(new Blob(chunks, { type: mimeType })); };
+    mediaRecorder.onstop = () => { const reader = new FileReader(); reader.onloadend = () => resolve({ codec: 'vp9', base64: String(reader.result).split(',')[1] }); reader.readAsDataURL(new Blob(chunks, { type: mimeType })); };
     function draw(frame) {
       const t = frame / ${FRAME_COUNT - 1}; const id = ${JSON.stringify(id)};
       let x=0,y=0,scale=1,rotation=0; const wave=Math.sin(t*Math.PI*8)*1.8;
@@ -183,7 +184,7 @@ async function encodeWebmWithMediaRecorder(recorder, id, outputPath) {
   const result = await cdpRequest(recorder.socket, recorder.state, "Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true });
   if (result.exceptionDetails) throw new Error(result.exceptionDetails.text ?? "MediaRecorder evaluation failed.");
   const value = result.result?.value;
-  if (!value?.base64 || !value?.codec) throw new Error("MediaRecorder returned no WebM data.");
+  if (!value?.base64 || value.codec !== "vp9") throw new Error("MediaRecorder did not return a VP9 WebM preview.");
   writeFileSync(outputPath, Buffer.from(value.base64, "base64"));
   return value.codec;
 }
@@ -193,8 +194,8 @@ async function encodeWithLocalBrowser(cameraIds, outputDirectory) {
   try {
     const codecs = new Set();
     for (const id of cameraIds) codecs.add(await encodeWebmWithMediaRecorder(recorder, id, resolve(outputDirectory, `${id}.webm`)));
-    if (codecs.size !== 1) throw new Error("Local browser returned inconsistent camera preview codecs.");
-    return [...codecs][0];
+    if (codecs.size !== 1 || !codecs.has("vp9")) throw new Error("Local browser did not return VP9 camera preview codecs.");
+    return "vp9";
   } finally {
     recorder.socket.close();
     recorder.browser.kill();
