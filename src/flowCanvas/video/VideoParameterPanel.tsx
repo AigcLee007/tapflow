@@ -43,8 +43,14 @@ const COUNT_OPTIONS: Array<{ label: string; value: VideoCount }> = [
   { value: 4, label: "4" },
 ];
 
+const AUDIO_CAPABILITY_TOOLTIP_ID = "video-audio-capability-note";
+
 export function VideoParameterPanel({ capabilities, onChange, value }: VideoParameterPanelProps) {
   const effectiveCapabilities = capabilities ?? createSafeDefaultVideoCapabilities();
+  const audioUnsupported = Boolean(capabilities?.confirmedByRoute && !effectiveCapabilities.supportsAudio);
+  const audioCapabilities = !capabilities?.confirmedByRoute && !effectiveCapabilities.supportsAudio
+    ? { ...effectiveCapabilities, supportsAudio: true }
+    : effectiveCapabilities;
   const [durationInput, setDurationInput] = useState(String(value.durationSeconds));
   const [audioTooltipOpen, setAudioTooltipOpen] = useState(false);
 
@@ -53,7 +59,7 @@ export function VideoParameterPanel({ capabilities, onChange, value }: VideoPara
   }, [value.durationSeconds]);
 
   const applyChange = (next: VideoGenerationParamsV1) => {
-    onChange(correctVideoGenerationParams(next, effectiveCapabilities).params);
+    onChange(correctVideoGenerationParams(next, audioCapabilities).params);
   };
 
   const commitDuration = () => {
@@ -130,7 +136,6 @@ export function VideoParameterPanel({ capabilities, onChange, value }: VideoPara
               onChange={(event) => setDurationInput(event.currentTarget.value)}
               onKeyDown={(event) => {
                 if (event.key === "Enter") {
-                  commitDuration();
                   event.currentTarget.blur();
                 }
               }}
@@ -145,10 +150,14 @@ export function VideoParameterPanel({ capabilities, onChange, value }: VideoPara
         <div className="relative flex h-[38px] items-center">
           <button
             aria-checked={value.generateAudio}
+            aria-describedby={AUDIO_CAPABILITY_TOOLTIP_ID}
             aria-label="生成音频"
-            className={`group inline-flex h-[38px] items-center gap-[7px] rounded-[10px] border px-2 text-xs font-bold transition ${value.generateAudio ? "border-sky-300/50 bg-sky-300/15 text-sky-100" : "border-white/10 bg-[#17171b] text-white/75"}`}
+            className={`group inline-flex h-[38px] items-center gap-[7px] rounded-[10px] border px-2 text-xs font-bold transition disabled:cursor-not-allowed disabled:border-white/5 disabled:bg-[#17171b] disabled:text-white/35 ${value.generateAudio ? "border-sky-300/50 bg-sky-300/15 text-sky-100" : "border-white/10 bg-[#17171b] text-white/75"}`}
+            disabled={audioUnsupported}
             onBlur={() => setAudioTooltipOpen(false)}
-            onClick={() => applyChange({ ...value, generateAudio: !value.generateAudio })}
+            onClick={() => {
+              if (!audioUnsupported) applyChange({ ...value, generateAudio: !value.generateAudio });
+            }}
             onFocus={() => setAudioTooltipOpen(true)}
             onMouseEnter={() => setAudioTooltipOpen(true)}
             onMouseLeave={() => setAudioTooltipOpen(false)}
@@ -158,14 +167,15 @@ export function VideoParameterPanel({ capabilities, onChange, value }: VideoPara
             <Volume2 aria-hidden="true" size={16} />
             <span>音频</span>
           </button>
-          {audioTooltipOpen ? (
-            <span
-              className="absolute bottom-[calc(100%+8px)] right-0 z-10 whitespace-nowrap rounded-[7px] border border-white/10 bg-[#1c1c20] px-2 py-1 text-[9px] font-medium text-white shadow-[0_8px_20px_rgba(0,0,0,0.35)]"
-              role="tooltip"
-            >
-              生成音频
-            </span>
-          ) : null}
+          <span
+            id={AUDIO_CAPABILITY_TOOLTIP_ID}
+            className={audioUnsupported || audioTooltipOpen
+              ? "absolute bottom-[calc(100%+8px)] right-0 z-10 whitespace-nowrap rounded-[7px] border border-white/10 bg-[#1c1c20] px-2 py-1 text-[9px] font-medium text-white shadow-[0_8px_20px_rgba(0,0,0,0.35)]"
+              : "sr-only"}
+            role="tooltip"
+          >
+            {audioUnsupported ? "当前模型不支持生成音频" : "生成音频"}
+          </span>
         </div>
       </div>
     </div>

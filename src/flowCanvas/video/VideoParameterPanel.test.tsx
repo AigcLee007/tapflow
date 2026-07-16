@@ -22,6 +22,7 @@ describe("VideoParameterPanel", () => {
     expect(screen.getByLabelText("时长输入").getAttribute("type")).toBe("number");
 
     const audio = screen.getByRole("switch", { name: "生成音频" });
+    expect(audio.getAttribute("aria-describedby")).toBe("video-audio-capability-note");
     fireEvent.mouseEnter(audio);
     expect(screen.getByRole("tooltip").textContent).toContain("生成音频");
 
@@ -53,9 +54,55 @@ describe("VideoParameterPanel", () => {
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ durationSeconds: 7 }));
 
     fireEvent.change(input, { target: { value: "4" } });
+    onChange.mockClear();
+    (input as HTMLInputElement).focus();
     fireEvent.keyDown(input, { key: "Enter" });
 
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ durationSeconds: 5 }));
+    expect(onChange).toHaveBeenCalledTimes(1);
+  });
+
+  test("disables audio generation with an accessible explanation when the selected model does not support audio", () => {
+    const capabilities = createSafeDefaultVideoCapabilities();
+    capabilities.confirmedByRoute = true;
+    capabilities.supportsAudio = false;
+    const onChange = vi.fn();
+
+    render(
+      <VideoParameterPanel
+        capabilities={capabilities}
+        onChange={onChange}
+        value={createDefaultVideoGenerationParams()}
+      />,
+    );
+
+    const audio = screen.getByRole("switch", { name: "生成音频" });
+    expect(audio.getAttribute("disabled")).not.toBeNull();
+    expect(audio.getAttribute("aria-describedby")).toBe("video-audio-capability-note");
+    const explanation = document.getElementById("video-audio-capability-note");
+    expect(explanation?.textContent).toBe("当前模型不支持生成音频");
+
+    fireEvent.click(audio);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  test("keeps audio editable while selected model capabilities are not confirmed", () => {
+    const capabilities = createSafeDefaultVideoCapabilities();
+    capabilities.supportsAudio = false;
+    const onChange = vi.fn();
+
+    render(
+      <VideoParameterPanel
+        capabilities={capabilities}
+        onChange={onChange}
+        value={createDefaultVideoGenerationParams()}
+      />,
+    );
+
+    const audio = screen.getByRole("switch", { name: "生成音频" });
+    expect(audio.getAttribute("disabled")).toBeNull();
+    fireEvent.click(audio);
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ generateAudio: true }));
   });
 
   test("keeps the safe 2-8 second duration range editable before a route confirms capabilities", () => {
