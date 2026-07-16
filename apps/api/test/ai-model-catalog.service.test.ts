@@ -3,6 +3,48 @@ import { describe, expect, test, vi } from "vitest";
 import { AiModelCatalogService } from "../src/modules/ai-model-catalog/ai-model-catalog.service.js";
 
 describe("AiModelCatalogService route list", () => {
+  test("projects only safe video-generation capabilities for creator catalog models", async () => {
+    const client = {
+      query: vi.fn(async () => ({
+        rows: [{
+          capabilities: {
+            supportedVideoWorkflows: ["video_generation"],
+            supportedModes: ["text_to_video"],
+            resolutions: ["4K"],
+            upstreamApiKey: "catalog-secret-must-not-leak",
+            nestedProviderConfig: { authorization: "Bearer catalog-secret-must-not-leak" },
+          },
+          default_route_key: "video.safe-route",
+          display_name: "Safe video model",
+          id: "catalog-video-1",
+          modality: "video",
+          model_family: "safe-video",
+          model_id: "22222222-2222-2222-2222-222222222222",
+          model_key: "safe-video",
+          sort_order: 10,
+          status: "active",
+          ui_schema: {},
+        }],
+      })),
+      release: vi.fn(),
+    };
+    const pool = { connect: vi.fn(async () => client) };
+    const service = new AiModelCatalogService({ pool } as ConstructorParameters<typeof AiModelCatalogService>[0]);
+
+    const models = await service.listModels({
+      tenantId: "11111111-1111-1111-1111-111111111111",
+      userId: "user-1",
+    }, { modality: "video" });
+
+    expect(models[0]?.capabilities).toEqual({
+      supportedVideoWorkflows: ["video_generation"],
+      supportedModes: ["text_to_video"],
+      resolutions: ["4K"],
+    });
+    expect(JSON.stringify(models[0]?.capabilities)).not.toContain("catalog-secret-must-not-leak");
+    expect(JSON.stringify(models[0]?.capabilities)).not.toContain("nestedProviderConfig");
+  });
+
   test("exposes safe generation-mode capabilities on model-scoped routes", async () => {
     const client = {
       query: vi.fn(async (sql: string) => {

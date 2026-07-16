@@ -76,6 +76,9 @@ export function useVideoGenerationCatalog(modality = "video") {
   const [version, setVersion] = useState(0);
 
   useEffect(() => subscribeToInvalidation(modality, () => {
+    setModels([]);
+    setError(null);
+    setLoading(true);
     setVersion((value) => value + 1);
   }), [modality]);
 

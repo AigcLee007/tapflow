@@ -317,7 +317,7 @@ export class AiModelCatalogService {
 
 function mapModelCatalogItem(row: ModelCatalogRecord): ModelCatalogItemView {
   return {
-    capabilities: row.capabilities ?? {},
+    capabilities: projectModelCatalogCapabilities(row.capabilities),
     defaultRouteKey: row.default_route_key,
     displayName: row.display_name,
     id: row.id,
@@ -328,6 +328,17 @@ function mapModelCatalogItem(row: ModelCatalogRecord): ModelCatalogItemView {
     sortOrder: row.sort_order,
     status: row.status,
     uiSchema: row.ui_schema ?? {},
+  };
+}
+
+function projectModelCatalogCapabilities(source: Record<string, unknown> | null | undefined): Record<string, unknown> {
+  const supportedGenerationModes = readSupportedGenerationModes(source);
+  const supportedVideoWorkflows = readSupportedVideoWorkflows(source);
+
+  return {
+    ...(supportedGenerationModes.length ? { supportedGenerationModes } : {}),
+    ...(supportedVideoWorkflows.length ? { supportedVideoWorkflows } : {}),
+    ...mergeSafeVideoCapabilities(source),
   };
 }
 

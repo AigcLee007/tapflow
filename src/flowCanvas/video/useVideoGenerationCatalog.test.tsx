@@ -162,4 +162,36 @@ describe("useVideoGenerationCatalog", () => {
     expect(first.result.current.loading).toBe(false);
     expect(second.result.current.loading).toBe(false);
   });
+
+  test("clears stale catalog values for every mounted consumer before retry resolves", async () => {
+    const refreshedCatalog = deferred<typeof model[]>();
+    const initialModel = { ...model, displayName: "Initial catalog video", id: "initial-video", modelKey: "video.initial" };
+    const freshModel = { ...model, displayName: "Fresh catalog video", id: "fresh-video", modelKey: "video.fresh" };
+    listAiModelCatalogMock
+      .mockResolvedValueOnce([initialModel])
+      .mockImplementationOnce(() => refreshedCatalog.promise);
+    listAiModelRoutesMock.mockResolvedValue([generationRoute]);
+
+    const first = renderHook(() => useVideoGenerationCatalog());
+    const second = renderHook(() => useVideoGenerationCatalog());
+    await waitFor(() => expect(first.result.current.models.map((item) => item.id)).toEqual(["initial-video"]));
+    await waitFor(() => expect(second.result.current.models.map((item) => item.id)).toEqual(["initial-video"]));
+
+    act(() => first.result.current.retry());
+
+    expect(first.result.current.models).toEqual([]);
+    expect(second.result.current.models).toEqual([]);
+    expect(first.result.current.error).toBeNull();
+    expect(second.result.current.error).toBeNull();
+    expect(first.result.current.loading).toBe(true);
+    expect(second.result.current.loading).toBe(true);
+
+    await act(async () => {
+      refreshedCatalog.resolve([freshModel]);
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(first.result.current.models.map((item) => item.id)).toEqual(["fresh-video"]));
+    await waitFor(() => expect(second.result.current.models.map((item) => item.id)).toEqual(["fresh-video"]));
+  });
 });
