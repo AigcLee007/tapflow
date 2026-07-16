@@ -214,6 +214,44 @@ describe("video generation params", () => {
     expect(JSON.stringify(sanitized)).not.toMatch(/blob:|data:|X-Amz-Signature|previewUrl|evidence/);
   });
 
+  it("removes signed URLs from both absolute and relative paths", () => {
+    const sanitized = sanitizeVideoGenerationParams({
+      assetId: "asset-1",
+      absolute: "https://cdn.test/video.webp?X-Amz-Signature=secret",
+      relative: "/assets/video.webp?X-Amz-Signature=secret",
+    });
+
+    expect(sanitized).toEqual({ assetId: "asset-1" });
+  });
+
+  it("never exposes transient values through returned or persisted diagnostics", () => {
+    const result = normalizeVideoGenerationParams({
+      params: {
+        videoGeneration: {
+          referenceRolesByKey: {
+            subject: {
+              role: "subject",
+              source: {
+                kind: "unsupported",
+                id: "/assets/video.webp?X-Amz-Signature=secret",
+                upload: new File(["preview"], "preview.webp", { type: "image/webp" }),
+              },
+            },
+          },
+        },
+      },
+    });
+    const persistedDiagnostics = result.params.normalization?.diagnostics ?? [];
+
+    expect(result.diagnostics).toHaveLength(1);
+    expect(persistedDiagnostics).toEqual(result.diagnostics);
+    for (const diagnostic of [...result.diagnostics, ...persistedDiagnostics]) {
+      expect(diagnostic.value).not.toHaveProperty("source.id");
+      expect(diagnostic.value).not.toHaveProperty("source.upload");
+      expect(JSON.stringify(diagnostic)).not.toMatch(/X-Amz-Signature|preview\.webp/);
+    }
+  });
+
   it("removes Blob and File-like values instead of serializing empty objects", () => {
     const sanitized = sanitizeVideoGenerationParams({
       stableAssetId: "asset-1",

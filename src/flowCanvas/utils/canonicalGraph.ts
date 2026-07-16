@@ -1,4 +1,5 @@
 import type { FlowDraftGraph } from "../services/flowProjectApi";
+import { isFileLike, isTransientMediaUrl } from "./transientMedia";
 
 const TRANSIENT_NODE_DATA_KEYS = new Set([
   "activeNodeRunId",
@@ -41,8 +42,6 @@ const TRANSIENT_NODE_KEYS = new Set([
   "resizing",
   "selected",
 ]);
-
-const SIGNED_URL_RE = /[?&](?:x-amz-signature|x-amz-credential|signature|expires)=/i;
 
 export function canonicalizeGraph(graph: FlowDraftGraph): FlowDraftGraph {
   return {
@@ -106,9 +105,7 @@ function stripTransientValue(value: unknown, scope: "edge" | "node" | "node-data
   }
 
   if (typeof value === "string") {
-    const trimmed = value.trim();
-    if (/^(?:blob:|data:)/i.test(trimmed)) return undefined;
-    if (SIGNED_URL_RE.test(trimmed)) return undefined;
+    if (isTransientMediaUrl(value)) return undefined;
   }
 
   return value;
@@ -124,12 +121,4 @@ function sortRecord(record: Record<string, unknown>): Record<string, unknown> {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function isFileLike(value: unknown): boolean {
-  if (!value || typeof value !== "object") return false;
-  if (typeof File !== "undefined" && value instanceof File) return true;
-  if (typeof Blob !== "undefined" && value instanceof Blob) return true;
-  const tag = Object.prototype.toString.call(value);
-  return tag === "[object File]" || tag === "[object Blob]";
 }

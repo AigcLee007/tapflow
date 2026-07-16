@@ -1,4 +1,5 @@
 import { normalizeVideoModelId } from "../../config/videoModels";
+import { isFileLike, isTransientMediaUrl } from "../utils/transientMedia";
 import type {
   VideoAspectRatio,
   VideoContextPaletteRef,
@@ -443,7 +444,7 @@ function readString(value: unknown): string {
 
 function readStableToken(value: unknown): string {
   const token = readString(value);
-  return token && !URL_VALUE_RE.test(token) ? token : "";
+  return token && !URL_VALUE_RE.test(token) && !isTransientMediaUrl(token) ? token : "";
 }
 
 function addDiagnostic(
@@ -453,12 +454,18 @@ function addDiagnostic(
   message: string,
   code: VideoGenerationDiagnostic["code"] = "INVALID_VALUE",
 ) {
-  diagnostics.push({ code, field, value, message });
+  const sanitizedValue = sanitizeVideoGenerationParams(value);
+  diagnostics.push({
+    code,
+    field,
+    message,
+    ...(sanitizedValue !== undefined ? { value: sanitizedValue } : {}),
+  });
 }
 
 function sanitizeValue(value: unknown, key: string | null): unknown {
   if (typeof value === "string") {
-    if (URL_VALUE_RE.test(value.trim())) return undefined;
+    if (isTransientMediaUrl(value)) return undefined;
     return value;
   }
   if (value === null || typeof value === "number" || typeof value === "boolean") return value;
@@ -484,14 +491,6 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
     : null;
-}
-
-function isFileLike(value: unknown): boolean {
-  if (!value || typeof value !== "object") return false;
-  if (typeof File !== "undefined" && value instanceof File) return true;
-  if (typeof Blob !== "undefined" && value instanceof Blob) return true;
-  const tag = Object.prototype.toString.call(value);
-  return tag === "[object File]" || tag === "[object Blob]";
 }
 
 function isVideoMode(value: unknown): value is VideoGenerationMode {

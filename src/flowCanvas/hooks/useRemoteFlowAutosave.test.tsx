@@ -410,7 +410,12 @@ describe("useRemoteFlowAutosave", () => {
 
   it("persists the full video generation contract through autosave", async () => {
     const initialDraft = createDraft(1);
-    saveFlowDraftMock.mockResolvedValueOnce(createDraft(2));
+    saveFlowDraftMock.mockImplementationOnce(async (_flowId, input) => ({
+      ...initialDraft,
+      graph: input.graph,
+      revision: 2,
+      updatedAt: "2026-05-22T00:00:02.000Z",
+    }));
 
     renderHook(() =>
       useRemoteFlowAutosave({
@@ -445,6 +450,7 @@ describe("useRemoteFlowAutosave", () => {
                   humanReview: { status: "not_required" },
                   localBlob: new Blob(["preview"], { type: "image/webp" }),
                   localFile: new File(["preview"], "preview.webp", { type: "image/webp" }),
+                  relativeSignedPreview: "/assets/video.webp?X-Amz-Signature=secret",
                   referenceRolesByKey: {},
                 },
               },
@@ -483,6 +489,28 @@ describe("useRemoteFlowAutosave", () => {
       .params.videoGeneration;
     expect(savedVideoParams).not.toHaveProperty("localBlob");
     expect(savedVideoParams).not.toHaveProperty("localFile");
+    expect(savedVideoParams).not.toHaveProperty("relativeSignedPreview");
+
+    act(() => {
+      loadStoreFromDraft({
+        ...initialDraft,
+        graph: saveFlowDraftMock.mock.calls[0]?.[1].graph,
+        revision: 2,
+        updatedAt: "2026-05-22T00:00:02.000Z",
+      });
+    });
+    const restoredVideoParams = useFlowCanvasStore.getState().nodes[0]?.data.params
+      ?.videoGeneration as Record<string, unknown>;
+    expect(restoredVideoParams).toMatchObject({
+      schemaVersion: 1,
+      resolution: "4K",
+      durationSeconds: 8,
+      generateAudio: true,
+      count: 4,
+    });
+    expect(restoredVideoParams).not.toHaveProperty("localBlob");
+    expect(restoredVideoParams).not.toHaveProperty("localFile");
+    expect(restoredVideoParams).not.toHaveProperty("relativeSignedPreview");
   });
 
   it("saveNow flushes the latest store graph even before the hook observes the new node", async () => {
