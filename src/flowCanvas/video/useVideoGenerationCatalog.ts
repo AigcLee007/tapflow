@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
+import { useAuth } from "../../auth/useAuth";
 import { listAiModelCatalog, listAiModelRoutes } from "../../services/v2AiModelCatalogApi";
 import { toVideoModelOptions } from "./videoModelCatalog";
 import type { VideoModelOption } from "./videoTypes";
@@ -19,36 +20,45 @@ const requests = new Map<string, CatalogRequest>();
 const generations = new Map<string, number>();
 const invalidationListeners = new Map<string, Set<() => void>>();
 
-function currentGeneration(modality: string) {
-  return generations.get(modality) ?? 0;
+function createCatalogKey(input: {
+  modality: string;
+  sessionId: string | null;
+  tenantId: string | null;
+  userId: string | null;
+}) {
+  return JSON.stringify(input);
 }
 
-function cachedOptions(modality: string): VideoModelOption[] | undefined {
-  const cached = cache.get(modality);
-  return cached?.generation === currentGeneration(modality) ? cached.options : undefined;
+function currentGeneration(catalogKey: string) {
+  return generations.get(catalogKey) ?? 0;
 }
 
-function subscribeToInvalidation(modality: string, listener: () => void) {
-  const listeners = invalidationListeners.get(modality) ?? new Set<() => void>();
+function cachedOptions(catalogKey: string): VideoModelOption[] | undefined {
+  const cached = cache.get(catalogKey);
+  return cached?.generation === currentGeneration(catalogKey) ? cached.options : undefined;
+}
+
+function subscribeToInvalidation(catalogKey: string, listener: () => void) {
+  const listeners = invalidationListeners.get(catalogKey) ?? new Set<() => void>();
   listeners.add(listener);
-  invalidationListeners.set(modality, listeners);
+  invalidationListeners.set(catalogKey, listeners);
   return () => {
     listeners.delete(listener);
-    if (!listeners.size) invalidationListeners.delete(modality);
+    if (!listeners.size) invalidationListeners.delete(catalogKey);
   };
 }
 
-function invalidateCatalog(modality: string) {
-  generations.set(modality, currentGeneration(modality) + 1);
-  cache.delete(modality);
-  invalidationListeners.get(modality)?.forEach((listener) => listener());
+function invalidateCatalog(catalogKey: string) {
+  generations.set(catalogKey, currentGeneration(catalogKey) + 1);
+  cache.delete(catalogKey);
+  invalidationListeners.get(catalogKey)?.forEach((listener) => listener());
 }
 
-async function loadCatalog(modality: string): Promise<VideoModelOption[]> {
-  const generation = currentGeneration(modality);
-  const cached = cachedOptions(modality);
+async function loadCatalog(catalogKey: string, modality: string): Promise<VideoModelOption[]> {
+  const generation = currentGeneration(catalogKey);
+  const cached = cachedOptions(catalogKey);
   if (cached) return cached;
-  const pending = requests.get(modality);
+  const pending = requests.get(catalogKey);
   if (pending?.generation === generation) return pending.promise;
   const request: CatalogRequest = {
     generation,
@@ -58,51 +68,61 @@ async function loadCatalog(modality: string): Promise<VideoModelOption[]> {
     const applicable = catalog.filter((model) => model.modality === modality && model.status === "active");
     const routes = await Promise.all(applicable.map(async (model) => [model.modelKey, await listAiModelRoutes(model.modelKey)] as const));
     const options = toVideoModelOptions(catalog, Object.fromEntries(routes));
-    if (currentGeneration(modality) === generation) {
-      cache.set(modality, { generation, options });
+    if (currentGeneration(catalogKey) === generation) {
+      cache.set(catalogKey, { generation, options });
     }
     return options;
   }).finally(() => {
-    if (requests.get(modality) === request) requests.delete(modality);
+    if (requests.get(catalogKey) === request) requests.delete(catalogKey);
   });
-  requests.set(modality, request);
+  requests.set(catalogKey, request);
   return request.promise;
 }
 
 export function useVideoGenerationCatalog(modality = "video") {
-  const [models, setModels] = useState<VideoModelOption[]>(() => cachedOptions(modality) ?? []);
-  const [loading, setLoading] = useState(() => !cachedOptions(modality));
+  const { sessionId, tenant, user } = useAuth();
+  const catalogKey = createCatalogKey({
+    modality,
+    sessionId,
+    tenantId: tenant?.id ?? null,
+    userId: user?.id ?? null,
+  });
+  const [models, setModels] = useState<VideoModelOption[]>(() => cachedOptions(catalogKey) ?? []);
+  const [loading, setLoading] = useState(() => !cachedOptions(catalogKey));
   const [error, setError] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
 
-  useEffect(() => subscribeToInvalidation(modality, () => {
+  useEffect(() => subscribeToInvalidation(catalogKey, () => {
     setModels([]);
     setError(null);
     setLoading(true);
     setVersion((value) => value + 1);
-  }), [modality]);
+  }), [catalogKey]);
 
   useEffect(() => {
     let active = true;
-    const generation = currentGeneration(modality);
-    setLoading(!cachedOptions(modality));
-    void loadCatalog(modality).then((next) => {
-      if (!active || currentGeneration(modality) !== generation) return;
+    const generation = currentGeneration(catalogKey);
+    const cached = cachedOptions(catalogKey);
+    setModels(cached ?? []);
+    setError(null);
+    setLoading(!cached);
+    void loadCatalog(catalogKey, modality).then((next) => {
+      if (!active || currentGeneration(catalogKey) !== generation) return;
       setModels(next);
       setError(null);
     }).catch((reason: unknown) => {
-      if (!active || currentGeneration(modality) !== generation) return;
+      if (!active || currentGeneration(catalogKey) !== generation) return;
       setModels([]);
       setError(reason instanceof Error ? reason.message : "Failed to load video model catalog");
     }).finally(() => {
-      if (active && currentGeneration(modality) === generation) setLoading(false);
+      if (active && currentGeneration(catalogKey) === generation) setLoading(false);
     });
     return () => { active = false; };
-  }, [modality, version]);
+  }, [catalogKey, modality, version]);
 
   const retry = useCallback(() => {
-    invalidateCatalog(modality);
-  }, [modality]);
+    invalidateCatalog(catalogKey);
+  }, [catalogKey]);
 
   return { models, loading, error, retry };
 }

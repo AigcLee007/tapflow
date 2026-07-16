@@ -336,6 +336,7 @@ function projectModelCatalogCapabilities(source: Record<string, unknown> | null 
   const supportedVideoWorkflows = readSupportedVideoWorkflows(source);
 
   return {
+    ...projectSafeImageCatalogCapabilities(source),
     ...(supportedGenerationModes.length ? { supportedGenerationModes } : {}),
     ...(supportedVideoWorkflows.length ? { supportedVideoWorkflows } : {}),
     ...mergeSafeVideoCapabilities(source),
@@ -410,6 +411,34 @@ function readNonEmptyString(source: unknown, key: string): string | undefined {
     ? (source as Record<string, unknown>)[key]
     : undefined;
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function readStringArray(source: unknown, key: string): string[] {
+  const value = source && typeof source === "object"
+    ? (source as Record<string, unknown>)[key]
+    : undefined;
+  if (!Array.isArray(value)) return [];
+  return Array.from(new Set(value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter(Boolean)));
+}
+
+function projectSafeImageCatalogCapabilities(source: Record<string, unknown> | null | undefined): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const key of ["supportedAspectRatios", "supportedSizes"] as const) {
+    const values = readStringArray(source, key);
+    if (values.length) result[key] = values;
+  }
+  for (const key of ["maxInputImages", "maxPromptLength"] as const) {
+    const value = readPositiveNumber(source, key);
+    if (value !== undefined) result[key] = value;
+  }
+  for (const key of ["supportsImageEdit", "supportsReferenceImages", "supportsStreaming"] as const) {
+    const value = readBoolean(source, key);
+    if (value !== undefined) result[key] = value;
+  }
+  return result;
 }
 
 function mergeModelRouteCapabilities(input: {

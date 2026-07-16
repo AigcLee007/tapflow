@@ -3,6 +3,58 @@ import { describe, expect, test, vi } from "vitest";
 import { AiModelCatalogService } from "../src/modules/ai-model-catalog/ai-model-catalog.service.js";
 
 describe("AiModelCatalogService route list", () => {
+  test("preserves established safe image catalog capabilities while excluding unknown values", async () => {
+    const client = {
+      query: vi.fn(async () => ({
+        rows: [{
+          capabilities: {
+            maxInputImages: 8,
+            maxPromptLength: 4096,
+            supportedAspectRatios: ["1:1", "2:1"],
+            supportedGenerationModes: ["standard"],
+            supportedSizes: ["1024x1024", "4K"],
+            supportsImageEdit: true,
+            supportsReferenceImages: true,
+            supportsStreaming: false,
+            upstreamApiKey: "image-catalog-secret-must-not-leak",
+            providerConfig: { authorization: "Bearer image-catalog-secret-must-not-leak" },
+          },
+          default_route_key: "image.safe-route",
+          display_name: "Safe image model",
+          id: "catalog-image-1",
+          modality: "image",
+          model_family: "safe-image",
+          model_id: "22222222-2222-2222-2222-222222222222",
+          model_key: "safe-image",
+          sort_order: 10,
+          status: "active",
+          ui_schema: {},
+        }],
+      })),
+      release: vi.fn(),
+    };
+    const pool = { connect: vi.fn(async () => client) };
+    const service = new AiModelCatalogService({ pool } as ConstructorParameters<typeof AiModelCatalogService>[0]);
+
+    const models = await service.listModels({
+      tenantId: "11111111-1111-1111-1111-111111111111",
+      userId: "user-1",
+    }, { modality: "image" });
+
+    expect(models[0]?.capabilities).toEqual({
+      maxInputImages: 8,
+      maxPromptLength: 4096,
+      supportedAspectRatios: ["1:1", "2:1"],
+      supportedGenerationModes: ["standard"],
+      supportedSizes: ["1024x1024", "4K"],
+      supportsImageEdit: true,
+      supportsReferenceImages: true,
+      supportsStreaming: false,
+    });
+    expect(JSON.stringify(models[0]?.capabilities)).not.toContain("image-catalog-secret-must-not-leak");
+    expect(JSON.stringify(models[0]?.capabilities)).not.toContain("providerConfig");
+  });
+
   test("projects only safe video-generation capabilities for creator catalog models", async () => {
     const client = {
       query: vi.fn(async () => ({
