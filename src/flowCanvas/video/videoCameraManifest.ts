@@ -6,7 +6,7 @@ export const CAMERA_MOTION_IDS = [
 ] as const;
 
 export type CameraMotionId = (typeof CAMERA_MOTION_IDS)[number];
-export type VideoCameraMotion = { id: CameraMotionId; label: string; poster: string; preview: string; durationMs: number; version: 1; attribution: "TapFlow original"; codec?: "vp9" | "vp8" };
+export type VideoCameraMotion = { id: CameraMotionId; label: string; poster: string; preview: string; durationMs: number; version: 1; attribution: "TapFlow original"; codec: "vp9" };
 export type VideoCameraManifest = { version: 1; attribution: "TapFlow original"; items: VideoCameraMotion[] };
 
 const knownIds = new Set<string>(CAMERA_MOTION_IDS);
@@ -14,17 +14,29 @@ const knownIds = new Set<string>(CAMERA_MOTION_IDS);
 function isCameraMotion(value: unknown): value is VideoCameraMotion {
   if (!value || typeof value !== "object") return false;
   const motion = value as Record<string, unknown>;
-  return knownIds.has(String(motion.id))
+  const id = String(motion.id);
+  return knownIds.has(id)
     && typeof motion.label === "string" && motion.label.trim().length > 0
-    && typeof motion.poster === "string" && motion.poster.trim().length > 0
-    && typeof motion.preview === "string" && motion.preview.trim().length > 0
-    && typeof motion.durationMs === "number" && motion.durationMs >= 1000 && motion.durationMs <= 4000
-    && motion.version === 1 && motion.attribution === "TapFlow original";
+    && motion.poster === `v1/${id}.webp`
+    && motion.preview === `v1/${id}.webm`
+    && typeof motion.durationMs === "number" && Number.isFinite(motion.durationMs) && motion.durationMs >= 1000 && motion.durationMs <= 4000
+    && motion.version === 1 && motion.attribution === "TapFlow original" && motion.codec === "vp9";
 }
 
 export function loadVideoCameraManifest(value: unknown): VideoCameraManifest {
   const raw = value as Partial<VideoCameraManifest> | null;
-  const items = Array.isArray(raw?.items) ? raw.items.filter(isCameraMotion) : [];
+  if (raw?.version !== 1 || raw.attribution !== "TapFlow original") {
+    return { version: 1, attribution: "TapFlow original", items: [] };
+  }
+
+  const seenIds = new Set<CameraMotionId>();
+  const items = Array.isArray(raw.items)
+    ? raw.items.filter(isCameraMotion).filter((item) => {
+      if (seenIds.has(item.id)) return false;
+      seenIds.add(item.id);
+      return true;
+    })
+    : [];
   return { version: 1, attribution: "TapFlow original", items };
 }
 

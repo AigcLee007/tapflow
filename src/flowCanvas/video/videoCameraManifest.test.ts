@@ -45,4 +45,32 @@ describe("video camera manifest", () => {
     expect(getCameraMotionById("fixed", manifest)?.label).toBe("固定镜头");
     expect(getCameraMotionById("unknown", manifest)).toBeNull();
   });
+
+  it("accepts only canonical local vp9 cards and removes duplicate motion ids", () => {
+    const validCard = {
+      id: "fixed",
+      label: "固定镜头",
+      poster: "v1/fixed.webp",
+      preview: "v1/fixed.webm",
+      durationMs: 2500,
+      version: 1,
+      attribution: "TapFlow original",
+      codec: "vp9",
+    } as const;
+
+    const manifest = loadVideoCameraManifest({
+      version: 1,
+      attribution: "TapFlow original",
+      items: [
+        validCard,
+        { ...validCard, id: "follow", poster: "https://example.test/follow.webp", preview: "https://example.test/follow.webm" },
+        { ...validCard, id: "spiral-up", poster: "v1/spiral-up.webp", preview: "v1/spiral-up.webm", codec: "h264" },
+        { ...validCard, id: "spiral-down", poster: "v1/spiral-down.webp", preview: "v1/spiral-down.webm", codec: "av1" },
+        { ...validCard, id: "tilt-up", poster: "v1/tilt-up.webp", preview: "v1/not-tilt-up.webm" },
+        { ...validCard, label: "重复固定镜头" },
+      ],
+    });
+
+    expect(manifest.items).toEqual([validCard]);
+  });
 });
