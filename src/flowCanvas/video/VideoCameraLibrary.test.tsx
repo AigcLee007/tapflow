@@ -74,6 +74,27 @@ describe("VideoCameraLibrary", () => {
     if (currentTime) Object.defineProperty(HTMLMediaElement.prototype, "currentTime", currentTime);
   });
 
+  it("moves focus into the dialog and wraps Tab navigation within it", () => {
+    const trigger = document.createElement("button");
+    document.body.append(trigger);
+    trigger.focus();
+
+    render(<VideoCameraLibrary manifest={manifest} onChange={vi.fn()} onClose={vi.fn()} triggerRef={{ current: trigger }} value={null} />);
+
+    const dialog = screen.getByRole("dialog", { name: "Camera motion library" });
+    const closeButton = screen.getByRole("button", { name: "Close camera motion library" });
+    const useButton = screen.getByRole("button", { name: "Use camera motion" });
+
+    expect(dialog.contains(document.activeElement)).toBe(true);
+
+    useButton.focus();
+    fireEvent.keyDown(useButton, { key: "Tab" });
+    expect(document.activeElement).toBe(closeButton);
+
+    fireEvent.keyDown(closeButton, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(useButton);
+  });
+
   it("shows component-local favorites and an empty My motions tab", () => {
     render(<VideoCameraLibrary manifest={manifest} onChange={vi.fn()} onClose={vi.fn()} value={null} />);
     fireEvent.click(screen.getByRole("button", { name: "Favorite Fixed" }));

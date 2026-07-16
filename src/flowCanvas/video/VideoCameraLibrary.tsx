@@ -16,6 +16,12 @@ type VideoCameraLibraryProps = {
 };
 
 const MEDIA_ROOT = "/video-camera-library/";
+const FOCUSABLE_SELECTOR = "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])";
+
+function getFocusableElements(container: HTMLElement | null): HTMLElement[] {
+  if (!container) return [];
+  return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter((element) => !element.hasAttribute("disabled"));
+}
 
 export function VideoCameraLibrary({ manifest, onChange, onClose, triggerRef, value }: VideoCameraLibraryProps) {
   const videosRef = useRef(new Map<string, HTMLVideoElement>());
@@ -55,6 +61,10 @@ export function VideoCameraLibrary({ manifest, onChange, onClose, triggerRef, va
       stopPreviews();
     };
   }, [layer.openLayer]);
+
+  useEffect(() => {
+    getFocusableElements(layer.ref.current)[0]?.focus();
+  }, []);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia?.("(prefers-reduced-motion: reduce)");
@@ -133,6 +143,31 @@ export function VideoCameraLibrary({ manifest, onChange, onClose, triggerRef, va
     layer.dismissLayer();
   };
 
+  const trapFocus = (event: React.KeyboardEvent<HTMLElement>) => {
+    if (event.key !== "Tab") return;
+
+    const focusableElements = getFocusableElements(event.currentTarget);
+    if (focusableElements.length === 0) return;
+
+    const first = focusableElements[0];
+    const last = focusableElements[focusableElements.length - 1];
+    const activeElement = document.activeElement as HTMLElement | null;
+
+    if (!activeElement || !event.currentTarget.contains(activeElement)) {
+      event.preventDefault();
+      first.focus();
+      return;
+    }
+
+    if (event.shiftKey && activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+
   const dialog = (
     <div className="fixed inset-0 z-[1600] flex items-center justify-center bg-black/65 p-3 backdrop-blur-sm">
       <section
@@ -140,6 +175,7 @@ export function VideoCameraLibrary({ manifest, onChange, onClose, triggerRef, va
         aria-label="Camera motion library"
         aria-modal="true"
         className="flex max-h-[min(780px,calc(100vh-24px))] w-full max-w-[1080px] flex-col overflow-hidden rounded-lg border border-white/10 bg-[#17171b] text-white shadow-[0_28px_80px_rgba(0,0,0,0.58)]"
+        onKeyDown={trapFocus}
         role="dialog"
       >
         <header className="flex shrink-0 items-center gap-3 border-b border-white/10 px-4 py-3">
