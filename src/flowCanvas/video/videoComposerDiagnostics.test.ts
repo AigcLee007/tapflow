@@ -55,6 +55,35 @@ describe("video composer diagnostics", () => {
     });
   });
 
+  test("rejects credential-shaped identifiers while retaining normal model and motion IDs", () => {
+    expect(createVideoComposerDiagnostic("catalog_error", {
+      errorCode: "CATALOG_LOADING",
+      modelId: "sk-live-abc",
+      motionId: "AIzaSyDUMMYkey_1234567890",
+    })).toEqual({
+      event: "catalog_error",
+      errorCode: "CATALOG_LOADING",
+    });
+
+    expect(createVideoComposerDiagnostic("catalog_error", {
+      modelId: "api_key_live_abc",
+      motionId: "bearer_live_abc",
+    })).toEqual({ event: "catalog_error" });
+
+    expect(createVideoComposerDiagnostic("catalog_error", {
+      modelId: "aB3dE5fG7hI9jK1lM2nO4pQ6rS8tU0vW2xY4zA6bC8dE0fG2",
+    })).toEqual({ event: "catalog_error" });
+
+    expect(createVideoComposerDiagnostic("catalog_error", {
+      modelId: "seedance-1.5-pro",
+      motionId: "dolly-in",
+    })).toEqual({
+      event: "catalog_error",
+      modelId: "seedance-1.5-pro",
+      motionId: "dolly-in",
+    });
+  });
+
   test("preserves the known fail-closed blocker codes", () => {
     expect(createVideoComposerDiagnostic("preflight_blocked", {
       errorCode: "NO_VIDEO_GENERATION_ROUTE",

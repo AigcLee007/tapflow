@@ -8,6 +8,8 @@ const EVENT_NAMES = new Set([
 const SAFE_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$/;
 const SAFE_ERROR_CODE = /^[A-Z][A-Z0-9_]{0,63}$/;
 const SENSITIVE_IDENTIFIER_TERM = /(?:prompt|provider|route(?:key)?|secret|credential|token|signature|authorization|auth|apikey|signed|url)/i;
+const CREDENTIAL_IDENTIFIER_PREFIX = /^(?:sk|pk)[_-]|^api[_-]?key[_-]|^bearer[_-]|^AIza|^(?:AKIA|ASIA)[A-Z0-9]|^gh[pousr]_|^github_pat_|^xox[baprs]-|^ya29\./i;
+const HIGH_ENTROPY_IDENTIFIER = /^[A-Za-z0-9_-]{40,}$/;
 const SAFE_ERROR_CODES = new Set([
   "CAPABILITY_CORRECTED",
   "CATALOG_LOADING",
@@ -58,7 +60,15 @@ export function emitVideoComposerDiagnostic(event: string, value?: Record<string
 function safeIdentifier(value: unknown) {
   if (typeof value !== "string") return "";
   const token = value.trim();
-  return SAFE_IDENTIFIER.test(token) && !SENSITIVE_IDENTIFIER_TERM.test(token) ? token : "";
+  return SAFE_IDENTIFIER.test(token) && !isCredentialLikeIdentifier(token) ? token : "";
+}
+
+function isCredentialLikeIdentifier(token: string) {
+  if (SENSITIVE_IDENTIFIER_TERM.test(token) || CREDENTIAL_IDENTIFIER_PREFIX.test(token)) return true;
+  if (!HIGH_ENTROPY_IDENTIFIER.test(token)) return false;
+
+  const characterClasses = [/[a-z]/, /[A-Z]/, /\d/].filter((pattern) => pattern.test(token)).length;
+  return characterClasses >= 3;
 }
 
 function safeErrorCode(value: unknown) {
