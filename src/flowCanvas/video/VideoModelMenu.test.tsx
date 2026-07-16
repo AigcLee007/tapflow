@@ -104,4 +104,46 @@ describe("VideoModelMenu", () => {
     fireEvent.keyDown(listbox, { key: "Escape" });
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  test("selects a focused enabled option once when Enter bubbles through the listbox", () => {
+    const onChange = vi.fn();
+    render(
+      <VideoModelMenu
+        error={null}
+        loading={false}
+        onChange={onChange}
+        onRetry={vi.fn()}
+        options={[model({ id: "enabled", label: "Enabled Video" })]}
+        value={null}
+      />,
+    );
+
+    const option = screen.getByRole("option", { name: /Enabled Video/ });
+    fireEvent.focus(option);
+    fireEvent.keyDown(option, { key: "Enter" });
+
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith("enabled");
+  });
+
+  test("closes once when Escape is pressed on a focused option", () => {
+    const onClose = vi.fn();
+    render(
+      <VideoModelMenu
+        error={null}
+        loading={false}
+        onChange={vi.fn()}
+        onClose={onClose}
+        onRetry={vi.fn()}
+        options={[model()]}
+        value={null}
+      />,
+    );
+
+    const option = screen.getByRole("option", { name: /Creator Video 1\.0/ });
+    fireEvent.focus(option);
+    fireEvent.keyDown(option, { key: "Escape" });
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
 });

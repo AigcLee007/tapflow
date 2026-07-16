@@ -54,7 +54,7 @@ export function VideoModelMenu({
     optionRefs.current[nextIndex]?.focus();
   };
 
-  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement | HTMLButtonElement>) => {
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "ArrowDown") {
       event.preventDefault();
       focusOption(activeIndex + 1);
@@ -164,7 +164,6 @@ export function VideoModelMenu({
               setActiveIndex(index);
               setFocusedIndex(index);
             }}
-            onKeyDown={handleKeyDown}
             onMouseEnter={() => setHoveredIndex(index)}
             onMouseLeave={() => setHoveredIndex((current) => current === index ? null : current)}
             role="option"
