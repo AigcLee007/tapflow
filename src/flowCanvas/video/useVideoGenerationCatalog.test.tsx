@@ -124,4 +124,42 @@ describe("useVideoGenerationCatalog", () => {
     await waitFor(() => expect(retried.result.current.models.map((item) => item.id)).toEqual(["fresh-video"]));
     await waitFor(() => expect(concurrent.result.current.models.map((item) => item.id)).toEqual(["fresh-video"]));
   });
+
+  test("invalidates every mounted consumer when a retry supersedes a shared request", async () => {
+    const firstCatalog = deferred<typeof model[]>();
+    const secondCatalog = deferred<typeof model[]>();
+    const staleModel = { ...model, displayName: "Stale catalog video", id: "stale-video", modelKey: "video.stale" };
+    const freshModel = { ...model, displayName: "Fresh catalog video", id: "fresh-video", modelKey: "video.fresh" };
+    listAiModelCatalogMock
+      .mockImplementationOnce(() => firstCatalog.promise)
+      .mockImplementationOnce(() => secondCatalog.promise);
+    listAiModelRoutesMock.mockResolvedValue([generationRoute]);
+
+    const first = renderHook(() => useVideoGenerationCatalog());
+    const second = renderHook(() => useVideoGenerationCatalog());
+    await waitFor(() => expect(listAiModelCatalogMock).toHaveBeenCalledTimes(1));
+
+    act(() => first.result.current.retry());
+    await waitFor(() => expect(listAiModelCatalogMock).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      firstCatalog.resolve([staleModel]);
+      await Promise.resolve();
+    });
+
+    expect(first.result.current.models).toEqual([]);
+    expect(second.result.current.models).toEqual([]);
+    expect(first.result.current.loading).toBe(true);
+    expect(second.result.current.loading).toBe(true);
+
+    await act(async () => {
+      secondCatalog.resolve([freshModel]);
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(first.result.current.models.map((item) => item.id)).toEqual(["fresh-video"]));
+    await waitFor(() => expect(second.result.current.models.map((item) => item.id)).toEqual(["fresh-video"]));
+    expect(first.result.current.loading).toBe(false);
+    expect(second.result.current.loading).toBe(false);
+  });
 });

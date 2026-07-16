@@ -17,6 +17,7 @@ type CatalogRequest = {
 const cache = new Map<string, CatalogCacheEntry>();
 const requests = new Map<string, CatalogRequest>();
 const generations = new Map<string, number>();
+const invalidationListeners = new Map<string, Set<() => void>>();
 
 function currentGeneration(modality: string) {
   return generations.get(modality) ?? 0;
@@ -25,6 +26,22 @@ function currentGeneration(modality: string) {
 function cachedOptions(modality: string): VideoModelOption[] | undefined {
   const cached = cache.get(modality);
   return cached?.generation === currentGeneration(modality) ? cached.options : undefined;
+}
+
+function subscribeToInvalidation(modality: string, listener: () => void) {
+  const listeners = invalidationListeners.get(modality) ?? new Set<() => void>();
+  listeners.add(listener);
+  invalidationListeners.set(modality, listeners);
+  return () => {
+    listeners.delete(listener);
+    if (!listeners.size) invalidationListeners.delete(modality);
+  };
+}
+
+function invalidateCatalog(modality: string) {
+  generations.set(modality, currentGeneration(modality) + 1);
+  cache.delete(modality);
+  invalidationListeners.get(modality)?.forEach((listener) => listener());
 }
 
 async function loadCatalog(modality: string): Promise<VideoModelOption[]> {
@@ -58,27 +75,30 @@ export function useVideoGenerationCatalog(modality = "video") {
   const [error, setError] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
 
+  useEffect(() => subscribeToInvalidation(modality, () => {
+    setVersion((value) => value + 1);
+  }), [modality]);
+
   useEffect(() => {
     let active = true;
+    const generation = currentGeneration(modality);
     setLoading(!cachedOptions(modality));
     void loadCatalog(modality).then((next) => {
-      if (!active) return;
+      if (!active || currentGeneration(modality) !== generation) return;
       setModels(next);
       setError(null);
     }).catch((reason: unknown) => {
-      if (!active) return;
+      if (!active || currentGeneration(modality) !== generation) return;
       setModels([]);
       setError(reason instanceof Error ? reason.message : "Failed to load video model catalog");
     }).finally(() => {
-      if (active) setLoading(false);
+      if (active && currentGeneration(modality) === generation) setLoading(false);
     });
     return () => { active = false; };
   }, [modality, version]);
 
   const retry = useCallback(() => {
-    generations.set(modality, currentGeneration(modality) + 1);
-    cache.delete(modality);
-    setVersion((value) => value + 1);
+    invalidateCatalog(modality);
   }, [modality]);
 
   return { models, loading, error, retry };
@@ -88,4 +108,5 @@ export function __resetVideoGenerationCatalogCacheForTests() {
   cache.clear();
   requests.clear();
   generations.clear();
+  invalidationListeners.clear();
 }
