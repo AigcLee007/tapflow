@@ -55,8 +55,11 @@ describe("VideoNodeComposer", () => {
     const data = { generationPrompt: "", params: { videoGeneration: createDefaultVideoGenerationParams() } } as any;
     render(<VideoNodeComposer data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} selected />);
 
-    expect(screen.getByLabelText("Video composer").className).toContain("max-md:w-full");
+    expect(screen.getByLabelText("Video composer").className).toContain("w-[calc(100vw-32px)]");
+    expect(screen.getByLabelText("Video composer").className).toContain("max-w-[980px]");
+    expect(screen.getByLabelText("Video composer").className).toContain("md:w-[clamp(640px,52vw,980px)]");
     expect(screen.getByLabelText("Video composer").className).toContain("max-md:flex-col");
+    expect(screen.getByLabelText("Video composer").className).toContain("max-md:left-0");
     expect(screen.getByLabelText("Choose video model").parentElement?.parentElement?.className).toContain("max-md:flex-col");
   });
 

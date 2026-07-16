@@ -1,7 +1,20 @@
 ﻿# Project Record
 
-Last updated: 2026-07-12
+Last updated: 2026-07-17
 Maintainers: project team + Codex sessions
+
+## 2026-07-17 - LibTV-Style Video Node UI And Interaction Release Verification
+
+- completed the frontend-only LibTV-style video-node experience: v2 catalog-filtered product-model selection, five video modes, capability-corrected ratio/resolution/duration/audio/count parameters (including `4K`), role-based references, context/visual-tone palettes, human-review state, and fail-closed generation preflight.
+- added 23 TapFlow-original camera-motion previews with stable IDs, local WebP/WebM media, a four-column desktop library, and reduced-motion poster rendering. The model list intentionally has no search field and reveals descriptions only for hovered, focused, or selected choices.
+- kept the Phase 1 boundary intact: no real Seedance/Kling/Veo adapter, worker/API/database migration, provider credential, billing-quantity, or pricing mutation was introduced. Missing active `video_generation` capability or pricing remains blocked before `runBackendWorkflow`.
+- completed the real-browser smoke harness using `VideoNodeComponent`, `@xyflow/react`, and the flow store. Each desktop (`1440x900`), narrow (`1024x768`), and mobile (`390x844`) assertion now uses an isolated browser context so canvas transforms cannot leak across viewports. It verifies the composer framing, model list/hover description, parameter controls and `4K`, 23 camera cards in four desktop columns, reduced-motion posters, and the blocked-generation no-request boundary. Artifacts are written under `output/playwright/video-node/` and are intentionally untracked.
+- fixed a real mobile layout regression found by the smoke: the composer was changed to `position: relative` at narrow widths, which made it a second `nodeWrapper` flex-row child and placed it after the 380px video card. It remains absolutely positioned on mobile and anchors at the node left edge, preserving the viewport-bounded composer width without changing node dimensions.
+- validation:
+  - `npm run test:video-camera-assets` passed: 2 tests.
+  - `npm test -- src/flowCanvas/video/VideoNodeComposer.test.tsx scripts/smoke-video-node.test.ts` passed: 11 tests.
+  - `npm run smoke:video-node` passed: all desktop/narrow/mobile checks, 23 cards, four columns, `4K`, reduced-motion posters, and zero blocked workflow requests.
+  - the Task 10 focused aggregate had 116 passing tests and one pre-existing unrelated panorama assertion failure in `src/flowCanvas/nodes/FlowNodes.agent-metadata.test.tsx`: it expects `params.size: "1k"`, while current behavior produces canonical `"1K"`. This video-node change does not touch panorama generation.
 
 ## 2026-07-12 - Source-Level Mojibake Remediation
 
