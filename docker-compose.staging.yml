@@ -87,6 +87,7 @@ services:
       context: .
       args:
         VITE_AGENT_DIRECTOR_ENABLED: ${VITE_AGENT_DIRECTOR_ENABLED:-false}
+        VITE_VIDEO_COMPOSER_V2: ${VITE_VIDEO_COMPOSER_V2:-true}
     restart: unless-stopped
     command: ["node", "scripts/serve-dist.cjs", "5188"]
     environment:
@@ -94,6 +95,7 @@ services:
       FRONTEND_PORT: 5188
       API_PROXY_TARGET: ${API_PROXY_TARGET:-http://tapflow-api:3366}
       VITE_AGENT_DIRECTOR_ENABLED: ${VITE_AGENT_DIRECTOR_ENABLED:-false}
+      VITE_VIDEO_COMPOSER_V2: ${VITE_VIDEO_COMPOSER_V2:-true}
     ports:
       - "127.0.0.1:${FRONTEND_HOST_PORT:-5188}:5188"
 

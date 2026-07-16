@@ -114,4 +114,15 @@ describe("video generation capabilities", () => {
     expect(getVideoGenerationBlocker(unsupported, { ...params, aspectRatio: "16:9", count: 2, generateAudio: false, mode: "image_to_video", resolution: "480P" })).toBe("UNSUPPORTED_COUNT");
     expect(getVideoGenerationBlocker(unsupported, { ...params, aspectRatio: "16:9", count: 1, generateAudio: false, mode: "image_to_video", resolution: "480P" })).toBe("HUMAN_REVIEW_REQUIRED");
   });
+
+  test("fails closed for an editor-only option and an option without active pricing", () => {
+    const params = createDefaultVideoGenerationParams();
+    const editorOnly = routeOption({
+      capabilities: mergeVideoCapabilities({ confirmedByRoute: false }),
+    });
+    const noPrice = routeOption({ blocker: "PRICING_NOT_FOUND", estimatedCredits: null, minChargeCredits: null });
+
+    expect(getVideoGenerationBlocker(editorOnly, params)).toBe("NO_VIDEO_GENERATION_ROUTE");
+    expect(getVideoGenerationBlocker(noPrice, params)).toBe("PRICING_NOT_FOUND");
+  });
 });

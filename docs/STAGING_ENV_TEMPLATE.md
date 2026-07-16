@@ -255,9 +255,11 @@ Relay D:
 - `AGENT_PLANNER_ENABLED = false`
 - `AGENT_DIRECTOR_ENABLED = false`
 - `VITE_AGENT_DIRECTOR_ENABLED = false`
+- `VITE_VIDEO_COMPOSER_V2 = true`
 - `AGENT_TEXT_ROUTE_KEY = text.gpt-5-5`
 - `Agent planner note = keep false until the GPT-5.5 text template is installed, published, and smoke-tested; false uses deterministic planning only`
 - `Agent director note = keep both director flags false for dark deployment. When enabled, the panel switches to the Phase 0-1 Director preview shell with durable history/event replay APIs while preserving the classic runtime as rollback.`
+- `Video composer note = true enables the LibTV-style video composer. To roll back the frontend only, set VITE_VIDEO_COMPOSER_V2=false in /opt/aittco/env/tapflow.staging.env, rebuild tapflow-frontend with docker-compose.staging.yml, then restart tapflow-frontend. This does not change drafts, routes, billing, workers, or providers.`
 
 ## 9.2 Agent Executor
 

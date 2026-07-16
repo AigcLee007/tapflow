@@ -14,6 +14,9 @@ const assetApiMocks = vi.hoisted(() => ({
 const workflowRunnerMocks = vi.hoisted(() => ({
   runBackendWorkflow: vi.fn(),
 }));
+const videoCatalogMocks = vi.hoisted(() => ({
+  current: { error: null as string | null, loading: false, models: [] as any[], retry: vi.fn() },
+}));
 const useAssetLibraryMock = vi.hoisted(() => vi.fn());
 
 vi.mock("../../assets/assetApi", () => ({
@@ -28,6 +31,9 @@ vi.mock("../../assets/useAssetLibrary", () => ({
 vi.mock("../runtime/v2WorkflowRunner", () => ({
   markBackendRunLaunchFailed: vi.fn(),
   runBackendWorkflow: (...args: unknown[]) => workflowRunnerMocks.runBackendWorkflow(...args),
+}));
+vi.mock("../video/useVideoGenerationCatalog", () => ({
+  useVideoGenerationCatalog: () => videoCatalogMocks.current,
 }));
 
 vi.mock("@xyflow/react", async () => {
@@ -55,6 +61,7 @@ describe("FlowNodes agent metadata", () => {
     assetApiMocks.uploadAssetFile.mockReset();
     workflowRunnerMocks.runBackendWorkflow.mockReset();
     workflowRunnerMocks.runBackendWorkflow.mockResolvedValue(undefined);
+    videoCatalogMocks.current = { error: null, loading: false, models: [], retry: vi.fn() };
     useAssetLibraryMock.mockReset();
     useAssetLibraryMock.mockReturnValue({
       assets: [],
@@ -160,6 +167,41 @@ describe("FlowNodes agent metadata", () => {
       expect(assetApiMocks.getAssetDownloadUrl).toHaveBeenCalledWith("video-two");
       expect(container.querySelector("video")?.getAttribute("src")).toBe("https://cdn.test/video-two.mp4?X-Amz-Signature=fresh");
     });
+  });
+
+  it("blocks unconfigured video generation before it reaches the workflow runner", () => {
+    const node = useFlowCanvasStore.getState().addNode(
+      "video",
+      { x: 0, y: 0 },
+      {
+        createdAt: 1,
+        generationPrompt: "private scene description",
+        generationStatus: "idle",
+        height: 170,
+        kind: "video",
+        modelId: "editor-only-video",
+        params: { videoGeneration: { schemaVersion: 1, mode: "text_to_video", aspectRatio: "auto", resolution: "720P", durationSeconds: 4, generateAudio: false, count: 1, cameraMotionId: null, visualTone: null, contextPaletteRefs: [], humanReview: { status: "not_required" }, referenceRolesByKey: {} } },
+        status: "idle",
+        title: "Video",
+        updatedAt: 1,
+        width: 240,
+      } as any,
+      { selected: true },
+    );
+
+    render(<VideoNodeComponent id={node.id} selected data={node.data as any} dragging={false} zIndex={1} isConnectable type="video" xPos={0} yPos={0} />);
+
+    expect(screen.queryByText(/112/)).toBeNull();
+    expect(screen.getByText("未配置")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Generate video" }));
+
+    expect(workflowRunnerMocks.runBackendWorkflow).not.toHaveBeenCalled();
+    expect(useFlowCanvasStore.getState().nodes.find((item) => item.id === node.id)?.data).toMatchObject({
+      errorCode: "NO_VIDEO_GENERATION_ROUTE",
+      generationStatus: "error",
+      status: "error",
+    });
+    expect(String(useFlowCanvasStore.getState().nodes.find((item) => item.id === node.id)?.data.errorMessage)).toMatch(/未配置|未接入/);
   });
 
   it("renders the Agent badge for image nodes without leaking provider info", () => {

@@ -65,6 +65,10 @@ import { markBackendRunLaunchFailed, runBackendWorkflow } from '../runtime/v2Wor
 import { VideoNodeComposer } from '../video/VideoNodeComposer';
 import { VideoNodeLegacyComposer } from '../video/VideoNodeLegacyComposer';
 import { VIDEO_COMPOSER_V2_ENABLED } from '../video/videoComposerFeature';
+import { getVideoGenerationBlocker } from '../video/videoGenerationCapabilities';
+import { normalizeVideoGenerationParams } from '../video/videoGenerationParams';
+import { emitVideoComposerDiagnostic } from '../video/videoComposerDiagnostics';
+import { useVideoGenerationCatalog } from '../video/useVideoGenerationCatalog';
 import {
   getPersistedVideoResultAssetId,
   getSafePersistedVideoPosterUrl,
@@ -7500,6 +7504,7 @@ export const VideoNodeComponent = memo(function VideoNode({
   const { connectionNodeId } = useConnection();
   const { showSingleNodeControls } = useNodeSelectionState(id, selected);
   const showNodeEditor = showSingleNodeControls;
+  const videoCatalog = useVideoGenerationCatalog();
   
   const isTargeting = !!connectionNodeId && connectionNodeId !== id && hovered;
 
@@ -7545,6 +7550,27 @@ export const VideoNodeComponent = memo(function VideoNode({
 
   const handleGenerate = () => {
     if (isGenerating) return;
+    const normalized = normalizeVideoGenerationParams(d);
+    const option = videoCatalog.models.find((model) => model.id === d.modelId) ?? null;
+    const blocker = videoCatalog.loading
+      ? 'CATALOG_LOADING'
+      : getVideoGenerationBlocker(option, normalized.params);
+    if (blocker) {
+      const errorMessage = videoGenerationBlockerMessage(blocker);
+      updateNodeData(id, {
+        errorCode: blocker,
+        errorMessage,
+        generationStatus: 'error',
+        params: { ...(d.params || {}), videoGeneration: normalized.params },
+        status: 'error',
+      });
+      emitVideoComposerDiagnostic('preflight_blocked', {
+        errorCode: blocker,
+        modelId: d.modelId,
+        motionId: normalized.params.cameraMotionId,
+      });
+      return;
+    }
     void runBackendWorkflow({ runMode: 'target_node', targetNodeId: id }).catch(() => undefined);
   };
 
@@ -7610,7 +7636,7 @@ export const VideoNodeComponent = memo(function VideoNode({
       )}
 
       {showNodeEditor && (VIDEO_COMPOSER_V2_ENABLED
-        ? <VideoNodeComposer data={d} generating={isGenerating} nodeId={id} onGenerate={handleGenerate} onUpdate={(patch) => updateNodeData(id, patch)} selected={showNodeEditor} />
+        ? <VideoNodeComposer catalog={videoCatalog} data={d} generating={isGenerating} nodeId={id} onGenerate={handleGenerate} onUpdate={(patch) => updateNodeData(id, patch)} selected={showNodeEditor} />
         : <VideoNodeLegacyComposer data={d} effectivePosterUrl={effectivePosterUrl} generating={isGenerating} nodeId={id} onGenerate={handleGenerate} onUpdate={(patch) => updateNodeData(id, patch)} runtimeVideoAssets={runtimeVideoAssets} />
       )}
 
@@ -7618,6 +7644,16 @@ export const VideoNodeComponent = memo(function VideoNode({
     </div>
   );
 });
+
+function videoGenerationBlockerMessage(blocker: string) {
+  switch (blocker) {
+    case 'CATALOG_LOADING': return '视频模型目录加载中，请稍后重试';
+    case 'NO_VIDEO_GENERATION_ROUTE': return '当前视频模型未接入可用生成线路';
+    case 'PRICING_NOT_FOUND': return '当前视频模型未配置有效价格';
+    case 'HUMAN_REVIEW_REQUIRED': return '请先完成真人验证后再生成';
+    default: return `当前视频参数未被模型支持（${blocker}）`;
+  }
+}
 
 /* Section */
 export const AudioNodeComponent = memo(function AudioNode({

@@ -12,13 +12,16 @@ import { VideoPalettePopover } from "./VideoPalettePopover";
 import { VideoParameterPanel } from "./VideoParameterPanel";
 import { VideoReferenceStrip } from "./VideoReferenceStrip";
 import { useVideoGenerationCatalog } from "./useVideoGenerationCatalog";
+import { correctVideoGenerationParams } from "./videoGenerationCapabilities";
+import { emitVideoComposerDiagnostic } from "./videoComposerDiagnostics";
 import type { VideoGenerationParamsV1 } from "./videoTypes";
 import { useDismissibleLayer } from "../../components/menu/useDismissibleLayer";
 
-type Props = { data: FlowNodeData; generating: boolean; nodeId: string; onGenerate: () => void; onUpdate: (patch: Partial<FlowNodeData>) => void; selected: boolean };
+type Props = { catalog?: ReturnType<typeof useVideoGenerationCatalog>; data: FlowNodeData; generating: boolean; nodeId: string; onGenerate: () => void; onUpdate: (patch: Partial<FlowNodeData>) => void; selected: boolean };
 
-export function VideoNodeComposer({ data, generating, nodeId, onGenerate, onUpdate, selected }: Props) {
-  const catalog = useVideoGenerationCatalog();
+export function VideoNodeComposer({ catalog: catalogOverride, data, generating, nodeId, onGenerate, onUpdate, selected }: Props) {
+  const loadedCatalog = useVideoGenerationCatalog();
+  const catalog = catalogOverride ?? loadedCatalog;
   const [modelOpen, setModelOpen] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [manifest, setManifest] = useState<VideoCameraManifest>({ version: 1, attribution: "TapFlow original", items: [] });
@@ -33,12 +36,25 @@ export function VideoNodeComposer({ data, generating, nodeId, onGenerate, onUpda
   const capabilities = option?.capabilities ?? null;
 
   useEffect(() => {
+    if (!catalog.error) return;
+    emitVideoComposerDiagnostic("catalog_error", { errorCode: "CATALOG_LOADING", modelId: data.modelId, motionId: params.cameraMotionId });
+  }, [catalog.error, data.modelId, params.cameraMotionId]);
+
+  useEffect(() => {
+    const corrections = correctVideoGenerationParams(params, capabilities).diagnostics;
+    if (!corrections.length) return;
+    emitVideoComposerDiagnostic("capability_corrected", { errorCode: "CAPABILITY_CORRECTED", modelId: data.modelId, motionId: params.cameraMotionId });
+  }, [capabilities, data.modelId, params]);
+
+  useEffect(() => {
     let active = true;
     void fetch("/video-camera-library/manifest.v1.json").then((response) => response.json()).then((value) => {
       if (active) setManifest(loadVideoCameraManifest(value));
-    }).catch(() => undefined);
+    }).catch(() => {
+      emitVideoComposerDiagnostic("manifest_error", { errorCode: "MANIFEST_LOAD_FAILED", modelId: data.modelId, motionId: params.cameraMotionId });
+    });
     return () => { active = false; };
-  }, []);
+  }, [data.modelId, params.cameraMotionId]);
 
   if (!selected) return null;
   const setParams = (next: VideoGenerationParamsV1) => onUpdate({ params: { ...(data.params ?? {}), videoGeneration: next } });
