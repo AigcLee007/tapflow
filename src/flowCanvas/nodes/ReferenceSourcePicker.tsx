@@ -12,6 +12,7 @@ type ReferenceSourcePickerProps = {
   currentNodeId: string;
   open: boolean;
   query?: string;
+  roleLabel?: string;
   onClose: () => void;
   onPickAsset: (assetId: string) => void;
   onPickCanvasNode: (nodeId: string) => void;
@@ -22,6 +23,7 @@ export function ReferenceSourcePicker({
   currentNodeId,
   open,
   query = '',
+  roleLabel,
   onClose,
   onPickAsset,
   onPickCanvasNode,
@@ -76,7 +78,10 @@ export function ReferenceSourcePicker({
     >
       <div className="sleek-scroll-y max-h-[516px] overflow-y-auto">
         <div className="flex items-center justify-between px-1.5 pb-2">
-          <div className={MENU_ITEM_PRIMARY_CLASS}>参考图来源</div>
+          <div>
+            <div className={MENU_ITEM_PRIMARY_CLASS}>参考图来源</div>
+            {roleLabel ? <div className="pt-0.5 text-[9px] font-medium leading-[1.25] text-white/40">{roleLabel}</div> : null}
+          </div>
           <button
             type="button"
             className="inline-flex h-7 w-7 items-center justify-center rounded-[8px] border border-white/10 bg-white/0 text-white/70 transition hover:bg-white/[0.08] hover:text-white"
