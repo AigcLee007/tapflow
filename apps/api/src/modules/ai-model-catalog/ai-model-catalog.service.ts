@@ -20,7 +20,25 @@ const KNOWN_IMAGE_GENERATION_MODES = new Set([
 ]);
 const KNOWN_VIDEO_WORKFLOWS = new Set([
   "video_editor_export",
+  "video_generation",
 ]);
+const KNOWN_VIDEO_GENERATION_MODES = new Set([
+  "text_to_video",
+  "all_reference",
+  "image_to_video",
+  "first_last_frame",
+  "image_reference",
+]);
+const KNOWN_VIDEO_ASPECT_RATIOS = new Set([
+  "auto",
+  "16:9",
+  "4:3",
+  "1:1",
+  "3:4",
+  "9:16",
+  "21:9",
+]);
+const KNOWN_VIDEO_RESOLUTIONS = new Set(["480P", "720P", "1080P", "4K"]);
 
 type ModelCatalogRecord = {
   capabilities: Record<string, unknown>;
@@ -68,8 +86,19 @@ export type ModelCatalogItemView = {
 
 export type ModelCatalogRouteView = {
   capabilities: {
+    aspectRatios?: string[];
+    description?: string;
+    durationStepSeconds?: number;
+    estimatedDurationLabel?: string;
+    maxCount?: number;
+    maxDurationSeconds?: number;
+    minDurationSeconds?: number;
+    resolutions?: string[];
     supportedGenerationModes: string[];
+    supportedModes?: string[];
     supportedVideoWorkflows: string[];
+    supportsAudio?: boolean;
+    supportsHumanReview?: boolean;
   };
   estimatedCredits: number | null;
   minChargeCredits: number | null;
@@ -342,6 +371,36 @@ function readSupportedVideoWorkflows(source: unknown): string[] {
     .filter(Boolean);
 }
 
+function readKnownStrings(source: unknown, key: string, known: ReadonlySet<string>): string[] {
+  const value = source && typeof source === "object"
+    ? (source as Record<string, unknown>)[key]
+    : undefined;
+  return (Array.isArray(value) ? value : [])
+    .map((item) => String(item || "").trim())
+    .filter((item) => known.has(item));
+}
+
+function readPositiveNumber(source: unknown, key: string): number | undefined {
+  const value = source && typeof source === "object"
+    ? Number((source as Record<string, unknown>)[key])
+    : Number.NaN;
+  return Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+function readBoolean(source: unknown, key: string): boolean | undefined {
+  const value = source && typeof source === "object"
+    ? (source as Record<string, unknown>)[key]
+    : undefined;
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function readNonEmptyString(source: unknown, key: string): string | undefined {
+  const value = source && typeof source === "object"
+    ? (source as Record<string, unknown>)[key]
+    : undefined;
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
 function mergeModelRouteCapabilities(input: {
   modelCapabilities?: Record<string, unknown> | null;
   requestConfig?: Record<string, unknown> | null;
@@ -357,9 +416,42 @@ function mergeModelRouteCapabilities(input: {
     ...readSupportedVideoWorkflows(input.modelCapabilities),
     ...readSupportedVideoWorkflows(routeCapabilities),
   ]));
+  const videoCapabilities = mergeSafeVideoCapabilities(input.modelCapabilities, routeCapabilities);
 
   return {
     supportedGenerationModes: supportedGenerationModes.length > 0 ? supportedGenerationModes : ["standard"],
     supportedVideoWorkflows,
+    ...videoCapabilities,
   };
+}
+
+function mergeSafeVideoCapabilities(...sources: Array<Record<string, unknown> | null | undefined>) {
+  const supportedModes = mergeKnownStringCapability(sources, "supportedModes", KNOWN_VIDEO_GENERATION_MODES);
+  const aspectRatios = mergeKnownStringCapability(sources, "aspectRatios", KNOWN_VIDEO_ASPECT_RATIOS);
+  const resolutions = mergeKnownStringCapability(sources, "resolutions", KNOWN_VIDEO_RESOLUTIONS);
+  const result: Omit<ModelCatalogRouteView["capabilities"], "supportedGenerationModes" | "supportedVideoWorkflows"> = {};
+  if (supportedModes.length) result.supportedModes = supportedModes;
+  if (aspectRatios.length) result.aspectRatios = aspectRatios;
+  if (resolutions.length) result.resolutions = resolutions;
+  for (const key of ["minDurationSeconds", "maxDurationSeconds", "durationStepSeconds", "maxCount"] as const) {
+    const value = [...sources].reverse().map((source) => readPositiveNumber(source, key)).find((candidate) => candidate !== undefined);
+    if (value !== undefined) result[key] = value;
+  }
+  for (const key of ["supportsAudio", "supportsHumanReview"] as const) {
+    const value = [...sources].reverse().map((source) => readBoolean(source, key)).find((candidate) => candidate !== undefined);
+    if (value !== undefined) result[key] = value;
+  }
+  for (const key of ["description", "estimatedDurationLabel"] as const) {
+    const value = [...sources].reverse().map((source) => readNonEmptyString(source, key)).find((candidate) => candidate !== undefined);
+    if (value !== undefined) result[key] = value;
+  }
+  return result;
+}
+
+function mergeKnownStringCapability(
+  sources: Array<Record<string, unknown> | null | undefined>,
+  key: string,
+  known: ReadonlySet<string>,
+): string[] {
+  return Array.from(new Set(sources.flatMap((source) => readKnownStrings(source, key, known))));
 }

@@ -73,4 +73,90 @@ describe("AiModelCatalogService route list", () => {
       routeKey: "image.mock-production",
     });
   });
+
+  test("preserves safe video-generation capabilities while excluding route configuration secrets", async () => {
+    const client = {
+      query: vi.fn(async (sql: string) => {
+        if (sql.includes("FROM ai_model_catalog AS catalog")) {
+          return {
+            rows: [{
+              id: "catalog-video-1",
+              model_key: "video-model",
+              modality: "video",
+              model_family: "video-model",
+              model_id: "22222222-2222-2222-2222-222222222222",
+            }],
+          };
+        }
+        if (sql.includes("SELECT DISTINCT ON (route.route_key)")) {
+          return {
+            rows: [{
+              estimated_credits: "180",
+              min_charge_credits: "180",
+              modality: "video",
+              model_capabilities: {
+                supportedVideoWorkflows: ["video_generation"],
+                supportedModes: ["text_to_video", "image_to_video"],
+                aspectRatios: ["16:9", "9:16"],
+                resolutions: ["720P", "4K"],
+                minDurationSeconds: 3,
+                maxDurationSeconds: 12,
+                durationStepSeconds: 3,
+                maxCount: 4,
+                supportsAudio: false,
+                supportsHumanReview: true,
+                description: "A safe model description",
+                upstreamApiKey: "must-not-leak",
+              },
+              model_family: "video-model",
+              model_key: "video-model",
+              pricing_unit: "video_generation",
+              provider_key: "private-provider",
+              provider_name: "Private Provider",
+              request_config: {
+                capabilities: {
+                  supportedVideoWorkflows: ["video_editor_export", "video_generation"],
+                  supportedModes: ["first_last_frame", "private-mode"],
+                  aspectRatios: ["1:1", "private-ratio"],
+                  resolutions: ["1080P", "private-resolution"],
+                  maxDurationSeconds: 16,
+                  estimatedDurationLabel: "about 16 seconds",
+                  authorization: "Bearer must-not-leak",
+                  baseUrl: "https://provider.example/internal",
+                },
+              },
+              route_id: "route-video-1",
+              route_key: "video.private-production",
+              route_label: "Production line",
+            }],
+          };
+        }
+        return { rows: [] };
+      }),
+      release: vi.fn(),
+    };
+    const pool = { connect: vi.fn(async () => client) };
+    const service = new AiModelCatalogService({ pool } as ConstructorParameters<typeof AiModelCatalogService>[0]);
+
+    const routes = await service.listRoutesForModel({
+      tenantId: "11111111-1111-1111-1111-111111111111",
+      userId: "user-1",
+    }, "video-model", {});
+
+    expect(routes[0]?.capabilities).toEqual({
+      supportedGenerationModes: ["standard"],
+      supportedVideoWorkflows: ["video_generation", "video_editor_export"],
+      supportedModes: ["text_to_video", "image_to_video", "first_last_frame"],
+      aspectRatios: ["16:9", "9:16", "1:1"],
+      resolutions: ["720P", "4K", "1080P"],
+      minDurationSeconds: 3,
+      maxDurationSeconds: 16,
+      durationStepSeconds: 3,
+      maxCount: 4,
+      supportsAudio: false,
+      supportsHumanReview: true,
+      description: "A safe model description",
+      estimatedDurationLabel: "about 16 seconds",
+    });
+  });
 });

@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
@@ -43,6 +43,16 @@ const generationRoute = {
   routeLabel: "Private route",
 };
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
+}
+
 describe("useVideoGenerationCatalog", () => {
   afterEach(() => {
     __resetVideoGenerationCatalogCacheForTests();
@@ -74,9 +84,44 @@ describe("useVideoGenerationCatalog", () => {
 
     listAiModelCatalogMock.mockResolvedValueOnce([model]);
     listAiModelRoutesMock.mockResolvedValueOnce([generationRoute]);
-    hook.result.current.retry();
+    act(() => hook.result.current.retry());
 
     await waitFor(() => expect(hook.result.current.models.map((item) => item.id)).toEqual(["catalog-video-1"]));
     expect(hook.result.current.error).toBeNull();
+  });
+
+  test("keeps the retried catalog generation authoritative when an older request resolves later", async () => {
+    const firstCatalog = deferred<typeof model[]>();
+    const secondCatalog = deferred<typeof model[]>();
+    const staleModel = { ...model, displayName: "Stale catalog video", id: "stale-video", modelKey: "video.stale" };
+    const freshModel = { ...model, displayName: "Fresh catalog video", id: "fresh-video", modelKey: "video.fresh" };
+    listAiModelCatalogMock
+      .mockImplementationOnce(() => firstCatalog.promise)
+      .mockImplementationOnce(() => secondCatalog.promise);
+    listAiModelRoutesMock.mockResolvedValue([generationRoute]);
+
+    const retried = renderHook(() => useVideoGenerationCatalog());
+    await waitFor(() => expect(listAiModelCatalogMock).toHaveBeenCalledTimes(1));
+
+    act(() => retried.result.current.retry());
+    await waitFor(() => expect(listAiModelCatalogMock).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      firstCatalog.resolve([staleModel]);
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(listAiModelRoutesMock).toHaveBeenCalledWith("video.stale"));
+
+    const concurrent = renderHook(() => useVideoGenerationCatalog());
+    expect(concurrent.result.current.models).toEqual([]);
+    expect(concurrent.result.current.loading).toBe(true);
+    expect(listAiModelCatalogMock).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      secondCatalog.resolve([freshModel]);
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(retried.result.current.models.map((item) => item.id)).toEqual(["fresh-video"]));
+    await waitFor(() => expect(concurrent.result.current.models.map((item) => item.id)).toEqual(["fresh-video"]));
   });
 });
