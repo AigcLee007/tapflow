@@ -16,7 +16,7 @@ export const promptBarDensity = {
     editorMaxHeight: 260,
   },
   video: {
-    width: 'clamp(580px, 46vw, 860px)',
+    width: 'clamp(640px, 52vw, 980px)',
     minHeight: 136,
     editorMinHeight: 72,
     editorExpandedMinHeight: 240,

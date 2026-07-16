@@ -62,7 +62,9 @@ import type {
 import { useFlowCanvasStore, type FlowDerivedEditCounts, type FlowUpstreamImageRef } from '../store/flowCanvasStore';
 import { runImageEdit, runImageTemplateEdit, type ImageEditType } from '../runtime/graphExecutor';
 import { markBackendRunLaunchFailed, runBackendWorkflow } from '../runtime/v2WorkflowRunner';
-import { useVideoModelCatalog } from '../../hooks/useVideoModelCatalog';
+import { VideoNodeComposer } from '../video/VideoNodeComposer';
+import { VideoNodeLegacyComposer } from '../video/VideoNodeLegacyComposer';
+import { VIDEO_COMPOSER_V2_ENABLED } from '../video/videoComposerFeature';
 import {
   getImageModelById,
   getImageModelCatalogSnapshot,
@@ -78,11 +80,6 @@ import {
   getSelectedImageRoute,
   type ImageRouteConfig,
 } from '../../config/imageRoutes';
-import {
-  getVideoModelAspectRatioOptions,
-  getVideoModelDurationOptions,
-  getVideoModelSupportsHd,
-} from '../../config/videoModels';
 import { DEFAULT_TEXT_MODEL_ID, getTextModelOption, getTextModelRouteKey, TEXT_MODEL_OPTIONS } from '../../config/textModels';
 import { getImageNaturalSize, imageUrlToBlob } from '../utils/imageUtils';
 import type { LightDirection } from './ImageLightingOverlay';
@@ -7494,21 +7491,13 @@ export const VideoNodeComponent = memo(function VideoNode({
   const updateNodeData = useFlowCanvasStore((s) => s.updateNodeData);
   const runtimeNodeOutput = useFlowCanvasStore((s) => s.nodeOutputByNodeId[id]);
   const runtimeNodeStatus = useFlowCanvasStore((s) => s.nodeRunStatusByNodeId[id]);
-  const { models } = useVideoModelCatalog();
   const [hovered, setHovered] = useState(false);
-  const [showBatchSelector, setShowBatchSelector] = useState(false);
-  const [showBatchTooltip, setShowBatchTooltip] = useState(false);
   const { connectionNodeId } = useConnection();
   const { showSingleNodeControls } = useNodeSelectionState(id, selected);
   const showNodeEditor = showSingleNodeControls;
   
   const isTargeting = !!connectionNodeId && connectionNodeId !== id && hovered;
 
-  const modelOptions = models.length
-    ? models.map((m) => ({ id: m.id, label: m.label }))
-    : [{ id: 'veo3.1-fast', label: 'Veo 3.1 Fast' }];
-
-  const currentModelId = String(d.modelId || modelOptions[0]?.id || 'veo3.1-fast');
   const runtimeVideoAssets = Array.isArray(runtimeNodeOutput?.assets)
     ? runtimeNodeOutput.assets.filter((asset) => asset.kind === 'video' && asset.downloadUrl)
     : [];
@@ -7519,24 +7508,6 @@ export const VideoNodeComponent = memo(function VideoNode({
     || runtimeNodeStatus === 'waiting_provider'
     || d.generationStatus === 'generating';
 
-  const aspectOptions = getVideoModelAspectRatioOptions(currentModelId);
-  const durationOptions = getVideoModelDurationOptions(currentModelId);
-  const supportsHd = getVideoModelSupportsHd(currentModelId);
-
-  const p = (d.params || {}) as Record<string, any>;
-  const currentRatio = String(p.aspect_ratio || aspectOptions[0] || '16:9');
-  const currentDuration = String(p.duration || durationOptions[0] || '4');
-
-  const setParam = (key: string, val: any) => {
-    const patch: Partial<FlowNodeData> = { params: { ...p, [key]: val } };
-    if (key === 'aspect_ratio' && !effectivePosterUrl) {
-      const nextSize = getMediaNodeSizeFromRatioString(val, 16 / 9);
-      patch.width = nextSize.width;
-      patch.height = nextSize.height;
-      patch.aspectRatio = parseAspectRatio(val) || 16 / 9;
-    }
-    updateNodeData(id, patch);
-  };
 
   const handleGenerate = () => {
     if (isGenerating) return;
@@ -7604,195 +7575,9 @@ export const VideoNodeComponent = memo(function VideoNode({
         </FloatingToolbar>
       )}
 
-      {showNodeEditor && (
-        <FloatingPromptBar variant="video">
-          <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-            <button style={{ ...topToolbarBtn, background: 'rgba(255,255,255,0.06)', borderRadius: 8, padding: '6px 12px' }}>首尾帧</button>
-            <button style={{ ...topToolbarBtn, background: 'rgba(255,255,255,0.06)', borderRadius: 8, padding: '6px 12px' }}>+</button>
-          </div>
-
-          <textarea
-            value={d.generationPrompt || ''}
-            onChange={(e) => updateNodeData(id, { generationPrompt: e.target.value })}
-            placeholder="描述任何你想要生成的内容"
-            style={{
-              ...promptTextarea,
-              minHeight: getPromptBarDensity('video').editorMinHeight,
-              maxHeight: getPromptBarDensity('video').editorMaxHeight,
-            }}
-          />
-
-          <div style={promptBottomRow}>
-            <div style={paramRow}>
-              <span style={{ fontSize: 14, color: '#94a3b8', marginRight: 4 }}>模型</span>
-              <div style={{ minWidth: 156 }}>
-                <MenuSelect
-                  label={`video model ${id}`}
-                  onChange={(nextValue) => updateNodeData(id, { modelId: nextValue })}
-                  options={modelOptions.map((modelOption) => ({
-                    label: modelOption.label,
-                    value: modelOption.id,
-                  }))}
-                  size="compact"
-                  value={currentModelId}
-                />
-              </div>
-
-              <span style={{ color: 'rgba(255,255,255,0.1)', margin: '0 8px' }}>|</span>
-
-              <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#94a3b8', fontSize: 13 }}>
-                <span style={{ color: '#e2e8f0' }}>首尾帧</span>
-                <ParamDivider />
-                <ParamSelect value={currentRatio} options={aspectOptions} onChange={(v) => setParam('aspect_ratio', v)} />
-                <ParamDivider />
-                <span>1080p</span>
-                <ParamDivider />
-                <ParamSelect value={currentDuration} options={durationOptions} onChange={(v) => setParam('duration', v)} prefix="" />
-                <span>s</span>
-                <ParamDivider />
-                <span>高清</span>
-              </span>
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              
-              {/* Batch Count Selector (TapNow Style) */}
-              <div 
-                style={{ position: 'relative' }}
-                onMouseEnter={() => setShowBatchTooltip(true)}
-                onMouseLeave={() => setShowBatchTooltip(false)}
-              >
-                {/* Tooltip on Hover */}
-                {showBatchTooltip && !showBatchSelector && (
-                  <div style={{
-                    position: 'absolute',
-                    bottom: 'calc(100% + 12px)',
-                    left: '50%',
-                    transform: 'translateX(-50%)',
-                    background: '#1f1f1f',
-                    borderRadius: 8,
-                    padding: '6px 12px',
-                    color: '#fff',
-                    fontSize: 12,
-                    fontWeight: 500,
-                    whiteSpace: 'nowrap',
-                    zIndex: 1001,
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                    border: '1px solid rgba(255,255,255,0.08)'
-                  }}>
-                    生成数量
-                    <div style={{
-                      position: 'absolute',
-                      top: '100%',
-                      left: '50%',
-                      transform: 'translateX(-50%)',
-                      border: '6px solid transparent',
-                      borderTopColor: '#1f1f1f'
-                    }} />
-                  </div>
-                )}
-
-                {showBatchSelector && (
-                  <div style={{
-                    position: 'absolute',
-                    bottom: 'calc(100% + 12px)',
-                    left: '50%',
-                    transform: 'translateX(-50%)',
-                    background: 'rgba(28, 28, 38, 0.98)',
-                    backdropFilter: 'blur(12px)',
-                    borderRadius: 16,
-                    padding: '6px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 4,
-                    border: '1px solid rgba(255, 255, 255, 0.08)',
-                    boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
-                    zIndex: 1000,
-                    minWidth: 44,
-                  }}>
-                    {[4, 3, 2, 1].map(num => (
-                      <button
-                        key={num}
-                        onClick={() => {
-                          updateNodeData(id, { batchCount: num });
-                          setShowBatchSelector(false);
-                          setShowBatchTooltip(false);
-                        }}
-                        style={{
-                          background: (d.batchCount || 1) === num ? 'rgba(255,255,255,0.08)' : 'transparent',
-                          border: 'none',
-                          color: (d.batchCount || 1) === num ? '#fff' : '#64748b',
-                          fontSize: 13,
-                          fontWeight: 500,
-                          padding: '8px 0',
-                          borderRadius: 10,
-                          cursor: 'pointer',
-                          textAlign: 'center',
-                          transition: 'all 0.2s',
-                        }}
-                        onMouseEnter={(e) => {
-                          if ((d.batchCount || 1) !== num) {
-                            e.currentTarget.style.color = '#fff';
-                            e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
-                          }
-                        }}
-                        onMouseLeave={(e) => {
-                          if ((d.batchCount || 1) !== num) {
-                            e.currentTarget.style.color = '#64748b';
-                            e.currentTarget.style.background = 'transparent';
-                          }
-                        }}
-                      >
-                        {num}x
-                      </button>
-                    ))}
-                  </div>
-                )}
-                
-                <button
-                  onClick={() => setShowBatchSelector(!showBatchSelector)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    background: 'rgba(255,255,255,0.06)',
-                    border: '1px solid rgba(255,255,255,0.04)',
-                    color: '#e2e8f0',
-                    fontSize: 14,
-                    fontWeight: 600,
-                    padding: '6px 14px',
-                    borderRadius: 12,
-                    cursor: 'pointer',
-                    minWidth: 44,
-                    transition: 'all 0.2s',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = 'rgba(255,255,255,0.1)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'rgba(255,255,255,0.06)';
-                  }}
-                >
-                  {d.batchCount || 1}x
-                </button>
-              </div>
-
-              <div style={sendBtnOuter}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <span style={{ fontSize: 14 }}>点数</span> 112
-                </span>
-                <button
-                  onClick={handleGenerate}
-                  disabled={isGenerating}
-                  style={sendBtnAction(isGenerating)}
-                  title="开始生成"
-                >
-                  {isGenerating ? '...' : '↑'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </FloatingPromptBar>
+      {showNodeEditor && (VIDEO_COMPOSER_V2_ENABLED
+        ? <VideoNodeComposer data={d} generating={isGenerating} nodeId={id} onGenerate={handleGenerate} onUpdate={(patch) => updateNodeData(id, patch)} selected={showNodeEditor} />
+        : <VideoNodeLegacyComposer data={d} generating={isGenerating} nodeId={id} onGenerate={handleGenerate} onUpdate={(patch) => updateNodeData(id, patch)} />
       )}
 
       {d.errorMessage && <div style={errorBar}>⚠{d.errorMessage}</div>}
