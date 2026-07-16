@@ -15,6 +15,13 @@ function readActiveIndex(value: unknown): number {
   return Number.isFinite(numeric) && numeric >= 0 ? Math.floor(numeric) : 0;
 }
 
+function getPersistedAssetId(result: PersistedVideoResult | undefined): string | null {
+  const id = typeof result?.id === "string" ? result.id.trim() : "";
+  if (!id.startsWith(ASSET_RESULT_ID_PREFIX)) return null;
+  const assetId = id.slice(ASSET_RESULT_ID_PREFIX.length).trim();
+  return assetId && !isTransientMediaUrl(assetId) ? assetId : null;
+}
+
 /**
  * Generated-result URLs are transient. The stable `asset:<id>` reference is
  * the only persisted source used to recover a preview after a draft reload.
@@ -24,11 +31,10 @@ export function getPersistedVideoResultAssetId(data: {
   generatedResults?: unknown;
 }): string | null {
   if (!Array.isArray(data.generatedResults)) return null;
-  const result = data.generatedResults[readActiveIndex(data.activeResultIndex)] as PersistedVideoResult | undefined;
-  const id = typeof result?.id === "string" ? result.id.trim() : "";
-  if (!id.startsWith(ASSET_RESULT_ID_PREFIX)) return null;
-  const assetId = id.slice(ASSET_RESULT_ID_PREFIX.length).trim();
-  return assetId ? assetId : null;
+  const results = data.generatedResults as PersistedVideoResult[];
+  const selected = getPersistedAssetId(results[readActiveIndex(data.activeResultIndex)]);
+  if (selected) return selected;
+  return results.map(getPersistedAssetId).find((assetId): assetId is string => Boolean(assetId)) || null;
 }
 
 export function getSelectedRuntimeVideoPreviewUrl(

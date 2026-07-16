@@ -17,10 +17,24 @@ describe("video result preview selection", () => {
     })).toBe("video-two");
   });
 
+  test("falls back to the first valid persisted asset when its active index is stale", () => {
+    expect(getPersistedVideoResultAssetId({
+      activeResultIndex: 99,
+      generatedResults: [
+        { id: "asset:video-one", url: "blob:http://localhost/one" },
+        { id: "asset:video-two", url: "https://cdn.test/two.mp4?X-Amz-Signature=two" },
+      ],
+    })).toBe("video-one");
+  });
+
   test("rejects malformed result ids and unsafe persisted poster URLs", () => {
     expect(getPersistedVideoResultAssetId({
       activeResultIndex: 0,
       generatedResults: [{ id: "https://cdn.test/video.mp4", url: "https://cdn.test/video.mp4" }],
+    })).toBeNull();
+    expect(getPersistedVideoResultAssetId({
+      activeResultIndex: 0,
+      generatedResults: [{ id: "asset:blob:http://localhost/video", url: "blob:http://localhost/video" }],
     })).toBeNull();
     expect(getSafePersistedVideoPosterUrl("data:video/mp4;base64,abc")).toBeNull();
     expect(getSafePersistedVideoPosterUrl("https://cdn.test/video.mp4?X-Amz-Signature=signed")).toBeNull();
