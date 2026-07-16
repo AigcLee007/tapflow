@@ -15,6 +15,13 @@ type CatalogRequest = {
   promise: Promise<VideoModelOption[]>;
 };
 
+type CatalogViewState = {
+  catalogKey: string;
+  error: string | null;
+  loading: boolean;
+  models: VideoModelOption[];
+};
+
 const cache = new Map<string, CatalogCacheEntry>();
 const requests = new Map<string, CatalogRequest>();
 const generations = new Map<string, number>();
@@ -36,6 +43,16 @@ function currentGeneration(catalogKey: string) {
 function cachedOptions(catalogKey: string): VideoModelOption[] | undefined {
   const cached = cache.get(catalogKey);
   return cached?.generation === currentGeneration(catalogKey) ? cached.options : undefined;
+}
+
+function createCatalogViewState(catalogKey: string): CatalogViewState {
+  const models = cachedOptions(catalogKey);
+  return {
+    catalogKey,
+    error: null,
+    loading: !models,
+    models: models ?? [],
+  };
 }
 
 function subscribeToInvalidation(catalogKey: string, listener: () => void) {
@@ -87,15 +104,11 @@ export function useVideoGenerationCatalog(modality = "video") {
     tenantId: tenant?.id ?? null,
     userId: user?.id ?? null,
   });
-  const [models, setModels] = useState<VideoModelOption[]>(() => cachedOptions(catalogKey) ?? []);
-  const [loading, setLoading] = useState(() => !cachedOptions(catalogKey));
-  const [error, setError] = useState<string | null>(null);
+  const [catalogState, setCatalogState] = useState<CatalogViewState>(() => createCatalogViewState(catalogKey));
   const [version, setVersion] = useState(0);
 
   useEffect(() => subscribeToInvalidation(catalogKey, () => {
-    setModels([]);
-    setError(null);
-    setLoading(true);
+    setCatalogState(createCatalogViewState(catalogKey));
     setVersion((value) => value + 1);
   }), [catalogKey]);
 
@@ -103,19 +116,23 @@ export function useVideoGenerationCatalog(modality = "video") {
     let active = true;
     const generation = currentGeneration(catalogKey);
     const cached = cachedOptions(catalogKey);
-    setModels(cached ?? []);
-    setError(null);
-    setLoading(!cached);
+    setCatalogState({
+      catalogKey,
+      error: null,
+      loading: !cached,
+      models: cached ?? [],
+    });
     void loadCatalog(catalogKey, modality).then((next) => {
       if (!active || currentGeneration(catalogKey) !== generation) return;
-      setModels(next);
-      setError(null);
+      setCatalogState({ catalogKey, error: null, loading: false, models: next });
     }).catch((reason: unknown) => {
       if (!active || currentGeneration(catalogKey) !== generation) return;
-      setModels([]);
-      setError(reason instanceof Error ? reason.message : "Failed to load video model catalog");
-    }).finally(() => {
-      if (active && currentGeneration(catalogKey) === generation) setLoading(false);
+      setCatalogState({
+        catalogKey,
+        error: reason instanceof Error ? reason.message : "Failed to load video model catalog",
+        loading: false,
+        models: [],
+      });
     });
     return () => { active = false; };
   }, [catalogKey, modality, version]);
@@ -124,7 +141,10 @@ export function useVideoGenerationCatalog(modality = "video") {
     invalidateCatalog(catalogKey);
   }, [catalogKey]);
 
-  return { models, loading, error, retry };
+  const currentState = catalogState.catalogKey === catalogKey
+    ? catalogState
+    : createCatalogViewState(catalogKey);
+  return { models: currentState.models, loading: currentState.loading, error: currentState.error, retry };
 }
 
 export function __resetVideoGenerationCatalogCacheForTests() {

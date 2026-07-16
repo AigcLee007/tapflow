@@ -256,4 +256,50 @@ describe("useVideoGenerationCatalog", () => {
     expect(listAiModelCatalogMock).toHaveBeenCalledTimes(2);
     expect(listAiModelRoutesMock).toHaveBeenCalledWith("video.tenant-b");
   });
+
+  test("does not expose an already-loaded tenant catalog during the first render for a new session", async () => {
+    const tenantAModel = { ...model, displayName: "Tenant A video", id: "tenant-a-video", modelKey: "video.tenant-a" };
+    const tenantBCatalog = deferred<typeof model[]>();
+    const tenantBModel = { ...model, displayName: "Tenant B video", id: "tenant-b-video", modelKey: "video.tenant-b" };
+    listAiModelCatalogMock
+      .mockResolvedValueOnce([tenantAModel])
+      .mockImplementationOnce(() => tenantBCatalog.promise);
+    listAiModelRoutesMock.mockResolvedValue([generationRoute]);
+
+    let auth = createAuthState({ sessionId: "session-a", tenantId: "tenant-a", userId: "user-a" });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <AuthContext.Provider value={auth}>{children}</AuthContext.Provider>
+    );
+    const renderSnapshots: Array<{ loading: boolean; modelIds: string[]; sessionId: string | null }> = [];
+    const hook = renderHook(() => {
+      const catalog = useVideoGenerationCatalog();
+      renderSnapshots.push({
+        loading: catalog.loading,
+        modelIds: catalog.models.map((item) => item.id),
+        sessionId: auth.sessionId,
+      });
+      return catalog;
+    }, { wrapper });
+
+    await waitFor(() => expect(hook.result.current.models.map((item) => item.id)).toEqual(["tenant-a-video"]));
+
+    auth = createAuthState({ sessionId: "session-b", tenantId: "tenant-b", userId: "user-b" });
+    hook.rerender();
+
+    expect(renderSnapshots.find((snapshot) => snapshot.sessionId === "session-b")).toEqual({
+      loading: true,
+      modelIds: [],
+      sessionId: "session-b",
+    });
+    expect(hook.result.current.models).toEqual([]);
+    expect(hook.result.current.loading).toBe(true);
+    expect(hook.result.current.error).toBeNull();
+
+    await act(async () => {
+      tenantBCatalog.resolve([tenantBModel]);
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(hook.result.current.models.map((item) => item.id)).toEqual(["tenant-b-video"]));
+  });
 });
