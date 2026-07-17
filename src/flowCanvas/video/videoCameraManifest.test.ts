@@ -1,12 +1,19 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  CAMERA_MOTION_LABELS,
   CAMERA_MOTION_IDS,
   getCameraMotionById,
   loadVideoCameraManifest,
 } from "./videoCameraManifest";
 
 describe("video camera manifest", () => {
+  it("owns a stable Chinese label for every camera motion id", () => {
+    expect(Object.keys(CAMERA_MOTION_LABELS)).toEqual(CAMERA_MOTION_IDS);
+    expect(CAMERA_MOTION_LABELS.fixed).toBe("\u56fa\u5b9a\u955c\u5934");
+    expect(CAMERA_MOTION_LABELS["dolly-in"]).toBe("\u63a8\u8fdb");
+  });
+
   it("exposes all valid original camera motions and filters corrupt cards", () => {
     expect(CAMERA_MOTION_IDS).toEqual([
       "fixed", "follow", "spiral-up", "spiral-down", "tilt-up", "tilt-down",

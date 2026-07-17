@@ -12,6 +12,18 @@ vi.mock("./useVideoGenerationCatalog", () => ({
 }));
 
 describe("VideoNodeComposer", () => {
+  test("shows the stable Chinese camera label in its trigger", () => {
+    const data = {
+      generationPrompt: "",
+      params: { videoGeneration: { ...createDefaultVideoGenerationParams(), cameraMotionId: "dolly-in" } },
+    } as any;
+
+    render(<VideoNodeComposer data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} selected />);
+
+    expect(screen.getByRole("button", { name: "\u8fd0\u955c\u5e93" }).textContent).toContain("\u63a8\u8fdb");
+    expect(document.body.textContent).not.toContain("Dolly in");
+  });
+
   test("only renders controls while the node is selected", () => {
     const data = { generationPrompt: "", params: { videoGeneration: createDefaultVideoGenerationParams() } } as any;
     const { rerender } = render(<VideoNodeComposer data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} selected={false} />);

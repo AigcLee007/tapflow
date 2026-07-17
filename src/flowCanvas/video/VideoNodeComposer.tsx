@@ -3,7 +3,7 @@ import { Camera, CheckCircle2, Coins, Palette, SlidersHorizontal, Sparkles } fro
 
 import type { FlowNodeData } from "../types";
 import { normalizeVideoGenerationParams } from "./videoGenerationParams";
-import { getCameraMotionById, loadVideoCameraManifest, type VideoCameraManifest } from "./videoCameraManifest";
+import { getCameraMotionLabel, loadVideoCameraManifest, type VideoCameraManifest } from "./videoCameraManifest";
 import { VideoCameraLibrary } from "./VideoCameraLibrary";
 import { VideoHumanReviewControl } from "./VideoHumanReviewControl";
 import { VideoModeMenu } from "./VideoModeMenu";
@@ -73,7 +73,7 @@ export function VideoNodeComposer({ catalog: catalogOverride, data, generating, 
   if (!selected) return null;
   const setParams = (next: VideoGenerationParamsV1) => onUpdate({ params: { ...(data.params ?? {}), videoGeneration: next } });
   const updateReference = (next: { referenceAssetItemIds: string[]; referenceOrder: string[]; videoGeneration: VideoGenerationParamsV1 }) => onUpdate({ params: { ...(data.params ?? {}), videoGeneration: next.videoGeneration }, referenceAssetItemIds: next.referenceAssetItemIds, referenceOrder: next.referenceOrder });
-  const selectedMotion = getCameraMotionById(params.cameraMotionId, manifest);
+  const selectedMotionLabel = getCameraMotionLabel(params.cameraMotionId);
   const cost = option?.estimatedCredits ?? option?.minChargeCredits ?? 0;
   const closeModel = () => {
     setModelOpen(false);
@@ -92,7 +92,7 @@ export function VideoNodeComposer({ catalog: catalogOverride, data, generating, 
     <div className="flex flex-wrap items-center gap-2 max-md:flex-col max-md:items-stretch">
       <VideoReferenceStrip currentNodeId={nodeId} onChange={updateReference} onUploadReference={() => undefined} value={{ referenceAssetItemIds: data.referenceAssetItemIds ?? [], referenceOrder: data.referenceOrder ?? [], videoGeneration: params }} />
       <VideoModeMenu capabilities={capabilities} onChange={(mode) => setParams({ ...params, mode })} value={params.mode} />
-      <button aria-label={VIDEO_UI_COPY.cameraLibrary} className="inline-flex h-[38px] items-center gap-[7px] rounded-[10px] border border-white/10 bg-[#17171b] px-2 text-xs font-bold" onClick={() => setCameraOpen(true)} ref={cameraButtonRef} type="button"><Camera size={16} />{selectedMotion?.label ?? "运镜"}</button>
+      <button aria-label={VIDEO_UI_COPY.cameraLibrary} className="inline-flex h-[38px] items-center gap-[7px] rounded-[10px] border border-white/10 bg-[#17171b] px-2 text-xs font-bold" onClick={() => setCameraOpen(true)} ref={cameraButtonRef} type="button"><Camera size={16} />{selectedMotionLabel ?? "运镜"}</button>
     </div>
     <textarea aria-label={VIDEO_UI_COPY.videoPrompt} className="mt-2 min-h-[72px] w-full resize-y bg-transparent text-sm outline-none placeholder:text-white/35" onChange={(event) => onUpdate({ generationPrompt: event.target.value })} placeholder={VIDEO_UI_COPY.promptPlaceholder} value={data.generationPrompt || ""} />
     <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-white/10 pt-2 max-md:flex-col max-md:items-stretch">

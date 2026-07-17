@@ -6,6 +6,19 @@ export const CAMERA_MOTION_IDS = [
 ] as const;
 
 export type CameraMotionId = (typeof CAMERA_MOTION_IDS)[number];
+// Manifest labels remain metadata. This mapping owns all creator-facing names.
+export const CAMERA_MOTION_LABELS: Record<CameraMotionId, string> = {
+  fixed: "\u56fa\u5b9a\u955c\u5934", follow: "\u8ddf\u968f\u62cd\u6444", "spiral-up": "\u76d8\u65cb\u62ac\u5347", "spiral-down": "\u76d8\u65cb\u4e0b\u964d",
+  "tilt-up": "\u955c\u5934\u4e0a\u6447", "tilt-down": "\u955c\u5934\u4e0b\u6447", "pan-left": "\u955c\u5934\u5de6\u6447", "pan-right": "\u955c\u5934\u53f3\u6447",
+  "crane-up": "\u955c\u5934\u4e0a\u5347", "crane-down": "\u955c\u5934\u4e0b\u964d", "truck-left": "\u955c\u5934\u5de6\u79fb", "truck-right": "\u955c\u5934\u53f3\u79fb",
+  "dolly-in": "\u63a8\u8fdb", "dolly-out": "\u62c9\u8fdc", "zoom-in": "\u53d8\u7126\u63a8\u8fdb", "zoom-out": "\u53d8\u7126\u62c9\u8fdc",
+  "dolly-zoom": "\u5e0c\u533a\u67ef\u514b\u53d8\u7126", orbit: "\u73af\u7ed5\u62cd\u6444", roll: "\u6eda\u8f6c", fpv: "\u7b2c\u4e00\u89c6\u89d2",
+  drone: "\u65e0\u4eba\u673a\u62cd\u6444", aerial: "\u9ad8\u7a7a\u822a\u62cd", handheld: "\u624b\u6301\u62cd\u6444",
+};
+
+export function getCameraMotionLabel(id: CameraMotionId | null | undefined): string | null {
+  return id ? CAMERA_MOTION_LABELS[id] : null;
+}
 export type VideoCameraMotion = { id: CameraMotionId; label: string; poster: string; preview: string; durationMs: number; version: 1; attribution: "TapFlow original"; codec: "vp9" };
 export type VideoCameraManifest = { version: 1; attribution: "TapFlow original"; items: VideoCameraMotion[] };
 

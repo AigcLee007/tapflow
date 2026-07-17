@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { Check, Heart, Search, X } from "lucide-react";
 
 import { useDismissibleLayer } from "../../components/menu/useDismissibleLayer";
-import type { CameraMotionId, VideoCameraManifest, VideoCameraMotion } from "./videoCameraManifest";
+import { getCameraMotionLabel, type CameraMotionId, type VideoCameraManifest, type VideoCameraMotion } from "./videoCameraManifest";
 import { VIDEO_UI_COPY } from "./videoUiCopy";
 
 type CameraTab = "all" | "favorites" | "mine";
@@ -81,7 +81,8 @@ export function VideoCameraLibrary({ manifest, onChange, onClose, triggerRef, va
     return manifest.items.filter((motion) => {
       if (tab === "favorites" && !favorites.has(motion.id)) return false;
       if (tab === "mine") return false;
-      return !normalizedQuery || motion.label.toLocaleLowerCase().includes(normalizedQuery) || motion.id.includes(normalizedQuery);
+      const label = getCameraMotionLabel(motion.id) ?? "";
+      return !normalizedQuery || label.includes(normalizedQuery) || motion.id.includes(normalizedQuery);
     });
   }, [favorites, manifest.items, query, tab]);
 
@@ -222,7 +223,7 @@ export function VideoCameraLibrary({ manifest, onChange, onClose, triggerRef, va
         </div>
 
         <footer className="flex shrink-0 flex-wrap items-center gap-2 border-t border-white/10 px-4 py-3">
-          <span aria-live="polite" className="min-w-0 flex-1 truncate text-xs font-bold text-white/75">{pendingId ? manifest.items.find((motion) => motion.id === pendingId)?.label ?? pendingId : "未选择运镜"}</span>
+          <span aria-live="polite" className="min-w-0 flex-1 truncate text-xs font-bold text-white/75">{getCameraMotionLabel(pendingId) ?? "未选择运镜"}</span>
           <button aria-label="清除已选运镜" className="h-[38px] rounded-[10px] px-3 text-xs font-bold text-white/65 hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:text-white/25" disabled={pendingId === null} onClick={() => setPendingId(null)} type="button">{VIDEO_UI_COPY.clear}</button>
           <button aria-label="使用运镜" className="h-[38px] rounded-[10px] bg-sky-300 px-3 text-xs font-bold text-slate-950 hover:bg-sky-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-100/80" onClick={usePendingMotion} type="button">{VIDEO_UI_COPY.use}</button>
         </footer>
@@ -250,16 +251,17 @@ function CameraCard({ favorite, motion, onFavorite, onSelect, reduceMotion, sele
   selected: boolean;
   videoRef: (video: HTMLVideoElement | null) => void;
 }) {
+  const label = getCameraMotionLabel(motion.id) ?? motion.id;
   return (
     <article className={`group relative overflow-hidden rounded-lg border bg-black/20 transition ${selected ? "border-sky-300/80 ring-1 ring-sky-300/45" : "border-white/10 hover:border-white/30"}`}>
-      <button aria-label={motion.label} className="block w-full text-left focus:outline-none" data-camera-motion-id={motion.id} onClick={onSelect} type="button">
+      <button aria-label={label} className="block w-full text-left focus:outline-none" data-camera-motion-id={motion.id} onClick={onSelect} type="button">
         <div className="relative aspect-video overflow-hidden bg-[#0d0e11]">
           {reduceMotion ? <img alt="" className="h-full w-full object-cover" src={`${MEDIA_ROOT}${motion.poster}`} /> : <video className="h-full w-full object-cover" loop muted playsInline poster={`${MEDIA_ROOT}${motion.poster}`} preload="metadata" ref={videoRef} src={`${MEDIA_ROOT}${motion.preview}`} />}
           {selected ? <span className="absolute right-2 top-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-sky-300 text-slate-950"><Check aria-hidden="true" size={13} /></span> : null}
         </div>
-        <span className="block truncate px-2.5 py-2 text-xs font-bold leading-tight text-white/85">{motion.label}</span>
+        <span className="block truncate px-2.5 py-2 text-xs font-bold leading-tight text-white/85">{label}</span>
       </button>
-      <button aria-label={`${favorite ? "取消收藏" : "收藏"} ${motion.label}`} className={`absolute bottom-1.5 right-1.5 inline-flex h-7 w-7 items-center justify-center rounded-[8px] transition ${favorite ? "bg-rose-400/20 text-rose-200" : "bg-black/35 text-white/55 opacity-0 group-hover:opacity-100 focus:opacity-100"}`} onClick={onFavorite} type="button"><Heart aria-hidden="true" fill={favorite ? "currentColor" : "none"} size={14} /></button>
+      <button aria-label={`${favorite ? "取消收藏" : "收藏"} ${label}`} className={`absolute bottom-1.5 right-1.5 inline-flex h-7 w-7 items-center justify-center rounded-[8px] transition ${favorite ? "bg-rose-400/20 text-rose-200" : "bg-black/35 text-white/55 opacity-0 group-hover:opacity-100 focus:opacity-100"}`} onClick={onFavorite} type="button"><Heart aria-hidden="true" fill={favorite ? "currentColor" : "none"} size={14} /></button>
     </article>
   );
 }
