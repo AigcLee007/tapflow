@@ -31,6 +31,8 @@ export function VideoParameterPanel({ capabilities, onChange, value }: VideoPara
   const safeCapabilities = createSafeDefaultVideoCapabilities();
   const effectiveCapabilities = routeCapabilitiesConfirmed ? capabilities! : safeCapabilities;
   const [durationInput, setDurationInput] = useState(String(value.durationSeconds));
+  const [durationCorrectionMessage, setDurationCorrectionMessage] = useState<string | null>(null);
+  const [audioHelpOpen, setAudioHelpOpen] = useState(false);
 
   useEffect(() => {
     setDurationInput(String(value.durationSeconds));
@@ -40,15 +42,25 @@ export function VideoParameterPanel({ capabilities, onChange, value }: VideoPara
     onChange(correctVideoGenerationParams(next, effectiveCapabilities).params);
   };
 
-  const commitDuration = () => {
-    const parsed = Number(durationInput);
-    const nextDuration = Number.isFinite(parsed) ? parsed : value.durationSeconds;
+  const applyDurationChange = (nextDuration: number, reportExistingCorrection = false) => {
     const corrected = correctVideoGenerationParams(
       { ...value, durationSeconds: nextDuration },
       effectiveCapabilities,
     ).params;
+    const correctedCurrent = correctVideoGenerationParams(value, effectiveCapabilities).params;
     setDurationInput(String(corrected.durationSeconds));
+    setDurationCorrectionMessage(
+      corrected.durationSeconds === nextDuration
+        && (!reportExistingCorrection || correctedCurrent.durationSeconds === value.durationSeconds)
+        ? null
+        : `已按当前模型能力调整为 ${corrected.durationSeconds} 秒`,
+    );
     onChange(corrected);
+  };
+
+  const commitDuration = () => {
+    const parsed = Number(durationInput);
+    applyDurationChange(Number.isFinite(parsed) ? parsed : value.durationSeconds);
   };
 
   const resolutionOptions = RESOLUTIONS.map((resolution) => ({
@@ -93,8 +105,7 @@ export function VideoParameterPanel({ capabilities, onChange, value }: VideoPara
             min={effectiveCapabilities.minDurationSeconds}
             onChange={(event) => {
               const durationSeconds = Number(event.currentTarget.value);
-              setDurationInput(String(durationSeconds));
-              applyChange({ ...value, durationSeconds });
+              applyDurationChange(durationSeconds, true);
             }}
             step={effectiveCapabilities.durationStepSeconds}
             type="range"
@@ -119,18 +130,52 @@ export function VideoParameterPanel({ capabilities, onChange, value }: VideoPara
             <span className="text-sm text-white/55">秒</span>
           </div>
         </div>
+        <div className="mt-2 flex items-center justify-between text-xs text-white/55">
+          <span>{`最短 ${effectiveCapabilities.minDurationSeconds} 秒`}</span>
+          <span>{`最长 ${effectiveCapabilities.maxDurationSeconds} 秒`}</span>
+        </div>
+        {durationCorrectionMessage ? (
+          <p aria-live="polite" className="mt-2 text-xs text-white/70" role="status">{durationCorrectionMessage}</p>
+        ) : null}
       </ParameterSection>
 
       <ParameterSection label="生成音频">
-        <VideoSegmentedControl
-          ariaLabel="生成音频"
-          onChange={(audioSetting) => applyChange({ ...value, generateAudio: audioSetting === "on" })}
-          options={[
-            { disabled: audioUnsupported, disabledReason: UNSUPPORTED_AUDIO, label: "开启", value: "on" },
-            { label: "关闭", value: "off" },
-          ]}
-          value={value.generateAudio ? "on" : "off"}
-        />
+        <div className="flex items-start gap-2">
+          <div className="min-w-0 flex-1">
+            <VideoSegmentedControl
+              ariaLabel="生成音频"
+              onChange={(audioSetting) => applyChange({ ...value, generateAudio: audioSetting === "on" })}
+              options={[
+                { disabled: audioUnsupported, disabledReason: UNSUPPORTED_AUDIO, label: "开启", value: "on" },
+                { disabled: audioUnsupported, disabledReason: UNSUPPORTED_AUDIO, label: "关闭", value: "off" },
+              ]}
+              value={value.generateAudio ? "on" : "off"}
+            />
+          </div>
+          {audioUnsupported ? (
+            <div className="relative shrink-0">
+              <button
+                aria-describedby="video-audio-support-help"
+                aria-expanded={audioHelpOpen}
+                aria-label="音频支持说明"
+                className="flex h-8 w-8 items-center justify-center rounded-full border border-white/20 text-sm text-white/75 hover:border-white/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                onBlur={() => setAudioHelpOpen(false)}
+                onClick={() => setAudioHelpOpen(true)}
+                onFocus={() => setAudioHelpOpen(true)}
+                onMouseEnter={() => setAudioHelpOpen(true)}
+                onMouseLeave={() => setAudioHelpOpen(false)}
+                type="button"
+              >
+                ?
+              </button>
+              {audioHelpOpen ? (
+                <span className="absolute right-0 top-[calc(100%+6px)] z-10 w-44 rounded-lg border border-white/15 bg-[#16161a] px-3 py-2 text-xs leading-5 text-white shadow-lg" id="video-audio-support-help" role="tooltip">
+                  {"当前模型不支持生成音频"}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
       </ParameterSection>
 
       <ParameterSection label="生成数量">

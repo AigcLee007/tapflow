@@ -138,5 +138,57 @@ describe("VideoParameterPanel", () => {
     const unconfirmed = { ...unsupported, confirmedByRoute: false };
     rerender(<VideoParameterPanel capabilities={unconfirmed} onChange={onChange} value={createDefaultVideoGenerationParams()} />);
     expect(screen.getByRole("radio", { name: "开启" }).getAttribute("aria-disabled")).toBe("false");
+    expect(screen.getByRole("radio", { name: "关闭" }).getAttribute("aria-disabled")).toBe("false");
+  });
+  test("shows the effective duration range and announces only corrected durations", () => {
+    const onChange = vi.fn();
+    const capabilities = createSafeDefaultVideoCapabilities();
+    capabilities.confirmedByRoute = true;
+    capabilities.minDurationSeconds = 3;
+    capabilities.maxDurationSeconds = 7;
+    capabilities.durationStepSeconds = 2;
+
+    render(<VideoParameterPanel capabilities={capabilities} onChange={onChange} value={createDefaultVideoGenerationParams()} />);
+
+    expect(screen.getByText("最短 3 秒")).toBeTruthy();
+    expect(screen.getByText("最长 7 秒")).toBeTruthy();
+
+    const input = screen.getByLabelText("视频时长输入");
+    fireEvent.change(input, { target: { value: "5" } });
+    fireEvent.blur(input);
+    expect(screen.queryByText(/已按当前模型能力调整/)).toBeNull();
+
+    fireEvent.change(input, { target: { value: "8" } });
+    fireEvent.blur(input);
+    expect(screen.getByRole("status").textContent).toContain("已按当前模型能力调整为 7 秒");
+
+    fireEvent.input(screen.getByRole("slider", { name: "视频时长滑杆" }), { target: { value: "6" } });
+    expect(screen.getByRole("status").textContent).toContain("已按当前模型能力调整为 7 秒");
+
+    fireEvent.change(input, { target: { value: "8" } });
+    input.focus();
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(screen.getByRole("status").textContent).toContain("已按当前模型能力调整为 7 秒");
+  });
+
+  test("disables both audio choices and exposes a Chinese help tooltip for confirmed unsupported audio", () => {
+    const unsupported = createSafeDefaultVideoCapabilities();
+    unsupported.confirmedByRoute = true;
+    unsupported.supportsAudio = false;
+    const onChange = vi.fn();
+
+    render(<VideoParameterPanel capabilities={unsupported} onChange={onChange} value={createDefaultVideoGenerationParams()} />);
+
+    const audioOn = screen.getByRole("radio", { name: /^开启/ });
+    const audioOff = screen.getByRole("radio", { name: /^关闭/ });
+    expect(audioOn.getAttribute("aria-disabled")).toBe("true");
+    expect(audioOff.getAttribute("aria-disabled")).toBe("true");
+    expect(audioOn.getAttribute("tabindex")).toBe("-1");
+    expect(audioOff.getAttribute("tabindex")).toBe("-1");
+    fireEvent.click(audioOff);
+    expect(onChange).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "音频支持说明" }));
+    expect(screen.getByRole("tooltip").textContent).toBe("当前模型不支持生成音频");
   });
 });
