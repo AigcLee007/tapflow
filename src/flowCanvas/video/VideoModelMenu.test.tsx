@@ -12,7 +12,7 @@ const model = (overrides: Partial<VideoModelOption> = {}): VideoModelOption => (
   estimatedCredits: 12,
   estimatedDurationLabel: "About 1 minute",
   id: "creator-video-1",
-  label: "Creator Video 1.0",
+  label: "创作视频一号",
   minChargeCredits: 12,
   ...overrides,
 });
@@ -21,8 +21,9 @@ describe("VideoModelMenu", () => {
   test("renders only the product model name and ETA until a row is hovered, focused, or selected", () => {
     render(<VideoModelMenu error={null} loading={false} onChange={vi.fn()} onRetry={vi.fn()} options={[model()]} value={null} />);
 
-    const option = screen.getByRole("option", { name: /Creator Video 1\.0/ });
-    expect(option.textContent).toContain("Creator Video 1.0");
+    const option = screen.getByRole("option", { name: /创作视频一号/ });
+    expect(option.textContent).toContain("创作视频一号");
+    expect(option.textContent).not.toContain("Creator Video 1.0");
     expect(option.textContent).toContain("预计 1 分钟");
     expect(screen.getByText(/适合电影感动态镜头/).className).toContain("sr-only");
 
@@ -44,7 +45,7 @@ describe("VideoModelMenu", () => {
     expect(screen.queryByText("Fast response")).toBeNull();
     expect(screen.queryByText("Fast motion and cinematic composition.")).toBeNull();
     expect(screen.getByText("暂无中文模型说明")).toBeTruthy();
-    expect(screen.getByRole("option", { name: /Creator Video 1\.0/ }).getAttribute("aria-describedby")).toBeTruthy();
+    expect(screen.getByRole("option", { name: /创作视频一号/ }).getAttribute("aria-describedby")).toBeTruthy();
   });
 
   test("does not render a search input or internal provider and route fields", () => {
@@ -93,8 +94,8 @@ describe("VideoModelMenu", () => {
   test("supports listbox keyboard selection and refuses disabled options with an explanation", () => {
     const onChange = vi.fn();
     const onClose = vi.fn();
-    const disabled = model({ blocker: "PRICING_NOT_FOUND", id: "unpriced", label: "Unpriced Video" });
-    const enabled = model({ id: "enabled", label: "Enabled Video" });
+    const disabled = model({ blocker: "PRICING_NOT_FOUND", id: "unpriced", label: "未定价视频" });
+    const enabled = model({ id: "enabled", label: "可用视频" });
     render(
       <VideoModelMenu
         error={null}
@@ -115,7 +116,7 @@ describe("VideoModelMenu", () => {
     fireEvent.keyDown(listbox, { key: "Home" });
     fireEvent.keyDown(listbox, { key: "Enter" });
     expect(onChange).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole("option", { name: /Unpriced Video/ }).textContent).toContain("价格配置未完成");
+    expect(screen.getByRole("option", { name: /未定价视频/ }).textContent).toContain("价格配置未完成");
 
     fireEvent.keyDown(listbox, { key: "Escape" });
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -129,12 +130,12 @@ describe("VideoModelMenu", () => {
         loading={false}
         onChange={onChange}
         onRetry={vi.fn()}
-        options={[model({ id: "enabled", label: "Enabled Video" })]}
+        options={[model({ id: "enabled", label: "可用视频" })]}
         value={null}
       />,
     );
 
-    const option = screen.getByRole("option", { name: /Enabled Video/ });
+    const option = screen.getByRole("option", { name: /可用视频/ });
     fireEvent.focus(option);
     fireEvent.keyDown(option, { key: "Enter" });
 
@@ -156,7 +157,7 @@ describe("VideoModelMenu", () => {
       />,
     );
 
-    const option = screen.getByRole("option", { name: /Creator Video 1\.0/ });
+    const option = screen.getByRole("option", { name: /创作视频一号/ });
     fireEvent.focus(option);
     fireEvent.keyDown(option, { key: "Escape" });
 
@@ -192,12 +193,12 @@ describe("VideoModelMenu", () => {
         onChange={onChange}
         onClose={onClose}
         onRetry={vi.fn()}
-        options={[model({ id: "enabled", label: "Enabled Video" })]}
+        options={[model({ id: "enabled", label: "可用视频" })]}
         value={null}
       />,
     );
 
-    fireEvent.click(screen.getByRole("option", { name: /Enabled Video/ }));
+    fireEvent.click(screen.getByRole("option", { name: /可用视频/ }));
 
     expect(onChange).toHaveBeenCalledOnce();
     expect(onChange).toHaveBeenCalledWith("enabled");
@@ -214,12 +215,12 @@ describe("VideoModelMenu", () => {
         onChange={onChange}
         onClose={onClose}
         onRetry={vi.fn()}
-        options={[model({ blocker: "PRICING_NOT_FOUND", id: "disabled", label: "Disabled Video" })]}
+        options={[model({ blocker: "PRICING_NOT_FOUND", id: "disabled", label: "未定价视频" })]}
         value={null}
       />,
     );
 
-    fireEvent.click(screen.getByRole("option", { name: /Disabled Video/ }));
+    fireEvent.click(screen.getByRole("option", { name: /未定价视频/ }));
 
     expect(onChange).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();

@@ -1,7 +1,7 @@
 import type { AiModelCatalogItem, AiModelCatalogRoute } from "../../services/v2AiModelCatalogApi";
 import { mergeVideoCapabilities } from "./videoGenerationCapabilities";
 import type { VideoModelOption } from "./videoTypes";
-import { VIDEO_UI_COPY } from "./videoUiCopy";
+import { isSafeChineseCreatorText } from "./videoUiCopy";
 
 const isGenerationRoute = (route: AiModelCatalogRoute) =>
   Array.isArray(route.capabilities?.supportedVideoWorkflows)
@@ -11,27 +11,38 @@ export function toVideoModelOptions(
   catalog: AiModelCatalogItem[],
   routesByModelKey: Record<string, AiModelCatalogRoute[]>,
 ): VideoModelOption[] {
-  return [...catalog]
+  const eligibleModels = [...catalog]
     .filter((model) => model.modality === "video" && model.status === "active")
     .sort((left, right) => left.sortOrder - right.sortOrder || left.displayName.localeCompare(right.displayName))
-    .flatMap((model) => {
-      const route = routesByModelKey[model.modelKey]?.find(isGenerationRoute);
-      if (!route) return [];
+    .map((model) => ({ model, route: routesByModelKey[model.modelKey]?.find(isGenerationRoute) }))
+    .filter((entry): entry is { model: AiModelCatalogItem; route: AiModelCatalogRoute } => Boolean(entry.route));
+
+  return eligibleModels
+    .map(({ model, route }, index) => {
       const capabilities = mergeVideoCapabilities(model.capabilities, route.capabilities, { confirmedByRoute: true });
       const estimatedCredits = positiveNumber(route.estimatedCredits) ?? positiveNumber(route.minChargeCredits);
       const minChargeCredits = positiveNumber(route.minChargeCredits) ?? positiveNumber(route.estimatedCredits);
       const description = readUiDescription(model.uiSchema) ?? capabilities.description;
-      return [{
+      return {
         blocker: estimatedCredits == null && minChargeCredits == null ? "PRICING_NOT_FOUND" : null,
         capabilities,
         ...(description ? { description } : {}),
         estimatedCredits,
         ...(capabilities.estimatedDurationLabel ? { estimatedDurationLabel: capabilities.estimatedDurationLabel } : {}),
         id: model.id,
-        label: model.displayName || VIDEO_UI_COPY.videoModels,
+        label: getCreatorModelLabel(model, index + 1),
         minChargeCredits,
-      }];
+      };
     });
+}
+
+function getCreatorModelLabel(model: AiModelCatalogItem, ordinal: number): string {
+  const explicitChineseLabel = ["creatorLabelZh", "labelZh", "displayNameZh"]
+    .map((key) => model.uiSchema[key])
+    .find(isSafeChineseCreatorText);
+  if (explicitChineseLabel) return explicitChineseLabel.trim();
+  if (isSafeChineseCreatorText(model.displayName)) return model.displayName.trim();
+  return `视频模型 ${ordinal}`;
 }
 
 function positiveNumber(value: unknown): number | null {

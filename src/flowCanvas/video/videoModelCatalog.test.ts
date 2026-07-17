@@ -52,7 +52,7 @@ describe("toVideoModelOptions", () => {
       "video.inactive": [route()],
     });
 
-    expect(options.map((option) => option.label)).toEqual(["Creator Video", "No pricing"]);
+    expect(options.map((option) => option.label)).toEqual(["视频模型 1", "视频模型 2"]);
     expect(options[0]).toMatchObject({
       description: "Creator-safe UI description",
       estimatedCredits: 15,
@@ -84,7 +84,55 @@ describe("toVideoModelOptions", () => {
       "video.private-model-key": [route()],
     });
 
-    expect(options[0]?.label).toBe("视频模型");
+    expect(options[0]?.label).toBe("视频模型 1");
     expect(options[0]?.label).not.toBe("Video model");
+  });
+
+  test("does not expose English or mixed server display names to creators", () => {
+    const options = toVideoModelOptions([
+      videoModel({ displayName: "Seedance 1.0", id: "seedance", sortOrder: 10 }),
+      videoModel({ displayName: "模型 fast", id: "mixed", modelKey: "video.mixed", sortOrder: 20 }),
+    ], {
+      "video.private-model-key": [route()],
+      "video.mixed": [route({ modelKey: "video.mixed" })],
+    });
+
+    expect(options.map((option) => option.label)).toEqual(["视频模型 1", "视频模型 2"]);
+    expect(JSON.stringify(options)).not.toContain("Seedance 1.0");
+    expect(JSON.stringify(options)).not.toContain("模型 fast");
+  });
+
+  test("uses a fully Chinese catalog display name or explicit Chinese ui schema presentation label", () => {
+    const options = toVideoModelOptions([
+      videoModel({ displayName: "灵感视频", id: "catalog-zh", sortOrder: 10 }),
+      videoModel({
+        displayName: "Creator Video",
+        id: "catalog-schema-zh",
+        modelKey: "video.schema-zh",
+        sortOrder: 20,
+        uiSchema: { creatorLabelZh: "电影创作" },
+      }),
+      videoModel({
+        displayName: "Creator Video",
+        id: "catalog-schema-invalid",
+        modelKey: "video.schema-invalid",
+        sortOrder: 30,
+        uiSchema: { labelZh: "电影 fast" },
+      }),
+      videoModel({
+        displayName: "Creator Video",
+        id: "catalog-schema-display-zh",
+        modelKey: "video.schema-display-zh",
+        sortOrder: 40,
+        uiSchema: { displayNameZh: "叙事影像" },
+      }),
+    ], {
+      "video.private-model-key": [route()],
+      "video.schema-zh": [route({ modelKey: "video.schema-zh" })],
+      "video.schema-invalid": [route({ modelKey: "video.schema-invalid" })],
+      "video.schema-display-zh": [route({ modelKey: "video.schema-display-zh" })],
+    });
+
+    expect(options.map((option) => option.label)).toEqual(["灵感视频", "电影创作", "视频模型 3", "叙事影像"]);
   });
 });

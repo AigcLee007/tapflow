@@ -98,12 +98,13 @@ export function formatVideoModelEstimatedDuration(value: unknown): string | null
 }
 
 export function getVideoModelDescription(value: unknown): string {
-  const isSafeChineseDescription =
-    typeof value === "string" &&
-    CHINESE_TEXT_PATTERN.test(value) &&
-    EXTERNAL_CHINESE_DESCRIPTION_PATTERN.test(value.replace(DISPLAY_RESOLUTION_TOKEN_PATTERN, ""));
-
-  return isSafeChineseDescription
+  return isSafeChineseCreatorText(value)
     ? value
     : "暂无中文模型说明";
+}
+
+export function isSafeChineseCreatorText(value: unknown): value is string {
+  return typeof value === "string"
+    && CHINESE_TEXT_PATTERN.test(value)
+    && EXTERNAL_CHINESE_DESCRIPTION_PATTERN.test(value.replace(DISPLAY_RESOLUTION_TOKEN_PATTERN, ""));
 }
