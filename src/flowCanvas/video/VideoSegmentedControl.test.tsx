@@ -4,7 +4,7 @@ import { describe, expect, test, vi } from "vitest";
 import { VideoSegmentedControl } from "./VideoSegmentedControl";
 
 describe("VideoSegmentedControl", () => {
-  test("exposes equal radio options and never calls back for a disabled option", () => {
+  test("describes disabled options in Chinese beyond a title", () => {
     const onChange = vi.fn();
     render(
       <VideoSegmentedControl
@@ -18,22 +18,28 @@ describe("VideoSegmentedControl", () => {
       />,
     );
 
-    expect(screen.getByRole("radiogroup", { name: "清晰度" })).toBeTruthy();
-    expect(screen.getByRole("radio", { name: "480P" }).getAttribute("aria-checked")).toBe("true");
-    const unavailable = screen.getByRole("radio", { name: "4K" });
+    const unavailable = screen.getByRole("radio", { name: /^4K/ });
+    const descriptionId = unavailable.getAttribute("aria-describedby");
     expect(unavailable.getAttribute("aria-disabled")).toBe("true");
-    expect(unavailable.getAttribute("title")).toBe("当前模型不支持 4K");
+    expect(document.getElementById(descriptionId!)?.textContent).toContain("当前模型不支持 4K");
 
+    fireEvent.focus(unavailable);
+    expect(screen.getByRole("note").textContent).toContain("当前模型不支持 4K");
     fireEvent.click(unavailable);
     expect(onChange).not.toHaveBeenCalled();
   });
 
-  test("keeps keyboard focus on the actual radio button", () => {
+  test("uses arrows and Home/End to skip disabled options and select the focused option", () => {
+    const onChange = vi.fn();
     render(
       <VideoSegmentedControl
         ariaLabel="生成数量"
-        onChange={vi.fn()}
-        options={[{ label: "1个", value: "1" }, { label: "2个", value: "2" }]}
+        onChange={onChange}
+        options={[
+          { label: "1个", value: "1" },
+          { disabled: true, label: "2个", value: "2" },
+          { label: "4个", value: "4" },
+        ]}
         value="1"
       />,
     );
@@ -41,6 +47,18 @@ describe("VideoSegmentedControl", () => {
     const first = screen.getByRole("radio", { name: "1个" });
     first.focus();
     fireEvent.keyDown(first, { key: "ArrowRight" });
+    expect(document.activeElement).toBe(screen.getByRole("radio", { name: "4个" }));
+    expect(screen.getByRole("radio", { name: "4个" }).getAttribute("tabindex")).toBe("0");
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenLastCalledWith("4");
+
+    fireEvent.keyDown(document.activeElement!, { key: "Home" });
     expect(document.activeElement).toBe(first);
+    expect(first.getAttribute("tabindex")).toBe("0");
+    expect(onChange).toHaveBeenCalledTimes(2);
+
+    fireEvent.keyDown(first, { key: "End" });
+    expect(document.activeElement).toBe(screen.getByRole("radio", { name: "4个" }));
+    expect(onChange).toHaveBeenCalledTimes(3);
   });
 });
