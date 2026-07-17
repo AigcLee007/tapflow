@@ -7,15 +7,15 @@ describe("VideoHumanReviewControl", () => {
   test("hides the entry when human review is not required", () => {
     render(<VideoHumanReviewControl value={{ status: "not_required" }} />);
 
-    expect(screen.queryByLabelText("Human verification")).toBeNull();
+    expect(screen.queryByLabelText("真人验证")).toBeNull();
   });
 
   test.each(["required", "expired"] as const)("blocks generation and requests verification for %s status", (status) => {
     const onRequestVerification = vi.fn();
     render(<VideoHumanReviewControl onRequestVerification={onRequestVerification} value={{ status }} />);
 
-    expect(screen.getByText("Generation is blocked until human verification is complete.")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Complete verification" }));
+    expect(screen.getByText("完成真人验证后才能生成视频。")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "完成验证" }));
     expect(onRequestVerification).toHaveBeenCalledOnce();
   });
 
@@ -28,9 +28,9 @@ describe("VideoHumanReviewControl", () => {
       />,
     );
 
-    expect(screen.getByText("Verified 2026-07-16T08:00:00.000Z")).toBeTruthy();
+    expect(screen.getByText("已验证 2026-07-16T08:00:00.000Z")).toBeTruthy();
     expect(screen.queryByText("verify-safe-1")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Verify again" }));
+    fireEvent.click(screen.getByRole("button", { name: "重新验证" }));
     expect(onRequestVerification).toHaveBeenCalledOnce();
   });
 });

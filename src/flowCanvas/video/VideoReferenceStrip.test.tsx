@@ -36,8 +36,8 @@ describe("VideoReferenceStrip", () => {
       <VideoReferenceStrip currentNodeId="video-node" onChange={onChange} onUploadReference={vi.fn()} value={value} />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Select first frame reference" }));
-    expect(pickerProps.current?.roleLabel).toBe("First frame");
+    fireEvent.click(screen.getByRole("button", { name: "选择参考素材首帧" }));
+    expect(pickerProps.current?.roleLabel).toBe("首帧");
     fireEvent.click(screen.getByRole("button", { name: "Pick an asset" }));
 
     expect(onChange).toHaveBeenCalledWith({
@@ -61,7 +61,7 @@ describe("VideoReferenceStrip", () => {
       <VideoReferenceStrip currentNodeId="video-node" onChange={onChange} onUploadReference={vi.fn()} value={value} />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Select first frame reference" }));
+    fireEvent.click(screen.getByRole("button", { name: "选择参考素材首帧" }));
     act(() => {
       (pickerProps.current?.onPickAsset as (assetId: string) => void)("asset-existing");
     });
@@ -82,7 +82,7 @@ describe("VideoReferenceStrip", () => {
       <VideoReferenceStrip currentNodeId="video-node" onChange={onChange} onUploadReference={vi.fn()} value={value} />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Clear first frame reference" }));
+    fireEvent.click(screen.getByRole("button", { name: "清除参考素材首帧" }));
 
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
       referenceAssetItemIds: ["asset-existing"],
@@ -100,7 +100,7 @@ describe("VideoReferenceStrip", () => {
       <VideoReferenceStrip currentNodeId="video-node" onChange={onChange} onUploadReference={vi.fn()} value={value} />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Select first frame reference" }));
+    fireEvent.click(screen.getByRole("button", { name: "选择参考素材首帧" }));
     const stalePickAsset = pickerProps.current?.onPickAsset as (assetId: string) => void;
 
     rerender(
@@ -138,7 +138,7 @@ describe("VideoReferenceStrip", () => {
       <VideoReferenceStrip currentNodeId="video-node" onChange={onChange} onUploadReference={vi.fn()} value={value} />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Select subject reference" }));
+    fireEvent.click(screen.getByRole("button", { name: "选择参考素材人物" }));
     rerender(
       <VideoReferenceStrip
         currentNodeId="video-node"

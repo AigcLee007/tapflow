@@ -66,11 +66,11 @@ describe("VideoModelMenu", () => {
     expect(skeletons[0]?.className).toContain("h-[38px]");
 
     rerender(<VideoModelMenu error="Catalog unavailable" loading={false} onChange={vi.fn()} onRetry={onRetry} options={[]} value={null} />);
-    expect(screen.getByText("Catalog unavailable")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    expect(screen.getByText("视频模型目录加载失败")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "重试" })).toBeTruthy();
     expect(screen.queryByRole("option")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
 
@@ -99,7 +99,7 @@ describe("VideoModelMenu", () => {
     fireEvent.keyDown(listbox, { key: "Home" });
     fireEvent.keyDown(listbox, { key: "Enter" });
     expect(onChange).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole("option", { name: /Unpriced Video/ }).textContent).toContain("Pricing is not configured");
+    expect(screen.getByRole("option", { name: /Unpriced Video/ }).textContent).toContain("价格配置未完成");
 
     fireEvent.keyDown(listbox, { key: "Escape" });
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -224,7 +224,7 @@ describe("VideoModelMenu", () => {
       />,
     );
 
-    const retry = screen.getByRole("button", { name: "Retry" });
+    const retry = screen.getByRole("button", { name: "重试" });
     fireEvent.pointerDown(retry);
     fireEvent.click(retry);
 

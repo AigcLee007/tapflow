@@ -8,6 +8,7 @@ import type {
   VideoReferenceRole,
   VideoReferenceSource,
 } from "./videoTypes";
+import { VIDEO_UI_COPY, VIDEO_UI_REFERENCE_ROLE_COPY } from "./videoUiCopy";
 
 export type VideoReferenceStripValue = {
   referenceAssetItemIds: string[];
@@ -30,15 +31,7 @@ const ROLES_BY_MODE: Record<VideoGenerationMode, VideoReferenceRole[]> = {
   image_reference: ["subject", "scene", "prop", "style"],
 };
 
-const ROLE_LABELS: Record<VideoReferenceRole, string> = {
-  subject: "Subject",
-  scene: "Scene",
-  prop: "Prop",
-  style: "Style",
-  first_frame: "First frame",
-  last_frame: "Last frame",
-  reference: "Reference",
-};
+const ROLE_LABELS: Record<VideoReferenceRole, string> = VIDEO_UI_REFERENCE_ROLE_COPY;
 
 export function VideoReferenceStrip({ currentNodeId, onChange, onUploadReference, value }: VideoReferenceStripProps) {
   const [activeRole, setActiveRole] = useState<VideoReferenceRole | null>(null);
@@ -80,7 +73,7 @@ export function VideoReferenceStrip({ currentNodeId, onChange, onUploadReference
   if (roles.length === 0) return null;
 
   return (
-    <div className="relative flex flex-wrap gap-2" aria-label="Video references">
+    <div className="relative flex flex-wrap gap-2" aria-label={VIDEO_UI_COPY.referenceSources}>
       {roles.map((role) => {
         const assignment = value.videoGeneration.referenceRolesByKey[role];
         const selected = assignment?.source;
@@ -88,7 +81,7 @@ export function VideoReferenceStrip({ currentNodeId, onChange, onUploadReference
         return (
           <div key={role} className="inline-flex h-[38px] items-center gap-1 rounded-[10px] border border-white/10 bg-[#17171b] p-1">
             <button
-              aria-label={`Select ${roleLabel.toLowerCase()} reference`}
+              aria-label={`${VIDEO_UI_COPY.selectReference}${roleLabel}`}
               className="inline-flex h-[30px] items-center gap-[7px] rounded-[9px] px-2 text-xs font-bold text-white/80 transition hover:bg-white/[0.08] focus:bg-white/[0.08] focus:outline-none"
               onClick={() => setActiveRole(role)}
               type="button"
@@ -99,10 +92,10 @@ export function VideoReferenceStrip({ currentNodeId, onChange, onUploadReference
             </button>
             {selected ? (
               <button
-                aria-label={`Clear ${roleLabel.toLowerCase()} reference`}
+                aria-label={`${VIDEO_UI_COPY.clearReference}${roleLabel}`}
                 className="inline-flex h-[30px] w-[30px] items-center justify-center rounded-[9px] text-white/45 transition hover:bg-white/[0.08] hover:text-white focus:bg-white/[0.08] focus:outline-none"
                 onClick={() => updateRole(role, null)}
-                title={`Clear ${roleLabel} reference`}
+                title={`${VIDEO_UI_COPY.clearReference}${roleLabel}`}
                 type="button"
               >
                 <Trash2 aria-hidden="true" size={14} />

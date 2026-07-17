@@ -1,6 +1,7 @@
 import { BadgeCheck, ShieldAlert } from "lucide-react";
 
 import type { VideoHumanReview } from "./videoTypes";
+import { VIDEO_UI_COPY } from "./videoUiCopy";
 
 type VideoHumanReviewControlProps = {
   onRequestVerification?: () => void;
@@ -12,7 +13,7 @@ export function VideoHumanReviewControl({ onRequestVerification, value }: VideoH
 
   if (value.status === "verified") {
     return (
-      <div aria-label="Human verification" className="flex min-h-[38px] items-center gap-[7px] text-[10px] font-medium text-emerald-100">
+      <div aria-label={VIDEO_UI_COPY.humanVerification} className="flex min-h-[38px] items-center gap-[7px] text-[10px] font-medium text-emerald-100">
         <BadgeCheck aria-hidden="true" size={16} />
         <span className="min-w-0 flex-1 truncate">{formatVerifiedAt(value.verifiedAt)}</span>
         <button
@@ -20,7 +21,7 @@ export function VideoHumanReviewControl({ onRequestVerification, value }: VideoH
           onClick={onRequestVerification}
           type="button"
         >
-          Verify again
+          {VIDEO_UI_COPY.verifyAgain}
         </button>
       </div>
     );
@@ -28,25 +29,25 @@ export function VideoHumanReviewControl({ onRequestVerification, value }: VideoH
 
   return (
     <div
-      aria-label="Human verification"
+      aria-label={VIDEO_UI_COPY.humanVerification}
       className="flex min-h-[38px] items-center gap-[7px] rounded-[10px] border border-amber-300/25 bg-amber-300/10 px-2 text-[10px] font-medium text-amber-50"
       data-generation-blocked="true"
     >
       <ShieldAlert aria-hidden="true" size={16} />
-      <span className="min-w-0 flex-1">Generation is blocked until human verification is complete.</span>
+      <span className="min-w-0 flex-1">{VIDEO_UI_COPY.verificationBlocked}</span>
       <button
         className="h-[30px] shrink-0 rounded-[9px] bg-amber-200 px-2 text-[10px] font-bold text-black transition hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-sky-300/70"
         onClick={onRequestVerification}
         type="button"
       >
-        Complete verification
+        {VIDEO_UI_COPY.completeVerification}
       </button>
     </div>
   );
 }
 
 function formatVerifiedAt(value: string | undefined) {
-  if (!value) return "Verified";
+  if (!value) return VIDEO_UI_COPY.verified;
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "Verified" : `Verified ${date.toISOString()}`;
+  return Number.isNaN(date.getTime()) ? VIDEO_UI_COPY.verified : `${VIDEO_UI_COPY.verified} ${date.toISOString()}`;
 }

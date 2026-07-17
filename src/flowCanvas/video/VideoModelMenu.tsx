@@ -9,6 +9,7 @@ import {
 } from "../../components/menu/menuStyles";
 import { useDismissibleLayer } from "../../components/menu/useDismissibleLayer";
 import type { VideoGenerationBlocker, VideoModelOption } from "./videoTypes";
+import { VIDEO_UI_BLOCKER_COPY, VIDEO_UI_COPY } from "./videoUiCopy";
 
 type VideoModelMenuProps = {
   error: string | null;
@@ -20,16 +21,7 @@ type VideoModelMenuProps = {
   value: string | null;
 };
 
-const BLOCKER_MESSAGES: Record<Exclude<VideoGenerationBlocker, "CATALOG_LOADING">, string> = {
-  HUMAN_REVIEW_REQUIRED: "Human verification is required",
-  NO_VIDEO_GENERATION_ROUTE: "Video generation is not configured",
-  PRICING_NOT_FOUND: "Pricing is not configured",
-  UNSUPPORTED_ASPECT_RATIO: "The selected settings are not supported",
-  UNSUPPORTED_AUDIO: "Audio generation is not supported",
-  UNSUPPORTED_COUNT: "The selected settings are not supported",
-  UNSUPPORTED_MODE: "The selected settings are not supported",
-  UNSUPPORTED_RESOLUTION: "The selected settings are not supported",
-};
+const BLOCKER_MESSAGES: Record<Exclude<VideoGenerationBlocker, "CATALOG_LOADING">, string> = VIDEO_UI_BLOCKER_COPY;
 
 export function VideoModelMenu({
   error,
@@ -103,7 +95,7 @@ export function VideoModelMenu({
 
   if (loading) {
     return (
-      <MenuSurface ref={layer.ref as React.RefObject<HTMLDivElement>} aria-label="Loading video models" className="w-[288px] p-2" role="status">
+      <MenuSurface ref={layer.ref as React.RefObject<HTMLDivElement>} aria-label={VIDEO_UI_COPY.loadingModels} className="w-[288px] p-2" role="status">
         {[0, 1, 2].map((index) => (
           <div
             key={index}
@@ -123,15 +115,15 @@ export function VideoModelMenu({
 
   if (error) {
     return (
-      <MenuSurface ref={layer.ref as React.RefObject<HTMLDivElement>} aria-label="Video model catalog error" className="w-[288px] p-2" role="alert">
+      <MenuSurface ref={layer.ref as React.RefObject<HTMLDivElement>} aria-label={VIDEO_UI_COPY.modelCatalogError} className="w-[288px] p-2" role="alert">
         <div className="grid gap-2 px-1.5 py-1">
-          <span className="text-xs font-bold leading-[1.1] text-white">{error}</span>
+          <span className="text-xs font-bold leading-[1.1] text-white">{VIDEO_UI_COPY.modelCatalogError}</span>
           <button
             className="h-[38px] rounded-[10px] border border-white/10 bg-white/[0.08] px-2 text-xs font-bold text-white outline-none transition hover:bg-white/[0.13] focus:border-sky-300/60"
             onClick={onRetry}
             type="button"
           >
-            Retry
+            {VIDEO_UI_COPY.retry}
           </button>
         </div>
       </MenuSurface>
@@ -142,7 +134,7 @@ export function VideoModelMenu({
     <MenuSurface
       ref={layer.ref as React.RefObject<HTMLDivElement>}
       aria-activedescendant={options[activeIndex] ? `${menuId}-${activeIndex}` : undefined}
-      aria-label="Video models"
+      aria-label={VIDEO_UI_COPY.videoModels}
       className="w-[288px] p-2"
       onKeyDown={handleKeyDown}
       role="listbox"

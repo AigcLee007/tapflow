@@ -5,6 +5,7 @@ import { useVideoModelCatalog } from "../../hooks/useVideoModelCatalog";
 import type { FlowNodeData } from "../types";
 import { getVideoModelAspectRatioOptions, getVideoModelDurationOptions } from "../../config/videoModels";
 import { getMediaNodeSizeFromRatioString, parseAspectRatio } from "../utils/nodeSizing";
+import { VIDEO_UI_COPY, VIDEO_UI_MODE_COPY } from "./videoUiCopy";
 
 type Props = {
   data: FlowNodeData;
@@ -52,30 +53,30 @@ export function VideoNodeLegacyComposer({
   };
 
   return (
-    <div aria-label="Legacy video composer" className="absolute left-1/2 top-[calc(100%+14px)] z-40 w-[clamp(580px,46vw,860px)] -translate-x-1/2 rounded-[18px] border border-white/10 bg-[#17171b] p-3 text-white shadow-[0_18px_42px_rgba(0,0,0,0.45)]">
+    <div aria-label="旧版视频创作面板" className="absolute left-1/2 top-[calc(100%+14px)] z-40 w-[clamp(580px,46vw,860px)] -translate-x-1/2 rounded-[18px] border border-white/10 bg-[#17171b] p-3 text-white shadow-[0_18px_42px_rgba(0,0,0,0.45)]">
       <div className="mb-2 flex gap-2">
-        <button className="rounded-lg bg-white/5 px-3 py-1.5 text-xs font-bold" type="button">首尾帧</button>
-        <button className="rounded-lg bg-white/5 px-3 py-1.5 text-xs font-bold" type="button">+</button>
+        <button className="rounded-lg bg-white/5 px-3 py-1.5 text-xs font-bold" type="button">{VIDEO_UI_MODE_COPY.first_last_frame.label}</button>
+        <button aria-label="添加参考素材" className="rounded-lg bg-white/5 px-3 py-1.5 text-xs font-bold" type="button">+</button>
       </div>
-      <textarea aria-label="Video prompt" className="min-h-[72px] w-full resize-y bg-transparent text-sm outline-none placeholder:text-white/35" onChange={(event) => onUpdate({ generationPrompt: event.target.value })} placeholder="描述任何你想要生成的内容" value={data.generationPrompt || ""} />
+      <textarea aria-label="视频提示词" className="min-h-[72px] w-full resize-y bg-transparent text-sm outline-none placeholder:text-white/35" onChange={(event) => onUpdate({ generationPrompt: event.target.value })} placeholder={VIDEO_UI_COPY.promptPlaceholder} value={data.generationPrompt || ""} />
       <div className="mt-2 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-2">
         <div className="flex flex-wrap items-center gap-2 text-xs text-white/70">
           <span>模型</span>
-          <div className="min-w-[156px]"><MenuSelect label={`video model ${nodeId}`} onChange={(nextModelId) => onUpdate({ modelId: nextModelId })} options={modelOptions} size="compact" value={modelId} /></div>
+          <div className="min-w-[156px]"><MenuSelect label={`视频模型 ${nodeId}`} onChange={(nextModelId) => onUpdate({ modelId: nextModelId })} options={modelOptions} size="compact" value={modelId} /></div>
           <span className="text-white/15">|</span>
-          <span className="text-white">首尾帧</span>
-          <div className="w-[92px]"><MenuSelect label={`video aspect ratio ${nodeId}`} onChange={(value) => setParam("aspect_ratio", value)} options={aspectOptions.map((value) => ({ label: value, value }))} size="compact" value={aspectRatio} /></div>
-          <span>1080p</span>
-          <div className="w-[76px]"><MenuSelect label={`video duration ${nodeId}`} onChange={(value) => setParam("duration", value)} options={durationOptions.map((value) => ({ label: value, value }))} size="compact" value={duration} /></div>
+          <span className="text-white">{VIDEO_UI_MODE_COPY.first_last_frame.label}</span>
+          <div className="w-[92px]"><MenuSelect label={`视频比例 ${nodeId}`} onChange={(value) => setParam("aspect_ratio", value)} options={aspectOptions.map((value) => ({ label: value, value }))} size="compact" value={aspectRatio} /></div>
+          <span>1080P</span>
+          <div className="w-[76px]"><MenuSelect label={`视频时长 ${nodeId}`} onChange={(value) => setParam("duration", value)} options={durationOptions.map((value) => ({ label: value, value }))} size="compact" value={duration} /></div>
           <span>秒</span>
           <span>高清</span>
         </div>
         <div className="flex items-center gap-3">
           <div className="relative">
-            {showBatchSelector ? <div aria-label="Video count" className="absolute bottom-[calc(100%+8px)] right-0 z-[1200] grid min-w-11 gap-1 rounded-[12px] border border-white/10 bg-[#1c1c20] p-1 shadow-xl">{[4, 3, 2, 1].map((count) => <button className="h-8 rounded-[8px] text-xs font-bold hover:bg-white/10" key={count} onClick={() => { onUpdate({ batchCount: count }); setShowBatchSelector(false); }} type="button">{count}x</button>)}</div> : null}
-            <button aria-expanded={showBatchSelector} aria-label="Video count" className="min-w-11 rounded-[10px] border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs font-bold" onClick={() => setShowBatchSelector((open) => !open)} type="button">{batchCount}x</button>
+            {showBatchSelector ? <div aria-label="生成数量" className="absolute bottom-[calc(100%+8px)] right-0 z-[1200] grid min-w-11 gap-1 rounded-[12px] border border-white/10 bg-[#1c1c20] p-1 shadow-xl">{[4, 3, 2, 1].map((count) => <button className="h-8 rounded-[8px] text-xs font-bold hover:bg-white/10" key={count} onClick={() => { onUpdate({ batchCount: count }); setShowBatchSelector(false); }} type="button">{count} 个</button>)}</div> : null}
+            <button aria-expanded={showBatchSelector} aria-label="生成数量" className="min-w-11 rounded-[10px] border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs font-bold" onClick={() => setShowBatchSelector((open) => !open)} type="button">{batchCount} 个</button>
           </div>
-          <div className="flex items-center gap-2 rounded-[10px] border border-white/10 bg-white/[0.06] py-1 pl-3 pr-1 text-xs font-bold"><span>点数 112</span><button aria-label={`Generate video ${nodeId}`} className="rounded-[8px] bg-sky-300 px-2 py-1 text-slate-950 disabled:opacity-50" disabled={generating} onClick={onGenerate} type="button">{generating ? "..." : "↑"}</button></div>
+          <div className="flex items-center gap-2 rounded-[10px] border border-white/10 bg-white/[0.06] py-1 pl-3 pr-1 text-xs font-bold"><span>点数 112</span><button aria-label={`生成视频 ${nodeId}`} className="rounded-[8px] bg-sky-300 px-2 py-1 text-slate-950 disabled:opacity-50" disabled={generating} onClick={onGenerate} type="button">{generating ? VIDEO_UI_COPY.generating : VIDEO_UI_COPY.generate}</button></div>
         </div>
       </div>
     </div>

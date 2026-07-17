@@ -34,7 +34,7 @@ describe("VideoCameraLibrary", () => {
     expect(onChange).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Dolly in" })).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "Use camera motion" }));
+    fireEvent.click(screen.getByRole("button", { name: "使用运镜" }));
     expect(onChange).toHaveBeenCalledWith("dolly-in");
   });
 
@@ -42,14 +42,14 @@ describe("VideoCameraLibrary", () => {
     const onChange = vi.fn();
     render(<VideoCameraLibrary manifest={manifest} onChange={onChange} onClose={vi.fn()} value="fixed" />);
 
-    fireEvent.change(screen.getByRole("searchbox", { name: "Search camera motions" }), { target: { value: "dolly" } });
+    fireEvent.change(screen.getByRole("searchbox", { name: "搜索运镜" }), { target: { value: "dolly" } });
     const dollyCard = screen.getByRole("button", { name: "Dolly in" });
     expect(dollyCard.getAttribute("data-camera-motion-id")).toBe("dolly-in");
     expect(screen.queryByRole("button", { name: "Fixed" })).toBeNull();
 
     fireEvent.click(dollyCard);
-    fireEvent.click(screen.getByRole("button", { name: "Clear selected camera motion" }));
-    fireEvent.click(screen.getByRole("button", { name: "Use camera motion" }));
+    fireEvent.click(screen.getByRole("button", { name: "清除已选运镜" }));
+    fireEvent.click(screen.getByRole("button", { name: "使用运镜" }));
     expect(onChange).toHaveBeenCalledWith(null);
   });
 
@@ -81,9 +81,9 @@ describe("VideoCameraLibrary", () => {
 
     render(<VideoCameraLibrary manifest={manifest} onChange={vi.fn()} onClose={vi.fn()} triggerRef={{ current: trigger }} value={null} />);
 
-    const dialog = screen.getByRole("dialog", { name: "Camera motion library" });
-    const closeButton = screen.getByRole("button", { name: "Close camera motion library" });
-    const useButton = screen.getByRole("button", { name: "Use camera motion" });
+    const dialog = screen.getByRole("dialog", { name: "运镜库" });
+    const closeButton = screen.getByRole("button", { name: "关闭运镜库" });
+    const useButton = screen.getByRole("button", { name: "使用运镜" });
 
     expect(dialog.contains(document.activeElement)).toBe(true);
 
@@ -97,11 +97,11 @@ describe("VideoCameraLibrary", () => {
 
   it("shows component-local favorites and an empty My motions tab", () => {
     render(<VideoCameraLibrary manifest={manifest} onChange={vi.fn()} onClose={vi.fn()} value={null} />);
-    fireEvent.click(screen.getByRole("button", { name: "Favorite Fixed" }));
-    fireEvent.click(screen.getByRole("tab", { name: "Favorites" }));
+    fireEvent.click(screen.getByRole("button", { name: "收藏 Fixed" }));
+    fireEvent.click(screen.getByRole("tab", { name: "收藏" }));
     expect(screen.getByRole("button", { name: "Fixed" })).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("tab", { name: "My motions" }));
-    expect(screen.getByText("No custom camera motions yet.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("tab", { name: "我的运镜" }));
+    expect(screen.getByText("暂未创建自定义运镜。")).toBeTruthy();
   });
 });

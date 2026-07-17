@@ -4,6 +4,7 @@ import { Check, Heart, Search, X } from "lucide-react";
 
 import { useDismissibleLayer } from "../../components/menu/useDismissibleLayer";
 import type { CameraMotionId, VideoCameraManifest, VideoCameraMotion } from "./videoCameraManifest";
+import { VIDEO_UI_COPY } from "./videoUiCopy";
 
 type CameraTab = "all" | "favorites" | "mine";
 
@@ -172,7 +173,7 @@ export function VideoCameraLibrary({ manifest, onChange, onClose, triggerRef, va
     <div className="fixed inset-0 z-[1600] flex items-center justify-center bg-black/65 p-3 backdrop-blur-sm">
       <section
         ref={layer.ref as React.RefObject<HTMLElement>}
-        aria-label="Camera motion library"
+        aria-label={VIDEO_UI_COPY.cameraLibrary}
         aria-modal="true"
         className="flex max-h-[min(780px,calc(100vh-24px))] w-full max-w-[1080px] flex-col overflow-hidden rounded-lg border border-white/10 bg-[#17171b] text-white shadow-[0_28px_80px_rgba(0,0,0,0.58)]"
         onKeyDown={trapFocus}
@@ -180,26 +181,26 @@ export function VideoCameraLibrary({ manifest, onChange, onClose, triggerRef, va
       >
         <header className="flex shrink-0 items-center gap-3 border-b border-white/10 px-4 py-3">
           <div className="min-w-0 flex-1">
-            <h2 className="text-sm font-bold leading-tight">Camera motion library</h2>
-            <p className="mt-0.5 text-[10px] font-medium text-white/45">Choose a motion preset for this video.</p>
+            <h2 className="text-sm font-bold leading-tight">{VIDEO_UI_COPY.cameraLibrary}</h2>
+            <p className="mt-0.5 text-[10px] font-medium text-white/45">{VIDEO_UI_COPY.cameraLibraryDescription}</p>
           </div>
-          <button aria-label="Close camera motion library" className="inline-flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-[10px] text-white/65 hover:bg-white/[0.08] focus:outline-none focus-visible:ring-1 focus-visible:ring-sky-300" onClick={() => layer.dismissLayer()} type="button"><X size={18} /></button>
+          <button aria-label={`关闭${VIDEO_UI_COPY.cameraLibrary}`} className="inline-flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-[10px] text-white/65 hover:bg-white/[0.08] focus:outline-none focus-visible:ring-1 focus-visible:ring-sky-300" onClick={() => layer.dismissLayer()} type="button"><X size={18} /></button>
         </header>
 
         <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-white/10 px-4 py-2.5">
-          <div aria-label="Camera motion categories" className="flex h-[34px] items-center gap-1 rounded-[10px] bg-black/20 p-1" role="tablist">
-            <TabButton active={tab === "all"} label="All" onClick={() => selectTab("all")} />
-            <TabButton active={tab === "favorites"} label="Favorites" onClick={() => selectTab("favorites")} />
-            <TabButton active={tab === "mine"} label="My motions" onClick={() => selectTab("mine")} />
+          <div aria-label={VIDEO_UI_COPY.cameraCategories} className="flex h-[34px] items-center gap-1 rounded-[10px] bg-black/20 p-1" role="tablist">
+            <TabButton active={tab === "all"} label={VIDEO_UI_COPY.all} onClick={() => selectTab("all")} />
+            <TabButton active={tab === "favorites"} label={VIDEO_UI_COPY.favorites} onClick={() => selectTab("favorites")} />
+            <TabButton active={tab === "mine"} label={VIDEO_UI_COPY.myMotions} onClick={() => selectTab("mine")} />
           </div>
           <label className="relative ml-auto flex h-[34px] min-w-[190px] max-w-full flex-1 items-center text-white/45 sm:max-w-[280px]">
             <Search aria-hidden="true" className="pointer-events-none absolute left-2.5" size={14} />
-            <input aria-label="Search camera motions" className="h-full w-full rounded-[10px] border border-white/10 bg-black/20 pl-8 pr-2 text-xs text-white outline-none placeholder:text-white/35 focus:border-sky-300/60" onChange={(event) => setQuery(event.target.value)} placeholder="Search motions" type="search" value={query} />
+            <input aria-label={VIDEO_UI_COPY.searchMotions} className="h-full w-full rounded-[10px] border border-white/10 bg-black/20 pl-8 pr-2 text-xs text-white outline-none placeholder:text-white/35 focus:border-sky-300/60" onChange={(event) => setQuery(event.target.value)} placeholder={VIDEO_UI_COPY.searchMotions} type="search" value={query} />
           </label>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
-          {tab === "mine" ? <EmptyState text="No custom camera motions yet." /> : visibleItems.length === 0 ? <EmptyState text={tab === "favorites" ? "No favorite camera motions yet." : "No matching camera motions."} /> : (
+          {tab === "mine" ? <EmptyState text="暂未创建自定义运镜。" /> : visibleItems.length === 0 ? <EmptyState text={tab === "favorites" ? "暂未收藏运镜。" : "没有匹配的运镜。"} /> : (
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
               {visibleItems.map((motion) => (
                 <CameraCard
@@ -221,9 +222,9 @@ export function VideoCameraLibrary({ manifest, onChange, onClose, triggerRef, va
         </div>
 
         <footer className="flex shrink-0 flex-wrap items-center gap-2 border-t border-white/10 px-4 py-3">
-          <span aria-live="polite" className="min-w-0 flex-1 truncate text-xs font-bold text-white/75">{pendingId ? manifest.items.find((motion) => motion.id === pendingId)?.label ?? pendingId : "No camera motion selected"}</span>
-          <button aria-label="Clear selected camera motion" className="h-[38px] rounded-[10px] px-3 text-xs font-bold text-white/65 hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:text-white/25" disabled={pendingId === null} onClick={() => setPendingId(null)} type="button">Clear</button>
-          <button aria-label="Use camera motion" className="h-[38px] rounded-[10px] bg-sky-300 px-3 text-xs font-bold text-slate-950 hover:bg-sky-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-100/80" onClick={usePendingMotion} type="button">Use</button>
+          <span aria-live="polite" className="min-w-0 flex-1 truncate text-xs font-bold text-white/75">{pendingId ? manifest.items.find((motion) => motion.id === pendingId)?.label ?? pendingId : "未选择运镜"}</span>
+          <button aria-label="清除已选运镜" className="h-[38px] rounded-[10px] px-3 text-xs font-bold text-white/65 hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:text-white/25" disabled={pendingId === null} onClick={() => setPendingId(null)} type="button">{VIDEO_UI_COPY.clear}</button>
+          <button aria-label="使用运镜" className="h-[38px] rounded-[10px] bg-sky-300 px-3 text-xs font-bold text-slate-950 hover:bg-sky-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-100/80" onClick={usePendingMotion} type="button">{VIDEO_UI_COPY.use}</button>
         </footer>
       </section>
     </div>
@@ -258,7 +259,7 @@ function CameraCard({ favorite, motion, onFavorite, onSelect, reduceMotion, sele
         </div>
         <span className="block truncate px-2.5 py-2 text-xs font-bold leading-tight text-white/85">{motion.label}</span>
       </button>
-      <button aria-label={`${favorite ? "Unfavorite" : "Favorite"} ${motion.label}`} className={`absolute bottom-1.5 right-1.5 inline-flex h-7 w-7 items-center justify-center rounded-[8px] transition ${favorite ? "bg-rose-400/20 text-rose-200" : "bg-black/35 text-white/55 opacity-0 group-hover:opacity-100 focus:opacity-100"}`} onClick={onFavorite} type="button"><Heart aria-hidden="true" fill={favorite ? "currentColor" : "none"} size={14} /></button>
+      <button aria-label={`${favorite ? "取消收藏" : "收藏"} ${motion.label}`} className={`absolute bottom-1.5 right-1.5 inline-flex h-7 w-7 items-center justify-center rounded-[8px] transition ${favorite ? "bg-rose-400/20 text-rose-200" : "bg-black/35 text-white/55 opacity-0 group-hover:opacity-100 focus:opacity-100"}`} onClick={onFavorite} type="button"><Heart aria-hidden="true" fill={favorite ? "currentColor" : "none"} size={14} /></button>
     </article>
   );
 }

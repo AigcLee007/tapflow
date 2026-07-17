@@ -9,6 +9,7 @@ import {
 import { useDismissibleLayer } from "../../components/menu/useDismissibleLayer";
 import { createSafeDefaultVideoCapabilities } from "./videoGenerationCapabilities";
 import type { VideoGenerationCapabilities, VideoGenerationMode } from "./videoTypes";
+import { VIDEO_UI_COPY, VIDEO_UI_MODE_COPY } from "./videoUiCopy";
 
 type VideoModeMenuProps = {
   capabilities?: VideoGenerationCapabilities | null;
@@ -16,17 +17,8 @@ type VideoModeMenuProps = {
   value: VideoGenerationMode;
 };
 
-const MODE_OPTIONS: Array<{
-  description: string;
-  label: string;
-  value: VideoGenerationMode;
-}> = [
-  { value: "text_to_video", label: "文生视频", description: "根据文字描述生成视频" },
-  { value: "all_reference", label: "全参考生视频", description: "综合所有参考素材生成" },
-  { value: "image_to_video", label: "图生视频", description: "使用单张图片作为画面起点" },
-  { value: "first_last_frame", label: "首尾帧生视频", description: "需要首帧和尾帧" },
-  { value: "image_reference", label: "图像参考生视频", description: "使用多张图片控制内容与风格" },
-];
+const MODE_OPTIONS = (Object.entries(VIDEO_UI_MODE_COPY) as Array<[VideoGenerationMode, typeof VIDEO_UI_MODE_COPY[VideoGenerationMode]]>)
+  .map(([value, copy]) => ({ value, ...copy }));
 
 export function VideoModeMenu({ capabilities, onChange, value }: VideoModeMenuProps) {
   const layer = useDismissibleLayer("video-mode-menu");
@@ -39,7 +31,7 @@ export function VideoModeMenu({ capabilities, onChange, value }: VideoModeMenuPr
         ref={layer.triggerRef as React.RefObject<HTMLButtonElement>}
         aria-expanded={layer.open}
         aria-haspopup="menu"
-        aria-label="生成模式"
+        aria-label={VIDEO_UI_COPY.mode}
         className="inline-flex h-[38px] items-center gap-[7px] rounded-[10px] border border-white/10 bg-[#17171b] px-2 text-xs font-bold text-white outline-none transition focus:border-sky-300/50"
         onClick={layer.toggle}
         type="button"
@@ -50,7 +42,7 @@ export function VideoModeMenu({ capabilities, onChange, value }: VideoModeMenuPr
       {layer.open ? (
         <MenuSurface
           ref={layer.ref as React.RefObject<HTMLDivElement>}
-          aria-label="生成模式选项"
+          aria-label={VIDEO_UI_COPY.modeOptions}
           className="absolute left-0 top-[calc(100%+12px)] z-[1200] w-[238px] p-2"
           role="menu"
         >
@@ -76,7 +68,7 @@ export function VideoModeMenu({ capabilities, onChange, value }: VideoModeMenuPr
                 <span className="min-w-0">
                   <span className={`${MENU_ITEM_PRIMARY_CLASS} block`}>{option.label}</span>
                   <span className={`${MENU_ITEM_SECONDARY_CLASS} block truncate`}>
-                    {supported ? option.description : "当前模型暂不支持"}
+                    {supported ? option.description : VIDEO_UI_COPY.unsupportedByModel}
                   </span>
                 </span>
               </button>
