@@ -15,10 +15,24 @@ describe("VideoNodeComposer", () => {
   test("only renders controls while the node is selected", () => {
     const data = { generationPrompt: "", params: { videoGeneration: createDefaultVideoGenerationParams() } } as any;
     const { rerender } = render(<VideoNodeComposer data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} selected={false} />);
-    expect(screen.queryByLabelText("Video prompt")).toBeNull();
+    expect(screen.queryByLabelText("视频提示词")).toBeNull();
 
     rerender(<VideoNodeComposer data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} selected />);
-    expect(screen.getByLabelText("Video prompt")).toBeTruthy();
+    expect(screen.getByLabelText("视频提示词")).toBeTruthy();
+  });
+
+  test("renders creator-facing composer metadata in Chinese", () => {
+    const data = { generationPrompt: "", params: { videoGeneration: createDefaultVideoGenerationParams() } } as any;
+    const { container } = render(<VideoNodeComposer data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} selected />);
+
+    for (const label of ["Camera motion library", "Video prompt", "Choose video model", "Video parameters", "Generate video"]) {
+      expect(container.textContent).not.toContain(label);
+      expect(container.querySelector(`[aria-label=\"${label}\"]`)).toBeNull();
+    }
+    expect(screen.getByRole("button", { name: "运镜库" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "选择视频模型" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "视频参数" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "生成视频" })).toBeTruthy();
   });
 
   test("writes the prompt and keeps model and parameters layers mutually exclusive", () => {
@@ -26,30 +40,30 @@ describe("VideoNodeComposer", () => {
     const data = { generationPrompt: "", params: { videoGeneration: createDefaultVideoGenerationParams() } } as any;
     render(<VideoNodeComposer data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={onUpdate} selected />);
 
-    fireEvent.change(screen.getByLabelText("Video prompt"), { target: { value: "A quiet city" } });
+    fireEvent.change(screen.getByLabelText("视频提示词"), { target: { value: "A quiet city" } });
     expect(onUpdate).toHaveBeenCalledWith({ generationPrompt: "A quiet city" });
 
-    fireEvent.click(screen.getByRole("button", { name: "Choose video model" }));
-    expect(screen.getByRole("status", { name: "Loading video models" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Video parameters" }));
-    expect(screen.queryByRole("status", { name: "Loading video models" })).toBeNull();
-    expect(screen.getByRole("dialog", { name: "Video parameters" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "选择视频模型" }));
+    expect(screen.getByRole("status", { name: "正在加载视频模型" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "视频参数" }));
+    expect(screen.queryByRole("status", { name: "正在加载视频模型" })).toBeNull();
+    expect(screen.getByRole("dialog", { name: "视频参数" })).toBeTruthy();
   });
 
   test("dismisses compact layers with Escape and restores focus to their trigger", () => {
     const data = { generationPrompt: "", params: { videoGeneration: createDefaultVideoGenerationParams() } } as any;
     render(<VideoNodeComposer data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} selected />);
 
-    const modelButton = screen.getByRole("button", { name: "Choose video model" });
+    const modelButton = screen.getByRole("button", { name: "选择视频模型" });
     fireEvent.click(modelButton);
     fireEvent.keyDown(window, { key: "Escape" });
-    expect(screen.queryByRole("status", { name: "Loading video models" })).toBeNull();
+    expect(screen.queryByRole("status", { name: "正在加载视频模型" })).toBeNull();
     expect(document.activeElement).toBe(modelButton);
 
-    const parameterButton = screen.getByRole("button", { name: "Video parameters" });
+    const parameterButton = screen.getByRole("button", { name: "视频参数" });
     fireEvent.click(parameterButton);
     fireEvent.keyDown(window, { key: "Escape" });
-    expect(screen.queryByRole("dialog", { name: "Video parameters" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "视频参数" })).toBeNull();
     expect(document.activeElement).toBe(parameterButton);
   });
 
@@ -57,12 +71,12 @@ describe("VideoNodeComposer", () => {
     const data = { generationPrompt: "", params: { videoGeneration: createDefaultVideoGenerationParams() } } as any;
     render(<VideoNodeComposer data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} selected />);
 
-    expect(screen.getByLabelText("Video composer").className).toContain("w-[calc(100vw-32px)]");
-    expect(screen.getByLabelText("Video composer").className).toContain("max-w-[980px]");
-    expect(screen.getByLabelText("Video composer").className).toContain("md:w-[clamp(640px,52vw,980px)]");
-    expect(screen.getByLabelText("Video composer").className).toContain("max-md:flex-col");
-    expect(screen.getByLabelText("Video composer").className).toContain("max-md:left-0");
-    expect(screen.getByLabelText("Choose video model").parentElement?.parentElement?.className).toContain("max-md:flex-col");
+    expect(screen.getByLabelText("视频创作面板").className).toContain("w-[calc(100vw-32px)]");
+    expect(screen.getByLabelText("视频创作面板").className).toContain("max-w-[980px]");
+    expect(screen.getByLabelText("视频创作面板").className).toContain("md:w-[clamp(640px,52vw,980px)]");
+    expect(screen.getByLabelText("视频创作面板").className).toContain("max-md:flex-col");
+    expect(screen.getByLabelText("视频创作面板").className).toContain("max-md:left-0");
+    expect(screen.getByRole("button", { name: "选择视频模型" }).parentElement?.parentElement?.className).toContain("max-md:flex-col");
   });
 
   test("reconciles duration and other params when switching to a narrower model", () => {
@@ -107,7 +121,7 @@ describe("VideoNodeComposer", () => {
     } as any;
 
     render(<VideoNodeComposer catalog={catalog} data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={onUpdate} selected />);
-    fireEvent.click(screen.getByRole("button", { name: "Choose video model" }));
+    fireEvent.click(screen.getByRole("button", { name: "选择视频模型" }));
     fireEvent.click(screen.getByRole("option", { name: /Narrow model/ }));
 
     expect(onUpdate).toHaveBeenCalledWith({
@@ -153,10 +167,10 @@ describe("VideoNodeComposer", () => {
     const data = { generationPrompt: "", modelId: "veo3.1-fast", params: { aspect_ratio: "16:9", duration: "4" } } as any;
     render(<VideoNodeLegacyComposer data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} />);
 
-    expect(screen.getByRole("button", { name: /video model video-1/i })).toBeTruthy();
-    expect(screen.getByText("1080p")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /视频模型 video-1/i })).toBeTruthy();
+    expect(screen.getByText("1080P")).toBeTruthy();
     expect(screen.getByText("高清")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Generate video video-1" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "生成视频 video-1" })).toBeTruthy();
   });
 
   test("resizes an ungenerated legacy video node when its aspect ratio changes", () => {
@@ -164,7 +178,7 @@ describe("VideoNodeComposer", () => {
     const data = { generationPrompt: "", modelId: "veo3.1-fast", params: { aspect_ratio: "16:9", duration: "4" } } as any;
     render(<VideoNodeLegacyComposer data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={onUpdate} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "video aspect ratio video-1 16:9" }));
+    fireEvent.click(screen.getByRole("button", { name: "视频比例 video-1 16:9" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "9:16" }));
 
     expect(onUpdate).toHaveBeenCalledWith({
@@ -189,7 +203,7 @@ describe("VideoNodeComposer", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "video aspect ratio video-1 16:9" }));
+    fireEvent.click(screen.getByRole("button", { name: "视频比例 video-1 16:9" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "9:16" }));
 
     expect(onUpdate).toHaveBeenCalledWith({

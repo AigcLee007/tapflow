@@ -1,6 +1,7 @@
 import type { VideoGenerationMode, VideoReferenceRole } from "./videoTypes";
 
 export const VIDEO_UI_COPY = {
+  videoComposer: "视频创作面板",
   cameraLibrary: "运镜库",
   cameraLibraryDescription: "为视频选择运镜效果",
   cameraCategories: "运镜分类",
@@ -11,10 +12,13 @@ export const VIDEO_UI_COPY = {
   clear: "清除",
   use: "使用",
   chooseModel: "选择模型",
+  chooseVideoModel: "选择视频模型",
   videoParameters: "视频参数",
   palette: "调色盘",
   promptPlaceholder: "描述你想要生成的画面内容",
+  videoPrompt: "视频提示词",
   generate: "生成",
+  generateVideo: "生成视频",
   generating: "生成中",
   unconfigured: "未配置",
   mode: "生成模式",
@@ -64,3 +68,21 @@ export const VIDEO_UI_BLOCKER_COPY = {
   UNSUPPORTED_MODE: "当前设置不受支持",
   UNSUPPORTED_RESOLUTION: "当前设置不受支持",
 } as const;
+
+const CHINESE_TEXT_PATTERN = /[\u3400-\u9FFF]/u;
+const DURATION_PATTERN = /(\d+(?:\.\d+)?)\s*(seconds?|secs?|s|minutes?|mins?|m)\b/i;
+
+export function formatVideoModelEstimatedDuration(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const match = value.match(DURATION_PATTERN);
+  if (!match) return null;
+  const amount = match[1];
+  const unit = match[2].toLowerCase();
+  return /^(minutes?|mins?|m)$/.test(unit) ? `预计 ${amount} 分钟` : `预计 ${amount} 秒`;
+}
+
+export function getVideoModelDescription(value: unknown): string {
+  return typeof value === "string" && CHINESE_TEXT_PATTERN.test(value)
+    ? value
+    : "暂无中文模型说明";
+}

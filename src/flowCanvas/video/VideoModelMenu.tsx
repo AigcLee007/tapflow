@@ -9,7 +9,7 @@ import {
 } from "../../components/menu/menuStyles";
 import { useDismissibleLayer } from "../../components/menu/useDismissibleLayer";
 import type { VideoGenerationBlocker, VideoModelOption } from "./videoTypes";
-import { VIDEO_UI_BLOCKER_COPY, VIDEO_UI_COPY } from "./videoUiCopy";
+import { formatVideoModelEstimatedDuration, getVideoModelDescription, VIDEO_UI_BLOCKER_COPY, VIDEO_UI_COPY } from "./videoUiCopy";
 
 type VideoModelMenuProps = {
   error: string | null;
@@ -147,15 +147,16 @@ export function VideoModelMenu({
         const descriptionId = `${menuId}-${index}-description`;
         const blockerId = `${menuId}-${index}-blocker`;
         const blockerMessage = option.blocker ? BLOCKER_MESSAGES[option.blocker] : null;
-        const description = option.description ?? "";
+        const description = getVideoModelDescription(option.description);
+        const estimatedDuration = formatVideoModelEstimatedDuration(option.estimatedDurationLabel);
 
         return (
           <button
             key={option.id}
             ref={(element) => { optionRefs.current[index] = element; }}
-            aria-describedby={[description && descriptionId, blockerMessage && blockerId].filter(Boolean).join(" ") || undefined}
+            aria-describedby={[descriptionId, blockerMessage && blockerId].filter(Boolean).join(" ")}
             aria-disabled={disabled || undefined}
-            aria-label={`${option.label}${option.estimatedDurationLabel ? `, ${option.estimatedDurationLabel}` : ""}${blockerMessage ? `, ${blockerMessage}` : ""}`}
+            aria-label={`${option.label}${estimatedDuration ? `, ${estimatedDuration}` : ""}${blockerMessage ? `, ${blockerMessage}` : ""}`}
             aria-selected={selected}
             className={`${MENU_ITEM_CLASS} relative h-[38px] ${active ? "bg-white/[0.088]" : ""} ${disabled ? "cursor-not-allowed text-white/45" : "focus:bg-white/[0.088] focus:outline-none"}`.trim()}
             id={`${menuId}-${index}`}
@@ -178,19 +179,17 @@ export function VideoModelMenu({
             </span>
             <span className="min-w-0 flex-1">
               <span className={`${MENU_ITEM_PRIMARY_CLASS} block truncate`}>{option.label}</span>
-              {option.estimatedDurationLabel ? (
-                <span className={`${MENU_ITEM_SECONDARY_CLASS} block truncate`}>{option.estimatedDurationLabel}</span>
+              {estimatedDuration ? (
+                <span className={`${MENU_ITEM_SECONDARY_CLASS} block truncate`}>{estimatedDuration}</span>
               ) : null}
-              {description ? (
-                <span
-                  className={active
-                    ? `${MENU_ITEM_SECONDARY_CLASS} absolute left-[calc(100%+8px)] top-0 z-10 w-[220px] rounded-[10px] border border-white/10 bg-[#1c1c20] px-2 py-1.5 shadow-[0_8px_20px_rgba(0,0,0,0.35)] line-clamp-2`
-                    : "sr-only"}
-                  id={descriptionId}
-                >
-                  {description}
-                </span>
-              ) : null}
+              <span
+                className={active
+                  ? `${MENU_ITEM_SECONDARY_CLASS} absolute left-[calc(100%+8px)] top-0 z-10 w-[220px] rounded-[10px] border border-white/10 bg-[#1c1c20] px-2 py-1.5 shadow-[0_8px_20px_rgba(0,0,0,0.35)] line-clamp-2`
+                  : "sr-only"}
+                id={descriptionId}
+              >
+                {description}
+              </span>
               {blockerMessage ? (
                 <span className={`${MENU_ITEM_SECONDARY_CLASS} block truncate`} id={blockerId}>{blockerMessage}</span>
               ) : null}

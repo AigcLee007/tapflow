@@ -8,7 +8,7 @@ import type { VideoModelOption } from "./videoTypes";
 const model = (overrides: Partial<VideoModelOption> = {}): VideoModelOption => ({
   blocker: null,
   capabilities: createSafeDefaultVideoCapabilities(),
-  description: "Fast motion and cinematic composition for creator videos.",
+  description: "适合电影感动态镜头的创作视频模型。",
   estimatedCredits: 12,
   estimatedDurationLabel: "About 1 minute",
   id: "creator-video-1",
@@ -23,19 +23,28 @@ describe("VideoModelMenu", () => {
 
     const option = screen.getByRole("option", { name: /Creator Video 1\.0/ });
     expect(option.textContent).toContain("Creator Video 1.0");
-    expect(option.textContent).toContain("About 1 minute");
-    expect(screen.getByText(/Fast motion and cinematic composition/).className).toContain("sr-only");
+    expect(option.textContent).toContain("预计 1 分钟");
+    expect(screen.getByText(/适合电影感动态镜头/).className).toContain("sr-only");
 
     fireEvent.mouseEnter(option);
-    expect(screen.getByText(/Fast motion and cinematic composition/).className).not.toContain("sr-only");
+    expect(screen.getByText(/适合电影感动态镜头/).className).not.toContain("sr-only");
 
     fireEvent.mouseLeave(option);
     fireEvent.focus(option);
-    expect(screen.getByText(/Fast motion and cinematic composition/).className).not.toContain("sr-only");
+    expect(screen.getByText(/适合电影感动态镜头/).className).not.toContain("sr-only");
 
     fireEvent.blur(option);
     render(<VideoModelMenu error={null} loading={false} onChange={vi.fn()} onRetry={vi.fn()} options={[model()]} value="creator-video-1" />);
-    expect(screen.getAllByText(/Fast motion and cinematic composition/)[1]?.className).not.toContain("sr-only");
+    expect(screen.getAllByText(/适合电影感动态镜头/)[1]?.className).not.toContain("sr-only");
+  });
+
+  test("does not surface arbitrary English catalog metadata to creators", () => {
+    render(<VideoModelMenu error={null} loading={false} onChange={vi.fn()} onRetry={vi.fn()} options={[model({ description: "Fast motion and cinematic composition.", estimatedDurationLabel: "Fast response" })]} value="creator-video-1" />);
+
+    expect(screen.queryByText("Fast response")).toBeNull();
+    expect(screen.queryByText("Fast motion and cinematic composition.")).toBeNull();
+    expect(screen.getByText("暂无中文模型说明")).toBeTruthy();
+    expect(screen.getByRole("option", { name: /Creator Video 1\.0/ }).getAttribute("aria-describedby")).toBeTruthy();
   });
 
   test("does not render a search input or internal provider and route fields", () => {
