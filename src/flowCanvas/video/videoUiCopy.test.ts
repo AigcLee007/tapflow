@@ -17,6 +17,11 @@ function collectCopyValues(value: unknown): string[] {
 }
 
 describe("VIDEO_UI_COPY", () => {
+  test("keeps ratio-control Chinese copy centralized", () => {
+    expect(VIDEO_UI_COPY.auto).toBe("自动");
+    expect(VIDEO_UI_COPY.unsupportedByCurrentModel).toBe("当前模型不支持");
+  });
+
   test("provides non-empty Chinese creator copy without replacement characters or mojibake", () => {
     const values = collectCopyValues({
       VIDEO_UI_COPY,
