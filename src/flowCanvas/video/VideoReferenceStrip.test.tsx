@@ -93,6 +93,66 @@ describe("VideoReferenceStrip", () => {
     }));
   });
 
+  test("replacing a role removes only that role's stale context palette references", () => {
+    const onChange = vi.fn();
+    const value = createValue();
+    value.videoGeneration = {
+      ...value.videoGeneration,
+      mode: "all_reference",
+      referenceRolesByKey: {
+        subject: { role: "subject", source: { kind: "asset", id: "asset-a" } },
+        scene: { role: "scene", source: { kind: "asset", id: "asset-scene" } },
+      },
+      contextPaletteRefs: [
+        { role: "subject", source: { kind: "asset", id: "asset-a" }, colorToken: "洋红" },
+        { role: "scene", source: { kind: "asset", id: "asset-scene" }, colorToken: "湖蓝" },
+      ],
+    };
+    render(
+      <VideoReferenceStrip currentNodeId="video-node" onChange={onChange} onUploadReference={vi.fn()} value={value} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "选择参考素材人物" }));
+    act(() => {
+      (pickerProps.current?.onPickAsset as (assetId: string) => void)("asset-b");
+    });
+
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      videoGeneration: expect.objectContaining({
+        contextPaletteRefs: [{ role: "scene", source: { kind: "asset", id: "asset-scene" }, colorToken: "湖蓝" }],
+      }),
+    }));
+  });
+
+  test("clearing a role removes all of that role's context palette references", () => {
+    const onChange = vi.fn();
+    const value = createValue();
+    value.videoGeneration = {
+      ...value.videoGeneration,
+      mode: "all_reference",
+      referenceRolesByKey: {
+        subject: { role: "subject", source: { kind: "asset", id: "asset-a" } },
+        scene: { role: "scene", source: { kind: "asset", id: "asset-scene" } },
+      },
+      contextPaletteRefs: [
+        { role: "subject", source: { kind: "asset", id: "asset-a" }, colorToken: "洋红" },
+        { role: "subject", source: { kind: "asset", id: "asset-old" }, colorToken: "湖蓝" },
+        { role: "scene", source: { kind: "asset", id: "asset-scene" }, colorToken: "湖蓝" },
+      ],
+    };
+    render(
+      <VideoReferenceStrip currentNodeId="video-node" onChange={onChange} onUploadReference={vi.fn()} value={value} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "清除参考素材人物" }));
+
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      videoGeneration: expect.objectContaining({
+        contextPaletteRefs: [{ role: "scene", source: { kind: "asset", id: "asset-scene" }, colorToken: "湖蓝" }],
+      }),
+    }));
+  });
+
   test("closes an invalidated role picker and ignores its stale selection callback after a mode change", () => {
     const onChange = vi.fn();
     const value = createValue();

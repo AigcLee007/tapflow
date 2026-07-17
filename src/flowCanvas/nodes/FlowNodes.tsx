@@ -7505,8 +7505,37 @@ export const VideoNodeComponent = memo(function VideoNode({
   const { showSingleNodeControls } = useNodeSelectionState(id, selected);
   const showNodeEditor = showSingleNodeControls;
   const videoCatalog = useVideoGenerationCatalog();
+  const videoParams = useMemo(() => normalizeVideoGenerationParams(d).params, [d]);
+  const videoReferenceAssetIds = useMemo(
+    () => Array.from(new Set(Object.values(videoParams.referenceRolesByKey)
+      .flatMap((assignment) => assignment?.source.kind === 'asset' ? [assignment.source.id] : []))),
+    [videoParams.referenceRolesByKey],
+  );
+  const videoReferenceAssetIdsKey = videoReferenceAssetIds.join('|');
+  const [videoReferencePreviewUrlsBySource, setVideoReferencePreviewUrlsBySource] = useState<Record<string, string>>({});
   
   const isTargeting = !!connectionNodeId && connectionNodeId !== id && hovered;
+
+  useEffect(() => {
+    if (videoReferenceAssetIds.length === 0) {
+      setVideoReferencePreviewUrlsBySource((current) => Object.keys(current).length === 0 ? current : {});
+      return;
+    }
+    let cancelled = false;
+    void Promise.all(videoReferenceAssetIds.map(async (assetId) => {
+      const asset = await getAsset(assetId).catch(() => null);
+      const previewUrl = asset && typeof asset.previewUrl === 'string' ? asset.previewUrl : '';
+      return previewUrl ? [`asset:${assetId}`, previewUrl] as const : null;
+    })).then((entries) => {
+      if (cancelled) return;
+      const previews: Record<string, string> = {};
+      entries.forEach((entry) => {
+        if (entry) previews[entry[0]] = entry[1];
+      });
+      setVideoReferencePreviewUrlsBySource(previews);
+    });
+    return () => { cancelled = true; };
+  }, [videoReferenceAssetIdsKey]);
 
   const runtimeVideoAssets = Array.isArray(runtimeNodeOutput?.assets)
     ? runtimeNodeOutput.assets.filter((asset) => asset.kind === 'video' && asset.downloadUrl)
@@ -7636,7 +7665,7 @@ export const VideoNodeComponent = memo(function VideoNode({
       )}
 
       {showNodeEditor && (VIDEO_COMPOSER_V2_ENABLED
-        ? <VideoNodeComposer catalog={videoCatalog} data={d} generating={isGenerating} nodeId={id} onGenerate={handleGenerate} onUpdate={(patch) => updateNodeData(id, patch)} selected={showNodeEditor} />
+        ? <VideoNodeComposer catalog={videoCatalog} data={d} generating={isGenerating} nodeId={id} onGenerate={handleGenerate} onUpdate={(patch) => updateNodeData(id, patch)} referencePreviewUrlsBySource={videoReferencePreviewUrlsBySource} selected={showNodeEditor} />
         : <VideoNodeLegacyComposer data={d} effectivePosterUrl={effectivePosterUrl} generating={isGenerating} nodeId={id} onGenerate={handleGenerate} onUpdate={(patch) => updateNodeData(id, patch)} runtimeVideoAssets={runtimeVideoAssets} />
       )}
 

@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
 
 import { createDefaultVideoGenerationParams } from "./videoGenerationParams";
-import { VideoPalettePopover } from "./VideoPalettePopover";
+import { isSafePreviewUrl, VideoPalettePopover } from "./VideoPalettePopover";
 
 describe("VideoPalettePopover", () => {
   test("renders only populated semantic Chinese groups without raw source ids", () => {
@@ -26,6 +26,66 @@ describe("VideoPalettePopover", () => {
     expect(screen.queryByText("风格颜色")).toBeNull();
     expect(screen.queryByText("asset-subject-123")).toBeNull();
     expect(screen.queryByText("asset-prop-456")).toBeNull();
+  });
+
+  test("renders a Chinese role fallback source card without exposing a raw asset id", () => {
+    const value = {
+      ...createDefaultVideoGenerationParams(),
+      referenceRolesByKey: {
+        portrait: { role: "subject" as const, source: { kind: "asset" as const, id: "asset-subject-123" } },
+      },
+    };
+    render(<VideoPalettePopover onChange={vi.fn()} value={value} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "调色盘" }));
+
+    expect(screen.getByRole("img", { name: "人物参考" })).toBeTruthy();
+    expect(screen.queryByText("asset-subject-123")).toBeNull();
+  });
+
+  test("renders a provided safe source thumbnail and rejects unsafe URLs", () => {
+    const value = {
+      ...createDefaultVideoGenerationParams(),
+      referenceRolesByKey: {
+        portrait: { role: "subject" as const, source: { kind: "asset" as const, id: "asset-subject-123" } },
+      },
+    };
+    const { rerender } = render(
+      <VideoPalettePopover
+        onChange={vi.fn()}
+        sourceDisplayByRole={{ subject: { label: "人物参考", thumbnailUrl: "/api/v2/assets/asset-subject-123/preview" } }}
+        value={value}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "调色盘" }));
+    expect(screen.getByRole("img", { name: "人物参考" }).getAttribute("src")).toBe("/api/v2/assets/asset-subject-123/preview");
+
+    rerender(<VideoPalettePopover onChange={vi.fn()} sourceDisplayByRole={{ subject: { label: "人物参考", thumbnailUrl: "https://signed.example/secret" } }} value={value} />);
+    expect(screen.getByRole("img", { name: "人物参考" }).getAttribute("src")).not.toBe("https://signed.example/secret");
+  });
+
+  test("only accepts same-origin query-free asset preview paths", () => {
+    const allowed = [
+      "/assets/subject.webp",
+      "/api/v2/assets/asset-subject-123/preview",
+      "/video-camera-library/dolly-in.webp",
+    ];
+    const rejected = [
+      "https://signed.example/subject.webp",
+      `${window.location.origin}/assets/subject.webp`,
+      "//signed.example/subject.webp",
+      "data:image/webp;base64,abc",
+      "blob:https://tapflow.test/subject",
+      "/assets/subject.webp?X-Amz-Signature=secret",
+      "/assets/subject.webp#fragment",
+      "/redirect?url=/assets/subject.webp",
+      "/unapproved/subject.webp",
+      "/api/v2/assets/asset-subject-123/preview?token=secret",
+    ];
+
+    for (const url of allowed) expect(isSafePreviewUrl(url)).toBe(true);
+    for (const url of rejected) expect(isSafePreviewUrl(url)).toBe(false);
   });
 
   test("context color updates only context palette refs and exposes a non-color selected marker", () => {

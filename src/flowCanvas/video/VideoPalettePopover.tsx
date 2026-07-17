@@ -1,4 +1,4 @@
-import { Check, Palette } from "lucide-react";
+import { Box, Check, Frame, Image as ImageIcon, Palette, Sparkles, UserRound } from "lucide-react";
 
 import { MenuSurface } from "../../components/menu/MenuSurface";
 import { useDismissibleLayer } from "../../components/menu/useDismissibleLayer";
@@ -11,15 +11,23 @@ import {
 import type {
   VideoContextPaletteRef,
   VideoGenerationParamsV1,
+  VideoReferenceRole,
   VideoReferenceRoleAssignment,
 } from "./videoTypes";
+import { VIDEO_UI_REFERENCE_ROLE_COPY } from "./videoUiCopy";
+
+export type VideoPaletteSourceDisplay = {
+  label: string;
+  thumbnailUrl?: string;
+};
 
 type VideoPalettePopoverProps = {
   onChange: (value: VideoGenerationParamsV1) => void;
+  sourceDisplayByRole?: Partial<Record<VideoReferenceRole, VideoPaletteSourceDisplay>>;
   value: VideoGenerationParamsV1;
 };
 
-export function VideoPalettePopover({ onChange, value }: VideoPalettePopoverProps) {
+export function VideoPalettePopover({ onChange, sourceDisplayByRole, value }: VideoPalettePopoverProps) {
   const layer = useDismissibleLayer("video-palette-popover");
   const assignments = Object.values(value.referenceRolesByKey).filter(isRoleAssignment);
   const emptyReferenceRolesCopy = VIDEO_UI_COPY.noReferenceRolesForContextPalette.replace(/[。.]$/, "");
@@ -66,9 +74,16 @@ export function VideoPalettePopover({ onChange, value }: VideoPalettePopoverProp
                   if (!assignment) return null;
                   const groupLabel = group.title;
                   const groupHeadingId = `video-context-palette-${assignment.role}`;
+                  const sourceDisplay = getSafeSourceDisplay(assignment.role, sourceDisplayByRole?.[assignment.role]);
                   return (
                     <div key={groupLabel} role="group" aria-labelledby={groupHeadingId}>
-                      <h4 id={groupHeadingId} className="mb-1.5 text-[11px] font-bold leading-none text-white/65">{groupLabel}</h4>
+                      <div className="mb-1.5 flex items-center gap-2">
+                        <VideoPaletteSourceThumbnail display={sourceDisplay} role={assignment.role} />
+                        <div className="min-w-0">
+                          <h4 id={groupHeadingId} className="text-[11px] font-bold leading-none text-white/80">{groupLabel}</h4>
+                          <p className="mt-1 truncate text-[10px] font-medium leading-none text-white/45">{sourceDisplay.label}</p>
+                        </div>
+                      </div>
                       <div className="grid grid-cols-6 gap-1.5">
                         {VIDEO_CONTEXT_COLOR_PRESETS.map((color) => {
                           const selected = value.contextPaletteRefs.some((entry) => sameSourceAndRole(entry, assignment)
@@ -145,4 +160,53 @@ function sameSourceAndRole(entry: VideoContextPaletteRef, assignment: VideoRefer
   return entry.role === assignment.role
     && entry.source.kind === assignment.source.kind
     && entry.source.id === assignment.source.id;
+}
+
+function VideoPaletteSourceThumbnail({ display, role }: { display: VideoPaletteSourceDisplay; role: VideoReferenceRole }) {
+  if (display.thumbnailUrl) {
+    return <img alt={display.label} className="h-8 w-8 shrink-0 rounded-[8px] border border-white/15 object-cover" src={display.thumbnailUrl} />;
+  }
+  const Icon = getRoleIcon(role);
+  return (
+    <span aria-label={display.label} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] border border-white/15 bg-white/[0.06] text-white/55" role="img">
+      <Icon aria-hidden="true" size={15} />
+    </span>
+  );
+}
+
+function getSafeSourceDisplay(role: VideoReferenceRole, candidate?: VideoPaletteSourceDisplay): VideoPaletteSourceDisplay {
+  const fallback = getFallbackSourceLabel(role);
+  const label = candidate && isSafeChineseSourceLabel(candidate.label) ? candidate.label : fallback;
+  return {
+    label,
+    thumbnailUrl: candidate?.thumbnailUrl && isSafePreviewUrl(candidate.thumbnailUrl) ? candidate.thumbnailUrl : undefined,
+  };
+}
+
+function getFallbackSourceLabel(role: VideoReferenceRole): string {
+  const roleLabel = VIDEO_UI_REFERENCE_ROLE_COPY[role];
+  return role === "reference" ? roleLabel : `${roleLabel}参考`;
+}
+
+function getRoleIcon(role: VideoReferenceRole) {
+  if (role === "subject") return UserRound;
+  if (role === "scene") return ImageIcon;
+  if (role === "prop") return Box;
+  if (role === "style") return Sparkles;
+  return Frame;
+}
+
+function isSafeChineseSourceLabel(value: string): boolean {
+  return /^[\u3400-\u9fff0-9 ]{2,16}$/u.test(value);
+}
+
+export function isSafePreviewUrl(value: string): boolean {
+  try {
+    if (!value.startsWith("/") || value.startsWith("//")) return false;
+    const url = new URL(value, window.location.origin);
+    if (url.origin !== window.location.origin || url.search || url.hash) return false;
+    return ["/api/v2/assets/", "/assets/", "/video-camera-library/"].some((prefix) => url.pathname.startsWith(prefix));
+  } catch {
+    return false;
+  }
 }

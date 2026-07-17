@@ -11,6 +11,10 @@ vi.mock("./useVideoGenerationCatalog", () => ({
   useVideoGenerationCatalog: () => ({ error: null, loading: true, models: [], retry: vi.fn() }),
 }));
 
+vi.mock("../nodes/ReferenceSourcePicker", () => ({
+  ReferenceSourcePicker: () => null,
+}));
+
 describe("VideoNodeComposer", () => {
   test("shows the stable Chinese camera label in its trigger", () => {
     const data = {
@@ -31,6 +35,37 @@ describe("VideoNodeComposer", () => {
 
     rerender(<VideoNodeComposer data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} selected />);
     expect(screen.getByLabelText("视频提示词")).toBeTruthy();
+  });
+
+  test("uses a safe in-memory asset preview for the active palette role without exposing its raw id", () => {
+    const data = {
+      generationPrompt: "",
+      params: {
+        videoGeneration: {
+          ...createDefaultVideoGenerationParams(),
+          mode: "all_reference",
+          referenceRolesByKey: {
+            subject: { role: "subject", source: { kind: "asset", id: "asset-subject-123" } },
+          },
+        },
+      },
+    } as any;
+
+    render(
+      <VideoNodeComposer
+        data={data}
+        generating={false}
+        nodeId="video-1"
+        onGenerate={vi.fn()}
+        onUpdate={vi.fn()}
+        referencePreviewUrlsBySource={{ "asset:asset-subject-123": "/assets/subject.webp" }}
+        selected
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "调色盘" }));
+    expect(screen.getByRole("img", { name: "人物参考" }).getAttribute("src")).toBe("/assets/subject.webp");
+    expect(document.body.textContent).not.toContain("asset-subject-123");
   });
 
   test("renders creator-facing composer metadata in Chinese", () => {

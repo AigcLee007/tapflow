@@ -66,7 +66,14 @@ export function VideoReferenceStrip({ currentNodeId, onChange, onUploadReference
     onChange({
       referenceAssetItemIds: nextAssetIds,
       referenceOrder: nextOrder,
-      videoGeneration: { ...value.videoGeneration, referenceRolesByKey },
+      // A palette assignment belongs to the active role, not to an orphaned
+      // source. Replacing or clearing the role must therefore discard every
+      // older palette entry for that role while retaining other roles.
+      videoGeneration: {
+        ...value.videoGeneration,
+        contextPaletteRefs: value.videoGeneration.contextPaletteRefs.filter((entry) => entry.role !== role),
+        referenceRolesByKey,
+      },
     });
   };
 

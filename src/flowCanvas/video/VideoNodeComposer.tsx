@@ -14,13 +14,23 @@ import { VideoReferenceStrip } from "./VideoReferenceStrip";
 import { useVideoGenerationCatalog } from "./useVideoGenerationCatalog";
 import { correctVideoGenerationParams } from "./videoGenerationCapabilities";
 import { emitVideoComposerDiagnostic } from "./videoComposerDiagnostics";
-import type { VideoGenerationParamsV1 } from "./videoTypes";
-import { VIDEO_UI_COPY } from "./videoUiCopy";
+import type { VideoGenerationParamsV1, VideoReferenceRole } from "./videoTypes";
+import type { VideoPaletteSourceDisplay } from "./VideoPalettePopover";
+import { VIDEO_UI_COPY, VIDEO_UI_REFERENCE_ROLE_COPY } from "./videoUiCopy";
 import { useDismissibleLayer } from "../../components/menu/useDismissibleLayer";
 
-type Props = { catalog?: ReturnType<typeof useVideoGenerationCatalog>; data: FlowNodeData; generating: boolean; nodeId: string; onGenerate: () => void; onUpdate: (patch: Partial<FlowNodeData>) => void; selected: boolean };
+type Props = {
+  catalog?: ReturnType<typeof useVideoGenerationCatalog>;
+  data: FlowNodeData;
+  generating: boolean;
+  nodeId: string;
+  onGenerate: () => void;
+  onUpdate: (patch: Partial<FlowNodeData>) => void;
+  referencePreviewUrlsBySource?: Record<string, string | undefined>;
+  selected: boolean;
+};
 
-export function VideoNodeComposer({ catalog: catalogOverride, data, generating, nodeId, onGenerate, onUpdate, selected }: Props) {
+export function VideoNodeComposer({ catalog: catalogOverride, data, generating, nodeId, onGenerate, onUpdate, referencePreviewUrlsBySource, selected }: Props) {
   const loadedCatalog = useVideoGenerationCatalog();
   const catalog = catalogOverride ?? loadedCatalog;
   const [modelOpen, setModelOpen] = useState(false);
@@ -36,6 +46,10 @@ export function VideoNodeComposer({ catalog: catalogOverride, data, generating, 
     onDismiss: () => parameterButtonRef.current?.focus(),
   });
   const params = useMemo(() => normalizeVideoGenerationParams(data).params, [data]);
+  const sourceDisplayByRole = useMemo(
+    () => resolvePaletteSourceDisplays(params, referencePreviewUrlsBySource),
+    [params, referencePreviewUrlsBySource],
+  );
   const option = catalog.models.find((model) => model.id === data.modelId) ?? null;
   const capabilities = option?.capabilities ?? null;
   const capabilityCorrection = useMemo(
@@ -98,11 +112,32 @@ export function VideoNodeComposer({ catalog: catalogOverride, data, generating, 
     <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-white/10 pt-2 max-md:flex-col max-md:items-stretch">
       <div className="relative"><button ref={modelButtonRef} aria-expanded={modelOpen} aria-label={VIDEO_UI_COPY.chooseVideoModel} className="inline-flex h-[38px] items-center gap-[7px] rounded-[10px] border border-white/10 bg-black/20 px-2 text-xs font-bold" onClick={() => { if (modelOpen) closeModel(); else { parameterLayer.dismissLayer(); setModelOpen(true); } }} type="button"><Sparkles size={16} />{option?.label ?? VIDEO_UI_COPY.chooseModel}</button>{modelOpen ? <div className="absolute bottom-[calc(100%+8px)] left-0 z-[1300]"><VideoModelMenu error={catalog.error} loading={catalog.loading} onChange={handleModelChange} onClose={closeModel} onRetry={catalog.retry} options={catalog.models} value={data.modelId ?? null} /></div> : null}</div>
       <div className="relative"><button ref={parameterButtonRef} aria-expanded={parameterLayer.open} aria-label={VIDEO_UI_COPY.videoParameters} className="inline-flex h-[38px] items-center gap-[7px] rounded-[10px] border border-white/10 bg-black/20 px-2 text-xs font-bold" onClick={() => { if (parameterLayer.open) parameterLayer.dismissLayer(); else { setModelOpen(false); parameterLayer.openLayer(); } }} type="button"><SlidersHorizontal size={16} />参数</button>{parameterLayer.open ? <div ref={parameterLayer.ref as React.RefObject<HTMLDivElement>} aria-label={VIDEO_UI_COPY.videoParameters} className="absolute bottom-[calc(100%+8px)] left-0 z-[1300] w-[min(480px,calc(100vw-32px))] rounded-[16px] border border-white/10 bg-[#1c1c20] p-3 shadow-2xl" role="dialog"><VideoParameterPanel capabilities={capabilities} onChange={setParams} value={params} /></div> : null}</div>
-      <VideoPalettePopover onChange={setParams} value={params} />
+      <VideoPalettePopover onChange={setParams} sourceDisplayByRole={sourceDisplayByRole} value={params} />
       <VideoHumanReviewControl onRequestVerification={() => setParams({ ...params, humanReview: { ...params.humanReview, status: "verified", verifiedAt: new Date().toISOString() } })} value={params.humanReview} />
       <span className="ml-auto inline-flex h-[38px] items-center gap-1 text-xs font-bold text-white/55"><Coins size={15} />{cost > 0 ? `${cost} 点数` : "未配置"}</span>
       <button aria-label={VIDEO_UI_COPY.generateVideo} className="inline-flex h-[38px] items-center gap-1 rounded-[10px] bg-sky-300 px-3 text-xs font-bold text-slate-950 disabled:opacity-50" disabled={generating} onClick={onGenerate} type="button"><CheckCircle2 size={16} />{generating ? VIDEO_UI_COPY.generating : VIDEO_UI_COPY.generate}</button>
     </div>
     {cameraOpen ? <VideoCameraLibrary manifest={manifest} onChange={(cameraMotionId) => setParams({ ...params, cameraMotionId })} onClose={() => setCameraOpen(false)} triggerRef={cameraButtonRef} value={params.cameraMotionId} /> : null}
   </div>;
+}
+
+function resolvePaletteSourceDisplays(
+  params: VideoGenerationParamsV1,
+  previewUrlsBySource?: Record<string, string | undefined>,
+): Partial<Record<VideoReferenceRole, VideoPaletteSourceDisplay>> | undefined {
+  if (!previewUrlsBySource) return undefined;
+  const displays: Partial<Record<VideoReferenceRole, VideoPaletteSourceDisplay>> = {};
+  Object.values(params.referenceRolesByKey).forEach((assignment) => {
+    if (!assignment) return;
+    const sourceKey = `${assignment.source.kind === "asset" ? "asset" : "upstream"}:${assignment.source.id}`;
+    const thumbnailUrl = previewUrlsBySource[sourceKey];
+    if (!thumbnailUrl) return;
+    displays[assignment.role] = { label: getPaletteRoleLabel(assignment.role), thumbnailUrl };
+  });
+  return Object.keys(displays).length > 0 ? displays : undefined;
+}
+
+function getPaletteRoleLabel(role: VideoReferenceRole): string {
+  const roleLabel = VIDEO_UI_REFERENCE_ROLE_COPY[role];
+  return role === "reference" ? roleLabel : `${roleLabel}参考`;
 }
