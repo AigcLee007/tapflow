@@ -11,7 +11,9 @@ export type VideoNodeSmokeResult = {
   cameraGridColumns: number;
   cameraPresetCount: number;
   composerVisible: boolean;
+  durationRangeIsDefault: boolean;
   modelMenuNoSearch: boolean;
+  parameterDialogIsTopLayer: boolean;
   resolutionOptions: string[];
 };
 
@@ -223,8 +225,16 @@ await desktopPage.locator('button[aria-label="关闭运镜库"]').click();
 
 await desktopPage.locator('button[aria-label="视频参数"]').click();
 await desktopPage.waitForSelector('[role="dialog"][aria-label="视频参数"]', { timeout: 15000 });
+const parameterDialog = desktopPage.locator('[role="dialog"][aria-label="视频参数"]');
+const parameterDialogIsTopLayer = await parameterDialog.evaluate((dialog) => dialog.parentElement === document.body
+  && getComputedStyle(dialog).position === 'fixed'
+  && Number(getComputedStyle(dialog).zIndex) >= 10020);
 const resolutionOptions = await desktopPage.locator('[role="dialog"][aria-label="视频参数"] [role="radio"]').allTextContents();
 const countOptions = await desktopPage.locator('[role="radiogroup"][aria-label="生成数量"] [role="radio"]').allTextContents();
+const durationRange = await desktopPage.locator('input[aria-label="视频时长滑杆"]').evaluate((slider) => ({
+  max: slider.getAttribute('max'), min: slider.getAttribute('min'), step: slider.getAttribute('step'),
+}));
+const durationRangeIsDefault = durationRange.min === '4' && durationRange.max === '15' && durationRange.step === '1';
 const durationControlCount = await desktopPage.locator('input[aria-label="视频时长滑杆"], input[aria-label="视频时长输入"]').count();
 const audioGroupCount = await desktopPage.getByRole('radiogroup', { name: '生成音频' }).count();
 const hasDurationAudioAndCounts = durationControlCount === 2
@@ -256,9 +266,9 @@ await mobilePage.locator('button[aria-label="生成视频"]').click();
 await mobilePage.waitForFunction(() => window.videoNodeSmokeState.workflowRequestCount === 0 && Boolean(document.querySelector('[aria-label="视频创作面板"]')));
 const blockedGenerationDidNotCreateRun = await mobilePage.evaluate(() => window.videoNodeSmokeState.workflowRequestCount === 0);
 
-const result = { blockedGenerationDidNotCreateRun, cameraGridColumns, cameraPresetCount, composerVisible, modelMenuNoSearch, resolutionOptions };
-if (!composerVisible || !modelMenuNoSearch || !hoverDescriptionVisible || !hasDurationAudioAndCounts || !resolutionOptions.includes('4K') || cameraGridColumns !== 4 || cameraPresetCount !== 23 || !reducedMotionVideoIsPaused || !blockedGenerationDidNotCreateRun) {
-  throw new Error(JSON.stringify({ ...result, hasDurationAudioAndCounts, durationControlCount, audioGroupCount, countOptions, hoverDescriptionVisible, reducedMotionVideoIsPaused }));
+const result = { blockedGenerationDidNotCreateRun, cameraGridColumns, cameraPresetCount, composerVisible, durationRangeIsDefault, modelMenuNoSearch, parameterDialogIsTopLayer, resolutionOptions };
+if (!composerVisible || !modelMenuNoSearch || !hoverDescriptionVisible || !hasDurationAudioAndCounts || !durationRangeIsDefault || !parameterDialogIsTopLayer || !resolutionOptions.includes('4K') || cameraGridColumns !== 4 || cameraPresetCount !== 23 || !reducedMotionVideoIsPaused || !blockedGenerationDidNotCreateRun) {
+  throw new Error(JSON.stringify({ ...result, hasDurationAudioAndCounts, durationControlCount, durationRange, audioGroupCount, countOptions, hoverDescriptionVisible, reducedMotionVideoIsPaused }));
 }
 return JSON.stringify({ ...result, status: 'ok' });
 } finally {

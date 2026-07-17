@@ -27,9 +27,10 @@ describe("video generation capabilities", () => {
     expect(capabilities).toMatchObject({
       aspectRatios: ["auto", "16:9", "4:3", "1:1", "3:4", "9:16", "21:9"],
       confirmedByRoute: false,
-      maxDurationSeconds: 8,
+      durationStepSeconds: 1,
+      maxDurationSeconds: 15,
       maxCount: 4,
-      minDurationSeconds: 2,
+      minDurationSeconds: 4,
       resolutions: ["480P", "720P", "1080P", "4K"],
       supportedModes: ["text_to_video", "all_reference", "image_to_video", "first_last_frame", "image_reference"],
       supportsAudio: true,

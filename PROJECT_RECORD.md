@@ -3,6 +3,18 @@
 Last updated: 2026-07-17
 Maintainers: project team + Codex sessions
 
+## 2026-07-17 - Video Duration Slider And Parameter Layering Fix
+
+- changed the unconfigured/unconfirmed video capability fallback from `2-8` seconds to `4-15` seconds with a one-second step; route-confirmed model minimum, maximum, and step values remain authoritative.
+- rebuilt the duration section as a compact LibTV-style single row with a flexible range slider and a small numeric seconds field, removing the redundant minimum/maximum text row and nested panel surface.
+- moved the video parameter panel into a body Portal with fixed positioning, 16px viewport clamping, above/below placement, resize/scroll repositioning, and z-index `10020`, so canvas nodes, handles, toolbars, and tooltips cannot cover it.
+- preserved model/parameter mutual exclusion, outside-click and Escape dismissal, focus restoration, capability correction, and generation preflight boundaries.
+- validation:
+  - focused video regression passed: 25 test files, 145 tests.
+  - `npm.cmd run smoke:video-node` passed with `durationRangeIsDefault: true`, `parameterDialogIsTopLayer: true`, and `status: ok`.
+  - `npm.cmd run build` passed with the existing Browserslist, dynamic-import, and chunk-size warnings.
+  - `npm.cmd run smoke:video-node-visual` timed out after 180 seconds in the local browser environment and produced no new visual artifacts; the functional smoke completed in a real browser and directly verified both reported regressions.
+
 ## 2026-07-17 - Video Node Visual Fidelity Rebaseline
 
 - migrated the worktree video camera manifest to version 2 and copied 23 commercially authorized DramaClaw MP4 previews into `public/video-camera-library/v2/`; stable motion IDs remain unchanged and runtime validation requires local H.264 paths with the authorization source marker.

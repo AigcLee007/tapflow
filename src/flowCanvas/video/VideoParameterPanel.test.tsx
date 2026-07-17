@@ -17,6 +17,7 @@ describe("VideoParameterPanel", () => {
 
     expect(document.querySelector("select")).toBeNull();
     expect(screen.queryByRole("menuitem")).toBeNull();
+    expect(screen.getByLabelText("视频参数内容").className).not.toContain("bg-[#242424]");
     expect(screen.getByRole("radiogroup", { name: "画面比例" })).toBeTruthy();
     expect(screen.getAllByRole("radio", { name: "自动" })).toHaveLength(1);
     for (const ratio of ["16:9", "4:3", "1:1", "3:4", "9:16", "21:9"]) {
@@ -30,6 +31,12 @@ describe("VideoParameterPanel", () => {
     for (const count of ["1 个", "2 个", "4 个"]) {
       expect(screen.getAllByRole("radio", { name: count })).toHaveLength(1);
     }
+    const slider = screen.getByRole("slider", { name: "视频时长滑杆" });
+    expect(slider.getAttribute("min")).toBe("4");
+    expect(slider.getAttribute("max")).toBe("15");
+    expect(screen.getByLabelText("视频时长控制").contains(slider)).toBe(true);
+    expect(screen.queryByText(/^最短 /)).toBeNull();
+    expect(screen.queryByText(/^最长 /)).toBeNull();
   });
 
   test("keeps unsupported resolution and count visible but disabled with a Chinese reason", () => {
@@ -140,7 +147,7 @@ describe("VideoParameterPanel", () => {
     expect(screen.getByRole("radio", { name: "开启" }).getAttribute("aria-disabled")).toBe("false");
     expect(screen.getByRole("radio", { name: "关闭" }).getAttribute("aria-disabled")).toBe("false");
   });
-  test("shows the effective duration range and announces only corrected durations", () => {
+  test("uses the effective model duration range and announces only corrected durations", () => {
     const onChange = vi.fn();
     const capabilities = createSafeDefaultVideoCapabilities();
     capabilities.confirmedByRoute = true;
@@ -150,8 +157,12 @@ describe("VideoParameterPanel", () => {
 
     render(<VideoParameterPanel capabilities={capabilities} onChange={onChange} value={createDefaultVideoGenerationParams()} />);
 
-    expect(screen.getByText("最短 3 秒")).toBeTruthy();
-    expect(screen.getByText("最长 7 秒")).toBeTruthy();
+    const slider = screen.getByRole("slider", { name: "视频时长滑杆" });
+    expect(slider.getAttribute("min")).toBe("3");
+    expect(slider.getAttribute("max")).toBe("7");
+    expect(slider.getAttribute("step")).toBe("2");
+    expect(screen.queryByText(/^最短 /)).toBeNull();
+    expect(screen.queryByText(/^最长 /)).toBeNull();
 
     const input = screen.getByLabelText("视频时长输入");
     fireEvent.change(input, { target: { value: "5" } });

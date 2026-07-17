@@ -97,6 +97,18 @@ describe("VideoNodeComposer", () => {
     expect(screen.getByRole("dialog", { name: "视频参数" })).toBeTruthy();
   });
 
+  test("renders the parameter panel as a fixed high-layer body portal", () => {
+    const data = { generationPrompt: "", params: { videoGeneration: createDefaultVideoGenerationParams() } } as any;
+    render(<VideoNodeComposer data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} selected />);
+
+    fireEvent.click(screen.getByRole("button", { name: "视频参数" }));
+    const dialog = screen.getByRole("dialog", { name: "视频参数" });
+
+    expect(dialog.parentElement).toBe(document.body);
+    expect(dialog.style.position).toBe("fixed");
+    expect(dialog.style.zIndex).toBe("10020");
+  });
+
   test("dismisses compact layers with Escape and restores focus to their trigger", () => {
     const data = { generationPrompt: "", params: { videoGeneration: createDefaultVideoGenerationParams() } } as any;
     render(<VideoNodeComposer data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} selected />);
@@ -110,6 +122,11 @@ describe("VideoNodeComposer", () => {
     const parameterButton = screen.getByRole("button", { name: "视频参数" });
     fireEvent.click(parameterButton);
     fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "视频参数" })).toBeNull();
+    expect(document.activeElement).toBe(parameterButton);
+
+    fireEvent.click(parameterButton);
+    fireEvent.pointerDown(document.body);
     expect(screen.queryByRole("dialog", { name: "视频参数" })).toBeNull();
     expect(document.activeElement).toBe(parameterButton);
   });

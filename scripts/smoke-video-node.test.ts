@@ -37,6 +37,8 @@ describe("video node browser smoke contract", () => {
       "resolutionOptions",
       "cameraPresetCount",
       "blockedGenerationDidNotCreateRun",
+      "durationRangeIsDefault",
+      "parameterDialogIsTopLayer",
     ]) {
       expect(code).toContain(field);
     }

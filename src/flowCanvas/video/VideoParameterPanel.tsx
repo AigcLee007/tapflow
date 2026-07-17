@@ -7,7 +7,6 @@ import {
 import { VideoAspectRatioGrid } from "./VideoAspectRatioGrid";
 import { VideoSegmentedControl } from "./VideoSegmentedControl";
 import { VIDEO_UI_COPY } from "./videoUiCopy";
-import { VIDEO_VISUAL_TOKENS } from "./videoVisualTokens";
 import type {
   VideoCount,
   VideoGenerationCapabilities,
@@ -78,7 +77,7 @@ export function VideoParameterPanel({ capabilities, onChange, value }: VideoPara
   }));
 
   return (
-    <div className={`w-full max-w-[500px] space-y-5 ${VIDEO_VISUAL_TOKENS.panelSurface} ${VIDEO_VISUAL_TOKENS.panelRadius} p-4 text-white`}>
+    <div aria-label="视频参数内容" className="w-full max-w-[500px] space-y-4 text-white">
       <ParameterSection label={VIDEO_UI_COPY.aspectRatio}>
         <VideoAspectRatioGrid
           allowedRatios={routeCapabilitiesConfirmed ? effectiveCapabilities.aspectRatios : undefined}
@@ -97,10 +96,13 @@ export function VideoParameterPanel({ capabilities, onChange, value }: VideoPara
       </ParameterSection>
 
       <ParameterSection label="视频时长">
-        <div className="flex items-center gap-3">
+        <div aria-label="视频时长控制" className="flex items-center gap-3">
           <input
             aria-label="视频时长滑杆"
-            className="h-1 w-full cursor-pointer accent-white"
+            aria-valuemax={effectiveCapabilities.maxDurationSeconds}
+            aria-valuemin={effectiveCapabilities.minDurationSeconds}
+            aria-valuenow={value.durationSeconds}
+            className="h-1 min-w-0 flex-1 cursor-pointer accent-sky-300"
             max={effectiveCapabilities.maxDurationSeconds}
             min={effectiveCapabilities.minDurationSeconds}
             onChange={(event) => {
@@ -111,10 +113,10 @@ export function VideoParameterPanel({ capabilities, onChange, value }: VideoPara
             type="range"
             value={value.durationSeconds}
           />
-          <div className={`flex h-10 shrink-0 items-center gap-2 px-2 ${VIDEO_VISUAL_TOKENS.panelRadius} border border-white/20 bg-black/15`}>
+          <div className="flex h-8 shrink-0 items-center gap-1.5 rounded-[8px] border border-white/15 bg-black/20 px-2">
             <input
               aria-label="视频时长输入"
-              className="w-10 bg-transparent text-center text-sm font-medium outline-none"
+              className="w-9 bg-transparent text-center text-sm font-semibold outline-none"
               inputMode="decimal"
               max={effectiveCapabilities.maxDurationSeconds}
               min={effectiveCapabilities.minDurationSeconds}
@@ -127,12 +129,8 @@ export function VideoParameterPanel({ capabilities, onChange, value }: VideoPara
               type="number"
               value={durationInput}
             />
-            <span className="text-sm text-white/55">秒</span>
+            <span className="text-xs text-white/55">秒</span>
           </div>
-        </div>
-        <div className="mt-2 flex items-center justify-between text-xs text-white/55">
-          <span>{`最短 ${effectiveCapabilities.minDurationSeconds} 秒`}</span>
-          <span>{`最长 ${effectiveCapabilities.maxDurationSeconds} 秒`}</span>
         </div>
         {durationCorrectionMessage ? (
           <p aria-live="polite" className="mt-2 text-xs text-white/70" role="status">{durationCorrectionMessage}</p>
