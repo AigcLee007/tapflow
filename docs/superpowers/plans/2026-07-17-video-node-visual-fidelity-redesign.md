@@ -2,19 +2,37 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 将 TapFlow 视频节点重做为全中文、接近已确认 DramaClaw/LibTV 参考层级的创作工作台，并用原创电影感运镜预览和真实浏览器截图完成视觉验收。
+**Goal:** 将 TapFlow 视频节点重做为全中文、接近已确认 DramaClaw/LibTV 参考层级的创作工作台；运镜库使用已取得商业授权的 DramaClaw 原始 MP4。代码与自动化验收在本地收尾，真实视觉截图由部署服务器完成最终验收。
 
-**Architecture:** 保留现有 `params.videoGeneration`、模型目录、草稿持久化和 fail-closed 生成边界，仅重构 `src/flowCanvas/video` 的文案与视觉组件。参数与调色盘拆成可测试的图形控件，运镜继续沿用 23 个稳定 ID，但资源生成器改为基于原创电影场景主图的镜头变换；Playwright 使用独立视口上下文输出五类验收截图。
+**Architecture:** 保留现有 `params.videoGeneration`、模型目录、草稿持久化和 fail-closed 生成边界，仅重构 `src/flowCanvas/video` 的文案与视觉组件。参数与调色盘使用可测试的图形控件，运镜继续沿用 23 个稳定 ID，并由版本 2 manifest 引用随构建发布的授权 MP4；Playwright 使用独立视口上下文输出六类验收截图。
 
-**Tech Stack:** React 19、TypeScript、Tailwind CSS、Lucide、`@xyflow/react`、Vitest、Testing Library、Sharp、Chrome/Edge MediaRecorder 或 FFmpeg VP9、Playwright CLI、现有 MenuSurface/useDismissibleLayer。
+**Tech Stack:** React 19、TypeScript、Tailwind CSS、Lucide、`@xyflow/react`、Vitest、Testing Library、Vite 静态资源、Playwright CLI、现有 MenuSurface/useDismissibleLayer。
 
 ---
+
+## 2026-07-17 基线修订（当前有效）
+
+本节优先于后续同名旧步骤。用户已确认 DramaClaw 23 个运镜 MP4 可用于本产品的商业发布，因此不再执行本计划中任何本地图片/视频生成、FFmpeg 编码或 `imagegen` 步骤。
+
+已完成并经提交验证的范围：
+
+- Task 1 的中文化、乱码修复与模型/参考素材展示清理。
+- Task 2-4 的视觉 token、图形化比例与分段参数控件、语义调色盘。
+- 部分 Task 6-8 的运镜库、主工作台布局、浮层互斥和窄屏修复。
+
+本轮新增完成的媒体迁移：
+
+- `public/video-camera-library/v2/` 包含 23 个授权 DramaClaw MP4，文件与 `output/reference/dramaclaw/frontend/public/video/camera-presets/` 的 SHA-256 一致。
+- manifest 升级到版本 2，仅接受 `v2/<stable-id>.mp4`、`h264` 和 `DramaClaw commercial license` 来源标记。
+- 已移除 `assets:video-camera` 与 `test:video-camera-assets` 命令及生成器源码；减少动态效果模式显示相同 MP4 的首帧但不自动播放。
+
+本地实现已收尾：中文/乱码扫描、聚焦回归、生产构建、功能 smoke、授权媒体清单和差异格式检查均已完成。Task 9 的六张截图与人工视觉审查因当前环境无法启动 Chrome/Edge DevTools，交由部署服务器验收；不得重新引入生成器或替换授权 MP4。
 
 ## Scope And Invariants
 
 - 创作者可见文案、`aria-label`、tooltip、空状态和错误提示全部使用简体中文；模型正式产品名、`480P/720P/1080P/4K` 和比例数字除外。
 - 不修改 `VideoGenerationParamsV1`、23 个 `cameraMotionId`、v2 模型目录、provider、worker、数据库或计费协议。
-- 不复制 DramaClaw/LibTV 的代码、媒体、品牌或商标；新的场景主图必须原创生成并提交来源说明。
+- 不复制 DramaClaw/LibTV 的代码、品牌或商标。运镜媒体仅可使用已取得商业授权的 23 个 DramaClaw MP4，必须保留 manifest 中的商业授权来源标记；不得热链第三方 URL，不得混入未授权媒体。
 - 保持模型能力校正、asset-backed 结果恢复、autosave、诊断脱敏和生成前门禁的现有测试。
 - 每个视觉任务必须先有交互/样式回归测试，再实现，再跑真实截图；DOM 数量通过不等于视觉完成。
 - 每个提交只暂存当前任务文件；忽略主工作区和其它 worktree 的未跟踪文件。
@@ -29,8 +47,6 @@
 - `src/flowCanvas/video/VideoSegmentedControl.tsx` 与测试：清晰度、音频、数量通用分段控件。
 - `src/flowCanvas/video/VideoAspectRatioGrid.tsx` 与测试：七种比例图形卡。
 - `src/flowCanvas/video/videoPalettePresets.ts` 与测试：语义色票、角色中文映射和五种画面色调样本。
-- `scripts/assets/video-camera/cinematic-city-master.webp`：原创电影感基准场景主图。
-- `scripts/assets/video-camera/README.md`：生成说明、许可和禁止第三方素材声明。
 - `scripts/smoke-video-node-visual.ts` 与测试：视觉验收脚本和截图契约。
 
 ### Modified files
@@ -41,13 +57,15 @@
 - `src/flowCanvas/video/VideoCameraLibrary.tsx` 与测试：中文模态层、电影感卡片与稳定播放状态。
 - `src/flowCanvas/video/VideoReferenceStrip.tsx`、`VideoModeMenu.tsx`、`VideoModelMenu.tsx`、`VideoHumanReviewControl.tsx` 及测试：中文化和统一视觉密度。
 - `src/flowCanvas/video/VideoNodeLegacyComposer.tsx`：仅中文化回滚路径，不改变旧交互。
-- `scripts/generate-video-camera-assets.mjs` 与测试：使用电影场景主图生成 23 组 VP9/WebP。
-- `public/video-camera-library/manifest.v1.json` 与 `public/video-camera-library/v1/*`：替换预览资源，稳定 ID 不变。
+- `public/video-camera-library/manifest.v1.json`：版本 2 的 23 项授权 MP4 manifest，稳定 ID 不变。
+- `public/video-camera-library/v2/*.mp4`：从已获授权的 DramaClaw 参考目录逐字节复制的 23 个 H.264 预览文件。
 - `scripts/smoke-video-node.ts` 与测试：保留功能 smoke，并使用中文选择器。
 - `package.json`：视觉 smoke 命令。
 - `PROJECT_RECORD.md`：记录视觉回归、素材来源和实际验收结果。
 
 ## Task 1: 建立全中文和编码安全边界
+
+> **状态：已完成，待 Task 10 再次全量扫描。** 已完成中文词典与创建者可见文案修复；不要按本节重复实现，仅在最终扫描发现残留英文或乱码时做最小修正。
 
 **Files:**
 - Create: `src/flowCanvas/video/videoUiCopy.ts`
@@ -153,6 +171,8 @@ git commit -m "fix: localize video creator controls"
 ```
 
 ## Task 2: 建立视频视觉控件和设计 token
+
+> **状态：已完成，待 Task 10 回归。** 图形比例卡、分段清晰度/音频/数量控件和视觉 token 已存在。
 
 **Files:**
 - Create: `src/flowCanvas/video/videoVisualTokens.ts`
@@ -261,6 +281,8 @@ git commit -m "feat: add video visual selection controls"
 
 ## Task 3: 重做参数面板
 
+> **状态：已完成，待 Task 9 截图验收。** 参数面板已使用图形比例、分段清晰度/音频/数量和时长输入；禁止恢复原生下拉选择器。
+
 **Files:**
 - Modify: `src/flowCanvas/video/VideoParameterPanel.tsx`
 - Modify: `src/flowCanvas/video/VideoParameterPanel.test.tsx`
@@ -354,6 +376,8 @@ git commit -m "feat: redesign video parameter panel"
 
 ## Task 4: 重做语义调色盘和画面色调
 
+> **状态：已完成，待 Task 9 截图验收。** 语义分组和五种画面色调已实现；仅在视觉截图发现层级、文字或色票问题时修正。
+
 **Files:**
 - Create: `src/flowCanvas/video/videoPalettePresets.ts`
 - Create: `src/flowCanvas/video/videoPalettePresets.test.ts`
@@ -408,6 +432,8 @@ git commit -m "feat: redesign semantic video palettes"
 ```
 
 ## Task 5: 生成原创电影感运镜基准场景
+
+> **状态：已废止，不得执行。** 本节的原创基准图、`imagegen`、Sharp、FFmpeg、WebP/WebM 以及 `v1` 资源生成步骤均由本计划的“2026-07-17 基线修订”替代。唯一有效的媒体来源是已授权的 DramaClaw 原始 MP4；实际迁移记录见基线修订。
 
 **Files:**
 - Create: `scripts/assets/video-camera/cinematic-city-master.webp`
@@ -497,6 +523,8 @@ git commit -m "feat: replace camera previews with cinematic motion assets"
 
 ## Task 6: 重做中文运镜库
 
+> **状态：部分完成，剩余验收。** 保留中文标题、四/三/两列响应式网格、最多四段可见预览和焦点/关闭行为；媒体路径必须使用 `v2/*.mp4`，不再要求 poster、VP9 或 WebM。最终以 Task 9 截图与 Task 10 回归为准。
+
 **Files:**
 - Modify: `src/flowCanvas/video/VideoCameraLibrary.tsx`
 - Modify: `src/flowCanvas/video/VideoCameraLibrary.test.tsx`
@@ -541,6 +569,8 @@ git commit -m "feat: redesign Chinese camera motion library"
 ```
 
 ## Task 7: 重组主 Composer 视觉层级
+
+> **状态：部分完成，待 Task 9 截图验收。** 主工作台、中文摘要与移动端定位已有实现；只处理截图揭示的溢出、层级或中文显示问题。
 
 **Files:**
 - Modify: `src/flowCanvas/video/VideoNodeComposer.tsx`
@@ -620,6 +650,8 @@ git commit -m "feat: rebuild video creator workbench layout"
 
 ## Task 8: 统一弹层、焦点和移动端行为
 
+> **状态：部分完成，待 Task 9 浏览器回归。** 互斥浮层、Escape/外部点击关闭、焦点恢复和 1440/1024/390 布局必须由真实浏览器验收确认。
+
 **Files:**
 - Modify: `src/flowCanvas/video/VideoNodeComposer.tsx`
 - Modify: `src/flowCanvas/video/VideoParameterPanel.tsx`
@@ -665,6 +697,8 @@ git commit -m "fix: unify video workbench layers and responsive layout"
 
 ## Task 9: 建立截图级视觉验收
 
+> **状态：代码和自动化契约已完成，真实截图交由服务器验收。** `scripts/smoke-video-node-visual.ts` 与契约测试已实现，包含六个独立视口状态、中文/乱码/几何/卡片数量断言和截图输出；当前本地环境的 Chrome/Edge 均无法开放 DevTools 端口，因此不虚报截图结果。
+
 **Files:**
 - Create: `scripts/smoke-video-node-visual.ts`
 - Create: `scripts/smoke-video-node-visual.test.ts`
@@ -672,7 +706,7 @@ git commit -m "fix: unify video workbench layers and responsive layout"
 - Modify: `scripts/smoke-video-node.test.ts`
 - Modify: `package.json`
 
-- [ ] **Step 1: 写视觉 smoke 契约红测**
+- [x] **Step 1: 写视觉 smoke 契约红测**
 
 ```ts
 expect(VIDEO_NODE_VISUAL_SHOTS).toEqual([
@@ -686,11 +720,11 @@ expect(VIDEO_NODE_VISUAL_SHOTS).toEqual([
 expect(VIDEO_NODE_VISUAL_OUTPUT_DIR).toBe("output/playwright/video-node-visual");
 ```
 
-- [ ] **Step 2: 为每个视口创建独立浏览器 context**
+- [x] **Step 2: 为每个视口创建独立浏览器 context**
 
 禁止用 `page.reload()` 在桌面和移动端之间复用 XYFlow transform。每个 context 在 ReactFlow mount 前按 `window.innerWidth` 初始化节点位置，并固定 viewport `{x:0,y:0,zoom:1}`。
 
-- [ ] **Step 3: 添加中文和几何断言**
+- [x] **Step 3: 添加中文和几何断言**
 
 ```js
 const forbidden = ['Subject', 'Scene', 'Prop', 'Style', 'Camera motion library', 'Favorites', 'Use', 'Clear'];
@@ -702,7 +736,7 @@ const rect = await page.locator('[aria-label="视频创作工作台"]').bounding
 if (!rect || rect.x < 0 || rect.x + rect.width > viewport.width) throw new Error('Composer overflow');
 ```
 
-- [ ] **Step 4: 输出六类真实截图**
+- [ ] **Step 4: 输出六类真实截图**（阻断：当前环境无法启动 Chrome/Edge DevTools）
 
 ```text
 output/playwright/video-node-visual/composer-default.png
@@ -715,7 +749,7 @@ output/playwright/video-node-visual/mobile.png
 
 运镜截图必须显示 23 张电影感卡中的至少 12 张、桌面四列和中文标题；参数截图必须同时显示七种比例、四档清晰度、时长、音频和数量；调色截图必须显示至少两个语义角色分组和五个画面色调。
 
-- [ ] **Step 5: 运行视觉 smoke**
+- [ ] **Step 5: 运行视觉 smoke**（脚本已实现；本地运行环境阻断在浏览器启动阶段，部署服务器执行）
 
 ```bash
 npm test -- scripts/smoke-video-node-visual.test.ts scripts/smoke-video-node.test.ts
@@ -725,7 +759,7 @@ npm run smoke:video-node-visual
 
 Expected: both smoke commands exit 0 and report all screenshots.
 
-- [ ] **Step 6: 使用 view_image 逐张人工检查**
+- [ ] **Step 6: 使用 view_image 逐张人工检查**（等待六张截图生成）
 
 主代理必须读取六张截图并记录：中文完整、信息层级、比例卡形态、色票形态、运镜卡画质、四列网格、按钮不重叠、移动端可见。任何一项不合格都返回相应 UI 任务修复，不能只修改 smoke 断言。
 
@@ -738,21 +772,22 @@ git commit -m "test: add video workbench visual acceptance"
 
 ## Task 10: 最终回归、项目记录和交付审查
 
+> **状态：代码回归已完成，视觉截图交由服务器收口。** 使用 v2 MP4 manifest 和新的视觉 smoke 契约；完整回归中若有与本视频改造无关的历史断言，必须单独记录。
+
 **Files:**
 - Modify: `PROJECT_RECORD.md`
 - Inspect: all Task 1-9 files
 
-- [ ] **Step 1: 运行完整聚焦回归**
+- [x] **Step 1: 运行完整聚焦回归**
 
 ```bash
-npm run test:video-camera-assets
 npm test -- src/flowCanvas/video src/flowCanvas/nodes/FlowNodes.agent-metadata.test.tsx src/flowCanvas/utils/canonicalGraph.test.ts src/flowCanvas/hooks/useRemoteFlowAutosave.test.tsx src/services/v2AiModelCatalogApi.test.ts scripts/smoke-video-node.test.ts scripts/smoke-video-node-visual.test.ts
 npm run build
 ```
 
 Expected: 视频和视觉测试全部通过。若历史 panorama `1k`/`1K` 断言仍失败，必须用完整命令和 commit 证据记录为既有问题，不得掩盖新的视频失败。
 
-- [ ] **Step 2: 运行真实浏览器回归并保存输出**
+- [ ] **Step 2: 运行真实浏览器回归并保存输出**（部署服务器执行）
 
 ```bash
 npm run smoke:video-node
@@ -761,18 +796,18 @@ npm run smoke:video-node-visual
 
 Expected: desktop/narrow/mobile、参数、运镜和调色盘全部 status ok；被门禁阻断的生成请求计数保持 0。
 
-- [ ] **Step 3: 更新项目记录**
+- [x] **Step 3: 更新项目记录**
 
 `PROJECT_RECORD.md` 必须记录：
 
 - 2026-07-17 视频节点视觉还原改造。
 - 全中文和乱码修复范围。
 - 参数图形控件、语义调色盘和主工作台布局。
-- 电影感原创基准场景、23 个稳定 ID、WebP/VP9 和素材归属。
-- 六张视觉验收截图与实际测试结果。
+- 已授权 DramaClaw MP4、23 个稳定 ID、H.264 和商业授权来源标记。
+- 本地无法生成六张截图的环境说明；部署服务器需补齐六张视觉验收截图与实际结果。
 - 真实 provider/worker/数量计费仍属于下一期。
 
-- [ ] **Step 4: 检查秘密、远程媒体和未跟踪源码**
+- [x] **Step 4: 检查秘密、远程媒体和未跟踪源码**
 
 ```bash
 rg -n -i "api[_-]?key|authorization|bearer|x-amz-signature|https?://" src/flowCanvas/video public/video-camera-library scripts/assets/video-camera
@@ -780,9 +815,9 @@ git status --short
 git diff --check
 ```
 
-Expected: 没有密钥、签名 URL 或第三方远程媒体；未跟踪内容只允许本地 smoke 输出目录。
+本次检查使用 `-g '!*.test.*'` 排除测试夹具；生产代码只保留本地 smoke 地址、敏感字段名防护正则和本地 `v2/*.mp4`，未发现密钥、签名 URL 或第三方远程媒体。`git diff --check` 通过。
 
-- [ ] **Step 5: 最终代码与视觉双审查**
+- [ ] **Step 5: 最终代码与视觉双审查**（代码/数据边界已检查；截图人工审查由服务器验收补齐）
 
 先审规格覆盖和数据安全，再审代码质量，最后由主代理重新查看六张截图。Critical/Important 发现全部修复并复审后才允许标记完成。
 
@@ -800,7 +835,7 @@ git commit -m "docs: record video visual fidelity redesign"
 | 全中文、无乱码 | Task 1、Task 9 |
 | 图形比例、清晰度、时长、音频、数量 | Task 2、Task 3 |
 | 人物/场景/道具/风格调色和五种画面色调 | Task 4 |
-| 原创电影感运镜预览、23 个稳定 ID | Task 5 |
+| 已授权 DramaClaw MP4 运镜预览、23 个稳定 ID | 基线修订；Task 6、Task 10 |
 | 中文运镜库、四列网格、播放预算 | Task 6 |
 | DramaClaw 式主工作台信息层级 | Task 7 |
 | 互斥浮层、焦点和移动端 | Task 8 |
@@ -810,6 +845,6 @@ git commit -m "docs: record video visual fidelity redesign"
 ## Execution Notes
 
 - 执行时使用现有 worktree `D:\tapnow-flow\.worktrees\video-node-visual-fidelity` 和分支 `codex/video-node-visual-fidelity`。
-- Task 5 生成基准图时必须使用 `imagegen` skill；不得从 DramaClaw、LibTV 或用户截图裁切媒体。
+- 不执行 Task 5 的 `imagegen` 或任何本地媒体生成。媒体仅从 `output/reference/dramaclaw/frontend/public/video/camera-presets/` 逐字节复制到 `public/video-camera-library/v2/`，并校验 23 个文件的 SHA-256。
 - 每个任务完成后执行规格审查与代码质量审查；视觉任务额外查看真实截图。
 - 不允许为了让 smoke 通过而降低中文、画质、卡片列数或视口可见性断言。

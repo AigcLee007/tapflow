@@ -28,7 +28,7 @@ const CHECK_CODE_PATH = path.join(VIDEO_NODE_SMOKE_OUTPUT_DIR, "video-node-check
 
 export function buildVideoNodeSmokeHtml(): string {
   return `<!doctype html>
-<html lang="en">
+  <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -59,7 +59,7 @@ export function buildVideoNodeSmokeHtml(): string {
           return new Response(JSON.stringify([{
             capabilities: {}, defaultRouteKey: 'video.smoke', displayName: 'CineMotion Pro', id: 'video-smoke-model',
             modality: 'video', modelFamily: 'smoke', modelId: 'cine-motion-pro', modelKey: 'video-smoke', sortOrder: 1,
-            status: 'active', uiSchema: { description: 'A cinematic model for polished motion and lighting.' },
+            status: 'active', uiSchema: { description: '电影感运动与光线模型' },
           }]), { status: 200, headers: { 'Content-Type': 'application/json' } });
         }
         if (requestUrl.includes('/api/v2/ai/model-catalog/video-smoke/routes')) {
@@ -82,9 +82,13 @@ export function buildVideoNodeSmokeHtml(): string {
         tenant: { id: 'smoke-tenant' }, user: { id: 'smoke-user' } };
       const initialNode = {
         id: 'video-smoke-node', type: 'video', position: { x: Math.max(5, (window.innerWidth - 380) / 2), y: 40 }, selected: true,
-        data: { kind: 'video', title: 'Video', width: 380, height: 220, status: 'idle', generationStatus: 'idle',
-          modelId: 'unconfigured-video', routeKey: 'video.unconfigured', generationPrompt: 'A slow tracking shot through a sunlit studio.',
-          params: { videoGeneration: createDefaultVideoGenerationParams() }, createdAt: 1, updatedAt: 1 },
+        data: { kind: 'video', title: '视频', width: 380, height: 220, status: 'idle', generationStatus: 'idle',
+          modelId: 'unconfigured-video', routeKey: 'video.unconfigured', generationPrompt: '在阳光充足的摄影棚中缓慢推进镜头。',
+          params: { videoGeneration: { ...createDefaultVideoGenerationParams(), mode: 'all_reference', referenceRolesByKey: {
+            subject: { role: 'subject', source: { kind: 'asset', id: 'asset-subject-smoke' } },
+            scene: { role: 'scene', source: { kind: 'asset', id: 'asset-scene-smoke' } },
+            prop: null, style: null, first_frame: null, last_frame: null, reference: null,
+          } } }, createdAt: 1, updatedAt: 1 },
       };
       useFlowCanvasStore.setState({ edges: [], nodes: [initialNode], selectedNodeCount: 1, nodeOutputByNodeId: {}, nodeRunStatusByNodeId: {} });
       window.getVideoSmokeNode = () => useFlowCanvasStore.getState().nodes.find((node) => node.id === 'video-smoke-node');
@@ -156,11 +160,11 @@ async function openViewport(viewport, reducedMotion) {
   const context = await browser.newContext({ viewport, reducedMotion: reducedMotion ? 'reduce' : 'no-preference' });
   const viewportPage = await context.newPage();
   await viewportPage.goto(smokeUrl, { waitUntil: 'networkidle' });
-  await viewportPage.waitForSelector('[aria-label="Video composer"]', { timeout: 15000 });
+  await viewportPage.waitForSelector('[aria-label="视频创作面板"]', { timeout: 15000 });
   return { context, page: viewportPage };
 }
 async function assertComposerVisible(viewportPage, viewportName) {
-  const rect = await viewportPage.locator('[aria-label="Video composer"]').evaluate((composer) => composer.getBoundingClientRect().toJSON());
+  const rect = await viewportPage.locator('[aria-label="视频创作面板"]').evaluate((composer) => composer.getBoundingClientRect().toJSON());
   const viewport = await viewportPage.evaluate(() => ({ height: window.innerHeight, width: window.innerWidth }));
   const meaningfulWidth = Math.min(320, viewport.width - 32);
   if (rect.width < meaningfulWidth || rect.left < -1 || rect.right > viewport.width + 1 || rect.top < -1 || rect.top >= viewport.height) {
@@ -169,7 +173,7 @@ async function assertComposerVisible(viewportPage, viewportName) {
       stateNode: window.getVideoSmokeNode?.()?.position,
       transform: document.querySelector('.react-flow__viewport')?.getAttribute('style'),
     }));
-    throw new Error('Video composer is not visibly framed at ' + viewportName + ': ' + JSON.stringify({ canvas, rect, viewport }));
+    throw new Error('视频创作面板在 ' + viewportName + ' 未正确显示: ' + JSON.stringify({ canvas, rect, viewport }));
   }
 }
 async function assertNoVisualOverflow(viewportPage) {
@@ -181,7 +185,7 @@ async function assertNoVisualOverflow(viewportPage) {
     return { label: element.getAttribute('aria-label') || element.textContent?.trim() || 'unnamed', bottom: Math.round(rect.bottom), right: Math.round(rect.right) };
   }));
   if (violations.length) {
-    const geometry = await viewportPage.locator('[aria-label="Video composer"]').evaluate((composer) => ({
+    const geometry = await viewportPage.locator('[aria-label="视频创作面板"]').evaluate((composer) => ({
       composer: getComputedStyle(composer).width,
       rect: composer.getBoundingClientRect().toJSON(),
       node: composer.closest('.react-flow__node')?.getAttribute('style'),
@@ -198,39 +202,36 @@ let narrowHarness;
 let mobileHarness;
 try {
 await assertComposerVisible(desktopPage, 'desktop');
-const composerVisible = await desktopPage.locator('[aria-label="Video composer"]').isVisible();
-await desktopPage.locator('button[aria-label="Choose video model"]').click();
-await desktopPage.waitForSelector('[aria-label="Video models"]', { timeout: 15000 });
-const modelMenuNoSearch = await desktopPage.locator('[aria-label="Video models"] input[type="search"], [aria-label="Video models"] input').count() === 0;
-const modelOption = desktopPage.getByRole('option', { name: /CineMotion Pro/ });
+const composerVisible = await desktopPage.locator('[aria-label="视频创作面板"]').isVisible();
+await desktopPage.locator('button[aria-label="选择视频模型"]').click();
+await desktopPage.waitForSelector('[aria-label="视频模型"]', { timeout: 15000 });
+const modelMenuNoSearch = await desktopPage.locator('[aria-label="视频模型"] input[type="search"], [aria-label="视频模型"] input').count() === 0;
+const modelOption = desktopPage.getByRole('option', { name: /视频模型 1/ });
 await modelOption.hover();
-const hoverDescriptionVisible = await desktopPage.getByText('A cinematic model for polished motion and lighting.').isVisible();
-await desktopPage.locator('button[aria-label="Choose video model"]').click();
+const hoverDescriptionVisible = await desktopPage.getByText('电影感运动与光线模型').isVisible();
+await desktopPage.locator('button[aria-label="选择视频模型"]').click();
 
-await desktopPage.evaluate(() => document.querySelector('button[aria-label="Camera motion library"]')?.click());
-await desktopPage.waitForSelector('section[role="dialog"][aria-label="Camera motion library"]', { timeout: 15000 });
+await desktopPage.evaluate(() => document.querySelector('button[aria-label="运镜库"]')?.click());
+await desktopPage.waitForSelector('section[role="dialog"][aria-label="运镜库"]', { timeout: 15000 });
 const cameraPresetCount = await desktopPage.locator('[data-camera-motion-id]').count();
 const cameraGridColumns = await desktopPage.locator('[data-camera-motion-id]').first().evaluate((first) => {
   const grid = first.parentElement?.parentElement;
   return grid ? getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length : 0;
 });
 await desktopPage.screenshot({ path: ${JSON.stringify(options.desktopScreenshotPath.replaceAll("\\", "/"))}, fullPage: true });
-await desktopPage.locator('button[aria-label="Close camera motion library"]').click();
+await desktopPage.locator('button[aria-label="关闭运镜库"]').click();
 
-await desktopPage.locator('button[aria-label="Video parameters"]').click();
-await desktopPage.waitForSelector('[role="dialog"][aria-label="Video parameters"]', { timeout: 15000 });
-await desktopPage.locator('[role="dialog"][aria-label="Video parameters"] button[aria-haspopup="menu"]').nth(1).click();
-const resolutionOptions = await desktopPage.locator('[role="menu"] [role="menuitem"]').allTextContents();
-await desktopPage.locator('[role="menu"] [role="menuitem"]').first().click();
-const parameterMenuTriggers = desktopPage.locator('[role="dialog"][aria-label="Video parameters"] button[aria-haspopup="menu"]');
-await parameterMenuTriggers.nth(2).click();
-const countOptions = await desktopPage.locator('[role="menu"] [role="menuitem"]').allTextContents();
-await desktopPage.locator('[role="menu"] [role="menuitem"]').first().click();
-const hasDurationAudioAndCounts = await desktopPage.locator('input[aria-label="时长滑杆"], input[aria-label="时长输入"]').count() === 2
-  && await desktopPage.getByRole('switch', { name: '生成音频' }).count() === 1
-  && ['1', '2', '4'].every((count) => countOptions.includes(count));
+await desktopPage.locator('button[aria-label="视频参数"]').click();
+await desktopPage.waitForSelector('[role="dialog"][aria-label="视频参数"]', { timeout: 15000 });
+const resolutionOptions = await desktopPage.locator('[role="dialog"][aria-label="视频参数"] [role="radio"]').allTextContents();
+const countOptions = await desktopPage.locator('[role="radiogroup"][aria-label="生成数量"] [role="radio"]').allTextContents();
+const durationControlCount = await desktopPage.locator('input[aria-label="视频时长滑杆"], input[aria-label="视频时长输入"]').count();
+const audioGroupCount = await desktopPage.getByRole('radiogroup', { name: '生成音频' }).count();
+const hasDurationAudioAndCounts = durationControlCount === 2
+  && audioGroupCount === 1
+  && ['1 个', '2 个', '4 个'].every((count) => countOptions.includes(count));
 await desktopPage.keyboard.press('Escape');
-await desktopPage.waitForSelector('[role="dialog"][aria-label="Video parameters"]', { state: 'hidden', timeout: 15000 });
+await desktopPage.waitForSelector('[role="dialog"][aria-label="视频参数"]', { state: 'hidden', timeout: 15000 });
 
 narrowHarness = await openViewport(narrow, false);
 await assertComposerVisible(narrowHarness.page, 'narrow');
@@ -241,23 +242,23 @@ await narrowHarness.page.screenshot({ path: ${JSON.stringify(options.narrowScree
 mobileHarness = await openViewport(mobile, true);
 const mobilePage = mobileHarness.page;
 await assertComposerVisible(mobilePage, 'mobile');
-await mobilePage.evaluate(() => document.querySelector('button[aria-label="Camera motion library"]')?.click());
-await mobilePage.waitForSelector('section[role="dialog"][aria-label="Camera motion library"] img', { timeout: 15000 });
-const reducedMotionUsesPosters = await mobilePage.locator('section[role="dialog"][aria-label="Camera motion library"] video').count() === 0;
-await mobilePage.locator('button[aria-label="Close camera motion library"]').click();
+await mobilePage.evaluate(() => document.querySelector('button[aria-label="运镜库"]')?.click());
+await mobilePage.waitForSelector('section[role="dialog"][aria-label="运镜库"] video', { timeout: 15000 });
+const reducedMotionVideoIsPaused = await mobilePage.locator('section[role="dialog"][aria-label="运镜库"] video').evaluateAll((videos) => videos.length === 23 && videos.every((video) => video.paused));
+await mobilePage.locator('button[aria-label="关闭运镜库"]').click();
 await assertNoVisualOverflow(mobilePage);
 await mobilePage.screenshot({ path: ${JSON.stringify(options.mobileScreenshotPath.replaceAll("\\", "/"))}, fullPage: true });
 
 // VideoNodeComponent owns the runBackendWorkflow call. A blocked node must never reach it,
 // so the harness verifies that no workflow request is emitted after its Generate action.
 await mobilePage.evaluate(() => window.resetVideoSmokeBlockedNode());
-await mobilePage.locator('button[aria-label="Generate video"]').click();
-await mobilePage.waitForFunction(() => window.videoNodeSmokeState.workflowRequestCount === 0 && Boolean(document.querySelector('[aria-label="Video composer"]')) && document.body.textContent?.includes('未接入'));
+await mobilePage.locator('button[aria-label="生成视频"]').click();
+await mobilePage.waitForFunction(() => window.videoNodeSmokeState.workflowRequestCount === 0 && Boolean(document.querySelector('[aria-label="视频创作面板"]')));
 const blockedGenerationDidNotCreateRun = await mobilePage.evaluate(() => window.videoNodeSmokeState.workflowRequestCount === 0);
 
 const result = { blockedGenerationDidNotCreateRun, cameraGridColumns, cameraPresetCount, composerVisible, modelMenuNoSearch, resolutionOptions };
-if (!composerVisible || !modelMenuNoSearch || !hoverDescriptionVisible || !hasDurationAudioAndCounts || !resolutionOptions.includes('4K') || cameraGridColumns !== 4 || cameraPresetCount !== 23 || !reducedMotionUsesPosters || !blockedGenerationDidNotCreateRun) {
-  throw new Error(JSON.stringify({ ...result, hasDurationAudioAndCounts, hoverDescriptionVisible, reducedMotionUsesPosters }));
+if (!composerVisible || !modelMenuNoSearch || !hoverDescriptionVisible || !hasDurationAudioAndCounts || !resolutionOptions.includes('4K') || cameraGridColumns !== 4 || cameraPresetCount !== 23 || !reducedMotionVideoIsPaused || !blockedGenerationDidNotCreateRun) {
+  throw new Error(JSON.stringify({ ...result, hasDurationAudioAndCounts, durationControlCount, audioGroupCount, countOptions, hoverDescriptionVisible, reducedMotionVideoIsPaused }));
 }
 return JSON.stringify({ ...result, status: 'ok' });
 } finally {

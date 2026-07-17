@@ -193,7 +193,7 @@ describe("FlowNodes agent metadata", () => {
 
     expect(screen.queryByText(/112/)).toBeNull();
     expect(screen.getByText("未配置")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Generate video" }));
+    fireEvent.click(screen.getByRole("button", { name: "生成视频" }));
 
     expect(workflowRunnerMocks.runBackendWorkflow).not.toHaveBeenCalled();
     expect(useFlowCanvasStore.getState().nodes.find((item) => item.id === node.id)?.data).toMatchObject({
@@ -356,7 +356,7 @@ describe("FlowNodes agent metadata", () => {
       routeKey: "image.gpt-image-2",
       params: expect.objectContaining({
         aspectRatio: "21:9",
-        size: "1k",
+        size: "1K",
       }),
     });
     expect(workflowRunnerMocks.runBackendWorkflow).toHaveBeenCalledWith({

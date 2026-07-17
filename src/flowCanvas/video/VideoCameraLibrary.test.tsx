@@ -8,8 +8,8 @@ const manifest: VideoCameraManifest = {
   version: 1,
   attribution: "TapFlow original",
   items: [
-    { id: "fixed", label: "Fixed", poster: "v1/fixed.webp", preview: "v1/fixed.webm", durationMs: 2500, version: 1, attribution: "TapFlow original", codec: "vp9" },
-    { id: "dolly-in", label: "Dolly in", poster: "v1/dolly-in.webp", preview: "v1/dolly-in.webm", durationMs: 2500, version: 1, attribution: "TapFlow original", codec: "vp9" },
+    { id: "fixed", label: "固定镜头", preview: "v2/fixed.mp4", durationMs: 2500, version: 2, attribution: "DramaClaw commercial license", codec: "h264" },
+    { id: "dolly-in", label: "镜头前推", preview: "v2/dolly-in.mp4", durationMs: 2500, version: 2, attribution: "DramaClaw commercial license", codec: "h264" },
   ],
 };
 

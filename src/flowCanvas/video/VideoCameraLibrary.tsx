@@ -256,7 +256,7 @@ function CameraCard({ favorite, motion, onFavorite, onSelect, reduceMotion, sele
     <article className={`group relative overflow-hidden rounded-lg border bg-black/20 transition ${selected ? "border-sky-300/80 ring-1 ring-sky-300/45" : "border-white/10 hover:border-white/30"}`}>
       <button aria-label={label} className="block w-full text-left focus:outline-none" data-camera-motion-id={motion.id} onClick={onSelect} type="button">
         <div className="relative aspect-video overflow-hidden bg-[#0d0e11]">
-          {reduceMotion ? <img alt="" className="h-full w-full object-cover" src={`${MEDIA_ROOT}${motion.poster}`} /> : <video className="h-full w-full object-cover" loop muted playsInline poster={`${MEDIA_ROOT}${motion.poster}`} preload="metadata" ref={videoRef} src={`${MEDIA_ROOT}${motion.preview}`} />}
+          <video className="h-full w-full object-cover" loop={!reduceMotion} muted playsInline preload="metadata" ref={videoRef} src={`${MEDIA_ROOT}${motion.preview}`} />
           {selected ? <span className="absolute right-2 top-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-sky-300 text-slate-950"><Check aria-hidden="true" size={13} /></span> : null}
         </div>
         <span className="block truncate px-2.5 py-2 text-xs font-bold leading-tight text-white/85">{label}</span>

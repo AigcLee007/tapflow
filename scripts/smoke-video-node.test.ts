@@ -46,7 +46,8 @@ describe("video node browser smoke contract", () => {
     expect(code).toContain("4K");
     expect(code).toContain("prefers-reduced-motion");
     expect(code).toContain("runBackendWorkflow");
-    expect(code).toContain("Camera motion library");
+    expect(code).toContain("运镜库");
+    expect(code).toContain("reducedMotionVideoIsPaused");
     expect(code).toContain("throw new Error");
     expect(code).toContain("browser.newContext");
     expect(code).toContain("newPage");

@@ -1,236 +1,29 @@
 {
-  "version": 1,
-  "attribution": "TapFlow original",
+  "version": 2,
+  "attribution": "DramaClaw commercial license",
   "items": [
-    {
-      "id": "fixed",
-      "label": "固定镜头",
-      "poster": "v1/fixed.webp",
-      "preview": "v1/fixed.webm",
-      "durationMs": 2500,
-      "version": 1,
-      "attribution": "TapFlow original",
-      "codec": "vp9"
-    },
-    {
-      "id": "follow",
-      "label": "跟随镜头",
-      "poster": "v1/follow.webp",
-      "preview": "v1/follow.webm",
-      "durationMs": 2500,
-      "version": 1,
-      "attribution": "TapFlow original",
-      "codec": "vp9"
-    },
-    {
-      "id": "spiral-up",
-      "label": "螺旋上升",
-      "poster": "v1/spiral-up.webp",
-      "preview": "v1/spiral-up.webm",
-      "durationMs": 2500,
-      "version": 1,
-      "attribution": "TapFlow original",
-      "codec": "vp9"
-    },
-    {
-      "id": "spiral-down",
-      "label": "螺旋下降",
-      "poster": "v1/spiral-down.webp",
-      "preview": "v1/spiral-down.webm",
-      "durationMs": 2500,
-      "version": 1,
-      "attribution": "TapFlow original",
-      "codec": "vp9"
-    },
-    {
-      "id": "tilt-up",
-      "label": "上摇镜头",
-      "poster": "v1/tilt-up.webp",
-      "preview": "v1/tilt-up.webm",
-      "durationMs": 2500,
-      "version": 1,
-      "attribution": "TapFlow original",
-      "codec": "vp9"
-    },
-    {
-      "id": "tilt-down",
-      "label": "下摇镜头",
-      "poster": "v1/tilt-down.webp",
-      "preview": "v1/tilt-down.webm",
-      "durationMs": 2500,
-      "version": 1,
-      "attribution": "TapFlow original",
-      "codec": "vp9"
-    },
-    {
-      "id": "pan-left",
-      "label": "左摇镜头",
-      "poster": "v1/pan-left.webp",
-      "preview": "v1/pan-left.webm",
-      "durationMs": 2500,
-      "version": 1,
-      "attribution": "TapFlow original",
-      "codec": "vp9"
-    },
-    {
-      "id": "pan-right",
-      "label": "右摇镜头",
-      "poster": "v1/pan-right.webp",
-      "preview": "v1/pan-right.webm",
-      "durationMs": 2500,
-      "version": 1,
-      "attribution": "TapFlow original",
-      "codec": "vp9"
-    },
-    {
-      "id": "crane-up",
-      "label": "升降上升",
-      "poster": "v1/crane-up.webp",
-      "preview": "v1/crane-up.webm",
-      "durationMs": 2500,
-      "version": 1,
-      "attribution": "TapFlow original",
-      "codec": "vp9"
-    },
-    {
-      "id": "crane-down",
-      "label": "升降下降",
-      "poster": "v1/crane-down.webp",
-      "preview": "v1/crane-down.webm",
-      "durationMs": 2500,
-      "version": 1,
-      "attribution": "TapFlow original",
-      "codec": "vp9"
-    },
-    {
-      "id": "truck-left",
-      "label": "左移镜头",
-      "poster": "v1/truck-left.webp",
-      "preview": "v1/truck-left.webm",
-      "durationMs": 2500,
-      "version": 1,
-      "attribution": "TapFlow original",
-      "codec": "vp9"
-    },
-    {
-      "id": "truck-right",
-      "label": "右移镜头",
-      "poster": "v1/truck-right.webp",
-      "preview": "v1/truck-right.webm",
-      "durationMs": 2500,
-      "version": 1,
-      "attribution": "TapFlow original",
-      "codec": "vp9"
-    },
-    {
-      "id": "dolly-in",
-      "label": "推进镜头",
-      "poster": "v1/dolly-in.webp",
-      "preview": "v1/dolly-in.webm",
-      "durationMs": 2500,
-      "version": 1,
-      "attribution": "TapFlow original",
-      "codec": "vp9"
-    },
-    {
-      "id": "dolly-out",
-      "label": "拉远镜头",
-      "poster": "v1/dolly-out.webp",
-      "preview": "v1/dolly-out.webm",
-      "durationMs": 2500,
-      "version": 1,
-      "attribution": "TapFlow original",
-      "codec": "vp9"
-    },
-    {
-      "id": "zoom-in",
-      "label": "变焦放大",
-      "poster": "v1/zoom-in.webp",
-      "preview": "v1/zoom-in.webm",
-      "durationMs": 2500,
-      "version": 1,
-      "attribution": "TapFlow original",
-      "codec": "vp9"
-    },
-    {
-      "id": "zoom-out",
-      "label": "变焦缩小",
-      "poster": "v1/zoom-out.webp",
-      "preview": "v1/zoom-out.webm",
-      "durationMs": 2500,
-      "version": 1,
-      "attribution": "TapFlow original",
-      "codec": "vp9"
-    },
-    {
-      "id": "dolly-zoom",
-      "label": "滑轨变焦",
-      "poster": "v1/dolly-zoom.webp",
-      "preview": "v1/dolly-zoom.webm",
-      "durationMs": 2500,
-      "version": 1,
-      "attribution": "TapFlow original",
-      "codec": "vp9"
-    },
-    {
-      "id": "orbit",
-      "label": "环绕镜头",
-      "poster": "v1/orbit.webp",
-      "preview": "v1/orbit.webm",
-      "durationMs": 2500,
-      "version": 1,
-      "attribution": "TapFlow original",
-      "codec": "vp9"
-    },
-    {
-      "id": "roll",
-      "label": "翻滚镜头",
-      "poster": "v1/roll.webp",
-      "preview": "v1/roll.webm",
-      "durationMs": 2500,
-      "version": 1,
-      "attribution": "TapFlow original",
-      "codec": "vp9"
-    },
-    {
-      "id": "fpv",
-      "label": "穿越视角",
-      "poster": "v1/fpv.webp",
-      "preview": "v1/fpv.webm",
-      "durationMs": 2500,
-      "version": 1,
-      "attribution": "TapFlow original",
-      "codec": "vp9"
-    },
-    {
-      "id": "drone",
-      "label": "无人机跟拍",
-      "poster": "v1/drone.webp",
-      "preview": "v1/drone.webm",
-      "durationMs": 2500,
-      "version": 1,
-      "attribution": "TapFlow original",
-      "codec": "vp9"
-    },
-    {
-      "id": "aerial",
-      "label": "航拍俯视",
-      "poster": "v1/aerial.webp",
-      "preview": "v1/aerial.webm",
-      "durationMs": 2500,
-      "version": 1,
-      "attribution": "TapFlow original",
-      "codec": "vp9"
-    },
-    {
-      "id": "handheld",
-      "label": "手持镜头",
-      "poster": "v1/handheld.webp",
-      "preview": "v1/handheld.webm",
-      "durationMs": 2500,
-      "version": 1,
-      "attribution": "TapFlow original",
-      "codec": "vp9"
-    }
+    { "id": "fixed", "label": "\u56fa\u5b9a\u955c\u5934", "preview": "v2/fixed.mp4", "durationMs": 2500, "version": 2, "attribution": "DramaClaw commercial license", "codec": "h264" },
+    { "id": "follow", "label": "\u8ddf\u968f\u62cd\u6444", "preview": "v2/follow.mp4", "durationMs": 2500, "version": 2, "attribution": "DramaClaw commercial license", "codec": "h264" },
+    { "id": "spiral-up", "label": "\u76d8\u65cb\u62ac\u5347", "preview": "v2/spiral-up.mp4", "durationMs": 2500, "version": 2, "attribution": "DramaClaw commercial license", "codec": "h264" },
+    { "id": "spiral-down", "label": "\u76d8\u65cb\u4e0b\u964d", "preview": "v2/spiral-down.mp4", "durationMs": 2500, "version": 2, "attribution": "DramaClaw commercial license", "codec": "h264" },
+    { "id": "tilt-up", "label": "\u955c\u5934\u4e0a\u6447", "preview": "v2/tilt-up.mp4", "durationMs": 2500, "version": 2, "attribution": "DramaClaw commercial license", "codec": "h264" },
+    { "id": "tilt-down", "label": "\u955c\u5934\u4e0b\u6447", "preview": "v2/tilt-down.mp4", "durationMs": 2500, "version": 2, "attribution": "DramaClaw commercial license", "codec": "h264" },
+    { "id": "pan-left", "label": "\u955c\u5934\u5de6\u6447", "preview": "v2/pan-left.mp4", "durationMs": 2500, "version": 2, "attribution": "DramaClaw commercial license", "codec": "h264" },
+    { "id": "pan-right", "label": "\u955c\u5934\u53f3\u6447", "preview": "v2/pan-right.mp4", "durationMs": 2500, "version": 2, "attribution": "DramaClaw commercial license", "codec": "h264" },
+    { "id": "crane-up", "label": "\u955c\u5934\u4e0a\u5347", "preview": "v2/crane-up.mp4", "durationMs": 2500, "version": 2, "attribution": "DramaClaw commercial license", "codec": "h264" },
+    { "id": "crane-down", "label": "\u955c\u5934\u4e0b\u964d", "preview": "v2/crane-down.mp4", "durationMs": 2500, "version": 2, "attribution": "DramaClaw commercial license", "codec": "h264" },
+    { "id": "truck-left", "label": "\u955c\u5934\u5de6\u79fb", "preview": "v2/truck-left.mp4", "durationMs": 2500, "version": 2, "attribution": "DramaClaw commercial license", "codec": "h264" },
+    { "id": "truck-right", "label": "\u955c\u5934\u53f3\u79fb", "preview": "v2/truck-right.mp4", "durationMs": 2500, "version": 2, "attribution": "DramaClaw commercial license", "codec": "h264" },
+    { "id": "dolly-in", "label": "\u955c\u5934\u524d\u63a8", "preview": "v2/dolly-in.mp4", "durationMs": 2500, "version": 2, "attribution": "DramaClaw commercial license", "codec": "h264" },
+    { "id": "dolly-out", "label": "\u955c\u5934\u540e\u79fb", "preview": "v2/dolly-out.mp4", "durationMs": 2500, "version": 2, "attribution": "DramaClaw commercial license", "codec": "h264" },
+    { "id": "zoom-in", "label": "\u53d8\u7126\u63a8\u8fdb", "preview": "v2/zoom-in.mp4", "durationMs": 2500, "version": 2, "attribution": "DramaClaw commercial license", "codec": "h264" },
+    { "id": "zoom-out", "label": "\u53d8\u7126\u62c9\u8fdc", "preview": "v2/zoom-out.mp4", "durationMs": 2500, "version": 2, "attribution": "DramaClaw commercial license", "codec": "h264" },
+    { "id": "dolly-zoom", "label": "\u5e0c\u533a\u67ef\u514b\u53d8\u7126", "preview": "v2/dolly-zoom.mp4", "durationMs": 2500, "version": 2, "attribution": "DramaClaw commercial license", "codec": "h264" },
+    { "id": "orbit", "label": "\u73af\u7ed5\u62cd\u6444", "preview": "v2/orbit.mp4", "durationMs": 2500, "version": 2, "attribution": "DramaClaw commercial license", "codec": "h264" },
+    { "id": "roll", "label": "\u6eda\u7b52\u65cb\u8f6c", "preview": "v2/roll.mp4", "durationMs": 2500, "version": 2, "attribution": "DramaClaw commercial license", "codec": "h264" },
+    { "id": "fpv", "label": "\u7b2c\u4e00\u89c6\u89d2", "preview": "v2/fpv.mp4", "durationMs": 2500, "version": 2, "attribution": "DramaClaw commercial license", "codec": "h264" },
+    { "id": "drone", "label": "\u65e0\u4eba\u673a\u822a\u62cd", "preview": "v2/drone.mp4", "durationMs": 2500, "version": 2, "attribution": "DramaClaw commercial license", "codec": "h264" },
+    { "id": "aerial", "label": "\u9ad8\u7a7a\u822a\u62cd", "preview": "v2/aerial.mp4", "durationMs": 2500, "version": 2, "attribution": "DramaClaw commercial license", "codec": "h264" },
+    { "id": "handheld", "label": "\u624b\u6301\u62cd\u6444", "preview": "v2/handheld.mp4", "durationMs": 2500, "version": 2, "attribution": "DramaClaw commercial license", "codec": "h264" }
   ]
 }

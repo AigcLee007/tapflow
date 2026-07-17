@@ -35,7 +35,7 @@ export function VideoNodeComposer({ catalog: catalogOverride, data, generating, 
   const catalog = catalogOverride ?? loadedCatalog;
   const [modelOpen, setModelOpen] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
-  const [manifest, setManifest] = useState<VideoCameraManifest>({ version: 1, attribution: "TapFlow original", items: [] });
+  const [manifest, setManifest] = useState<VideoCameraManifest>({ version: 2, attribution: "DramaClaw commercial license", items: [] });
   const cameraButtonRef = useRef<HTMLButtonElement>(null);
   const modelButtonRef = useRef<HTMLButtonElement>(null);
   const parameterButtonRef = useRef<HTMLButtonElement>(null);

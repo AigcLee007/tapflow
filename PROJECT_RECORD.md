@@ -3,6 +3,21 @@
 Last updated: 2026-07-17
 Maintainers: project team + Codex sessions
 
+## 2026-07-17 - Video Node Visual Fidelity Rebaseline
+
+- migrated the worktree video camera manifest to version 2 and copied 23 commercially authorized DramaClaw MP4 previews into `public/video-camera-library/v2/`; stable motion IDs remain unchanged and runtime validation requires local H.264 paths with the authorization source marker.
+- removed the active local camera-media generation commands and generator sources. Reduced-motion cards use the same source MP4 without autoplay instead of generated posters.
+- added `scripts/smoke-video-node-visual.ts` and its contract test. The script defines six independent viewport states and validates Chinese UI copy, mojibake absence, composer bounds, seven ratios, four resolutions including `4K`, 23 camera cards/four columns, two palette groups/five tones, and narrow/mobile overflow.
+- updated the existing smoke selectors to the Chinese UI and segmented controls, and corrected stale catalog/panorama test expectations (`视频模型 1`, canonical `1K`).
+- validation:
+  - `npm.cmd test -- scripts/smoke-video-node-visual.test.ts` passed: 2 tests.
+  - focused video and workflow regression passed after the stale expectations were corrected.
+  - `npm.cmd run build` passed with existing Browserslist, dynamic-import, and chunk-size warnings.
+  - `npm.cmd run smoke:video-node` passed after aligning the smoke fixture with the Chinese catalog fallback (`视频模型 1`), the current duration labels, and the `1 个/2 个/4 个` quantity labels. It reported `status: ok`, 23 camera cards, four desktop columns, `4K`, reduced-motion pause, and zero blocked workflow requests.
+  - `npm.cmd test -- src/flowCanvas/video scripts/smoke-video-node.test.ts scripts/smoke-video-node-visual.test.ts src/flowCanvas/nodes/FlowNodes.agent-metadata.test.tsx src/flowCanvas/utils/canonicalGraph.test.ts src/flowCanvas/hooks/useRemoteFlowAutosave.test.tsx src/services/v2AiModelCatalogApi.test.ts` passed: 27 test files, 160 tests.
+  - `git diff --check` passed; a production-source scan found no provider secrets, signed media URLs, or third-party remote video references.
+  - real screenshot execution is currently blocked by the environment: npm cannot download `@playwright/cli`, and installed Chrome/Edge exit without exposing a DevTools port. No screenshot artifacts are claimed until a browser runtime is available.
+
 ## 2026-07-17 - LibTV-Style Video Node UI And Interaction Release Verification
 
 - completed the frontend-only LibTV-style video-node experience: v2 catalog-filtered product-model selection, five video modes, capability-corrected ratio/resolution/duration/audio/count parameters (including `4K`), role-based references, context/visual-tone palettes, human-review state, and fail-closed generation preflight.

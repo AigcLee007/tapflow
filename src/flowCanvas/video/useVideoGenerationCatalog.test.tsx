@@ -107,7 +107,7 @@ describe("useVideoGenerationCatalog", () => {
 
     await waitFor(() => expect(first.result.current.loading).toBe(false));
 
-    expect(second.result.current.models.map((item) => item.label)).toEqual(["Catalog video"]);
+    expect(second.result.current.models.map((item) => item.label)).toEqual(["视频模型 1"]);
     expect(listAiModelCatalogMock).toHaveBeenCalledTimes(1);
     expect(listAiModelCatalogMock).toHaveBeenCalledWith("video");
     expect(listAiModelRoutesMock).toHaveBeenCalledTimes(1);

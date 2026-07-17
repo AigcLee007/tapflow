@@ -14,7 +14,7 @@ describe("video camera manifest", () => {
     expect(CAMERA_MOTION_LABELS["dolly-in"]).toBe("\u63a8\u8fdb");
   });
 
-  it("exposes all valid original camera motions and filters corrupt cards", () => {
+  it("exposes all licensed DramaClaw camera motions and filters corrupt cards", () => {
     expect(CAMERA_MOTION_IDS).toEqual([
       "fixed", "follow", "spiral-up", "spiral-down", "tilt-up", "tilt-down",
       "pan-left", "pan-right", "crane-up", "crane-down", "truck-left", "truck-right",
@@ -23,27 +23,25 @@ describe("video camera manifest", () => {
     ]);
 
     const manifest = loadVideoCameraManifest({
-      version: 1,
-      attribution: "TapFlow original",
+      version: 2,
+      attribution: "DramaClaw commercial license",
       items: [
         {
           id: "fixed",
           label: "固定镜头",
-          poster: "v1/fixed.webp",
-          preview: "v1/fixed.webm",
+          preview: "v2/fixed.mp4",
           durationMs: 2500,
-          version: 1,
-          attribution: "TapFlow original",
-          codec: "vp9",
+          version: 2,
+          attribution: "DramaClaw commercial license",
+          codec: "h264",
         },
         {
           id: "follow",
           label: "跟随镜头",
-          poster: "",
-          preview: "v1/follow.webm",
+          preview: "v2/follow.mp4",
           durationMs: 2500,
-          version: 1,
-          attribution: "TapFlow original",
+          version: 2,
+          attribution: "DramaClaw commercial license",
         },
       ],
     });
@@ -53,27 +51,26 @@ describe("video camera manifest", () => {
     expect(getCameraMotionById("unknown", manifest)).toBeNull();
   });
 
-  it("accepts only canonical local vp9 cards and removes duplicate motion ids", () => {
+  it("accepts only canonical licensed MP4 cards and removes duplicate motion ids", () => {
     const validCard = {
       id: "fixed",
       label: "固定镜头",
-      poster: "v1/fixed.webp",
-      preview: "v1/fixed.webm",
+      preview: "v2/fixed.mp4",
       durationMs: 2500,
-      version: 1,
-      attribution: "TapFlow original",
-      codec: "vp9",
+      version: 2,
+      attribution: "DramaClaw commercial license",
+      codec: "h264",
     } as const;
 
     const manifest = loadVideoCameraManifest({
-      version: 1,
-      attribution: "TapFlow original",
+      version: 2,
+      attribution: "DramaClaw commercial license",
       items: [
         validCard,
-        { ...validCard, id: "follow", poster: "https://example.test/follow.webp", preview: "https://example.test/follow.webm" },
-        { ...validCard, id: "spiral-up", poster: "v1/spiral-up.webp", preview: "v1/spiral-up.webm", codec: "h264" },
-        { ...validCard, id: "spiral-down", poster: "v1/spiral-down.webp", preview: "v1/spiral-down.webm", codec: "av1" },
-        { ...validCard, id: "tilt-up", poster: "v1/tilt-up.webp", preview: "v1/not-tilt-up.webm" },
+        { ...validCard, id: "follow", preview: "https://example.test/follow.mp4" },
+        { ...validCard, id: "spiral-up", preview: "v2/spiral-up.mp4", codec: "vp9" },
+        { ...validCard, id: "spiral-down", preview: "v2/spiral-down.webm" },
+        { ...validCard, id: "tilt-up", preview: "v2/not-tilt-up.mp4" },
         { ...validCard, label: "重复固定镜头" },
       ],
     });
