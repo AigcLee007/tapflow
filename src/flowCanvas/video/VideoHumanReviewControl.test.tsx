@@ -28,7 +28,8 @@ describe("VideoHumanReviewControl", () => {
       />,
     );
 
-    expect(screen.getByText("已验证 2026-07-16T08:00:00.000Z")).toBeTruthy();
+    expect(screen.getByText("已验证：2026年7月16日 16:00")).toBeTruthy();
+    expect(screen.queryByText(/T08:00:00\.000Z/)).toBeNull();
     expect(screen.queryByText("verify-safe-1")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "重新验证" }));
     expect(onRequestVerification).toHaveBeenCalledOnce();

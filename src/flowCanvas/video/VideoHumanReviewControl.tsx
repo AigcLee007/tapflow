@@ -49,5 +49,15 @@ export function VideoHumanReviewControl({ onRequestVerification, value }: VideoH
 function formatVerifiedAt(value: string | undefined) {
   if (!value) return VIDEO_UI_COPY.verified;
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? VIDEO_UI_COPY.verified : `${VIDEO_UI_COPY.verified} ${date.toISOString()}`;
+  if (Number.isNaN(date.getTime())) return VIDEO_UI_COPY.verified;
+
+  const verifiedAt = new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
+  return `${VIDEO_UI_COPY.verified}：${verifiedAt}`;
 }

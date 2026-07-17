@@ -88,7 +88,7 @@ export function VideoReferenceStrip({ currentNodeId, onChange, onUploadReference
             >
               <ImagePlus aria-hidden="true" size={14} />
               <span>{roleLabel}</span>
-              {selected ? <span className="max-w-16 truncate text-[9px] font-medium text-sky-200">{selected.id}</span> : null}
+              {selected ? <span className="text-[9px] font-medium text-sky-200">{roleLabel}{VIDEO_UI_COPY.selected}</span> : null}
             </button>
             {selected ? (
               <button
