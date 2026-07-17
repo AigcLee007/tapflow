@@ -84,6 +84,8 @@ export const VIDEO_UI_BLOCKER_COPY = {
 } as const;
 
 const CHINESE_TEXT_PATTERN = /[\u3400-\u9FFF]/u;
+const EXTERNAL_CHINESE_DESCRIPTION_PATTERN = /^[\u3400-\u9FFF0-9 ，。；：、（）()·+\-\/:%,]*$/u;
+const DISPLAY_RESOLUTION_TOKEN_PATTERN = /\b4K\b/g;
 const DURATION_PATTERN = /(\d+(?:\.\d+)?)\s*(seconds?|secs?|s|minutes?|mins?|m)\b/i;
 
 export function formatVideoModelEstimatedDuration(value: unknown): string | null {
@@ -96,7 +98,12 @@ export function formatVideoModelEstimatedDuration(value: unknown): string | null
 }
 
 export function getVideoModelDescription(value: unknown): string {
-  return typeof value === "string" && CHINESE_TEXT_PATTERN.test(value)
+  const isSafeChineseDescription =
+    typeof value === "string" &&
+    CHINESE_TEXT_PATTERN.test(value) &&
+    EXTERNAL_CHINESE_DESCRIPTION_PATTERN.test(value.replace(DISPLAY_RESOLUTION_TOKEN_PATTERN, ""));
+
+  return isSafeChineseDescription
     ? value
     : "暂无中文模型说明";
 }

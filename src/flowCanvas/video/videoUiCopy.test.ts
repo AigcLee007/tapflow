@@ -44,4 +44,12 @@ describe("video model presentation copy", () => {
     expect(getVideoModelDescription("Fast motion and cinematic composition.")).toBe("暂无中文模型说明");
     expect(getVideoModelDescription("适合电影感动态镜头")).toBe("适合电影感动态镜头");
   });
+
+  test("only exposes descriptions made of Chinese text, numbers, whitespace, and approved punctuation", () => {
+    expect(getVideoModelDescription("适合 fast motion")).toBe("暂无中文模型说明");
+    expect(getVideoModelDescription("支持 4K and audio")).toBe("暂无中文模型说明");
+    expect(getVideoModelDescription("适合电影感动态镜头，画面稳定。 ")).toBe("适合电影感动态镜头，画面稳定。 ");
+    expect(getVideoModelDescription("支持 4K / 16:9，时长 8 秒")).toBe("支持 4K / 16:9，时长 8 秒");
+    expect(getVideoModelDescription("适合动态镜头\nhttps://example.com")).toBe("暂无中文模型说明");
+  });
 });
