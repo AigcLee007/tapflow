@@ -6,7 +6,7 @@ import { createDefaultVideoGenerationParams } from "./videoGenerationParams";
 import { VideoParameterPanel } from "./VideoParameterPanel";
 
 describe("VideoParameterPanel", () => {
-  test("offers 4K, duration range and numeric controls, an audio switch tooltip, and 1/2/4 count", () => {
+  test("uses Chinese visual ratio cards and segmented parameter controls instead of select menus", () => {
     render(
       <VideoParameterPanel
         capabilities={createSafeDefaultVideoCapabilities()}
@@ -15,26 +15,85 @@ describe("VideoParameterPanel", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /清晰度/ }));
-    expect(screen.getByRole("menuitem", { name: "4K" })).toBeTruthy();
+    expect(document.querySelector("select")).toBeNull();
+    expect(screen.queryByRole("menuitem")).toBeNull();
+    expect(screen.getByRole("radiogroup", { name: "画面比例" })).toBeTruthy();
+    expect(screen.getAllByRole("radio", { name: "自动" })).toHaveLength(1);
+    for (const ratio of ["16:9", "4:3", "1:1", "3:4", "9:16", "21:9"]) {
+      expect(screen.getAllByRole("radio", { name: ratio })).toHaveLength(1);
+    }
+    for (const resolution of ["480P", "720P", "1080P", "4K"]) {
+      expect(screen.getAllByRole("radio", { name: resolution })).toHaveLength(1);
+    }
+    expect(screen.getAllByRole("radio", { name: "开启" })).toHaveLength(1);
+    expect(screen.getAllByRole("radio", { name: "关闭" })).toHaveLength(1);
+    for (const count of ["1 个", "2 个", "4 个"]) {
+      expect(screen.getAllByRole("radio", { name: count })).toHaveLength(1);
+    }
+  });
 
-    expect(screen.getByLabelText("时长滑杆").getAttribute("type")).toBe("range");
-    expect(screen.getByLabelText("时长输入").getAttribute("type")).toBe("number");
+  test("keeps unsupported resolution and count visible but disabled with a Chinese reason", () => {
+    const capabilities = createSafeDefaultVideoCapabilities();
+    capabilities.confirmedByRoute = true;
+    capabilities.resolutions = ["720P"];
+    capabilities.maxCount = 1;
+    const onChange = vi.fn();
 
-    const audio = screen.getByRole("switch", { name: "生成音频" });
-    expect(audio.getAttribute("aria-describedby")).toBe("video-audio-capability-note");
-    fireEvent.mouseEnter(audio);
-    expect(screen.getByRole("tooltip").textContent).toContain("生成音频");
+    render(
+      <VideoParameterPanel
+        capabilities={capabilities}
+        onChange={onChange}
+        value={createDefaultVideoGenerationParams()}
+      />,
+    );
 
-    fireEvent.click(screen.getByRole("button", { name: /生成数量/ }));
-    expect(screen.getByRole("menuitem", { name: "1" })).toBeTruthy();
-    expect(screen.getByRole("menuitem", { name: "2" })).toBeTruthy();
-    expect(screen.getByRole("menuitem", { name: "4" })).toBeTruthy();
+    const unsupported4K = screen.getByRole("radio", { name: /^4K/ });
+    expect(unsupported4K.getAttribute("aria-disabled")).toBe("true");
+    fireEvent.mouseEnter(unsupported4K);
+    expect(screen.getByRole("note").textContent).toContain("当前模型不支持");
+    fireEvent.click(unsupported4K);
+
+    const unsupportedCount = screen.getByRole("radio", { name: /^4 个/ });
+    expect(unsupportedCount.getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(unsupportedCount);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  test("uses audio and count segmentation without changing unrelated video generation data", () => {
+    const onChange = vi.fn();
+    const value = {
+      ...createDefaultVideoGenerationParams(),
+      cameraMotionId: "push-in",
+      mode: "image_reference" as const,
+      referenceRolesByKey: {
+        asset: { role: "reference" as const, source: { id: "asset-1", kind: "asset" as const } },
+      },
+    };
+
+    render(
+      <VideoParameterPanel
+        capabilities={createSafeDefaultVideoCapabilities()}
+        onChange={onChange}
+        value={value}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("radio", { name: "关闭" }));
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      cameraMotionId: "push-in",
+      generateAudio: false,
+      mode: "image_reference",
+      referenceRolesByKey: value.referenceRolesByKey,
+    }));
+
+    fireEvent.click(screen.getByRole("radio", { name: "2 个" }));
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ count: 2 }));
   });
 
   test("coerces duration to the selected model limits and step on blur and Enter", () => {
     const onChange = vi.fn();
     const capabilities = createSafeDefaultVideoCapabilities();
+    capabilities.confirmedByRoute = true;
     capabilities.minDurationSeconds = 3;
     capabilities.maxDurationSeconds = 7;
     capabilities.durationStepSeconds = 2;
@@ -47,75 +106,37 @@ describe("VideoParameterPanel", () => {
       />,
     );
 
-    const input = screen.getByLabelText("时长输入");
+    const input = screen.getByLabelText("视频时长输入");
     fireEvent.change(input, { target: { value: "8" } });
     fireEvent.blur(input);
-
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ durationSeconds: 7 }));
 
     fireEvent.change(input, { target: { value: "4" } });
     onChange.mockClear();
-    (input as HTMLInputElement).focus();
+    input.focus();
     fireEvent.keyDown(input, { key: "Enter" });
-
-    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ durationSeconds: 5 }));
     expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ durationSeconds: 5 }));
   });
 
-  test("disables audio generation with an accessible explanation when the selected model does not support audio", () => {
-    const capabilities = createSafeDefaultVideoCapabilities();
-    capabilities.confirmedByRoute = true;
-    capabilities.supportsAudio = false;
+  test("disables confirmed unsupported audio with a Chinese explanation but leaves unconfirmed capability editable", () => {
+    const unsupported = createSafeDefaultVideoCapabilities();
+    unsupported.confirmedByRoute = true;
+    unsupported.supportsAudio = false;
     const onChange = vi.fn();
-
-    render(
-      <VideoParameterPanel
-        capabilities={capabilities}
-        onChange={onChange}
-        value={createDefaultVideoGenerationParams()}
-      />,
+    const { rerender } = render(
+      <VideoParameterPanel capabilities={unsupported} onChange={onChange} value={createDefaultVideoGenerationParams()} />,
     );
 
-    const audio = screen.getByRole("switch", { name: "生成音频" });
-    expect(audio.getAttribute("disabled")).not.toBeNull();
-    expect(audio.getAttribute("aria-describedby")).toBe("video-audio-capability-note");
-    const explanation = document.getElementById("video-audio-capability-note");
-    expect(explanation?.textContent).toBe("当前模型不支持生成音频");
-
-    fireEvent.click(audio);
+    const audioOn = screen.getByRole("radio", { name: /^开启/ });
+    expect(audioOn.getAttribute("aria-disabled")).toBe("true");
+    fireEvent.mouseEnter(audioOn);
+    expect(screen.getByRole("note").textContent).toContain("当前模型不支持生成音频");
+    fireEvent.click(audioOn);
     expect(onChange).not.toHaveBeenCalled();
-  });
 
-  test("keeps audio editable while selected model capabilities are not confirmed", () => {
-    const capabilities = createSafeDefaultVideoCapabilities();
-    capabilities.supportsAudio = false;
-    const onChange = vi.fn();
-
-    render(
-      <VideoParameterPanel
-        capabilities={capabilities}
-        onChange={onChange}
-        value={createDefaultVideoGenerationParams()}
-      />,
-    );
-
-    const audio = screen.getByRole("switch", { name: "生成音频" });
-    expect(audio.getAttribute("disabled")).toBeNull();
-    fireEvent.click(audio);
-    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ generateAudio: true }));
-  });
-
-  test("keeps the safe 2-8 second duration range editable before a route confirms capabilities", () => {
-    render(
-      <VideoParameterPanel
-        onChange={vi.fn()}
-        value={createDefaultVideoGenerationParams()}
-      />,
-    );
-
-    const slider = screen.getByLabelText("时长滑杆");
-    expect(slider.getAttribute("min")).toBe("2");
-    expect(slider.getAttribute("max")).toBe("8");
-    expect((slider as HTMLInputElement).disabled).toBe(false);
+    const unconfirmed = { ...unsupported, confirmedByRoute: false };
+    rerender(<VideoParameterPanel capabilities={unconfirmed} onChange={onChange} value={createDefaultVideoGenerationParams()} />);
+    expect(screen.getByRole("radio", { name: "开启" }).getAttribute("aria-disabled")).toBe("false");
   });
 });

@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
-import { Volume2 } from "lucide-react";
 
-import { MenuSelect } from "../../components/menu/MenuSelect";
 import {
   correctVideoGenerationParams,
   createSafeDefaultVideoCapabilities,
 } from "./videoGenerationCapabilities";
+import { VideoAspectRatioGrid } from "./VideoAspectRatioGrid";
+import { VideoSegmentedControl } from "./VideoSegmentedControl";
+import { VIDEO_UI_COPY } from "./videoUiCopy";
+import { VIDEO_VISUAL_TOKENS } from "./videoVisualTokens";
 import type {
-  VideoAspectRatio,
   VideoCount,
   VideoGenerationCapabilities,
   VideoGenerationParamsV1,
@@ -20,46 +21,23 @@ type VideoParameterPanelProps = {
   value: VideoGenerationParamsV1;
 };
 
-const ASPECT_RATIO_OPTIONS: Array<{ label: string; value: VideoAspectRatio }> = [
-  { value: "auto", label: "自动" },
-  { value: "16:9", label: "16:9" },
-  { value: "4:3", label: "4:3" },
-  { value: "1:1", label: "1:1" },
-  { value: "3:4", label: "3:4" },
-  { value: "9:16", label: "9:16" },
-  { value: "21:9", label: "21:9" },
-];
-
-const RESOLUTION_OPTIONS: Array<{ label: string; value: VideoResolution }> = [
-  { value: "480P", label: "480P" },
-  { value: "720P", label: "720P" },
-  { value: "1080P", label: "1080P" },
-  { value: "4K", label: "4K" },
-];
-
-const COUNT_OPTIONS: Array<{ label: string; value: VideoCount }> = [
-  { value: 1, label: "1" },
-  { value: 2, label: "2" },
-  { value: 4, label: "4" },
-];
-
-const AUDIO_CAPABILITY_TOOLTIP_ID = "video-audio-capability-note";
+const RESOLUTIONS: readonly VideoResolution[] = ["480P", "720P", "1080P", "4K"];
+const COUNTS: readonly VideoCount[] = [1, 2, 4];
+const UNSUPPORTED_BY_MODEL = "当前模型不支持此选项";
+const UNSUPPORTED_AUDIO = "当前模型不支持生成音频";
 
 export function VideoParameterPanel({ capabilities, onChange, value }: VideoParameterPanelProps) {
-  const effectiveCapabilities = capabilities ?? createSafeDefaultVideoCapabilities();
-  const audioUnsupported = Boolean(capabilities?.confirmedByRoute && !effectiveCapabilities.supportsAudio);
-  const audioCapabilities = !capabilities?.confirmedByRoute && !effectiveCapabilities.supportsAudio
-    ? { ...effectiveCapabilities, supportsAudio: true }
-    : effectiveCapabilities;
+  const routeCapabilitiesConfirmed = Boolean(capabilities?.confirmedByRoute);
+  const safeCapabilities = createSafeDefaultVideoCapabilities();
+  const effectiveCapabilities = routeCapabilitiesConfirmed ? capabilities! : safeCapabilities;
   const [durationInput, setDurationInput] = useState(String(value.durationSeconds));
-  const [audioTooltipOpen, setAudioTooltipOpen] = useState(false);
 
   useEffect(() => {
     setDurationInput(String(value.durationSeconds));
   }, [value.durationSeconds]);
 
   const applyChange = (next: VideoGenerationParamsV1) => {
-    onChange(correctVideoGenerationParams(next, audioCapabilities).params);
+    onChange(correctVideoGenerationParams(next, effectiveCapabilities).params);
   };
 
   const commitDuration = () => {
@@ -73,120 +51,105 @@ export function VideoParameterPanel({ capabilities, onChange, value }: VideoPara
     onChange(corrected);
   };
 
-  const ratioOptions = ASPECT_RATIO_OPTIONS.filter((option) => effectiveCapabilities.aspectRatios.includes(option.value));
-  const resolutionOptions = RESOLUTION_OPTIONS.filter((option) => effectiveCapabilities.resolutions.includes(option.value));
-  const countOptions = COUNT_OPTIONS.filter((option) => option.value <= effectiveCapabilities.maxCount);
+  const resolutionOptions = RESOLUTIONS.map((resolution) => ({
+    disabled: routeCapabilitiesConfirmed && !effectiveCapabilities.resolutions.includes(resolution),
+    disabledReason: UNSUPPORTED_BY_MODEL,
+    label: resolution,
+    value: resolution,
+  }));
+  const audioUnsupported = routeCapabilitiesConfirmed && !effectiveCapabilities.supportsAudio;
+  const countOptions = COUNTS.map((count) => ({
+    disabled: routeCapabilitiesConfirmed && count > effectiveCapabilities.maxCount,
+    disabledReason: UNSUPPORTED_BY_MODEL,
+    label: `${count} 个`,
+    value: count,
+  }));
 
   return (
-    <div className="grid gap-3 text-white">
-      <div className="grid grid-cols-3 gap-2">
-        <ParameterField label="画面比例">
-          <MenuSelect
-            fullWidth
-            label="画面比例"
-            onChange={(aspectRatio) => applyChange({ ...value, aspectRatio: aspectRatio as VideoAspectRatio })}
-            options={ratioOptions}
-            value={value.aspectRatio}
-          />
-        </ParameterField>
-        <ParameterField label="清晰度">
-          <MenuSelect
-            fullWidth
-            label="清晰度"
-            onChange={(resolution) => applyChange({ ...value, resolution: resolution as VideoResolution })}
-            options={resolutionOptions}
-            value={value.resolution}
-          />
-        </ParameterField>
-        <ParameterField label="生成数量">
-          <MenuSelect
-            fullWidth
-            label="生成数量"
-            onChange={(count) => applyChange({ ...value, count: Number(count) as VideoCount })}
-            options={countOptions.map((option) => ({ ...option, value: String(option.value) }))}
-            value={String(value.count)}
-          />
-        </ParameterField>
-      </div>
+    <div className={`w-full max-w-[500px] space-y-5 ${VIDEO_VISUAL_TOKENS.panelSurface} ${VIDEO_VISUAL_TOKENS.panelRadius} p-4 text-white`}>
+      <ParameterSection label={VIDEO_UI_COPY.aspectRatio}>
+        <VideoAspectRatioGrid
+          allowedRatios={routeCapabilitiesConfirmed ? effectiveCapabilities.aspectRatios : undefined}
+          onChange={(aspectRatio) => applyChange({ ...value, aspectRatio })}
+          value={value.aspectRatio}
+        />
+      </ParameterSection>
 
-      <div className="grid grid-cols-[1fr_auto] items-end gap-3">
-        <ParameterField label="时长">
-          <div className="flex h-[38px] items-center gap-2 rounded-[10px] border border-white/10 bg-[#17171b] px-2">
+      <ParameterSection label="清晰度">
+        <VideoSegmentedControl
+          ariaLabel="清晰度"
+          onChange={(resolution) => applyChange({ ...value, resolution })}
+          options={resolutionOptions}
+          value={value.resolution}
+        />
+      </ParameterSection>
+
+      <ParameterSection label="视频时长">
+        <div className="flex items-center gap-3">
+          <input
+            aria-label="视频时长滑杆"
+            className="h-1 w-full cursor-pointer accent-white"
+            max={effectiveCapabilities.maxDurationSeconds}
+            min={effectiveCapabilities.minDurationSeconds}
+            onChange={(event) => {
+              const durationSeconds = Number(event.currentTarget.value);
+              setDurationInput(String(durationSeconds));
+              applyChange({ ...value, durationSeconds });
+            }}
+            step={effectiveCapabilities.durationStepSeconds}
+            type="range"
+            value={value.durationSeconds}
+          />
+          <div className={`flex h-10 shrink-0 items-center gap-2 px-2 ${VIDEO_VISUAL_TOKENS.panelRadius} border border-white/20 bg-black/15`}>
             <input
-              aria-label="时长滑杆"
-              className="h-1 w-full cursor-pointer accent-sky-300"
-              max={effectiveCapabilities.maxDurationSeconds}
-              min={effectiveCapabilities.minDurationSeconds}
-              onChange={(event) => {
-                const durationSeconds = Number(event.currentTarget.value);
-                setDurationInput(String(durationSeconds));
-                applyChange({ ...value, durationSeconds });
-              }}
-              step={effectiveCapabilities.durationStepSeconds}
-              type="range"
-              value={value.durationSeconds}
-            />
-            <input
-              aria-label="时长输入"
-              className="h-7 w-11 rounded-[7px] border border-white/10 bg-black/20 px-1 text-center text-xs font-bold outline-none focus:border-sky-300/50"
+              aria-label="视频时长输入"
+              className="w-10 bg-transparent text-center text-sm font-medium outline-none"
               inputMode="decimal"
               max={effectiveCapabilities.maxDurationSeconds}
               min={effectiveCapabilities.minDurationSeconds}
               onBlur={commitDuration}
               onChange={(event) => setDurationInput(event.currentTarget.value)}
               onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.currentTarget.blur();
-                }
+                if (event.key === "Enter") event.currentTarget.blur();
               }}
               step={effectiveCapabilities.durationStepSeconds}
               type="number"
               value={durationInput}
             />
-            <span className="text-[9px] font-medium text-white/40">秒</span>
+            <span className="text-sm text-white/55">秒</span>
           </div>
-        </ParameterField>
-
-        <div className="relative flex h-[38px] items-center">
-          <button
-            aria-checked={value.generateAudio}
-            aria-describedby={AUDIO_CAPABILITY_TOOLTIP_ID}
-            aria-label="生成音频"
-            className={`group inline-flex h-[38px] items-center gap-[7px] rounded-[10px] border px-2 text-xs font-bold transition disabled:cursor-not-allowed disabled:border-white/5 disabled:bg-[#17171b] disabled:text-white/35 ${value.generateAudio ? "border-sky-300/50 bg-sky-300/15 text-sky-100" : "border-white/10 bg-[#17171b] text-white/75"}`}
-            disabled={audioUnsupported}
-            onBlur={() => setAudioTooltipOpen(false)}
-            onClick={() => {
-              if (!audioUnsupported) applyChange({ ...value, generateAudio: !value.generateAudio });
-            }}
-            onFocus={() => setAudioTooltipOpen(true)}
-            onMouseEnter={() => setAudioTooltipOpen(true)}
-            onMouseLeave={() => setAudioTooltipOpen(false)}
-            role="switch"
-            type="button"
-          >
-            <Volume2 aria-hidden="true" size={16} />
-            <span>音频</span>
-          </button>
-          <span
-            id={AUDIO_CAPABILITY_TOOLTIP_ID}
-            className={audioUnsupported || audioTooltipOpen
-              ? "absolute bottom-[calc(100%+8px)] right-0 z-10 whitespace-nowrap rounded-[7px] border border-white/10 bg-[#1c1c20] px-2 py-1 text-[9px] font-medium text-white shadow-[0_8px_20px_rgba(0,0,0,0.35)]"
-              : "sr-only"}
-            role="tooltip"
-          >
-            {audioUnsupported ? "当前模型不支持生成音频" : "生成音频"}
-          </span>
         </div>
-      </div>
+      </ParameterSection>
+
+      <ParameterSection label="生成音频">
+        <VideoSegmentedControl
+          ariaLabel="生成音频"
+          onChange={(audioSetting) => applyChange({ ...value, generateAudio: audioSetting === "on" })}
+          options={[
+            { disabled: audioUnsupported, disabledReason: UNSUPPORTED_AUDIO, label: "开启", value: "on" },
+            { label: "关闭", value: "off" },
+          ]}
+          value={value.generateAudio ? "on" : "off"}
+        />
+      </ParameterSection>
+
+      <ParameterSection label="生成数量">
+        <VideoSegmentedControl
+          ariaLabel="生成数量"
+          onChange={(count) => applyChange({ ...value, count })}
+          options={countOptions}
+          value={value.count}
+        />
+      </ParameterSection>
     </div>
   );
 }
 
-function ParameterField({ children, label }: { children: React.ReactNode; label: string }) {
+function ParameterSection({ children, label }: { children: React.ReactNode; label: string }) {
   return (
-    <div className="grid min-w-0 gap-1 text-[9px] font-medium leading-[1.25] text-white/40">
-      <span>{label}</span>
+    <section className="space-y-2">
+      <h3 className="text-sm font-medium text-white/80">{label}</h3>
       {children}
-    </div>
+    </section>
   );
 }
