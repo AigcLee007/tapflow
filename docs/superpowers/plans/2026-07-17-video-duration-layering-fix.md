@@ -204,7 +204,7 @@ git diff --check
 
 Expected: 测试、功能 smoke 和构建全部退出 0；构建仅允许既有 Browserslist、动态导入和 chunk size 警告。
 
-- [ ] **Step 3: 提交并推送分支**
+- [x] **Step 3: 提交并推送分支**
 
 ```bash
 git add PROJECT_RECORD.md docs/superpowers/plans/2026-07-17-video-duration-layering-fix.md src/flowCanvas/video
