@@ -19,6 +19,9 @@ describe("VideoPalettePopover", () => {
 
     expect(screen.getByText("人物颜色")).toBeTruthy();
     expect(screen.getByText("道具颜色")).toBeTruthy();
+    expect(screen.getByRole("group", { name: "人物颜色" })).toBeTruthy();
+    expect(screen.getByRole("group", { name: "道具颜色" })).toBeTruthy();
+    expect(screen.queryByRole("group", { name: "场景颜色" })).toBeNull();
     expect(screen.queryByText("场景颜色")).toBeNull();
     expect(screen.queryByText("风格颜色")).toBeNull();
     expect(screen.queryByText("asset-subject-123")).toBeNull();

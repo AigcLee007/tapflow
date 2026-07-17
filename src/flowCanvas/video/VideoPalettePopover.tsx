@@ -65,9 +65,10 @@ export function VideoPalettePopover({ onChange, value }: VideoPalettePopoverProp
                   const assignment = assignments.find((candidate) => group.roles.includes(candidate.role));
                   if (!assignment) return null;
                   const groupLabel = group.title;
+                  const groupHeadingId = `video-context-palette-${assignment.role}`;
                   return (
-                    <div key={groupLabel}>
-                      <h4 className="mb-1.5 text-[11px] font-bold leading-none text-white/65">{groupLabel}</h4>
+                    <div key={groupLabel} role="group" aria-labelledby={groupHeadingId}>
+                      <h4 id={groupHeadingId} className="mb-1.5 text-[11px] font-bold leading-none text-white/65">{groupLabel}</h4>
                       <div className="grid grid-cols-6 gap-1.5">
                         {VIDEO_CONTEXT_COLOR_PRESETS.map((color) => {
                           const selected = value.contextPaletteRefs.some((entry) => sameSourceAndRole(entry, assignment)
