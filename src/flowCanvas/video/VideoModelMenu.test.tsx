@@ -64,6 +64,13 @@ describe("VideoModelMenu", () => {
     expect(screen.queryByText("private-upstream")).toBeNull();
   });
 
+  test("renders the Chinese catalog fallback without exposing the English fallback", () => {
+    render(<VideoModelMenu error={null} loading={false} onChange={vi.fn()} onRetry={vi.fn()} options={[model({ label: "视频模型" })]} value={null} />);
+
+    expect(screen.getByRole("option", { name: /视频模型/ })).toBeTruthy();
+    expect(screen.queryByText("Video model")).toBeNull();
+  });
+
   test("uses stable loading rows and exposes an error retry without injecting mock models", () => {
     const onRetry = vi.fn();
     const { rerender } = render(

@@ -78,4 +78,13 @@ describe("toVideoModelOptions", () => {
 
     expect(options[0]?.description).toBe("Capability description");
   });
+
+  test("uses a Chinese creator-safe fallback when the catalog omits a display name", () => {
+    const options = toVideoModelOptions([videoModel({ displayName: "" })], {
+      "video.private-model-key": [route()],
+    });
+
+    expect(options[0]?.label).toBe("视频模型");
+    expect(options[0]?.label).not.toBe("Video model");
+  });
 });

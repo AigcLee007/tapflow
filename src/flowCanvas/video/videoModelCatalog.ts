@@ -1,6 +1,7 @@
 import type { AiModelCatalogItem, AiModelCatalogRoute } from "../../services/v2AiModelCatalogApi";
 import { mergeVideoCapabilities } from "./videoGenerationCapabilities";
 import type { VideoModelOption } from "./videoTypes";
+import { VIDEO_UI_COPY } from "./videoUiCopy";
 
 const isGenerationRoute = (route: AiModelCatalogRoute) =>
   Array.isArray(route.capabilities?.supportedVideoWorkflows)
@@ -27,7 +28,7 @@ export function toVideoModelOptions(
         estimatedCredits,
         ...(capabilities.estimatedDurationLabel ? { estimatedDurationLabel: capabilities.estimatedDurationLabel } : {}),
         id: model.id,
-        label: model.displayName || "Video model",
+        label: model.displayName || VIDEO_UI_COPY.videoModels,
         minChargeCredits,
       }];
     });
