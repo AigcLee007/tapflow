@@ -9,7 +9,8 @@ import {
 } from "../../components/menu/menuStyles";
 import { useDismissibleLayer } from "../../components/menu/useDismissibleLayer";
 import type { VideoGenerationBlocker, VideoModelOption } from "./videoTypes";
-import { formatVideoModelEstimatedDuration, getVideoModelDescription, VIDEO_UI_BLOCKER_COPY, VIDEO_UI_COPY } from "./videoUiCopy";
+import { VIDEO_UI_BLOCKER_COPY, VIDEO_UI_COPY } from "./videoUiCopy";
+import { sanitizeVideoModelDescription, sanitizeVideoModelEstimatedDuration } from "./videoPresentationSanitizers";
 
 type VideoModelMenuProps = {
   error: string | null;
@@ -147,8 +148,8 @@ export function VideoModelMenu({
         const descriptionId = `${menuId}-${index}-description`;
         const blockerId = `${menuId}-${index}-blocker`;
         const blockerMessage = option.blocker ? BLOCKER_MESSAGES[option.blocker] : null;
-        const description = getVideoModelDescription(option.description);
-        const estimatedDuration = formatVideoModelEstimatedDuration(option.estimatedDurationLabel);
+        const description = sanitizeVideoModelDescription(option.description);
+        const estimatedDuration = sanitizeVideoModelEstimatedDuration(option.estimatedDurationLabel);
 
         return (
           <button

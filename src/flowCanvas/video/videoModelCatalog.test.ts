@@ -14,7 +14,7 @@ const videoModel = (overrides: Partial<AiModelCatalogItem> = {}): AiModelCatalog
   modelKey: "video.private-model-key",
   sortOrder: 10,
   status: "active",
-  uiSchema: { description: "Creator-safe UI description" },
+  uiSchema: { description: "适合叙事短片和动态镜头创作" },
   ...overrides,
 });
 
@@ -54,9 +54,9 @@ describe("toVideoModelOptions", () => {
 
     expect(options.map((option) => option.label)).toEqual(["视频模型 1", "视频模型 2"]);
     expect(options[0]).toMatchObject({
-      description: "Creator-safe UI description",
+      description: "适合叙事短片和动态镜头创作",
       estimatedCredits: 15,
-      estimatedDurationLabel: "About 1 minute",
+      estimatedDurationLabel: "预计 1 分钟",
       id: "catalog-video-1",
       minChargeCredits: 12,
     });
@@ -71,12 +71,56 @@ describe("toVideoModelOptions", () => {
     expect(Object.keys(options[0])).not.toEqual(expect.arrayContaining(["providerKey", "routeKey"]));
   });
 
-  test("uses only safe capability description when ui schema has no description", () => {
+  test("uses only safe Chinese capability description when ui schema has no description", () => {
     const options = toVideoModelOptions([videoModel({ uiSchema: {} })], {
-      "video.private-model-key": [route({ capabilities: { description: "Capability description", supportedVideoWorkflows: ["video_generation"] } })],
+      "video.private-model-key": [route({ capabilities: { description: "适合连续镜头创作", supportedVideoWorkflows: ["video_generation"] } })],
     });
 
-    expect(options[0]?.description).toBe("Capability description");
+    expect(options[0]?.description).toBe("适合连续镜头创作");
+  });
+
+  test("sanitizes description and ETA at the catalog boundary", () => {
+    const options = toVideoModelOptions([
+      videoModel({
+        uiSchema: { description: "Fast cinematic shots" },
+      }),
+      videoModel({
+        id: "mixed-description",
+        modelKey: "video.mixed-description",
+        sortOrder: 20,
+        uiSchema: { description: "电影 fast 镜头" },
+      }),
+    ], {
+      "video.private-model-key": [route({ capabilities: { estimatedDurationLabel: "About 8 seconds", supportedVideoWorkflows: ["video_generation"] } })],
+      "video.mixed-description": [route({
+        capabilities: { estimatedDurationLabel: "8 seconds / fast", supportedVideoWorkflows: ["video_generation"] },
+        modelKey: "video.mixed-description",
+      })],
+    });
+
+    expect(options[0]).toMatchObject({
+      description: "暂无中文模型说明",
+      estimatedDurationLabel: "预计 8 秒",
+    });
+    expect(options[1]).toMatchObject({
+      description: "暂无中文模型说明",
+    });
+    expect(options[1]).not.toHaveProperty("estimatedDurationLabel");
+    expect(JSON.stringify(options)).not.toContain("Fast cinematic shots");
+    expect(JSON.stringify(options)).not.toContain("电影 fast 镜头");
+    expect(JSON.stringify(options)).not.toContain("8 seconds / fast");
+  });
+
+  test("preserves safe Chinese timing labels and omits unsafe mixed timing labels", () => {
+    const safe = toVideoModelOptions([videoModel()], {
+      "video.private-model-key": [route({ capabilities: { estimatedDurationLabel: "预计 12 秒", supportedVideoWorkflows: ["video_generation"] } })],
+    });
+    const unsafe = toVideoModelOptions([videoModel()], {
+      "video.private-model-key": [route({ capabilities: { estimatedDurationLabel: "预计 12 秒 fast", supportedVideoWorkflows: ["video_generation"] } })],
+    });
+
+    expect(safe[0]?.estimatedDurationLabel).toBe("预计 12 秒");
+    expect(unsafe[0]).not.toHaveProperty("estimatedDurationLabel");
   });
 
   test("uses a Chinese creator-safe fallback when the catalog omits a display name", () => {

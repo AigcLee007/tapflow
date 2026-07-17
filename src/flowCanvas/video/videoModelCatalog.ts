@@ -1,7 +1,11 @@
 import type { AiModelCatalogItem, AiModelCatalogRoute } from "../../services/v2AiModelCatalogApi";
 import { mergeVideoCapabilities } from "./videoGenerationCapabilities";
 import type { VideoModelOption } from "./videoTypes";
-import { isSafeChineseCreatorText } from "./videoUiCopy";
+import {
+  isSafeChineseCreatorText,
+  sanitizeVideoModelDescription,
+  sanitizeVideoModelEstimatedDuration,
+} from "./videoPresentationSanitizers";
 
 const isGenerationRoute = (route: AiModelCatalogRoute) =>
   Array.isArray(route.capabilities?.supportedVideoWorkflows)
@@ -19,16 +23,23 @@ export function toVideoModelOptions(
 
   return eligibleModels
     .map(({ model, route }, index) => {
-      const capabilities = mergeVideoCapabilities(model.capabilities, route.capabilities, { confirmedByRoute: true });
+      const rawCapabilities = mergeVideoCapabilities(model.capabilities, route.capabilities, { confirmedByRoute: true });
+      const description = sanitizeVideoModelDescription(readUiDescription(model.uiSchema) ?? rawCapabilities.description);
+      const estimatedDurationLabel = sanitizeVideoModelEstimatedDuration(rawCapabilities.estimatedDurationLabel);
+      const capabilities = {
+        ...rawCapabilities,
+        description,
+        ...(estimatedDurationLabel ? { estimatedDurationLabel } : {}),
+      };
+      if (!estimatedDurationLabel) delete capabilities.estimatedDurationLabel;
       const estimatedCredits = positiveNumber(route.estimatedCredits) ?? positiveNumber(route.minChargeCredits);
       const minChargeCredits = positiveNumber(route.minChargeCredits) ?? positiveNumber(route.estimatedCredits);
-      const description = readUiDescription(model.uiSchema) ?? capabilities.description;
       return {
         blocker: estimatedCredits == null && minChargeCredits == null ? "PRICING_NOT_FOUND" : null,
         capabilities,
-        ...(description ? { description } : {}),
+        description,
         estimatedCredits,
-        ...(capabilities.estimatedDurationLabel ? { estimatedDurationLabel: capabilities.estimatedDurationLabel } : {}),
+        ...(estimatedDurationLabel ? { estimatedDurationLabel } : {}),
         id: model.id,
         label: getCreatorModelLabel(model, index + 1),
         minChargeCredits,

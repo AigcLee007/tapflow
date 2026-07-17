@@ -48,6 +48,36 @@ describe("VideoModelMenu", () => {
     expect(screen.getByRole("option", { name: /创作视频一号/ }).getAttribute("aria-describedby")).toBeTruthy();
   });
 
+  test("keeps safe Chinese metadata and omits mixed catalog timing metadata", () => {
+    const { rerender } = render(
+      <VideoModelMenu
+        error={null}
+        loading={false}
+        onChange={vi.fn()}
+        onRetry={vi.fn()}
+        options={[model({ description: "适合连续镜头创作", estimatedDurationLabel: "预计 12 秒" })]}
+        value="creator-video-1"
+      />,
+    );
+
+    expect(screen.getByText("适合连续镜头创作")).toBeTruthy();
+    expect(screen.getByText("预计 12 秒")).toBeTruthy();
+
+    rerender(
+      <VideoModelMenu
+        error={null}
+        loading={false}
+        onChange={vi.fn()}
+        onRetry={vi.fn()}
+        options={[model({ description: "适合 fast 镜头", estimatedDurationLabel: "预计 12 秒 fast" })]}
+        value="creator-video-1"
+      />,
+    );
+
+    expect(screen.getByText("暂无中文模型说明")).toBeTruthy();
+    expect(screen.queryByText("预计 12 秒 fast")).toBeNull();
+  });
+
   test("does not render a search input or internal provider and route fields", () => {
     const unsafeOption = {
       ...model(),
