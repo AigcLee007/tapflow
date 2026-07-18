@@ -78,7 +78,8 @@ describe("VideoNodeComposer", () => {
     }
     expect(screen.getByRole("button", { name: "运镜库" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "选择视频模型" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "视频参数" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "视频参数" })).toBeNull();
+    expect(screen.getByRole("button", { name: "视频参数摘要" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "生成视频" })).toBeTruthy();
   });
 
@@ -92,7 +93,7 @@ describe("VideoNodeComposer", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "选择视频模型" }));
     expect(screen.getByRole("status", { name: "正在加载视频模型" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "视频参数" }));
+    fireEvent.click(screen.getByRole("button", { name: "视频参数摘要" }));
     expect(screen.queryByRole("status", { name: "正在加载视频模型" })).toBeNull();
     expect(screen.getByRole("dialog", { name: "视频参数" })).toBeTruthy();
   });
@@ -101,7 +102,7 @@ describe("VideoNodeComposer", () => {
     const data = { generationPrompt: "", params: { videoGeneration: createDefaultVideoGenerationParams() } } as any;
     render(<VideoNodeComposer data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} selected />);
 
-    fireEvent.click(screen.getByRole("button", { name: "视频参数" }));
+    fireEvent.click(screen.getByRole("button", { name: "视频参数摘要" }));
     const dialog = screen.getByRole("dialog", { name: "视频参数" });
 
     expect(dialog.parentElement).toBe(document.body);
@@ -109,11 +110,14 @@ describe("VideoNodeComposer", () => {
     expect(dialog.style.zIndex).toBe("10020");
   });
 
-  test("keeps the bottom parameter summary synchronized with the current video params", () => {
+  test("keeps the inline parameter summary synchronized with the current video params", () => {
     const data = { generationPrompt: "", params: { videoGeneration: createDefaultVideoGenerationParams() } } as any;
     const { rerender } = render(<VideoNodeComposer data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} selected />);
 
-    expect(screen.getByRole("button", { name: "视频参数摘要" }).textContent).toContain("自动 · 720P · 4 秒 · 1 个 · 音频关闭");
+    const summary = screen.getByRole("button", { name: "视频参数摘要" });
+    expect(summary.textContent).toContain("自动 · 720P · 4 秒 · 1 个 · 音频关闭");
+    expect(summary.parentElement?.parentElement?.className).toContain("flex");
+    expect(screen.queryByRole("button", { name: "视频参数" })).toBeNull();
 
     const updatedData = {
       ...data,
@@ -133,6 +137,16 @@ describe("VideoNodeComposer", () => {
     expect(screen.getByRole("button", { name: "视频参数摘要" }).textContent).toContain("16:9 · 1080P · 9 秒 · 2 个 · 音频开启");
   });
 
+  test("opens the parameter popover from the inline summary capsule", () => {
+    const data = { generationPrompt: "", params: { videoGeneration: createDefaultVideoGenerationParams() } } as any;
+    render(<VideoNodeComposer data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} selected />);
+
+    fireEvent.click(screen.getByRole("button", { name: "视频参数摘要" }));
+
+    expect(screen.getByRole("dialog", { name: "视频参数" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "视频参数" })).toBeNull();
+  });
+
   test("dismisses compact layers with Escape and restores focus to their trigger", () => {
     const data = { generationPrompt: "", params: { videoGeneration: createDefaultVideoGenerationParams() } } as any;
     render(<VideoNodeComposer data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} selected />);
@@ -143,16 +157,16 @@ describe("VideoNodeComposer", () => {
     expect(screen.queryByRole("status", { name: "正在加载视频模型" })).toBeNull();
     expect(document.activeElement).toBe(modelButton);
 
-    const parameterButton = screen.getByRole("button", { name: "视频参数" });
-    fireEvent.click(parameterButton);
+    const parameterSummary = screen.getByRole("button", { name: "视频参数摘要" });
+    fireEvent.click(parameterSummary);
     fireEvent.keyDown(window, { key: "Escape" });
     expect(screen.queryByRole("dialog", { name: "视频参数" })).toBeNull();
-    expect(document.activeElement).toBe(parameterButton);
+    expect(document.activeElement).toBe(parameterSummary);
 
-    fireEvent.click(parameterButton);
+    fireEvent.click(parameterSummary);
     fireEvent.pointerDown(document.body);
     expect(screen.queryByRole("dialog", { name: "视频参数" })).toBeNull();
-    expect(document.activeElement).toBe(parameterButton);
+    expect(document.activeElement).toBe(parameterSummary);
   });
 
   test("stacks the V2 composer controls at narrow layouts without changing the node itself", () => {

@@ -1,7 +1,18 @@
 ﻿# Project Record
 
-Last updated: 2026-07-17
+Last updated: 2026-07-18
 Maintainers: project team + Codex sessions
+
+## 2026-07-18 - Inline Video Parameter Capsule
+
+- replaced the standalone `参数` button and the full-width second-row summary with one LibTV-style parameter capsule in the bottom video toolbar.
+- the capsule shows ratio, resolution, duration, quantity, and audio state from the normalized current params; it remains the sole entry for the existing fixed Portal parameter panel.
+- retained model-menu mutual exclusion, model capability correction, Escape/outside-click dismissal, focus restoration, and responsive toolbar wrapping without touching workflow, billing, APIs, or persisted video data.
+- validation:
+  - focused composer regression passed: 15 tests.
+  - broader video/node regression passed: 25 test files, 147 tests.
+  - `npm.cmd run build` passed with the existing Browserslist, dynamic-import, and chunk-size warnings.
+  - real-browser smoke screenshots confirmed the inline closed and opened capsule states under `output/playwright/video-node-inline/` (untracked).
 
 ## 2026-07-18 - Video Parameter Summary And Visible Duration Rail
 

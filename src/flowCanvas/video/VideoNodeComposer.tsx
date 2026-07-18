@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Camera, CheckCircle2, ChevronUp, Coins, RectangleHorizontal, SlidersHorizontal, Sparkles } from "lucide-react";
+import { Camera, CheckCircle2, ChevronDown, ChevronUp, Coins, RectangleHorizontal, Sparkles } from "lucide-react";
 
 import type { FlowNodeData } from "../types";
 import { normalizeVideoGenerationParams } from "./videoGenerationParams";
@@ -39,12 +39,12 @@ export function VideoNodeComposer({ catalog: catalogOverride, data, generating, 
   const [manifest, setManifest] = useState<VideoCameraManifest>({ version: 2, attribution: "DramaClaw commercial license", items: [] });
   const cameraButtonRef = useRef<HTMLButtonElement>(null);
   const modelButtonRef = useRef<HTMLButtonElement>(null);
-  const parameterButtonRef = useRef<HTMLButtonElement>(null);
+  const parameterTriggerRef = useRef<HTMLButtonElement>(null);
   const parameterLayer = useDismissibleLayer("video-parameter-panel", {
     // Parameter selects are nested dismissible layers. Keep this parent mounted while
     // one opens so its option menu remains interactive.
     closeOnOtherLayer: false,
-    onDismiss: () => parameterButtonRef.current?.focus(),
+    onDismiss: () => parameterTriggerRef.current?.focus(),
   });
   const params = useMemo(() => normalizeVideoGenerationParams(data).params, [data]);
   const sourceDisplayByRole = useMemo(
@@ -113,26 +113,33 @@ export function VideoNodeComposer({ catalog: catalogOverride, data, generating, 
     <textarea aria-label={VIDEO_UI_COPY.videoPrompt} className="mt-2 min-h-[72px] w-full resize-y bg-transparent text-sm outline-none placeholder:text-white/35" onChange={(event) => onUpdate({ generationPrompt: event.target.value })} placeholder={VIDEO_UI_COPY.promptPlaceholder} value={data.generationPrompt || ""} />
     <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-white/10 pt-2 max-md:flex-col max-md:items-stretch">
       <div className="relative"><button ref={modelButtonRef} aria-expanded={modelOpen} aria-label={VIDEO_UI_COPY.chooseVideoModel} className="inline-flex h-[38px] items-center gap-[7px] rounded-[10px] border border-white/10 bg-black/20 px-2 text-xs font-bold" onClick={() => { if (modelOpen) closeModel(); else { parameterLayer.dismissLayer(); setModelOpen(true); } }} type="button"><Sparkles size={16} />{option?.label ?? VIDEO_UI_COPY.chooseModel}</button>{modelOpen ? <div className="absolute bottom-[calc(100%+8px)] left-0 z-[1300]"><VideoModelMenu error={catalog.error} loading={catalog.loading} onChange={handleModelChange} onClose={closeModel} onRetry={catalog.retry} options={catalog.models} value={data.modelId ?? null} /></div> : null}</div>
-      <div className="relative"><button ref={(element) => { parameterButtonRef.current = element; parameterLayer.triggerRef.current = element; }} aria-expanded={parameterLayer.open} aria-label={VIDEO_UI_COPY.videoParameters} className="inline-flex h-[38px] items-center gap-[7px] rounded-[10px] border border-white/10 bg-black/20 px-2 text-xs font-bold" onClick={() => { if (parameterLayer.open) parameterLayer.dismissLayer(); else { setModelOpen(false); parameterLayer.openLayer(); } }} type="button"><SlidersHorizontal size={16} />参数</button>{parameterLayer.open ? <VideoParameterPopover anchorRef={parameterButtonRef} layerRef={parameterLayer.ref}><VideoParameterPanel capabilities={capabilities} onChange={setParams} value={params} /></VideoParameterPopover> : null}</div>
+      <div className="relative min-w-0 max-w-full">
+        <button
+          ref={(element) => {
+            parameterTriggerRef.current = element;
+            parameterLayer.triggerRef.current = element;
+          }}
+          aria-expanded={parameterLayer.open}
+          aria-label="视频参数摘要"
+          className="inline-flex h-[38px] max-w-full min-w-0 items-center gap-2 rounded-[10px] border border-white/10 bg-[#303036] px-3 text-xs font-bold text-white/90 transition hover:border-white/25 hover:bg-[#383840] focus:border-sky-300/50 focus:outline-none"
+          onClick={() => {
+            setModelOpen(false);
+            if (parameterLayer.open) parameterLayer.dismissLayer();
+            else parameterLayer.openLayer();
+          }}
+          type="button"
+        >
+          <RectangleHorizontal aria-hidden="true" className="shrink-0" size={16} />
+          <span className="min-w-0 truncate">{parameterSummary}</span>
+          {parameterLayer.open ? <ChevronUp aria-hidden="true" className="shrink-0 text-white/55" size={15} /> : <ChevronDown aria-hidden="true" className="shrink-0 text-white/55" size={15} />}
+        </button>
+        {parameterLayer.open ? <VideoParameterPopover anchorRef={parameterTriggerRef} layerRef={parameterLayer.ref}><VideoParameterPanel capabilities={capabilities} onChange={setParams} value={params} /></VideoParameterPopover> : null}
+      </div>
       <VideoPalettePopover onChange={setParams} sourceDisplayByRole={sourceDisplayByRole} value={params} />
       <VideoHumanReviewControl onRequestVerification={() => setParams({ ...params, humanReview: { ...params.humanReview, status: "verified", verifiedAt: new Date().toISOString() } })} value={params.humanReview} />
       <span className="ml-auto inline-flex h-[38px] items-center gap-1 text-xs font-bold text-white/55"><Coins size={15} />{cost > 0 ? `${cost} 点数` : "未配置"}</span>
       <button aria-label={VIDEO_UI_COPY.generateVideo} className="inline-flex h-[38px] items-center gap-1 rounded-[10px] bg-sky-300 px-3 text-xs font-bold text-slate-950 disabled:opacity-50" disabled={generating} onClick={onGenerate} type="button"><CheckCircle2 size={16} />{generating ? VIDEO_UI_COPY.generating : VIDEO_UI_COPY.generate}</button>
     </div>
-    <button
-      aria-label="视频参数摘要"
-      className="mt-2 flex min-h-[32px] w-full items-center gap-2 rounded-[10px] border border-white/10 bg-black/20 px-2 text-left text-xs font-semibold text-white/75 transition hover:border-white/25 hover:bg-white/[0.06] focus:border-sky-300/50 focus:outline-none"
-      onClick={() => {
-        setModelOpen(false);
-        if (parameterLayer.open) parameterLayer.dismissLayer();
-        else parameterLayer.openLayer();
-      }}
-      type="button"
-    >
-      <RectangleHorizontal aria-hidden="true" size={16} />
-      <span className="min-w-0 flex-1 truncate">{parameterSummary}</span>
-      <ChevronUp aria-hidden="true" className="shrink-0 text-white/45" size={15} />
-    </button>
     {cameraOpen ? <VideoCameraLibrary manifest={manifest} onChange={(cameraMotionId) => setParams({ ...params, cameraMotionId })} onClose={() => setCameraOpen(false)} triggerRef={cameraButtonRef} value={params.cameraMotionId} /> : null}
   </div>;
 }
