@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 
 import {
   correctVideoGenerationParams,
@@ -69,6 +69,16 @@ export function VideoParameterPanel({ capabilities, onChange, value }: VideoPara
     value: resolution,
   }));
   const audioUnsupported = routeCapabilitiesConfirmed && !effectiveCapabilities.supportsAudio;
+  const durationSpan = effectiveCapabilities.maxDurationSeconds - effectiveCapabilities.minDurationSeconds;
+  const durationProgress = durationSpan > 0
+    ? Math.min(
+      100,
+      Math.max(
+        0,
+        ((value.durationSeconds - effectiveCapabilities.minDurationSeconds) / durationSpan) * 100,
+      ),
+    )
+    : 0;
   const countOptions = COUNTS.map((count) => ({
     disabled: routeCapabilitiesConfirmed && count > effectiveCapabilities.maxCount,
     disabledReason: UNSUPPORTED_BY_MODEL,
@@ -102,7 +112,7 @@ export function VideoParameterPanel({ capabilities, onChange, value }: VideoPara
             aria-valuemax={effectiveCapabilities.maxDurationSeconds}
             aria-valuemin={effectiveCapabilities.minDurationSeconds}
             aria-valuenow={value.durationSeconds}
-            className="h-1 min-w-0 flex-1 cursor-pointer accent-sky-300"
+            className="video-duration-range h-3 min-w-0 flex-1 cursor-pointer accent-sky-300"
             max={effectiveCapabilities.maxDurationSeconds}
             min={effectiveCapabilities.minDurationSeconds}
             onChange={(event) => {
@@ -110,6 +120,7 @@ export function VideoParameterPanel({ capabilities, onChange, value }: VideoPara
               applyDurationChange(durationSeconds, true);
             }}
             step={effectiveCapabilities.durationStepSeconds}
+            style={{ "--duration-progress": `${durationProgress}%` } as CSSProperties}
             type="range"
             value={value.durationSeconds}
           />

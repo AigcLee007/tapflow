@@ -109,6 +109,30 @@ describe("VideoNodeComposer", () => {
     expect(dialog.style.zIndex).toBe("10020");
   });
 
+  test("keeps the bottom parameter summary synchronized with the current video params", () => {
+    const data = { generationPrompt: "", params: { videoGeneration: createDefaultVideoGenerationParams() } } as any;
+    const { rerender } = render(<VideoNodeComposer data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} selected />);
+
+    expect(screen.getByRole("button", { name: "视频参数摘要" }).textContent).toContain("自动 · 720P · 4 秒 · 1 个 · 音频关闭");
+
+    const updatedData = {
+      ...data,
+      params: {
+        videoGeneration: {
+          ...data.params.videoGeneration,
+          aspectRatio: "16:9",
+          count: 2,
+          durationSeconds: 9,
+          generateAudio: true,
+          resolution: "1080P",
+        },
+      },
+    };
+    rerender(<VideoNodeComposer data={updatedData} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} selected />);
+
+    expect(screen.getByRole("button", { name: "视频参数摘要" }).textContent).toContain("16:9 · 1080P · 9 秒 · 2 个 · 音频开启");
+  });
+
   test("dismisses compact layers with Escape and restores focus to their trigger", () => {
     const data = { generationPrompt: "", params: { videoGeneration: createDefaultVideoGenerationParams() } } as any;
     render(<VideoNodeComposer data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} selected />);

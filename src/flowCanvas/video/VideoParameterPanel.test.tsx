@@ -34,6 +34,8 @@ describe("VideoParameterPanel", () => {
     const slider = screen.getByRole("slider", { name: "视频时长滑杆" });
     expect(slider.getAttribute("min")).toBe("4");
     expect(slider.getAttribute("max")).toBe("15");
+    expect(slider.className).toContain("video-duration-range");
+    expect(slider.style.getPropertyValue("--duration-progress")).toBe("0%");
     expect(screen.getByLabelText("视频时长控制").contains(slider)).toBe(true);
     expect(screen.queryByText(/^最短 /)).toBeNull();
     expect(screen.queryByText(/^最长 /)).toBeNull();

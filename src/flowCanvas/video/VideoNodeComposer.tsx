@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Camera, CheckCircle2, Coins, Palette, SlidersHorizontal, Sparkles } from "lucide-react";
+import { Camera, CheckCircle2, ChevronUp, Coins, RectangleHorizontal, SlidersHorizontal, Sparkles } from "lucide-react";
 
 import type { FlowNodeData } from "../types";
 import { normalizeVideoGenerationParams } from "./videoGenerationParams";
@@ -90,6 +90,7 @@ export function VideoNodeComposer({ catalog: catalogOverride, data, generating, 
   const updateReference = (next: { referenceAssetItemIds: string[]; referenceOrder: string[]; videoGeneration: VideoGenerationParamsV1 }) => onUpdate({ params: { ...(data.params ?? {}), videoGeneration: next.videoGeneration }, referenceAssetItemIds: next.referenceAssetItemIds, referenceOrder: next.referenceOrder });
   const selectedMotionLabel = getCameraMotionLabel(params.cameraMotionId);
   const cost = option?.estimatedCredits ?? option?.minChargeCredits ?? 0;
+  const parameterSummary = `${params.aspectRatio === "auto" ? "自动" : params.aspectRatio} · ${params.resolution} · ${params.durationSeconds} 秒 · ${params.count} 个 · 音频${params.generateAudio ? "开启" : "关闭"}`;
   const closeModel = () => {
     setModelOpen(false);
     modelButtonRef.current?.focus();
@@ -118,6 +119,20 @@ export function VideoNodeComposer({ catalog: catalogOverride, data, generating, 
       <span className="ml-auto inline-flex h-[38px] items-center gap-1 text-xs font-bold text-white/55"><Coins size={15} />{cost > 0 ? `${cost} 点数` : "未配置"}</span>
       <button aria-label={VIDEO_UI_COPY.generateVideo} className="inline-flex h-[38px] items-center gap-1 rounded-[10px] bg-sky-300 px-3 text-xs font-bold text-slate-950 disabled:opacity-50" disabled={generating} onClick={onGenerate} type="button"><CheckCircle2 size={16} />{generating ? VIDEO_UI_COPY.generating : VIDEO_UI_COPY.generate}</button>
     </div>
+    <button
+      aria-label="视频参数摘要"
+      className="mt-2 flex min-h-[32px] w-full items-center gap-2 rounded-[10px] border border-white/10 bg-black/20 px-2 text-left text-xs font-semibold text-white/75 transition hover:border-white/25 hover:bg-white/[0.06] focus:border-sky-300/50 focus:outline-none"
+      onClick={() => {
+        setModelOpen(false);
+        if (parameterLayer.open) parameterLayer.dismissLayer();
+        else parameterLayer.openLayer();
+      }}
+      type="button"
+    >
+      <RectangleHorizontal aria-hidden="true" size={16} />
+      <span className="min-w-0 flex-1 truncate">{parameterSummary}</span>
+      <ChevronUp aria-hidden="true" className="shrink-0 text-white/45" size={15} />
+    </button>
     {cameraOpen ? <VideoCameraLibrary manifest={manifest} onChange={(cameraMotionId) => setParams({ ...params, cameraMotionId })} onClose={() => setCameraOpen(false)} triggerRef={cameraButtonRef} value={params.cameraMotionId} /> : null}
   </div>;
 }

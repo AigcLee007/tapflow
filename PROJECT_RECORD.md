@@ -3,6 +3,15 @@
 Last updated: 2026-07-17
 Maintainers: project team + Codex sessions
 
+## 2026-07-18 - Video Parameter Summary And Visible Duration Rail
+
+- added a LibTV-style bottom parameter summary that stays synchronized with the current ratio, resolution, duration, quantity, and audio state; clicking it reopens the same parameter surface.
+- added an explicit duration progress percentage and a visible blue/gray range rail for WebKit and Firefox, so the 4-15 second slider no longer renders as a floating thumb.
+- validation:
+  - focused video regression passed: 2 test files, 21 tests; the broader video/node regression passed: 25 test files, 146 tests.
+  - direct browser smoke page showed the synchronized summary and a visible duration rail in the opened parameter dialog; screenshot saved under `output/playwright/video-node-visual/parameters-current.png` (untracked).
+  - full visual smoke script timed out in the local Windows browser harness before producing its six-shot result; this remains an environment limitation, not a passing claim.
+
 ## 2026-07-17 - Video Duration Slider And Parameter Layering Fix
 
 - changed the unconfigured/unconfirmed video capability fallback from `2-8` seconds to `4-15` seconds with a one-second step; route-confirmed model minimum, maximum, and step values remain authoritative.
