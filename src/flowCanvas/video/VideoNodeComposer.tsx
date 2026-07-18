@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Camera, CheckCircle2, ChevronDown, ChevronUp, Coins, RectangleHorizontal, Sparkles } from "lucide-react";
+import { Camera, CheckCircle2, ChevronDown, ChevronUp, Coins, RectangleHorizontal, Sparkles, Volume2, VolumeX } from "lucide-react";
 
 import type { FlowNodeData } from "../types";
 import { normalizeVideoGenerationParams } from "./videoGenerationParams";
@@ -90,7 +90,8 @@ export function VideoNodeComposer({ catalog: catalogOverride, data, generating, 
   const updateReference = (next: { referenceAssetItemIds: string[]; referenceOrder: string[]; videoGeneration: VideoGenerationParamsV1 }) => onUpdate({ params: { ...(data.params ?? {}), videoGeneration: next.videoGeneration }, referenceAssetItemIds: next.referenceAssetItemIds, referenceOrder: next.referenceOrder });
   const selectedMotionLabel = getCameraMotionLabel(params.cameraMotionId);
   const cost = option?.estimatedCredits ?? option?.minChargeCredits ?? 0;
-  const parameterSummary = `${params.aspectRatio === "auto" ? "自动" : params.aspectRatio} · ${params.resolution} · ${params.durationSeconds} 秒 · ${params.count} 个 · 音频${params.generateAudio ? "开启" : "关闭"}`;
+  const parameterSummary = `${params.aspectRatio === "auto" ? "自动" : params.aspectRatio} · ${params.resolution} · ${params.durationSeconds} 秒 · ${params.count} 个`;
+  const audioStatusLabel = params.generateAudio ? "音频开启" : "音频关闭";
   const closeModel = () => {
     setModelOpen(false);
     modelButtonRef.current?.focus();
@@ -131,6 +132,7 @@ export function VideoNodeComposer({ catalog: catalogOverride, data, generating, 
         >
           <RectangleHorizontal aria-hidden="true" className="shrink-0" size={16} />
           <span className="min-w-0 truncate">{parameterSummary}</span>
+          {params.generateAudio ? <Volume2 aria-label={audioStatusLabel} className="shrink-0" size={16} title={audioStatusLabel} /> : <VolumeX aria-label={audioStatusLabel} className="shrink-0" size={16} title={audioStatusLabel} />}
           {parameterLayer.open ? <ChevronUp aria-hidden="true" className="shrink-0 text-white/55" size={15} /> : <ChevronDown aria-hidden="true" className="shrink-0 text-white/55" size={15} />}
         </button>
         {parameterLayer.open ? <VideoParameterPopover anchorRef={parameterTriggerRef} layerRef={parameterLayer.ref}><VideoParameterPanel capabilities={capabilities} onChange={setParams} value={params} /></VideoParameterPopover> : null}

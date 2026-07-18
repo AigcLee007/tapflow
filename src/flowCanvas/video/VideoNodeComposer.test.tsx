@@ -115,7 +115,9 @@ describe("VideoNodeComposer", () => {
     const { rerender } = render(<VideoNodeComposer data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} selected />);
 
     const summary = screen.getByRole("button", { name: "视频参数摘要" });
-    expect(summary.textContent).toContain("自动 · 720P · 4 秒 · 1 个 · 音频关闭");
+    expect(summary.textContent).toContain("自动 · 720P · 4 秒 · 1 个");
+    expect(summary.textContent).not.toContain("音频关闭");
+    expect(summary.querySelector(".lucide-volume-x")).toBeTruthy();
     expect(summary.parentElement?.parentElement?.className).toContain("flex");
     expect(screen.queryByRole("button", { name: "视频参数" })).toBeNull();
 
@@ -134,7 +136,10 @@ describe("VideoNodeComposer", () => {
     };
     rerender(<VideoNodeComposer data={updatedData} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} selected />);
 
-    expect(screen.getByRole("button", { name: "视频参数摘要" }).textContent).toContain("16:9 · 1080P · 9 秒 · 2 个 · 音频开启");
+    const updatedSummary = screen.getByRole("button", { name: "视频参数摘要" });
+    expect(updatedSummary.textContent).toContain("16:9 · 1080P · 9 秒 · 2 个");
+    expect(updatedSummary.textContent).not.toContain("音频开启");
+    expect(updatedSummary.querySelector(".lucide-volume-2")).toBeTruthy();
   });
 
   test("opens the parameter popover from the inline summary capsule", () => {

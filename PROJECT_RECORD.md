@@ -6,7 +6,7 @@ Maintainers: project team + Codex sessions
 ## 2026-07-18 - Inline Video Parameter Capsule
 
 - replaced the standalone `参数` button and the full-width second-row summary with one LibTV-style parameter capsule in the bottom video toolbar.
-- the capsule shows ratio, resolution, duration, quantity, and audio state from the normalized current params; it remains the sole entry for the existing fixed Portal parameter panel.
+- the capsule shows ratio, resolution, duration, and quantity from the normalized current params; audio state uses an accessible speaker icon (`Volume2` when enabled and `VolumeX` when disabled) instead of visible text.
 - retained model-menu mutual exclusion, model capability correction, Escape/outside-click dismissal, focus restoration, and responsive toolbar wrapping without touching workflow, billing, APIs, or persisted video data.
 - validation:
   - focused composer regression passed: 15 tests.
