@@ -108,12 +108,12 @@ export function VideoNodeComposer({ catalog: catalogOverride, data, generating, 
   return <div aria-label={VIDEO_UI_COPY.videoComposer} className="absolute left-1/2 top-[calc(100%+14px)] z-40 flex w-[calc(100vw-32px)] max-w-[980px] -translate-x-1/2 flex-col rounded-[18px] border border-white/10 bg-[#17171b] p-3 text-white shadow-[0_18px_42px_rgba(0,0,0,0.45)] md:w-[clamp(640px,52vw,980px)] max-md:left-0 max-md:translate-x-0 max-md:flex-col">
     <div className="flex flex-wrap items-center gap-2 max-md:flex-col max-md:items-stretch">
       <VideoReferenceStrip currentNodeId={nodeId} onChange={updateReference} onUploadReference={() => undefined} value={{ referenceAssetItemIds: data.referenceAssetItemIds ?? [], referenceOrder: data.referenceOrder ?? [], videoGeneration: params }} />
-      <VideoModeMenu capabilities={capabilities} onChange={(mode) => setParams({ ...params, mode })} value={params.mode} />
       <button aria-label={VIDEO_UI_COPY.cameraLibrary} className="inline-flex h-[38px] items-center gap-[7px] rounded-[10px] border border-white/10 bg-[#17171b] px-2 text-xs font-bold" onClick={() => setCameraOpen(true)} ref={cameraButtonRef} type="button"><Camera size={16} />{selectedMotionLabel ?? "运镜"}</button>
     </div>
     <textarea aria-label={VIDEO_UI_COPY.videoPrompt} className="mt-2 min-h-[72px] w-full resize-y bg-transparent text-sm outline-none placeholder:text-white/35" onChange={(event) => onUpdate({ generationPrompt: event.target.value })} placeholder={VIDEO_UI_COPY.promptPlaceholder} value={data.generationPrompt || ""} />
     <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-white/10 pt-2 max-md:flex-col max-md:items-stretch">
       <div className="relative"><button ref={modelButtonRef} aria-expanded={modelOpen} aria-label={VIDEO_UI_COPY.chooseVideoModel} className="inline-flex h-[38px] items-center gap-[7px] rounded-[10px] border border-white/10 bg-black/20 px-2 text-xs font-bold" onClick={() => { if (modelOpen) closeModel(); else { parameterLayer.dismissLayer(); setModelOpen(true); } }} type="button"><Sparkles size={16} />{option?.label ?? VIDEO_UI_COPY.chooseModel}</button>{modelOpen ? <div className="absolute bottom-[calc(100%+8px)] left-0 z-[1300]"><VideoModelMenu error={catalog.error} loading={catalog.loading} onChange={handleModelChange} onClose={closeModel} onRetry={catalog.retry} options={catalog.models} value={data.modelId ?? null} /></div> : null}</div>
+      <VideoModeMenu capabilities={capabilities} onChange={(mode) => setParams({ ...params, mode })} value={params.mode} />
       <div className="relative min-w-0 max-w-full">
         <button
           ref={(element) => {

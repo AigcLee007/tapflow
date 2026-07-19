@@ -1,7 +1,17 @@
 ﻿# Project Record
 
-Last updated: 2026-07-18
+Last updated: 2026-07-19
 Maintainers: project team + Codex sessions
+
+## 2026-07-19 - LibTV-Style Video Mode Menu
+
+- moved the video generation-mode control from the reference strip into the bottom video toolbar, between model selection and the inline parameter capsule.
+- rebuilt its popup as an upward-opening compact LibTV-style menu with a Chinese title, icon-only five-mode rows, selected-row highlight, disabled-state tooltip, and no visible explanatory copy.
+- preserved the five existing generation modes, route capability restrictions, selection contract, and Escape/outside-click dismissal without touching the generation API, workflow, billing, or persisted node data.
+- validation:
+  - focused mode/composer regression passed: 19 tests.
+  - broader video/node regression passed: 25 test files, 148 tests.
+  - `npm.cmd run build` passed with the existing Browserslist, dynamic-import, and chunk-size warnings.
 
 ## 2026-07-18 - Inline Video Parameter Capsule
 

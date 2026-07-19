@@ -5,14 +5,19 @@ import { createSafeDefaultVideoCapabilities } from "./videoGenerationCapabilitie
 import { VideoModeMenu } from "./VideoModeMenu";
 
 describe("VideoModeMenu", () => {
-  test("renders five Chinese radio rows and selects the first and last frame mode", () => {
+  test("renders the LibTV-style mode menu with a title, compact rows, and no descriptions", () => {
     const onChange = vi.fn();
     render(<VideoModeMenu capabilities={createSafeDefaultVideoCapabilities()} onChange={onChange} value="text_to_video" />);
 
-    fireEvent.click(screen.getByRole("button", { name: "生成模式" }));
+    const trigger = screen.getByRole("button", { name: "生成模式" });
+    expect(trigger.className).toContain("bg-[#303036]");
+    expect(trigger.querySelector(".lucide-chevron-down")).toBeTruthy();
+    fireEvent.click(trigger);
+    expect(screen.getByText("视频生成模式")).toBeTruthy();
     expect(screen.getAllByRole("menuitemradio")).toHaveLength(5);
     const firstLastMode = screen.getByRole("menuitemradio", { name: /首尾帧生视频/ });
-    expect(firstLastMode.textContent).toContain("根据首帧和尾帧生成视频");
+    expect(firstLastMode.className).toContain("h-[48px]");
+    expect(screen.queryByText("根据首帧和尾帧生成视频")).toBeNull();
     fireEvent.click(firstLastMode);
     expect(onChange).toHaveBeenCalledWith("first_last_frame");
   });
@@ -25,13 +30,13 @@ describe("VideoModeMenu", () => {
     fireEvent.click(screen.getByRole("button", { name: "生成模式" }));
     const unsupported = screen.getByRole("menuitemradio", { name: /首尾帧生视频/ });
     expect(unsupported).toHaveProperty("disabled", true);
-    expect(screen.getAllByText("当前模型暂不支持").length).toBeGreaterThan(0);
+    expect(unsupported.getAttribute("title")).toBe("当前模型暂不支持");
   });
 
-  test("uses the shared dismissal layer and shared 38px menu row density", () => {
+  test("opens above its trigger and closes with Escape", () => {
     render(<VideoModeMenu capabilities={createSafeDefaultVideoCapabilities()} onChange={vi.fn()} value="text_to_video" />);
     fireEvent.click(screen.getByRole("button", { name: "生成模式" }));
-    expect(screen.getByRole("menuitemradio", { name: /文生视频/ }).className).toContain("h-[38px]");
+    expect(screen.getByRole("menu").className).toContain("bottom-[calc(100%+8px)]");
     fireEvent.keyDown(window, { key: "Escape" });
     expect(screen.queryByRole("menu")).toBeNull();
   });

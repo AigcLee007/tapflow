@@ -98,6 +98,14 @@ describe("VideoNodeComposer", () => {
     expect(screen.getByRole("dialog", { name: "视频参数" })).toBeTruthy();
   });
 
+  test("places the video mode trigger in the bottom creation toolbar", () => {
+    const data = { generationPrompt: "", params: { videoGeneration: createDefaultVideoGenerationParams() } } as any;
+    render(<VideoNodeComposer data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} selected />);
+
+    const modeTrigger = screen.getByRole("button", { name: "生成模式" });
+    expect(modeTrigger.parentElement?.parentElement?.className).toContain("border-t");
+  });
+
   test("renders the parameter panel as a fixed high-layer body portal", () => {
     const data = { generationPrompt: "", params: { videoGeneration: createDefaultVideoGenerationParams() } } as any;
     render(<VideoNodeComposer data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} selected />);
