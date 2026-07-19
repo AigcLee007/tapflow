@@ -3,6 +3,18 @@
 Last updated: 2026-07-19
 Maintainers: project team + Codex sessions
 
+## 2026-07-19 - Nine-grid Toolbar Confirmation Flow
+
+- moved the nine-grid image template tools out of the selected-image More menu into a standalone `Grid3X3` toolbar action immediately before More; Quick Split remains in More as a separate local image operation.
+- extracted the template list into a shared-density, body-level menu that retains the existing 38px rows, 12px labels, high image-menu z-index, outside-click dismissal, Escape dismissal, and mutually exclusive toolbar-layer behavior.
+- changed template selection to prepare and select an idle downstream image node with the source connection, resolved template prompt, template ratio policy, and inherited model, route, size, quality, and compatible parameters.
+- removed immediate workflow submission from template selection. Billing and generation begin only after the user reviews the existing image prompt/model/parameter panel and clicks its generate button.
+- validation:
+  - focused main-workspace menu, template helper, graph preparation, and image-node integration regression passed: 5 test files, 29 tests.
+  - `npm run build` passed with the existing Browserslist age, CSS utility, dynamic-import, and chunk-size warnings.
+  - the complete main-workspace `npm test -- --exclude ".worktrees/**"` run did not finish within 300 seconds and returned no actionable failure output; no full-suite pass is claimed.
+  - local Vite loaded successfully at `http://127.0.0.1:5188`; the real-browser canvas smoke was not run because the local API/database were not running and the app correctly redirected the unauthenticated browser to `/login`.
+
 ## 2026-07-19 - LibTV-Style Video Mode Menu
 
 - moved the video generation-mode control from the reference strip into the bottom video toolbar, between model selection and the inline parameter capsule.
