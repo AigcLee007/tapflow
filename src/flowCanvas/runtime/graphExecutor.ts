@@ -575,7 +575,7 @@ function hasWorkflowUsableSourceAsset(data: Record<string, unknown>) {
   return Array.isArray(data.assetIds) && data.assetIds.some((item) => typeof item === 'string' && item.trim());
 }
 
-export async function runImageTemplateEdit(
+export async function prepareImageTemplateEdit(
   sourceNodeId: string,
   templateActionKey: FlowImageTemplateEditActionKey,
   options: RunImageTemplateEditParams = {},
@@ -619,7 +619,6 @@ export async function runImageTemplateEdit(
     promptLabel,
     routeKey,
     sourceNodeId,
-    submittedAt: Date.now(),
     templateActionKey,
   };
   const imageEditRequest = {
@@ -627,7 +626,6 @@ export async function runImageTemplateEdit(
     mode: imageTemplateEditRequest.mode,
     routeKey,
     sourceNodeId,
-    submittedAt: imageTemplateEditRequest.submittedAt,
     templateActionKey,
   };
   const baseParams = sourceData.params && typeof sourceData.params === 'object'
@@ -645,17 +643,16 @@ export async function runImageTemplateEdit(
     errorMessage: undefined,
     generationMode: 'standard',
     generationPrompt: prompt,
-    generationRunLabel: buildImageEditRunLabel(modelId, routeId),
-    generationStatus: 'generating',
+    generationStatus: 'idle',
     imageEditRequest,
     imageTemplateEditRequest,
     lastEditType: `template:${templateActionKey}`,
     modelId,
     params: nextParams,
-    progress: 1,
+    progress: 0,
     routeId,
     routeKey,
-    status: 'running',
+    status: 'idle',
     title: options.title || String(reusableNode?.data.title || `${action.titlePrefix}${resultIndex}`),
   };
 
@@ -674,6 +671,8 @@ export async function runImageTemplateEdit(
 
   return imageNode.id;
 }
+
+export const runImageTemplateEdit = prepareImageTemplateEdit;
 
 /**
  * Run an AI image edit and write the result into a new downstream image node.

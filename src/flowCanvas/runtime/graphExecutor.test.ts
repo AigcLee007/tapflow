@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, test, vi } from 'vitest';
 
 import { useFlowCanvasStore } from '../store/flowCanvasStore';
-import { mergeImageReferences, runImageEdit, runImageTemplateEdit } from './graphExecutor';
+import { mergeImageReferences, prepareImageTemplateEdit, runImageEdit } from './graphExecutor';
 
 const editImageApiMock = vi.fn();
 
@@ -159,7 +159,7 @@ describe('runImageEdit', () => {
   });
 });
 
-describe('runImageTemplateEdit', () => {
+describe('prepareImageTemplateEdit', () => {
   beforeEach(() => {
     useFlowCanvasStore.getState().newProject();
   });
@@ -181,7 +181,7 @@ describe('runImageTemplateEdit', () => {
       title: 'Source Frame',
     });
 
-    const targetNodeId = await runImageTemplateEdit(sourceNode.id, 'multiCameraGrid', {
+    const targetNodeId = await prepareImageTemplateEdit(sourceNode.id, 'multiCameraGrid', {
       modelId: 'gpt-image-2',
       routeKey: 'image.production',
     });
@@ -194,7 +194,7 @@ describe('runImageTemplateEdit', () => {
     expect(state.edges.some((edge) => edge.source === sourceNode.id && edge.target === targetNodeId)).toBe(true);
     expect(targetNode?.data).toMatchObject({
       generationPrompt: expect.stringContaining('3x3 director multi-camera contact sheet'),
-      generationStatus: 'generating',
+      generationStatus: 'idle',
       imageTemplateEditRequest: {
         mode: 'multi_camera_nine_grid',
         routeKey: 'image.production',
@@ -203,8 +203,9 @@ describe('runImageTemplateEdit', () => {
       },
       lastEditType: 'template:multiCameraGrid',
       modelId: 'gpt-image-2',
+      progress: 0,
       routeKey: 'image.production',
-      status: 'running',
+      status: 'idle',
     });
     expect(targetNode?.data.params).toMatchObject({
       aspectRatio: '9:16',
@@ -213,5 +214,19 @@ describe('runImageTemplateEdit', () => {
     });
     expect(targetNode?.data.assetId).toBeUndefined();
     expect(targetNode?.data.thumbnailUrl).toBeUndefined();
+  });
+
+  test('rejects sources without a workflow-usable asset and creates no downstream node', async () => {
+    const sourceNode = useFlowCanvasStore.getState().addNode('image', { x: 40, y: 60 }, {
+      modelId: 'gpt-image-2',
+      thumbnailUrl: 'https://cdn.test/source.png',
+      title: 'Unpersisted Source Frame',
+    });
+
+    await expect(prepareImageTemplateEdit(sourceNode.id, 'multiCameraGrid'))
+      .rejects.toThrow('当前图片节点还没有可供后端工作流使用的素材');
+
+    expect(useFlowCanvasStore.getState().nodes).toHaveLength(1);
+    expect(useFlowCanvasStore.getState().edges).toHaveLength(0);
   });
 });
