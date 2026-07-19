@@ -672,8 +672,6 @@ export async function prepareImageTemplateEdit(
   return imageNode.id;
 }
 
-export const runImageTemplateEdit = prepareImageTemplateEdit;
-
 /**
  * Run an AI image edit and write the result into a new downstream image node.
  * This keeps the original image on canvas and makes the edit chain visible.

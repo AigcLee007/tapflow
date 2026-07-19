@@ -43,6 +43,7 @@ import {
   Wand2,
   Flashlight,
   Globe2,
+  Grid3X3,
   LayoutGrid,
   Rows3,
   Play,
@@ -60,7 +61,7 @@ import type {
   FlowNodeKind,
 } from '../types';
 import { useFlowCanvasStore, type FlowDerivedEditCounts, type FlowUpstreamImageRef } from '../store/flowCanvasStore';
-import { runImageEdit, runImageTemplateEdit, type ImageEditType } from '../runtime/graphExecutor';
+import { prepareImageTemplateEdit, runImageEdit, type ImageEditType } from '../runtime/graphExecutor';
 import { markBackendRunLaunchFailed, runBackendWorkflow } from '../runtime/v2WorkflowRunner';
 import { VideoNodeComposer } from '../video/VideoNodeComposer';
 import { VideoNodeLegacyComposer } from '../video/VideoNodeLegacyComposer';
@@ -94,6 +95,7 @@ import { getImageNaturalSize, imageUrlToBlob } from '../utils/imageUtils';
 import type { LightDirection } from './ImageLightingOverlay';
 import type { MultiAngleId } from './ImageMultiAngleOverlay';
 import { ImageMoreMenu, type ImageMoreMenuAction } from './ImageMoreMenu';
+import { ImageTemplateEditMenu } from './ImageTemplateEditMenu';
 import { PanoramaGeneratePopover } from '../panorama/PanoramaGeneratePopover';
 import { GptImage2ParamPanel } from './GptImage2ParamPanel';
 import { NanoBananaParamPanel } from './NanoBananaParamPanel';
@@ -116,6 +118,7 @@ import {
   IMAGE_FLOATING_TOOLBAR_TOOLTIP_FONT_SIZE,
   IMAGE_MENU_ITEM_MIN_HEIGHT,
   IMAGE_MENU_SURFACE_Z_INDEX,
+  IMAGE_MODEL_MENU_WIDTH,
 } from './imageMenuStyles';
 import { PromptLexicalEditor, type PromptLexicalEditorHandle, type PromptReference } from './PromptLexicalEditor';
 import {
@@ -4300,6 +4303,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
   const promptLexicalEditorRef = useRef<PromptLexicalEditorHandle>(null);
   const moreMenuButtonRef = useRef<HTMLButtonElement>(null);
+  const templateMenuButtonRef = useRef<HTMLButtonElement>(null);
   const promptSelectionRef = useRef({ start: 0, end: 0 });
   const promptValueRef = useRef(String(d.generationPrompt || ''));
   const pendingPromptCaretRef = useRef<number | null>(null);
@@ -4319,6 +4323,8 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const [panoramaGenerateSize, setPanoramaGenerateSize] = useState<PanoramaGenerateSize>('1k');
   const moreMenuLayer = useDismissibleLayer(`image-node-more-${id}`);
   const [moreMenuPosition, setMoreMenuPosition] = useState<{ left: number; top: number } | null>(null);
+  const templateMenuLayer = useDismissibleLayer(`image-node-template-${id}`);
+  const [templateMenuPosition, setTemplateMenuPosition] = useState<{ left: number; top: number } | null>(null);
   const [assetMenuOpen, setAssetMenuOpen] = useState(false);
   const [assetMenuMode, setAssetMenuMode] = useState<'picker' | 'mention'>('picker');
   const [slashMenuOpen, setSlashMenuOpen] = useState(false);
@@ -5061,6 +5067,8 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     setShowBatchSelector(false);
     setPendingBatchCount(null);
     moreMenuLayer.closeLayer();
+    templateMenuLayer.closeLayer();
+    setTemplateMenuPosition(null);
     panoramaGenerateLayer.closeLayer();
     setPanoramaGeneratePosition(null);
     setAssetMenuOpen(false);
@@ -5072,13 +5080,15 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     if (activeImageTool?.nodeId === id) {
       closeImageTool();
     }
-  }, [activeImageTool?.nodeId, closeImageTool, closeResultStrip, id, isMultiSelecting, moreMenuLayer, panoramaGenerateLayer]);
+  }, [activeImageTool?.nodeId, closeImageTool, closeResultStrip, id, isMultiSelecting, moreMenuLayer, panoramaGenerateLayer, templateMenuLayer]);
 
   useEffect(() => {
     if (showNodeEditor) return;
     panoramaGenerateLayer.closeLayer();
     setPanoramaGeneratePosition(null);
-  }, [panoramaGenerateLayer, showNodeEditor]);
+    templateMenuLayer.closeLayer();
+    setTemplateMenuPosition(null);
+  }, [panoramaGenerateLayer, showNodeEditor, templateMenuLayer]);
 
   useEffect(
     () => () => {
@@ -6452,9 +6462,11 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     [currentModelId, currentRouteKey, d.modelId, d.params, d.routeId, id],
   );
 
-  const runTemplateAiEdit = useCallback(
+  const prepareTemplateAiEdit = useCallback(
     async (templateActionKey: FlowImageTemplateEditActionKey) => {
-      const targetNodeId = await runImageTemplateEdit(id, templateActionKey, {
+      templateMenuLayer.closeLayer();
+      setTemplateMenuPosition(null);
+      const targetNodeId = await prepareImageTemplateEdit(id, templateActionKey, {
         modelId: String(d.modelId || currentModelId),
         params: {
           ...((d.params || {}) as Record<string, any>),
@@ -6464,16 +6476,25 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
         routeKey: currentRouteKey || undefined,
       });
       if (targetNodeId) {
-        void runBackendWorkflow({ runMode: 'target_node', targetNodeId })
-          .catch((error) => markBackendRunLaunchFailed(targetNodeId, error));
+        selectNodesByIds([targetNodeId]);
       }
     },
-    [currentModelId, currentRouteKey, currentSize, d.modelId, d.params, d.routeId, id],
+    [currentModelId, currentRouteKey, currentSize, d.modelId, d.params, d.routeId, id, selectNodesByIds, templateMenuLayer],
   );
+
+  const handleTemplateMenuSelect = useCallback((templateActionKey: FlowImageTemplateEditActionKey) => {
+    void prepareTemplateAiEdit(templateActionKey).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      useFlowCanvasStore.getState().updateNodeData(id, {
+        errorMessage: message,
+        generationStatus: 'error',
+        status: 'failed',
+      });
+    });
+  }, [id, prepareTemplateAiEdit]);
 
   const handleMoreMenuSelect = useCallback((action: ImageMoreMenuAction, payload?: {
     gridSize?: number;
-    templateActionKey?: FlowImageTemplateEditActionKey;
   }) => {
     moreMenuLayer.closeLayer();
     if (action === 'panoramaViewer') {
@@ -6516,17 +6537,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     if (action === 'removeBackground') {
       setAiConfirmType('removeBackground');
     }
-    if (action === 'templateEdit' && payload?.templateActionKey) {
-      void runTemplateAiEdit(payload.templateActionKey).catch((error) => {
-        const message = error instanceof Error ? error.message : String(error);
-        useFlowCanvasStore.getState().updateNodeData(id, {
-          errorMessage: message,
-          generationStatus: 'error',
-          status: 'failed',
-        });
-      });
-    }
-  }, [ensurePanoramaViewerForImageNode, id, moreMenuLayer, openImageTool, openRepaintOverlay, reactFlow, runTemplateAiEdit, selectNodesByIds]);
+  }, [ensurePanoramaViewerForImageNode, id, moreMenuLayer, openImageTool, openRepaintOverlay, reactFlow, selectNodesByIds]);
 
   const updatePanoramaGeneratePosition = useCallback(() => {
     const triggerRect = panoramaGenerateButtonRef.current?.getBoundingClientRect();
@@ -6593,23 +6604,39 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const updateMoreMenuPosition = useCallback(() => {
     const triggerRect = moreMenuButtonRef.current?.getBoundingClientRect();
     if (!triggerRect) return;
-    const menuWidth = 300;
     const viewportPadding = 18;
     const left = Math.min(
-      window.innerWidth - viewportPadding - menuWidth / 2,
-      Math.max(viewportPadding + menuWidth / 2, triggerRect.left + triggerRect.width / 2),
+      window.innerWidth - viewportPadding - IMAGE_MODEL_MENU_WIDTH / 2,
+      Math.max(viewportPadding + IMAGE_MODEL_MENU_WIDTH / 2, triggerRect.left + triggerRect.width / 2),
     );
     setMoreMenuPosition({ left, top: triggerRect.bottom + 14 });
+  }, []);
+
+  const updateTemplateMenuPosition = useCallback(() => {
+    const triggerRect = templateMenuButtonRef.current?.getBoundingClientRect();
+    if (!triggerRect) return;
+    const viewportPadding = 18;
+    const left = Math.min(
+      window.innerWidth - viewportPadding - IMAGE_MODEL_MENU_WIDTH / 2,
+      Math.max(viewportPadding + IMAGE_MODEL_MENU_WIDTH / 2, triggerRect.left + triggerRect.width / 2),
+    );
+    setTemplateMenuPosition({ left, top: triggerRect.bottom + 14 });
   }, []);
 
   const handleToolAction = useCallback(
     (toolId: string) => {
       if (!effectiveThumbnailUrl) return;
       if (toolId !== 'more') moreMenuLayer.closeLayer();
+      if (toolId !== 'templateEdit') templateMenuLayer.closeLayer();
       if (toolId !== 'panoramaGenerate') panoramaGenerateLayer.closeLayer();
 
       if (toolId === 'panoramaGenerate') {
         openPanoramaGeneratePopover();
+        return;
+      }
+      if (toolId === 'templateEdit') {
+        updateTemplateMenuPosition();
+        templateMenuLayer.toggle();
         return;
       }
       if (toolId === 'crop') {
@@ -6655,7 +6682,9 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       openImageTool,
       openRepaintOverlay,
       updateMoreMenuPosition,
+      updateTemplateMenuPosition,
       panoramaGenerateLayer,
+      templateMenuLayer,
     ],
   );
 
@@ -6669,6 +6698,17 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       window.removeEventListener('scroll', updateMoreMenuPosition, true);
     };
   }, [moreMenuLayer.open, updateMoreMenuPosition]);
+
+  useEffect(() => {
+    if (!templateMenuLayer.open) return undefined;
+    updateTemplateMenuPosition();
+    window.addEventListener('resize', updateTemplateMenuPosition);
+    window.addEventListener('scroll', updateTemplateMenuPosition, true);
+    return () => {
+      window.removeEventListener('resize', updateTemplateMenuPosition);
+      window.removeEventListener('scroll', updateTemplateMenuPosition, true);
+    };
+  }, [templateMenuLayer.open, updateTemplateMenuPosition]);
 
   return (
     <div
@@ -6774,6 +6814,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
           { id: 'multiAngle', icon: <Box size={IMAGE_FLOATING_TOOLBAR_ICON_SIZE} strokeWidth={1.5} />, label: '多角度' },
           { id: 'repaint', icon: <Wand2 size={IMAGE_FLOATING_TOOLBAR_ICON_SIZE} strokeWidth={1.5} />, label: '重绘' },
           { id: 'lighting', icon: <Flashlight size={IMAGE_FLOATING_TOOLBAR_ICON_SIZE} strokeWidth={1.5} />, label: '打光' },
+          { id: 'templateEdit', icon: <Grid3X3 size={IMAGE_FLOATING_TOOLBAR_ICON_SIZE} strokeWidth={1.5} />, label: '九宫格工具' },
           { id: 'more', icon: <MoreHorizontal size={IMAGE_FLOATING_TOOLBAR_ICON_SIZE} strokeWidth={1.5} />, label: '更多' },
         ];
         const hasEditHistory = Array.isArray(d.editHistory) && d.editHistory.length > 0;
@@ -6815,6 +6856,11 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
                         ? (node) => {
                           panoramaGenerateButtonRef.current = node;
                           (panoramaGenerateLayer.triggerRef as React.MutableRefObject<HTMLButtonElement | null>).current = node;
+                        }
+                      : t.id === 'templateEdit'
+                        ? (node) => {
+                          templateMenuButtonRef.current = node;
+                          (templateMenuLayer.triggerRef as React.MutableRefObject<HTMLButtonElement | null>).current = node;
                         }
                       : undefined}
                     aria-label={t.label}
@@ -6912,6 +6958,15 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
           menuRef={moreMenuLayer.ref as React.RefObject<HTMLDivElement>}
           onSelect={handleMoreMenuSelect}
           showPanoramaViewer={showPanoramaViewerAction}
+        />,
+        document.body,
+      ) : null}
+
+      {hasImage && showNodeEditor && templateMenuLayer.open && templateMenuPosition ? createPortal(
+        <ImageTemplateEditMenu
+          fixedPosition={templateMenuPosition}
+          menuRef={templateMenuLayer.ref as React.RefObject<HTMLDivElement>}
+          onSelect={handleTemplateMenuSelect}
         />,
         document.body,
       ) : null}

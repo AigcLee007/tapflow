@@ -365,6 +365,72 @@ describe("FlowNodes agent metadata", () => {
     });
   });
 
+  it("prepares and selects a nine-grid node without starting generation", async () => {
+    const source = useFlowCanvasStore.getState().addNode(
+      "image",
+      { x: 0, y: 0 },
+      {
+        assetId: "asset-nine-grid-source",
+        createdAt: 1,
+        generationStatus: "done",
+        height: 240,
+        kind: "image",
+        modelId: "gpt-image-2",
+        naturalHeight: 1600,
+        naturalWidth: 900,
+        params: {
+          quality: "medium",
+          size: "2k",
+        },
+        routeKey: "image.gpt-image-2",
+        status: "success",
+        thumbnailUrl: "https://cdn.test/nine-grid-source.png",
+        title: "Nine-grid Source",
+        updatedAt: 1,
+        width: 260,
+      } as any,
+      { selected: true },
+    );
+
+    render(
+      <ImageNodeComponent
+        id={source.id}
+        selected
+        data={source.data as any}
+        dragging={false}
+        zIndex={1}
+        isConnectable
+        type="image"
+        xPos={0}
+        yPos={0}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "九宫格工具" }));
+    fireEvent.click(await screen.findByRole("button", { name: /多机位九宫格/i }));
+
+    await waitFor(() => {
+      const state = useFlowCanvasStore.getState();
+      const target = state.nodes.find((node) => node.id !== source.id);
+      expect(target?.selected).toBe(true);
+      expect(state.edges.some((edge) => edge.source === source.id && edge.target === target?.id)).toBe(true);
+      expect(target?.data).toMatchObject({
+        generationStatus: "idle",
+        modelId: "gpt-image-2",
+        params: expect.objectContaining({
+          aspectRatio: "9:16",
+          quality: "medium",
+          size: "2k",
+        }),
+        routeKey: "image.gpt-image-2",
+        status: "idle",
+      });
+    });
+
+    expect(workflowRunnerMocks.runBackendWorkflow).not.toHaveBeenCalled();
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
   it("keeps the image quantity menu open until a batch display mode is selected", () => {
     useFlowCanvasStore.getState().addNode(
       "image",
