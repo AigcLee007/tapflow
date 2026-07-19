@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 
 import { ImageMoreMenu } from './ImageMoreMenu';
@@ -35,21 +35,14 @@ describe('ImageMoreMenu', () => {
     expect(screen.getByText('创建或打开全景查看器')).toBeTruthy();
   });
 
-  test('opens the template edit panel and emits the selected template action', () => {
-    const onSelect = vi.fn();
-
+  test('does not contain the standalone nine-grid tools entry', () => {
     render(
       <ImageMoreMenu
         fixedPosition={{ left: 420, top: 188 }}
-        onSelect={onSelect}
+        onSelect={vi.fn()}
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /九宫格工具/i }));
-    fireEvent.click(screen.getByRole('button', { name: /多机位九宫格/i }));
-
-    expect(onSelect).toHaveBeenCalledWith('templateEdit', {
-      templateActionKey: 'multiCameraGrid',
-    });
+    expect(screen.queryByRole('button', { name: /九宫格工具/i })).toBeNull();
   });
 });
