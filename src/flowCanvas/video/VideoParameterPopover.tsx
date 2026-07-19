@@ -17,7 +17,7 @@ type VideoParameterPopoverProps = {
 
 const VIEWPORT_MARGIN = 16;
 const ANCHOR_GAP = 8;
-const MAX_PANEL_WIDTH = 480;
+const MAX_PANEL_WIDTH = 350;
 
 export function getVideoParameterPopoverPosition(
   anchor: AnchorRect,
@@ -83,7 +83,7 @@ export function VideoParameterPopover({ anchorRef, children, layerRef }: VideoPa
     <div
       ref={setPanelRef}
       aria-label={VIDEO_UI_COPY.videoParameters}
-      className="w-[min(480px,calc(100vw-32px))] overflow-y-auto rounded-[16px] border border-white/10 bg-[#1c1c20]/98 p-4 text-white shadow-[0_18px_48px_rgba(0,0,0,0.58)] backdrop-blur-[18px]"
+      className="w-[min(350px,calc(100vw-32px))] overflow-y-auto rounded-[14px] border border-white/10 bg-[#1c1c20]/98 p-3 text-white shadow-[0_18px_48px_rgba(0,0,0,0.58)] backdrop-blur-[18px]"
       data-placement={position?.placement ?? "top"}
       role="dialog"
       style={{

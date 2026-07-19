@@ -87,7 +87,7 @@ export function VideoParameterPanel({ capabilities, onChange, value }: VideoPara
   }));
 
   return (
-    <div aria-label="视频参数内容" className="w-full max-w-[500px] space-y-4 text-white">
+    <div aria-label="视频参数内容" className="w-full max-w-[350px] space-y-3 text-white">
       <ParameterSection label={VIDEO_UI_COPY.aspectRatio}>
         <VideoAspectRatioGrid
           allowedRatios={routeCapabilitiesConfirmed ? effectiveCapabilities.aspectRatios : undefined}
@@ -106,13 +106,13 @@ export function VideoParameterPanel({ capabilities, onChange, value }: VideoPara
       </ParameterSection>
 
       <ParameterSection label="视频时长">
-        <div aria-label="视频时长控制" className="flex items-center gap-3">
+        <div aria-label="视频时长控制" className="flex items-center gap-2">
           <input
             aria-label="视频时长滑杆"
             aria-valuemax={effectiveCapabilities.maxDurationSeconds}
             aria-valuemin={effectiveCapabilities.minDurationSeconds}
             aria-valuenow={value.durationSeconds}
-            className="video-duration-range h-3 min-w-0 flex-1 cursor-pointer accent-sky-300"
+            className="video-duration-range h-2 min-w-0 flex-1 cursor-pointer accent-sky-300"
             max={effectiveCapabilities.maxDurationSeconds}
             min={effectiveCapabilities.minDurationSeconds}
             onChange={(event) => {
@@ -124,10 +124,10 @@ export function VideoParameterPanel({ capabilities, onChange, value }: VideoPara
             type="range"
             value={value.durationSeconds}
           />
-          <div className="flex h-8 shrink-0 items-center gap-1.5 rounded-[8px] border border-white/15 bg-black/20 px-2">
+          <div className="flex h-7 shrink-0 items-center gap-1 rounded-[7px] border border-white/15 bg-black/20 px-1.5">
             <input
               aria-label="视频时长输入"
-              className="w-9 bg-transparent text-center text-sm font-semibold outline-none"
+              className="w-8 bg-transparent text-center text-xs font-semibold outline-none"
               inputMode="decimal"
               max={effectiveCapabilities.maxDurationSeconds}
               min={effectiveCapabilities.minDurationSeconds}
@@ -140,7 +140,7 @@ export function VideoParameterPanel({ capabilities, onChange, value }: VideoPara
               type="number"
               value={durationInput}
             />
-            <span className="text-xs text-white/55">秒</span>
+            <span className="text-[11px] text-white/55">秒</span>
           </div>
         </div>
         {durationCorrectionMessage ? (
@@ -167,7 +167,7 @@ export function VideoParameterPanel({ capabilities, onChange, value }: VideoPara
                 aria-describedby="video-audio-support-help"
                 aria-expanded={audioHelpOpen}
                 aria-label="音频支持说明"
-                className="flex h-8 w-8 items-center justify-center rounded-full border border-white/20 text-sm text-white/75 hover:border-white/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                className="flex h-7 w-7 items-center justify-center rounded-full border border-white/20 text-xs text-white/75 hover:border-white/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
                 onBlur={() => setAudioHelpOpen(false)}
                 onClick={() => setAudioHelpOpen(true)}
                 onFocus={() => setAudioHelpOpen(true)}
@@ -201,8 +201,8 @@ export function VideoParameterPanel({ capabilities, onChange, value }: VideoPara
 
 function ParameterSection({ children, label }: { children: React.ReactNode; label: string }) {
   return (
-    <section className="space-y-2">
-      <h3 className="text-sm font-medium text-white/80">{label}</h3>
+    <section className="space-y-1.5">
+      <h3 className="text-xs font-semibold text-white/80">{label}</h3>
       {children}
     </section>
   );

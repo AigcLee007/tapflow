@@ -17,15 +17,20 @@ describe("VideoParameterPanel", () => {
 
     expect(document.querySelector("select")).toBeNull();
     expect(screen.queryByRole("menuitem")).toBeNull();
-    expect(screen.getByLabelText("视频参数内容").className).not.toContain("bg-[#242424]");
+    const parameterContent = screen.getByLabelText("视频参数内容");
+    expect(parameterContent.className).not.toContain("bg-[#242424]");
+    expect(parameterContent.className).toContain("max-w-[350px]");
+    expect(parameterContent.className).toContain("space-y-3");
     expect(screen.getByRole("radiogroup", { name: "画面比例" })).toBeTruthy();
     expect(screen.getAllByRole("radio", { name: "自动" })).toHaveLength(1);
     for (const ratio of ["16:9", "4:3", "1:1", "3:4", "9:16", "21:9"]) {
       expect(screen.getAllByRole("radio", { name: ratio })).toHaveLength(1);
     }
+    expect(screen.getByRole("radio", { name: "16:9" }).className).toContain("h-[70px]");
     for (const resolution of ["480P", "720P", "1080P", "4K"]) {
       expect(screen.getAllByRole("radio", { name: resolution })).toHaveLength(1);
     }
+    expect(screen.getByRole("radio", { name: "720P" }).className).toContain("h-9");
     expect(screen.getAllByRole("radio", { name: "开启" })).toHaveLength(1);
     expect(screen.getAllByRole("radio", { name: "关闭" })).toHaveLength(1);
     for (const count of ["1 个", "2 个", "4 个"]) {

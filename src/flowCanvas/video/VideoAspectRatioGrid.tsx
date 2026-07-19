@@ -67,7 +67,7 @@ export function VideoAspectRatioGrid({ allowedRatios, onChange, value }: VideoAs
 
   return (
     <div>
-      <div aria-label={VIDEO_UI_COPY.aspectRatio} className="grid grid-cols-5 gap-2" role="radiogroup">
+      <div aria-label={VIDEO_UI_COPY.aspectRatio} className="grid grid-cols-5 gap-1.5" role="radiogroup">
         {RATIO_OPTIONS.map((option) => {
           const disabled = Boolean(allowedRatios && !allowedRatios.includes(option.value));
           const selected = option.value === value;
@@ -80,7 +80,7 @@ export function VideoAspectRatioGrid({ allowedRatios, onChange, value }: VideoAs
               aria-checked={selected}
               aria-describedby={disabled ? reasonId : undefined}
               aria-disabled={disabled}
-              className={`${VIDEO_VISUAL_CONTROL_CLASS} ${VIDEO_VISUAL_TOKENS.panelSurface} relative flex h-[94px] min-w-0 flex-col items-center justify-center gap-2 px-2 ${disabled
+              className={`${VIDEO_VISUAL_CONTROL_CLASS} ${VIDEO_VISUAL_TOKENS.panelSurface} relative flex h-[70px] min-w-0 flex-col items-center justify-center gap-1.5 px-1.5 ${disabled
                 ? VIDEO_VISUAL_TOKENS.disabled
                 : selected ? VIDEO_VISUAL_TOKENS.selected : VIDEO_VISUAL_TOKENS.unselected}`}
               data-ratio={option.value}
@@ -106,13 +106,13 @@ export function VideoAspectRatioGrid({ allowedRatios, onChange, value }: VideoAs
             >
               <span
                 aria-hidden="true"
-                className="h-7 max-w-full rounded-sm border border-current"
+                className="h-5 max-w-full rounded-sm border border-current"
                 data-ratio-marker
                 style={{ aspectRatio: option.aspectRatio }}
               />
-              <span>{label}</span>
+              <span className="text-xs">{label}</span>
               {disabled ? <span className="sr-only" id={reasonId}>{reason}</span> : null}
-              {selected ? <Check aria-hidden="true" className="absolute right-2 top-2" size={14} strokeWidth={2.5} /> : null}
+              {selected ? <Check aria-hidden="true" className="absolute right-1.5 top-1.5" size={12} strokeWidth={2.5} /> : null}
             </button>
           );
         })}

@@ -13,6 +13,16 @@ Maintainers: project team + Codex sessions
   - broader video/node regression passed: 25 test files, 148 tests.
   - `npm.cmd run build` passed with the existing Browserslist, dynamic-import, and chunk-size warnings.
 
+## 2026-07-19 - Compact Video Parameter Surface
+
+- reduced the video parameter popover to a 350px maximum width, approximately 73% of the prior 480px surface, while preserving mobile viewport clamping and fixed Portal placement.
+- compressed ratio cards from 94px to 70px, segmented controls from 40px to 36px, section gaps from 16px to 12px, and adjacent duration controls without using CSS scale transforms.
+- retained all capability constraints, keyboard behavior, disabled explanations, current parameter values, and generation data contracts.
+- validation:
+  - compact parameter regressions passed: 9 tests.
+  - broader video/node regression passed: 25 test files, 148 tests.
+  - `npm.cmd run build` passed with the existing Browserslist, dynamic-import, and chunk-size warnings.
+
 ## 2026-07-18 - Inline Video Parameter Capsule
 
 - replaced the standalone `参数` button and the full-width second-row summary with one LibTV-style parameter capsule in the bottom video toolbar.
@@ -29,7 +39,7 @@ Maintainers: project team + Codex sessions
 - added a LibTV-style bottom parameter summary that stays synchronized with the current ratio, resolution, duration, quantity, and audio state; clicking it reopens the same parameter surface.
 - added an explicit duration progress percentage and a visible blue/gray range rail for WebKit and Firefox, so the 4-15 second slider no longer renders as a floating thumb.
 - validation:
-  - focused video regression passed: 2 test files, 21 tests; the broader video/node regression passed: 25 test files, 146 tests.
+  - focused video regression passed: 6 test files, 55 tests.
   - direct browser smoke page showed the synchronized summary and a visible duration rail in the opened parameter dialog; screenshot saved under `output/playwright/video-node-visual/parameters-current.png` (untracked).
   - full visual smoke script timed out in the local Windows browser harness before producing its six-shot result; this remains an environment limitation, not a passing claim.
 
