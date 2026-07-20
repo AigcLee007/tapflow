@@ -47,7 +47,7 @@ import {
 } from '../studios/productionStudioEvents';
 import { SmartEdgeComponent } from '../edges/SmartEdge';
 import { useFlowCanvasStore } from '../store/flowCanvasStore';
-import { CanvasAssetPanel, CanvasCommentPanel, CanvasDockDrawer, CanvasDockEmptyState, CanvasHistoryPanel, CanvasTemplatePanel } from '../panels';
+import { CanvasAssetPanel, CanvasCommentPanel, CanvasDockDrawer, CanvasDockEmptyState, CanvasHistoryPanel, CanvasPromptPanel, CanvasTemplatePanel } from '../panels';
 import { ConnectionMenu } from './ConnectionMenu';
 import { FlowContextMenu } from './FlowContextMenu';
 import { FlowLeftAddPanel } from './FlowLeftAddPanel';
@@ -79,6 +79,7 @@ import {
   uploadLocalImageAndBuildReferenceNodeData,
 } from '../utils/localImageUpload';
 import { getImageNaturalSize } from '../utils/imageUtils';
+import { buildPromptReferenceNodeData } from '../utils/promptNodeReference';
 import { runBackendWorkflow } from '../runtime/v2WorkflowRunner';
 
 const CANVAS_MIN_ZOOM = 0.18;
@@ -123,6 +124,7 @@ const drawerTitleByPanel: Record<CanvasDockPanelId, string> = {
   templates: '模板列表',
   comments: '评论',
   history: '历史记录',
+  prompts: '提示词广场',
 };
 
 const nodeTypes: NodeTypes = {
@@ -1069,6 +1071,7 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled, onAg
           assets: getCanvasDockBadge('assets', dockBadgeMetrics),
           comments: getCanvasDockBadge('comments', dockBadgeMetrics),
           history: getCanvasDockBadge('history', dockBadgeMetrics),
+          prompts: getCanvasDockBadge('prompts', dockBadgeMetrics),
           templates: getCanvasDockBadge('templates', dockBadgeMetrics),
         }}
         onOpenPanel={(panel) => {
@@ -1104,6 +1107,22 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled, onAg
           ) : activeDockPanel === 'templates' ? (
             <CanvasTemplatePanel
               onInsertTemplate={handleInsertTemplate}
+            />
+          ) : activeDockPanel === 'prompts' ? (
+            <CanvasPromptPanel
+              onReference={(prompt) => {
+                addNode(
+                  'image',
+                  getCanvasCenterFlowPosition(),
+                  buildPromptReferenceNodeData({
+                    promptId: prompt.id,
+                    promptInsertRequestId: crypto.randomUUID(),
+                    promptText: prompt.promptText,
+                    promptTitle: prompt.title,
+                  }),
+                  { selected: true },
+                );
+              }}
             />
           ) : activeDockPanel === 'comments' && backendProjectId ? (
             <CanvasCommentPanel

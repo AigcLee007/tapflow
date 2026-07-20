@@ -4,6 +4,7 @@
 import React, { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   Bell,
+  BookOpen,
   Box,
   CircleHelp,
   Clock3,
@@ -385,6 +386,12 @@ export const FlowLeftAddPanel: React.FC<{
             label="模板列表"
             active={activePanel === 'templates'}
             onClick={() => onOpenPanel?.('templates')}
+          />
+          <DockButton
+            icon={<BookOpen size={18} strokeWidth={1.85} />}
+            label="提示词广场"
+            active={activePanel === 'prompts'}
+            onClick={() => onOpenPanel?.('prompts')}
           />
           <DockButton
             icon={<MessageCircle size={19} strokeWidth={1.85} />}

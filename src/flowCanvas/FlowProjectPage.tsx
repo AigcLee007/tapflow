@@ -4,6 +4,7 @@ import { AlertTriangle, CheckCircle2, Cloud, Loader2, RefreshCw } from "lucide-r
 import { getAsset } from "../assets/assetApi";
 import { BrandTransition } from "../app/brand/BrandTransition";
 import { V2HttpError } from "../services/v2HttpClient";
+import { getPrompt } from "../services/v2PromptsApi";
 import FlowCanvasPage from "./FlowCanvasPage";
 import { useRemoteFlowAutosave, type RemoteFlowSaveStatus } from "./hooks/useRemoteFlowAutosave";
 import { useRemoteFlowProject } from "./hooks/useRemoteFlowProject";
@@ -12,6 +13,7 @@ import { useFlowCanvasStore } from "./store/flowCanvasStore";
 import type { FlowNodeKind } from "./types";
 import { buildAssetBackedNodeData, buildMeasuredAssetNodePatch } from "./utils/assetNodeData";
 import { getImageNaturalSize } from "./utils/imageUtils";
+import { buildPromptReferenceNodeData, hasPromptInsertRequest } from "./utils/promptNodeReference";
 import {
   getProjectCanvasPath,
 } from "./workbench/imageWorkbenchUtils";
@@ -96,6 +98,7 @@ export function FlowProjectPage() {
   const updateNodeData = useFlowCanvasStore((state) => state.updateNodeData);
   const viewport = useFlowCanvasStore((state) => state.viewport);
   const insertedAssetIdRef = useRef<string | null>(null);
+  const insertedPromptRequestIdRef = useRef<string | null>(null);
   const [insertError, setInsertError] = useState<string | null>(null);
   const [insertRetryTick, setInsertRetryTick] = useState(0);
   const [locationSearch, setLocationSearch] = useState(() =>
@@ -185,6 +188,54 @@ export function FlowProjectPage() {
     viewport,
   ]);
 
+  useEffect(() => {
+    if (projectState.loading || projectState.error || typeof window === "undefined") return;
+    const params = new URLSearchParams(locationSearch);
+    const promptId = params.get("insertPromptId");
+    const requestId = params.get("promptInsertRequestId");
+    if (!promptId || !requestId || insertedPromptRequestIdRef.current === requestId) return;
+    if (hasPromptInsertRequest(nodes, requestId)) {
+      insertedPromptRequestIdRef.current = requestId;
+      removePromptInsertParameters();
+      return;
+    }
+
+    insertedPromptRequestIdRef.current = requestId;
+    setInsertError(null);
+    void getPrompt(promptId)
+      .then((prompt) => {
+        const zoom = viewport.zoom || 1;
+        const center = {
+          x: (window.innerWidth / 2 - viewport.x) / zoom + nodes.length * 24,
+          y: (window.innerHeight / 2 - viewport.y) / zoom + nodes.length * 24,
+        };
+        addNode(
+          "image",
+          center,
+          buildPromptReferenceNodeData({
+            promptId: prompt.id,
+            promptInsertRequestId: requestId,
+            promptText: prompt.promptText,
+            promptTitle: prompt.title,
+          }),
+          { selected: true },
+        );
+        removePromptInsertParameters();
+      })
+      .catch((error) => {
+        insertedPromptRequestIdRef.current = null;
+        setInsertError(getPromptInsertErrorMessage(error));
+      });
+  }, [
+    addNode,
+    insertRetryTick,
+    locationSearch,
+    nodes,
+    projectState.error,
+    projectState.loading,
+    viewport,
+  ]);
+
   if (!projectId) {
     return <ErrorState error="链接中缺少项目 ID。" onRetry={() => window.location.assign("/workspace")} />;
   }
@@ -227,6 +278,15 @@ export function FlowProjectPage() {
   );
 }
 
+function removePromptInsertParameters() {
+  const nextParams = new URLSearchParams(window.location.search);
+  nextParams.delete("insertPromptId");
+  nextParams.delete("promptInsertRequestId");
+  const nextQuery = nextParams.toString();
+  window.history.replaceState(null, "", `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}`);
+  window.dispatchEvent(new PopStateEvent("popstate"));
+}
+
 function getAssetInsertErrorMessage(error: unknown) {
   if (error instanceof V2HttpError) {
     if (error.status === 401) return "素材插入失败，登录状态已失效，请重新登录。";
@@ -241,4 +301,11 @@ function getAssetInsertErrorMessage(error: unknown) {
     return error.message;
   }
   return "素材插入失败。";
+}
+
+function getPromptInsertErrorMessage(error: unknown) {
+  if (error instanceof V2HttpError && error.status === 404) return "提示词引用失败，未找到该提示词。";
+  if (error instanceof V2HttpError && error.status === 401) return "提示词引用失败，登录状态已失效，请重新登录。";
+  if (error instanceof Error) return error.message;
+  return "提示词引用失败，请稍后重试。";
 }

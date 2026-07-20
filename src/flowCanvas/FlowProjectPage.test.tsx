@@ -7,6 +7,7 @@ import { FlowProjectPage } from "./FlowProjectPage";
 const useRemoteFlowProjectMock = vi.fn();
 const useRemoteFlowAutosaveMock = vi.fn();
 const getAssetMock = vi.fn();
+const getPromptMock = vi.fn();
 const getImageNaturalSizeMock = vi.fn();
 const addNodeMock = vi.fn();
 const updateNodeDataMock = vi.fn();
@@ -34,6 +35,10 @@ vi.mock("./runtime/remoteDraftSaveBarrier", () => ({
 
 vi.mock("../assets/assetApi", () => ({
   getAsset: (...args: unknown[]) => getAssetMock(...args),
+}));
+
+vi.mock("../services/v2PromptsApi", () => ({
+  getPrompt: (...args: unknown[]) => getPromptMock(...args),
 }));
 
 vi.mock("./utils/imageUtils", () => ({
@@ -65,6 +70,7 @@ describe("FlowProjectPage", () => {
   beforeEach(() => {
     setProjectPath("/projects/project-1");
     getAssetMock.mockReset();
+    getPromptMock.mockReset();
     getImageNaturalSizeMock.mockReset();
     addNodeMock.mockReset();
     updateNodeDataMock.mockReset();
@@ -158,5 +164,38 @@ describe("FlowProjectPage", () => {
         width: 170,
       });
     });
+  });
+
+  test("inserts a new image node from a prompt reference request", async () => {
+    setProjectPath("/projects/project-1?insertPromptId=prompt-1&promptInsertRequestId=request-1");
+    useRemoteFlowProjectMock.mockReturnValue({
+      draft: null,
+      error: null,
+      flow: { id: "flow-1" },
+      loading: false,
+      reload: vi.fn(),
+    });
+    getPromptMock.mockResolvedValue({
+      id: "prompt-1",
+      promptText: "cinematic portrait",
+      title: "Portrait",
+    });
+
+    render(<FlowProjectPage />);
+
+    await waitFor(() => {
+      expect(addNodeMock).toHaveBeenCalledWith(
+        "image",
+        expect.any(Object),
+        expect.objectContaining({
+          generationPrompt: "cinematic portrait",
+          sourcePromptId: "prompt-1",
+          sourcePromptInsertRequestId: "request-1",
+          sourcePromptTitle: "Portrait",
+        }),
+        { selected: true },
+      );
+    });
+    expect(window.location.search).not.toContain("insertPromptId");
   });
 });

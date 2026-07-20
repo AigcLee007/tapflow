@@ -3,6 +3,18 @@
 Last updated: 2026-07-20
 Maintainers: project team + Codex sessions
 
+## 2026-07-20 - Official Prompt Plaza
+
+- added the authenticated `/prompts` catalog and `/prompts/:promptId` detail experience with search, category filters, effect-gallery media, copy, favorites, and project-picker reference actions.
+- added official prompt entries, prompt media, tenant-scoped favorites, interaction events, permissions, indexes, and RLS policies through migration `000039_prompt_plaza.sql`.
+- reference now creates a new image node carrying only prompt text and source metadata; it deliberately preserves the canvas's current model, route, and generation parameters. Standalone references use a request ID to ensure a navigation is inserted at most once.
+- added a compact prompt panel to the canvas dock and a protected admin prompt-library tab for draft creation, editing, publishing, archiving, and JSON draft import.
+- prompt effect images use a dedicated short-lived signing endpoint that only signs media linked to a published prompt visible to the requesting tenant; generic asset access remains tenant-scoped.
+- validation:
+  - focused prompt client, plaza card, canvas reference, project insert, canvas panel, and admin-library tests passed: 29 tests.
+  - API prompt schema tests passed: 4 tests.
+  - API dependency packages and API build passed; root production build passed with the existing Browserslist, CSS utility, dynamic-import, and chunk-size warnings.
+
 ## 2026-07-20 - Restore Panorama Generation Without Source Text Prompt
 
 - removed the incorrect `sourcePromptAvailable` submission gate from the 360 panorama popover. Panorama generation uses the connected reference image and builds its own panorama prompt when creating the target node, so an uploaded or image-only source no longer shows `缺少生成提示词` or disables `生成全景`.

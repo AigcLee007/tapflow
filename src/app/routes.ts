@@ -4,6 +4,7 @@ export const ROOT_ROUTE = "/";
 export const HOME_ROUTE = "/home";
 export const WORKSPACE_ROUTE = "/workspace";
 export const WORKBENCH_ROUTE = "/workbench";
+export const PROMPTS_ROUTE = "/prompts";
 export const ASSETS_ROUTE = "/assets";
 export const BILLING_ROUTE = "/billing";
 export const ACCOUNT_ROUTE = "/account";
@@ -19,6 +20,7 @@ export const PRODUCT_ROUTES = [
   HOME_ROUTE,
   WORKSPACE_ROUTE,
   WORKBENCH_ROUTE,
+  PROMPTS_ROUTE,
   "/projects/:projectId",
   "/projects/:projectId/workbench",
   "/projects/:projectId/canvas",
@@ -29,6 +31,15 @@ export const PRODUCT_ROUTES = [
 
 export function isProjectRoute(pathname: string): boolean {
   return pathname.startsWith("/projects/") && pathname.split("/").filter(Boolean).length >= 2;
+}
+
+export function isPromptDetailRoute(pathname: string): boolean {
+  return pathname.startsWith(`${PROMPTS_ROUTE}/`) && pathname.split("/").filter(Boolean).length === 2;
+}
+
+export function getPromptId(pathname: string): string | null {
+  if (!isPromptDetailRoute(pathname)) return null;
+  return pathname.split("/").filter(Boolean)[1] ? decodeURIComponent(pathname.split("/").filter(Boolean)[1]) : null;
 }
 
 export function getProjectId(pathname: string): string | null {

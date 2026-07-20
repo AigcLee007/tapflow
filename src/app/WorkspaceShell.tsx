@@ -3,6 +3,7 @@ import {
   Activity,
   Bell,
   Box,
+  BookOpen,
   ChevronDown,
   CreditCard,
   ExternalLink,
@@ -21,6 +22,7 @@ import {
   BILLING_ROUTE,
   HOME_ROUTE,
   WORKBENCH_ROUTE,
+  PROMPTS_ROUTE,
   WORKSPACE_ROUTE,
 } from "./routes";
 import { BrandMark } from "./brand/BrandMark";
@@ -53,6 +55,7 @@ const navItems = [
   { icon: Home, label: "主页", path: HOME_ROUTE },
   { icon: FolderKanban, label: "无限画布", path: WORKSPACE_ROUTE },
   { icon: Box, label: "生图工作台", path: WORKBENCH_ROUTE },
+  { icon: BookOpen, label: "提示词广场", path: PROMPTS_ROUTE },
   { icon: Box, label: "素材库", path: ASSETS_ROUTE },
   { icon: CreditCard, label: "账单充值", path: BILLING_ROUTE },
 ];

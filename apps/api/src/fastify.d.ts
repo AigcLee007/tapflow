@@ -21,6 +21,7 @@ import type { FlowHistoryService } from "./modules/flow-history/flow-history.ser
 import type { FlowTemplatesService } from "./modules/flow-templates/flow-templates.service.js";
 import type { ObservabilityService } from "./modules/observability/observability.service.js";
 import type { ProjectsService } from "./modules/projects/projects.service.js";
+import type { PromptsService } from "./modules/prompts/prompts.service.js";
 import type { QueueHealthService } from "./modules/queues/queues.service.js";
 import type { WorkbenchService } from "./modules/workbench/workbench.service.js";
 import type { WorkflowRunsService } from "./modules/workflow-runs/workflow-runs.service.js";
@@ -45,6 +46,7 @@ declare module "fastify" {
     flowTemplatesService: FlowTemplatesService;
     observabilityService: ObservabilityService;
     projectsService: ProjectsService;
+    promptsService: PromptsService;
     queueHealthService: QueueHealthService;
     storageProvider: StorageProvider;
     workbenchService: WorkbenchService;

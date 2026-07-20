@@ -325,6 +325,10 @@ export interface FlowNodeData {
   coverResultId?: string;
   favoriteResultIds?: string[];
   lastGenerationSnapshot?: FlowImageGenerationSnapshot;
+  sourcePromptId?: string;
+  sourcePromptInsertRequestId?: string;
+  sourcePromptSnapshot?: string;
+  sourcePromptTitle?: string;
   params?: Record<string, unknown>;
   director3d?: FlowDirector3dData;
   storyboard?: FlowStoryboardData;

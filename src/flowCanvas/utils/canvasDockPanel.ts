@@ -1,4 +1,4 @@
-export type CanvasDockPanelId = 'assets' | 'templates' | 'comments' | 'history';
+export type CanvasDockPanelId = 'assets' | 'templates' | 'comments' | 'history' | 'prompts';
 
 export type CanvasDockDrawerLayoutInput = {
   dockLeft: number;

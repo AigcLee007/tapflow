@@ -62,6 +62,8 @@ import { ObservabilityService } from "./modules/observability/observability.serv
 import { createApiLoggerOptions, logApiRequestComplete } from "./observability/logger.js";
 import { registerProjectRoutes } from "./modules/projects/projects.routes.js";
 import { ProjectsService } from "./modules/projects/projects.service.js";
+import { registerPromptRoutes } from "./modules/prompts/prompts.routes.js";
+import { PromptsService } from "./modules/prompts/prompts.service.js";
 import { registerQueueRoutes } from "./modules/queues/queues.routes.js";
 import { QueueHealthService } from "./modules/queues/queues.service.js";
 import { registerWorkbenchRoutes } from "./modules/workbench/workbench.routes.js";
@@ -298,6 +300,7 @@ export function buildApp(options?: {
     pool,
     storageProvider,
   });
+  const promptsService = new PromptsService({ pool, storageProvider });
   const agentService = new AgentService({
     aiModelCatalogService,
     env,
@@ -333,6 +336,7 @@ export function buildApp(options?: {
   app.decorate("billingService", billingService);
   app.decorate("credentialVault", credentialVault);
   app.decorate("projectsService", projectsService);
+  app.decorate("promptsService", promptsService);
   app.decorate("observabilityService", observabilityService);
   app.decorate("flowsService", flowsService);
   app.decorate("flowCommentsService", flowCommentsService);
@@ -427,6 +431,7 @@ export function buildApp(options?: {
   registerAssetRoutes(app);
   registerBillingRoutes(app);
   registerProjectRoutes(app);
+  registerPromptRoutes(app);
   registerFlowRoutes(app);
   registerFlowCommentRoutes(app);
   registerFlowHistoryRoutes(app);

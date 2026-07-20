@@ -13,6 +13,8 @@ import { ProviderSettingsPage } from "../account/ProviderSettingsPage";
 import { BillingCenterPage } from "../billing/BillingCenterPage";
 import { FlowProjectPage } from "../flowCanvas/FlowProjectPage";
 import { WorkbenchPage } from "../workbench/WorkbenchPage";
+import { PromptDetailPage } from "../prompts/PromptDetailPage";
+import { PromptPlazaPage } from "../prompts/PromptPlazaPage";
 import { HomePage } from "../workspace/HomePage";
 import { WorkspacePage } from "../workspace/WorkspacePage";
 import { AppVersionReminder } from "./version/AppVersionReminder";
@@ -30,6 +32,9 @@ import {
   BILLING_ROUTE,
   HOME_ROUTE,
   WORKBENCH_ROUTE,
+  PROMPTS_ROUTE,
+  getPromptId,
+  isPromptDetailRoute,
   isCompatibilityRoute,
   isNonUserFacingRoute,
   getProjectMode,
@@ -100,6 +105,15 @@ function ProtectedRoutes({ pathname }: { pathname: string }) {
 
   if (pathname === WORKBENCH_ROUTE || pathname.startsWith(`${WORKBENCH_ROUTE}/`)) {
     return <WorkbenchPage />;
+  }
+
+  if (isPromptDetailRoute(pathname)) {
+    const promptId = getPromptId(pathname);
+    return promptId ? <PromptDetailPage promptId={promptId} /> : <Redirect to={PROMPTS_ROUTE} />;
+  }
+
+  if (pathname === PROMPTS_ROUTE || pathname.startsWith(`${PROMPTS_ROUTE}/`)) {
+    return <PromptPlazaPage />;
   }
 
   if (isProjectRoute(pathname)) {

@@ -55,6 +55,7 @@ import {
   type AnnouncementStatus,
   type MembershipTier,
 } from "./adminApi";
+import { PromptLibraryPanel } from "./PromptLibraryPanel";
 
 type OpsTab =
   | "overview"
@@ -65,7 +66,8 @@ type OpsTab =
   | "usage"
   | "models"
   | "providers"
-  | "monitor";
+  | "monitor"
+  | "prompt-library";
 
 const MEMBERSHIP_OPTIONS: Array<{ label: string; tier: MembershipTier }> = [
   { label: "普通用户", tier: "standard" },
@@ -102,6 +104,7 @@ const TABS: Array<{
   { icon: SlidersHorizontal, id: "models", label: "模型线路", superOnly: true },
   { icon: Network, id: "providers", label: "供应商连接", superOnly: true },
   { icon: Activity, id: "monitor", label: "系统监控" },
+  { icon: FileUp, id: "prompt-library", label: "提示词库", superOnly: true },
 ];
 
 const inputClass =
@@ -724,6 +727,7 @@ export function AdminPage() {
       {activeTab === "usage" ? renderUsage() : null}
       {activeTab === "models" ? renderModelRoutes() : null}
       {activeTab === "providers" ? renderProviders() : null}
+      {activeTab === "prompt-library" ? <PromptLibraryPanel /> : null}
       {activeTab === "monitor" ? renderMonitor() : null}
     </div>
   );
