@@ -6998,7 +6998,6 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
             routeOptions={panoramaRouteOptions}
             routesLoading={panoramaScopedRouteState.loading}
             sourceNodeTitle={String(d.title || "图片")}
-            sourcePromptAvailable={Boolean(String(d.generationPrompt || "").trim())}
           />
         </div>,
         document.body,

@@ -28,7 +28,6 @@ describe("PanoramaGeneratePopover", () => {
         onSubmit={vi.fn()}
         routeOptions={routeOptions}
         sourceNodeTitle="Source Image"
-        sourcePromptAvailable
       />,
     );
 
@@ -40,7 +39,9 @@ describe("PanoramaGeneratePopover", () => {
     expect(screen.queryByRole("button", { name: "1:1" })).toBeNull();
   });
 
-  it("disables submit and shows an inline message when the selected image lacks a prompt", () => {
+  it("allows submission when the connected image has no source text prompt", () => {
+    const onSubmit = vi.fn();
+
     render(
       <PanoramaGeneratePopover
         creditLabel="12 pts"
@@ -49,14 +50,21 @@ describe("PanoramaGeneratePopover", () => {
         initialSize="1k"
         modelOptions={modelOptions}
         onClose={vi.fn()}
-        onSubmit={vi.fn()}
+        onSubmit={onSubmit}
         routeOptions={routeOptions}
         sourceNodeTitle="Untitled"
-        sourcePromptAvailable={false}
       />,
     );
 
-    expect((screen.getByRole("button", { name: "生成全景" }) as HTMLButtonElement).disabled).toBe(true);
+    const submit = screen.getByRole("button", { name: "生成全景" }) as HTMLButtonElement;
+    expect(submit.disabled).toBe(false);
+    fireEvent.click(submit);
+    expect(onSubmit).toHaveBeenCalledWith({
+      aspectRatio: "2:1",
+      modelId: "gpt-image-2",
+      routeKey: "image.gpt-image-2",
+      size: "1k",
+    });
   });
 
   it("submits the selected model, route, size, and aspect ratio", () => {
@@ -75,7 +83,6 @@ describe("PanoramaGeneratePopover", () => {
         onSubmit={onSubmit}
         routeOptions={routeOptions}
         sourceNodeTitle="Source Image"
-        sourcePromptAvailable
       />,
     );
 
@@ -114,7 +121,6 @@ describe("PanoramaGeneratePopover", () => {
             onSubmit={vi.fn()}
             routeOptions={routeOptions}
             sourceNodeTitle="Source Image"
-            sourcePromptAvailable
           />
         </div>
       ) : null;

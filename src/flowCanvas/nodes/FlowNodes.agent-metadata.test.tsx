@@ -308,7 +308,6 @@ describe("FlowNodes agent metadata", () => {
       { x: 0, y: 0 },
       {
         createdAt: 1,
-        generationPrompt: "city dusk skyline",
         generationStatus: "done",
         height: 240,
         kind: "image",

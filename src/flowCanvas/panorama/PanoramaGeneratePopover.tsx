@@ -35,7 +35,6 @@ export type PanoramaGeneratePopoverProps = {
   routeOptions: PanoramaGenerateRouteOption[];
   routesLoading?: boolean;
   sourceNodeTitle: string;
-  sourcePromptAvailable: boolean;
 };
 
 const SIZE_OPTIONS: Array<{ label: string; value: PanoramaGenerateSize }> = [
@@ -65,7 +64,6 @@ export function PanoramaGeneratePopover({
   routeOptions,
   routesLoading = false,
   sourceNodeTitle,
-  sourcePromptAvailable,
 }: PanoramaGeneratePopoverProps) {
   const [aspectRatio, setAspectRatio] = useState<PanoramaAspectRatio>(
     isPanoramaAspectRatio(initialAspectRatio) ? initialAspectRatio : "2:1",
@@ -83,7 +81,7 @@ export function PanoramaGeneratePopover({
     [routeOptions],
   );
   const activeRoute = routeOptions.find((option) => option.routeKey === routeKey) || routeOptions[0];
-  const canSubmit = sourcePromptAvailable && Boolean(modelId) && Boolean(activeRoute?.routeKey) && !activeRoute?.disabled;
+  const canSubmit = Boolean(modelId) && Boolean(activeRoute?.routeKey) && !activeRoute?.disabled;
 
   useEffect(() => {
     const nextModelId = initialModelId || modelOptions[0]?.id || "";
@@ -180,12 +178,6 @@ export function PanoramaGeneratePopover({
             </div>
           </div>
         </div>
-
-        {!sourcePromptAvailable ? (
-          <div className="rounded-xl border border-amber-300/20 bg-amber-400/8 px-3 py-2 text-[11px] text-amber-200">
-            缺少生成提示词
-          </div>
-        ) : null}
 
         {!activeRoute?.routeKey && !routesLoading ? (
           <div className="rounded-xl border border-amber-300/20 bg-amber-400/8 px-3 py-2 text-[11px] text-amber-200">
