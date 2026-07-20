@@ -193,7 +193,7 @@ describe('prepareImageTemplateEdit', () => {
 
     expect(state.edges.some((edge) => edge.source === sourceNode.id && edge.target === targetNodeId)).toBe(true);
     expect(targetNode?.data).toMatchObject({
-      generationPrompt: expect.stringContaining('3x3 director multi-camera contact sheet'),
+      generationPrompt: expect.stringContaining('3x3 导演多机位联络表'),
       generationStatus: 'idle',
       imageTemplateEditRequest: {
         mode: 'multi_camera_nine_grid',

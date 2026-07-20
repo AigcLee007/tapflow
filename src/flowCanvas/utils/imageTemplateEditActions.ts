@@ -41,29 +41,29 @@ export const FLOW_IMAGE_TEMPLATE_EDIT_ACTIONS: FlowImageTemplateEditAction[] = [
     titlePrefix: '九宫格后的',
     aspectRatioPolicy: 'original',
     promptTemplate:
-      'Generate a libtv-style 3x3 director multi-camera contact sheet from the source image.\n\n'
-      + 'Output requirements:\n'
-      + '- Final output must be one readable 3x3 grid contact sheet, not nine separate images.\n'
-      + '- Keep the same primary subject, same costume, same scene, same time moment, and same action.\n'
-      + '- Do not add new characters, new dialogue, new story events, or unrelated props.\n'
-      + '- Each cell must preserve the source image aspect ratio and orientation.\n'
-      + '- Do not crop each camera view into a different ratio.\n'
-      + '- Vary only camera coverage: shot size, camera height, lens distance, and angle.\n'
-      + '- Each panel must look like a usable director coverage frame from the same shot setup.\n'
-      + '- Add a small white label in the upper-left corner of every cell.\n'
-      + '- Use exactly these nine labels and shot types in reading order:\n'
-      + '  [KF1 | 3s | ELS] extreme long shot / full environment,\n'
-      + '  [KF2 | 2s | LS] long shot / full body,\n'
-      + '  [KF3 | 2s | MLS] medium long shot,\n'
-      + '  [KF4 | 2s | MS] medium shot,\n'
-      + '  [KF5 | 2s | MCU] medium close-up,\n'
-      + '  [KF6 | 2s | CU] close-up,\n'
-      + '  [KF7 | 1s | ECU] extreme close-up of the key hand/object/detail,\n'
-      + '  [KF8 | 2s | High-Angle] high-angle view,\n'
-      + '  [KF9 | 2s | Low-Angle] low-angle view.\n'
-      + '- Use thin dark grid lines between cells; no large white gutters, no decorative border.\n'
-      + '- Fill the whole output canvas; do not add black bars, letterboxing, UI, or watermark.\n'
-      + '- Preserve identity, costume, lighting mood, color tone, and scene continuity across all cells.',
+      '从源图生成一张 libtv 风格的 3x3 导演多机位联络表。\n\n'
+      + '输出要求：\n'
+      + '- 最终输出必须是一张清晰可读的 3x3 网格联络表，而不是九张独立图片。\n'
+      + '- 保持同一主体、同一服装、同一场景、同一时间点和同一动作。\n'
+      + '- 不要添加新角色、新对白、新剧情事件或无关道具。\n'
+      + '- 每个格子必须保持源图的宽高比和方向。\n'
+      + '- 不要把不同机位裁切成不同的宽高比。\n'
+      + '- 只改变机位覆盖方式：景别、机位高度、镜头距离和角度。\n'
+      + '- 每个格子都必须像同一镜头设置下可供导演使用的覆盖画面。\n'
+      + '- 在每个格子的左上角添加小号白色标签。\n'
+      + '- 按阅读顺序严格使用以下九个标签和镜头类型：\n'
+      + '  [KF1 | 3s | ELS] 大远景 / 完整环境，\n'
+      + '  [KF2 | 2s | LS] 远景 / 全身，\n'
+      + '  [KF3 | 2s | MLS] 中远景，\n'
+      + '  [KF4 | 2s | MS] 中景，\n'
+      + '  [KF5 | 2s | MCU] 中近景，\n'
+      + '  [KF6 | 2s | CU] 近景，\n'
+      + '  [KF7 | 1s | ECU] 关键手部、物体或细节的大特写，\n'
+      + '  [KF8 | 2s | High-Angle] 高机位俯拍，\n'
+      + '  [KF9 | 2s | Low-Angle] 低机位仰拍。\n'
+      + '- 格子之间使用细深色分隔线，不要留大块白色间隙，也不要添加装饰边框。\n'
+      + '- 铺满整个输出画布，不要添加黑边、信箱式留边、UI 或水印。\n'
+      + '- 所有格子必须保持人物身份、服装、光影氛围、色调和场景连续性。',
   },
   {
     key: 'plotFourGrid',
@@ -73,15 +73,15 @@ export const FLOW_IMAGE_TEMPLATE_EDIT_ACTIONS: FlowImageTemplateEditAction[] = [
     titlePrefix: '剧情四宫格后的',
     aspectRatioPolicy: 'original',
     promptTemplate:
-      'Generate a 2x2 story pitch board from the source image.\n\n'
-      + 'Output requirements:\n'
-      + '- Create four consecutive pitch frames that expand the current story moment.\n'
-      + '- Keep the same characters, scene, and dramatic context.\n'
-      + '- Emphasize clear story progression and emotional beats.\n'
-      + '- Each cell must preserve the source image aspect ratio and orientation.\n'
-      + '- Do not crop each story frame into a different ratio.\n'
-      + '- Arrange the four same-ratio frames in a clean 2x2 grid with thin dividers.\n'
-      + '- Fill the whole output canvas; do not add black bars, letterboxing, UI, or watermark.',
+      '从源图生成一张 2x2 剧情提案分镜板。\n\n'
+      + '输出要求：\n'
+      + '- 创建四个连续剧情画面，延展当前剧情时刻。\n'
+      + '- 保持同一角色、同一场景和同一戏剧语境。\n'
+      + '- 强调清晰的剧情推进和情绪节拍。\n'
+      + '- 每个格子必须保持源图的宽高比和方向。\n'
+      + '- 不要把不同剧情画面裁切成不同的宽高比。\n'
+      + '- 将四个相同比例的画面排列在整洁的 2x2 网格中，并使用细分隔线。\n'
+      + '- 铺满整个输出画布，不要添加黑边、信箱式留边、UI 或水印。',
   },
   {
     key: 'faceThreeView',
@@ -91,12 +91,12 @@ export const FLOW_IMAGE_TEMPLATE_EDIT_ACTIONS: FlowImageTemplateEditAction[] = [
     titlePrefix: '脸部三视图后的',
     aspectRatioPolicy: '3:2',
     promptTemplate:
-      'Generate a clean three-view face sheet from the source image.\n\n'
-      + 'Output requirements:\n'
-      + '- Show front view, three-quarter view, and side view of the same face.\n'
-      + '- Preserve facial identity, age, hairstyle, skin tone, and expression logic.\n'
-      + '- Use a clean reference-sheet style.\n'
-      + '- Final output must be a compact three-view face layout.',
+      '从源图生成一张干净的脸部三视图参考图。\n\n'
+      + '输出要求：\n'
+      + '- 展示同一张脸的正面、四分之三侧面和侧面。\n'
+      + '- 保持脸部身份、年龄、发型、肤色和表情逻辑。\n'
+      + '- 使用干净的参考图版式。\n'
+      + '- 最终输出必须是紧凑的脸部三视图布局。',
   },
   {
     key: 'productThreeView',
@@ -106,12 +106,12 @@ export const FLOW_IMAGE_TEMPLATE_EDIT_ACTIONS: FlowImageTemplateEditAction[] = [
     titlePrefix: '产品三视图后的',
     aspectRatioPolicy: '3:2',
     promptTemplate:
-      'Generate a clean three-view product reference sheet from the source image.\n\n'
-      + 'Output requirements:\n'
-      + '- Show front, side, and back/alternate view of the same product.\n'
-      + '- Preserve materials, silhouette, proportions, and key details.\n'
-      + '- Use a clean product reference layout with neutral presentation.\n'
-      + '- Final output must be a three-view sheet.',
+      '从源图生成一张干净的产品三视图参考图。\n\n'
+      + '输出要求：\n'
+      + '- 展示同一产品的正面、侧面和背面或替代角度。\n'
+      + '- 保持材质、轮廓、比例和关键细节。\n'
+      + '- 使用干净、中性的产品参考图布局。\n'
+      + '- 最终输出必须是一张三视图图版。',
   },
   {
     key: 'serialStoryboard25',
@@ -121,28 +121,28 @@ export const FLOW_IMAGE_TEMPLATE_EDIT_ACTIONS: FlowImageTemplateEditAction[] = [
     titlePrefix: '25宫格分镜后的',
     aspectRatioPolicy: 'original',
     promptTemplate:
-      'Generate a libtv-style 5x5 cinematic storyboard shot sequence from the source image.\n\n'
-      + 'Output requirements:\n'
-      + '- Final output must be one readable 5x5 storyboard contact sheet, not 25 separate images.\n'
-      + '- Build a coherent shot progression around the same core event in the source image.\n'
-      + '- Do not create random variants, unrelated future scenes, or a new ending.\n'
-      + '- Preserve the visible subjects, identities, costumes/materials, environment, lighting mood, and key objects from the source image.\n'
-      + '- Adapt the sequence to the actual source content. Do not invent dialogue, extra characters, paper, weapons, vehicles, or props that are not visible or strongly implied.\n'
-      + '- Organize the 25 cells like an editable film sequence:\n'
-      + '  1-3 establishing coverage of the location, subject placement, and spatial relationship,\n'
-      + '  4-6 primary subject close-ups, detail views, or reaction shots when characters exist,\n'
-      + '  7-10 alternate angles, over-the-shoulder or eye-line coverage only when applicable,\n'
-      + '  11-15 step-by-step progression of the visible key action or the most plausible next micro-action,\n'
-      + '  16-19 inserts and extreme close-ups of visible key details: hands, face, eyes, object, texture, signage, machinery, landscape feature, or environment clue,\n'
-      + '  20-22 pause, reaction, consequence, or atmospheric detail beats,\n'
-      + '  23-25 restrained resolution frames that stay in the same scene and subject context.\n'
-      + '- Mix shot types deliberately: wide, medium, close-up, extreme close-up, insert, reaction/detail. Use OTS only when the source contains a valid over-shoulder relationship.\n'
-      + '- Avoid repeating the same two-shot or portrait composition across many cells.\n'
-      + '- Number each cell unobtrusively in the upper-left corner from 1 to 25.\n'
-      + '- Each cell must preserve the source image aspect ratio and orientation.\n'
-      + '- Do not crop each storyboard frame into a different ratio.\n'
-      + '- Arrange the twenty-five same-ratio frames in a clean 5x5 grid with thin dividers.\n'
-      + '- Fill the whole output canvas; do not add black bars, letterboxing, UI, or watermark.',
+      '从源图生成一张 libtv 风格的 5x5 连贯电影分镜序列。\n\n'
+      + '输出要求：\n'
+      + '- 最终输出必须是一张清晰可读的 5x5 分镜联络表，而不是 25 张独立图片。\n'
+      + '- 围绕源图中的同一核心事件构建连贯的镜头推进。\n'
+      + '- 不要创建随机变体、无关的未来场景或新的结局。\n'
+      + '- 保持源图中可见的主体、身份、服装或材质、环境、光影氛围和关键物体。\n'
+      + '- 根据源图的实际内容调整序列，不要虚构画面中不可见或没有明确暗示的对白、额外角色、纸张、武器、车辆或道具。\n'
+      + '- 按照可编辑的电影序列组织 25 个格子：\n'
+      + '  1-3：建立场地、主体位置和空间关系，\n'
+      + '  4-6：主体特写、细节画面，存在角色时可使用反应镜头，\n'
+      + '  7-10：替代角度，仅在适用时使用过肩镜头或视线关系覆盖，\n'
+      + '  11-15：逐步推进可见的关键动作，或最合理的下一步微动作，\n'
+      + '  16-19：对可见关键细节进行插入镜头和大特写，包括手、脸、眼睛、物体、纹理、标识、机械、景观特征或环境线索，\n'
+      + '  20-22：停顿、反应、结果或氛围细节节拍，\n'
+      + '  23-25：保持在同一场景和主体语境中的克制收束画面。\n'
+      + '- 有意识地混合镜头类型：远景、中景、近景、大特写、插入镜头、反应或细节镜头。仅当源图存在有效的过肩关系时使用 OTS。\n'
+      + '- 避免在多个格子中重复相同的双人构图或肖像构图。\n'
+      + '- 在每个格子的左上角低调标注 1 到 25 的序号。\n'
+      + '- 每个格子必须保持源图的宽高比和方向。\n'
+      + '- 不要把不同分镜画面裁切成不同的宽高比。\n'
+      + '- 将 25 个相同比例的画面排列在整洁的 5x5 网格中，并使用细分隔线。\n'
+      + '- 铺满整个输出画布，不要添加黑边、信箱式留边、UI 或水印。',
   },
   {
     key: 'cinematicLightCorrection',
@@ -152,14 +152,14 @@ export const FLOW_IMAGE_TEMPLATE_EDIT_ACTIONS: FlowImageTemplateEditAction[] = [
     titlePrefix: '光影校正后的',
     aspectRatioPolicy: 'original',
     promptTemplate:
-      'Cinematically refine the source image lighting.\n\n'
-      + 'Output requirements:\n'
-      + '- Improve light hierarchy, shadow structure, exposure balance, and atmosphere.\n'
-      + '- Preserve the source image aspect ratio, canvas dimensions, and orientation exactly.\n'
-      + '- Keep the same scene, same characters, and same camera framing.\n'
-      + '- Do not turn the image into a different composition.\n'
-      + '- Fill the whole existing canvas; do not add black bars, borders, or letterboxing.\n'
-      + '- Final output must remain a single frame with no collage, UI, watermark, or text.',
+      '对源图进行电影级光影优化。\n\n'
+      + '输出要求：\n'
+      + '- 改善光线层次、阴影结构、曝光平衡和氛围。\n'
+      + '- 严格保持源图的宽高比、画布尺寸和方向。\n'
+      + '- 保持同一场景、同一角色和同一机位构图。\n'
+      + '- 不要把画面变成不同的构图。\n'
+      + '- 铺满整个现有画布，不要添加黑边、边框或信箱式留边。\n'
+      + '- 最终输出必须保持为单帧，不要添加拼贴、UI、水印或文字。',
   },
   {
     key: 'characterThreeView',
@@ -169,12 +169,12 @@ export const FLOW_IMAGE_TEMPLATE_EDIT_ACTIONS: FlowImageTemplateEditAction[] = [
     titlePrefix: '角色三视图后的',
     aspectRatioPolicy: '16:9',
     promptTemplate:
-      'Generate a clean character three-view sheet from the source image.\n\n'
-      + 'Output requirements:\n'
-      + '- Show front, side, and back/full-figure view of the same character.\n'
-      + '- Preserve face identity, body proportions, costume details, and style.\n'
-      + '- Keep the presentation clean and reference-friendly.\n'
-      + '- Final output must be a three-view character sheet.',
+      '从源图生成一张干净的角色三视图设定图。\n\n'
+      + '输出要求：\n'
+      + '- 展示同一角色的全身正面、侧面和背面。\n'
+      + '- 保持脸部身份、身体比例、服装细节和风格。\n'
+      + '- 保持画面干净并便于作为设定参考。\n'
+      + '- 最终输出必须是一张角色三视图图版。',
   },
   {
     key: 'frameProjection3sLater',
@@ -184,17 +184,17 @@ export const FLOW_IMAGE_TEMPLATE_EDIT_ACTIONS: FlowImageTemplateEditAction[] = [
     titlePrefix: '3秒后推演后的',
     aspectRatioPolicy: 'original',
     promptTemplate:
-      'Create a future keyframe from the source image, as if this is a libtv-style frame projection 3 seconds later in a video.\n\n'
-      + 'Output requirements:\n'
-      + '- Preserve character identity, costume, environment, art style, and story continuity.\n'
-      + '- Preserve the source image aspect ratio, canvas dimensions, and orientation exactly.\n'
-      + '- Fill the whole existing canvas; do not add black bars, borders, or letterboxing.\n'
-      + '- Do not make a near-duplicate or simple retouch of the source image.\n'
-      + '- Create a clear time jump: the subject must be in a different action phase, body pose, walking position, hand position, gaze, and object placement.\n'
-      + '- Within the same frame size, use plausible camera pan, tilt, push, pull, or subject relocation to make the temporal change obvious.\n'
-      + '- Allow doors, props, cloth, hair, shadows, and nearby environment details to change according to the action, while keeping spatial continuity coherent.\n'
-      + '- The projected moment should feel like a real adjacent video frame, not a retouched still.\n'
-      + '- Final output must be one single frame with no collage, UI, watermark, or text.',
+      '基于源图创建未来关键帧，模拟同一视频镜头 3 秒后的 libtv 风格画面推演。\n\n'
+      + '输出要求：\n'
+      + '- 保持角色身份、服装、环境、美术风格和剧情连续性。\n'
+      + '- 严格保持源图的宽高比、画布尺寸和方向。\n'
+      + '- 铺满整个现有画布，不要添加黑边、边框或信箱式留边。\n'
+      + '- 不要生成源图的近似复制品或只做简单修饰。\n'
+      + '- 形成明确的时间推进：主体必须处于不同的动作阶段、身体姿势、行走位置、手部位置、视线和物体摆放状态。\n'
+      + '- 在相同画幅内使用合理的摇镜、俯仰、推进、拉远或主体位移，让时间变化清晰可见。\n'
+      + '- 允许门、道具、布料、头发、阴影和邻近环境细节随动作变化，同时保持空间连续性合理。\n'
+      + '- 推演时刻应当像真实的相邻视频帧，而不是经过修饰的静帧。\n'
+      + '- 最终输出必须是单帧，不要添加拼贴、UI、水印或文字。',
   },
   {
     key: 'frameProjection5sEarlier',
@@ -204,17 +204,17 @@ export const FLOW_IMAGE_TEMPLATE_EDIT_ACTIONS: FlowImageTemplateEditAction[] = [
     titlePrefix: '5秒前推演后的',
     aspectRatioPolicy: 'original',
     promptTemplate:
-      'Create a past keyframe from the source image, as if this is a libtv-style frame projection 5 seconds before in a video.\n\n'
-      + 'Output requirements:\n'
-      + '- Preserve character identity, costume, environment, art style, and story continuity.\n'
-      + '- Preserve the source image aspect ratio, canvas dimensions, and orientation exactly.\n'
-      + '- Fill the whole existing canvas; do not add black bars, borders, or letterboxing.\n'
-      + '- Do not make a near-duplicate or simple retouch of the source image.\n'
-      + '- Create a clear earlier setup: the subject must be in a different action phase, body pose, walking position, hand position, gaze, and object placement.\n'
-      + '- Within the same frame size, use plausible camera pan, tilt, push, pull, or subject relocation to make the earlier moment obvious.\n'
-      + '- Allow doors, props, cloth, hair, shadows, and nearby environment details to change according to the preceding action, while keeping spatial continuity coherent.\n'
-      + '- The projected moment should feel like a real adjacent video frame, not a retouched still.\n'
-      + '- Final output must be one single frame with no collage, UI, watermark, or text.',
+      '基于源图创建过去关键帧，模拟同一视频镜头 5 秒前的 libtv 风格画面推演。\n\n'
+      + '输出要求：\n'
+      + '- 保持角色身份、服装、环境、美术风格和剧情连续性。\n'
+      + '- 严格保持源图的宽高比、画布尺寸和方向。\n'
+      + '- 铺满整个现有画布，不要添加黑边、边框或信箱式留边。\n'
+      + '- 不要生成源图的近似复制品或只做简单修饰。\n'
+      + '- 形成明确的前置状态：主体必须处于不同的动作阶段、身体姿势、行走位置、手部位置、视线和物体摆放状态。\n'
+      + '- 在相同画幅内使用合理的摇镜、俯仰、推进、拉远或主体位移，让更早的时刻清晰可见。\n'
+      + '- 允许门、道具、布料、头发、阴影和邻近环境细节随前置动作变化，同时保持空间连续性合理。\n'
+      + '- 推演时刻应当像真实的相邻视频帧，而不是经过修饰的静帧。\n'
+      + '- 最终输出必须是单帧，不要添加拼贴、UI、水印或文字。',
   },
 ];
 
@@ -311,7 +311,7 @@ export function buildImageTemplateEditPrompt(
   if (!normalizedUserPrompt) {
     return action.promptTemplate;
   }
-  return `${action.promptTemplate}\n\nUser prompt:\n${normalizedUserPrompt}`;
+  return `${action.promptTemplate}\n\n用户补充要求：\n${normalizedUserPrompt}`;
 }
 
 export function resolveImageTemplateEditAspectRatio(
