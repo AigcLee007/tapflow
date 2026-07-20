@@ -1,7 +1,16 @@
 ﻿# Project Record
 
-Last updated: 2026-07-19
+Last updated: 2026-07-20
 Maintainers: project team + Codex sessions
+
+## 2026-07-20 - Chinese Nine-grid Template Prompts
+
+- translated the natural-language instructions for all nine image-template tools into production-oriented Chinese while preserving grid notation, keyframe labels, timing, shot abbreviations, template identities, and aspect-ratio behavior.
+- changed the appended prompt heading to `用户补充要求：` so the prepared confirmation node is fully readable and editable in Chinese.
+- kept model selection, route selection, parameter inheritance, idle node preparation, workflow submission, billing, and backend contracts unchanged.
+- validation:
+  - focused template, graph preparation, and image-node interaction regression passed: 3 test files, 26 tests.
+  - `npm run build` passed with the existing Browserslist age, CSS utility, dynamic-import, and chunk-size warnings.
 
 ## 2026-07-19 - Nine-grid Toolbar Confirmation Flow
 
