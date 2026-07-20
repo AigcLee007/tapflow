@@ -3,6 +3,14 @@
 Last updated: 2026-07-20
 Maintainers: project team + Codex sessions
 
+## 2026-07-20 - Restore Panorama Generation Without Source Text Prompt
+
+- removed the incorrect `sourcePromptAvailable` submission gate from the 360 panorama popover. Panorama generation uses the connected reference image and builds its own panorama prompt when creating the target node, so an uploaded or image-only source no longer shows `缺少生成提示词` or disables `生成全景`.
+- retained model, route, size, aspect-ratio, billing, workflow, and target-node prompt construction behavior.
+- validation:
+  - panorama popover regression passed: 4 tests.
+  - image-node panorama, store, and related interaction regression passed: 32 tests.
+
 ## 2026-07-20 - Chinese Nine-grid Template Prompts
 
 - translated the natural-language instructions for all nine image-template tools into production-oriented Chinese while preserving grid notation, keyframe labels, timing, shot abbreviations, template identities, and aspect-ratio behavior.
@@ -5639,7 +5647,7 @@ Validation completed:
   - `npm test -- scripts/smoke-production-suite-catalog.test.ts` passed on 2026-07-06: 2 tests.
   - `npm pkg get scripts.smoke:production-suite-catalog` returned `tsx scripts/smoke-production-suite-catalog.ts`.
   - `npm run build` passed on 2026-07-06 with existing Browserslist, dynamic-import, and chunk-size warnings only.
-  - live staging execution still requires a deployed API URL and short-lived `TAPFLOW_ACCESS_TOKEN`.
+- live staging execution still requires a deployed API URL and short-lived `TAPFLOW_ACCESS_TOKEN`.
 
 ## 2026-07-06 - Director Shots To Video Editor Sync
 
@@ -5681,3 +5689,23 @@ Validation completed:
   - `npm run test --workspace @aigc-flow/api -- ai-model-configurations.schemas.test.ts ai-model-configurations.test.ts ai-gateway.service.test.ts`
   - `npm run test --workspace @aigc-flow/db -- ai-plugin-packages.test.ts` skipped locally because the database-backed suite had no configured test database environment
   - `npm run build` passed on 2026-07-11 with existing Browserslist age, dynamic-import, and chunk-size warnings only
+
+## 2026-07-20 - Prompt Plaza Approved Design
+
+- completed the approved product design for an official image-prompt plaza:
+  - official curated prompts only in the first release;
+  - user discovery, search, category filtering, copy, favorites, and reference;
+  - standalone `/prompts` and `/prompts/:promptId` routes plus a compact canvas prompt panel;
+  - prompt reference always creates a new image-generation node and never overwrites an existing node;
+  - standalone reference uses a tenant-scoped project picker, while canvas reference uses the current project;
+  - copy is a separate action that writes only the main prompt to the clipboard;
+  - administrators enter or batch-import prompt records and publish them through a protected admin surface;
+  - effect examples use object storage and short-lived signed URLs, with prompt source/id snapshots retained on referenced nodes.
+- browser brainstorming decisions were recorded for:
+  - search-first prompt grid;
+  - full detail page with a left 2x2 effect gallery and fixed right prompt panel;
+  - independent copy, favorite, and reference action hierarchy;
+  - official categories plus user favorites, without custom folders or community submissions in v1.
+- design specification:
+  - `docs/superpowers/specs/2026-07-20-prompt-plaza-design.md`
+- implementation remains pending approval of the written specification and a follow-up implementation plan.
