@@ -9,6 +9,7 @@ Maintainers: project team + Codex sessions
 - added prompt-library controls for saving a draft before upload, attaching up to four JPG/PNG/WebP effect images, changing display order, and deleting media. Publishing requires at least one local effect image.
 - made desktop primary navigation labels non-wrapping and compact at normal desktop widths so `提示词广场` remains one line at 100% browser zoom.
 - deployment requires a persistent host directory mounted into `tapflow-api` and included in server backups; it does not use object storage.
+- corrected the local-media migration order after staging PostgreSQL rejected `asset_id DROP NOT NULL` while the legacy `(prompt_id, asset_id)` primary key still existed. The migration now removes the legacy primary key first, then makes `asset_id` nullable, and finally installs the new media-ID primary key.
 
 ## 2026-07-21 - Admin Prompt Library FileUp Black-screen Fix
 

@@ -12,11 +12,11 @@ SET id = gen_random_uuid()
 WHERE id IS NULL;
 
 ALTER TABLE prompt_entry_media
-  ALTER COLUMN id SET NOT NULL,
-  ALTER COLUMN asset_id DROP NOT NULL;
+  DROP CONSTRAINT IF EXISTS prompt_entry_media_pkey;
 
 ALTER TABLE prompt_entry_media
-  DROP CONSTRAINT IF EXISTS prompt_entry_media_pkey;
+  ALTER COLUMN id SET NOT NULL,
+  ALTER COLUMN asset_id DROP NOT NULL;
 
 ALTER TABLE prompt_entry_media
   ADD CONSTRAINT prompt_entry_media_pkey PRIMARY KEY (id);
