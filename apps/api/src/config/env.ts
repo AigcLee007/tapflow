@@ -27,6 +27,7 @@ export type ApiEnv = {
   jwtAccessSecret: string;
   jwtRefreshSecret: string;
   nodeEnv: string;
+  promptCatalogMediaDir: string;
   queuePrefix: string;
   redisUrl: string;
   refreshTokenTtlSeconds: number;
@@ -241,6 +242,7 @@ export function getApiEnv(): ApiEnv {
     process.env.TRUST_PROXY,
     isProduction,
   );
+  const promptCatalogMediaDir = process.env.PROMPT_CATALOG_MEDIA_DIR?.trim() || "./data/prompt-catalog";
 
   if (isProduction && corsAllowedOrigins.length === 0) {
     throw new Error("CORS_ALLOWED_ORIGINS is required to start the v2 API in production");
@@ -330,6 +332,7 @@ export function getApiEnv(): ApiEnv {
     jwtAccessSecret,
     jwtRefreshSecret,
     nodeEnv,
+    promptCatalogMediaDir,
     queuePrefix,
     redisUrl,
     refreshTokenTtlSeconds,

@@ -300,7 +300,7 @@ export function buildApp(options?: {
     pool,
     storageProvider,
   });
-  const promptsService = new PromptsService({ pool, storageProvider });
+  const promptsService = new PromptsService({ pool, promptCatalogMediaDir: env.promptCatalogMediaDir });
   const agentService = new AgentService({
     aiModelCatalogService,
     env,

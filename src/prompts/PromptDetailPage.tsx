@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Copy, LoaderCircle, Plus, Star } from "lucide-react";
 
-import { favoritePrompt, getPrompt, getPromptMediaDownloadUrl, recordPromptInteraction, type PromptEntry } from "../services/v2PromptsApi";
+import { favoritePrompt, getPrompt, getPromptMediaBlob, recordPromptInteraction, type PromptEntry } from "../services/v2PromptsApi";
 import { PromptProjectPicker } from "./PromptProjectPicker";
 import { copyPromptText, createPromptInsertRequestId, navigate } from "./promptUi";
 
@@ -44,8 +44,8 @@ export function PromptDetailPage({ promptId }: { promptId: string }) {
     let cancelled = false;
     void Promise.all(prompt.media.map(async (media) => {
       try {
-        const result = await getPromptMediaDownloadUrl(media.assetId);
-        return [media.assetId, result.url] as const;
+        const result = await getPromptMediaBlob(media.id);
+        return [media.id, URL.createObjectURL(result)] as const;
       } catch {
         return null;
       }
@@ -96,8 +96,8 @@ export function PromptDetailPage({ promptId }: { promptId: string }) {
           <div className="grid grid-cols-2 gap-3">
             {[0, 1, 2, 3].map((index) => {
               const media = prompt.media[index];
-              const src = media ? imageUrls[media.assetId] : null;
-              return <div className="aspect-square overflow-hidden rounded border border-white/10 bg-[#151922]" key={media?.assetId ?? `placeholder-${index}`}>
+              const src = media ? imageUrls[media.id] : null;
+              return <div className="aspect-square overflow-hidden rounded border border-white/10 bg-[#151922]" key={media?.id ?? `placeholder-${index}`}>
                 {src ? <img alt={media?.altText || ""} className="h-full w-full object-cover" src={src} /> : <div className="grid h-full place-items-center text-xs text-slate-600">{media ? "效果图加载失败" : "暂无效果图"}</div>}
               </div>;
             })}

@@ -3,6 +3,13 @@
 Last updated: 2026-07-21
 Maintainers: project team + Codex sessions
 
+## 2026-07-21 - Prompt Catalog Local Media
+
+- moved prompt-catalog effect media away from the asset/S3 relationship to a dedicated, API-mounted server directory. Prompt media records now use generated local storage keys and metadata; frontends read bytes through authenticated prompt-media endpoints rather than public/static URLs.
+- added prompt-library controls for saving a draft before upload, attaching up to four JPG/PNG/WebP effect images, changing display order, and deleting media. Publishing requires at least one local effect image.
+- made desktop primary navigation labels non-wrapping and compact at normal desktop widths so `提示词广场` remains one line at 100% browser zoom.
+- deployment requires a persistent host directory mounted into `tapflow-api` and included in server backups; it does not use object storage.
+
 ## 2026-07-21 - Admin Prompt Library FileUp Black-screen Fix
 
 - restored the missing `FileUp` icon import in `AdminPage`, preventing the statically loaded admin route module from throwing `ReferenceError: FileUp is not defined` and blanking the application during startup.

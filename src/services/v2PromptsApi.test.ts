@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { favoritePrompt, listPrompts, recordPromptInteraction } from "./v2PromptsApi";
+import { favoritePrompt, listPrompts, recordPromptInteraction, type PromptMedia } from "./v2PromptsApi";
 import { clearStoredAuth, setStoredTokens } from "./v2HttpClient";
 
 describe("v2PromptsApi", () => {
@@ -40,5 +40,21 @@ describe("v2PromptsApi", () => {
       body: JSON.stringify({ eventType: "reference", projectId: "f4bba6ab-89aa-4af7-a30e-bfb00afc5f6f" }),
       method: "POST",
     }));
+  });
+
+  test("exposes local prompt media metadata without an asset id", () => {
+    const media: PromptMedia = {
+      altText: "Portrait result",
+      height: 1024,
+      id: "c8a4f904-6e05-4f2a-9b57-9f3bbc1b8ef6",
+      mimeType: "image/webp",
+      originalFilename: "portrait.webp",
+      sizeBytes: 1234,
+      sortOrder: 0,
+      width: 1024,
+    };
+
+    expect(media.id).toBeTruthy();
+    expect("assetId" in media).toBe(false);
   });
 });

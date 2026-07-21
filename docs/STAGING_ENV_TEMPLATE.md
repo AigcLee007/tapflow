@@ -307,6 +307,8 @@ Relay D:
 - `Migration execution method = One-off migration command before API/worker start; run only once per deploy`
 - `Health check available = TBD: confirm API health endpoint before staging deploy`
 - `Rollback method available = Redeploy previous git commit / Docker image; DB restore only if explicitly required`
+- `PROMPT_CATALOG_MEDIA_HOST_DIR = /opt/aittco/data/tapflow/prompt-catalog`
+- `Prompt catalog media = Server-local persistent directory mounted into tapflow-api at /var/lib/tapflow/prompt-catalog; it is not S3-backed and must be included in server backups.`
 
 ---
 

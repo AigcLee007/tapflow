@@ -93,10 +93,12 @@ describe("WorkspaceShell", () => {
     expect(screen.queryByText("测试工作区")).toBeNull();
     const desktopNav = container.querySelector("header nav.hidden");
     expect(desktopNav).toBeTruthy();
+    expect(within(desktopNav as HTMLElement).getAllByRole("button").every((button) => button.className.includes("whitespace-nowrap"))).toBe(true);
     expect(within(desktopNav as HTMLElement).getAllByRole("button").map((button) => button.textContent)).toEqual([
       "主页",
       "无限画布",
       "生图工作台",
+      "提示词广场",
       "素材库",
       "账单充值",
     ]);

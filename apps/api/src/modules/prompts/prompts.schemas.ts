@@ -26,6 +26,19 @@ export const promptMediaAssetParamsSchema = z.object({
   assetId: z.string().uuid(),
 });
 
+export const promptMediaParamsSchema = z.object({
+  mediaId: z.string().uuid(),
+  promptId: z.string().uuid(),
+});
+
+export const promptMediaOrderSchema = z.object({
+  media: z.array(z.object({
+    altText: z.string().trim().max(240).optional(),
+    id: z.string().uuid(),
+    sortOrder: z.number().int().min(0).max(10),
+  })).min(1).max(4),
+});
+
 export const promptInteractionSchema = z.object({
   eventType: z.enum(["view", "copy", "reference"]),
   projectId: z.string().uuid().optional(),
@@ -67,6 +80,8 @@ export const promptStatusSchema = z.object({
 export type PromptAdminInput = z.infer<typeof promptAdminInputSchema>;
 export type PromptIdParams = z.infer<typeof promptIdParamsSchema>;
 export type PromptMediaAssetParams = z.infer<typeof promptMediaAssetParamsSchema>;
+export type PromptMediaParams = z.infer<typeof promptMediaParamsSchema>;
+export type PromptMediaOrderInput = z.infer<typeof promptMediaOrderSchema>;
 export type PromptImportInput = z.infer<typeof promptImportSchema>;
 export type PromptInteractionInput = z.infer<typeof promptInteractionSchema>;
 export type PromptListQuery = z.infer<typeof promptListQuerySchema>;

@@ -1,9 +1,14 @@
-import { apiDelete, apiGet, apiPatch, apiPost } from "./v2HttpClient";
+import { apiDelete, apiGet, apiPatch, apiPost, getStoredAccessToken, V2HttpError } from "./v2HttpClient";
 
 export type PromptMedia = {
   altText: string;
-  assetId: string;
+  height: number | null;
+  id: string;
+  mimeType: string;
+  originalFilename: string;
+  sizeBytes: number | null;
   sortOrder: number;
+  width: number | null;
 };
 
 export type PromptEntry = {
@@ -72,8 +77,17 @@ export function getPrompt(promptId: string): Promise<PromptEntry> {
   return apiGet<PromptEntry>(`/prompts/${encodeURIComponent(promptId)}`);
 }
 
-export function getPromptMediaDownloadUrl(assetId: string): Promise<{ expiresAt: string; method: "GET"; url: string }> {
-  return apiGet(`/prompts/media/${encodeURIComponent(assetId)}/download-url`);
+export async function getPromptMediaBlob(mediaId: string, adminPromptId?: string): Promise<Blob> {
+  const token = getStoredAccessToken();
+  const path = adminPromptId
+    ? `/api/v2/admin/prompts/${encodeURIComponent(adminPromptId)}/media/${encodeURIComponent(mediaId)}/bytes`
+    : `/api/v2/prompts/media/${encodeURIComponent(mediaId)}/bytes`;
+  const response = await fetch(path, {
+    cache: "no-store",
+    headers: token ? { Authorization: token.startsWith("Bearer ") ? token : `Bearer ${token}` } : {},
+  });
+  if (!response.ok) throw new V2HttpError({ message: `效果图加载失败 (${response.status})`, status: response.status });
+  return response.blob();
 }
 
 export function favoritePrompt(promptId: string, favorite: boolean): Promise<{ isFavorite: boolean }> {
@@ -102,6 +116,52 @@ export function setAdminPromptStatus(
   status: PromptEntry["status"],
 ): Promise<PromptEntry> {
   return apiPost<PromptEntry>(`/admin/prompts/${encodeURIComponent(promptId)}/status`, { status });
+}
+
+export type PromptMediaOrderItem = { altText?: string; id: string; sortOrder: number };
+
+export function listAdminPromptMedia(promptId: string): Promise<PromptMedia[]> {
+  return apiGet(`/admin/prompts/${encodeURIComponent(promptId)}/media`);
+}
+
+export function updateAdminPromptMediaOrder(promptId: string, media: PromptMediaOrderItem[]): Promise<PromptMedia[]> {
+  return apiPatch(`/admin/prompts/${encodeURIComponent(promptId)}/media`, { media });
+}
+
+export function deleteAdminPromptMedia(promptId: string, mediaId: string): Promise<{ ok: true }> {
+  return apiDelete(`/admin/prompts/${encodeURIComponent(promptId)}/media/${encodeURIComponent(mediaId)}`);
+}
+
+export async function uploadAdminPromptMedia(promptId: string, file: File): Promise<PromptMedia> {
+  if (!file.type.startsWith("image/")) throw new Error("请选择图片文件");
+  const size = await readImageSize(file).catch(() => ({ height: 0, width: 0 }));
+  const token = getStoredAccessToken();
+  const response = await fetch(`/api/v2/admin/prompts/${encodeURIComponent(promptId)}/media`, {
+    body: file,
+    cache: "no-store",
+    headers: {
+      "Content-Type": "application/x-prompt-media",
+      "x-prompt-media-content-type": file.type,
+      "x-prompt-media-filename": encodeURIComponent(file.name),
+      "x-prompt-media-height": String(size.height),
+      "x-prompt-media-width": String(size.width),
+      ...(token ? { Authorization: token.startsWith("Bearer ") ? token : `Bearer ${token}` } : {}),
+    },
+    method: "POST",
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new V2HttpError({ code: payload?.error?.code, message: payload?.error?.message || "效果图上传失败", status: response.status });
+  return payload as PromptMedia;
+}
+
+function readImageSize(file: File): Promise<{ height: number; width: number }> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => { URL.revokeObjectURL(url); resolve({ height: image.naturalHeight, width: image.naturalWidth }); };
+    image.onerror = () => { URL.revokeObjectURL(url); reject(new Error("图片尺寸读取失败")); };
+    image.src = url;
+  });
 }
 
 export function validatePromptImport(rows: Array<Partial<PromptAdminInput>>): Promise<{

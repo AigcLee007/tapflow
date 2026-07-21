@@ -9,6 +9,8 @@ import {
   type PromptInteractionInput,
   type PromptListQuery,
   type PromptMediaAssetParams,
+  type PromptMediaOrderInput,
+  type PromptMediaParams,
   type PromptStatusInput,
   promptAdminInputSchema,
   promptIdParamsSchema,
@@ -16,6 +18,8 @@ import {
   promptInteractionSchema,
   promptListQuerySchema,
   promptMediaAssetParamsSchema,
+  promptMediaOrderSchema,
+  promptMediaParamsSchema,
   promptStatusSchema,
 } from "./prompts.schemas.js";
 import { PromptApiError, type PromptContext } from "./prompts.service.js";
@@ -70,6 +74,7 @@ export function registerPromptRoutes(app: FastifyInstance): void {
   const readHandlers = [requireAuth, requireTenant, requirePermission("prompt:read")];
   const favoriteHandlers = [requireAuth, requireTenant, requirePermission("prompt:favorite")];
   const adminHandlers = [requireAuth, requireTenant, requirePermission("admin:system")];
+  app.addContentTypeParser("application/x-prompt-media", { bodyLimit: 10 * 1024 * 1024, parseAs: "buffer" }, (_request, body, done) => done(null, body));
 
   app.get(
     "/api/v2/prompts",
@@ -81,6 +86,20 @@ export function registerPromptRoutes(app: FastifyInstance): void {
       } catch (error) {
         return handleRouteError(error, request, reply);
       }
+    },
+  );
+
+  app.get(
+    "/api/v2/admin/prompts/:promptId/media/:mediaId/bytes",
+    { preHandler: adminHandlers },
+    async (request, reply) => {
+      try {
+        const params = parseParams<PromptMediaParams>(request, promptMediaParamsSchema);
+        const result = await app.promptsService.getLocalMediaBytes(getPromptContext(request), params.mediaId, params.promptId);
+        reply.header("cache-control", "private, max-age=300");
+        reply.header("content-type", result.mimeType);
+        return reply.send(result.body);
+      } catch (error) { return handleRouteError(error, request, reply); }
     },
   );
 
@@ -98,15 +117,62 @@ export function registerPromptRoutes(app: FastifyInstance): void {
   );
 
   app.get(
-    "/api/v2/prompts/media/:assetId/download-url",
+    "/api/v2/prompts/media/:mediaId/bytes",
     { preHandler: readHandlers },
     async (request, reply) => {
       try {
-        const params = parseParams<PromptMediaAssetParams>(request, promptMediaAssetParamsSchema);
-        return reply.send(await app.promptsService.createCatalogMediaDownloadUrl(getPromptContext(request), params.assetId));
+        const params = parseParams<{ mediaId: string }>(request, promptMediaParamsSchema.pick({ mediaId: true }));
+        const result = await app.promptsService.getLocalMediaBytes(getPromptContext(request), params.mediaId);
+        reply.header("cache-control", "private, max-age=300");
+        reply.header("content-type", result.mimeType);
+        return reply.send(result.body);
       } catch (error) {
         return handleRouteError(error, request, reply);
       }
+    },
+  );
+
+  app.post(
+    "/api/v2/admin/prompts/:promptId/media",
+    { preHandler: adminHandlers },
+    async (request, reply) => {
+      try {
+        const params = parseParams<PromptIdParams>(request, promptIdParamsSchema);
+        if (!(request.body instanceof Buffer)) throw new PromptApiError(400, "PROMPT_MEDIA_BODY_INVALID", "效果图上传内容无效");
+        const filename = String(request.headers["x-prompt-media-filename"] ?? "").trim();
+        const mimeType = String(request.headers["x-prompt-media-content-type"] ?? "").trim();
+        const width = Number(request.headers["x-prompt-media-width"] ?? 0) || null;
+        const height = Number(request.headers["x-prompt-media-height"] ?? 0) || null;
+        const result = await app.promptsService.uploadLocalMedia(getPromptContext(request), params.promptId, { body: request.body, height, mimeType, originalFilename: filename || "prompt-media", width });
+        return reply.code(201).send(result);
+      } catch (error) { return handleRouteError(error, request, reply); }
+    },
+  );
+
+  app.get(
+    "/api/v2/admin/prompts/:promptId/media",
+    { preHandler: adminHandlers },
+    async (request, reply) => {
+      try { const params = parseParams<PromptIdParams>(request, promptIdParamsSchema); return reply.send(await app.promptsService.listLocalMedia(getPromptContext(request), params.promptId)); }
+      catch (error) { return handleRouteError(error, request, reply); }
+    },
+  );
+
+  app.patch(
+    "/api/v2/admin/prompts/:promptId/media",
+    { preHandler: adminHandlers },
+    async (request, reply) => {
+      try { const params = parseParams<PromptIdParams>(request, promptIdParamsSchema); const body = parseBody<PromptMediaOrderInput>(request, promptMediaOrderSchema); return reply.send(await app.promptsService.updateLocalMediaOrder(getPromptContext(request), params.promptId, body.media)); }
+      catch (error) { return handleRouteError(error, request, reply); }
+    },
+  );
+
+  app.delete(
+    "/api/v2/admin/prompts/:promptId/media/:mediaId",
+    { preHandler: adminHandlers },
+    async (request, reply) => {
+      try { const params = parseParams<PromptMediaParams>(request, promptMediaParamsSchema); return reply.send(await app.promptsService.deleteLocalMedia(getPromptContext(request), params.promptId, params.mediaId)); }
+      catch (error) { return handleRouteError(error, request, reply); }
     },
   );
 

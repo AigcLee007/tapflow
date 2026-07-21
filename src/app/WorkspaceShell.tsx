@@ -178,7 +178,7 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-[#0b0b0d] text-slate-100">
       <header className="sticky top-0 z-40 border-b border-white/8 bg-[#0b0b0d]/95 backdrop-blur-xl">
-        <div className="mx-auto flex h-28 max-w-[1840px] items-center justify-between gap-4 px-6">
+        <div className="mx-auto flex h-24 max-w-[1840px] items-center justify-between gap-3 px-5">
           <button
             aria-label="返回首页"
             className="grid h-20 w-[120px] shrink-0 place-items-center rounded-[18px] text-left transition hover:bg-white/[0.06]"
@@ -189,13 +189,13 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
             <BrandMark size="header" showCaption={false} />
           </button>
 
-          <nav className="hidden items-center gap-3 rounded-full md:flex">
+          <nav className="hidden min-w-0 flex-1 items-center justify-center gap-1.5 rounded-full lg:flex xl:gap-2">
             {navItems.map((item) => {
               const active = currentPath === item.path;
               const Icon = item.icon;
               return (
                 <button
-                  className={`inline-flex h-[58px] items-center gap-3 rounded-[28px] px-7 text-lg font-medium transition ${
+                  className={`inline-flex h-11 shrink-0 whitespace-nowrap items-center gap-2 rounded-[22px] px-3.5 text-sm font-medium transition xl:h-[50px] xl:px-4 xl:text-base ${
                     active
                       ? "border border-white/10 bg-white/[0.10] text-white shadow-inner"
                       : "text-slate-300 hover:bg-white/[0.07] hover:text-white"

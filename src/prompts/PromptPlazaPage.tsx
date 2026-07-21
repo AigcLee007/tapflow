@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { LoaderCircle, Search, Sparkles } from "lucide-react";
 
-import { getPromptMediaDownloadUrl } from "../services/v2PromptsApi";
+import { getPromptMediaBlob } from "../services/v2PromptsApi";
 import {
   favoritePrompt,
   listPrompts,
@@ -59,12 +59,12 @@ export function PromptPlazaPage() {
   }, [category, query, view]);
 
   useEffect(() => {
-    const assetIds = Array.from(new Set(items.flatMap((prompt) => prompt.media.slice(0, 1).map((media) => media.assetId))));
+    const mediaIds = Array.from(new Set(items.flatMap((prompt) => prompt.media.slice(0, 1).map((media) => media.id))));
     let cancelled = false;
-    void Promise.all(assetIds.map(async (assetId) => {
+    void Promise.all(mediaIds.map(async (mediaId) => {
       try {
-        const result = await getPromptMediaDownloadUrl(assetId);
-        return [assetId, result.url] as const;
+        const result = await getPromptMediaBlob(mediaId);
+        return [mediaId, URL.createObjectURL(result)] as const;
       } catch {
         return null;
       }
@@ -77,6 +77,7 @@ export function PromptPlazaPage() {
     });
     return () => {
       cancelled = true;
+      Object.values(imageUrls).forEach((url) => URL.revokeObjectURL(url));
     };
   }, [items]);
 
@@ -141,7 +142,7 @@ export function PromptPlazaPage() {
           <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
             {items.map((prompt) => (
               <PromptCard
-                imageUrl={prompt.media[0] ? imageUrls[prompt.media[0].assetId] : null}
+                imageUrl={prompt.media[0] ? imageUrls[prompt.media[0].id] : null}
                 key={prompt.id}
                 onCopy={(value) => void handleCopy(value)}
                 onFavorite={handleFavorite}

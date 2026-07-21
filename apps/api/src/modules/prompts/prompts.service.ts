@@ -1,5 +1,7 @@
 import { createPgPool, withTenantTransaction } from "@aigc-flow/db";
-import type { StorageProvider } from "@aigc-flow/storage";
+import { randomUUID } from "node:crypto";
+import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { extname, relative, resolve } from "node:path";
 import type { Pool, PoolClient } from "pg";
 
 import {
@@ -19,8 +21,14 @@ export type PromptContext = {
 
 type PromptMediaRecord = {
   alt_text: string;
-  asset_id: string;
+  height: number | null;
+  id: string;
+  mime_type: string | null;
+  original_filename: string | null;
+  size_bytes: string | null;
   sort_order: number;
+  storage_key: string | null;
+  width: number | null;
 };
 
 type PromptRecord = {
@@ -46,8 +54,22 @@ type PromptRecord = {
 
 export type PromptMediaView = {
   altText: string;
-  assetId: string;
+  height: number | null;
+  id: string;
+  mimeType: string;
+  originalFilename: string;
+  sizeBytes: number | null;
   sortOrder: number;
+  width: number | null;
+};
+
+export type PromptMediaUploadInput = {
+  altText?: string;
+  body: Buffer;
+  height?: number | null;
+  mimeType: string;
+  originalFilename: string;
+  width?: number | null;
 };
 
 export type PromptView = {
@@ -99,13 +121,7 @@ function mapPrompt(row: PromptRecord): PromptView {
     externalKey: row.external_key,
     id: row.id,
     isFavorite: row.is_favorite,
-    media: Array.isArray(row.media)
-      ? row.media.map((item) => ({
-          altText: item.alt_text,
-          assetId: item.asset_id,
-          sortOrder: item.sort_order,
-        }))
-      : [],
+    media: Array.isArray(row.media) ? row.media.map(mapPromptMedia) : [],
     negativePrompt: row.negative_prompt,
     promptText: row.prompt_text,
     publishedAt: row.published_at,
@@ -116,6 +132,19 @@ function mapPrompt(row: PromptRecord): PromptView {
     title: row.title,
     updatedAt: row.updated_at,
     version: row.version,
+  };
+}
+
+function mapPromptMedia(item: PromptMediaRecord): PromptMediaView {
+  return {
+    altText: item.alt_text,
+    height: item.height,
+    id: item.id,
+    mimeType: item.mime_type ?? "application/octet-stream",
+    originalFilename: item.original_filename ?? "prompt-media",
+    sizeBytes: item.size_bytes === null ? null : Number(item.size_bytes),
+    sortOrder: item.sort_order,
+    width: item.width,
   };
 }
 
@@ -148,10 +177,15 @@ function promptSelectSql(): string {
       COALESCE((
         SELECT json_agg(
           json_build_object(
-            'asset_id', media.asset_id::text,
+            'id', media.id::text,
             'sort_order', media.sort_order,
-            'alt_text', media.alt_text
-          ) ORDER BY media.sort_order ASC, media.asset_id ASC
+            'alt_text', media.alt_text,
+            'original_filename', media.original_filename,
+            'mime_type', media.mime_type,
+            'size_bytes', media.size_bytes::text,
+            'width', media.width,
+            'height', media.height
+          ) ORDER BY media.sort_order ASC, media.id ASC
         )
         FROM prompt_entry_media media
         WHERE media.prompt_id = p.id
@@ -176,39 +210,89 @@ async function withPromptTransaction<T>(
 
 export class PromptsService {
   readonly pool: PgPool;
-  readonly storageProvider?: StorageProvider;
+  readonly promptCatalogMediaDir: string;
 
-  constructor(options?: { pool?: PgPool; storageProvider?: StorageProvider }) {
+  constructor(options?: { pool?: PgPool; promptCatalogMediaDir?: string }) {
     this.pool = options?.pool ?? createPgPool();
-    this.storageProvider = options?.storageProvider;
+    this.promptCatalogMediaDir = resolve(options?.promptCatalogMediaDir ?? "./data/prompt-catalog");
   }
 
-  async createCatalogMediaDownloadUrl(context: PromptContext, assetId: string): Promise<{ expiresAt: string; method: "GET"; url: string }> {
-    if (!this.storageProvider) throw new PromptApiError(503, "PROMPT_MEDIA_UNAVAILABLE", "提示词媒体暂不可用");
-    return withPromptTransaction(context, async (client) => {
-      const result = await client.query<{ bucket: string; mime_type: string; object_key: string }>(
-        `SELECT asset.bucket, asset.mime_type, asset.object_key
-         FROM prompt_entry_media media
-         JOIN prompt_entries prompt ON prompt.id = media.prompt_id
-         JOIN assets asset ON asset.id = media.asset_id
-         WHERE media.asset_id = $1::uuid
-           AND prompt.status = 'published'
-           AND (prompt.tenant_id IS NULL OR prompt.tenant_id = $2::uuid)
-           AND asset.deleted_at IS NULL
-           AND asset.status = 'available'
-         LIMIT 1`,
-        [assetId, context.tenantId],
-      );
-      const asset = result.rows[0];
-      if (!asset) throw new PromptApiError(404, "PROMPT_MEDIA_NOT_FOUND", "未找到可访问的提示词媒体");
-      const signed = await this.storageProvider!.createPresignedGetUrl({
-        bucket: asset.bucket,
-        expiresInSeconds: 900,
-        key: asset.object_key,
-        responseContentType: asset.mime_type,
-      });
-      return { expiresAt: signed.expiresAt, method: "GET" as const, url: signed.url };
+  async uploadLocalMedia(context: PromptContext, promptId: string, input: PromptMediaUploadInput): Promise<PromptMediaView> {
+    if (!input.mimeType.startsWith("image/") || !["image/jpeg", "image/png", "image/webp"].includes(input.mimeType)) {
+      throw new PromptApiError(400, "PROMPT_MEDIA_TYPE_INVALID", "仅支持 JPG、PNG 和 WebP 效果图");
+    }
+    if (input.body.byteLength === 0 || input.body.byteLength > 10 * 1024 * 1024) {
+      throw new PromptApiError(400, "PROMPT_MEDIA_SIZE_INVALID", "效果图大小必须在 10 MB 以内");
+    }
+    await this.getPrompt(context, promptId, true);
+    const mediaId = randomUUID();
+    const extension = extname(input.originalFilename).toLowerCase() || (input.mimeType === "image/png" ? ".png" : input.mimeType === "image/webp" ? ".webp" : ".jpg");
+    const storageKey = `${promptId}/${mediaId}${extension}`;
+    const absolutePath = this.resolveLocalMediaPath(storageKey);
+    await mkdir(resolve(absolutePath, ".."), { recursive: true });
+    await writeFile(absolutePath, input.body, { flag: "wx" });
+    try {
+      return await withPromptTransaction(context, async (client) => {
+        const count = await client.query<{ count: string }>(`SELECT COUNT(*)::text AS count FROM prompt_entry_media WHERE prompt_id = $1::uuid`, [promptId]);
+        if (Number(count.rows[0]?.count ?? 0) >= 4) throw new PromptApiError(400, "PROMPT_MEDIA_LIMIT_REACHED", "每条提示词最多上传 4 张效果图");
+        const result = await client.query<PromptMediaRecord>(
+          `INSERT INTO prompt_entry_media (id, prompt_id, asset_id, storage_key, original_filename, mime_type, size_bytes, width, height, sort_order, alt_text)
+           VALUES ($1::uuid, $2::uuid, NULL, $3, $4, $5, $6::bigint, $7::int, $8::int,
+             (SELECT COALESCE(MAX(sort_order) + 1, 0) FROM prompt_entry_media WHERE prompt_id = $2::uuid), $9)
+           RETURNING id::text AS id, alt_text, sort_order, original_filename, mime_type, size_bytes::text AS size_bytes, width, height, storage_key`,
+          [mediaId, promptId, storageKey, input.originalFilename, input.mimeType, input.body.byteLength, input.width ?? null, input.height ?? null, input.altText?.trim() ?? ""],
+        );
+        return mapPromptMedia(result.rows[0]!);
+      }, true, this.pool);
+    } catch (error) {
+      await unlink(absolutePath).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  async listLocalMedia(context: PromptContext, promptId: string): Promise<PromptMediaView[]> {
+    const result = await withPromptTransaction(context, (client) => client.query<PromptMediaRecord>(
+      `SELECT id::text AS id, alt_text, sort_order, original_filename, mime_type, size_bytes::text AS size_bytes, width, height, storage_key
+       FROM prompt_entry_media WHERE prompt_id = $1::uuid AND storage_key IS NOT NULL ORDER BY sort_order ASC, id ASC`, [promptId]), true, this.pool);
+    return result.rows.map(mapPromptMedia);
+  }
+
+  async updateLocalMediaOrder(context: PromptContext, promptId: string, media: Array<{ altText?: string; id: string; sortOrder: number }>): Promise<PromptMediaView[]> {
+    await withPromptTransaction(context, async (client) => {
+      const result = await client.query<{ id: string }>(`SELECT id::text AS id FROM prompt_entry_media WHERE prompt_id = $1::uuid AND storage_key IS NOT NULL`, [promptId]);
+      const existing = new Set(result.rows.map((item) => item.id));
+      if (media.length !== existing.size || media.some((item) => !existing.has(item.id))) throw new PromptApiError(400, "PROMPT_MEDIA_INVALID", "效果图排序数据无效");
+      for (const item of media) await client.query(`UPDATE prompt_entry_media SET sort_order = $3::int, alt_text = $4 WHERE id = $1::uuid AND prompt_id = $2::uuid`, [item.id, promptId, item.sortOrder, item.altText?.trim() ?? ""]);
     }, true, this.pool);
+    return this.listLocalMedia(context, promptId);
+  }
+
+  async deleteLocalMedia(context: PromptContext, promptId: string, mediaId: string): Promise<{ ok: true }> {
+    const result = await withPromptTransaction(context, async (client) => client.query<{ storage_key: string | null }>(
+      `DELETE FROM prompt_entry_media WHERE id = $1::uuid AND prompt_id = $2::uuid RETURNING storage_key`, [mediaId, promptId]), true, this.pool);
+    const media = result.rows[0];
+    if (!media?.storage_key) throw new PromptApiError(404, "PROMPT_MEDIA_NOT_FOUND", "未找到效果图");
+    await unlink(this.resolveLocalMediaPath(media.storage_key)).catch(() => undefined);
+    return { ok: true };
+  }
+
+  async getLocalMediaBytes(context: PromptContext, mediaId: string, promptId?: string): Promise<{ body: Buffer; mimeType: string }> {
+    const result = await withPromptTransaction(context, (client) => client.query<{ mime_type: string; storage_key: string }>(
+      `SELECT media.mime_type, media.storage_key
+       FROM prompt_entry_media media JOIN prompt_entries prompt ON prompt.id = media.prompt_id
+       WHERE media.id = $1::uuid AND media.storage_key IS NOT NULL
+         AND (${promptId ? "prompt.id = $2::uuid" : "prompt.status = 'published' AND (prompt.tenant_id IS NULL OR prompt.tenant_id = $2::uuid)"})
+       LIMIT 1`, promptId ? [mediaId, promptId] : [mediaId, context.tenantId]), Boolean(promptId), this.pool);
+    const media = result.rows[0];
+    if (!media) throw new PromptApiError(404, "PROMPT_MEDIA_NOT_FOUND", "未找到效果图");
+    try { return { body: await readFile(this.resolveLocalMediaPath(media.storage_key)), mimeType: media.mime_type }; }
+    catch { throw new PromptApiError(404, "PROMPT_MEDIA_FILE_NOT_FOUND", "效果图文件不存在"); }
+  }
+
+  private resolveLocalMediaPath(storageKey: string): string {
+    const path = resolve(this.promptCatalogMediaDir, storageKey);
+    if (relative(this.promptCatalogMediaDir, path).startsWith("..")) throw new PromptApiError(400, "PROMPT_MEDIA_PATH_INVALID", "效果图路径无效");
+    return path;
   }
 
   async listPrompts(context: PromptContext, query: PromptListQuery): Promise<PromptListView> {
@@ -343,6 +427,7 @@ export class PromptsService {
   }
 
   async createAdminPrompt(context: PromptContext, input: PromptAdminInput): Promise<PromptView> {
+    if (input.status === "published") throw new PromptApiError(400, "PROMPT_MEDIA_REQUIRED", "请先保存草稿并上传至少一张效果图后再发布");
     const result = await withPromptTransaction(context, async (client) => {
       const inserted = await client.query<{ id: string }>(
         `INSERT INTO prompt_entries (
@@ -371,6 +456,7 @@ export class PromptsService {
   }
 
   async updateAdminPrompt(context: PromptContext, promptId: string, input: PromptAdminInput): Promise<PromptView> {
+    if (input.status === "published") await this.ensurePromptHasLocalMedia(context, promptId);
     await withPromptTransaction(context, async (client) => {
       const result = await client.query(
         `UPDATE prompt_entries
@@ -413,6 +499,7 @@ export class PromptsService {
     promptId: string,
     status: "archived" | "draft" | "published",
   ): Promise<PromptView> {
+    if (status === "published") await this.ensurePromptHasLocalMedia(context, promptId);
     await withPromptTransaction(context, async (client) => {
       const result = await client.query(
         `UPDATE prompt_entries
@@ -429,6 +516,12 @@ export class PromptsService {
       }
     }, true, this.pool);
     return this.getPrompt(context, promptId, true);
+  }
+
+  private async ensurePromptHasLocalMedia(context: PromptContext, promptId: string): Promise<void> {
+    const result = await withPromptTransaction(context, (client) => client.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM prompt_entry_media WHERE prompt_id = $1::uuid AND storage_key IS NOT NULL`, [promptId]), true, this.pool);
+    if (Number(result.rows[0]?.count ?? 0) < 1) throw new PromptApiError(400, "PROMPT_MEDIA_REQUIRED", "发布前请至少上传一张效果图");
   }
 
   validateImport(input: PromptImportInput): { errors: Array<{ index: number; message: string }>; rows: PromptImportInput["rows"] } {
