@@ -5,6 +5,7 @@ import {
   Copy,
   CreditCard,
   ExternalLink,
+  FileUp,
   KeyRound,
   Loader2,
   Megaphone,

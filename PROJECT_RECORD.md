@@ -1,7 +1,15 @@
 ﻿# Project Record
 
-Last updated: 2026-07-20
+Last updated: 2026-07-21
 Maintainers: project team + Codex sessions
+
+## 2026-07-21 - Admin Prompt Library FileUp Black-screen Fix
+
+- restored the missing `FileUp` icon import in `AdminPage`, preventing the statically loaded admin route module from throwing `ReferenceError: FileUp is not defined` and blanking the application during startup.
+- added a focused module-load regression test so future admin-tab icon registration cannot reintroduce the same startup failure unnoticed.
+- validation:
+  - focused admin and prompt-library tests passed: 2 test files, 2 tests.
+  - `npm run build` passed with the existing Browserslist, CSS utility, dynamic-import, and chunk-size warnings.
 
 ## 2026-07-20 - Official Prompt Plaza
 
