@@ -198,4 +198,32 @@ describe("FlowProjectPage", () => {
     });
     expect(window.location.search).not.toContain("insertPromptId");
   });
+
+  test("inserts only the selected Chinese prompt text", async () => {
+    setProjectPath("/projects/project-1?insertPromptId=prompt-1&promptInsertRequestId=request-zh&promptLanguage=zh");
+    useRemoteFlowProjectMock.mockReturnValue({
+      draft: null,
+      error: null,
+      flow: { id: "flow-1" },
+      loading: false,
+      reload: vi.fn(),
+    });
+    getPromptMock.mockResolvedValue({
+      id: "prompt-1",
+      promptText: "English prompt",
+      promptTextEn: "English prompt",
+      promptTextZh: "中文提示词",
+      title: "Portrait",
+    });
+
+    render(<FlowProjectPage />);
+
+    await waitFor(() => expect(addNodeMock).toHaveBeenCalledWith(
+      "image",
+      expect.any(Object),
+      expect.objectContaining({ generationPrompt: "中文提示词" }),
+      { selected: true },
+    ));
+    expect(window.location.search).not.toContain("promptLanguage");
+  });
 });

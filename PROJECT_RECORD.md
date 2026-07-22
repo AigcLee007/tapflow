@@ -12,11 +12,14 @@ Maintainers: project team + Codex sessions
 - changed plaza cards to intersection-driven thumbnail loading through a four-request cache with in-flight deduplication. Detail images use previews and load originals only for zoom; authenticated responses now use immutable private caching, ETags, and 304 responses.
 - added staging dry-run/write instructions for media backfill and original-file fallback behavior.
 - validation before handoff:
-  - focused prompt schema, service, migration, client, admin, cache, card, plaza, and detail coverage passed: 10 test files, 33 tests.
-  - API/database dependency build, root production build, and root TypeScript no-emit check passed.
-  - local browser fixture verification was stopped at the user's request; final UI and migrated-data smoke will be performed on the server.
+  - focused prompt schema, service, route, migration, client, admin, cache, card, plaza, detail, and canvas-reference coverage passed on 2026-07-22: 17 test files, 82 tests, with no React `act(...)` warnings.
+  - `npm run build --workspace @aigc-flow/db`, `npm run build --workspace @aigc-flow/api`, and `npm run build` passed. The frontend build retained the existing CSS-property, mixed dynamic-import, and large-chunk warnings.
+  - `npx tsc -p tsconfig.json --noEmit` was executed but remains red because the root config includes extensive pre-existing full-repository test and legacy-module type failures across Agent, StoryAI, video, workspace, and other unrelated areas. The affected DB/API package builds and root production build are green.
+  - `npm run prompts:backfill-variants -- --dry-run --concurrency 4` was executed locally and stopped before scanning because no local `DATABASE_URL` is configured. Migration logic is covered by four focused tests, including non-overwrite and missing-original behavior; live processed/generated/skipped/failed counts remain a server deployment check.
+  - a Chromium acceptance fixture using the production prompt components passed at 1440x900 and 390x844. It verified four-column intrinsic-ratio masonry, thumb-only plaza requests, preview detail requests, original-only zoom, bilingual search/copy/reference, draft archive, published in-place save, ordering, mobile restore/delete actions, fixed mobile footer geometry, zero horizontal overflow, and zero console errors.
+  - browser artifacts are under `output/playwright/prompt-acceptance/` and remain untracked.
 - final audit follow-up added the missing draft-to-archive action, preserved complete ordering when a status filter is active, restored negative-prompt editing, aligned the copy menu with shared menu behavior, and made new thumbnail/preview writes exclusive so derived files are never overwritten.
-- per the user's deployment workflow, this follow-up was committed without rerunning local tests or builds; validation is deferred to the server deployment.
+- commit `57170485` was initially pushed without rerunning local checks at the user's request; the subsequent audit recorded above completed the focused tests, affected builds, and browser acceptance before this final handoff.
 
 ## 2026-07-22 - Prompt Detail Modal Upgrade
 

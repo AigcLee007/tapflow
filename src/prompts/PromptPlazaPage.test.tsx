@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-import { listPrompts } from "../services/v2PromptsApi";
+import { getPromptMediaBlob, listPrompts } from "../services/v2PromptsApi";
 import { PromptPlazaPage } from "./PromptPlazaPage";
 
 vi.mock("../services/v2PromptsApi", () => ({
@@ -68,5 +68,27 @@ describe("PromptPlazaPage", () => {
 
     expect(screen.getByTestId("prompt-plaza-masonry")).toBe(masonry);
     expect(screen.getByRole("dialog", { name: "详情 prompt-1" })).toBeTruthy();
+  });
+
+  test("does not request original media when the plaza first mounts", async () => {
+    vi.mocked(listPrompts).mockResolvedValue({
+      items: [{ ...prompt, media: [{ altText: "", height: 1200, id: "media-1", mimeType: "image/jpeg", originalFilename: "portrait.jpg", sizeBytes: 100, sortOrder: 0, width: 800 }] }],
+      nextCursor: null,
+    });
+    vi.stubGlobal("IntersectionObserver", class {
+      disconnect = vi.fn();
+      observe = vi.fn();
+      unobserve = vi.fn();
+      root = null;
+      rootMargin = "600px 0px";
+      thresholds = [0];
+      takeRecords = () => [];
+    });
+
+    render(<PromptPlazaPage promptId={null} />);
+    await screen.findByTestId("prompt-plaza-masonry");
+
+    expect(getPromptMediaBlob).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
   });
 });

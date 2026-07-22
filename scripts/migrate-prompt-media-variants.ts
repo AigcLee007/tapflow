@@ -11,6 +11,13 @@ type VariantRow = {
   thumbnail_storage_key: string | null;
 };
 
+type VariantMigrationCounts = {
+  failed: number;
+  generated: number;
+  processed: number;
+  skipped: number;
+};
+
 export function parsePromptMediaVariantArgs(argv: string[]) {
   const value = argv.find((item) => item.startsWith("--concurrency="))?.split("=")[1]
     ?? argv[argv.indexOf("--concurrency") + 1];
@@ -31,11 +38,68 @@ async function exists(path: string) {
   return access(path).then(() => true).catch(() => false);
 }
 
+async function writeExclusive(path: string, body: Buffer): Promise<boolean> {
+  await mkdir(dirname(path), { recursive: true });
+  try {
+    await writeFile(path, body, { flag: "wx" });
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") return false;
+    throw error;
+  }
+}
+
+export async function migratePromptMediaRows(
+  rows: VariantRow[],
+  options: {
+    concurrency: number;
+    dryRun: boolean;
+    mediaDir: string;
+    updateRow: (id: string, thumbnailStorageKey: string, previewStorageKey: string) => Promise<void>;
+  },
+): Promise<VariantMigrationCounts> {
+  const counts: VariantMigrationCounts = { failed: 0, generated: 0, processed: 0, skipped: 0 };
+  let cursor = 0;
+  const worker = async () => {
+    while (cursor < rows.length) {
+      const row = rows[cursor++]!;
+      counts.processed += 1;
+      const originalPath = resolve(options.mediaDir, row.storage_key);
+      if (!(await exists(originalPath))) { counts.skipped += 1; continue; }
+      const baseKey = row.storage_key.replace(/\.[^.]+$/, "");
+      const thumbKey = row.thumbnail_storage_key || `${baseKey}.thumb.webp`;
+      const previewKey = row.preview_storage_key || `${baseKey}.preview.webp`;
+      const thumbPath = resolve(options.mediaDir, thumbKey);
+      const previewPath = resolve(options.mediaDir, previewKey);
+      const writeThumb = !(await exists(thumbPath));
+      const writePreview = !(await exists(previewPath));
+      const updateKeys = !row.thumbnail_storage_key || !row.preview_storage_key;
+      if (!writeThumb && !writePreview && !updateKeys) { counts.skipped += 1; continue; }
+      try {
+        if (options.dryRun) {
+          counts.generated += Number(writeThumb) + Number(writePreview);
+          continue;
+        }
+        if (writeThumb || writePreview) {
+          const variants = await generatePromptMediaVariants(await readFile(originalPath));
+          if (writeThumb && await writeExclusive(thumbPath, variants.thumb)) counts.generated += 1;
+          if (writePreview && await writeExclusive(previewPath, variants.preview)) counts.generated += 1;
+        }
+        await options.updateRow(row.id, thumbKey, previewKey);
+      } catch (error) {
+        counts.failed += 1;
+        console.error(`[failed] ${row.id}`, error);
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: options.concurrency }, worker));
+  return counts;
+}
+
 export async function runPromptMediaVariantMigration(argv = process.argv): Promise<void> {
   const { concurrency, dryRun } = parsePromptMediaVariantArgs(argv);
   const mediaDir = resolve(process.env.PROMPT_CATALOG_MEDIA_DIR?.trim() || "./data/prompt-catalog");
   const pool = createPgPool();
-  const counts = { failed: 0, generated: 0, processed: 0, skipped: 0 };
   const adminQuery = async <T extends Record<string, unknown>>(sql: string, values: unknown[] = []) => {
     const client = await pool.connect();
     try {
@@ -54,33 +118,17 @@ export async function runPromptMediaVariantMigration(argv = process.argv): Promi
       `SELECT id::text AS id, storage_key, thumbnail_storage_key, preview_storage_key
        FROM prompt_entry_media WHERE storage_key IS NOT NULL ORDER BY id`,
     );
-    let cursor = 0;
-    const worker = async () => {
-      while (cursor < result.rows.length) {
-        const row = result.rows[cursor++]!;
-        counts.processed += 1;
-        const originalPath = resolve(mediaDir, row.storage_key);
-        if (!(await exists(originalPath))) { counts.skipped += 1; continue; }
-        const baseKey = row.storage_key.replace(/\.[^.]+$/, "");
-        const thumbKey = row.thumbnail_storage_key || `${baseKey}.thumb.webp`;
-        const previewKey = row.preview_storage_key || `${baseKey}.preview.webp`;
-        const needThumb = !row.thumbnail_storage_key || !(await exists(resolve(mediaDir, thumbKey)));
-        const needPreview = !row.preview_storage_key || !(await exists(resolve(mediaDir, previewKey)));
-        if (!needThumb && !needPreview) { counts.skipped += 1; continue; }
-        try {
-          if (dryRun) { counts.generated += Number(needThumb) + Number(needPreview); continue; }
-          const variants = await generatePromptMediaVariants(await readFile(originalPath));
-          if (needThumb) { const path = resolve(mediaDir, thumbKey); await mkdir(dirname(path), { recursive: true }); await writeFile(path, variants.thumb, { flag: "wx" }).catch((error: NodeJS.ErrnoException) => { if (error.code !== "EEXIST") throw error; }); }
-          if (needPreview) { const path = resolve(mediaDir, previewKey); await mkdir(dirname(path), { recursive: true }); await writeFile(path, variants.preview, { flag: "wx" }).catch((error: NodeJS.ErrnoException) => { if (error.code !== "EEXIST") throw error; }); }
-          await adminQuery(
-            `UPDATE prompt_entry_media SET thumbnail_storage_key = COALESCE(thumbnail_storage_key, $2), preview_storage_key = COALESCE(preview_storage_key, $3) WHERE id = $1::uuid`,
-            [row.id, thumbKey, previewKey],
-          );
-          counts.generated += Number(needThumb) + Number(needPreview);
-        } catch (error) { counts.failed += 1; console.error(`[failed] ${row.id}`, error); }
-      }
-    };
-    await Promise.all(Array.from({ length: concurrency }, worker));
+    const counts = await migratePromptMediaRows(result.rows, {
+      concurrency,
+      dryRun,
+      mediaDir,
+      updateRow: async (id, thumbKey, previewKey) => {
+        await adminQuery(
+          `UPDATE prompt_entry_media SET thumbnail_storage_key = COALESCE(thumbnail_storage_key, $2), preview_storage_key = COALESCE(preview_storage_key, $3) WHERE id = $1::uuid`,
+          [id, thumbKey, previewKey],
+        );
+      },
+    });
     console.log(JSON.stringify({ ...counts, dryRun }));
   } finally { await pool.end(); }
 }

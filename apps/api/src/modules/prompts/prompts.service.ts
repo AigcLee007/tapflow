@@ -220,10 +220,12 @@ async function withPromptTransaction<T>(
 }
 
 export class PromptsService {
+  readonly idFactory: () => string;
   readonly pool: PgPool;
   readonly promptCatalogMediaDir: string;
 
-  constructor(options?: { pool?: PgPool; promptCatalogMediaDir?: string }) {
+  constructor(options?: { idFactory?: () => string; pool?: PgPool; promptCatalogMediaDir?: string }) {
+    this.idFactory = options?.idFactory ?? randomUUID;
     this.pool = options?.pool ?? createPgPool();
     this.promptCatalogMediaDir = resolve(options?.promptCatalogMediaDir ?? "./data/prompt-catalog");
   }
@@ -236,7 +238,7 @@ export class PromptsService {
       throw new PromptApiError(400, "PROMPT_MEDIA_SIZE_INVALID", "效果图大小必须在 10 MB 以内");
     }
     await this.getPrompt(context, promptId, true);
-    const mediaId = randomUUID();
+    const mediaId = this.idFactory();
     const extension = extname(input.originalFilename).toLowerCase() || (input.mimeType === "image/png" ? ".png" : input.mimeType === "image/webp" ? ".webp" : ".jpg");
     const storageKey = `${promptId}/${mediaId}${extension}`;
     const absolutePath = this.resolveLocalMediaPath(storageKey);

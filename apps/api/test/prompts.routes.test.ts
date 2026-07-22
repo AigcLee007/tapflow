@@ -48,6 +48,23 @@ describe("prompt routes", () => {
     expect(cached.body).toBe("");
   });
 
+  test("applies the same variant cache contract to admin media", async () => {
+    const getLocalMediaBytes = vi.fn(async () => ({ body: Buffer.from("thumb"), etag: `\"${mediaId}-thumb-5\"`, mimeType: "image/webp" }));
+    const app = buildPromptRouteApp({ getLocalMediaBytes }); apps.push(app);
+
+    const first = await app.inject({ method: "GET", url: `/api/v2/admin/prompts/${promptId}/media/${mediaId}/bytes?variant=thumb` });
+    expect(first.statusCode).toBe(200);
+    expect(first.headers).toMatchObject({
+      "cache-control": "private, max-age=31536000, immutable",
+      etag: `\"${mediaId}-thumb-5\"`,
+      vary: "Authorization",
+    });
+    expect(getLocalMediaBytes).toHaveBeenCalledWith(expect.anything(), mediaId, promptId, "thumb");
+
+    const cached = await app.inject({ headers: { "if-none-match": first.headers.etag! }, method: "GET", url: `/api/v2/admin/prompts/${promptId}/media/${mediaId}/bytes?variant=thumb` });
+    expect(cached.statusCode).toBe(304);
+  });
+
   test("registers guarded delete and complete reorder admin routes", async () => {
     const deleteAdminPrompt = vi.fn(async () => ({ ok: true }));
     const reorderAdminPrompts = vi.fn(async () => []);
