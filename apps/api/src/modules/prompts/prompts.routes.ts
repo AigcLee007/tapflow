@@ -11,6 +11,8 @@ import {
   type PromptMediaAssetParams,
   type PromptMediaOrderInput,
   type PromptMediaParams,
+  type PromptMediaVariantQuery,
+  type PromptReorderInput,
   type PromptStatusInput,
   promptAdminInputSchema,
   promptIdParamsSchema,
@@ -20,6 +22,8 @@ import {
   promptMediaAssetParamsSchema,
   promptMediaOrderSchema,
   promptMediaParamsSchema,
+  promptMediaVariantQuerySchema,
+  promptReorderSchema,
   promptStatusSchema,
 } from "./prompts.schemas.js";
 import { PromptApiError, type PromptContext } from "./prompts.service.js";
@@ -95,9 +99,14 @@ export function registerPromptRoutes(app: FastifyInstance): void {
     async (request, reply) => {
       try {
         const params = parseParams<PromptMediaParams>(request, promptMediaParamsSchema);
-        const result = await app.promptsService.getLocalMediaBytes(getPromptContext(request), params.mediaId, params.promptId);
-        reply.header("cache-control", "private, max-age=300");
+        const query = parseQuery<PromptMediaVariantQuery>(request, promptMediaVariantQuerySchema);
+        const result = await app.promptsService.getLocalMediaBytes(getPromptContext(request), params.mediaId, params.promptId, query.variant);
+        if (request.headers["if-none-match"] === result.etag) return reply.code(304).send();
+        reply.header("cache-control", "private, max-age=31536000, immutable");
+        reply.header("content-length", result.body.byteLength);
         reply.header("content-type", result.mimeType);
+        reply.header("etag", result.etag);
+        reply.header("vary", "Authorization");
         return reply.send(result.body);
       } catch (error) { return handleRouteError(error, request, reply); }
     },
@@ -122,9 +131,14 @@ export function registerPromptRoutes(app: FastifyInstance): void {
     async (request, reply) => {
       try {
         const params = parseParams<{ mediaId: string }>(request, promptMediaParamsSchema.pick({ mediaId: true }));
-        const result = await app.promptsService.getLocalMediaBytes(getPromptContext(request), params.mediaId);
-        reply.header("cache-control", "private, max-age=300");
+        const query = parseQuery<PromptMediaVariantQuery>(request, promptMediaVariantQuerySchema);
+        const result = await app.promptsService.getLocalMediaBytes(getPromptContext(request), params.mediaId, undefined, query.variant);
+        if (request.headers["if-none-match"] === result.etag) return reply.code(304).send();
+        reply.header("cache-control", "private, max-age=31536000, immutable");
+        reply.header("content-length", result.body.byteLength);
         reply.header("content-type", result.mimeType);
+        reply.header("etag", result.etag);
+        reply.header("vary", "Authorization");
         return reply.send(result.body);
       } catch (error) {
         return handleRouteError(error, request, reply);
@@ -238,6 +252,28 @@ export function registerPromptRoutes(app: FastifyInstance): void {
       } catch (error) {
         return handleRouteError(error, request, reply);
       }
+    },
+  );
+
+  app.patch(
+    "/api/v2/admin/prompts/order",
+    { preHandler: adminHandlers },
+    async (request, reply) => {
+      try {
+        const body = parseBody<PromptReorderInput>(request, promptReorderSchema);
+        return reply.send(await app.promptsService.reorderAdminPrompts(getPromptContext(request), body.promptIds));
+      } catch (error) { return handleRouteError(error, request, reply); }
+    },
+  );
+
+  app.delete(
+    "/api/v2/admin/prompts/:promptId",
+    { preHandler: adminHandlers },
+    async (request, reply) => {
+      try {
+        const params = parseParams<PromptIdParams>(request, promptIdParamsSchema);
+        return reply.send(await app.promptsService.deleteAdminPrompt(getPromptContext(request), params.promptId));
+      } catch (error) { return handleRouteError(error, request, reply); }
     },
   );
 

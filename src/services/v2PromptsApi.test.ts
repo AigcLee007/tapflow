@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { favoritePrompt, listPrompts, recordPromptInteraction, type PromptMedia } from "./v2PromptsApi";
+import { deleteAdminPrompt, favoritePrompt, getPromptMediaBlob, listPrompts, recordPromptInteraction, reorderAdminPrompts, type PromptMedia } from "./v2PromptsApi";
 import { clearStoredAuth, setStoredTokens } from "./v2HttpClient";
 
 describe("v2PromptsApi", () => {
@@ -56,5 +56,22 @@ describe("v2PromptsApi", () => {
 
     expect(media.id).toBeTruthy();
     expect("assetId" in media).toBe(false);
+  });
+
+  test("deletes and reorders admin prompts and requests thumbnail variants", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const promptId = "9c07e9dd-9853-4d6d-bb37-22b4b0d55884";
+    const mediaId = "c8a4f904-6e05-4f2a-9b57-9f3bbc1b8ef6";
+
+    await deleteAdminPrompt(promptId);
+    await reorderAdminPrompts({ promptIds: [promptId] });
+    await getPromptMediaBlob(mediaId, promptId, "thumb");
+
+    expect(fetchMock.mock.calls[0][0]).toBe(`/api/v2/admin/prompts/${promptId}`);
+    expect(fetchMock.mock.calls[0][1]).toEqual(expect.objectContaining({ method: "DELETE" }));
+    expect(fetchMock.mock.calls[1][0]).toBe("/api/v2/admin/prompts/order");
+    expect(fetchMock.mock.calls[1][1]).toEqual(expect.objectContaining({ body: JSON.stringify({ promptIds: [promptId] }), method: "PATCH" }));
+    expect(fetchMock.mock.calls[2][0]).toBe(`/api/v2/admin/prompts/${promptId}/media/${mediaId}/bytes?variant=thumb`);
   });
 });

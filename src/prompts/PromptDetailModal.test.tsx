@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import type { PromptEntry, PromptMedia } from "../services/v2PromptsApi";
 import { PromptDetailModal } from "./PromptDetailModal";
+import { clearPromptMediaCache } from "./promptMediaCache";
 
 const favoritePromptMock = vi.fn();
 const getPromptMediaBlobMock = vi.fn();
@@ -63,6 +64,7 @@ function prompt(mediaItems: PromptMedia[] = []): PromptEntry {
 
 describe("PromptDetailModal", () => {
   beforeEach(() => {
+    clearPromptMediaCache();
     favoritePromptMock.mockReset();
     getPromptMediaBlobMock.mockReset();
     getPromptMock.mockReset();

@@ -1,11 +1,13 @@
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Copy, Image as ImageIcon, Plus, Star } from "lucide-react";
 
 import type { PromptEntry } from "../services/v2PromptsApi";
+import { getPromptMediaObjectUrl } from "./promptMediaCache";
 
 export function PromptCard({
   compact = false,
   imageUrl,
+  mediaId,
   onCopy,
   onFavorite,
   onOpen,
@@ -14,31 +16,47 @@ export function PromptCard({
 }: {
   compact?: boolean;
   imageUrl?: string | null;
+  mediaId?: string | null;
   onCopy: (prompt: PromptEntry) => void;
   onFavorite: (prompt: PromptEntry) => void;
   onOpen: (prompt: PromptEntry) => void;
   onReference: (prompt: PromptEntry) => void;
   prompt: PromptEntry;
 }) {
+  const rootRef = useRef<HTMLElement>(null);
+  const [visible, setVisible] = useState(compact || !mediaId);
+  const [loadedUrl, setLoadedUrl] = useState<string | null>(imageUrl ?? null);
+  useEffect(() => {
+    if (visible || typeof IntersectionObserver === "undefined") { setVisible(true); return undefined; }
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) { setVisible(true); observer.disconnect(); }
+    }, { rootMargin: "600px 0px" });
+    if (rootRef.current) observer.observe(rootRef.current);
+    return () => observer.disconnect();
+  }, [visible]);
+  useEffect(() => {
+    if (!imageUrl && mediaId && visible) void getPromptMediaObjectUrl(mediaId, "thumb").then(setLoadedUrl).catch(() => setLoadedUrl(null));
+  }, [imageUrl, mediaId, visible]);
+  const resolvedImageUrl = imageUrl ?? loadedUrl;
   const tags = prompt.tags.slice(0, compact ? 1 : 3);
   const stop = (event: React.MouseEvent) => event.stopPropagation();
 
   return (
-    <article className="group overflow-hidden rounded border border-white/10 bg-white/[0.035] text-left transition hover:border-white/20 hover:bg-white/[0.06]">
+    <article ref={rootRef} className="group overflow-hidden rounded border border-white/10 bg-white/[0.035] text-left transition hover:border-white/20 hover:bg-white/[0.06]">
       <button
         aria-label={`查看提示词 ${prompt.title}`}
         className="block w-full text-left"
         onClick={() => onOpen(prompt)}
         type="button"
       >
-        <div className={`relative overflow-hidden bg-[#151922] ${compact || !imageUrl ? "aspect-[4/3]" : ""}`}>
-          {imageUrl ? (
+        <div className={`relative overflow-hidden bg-[#151922] ${compact || !resolvedImageUrl ? "aspect-[4/3]" : ""}`}>
+          {resolvedImageUrl ? (
             <img
               alt=""
               className={compact ? "h-full w-full object-cover" : "block h-auto w-full"}
               decoding="async"
               loading="lazy"
-              src={imageUrl}
+              src={resolvedImageUrl}
             />
           ) : (
             <div className="grid h-full place-items-center text-slate-600">

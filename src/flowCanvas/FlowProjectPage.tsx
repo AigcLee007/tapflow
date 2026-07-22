@@ -193,6 +193,7 @@ export function FlowProjectPage() {
     const params = new URLSearchParams(locationSearch);
     const promptId = params.get("insertPromptId");
     const requestId = params.get("promptInsertRequestId");
+    const promptLanguage = params.get("promptLanguage") === "zh" ? "zh" : "en";
     if (!promptId || !requestId || insertedPromptRequestIdRef.current === requestId) return;
     if (hasPromptInsertRequest(nodes, requestId)) {
       insertedPromptRequestIdRef.current = requestId;
@@ -215,7 +216,7 @@ export function FlowProjectPage() {
           buildPromptReferenceNodeData({
             promptId: prompt.id,
             promptInsertRequestId: requestId,
-            promptText: prompt.promptText,
+            promptText: (promptLanguage === "zh" ? prompt.promptTextZh : prompt.promptTextEn) || prompt.promptText,
             promptTitle: prompt.title,
           }),
           { selected: true },
@@ -282,6 +283,7 @@ function removePromptInsertParameters() {
   const nextParams = new URLSearchParams(window.location.search);
   nextParams.delete("insertPromptId");
   nextParams.delete("promptInsertRequestId");
+  nextParams.delete("promptLanguage");
   const nextQuery = nextParams.toString();
   window.history.replaceState(null, "", `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}`);
   window.dispatchEvent(new PopStateEvent("popstate"));

@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { LoaderCircle, Search, Sparkles } from "lucide-react";
 
-import { getPromptMediaBlob } from "../services/v2PromptsApi";
 import {
   favoritePrompt,
   listPrompts,
@@ -17,6 +16,7 @@ import {
   createPromptInsertRequestId,
   navigate,
   openPromptDetail,
+  preferredPromptLanguage,
 } from "./promptUi";
 
 const CATEGORIES = [
@@ -28,6 +28,7 @@ const CATEGORIES = [
   ["illustration", "插画动漫"],
   ["poster", "海报设计"],
   ["3d", "3D 材质"],
+  ["video", "视频"],
 ] as const;
 
 type PromptView = "featured" | "favorites" | "latest";
@@ -47,7 +48,6 @@ export function PromptPlazaPage({ promptId = null }: { promptId?: string | null 
   const [category, setCategory] = useState(initial.get("category") ?? "");
   const [view, setView] = useState<PromptView>((initial.get("view") as PromptView) || "featured");
   const [items, setItems] = useState<PromptEntry[]>([]);
-  const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -64,29 +64,6 @@ export function PromptPlazaPage({ promptId = null }: { promptId?: string | null 
     }, 220);
     return () => window.clearTimeout(timer);
   }, [category, query, view]);
-
-  useEffect(() => {
-    const mediaIds = Array.from(new Set(items.flatMap((prompt) => prompt.media.slice(0, 1).map((media) => media.id))));
-    let cancelled = false;
-    void Promise.all(mediaIds.map(async (mediaId) => {
-      try {
-        const result = await getPromptMediaBlob(mediaId);
-        return [mediaId, URL.createObjectURL(result)] as const;
-      } catch {
-        return null;
-      }
-    })).then((resolved) => {
-      if (cancelled) return;
-      setImageUrls((current) => ({
-        ...current,
-        ...Object.fromEntries(resolved.filter((item): item is readonly [string, string] => item !== null)),
-      }));
-    });
-    return () => {
-      cancelled = true;
-      Object.values(imageUrls).forEach((url) => URL.revokeObjectURL(url));
-    };
-  }, [items]);
 
   const handleCopy = async (prompt: PromptEntry) => {
     try {
@@ -114,6 +91,7 @@ export function PromptPlazaPage({ promptId = null }: { promptId?: string | null 
     const params = new URLSearchParams({
       insertPromptId: selectedPrompt.id,
       promptInsertRequestId: createPromptInsertRequestId(),
+      promptLanguage: preferredPromptLanguage(selectedPrompt),
     });
     void recordPromptInteraction(selectedPrompt.id, { eventType: "reference", projectId }).catch(() => undefined);
     navigate(`/projects/${encodeURIComponent(projectId)}?${params.toString()}`);
@@ -153,7 +131,7 @@ export function PromptPlazaPage({ promptId = null }: { promptId?: string | null 
             {items.map((prompt) => (
               <div className="mb-3 break-inside-avoid" data-testid={`prompt-masonry-item-${prompt.id}`} key={prompt.id}>
                 <PromptCard
-                  imageUrl={prompt.media[0] ? imageUrls[prompt.media[0].id] : null}
+                  mediaId={prompt.media[0]?.id ?? null}
                   onCopy={(value) => void handleCopy(value)}
                   onFavorite={handleFavorite}
                   onOpen={(value) => openPromptDetail(pageUrl(value, { category, query, view }))}

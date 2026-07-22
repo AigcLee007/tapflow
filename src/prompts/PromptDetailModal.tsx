@@ -1,20 +1,22 @@
 import React, { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Copy, Expand, LoaderCircle, Plus, Star, X } from "lucide-react";
+import { ChevronDown, Copy, Expand, LoaderCircle, Plus, Star, X } from "lucide-react";
 
 import {
   favoritePrompt,
   getPrompt,
-  getPromptMediaBlob,
   recordPromptInteraction,
   type PromptEntry,
 } from "../services/v2PromptsApi";
 import { PromptProjectPicker } from "./PromptProjectPicker";
-import { copyPromptText, createPromptInsertRequestId, navigate } from "./promptUi";
+import { getPromptMediaObjectUrl } from "./promptMediaCache";
+import { copyPromptText, createPromptInsertRequestId, getPromptText, navigate, preferredPromptLanguage, type PromptCopyMode, type PromptLanguage } from "./promptUi";
 
 export function PromptDetailModal({ onClose, promptId }: { onClose: () => void; promptId: string }) {
   const [prompt, setPrompt] = useState<PromptEntry | null>(null);
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
+  const [selectedPreviewUrl, setSelectedPreviewUrl] = useState<string | null>(null);
+  const [zoomUrl, setZoomUrl] = useState<string | null>(null);
   const [failedMediaIds, setFailedMediaIds] = useState<string[]>([]);
   const [selectedMediaId, setSelectedMediaId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -23,6 +25,8 @@ export function PromptDetailModal({ onClose, promptId }: { onClose: () => void; 
   const [feedback, setFeedback] = useState<string | null>(null);
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
   const [zoomOpen, setZoomOpen] = useState(false);
+  const [copyMenuOpen, setCopyMenuOpen] = useState(false);
+  const [language, setLanguage] = useState<PromptLanguage>("en");
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
@@ -39,7 +43,7 @@ export function PromptDetailModal({ onClose, promptId }: { onClose: () => void; 
     setZoomOpen(false);
     void getPrompt(promptId)
       .then((entry) => {
-        if (!cancelled) setPrompt(entry);
+        if (!cancelled) { setPrompt(entry); setLanguage(preferredPromptLanguage(entry)); }
       })
       .catch((reason) => {
         if (!cancelled) setError(reason instanceof Error ? reason.message : "提示词加载失败");
@@ -61,17 +65,13 @@ export function PromptDetailModal({ onClose, promptId }: { onClose: () => void; 
     }
 
     let active = true;
-    const createdUrls: string[] = [];
     setMediaLoading(true);
     void Promise.all(prompt.media.map(async (media) => {
       try {
-        const blob = await getPromptMediaBlob(media.id);
-        const url = URL.createObjectURL(blob);
+        const url = await getPromptMediaObjectUrl(media.id, "thumb");
         if (!active) {
-          URL.revokeObjectURL(url);
           return { failed: false, id: media.id, url: null };
         }
-        createdUrls.push(url);
         return { failed: false, id: media.id, url };
       } catch {
         return { failed: true, id: media.id, url: null };
@@ -85,9 +85,23 @@ export function PromptDetailModal({ onClose, promptId }: { onClose: () => void; 
 
     return () => {
       active = false;
-      createdUrls.forEach((url) => URL.revokeObjectURL(url));
     };
   }, [prompt]);
+
+  useEffect(() => {
+    if (!selectedMediaId) { setSelectedPreviewUrl(null); return; }
+    let active = true;
+    setMediaLoading(true);
+    void getPromptMediaObjectUrl(selectedMediaId, "preview").then((url) => { if (active) setSelectedPreviewUrl(url); }).catch(() => { if (active) setSelectedPreviewUrl(null); }).finally(() => { if (active) setMediaLoading(false); });
+    return () => { active = false; };
+  }, [selectedMediaId]);
+
+  useEffect(() => {
+    if (!zoomOpen || !selectedMediaId) { setZoomUrl(null); return; }
+    let active = true;
+    void getPromptMediaObjectUrl(selectedMediaId, "original").then((url) => { if (active) setZoomUrl(url); }).catch(() => undefined);
+    return () => { active = false; };
+  }, [selectedMediaId, zoomOpen]);
 
   useEffect(() => {
     restoreFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -133,10 +147,11 @@ export function PromptDetailModal({ onClose, promptId }: { onClose: () => void; 
     }
   };
 
-  const handleCopy = async () => {
+  const handleCopy = async (mode: PromptCopyMode = language) => {
     if (!prompt) return;
     try {
-      await copyPromptText(prompt);
+      await copyPromptText(prompt, mode);
+      setCopyMenuOpen(false);
       setFeedback("已复制提示词");
       void recordPromptInteraction(prompt.id, { eventType: "copy" }).catch(() => undefined);
     } catch (reason) {
@@ -160,12 +175,13 @@ export function PromptDetailModal({ onClose, promptId }: { onClose: () => void; 
     const params = new URLSearchParams({
       insertPromptId: prompt.id,
       promptInsertRequestId: createPromptInsertRequestId(),
+      promptLanguage: language,
     });
     navigate(`/projects/${encodeURIComponent(projectId)}?${params.toString()}`);
   };
 
   const selectedMedia = prompt?.media.find((item) => item.id === selectedMediaId) ?? prompt?.media[0] ?? null;
-  const selectedUrl = selectedMedia ? imageUrls[selectedMedia.id] : null;
+  const selectedUrl = selectedPreviewUrl || (selectedMedia ? imageUrls[selectedMedia.id] : null);
   const selectedFailed = selectedMedia ? failedMediaIds.includes(selectedMedia.id) : false;
 
   const modal = (
@@ -270,7 +286,7 @@ export function PromptDetailModal({ onClose, promptId }: { onClose: () => void; 
                         aria-label={`查看效果图 ${index + 1}`}
                         className={`grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded border bg-[#151922] ${selected ? "border-cyan-300 ring-1 ring-cyan-300/50" : "border-white/10"}`}
                         key={item.id}
-                        onClick={() => setSelectedMediaId(item.id)}
+                        onClick={() => { setSelectedPreviewUrl(null); setSelectedMediaId(item.id); }}
                         type="button"
                       >
                         {url ? <img alt="" className="h-full w-full object-contain" src={url} /> : <span className="px-1 text-[9px] text-slate-500">{failed ? "加载失败" : "加载中"}</span>}
@@ -284,8 +300,9 @@ export function PromptDetailModal({ onClose, promptId }: { onClose: () => void; 
             <aside className="flex min-h-0 flex-col border-t border-white/10 bg-[#141821] lg:sticky lg:top-0 lg:max-h-[calc(92vh-73px)] lg:border-l lg:border-t-0">
               <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
                 {prompt.description ? <p className="text-sm leading-6 text-slate-400">{prompt.description}</p> : null}
-                <div className="mt-5 text-[11px] font-bold text-slate-400">主提示词</div>
-                <pre className="mt-2 max-h-[42vh] overflow-y-auto whitespace-pre-wrap rounded border border-white/8 bg-[#0e1117] p-3 text-[12px] leading-5 text-slate-100">{prompt.promptText}</pre>
+                {prompt.promptTextZh && prompt.promptTextEn ? <div className="mt-5 flex gap-2"><button className={`h-8 rounded px-3 text-xs font-bold ${language === "zh" ? "bg-cyan-300 text-slate-950" : "bg-white/5 text-slate-300"}`} onClick={() => setLanguage("zh")} type="button">中文</button><button className={`h-8 rounded px-3 text-xs font-bold ${language === "en" ? "bg-cyan-300 text-slate-950" : "bg-white/5 text-slate-300"}`} onClick={() => setLanguage("en")} type="button">English</button></div> : null}
+                <div className={prompt.promptTextZh && prompt.promptTextEn ? "mt-3 text-[11px] font-bold text-slate-400" : "mt-5 text-[11px] font-bold text-slate-400"}>主提示词</div>
+                <pre className="mt-2 max-h-[42vh] overflow-y-auto whitespace-pre-wrap rounded border border-white/8 bg-[#0e1117] p-3 text-[12px] leading-5 text-slate-100">{getPromptText(prompt, language)}</pre>
                 {prompt.negativePrompt ? (
                   <details className="mt-3 text-sm text-slate-400">
                     <summary className="cursor-pointer">参考负面提示词</summary>
@@ -295,7 +312,7 @@ export function PromptDetailModal({ onClose, promptId }: { onClose: () => void; 
                 {feedback ? <div className="mt-3 rounded border border-cyan-300/20 bg-cyan-300/10 px-3 py-2 text-xs text-cyan-50" role="status">{feedback}</div> : null}
               </div>
               <footer className="fixed inset-x-0 bottom-0 z-20 grid shrink-0 grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] gap-2 border-t border-white/10 bg-[#141821]/95 p-3 backdrop-blur sm:p-4 lg:sticky lg:inset-x-auto">
-                <button className="inline-flex h-10 min-w-0 items-center justify-center gap-1 rounded border border-white/10 px-2 text-[12px] font-bold text-slate-200 hover:bg-white/[0.07]" onClick={() => void handleCopy()} type="button"><Copy size={15} /> 复制提示词</button>
+                <div className="relative flex min-w-0"><button className="inline-flex h-10 min-w-0 flex-1 items-center justify-center gap-1 rounded-l border border-white/10 px-2 text-[12px] font-bold text-slate-200 hover:bg-white/[0.07]" onClick={() => void handleCopy()} type="button"><Copy size={15} />复制提示词</button><button aria-label="复制选项" className="grid h-10 w-8 place-items-center rounded-r border border-l-0 border-white/10" onClick={() => setCopyMenuOpen((open) => !open)} type="button"><ChevronDown size={14} /></button>{copyMenuOpen ? <div className="absolute bottom-12 left-0 z-30 w-full rounded border border-white/10 bg-[#171b23] p-1 shadow-xl">{prompt.promptTextZh ? <button className="h-9 w-full px-2 text-left text-xs font-bold hover:bg-white/5" onClick={() => void handleCopy("zh")} type="button">复制中文</button> : null}{prompt.promptTextEn ? <button className="h-9 w-full px-2 text-left text-xs font-bold hover:bg-white/5" onClick={() => void handleCopy("en")} type="button">复制英文</button> : null}{prompt.promptTextZh && prompt.promptTextEn ? <button className="h-9 w-full px-2 text-left text-xs font-bold hover:bg-white/5" onClick={() => void handleCopy("both")} type="button">复制中英</button> : null}</div> : null}</div>
                 <button className="inline-flex h-10 min-w-0 items-center justify-center gap-1 rounded bg-cyan-400 px-2 text-[12px] font-bold text-slate-950 hover:bg-cyan-200" onClick={() => setProjectPickerOpen(true)} type="button"><Plus size={16} /> 引用到画布</button>
               </footer>
             </aside>
@@ -303,7 +320,7 @@ export function PromptDetailModal({ onClose, promptId }: { onClose: () => void; 
         )}
       </div>
 
-      {zoomOpen && selectedUrl ? (
+      {zoomOpen && (zoomUrl || selectedUrl) ? (
         <div
           aria-label="效果图放大预览"
           aria-modal="true"
@@ -314,7 +331,7 @@ export function PromptDetailModal({ onClose, promptId }: { onClose: () => void; 
           role="dialog"
         >
           <button aria-label="关闭效果图预览" className="fixed right-4 top-4 grid h-10 w-10 place-items-center rounded bg-black/70 text-white hover:bg-black" onClick={() => setZoomOpen(false)} title="关闭" type="button"><X size={20} /></button>
-          <img alt={selectedMedia?.altText || ""} className="h-auto max-w-full" src={selectedUrl} />
+          <img alt={selectedMedia?.altText || ""} className="h-auto max-w-full" src={zoomUrl || selectedUrl || ""} />
         </div>
       ) : null}
 

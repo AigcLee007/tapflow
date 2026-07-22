@@ -3,6 +3,19 @@
 Last updated: 2026-07-22
 Maintainers: project team + Codex sessions
 
+## 2026-07-22 - Prompt Library Lifecycle, Bilingual Prompts, And Media Variants
+
+- completed prompt lifecycle management: drafts can be published or permanently deleted, published records save in place and can be taken down/archived, and archived records can be restored or permanently deleted. Published deletion is rejected server-side until a state transition occurs.
+- added fixed category management including `video`, read-only auto-generated external keys under advanced settings, status filtering, drag/keyboard ordering, dirty-state feedback, and status-specific actions. Raw numeric sort weights are no longer exposed.
+- added independent Chinese and English prompt fields with at-least-one validation, bilingual search, active-language copy/reference behavior, and legacy `prompt_text` compatibility/backfill.
+- kept prompt media in the dedicated server folder and added 640px WebP thumbnails plus 1600px WebP previews. New uploads create variants immediately; an idempotent migration covers historical originals.
+- changed plaza cards to intersection-driven thumbnail loading through a four-request cache with in-flight deduplication. Detail images use previews and load originals only for zoom; authenticated responses now use immutable private caching, ETags, and 304 responses.
+- added staging dry-run/write instructions for media backfill and original-file fallback behavior.
+- validation before handoff:
+  - focused prompt schema, service, migration, client, admin, cache, card, plaza, and detail coverage passed: 10 test files, 33 tests.
+  - API/database dependency build, root production build, and root TypeScript no-emit check passed.
+  - local browser fixture verification was stopped at the user's request; final UI and migrated-data smoke will be performed on the server.
+
 ## 2026-07-22 - Prompt Detail Modal Upgrade
 
 - replaced the standalone prompt detail page with a portal modal over the still-mounted prompt plaza while retaining shareable `/prompts/:promptId` URLs.

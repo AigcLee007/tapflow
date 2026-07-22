@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { extname, relative, resolve } from "node:path";
 import type { Pool, PoolClient } from "pg";
+import sharp from "sharp";
 
 import {
   type PromptAdminInput,
@@ -28,6 +29,8 @@ type PromptMediaRecord = {
   size_bytes: string | null;
   sort_order: number;
   storage_key: string | null;
+  preview_storage_key: string | null;
+  thumbnail_storage_key: string | null;
   width: number | null;
 };
 
@@ -42,6 +45,8 @@ type PromptRecord = {
   media: PromptMediaRecord[];
   negative_prompt: string | null;
   prompt_text: string;
+  prompt_text_en: string | null;
+  prompt_text_zh: string | null;
   published_at: string | null;
   sort_weight: number;
   status: "archived" | "draft" | "published";
@@ -83,6 +88,8 @@ export type PromptView = {
   media: PromptMediaView[];
   negativePrompt: string | null;
   promptText: string;
+  promptTextEn: string | null;
+  promptTextZh: string | null;
   publishedAt: string | null;
   sortWeight: number;
   status: "archived" | "draft" | "published";
@@ -124,6 +131,8 @@ function mapPrompt(row: PromptRecord): PromptView {
     media: Array.isArray(row.media) ? row.media.map(mapPromptMedia) : [],
     negativePrompt: row.negative_prompt,
     promptText: row.prompt_text,
+    promptTextEn: row.prompt_text_en,
+    promptTextZh: row.prompt_text_zh,
     publishedAt: row.published_at,
     sortWeight: row.sort_weight,
     status: row.status,
@@ -158,6 +167,8 @@ function promptSelectSql(): string {
       p.title,
       p.description,
       p.prompt_text,
+      p.prompt_text_en,
+      p.prompt_text_zh,
       p.negative_prompt,
       p.category,
       p.tags,
@@ -231,21 +242,33 @@ export class PromptsService {
     const absolutePath = this.resolveLocalMediaPath(storageKey);
     await mkdir(resolve(absolutePath, ".."), { recursive: true });
     await writeFile(absolutePath, input.body, { flag: "wx" });
+    const thumbnailStorageKey = `${promptId}/${mediaId}.thumb.webp`;
+    const previewStorageKey = `${promptId}/${mediaId}.preview.webp`;
+    const generatedKeys: string[] = [];
+    try {
+      await sharp(input.body).rotate().resize({ fit: "inside", width: 640, withoutEnlargement: true }).webp({ quality: 78 }).toFile(this.resolveLocalMediaPath(thumbnailStorageKey));
+      generatedKeys.push(thumbnailStorageKey);
+      await sharp(input.body).rotate().resize({ fit: "inside", width: 1600, withoutEnlargement: true }).webp({ quality: 82 }).toFile(this.resolveLocalMediaPath(previewStorageKey));
+      generatedKeys.push(previewStorageKey);
+    } catch (error) {
+      console.warn("prompt media variant generation failed", { error, mediaId });
+    }
     try {
       return await withPromptTransaction(context, async (client) => {
         const count = await client.query<{ count: string }>(`SELECT COUNT(*)::text AS count FROM prompt_entry_media WHERE prompt_id = $1::uuid`, [promptId]);
         if (Number(count.rows[0]?.count ?? 0) >= 4) throw new PromptApiError(400, "PROMPT_MEDIA_LIMIT_REACHED", "每条提示词最多上传 4 张效果图");
         const result = await client.query<PromptMediaRecord>(
-          `INSERT INTO prompt_entry_media (id, prompt_id, asset_id, storage_key, original_filename, mime_type, size_bytes, width, height, sort_order, alt_text)
-           VALUES ($1::uuid, $2::uuid, NULL, $3, $4, $5, $6::bigint, $7::int, $8::int,
-             (SELECT COALESCE(MAX(sort_order) + 1, 0) FROM prompt_entry_media WHERE prompt_id = $2::uuid), $9)
-           RETURNING id::text AS id, alt_text, sort_order, original_filename, mime_type, size_bytes::text AS size_bytes, width, height, storage_key`,
-          [mediaId, promptId, storageKey, input.originalFilename, input.mimeType, input.body.byteLength, input.width ?? null, input.height ?? null, input.altText?.trim() ?? ""],
+          `INSERT INTO prompt_entry_media (id, prompt_id, asset_id, storage_key, thumbnail_storage_key, preview_storage_key, original_filename, mime_type, size_bytes, width, height, sort_order, alt_text)
+           VALUES ($1::uuid, $2::uuid, NULL, $3, $4, $5, $6, $7, $8::bigint, $9::int, $10::int,
+             (SELECT COALESCE(MAX(sort_order) + 1, 0) FROM prompt_entry_media WHERE prompt_id = $2::uuid), $11)
+           RETURNING id::text AS id, alt_text, sort_order, original_filename, mime_type, size_bytes::text AS size_bytes, width, height, storage_key, thumbnail_storage_key, preview_storage_key`,
+          [mediaId, promptId, storageKey, generatedKeys.includes(thumbnailStorageKey) ? thumbnailStorageKey : null, generatedKeys.includes(previewStorageKey) ? previewStorageKey : null, input.originalFilename, input.mimeType, input.body.byteLength, input.width ?? null, input.height ?? null, input.altText?.trim() ?? ""],
         );
         return mapPromptMedia(result.rows[0]!);
       }, true, this.pool);
     } catch (error) {
       await unlink(absolutePath).catch(() => undefined);
+      await Promise.all(generatedKeys.map((key) => unlink(this.resolveLocalMediaPath(key)).catch(() => undefined)));
       throw error;
     }
   }
@@ -268,24 +291,27 @@ export class PromptsService {
   }
 
   async deleteLocalMedia(context: PromptContext, promptId: string, mediaId: string): Promise<{ ok: true }> {
-    const result = await withPromptTransaction(context, async (client) => client.query<{ storage_key: string | null }>(
-      `DELETE FROM prompt_entry_media WHERE id = $1::uuid AND prompt_id = $2::uuid RETURNING storage_key`, [mediaId, promptId]), true, this.pool);
+    const result = await withPromptTransaction(context, async (client) => client.query<{ preview_storage_key: string | null; storage_key: string | null; thumbnail_storage_key: string | null }>(
+      `DELETE FROM prompt_entry_media WHERE id = $1::uuid AND prompt_id = $2::uuid RETURNING storage_key, thumbnail_storage_key, preview_storage_key`, [mediaId, promptId]), true, this.pool);
     const media = result.rows[0];
     if (!media?.storage_key) throw new PromptApiError(404, "PROMPT_MEDIA_NOT_FOUND", "未找到效果图");
     await unlink(this.resolveLocalMediaPath(media.storage_key)).catch(() => undefined);
+    await Promise.all([media.thumbnail_storage_key, media.preview_storage_key].filter((key): key is string => Boolean(key)).map((key) => unlink(this.resolveLocalMediaPath(key)).catch(() => undefined)));
     return { ok: true };
   }
 
-  async getLocalMediaBytes(context: PromptContext, mediaId: string, promptId?: string): Promise<{ body: Buffer; mimeType: string }> {
-    const result = await withPromptTransaction(context, (client) => client.query<{ mime_type: string; storage_key: string }>(
-      `SELECT media.mime_type, media.storage_key
+  async getLocalMediaBytes(context: PromptContext, mediaId: string, promptId?: string, variant: "original" | "preview" | "thumb" = "original"): Promise<{ body: Buffer; etag: string; mimeType: string }> {
+    const result = await withPromptTransaction(context, (client) => client.query<{ mime_type: string; preview_storage_key: string | null; storage_key: string; thumbnail_storage_key: string | null; version: number }>(
+      `SELECT media.mime_type, media.storage_key, media.thumbnail_storage_key, media.preview_storage_key, prompt.version
        FROM prompt_entry_media media JOIN prompt_entries prompt ON prompt.id = media.prompt_id
        WHERE media.id = $1::uuid AND media.storage_key IS NOT NULL
          AND (${promptId ? "prompt.id = $2::uuid" : "prompt.status = 'published' AND (prompt.tenant_id IS NULL OR prompt.tenant_id = $2::uuid)"})
        LIMIT 1`, promptId ? [mediaId, promptId] : [mediaId, context.tenantId]), Boolean(promptId), this.pool);
     const media = result.rows[0];
     if (!media) throw new PromptApiError(404, "PROMPT_MEDIA_NOT_FOUND", "未找到效果图");
-    try { return { body: await readFile(this.resolveLocalMediaPath(media.storage_key)), mimeType: media.mime_type }; }
+    const selectedKey = variant === "thumb" ? media.thumbnail_storage_key : variant === "preview" ? media.preview_storage_key : media.storage_key;
+    const storageKey = selectedKey || media.storage_key;
+    try { return { body: await readFile(this.resolveLocalMediaPath(storageKey)), etag: `\"${mediaId}-${variant}-${media.version}\"`, mimeType: selectedKey && variant !== "original" ? "image/webp" : media.mime_type }; }
     catch { throw new PromptApiError(404, "PROMPT_MEDIA_FILE_NOT_FOUND", "效果图文件不存在"); }
   }
 
@@ -316,6 +342,8 @@ export class PromptsService {
         p.title ILIKE $${index}
         OR p.description ILIKE $${index}
         OR p.prompt_text ILIKE $${index}
+        OR p.prompt_text_zh ILIKE $${index}
+        OR p.prompt_text_en ILIKE $${index}
         OR EXISTS (SELECT 1 FROM unnest(p.tags) tag WHERE tag ILIKE $${index})
       )`);
     }
@@ -431,18 +459,20 @@ export class PromptsService {
     const result = await withPromptTransaction(context, async (client) => {
       const inserted = await client.query<{ id: string }>(
         `INSERT INTO prompt_entries (
-          tenant_id, created_by, external_key, title, description, prompt_text,
+          tenant_id, created_by, external_key, title, description, prompt_text, prompt_text_zh, prompt_text_en,
           negative_prompt, category, tags, status, sort_weight, published_at
         ) VALUES (
-          NULL, $1::uuid, $2, $3, $4, $5, $6, $7, $8::text[], $9,
-          $10, CASE WHEN $9 = 'published' THEN now() ELSE NULL END
+          NULL, $1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10::text[], $11,
+          $12, CASE WHEN $11 = 'published' THEN now() ELSE NULL END
         ) RETURNING id::text AS id`,
         [
           context.userId,
           input.externalKey,
           input.title,
           input.description,
-          input.promptText,
+          input.promptTextEn || input.promptTextZh || "",
+          input.promptTextZh || null,
+          input.promptTextEn || null,
           input.negativePrompt ?? null,
           input.category,
           input.tags,
@@ -464,13 +494,15 @@ export class PromptsService {
              title = $3,
              description = $4,
              prompt_text = $5,
-             negative_prompt = $6,
-             category = $7,
-             tags = $8::text[],
-             status = $9,
-             sort_weight = $10,
+             prompt_text_zh = $6,
+             prompt_text_en = $7,
+             negative_prompt = $8,
+             category = $9,
+             tags = $10::text[],
+             status = $11,
+             sort_weight = $12,
              version = version + 1,
-             published_at = CASE WHEN $9 = 'published' THEN COALESCE(published_at, now()) ELSE NULL END,
+             published_at = CASE WHEN $11 = 'published' THEN COALESCE(published_at, now()) ELSE NULL END,
              updated_at = now()
          WHERE id = $1::uuid
          RETURNING id`,
@@ -479,7 +511,9 @@ export class PromptsService {
           input.externalKey,
           input.title,
           input.description,
-          input.promptText,
+          input.promptTextEn || input.promptTextZh || "",
+          input.promptTextZh || null,
+          input.promptTextEn || null,
           input.negativePrompt ?? null,
           input.category,
           input.tags,
@@ -518,6 +552,42 @@ export class PromptsService {
     return this.getPrompt(context, promptId, true);
   }
 
+  async deleteAdminPrompt(context: PromptContext, promptId: string): Promise<{ ok: true }> {
+    const result = await withPromptTransaction(context, async (client) => {
+      const prompt = await client.query<{ status: PromptRecord["status"] }>(
+        `SELECT status FROM prompt_entries WHERE id = $1::uuid LIMIT 1`, [promptId],
+      );
+      if (!prompt.rows[0]) throw new PromptApiError(404, "PROMPT_NOT_FOUND", "未找到对应提示词");
+      if (prompt.rows[0].status === "published") {
+        throw new PromptApiError(409, "PROMPT_DELETE_REQUIRES_ARCHIVE", "已发布提示词需先下架或归档后才能删除");
+      }
+      const media = await client.query<{ preview_storage_key: string | null; storage_key: string | null; thumbnail_storage_key: string | null }>(
+        `SELECT storage_key, thumbnail_storage_key, preview_storage_key FROM prompt_entry_media WHERE prompt_id = $1::uuid`, [promptId],
+      );
+      await client.query(`DELETE FROM prompt_entries WHERE id = $1::uuid`, [promptId]);
+      return media.rows;
+    }, true, this.pool);
+    const keys = result.flatMap((item) => [item.storage_key, item.thumbnail_storage_key, item.preview_storage_key]).filter((key): key is string => Boolean(key));
+    await Promise.all(keys.map((key) => unlink(this.resolveLocalMediaPath(key)).catch((error) => console.warn("prompt media cleanup failed", { error, key }))));
+    return { ok: true };
+  }
+
+  async reorderAdminPrompts(context: PromptContext, promptIds: string[]): Promise<PromptView[]> {
+    await withPromptTransaction(context, async (client) => {
+      const result = await client.query<{ id: string }>(
+        `SELECT id::text AS id FROM prompt_entries WHERE tenant_id IS NULL OR tenant_id = $1::uuid`, [context.tenantId],
+      );
+      const existing = new Set(result.rows.map((row) => row.id));
+      if (existing.size !== promptIds.length || new Set(promptIds).size !== promptIds.length || promptIds.some((id) => !existing.has(id))) {
+        throw new PromptApiError(400, "PROMPT_ORDER_INVALID", "提示词排序数据无效，请刷新后重试");
+      }
+      for (const [index, id] of promptIds.entries()) {
+        await client.query(`UPDATE prompt_entries SET sort_weight = $2::int, updated_at = now() WHERE id = $1::uuid`, [id, (promptIds.length - index) * 1000]);
+      }
+    }, true, this.pool);
+    return this.listAdminPrompts(context);
+  }
+
   private async ensurePromptHasLocalMedia(context: PromptContext, promptId: string): Promise<void> {
     const result = await withPromptTransaction(context, (client) => client.query<{ count: string }>(
       `SELECT COUNT(*)::text AS count FROM prompt_entry_media WHERE prompt_id = $1::uuid AND storage_key IS NOT NULL`, [promptId]), true, this.pool);
@@ -550,14 +620,16 @@ export class PromptsService {
       for (const row of validation.rows) {
         await client.query(
           `INSERT INTO prompt_entries (
-            tenant_id, created_by, external_key, title, description, prompt_text,
+            tenant_id, created_by, external_key, title, description, prompt_text, prompt_text_zh, prompt_text_en,
             negative_prompt, category, tags, status
-          ) VALUES (NULL, $1::uuid, $2, $3, $4, $5, $6, $7, $8::text[], 'draft')
+          ) VALUES (NULL, $1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10::text[], 'draft')
           ON CONFLICT (external_key) WHERE tenant_id IS NULL
           DO UPDATE SET
             title = EXCLUDED.title,
             description = EXCLUDED.description,
             prompt_text = EXCLUDED.prompt_text,
+            prompt_text_zh = EXCLUDED.prompt_text_zh,
+            prompt_text_en = EXCLUDED.prompt_text_en,
             negative_prompt = EXCLUDED.negative_prompt,
             category = EXCLUDED.category,
             tags = EXCLUDED.tags,
@@ -568,7 +640,9 @@ export class PromptsService {
             row.externalKey,
             row.title,
             row.description ?? "",
-            row.promptText,
+            row.promptTextEn || row.promptTextZh || "",
+            row.promptTextZh || null,
+            row.promptTextEn || null,
             row.negativePrompt ?? null,
             row.category,
             row.tags ?? [],

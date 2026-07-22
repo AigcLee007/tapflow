@@ -22,6 +22,8 @@ export type PromptEntry = {
   media: PromptMedia[];
   negativePrompt: string | null;
   promptText: string;
+  promptTextEn?: string | null;
+  promptTextZh?: string | null;
   publishedAt: string | null;
   sortWeight: number;
   status: "archived" | "draft" | "published";
@@ -55,7 +57,8 @@ export type PromptAdminInput = {
   description: string;
   externalKey: string;
   negativePrompt?: string;
-  promptText: string;
+  promptTextEn?: string;
+  promptTextZh?: string;
   sortWeight?: number;
   status?: "archived" | "draft" | "published";
   tags: string[];
@@ -77,13 +80,15 @@ export function getPrompt(promptId: string): Promise<PromptEntry> {
   return apiGet<PromptEntry>(`/prompts/${encodeURIComponent(promptId)}`);
 }
 
-export async function getPromptMediaBlob(mediaId: string, adminPromptId?: string): Promise<Blob> {
+export type PromptMediaVariant = "original" | "preview" | "thumb";
+
+export async function getPromptMediaBlob(mediaId: string, adminPromptId?: string, variant: PromptMediaVariant = "original"): Promise<Blob> {
   const token = getStoredAccessToken();
   const path = adminPromptId
     ? `/api/v2/admin/prompts/${encodeURIComponent(adminPromptId)}/media/${encodeURIComponent(mediaId)}/bytes`
     : `/api/v2/prompts/media/${encodeURIComponent(mediaId)}/bytes`;
-  const response = await fetch(path, {
-    cache: "no-store",
+  const requestPath = `${path}?variant=${encodeURIComponent(variant)}`;
+  const response = await fetch(requestPath, {
     headers: token ? { Authorization: token.startsWith("Bearer ") ? token : `Bearer ${token}` } : {},
   });
   if (!response.ok) throw new V2HttpError({ message: `效果图加载失败 (${response.status})`, status: response.status });
@@ -109,6 +114,14 @@ export function createAdminPrompt(input: PromptAdminInput): Promise<PromptEntry>
 
 export function updateAdminPrompt(promptId: string, input: PromptAdminInput): Promise<PromptEntry> {
   return apiPatch<PromptEntry>(`/admin/prompts/${encodeURIComponent(promptId)}`, input);
+}
+
+export function deleteAdminPrompt(promptId: string): Promise<{ ok: true }> {
+  return apiDelete(`/admin/prompts/${encodeURIComponent(promptId)}`);
+}
+
+export function reorderAdminPrompts(input: { promptIds: string[] }): Promise<PromptEntry[]> {
+  return apiPatch("/admin/prompts/order", input);
 }
 
 export function setAdminPromptStatus(

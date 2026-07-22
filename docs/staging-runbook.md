@@ -128,3 +128,27 @@ Expected result:
 - Target-node snapshots should reuse `flow_id + checksum` and recover from `23505` conflicts.
 - Provider calls must run outside long DB transactions.
 - Draft patching remains target-node-only after provider success.
+
+## Prompt Catalog Media Variant Rollout
+
+Prompt catalog media remains in the dedicated server directory mounted at `/var/lib/tapflow/prompt-catalog`; this procedure does not read from or write to S3.
+
+After building images and stopping `tapflow-worker`, run the database migration first:
+
+```bash
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-api node packages/db/dist/cli.js
+```
+
+Inspect the historical-media plan without writing files or database keys:
+
+```bash
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-api npm run prompts:backfill-variants -- --dry-run --concurrency 4
+```
+
+Generate missing 640px thumbnails and 1600px previews:
+
+```bash
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-api npm run prompts:backfill-variants -- --concurrency 4
+```
+
+The command is idempotent: it retains existing derived keys/files and reports processed, generated, skipped, and failed counts. A missing derived file does not block users because the authenticated media endpoint falls back to the original. Rollback the application by redeploying the earlier commit; keep generated WebP files because old releases ignore them.
