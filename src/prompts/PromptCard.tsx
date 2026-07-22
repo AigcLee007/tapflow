@@ -31,9 +31,15 @@ export function PromptCard({
         onClick={() => onOpen(prompt)}
         type="button"
       >
-        <div className="relative aspect-[4/3] overflow-hidden bg-[#151922]">
+        <div className={`relative overflow-hidden bg-[#151922] ${compact || !imageUrl ? "aspect-[4/3]" : ""}`}>
           {imageUrl ? (
-            <img alt="" className="h-full w-full object-cover" decoding="async" loading="lazy" src={imageUrl} />
+            <img
+              alt=""
+              className={compact ? "h-full w-full object-cover" : "block h-auto w-full"}
+              decoding="async"
+              loading="lazy"
+              src={imageUrl}
+            />
           ) : (
             <div className="grid h-full place-items-center text-slate-600">
               <ImageIcon size={compact ? 18 : 26} />

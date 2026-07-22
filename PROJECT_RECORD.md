@@ -1,7 +1,18 @@
 ﻿# Project Record
 
-Last updated: 2026-07-21
+Last updated: 2026-07-22
 Maintainers: project team + Codex sessions
+
+## 2026-07-22 - Prompt Plaza Masonry Layout
+
+- replaced the standalone prompt plaza's fixed-row grid with responsive CSS multi-column masonry at one, two, three, four, and five columns across the existing breakpoints.
+- changed full plaza cards to display each loaded effect image at its complete intrinsic aspect ratio, including unusually tall poster images, without `4:3` cropping or a maximum-height cap.
+- retained fixed `4:3` covers for compact canvas prompt cards and missing-image placeholders so narrow panels and empty states remain stable.
+- kept prompt search, filters, detail navigation, favorites, copy, reference, authenticated media loading, APIs, and storage behavior unchanged.
+- validation:
+  - focused prompt plaza and card regressions passed: 2 test files, 4 tests.
+  - `npm run build` passed with the existing Browserslist, CSS utility, dynamic-import, and chunk-size warnings.
+  - browser smoke with the production `PromptCard` confirmed five desktop columns and one narrow-screen column across eight portrait, landscape, square, and extra-tall images; every rendered ratio matched its intrinsic ratio, with no card overlap, horizontal overflow, or console errors.
 
 ## 2026-07-21 - Prompt Catalog Local Media
 

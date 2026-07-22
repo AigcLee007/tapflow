@@ -139,17 +139,21 @@ export function PromptPlazaPage() {
         {error ? <div className="mt-6 rounded border border-rose-400/25 bg-rose-400/10 p-4 text-rose-100">{error}</div> : null}
         {!loading && !error && items.length === 0 ? <div className="mt-8 rounded border border-dashed border-white/12 p-10 text-center text-sm text-slate-400">当前筛选下还没有提示词。</div> : null}
         {!loading && !error && items.length > 0 ? (
-          <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+          <div
+            className="mt-6 columns-1 gap-3 sm:columns-2 lg:columns-3 xl:columns-4 2xl:columns-5"
+            data-testid="prompt-plaza-masonry"
+          >
             {items.map((prompt) => (
-              <PromptCard
-                imageUrl={prompt.media[0] ? imageUrls[prompt.media[0].id] : null}
-                key={prompt.id}
-                onCopy={(value) => void handleCopy(value)}
-                onFavorite={handleFavorite}
-                onOpen={(value) => navigate(pageUrl(value, { category, query, view }))}
-                onReference={setSelectedPrompt}
-                prompt={prompt}
-              />
+              <div className="mb-3 break-inside-avoid" data-testid={`prompt-masonry-item-${prompt.id}`} key={prompt.id}>
+                <PromptCard
+                  imageUrl={prompt.media[0] ? imageUrls[prompt.media[0].id] : null}
+                  onCopy={(value) => void handleCopy(value)}
+                  onFavorite={handleFavorite}
+                  onOpen={(value) => navigate(pageUrl(value, { category, query, view }))}
+                  onReference={setSelectedPrompt}
+                  prompt={prompt}
+                />
+              </div>
             ))}
           </div>
         ) : null}

@@ -25,6 +25,43 @@ const prompt = {
 };
 
 describe("PromptCard", () => {
+  test("preserves the original image ratio on full plaza cards", () => {
+    const { container } = render(
+      <PromptCard
+        imageUrl="blob:portrait"
+        onCopy={vi.fn()}
+        onFavorite={vi.fn()}
+        onOpen={vi.fn()}
+        onReference={vi.fn()}
+        prompt={prompt}
+      />,
+    );
+    const image = container.querySelector("img");
+
+    expect(image?.className).toContain("h-auto");
+    expect(image?.className).not.toContain("object-cover");
+    expect(image?.parentElement?.className).not.toContain("aspect-[4/3]");
+  });
+
+  test("keeps the fixed cover ratio on compact canvas cards", () => {
+    const { container } = render(
+      <PromptCard
+        compact
+        imageUrl="blob:portrait"
+        onCopy={vi.fn()}
+        onFavorite={vi.fn()}
+        onOpen={vi.fn()}
+        onReference={vi.fn()}
+        prompt={prompt}
+      />,
+    );
+    const image = container.querySelector("img");
+
+    expect(image?.className).toContain("h-full");
+    expect(image?.className).toContain("object-cover");
+    expect(image?.parentElement?.className).toContain("aspect-[4/3]");
+  });
+
   test("keeps copy, favorite, and reference as separate actions", async () => {
     const onCopy = vi.fn();
     const onFavorite = vi.fn();
