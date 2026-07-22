@@ -39,7 +39,7 @@ function media(id: string, sortOrder: number): PromptMedia {
   };
 }
 
-function prompt(mediaItems: PromptMedia[] = []): PromptEntry {
+function prompt(mediaItems: PromptMedia[] = [], overrides: Partial<PromptEntry> = {}): PromptEntry {
   return {
     category: "poster",
     createdAt: "2026-07-22T00:00:00.000Z",
@@ -59,6 +59,7 @@ function prompt(mediaItems: PromptMedia[] = []): PromptEntry {
     title: "单图提示词",
     updatedAt: "2026-07-22T00:00:00.000Z",
     version: 1,
+    ...overrides,
   };
 }
 
@@ -156,7 +157,9 @@ describe("PromptDetailModal", () => {
     createObjectURLMock.mockReturnValue("blob:media-1");
     render(<PromptDetailModal onClose={vi.fn()} promptId="prompt-1" />);
     const dialog = await screen.findByRole("dialog", { name: "单图提示词" });
+    await waitFor(() => expect(getPromptMediaBlobMock).toHaveBeenCalledWith("media-1", undefined, "preview"));
     fireEvent.click(await within(dialog).findByRole("button", { name: "放大效果图" }));
+    await waitFor(() => expect(getPromptMediaBlobMock).toHaveBeenCalledWith("media-1", undefined, "original"));
 
     const zoom = screen.getByRole("dialog", { name: "效果图放大预览" });
     expect(within(zoom).getByRole("img").getAttribute("src")).toBe("blob:media-1");
@@ -198,5 +201,40 @@ describe("PromptDetailModal", () => {
 
     fireEvent.keyDown(window, { key: "Escape" });
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  test("switches bilingual text and exposes scoped copy options without closing the modal on Escape", async () => {
+    const onClose = vi.fn();
+    Object.defineProperty(navigator, "language", { configurable: true, value: "zh-CN" });
+    getPromptMock.mockResolvedValue(prompt([], { promptTextEn: "English prompt", promptTextZh: "中文提示词" }));
+    render(<PromptDetailModal onClose={onClose} promptId="prompt-1" />);
+    const dialog = await screen.findByRole("dialog", { name: "单图提示词" });
+    expect(within(dialog).getByText("中文提示词")).toBeTruthy();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "复制选项" }));
+    expect(within(dialog).getByRole("menuitem", { name: "复制中文" })).toBeTruthy();
+    expect(within(dialog).getByRole("menuitem", { name: "复制英文" })).toBeTruthy();
+    expect(within(dialog).getByRole("menuitem", { name: "复制中英文" })).toBeTruthy();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(within(dialog).queryByRole("menuitem", { name: "复制中文" })).toBeNull();
+    expect(onClose).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "English" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "复制提示词" }));
+    await waitFor(() => expect(writeTextMock).toHaveBeenLastCalledWith("English prompt"));
+  });
+
+  test("references only the active prompt language", async () => {
+    Object.defineProperty(navigator, "language", { configurable: true, value: "zh-CN" });
+    getPromptMock.mockResolvedValue(prompt([], { promptTextEn: "English prompt", promptTextZh: "中文提示词" }));
+    listWorkspaceProjectsMock.mockResolvedValue([{ description: "", id: "project-1", name: "测试项目" }]);
+    window.history.replaceState(null, "", "/prompts/prompt-1");
+    render(<PromptDetailModal onClose={vi.fn()} promptId="prompt-1" />);
+    const dialog = await screen.findByRole("dialog", { name: "单图提示词" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "English" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "引用到画布" }));
+    fireEvent.click(await screen.findByRole("button", { name: /测试项目/ }));
+    expect(new URLSearchParams(window.location.search).get("promptLanguage")).toBe("en");
+    expect(window.location.search).not.toContain("English+prompt");
   });
 });

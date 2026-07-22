@@ -5,7 +5,7 @@ Maintainers: project team + Codex sessions
 
 ## 2026-07-22 - Prompt Library Lifecycle, Bilingual Prompts, And Media Variants
 
-- completed prompt lifecycle management: drafts can be published or permanently deleted, published records save in place and can be taken down/archived, and archived records can be restored or permanently deleted. Published deletion is rejected server-side until a state transition occurs.
+- completed prompt lifecycle management: drafts can be published, archived, or permanently deleted; published records save in place and can be taken down/archived; archived records can be restored or permanently deleted. Published deletion is rejected server-side until a state transition occurs.
 - added fixed category management including `video`, read-only auto-generated external keys under advanced settings, status filtering, drag/keyboard ordering, dirty-state feedback, and status-specific actions. Raw numeric sort weights are no longer exposed.
 - added independent Chinese and English prompt fields with at-least-one validation, bilingual search, active-language copy/reference behavior, and legacy `prompt_text` compatibility/backfill.
 - kept prompt media in the dedicated server folder and added 640px WebP thumbnails plus 1600px WebP previews. New uploads create variants immediately; an idempotent migration covers historical originals.
@@ -15,6 +15,8 @@ Maintainers: project team + Codex sessions
   - focused prompt schema, service, migration, client, admin, cache, card, plaza, and detail coverage passed: 10 test files, 33 tests.
   - API/database dependency build, root production build, and root TypeScript no-emit check passed.
   - local browser fixture verification was stopped at the user's request; final UI and migrated-data smoke will be performed on the server.
+- final audit follow-up added the missing draft-to-archive action, preserved complete ordering when a status filter is active, restored negative-prompt editing, aligned the copy menu with shared menu behavior, and made new thumbnail/preview writes exclusive so derived files are never overwritten.
+- per the user's deployment workflow, this follow-up was committed without rerunning local tests or builds; validation is deferred to the server deployment.
 
 ## 2026-07-22 - Prompt Detail Modal Upgrade
 

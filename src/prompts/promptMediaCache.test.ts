@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { getPromptMediaBlob } from "../services/v2PromptsApi";
 import { clearPromptMediaCache, getPromptMediaObjectUrl } from "./promptMediaCache";
@@ -6,6 +6,7 @@ import { clearPromptMediaCache, getPromptMediaObjectUrl } from "./promptMediaCac
 vi.mock("../services/v2PromptsApi", () => ({ getPromptMediaBlob: vi.fn() }));
 
 describe("promptMediaCache", () => {
+  beforeEach(() => { vi.mocked(getPromptMediaBlob).mockReset(); });
   afterEach(() => { clearPromptMediaCache(); vi.restoreAllMocks(); });
 
   test("deduplicates the same media variant request", async () => {
@@ -27,5 +28,23 @@ describe("promptMediaCache", () => {
     vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
     await Promise.all(Array.from({ length: 8 }, (_, index) => getPromptMediaObjectUrl(`media-${index}`, "thumb")));
     expect(maximum).toBe(4);
+  });
+
+  test("does not cache failures and retries the next request", async () => {
+    vi.mocked(getPromptMediaBlob).mockRejectedValueOnce(new Error("temporary")).mockResolvedValueOnce(new Blob(["image"]));
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:retry");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    await expect(getPromptMediaObjectUrl("media-retry", "thumb")).rejects.toThrow("temporary");
+    await expect(getPromptMediaObjectUrl("media-retry", "thumb")).resolves.toBe("blob:retry");
+    expect(getPromptMediaBlob).toHaveBeenCalledTimes(2);
+  });
+
+  test("revokes the least recently used object URL when the cache is full", async () => {
+    vi.mocked(getPromptMediaBlob).mockResolvedValue(new Blob(["image"]));
+    let objectUrlIndex = 0;
+    vi.spyOn(URL, "createObjectURL").mockImplementation(() => `blob:${++objectUrlIndex}`);
+    const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    for (let index = 0; index < 121; index += 1) await getPromptMediaObjectUrl(`media-${index}`, "thumb");
+    expect(revoke).toHaveBeenCalledWith("blob:1");
   });
 });

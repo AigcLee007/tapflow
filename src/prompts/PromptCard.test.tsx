@@ -1,7 +1,10 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, test, vi } from "vitest";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { PromptCard } from "./PromptCard";
+import { getPromptMediaObjectUrl } from "./promptMediaCache";
+
+vi.mock("./promptMediaCache", () => ({ getPromptMediaObjectUrl: vi.fn() }));
 
 const prompt = {
   category: "portrait",
@@ -25,6 +28,7 @@ const prompt = {
 };
 
 describe("PromptCard", () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.mocked(getPromptMediaObjectUrl).mockReset(); });
   test("preserves the original image ratio on full plaza cards", () => {
     const { container } = render(
       <PromptCard
@@ -75,5 +79,27 @@ describe("PromptCard", () => {
     expect(onCopy).toHaveBeenCalledWith(prompt);
     expect(onFavorite).toHaveBeenCalledWith(prompt);
     expect(onReference).toHaveBeenCalledWith(prompt);
+  });
+
+  test("requests only the thumbnail after the card approaches the viewport", async () => {
+    let observerCallback: IntersectionObserverCallback | null = null;
+    const disconnect = vi.fn();
+    vi.stubGlobal("IntersectionObserver", class {
+      constructor(callback: IntersectionObserverCallback) { observerCallback = callback; }
+      disconnect = disconnect;
+      observe = vi.fn();
+      unobserve = vi.fn();
+      root = null;
+      rootMargin = "600px 0px";
+      thresholds = [0];
+      takeRecords = () => [];
+    });
+    vi.mocked(getPromptMediaObjectUrl).mockResolvedValue("blob:thumb");
+    render(<PromptCard mediaId="media-1" onCopy={vi.fn()} onFavorite={vi.fn()} onOpen={vi.fn()} onReference={vi.fn()} prompt={prompt} />);
+    expect(getPromptMediaObjectUrl).not.toHaveBeenCalled();
+
+    act(() => observerCallback!([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver));
+    await waitFor(() => expect(getPromptMediaObjectUrl).toHaveBeenCalledWith("media-1", "thumb"));
+    expect(disconnect).toHaveBeenCalled();
   });
 });

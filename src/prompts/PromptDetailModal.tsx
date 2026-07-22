@@ -2,6 +2,9 @@ import React, { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, Copy, Expand, LoaderCircle, Plus, Star, X } from "lucide-react";
 
+import { MenuSurface } from "../components/menu/MenuSurface";
+import { MENU_ITEM_CLASS, MENU_ITEM_PRIMARY_CLASS } from "../components/menu/menuStyles";
+import { useDismissibleLayer } from "../components/menu/useDismissibleLayer";
 import {
   favoritePrompt,
   getPrompt,
@@ -25,8 +28,8 @@ export function PromptDetailModal({ onClose, promptId }: { onClose: () => void; 
   const [feedback, setFeedback] = useState<string | null>(null);
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
   const [zoomOpen, setZoomOpen] = useState(false);
-  const [copyMenuOpen, setCopyMenuOpen] = useState(false);
   const [language, setLanguage] = useState<PromptLanguage>("en");
+  const copyLayer = useDismissibleLayer(`prompt-copy-${promptId}`);
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
@@ -118,6 +121,7 @@ export function PromptDetailModal({ onClose, promptId }: { onClose: () => void; 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
+      if (copyLayer.open) return;
       if (zoomOpen) {
         setZoomOpen(false);
         return;
@@ -126,7 +130,7 @@ export function PromptDetailModal({ onClose, promptId }: { onClose: () => void; 
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose, projectPickerOpen, zoomOpen]);
+  }, [copyLayer.open, onClose, projectPickerOpen, zoomOpen]);
 
   const trapFocus = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "Tab") return;
@@ -151,7 +155,7 @@ export function PromptDetailModal({ onClose, promptId }: { onClose: () => void; 
     if (!prompt) return;
     try {
       await copyPromptText(prompt, mode);
-      setCopyMenuOpen(false);
+      copyLayer.closeLayer();
       setFeedback("已复制提示词");
       void recordPromptInteraction(prompt.id, { eventType: "copy" }).catch(() => undefined);
     } catch (reason) {
@@ -312,7 +316,7 @@ export function PromptDetailModal({ onClose, promptId }: { onClose: () => void; 
                 {feedback ? <div className="mt-3 rounded border border-cyan-300/20 bg-cyan-300/10 px-3 py-2 text-xs text-cyan-50" role="status">{feedback}</div> : null}
               </div>
               <footer className="fixed inset-x-0 bottom-0 z-20 grid shrink-0 grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] gap-2 border-t border-white/10 bg-[#141821]/95 p-3 backdrop-blur sm:p-4 lg:sticky lg:inset-x-auto">
-                <div className="relative flex min-w-0"><button className="inline-flex h-10 min-w-0 flex-1 items-center justify-center gap-1 rounded-l border border-white/10 px-2 text-[12px] font-bold text-slate-200 hover:bg-white/[0.07]" onClick={() => void handleCopy()} type="button"><Copy size={15} />复制提示词</button><button aria-label="复制选项" className="grid h-10 w-8 place-items-center rounded-r border border-l-0 border-white/10" onClick={() => setCopyMenuOpen((open) => !open)} type="button"><ChevronDown size={14} /></button>{copyMenuOpen ? <div className="absolute bottom-12 left-0 z-30 w-full rounded border border-white/10 bg-[#171b23] p-1 shadow-xl">{prompt.promptTextZh ? <button className="h-9 w-full px-2 text-left text-xs font-bold hover:bg-white/5" onClick={() => void handleCopy("zh")} type="button">复制中文</button> : null}{prompt.promptTextEn ? <button className="h-9 w-full px-2 text-left text-xs font-bold hover:bg-white/5" onClick={() => void handleCopy("en")} type="button">复制英文</button> : null}{prompt.promptTextZh && prompt.promptTextEn ? <button className="h-9 w-full px-2 text-left text-xs font-bold hover:bg-white/5" onClick={() => void handleCopy("both")} type="button">复制中英</button> : null}</div> : null}</div>
+                <div className="relative flex min-w-0"><button className="inline-flex h-10 min-w-0 flex-1 items-center justify-center gap-1 rounded-l border border-white/10 px-2 text-[12px] font-bold text-slate-200 hover:bg-white/[0.07]" onClick={() => void handleCopy()} type="button"><Copy size={15} />复制提示词</button><button ref={copyLayer.triggerRef as React.RefObject<HTMLButtonElement>} aria-expanded={copyLayer.open} aria-haspopup="menu" aria-label="复制选项" className="grid h-10 w-8 place-items-center rounded-r border border-l-0 border-white/10" onClick={copyLayer.toggle} type="button"><ChevronDown size={14} /></button>{copyLayer.open ? <MenuSurface ref={copyLayer.ref as React.RefObject<HTMLDivElement>} className="absolute bottom-12 left-0 z-30 w-full p-1" role="menu">{prompt.promptTextZh ? <button className={MENU_ITEM_CLASS} onClick={() => void handleCopy("zh")} role="menuitem" type="button"><span className={MENU_ITEM_PRIMARY_CLASS}>复制中文</span></button> : null}{prompt.promptTextEn ? <button className={MENU_ITEM_CLASS} onClick={() => void handleCopy("en")} role="menuitem" type="button"><span className={MENU_ITEM_PRIMARY_CLASS}>复制英文</span></button> : null}{prompt.promptTextZh && prompt.promptTextEn ? <button className={MENU_ITEM_CLASS} onClick={() => void handleCopy("both")} role="menuitem" type="button"><span className={MENU_ITEM_PRIMARY_CLASS}>复制中英文</span></button> : null}</MenuSurface> : null}</div>
                 <button className="inline-flex h-10 min-w-0 items-center justify-center gap-1 rounded bg-cyan-400 px-2 text-[12px] font-bold text-slate-950 hover:bg-cyan-200" onClick={() => setProjectPickerOpen(true)} type="button"><Plus size={16} /> 引用到画布</button>
               </footer>
             </aside>

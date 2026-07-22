@@ -130,7 +130,7 @@ function mapPrompt(row: PromptRecord): PromptView {
     isFavorite: row.is_favorite,
     media: Array.isArray(row.media) ? row.media.map(mapPromptMedia) : [],
     negativePrompt: row.negative_prompt,
-    promptText: row.prompt_text,
+    promptText: row.prompt_text_en || row.prompt_text_zh || row.prompt_text,
     promptTextEn: row.prompt_text_en,
     promptTextZh: row.prompt_text_zh,
     publishedAt: row.published_at,
@@ -246,9 +246,11 @@ export class PromptsService {
     const previewStorageKey = `${promptId}/${mediaId}.preview.webp`;
     const generatedKeys: string[] = [];
     try {
-      await sharp(input.body).rotate().resize({ fit: "inside", width: 640, withoutEnlargement: true }).webp({ quality: 78 }).toFile(this.resolveLocalMediaPath(thumbnailStorageKey));
+      const thumbnailBody = await sharp(input.body).rotate().resize({ fit: "inside", width: 640, withoutEnlargement: true }).webp({ quality: 78 }).toBuffer();
+      await writeFile(this.resolveLocalMediaPath(thumbnailStorageKey), thumbnailBody, { flag: "wx" });
       generatedKeys.push(thumbnailStorageKey);
-      await sharp(input.body).rotate().resize({ fit: "inside", width: 1600, withoutEnlargement: true }).webp({ quality: 82 }).toFile(this.resolveLocalMediaPath(previewStorageKey));
+      const previewBody = await sharp(input.body).rotate().resize({ fit: "inside", width: 1600, withoutEnlargement: true }).webp({ quality: 82 }).toBuffer();
+      await writeFile(this.resolveLocalMediaPath(previewStorageKey), previewBody, { flag: "wx" });
       generatedKeys.push(previewStorageKey);
     } catch (error) {
       console.warn("prompt media variant generation failed", { error, mediaId });
@@ -448,7 +450,7 @@ export class PromptsService {
     const result = await withPromptTransaction(context, (client) => client.query<PromptRecord>(
       `${promptSelectSql()}
        WHERE p.tenant_id IS NULL OR p.tenant_id = $1::uuid
-       ORDER BY p.status ASC, p.sort_weight DESC, p.updated_at DESC, p.id DESC`,
+       ORDER BY p.sort_weight DESC, p.updated_at DESC, p.id DESC`,
       [context.tenantId, context.userId],
     ), true, this.pool);
     return result.rows.map(mapPrompt);
