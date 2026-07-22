@@ -31,8 +31,27 @@ export function PromptProjectPicker({
     };
   }, []);
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      onClose();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
   return (
-    <div className="fixed inset-0 z-[120] grid place-items-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-label="选择项目">
+    <div
+      aria-label="选择项目"
+      aria-modal="true"
+      className="fixed inset-0 z-[120] grid place-items-center bg-black/70 p-4"
+      onPointerDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+      role="dialog"
+    >
       <div className="w-full max-w-lg rounded border border-white/10 bg-[#12151d] p-4 shadow-2xl shadow-black/60">
         <div className="flex items-center justify-between gap-3">
           <div>

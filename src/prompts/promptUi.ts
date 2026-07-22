@@ -18,3 +18,21 @@ export function navigate(path: string): void {
   window.history.pushState(null, "", path);
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
+
+export function openPromptDetail(path: string): void {
+  window.history.pushState(
+    { ...(window.history.state ?? {}), promptModalFromPlaza: true },
+    "",
+    path,
+  );
+  window.dispatchEvent(new PopStateEvent("popstate"));
+}
+
+export function closePromptDetail(returnUrl: string): void {
+  if (window.history.state?.promptModalFromPlaza === true) {
+    window.history.back();
+    return;
+  }
+  window.history.replaceState(null, "", returnUrl);
+  window.dispatchEvent(new PopStateEvent("popstate"));
+}

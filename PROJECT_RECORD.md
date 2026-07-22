@@ -3,6 +3,18 @@
 Last updated: 2026-07-22
 Maintainers: project team + Codex sessions
 
+## 2026-07-22 - Prompt Detail Modal Upgrade
+
+- replaced the standalone prompt detail page with a portal modal over the still-mounted prompt plaza while retaining shareable `/prompts/:promptId` URLs.
+- grouped plaza and prompt-detail URLs under one route transition key; in-plaza opens add a history marker so Browser Back closes the modal, while direct detail URLs close to `/prompts` with current filters preserved.
+- replaced the fixed four-cell square gallery with one intrinsic-ratio main image and an exact-count thumbnail rail only when multiple real media items exist; single-image prompts no longer show empty synthetic slots.
+- added image-only zoom, body scroll lock, focus trapping/restoration, backdrop and Escape dismissal, and layer-aware project-picker dismissal.
+- kept reference as the primary action, copy as the secondary action, and favorite as a compact icon action. Mobile uses a full-screen scrolling detail with a viewport-fixed bottom action bar; desktop keeps the approximate 62% media / 38% information split.
+- validation:
+  - focused route, history, prompt card, plaza, and modal regressions passed: 5 test files, 15 tests.
+  - `npm run build` passed with the existing Browserslist data-age, CSS utility, dynamic-import, and chunk-size warnings.
+  - real-browser fixture smoke confirmed one intrinsic-ratio image with no thumbnails, two real thumbnails for a two-image prompt, a 61.8% / 38.2% desktop split, preserved plaza DOM behind the modal, mobile fixed footer geometry, no horizontal overflow, and no browser console warnings or errors.
+
 ## 2026-07-22 - Prompt Plaza Masonry Layout
 
 - replaced the standalone prompt plaza's fixed-row grid with responsive CSS multi-column masonry at one, two, three, four, and five columns across the existing breakpoints.

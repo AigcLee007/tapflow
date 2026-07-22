@@ -9,8 +9,15 @@ import {
   type PromptEntry,
 } from "../services/v2PromptsApi";
 import { PromptCard } from "./PromptCard";
+import { PromptDetailModal } from "./PromptDetailModal";
 import { PromptProjectPicker } from "./PromptProjectPicker";
-import { copyPromptText, createPromptInsertRequestId, navigate } from "./promptUi";
+import {
+  closePromptDetail,
+  copyPromptText,
+  createPromptInsertRequestId,
+  navigate,
+  openPromptDetail,
+} from "./promptUi";
 
 const CATEGORIES = [
   ["", "全部"],
@@ -34,7 +41,7 @@ function pageUrl(prompt: PromptEntry, state: { category: string; query: string; 
   return `/prompts/${encodeURIComponent(prompt.id)}${suffix}`;
 }
 
-export function PromptPlazaPage() {
+export function PromptPlazaPage({ promptId = null }: { promptId?: string | null }) {
   const initial = useMemo(() => new URLSearchParams(window.location.search), []);
   const [query, setQuery] = useState(initial.get("q") ?? "");
   const [category, setCategory] = useState(initial.get("category") ?? "");
@@ -149,7 +156,7 @@ export function PromptPlazaPage() {
                   imageUrl={prompt.media[0] ? imageUrls[prompt.media[0].id] : null}
                   onCopy={(value) => void handleCopy(value)}
                   onFavorite={handleFavorite}
-                  onOpen={(value) => navigate(pageUrl(value, { category, query, view }))}
+                  onOpen={(value) => openPromptDetail(pageUrl(value, { category, query, view }))}
                   onReference={setSelectedPrompt}
                   prompt={prompt}
                 />
@@ -158,6 +165,12 @@ export function PromptPlazaPage() {
           </div>
         ) : null}
       </div>
+      {promptId ? (
+        <PromptDetailModal
+          onClose={() => closePromptDetail(`/prompts${window.location.search}`)}
+          promptId={promptId}
+        />
+      ) : null}
       {selectedPrompt ? <PromptProjectPicker onClose={() => setSelectedPrompt(null)} onSelect={(project) => handleProjectSelect(project.id)} /> : null}
     </section>
   );

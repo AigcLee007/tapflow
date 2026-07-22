@@ -11,6 +11,12 @@ vi.mock("../services/v2PromptsApi", () => ({
   recordPromptInteraction: vi.fn(),
 }));
 
+vi.mock("./PromptDetailModal", () => ({
+  PromptDetailModal: ({ promptId }: { promptId: string }) => (
+    <div aria-label={`详情 ${promptId}`} role="dialog" />
+  ),
+}));
+
 const prompt = {
   category: "portrait",
   createdAt: "2026-07-20T00:00:00.000Z",
@@ -38,7 +44,7 @@ describe("PromptPlazaPage", () => {
   });
 
   test("renders prompt results in responsive masonry columns", async () => {
-    render(<PromptPlazaPage />);
+    render(<PromptPlazaPage promptId={null} />);
 
     await waitFor(() => expect(screen.getByTestId("prompt-plaza-masonry")).toBeTruthy());
     const masonry = screen.getByTestId("prompt-plaza-masonry");
@@ -52,5 +58,15 @@ describe("PromptPlazaPage", () => {
     expect(masonry.className).not.toMatch(/(^|\s)grid(\s|$)/);
     expect(item.className).toContain("break-inside-avoid");
     expect(item.className).toContain("mb-3");
+  });
+
+  test("keeps the existing masonry mounted when a detail modal opens", async () => {
+    const view = render(<PromptPlazaPage promptId={null} />);
+    const masonry = await screen.findByTestId("prompt-plaza-masonry");
+
+    view.rerender(<PromptPlazaPage promptId="prompt-1" />);
+
+    expect(screen.getByTestId("prompt-plaza-masonry")).toBe(masonry);
+    expect(screen.getByRole("dialog", { name: "详情 prompt-1" })).toBeTruthy();
   });
 });

@@ -42,6 +42,10 @@ export function getPromptId(pathname: string): string | null {
   return pathname.split("/").filter(Boolean)[1] ? decodeURIComponent(pathname.split("/").filter(Boolean)[1]) : null;
 }
 
+export function getAppRouteTransitionKey(pathname: string): string {
+  return pathname === PROMPTS_ROUTE || isPromptDetailRoute(pathname) ? PROMPTS_ROUTE : pathname;
+}
+
 export function getProjectId(pathname: string): string | null {
   if (!isProjectRoute(pathname)) return null;
   return pathname.split("/").filter(Boolean)[1] ?? null;

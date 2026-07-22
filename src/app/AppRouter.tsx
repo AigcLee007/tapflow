@@ -13,7 +13,6 @@ import { ProviderSettingsPage } from "../account/ProviderSettingsPage";
 import { BillingCenterPage } from "../billing/BillingCenterPage";
 import { FlowProjectPage } from "../flowCanvas/FlowProjectPage";
 import { WorkbenchPage } from "../workbench/WorkbenchPage";
-import { PromptDetailPage } from "../prompts/PromptDetailPage";
 import { PromptPlazaPage } from "../prompts/PromptPlazaPage";
 import { HomePage } from "../workspace/HomePage";
 import { WorkspacePage } from "../workspace/WorkspacePage";
@@ -33,8 +32,8 @@ import {
   HOME_ROUTE,
   WORKBENCH_ROUTE,
   PROMPTS_ROUTE,
+  getAppRouteTransitionKey,
   getPromptId,
-  isPromptDetailRoute,
   isCompatibilityRoute,
   isNonUserFacingRoute,
   getProjectMode,
@@ -107,13 +106,8 @@ function ProtectedRoutes({ pathname }: { pathname: string }) {
     return <WorkbenchPage />;
   }
 
-  if (isPromptDetailRoute(pathname)) {
-    const promptId = getPromptId(pathname);
-    return promptId ? <PromptDetailPage promptId={promptId} /> : <Redirect to={PROMPTS_ROUTE} />;
-  }
-
   if (pathname === PROMPTS_ROUTE || pathname.startsWith(`${PROMPTS_ROUTE}/`)) {
-    return <PromptPlazaPage />;
+    return <PromptPlazaPage promptId={getPromptId(pathname)} />;
   }
 
   if (isProjectRoute(pathname)) {
@@ -205,7 +199,7 @@ export function AppRouter() {
           <WorkbenchPage />
         ) : (
           <WorkspaceShell>
-            <div className="app-route-transition" key={pathname}>
+            <div className="app-route-transition" key={getAppRouteTransitionKey(pathname)}>
               <ProtectedRoutes pathname={pathname} />
             </div>
           </WorkspaceShell>
