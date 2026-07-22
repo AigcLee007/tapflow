@@ -1,6 +1,6 @@
 # Prompt Library Management And Media Performance Design
 
-Date: 2026-07-22  
+Date: 2026-07-22
 Status: Approved for implementation
 
 ## Goal
@@ -17,6 +17,7 @@ The approved behavior is:
 - external keys are generated once and become read-only;
 - featured ordering is managed by drag-and-drop rather than a raw numeric field;
 - descriptions remain optional;
+- Chinese and English prompt text are stored, displayed, copied, and referenced independently;
 - existing and newly uploaded prompt media receive optimized variants, while the plaza uses lazy-loaded thumbnails.
 
 ## Root Cause
@@ -55,7 +56,8 @@ The primary form contains:
 - title;
 - fixed Chinese category select;
 - optional description;
-- prompt text;
+- Chinese prompt text;
+- English prompt text;
 - negative prompt;
 - comma-separated tags.
 
@@ -76,11 +78,34 @@ Fixed categories and stable values are:
 
 Descriptions are optional. When empty, cards and the modal omit the description region rather than rendering placeholder prose.
 
+### Bilingual prompt text
+
+The editor uses a compact `中文 / English` segmented control above two independent text fields. Either field may be empty, but at least one language is required before a draft can be saved or published. The interface shows which language has content without placing both long prompts on screen at once.
+
+The public detail modal follows these rules:
+
+- prefer Chinese when the browser language is Chinese and Chinese text exists;
+- otherwise prefer English when it exists, then fall back to the remaining language;
+- hide the language switch when only one language exists;
+- `复制提示词` copies only the active language;
+- the adjacent copy menu offers `复制中文`, `复制英文`, and `复制中英文` only when the corresponding content exists;
+- `复制中英文` writes clearly separated `中文提示词：` and `English Prompt:` sections;
+- prompt reference inserts only the active language into the target canvas node;
+- search matches both language fields.
+
+Language selection is modal-local UI state and is not authoritative persisted user data. Existing prompt-reference idempotency and project selection behavior remain unchanged.
+
 ## Lifecycle And Data Rules
 
 ### Published edits
 
 `PATCH /api/v2/admin/prompts/:promptId` accepts the current status. When a published prompt is edited, the transaction updates its fields, increments `version`, updates `updated_at`, and leaves `status = 'published'` and `published_at` intact. The response is the fresh prompt view so the editor can clear its dirty state.
+
+### Bilingual storage compatibility
+
+Add nullable `prompt_text_zh` and `prompt_text_en` columns while retaining the current non-null `prompt_text` column for rollback compatibility. Backfill all existing `prompt_text` values into `prompt_text_en`. New writes require at least one bilingual field and maintain `prompt_text = COALESCE(NULLIF(prompt_text_en, ''), prompt_text_zh)` as a compatibility shadow.
+
+The API response adds `promptTextZh` and `promptTextEn` while retaining `promptText` as the same fallback value during the compatibility window. JSON import accepts the two new names and continues accepting legacy `promptText` as an English alias. A future separately approved migration may remove the compatibility column only after rollback support is no longer required.
 
 ### Status transitions
 
@@ -167,6 +192,7 @@ All new routes use `requireAuth`, `requireTenant`, and the existing admin permis
 ## Error Handling
 
 - duplicate external keys return a clear `PROMPT_EXTERNAL_KEY_CONFLICT` validation error;
+- saving with both bilingual prompt fields empty returns `PROMPT_TEXT_REQUIRED`;
 - attempts to permanently delete published prompts return a 409-style domain error with the required archive action;
 - invalid reorder payloads return `PROMPT_ORDER_INVALID` without partial updates;
 - missing original files mark only that media as failed and do not hide prompt text;
@@ -175,7 +201,7 @@ All new routes use `requireAuth`, `requireTenant`, and the existing admin permis
 
 ## Verification And Rollout
 
-Focused tests must cover status transitions, published in-place edits, delete guards and cleanup, category validation including `video`, deterministic reorder updates, variant generation/fallback, cache headers, lazy card loading, and admin action labels.
+Focused tests must cover status transitions, published in-place edits, delete guards and cleanup, category validation including `video`, bilingual validation/backfill/search/copy/reference behavior, deterministic reorder updates, variant generation/fallback, cache headers, lazy card loading, and admin action labels.
 
 Run the focused API, database, admin, and plaza tests, then `npm run build`. For staging:
 
@@ -190,4 +216,4 @@ Rollback uses the previous image/commit. If variant generation is incomplete, th
 
 ## Scope Boundaries
 
-This design does not introduce a recycle-bin status, change prompt reference semantics, move prompt media to S3, change canvas persistence, or expose external keys to end users.
+This design does not introduce a recycle-bin status, automatic prompt translation, move prompt media to S3, change canvas persistence, or expose external keys to end users. Prompt reference keeps its existing node-insertion contract and changes only which explicitly selected language text is inserted.

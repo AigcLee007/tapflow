@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make prompt lifecycle management complete and make the prompt plaza fast through generated local media variants, HTTP caching, lazy loading, and bounded concurrency.
+**Goal:** Make prompt lifecycle management complete, support independent Chinese/English prompt workflows, and make the prompt plaza fast through generated local media variants, HTTP caching, lazy loading, and bounded concurrency.
 
 **Architecture:** Keep prompt originals on the dedicated local prompt-catalog filesystem. Add preview and thumbnail keys beside the existing original key, expose a variant-aware authenticated byte endpoint, and let the plaza load cached thumbnail blobs only when cards approach the viewport. Extend the existing admin prompt APIs with guarded deletion and atomic ordering, then align the admin panel with explicit lifecycle actions and the eight fixed categories.
 
@@ -14,7 +14,7 @@
 
 ### Database and server
 
-- Create `packages/db/migrations/000041_prompt_library_management_media_variants.sql` for derived media keys, category support, and indexes.
+- Create `packages/db/migrations/000041_prompt_library_management_media_variants.sql` for bilingual prompt fields, derived media keys, category support, and indexes.
 - Modify `apps/api/src/modules/prompts/prompts.schemas.ts` for the eight-category validation and reorder/delete input types.
 - Modify `apps/api/src/modules/prompts/prompts.service.ts` for lifecycle guards, prompt deletion, atomic ordering, variant generation, variant reads, and cleanup logging.
 - Modify `apps/api/src/modules/prompts/prompts.routes.ts` for prompt delete, reorder, and `variant` query support.
@@ -23,11 +23,12 @@
 ### Frontend
 
 - Modify `src/services/v2PromptsApi.ts` for prompt delete/order calls and variant-aware media reads.
-- Modify `src/admin/PromptLibraryPanel.tsx` for status filters, dirty state, lifecycle actions, fixed category select, advanced external key, and drag ordering.
+- Modify `src/admin/PromptLibraryPanel.tsx` for status filters, dirty state, lifecycle actions, bilingual prompt editing, fixed category select, advanced external key, and drag ordering.
 - Modify `src/admin/PromptLibraryPanel.test.tsx` for the action/state contract.
 - Create `src/prompts/promptMediaCache.ts` and `src/prompts/promptMediaCache.test.ts` for in-flight deduplication, four-request concurrency, and object URL eviction.
 - Modify `src/prompts/PromptCard.tsx` and `src/prompts/PromptPlazaPage.tsx` to load thumbnail variants through an intersection-aware boundary.
 - Modify `src/prompts/PromptDetailModal.tsx` to request thumb/preview/original variants in the correct interaction state.
+- Modify `src/prompts/promptUi.ts` so copy/reference helpers accept an explicit active language and bilingual-copy mode.
 - Modify `src/prompts/PromptPlazaPage.test.tsx`, `src/prompts/PromptDetailModal.test.tsx`, and add `src/prompts/PromptCard.test.tsx` coverage for lazy media and cache reuse.
 
 ### Documentation and deployment
@@ -42,6 +43,7 @@
 
 **Files:**
 - Create: `apps/api/test/prompts.service.test.ts`
+- Modify: `apps/api/test/prompts.schemas.test.ts`
 - Modify: `src/admin/PromptLibraryPanel.test.tsx`
 - Modify: `src/services/v2PromptsApi.test.ts`
 
@@ -60,23 +62,27 @@ await expect(service.deleteAdminPrompt(ctx, archivedId)).resolves.toEqual({ ok: 
 
 Verify `video` is accepted, an unknown category is rejected by admin input validation, and an order payload with a missing or foreign prompt ID fails with `PROMPT_ORDER_INVALID` before any update query runs.
 
-- [ ] **Step 3: Add admin UI state tests**
+- [ ] **Step 3: Add bilingual schema and compatibility tests**
 
-Render one draft, one published, and one archived entry. Assert the visible actions are respectively `发布/删除`, `保存修改/下架`, and `恢复草稿/永久删除`; assert the external key input is read-only and the category control is a select with `视频`.
+Verify a prompt with only `promptTextZh` is valid, a prompt with only `promptTextEn` is valid, both empty values fail with `PROMPT_TEXT_REQUIRED`, legacy import `promptText` maps to English, and the public response keeps the compatibility `promptText` fallback.
 
-- [ ] **Step 4: Add client request tests**
+- [ ] **Step 4: Add admin UI state tests**
+
+Render one draft, one published, and one archived entry. Assert the visible actions are respectively `发布/删除`, `保存修改/下架`, and `恢复草稿/永久删除`; assert the external key input is read-only, the category control is a select with `视频`, and the Chinese/English segmented editor preserves independent values.
+
+- [ ] **Step 5: Add client request tests**
 
 Assert `deleteAdminPrompt(id)` sends `DELETE /admin/prompts/:id`, `reorderAdminPrompts(input)` sends the complete ordered payload, and `getPromptMediaBlob(id, promptId, "thumb")` includes `?variant=thumb` while preserving the admin path.
 
-- [ ] **Step 5: Run the tests and record the expected RED state**
+- [ ] **Step 6: Run the tests and record the expected RED state**
 
 Run:
 
 ```bash
-npx vitest --run apps/api/test/prompts.service.test.ts src/admin/PromptLibraryPanel.test.tsx src/services/v2PromptsApi.test.ts
+npx vitest --run apps/api/test/prompts.schemas.test.ts apps/api/test/prompts.service.test.ts src/admin/PromptLibraryPanel.test.tsx src/services/v2PromptsApi.test.ts
 ```
 
-Expected: failures for the not-yet-defined delete/order methods, missing `video` category, old action labels, and missing variant argument.
+Expected: failures for the not-yet-defined delete/order methods, missing bilingual fields, missing `video` category, old action labels, and missing variant argument.
 
 ---
 
@@ -91,29 +97,33 @@ Expected: failures for the not-yet-defined delete/order methods, missing `video`
 
 - [ ] **Step 1: Add the migration**
 
-Add nullable `preview_storage_key` and `thumbnail_storage_key` columns to `prompt_entry_media`. Add an index on `(prompt_id, sort_order, id)` if the migration history does not already provide it. Do not change the existing original `storage_key` contract or move files to S3.
+Add nullable `prompt_text_zh` and `prompt_text_en` columns to `prompt_entries`, backfill current `prompt_text` into `prompt_text_en`, and add a check requiring at least one non-empty bilingual field. Retain `prompt_text` as a rollback-compatible shadow column. Add nullable `preview_storage_key` and `thumbnail_storage_key` columns to `prompt_entry_media`. Add an index on `(prompt_id, sort_order, id)` if the migration history does not already provide it. Do not change the existing original `storage_key` contract or move files to S3.
 
 - [ ] **Step 2: Extend schema constants and payloads**
 
-Define the eight stored category values, add an admin reorder schema containing `promptIds: z.array(z.string().uuid()).min(1).max(500)`, and add `variant` query validation with `thumb`, `preview`, and `original` defaulting to `original`.
+Define the eight stored category values. Replace the single required admin prompt text with optional `promptTextZh` and `promptTextEn` plus an object-level at-least-one refinement, retain legacy `promptText` only on import as an English alias, add an admin reorder schema containing `promptIds: z.array(z.string().uuid()).min(1).max(500)`, and add `variant` query validation with `thumb`, `preview`, and `original` defaulting to `original`.
 
-- [ ] **Step 3: Implement guarded deletion**
+- [ ] **Step 3: Map bilingual records and compatibility text**
+
+Extend prompt record/view types and `promptSelectSql()` with both language columns. Return `promptTextZh`, `promptTextEn`, and `promptText` where compatibility text is English when available and Chinese otherwise. On create/update/import, write both language columns and the same fallback into legacy `prompt_text`.
+
+- [ ] **Step 4: Implement guarded deletion**
 
 Add `deleteAdminPrompt(context, promptId)` that rejects `published`, selects all three storage keys, deletes the row transactionally, then unlinks existing files and logs cleanup failures. Use the existing tenant transaction helper and return `{ ok: true }`.
 
-- [ ] **Step 4: Implement atomic reorder**
+- [ ] **Step 5: Implement atomic reorder**
 
 Add `reorderAdminPrompts(context, promptIds)` that loads the IDs in the current admin scope, compares sets, and updates `sort_weight` in one transaction. Assign descending weights from `promptIds.length * 1000` so future inserts can be placed between existing entries without rewriting the public sort contract.
 
-- [ ] **Step 5: Preserve published edits and explicit transitions**
+- [ ] **Step 6: Preserve published edits and explicit transitions**
 
 Keep `status` and `published_at` unchanged in `updateAdminPrompt` when the submitted status is `published`. Add explicit transition checks in `setAdminStatus`; call the existing media requirement before either draft-to-published or archived-to-published transitions.
 
-- [ ] **Step 6: Add routes and route tests**
+- [ ] **Step 7: Add routes and route tests**
 
 Register `DELETE /api/v2/admin/prompts/:promptId`, `PATCH /api/v2/admin/prompts/order`, and `variant` parsing on both prompt media byte routes. Use the existing `adminHandlers` and `readHandlers`; never return storage keys.
 
-- [ ] **Step 7: Run the server tests GREEN**
+- [ ] **Step 8: Run the server tests GREEN**
 
 Run:
 
@@ -196,7 +206,7 @@ Track `statusFilter`, derive visible list items, and render actions from the sel
 
 - [ ] **Step 3: Make form semantics clear**
 
-Replace free-text category input with the shared select/menu pattern, move external key into a read-only advanced details block, remove sort weight input, and add the optional-description helper. Keep prompt text, negative prompt, tags, and media upload behavior.
+Replace free-text category input with the shared select/menu pattern, move external key into a read-only advanced details block, remove sort weight input, and add the optional-description helper. Add a `中文 / English` segmented control with independent text areas, visible content indicators, and an at-least-one validation message. Keep negative prompt, tags, and media upload behavior.
 
 - [ ] **Step 4: Add dirty-state and immediate published-save behavior**
 
@@ -229,35 +239,41 @@ npx vitest --run src/admin/PromptLibraryPanel.test.tsx src/services/v2PromptsApi
 - Modify: `src/prompts/PromptCard.tsx`
 - Modify: `src/prompts/PromptPlazaPage.tsx`
 - Modify: `src/prompts/PromptDetailModal.tsx`
+- Modify: `src/prompts/promptUi.ts`
 - Modify: `src/prompts/PromptPlazaPage.test.tsx`
 - Modify: `src/prompts/PromptDetailModal.test.tsx`
+- Modify: `src/prompts/promptUi.test.ts`
 
 - [ ] **Step 1: Write cache and lazy-loading tests**
 
 Assert two consumers of the same `mediaId + variant` share one fetch, no more than four requests are active, an error is not cached forever, and an intersection event starts a card thumbnail request only after it approaches the viewport.
 
-- [ ] **Step 2: Implement the media cache**
+- [ ] **Step 2: Add bilingual detail, copy, search, and reference tests**
+
+Assert Chinese-browser default selection prefers Chinese, English fallback works, the switch is hidden for single-language prompts, `复制中文` and `复制英文` write only their fields, `复制中英文` writes labeled sections, search matches either language, and reference passes only the active language text into the existing project navigation contract.
+
+- [ ] **Step 3: Implement the media cache**
 
 Export `getPromptMediaObjectUrl(mediaId, variant, options)` backed by an in-flight map and a bounded LRU map. Use the normal browser fetch cache (no `no-store`), create one object URL per cached response, and revoke URLs when evicted.
 
-- [ ] **Step 3: Implement the card boundary**
+- [ ] **Step 4: Implement the card boundary**
 
 Render a fixed-ratio placeholder while a card is outside the observer margin. Once visible, request only `thumb`, set `loading="lazy"` and `decoding="async"`, and preserve the existing masonry layout and intrinsic-ratio behavior.
 
-- [ ] **Step 4: Update the detail modal variants**
+- [ ] **Step 5: Update the detail modal variants and language controls**
 
-Use `thumb` for thumbnails, `preview` for the selected main image, and request `original` only when zoom opens. Selecting a previously loaded item must change the image immediately from the cache.
+Use `thumb` for thumbnails, `preview` for the selected main image, and request `original` only when zoom opens. Selecting a previously loaded item must change the image immediately from the cache. Add the language segmented control only when both fields exist, make the primary copy action use the active field, expose the three approved copy-menu choices, and pass the active prompt text into reference navigation.
 
-- [ ] **Step 5: Add plaza and modal regressions**
+- [ ] **Step 6: Add plaza and modal regressions**
 
 Assert the plaza no longer starts one original fetch per card on mount, repeat openings reuse the cache, detail requests use the expected variants, and failed thumbnails do not hide titles/actions.
 
-- [ ] **Step 6: Run frontend media tests**
+- [ ] **Step 7: Run frontend media tests**
 
 Run:
 
 ```bash
-npx vitest --run src/prompts/promptMediaCache.test.ts src/prompts/PromptCard.test.tsx src/prompts/PromptPlazaPage.test.tsx src/prompts/PromptDetailModal.test.tsx
+npx vitest --run src/prompts/promptMediaCache.test.ts src/prompts/promptUi.test.ts src/prompts/PromptCard.test.tsx src/prompts/PromptPlazaPage.test.tsx src/prompts/PromptDetailModal.test.tsx
 ```
 
 ---
@@ -271,7 +287,7 @@ npx vitest --run src/prompts/promptMediaCache.test.ts src/prompts/PromptCard.tes
 - [ ] **Step 1: Run the complete focused suite**
 
 ```bash
-npx vitest --run apps/api/test/prompts.service.test.ts scripts/migrate-prompt-media-variants.test.ts src/services/v2PromptsApi.test.ts src/admin/PromptLibraryPanel.test.tsx src/prompts/promptMediaCache.test.ts src/prompts/PromptCard.test.tsx src/prompts/PromptPlazaPage.test.tsx src/prompts/PromptDetailModal.test.tsx
+npx vitest --run apps/api/test/prompts.schemas.test.ts apps/api/test/prompts.service.test.ts scripts/migrate-prompt-media-variants.test.ts src/services/v2PromptsApi.test.ts src/admin/PromptLibraryPanel.test.tsx src/prompts/promptMediaCache.test.ts src/prompts/promptUi.test.ts src/prompts/PromptCard.test.tsx src/prompts/PromptPlazaPage.test.tsx src/prompts/PromptDetailModal.test.tsx
 ```
 
 - [ ] **Step 2: Build all affected workspaces**
@@ -310,7 +326,7 @@ Use separate commits for server lifecycle/API, media variants, frontend admin UI
 
 ## Plan Self-Review
 
-- Spec coverage: lifecycle actions, published in-place saves, archive-before-delete, fixed `video` category, read-only external keys, drag ordering, optional descriptions, local variants, migration, cache headers, lazy loading, bounded concurrency, tenant isolation, tests, browser checks, deployment, and rollback each have an explicit task.
-- Type consistency: the plan uses `promptIds`, `variant`, `thumbnail_storage_key`, `preview_storage_key`, `deleteAdminPrompt`, `reorderAdminPrompts`, and `getPromptMediaObjectUrl` consistently across the file map, API tasks, UI tasks, and tests.
-- Placeholder scan: no `TODO`, `TBD`, or unspecified implementation steps are required; every command names its target and expected result.
+- Spec coverage: lifecycle actions, published in-place saves, archive-before-delete, fixed `video` category, bilingual editing/copy/reference/search, read-only external keys, drag ordering, optional descriptions, local variants, migration, cache headers, lazy loading, bounded concurrency, tenant isolation, tests, browser checks, deployment, and rollback each have an explicit task.
+- Type consistency: the plan uses `promptTextZh`, `promptTextEn`, compatibility `promptText`, `promptIds`, `variant`, `thumbnail_storage_key`, `preview_storage_key`, `deleteAdminPrompt`, `reorderAdminPrompts`, and `getPromptMediaObjectUrl` consistently across the file map, API tasks, UI tasks, and tests.
+- Completeness scan: every implementation step and command names its target and expected result; no unresolved markers remain.
 - Scope: database/API lifecycle and media delivery are coupled through the same prompt media table, but each has an independently testable task boundary and can be rolled out with original-file fallback.
