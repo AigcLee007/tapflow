@@ -5778,3 +5778,12 @@ Validation completed:
 - design specification:
   - `docs/superpowers/specs/2026-07-20-prompt-plaza-design.md`
 - implementation remains pending approval of the written specification and a follow-up implementation plan.
+
+## 2026-07-23 - Prompt Image Original Upload Limit
+
+- raised the prompt image original upload limit to 25 MB.
+- added browser preflight with the exact error `效果图大小必须在 25 MB 以内` before upload.
+- mapped Fastify custom `application/x-prompt-media` content-parser/body-limit failures to HTTP 413 for oversized prompt image uploads.
+- kept original uploads prompt-only in the server directory; they are not exposed in Prompt Plaza.
+- Prompt Plaza continues to use generated WebP thumbnail and preview derivatives.
+- no database migration or environment-variable changes were required.

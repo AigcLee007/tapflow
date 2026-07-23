@@ -63,7 +63,7 @@ import { createApiLoggerOptions, logApiRequestComplete } from "./observability/l
 import { registerProjectRoutes } from "./modules/projects/projects.routes.js";
 import { ProjectsService } from "./modules/projects/projects.service.js";
 import { registerPromptRoutes } from "./modules/prompts/prompts.routes.js";
-import { PromptsService } from "./modules/prompts/prompts.service.js";
+import { PROMPT_MEDIA_MAX_BYTES, PromptsService } from "./modules/prompts/prompts.service.js";
 import { registerQueueRoutes } from "./modules/queues/queues.routes.js";
 import { QueueHealthService } from "./modules/queues/queues.service.js";
 import { registerWorkbenchRoutes } from "./modules/workbench/workbench.routes.js";
@@ -348,6 +348,19 @@ export function buildApp(options?: {
   app.decorate("workflowRunsService", workflowRunsService);
   registerRequestContext(app, authService);
   app.setErrorHandler((error, request, reply) => {
+    const contentType = request.headers["content-type"]?.split(";", 1)[0]?.trim().toLowerCase();
+    const errorCode = typeof error === "object" && error !== null && "code" in error
+      ? error.code
+      : undefined;
+    if (errorCode === "FST_ERR_CTP_BODY_TOO_LARGE" && contentType === "application/x-prompt-media") {
+      return sendStandardError(
+        request,
+        reply,
+        413,
+        "PROMPT_MEDIA_SIZE_INVALID",
+        `效果图大小必须在 ${PROMPT_MEDIA_MAX_BYTES / 1024 / 1024} MB 以内`,
+      );
+    }
     request.log.error(
       {
         err: error,

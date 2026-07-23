@@ -143,6 +143,31 @@ describe("PromptsService lifecycle", () => {
     expect((await readFile(join(mediaDir, promptId, `${mediaId}.thumb.webp`))).toString()).toBe("existing-thumb");
     await expect(access(join(mediaDir, promptId, `${mediaId}.preview.webp`))).rejects.toMatchObject({ code: "ENOENT" });
   });
+
+  test("accepts a 25 MB prompt media body past size validation", async () => {
+    const service = new PromptsService({ pool: poolWithQuery(vi.fn()) });
+    const afterValidation = new Error("reached prompt lookup");
+    vi.spyOn(service, "getPrompt").mockRejectedValue(afterValidation);
+
+    await expect(service.uploadLocalMedia(context, "73f9e9b3-27af-4bf0-89c1-6f06c72dd332", {
+      body: Buffer.alloc(25 * 1024 * 1024),
+      mimeType: "image/jpeg",
+      originalFilename: "effect.jpg",
+    })).rejects.toBe(afterValidation);
+  });
+
+  test("rejects prompt media larger than 25 MB with the size validation error", async () => {
+    const service = new PromptsService({ pool: poolWithQuery(vi.fn()) });
+
+    await expect(service.uploadLocalMedia(context, "73f9e9b3-27af-4bf0-89c1-6f06c72dd332", {
+      body: Buffer.alloc(25 * 1024 * 1024 + 1),
+      mimeType: "image/jpeg",
+      originalFilename: "effect.jpg",
+    })).rejects.toEqual(expect.objectContaining({
+      code: "PROMPT_MEDIA_SIZE_INVALID",
+      message: "效果图大小必须在 25 MB 以内",
+    }));
+  });
 });
 
 function promptRecord(status: "archived" | "draft" | "published") {

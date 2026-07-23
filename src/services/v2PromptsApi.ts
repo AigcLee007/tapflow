@@ -1,5 +1,7 @@
 import { apiDelete, apiGet, apiPatch, apiPost, getStoredAccessToken, V2HttpError } from "./v2HttpClient";
 
+export const PROMPT_MEDIA_MAX_BYTES = 25 * 1024 * 1024;
+
 export type PromptMedia = {
   altText: string;
   height: number | null;
@@ -147,6 +149,7 @@ export function deleteAdminPromptMedia(promptId: string, mediaId: string): Promi
 
 export async function uploadAdminPromptMedia(promptId: string, file: File): Promise<PromptMedia> {
   if (!file.type.startsWith("image/")) throw new Error("请选择图片文件");
+  if (file.size > PROMPT_MEDIA_MAX_BYTES) throw new Error("效果图大小必须在 25 MB 以内");
   const size = await readImageSize(file).catch(() => ({ height: 0, width: 0 }));
   const token = getStoredAccessToken();
   const response = await fetch(`/api/v2/admin/prompts/${encodeURIComponent(promptId)}/media`, {

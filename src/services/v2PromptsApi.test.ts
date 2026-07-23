@@ -1,6 +1,16 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { deleteAdminPrompt, favoritePrompt, getPromptMediaBlob, listPrompts, recordPromptInteraction, reorderAdminPrompts, type PromptMedia } from "./v2PromptsApi";
+import {
+  deleteAdminPrompt,
+  favoritePrompt,
+  getPromptMediaBlob,
+  listPrompts,
+  PROMPT_MEDIA_MAX_BYTES,
+  recordPromptInteraction,
+  reorderAdminPrompts,
+  uploadAdminPromptMedia,
+  type PromptMedia,
+} from "./v2PromptsApi";
 import { clearStoredAuth, setStoredTokens } from "./v2HttpClient";
 
 describe("v2PromptsApi", () => {
@@ -56,6 +66,28 @@ describe("v2PromptsApi", () => {
 
     expect(media.id).toBeTruthy();
     expect("assetId" in media).toBe(false);
+  });
+
+  test("rejects prompt media larger than 25 MB before reading or uploading it", async () => {
+    const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
+    const createObjectUrlMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(URL, "createObjectURL").mockImplementation(() => {
+      createObjectUrlMock();
+      return "blob:test";
+    });
+    vi.stubGlobal("Image", class {
+      onerror: (() => void) | null = null;
+      set src(_value: string) { this.onerror?.(); }
+    });
+    const file = new File([new Uint8Array(25 * 1024 * 1024 + 1)], "oversized.png", { type: "image/png" });
+
+    const upload = uploadAdminPromptMedia("prompt-1", file);
+
+    expect(PROMPT_MEDIA_MAX_BYTES).toBe(25 * 1024 * 1024);
+    await expect(upload).rejects.toThrow("效果图大小必须在 25 MB 以内");
+    expect(createObjectUrlMock).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   test("deletes and reorders admin prompts and requests thumbnail variants", async () => {

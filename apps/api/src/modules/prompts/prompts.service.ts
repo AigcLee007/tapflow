@@ -13,6 +13,8 @@ import {
   promptImportRowSchema,
 } from "./prompts.schemas.js";
 
+export const PROMPT_MEDIA_MAX_BYTES = 25 * 1024 * 1024;
+
 type PgPool = Pool;
 
 export type PromptContext = {
@@ -234,8 +236,8 @@ export class PromptsService {
     if (!input.mimeType.startsWith("image/") || !["image/jpeg", "image/png", "image/webp"].includes(input.mimeType)) {
       throw new PromptApiError(400, "PROMPT_MEDIA_TYPE_INVALID", "仅支持 JPG、PNG 和 WebP 效果图");
     }
-    if (input.body.byteLength === 0 || input.body.byteLength > 10 * 1024 * 1024) {
-      throw new PromptApiError(400, "PROMPT_MEDIA_SIZE_INVALID", "效果图大小必须在 10 MB 以内");
+    if (input.body.byteLength === 0 || input.body.byteLength > PROMPT_MEDIA_MAX_BYTES) {
+      throw new PromptApiError(400, "PROMPT_MEDIA_SIZE_INVALID", "效果图大小必须在 25 MB 以内");
     }
     await this.getPrompt(context, promptId, true);
     const mediaId = this.idFactory();

@@ -70,6 +70,17 @@ describe("PromptLibraryPanel", () => {
     expect(screen.queryByRole("button", { name: "上传效果图" })).toBeNull();
   });
 
+  test("explains effect-image formats, storage, derivatives, and upload limit", async () => {
+    render(<PromptLibraryPanel />);
+
+    await screen.findByText("新建提示词");
+
+    expect(screen.getByText(/JPG\/PNG\/WebP/)).toBeTruthy();
+    expect(screen.getByText(/单张最大 25 MB/)).toBeTruthy();
+    expect(screen.getByText(/原图保留在提示词专用服务器目录/)).toBeTruthy();
+    expect(screen.getByText(/广场加载 WebP 预览图\/缩略图/)).toBeTruthy();
+  });
+
   test("shows status-specific lifecycle actions", async () => {
     listAdminPromptsMock.mockResolvedValue([
       entry("draft-1", "draft", "草稿提示词"),

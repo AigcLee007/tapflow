@@ -28,6 +28,31 @@ const apps: Array<ReturnType<typeof buildPromptRouteApp>> = [];
 afterEach(async () => { await Promise.all(apps.splice(0).map((app) => app.close())); });
 
 describe("prompt routes", () => {
+  test("passes prompt media uploads larger than 10 MB to the service", async () => {
+    const uploadLocalMedia = vi.fn(async () => ({ id: mediaId }));
+    const app = buildPromptRouteApp({ uploadLocalMedia }); apps.push(app);
+    const body = Buffer.alloc(11 * 1024 * 1024);
+
+    const response = await app.inject({
+      headers: {
+        "content-type": "application/x-prompt-media",
+        "x-prompt-media-content-type": "image/jpeg",
+        "x-prompt-media-filename": "effect.jpg",
+      },
+      method: "POST",
+      payload: body,
+      url: `/api/v2/admin/prompts/${promptId}/media`,
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(uploadLocalMedia).toHaveBeenCalledWith(expect.anything(), promptId, expect.objectContaining({
+      body: expect.any(Buffer),
+      mimeType: "image/jpeg",
+      originalFilename: "effect.jpg",
+    }));
+    expect((uploadLocalMedia.mock.calls[0]?.[2] as { body: Buffer }).body.byteLength).toBe(body.byteLength);
+  });
+
   test("serves requested media variants with immutable private caching and 304 support", async () => {
     const getLocalMediaBytes = vi.fn(async () => ({ body: Buffer.from("preview"), etag: `\"${mediaId}-preview-3\"`, mimeType: "image/webp" }));
     const app = buildPromptRouteApp({ getLocalMediaBytes }); apps.push(app);

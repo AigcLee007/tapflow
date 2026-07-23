@@ -26,7 +26,7 @@ import {
   promptReorderSchema,
   promptStatusSchema,
 } from "./prompts.schemas.js";
-import { PromptApiError, type PromptContext } from "./prompts.service.js";
+import { PROMPT_MEDIA_MAX_BYTES, PromptApiError, type PromptContext } from "./prompts.service.js";
 
 function sendError(
   request: FastifyRequest,
@@ -78,7 +78,7 @@ export function registerPromptRoutes(app: FastifyInstance): void {
   const readHandlers = [requireAuth, requireTenant, requirePermission("prompt:read")];
   const favoriteHandlers = [requireAuth, requireTenant, requirePermission("prompt:favorite")];
   const adminHandlers = [requireAuth, requireTenant, requirePermission("admin:system")];
-  app.addContentTypeParser("application/x-prompt-media", { bodyLimit: 10 * 1024 * 1024, parseAs: "buffer" }, (_request, body, done) => done(null, body));
+  app.addContentTypeParser("application/x-prompt-media", { bodyLimit: PROMPT_MEDIA_MAX_BYTES, parseAs: "buffer" }, (_request, body, done) => done(null, body));
 
   app.get(
     "/api/v2/prompts",
