@@ -125,7 +125,7 @@ export function PromptPlazaPage({ promptId = null }: { promptId?: string | null 
         {!loading && !error && items.length === 0 ? <div className="mt-8 rounded border border-dashed border-white/12 p-10 text-center text-sm text-slate-400">当前筛选下还没有提示词。</div> : null}
         {!loading && !error && items.length > 0 ? (
           <div
-            className="mt-6 columns-1 gap-3 sm:columns-2 lg:columns-3 xl:columns-4 2xl:columns-5"
+            className="mt-6 columns-[340px] gap-3"
             data-testid="prompt-plaza-masonry"
           >
             {items.map((prompt) => (

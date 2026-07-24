@@ -1,6 +1,6 @@
 ﻿# Project Record
 
-Last updated: 2026-07-22
+Last updated: 2026-07-24
 Maintainers: project team + Codex sessions
 
 ## 2026-07-22 - Prompt Library Lifecycle, Bilingual Prompts, And Media Variants
@@ -5786,4 +5786,11 @@ Validation completed:
 - mapped Fastify custom `application/x-prompt-media` content-parser/body-limit failures to HTTP 413 for oversized prompt image uploads.
 - kept original uploads prompt-only in the server directory; they are not exposed in Prompt Plaza.
 - Prompt Plaza continues to use generated WebP thumbnail and preview derivatives.
+- no database migration or environment-variable changes were required.
+
+## 2026-07-24 - Prompt Plaza Adaptive Masonry Width
+
+- changed Prompt Plaza masonry to use an adaptive 340px column width instead of fixed breakpoint column counts.
+- a 1600px desktop viewport now renders four columns, while narrower available areas reduce the column count instead of compressing cards.
+- card rendering, prompt media behavior, WebP derivatives, and dedicated server-directory persistence are unchanged.
 - no database migration or environment-variable changes were required.

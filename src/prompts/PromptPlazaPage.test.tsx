@@ -50,11 +50,8 @@ describe("PromptPlazaPage", () => {
     const masonry = screen.getByTestId("prompt-plaza-masonry");
     const item = screen.getByTestId("prompt-masonry-item-prompt-1");
 
-    expect(masonry.className).toContain("columns-1");
-    expect(masonry.className).toContain("sm:columns-2");
-    expect(masonry.className).toContain("lg:columns-3");
-    expect(masonry.className).toContain("xl:columns-4");
-    expect(masonry.className).toContain("2xl:columns-5");
+    expect(masonry.className).toContain("columns-[340px]");
+    expect(masonry.className).not.toMatch(/(?:^|\s)(?:sm|md|lg|xl|2xl):columns-/);
     expect(masonry.className).not.toMatch(/(^|\s)grid(\s|$)/);
     expect(item.className).toContain("break-inside-avoid");
     expect(item.className).toContain("mb-3");
