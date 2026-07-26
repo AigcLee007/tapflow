@@ -1,7 +1,23 @@
 ﻿# Project Record
 
-Last updated: 2026-07-24
+Last updated: 2026-07-27
 Maintainers: project team + Codex sessions
+
+## 2026-07-27 - XunhuPay Personal Wallet Approved Design
+
+- completed and approved the product and technical design for real XunhuPay recharge payments backed by a global personal AI-credit wallet:
+  - one wallet per `user_id`, shared across every workspace the user accesses;
+  - workspace/project/workflow attribution remains on usage records, while reserve, settle, refund, and expiration charge the initiating user's wallet;
+  - fixed launch plans are CNY 9.90 / 100 credits, CNY 50 / 700 credits, CNY 100 / 1,500 credits, and CNY 200 / 3,300 credits;
+  - platform system administrators control plan price, credit quantity, active status, ordering, and validity; launch validity is 365 days and each payment stores a non-retroactive commercial snapshot;
+  - XunhuPay checkout, signed asynchronous callback, order query/reconciliation, exactly-once crediting, immutable ledger entries, earliest-expiry-first allocation, expiration, and admin-only full refunds are defined end to end;
+  - existing workspace balance migrates idempotently to the workspace owner's personal wallet, preserving source-grant expiry and retaining old tenant billing records as read-only audit history;
+  - the existing workspace membership discount model remains outside this redesign and continues to price a run before the discounted amount is charged to the personal wallet.
+- selected a new personal-wallet ledger and controlled cutover instead of rewriting historical tenant billing rows or retaining permanent dual wallets.
+- recorded required RLS, callback privilege boundaries, API surfaces, frontend behavior, environment variables, tests, migration verification, Docker Compose v2 deployment order, and post-cutover rollback posture.
+- design specification:
+  - `docs/superpowers/specs/2026-07-27-xunhupay-personal-wallet-design.md`
+- implementation remains pending review of the written specification and a follow-up implementation plan.
 
 ## 2026-07-22 - Prompt Library Lifecycle, Bilingual Prompts, And Media Variants
 
