@@ -17,7 +17,10 @@ Maintainers: project team + Codex sessions
 - recorded required RLS, callback privilege boundaries, API surfaces, frontend behavior, environment variables, tests, migration verification, Docker Compose v2 deployment order, and post-cutover rollback posture.
 - design specification:
   - `docs/superpowers/specs/2026-07-27-xunhupay-personal-wallet-design.md`
-- implementation remains pending review of the written specification and a follow-up implementation plan.
+- implementation plan completed after specification approval:
+  - `docs/superpowers/plans/2026-07-27-xunhupay-personal-wallet.md`
+  - the plan defines 13 TDD tasks covering schema/RLS, personal-wallet accounting, immutable workflow billing ownership, tenant-balance migration, XunhuPay signing and callbacks, reconciliation/refunds, expiry sweeping, user/admin UI, deployment cutover, full verification, and real-payment staging acceptance;
+  - implementation and staging execution remain pending selection of the execution mode.
 
 ## 2026-07-22 - Prompt Library Lifecycle, Bilingual Prompts, And Media Variants
 
