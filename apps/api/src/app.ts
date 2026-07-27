@@ -49,6 +49,8 @@ import { registerAssetRoutes } from "./modules/assets/assets.routes.js";
 import { AssetsService } from "./modules/assets/assets.service.js";
 import { registerBillingRoutes } from "./modules/billing/billing.routes.js";
 import { BillingApiService } from "./modules/billing/billing.service.js";
+import { registerPaymentRoutes } from "./modules/payments/payments.routes.js";
+import { PaymentsService } from "./modules/payments/payments.service.js";
 import { registerFlowRoutes } from "./modules/flows/flows.routes.js";
 import { FlowsService } from "./modules/flows/flows.service.js";
 import { registerFlowCommentRoutes } from "./modules/flow-comments/flow-comments.routes.js";
@@ -222,6 +224,7 @@ export function buildApp(options?: {
     storageProvider,
   });
   const billingService = new BillingApiService({ pool });
+  const paymentsService = new PaymentsService(env, { pool });
   const auditService =
     options?.auditService ??
     new AuditApiService({
@@ -334,6 +337,7 @@ export function buildApp(options?: {
   app.decorate("authService", authService);
   app.decorate("assetsService", assetsService);
   app.decorate("billingService", billingService);
+  app.decorate("paymentsService", paymentsService);
   app.decorate("credentialVault", credentialVault);
   app.decorate("projectsService", projectsService);
   app.decorate("promptsService", promptsService);
@@ -443,6 +447,7 @@ export function buildApp(options?: {
   registerAuthRoutes(app);
   registerAssetRoutes(app);
   registerBillingRoutes(app);
+  registerPaymentRoutes(app);
   registerProjectRoutes(app);
   registerPromptRoutes(app);
   registerFlowRoutes(app);

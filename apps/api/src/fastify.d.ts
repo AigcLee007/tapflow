@@ -15,6 +15,7 @@ import type { AiPluginService } from "./modules/ai-plugins/ai-plugins.service.js
 import type { AiRouteTestService } from "./modules/ai-route-tests/ai-route-tests.service.js";
 import type { AssetsService } from "./modules/assets/assets.service.js";
 import type { BillingApiService } from "./modules/billing/billing.service.js";
+import type { PaymentsService } from "./modules/payments/payments.service.js";
 import type { FlowsService } from "./modules/flows/flows.service.js";
 import type { FlowCommentsService } from "./modules/flow-comments/flow-comments.service.js";
 import type { FlowHistoryService } from "./modules/flow-history/flow-history.service.js";
@@ -39,6 +40,7 @@ declare module "fastify" {
     authService: AuthService;
     assetsService: AssetsService;
     billingService: BillingApiService;
+    paymentsService: PaymentsService;
     credentialVault: CredentialVault;
     flowsService: FlowsService;
     flowCommentsService: FlowCommentsService;

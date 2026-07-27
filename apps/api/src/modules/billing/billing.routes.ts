@@ -10,11 +10,9 @@ import { BillingApiError } from "./billing.service.js";
 import {
   adminAdjustBillingSchema,
   billingListQuerySchema,
-  createPaymentCheckoutSchema,
   redeemBillingCodeSchema,
   type AdminAdjustBillingInput,
   type BillingListQuery,
-  type CreatePaymentCheckoutInput,
   type RedeemBillingCodeInput,
 } from "./billing.schemas.js";
 
@@ -142,23 +140,6 @@ export function registerBillingRoutes(app: FastifyInstance): void {
         const body = parseBody<RedeemBillingCodeInput>(request, redeemBillingCodeSchema);
         return reply.code(201).send(
           await app.billingService.redeemCode(getBillingContext(request), body),
-        );
-      } catch (error) {
-        return handleRouteError(error, request, reply);
-      }
-    },
-  );
-
-  app.post(
-    "/api/v2/billing/payment/create-checkout",
-    {
-      preHandler: [requireAuth, requireTenant, requirePermission("billing:manage")],
-    },
-    async (request, reply) => {
-      try {
-        const body = parseBody<CreatePaymentCheckoutInput>(request, createPaymentCheckoutSchema);
-        return reply.code(201).send(
-          await app.billingService.createPaymentCheckout(getBillingContext(request), body),
         );
       } catch (error) {
         return handleRouteError(error, request, reply);
