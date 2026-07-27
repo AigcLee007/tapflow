@@ -11,6 +11,8 @@ describe("000042_xunhupay_personal_wallet.sql", () => {
     );
     const sql = await readFile(migrationPath, "utf8");
 
+    expect(sql.trimStart()).toMatch(/^-- tapflow:non-transactional/);
+
     for (const table of [
       "billing_wallets",
       "billing_wallet_credit_grants",
@@ -53,6 +55,8 @@ describe("000042_xunhupay_personal_wallet.sql", () => {
     expect(sql).toContain("ALTER FUNCTION app.apply_xunhu_payment_notification");
     expect(sql).toContain("ALTER FUNCTION app.list_active_billing_recharge_plans()");
     expect(sql).toContain("OWNER TO tapflow_wallet_callback");
+    expect(sql).toContain("GRANT CREATE ON SCHEMA app TO tapflow_wallet_callback;");
+    expect(sql).toContain("REVOKE CREATE ON SCHEMA app FROM tapflow_wallet_callback;");
     expect(sql).toContain("GRANT EXECUTE ON FUNCTION app.apply_xunhu_payment_notification");
     expect(sql).toContain("REVOKE tapflow_wallet_callback FROM");
     expect(sql).toContain("current_user = 'tapflow_wallet_callback'");

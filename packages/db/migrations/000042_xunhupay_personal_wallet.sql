@@ -1,3 +1,4 @@
+-- tapflow:non-transactional
 -- Personal wallets intentionally omit tenant_id: a wallet belongs to one user across every workspace.
 -- The callback function runs as this dedicated non-login role. It is deliberately
 -- isolated from the shared API/worker database role and cannot bypass RLS.
@@ -605,6 +606,7 @@ REVOKE ALL ON FUNCTION app.apply_xunhu_payment_notification(text, bigint, text, 
 REVOKE ALL ON FUNCTION app.list_active_billing_recharge_plans() FROM PUBLIC;
 
 GRANT USAGE ON SCHEMA app TO tapflow_wallet_callback;
+GRANT CREATE ON SCHEMA app TO tapflow_wallet_callback;
 GRANT SELECT, UPDATE ON billing_wallets TO tapflow_wallet_callback;
 GRANT SELECT, INSERT, UPDATE ON billing_wallet_credit_grants TO tapflow_wallet_callback;
 GRANT INSERT ON billing_wallet_ledger TO tapflow_wallet_callback;
@@ -627,6 +629,7 @@ BEGIN
     OWNER TO tapflow_wallet_callback;
   ALTER FUNCTION app.list_active_billing_recharge_plans()
     OWNER TO tapflow_wallet_callback;
+  REVOKE CREATE ON SCHEMA app FROM tapflow_wallet_callback;
   EXECUTE format('REVOKE tapflow_wallet_callback FROM %I', current_user);
 
   IF EXISTS (
