@@ -94,6 +94,15 @@ services:
     environment:
       <<: *tapflow-env
 
+  tapflow-migrator:
+    profiles: ["tools"]
+    build: .
+    restart: "no"
+    command: ["node", "packages/db/dist/cli.js"]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${MIGRATION_DATABASE_URL:-}
+
   tapflow-frontend:
     build:
       context: .
