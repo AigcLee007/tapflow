@@ -255,15 +255,15 @@ export function getApiEnv(): ApiEnv {
   }
 
   if (isProduction && !brevoApiKey) {
-    throw new Error("Brevo API key is required to start the v2 API in production");
+    throw new Error("BREVO_API_KEY is required to start the v2 API in production");
   }
 
   if (isProduction && !brevoFromEmail) {
-    throw new Error("Brevo sender email is required to start the v2 API in production");
+    throw new Error("BREVO_FROM_EMAIL is required to start the v2 API in production");
   }
 
   if (isProduction && !brevoFromName) {
-    throw new Error("Brevo sender name is required to start the v2 API in production");
+    throw new Error("BREVO_FROM_NAME is required to start the v2 API in production");
   }
 
   if (!jwtAccessSecret) {

@@ -86,13 +86,15 @@ describe("getApiEnv", () => {
   });
 
   test.each([
-    ["BREVO_API_KEY", "Brevo API key"],
-    ["BREVO_FROM_EMAIL", "Brevo sender email"],
-    ["BREVO_FROM_NAME", "Brevo sender name"],
-  ])("requires %s in production", (variable, description) => {
+    "BREVO_API_KEY",
+    "BREVO_FROM_EMAIL",
+    "BREVO_FROM_NAME",
+  ])("requires %s in production", (variable) => {
     withRequiredProductionEnv();
     delete process.env[variable];
 
-    expect(() => getApiEnv()).toThrow(`${description} is required to start the v2 API in production`);
+    expect(() => getApiEnv()).toThrow(
+      `${variable} is required to start the v2 API in production`,
+    );
   });
 });
