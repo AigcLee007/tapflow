@@ -102,6 +102,24 @@ describe("000042_xunhupay_personal_wallet.sql", () => {
     expect(callbackOwnership).toBeGreaterThan(callbackDefinition);
   });
 
+  test("recovers only the current migration user's stale callback membership", async () => {
+    const sql = await readFile(
+      path.resolve(import.meta.dirname, "../migrations/000042_xunhupay_personal_wallet.sql"),
+      "utf8",
+    );
+
+    const staleMembershipCleanup = sql.indexOf(
+      "EXECUTE format('REVOKE tapflow_wallet_callback FROM %I', current_user);",
+    );
+    const foreignMembershipGuard = sql.indexOf(
+      "tapflow_wallet_callback must not have role members before migration",
+    );
+
+    expect(sql).toContain("member_role.rolname <> current_user");
+    expect(staleMembershipCleanup).toBeGreaterThan(-1);
+    expect(staleMembershipCleanup).toBeLessThan(foreignMembershipGuard);
+  });
+
   test("defines fixed definer operations instead of granting the API role financial table writes", async () => {
     const sql = await readFile(
       path.resolve(import.meta.dirname, "../migrations/000043_personal_wallet_operations.sql"),

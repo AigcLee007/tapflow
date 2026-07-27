@@ -39,14 +39,6 @@ BEGIN
     RAISE EXCEPTION 'tapflow_wallet_callback must be a non-privileged NOLOGIN NOBYPASSRLS role';
   END IF;
 
-  IF EXISTS (
-    SELECT 1
-    FROM pg_auth_members
-    WHERE roleid = v_callback_role
-  ) THEN
-    RAISE EXCEPTION 'tapflow_wallet_callback must not have role members before migration';
-  END IF;
-
   SELECT rolsuper OR rolcreaterole
   INTO v_can_manage_roles
   FROM pg_roles
@@ -55,6 +47,28 @@ BEGIN
   IF NOT COALESCE(v_can_manage_roles, false) THEN
     RAISE EXCEPTION
       'migration role needs CREATEROLE to transfer wallet function ownership to tapflow_wallet_callback';
+  END IF;
+
+  -- A failed non-transactional attempt may leave only the migration user's
+  -- temporary membership behind. Remove that exact stale grant before retrying.
+  IF EXISTS (
+    SELECT 1
+    FROM pg_auth_members AS membership
+    JOIN pg_roles AS member_role ON member_role.oid = membership.member
+    WHERE membership.roleid = v_callback_role
+      AND member_role.rolname = current_user
+  ) THEN
+    EXECUTE format('REVOKE tapflow_wallet_callback FROM %I', current_user);
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM pg_auth_members AS membership
+    JOIN pg_roles AS member_role ON member_role.oid = membership.member
+    WHERE membership.roleid = v_callback_role
+      AND member_role.rolname <> current_user
+  ) THEN
+    RAISE EXCEPTION 'tapflow_wallet_callback must not have role members before migration';
   END IF;
 
   EXECUTE format('GRANT tapflow_wallet_callback TO %I', current_user);

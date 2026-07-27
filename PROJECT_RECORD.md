@@ -6,6 +6,7 @@ Maintainers: project team + Codex sessions
 ## 2026-07-27 - XunhuPay Personal Wallet Implementation In Progress
 
 - implemented schema/RLS, personal-wallet accounting, immutable billed-user workflow ownership, balance migration tooling, signed checkout/callback, expiry sweep, and the initial personal billing UI on branch `codex/xunhupay-personal-wallet`.
+- repaired retry behavior for the non-transactional `000042_xunhupay_personal_wallet.sql` migration after staging evidence showed a failed attempt could leave the current migration user as a temporary member of `tapflow_wallet_callback`; retries now revoke only that exact self-membership before rejecting any foreign role member, preserving the isolated callback-role boundary.
 - repaired the mobile XunhuPay return path: each new checkout now adds its opaque `paymentId` to the configured billing return URL, allowing `/billing` to resume bounded, server-authoritative status polling after the provider redirect; an invalid configured return URL becomes a safe server configuration error.
 - completed creator-facing activity labels for the new wallet ledger entries: historical migration credit is positive, while expiry and payment refund have explicit labels.
 - completed the remaining local admin/payment UX safeguards:
