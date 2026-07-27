@@ -3,6 +3,26 @@
 Last updated: 2026-07-27
 Maintainers: project team + Codex sessions
 
+## 2026-07-27 - Brevo Email And Device Verification
+
+- changed v2 registration so a user, tenant, and membership may be prepared, but no auth session or access/refresh tokens are issued until the emailed six-digit code is verified;
+- made historical accounts with `email_verified_at IS NULL` complete the same email verification on their next valid password login;
+- added password-login device verification for missing, unknown, expired, revoked, or anomalous trusted devices. Trust lasts 30 days. An existing trusted device is treated as anomalous only when both its normalized browser/OS fingerprint and IP network change;
+- added migration `000042_auth_email_device_verification.sql` with hashed, expiring email challenges and hashed trusted-device tokens. `auth_trusted_devices` is intentionally account-scoped without `tenant_id`; both tables are server-only pre-auth records and are not exposed as tenant resources;
+- added Brevo transactional delivery with a ten-second timeout and sanitized delivery errors. `BREVO_API_KEY`, `BREVO_FROM_EMAIL`, and `BREVO_FROM_NAME` are server-only variables injected through `docker-compose.staging.yml`; no real credentials are stored in the repository;
+- added shared login/register verification UI with six-digit input, invalid-code reset/focus behavior, 60-second resend cooldown, resend error recovery, and navigation only after successful verification;
+- stores the opaque trusted-device token in browser `localStorage` under `v2-trusted-device-token`, an explicitly accepted XSS exposure risk. The token is random, stored hashed on the server, and cannot authenticate without the account password;
+- validation completed on 2026-07-27:
+  - focused frontend auth tests passed: 5 files, 21 tests. Existing `AuthProvider` React `act(...)` warnings remain;
+  - focused API auth/env tests passed: 30 tests; 12 database-backed auth tests skipped because local Postgres was unavailable;
+  - focused DB migration/IAM/migrator suite discovered 6 tests and skipped all 6 because no local database environment was available. No database integration pass is claimed;
+  - full API suite passed 255 tests and skipped 126 infrastructure-dependent tests;
+  - root `npm test` completed with 1,409 passed, 175 skipped, 24 failed, and 4 unhandled errors. Failures were outside this auth change in legacy migration/path assertions, S3 presigning, AI Gateway multipart tests, missing ResizeObserver test support, and existing Workbench/Canvas Agent expectations; no full-root-suite pass is claimed;
+  - `npm run build --workspace @aigc-flow/db`, `npm run build --workspace @aigc-flow/api`, and `npm run build` passed. The root build retained existing Browserslist, mixed dynamic-import, and large-chunk warnings;
+  - Compose rendering validation passed with non-secret Brevo test values via `docker compose -f docker-compose.staging.yml config --quiet`; warnings only identified unrelated unset local staging variables;
+  - repository audit found only server environment parsing, Brevo request construction, hashed database fields, centralized frontend request/storage types, documentation markers, and test placeholders. No real Brevo key or auth-token logging was found.
+- pending operational validation: deploy migration `000042` in the documented worker-stop order, then complete the staging real-mail registration, same-device login, new-device login, resend cooldown, and secret-free log smoke checklist. No staging deployment or real Brevo message was performed in this local task.
+
 ## 2026-07-27 - XunhuPay Personal Wallet Approved Design
 
 - completed and approved the product and technical design for real XunhuPay recharge payments backed by a global personal AI-credit wallet:
