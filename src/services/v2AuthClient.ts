@@ -36,49 +36,106 @@ export type AuthTokensResponse = {
   permissions?: string[];
   refreshToken: string;
   user: V2User;
+  trustedDeviceToken?: string;
 };
+
+export type VerificationRequired = {
+  status: "verification_required";
+  challengeToken: string;
+  emailMasked: string;
+  expiresInSeconds: number;
+  resendAvailableInSeconds: number;
+  reason: "email_unverified" | "new_device" | "trust_expired" | "anomalous_login";
+};
+
+export type AuthenticatedResult = { status: "authenticated"; session: AuthSession };
+export type AuthAttemptResult = AuthenticatedResult | VerificationRequired;
+
+const TRUSTED_DEVICE_TOKEN_KEY = "v2-trusted-device-token";
+
+export function getStoredTrustedDeviceToken(): string | null {
+  return typeof window === "undefined"
+    ? null
+    : window.localStorage.getItem(TRUSTED_DEVICE_TOKEN_KEY);
+}
+
+export function setStoredTrustedDeviceToken(token: string): void {
+  if (typeof window !== "undefined") window.localStorage.setItem(TRUSTED_DEVICE_TOKEN_KEY, token);
+}
+
+export function clearStoredTrustedDeviceToken(): void {
+  if (typeof window !== "undefined") window.localStorage.removeItem(TRUSTED_DEVICE_TOKEN_KEY);
+}
 
 export async function register(input: {
   displayName?: string;
   email: string;
   password: string;
   tenantName?: string;
-}): Promise<AuthSession> {
+}): Promise<AuthAttemptResult> {
   clearStoredAuth();
-  const response = await apiPost<AuthTokensResponse>("/auth/register", input, {
+  const response = await apiPost<AuthTokensResponse | VerificationRequired>("/auth/register", input, {
     auth: false,
     retryOnUnauthorized: false,
   });
+  if ("status" in response && response.status === "verification_required") return response;
   setStoredTokens(response);
-
-  return {
+  return { status: "authenticated", session: {
     currentTenant: response.currentTenant,
     permissions: response.permissions ?? [],
     roles: [],
     sessionId: null,
     user: response.user,
-  };
+  } };
 }
 
 export async function login(input: {
   email: string;
   password: string;
   tenantId?: string;
-}): Promise<AuthSession> {
+}): Promise<AuthAttemptResult> {
   clearStoredAuth();
-  const response = await apiPost<AuthTokensResponse>("/auth/login", input, {
+  const response = await apiPost<AuthTokensResponse | VerificationRequired>("/auth/login", {
+    ...input,
+    trustedDeviceToken: getStoredTrustedDeviceToken() ?? undefined,
+  }, {
     auth: false,
     retryOnUnauthorized: false,
   });
+  if ("status" in response && response.status === "verification_required") return response;
   setStoredTokens(response);
 
-  return getMe().catch(() => ({
+  const session = await getMe().catch(() => ({
     currentTenant: response.currentTenant,
     permissions: response.permissions ?? [],
     roles: [],
     sessionId: null,
     user: response.user,
   }));
+  return { status: "authenticated", session };
+}
+
+export async function verifyEmail(input: {
+  challengeToken: string;
+  code: string;
+}): Promise<AuthSession> {
+  const response = await apiPost<AuthTokensResponse & { trustedDeviceToken: string }>(
+    "/auth/email/verify",
+    input,
+    { auth: false, retryOnUnauthorized: false },
+  );
+  setStoredTokens(response);
+  setStoredTrustedDeviceToken(response.trustedDeviceToken);
+  return getMe();
+}
+
+export async function resendEmailVerification(input: {
+  challengeToken: string;
+}): Promise<VerificationRequired> {
+  return apiPost<VerificationRequired>("/auth/email/resend", input, {
+    auth: false,
+    retryOnUnauthorized: false,
+  });
 }
 
 export async function refresh() {

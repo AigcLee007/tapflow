@@ -1,6 +1,12 @@
 import { createContext, useContext } from "react";
 
-import type { AuthSession, V2Tenant, V2User } from "../services/v2AuthClient";
+import type {
+  AuthAttemptResult,
+  AuthSession,
+  V2Tenant,
+  V2User,
+  VerificationRequired,
+} from "../services/v2AuthClient";
 
 export type AuthState = {
   authenticated: boolean;
@@ -13,12 +19,16 @@ export type AuthState = {
     email: string;
     password: string;
     tenantName?: string;
-  }) => Promise<void>;
+  }) => Promise<AuthAttemptResult>;
   login: (input: {
     email: string;
     password: string;
     tenantId?: string;
-  }) => Promise<void>;
+  }) => Promise<AuthAttemptResult>;
+  verifyEmail: (input: { challengeToken: string; code: string }) => Promise<void>;
+  resendEmailVerification: (input: {
+    challengeToken: string;
+  }) => Promise<VerificationRequired>;
   logout: () => Promise<void>;
   roles: string[];
   sessionId: string | null;
