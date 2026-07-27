@@ -2165,6 +2165,15 @@ export class WorkflowRunsService {
     workflowRunId: string,
     tenantId: string,
   ): Promise<void> {
+    const owner = await client.query<{ billed_user_id: string }>(
+      "SELECT billed_user_id::text AS billed_user_id FROM workflow_runs WHERE id = $1::uuid",
+      [workflowRunId],
+    );
+    const billedUserId = owner.rows[0]?.billed_user_id;
+    if (!billedUserId) {
+      throw new Error(`Workflow run ${workflowRunId} has no billing owner`);
+    }
+
     const result = await client.query<{
       cost_json: Record<string, unknown>;
       id: string;
@@ -2187,15 +2196,22 @@ export class WorkflowRunsService {
         continue;
       }
 
-      const ledgerEntry = await this.billingService.refundUsageWithClient(client, tenantId, {
-        amountCents: reservedCents,
-        description: "Workflow node reservation released after cancellation",
+      const reserveLedgerId = typeof row.cost_json?.reserveLedgerId === "string"
+        ? row.cost_json.reserveLedgerId
+        : null;
+      if (!reserveLedgerId) {
+        throw new Error(`Workflow node run ${row.id} has a reserved charge without a reserve ledger`);
+      }
+
+      const ledgerEntry = await this.personalWalletService.refundUsageWithClient(client, { tenantId, userId: billedUserId }, {
         idempotencyKey: `refund:${tenantId}:${workflowRunId}:${row.id}`,
         metadata: {
           nodeId: row.node_id,
           nodeRunId: row.id,
+          reserveLedgerId,
           workflowRunId,
         },
+        reserveLedgerId,
       });
 
       await client.query(

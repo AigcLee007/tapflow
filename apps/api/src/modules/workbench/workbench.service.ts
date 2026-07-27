@@ -30,6 +30,7 @@ type WorkbenchGenerationRow = {
   batch_index: number | null;
   batch_role: "single" | "parent" | "child";
   batch_total: number | null;
+  billed_user_id: string;
   charged_credits: string | null;
   created_at: string;
   display_mode: "merged" | "separate";
@@ -238,6 +239,7 @@ export class WorkbenchService {
             batch_role,
             batch_index,
             batch_total,
+            billed_user_id::text AS billed_user_id,
             estimated_credits::text AS estimated_credits,
             charged_credits::text AS charged_credits,
             reserved_credits::text AS reserved_credits,
@@ -290,6 +292,7 @@ export class WorkbenchService {
             batch_role,
             batch_index,
             batch_total,
+            billed_user_id::text AS billed_user_id,
             estimated_credits::text AS estimated_credits,
             charged_credits::text AS charged_credits,
             reserved_credits::text AS reserved_credits,
@@ -569,6 +572,7 @@ export class WorkbenchService {
             batch_role,
             batch_index,
             batch_total,
+            billed_user_id::text AS billed_user_id,
             estimated_credits::text AS estimated_credits,
             charged_credits::text AS charged_credits,
             reserved_credits::text AS reserved_credits,
@@ -803,16 +807,18 @@ export class WorkbenchService {
     if (reservedCredits <= 0 || generation.charged_credits !== null) {
       return;
     }
+    if (!generation.reserve_ledger_id) {
+      throw new Error(`Workbench generation ${generation.id} has a reserved charge without a reserve ledger`);
+    }
 
-    const refundLedger = await this.billingService.refundUsageWithClient(client, tenantId, {
-      amountCents: reservedCredits,
-      description: "Workbench image generation reservation released after deletion",
+    const refundLedger = await this.personalWalletService.refundUsageWithClient(client, { tenantId, userId: generation.billed_user_id }, {
       idempotencyKey: `workbench:delete-refund:${tenantId}:${generation.id}`,
       metadata: {
         generationId: generation.id,
+        reserveLedgerId: generation.reserve_ledger_id,
         source: "workbench",
       },
-      usageEventId: null,
+      reserveLedgerId: generation.reserve_ledger_id,
     });
 
     await client.query(
@@ -897,6 +903,7 @@ export class WorkbenchService {
           batch_role,
           batch_index,
           batch_total,
+          billed_user_id::text AS billed_user_id,
           estimated_credits::text AS estimated_credits,
           charged_credits::text AS charged_credits,
           reserved_credits::text AS reserved_credits,
@@ -962,6 +969,7 @@ export class WorkbenchService {
           batch_role,
           batch_index,
           batch_total,
+          billed_user_id::text AS billed_user_id,
           estimated_credits::text AS estimated_credits,
           charged_credits::text AS charged_credits,
           reserved_credits::text AS reserved_credits,
