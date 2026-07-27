@@ -42,33 +42,39 @@ describe("000042_xunhupay_personal_wallet.sql", () => {
     expect(sql).toContain("FOR UPDATE");
   });
 
-  test("uses a locked payment owner for callback writes and limits plan reads to commercial fields", async () => {
+  test("uses an isolated callback role and enforces wallet ownership relationships", async () => {
     const migrationPath = path.resolve(
       import.meta.dirname,
       "../migrations/000042_xunhupay_personal_wallet.sql",
     );
     const sql = await readFile(migrationPath, "utf8");
 
-    expect(sql).toContain("CREATE POLICY billing_wallet_payments_select_callback_order");
-    expect(sql).toContain("merchant_order_id = NULLIF(current_setting('app.xunhu_callback_order_id', true), '')");
-    expect(sql).toContain("CREATE POLICY billing_wallets_insert_owner");
-    expect(sql).toContain("CREATE POLICY billing_wallet_payments_update_owner");
-    expect(sql).toContain("PERFORM set_config('app.xunhu_callback_order_id', p_trade_order_id, true);");
-    expect(sql).toContain("PERFORM set_config('app.user_id', v_payment.user_id::text, true);");
-    expect(sql).not.toContain("CREATE ROLE tapflow_wallet_callback");
-    expect(sql).not.toContain("tapflow_wallet_callback')");
-    expect(sql).not.toContain("current_is_wallet_service_role");
-    expect(sql).not.toContain("current_user =");
+    expect(sql).toContain("CREATE ROLE tapflow_wallet_callback NOLOGIN NOINHERIT NOBYPASSRLS");
+    expect(sql).toContain("ALTER FUNCTION app.apply_xunhu_payment_notification");
+    expect(sql).toContain("ALTER FUNCTION app.list_active_billing_recharge_plans()");
+    expect(sql).toContain("OWNER TO tapflow_wallet_callback");
+    expect(sql).toContain("GRANT EXECUTE ON FUNCTION app.apply_xunhu_payment_notification");
+    expect(sql).toContain("REVOKE tapflow_wallet_callback FROM");
+    expect(sql).toContain("current_user = 'tapflow_wallet_callback'");
+    expect(sql).not.toContain("app.xunhu_callback_order_id");
+    expect(sql).not.toContain("app.recharge_plan_projection");
+    expect(sql).not.toContain("PERFORM set_config('app.user_id'");
+    expect(sql).not.toContain("CREATE POLICY billing_wallets_insert_owner");
+    expect(sql).not.toContain("CREATE POLICY billing_wallet_payments_update_owner");
     expect(sql).not.toContain("CREATE POLICY billing_wallet_ledger_write_system_admin");
     expect(sql).not.toContain("CREATE POLICY billing_wallet_ledger_update_");
     expect(sql).not.toContain("CREATE POLICY billing_wallet_ledger_delete_");
+
+    expect(sql).toContain("UNIQUE (id, user_id)");
+    expect(sql).toContain("FOREIGN KEY (wallet_id, user_id) REFERENCES billing_wallets(id, user_id)");
+    expect(sql).toContain("FOREIGN KEY (wallet_ledger_id, wallet_id, user_id)");
+    expect(sql).toContain("FOREIGN KEY (credit_grant_id, wallet_id, user_id)");
 
     const commercialPlanFunction = sql.match(
       /CREATE OR REPLACE FUNCTION app\.list_active_billing_recharge_plans\(\)[\s\S]*?\n\$\$;/,
     )?.[0];
     expect(commercialPlanFunction).toBeDefined();
     expect(commercialPlanFunction).toContain("RETURNS TABLE");
-    expect(commercialPlanFunction).toContain("PERFORM set_config('app.recharge_plan_projection', 'true', true);");
     expect(commercialPlanFunction).toContain("WHERE plan.active");
     expect(commercialPlanFunction).not.toContain("metadata");
     expect(commercialPlanFunction).not.toContain("updated_by");
@@ -76,12 +82,8 @@ describe("000042_xunhupay_personal_wallet.sql", () => {
     expect(sql).not.toContain("CREATE POLICY billing_recharge_plans_select_active");
 
     const callbackDefinition = sql.indexOf("CREATE OR REPLACE FUNCTION app.apply_xunhu_payment_notification");
-    const callbackOrderSetting = sql.indexOf("PERFORM set_config('app.xunhu_callback_order_id', p_trade_order_id, true);");
-    const callbackLookup = sql.indexOf("SELECT * INTO v_payment", callbackDefinition);
-    const callbackOwnerSetting = sql.indexOf("PERFORM set_config('app.user_id', v_payment.user_id::text, true);");
+    const callbackOwnership = sql.indexOf("OWNER TO tapflow_wallet_callback");
     expect(callbackDefinition).toBeGreaterThan(-1);
-    expect(callbackOrderSetting).toBeGreaterThan(callbackDefinition);
-    expect(callbackLookup).toBeGreaterThan(callbackOrderSetting);
-    expect(callbackOwnerSetting).toBeGreaterThan(callbackLookup);
+    expect(callbackOwnership).toBeGreaterThan(callbackDefinition);
   });
 });

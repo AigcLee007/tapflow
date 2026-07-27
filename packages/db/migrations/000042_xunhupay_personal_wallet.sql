@@ -1,4 +1,65 @@
 -- Personal wallets intentionally omit tenant_id: a wallet belongs to one user across every workspace.
+-- The callback function runs as this dedicated non-login role. It is deliberately
+-- isolated from the shared API/worker database role and cannot bypass RLS.
+DO $$
+DECLARE
+  v_callback_role oid;
+  v_can_manage_roles boolean;
+BEGIN
+  SELECT oid
+  INTO v_callback_role
+  FROM pg_roles
+  WHERE rolname = 'tapflow_wallet_callback';
+
+  IF v_callback_role IS NULL THEN
+    SELECT rolsuper OR rolcreaterole
+    INTO v_can_manage_roles
+    FROM pg_roles
+    WHERE rolname = current_user;
+
+    IF NOT COALESCE(v_can_manage_roles, false) THEN
+      RAISE EXCEPTION
+        'tapflow_wallet_callback must be pre-provisioned, or the migration role must have CREATEROLE';
+    END IF;
+
+    CREATE ROLE tapflow_wallet_callback NOLOGIN NOINHERIT NOBYPASSRLS;
+    SELECT oid
+    INTO v_callback_role
+    FROM pg_roles
+    WHERE rolname = 'tapflow_wallet_callback';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM pg_roles
+    WHERE oid = v_callback_role
+      AND (rolcanlogin OR rolinherit OR rolsuper OR rolcreaterole OR rolcreatedb OR rolreplication OR rolbypassrls)
+  ) THEN
+    RAISE EXCEPTION 'tapflow_wallet_callback must be a non-privileged NOLOGIN NOBYPASSRLS role';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM pg_auth_members
+    WHERE roleid = v_callback_role
+  ) THEN
+    RAISE EXCEPTION 'tapflow_wallet_callback must not have role members before migration';
+  END IF;
+
+  SELECT rolsuper OR rolcreaterole
+  INTO v_can_manage_roles
+  FROM pg_roles
+  WHERE rolname = current_user;
+
+  IF NOT COALESCE(v_can_manage_roles, false) THEN
+    RAISE EXCEPTION
+      'migration role needs CREATEROLE to transfer wallet function ownership to tapflow_wallet_callback';
+  END IF;
+
+  EXECUTE format('GRANT tapflow_wallet_callback TO %I', current_user);
+END;
+$$;
+
 CREATE TABLE IF NOT EXISTS billing_wallets (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -8,7 +69,8 @@ CREATE TABLE IF NOT EXISTS billing_wallets (
   metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (user_id)
+  UNIQUE (user_id),
+  UNIQUE (id, user_id)
 );
 
 COMMENT ON TABLE billing_wallets IS
@@ -17,7 +79,7 @@ COMMENT ON TABLE billing_wallets IS
 -- Personal grant batches intentionally omit tenant_id because their owner is the wallet user.
 CREATE TABLE IF NOT EXISTS billing_wallet_credit_grants (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  wallet_id uuid NOT NULL REFERENCES billing_wallets(id) ON DELETE CASCADE,
+  wallet_id uuid NOT NULL,
   user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   source_type text NOT NULL CHECK (source_type IN ('payment', 'redeem', 'admin_grant', 'migration')),
   source_id text,
@@ -30,7 +92,9 @@ CREATE TABLE IF NOT EXISTS billing_wallet_credit_grants (
   created_by uuid REFERENCES users(id) ON DELETE SET NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
-  CHECK (remaining_credits + reserved_credits <= original_credits)
+  CHECK (remaining_credits + reserved_credits <= original_credits),
+  UNIQUE (id, wallet_id, user_id),
+  FOREIGN KEY (wallet_id, user_id) REFERENCES billing_wallets(id, user_id) ON DELETE CASCADE
 );
 
 COMMENT ON TABLE billing_wallet_credit_grants IS
@@ -39,7 +103,7 @@ COMMENT ON TABLE billing_wallet_credit_grants IS
 -- Personal ledger rows keep optional workspace attribution without making the balance tenant-owned.
 CREATE TABLE IF NOT EXISTS billing_wallet_ledger (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  wallet_id uuid NOT NULL REFERENCES billing_wallets(id) ON DELETE CASCADE,
+  wallet_id uuid NOT NULL,
   user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   tenant_id uuid REFERENCES tenants(id) ON DELETE SET NULL,
   workflow_run_id uuid REFERENCES workflow_runs(id) ON DELETE SET NULL,
@@ -53,7 +117,9 @@ CREATE TABLE IF NOT EXISTS billing_wallet_ledger (
   description text,
   metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (user_id, idempotency_key)
+  UNIQUE (user_id, idempotency_key),
+  UNIQUE (id, wallet_id, user_id),
+  FOREIGN KEY (wallet_id, user_id) REFERENCES billing_wallets(id, user_id) ON DELETE CASCADE
 );
 
 COMMENT ON TABLE billing_wallet_ledger IS
@@ -62,17 +128,22 @@ COMMENT ON TABLE billing_wallet_ledger IS
 -- Reservations preserve the exact personal grant allocation used by a reserve operation.
 CREATE TABLE IF NOT EXISTS billing_wallet_credit_reservations (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  wallet_id uuid NOT NULL REFERENCES billing_wallets(id) ON DELETE CASCADE,
+  wallet_id uuid NOT NULL,
   user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  wallet_ledger_id uuid NOT NULL REFERENCES billing_wallet_ledger(id) ON DELETE CASCADE,
-  credit_grant_id uuid NOT NULL REFERENCES billing_wallet_credit_grants(id) ON DELETE RESTRICT,
+  wallet_ledger_id uuid NOT NULL,
+  credit_grant_id uuid NOT NULL,
   usage_event_id uuid REFERENCES usage_events(id) ON DELETE SET NULL,
   amount_credits numeric(18, 4) NOT NULL CHECK (amount_credits > 0),
   status text NOT NULL DEFAULT 'reserved' CHECK (status IN ('reserved', 'settled', 'refunded')),
   metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (wallet_ledger_id, credit_grant_id)
+  UNIQUE (wallet_ledger_id, credit_grant_id),
+  FOREIGN KEY (wallet_id, user_id) REFERENCES billing_wallets(id, user_id) ON DELETE CASCADE,
+  FOREIGN KEY (wallet_ledger_id, wallet_id, user_id)
+    REFERENCES billing_wallet_ledger(id, wallet_id, user_id) ON DELETE CASCADE,
+  FOREIGN KEY (credit_grant_id, wallet_id, user_id)
+    REFERENCES billing_wallet_credit_grants(id, wallet_id, user_id) ON DELETE RESTRICT
 );
 
 COMMENT ON TABLE billing_wallet_credit_reservations IS
@@ -101,7 +172,7 @@ COMMENT ON TABLE billing_recharge_plans IS
 -- Payment orders intentionally omit tenant_id: checkout and credits are owned by one personal wallet user.
 CREATE TABLE IF NOT EXISTS billing_wallet_payments (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  wallet_id uuid NOT NULL REFERENCES billing_wallets(id) ON DELETE RESTRICT,
+  wallet_id uuid NOT NULL,
   user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   plan_id uuid NOT NULL REFERENCES billing_recharge_plans(id) ON DELETE RESTRICT,
   plan_key text NOT NULL,
@@ -126,7 +197,8 @@ CREATE TABLE IF NOT EXISTS billing_wallet_payments (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (user_id, idempotency_key),
-  UNIQUE (merchant_order_id)
+  UNIQUE (merchant_order_id),
+  FOREIGN KEY (wallet_id, user_id) REFERENCES billing_wallets(id, user_id) ON DELETE RESTRICT
 );
 
 COMMENT ON TABLE billing_wallet_payments IS
@@ -240,9 +312,8 @@ ALTER TABLE billing_recharge_plans FORCE ROW LEVEL SECURITY;
 ALTER TABLE billing_wallet_payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE billing_wallet_payments FORCE ROW LEVEL SECURITY;
 
--- API and worker requests share one trusted server-side database role; browsers
--- never receive database credentials or raw SQL access. The callback gets only an
--- exact-order lookup policy, then derives app.user_id from the locked payment row.
+-- Financial writes are service-controlled. Ordinary API sessions can read their
+-- own records, but only the dedicated callback role may mutate payment credits.
 
 DROP POLICY IF EXISTS billing_wallets_select_owner ON billing_wallets;
 CREATE POLICY billing_wallets_select_owner ON billing_wallets FOR SELECT
@@ -251,12 +322,11 @@ DROP POLICY IF EXISTS billing_wallets_select_system_admin ON billing_wallets;
 CREATE POLICY billing_wallets_select_system_admin ON billing_wallets FOR SELECT
   USING (app.current_is_system_admin());
 DROP POLICY IF EXISTS billing_wallets_insert_owner ON billing_wallets;
-CREATE POLICY billing_wallets_insert_owner ON billing_wallets FOR INSERT
-  WITH CHECK (user_id = app.current_user_id());
 DROP POLICY IF EXISTS billing_wallets_update_owner ON billing_wallets;
-CREATE POLICY billing_wallets_update_owner ON billing_wallets FOR UPDATE
-  USING (user_id = app.current_user_id()) WITH CHECK (user_id = app.current_user_id());
 DROP POLICY IF EXISTS billing_wallets_write_callback ON billing_wallets;
+DROP POLICY IF EXISTS billing_wallets_update_callback ON billing_wallets;
+CREATE POLICY billing_wallets_update_callback ON billing_wallets FOR UPDATE TO tapflow_wallet_callback
+  USING (current_user = 'tapflow_wallet_callback') WITH CHECK (current_user = 'tapflow_wallet_callback');
 DROP POLICY IF EXISTS billing_wallets_write_system_admin ON billing_wallets;
 CREATE POLICY billing_wallets_write_system_admin ON billing_wallets FOR ALL
   USING (app.current_is_system_admin()) WITH CHECK (app.current_is_system_admin());
@@ -268,12 +338,11 @@ DROP POLICY IF EXISTS billing_wallet_credit_grants_select_system_admin ON billin
 CREATE POLICY billing_wallet_credit_grants_select_system_admin ON billing_wallet_credit_grants FOR SELECT
   USING (app.current_is_system_admin());
 DROP POLICY IF EXISTS billing_wallet_credit_grants_insert_owner ON billing_wallet_credit_grants;
-CREATE POLICY billing_wallet_credit_grants_insert_owner ON billing_wallet_credit_grants FOR INSERT
-  WITH CHECK (user_id = app.current_user_id());
 DROP POLICY IF EXISTS billing_wallet_credit_grants_update_owner ON billing_wallet_credit_grants;
-CREATE POLICY billing_wallet_credit_grants_update_owner ON billing_wallet_credit_grants FOR UPDATE
-  USING (user_id = app.current_user_id()) WITH CHECK (user_id = app.current_user_id());
 DROP POLICY IF EXISTS billing_wallet_credit_grants_write_callback ON billing_wallet_credit_grants;
+DROP POLICY IF EXISTS billing_wallet_credit_grants_write_callback ON billing_wallet_credit_grants;
+CREATE POLICY billing_wallet_credit_grants_write_callback ON billing_wallet_credit_grants FOR ALL TO tapflow_wallet_callback
+  USING (current_user = 'tapflow_wallet_callback') WITH CHECK (current_user = 'tapflow_wallet_callback');
 DROP POLICY IF EXISTS billing_wallet_credit_grants_write_system_admin ON billing_wallet_credit_grants;
 CREATE POLICY billing_wallet_credit_grants_write_system_admin ON billing_wallet_credit_grants FOR ALL
   USING (app.current_is_system_admin()) WITH CHECK (app.current_is_system_admin());
@@ -285,9 +354,9 @@ DROP POLICY IF EXISTS billing_wallet_ledger_select_system_admin ON billing_walle
 CREATE POLICY billing_wallet_ledger_select_system_admin ON billing_wallet_ledger FOR SELECT
   USING (app.current_is_system_admin());
 DROP POLICY IF EXISTS billing_wallet_ledger_insert_owner ON billing_wallet_ledger;
-CREATE POLICY billing_wallet_ledger_insert_owner ON billing_wallet_ledger FOR INSERT
-  WITH CHECK (user_id = app.current_user_id());
 DROP POLICY IF EXISTS billing_wallet_ledger_insert_callback ON billing_wallet_ledger;
+CREATE POLICY billing_wallet_ledger_insert_callback ON billing_wallet_ledger FOR INSERT TO tapflow_wallet_callback
+  WITH CHECK (current_user = 'tapflow_wallet_callback');
 DROP POLICY IF EXISTS billing_wallet_ledger_write_system_admin ON billing_wallet_ledger;
 DROP POLICY IF EXISTS billing_wallet_ledger_insert_system_admin ON billing_wallet_ledger;
 CREATE POLICY billing_wallet_ledger_insert_system_admin ON billing_wallet_ledger FOR INSERT
@@ -300,11 +369,7 @@ DROP POLICY IF EXISTS billing_wallet_credit_reservations_select_system_admin ON 
 CREATE POLICY billing_wallet_credit_reservations_select_system_admin ON billing_wallet_credit_reservations FOR SELECT
   USING (app.current_is_system_admin());
 DROP POLICY IF EXISTS billing_wallet_credit_reservations_insert_owner ON billing_wallet_credit_reservations;
-CREATE POLICY billing_wallet_credit_reservations_insert_owner ON billing_wallet_credit_reservations FOR INSERT
-  WITH CHECK (user_id = app.current_user_id());
 DROP POLICY IF EXISTS billing_wallet_credit_reservations_update_owner ON billing_wallet_credit_reservations;
-CREATE POLICY billing_wallet_credit_reservations_update_owner ON billing_wallet_credit_reservations FOR UPDATE
-  USING (user_id = app.current_user_id()) WITH CHECK (user_id = app.current_user_id());
 DROP POLICY IF EXISTS billing_wallet_credit_reservations_write_callback ON billing_wallet_credit_reservations;
 DROP POLICY IF EXISTS billing_wallet_credit_reservations_write_system_admin ON billing_wallet_credit_reservations;
 CREATE POLICY billing_wallet_credit_reservations_write_system_admin ON billing_wallet_credit_reservations FOR ALL
@@ -312,9 +377,9 @@ CREATE POLICY billing_wallet_credit_reservations_write_system_admin ON billing_w
 
 DROP POLICY IF EXISTS billing_recharge_plans_select_active ON billing_recharge_plans;
 DROP POLICY IF EXISTS billing_recharge_plans_select_projection ON billing_recharge_plans;
-CREATE POLICY billing_recharge_plans_select_projection ON billing_recharge_plans FOR SELECT
-  USING (current_setting('app.recharge_plan_projection', true) = 'true');
 DROP POLICY IF EXISTS billing_recharge_plans_select_callback ON billing_recharge_plans;
+CREATE POLICY billing_recharge_plans_select_callback ON billing_recharge_plans FOR SELECT TO tapflow_wallet_callback
+  USING (current_user = 'tapflow_wallet_callback');
 DROP POLICY IF EXISTS billing_recharge_plans_select_system_admin ON billing_recharge_plans;
 CREATE POLICY billing_recharge_plans_select_system_admin ON billing_recharge_plans FOR SELECT
   USING (app.current_is_system_admin());
@@ -329,17 +394,14 @@ DROP POLICY IF EXISTS billing_wallet_payments_select_system_admin ON billing_wal
 CREATE POLICY billing_wallet_payments_select_system_admin ON billing_wallet_payments FOR SELECT
   USING (app.current_is_system_admin());
 DROP POLICY IF EXISTS billing_wallet_payments_select_callback_order ON billing_wallet_payments;
-CREATE POLICY billing_wallet_payments_select_callback_order ON billing_wallet_payments FOR SELECT
-  USING (
-    merchant_order_id = NULLIF(current_setting('app.xunhu_callback_order_id', true), '')
-  );
+DROP POLICY IF EXISTS billing_wallet_payments_select_callback ON billing_wallet_payments;
+CREATE POLICY billing_wallet_payments_select_callback ON billing_wallet_payments FOR SELECT TO tapflow_wallet_callback
+  USING (current_user = 'tapflow_wallet_callback');
 DROP POLICY IF EXISTS billing_wallet_payments_insert_owner ON billing_wallet_payments;
-CREATE POLICY billing_wallet_payments_insert_owner ON billing_wallet_payments FOR INSERT
-  WITH CHECK (user_id = app.current_user_id());
 DROP POLICY IF EXISTS billing_wallet_payments_update_owner ON billing_wallet_payments;
-CREATE POLICY billing_wallet_payments_update_owner ON billing_wallet_payments FOR UPDATE
-  USING (user_id = app.current_user_id()) WITH CHECK (user_id = app.current_user_id());
 DROP POLICY IF EXISTS billing_wallet_payments_write_callback ON billing_wallet_payments;
+CREATE POLICY billing_wallet_payments_write_callback ON billing_wallet_payments FOR UPDATE TO tapflow_wallet_callback
+  USING (current_user = 'tapflow_wallet_callback') WITH CHECK (current_user = 'tapflow_wallet_callback');
 DROP POLICY IF EXISTS billing_wallet_payments_write_system_admin ON billing_wallet_payments;
 CREATE POLICY billing_wallet_payments_write_system_admin ON billing_wallet_payments FOR ALL
   USING (app.current_is_system_admin()) WITH CHECK (app.current_is_system_admin());
@@ -367,8 +429,6 @@ BEGIN
     RAISE EXCEPTION 'payment notification requires order, amount, and event time';
   END IF;
 
-  PERFORM set_config('app.xunhu_callback_order_id', p_trade_order_id, true);
-
   SELECT * INTO v_payment
   FROM billing_wallet_payments
   WHERE merchant_order_id = p_trade_order_id
@@ -377,8 +437,6 @@ BEGIN
   IF NOT FOUND THEN
     RAISE EXCEPTION 'unknown merchant order';
   END IF;
-
-  PERFORM set_config('app.user_id', v_payment.user_id::text, true);
 
   IF v_payment.amount_cents <> p_amount_cents THEN
     RAISE EXCEPTION 'payment amount mismatch';
@@ -527,7 +585,6 @@ SECURITY DEFINER
 SET search_path = pg_catalog, public, app
 AS $$
 BEGIN
-  PERFORM set_config('app.recharge_plan_projection', 'true', true);
   RETURN QUERY
   SELECT
     plan.id,
@@ -546,3 +603,38 @@ $$;
 
 REVOKE ALL ON FUNCTION app.apply_xunhu_payment_notification(text, bigint, text, text, text, timestamptz) FROM PUBLIC;
 REVOKE ALL ON FUNCTION app.list_active_billing_recharge_plans() FROM PUBLIC;
+
+GRANT USAGE ON SCHEMA app TO tapflow_wallet_callback;
+GRANT SELECT, UPDATE ON billing_wallets TO tapflow_wallet_callback;
+GRANT SELECT, INSERT, UPDATE ON billing_wallet_credit_grants TO tapflow_wallet_callback;
+GRANT INSERT ON billing_wallet_ledger TO tapflow_wallet_callback;
+GRANT SELECT, UPDATE ON billing_wallet_payments TO tapflow_wallet_callback;
+GRANT SELECT ON billing_recharge_plans TO tapflow_wallet_callback;
+
+-- The migration role retains explicit execution rights after ownership moves to
+-- the callback role. Membership exists only long enough to make that transfer.
+DO $$
+BEGIN
+  EXECUTE format(
+    'GRANT EXECUTE ON FUNCTION app.apply_xunhu_payment_notification(text, bigint, text, text, text, timestamptz) TO %I',
+    current_user
+  );
+  EXECUTE format(
+    'GRANT EXECUTE ON FUNCTION app.list_active_billing_recharge_plans() TO %I',
+    current_user
+  );
+  ALTER FUNCTION app.apply_xunhu_payment_notification(text, bigint, text, text, text, timestamptz)
+    OWNER TO tapflow_wallet_callback;
+  ALTER FUNCTION app.list_active_billing_recharge_plans()
+    OWNER TO tapflow_wallet_callback;
+  EXECUTE format('REVOKE tapflow_wallet_callback FROM %I', current_user);
+
+  IF EXISTS (
+    SELECT 1
+    FROM pg_auth_members
+    WHERE roleid = (SELECT oid FROM pg_roles WHERE rolname = 'tapflow_wallet_callback')
+  ) THEN
+    RAISE EXCEPTION 'tapflow_wallet_callback must not retain role memberships after migration';
+  END IF;
+END;
+$$;
