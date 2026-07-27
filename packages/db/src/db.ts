@@ -9,8 +9,20 @@ export function getDatabaseUrl(): string {
 }
 
 export function createPgPool(config: PoolConfig = {}): Pool {
-  return new Pool({
+  const pool = new Pool({
     connectionString: getDatabaseUrl(),
     ...config,
   });
+
+  pool.on("error", (error) => {
+    const code = (error as Error & { code?: unknown }).code;
+    console.error("[db] idle PostgreSQL client error", {
+      code: typeof code === "string" ? code : undefined,
+      message: error.message,
+      name: error.name,
+      stack: error.stack,
+    });
+  });
+
+  return pool;
 }
