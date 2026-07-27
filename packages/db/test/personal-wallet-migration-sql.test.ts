@@ -42,34 +42,46 @@ describe("000042_xunhupay_personal_wallet.sql", () => {
     expect(sql).toContain("FOR UPDATE");
   });
 
-  test("uses a trusted database role for mutation and limits plan reads to commercial fields", async () => {
+  test("uses a locked payment owner for callback writes and limits plan reads to commercial fields", async () => {
     const migrationPath = path.resolve(
       import.meta.dirname,
       "../migrations/000042_xunhupay_personal_wallet.sql",
     );
     const sql = await readFile(migrationPath, "utf8");
 
-    expect(sql).toContain("CREATE OR REPLACE FUNCTION app.current_is_wallet_service_role()");
-    expect(sql).toContain("'app.apply_xunhu_payment_notification(text, bigint, text, text, text, timestamptz)'::regprocedure");
-    expect(sql).toContain("CREATE POLICY billing_wallets_write_wallet_service");
-    expect(sql).toContain("CREATE POLICY billing_wallet_payments_write_wallet_service");
-    expect(sql).toContain("CREATE POLICY billing_wallet_ledger_insert_wallet_service");
-    expect(sql).not.toContain("CREATE POLICY billing_wallets_insert_owner");
-    expect(sql).not.toContain("CREATE POLICY billing_wallet_credit_grants_update_owner");
-    expect(sql).not.toContain("CREATE POLICY billing_wallet_ledger_insert_owner");
-    expect(sql).not.toContain("CREATE POLICY billing_wallet_credit_reservations_update_owner");
-    expect(sql).not.toContain("CREATE POLICY billing_wallet_payments_update_owner");
+    expect(sql).toContain("CREATE POLICY billing_wallet_payments_select_callback_order");
+    expect(sql).toContain("merchant_order_id = NULLIF(current_setting('app.xunhu_callback_order_id', true), '')");
+    expect(sql).toContain("CREATE POLICY billing_wallets_insert_owner");
+    expect(sql).toContain("CREATE POLICY billing_wallet_payments_update_owner");
+    expect(sql).toContain("PERFORM set_config('app.xunhu_callback_order_id', p_trade_order_id, true);");
+    expect(sql).toContain("PERFORM set_config('app.user_id', v_payment.user_id::text, true);");
+    expect(sql).not.toContain("CREATE ROLE tapflow_wallet_callback");
+    expect(sql).not.toContain("tapflow_wallet_callback')");
+    expect(sql).not.toContain("current_is_wallet_service_role");
+    expect(sql).not.toContain("current_user =");
     expect(sql).not.toContain("CREATE POLICY billing_wallet_ledger_write_system_admin");
+    expect(sql).not.toContain("CREATE POLICY billing_wallet_ledger_update_");
+    expect(sql).not.toContain("CREATE POLICY billing_wallet_ledger_delete_");
 
     const commercialPlanFunction = sql.match(
       /CREATE OR REPLACE FUNCTION app\.list_active_billing_recharge_plans\(\)[\s\S]*?\n\$\$;/,
     )?.[0];
     expect(commercialPlanFunction).toBeDefined();
     expect(commercialPlanFunction).toContain("RETURNS TABLE");
+    expect(commercialPlanFunction).toContain("PERFORM set_config('app.recharge_plan_projection', 'true', true);");
     expect(commercialPlanFunction).toContain("WHERE plan.active");
     expect(commercialPlanFunction).not.toContain("metadata");
     expect(commercialPlanFunction).not.toContain("updated_by");
     expect(sql).toContain("REVOKE ALL ON FUNCTION app.list_active_billing_recharge_plans() FROM PUBLIC");
     expect(sql).not.toContain("CREATE POLICY billing_recharge_plans_select_active");
+
+    const callbackDefinition = sql.indexOf("CREATE OR REPLACE FUNCTION app.apply_xunhu_payment_notification");
+    const callbackOrderSetting = sql.indexOf("PERFORM set_config('app.xunhu_callback_order_id', p_trade_order_id, true);");
+    const callbackLookup = sql.indexOf("SELECT * INTO v_payment", callbackDefinition);
+    const callbackOwnerSetting = sql.indexOf("PERFORM set_config('app.user_id', v_payment.user_id::text, true);");
+    expect(callbackDefinition).toBeGreaterThan(-1);
+    expect(callbackOrderSetting).toBeGreaterThan(callbackDefinition);
+    expect(callbackLookup).toBeGreaterThan(callbackOrderSetting);
+    expect(callbackOwnerSetting).toBeGreaterThan(callbackLookup);
   });
 });
