@@ -1,9 +1,20 @@
 import { readFile } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 import path from "node:path";
 
 import { describe, expect, test } from "vitest";
 
 describe("000042_xunhupay_personal_wallet.sql", () => {
+  test("assigns every personal-wallet migration a unique numeric version", async () => {
+    const migrationsDir = path.resolve(import.meta.dirname, "../migrations");
+    const personalWalletMigrationNames = (await readdir(migrationsDir))
+      .filter((filename) => filename.includes("wallet"))
+      .sort();
+    const versions = personalWalletMigrationNames.map((filename) => filename.match(/^(\d+)_/)?.[1]);
+
+    expect(new Set(versions).size).toBe(versions.length);
+  });
+
   test("defines the personal wallet schema, ownership, RLS, plans, and callback isolation", async () => {
     const migrationPath = path.resolve(
       import.meta.dirname,
