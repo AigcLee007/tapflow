@@ -13,6 +13,16 @@ describe("XunhuPay signing", () => {
 });
 
 describe("XunhuPay operations", () => {
+  test("uses the per-order return URL when creating checkout", async () => {
+    let body: Record<string, unknown> = {};
+    const client = new XunhuClient({ appId: "app", appSecret: "secret", baseUrl: "https://api.example.test", notifyUrl: "https://app.example.test/notify", returnUrl: "https://app.example.test/billing", timeoutMs: 1_000 }, async (_input, init) => {
+      body = JSON.parse(String(init?.body));
+      return new Response(JSON.stringify({ errcode: 0, url: "https://pay.example.test/order" }), { headers: { "content-type": "application/json" } });
+    });
+    await client.createCheckout({ amountCents: 990, attach: "payment-1", merchantOrderId: "TF0001", nonce: "nonce", returnUrl: "https://app.example.test/billing?paymentId=payment-1", title: "100 AI credits", timestamp: 1 });
+    expect(body.return_url).toBe("https://app.example.test/billing?paymentId=payment-1");
+  });
+
   test("queries an order with the documented out_trade_order field", async () => {
     let request: Request | null = null;
     const client = new XunhuClient({

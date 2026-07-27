@@ -6,10 +6,13 @@ Maintainers: project team + Codex sessions
 ## 2026-07-27 - XunhuPay Personal Wallet Implementation In Progress
 
 - implemented schema/RLS, personal-wallet accounting, immutable billed-user workflow ownership, balance migration tooling, signed checkout/callback, expiry sweep, and the initial personal billing UI on branch `codex/xunhupay-personal-wallet`.
+- repaired the mobile XunhuPay return path: each new checkout now adds its opaque `paymentId` to the configured billing return URL, allowing `/billing` to resume bounded, server-authoritative status polling after the provider redirect; an invalid configured return URL becomes a safe server configuration error.
+- completed creator-facing activity labels for the new wallet ledger entries: historical migration credit is positive, while expiry and payment refund have explicit labels.
 - current work also includes XunhuPay query/refund transport, platform payment routes, reconciler scheduling, and payment observability. These changes remain un-deployed and real merchant payment/refund acceptance has not been performed.
 - corrected the remaining redeem path so redeemed credits now enter the personal wallet ledger rather than the legacy tenant billing ledger; focused API regression coverage verifies the cutover.
 - staging cutover remains gated by database backup, a clean migration dry run, worker shutdown, and explicit merchant credentials configured only in `/opt/aittco/env/tapflow.staging.env`.
 - local compiled migration dry-run was attempted on 2026-07-27 and stopped safely before any database access because `DATABASE_URL` is not configured in this workspace. Staging evidence is still required for migration totals and payment acceptance.
+- focused local regressions for the return and activity repairs passed: `npm run test --workspace @aigc-flow/api -- xunhu-client.test.ts` (5 tests) and `npm test -- src/billing/billingActivity.test.ts` (3 tests).
 
 ## 2026-07-27 - XunhuPay Personal Wallet Approved Design
 

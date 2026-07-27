@@ -146,4 +146,18 @@ describe("billingActivity", () => {
     expect(rows[0]?.modelLabel).not.toContain("pixellelabs.nano-banana-pro");
     expect(rows[0]?.modelLabel).not.toContain("1911c771-74a1-4ca1-af77-df9383dd8304");
   });
+
+  test("labels personal wallet credit, expiry, and refund ledger entries", () => {
+    const ledger: BillingLedgerEntry[] = [
+      { amountCents: 100, createdAt: "2026-06-19T03:00:00.000Z", currency: "credits", description: null, entryType: "migration_credit", id: "migration", idempotencyKey: "migration:1", metadata: {}, usageEventId: null },
+      { amountCents: 20, createdAt: "2026-06-19T02:00:00.000Z", currency: "credits", description: null, entryType: "expire", id: "expire", idempotencyKey: "expire:1", metadata: {}, usageEventId: null },
+      { amountCents: 100, createdAt: "2026-06-19T01:00:00.000Z", currency: "credits", description: null, entryType: "payment_refund", id: "refund", idempotencyKey: "refund:1", metadata: {}, usageEventId: null },
+    ];
+
+    expect(buildBillingActivityRows([], ledger, createCatalog()).map(({ credits, eventLabel }) => ({ credits, eventLabel }))).toEqual([
+      { credits: 100, eventLabel: "\u5386\u53f2\u4f59\u989d\u8fc1\u79fb" },
+      { credits: -20, eventLabel: "\u79ef\u5206\u8fc7\u671f" },
+      { credits: -100, eventLabel: "\u5145\u503c\u9000\u6b3e" },
+    ]);
+  });
 });

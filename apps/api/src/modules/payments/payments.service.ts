@@ -33,11 +33,14 @@ export class PaymentsService {
     if (pending.status === "checkout_created") return pending;
     if (pending.status !== "pending") throw new PaymentsApiError(409, "PAYMENT_STATE_CONFLICT", "Payment cannot create a checkout");
     try {
+      const returnUrl = new URL(this.env.xunhuReturnUrl);
+      returnUrl.searchParams.set("paymentId", pending.id);
       const checkout = await this.xunhu.createCheckout({
         amountCents: pending.amountCents,
         attach: pending.id,
         merchantOrderId: pending.merchantOrderId,
         nonce: randomBytes(16).toString("hex"),
+        returnUrl: returnUrl.toString(),
         title: pending.planNameSnapshot,
       });
       return await this.call(() => this.walletPayments.markCheckoutCreated({
@@ -45,6 +48,9 @@ export class PaymentsService {
       }));
     } catch (error) {
       if (error instanceof PaymentsApiError) throw error;
+      if (error instanceof TypeError && error.message === "Invalid URL") {
+        throw new PaymentsApiError(500, "PAYMENT_RETURN_URL_INVALID", "Payment return URL is misconfigured");
+      }
       // The provider may have accepted a timed-out request. Keep this exact order for reconciliation.
       throw new PaymentsApiError(502, "PAYMENT_PROVIDER_UNAVAILABLE", "Unable to create payment checkout");
     }

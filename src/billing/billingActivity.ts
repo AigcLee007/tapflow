@@ -29,7 +29,7 @@ export type BillingActivityRow = {
   statusLabel: string;
 };
 
-const CREDIT_LEDGER_ENTRY_TYPES = new Set(["refund", "redeem", "admin_credit", "payment"]);
+const CREDIT_LEDGER_ENTRY_TYPES = new Set(["refund", "redeem", "admin_credit", "payment", "migration_credit"]);
 const HIDDEN_LEDGER_ENTRY_TYPES = new Set(["reserve"]);
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -216,6 +216,9 @@ function resolveLedgerEventLabel(entryType: string): string {
   if (entryType === "redeem") return "\u5151\u6362\u79ef\u5206";
   if (entryType === "admin_credit") return "\u540e\u53f0\u53d1\u653e";
   if (entryType === "payment") return "\u5145\u503c";
+  if (entryType === "migration_credit") return "\u5386\u53f2\u4f59\u989d\u8fc1\u79fb";
+  if (entryType === "expire") return "\u79ef\u5206\u8fc7\u671f";
+  if (entryType === "payment_refund") return "\u5145\u503c\u9000\u6b3e";
   if (entryType === "settle") return "\u79ef\u5206\u7ed3\u7b97";
   if (entryType === "admin_debit") return "\u540e\u53f0\u6263\u51cf";
   return "\u79ef\u5206\u53d8\u52a8";

@@ -34,8 +34,8 @@ export function verifyXunhuSignature(fields: XunhuFields, secret: string): boole
 
 export class XunhuClient {
   constructor(private readonly config: XunhuConfig, private readonly fetchFn: typeof fetch = fetch) {}
-  async createCheckout(input: { merchantOrderId: string; amountCents: number; title: string; attach: string; nonce: string; timestamp?: number }) {
-    const fields: Record<string, string | number> = { version: "1.1", appid: this.config.appId, trade_order_id: input.merchantOrderId, total_fee: formatCnyFromCents(input.amountCents), title: input.title, time: input.timestamp ?? Math.floor(Date.now() / 1000), notify_url: this.config.notifyUrl, return_url: this.config.returnUrl, attach: input.attach, nonce_str: input.nonce, plugins: "tapflow" };
+  async createCheckout(input: { merchantOrderId: string; amountCents: number; title: string; attach: string; nonce: string; returnUrl?: string; timestamp?: number }) {
+    const fields: Record<string, string | number> = { version: "1.1", appid: this.config.appId, trade_order_id: input.merchantOrderId, total_fee: formatCnyFromCents(input.amountCents), title: input.title, time: input.timestamp ?? Math.floor(Date.now() / 1000), notify_url: this.config.notifyUrl, return_url: input.returnUrl ?? this.config.returnUrl, attach: input.attach, nonce_str: input.nonce, plugins: "tapflow" };
     const payload = { ...fields, hash: signXunhuFields(fields, this.config.appSecret) };
     const response = await this.fetchFn(`${this.config.baseUrl.replace(/\/$/, "")}/payment/do.html`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload), signal: AbortSignal.timeout(this.config.timeoutMs) });
     if (!response.ok) throw new Error(`Xunhu checkout request failed with ${response.status}`);
