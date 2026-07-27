@@ -8,6 +8,16 @@ export function getDatabaseUrl(): string {
   return value;
 }
 
+export function logPgConnectionError(label: string, error: Error): void {
+  const code = (error as Error & { code?: unknown }).code;
+  console.error(label, {
+    code: typeof code === "string" ? code : undefined,
+    message: error.message,
+    name: error.name,
+    stack: error.stack,
+  });
+}
+
 export function createPgPool(config: PoolConfig = {}): Pool {
   const pool = new Pool({
     connectionString: getDatabaseUrl(),
@@ -15,13 +25,7 @@ export function createPgPool(config: PoolConfig = {}): Pool {
   });
 
   pool.on("error", (error) => {
-    const code = (error as Error & { code?: unknown }).code;
-    console.error("[db] idle PostgreSQL client error", {
-      code: typeof code === "string" ? code : undefined,
-      message: error.message,
-      name: error.name,
-      stack: error.stack,
-    });
+    logPgConnectionError("[db] idle PostgreSQL client error", error);
   });
 
   return pool;

@@ -4,6 +4,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Pool } from "pg";
 
+import { logPgConnectionError } from "./db.js";
+
 export type MigrationFile = {
   checksum: string;
   filename: string;
@@ -138,6 +140,12 @@ export async function runMigrations(
     }
 
     const client = await pool.connect();
+    let clientConnectionError: Error | undefined;
+    const handleClientError = (error: Error): void => {
+      clientConnectionError = error;
+      logPgConnectionError("[db:migrate] checked-out PostgreSQL client error", error);
+    };
+    client.on("error", handleClientError);
     try {
       if (migration.nonTransactional) {
         await client.query(migration.sql);
@@ -167,7 +175,8 @@ export async function runMigrations(
       }
       throw new MigrationFailedError(migration.filename, error);
     } finally {
-      client.release();
+      client.removeListener("error", handleClientError);
+      client.release(clientConnectionError);
     }
   }
 
