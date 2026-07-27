@@ -1,7 +1,13 @@
 ﻿# Project Record
 
-Last updated: 2026-07-27
+Last updated: 2026-07-28
 Maintainers: project team + Codex sessions
+
+## 2026-07-28 - Supabase Migration Connection Design
+
+- staging diagnostics confirmed `DATABASE_URL` uses the Supabase transaction pooler on port 6543, which terminates the role and function-ownership DDL in migration `000044`; migrations `000042` and `000043` are recorded, while `000044` and `000045` remain unapplied.
+- approved a separate `MIGRATION_DATABASE_URL` backed by Supabase Direct or Session Pooler port 5432 and a one-shot Compose `tapflow-migrator` tools-profile service. The direct credential will not enter long-running API or Worker containers, while local development continues to use the existing `DATABASE_URL` flow.
+- recorded the design in `docs/superpowers/specs/2026-07-28-supabase-migration-connection-design.md`. Legacy reservation reconciliation remains a separate gate: staging currently has 301.2 credits marked reserved in grants, including 101.2 credits tied to 32 terminal failed reservations and 200 credits without matching active reservation rows.
 
 ## 2026-07-27 - XunhuPay Personal Wallet Implementation In Progress
 
