@@ -3,7 +3,6 @@ import {
   BillingServiceError,
   createPgPool,
   type BillingLedgerView,
-  type BillingPaymentView,
   PersonalWalletService,
   withUserTransaction,
   type UsageEventView,
@@ -133,35 +132,6 @@ export class BillingApiService {
       tenantId: context.tenantId,
       userId: this.requireUserId(context),
     }, input));
-  }
-
-  async createPaymentCheckout(
-    context: BillingContext,
-    input: {
-      amountCents: number;
-      credits: number;
-      idempotencyKey: string;
-      provider: string;
-    },
-  ): Promise<{
-    checkoutUrl: null;
-    payment: BillingPaymentView;
-  }> {
-    const payment = await this.call(() => this.billingService.createPayment(context, {
-      amountCents: input.amountCents,
-      credits: input.credits,
-      idempotencyKey: input.idempotencyKey,
-      metadata: {
-        note: "Payment provider integration is not configured in Sprint 5",
-      },
-      provider: input.provider,
-      status: "pending",
-    }));
-
-    return {
-      checkoutUrl: null,
-      payment,
-    };
   }
 
   async adjustBillingAccount(
