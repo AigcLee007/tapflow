@@ -18,6 +18,7 @@ export const QUEUE_NAMES = {
   assetIngest: "asset.ingest",
   auditFlush: "audit.flush",
   billingSettle: "billing.settle",
+  walletExpiry: "billing.wallet-expiry",
   emailSend: "email.send",
   nodeExecute: "node.execute",
   nodeExecuteDefault: "node.execute.default",
@@ -67,6 +68,10 @@ export type BillingSettleJobPayload = BaseJobPayload & {
   usageEventId: string;
 };
 
+export type WalletExpiryJobPayload = BaseJobPayload & {
+  limit?: number;
+};
+
 export type EmailSendJobPayload = BaseJobPayload & {
   emailMessageId: string;
 };
@@ -80,6 +85,7 @@ export type QueuePayloadMap = {
   "asset.ingest": AssetIngestJobPayload;
   "audit.flush": AuditFlushJobPayload;
   "billing.settle": BillingSettleJobPayload;
+  "billing.wallet-expiry": WalletExpiryJobPayload;
   "email.send": EmailSendJobPayload;
   "node.execute": NodeExecuteJobPayload;
   "node.execute.default": NodeExecuteJobPayload;

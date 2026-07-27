@@ -19,6 +19,7 @@ export {
   type AuditFlushJobPayload,
   type BaseJobPayload,
   type BillingSettleJobPayload,
+  type WalletExpiryJobPayload,
   type EmailSendJobPayload,
   type NodeExecuteJobPayload,
   type ProviderPollJobPayload,

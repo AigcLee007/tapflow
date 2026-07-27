@@ -6,6 +6,7 @@ import type { WorkerLogger } from "../logger.js";
 import { processAssetImageVariantJob } from "../processors/asset-image-variant.processor.js";
 import { processAssetIngestJob } from "../processors/asset-ingest.processor.js";
 import { processBillingSettleJob } from "../processors/billing-settle.processor.js";
+import { processWalletExpiryJob } from "../processors/wallet-expiry.processor.js";
 import { processNodeExecuteJob } from "../processors/node-execute.processor.js";
 import { processProviderPollJob } from "../processors/provider-poll.processor.js";
 import { processWorkbenchGenerateJob } from "../processors/workbench-generate.processor.js";
@@ -37,6 +38,7 @@ export const WORKER_QUEUE_NAMES = [
   QUEUE_NAMES.assetImageVariant,
   QUEUE_NAMES.assetIngest,
   QUEUE_NAMES.billingSettle,
+  QUEUE_NAMES.walletExpiry,
   "workbench.generate" as QueueName,
 ] as const;
 
@@ -146,10 +148,12 @@ export function registerWorkerQueues(options: {
                 if (!options.workbenchGenerationService) {
                   throw new Error("workbenchGenerationService is required for workbench generation jobs");
                 }
-                return processWorkbenchGenerateJob(job as never, options.logger, {
-                  generationService: options.workbenchGenerationService,
-                });
-              }
+              return processWorkbenchGenerateJob(job as never, options.logger, {
+                generationService: options.workbenchGenerationService,
+              });
+            }
+          : queueName === QUEUE_NAMES.walletExpiry
+            ? (job: unknown) => processWalletExpiryJob(job as never, options.logger)
           : (job: unknown) => processBillingSettleJob(job as never, options.logger);
 
     const worker = options.queueFactory.createWorker(

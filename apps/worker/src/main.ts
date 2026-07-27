@@ -35,7 +35,7 @@ type QueueFactoryLike = {
   createQueue: (
     name: QueueName,
   ) => {
-    add: (name: string, data: AnyJobPayload, options?: { delay?: number }) => Promise<unknown>;
+    add: (name: string, data: AnyJobPayload, options?: { delay?: number; jobId?: string; repeat?: { every: number } }) => Promise<unknown>;
     close: () => Promise<unknown>;
   };
   createQueueEvents: (name: QueueName) => Closable;
@@ -50,6 +50,8 @@ export type WorkerRuntime = {
   queueNames: string[];
   shutdown: () => Promise<void>;
 };
+
+const SYSTEM_TENANT_ID = "00000000-0000-0000-0000-000000000000";
 
 export function createWorkerRuntime(options?: {
   env?: WorkerEnv;
@@ -88,6 +90,12 @@ export function createWorkerRuntime(options?: {
   const assetImageVariantQueue = queueFactory.createQueue(QUEUE_NAMES.assetImageVariant);
   const WORKBENCH_GENERATE_QUEUE = "workbench.generate" as const;
   const workbenchGenerateQueue = queueFactory.createQueue(WORKBENCH_GENERATE_QUEUE);
+  const walletExpiryQueue = queueFactory.createQueue(QUEUE_NAMES.walletExpiry);
+  void walletExpiryQueue.add(
+    "expire-due-wallet-grants",
+    { tenantId: SYSTEM_TENANT_ID, limit: 500 },
+    { jobId: "wallet-expiry-sweep", repeat: { every: env.billingExpirySweepMs } },
+  ).catch((error) => logger.error({ err: error instanceof Error ? error.message : String(error), queueName: QUEUE_NAMES.walletExpiry }, "failed to schedule wallet expiry sweep"));
   const storageProvider = new S3StorageProvider({
     accessKeyId: env.s3AccessKeyId,
     endpoint: env.s3Endpoint,
@@ -182,6 +190,7 @@ export function createWorkerRuntime(options?: {
       nodeExecuteVideoQueue.close(),
       providerPollQueue.close(),
       workbenchGenerateQueue.close(),
+      walletExpiryQueue.close(),
     ]);
 
     if (ownedRedisConnection) {
