@@ -4,6 +4,7 @@ import {
   applyMembershipDiscount,
   BillingService,
   createPgPool,
+  PersonalWalletService,
   resolveMembershipDiscount,
   withTenantTransaction,
 } from "@aigc-flow/db";
@@ -198,18 +199,21 @@ function isBatchTerminalStatus(status: string) {
 
 export class WorkbenchService {
   readonly billingService: BillingService;
+  readonly personalWalletService: PersonalWalletService;
   readonly generationQueue: Pick<Queue<WorkbenchGenerateJobPayload>, "add"> | null;
   readonly pool: Pool;
   readonly storageProvider?: StorageProvider;
 
   constructor(options?: {
     billingService?: BillingService;
+    personalWalletService?: PersonalWalletService;
     generationQueue?: Pick<Queue<WorkbenchGenerateJobPayload>, "add"> | null;
     pool?: Pool;
     storageProvider?: StorageProvider;
   }) {
     this.pool = options?.pool ?? createPgPool();
     this.billingService = options?.billingService ?? new BillingService({ pool: this.pool });
+    this.personalWalletService = options?.personalWalletService ?? new PersonalWalletService({ pool: this.pool });
     this.generationQueue = options?.generationQueue ?? null;
     this.storageProvider = options?.storageProvider;
   }
@@ -400,6 +404,8 @@ export class WorkbenchService {
       throw new WorkbenchApiError(503, "WORKBENCH_QUEUE_UNAVAILABLE", "Workbench generation queue is unavailable.");
     }
 
+    if (!context.userId) throw new WorkbenchApiError(401, "AUTH_REQUIRED", "Authentication is required to generate workbench output.");
+    const billedUserId = context.userId;
     return withTenantTransaction(context, async (client) => {
       await this.assertReferenceAssetsExist(client, context.tenantId, input.referenceAssetIds);
       await this.assertReferenceUploadsExist(client, context.tenantId, input.referenceUploadIds);
@@ -409,9 +415,8 @@ export class WorkbenchService {
       const estimatedCredits = applyMembershipDiscount(originalCredits, membership);
       const idempotencySuffix = input.idempotencyKey ?? randomUUID();
 
-      const reserveLedger = await this.billingService.reserveUsageWithClient(client, context.tenantId, {
-        amountCents: estimatedCredits,
-        description: "Workbench image generation reservation",
+      const reserveLedger = await this.personalWalletService.reserveUsageWithClient(client, { tenantId: context.tenantId, userId: billedUserId }, {
+        amountCredits: estimatedCredits,
         idempotencyKey: `workbench:reserve:${context.tenantId}:${idempotencySuffix}`,
         metadata: {
           modelId: input.modelId,
@@ -834,6 +839,7 @@ export class WorkbenchService {
           tenant_id,
           session_id,
           created_by,
+          billed_user_id,
           prompt,
           model_id,
           route_key,
@@ -855,6 +861,7 @@ export class WorkbenchService {
         VALUES (
           $1::uuid,
           $2::uuid,
+          $3::uuid,
           $3::uuid,
           $4,
           $5,

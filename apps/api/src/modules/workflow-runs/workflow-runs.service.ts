@@ -5,6 +5,8 @@ import {
   BillingService,
   BillingServiceError,
   createPgPool,
+  PersonalWalletService,
+  PersonalWalletServiceError,
   resolveMembershipDiscount,
   safeRecordAuditLog,
   withTenantTransaction,
@@ -620,12 +622,14 @@ function isUniqueViolation(error: unknown): boolean {
 
 export class WorkflowRunsService {
   readonly billingService: BillingService;
+  readonly personalWalletService: PersonalWalletService;
   readonly nodeExecuteQueues: NodeExecuteQueueMapLike;
   readonly nodeExecuteQueue: NodeExecuteQueueLike;
   readonly pool: PgPool;
 
   constructor(options: {
     billingService?: BillingService;
+    personalWalletService?: PersonalWalletService;
     nodeExecuteQueue: NodeExecuteQueueLike;
     nodeExecuteQueues?: NodeExecuteQueueMapLike;
     pool?: PgPool;
@@ -637,6 +641,7 @@ export class WorkflowRunsService {
     };
     this.pool = options.pool ?? createPgPool();
     this.billingService = options.billingService ?? new BillingService({ pool: this.pool });
+    this.personalWalletService = options.personalWalletService ?? new PersonalWalletService({ pool: this.pool });
   }
 
   async createWorkflowRun(
@@ -650,6 +655,10 @@ export class WorkflowRunsService {
     runId: string;
     status: string;
   }> {
+    if (!context.userId) {
+      throw new WorkflowRunsApiError(401, "AUTH_REQUIRED", "Authentication is required to run a workflow");
+    }
+    const billedUserId = context.userId;
     const startedAt = Date.now();
     const runInput = input.input ?? {};
     const runMode = getRequestedRunMode(runInput);
@@ -806,6 +815,7 @@ export class WorkflowRunsService {
             input_json,
             idempotency_key,
             created_by,
+            billed_user_id,
             updated_at
           )
           VALUES (
@@ -816,6 +826,7 @@ export class WorkflowRunsService {
             'pending',
             $5::jsonb,
             $6,
+            $7::uuid,
             $7::uuid,
             now()
           )
@@ -964,9 +975,8 @@ export class WorkflowRunsService {
             const reserveStartedAt = Date.now();
             let reserve;
             try {
-              reserve = await this.billingService.reserveUsageWithClient(client, context.tenantId, {
-                amountCents: discountedCredits,
-                description: `${node.type} reserved`,
+              reserve = await this.personalWalletService.reserveUsageWithClient(client, { tenantId: context.tenantId, userId: billedUserId }, {
+                amountCredits: discountedCredits,
                 idempotencyKey: `reserve:${context.tenantId}:${run.id}:${nodeRunId}`,
                 metadata: {
                   discountMultiplier: membership.multiplier,
@@ -986,7 +996,7 @@ export class WorkflowRunsService {
                 },
               });
             } catch (error) {
-              if (error instanceof BillingServiceError && error.code === "INSUFFICIENT_BALANCE") {
+              if ((error instanceof BillingServiceError || error instanceof PersonalWalletServiceError) && error.code === "INSUFFICIENT_BALANCE") {
                 const account = await client.query<{
                   balance_cents: string;
                   reserved_cents: string;

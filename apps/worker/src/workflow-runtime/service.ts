@@ -3,6 +3,7 @@ import { basename, dirname, isAbsolute } from "node:path";
 
 import {
   BillingService,
+  PersonalWalletService,
   createPgPool,
   safeRecordAuditLog,
   type AuditLogInput,
@@ -1434,6 +1435,7 @@ function resolveOutputNodeOutput(upstreamOutputs: Array<Record<string, unknown> 
 export class WorkflowNodeExecutionService {
   readonly assetStore: MediaAssetStore;
   readonly billingService: BillingService;
+  readonly personalWalletService: PersonalWalletService;
   readonly imageVariantQueue: MediaVariantQueue | null;
   readonly mediaGenerationRuntime: MediaGenerationRuntimeLike;
   readonly nodeExecuteQueues: NodeExecuteQueueMapLike;
@@ -1447,6 +1449,7 @@ export class WorkflowNodeExecutionService {
   constructor(options: {
     assetBucket: string;
     billingService?: BillingService;
+    personalWalletService?: PersonalWalletService;
     fetchFn?: FetchLike;
     imageVariantQueue?: MediaVariantQueue | null;
     imageVariantsMode?: "async" | "sync";
@@ -1470,6 +1473,7 @@ export class WorkflowNodeExecutionService {
     this.billingService = options.billingService ?? new BillingService({
       pool: options.pool,
     });
+    this.personalWalletService = options.personalWalletService ?? new PersonalWalletService({ pool: options.pool });
     this.imageVariantQueue = options.imageVariantQueue ?? null;
     this.mediaGenerationRuntime = options.mediaGenerationRuntime;
     this.nodeExecuteQueue = options.nodeExecuteQueue;
@@ -3446,10 +3450,17 @@ export class WorkflowNodeExecutionService {
       workflowRunId: input.workflowRunId,
     });
 
-    const ledgerEntry = await this.billingService.settleUsageWithClient(client, tenantId, {
-      amountCents: input.billableCents,
-      description: `${input.eventType} settled`,
+    const billedOwner = await client.query<{ billed_user_id: string }>(
+      "SELECT billed_user_id::text AS billed_user_id FROM workflow_runs WHERE id = $1::uuid",
+      [input.workflowRunId],
+    );
+    const billedUserId = billedOwner.rows[0]?.billed_user_id;
+    if (!billedUserId) throw new Error(`Workflow run ${input.workflowRunId} has no billing owner`);
+
+    const ledgerEntry = await this.personalWalletService.settleUsageWithClient(client, { tenantId, userId: billedUserId }, {
+      amountCredits: input.billableCents,
       idempotencyKey: `settle:${tenantId}:${input.workflowRunId}:${input.nodeRunId}`,
+      reserveLedgerId: input.reserveLedgerId ?? "",
       metadata: {
         modality: input.modality,
         nodeRunId: input.nodeRunId,
@@ -3457,7 +3468,6 @@ export class WorkflowNodeExecutionService {
           routeKey: input.routeKey ?? null,
           workflowRunId: input.workflowRunId,
         },
-      reservedAmountCents: input.billableCents,
       usageEventId: usageEvent.id,
     });
 
@@ -3498,7 +3508,7 @@ export class WorkflowNodeExecutionService {
         actorType: "system",
         actorUserId: null,
         metadata: {
-          amountCents: ledgerEntry.amountCents,
+          amountCents: ledgerEntry.amountCredits,
           entryType: ledgerEntry.entryType,
           usageEventId: ledgerEntry.usageEventId,
         },
@@ -3764,6 +3774,12 @@ export class WorkflowNodeExecutionService {
     workflowRunId: string,
     tenantId: string,
   ): Promise<void> {
+    const owner = await client.query<{ billed_user_id: string }>(
+      "SELECT billed_user_id::text AS billed_user_id FROM workflow_runs WHERE id = $1::uuid",
+      [workflowRunId],
+    );
+    const billedUserId = owner.rows[0]?.billed_user_id;
+    if (!billedUserId) throw new Error(`Workflow run ${workflowRunId} has no billing owner`);
     const result = await client.query<{
       id: string;
       node_id: string;
@@ -3789,14 +3805,15 @@ export class WorkflowNodeExecutionService {
         continue;
       }
 
-      const ledgerEntry = await this.billingService.refundUsageWithClient(client, tenantId, {
-        amountCents: reservedCents,
-        description: "Workflow node reservation released after failure",
+      const reserveLedgerId = typeof row.cost_json?.reserveLedgerId === "string" ? row.cost_json.reserveLedgerId : null;
+      if (!reserveLedgerId) continue;
+      const ledgerEntry = await this.personalWalletService.refundUsageWithClient(client, { tenantId, userId: billedUserId }, {
         idempotencyKey: `refund:${tenantId}:${workflowRunId}:${row.id}`,
+        reserveLedgerId,
         metadata: {
           nodeId: row.node_id,
           nodeRunId: row.id,
-          reserveLedgerId: typeof row.cost_json?.reserveLedgerId === "string" ? row.cost_json.reserveLedgerId : null,
+          reserveLedgerId,
           workflowRunId,
         },
       });

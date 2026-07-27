@@ -1,4 +1,4 @@
-import { BillingService, createPgPool, withTenantTransaction } from "@aigc-flow/db";
+import { BillingService, createPgPool, PersonalWalletService, withTenantTransaction } from "@aigc-flow/db";
 import type {
   AssetReferenceInput,
   MediaOutput,
@@ -69,6 +69,7 @@ type WorkbenchGenerationRecord = {
   batch_id: string | null;
   batch_index: number | null;
   batch_role: "single" | "parent" | "child";
+  billed_user_id: string;
   charged_credits: string | null;
   created_by: string | null;
   display_mode: "merged" | "separate";
@@ -260,6 +261,7 @@ export class WorkbenchGenerationService {
   readonly assetBucket: string;
   readonly assetStore: MediaAssetStore;
   readonly billingService: BillingService;
+  readonly personalWalletService: PersonalWalletService;
   readonly mediaRuntime: MediaRuntimeLike;
   readonly pool: Pool;
   readonly variantQueue: MediaVariantQueue | null;
@@ -268,12 +270,14 @@ export class WorkbenchGenerationService {
     assetBucket: string;
     assetStore: MediaAssetStore;
     billingService?: BillingService;
+    personalWalletService?: PersonalWalletService;
     mediaRuntime: MediaRuntimeLike;
     pool?: Pool;
     variantQueue?: MediaVariantQueue | null;
   }) {
     this.pool = options.pool ?? createPgPool();
     this.billingService = options.billingService ?? new BillingService({ pool: this.pool });
+    this.personalWalletService = options.personalWalletService ?? new PersonalWalletService({ pool: this.pool });
     this.mediaRuntime = options.mediaRuntime;
     this.assetStore = options.assetStore;
     this.assetBucket = options.assetBucket;
@@ -520,6 +524,7 @@ export class WorkbenchGenerationService {
           tenant_id::text AS tenant_id,
           session_id::text AS session_id,
           created_by::text AS created_by,
+          billed_user_id::text AS billed_user_id,
           prompt,
           model_id,
           route_key,
@@ -998,16 +1003,16 @@ export class WorkbenchGenerationService {
       workflowRunId: null,
     });
 
-    const settleLedger = await this.billingService.settleUsageWithClient(client, tenantId, {
-      amountCents: reservedCredits,
-      description: "Workbench image generation settled",
+    if (!generation.reserve_ledger_id) throw new Error(`Workbench generation ${generation.id} has no reserve ledger`);
+    const settleLedger = await this.personalWalletService.settleUsageWithClient(client, { tenantId, userId: generation.billed_user_id }, {
+      amountCredits: reservedCredits,
       idempotencyKey: `workbench:settle:${tenantId}:${generation.id}`,
+      reserveLedgerId: generation.reserve_ledger_id,
       metadata: {
         generationId: generation.id,
         reserveLedgerId: generation.reserve_ledger_id,
         source: "workbench",
       },
-      reservedAmountCents: reservedCredits,
       usageEventId: usageEvent.id,
     });
 
@@ -1037,15 +1042,15 @@ export class WorkbenchGenerationService {
       return;
     }
 
-    const refundLedger = await this.billingService.refundUsageWithClient(client, tenantId, {
-      amountCents: reservedCredits,
-      description: "Workbench image generation reservation released",
+    if (!generation.reserve_ledger_id) return;
+    const refundLedger = await this.personalWalletService.refundUsageWithClient(client, { tenantId, userId: generation.billed_user_id }, {
       idempotencyKey: `workbench:refund:${tenantId}:${generation.id}`,
       metadata: {
         generationId: generation.id,
         reserveLedgerId: generation.reserve_ledger_id,
         source: "workbench",
       },
+      reserveLedgerId: generation.reserve_ledger_id,
       usageEventId: null,
     });
 
@@ -1075,6 +1080,7 @@ export class WorkbenchGenerationService {
           tenant_id::text AS tenant_id,
           session_id::text AS session_id,
           created_by::text AS created_by,
+          billed_user_id::text AS billed_user_id,
           prompt,
           model_id,
           route_key,
