@@ -628,7 +628,10 @@ GRANT SELECT, UPDATE ON billing_wallet_payments TO tapflow_wallet_callback;
 GRANT SELECT ON billing_recharge_plans TO tapflow_wallet_callback;
 
 -- The migration role retains explicit execution rights after ownership moves to
--- the callback role. Membership exists only long enough to make that transfer.
+-- the callback role. PostgreSQL automatically leaves a bootstrap-superuser grant
+-- with ADMIN TRUE, INHERIT FALSE, and SET FALSE when a non-superuser CREATEROLE
+-- account creates a role. That grant cannot exercise callback privileges and
+-- cannot be revoked by the creating account; every other membership is unsafe.
 DO $$
 BEGIN
   EXECUTE format(
@@ -648,10 +651,20 @@ BEGIN
 
   IF EXISTS (
     SELECT 1
-    FROM pg_auth_members
-    WHERE roleid = (SELECT oid FROM pg_roles WHERE rolname = 'tapflow_wallet_callback')
+    FROM pg_auth_members AS membership
+    JOIN pg_roles AS member_role ON member_role.oid = membership.member
+    WHERE membership.roleid = (
+      SELECT oid FROM pg_roles WHERE rolname = 'tapflow_wallet_callback'
+    )
+      AND NOT (
+        member_role.rolname = current_user
+        AND membership.grantor = 10::oid
+        AND membership.admin_option
+        AND NOT membership.inherit_option
+        AND NOT membership.set_option
+      )
   ) THEN
-    RAISE EXCEPTION 'tapflow_wallet_callback must not retain role memberships after migration';
+    RAISE EXCEPTION 'tapflow_wallet_callback retained an unsafe role membership';
   END IF;
 END;
 $$;

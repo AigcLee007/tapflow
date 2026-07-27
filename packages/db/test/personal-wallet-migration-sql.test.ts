@@ -120,6 +120,24 @@ describe("000042_xunhupay_personal_wallet.sql", () => {
     expect(staleMembershipCleanup).toBeLessThan(foreignMembershipGuard);
   });
 
+  test("allows only PostgreSQL's non-inheriting automatic CREATEROLE membership after ownership transfer", async () => {
+    const sql = await readFile(
+      path.resolve(import.meta.dirname, "../migrations/000042_xunhupay_personal_wallet.sql"),
+      "utf8",
+    );
+
+    const finalMembershipGuard = sql.slice(
+      sql.lastIndexOf("-- The migration role retains explicit execution rights"),
+    );
+
+    expect(finalMembershipGuard).toContain("membership.grantor = 10::oid");
+    expect(finalMembershipGuard).toContain("membership.admin_option");
+    expect(finalMembershipGuard).toContain("NOT membership.inherit_option");
+    expect(finalMembershipGuard).toContain("NOT membership.set_option");
+    expect(finalMembershipGuard).toContain("member_role.rolname = current_user");
+    expect(finalMembershipGuard).toContain("tapflow_wallet_callback retained an unsafe role membership");
+  });
+
   test("defines fixed definer operations instead of granting the API role financial table writes", async () => {
     const sql = await readFile(
       path.resolve(import.meta.dirname, "../migrations/000043_personal_wallet_operations.sql"),
