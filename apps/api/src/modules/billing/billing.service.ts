@@ -129,7 +129,10 @@ export class BillingApiService {
       idempotencyKey?: string;
     },
   ): Promise<WalletRedeemResultView> {
-    return this.call(() => this.personalWalletService.redeemCode(context, input));
+    return this.call(() => this.personalWalletService.redeemCode({
+      tenantId: context.tenantId,
+      userId: this.requireUserId(context),
+    }, input));
   }
 
   async createPaymentCheckout(
