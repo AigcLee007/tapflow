@@ -14,6 +14,10 @@ export type RechargePlanView = {
   sortOrder: number;
 };
 
+export type AdminRechargePlanView = RechargePlanView & { active: boolean; createdAt: string; updatedAt: string };
+export type AdminWalletPaymentView = WalletPaymentView & { userEmail: string | null };
+export type EligibleRefundPayment = WalletPaymentView & { eligible: boolean };
+
 export type WalletPaymentView = {
   id: string;
   walletId: string;
@@ -56,7 +60,7 @@ export class WalletPaymentServiceError extends Error {
   }
 }
 
-type PlanRow = { id: string; key: string; name: string; amount_cents: string; credits: string; currency: string; validity_days: number; sort_order: number };
+type PlanRow = { id: string; key: string; name: string; amount_cents: string; credits: string; currency: string; validity_days: number; sort_order: number; active?: boolean; created_at?: string; updated_at?: string };
 type PaymentRow = {
   id: string; wallet_id: string; user_id: string; plan_id: string; plan_key: string; merchant_order_id: string;
   provider: string; provider_transaction_id: string | null; provider_open_order_id: string | null; amount_cents: string;
@@ -67,6 +71,10 @@ type PaymentRow = {
 
 function mapPlan(row: PlanRow): RechargePlanView {
   return { id: row.id, key: row.key, name: row.name, amountCents: Number(row.amount_cents), credits: Number(row.credits), currency: row.currency, validityDays: row.validity_days, sortOrder: row.sort_order };
+}
+
+function mapAdminPlan(row: PlanRow): AdminRechargePlanView {
+  return { ...mapPlan(row), active: row.active ?? false, createdAt: row.created_at ?? "", updatedAt: row.updated_at ?? "" };
 }
 
 function mapPayment(row: PaymentRow): WalletPaymentView {
@@ -129,6 +137,77 @@ export class WalletPaymentService {
     }, this.pool);
   }
 
+  async listAdminPlans(): Promise<AdminRechargePlanView[]> {
+    return this.withSystemAdminTransaction(async (client) => {
+      const result = await client.query<PlanRow>("SELECT id::text, key, name, amount_cents::text, credits::text, currency, validity_days, sort_order, active, created_at::text, updated_at::text FROM billing_recharge_plans ORDER BY sort_order ASC, id ASC");
+      return result.rows.map(mapAdminPlan);
+    });
+  }
+
+  async createAdminPlan(input: { key: string; name: string; amountCents: number; credits: number; validityDays: number; active: boolean; sortOrder: number }): Promise<AdminRechargePlanView> {
+    return this.withSystemAdminTransaction(async (client) => {
+      try {
+        const result = await client.query<PlanRow>("INSERT INTO billing_recharge_plans (key, name, amount_cents, credits, validity_days, active, sort_order) VALUES ($1, $2, $3::bigint, $4::numeric, $5, $6, $7) RETURNING id::text, key, name, amount_cents::text, credits::text, currency, validity_days, sort_order, active, created_at::text, updated_at::text", [input.key, input.name, input.amountCents, input.credits, input.validityDays, input.active, input.sortOrder]);
+        if (!result.rows[0]) throw new WalletPaymentServiceError("RECHARGE_PLAN_CREATE_FAILED", "Unable to create recharge plan", 500);
+        return mapAdminPlan(result.rows[0]);
+      } catch (error) {
+        if (isUniqueViolation(error)) throw new WalletPaymentServiceError("RECHARGE_PLAN_KEY_CONFLICT", "Recharge plan key already exists", 409);
+        throw error;
+      }
+    });
+  }
+
+  async updateAdminPlan(planId: string, input: { name: string; amountCents: number; credits: number; validityDays: number; active: boolean; sortOrder: number }): Promise<AdminRechargePlanView> {
+    return this.withSystemAdminTransaction(async (client) => {
+      const result = await client.query<PlanRow>("UPDATE billing_recharge_plans SET name = $2, amount_cents = $3::bigint, credits = $4::numeric, validity_days = $5, active = $6, sort_order = $7, updated_at = now() WHERE id = $1::uuid RETURNING id::text, key, name, amount_cents::text, credits::text, currency, validity_days, sort_order, active, created_at::text, updated_at::text", [planId, input.name, input.amountCents, input.credits, input.validityDays, input.active, input.sortOrder]);
+      if (!result.rows[0]) throw new WalletPaymentServiceError("RECHARGE_PLAN_NOT_FOUND", "Recharge plan not found", 404);
+      return mapAdminPlan(result.rows[0]);
+    });
+  }
+
+  async listAdminPayments(input?: { limit?: number; status?: string }): Promise<AdminWalletPaymentView[]> {
+    return this.withSystemAdminTransaction(async (client) => {
+      const result = await client.query<PaymentRow & { user_email: string | null }>(`SELECT ${paymentColumns}, users.email AS user_email FROM billing_wallet_payments JOIN users ON users.id = billing_wallet_payments.user_id WHERE ($1::text IS NULL OR billing_wallet_payments.status = $1) ORDER BY billing_wallet_payments.created_at DESC, billing_wallet_payments.id DESC LIMIT $2`, [input?.status ?? null, input?.limit ?? 50]);
+      return result.rows.map((row) => ({ ...mapPayment(row), userEmail: row.user_email }));
+    });
+  }
+
+  async getAdminPayment(paymentId: string): Promise<AdminWalletPaymentView> {
+    return this.withSystemAdminTransaction(async (client) => {
+      const result = await client.query<PaymentRow & { user_email: string | null }>(`SELECT ${paymentColumns}, users.email AS user_email FROM billing_wallet_payments JOIN users ON users.id = billing_wallet_payments.user_id WHERE billing_wallet_payments.id = $1::uuid`, [paymentId]);
+      if (!result.rows[0]) throw new WalletPaymentServiceError("PAYMENT_NOT_FOUND", "Payment not found", 404);
+      return { ...mapPayment(result.rows[0]), userEmail: result.rows[0].user_email };
+    });
+  }
+
+  async getEligibleRefundPayment(paymentId: string): Promise<EligibleRefundPayment> {
+    return this.withSystemAdminTransaction(async (client) => {
+      const result = await client.query<PaymentRow>(`SELECT ${paymentColumns} FROM billing_wallet_payments WHERE id = $1::uuid FOR UPDATE`, [paymentId]);
+      const row = result.rows[0];
+      if (!row) throw new WalletPaymentServiceError("PAYMENT_NOT_FOUND", "Payment not found", 404);
+      const grant = await client.query<{ original_credits: string; remaining_credits: string; reserved_credits: string }>("SELECT original_credits::text, remaining_credits::text, reserved_credits::text FROM billing_wallet_credit_grants WHERE wallet_id = $1::uuid AND source_type = 'payment' AND source_id = $2 FOR UPDATE", [row.wallet_id, row.id]);
+      const payment = mapPayment(row);
+      const grantRow = grant.rows[0];
+      const eligible = payment.status === "paid" && grantRow?.original_credits === grantRow.remaining_credits && Number(grantRow.reserved_credits ?? "1") === 0;
+      if (!eligible) throw new WalletPaymentServiceError("PAYMENT_CREDITS_ALREADY_USED", "Payment credits have been used or reserved", 409);
+      return { ...payment, eligible };
+    });
+  }
+
+  async markProviderCancelled(paymentId: string): Promise<WalletPaymentView> {
+    return this.withSystemAdminTransaction(async (client) => {
+      const result = await client.query<PaymentRow>(`UPDATE billing_wallet_payments
+        SET status = 'cancelled', failure_code = 'PROVIDER_CANCELLED', updated_at = now()
+        WHERE id = $1::uuid AND status IN ('pending', 'checkout_created')
+        RETURNING ${paymentColumns}`,
+      [paymentId]);
+      if (result.rows[0]) return mapPayment(result.rows[0]);
+      const existing = await client.query<PaymentRow>(`SELECT ${paymentColumns} FROM billing_wallet_payments WHERE id = $1::uuid`, [paymentId]);
+      if (!existing.rows[0]) throw new WalletPaymentServiceError("PAYMENT_NOT_FOUND", "Payment not found", 404);
+      return mapPayment(existing.rows[0]);
+    });
+  }
+
   async applyVerifiedNotification(input: VerifiedXunhuNotification): Promise<{ mutated: boolean; payment: WalletPaymentView }> {
     const client = await this.pool.connect();
     try {
@@ -147,4 +226,24 @@ export class WalletPaymentService {
       throw error;
     } finally { client.release(); }
   }
+
+  private async withSystemAdminTransaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT set_config('app.tenant_id', '', true)");
+      await client.query("SELECT set_config('app.user_id', '', true)");
+      await client.query("SELECT set_config('app.is_system_admin', 'true', true)");
+      const result = await fn(client);
+      await client.query("COMMIT");
+      return result;
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw error;
+    } finally { client.release(); }
+  }
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "23505";
 }

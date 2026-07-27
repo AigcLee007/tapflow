@@ -57,6 +57,7 @@ import {
   type MembershipTier,
 } from "./adminApi";
 import { PromptLibraryPanel } from "./PromptLibraryPanel";
+import { PaymentManagementPanel } from "./PaymentManagementPanel";
 
 type OpsTab =
   | "overview"
@@ -68,6 +69,7 @@ type OpsTab =
   | "models"
   | "providers"
   | "monitor"
+  | "payments"
   | "prompt-library";
 
 const MEMBERSHIP_OPTIONS: Array<{ label: string; tier: MembershipTier }> = [
@@ -96,6 +98,7 @@ const TABS: Array<{
   label: string;
   superOnly?: boolean;
 }> = [
+  { icon: CreditCard, id: "payments", label: "Payment management", superOnly: true },
   { icon: Activity, id: "overview", label: "总览" },
   { icon: Users, id: "users", label: "用户管理" },
   { icon: ShieldCheck, id: "admins", label: "管理员账号", superOnly: true },
@@ -730,6 +733,7 @@ export function AdminPage() {
       {activeTab === "providers" ? renderProviders() : null}
       {activeTab === "prompt-library" ? <PromptLibraryPanel /> : null}
       {activeTab === "monitor" ? renderMonitor() : null}
+      {activeTab === "payments" ? <PaymentManagementPanel /> : null}
     </div>
   );
 

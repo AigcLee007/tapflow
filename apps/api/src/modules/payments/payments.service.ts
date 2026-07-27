@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 
-import { WalletPaymentService, WalletPaymentServiceError, type RechargePlanView, type VerifiedXunhuNotification, type WalletPaymentView } from "@aigc-flow/db";
+import { WalletPaymentService, WalletPaymentServiceError, type AdminRechargePlanView, type AdminWalletPaymentView, type EligibleRefundPayment, type RechargePlanView, type VerifiedXunhuNotification, type WalletPaymentView } from "@aigc-flow/db";
 import type { Pool } from "pg";
 
 import type { ApiEnv } from "../../config/env.js";
@@ -52,6 +52,43 @@ export class PaymentsService {
 
   async applyNotification(input: VerifiedXunhuNotification): Promise<void> { await this.call(() => this.walletPayments.applyVerifiedNotification(input)); }
 
+  async listAdminPlans(): Promise<AdminRechargePlanView[]> { return this.call(() => this.walletPayments.listAdminPlans()); }
+  async createAdminPlan(input: { key: string; name: string; amountCents: number; credits: number; validityDays: number; active: boolean; sortOrder: number }): Promise<AdminRechargePlanView> { return this.call(() => this.walletPayments.createAdminPlan(input)); }
+  async updateAdminPlan(planId: string, input: { name: string; amountCents: number; credits: number; validityDays: number; active: boolean; sortOrder: number }): Promise<AdminRechargePlanView> { return this.call(() => this.walletPayments.updateAdminPlan(planId, input)); }
+  async listAdminPayments(input?: { limit?: number; status?: string }): Promise<AdminWalletPaymentView[]> { return this.call(() => this.walletPayments.listAdminPayments(input)); }
+
+  async queryAdminPayment(paymentId: string): Promise<AdminWalletPaymentView | WalletPaymentView> {
+    if (!this.env.paymentsEnabled) throw new PaymentsApiError(503, "PAYMENTS_DISABLED", "Payments are not enabled");
+    const payment = await this.call(() => this.walletPayments.getAdminPayment(paymentId));
+    const result = await this.xunhu.queryPayment({ merchantOrderId: payment.merchantOrderId, nonce: randomBytes(16).toString("hex") });
+    if (result.amountCents !== null && result.amountCents !== payment.amountCents) throw new PaymentsApiError(502, "PAYMENT_PROVIDER_AMOUNT_MISMATCH", "Provider payment amount does not match the order");
+    if (result.providerState === "WP") return payment;
+    if (result.providerState === "CD" && payment.status !== "refund_pending") return this.call(() => this.walletPayments.markProviderCancelled(payment.id));
+    return (await this.call(() => this.walletPayments.applyVerifiedNotification({
+      amountCents: payment.amountCents,
+      eventTime: new Date().toISOString(),
+      merchantOrderId: payment.merchantOrderId,
+      openOrderId: result.openOrderId,
+      providerState: asNotificationState(result.providerState),
+      transactionId: result.transactionId,
+    }))).payment;
+  }
+
+  async refundAdminPayment(paymentId: string, reason: string): Promise<WalletPaymentView> {
+    if (!this.env.paymentsEnabled) throw new PaymentsApiError(503, "PAYMENTS_DISABLED", "Payments are not enabled");
+    const payment: EligibleRefundPayment = await this.call(() => this.walletPayments.getEligibleRefundPayment(paymentId));
+    const result = await this.xunhu.refundPayment({ merchantOrderId: payment.merchantOrderId, nonce: randomBytes(16).toString("hex"), reason });
+    if (result.providerState === "OD" || result.providerState === "WP") throw new PaymentsApiError(502, "PAYMENT_PROVIDER_STATE_INVALID", "Provider did not accept the refund request");
+    return (await this.call(() => this.walletPayments.applyVerifiedNotification({
+      amountCents: payment.amountCents,
+      eventTime: new Date().toISOString(),
+      merchantOrderId: payment.merchantOrderId,
+      openOrderId: result.openOrderId,
+      providerState: asNotificationState(result.providerState),
+      transactionId: result.transactionId,
+    }))).payment;
+  }
+
   private async call<T>(fn: () => Promise<T>): Promise<T> {
     try { return await fn(); }
     catch (error) {
@@ -59,4 +96,9 @@ export class PaymentsService {
       throw error;
     }
   }
+}
+
+function asNotificationState(state: "OD" | "CD" | "RD" | "UD" | "WP"): "OD" | "CD" | "RD" | "UD" {
+  if (state === "WP") throw new PaymentsApiError(502, "PAYMENT_PROVIDER_STATE_INVALID", "Provider returned a non-terminal payment state");
+  return state;
 }

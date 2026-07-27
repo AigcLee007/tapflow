@@ -43,4 +43,66 @@ export class XunhuClient {
     if (body.errcode !== 0 || !body.url) throw new Error(body.errmsg || "Xunhu checkout rejected");
     return { checkoutUrl: body.url, qrCodeUrl: body.url_qrcode ?? null, providerOpenOrderId: body.openid ?? null };
   }
+
+  async queryPayment(input: { merchantOrderId: string; nonce: string; timestamp?: number }) {
+    const body = await this.postSigned("/payment/query.html", {
+      appid: this.config.appId,
+      nonce_str: input.nonce,
+      out_trade_order: input.merchantOrderId,
+      time: input.timestamp ?? Math.floor(Date.now() / 1000),
+    });
+    const data = asRecord(body.data);
+    const providerState = asPaymentState(data.status ?? body.status);
+    return {
+      amountCents: typeof (data.total_fee ?? body.total_fee) === "string" ? parseCnyToCents(String(data.total_fee ?? body.total_fee)) : null,
+      merchantOrderId: stringOrNull(data.out_trade_order ?? data.trade_order_id ?? body.out_trade_order ?? body.trade_order_id) ?? input.merchantOrderId,
+      openOrderId: stringOrNull(data.open_order_id ?? body.open_order_id),
+      providerState,
+      transactionId: stringOrNull(data.transaction_id ?? body.transaction_id),
+    };
+  }
+
+  async refundPayment(input: { merchantOrderId: string; nonce: string; reason: string; timestamp?: number }) {
+    const body = await this.postSigned("/payment/refund.html", {
+      appid: this.config.appId,
+      nonce_str: input.nonce,
+      reason: input.reason,
+      time: input.timestamp ?? Math.floor(Date.now() / 1000),
+      trade_order_id: input.merchantOrderId,
+    });
+    return {
+      merchantOrderId: stringOrNull(body.trade_order_id) ?? input.merchantOrderId,
+      openOrderId: stringOrNull(body.open_order_id),
+      providerState: asPaymentState(body.refund_status),
+      transactionId: stringOrNull(body.transaction_id),
+    };
+  }
+
+  private async postSigned(path: string, fields: Record<string, string | number>): Promise<Record<string, unknown>> {
+    const payload = { ...fields, hash: signXunhuFields(fields, this.config.appSecret) };
+    const response = await this.fetchFn(`${this.config.baseUrl.replace(/\/$/, "")}${path}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(this.config.timeoutMs),
+    });
+    if (!response.ok) throw new Error(`Xunhu request failed with ${response.status}`);
+    const body = asRecord(await response.json());
+    if (body.errcode !== 0) throw new Error(typeof body.errmsg === "string" ? body.errmsg : "Xunhu request rejected");
+    return body;
+  }
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid Xunhu response");
+  return value as Record<string, unknown>;
+}
+
+function asPaymentState(value: unknown): "OD" | "CD" | "RD" | "UD" | "WP" {
+  if (value === "OD" || value === "CD" || value === "RD" || value === "UD" || value === "WP") return value;
+  throw new Error("Invalid Xunhu payment state");
+}
+
+function stringOrNull(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
 }

@@ -8,6 +8,29 @@ docker compose -f docker-compose.staging.yml up -d --build tapflow-redis tapflow
 
 The compose file runs Redis inside the Docker network. Do not publish Redis to the public internet.
 
+## Personal Wallet Cutover
+
+Start with `PAYMENTS_ENABLED=false`. Back up PostgreSQL, build the new images, and stop the worker before schema and wallet migration:
+
+```bash
+cd /opt/aittco/tapflow
+git fetch --all --prune
+git pull --ff-only origin main
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml build
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml stop tapflow-worker
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-api node packages/db/dist/cli.js
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-api node packages/db/dist/personal-wallet-migration-cli.js --dry-run
+```
+
+Only when the dry run reports no owner/reservation exceptions and matched totals, execute the approved write migration:
+
+```bash
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-api node packages/db/dist/personal-wallet-migration-cli.js --write --confirm PERSONAL_WALLET_CUTOVER
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml up -d tapflow-redis tapflow-api tapflow-worker tapflow-frontend
+```
+
+Verify personal reserve/settle/refund from two workspaces before enabling payments. Enable checkout only after a CNY 9.90 real-payment and full-unused-order refund acceptance. After users begin personal-wallet charging, rollback by disabling checkout and applying a forward fix; do not revert to tenant charging.
+
 Default staging Redis URL:
 
 ```env

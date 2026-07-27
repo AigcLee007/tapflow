@@ -181,6 +181,16 @@ export type AdminAiRouteStats = {
   };
 };
 
+export type AdminRechargePlan = { id: string; key: string; name: string; amountCents: number; credits: number; currency: string; validityDays: number; sortOrder: number; active: boolean; createdAt: string; updatedAt: string };
+export type AdminWalletPayment = { id: string; userEmail: string | null; planKey: string; amountCents: number; credits: number; status: string; merchantOrderId: string; createdAt: string; paidAt: string | null; expiresAtSnapshot: string | null };
+
+export const listAdminRechargePlans = () => apiGet<AdminRechargePlan[]>("/admin/billing/recharge-plans");
+export const createAdminRechargePlan = (input: Omit<AdminRechargePlan, "id" | "currency" | "createdAt" | "updatedAt"> & { reason: string }) => apiPost<AdminRechargePlan>("/admin/billing/recharge-plans", input);
+export const updateAdminRechargePlan = (planId: string, input: Omit<AdminRechargePlan, "id" | "key" | "currency" | "createdAt" | "updatedAt"> & { reason: string }) => apiPatch<AdminRechargePlan>(`/admin/billing/recharge-plans/${encodeURIComponent(planId)}`, input);
+export const listAdminWalletPayments = () => apiGet<AdminWalletPayment[]>("/admin/billing/payments");
+export const queryAdminWalletPayment = (paymentId: string) => apiPost<AdminWalletPayment>(`/admin/billing/payments/${encodeURIComponent(paymentId)}/query`, {});
+export const refundAdminWalletPayment = (paymentId: string, reason: string) => apiPost<AdminWalletPayment>(`/admin/billing/payments/${encodeURIComponent(paymentId)}/refund`, { reason });
+
 export type AdminWorkflowRun = {
   createdAt: string;
   createdBy: string | null;

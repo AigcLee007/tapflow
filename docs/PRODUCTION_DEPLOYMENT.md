@@ -104,6 +104,22 @@ ADMIN_EMAILS=admin@example.com
 
 Document and enforce the admin permission bootstrap path.
 
+### XunhuPay Personal Wallet
+
+```env
+PAYMENTS_ENABLED=false
+XUNHU_APP_ID=<merchant-app-id>
+XUNHU_APP_SECRET=<merchant-app-secret>
+XUNHU_BASE_URL=https://api.xunhupay.com
+XUNHU_NOTIFY_URL=https://api.example.com/api/v2/billing/payment/xunhu/notify
+XUNHU_RETURN_URL=https://app.example.com/billing
+XUNHU_TIMEOUT_MS=10000
+PAYMENT_RECONCILE_INTERVAL_MS=60000
+BILLING_EXPIRY_SWEEP_MS=300000
+```
+
+The API receives these variables through `x-tapflow-env`; the worker must not log or consume merchant values. Keep checkout disabled through migration and personal-wallet charging verification. Do not enable `PAYMENTS_ENABLED=true` until the public callback, duplicate callback, CNY 9.90 purchase, reconciliation, and fully unused refund acceptance checks have been recorded.
+
 ### Observability
 
 ```env

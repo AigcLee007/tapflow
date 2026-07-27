@@ -50,6 +50,7 @@ import { AssetsService } from "./modules/assets/assets.service.js";
 import { registerBillingRoutes } from "./modules/billing/billing.routes.js";
 import { BillingApiService } from "./modules/billing/billing.service.js";
 import { registerPaymentRoutes } from "./modules/payments/payments.routes.js";
+import { PaymentReconciler } from "./modules/payments/payment-reconciler.js";
 import { PaymentsService } from "./modules/payments/payments.service.js";
 import { registerFlowRoutes } from "./modules/flows/flows.routes.js";
 import { FlowsService } from "./modules/flows/flows.service.js";
@@ -323,6 +324,9 @@ export function buildApp(options?: {
     logger: options?.logger === false ? false : (createApiLoggerOptions() as never),
     trustProxy: env.trustProxy ?? false,
   });
+  const paymentReconciler = env.paymentsEnabled
+    ? new PaymentReconciler({ intervalMs: env.paymentReconcileIntervalMs, logger: app.log, payments: paymentsService, pool })
+    : null;
 
   registerSecurityBaseline(app, env);
 
@@ -388,6 +392,7 @@ export function buildApp(options?: {
   });
 
   app.addHook("onClose", async () => {
+    await paymentReconciler?.stop();
     if (ownedPool) {
       await pool.end();
     }
@@ -409,6 +414,10 @@ export function buildApp(options?: {
     if (!ownedQueueHealthService && appRedisConnection) {
       await closeRedisConnection(appRedisConnection);
     }
+  });
+
+  app.addHook("onReady", async () => {
+    paymentReconciler?.start();
   });
 
   app.get("/health", async () => {

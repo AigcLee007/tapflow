@@ -40,6 +40,7 @@ export type ApiEnv = {
   securityHeadersEnabled?: boolean;
   trustProxy?: boolean;
   paymentsEnabled: boolean;
+  paymentReconcileIntervalMs: number;
   xunhuAppId: string;
   xunhuAppSecret: string;
   xunhuBaseUrl: string;
@@ -251,6 +252,7 @@ export function getApiEnv(): ApiEnv {
   );
   const promptCatalogMediaDir = process.env.PROMPT_CATALOG_MEDIA_DIR?.trim() || "./data/prompt-catalog";
   const paymentsEnabled = parseBooleanEnv("PAYMENTS_ENABLED", process.env.PAYMENTS_ENABLED, false);
+  const paymentReconcileIntervalMs = parsePositiveIntegerEnv("PAYMENT_RECONCILE_INTERVAL_MS", process.env.PAYMENT_RECONCILE_INTERVAL_MS, 60_000);
   const xunhuAppId = process.env.XUNHU_APP_ID?.trim() || "";
   const xunhuAppSecret = process.env.XUNHU_APP_SECRET?.trim() || "";
   const xunhuBaseUrl = process.env.XUNHU_BASE_URL?.trim() || "https://api.xunhupay.com";
@@ -362,6 +364,7 @@ export function getApiEnv(): ApiEnv {
     securityHeadersEnabled,
     trustProxy,
     paymentsEnabled,
+    paymentReconcileIntervalMs,
     xunhuAppId,
     xunhuAppSecret,
     xunhuBaseUrl,

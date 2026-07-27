@@ -12,5 +12,11 @@ describe("WalletPaymentService", () => {
     expect(service.createPendingPayment).toBeTypeOf("function");
     expect(service.getUserPayment).toBeTypeOf("function");
     expect(service.applyVerifiedNotification).toBeTypeOf("function");
+    expect(service.listAdminPlans).toBeTypeOf("function");
+    expect(service.updateAdminPlan).toBeTypeOf("function");
+    expect(service.listAdminPayments).toBeTypeOf("function");
+    expect(service.getAdminPayment).toBeTypeOf("function");
+    expect(service.getEligibleRefundPayment).toBeTypeOf("function");
+    expect(service.markProviderCancelled).toBeTypeOf("function");
   });
 });

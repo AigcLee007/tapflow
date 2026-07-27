@@ -143,6 +143,26 @@ Run the documented dry-run before applying. Run the importer `--test` command fo
 
 Gemini native routes are documented as a future plan only. They are not required for the first staging deployment.
 
+---
+
+## 8. XunhuPay Personal Wallet
+
+Keep merchant credentials in `/opt/aittco/env/tapflow.staging.env`; never commit them or place them in frontend variables.
+
+```env
+PAYMENTS_ENABLED=false
+XUNHU_APP_ID=<merchant-app-id>
+XUNHU_APP_SECRET=<merchant-app-secret>
+XUNHU_BASE_URL=https://api.xunhupay.com
+XUNHU_NOTIFY_URL=https://api.example.com/api/v2/billing/payment/xunhu/notify
+XUNHU_RETURN_URL=https://app.example.com/billing
+XUNHU_TIMEOUT_MS=10000
+PAYMENT_RECONCILE_INTERVAL_MS=60000
+BILLING_EXPIRY_SWEEP_MS=300000
+```
+
+Before enabling payments: verify public HTTPS callback reachability, exact plain-text `success` acknowledgement, smallest CNY 9.90 purchase, duplicate callback idempotency, one personal wallet used in two workspaces, eligible unused-order refund, reconciliation, and secret-free logs.
+
 ### Future multi-relay / multi-protocol plan
 
 Relay A:

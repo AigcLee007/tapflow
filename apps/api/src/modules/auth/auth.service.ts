@@ -34,6 +34,7 @@ type AuthenticatedIdentity = {
 };
 
 const ADMIN_PERMISSION = "admin:system";
+const PLATFORM_BILLING_PERMISSIONS = ["billing:plans:manage", "billing:payments:manage", "billing:refund"];
 
 type PublicTenant = {
   id: string;
@@ -225,7 +226,7 @@ export class AuthService {
     const normalizedEmail = session.email.trim().toLowerCase();
     const isAdminEmail = this.env.adminEmails.includes(normalizedEmail);
     const permissions = isAdminEmail
-      ? Array.from(new Set([...resolved.permissions, ADMIN_PERMISSION]))
+      ? Array.from(new Set([...resolved.permissions, ADMIN_PERMISSION, ...PLATFORM_BILLING_PERMISSIONS]))
       : resolved.permissions;
     const roles = isAdminEmail
       ? Array.from(new Set([...resolved.roles, "admin_email"]))
