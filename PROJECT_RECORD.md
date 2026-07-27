@@ -9,6 +9,7 @@ Maintainers: project team + Codex sessions
 - current work also includes XunhuPay query/refund transport, platform payment routes, reconciler scheduling, and payment observability. These changes remain un-deployed and real merchant payment/refund acceptance has not been performed.
 - corrected the remaining redeem path so redeemed credits now enter the personal wallet ledger rather than the legacy tenant billing ledger; focused API regression coverage verifies the cutover.
 - staging cutover remains gated by database backup, a clean migration dry run, worker shutdown, and explicit merchant credentials configured only in `/opt/aittco/env/tapflow.staging.env`.
+- local compiled migration dry-run was attempted on 2026-07-27 and stopped safely before any database access because `DATABASE_URL` is not configured in this workspace. Staging evidence is still required for migration totals and payment acceptance.
 
 ## 2026-07-27 - XunhuPay Personal Wallet Approved Design
 
