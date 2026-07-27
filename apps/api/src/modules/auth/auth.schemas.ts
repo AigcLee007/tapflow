@@ -11,6 +11,7 @@ export const loginSchema = z.object({
   email: z.string().trim().email(),
   password: z.string().min(1).max(256),
   tenantId: z.string().uuid().optional(),
+  trustedDeviceToken: z.string().min(32).max(512).optional(),
 });
 
 export const refreshSchema = z.object({

@@ -107,7 +107,9 @@ export function registerAuthRoutes(app: FastifyInstance): void {
     try {
       const body = parseBody<LoginInput>(request, loginSchema);
       const result = await app.authService.login(body, requestMetadata(request));
-      return reply.send(result);
+      return reply
+        .code("status" in result && result.status === "verification_required" ? 202 : 200)
+        .send(result);
     } catch (error) {
       return handleRouteError(error, request, reply);
     }

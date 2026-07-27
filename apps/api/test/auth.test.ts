@@ -13,6 +13,11 @@ import type {
 import { hashPassword } from "../src/modules/auth/password.js";
 import { resolvePermissionsForTenant } from "../src/modules/auth/permission-resolver.js";
 import { hashRefreshToken } from "../src/modules/auth/token.js";
+import {
+  hashDeviceFingerprint,
+  hashIpNetwork,
+  hashOpaqueToken,
+} from "../src/modules/auth/auth-verification.js";
 import { runMigrations } from "../../../packages/db/src/migrator.js";
 import {
   hasDatabaseEnv,
@@ -425,6 +430,154 @@ describeWithDatabase("auth v2", () => {
     });
   });
 
+  test("login requires verification for a new device and historical unverified email", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({ connectionString: await createAppDatabaseUrl() });
+        const testApp = buildTestApp(appPool);
+        const verified = await registerAndVerify(testApp, {
+          email: "new-device@example.com",
+          password: "StrongPass123!",
+          tenantName: "New Device Tenant",
+        });
+
+        const newDevice = await testApp.api.inject({
+          method: "POST",
+          payload: {
+            email: "new-device@example.com",
+            password: "StrongPass123!",
+          },
+          url: "/api/v2/auth/login",
+        });
+        expect(newDevice.statusCode).toBe(202);
+        expect(newDevice.json().reason).toBe("new_device");
+
+        const trustedDeviceToken = verified.json().trustedDeviceToken;
+        await adminPool.query(
+          "UPDATE auth_trusted_devices SET trusted_until = now() - interval '1 second'",
+        );
+        const expiredDevice = await testApp.api.inject({
+          method: "POST",
+          payload: {
+            email: "new-device@example.com",
+            password: "StrongPass123!",
+            trustedDeviceToken,
+          },
+          url: "/api/v2/auth/login",
+        });
+        expect(expiredDevice.statusCode).toBe(202);
+        expect(expiredDevice.json().reason).toBe("trust_expired");
+
+        await adminPool.query(
+          "UPDATE auth_trusted_devices SET trusted_until = now() + interval '30 days', revoked_at = now()",
+        );
+        const revokedDevice = await testApp.api.inject({
+          method: "POST",
+          payload: {
+            email: "new-device@example.com",
+            password: "StrongPass123!",
+            trustedDeviceToken,
+          },
+          url: "/api/v2/auth/login",
+        });
+        expect(revokedDevice.statusCode).toBe(202);
+        expect(revokedDevice.json().reason).toBe("trust_expired");
+
+        await adminPool.query(
+          "UPDATE users SET email_verified_at = NULL WHERE email = 'new-device@example.com'",
+        );
+        const historical = await testApp.api.inject({
+          method: "POST",
+          payload: {
+            email: "new-device@example.com",
+            password: "StrongPass123!",
+          },
+          url: "/api/v2/auth/login",
+        });
+        expect(historical.statusCode).toBe(202);
+        expect(historical.json().reason).toBe("email_unverified");
+        await testApp.api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("trusted login challenges only when device and IP network both change", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({ connectionString: await createAppDatabaseUrl() });
+        const testApp = buildTestApp(appPool);
+        const verified = await registerAndVerify(testApp, {
+          email: "anomaly@example.com",
+          password: "StrongPass123!",
+          tenantName: "Anomaly Tenant",
+        });
+        const trustedDeviceToken = verified.json().trustedDeviceToken;
+        const baselineUa = "Mozilla/5.0 (Windows NT 10.0) Chrome/140.0";
+        const changedUa = "Mozilla/5.0 (X11; Linux x86_64) Firefox/142.0";
+        await adminPool.query(
+          `
+            UPDATE auth_trusted_devices
+            SET user_agent_fingerprint_hash = $1, ip_network_hash = $2
+            WHERE token_hash = $3
+          `,
+          [
+            hashDeviceFingerprint(baselineUa, testEnv.jwtRefreshSecret),
+            hashIpNetwork("203.0.113.7", testEnv.jwtRefreshSecret),
+            hashOpaqueToken(trustedDeviceToken),
+          ],
+        );
+
+        const onlyUa = await testApp.api.authService.login(
+          {
+            email: "anomaly@example.com",
+            password: "StrongPass123!",
+            trustedDeviceToken,
+          },
+          { ipAddress: "203.0.113.200", userAgent: changedUa },
+        );
+        expect("accessToken" in onlyUa).toBe(true);
+
+        const onlyNetwork = await testApp.api.authService.login(
+          {
+            email: "anomaly@example.com",
+            password: "StrongPass123!",
+            trustedDeviceToken,
+          },
+          { ipAddress: "203.0.114.7", userAgent: baselineUa },
+        );
+        expect("accessToken" in onlyNetwork).toBe(true);
+
+        const both = await testApp.api.authService.login(
+          {
+            email: "anomaly@example.com",
+            password: "StrongPass123!",
+            trustedDeviceToken,
+          },
+          { ipAddress: "203.0.114.7", userAgent: changedUa },
+        );
+        expect(both).toMatchObject({
+          reason: "anomalous_login",
+          status: "verification_required",
+        });
+        await testApp.api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
   test("login succeeds with the right password and rejects the wrong password", async () => {
     await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
       process.env.DATABASE_URL = databaseUrl;
@@ -438,10 +591,10 @@ describeWithDatabase("auth v2", () => {
         const testApp = buildTestApp(appPool);
         const { api } = testApp;
 
-        await registerAndVerify(testApp, {
-            email: "login@example.com",
-            password: "StrongPass123!",
-            tenantName: "Login Tenant",
+        const verification = await registerAndVerify(testApp, {
+          email: "login@example.com",
+          password: "StrongPass123!",
+          tenantName: "Login Tenant",
         });
 
         const success = await api.inject({
@@ -449,6 +602,7 @@ describeWithDatabase("auth v2", () => {
           payload: {
             email: "login@example.com",
             password: "StrongPass123!",
+            trustedDeviceToken: verification.json().trustedDeviceToken,
           },
           url: "/api/v2/auth/login",
         });
@@ -715,8 +869,8 @@ describeWithDatabase("auth v2", () => {
           async (client) => {
             await client.query(
               `
-                INSERT INTO users (id, email, display_name, password_hash, updated_at)
-                VALUES ($1::uuid, $2, $3, $4, now())
+                INSERT INTO users (id, email, display_name, password_hash, email_verified_at, updated_at)
+                VALUES ($1::uuid, $2, $3, $4, now(), now())
               `,
               [viewerUserId, "viewer@example.com", "Viewer User", viewerPasswordHash],
             );
@@ -733,6 +887,14 @@ describeWithDatabase("auth v2", () => {
             );
           },
           appPool,
+        );
+        const viewerDeviceToken = "viewer-trusted-device-token-12345678901234567890";
+        await adminPool.query(
+          `
+            INSERT INTO auth_trusted_devices (user_id, token_hash, trusted_until)
+            VALUES ($1::uuid, $2, now() + interval '30 days')
+          `,
+          [viewerUserId, hashOpaqueToken(viewerDeviceToken)],
         );
 
         const otherUserEmail = "other-owner@example.com";
@@ -757,6 +919,7 @@ describeWithDatabase("auth v2", () => {
           payload: {
             email: "viewer@example.com",
             password: viewerPassword,
+            trustedDeviceToken: viewerDeviceToken,
           },
           url: "/api/v2/auth/login",
         });
@@ -779,6 +942,7 @@ describeWithDatabase("auth v2", () => {
             email: "viewer@example.com",
             password: viewerPassword,
             tenantId: actualOtherTenantId,
+            trustedDeviceToken: viewerDeviceToken,
           },
           url: "/api/v2/auth/login",
         });
