@@ -1,5 +1,11 @@
 # Production Runbook
 
+## Personal Wallet And XunhuPay
+
+The personal-wallet migration is a forward-only billing cutover. Before deployment, back up PostgreSQL, set `PAYMENTS_ENABLED=false`, stop `tapflow-worker`, run compiled database migrations, and execute the compiled wallet migration CLI in dry-run mode. Only run the confirmed write mode after totals match and no active reservations or missing workspace owners remain.
+
+Use `docker-compose.staging.yml` and the server environment file. Merchant values must remain server-side. After personal reserve/settle/refund smoke tests in two workspaces, perform and record the CNY 9.90 purchase, duplicate callback, reconciliation, expiry snapshot, and completely unused-order refund before enabling checkout. If checkout fails after cutover, disable `PAYMENTS_ENABLED` and apply a forward repair; do not return live charging to tenant balances.
+
 Date: 2026-05-20
 Branch: production-readiness
 
