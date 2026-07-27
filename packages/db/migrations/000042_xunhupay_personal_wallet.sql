@@ -240,6 +240,21 @@ ALTER TABLE billing_recharge_plans FORCE ROW LEVEL SECURITY;
 ALTER TABLE billing_wallet_payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE billing_wallet_payments FORCE ROW LEVEL SECURITY;
 
+-- The migration owner is the configured API database role. This predicate remains
+-- false for ordinary authenticated DB contexts, including provider callbacks with no app.user_id.
+CREATE OR REPLACE FUNCTION app.current_is_wallet_service_role()
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SET search_path = pg_catalog, public, app
+AS $$
+  SELECT current_user = (
+    SELECT pg_get_userbyid(proc.proowner)
+    FROM pg_proc AS proc
+    WHERE proc.oid = 'app.apply_xunhu_payment_notification(text, bigint, text, text, text, timestamptz)'::regprocedure
+  )
+$$;
+
 DROP POLICY IF EXISTS billing_wallets_select_owner ON billing_wallets;
 CREATE POLICY billing_wallets_select_owner ON billing_wallets FOR SELECT
   USING (user_id = app.current_user_id());
@@ -247,11 +262,10 @@ DROP POLICY IF EXISTS billing_wallets_select_system_admin ON billing_wallets;
 CREATE POLICY billing_wallets_select_system_admin ON billing_wallets FOR SELECT
   USING (app.current_is_system_admin());
 DROP POLICY IF EXISTS billing_wallets_insert_owner ON billing_wallets;
-CREATE POLICY billing_wallets_insert_owner ON billing_wallets FOR INSERT
-  WITH CHECK (user_id = app.current_user_id());
 DROP POLICY IF EXISTS billing_wallets_update_owner ON billing_wallets;
-CREATE POLICY billing_wallets_update_owner ON billing_wallets FOR UPDATE
-  USING (user_id = app.current_user_id()) WITH CHECK (user_id = app.current_user_id());
+DROP POLICY IF EXISTS billing_wallets_write_wallet_service ON billing_wallets;
+CREATE POLICY billing_wallets_write_wallet_service ON billing_wallets FOR ALL
+  USING (app.current_is_wallet_service_role()) WITH CHECK (app.current_is_wallet_service_role());
 DROP POLICY IF EXISTS billing_wallets_write_system_admin ON billing_wallets;
 CREATE POLICY billing_wallets_write_system_admin ON billing_wallets FOR ALL
   USING (app.current_is_system_admin()) WITH CHECK (app.current_is_system_admin());
@@ -263,11 +277,10 @@ DROP POLICY IF EXISTS billing_wallet_credit_grants_select_system_admin ON billin
 CREATE POLICY billing_wallet_credit_grants_select_system_admin ON billing_wallet_credit_grants FOR SELECT
   USING (app.current_is_system_admin());
 DROP POLICY IF EXISTS billing_wallet_credit_grants_insert_owner ON billing_wallet_credit_grants;
-CREATE POLICY billing_wallet_credit_grants_insert_owner ON billing_wallet_credit_grants FOR INSERT
-  WITH CHECK (user_id = app.current_user_id());
 DROP POLICY IF EXISTS billing_wallet_credit_grants_update_owner ON billing_wallet_credit_grants;
-CREATE POLICY billing_wallet_credit_grants_update_owner ON billing_wallet_credit_grants FOR UPDATE
-  USING (user_id = app.current_user_id()) WITH CHECK (user_id = app.current_user_id());
+DROP POLICY IF EXISTS billing_wallet_credit_grants_write_wallet_service ON billing_wallet_credit_grants;
+CREATE POLICY billing_wallet_credit_grants_write_wallet_service ON billing_wallet_credit_grants FOR ALL
+  USING (app.current_is_wallet_service_role()) WITH CHECK (app.current_is_wallet_service_role());
 DROP POLICY IF EXISTS billing_wallet_credit_grants_write_system_admin ON billing_wallet_credit_grants;
 CREATE POLICY billing_wallet_credit_grants_write_system_admin ON billing_wallet_credit_grants FOR ALL
   USING (app.current_is_system_admin()) WITH CHECK (app.current_is_system_admin());
@@ -279,11 +292,13 @@ DROP POLICY IF EXISTS billing_wallet_ledger_select_system_admin ON billing_walle
 CREATE POLICY billing_wallet_ledger_select_system_admin ON billing_wallet_ledger FOR SELECT
   USING (app.current_is_system_admin());
 DROP POLICY IF EXISTS billing_wallet_ledger_insert_owner ON billing_wallet_ledger;
-CREATE POLICY billing_wallet_ledger_insert_owner ON billing_wallet_ledger FOR INSERT
-  WITH CHECK (user_id = app.current_user_id());
+DROP POLICY IF EXISTS billing_wallet_ledger_insert_wallet_service ON billing_wallet_ledger;
+CREATE POLICY billing_wallet_ledger_insert_wallet_service ON billing_wallet_ledger FOR INSERT
+  WITH CHECK (app.current_is_wallet_service_role());
 DROP POLICY IF EXISTS billing_wallet_ledger_write_system_admin ON billing_wallet_ledger;
-CREATE POLICY billing_wallet_ledger_write_system_admin ON billing_wallet_ledger FOR ALL
-  USING (app.current_is_system_admin()) WITH CHECK (app.current_is_system_admin());
+DROP POLICY IF EXISTS billing_wallet_ledger_insert_system_admin ON billing_wallet_ledger;
+CREATE POLICY billing_wallet_ledger_insert_system_admin ON billing_wallet_ledger FOR INSERT
+  WITH CHECK (app.current_is_system_admin());
 
 DROP POLICY IF EXISTS billing_wallet_credit_reservations_select_owner ON billing_wallet_credit_reservations;
 CREATE POLICY billing_wallet_credit_reservations_select_owner ON billing_wallet_credit_reservations FOR SELECT
@@ -292,18 +307,18 @@ DROP POLICY IF EXISTS billing_wallet_credit_reservations_select_system_admin ON 
 CREATE POLICY billing_wallet_credit_reservations_select_system_admin ON billing_wallet_credit_reservations FOR SELECT
   USING (app.current_is_system_admin());
 DROP POLICY IF EXISTS billing_wallet_credit_reservations_insert_owner ON billing_wallet_credit_reservations;
-CREATE POLICY billing_wallet_credit_reservations_insert_owner ON billing_wallet_credit_reservations FOR INSERT
-  WITH CHECK (user_id = app.current_user_id());
 DROP POLICY IF EXISTS billing_wallet_credit_reservations_update_owner ON billing_wallet_credit_reservations;
-CREATE POLICY billing_wallet_credit_reservations_update_owner ON billing_wallet_credit_reservations FOR UPDATE
-  USING (user_id = app.current_user_id()) WITH CHECK (user_id = app.current_user_id());
+DROP POLICY IF EXISTS billing_wallet_credit_reservations_write_wallet_service ON billing_wallet_credit_reservations;
+CREATE POLICY billing_wallet_credit_reservations_write_wallet_service ON billing_wallet_credit_reservations FOR ALL
+  USING (app.current_is_wallet_service_role()) WITH CHECK (app.current_is_wallet_service_role());
 DROP POLICY IF EXISTS billing_wallet_credit_reservations_write_system_admin ON billing_wallet_credit_reservations;
 CREATE POLICY billing_wallet_credit_reservations_write_system_admin ON billing_wallet_credit_reservations FOR ALL
   USING (app.current_is_system_admin()) WITH CHECK (app.current_is_system_admin());
 
 DROP POLICY IF EXISTS billing_recharge_plans_select_active ON billing_recharge_plans;
-CREATE POLICY billing_recharge_plans_select_active ON billing_recharge_plans FOR SELECT
-  USING (active AND app.current_user_id() IS NOT NULL);
+DROP POLICY IF EXISTS billing_recharge_plans_select_wallet_service ON billing_recharge_plans;
+CREATE POLICY billing_recharge_plans_select_wallet_service ON billing_recharge_plans FOR SELECT
+  USING (app.current_is_wallet_service_role());
 DROP POLICY IF EXISTS billing_recharge_plans_select_system_admin ON billing_recharge_plans;
 CREATE POLICY billing_recharge_plans_select_system_admin ON billing_recharge_plans FOR SELECT
   USING (app.current_is_system_admin());
@@ -318,11 +333,10 @@ DROP POLICY IF EXISTS billing_wallet_payments_select_system_admin ON billing_wal
 CREATE POLICY billing_wallet_payments_select_system_admin ON billing_wallet_payments FOR SELECT
   USING (app.current_is_system_admin());
 DROP POLICY IF EXISTS billing_wallet_payments_insert_owner ON billing_wallet_payments;
-CREATE POLICY billing_wallet_payments_insert_owner ON billing_wallet_payments FOR INSERT
-  WITH CHECK (user_id = app.current_user_id());
 DROP POLICY IF EXISTS billing_wallet_payments_update_owner ON billing_wallet_payments;
-CREATE POLICY billing_wallet_payments_update_owner ON billing_wallet_payments FOR UPDATE
-  USING (user_id = app.current_user_id()) WITH CHECK (user_id = app.current_user_id());
+DROP POLICY IF EXISTS billing_wallet_payments_write_wallet_service ON billing_wallet_payments;
+CREATE POLICY billing_wallet_payments_write_wallet_service ON billing_wallet_payments FOR ALL
+  USING (app.current_is_wallet_service_role()) WITH CHECK (app.current_is_wallet_service_role());
 DROP POLICY IF EXISTS billing_wallet_payments_write_system_admin ON billing_wallet_payments;
 CREATE POLICY billing_wallet_payments_write_system_admin ON billing_wallet_payments FOR ALL
   USING (app.current_is_system_admin()) WITH CHECK (app.current_is_system_admin());
@@ -489,4 +503,35 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION app.list_active_billing_recharge_plans()
+RETURNS TABLE (
+  id uuid,
+  key text,
+  name text,
+  amount_cents bigint,
+  credits numeric(18, 4),
+  currency text,
+  validity_days int,
+  sort_order int
+)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public, app
+AS $$
+  SELECT
+    plan.id,
+    plan.key,
+    plan.name,
+    plan.amount_cents,
+    plan.credits,
+    plan.currency,
+    plan.validity_days,
+    plan.sort_order
+  FROM billing_recharge_plans AS plan
+  WHERE plan.active
+  ORDER BY plan.sort_order ASC, plan.id ASC
+$$;
+
 REVOKE ALL ON FUNCTION app.apply_xunhu_payment_notification(text, bigint, text, text, text, timestamptz) FROM PUBLIC;
+REVOKE ALL ON FUNCTION app.list_active_billing_recharge_plans() FROM PUBLIC;
