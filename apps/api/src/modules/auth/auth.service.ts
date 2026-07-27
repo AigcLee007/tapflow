@@ -22,6 +22,16 @@ import {
   signAccessToken,
   verifyAccessToken,
 } from "./token.js";
+import {
+  EMAIL_CODE_MAX_ATTEMPTS,
+  EMAIL_CODE_RESEND_COOLDOWN_SECONDS,
+  EMAIL_CODE_TTL_SECONDS,
+  generateNumericCode,
+  generateOpaqueToken,
+  hashOpaqueToken,
+  hashVerificationCode,
+  maskEmail,
+} from "./auth-verification.js";
 
 type PgPool = Pool;
 type PgClient = PoolClient;
@@ -246,13 +256,19 @@ export class AuthService {
   async register(input: RegisterInput, metadata: SessionMetadata) {
     const userId = randomUUID();
     const tenantId = randomUUID();
-    const sessionId = randomUUID();
-    const refreshTokenId = randomUUID();
-    const refreshToken = generateRefreshToken();
-    const refreshTokenHash = hashRefreshToken(refreshToken);
+    const challengeId = randomUUID();
+    const challengeToken = generateOpaqueToken();
+    const code = generateNumericCode();
+    const normalizedEmail = input.email.trim().toLowerCase();
     const passwordHash = await hashPassword(input.password);
     const tenantName = getDefaultTenantName(input);
     const tenantSlug = buildTenantSlug(tenantName);
+    const challengeTokenHash = hashOpaqueToken(challengeToken);
+    const codeHash = hashVerificationCode(
+      challengeId,
+      code,
+      this.env.jwtRefreshSecret,
+    );
 
     try {
       const result = await withTenantTransaction(
@@ -269,7 +285,7 @@ export class AuthService {
               VALUES ($1::uuid, $2, $3, $4, now())
               RETURNING id::text AS id, email, display_name, status
             `,
-            [userId, input.email, input.displayName?.trim() ?? null, passwordHash],
+            [userId, normalizedEmail, input.displayName?.trim() ?? null, passwordHash],
           );
 
           const tenant = await client.query<{
@@ -304,44 +320,41 @@ export class AuthService {
 
           await client.query(
             `
-              INSERT INTO auth_sessions (
+              INSERT INTO auth_email_challenges (
                 id,
                 user_id,
                 tenant_id,
-                status,
-                user_agent,
-                ip_hash,
-                expires_at
+                purpose,
+                reason,
+                challenge_token_hash,
+                code_hash,
+                attempts_remaining,
+                last_sent_at,
+                expires_at,
+                updated_at
               )
-              VALUES ($1::uuid, $2::uuid, $3::uuid, 'active', $4, $5, now() + ($6 || ' seconds')::interval)
+              VALUES (
+                $1::uuid,
+                $2::uuid,
+                $3::uuid,
+                'registration',
+                'email_unverified',
+                $4,
+                $5,
+                $6,
+                now(),
+                now() + ($7 || ' seconds')::interval,
+                now()
+              )
             `,
             [
-              sessionId,
+              challengeId,
               userId,
               tenantId,
-              metadata.userAgent ?? null,
-              hashIpAddress(metadata.ipAddress),
-              String(this.env.refreshTokenTtlSeconds),
-            ],
-          );
-
-          await client.query(
-            `
-              INSERT INTO refresh_tokens (
-                id,
-                session_id,
-                user_id,
-                token_hash,
-                expires_at
-              )
-              VALUES ($1::uuid, $2::uuid, $3::uuid, $4, now() + ($5 || ' seconds')::interval)
-            `,
-            [
-              refreshTokenId,
-              sessionId,
-              userId,
-              refreshTokenHash,
-              String(this.env.refreshTokenTtlSeconds),
+              challengeTokenHash,
+              codeHash,
+              EMAIL_CODE_MAX_ATTEMPTS,
+              String(EMAIL_CODE_TTL_SECONDS),
             ],
           );
 
@@ -353,33 +366,34 @@ export class AuthService {
         this.pool,
       );
 
-      const response = {
-        accessToken: await signAccessToken(
-          {
-            sessionId,
-            tenantId,
-            userId,
-          },
-          this.env,
-        ),
-        currentTenant: result.currentTenant,
-        refreshToken,
-        user: result.user,
-      };
+      try {
+        await this.authEmailSender.sendVerificationCode({
+          code,
+          email: normalizedEmail,
+          expiresInMinutes: EMAIL_CODE_TTL_SECONDS / 60,
+        });
+      } catch {
+        throw new AuthApiError(
+          503,
+          "EMAIL_DELIVERY_FAILED",
+          "验证码邮件发送失败，请稍后重试",
+        );
+      }
 
       await safeRecordAuditLog(
         {
-          action: "auth.register",
+          action: "auth.register_verification_requested",
           actorType: "user",
           actorUserId: result.user.id,
           ipHash: metadata.ipHash ?? hashIpAddress(metadata.ipAddress),
           metadata: {
-            sessionId,
+            challengeId,
+            reason: "email_unverified",
             tenantId: result.currentTenant.id,
           },
           requestId: metadata.requestId,
-          resourceId: result.user.id,
-          resourceType: "user",
+          resourceId: challengeId,
+          resourceType: "auth_email_challenge",
           tenantId: result.currentTenant.id,
           traceId: metadata.traceId,
           userAgent: metadata.userAgent ?? null,
@@ -389,7 +403,14 @@ export class AuthService {
         },
       );
 
-      return response;
+      return {
+        challengeToken,
+        emailMasked: maskEmail(normalizedEmail),
+        expiresInSeconds: EMAIL_CODE_TTL_SECONDS,
+        reason: "email_unverified" as const,
+        resendAvailableInSeconds: EMAIL_CODE_RESEND_COOLDOWN_SECONDS,
+        status: "verification_required" as const,
+      };
     } catch (error) {
       this.rethrowKnownDatabaseError(error, "注册账号失败，请稍后重试");
     }

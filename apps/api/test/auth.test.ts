@@ -6,6 +6,10 @@ import { createPgPool, withTenantTransaction } from "@aigc-flow/db";
 import type { ApiEnv } from "../src/config/env.js";
 import { requireAuth, requirePermission } from "../src/http/auth-middleware.js";
 import { buildApp } from "../src/app.js";
+import type {
+  AuthEmailSender,
+  SendVerificationCodeInput,
+} from "../src/modules/auth/auth-email-sender.js";
 import { hashPassword } from "../src/modules/auth/password.js";
 import { resolvePermissionsForTenant } from "../src/modules/auth/permission-resolver.js";
 import { hashRefreshToken } from "../src/modules/auth/token.js";
@@ -50,14 +54,28 @@ afterAll(() => {
   }
 });
 
+class CapturingAuthEmailSender implements AuthEmailSender {
+  readonly messages: SendVerificationCodeInput[] = [];
+
+  async sendVerificationCode(input: SendVerificationCodeInput): Promise<void> {
+    this.messages.push(input);
+  }
+
+  latestCode(email: string): string | undefined {
+    return [...this.messages].reverse().find((item) => item.email === email)?.code;
+  }
+}
+
 function buildTestApp(pool: ReturnType<typeof createPgPool>) {
-  const app = buildApp({
+  const authEmailSender = new CapturingAuthEmailSender();
+  const api = buildApp({
+    authEmailSender,
     env: testEnv,
     logger: false,
     pool,
   });
 
-  app.get(
+  api.get(
     "/api/v2/test/flow-update",
     {
       preHandler: [requireAuth, requirePermission("flow:update")],
@@ -65,11 +83,11 @@ function buildTestApp(pool: ReturnType<typeof createPgPool>) {
     async () => ({ ok: true }),
   );
 
-  return app;
+  return { api, authEmailSender };
 }
 
 describeWithDatabase("auth v2", () => {
-  test("register creates user, tenant, membership, session, and hashed refresh token", async () => {
+  test("register creates a pending email challenge without a session", async () => {
     await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
       process.env.DATABASE_URL = databaseUrl;
       const adminPool = createPgPool();
@@ -80,7 +98,7 @@ describeWithDatabase("auth v2", () => {
         appPool = createPgPool({
           connectionString: await createAppDatabaseUrl(),
         });
-        const api = buildTestApp(appPool);
+        const { api, authEmailSender } = buildTestApp(appPool);
 
         const response = await api.inject({
           method: "POST",
@@ -93,19 +111,19 @@ describeWithDatabase("auth v2", () => {
           url: "/api/v2/auth/register",
         });
 
-        expect(response.statusCode).toBe(201);
+        expect(response.statusCode).toBe(202);
         const body = response.json();
-        expect(body.user).toMatchObject({
-          displayName: "Alice",
-          email: "alice@example.com",
+        expect(body).toMatchObject({
+          status: "verification_required",
+          emailMasked: "a***@example.com",
+          expiresInSeconds: 600,
+          resendAvailableInSeconds: 60,
+          reason: "email_unverified",
         });
-        expect(body.user.password_hash).toBeUndefined();
-        expect(body.currentTenant).toMatchObject({
-          name: "Alice Tenant",
-          status: "active",
-        });
-        expect(typeof body.accessToken).toBe("string");
-        expect(typeof body.refreshToken).toBe("string");
+        expect(body.challengeToken).toEqual(expect.any(String));
+        expect(body.accessToken).toBeUndefined();
+        expect(body.refreshToken).toBeUndefined();
+        expect(authEmailSender.latestCode("alice@example.com")).toMatch(/^\d{6}$/);
 
         const userRecord = await adminPool.query<{
           password_hash: string;
@@ -131,16 +149,10 @@ describeWithDatabase("auth v2", () => {
         );
         expect(membership.rows[0]?.role_key).toBe("tenant_owner");
 
-        const refreshTokenRow = await adminPool.query<{ token_hash: string }>(
-          `
-            SELECT token_hash
-            FROM refresh_tokens
-            ORDER BY created_at DESC
-            LIMIT 1
-          `,
+        const sessionCount = await adminPool.query<{ total: number }>(
+          "SELECT COUNT(*)::int AS total FROM auth_sessions",
         );
-        expect(refreshTokenRow.rows[0]?.token_hash).toBe(hashRefreshToken(body.refreshToken));
-        expect(refreshTokenRow.rows[0]?.token_hash).not.toBe(body.refreshToken);
+        expect(sessionCount.rows[0]?.total).toBe(0);
 
         await api.close();
       } finally {
@@ -160,7 +172,7 @@ describeWithDatabase("auth v2", () => {
         appPool = createPgPool({
           connectionString: await createAppDatabaseUrl(),
         });
-        const api = buildTestApp(appPool);
+        const { api } = buildTestApp(appPool);
 
         await api.inject({
           method: "POST",
@@ -216,7 +228,7 @@ describeWithDatabase("auth v2", () => {
         appPool = createPgPool({
           connectionString: await createAppDatabaseUrl(),
         });
-        const api = buildTestApp(appPool);
+        const { api } = buildTestApp(appPool);
 
         const register = await api.inject({
           method: "POST",
@@ -299,7 +311,7 @@ describeWithDatabase("auth v2", () => {
         appPool = createPgPool({
           connectionString: await createAppDatabaseUrl(),
         });
-        const api = buildTestApp(appPool);
+        const { api } = buildTestApp(appPool);
 
         const register = await api.inject({
           method: "POST",
@@ -378,7 +390,7 @@ describeWithDatabase("auth v2", () => {
         appPool = createPgPool({
           connectionString: await createAppDatabaseUrl(),
         });
-        const api = buildTestApp(appPool);
+        const { api } = buildTestApp(appPool);
 
         const anonymous = await api.inject({
           method: "GET",
@@ -440,7 +452,7 @@ describeWithDatabase("auth v2", () => {
         appPool = createPgPool({
           connectionString: await createAppDatabaseUrl(),
         });
-        const api = buildTestApp(appPool);
+        const { api } = buildTestApp(appPool);
 
         const viewerUserId = randomUUID();
         const viewerTenantId = randomUUID();

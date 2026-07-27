@@ -89,7 +89,7 @@ export function registerAuthRoutes(app: FastifyInstance): void {
         traceId: request.ctx.traceId,
         userAgent: request.ctx.userAgent,
       });
-      return reply.code(201).send(result);
+      return reply.code(202).send(result);
     } catch (error) {
       return handleRouteError(error, request, reply);
     }
