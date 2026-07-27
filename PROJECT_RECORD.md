@@ -7,6 +7,7 @@ Maintainers: project team + Codex sessions
 
 - implemented schema/RLS, personal-wallet accounting, immutable billed-user workflow ownership, balance migration tooling, signed checkout/callback, expiry sweep, and the initial personal billing UI on branch `codex/xunhupay-personal-wallet`.
 - current work also includes XunhuPay query/refund transport, platform payment routes, reconciler scheduling, and payment observability. These changes remain un-deployed and real merchant payment/refund acceptance has not been performed.
+- corrected the remaining redeem path so redeemed credits now enter the personal wallet ledger rather than the legacy tenant billing ledger; focused API regression coverage verifies the cutover.
 - staging cutover remains gated by database backup, a clean migration dry run, worker shutdown, and explicit merchant credentials configured only in `/opt/aittco/env/tapflow.staging.env`.
 
 ## 2026-07-27 - XunhuPay Personal Wallet Approved Design
