@@ -11,6 +11,8 @@ export type WalletReserveInput = { amountCredits: number; idempotencyKey: string
 export type WalletSettleInput = { amountCredits: number; idempotencyKey: string; reserveLedgerId: string; usageEventId: string; metadata?: Record<string, unknown> };
 export type WalletRefundInput = { idempotencyKey: string; reserveLedgerId: string; usageEventId?: string | null; metadata?: Record<string, unknown> };
 export type WalletSummaryView = { availableCredits: number; balanceCredits: number; expiringSoonCredits: number; nearestExpiryAt: string | null; reservedCredits: number; walletId: string };
+export type WalletRedeemInput = { code: string; idempotencyKey?: string; metadata?: Record<string, unknown> };
+export type WalletRedeemResultView = { credits: number; ledgerEntry: WalletLedgerView; redemptionId: string };
 
 export class PersonalWalletServiceError extends Error {
   constructor(readonly code: string, message: string, readonly statusCode = 400) { super(message); this.name = "PersonalWalletServiceError"; }
@@ -49,6 +51,31 @@ export class PersonalWalletService {
   async credit(context: { userId: string }, input: WalletCreditInput): Promise<WalletLedgerView> {
     return withUserTransaction({ userId: context.userId }, (client) => this.creditWithClient(client, context.userId, input), this.pool);
   }
+  async redeemCode(context: PersonalWalletContext, input: WalletRedeemInput): Promise<WalletRedeemResultView> {
+    if (!context.tenantId) {
+      throw new PersonalWalletServiceError("REDEEM_TENANT_REQUIRED", "A workspace is required to redeem this code");
+    }
+    const normalizedCode = input.code.trim().toUpperCase();
+    if (!normalizedCode) {
+      throw new PersonalWalletServiceError("REDEEM_CODE_REQUIRED", "Redeem code is required");
+    }
+    const codeHash = await this.hashRedeemCode(normalizedCode);
+    const idempotencyKey = input.idempotencyKey ?? `redeem:${context.userId}:${codeHash}`;
+    return withUserTransaction(context, async (client) => {
+      try {
+        const result = await client.query<LedgerRow & { redemption_id: string }>(
+          `SELECT * FROM app.wallet_redeem_code($1::uuid, $2::uuid, $3, $4, $5::jsonb)`,
+          [context.userId, context.tenantId, codeHash, idempotencyKey, JSON.stringify(input.metadata ?? {})],
+        );
+        const row = result.rows[0];
+        if (!row) throw new PersonalWalletServiceError("REDEEM_FAILED", "Unable to redeem code", 500);
+        return { credits: row.amount_credits ? Number(row.amount_credits) : 0, ledgerEntry: mapLedger(row), redemptionId: row.redemption_id };
+      } catch (error) {
+        if (error instanceof PersonalWalletServiceError) throw error;
+        throw this.mapDatabaseError(error, "REDEEM_FAILED", "Unable to redeem code");
+      }
+    }, this.pool);
+  }
   private async creditWithClient(client: PoolClient, userId: string, input: WalletCreditInput): Promise<WalletLedgerView> {
     const result = await client.query<LedgerRow>(`SELECT * FROM app.wallet_credit($1::uuid, $2::numeric, $3::timestamptz, $4, $5, $6, $7::jsonb)`, [userId, input.amountCredits, input.expiresAt, input.idempotencyKey, input.sourceId, input.sourceType, JSON.stringify(input.metadata ?? {})]);
     if (!result.rows[0]) throw new PersonalWalletServiceError("WALLET_CREDIT_FAILED", "Unable to credit personal wallet", 500);
@@ -57,7 +84,7 @@ export class PersonalWalletService {
   async reserveUsage(context: PersonalWalletContext, input: WalletReserveInput): Promise<WalletLedgerView> { return withUserTransaction(context, (client) => this.reserveUsageWithClient(client, context, input), this.pool); }
   async reserveUsageWithClient(client: PoolClient, context: PersonalWalletContext, input: WalletReserveInput): Promise<WalletLedgerView> {
     try { const r = await client.query<LedgerRow>(`SELECT * FROM app.wallet_reserve($1::uuid, $2::uuid, $3::numeric, $4, $5::uuid, $6::uuid, $7::jsonb)`, [context.userId, context.tenantId ?? null, input.amountCredits, input.idempotencyKey, input.workflowRunId ?? null, input.nodeRunId ?? null, JSON.stringify(input.metadata ?? {})]); if (!r.rows[0]) throw new Error("empty reserve"); return mapLedger(r.rows[0]); }
-    catch (error) { if (error instanceof Error && error.message.includes("INSUFFICIENT_BALANCE")) throw new PersonalWalletServiceError("INSUFFICIENT_BALANCE", "Insufficient personal wallet balance", 402); throw error; }
+    catch (error) { throw this.mapDatabaseError(error, "WALLET_RESERVE_FAILED", "Unable to reserve personal wallet balance"); }
   }
   async settleUsageWithClient(client: PoolClient, context: PersonalWalletContext, input: WalletSettleInput): Promise<WalletLedgerView> { return this.completeWithClient(client, "settle", context, input.reserveLedgerId, input.usageEventId, input.idempotencyKey, input.metadata); }
   async refundUsageWithClient(client: PoolClient, context: PersonalWalletContext, input: WalletRefundInput): Promise<WalletLedgerView> { return this.completeWithClient(client, "refund", context, input.reserveLedgerId, input.usageEventId ?? null, input.idempotencyKey, input.metadata); }
@@ -68,5 +95,20 @@ export class PersonalWalletService {
   async expireDueGrants(input: { limit?: number; now?: string } = {}): Promise<{ expiredCredits: number; expiredGrantCount: number }> {
     const r = await this.pool.query<{ expired_credits: string; expired_grant_count: number }>(`SELECT * FROM app.wallet_expire_due($1::integer, $2::timestamptz)`, [input.limit ?? 500, input.now ?? null]);
     return { expiredCredits: Number(r.rows[0]?.expired_credits ?? 0), expiredGrantCount: Number(r.rows[0]?.expired_grant_count ?? 0) };
+  }
+  private async hashRedeemCode(code: string): Promise<string> {
+    const { createHash } = await import("node:crypto");
+    return createHash("sha256").update(code).digest("hex");
+  }
+  private mapDatabaseError(error: unknown, fallbackCode: string, fallbackMessage: string): PersonalWalletServiceError {
+    const message = error instanceof Error ? error.message : fallbackMessage;
+    const codeMatch = message.match(/(INSUFFICIENT_BALANCE|WALLET_IDEMPOTENCY_CONFLICT|REDEEM_CODE_[A-Z_]+)/);
+    if (codeMatch?.[1] === "INSUFFICIENT_BALANCE") return new PersonalWalletServiceError("INSUFFICIENT_BALANCE", "Insufficient personal wallet balance", 402);
+    if (codeMatch?.[1] === "WALLET_IDEMPOTENCY_CONFLICT") return new PersonalWalletServiceError("WALLET_IDEMPOTENCY_CONFLICT", "Wallet idempotency key was reused with different data", 409);
+    if (codeMatch?.[1]) {
+      const status = codeMatch[1] === "REDEEM_CODE_NOT_FOUND" ? 404 : 409;
+      return new PersonalWalletServiceError(codeMatch[1], "Redeem code cannot be applied", status);
+    }
+    return new PersonalWalletServiceError(fallbackCode, fallbackMessage, 500);
   }
 }
