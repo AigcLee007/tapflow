@@ -7,10 +7,14 @@ import {
   type LogoutInput,
   type RefreshInput,
   type RegisterInput,
+  type ResendEmailInput,
+  type VerifyEmailInput,
   loginSchema,
   logoutSchema,
   refreshSchema,
   registerSchema,
+  resendEmailSchema,
+  verifyEmailSchema,
 } from "./auth.schemas.js";
 import { AuthApiError } from "./auth.service.js";
 
@@ -34,6 +38,16 @@ function sendError(
 
 function parseBody<T>(request: FastifyRequest, schema: { parse: (value: unknown) => T }): T {
   return schema.parse(request.body);
+}
+
+function requestMetadata(request: FastifyRequest) {
+  return {
+    ipAddress: request.ip,
+    ipHash: request.ctx.ipHash,
+    requestId: request.ctx.requestId,
+    traceId: request.ctx.traceId,
+    userAgent: request.ctx.userAgent,
+  };
 }
 
 function handleRouteError(
@@ -82,13 +96,7 @@ export function registerAuthRoutes(app: FastifyInstance): void {
   app.post("/api/v2/auth/register", authRateLimitConfig, async (request, reply) => {
     try {
       const body = parseBody<RegisterInput>(request, registerSchema);
-      const result = await app.authService.register(body, {
-        ipAddress: request.ip,
-        ipHash: request.ctx.ipHash,
-        requestId: request.ctx.requestId,
-        traceId: request.ctx.traceId,
-        userAgent: request.ctx.userAgent,
-      });
+      const result = await app.authService.register(body, requestMetadata(request));
       return reply.code(202).send(result);
     } catch (error) {
       return handleRouteError(error, request, reply);
@@ -98,14 +106,28 @@ export function registerAuthRoutes(app: FastifyInstance): void {
   app.post("/api/v2/auth/login", authRateLimitConfig, async (request, reply) => {
     try {
       const body = parseBody<LoginInput>(request, loginSchema);
-      const result = await app.authService.login(body, {
-        ipAddress: request.ip,
-        ipHash: request.ctx.ipHash,
-        requestId: request.ctx.requestId,
-        traceId: request.ctx.traceId,
-        userAgent: request.ctx.userAgent,
-      });
+      const result = await app.authService.login(body, requestMetadata(request));
       return reply.send(result);
+    } catch (error) {
+      return handleRouteError(error, request, reply);
+    }
+  });
+
+  app.post("/api/v2/auth/email/verify", authRateLimitConfig, async (request, reply) => {
+    try {
+      const body = parseBody<VerifyEmailInput>(request, verifyEmailSchema);
+      return reply.send(
+        await app.authService.verifyEmail(body, requestMetadata(request)),
+      );
+    } catch (error) {
+      return handleRouteError(error, request, reply);
+    }
+  });
+
+  app.post("/api/v2/auth/email/resend", authRateLimitConfig, async (request, reply) => {
+    try {
+      const body = parseBody<ResendEmailInput>(request, resendEmailSchema);
+      return reply.send(await app.authService.resendEmail(body));
     } catch (error) {
       return handleRouteError(error, request, reply);
     }

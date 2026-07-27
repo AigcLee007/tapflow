@@ -3,6 +3,7 @@ import {
   createHmac,
   randomBytes,
   randomInt,
+  timingSafeEqual,
 } from "node:crypto";
 import { isIP } from "node:net";
 
@@ -162,6 +163,23 @@ export function hashVerificationCode(
       `tapflow-auth-email-code:v1:${Buffer.byteLength(challengeId)}:${challengeId}:${Buffer.byteLength(code)}:${code}`,
     )
     .digest("hex");
+}
+
+export function verificationCodeMatches(
+  expectedHash: string,
+  challengeId: string,
+  code: string,
+  secret: string,
+): boolean {
+  if (!/^[a-f0-9]{64}$/i.test(expectedHash)) {
+    return false;
+  }
+  const expected = Buffer.from(expectedHash, "hex");
+  const actual = Buffer.from(
+    hashVerificationCode(challengeId, code, secret),
+    "hex",
+  );
+  return timingSafeEqual(expected, actual);
 }
 
 export function maskEmail(email: string): string {

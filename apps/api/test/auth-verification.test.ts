@@ -13,6 +13,7 @@ import {
   hashVerificationCode,
   maskEmail,
   TRUSTED_DEVICE_TTL_SECONDS,
+  verificationCodeMatches,
 } from "../src/modules/auth/auth-verification.js";
 
 describe("auth verification primitives", () => {
@@ -54,6 +55,34 @@ describe("auth verification primitives", () => {
     expect(() => hashVerificationCode("challenge-a", "123456", "")).toThrow(
       "Verification code secret is required",
     );
+  });
+
+  test("compares verification codes without accepting malformed hashes", () => {
+    const expectedHash = hashVerificationCode(
+      "challenge-a",
+      "123456",
+      "secret-a",
+    );
+
+    expect(
+      verificationCodeMatches(
+        expectedHash,
+        "challenge-a",
+        "123456",
+        "secret-a",
+      ),
+    ).toBe(true);
+    expect(
+      verificationCodeMatches(
+        expectedHash,
+        "challenge-a",
+        "654321",
+        "secret-a",
+      ),
+    ).toBe(false);
+    expect(
+      verificationCodeMatches("not-a-hash", "challenge-a", "123456", "secret-a"),
+    ).toBe(false);
   });
 
   test("hashes opaque tokens deterministically", () => {
