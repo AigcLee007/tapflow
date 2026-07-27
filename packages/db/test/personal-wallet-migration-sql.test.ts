@@ -90,4 +90,19 @@ describe("000042_xunhupay_personal_wallet.sql", () => {
     expect(callbackDefinition).toBeGreaterThan(-1);
     expect(callbackOwnership).toBeGreaterThan(callbackDefinition);
   });
+
+  test("defines fixed definer operations instead of granting the API role financial table writes", async () => {
+    const sql = await readFile(
+      path.resolve(import.meta.dirname, "../migrations/000043_personal_wallet_operations.sql"),
+      "utf8",
+    );
+    expect(sql).toContain("CREATE OR REPLACE FUNCTION app.wallet_credit");
+    expect(sql).toContain("CREATE OR REPLACE FUNCTION app.wallet_reserve");
+    expect(sql).toContain("CREATE OR REPLACE FUNCTION app.wallet_settle_or_refund");
+    expect(sql).toContain("CREATE OR REPLACE FUNCTION app.wallet_expire_due");
+    expect(sql).toContain("SECURITY DEFINER");
+    expect(sql).toContain("OWNER TO tapflow_wallet_callback");
+    expect(sql).toContain("REVOKE ALL ON FUNCTION app.wallet_reserve");
+    expect(sql).not.toContain("GRANT SELECT, INSERT, UPDATE ON billing_wallets TO CURRENT_USER");
+  });
 });

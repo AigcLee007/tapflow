@@ -7,6 +7,8 @@ export type TenantDbContext = {
   userId?: string | null;
 };
 
+export type UserDbContext = { tenantId?: string | null; userId: string };
+
 let sharedPool: Pool | null = null;
 
 function getSharedPgPool(): Pool {
@@ -37,4 +39,23 @@ export async function withTenantTransaction<T>(
   } finally {
     client.release();
   }
+}
+
+export async function withUserTransaction<T>(
+  ctx: UserDbContext,
+  fn: (client: PoolClient) => Promise<T>,
+  pool: Pool = getSharedPgPool(),
+): Promise<T> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT set_config('app.tenant_id', $1, true)", [ctx.tenantId ?? ""]);
+    await client.query("SELECT set_config('app.user_id', $1, true)", [ctx.userId]);
+    const result = await fn(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw error;
+  } finally { client.release(); }
 }

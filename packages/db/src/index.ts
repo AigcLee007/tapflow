@@ -44,3 +44,5 @@ export {
   runMigrations,
 } from "./migrator.js";
 export { withTenantTransaction, type TenantDbContext } from "./transaction.js";
+export { withUserTransaction, type UserDbContext } from "./transaction.js";
+export { PersonalWalletService, PersonalWalletServiceError, type PersonalWalletContext, type WalletCreditInput, type WalletLedgerView, type WalletRefundInput, type WalletReserveInput, type WalletSettleInput, type WalletSummaryView } from "./personal-wallet.js";
