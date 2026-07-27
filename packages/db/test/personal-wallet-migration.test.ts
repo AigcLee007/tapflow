@@ -20,6 +20,36 @@ test("exports the tenant-credit migration entrypoint", () => {
   expect(migrateTenantBalancesToPersonalWallets).toBeTypeOf("function");
 });
 
+test("dry-run-only migration reports candidate grants without issuing wallet writes", async () => {
+  const queries: string[] = [];
+  const client = {
+    query: async (query: string) => {
+      queries.push(query);
+      if (query.includes("COUNT(*)::text AS count")) return { rows: [{ count: "0" }] };
+      if (query.includes("GREATEST(remaining_credits - reserved_credits")) {
+        return { rows: [{ available_credits: "12.5", expires_at: null, id: "grant-a", tenant_id: "tenant-a" }] };
+      }
+      if (query.includes("array_agg(membership.user_id")) return { rows: [{ owner_ids: ["owner-a"], tenant_id: "tenant-a" }] };
+      if (query.includes("FROM billing_wallet_ledger")) return { rows: [] };
+      return { rows: [] };
+    },
+    release: () => {},
+  };
+  const pool = { connect: async () => client };
+
+  await expect(migrateTenantBalancesToPersonalWallets(pool as never, { dryRun: true })).resolves.toEqual({
+    activeReservationCount: 0,
+    dryRun: true,
+    migratedCredits: 12.5,
+    migratedGrantCount: 1,
+    sourceAvailableCredits: 12.5,
+    unresolvedTenants: [],
+    verificationMatched: true,
+  });
+  expect(queries.some((query) => /INSERT INTO billing_wallet|UPDATE billing_wallets|LOCK TABLE/.test(query))).toBe(false);
+  expect(queries.at(-1)).toContain("ROLLBACK");
+});
+
 type GrantFixture = {
   expiresAt?: string | null;
   remainingCredits: number;
