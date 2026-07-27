@@ -5,6 +5,7 @@ import type { Pool, PoolClient } from "pg";
 
 import type { ApiEnv } from "../../config/env.js";
 import type { RequestContext } from "../../http/request-context.js";
+import type { AuthEmailSender } from "./auth-email-sender.js";
 import type {
   LoginInput,
   RefreshInput,
@@ -166,10 +167,12 @@ async function withAuthContextTransaction<T>(
 }
 
 export class AuthService {
+  readonly authEmailSender: AuthEmailSender;
   readonly env: ApiEnv;
   readonly pool: PgPool;
 
-  constructor(options: { env: ApiEnv; pool?: PgPool }) {
+  constructor(options: { authEmailSender: AuthEmailSender; env: ApiEnv; pool?: PgPool }) {
+    this.authEmailSender = options.authEmailSender;
     this.env = options.env;
     this.pool = options.pool ?? createPgPool();
   }

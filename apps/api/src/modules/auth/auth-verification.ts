@@ -88,6 +88,9 @@ function parseIpAddress(ipAddress: string): string | null {
   if (!address || (zone !== undefined && !/^[A-Za-z0-9_.~-]+$/.test(zone))) {
     return null;
   }
+  if (hasOpeningBracket && isIP(address) !== 6) {
+    return null;
+  }
   if (zone !== undefined && isIP(address) !== 6) {
     return null;
   }
@@ -151,6 +154,9 @@ export function hashVerificationCode(
   code: string,
   secret: string,
 ): string {
+  if (!secret) {
+    throw new Error("Verification code secret is required");
+  }
   return createHmac("sha256", secret)
     .update(
       `tapflow-auth-email-code:v1:${Buffer.byteLength(challengeId)}:${challengeId}:${Buffer.byteLength(code)}:${code}`,

@@ -50,6 +50,12 @@ describe("auth verification primitives", () => {
     );
   });
 
+  test("rejects an empty OTP HMAC secret", () => {
+    expect(() => hashVerificationCode("challenge-a", "123456", "")).toThrow(
+      "Verification code secret is required",
+    );
+  });
+
   test("hashes opaque tokens deterministically", () => {
     expect(hashOpaqueToken("token-a")).toBe(
       "a70bf50e531ce1a817561f2f5d5b6645d4e806becf58ccc5e8cf6b8045a090a8",
@@ -152,6 +158,10 @@ describe("auth verification primitives", () => {
     expect(hashIpNetwork("fe80::1%", fingerprintSecret)).toBeNull();
     expect(hashIpNetwork("fe80::1%bad zone", fingerprintSecret)).toBeNull();
     expect(hashIpNetwork("fe80::1%eth0%extra", fingerprintSecret)).toBeNull();
+  });
+
+  test("rejects bracketed IPv4 addresses", () => {
+    expect(hashIpNetwork("[203.0.113.7]", fingerprintSecret)).toBeNull();
   });
 
   test("keys device and network fingerprints with a server secret", () => {
