@@ -1,6 +1,6 @@
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { act, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { AuthContext, type AuthState } from "../auth/useAuth";
 import { BillingCenterPage } from "./BillingCenterPage";
@@ -43,6 +43,8 @@ describe("BillingCenterPage", () => {
     getPaymentMock.mockReset();
   });
 
+  afterEach(() => vi.useRealTimers());
+
   test("renders only server-owned fixed recharge plans", async () => {
     renderPage();
     expect(await screen.findByText("CNY 9.90")).toBeTruthy();
@@ -59,5 +61,16 @@ describe("BillingCenterPage", () => {
     renderPage();
     await waitFor(() => expect(getPaymentMock).toHaveBeenCalledWith("00000000-0000-4000-8000-000000000123"));
     expect(await screen.findByText("Paid")).toBeTruthy();
+  });
+
+  test("stops polling an unconfirmed owned payment after twenty attempts", async () => {
+    vi.useFakeTimers();
+    window.history.replaceState({}, "", "/billing?paymentId=00000000-0000-4000-8000-000000000123");
+    getPaymentMock.mockResolvedValue({ id: "00000000-0000-4000-8000-000000000123", planKey: "credits_100", amountCents: 990, credits: 100, status: "checkout_created", checkoutUrl: "https://pay.example.test/order", qrCodeUrl: null, expiresAtSnapshot: null });
+    renderPage();
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+
+    expect(getPaymentMock).toHaveBeenCalledTimes(20);
   });
 });

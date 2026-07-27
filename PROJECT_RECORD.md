@@ -8,11 +8,17 @@ Maintainers: project team + Codex sessions
 - implemented schema/RLS, personal-wallet accounting, immutable billed-user workflow ownership, balance migration tooling, signed checkout/callback, expiry sweep, and the initial personal billing UI on branch `codex/xunhupay-personal-wallet`.
 - repaired the mobile XunhuPay return path: each new checkout now adds its opaque `paymentId` to the configured billing return URL, allowing `/billing` to resume bounded, server-authoritative status polling after the provider redirect; an invalid configured return URL becomes a safe server configuration error.
 - completed creator-facing activity labels for the new wallet ledger entries: historical migration credit is positive, while expiry and payment refund have explicit labels.
+- completed the remaining local admin/payment UX safeguards:
+  - administrators can now edit and persist recharge-plan display ordering;
+  - the admin payment list exposes a server-derived `eligible` flag only when the corresponding paid grant remains entirely unused and unreserved; the UI requires that flag and a non-empty reason before enabling a refund;
+  - checkout QR codes render on desktop only, while mobile remains redirect-based; the panel also safely handles environments without `matchMedia`;
+  - bounded payment polling is covered by a regression test that stops after 20 attempts.
 - current work also includes XunhuPay query/refund transport, platform payment routes, reconciler scheduling, and payment observability. These changes remain un-deployed and real merchant payment/refund acceptance has not been performed.
 - corrected the remaining redeem path so redeemed credits now enter the personal wallet ledger rather than the legacy tenant billing ledger; focused API regression coverage verifies the cutover.
 - staging cutover remains gated by database backup, a clean migration dry run, worker shutdown, and explicit merchant credentials configured only in `/opt/aittco/env/tapflow.staging.env`.
 - local compiled migration dry-run was attempted on 2026-07-27 and stopped safely before any database access because `DATABASE_URL` is not configured in this workspace. Staging evidence is still required for migration totals and payment acceptance.
 - focused local regressions for the return and activity repairs passed: `npm run test --workspace @aigc-flow/api -- xunhu-client.test.ts` (5 tests) and `npm test -- src/billing/billingActivity.test.ts` (3 tests).
+- current local validation also passed package builds for DB, Redis, API, Worker, and frontend; full DB/API/Worker test suites; and focused payment UI tests. DB-backed acceptance remains skipped locally without `DATABASE_URL`.
 
 ## 2026-07-27 - XunhuPay Personal Wallet Approved Design
 

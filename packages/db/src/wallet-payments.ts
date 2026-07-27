@@ -15,7 +15,7 @@ export type RechargePlanView = {
 };
 
 export type AdminRechargePlanView = RechargePlanView & { active: boolean; createdAt: string; updatedAt: string };
-export type AdminWalletPaymentView = WalletPaymentView & { userEmail: string | null };
+export type AdminWalletPaymentView = WalletPaymentView & { eligible: boolean; userEmail: string | null };
 export type EligibleRefundPayment = WalletPaymentView & { eligible: boolean };
 
 export type WalletPaymentView = {
@@ -167,8 +167,19 @@ export class WalletPaymentService {
 
   async listAdminPayments(input?: { limit?: number; status?: string }): Promise<AdminWalletPaymentView[]> {
     return this.withSystemAdminTransaction(async (client) => {
-      const result = await client.query<PaymentRow & { user_email: string | null }>(`SELECT ${paymentColumns}, users.email AS user_email FROM billing_wallet_payments JOIN users ON users.id = billing_wallet_payments.user_id WHERE ($1::text IS NULL OR billing_wallet_payments.status = $1) ORDER BY billing_wallet_payments.created_at DESC, billing_wallet_payments.id DESC LIMIT $2`, [input?.status ?? null, input?.limit ?? 50]);
-      return result.rows.map((row) => ({ ...mapPayment(row), userEmail: row.user_email }));
+      const result = await client.query<PaymentRow & { eligible: boolean; user_email: string | null }>(`SELECT ${paymentColumns}, users.email AS user_email,
+        (billing_wallet_payments.status = 'paid' AND EXISTS (
+          SELECT 1 FROM billing_wallet_credit_grants
+          WHERE billing_wallet_credit_grants.wallet_id = billing_wallet_payments.wallet_id
+            AND billing_wallet_credit_grants.source_type = 'payment'
+            AND billing_wallet_credit_grants.source_id = billing_wallet_payments.id::text
+            AND billing_wallet_credit_grants.original_credits = billing_wallet_credit_grants.remaining_credits
+            AND billing_wallet_credit_grants.reserved_credits = 0
+        )) AS eligible
+        FROM billing_wallet_payments JOIN users ON users.id = billing_wallet_payments.user_id
+        WHERE ($1::text IS NULL OR billing_wallet_payments.status = $1)
+        ORDER BY billing_wallet_payments.created_at DESC, billing_wallet_payments.id DESC LIMIT $2`, [input?.status ?? null, input?.limit ?? 50]);
+      return result.rows.map((row) => ({ ...mapPayment(row), eligible: row.eligible, userEmail: row.user_email }));
     });
   }
 
@@ -176,7 +187,7 @@ export class WalletPaymentService {
     return this.withSystemAdminTransaction(async (client) => {
       const result = await client.query<PaymentRow & { user_email: string | null }>(`SELECT ${paymentColumns}, users.email AS user_email FROM billing_wallet_payments JOIN users ON users.id = billing_wallet_payments.user_id WHERE billing_wallet_payments.id = $1::uuid`, [paymentId]);
       if (!result.rows[0]) throw new WalletPaymentServiceError("PAYMENT_NOT_FOUND", "Payment not found", 404);
-      return { ...mapPayment(result.rows[0]), userEmail: result.rows[0].user_email };
+      return { ...mapPayment(result.rows[0]), eligible: false, userEmail: result.rows[0].user_email };
     });
   }
 
