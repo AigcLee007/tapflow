@@ -79,6 +79,16 @@ describe("BillingApiService personal wallet reads", () => {
     expect(personalWallet.listLedger).toHaveBeenCalledWith({ userId }, { limit: 10, page: 2 });
   });
 
+  test("redeems into the personal wallet instead of the legacy tenant ledger", async () => {
+    const legacyBilling = { redeemCode: vi.fn(async () => { throw new Error("legacy redeem must not be used"); }) };
+    const personalWallet = { redeemCode: vi.fn(async () => ({ credits: 100, ledgerEntry: { id: "wallet-ledger-1" }, redemptionId: "redemption-1" })) };
+    const service = new BillingApiService({ billingService: legacyBilling as never, personalWalletService: personalWallet as never, pool: createQueryPool() as never } as never);
+
+    await expect(service.redeemCode({ tenantId: "00000000-0000-4000-8000-000000000099", userId }, { code: "WELCOME", idempotencyKey: "redeem-1" })).resolves.toMatchObject({ credits: 100, redemptionId: "redemption-1" });
+    expect(personalWallet.redeemCode).toHaveBeenCalledWith({ tenantId: "00000000-0000-4000-8000-000000000099", userId }, { code: "WELCOME", idempotencyKey: "redeem-1" });
+    expect(legacyBilling.redeemCode).not.toHaveBeenCalled();
+  });
+
   test("filters usage history by immutable billed user id", async () => {
     const pool = createQueryPool([{
       billable_cents: "9",

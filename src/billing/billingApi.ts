@@ -72,9 +72,8 @@ export type BillingListResponse<T> = {
 };
 
 export type RedeemCodeResponse = {
-  account: BillingAccount;
   credits: number;
-  ledgerEntry: BillingLedgerEntry;
+  ledgerEntry: { id: string; amountCredits: number; entryType: string; createdAt: string };
   redemptionId: string;
 };
 

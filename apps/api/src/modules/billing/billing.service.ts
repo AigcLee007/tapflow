@@ -2,13 +2,13 @@ import {
   BillingService,
   BillingServiceError,
   createPgPool,
-  type BillingRedeemResultView,
   type BillingLedgerView,
   type BillingPaymentView,
   PersonalWalletService,
   withUserTransaction,
   type UsageEventView,
   type WalletLedgerView,
+  type WalletRedeemResultView,
   type WalletSummaryView,
 } from "@aigc-flow/db";
 import type { Pool } from "pg";
@@ -128,8 +128,8 @@ export class BillingApiService {
       code: string;
       idempotencyKey?: string;
     },
-  ): Promise<BillingRedeemResultView> {
-    return this.call(() => this.billingService.redeemCode(context, input));
+  ): Promise<WalletRedeemResultView> {
+    return this.call(() => this.personalWalletService.redeemCode(context, input));
   }
 
   async createPaymentCheckout(
