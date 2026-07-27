@@ -3425,7 +3425,14 @@ export class WorkflowNodeExecutionService {
     traceId: string | null,
     input: UsageRecordInput,
   ): Promise<AuditLogInput[]> {
+    const billedOwner = await client.query<{ billed_user_id: string }>(
+      "SELECT billed_user_id::text AS billed_user_id FROM workflow_runs WHERE id = $1::uuid",
+      [input.workflowRunId],
+    );
+    const billedUserId = billedOwner.rows[0]?.billed_user_id;
+    if (!billedUserId) throw new Error(`Workflow run ${input.workflowRunId} has no billing owner`);
     const usageEvent = await this.billingService.recordUsageEventWithClient(client, tenantId, {
+      billedUserId,
       billableCents: input.billableCents,
       eventType: input.eventType,
       idempotencyKey: input.idempotencyKey,
@@ -3449,13 +3456,6 @@ export class WorkflowNodeExecutionService {
       units: input.units ?? null,
       workflowRunId: input.workflowRunId,
     });
-
-    const billedOwner = await client.query<{ billed_user_id: string }>(
-      "SELECT billed_user_id::text AS billed_user_id FROM workflow_runs WHERE id = $1::uuid",
-      [input.workflowRunId],
-    );
-    const billedUserId = billedOwner.rows[0]?.billed_user_id;
-    if (!billedUserId) throw new Error(`Workflow run ${input.workflowRunId} has no billing owner`);
 
     const ledgerEntry = await this.personalWalletService.settleUsageWithClient(client, { tenantId, userId: billedUserId }, {
       amountCredits: input.billableCents,

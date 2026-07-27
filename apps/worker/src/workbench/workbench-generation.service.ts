@@ -982,6 +982,7 @@ export class WorkbenchGenerationService {
   ) {
     const reservedCredits = toNumber(generation.reserved_credits);
     const usageEvent = await this.billingService.recordUsageEventWithClient(client, tenantId, {
+      billedUserId: generation.billed_user_id,
       billableCents: reservedCredits,
       eventType: "workbench.image.generate",
       idempotencyKey: `workbench:usage:${tenantId}:${generation.id}`,

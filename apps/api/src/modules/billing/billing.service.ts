@@ -76,6 +76,7 @@ export class BillingApiService {
           SELECT
             id::text AS id,
             tenant_id::text AS tenant_id,
+            billed_user_id::text AS billed_user_id,
             workflow_run_id::text AS workflow_run_id,
             node_run_id::text AS node_run_id,
             provider_id::text AS provider_id,
@@ -231,6 +232,7 @@ export class BillingApiService {
 }
 
 type UsageEventRow = {
+  billed_user_id: string;
   billable_cents: string;
   created_at: string;
   event_type: string;
@@ -256,6 +258,7 @@ type UsageEventRow = {
 
 function mapUsageEvent(row: UsageEventRow): UsageEventView {
   return {
+    billedUserId: row.billed_user_id,
     billableCents: Number(row.billable_cents),
     createdAt: row.created_at,
     eventType: row.event_type,
