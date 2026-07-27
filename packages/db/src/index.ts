@@ -47,3 +47,4 @@ export { withTenantTransaction, type TenantDbContext } from "./transaction.js";
 export { withUserTransaction, type UserDbContext } from "./transaction.js";
 export { PersonalWalletService, PersonalWalletServiceError, type PersonalWalletContext, type WalletCreditInput, type WalletLedgerView, type WalletRefundInput, type WalletReserveInput, type WalletSettleInput, type WalletSummaryView } from "./personal-wallet.js";
 export { WalletPaymentService, WalletPaymentServiceError, type RechargePlanView, type VerifiedXunhuNotification, type WalletPaymentView } from "./wallet-payments.js";
+export { migrateTenantBalancesToPersonalWallets, type PersonalWalletMigrationReport } from "./personal-wallet-migration.js";

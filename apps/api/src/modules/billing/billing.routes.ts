@@ -53,6 +53,14 @@ function getBillingContext(request: FastifyRequest) {
   };
 }
 
+function getPersonalBillingContext(request: FastifyRequest) {
+  if (!request.ctx.userId) {
+    throw new BillingApiError(401, "UNAUTHORIZED", "Authentication is required");
+  }
+
+  return { userId: request.ctx.userId };
+}
+
 function handleRouteError(
   error: unknown,
   request: FastifyRequest,
@@ -78,17 +86,15 @@ function handleRouteError(
 }
 
 export function registerBillingRoutes(app: FastifyInstance): void {
-  const authHandlers = [requireAuth, requireTenant, requirePermission("billing:read")];
-
   app.get(
     "/api/v2/billing/summary",
     {
-      preHandler: authHandlers,
+      preHandler: [requireAuth],
     },
     async (request, reply) => {
       try {
         return reply.send(
-          await app.billingService.getBillingSummary(getBillingContext(request)),
+          await app.billingService.getBillingSummary(getPersonalBillingContext(request)),
         );
       } catch (error) {
         return handleRouteError(error, request, reply);
@@ -99,13 +105,13 @@ export function registerBillingRoutes(app: FastifyInstance): void {
   app.get(
     "/api/v2/billing/usage-events",
     {
-      preHandler: authHandlers,
+      preHandler: [requireAuth],
     },
     async (request, reply) => {
       try {
         const query = parseQuery<BillingListQuery>(request, billingListQuerySchema);
         return reply.send(
-          await app.billingService.listUsageEvents(getBillingContext(request), query),
+          await app.billingService.listUsageEvents(getPersonalBillingContext(request), query),
         );
       } catch (error) {
         return handleRouteError(error, request, reply);
@@ -116,13 +122,13 @@ export function registerBillingRoutes(app: FastifyInstance): void {
   app.get(
     "/api/v2/billing/ledger",
     {
-      preHandler: authHandlers,
+      preHandler: [requireAuth],
     },
     async (request, reply) => {
       try {
         const query = parseQuery<BillingListQuery>(request, billingListQuerySchema);
         return reply.send(
-          await app.billingService.listLedgerEntries(getBillingContext(request), query),
+          await app.billingService.listLedgerEntries(getPersonalBillingContext(request), query),
         );
       } catch (error) {
         return handleRouteError(error, request, reply);
