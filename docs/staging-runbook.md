@@ -12,20 +12,22 @@ The compose file runs Redis inside the Docker network. Do not publish Redis to t
 
 Start with `PAYMENTS_ENABLED=false`. Back up PostgreSQL, build the new images, and stop the worker before schema and wallet migration:
 
+`DATABASE_URL` remains the API/Worker runtime connection through the Supabase Transaction Pooler on port 6543. `MIGRATION_DATABASE_URL` must use a Supabase Direct connection or Session Pooler on port 5432 and is available only to `tapflow-migrator`. Keep both values in `/opt/aittco/env/tapflow.staging.env`; never print either URL or place it directly in a shell command. Keep the Worker stopped until schema migration, legacy reservation reconciliation, the wallet dry run, and the confirmed wallet write all complete.
+
 ```bash
 cd /opt/aittco/tapflow
 git fetch --all --prune
 git pull --ff-only origin main
 docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml build
 docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml stop tapflow-worker
-docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-api node packages/db/dist/cli.js
-docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-api node packages/db/dist/personal-wallet-migration-cli.js --dry-run
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-migrator node packages/db/dist/cli.js
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-migrator node packages/db/dist/personal-wallet-migration-cli.js --dry-run
 ```
 
 Only when the dry run reports no owner/reservation exceptions and matched totals, execute the approved write migration:
 
 ```bash
-docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-api node packages/db/dist/personal-wallet-migration-cli.js --write --confirm PERSONAL_WALLET_CUTOVER
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-migrator node packages/db/dist/personal-wallet-migration-cli.js --write --confirm PERSONAL_WALLET_CUTOVER
 docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml up -d tapflow-redis tapflow-api tapflow-worker tapflow-frontend
 ```
 
@@ -159,7 +161,7 @@ Prompt catalog media remains in the dedicated server directory mounted at `/var/
 After building images and stopping `tapflow-worker`, run the database migration first:
 
 ```bash
-docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-api node packages/db/dist/cli.js
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-migrator node packages/db/dist/cli.js
 ```
 
 Inspect the historical-media plan without writing files or database keys:

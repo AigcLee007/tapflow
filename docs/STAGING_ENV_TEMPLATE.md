@@ -24,7 +24,8 @@ Do not commit real secrets into repository files.
 
 ## 2. Postgres Database
 
-- `DATABASE_URL =<secret: Supabase pooled Postgres connection string>`
+- `DATABASE_URL =<secret: Supabase Transaction Pooler connection string, port 6543>`
+- `MIGRATION_DATABASE_URL =<secret: Supabase Direct connection or Session Pooler connection string, port 5432>`
 - `DB_POOL_MIN =1`
 - `DB_POOL_MAX =5`
 - `DB_SSL =true`
@@ -32,6 +33,8 @@ Do not commit real secrets into repository files.
 - `Backup method =Supabase scheduled backup + manual pg_dump before migration`
 - `pg_dump tested =No`
 - `Restore tested =No`
+
+Keep both database URLs only in `/opt/aittco/env/tapflow.staging.env`. The runtime URL remains scoped to API and Worker through `x-tapflow-env`; the migration URL is injected only into the one-shot `tapflow-migrator` service.
 
 ---
 

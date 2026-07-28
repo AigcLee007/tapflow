@@ -6,6 +6,19 @@ The personal-wallet migration is a forward-only billing cutover. Before deployme
 
 Use `docker-compose.staging.yml` and the server environment file. Merchant values must remain server-side. After personal reserve/settle/refund smoke tests in two workspaces, perform and record the CNY 9.90 purchase, duplicate callback, reconciliation, expiry snapshot, and completely unused-order refund before enabling checkout. If checkout fails after cutover, disable `PAYMENTS_ENABLED` and apply a forward repair; do not return live charging to tenant balances.
 
+Keep `DATABASE_URL` on the Supabase Transaction Pooler at port 6543 for API/Worker runtime. Set `MIGRATION_DATABASE_URL` to a Supabase Direct connection or Session Pooler at port 5432; Compose injects it only into the one-shot `tapflow-migrator`. Store both only in `/opt/aittco/env/tapflow.staging.env`. Never print either URL or place it directly in a shell command. Keep the Worker stopped until schema migration, legacy reservation reconciliation, wallet dry run, and confirmed wallet write are complete.
+
+```bash
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-migrator node packages/db/dist/cli.js
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-migrator node packages/db/dist/personal-wallet-migration-cli.js --dry-run
+```
+
+Only after the dry-run acceptance gate passes:
+
+```bash
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-migrator node packages/db/dist/personal-wallet-migration-cli.js --write --confirm PERSONAL_WALLET_CUTOVER
+```
+
 Date: 2026-05-20
 Branch: production-readiness
 

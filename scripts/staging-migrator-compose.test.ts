@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 const compose = readFileSync("docker-compose.staging.yml", "utf8");
@@ -57,5 +58,23 @@ describe("staging database migrator Compose service", () => {
     expect(migrator).toContain('command: ["node", "packages/db/dist/cli.js"]');
     expect(migrator).not.toMatch(/^\s+ports:/m);
     expect(migrator).not.toContain("tapflow-redis");
+  });
+
+  it("documents direct migrations without replacing the runtime pooler", () => {
+    const readDoc = (relativePath: string) =>
+      readFileSync(path.resolve(relativePath), "utf8");
+    const template = readDoc("docs/STAGING_ENV_TEMPLATE.md");
+    const stagingRunbook = readDoc("docs/staging-runbook.md");
+    const productionDeployment = readDoc("docs/PRODUCTION_DEPLOYMENT.md");
+    const productionRunbook = readDoc("docs/PRODUCTION_RUNBOOK.md");
+
+    expect(template).toContain("MIGRATION_DATABASE_URL");
+    expect(template).toContain("Session Pooler");
+    expect(stagingRunbook).toContain("run --rm tapflow-migrator");
+    expect(stagingRunbook).toContain("personal-wallet-migration-cli.js --dry-run");
+    expect(productionDeployment).toContain("MIGRATION_DATABASE_URL");
+    expect(productionRunbook).toContain("tapflow-migrator");
+    expect(productionRunbook).toContain("port 6543");
+    expect(productionRunbook).toContain("port 5432");
   });
 });

@@ -25,7 +25,8 @@ LOG_LEVEL=info
 ### Database
 
 ```env
-DATABASE_URL=postgres://<user>:<password>@<host>:5432/<db>
+DATABASE_URL=<Supabase-Transaction-Pooler-connection-string-port-6543>
+MIGRATION_DATABASE_URL=<Supabase-Direct-or-Session-Pooler-connection-string-port-5432>
 DB_POOL_MIN=2
 DB_POOL_MAX=20
 DB_SSL=true
@@ -36,6 +37,21 @@ Required:
 - Backup production DB before migration.
 - Migration must run once per deployment.
 - Stop deployment immediately if migration fails.
+- Keep both URLs only in the external server environment file and never print them or place them directly in shell commands.
+- Keep `DATABASE_URL` on port 6543 for API/Worker runtime. Scope `MIGRATION_DATABASE_URL` on port 5432 only to the one-shot `tapflow-migrator` service.
+
+Run compiled schema and wallet migration CLIs through the dedicated migrator:
+
+```bash
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-migrator node packages/db/dist/cli.js
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-migrator node packages/db/dist/personal-wallet-migration-cli.js --dry-run
+```
+
+Keep the Worker stopped until schema migration, legacy reservation reconciliation, wallet dry run, and confirmed wallet write are complete. Only after the dry-run acceptance gate passes, run:
+
+```bash
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-migrator node packages/db/dist/personal-wallet-migration-cli.js --write --confirm PERSONAL_WALLET_CUTOVER
+```
 
 ### Redis / Queue
 
