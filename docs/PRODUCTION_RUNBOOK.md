@@ -8,6 +8,10 @@ Use `docker-compose.staging.yml` and the server environment file. Merchant value
 
 Keep `DATABASE_URL` on the Supabase Transaction Pooler at port 6543 for API/Worker runtime. Set `MIGRATION_DATABASE_URL` to a Supabase Direct connection or Session Pooler at port 5432; Compose injects it only into the one-shot `tapflow-migrator`. Store both only in `/opt/aittco/env/tapflow.staging.env`. Never print either URL or place it directly in a shell command. Keep the Worker stopped until schema migration, legacy reservation reconciliation, wallet dry run, and confirmed wallet write are complete.
 
+Staging evidence currently shows that migration `000044` terminated through the Transaction Pooler on port 6543, the Session Pooler on port 5432, and its original Supabase SQL Editor bundle. The Direct hostname resolved IPv6-only from the deployment server and failed with `ENETUNREACH` because that server has no IPv6 route. Migrations `000044` and `000045` therefore remain pending; do not report wallet migration acceptance from the recorded `000042`/`000043` rows.
+
+If the Direct route remains unreachable and both poolers terminate the revised managed-role DDL, use the SQL Editor only after the compatibility source is committed, pushed, and deployed. Generate separate bundles from the exact deployed `000044` and `000045` sources and checksums. Apply and verify `000044` as one transaction before applying `000045` as a separate transaction; confirm each exact filename/checksum in `schema_migrations`, and never reuse the terminated original bundle. Keep the wallet write step blocked until the known 301.2 legacy reserved credits are reconciled and the dry run reports matched totals with zero active reservations.
+
 ```bash
 docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-migrator node packages/db/dist/cli.js
 docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-migrator node packages/db/dist/personal-wallet-migration-cli.js --dry-run

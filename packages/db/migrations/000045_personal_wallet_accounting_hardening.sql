@@ -11,6 +11,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_billing_redeem_code_redemptions_code_user
   ON billing_redeem_code_redemptions (redeem_code_id, user_id)
   WHERE user_id IS NOT NULL;
 
+-- Managed PostgreSQL follow-ups temporarily enable SET only inside this
+-- migration transaction. Defining the functions as the no-login callback role
+-- preserves their callback ownership and forced-RLS execution context.
+GRANT USAGE, CREATE ON SCHEMA app TO tapflow_wallet_callback;
+GRANT tapflow_wallet_callback TO CURRENT_USER WITH ADMIN TRUE, INHERIT FALSE, SET TRUE;
+SET LOCAL ROLE tapflow_wallet_callback;
+
 CREATE OR REPLACE FUNCTION app.wallet_expire_due_for_user(
   p_user_id uuid,
   p_now timestamptz DEFAULT now()
@@ -350,6 +357,8 @@ BEGIN
 END;
 $$;
 
+RESET ROLE;
+
 CREATE POLICY billing_redeem_codes_select_callback ON billing_redeem_codes FOR SELECT TO tapflow_wallet_callback
   USING (current_user = 'tapflow_wallet_callback');
 CREATE POLICY billing_redeem_codes_update_callback ON billing_redeem_codes FOR UPDATE TO tapflow_wallet_callback
@@ -361,13 +370,13 @@ CREATE POLICY billing_redeem_redemptions_insert_callback ON billing_redeem_code_
 
 GRANT SELECT, UPDATE ON billing_redeem_codes TO tapflow_wallet_callback;
 GRANT SELECT, INSERT ON billing_redeem_code_redemptions TO tapflow_wallet_callback;
-GRANT tapflow_wallet_callback TO CURRENT_USER;
 REVOKE ALL ON FUNCTION app.wallet_expire_due_for_user(uuid, timestamptz) FROM PUBLIC;
+REVOKE ALL ON FUNCTION app.wallet_reserve(uuid, uuid, numeric, text, uuid, uuid, jsonb) FROM PUBLIC;
 REVOKE ALL ON FUNCTION app.wallet_redeem_code(uuid, uuid, text, text, jsonb) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION app.wallet_expire_due_for_user(uuid, timestamptz) TO CURRENT_USER;
+REVOKE ALL ON FUNCTION app.wallet_settle_or_refund(text, uuid, uuid, uuid, uuid, text, jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.wallet_reserve(uuid, uuid, numeric, text, uuid, uuid, jsonb) TO CURRENT_USER;
 GRANT EXECUTE ON FUNCTION app.wallet_redeem_code(uuid, uuid, text, text, jsonb) TO CURRENT_USER;
-ALTER FUNCTION app.wallet_expire_due_for_user(uuid, timestamptz) OWNER TO tapflow_wallet_callback;
-ALTER FUNCTION app.wallet_reserve(uuid, uuid, numeric, text, uuid, uuid, jsonb) OWNER TO tapflow_wallet_callback;
-ALTER FUNCTION app.wallet_settle_or_refund(text, uuid, uuid, uuid, uuid, text, jsonb) OWNER TO tapflow_wallet_callback;
-ALTER FUNCTION app.wallet_redeem_code(uuid, uuid, text, text, jsonb) OWNER TO tapflow_wallet_callback;
-REVOKE tapflow_wallet_callback FROM CURRENT_USER;
+GRANT EXECUTE ON FUNCTION app.wallet_settle_or_refund(text, uuid, uuid, uuid, uuid, text, jsonb) TO CURRENT_USER;
+REVOKE CREATE ON SCHEMA app FROM tapflow_wallet_callback;
+-- Restore the non-inheriting, non-settable PostgreSQL 17 automatic membership.
+GRANT tapflow_wallet_callback TO CURRENT_USER WITH ADMIN TRUE, INHERIT FALSE, SET FALSE;

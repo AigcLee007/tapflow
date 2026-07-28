@@ -40,6 +40,14 @@ Required:
 - Keep both URLs only in the external server environment file and never print them or place them directly in shell commands.
 - Keep `DATABASE_URL` on port 6543 for API/Worker runtime. Scope `MIGRATION_DATABASE_URL` on port 5432 only to the one-shot `tapflow-migrator` service.
 
+Observed Supabase staging constraints for personal-wallet migrations:
+
+- the runtime Transaction Pooler on port 6543, Session Pooler on port 5432, and the original migration-`000044` SQL Editor bundle all terminated during its role/ownership DDL;
+- the Direct database hostname resolved IPv6-only from the deployment server, whose missing IPv6 route returned `ENETUNREACH`;
+- migrations `000044` and `000045` remain pending until their revised managed-role sequence is applied and verified.
+
+When Direct connectivity and both managed poolers are unavailable, the Supabase SQL Editor is an approved fallback only after the compatibility change is committed, pushed, and deployed. Generate each editor bundle from the exact deployed migration source and checksum, verify that checksum against the deployed commit, and apply one transaction at a time: `000044` first, verify its `schema_migrations` row, then `000045` and its row. Never combine both migrations into one editor execution or reuse an older generated bundle.
+
 Run compiled schema and wallet migration CLIs through the dedicated migrator:
 
 ```bash

@@ -14,6 +14,15 @@ Start with `PAYMENTS_ENABLED=false`. Back up PostgreSQL, build the new images, a
 
 `DATABASE_URL` remains the API/Worker runtime connection through the Supabase Transaction Pooler on port 6543. `MIGRATION_DATABASE_URL` must use a Supabase Direct connection or Session Pooler on port 5432 and is available only to `tapflow-migrator`. Keep both values in `/opt/aittco/env/tapflow.staging.env`; never print either URL or place it directly in a shell command. Keep the Worker stopped until schema migration, legacy reservation reconciliation, the wallet dry run, and the confirmed wallet write all complete.
 
+Current staging limitation: the Transaction Pooler on port 6543, Session Pooler on port 5432, and the original migration-`000044` Supabase SQL Editor bundle all terminated during that migration. The Direct database hostname is IPv6-only from this server, which has no IPv6 route and returned `ENETUNREACH`. Migrations `000044` and `000045` remain unapplied until their revised transactions are verified.
+
+If the server still cannot reach Direct and the managed poolers terminate the revised migration, use the Supabase SQL Editor fallback only after the compatibility commit is pushed and deployed:
+
+1. Generate the `000044` bundle from the exact deployed migration file and checksum; do not reuse the original terminated bundle.
+2. Apply `000044` alone as one transaction, then verify its exact filename and checksum in `schema_migrations`.
+3. Generate and apply checksum-matched `000045` separately, then verify its `schema_migrations` row.
+4. Keep `tapflow-worker` stopped and `PAYMENTS_ENABLED=false` throughout. Do not run the wallet write while the known 301.2 legacy reserved credits remain unreconciled.
+
 ```bash
 cd /opt/aittco/tapflow
 git fetch --all --prune

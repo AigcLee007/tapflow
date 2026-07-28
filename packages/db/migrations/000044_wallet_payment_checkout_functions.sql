@@ -1,6 +1,6 @@
--- Service-controlled checkout creation. The API role cannot directly mutate
--- payment orders under forced RLS; these narrow functions run as the existing
--- no-login wallet callback role and snapshot the server-owned plan values.
+-- Service-controlled checkout creation. These narrow functions execute as the
+-- existing no-login wallet callback owner under forced RLS and snapshot the
+-- server-owned plan values.
 CREATE POLICY billing_wallets_insert_callback ON billing_wallets FOR INSERT TO tapflow_wallet_callback
   WITH CHECK (current_user = 'tapflow_wallet_callback');
 
@@ -10,7 +10,11 @@ CREATE POLICY billing_wallet_payments_insert_callback ON billing_wallet_payments
 GRANT INSERT ON billing_wallets TO tapflow_wallet_callback;
 GRANT INSERT ON billing_wallet_payments TO tapflow_wallet_callback;
 
-GRANT tapflow_wallet_callback TO CURRENT_USER;
+-- Managed PostgreSQL follow-ups temporarily enable SET only inside this
+-- migration transaction, then restore the safe automatic membership below.
+GRANT USAGE, CREATE ON SCHEMA app TO tapflow_wallet_callback;
+GRANT tapflow_wallet_callback TO CURRENT_USER WITH ADMIN TRUE, INHERIT FALSE, SET TRUE;
+SET LOCAL ROLE tapflow_wallet_callback;
 
 CREATE OR REPLACE FUNCTION app.create_wallet_payment(
   p_user_id uuid,
@@ -125,13 +129,13 @@ BEGIN
 END;
 $$;
 
+RESET ROLE;
+
 REVOKE ALL ON FUNCTION app.create_wallet_payment(uuid, text, text, text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION app.mark_wallet_payment_checkout(uuid, text, text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION app.get_wallet_payment_by_order(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.create_wallet_payment(uuid, text, text, text) TO CURRENT_USER;
 GRANT EXECUTE ON FUNCTION app.mark_wallet_payment_checkout(uuid, text, text) TO CURRENT_USER;
 GRANT EXECUTE ON FUNCTION app.get_wallet_payment_by_order(text) TO CURRENT_USER;
-ALTER FUNCTION app.create_wallet_payment(uuid, text, text, text) OWNER TO tapflow_wallet_callback;
-ALTER FUNCTION app.mark_wallet_payment_checkout(uuid, text, text) OWNER TO tapflow_wallet_callback;
-ALTER FUNCTION app.get_wallet_payment_by_order(text) OWNER TO tapflow_wallet_callback;
-REVOKE tapflow_wallet_callback FROM CURRENT_USER;
+REVOKE CREATE ON SCHEMA app FROM tapflow_wallet_callback;
+GRANT tapflow_wallet_callback TO CURRENT_USER WITH ADMIN TRUE, INHERIT FALSE, SET FALSE;
