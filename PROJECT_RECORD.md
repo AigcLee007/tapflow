@@ -3,6 +3,14 @@
 Last updated: 2026-07-28
 Maintainers: project team + Codex sessions
 
+## 2026-07-28 - Supabase Migration Connection Implementation
+
+- implemented the tools-profile `tapflow-migrator` boundary so Supabase Direct/Session credentials are available only to one-shot database CLIs; API and Worker remain on Transaction Pooler port 6543.
+- added a static Compose regression that verifies `MIGRATION_DATABASE_URL` never enters shared, API, or Worker configuration, plus placeholder-only Compose rendering inputs.
+- updated staging and production deployment references with the port 5432 migration connection, compiled schema/wallet commands, Worker shutdown gate, and credential-handling rules.
+- local verification passed: focused Compose tests (2), DB tests (20 passed and 33 database-dependent skips without local `DATABASE_URL`), Compose rendering, DB/API/Worker package builds, and the root production build. Existing Browserslist, dynamic-import, and chunk-size warnings remain unchanged.
+- live acceptance of migrations `000044` and `000045` remains pending server configuration of `MIGRATION_DATABASE_URL`. Personal-wallet write mode remains blocked until the 301.2 legacy reserved credits are reconciled and the wallet dry run reports zero active reservations with matched totals.
+
 ## 2026-07-28 - Supabase Migration Connection Design
 
 - staging diagnostics confirmed `DATABASE_URL` uses the Supabase transaction pooler on port 6543, which terminates the role and function-ownership DDL in migration `000044`; migrations `000042` and `000043` are recorded, while `000044` and `000045` remain unapplied.
