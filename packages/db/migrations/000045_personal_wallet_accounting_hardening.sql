@@ -357,6 +357,16 @@ BEGIN
 END;
 $$;
 
+-- Apply function ACLs while the callback owner is active. SESSION_USER is the
+-- API/migration database role even though CURRENT_USER is the callback role.
+REVOKE ALL ON FUNCTION app.wallet_expire_due_for_user(uuid, timestamptz) FROM PUBLIC;
+REVOKE ALL ON FUNCTION app.wallet_reserve(uuid, uuid, numeric, text, uuid, uuid, jsonb) FROM PUBLIC;
+REVOKE ALL ON FUNCTION app.wallet_redeem_code(uuid, uuid, text, text, jsonb) FROM PUBLIC;
+REVOKE ALL ON FUNCTION app.wallet_settle_or_refund(text, uuid, uuid, uuid, uuid, text, jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.wallet_reserve(uuid, uuid, numeric, text, uuid, uuid, jsonb) TO SESSION_USER;
+GRANT EXECUTE ON FUNCTION app.wallet_redeem_code(uuid, uuid, text, text, jsonb) TO SESSION_USER;
+GRANT EXECUTE ON FUNCTION app.wallet_settle_or_refund(text, uuid, uuid, uuid, uuid, text, jsonb) TO SESSION_USER;
+
 RESET ROLE;
 
 CREATE POLICY billing_redeem_codes_select_callback ON billing_redeem_codes FOR SELECT TO tapflow_wallet_callback
@@ -370,13 +380,6 @@ CREATE POLICY billing_redeem_redemptions_insert_callback ON billing_redeem_code_
 
 GRANT SELECT, UPDATE ON billing_redeem_codes TO tapflow_wallet_callback;
 GRANT SELECT, INSERT ON billing_redeem_code_redemptions TO tapflow_wallet_callback;
-REVOKE ALL ON FUNCTION app.wallet_expire_due_for_user(uuid, timestamptz) FROM PUBLIC;
-REVOKE ALL ON FUNCTION app.wallet_reserve(uuid, uuid, numeric, text, uuid, uuid, jsonb) FROM PUBLIC;
-REVOKE ALL ON FUNCTION app.wallet_redeem_code(uuid, uuid, text, text, jsonb) FROM PUBLIC;
-REVOKE ALL ON FUNCTION app.wallet_settle_or_refund(text, uuid, uuid, uuid, uuid, text, jsonb) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION app.wallet_reserve(uuid, uuid, numeric, text, uuid, uuid, jsonb) TO CURRENT_USER;
-GRANT EXECUTE ON FUNCTION app.wallet_redeem_code(uuid, uuid, text, text, jsonb) TO CURRENT_USER;
-GRANT EXECUTE ON FUNCTION app.wallet_settle_or_refund(text, uuid, uuid, uuid, uuid, text, jsonb) TO CURRENT_USER;
 REVOKE CREATE ON SCHEMA app FROM tapflow_wallet_callback;
 -- Remove only the current-grantor membership and preserve Supabase's managed grant.
 REVOKE tapflow_wallet_callback FROM CURRENT_USER GRANTED BY CURRENT_USER;

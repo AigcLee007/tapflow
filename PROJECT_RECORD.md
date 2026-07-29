@@ -10,6 +10,8 @@ Maintainers: project team + Codex sessions
 - server-side payment secrets remain confined to the API payment module. Migrations `000044` and `000045` have not yet been applied to Supabase; live payment acceptance remains pending merchant callback configuration and SQL Editor execution.
 - live Supabase diagnostics identified the remaining managed-role incompatibility: PostgreSQL 17.6 records the automatic `tapflow_wallet_callback -> postgres` membership with grantor `supabase_admin`, `ADMIN TRUE`, `INHERIT FALSE`, and `SET FALSE`. Rewriting that managed membership terminated Transaction Pooler, Session Pooler, and SQL Editor connections.
 - a rolled-back SQL Editor probe confirmed that a separate current-grantor `SET TRUE` membership can switch to the callback role successfully. Migrations `000044` and `000045` now add that narrowly scoped grant and revoke it with `GRANTED BY CURRENT_USER`, preserving the Supabase-managed membership unchanged.
+- Supabase SQL Editor successfully applied and verified `000044` with checksum `3afb70679f0431512eca2a63948bdc26d443516dd9442e9cf435b3a56ba7369a`; `app.create_wallet_payment(uuid,text,text,text)` is present. This applied migration is now immutable.
+- the first `000045` execution rolled back on `permission denied for function wallet_reserve` because function ACL changes ran after `RESET ROLE`. A rolled-back live probe confirmed that the callback owner can revoke `PUBLIC` execution and grant execution to `SESSION_USER`. The still-unapplied `000045` now performs all callback-owned function ACL changes before resetting the role; live re-execution remains pending.
 
 ## 2026-07-28 - Supabase Wallet Migration 44/45 Compatibility
 

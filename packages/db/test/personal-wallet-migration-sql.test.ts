@@ -168,6 +168,8 @@ describe("000042_xunhupay_personal_wallet.sql", () => {
           "app.mark_wallet_payment_checkout(uuid, text, text)",
           "app.get_wallet_payment_by_order(text)",
         ],
+        aclGrantee: "CURRENT_USER",
+        aclRunsAsCallback: false,
       },
       {
         filename: "000045_personal_wallet_accounting_hardening.sql",
@@ -182,10 +184,18 @@ describe("000042_xunhupay_personal_wallet.sql", () => {
           "app.wallet_redeem_code(uuid, uuid, text, text, jsonb)",
           "app.wallet_settle_or_refund(text, uuid, uuid, uuid, uuid, text, jsonb)",
         ],
+        aclGrantee: "SESSION_USER",
+        aclRunsAsCallback: true,
       },
     ];
 
-    for (const { filename, functions, apiFunctions } of migrationExpectations) {
+    for (const {
+      filename,
+      functions,
+      apiFunctions,
+      aclGrantee,
+      aclRunsAsCallback,
+    } of migrationExpectations) {
       const sql = await readFile(path.join(migrationsDir, filename), "utf8");
       const grantSchemaAccess = sql.indexOf(
         "GRANT USAGE, CREATE ON SCHEMA app TO tapflow_wallet_callback;",
@@ -216,13 +226,23 @@ describe("000042_xunhupay_personal_wallet.sql", () => {
         expect(definitionEnd).toBeLessThan(resetRole);
         expect(sql.slice(definitionStart, definitionEnd)).toContain("SECURITY DEFINER");
         const publicRevoke = sql.indexOf(`REVOKE ALL ON FUNCTION ${signature} FROM PUBLIC;`);
-        expect(publicRevoke).toBeGreaterThan(resetRole);
+        expect(publicRevoke).toBeGreaterThan(
+          aclRunsAsCallback ? definitionEnd : resetRole,
+        );
+        if (aclRunsAsCallback) {
+          expect(publicRevoke).toBeLessThan(resetRole);
+        }
         expect(publicRevoke).toBeLessThan(revokeTemporaryMembership);
       }
 
       for (const signature of apiFunctions) {
-        const apiGrant = sql.indexOf(`GRANT EXECUTE ON FUNCTION ${signature} TO CURRENT_USER;`);
-        expect(apiGrant).toBeGreaterThan(resetRole);
+        const apiGrant = sql.indexOf(
+          `GRANT EXECUTE ON FUNCTION ${signature} TO ${aclGrantee};`,
+        );
+        expect(apiGrant).toBeGreaterThan(aclRunsAsCallback ? setRole : resetRole);
+        if (aclRunsAsCallback) {
+          expect(apiGrant).toBeLessThan(resetRole);
+        }
         expect(apiGrant).toBeLessThan(revokeTemporaryMembership);
       }
 
