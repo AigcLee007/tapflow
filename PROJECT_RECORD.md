@@ -1,6 +1,6 @@
 ﻿# Project Record
 
-Last updated: 2026-07-28
+Last updated: 2026-07-29
 Maintainers: project team + Codex sessions
 
 ## 2026-07-29 - XunhuPay Personal Wallet Verification
@@ -8,11 +8,13 @@ Maintainers: project team + Codex sessions
 - completed verification for the personal-wallet payment implementation: DB, API, Worker, and frontend builds passed; focused DB/API/Worker and billing/admin frontend tests passed.
 - the full root test suite still reports unrelated legacy asset, storage, AI Gateway multipart, and Three.js/ResizeObserver environment failures; no payment or wallet migration failures were observed.
 - server-side payment secrets remain confined to the API payment module. Migrations `000044` and `000045` have not yet been applied to Supabase; live payment acceptance remains pending merchant callback configuration and SQL Editor execution.
+- live Supabase diagnostics identified the remaining managed-role incompatibility: PostgreSQL 17.6 records the automatic `tapflow_wallet_callback -> postgres` membership with grantor `supabase_admin`, `ADMIN TRUE`, `INHERIT FALSE`, and `SET FALSE`. Rewriting that managed membership terminated Transaction Pooler, Session Pooler, and SQL Editor connections.
+- a rolled-back SQL Editor probe confirmed that a separate current-grantor `SET TRUE` membership can switch to the callback role successfully. Migrations `000044` and `000045` now add that narrowly scoped grant and revoke it with `GRANTED BY CURRENT_USER`, preserving the Supabase-managed membership unchanged.
 
 ## 2026-07-28 - Supabase Wallet Migration 44/45 Compatibility
 
 - staging recorded migrations `000042` and `000043`, but the original `000044` role/ownership handoff terminated through the runtime Supabase Transaction Pooler on port 6543, the Session Pooler on port 5432, and the Supabase SQL Editor. The Direct database hostname resolved IPv6-only from the deployment server, which has no IPv6 route and returned `ENETUNREACH`.
-- revised only the still-unapplied `000044` and `000045` migrations for PostgreSQL 17 managed-role compatibility. Each migration temporarily changes the existing automatic callback membership to `SET TRUE` inside its transaction, uses `SET LOCAL ROLE tapflow_wallet_callback` to define callback-owned `SECURITY DEFINER` functions, and restores `INHERIT FALSE, SET FALSE` after resetting the role and removing callback schema-create access.
+- revised only the still-unapplied `000044` and `000045` migrations for PostgreSQL 17 managed-role compatibility. Each migration creates a separate current-grantor `SET TRUE` callback membership inside its transaction, uses `SET LOCAL ROLE tapflow_wallet_callback` to define callback-owned `SECURITY DEFINER` functions, then revokes only that current-grantor membership after resetting the role and removing callback schema-create access.
 - retained `PUBLIC` execution revokes and explicit migration/API-role execution grants. The no-login callback owner continues to execute financial operations under forced RLS, including the internal per-user expiry call made by wallet reserve.
 - added a focused SQL regression for role-switch ordering, callback ownership by creation, function execution ACLs, and final safe membership restoration. Live acceptance remains pending: deploy the committed source first, then apply checksum-matched SQL Editor bundles separately in `000044` then `000045` order if server database paths remain unavailable.
 - personal-wallet write mode remains blocked by 301.2 legacy reserved credits until reconciliation and a clean dry run report matched totals with no active reservations.

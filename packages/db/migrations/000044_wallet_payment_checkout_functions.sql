@@ -10,10 +10,11 @@ CREATE POLICY billing_wallet_payments_insert_callback ON billing_wallet_payments
 GRANT INSERT ON billing_wallets TO tapflow_wallet_callback;
 GRANT INSERT ON billing_wallet_payments TO tapflow_wallet_callback;
 
--- Managed PostgreSQL follow-ups temporarily enable SET only inside this
--- migration transaction, then restore the safe automatic membership below.
+-- Supabase owns the automatic ADMIN TRUE, SET FALSE callback membership. Add
+-- a separate current-grantor SET membership only for this transaction so the
+-- managed membership remains untouched.
 GRANT USAGE, CREATE ON SCHEMA app TO tapflow_wallet_callback;
-GRANT tapflow_wallet_callback TO CURRENT_USER WITH ADMIN TRUE, INHERIT FALSE, SET TRUE;
+GRANT tapflow_wallet_callback TO CURRENT_USER WITH INHERIT FALSE, SET TRUE GRANTED BY CURRENT_USER;
 SET LOCAL ROLE tapflow_wallet_callback;
 
 CREATE OR REPLACE FUNCTION app.create_wallet_payment(
@@ -138,4 +139,4 @@ GRANT EXECUTE ON FUNCTION app.create_wallet_payment(uuid, text, text, text) TO C
 GRANT EXECUTE ON FUNCTION app.mark_wallet_payment_checkout(uuid, text, text) TO CURRENT_USER;
 GRANT EXECUTE ON FUNCTION app.get_wallet_payment_by_order(text) TO CURRENT_USER;
 REVOKE CREATE ON SCHEMA app FROM tapflow_wallet_callback;
-GRANT tapflow_wallet_callback TO CURRENT_USER WITH ADMIN TRUE, INHERIT FALSE, SET FALSE;
+REVOKE tapflow_wallet_callback FROM CURRENT_USER GRANTED BY CURRENT_USER;

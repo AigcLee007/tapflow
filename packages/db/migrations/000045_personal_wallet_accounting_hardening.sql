@@ -11,11 +11,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_billing_redeem_code_redemptions_code_user
   ON billing_redeem_code_redemptions (redeem_code_id, user_id)
   WHERE user_id IS NOT NULL;
 
--- Managed PostgreSQL follow-ups temporarily enable SET only inside this
--- migration transaction. Defining the functions as the no-login callback role
--- preserves their callback ownership and forced-RLS execution context.
+-- Supabase owns the automatic ADMIN TRUE, SET FALSE callback membership. Add
+-- a separate current-grantor SET membership only for this transaction so the
+-- managed membership remains untouched while preserving callback ownership.
 GRANT USAGE, CREATE ON SCHEMA app TO tapflow_wallet_callback;
-GRANT tapflow_wallet_callback TO CURRENT_USER WITH ADMIN TRUE, INHERIT FALSE, SET TRUE;
+GRANT tapflow_wallet_callback TO CURRENT_USER WITH INHERIT FALSE, SET TRUE GRANTED BY CURRENT_USER;
 SET LOCAL ROLE tapflow_wallet_callback;
 
 CREATE OR REPLACE FUNCTION app.wallet_expire_due_for_user(
@@ -378,5 +378,5 @@ GRANT EXECUTE ON FUNCTION app.wallet_reserve(uuid, uuid, numeric, text, uuid, uu
 GRANT EXECUTE ON FUNCTION app.wallet_redeem_code(uuid, uuid, text, text, jsonb) TO CURRENT_USER;
 GRANT EXECUTE ON FUNCTION app.wallet_settle_or_refund(text, uuid, uuid, uuid, uuid, text, jsonb) TO CURRENT_USER;
 REVOKE CREATE ON SCHEMA app FROM tapflow_wallet_callback;
--- Restore the non-inheriting, non-settable PostgreSQL 17 automatic membership.
-GRANT tapflow_wallet_callback TO CURRENT_USER WITH ADMIN TRUE, INHERIT FALSE, SET FALSE;
+-- Remove only the current-grantor membership and preserve Supabase's managed grant.
+REVOKE tapflow_wallet_callback FROM CURRENT_USER GRANTED BY CURRENT_USER;

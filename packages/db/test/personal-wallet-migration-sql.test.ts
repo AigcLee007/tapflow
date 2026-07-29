@@ -153,7 +153,7 @@ describe("000042_xunhupay_personal_wallet.sql", () => {
     expect(sql).not.toContain("GRANT SELECT, INSERT, UPDATE ON billing_wallets TO CURRENT_USER");
   });
 
-  test("uses a transactional callback-role switch in managed PostgreSQL follow-up migrations", async () => {
+  test("uses a current-grantor callback-role switch in managed PostgreSQL follow-up migrations", async () => {
     const migrationsDir = path.resolve(import.meta.dirname, "../migrations");
     const migrationExpectations = [
       {
@@ -191,13 +191,13 @@ describe("000042_xunhupay_personal_wallet.sql", () => {
         "GRANT USAGE, CREATE ON SCHEMA app TO tapflow_wallet_callback;",
       );
       const grantSet = sql.indexOf(
-        "GRANT tapflow_wallet_callback TO CURRENT_USER WITH ADMIN TRUE, INHERIT FALSE, SET TRUE;",
+        "GRANT tapflow_wallet_callback TO CURRENT_USER WITH INHERIT FALSE, SET TRUE GRANTED BY CURRENT_USER;",
       );
       const setRole = sql.indexOf("SET LOCAL ROLE tapflow_wallet_callback;");
       const resetRole = sql.indexOf("RESET ROLE;");
       const revokeCreate = sql.indexOf("REVOKE CREATE ON SCHEMA app FROM tapflow_wallet_callback;");
-      const restoreMembership = sql.indexOf(
-        "GRANT tapflow_wallet_callback TO CURRENT_USER WITH ADMIN TRUE, INHERIT FALSE, SET FALSE;",
+      const revokeTemporaryMembership = sql.indexOf(
+        "REVOKE tapflow_wallet_callback FROM CURRENT_USER GRANTED BY CURRENT_USER;",
       );
 
       expect(grantSchemaAccess).toBeGreaterThan(-1);
@@ -205,7 +205,7 @@ describe("000042_xunhupay_personal_wallet.sql", () => {
       expect(setRole).toBeGreaterThan(grantSet);
       expect(resetRole).toBeGreaterThan(setRole);
       expect(revokeCreate).toBeGreaterThan(resetRole);
-      expect(restoreMembership).toBeGreaterThan(revokeCreate);
+      expect(revokeTemporaryMembership).toBeGreaterThan(revokeCreate);
 
       for (const signature of functions) {
         const functionName = signature.slice(0, signature.indexOf("("));
@@ -217,13 +217,13 @@ describe("000042_xunhupay_personal_wallet.sql", () => {
         expect(sql.slice(definitionStart, definitionEnd)).toContain("SECURITY DEFINER");
         const publicRevoke = sql.indexOf(`REVOKE ALL ON FUNCTION ${signature} FROM PUBLIC;`);
         expect(publicRevoke).toBeGreaterThan(resetRole);
-        expect(publicRevoke).toBeLessThan(restoreMembership);
+        expect(publicRevoke).toBeLessThan(revokeTemporaryMembership);
       }
 
       for (const signature of apiFunctions) {
         const apiGrant = sql.indexOf(`GRANT EXECUTE ON FUNCTION ${signature} TO CURRENT_USER;`);
         expect(apiGrant).toBeGreaterThan(resetRole);
-        expect(apiGrant).toBeLessThan(restoreMembership);
+        expect(apiGrant).toBeLessThan(revokeTemporaryMembership);
       }
 
       if (filename.startsWith("000045")) {
@@ -234,6 +234,8 @@ describe("000042_xunhupay_personal_wallet.sql", () => {
 
       expect(sql).not.toContain("GRANT tapflow_wallet_callback TO CURRENT_USER;");
       expect(sql).not.toContain("REVOKE tapflow_wallet_callback FROM CURRENT_USER;");
+      expect(sql).not.toContain("WITH ADMIN TRUE");
+      expect(sql).not.toMatch(/GRANT tapflow_wallet_callback[^;]*SET FALSE/);
       expect(sql).not.toMatch(/ALTER FUNCTION[\s\S]*OWNER TO tapflow_wallet_callback/);
     }
   });
