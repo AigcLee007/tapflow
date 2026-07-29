@@ -3,6 +3,12 @@
 Last updated: 2026-07-28
 Maintainers: project team + Codex sessions
 
+## 2026-07-29 - XunhuPay Personal Wallet Verification
+
+- completed verification for the personal-wallet payment implementation: DB, API, Worker, and frontend builds passed; focused DB/API/Worker and billing/admin frontend tests passed.
+- the full root test suite still reports unrelated legacy asset, storage, AI Gateway multipart, and Three.js/ResizeObserver environment failures; no payment or wallet migration failures were observed.
+- server-side payment secrets remain confined to the API payment module. Migrations `000044` and `000045` have not yet been applied to Supabase; live payment acceptance remains pending merchant callback configuration and SQL Editor execution.
+
 ## 2026-07-28 - Supabase Wallet Migration 44/45 Compatibility
 
 - staging recorded migrations `000042` and `000043`, but the original `000044` role/ownership handoff terminated through the runtime Supabase Transaction Pooler on port 6543, the Session Pooler on port 5432, and the Supabase SQL Editor. The Direct database hostname resolved IPv6-only from the deployment server, which has no IPv6 route and returned `ENETUNREACH`.
