@@ -1,7 +1,14 @@
 ﻿# Project Record
 
-Last updated: 2026-07-29
+Last updated: 2026-07-30
 Maintainers: project team + Codex sessions
+
+## 2026-07-30 - Supabase Personal-Wallet Schema Acceptance
+
+- applied and verified `000044_wallet_payment_checkout_functions.sql` in Supabase SQL Editor with checksum `3afb70679f0431512eca2a63948bdc26d443516dd9442e9cf435b3a56ba7369a`; `app.create_wallet_payment(uuid,text,text,text)` is present.
+- applied and verified `000045_personal_wallet_accounting_hardening.sql` with checksum `c433a9ef27dee1b70ec9ab9a20daa0dc2221f68952bc43cc9a546e6f53aec3ee`; `app.wallet_redeem_code(uuid,uuid,text,text,jsonb)` is present.
+- post-migration role verification reported zero current-user temporary callback memberships and one safe `supabase_admin` managed membership (`ADMIN TRUE`, `INHERIT FALSE`, `SET FALSE`). Migrations `000044` and `000045` are now immutable and accepted on staging.
+- the personal-wallet data cutover remains blocked until the known 301.2 legacy reserved credits are reconciled and a dry run reports zero active reservations, no owner exceptions, and matched source/target totals. `PAYMENTS_ENABLED` remains false and the Worker remains stopped during this gate.
 
 ## 2026-07-29 - XunhuPay Personal Wallet Verification
 
