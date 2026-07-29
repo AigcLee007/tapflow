@@ -3,6 +3,13 @@
 Last updated: 2026-07-30
 Maintainers: project team + Codex sessions
 
+## 2026-07-30 - Legacy Reservation Reconciliation Guard
+
+- added a guarded, idempotent `personal-wallet-reconciliation-cli` for the legacy cutover gate;
+- terminal failed/canceled reservations are released through the existing billing refund ledger path, while positive orphan grant counters receive a zero-amount reconciliation ledger record and deterministic counter repair;
+- fixed the legacy refund path so future refunds also release linked credit reservations;
+- server diagnostics confirmed 32 terminal failed reservations totaling 101.2 credits and one orphan grant counter totaling 200 credits; the guarded write remains to be run on the server after this release is deployed.
+
 ## 2026-07-30 - Supabase Personal-Wallet Schema Acceptance
 
 - applied and verified `000044_wallet_payment_checkout_functions.sql` in Supabase SQL Editor with checksum `3afb70679f0431512eca2a63948bdc26d443516dd9442e9cf435b3a56ba7369a`; `app.create_wallet_payment(uuid,text,text,text)` is present.

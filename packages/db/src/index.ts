@@ -48,3 +48,10 @@ export { withUserTransaction, type UserDbContext } from "./transaction.js";
 export { PersonalWalletService, PersonalWalletServiceError, type PersonalWalletContext, type WalletCreditInput, type WalletLedgerView, type WalletRedeemInput, type WalletRedeemResultView, type WalletRefundInput, type WalletReserveInput, type WalletSettleInput, type WalletSummaryView } from "./personal-wallet.js";
 export { WalletPaymentService, WalletPaymentServiceError, type AdminRechargePlanView, type AdminWalletPaymentView, type EligibleRefundPayment, type RechargePlanView, type VerifiedXunhuNotification, type WalletPaymentView } from "./wallet-payments.js";
 export { migrateTenantBalancesToPersonalWallets, type PersonalWalletMigrationReport } from "./personal-wallet-migration.js";
+export {
+  isTerminalLegacyReservation,
+  reconcileLegacyReservations,
+  shouldRepairOrphanGrant,
+  type LegacyReservationReconciliationReport,
+  type LegacyReservationStatus,
+} from "./personal-wallet-reconciliation.js";

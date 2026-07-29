@@ -17,6 +17,14 @@ docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.
 docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-migrator node packages/db/dist/personal-wallet-migration-cli.js --dry-run
 ```
 
+Run legacy reservation reconciliation before the wallet write. Its dry run must show only terminal `failed`/`canceled` reservations and positive orphan grant counters:
+
+```bash
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-migrator node packages/db/dist/personal-wallet-reconciliation-cli.js --dry-run
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-migrator node packages/db/dist/personal-wallet-reconciliation-cli.js --write --confirm LEGACY_RESERVATION_RECONCILIATION
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-migrator node packages/db/dist/personal-wallet-migration-cli.js --dry-run
+```
+
 Only after the dry-run acceptance gate passes:
 
 ```bash

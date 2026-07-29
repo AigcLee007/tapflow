@@ -16,6 +16,8 @@
     "migrate": "tsx src/cli.ts",
     "migrate:personal-wallets:dry-run": "tsx src/personal-wallet-migration-cli.ts --dry-run",
     "migrate:personal-wallets:write": "tsx src/personal-wallet-migration-cli.ts --write --confirm PERSONAL_WALLET_CUTOVER",
+    "reconcile:legacy-reservations:dry-run": "tsx src/personal-wallet-reconciliation-cli.ts --dry-run",
+    "reconcile:legacy-reservations:write": "tsx src/personal-wallet-reconciliation-cli.ts --write --confirm LEGACY_RESERVATION_RECONCILIATION",
     "test": "vitest run --config vitest.config.ts"
   },
   "dependencies": {

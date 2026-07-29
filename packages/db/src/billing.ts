@@ -705,6 +705,9 @@ export class BillingService {
           `,
           [account.id, input.amountCents],
         );
+        await this.refundCreditReservations(client, tenantId, {
+          reserveLedgerId: this.resolveReserveLedgerId(input.metadata),
+        });
       },
       billingAccountId: account.id,
       currency: input.currency ?? account.currency,
