@@ -41,6 +41,12 @@ docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.
 docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-migrator node packages/db/dist/personal-wallet-migration-cli.js --dry-run
 ```
 
+For an approved cutover that cancels the reported non-terminal reservations, append the explicit force-cancel flag:
+
+```bash
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-migrator node packages/db/dist/personal-wallet-reconciliation-cli.js --write --confirm LEGACY_RESERVATION_RECONCILIATION --cancel-non-terminal
+```
+
 Only when the wallet dry run reports no owner/reservation exceptions and matched totals, execute the approved write migration:
 
 ```bash

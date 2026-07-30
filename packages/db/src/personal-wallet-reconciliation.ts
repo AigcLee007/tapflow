@@ -9,6 +9,35 @@ export type LegacyReservationStatus = {
   workflowStatus: string | null;
 };
 
+export type LegacyReservationMode = {
+  cancelNonTerminal: boolean;
+  dryRun: boolean;
+};
+
+export function parseLegacyReservationMode(args: string[]): LegacyReservationMode | null {
+  if (args.length === 1 && args[0] === "--dry-run") {
+    return { cancelNonTerminal: false, dryRun: true };
+  }
+  if (
+    args.length === 3
+    && args[0] === "--write"
+    && args[1] === "--confirm"
+    && args[2] === "LEGACY_RESERVATION_RECONCILIATION"
+  ) {
+    return { cancelNonTerminal: false, dryRun: false };
+  }
+  if (
+    args.length === 4
+    && args[0] === "--write"
+    && args[1] === "--confirm"
+    && args[2] === "LEGACY_RESERVATION_RECONCILIATION"
+    && args[3] === "--cancel-non-terminal"
+  ) {
+    return { cancelNonTerminal: true, dryRun: false };
+  }
+  return null;
+}
+
 export function isTerminalLegacyReservation(status: LegacyReservationStatus): boolean {
   return status.workflowStatus === "failed"
     || status.workflowStatus === "canceled"
@@ -226,9 +255,66 @@ async function repairOrphanGrant(client: PoolClient, row: OrphanGrantRow): Promi
   );
 }
 
+async function cancelNonTerminalWorkflows(
+  client: PoolClient,
+  rows: ReservationRow[],
+): Promise<void> {
+  const missingWorkflowRows = rows.filter((row) => !row.workflowRunId);
+  const workflowRunIds = [...new Set(rows.map((row) => row.workflowRunId).filter((id): id is string => Boolean(id)))];
+  if (missingWorkflowRows.length > 0) {
+    throw new Error("LEGACY_RESERVATION_WORKFLOW_ID_REQUIRED");
+  }
+
+  for (const workflowRunId of workflowRunIds) {
+    await client.query(
+      `UPDATE node_runs
+       SET
+         status = 'canceled',
+         error_json = COALESCE(error_json, '{}'::jsonb) || $2::jsonb,
+         finished_at = COALESCE(finished_at, now()),
+         updated_at = now()
+       WHERE workflow_run_id = $1::uuid
+         AND status NOT IN ('failed', 'canceled', 'succeeded')`,
+      [workflowRunId, JSON.stringify({ reconciliation: "legacy-reservation", reason: "PERSONAL_WALLET_CUTOVER" })],
+    );
+    const workflow = await client.query<{ tenant_id: string }>(
+      `UPDATE workflow_runs
+       SET
+         status = 'canceled',
+         canceled_at = now(),
+         error_json = COALESCE(error_json, '{}'::jsonb) || $2::jsonb,
+         finished_at = COALESCE(finished_at, now()),
+         updated_at = now()
+       WHERE id = $1::uuid
+         AND status NOT IN ('failed', 'canceled', 'succeeded')
+       RETURNING tenant_id::text AS tenant_id`,
+      [workflowRunId, JSON.stringify({ reconciliation: "legacy-reservation", reason: "PERSONAL_WALLET_CUTOVER" })],
+    );
+    const tenantId = workflow.rows[0]?.tenant_id ?? rows.find((row) => row.workflowRunId === workflowRunId)?.tenantId;
+    if (!tenantId) throw new Error("LEGACY_RESERVATION_TENANT_ID_REQUIRED");
+    const sequence = await client.query<{ next_sequence: number }>(
+      `SELECT COALESCE(MAX(sequence), 0) + 1 AS next_sequence
+       FROM workflow_run_events
+       WHERE workflow_run_id = $1::uuid`,
+      [workflowRunId],
+    );
+    await client.query(
+      `INSERT INTO workflow_run_events (
+         tenant_id, workflow_run_id, event_type, sequence, payload
+       ) VALUES ($1::uuid, $2::uuid, 'workflow.run.canceled', $3::int, $4::jsonb)`,
+      [
+        tenantId,
+        workflowRunId,
+        sequence.rows[0]?.next_sequence ?? 1,
+        JSON.stringify({ status: "canceled", reason: "PERSONAL_WALLET_CUTOVER" }),
+      ],
+    );
+  }
+}
+
 export async function reconcileLegacyReservations(
   pool: Pool,
-  options: { dryRun: boolean },
+  options: LegacyReservationMode,
 ): Promise<LegacyReservationReconciliationReport> {
   const client = await pool.connect();
   try {
@@ -242,13 +328,17 @@ export async function reconcileLegacyReservations(
 
     const state = await loadState(client);
     const terminal = state.reservations.filter((row) => isTerminalLegacyReservation(row));
-    if (!options.dryRun && state.reservations.length !== terminal.length) {
+    if (!options.dryRun && state.reservations.length !== terminal.length && !options.cancelNonTerminal) {
       throw new Error("LEGACY_RESERVATION_NON_TERMINAL_BLOCKED");
     }
 
     if (!options.dryRun) {
+      if (options.cancelNonTerminal && state.reservations.length !== terminal.length) {
+        await cancelNonTerminalWorkflows(client, state.reservations.filter((row) => !isTerminalLegacyReservation(row)));
+      }
       const billingService = new BillingService({ pool });
-      for (const row of terminal) {
+      const rowsToRefund = options.cancelNonTerminal ? state.reservations : terminal;
+      for (const row of rowsToRefund) {
         await billingService.refundUsageWithClient(client, row.tenantId, {
           amountCents: row.amountCredits,
           idempotencyKey: `reconcile:legacy-reservation-refund:${row.id}`,

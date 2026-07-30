@@ -9,6 +9,7 @@ Maintainers: project team + Codex sessions
 - terminal failed/canceled reservations are released through the existing billing refund ledger path, while positive orphan grant counters receive a zero-amount reconciliation ledger record and deterministic counter repair;
 - fixed the legacy refund path so future refunds also release linked credit reservations;
 - server diagnostics confirmed 32 terminal failed reservations totaling 101.2 credits and one orphan grant counter totaling 200 credits; the guarded write remains to be run on the server after this release is deployed.
+- the deployed reconciliation dry run later identified 28 terminal reservations (92 credits) and 4 non-terminal reservations (9.2 credits); force-cancel mode now requires the explicit `--cancel-non-terminal` flag and records `workflow.run.canceled` events before refunding all reservations.
 
 ## 2026-07-30 - Supabase Personal-Wallet Schema Acceptance
 

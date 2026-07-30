@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import {
   isTerminalLegacyReservation,
+  parseLegacyReservationMode,
   shouldRepairOrphanGrant,
 } from "../src/personal-wallet-reconciliation.js";
 
@@ -18,5 +19,19 @@ describe("legacy reservation reconciliation decisions", () => {
     expect(shouldRepairOrphanGrant({ grantReservedCredits: 200, rowReservedCredits: 0 })).toBe(true);
     expect(shouldRepairOrphanGrant({ grantReservedCredits: 0, rowReservedCredits: 0 })).toBe(false);
     expect(shouldRepairOrphanGrant({ grantReservedCredits: 1, rowReservedCredits: 2 })).toBe(false);
+  });
+
+  test("requires an explicit non-terminal cancellation flag for forced writes", () => {
+    expect(parseLegacyReservationMode([
+      "--write",
+      "--confirm",
+      "LEGACY_RESERVATION_RECONCILIATION",
+      "--cancel-non-terminal",
+    ])).toEqual({ dryRun: false, cancelNonTerminal: true });
+    expect(parseLegacyReservationMode([
+      "--write",
+      "--confirm",
+      "LEGACY_RESERVATION_RECONCILIATION",
+    ])).toEqual({ dryRun: false, cancelNonTerminal: false });
   });
 });

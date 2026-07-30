@@ -50,8 +50,10 @@ export { WalletPaymentService, WalletPaymentServiceError, type AdminRechargePlan
 export { migrateTenantBalancesToPersonalWallets, type PersonalWalletMigrationReport } from "./personal-wallet-migration.js";
 export {
   isTerminalLegacyReservation,
+  parseLegacyReservationMode,
   reconcileLegacyReservations,
   shouldRepairOrphanGrant,
   type LegacyReservationReconciliationReport,
+  type LegacyReservationMode,
   type LegacyReservationStatus,
 } from "./personal-wallet-reconciliation.js";

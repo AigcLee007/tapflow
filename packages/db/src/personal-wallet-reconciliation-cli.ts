@@ -1,22 +1,11 @@
 import { createPgPool } from "./db.js";
-import { reconcileLegacyReservations } from "./personal-wallet-reconciliation.js";
-
-function parseMode(args: string[]): { dryRun: boolean } | null {
-  if (args.length === 1 && args[0] === "--dry-run") return { dryRun: true };
-  if (
-    args.length === 3
-    && args[0] === "--write"
-    && args[1] === "--confirm"
-    && args[2] === "LEGACY_RESERVATION_RECONCILIATION"
-  ) return { dryRun: false };
-  return null;
-}
+import { parseLegacyReservationMode, reconcileLegacyReservations } from "./personal-wallet-reconciliation.js";
 
 async function main(): Promise<void> {
-  const mode = parseMode(process.argv.slice(2));
+  const mode = parseLegacyReservationMode(process.argv.slice(2));
   if (!mode) {
     process.stderr.write(
-      "Usage: personal-wallet-reconciliation-cli (--dry-run | --write --confirm LEGACY_RESERVATION_RECONCILIATION)\n",
+      "Usage: personal-wallet-reconciliation-cli (--dry-run | --write --confirm LEGACY_RESERVATION_RECONCILIATION [--cancel-non-terminal])\n",
     );
     process.exitCode = 1;
     return;
