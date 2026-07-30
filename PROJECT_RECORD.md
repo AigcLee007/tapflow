@@ -5888,3 +5888,5 @@ Validation completed:
 - validation passed: DB tests 28 passed / 34 skipped, API payment tests 5 passed / 3 skipped, Worker tests 66 passed / 16 skipped, DB/API/Worker builds passed.
 - staging smoke exposed a second PostgreSQL ACL gap (`permission denied for table billing_recharge_plans`) during checkout creation.
 - added migration `000047_wallet_checkout_table_acl.sql` to reassert the callback-owner table privileges required by checkout functions; focused migration SQL tests pass after observing the expected red failure first.
+- staging metadata diagnostics confirmed the checkout function owner, `SECURITY DEFINER` flag, execute ACL, and recharge-plan `SELECT` ACL were correct; the remaining denial came from `SELECT ... FOR SHARE`, which also requires table `UPDATE` privilege.
+- added migration `000048_wallet_checkout_plan_lock.sql` to remove the unnecessary recharge-plan row lock while keeping administrator-managed plan updates inaccessible to the callback role.

@@ -192,6 +192,18 @@ describe("000042_xunhupay_personal_wallet.sql", () => {
     expect(sql).toMatch(/ALTER FUNCTION app\.get_wallet_payment_by_order\(text\)\s+OWNER TO tapflow_wallet_callback/);
   });
 
+  test("creates checkout without requiring recharge-plan update privileges", async () => {
+    const sql = await readFile(
+      path.resolve(import.meta.dirname, "../migrations/000048_wallet_checkout_plan_lock.sql"),
+      "utf8",
+    );
+
+    expect(sql).toContain("CREATE OR REPLACE FUNCTION app.create_wallet_payment");
+    expect(sql).not.toMatch(/FROM billing_recharge_plans[^;]*FOR SHARE/);
+    expect(sql).not.toContain("GRANT UPDATE ON billing_recharge_plans");
+    expect(sql).toMatch(/ALTER FUNCTION app\.create_wallet_payment\(uuid, text, text, text\)\s+OWNER TO tapflow_wallet_callback/);
+  });
+
   test("uses a current-grantor callback-role switch in managed PostgreSQL follow-up migrations", async () => {
     const migrationsDir = path.resolve(import.meta.dirname, "../migrations");
     const migrationExpectations = [
