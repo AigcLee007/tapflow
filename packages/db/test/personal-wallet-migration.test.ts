@@ -50,6 +50,27 @@ test("dry-run-only migration reports candidate grants without issuing wallet wri
   expect(queries.at(-1)).toContain("ROLLBACK");
 });
 
+test("treats a null owner aggregate as a missing owner", async () => {
+  const client = {
+    query: async (query: string) => {
+      if (query.includes("COUNT(*)::text AS count")) return { rows: [{ count: "0" }] };
+      if (query.includes("GREATEST(remaining_credits - reserved_credits")) {
+        return { rows: [{ available_credits: "12.5", expires_at: null, id: "grant-a", tenant_id: "tenant-a" }] };
+      }
+      if (query.includes("array_agg(membership.user_id")) return { rows: [{ owner_ids: [null], tenant_id: "tenant-a" }] };
+      if (query.includes("FROM billing_wallet_ledger")) return { rows: [] };
+      return { rows: [] };
+    },
+    release: () => {},
+  };
+  const pool = { connect: async () => client };
+
+  await expect(migrateTenantBalancesToPersonalWallets(pool as never, { dryRun: true })).resolves.toMatchObject({
+    unresolvedTenants: [{ reason: "missing_owner", tenantId: "tenant-a" }],
+    verificationMatched: false,
+  });
+});
+
 type GrantFixture = {
   expiresAt?: string | null;
   remainingCredits: number;

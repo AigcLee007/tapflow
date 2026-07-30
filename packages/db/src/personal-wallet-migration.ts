@@ -77,7 +77,11 @@ async function getTenantOwners(client: PoolClient, tenantIds: string[]): Promise
   const result = await client.query<{ owner_ids: string[]; tenant_id: string }>(
     `SELECT
        source.tenant_id::text AS tenant_id,
-       COALESCE(array_agg(membership.user_id::text ORDER BY membership.user_id), ARRAY[]::text[]) AS owner_ids
+       COALESCE(
+         array_agg(membership.user_id::text ORDER BY membership.user_id)
+           FILTER (WHERE membership.user_id IS NOT NULL),
+         ARRAY[]::text[]
+       ) AS owner_ids
      FROM unnest($1::uuid[]) AS source(tenant_id)
      LEFT JOIN tenant_memberships AS membership
        ON membership.tenant_id = source.tenant_id
@@ -86,7 +90,10 @@ async function getTenantOwners(client: PoolClient, tenantIds: string[]): Promise
      GROUP BY source.tenant_id`,
     [tenantIds],
   );
-  return result.rows.map((row) => ({ ownerIds: row.owner_ids, tenantId: row.tenant_id }));
+  return result.rows.map((row) => ({
+    ownerIds: row.owner_ids.filter((ownerId): ownerId is string => Boolean(ownerId)),
+    tenantId: row.tenant_id,
+  }));
 }
 
 async function getMigratedSourceCredits(client: PoolClient, sourceGrantId: string): Promise<number | null> {
