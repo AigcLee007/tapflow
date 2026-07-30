@@ -60,6 +60,7 @@ export type LegacyReservationReconciliationReport = {
   releasedCredits: number;
   terminalReservationCount: number;
   terminalReservationCredits: number;
+  unlinkedReservationCount: number;
   verificationMatched: boolean;
   nonTerminalReservationCount: number;
 };
@@ -207,6 +208,7 @@ function makeReport(
     releasedCredits,
     terminalReservationCount: terminal.length,
     terminalReservationCredits: sum(terminal.map((row) => row.amountCredits)),
+    unlinkedReservationCount: verificationState.reservations.filter((row) => !row.workflowRunId).length,
     verificationMatched: verificationState.reservations.length === 0 && verificationState.orphanGrants.length === 0,
     nonTerminalReservationCount: postWriteState
       ? postWriteState.reservations.filter((row) => !isTerminalLegacyReservation(row)).length
@@ -259,11 +261,7 @@ async function cancelNonTerminalWorkflows(
   client: PoolClient,
   rows: ReservationRow[],
 ): Promise<void> {
-  const missingWorkflowRows = rows.filter((row) => !row.workflowRunId);
   const workflowRunIds = [...new Set(rows.map((row) => row.workflowRunId).filter((id): id is string => Boolean(id)))];
-  if (missingWorkflowRows.length > 0) {
-    throw new Error("LEGACY_RESERVATION_WORKFLOW_ID_REQUIRED");
-  }
 
   for (const workflowRunId of workflowRunIds) {
     await client.query(
