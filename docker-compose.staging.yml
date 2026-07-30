@@ -102,6 +102,7 @@ services:
     environment:
       NODE_ENV: production
       DATABASE_URL: ${MIGRATION_DATABASE_URL:-}
+      API_DATABASE_ROLE: ${API_DATABASE_ROLE:-}
 
   tapflow-frontend:
     build:

@@ -5879,3 +5879,10 @@ Validation completed:
 - a 1600px desktop viewport now renders four columns, while narrower available areas reduce the column count instead of compressing cards.
 - card rendering, prompt media behavior, WebP derivatives, and dedicated server-directory persistence are unchanged.
 - no database migration or environment-variable changes were required.
+
+## 2026-07-30 - XunhuPay Billing Runtime Fixes
+
+- fixed the personal-wallet summary query by replacing the PostgreSQL-reserved `grant` alias with `credit_grant`.
+- added migration `000046_wallet_runtime_acl.sql` to grant wallet/payment function execution to the runtime API role when the migration connection uses a separate Supabase role.
+- added `API_DATABASE_ROLE` to the migrator-only Compose environment and staging/production deployment documentation.
+- validation passed: DB tests 28 passed / 34 skipped, API payment tests 5 passed / 3 skipped, Worker tests 66 passed / 16 skipped, DB/API/Worker builds passed.

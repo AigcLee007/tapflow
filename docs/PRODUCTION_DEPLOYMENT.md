@@ -27,6 +27,7 @@ LOG_LEVEL=info
 ```env
 DATABASE_URL=<Supabase-Transaction-Pooler-connection-string-port-6543>
 MIGRATION_DATABASE_URL=<Supabase-Direct-or-Session-Pooler-connection-string-port-5432>
+API_DATABASE_ROLE=<PostgreSQL role name used by DATABASE_URL>
 DB_POOL_MIN=2
 DB_POOL_MAX=20
 DB_SSL=true
@@ -39,6 +40,7 @@ Required:
 - Stop deployment immediately if migration fails.
 - Keep both URLs only in the external server environment file and never print them or place them directly in shell commands.
 - Keep `DATABASE_URL` on port 6543 for API/Worker runtime. Scope `MIGRATION_DATABASE_URL` on port 5432 only to the one-shot `tapflow-migrator` service.
+- Set `API_DATABASE_ROLE` to the runtime role name from `DATABASE_URL`; it is passed to the migrator only so wallet function ACLs can be repaired when migration and runtime connections use different Supabase roles.
 
 Observed Supabase staging constraints for personal-wallet migrations:
 

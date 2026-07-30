@@ -153,6 +153,31 @@ describe("000042_xunhupay_personal_wallet.sql", () => {
     expect(sql).not.toContain("GRANT SELECT, INSERT, UPDATE ON billing_wallets TO CURRENT_USER");
   });
 
+  test("keeps runtime wallet function ACLs aligned with the API database role", async () => {
+    const sql = await readFile(
+      path.resolve(import.meta.dirname, "../migrations/000046_wallet_runtime_acl.sql"),
+      "utf8",
+    );
+
+    expect(sql).toContain("current_setting('app.api_database_role', true)");
+    expect(sql).toContain("SESSION_USER");
+    expect(sql).toContain("GRANT tapflow_wallet_callback TO CURRENT_USER WITH INHERIT FALSE, SET TRUE GRANTED BY CURRENT_USER;");
+    expect(sql).toContain("SET LOCAL ROLE tapflow_wallet_callback;");
+    expect(sql).toContain("RESET ROLE;");
+    for (const signature of [
+      "app.list_active_billing_recharge_plans()",
+      "app.create_wallet_payment(uuid, text, text, text)",
+      "app.mark_wallet_payment_checkout(uuid, text, text)",
+      "app.get_wallet_payment_by_order(text)",
+      "app.apply_xunhu_payment_notification(text, bigint, text, text, text, timestamptz)",
+      "app.wallet_reserve(uuid, uuid, numeric, text, uuid, uuid, jsonb)",
+      "app.wallet_redeem_code(uuid, uuid, text, text, jsonb)",
+      "app.wallet_settle_or_refund(text, uuid, uuid, uuid, uuid, text, jsonb)",
+    ]) {
+      expect(sql).toContain(signature);
+    }
+  });
+
   test("uses a current-grantor callback-role switch in managed PostgreSQL follow-up migrations", async () => {
     const migrationsDir = path.resolve(import.meta.dirname, "../migrations");
     const migrationExpectations = [

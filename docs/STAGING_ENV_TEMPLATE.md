@@ -26,6 +26,7 @@ Do not commit real secrets into repository files.
 
 - `DATABASE_URL =<secret: Supabase Transaction Pooler connection string, port 6543>`
 - `MIGRATION_DATABASE_URL =<secret: Supabase Direct connection or Session Pooler connection string, port 5432>`
+- `API_DATABASE_ROLE =<runtime PostgreSQL role name used by DATABASE_URL; no password>`
 - `DB_POOL_MIN =1`
 - `DB_POOL_MAX =5`
 - `DB_SSL =true`

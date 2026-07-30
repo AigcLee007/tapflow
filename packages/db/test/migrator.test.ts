@@ -65,6 +65,42 @@ describe("runMigrations client lifecycle", () => {
       }),
     );
   });
+
+  test("passes the runtime API role to migration SQL without exposing the URL", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "aigc-flow-migration-role-"));
+    tempDirs.push(tempDir);
+    await writeFile(path.join(tempDir, "000001_test.sql"), "SELECT 1;\n", "utf8");
+
+    const previousRole = process.env.API_DATABASE_ROLE;
+    process.env.API_DATABASE_ROLE = "tapflow_runtime";
+    const queries: string[] = [];
+    const client = Object.assign(new EventEmitter(), {
+      query: vi.fn(async (sql: string) => {
+        queries.push(sql);
+        return { rows: [] };
+      }),
+      release: vi.fn(),
+    });
+    const pool = {
+      connect: vi.fn(async () => client),
+      query: vi.fn(async () => ({ rows: [] })),
+    } as unknown as Pool;
+
+    try {
+      await expect(runMigrations(pool, tempDir)).resolves.toEqual({
+        appliedMigrations: ["000001_test.sql"],
+        skippedMigrations: [],
+      });
+      expect(queries).toContain("SELECT set_config('app.api_database_role', $1, false)");
+      expect((client.query as ReturnType<typeof vi.fn>).mock.calls).toContainEqual([
+        "SELECT set_config('app.api_database_role', $1, false)",
+        ["tapflow_runtime"],
+      ]);
+    } finally {
+      if (previousRole === undefined) delete process.env.API_DATABASE_ROLE;
+      else process.env.API_DATABASE_ROLE = previousRole;
+    }
+  });
 });
 
 describeWithDatabase("runMigrations", () => {

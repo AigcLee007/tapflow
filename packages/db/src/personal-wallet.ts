@@ -29,9 +29,9 @@ export class PersonalWalletService {
     return withUserTransaction(context, async (client) => {
       const result = await client.query<{ wallet_id: string; balance: string; reserved: string; expiring: string; nearest: string | null }>(`
         SELECT wallet.id::text AS wallet_id, wallet.balance_credits::text AS balance, wallet.reserved_credits::text AS reserved,
-          COALESCE(SUM(grant.remaining_credits - grant.reserved_credits) FILTER (WHERE grant.status = 'active' AND grant.expires_at <= now() + interval '30 days'), 0)::text AS expiring,
-          MIN(grant.expires_at)::text AS nearest
-        FROM billing_wallets wallet LEFT JOIN billing_wallet_credit_grants grant ON grant.wallet_id = wallet.id AND grant.status = 'active'
+          COALESCE(SUM(credit_grant.remaining_credits - credit_grant.reserved_credits) FILTER (WHERE credit_grant.status = 'active' AND credit_grant.expires_at <= now() + interval '30 days'), 0)::text AS expiring,
+          MIN(credit_grant.expires_at)::text AS nearest
+        FROM billing_wallets wallet LEFT JOIN billing_wallet_credit_grants credit_grant ON credit_grant.wallet_id = wallet.id AND credit_grant.status = 'active'
         WHERE wallet.user_id = $1::uuid GROUP BY wallet.id`, [context.userId]);
       const row = result.rows[0];
       if (!row) return { walletId: "", balanceCredits: 0, reservedCredits: 0, availableCredits: 0, expiringSoonCredits: 0, nearestExpiryAt: null };

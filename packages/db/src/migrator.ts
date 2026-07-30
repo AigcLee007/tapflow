@@ -147,6 +147,13 @@ export async function runMigrations(
     };
     client.on("error", handleClientError);
     try {
+      const apiDatabaseRole = process.env.API_DATABASE_ROLE?.trim();
+      if (apiDatabaseRole) {
+        await client.query(
+          "SELECT set_config('app.api_database_role', $1, false)",
+          [apiDatabaseRole],
+        );
+      }
       if (migration.nonTransactional) {
         await client.query(migration.sql);
         await client.query(

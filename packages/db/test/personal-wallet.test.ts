@@ -18,6 +18,26 @@ describe("PersonalWalletService", () => {
     expect(wallet.expireDueGrants).toBeTypeOf("function");
     expect(wallet.redeemCode).toBeTypeOf("function");
   });
+
+  test("uses a non-reserved alias in the wallet summary query", async () => {
+    const queries: string[] = [];
+    const client = {
+      query: async (sql: string) => {
+        queries.push(sql);
+        return { rows: [] };
+      },
+      release: () => undefined,
+    };
+    const wallet = new PersonalWalletService({
+      pool: { connect: async () => client } as never,
+    });
+
+    await wallet.getSummary({ userId: randomUUID() });
+
+    const summaryQuery = queries.find((sql) => sql.includes("FROM billing_wallets"));
+    expect(summaryQuery).toContain("billing_wallet_credit_grants credit_grant");
+    expect(summaryQuery).not.toContain("billing_wallet_credit_grants grant");
+  });
 });
 
 describe("personal wallet accounting migration", () => {
@@ -70,10 +90,10 @@ describeWithDatabase("PersonalWalletService integration", () => {
         const reserveB = await wallet.reserveUsage({ tenantId: tenantB, userId }, { amountCredits: 10, idempotencyKey: `reserve:${userId}:b` });
         const summary = await wallet.getSummary({ userId });
         const allocations = await pool.query<{ amount_credits: string; source_id: string }>(
-          `SELECT reservation.amount_credits::text AS amount_credits, grant.source_id
+          `SELECT reservation.amount_credits::text AS amount_credits, credit_grant.source_id
            FROM billing_wallet_credit_reservations reservation
-           JOIN billing_wallet_credit_grants grant ON grant.id = reservation.credit_grant_id
-           WHERE reservation.wallet_ledger_id = $1::uuid ORDER BY grant.expires_at ASC NULLS LAST`,
+           JOIN billing_wallet_credit_grants credit_grant ON credit_grant.id = reservation.credit_grant_id
+           WHERE reservation.wallet_ledger_id = $1::uuid ORDER BY credit_grant.expires_at ASC NULLS LAST`,
           [reserve.id],
         );
         expect(summary.walletId).not.toBe("");
