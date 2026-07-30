@@ -47,4 +47,31 @@ describe("WalletPaymentService", () => {
     expect(listQuery?.sql).not.toContain("app_secret");
     expect(listQuery?.sql).not.toContain("callback");
   });
+
+  test("qualifies payment columns in joined admin payment queries", async () => {
+    const queries: string[] = [];
+    const row = {
+      amount_cents: "990", billing_ledger_id: null, created_at: "2026-07-27T00:00:00.000Z",
+      credits: "100", currency: "CNY", expires_at_snapshot: null, failure_code: null,
+      id: "payment-1", merchant_order_id: "TF0001", metadata: {}, paid_at: null,
+      plan_id: "plan-1", plan_key: "credits_100", plan_name_snapshot: "100 AI credits",
+      provider: "xunhupay", provider_open_order_id: null, provider_transaction_id: null,
+      status: "checkout_created", updated_at: "2026-07-27T00:00:00.000Z",
+      user_email: "user@example.test", user_id: "user-1", validity_days_snapshot: 365,
+      wallet_id: "wallet-1",
+    };
+    const client = {
+      query: async (sql: string) => {
+        queries.push(sql);
+        return sql.includes("FROM billing_wallet_payments JOIN users") ? { rows: [row] } : { rows: [] };
+      },
+      release: () => undefined,
+    };
+    const service = new WalletPaymentService({ pool: { connect: async () => client } as never });
+
+    await expect(service.getAdminPayment("payment-1")).resolves.toMatchObject({ id: "payment-1" });
+    const query = queries.find((sql) => sql.includes("FROM billing_wallet_payments JOIN users"));
+    expect(query).toContain("billing_wallet_payments.id::text");
+    expect(query).toContain("billing_wallet_payments.user_id::text");
+  });
 });

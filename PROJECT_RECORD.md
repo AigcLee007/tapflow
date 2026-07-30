@@ -5890,3 +5890,5 @@ Validation completed:
 - added migration `000047_wallet_checkout_table_acl.sql` to reassert the callback-owner table privileges required by checkout functions; focused migration SQL tests pass after observing the expected red failure first.
 - staging metadata diagnostics confirmed the checkout function owner, `SECURITY DEFINER` flag, execute ACL, and recharge-plan `SELECT` ACL were correct; the remaining denial came from `SELECT ... FOR SHARE`, which also requires table `UPDATE` privilege.
 - added migration `000048_wallet_checkout_plan_lock.sql` to remove the unnecessary recharge-plan row lock while keeping administrator-managed plan updates inaccessible to the callback role.
+- the first successful real checkout exposed an application-side reconciliation query error (`column reference "id" is ambiguous`) in joined admin payment reads.
+- qualified every selected payment column in `billing_wallet_payments JOIN users` queries so the reconciler can inspect and settle pending XunhuPay orders; this fix requires an API rebuild and no database migration.

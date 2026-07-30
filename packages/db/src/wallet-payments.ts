@@ -91,11 +91,17 @@ function mapPayment(row: PaymentRow): WalletPaymentView {
   };
 }
 
-const paymentColumns = `
-  id::text, wallet_id::text, user_id::text, plan_id::text, plan_key, merchant_order_id,
-  provider, provider_transaction_id, provider_open_order_id, amount_cents::text, credits::text,
-  currency, plan_name_snapshot, validity_days_snapshot, expires_at_snapshot::text, status,
-  billing_ledger_id::text, failure_code, paid_at::text, metadata, created_at::text, updated_at::text`;
+function buildPaymentColumns(prefix = ""): string {
+  const column = (name: string) => `${prefix}${name}`;
+  return `
+  ${column("id")}::text, ${column("wallet_id")}::text, ${column("user_id")}::text, ${column("plan_id")}::text, ${column("plan_key")}, ${column("merchant_order_id")},
+  ${column("provider")}, ${column("provider_transaction_id")}, ${column("provider_open_order_id")}, ${column("amount_cents")}::text, ${column("credits")}::text,
+  ${column("currency")}, ${column("plan_name_snapshot")}, ${column("validity_days_snapshot")}, ${column("expires_at_snapshot")}::text, ${column("status")},
+  ${column("billing_ledger_id")}::text, ${column("failure_code")}, ${column("paid_at")}::text, ${column("metadata")}, ${column("created_at")}::text, ${column("updated_at")}::text`;
+}
+
+const paymentColumns = buildPaymentColumns();
+const joinedPaymentColumns = buildPaymentColumns("billing_wallet_payments.");
 
 export class WalletPaymentService {
   readonly pool: Pool;
@@ -167,7 +173,7 @@ export class WalletPaymentService {
 
   async listAdminPayments(input?: { limit?: number; status?: string }): Promise<AdminWalletPaymentView[]> {
     return this.withSystemAdminTransaction(async (client) => {
-      const result = await client.query<PaymentRow & { eligible: boolean; user_email: string | null }>(`SELECT ${paymentColumns}, users.email AS user_email,
+      const result = await client.query<PaymentRow & { eligible: boolean; user_email: string | null }>(`SELECT ${joinedPaymentColumns}, users.email AS user_email,
         (billing_wallet_payments.status = 'paid' AND EXISTS (
           SELECT 1 FROM billing_wallet_credit_grants
           WHERE billing_wallet_credit_grants.wallet_id = billing_wallet_payments.wallet_id
@@ -185,7 +191,7 @@ export class WalletPaymentService {
 
   async getAdminPayment(paymentId: string): Promise<AdminWalletPaymentView> {
     return this.withSystemAdminTransaction(async (client) => {
-      const result = await client.query<PaymentRow & { user_email: string | null }>(`SELECT ${paymentColumns}, users.email AS user_email FROM billing_wallet_payments JOIN users ON users.id = billing_wallet_payments.user_id WHERE billing_wallet_payments.id = $1::uuid`, [paymentId]);
+      const result = await client.query<PaymentRow & { user_email: string | null }>(`SELECT ${joinedPaymentColumns}, users.email AS user_email FROM billing_wallet_payments JOIN users ON users.id = billing_wallet_payments.user_id WHERE billing_wallet_payments.id = $1::uuid`, [paymentId]);
       if (!result.rows[0]) throw new WalletPaymentServiceError("PAYMENT_NOT_FOUND", "Payment not found", 404);
       return { ...mapPayment(result.rows[0]), eligible: false, userEmail: result.rows[0].user_email };
     });
