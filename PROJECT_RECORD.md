@@ -5886,3 +5886,5 @@ Validation completed:
 - added migration `000046_wallet_runtime_acl.sql` to grant wallet/payment function execution to the runtime API role when the migration connection uses a separate Supabase role.
 - added `API_DATABASE_ROLE` to the migrator-only Compose environment and staging/production deployment documentation.
 - validation passed: DB tests 28 passed / 34 skipped, API payment tests 5 passed / 3 skipped, Worker tests 66 passed / 16 skipped, DB/API/Worker builds passed.
+- staging smoke exposed a second PostgreSQL ACL gap (`permission denied for table billing_recharge_plans`) during checkout creation.
+- added migration `000047_wallet_checkout_table_acl.sql` to reassert the callback-owner table privileges required by checkout functions; focused migration SQL tests pass after observing the expected red failure first.

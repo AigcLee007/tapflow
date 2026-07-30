@@ -178,6 +178,20 @@ describe("000042_xunhupay_personal_wallet.sql", () => {
     }
   });
 
+  test("reasserts callback table privileges required by checkout functions", async () => {
+    const sql = await readFile(
+      path.resolve(import.meta.dirname, "../migrations/000047_wallet_checkout_table_acl.sql"),
+      "utf8",
+    );
+
+    expect(sql).toContain("GRANT SELECT ON billing_recharge_plans TO tapflow_wallet_callback");
+    expect(sql).toContain("GRANT SELECT, INSERT, UPDATE ON billing_wallets TO tapflow_wallet_callback");
+    expect(sql).toContain("GRANT SELECT, INSERT, UPDATE ON billing_wallet_payments TO tapflow_wallet_callback");
+    expect(sql).toMatch(/ALTER FUNCTION app\.create_wallet_payment\(uuid, text, text, text\)\s+OWNER TO tapflow_wallet_callback/);
+    expect(sql).toMatch(/ALTER FUNCTION app\.mark_wallet_payment_checkout\(uuid, text, text\)\s+OWNER TO tapflow_wallet_callback/);
+    expect(sql).toMatch(/ALTER FUNCTION app\.get_wallet_payment_by_order\(text\)\s+OWNER TO tapflow_wallet_callback/);
+  });
+
   test("uses a current-grantor callback-role switch in managed PostgreSQL follow-up migrations", async () => {
     const migrationsDir = path.resolve(import.meta.dirname, "../migrations");
     const migrationExpectations = [
