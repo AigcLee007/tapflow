@@ -5892,3 +5892,5 @@ Validation completed:
 - added migration `000048_wallet_checkout_plan_lock.sql` to remove the unnecessary recharge-plan row lock while keeping administrator-managed plan updates inaccessible to the callback role.
 - the first successful real checkout exposed an application-side reconciliation query error (`column reference "id" is ambiguous`) in joined admin payment reads.
 - qualified every selected payment column in `billing_wallet_payments JOIN users` queries so the reconciler can inspect and settle pending XunhuPay orders; this fix requires an API rebuild and no database migration.
+- after reconciliation reached provider-confirmed paid orders, staging exposed an RLS failure on `billing_wallet_ledger` caused by `INSERT ... RETURNING id` requiring callback SELECT visibility.
+- added migration `000049_wallet_payment_ledger_insert.sql` to pre-generate the immutable ledger UUID and insert it directly, preserving the callback role's no-browse ledger boundary while allowing paid orders to credit atomically.

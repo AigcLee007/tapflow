@@ -204,6 +204,20 @@ describe("000042_xunhupay_personal_wallet.sql", () => {
     expect(sql).toMatch(/ALTER FUNCTION app\.create_wallet_payment\(uuid, text, text, text\)\s+OWNER TO tapflow_wallet_callback/);
   });
 
+  test("credits paid orders without requiring callback ledger visibility", async () => {
+    const sql = await readFile(
+      path.resolve(import.meta.dirname, "../migrations/000049_wallet_payment_ledger_insert.sql"),
+      "utf8",
+    );
+
+    expect(sql).toContain("CREATE OR REPLACE FUNCTION app.apply_xunhu_payment_notification");
+    expect(sql).toContain("v_ledger_id := gen_random_uuid();");
+    expect(sql).toMatch(/INSERT INTO billing_wallet_ledger \(\s*id, wallet_id/);
+    expect(sql).not.toContain("RETURNING id INTO v_ledger_id");
+    expect(sql).not.toContain("CREATE POLICY billing_wallet_ledger_select_callback");
+    expect(sql).toMatch(/ALTER FUNCTION app\.apply_xunhu_payment_notification\(text, bigint, text, text, text, timestamptz\)\s+OWNER TO tapflow_wallet_callback/);
+  });
+
   test("uses a current-grantor callback-role switch in managed PostgreSQL follow-up migrations", async () => {
     const migrationsDir = path.resolve(import.meta.dirname, "../migrations");
     const migrationExpectations = [
