@@ -355,11 +355,12 @@ export async function reconcileLegacyReservations(
     }
 
     const postWriteState = options.dryRun ? null : await loadState(client);
+    const rowsToRefund = options.cancelNonTerminal ? state.reservations : terminal;
     const report = makeReport(
       options.dryRun,
       state,
       postWriteState,
-      options.dryRun ? 0 : sum(terminal.map((row) => row.amountCredits)),
+      options.dryRun ? 0 : sum(rowsToRefund.map((row) => row.amountCredits)),
       options.dryRun ? 0 : state.orphanGrants.length,
     );
     await client.query(options.dryRun ? "ROLLBACK" : "COMMIT");
