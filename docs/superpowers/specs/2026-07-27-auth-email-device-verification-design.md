@@ -47,7 +47,7 @@
 
 ## 数据模型
 
-新增迁移 `packages/db/migrations/000042_auth_email_device_verification.sql`。
+新增迁移 `packages/db/migrations/000054_auth_email_device_verification.sql`。
 
 ### `auth_email_challenges`
 

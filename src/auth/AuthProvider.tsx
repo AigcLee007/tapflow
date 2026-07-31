@@ -103,8 +103,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         requestSequenceRef.current += 1;
         setSession(null);
         try {
-          setSession(await v2AuthClient.register(input));
-          await loadCurrentSession();
+          const result = await v2AuthClient.register(input);
+          if (result.status === "authenticated") {
+            setSession(result.session);
+            await loadCurrentSession();
+          }
+          return result;
         } catch (registerError) {
           setError(registerError instanceof Error ? registerError.message : "注册失败，请稍后重试。");
           throw registerError;
@@ -122,8 +126,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         requestSequenceRef.current += 1;
         setSession(null);
         try {
-          setSession(await v2AuthClient.login(input));
-          await loadCurrentSession();
+          const result = await v2AuthClient.login(input);
+          if (result.status === "authenticated") {
+            setSession(result.session);
+            await loadCurrentSession();
+          }
+          return result;
         } catch (loginError) {
           setError(loginError instanceof Error ? loginError.message : "登录失败，请稍后重试。");
           throw loginError;
@@ -131,6 +139,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setLoading(false);
         }
       },
+      verifyEmail: async (input: { challengeToken: string; code: string }) => {
+        setError(null);
+        setLoading(true);
+        requestSequenceRef.current += 1;
+        try {
+          const nextSession = await v2AuthClient.verifyEmail(input);
+          setSession(nextSession);
+          await loadCurrentSession();
+        } catch (verifyError) {
+          setError(verifyError instanceof Error ? verifyError.message : "验证失败，请重试");
+          throw verifyError;
+        } finally {
+          setLoading(false);
+        }
+      },
+      resendEmailVerification: v2AuthClient.resendEmailVerification,
       logout: async () => {
         setError(null);
         requestSequenceRef.current += 1;

@@ -6,9 +6,18 @@ import { createPgPool, withTenantTransaction } from "@aigc-flow/db";
 import type { ApiEnv } from "../src/config/env.js";
 import { requireAuth, requirePermission } from "../src/http/auth-middleware.js";
 import { buildApp } from "../src/app.js";
+import type {
+  AuthEmailSender,
+  SendVerificationCodeInput,
+} from "../src/modules/auth/auth-email-sender.js";
 import { hashPassword } from "../src/modules/auth/password.js";
 import { resolvePermissionsForTenant } from "../src/modules/auth/permission-resolver.js";
 import { hashRefreshToken } from "../src/modules/auth/token.js";
+import {
+  hashDeviceFingerprint,
+  hashIpNetwork,
+  hashOpaqueToken,
+} from "../src/modules/auth/auth-verification.js";
 import { runMigrations } from "../../../packages/db/src/migrator.js";
 import {
   hasDatabaseEnv,
@@ -50,14 +59,33 @@ afterAll(() => {
   }
 });
 
+class CapturingAuthEmailSender implements AuthEmailSender {
+  readonly messages: SendVerificationCodeInput[] = [];
+  failNextDelivery = false;
+
+  async sendVerificationCode(input: SendVerificationCodeInput): Promise<void> {
+    if (this.failNextDelivery) {
+      this.failNextDelivery = false;
+      throw new Error("test delivery failure");
+    }
+    this.messages.push(input);
+  }
+
+  latestCode(email: string): string | undefined {
+    return [...this.messages].reverse().find((item) => item.email === email)?.code;
+  }
+}
+
 function buildTestApp(pool: ReturnType<typeof createPgPool>) {
-  const app = buildApp({
+  const authEmailSender = new CapturingAuthEmailSender();
+  const api = buildApp({
+    authEmailSender,
     env: testEnv,
     logger: false,
     pool,
   });
 
-  app.get(
+  api.get(
     "/api/v2/test/flow-update",
     {
       preHandler: [requireAuth, requirePermission("flow:update")],
@@ -65,11 +93,42 @@ function buildTestApp(pool: ReturnType<typeof createPgPool>) {
     async () => ({ ok: true }),
   );
 
-  return app;
+  return { api, authEmailSender };
+}
+
+type TestApp = ReturnType<typeof buildTestApp>;
+
+async function registerAndVerify(
+  testApp: TestApp,
+  payload: {
+    displayName?: string;
+    email: string;
+    password: string;
+    tenantName: string;
+  },
+) {
+  const registration = await testApp.api.inject({
+    method: "POST",
+    payload,
+    url: "/api/v2/auth/register",
+  });
+  expect(registration.statusCode).toBe(202);
+  const code = testApp.authEmailSender.latestCode(payload.email);
+  expect(code).toMatch(/^\d{6}$/);
+  const verified = await testApp.api.inject({
+    method: "POST",
+    payload: {
+      challengeToken: registration.json().challengeToken,
+      code,
+    },
+    url: "/api/v2/auth/email/verify",
+  });
+  expect(verified.statusCode).toBe(200);
+  return verified;
 }
 
 describeWithDatabase("auth v2", () => {
-  test("register creates user, tenant, membership, session, and hashed refresh token", async () => {
+  test("register creates a pending email challenge without a session", async () => {
     await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
       process.env.DATABASE_URL = databaseUrl;
       const adminPool = createPgPool();
@@ -80,7 +139,7 @@ describeWithDatabase("auth v2", () => {
         appPool = createPgPool({
           connectionString: await createAppDatabaseUrl(),
         });
-        const api = buildTestApp(appPool);
+        const { api, authEmailSender } = buildTestApp(appPool);
 
         const response = await api.inject({
           method: "POST",
@@ -93,19 +152,19 @@ describeWithDatabase("auth v2", () => {
           url: "/api/v2/auth/register",
         });
 
-        expect(response.statusCode).toBe(201);
+        expect(response.statusCode).toBe(202);
         const body = response.json();
-        expect(body.user).toMatchObject({
-          displayName: "Alice",
-          email: "alice@example.com",
+        expect(body).toMatchObject({
+          status: "verification_required",
+          emailMasked: "a***@example.com",
+          expiresInSeconds: 600,
+          resendAvailableInSeconds: 60,
+          reason: "email_unverified",
         });
-        expect(body.user.password_hash).toBeUndefined();
-        expect(body.currentTenant).toMatchObject({
-          name: "Alice Tenant",
-          status: "active",
-        });
-        expect(typeof body.accessToken).toBe("string");
-        expect(typeof body.refreshToken).toBe("string");
+        expect(body.challengeToken).toEqual(expect.any(String));
+        expect(body.accessToken).toBeUndefined();
+        expect(body.refreshToken).toBeUndefined();
+        expect(authEmailSender.latestCode("alice@example.com")).toMatch(/^\d{6}$/);
 
         const userRecord = await adminPool.query<{
           password_hash: string;
@@ -131,18 +190,387 @@ describeWithDatabase("auth v2", () => {
         );
         expect(membership.rows[0]?.role_key).toBe("tenant_owner");
 
-        const refreshTokenRow = await adminPool.query<{ token_hash: string }>(
-          `
-            SELECT token_hash
-            FROM refresh_tokens
-            ORDER BY created_at DESC
-            LIMIT 1
-          `,
+        const sessionCount = await adminPool.query<{ total: number }>(
+          "SELECT COUNT(*)::int AS total FROM auth_sessions",
         );
-        expect(refreshTokenRow.rows[0]?.token_hash).toBe(hashRefreshToken(body.refreshToken));
-        expect(refreshTokenRow.rows[0]?.token_hash).not.toBe(body.refreshToken);
+        expect(sessionCount.rows[0]?.total).toBe(0);
 
         await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("email verification consumes the challenge and creates one trusted session", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({ connectionString: await createAppDatabaseUrl() });
+        const testApp = buildTestApp(appPool);
+        const registration = await testApp.api.inject({
+          method: "POST",
+          payload: {
+            email: "verify@example.com",
+            password: "StrongPass123!",
+            tenantName: "Verify Tenant",
+          },
+          url: "/api/v2/auth/register",
+        });
+        const challengeToken = registration.json().challengeToken;
+        const code = testApp.authEmailSender.latestCode("verify@example.com");
+
+        const verified = await testApp.api.inject({
+          method: "POST",
+          payload: { challengeToken, code },
+          url: "/api/v2/auth/email/verify",
+        });
+        expect(verified.statusCode).toBe(200);
+        expect(verified.json()).toMatchObject({
+          accessToken: expect.any(String),
+          refreshToken: expect.any(String),
+          trustedDeviceToken: expect.any(String),
+        });
+
+        const state = await adminPool.query<{
+          sessions: number;
+          trusted_devices: number;
+          verified: boolean;
+        }>(`
+          SELECT
+            (SELECT COUNT(*)::int FROM auth_sessions) AS sessions,
+            (SELECT COUNT(*)::int FROM auth_trusted_devices) AS trusted_devices,
+            (SELECT email_verified_at IS NOT NULL FROM users WHERE email = 'verify@example.com') AS verified
+        `);
+        expect(state.rows[0]).toMatchObject({
+          sessions: 1,
+          trusted_devices: 1,
+          verified: true,
+        });
+
+        const replay = await testApp.api.inject({
+          method: "POST",
+          payload: { challengeToken, code },
+          url: "/api/v2/auth/email/verify",
+        });
+        expect(replay.statusCode).toBe(410);
+        expect(replay.json().error.code).toBe("VERIFICATION_EXPIRED");
+        await testApp.api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("verification attempts decrement atomically and stop after five failures", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({ connectionString: await createAppDatabaseUrl() });
+        const testApp = buildTestApp(appPool);
+        const registration = await testApp.api.inject({
+          method: "POST",
+          payload: {
+            email: "attempts@example.com",
+            password: "StrongPass123!",
+            tenantName: "Attempts Tenant",
+          },
+          url: "/api/v2/auth/register",
+        });
+        const challengeToken = registration.json().challengeToken;
+        const actualCode = testApp.authEmailSender.latestCode("attempts@example.com");
+        const wrongCode = actualCode === "000000" ? "999999" : "000000";
+
+        const first = await testApp.api.inject({
+          method: "POST",
+          payload: { challengeToken, code: wrongCode },
+          url: "/api/v2/auth/email/verify",
+        });
+        expect(first.statusCode).toBe(400);
+        const remaining = await adminPool.query<{ attempts_remaining: number }>(
+          "SELECT attempts_remaining FROM auth_email_challenges LIMIT 1",
+        );
+        expect(remaining.rows[0]?.attempts_remaining).toBe(4);
+
+        let last = first;
+        for (let attempt = 0; attempt < 4; attempt += 1) {
+          last = await testApp.api.inject({
+            method: "POST",
+            payload: { challengeToken, code: wrongCode },
+            url: "/api/v2/auth/email/verify",
+          });
+        }
+        expect(last.statusCode).toBe(429);
+        expect(last.json().error.code).toBe("VERIFICATION_ATTEMPTS_EXHAUSTED");
+        const sessionCount = await adminPool.query<{ total: number }>(
+          "SELECT COUNT(*)::int AS total FROM auth_sessions",
+        );
+        expect(sessionCount.rows[0]?.total).toBe(0);
+        await testApp.api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("resend enforces cooldown, replaces the code, and expired challenges fail", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({ connectionString: await createAppDatabaseUrl() });
+        const testApp = buildTestApp(appPool);
+        const registration = await testApp.api.inject({
+          method: "POST",
+          payload: {
+            email: "resend@example.com",
+            password: "StrongPass123!",
+            tenantName: "Resend Tenant",
+          },
+          url: "/api/v2/auth/register",
+        });
+        const challengeToken = registration.json().challengeToken;
+        const oldCode = testApp.authEmailSender.latestCode("resend@example.com");
+
+        const cooldown = await testApp.api.inject({
+          method: "POST",
+          payload: { challengeToken },
+          url: "/api/v2/auth/email/resend",
+        });
+        expect(cooldown.statusCode).toBe(429);
+        expect(cooldown.json().error.code).toBe("VERIFICATION_RESEND_COOLDOWN");
+
+        await adminPool.query(
+          "UPDATE auth_email_challenges SET last_sent_at = now() - interval '61 seconds'",
+        );
+        const resent = await testApp.api.inject({
+          method: "POST",
+          payload: { challengeToken },
+          url: "/api/v2/auth/email/resend",
+        });
+        expect(resent.statusCode).toBe(200);
+        const newCode = testApp.authEmailSender.latestCode("resend@example.com");
+        expect(newCode).toMatch(/^\d{6}$/);
+        expect(newCode).not.toBe(oldCode);
+
+        const oldCodeResult = await testApp.api.inject({
+          method: "POST",
+          payload: { challengeToken, code: oldCode },
+          url: "/api/v2/auth/email/verify",
+        });
+        expect(oldCodeResult.statusCode).toBe(400);
+
+        await adminPool.query(
+          "UPDATE auth_email_challenges SET expires_at = now() - interval '1 second'",
+        );
+        const expired = await testApp.api.inject({
+          method: "POST",
+          payload: { challengeToken, code: newCode },
+          url: "/api/v2/auth/email/verify",
+        });
+        expect(expired.statusCode).toBe(410);
+        expect(expired.json().error.code).toBe("VERIFICATION_EXPIRED");
+        await testApp.api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("resend delivery failure returns 503 without creating a session", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({ connectionString: await createAppDatabaseUrl() });
+        const testApp = buildTestApp(appPool);
+        const registration = await testApp.api.inject({
+          method: "POST",
+          payload: {
+            email: "delivery-failure@example.com",
+            password: "StrongPass123!",
+            tenantName: "Delivery Failure Tenant",
+          },
+          url: "/api/v2/auth/register",
+        });
+        await adminPool.query(
+          "UPDATE auth_email_challenges SET last_sent_at = now() - interval '61 seconds'",
+        );
+        testApp.authEmailSender.failNextDelivery = true;
+        const resend = await testApp.api.inject({
+          method: "POST",
+          payload: { challengeToken: registration.json().challengeToken },
+          url: "/api/v2/auth/email/resend",
+        });
+        expect(resend.statusCode).toBe(503);
+        expect(resend.json().error.code).toBe("EMAIL_DELIVERY_FAILED");
+        const sessionCount = await adminPool.query<{ total: number }>(
+          "SELECT COUNT(*)::int AS total FROM auth_sessions",
+        );
+        expect(sessionCount.rows[0]?.total).toBe(0);
+        await testApp.api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("login requires verification for a new device and historical unverified email", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({ connectionString: await createAppDatabaseUrl() });
+        const testApp = buildTestApp(appPool);
+        const verified = await registerAndVerify(testApp, {
+          email: "new-device@example.com",
+          password: "StrongPass123!",
+          tenantName: "New Device Tenant",
+        });
+
+        const newDevice = await testApp.api.inject({
+          method: "POST",
+          payload: {
+            email: "new-device@example.com",
+            password: "StrongPass123!",
+          },
+          url: "/api/v2/auth/login",
+        });
+        expect(newDevice.statusCode).toBe(202);
+        expect(newDevice.json().reason).toBe("new_device");
+
+        const trustedDeviceToken = verified.json().trustedDeviceToken;
+        await adminPool.query(
+          "UPDATE auth_trusted_devices SET trusted_until = now() - interval '1 second'",
+        );
+        const expiredDevice = await testApp.api.inject({
+          method: "POST",
+          payload: {
+            email: "new-device@example.com",
+            password: "StrongPass123!",
+            trustedDeviceToken,
+          },
+          url: "/api/v2/auth/login",
+        });
+        expect(expiredDevice.statusCode).toBe(202);
+        expect(expiredDevice.json().reason).toBe("trust_expired");
+
+        await adminPool.query(
+          "UPDATE auth_trusted_devices SET trusted_until = now() + interval '30 days', revoked_at = now()",
+        );
+        const revokedDevice = await testApp.api.inject({
+          method: "POST",
+          payload: {
+            email: "new-device@example.com",
+            password: "StrongPass123!",
+            trustedDeviceToken,
+          },
+          url: "/api/v2/auth/login",
+        });
+        expect(revokedDevice.statusCode).toBe(202);
+        expect(revokedDevice.json().reason).toBe("trust_expired");
+
+        await adminPool.query(
+          "UPDATE users SET email_verified_at = NULL WHERE email = 'new-device@example.com'",
+        );
+        const historical = await testApp.api.inject({
+          method: "POST",
+          payload: {
+            email: "new-device@example.com",
+            password: "StrongPass123!",
+          },
+          url: "/api/v2/auth/login",
+        });
+        expect(historical.statusCode).toBe(202);
+        expect(historical.json().reason).toBe("email_unverified");
+        await testApp.api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("trusted login challenges only when device and IP network both change", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({ connectionString: await createAppDatabaseUrl() });
+        const testApp = buildTestApp(appPool);
+        const verified = await registerAndVerify(testApp, {
+          email: "anomaly@example.com",
+          password: "StrongPass123!",
+          tenantName: "Anomaly Tenant",
+        });
+        const trustedDeviceToken = verified.json().trustedDeviceToken;
+        const baselineUa = "Mozilla/5.0 (Windows NT 10.0) Chrome/140.0";
+        const changedUa = "Mozilla/5.0 (X11; Linux x86_64) Firefox/142.0";
+        await adminPool.query(
+          `
+            UPDATE auth_trusted_devices
+            SET user_agent_fingerprint_hash = $1, ip_network_hash = $2
+            WHERE token_hash = $3
+          `,
+          [
+            hashDeviceFingerprint(baselineUa, testEnv.jwtRefreshSecret),
+            hashIpNetwork("203.0.113.7", testEnv.jwtRefreshSecret),
+            hashOpaqueToken(trustedDeviceToken),
+          ],
+        );
+
+        const onlyUa = await testApp.api.authService.login(
+          {
+            email: "anomaly@example.com",
+            password: "StrongPass123!",
+            trustedDeviceToken,
+          },
+          { ipAddress: "203.0.113.200", userAgent: changedUa },
+        );
+        expect("accessToken" in onlyUa).toBe(true);
+
+        const onlyNetwork = await testApp.api.authService.login(
+          {
+            email: "anomaly@example.com",
+            password: "StrongPass123!",
+            trustedDeviceToken,
+          },
+          { ipAddress: "203.0.114.7", userAgent: baselineUa },
+        );
+        expect("accessToken" in onlyNetwork).toBe(true);
+
+        const both = await testApp.api.authService.login(
+          {
+            email: "anomaly@example.com",
+            password: "StrongPass123!",
+            trustedDeviceToken,
+          },
+          { ipAddress: "203.0.114.7", userAgent: changedUa },
+        );
+        expect(both).toMatchObject({
+          reason: "anomalous_login",
+          status: "verification_required",
+        });
+        await testApp.api.close();
       } finally {
         await appPool.end();
         await adminPool.end();
@@ -160,16 +588,13 @@ describeWithDatabase("auth v2", () => {
         appPool = createPgPool({
           connectionString: await createAppDatabaseUrl(),
         });
-        const api = buildTestApp(appPool);
+        const testApp = buildTestApp(appPool);
+        const { api } = testApp;
 
-        await api.inject({
-          method: "POST",
-          payload: {
-            email: "login@example.com",
-            password: "StrongPass123!",
-            tenantName: "Login Tenant",
-          },
-          url: "/api/v2/auth/register",
+        const verification = await registerAndVerify(testApp, {
+          email: "login@example.com",
+          password: "StrongPass123!",
+          tenantName: "Login Tenant",
         });
 
         const success = await api.inject({
@@ -177,6 +602,7 @@ describeWithDatabase("auth v2", () => {
           payload: {
             email: "login@example.com",
             password: "StrongPass123!",
+            trustedDeviceToken: verification.json().trustedDeviceToken,
           },
           url: "/api/v2/auth/login",
         });
@@ -216,16 +642,13 @@ describeWithDatabase("auth v2", () => {
         appPool = createPgPool({
           connectionString: await createAppDatabaseUrl(),
         });
-        const api = buildTestApp(appPool);
+        const testApp = buildTestApp(appPool);
+        const { api } = testApp;
 
-        const register = await api.inject({
-          method: "POST",
-          payload: {
+        const register = await registerAndVerify(testApp, {
             email: "refresh@example.com",
             password: "StrongPass123!",
             tenantName: "Refresh Tenant",
-          },
-          url: "/api/v2/auth/register",
         });
         const registerBody = register.json();
 
@@ -299,18 +722,15 @@ describeWithDatabase("auth v2", () => {
         appPool = createPgPool({
           connectionString: await createAppDatabaseUrl(),
         });
-        const api = buildTestApp(appPool);
+        const testApp = buildTestApp(appPool);
+        const { api } = testApp;
 
-        const register = await api.inject({
-          method: "POST",
-          payload: {
+        const register = await registerAndVerify(testApp, {
             email: "refresh-race@example.com",
             password: "StrongPass123!",
             tenantName: "Refresh Race Tenant",
-          },
-          url: "/api/v2/auth/register",
         });
-        expect(register.statusCode).toBe(201);
+        expect(register.statusCode).toBe(200);
         const registerBody = register.json();
         const oldTokenHash = hashRefreshToken(registerBody.refreshToken);
 
@@ -378,7 +798,8 @@ describeWithDatabase("auth v2", () => {
         appPool = createPgPool({
           connectionString: await createAppDatabaseUrl(),
         });
-        const api = buildTestApp(appPool);
+        const testApp = buildTestApp(appPool);
+        const { api } = testApp;
 
         const anonymous = await api.inject({
           method: "GET",
@@ -386,15 +807,11 @@ describeWithDatabase("auth v2", () => {
         });
         expect(anonymous.statusCode).toBe(401);
 
-        const register = await api.inject({
-          method: "POST",
-          payload: {
+        const register = await registerAndVerify(testApp, {
             displayName: "Owner User",
             email: "owner@example.com",
             password: "StrongPass123!",
             tenantName: "Owner Tenant",
-          },
-          url: "/api/v2/auth/register",
         });
         const registerBody = register.json();
 
@@ -440,7 +857,7 @@ describeWithDatabase("auth v2", () => {
         appPool = createPgPool({
           connectionString: await createAppDatabaseUrl(),
         });
-        const api = buildTestApp(appPool);
+        const { api } = buildTestApp(appPool);
 
         const viewerUserId = randomUUID();
         const viewerTenantId = randomUUID();
@@ -452,8 +869,8 @@ describeWithDatabase("auth v2", () => {
           async (client) => {
             await client.query(
               `
-                INSERT INTO users (id, email, display_name, password_hash, updated_at)
-                VALUES ($1::uuid, $2, $3, $4, now())
+                INSERT INTO users (id, email, display_name, password_hash, email_verified_at, updated_at)
+                VALUES ($1::uuid, $2, $3, $4, now(), now())
               `,
               [viewerUserId, "viewer@example.com", "Viewer User", viewerPasswordHash],
             );
@@ -470,6 +887,14 @@ describeWithDatabase("auth v2", () => {
             );
           },
           appPool,
+        );
+        const viewerDeviceToken = "viewer-trusted-device-token-12345678901234567890";
+        await adminPool.query(
+          `
+            INSERT INTO auth_trusted_devices (user_id, token_hash, trusted_until)
+            VALUES ($1::uuid, $2, now() + interval '30 days')
+          `,
+          [viewerUserId, hashOpaqueToken(viewerDeviceToken)],
         );
 
         const otherUserEmail = "other-owner@example.com";
@@ -494,6 +919,7 @@ describeWithDatabase("auth v2", () => {
           payload: {
             email: "viewer@example.com",
             password: viewerPassword,
+            trustedDeviceToken: viewerDeviceToken,
           },
           url: "/api/v2/auth/login",
         });
@@ -516,6 +942,7 @@ describeWithDatabase("auth v2", () => {
             email: "viewer@example.com",
             password: viewerPassword,
             tenantId: actualOtherTenantId,
+            trustedDeviceToken: viewerDeviceToken,
           },
           url: "/api/v2/auth/login",
         });

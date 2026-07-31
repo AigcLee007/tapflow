@@ -8,6 +8,9 @@ function withRequiredProductionEnv(extra: Record<string, string> = {}) {
   process.env = {
     ...originalEnv,
     NODE_ENV: "production",
+    BREVO_API_KEY: "test-brevo-api-key",
+    BREVO_FROM_EMAIL: "no-reply@auth.aittco.com",
+    BREVO_FROM_NAME: "Art-Aittco",
     CORS_ALLOWED_ORIGINS: "https://art.aittco.com",
     CREDENTIAL_MASTER_KEY: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
     DATABASE_URL: "postgres://example",
@@ -66,5 +69,32 @@ describe("getApiEnv", () => {
     expect(env.agentExecutorAllowBatchImage).toBe(true);
     expect(env.agentExecutorAllowImageEdit).toBe(false);
     expect(env.agentExecutorAllowVideo).toBe(false);
+  });
+
+  test("reads the complete Brevo sender configuration", () => {
+    withRequiredProductionEnv({
+      BREVO_API_KEY: "  test-brevo-api-key  ",
+      BREVO_FROM_EMAIL: "  no-reply@auth.aittco.com  ",
+      BREVO_FROM_NAME: "  Art-Aittco  ",
+    });
+
+    const env = getApiEnv();
+
+    expect(env.brevoApiKey).toBe("test-brevo-api-key");
+    expect(env.brevoFromEmail).toBe("no-reply@auth.aittco.com");
+    expect(env.brevoFromName).toBe("Art-Aittco");
+  });
+
+  test.each([
+    "BREVO_API_KEY",
+    "BREVO_FROM_EMAIL",
+    "BREVO_FROM_NAME",
+  ])("requires %s in production", (variable) => {
+    withRequiredProductionEnv();
+    delete process.env[variable];
+
+    expect(() => getApiEnv()).toThrow(
+      `${variable} is required to start the v2 API in production`,
+    );
   });
 });

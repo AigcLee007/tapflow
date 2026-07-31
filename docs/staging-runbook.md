@@ -64,6 +64,41 @@ REDIS_URL=redis://tapflow-redis:6379
 
 External Redis is still supported by overriding `REDIS_URL`.
 
+## Auth Email Verification Rollout
+
+Before deployment, store these values only in `/opt/aittco/env/tapflow.staging.env` or the server secret manager:
+
+```env
+BREVO_API_KEY=<secret>
+BREVO_FROM_EMAIL=no-reply@auth.aittco.com
+BREVO_FROM_NAME=Art-Aittco
+```
+
+Render and validate the Compose configuration without displaying it, then deploy in the safe migration order:
+
+```bash
+cd /opt/aittco/tapflow
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml config >/tmp/tapflow-compose.rendered.yml
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml build
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml stop tapflow-worker
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-api node packages/db/dist/cli.js
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml up -d tapflow-redis tapflow-api tapflow-worker tapflow-frontend
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml ps
+```
+
+Do not print `/tmp/tapflow-compose.rendered.yml`, the env file, or search either file for secret values. Remove the rendered file after the deployment validation.
+
+Use a real mailbox for the post-deploy smoke test:
+
+1. Register a new account and confirm no workspace session is available before entering the emailed six-digit code.
+2. Enter the code and confirm registration completes.
+3. Log out and log in from the same browser; confirm no code is requested while the device trust is valid.
+4. Log in from a different browser profile or device; confirm a code is required.
+5. Request another code; confirm the resend control enforces the 60-second cooldown.
+6. Inspect only the relevant API/worker action and error logs. Confirm they contain no Brevo `api-key`, six-digit code field, `challengeToken`, or `trustedDeviceToken` value.
+
+If email delivery fails, keep registration/login blocked, verify the Brevo sender and domain status, and inspect sanitized API errors. Never add the API key to browser code or paste it into logs.
+
 ## Required Queue Concurrency
 
 Use these defaults unless intentionally load testing:

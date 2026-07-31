@@ -44,6 +44,10 @@ import { AiPluginService } from "./modules/ai-plugins/ai-plugins.service.js";
 import { registerAiRouteTestRoutes } from "./modules/ai-route-tests/ai-route-tests.routes.js";
 import { AiRouteTestService } from "./modules/ai-route-tests/ai-route-tests.service.js";
 import { registerAuthRoutes } from "./modules/auth/auth.routes.js";
+import {
+  BrevoAuthEmailSender,
+  type AuthEmailSender,
+} from "./modules/auth/auth-email-sender.js";
 import { AuthService } from "./modules/auth/auth.service.js";
 import { registerAssetRoutes } from "./modules/assets/assets.routes.js";
 import { AssetsService } from "./modules/assets/assets.service.js";
@@ -158,6 +162,7 @@ export function buildAgentExecutorService(options: {
 
 export function buildApp(options?: {
   auditService?: AuditApiService;
+  authEmailSender?: AuthEmailSender;
   env?: ApiEnv;
   logger?: boolean;
   observabilityService?: ObservabilityService;
@@ -196,7 +201,13 @@ export function buildApp(options?: {
     keyVersion: env.credentialKeyVersion,
     masterKey: env.credentialMasterKey,
   });
+  const authEmailSender = options?.authEmailSender ?? new BrevoAuthEmailSender({
+    apiKey: env.brevoApiKey ?? "",
+    fromEmail: env.brevoFromEmail ?? "",
+    fromName: env.brevoFromName ?? "",
+  });
   const authService = new AuthService({
+    authEmailSender,
     env,
     pool,
   });

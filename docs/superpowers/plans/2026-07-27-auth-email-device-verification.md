@@ -14,7 +14,7 @@
 
 Create:
 
-- `packages/db/migrations/000042_auth_email_device_verification.sql` - challenge and trusted-device schema.
+- `packages/db/migrations/000054_auth_email_device_verification.sql` - challenge and trusted-device schema.
 - `packages/db/test/auth-email-device-migration.test.ts` - migration SQL and database shape regression tests.
 - `apps/api/src/modules/auth/auth-verification.ts` - OTP, opaque token, email masking, browser/OS fingerprint, and IP network hashing.
 - `apps/api/test/auth-verification.test.ts` - deterministic unit tests for verification primitives.
@@ -49,7 +49,7 @@ Modify:
 **Files:**
 
 - Create: `packages/db/test/auth-email-device-migration.test.ts`
-- Create: `packages/db/migrations/000042_auth_email_device_verification.sql`
+- Create: `packages/db/migrations/000054_auth_email_device_verification.sql`
 
 - [ ] **Step 1: Write the failing migration test**
 
@@ -69,7 +69,7 @@ afterAll(() => {
   else process.env.DATABASE_URL = originalDatabaseUrl;
 });
 
-describeWithDatabase("000042 auth email and device verification", () => {
+describeWithDatabase("000054 auth email and device verification", () => {
   test("creates server-only challenge and account trusted-device tables", async () => {
     await withDatabase(async ({ databaseUrl }) => {
       process.env.DATABASE_URL = databaseUrl;
@@ -107,7 +107,7 @@ Run: `npm run test --workspace @aigc-flow/db -- auth-email-device-migration.test
 
 Expected: FAIL because the two auth verification tables do not exist. If `DATABASE_URL` is absent and the suite skips, start the documented local Postgres with `npm run dev:infra`, export the local `DATABASE_URL`, and rerun before treating the red step as observed.
 
-- [ ] **Step 3: Create migration 000042**
+- [ ] **Step 3: Create migration 000054**
 
 Create both tables with explicit constraints and indexes:
 
@@ -179,7 +179,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit the migration**
 
 ```bash
-git add packages/db/migrations/000042_auth_email_device_verification.sql packages/db/test/auth-email-device-migration.test.ts
+git add packages/db/migrations/000054_auth_email_device_verification.sql packages/db/test/auth-email-device-migration.test.ts
 git commit -m "feat(db): add auth verification records"
 ```
 
@@ -1009,7 +1009,7 @@ Add a dated `2026-07-27 - Brevo Email And Device Verification` entry recording:
 - registration email verification before session issuance;
 - historical unverified-user behavior;
 - new-device, 30-day trust, and anomaly rule;
-- migration `000042` and the intentional account-level trusted-device table;
+- migration `000054` and the intentional account-level trusted-device table;
 - server-only Brevo environment variables;
 - localStorage XSS risk and the fact that the device token cannot authenticate without a password;
 - every validation command and whether DB/staging real-mail smoke was completed or still pending.
