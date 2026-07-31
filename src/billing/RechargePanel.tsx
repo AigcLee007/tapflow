@@ -16,18 +16,18 @@ export function RechargePanel({ onCreated, plans }: { onCreated: (payment: Walle
         window.location.assign(payment.checkoutUrl);
       }
       await onCreated(payment);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to create payment checkout");
+    } catch {
+      setMessage("创建支付订单失败，请稍后重试。");
     } finally { setCreatingPlanKey(null); }
   };
 
   return (
     <section className="rounded border border-white/10 bg-white/[0.04] p-4">
-      <div className="flex items-center gap-2 text-sm font-semibold text-white"><CreditCard size={16} />Recharge credits</div>
+      <div className="flex items-center gap-2 text-sm font-semibold text-white"><CreditCard size={16} />充值积分</div>
       <div className="mt-3 grid gap-2">
         {plans.map((plan) => (
           <button className="flex min-h-14 items-center justify-between rounded border border-white/10 bg-black/20 px-3 text-left text-sm text-white hover:bg-white/10 disabled:opacity-60" disabled={creatingPlanKey !== null} key={plan.id} onClick={() => void startCheckout(plan)} type="button">
-            <span><span className="block font-semibold">CNY {(plan.amountCents / 100).toFixed(2)}</span><span className="text-xs text-slate-400">{plan.credits.toLocaleString()} credits, {plan.validityDays} days</span></span>
+            <span><span className="block font-semibold">￥{(plan.amountCents / 100).toFixed(2)}</span><span className="text-xs text-slate-400">{plan.credits.toLocaleString()} 积分，有效期 {plan.validityDays} 天</span></span>
             {creatingPlanKey === plan.key ? <Loader2 className="animate-spin" size={16} /> : <CreditCard size={16} />}
           </button>
         ))}
