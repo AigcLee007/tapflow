@@ -21,12 +21,28 @@ describe("PaymentStatusPanel", () => {
   test("shows the provider QR code on desktop", () => {
     vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false })));
     render(<PaymentStatusPanel payment={payment} />);
-    expect(screen.getByRole("img", { name: "Payment QR code" }).getAttribute("src")).toBe(payment.qrCodeUrl);
+    expect(screen.getByRole("img", { name: "支付二维码" }).getAttribute("src")).toBe(payment.qrCodeUrl);
   });
 
   test("does not show a QR code on mobile after checkout redirects", () => {
     vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true })));
     render(<PaymentStatusPanel payment={payment} />);
-    expect(screen.queryByRole("img", { name: "Payment QR code" })).toBeNull();
+    expect(screen.queryByRole("img", { name: "支付二维码" })).toBeNull();
+  });
+
+  test.each([
+    ["pending", "等待支付"],
+    ["checkout_created", "支付确认中"],
+    ["paid", "已支付"],
+    ["create_failed", "创建支付失败"],
+    ["cancelled", "已取消"],
+    ["refund_pending", "退款处理中"],
+    ["refunded", "已退款"],
+    ["refund_failed", "退款失败"],
+  ] as const)("maps %s to %s", (status, label) => {
+    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false })));
+    render(<PaymentStatusPanel payment={{ ...payment, status }} />);
+    expect(screen.getByText("支付状态")).toBeTruthy();
+    expect(screen.getByText(label)).toBeTruthy();
   });
 });
