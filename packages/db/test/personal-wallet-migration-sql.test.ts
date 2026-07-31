@@ -218,6 +218,20 @@ describe("000042_xunhupay_personal_wallet.sql", () => {
     expect(sql).toMatch(/ALTER FUNCTION app\.apply_xunhu_payment_notification\(text, bigint, text, text, text, timestamptz\)\s+OWNER TO tapflow_wallet_callback/);
   });
 
+  test("lets callback mutators see wallet rows and reconciles cached wallet totals", async () => {
+    const sql = await readFile(
+      path.resolve(import.meta.dirname, "../migrations/000050_wallet_balance_reconciliation.sql"),
+      "utf8",
+    );
+
+    expect(sql).toContain("CREATE POLICY billing_wallets_select_callback");
+    expect(sql).toContain("FOR SELECT TO tapflow_wallet_callback");
+    expect(sql).toContain("current_user = 'tapflow_wallet_callback'");
+    expect(sql).toContain("FROM billing_wallet_credit_grants");
+    expect(sql).toMatch(/UPDATE billing_wallets AS wallet[\s\S]*balance_credits = totals\.balance_credits/);
+    expect(sql).toContain("reserved_credits = totals.reserved_credits");
+  });
+
   test("uses a current-grantor callback-role switch in managed PostgreSQL follow-up migrations", async () => {
     const migrationsDir = path.resolve(import.meta.dirname, "../migrations");
     const migrationExpectations = [

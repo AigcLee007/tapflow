@@ -5894,3 +5894,10 @@ Validation completed:
 - qualified every selected payment column in `billing_wallet_payments JOIN users` queries so the reconciler can inspect and settle pending XunhuPay orders; this fix requires an API rebuild and no database migration.
 - after reconciliation reached provider-confirmed paid orders, staging exposed an RLS failure on `billing_wallet_ledger` caused by `INSERT ... RETURNING id` requiring callback SELECT visibility.
 - added migration `000049_wallet_payment_ledger_insert.sql` to pre-generate the immutable ledger UUID and insert it directly, preserving the callback role's no-browse ledger boundary while allowing paid orders to credit atomically.
+
+## 2026-07-31 - XunhuPay Wallet Balance Reconciliation
+
+- traced successful payment ledger rows with an unchanged wallet total to PostgreSQL RLS: callback-owned mutators had an `UPDATE` policy on `billing_wallets`, but no callback `SELECT` policy, so wallet updates silently affected zero visible rows.
+- added migration `000050_wallet_balance_reconciliation.sql` to grant the isolated callback role wallet-row visibility and rebuild cached wallet balance/reserved totals from authoritative credit-grant batches.
+- aligned the billing activity frontend with the personal-wallet ledger response field `amountCredits`, so recharge entries display their actual `+100` and `+700` changes.
+- added focused regression coverage for both the callback wallet policy/reconciliation and the personal-wallet ledger field mapping.

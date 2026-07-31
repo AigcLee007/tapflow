@@ -36,15 +36,16 @@ export type BillingPricingRow = {
 };
 
 export type BillingLedgerEntry = {
-  amountCents: number;
+  amountCredits: number;
   createdAt: string;
-  currency: string;
-  description: string | null;
   entryType: string;
   id: string;
   idempotencyKey: string;
   metadata: Record<string, unknown>;
+  tenantId: string | null;
   usageEventId: string | null;
+  userId: string;
+  walletId: string;
 };
 
 export type BillingUsageEvent = {

@@ -230,7 +230,7 @@ function resolveLedgerStatusLabel(entryType: string): string {
 }
 
 function resolveLedgerCredits(entry: BillingLedgerEntry): number {
-  return CREDIT_LEDGER_ENTRY_TYPES.has(entry.entryType) ? entry.amountCents : -entry.amountCents;
+  return CREDIT_LEDGER_ENTRY_TYPES.has(entry.entryType) ? entry.amountCredits : -entry.amountCredits;
 }
 
 export function buildBillingDisplayCatalog(
