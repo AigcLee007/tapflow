@@ -5922,3 +5922,11 @@ Validation completed:
   - `npm run build --workspace @aigc-flow/api` passed, including database and AI Gateway dependency builds.
   - `npm run build` passed with the existing Browserslist age, mixed dynamic/static import, and chunk-size warnings.
   - the full root `npm test -- --reporter=dot` remains red with 26 unrelated existing failures in legacy asset migration fixtures, Three.js tests missing `ResizeObserver`, Canvas Agent integration expectations, and AI Gateway multipart tests under the current Node runtime; all task-focused suites above pass independently.
+
+## 2026-07-31 - Redeem Ledger Constraint and Payment Polling Fix
+
+- staging read-only diagnostics confirmed the reported active, unused, unexpired redeem code was rejected because `billing_wallet_ledger_entry_type_check` did not allow the existing `redeem` entry type used by `app.wallet_redeem_code`.
+- added forward-only migration `000052_wallet_redeem_ledger_entry_type.sql` to preserve all existing ledger entry types and allow `redeem`.
+- fixed billing-page payment synchronization by storing the active payment ID in React state and updating it immediately after checkout creation; the existing three-second bounded poll now starts without a manual reload.
+- added regression coverage for the migration constraint and current-page payment polling.
+- validation passed: frontend billing tests 18 passed, database focused tests 18 passed / 1 database-backed test skipped, API focused tests 5 passed, DB/API/AI Gateway builds passed, and the production frontend build passed with existing warnings only.
