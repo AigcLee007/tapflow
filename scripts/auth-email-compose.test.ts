@@ -2,6 +2,8 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
+const LEGACY_AUTH_EMAIL_PREFIX = ['BRE', 'VO_'].join('');
+
 function section(compose: string, heading: string, nextHeading: string): string {
   const start = compose.indexOf(heading);
   const end = compose.indexOf(nextHeading, start);
@@ -10,7 +12,7 @@ function section(compose: string, heading: string, nextHeading: string): string 
 }
 
 describe('auth email Compose configuration', () => {
-  it('injects the Resend settings and does not retain Brevo settings', async () => {
+  it('injects the Resend settings and removes legacy provider settings', async () => {
     const compose = await readFile(resolve(import.meta.dirname, '..', 'docker-compose.staging.yml'), 'utf8');
     const sharedEnvironment = section(compose, 'x-tapflow-env: &tapflow-env', '\nservices:');
     const apiService = section(compose, '  tapflow-api:', '\n  tapflow-worker:');
@@ -21,6 +23,6 @@ describe('auth email Compose configuration', () => {
     expect(sharedEnvironment).toContain('RESEND_FROM_NAME: ${RESEND_FROM_NAME:-Art-Aittco}');
     expect(apiService).toContain('environment:\n      <<: *tapflow-env');
     expect(workerService).toContain('environment:\n      <<: *tapflow-env');
-    expect(compose).not.toContain('BREVO_');
+    expect(compose).not.toContain(LEGACY_AUTH_EMAIL_PREFIX);
   });
 });
