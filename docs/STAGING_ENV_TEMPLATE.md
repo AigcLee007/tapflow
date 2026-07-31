@@ -78,12 +78,12 @@ Keep both database URLs only in `/opt/aittco/env/tapflow.staging.env`. The runti
 - `Token expiry strategy = Use application default expiry; verify in staging`
 - `Confirmed no dev secret usage = No`
 
-### Auth Email Verification / Brevo
+### Auth Email Verification / Resend
 
-- `BREVO_API_KEY = <secret: Brevo transactional email API key>`
-- `BREVO_FROM_EMAIL = no-reply@auth.aittco.com`
-- `BREVO_FROM_NAME = Art-Aittco`
-- `Brevo sender/domain verified = No`
+- `RESEND_API_KEY = <secret: Resend sending API key>`
+- `RESEND_FROM_EMAIL = art@art.aittco.com`
+- `RESEND_FROM_NAME = Art-Aittco`
+- `Resend art.aittco.com domain verified = No`
 - `Real mailbox verification tested = No`
 
 ---
@@ -351,7 +351,7 @@ Relay D:
 - [ ] verified same-device login does not request another code within 30 days
 - [ ] new-device login requires the emailed code
 - [ ] resend remains disabled for 60 seconds and succeeds after the cooldown
-- [ ] API and worker logs contain no Brevo key, verification code, challenge token, or trusted-device token
+- [ ] API and worker logs contain no Resend API key, Authorization header, verification code, challenge token, or trusted-device token
 - [ ] admin can open provider settings
 - [ ] viewer gets 403
 - [ ] image.openai visible in route selector

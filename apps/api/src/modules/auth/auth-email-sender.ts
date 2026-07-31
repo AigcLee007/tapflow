@@ -1,4 +1,4 @@
-const BREVO_TRANSACTIONAL_EMAIL_URL = "https://api.brevo.com/v3/smtp/email";
+const RESEND_EMAIL_URL = "https://api.resend.com/emails";
 const DEFAULT_TIMEOUT_MS = 10_000;
 const DELIVERY_ERROR_MESSAGE = "Verification email delivery failed";
 
@@ -19,7 +19,7 @@ export class AuthEmailDeliveryError extends Error {
   }
 }
 
-export class BrevoAuthEmailSender implements AuthEmailSender {
+export class ResendAuthEmailSender implements AuthEmailSender {
   private readonly apiKey: string;
   private readonly fetchImpl: typeof fetch;
   private readonly fromEmail: string;
@@ -45,19 +45,16 @@ export class BrevoAuthEmailSender implements AuthEmailSender {
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
 
     try {
-      const response = await this.fetchImpl(BREVO_TRANSACTIONAL_EMAIL_URL, {
+      const response = await this.fetchImpl(RESEND_EMAIL_URL, {
         body: JSON.stringify({
-          htmlContent: `<p>Your verification code is <strong>${input.code}</strong>.</p><p>It expires in ${input.expiresInMinutes} minutes.</p>`,
-          sender: {
-            email: this.fromEmail,
-            name: this.fromName,
-          },
+          from: `${this.fromName} <${this.fromEmail}>`,
+          html: `<p>Your verification code is <strong>${input.code}</strong>.</p><p>It expires in ${input.expiresInMinutes} minutes.</p>`,
           subject: "Your Art-Aittco verification code",
-          textContent: `Your verification code is ${input.code}. It expires in ${input.expiresInMinutes} minutes.`,
-          to: [{ email: input.email }],
+          text: `Your verification code is ${input.code}. It expires in ${input.expiresInMinutes} minutes.`,
+          to: [input.email],
         }),
         headers: {
-          "api-key": this.apiKey,
+          authorization: `Bearer ${this.apiKey}`,
           "content-type": "application/json",
         },
         method: "POST",

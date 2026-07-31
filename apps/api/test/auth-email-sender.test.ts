@@ -2,18 +2,18 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
   AuthEmailDeliveryError,
-  BrevoAuthEmailSender,
+  ResendAuthEmailSender,
 } from "../src/modules/auth/auth-email-sender.js";
 
-const API_KEY = "test-brevo-api-key";
+const API_KEY = "re_test_api_key";
 const CODE = "123456";
 const EMAIL = "alice@example.com";
 
 function createSender(fetchImpl: typeof fetch, timeoutMs?: number) {
-  return new BrevoAuthEmailSender({
+  return new ResendAuthEmailSender({
     apiKey: API_KEY,
     fetchImpl,
-    fromEmail: "no-reply@auth.aittco.com",
+    fromEmail: "art@art.aittco.com",
     fromName: "Art-Aittco",
     timeoutMs,
   });
@@ -28,13 +28,13 @@ function expectSanitizedDeliveryError(error: unknown): void {
   expect(visibleError).not.toContain(EMAIL);
 }
 
-describe("BrevoAuthEmailSender", () => {
+describe("ResendAuthEmailSender", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
-  test("sends the verification code through the Brevo transactional endpoint", async () => {
+  test("sends the verification code through the Resend transactional endpoint", async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(JSON.stringify({ messageId: "message-1" }), {
         headers: { "content-type": "application/json" },
@@ -50,24 +50,28 @@ describe("BrevoAuthEmailSender", () => {
 
     expect(fetchImpl).toHaveBeenCalledOnce();
     const [url, init] = fetchImpl.mock.calls[0];
-    expect(url).toBe("https://api.brevo.com/v3/smtp/email");
+    expect(url).toBe("https://api.resend.com/emails");
     expect(init?.method).toBe("POST");
     expect(init?.headers).toMatchObject({
-      "api-key": API_KEY,
+      authorization: `Bearer ${API_KEY}`,
       "content-type": "application/json",
     });
     expect(init?.signal).toBeInstanceOf(AbortSignal);
 
-    const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
-    expect(body).toMatchObject({
-      sender: { email: "no-reply@auth.aittco.com", name: "Art-Aittco" },
+    const body = JSON.parse(String(init?.body)) as {
+      from: string;
+      html: string;
+      subject: string;
+      text: string;
+      to: string[];
+    };
+    expect(body).toEqual({
+      from: "Art-Aittco <art@art.aittco.com>",
       subject: "Your Art-Aittco verification code",
-      to: [{ email: EMAIL }],
+      to: [EMAIL],
+      html: `<p>Your verification code is <strong>${CODE}</strong>.</p><p>It expires in 10 minutes.</p>`,
+      text: `Your verification code is ${CODE}. It expires in 10 minutes.`,
     });
-    expect(body.htmlContent).toEqual(expect.stringContaining(CODE));
-    expect(body.htmlContent).toEqual(expect.stringContaining("10 minutes"));
-    expect(body.textContent).toEqual(expect.stringContaining(CODE));
-    expect(body.textContent).toEqual(expect.stringContaining("10 minutes"));
   });
 
   test("aborts delivery after the default ten-second timeout", async () => {

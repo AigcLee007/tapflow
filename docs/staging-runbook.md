@@ -69,10 +69,12 @@ External Redis is still supported by overriding `REDIS_URL`.
 Before deployment, store these values only in `/opt/aittco/env/tapflow.staging.env` or the server secret manager:
 
 ```env
-BREVO_API_KEY=<secret>
-BREVO_FROM_EMAIL=no-reply@auth.aittco.com
-BREVO_FROM_NAME=Art-Aittco
+RESEND_API_KEY=<secret>
+RESEND_FROM_EMAIL=art@art.aittco.com
+RESEND_FROM_NAME=Art-Aittco
 ```
+
+Before deployment, add and verify `art.aittco.com` in Resend Domains using the DNS records issued by Resend. Never place the Resend API key in browser configuration or repository files.
 
 Render and validate the Compose configuration without displaying it, then deploy in the safe migration order:
 
@@ -95,9 +97,9 @@ Use a real mailbox for the post-deploy smoke test:
 3. Log out and log in from the same browser; confirm no code is requested while the device trust is valid.
 4. Log in from a different browser profile or device; confirm a code is required.
 5. Request another code; confirm the resend control enforces the 60-second cooldown.
-6. Inspect only the relevant API/worker action and error logs. Confirm they contain no Brevo `api-key`, six-digit code field, `challengeToken`, or `trustedDeviceToken` value.
+6. Inspect only the relevant API/worker action and error logs. Confirm they contain no Resend API key, Authorization header, six-digit code field, `challengeToken`, or `trustedDeviceToken` value.
 
-If email delivery fails, keep registration/login blocked, verify the Brevo sender and domain status, and inspect sanitized API errors. Never add the API key to browser code or paste it into logs.
+If email delivery fails, keep registration/login blocked, verify the Resend API key and `art.aittco.com` domain status, and inspect sanitized API errors. Never add the API key to browser code or paste it into logs.
 
 ## Required Queue Concurrency
 
