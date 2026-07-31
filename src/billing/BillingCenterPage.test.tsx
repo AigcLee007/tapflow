@@ -1,214 +1,110 @@
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { AuthContext, type AuthState } from "../auth/useAuth";
 import { BillingCenterPage } from "./BillingCenterPage";
 
 const getBillingSummaryMock = vi.fn();
+const getPaymentMock = vi.fn();
+const createPaymentCheckoutMock = vi.fn();
 const listBillingLedgerMock = vi.fn();
 const listBillingUsageEventsMock = vi.fn();
-const listAiModelCatalogMock = vi.fn();
-const listAiModelRoutesMock = vi.fn();
+const listRechargePlansMock = vi.fn();
 
-vi.mock("./billingApi", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("./billingApi")>();
-  return {
-    ...actual,
-    getBillingSummary: () => getBillingSummaryMock(),
-    listBillingLedger: () => listBillingLedgerMock(),
-    listBillingUsageEvents: () => listBillingUsageEventsMock(),
-  };
-});
+vi.mock("./billingApi", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./billingApi")>()),
+  createPaymentCheckout: (input: unknown) => createPaymentCheckoutMock(input),
+  getBillingSummary: () => getBillingSummaryMock(),
+  getPayment: (id: string) => getPaymentMock(id),
+  listBillingLedger: () => listBillingLedgerMock(),
+  listBillingUsageEvents: () => listBillingUsageEventsMock(),
+  listRechargePlans: () => listRechargePlansMock(),
+}));
 
-vi.mock("../services/v2AiModelCatalogApi", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../services/v2AiModelCatalogApi")>();
-  return {
-    ...actual,
-    listAiModelCatalog: (...args: unknown[]) => listAiModelCatalogMock(...args),
-    listAiModelRoutes: (...args: unknown[]) => listAiModelRoutesMock(...args),
-  };
-});
+vi.mock("../services/v2AiModelCatalogApi", () => ({ listAiModelCatalog: vi.fn(async () => []), listAiModelRoutes: vi.fn(async () => []) }));
 
-function createAuthState(): AuthState {
-  return {
-    authenticated: true,
-    error: null,
-    loading: false,
-    permissions: [],
-    refreshMe: vi.fn(async () => undefined),
-    register: vi.fn(async () => undefined),
-    login: vi.fn(async () => undefined),
-    logout: vi.fn(async () => undefined),
-    roles: ["tenant_owner"],
-    sessionId: "session-1",
-    tenant: { id: "tenant-1", name: "Test Workspace", plan: "free", slug: "test", status: "active" },
-    user: { displayName: "Test User", email: "user@example.com", id: "user-1", status: "active" },
-  };
+function auth(): AuthState {
+  return { authenticated: true, error: null, loading: false, permissions: [], refreshMe: vi.fn(), register: vi.fn(), login: vi.fn(), logout: vi.fn(), roles: ["tenant_owner"], sessionId: "session-1", tenant: { id: "tenant-1", name: "Workspace", plan: "free", slug: "workspace", status: "active" }, user: { displayName: "User", email: "user@example.com", id: "user-1", status: "active" } };
 }
+
+function renderPage() { return render(<AuthContext.Provider value={auth()}><BillingCenterPage /></AuthContext.Provider>); }
 
 describe("BillingCenterPage", () => {
   beforeEach(() => {
-    getBillingSummaryMock.mockResolvedValue({
-      account: {
-        balanceCents: 0,
-        createdAt: "2026-06-12T00:00:00.000Z",
-        currency: "credits",
-        id: "billing-1",
-        reservedCents: 0,
-        status: "active",
-        tenantId: "tenant-1",
-        updatedAt: "2026-06-12T00:00:00.000Z",
-      },
-      creditGrants: {
-        availableCredits: 120,
-        expiringSoonCredits: 20,
-        lifetimeCredits: 100,
-        reservedCredits: 5,
-      },
-      ledgerTotals: { refundCents: 0, reserveCents: 0, settleCents: 0 },
-      membership: { discountMultiplier: 0.9, tier: "gold" },
-      usageTotals: {
-        eventCount: 0,
-        pendingCount: 0,
-        rawCostTotal: "0",
-        settledCount: 0,
-        totalBillableCents: 0,
-      },
-    });
+    window.history.replaceState({}, "", "/billing");
+    getBillingSummaryMock.mockResolvedValue({ availableCredits: 100, balanceCredits: 100, expiringSoonCredits: 0, nearestExpiryAt: null, reservedCredits: 0, walletId: "wallet-1" });
     listBillingUsageEventsMock.mockResolvedValue({ items: [], page: 1, pageSize: 20 });
     listBillingLedgerMock.mockResolvedValue({ items: [], page: 1, pageSize: 20 });
-    listAiModelCatalogMock.mockImplementation(async (modality?: string) => {
-      if (modality !== "image") return [];
-      return [
-        {
-          capabilities: {},
-          defaultRouteKey: "image.pixellelabs.nano-banana-pro",
-          displayName: "Nano Banana Pro",
-          id: "catalog-model-1",
-          modality: "image",
-          modelFamily: "pixellelabs.nano-banana-pro",
-          modelId: "1911c771-74a1-4ca1-af77-df9383dd8304",
-          modelKey: "pixellelabs.nano-banana-pro",
-          sortOrder: 1,
-          status: "active",
-          uiSchema: {},
-        },
-      ];
-    });
-    listAiModelRoutesMock.mockResolvedValue([
-      {
-        estimatedCredits: 3.2,
-        minChargeCredits: 3.2,
-        modality: "image",
-        modelFamily: "pixellelabs.nano-banana-pro",
-        modelKey: "pixellelabs.nano-banana-pro",
-        pricingUnit: "image_generation",
-        providerKey: "pixellelabs",
-        providerName: "PixelleLabs",
-        routeId: "route-1",
-        routeKey: "image.pixellelabs.nano-banana-pro",
-        routeLabel: "线路一",
-      },
+    listRechargePlansMock.mockResolvedValue([
+      { id: "1", key: "credits_100", name: "100 AI credits", amountCents: 990, credits: 100, currency: "CNY", validityDays: 365, sortOrder: 10 },
+      { id: "2", key: "credits_700", name: "700 AI credits", amountCents: 5000, credits: 700, currency: "CNY", validityDays: 365, sortOrder: 20 },
+      { id: "3", key: "credits_1500", name: "1,500 AI credits", amountCents: 10000, credits: 1500, currency: "CNY", validityDays: 365, sortOrder: 30 },
+      { id: "4", key: "credits_3300", name: "3,300 AI credits", amountCents: 20000, credits: 3300, currency: "CNY", validityDays: 365, sortOrder: 40 },
     ]);
+    createPaymentCheckoutMock.mockReset();
+    getPaymentMock.mockReset();
   });
 
-  test("renders plans directly without the old billing hero banner", async () => {
-    render(
-      <AuthContext.Provider value={createAuthState()}>
-        <BillingCenterPage />
-      </AuthContext.Provider>,
-    );
+  afterEach(() => vi.useRealTimers());
 
-    expect(screen.queryByRole("heading", { name: "选择你的套餐" })).toBeNull();
-    expect(screen.queryByText("不止额度，更是灵感落地的速度。")).toBeNull();
-    expect(screen.queryByText("积分永不过期。")).toBeNull();
-    expect(screen.queryByRole("button", { name: "刷新" })).toBeNull();
-    expect(await screen.findByText("Basic")).toBeTruthy();
-    expect(screen.getByText("Pro")).toBeTruthy();
-    expect(screen.getByText("Ultimate")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "连续包月 15% OFF" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "连续包年 40% OFF" }).getAttribute("aria-pressed")).toBe("true");
-    expect(screen.getByText("12,000 积分/月")).toBeTruthy();
-    expect(screen.getAllByRole("button", { name: "选择套餐" })).toHaveLength(3);
-    expect(screen.getByText("最受欢迎")).toBeTruthy();
-
-    await waitFor(() => {
-      expect(getBillingSummaryMock).toHaveBeenCalled();
-    });
-    expect(screen.getByText("账单明细")).toBeTruthy();
+  test("renders only server-owned fixed recharge plans", async () => {
+    renderPage();
+    expect(await screen.findByRole("heading", { name: "个人钱包" })).toBeTruthy();
+    expect(screen.getByText("积分属于个人账户，可在您加入的所有工作区中使用。")).toBeTruthy();
+    expect(screen.getByText("可用积分")).toBeTruthy();
+    expect(screen.getByText("预留积分")).toBeTruthy();
+    expect(screen.getByText("即将到期")).toBeTruthy();
+    expect(screen.getByText("最近到期")).toBeTruthy();
+    expect(screen.getByText("充值积分")).toBeTruthy();
+    expect(screen.getByText("￥9.90")).toBeTruthy();
+    expect(screen.getByText("100 积分，有效期 365 天")).toBeTruthy();
+    expect(screen.getByText("￥50.00")).toBeTruthy();
+    expect(screen.getByText("￥100.00")).toBeTruthy();
+    expect(screen.getByText("￥200.00")).toBeTruthy();
+    expect(screen.queryByText("Personal wallet")).toBeNull();
+    expect(screen.queryByText("Recharge credits")).toBeNull();
+    expect(screen.queryByText("Basic")).toBeNull();
+    expect(screen.queryByText("Pro")).toBeNull();
   });
 
-  test("renders a single creator-facing billing activity table without technical identifiers", async () => {
-    listBillingUsageEventsMock.mockResolvedValue({
-      items: [
-        {
-          billableCents: 12.8,
-          createdAt: "2026-06-19T02:28:08.000Z",
-          eventType: "workbench.image.generate",
-          id: "usage-1",
-          idempotencyKey: "workbench:usage:tenant:generation",
-          metadata: {},
-          modality: "image",
-          modelId: "1911c771-74a1-4ca1-af77-df9383dd8304",
-          nodeRunId: null,
-          rawCost: null,
-          routeId: "route-1",
-          status: "settled",
-          unitType: "image_generation",
-          units: "4",
-          workflowRunId: "workflow-run-technical-id",
-        },
-      ],
-      page: 1,
-      pageSize: 20,
-    });
-    listBillingLedgerMock.mockResolvedValue({
-      items: [
-        {
-          amountCents: 12.8,
-          createdAt: "2026-06-19T02:24:32.000Z",
-          currency: "credits",
-          description: "image.generate reserved",
-          entryType: "reserve",
-          id: "ledger-reserve-1",
-          idempotencyKey: "reserve:tenant:run:node",
-          metadata: {},
-          usageEventId: null,
-        },
-        {
-          amountCents: 12.8,
-          createdAt: "2026-06-19T02:28:08.000Z",
-          currency: "credits",
-          description: "image.generate settled",
-          entryType: "settle",
-          id: "ledger-settle-1",
-          idempotencyKey: "settle:tenant:run:node",
-          metadata: {},
-          usageEventId: "usage-1",
-        },
-      ],
-      page: 1,
-      pageSize: 20,
+  test("shows a Chinese wallet loading error without exposing the server error", async () => {
+    getBillingSummaryMock.mockRejectedValueOnce(new Error("Unable to load wallet"));
+    renderPage();
+
+    expect(await screen.findByText("钱包加载失败，请稍后重试。")).toBeTruthy();
+    expect(screen.queryByText("Unable to load wallet")).toBeNull();
+  });
+
+  test("shows a Chinese checkout creation error without exposing the server error", async () => {
+    createPaymentCheckoutMock.mockRejectedValueOnce(new Error("Unable to create payment checkout"));
+    renderPage();
+
+    await screen.findByText("￥9.90");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /￥9\.90/ }));
     });
 
-    render(
-      <AuthContext.Provider value={createAuthState()}>
-        <BillingCenterPage />
-      </AuthContext.Provider>,
-    );
+    expect(await screen.findByText("创建支付订单失败，请稍后重试。")).toBeTruthy();
+    expect(screen.queryByText("Unable to create payment checkout")).toBeNull();
+  });
 
-    expect(await screen.findByText("账单明细")).toBeTruthy();
-    expect(screen.queryByText("用量记录")).toBeNull();
-    expect(screen.queryByText("账单流水")).toBeNull();
-    expect(screen.getByText("图片生成")).toBeTruthy();
-    expect(screen.getByText("Nano Banana Pro 线路一")).toBeTruthy();
-    expect(screen.getByText("4")).toBeTruthy();
-    expect(screen.getByText("-12.8")).toBeTruthy();
-    expect(screen.getByText("已结算")).toBeTruthy();
-    expect(screen.queryByText("workflow-run-technical-id")).toBeNull();
-    expect(screen.queryByText("workbench:usage:tenant:generation")).toBeNull();
-    expect(screen.queryByText("1911c771-74a1-4ca1-af77-df9383dd8304")).toBeNull();
-    expect(screen.queryByText("reserve:tenant:run:node")).toBeNull();
+  test("confirms return state only after the owned payment API reports paid", async () => {
+    window.history.replaceState({}, "", "/billing?paymentId=00000000-0000-4000-8000-000000000123");
+    getPaymentMock.mockResolvedValue({ id: "00000000-0000-4000-8000-000000000123", planKey: "credits_100", amountCents: 990, credits: 100, status: "paid", checkoutUrl: null, qrCodeUrl: null, expiresAtSnapshot: "2027-01-01T00:00:00.000Z" });
+    renderPage();
+    await waitFor(() => expect(getPaymentMock).toHaveBeenCalledWith("00000000-0000-4000-8000-000000000123"));
+    expect(await screen.findByText("已支付")).toBeTruthy();
+  });
+
+  test("stops polling an unconfirmed owned payment after twenty attempts", async () => {
+    vi.useFakeTimers();
+    window.history.replaceState({}, "", "/billing?paymentId=00000000-0000-4000-8000-000000000123");
+    getPaymentMock.mockResolvedValue({ id: "00000000-0000-4000-8000-000000000123", planKey: "credits_100", amountCents: 990, credits: 100, status: "checkout_created", checkoutUrl: "https://pay.example.test/order", qrCodeUrl: null, expiresAtSnapshot: null });
+    renderPage();
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+
+    expect(getPaymentMock).toHaveBeenCalledTimes(20);
   });
 });

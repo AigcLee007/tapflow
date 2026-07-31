@@ -4,9 +4,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Pool } from "pg";
 
+import { logPgConnectionError } from "./db.js";
+
 export type MigrationFile = {
   checksum: string;
   filename: string;
+  nonTransactional: boolean;
   sql: string;
   version: bigint;
 };
@@ -41,6 +44,8 @@ const migrationsDirFromModule = path.resolve(
   "../migrations",
 );
 
+const NON_TRANSACTIONAL_MARKER = "-- tapflow:non-transactional";
+
 function checksumFor(sql: string): string {
   return createHash("sha256").update(sql).digest("hex");
 }
@@ -72,6 +77,7 @@ export async function loadMigrationFiles(migrationsDir = getDefaultMigrationsDir
       return {
         checksum: checksumFor(sql),
         filename,
+        nonTransactional: sql.trimStart().startsWith(NON_TRANSACTIONAL_MARKER),
         sql,
         version: versionFromFilename(filename),
       };
@@ -134,23 +140,50 @@ export async function runMigrations(
     }
 
     const client = await pool.connect();
+    let clientConnectionError: Error | undefined;
+    const handleClientError = (error: Error): void => {
+      clientConnectionError = error;
+      logPgConnectionError("[db:migrate] checked-out PostgreSQL client error", error);
+    };
+    client.on("error", handleClientError);
     try {
-      await client.query("BEGIN");
-      await client.query(migration.sql);
-      await client.query(
-        `
-          INSERT INTO schema_migrations (version, filename, checksum)
-          VALUES ($1, $2, $3)
-        `,
-        [migration.version.toString(), migration.filename, migration.checksum],
-      );
-      await client.query("COMMIT");
+      const apiDatabaseRole = process.env.API_DATABASE_ROLE?.trim();
+      if (apiDatabaseRole) {
+        await client.query(
+          "SELECT set_config('app.api_database_role', $1, false)",
+          [apiDatabaseRole],
+        );
+      }
+      if (migration.nonTransactional) {
+        await client.query(migration.sql);
+        await client.query(
+          `
+            INSERT INTO schema_migrations (version, filename, checksum)
+            VALUES ($1, $2, $3)
+          `,
+          [migration.version.toString(), migration.filename, migration.checksum],
+        );
+      } else {
+        await client.query("BEGIN");
+        await client.query(migration.sql);
+        await client.query(
+          `
+            INSERT INTO schema_migrations (version, filename, checksum)
+            VALUES ($1, $2, $3)
+          `,
+          [migration.version.toString(), migration.filename, migration.checksum],
+        );
+        await client.query("COMMIT");
+      }
       appliedMigrations.push(migration.filename);
     } catch (error) {
-      await client.query("ROLLBACK").catch(() => {});
+      if (!migration.nonTransactional) {
+        await client.query("ROLLBACK").catch(() => {});
+      }
       throw new MigrationFailedError(migration.filename, error);
     } finally {
-      client.release();
+      client.removeListener("error", handleClientError);
+      client.release(clientConnectionError);
     }
   }
 

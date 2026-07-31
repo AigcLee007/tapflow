@@ -1,5 +1,44 @@
 # Production Runbook
 
+## Personal Wallet And XunhuPay
+
+The personal-wallet migration is a forward-only billing cutover. Before deployment, back up PostgreSQL, set `PAYMENTS_ENABLED=false`, stop `tapflow-worker`, run compiled database migrations, and execute the compiled wallet migration CLI in dry-run mode. Only run the confirmed write mode after totals match and no active reservations or missing workspace owners remain.
+
+Use `docker-compose.staging.yml` and the server environment file. Merchant values must remain server-side. After personal reserve/settle/refund smoke tests in two workspaces, perform and record the CNY 9.90 purchase, duplicate callback, reconciliation, expiry snapshot, and completely unused-order refund before enabling checkout. If checkout fails after cutover, disable `PAYMENTS_ENABLED` and apply a forward repair; do not return live charging to tenant balances.
+
+Keep `DATABASE_URL` on the Supabase Transaction Pooler at port 6543 for API/Worker runtime. Set `MIGRATION_DATABASE_URL` to a Supabase Direct connection or Session Pooler at port 5432; Compose injects it only into the one-shot `tapflow-migrator`. Store both only in `/opt/aittco/env/tapflow.staging.env`. Never print either URL or place it directly in a shell command. Keep the Worker stopped until schema migration, legacy reservation reconciliation, wallet dry run, and confirmed wallet write are complete.
+
+Set `API_DATABASE_ROLE` to the PostgreSQL role used by `DATABASE_URL`. The migrator uses this non-secret role name for the wallet runtime ACL follow-up migration; the API and Worker do not receive `MIGRATION_DATABASE_URL`.
+
+Staging evidence currently shows that migration `000044` terminated through the Transaction Pooler on port 6543, the Session Pooler on port 5432, and its original Supabase SQL Editor bundle. The Direct hostname resolved IPv6-only from the deployment server and failed with `ENETUNREACH` because that server has no IPv6 route. Migrations `000044` and `000045` therefore remain pending; do not report wallet migration acceptance from the recorded `000042`/`000043` rows.
+
+If the Direct route remains unreachable and both poolers terminate the revised managed-role DDL, use the SQL Editor only after the compatibility source is committed, pushed, and deployed. Generate separate bundles from the exact deployed `000044` and `000045` sources and checksums. Apply and verify `000044` as one transaction before applying `000045` as a separate transaction; confirm each exact filename/checksum in `schema_migrations`, and never reuse the terminated original bundle. Keep the wallet write step blocked until the known 301.2 legacy reserved credits are reconciled and the dry run reports matched totals with zero active reservations.
+
+```bash
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-migrator node packages/db/dist/cli.js
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-migrator node packages/db/dist/personal-wallet-migration-cli.js --dry-run
+```
+
+Run legacy reservation reconciliation before the wallet write. Its dry run must show only terminal `failed`/`canceled` reservations and positive orphan grant counters:
+
+```bash
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-migrator node packages/db/dist/personal-wallet-reconciliation-cli.js --dry-run
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-migrator node packages/db/dist/personal-wallet-reconciliation-cli.js --write --confirm LEGACY_RESERVATION_RECONCILIATION
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-migrator node packages/db/dist/personal-wallet-migration-cli.js --dry-run
+```
+
+If the dry run reports non-terminal reservations and the cutover decision is to cancel them, use the explicit force-cancel confirmation:
+
+```bash
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-migrator node packages/db/dist/personal-wallet-reconciliation-cli.js --write --confirm LEGACY_RESERVATION_RECONCILIATION --cancel-non-terminal
+```
+
+Only after the dry-run acceptance gate passes:
+
+```bash
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-migrator node packages/db/dist/personal-wallet-migration-cli.js --write --confirm PERSONAL_WALLET_CUTOVER
+```
+
 Date: 2026-05-20
 Branch: production-readiness
 

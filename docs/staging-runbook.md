@@ -8,6 +8,54 @@ docker compose -f docker-compose.staging.yml up -d --build tapflow-redis tapflow
 
 The compose file runs Redis inside the Docker network. Do not publish Redis to the public internet.
 
+## Personal Wallet Cutover
+
+Start with `PAYMENTS_ENABLED=false`. Back up PostgreSQL, build the new images, and stop the worker before schema and wallet migration:
+
+`DATABASE_URL` remains the API/Worker runtime connection through the Supabase Transaction Pooler on port 6543. `MIGRATION_DATABASE_URL` must use a Supabase Direct connection or Session Pooler on port 5432 and is available only to `tapflow-migrator`. Set `API_DATABASE_ROLE` to the non-secret PostgreSQL role used by `DATABASE_URL`; the migrator uses it to repair wallet function ACLs when the two connections use different roles. Keep both URLs only in `/opt/aittco/env/tapflow.staging.env`; never print either URL or place it directly in a shell command. Keep the Worker stopped until schema migration, legacy reservation reconciliation, the wallet dry run, and the confirmed wallet write all complete.
+
+Current staging limitation: the Transaction Pooler on port 6543, Session Pooler on port 5432, and the original migration-`000044` Supabase SQL Editor bundle all terminated during that migration. The Direct database hostname is IPv6-only from this server, which has no IPv6 route and returned `ENETUNREACH`. Migrations `000044` and `000045` remain unapplied until their revised transactions are verified.
+
+If the server still cannot reach Direct and the managed poolers terminate the revised migration, use the Supabase SQL Editor fallback only after the compatibility commit is pushed and deployed:
+
+1. Generate the `000044` bundle from the exact deployed migration file and checksum; do not reuse the original terminated bundle.
+2. Apply `000044` alone as one transaction, then verify its exact filename and checksum in `schema_migrations`.
+3. Generate and apply checksum-matched `000045` separately, then verify its `schema_migrations` row.
+4. Keep `tapflow-worker` stopped and `PAYMENTS_ENABLED=false` throughout. Do not run the wallet write while the known 301.2 legacy reserved credits remain unreconciled.
+
+```bash
+cd /opt/aittco/tapflow
+git fetch --all --prune
+git pull --ff-only origin main
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml build
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml stop tapflow-worker
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-migrator node packages/db/dist/cli.js
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-migrator node packages/db/dist/personal-wallet-reconciliation-cli.js --dry-run
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-migrator node packages/db/dist/personal-wallet-migration-cli.js --dry-run
+```
+
+Only when the reconciliation output contains no non-terminal reservations, execute its approved write and rerun the wallet dry run:
+
+```bash
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-migrator node packages/db/dist/personal-wallet-reconciliation-cli.js --write --confirm LEGACY_RESERVATION_RECONCILIATION
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-migrator node packages/db/dist/personal-wallet-migration-cli.js --dry-run
+```
+
+For an approved cutover that cancels the reported non-terminal reservations, append the explicit force-cancel flag:
+
+```bash
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-migrator node packages/db/dist/personal-wallet-reconciliation-cli.js --write --confirm LEGACY_RESERVATION_RECONCILIATION --cancel-non-terminal
+```
+
+Only when the wallet dry run reports no owner/reservation exceptions and matched totals, execute the approved write migration:
+
+```bash
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-migrator node packages/db/dist/personal-wallet-migration-cli.js --write --confirm PERSONAL_WALLET_CUTOVER
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml up -d tapflow-redis tapflow-api tapflow-worker tapflow-frontend
+```
+
+Verify personal reserve/settle/refund from two workspaces before enabling payments. Enable checkout only after a CNY 9.90 real-payment and full-unused-order refund acceptance. After users begin personal-wallet charging, rollback by disabling checkout and applying a forward fix; do not revert to tenant charging.
+
 Default staging Redis URL:
 
 ```env
@@ -136,7 +184,7 @@ Prompt catalog media remains in the dedicated server directory mounted at `/var/
 After building images and stopping `tapflow-worker`, run the database migration first:
 
 ```bash
-docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-api node packages/db/dist/cli.js
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-migrator node packages/db/dist/cli.js
 ```
 
 Inspect the historical-media plan without writing files or database keys:

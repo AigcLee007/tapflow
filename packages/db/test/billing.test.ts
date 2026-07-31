@@ -388,4 +388,70 @@ describeWithDatabase("billing migration, RLS, and idempotency", () => {
       }
     });
   });
+
+  test("refundUsage releases legacy credit reservations", async () => {
+    await withDatabase(async ({ databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const pool = createPgPool();
+      const tenantId = randomUUID();
+      const userId = randomUUID();
+
+      try {
+        await runMigrations(pool);
+        await seedBillingTenant(pool, { slug: "billing-refund-reservation", tenantId, userId });
+        const account = await pool.query<{ id: string }>(
+          "SELECT id::text AS id FROM billing_accounts WHERE tenant_id = $1::uuid",
+          [tenantId],
+        );
+        await pool.query(
+          `INSERT INTO billing_credit_grants (
+             tenant_id, billing_account_id, source_type, source_id,
+             original_credits, remaining_credits, reserved_credits, status
+           ) VALUES ($1::uuid, $2::uuid, 'admin_grant', $3, 10, 10, 0, 'active')`,
+          [tenantId, account.rows[0]!.id, `refund-fixture:${randomUUID()}`],
+        );
+
+        const billingService = new BillingService({ pool });
+        const reserve = await billingService.reserveUsage(
+          { tenantId, userId },
+          {
+            amountCents: 4.5,
+            idempotencyKey: `reserve:${tenantId}:refund-fixture`,
+          },
+        );
+        await billingService.refundUsage(
+          { tenantId, userId },
+          {
+            amountCents: 4.5,
+            idempotencyKey: `refund:${tenantId}:refund-fixture`,
+            metadata: { reserveLedgerId: reserve.id },
+          },
+        );
+
+        const state = await pool.query<{
+          account_reserved: string;
+          grant_reserved: string;
+          reservation_status: string;
+        }>(
+          `SELECT
+             account.reserved_cents::text AS account_reserved,
+             credit_grant.reserved_credits::text AS grant_reserved,
+             reservation.status AS reservation_status
+           FROM billing_accounts account
+           JOIN billing_credit_grants credit_grant ON credit_grant.billing_account_id = account.id
+           JOIN billing_credit_reservations reservation ON reservation.credit_grant_id = credit_grant.id
+           WHERE account.tenant_id = $1::uuid`,
+          [tenantId],
+        );
+
+        expect(state.rows[0]).toEqual({
+          account_reserved: "0.0000",
+          grant_reserved: "0.0000",
+          reservation_status: "refunded",
+        });
+      } finally {
+        await pool.end();
+      }
+    });
+  });
 });

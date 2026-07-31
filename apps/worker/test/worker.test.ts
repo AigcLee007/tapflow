@@ -1120,13 +1120,14 @@ describe("worker skeleton", () => {
         videoNodeConcurrency: 1,
         workerConcurrency: 2,
         workerName: "test-worker",
+        billingExpirySweepMs: 300_000,
       },
       logger: createTestLogger(),
       pool: {} as never,
       queueFactory: {
         createQueue(name: string) {
           createdQueues.push(`queue:${name}`);
-          return { close: queueClose };
+          return { add: vi.fn(async () => ({})), close: queueClose };
         },
         createQueueEvents(name: string) {
           createdQueues.push(`events:${name}`);
@@ -1147,6 +1148,7 @@ describe("worker skeleton", () => {
     expect(createdQueues).toContain(`worker:${QUEUE_NAMES.nodeExecuteVideo}`);
     expect(createdQueues).toContain(`worker:${QUEUE_NAMES.providerPoll}`);
     expect(createdQueues).toContain(`worker:${QUEUE_NAMES.assetImageVariant}`);
+    expect(createdQueues).toContain(`worker:${QUEUE_NAMES.walletExpiry}`);
   });
 
   test("registers node execution modality queues with independent concurrency", () => {
@@ -1176,12 +1178,13 @@ describe("worker skeleton", () => {
         videoNodeConcurrency: 1,
         workerConcurrency: 8,
         workerName: "test-worker",
+        billingExpirySweepMs: 300_000,
       },
       logger: createTestLogger(),
       pool: {} as never,
       queueFactory: {
         createQueue() {
-          return { close: queueClose };
+          return { add: vi.fn(async () => ({})), close: queueClose };
         },
         createQueueEvents() {
           return { close: eventsClose };
@@ -1203,6 +1206,7 @@ describe("worker skeleton", () => {
     expect(workerOptions.get(QUEUE_NAMES.assetImageVariant)?.concurrency).toBe(8);
     expect(workerOptions.get(QUEUE_NAMES.assetIngest)?.concurrency).toBe(8);
     expect(workerOptions.get(QUEUE_NAMES.billingSettle)?.concurrency).toBe(8);
+    expect(workerOptions.get(QUEUE_NAMES.walletExpiry)?.concurrency).toBe(8);
   });
 
   test("worker env defaults node.execute concurrency above single-flight and supports override", () => {
@@ -1392,12 +1396,13 @@ describe("worker skeleton", () => {
         videoNodeConcurrency: 1,
         workerConcurrency: 2,
         workerName: "test-worker",
+        billingExpirySweepMs: 300_000,
       },
       logger: createTestLogger(),
       pool: { end: vi.fn(async () => {}) } as never,
       queueFactory: {
         createQueue() {
-          return { close: queueClose };
+          return { add: vi.fn(async () => ({})), close: queueClose };
         },
         createQueueEvents() {
           return { close: eventsClose };
@@ -1413,7 +1418,7 @@ describe("worker skeleton", () => {
 
     expect(workerClose).toHaveBeenCalledTimes(WORKER_QUEUE_NAMES.length);
     expect(eventsClose).toHaveBeenCalledTimes(WORKER_QUEUE_NAMES.length);
-    expect(queueClose).toHaveBeenCalledTimes(7);
+    expect(queueClose).toHaveBeenCalledTimes(8);
   });
 });
 

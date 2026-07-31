@@ -20,6 +20,7 @@ export type WorkerEnv = {
   videoNodeConcurrency: number;
   workerConcurrency: number;
   workerName: string;
+  billingExpirySweepMs: number;
 };
 
 const DEV_CREDENTIAL_KEY_VERSION = "v1";
@@ -106,6 +107,11 @@ export function getWorkerEnv(): WorkerEnv {
     process.env.WORKER_DEFAULT_CONCURRENCY,
     DEFAULT_DEFAULT_NODE_CONCURRENCY,
   );
+  const billingExpirySweepMs = parsePositiveIntegerEnv(
+    "BILLING_EXPIRY_SWEEP_MS",
+    process.env.BILLING_EXPIRY_SWEEP_MS,
+    300_000,
+  );
 
   if (!credentialMasterKey) {
     throw new Error("CREDENTIAL_MASTER_KEY is required to start the v2 worker");
@@ -151,5 +157,6 @@ export function getWorkerEnv(): WorkerEnv {
     videoNodeConcurrency,
     workerConcurrency,
     workerName: process.env.WORKER_NAME?.trim() || DEFAULT_WORKER_NAME,
+    billingExpirySweepMs,
   };
 }

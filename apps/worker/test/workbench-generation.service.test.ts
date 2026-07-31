@@ -351,6 +351,9 @@ describe("WorkbenchGenerationService", () => {
         id: "00000000-0000-4000-8000-000000000022",
       })),
     };
+    const personalWalletService = {
+      settleUsageWithClient: vi.fn(async () => ({ id: "00000000-0000-4000-8000-000000000022" })),
+    };
     const client = {
       query: vi.fn(async () => ({ rows: [] })),
     };
@@ -358,6 +361,7 @@ describe("WorkbenchGenerationService", () => {
       assetBucket: "test-bucket",
       assetStore: {} as never,
       billingService: billingService as never,
+      personalWalletService: personalWalletService as never,
       mediaRuntime: {} as never,
       pool: {} as never,
     });
@@ -371,6 +375,7 @@ describe("WorkbenchGenerationService", () => {
           id: string;
           model_id: string;
           requested_count: number;
+          reserve_ledger_id: string;
           reserved_credits: string;
           route_key: string;
           session_id: string | null;
@@ -385,6 +390,7 @@ describe("WorkbenchGenerationService", () => {
         id: "00000000-0000-4000-8000-000000000011",
         model_id: "pixellelabs.nano-banana-pro",
         requested_count: 1,
+        reserve_ledger_id: "00000000-0000-4000-8000-000000000020",
         reserved_credits: "4",
         route_key: "image.pixellelabs.nano-banana-pro",
         session_id: null,

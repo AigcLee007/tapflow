@@ -25,7 +25,9 @@ LOG_LEVEL=info
 ### Database
 
 ```env
-DATABASE_URL=postgres://<user>:<password>@<host>:5432/<db>
+DATABASE_URL=<Supabase-Transaction-Pooler-connection-string-port-6543>
+MIGRATION_DATABASE_URL=<Supabase-Direct-or-Session-Pooler-connection-string-port-5432>
+API_DATABASE_ROLE=<PostgreSQL role name used by DATABASE_URL>
 DB_POOL_MIN=2
 DB_POOL_MAX=20
 DB_SSL=true
@@ -36,6 +38,30 @@ Required:
 - Backup production DB before migration.
 - Migration must run once per deployment.
 - Stop deployment immediately if migration fails.
+- Keep both URLs only in the external server environment file and never print them or place them directly in shell commands.
+- Keep `DATABASE_URL` on port 6543 for API/Worker runtime. Scope `MIGRATION_DATABASE_URL` on port 5432 only to the one-shot `tapflow-migrator` service.
+- Set `API_DATABASE_ROLE` to the runtime role name from `DATABASE_URL`; it is passed to the migrator only so wallet function ACLs can be repaired when migration and runtime connections use different Supabase roles.
+
+Observed Supabase staging constraints for personal-wallet migrations:
+
+- the runtime Transaction Pooler on port 6543, Session Pooler on port 5432, and the original migration-`000044` SQL Editor bundle all terminated during its role/ownership DDL;
+- the Direct database hostname resolved IPv6-only from the deployment server, whose missing IPv6 route returned `ENETUNREACH`;
+- migrations `000044` and `000045` remain pending until their revised managed-role sequence is applied and verified.
+
+When Direct connectivity and both managed poolers are unavailable, the Supabase SQL Editor is an approved fallback only after the compatibility change is committed, pushed, and deployed. Generate each editor bundle from the exact deployed migration source and checksum, verify that checksum against the deployed commit, and apply one transaction at a time: `000044` first, verify its `schema_migrations` row, then `000045` and its row. Never combine both migrations into one editor execution or reuse an older generated bundle.
+
+Run compiled schema and wallet migration CLIs through the dedicated migrator:
+
+```bash
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-migrator node packages/db/dist/cli.js
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-migrator node packages/db/dist/personal-wallet-migration-cli.js --dry-run
+```
+
+Keep the Worker stopped until schema migration, legacy reservation reconciliation, wallet dry run, and confirmed wallet write are complete. Only after the dry-run acceptance gate passes, run:
+
+```bash
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-migrator node packages/db/dist/personal-wallet-migration-cli.js --write --confirm PERSONAL_WALLET_CUTOVER
+```
 
 ### Redis / Queue
 
@@ -103,6 +129,22 @@ ADMIN_EMAILS=admin@example.com
 ```
 
 Document and enforce the admin permission bootstrap path.
+
+### XunhuPay Personal Wallet
+
+```env
+PAYMENTS_ENABLED=false
+XUNHU_APP_ID=<merchant-app-id>
+XUNHU_APP_SECRET=<merchant-app-secret>
+XUNHU_BASE_URL=https://api.xunhupay.com
+XUNHU_NOTIFY_URL=https://api.example.com/api/v2/billing/payment/xunhu/notify
+XUNHU_RETURN_URL=https://app.example.com/billing
+XUNHU_TIMEOUT_MS=10000
+PAYMENT_RECONCILE_INTERVAL_MS=60000
+BILLING_EXPIRY_SWEEP_MS=300000
+```
+
+The API receives these variables through `x-tapflow-env`; the worker must not log or consume merchant values. Keep checkout disabled through migration and personal-wallet charging verification. Do not enable `PAYMENTS_ENABLED=true` until the public callback, duplicate callback, CNY 9.90 purchase, reconciliation, and fully unused refund acceptance checks have been recorded.
 
 ### Observability
 

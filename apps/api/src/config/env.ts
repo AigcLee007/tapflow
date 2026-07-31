@@ -39,6 +39,14 @@ export type ApiEnv = {
   s3SecretAccessKey: string;
   securityHeadersEnabled?: boolean;
   trustProxy?: boolean;
+  paymentsEnabled: boolean;
+  paymentReconcileIntervalMs: number;
+  xunhuAppId: string;
+  xunhuAppSecret: string;
+  xunhuBaseUrl: string;
+  xunhuNotifyUrl: string;
+  xunhuReturnUrl: string;
+  xunhuTimeoutMs: number;
 };
 
 const DEV_ACCESS_SECRET = "dev_access_secret_change_me";
@@ -243,6 +251,17 @@ export function getApiEnv(): ApiEnv {
     isProduction,
   );
   const promptCatalogMediaDir = process.env.PROMPT_CATALOG_MEDIA_DIR?.trim() || "./data/prompt-catalog";
+  const paymentsEnabled = parseBooleanEnv("PAYMENTS_ENABLED", process.env.PAYMENTS_ENABLED, false);
+  const paymentReconcileIntervalMs = parsePositiveIntegerEnv("PAYMENT_RECONCILE_INTERVAL_MS", process.env.PAYMENT_RECONCILE_INTERVAL_MS, 60_000);
+  const xunhuAppId = process.env.XUNHU_APP_ID?.trim() || "";
+  const xunhuAppSecret = process.env.XUNHU_APP_SECRET?.trim() || "";
+  const xunhuBaseUrl = process.env.XUNHU_BASE_URL?.trim() || "https://api.xunhupay.com";
+  const xunhuNotifyUrl = process.env.XUNHU_NOTIFY_URL?.trim() || "";
+  const xunhuReturnUrl = process.env.XUNHU_RETURN_URL?.trim() || "";
+  const xunhuTimeoutMs = parsePositiveIntegerEnv("XUNHU_TIMEOUT_MS", process.env.XUNHU_TIMEOUT_MS, 10_000);
+  if (paymentsEnabled && (!xunhuAppId || !xunhuAppSecret || !xunhuNotifyUrl || !xunhuReturnUrl)) {
+    throw new Error("XUNHU_APP_ID, XUNHU_APP_SECRET, XUNHU_NOTIFY_URL, and XUNHU_RETURN_URL are required when PAYMENTS_ENABLED=true");
+  }
 
   if (isProduction && corsAllowedOrigins.length === 0) {
     throw new Error("CORS_ALLOWED_ORIGINS is required to start the v2 API in production");
@@ -344,5 +363,13 @@ export function getApiEnv(): ApiEnv {
     s3SecretAccessKey,
     securityHeadersEnabled,
     trustProxy,
+    paymentsEnabled,
+    paymentReconcileIntervalMs,
+    xunhuAppId,
+    xunhuAppSecret,
+    xunhuBaseUrl,
+    xunhuNotifyUrl,
+    xunhuReturnUrl,
+    xunhuTimeoutMs,
   };
 }

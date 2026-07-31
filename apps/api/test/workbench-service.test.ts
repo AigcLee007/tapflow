@@ -258,7 +258,7 @@ describe("WorkbenchService generation deletion", () => {
     };
     const reserveUsageWithClient = vi.fn(async () => ({ id: "reserve-ledger-1" }));
     const service = new WorkbenchService({
-      billingService: {
+      personalWalletService: {
         reserveUsageWithClient,
       } as never,
       generationQueue: generationQueue as never,
@@ -360,7 +360,7 @@ describe("WorkbenchService generation deletion", () => {
     };
     const reserveUsageWithClient = vi.fn(async () => ({ id: "reserve-ledger-1" }));
     const service = new WorkbenchService({
-      billingService: {
+      personalWalletService: {
         reserveUsageWithClient,
       } as never,
       generationQueue: generationQueue as never,
@@ -389,9 +389,9 @@ describe("WorkbenchService generation deletion", () => {
     expect(created.reservedCredits).toBe(9);
     expect(reserveUsageWithClient).toHaveBeenCalledWith(
       client,
-      "22222222-2222-4222-8222-222222222222",
+      { tenantId: "22222222-2222-4222-8222-222222222222", userId: "44444444-4444-4444-8444-444444444444" },
       expect.objectContaining({
-        amountCents: 9,
+        amountCredits: 9,
         metadata: expect.objectContaining({
           discountMultiplier: 0.9,
           discountedCredits: 9,

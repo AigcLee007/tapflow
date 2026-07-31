@@ -12,34 +12,17 @@ export type BillingAccount = {
 };
 
 export type BillingSummary = {
-  account: BillingAccount;
-  availableCredits?: number;
-  balanceCredits?: number;
-  creditGrants?: {
-    availableCredits: number;
-    expiringSoonCredits: number;
-    lifetimeCredits: number;
-    reservedCredits: number;
-  };
-  ledgerTotals: {
-    refundCents: number;
-    reserveCents: number;
-    settleCents: number;
-  };
-  membership?: {
-    discountMultiplier: number;
-    tier: "standard" | "silver" | "gold" | "platinum";
-  };
-  reservedCredits?: number;
-  thisMonthUsageCredits?: number;
-  usageTotals: {
-    eventCount: number;
-    pendingCount: number;
-    rawCostTotal: string;
-    settledCount: number;
-    totalBillableCents: number;
-  };
+  availableCredits: number;
+  balanceCredits: number;
+  expiringSoonCredits: number;
+  nearestExpiryAt: string | null;
+  reservedCredits: number;
+  walletId: string;
 };
+
+export type RechargePlan = { id: string; key: string; name: string; amountCents: number; credits: number; currency: string; validityDays: number; sortOrder: number };
+export type PaymentStatus = "pending" | "checkout_created" | "paid" | "create_failed" | "cancelled" | "refund_pending" | "refunded" | "refund_failed";
+export type WalletPayment = { id: string; planKey: string; amountCents: number; credits: number; status: PaymentStatus; checkoutUrl: string | null; qrCodeUrl: string | null; expiresAtSnapshot: string | null };
 
 export type BillingPricingRow = {
   active: boolean;
@@ -53,15 +36,16 @@ export type BillingPricingRow = {
 };
 
 export type BillingLedgerEntry = {
-  amountCents: number;
+  amountCredits: number;
   createdAt: string;
-  currency: string;
-  description: string | null;
   entryType: string;
   id: string;
   idempotencyKey: string;
   metadata: Record<string, unknown>;
+  tenantId: string | null;
   usageEventId: string | null;
+  userId: string;
+  walletId: string;
 };
 
 export type BillingUsageEvent = {
@@ -89,22 +73,12 @@ export type BillingListResponse<T> = {
 };
 
 export type RedeemCodeResponse = {
-  account: BillingAccount;
   credits: number;
-  ledgerEntry: BillingLedgerEntry;
+  ledgerEntry: { id: string; amountCredits: number; entryType: string; createdAt: string };
   redemptionId: string;
 };
 
-export type PaymentCheckoutResponse = {
-  checkoutUrl: string | null;
-  payment: {
-    amountCents: number;
-    credits: number;
-    id: string;
-    provider: string;
-    status: string;
-  };
-};
+export type PaymentCheckoutResponse = WalletPayment;
 
 export function getBillingSummary() {
   return apiGet<BillingSummary>("/billing/summary");
@@ -133,14 +107,6 @@ export function redeemBillingCode(code: string) {
   });
 }
 
-export function createPaymentCheckout(input: {
-  amountCents: number;
-  credits: number;
-  idempotencyKey: string;
-  provider?: string;
-}) {
-  return apiPost<PaymentCheckoutResponse>("/billing/payment/create-checkout", {
-    ...input,
-    provider: input.provider ?? "manual",
-  });
-}
+export const listRechargePlans = () => apiGet<RechargePlan[]>("/billing/recharge-plans");
+export const createPaymentCheckout = (input: { planKey: string; idempotencyKey: string }) => apiPost<PaymentCheckoutResponse>("/billing/payment/create-checkout", input);
+export const getPayment = (paymentId: string) => apiGet<WalletPayment>(`/billing/payments/${encodeURIComponent(paymentId)}`);

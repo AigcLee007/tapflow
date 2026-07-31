@@ -66,37 +66,40 @@ describe("billingActivity", () => {
 
     const ledger: BillingLedgerEntry[] = [
       {
-        amountCents: 12.8,
+        amountCredits: 12.8,
         createdAt: "2026-06-19T02:24:32.000Z",
-        currency: "credits",
-        description: "image.generate reserved",
         entryType: "reserve",
         id: "ledger-reserve-1",
         idempotencyKey: "reserve:tenant:run:node",
         metadata: {},
+        tenantId: null,
         usageEventId: null,
+        userId: "user-1",
+        walletId: "wallet-1",
       },
       {
-        amountCents: 12.8,
+        amountCredits: 12.8,
         createdAt: "2026-06-19T02:28:08.000Z",
-        currency: "credits",
-        description: "image.generate settled",
         entryType: "settle",
         id: "ledger-settle-1",
         idempotencyKey: "settle:tenant:run:node",
         metadata: {},
+        tenantId: null,
         usageEventId: "usage-1",
+        userId: "user-1",
+        walletId: "wallet-1",
       },
       {
-        amountCents: 100,
+        amountCredits: 100,
         createdAt: "2026-06-18T10:00:00.000Z",
-        currency: "credits",
-        description: "admin grant",
         entryType: "admin_credit",
         id: "ledger-credit-1",
         idempotencyKey: "admin-credit-1",
         metadata: {},
+        tenantId: null,
         usageEventId: null,
+        userId: "user-1",
+        walletId: "wallet-1",
       },
     ];
 
@@ -145,5 +148,58 @@ describe("billingActivity", () => {
     expect(rows[0]?.modelLabel).toBe("Nano Banana Pro");
     expect(rows[0]?.modelLabel).not.toContain("pixellelabs.nano-banana-pro");
     expect(rows[0]?.modelLabel).not.toContain("1911c771-74a1-4ca1-af77-df9383dd8304");
+  });
+
+  test("labels personal wallet credit, expiry, and refund ledger entries", () => {
+    const ledger: BillingLedgerEntry[] = [
+      { amountCredits: 100, createdAt: "2026-06-19T03:00:00.000Z", entryType: "migration_credit", id: "migration", idempotencyKey: "migration:1", metadata: {}, tenantId: null, usageEventId: null, userId: "user-1", walletId: "wallet-1" },
+      { amountCredits: 20, createdAt: "2026-06-19T02:00:00.000Z", entryType: "expire", id: "expire", idempotencyKey: "expire:1", metadata: {}, tenantId: null, usageEventId: null, userId: "user-1", walletId: "wallet-1" },
+      { amountCredits: 100, createdAt: "2026-06-19T01:00:00.000Z", entryType: "payment_refund", id: "refund", idempotencyKey: "refund:1", metadata: {}, tenantId: null, usageEventId: null, userId: "user-1", walletId: "wallet-1" },
+    ];
+
+    expect(buildBillingActivityRows([], ledger, createCatalog()).map(({ credits, eventLabel }) => ({ credits, eventLabel }))).toEqual([
+      { credits: 100, eventLabel: "\u5386\u53f2\u4f59\u989d\u8fc1\u79fb" },
+      { credits: -20, eventLabel: "\u79ef\u5206\u8fc7\u671f" },
+      { credits: -100, eventLabel: "\u5145\u503c\u9000\u6b3e" },
+    ]);
+  });
+
+  test("uses the personal-wallet amountCredits field for recharge activity", () => {
+    const ledger: BillingLedgerEntry[] = [{
+      amountCredits: 700,
+      createdAt: "2026-07-31T00:30:49.000Z",
+      entryType: "payment",
+      id: "payment",
+      idempotencyKey: "payment:1",
+      metadata: {},
+      tenantId: null,
+      usageEventId: null,
+      userId: "user-1",
+      walletId: "wallet-1",
+    }];
+
+    expect(buildBillingActivityRows([], ledger, createCatalog())[0]?.credits).toBe(700);
+  });
+
+  test("localizes agent activity labels", () => {
+    const agentUsage: BillingUsageEvent = {
+      billableCents: 1,
+      createdAt: "2026-07-31T01:00:00.000Z",
+      eventType: "agent.run",
+      id: "usage-agent-1",
+      idempotencyKey: "agent:usage:1",
+      metadata: {},
+      modality: "agent",
+      modelId: null,
+      nodeRunId: null,
+      rawCost: null,
+      routeId: null,
+      status: "settled",
+      unitType: null,
+      units: "1",
+      workflowRunId: null,
+    };
+
+    expect(buildBillingActivityRows([agentUsage], [], createCatalog())[0]?.eventLabel).toBe("智能体任务");
   });
 });

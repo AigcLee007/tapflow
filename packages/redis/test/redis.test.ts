@@ -54,6 +54,7 @@ describe("@aigc-flow/redis config", () => {
     expect(QUEUE_NAMES.providerPoll).toBe("provider.poll");
     expect(QUEUE_NAMES.assetIngest).toBe("asset.ingest");
     expect(QUEUE_NAMES.billingSettle).toBe("billing.settle");
+    expect(QUEUE_NAMES.walletExpiry).toBe("billing.wallet-expiry");
     expect(QUEUE_NAMES.emailSend).toBe("email.send");
     expect(QUEUE_NAMES.auditFlush).toBe("audit.flush");
   });

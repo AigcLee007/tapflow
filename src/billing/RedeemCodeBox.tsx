@@ -3,6 +3,20 @@ import { Loader2, Ticket } from "lucide-react";
 
 import { redeemBillingCode } from "./billingApi";
 
+const REDEEM_ERROR_MESSAGES: Record<string, string> = {
+  REDEEM_CODE_ALREADY_REDEEMED: "你已兑换过此兑换码。",
+  REDEEM_CODE_EXHAUSTED: "兑换码使用次数已用完。",
+  REDEEM_CODE_EXPIRED: "兑换码已过期，无法使用。",
+  REDEEM_CODE_INACTIVE: "兑换码已停用，无法使用。",
+  REDEEM_CODE_NOT_FOUND: "兑换码不存在，请检查后重试。",
+};
+
+function getRedeemErrorCode(error: unknown): string | null {
+  if (typeof error !== "object" || error === null) return null;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" ? code : null;
+}
+
 export function RedeemCodeBox({ onRedeemed }: { onRedeemed: () => Promise<void> | void }) {
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -22,8 +36,9 @@ export function RedeemCodeBox({ onRedeemed }: { onRedeemed: () => Promise<void> 
       setCode("");
       setMessage(`已成功兑换 ${result.credits.toLocaleString()} 点。`);
       await onRedeemed();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "兑换失败，请稍后重试。");
+    } catch (error) {
+      const code = getRedeemErrorCode(error);
+      setError(REDEEM_ERROR_MESSAGES[code ?? ""] ?? "兑换失败，请稍后重试。");
     } finally {
       setLoading(false);
     }

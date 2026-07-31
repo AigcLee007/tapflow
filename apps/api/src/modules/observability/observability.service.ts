@@ -31,6 +31,12 @@ export type AdminMetricsResponse = {
     pid: number;
     uptimeSeconds: number;
   };
+  payments: {
+    averagePaidLatencyMs: number | null;
+    paidLast24Hours: number;
+    pendingReconciliation: number;
+    refundFailuresLast24Hours: number;
+  };
   queueCounts: QueueHealthResponse["queues"];
   timestamp: string;
   workflowRuns: {
@@ -118,15 +124,55 @@ export class ObservabilityService {
       };
     }, this.pool);
 
+    const payments = await this.withPlatformMetricsTransaction(async (client) => {
+      const result = await client.query<{
+        average_paid_latency_ms: string | null;
+        paid_last_24_hours: number;
+        pending_reconciliation: number;
+        refund_failures_last_24_hours: number;
+      }>(`
+        SELECT
+          COUNT(*) FILTER (WHERE status IN ('pending', 'checkout_created', 'refund_pending'))::int AS pending_reconciliation,
+          COUNT(*) FILTER (WHERE paid_at >= now() - interval '24 hours')::int AS paid_last_24_hours,
+          COUNT(*) FILTER (WHERE status = 'refund_failed' AND updated_at >= now() - interval '24 hours')::int AS refund_failures_last_24_hours,
+          AVG(EXTRACT(EPOCH FROM (paid_at - created_at)) * 1000) FILTER (WHERE paid_at >= now() - interval '24 hours')::text AS average_paid_latency_ms
+        FROM billing_wallet_payments
+      `);
+      const row = result.rows[0];
+      return {
+        averagePaidLatencyMs: row?.average_paid_latency_ms ? Math.round(Number(row.average_paid_latency_ms)) : null,
+        paidLast24Hours: row?.paid_last_24_hours ?? 0,
+        pendingReconciliation: row?.pending_reconciliation ?? 0,
+        refundFailuresLast24Hours: row?.refund_failures_last_24_hours ?? 0,
+      };
+    });
+
     return {
       memoryUsage: process.memoryUsage(),
       process: {
         pid: process.pid,
         uptimeSeconds: Math.round(process.uptime()),
       },
+      payments,
       queueCounts: queueHealth.queues,
       timestamp: new Date().toISOString(),
       workflowRuns,
     };
+  }
+
+  private async withPlatformMetricsTransaction<T>(fn: (client: import("pg").PoolClient) => Promise<T>): Promise<T> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT set_config('app.tenant_id', '', true)");
+      await client.query("SELECT set_config('app.user_id', '', true)");
+      await client.query("SELECT set_config('app.is_system_admin', 'true', true)");
+      const result = await fn(client);
+      await client.query("COMMIT");
+      return result;
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw error;
+    } finally { client.release(); }
   }
 }

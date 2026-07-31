@@ -49,6 +49,9 @@ import { registerAssetRoutes } from "./modules/assets/assets.routes.js";
 import { AssetsService } from "./modules/assets/assets.service.js";
 import { registerBillingRoutes } from "./modules/billing/billing.routes.js";
 import { BillingApiService } from "./modules/billing/billing.service.js";
+import { registerPaymentRoutes } from "./modules/payments/payments.routes.js";
+import { PaymentReconciler } from "./modules/payments/payment-reconciler.js";
+import { PaymentsService } from "./modules/payments/payments.service.js";
 import { registerFlowRoutes } from "./modules/flows/flows.routes.js";
 import { FlowsService } from "./modules/flows/flows.service.js";
 import { registerFlowCommentRoutes } from "./modules/flow-comments/flow-comments.routes.js";
@@ -222,6 +225,7 @@ export function buildApp(options?: {
     storageProvider,
   });
   const billingService = new BillingApiService({ pool });
+  const paymentsService = new PaymentsService(env, { pool });
   const auditService =
     options?.auditService ??
     new AuditApiService({
@@ -320,6 +324,9 @@ export function buildApp(options?: {
     logger: options?.logger === false ? false : (createApiLoggerOptions() as never),
     trustProxy: env.trustProxy ?? false,
   });
+  const paymentReconciler = env.paymentsEnabled
+    ? new PaymentReconciler({ intervalMs: env.paymentReconcileIntervalMs, logger: app.log, payments: paymentsService, pool })
+    : null;
 
   registerSecurityBaseline(app, env);
 
@@ -334,6 +341,7 @@ export function buildApp(options?: {
   app.decorate("authService", authService);
   app.decorate("assetsService", assetsService);
   app.decorate("billingService", billingService);
+  app.decorate("paymentsService", paymentsService);
   app.decorate("credentialVault", credentialVault);
   app.decorate("projectsService", projectsService);
   app.decorate("promptsService", promptsService);
@@ -384,6 +392,7 @@ export function buildApp(options?: {
   });
 
   app.addHook("onClose", async () => {
+    await paymentReconciler?.stop();
     if (ownedPool) {
       await pool.end();
     }
@@ -405,6 +414,10 @@ export function buildApp(options?: {
     if (!ownedQueueHealthService && appRedisConnection) {
       await closeRedisConnection(appRedisConnection);
     }
+  });
+
+  app.addHook("onReady", async () => {
+    paymentReconciler?.start();
   });
 
   app.get("/health", async () => {
@@ -443,6 +456,7 @@ export function buildApp(options?: {
   registerAuthRoutes(app);
   registerAssetRoutes(app);
   registerBillingRoutes(app);
+  registerPaymentRoutes(app);
   registerProjectRoutes(app);
   registerPromptRoutes(app);
   registerFlowRoutes(app);

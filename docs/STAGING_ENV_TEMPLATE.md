@@ -24,7 +24,9 @@ Do not commit real secrets into repository files.
 
 ## 2. Postgres Database
 
-- `DATABASE_URL =<secret: Supabase pooled Postgres connection string>`
+- `DATABASE_URL =<secret: Supabase Transaction Pooler connection string, port 6543>`
+- `MIGRATION_DATABASE_URL =<secret: Supabase Direct connection or Session Pooler connection string, port 5432>`
+- `API_DATABASE_ROLE =<runtime PostgreSQL role name used by DATABASE_URL; no password>`
 - `DB_POOL_MIN =1`
 - `DB_POOL_MAX =5`
 - `DB_SSL =true`
@@ -32,6 +34,8 @@ Do not commit real secrets into repository files.
 - `Backup method =Supabase scheduled backup + manual pg_dump before migration`
 - `pg_dump tested =No`
 - `Restore tested =No`
+
+Keep both database URLs only in `/opt/aittco/env/tapflow.staging.env`. The runtime URL remains scoped to API and Worker through `x-tapflow-env`; the migration URL is injected only into the one-shot `tapflow-migrator` service.
 
 ---
 
@@ -142,6 +146,26 @@ Run the documented dry-run before applying. Run the importer `--test` command fo
   - Agent planner success tested = No
 
 Gemini native routes are documented as a future plan only. They are not required for the first staging deployment.
+
+---
+
+## 8. XunhuPay Personal Wallet
+
+Keep merchant credentials in `/opt/aittco/env/tapflow.staging.env`; never commit them or place them in frontend variables.
+
+```env
+PAYMENTS_ENABLED=false
+XUNHU_APP_ID=<merchant-app-id>
+XUNHU_APP_SECRET=<merchant-app-secret>
+XUNHU_BASE_URL=https://api.xunhupay.com
+XUNHU_NOTIFY_URL=https://api.example.com/api/v2/billing/payment/xunhu/notify
+XUNHU_RETURN_URL=https://app.example.com/billing
+XUNHU_TIMEOUT_MS=10000
+PAYMENT_RECONCILE_INTERVAL_MS=60000
+BILLING_EXPIRY_SWEEP_MS=300000
+```
+
+Before enabling payments: verify public HTTPS callback reachability, exact plain-text `success` acknowledgement, smallest CNY 9.90 purchase, duplicate callback idempotency, one personal wallet used in two workspaces, eligible unused-order refund, reconciliation, and secret-free logs.
 
 ### Future multi-relay / multi-protocol plan
 

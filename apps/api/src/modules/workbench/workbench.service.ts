@@ -4,6 +4,7 @@ import {
   applyMembershipDiscount,
   BillingService,
   createPgPool,
+  PersonalWalletService,
   resolveMembershipDiscount,
   withTenantTransaction,
 } from "@aigc-flow/db";
@@ -29,6 +30,7 @@ type WorkbenchGenerationRow = {
   batch_index: number | null;
   batch_role: "single" | "parent" | "child";
   batch_total: number | null;
+  billed_user_id: string;
   charged_credits: string | null;
   created_at: string;
   display_mode: "merged" | "separate";
@@ -198,18 +200,21 @@ function isBatchTerminalStatus(status: string) {
 
 export class WorkbenchService {
   readonly billingService: BillingService;
+  readonly personalWalletService: PersonalWalletService;
   readonly generationQueue: Pick<Queue<WorkbenchGenerateJobPayload>, "add"> | null;
   readonly pool: Pool;
   readonly storageProvider?: StorageProvider;
 
   constructor(options?: {
     billingService?: BillingService;
+    personalWalletService?: PersonalWalletService;
     generationQueue?: Pick<Queue<WorkbenchGenerateJobPayload>, "add"> | null;
     pool?: Pool;
     storageProvider?: StorageProvider;
   }) {
     this.pool = options?.pool ?? createPgPool();
     this.billingService = options?.billingService ?? new BillingService({ pool: this.pool });
+    this.personalWalletService = options?.personalWalletService ?? new PersonalWalletService({ pool: this.pool });
     this.generationQueue = options?.generationQueue ?? null;
     this.storageProvider = options?.storageProvider;
   }
@@ -234,6 +239,7 @@ export class WorkbenchService {
             batch_role,
             batch_index,
             batch_total,
+            billed_user_id::text AS billed_user_id,
             estimated_credits::text AS estimated_credits,
             charged_credits::text AS charged_credits,
             reserved_credits::text AS reserved_credits,
@@ -286,6 +292,7 @@ export class WorkbenchService {
             batch_role,
             batch_index,
             batch_total,
+            billed_user_id::text AS billed_user_id,
             estimated_credits::text AS estimated_credits,
             charged_credits::text AS charged_credits,
             reserved_credits::text AS reserved_credits,
@@ -400,6 +407,8 @@ export class WorkbenchService {
       throw new WorkbenchApiError(503, "WORKBENCH_QUEUE_UNAVAILABLE", "Workbench generation queue is unavailable.");
     }
 
+    if (!context.userId) throw new WorkbenchApiError(401, "AUTH_REQUIRED", "Authentication is required to generate workbench output.");
+    const billedUserId = context.userId;
     return withTenantTransaction(context, async (client) => {
       await this.assertReferenceAssetsExist(client, context.tenantId, input.referenceAssetIds);
       await this.assertReferenceUploadsExist(client, context.tenantId, input.referenceUploadIds);
@@ -409,9 +418,8 @@ export class WorkbenchService {
       const estimatedCredits = applyMembershipDiscount(originalCredits, membership);
       const idempotencySuffix = input.idempotencyKey ?? randomUUID();
 
-      const reserveLedger = await this.billingService.reserveUsageWithClient(client, context.tenantId, {
-        amountCents: estimatedCredits,
-        description: "Workbench image generation reservation",
+      const reserveLedger = await this.personalWalletService.reserveUsageWithClient(client, { tenantId: context.tenantId, userId: billedUserId }, {
+        amountCredits: estimatedCredits,
         idempotencyKey: `workbench:reserve:${context.tenantId}:${idempotencySuffix}`,
         metadata: {
           modelId: input.modelId,
@@ -564,6 +572,7 @@ export class WorkbenchService {
             batch_role,
             batch_index,
             batch_total,
+            billed_user_id::text AS billed_user_id,
             estimated_credits::text AS estimated_credits,
             charged_credits::text AS charged_credits,
             reserved_credits::text AS reserved_credits,
@@ -798,16 +807,18 @@ export class WorkbenchService {
     if (reservedCredits <= 0 || generation.charged_credits !== null) {
       return;
     }
+    if (!generation.reserve_ledger_id) {
+      throw new Error(`Workbench generation ${generation.id} has a reserved charge without a reserve ledger`);
+    }
 
-    const refundLedger = await this.billingService.refundUsageWithClient(client, tenantId, {
-      amountCents: reservedCredits,
-      description: "Workbench image generation reservation released after deletion",
+    const refundLedger = await this.personalWalletService.refundUsageWithClient(client, { tenantId, userId: generation.billed_user_id }, {
       idempotencyKey: `workbench:delete-refund:${tenantId}:${generation.id}`,
       metadata: {
         generationId: generation.id,
+        reserveLedgerId: generation.reserve_ledger_id,
         source: "workbench",
       },
-      usageEventId: null,
+      reserveLedgerId: generation.reserve_ledger_id,
     });
 
     await client.query(
@@ -834,6 +845,7 @@ export class WorkbenchService {
           tenant_id,
           session_id,
           created_by,
+          billed_user_id,
           prompt,
           model_id,
           route_key,
@@ -855,6 +867,7 @@ export class WorkbenchService {
         VALUES (
           $1::uuid,
           $2::uuid,
+          $3::uuid,
           $3::uuid,
           $4,
           $5,
@@ -890,6 +903,7 @@ export class WorkbenchService {
           batch_role,
           batch_index,
           batch_total,
+          billed_user_id::text AS billed_user_id,
           estimated_credits::text AS estimated_credits,
           charged_credits::text AS charged_credits,
           reserved_credits::text AS reserved_credits,
@@ -955,6 +969,7 @@ export class WorkbenchService {
           batch_role,
           batch_index,
           batch_total,
+          billed_user_id::text AS billed_user_id,
           estimated_credits::text AS estimated_credits,
           charged_credits::text AS charged_credits,
           reserved_credits::text AS reserved_credits,

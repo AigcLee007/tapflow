@@ -42,6 +42,15 @@ x-tapflow-env: &tapflow-env
   AGENT_EXECUTOR_ALLOW_BATCH_IMAGE: ${AGENT_EXECUTOR_ALLOW_BATCH_IMAGE:-true}
   AGENT_EXECUTOR_ALLOW_IMAGE_EDIT: ${AGENT_EXECUTOR_ALLOW_IMAGE_EDIT:-false}
   AGENT_EXECUTOR_ALLOW_VIDEO: ${AGENT_EXECUTOR_ALLOW_VIDEO:-false}
+  PAYMENTS_ENABLED: ${PAYMENTS_ENABLED:-false}
+  XUNHU_APP_ID: ${XUNHU_APP_ID:-}
+  XUNHU_APP_SECRET: ${XUNHU_APP_SECRET:-}
+  XUNHU_BASE_URL: ${XUNHU_BASE_URL:-https://api.xunhupay.com}
+  XUNHU_NOTIFY_URL: ${XUNHU_NOTIFY_URL:-}
+  XUNHU_RETURN_URL: ${XUNHU_RETURN_URL:-}
+  XUNHU_TIMEOUT_MS: ${XUNHU_TIMEOUT_MS:-10000}
+  PAYMENT_RECONCILE_INTERVAL_MS: ${PAYMENT_RECONCILE_INTERVAL_MS:-60000}
+  BILLING_EXPIRY_SWEEP_MS: ${BILLING_EXPIRY_SWEEP_MS:-300000}
 
 services:
   tapflow-redis:
@@ -84,6 +93,16 @@ services:
         condition: service_healthy
     environment:
       <<: *tapflow-env
+
+  tapflow-migrator:
+    profiles: ["tools"]
+    build: .
+    restart: "no"
+    command: ["node", "packages/db/dist/cli.js"]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${MIGRATION_DATABASE_URL:-}
+      API_DATABASE_ROLE: ${API_DATABASE_ROLE:-}
 
   tapflow-frontend:
     build:

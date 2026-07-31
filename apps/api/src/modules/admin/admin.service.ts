@@ -1115,8 +1115,12 @@ export class AdminApiService {
     tenantId: string | null;
   }> {
     const tenantContext = requireTenantContext(context);
-    const tenantId = input.tenantId ?? tenantContext.tenantId;
     const hasSuperAdminSource = context.roles.includes("system_admin") || context.roles.includes("admin_email");
+    const tenantId = input.tenantId !== undefined
+      ? input.tenantId
+      : hasSuperAdminSource
+        ? null
+        : tenantContext.tenantId;
     if (tenantId !== null && tenantId !== tenantContext.tenantId && !hasSuperAdminSource) {
       throw new AdminApiError(403, "TENANT_SCOPE_MISMATCH", "当前只能为当前工作区创建兑换码");
     }

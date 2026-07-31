@@ -21,6 +21,7 @@ export type BillingAccountRecord = {
 };
 
 export type UsageEventRecord = {
+  billed_user_id: string;
   billable_cents: string;
   created_at: string;
   event_type: string;
@@ -74,6 +75,7 @@ export type BillingAccountView = {
 };
 
 export type UsageEventView = {
+  billedUserId: string;
   billableCents: number;
   createdAt: string;
   eventType: string;
@@ -192,6 +194,7 @@ type BillingPaymentRecord = {
 };
 
 export type UsageEventInput = {
+  billedUserId: string;
   billableCents?: number;
   eventType: string;
   idempotencyKey: string;
@@ -349,6 +352,7 @@ function mapBillingAccount(row: BillingAccountRecord): BillingAccountView {
 
 function mapUsageEvent(row: UsageEventRecord): UsageEventView {
   return {
+    billedUserId: row.billed_user_id,
     billableCents: parseNumericString(row.billable_cents),
     createdAt: row.created_at,
     eventType: row.event_type,
@@ -451,7 +455,7 @@ function mapPricing(row: {
 
 type UsageEventConflictComparable = Pick<
   UsageEventInput,
-  "billableCents" | "eventType" | "modality" | "nodeRunId" | "workflowRunId"
+  "billableCents" | "billedUserId" | "eventType" | "modality" | "nodeRunId" | "workflowRunId"
 >;
 
 type LedgerConflictComparable = {
@@ -470,6 +474,7 @@ function assertUsageEventConflictSafe(
   input: UsageEventConflictComparable,
 ): void {
   if (
+    existing.billedUserId !== input.billedUserId ||
     existing.eventType !== input.eventType ||
     existing.modality !== input.modality ||
     existing.workflowRunId !== (input.workflowRunId ?? null) ||
@@ -700,6 +705,9 @@ export class BillingService {
           `,
           [account.id, input.amountCents],
         );
+        await this.refundCreditReservations(client, tenantId, {
+          reserveLedgerId: this.resolveReserveLedgerId(input.metadata),
+        });
       },
       billingAccountId: account.id,
       currency: input.currency ?? account.currency,
@@ -1089,6 +1097,7 @@ export class BillingService {
           SELECT
             id::text AS id,
             tenant_id::text AS tenant_id,
+            billed_user_id::text AS billed_user_id,
             workflow_run_id::text AS workflow_run_id,
             node_run_id::text AS node_run_id,
             provider_id::text AS provider_id,
@@ -1638,6 +1647,7 @@ export class BillingService {
       `
         INSERT INTO usage_events (
           tenant_id,
+          billed_user_id,
           workflow_run_id,
           node_run_id,
           provider_id,
@@ -1664,24 +1674,26 @@ export class BillingService {
           $4::uuid,
           $5::uuid,
           $6::uuid,
-          $7,
+          $7::uuid,
           $8,
           $9,
           $10,
-          $11::int,
+          $11,
           $12::int,
           $13::int,
-          $14::numeric(18, 6),
-          $15,
-          $16::numeric(18, 8),
-          $17::numeric,
-          $18::jsonb,
-          COALESCE($19::timestamptz, now())
+          $14::int,
+          $15::numeric(18, 6),
+          $16,
+          $17::numeric(18, 8),
+          $18::numeric,
+          $19::jsonb,
+          COALESCE($20::timestamptz, now())
         )
         ON CONFLICT (tenant_id, idempotency_key) DO NOTHING
         RETURNING
           id::text AS id,
           tenant_id::text AS tenant_id,
+          billed_user_id::text AS billed_user_id,
           workflow_run_id::text AS workflow_run_id,
           node_run_id::text AS node_run_id,
           provider_id::text AS provider_id,
@@ -1704,6 +1716,7 @@ export class BillingService {
       `,
       [
         tenantId,
+        input.billedUserId,
         input.workflowRunId ?? null,
         input.nodeRunId ?? null,
         input.providerId ?? null,
@@ -1832,6 +1845,7 @@ export class BillingService {
         SELECT
           id::text AS id,
           tenant_id::text AS tenant_id,
+          billed_user_id::text AS billed_user_id,
           workflow_run_id::text AS workflow_run_id,
           node_run_id::text AS node_run_id,
           provider_id::text AS provider_id,
@@ -1908,6 +1922,7 @@ export class BillingService {
         SELECT
           id::text AS id,
           tenant_id::text AS tenant_id,
+          billed_user_id::text AS billed_user_id,
           workflow_run_id::text AS workflow_run_id,
           node_run_id::text AS node_run_id,
           provider_id::text AS provider_id,

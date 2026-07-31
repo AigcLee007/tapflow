@@ -1,7 +1,79 @@
 ﻿# Project Record
 
-Last updated: 2026-07-27
+Last updated: 2026-07-31
 Maintainers: project team + Codex sessions
+
+## 2026-07-31 - Billing Recharge Page Chinese Localization
+
+- completed the creator-facing `/billing` localization in the existing billing components: personal-wallet title and description, balance cards, recharge plans, payment statuses, QR-code alternative text, redeem-code copy, activity labels, and recoverable error messages are now in simplified Chinese;
+- kept payment checkout, polling, QR display conditions, balance refresh, API fields, status enums, pricing, and layout unchanged; English server errors are no longer rendered directly in the redeem flow;
+- validation passed: `npx vitest run src/billing/BillingCenterPage.test.tsx src/billing/PaymentStatusPanel.test.tsx src/billing/RedeemCodeBox.test.tsx src/billing/billingActivity.test.ts` and `npm run build`.
+
+## 2026-07-30 - Legacy Reservation Reconciliation Guard
+
+- added a guarded, idempotent `personal-wallet-reconciliation-cli` for the legacy cutover gate;
+- terminal failed/canceled reservations are released through the existing billing refund ledger path, while positive orphan grant counters receive a zero-amount reconciliation ledger record and deterministic counter repair;
+- fixed the legacy refund path so future refunds also release linked credit reservations;
+- server diagnostics confirmed 32 terminal failed reservations totaling 101.2 credits and one orphan grant counter totaling 200 credits; the guarded write remains to be run on the server after this release is deployed.
+- the deployed reconciliation dry run later identified 28 terminal reservations (92 credits) and 4 non-terminal reservations (9.2 credits); force-cancel mode now requires the explicit `--cancel-non-terminal` flag and records `workflow.run.canceled` events before refunding all reservations.
+
+## 2026-07-30 - Supabase Personal-Wallet Schema Acceptance
+
+- applied and verified `000044_wallet_payment_checkout_functions.sql` in Supabase SQL Editor with checksum `3afb70679f0431512eca2a63948bdc26d443516dd9442e9cf435b3a56ba7369a`; `app.create_wallet_payment(uuid,text,text,text)` is present.
+- applied and verified `000045_personal_wallet_accounting_hardening.sql` with checksum `c433a9ef27dee1b70ec9ab9a20daa0dc2221f68952bc43cc9a546e6f53aec3ee`; `app.wallet_redeem_code(uuid,uuid,text,text,jsonb)` is present.
+- post-migration role verification reported zero current-user temporary callback memberships and one safe `supabase_admin` managed membership (`ADMIN TRUE`, `INHERIT FALSE`, `SET FALSE`). Migrations `000044` and `000045` are now immutable and accepted on staging.
+- the personal-wallet data cutover remains blocked until the known 301.2 legacy reserved credits are reconciled and a dry run reports zero active reservations, no owner exceptions, and matched source/target totals. `PAYMENTS_ENABLED` remains false and the Worker remains stopped during this gate.
+
+## 2026-07-29 - XunhuPay Personal Wallet Verification
+
+- completed verification for the personal-wallet payment implementation: DB, API, Worker, and frontend builds passed; focused DB/API/Worker and billing/admin frontend tests passed.
+- the full root test suite still reports unrelated legacy asset, storage, AI Gateway multipart, and Three.js/ResizeObserver environment failures; no payment or wallet migration failures were observed.
+- server-side payment secrets remain confined to the API payment module. Migrations `000044` and `000045` have not yet been applied to Supabase; live payment acceptance remains pending merchant callback configuration and SQL Editor execution.
+- live Supabase diagnostics identified the remaining managed-role incompatibility: PostgreSQL 17.6 records the automatic `tapflow_wallet_callback -> postgres` membership with grantor `supabase_admin`, `ADMIN TRUE`, `INHERIT FALSE`, and `SET FALSE`. Rewriting that managed membership terminated Transaction Pooler, Session Pooler, and SQL Editor connections.
+- a rolled-back SQL Editor probe confirmed that a separate current-grantor `SET TRUE` membership can switch to the callback role successfully. Migrations `000044` and `000045` now add that narrowly scoped grant and revoke it with `GRANTED BY CURRENT_USER`, preserving the Supabase-managed membership unchanged.
+- Supabase SQL Editor successfully applied and verified `000044` with checksum `3afb70679f0431512eca2a63948bdc26d443516dd9442e9cf435b3a56ba7369a`; `app.create_wallet_payment(uuid,text,text,text)` is present. This applied migration is now immutable.
+- the first `000045` execution rolled back on `permission denied for function wallet_reserve` because function ACL changes ran after `RESET ROLE`. A rolled-back live probe confirmed that the callback owner can revoke `PUBLIC` execution and grant execution to `SESSION_USER`. The still-unapplied `000045` now performs all callback-owned function ACL changes before resetting the role; live re-execution remains pending.
+
+## 2026-07-28 - Supabase Wallet Migration 44/45 Compatibility
+
+- staging recorded migrations `000042` and `000043`, but the original `000044` role/ownership handoff terminated through the runtime Supabase Transaction Pooler on port 6543, the Session Pooler on port 5432, and the Supabase SQL Editor. The Direct database hostname resolved IPv6-only from the deployment server, which has no IPv6 route and returned `ENETUNREACH`.
+- revised only the still-unapplied `000044` and `000045` migrations for PostgreSQL 17 managed-role compatibility. Each migration creates a separate current-grantor `SET TRUE` callback membership inside its transaction, uses `SET LOCAL ROLE tapflow_wallet_callback` to define callback-owned `SECURITY DEFINER` functions, then revokes only that current-grantor membership after resetting the role and removing callback schema-create access.
+- retained `PUBLIC` execution revokes and explicit migration/API-role execution grants. The no-login callback owner continues to execute financial operations under forced RLS, including the internal per-user expiry call made by wallet reserve.
+- added a focused SQL regression for role-switch ordering, callback ownership by creation, function execution ACLs, and final safe membership restoration. Live acceptance remains pending: deploy the committed source first, then apply checksum-matched SQL Editor bundles separately in `000044` then `000045` order if server database paths remain unavailable.
+- personal-wallet write mode remains blocked by 301.2 legacy reserved credits until reconciliation and a clean dry run report matched totals with no active reservations.
+
+## 2026-07-28 - Supabase Migration Connection Implementation
+
+- implemented the tools-profile `tapflow-migrator` boundary so Supabase Direct/Session credentials are available only to one-shot database CLIs; API and Worker remain on Transaction Pooler port 6543.
+- added a static Compose regression that verifies `MIGRATION_DATABASE_URL` never enters shared, API, or Worker configuration, plus placeholder-only Compose rendering inputs.
+- updated staging and production deployment references with the port 5432 migration connection, compiled schema/wallet commands, Worker shutdown gate, and credential-handling rules.
+- local verification passed: focused Compose tests (2), DB tests (20 passed and 33 database-dependent skips without local `DATABASE_URL`), Compose rendering, DB/API/Worker package builds, and the root production build. Existing Browserslist, dynamic-import, and chunk-size warnings remain unchanged.
+- live acceptance of migrations `000044` and `000045` remains pending server configuration of `MIGRATION_DATABASE_URL`. Personal-wallet write mode remains blocked until the 301.2 legacy reserved credits are reconciled and the wallet dry run reports zero active reservations with matched totals.
+
+## 2026-07-28 - Supabase Migration Connection Design
+
+- staging diagnostics confirmed `DATABASE_URL` uses the Supabase transaction pooler on port 6543, which terminates the role and function-ownership DDL in migration `000044`; migrations `000042` and `000043` are recorded, while `000044` and `000045` remain unapplied.
+- approved a separate `MIGRATION_DATABASE_URL` backed by Supabase Direct or Session Pooler port 5432 and a one-shot Compose `tapflow-migrator` tools-profile service. The direct credential will not enter long-running API or Worker containers, while local development continues to use the existing `DATABASE_URL` flow.
+- recorded the design in `docs/superpowers/specs/2026-07-28-supabase-migration-connection-design.md`. Legacy reservation reconciliation remains a separate gate: staging currently has 301.2 credits marked reserved in grants, including 101.2 credits tied to 32 terminal failed reservations and 200 credits without matching active reservation rows.
+
+## 2026-07-27 - XunhuPay Personal Wallet Implementation In Progress
+
+- implemented schema/RLS, personal-wallet accounting, immutable billed-user workflow ownership, balance migration tooling, signed checkout/callback, expiry sweep, and the initial personal billing UI on branch `codex/xunhupay-personal-wallet`.
+- repaired PostgreSQL 17 `CREATEROLE` handling in `000042_xunhupay_personal_wallet.sql`: staging diagnostics showed that the non-superuser migration account receives PostgreSQL's non-removable bootstrap-superuser membership when it creates `tapflow_wallet_callback`. The final guard now permits only that exact `ADMIN TRUE`, `INHERIT FALSE`, `SET FALSE` automatic grant and still rejects every inheritable, settable, foreign, or differently granted membership. A failed staging attempt rolled back cleanly (`MEMBERSHIPS=[]`, wallet tables absent, migration unrecorded); a server rerun is still required.
+- hardened both idle and checked-out PostgreSQL connection handling after Supabase terminated migration sessions between committed migrations. Staging confirmed migrations `000042` and `000043` were safely recorded before the first disconnect; a second run proved the disconnect can occur while `pg-pool` has removed its idle listener from a borrowed Client. `runMigrations` now owns a checked-out Client listener, logs only sanitized error fields, and destroys the failed connection on release so later migrations can acquire a replacement connection.
+- repaired the mobile XunhuPay return path: each new checkout now adds its opaque `paymentId` to the configured billing return URL, allowing `/billing` to resume bounded, server-authoritative status polling after the provider redirect; an invalid configured return URL becomes a safe server configuration error.
+- completed creator-facing activity labels for the new wallet ledger entries: historical migration credit is positive, while expiry and payment refund have explicit labels.
+- completed the remaining local admin/payment UX safeguards:
+  - administrators can now edit and persist recharge-plan display ordering;
+  - the admin payment list exposes a server-derived `eligible` flag only when the corresponding paid grant remains entirely unused and unreserved; the UI requires that flag and a non-empty reason before enabling a refund;
+  - checkout QR codes render on desktop only, while mobile remains redirect-based; the panel also safely handles environments without `matchMedia`;
+  - bounded payment polling is covered by a regression test that stops after 20 attempts.
+- current work also includes XunhuPay query/refund transport, platform payment routes, reconciler scheduling, and payment observability. These changes remain un-deployed and real merchant payment/refund acceptance has not been performed.
+- corrected the remaining redeem path so redeemed credits now enter the personal wallet ledger rather than the legacy tenant billing ledger; focused API regression coverage verifies the cutover.
+- staging cutover remains gated by database backup, a clean migration dry run, worker shutdown, and explicit merchant credentials configured only in `/opt/aittco/env/tapflow.staging.env`.
+- local compiled migration dry-run was attempted on 2026-07-27 and stopped safely before any database access because `DATABASE_URL` is not configured in this workspace. Staging evidence is still required for migration totals and payment acceptance.
+- focused local regressions for the return and activity repairs passed: `npm run test --workspace @aigc-flow/api -- xunhu-client.test.ts` (5 tests) and `npm test -- src/billing/billingActivity.test.ts` (3 tests).
+- current local validation also passed package builds for DB, Redis, API, Worker, and frontend; full DB/API/Worker test suites; and focused payment UI tests. DB-backed acceptance remains skipped locally without `DATABASE_URL`.
 
 ## 2026-07-27 - XunhuPay Personal Wallet Approved Design
 
@@ -5813,3 +5885,40 @@ Validation completed:
 - a 1600px desktop viewport now renders four columns, while narrower available areas reduce the column count instead of compressing cards.
 - card rendering, prompt media behavior, WebP derivatives, and dedicated server-directory persistence are unchanged.
 - no database migration or environment-variable changes were required.
+
+## 2026-07-30 - XunhuPay Billing Runtime Fixes
+
+- fixed the personal-wallet summary query by replacing the PostgreSQL-reserved `grant` alias with `credit_grant`.
+- added migration `000046_wallet_runtime_acl.sql` to grant wallet/payment function execution to the runtime API role when the migration connection uses a separate Supabase role.
+- added `API_DATABASE_ROLE` to the migrator-only Compose environment and staging/production deployment documentation.
+- validation passed: DB tests 28 passed / 34 skipped, API payment tests 5 passed / 3 skipped, Worker tests 66 passed / 16 skipped, DB/API/Worker builds passed.
+- staging smoke exposed a second PostgreSQL ACL gap (`permission denied for table billing_recharge_plans`) during checkout creation.
+- added migration `000047_wallet_checkout_table_acl.sql` to reassert the callback-owner table privileges required by checkout functions; focused migration SQL tests pass after observing the expected red failure first.
+- staging metadata diagnostics confirmed the checkout function owner, `SECURITY DEFINER` flag, execute ACL, and recharge-plan `SELECT` ACL were correct; the remaining denial came from `SELECT ... FOR SHARE`, which also requires table `UPDATE` privilege.
+- added migration `000048_wallet_checkout_plan_lock.sql` to remove the unnecessary recharge-plan row lock while keeping administrator-managed plan updates inaccessible to the callback role.
+- the first successful real checkout exposed an application-side reconciliation query error (`column reference "id" is ambiguous`) in joined admin payment reads.
+- qualified every selected payment column in `billing_wallet_payments JOIN users` queries so the reconciler can inspect and settle pending XunhuPay orders; this fix requires an API rebuild and no database migration.
+- after reconciliation reached provider-confirmed paid orders, staging exposed an RLS failure on `billing_wallet_ledger` caused by `INSERT ... RETURNING id` requiring callback SELECT visibility.
+- added migration `000049_wallet_payment_ledger_insert.sql` to pre-generate the immutable ledger UUID and insert it directly, preserving the callback role's no-browse ledger boundary while allowing paid orders to credit atomically.
+
+## 2026-07-31 - XunhuPay Wallet Balance Reconciliation
+
+- traced successful payment ledger rows with an unchanged wallet total to PostgreSQL RLS: callback-owned mutators had an `UPDATE` policy on `billing_wallets`, but no callback `SELECT` policy, so wallet updates silently affected zero visible rows.
+- added migration `000050_wallet_balance_reconciliation.sql` to grant the isolated callback role wallet-row visibility and rebuild cached wallet balance/reserved totals from authoritative credit-grant batches.
+- aligned the billing activity frontend with the personal-wallet ledger response field `amountCredits`, so recharge entries display their actual `+100` and `+700` changes.
+- added focused regression coverage for both the callback wallet policy/reconciliation and the personal-wallet ledger field mapping.
+- staging acceptance confirmed migration `000050` is recorded, the wallet total is `19410.2`, reserved credits are `0`, and the two paid orders display `+100` and `+700` ledger changes.
+
+## 2026-07-31 - Global Redeem Codes and Billing Admin
+
+- added migration `000051_global_redeem_code_scope.sql` so redeem-code lookup no longer filters by `tenant_id`; old and new codes can be redeemed from any workspace while `billing_redeem_code_redemptions.tenant_id` continues to record the workspace where redemption occurred.
+- changed super-admin code creation so an omitted `tenantId` creates a platform-global code (`tenant_id = NULL`), while explicit tenant ownership remains available for compatibility and auditing.
+- added structured redeem-error localization for not-found, inactive, expired, exhausted, and already-redeemed codes; unknown server errors continue to use a safe Chinese fallback.
+- renamed the super-admin entry and panel to `充值套餐与支付`, localized its controls, and clarified that plan edits affect new orders only because paid orders retain commercial snapshots.
+- validation:
+  - focused redeem, payment-panel, API scope, and migration tests passed: 11 assertions passed and 1 database-backed integration test skipped.
+  - `npm run test --workspace @aigc-flow/db` passed: 34 tests passed and 34 database-backed tests skipped because no test database was configured.
+  - `npm run test --workspace @aigc-flow/api` passed: 242 tests passed and 120 database-backed tests skipped for the same reason.
+  - `npm run build --workspace @aigc-flow/api` passed, including database and AI Gateway dependency builds.
+  - `npm run build` passed with the existing Browserslist age, mixed dynamic/static import, and chunk-size warnings.
+  - the full root `npm test -- --reporter=dot` remains red with 26 unrelated existing failures in legacy asset migration fixtures, Three.js tests missing `ResizeObserver`, Canvas Agent integration expectations, and AI Gateway multipart tests under the current Node runtime; all task-focused suites above pass independently.
