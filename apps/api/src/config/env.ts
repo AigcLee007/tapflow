@@ -21,6 +21,9 @@ export type ApiEnv = {
   apiRateLimitWindowMs?: number;
   authRateLimitMax?: number;
   authRateLimitWindowMs?: number;
+  brevoApiKey?: string;
+  brevoFromEmail?: string;
+  brevoFromName?: string;
   corsAllowedOrigins?: string[];
   credentialKeyVersion: string;
   credentialMasterKey: string;
@@ -230,6 +233,9 @@ export function getApiEnv(): ApiEnv {
     process.env.AUTH_RATE_LIMIT_WINDOW_MS,
     DEV_AUTH_RATE_LIMIT_WINDOW_MS,
   );
+  const brevoApiKey = process.env.BREVO_API_KEY?.trim() || "";
+  const brevoFromEmail = process.env.BREVO_FROM_EMAIL?.trim() || "";
+  const brevoFromName = process.env.BREVO_FROM_NAME?.trim() || "";
   const accessTokenTtlSeconds = parsePositiveIntegerEnv(
     "ACCESS_TOKEN_TTL_SECONDS",
     process.env.ACCESS_TOKEN_TTL_SECONDS,
@@ -265,6 +271,18 @@ export function getApiEnv(): ApiEnv {
 
   if (isProduction && corsAllowedOrigins.length === 0) {
     throw new Error("CORS_ALLOWED_ORIGINS is required to start the v2 API in production");
+  }
+
+  if (isProduction && !brevoApiKey) {
+    throw new Error("BREVO_API_KEY is required to start the v2 API in production");
+  }
+
+  if (isProduction && !brevoFromEmail) {
+    throw new Error("BREVO_FROM_EMAIL is required to start the v2 API in production");
+  }
+
+  if (isProduction && !brevoFromName) {
+    throw new Error("BREVO_FROM_NAME is required to start the v2 API in production");
   }
 
   if (!jwtAccessSecret) {
@@ -345,6 +363,9 @@ export function getApiEnv(): ApiEnv {
     apiRateLimitWindowMs,
     authRateLimitMax,
     authRateLimitWindowMs,
+    brevoApiKey,
+    brevoFromEmail,
+    brevoFromName,
     corsAllowedOrigins,
     credentialKeyVersion,
     credentialMasterKey,

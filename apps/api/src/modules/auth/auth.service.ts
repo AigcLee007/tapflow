@@ -5,10 +5,13 @@ import type { Pool, PoolClient } from "pg";
 
 import type { ApiEnv } from "../../config/env.js";
 import type { RequestContext } from "../../http/request-context.js";
+import type { AuthEmailSender } from "./auth-email-sender.js";
 import type {
   LoginInput,
   RefreshInput,
   RegisterInput,
+  ResendEmailInput,
+  VerifyEmailInput,
 } from "./auth.schemas.js";
 import { hashPassword, verifyPassword } from "./password.js";
 import {
@@ -21,6 +24,20 @@ import {
   signAccessToken,
   verifyAccessToken,
 } from "./token.js";
+import {
+  EMAIL_CODE_MAX_ATTEMPTS,
+  EMAIL_CODE_RESEND_COOLDOWN_SECONDS,
+  EMAIL_CODE_TTL_SECONDS,
+  TRUSTED_DEVICE_TTL_SECONDS,
+  generateNumericCode,
+  generateOpaqueToken,
+  hashDeviceFingerprint,
+  hashIpNetwork,
+  hashOpaqueToken,
+  hashVerificationCode,
+  maskEmail,
+  verificationCodeMatches,
+} from "./auth-verification.js";
 
 type PgPool = Pool;
 type PgClient = PoolClient;
@@ -167,12 +184,194 @@ async function withAuthContextTransaction<T>(
 }
 
 export class AuthService {
+  readonly authEmailSender: AuthEmailSender;
   readonly env: ApiEnv;
   readonly pool: PgPool;
 
-  constructor(options: { env: ApiEnv; pool?: PgPool }) {
+  constructor(options: { authEmailSender: AuthEmailSender; env: ApiEnv; pool?: PgPool }) {
+    this.authEmailSender = options.authEmailSender;
     this.env = options.env;
     this.pool = options.pool ?? createPgPool();
+  }
+
+  private async createSessionRecords(
+    client: PgClient,
+    userId: string,
+    tenantId: string | null,
+    metadata: SessionMetadata,
+  ): Promise<{ refreshToken: string; sessionId: string }> {
+    const sessionId = randomUUID();
+    const refreshTokenId = randomUUID();
+    const refreshToken = generateRefreshToken();
+
+    await client.query(
+      `
+        INSERT INTO auth_sessions (
+          id,
+          user_id,
+          tenant_id,
+          status,
+          user_agent,
+          ip_hash,
+          expires_at
+        )
+        VALUES ($1::uuid, $2::uuid, $3::uuid, 'active', $4, $5, now() + ($6 || ' seconds')::interval)
+      `,
+      [
+        sessionId,
+        userId,
+        tenantId,
+        metadata.userAgent ?? null,
+        hashIpAddress(metadata.ipAddress),
+        String(this.env.refreshTokenTtlSeconds),
+      ],
+    );
+
+    await client.query(
+      `
+        INSERT INTO refresh_tokens (
+          id,
+          session_id,
+          user_id,
+          token_hash,
+          expires_at
+        )
+        VALUES ($1::uuid, $2::uuid, $3::uuid, $4, now() + ($5 || ' seconds')::interval)
+      `,
+      [
+        refreshTokenId,
+        sessionId,
+        userId,
+        hashRefreshToken(refreshToken),
+        String(this.env.refreshTokenTtlSeconds),
+      ],
+    );
+
+    return { refreshToken, sessionId };
+  }
+
+  private async buildTokensResponse(input: {
+    refreshToken: string;
+    sessionId: string;
+    tenantId: string | null;
+    userId: string;
+  }) {
+    const records = await withAuthContextTransaction(
+      this.pool,
+      { tenantId: input.tenantId, userId: input.userId },
+      async (client) => {
+        const userResult = await client.query<{
+          display_name: string | null;
+          email: string;
+          id: string;
+          status: string;
+        }>(
+          `SELECT id::text AS id, email, display_name, status FROM users WHERE id = $1::uuid LIMIT 1`,
+          [input.userId],
+        );
+        const tenantResult = input.tenantId
+          ? await client.query<{
+              id: string;
+              name: string;
+              plan: string;
+              slug: string;
+              status: string;
+            }>(
+              `SELECT id::text AS id, name, slug, plan, status FROM tenants WHERE id = $1::uuid LIMIT 1`,
+              [input.tenantId],
+            )
+          : null;
+        return {
+          tenant: tenantResult?.rows[0] ?? null,
+          user: userResult.rows[0] ?? null,
+        };
+      },
+    );
+
+    if (!records.user || (input.tenantId && !records.tenant)) {
+      throw new AuthApiError(410, "VERIFICATION_EXPIRED", "验证请求已失效，请重新登录");
+    }
+
+    const resolved = await resolvePermissionsForTenant(
+      { tenantId: input.tenantId, userId: input.userId },
+      this.pool,
+    );
+    return {
+      accessToken: await signAccessToken(
+        {
+          sessionId: input.sessionId,
+          tenantId: input.tenantId,
+          userId: input.userId,
+        },
+        this.env,
+      ),
+      currentTenant: records.tenant ? mapTenant(records.tenant) : null,
+      permissions: resolved.permissions,
+      refreshToken: input.refreshToken,
+      user: mapUser(records.user),
+    };
+  }
+
+  private async createEmailChallenge(input: {
+    email: string;
+    purpose: "email_verification" | "login_device_verification";
+    reason: "email_unverified" | "new_device" | "trust_expired" | "anomalous_login";
+    tenantId: string;
+    userId: string;
+  }) {
+    const challengeId = randomUUID();
+    const challengeToken = generateOpaqueToken();
+    const code = generateNumericCode();
+    await withAuthContextTransaction(
+      this.pool,
+      { tenantId: input.tenantId, userId: input.userId },
+      async (client) => {
+        await client.query(
+          `
+            INSERT INTO auth_email_challenges (
+              id, user_id, tenant_id, purpose, reason, challenge_token_hash,
+              code_hash, attempts_remaining, last_sent_at, expires_at, updated_at
+            )
+            VALUES (
+              $1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, now(),
+              now() + ($9 || ' seconds')::interval, now()
+            )
+          `,
+          [
+            challengeId,
+            input.userId,
+            input.tenantId,
+            input.purpose,
+            input.reason,
+            hashOpaqueToken(challengeToken),
+            hashVerificationCode(challengeId, code, this.env.jwtRefreshSecret),
+            EMAIL_CODE_MAX_ATTEMPTS,
+            String(EMAIL_CODE_TTL_SECONDS),
+          ],
+        );
+      },
+    );
+    try {
+      await this.authEmailSender.sendVerificationCode({
+        code,
+        email: input.email,
+        expiresInMinutes: EMAIL_CODE_TTL_SECONDS / 60,
+      });
+    } catch {
+      throw new AuthApiError(
+        503,
+        "EMAIL_DELIVERY_FAILED",
+        "验证码邮件发送失败，请稍后重试",
+      );
+    }
+    return {
+      challengeToken,
+      emailMasked: maskEmail(input.email),
+      expiresInSeconds: EMAIL_CODE_TTL_SECONDS,
+      reason: input.reason,
+      resendAvailableInSeconds: EMAIL_CODE_RESEND_COOLDOWN_SECONDS,
+      status: "verification_required" as const,
+    };
   }
 
   async authenticateAccessToken(token: string): Promise<AuthenticatedIdentity | null> {
@@ -244,13 +443,19 @@ export class AuthService {
   async register(input: RegisterInput, metadata: SessionMetadata) {
     const userId = randomUUID();
     const tenantId = randomUUID();
-    const sessionId = randomUUID();
-    const refreshTokenId = randomUUID();
-    const refreshToken = generateRefreshToken();
-    const refreshTokenHash = hashRefreshToken(refreshToken);
+    const challengeId = randomUUID();
+    const challengeToken = generateOpaqueToken();
+    const code = generateNumericCode();
+    const normalizedEmail = input.email.trim().toLowerCase();
     const passwordHash = await hashPassword(input.password);
     const tenantName = getDefaultTenantName(input);
     const tenantSlug = buildTenantSlug(tenantName);
+    const challengeTokenHash = hashOpaqueToken(challengeToken);
+    const codeHash = hashVerificationCode(
+      challengeId,
+      code,
+      this.env.jwtRefreshSecret,
+    );
 
     try {
       const result = await withTenantTransaction(
@@ -267,7 +472,7 @@ export class AuthService {
               VALUES ($1::uuid, $2, $3, $4, now())
               RETURNING id::text AS id, email, display_name, status
             `,
-            [userId, input.email, input.displayName?.trim() ?? null, passwordHash],
+            [userId, normalizedEmail, input.displayName?.trim() ?? null, passwordHash],
           );
 
           const tenant = await client.query<{
@@ -302,44 +507,41 @@ export class AuthService {
 
           await client.query(
             `
-              INSERT INTO auth_sessions (
+              INSERT INTO auth_email_challenges (
                 id,
                 user_id,
                 tenant_id,
-                status,
-                user_agent,
-                ip_hash,
-                expires_at
+                purpose,
+                reason,
+                challenge_token_hash,
+                code_hash,
+                attempts_remaining,
+                last_sent_at,
+                expires_at,
+                updated_at
               )
-              VALUES ($1::uuid, $2::uuid, $3::uuid, 'active', $4, $5, now() + ($6 || ' seconds')::interval)
+              VALUES (
+                $1::uuid,
+                $2::uuid,
+                $3::uuid,
+                'registration',
+                'email_unverified',
+                $4,
+                $5,
+                $6,
+                now(),
+                now() + ($7 || ' seconds')::interval,
+                now()
+              )
             `,
             [
-              sessionId,
+              challengeId,
               userId,
               tenantId,
-              metadata.userAgent ?? null,
-              hashIpAddress(metadata.ipAddress),
-              String(this.env.refreshTokenTtlSeconds),
-            ],
-          );
-
-          await client.query(
-            `
-              INSERT INTO refresh_tokens (
-                id,
-                session_id,
-                user_id,
-                token_hash,
-                expires_at
-              )
-              VALUES ($1::uuid, $2::uuid, $3::uuid, $4, now() + ($5 || ' seconds')::interval)
-            `,
-            [
-              refreshTokenId,
-              sessionId,
-              userId,
-              refreshTokenHash,
-              String(this.env.refreshTokenTtlSeconds),
+              challengeTokenHash,
+              codeHash,
+              EMAIL_CODE_MAX_ATTEMPTS,
+              String(EMAIL_CODE_TTL_SECONDS),
             ],
           );
 
@@ -351,33 +553,34 @@ export class AuthService {
         this.pool,
       );
 
-      const response = {
-        accessToken: await signAccessToken(
-          {
-            sessionId,
-            tenantId,
-            userId,
-          },
-          this.env,
-        ),
-        currentTenant: result.currentTenant,
-        refreshToken,
-        user: result.user,
-      };
+      try {
+        await this.authEmailSender.sendVerificationCode({
+          code,
+          email: normalizedEmail,
+          expiresInMinutes: EMAIL_CODE_TTL_SECONDS / 60,
+        });
+      } catch {
+        throw new AuthApiError(
+          503,
+          "EMAIL_DELIVERY_FAILED",
+          "验证码邮件发送失败，请稍后重试",
+        );
+      }
 
       await safeRecordAuditLog(
         {
-          action: "auth.register",
+          action: "auth.register_verification_requested",
           actorType: "user",
           actorUserId: result.user.id,
           ipHash: metadata.ipHash ?? hashIpAddress(metadata.ipAddress),
           metadata: {
-            sessionId,
+            challengeId,
+            reason: "email_unverified",
             tenantId: result.currentTenant.id,
           },
           requestId: metadata.requestId,
-          resourceId: result.user.id,
-          resourceType: "user",
+          resourceId: challengeId,
+          resourceType: "auth_email_challenge",
           tenantId: result.currentTenant.id,
           traceId: metadata.traceId,
           userAgent: metadata.userAgent ?? null,
@@ -387,16 +590,283 @@ export class AuthService {
         },
       );
 
-      return response;
+      return {
+        challengeToken,
+        emailMasked: maskEmail(normalizedEmail),
+        expiresInSeconds: EMAIL_CODE_TTL_SECONDS,
+        reason: "email_unverified" as const,
+        resendAvailableInSeconds: EMAIL_CODE_RESEND_COOLDOWN_SECONDS,
+        status: "verification_required" as const,
+      };
     } catch (error) {
       this.rethrowKnownDatabaseError(error, "注册账号失败，请稍后重试");
     }
+  }
+
+  async verifyEmail(input: VerifyEmailInput, metadata: SessionMetadata) {
+    const client = await this.pool.connect();
+    const trustedDeviceToken = generateOpaqueToken();
+    let sessionRecords: { refreshToken: string; sessionId: string } | null = null;
+    let verifiedIdentity: { tenantId: string | null; userId: string } | null = null;
+
+    try {
+      await client.query("BEGIN");
+      const challengeResult = await client.query<{
+        attempts_remaining: number;
+        code_hash: string;
+        consumed_at: Date | null;
+        email: string;
+        expired: boolean;
+        id: string;
+        tenant_id: string | null;
+        user_id: string;
+      }>(
+        `
+          SELECT
+            challenges.id::text AS id,
+            challenges.user_id::text AS user_id,
+            challenges.tenant_id::text AS tenant_id,
+            challenges.code_hash,
+            challenges.attempts_remaining,
+            challenges.consumed_at,
+            challenges.expires_at <= now() AS expired,
+            users.email
+          FROM auth_email_challenges AS challenges
+          JOIN users ON users.id = challenges.user_id
+          WHERE challenges.challenge_token_hash = $1
+          FOR UPDATE OF challenges
+        `,
+        [hashOpaqueToken(input.challengeToken)],
+      );
+      const challenge = challengeResult.rows[0];
+      if (!challenge || challenge.consumed_at || challenge.expired) {
+        throw new AuthApiError(410, "VERIFICATION_EXPIRED", "验证码已失效，请重新登录");
+      }
+      if (challenge.attempts_remaining <= 0) {
+        throw new AuthApiError(
+          429,
+          "VERIFICATION_ATTEMPTS_EXHAUSTED",
+          "验证码尝试次数已用完，请重新登录",
+        );
+      }
+
+      if (
+        !verificationCodeMatches(
+          challenge.code_hash,
+          challenge.id,
+          input.code,
+          this.env.jwtRefreshSecret,
+        )
+      ) {
+        const attemptsRemaining = challenge.attempts_remaining - 1;
+        await client.query(
+          `UPDATE auth_email_challenges SET attempts_remaining = $2, updated_at = now() WHERE id = $1::uuid`,
+          [challenge.id, attemptsRemaining],
+        );
+        await client.query("COMMIT");
+        throw attemptsRemaining === 0
+          ? new AuthApiError(
+              429,
+              "VERIFICATION_ATTEMPTS_EXHAUSTED",
+              "验证码尝试次数已用完，请重新登录",
+            )
+          : new AuthApiError(400, "VERIFICATION_INVALID", "验证码不正确");
+      }
+
+      await client.query("SELECT set_config('app.tenant_id', $1, true)", [
+        challenge.tenant_id ?? "",
+      ]);
+      await client.query("SELECT set_config('app.user_id', $1, true)", [
+        challenge.user_id,
+      ]);
+      await client.query(
+        `UPDATE auth_email_challenges SET consumed_at = now(), updated_at = now() WHERE id = $1::uuid`,
+        [challenge.id],
+      );
+      await client.query(
+        `
+          UPDATE users
+          SET email_verified_at = COALESCE(email_verified_at, now()),
+              last_login_at = now(),
+              updated_at = now()
+          WHERE id = $1::uuid
+        `,
+        [challenge.user_id],
+      );
+
+      sessionRecords = await this.createSessionRecords(
+        client,
+        challenge.user_id,
+        challenge.tenant_id,
+        metadata,
+      );
+      await client.query(
+        `
+          INSERT INTO auth_trusted_devices (
+            user_id,
+            token_hash,
+            user_agent_fingerprint_hash,
+            ip_network_hash,
+            trusted_until,
+            updated_at
+          )
+          VALUES ($1::uuid, $2, $3, $4, now() + ($5 || ' seconds')::interval, now())
+        `,
+        [
+          challenge.user_id,
+          hashOpaqueToken(trustedDeviceToken),
+          hashDeviceFingerprint(metadata.userAgent, this.env.jwtRefreshSecret),
+          hashIpNetwork(metadata.ipAddress, this.env.jwtRefreshSecret),
+          String(TRUSTED_DEVICE_TTL_SECONDS),
+        ],
+      );
+      verifiedIdentity = {
+        tenantId: challenge.tenant_id,
+        userId: challenge.user_id,
+      };
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    if (!sessionRecords || !verifiedIdentity) {
+      throw new Error("Verification transaction completed without a session");
+    }
+    return {
+      ...(await this.buildTokensResponse({
+        ...sessionRecords,
+        ...verifiedIdentity,
+      })),
+      trustedDeviceToken,
+    };
+  }
+
+  async resendEmail(input: ResendEmailInput) {
+    const client = await this.pool.connect();
+    let code = generateNumericCode();
+    let delivery: { email: string; emailMasked: string; reason: string } | null = null;
+
+    try {
+      await client.query("BEGIN");
+      const challengeResult = await client.query<{
+        code_hash: string;
+        consumed_at: Date | null;
+        email: string;
+        expired: boolean;
+        id: string;
+        reason: string;
+        resend_blocked: boolean;
+      }>(
+        `
+          SELECT
+            challenges.id::text AS id,
+            challenges.reason,
+            challenges.code_hash,
+            challenges.consumed_at,
+            challenges.expires_at <= now() AS expired,
+            challenges.last_sent_at + ($2 || ' seconds')::interval > now() AS resend_blocked,
+            users.email
+          FROM auth_email_challenges AS challenges
+          JOIN users ON users.id = challenges.user_id
+          WHERE challenges.challenge_token_hash = $1
+          FOR UPDATE OF challenges
+        `,
+        [
+          hashOpaqueToken(input.challengeToken),
+          String(EMAIL_CODE_RESEND_COOLDOWN_SECONDS),
+        ],
+      );
+      const challenge = challengeResult.rows[0];
+      if (!challenge || challenge.consumed_at || challenge.expired) {
+        throw new AuthApiError(410, "VERIFICATION_EXPIRED", "验证请求已失效，请重新登录");
+      }
+      if (challenge.resend_blocked) {
+        throw new AuthApiError(
+          429,
+          "VERIFICATION_RESEND_COOLDOWN",
+          "验证码发送过于频繁，请稍后重试",
+        );
+      }
+
+
+      let nextCodeHash = hashVerificationCode(
+        challenge.id,
+        code,
+        this.env.jwtRefreshSecret,
+      );
+      while (nextCodeHash === challenge.code_hash) {
+        code = generateNumericCode();
+        nextCodeHash = hashVerificationCode(
+          challenge.id,
+          code,
+          this.env.jwtRefreshSecret,
+        );
+      }
+
+      await client.query(
+        `
+          UPDATE auth_email_challenges
+          SET code_hash = $2,
+              attempts_remaining = $3,
+              last_sent_at = now(),
+              expires_at = now() + ($4 || ' seconds')::interval,
+              updated_at = now()
+          WHERE id = $1::uuid
+        `,
+        [
+          challenge.id,
+          nextCodeHash,
+          EMAIL_CODE_MAX_ATTEMPTS,
+          String(EMAIL_CODE_TTL_SECONDS),
+        ],
+      );
+      delivery = {
+        email: challenge.email,
+        emailMasked: maskEmail(challenge.email),
+        reason: challenge.reason,
+      };
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    if (!delivery) {
+      throw new Error("Resend transaction completed without a delivery target");
+    }
+    try {
+      await this.authEmailSender.sendVerificationCode({
+        code,
+        email: delivery.email,
+        expiresInMinutes: EMAIL_CODE_TTL_SECONDS / 60,
+      });
+    } catch {
+      throw new AuthApiError(
+        503,
+        "EMAIL_DELIVERY_FAILED",
+        "验证码邮件发送失败，请稍后重试",
+      );
+    }
+    return {
+      challengeToken: input.challengeToken,
+      emailMasked: delivery.emailMasked,
+      expiresInSeconds: EMAIL_CODE_TTL_SECONDS,
+      reason: delivery.reason,
+      resendAvailableInSeconds: EMAIL_CODE_RESEND_COOLDOWN_SECONDS,
+      status: "verification_required" as const,
+    };
   }
 
   async login(input: LoginInput, metadata: SessionMetadata) {
     const userResult = await this.pool.query<{
       display_name: string | null;
       email: string;
+      email_verified_at: Date | null;
       id: string;
       password_hash: string | null;
       status: string;
@@ -405,6 +875,7 @@ export class AuthService {
         SELECT
           id::text AS id,
           email,
+          email_verified_at,
           display_name,
           password_hash,
           status
@@ -412,7 +883,7 @@ export class AuthService {
         WHERE email = $1
         LIMIT 1
       `,
-      [input.email],
+      [input.email.trim().toLowerCase()],
     );
 
     const user = userResult.rows[0];
@@ -447,12 +918,80 @@ export class AuthService {
       status: currentMembership.status,
     };
 
-    const sessionId = randomUUID();
-    const refreshTokenId = randomUUID();
-    const refreshToken = generateRefreshToken();
-    const refreshTokenHash = hashRefreshToken(refreshToken);
+    if (!user.email_verified_at) {
+      return this.createEmailChallenge({
+        email: user.email,
+        purpose: "email_verification",
+        reason: "email_unverified",
+        tenantId: currentTenant.id,
+        userId: user.id,
+      });
+    }
 
-    await withTenantTransaction(
+    const trustedDevice = input.trustedDeviceToken
+      ? await this.pool.query<{
+          ip_network_hash: string | null;
+          revoked_at: Date | null;
+          trusted_until: Date;
+          user_agent_fingerprint_hash: string | null;
+          user_id: string;
+        }>(
+          `
+            SELECT
+              user_id::text AS user_id,
+              user_agent_fingerprint_hash,
+              ip_network_hash,
+              trusted_until,
+              revoked_at
+            FROM auth_trusted_devices
+            WHERE token_hash = $1
+            LIMIT 1
+          `,
+          [hashOpaqueToken(input.trustedDeviceToken)],
+        )
+      : null;
+    const device = trustedDevice?.rows[0] ?? null;
+    let challengeReason:
+      | "new_device"
+      | "trust_expired"
+      | "anomalous_login"
+      | null = null;
+    if (!device || device.user_id !== user.id) {
+      challengeReason = "new_device";
+    } else if (device.revoked_at || device.trusted_until <= new Date()) {
+      challengeReason = "trust_expired";
+    } else {
+      const currentDeviceHash = hashDeviceFingerprint(
+        metadata.userAgent,
+        this.env.jwtRefreshSecret,
+      );
+      const currentNetworkHash = hashIpNetwork(
+        metadata.ipAddress,
+        this.env.jwtRefreshSecret,
+      );
+      if (
+        device.user_agent_fingerprint_hash &&
+        device.ip_network_hash &&
+        currentDeviceHash &&
+        currentNetworkHash &&
+        device.user_agent_fingerprint_hash !== currentDeviceHash &&
+        device.ip_network_hash !== currentNetworkHash
+      ) {
+        challengeReason = "anomalous_login";
+      }
+    }
+
+    if (challengeReason) {
+      return this.createEmailChallenge({
+        email: user.email,
+        purpose: "login_device_verification",
+        reason: challengeReason,
+        tenantId: currentTenant.id,
+        userId: user.id,
+      });
+    }
+
+    const sessionRecords = await withTenantTransaction(
       { tenantId: currentTenant.id, userId: user.id },
       async (client) => {
         await client.query(
@@ -465,73 +1004,24 @@ export class AuthService {
         );
 
         await client.query(
-          `
-            INSERT INTO auth_sessions (
-              id,
-              user_id,
-              tenant_id,
-              status,
-              user_agent,
-              ip_hash,
-              expires_at
-            )
-            VALUES ($1::uuid, $2::uuid, $3::uuid, 'active', $4, $5, now() + ($6 || ' seconds')::interval)
-          `,
-          [
-            sessionId,
-            user.id,
-            currentTenant.id,
-            metadata.userAgent ?? null,
-            hashIpAddress(metadata.ipAddress),
-            String(this.env.refreshTokenTtlSeconds),
-          ],
+          "UPDATE auth_trusted_devices SET last_seen_at = now(), updated_at = now() WHERE token_hash = $1",
+          [hashOpaqueToken(input.trustedDeviceToken!)],
         );
-
-        await client.query(
-          `
-            INSERT INTO refresh_tokens (
-              id,
-              session_id,
-              user_id,
-              token_hash,
-              expires_at
-            )
-            VALUES ($1::uuid, $2::uuid, $3::uuid, $4, now() + ($5 || ' seconds')::interval)
-          `,
-          [
-            refreshTokenId,
-            sessionId,
-            user.id,
-            refreshTokenHash,
-            String(this.env.refreshTokenTtlSeconds),
-          ],
+        return this.createSessionRecords(
+          client,
+          user.id,
+          currentTenant.id,
+          metadata,
         );
       },
       this.pool,
     );
 
-    const resolved = await resolvePermissionsForTenant(
-      {
-        tenantId: currentTenant.id,
-        userId: user.id,
-      },
-      this.pool,
-    );
-
-    const response = {
-      accessToken: await signAccessToken(
-        {
-          sessionId,
-          tenantId: currentTenant.id,
-          userId: user.id,
-        },
-        this.env,
-      ),
-      currentTenant,
-      permissions: resolved.permissions,
-      refreshToken,
-      user: mapUser(user),
-    };
+    const response = await this.buildTokensResponse({
+      ...sessionRecords,
+      tenantId: currentTenant.id,
+      userId: user.id,
+    });
 
     await safeRecordAuditLog(
       {
@@ -541,10 +1031,10 @@ export class AuthService {
         ipHash: metadata.ipHash ?? hashIpAddress(metadata.ipAddress),
         metadata: {
           roleKey: currentMembership.roleKey,
-          sessionId,
+          sessionId: sessionRecords.sessionId,
         },
         requestId: metadata.requestId,
-        resourceId: sessionId,
+        resourceId: sessionRecords.sessionId,
         resourceType: "auth_session",
         tenantId: currentTenant.id,
         traceId: metadata.traceId,

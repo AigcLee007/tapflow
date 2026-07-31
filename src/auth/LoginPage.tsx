@@ -1,6 +1,8 @@
 import React, { FormEvent, ReactNode, useEffect, useState } from "react";
 
 import { REGISTER_ROUTE, WORKSPACE_ROUTE } from "../app/routes";
+import type { VerificationRequired } from "../services/v2AuthClient";
+import { EmailVerificationStep } from "./EmailVerificationStep";
 import { useAuth } from "./useAuth";
 
 type AuthShellProps = {
@@ -214,11 +216,12 @@ export function AuthSecondaryButton({
 }
 
 export function LoginPage() {
-  const { authenticated, login } = useAuth();
+  const { authenticated, login, resendEmailVerification, verifyEmail } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [challenge, setChallenge] = useState<VerificationRequired | null>(null);
 
   useEffect(() => {
     if (authenticated && typeof window !== "undefined") {
@@ -231,10 +234,14 @@ export function LoginPage() {
     setSubmitting(true);
     setError(null);
     try {
-      await login({
+      const result = await login({
         email,
         password,
       });
+      if (result.status === "verification_required") {
+        setChallenge(result);
+        return;
+      }
       navigate(getReturnTo());
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "登录失败，请稍后重试。");
@@ -243,38 +250,85 @@ export function LoginPage() {
     }
   };
 
+  const handleVerify = async (code: string) => {
+    if (!challenge) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await verifyEmail({ challengeToken: challenge.challengeToken, code });
+      navigate(getReturnTo());
+    } catch (verifyError) {
+      setError(verifyError instanceof Error ? verifyError.message : "验证失败，请重试");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleResend = async () => {
+    if (!challenge) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const nextChallenge = await resendEmailVerification({
+        challengeToken: challenge.challengeToken,
+      });
+      setChallenge(nextChallenge);
+    } catch (resendError) {
+      setError(resendError instanceof Error ? resendError.message : "验证码发送失败，请重试");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <AuthShell
       eyebrow="AI Flow 工作区"
-      heading="登录 TapFlow"
+      heading={challenge ? "验证邮箱" : "登录 TapFlow"}
       intro="进入工作区，继续你的项目、画布和素材。"
       mode="login"
       onSubmit={handleSubmit}
     >
-      <>
-        <AuthErrorMessage message={error} />
-        <AuthField
-          autoComplete="email"
-          label="邮箱"
-          onChange={setEmail}
-          required
-          type="email"
-          value={email}
-        />
-        <AuthField
-          autoComplete="current-password"
-          label="密码"
-          minLength={1}
-          onChange={setPassword}
-          required
-          type="password"
-          value={password}
-        />
-        <AuthPrimaryButton disabled={submitting}>
-          {submitting ? "正在进入..." : "进入工作区"}
-        </AuthPrimaryButton>
-        <AuthSecondaryButton onClick={() => navigate(REGISTER_ROUTE)}>创建账号</AuthSecondaryButton>
-      </>
+      {challenge ? (
+        <>
+          <AuthErrorMessage message={error} />
+          <EmailVerificationStep
+            challenge={challenge}
+            error={error}
+            onBack={() => {
+              setChallenge(null);
+              setError(null);
+            }}
+            onResend={handleResend}
+            onVerify={handleVerify}
+            submitting={submitting}
+          />
+        </>
+      ) : (
+        <>
+          <AuthErrorMessage message={error} />
+          <AuthField
+            autoComplete="email"
+            label="邮箱"
+            onChange={setEmail}
+            required
+            type="email"
+            value={email}
+          />
+          <AuthField
+            autoComplete="current-password"
+            label="密码"
+            minLength={1}
+            onChange={setPassword}
+            required
+            type="password"
+            value={password}
+          />
+          <AuthPrimaryButton disabled={submitting}>
+            {submitting ? "正在进入..." : "进入工作区"}
+          </AuthPrimaryButton>
+          <AuthSecondaryButton onClick={() => navigate(REGISTER_ROUTE)}>创建账号</AuthSecondaryButton>
+        </>
+      )}
     </AuthShell>
   );
 }
