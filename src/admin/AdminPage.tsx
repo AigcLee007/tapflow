@@ -98,7 +98,7 @@ const TABS: Array<{
   label: string;
   superOnly?: boolean;
 }> = [
-  { icon: CreditCard, id: "payments", label: "Payment management", superOnly: true },
+  { icon: CreditCard, id: "payments", label: "充值套餐与支付", superOnly: true },
   { icon: Activity, id: "overview", label: "总览" },
   { icon: Users, id: "users", label: "用户管理" },
   { icon: ShieldCheck, id: "admins", label: "管理员账号", superOnly: true },
@@ -525,8 +525,8 @@ export function AdminPage() {
   }
 
   async function handleCreateRedeemCode() {
-    const tenantIdForCode = selectedMembership?.tenantId ?? tenant?.id;
-    if (!tenantIdForCode) return;
+    const tenantIdForCode = isSuperAdmin ? undefined : selectedMembership?.tenantId ?? tenant?.id;
+    if (!isSuperAdmin && !tenantIdForCode) return;
     setMessage("");
     setError("");
     try {
@@ -534,7 +534,7 @@ export function AdminPage() {
         credits: Number.parseInt(redeemCreditsValue, 10) || 0,
         maxRedemptions: Number.parseInt(redeemMaxRedemptions, 10) || 1,
         reason: redeemReason,
-        tenantId: tenantIdForCode,
+        ...(tenantIdForCode ? { tenantId: tenantIdForCode } : {}),
       });
       setLastGeneratedCode(response.code);
       setMessage("兑换码已生成");
@@ -1071,6 +1071,9 @@ export function AdminPage() {
             <Field label="备注">
               <input className={inputClass} onChange={(event) => setRedeemReason(event.target.value)} value={redeemReason} />
             </Field>
+            <p className="text-xs leading-5 text-slate-400">
+              兑换码创建后全站可用，兑换记录仍会保留用户兑换时所在的实际工作区。
+            </p>
             <button className={buttonClass} onClick={() => void handleCreateRedeemCode()} type="button">
               创建兑换码
             </button>

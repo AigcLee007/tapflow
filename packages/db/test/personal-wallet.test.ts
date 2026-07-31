@@ -67,6 +67,18 @@ describe("personal wallet accounting migration", () => {
     expect(sql).toContain("REDEEM_CODE_ALREADY_REDEEMED");
     expect(sql).toContain("WALLET_FORBIDDEN");
   });
+
+  test("makes redeem-code lookup global while retaining the redemption workspace for audit", async () => {
+    const sql = await readFile(
+      path.resolve(import.meta.dirname, "../migrations/000051_global_redeem_code_scope.sql"),
+      "utf8",
+    );
+
+    expect(sql).toContain("CREATE OR REPLACE FUNCTION app.wallet_redeem_code");
+    expect(sql).toContain("WHERE code_hash = p_code_hash");
+    expect(sql).not.toContain("tenant_id IS NULL OR tenant_id = p_tenant_id");
+    expect(sql).toContain("v_code.id, p_tenant_id, p_user_id, v_ledger.id");
+  });
 });
 
 const describeWithDatabase = hasDatabaseEnv() ? describe : describe.skip;

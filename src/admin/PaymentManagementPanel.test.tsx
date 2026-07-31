@@ -39,17 +39,24 @@ describe("PaymentManagementPanel", () => {
 
   test("saves administrator-controlled display order", async () => {
     render(<PaymentManagementPanel />);
-    const sortOrder = await screen.findByLabelText("Sort order for 100 AI credits");
+    const sortOrder = await screen.findByLabelText("充值套餐排序：100 AI credits");
     fireEvent.change(sortOrder, { target: { value: "25" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save 100 AI credits" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存 100 AI credits" }));
 
     await waitFor(() => expect(updatePlan).toHaveBeenCalledWith("plan-1", expect.objectContaining({ sortOrder: 25 })));
   });
 
   test("allows refund only for an API-eligible paid payment", async () => {
     render(<PaymentManagementPanel />);
-    const reason = await screen.findByLabelText("Refund reason");
+    const reason = await screen.findByLabelText("退款原因");
     fireEvent.change(reason, { target: { value: "Duplicate charge" } });
-    expect(screen.getByRole("button", { name: "Refund payment-1" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "退款 payment-1" }).hasAttribute("disabled")).toBe(true);
+  });
+
+  test("clearly labels the recharge-plan and payment administration surface", async () => {
+    render(<PaymentManagementPanel />);
+
+    expect(await screen.findByRole("heading", { name: "充值套餐与支付" })).toBeTruthy();
+    expect(screen.getByText("修改仅影响新订单，已支付订单保留下单时的套餐快照。")).toBeTruthy();
   });
 });

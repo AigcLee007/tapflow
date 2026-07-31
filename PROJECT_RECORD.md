@@ -5908,3 +5908,17 @@ Validation completed:
 - aligned the billing activity frontend with the personal-wallet ledger response field `amountCredits`, so recharge entries display their actual `+100` and `+700` changes.
 - added focused regression coverage for both the callback wallet policy/reconciliation and the personal-wallet ledger field mapping.
 - staging acceptance confirmed migration `000050` is recorded, the wallet total is `19410.2`, reserved credits are `0`, and the two paid orders display `+100` and `+700` ledger changes.
+
+## 2026-07-31 - Global Redeem Codes and Billing Admin
+
+- added migration `000051_global_redeem_code_scope.sql` so redeem-code lookup no longer filters by `tenant_id`; old and new codes can be redeemed from any workspace while `billing_redeem_code_redemptions.tenant_id` continues to record the workspace where redemption occurred.
+- changed super-admin code creation so an omitted `tenantId` creates a platform-global code (`tenant_id = NULL`), while explicit tenant ownership remains available for compatibility and auditing.
+- added structured redeem-error localization for not-found, inactive, expired, exhausted, and already-redeemed codes; unknown server errors continue to use a safe Chinese fallback.
+- renamed the super-admin entry and panel to `充值套餐与支付`, localized its controls, and clarified that plan edits affect new orders only because paid orders retain commercial snapshots.
+- validation:
+  - focused redeem, payment-panel, API scope, and migration tests passed: 11 assertions passed and 1 database-backed integration test skipped.
+  - `npm run test --workspace @aigc-flow/db` passed: 34 tests passed and 34 database-backed tests skipped because no test database was configured.
+  - `npm run test --workspace @aigc-flow/api` passed: 242 tests passed and 120 database-backed tests skipped for the same reason.
+  - `npm run build --workspace @aigc-flow/api` passed, including database and AI Gateway dependency builds.
+  - `npm run build` passed with the existing Browserslist age, mixed dynamic/static import, and chunk-size warnings.
+  - the full root `npm test -- --reporter=dot` remains red with 26 unrelated existing failures in legacy asset migration fixtures, Three.js tests missing `ResizeObserver`, Canvas Agent integration expectations, and AI Gateway multipart tests under the current Node runtime; all task-focused suites above pass independently.
