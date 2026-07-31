@@ -45,8 +45,8 @@ import { registerAiRouteTestRoutes } from "./modules/ai-route-tests/ai-route-tes
 import { AiRouteTestService } from "./modules/ai-route-tests/ai-route-tests.service.js";
 import { registerAuthRoutes } from "./modules/auth/auth.routes.js";
 import {
-  BrevoAuthEmailSender,
   type AuthEmailSender,
+  ResendAuthEmailSender,
 } from "./modules/auth/auth-email-sender.js";
 import { AuthService } from "./modules/auth/auth.service.js";
 import { registerAssetRoutes } from "./modules/assets/assets.routes.js";
@@ -201,10 +201,10 @@ export function buildApp(options?: {
     keyVersion: env.credentialKeyVersion,
     masterKey: env.credentialMasterKey,
   });
-  const authEmailSender = options?.authEmailSender ?? new BrevoAuthEmailSender({
-    apiKey: env.brevoApiKey ?? "",
-    fromEmail: env.brevoFromEmail ?? "",
-    fromName: env.brevoFromName ?? "",
+  const authEmailSender = options?.authEmailSender ?? new ResendAuthEmailSender({
+    apiKey: env.resendApiKey ?? "",
+    fromEmail: env.resendFromEmail ?? "",
+    fromName: env.resendFromName ?? "",
   });
   const authService = new AuthService({
     authEmailSender,
