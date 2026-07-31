@@ -46,7 +46,10 @@ describe("BillingCenterPage", () => {
     getPaymentMock.mockReset();
   });
 
-  afterEach(() => vi.useRealTimers());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
 
   test("renders only server-owned fixed recharge plans", async () => {
     renderPage();
@@ -87,6 +90,38 @@ describe("BillingCenterPage", () => {
 
     expect(await screen.findByText("创建支付订单失败，请稍后重试。")).toBeTruthy();
     expect(screen.queryByText("Unable to create payment checkout")).toBeNull();
+  });
+
+  test("starts payment polling after checkout creation without a reload", async () => {
+    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false })));
+    const paymentId = "payment-created-without-reload";
+    createPaymentCheckoutMock.mockResolvedValueOnce({
+      id: paymentId,
+      planKey: "credits_100",
+      amountCents: 990,
+      credits: 100,
+      status: "checkout_created",
+      checkoutUrl: "https://pay.example.test/order",
+      qrCodeUrl: "https://pay.example.test/qr",
+      expiresAtSnapshot: null,
+    });
+    getPaymentMock.mockResolvedValueOnce({
+      id: paymentId,
+      planKey: "credits_100",
+      amountCents: 990,
+      credits: 100,
+      status: "paid",
+      checkoutUrl: null,
+      qrCodeUrl: null,
+      expiresAtSnapshot: "2027-01-01T00:00:00.000Z",
+    });
+    renderPage();
+
+    await screen.findByText("￥9.90");
+    fireEvent.click(screen.getByRole("button", { name: /￥9\.90/ }));
+
+    await waitFor(() => expect(getPaymentMock).toHaveBeenCalledWith(paymentId));
+    expect(await screen.findByText("已支付")).toBeTruthy();
   });
 
   test("confirms return state only after the owned payment API reports paid", async () => {

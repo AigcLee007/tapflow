@@ -22,7 +22,7 @@ export function BillingCenterPage() {
   const [catalog, setCatalog] = useState<BillingDisplayCatalog>(() => getEmptyBillingDisplayCatalog());
   const [error, setError] = useState<string | null>(null);
   const requestRef = useRef(0);
-  const paymentId = useMemo(() => new URLSearchParams(window.location.search).get("paymentId"), []);
+  const [activePaymentId, setActivePaymentId] = useState<string | null>(() => new URLSearchParams(window.location.search).get("paymentId"));
   const identityKey = useMemo(() => authenticated && user ? `${user.id}:${sessionId ?? "none"}` : "anonymous", [authenticated, sessionId, user]);
 
   const refresh = useCallback(async () => {
@@ -38,13 +38,13 @@ export function BillingCenterPage() {
   useEffect(() => { void refresh(); }, [identityKey, refresh]);
   useEffect(() => { void loadBillingDisplayCatalog().then(setCatalog).catch(() => undefined); }, []);
   useEffect(() => {
-    if (!paymentId || !authenticated) return;
+    if (!activePaymentId || !authenticated) return;
     let cancelled = false;
     let attempts = 0;
     const poll = async () => {
       attempts += 1;
       try {
-        const next = await getPayment(paymentId);
+        const next = await getPayment(activePaymentId);
         if (cancelled) return;
         setPayment(next);
         if (next.status === "paid") { await refresh(); return; }
@@ -54,9 +54,9 @@ export function BillingCenterPage() {
     };
     void poll();
     return () => { cancelled = true; };
-  }, [authenticated, paymentId, refresh]);
+  }, [activePaymentId, authenticated, refresh]);
 
-  const onCreated = useCallback(async (next: WalletPayment) => { setPayment(next); const url = new URL(window.location.href); url.searchParams.set("paymentId", next.id); window.history.replaceState({}, "", url); }, []);
+  const onCreated = useCallback(async (next: WalletPayment) => { setPayment(next); const url = new URL(window.location.href); url.searchParams.set("paymentId", next.id); window.history.replaceState({}, "", url); setActivePaymentId(next.id); }, []);
   const activityRows = useMemo(() => buildBillingActivityRows(usage, ledger, catalog), [catalog, ledger, usage]);
 
   return <div className="-mx-6 -my-9 min-h-[calc(100vh-80px)] bg-[#0b0b0d] px-6 py-8 sm:px-8">
