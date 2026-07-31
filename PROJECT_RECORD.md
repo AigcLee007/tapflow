@@ -5901,3 +5901,4 @@ Validation completed:
 - added migration `000050_wallet_balance_reconciliation.sql` to grant the isolated callback role wallet-row visibility and rebuild cached wallet balance/reserved totals from authoritative credit-grant batches.
 - aligned the billing activity frontend with the personal-wallet ledger response field `amountCredits`, so recharge entries display their actual `+100` and `+700` changes.
 - added focused regression coverage for both the callback wallet policy/reconciliation and the personal-wallet ledger field mapping.
+- staging acceptance confirmed migration `000050` is recorded, the wallet total is `19410.2`, reserved credits are `0`, and the two paid orders display `+100` and `+700` ledger changes.
