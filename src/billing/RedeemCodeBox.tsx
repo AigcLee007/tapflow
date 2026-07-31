@@ -22,8 +22,8 @@ export function RedeemCodeBox({ onRedeemed }: { onRedeemed: () => Promise<void> 
       setCode("");
       setMessage(`已成功兑换 ${result.credits.toLocaleString()} 点。`);
       await onRedeemed();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "兑换失败，请稍后重试。");
+    } catch {
+      setError("兑换失败，请稍后重试。");
     } finally {
       setLoading(false);
     }

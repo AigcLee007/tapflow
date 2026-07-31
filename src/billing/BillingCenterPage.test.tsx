@@ -94,7 +94,7 @@ describe("BillingCenterPage", () => {
     getPaymentMock.mockResolvedValue({ id: "00000000-0000-4000-8000-000000000123", planKey: "credits_100", amountCents: 990, credits: 100, status: "paid", checkoutUrl: null, qrCodeUrl: null, expiresAtSnapshot: "2027-01-01T00:00:00.000Z" });
     renderPage();
     await waitFor(() => expect(getPaymentMock).toHaveBeenCalledWith("00000000-0000-4000-8000-000000000123"));
-    expect(await screen.findByText("Paid")).toBeTruthy();
+    expect(await screen.findByText("已支付")).toBeTruthy();
   });
 
   test("stops polling an unconfirmed owned payment after twenty attempts", async () => {

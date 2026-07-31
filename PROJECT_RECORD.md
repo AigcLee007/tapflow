@@ -1,7 +1,13 @@
 ﻿# Project Record
 
-Last updated: 2026-07-30
+Last updated: 2026-07-31
 Maintainers: project team + Codex sessions
+
+## 2026-07-31 - Billing Recharge Page Chinese Localization
+
+- completed the creator-facing `/billing` localization in the existing billing components: personal-wallet title and description, balance cards, recharge plans, payment statuses, QR-code alternative text, redeem-code copy, activity labels, and recoverable error messages are now in simplified Chinese;
+- kept payment checkout, polling, QR display conditions, balance refresh, API fields, status enums, pricing, and layout unchanged; English server errors are no longer rendered directly in the redeem flow;
+- validation passed: `npx vitest run src/billing/BillingCenterPage.test.tsx src/billing/PaymentStatusPanel.test.tsx src/billing/RedeemCodeBox.test.tsx src/billing/billingActivity.test.ts` and `npm run build`.
 
 ## 2026-07-30 - Legacy Reservation Reconciliation Guard
 

@@ -126,7 +126,7 @@ function resolveUsageEventLabel(item: BillingUsageEvent): string {
   if (item.modality === "image" || event.includes("image")) return "\u56fe\u7247\u751f\u6210";
   if (item.modality === "video" || event.includes("video")) return "\u89c6\u9891\u751f\u6210";
   if (item.modality === "audio" || event.includes("audio")) return "\u97f3\u9891\u751f\u6210";
-  if (event.includes("agent")) return "Agent";
+  if (event.includes("agent")) return "智能体任务";
   return "\u751f\u6210\u4efb\u52a1";
 }
 

@@ -180,4 +180,26 @@ describe("billingActivity", () => {
 
     expect(buildBillingActivityRows([], ledger, createCatalog())[0]?.credits).toBe(700);
   });
+
+  test("localizes agent activity labels", () => {
+    const agentUsage: BillingUsageEvent = {
+      billableCents: 1,
+      createdAt: "2026-07-31T01:00:00.000Z",
+      eventType: "agent.run",
+      id: "usage-agent-1",
+      idempotencyKey: "agent:usage:1",
+      metadata: {},
+      modality: "agent",
+      modelId: null,
+      nodeRunId: null,
+      rawCost: null,
+      routeId: null,
+      status: "settled",
+      unitType: null,
+      units: "1",
+      workflowRunId: null,
+    };
+
+    expect(buildBillingActivityRows([agentUsage], [], createCatalog())[0]?.eventLabel).toBe("智能体任务");
+  });
 });
