@@ -232,6 +232,36 @@ describe("000042_xunhupay_personal_wallet.sql", () => {
     expect(sql).toContain("reserved_credits = totals.reserved_credits");
   });
 
+  test("allows redeem entries in the personal wallet ledger", async () => {
+    const sql = await readFile(
+      path.resolve(import.meta.dirname, "../migrations/000052_wallet_redeem_ledger_entry_type.sql"),
+      "utf8",
+    );
+
+    const dropConstraint = sql.indexOf(
+      "DROP CONSTRAINT IF EXISTS billing_wallet_ledger_entry_type_check",
+    );
+    const addConstraint = sql.indexOf(
+      "ADD CONSTRAINT billing_wallet_ledger_entry_type_check",
+    );
+
+    expect(dropConstraint).toBeGreaterThan(-1);
+    expect(addConstraint).toBeGreaterThan(dropConstraint);
+    for (const entryType of [
+      "payment",
+      "migration_credit",
+      "admin_credit",
+      "redeem",
+      "reserve",
+      "settle",
+      "refund",
+      "expire",
+      "payment_refund",
+    ]) {
+      expect(sql).toContain(`'${entryType}'`);
+    }
+  });
+
   test("uses a current-grantor callback-role switch in managed PostgreSQL follow-up migrations", async () => {
     const migrationsDir = path.resolve(import.meta.dirname, "../migrations");
     const migrationExpectations = [
