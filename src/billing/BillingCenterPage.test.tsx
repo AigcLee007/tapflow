@@ -132,14 +132,30 @@ describe("BillingCenterPage", () => {
     expect(await screen.findByText("已支付")).toBeTruthy();
   });
 
-  test("stops polling an unconfirmed owned payment after twenty attempts", async () => {
+  test("rechecks an owned payment when the billing tab becomes visible", async () => {
+    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false })));
+    const paymentId = "payment-visible-again";
+    createPaymentCheckoutMock.mockResolvedValueOnce({ id: paymentId, planKey: "credits_100", amountCents: 990, credits: 100, status: "checkout_created", checkoutUrl: "https://pay.example.test/order", qrCodeUrl: "https://pay.example.test/qr", expiresAtSnapshot: null });
+    getPaymentMock
+      .mockResolvedValueOnce({ id: paymentId, planKey: "credits_100", amountCents: 990, credits: 100, status: "checkout_created", checkoutUrl: "https://pay.example.test/order", qrCodeUrl: "https://pay.example.test/qr", expiresAtSnapshot: null })
+      .mockResolvedValueOnce({ id: paymentId, planKey: "credits_100", amountCents: 990, credits: 100, status: "paid", checkoutUrl: null, qrCodeUrl: null, expiresAtSnapshot: null });
+    renderPage();
+    await waitFor(() => expect(screen.getAllByRole("button")).toHaveLength(5));
+    fireEvent.click(screen.getAllByRole("button")[0]);
+    await waitFor(() => expect(getPaymentMock).toHaveBeenCalledTimes(1));
+    await act(async () => { document.dispatchEvent(new Event("visibilitychange")); });
+    await waitFor(() => expect(getPaymentMock).toHaveBeenCalledTimes(2));
+    expect(getPaymentMock).toHaveBeenCalledTimes(2);
+  });
+
+  test("stops polling an unconfirmed owned payment after 120 attempts", async () => {
     vi.useFakeTimers();
     window.history.replaceState({}, "", "/billing?paymentId=00000000-0000-4000-8000-000000000123");
     getPaymentMock.mockResolvedValue({ id: "00000000-0000-4000-8000-000000000123", planKey: "credits_100", amountCents: 990, credits: 100, status: "checkout_created", checkoutUrl: "https://pay.example.test/order", qrCodeUrl: null, expiresAtSnapshot: null });
     renderPage();
 
-    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(360_000); });
 
-    expect(getPaymentMock).toHaveBeenCalledTimes(20);
+    expect(getPaymentMock).toHaveBeenCalledTimes(120);
   });
 });

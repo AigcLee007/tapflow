@@ -262,6 +262,32 @@ describe("000042_xunhupay_personal_wallet.sql", () => {
     }
   });
 
+  test("qualifies wallet redeem columns that collide with RETURNS TABLE output names", async () => {
+    const sql = await readFile(
+      path.resolve(import.meta.dirname, "../migrations/000053_wallet_redeem_qualified_columns.sql"),
+      "utf8",
+    );
+
+    expect(sql).toContain("FROM billing_redeem_code_redemptions AS redemption");
+    expect(sql).toContain("WHERE redemption.user_id = p_user_id");
+    expect(sql).toContain("WHERE redemption.redeem_code_id = v_code.id");
+    expect(sql).toContain("FROM billing_redeem_codes AS redeem_code");
+    expect(sql).toContain("WHERE redeem_code.code_hash = p_code_hash");
+    expect(sql).toContain("UPDATE billing_redeem_codes AS redeem_code");
+    expect(sql).toContain("WHERE redeem_code.id = v_code.id");
+    expect(sql).toContain("GRANT SELECT, INSERT, UPDATE ON billing_redeem_code_redemptions TO tapflow_wallet_callback");
+    expect(sql).toContain("FROM billing_wallets AS wallet");
+    expect(sql).toContain("WHERE wallet.user_id = p_user_id");
+    expect(sql).toContain("UPDATE billing_wallets AS wallet");
+    expect(sql).toContain("WHERE wallet.id = v_wallet.id");
+    expect(sql).toContain("WHEN 'redeem' THEN 'redeem'");
+    expect(sql).toContain("ON CONFLICT ON CONSTRAINT billing_wallets_user_id_key DO NOTHING");
+    expect(sql).toContain("ON CONFLICT ON CONSTRAINT billing_wallet_ledger_user_id_idempotency_key_key DO NOTHING");
+    expect(sql).toContain("NULL::uuid AS workflow_run_id");
+    expect(sql).toContain("NULL::uuid AS node_run_id");
+    expect(sql).not.toContain("SELECT * INTO v_ledger\n  FROM app.wallet_credit(");
+  });
+
   test("uses a current-grantor callback-role switch in managed PostgreSQL follow-up migrations", async () => {
     const migrationsDir = path.resolve(import.meta.dirname, "../migrations");
     const migrationExpectations = [

@@ -5930,3 +5930,12 @@ Validation completed:
 - fixed billing-page payment synchronization by storing the active payment ID in React state and updating it immediately after checkout creation; the existing three-second bounded poll now starts without a manual reload.
 - added regression coverage for the migration constraint and current-page payment polling.
 - validation passed: frontend billing tests 18 passed, database focused tests 18 passed / 1 database-backed test skipped, API focused tests 5 passed, DB/API/AI Gateway builds passed, and the production frontend build passed with existing warnings only.
+
+## 2026-07-31 - Redeem Function Runtime Repair and Payment Poll Recovery
+
+- production diagnostics confirmed migration `000052` and the `redeem` ledger constraint were applied; the reported code remained active, unused, and unexpired.
+- reproduced the redeem failure inside a rolled-back production transaction and traced it through three PostgreSQL runtime defects: ambiguous `RETURNS TABLE` output names, missing `UPDATE` privilege required by `SELECT ... FOR UPDATE`, and positional assignment of the nine-column wallet-credit result into the thirteen-column ledger row type.
+- added migration `000053_wallet_redeem_qualified_columns.sql` to qualify colliding columns, use named conflict constraints, explicitly map wallet-credit results, grant the callback role the required redemption-row update privilege, and persist redeem ledger entries as `redeem`.
+- validated the complete `TF-3418A50398` redeem path in a rolled-back production transaction; it returned a 1,000-credit `redeem` ledger result without consuming the code or changing the wallet.
+- extended frontend payment polling from 60 seconds to six minutes and added an immediate recheck when the billing tab becomes visible again, while preventing overlapping polls and cleaning up timers/listeners.
+- focused validation passed: billing page tests 7 passed; personal-wallet DB tests 19 passed / 1 integration skipped; DB build passed.

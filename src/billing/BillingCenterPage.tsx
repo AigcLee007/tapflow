@@ -9,7 +9,7 @@ import { RechargePanel } from "./RechargePanel";
 import { RedeemCodeBox } from "./RedeemCodeBox";
 import { getBillingSummary, getPayment, listBillingLedger, listBillingUsageEvents, listRechargePlans, type BillingLedgerEntry, type BillingSummary, type BillingUsageEvent, type RechargePlan, type WalletPayment } from "./billingApi";
 
-const MAX_PAYMENT_POLLS = 20;
+const MAX_PAYMENT_POLLS = 120;
 const TERMINAL_PAYMENT_STATES = new Set(["paid", "create_failed", "cancelled", "refunded", "refund_failed"]);
 
 export function BillingCenterPage() {
@@ -41,7 +41,11 @@ export function BillingCenterPage() {
     if (!activePaymentId || !authenticated) return;
     let cancelled = false;
     let attempts = 0;
+    let inFlight = false;
+    let timeoutId: number | null = null;
     const poll = async () => {
+      if (cancelled || inFlight) return;
+      inFlight = true;
       attempts += 1;
       try {
         const next = await getPayment(activePaymentId);
@@ -49,11 +53,23 @@ export function BillingCenterPage() {
         setPayment(next);
         if (next.status === "paid") { await refresh(); return; }
         if (TERMINAL_PAYMENT_STATES.has(next.status) || attempts >= MAX_PAYMENT_POLLS) return;
-        window.setTimeout(() => void poll(), 3_000);
-      } catch { if (!cancelled && attempts < MAX_PAYMENT_POLLS) window.setTimeout(() => void poll(), 3_000); }
+        timeoutId = window.setTimeout(() => void poll(), 3_000);
+      } catch { if (!cancelled && attempts < MAX_PAYMENT_POLLS) timeoutId = window.setTimeout(() => void poll(), 3_000); }
+      finally { inFlight = false; }
     };
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== "visible" || cancelled) return;
+      if (timeoutId !== null) window.clearTimeout(timeoutId);
+      timeoutId = null;
+      void poll();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
     void poll();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      if (timeoutId !== null) window.clearTimeout(timeoutId);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [activePaymentId, authenticated, refresh]);
 
   const onCreated = useCallback(async (next: WalletPayment) => { setPayment(next); const url = new URL(window.location.href); url.searchParams.set("paymentId", next.id); window.history.replaceState({}, "", url); setActivePaymentId(next.id); }, []);
