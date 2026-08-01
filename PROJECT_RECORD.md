@@ -5994,3 +5994,11 @@ Validation completed:
 - a direct worker-only TypeScript build can report a stale `@aigc-flow/redis` `walletExpiry`/`WalletExpiryJobPayload` export mismatch when the redis package has not been built first; the production Docker build order (`redis` before `worker`) passes, and no worker files were changed for this SQL-only repair.
 - the root `npm test` completion check was attempted but timed out after 10 minutes while collecting repository worktrees and retrying unavailable Redis connections; the task-focused suites above were rerun successfully afterward.
 - local PostgreSQL execution and staging rollout were not performed because this workspace has no `DATABASE_URL` or `psql`, and Docker Desktop's Linux engine was unavailable. The next staging rollout must apply `000055` using the documented worker-stop migration order, then run the rolled-back reserve smoke and one real canvas generation.
+
+## 2026-08-01 - Wallet Credit-Grant Reservation Constraint Repair
+
+- after staging applied `000055`, a rolled-back reserve diagnostic reached the credit-grant update and reproduced PostgreSQL `23514`: `billing_wallet_credit_grants_check` rejected a non-zero reservation despite a wallet balance and active grant availability of `20770.2` credits.
+- traced the failure to the historical `000042` constraint `remaining_credits + reserved_credits <= original_credits`; the current reserve operation correctly leaves `remaining_credits` unchanged while incrementing `reserved_credits`, so any newly credited grant was rejected on its first reservation.
+- added forward-only migration `000056_wallet_credit_grant_reservation_constraint.sql`, replacing that invalid combined check with `remaining_credits <= original_credits` and `reserved_credits <= remaining_credits`.
+- added a migration SQL regression test with an observed red state before `000056` existed and a green state after it was added.
+- validation passed before final integration: focused DB migration/accounting tests (21 passed, 1 skipped), DB build, API build, and API tests (270 passed, 126 skipped). Staging rollout and a real canvas-generation smoke test remain pending.

@@ -320,6 +320,34 @@ describe("000042_xunhupay_personal_wallet.sql", () => {
     );
   });
 
+  test("keeps wallet grant reservations within the remaining credit balance", async () => {
+    const migrationPath = path.resolve(
+      import.meta.dirname,
+      "../migrations/000056_wallet_credit_grant_reservation_constraint.sql",
+    );
+    let migrationExists = true;
+    try {
+      await access(migrationPath);
+    } catch {
+      migrationExists = false;
+    }
+
+    expect(migrationExists).toBe(true);
+    if (!migrationExists) return;
+
+    const sql = await readFile(migrationPath, "utf8");
+    expect(sql).toContain("DROP CONSTRAINT IF EXISTS billing_wallet_credit_grants_check");
+    expect(sql).toContain(
+      "ADD CONSTRAINT billing_wallet_credit_grants_remaining_credits_check",
+    );
+    expect(sql).toContain("CHECK (remaining_credits <= original_credits)");
+    expect(sql).toContain(
+      "ADD CONSTRAINT billing_wallet_credit_grants_reserved_credits_check",
+    );
+    expect(sql).toContain("CHECK (reserved_credits <= remaining_credits)");
+    expect(sql).not.toContain("remaining_credits + reserved_credits <= original_credits");
+  });
+
   test("uses a current-grantor callback-role switch in managed PostgreSQL follow-up migrations", async () => {
     const migrationsDir = path.resolve(import.meta.dirname, "../migrations");
     const migrationExpectations = [
