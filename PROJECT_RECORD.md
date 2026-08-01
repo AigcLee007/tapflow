@@ -6010,3 +6010,11 @@ Validation completed:
 - because `000056` was never applied or recorded, corrected that pending migration in place: it now drops the historical combined and same-name bounds checks first, then recreates each bound while preserving non-negative credits and enforcing `reserved_credits <= remaining_credits <= original_credits`.
 - extended the migration SQL regression test, observed the expected red state for the missing drops, then verified green after the minimal migration correction.
 - final source validation and redeployment remain pending.
+
+## 2026-08-01 - Wallet Reservation Runtime RLS Repair
+
+- after `000056` applied successfully, a rolled-back staging reserve reached the allocation insert and exposed PostgreSQL `42501`: forced RLS rejected the callback-owned `app.wallet_reserve(...)` insert into `billing_wallet_credit_reservations`.
+- traced the full reserve/settle/refund data path and confirmed that the dedicated callback role also needs ledger SELECT visibility plus reservation SELECT and UPDATE visibility for completion operations; ordinary API sessions must retain no direct financial-table write access.
+- added forward-only migration `000057_wallet_reservation_runtime_rls.sql` with narrowly scoped callback SELECT on `billing_wallet_ledger`, SELECT/INSERT/UPDATE policies on `billing_wallet_credit_reservations`, and matching table privileges without DELETE or broad `FOR ALL` access.
+- added a focused migration regression test and observed the expected red state before the migration existed, followed by green after the minimal RLS repair.
+- final source validation, staging migration, rolled-back reserve verification, and one real canvas-generation smoke remain pending.

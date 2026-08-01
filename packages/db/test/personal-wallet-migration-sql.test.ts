@@ -372,6 +372,54 @@ describe("000042_xunhupay_personal_wallet.sql", () => {
     expect(sql).not.toContain("remaining_credits + reserved_credits <= original_credits");
   });
 
+  test("lets callback wallet mutators read ledger rows and manage reservation allocations", async () => {
+    const migrationPath = path.resolve(
+      import.meta.dirname,
+      "../migrations/000057_wallet_reservation_runtime_rls.sql",
+    );
+    let migrationExists = true;
+    try {
+      await access(migrationPath);
+    } catch {
+      migrationExists = false;
+    }
+
+    expect(migrationExists).toBe(true);
+    if (!migrationExists) return;
+
+    const sql = await readFile(migrationPath, "utf8");
+    expect(sql).toContain("CREATE POLICY billing_wallet_ledger_select_callback");
+    expect(sql).toContain("ON billing_wallet_ledger FOR SELECT TO tapflow_wallet_callback");
+    expect(sql).toContain(
+      "CREATE POLICY billing_wallet_credit_reservations_select_callback",
+    );
+    expect(sql).toContain(
+      "ON billing_wallet_credit_reservations FOR SELECT TO tapflow_wallet_callback",
+    );
+    expect(sql).toContain(
+      "CREATE POLICY billing_wallet_credit_reservations_insert_callback",
+    );
+    expect(sql).toContain(
+      "ON billing_wallet_credit_reservations FOR INSERT TO tapflow_wallet_callback",
+    );
+    expect(sql).toContain(
+      "CREATE POLICY billing_wallet_credit_reservations_update_callback",
+    );
+    expect(sql).toContain(
+      "ON billing_wallet_credit_reservations FOR UPDATE TO tapflow_wallet_callback",
+    );
+    expect(sql).toContain("USING (current_user = 'tapflow_wallet_callback')");
+    expect(sql).toContain("WITH CHECK (current_user = 'tapflow_wallet_callback')");
+    expect(sql).toContain("GRANT SELECT, INSERT ON billing_wallet_ledger TO tapflow_wallet_callback");
+    expect(sql).toContain(
+      "GRANT SELECT, INSERT, UPDATE ON billing_wallet_credit_reservations TO tapflow_wallet_callback",
+    );
+    expect(sql).not.toContain(
+      "ON billing_wallet_credit_reservations FOR ALL TO tapflow_wallet_callback",
+    );
+    expect(sql).not.toContain("TO CURRENT_USER");
+  });
+
   test("uses a current-grantor callback-role switch in managed PostgreSQL follow-up migrations", async () => {
     const migrationsDir = path.resolve(import.meta.dirname, "../migrations");
     const migrationExpectations = [
