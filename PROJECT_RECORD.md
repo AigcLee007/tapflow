@@ -3,6 +3,15 @@
 Last updated: 2026-07-31
 Maintainers: project team + Codex sessions
 
+## 2026-07-31 - Resend Auth Email Transport
+
+- replaced the active Brevo authentication-email transport with Resend without changing registration verification, email challenge storage, trusted-device rules, or frontend verification screens;
+- production delivery now calls `https://api.resend.com/emails` through Node's built-in `fetch`, with a ten-second timeout, `Authorization: Bearer` server-side authentication, `Art-Aittco <art@art.aittco.com>` sender formatting, and the existing fail-closed sanitized delivery error behavior;
+- active server configuration is now `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, and `RESEND_FROM_NAME`, injected through `docker-compose.staging.yml` into the shared API/Worker environment. The Compose regression test verifies that the shared environment contains the three Resend values and that both API and Worker inherit it;
+- no database migration or frontend source change is required for this provider-only replacement. Historical Brevo design and rollout records remain unchanged as historical facts;
+- local validation passed: focused API auth/environment tests reported 30 passed and 12 database-backed auth tests skipped because local PostgreSQL is not configured; the Compose regression test passed 1/1; `docker compose -f docker-compose.staging.yml config --quiet` passed with expected warnings for unset local placeholder variables; database, API, and frontend production builds passed. Existing Browserslist, mixed dynamic-import, and large-chunk warnings remain;
+- live sending remains pending: verify `art.aittco.com` in Resend Domains using Alibaba Cloud DNS records, store the Resend sending key only in `/opt/aittco/env/tapflow.staging.env`, deploy the branch, run a direct Resend smoke email, then test registration, unverified-account login recovery, same-device login, new-device verification, resend cooldown, and secret-free logs.
+
 ## 2026-07-31 - Billing Recharge Page Chinese Localization
 
 - completed the creator-facing `/billing` localization in the existing billing components: personal-wallet title and description, balance cards, recharge plans, payment statuses, QR-code alternative text, redeem-code copy, activity labels, and recoverable error messages are now in simplified Chinese;
