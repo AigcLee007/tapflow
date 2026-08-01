@@ -320,6 +320,46 @@ describe("000042_xunhupay_personal_wallet.sql", () => {
     );
   });
 
+  test("repairs runtime wallet completion and expiry execution without financial table grants", async () => {
+    const migrationPath = path.resolve(
+      import.meta.dirname,
+      "../migrations/000058_wallet_completion_runtime_recovery.sql",
+    );
+    let migrationExists = true;
+    try {
+      await access(migrationPath);
+    } catch {
+      migrationExists = false;
+    }
+
+    expect(migrationExists).toBe(true);
+    if (!migrationExists) return;
+
+    const sql = await readFile(migrationPath, "utf8");
+    expect(sql).toContain("CREATE OR REPLACE FUNCTION app.wallet_settle_or_refund");
+    expect(sql).toContain("FROM billing_wallets AS wallet");
+    expect(sql).toContain("WHERE wallet.user_id = p_user_id");
+    expect(sql).toContain("FROM billing_wallet_ledger AS ledger");
+    expect(sql).toContain("WHERE ledger.user_id = p_user_id");
+    expect(sql).toContain("FROM billing_wallet_ledger AS reserve_ledger");
+    expect(sql).toContain("WHERE reserve_ledger.id = p_reserve_ledger_id");
+    expect(sql).toContain("FROM billing_wallet_credit_reservations AS reservation");
+    expect(sql).toContain("WHERE reservation.user_id = p_user_id");
+    expect(sql).toContain("FROM billing_wallet_credit_grants AS credit_grant");
+    expect(sql).toContain("WHERE credit_grant.id = v_reservation.credit_grant_id");
+    expect(sql).toContain("UPDATE billing_wallet_credit_grants AS credit_grant");
+    expect(sql).toContain("UPDATE billing_wallet_credit_reservations AS reservation");
+    expect(sql).toContain("UPDATE billing_wallets AS wallet");
+    expect(sql).toContain("current_setting('app.api_database_role', true)");
+    expect(sql).toContain(
+      "app.wallet_settle_or_refund(text, uuid, uuid, uuid, uuid, text, jsonb)",
+    );
+    expect(sql).toContain("app.wallet_expire_due(integer, timestamptz)");
+    expect(sql).not.toMatch(
+      /GRANT\s+(?:SELECT|INSERT|UPDATE|DELETE)(?:\s*,\s*(?:SELECT|INSERT|UPDATE|DELETE))*\s+ON\s+[^;]+\s+TO\s+(?:%I|runtime_role)/i,
+    );
+  });
+
   test("keeps wallet grant reservations within the remaining credit balance", async () => {
     const migrationPath = path.resolve(
       import.meta.dirname,
