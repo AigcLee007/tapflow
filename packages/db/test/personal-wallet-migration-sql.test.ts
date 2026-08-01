@@ -336,15 +336,39 @@ describe("000042_xunhupay_personal_wallet.sql", () => {
     if (!migrationExists) return;
 
     const sql = await readFile(migrationPath, "utf8");
-    expect(sql).toContain("DROP CONSTRAINT IF EXISTS billing_wallet_credit_grants_check");
+    const dropLegacyCombinedCheck = sql.indexOf(
+      "DROP CONSTRAINT IF EXISTS billing_wallet_credit_grants_check",
+    );
+    const dropLegacyRemainingCheck = sql.indexOf(
+      "DROP CONSTRAINT IF EXISTS billing_wallet_credit_grants_remaining_credits_check",
+    );
+    const dropLegacyReservedCheck = sql.indexOf(
+      "DROP CONSTRAINT IF EXISTS billing_wallet_credit_grants_reserved_credits_check",
+    );
+    const addRemainingBoundsCheck = sql.indexOf(
+      "ADD CONSTRAINT billing_wallet_credit_grants_remaining_credits_check",
+    );
+    const addReservedBoundsCheck = sql.indexOf(
+      "ADD CONSTRAINT billing_wallet_credit_grants_reserved_credits_check",
+    );
+
+    expect(dropLegacyCombinedCheck).toBeGreaterThan(-1);
+    expect(dropLegacyRemainingCheck).toBeGreaterThan(dropLegacyCombinedCheck);
+    expect(dropLegacyReservedCheck).toBeGreaterThan(dropLegacyRemainingCheck);
+    expect(addRemainingBoundsCheck).toBeGreaterThan(dropLegacyReservedCheck);
+    expect(addReservedBoundsCheck).toBeGreaterThan(addRemainingBoundsCheck);
     expect(sql).toContain(
       "ADD CONSTRAINT billing_wallet_credit_grants_remaining_credits_check",
     );
-    expect(sql).toContain("CHECK (remaining_credits <= original_credits)");
+    expect(sql).toContain(
+      "CHECK (remaining_credits >= 0 AND remaining_credits <= original_credits)",
+    );
     expect(sql).toContain(
       "ADD CONSTRAINT billing_wallet_credit_grants_reserved_credits_check",
     );
-    expect(sql).toContain("CHECK (reserved_credits <= remaining_credits)");
+    expect(sql).toContain(
+      "CHECK (reserved_credits >= 0 AND reserved_credits <= remaining_credits)",
+    );
     expect(sql).not.toContain("remaining_credits + reserved_credits <= original_credits");
   });
 

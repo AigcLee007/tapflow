@@ -6002,3 +6002,11 @@ Validation completed:
 - added forward-only migration `000056_wallet_credit_grant_reservation_constraint.sql`, replacing that invalid combined check with `remaining_credits <= original_credits` and `reserved_credits <= remaining_credits`.
 - added a migration SQL regression test with an observed red state before `000056` existed and a green state after it was added.
 - validation passed before final integration: focused DB migration/accounting tests (21 passed, 1 skipped), DB build, API build, and API tests (270 passed, 126 skipped). Staging rollout and a real canvas-generation smoke test remain pending.
+
+## 2026-08-01 - Wallet Reservation Migration Naming-Conflict Repair
+
+- staging diagnostics proved `000056_wallet_credit_grant_reservation_constraint.sql` had not been recorded and the original combined credit-grant constraint continued to reject every reserve attempt with PostgreSQL `23514`.
+- the first staging migration attempt exposed the blocking deployment defect: the historical schema already has non-negative `billing_wallet_credit_grants_remaining_credits_check` and `billing_wallet_credit_grants_reserved_credits_check` constraints, so `000056` could not add identically named constraints and rolled back with `42710`.
+- because `000056` was never applied or recorded, corrected that pending migration in place: it now drops the historical combined and same-name bounds checks first, then recreates each bound while preserving non-negative credits and enforcing `reserved_credits <= remaining_credits <= original_credits`.
+- extended the migration SQL regression test, observed the expected red state for the missing drops, then verified green after the minimal migration correction.
+- final source validation and redeployment remain pending.
