@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import { readdir } from "node:fs/promises";
 import path from "node:path";
 
@@ -286,6 +286,38 @@ describe("000042_xunhupay_personal_wallet.sql", () => {
     expect(sql).toContain("NULL::uuid AS workflow_run_id");
     expect(sql).toContain("NULL::uuid AS node_run_id");
     expect(sql).not.toContain("SELECT * INTO v_ledger\n  FROM app.wallet_credit(");
+  });
+
+  test("qualifies wallet reserve columns that collide with RETURNS TABLE output names", async () => {
+    const migrationPath = path.resolve(
+      import.meta.dirname,
+      "../migrations/000055_wallet_reserve_qualified_columns.sql",
+    );
+    let migrationExists = true;
+    try {
+      await access(migrationPath);
+    } catch {
+      migrationExists = false;
+    }
+
+    expect(migrationExists).toBe(true);
+    if (!migrationExists) return;
+
+    const sql = await readFile(migrationPath, "utf8");
+    expect(sql).toContain(
+      "CREATE OR REPLACE FUNCTION app.wallet_reserve(uuid, uuid, numeric, text, uuid, uuid, jsonb)",
+    );
+    expect(sql).toContain("FROM billing_wallets AS wallet");
+    expect(sql).toContain("WHERE wallet.user_id = p_user_id");
+    expect(sql).toContain("FROM billing_wallet_ledger AS ledger");
+    expect(sql).toContain("WHERE ledger.user_id = p_user_id");
+    expect(sql).toContain("FROM billing_wallet_credit_grants AS credit_grant");
+    expect(sql).toContain("WHERE credit_grant.wallet_id = v_wallet.id");
+    expect(sql).toContain("UPDATE billing_wallet_credit_grants AS credit_grant");
+    expect(sql).toContain("UPDATE billing_wallets AS wallet");
+    expect(sql).toContain(
+      "GRANT EXECUTE ON FUNCTION app.wallet_reserve(uuid, uuid, numeric, text, uuid, uuid, jsonb) TO SESSION_USER;",
+    );
   });
 
   test("uses a current-grantor callback-role switch in managed PostgreSQL follow-up migrations", async () => {

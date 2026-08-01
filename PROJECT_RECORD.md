@@ -5904,6 +5904,16 @@ Validation completed:
 - card rendering, prompt media behavior, WebP derivatives, and dedicated server-directory persistence are unchanged.
 - no database migration or environment-variable changes were required.
 
+## 2026-07-30 - Personal Wallet Cutover Completed on Staging
+
+- resolved the previously missing active `tenant_owner` for tenant `e208ecf5-2ec4-445c-b71b-3e4c4389838e` by assigning the sole member `aigc@sina.com`.
+- personal-wallet dry-run passed with `activeReservationCount: 0`, `migratedCredits: 24586.2`, `migratedGrantCount: 9`, no unresolved tenants, and `verificationMatched: true`.
+- confirmed personal-wallet write completed with the same totals and verification result.
+- restarted the v2 staging services: Redis healthy, API running, Worker started, and Frontend running.
+- remaining staging work is payment-provider merchant configuration and end-to-end XunhuPay acceptance; do not repeat the wallet cutover.
+- configured the staging XunhuPay merchant environment with `PAYMENTS_ENABLED=true`, recreated the API container, and verified `GET /health` returns HTTP 200 with `{"status":"ok"}`.
+- payment reconciliation scheduler is running with no pending candidates in the initial check.
+
 ## 2026-07-30 - XunhuPay Billing Runtime Fixes
 
 - fixed the personal-wallet summary query by replacing the PostgreSQL-reserved `grant` alias with `credit_grant`.
@@ -5957,3 +5967,21 @@ Validation completed:
 - validated the complete `TF-3418A50398` redeem path in a rolled-back production transaction; it returned a 1,000-credit `redeem` ledger result without consuming the code or changing the wallet.
 - extended frontend payment polling from 60 seconds to six minutes and added an immediate recheck when the billing tab becomes visible again, while preventing overlapping polls and cleaning up timers/listeners.
 - focused validation passed: billing page tests 7 passed; personal-wallet DB tests 19 passed / 1 integration skipped; DB build passed.
+
+## 2026-08-01 - Canvas Image Generation Staging Diagnosis
+
+- reproduced the reported canvas `INTERNAL_ERROR` against the staging database inside a rolled-back transaction; no data was changed.
+- confirmed the failure occurs during workflow-run creation in `app.wallet_reserve(...)`, before worker enqueue or provider request.
+- PostgreSQL returned `42702: column reference "user_id" is ambiguous` because the wallet reserve function's `RETURNS TABLE` output parameter collides with an unqualified `user_id` column reference.
+- recent workflow/node records show prior provider failures/refunds but no new run for the reproduced launch path, consistent with the reserve-stage failure.
+- no production code or migration fix was applied in this diagnostic task; the required repair is a forward-only SQL migration that qualifies wallet-reserve table references, followed by a rolled-back reserve smoke test and one real canvas generation.
+
+## 2026-08-01 - Wallet Reserve Qualified-Column Repair
+
+- added forward-only migration `000055_wallet_reserve_qualified_columns.sql` to recreate only `app.wallet_reserve(...)` with explicit aliases for wallet, ledger, and credit-grant columns that collide with `RETURNS TABLE` output names.
+- preserved the existing reserve validation, user guard, idempotency conflict handling, lazy expiry, FEFO grant allocation, reservation/ledger writes, callback owner, and `SESSION_USER` execute ACL.
+- added a migration SQL regression test using TDD: the new test failed when `000055` was absent, then passed after the migration was added.
+- validation passed: focused migration test passed; DB wallet migration/accounting tests passed with 20 assertions and 1 database-backed integration test skipped; API tests passed with 270 assertions and 126 database-backed tests skipped; worker tests passed with 66 assertions and 16 skipped; DB and API builds passed; the root frontend build passed with existing warnings.
+- the worker TypeScript build remains blocked by the pre-existing `walletExpiry`/`WalletExpiryJobPayload` export mismatch in `@aigc-flow/redis`; no worker files were changed for this SQL-only repair.
+- the root `npm test` completion check was attempted but timed out after 10 minutes while collecting repository worktrees and retrying unavailable Redis connections; the task-focused suites above were rerun successfully afterward.
+- local PostgreSQL execution and staging rollout were not performed because this workspace has no `DATABASE_URL` or `psql`, and Docker Desktop's Linux engine was unavailable. The next staging rollout must apply `000055` using the documented worker-stop migration order, then run the rolled-back reserve smoke and one real canvas generation.
