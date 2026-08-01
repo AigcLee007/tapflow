@@ -1,7 +1,13 @@
 ﻿# Project Record
 
-Last updated: 2026-07-31
+Last updated: 2026-08-01
 Maintainers: project team + Codex sessions
+
+## 2026-08-01 - Wallet Completion Reserve-Ledger Lock Recovery
+
+- production Worker diagnostics reproduced `42501 permission denied for table billing_wallet_ledger` in `app.wallet_settle_or_refund` at the reserve-ledger `SELECT ... FOR UPDATE` statement; the function owner, `SECURITY DEFINER`, callback `SELECT/INSERT`, and forced RLS configuration were otherwise verified;
+- added `000059_wallet_completion_ledger_lock_acl.sql`, granting only the dedicated no-login `tapflow_wallet_callback` role the `UPDATE` permission and constrained UPDATE RLS policy required by PostgreSQL to acquire the existing reserve-ledger row lock. The Worker/API runtime role retains no direct ledger-table privileges;
+- added a focused migration contract test asserting the callback-only policy/grant and rejecting grants to `CURRENT_USER` or `postgres`. Deployment and post-migration Worker recovery verification remain pending.
 
 ## 2026-07-31 - Resend Auth Email Transport
 

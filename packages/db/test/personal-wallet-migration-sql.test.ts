@@ -377,6 +377,35 @@ describe("000042_xunhupay_personal_wallet.sql", () => {
     );
   });
 
+  test("allows the callback role to lock reserve ledger rows without granting the runtime role ledger access", async () => {
+    const migrationPath = path.resolve(
+      import.meta.dirname,
+      "../migrations/000059_wallet_completion_ledger_lock_acl.sql",
+    );
+    let migrationExists = true;
+    try {
+      await access(migrationPath);
+    } catch {
+      migrationExists = false;
+    }
+
+    expect(migrationExists).toBe(true);
+    if (!migrationExists) return;
+
+    const sql = await readFile(migrationPath, "utf8");
+    expect(sql).toContain("CREATE POLICY billing_wallet_ledger_update_callback");
+    expect(sql).toContain(
+      "ON billing_wallet_ledger FOR UPDATE TO tapflow_wallet_callback",
+    );
+    expect(sql).toContain("USING (current_user = 'tapflow_wallet_callback')");
+    expect(sql).toContain("WITH CHECK (current_user = 'tapflow_wallet_callback')");
+    expect(sql).toContain(
+      "GRANT UPDATE ON billing_wallet_ledger TO tapflow_wallet_callback;",
+    );
+    expect(sql).not.toContain("TO CURRENT_USER");
+    expect(sql).not.toContain("TO postgres");
+  });
+
   test("keeps wallet grant reservations within the remaining credit balance", async () => {
     const migrationPath = path.resolve(
       import.meta.dirname,
