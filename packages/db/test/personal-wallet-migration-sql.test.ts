@@ -337,6 +337,12 @@ describe("000042_xunhupay_personal_wallet.sql", () => {
 
     const sql = await readFile(migrationPath, "utf8");
     expect(sql).toContain("CREATE OR REPLACE FUNCTION app.wallet_settle_or_refund");
+    expect(sql).toContain("SECURITY DEFINER");
+    expect(sql).toContain("GRANT USAGE, CREATE ON SCHEMA app TO tapflow_wallet_callback;");
+    expect(sql).toContain(
+      "GRANT tapflow_wallet_callback TO CURRENT_USER WITH INHERIT FALSE, SET TRUE GRANTED BY CURRENT_USER;",
+    );
+    expect(sql).toContain("SET LOCAL ROLE tapflow_wallet_callback;");
     expect(sql).toContain("FROM billing_wallets AS wallet");
     expect(sql).toContain("WHERE wallet.user_id = p_user_id");
     expect(sql).toContain("FROM billing_wallet_ledger AS ledger");
@@ -351,10 +357,21 @@ describe("000042_xunhupay_personal_wallet.sql", () => {
     expect(sql).toContain("UPDATE billing_wallet_credit_reservations AS reservation");
     expect(sql).toContain("UPDATE billing_wallets AS wallet");
     expect(sql).toContain("current_setting('app.api_database_role', true)");
+    expect(sql).toContain("session_user");
     expect(sql).toContain(
       "app.wallet_settle_or_refund(text, uuid, uuid, uuid, uuid, text, jsonb)",
     );
     expect(sql).toContain("app.wallet_expire_due(integer, timestamptz)");
+    expect(sql).toContain(
+      "REVOKE ALL ON FUNCTION app.wallet_settle_or_refund(text, uuid, uuid, uuid, uuid, text, jsonb) FROM PUBLIC;",
+    );
+    expect(sql).toContain(
+      "REVOKE ALL ON FUNCTION app.wallet_expire_due(integer, timestamptz) FROM PUBLIC;",
+    );
+    expect(Array.from(sql.matchAll(/'GRANT EXECUTE ON FUNCTION ([^']+) TO %I'/g), (match) => match[1])).toEqual([
+      "app.wallet_settle_or_refund(text, uuid, uuid, uuid, uuid, text, jsonb)",
+      "app.wallet_expire_due(integer, timestamptz)",
+    ]);
     expect(sql).not.toMatch(
       /GRANT\s+(?:SELECT|INSERT|UPDATE|DELETE)(?:\s*,\s*(?:SELECT|INSERT|UPDATE|DELETE))*\s+ON\s+[^;]+\s+TO\s+(?:%I|runtime_role)/i,
     );

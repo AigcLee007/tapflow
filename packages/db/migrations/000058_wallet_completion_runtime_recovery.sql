@@ -171,6 +171,7 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION app.wallet_settle_or_refund(text, uuid, uuid, uuid, uuid, text, jsonb) FROM PUBLIC;
+REVOKE ALL ON FUNCTION app.wallet_expire_due(integer, timestamptz) FROM PUBLIC;
 
 DO $$
 DECLARE
