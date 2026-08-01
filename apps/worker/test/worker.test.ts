@@ -19,7 +19,7 @@ import { buildApp } from "../../api/src/app.js";
 import { WorkflowRunsService } from "../../api/src/modules/workflow-runs/workflow-runs.service.js";
 import { getWorkerEnv } from "../src/config/env.js";
 import { createWorkerRuntime } from "../src/main.js";
-import type { WorkerLogger } from "../src/logger.js";
+import { getWorkerErrorFields, type WorkerLogger } from "../src/logger.js";
 import { processNodeExecuteJob } from "../src/processors/node-execute.processor.js";
 import { processProviderPollJob } from "../src/processors/provider-poll.processor.js";
 import { processWorkflowStartJob } from "../src/processors/workflow-start.processor.js";
@@ -543,6 +543,23 @@ afterAll(() => {
 });
 
 describe("worker skeleton", () => {
+  test("normalizes safe PostgreSQL fields for worker failure logs", () => {
+    const error = Object.assign(new Error("column reference user_id is ambiguous"), {
+      code: "42702",
+      constraint: "wallet_constraint",
+      detail: "qualified diagnostic",
+      table: "billing_wallet_ledger",
+    });
+
+    expect(getWorkerErrorFields(error)).toEqual({
+      constraint: "wallet_constraint",
+      detail: "qualified diagnostic",
+      err: "column reference user_id is ambiguous",
+      errorCode: "42702",
+      table: "billing_wallet_ledger",
+    });
+  });
+
   test("media output normalization preserves worker-local render file paths", () => {
     const outputs = (__workerTestUtils as {
       normalizeMediaOutputs: (
@@ -3238,6 +3255,136 @@ describeWithDatabase("workflow node execution", () => {
         });
       } finally {
         await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("provider.poll restores the transaction before recording an asset-persistence SQL failure", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+
+      try {
+        await runMigrations(adminPool);
+        await adminPool.query(`
+          CREATE OR REPLACE FUNCTION public.test_provider_poll_asset_insert_failure()
+          RETURNS trigger
+          LANGUAGE plpgsql
+          AS $$
+          BEGIN
+            RAISE EXCEPTION USING
+              ERRCODE = '42702',
+              MESSAGE = 'forced asset persistence collision';
+          END;
+          $$;
+        `);
+        await adminPool.query(`
+          CREATE TRIGGER test_provider_poll_asset_insert_failure
+          BEFORE INSERT ON assets
+          FOR EACH ROW
+          EXECUTE FUNCTION public.test_provider_poll_asset_insert_failure();
+        `);
+        appPool = createPgPool({
+          connectionString: await createAppDatabaseUrl(),
+        });
+
+        const seeded = await seedWorkflowRuntime(appPool, {
+          inputNodeStatus: "succeeded",
+          middleNodeOutputJson: {
+            providerTask: {
+              modelKey: "video-model",
+              providerKey: "mock-provider",
+              providerTaskId: "task-persistence-sql-error",
+              routeId: "route-1",
+              routeKey: "default-media",
+              status: "waiting_provider",
+            },
+          },
+          middleNodeStatus: "waiting_provider",
+          middleNodeType: "video.generate",
+        });
+        const service = createWorkflowService({
+          mediaGenerationRuntime: {
+            async generateImage() {
+              throw new Error("not used");
+            },
+            async generateVideo() {
+              throw new Error("not used");
+            },
+            async pollTask() {
+              return {
+                mimeType: "video/mp4",
+                outputBase64: [Buffer.from("fake video bytes").toString("base64")],
+                providerRequest: {},
+                providerResponse: {},
+                providerTaskId: "task-persistence-sql-error",
+                status: "succeeded",
+                usage: null,
+              };
+            },
+          },
+          nodeQueue: createFakeNodeExecuteQueue(),
+          pollQueue: createFakeProviderPollQueue(),
+          pool: appPool,
+          storageProvider: new MemoryStorageProvider(),
+        });
+
+        await expect(
+          processProviderPollJob(
+            {
+              data: {
+                nodeRunId: seeded.middleNodeRunId,
+                providerTaskId: "task-persistence-sql-error",
+                tenantId: seeded.tenantId,
+                traceId: "trace-persistence-sql-error",
+                workflowRunId: seeded.workflowRunId,
+              },
+              id: "job-persistence-sql-error",
+              queueName: QUEUE_NAMES.providerPoll,
+            } as never,
+            createTestLogger(),
+            { executionService: service },
+          ),
+        ).rejects.toThrow("forced asset persistence collision");
+
+        const state = await withTenantTransaction(
+          { tenantId: seeded.tenantId, userId: seeded.userId },
+          async (client) => {
+            const nodeRun = await client.query<{ error_json: Record<string, unknown>; status: string }>(
+              "SELECT status, error_json FROM node_runs WHERE id = $1::uuid",
+              [seeded.middleNodeRunId],
+            );
+            const workflowRun = await client.query<{ error_json: Record<string, unknown>; status: string }>(
+              "SELECT status, error_json FROM workflow_runs WHERE id = $1::uuid",
+              [seeded.workflowRunId],
+            );
+            return {
+              nodeRun: nodeRun.rows[0],
+              workflowRun: workflowRun.rows[0],
+            };
+          },
+          appPool,
+        );
+
+        expect(state.nodeRun).toMatchObject({
+          error_json: {
+            code: "42702",
+            message: "forced asset persistence collision",
+          },
+          status: "failed",
+        });
+        expect(state.workflowRun).toMatchObject({
+          error_json: {
+            code: "42702",
+            message: "forced asset persistence collision",
+          },
+          status: "failed",
+        });
+      } finally {
+        await appPool.end();
+        await adminPool.query("DROP FUNCTION IF EXISTS public.test_provider_poll_asset_insert_failure() CASCADE");
         await adminPool.end();
       }
     });

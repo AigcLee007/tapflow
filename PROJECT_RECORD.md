@@ -6018,3 +6018,14 @@ Validation completed:
 - added forward-only migration `000057_wallet_reservation_runtime_rls.sql` with narrowly scoped callback SELECT on `billing_wallet_ledger`, SELECT/INSERT/UPDATE policies on `billing_wallet_credit_reservations`, and matching table privileges without DELETE or broad `FOR ALL` access.
 - added a focused migration regression test and observed the expected red state before the migration existed, followed by green after the minimal RLS repair.
 - final source validation, staging migration, rolled-back reserve verification, and one real canvas-generation smoke remain pending.
+
+## 2026-08-01 - Wallet Completion And Provider-Poll Recovery
+
+- staging diagnostics for workflow run `51f9a568-9506-4d28-b7a5-ab7da089a19e` and node run `f55d29c0-a017-4c47-8935-142445cc1494` confirmed that the Worker had created provider task `1481a574daa242e497ad2e32fdda4091`; this is not a Redis queue backlog or a missing provider submission.
+- traced successful provider completion to `app.wallet_settle_or_refund(...)`, where unqualified references collided with `RETURNS TABLE` output variables and caused PostgreSQL `42702` during settlement/refund.
+- the provider-poll error handler attempted to record failure in the same now-aborted transaction, which replaced the original SQLSTATE with `25P02` and left the canvas node in `waiting_provider`.
+- added forward-only migration `000058_wallet_completion_runtime_recovery.sql`: it qualifies settlement/refund SQL, preserves completion idempotency and accounting, revokes public function execution, grants only the runtime API role execution for wallet completion and `app.wallet_expire_due(...)`, and does not grant runtime financial-table DML.
+- added a Worker provider-poll savepoint before asynchronous result persistence. A caught provider-poll persistence error now rolls back to and releases that savepoint before the existing failed-node/refund write, preserving the real error path without changing synchronous node completion handling.
+- Worker failure logs now retain safe PostgreSQL diagnostics (`errorCode`, `constraint`, `detail`, and `table`) alongside the message. They do not log credentials, provider authorization, prompts, request bodies, or raw result payloads.
+- source validation passed: DB migration SQL tests 18 passed; DB personal-wallet tests 23 passed with 1 database-backed test skipped; DB build passed; Worker tests 68 passed with 17 database-backed tests skipped.
+- staging rollout remains required: stop the Worker, apply compiled migrations through `node packages/db/dist/cli.js`, restart all v2 services, verify expiry-job ACL errors are absent, inspect the exact stored run/node state, then enqueue exactly one `provider.poll` only if it is still `waiting_provider`. Do not create a new workflow run, clear Redis, or reserve credits again.

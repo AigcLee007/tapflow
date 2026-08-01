@@ -48,6 +48,10 @@ import {
   type VideoEditorRenderAssetLookup,
 } from "./video-editor-local-render-service.js";
 import { buildVideoEditorRenderPlan } from "./video-editor-render-plan.js";
+import {
+  createRecoverableSavepoint,
+  rollbackToRecoverableSavepoint,
+} from "./recoverable-savepoint.js";
 
 type WorkflowRunRecord = {
   error_json: Record<string, unknown> | null;
@@ -2030,6 +2034,7 @@ export class WorkflowNodeExecutionService {
         };
       }
 
+      await createRecoverableSavepoint(client, "provider_poll_attempt");
       try {
         const waitingProviderTasks = this.readWaitingProviderTasks(currentNodeRun.output_json);
         const currentProviderTask =
@@ -2251,6 +2256,7 @@ export class WorkflowNodeExecutionService {
           },
         };
       } catch (error) {
+        await rollbackToRecoverableSavepoint(client, "provider_poll_attempt");
         const normalized = normalizeError(error);
         await this.failNodeAndWorkflow(client, workflowRun.id, currentNodeRun.id, input.tenantId, normalized);
         return {

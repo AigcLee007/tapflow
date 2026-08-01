@@ -2,7 +2,7 @@ import type { QueueEvents, Worker } from "bullmq";
 
 import { QUEUE_NAMES, type QueueName } from "@aigc-flow/redis";
 
-import type { WorkerLogger } from "../logger.js";
+import { getWorkerErrorFields, type WorkerLogger } from "../logger.js";
 import { processAssetImageVariantJob } from "../processors/asset-image-variant.processor.js";
 import { processAssetIngestJob } from "../processors/asset-ingest.processor.js";
 import { processBillingSettleJob } from "../processors/billing-settle.processor.js";
@@ -88,7 +88,7 @@ function withWorkerErrorLogging(
       };
       logger.error(
         {
-          err: error instanceof Error ? error.message : String(error),
+          ...getWorkerErrorFields(error),
           jobId: typedJob.id ?? null,
           queueName,
           tenantId: typedJob.data?.tenantId ?? null,
