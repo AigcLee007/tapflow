@@ -3197,6 +3197,7 @@ export const TextNodeComponent = memo(function TextNode({
     || runtimeNodeStatus === 'running'
     || runtimeNodeStatus === 'waiting_provider'
     || d.generationStatus === 'generating';
+  const hasGenerationError = d.generationStatus === 'error' && !!d.errorMessage;
   const [hovered, setHovered] = useState(false);
   const { connectionNodeId } = useConnection();
   const isTargeting = !!connectionNodeId && connectionNodeId !== id && hovered;

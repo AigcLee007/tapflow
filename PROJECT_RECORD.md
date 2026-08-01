@@ -6035,3 +6035,10 @@ Validation completed:
 - Worker failure logs now retain safe PostgreSQL diagnostics (`errorCode`, `constraint`, `detail`, and `table`) alongside the message. They do not log credentials, provider authorization, prompts, request bodies, or raw result payloads.
 - source validation passed: DB migration SQL tests 18 passed; DB personal-wallet tests 23 passed with 1 database-backed test skipped; DB build passed; Worker tests 68 passed with 17 database-backed tests skipped.
 - staging rollout remains required: stop the Worker, apply compiled migrations through `node packages/db/dist/cli.js`, restart all v2 services, verify expiry-job ACL errors are absent, inspect the exact stored run/node state, then enqueue exactly one `provider.poll` only if it is still `waiting_provider`. Do not create a new workflow run, clear Redis, or reserve credits again.
+
+## 2026-08-01 - Text Node Error-State Crash Repair
+
+- traced the immediate canvas black screen after failed text generation to `TextNodeComponent`: its error renderer referenced `hasGenerationError`, but that variable existed only inside the separate image-node component.
+- added a focused React render regression test for a text node with `generationStatus: 'error'` and an error message; the test first reproduced `ReferenceError: hasGenerationError is not defined` before the production change.
+- fixed the crash by deriving `hasGenerationError` inside `TextNodeComponent`, preserving the existing inline error message and retry button without changing workflow execution, billing, or provider routing.
+- validation passed: the focused error-state test passed, the complete `FlowNodes.agent-metadata.test.tsx` suite passed with 15 assertions, and the production frontend build completed successfully with existing non-blocking warnings only.

@@ -128,6 +128,38 @@ describe("FlowNodes agent metadata", () => {
     window.removeEventListener("tapflow:open-agent-session", listener as EventListener);
   });
 
+  it("renders a failed text generation without crashing the canvas", () => {
+    expect(() => {
+      render(
+        <TextNodeComponent
+          id="text-error-1"
+          selected={false}
+          data={{
+            createdAt: 1,
+            errorMessage: "Text generation failed",
+            generationStatus: "error",
+            height: 180,
+            kind: "text",
+            status: "failed",
+            text: "",
+            title: "Failed Text",
+            updatedAt: 1,
+            width: 240,
+          } as any}
+          dragging={false}
+          zIndex={1}
+          isConnectable
+          type="text"
+          xPos={0}
+          yPos={0}
+        />,
+      );
+    }).not.toThrow();
+
+    expect(screen.getByText(/Text generation failed/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "重试" })).toBeTruthy();
+  });
+
   it("recovers the active persisted video result through its asset id", async () => {
     assetApiMocks.getAssetDownloadUrl.mockResolvedValue({
       expiresAt: "2026-07-16T00:15:00.000Z",
