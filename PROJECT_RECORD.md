@@ -3,6 +3,14 @@
 Last updated: 2026-08-01
 Maintainers: project team + Codex sessions
 
+## 2026-08-01 - Database-Driven Text Model Picker
+
+- replaced the canvas text-node model dropdown's five hardcoded placeholder choices with the authenticated v2 AI model catalog and per-model route APIs;
+- creator options now include only active text catalog entries with active routes and positive effective pricing, while persisting the database `modelKey`, `routeId`, and `routeKey` selected by the user;
+- added explicit loading, retry, empty, and unconfigured states. An empty catalog now shows `暂无可用文本模型`, and generation is blocked locally with `NO_TEXT_GENERATION_ROUTE` instead of launching a job against a nonexistent fallback route;
+- new text nodes no longer persist the old static `gpt-5.5` / `text.gpt-5-5` defaults. Existing saved identifiers remain readable but are treated as unavailable unless the current database catalog returns the matching active priced line;
+- focused mapper, authenticated cache/retry, text-node selection/empty-state/Escape-dismissal, and node-factory tests pass. The frontend production build passes with the existing Browserslist, CSS-property, dynamic-import, and chunk-size warnings.
+
 ## 2026-08-01 - Wallet Completion Reserve-Ledger Lock Recovery
 
 - production Worker diagnostics reproduced `42501 permission denied for table billing_wallet_ledger` in `app.wallet_settle_or_refund` at the reserve-ledger `SELECT ... FOR UPDATE` statement; the function owner, `SECURITY DEFINER`, callback `SELECT/INSERT`, and forced RLS configuration were otherwise verified;

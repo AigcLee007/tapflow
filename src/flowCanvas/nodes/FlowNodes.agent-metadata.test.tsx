@@ -17,6 +17,9 @@ const workflowRunnerMocks = vi.hoisted(() => ({
 const videoCatalogMocks = vi.hoisted(() => ({
   current: { error: null as string | null, loading: false, models: [] as any[], retry: vi.fn() },
 }));
+const textCatalogMocks = vi.hoisted(() => ({
+  current: { error: null as string | null, loading: false, models: [] as any[], retry: vi.fn() },
+}));
 const useAssetLibraryMock = vi.hoisted(() => vi.fn());
 
 vi.mock("../../assets/assetApi", () => ({
@@ -34,6 +37,9 @@ vi.mock("../runtime/v2WorkflowRunner", () => ({
 }));
 vi.mock("../video/useVideoGenerationCatalog", () => ({
   useVideoGenerationCatalog: () => videoCatalogMocks.current,
+}));
+vi.mock("../text/useTextGenerationCatalog", () => ({
+  useTextGenerationCatalog: () => textCatalogMocks.current,
 }));
 
 vi.mock("@xyflow/react", async () => {
@@ -62,6 +68,7 @@ describe("FlowNodes agent metadata", () => {
     workflowRunnerMocks.runBackendWorkflow.mockReset();
     workflowRunnerMocks.runBackendWorkflow.mockResolvedValue(undefined);
     videoCatalogMocks.current = { error: null, loading: false, models: [], retry: vi.fn() };
+    textCatalogMocks.current = { error: null, loading: false, models: [], retry: vi.fn() };
     useAssetLibraryMock.mockReset();
     useAssetLibraryMock.mockReturnValue({
       assets: [],
@@ -158,6 +165,169 @@ describe("FlowNodes agent metadata", () => {
 
     expect(screen.getByText(/Text generation failed/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "重试" })).toBeTruthy();
+  });
+
+  it("shows only database text models and persists the selected real route", () => {
+    textCatalogMocks.current = {
+      error: null,
+      loading: false,
+      models: [{
+        defaultRoute: {
+          credits: 2,
+          id: "route-real-1",
+          label: "线路一",
+          providerKey: "openai-compatible",
+          routeKey: "text.real.line-1",
+        },
+        id: "real-text-model",
+        label: "真实文本模型",
+        modelFamily: "real-text-family",
+        modelKey: "real-text-model",
+        routes: [
+          {
+            credits: 2,
+            id: "route-real-1",
+            label: "线路一",
+            providerKey: "openai-compatible",
+            routeKey: "text.real.line-1",
+          },
+          {
+            credits: 4,
+            id: "route-real-2",
+            label: "线路二",
+            providerKey: "openai-compatible",
+            routeKey: "text.real.line-2",
+          },
+        ],
+      }],
+      retry: vi.fn(),
+    };
+    const node = useFlowCanvasStore.getState().addNode("text", { x: 0, y: 0 }, {
+      generationPrompt: "写一段文案",
+      modelId: "real-text-model",
+      routeId: "route-real-1",
+      routeKey: "text.real.line-1",
+    }, { selected: true });
+
+    render(
+      <TextNodeComponent
+        id={node.id}
+        selected
+        data={node.data as any}
+        dragging={false}
+        zIndex={1}
+        isConnectable
+        type="text"
+        xPos={0}
+        yPos={0}
+      />,
+    );
+
+    fireEvent.click(screen.getByTitle("选择文本模型"));
+
+    expect(screen.getAllByText("真实文本模型")).toHaveLength(3);
+    expect(screen.getByText("线路一")).toBeTruthy();
+    expect(screen.getByText("线路二")).toBeTruthy();
+    expect(screen.queryByText("Gemini 3.1 Pro Preview")).toBeNull();
+    expect(screen.queryByText("Claude Opus 4.6")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /真实文本模型.*线路二/ }));
+
+    expect(useFlowCanvasStore.getState().nodes[0]?.data).toMatchObject({
+      modelId: "real-text-model",
+      routeId: "route-real-2",
+      routeKey: "text.real.line-2",
+    });
+  });
+
+  it("shows an empty text catalog and blocks generation before the workflow runner", () => {
+    const node = useFlowCanvasStore.getState().addNode("text", { x: 0, y: 0 }, {
+      generationPrompt: "写一段文案",
+      modelId: undefined,
+      routeId: undefined,
+      routeKey: undefined,
+    }, { selected: true });
+
+    render(
+      <TextNodeComponent
+        id={node.id}
+        selected
+        data={node.data as any}
+        dragging={false}
+        zIndex={1}
+        isConnectable
+        type="text"
+        xPos={0}
+        yPos={0}
+      />,
+    );
+
+    expect(screen.getAllByText("未配置")).toHaveLength(2);
+    fireEvent.click(screen.getByTitle("选择文本模型"));
+    expect(screen.getByText("暂无可用文本模型")).toBeTruthy();
+
+    fireEvent.click(screen.getByTitle("开始生成"));
+
+    expect(workflowRunnerMocks.runBackendWorkflow).not.toHaveBeenCalled();
+    expect(useFlowCanvasStore.getState().nodes[0]?.data).toMatchObject({
+      errorCode: "NO_TEXT_GENERATION_ROUTE",
+      generationStatus: "error",
+      status: "failed",
+    });
+    expect(String(useFlowCanvasStore.getState().nodes[0]?.data.errorMessage)).toContain("文本模型线路");
+  });
+
+  it("closes the database text model menu with Escape", () => {
+    textCatalogMocks.current = {
+      error: null,
+      loading: false,
+      models: [{
+        defaultRoute: {
+          credits: 2,
+          id: "route-real-1",
+          label: "线路一",
+          providerKey: "real-provider",
+          routeKey: "text.real.line-1",
+        },
+        id: "real-text-model",
+        label: "真实文本模型",
+        modelFamily: "real-text-family",
+        modelKey: "real-text-model",
+        routes: [{
+          credits: 2,
+          id: "route-real-1",
+          label: "线路一",
+          providerKey: "real-provider",
+          routeKey: "text.real.line-1",
+        }],
+      }],
+      retry: vi.fn(),
+    };
+    const node = useFlowCanvasStore.getState().addNode("text", { x: 0, y: 0 }, {
+      modelId: "real-text-model",
+      routeId: "route-real-1",
+      routeKey: "text.real.line-1",
+    }, { selected: true });
+
+    render(
+      <TextNodeComponent
+        id={node.id}
+        selected
+        data={node.data as any}
+        dragging={false}
+        zIndex={1}
+        isConnectable
+        type="text"
+        xPos={0}
+        yPos={0}
+      />,
+    );
+
+    fireEvent.click(screen.getByTitle("选择文本模型"));
+    expect(screen.getByText("线路一")).toBeTruthy();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByText("线路一")).toBeNull();
   });
 
   it("recovers the active persisted video result through its asset id", async () => {

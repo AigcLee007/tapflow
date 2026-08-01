@@ -33,10 +33,10 @@ describe('nodeFactory route defaults', () => {
     });
   });
 
-  it('sets text node model and routeKey to GPT-5.5 defaults', () => {
+  it('leaves text nodes unconfigured until the database catalog is selected', () => {
     const node = createFlowNode('text', { x: 30, y: 30 });
-    expect(node.data.modelId).toBe('gpt-5.5');
-    expect(node.data.routeKey).toBe('text.gpt-5-5');
+    expect(node.data.modelId).toBeUndefined();
+    expect(node.data.routeKey).toBeUndefined();
   });
 
   it('creates a storyboard node with asset-id based cells', () => {

@@ -5,7 +5,6 @@ import { nanoid } from 'nanoid';
 import type { Node } from '@xyflow/react';
 import type { FlowNodeData, FlowNodeKind } from '../types';
 import { FLOW_NODE_DEFAULT_SIZES } from './nodeSizing';
-import { DEFAULT_TEXT_MODEL_ID, DEFAULT_TEXT_ROUTE_KEY } from '../../config/textModels';
 import { createDefaultVideoGenerationParams } from '../video/videoGenerationParams';
 
 const NODE_DEFAULTS: Record<
@@ -80,15 +79,12 @@ export function createFlowNode(
     height: defaults.height,
     status: 'idle',
     generationStatus: 'idle',
-    modelId: kind === 'text' ? DEFAULT_TEXT_MODEL_ID : undefined,
     routeKey:
       kind === 'image'
         ? 'image.default'
         : kind === 'video'
           ? 'video.default'
-          : kind === 'text'
-            ? DEFAULT_TEXT_ROUTE_KEY
-            : undefined,
+          : undefined,
     createdAt: now,
     updatedAt: now,
   };

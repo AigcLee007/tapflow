@@ -9,7 +9,6 @@ import { generateImageApi, generateTextApi, editImageApi, checkTaskStatus, findA
 import { generateVideo } from '../../../services/videoService';
 import { getImageRouteById, getSelectedImageRoute } from '../../config/imageRoutes';
 import { getSelectedVideoRoute } from '../../config/videoRoutes';
-import { DEFAULT_TEXT_MODEL_ID } from '../../config/textModels';
 import { getImageNaturalSize, imageUrlToBase64 } from '../utils/imageUtils';
 import { buildImageEditModelMapping } from '../utils/imageEditModelMapping';
 import { resolveEditableImageSource } from '../utils/editableImageSource';
@@ -241,7 +240,7 @@ async function runTextGeneration(
   upstreamVideos: string[] = [],
 ) {
   const store = useFlowCanvasStore.getState();
-  const modelId = data.modelId || DEFAULT_TEXT_MODEL_ID;
+  const modelId = String(data.modelId || '');
   const contextualTexts = [...upstreamTexts];
   const upstreamImagePayloads = (
     await Promise.all(

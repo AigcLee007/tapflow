@@ -70,6 +70,7 @@ import { getVideoGenerationBlocker } from '../video/videoGenerationCapabilities'
 import { normalizeVideoGenerationParams } from '../video/videoGenerationParams';
 import { emitVideoComposerDiagnostic } from '../video/videoComposerDiagnostics';
 import { useVideoGenerationCatalog } from '../video/useVideoGenerationCatalog';
+import { useTextGenerationCatalog } from '../text/useTextGenerationCatalog';
 import {
   getPersistedVideoResultAssetId,
   getSafePersistedVideoPosterUrl,
@@ -90,7 +91,6 @@ import {
   getSelectedImageRoute,
   type ImageRouteConfig,
 } from '../../config/imageRoutes';
-import { DEFAULT_TEXT_MODEL_ID, getTextModelOption, getTextModelRouteKey, TEXT_MODEL_OPTIONS } from '../../config/textModels';
 import { getImageNaturalSize, imageUrlToBlob } from '../utils/imageUtils';
 import type { LightDirection } from './ImageLightingOverlay';
 import type { MultiAngleId } from './ImageMultiAngleOverlay';
@@ -256,6 +256,18 @@ const TEXT_MODEL_LOGO_BY_PROVIDER: Record<string, string> = {
   openai: '/openai-icon.svg',
   anthropic: '/claude-ai-icon.svg',
 };
+
+function getTextModelLogo(providerKey?: string): string | null {
+  const normalized = String(providerKey || '').toLowerCase();
+  if (normalized.includes('gemini') || normalized.includes('google')) return TEXT_MODEL_LOGO_BY_PROVIDER.gemini;
+  if (normalized.includes('anthropic') || normalized.includes('claude')) return TEXT_MODEL_LOGO_BY_PROVIDER.anthropic;
+  if (normalized.includes('openai') || normalized.includes('gpt')) return TEXT_MODEL_LOGO_BY_PROVIDER.openai;
+  return null;
+}
+
+function formatTextCredits(credits: number): string {
+  return Number.isInteger(credits) ? String(credits) : credits.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+}
 
 const EMPTY_UPSTREAM_IMAGE_REFS: FlowUpstreamImageRef[] = [];
 const EMPTY_DERIVED_EDIT_COUNTS: FlowDerivedEditCounts = {
@@ -3206,13 +3218,21 @@ export const TextNodeComponent = memo(function TextNode({
   const [promptExpanded, setPromptExpanded] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showModelMenu, setShowModelMenu] = useState(false);
+  const {
+    error: textModelsError,
+    loading: textModelsLoading,
+    models: textModels,
+    retry: retryTextModels,
+  } = useTextGenerationCatalog();
   const textModelTriggerRef = useRef<HTMLButtonElement>(null);
   const textModelMenuRef = useRef<HTMLDivElement>(null);
   const [textModelMenuPosition, setTextModelMenuPosition] = useState<{ left: number; bottom: number } | null>(null);
   const [copyToastVisible, setCopyToastVisible] = useState(false);
   const copyToastTimerRef = useRef<number | null>(null);
-  const currentModelId = String(d.modelId || DEFAULT_TEXT_MODEL_ID);
-  const currentTextModel = getTextModelOption(currentModelId);
+  const currentModelId = String(d.modelId || '').trim();
+  const currentRouteKey = String(d.routeKey || '').trim();
+  const currentTextModel = textModels.find((model) => model.modelKey === currentModelId) ?? null;
+  const currentTextRoute = currentTextModel?.routes.find((route) => route.routeKey === currentRouteKey) ?? null;
   const { showSingleNodeControls } = useNodeSelectionState(id, selected);
   const showNodeEditor = showSingleNodeControls;
 
@@ -3238,11 +3258,16 @@ export const TextNodeComponent = memo(function TextNode({
         setShowModelMenu(false);
       }
     };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setShowModelMenu(false);
+    };
     window.addEventListener('mousedown', onDown);
+    window.addEventListener('keydown', onKeyDown);
     window.addEventListener('resize', updateTextModelMenuPosition);
     window.addEventListener('scroll', updateTextModelMenuPosition, true);
     return () => {
       window.removeEventListener('mousedown', onDown);
+      window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('resize', updateTextModelMenuPosition);
       window.removeEventListener('scroll', updateTextModelMenuPosition, true);
     };
@@ -3250,6 +3275,15 @@ export const TextNodeComponent = memo(function TextNode({
 
   const handleGenerate = () => {
     if (isGenerating) return;
+    if (!currentTextModel || !currentTextRoute) {
+      updateNodeData(id, {
+        errorCode: 'NO_TEXT_GENERATION_ROUTE',
+        errorMessage: '当前没有已发布且配置有效价格的文本模型线路',
+        generationStatus: 'error',
+        status: 'failed',
+      });
+      return;
+    }
     void runBackendWorkflow({ runMode: 'target_node', targetNodeId: id }).catch(() => undefined);
   };
 
@@ -3592,30 +3626,67 @@ export const TextNodeComponent = memo(function TextNode({
                     }}
                     className="nodrag nopan nowheel"
                   >
-                    {TEXT_MODEL_OPTIONS.map((model) => {
-                      const active = model.id === currentModelId;
-                      return (
+                    {textModelsLoading && (
+                      <div style={{ ...textModelMenuItem, cursor: 'default', color: '#a1a1aa' }}>
+                        <span style={textModelMenuLabel}>正在加载文本模型...</span>
+                      </div>
+                    )}
+                    {!textModelsLoading && textModelsError && (
+                      <div style={{ ...textModelMenuItem, cursor: 'default', justifyContent: 'space-between' }}>
+                        <span style={textModelMenuLabel}>文本模型加载失败</span>
                         <button
-                          key={model.id}
                           type="button"
                           className="nodrag nopan"
-                          onClick={() => {
-                            updateNodeData(id, {
-                              modelId: model.id,
-                              routeKey: getTextModelRouteKey(model.id),
-                            });
-                            setShowModelMenu(false);
-                          }}
-                          style={{
-                            ...textModelMenuItem,
-                            background: active ? 'rgba(255,255,255,0.08)' : 'transparent',
-                          }}
+                          onClick={retryTextModels}
+                          style={{ border: 'none', background: 'transparent', color: '#d4d4d8', cursor: 'pointer', fontSize: 12 }}
                         >
-                          <img src={TEXT_MODEL_LOGO_BY_PROVIDER[model.provider]} alt="" style={textModelLogo} />
-                          <span style={textModelMenuLabel}>{model.label}</span>
+                          重试
                         </button>
-                      );
-                    })}
+                      </div>
+                    )}
+                    {!textModelsLoading && !textModelsError && textModels.length === 0 && (
+                      <div style={{ ...textModelMenuItem, cursor: 'default', color: '#a1a1aa' }}>
+                        <span style={textModelMenuLabel}>暂无可用文本模型</span>
+                      </div>
+                    )}
+                    {!textModelsLoading && !textModelsError && textModels.flatMap((model) => (
+                      model.routes.map((route) => {
+                        const active = model.modelKey === currentModelId && route.routeKey === currentRouteKey;
+                        const logo = getTextModelLogo(route.providerKey);
+                        return (
+                          <button
+                            key={route.id}
+                            type="button"
+                            className="nodrag nopan"
+                            onClick={() => {
+                              updateNodeData(id, {
+                                modelId: model.modelKey,
+                                routeId: route.id,
+                                routeKey: route.routeKey,
+                              });
+                              setShowModelMenu(false);
+                            }}
+                            style={{
+                              ...textModelMenuItem,
+                              background: active ? 'rgba(255,255,255,0.08)' : 'transparent',
+                            }}
+                          >
+                            {logo ? (
+                              <img src={logo} alt="" style={textModelLogo} />
+                            ) : (
+                              <span style={{ ...textModelLogo, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <Type size={16} aria-hidden="true" />
+                              </span>
+                            )}
+                            <span style={{ display: 'flex', flex: 1, minWidth: 0, flexDirection: 'column', gap: 2 }}>
+                              <span style={textModelMenuLabel}>{model.label}</span>
+                              <span style={{ color: '#a1a1aa', fontSize: 9, lineHeight: 1.25 }}>{route.label}</span>
+                            </span>
+                            <span style={{ color: '#a1a1aa', fontSize: 9 }}>{formatTextCredits(route.credits)} 积分</span>
+                          </button>
+                        );
+                      })
+                    ))}
                   </div>,
                   document.body,
                 )}
@@ -3630,8 +3701,12 @@ export const TextNodeComponent = memo(function TextNode({
                   style={textModelTrigger}
                   title="选择文本模型"
                 >
-                  <img src={TEXT_MODEL_LOGO_BY_PROVIDER[currentTextModel.provider]} alt="" style={textModelTriggerLogo} />
-                  <span>{currentTextModel.label}</span>
+                  {getTextModelLogo(currentTextRoute?.providerKey) ? (
+                    <img src={getTextModelLogo(currentTextRoute?.providerKey) || ''} alt="" style={textModelTriggerLogo} />
+                  ) : (
+                    <Type size={16} aria-hidden="true" />
+                  )}
+                  <span>{currentTextRoute ? currentTextModel?.label : (textModelsLoading ? '加载中...' : '未配置')}</span>
                   <ChevronDown size={14} color="#a1a1aa" />
                 </button>
               </div>
@@ -3641,7 +3716,7 @@ export const TextNodeComponent = memo(function TextNode({
               <div style={sendBtnOuter}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                   <Coins size={14} color="#f59e0b" />
-                  <span>2</span>
+                  <span>{currentTextRoute ? formatTextCredits(currentTextRoute.credits) : '未配置'}</span>
                 </span>
                 <button
                   onClick={handleGenerate}
