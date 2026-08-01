@@ -66,13 +66,13 @@ will be granted to the runtime role.
 
 ## Worker Transaction Recovery
 
-Both provider-result paths must tolerate a PostgreSQL statement failure:
+Synchronous node completion already lets its success transaction roll back and
+then performs failure/refund handling in a separate transaction. That behavior
+will remain unchanged and will be covered by existing worker tests.
 
-- synchronous completion in node execution;
-- asynchronous completion in `provider.poll`.
-
-Each path will establish a named PostgreSQL savepoint before the block that
-can persist provider output and settle billing. On failure it will:
+Asynchronous completion in `provider.poll` still catches errors inside the
+same transaction. It will establish a named PostgreSQL savepoint before the
+block that can persist provider output and settle billing. On failure it will:
 
 1. retain the original error value;
 2. roll back to and release the savepoint;
@@ -102,7 +102,7 @@ is reconciled.
 ## Diagnostics
 
 Worker error logging will include the original error message and, when
-available, PostgreSQL `code`, `constraint`, `detail`, and `table`. It must not
+available, PostgreSQL `errorCode`, `constraint`, `detail`, and `table`. It must not
 log credentials, connection URLs, authorization headers, or provider secrets.
 
 ## Tests
@@ -113,7 +113,6 @@ before the production change:
 - migration SQL requires qualified settlement table references;
 - migration SQL grants both runtime function signatures without granting
   financial table writes;
-- synchronous execution rolls back to a savepoint before failure/refund writes;
 - asynchronous polling rolls back to a savepoint before failure/refund writes;
 - the original database error is rethrown after the failed state is persisted.
 
