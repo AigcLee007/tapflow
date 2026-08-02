@@ -181,6 +181,8 @@ describe("FlowNodes agent metadata", () => {
         },
         id: "real-text-model",
         label: "真实文本模型",
+        logoKey: "openai",
+        manufacturer: "GPT",
         modelFamily: "real-text-family",
         modelKey: "real-text-model",
         routes: [
@@ -226,10 +228,15 @@ describe("FlowNodes agent metadata", () => {
     fireEvent.click(screen.getByTitle("选择文本模型"));
 
     expect(screen.getAllByText("真实文本模型")).toHaveLength(3);
+    expect(screen.getByText("GPT")).toBeTruthy();
     expect(screen.getByText("线路一")).toBeTruthy();
     expect(screen.getByText("线路二")).toBeTruthy();
     expect(screen.queryByText("Gemini 3.1 Pro Preview")).toBeNull();
     expect(screen.queryByText("Claude Opus 4.6")).toBeNull();
+
+    const openAiLogos = Array.from(document.querySelectorAll('img[src="/openai-icon.svg"]'));
+    expect(openAiLogos.length).toBeGreaterThan(0);
+    expect(openAiLogos.every((logo) => logo.style.filter === 'brightness(0) invert(1)')).toBe(true);
 
     fireEvent.click(screen.getByRole("button", { name: /真实文本模型.*线路二/ }));
 

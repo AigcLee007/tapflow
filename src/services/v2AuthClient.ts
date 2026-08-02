@@ -51,6 +51,20 @@ export type VerificationRequired = {
 export type AuthenticatedResult = { status: "authenticated"; session: AuthSession };
 export type AuthAttemptResult = AuthenticatedResult | VerificationRequired;
 
+export type PasswordResetChallenge = { challengeToken: string; expiresInSeconds: number; resendAvailableInSeconds: number; message: string };
+
+export function requestPasswordReset(input: { email: string }) {
+  return apiPost<PasswordResetChallenge>("/auth/password-reset/request", input, { auth: false, retryOnUnauthorized: false });
+}
+
+export function resendPasswordReset(input: { challengeToken: string }) {
+  return apiPost<PasswordResetChallenge>("/auth/password-reset/resend", input, { auth: false, retryOnUnauthorized: false });
+}
+
+export function confirmPasswordReset(input: { challengeToken: string; code: string; newPassword: string }) {
+  return apiPost<{ message: string }>("/auth/password-reset/confirm", input, { auth: false, retryOnUnauthorized: false });
+}
+
 const TRUSTED_DEVICE_TOKEN_KEY = "v2-trusted-device-token";
 
 export function getStoredTrustedDeviceToken(): string | null {

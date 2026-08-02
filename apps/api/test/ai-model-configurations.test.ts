@@ -205,6 +205,9 @@ describe("AiModelConfigurationsService", () => {
       pool: { connect: async () => client } as never });
     await expect(service.publish(context, { routeId: "00000000-0000-0000-0000-000000000010", expectedRevision: 1 }))
       .rejects.toMatchObject({ code: "MODEL_CONFIGURATION_CONFLICT" });
+    expect(queries.find((sql) => sql.includes("LEFT JOIN model_pricing"))).toContain(
+      "pricing.model=model.model_key",
+    );
     expect(queries.some((sql) => sql.includes("pg_advisory_xact_lock"))).toBe(true);
     expect(queries.some((sql) => /^\s*UPDATE\s/iu.test(sql))).toBe(false);
   });

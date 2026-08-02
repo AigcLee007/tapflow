@@ -100,7 +100,7 @@ export class AiModelConfigurationsService {
              OR catalog.plugin_install_id=route.plugin_install_id)
          LEFT JOIN ai_provider_connections connection ON connection.id=route.connection_id
          LEFT JOIN api_credentials credential ON credential.id=route.credential_id
-         LEFT JOIN model_pricing pricing ON pricing.provider=provider.key AND pricing.model=route.upstream_model
+         LEFT JOIN model_pricing pricing ON pricing.provider=provider.key AND pricing.model=model.model_key
            AND pricing.route=route.route_key AND pricing.unit=CASE route.modality
              WHEN 'text' THEN 'text_generation' WHEN 'image' THEN 'image_generation' WHEN 'video' THEN 'video_generation' END
          WHERE route.id=$1 AND route.tenant_id IS NULL AND route.deleted_at IS NULL

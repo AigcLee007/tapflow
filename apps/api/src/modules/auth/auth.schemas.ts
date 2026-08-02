@@ -31,9 +31,26 @@ export const resendEmailSchema = z.object({
   challengeToken: z.string().min(32).max(512),
 });
 
+export const requestPasswordResetSchema = z.object({
+  email: z.string().trim().email(),
+});
+
+export const resendPasswordResetSchema = z.object({
+  challengeToken: z.string().min(32).max(512),
+});
+
+export const confirmPasswordResetSchema = z.object({
+  challengeToken: z.string().min(32).max(512),
+  code: z.string().regex(/^\d{6}$/),
+  newPassword: z.string().min(8).max(256),
+});
+
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RefreshInput = z.infer<typeof refreshSchema>;
 export type LogoutInput = z.infer<typeof logoutSchema>;
 export type VerifyEmailInput = z.infer<typeof verifyEmailSchema>;
 export type ResendEmailInput = z.infer<typeof resendEmailSchema>;
+export type RequestPasswordResetInput = z.infer<typeof requestPasswordResetSchema>;
+export type ResendPasswordResetInput = z.infer<typeof resendPasswordResetSchema>;
+export type ConfirmPasswordResetInput = z.infer<typeof confirmPasswordResetSchema>;

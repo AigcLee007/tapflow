@@ -1,4 +1,5 @@
 export { AiGateway } from "./ai-gateway.js";
+export { AittcoTextRelayAdapter } from "./aittco-text-relay-adapter.js";
 export { DatabaseMediaRuntime } from "./database-media-runtime.js";
 export { DatabaseTextGenerationRuntime } from "./database-text-runtime.js";
 export {

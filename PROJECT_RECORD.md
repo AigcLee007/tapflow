@@ -6059,3 +6059,33 @@ Validation completed:
 - added a focused React render regression test for a text node with `generationStatus: 'error'` and an error message; the test first reproduced `ReferenceError: hasGenerationError is not defined` before the production change.
 - fixed the crash by deriving `hasGenerationError` inside `TextNodeComponent`, preserving the existing inline error message and retry button without changing workflow execution, billing, or provider routing.
 - validation passed: the focused error-state test passed, the complete `FlowNodes.agent-metadata.test.tsx` suite passed with 15 assertions, and the production frontend build completed successfully with existing non-blocking warnings only.
+## 2026-08-02 - Aittco Multi-Protocol Text Relay
+
+- added the `aittco.text-relay` plugin manifest with eight priced product text models: Gemini-3.1-pro, Gemini-3.5-flash, GPT-5.6-sol, GPT-5.6-terra, GPT-5.5, Claude-Opus-5, Claude-Sonnet-5, and Claude-Opus-4-8.
+- added one server-side `aittco-text-relay` adapter that uses the configured Gemini GenerateContent, OpenAI Responses, or Claude Messages request path and always sends the configured upstream model rather than the canvas product model key.
+- kept the shared Aittco Bearer Key in CredentialVault: no runtime Compose variable, frontend value, node draft field, or source-controlled secret is introduced.
+- corrected plugin route installation to persist `requestConfig.model` as `ai_routes.upstream_model` and model-configuration publishing to look up prices by `ai_models.model_key`; this preserves Gemini preview upstream names while pricing by product model.
+- canvas text model catalog options now read `manufacturer` and `logoKey` from database catalog UI metadata, use the supplied Gemini/OpenAI/Claude logos, and group active positive-priced options by Gemini, GPT, Claude, then other models.
+- staging rollout and live route smoke tests remain pending: install the plugin through the authenticated admin API with the shared Key, execute each generated route test, then perform a text-node canvas generation before disabling the legacy SiphonLab package.
+
+## 2026-08-02 - Aittco GPT Chat Completions Cutover
+
+- verified the relay model list, Gemini native GenerateContent, and Claude Messages calls against the configured service; each returned HTTP 200.
+- confirmed the Aittco OpenAI Responses endpoint timed out twice after 60 seconds, so the three GPT routes now use `/v1/chat/completions` with the same upstream models, route keys, and prices.
+- added adapter and manifest regression coverage for Chat Completions request/response handling, normalized route metadata, and declared provider capabilities; Gemini and Claude protocols remain unchanged.
+- no real relay Key is stored in source. Deployment, authenticated plugin reinstallation with the verified raw Key, and all eight live route tests remain pending.
+
+## 2026-08-02 - Text Node Terra Default
+
+- new text nodes now initialize with product model `gpt-5.6-terra` and route `text.gpt-5-6-terra`.
+- explicit model and route overrides remain authoritative, and existing saved nodes are not migrated.
+- validation passed: node-factory tests (8 assertions) and the production frontend build; existing Vite warnings remain non-blocking.
+
+## 2026-08-02 - Text Picker GPT White Icon
+
+- applied a text-picker-only white filter to the OpenAI/GPT logo in both menu rows and the selected-model trigger, preserving the shared SVG asset and Gemini/Claude rendering.
+- added a DOM regression assertion covering the rendered OpenAI logo filter.
+- validation passed: FlowNodes agent-metadata tests and the production frontend build; existing Vite warnings remain non-blocking.
+## 2026-08-02 - Password Reset Flow
+
+Added email-code password recovery: request/resend/confirm APIs, hashed one-time challenges, password update with session and refresh-token revocation, Resend delivery, and the public `/forgot-password` recovery page linked from login. Validation: `npm run build`, API build, and focused Resend tests pass in the isolated `codex/password-reset` worktree. Database-backed auth tests require `DATABASE_URL`.

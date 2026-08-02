@@ -8,9 +8,12 @@ import type { RequestContext } from "../../http/request-context.js";
 import type { AuthEmailSender } from "./auth-email-sender.js";
 import type {
   LoginInput,
+  ConfirmPasswordResetInput,
+  RequestPasswordResetInput,
   RefreshInput,
   RegisterInput,
   ResendEmailInput,
+  ResendPasswordResetInput,
   VerifyEmailInput,
 } from "./auth.schemas.js";
 import { hashPassword, verifyPassword } from "./password.js";
@@ -860,6 +863,142 @@ export class AuthService {
       resendAvailableInSeconds: EMAIL_CODE_RESEND_COOLDOWN_SECONDS,
       status: "verification_required" as const,
     };
+  }
+
+  async requestPasswordReset(input: RequestPasswordResetInput, metadata: SessionMetadata) {
+    const normalizedEmail = input.email.trim().toLowerCase();
+    const userResult = await this.pool.query<{ id: string; email: string }>(
+      "SELECT id::text AS id, email FROM users WHERE email = $1 AND status = 'active' LIMIT 1",
+      [normalizedEmail],
+    );
+    const user = userResult.rows[0];
+    const challengeToken = generateOpaqueToken();
+    let code: string | null = null;
+    let challengeId: string | null = null;
+    if (user) {
+      challengeId = randomUUID();
+      code = generateNumericCode();
+      await withAuthContextTransaction(this.pool, { tenantId: null, userId: user.id }, async (client) => {
+        await client.query(
+          "UPDATE auth_email_challenges SET consumed_at = COALESCE(consumed_at, now()), updated_at = now() WHERE user_id = $1::uuid AND purpose = 'password_reset' AND consumed_at IS NULL",
+          [user.id],
+        );
+        await client.query(
+          `INSERT INTO auth_email_challenges
+            (id, user_id, tenant_id, purpose, reason, challenge_token_hash, code_hash, attempts_remaining, last_sent_at, expires_at, updated_at)
+           VALUES ($1::uuid, $2::uuid, NULL, 'password_reset', 'password_reset', $3, $4, $5, now(), now() + ($6 || ' seconds')::interval, now())`,
+          [challengeId, user.id, hashOpaqueToken(challengeToken), hashVerificationCode(challengeId as string, code as string, this.env.jwtRefreshSecret), EMAIL_CODE_MAX_ATTEMPTS, String(EMAIL_CODE_TTL_SECONDS)],
+        );
+      });
+      try {
+        await this.authEmailSender.sendPasswordResetCode({ code, email: user.email, expiresInMinutes: EMAIL_CODE_TTL_SECONDS / 60 });
+      } catch {
+        return { deliveryFailed: true, response: { challengeToken, expiresInSeconds: EMAIL_CODE_TTL_SECONDS, resendAvailableInSeconds: EMAIL_CODE_RESEND_COOLDOWN_SECONDS, message: "If this email is registered, a verification code has been sent." } };
+      }
+    }
+    void metadata;
+    return {
+      deliveryFailed: false,
+      response: {
+        challengeToken,
+        expiresInSeconds: EMAIL_CODE_TTL_SECONDS,
+        resendAvailableInSeconds: EMAIL_CODE_RESEND_COOLDOWN_SECONDS,
+        message: "If this email is registered, a verification code has been sent.",
+      },
+    };
+  }
+
+  async resendPasswordReset(input: ResendPasswordResetInput) {
+    const client = await this.pool.connect();
+    let delivery: { email: string; id: string } | null = null;
+    let code = generateNumericCode();
+    try {
+      await client.query("BEGIN");
+      const result = await client.query<{ id: string; email: string; code_hash: string; resend_blocked: boolean; consumed_at: Date | null; expired: boolean }>(
+        `SELECT c.id::text AS id, u.email, c.code_hash, c.consumed_at, c.expires_at <= now() AS expired,
+                c.last_sent_at + ($2 || ' seconds')::interval > now() AS resend_blocked
+         FROM auth_email_challenges c JOIN users u ON u.id = c.user_id
+         WHERE c.challenge_token_hash = $1 AND c.purpose = 'password_reset' FOR UPDATE OF c`,
+        [hashOpaqueToken(input.challengeToken), String(EMAIL_CODE_RESEND_COOLDOWN_SECONDS)],
+      );
+      const challenge = result.rows[0];
+      if (challenge && !challenge.consumed_at && !challenge.expired && !challenge.resend_blocked) {
+        let nextHash = hashVerificationCode(challenge.id, code, this.env.jwtRefreshSecret);
+        while (nextHash === challenge.code_hash) {
+          code = generateNumericCode();
+          nextHash = hashVerificationCode(challenge.id, code, this.env.jwtRefreshSecret);
+        }
+        await client.query(
+          `UPDATE auth_email_challenges SET code_hash = $2, attempts_remaining = $3, last_sent_at = now(), expires_at = now() + ($4 || ' seconds')::interval, updated_at = now() WHERE id = $1::uuid`,
+          [challenge.id, nextHash, EMAIL_CODE_MAX_ATTEMPTS, String(EMAIL_CODE_TTL_SECONDS)],
+        );
+        delivery = { email: challenge.email, id: challenge.id };
+      }
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
+    let deliveryFailed = false;
+    if (delivery) {
+      try {
+        await this.authEmailSender.sendPasswordResetCode({ code, email: delivery.email, expiresInMinutes: EMAIL_CODE_TTL_SECONDS / 60 });
+      } catch {
+        deliveryFailed = true;
+      }
+    }
+    return {
+      deliveryFailed,
+      response: {
+        challengeToken: input.challengeToken,
+        expiresInSeconds: EMAIL_CODE_TTL_SECONDS,
+        resendAvailableInSeconds: EMAIL_CODE_RESEND_COOLDOWN_SECONDS,
+        message: "If this email is registered, a verification code has been sent.",
+      },
+    };
+  }
+
+  async confirmPasswordReset(input: ConfirmPasswordResetInput, metadata: SessionMetadata) {
+    const client = await this.pool.connect();
+    let userId: string | null = null;
+    try {
+      await client.query("BEGIN");
+      const result = await client.query<{ id: string; user_id: string; code_hash: string; attempts_remaining: number; consumed_at: Date | null; expired: boolean }>(
+        `SELECT c.id::text AS id, c.user_id::text AS user_id, c.code_hash, c.attempts_remaining, c.consumed_at, c.expires_at <= now() AS expired
+         FROM auth_email_challenges c WHERE c.challenge_token_hash = $1 AND c.purpose = 'password_reset' FOR UPDATE`,
+        [hashOpaqueToken(input.challengeToken)],
+      );
+      const challenge = result.rows[0];
+      if (!challenge || challenge.consumed_at || challenge.expired || challenge.attempts_remaining <= 0) {
+        throw new AuthApiError(400, "PASSWORD_RESET_INVALID", "The password reset code is invalid or expired.");
+      }
+      if (!verificationCodeMatches(challenge.code_hash, challenge.id, input.code, this.env.jwtRefreshSecret)) {
+        await client.query("UPDATE auth_email_challenges SET attempts_remaining = GREATEST(attempts_remaining - 1, 0), updated_at = now() WHERE id = $1::uuid", [challenge.id]);
+        await client.query("COMMIT");
+        throw new AuthApiError(400, "PASSWORD_RESET_INVALID", "The password reset code is invalid or expired.");
+      }
+      const passwordHash = await hashPassword(input.newPassword);
+      userId = challenge.user_id;
+      await client.query("UPDATE users SET password_hash = $2, updated_at = now() WHERE id = $1::uuid AND status = 'active'", [userId, passwordHash]);
+      await client.query("UPDATE auth_email_challenges SET consumed_at = COALESCE(consumed_at, now()), updated_at = now() WHERE user_id = $1::uuid AND purpose = 'password_reset' AND consumed_at IS NULL", [userId]);
+      await client.query("UPDATE auth_sessions SET status = 'revoked', revoked_at = COALESCE(revoked_at, now()) WHERE user_id = $1::uuid", [userId]);
+      await client.query("UPDATE refresh_tokens SET revoked_at = COALESCE(revoked_at, now()) WHERE user_id = $1::uuid", [userId]);
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
+    if (userId) {
+      const tenant = await this.pool.query<{ id: string }>("SELECT tenant_id::text AS id FROM tenant_memberships WHERE user_id = $1::uuid AND status = 'active' ORDER BY created_at ASC LIMIT 1", [userId]);
+      if (tenant.rows[0]?.id) {
+        await safeRecordAuditLog({ action: "auth.password_reset", actorType: "user", actorUserId: userId, ipHash: metadata.ipHash ?? hashIpAddress(metadata.ipAddress), metadata: {}, requestId: metadata.requestId, resourceId: userId, resourceType: "user", tenantId: tenant.rows[0].id, traceId: metadata.traceId, userAgent: metadata.userAgent ?? null }, { pool: this.pool });
+      }
+    }
+    return { message: "Password reset successfully. Please log in again." };
   }
 
   async login(input: LoginInput, metadata: SessionMetadata) {

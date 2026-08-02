@@ -3,6 +3,7 @@ import type { Pool, PoolClient } from "pg";
 import { createPgPool, withTenantTransaction } from "@aigc-flow/db";
 
 import { AiGateway } from "./ai-gateway.js";
+import { AittcoTextRelayAdapter } from "./aittco-text-relay-adapter.js";
 import { type CredentialResponseView, CredentialVault } from "./credential-vault.js";
 import { AiGatewayError } from "./errors.js";
 import { OpenAiCompatibleTextAdapter } from "./openai-compatible-text-adapter.js";
@@ -100,6 +101,7 @@ export class DatabaseTextGenerationRuntime {
     this.aiGateway =
       options.aiGateway ??
       new AiGateway({
+        "aittco-text-relay": new AittcoTextRelayAdapter(),
         openai: new OpenAiCompatibleTextAdapter(),
         "openai-compatible": new OpenAiCompatibleTextAdapter(),
       });

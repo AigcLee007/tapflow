@@ -813,7 +813,7 @@ export class AiPluginService {
         options.route.modelFamily,
         options.route.routeLabel,
         (options.route.requestConfig.environment as string | undefined) ?? "production",
-        options.route.modelKey,
+        this.resolveRouteUpstreamModel(options.route),
         this.resolveRouteApiMode(options.route),
         options.route.path ?? this.readRouteRequestConfigString(options.route.requestConfig, "path"),
       ],
@@ -1145,6 +1145,12 @@ export class AiPluginService {
       return configuredMode;
     }
     return route.mode;
+  }
+
+  private resolveRouteUpstreamModel(route: AiPluginManifest["routes"][number]): string {
+    return this.readRouteRequestConfigString(route.requestConfig, "upstreamModel")
+      ?? this.readRouteRequestConfigString(route.requestConfig, "model")
+      ?? route.modelKey;
   }
 
   private readRouteRequestConfigString(

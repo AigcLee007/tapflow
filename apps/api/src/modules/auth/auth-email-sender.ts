@@ -10,6 +10,7 @@ export type SendVerificationCodeInput = {
 
 export interface AuthEmailSender {
   sendVerificationCode(input: SendVerificationCodeInput): Promise<void>;
+  sendPasswordResetCode(input: SendVerificationCodeInput): Promise<void>;
 }
 
 export class AuthEmailDeliveryError extends Error {
@@ -41,6 +42,25 @@ export class ResendAuthEmailSender implements AuthEmailSender {
   }
 
   async sendVerificationCode(input: SendVerificationCodeInput): Promise<void> {
+    await this.send(input, {
+      html: `<p>Your verification code is <strong>${input.code}</strong>.</p><p>It expires in ${input.expiresInMinutes} minutes.</p>`,
+      subject: "Your Art-Aittco verification code",
+      text: `Your verification code is ${input.code}. It expires in ${input.expiresInMinutes} minutes.`,
+    });
+  }
+
+  async sendPasswordResetCode(input: SendVerificationCodeInput): Promise<void> {
+    await this.send(input, {
+      html: `<p>Your password reset code is <strong>${input.code}</strong>.</p><p>It expires in ${input.expiresInMinutes} minutes. Ignore this email if you did not request it.</p>`,
+      subject: "Reset your Art-Aittco password",
+      text: `Your password reset code is ${input.code}. It expires in ${input.expiresInMinutes} minutes. Ignore this email if you did not request it.`,
+    });
+  }
+
+  private async send(
+    input: SendVerificationCodeInput,
+    content: { html: string; subject: string; text: string },
+  ): Promise<void> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
 
@@ -48,9 +68,9 @@ export class ResendAuthEmailSender implements AuthEmailSender {
       const response = await this.fetchImpl(RESEND_EMAIL_URL, {
         body: JSON.stringify({
           from: `${this.fromName} <${this.fromEmail}>`,
-          html: `<p>Your verification code is <strong>${input.code}</strong>.</p><p>It expires in ${input.expiresInMinutes} minutes.</p>`,
-          subject: "Your Art-Aittco verification code",
-          text: `Your verification code is ${input.code}. It expires in ${input.expiresInMinutes} minutes.`,
+          html: content.html,
+          subject: content.subject,
+          text: content.text,
           to: [input.email],
         }),
         headers: {

@@ -51,6 +51,8 @@ export type AiPluginModelManifest = {
   sortOrder?: number;
   uiSchema: {
     fields: AiPluginUiField[];
+    logoKey?: string;
+    manufacturer?: string;
     panelLayout: "compact" | "default" | "nano-banana" | "text" | "video";
   };
 };
@@ -212,7 +214,12 @@ export function validateAiPluginManifest(
         message: `Pricing references missing route ${pricing.route}`,
       });
     }
-    if (pricing.minChargeCredits < 1 || pricing.unitCredits < 1) {
+    if (
+      !Number.isFinite(pricing.minChargeCredits) ||
+      pricing.minChargeCredits <= 0 ||
+      !Number.isFinite(pricing.unitCredits) ||
+      pricing.unitCredits <= 0
+    ) {
       issues.push({
         code: "PRICING_CREDITS_INVALID",
         message: `Pricing for ${pricing.route} must use positive credits`,

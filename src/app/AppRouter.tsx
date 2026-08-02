@@ -3,6 +3,7 @@ import React, { useEffect, useState } from "react";
 import { AuthGate } from "../auth/AuthGate";
 import { LoginPage } from "../auth/LoginPage";
 import { RegisterPage } from "../auth/RegisterPage";
+import { ForgotPasswordPage } from "../auth/ForgotPasswordPage";
 import { AssetLibraryPage } from "../assets/AssetLibraryPage";
 import { AccountPage } from "../account/AccountPage";
 import { InspectionDashboardPage } from "../account/InspectionDashboardPage";
@@ -40,6 +41,7 @@ import {
   isProjectRoute,
   LOGIN_ROUTE,
   REGISTER_ROUTE,
+  FORGOT_PASSWORD_ROUTE,
   ROOT_ROUTE,
   WORKSPACE_ROUTE,
 } from "./routes";
@@ -189,6 +191,7 @@ export function AppRouter() {
       </>
     );
   }
+  if (pathname === FORGOT_PASSWORD_ROUTE) return <ForgotPasswordPage />;
 
   return (
     <>

@@ -1,5 +1,6 @@
 export const LOGIN_ROUTE = "/login";
 export const REGISTER_ROUTE = "/register";
+export const FORGOT_PASSWORD_ROUTE = "/forgot-password";
 export const ROOT_ROUTE = "/";
 export const HOME_ROUTE = "/home";
 export const WORKSPACE_ROUTE = "/workspace";
@@ -17,6 +18,7 @@ export const ACCOUNT_TEMPLATE_LIBRARY_ROUTE = "/account/template-library";
 export const PRODUCT_ROUTES = [
   LOGIN_ROUTE,
   REGISTER_ROUTE,
+  FORGOT_PASSWORD_ROUTE,
   HOME_ROUTE,
   WORKSPACE_ROUTE,
   WORKBENCH_ROUTE,

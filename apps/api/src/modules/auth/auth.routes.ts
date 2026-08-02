@@ -9,11 +9,17 @@ import {
   type RegisterInput,
   type ResendEmailInput,
   type VerifyEmailInput,
+  type ConfirmPasswordResetInput,
+  type RequestPasswordResetInput,
+  type ResendPasswordResetInput,
+  confirmPasswordResetSchema,
   loginSchema,
   logoutSchema,
   refreshSchema,
   registerSchema,
   resendEmailSchema,
+  requestPasswordResetSchema,
+  resendPasswordResetSchema,
   verifyEmailSchema,
 } from "./auth.schemas.js";
 import { AuthApiError } from "./auth.service.js";
@@ -130,6 +136,41 @@ export function registerAuthRoutes(app: FastifyInstance): void {
     try {
       const body = parseBody<ResendEmailInput>(request, resendEmailSchema);
       return reply.send(await app.authService.resendEmail(body));
+    } catch (error) {
+      return handleRouteError(error, request, reply);
+    }
+  });
+
+  app.post("/api/v2/auth/password-reset/request", authRateLimitConfig, async (request, reply) => {
+    try {
+      const body = parseBody<RequestPasswordResetInput>(request, requestPasswordResetSchema);
+      const result = await app.authService.requestPasswordReset(body, requestMetadata(request));
+      if (result.deliveryFailed) {
+        request.log.warn({ requestId: request.ctx.requestId }, "password reset email delivery failed");
+      }
+      return reply.code(202).send(result.response);
+    } catch (error) {
+      return handleRouteError(error, request, reply);
+    }
+  });
+
+  app.post("/api/v2/auth/password-reset/resend", authRateLimitConfig, async (request, reply) => {
+    try {
+      const body = parseBody<ResendPasswordResetInput>(request, resendPasswordResetSchema);
+      const result = await app.authService.resendPasswordReset(body);
+      if (result.deliveryFailed) {
+        request.log.warn({ requestId: request.ctx.requestId }, "password reset email delivery failed");
+      }
+      return reply.send(result.response);
+    } catch (error) {
+      return handleRouteError(error, request, reply);
+    }
+  });
+
+  app.post("/api/v2/auth/password-reset/confirm", authRateLimitConfig, async (request, reply) => {
+    try {
+      const body = parseBody<ConfirmPasswordResetInput>(request, confirmPasswordResetSchema);
+      return reply.send(await app.authService.confirmPasswordReset(body, requestMetadata(request)));
     } catch (error) {
       return handleRouteError(error, request, reply);
     }

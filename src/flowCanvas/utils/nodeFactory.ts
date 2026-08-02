@@ -79,12 +79,15 @@ export function createFlowNode(
     height: defaults.height,
     status: 'idle',
     generationStatus: 'idle',
+    ...(kind === 'text' ? { modelId: 'gpt-5.6-terra' } : {}),
     routeKey:
       kind === 'image'
         ? 'image.default'
         : kind === 'video'
           ? 'video.default'
-          : undefined,
+          : kind === 'text'
+            ? 'text.gpt-5-6-terra'
+            : undefined,
     createdAt: now,
     updatedAt: now,
   };

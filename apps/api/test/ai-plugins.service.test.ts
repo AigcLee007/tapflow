@@ -5,6 +5,7 @@ import { mouxiHubGptImage2Line4Manifest } from "../../../packages/ai-gateway-cor
 import { mouxiHubNanoBananaProT3Manifest } from "../../../packages/ai-gateway-core/src/plugins/manifests/mouxihub-nano-banana-pro-t3.js";
 import { openAiGptImage2Manifest } from "../../../packages/ai-gateway-core/src/plugins/manifests/openai-gpt-image-2.js";
 import { siphonLabGpt55TextManifest } from "../../../packages/ai-gateway-core/src/plugins/manifests/siphonlab-gpt-5-5-text.js";
+import { aittcoTextRelayManifest } from "../../../packages/ai-gateway-core/src/plugins/manifests/aittco-text-relay.js";
 import { tapflowVideoEditorFfmpegManifest } from "../../../packages/ai-gateway-core/src/plugins/manifests/tapflow-video-editor-ffmpeg.js";
 import { AiPluginService } from "../src/modules/ai-plugins/ai-plugins.service.js";
 
@@ -445,5 +446,42 @@ describe("AiPluginService route install statements", () => {
       "sync",
       "/v1/chat/completions",
     ]);
+  });
+
+  test("persists the configured Aittco upstream model instead of the product model key", () => {
+    const service = new AiPluginService({ credentialVault: {} as never, pool: {} as never });
+    const route = aittcoTextRelayManifest.routes.find((item) => item.routeKey === "text.gemini-3-1-pro");
+    expect(route).toBeDefined();
+    const requestConfig = {
+      ...route!.requestConfig,
+      mode: route!.mode,
+      path: route!.path ?? route!.requestConfig.path,
+      timeoutMs: route!.timeoutMs,
+    };
+    const statement = (service as unknown as { buildRouteInsertStatement: (options: {
+      baseUrlOverride: string | null;
+      connectionId: string | null;
+      credentialId: string | null;
+      installId: string;
+      modelId: string;
+      providerId: string;
+      requestConfig: Record<string, unknown>;
+      route: NonNullable<typeof route>;
+      status: string;
+      tenantId: string | null;
+    }) => { values: unknown[] } }).buildRouteInsertStatement({
+      baseUrlOverride: "https://api.aittco.com",
+      connectionId: "00000000-0000-0000-0000-000000000005",
+      credentialId: "00000000-0000-0000-0000-000000000004",
+      installId: "00000000-0000-0000-0000-000000000006",
+      modelId: "00000000-0000-0000-0000-000000000003",
+      providerId: "00000000-0000-0000-0000-000000000002",
+      requestConfig,
+      route: route!,
+      status: "active",
+      tenantId: null,
+    });
+
+    expect(statement.values[16]).toBe("gemini-3.1-pro-preview");
   });
 });

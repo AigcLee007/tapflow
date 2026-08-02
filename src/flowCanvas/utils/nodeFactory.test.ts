@@ -33,10 +33,19 @@ describe('nodeFactory route defaults', () => {
     });
   });
 
-  it('leaves text nodes unconfigured until the database catalog is selected', () => {
+  it('sets text nodes to the GPT-5.6-terra product route', () => {
     const node = createFlowNode('text', { x: 30, y: 30 });
-    expect(node.data.modelId).toBeUndefined();
-    expect(node.data.routeKey).toBeUndefined();
+    expect(node.data.modelId).toBe('gpt-5.6-terra');
+    expect(node.data.routeKey).toBe('text.gpt-5-6-terra');
+  });
+
+  it('keeps explicit text model overrides', () => {
+    const node = createFlowNode('text', { x: 30, y: 30 }, {
+      modelId: 'claude-opus-5',
+      routeKey: 'text.claude-opus-5',
+    });
+    expect(node.data.modelId).toBe('claude-opus-5');
+    expect(node.data.routeKey).toBe('text.claude-opus-5');
   });
 
   it('creates a storyboard node with asset-id based cells', () => {
