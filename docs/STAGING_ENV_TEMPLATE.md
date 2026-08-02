@@ -151,9 +151,9 @@ Run the documented dry-run before applying. Run the importer `--test` command fo
 | --- | --- | --- | ---: | --- |
 | Gemini-3.1-pro | `gemini-3.1-pro-preview` | Gemini `generateContent` | 1 | `text.gemini-3-1-pro` |
 | Gemini-3.5-flash | `gemini-3.5-flash-preview` | Gemini `generateContent` | 0.5 | `text.gemini-3-5-flash` |
-| GPT-5.6-sol | `gpt-5.6-sol` | `/v1/responses` | 2 | `text.gpt-5-6-sol` |
-| GPT-5.6-terra | `gpt-5.6-terra` | `/v1/responses` | 1 | `text.gpt-5-6-terra` |
-| GPT-5.5 | `gpt-5.5` | `/v1/responses` | 2 | `text.gpt-5-5` |
+| GPT-5.6-sol | `gpt-5.6-sol` | `/v1/chat/completions` | 2 | `text.gpt-5-6-sol` |
+| GPT-5.6-terra | `gpt-5.6-terra` | `/v1/chat/completions` | 1 | `text.gpt-5-6-terra` |
+| GPT-5.5 | `gpt-5.5` | `/v1/chat/completions` | 2 | `text.gpt-5-5` |
 | Claude-Opus-5 | `claude-opus-5` | `/v1/messages` | 2.5 | `text.claude-opus-5` |
 | Claude-Sonnet-5 | `claude-sonnet-5` | `/v1/messages` | 1.5 | `text.claude-sonnet-5` |
 | Claude-Opus-4-8 | `claude-opus-4-8` | `/v1/messages` | 2 | `text.claude-opus-4-8` |

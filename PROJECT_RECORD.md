@@ -6059,3 +6059,10 @@ Validation completed:
 - corrected plugin route installation to persist `requestConfig.model` as `ai_routes.upstream_model` and model-configuration publishing to look up prices by `ai_models.model_key`; this preserves Gemini preview upstream names while pricing by product model.
 - canvas text model catalog options now read `manufacturer` and `logoKey` from database catalog UI metadata, use the supplied Gemini/OpenAI/Claude logos, and group active positive-priced options by Gemini, GPT, Claude, then other models.
 - staging rollout and live route smoke tests remain pending: install the plugin through the authenticated admin API with the shared Key, execute each generated route test, then perform a text-node canvas generation before disabling the legacy SiphonLab package.
+
+## 2026-08-02 - Aittco GPT Chat Completions Cutover
+
+- verified the relay model list, Gemini native GenerateContent, and Claude Messages calls against the configured service; each returned HTTP 200.
+- confirmed the Aittco OpenAI Responses endpoint timed out twice after 60 seconds, so the three GPT routes now use `/v1/chat/completions` with the same upstream models, route keys, and prices.
+- added adapter and manifest regression coverage for Chat Completions request/response handling, normalized route metadata, and declared provider capabilities; Gemini and Claude protocols remain unchanged.
+- no real relay Key is stored in source. Deployment, authenticated plugin reinstallation with the verified raw Key, and all eight live route tests remain pending.
