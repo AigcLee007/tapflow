@@ -41,6 +41,10 @@ describe("wallet admin adjustment migration", () => {
     expect(sql).toContain("hashtextextended('wallet-admin:' || p_idempotency_key, 0)");
     expect(sql).toContain("app.current_is_system_admin()");
     expect(sql).toContain("app.current_user_id() <> p_actor_user_id");
+    expect([
+      ...sql.matchAll(/IF NOT app\.current_is_system_admin\(\) THEN\s+RAISE EXCEPTION 'WALLET_FORBIDDEN';/g),
+    ]).toHaveLength(2);
+    expect(sql).not.toMatch(/p_actor_user_id IS NULL OR p_target_user_id IS NULL/);
     expect(sql).toContain("WALLET_IDEMPOTENCY_CONFLICT");
     expect(
       [...sql.matchAll(/WHERE ledger\.idempotency_key = p_idempotency_key\s+FOR UPDATE;/g)],

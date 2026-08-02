@@ -46,7 +46,7 @@ DECLARE
   v_ledger billing_wallet_ledger%ROWTYPE;
   v_metadata jsonb;
 BEGIN
-  IF p_actor_user_id IS NULL OR p_target_user_id IS NULL OR p_tenant_id IS NULL
+  IF p_target_user_id IS NULL OR p_tenant_id IS NULL
     OR p_amount <= 0 OR COALESCE(p_idempotency_key, '') = ''
     OR COALESCE(p_source_id, '') = '' THEN
     RAISE EXCEPTION 'invalid wallet admin credit';
@@ -55,8 +55,11 @@ BEGIN
   -- Background reconciliation has no request user setting and may retain its
   -- historical actor. Every request-scoped caller must be a system admin and
   -- may only claim its own actor id.
+  IF NOT app.current_is_system_admin() THEN
+    RAISE EXCEPTION 'WALLET_FORBIDDEN';
+  END IF;
   IF app.current_user_id() IS NOT NULL THEN
-    IF NOT app.current_is_system_admin() OR app.current_user_id() <> p_actor_user_id THEN
+    IF app.current_user_id() <> p_actor_user_id THEN
       RAISE EXCEPTION 'WALLET_FORBIDDEN';
     END IF;
   END IF;
@@ -188,13 +191,16 @@ DECLARE
   v_take numeric;
   v_allocations jsonb := '[]'::jsonb;
 BEGIN
-  IF p_actor_user_id IS NULL OR p_target_user_id IS NULL OR p_tenant_id IS NULL
+  IF p_target_user_id IS NULL OR p_tenant_id IS NULL
     OR p_amount <= 0 OR COALESCE(p_idempotency_key, '') = '' THEN
     RAISE EXCEPTION 'invalid wallet admin debit';
   END IF;
 
+  IF NOT app.current_is_system_admin() THEN
+    RAISE EXCEPTION 'WALLET_FORBIDDEN';
+  END IF;
   IF app.current_user_id() IS NOT NULL THEN
-    IF NOT app.current_is_system_admin() OR app.current_user_id() <> p_actor_user_id THEN
+    IF app.current_user_id() <> p_actor_user_id THEN
       RAISE EXCEPTION 'WALLET_FORBIDDEN';
     END IF;
   END IF;
