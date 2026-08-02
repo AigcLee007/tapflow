@@ -43,7 +43,7 @@ export class PersonalWalletService {
     const summaries: WalletSummaryMap = new Map(uniqueUserIds.map((userId) => [userId, emptySummary()]));
     if (uniqueUserIds.length === 0) return summaries;
     const result = await client.query<WalletSummaryRow>(`
-        SELECT wallet.id::text AS wallet_id, wallet.balance_credits::text AS balance, wallet.reserved_credits::text AS reserved,
+        SELECT wallet.id::text AS wallet_id, wallet.user_id::text AS user_id, wallet.balance_credits::text AS balance, wallet.reserved_credits::text AS reserved,
           COALESCE(SUM(credit_grant.remaining_credits - credit_grant.reserved_credits) FILTER (WHERE credit_grant.status = 'active' AND credit_grant.expires_at <= now() + interval '30 days'), 0)::text AS expiring,
           MIN(credit_grant.expires_at)::text AS nearest
         FROM billing_wallets wallet LEFT JOIN billing_wallet_credit_grants credit_grant ON credit_grant.wallet_id = wallet.id AND credit_grant.status = 'active'

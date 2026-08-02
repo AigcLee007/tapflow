@@ -29,15 +29,10 @@ type AdminUserRow = {
 };
 
 type AdminMembershipRow = {
-  active_credit_grant_count: string | null;
-  balance_cents: string | null;
   latest_usage_at: string | null;
   membership_tier: string | null;
   membership_tier_expires_at: string | null;
   membership_status: string;
-  next_credit_expires_at: string | null;
-  original_grant_credits: string | null;
-  reserved_cents: string | null;
   settled_usage_events: string | null;
   role_key: string;
   tenant_id: string;
@@ -47,13 +42,20 @@ type AdminMembershipRow = {
   used_credits: string | null;
 };
 
-type AdminCreditLedgerRow = {
-  amount_cents: string;
+type AdminWalletLedgerRow = {
+  amount_credits: string;
   created_at: string;
   description: string | null;
   entry_type: string;
   id: string;
-  tenant_id: string;
+  user_id: string;
+};
+
+type AdminWalletGrantStatsRow = {
+  active_credit_grant_count: string;
+  credit_grant_count: string;
+  total_granted_credits: string;
+  user_id: string;
 };
 
 type AdminWorkflowRunRow = {
@@ -148,21 +150,25 @@ type AdminAiRouteStatsRow = {
 export type AdminContext = RequestContext;
 
 export type AdminUserMembershipView = {
-  activeCreditGrantCount: number;
-  availableCredits: number;
-  balanceCredits: number;
-  creditGrantCount: number;
   latestUsageAt: string | null;
   membershipTier: MembershipTier;
   membershipTierExpiresAt: string | null;
   membershipStatus: string;
-  nextCreditExpiresAt: string | null;
-  reservedCredits: number;
   roleKey: string;
   tenantId: string;
   tenantName: string;
   tenantStatus: string;
-  totalCreditGrants: number;
+  usageAudit: {
+    latestUsageAt: string | null;
+    settledCredits: number;
+    settledEvents: number;
+  };
+  usedCredits: number;
+};
+
+export type AdminUserWalletView = WalletSummaryView & {
+  activeCreditGrantCount: number;
+  creditGrantCount: number;
   creditLedger: Array<{
     amountCredits: number;
     createdAt: string;
@@ -171,12 +177,7 @@ export type AdminUserMembershipView = {
     entryType: string;
     id: string;
   }>;
-  usageAudit: {
-    latestUsageAt: string | null;
-    settledCredits: number;
-    settledEvents: number;
-  };
-  usedCredits: number;
+  totalGrantedCredits: number;
 };
 
 export type AdminUserView = {
@@ -188,6 +189,7 @@ export type AdminUserView = {
   lastLoginAt: string | null;
   memberships: AdminUserMembershipView[];
   status: string;
+  wallet: AdminUserWalletView;
 };
 
 export type AdminWorkflowRunView = {
@@ -386,28 +388,17 @@ function summarizeJson(value: Record<string, unknown> | null): string | null {
 }
 
 function mapMembership(row: AdminMembershipRow): AdminUserMembershipView {
-  const balanceCredits = parseNumericString(row.balance_cents);
-  const reservedCredits = parseNumericString(row.reserved_cents);
   const usedCredits = parseNumericString(row.used_credits);
   const settledEvents = parseNumericString(row.settled_usage_events);
-  const activeCreditGrantCount = parseNumericString(row.active_credit_grant_count);
   return {
-    activeCreditGrantCount,
-    availableCredits: Math.max(balanceCredits - reservedCredits, 0),
-    balanceCredits,
-    creditLedger: [],
-    creditGrantCount: activeCreditGrantCount,
     latestUsageAt: row.latest_usage_at,
     membershipTier: normalizeMembershipTier(row.membership_tier),
     membershipTierExpiresAt: row.membership_tier_expires_at,
     membershipStatus: row.membership_status,
-    nextCreditExpiresAt: row.next_credit_expires_at,
-    reservedCredits,
     roleKey: row.role_key,
     tenantId: row.tenant_id,
     tenantName: row.tenant_name,
     tenantStatus: row.tenant_status,
-    totalCreditGrants: parseNumericString(row.original_grant_credits),
     usageAudit: {
       latestUsageAt: row.latest_usage_at,
       settledCredits: usedCredits,
@@ -417,7 +408,11 @@ function mapMembership(row: AdminMembershipRow): AdminUserMembershipView {
   };
 }
 
-function mapUser(row: AdminUserRow, memberships: AdminUserMembershipView[]): AdminUserView {
+function mapUser(
+  row: AdminUserRow,
+  memberships: AdminUserMembershipView[],
+  wallet: AdminUserWalletView,
+): AdminUserView {
   return {
     createdAt: row.created_at,
     displayName: row.display_name,
@@ -427,6 +422,22 @@ function mapUser(row: AdminUserRow, memberships: AdminUserMembershipView[]): Adm
     lastLoginAt: row.last_login_at,
     memberships,
     status: row.status,
+    wallet,
+  };
+}
+
+function emptyAdminUserWallet(): AdminUserWalletView {
+  return {
+    activeCreditGrantCount: 0,
+    availableCredits: 0,
+    balanceCredits: 0,
+    creditGrantCount: 0,
+    creditLedger: [],
+    expiringSoonCredits: 0,
+    nearestExpiryAt: null,
+    reservedCredits: 0,
+    totalGrantedCredits: 0,
+    walletId: "",
   };
 }
 
@@ -630,10 +641,14 @@ export class AdminApiService {
       client.release();
     }
 
-    const membershipsByUserId = await this.loadMembershipsByUserIds(tenantContext, users.rows.map((row) => row.id));
+    const userDetails = await this.loadUserDetailsByUserIds(tenantContext, users.rows.map((row) => row.id));
 
     return {
-      items: users.rows.map((row) => mapUser(row, membershipsByUserId.get(row.id) ?? [])),
+      items: users.rows.map((row) => mapUser(
+        row,
+        userDetails.membershipsByUserId.get(row.id) ?? [],
+        userDetails.walletsByUserId.get(row.id) ?? emptyAdminUserWallet(),
+      )),
       query,
     };
   }
@@ -677,8 +692,12 @@ export class AdminApiService {
       throw new AdminApiError(404, "USER_NOT_FOUND", "未找到对应用户");
     }
 
-    const membershipsByUserId = await this.loadMembershipsByUserIds(tenantContext, [userId]);
-    return mapUser(row, membershipsByUserId.get(userId) ?? []);
+    const userDetails = await this.loadUserDetailsByUserIds(tenantContext, [userId]);
+    return mapUser(
+      row,
+      userDetails.membershipsByUserId.get(userId) ?? [],
+      userDetails.walletsByUserId.get(userId) ?? emptyAdminUserWallet(),
+    );
   }
 
   async grantCredits(
@@ -2132,18 +2151,24 @@ export class AdminApiService {
     }, this.pool);
   }
 
-  private async loadMembershipsByUserIds(
+  private async loadUserDetailsByUserIds(
     context: { tenantId: string; userId: string | null },
     userIds: string[],
-  ): Promise<Map<string, AdminUserMembershipView[]>> {
-    const result = new Map<string, AdminUserMembershipView[]>();
-    if (userIds.length === 0) {
-      return result;
-    }
+  ): Promise<{
+    membershipsByUserId: Map<string, AdminUserMembershipView[]>;
+    walletsByUserId: Map<string, AdminUserWalletView>;
+  }> {
+    const membershipsByUserId = new Map<string, AdminUserMembershipView[]>();
+    const walletsByUserId = new Map<string, AdminUserWalletView>(
+      userIds.map((userId) => [userId, emptyAdminUserWallet()]),
+    );
+    if (userIds.length === 0) return { membershipsByUserId, walletsByUserId };
 
     const client = await this.pool.connect();
     let memberships: { rows: AdminMembershipRow[] };
-    let ledgerRows: AdminCreditLedgerRow[] = [];
+    let ledgerRows: AdminWalletLedgerRow[] = [];
+    let grantStatsRows: AdminWalletGrantStatsRow[] = [];
+    let walletSummaries = new Map<string, WalletSummaryView>();
     try {
       await client.query("BEGIN");
       await setAdminTenantContext(client, context);
@@ -2156,13 +2181,8 @@ export class AdminApiService {
             tenant_memberships.status AS membership_status,
             tenants.name AS tenant_name,
             tenants.status AS tenant_status,
-            billing_accounts.balance_cents::text AS balance_cents,
-            billing_accounts.reserved_cents::text AS reserved_cents,
             billing_accounts.membership_tier,
             billing_accounts.membership_tier_expires_at::text AS membership_tier_expires_at,
-            COALESCE(credit_stats.original_grant_credits, 0)::text AS original_grant_credits,
-            COALESCE(credit_stats.active_credit_grant_count, 0)::text AS active_credit_grant_count,
-            credit_stats.next_credit_expires_at::text AS next_credit_expires_at,
             COALESCE(usage_stats.used_credits, 0)::text AS used_credits,
             COALESCE(usage_stats.settled_usage_events, 0)::text AS settled_usage_events,
             usage_stats.latest_usage_at::text AS latest_usage_at
@@ -2171,23 +2191,6 @@ export class AdminApiService {
             ON tenants.id = tenant_memberships.tenant_id
           LEFT JOIN billing_accounts
             ON billing_accounts.tenant_id = tenant_memberships.tenant_id
-          LEFT JOIN LATERAL (
-            SELECT
-              COALESCE(SUM(original_credits), 0) AS original_grant_credits,
-              COUNT(*) FILTER (
-                WHERE status = 'active'
-                  AND remaining_credits > 0
-                  AND (expires_at IS NULL OR expires_at > now())
-              ) AS active_credit_grant_count,
-              MIN(expires_at) FILTER (
-                WHERE status = 'active'
-                  AND remaining_credits > 0
-                  AND expires_at IS NOT NULL
-                  AND expires_at > now()
-              ) AS next_credit_expires_at
-            FROM billing_credit_grants
-            WHERE billing_credit_grants.tenant_id = tenant_memberships.tenant_id
-          ) AS credit_stats ON true
           LEFT JOIN LATERAL (
             SELECT
               COALESCE(SUM(billable_cents) FILTER (WHERE status = 'settled'), 0) AS used_credits,
@@ -2201,42 +2204,62 @@ export class AdminApiService {
         `,
         [userIds],
       );
-      const tenantIds = Array.from(new Set(memberships.rows.map((row) => row.tenant_id)));
-      if (tenantIds.length > 0) {
-        const ledger = await client.query<AdminCreditLedgerRow>(
+      walletSummaries = await this.personalWalletService.getSummariesWithClient(client, userIds);
+      const [ledger, grantStats] = await Promise.all([
+        client.query<AdminWalletLedgerRow>(
           `
             SELECT
               id::text AS id,
-              tenant_id::text AS tenant_id,
+              user_id::text AS user_id,
               entry_type,
-              amount_cents::text AS amount_cents,
+              ABS(amount_credits)::text AS amount_credits,
               description,
               created_at::text AS created_at
             FROM (
               SELECT
-                billing_ledger.*,
+                billing_wallet_ledger.*,
                 ROW_NUMBER() OVER (
-                  PARTITION BY tenant_id
+                  PARTITION BY user_id
                   ORDER BY created_at DESC, id DESC
                 ) AS ledger_rank
-              FROM billing_ledger
-              WHERE tenant_id = ANY($1::uuid[])
+              FROM billing_wallet_ledger
+              WHERE user_id = ANY($1::uuid[])
                 AND entry_type IN (
+                  'payment',
+                  'migration_credit',
                   'admin_credit',
                   'admin_debit',
                   'redeem',
-                  'payment',
-                  'refund',
-                  'settle'
+                  'settle',
+                  'expire',
+                  'payment_refund'
                 )
             ) AS ranked_ledger
             WHERE ledger_rank <= 10
-            ORDER BY tenant_id, created_at DESC, id DESC
+            ORDER BY user_id, created_at DESC, id DESC
           `,
-          [tenantIds],
-        );
-        ledgerRows = ledger.rows;
-      }
+          [userIds],
+        ),
+        client.query<AdminWalletGrantStatsRow>(
+          `
+            SELECT
+              user_id::text AS user_id,
+              COUNT(*)::text AS credit_grant_count,
+              COUNT(*) FILTER (
+                WHERE status = 'active'
+                  AND remaining_credits > reserved_credits
+                  AND (expires_at IS NULL OR expires_at > now())
+              )::text AS active_credit_grant_count,
+              COALESCE(SUM(original_credits), 0)::text AS total_granted_credits
+            FROM billing_wallet_credit_grants
+            WHERE user_id = ANY($1::uuid[])
+            GROUP BY user_id
+          `,
+          [userIds],
+        ),
+      ]);
+      ledgerRows = ledger.rows;
+      grantStatsRows = grantStats.rows;
       await client.query("COMMIT");
     } catch (error) {
       await client.query("ROLLBACK").catch(() => undefined);
@@ -2245,29 +2268,40 @@ export class AdminApiService {
       client.release();
     }
 
-    const ledgerByTenantId = new Map<string, AdminUserMembershipView["creditLedger"]>();
+    const ledgerByUserId = new Map<string, AdminUserWalletView["creditLedger"]>();
     for (const row of ledgerRows) {
-      const existing = ledgerByTenantId.get(row.tenant_id) ?? [];
-      const direction = row.entry_type === "settle" || row.entry_type === "admin_debit" ? "debit" : "credit";
+      const existing = ledgerByUserId.get(row.user_id) ?? [];
+      const direction = row.entry_type === "settle" || row.entry_type === "admin_debit" || row.entry_type === "expire" || row.entry_type === "payment_refund" ? "debit" : "credit";
       existing.push({
-        amountCredits: parseNumericString(row.amount_cents),
+        amountCredits: Math.abs(parseNumericString(row.amount_credits)),
         createdAt: row.created_at,
         description: row.description,
         direction,
         entryType: row.entry_type,
         id: row.id,
       });
-      ledgerByTenantId.set(row.tenant_id, existing);
+      ledgerByUserId.set(row.user_id, existing);
     }
 
     for (const row of memberships.rows) {
-      const existing = result.get(row.user_id) ?? [];
-      const membership = mapMembership(row);
-      membership.creditLedger = ledgerByTenantId.get(row.tenant_id) ?? [];
-      existing.push(membership);
-      result.set(row.user_id, existing);
+      const existing = membershipsByUserId.get(row.user_id) ?? [];
+      existing.push(mapMembership(row));
+      membershipsByUserId.set(row.user_id, existing);
     }
 
-    return result;
+    const grantStatsByUserId = new Map(grantStatsRows.map((row) => [row.user_id, row]));
+    for (const userId of userIds) {
+      const summary = walletSummaries.get(userId);
+      const grants = grantStatsByUserId.get(userId);
+      walletsByUserId.set(userId, {
+        ...(summary ?? emptyAdminUserWallet()),
+        activeCreditGrantCount: parseNumericString(grants?.active_credit_grant_count),
+        creditGrantCount: parseNumericString(grants?.credit_grant_count),
+        creditLedger: ledgerByUserId.get(userId) ?? [],
+        totalGrantedCredits: parseNumericString(grants?.total_granted_credits),
+      });
+    }
+
+    return { membershipsByUserId, walletsByUserId };
   }
 }

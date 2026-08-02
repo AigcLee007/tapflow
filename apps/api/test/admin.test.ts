@@ -417,7 +417,7 @@ describeWithDatabase("admin api", () => {
           url: "/api/v2/admin/users?query=Searchable",
         });
         expect(searchAfterGrant.statusCode).toBe(200);
-        expect(searchAfterGrant.json().items[0].memberships[0].creditLedger[0]).toMatchObject({
+        expect(searchAfterGrant.json().items[0].wallet.creditLedger[0]).toMatchObject({
           amountCredits: 250,
           direction: "credit",
           entryType: "admin_credit",
@@ -580,7 +580,7 @@ describeWithDatabase("admin api", () => {
     });
   });
 
-  test("includes user credit expiry and usage audit fields", async () => {
+  test("includes one personal wallet with expiry and absolute debit ledger entries", async () => {
     await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
       process.env.DATABASE_URL = databaseUrl;
       const adminPool = createPgPool();
@@ -637,67 +637,28 @@ describeWithDatabase("admin api", () => {
         });
         expect(grant.statusCode).toBe(200);
 
-        const account = await adminPool.query<{ id: string }>(
-          `
-            SELECT id::text AS id
-            FROM billing_accounts
-            WHERE tenant_id = $1::uuid
-          `,
-          [targetUser.currentTenant.id],
-        );
-        const usageEventId = randomUUID();
         await adminPool.query(
           `
-            INSERT INTO usage_events (
-              id,
-              tenant_id,
-              event_type,
-              modality,
-              status,
-              idempotency_key,
-              billable_cents,
-              metadata
-            )
-            VALUES (
-              $1::uuid,
-              $2::uuid,
-              'image_generation',
-              'image',
-              'settled',
-              $3,
-              120,
-              '{}'::jsonb
-            )
+            INSERT INTO tenant_memberships (tenant_id, user_id, role_key, status, joined_at, updated_at)
+            VALUES ($1::uuid, $2::uuid, 'flow_developer', 'active', now(), now())
           `,
-          [usageEventId, targetUser.currentTenant.id, `usage:${randomUUID()}`],
+          [adminUser.currentTenant.id, targetUser.user.id],
         );
-        await adminPool.query(
-          `
-            INSERT INTO billing_ledger (
-              tenant_id,
-              billing_account_id,
-              usage_event_id,
-              entry_type,
-              amount_cents,
-              currency,
-              idempotency_key,
-              description,
-              metadata
-            )
-            VALUES (
-              $1::uuid,
-              $2::uuid,
-              $3::uuid,
-              'settle',
-              120,
-              'USD',
-              $4,
-              'test usage settlement',
-              '{}'::jsonb
-            )
-          `,
-          [targetUser.currentTenant.id, account.rows[0]?.id, usageEventId, `settle:${randomUUID()}`],
-        );
+
+        const debit = await api.inject({
+          headers: {
+            authorization: `Bearer ${adminLogin.json().accessToken}`,
+          },
+          method: "POST",
+          payload: {
+            credits: 120,
+            direction: "subtract",
+            reason: "test wallet debit",
+            tenantId: targetUser.currentTenant.id,
+          },
+          url: `/api/v2/admin/users/${targetUser.user.id}/adjust-credits`,
+        });
+        expect(debit.statusCode).toBe(200);
 
         const search = await api.inject({
           headers: {
@@ -709,16 +670,17 @@ describeWithDatabase("admin api", () => {
         expect(search.statusCode).toBe(200);
         const user = search.json().items[0];
         expect(user.lastLoginAt).toBeTruthy();
-        expect(user.memberships[0]).toMatchObject({
-          balanceCredits: 300,
-          availableCredits: 300,
-          usedCredits: 120,
+        expect(user.memberships).toHaveLength(2);
+        expect(user.wallet).toMatchObject({
+          balanceCredits: 180,
+          availableCredits: 180,
+          creditGrantCount: 1,
         });
-        expect(user.memberships[0].nextCreditExpiresAt).toBeTruthy();
-        expect(user.memberships[0].creditGrantCount).toBeGreaterThan(0);
-        expect(user.memberships[0].usageAudit).toMatchObject({
-          settledEvents: 1,
-          settledCredits: 120,
+        expect(user.wallet.nearestExpiryAt).toBeTruthy();
+        expect(user.wallet.creditLedger[0]).toMatchObject({
+          amountCredits: 120,
+          direction: "debit",
+          entryType: "admin_debit",
         });
 
         await api.close();

@@ -3,29 +3,14 @@ import { apiDelete, apiGet, apiPatch, apiPost } from "../services/v2HttpClient";
 export type MembershipTier = "standard" | "silver" | "gold" | "platinum";
 
 export type AdminMembership = {
-  activeCreditGrantCount?: number;
-  availableCredits: number;
-  balanceCredits: number;
-  creditGrantCount?: number;
   latestUsageAt?: string | null;
   membershipTier?: MembershipTier;
   membershipTierExpiresAt?: string | null;
   membershipStatus: string;
-  nextCreditExpiresAt?: string | null;
-  reservedCredits: number;
   roleKey: string;
   tenantId: string;
   tenantName: string;
   tenantStatus: string;
-  totalCreditGrants?: number;
-  creditLedger?: Array<{
-    amountCredits: number;
-    createdAt: string;
-    description: string | null;
-    direction: "credit" | "debit";
-    entryType: string;
-    id: string;
-  }>;
   usageAudit?: {
     latestUsageAt: string | null;
     settledCredits: number;
@@ -33,6 +18,31 @@ export type AdminMembership = {
   };
   usedCredits?: number;
 };
+
+export type AdminUserWallet = {
+  activeCreditGrantCount: number;
+  availableCredits: number;
+  balanceCredits: number;
+  creditGrantCount: number;
+  creditLedger: Array<{
+    amountCredits: number;
+    createdAt: string;
+    description: string | null;
+    direction: "credit" | "debit";
+    entryType: string;
+    id: string;
+  }>;
+  expiringSoonCredits: number;
+  nearestExpiryAt: string | null;
+  reservedCredits: number;
+  totalGrantedCredits: number;
+  walletId: string;
+};
+
+export type AdminWalletSummary = Pick<
+  AdminUserWallet,
+  "availableCredits" | "balanceCredits" | "expiringSoonCredits" | "nearestExpiryAt" | "reservedCredits" | "walletId"
+>;
 
 export type AdminUser = {
   createdAt: string;
@@ -43,6 +53,7 @@ export type AdminUser = {
   lastLoginAt?: string | null;
   memberships: AdminMembership[];
   status: string;
+  wallet: AdminUserWallet;
 };
 
 export type AdminUsersResponse = {
@@ -51,19 +62,14 @@ export type AdminUsersResponse = {
 };
 
 export type AdminGrantCreditsResponse = {
-  account: {
-    availableCredits: number;
-    balanceCredits: number;
-    reservedCredits: number;
-    tenantId: string;
-  };
+  wallet: AdminWalletSummary;
   ledgerEntry: {
-    amountCents: number;
+    amountCredits: number;
     createdAt: string;
     description: string | null;
     entryType: string;
     id: string;
-    idempotencyKey: string | null;
+    idempotencyKey: string;
   };
 };
 

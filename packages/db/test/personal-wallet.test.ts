@@ -37,6 +37,7 @@ describe("PersonalWalletService", () => {
     const summaryQuery = queries.find((sql) => sql.includes("FROM billing_wallets"));
     expect(summaryQuery).toContain("billing_wallet_credit_grants credit_grant");
     expect(summaryQuery).not.toContain("billing_wallet_credit_grants grant");
+    expect(summaryQuery).toContain("wallet.user_id::text AS user_id");
   });
 });
 

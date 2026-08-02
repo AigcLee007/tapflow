@@ -26,6 +26,7 @@ import {
 } from "../app/routes";
 import { canAccessOperationsConsole, resolveProductRole } from "../auth/productRoles";
 import { useAuth } from "../auth/useAuth";
+import { invalidateBillingSummary } from "../billing/useBillingSummarySnapshot";
 import {
   adjustAdminCredits,
   createAdminAnnouncement,
@@ -71,6 +72,10 @@ type OpsTab =
   | "monitor"
   | "payments"
   | "prompt-library";
+
+export function sumAvailableWalletCredits(users: Array<Pick<AdminUser, "wallet">>): number {
+  return users.reduce((sum, user) => sum + user.wallet.availableCredits, 0);
+}
 
 const MEMBERSHIP_OPTIONS: Array<{ label: string; tier: MembershipTier }> = [
   { label: "普通用户", tier: "standard" },
@@ -298,8 +303,8 @@ export function AdminPage() {
     const memberships = users.flatMap((user) => user.memberships);
     return {
       admins: memberships.filter((membership) => membership.roleKey === "tenant_admin" || membership.roleKey === "system_admin").length,
-      availableCredits: memberships.reduce((sum, item) => sum + item.availableCredits, 0),
-      expiringUsers: memberships.filter((item) => item.nextCreditExpiresAt).length,
+      availableCredits: sumAvailableWalletCredits(users),
+      expiringUsers: users.filter((user) => user.wallet.nearestExpiryAt).length,
       users: users.length,
       usedCredits: memberships.reduce((sum, item) => sum + (item.usedCredits ?? 0), 0),
     };
@@ -474,7 +479,7 @@ export function AdminPage() {
     setMessage("");
     setError("");
     try {
-      await grantAdminCredits({
+      const result = await grantAdminCredits({
         credits: Number.parseInt(grantCreditsValue, 10) || 0,
         reason: grantReason,
         targetUserId: selectedUser.id,
@@ -482,6 +487,8 @@ export function AdminPage() {
         validityMode: grantValidity.mode,
         validityMonths: "months" in grantValidity ? grantValidity.months : undefined,
       });
+      setUsers((current) => current.map((user) => user.id === selectedUser.id ? { ...user, wallet: { ...user.wallet, ...result.wallet } } : user));
+      invalidateBillingSummary();
       setMessage("积分已发放");
       await Promise.all([loadUsers(), loadOperationalData()]);
     } catch (cause) {
@@ -494,13 +501,15 @@ export function AdminPage() {
     setMessage("");
     setError("");
     try {
-      await adjustAdminCredits({
+      const result = await adjustAdminCredits({
         credits: Number.parseInt(adjustCreditsValue, 10) || 0,
         direction,
         reason: adjustReason,
         targetUserId: selectedUser.id,
         tenantId: selectedMembership.tenantId,
       });
+      setUsers((current) => current.map((user) => user.id === selectedUser.id ? { ...user, wallet: { ...user.wallet, ...result.wallet } } : user));
+      invalidateBillingSummary();
       setMessage(direction === "add" ? "积分已增加" : "积分已减少");
       await Promise.all([loadUsers(), loadOperationalData()]);
     } catch (cause) {
@@ -829,7 +838,7 @@ export function AdminPage() {
                     </div>
                     <div className="text-right text-xs text-slate-300">
                       <div>{roleLabel(membership?.roleKey)}</div>
-                      <div className="mt-1">{formatNumber(membership?.availableCredits)} 点</div>
+                      <div className="mt-1">{formatNumber(user.wallet.availableCredits)} 点</div>
                     </div>
                   </div>
                 </button>
@@ -844,7 +853,7 @@ export function AdminPage() {
   }
 
   function renderSelectedUserPanel() {
-    if (!selectedUser || !selectedMembership) {
+    if (!selectedUser) {
       return (
         <SectionCard title="用户详情">
           <div className="text-sm text-slate-400">请选择一个用户。</div>
@@ -854,9 +863,9 @@ export function AdminPage() {
     return (
       <SectionCard title="用户详情">
         <div className="grid gap-3 md:grid-cols-3">
-          <MetricCard label="积分总额" value={formatNumber(selectedMembership.balanceCredits)} />
+          <MetricCard label="个人钱包余额" value={formatNumber(selectedUser.wallet.balanceCredits)} />
           <MetricCard label="已使用" value={formatNumber(selectedMembership.usedCredits)} />
-          <MetricCard label="最近到期" value={formatDate(selectedMembership.nextCreditExpiresAt)} />
+          <MetricCard label="最近到期" value={formatDate(selectedUser.wallet.nearestExpiryAt)} />
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-2">
           <div className="rounded border border-white/10 bg-black/20 p-4">
@@ -864,10 +873,10 @@ export function AdminPage() {
             <div className="mt-2 text-sm text-slate-400">{selectedUser.email}</div>
             <div className="mt-3 grid gap-2 text-sm text-slate-300">
               <div>账号状态：{userStatusLabel(selectedUser.status)}</div>
-              <div>身份：{roleLabel(selectedMembership.roleKey)}</div>
-              <div>会员：{membershipLabel(selectedMembership.membershipTier)}</div>
+              <div>身份：{roleLabel(selectedMembership?.roleKey)}</div>
+              <div>会员：{membershipLabel(selectedMembership?.membershipTier)}</div>
               <div>最近登录：{formatDate(selectedUser.lastLoginAt)}</div>
-              <div>用量：{selectedMembership.usageAudit?.settledEvents ?? 0} 次 / {formatNumber(selectedMembership.usageAudit?.settledCredits)} 点</div>
+              <div>用量：{selectedMembership?.usageAudit?.settledEvents ?? 0} 次 / {formatNumber(selectedMembership?.usageAudit?.settledCredits)} 点</div>
             </div>
           </div>
           <div className="rounded border border-white/10 bg-black/20 p-4">
@@ -880,6 +889,7 @@ export function AdminPage() {
                       ? "border-sky-300/40 bg-sky-500/15 text-sky-100"
                       : "border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]"
                   }`}
+                  disabled={!selectedMembership}
                   key={option.tier}
                   onClick={() => setMembershipTier(option.tier)}
                   type="button"
@@ -888,7 +898,7 @@ export function AdminPage() {
                 </button>
               ))}
             </div>
-            <button className={`${buttonClass} mt-3`} onClick={() => void handleMembershipSave()} type="button">
+            <button className={`${buttonClass} mt-3`} disabled={!selectedMembership} onClick={() => void handleMembershipSave()} type="button">
               保存会员等级
             </button>
           </div>
@@ -897,8 +907,8 @@ export function AdminPage() {
           <div className="rounded border border-white/10 bg-black/20 p-4">
             <div className="text-sm font-medium text-white">发放积分</div>
             <div className="mt-3 grid gap-3">
-              <input className={inputClass} onChange={(event) => setGrantCreditsValue(event.target.value)} value={grantCreditsValue} />
-              <input className={inputClass} onChange={(event) => setGrantReason(event.target.value)} value={grantReason} />
+              <input className={inputClass} disabled={!selectedMembership} onChange={(event) => setGrantCreditsValue(event.target.value)} value={grantCreditsValue} />
+              <input className={inputClass} disabled={!selectedMembership} onChange={(event) => setGrantReason(event.target.value)} value={grantReason} />
               <div className="grid grid-cols-4 gap-2">
                 {VALIDITY_OPTIONS.map((option) => (
                   <button
@@ -906,7 +916,8 @@ export function AdminPage() {
                       grantValidity.label === option.label
                         ? "border-emerald-300/40 bg-emerald-500/15 text-emerald-100"
                         : "border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]"
-                    }`}
+                      }`}
+                    disabled={!selectedMembership}
                     key={option.label}
                     onClick={() => setGrantValidity(option)}
                     type="button"
@@ -915,20 +926,20 @@ export function AdminPage() {
                   </button>
                 ))}
               </div>
-              <button className={buttonClass} onClick={() => void handleGrantCredits()} type="button">
+              <button className={buttonClass} disabled={!selectedMembership} onClick={() => void handleGrantCredits()} type="button">
                 发放积分
               </button>
               {isSuperAdmin ? (
                 <div className="mt-2 rounded border border-white/10 bg-white/[0.03] p-3">
                   <div className="text-xs font-medium text-slate-300">手动调整积分</div>
                   <div className="mt-3 grid gap-2">
-                    <input className={inputClass} onChange={(event) => setAdjustCreditsValue(event.target.value)} value={adjustCreditsValue} />
-                    <input className={inputClass} onChange={(event) => setAdjustReason(event.target.value)} value={adjustReason} />
+                    <input className={inputClass} disabled={!selectedMembership} onChange={(event) => setAdjustCreditsValue(event.target.value)} value={adjustCreditsValue} />
+                    <input className={inputClass} disabled={!selectedMembership} onChange={(event) => setAdjustReason(event.target.value)} value={adjustReason} />
                     <div className="grid grid-cols-2 gap-2">
-                      <button className={buttonClass} onClick={() => void handleAdjustCredits("add")} type="button">
+                      <button className={buttonClass} disabled={!selectedMembership} onClick={() => void handleAdjustCredits("add")} type="button">
                         增加积分
                       </button>
-                      <button className={`${buttonClass} border-amber-300/20 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20`} onClick={() => void handleAdjustCredits("subtract")} type="button">
+                      <button className={`${buttonClass} border-amber-300/20 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20`} disabled={!selectedMembership} onClick={() => void handleAdjustCredits("subtract")} type="button">
                         减少积分
                       </button>
                     </div>
@@ -960,7 +971,7 @@ export function AdminPage() {
             <div className="text-xs text-slate-500">最近 10 条</div>
           </div>
           <div className="mt-3 space-y-2">
-            {(selectedMembership.creditLedger ?? []).map((entry) => (
+            {selectedUser.wallet.creditLedger.map((entry) => (
               <div className="grid gap-2 rounded border border-white/10 bg-white/[0.03] px-3 py-2 text-sm md:grid-cols-[150px_minmax(0,1fr)_96px]" key={entry.id}>
                 <div className="text-slate-400">{formatDate(entry.createdAt)}</div>
                 <div className="min-w-0">
@@ -972,7 +983,7 @@ export function AdminPage() {
                 </div>
               </div>
             ))}
-            {!(selectedMembership.creditLedger ?? []).length ? (
+            {!selectedUser.wallet.creditLedger.length ? (
               <div className="rounded border border-dashed border-white/10 p-4 text-sm text-slate-400">暂无积分变化记录。</div>
             ) : null}
           </div>
@@ -1013,7 +1024,7 @@ export function AdminPage() {
                       <td className="px-3 py-3 text-slate-300">{roleLabel(membership?.roleKey)}</td>
                       <td className="px-3 py-3 text-slate-300">{membershipLabel(membership?.membershipTier)}</td>
                       <td className="px-3 py-3 text-slate-300">{formatDate(user.lastLoginAt)}</td>
-                      <td className="px-3 py-3 text-slate-300">{formatNumber(membership?.availableCredits)}</td>
+                      <td className="px-3 py-3 text-slate-300">{formatNumber(user.wallet.availableCredits)}</td>
                     </tr>
                   );
                 })}
