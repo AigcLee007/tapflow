@@ -6066,3 +6066,9 @@ Validation completed:
 - confirmed the Aittco OpenAI Responses endpoint timed out twice after 60 seconds, so the three GPT routes now use `/v1/chat/completions` with the same upstream models, route keys, and prices.
 - added adapter and manifest regression coverage for Chat Completions request/response handling, normalized route metadata, and declared provider capabilities; Gemini and Claude protocols remain unchanged.
 - no real relay Key is stored in source. Deployment, authenticated plugin reinstallation with the verified raw Key, and all eight live route tests remain pending.
+
+## 2026-08-02 - Text Node Terra Default
+
+- new text nodes now initialize with product model `gpt-5.6-terra` and route `text.gpt-5-6-terra`.
+- explicit model and route overrides remain authoritative, and existing saved nodes are not migrated.
+- validation passed: node-factory tests (8 assertions) and the production frontend build; existing Vite warnings remain non-blocking.
