@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import type { AiModelCatalogItem, AiModelCatalogRoute } from "../../services/v2AiModelCatalogApi";
-import { toTextModelOptions } from "./textModelCatalog";
+import { groupTextModelOptions, toTextModelOptions } from "./textModelCatalog";
 
 const model = (overrides: Partial<AiModelCatalogItem> = {}): AiModelCatalogItem => ({
   capabilities: {},
@@ -97,5 +97,50 @@ describe("toTextModelOptions", () => {
     expect(options.map((item) => item.label)).toEqual(["模型甲", "模型乙"]);
     expect(options[0]?.routes.map((item) => item.label)).toEqual(["默认线路", "线路二"]);
     expect(options[0]?.defaultRoute.id).toBe("route-a");
+  });
+
+  test("maps catalog branding and groups active models by manufacturer", () => {
+    const options = toTextModelOptions([
+      model({
+        displayName: "GPT-5.6-sol",
+        modelKey: "gpt-5.6-sol",
+        sortOrder: 30,
+        uiSchema: { logoKey: "openai", manufacturer: "GPT" },
+      }),
+      model({
+        displayName: "Gemini-3.1-pro",
+        modelKey: "gemini-3.1-pro",
+        sortOrder: 10,
+        uiSchema: { logoKey: "google-gemini", manufacturer: "Gemini" },
+      }),
+      model({
+        displayName: "Claude-Opus-5",
+        modelKey: "claude-opus-5",
+        sortOrder: 40,
+        uiSchema: { logoKey: "claude", manufacturer: "Claude" },
+      }),
+      model({
+        displayName: "Independent text model",
+        modelKey: "independent-text",
+        sortOrder: 50,
+        uiSchema: {},
+      }),
+    ], {
+      "gpt-5.6-sol": [route({ modelKey: "gpt-5.6-sol", routeId: "gpt-route", routeKey: "text.gpt" })],
+      "gemini-3.1-pro": [route({ modelKey: "gemini-3.1-pro", routeId: "gemini-route", routeKey: "text.gemini" })],
+      "claude-opus-5": [route({ modelKey: "claude-opus-5", routeId: "claude-route", routeKey: "text.claude" })],
+      "independent-text": [route({ modelKey: "independent-text", routeId: "other-route", routeKey: "text.other" })],
+    });
+
+    expect(options[0]).toMatchObject({
+      logoKey: "google-gemini",
+      manufacturer: "Gemini",
+    });
+    expect(groupTextModelOptions(options).map((group) => group.manufacturer)).toEqual([
+      "Gemini",
+      "GPT",
+      "Claude",
+      "其他",
+    ]);
   });
 });

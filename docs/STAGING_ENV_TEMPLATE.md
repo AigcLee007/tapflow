@@ -138,22 +138,27 @@ The importer creates these inactive platform routes for `GPT-Image-2`:
 
 Run the documented dry-run before applying. Run the importer `--test` command for both inactive lines, then use the explicit publish command with the intended default route key. The publish command refuses to activate either line unless its current configuration revision has passed a route test.
 
-### Text model route
+### Aittco text relay
 
-- `GPT-5.5`
-  - Provider kind: `openai-compatible`
-  - Base URL: `https://sub.siphonlab.cn`
-  - Upstream model: `gpt-5.5`
-  - Chat API: `/v1/chat/completions`
-  - Responses API: `/v1/responses`
-  - Route key: `text.gpt-5-5`
-  - Pricing: `2` credits per text generation
-  - Credential env placeholder: `SIPHONLAB_GPT_5_5_API_KEY = <secret: SiphonLab GPT-5.5 API key>`
-  - Credential storage: server-side CredentialVault / template install only
-  - Text node success tested = No
-  - Agent planner success tested = No
+- Plugin package: `aittco.text-relay`
+- Provider kind/key: `aittco-text-relay`
+- Base URL: `https://api.aittco.com`
+- Authentication: one shared Bearer Key, supplied only to the authenticated plugin-install API and stored in CredentialVault.
+- Do not add `AITTCO_TEXT_RELAY_API_KEY` to `x-tapflow-env`, frontend variables, node data, screenshots, or committed files.
+- No Compose environment variable is required for normal runtime requests; API and Worker read the encrypted credential reference from the installed plugin.
 
-Gemini native routes are documented as a future plan only. They are not required for the first staging deployment.
+| Product model | Upstream model | API path | Credits | Route key |
+| --- | --- | --- | ---: | --- |
+| Gemini-3.1-pro | `gemini-3.1-pro-preview` | Gemini `generateContent` | 1 | `text.gemini-3-1-pro` |
+| Gemini-3.5-flash | `gemini-3.5-flash-preview` | Gemini `generateContent` | 0.5 | `text.gemini-3-5-flash` |
+| GPT-5.6-sol | `gpt-5.6-sol` | `/v1/responses` | 2 | `text.gpt-5-6-sol` |
+| GPT-5.6-terra | `gpt-5.6-terra` | `/v1/responses` | 1 | `text.gpt-5-6-terra` |
+| GPT-5.5 | `gpt-5.5` | `/v1/responses` | 2 | `text.gpt-5-5` |
+| Claude-Opus-5 | `claude-opus-5` | `/v1/messages` | 2.5 | `text.claude-opus-5` |
+| Claude-Sonnet-5 | `claude-sonnet-5` | `/v1/messages` | 1.5 | `text.claude-sonnet-5` |
+| Claude-Opus-4-8 | `claude-opus-4-8` | `/v1/messages` | 2 | `text.claude-opus-4-8` |
+
+Install and test all eight routes before disabling the historical `siphonlab.gpt-5-5-text` package. The canvas model picker groups them as Gemini, GPT, and Claude from plugin catalog metadata.
 
 ---
 

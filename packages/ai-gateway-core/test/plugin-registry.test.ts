@@ -13,6 +13,7 @@ describe("AI plugin registry", () => {
   test("lists built-in plugin manifests", () => {
     const manifests = builtinAiPluginRegistry.list();
     expect(manifests.map((manifest) => manifest.packageKey)).toEqual([
+      "aittco.text-relay",
       "siphonlab.gpt-5-5-text",
       "openai-compatible.gpt-image-2",
       "mouxihub.gpt-image-2-line3",
@@ -23,7 +24,7 @@ describe("AI plugin registry", () => {
       "pixellelabs.nano-banana-pro",
       "tapflow.video-editor-ffmpeg",
     ]);
-    expect(BUILTIN_AI_PLUGIN_MANIFESTS).toHaveLength(9);
+    expect(BUILTIN_AI_PLUGIN_MANIFESTS).toHaveLength(10);
   });
 
   test("returns TapFlow video editor FFmpeg export manifest", () => {
@@ -303,6 +304,85 @@ describe("AI plugin registry", () => {
     ]);
   });
 
+  test("returns all Aittco relay text models with their upstream protocols and prices", () => {
+    const manifest = builtinAiPluginRegistry.require("aittco.text-relay");
+    const expected = [
+      ["gemini-3.1-pro", "Gemini-3.1-pro", "gemini-3.1-pro-preview", "gemini", 1],
+      ["gemini-3.5-flash", "Gemini-3.5-flash", "gemini-3.5-flash-preview", "gemini", 0.5],
+      ["gpt-5.6-sol", "GPT-5.6-sol", "gpt-5.6-sol", "responses", 2],
+      ["gpt-5.6-terra", "GPT-5.6-terra", "gpt-5.6-terra", "responses", 1],
+      ["gpt-5.5", "GPT-5.5", "gpt-5.5", "responses", 2],
+      ["claude-opus-5", "Claude-Opus-5", "claude-opus-5", "claude", 2.5],
+      ["claude-sonnet-5", "Claude-Sonnet-5", "claude-sonnet-5", "claude", 1.5],
+      ["claude-opus-4-8", "Claude-Opus-4-8", "claude-opus-4-8", "claude", 2],
+    ] as const;
+
+    expect(manifest.provider).toMatchObject({
+      defaultBaseUrl: "https://api.aittco.com",
+      key: "aittco-text-relay",
+      kind: "aittco-text-relay",
+    });
+    expect(manifest.models).toHaveLength(expected.length);
+    expect(manifest.routes).toHaveLength(expected.length);
+    expect(manifest.pricing).toHaveLength(expected.length);
+
+    expected.forEach(([modelKey, displayName, upstreamModel, protocol, credits]) => {
+      expect(manifest.models).toContainEqual(expect.objectContaining({
+        defaultRouteKey: `text.${modelKey.replace(/\./g, "-")}`,
+        displayName,
+        modelFamily: modelKey,
+        modelKey,
+      }));
+      expect(manifest.routes).toContainEqual(expect.objectContaining({
+        modelKey,
+        requestConfig: expect.objectContaining({
+          model: upstreamModel,
+          protocol,
+        }),
+      }));
+      expect(manifest.pricing).toContainEqual(expect.objectContaining({
+        minChargeCredits: credits,
+        model: modelKey,
+        provider: "aittco-text-relay",
+        unit: "text_generation",
+        unitCredits: credits,
+      }));
+    });
+  });
+
+  test("accepts fractional pricing credits and rejects zero credits", () => {
+    const manifest = builtinAiPluginRegistry.require("siphonlab.gpt-5-5-text");
+    const fractionalPricingManifest: AiPluginManifest = {
+      ...manifest,
+      pricing: manifest.pricing.map((pricing) => ({
+        ...pricing,
+        minChargeCredits: 0.5,
+        unitCredits: 0.5,
+      })),
+    };
+    const zeroUnitCreditsManifest: AiPluginManifest = {
+      ...fractionalPricingManifest,
+      pricing: fractionalPricingManifest.pricing.map((pricing) => ({
+        ...pricing,
+        unitCredits: 0,
+      })),
+    };
+
+    expect(validateAiPluginManifest(fractionalPricingManifest)).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "PRICING_CREDITS_INVALID" }),
+      ]),
+    );
+    expect(validateAiPluginManifest(zeroUnitCreditsManifest)).toEqual(
+      expect.arrayContaining([
+        {
+          code: "PRICING_CREDITS_INVALID",
+          message: "Pricing for text.gpt-5-5 must use positive credits",
+        },
+      ]),
+    );
+  });
+
   test("returns GPT-Image-2 MouxiHub line three plugin manifest", () => {
     const manifest = builtinAiPluginRegistry.require("mouxihub.gpt-image-2-line3");
 
@@ -435,6 +515,7 @@ describe("AI plugin registry", () => {
 
   test("filters by modality and provider kind", () => {
     expect(builtinAiPluginRegistry.list({ modality: "text" }).map((manifest) => manifest.packageKey)).toEqual([
+      "aittco.text-relay",
       "siphonlab.gpt-5-5-text",
     ]);
     expect(

@@ -1,4 +1,5 @@
 import { AiGateway } from "./ai-gateway.js";
+import { AittcoTextRelayAdapter } from "./aittco-text-relay-adapter.js";
 import { MockProviderAdapter } from "./mock-provider-adapter.js";
 import { OpenAiCompatibleTextAdapter } from "./openai-compatible-text-adapter.js";
 import { PixelleLabsGeminiImageAdapter } from "./pixellelabs-gemini-image-adapter.js";
@@ -62,6 +63,10 @@ export function normalizeProviderKind(kind: string): string {
 
 export function createDefaultProviderAdapterRegistry(): ProviderAdapterRegistry {
   return new ProviderAdapterRegistry([
+    {
+      create: () => new AittcoTextRelayAdapter(),
+      kind: "aittco-text-relay",
+    },
     {
       create: () => new MockProviderAdapter(),
       kind: "mock",

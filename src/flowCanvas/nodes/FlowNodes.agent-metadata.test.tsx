@@ -181,6 +181,8 @@ describe("FlowNodes agent metadata", () => {
         },
         id: "real-text-model",
         label: "真实文本模型",
+        logoKey: "openai",
+        manufacturer: "GPT",
         modelFamily: "real-text-family",
         modelKey: "real-text-model",
         routes: [
@@ -226,6 +228,7 @@ describe("FlowNodes agent metadata", () => {
     fireEvent.click(screen.getByTitle("选择文本模型"));
 
     expect(screen.getAllByText("真实文本模型")).toHaveLength(3);
+    expect(screen.getByText("GPT")).toBeTruthy();
     expect(screen.getByText("线路一")).toBeTruthy();
     expect(screen.getByText("线路二")).toBeTruthy();
     expect(screen.queryByText("Gemini 3.1 Pro Preview")).toBeNull();

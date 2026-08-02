@@ -71,6 +71,7 @@ import { normalizeVideoGenerationParams } from '../video/videoGenerationParams';
 import { emitVideoComposerDiagnostic } from '../video/videoComposerDiagnostics';
 import { useVideoGenerationCatalog } from '../video/useVideoGenerationCatalog';
 import { useTextGenerationCatalog } from '../text/useTextGenerationCatalog';
+import { groupTextModelOptions } from '../text/textModelCatalog';
 import {
   getPersistedVideoResultAssetId,
   getSafePersistedVideoPosterUrl,
@@ -251,18 +252,14 @@ const stopCanvasKeyboardPropagation = (event: React.KeyboardEvent<HTMLElement>) 
   event.stopPropagation();
 };
 
-const TEXT_MODEL_LOGO_BY_PROVIDER: Record<string, string> = {
-  gemini: '/google-gemini-icon.svg',
+const TEXT_MODEL_LOGO_BY_KEY: Record<string, string> = {
+  'google-gemini': '/google-gemini-icon.svg',
   openai: '/openai-icon.svg',
-  anthropic: '/claude-ai-icon.svg',
+  claude: '/claude-ai-icon.svg',
 };
 
-function getTextModelLogo(providerKey?: string): string | null {
-  const normalized = String(providerKey || '').toLowerCase();
-  if (normalized.includes('gemini') || normalized.includes('google')) return TEXT_MODEL_LOGO_BY_PROVIDER.gemini;
-  if (normalized.includes('anthropic') || normalized.includes('claude')) return TEXT_MODEL_LOGO_BY_PROVIDER.anthropic;
-  if (normalized.includes('openai') || normalized.includes('gpt')) return TEXT_MODEL_LOGO_BY_PROVIDER.openai;
-  return null;
+function getTextModelLogo(logoKey?: string | null): string | null {
+  return logoKey ? TEXT_MODEL_LOGO_BY_KEY[logoKey] ?? null : null;
 }
 
 function formatTextCredits(credits: number): string {
@@ -2028,6 +2025,15 @@ const textModelMenuLabel: React.CSSProperties = {
   lineHeight: 1.1,
 };
 
+const textModelMenuGroupLabel: React.CSSProperties = {
+  color: '#a1a1aa',
+  display: 'block',
+  fontSize: 9,
+  fontWeight: 700,
+  lineHeight: 1.25,
+  padding: '6px 6px 3px',
+};
+
 const sendBtnOuter: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
@@ -3649,43 +3655,46 @@ export const TextNodeComponent = memo(function TextNode({
                         <span style={textModelMenuLabel}>暂无可用文本模型</span>
                       </div>
                     )}
-                    {!textModelsLoading && !textModelsError && textModels.flatMap((model) => (
-                      model.routes.map((route) => {
-                        const active = model.modelKey === currentModelId && route.routeKey === currentRouteKey;
-                        const logo = getTextModelLogo(route.providerKey);
-                        return (
-                          <button
-                            key={route.id}
-                            type="button"
-                            className="nodrag nopan"
-                            onClick={() => {
-                              updateNodeData(id, {
-                                modelId: model.modelKey,
-                                routeId: route.id,
-                                routeKey: route.routeKey,
-                              });
-                              setShowModelMenu(false);
-                            }}
-                            style={{
-                              ...textModelMenuItem,
-                              background: active ? 'rgba(255,255,255,0.08)' : 'transparent',
-                            }}
-                          >
-                            {logo ? (
-                              <img src={logo} alt="" style={textModelLogo} />
-                            ) : (
-                              <span style={{ ...textModelLogo, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                <Type size={16} aria-hidden="true" />
+                    {!textModelsLoading && !textModelsError && groupTextModelOptions(textModels).map((group) => (
+                      <div key={group.manufacturer}>
+                        <span style={textModelMenuGroupLabel}>{group.manufacturer}</span>
+                        {group.models.flatMap((model) => model.routes.map((route) => {
+                          const active = model.modelKey === currentModelId && route.routeKey === currentRouteKey;
+                          const logo = getTextModelLogo(model.logoKey);
+                          return (
+                            <button
+                              key={route.id}
+                              type="button"
+                              className="nodrag nopan"
+                              onClick={() => {
+                                updateNodeData(id, {
+                                  modelId: model.modelKey,
+                                  routeId: route.id,
+                                  routeKey: route.routeKey,
+                                });
+                                setShowModelMenu(false);
+                              }}
+                              style={{
+                                ...textModelMenuItem,
+                                background: active ? 'rgba(255,255,255,0.08)' : 'transparent',
+                              }}
+                            >
+                              {logo ? (
+                                <img src={logo} alt="" style={textModelLogo} />
+                              ) : (
+                                <span style={{ ...textModelLogo, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                  <Type size={16} aria-hidden="true" />
+                                </span>
+                              )}
+                              <span style={{ display: 'flex', flex: 1, minWidth: 0, flexDirection: 'column', gap: 2 }}>
+                                <span style={textModelMenuLabel}>{model.label}</span>
+                                <span style={{ color: '#a1a1aa', fontSize: 9, lineHeight: 1.25 }}>{route.label}</span>
                               </span>
-                            )}
-                            <span style={{ display: 'flex', flex: 1, minWidth: 0, flexDirection: 'column', gap: 2 }}>
-                              <span style={textModelMenuLabel}>{model.label}</span>
-                              <span style={{ color: '#a1a1aa', fontSize: 9, lineHeight: 1.25 }}>{route.label}</span>
-                            </span>
-                            <span style={{ color: '#a1a1aa', fontSize: 9 }}>{formatTextCredits(route.credits)} 积分</span>
-                          </button>
-                        );
-                      })
+                              <span style={{ color: '#a1a1aa', fontSize: 9 }}>{formatTextCredits(route.credits)} 积分</span>
+                            </button>
+                          );
+                        }))}
+                      </div>
                     ))}
                   </div>,
                   document.body,
@@ -3701,8 +3710,8 @@ export const TextNodeComponent = memo(function TextNode({
                   style={textModelTrigger}
                   title="选择文本模型"
                 >
-                  {getTextModelLogo(currentTextRoute?.providerKey) ? (
-                    <img src={getTextModelLogo(currentTextRoute?.providerKey) || ''} alt="" style={textModelTriggerLogo} />
+                  {getTextModelLogo(currentTextModel?.logoKey) ? (
+                    <img src={getTextModelLogo(currentTextModel?.logoKey) || ''} alt="" style={textModelTriggerLogo} />
                   ) : (
                     <Type size={16} aria-hidden="true" />
                   )}

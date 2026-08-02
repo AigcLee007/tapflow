@@ -6050,3 +6050,12 @@ Validation completed:
 - added a focused React render regression test for a text node with `generationStatus: 'error'` and an error message; the test first reproduced `ReferenceError: hasGenerationError is not defined` before the production change.
 - fixed the crash by deriving `hasGenerationError` inside `TextNodeComponent`, preserving the existing inline error message and retry button without changing workflow execution, billing, or provider routing.
 - validation passed: the focused error-state test passed, the complete `FlowNodes.agent-metadata.test.tsx` suite passed with 15 assertions, and the production frontend build completed successfully with existing non-blocking warnings only.
+
+## 2026-08-02 - Aittco Multi-Protocol Text Relay
+
+- added the `aittco.text-relay` plugin manifest with eight priced product text models: Gemini-3.1-pro, Gemini-3.5-flash, GPT-5.6-sol, GPT-5.6-terra, GPT-5.5, Claude-Opus-5, Claude-Sonnet-5, and Claude-Opus-4-8.
+- added one server-side `aittco-text-relay` adapter that uses the configured Gemini GenerateContent, OpenAI Responses, or Claude Messages request path and always sends the configured upstream model rather than the canvas product model key.
+- kept the shared Aittco Bearer Key in CredentialVault: no runtime Compose variable, frontend value, node draft field, or source-controlled secret is introduced.
+- corrected plugin route installation to persist `requestConfig.model` as `ai_routes.upstream_model` and model-configuration publishing to look up prices by `ai_models.model_key`; this preserves Gemini preview upstream names while pricing by product model.
+- canvas text model catalog options now read `manufacturer` and `logoKey` from database catalog UI metadata, use the supplied Gemini/OpenAI/Claude logos, and group active positive-priced options by Gemini, GPT, Claude, then other models.
+- staging rollout and live route smoke tests remain pending: install the plugin through the authenticated admin API with the shared Key, execute each generated route test, then perform a text-node canvas generation before disabling the legacy SiphonLab package.

@@ -1,5 +1,6 @@
 import type { AiPluginManifest } from "./plugin-manifest.js";
 import { validateAiPluginManifest } from "./plugin-manifest.js";
+import { aittcoTextRelayManifest } from "./manifests/aittco-text-relay.js";
 import { mouxiHubGptImage2Line3Manifest } from "./manifests/mouxihub-gpt-image-2-line3.js";
 import { mouxiHubGptImage2Line4Manifest } from "./manifests/mouxihub-gpt-image-2-line4.js";
 import { mouxiHubNanoBananaProT3Manifest } from "./manifests/mouxihub-nano-banana-pro-t3.js";
@@ -11,6 +12,7 @@ import { siphonLabGpt55TextManifest } from "./manifests/siphonlab-gpt-5-5-text.j
 import { tapflowVideoEditorFfmpegManifest } from "./manifests/tapflow-video-editor-ffmpeg.js";
 
 export const BUILTIN_AI_PLUGIN_MANIFESTS = [
+  aittcoTextRelayManifest,
   mouxiHubGptImage2Line3Manifest,
   mouxiHubGptImage2Line4Manifest,
   mouxiHubNanoBananaProT3Manifest,
