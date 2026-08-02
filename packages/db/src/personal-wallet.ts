@@ -11,6 +11,9 @@ export type WalletReserveInput = { amountCredits: number; idempotencyKey: string
 export type WalletSettleInput = { amountCredits: number; idempotencyKey: string; reserveLedgerId: string; usageEventId: string; metadata?: Record<string, unknown> };
 export type WalletRefundInput = { idempotencyKey: string; reserveLedgerId: string; usageEventId?: string | null; metadata?: Record<string, unknown> };
 export type WalletSummaryView = { availableCredits: number; balanceCredits: number; expiringSoonCredits: number; nearestExpiryAt: string | null; reservedCredits: number; walletId: string };
+export type WalletAdminCreditInput = { amountCredits: number; description: string; expiresAt: string | null; idempotencyKey: string; metadata?: Record<string, unknown>; sourceId: string };
+export type WalletAdminDebitInput = { amountCredits: number; description: string; idempotencyKey: string; metadata?: Record<string, unknown> };
+export type WalletSummaryMap = Map<string, WalletSummaryView>;
 export type WalletRedeemInput = { code: string; idempotencyKey?: string; metadata?: Record<string, unknown> };
 export type WalletRedeemResultView = { credits: number; ledgerEntry: WalletLedgerView; redemptionId: string };
 
@@ -19,25 +22,37 @@ export class PersonalWalletServiceError extends Error {
 }
 
 type LedgerRow = { id: string; wallet_id: string; user_id: string; tenant_id: string | null; usage_event_id: string | null; entry_type: string; amount_credits: string; idempotency_key: string; created_at: string };
+type WalletSummaryRow = { wallet_id: string; user_id: string; balance: string; reserved: string; expiring: string; nearest: string | null };
 function mapLedger(row: LedgerRow): WalletLedgerView { return { id: row.id, walletId: row.wallet_id, userId: row.user_id, tenantId: row.tenant_id, usageEventId: row.usage_event_id, entryType: row.entry_type, amountCredits: Number(row.amount_credits), idempotencyKey: row.idempotency_key, createdAt: row.created_at }; }
+function emptySummary(): WalletSummaryView { return { walletId: "", balanceCredits: 0, reservedCredits: 0, availableCredits: 0, expiringSoonCredits: 0, nearestExpiryAt: null }; }
 
 export class PersonalWalletService {
   readonly pool: Pool;
   constructor(options?: { pool?: Pool }) { this.pool = options?.pool ?? createPgPool(); }
 
   async getSummary(context: PersonalWalletContext): Promise<WalletSummaryView> {
-    return withUserTransaction(context, async (client) => {
-      const result = await client.query<{ wallet_id: string; balance: string; reserved: string; expiring: string; nearest: string | null }>(`
+    return withUserTransaction(context, (client) => this.getSummaryWithClient(client, context.userId), this.pool);
+  }
+
+  async getSummaryWithClient(client: PoolClient, userId: string): Promise<WalletSummaryView> {
+    return (await this.getSummariesWithClient(client, [userId])).get(userId) ?? emptySummary();
+  }
+
+  async getSummariesWithClient(client: PoolClient, userIds: string[]): Promise<WalletSummaryMap> {
+    const uniqueUserIds = [...new Set(userIds)];
+    const summaries: WalletSummaryMap = new Map(uniqueUserIds.map((userId) => [userId, emptySummary()]));
+    if (uniqueUserIds.length === 0) return summaries;
+    const result = await client.query<WalletSummaryRow>(`
         SELECT wallet.id::text AS wallet_id, wallet.balance_credits::text AS balance, wallet.reserved_credits::text AS reserved,
           COALESCE(SUM(credit_grant.remaining_credits - credit_grant.reserved_credits) FILTER (WHERE credit_grant.status = 'active' AND credit_grant.expires_at <= now() + interval '30 days'), 0)::text AS expiring,
           MIN(credit_grant.expires_at)::text AS nearest
         FROM billing_wallets wallet LEFT JOIN billing_wallet_credit_grants credit_grant ON credit_grant.wallet_id = wallet.id AND credit_grant.status = 'active'
-        WHERE wallet.user_id = $1::uuid GROUP BY wallet.id`, [context.userId]);
-      const row = result.rows[0];
-      if (!row) return { walletId: "", balanceCredits: 0, reservedCredits: 0, availableCredits: 0, expiringSoonCredits: 0, nearestExpiryAt: null };
+        WHERE wallet.user_id = ANY($1::uuid[]) GROUP BY wallet.id, wallet.user_id`, [uniqueUserIds]);
+    for (const row of result.rows) {
       const balance = Number(row.balance); const reserved = Number(row.reserved);
-      return { walletId: row.wallet_id, balanceCredits: balance, reservedCredits: reserved, availableCredits: Math.max(balance - reserved, 0), expiringSoonCredits: Number(row.expiring), nearestExpiryAt: row.nearest };
-    }, this.pool);
+      summaries.set(row.user_id, { walletId: row.wallet_id, balanceCredits: balance, reservedCredits: reserved, availableCredits: Math.max(balance - reserved, 0), expiringSoonCredits: Number(row.expiring), nearestExpiryAt: row.nearest });
+    }
+    return summaries;
   }
 
   async listLedger(context: PersonalWalletContext, options: BillingListOptions = {}): Promise<{ items: WalletLedgerView[]; page: number; pageSize: number }> {
@@ -50,6 +65,22 @@ export class PersonalWalletService {
 
   async credit(context: { userId: string }, input: WalletCreditInput): Promise<WalletLedgerView> {
     return withUserTransaction({ userId: context.userId }, (client) => this.creditWithClient(client, context.userId, input), this.pool);
+  }
+  async adminCreditWithClient(client: PoolClient, context: { actorUserId: string | null; tenantId: string; userId: string }, input: WalletAdminCreditInput): Promise<WalletLedgerView> {
+    if (!Number.isFinite(input.amountCredits) || input.amountCredits <= 0) throw new PersonalWalletServiceError("INVALID_WALLET_CREDIT", "Credit amount must be positive");
+    try {
+      const result = await client.query<LedgerRow>(`SELECT * FROM app.wallet_admin_credit($1::uuid, $2::uuid, $3::uuid, $4::numeric, $5::timestamptz, $6, $7, $8, $9::jsonb)`, [context.actorUserId, context.userId, context.tenantId, input.amountCredits, input.expiresAt, input.idempotencyKey, input.sourceId, input.description, JSON.stringify(input.metadata ?? {})]);
+      if (!result.rows[0]) throw new Error("empty administrator credit");
+      return mapLedger(result.rows[0]);
+    } catch (error) { throw this.mapDatabaseError(error, "WALLET_ADMIN_CREDIT_FAILED", "Unable to credit personal wallet"); }
+  }
+  async adminDebitWithClient(client: PoolClient, context: { actorUserId: string | null; tenantId: string; userId: string }, input: WalletAdminDebitInput): Promise<WalletLedgerView> {
+    if (!Number.isFinite(input.amountCredits) || input.amountCredits <= 0) throw new PersonalWalletServiceError("INVALID_WALLET_DEBIT", "Debit amount must be positive");
+    try {
+      const result = await client.query<LedgerRow>(`SELECT * FROM app.wallet_admin_debit($1::uuid, $2::uuid, $3::uuid, $4::numeric, $5, $6, $7::jsonb)`, [context.actorUserId, context.userId, context.tenantId, input.amountCredits, input.idempotencyKey, input.description, JSON.stringify(input.metadata ?? {})]);
+      if (!result.rows[0]) throw new Error("empty administrator debit");
+      return mapLedger(result.rows[0]);
+    } catch (error) { throw this.mapDatabaseError(error, "WALLET_ADMIN_DEBIT_FAILED", "Unable to debit personal wallet"); }
   }
   async redeemCode(context: PersonalWalletContext, input: WalletRedeemInput): Promise<WalletRedeemResultView> {
     if (!context.tenantId) {
@@ -102,9 +133,10 @@ export class PersonalWalletService {
   }
   private mapDatabaseError(error: unknown, fallbackCode: string, fallbackMessage: string): PersonalWalletServiceError {
     const message = error instanceof Error ? error.message : fallbackMessage;
-    const codeMatch = message.match(/(INSUFFICIENT_BALANCE|WALLET_IDEMPOTENCY_CONFLICT|REDEEM_CODE_[A-Z_]+)/);
+    const codeMatch = message.match(/(INSUFFICIENT_BALANCE|WALLET_FORBIDDEN|WALLET_IDEMPOTENCY_CONFLICT|REDEEM_CODE_[A-Z_]+)/);
     if (codeMatch?.[1] === "INSUFFICIENT_BALANCE") return new PersonalWalletServiceError("INSUFFICIENT_BALANCE", "Insufficient personal wallet balance", 402);
     if (codeMatch?.[1] === "WALLET_IDEMPOTENCY_CONFLICT") return new PersonalWalletServiceError("WALLET_IDEMPOTENCY_CONFLICT", "Wallet idempotency key was reused with different data", 409);
+    if (codeMatch?.[1] === "WALLET_FORBIDDEN") return new PersonalWalletServiceError("WALLET_FORBIDDEN", "Administrator wallet mutation is not authorized", 403);
     if (codeMatch?.[1]) {
       const status = codeMatch[1] === "REDEEM_CODE_NOT_FOUND" ? 404 : 409;
       return new PersonalWalletServiceError(codeMatch[1], "Redeem code cannot be applied", status);

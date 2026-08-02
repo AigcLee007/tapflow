@@ -1,6 +1,9 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { describe, expect, test } from "vitest";
+
+import { PersonalWalletService } from "../src/index.js";
 
 describe("wallet admin adjustment migration", () => {
   test("defines the admin credit and debit wallet mutation contract", async () => {
@@ -68,5 +71,51 @@ describe("wallet admin adjustment migration", () => {
     expect(sql).not.toMatch(/GRANT\s+(?:SELECT|INSERT|UPDATE)[^;]*billing_wallets[^;]*TO\s+%I/i);
     expect(sql).not.toMatch(/GRANT\s+(?:SELECT|INSERT|UPDATE)[^;]*billing_wallets[^;]*TO\s+SESSION_USER/i);
     expect(sql).not.toMatch(/DISABLE\s+ROW\s+LEVEL\s+SECURITY/i);
+  });
+});
+
+describe("PersonalWalletService administrator wallet mutations", () => {
+  test("calls the fixed administrator functions and batches wallet summaries", async () => {
+    const userId = randomUUID();
+    const otherUserId = randomUUID();
+    const tenantId = randomUUID();
+    const actorUserId = randomUUID();
+    const queries: Array<{ sql: string; values: unknown[] }> = [];
+    const client = {
+      query: async (sql: string, values: unknown[] = []) => {
+        queries.push({ sql, values });
+        if (sql.includes("wallet_admin_credit")) {
+          return { rows: [{ id: "credit-1", wallet_id: "wallet-1", user_id: userId, tenant_id: tenantId, usage_event_id: null, entry_type: "admin_credit", amount_credits: "100", idempotency_key: "admin-credit:1", created_at: "2030-01-01T00:00:00.000Z" }] };
+        }
+        if (sql.includes("wallet_admin_debit")) {
+          return { rows: [{ id: "debit-1", wallet_id: "wallet-1", user_id: userId, tenant_id: tenantId, usage_event_id: null, entry_type: "admin_debit", amount_credits: "60", idempotency_key: "admin-debit:1", created_at: "2030-01-01T00:00:00.000Z" }] };
+        }
+        return { rows: [{ wallet_id: "wallet-1", user_id: userId, balance: "100", reserved: "20", expiring: "0", nearest: null }] };
+      },
+    };
+    const wallet = new PersonalWalletService({ pool: {} as never });
+
+    await expect(wallet.adminCreditWithClient(client as never, { actorUserId, tenantId, userId }, {
+      amountCredits: 100,
+      description: "Administrator grant",
+      expiresAt: null,
+      idempotencyKey: "admin-credit:1",
+      sourceId: "admin-credit:1",
+    })).resolves.toMatchObject({ amountCredits: 100, entryType: "admin_credit" });
+    await expect(wallet.adminDebitWithClient(client as never, { actorUserId, tenantId, userId }, {
+      amountCredits: 60,
+      description: "Administrator debit",
+      idempotencyKey: "admin-debit:1",
+    })).resolves.toMatchObject({ amountCredits: 60, entryType: "admin_debit" });
+    await expect(wallet.getSummariesWithClient(client as never, [userId, otherUserId])).resolves.toEqual(new Map([
+      [userId, expect.objectContaining({ availableCredits: 80, walletId: "wallet-1" })],
+      [otherUserId, expect.objectContaining({ availableCredits: 0, walletId: "" })],
+    ]));
+
+    expect(queries[0]?.sql).toContain("app.wallet_admin_credit");
+    expect(queries[0]?.values).toEqual([actorUserId, userId, tenantId, 100, null, "admin-credit:1", "admin-credit:1", "Administrator grant", "{}"]);
+    expect(queries[1]?.sql).toContain("app.wallet_admin_debit");
+    expect(queries[1]?.values).toEqual([actorUserId, userId, tenantId, 60, "admin-debit:1", "Administrator debit", "{}"]);
+    expect(queries[2]?.sql).toContain("wallet.user_id = ANY($1::uuid[])");
   });
 });
