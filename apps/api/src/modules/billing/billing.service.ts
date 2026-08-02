@@ -2,7 +2,6 @@ import {
   BillingService,
   BillingServiceError,
   createPgPool,
-  type BillingLedgerView,
   PersonalWalletService,
   withUserTransaction,
   type UsageEventView,
@@ -132,33 +131,6 @@ export class BillingApiService {
       tenantId: context.tenantId,
       userId: this.requireUserId(context),
     }, input));
-  }
-
-  async adjustBillingAccount(
-    context: BillingContext,
-    input: {
-      amountCents: number;
-      direction: "credit" | "debit";
-      idempotencyKey: string;
-      note?: string;
-    },
-  ): Promise<BillingLedgerView> {
-    const payload = {
-      amountCents: input.amountCents,
-      description: input.note ?? `Admin ${input.direction}`,
-      entryType: input.direction === "credit" ? "admin_credit" : "admin_debit",
-      idempotencyKey: input.idempotencyKey,
-      metadata: {
-        adjustedByUserId: context.userId,
-        note: input.note ?? null,
-      },
-    };
-
-    return this.call(() => (
-      input.direction === "credit"
-        ? this.billingService.creditAccount(context, payload)
-        : this.billingService.debitAccount(context, payload)
-    ));
   }
 
   async listPricing(context: BillingContext): Promise<Array<{

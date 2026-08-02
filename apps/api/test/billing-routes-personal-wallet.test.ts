@@ -31,9 +31,9 @@ describe("personal wallet billing route authorization", () => {
     }
   });
 
-  test("workspace pricing and administrator adjustment retain tenant permissions", () => {
+  test("workspace pricing retains tenant permissions without a legacy administrator adjustment route", () => {
     const routes = captureRoutes();
     expect(routes.find((route) => route.url === "/api/v2/billing/pricing")?.options.preHandler).toHaveLength(3);
-    expect(routes.find((route) => route.url === "/api/v2/billing/admin/adjust")?.options.preHandler).toHaveLength(3);
+    expect(routes.some((route) => route.url === "/api/v2/billing/admin/adjust")).toBe(false);
   });
 });

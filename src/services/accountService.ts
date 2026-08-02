@@ -223,33 +223,6 @@ export const rechargeBillingAccount = async ({
   return parseResponse<BillingAccountPayload>(response);
 };
 
-export const adjustBillingAccount = async ({
-  accountId,
-  delta,
-  note,
-}: {
-  accountId: string;
-  delta: number;
-  note?: string;
-}): Promise<BillingAccountPayload> => {
-  await ensureBillingIdentity();
-
-  const response = await fetch(`${cleanUrl(API_BASE_URL)}/account/adjust`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(await getAuthorizedBillingHeaders()),
-    },
-    body: JSON.stringify({
-      accountId,
-      delta,
-      note,
-    }),
-  });
-
-  return parseResponse<BillingAccountPayload>(response);
-};
-
 export const redeemBillingCode = async ({
   code,
   ledgerPage = 1,
@@ -333,4 +306,3 @@ export const fetchBillingRedeemCodes = async ({
 
   return parseResponse<RedeemCodeListPayload>(response);
 };
-

@@ -1,13 +1,14 @@
 import { randomBytes, randomUUID } from "node:crypto";
 
 import {
-  BillingService,
-  BillingServiceError,
   createPgPool,
   hashBillingRedeemCode,
+  PersonalWalletService,
+  PersonalWalletServiceError,
   safeRecordAuditLog,
   type MembershipTier,
-  type BillingLedgerView,
+  type WalletLedgerView,
+  type WalletSummaryView,
   withTenantTransaction,
 } from "@aigc-flow/db";
 import type { Pool, PoolClient } from "pg";
@@ -570,15 +571,15 @@ function mapAiRouteStats(
 }
 
 export class AdminApiService {
-  readonly billingService: BillingService;
+  readonly personalWalletService: PersonalWalletService;
   readonly pool: PgPool;
 
   constructor(options?: {
-    billingService?: BillingService;
+    personalWalletService?: PersonalWalletService;
     pool?: PgPool;
   }) {
     this.pool = options?.pool ?? createPgPool();
-    this.billingService = options?.billingService ?? new BillingService({ pool: this.pool });
+    this.personalWalletService = options?.personalWalletService ?? new PersonalWalletService({ pool: this.pool });
   }
 
   async searchUsers(
@@ -694,76 +695,40 @@ export class AdminApiService {
       validityMonths?: number;
     },
   ): Promise<{
-    account: {
-      availableCredits: number;
-      balanceCredits: number;
-      reservedCredits: number;
-      tenantId: string;
-    };
-    ledgerEntry: BillingLedgerView;
+    ledgerEntry: WalletLedgerView;
+    wallet: WalletSummaryView;
   }> {
-    const tenantContext = requireTenantContext(context);
-    const client = await this.pool.connect();
-    let membership: { rows: Array<{ exists_flag: number }> };
-    try {
-      await client.query("BEGIN");
-      await setAdminTenantContext(client, tenantContext);
-      membership = await client.query<{ exists_flag: number }>(
-        `
-          SELECT 1 AS exists_flag
-          FROM tenant_memberships
-          WHERE tenant_id = $1::uuid
-            AND user_id = $2::uuid
-          LIMIT 1
-        `,
-        [input.tenantId, input.targetUserId],
-      );
-      await client.query("COMMIT");
-    } catch (error) {
-      await client.query("ROLLBACK").catch(() => undefined);
-      throw error;
-    } finally {
-      client.release();
-    }
-
-    if (!membership.rows[0]) {
-      throw new AdminApiError(404, "TENANT_MEMBERSHIP_NOT_FOUND", "Target user does not belong to the selected workspace.");
-    }
-
     const idempotencyKey = input.idempotencyKey?.trim() || `admin-grant:${input.tenantId}:${input.targetUserId}:${randomUUID()}`;
     const creditExpiresAt = resolveCreditGrantExpiresAt(input);
-    let ledgerEntry: BillingLedgerView;
+    let result: { ledgerEntry: WalletLedgerView; wallet: WalletSummaryView };
     try {
-      ledgerEntry = await this.billingService.creditAccount(
-        {
+      result = await this.mutateTargetWallet(context, input.tenantId, input.targetUserId, async (client) =>
+        this.personalWalletService.adminCreditWithClient(client, {
+          actorUserId: context.userId,
           tenantId: input.tenantId,
-          userId: context.userId,
-        },
-        {
-          amountCents: input.credits,
+          userId: input.targetUserId,
+        }, {
+          amountCredits: input.credits,
           description: `Admin grant credits: ${input.reason.trim()}`,
-          entryType: "admin_credit",
+          expiresAt: creditExpiresAt,
           idempotencyKey,
+          sourceId: idempotencyKey,
           metadata: {
             adminActorUserId: context.userId,
             creditExpiresAt,
             reason: input.reason.trim(),
             targetUserId: input.targetUserId,
+            tenantId: input.tenantId,
             validityMode: input.validityMode ?? "lifetime",
           },
-        },
+        }),
       );
     } catch (error) {
-      if (error instanceof BillingServiceError) {
+      if (error instanceof PersonalWalletServiceError) {
         throw new AdminApiError(error.statusCode, error.code, error.message);
       }
       throw error;
     }
-
-    const summary = await this.billingService.getBillingSummary({
-      tenantId: input.tenantId,
-      userId: context.userId,
-    });
 
     await safeRecordAuditLog(
       {
@@ -791,13 +756,7 @@ export class AdminApiService {
     );
 
     return {
-      account: {
-        availableCredits: summary.creditGrants.availableCredits,
-        balanceCredits: summary.account.balanceCents,
-        reservedCredits: summary.creditGrants.reservedCredits,
-        tenantId: input.tenantId,
-      },
-      ledgerEntry,
+      ...result,
     };
   }
 
@@ -812,65 +771,55 @@ export class AdminApiService {
       tenantId: string;
     },
   ): Promise<{
-    account: {
-      availableCredits: number;
-      balanceCredits: number;
-      reservedCredits: number;
-      tenantId: string;
-    };
-    ledgerEntry: BillingLedgerView;
+    ledgerEntry: WalletLedgerView;
+    wallet: WalletSummaryView;
   }> {
-    const tenantContext = requireTenantContext(context);
     const hasSuperAdminSource = context.roles.includes("system_admin") || context.roles.includes("admin_email");
     if (!hasSuperAdminSource) {
       throw new AdminApiError(403, "SUPER_ADMIN_REQUIRED", "Only super admins can manually adjust user credits.");
     }
 
-    const membership = await withTenantTransaction<{ rows: Array<{ exists_flag: number }> }>(tenantContext, async (client) => {
-      return client.query<{ exists_flag: number }>(
-        `
-          SELECT 1 AS exists_flag
-          FROM tenant_memberships
-          WHERE tenant_id = $1::uuid
-            AND user_id = $2::uuid
-          LIMIT 1
-        `,
-        [input.tenantId, input.targetUserId],
-      );
-    }, this.pool);
-    if (!membership.rows[0]) {
-      throw new AdminApiError(404, "TENANT_MEMBERSHIP_NOT_FOUND", "Target user does not belong to the selected workspace.");
-    }
-
     const idempotencyKey = input.idempotencyKey?.trim() || `admin-adjust:${input.direction}:${input.tenantId}:${input.targetUserId}:${randomUUID()}`;
-    let ledgerEntry: BillingLedgerView;
+    let result: { ledgerEntry: WalletLedgerView; wallet: WalletSummaryView };
     try {
-      const payload = {
-        amountCents: input.credits,
-        description: `Admin ${input.direction === "add" ? "add" : "subtract"} credits: ${input.reason.trim()}`,
-        entryType: input.direction === "add" ? "admin_credit" : "admin_debit",
-        idempotencyKey,
-        metadata: {
+      result = await this.mutateTargetWallet(context, input.tenantId, input.targetUserId, (client) => {
+        const metadata = {
           adminActorUserId: context.userId,
           adjustmentDirection: input.direction,
           reason: input.reason.trim(),
           targetUserId: input.targetUserId,
-        },
-      };
-      ledgerEntry = input.direction === "add"
-        ? await this.billingService.creditAccount({ tenantId: input.tenantId, userId: context.userId }, payload)
-        : await this.billingService.debitAccount({ tenantId: input.tenantId, userId: context.userId }, payload);
+          tenantId: input.tenantId,
+        };
+        return input.direction === "add"
+          ? this.personalWalletService.adminCreditWithClient(client, {
+            actorUserId: context.userId,
+            tenantId: input.tenantId,
+            userId: input.targetUserId,
+          }, {
+            amountCredits: input.credits,
+            description: `Admin add credits: ${input.reason.trim()}`,
+            expiresAt: null,
+            idempotencyKey,
+            sourceId: idempotencyKey,
+            metadata,
+          })
+          : this.personalWalletService.adminDebitWithClient(client, {
+            actorUserId: context.userId,
+            tenantId: input.tenantId,
+            userId: input.targetUserId,
+          }, {
+            amountCredits: input.credits,
+            description: `Admin subtract credits: ${input.reason.trim()}`,
+            idempotencyKey,
+            metadata,
+          });
+      });
     } catch (error) {
-      if (error instanceof BillingServiceError) {
+      if (error instanceof PersonalWalletServiceError) {
         throw new AdminApiError(error.statusCode, error.code, error.message);
       }
       throw error;
     }
-
-    const summary = await this.billingService.getBillingSummary({
-      tenantId: input.tenantId,
-      userId: context.userId,
-    });
 
     await safeRecordAuditLog(
       {
@@ -897,14 +846,39 @@ export class AdminApiService {
     ).catch(() => undefined);
 
     return {
-      account: {
-        availableCredits: summary.creditGrants.availableCredits,
-        balanceCredits: summary.account.balanceCents,
-        reservedCredits: summary.creditGrants.reservedCredits,
-        tenantId: input.tenantId,
-      },
-      ledgerEntry,
+      ...result,
     };
+  }
+
+  private async mutateTargetWallet(
+    context: AdminContext,
+    tenantId: string,
+    targetUserId: string,
+    mutate: (client: PoolClient) => Promise<WalletLedgerView>,
+  ): Promise<{ ledgerEntry: WalletLedgerView; wallet: WalletSummaryView }> {
+    const tenantContext = requireTenantContext(context);
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await setAdminTenantContext(client, tenantContext);
+      const membership = await client.query<{ exists_flag: number }>(
+        `SELECT 1 AS exists_flag FROM tenant_memberships
+         WHERE tenant_id = $1::uuid AND user_id = $2::uuid AND status = 'active' LIMIT 1`,
+        [tenantId, targetUserId],
+      );
+      if (!membership.rows[0]) {
+        throw new AdminApiError(404, "TENANT_MEMBERSHIP_NOT_FOUND", "Target user does not belong to the selected workspace.");
+      }
+      const ledgerEntry = await mutate(client);
+      const wallet = await this.personalWalletService.getSummaryWithClient(client, targetUserId);
+      await client.query("COMMIT");
+      return { ledgerEntry, wallet };
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async updateUserStatus(

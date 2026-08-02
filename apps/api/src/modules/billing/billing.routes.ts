@@ -8,10 +8,8 @@ import {
 } from "../../http/auth-middleware.js";
 import { BillingApiError } from "./billing.service.js";
 import {
-  adminAdjustBillingSchema,
   billingListQuerySchema,
   redeemBillingCodeSchema,
-  type AdminAdjustBillingInput,
   type BillingListQuery,
   type RedeemBillingCodeInput,
 } from "./billing.schemas.js";
@@ -146,23 +144,6 @@ export function registerBillingRoutes(app: FastifyInstance): void {
         const body = parseBody<RedeemBillingCodeInput>(request, redeemBillingCodeSchema);
         return reply.code(201).send(
           await app.billingService.redeemCode(getBillingContext(request), body),
-        );
-      } catch (error) {
-        return handleRouteError(error, request, reply);
-      }
-    },
-  );
-
-  app.post(
-    "/api/v2/billing/admin/adjust",
-    {
-      preHandler: [requireAuth, requireTenant, requirePermission("billing:manage")],
-    },
-    async (request, reply) => {
-      try {
-        const body = parseBody<AdminAdjustBillingInput>(request, adminAdjustBillingSchema);
-        return reply.code(201).send(
-          await app.billingService.adjustBillingAccount(getBillingContext(request), body),
         );
       } catch (error) {
         return handleRouteError(error, request, reply);
