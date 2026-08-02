@@ -16,7 +16,7 @@
 
 ### Database Domain
 
-- Create `packages/db/migrations/000060_wallet_admin_debit.sql`: permit the new immutable wallet ledger entry type and add fixed `SECURITY DEFINER` administrator credit/debit functions with runtime-role ACLs.
+- Create `packages/db/migrations/000061_wallet_admin_debit.sql`: permit the new immutable wallet ledger entry type and add fixed `SECURITY DEFINER` administrator credit/debit functions with runtime-role ACLs.
 - Modify `packages/db/src/personal-wallet.ts`: add client-scoped administrator credit/debit wrappers and single/batch summary operations.
 - Modify `packages/db/src/index.ts`: export new wallet input/result types and reconciliation APIs.
 - Create `packages/db/src/admin-wallet-reconciliation.ts`: discover, validate, dry-run, and apply legacy administrator wallet corrections.
@@ -64,7 +64,7 @@
 ### Task 1: Add The Wallet Administrator Mutation Schema Contract
 
 **Files:**
-- Create: `packages/db/migrations/000060_wallet_admin_debit.sql`
+- Create: `packages/db/migrations/000061_wallet_admin_debit.sql`
 - Create: `packages/db/test/admin-wallet-adjustment.test.ts`
 
 - [ ] **Step 1: Write the failing migration contract test**
@@ -77,7 +77,7 @@ import { describe, expect, test } from "vitest";
 describe("wallet administrator adjustment migration", () => {
   test("adds guarded administrator wallet functions without weakening ACLs", async () => {
     const sql = await readFile(
-      path.resolve(import.meta.dirname, "../migrations/000060_wallet_admin_debit.sql"),
+      path.resolve(import.meta.dirname, "../migrations/000061_wallet_admin_debit.sql"),
       "utf8",
     );
     for (const entryType of [
@@ -106,7 +106,7 @@ describe("wallet administrator adjustment migration", () => {
 
 Run: `npm run test --workspace @aigc-flow/db -- admin-wallet-adjustment.test.ts`
 
-Expected: FAIL with `ENOENT` for `000060_wallet_admin_debit.sql`.
+Expected: FAIL with `ENOENT` for `000061_wallet_admin_debit.sql`.
 
 - [ ] **Step 3: Add the forward-only constraint and fixed mutation functions**
 
@@ -162,7 +162,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit the schema contract**
 
 ```bash
-git add packages/db/migrations/000060_wallet_admin_debit.sql packages/db/test/admin-wallet-adjustment.test.ts
+git add packages/db/migrations/000061_wallet_admin_debit.sql packages/db/test/admin-wallet-adjustment.test.ts
 git commit -m "feat(db): add wallet admin mutation functions"
 ```
 
@@ -1204,7 +1204,7 @@ Expected: API and Worker are stopped before schema or data mutation.
 docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-migrator node packages/db/dist/cli.js
 ```
 
-Expected: migration `000060_wallet_admin_debit.sql` is recorded exactly once.
+Expected: migration `000061_wallet_admin_debit.sql` is recorded exactly once.
 
 - [ ] **Step 5: Run and review reconciliation dry-run**
 

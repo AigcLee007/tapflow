@@ -9,7 +9,7 @@ describe("wallet admin adjustment migration", () => {
   test("defines the admin credit and debit wallet mutation contract", async () => {
     const migrationPath = path.resolve(
       import.meta.dirname,
-      "../migrations/000060_wallet_admin_debit.sql",
+      "../migrations/000061_wallet_admin_debit.sql",
     );
     const sql = await readFile(migrationPath, "utf8");
 

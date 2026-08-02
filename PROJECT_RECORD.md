@@ -3,6 +3,12 @@
 Last updated: 2026-08-02
 Maintainers: project team + Codex sessions
 
+## 2026-08-02 - Post-Merge Migration Version Collision Fix
+
+- resolved the parallel-branch migration collision between `000060_password_reset_challenges.sql` and the personal-wallet administrator adjustment migration by renumbering the unapplied wallet migration to `000061_wallet_admin_debit.sql`;
+- updated the wallet migration contract test and implementation plan references, preserving the already-published password-reset migration filename and checksum;
+- the global migration-version uniqueness regression now passes, together with the focused personal-wallet and administrator-adjustment database tests (8 passed, 2 database-dependent tests skipped without local PostgreSQL).
+
 ## 2026-08-02 - Personal Wallet Display Consistency
 
 - unified workspace, workbench desktop/mobile, canvas toolbar, billing center, and workflow preflight reads on the flat personal-wallet billing summary fields; creator-facing surfaces no longer fall back to the disconnected legacy account or credit-grant balances;
