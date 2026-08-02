@@ -74,7 +74,7 @@ Request:
 
 For a valid challenge after the cooldown, the API replaces the stored code hash, resets the attempt count and expiry, and sends a new code. The previous code stops working. Responses do not expose the email address or account status.
 
-The client enables resend only after the server-provided cooldown. Invalid synthetic, consumed, or expired tokens receive a safe generic rejection; the response never includes account data.
+The client enables resend only after the server-provided cooldown. Valid, cooling-down, synthetic, consumed, and expired challenge tokens all receive the same HTTP 200 response shape. Only an eligible real challenge causes email delivery. This prevents the resend endpoint from becoming an account-enumeration side channel.
 
 ### Confirm the reset
 
@@ -129,9 +129,8 @@ The request is covered by the existing authentication rate-limit configuration. 
 ### Resend
 
 1. Hash and lock the challenge identified by the supplied token.
-2. Require a pending password-reset challenge and enforce the 60-second cooldown.
-3. Generate and persist a new keyed code hash, reset attempts to five, and extend expiry to ten minutes.
-4. Send the new code and return cooldown metadata without account details.
+2. If it is a pending password-reset challenge outside the 60-second cooldown, generate and persist a new keyed code hash, reset attempts to five, extend expiry to ten minutes, and send the new code.
+3. Return the same generic response for eligible, cooling-down, missing, consumed, and expired challenges without account details.
 
 ### Confirm
 
@@ -159,7 +158,7 @@ No new deployment secret is required. The existing `RESEND_API_KEY`, `RESEND_FRO
 
 - Request responses do not reveal whether an email exists.
 - Codes expire after ten minutes and allow five failed attempts.
-- Resend is unavailable for 60 seconds and invalidates the previous code.
+- Resend is unavailable for 60 seconds and invalidates the previous code, while its public response remains identical for real and synthetic challenges.
 - The API validates email, token, code, and password schemas before service execution.
 - Password hashes use the existing password helper and never enter logs or responses.
 - Reset confirmation does not issue access, refresh, or trusted-device tokens.
@@ -167,7 +166,7 @@ No new deployment secret is required. The existing `RESEND_API_KEY`, `RESEND_FRO
 - Logs and audit events exclude codes, raw challenge tokens, passwords, Resend authorization, and email bodies.
 - Existing authentication rate limiting applies to request, resend, and confirmation endpoints.
 
-Expected user-facing failures distinguish malformed input, invalid code, expired challenge, exhausted attempts, resend cooldown, and temporary service unavailability without disclosing account existence.
+Malformed request schemas remain distinguishable. Confirmation uses one generic invalid-or-expired error for a wrong code, missing challenge, expired challenge, consumed challenge, or exhausted attempts so those states cannot disclose account existence. The client represents the resend cooldown locally from server-provided metadata.
 
 ## Testing
 
