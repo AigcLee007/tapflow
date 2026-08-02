@@ -262,6 +262,10 @@ function getTextModelLogo(logoKey?: string | null): string | null {
   return logoKey ? TEXT_MODEL_LOGO_BY_KEY[logoKey] ?? null : null;
 }
 
+function getTextModelLogoColorStyle(logoKey?: string | null): React.CSSProperties {
+  return logoKey === 'openai' ? { filter: 'brightness(0) invert(1)' } : {};
+}
+
 function formatTextCredits(credits: number): string {
   return Number.isInteger(credits) ? String(credits) : credits.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
 }
@@ -3680,7 +3684,7 @@ export const TextNodeComponent = memo(function TextNode({
                               }}
                             >
                               {logo ? (
-                                <img src={logo} alt="" style={textModelLogo} />
+                                <img src={logo} alt="" style={{ ...textModelLogo, ...getTextModelLogoColorStyle(model.logoKey) }} />
                               ) : (
                                 <span style={{ ...textModelLogo, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                   <Type size={16} aria-hidden="true" />
@@ -3711,7 +3715,11 @@ export const TextNodeComponent = memo(function TextNode({
                   title="选择文本模型"
                 >
                   {getTextModelLogo(currentTextModel?.logoKey) ? (
-                    <img src={getTextModelLogo(currentTextModel?.logoKey) || ''} alt="" style={textModelTriggerLogo} />
+                    <img
+                      src={getTextModelLogo(currentTextModel?.logoKey) || ''}
+                      alt=""
+                      style={{ ...textModelTriggerLogo, ...getTextModelLogoColorStyle(currentTextModel?.logoKey) }}
+                    />
                   ) : (
                     <Type size={16} aria-hidden="true" />
                   )}

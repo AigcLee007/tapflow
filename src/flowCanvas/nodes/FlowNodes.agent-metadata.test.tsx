@@ -234,6 +234,10 @@ describe("FlowNodes agent metadata", () => {
     expect(screen.queryByText("Gemini 3.1 Pro Preview")).toBeNull();
     expect(screen.queryByText("Claude Opus 4.6")).toBeNull();
 
+    const openAiLogos = Array.from(document.querySelectorAll('img[src="/openai-icon.svg"]'));
+    expect(openAiLogos.length).toBeGreaterThan(0);
+    expect(openAiLogos.every((logo) => logo.style.filter === 'brightness(0) invert(1)')).toBe(true);
+
     fireEvent.click(screen.getByRole("button", { name: /真实文本模型.*线路二/ }));
 
     expect(useFlowCanvasStore.getState().nodes[0]?.data).toMatchObject({

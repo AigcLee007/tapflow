@@ -6071,6 +6071,12 @@ Validation completed:
 - new text nodes now initialize with product model `gpt-5.6-terra` and route `text.gpt-5-6-terra`.
 - explicit model and route overrides remain authoritative, and existing saved nodes are not migrated.
 - validation passed: node-factory tests (8 assertions) and the production frontend build; existing Vite warnings remain non-blocking.
+
+## 2026-08-02 - Text Picker GPT White Icon
+
+- applied a text-picker-only white filter to the OpenAI/GPT logo in both menu rows and the selected-model trigger, preserving the shared SVG asset and Gemini/Claude rendering.
+- added a DOM regression assertion covering the rendered OpenAI logo filter.
+- validation passed: FlowNodes agent-metadata tests and the production frontend build; existing Vite warnings remain non-blocking.
 ## 2026-08-02 - Password Reset Flow
 
 Added email-code password recovery: request/resend/confirm APIs, hashed one-time challenges, password update with session and refresh-token revocation, Resend delivery, and the public `/forgot-password` recovery page linked from login. Validation: `npm run build`, API build, and focused Resend tests pass in the isolated `codex/password-reset` worktree. Database-backed auth tests require `DATABASE_URL`.
