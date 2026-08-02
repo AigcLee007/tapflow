@@ -42,6 +42,12 @@ describe("wallet admin adjustment migration", () => {
     expect(sql).toContain("app.current_is_system_admin()");
     expect(sql).toContain("app.current_user_id() <> p_actor_user_id");
     expect(sql).toContain("WALLET_IDEMPOTENCY_CONFLICT");
+    expect(
+      [...sql.matchAll(/WHERE ledger\.idempotency_key = p_idempotency_key\s+FOR UPDATE;/g)],
+    ).toHaveLength(2);
+    expect(sql).not.toMatch(
+      /WHERE ledger\.idempotency_key = p_idempotency_key\s+AND ledger\.entry_type IN \('admin_credit', 'admin_debit'\)/g,
+    );
     expect(sql).toContain("app.wallet_expire_due_for_user(p_target_user_id, now())");
     expect(sql).toContain("v_grant.remaining_credits - v_grant.reserved_credits");
     expect(sql).toContain("expires_at ASC NULLS LAST, created_at ASC, id ASC");

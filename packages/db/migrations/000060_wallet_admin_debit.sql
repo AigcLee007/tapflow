@@ -66,7 +66,6 @@ BEGIN
   SELECT ledger.* INTO v_ledger
   FROM billing_wallet_ledger AS ledger
   WHERE ledger.idempotency_key = p_idempotency_key
-    AND ledger.entry_type IN ('admin_credit', 'admin_debit')
   FOR UPDATE;
   IF FOUND THEN
     IF v_ledger.user_id IS DISTINCT FROM p_target_user_id
@@ -205,7 +204,6 @@ BEGIN
   SELECT ledger.* INTO v_ledger
   FROM billing_wallet_ledger AS ledger
   WHERE ledger.idempotency_key = p_idempotency_key
-    AND ledger.entry_type IN ('admin_credit', 'admin_debit')
   FOR UPDATE;
   IF FOUND THEN
     IF v_ledger.user_id IS DISTINCT FROM p_target_user_id
