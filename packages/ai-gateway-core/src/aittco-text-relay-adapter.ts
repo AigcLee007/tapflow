@@ -9,7 +9,7 @@ import type {
 } from "./types.js";
 
 type FetchLike = typeof fetch;
-type AittcoTextProtocol = "claude" | "gemini" | "responses";
+type AittcoTextProtocol = "chat-completions" | "claude" | "gemini" | "responses";
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -40,7 +40,7 @@ function buildUrl(baseUrl: string, path: string): string {
 
 function resolveProtocol(requestConfig: Record<string, unknown>): AittcoTextProtocol {
   const configured = asString(requestConfig.protocol) ?? asString(requestConfig.apiMode);
-  if (configured === "gemini" || configured === "responses" || configured === "claude") {
+  if (configured === "gemini" || configured === "responses" || configured === "claude" || configured === "chat-completions") {
     return configured;
   }
   throw new AiGatewayError({
@@ -103,6 +103,22 @@ function parseResponsesText(body: unknown): string | null {
   })
     .map((item) => asString(asRecord(item).text))
     .filter((item): item is string => item !== null)
+    .join("");
+  return text || null;
+}
+
+function parseChatCompletionsText(body: unknown): string | null {
+  const choices = asRecord(body).choices;
+  if (!Array.isArray(choices)) return null;
+  const text = choices
+    .flatMap((choice) => {
+      const content = asRecord(asRecord(choice).message).content;
+      if (typeof content === "string") return [content];
+      return Array.isArray(content)
+        ? content.map((part) => asRecord(part).text).filter((part): part is string => typeof part === "string")
+        : [];
+    })
+    .filter((part) => part.trim())
     .join("");
   return text || null;
 }
@@ -226,6 +242,8 @@ export class AittcoTextRelayAdapter implements ProviderAdapter {
       ? parseGeminiText(responseBody)
       : protocol === "responses"
         ? parseResponsesText(responseBody)
+        : protocol === "chat-completions"
+          ? parseChatCompletionsText(responseBody)
         : parseClaudeText(responseBody);
     if (!outputText) {
       throw new AiGatewayError({
@@ -255,6 +273,8 @@ export class AittcoTextRelayAdapter implements ProviderAdapter {
       ? "/v1beta/models/{model}:generateContent"
       : protocol === "responses"
         ? "/v1/responses"
+        : protocol === "chat-completions"
+          ? "/v1/chat/completions"
         : "/v1/messages";
     const path = normalizePath(requestConfig.path ?? requestConfig.generatePath, fallback);
     return protocol === "gemini"
@@ -287,6 +307,14 @@ export class AittcoTextRelayAdapter implements ProviderAdapter {
       return compactObject({
         input: system ? [{ content: system, role: "system" }, ...messages] : messages,
         max_output_tokens: maxTokens,
+        model,
+        temperature,
+      });
+    }
+    if (protocol === "chat-completions") {
+      return compactObject({
+        max_tokens: maxTokens,
+        messages: system ? [{ content: system, role: "system" }, ...messages] : messages,
         model,
         temperature,
       });

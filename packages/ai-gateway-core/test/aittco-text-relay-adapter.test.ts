@@ -129,6 +129,62 @@ describe("AittcoTextRelayAdapter", () => {
     expect(result.usage).toEqual({ inputTokens: 4, outputTokens: 5, totalTokens: 9 });
   });
 
+  test("sends Chat Completions requests and parses string message content", async () => {
+    const fetchImplementation = vi.fn(async () => jsonResponse({
+      choices: [{ message: { content: "Chat Completions reply" } }],
+      usage: { completion_tokens: 5, prompt_tokens: 4, total_tokens: 9 },
+    }));
+    const adapter = new AittcoTextRelayAdapter({ fetchImplementation: fetchImplementation as typeof fetch });
+
+    const result = await adapter.generateText(context({
+      requestConfig: {
+        model: "gpt-5.6-sol",
+        protocol: "chat-completions",
+      },
+    }), {
+      maxTokens: 128,
+      messages: [
+        { content: "You are concise.", role: "system" },
+        { content: "hello", role: "user" },
+      ],
+      temperature: 0.2,
+    });
+
+    const [url, init] = fetchImplementation.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://api.aittco.com/v1/chat/completions");
+    expect(JSON.parse(String(init.body))).toEqual({
+      max_tokens: 128,
+      messages: [
+        { content: "You are concise.", role: "system" },
+        { content: "hello", role: "user" },
+      ],
+      model: "gpt-5.6-sol",
+      temperature: 0.2,
+    });
+    expect(result.outputText).toBe("Chat Completions reply");
+    expect(result.usage).toEqual({ inputTokens: 4, outputTokens: 5, totalTokens: 9 });
+  });
+
+  test("parses Chat Completions content parts", async () => {
+    const fetchImplementation = vi.fn(async () => jsonResponse({
+      choices: [{ message: { content: [{ text: "Part one", type: "text" }, { text: " part two", type: "text" }] } }],
+      usage: { completion_tokens: 5, prompt_tokens: 4, total_tokens: 9 },
+    }));
+    const adapter = new AittcoTextRelayAdapter({ fetchImplementation: fetchImplementation as typeof fetch });
+
+    const result = await adapter.generateText(context({
+      requestConfig: {
+        model: "gpt-5.6-sol",
+        protocol: "chat-completions",
+      },
+    }), {
+      messages: [{ content: "hello", role: "user" }],
+    });
+
+    expect(result.outputText).toBe("Part one part two");
+    expect(result.usage).toEqual({ inputTokens: 4, outputTokens: 5, totalTokens: 9 });
+  });
+
   test("sends Claude Messages requests and parses text content", async () => {
     const fetchImplementation = vi.fn(async () => jsonResponse({
       content: [{ text: "Claude reply", type: "text" }],
