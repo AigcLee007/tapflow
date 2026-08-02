@@ -6050,3 +6050,6 @@ Validation completed:
 - added a focused React render regression test for a text node with `generationStatus: 'error'` and an error message; the test first reproduced `ReferenceError: hasGenerationError is not defined` before the production change.
 - fixed the crash by deriving `hasGenerationError` inside `TextNodeComponent`, preserving the existing inline error message and retry button without changing workflow execution, billing, or provider routing.
 - validation passed: the focused error-state test passed, the complete `FlowNodes.agent-metadata.test.tsx` suite passed with 15 assertions, and the production frontend build completed successfully with existing non-blocking warnings only.
+## Password reset flow (2026-08-02)
+
+Added email-code password recovery: request/resend/confirm APIs, hashed one-time challenges, password update with session and refresh-token revocation, Resend delivery, and the public `/forgot-password` recovery page linked from login. Validation: `npm run build`, API build, and focused Resend tests pass in the isolated `codex/password-reset` worktree. Database-backed auth tests require `DATABASE_URL`.
