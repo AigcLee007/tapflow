@@ -74,6 +74,30 @@ describe("ResendAuthEmailSender", () => {
     });
   });
 
+  test("sends the password reset code through the Resend transactional endpoint", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ messageId: "message-reset" }), {
+        headers: { "content-type": "application/json" },
+        status: 201,
+      }),
+    );
+
+    await createSender(fetchImpl).sendPasswordResetCode({
+      code: CODE,
+      email: EMAIL,
+      expiresInMinutes: 10,
+    });
+
+    const [, init] = fetchImpl.mock.calls[0];
+    expect(JSON.parse(String(init?.body))).toEqual({
+      from: "Art-Aittco <art@art.aittco.com>",
+      subject: "Reset your Art-Aittco password",
+      to: [EMAIL],
+      html: `<p>Your password reset code is <strong>${CODE}</strong>.</p><p>It expires in 10 minutes. Ignore this email if you did not request it.</p>`,
+      text: `Your password reset code is ${CODE}. It expires in 10 minutes. Ignore this email if you did not request it.`,
+    });
+  });
+
   test("aborts delivery after the default ten-second timeout", async () => {
     vi.useFakeTimers();
     const fetchImpl = vi.fn<typeof fetch>((_input, init) => new Promise((_resolve, reject) => {

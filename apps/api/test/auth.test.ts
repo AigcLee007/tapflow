@@ -60,7 +60,8 @@ afterAll(() => {
 });
 
 class CapturingAuthEmailSender implements AuthEmailSender {
-  readonly messages: SendVerificationCodeInput[] = [];
+  readonly verificationMessages: SendVerificationCodeInput[] = [];
+  readonly passwordResetMessages: SendVerificationCodeInput[] = [];
   failNextDelivery = false;
 
   async sendVerificationCode(input: SendVerificationCodeInput): Promise<void> {
@@ -68,11 +69,23 @@ class CapturingAuthEmailSender implements AuthEmailSender {
       this.failNextDelivery = false;
       throw new Error("test delivery failure");
     }
-    this.messages.push(input);
+    this.verificationMessages.push(input);
+  }
+
+  async sendPasswordResetCode(input: SendVerificationCodeInput): Promise<void> {
+    if (this.failNextDelivery) {
+      this.failNextDelivery = false;
+      throw new Error("test delivery failure");
+    }
+    this.passwordResetMessages.push(input);
   }
 
   latestCode(email: string): string | undefined {
-    return [...this.messages].reverse().find((item) => item.email === email)?.code;
+    return [...this.verificationMessages].reverse().find((item) => item.email === email)?.code;
+  }
+
+  latestPasswordResetCode(email: string): string | undefined {
+    return [...this.passwordResetMessages].reverse().find((item) => item.email === email)?.code;
   }
 }
 
