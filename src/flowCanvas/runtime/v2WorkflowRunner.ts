@@ -171,22 +171,15 @@ function getRouteKeyForPricing(node: { data?: Partial<FlowNodeData>; type?: stri
 }
 
 function getBillingAvailableCredits(summary: Awaited<ReturnType<typeof getBillingSummary>>): number {
-  if (typeof summary.availableCredits === 'number') {
-    return Math.max(summary.availableCredits, 0);
-  }
-  return Math.max((summary.account?.balanceCents ?? 0) - (summary.account?.reservedCents ?? 0), 0);
+  return Math.max(summary.availableCredits, 0);
 }
 
 function getBillingBalanceCredits(summary: Awaited<ReturnType<typeof getBillingSummary>>): number {
-  return typeof summary.balanceCredits === 'number'
-    ? summary.balanceCredits
-    : summary.account?.balanceCents ?? 0;
+  return summary.balanceCredits;
 }
 
 function getBillingReservedCredits(summary: Awaited<ReturnType<typeof getBillingSummary>>): number {
-  return typeof summary.reservedCredits === 'number'
-    ? summary.reservedCredits
-    : summary.account?.reservedCents ?? 0;
+  return summary.reservedCredits;
 }
 
 function getRuntimeRoutes(): Promise<V2RuntimeRouteItem[]> {

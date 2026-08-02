@@ -32,6 +32,7 @@ function renderPage() { return render(<AuthContext.Provider value={auth()}><Bill
 
 describe("BillingCenterPage", () => {
   beforeEach(() => {
+    window.localStorage.setItem("v2-access-token", "access-token");
     window.history.replaceState({}, "", "/billing");
     getBillingSummaryMock.mockResolvedValue({ availableCredits: 100, balanceCredits: 100, expiringSoonCredits: 0, nearestExpiryAt: null, reservedCredits: 0, walletId: "wallet-1" });
     listBillingUsageEventsMock.mockResolvedValue({ items: [], page: 1, pageSize: 20 });
@@ -121,6 +122,7 @@ describe("BillingCenterPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /￥9\.90/ }));
 
     await waitFor(() => expect(getPaymentMock).toHaveBeenCalledWith(paymentId));
+    await waitFor(() => expect(getBillingSummaryMock.mock.calls.length).toBeGreaterThan(1));
     expect(await screen.findByText("已支付")).toBeTruthy();
   });
 

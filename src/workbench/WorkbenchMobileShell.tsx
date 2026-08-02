@@ -16,7 +16,7 @@ function navigate(path: string) {
 }
 
 type Props = {
-  availableCredits: number;
+  availableCredits: number | null;
   draft: WorkbenchDraft;
   error: string | null;
   generations: WorkbenchGeneration[];
@@ -141,7 +141,7 @@ export function WorkbenchMobileShell({
         <div className="flex shrink-0 items-center gap-2">
           <div className="flex h-10 items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.05] px-3 text-[12px] font-black text-[#ffe35a]">
             <Coins size={13} />
-            <span data-testid="workbench-mobile-credit-balance">{availableCredits.toLocaleString()}</span>
+            <span data-testid="workbench-mobile-credit-balance">{availableCredits?.toLocaleString() ?? "--"}</span>
           </div>
         </div>
       </header>

@@ -8,6 +8,7 @@ const createWorkspaceProjectMock = vi.fn();
 const updateWorkspaceProjectMock = vi.fn();
 const deleteWorkspaceProjectMock = vi.fn();
 const setProjectTitleMock = vi.fn();
+const getBillingSummaryMock = vi.fn();
 
 const mockedStoreState: {
   nodes: Array<Record<string, unknown>>;
@@ -31,13 +32,11 @@ vi.mock("../../workspace/workspaceApi", () => ({
 
 vi.mock("../../services/v2HttpClient", () => ({
   V2_AUTH_CHANGE_EVENT: "v2-auth-change",
-  getStoredAccessToken: () => null,
+  getStoredAccessToken: () => "access-token",
 }));
 
 vi.mock("../../billing/billingApi", () => ({
-  getBillingSummary: vi.fn(async () => ({
-    account: { balanceCents: 0 },
-  })),
+  getBillingSummary: () => getBillingSummaryMock(),
 }));
 
 describe("FlowTopToolbar", () => {
@@ -47,6 +46,15 @@ describe("FlowTopToolbar", () => {
     updateWorkspaceProjectMock.mockReset();
     deleteWorkspaceProjectMock.mockReset();
     setProjectTitleMock.mockReset();
+    getBillingSummaryMock.mockReset();
+    getBillingSummaryMock.mockResolvedValue({
+      availableCredits: 3100,
+      balanceCredits: 3100,
+      expiringSoonCredits: 0,
+      nearestExpiryAt: null,
+      reservedCredits: 0,
+      walletId: "wallet-1",
+    });
     mockedStoreState.projectTitle = "Test Project";
     mockedStoreState.nodes = [];
     mockedStoreState.setProjectTitle = setProjectTitleMock;
@@ -88,6 +96,34 @@ describe("FlowTopToolbar", () => {
       expect(screen.getByRole("img", { name: "Aittco" }).getAttribute("src")).toBe("/logo-2.png");
       expect(screen.getByDisplayValue("Test Project")).toBeTruthy();
     });
+  });
+
+  test("renders the flat personal-wallet balance", async () => {
+    render(
+      <FlowTopToolbar
+        cullingEnabled
+        onToggleCulling={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTitle("当前点数").textContent).toContain("3,100");
+    });
+  });
+
+  test("renders an unavailable balance when the wallet request fails", async () => {
+    getBillingSummaryMock.mockRejectedValueOnce(new Error("wallet unavailable"));
+    render(
+      <FlowTopToolbar
+        cullingEnabled
+        onToggleCulling={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTitle("当前点数").textContent).toContain("--");
+    });
+    expect(screen.getByTitle("当前点数").textContent).not.toContain("0");
   });
 
   test("renders readable Chinese project menu labels", async () => {

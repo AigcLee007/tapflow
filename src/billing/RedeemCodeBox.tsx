@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Loader2, Ticket } from "lucide-react";
 
 import { redeemBillingCode } from "./billingApi";
+import { invalidateBillingSummary } from "./useBillingSummarySnapshot";
 
 const REDEEM_ERROR_MESSAGES: Record<string, string> = {
   REDEEM_CODE_ALREADY_REDEEMED: "你已兑换过此兑换码。",
@@ -35,6 +36,7 @@ export function RedeemCodeBox({ onRedeemed }: { onRedeemed: () => Promise<void> 
       const result = await redeemBillingCode(code);
       setCode("");
       setMessage(`已成功兑换 ${result.credits.toLocaleString()} 点。`);
+      invalidateBillingSummary();
       await onRedeemed();
     } catch (error) {
       const code = getRedeemErrorCode(error);

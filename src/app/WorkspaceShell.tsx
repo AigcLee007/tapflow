@@ -28,7 +28,7 @@ import {
 import { BrandMark } from "./brand/BrandMark";
 import { canAccessOperationsConsole, resolveProductRole } from "../auth/productRoles";
 import { useAuth } from "../auth/useAuth";
-import { getAvailableCredits, getMembershipLabel } from "../billing/billingDisplay";
+import { getAvailableCredits } from "../billing/billingDisplay";
 import { useBillingSummarySnapshot } from "../billing/useBillingSummarySnapshot";
 import {
   getAdminAiRouteStats,
@@ -102,9 +102,8 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const userEmail = user?.email || "";
   const productRole = resolveProductRole({ permissions, roles });
   const canAdmin = canAccessOperationsConsole(productRole);
-  const billingSummary = useBillingSummarySnapshot(Boolean(authenticated && tenant && user));
+  const { summary: billingSummary } = useBillingSummarySnapshot(Boolean(authenticated && tenant && user));
   const availableCredits = getAvailableCredits(billingSummary);
-  const membershipLabel = getMembershipLabel(billingSummary?.membership?.tier);
   const hasUnreadAnnouncements = announcements.some((notice) => !notice.isRead);
 
   useEffect(() => {
@@ -353,10 +352,10 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
                   <div className="flex items-center justify-between text-sm text-slate-300">
                     <span>积分余额</span>
                     <span className="rounded-full bg-cyan-400/15 px-2 py-0.5 text-xs font-semibold text-cyan-200">
-                      {membershipLabel}
+                      个人钱包
                     </span>
                   </div>
-                  <div className="mt-2 text-2xl font-semibold text-white">{availableCredits.toLocaleString()}</div>
+                  <div className="mt-2 text-2xl font-semibold text-white">{availableCredits?.toLocaleString() ?? "--"}</div>
                   <div className="mt-3 h-1.5 rounded-full bg-white/10">
                     <div className="h-full w-1/6 rounded-full bg-cyan-300" />
                   </div>

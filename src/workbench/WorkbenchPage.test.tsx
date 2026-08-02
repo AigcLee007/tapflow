@@ -174,6 +174,7 @@ function renderRouter() {
 describe("WorkbenchPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.localStorage.setItem("v2-access-token", "access-token");
     Object.defineProperty(window, "innerWidth", {
       configurable: true,
       value: 1440,
@@ -250,22 +251,12 @@ describe("WorkbenchPage", () => {
       previewUrl: "blob:local-ref-preview",
     });
     getBillingSummaryMock.mockResolvedValue({
-      account: {
-        balanceCents: 0,
-        currency: "credits",
-        reservedCents: 0,
-        status: "active",
-      },
-      availableCredits: 0,
-      creditGrants: {
-        availableCredits: 0,
-        expiringCredits: 0,
-        expiringCreditsExpireAt: null,
-        lifetimeCredits: 0,
-      },
-      membership: {
-        tier: "standard",
-      },
+      availableCredits: 3100,
+      balanceCredits: 3100,
+      expiringSoonCredits: 0,
+      nearestExpiryAt: null,
+      reservedCredits: 0,
+      walletId: "wallet-1",
     });
   });
 
@@ -407,7 +398,7 @@ describe("WorkbenchPage", () => {
     await waitFor(() => {
       expect(getBillingSummaryMock).toHaveBeenCalled();
     });
-    expect(screen.getByTestId("workbench-credit-balance").textContent).toContain("0");
+    expect(screen.getByTestId("workbench-credit-balance").textContent).toContain("3,100");
     expect(screen.queryByText("沉浸式创作空间")).toBeNull();
     expect(screen.queryByLabelText("历史")).toBeNull();
     expect(screen.getByTestId("workbench-notification-button")).toBeTruthy();
@@ -422,9 +413,20 @@ describe("WorkbenchPage", () => {
     renderRouter();
 
     await waitFor(() => {
-      expect(screen.getByTestId("workbench-mobile-credit-balance").textContent).toBe("0");
+      expect(screen.getByTestId("workbench-mobile-credit-balance").textContent).toBe("3,100");
     });
     expect(screen.queryByText("19071")).toBeNull();
+  });
+
+  test("shows an unavailable workbench balance when the wallet request fails", async () => {
+    getBillingSummaryMock.mockRejectedValueOnce(new Error("wallet unavailable"));
+    setRoute("/workbench");
+    renderRouter();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("workbench-credit-balance").textContent).toContain("--");
+    });
+    expect(screen.getByTestId("workbench-credit-balance").textContent).not.toContain("0");
   });
 
   test("removes the desktop quick action rail and lifts result content directly to the top", async () => {
@@ -1809,4 +1811,3 @@ describe("WorkbenchPage", () => {
     expect(card.textContent).toContain("已完成1张");
   });
 });
-

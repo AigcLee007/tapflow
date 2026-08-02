@@ -1,22 +1,7 @@
 import type { BillingSummary, BillingUsageEvent } from "./billingApi";
 
-const MEMBERSHIP_LABELS = {
-  gold: "Gold / 黄金会员",
-  platinum: "Platinum / 至尊会员",
-  silver: "Silver / 白银会员",
-  standard: "Standard / 普通用户",
-} as const;
-
-export function getMembershipLabel(tier: BillingSummary["membership"]["tier"] | undefined): string {
-  return MEMBERSHIP_LABELS[tier ?? "standard"];
-}
-
-export function getAvailableCredits(summary: BillingSummary | null): number {
-  if (!summary) return 0;
-  return summary.creditGrants?.availableCredits ?? summary.availableCredits ?? Math.max(
-    summary.account.balanceCents - summary.account.reservedCents,
-    0,
-  );
+export function getAvailableCredits(summary: BillingSummary | null): number | null {
+  return summary ? Math.max(summary.availableCredits, 0) : null;
 }
 
 function readMetadataString(metadata: Record<string, unknown> | undefined, keys: string[]): string | null {

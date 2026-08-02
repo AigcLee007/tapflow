@@ -15,17 +15,19 @@ import {
 
 import { WORKSPACE_ROUTE, getProjectId } from "../../app/routes";
 import { BrandMark } from "../../app/brand/BrandMark";
-import { getBillingSummary } from "../../billing/billingApi";
+import { getAvailableCredits } from "../../billing/billingDisplay";
+import { useBillingSummarySnapshot } from "../../billing/useBillingSummarySnapshot";
 import { MenuSurface } from "../../components/menu/MenuSurface";
 import { MENU_DIVIDER_CLASS, MENU_ITEM_CLASS, MENU_ITEM_PRIMARY_CLASS } from "../../components/menu/menuStyles";
 import { useDismissibleLayer } from "../../components/menu/useDismissibleLayer";
-import { getStoredAccessToken, V2_AUTH_CHANGE_EVENT } from "../../services/v2HttpClient";
 import { formatPoint } from "../../utils/pointFormat";
 import { createWorkspaceProject, deleteWorkspaceProject, updateWorkspaceProject } from "../../workspace/workspaceApi";
 import type { CanvasSaveStatusView } from "../FlowCanvasPage";
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
 
-const formatToolbarPoint = (value: number) => formatPoint(value).replace(/\.0$/, "");
+const formatToolbarPoint = (value: number) => Number(formatPoint(value)).toLocaleString(undefined, {
+  maximumFractionDigits: 1,
+});
 const SEEN_STORAGE_KEY = "seen_announcement_ids";
 const PROJECT_MENU_WIDTH = 288;
 const PROJECT_MENU_EDGE_MARGIN = 20;
@@ -83,8 +85,8 @@ export const FlowTopToolbar: React.FC<{
 }> = memo(function FlowTopToolbar({ hideUtilityActions = false, saveStatus }) {
   const projectTitle = useFlowCanvasStore((s) => s.projectTitle);
   const setProjectTitle = useFlowCanvasStore((s) => s.setProjectTitle);
-  const [points, setPoints] = useState(0);
-  const [pointsLoading, setPointsLoading] = useState(false);
+  const billingSnapshot = useBillingSummarySnapshot(true);
+  const points = getAvailableCredits(billingSnapshot.summary);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [seenIds, setSeenIds] = useState<string[]>(() => readSeenAnnouncementIds());
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<Announcement | null>(null);
@@ -96,36 +98,6 @@ export const FlowTopToolbar: React.FC<{
   const notificationLayer = useDismissibleLayer("canvas-toolbar-notifications");
   const titleInputRef = useRef<HTMLInputElement | null>(null);
   const projectId = typeof window === "undefined" ? null : getProjectId(window.location.pathname);
-
-  const refreshPoints = useCallback(async () => {
-    if (!getStoredAccessToken()) {
-      setPoints(0);
-      setPointsLoading(false);
-      return;
-    }
-
-    setPointsLoading(true);
-    try {
-      const data = await getBillingSummary();
-      setPoints(data.account.balanceCents);
-    } catch {
-      setPoints(0);
-    } finally {
-      setPointsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void refreshPoints();
-
-    if (typeof window === "undefined") return;
-    window.addEventListener(V2_AUTH_CHANGE_EVENT, refreshPoints);
-    window.addEventListener("storage", refreshPoints);
-    return () => {
-      window.removeEventListener(V2_AUTH_CHANGE_EVENT, refreshPoints);
-      window.removeEventListener("storage", refreshPoints);
-    };
-  }, [refreshPoints]);
 
   const refreshAnnouncements = useCallback(async () => {
     try {
@@ -429,7 +401,7 @@ export const FlowTopToolbar: React.FC<{
 
         {!hideUtilityActions ? <div style={rightClusterStyle}>          <button type="button" style={topPillStyle} title="当前点数">
             <Sparkles size={17} />
-            <span>{pointsLoading ? "..." : formatToolbarPoint(points)}</span>
+            <span>{billingSnapshot.status === "loading" ? "..." : points === null ? "--" : formatToolbarPoint(points)}</span>
           </button>
 
           <div style={notificationHostStyle}>
@@ -904,4 +876,3 @@ const confirmButtonStyle: React.CSSProperties = {
   fontWeight: 800,
   cursor: "pointer",
 };
-

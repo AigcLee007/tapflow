@@ -56,32 +56,14 @@ function renderShell(authState = createAuthState()) {
 
 describe("WorkspaceShell", () => {
   beforeEach(() => {
+    window.localStorage.setItem("v2-access-token", "access-token");
     getBillingSummaryMock.mockResolvedValue({
-      account: {
-        balanceCents: 120,
-        createdAt: "2026-06-18T00:00:00.000Z",
-        currency: "credits",
-        id: "billing-1",
-        reservedCents: 0,
-        status: "active",
-        tenantId: "tenant-1",
-        updatedAt: "2026-06-18T00:00:00.000Z",
-      },
-      creditGrants: {
-        availableCredits: 120,
-        expiringSoonCredits: 0,
-        lifetimeCredits: 120,
-        reservedCredits: 0,
-      },
-      ledgerTotals: { refundCents: 0, reserveCents: 0, settleCents: 0 },
-      membership: { discountMultiplier: 0.9, tier: "gold" },
-      usageTotals: {
-        eventCount: 0,
-        pendingCount: 0,
-        rawCostTotal: "0",
-        settledCount: 0,
-        totalBillableCents: 0,
-      },
+      availableCredits: 3100,
+      balanceCredits: 3100,
+      expiringSoonCredits: 0,
+      nearestExpiryAt: null,
+      reservedCredits: 0,
+      walletId: "wallet-1",
     });
   });
 
@@ -161,8 +143,18 @@ describe("WorkspaceShell", () => {
     fireEvent.click(screen.getByRole("button", { name: /test@example.com/ }));
 
     expect(screen.queryByRole("button", { name: /Provider|Model/ })).toBeNull();
-    expect(await screen.findByText("120")).toBeTruthy();
-    expect(await screen.findByText(/Gold/i)).toBeTruthy();
+    expect(await screen.findByText("3,100")).toBeTruthy();
+    expect(await screen.findByText("个人钱包")).toBeTruthy();
+    expect(screen.queryByText(/Standard|Gold|Platinum/i)).toBeNull();
+  });
+
+  test("shows an unavailable balance instead of zero when the wallet request fails", async () => {
+    getBillingSummaryMock.mockRejectedValueOnce(new Error("wallet unavailable"));
+    renderShell();
+    fireEvent.click(screen.getByRole("button", { name: /test@example.com/ }));
+
+    expect(await screen.findByText("--")).toBeTruthy();
+    expect(screen.queryByText("0")).toBeNull();
   });
 
   test("shows operations console for admins", () => {

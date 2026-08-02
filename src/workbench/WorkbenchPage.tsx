@@ -935,7 +935,7 @@ export function WorkbenchPage() {
   const viewportWidth = useViewportWidth();
   const isDesktop = viewportWidth >= 1024;
   const isMobile = viewportWidth < 768;
-  const billingSummary = useBillingSummarySnapshot(Boolean(authenticated && tenant && user));
+  const { summary: billingSummary } = useBillingSummarySnapshot(Boolean(authenticated && tenant && user));
   const availableCredits = getAvailableCredits(billingSummary);
 
   React.useEffect(() => {
@@ -1135,7 +1135,7 @@ export function WorkbenchPage() {
             title="当前点数"
           >
             <Coins size={14} />
-            <span>{availableCredits.toLocaleString()}</span>
+            <span>{availableCredits?.toLocaleString() ?? "--"}</span>
           </div>
           <button
             aria-label="通知"

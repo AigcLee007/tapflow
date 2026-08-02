@@ -1,5 +1,5 @@
 import React from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { RedeemCodeBox } from "./RedeemCodeBox";
@@ -36,5 +36,18 @@ describe("RedeemCodeBox", () => {
 
     expect(await screen.findByText("兑换失败，请稍后重试。")).toBeTruthy();
     expect(screen.queryByText("Internal error")).toBeNull();
+  });
+
+  test("invalidates shared wallet summaries after redeeming", async () => {
+    redeemBillingCodeMock.mockResolvedValueOnce({ credits: 100 });
+    const listener = vi.fn();
+    window.addEventListener("v2-billing-summary-invalidate", listener);
+    render(<RedeemCodeBox onRedeemed={vi.fn()} />);
+
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "TEST-CODE" } });
+    fireEvent.click(screen.getByRole("button"));
+
+    await waitFor(() => expect(listener).toHaveBeenCalledOnce());
+    window.removeEventListener("v2-billing-summary-invalidate", listener);
   });
 });

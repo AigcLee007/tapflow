@@ -1,7 +1,16 @@
 ﻿# Project Record
 
-Last updated: 2026-08-01
+Last updated: 2026-08-02
 Maintainers: project team + Codex sessions
+
+## 2026-08-02 - Personal Wallet Display Consistency
+
+- unified workspace, workbench desktop/mobile, canvas toolbar, billing center, and workflow preflight reads on the flat personal-wallet billing summary fields; creator-facing surfaces no longer fall back to the disconnected legacy account or credit-grant balances;
+- added a shared authenticated billing-summary snapshot with stale-response protection and refreshes after auth changes, wallet invalidation events, cross-tab storage changes, and returning to a visible tab;
+- successful redeem, payment settlement, and existing admin wallet mutations now invalidate the same billing summary so all mounted balance displays converge on the authoritative personal wallet; unavailable or failed summary requests render `--` instead of a misleading numeric zero;
+- replaced the account-menu membership guess with an accurate personal-wallet source label because the flat wallet summary does not own membership-tier data;
+- focused frontend validation passed with 104 tests across billing, redeem, workspace, workbench, canvas toolbar, and workflow preflight; `npm run build` passed with the existing Browserslist, mixed-import, and chunk-size warnings. A root `tsc --noEmit` check still reports broad pre-existing type errors outside this change;
+- historical legacy credits, including the previously observed 2100-credit admin adjustment, are intentionally not migrated per the product decision. The fix applies to future wallet writes and all updated display paths.
 
 ## 2026-08-01 - Database-Driven Text Model Picker
 
