@@ -307,14 +307,14 @@ describe("AI plugin registry", () => {
   test("returns all Aittco relay text models with their upstream protocols and prices", () => {
     const manifest = builtinAiPluginRegistry.require("aittco.text-relay");
     const expected = [
-      ["gemini-3.1-pro", "Gemini-3.1-pro", "gemini-3.1-pro-preview", "gemini", 1],
-      ["gemini-3.5-flash", "Gemini-3.5-flash", "gemini-3.5-flash-preview", "gemini", 0.5],
-      ["gpt-5.6-sol", "GPT-5.6-sol", "gpt-5.6-sol", "responses", 2],
-      ["gpt-5.6-terra", "GPT-5.6-terra", "gpt-5.6-terra", "responses", 1],
-      ["gpt-5.5", "GPT-5.5", "gpt-5.5", "responses", 2],
-      ["claude-opus-5", "Claude-Opus-5", "claude-opus-5", "claude", 2.5],
-      ["claude-sonnet-5", "Claude-Sonnet-5", "claude-sonnet-5", "claude", 1.5],
-      ["claude-opus-4-8", "Claude-Opus-4-8", "claude-opus-4-8", "claude", 2],
+      ["gemini-3.1-pro", "Gemini-3.1-pro", "gemini-3.1-pro-preview", "gemini", "/v1beta/models/{model}:generateContent", 1],
+      ["gemini-3.5-flash", "Gemini-3.5-flash", "gemini-3.5-flash-preview", "gemini", "/v1beta/models/{model}:generateContent", 0.5],
+      ["gpt-5.6-sol", "GPT-5.6-sol", "gpt-5.6-sol", "chat-completions", "/v1/chat/completions", 2],
+      ["gpt-5.6-terra", "GPT-5.6-terra", "gpt-5.6-terra", "chat-completions", "/v1/chat/completions", 1],
+      ["gpt-5.5", "GPT-5.5", "gpt-5.5", "chat-completions", "/v1/chat/completions", 2],
+      ["claude-opus-5", "Claude-Opus-5", "claude-opus-5", "claude", "/v1/messages", 2.5],
+      ["claude-sonnet-5", "Claude-Sonnet-5", "claude-sonnet-5", "claude", "/v1/messages", 1.5],
+      ["claude-opus-4-8", "Claude-Opus-4-8", "claude-opus-4-8", "claude", "/v1/messages", 2],
     ] as const;
 
     expect(manifest.provider).toMatchObject({
@@ -322,11 +322,15 @@ describe("AI plugin registry", () => {
       key: "aittco-text-relay",
       kind: "aittco-text-relay",
     });
+    expect(manifest.provider.capabilities).toEqual({
+      protocols: ["gemini", "chat-completions", "claude"],
+      timeoutMs: 60_000,
+    });
     expect(manifest.models).toHaveLength(expected.length);
     expect(manifest.routes).toHaveLength(expected.length);
     expect(manifest.pricing).toHaveLength(expected.length);
 
-    expected.forEach(([modelKey, displayName, upstreamModel, protocol, credits]) => {
+    expected.forEach(([modelKey, displayName, upstreamModel, protocol, path, credits]) => {
       expect(manifest.models).toContainEqual(expect.objectContaining({
         defaultRouteKey: `text.${modelKey.replace(/\./g, "-")}`,
         displayName,
@@ -335,8 +339,11 @@ describe("AI plugin registry", () => {
       }));
       expect(manifest.routes).toContainEqual(expect.objectContaining({
         modelKey,
+        path,
         requestConfig: expect.objectContaining({
+          apiMode: protocol,
           model: upstreamModel,
+          path,
           protocol,
         }),
       }));
