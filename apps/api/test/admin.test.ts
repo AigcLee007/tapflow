@@ -562,13 +562,13 @@ describeWithDatabase("admin api", () => {
         const grants = await adminPool.query<{ expires_at: string | null }>(
           `
             SELECT expires_at::text AS expires_at
-            FROM billing_credit_grants
-            WHERE tenant_id = $1::uuid
+            FROM billing_wallet_credit_grants
+            WHERE user_id = $1::uuid
               AND source_type = 'admin_grant'
             ORDER BY created_at DESC
             LIMIT 1
           `,
-          [targetUser.currentTenant.id],
+          [targetUser.user.id],
         );
         expect(grants.rows[0]?.expires_at).toBeTruthy();
 
@@ -682,6 +682,10 @@ describeWithDatabase("admin api", () => {
           direction: "debit",
           entryType: "admin_debit",
         });
+        expect(user.memberships[0]).not.toHaveProperty("availableCredits");
+        expect(user.memberships[0]).not.toHaveProperty("balanceCredits");
+        expect(user.memberships[0]).not.toHaveProperty("reservedCredits");
+        expect(user.memberships[0]).not.toHaveProperty("creditLedger");
 
         await api.close();
       } finally {
