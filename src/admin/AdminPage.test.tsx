@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { sumAvailableWalletCredits } from "./AdminPage";
+import { getAdminUserDetailState, sumAvailableWalletCredits } from "./AdminPage";
 import {
   BILLING_SUMMARY_INVALIDATE_EVENT,
   invalidateBillingSummary,
@@ -36,5 +36,16 @@ describe("AdminPage module", () => {
 
     expect(listener).toHaveBeenCalledOnce();
     window.removeEventListener(BILLING_SUMMARY_INVALIDATE_EVENT, listener);
+  });
+
+  it("keeps a wallet visible while disabling workspace controls without memberships", () => {
+    expect(getAdminUserDetailState({
+      id: "user-1",
+      memberships: [],
+      wallet: { availableCredits: 310, balanceCredits: 450 },
+    } as never)).toMatchObject({
+      wallet: { availableCredits: 310, balanceCredits: 450 },
+      workspaceControlsDisabled: true,
+    });
   });
 });

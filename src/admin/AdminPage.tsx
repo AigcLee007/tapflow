@@ -77,6 +77,19 @@ export function sumAvailableWalletCredits(users: Array<Pick<AdminUser, "wallet">
   return users.reduce((sum, user) => sum + user.wallet.availableCredits, 0);
 }
 
+export function getAdminUserDetailState(user: AdminUser | null): {
+  membership: AdminUser["memberships"][number] | null;
+  wallet: AdminUser["wallet"] | null;
+  workspaceControlsDisabled: boolean;
+} {
+  const membership = user?.memberships[0] ?? null;
+  return {
+    membership,
+    wallet: user?.wallet ?? null,
+    workspaceControlsDisabled: !membership,
+  };
+}
+
 const MEMBERSHIP_OPTIONS: Array<{ label: string; tier: MembershipTier }> = [
   { label: "普通用户", tier: "standard" },
   { label: "白银会员", tier: "silver" },
@@ -293,7 +306,8 @@ export function AdminPage() {
     () => users.find((user) => user.id === selectedUserId) ?? null,
     [selectedUserId, users],
   );
-  const selectedMembership = selectedUser?.memberships[0] ?? null;
+  const selectedUserDetail = getAdminUserDetailState(selectedUser);
+  const selectedMembership = selectedUserDetail.membership;
   const selectedRedeemCode = useMemo(
     () => redeemCodes.find((code) => code.id === selectedRedeemCodeId) ?? null,
     [redeemCodes, selectedRedeemCodeId],
@@ -864,7 +878,7 @@ export function AdminPage() {
       <SectionCard title="用户详情">
         <div className="grid gap-3 md:grid-cols-3">
           <MetricCard label="个人钱包余额" value={formatNumber(selectedUser.wallet.balanceCredits)} />
-          <MetricCard label="已使用" value={formatNumber(selectedMembership.usedCredits)} />
+          <MetricCard label="已使用" value={formatNumber(selectedMembership?.usedCredits ?? 0)} />
           <MetricCard label="最近到期" value={formatDate(selectedUser.wallet.nearestExpiryAt)} />
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -889,7 +903,7 @@ export function AdminPage() {
                       ? "border-sky-300/40 bg-sky-500/15 text-sky-100"
                       : "border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]"
                   }`}
-                  disabled={!selectedMembership}
+                  disabled={selectedUserDetail.workspaceControlsDisabled}
                   key={option.tier}
                   onClick={() => setMembershipTier(option.tier)}
                   type="button"
@@ -898,7 +912,7 @@ export function AdminPage() {
                 </button>
               ))}
             </div>
-            <button className={`${buttonClass} mt-3`} disabled={!selectedMembership} onClick={() => void handleMembershipSave()} type="button">
+            <button className={`${buttonClass} mt-3`} disabled={selectedUserDetail.workspaceControlsDisabled} onClick={() => void handleMembershipSave()} type="button">
               保存会员等级
             </button>
           </div>
@@ -907,8 +921,8 @@ export function AdminPage() {
           <div className="rounded border border-white/10 bg-black/20 p-4">
             <div className="text-sm font-medium text-white">发放积分</div>
             <div className="mt-3 grid gap-3">
-              <input className={inputClass} disabled={!selectedMembership} onChange={(event) => setGrantCreditsValue(event.target.value)} value={grantCreditsValue} />
-              <input className={inputClass} disabled={!selectedMembership} onChange={(event) => setGrantReason(event.target.value)} value={grantReason} />
+              <input className={inputClass} disabled={selectedUserDetail.workspaceControlsDisabled} onChange={(event) => setGrantCreditsValue(event.target.value)} value={grantCreditsValue} />
+              <input className={inputClass} disabled={selectedUserDetail.workspaceControlsDisabled} onChange={(event) => setGrantReason(event.target.value)} value={grantReason} />
               <div className="grid grid-cols-4 gap-2">
                 {VALIDITY_OPTIONS.map((option) => (
                   <button
@@ -917,7 +931,7 @@ export function AdminPage() {
                         ? "border-emerald-300/40 bg-emerald-500/15 text-emerald-100"
                         : "border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]"
                       }`}
-                    disabled={!selectedMembership}
+                    disabled={selectedUserDetail.workspaceControlsDisabled}
                     key={option.label}
                     onClick={() => setGrantValidity(option)}
                     type="button"
@@ -926,20 +940,20 @@ export function AdminPage() {
                   </button>
                 ))}
               </div>
-              <button className={buttonClass} disabled={!selectedMembership} onClick={() => void handleGrantCredits()} type="button">
+              <button className={buttonClass} disabled={selectedUserDetail.workspaceControlsDisabled} onClick={() => void handleGrantCredits()} type="button">
                 发放积分
               </button>
               {isSuperAdmin ? (
                 <div className="mt-2 rounded border border-white/10 bg-white/[0.03] p-3">
                   <div className="text-xs font-medium text-slate-300">手动调整积分</div>
                   <div className="mt-3 grid gap-2">
-                    <input className={inputClass} disabled={!selectedMembership} onChange={(event) => setAdjustCreditsValue(event.target.value)} value={adjustCreditsValue} />
-                    <input className={inputClass} disabled={!selectedMembership} onChange={(event) => setAdjustReason(event.target.value)} value={adjustReason} />
+                    <input className={inputClass} disabled={selectedUserDetail.workspaceControlsDisabled} onChange={(event) => setAdjustCreditsValue(event.target.value)} value={adjustCreditsValue} />
+                    <input className={inputClass} disabled={selectedUserDetail.workspaceControlsDisabled} onChange={(event) => setAdjustReason(event.target.value)} value={adjustReason} />
                     <div className="grid grid-cols-2 gap-2">
-                      <button className={buttonClass} disabled={!selectedMembership} onClick={() => void handleAdjustCredits("add")} type="button">
+                      <button className={buttonClass} disabled={selectedUserDetail.workspaceControlsDisabled} onClick={() => void handleAdjustCredits("add")} type="button">
                         增加积分
                       </button>
-                      <button className={`${buttonClass} border-amber-300/20 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20`} disabled={!selectedMembership} onClick={() => void handleAdjustCredits("subtract")} type="button">
+                      <button className={`${buttonClass} border-amber-300/20 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20`} disabled={selectedUserDetail.workspaceControlsDisabled} onClick={() => void handleAdjustCredits("subtract")} type="button">
                         减少积分
                       </button>
                     </div>
