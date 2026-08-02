@@ -1,6 +1,6 @@
 import React, { FormEvent, ReactNode, useEffect, useState } from "react";
 
-import { REGISTER_ROUTE, WORKSPACE_ROUTE } from "../app/routes";
+import { FORGOT_PASSWORD_ROUTE, REGISTER_ROUTE, WORKSPACE_ROUTE } from "../app/routes";
 import type { VerificationRequired } from "../services/v2AuthClient";
 import { EmailVerificationStep } from "./EmailVerificationStep";
 import { useAuth } from "./useAuth";
@@ -323,6 +323,7 @@ export function LoginPage() {
             type="password"
             value={password}
           />
+          <button type="button" className="text-left text-sm text-slate-300 underline" onClick={() => navigate(FORGOT_PASSWORD_ROUTE)}>忘记密码？</button>
           <AuthPrimaryButton disabled={submitting}>
             {submitting ? "正在进入..." : "进入工作区"}
           </AuthPrimaryButton>
