@@ -198,7 +198,7 @@ async function insertAvailableImageAssetWithVariant(
   pool: ReturnType<typeof createPgPool>,
   tenantId: string,
   userId: string,
-  input: {
+  input?: {
     variantKey: string;
     variantObjectKey: string;
   },
@@ -238,35 +238,37 @@ async function insertAvailableImageAssetWithVariant(
         [assetId, tenantId, userId, `tenants/${tenantId}/assets/${assetId}/original.png`],
       );
 
-      await client.query(
-        `
-          INSERT INTO asset_variants (
-            tenant_id,
-            asset_id,
-            variant_key,
-            bucket,
-            object_key,
-            mime_type,
-            width,
-            height,
-            size_bytes,
-            metadata
-          )
-          VALUES (
-            $1::uuid,
-            $2::uuid,
-            $3,
-            'test-bucket',
-            $4,
-            'image/webp',
-            320,
-            200,
-            512,
-            '{}'::jsonb
-          )
-        `,
-        [tenantId, assetId, input.variantKey, input.variantObjectKey],
-      );
+      if (input) {
+        await client.query(
+          `
+            INSERT INTO asset_variants (
+              tenant_id,
+              asset_id,
+              variant_key,
+              bucket,
+              object_key,
+              mime_type,
+              width,
+              height,
+              size_bytes,
+              metadata
+            )
+            VALUES (
+              $1::uuid,
+              $2::uuid,
+              $3,
+              'test-bucket',
+              $4,
+              'image/webp',
+              320,
+              200,
+              512,
+              '{}'::jsonb
+            )
+          `,
+          [tenantId, assetId, input.variantKey, input.variantObjectKey],
+        );
+      }
     },
     pool,
   );
@@ -1162,6 +1164,57 @@ describeWithDatabase("assets v2", () => {
           }),
         ]);
 
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("signed-urls falls back per item without delaying available thumbnails", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({ connectionString: await createAppDatabaseUrl() });
+        const api = buildTestApp(appPool, new MemoryStorageProvider());
+        const owner = await registerOwner(api, "signed-url-fallback@example.com", "Signed URL Fallback");
+        const thumbAssetId = await insertAvailableImageAssetWithVariant(appPool, owner.currentTenant.id, owner.user.id, {
+          variantKey: "thumb",
+          variantObjectKey: "tenants/test/assets/thumb.webp",
+        });
+        const previewOnlyAssetId = await insertAvailableImageAssetWithVariant(appPool, owner.currentTenant.id, owner.user.id, {
+          variantKey: "preview",
+          variantObjectKey: "tenants/test/assets/preview.webp",
+        });
+        const originalOnlyAssetId = await insertAvailableImageAssetWithVariant(appPool, owner.currentTenant.id, owner.user.id);
+        const missingAssetId = randomUUID();
+
+        const response = await api.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` },
+          method: "POST",
+          payload: {
+            requests: [
+              { allowVariantFallback: true, assetId: originalOnlyAssetId, variantKey: "thumb" },
+              { assetId: thumbAssetId, variantKey: "thumb" },
+              { allowVariantFallback: true, assetId: previewOnlyAssetId, variantKey: "thumb" },
+              { allowVariantFallback: true, assetId: missingAssetId, variantKey: "thumb" },
+            ],
+          },
+          url: "/api/v2/assets/signed-urls",
+        });
+
+        expect(response.statusCode).toBe(200);
+        expect(response.json().items).toEqual([
+          expect.objectContaining({ assetId: originalOnlyAssetId, requestedVariantKey: "thumb", servedVariantKey: null, status: "fallback", variantKey: null }),
+          expect.objectContaining({ assetId: thumbAssetId, requestedVariantKey: "thumb", servedVariantKey: "thumb", status: "ok", variantKey: "thumb" }),
+          expect.objectContaining({ assetId: previewOnlyAssetId, requestedVariantKey: "thumb", servedVariantKey: "preview", status: "fallback", variantKey: "preview" }),
+        ]);
+        expect(response.json().errors).toEqual([{ assetId: missingAssetId, code: "ASSET_UNAVAILABLE" }]);
         await api.close();
       } finally {
         await appPool.end();

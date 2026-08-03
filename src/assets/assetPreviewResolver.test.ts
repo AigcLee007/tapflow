@@ -8,7 +8,10 @@ vi.mock("./assetApi", () => ({
 
 import {
   clearAssetPreviewResolver,
+  invalidateAssetUrl,
   invalidateAssetPreviewUrl,
+  refreshAssetUrl,
+  resolveAssetUrl,
   resolveAssetPreviewUrl,
 } from "./assetPreviewResolver";
 import { clearAssetUrlCache, setCachedAssetUrl } from "./assetUrlCache";
@@ -18,6 +21,9 @@ function signedItem(assetId: string, variantKey: string | null = "preview") {
     assetId,
     expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
     method: "GET" as const,
+    requestedVariantKey: "preview" as const,
+    servedVariantKey: variantKey as "thumb" | "preview" | null,
+    status: variantKey === "preview" ? "ok" as const : "fallback" as const,
     url: `https://cdn.test/${assetId}-${variantKey || "original"}.png`,
     variantKey,
   };
@@ -34,8 +40,10 @@ describe("assetPreviewResolver", () => {
     setCachedAssetUrl({
       assetId: "asset-cached",
       expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+      requestedVariantKey: "preview",
+      servedVariantKey: "preview",
+      status: "ok",
       url: "https://cdn.test/cached.png",
-      variantKey: "preview",
     });
 
     await expect(resolveAssetPreviewUrl("asset-cached")).resolves.toBe("https://cdn.test/cached.png");
@@ -74,6 +82,56 @@ describe("assetPreviewResolver", () => {
     ]);
   });
 
+  test("preserves the requested and served variants in the canonical result", async () => {
+    getAssetSignedUrlsMock.mockResolvedValue({
+      errors: [],
+      items: [{
+        ...signedItem("asset-thumb", "preview"),
+        requestedVariantKey: "thumb",
+        servedVariantKey: "preview",
+        status: "fallback",
+      }],
+    });
+
+    await expect(resolveAssetUrl("asset-thumb", "thumb")).resolves.toMatchObject({
+      assetId: "asset-thumb",
+      requestedVariantKey: "thumb",
+      servedVariantKey: "preview",
+      status: "fallback",
+      url: "https://cdn.test/asset-thumb-preview.png",
+    });
+  });
+
+  test("retries a transient signing failure once after 150ms", async () => {
+    vi.useFakeTimers();
+    getAssetSignedUrlsMock
+      .mockRejectedValueOnce(new Error("temporary network failure"))
+      .mockResolvedValueOnce({ errors: [], items: [signedItem("asset-retry")] });
+
+    const result = resolveAssetUrl("asset-retry", "preview");
+    await vi.advanceTimersByTimeAsync(150);
+
+    await expect(result).resolves.toMatchObject({ assetId: "asset-retry" });
+    expect(getAssetSignedUrlsMock).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+  });
+
+  test("rejects only the unavailable asset in a mixed signing response", async () => {
+    getAssetSignedUrlsMock.mockResolvedValue({
+      errors: [{ assetId: "asset-missing", code: "ASSET_UNAVAILABLE" }],
+      items: [signedItem("asset-present")],
+    });
+
+    const [present, missing] = await Promise.allSettled([
+      resolveAssetUrl("asset-present", "preview"),
+      resolveAssetUrl("asset-missing", "thumb"),
+    ]);
+
+    expect(present).toMatchObject({ status: "fulfilled" });
+    expect(missing).toMatchObject({ status: "rejected" });
+    expect(getAssetSignedUrlsMock).toHaveBeenCalledTimes(1);
+  });
+
   test("splits large request bursts into batches of one hundred", async () => {
     getAssetSignedUrlsMock.mockImplementation(async (requests: Array<{ assetId: string; variantKey?: string }>) => ({
       items: requests.map((request) => signedItem(request.assetId)),
@@ -106,8 +164,10 @@ describe("assetPreviewResolver", () => {
     setCachedAssetUrl({
       assetId: "asset-refresh",
       expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+      requestedVariantKey: "preview",
+      servedVariantKey: "preview",
+      status: "ok",
       url: "https://cdn.test/stale.png",
-      variantKey: "preview",
     });
     getAssetSignedUrlsMock.mockResolvedValue({ items: [signedItem("asset-refresh")] });
 
@@ -115,5 +175,25 @@ describe("assetPreviewResolver", () => {
 
     await expect(resolveAssetPreviewUrl("asset-refresh")).resolves.toBe("https://cdn.test/asset-refresh-preview.png");
     expect(getAssetSignedUrlsMock).toHaveBeenCalledTimes(1);
+  });
+
+  test("refreshes exactly the failed thumbnail entry", async () => {
+    getAssetSignedUrlsMock.mockResolvedValue({
+      errors: [],
+      items: [{
+        ...signedItem("asset-refresh-thumb", "thumb"),
+        requestedVariantKey: "thumb",
+        servedVariantKey: "thumb",
+      }],
+    });
+
+    invalidateAssetUrl("asset-refresh-thumb", "thumb");
+    await expect(refreshAssetUrl("asset-refresh-thumb", "thumb")).resolves.toMatchObject({
+      requestedVariantKey: "thumb",
+      servedVariantKey: "thumb",
+    });
+    expect(getAssetSignedUrlsMock).toHaveBeenCalledWith([
+      { allowVariantFallback: true, assetId: "asset-refresh-thumb", variantKey: "thumb" },
+    ]);
   });
 });

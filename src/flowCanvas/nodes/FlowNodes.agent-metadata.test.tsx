@@ -43,6 +43,9 @@ vi.mock("../video/useVideoGenerationCatalog", () => ({
 vi.mock("../text/useTextGenerationCatalog", () => ({
   useTextGenerationCatalog: () => textCatalogMocks.current,
 }));
+vi.mock("../../auth/useAuth", () => ({
+  useAuth: () => ({ user: null }),
+}));
 
 vi.mock("@xyflow/react", async () => {
   const React = await import("react");
@@ -387,8 +390,11 @@ describe("FlowNodes agent metadata", () => {
         assetId: "asset-expired-image",
         expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
         method: "GET",
+        requestedVariantKey: "thumb",
+        servedVariantKey: "thumb",
+        status: "ok",
         url: "https://cdn.test/fresh-image.png?X-Amz-Signature=fresh",
-        variantKey: "preview",
+        variantKey: "thumb",
       }],
     });
 
@@ -422,14 +428,71 @@ describe("FlowNodes agent metadata", () => {
       />,
     );
 
+    expect(container.querySelector('img[src="https://cdn.test/expired-image.png?X-Amz-Signature=stale"]')).toBeNull();
     await waitFor(() => {
       expect(container.querySelector("img")?.getAttribute("src")).toBe(
         "https://cdn.test/fresh-image.png?X-Amz-Signature=fresh",
       );
     });
     expect(assetApiMocks.getAssetSignedUrls).toHaveBeenCalledWith([
-      { assetId: "asset-expired-image", variantKey: "preview" },
+      { allowVariantFallback: true, assetId: "asset-expired-image", variantKey: "thumb" },
     ]);
+  });
+
+  it("resolves fullscreen preview for the active generated result", async () => {
+    assetApiMocks.getAssetSignedUrls.mockImplementation(async (requests: Array<{ assetId: string; variantKey: string }>) => ({
+      items: requests.map((request) => ({
+        assetId: request.assetId,
+        expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+        method: "GET",
+        requestedVariantKey: request.variantKey,
+        servedVariantKey: request.variantKey,
+        status: "ok",
+        url: `https://cdn.test/${request.assetId}-${request.variantKey}.webp`,
+        variantKey: request.variantKey,
+      })),
+    }));
+    const source = useFlowCanvasStore.getState().addNode("image", { x: 0, y: 0 }, {}, { selected: true });
+
+    render(
+      <ImageNodeComponent
+        id={source.id}
+        selected
+        data={{
+          activeResultIndex: 1,
+          assetId: "asset-primary",
+          createdAt: 1,
+          generatedResults: [
+            { assetId: "asset-primary", createdAt: 1, id: "asset:asset-primary" },
+            { assetId: "asset-selected", createdAt: 2, id: "asset:asset-selected" },
+          ],
+          generationStatus: "done",
+          height: 220,
+          kind: "image",
+          lastGenerationSnapshot: { modelId: "test-model" },
+          status: "success",
+          title: "Batch preview",
+          width: 220,
+        } as any}
+        dragging={false}
+        zIndex={1}
+        isConnectable
+        type="image"
+        xPos={0}
+        yPos={0}
+      />,
+    );
+
+    fireEvent.doubleClick(await screen.findByAltText(""));
+
+    await waitFor(() => {
+      expect(assetApiMocks.getAssetSignedUrls).toHaveBeenCalledWith([
+        { allowVariantFallback: true, assetId: "asset-selected", variantKey: "preview" },
+      ]);
+      expect(screen.getByAltText("Fullscreen").getAttribute("src")).toBe(
+        "https://cdn.test/asset-selected-preview.webp",
+      );
+    });
   });
 
   it("limits repeated image-load failures to one refresh per failed URL", async () => {
@@ -438,8 +501,11 @@ describe("FlowNodes agent metadata", () => {
         assetId: "asset-retry-once",
         expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
         method: "GET",
+        requestedVariantKey: "thumb",
+        servedVariantKey: "thumb",
+        status: "ok",
         url: "https://cdn.test/retry-once-fresh.png?X-Amz-Signature=fresh",
-        variantKey: "preview",
+        variantKey: "thumb",
       }],
     });
 
@@ -682,6 +748,18 @@ describe("FlowNodes agent metadata", () => {
   });
 
   it("prepares and selects a nine-grid node without starting generation", async () => {
+    assetApiMocks.getAssetSignedUrls.mockResolvedValue({
+      items: [{
+        assetId: "asset-nine-grid-source",
+        expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+        method: "GET",
+        requestedVariantKey: "thumb",
+        servedVariantKey: "thumb",
+        status: "ok",
+        url: "https://cdn.test/nine-grid-source-thumb.webp",
+        variantKey: "thumb",
+      }],
+    });
     const source = useFlowCanvasStore.getState().addNode(
       "image",
       { x: 0, y: 0 },
@@ -722,7 +800,7 @@ describe("FlowNodes agent metadata", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "九宫格工具" }));
+    fireEvent.click(await screen.findByRole("button", { name: "九宫格工具" }));
     fireEvent.click(await screen.findByRole("button", { name: /多机位九宫格/i }));
 
     await waitFor(() => {

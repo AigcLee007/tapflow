@@ -12,6 +12,7 @@ import {
   V2HttpError,
 } from "../services/v2HttpClient";
 import * as v2AuthClient from "../services/v2AuthClient";
+import * as assetUrlCache from "../assets/assetUrlCache";
 
 vi.mock("../services/v2AuthClient", async () => {
   const actual = await vi.importActual<typeof import("../services/v2AuthClient")>(
@@ -20,6 +21,7 @@ vi.mock("../services/v2AuthClient", async () => {
   return {
     ...actual,
     getMe: vi.fn(),
+    logout: vi.fn(),
     refresh: vi.fn(),
   };
 });
@@ -31,6 +33,7 @@ function AuthProbe() {
       <span data-testid="loading">{String(auth.loading)}</span>
       <span data-testid="authenticated">{String(auth.authenticated)}</span>
       <span data-testid="error">{auth.error ?? ""}</span>
+      <button type="button" onClick={() => void auth.logout()}>logout</button>
     </div>
   );
 }
@@ -165,5 +168,39 @@ describe("AuthProvider session loading", () => {
 
     expect(screen.getByTestId("canvas").textContent).toBe("canvas mounted");
     expect(window.localStorage.getItem("v2-access-token")).toBe("existing-access-token");
+  });
+
+  test("scopes signed-url cache to the active user and clears it before logout", async () => {
+    const clearCacheSpy = vi.spyOn(assetUrlCache, "clearAssetUrlCache");
+    const setScopeSpy = vi.spyOn(assetUrlCache, "setAssetUrlCacheScope");
+    setStoredTokens({
+      accessToken: "existing-access-token",
+      refreshToken: "existing-refresh-token",
+    });
+    vi.mocked(v2AuthClient.getMe).mockResolvedValue({
+      currentTenant: { id: "tenant-cache", name: "Tenant" },
+      user: { displayName: "Creator", email: "creator@example.com", id: "user-cache" },
+    });
+    vi.mocked(v2AuthClient.logout).mockResolvedValue(undefined);
+
+    render(
+      <AuthProvider>
+        <AuthProbe />
+      </AuthProvider>,
+    );
+
+    await waitFor(() => expect(setScopeSpy).toHaveBeenCalledWith({
+      tenantId: "tenant-cache",
+      userId: "user-cache",
+    }));
+    await act(async () => {
+      screen.getByRole("button", { name: "logout" }).click();
+      await Promise.resolve();
+    });
+
+    expect(clearCacheSpy).toHaveBeenCalledTimes(1);
+    expect(clearCacheSpy.mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(v2AuthClient.logout).mock.invocationCallOrder[0] ?? Number.MAX_SAFE_INTEGER,
+    );
   });
 });

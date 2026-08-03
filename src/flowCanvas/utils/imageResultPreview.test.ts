@@ -18,12 +18,12 @@ describe("imageResultPreview", () => {
     })).toBe("https://cdn.test/fresh.png?X-Amz-Signature=fresh");
   });
 
-  test("falls back to persisted and then primary URLs while resolution is pending", () => {
+  test("does not use a persisted URL for an asset-backed result while its thumb is pending", () => {
     expect(selectImageResultPreviewUrl({
       assetId: "asset-pending",
       persistedUrl: "https://cdn.test/persisted.png",
       fallbackUrl: "https://cdn.test/primary.png",
-    })).toBe("https://cdn.test/persisted.png");
+    })).toBe("");
     expect(selectImageResultPreviewUrl({
       fallbackUrl: "https://cdn.test/primary.png",
     })).toBe("https://cdn.test/primary.png");
