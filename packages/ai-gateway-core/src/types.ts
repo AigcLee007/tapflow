@@ -1,3 +1,5 @@
+import type { VideoAspectRatio, VideoGenerationMode, VideoResolution } from "./video-generation-contract.js";
+
 export type TextMessage = {
   content: string;
   role: "assistant" | "system" | "user";
@@ -33,8 +35,18 @@ export type VideoGenerationRequest = {
   inputAssets?: AssetReferenceInput[] | null;
   metadata?: Record<string, unknown> | null;
   model?: string | null;
+  params?: VideoGenerationParams | null;
   prompt: string;
   routeKey?: string | null;
+};
+
+export type VideoGenerationParams = {
+  aspectRatio: VideoAspectRatio;
+  count: 1;
+  durationSeconds: number;
+  generateAudio: boolean;
+  mode: VideoGenerationMode;
+  resolution: VideoResolution;
 };
 
 export type AiGatewayUsage = {
@@ -102,8 +114,10 @@ export type ProviderMediaGenerationResult = {
   providerRequest: unknown;
   providerResponse: unknown;
   providerId?: string | null;
+  pollIntervalMs?: number | null;
   providerTaskId?: string | null;
   providerTaskIds?: string[] | null;
+  providerTaskTimeoutMs?: number | null;
   routeId?: string | null;
   status: "succeeded" | "waiting_provider";
   usage: AiGatewayUsage;
@@ -135,8 +149,10 @@ export type AiGatewayMediaResult = {
   providerKey: string;
   providerRequest: unknown;
   providerResponse: unknown;
+  pollIntervalMs?: number | null;
   providerTaskId?: string | null;
   providerTaskIds?: string[] | null;
+  providerTaskTimeoutMs?: number | null;
   routeId?: string | null;
   routeKey?: string | null;
   status: "succeeded" | "waiting_provider" | "failed";

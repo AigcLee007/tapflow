@@ -50,6 +50,11 @@ export { validateAiPluginManifest } from "./plugins/plugin-manifest.js";
 export { redactString, redactValue } from "./redaction.js";
 export { RouteResolver } from "./route-resolver.js";
 export { normalizeOpenAiCompatibleImageSize } from "./image-size.js";
+export {
+  readVideoCapabilities,
+  readVideoReferenceMetadata,
+  validateVideoGenerationRequest,
+} from "./video-generation-contract.js";
 export type {
   AiGatewayMediaResult,
   AiGatewayTextResult,
@@ -66,4 +71,19 @@ export type {
   TextGenerationRequest,
   TextMessage,
   VideoGenerationRequest,
+  VideoGenerationParams,
 } from "./types.js";
+export type {
+  VideoAspectRatio,
+  VideoAudioControlMode,
+  VideoGenerationCapabilities,
+  VideoGenerationMode,
+  VideoMediaKind,
+  VideoModeConstraint,
+  VideoReferenceMetadata,
+  VideoReferenceRole,
+  VideoReferenceSemantics,
+  VideoResolution,
+  VideoValidationCode,
+  VideoValidationIssue,
+} from "./video-generation-contract.js";
