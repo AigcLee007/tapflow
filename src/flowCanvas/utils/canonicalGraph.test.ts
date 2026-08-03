@@ -62,15 +62,15 @@ describe("canonicalizeGraph", () => {
       referenceOrder: ["first", "last"],
       params: {
         videoGeneration: {
-          schemaVersion: 1,
+          schemaVersion: 2,
           resolution: "4K",
           durationSeconds: 8,
           generateAudio: true,
-          count: 4,
+          count: 1,
           cameraMotionId: "dolly-in",
           visualTone: "cinematic_teal",
-          contextPaletteRefs: [
-            { source: { kind: "asset", id: "asset-first" }, colorToken: "#0ea5e9" },
+          referenceInputs: [
+            { referenceKey: "asset:asset-first:0", source: { kind: "asset", id: "asset-first" }, mediaKind: "image", role: "first_frame", order: 0 },
           ],
         },
       },
@@ -127,17 +127,16 @@ describe("canonicalizeGraph", () => {
       referenceOrder: ["first", "last"],
       params: {
         videoGeneration: {
-          schemaVersion: 1,
+          schemaVersion: 2,
           mode: "first_last_frame",
           aspectRatio: "21:9",
           resolution: "4K",
           durationSeconds: 6,
-          count: 4,
-          referenceRolesByKey: {
-            first: { role: "first_frame", source: { kind: "asset", id: "asset-first" } },
-            last: { role: "last_frame", source: { kind: "asset", id: "asset-last" } },
-          },
-          normalization: expect.objectContaining({ requiresUserCorrection: true }),
+          count: 1,
+          referenceInputs: [
+            { referenceKey: "asset:asset-first:0", source: { kind: "asset", id: "asset-first" }, mediaKind: "image", role: "first_frame", order: 0 },
+            { referenceKey: "asset:asset-last:1", source: { kind: "asset", id: "asset-last" }, mediaKind: "image", role: "last_frame", order: 1 },
+          ],
         },
       },
     });

@@ -8,27 +8,25 @@ describe('nodeFactory route defaults', () => {
     expect(node.data.routeKey).toBe('image.default');
   });
 
-  it('sets video node routeKey to video.default', () => {
+  it('leaves video node route unset until a catalog model is selected', () => {
     const node = createFlowNode('video', { x: 20, y: 20 });
-    expect(node.data.routeKey).toBe('video.default');
+    expect(node.data.routeKey).toBeUndefined();
   });
 
   it('seeds video nodes with the canonical generation params', () => {
     const node = createFlowNode('video', { x: 20, y: 20 });
     expect(node.data.params).toEqual({
       videoGeneration: {
-        schemaVersion: 1,
+        schemaVersion: 2,
         mode: 'text_to_video',
-        aspectRatio: 'auto',
+        aspectRatio: '16:9',
         resolution: '720P',
         durationSeconds: 4,
-        generateAudio: false,
+        generateAudio: true,
         count: 1,
         cameraMotionId: null,
         visualTone: null,
-        contextPaletteRefs: [],
-        humanReview: { status: 'not_required' },
-        referenceRolesByKey: {},
+        referenceInputs: [],
       },
     });
   });

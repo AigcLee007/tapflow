@@ -7,11 +7,14 @@ import type {
   VideoGenerationDiagnostic,
   VideoGenerationMode,
   VideoGenerationNormalizationResult,
+  VideoGenerationParamsRuntime,
+  VideoGenerationParamsV2,
   VideoGenerationParamsV1,
   VideoHumanReview,
   VideoReferenceRole,
   VideoReferenceRoleAssignment,
   VideoReferenceSource,
+  VideoReferenceInputV2,
   VideoResolution,
 } from "./videoTypes";
 
@@ -67,20 +70,18 @@ const TRANSIENT_PARAM_KEYS = new Set([
 
 const URL_VALUE_RE = /^(?:blob:|data:|https?:\/\/)/i;
 
-export function createDefaultVideoGenerationParams(): VideoGenerationParamsV1 {
+export function createDefaultVideoGenerationParams(): VideoGenerationParamsV2 {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     mode: "text_to_video",
-    aspectRatio: "auto",
+    aspectRatio: "16:9",
     resolution: "720P",
     durationSeconds: 4,
-    generateAudio: false,
+    generateAudio: true,
     count: 1,
+    referenceInputs: [],
     cameraMotionId: null,
     visualTone: null,
-    contextPaletteRefs: [],
-    humanReview: { status: "not_required" },
-    referenceRolesByKey: {},
   };
 }
 
@@ -102,7 +103,7 @@ export function normalizeVideoGenerationParams(data: unknown): VideoGenerationNo
   const persistedCorrection = readPersistedCorrection(source.normalization);
   const defaults = createDefaultVideoGenerationParams();
 
-  if (source.schemaVersion !== undefined && source.schemaVersion !== 1) {
+  if (source.schemaVersion !== undefined && source.schemaVersion !== 1 && source.schemaVersion !== 2) {
     addDiagnostic(diagnostics, "schemaVersion", source.schemaVersion, "Unsupported video generation schema version");
   }
 
@@ -141,17 +142,19 @@ export function normalizeVideoGenerationParams(data: unknown): VideoGenerationNo
     referenceOrder,
     diagnostics,
   );
+  const referenceInputs = normalizeReferenceInputs(source, referenceRolesByKey, diagnostics);
 
   const allDiagnostics = [...persistedCorrection.diagnostics, ...diagnostics];
   const requiresUserCorrection = persistedCorrection.requiresUserCorrection || allDiagnostics.length > 0;
   const params = sanitizeVideoGenerationParams({
-    schemaVersion: 1,
+    schemaVersion: 2,
     mode,
     aspectRatio,
     resolution,
     durationSeconds,
     generateAudio,
-    count,
+    count: 1,
+    referenceInputs,
     cameraMotionId,
     visualTone,
     contextPaletteRefs,
@@ -160,7 +163,7 @@ export function normalizeVideoGenerationParams(data: unknown): VideoGenerationNo
     ...(requiresUserCorrection
       ? { normalization: { requiresUserCorrection: true as const, diagnostics: allDiagnostics } }
       : {}),
-  }) as VideoGenerationParamsV1;
+  }) as VideoGenerationParamsRuntime;
 
   const modelId = normalizeVideoModelId(readString(root.modelId) || readString(source.modelId));
   const routeKey = readStableToken(root.routeKey ?? source.routeKey);
@@ -185,7 +188,7 @@ function normalizeAspectRatio(
   diagnostics: VideoGenerationDiagnostic[],
 ): VideoAspectRatio {
   const raw = source.aspectRatio ?? source.aspect_ratio;
-  if (raw === undefined || raw === null || raw === "") return "auto";
+  if (raw === undefined || raw === null || raw === "") return "16:9";
   if (isVideoAspectRatio(raw)) return raw;
   addDiagnostic(diagnostics, "aspectRatio", raw, "Unsupported video aspect ratio");
   return "auto";
@@ -225,12 +228,12 @@ function normalizeDuration(
 
 function normalizeAudio(source: Record<string, unknown>, diagnostics: VideoGenerationDiagnostic[]): boolean {
   const raw = source.generateAudio ?? source.generate_audio ?? source.audio;
-  if (raw === undefined || raw === null || raw === "") return false;
+  if (raw === undefined || raw === null || raw === "") return true;
   if (typeof raw === "boolean") return raw;
   if (raw === "true") return true;
   if (raw === "false") return false;
   addDiagnostic(diagnostics, "generateAudio", raw, "Audio flag must be boolean");
-  return false;
+  return true;
 }
 
 function normalizeCount(
@@ -394,6 +397,67 @@ function normalizeReferenceRoles(
     normalized[key] = source ? { role, source } : null;
   }
   return normalized;
+}
+
+function normalizeReferenceInputs(
+  source: Record<string, unknown>,
+  legacyRoles: Record<string, VideoReferenceRoleAssignment | null>,
+  diagnostics: VideoGenerationDiagnostic[],
+): VideoReferenceInputV2[] {
+  const rawInputs = Array.isArray(source.referenceInputs) ? source.referenceInputs : null;
+  const candidates: Array<VideoReferenceInputV2 & { sourceIndex: number }> = [];
+  if (rawInputs) {
+    rawInputs.forEach((entry, sourceIndex) => {
+      const input = asRecord(entry);
+      const stableSource = normalizeReferenceSource(input?.source);
+      const referenceKey = readStableToken(input?.referenceKey) || (stableSource ? `${stableSource.kind}:${stableSource.id}:${sourceIndex}` : "");
+      const role = canonicalReferenceRole(input?.role);
+      const mediaKind = isVideoMediaKind(input?.mediaKind) ? input.mediaKind : null;
+      const order = Number(input?.order);
+      if (!stableSource || !referenceKey || !role || !mediaKind || !Number.isInteger(order) || order < 0) {
+        addDiagnostic(diagnostics, `referenceInputs[${sourceIndex}]`, entry, "Reference input needs a stable source, media kind, role, and order", "UNSUPPORTED_REFERENCE");
+        return;
+      }
+      candidates.push({ referenceKey, source: stableSource, mediaKind, role, order, sourceIndex });
+    });
+  } else {
+    Object.entries(legacyRoles).forEach(([legacyKey, assignment], sourceIndex) => {
+      if (!assignment) return;
+      const role = canonicalReferenceRole(assignment.role, source.mode);
+      if (!role) return;
+      candidates.push({
+        referenceKey: `${assignment.source.kind}:${assignment.source.id}:${sourceIndex}`,
+        source: assignment.source,
+        mediaKind: "image",
+        role,
+        order: sourceIndex,
+        sourceIndex,
+      });
+      void legacyKey;
+    });
+  }
+
+  const seen = new Set<string>();
+  return candidates
+    .sort((left, right) => left.order - right.order || left.sourceIndex - right.sourceIndex)
+    .filter((candidate) => {
+      const identity = `${candidate.source.kind}:${candidate.source.id}:${candidate.role}`;
+      if (seen.has(identity)) return false;
+      seen.add(identity);
+      return true;
+    })
+    .map(({ sourceIndex: _sourceIndex, ...candidate }, order) => ({ ...candidate, order }));
+}
+
+function canonicalReferenceRole(value: unknown, mode?: unknown): VideoReferenceInputV2["role"] | null {
+  if (value === "first_frame" || value === "last_frame" || value === "main_image" || value === "reference_image" || value === "source_video" || value === "reference_video" || value === "reference_audio") return value;
+  if (value === "reference") return mode === "image_to_video" ? "main_image" : "reference_image";
+  if (value === "subject" || value === "scene" || value === "prop" || value === "style") return mode === "image_to_video" ? "main_image" : "reference_image";
+  return null;
+}
+
+function isVideoMediaKind(value: unknown): value is VideoReferenceInputV2["mediaKind"] {
+  return value === "image" || value === "video" || value === "audio";
 }
 
 function normalizeReferenceSource(value: unknown): VideoReferenceSource | null {

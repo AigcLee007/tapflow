@@ -83,9 +83,7 @@ export function createFlowNode(
     routeKey:
       kind === 'image'
         ? 'image.default'
-        : kind === 'video'
-          ? 'video.default'
-          : kind === 'text'
+        : kind === 'text'
             ? 'text.gpt-5-6-terra'
             : undefined,
     createdAt: now,

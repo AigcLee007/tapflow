@@ -19,6 +19,11 @@ export type VideoAspectRatio =
 export type VideoCount = 1 | 2 | 4;
 
 export type VideoReferenceRole =
+  | "main_image"
+  | "reference_image"
+  | "source_video"
+  | "reference_video"
+  | "reference_audio"
   | "subject"
   | "scene"
   | "prop"
@@ -49,6 +54,27 @@ export type VideoReferenceRoleAssignment = {
   source: VideoReferenceSource;
 };
 
+export type VideoReferenceInputV2 = {
+  referenceKey: string;
+  source: VideoReferenceSource;
+  mediaKind: "image" | "video" | "audio";
+  role: "main_image" | "reference_image" | "source_video" | "reference_video" | "reference_audio" | "first_frame" | "last_frame";
+  order: number;
+};
+
+export type VideoGenerationParamsV2 = {
+  schemaVersion: 2;
+  mode: VideoGenerationMode;
+  aspectRatio: VideoAspectRatio;
+  resolution: VideoResolution;
+  durationSeconds: number;
+  generateAudio: boolean;
+  count: 1;
+  referenceInputs: VideoReferenceInputV2[];
+  cameraMotionId: string | null;
+  visualTone: string | null;
+};
+
 export type VideoGenerationDiagnostic = {
   code: "INVALID_VALUE" | "COUNT_CLAMPED" | "UNSUPPORTED_REFERENCE" | "CAPABILITY_CORRECTED";
   field: string;
@@ -61,24 +87,18 @@ export type VideoGenerationCorrection = {
   diagnostics: VideoGenerationDiagnostic[];
 };
 
-export type VideoGenerationParamsV1 = {
-  schemaVersion: 1;
-  mode: VideoGenerationMode;
-  aspectRatio: VideoAspectRatio;
-  resolution: VideoResolution;
-  durationSeconds: number;
-  generateAudio: boolean;
-  count: VideoCount;
-  cameraMotionId: string | null;
-  visualTone: string | null;
+export type VideoGenerationParamsRuntime = VideoGenerationParamsV2 & {
   contextPaletteRefs: VideoContextPaletteRef[];
   humanReview: VideoHumanReview;
   referenceRolesByKey: Record<string, VideoReferenceRoleAssignment | null>;
   normalization?: VideoGenerationCorrection;
 };
 
+/** @deprecated Use VideoGenerationParamsV2 for persistence and runtime for transitional UI state. */
+export type VideoGenerationParamsV1 = VideoGenerationParamsRuntime;
+
 export type VideoGenerationNormalizationResult = {
-  params: VideoGenerationParamsV1;
+  params: VideoGenerationParamsRuntime;
   diagnostics: VideoGenerationDiagnostic[];
   requiresUserCorrection: boolean;
   modelId?: string;

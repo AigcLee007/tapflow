@@ -7,20 +7,73 @@ import {
 } from "./videoGenerationParams";
 
 describe("video generation params", () => {
-  it("creates the stable LibTV defaults", () => {
+  it("creates exact v2 persistence defaults without compatibility fields", () => {
     expect(createDefaultVideoGenerationParams()).toEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
       mode: "text_to_video",
-      aspectRatio: "auto",
+      aspectRatio: "16:9",
       resolution: "720P",
       durationSeconds: 4,
-      generateAudio: false,
+      generateAudio: true,
       count: 1,
+      referenceInputs: [],
       cameraMotionId: null,
       visualTone: null,
-      contextPaletteRefs: [],
-      humanReview: { status: "not_required" },
-      referenceRolesByKey: {},
+    });
+  });
+
+  it("migrates legacy frame roles into stable ordered v2 references", () => {
+    const result = normalizeVideoGenerationParams({
+      params: {
+        mode: "first_last_frame",
+        referenceRolesByKey: {
+          first: { role: "first_frame", source: { kind: "asset", id: "asset-first" } },
+          last: { role: "last_frame", source: { kind: "upstream", id: "node-last" } },
+        },
+      },
+    });
+
+    expect(result.params.schemaVersion).toBe(2);
+    expect(result.params.referenceInputs).toEqual([
+      { referenceKey: "asset:asset-first:0", source: { kind: "asset", id: "asset-first" }, mediaKind: "image", role: "first_frame", order: 0 },
+      { referenceKey: "upstream:node-last:1", source: { kind: "upstream", id: "node-last" }, mediaKind: "image", role: "last_frame", order: 1 },
+    ]);
+  });
+
+  it("keeps v2 references idempotent and deduplicates only identical source-role pairs", () => {
+    const input = {
+      schemaVersion: 2,
+      mode: "all_reference",
+      referenceInputs: [
+        { referenceKey: "style", source: { kind: "asset", id: "asset-1" }, mediaKind: "image", role: "reference_image", order: 2 },
+        { referenceKey: "motion", source: { kind: "asset", id: "asset-2" }, mediaKind: "video", role: "source_video", order: 1 },
+        { referenceKey: "sound", source: { kind: "asset", id: "asset-3" }, mediaKind: "audio", role: "reference_audio", order: 3 },
+        { referenceKey: "style-duplicate", source: { kind: "asset", id: "asset-1" }, mediaKind: "image", role: "reference_image", order: 4 },
+      ],
+    };
+    const first = normalizeVideoGenerationParams(input);
+    const second = normalizeVideoGenerationParams(first.params);
+
+    expect(first.params.referenceInputs).toEqual([
+      expect.objectContaining({ source: { kind: "asset", id: "asset-2" }, role: "source_video", order: 0 }),
+      expect.objectContaining({ source: { kind: "asset", id: "asset-1" }, role: "reference_image", order: 1 }),
+      expect.objectContaining({ source: { kind: "asset", id: "asset-3" }, role: "reference_audio", order: 2 }),
+    ]);
+    expect(second.params).toEqual(first.params);
+  });
+
+  it("keeps the v2 defaults stable", () => {
+    expect(createDefaultVideoGenerationParams()).toEqual({
+      schemaVersion: 2,
+      mode: "text_to_video",
+      aspectRatio: "16:9",
+      resolution: "720P",
+      durationSeconds: 4,
+      generateAudio: true,
+      count: 1,
+      referenceInputs: [],
+      cameraMotionId: null,
+      visualTone: null,
     });
   });
 
@@ -54,12 +107,12 @@ describe("video generation params", () => {
     const result = normalizeVideoGenerationParams(input);
 
     expect(result.params).toMatchObject({
-      schemaVersion: 1,
+      schemaVersion: 2,
       mode: "first_last_frame",
       aspectRatio: "21:9",
       resolution: "4K",
       durationSeconds: 6,
-      count: 4,
+      count: 1,
       referenceRolesByKey: {
         first: expect.objectContaining({ role: "first_frame" }),
         last: expect.objectContaining({ role: "last_frame" }),
@@ -113,13 +166,12 @@ describe("video generation params", () => {
       expect.objectContaining({ field: "durationSeconds" }),
       expect.objectContaining({ field: "humanReview.status" }),
     ]));
-    expect(result.params.count).toBe(4);
+    expect(result.params.count).toBe(1);
   });
 
-  it("chooses the mathematically nearest legal video count and breaks ties upward", () => {
-    expect(normalizeVideoGenerationParams({ params: { count: 2.6 } }).params.count).toBe(2);
-    expect(normalizeVideoGenerationParams({ params: { count: 1.5 } }).params.count).toBe(2);
-    expect(normalizeVideoGenerationParams({ params: { count: 3 } }).params.count).toBe(4);
+  it("keeps the canonical single-output count", () => {
+    expect(normalizeVideoGenerationParams({ params: { count: 2.6 } }).params.count).toBe(1);
+    expect(normalizeVideoGenerationParams({ params: { count: 4 } }).params.count).toBe(1);
   });
 
   it("reports invalid stored reference roles instead of silently replacing them", () => {

@@ -118,15 +118,40 @@ function canonicalizeNodeData(data: Record<string, unknown>, nodeType: unknown):
   const existingParams = isRecord(data.params) ? data.params : {};
   const nextData = stripLegacyVideoGenerationKeys(data);
   const nextParams = stripLegacyVideoGenerationKeys(existingParams);
-
-  nextParams.videoGeneration = normalized.params;
+  nextParams.videoGeneration = selectPersistedVideoGenerationParams(normalized.params);
   nextData.params = nextParams;
   if (normalized.modelId) nextData.modelId = normalized.modelId;
   if (normalized.routeKey) nextData.routeKey = normalized.routeKey;
-  if (normalized.referenceAssetItemIds) nextData.referenceAssetItemIds = normalized.referenceAssetItemIds;
-  if (normalized.referenceOrder) nextData.referenceOrder = normalized.referenceOrder;
+  const sourceParams = isRecord(existingParams.videoGeneration) ? existingParams.videoGeneration : existingParams;
+  if (sourceParams.schemaVersion !== 2) {
+    if (normalized.referenceAssetItemIds) nextData.referenceAssetItemIds = normalized.referenceAssetItemIds;
+    if (normalized.referenceOrder) nextData.referenceOrder = normalized.referenceOrder;
+  } else {
+    delete nextData.referenceAssetItemIds;
+    delete nextData.referenceOrder;
+  }
 
   return sortRecord(nextData);
+}
+
+function selectPersistedVideoGenerationParams(params: Record<string, unknown>): Record<string, unknown> {
+  const keys = [
+    "schemaVersion",
+    "mode",
+    "aspectRatio",
+    "resolution",
+    "durationSeconds",
+    "generateAudio",
+    "count",
+    "referenceInputs",
+    "cameraMotionId",
+    "visualTone",
+  ];
+  const persisted: Record<string, unknown> = {};
+  for (const key of keys) {
+    if (key in params) persisted[key] = params[key];
+  }
+  return persisted;
 }
 
 function stripLegacyVideoGenerationKeys(value: Record<string, unknown>): Record<string, unknown> {

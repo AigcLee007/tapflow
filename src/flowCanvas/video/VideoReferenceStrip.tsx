@@ -6,6 +6,7 @@ import type {
   VideoGenerationMode,
   VideoGenerationParamsV1,
   VideoReferenceRole,
+  VideoReferenceInputV2,
   VideoReferenceSource,
 } from "./videoTypes";
 import { VIDEO_UI_COPY, VIDEO_UI_REFERENCE_ROLE_COPY } from "./videoUiCopy";
@@ -52,9 +53,21 @@ export function VideoReferenceStrip({ currentNodeId, onChange, onUploadReference
     if (!isAllowedRole(role)) return;
 
     const referenceRolesByKey = {
-      ...value.videoGeneration.referenceRolesByKey,
+      ...(value.videoGeneration.referenceRolesByKey ?? {}),
       [role]: source ? { role, source } : null,
     };
+    const canonicalRole = canonicalReferenceRole(role, value.videoGeneration.mode);
+    const currentInputs = value.videoGeneration.referenceInputs ?? [];
+    const retainedInputs = currentInputs.filter((input) => input.role !== canonicalRole);
+    const nextInputs: VideoReferenceInputV2[] = source
+      ? [...retainedInputs, {
+          referenceKey: `${source.kind}:${source.id}:${retainedInputs.length}`,
+          source,
+          mediaKind: "image",
+          role: canonicalRole,
+          order: retainedInputs.length,
+        }]
+      : retainedInputs;
     const nextAssetIds = source?.kind === "asset" && !value.referenceAssetItemIds.includes(source.id)
       ? [...value.referenceAssetItemIds, source.id]
       : value.referenceAssetItemIds;
@@ -71,7 +84,8 @@ export function VideoReferenceStrip({ currentNodeId, onChange, onUploadReference
       // older palette entry for that role while retaining other roles.
       videoGeneration: {
         ...value.videoGeneration,
-        contextPaletteRefs: value.videoGeneration.contextPaletteRefs.filter((entry) => entry.role !== role),
+        contextPaletteRefs: (value.videoGeneration.contextPaletteRefs ?? []).filter((entry) => entry.role !== role),
+        referenceInputs: nextInputs.map((input, order) => ({ ...input, order })),
         referenceRolesByKey,
       },
     });
@@ -82,7 +96,7 @@ export function VideoReferenceStrip({ currentNodeId, onChange, onUploadReference
   return (
     <div className="relative flex flex-wrap gap-2" aria-label={VIDEO_UI_COPY.referenceSources}>
       {roles.map((role) => {
-        const assignment = value.videoGeneration.referenceRolesByKey[role];
+        const assignment = (value.videoGeneration.referenceRolesByKey ?? {})[role];
         const selected = assignment?.source;
         const roleLabel = ROLE_LABELS[role];
         return (
@@ -130,6 +144,12 @@ export function VideoReferenceStrip({ currentNodeId, onChange, onUploadReference
       />
     </div>
   );
+}
+
+function canonicalReferenceRole(role: VideoReferenceRole, mode: VideoGenerationMode): VideoReferenceInputV2["role"] {
+  if (role === "first_frame" || role === "last_frame") return role;
+  if (role === "source_video") return role;
+  return mode === "image_to_video" ? "main_image" : "reference_image";
 }
 
 function isSafeReferenceId(value: string): boolean {
