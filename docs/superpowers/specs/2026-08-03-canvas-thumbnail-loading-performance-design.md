@@ -82,6 +82,7 @@ type SignedAssetUrlBatchResponse = {
     method: "GET";
     requestedVariantKey: "thumb" | "preview" | null;
     servedVariantKey: "thumb" | "preview" | null;
+    variantKey: "thumb" | "preview" | null;
     status: "ok" | "fallback";
     url: string;
   }>;
@@ -95,6 +96,7 @@ type SignedAssetUrlBatchResponse = {
 Compatibility rules:
 
 - Existing callers that omit `allowVariantFallback` retain strict variant behavior.
+- The existing `variantKey` response field remains as a compatibility alias for `servedVariantKey`.
 - Canvas callers request `variantKey: "thumb"` and `allowVariantFallback: true`.
 - Preview callers request `variantKey: "preview"` and `allowVariantFallback: true`.
 - A malformed request still returns an HTTP validation error.
