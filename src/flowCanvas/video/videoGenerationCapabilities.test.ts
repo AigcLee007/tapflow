@@ -139,4 +139,18 @@ describe("video generation capabilities", () => {
     expect(getVideoGenerationBlocker(editorOnly, params)).toBe("NO_VIDEO_GENERATION_ROUTE");
     expect(getVideoGenerationBlocker(noPrice, params)).toBe("PRICING_NOT_FOUND");
   });
+
+  test("blocks a missing or overlong prompt after catalog and route checks", () => {
+    const option = routeOption({
+      capabilities: mergeVideoCapabilities({
+        confirmedByRoute: true,
+        maxPromptLength: 12,
+      }),
+    });
+    const params = createDefaultVideoGenerationParams();
+
+    expect(getVideoGenerationBlocker(option, params, "  ")).toBe("VIDEO_PROMPT_REQUIRED");
+    expect(getVideoGenerationBlocker(option, params, "1234567890123")).toBe("VIDEO_PROMPT_TOO_LONG");
+    expect(getVideoGenerationBlocker(option, params, "Short prompt")).toBeNull();
+  });
 });

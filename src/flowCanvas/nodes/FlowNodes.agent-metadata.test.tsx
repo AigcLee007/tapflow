@@ -521,6 +521,74 @@ describe("FlowNodes agent metadata", () => {
     expect(String(useFlowCanvasStore.getState().nodes.find((item) => item.id === node.id)?.data.errorMessage)).toMatch(/未配置|未接入/);
   });
 
+  it("persists the confirmed route and normalized v2 parameters before launching video generation", () => {
+    videoCatalogMocks.current = {
+      error: null,
+      loading: false,
+      models: [{
+        blocker: null,
+        capabilities: {
+          aspectRatios: ["16:9"],
+          audioControlMode: "always_on_implicit",
+          confirmedByRoute: true,
+          durationStepSeconds: 2,
+          maxCount: 1,
+          maxDurationSeconds: 10,
+          minDurationSeconds: 4,
+          resolutions: ["720P"],
+          supportedDurations: [4, 6, 8, 10],
+          supportedModes: ["text_to_video"],
+          supportsAudio: true,
+          supportsHumanReview: false,
+        },
+        estimatedCredits: 1,
+        id: "gemini-catalog-id",
+        label: "Gemini Omni Flash",
+        minChargeCredits: 4,
+        modelKey: "gemini-omni-flash",
+        pricing: { billingBasis: "duration_second", exact: true, minChargeCredits: 4, unit: "video_generation", unitCredits: 1 },
+        routeKey: "video.pixelhub.gemini-omni-flash",
+      }],
+      retry: vi.fn(),
+    };
+    const node = useFlowCanvasStore.getState().addNode(
+      "video",
+      { x: 0, y: 0 },
+      {
+        createdAt: 1,
+        generationPrompt: "A bright city street at dawn",
+        generationStatus: "idle",
+        height: 170,
+        kind: "video",
+        modelId: "gemini-catalog-id",
+        params: { videoGeneration: { aspectRatio: "9:16", cameraMotionId: null, count: 1, durationSeconds: 5, generateAudio: false, mode: "text_to_video", referenceInputs: [], resolution: "1080P", schemaVersion: 2, visualTone: null } },
+        routeKey: "stale-route-key",
+        status: "idle",
+        title: "Video",
+        updatedAt: 1,
+        width: 240,
+      } as any,
+      { selected: true },
+    );
+
+    render(<VideoNodeComponent id={node.id} selected data={node.data as any} dragging={false} zIndex={1} isConnectable type="video" xPos={0} yPos={0} />);
+    fireEvent.click(screen.getByRole("button", { name: "生成视频" }));
+
+    expect(workflowRunnerMocks.runBackendWorkflow).toHaveBeenCalledWith({ runMode: "target_node", targetNodeId: node.id });
+    expect(useFlowCanvasStore.getState().nodes.find((item) => item.id === node.id)?.data).toMatchObject({
+      routeKey: "video.pixelhub.gemini-omni-flash",
+      params: {
+        videoGeneration: {
+          aspectRatio: "16:9",
+          durationSeconds: 4,
+          generateAudio: true,
+          resolution: "720P",
+          schemaVersion: 2,
+        },
+      },
+    });
+  });
+
   it("renders the Agent badge for image nodes without leaking provider info", () => {
     render(
       <ImageNodeComponent

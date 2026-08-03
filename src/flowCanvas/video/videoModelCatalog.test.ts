@@ -87,6 +87,14 @@ describe("toVideoModelOptions", () => {
     expect(options[0]?.description).toBe("适合连续镜头创作");
   });
 
+  test("rejects a non-video route even when it advertises video generation capabilities", () => {
+    const options = toVideoModelOptions([videoModel()], {
+      "video.private-model-key": [route({ modality: "image" })],
+    });
+
+    expect(options).toEqual([]);
+  });
+
   test("sanitizes description and ETA at the catalog boundary", () => {
     const options = toVideoModelOptions([
       videoModel({

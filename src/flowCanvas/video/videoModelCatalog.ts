@@ -8,7 +8,8 @@ import {
 } from "./videoPresentationSanitizers";
 
 const isGenerationRoute = (route: AiModelCatalogRoute) =>
-  route.capabilities?.confirmedByRoute === true
+  route.modality === "video"
+  && route.capabilities?.confirmedByRoute === true
   &&
   Array.isArray(route.capabilities?.supportedVideoWorkflows)
   && route.capabilities.supportedVideoWorkflows.includes("video_generation");

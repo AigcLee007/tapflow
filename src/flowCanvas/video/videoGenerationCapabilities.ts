@@ -118,10 +118,18 @@ export function correctVideoGenerationParams<T extends VideoGenerationParamsV2>(
 export function getVideoGenerationBlocker(
   option: VideoModelOption | null | undefined,
   params: VideoGenerationParamsV2,
+  prompt?: string,
 ): VideoGenerationBlocker | null {
   if (option == null) return "NO_VIDEO_GENERATION_ROUTE";
   if (!option.capabilities.confirmedByRoute) return "NO_VIDEO_GENERATION_ROUTE";
   if (option.blocker) return option.blocker;
+  if (prompt !== undefined) {
+    const normalizedPrompt = prompt.trim();
+    if (!normalizedPrompt) return "VIDEO_PROMPT_REQUIRED";
+    if (option.capabilities.maxPromptLength && normalizedPrompt.length > option.capabilities.maxPromptLength) {
+      return "VIDEO_PROMPT_TOO_LONG";
+    }
+  }
   if (!option.capabilities.supportedModes.includes(params.mode)) return "UNSUPPORTED_MODE";
   if (!option.capabilities.aspectRatios.includes(params.aspectRatio)) return "UNSUPPORTED_ASPECT_RATIO";
   if (!option.capabilities.resolutions.includes(params.resolution)) return "UNSUPPORTED_RESOLUTION";
