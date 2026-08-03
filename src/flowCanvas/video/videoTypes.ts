@@ -76,7 +76,19 @@ export type VideoGenerationParamsV2 = {
 };
 
 export type VideoGenerationDiagnostic = {
-  code: "INVALID_VALUE" | "COUNT_CLAMPED" | "UNSUPPORTED_REFERENCE" | "CAPABILITY_CORRECTED";
+  code:
+    | "INVALID_VALUE"
+    | "COUNT_CLAMPED"
+    | "UNSUPPORTED_REFERENCE"
+    | "CAPABILITY_CORRECTED"
+    | "UNSUPPORTED_VIDEO_MODE"
+    | "VIDEO_MODE_INPUT_REQUIRED"
+    | "UNSUPPORTED_DURATION"
+    | "AUDIO_SETTING_FIXED"
+    | "UNSUPPORTED_REFERENCE_KIND"
+    | "REFERENCE_LIMIT_EXCEEDED"
+    | "REFERENCE_MEDIA_TOTAL_EXCEEDED"
+    | "AUDIO_REFERENCE_REQUIRES_VISUAL";
   field: string;
   value?: unknown;
   message: string;
@@ -116,7 +128,15 @@ export type VideoGenerationBlocker =
   | "UNSUPPORTED_RESOLUTION"
   | "UNSUPPORTED_AUDIO"
   | "UNSUPPORTED_COUNT"
-  | "HUMAN_REVIEW_REQUIRED";
+  | "HUMAN_REVIEW_REQUIRED"
+  | "UNSUPPORTED_VIDEO_MODE"
+  | "VIDEO_MODE_INPUT_REQUIRED"
+  | "UNSUPPORTED_DURATION"
+  | "AUDIO_SETTING_FIXED"
+  | "UNSUPPORTED_REFERENCE_KIND"
+  | "REFERENCE_LIMIT_EXCEEDED"
+  | "REFERENCE_MEDIA_TOTAL_EXCEEDED"
+  | "AUDIO_REFERENCE_REQUIRES_VISUAL";
 
 export type VideoGenerationCapabilities = {
   aspectRatios: VideoAspectRatio[];
@@ -125,8 +145,17 @@ export type VideoGenerationCapabilities = {
   durationStepSeconds: number;
   estimatedDurationLabel?: string;
   maxCount: number;
+  maxAudios?: number;
   maxDurationSeconds: number;
+  maxImages?: number;
+  maxPromptLength?: number | null;
+  maxTotal?: number;
+  maxVideos?: number;
+  modeConstraints?: Partial<Record<VideoGenerationMode, Record<string, number | boolean>>>;
   minDurationSeconds: number;
+  audioControlMode?: "toggle" | "always_on_implicit" | "unsupported";
+  defaults?: Partial<VideoGenerationParamsV2>;
+  referenceSemantics?: "style_images_and_source_video" | "mixed_reference_media" | "ordered_first_last_frames";
   resolutions: VideoResolution[];
   supportedDurations?: number[];
   supportedModes: VideoGenerationMode[];

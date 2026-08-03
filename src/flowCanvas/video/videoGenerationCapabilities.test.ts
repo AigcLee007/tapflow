@@ -73,7 +73,7 @@ describe("video generation capabilities", () => {
     });
     expect(corrected.params).toMatchObject({
       aspectRatio: "16:9",
-      count: 2,
+      count: 1,
       durationSeconds: 6,
       generateAudio: false,
       mode: "image_to_video",
@@ -122,11 +122,11 @@ describe("video generation capabilities", () => {
     expect(getVideoGenerationBlocker(unconfirmed, params)).toBe("NO_VIDEO_GENERATION_ROUTE");
     expect(getVideoGenerationBlocker(blocked, params)).toBe("PRICING_NOT_FOUND");
     expect(getVideoGenerationBlocker(unsupported, params)).toBe("UNSUPPORTED_MODE");
-    expect(getVideoGenerationBlocker(unsupported, { ...params, mode: "image_to_video" })).toBe("UNSUPPORTED_ASPECT_RATIO");
+    expect(getVideoGenerationBlocker(unsupported, { ...params, mode: "image_to_video" })).toBe("UNSUPPORTED_RESOLUTION");
     expect(getVideoGenerationBlocker(unsupported, { ...params, aspectRatio: "16:9", mode: "image_to_video" })).toBe("UNSUPPORTED_RESOLUTION");
-    expect(getVideoGenerationBlocker(unsupported, { ...params, aspectRatio: "16:9", mode: "image_to_video", resolution: "480P", generateAudio: true })).toBe("UNSUPPORTED_AUDIO");
+    expect(getVideoGenerationBlocker(unsupported, { ...params, aspectRatio: "16:9", mode: "image_to_video", resolution: "480P", generateAudio: true })).toBe("AUDIO_SETTING_FIXED");
     expect(getVideoGenerationBlocker(unsupported, { ...params, aspectRatio: "16:9", count: 2, generateAudio: false, mode: "image_to_video", resolution: "480P" })).toBe("UNSUPPORTED_COUNT");
-    expect(getVideoGenerationBlocker(unsupported, { ...params, aspectRatio: "16:9", count: 1, generateAudio: false, mode: "image_to_video", resolution: "480P" })).toBe("HUMAN_REVIEW_REQUIRED");
+    expect(getVideoGenerationBlocker(unsupported, { ...params, aspectRatio: "16:9", count: 1, generateAudio: false, mode: "image_to_video", resolution: "480P" })).toBe("VIDEO_MODE_INPUT_REQUIRED");
   });
 
   test("fails closed for an editor-only option and an option without active pricing", () => {
