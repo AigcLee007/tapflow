@@ -23,6 +23,7 @@ export function createSafeDefaultVideoCapabilities(): VideoGenerationCapabilitie
     maxDurationSeconds: 15,
     minDurationSeconds: 4,
     resolutions: [...RESOLUTIONS],
+    supportedDurations: [],
     supportedModes: [...MODES],
     supportsAudio: true,
     supportsHumanReview: false,
@@ -41,6 +42,8 @@ export function mergeVideoCapabilities(
     if (modes.length) result.supportedModes = modes;
     if (ratios.length) result.aspectRatios = ratios;
     if (resolutions.length) result.resolutions = resolutions;
+    const supportedDurations = readPositiveDurations(source.supportedDurations);
+    if (supportedDurations.length) result.supportedDurations = supportedDurations;
     if (typeof source.confirmedByRoute === "boolean") result.confirmedByRoute = source.confirmedByRoute;
     if (typeof source.supportsAudio === "boolean") result.supportsAudio = source.supportsAudio;
     if (typeof source.supportsHumanReview === "boolean") result.supportsHumanReview = source.supportsHumanReview;
@@ -72,10 +75,17 @@ export function correctVideoGenerationParams(
   if (!capabilities.supportedModes.includes(next.mode)) replace("mode", capabilities.supportedModes[0] ?? "text_to_video");
   if (!capabilities.aspectRatios.includes(next.aspectRatio)) replace("aspectRatio", capabilities.aspectRatios[0] ?? "auto");
   if (!capabilities.resolutions.includes(next.resolution)) replace("resolution", capabilities.resolutions[0] ?? "720P");
-  const step = capabilities.durationStepSeconds > 0 ? capabilities.durationStepSeconds : 1;
-  const boundedDuration = Math.min(capabilities.maxDurationSeconds, Math.max(capabilities.minDurationSeconds, next.durationSeconds));
-  const duration = Math.round((boundedDuration - capabilities.minDurationSeconds) / step) * step + capabilities.minDurationSeconds;
-  replace("durationSeconds", Math.min(capabilities.maxDurationSeconds, Math.max(capabilities.minDurationSeconds, duration)));
+  if (capabilities.supportedDurations?.length) {
+    const nearest = capabilities.supportedDurations.reduce((best, candidate) => (
+      Math.abs(candidate - next.durationSeconds) < Math.abs(best - next.durationSeconds) ? candidate : best
+    ));
+    replace("durationSeconds", nearest);
+  } else {
+    const step = capabilities.durationStepSeconds > 0 ? capabilities.durationStepSeconds : 1;
+    const boundedDuration = Math.min(capabilities.maxDurationSeconds, Math.max(capabilities.minDurationSeconds, next.durationSeconds));
+    const duration = Math.round((boundedDuration - capabilities.minDurationSeconds) / step) * step + capabilities.minDurationSeconds;
+    replace("durationSeconds", Math.min(capabilities.maxDurationSeconds, Math.max(capabilities.minDurationSeconds, duration)));
+  }
   if (!capabilities.supportsAudio && next.generateAudio) replace("generateAudio", false);
   if (next.count > capabilities.maxCount) {
     const count = [...COUNTS].reverse().find((candidate) => candidate <= capabilities.maxCount) ?? 1;
@@ -107,4 +117,9 @@ function readValues<T extends string>(value: unknown, allowed: readonly T[]): T[
 
 function readString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function readPositiveDurations(value: unknown): number[] {
+  if (!Array.isArray(value)) return [];
+  return Array.from(new Set(value.filter((item): item is number => typeof item === "number" && Number.isFinite(item) && Number.isInteger(item) && item > 0)));
 }

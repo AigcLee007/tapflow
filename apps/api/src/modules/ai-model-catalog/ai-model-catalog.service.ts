@@ -39,6 +39,25 @@ const KNOWN_VIDEO_ASPECT_RATIOS = new Set([
   "21:9",
 ]);
 const KNOWN_VIDEO_RESOLUTIONS = new Set(["480P", "720P", "1080P", "4K"]);
+const KNOWN_VIDEO_AUDIO_CONTROL_MODES = new Set(["toggle", "always_on_implicit", "unsupported"]);
+const KNOWN_VIDEO_REFERENCE_SEMANTICS = new Set([
+  "style_images_and_source_video",
+  "mixed_reference_media",
+  "ordered_first_last_frames",
+]);
+const VIDEO_MODE_CONSTRAINT_NUMBER_FIELDS = new Set([
+  "maxAudios",
+  "maxImages",
+  "maxTotal",
+  "maxVideos",
+  "minAudios",
+  "minImages",
+  "minVideos",
+]);
+const VIDEO_MODE_CONSTRAINT_BOOLEAN_FIELDS = new Set([
+  "requiresVideoOrAudio",
+  "requiresVisualWithAudio",
+]);
 
 type ModelCatalogRecord = {
   capabilities: Record<string, unknown>;
@@ -106,6 +125,7 @@ export type ModelCatalogRouteView = {
     defaults?: Record<string, unknown>;
     referenceSemantics?: "style_images_and_source_video" | "mixed_reference_media" | "ordered_first_last_frames";
     resolutions?: string[];
+    supportedDurations?: number[];
     supportedGenerationModes: string[];
     supportedModes?: string[];
     supportedVideoWorkflows: string[];
@@ -499,12 +519,14 @@ function mergeSafeVideoCapabilities(...sources: Array<Record<string, unknown> | 
   const supportedModes = mergeKnownStringCapability(sources, "supportedModes", KNOWN_VIDEO_GENERATION_MODES);
   const aspectRatios = mergeKnownStringCapability(sources, "aspectRatios", KNOWN_VIDEO_ASPECT_RATIOS);
   const resolutions = mergeKnownStringCapability(sources, "resolutions", KNOWN_VIDEO_RESOLUTIONS);
+  const supportedDurations = mergePositiveIntegerCapability(sources, "supportedDurations");
   const result: Omit<ModelCatalogRouteView["capabilities"], "supportedGenerationModes" | "supportedVideoWorkflows"> = {};
   const confirmedByRoute = [...sources].reverse().some((source) => source?.confirmedByRoute === true);
   if (confirmedByRoute) result.confirmedByRoute = true;
   if (supportedModes.length) result.supportedModes = supportedModes;
   if (aspectRatios.length) result.aspectRatios = aspectRatios;
   if (resolutions.length) result.resolutions = resolutions;
+  if (supportedDurations.length) result.supportedDurations = supportedDurations;
   for (const key of ["minDurationSeconds", "maxDurationSeconds", "durationStepSeconds", "maxCount"] as const) {
     const value = [...sources].reverse().map((source) => readPositiveNumber(source, key)).find((candidate) => candidate !== undefined);
     if (value !== undefined) result[key] = value;
@@ -518,14 +540,14 @@ function mergeSafeVideoCapabilities(...sources: Array<Record<string, unknown> | 
     return value === null || (typeof value === "number" && Number.isFinite(value) && value > 0) ? value : undefined;
   }).find((candidate) => candidate !== undefined);
   if (maxPromptLength !== undefined) result.maxPromptLength = maxPromptLength;
-  const audioControlMode = [...sources].reverse().map((source) => source?.audioControlMode).find((value) => value === "toggle" || value === "always_on_implicit" || value === "unsupported");
+  const audioControlMode = [...sources].reverse().map((source) => source?.audioControlMode).find((value): value is "toggle" | "always_on_implicit" | "unsupported" => typeof value === "string" && KNOWN_VIDEO_AUDIO_CONTROL_MODES.has(value));
   if (audioControlMode) result.audioControlMode = audioControlMode;
-  const referenceSemantics = [...sources].reverse().map((source) => source?.referenceSemantics).find((value) => value === "style_images_and_source_video" || value === "mixed_reference_media" || value === "ordered_first_last_frames");
+  const referenceSemantics = [...sources].reverse().map((source) => source?.referenceSemantics).find((value): value is "style_images_and_source_video" | "mixed_reference_media" | "ordered_first_last_frames" => typeof value === "string" && KNOWN_VIDEO_REFERENCE_SEMANTICS.has(value));
   if (referenceSemantics) result.referenceSemantics = referenceSemantics;
-  const defaults = [...sources].reverse().map((source) => source?.defaults).find((value) => value && typeof value === "object" && !Array.isArray(value));
-  if (defaults) result.defaults = defaults as Record<string, unknown>;
-  const modeConstraints = [...sources].reverse().map((source) => source?.modeConstraints).find((value) => value && typeof value === "object" && !Array.isArray(value));
-  if (modeConstraints) result.modeConstraints = modeConstraints as Record<string, Record<string, number | boolean>>;
+  const defaults = [...sources].reverse().map((source) => readSafeVideoDefaults(source?.defaults)).find((value) => value !== undefined);
+  if (defaults) result.defaults = defaults;
+  const modeConstraints = [...sources].reverse().map((source) => readSafeVideoModeConstraints(source?.modeConstraints)).find((value) => value !== undefined);
+  if (modeConstraints) result.modeConstraints = modeConstraints;
   for (const key of ["supportsAudio", "supportsHumanReview"] as const) {
     const value = [...sources].reverse().map((source) => readBoolean(source, key)).find((candidate) => candidate !== undefined);
     if (value !== undefined) result[key] = value;
@@ -537,10 +559,50 @@ function mergeSafeVideoCapabilities(...sources: Array<Record<string, unknown> | 
   return result;
 }
 
+function readSafeVideoDefaults(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const source = value as Record<string, unknown>;
+  const result: Record<string, unknown> = {};
+  if (typeof source.mode === "string" && KNOWN_VIDEO_GENERATION_MODES.has(source.mode)) result.mode = source.mode;
+  if (typeof source.aspectRatio === "string" && KNOWN_VIDEO_ASPECT_RATIOS.has(source.aspectRatio)) result.aspectRatio = source.aspectRatio;
+  if (typeof source.resolution === "string" && KNOWN_VIDEO_RESOLUTIONS.has(source.resolution)) result.resolution = source.resolution;
+  if (typeof source.durationSeconds === "number" && Number.isFinite(source.durationSeconds) && source.durationSeconds > 0) result.durationSeconds = source.durationSeconds;
+  if (source.count === 1) result.count = 1;
+  if (typeof source.generateAudio === "boolean") result.generateAudio = source.generateAudio;
+  return Object.keys(result).length ? result : undefined;
+}
+
+function readSafeVideoModeConstraints(value: unknown): Record<string, Record<string, number | boolean>> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const result: Record<string, Record<string, number | boolean>> = {};
+  for (const [mode, candidate] of Object.entries(value as Record<string, unknown>)) {
+    if (!KNOWN_VIDEO_GENERATION_MODES.has(mode) || !candidate || typeof candidate !== "object" || Array.isArray(candidate)) continue;
+    const constraint: Record<string, number | boolean> = {};
+    for (const [key, item] of Object.entries(candidate as Record<string, unknown>)) {
+      if (VIDEO_MODE_CONSTRAINT_NUMBER_FIELDS.has(key) && typeof item === "number" && Number.isFinite(item) && item >= 0 && Number.isInteger(item)) constraint[key] = item;
+      if (VIDEO_MODE_CONSTRAINT_BOOLEAN_FIELDS.has(key) && typeof item === "boolean") constraint[key] = item;
+    }
+    if (Object.keys(constraint).length) result[mode] = constraint;
+  }
+  return Object.keys(result).length ? result : undefined;
+}
+
 function mergeKnownStringCapability(
   sources: Array<Record<string, unknown> | null | undefined>,
   key: string,
   known: ReadonlySet<string>,
 ): string[] {
   return Array.from(new Set(sources.flatMap((source) => readKnownStrings(source, key, known))));
+}
+
+function mergePositiveIntegerCapability(
+  sources: Array<Record<string, unknown> | null | undefined>,
+  key: string,
+): number[] {
+  return Array.from(new Set(sources.flatMap((source) => {
+    const values = source?.[key];
+    return Array.isArray(values)
+      ? values.filter((value): value is number => typeof value === "number" && Number.isFinite(value) && Number.isInteger(value) && value > 0)
+      : [];
+  })));
 }

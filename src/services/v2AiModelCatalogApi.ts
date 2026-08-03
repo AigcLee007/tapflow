@@ -33,6 +33,7 @@ export type AiModelCatalogRouteCapabilities = Record<string, unknown> & {
     defaults?: Record<string, unknown>;
     referenceSemantics?: "style_images_and_source_video" | "mixed_reference_media" | "ordered_first_last_frames";
     resolutions?: string[];
+    supportedDurations?: number[];
     supportedGenerationModes?: string[];
     supportedModes?: string[];
     supportedVideoWorkflows?: string[];

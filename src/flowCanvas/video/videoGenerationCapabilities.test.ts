@@ -89,6 +89,19 @@ describe("video generation capabilities", () => {
     ]);
   });
 
+  test("preserves discrete route durations and corrects to the nearest supported duration", () => {
+    const capabilities = mergeVideoCapabilities({
+      confirmedByRoute: true,
+      minDurationSeconds: 4,
+      maxDurationSeconds: 10,
+      durationStepSeconds: 2,
+      supportedDurations: [4, 6, 8, 10],
+    });
+
+    expect(capabilities.supportedDurations).toEqual([4, 6, 8, 10]);
+    expect(correctVideoGenerationParams({ ...createDefaultVideoGenerationParams(), durationSeconds: 9 }, capabilities).params.durationSeconds).toBe(8);
+  });
+
   test("returns the first generation blocker in the documented order", () => {
     const params = createDefaultVideoGenerationParams();
     const unconfirmed = routeOption({ capabilities: mergeVideoCapabilities() });

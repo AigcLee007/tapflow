@@ -108,6 +108,7 @@ export type VideoGenerationCapabilities = {
   maxDurationSeconds: number;
   minDurationSeconds: number;
   resolutions: VideoResolution[];
+  supportedDurations?: number[];
   supportedModes: VideoGenerationMode[];
   supportsAudio: boolean;
   supportsHumanReview: boolean;

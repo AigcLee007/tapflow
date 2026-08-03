@@ -205,6 +205,8 @@ describe("AiModelCatalogService route list", () => {
               model_family: "video-model",
               model_key: "video-model",
               pricing_unit: "video_generation",
+              pricing_metadata: { billingBasis: "duration_second", internalMargin: "must-not-leak" },
+              pricing_fallback_level: 1,
               provider_key: "private-provider",
               provider_name: "Private Provider",
               request_config: {
@@ -214,9 +216,23 @@ describe("AiModelCatalogService route list", () => {
                   aspectRatios: ["1:1", "private-ratio"],
                   resolutions: ["1080P", "private-resolution"],
                   maxDurationSeconds: 16,
+                  supportedDurations: [4, 6, 8, "private-duration"],
                   estimatedDurationLabel: "about 16 seconds",
                   authorization: "Bearer must-not-leak",
                   baseUrl: "https://provider.example/internal",
+                  defaults: {
+                    aspectRatio: "16:9",
+                    count: 1,
+                    durationSeconds: 8,
+                    generateAudio: true,
+                    mode: "text_to_video",
+                    resolution: "1080P",
+                    signedUrl: "https://provider.example/signed",
+                  },
+                  modeConstraints: {
+                    text_to_video: { maxTotal: 0, authorization: "Bearer must-not-leak" },
+                    private_mode: { maxTotal: 99 },
+                  },
                 },
               },
               route_id: "route-video-1",
@@ -245,12 +261,30 @@ describe("AiModelCatalogService route list", () => {
       resolutions: ["720P", "4K", "1080P"],
       minDurationSeconds: 3,
       maxDurationSeconds: 16,
+      supportedDurations: [4, 6, 8],
       durationStepSeconds: 3,
       maxCount: 4,
       supportsAudio: false,
       supportsHumanReview: true,
       description: "A safe model description",
       estimatedDurationLabel: "about 16 seconds",
+      defaults: {
+        aspectRatio: "16:9",
+        count: 1,
+        durationSeconds: 8,
+        generateAudio: true,
+        mode: "text_to_video",
+        resolution: "1080P",
+      },
+      modeConstraints: { text_to_video: { maxTotal: 0 } },
     });
+    expect(routes[0]?.pricing).toEqual({
+      billingBasis: "duration_second",
+      exact: true,
+      minChargeCredits: 180,
+      unit: "video_generation",
+      unitCredits: 180,
+    });
+    expect(JSON.stringify(routes)).not.toMatch(/authorization|signedUrl|internalMargin|baseUrl|request_path|must-not-leak/);
   });
 });
