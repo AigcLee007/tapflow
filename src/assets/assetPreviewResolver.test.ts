@@ -52,7 +52,26 @@ describe("assetPreviewResolver", () => {
 
     expect(first).toBe(second);
     expect(getAssetSignedUrlsMock).toHaveBeenCalledTimes(1);
-    expect(getAssetSignedUrlsMock).toHaveBeenCalledWith([{ assetId: "asset-one", variantKey: "preview" }]);
+    expect(getAssetSignedUrlsMock).toHaveBeenCalledWith([
+      { allowVariantFallback: true, assetId: "asset-one", variantKey: "preview" },
+    ]);
+  });
+
+  test("requests a thumb with per-item fallback instead of retrying the batch as originals", async () => {
+    getAssetSignedUrlsMock.mockResolvedValue({
+      errors: [],
+      items: [{
+        ...signedItem("asset-thumb", "preview"),
+        requestedVariantKey: "thumb",
+        servedVariantKey: "preview",
+        status: "fallback",
+      }],
+    });
+
+    await expect(resolveAssetPreviewUrl("asset-thumb", "thumb")).resolves.toBe("https://cdn.test/asset-thumb-preview.png");
+    expect(getAssetSignedUrlsMock).toHaveBeenCalledWith([
+      { allowVariantFallback: true, assetId: "asset-thumb", variantKey: "thumb" },
+    ]);
   });
 
   test("splits large request bursts into batches of one hundred", async () => {
@@ -68,14 +87,19 @@ describe("assetPreviewResolver", () => {
     expect(getAssetSignedUrlsMock.mock.calls.map(([requests]) => requests.length)).toEqual([100, 1]);
   });
 
-  test("falls back to original signed URLs when the preview batch fails", async () => {
-    getAssetSignedUrlsMock
-      .mockRejectedValueOnce(new Error("preview variant missing"))
-      .mockResolvedValueOnce({ items: [signedItem("asset-fallback", null)] });
+  test("uses an original fallback returned by the same request", async () => {
+    getAssetSignedUrlsMock.mockResolvedValue({
+      errors: [],
+      items: [{
+        ...signedItem("asset-fallback", null),
+        requestedVariantKey: "preview",
+        servedVariantKey: null,
+        status: "fallback",
+      }],
+    });
 
     await expect(resolveAssetPreviewUrl("asset-fallback")).resolves.toBe("https://cdn.test/asset-fallback-original.png");
-    expect(getAssetSignedUrlsMock).toHaveBeenNthCalledWith(1, [{ assetId: "asset-fallback", variantKey: "preview" }]);
-    expect(getAssetSignedUrlsMock).toHaveBeenNthCalledWith(2, [{ assetId: "asset-fallback" }]);
+    expect(getAssetSignedUrlsMock).toHaveBeenCalledTimes(1);
   });
 
   test("invalidates an expired URL before resolving a fresh one", async () => {

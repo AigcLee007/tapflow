@@ -42,31 +42,31 @@ async function flushQueue(): Promise<void> {
     if (entries.length === 0) continue;
 
     try {
-      await resolveBatch(entries, 'preview');
-    } catch (previewError) {
-      try {
-        await resolveBatch(entries, null);
-      } catch (originalError) {
-        entries.forEach((entry) => entry.reject(originalError || previewError));
-        entries.forEach((entry) => pendingByKey.delete(requestKey(entry.assetId, entry.variantKey)));
-      }
+      await resolveBatch(entries);
+    } catch (error) {
+      entries.forEach((entry) => entry.reject(error));
+      entries.forEach((entry) => pendingByKey.delete(requestKey(entry.assetId, entry.variantKey)));
     }
   }
 }
 
-async function resolveBatch(entries: PendingEntry[], variantKey: string | null): Promise<void> {
+async function resolveBatch(entries: PendingEntry[]): Promise<void> {
   const response = await getAssetSignedUrls(
     entries.map((entry) => ({
       assetId: entry.assetId,
-      ...(variantKey ? { variantKey } : {}),
+      allowVariantFallback: true,
+      variantKey: entry.variantKey as 'thumb' | 'preview',
     })),
   );
-  const itemsByAssetId = new Map(response.items.map((item) => [item.assetId, item]));
+  const itemsByKey = new Map(response.items.map((item) => [requestKey(item.assetId, item.requestedVariantKey || item.variantKey || 'preview'), item]));
+  const unavailable = new Set((response.errors || []).map((item) => item.assetId));
 
   entries.forEach((entry) => {
-    const item = itemsByAssetId.get(entry.assetId);
+    const item = itemsByKey.get(requestKey(entry.assetId, entry.variantKey));
     if (!item?.url || !item.expiresAt) {
-      throw new Error(`Signed preview URL missing for asset ${entry.assetId}`);
+      entry.reject(new Error(unavailable.has(entry.assetId) ? 'Asset unavailable' : `Signed preview URL missing for asset ${entry.assetId}`));
+      pendingByKey.delete(requestKey(entry.assetId, entry.variantKey));
+      return;
     }
 
     setCachedAssetUrl({
