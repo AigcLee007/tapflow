@@ -6137,3 +6137,11 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - the full root `npm test` was rerun and remains red due to existing unrelated legacy migration, asset presigning, Canvas Agent, and AI Gateway multipart tests. The PixelHub focused suites passed in that worktree.
 - local v2 project QA could not start: `npm run dev:infra` could not connect to the missing Docker Desktop Linux engine pipe. The workspace has neither `DATABASE_URL` nor `REDIS_URL`, so authenticated project/canvas QA was not simulated.
 - no live Provider Connection, credential, PixelHub API, staging installation, inactive-route test, or active-route test was performed. Staging remains pending the runbook in `docs/PIXELHUB_VIDEO_MODELS_RUNBOOK.md`.
+
+## 2026-08-04 - PixelHub Structured Video Runtime Route Repair
+
+- staging validation reproduced a pre-provider `UNSUPPORTED_VIDEO_MODE` response for the active Gemini PixelHub route, despite the persisted route capability declaring `video_generation` and passing the shared capability parser.
+- traced the request path to `WorkflowRunsService`: its runtime workflow whitelist only contained `video_editor_export`, so it silently removed `video_generation` while constructing route context and rejected every structured PixelHub video request.
+- added `video_generation` to the runtime whitelist and a regression test that loads a PixelHub route context from the same nested `request_config.capabilities` shape used by production.
+- validation passed: focused workflow-pricing resolver test (24 passed), complete API test suite (284 passed, 126 database-backed tests skipped), and API build.
+- server rollout is required: rebuild and restart `tapflow-api` and `tapflow-worker`, then retry a Gemini text-to-video run before enabling the remaining production route smoke matrix.

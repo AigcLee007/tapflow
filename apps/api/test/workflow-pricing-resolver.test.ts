@@ -5,6 +5,7 @@ import {
   assertNodeRouteSupportsRuntimeRequest,
   resolveConfiguredRouteKey,
   resolveNodePricing,
+  WorkflowRunsService,
 } from "../src/modules/workflow-runs/workflow-runs.service.js";
 
 const pricingRows = [
@@ -181,6 +182,47 @@ describe("workflow pricing resolver", () => {
         routeKey: "video.pixelhub.gemini-omni-flash",
       },
     })).toThrow(/UNSUPPORTED_DURATION|This duration is not supported/);
+  });
+
+  it("preserves video_generation when loading a structured video route context", async () => {
+    const service = new WorkflowRunsService({
+      nodeExecuteQueue: {
+        async add() {
+          return { id: "job-1" };
+        },
+      },
+      pool: {} as never,
+    });
+    const loadRouteRuntimeContexts = (
+      service as unknown as {
+        loadRouteRuntimeContexts: (
+          client: { query: () => Promise<{ rows: Array<Record<string, unknown>> }> },
+          tenantId: string,
+          nodes: Array<{ config: Record<string, unknown>; type: string }>,
+        ) => Promise<Map<string, { capabilities: { supportedVideoWorkflows: string[] } }>>;
+      }
+    ).loadRouteRuntimeContexts.bind(service);
+    const routeKey = "video.pixelhub.gemini-omni-flash";
+
+    const contexts = await loadRouteRuntimeContexts({
+      async query() {
+        return {
+          rows: [{
+            model_capabilities: {},
+            model_key: "gemini-omni-flash",
+            provider_key: "pixelhub",
+            request_config: {
+              capabilities: pixelHubCapabilitiesFor("gemini-omni-flash"),
+              supportedVideoWorkflows: ["video_generation"],
+            },
+            route_key: routeKey,
+            tenant_id: null,
+          }],
+        };
+      },
+    }, "tenant-1", [{ config: { routeKey }, type: "video.generate" }]);
+
+    expect(contexts.get(routeKey)?.capabilities.supportedVideoWorkflows).toEqual(["video_generation"]);
   });
 
   it("resolves nested image edit route keys when the top-level routeKey is missing", () => {

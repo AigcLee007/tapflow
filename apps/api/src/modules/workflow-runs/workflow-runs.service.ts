@@ -256,7 +256,11 @@ const DEFAULT_ROUTE_BY_NODE_TYPE: Record<string, string> = {
   "video.generate": "video.default",
 };
 const SUPPORTED_VIDEO_EDITOR_EXPORT_WORKFLOW = "video_editor_export";
-const KNOWN_VIDEO_WORKFLOWS = new Set([SUPPORTED_VIDEO_EDITOR_EXPORT_WORKFLOW]);
+const VIDEO_GENERATION_WORKFLOW = "video_generation";
+const KNOWN_VIDEO_WORKFLOWS = new Set([
+  SUPPORTED_VIDEO_EDITOR_EXPORT_WORKFLOW,
+  VIDEO_GENERATION_WORKFLOW,
+]);
 const KNOWN_IMAGE_GENERATION_MODES = new Set([
   "standard",
   "panorama_360",
