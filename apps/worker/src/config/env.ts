@@ -14,6 +14,7 @@ export type WorkerEnv = {
   s3SecretAccessKey: string;
   defaultNodeConcurrency: number;
   imageNodeConcurrency: number;
+  assetImageVariantConcurrency: number;
   imageVariantsMode: "async" | "sync";
   providerPollConcurrency: number;
   nodeExecuteConcurrency: number;
@@ -97,6 +98,11 @@ export function getWorkerEnv(): WorkerEnv {
     process.env.WORKER_IMAGE_CONCURRENCY,
     DEFAULT_IMAGE_NODE_CONCURRENCY,
   );
+  const assetImageVariantConcurrency = parsePositiveIntegerEnv(
+    "ASSET_IMAGE_VARIANT_CONCURRENCY",
+    process.env.ASSET_IMAGE_VARIANT_CONCURRENCY,
+    2,
+  );
   const videoNodeConcurrency = parsePositiveIntegerEnv(
     "WORKER_VIDEO_CONCURRENCY",
     process.env.WORKER_VIDEO_CONCURRENCY,
@@ -150,6 +156,7 @@ export function getWorkerEnv(): WorkerEnv {
     s3Region,
     s3SecretAccessKey,
     defaultNodeConcurrency,
+    assetImageVariantConcurrency,
     imageNodeConcurrency,
     imageVariantsMode: imageVariantsModeRaw,
     providerPollConcurrency,
