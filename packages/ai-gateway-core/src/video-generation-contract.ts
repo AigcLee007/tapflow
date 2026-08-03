@@ -113,6 +113,17 @@ const VIDEO_REFERENCE_ROLES = new Set<VideoReferenceRole>([
   "first_frame",
   "last_frame",
 ]);
+const VIDEO_MODE_CONSTRAINT_FIELDS = new Set<keyof VideoModeConstraint>([
+  "maxAudios",
+  "maxImages",
+  "maxTotal",
+  "maxVideos",
+  "minAudios",
+  "minImages",
+  "minVideos",
+  "requiresVideoOrAudio",
+  "requiresVisualWithAudio",
+]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -158,6 +169,30 @@ function readsVideoParams(value: unknown): value is VideoGenerationParams {
   );
 }
 
+function readsVideoModeConstraint(value: unknown): value is VideoModeConstraint {
+  if (!isRecord(value) || !isNonNegativeInteger(value.maxTotal)) return false;
+  if (!Object.keys(value).every((field) => VIDEO_MODE_CONSTRAINT_FIELDS.has(field as keyof VideoModeConstraint))) return false;
+
+  const limits = [
+    [value.minImages, value.maxImages],
+    [value.minVideos, value.maxVideos],
+    [value.minAudios, value.maxAudios],
+  ];
+  for (const [minimum, maximum] of limits) {
+    if ((minimum !== undefined && !isNonNegativeInteger(minimum)) || (maximum !== undefined && !isNonNegativeInteger(maximum))) {
+      return false;
+    }
+    if (minimum !== undefined && maximum !== undefined && maximum < minimum) return false;
+  }
+
+  if (
+    (value.requiresVideoOrAudio !== undefined && typeof value.requiresVideoOrAudio !== "boolean") ||
+    (value.requiresVisualWithAudio !== undefined && typeof value.requiresVisualWithAudio !== "boolean")
+  ) return false;
+
+  return Number(value.minImages ?? 0) + Number(value.minVideos ?? 0) + Number(value.minAudios ?? 0) <= Number(value.maxTotal);
+}
+
 export function readVideoCapabilities(value: unknown): VideoGenerationCapabilities | null {
   if (!isRecord(value) || value.confirmedByRoute !== true) return null;
   if (!Array.isArray(value.supportedModes) || !value.supportedModes.every(isMode)) return null;
@@ -165,7 +200,7 @@ export function readVideoCapabilities(value: unknown): VideoGenerationCapabiliti
   if (!Array.isArray(value.aspectRatios) || !value.aspectRatios.every(isAspectRatio)) return null;
   if (!Array.isArray(value.resolutions) || !value.resolutions.every(isResolution)) return null;
   if (!readsVideoParams(value.defaults)) return null;
-  if (!isRecord(value.modeConstraints)) return null;
+  if (!isRecord(value.modeConstraints) || !Object.entries(value.modeConstraints).every(([mode, constraint]) => isMode(mode) && readsVideoModeConstraint(constraint))) return null;
   if (value.audioControlMode !== "toggle" && value.audioControlMode !== "always_on_implicit" && value.audioControlMode !== "unsupported") return null;
   if (
     value.referenceSemantics !== "style_images_and_source_video" &&
@@ -256,10 +291,7 @@ export function validateVideoGenerationRequest(
     issues.push(issue("UNSUPPORTED_RESOLUTION", "params.resolution", "This resolution is not supported by the route."));
   }
   if (
-    !capabilities.supportedDurations.includes(params.durationSeconds) ||
-    params.durationSeconds < capabilities.minDurationSeconds ||
-    params.durationSeconds > capabilities.maxDurationSeconds ||
-    (params.durationSeconds - capabilities.minDurationSeconds) % capabilities.durationStepSeconds !== 0
+    !capabilities.supportedDurations.includes(params.durationSeconds)
   ) {
     issues.push(issue("UNSUPPORTED_DURATION", "params.durationSeconds", "This duration is not supported by the route."));
   }
@@ -316,12 +348,26 @@ export function validateVideoGenerationRequest(
   if (constraint?.requiresVisualWithAudio && counts.audio > 0 && counts.image + counts.video === 0) {
     issues.push(issue("AUDIO_REFERENCE_REQUIRES_VISUAL", "inputAssets", "Audio references require an image or video reference."));
   }
+  if (params.mode === "image_to_video") {
+    const mainImages = references.filter((reference) => reference.mediaKind === "image" && reference.role === "main_image");
+    if (references.length !== 1 || counts.image !== 1 || mainImages.length !== 1) {
+      issues.push(issue("VIDEO_MODE_INPUT_REQUIRED", "inputAssets", "Image-to-video requires exactly one main image."));
+    }
+  }
+  if (params.mode === "all_reference" && capabilities.referenceSemantics === "style_images_and_source_video") {
+    if (references.some((reference) => reference.mediaKind === "video" && reference.role !== "source_video")) {
+      issues.push(issue("VIDEO_MODE_INPUT_REQUIRED", "inputAssets", "Video references must be marked as source videos."));
+    }
+  }
   if (params.mode === "first_last_frame" && capabilities.referenceSemantics === "ordered_first_last_frames") {
-    const orderedImages = references.filter((reference) => reference.mediaKind === "image").sort((a, b) => a.order - b.order);
+    const orderedImages = references.filter((reference) => reference.mediaKind === "image");
+    const firstFrames = orderedImages.filter((reference) => reference.role === "first_frame");
+    const lastFrames = orderedImages.filter((reference) => reference.role === "last_frame");
     if (
       orderedImages.length !== 2 ||
-      orderedImages[0]?.role !== "first_frame" ||
-      orderedImages[1]?.role !== "last_frame"
+      firstFrames.length !== 1 ||
+      lastFrames.length !== 1 ||
+      firstFrames[0]!.order >= lastFrames[0]!.order
     ) {
       issues.push(issue("VIDEO_MODE_INPUT_REQUIRED", "inputAssets", "First and last frame references must be ordered images."));
     }

@@ -1,12 +1,18 @@
 import { describe, expect, test } from "vitest";
 
+import { AiGateway } from "../src/ai-gateway.js";
+import type { ProviderAdapter } from "../src/provider-adapter.js";
 import {
   readVideoCapabilities,
   readVideoReferenceMetadata,
   validateVideoGenerationRequest,
   type VideoGenerationCapabilities,
 } from "../src/video-generation-contract.js";
-import type { AssetReferenceInput, VideoGenerationRequest } from "../src/types.js";
+import type {
+  AssetReferenceInput,
+  ResolvedRoute,
+  VideoGenerationRequest,
+} from "../src/types.js";
 
 const geminiCapabilities: VideoGenerationCapabilities = {
   aspectRatios: ["16:9", "9:16"],
@@ -35,7 +41,7 @@ const geminiCapabilities: VideoGenerationCapabilities = {
     image_to_video: { maxImages: 1, maxTotal: 1, minImages: 1 },
     text_to_video: { maxTotal: 0 },
   },
-  referenceSemantics: "mixed_reference_media",
+  referenceSemantics: "style_images_and_source_video",
   resolutions: ["720P", "1080P"],
   supportedDurations: [4, 6, 8, 10],
   supportedModes: ["text_to_video", "image_to_video", "image_reference", "all_reference"],
@@ -81,6 +87,27 @@ function asset(
   };
 }
 
+function route(): ResolvedRoute {
+  return {
+    baseUrl: "https://provider.example.test",
+    credential: { authTag: null, encryptedSecret: null, id: "credential-1", nonce: null },
+    model: { id: "model-1", modelKey: "video-model" },
+    priority: 100,
+    provider: {
+      defaultBaseUrl: "https://provider.example.test",
+      id: "provider-1",
+      key: "test-video",
+      kind: "test-video",
+    },
+    requestConfig: {},
+    routeId: "route-1",
+    routeKey: "video.test",
+    status: "active",
+    tenantId: null,
+    weight: 100,
+  };
+}
+
 describe("video generation contract", () => {
   test("reads only confirmed, complete route capabilities", () => {
     expect(readVideoCapabilities(geminiCapabilities)).toEqual(geminiCapabilities);
@@ -108,7 +135,7 @@ describe("video generation contract", () => {
         params: { ...request().params!, mode: "all_reference" },
       }),
       request({
-        inputAssets: [asset("image", "main_image"), asset("video", "reference_video", 1)],
+        inputAssets: [asset("image", "main_image"), asset("video", "source_video", 1)],
         params: { ...request().params!, mode: "all_reference" },
       }),
     ];
@@ -116,6 +143,66 @@ describe("video generation contract", () => {
     for (const value of cases) {
       expect(validateVideoGenerationRequest(value, geminiCapabilities)).toEqual([]);
     }
+  });
+
+  test("enforces Gemini image and source-video reference roles", () => {
+    const missingMainImage = request({
+      inputAssets: [asset("image", "reference_image")],
+      params: { ...request().params!, mode: "image_to_video" },
+    });
+    expect(validateVideoGenerationRequest(missingMainImage, geminiCapabilities).map((item) => item.code)).toContain("VIDEO_MODE_INPUT_REQUIRED");
+
+    const multipleImages = request({
+      inputAssets: [asset("image", "main_image"), asset("image", "reference_image", 1)],
+      params: { ...request().params!, mode: "image_to_video" },
+    });
+    expect(validateVideoGenerationRequest(multipleImages, geminiCapabilities).map((item) => item.code)).toContain("VIDEO_MODE_INPUT_REQUIRED");
+
+    const referenceVideo = request({
+      inputAssets: [asset("image", "main_image"), asset("video", "reference_video", 1)],
+      params: { ...request().params!, mode: "all_reference" },
+    });
+    expect(validateVideoGenerationRequest(referenceVideo, geminiCapabilities).map((item) => item.code)).toContain("VIDEO_MODE_INPUT_REQUIRED");
+  });
+
+  test("rejects malformed mode constraint limits", () => {
+    const negativeLimit = {
+      ...geminiCapabilities,
+      modeConstraints: {
+        ...geminiCapabilities.modeConstraints,
+        image_to_video: { maxImages: -1, maxTotal: 1, minImages: 1 },
+      },
+    };
+    const invertedLimit = {
+      ...geminiCapabilities,
+      modeConstraints: {
+        ...geminiCapabilities.modeConstraints,
+        image_to_video: { maxImages: 0, maxTotal: 1, minImages: 1 },
+      },
+    };
+    const invalidTotal = {
+      ...geminiCapabilities,
+      modeConstraints: {
+        ...geminiCapabilities.modeConstraints,
+        image_to_video: { maxImages: 1, maxTotal: -1, minImages: 1 },
+      },
+    };
+
+    expect(readVideoCapabilities(negativeLimit)).toBeNull();
+    expect(readVideoCapabilities(invertedLimit)).toBeNull();
+    expect(readVideoCapabilities(invalidTotal)).toBeNull();
+  });
+
+  test("treats supported durations as the authoritative discrete set", () => {
+    const nonUniformDurations: VideoGenerationCapabilities = {
+      ...geminiCapabilities,
+      durationStepSeconds: 4,
+      supportedDurations: [4, 6, 10],
+    };
+    expect(validateVideoGenerationRequest(
+      request({ params: { ...request().params!, durationSeconds: 6 } }),
+      nonUniformDurations,
+    )).toEqual([]);
   });
 
   test.each([
@@ -188,5 +275,41 @@ describe("video generation contract", () => {
       params: { ...request().params!, mode: "first_last_frame" },
     });
     expect(validateVideoGenerationRequest(reversed, veo).map((issue) => issue.code)).toContain("VIDEO_MODE_INPUT_REQUIRED");
+
+    const duplicate = request({
+      inputAssets: [asset("image", "first_frame", 0), asset("image", "first_frame", 1)],
+      params: { ...request().params!, mode: "first_last_frame" },
+    });
+    expect(validateVideoGenerationRequest(duplicate, veo).map((issue) => issue.code)).toContain("VIDEO_MODE_INPUT_REQUIRED");
+
+    const sameOrder = request({
+      inputAssets: [asset("image", "first_frame", 1), asset("image", "last_frame", 1)],
+      params: { ...request().params!, mode: "first_last_frame" },
+    });
+    expect(validateVideoGenerationRequest(sameOrder, veo).map((issue) => issue.code)).toContain("VIDEO_MODE_INPUT_REQUIRED");
+  });
+
+  test("propagates provider task polling hints from video generation", async () => {
+    const adapter: ProviderAdapter = {
+      generateVideo: async () => ({
+        modelKey: "video-model",
+        outputs: [],
+        pollIntervalMs: 1_500,
+        providerRequest: {},
+        providerResponse: {},
+        providerTaskId: "task-1",
+        providerTaskTimeoutMs: 90_000,
+        status: "waiting_provider",
+        usage: { inputTokens: null, outputTokens: null, totalTokens: null },
+      }),
+    };
+    const result = await new AiGateway({ "test-video": adapter }).generateVideo({
+      apiKey: "test-key",
+      request: request(),
+      route: route(),
+    });
+
+    expect(result.pollIntervalMs).toBe(1_500);
+    expect(result.providerTaskTimeoutMs).toBe(90_000);
   });
 });
