@@ -586,7 +586,7 @@ describe("worker skeleton", () => {
   test("video.generate request uses exported video editor prompt and timeline asset ids", () => {
     const request = (__workerTestUtils as {
       buildVideoRequest: (
-        upstreamOutputs: Array<Record<string, unknown> | null>,
+        upstreamOutputs: ReadonlyMap<string, Record<string, unknown> | null>,
         config: Record<string, unknown>,
       ) => {
         inputAssets?: Array<Record<string, unknown>> | null;
@@ -594,7 +594,7 @@ describe("worker skeleton", () => {
         prompt: string;
         routeKey?: string | null;
       };
-    }).buildVideoRequest([], {
+    }).buildVideoRequest(new Map(), {
       generationPrompt: "根据剪辑工程时间线生成视频",
       params: {
         videoEditor: {
@@ -662,6 +662,123 @@ describe("worker skeleton", () => {
       }),
     }));
     expect(JSON.stringify(request)).not.toMatch(/blob:|data:/);
+  });
+
+  test("video.generate request preserves V2 reference roles, order, and upstream source identity", () => {
+    const request = (__workerTestUtils as {
+      buildVideoRequest: (
+        upstreamOutputs: ReadonlyMap<string, Record<string, unknown> | null>,
+        config: Record<string, unknown>,
+      ) => {
+        inputAssets?: Array<Record<string, unknown>> | null;
+        metadata?: Record<string, unknown> | null;
+        model: string | null;
+        params?: Record<string, unknown> | null;
+        prompt: string;
+        routeKey?: string | null;
+      };
+    }).buildVideoRequest(new Map([
+      ["video-source", { assets: [{ assetId: "asset-motion", kind: "video" }] }],
+    ]), {
+      generationPrompt: "Keep identity and motion",
+      modelId: "catalog-uuid",
+      params: {
+        videoGeneration: {
+          schemaVersion: 2,
+          mode: "all_reference",
+          aspectRatio: "9:16",
+          resolution: "720P",
+          durationSeconds: 10,
+          generateAudio: false,
+          count: 1,
+          referenceInputs: [
+            {
+              referenceKey: "ref-main",
+              source: { kind: "asset", id: "asset-main" },
+              mediaKind: "image",
+              role: "main_image",
+              order: 0,
+            },
+            {
+              referenceKey: "ref-motion",
+              source: { kind: "upstream", id: "video-source" },
+              mediaKind: "video",
+              role: "reference_video",
+              order: 1,
+            },
+          ],
+        },
+      },
+      routeKey: "video.pixelhub.sora-v3-pro",
+    });
+
+    expect(request).toEqual(expect.objectContaining({
+      inputAssets: [
+        expect.objectContaining({
+          assetId: "asset-main",
+          kind: "image",
+          metadata: expect.objectContaining({
+            videoReference: expect.objectContaining({ referenceKey: "ref-main", role: "main_image", order: 0, sourceKind: "asset" }),
+          }),
+        }),
+        expect.objectContaining({
+          assetId: "asset-motion",
+          kind: "video",
+          metadata: expect.objectContaining({
+            videoReference: expect.objectContaining({ referenceKey: "ref-motion", role: "reference_video", order: 1, sourceKind: "upstream", sourceNodeId: "video-source" }),
+          }),
+        }),
+      ],
+      metadata: null,
+      model: null,
+      params: {
+        aspectRatio: "9:16",
+        count: 1,
+        durationSeconds: 10,
+        generateAudio: false,
+        mode: "all_reference",
+        resolution: "720P",
+      },
+      prompt: "Keep identity and motion",
+      routeKey: "video.pixelhub.sora-v3-pro",
+    }));
+  });
+
+  test("video.generate request rejects an unresolved V2 upstream reference", () => {
+    const buildVideoRequest = (__workerTestUtils as {
+      buildVideoRequest: (
+        upstreamOutputs: ReadonlyMap<string, Record<string, unknown> | null>,
+        config: Record<string, unknown>,
+      ) => unknown;
+    }).buildVideoRequest;
+
+    try {
+      buildVideoRequest(new Map(), {
+        generationPrompt: "Keep motion",
+        params: {
+          videoGeneration: {
+            schemaVersion: 2,
+            mode: "all_reference",
+            aspectRatio: "16:9",
+            resolution: "720P",
+            durationSeconds: 4,
+            generateAudio: true,
+            count: 1,
+            referenceInputs: [{
+              referenceKey: "ref-missing",
+              source: { kind: "upstream", id: "missing-node" },
+              mediaKind: "video",
+              role: "source_video",
+              order: 0,
+            }],
+          },
+        },
+        routeKey: "video.pixelhub.gemini-omni-flash",
+      });
+      throw new Error("Expected unresolved reference to throw");
+    } catch (error) {
+      expect(error).toMatchObject({ code: "REFERENCE_ASSET_NOT_FOUND", statusCode: 422 });
+    }
   });
 
   test("video editor export usage metadata identifies billing context", () => {

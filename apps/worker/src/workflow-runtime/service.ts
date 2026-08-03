@@ -21,6 +21,7 @@ import type {
   ProviderTaskResult,
   TextGenerationRequest,
   VideoGenerationRequest,
+  VideoGenerationParams,
 } from "@aigc-flow/ai-gateway-core";
 import {
   QUEUE_NAMES,
@@ -1368,9 +1369,61 @@ function buildVideoEditorExportMetadata(
 }
 
 function buildVideoRequest(
-  upstreamOutputs: Array<Record<string, unknown> | null>,
+  upstreamOutputsByNodeId: ReadonlyMap<string, Record<string, unknown> | null>,
   config: Record<string, unknown>,
 ): VideoGenerationRequest {
+  const upstreamOutputs = Array.from(upstreamOutputsByNodeId.values());
+  const videoGeneration = readVideoGenerationConfig(config);
+  if (videoGeneration) {
+    const references = Array.isArray(videoGeneration.referenceInputs) ? videoGeneration.referenceInputs : [];
+    const inputAssets = references.map((reference, index) => {
+      if (!isPlainObject(reference) || !isPlainObject(reference.source)) {
+        throw videoRequestError("REFERENCE_ASSET_NOT_FOUND", `reference-${index}`);
+      }
+      const sourceKind = reference.source.kind;
+      const sourceId = readTrimmedString(reference.source.id);
+      const mediaKind = readTrimmedString(reference.mediaKind);
+      const referenceKey = readTrimmedString(reference.referenceKey);
+      const role = readTrimmedString(reference.role);
+      const order = typeof reference.order === "number" && Number.isInteger(reference.order) ? reference.order : null;
+      if (!sourceId || !mediaKind || !referenceKey || !role || order === null || (sourceKind !== "asset" && sourceKind !== "upstream")) {
+        throw videoRequestError("REFERENCE_ASSET_NOT_FOUND", referenceKey ?? `reference-${index}`);
+      }
+      const assetId = sourceKind === "asset"
+        ? sourceId
+        : resolveUpstreamOutputAssetId(upstreamOutputsByNodeId.get(sourceId), mediaKind);
+      if (!assetId) {
+        throw videoRequestError("REFERENCE_ASSET_NOT_FOUND", referenceKey);
+      }
+      return {
+        assetId,
+        kind: mediaKind,
+        metadata: {
+          videoReference: {
+            mediaKind,
+            order,
+            referenceKey,
+            role,
+            sourceKind,
+            sourceNodeId: sourceKind === "upstream" ? sourceId : null,
+          },
+        },
+        mimeType: null,
+      };
+    });
+    const fallbackPrompt = readTrimmedString(config.generationPrompt)
+      ?? readTrimmedString(config.prompt)
+      ?? "";
+    return {
+      inputAssets,
+      metadata: null,
+      model: null,
+      params: readVideoGenerationParams(videoGeneration),
+      prompt: extractPromptFromUpstreamOutputs(upstreamOutputs, fallbackPrompt),
+      routeKey: typeof config.routeKey === "string" ? config.routeKey : null,
+    };
+  }
+
   const videoEditor = readVideoEditorConfig(config);
   const videoEditorMetadata = buildVideoEditorRequestMetadata(videoEditor);
   const videoEditorExportMetadata = buildVideoEditorExportMetadata(videoEditor, { includeRenderPlan: true });
@@ -1398,6 +1451,44 @@ function buildVideoRequest(
     prompt: extractPromptFromUpstreamOutputs(upstreamOutputs, fallbackPrompt),
     routeKey: typeof config.routeKey === "string" ? config.routeKey : null,
   };
+}
+
+function readVideoGenerationConfig(config: Record<string, unknown>): Record<string, unknown> | null {
+  const params = isPlainObject(config.params) ? config.params : {};
+  const videoGeneration = isPlainObject(params.videoGeneration) ? params.videoGeneration : null;
+  return videoGeneration?.schemaVersion === 2 ? videoGeneration : null;
+}
+
+function readVideoGenerationParams(config: Record<string, unknown>): VideoGenerationParams {
+  return {
+    aspectRatio: config.aspectRatio as VideoGenerationParams["aspectRatio"],
+    count: config.count as 1,
+    durationSeconds: config.durationSeconds as number,
+    generateAudio: config.generateAudio as boolean,
+    mode: config.mode as VideoGenerationParams["mode"],
+    resolution: config.resolution as VideoGenerationParams["resolution"],
+  };
+}
+
+function resolveUpstreamOutputAssetId(
+  output: Record<string, unknown> | null | undefined,
+  mediaKind: string,
+): string | null {
+  if (!output || !Array.isArray(output.assets)) return null;
+  const asset = output.assets.find((candidate) =>
+    isPlainObject(candidate)
+    && readTrimmedString(candidate.assetId)
+    && readTrimmedString(candidate.kind) === mediaKind,
+  );
+  return asset && isPlainObject(asset) ? readTrimmedString(asset.assetId) : null;
+}
+
+function videoRequestError(code: "REFERENCE_ASSET_NOT_FOUND", referenceKey: string): AiGatewayError {
+  return new AiGatewayError({
+    code,
+    message: `Video reference ${referenceKey} could not be resolved.`,
+    statusCode: 422,
+  });
 }
 
 function buildMediaUsageMetadata(
@@ -2488,7 +2579,10 @@ export class WorkflowNodeExecutionService {
     }
 
     if (node.type === "video.generate") {
-      const request = buildVideoRequest(upstreamOutputs, node.config ?? {});
+      const upstreamOutputsByNodeId = new Map(
+        node.dependencies.map((dependencyId, index) => [dependencyId, upstreamOutputs[index] ?? null]),
+      );
+      const request = buildVideoRequest(upstreamOutputsByNodeId, node.config ?? {});
       const localRenderOutcome = await this.maybeRenderVideoEditorExportLocally(request, node, workflowRun, context, logger);
       if (localRenderOutcome) {
         return {
@@ -3084,7 +3178,18 @@ export class WorkflowNodeExecutionService {
     for (const asset of missingUrlAssets) {
       const lookup = lookups.get(asset.assetId);
       if (!lookup) {
-        continue;
+        throw new AiGatewayError({
+          code: "REFERENCE_ASSET_NOT_FOUND",
+          message: `Reference asset ${asset.assetId} was not found for this tenant.`,
+          statusCode: 422,
+        });
+      }
+      if (asset.kind && asset.kind !== lookup.kind) {
+        throw new AiGatewayError({
+          code: "REFERENCE_ASSET_KIND_MISMATCH",
+          message: `Reference ${asset.assetId} is ${lookup.kind}, not ${asset.kind}.`,
+          statusCode: 422,
+        });
       }
       const signed = await this.assetStore.storageProvider.createPresignedGetUrl({
         bucket: lookup.bucket,
@@ -3092,7 +3197,7 @@ export class WorkflowNodeExecutionService {
         key: lookup.objectKey,
         responseContentType: lookup.mimeType,
       });
-      asset.kind = asset.kind ?? lookup.kind;
+      asset.kind = lookup.kind;
       asset.mimeType = asset.mimeType ?? lookup.mimeType;
       asset.width = asset.width ?? lookup.width ?? null;
       asset.height = asset.height ?? lookup.height ?? null;
