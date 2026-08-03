@@ -7,6 +7,7 @@ import { CredentialVault } from "./credential-vault.js";
 import { AiGatewayError } from "./errors.js";
 import { redactValue } from "./redaction.js";
 import { RouteResolver } from "./route-resolver.js";
+import { readVideoCapabilities, validateVideoGenerationRequest } from "./video-generation-contract.js";
 import type {
   AssetReferenceInput,
   AiGatewayMediaResult,
@@ -152,6 +153,22 @@ function assertRouteSupportsRuntimeMediaRequest(
   });
 }
 
+function assertRouteSupportsVideoGenerationRequest(
+  route: ResolvedRoute,
+  request: VideoGenerationRequest,
+): void {
+  if (isVideoEditorExportRequest(request) && routeSupportsVideoEditorExport(route)) {
+    return;
+  }
+
+  const capabilities = readVideoCapabilities(route.requestConfig.capabilities);
+  if (!capabilities) return;
+  const issue = validateVideoGenerationRequest(request, capabilities)[0];
+  if (issue) {
+    throw new AiGatewayError({ code: issue.code, message: issue.message, statusCode: 422 });
+  }
+}
+
 function classifyReferenceValue(value: unknown): string {
   const text = typeof value === "string" ? value.trim() : "";
   if (!text) return "unknown";
@@ -291,12 +308,14 @@ export class DatabaseMediaRuntime {
       request.routeKey ?? null,
       request,
       metadata,
-      (selectedRoute, apiKey) =>
-        this.aiGateway.generateVideo({
+      (selectedRoute, apiKey) => {
+        assertRouteSupportsVideoGenerationRequest(selectedRoute, request);
+        return this.aiGateway.generateVideo({
           apiKey,
           request,
           route: selectedRoute,
-        }),
+        });
+      },
     );
   }
 

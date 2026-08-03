@@ -3250,6 +3250,47 @@ describe("route resolver and ai gateway", () => {
     expect(generateVideo).not.toHaveBeenCalled();
   });
 
+  test("database media runtime validates structured video parameters against the selected route", async () => {
+    const generateVideo = vi.fn(async () => ({
+      modelKey: "video-test",
+      outputs: [],
+      providerRequest: {},
+      providerResponse: {},
+      status: "succeeded" as const,
+      usage: { inputTokens: null, outputTokens: null, totalTokens: null },
+    }));
+    const runtime = new DatabaseMediaRuntime({
+      aiGateway: new AiGateway({ "openai-compatible": { generateVideo } }),
+      credentialVault: { getSecretForProviderCall: () => "sk-test-secret" } as never,
+      pool: {} as never,
+      routeResolver: { resolveMediaRoute: ({ routes }: { routes: ResolvedRoute[] }) => routes[0] } as never,
+    });
+
+    Object.defineProperty(runtime, "listRuntimeRoutes", {
+      value: async () => [makeRoute({
+        credential: { authTag: Buffer.from("tag"), encryptedSecret: Buffer.from("secret"), id: "credential-1", nonce: Buffer.from("nonce") },
+        requestConfig: {
+          capabilities: {
+            aspectRatios: ["16:9"], audioControlMode: "always_on_implicit", confirmedByRoute: true,
+            defaults: { aspectRatio: "16:9", count: 1, durationSeconds: 4, generateAudio: true, mode: "text_to_video", resolution: "720P" },
+            durationStepSeconds: 2, maxAudios: 0, maxCount: 1, maxDurationSeconds: 8, maxImages: 0, maxPromptLength: null,
+            maxTotal: 0, maxVideos: 0, minDurationSeconds: 4, modeConstraints: { text_to_video: { maxTotal: 0 } },
+            referenceSemantics: "style_images_and_source_video", resolutions: ["720P"], supportedDurations: [4, 6, 8], supportedModes: ["text_to_video"],
+          },
+        },
+        routeKey: "video.pixelhub.gemini-omni-flash",
+      })],
+    });
+    Object.defineProperty(runtime, "insertAiCallLog", { value: async () => undefined });
+
+    await expect(runtime.generateVideo({ tenantId: "tenant-1", userId: "user-1" }, {
+      params: { aspectRatio: "16:9", count: 1, durationSeconds: 5, generateAudio: true, mode: "text_to_video", resolution: "720P" },
+      prompt: "animate a city",
+      routeKey: "video.pixelhub.gemini-omni-flash",
+    })).rejects.toMatchObject({ code: "UNSUPPORTED_DURATION" });
+    expect(generateVideo).not.toHaveBeenCalled();
+  });
+
   test("database media runtime emits structured performance logs for generate and poll calls", async () => {
     const { DatabaseMediaRuntime } = await import("../src/database-media-runtime.js");
     const logger = {

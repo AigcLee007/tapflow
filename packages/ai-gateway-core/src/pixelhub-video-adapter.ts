@@ -46,8 +46,9 @@ export class PixelHubVideoAdapter implements ProviderAdapter {
     const urls = inputs(request); const body: Record<string, unknown> = { aspect_ratio: params.aspectRatio, duration: params.durationSeconds, model, prompt: request.prompt.trim(), resolution: params.resolution.toLowerCase() };
     if (model === "veo31-fast") { if (urls.image.length) body.image_urls = urls.image; }
     else { if (urls.image.length) body.reference_image_urls = urls.image; if (urls.video.length) body.reference_videos = urls.video; if (model === "sora-v3-pro") { body.generate_audio = params.generateAudio; if (urls.audio.length) body.audio_urls = urls.audio; } }
-    const response = await this.request(context, "POST", typeof context.requestConfig.requestPath === "string" ? context.requestConfig.requestPath : "/v1/videos", body);
-    const task = parseTask(response.body); const providerRequest = { aspectRatio: body.aspect_ratio, duration: body.duration, generateAudio: body.generate_audio ?? "implicit", model, referenceCounts: { audios: urls.audio.length, images: urls.image.length, videos: urls.video.length }, resolution: body.resolution };
+    const providerRequest = { aspectRatio: body.aspect_ratio, duration: body.duration, generateAudio: body.generate_audio ?? "implicit", model, referenceCounts: { audios: urls.audio.length, images: urls.image.length, videos: urls.video.length }, resolution: body.resolution };
+    const response = await this.request(context, "POST", typeof context.requestConfig.requestPath === "string" ? context.requestConfig.requestPath : "/v1/videos", body, providerRequest);
+    const task = parseTask(response.body);
     if (task.status === "failed") throw new AiGatewayError({ code: "PIXELHUB_TASK_FAILED", message: "PixelHub reported a failed task", providerRequest, providerResponse: summary(response.status, task), statusCode: 502 });
     if (task.status === "completed") return { modelKey: model, outputs: [{ mimeType: "video/mp4", url: task.videoUrl }], providerRequest, providerResponse: summary(response.status, task), status: "succeeded", usage };
     return { modelKey: model, pollIntervalMs: Number(context.requestConfig.pollIntervalMs) || 12000, providerRequest, providerResponse: summary(response.status, task), providerTaskId: task.taskId, providerTaskTimeoutMs: Number(context.requestConfig.providerTaskTimeoutMs) || 1800000, status: "waiting_provider", usage };
@@ -61,13 +62,19 @@ export class PixelHubVideoAdapter implements ProviderAdapter {
     return { ...common, outputs: [{ mimeType: "video/mp4", url: task.videoUrl }], status: "succeeded" };
   }
 
-  private async request(context: ProviderCallContext, method: "GET" | "POST", path: string, body?: Record<string, unknown>) {
+  private async request(
+    context: ProviderCallContext,
+    method: "GET" | "POST",
+    path: string,
+    body?: Record<string, unknown>,
+    providerRequest?: unknown,
+  ) {
     const url = `${context.baseUrl.replace(/\/$/, "")}/${path.replace(/^\//, "")}`;
     let response: Response;
     try { response = await this.fetchImplementation(url, { body: body ? JSON.stringify(body) : undefined, headers: { Authorization: `Bearer ${context.apiKey}`, ...(body ? { "Content-Type": "application/json" } : {}) }, method, signal: AbortSignal.timeout(context.timeoutMs) }); }
-    catch (error) { throw new AiGatewayError({ code: error instanceof Error && /abort|timeout/i.test(error.name) ? "PROVIDER_TIMEOUT" : "PROVIDER_UNAVAILABLE", message: "PixelHub request failed", statusCode: 502 }); }
+    catch (error) { throw new AiGatewayError({ code: error instanceof Error && /abort|timeout/i.test(error.name) ? "PROVIDER_TIMEOUT" : "PROVIDER_UNAVAILABLE", message: "PixelHub request failed", providerRequest, statusCode: 502 }); }
     const text = await response.text(); let parsed: unknown = null; try { parsed = text ? JSON.parse(text) : null; } catch { throw new AiGatewayError({ code: "PIXELHUB_RESPONSE_INVALID", message: "PixelHub returned invalid JSON", statusCode: 502 }); }
-    if (!response.ok) { const code = response.status === 400 ? "PIXELHUB_REQUEST_REJECTED" : response.status === 401 || response.status === 403 ? "PROVIDER_AUTH_FAILED" : response.status === 429 ? "PROVIDER_RATE_LIMITED" : "PROVIDER_UNAVAILABLE"; throw new AiGatewayError({ code, message: "PixelHub rejected the request", providerResponse: { httpStatus: response.status }, statusCode: response.status }); }
+    if (!response.ok) { const code = response.status === 400 ? "PIXELHUB_REQUEST_REJECTED" : response.status === 401 || response.status === 403 ? "PROVIDER_AUTH_FAILED" : response.status === 429 ? "PROVIDER_RATE_LIMITED" : "PROVIDER_UNAVAILABLE"; throw new AiGatewayError({ code, message: "PixelHub rejected the request", providerRequest, providerResponse: { httpStatus: response.status }, statusCode: response.status }); }
     return { body: parsed, status: response.status };
   }
 }
