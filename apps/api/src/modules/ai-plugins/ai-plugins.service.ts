@@ -141,6 +141,13 @@ export class AiPluginService {
     input: InstallPluginInput,
   ): Promise<InstalledPluginView> {
     const manifest = this.requireManifest(packageKey);
+    if (manifest.provider.capabilities?.requiresBaseUrlOverride === true && !input.baseUrlOverride?.trim()) {
+      throw new AiPluginApiError(
+        422,
+        "PLUGIN_BASE_URL_REQUIRED",
+        `${manifest.displayName} requires a Provider Connection base URL`,
+      );
+    }
     return withTenantTransaction(context, async (client) => {
       const packageId = await this.upsertPluginPackage(client, manifest);
       const providerId = await this.upsertProvider(client, manifest, input.baseUrlOverride ?? undefined);

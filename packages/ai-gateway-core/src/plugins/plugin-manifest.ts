@@ -31,10 +31,13 @@ export type AiPluginUiField = {
   visibleWhen?: Record<string, unknown>;
 };
 
+import type { VideoGenerationCapabilities } from "../video-generation-contract.js";
+import type { VideoGenerationRequest } from "../types.js";
+
 export type AiPluginModelManifest = {
-  capabilities: {
+  capabilities: Partial<VideoGenerationCapabilities> & {
     maxInputImages?: number;
-    maxPromptLength?: number;
+    maxPromptLength?: number | null;
     supportedAspectRatios?: string[];
     supportedGenerationModes?: string[];
     supportedSizes?: string[];
@@ -95,6 +98,7 @@ export type AiPluginTestManifest = {
       role: "assistant" | "system" | "user";
     }>;
     metadata?: Record<string, unknown>;
+    params?: VideoGenerationRequest["params"];
     prompt?: string;
   };
   routeKey: string;

@@ -22,9 +22,25 @@ describe("AI plugin registry", () => {
       "pixellelabs.nano-banana-2",
       "mouxihub.nano-banana-pro-t3",
       "pixellelabs.nano-banana-pro",
+      "pixelhub.video",
       "tapflow.video-editor-ffmpeg",
     ]);
-    expect(BUILTIN_AI_PLUGIN_MANIFESTS).toHaveLength(10);
+    expect(BUILTIN_AI_PLUGIN_MANIFESTS).toHaveLength(11);
+  });
+
+  test("returns the PixelHub video package with three independent product routes", () => {
+    const manifest = builtinAiPluginRegistry.require("pixelhub.video");
+    expect(manifest.provider).toMatchObject({ key: "pixelhub", kind: "pixelhub-video", defaultBaseUrl: "" });
+    expect(manifest.models.map((model) => [model.modelKey, model.modelFamily, model.defaultRouteKey])).toEqual([
+      ["gemini-omni-flash", "pixelhub-gemini-omni-flash", "video.pixelhub.gemini-omni-flash"],
+      ["sora-v3-pro", "pixelhub-sora-v3-pro", "video.pixelhub.sora-v3-pro"],
+      ["veo31-fast", "pixelhub-veo31-fast", "video.pixelhub.veo31-fast"],
+    ]);
+    expect(manifest.pricing.map((price) => [price.model, price.unitCredits, price.minChargeCredits, price.metadata?.billingBasis])).toEqual([
+      ["gemini-omni-flash", 1, 4, "duration_second"],
+      ["sora-v3-pro", 10, 40, "duration_second"],
+      ["veo31-fast", 0.5, 2, "duration_second"],
+    ]);
   });
 
   test("returns TapFlow video editor FFmpeg export manifest", () => {

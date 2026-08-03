@@ -10,6 +10,15 @@ import { tapflowVideoEditorFfmpegManifest } from "../../../packages/ai-gateway-c
 import { AiPluginService } from "../src/modules/ai-plugins/ai-plugins.service.js";
 
 describe("AiPluginService route install statements", () => {
+  test("requires a base URL when installing the PixelHub package", async () => {
+    const service = new AiPluginService({ credentialVault: {} as never, pool: {} as never });
+    await expect(service.installPlugin(
+      { tenantId: "tenant", userId: null },
+      "pixelhub.video",
+      {},
+    )).rejects.toMatchObject({ code: "PLUGIN_BASE_URL_REQUIRED", statusCode: 422 });
+  });
+
   test("locks and validates an existing platform credential before plugin reuse", async () => {
     const service = new AiPluginService({ credentialVault: {} as never, pool: {} as never });
     const queries: Array<{ sql: string; values: unknown[] }> = [];
