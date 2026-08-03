@@ -1,8 +1,19 @@
 import { describe, expect, test } from "vitest";
 
-import { getCachedAssetUrl, setCachedAssetUrl } from "./assetUrlCache";
+import {
+  clearAssetUrlCache,
+  clearAssetUrlMemoryCache,
+  getCachedAssetUrl,
+  setAssetUrlCacheScope,
+  setCachedAssetUrl,
+} from "./assetUrlCache";
 
 describe("assetUrlCache", () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    clearAssetUrlCache();
+    setAssetUrlCacheScope({ tenantId: "tenant-a", userId: "user-a" });
+  });
   test("returns cached urls before expiry", () => {
     setCachedAssetUrl({
       assetId: "asset-1",
@@ -23,5 +34,31 @@ describe("assetUrlCache", () => {
     });
 
     expect(getCachedAssetUrl("asset-2", "preview")).toBeNull();
+  });
+
+  test("restores an unexpired url from session storage within the same auth scope", () => {
+    setCachedAssetUrl({
+      assetId: "asset-session",
+      expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+      url: "https://example.test/session-thumb.webp",
+      variantKey: "thumb",
+    });
+    clearAssetUrlMemoryCache();
+    setAssetUrlCacheScope(null);
+    setAssetUrlCacheScope({ tenantId: "tenant-a", userId: "user-a" });
+
+    expect(getCachedAssetUrl("asset-session", "thumb")).toBe("https://example.test/session-thumb.webp");
+  });
+
+  test("does not reuse cached urls after switching tenant or user", () => {
+    setCachedAssetUrl({
+      assetId: "asset-isolated",
+      expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+      url: "https://example.test/isolated.webp",
+      variantKey: "thumb",
+    });
+    setAssetUrlCacheScope({ tenantId: "tenant-b", userId: "user-b" });
+
+    expect(getCachedAssetUrl("asset-isolated", "thumb")).toBeNull();
   });
 });

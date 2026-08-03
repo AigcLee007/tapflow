@@ -9,6 +9,7 @@ import {
 } from "../services/v2HttpClient";
 import * as v2AuthClient from "../services/v2AuthClient";
 import type { AuthSession } from "../services/v2AuthClient";
+import { clearAssetUrlCache, setAssetUrlCacheScope } from "../assets/assetUrlCache";
 import { AuthContext, sessionToAuthState } from "./useAuth";
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -21,6 +22,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     sessionRef.current = session;
   }, [session]);
+
+  useEffect(() => {
+    if (!session?.currentTenant?.id || !session.user?.id) {
+      setAssetUrlCacheScope(null);
+      return;
+    }
+    setAssetUrlCacheScope({
+      tenantId: session.currentTenant.id,
+      userId: session.user.id,
+    });
+  }, [session?.currentTenant?.id, session?.user?.id]);
 
   const loadCurrentSession = useCallback(async (options?: { silent?: boolean }) => {
     const requestId = requestSequenceRef.current + 1;
@@ -158,6 +170,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       logout: async () => {
         setError(null);
         requestSequenceRef.current += 1;
+        clearAssetUrlCache();
         await v2AuthClient.logout();
         setSession(null);
         setLoading(false);
