@@ -6118,3 +6118,10 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - separated the five video modes by input semantics: Gemini and Sora support text, single-image, multi-image, and all-reference input; Veo supports text, single first-frame, and ordered first/last-frame input.
 - fixed the approved base pricing at 1 credit/second for Gemini, 10 credits/second for Sora, and 0.5 credit/second for Veo, with exact route pricing and fail-closed billing requirements.
 - recorded the design in `docs/superpowers/specs/2026-08-03-pixelhub-video-models-design.md`; no runtime integration or staging change was made in this design-only task.
+
+## 2026-08-03 - PixelHub Reference Role Boundary Correction
+
+- aligned Gemini all-reference validation across the canvas and AI Gateway: it now accepts only `reference_image` static references and exactly one `source_video`.
+- confirmed Veo image-to-video remains limited to exactly one `first_frame`; ordered first/last-frame behavior remains unchanged.
+- added focused contract and canvas regression coverage; frontend build and both focused suites passed in the isolated `codex/pixelhub-video-models` worktree.
+- the broader PixelHub integration plan remains in progress; this record covers only the reference-role correction.
