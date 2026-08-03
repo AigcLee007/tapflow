@@ -266,7 +266,8 @@ export function registerAssetRoutes(app: FastifyInstance): void {
     async (request, reply) => {
       try {
         const body = parseBody<SignedAssetUrlRequest>(request, signedAssetUrlRequestSchema);
-        const result = await app.assetsService.createSignedUrls(getAssetContext(request), body.requests);
+        const { metrics, ...result } = await app.assetsService.createSignedUrls(getAssetContext(request), body.requests);
+        request.log.info(metrics, "asset signed-url batch resolved");
         return reply.send(result);
       } catch (error) {
         return handleRouteError(error, request, reply);
