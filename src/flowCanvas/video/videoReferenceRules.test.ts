@@ -117,6 +117,15 @@ describe("video reference rules", () => {
     );
     expect(geminiAllReferenceWithoutVideo.map((issue) => issue.code)).toContain("VIDEO_MODE_INPUT_REQUIRED");
 
+    const geminiAllReferenceWithMainImage = validateVideoReferenceInputs(
+      params({
+        mode: "all_reference",
+        referenceInputs: [reference("image", 0, "main_image"), reference("video", 1, "source_video")],
+      }),
+      geminiCapabilities,
+    );
+    expect(geminiAllReferenceWithMainImage.map((issue) => issue.code)).toContain("VIDEO_MODE_INPUT_REQUIRED");
+
     const geminiSingleImageWithoutMainRole = validateVideoReferenceInputs(
       params({ mode: "image_to_video", referenceInputs: [reference("image", 0, "reference_image")] }),
       geminiCapabilities,

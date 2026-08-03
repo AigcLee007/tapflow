@@ -130,7 +130,11 @@ function validateReferenceRoles(
 
   if (mode === "all_reference" && semantics === "style_images_and_source_video") {
     const sourceVideos = videos.filter((reference) => reference.role === "source_video");
-    if (sourceVideos.length !== 1 || videos.some((reference) => reference.role !== "source_video")) addMissingInputIssue(issues);
+    if (
+      sourceVideos.length !== 1
+      || videos.some((reference) => reference.role !== "source_video")
+      || images.some((reference) => reference.role !== "reference_image")
+    ) addMissingInputIssue(issues);
   }
 
   if (mode === "first_last_frame" && semantics === "ordered_first_last_frames") {
