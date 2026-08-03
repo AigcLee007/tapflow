@@ -15,6 +15,7 @@ import { VideoReferenceStrip } from "./VideoReferenceStrip";
 import { useVideoGenerationCatalog } from "./useVideoGenerationCatalog";
 import { correctVideoGenerationParams, createSafeDefaultVideoCapabilities } from "./videoGenerationCapabilities";
 import { emitVideoComposerDiagnostic } from "./videoComposerDiagnostics";
+import { resolveAutomaticVideoMode } from "./videoReferenceRules";
 import type { VideoGenerationParamsV1, VideoReferenceInputV2, VideoReferenceRole } from "./videoTypes";
 import type { VideoPaletteSourceDisplay } from "./VideoPalettePopover";
 import { VIDEO_UI_COPY, VIDEO_UI_REFERENCE_ROLE_COPY } from "./videoUiCopy";
@@ -89,9 +90,8 @@ export function VideoNodeComposer({ catalog: catalogOverride, data, generating, 
 
   if (!selected) return null;
   const setParams = (next: VideoGenerationParamsV1) => onUpdate({ params: { ...(data.params ?? {}), videoGeneration: next } });
-  const updateReference = (next: { referenceAssetItemIds: string[]; referenceOrder: string[]; videoGeneration: VideoGenerationParamsV1 }) => onUpdate({ params: { ...(data.params ?? {}), videoGeneration: next.videoGeneration }, referenceAssetItemIds: next.referenceAssetItemIds, referenceOrder: next.referenceOrder });
   const selectedMotionLabel = getCameraMotionLabel(params.cameraMotionId);
-  const cost = option?.estimatedCredits ?? option?.minChargeCredits ?? 0;
+  const cost = option?.pricing ? Math.max(option.pricing.minChargeCredits, option.pricing.unitCredits * params.durationSeconds) : null;
   const parameterSummary = `${params.aspectRatio === "auto" ? "自动" : params.aspectRatio} · ${params.resolution} · ${params.durationSeconds} 秒 · ${params.count} 个`;
   const audioStatusLabel = params.generateAudio ? "音频开启" : "音频关闭";
   const closeModel = () => {
@@ -99,11 +99,17 @@ export function VideoNodeComposer({ catalog: catalogOverride, data, generating, 
     modelButtonRef.current?.focus();
   };
   const handleModelChange = (modelId: string) => {
-    const nextOption = catalog.models.find((model) => model.id === modelId) ?? null;
-    const nextParams = nextOption?.capabilities.confirmedByRoute
+    const nextOption = catalog.models.find((model) => model.id === modelId);
+    if (!nextOption) return;
+    const corrected = nextOption.capabilities.confirmedByRoute
       ? correctVideoGenerationParams(params, nextOption.capabilities).params
       : params;
-    onUpdate({ modelId, params: { ...(data.params ?? {}), videoGeneration: nextParams } });
+    const automatic = resolveAutomaticVideoMode(nextOption.capabilities, corrected.referenceInputs, corrected.mode);
+    onUpdate({
+      modelId: nextOption.id,
+      routeKey: nextOption.routeKey,
+      params: { ...(data.params ?? {}), videoGeneration: { ...corrected, mode: automatic.mode, referenceInputs: automatic.references } },
+    });
     closeModel();
   };
 
@@ -144,15 +150,19 @@ export function VideoNodeComposer({ catalog: catalogOverride, data, generating, 
           {params.generateAudio ? <Volume2 aria-label={audioStatusLabel} className="shrink-0" size={16} title={audioStatusLabel} /> : <VolumeX aria-label={audioStatusLabel} className="shrink-0" size={16} title={audioStatusLabel} />}
           {parameterLayer.open ? <ChevronUp aria-hidden="true" className="shrink-0 text-white/55" size={15} /> : <ChevronDown aria-hidden="true" className="shrink-0 text-white/55" size={15} />}
         </button>
-        {parameterLayer.open ? <VideoParameterPopover anchorRef={parameterTriggerRef} layerRef={parameterLayer.ref}><VideoParameterPanel capabilities={capabilities} onChange={setParams} value={params} /></VideoParameterPopover> : null}
+          {parameterLayer.open ? <VideoParameterPopover anchorRef={parameterTriggerRef} layerRef={parameterLayer.ref}><VideoParameterPanel capabilities={capabilities} onChange={setParams} pricing={option?.pricing ?? null} value={params} /></VideoParameterPopover> : null}
       </div>
       <VideoPalettePopover onChange={setParams} sourceDisplayByRole={sourceDisplayByRole} value={params} />
       <VideoHumanReviewControl onRequestVerification={() => setParams({ ...params, humanReview: { ...params.humanReview, status: "verified", verifiedAt: new Date().toISOString() } })} value={params.humanReview} />
-      <span className="ml-auto inline-flex h-[38px] items-center gap-1 text-xs font-bold text-white/55"><Coins size={15} />{cost > 0 ? `${cost} 点数` : "未配置"}</span>
+      <span className="ml-auto inline-flex h-[38px] items-center gap-1 text-xs font-bold text-white/55"><Coins size={15} />{cost !== null ? `预计 ${formatCredits(cost)} 金币` : "未配置"}</span>
       <button aria-label={VIDEO_UI_COPY.generateVideo} className="inline-flex h-[38px] items-center gap-1 rounded-[10px] bg-sky-300 px-3 text-xs font-bold text-slate-950 disabled:opacity-50" disabled={generating} onClick={onGenerate} type="button"><CheckCircle2 size={16} />{generating ? VIDEO_UI_COPY.generating : VIDEO_UI_COPY.generate}</button>
     </div>
     {cameraOpen ? <VideoCameraLibrary manifest={manifest} onChange={(cameraMotionId) => setParams({ ...params, cameraMotionId })} onClose={() => setCameraOpen(false)} triggerRef={cameraButtonRef} value={params.cameraMotionId} /> : null}
   </div>;
+}
+
+function formatCredits(value: number): string {
+  return Number.isInteger(value) ? String(value) : String(Math.round(value * 100) / 100);
 }
 
 function resolvePaletteSourceDisplays(

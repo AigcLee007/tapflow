@@ -11,12 +11,14 @@ import type {
   VideoCount,
   VideoGenerationCapabilities,
   VideoGenerationParamsV1,
+  VideoModelOption,
   VideoResolution,
 } from "./videoTypes";
 
 type VideoParameterPanelProps = {
   capabilities?: VideoGenerationCapabilities | null;
   onChange: (params: VideoGenerationParamsV1) => void;
+  pricing?: VideoModelOption["pricing"];
   value: VideoGenerationParamsV1;
 };
 
@@ -25,7 +27,7 @@ const COUNTS: readonly VideoCount[] = [1, 2, 4];
 const UNSUPPORTED_BY_MODEL = "当前模型不支持此选项";
 const UNSUPPORTED_AUDIO = "当前模型不支持生成音频";
 
-export function VideoParameterPanel({ capabilities, onChange, value }: VideoParameterPanelProps) {
+export function VideoParameterPanel({ capabilities, onChange, pricing = null, value }: VideoParameterPanelProps) {
   const routeCapabilitiesConfirmed = Boolean(capabilities?.confirmedByRoute);
   const safeCapabilities = createSafeDefaultVideoCapabilities();
   const effectiveCapabilities = routeCapabilitiesConfirmed ? capabilities! : safeCapabilities;
@@ -70,6 +72,13 @@ export function VideoParameterPanel({ capabilities, onChange, value }: VideoPara
   }));
   const audioUnsupported = routeCapabilitiesConfirmed && !effectiveCapabilities.supportsAudio;
   const durationSpan = effectiveCapabilities.maxDurationSeconds - effectiveCapabilities.minDurationSeconds;
+  const discreteDurations = effectiveCapabilities.supportedDurations.length > 0 && effectiveCapabilities.supportedDurations.length <= 8
+    ? effectiveCapabilities.supportedDurations
+    : null;
+  const fixedAudio = routeCapabilitiesConfirmed && effectiveCapabilities.audioControlMode !== "toggle";
+  const estimatedCredits = pricing
+    ? Math.max(pricing.minChargeCredits, pricing.unitCredits * value.durationSeconds)
+    : null;
   const durationProgress = durationSpan > 0
     ? Math.min(
       100,
@@ -106,7 +115,22 @@ export function VideoParameterPanel({ capabilities, onChange, value }: VideoPara
       </ParameterSection>
 
       <ParameterSection label="视频时长">
-        <div aria-label="视频时长控制" className="flex items-center gap-2">
+        {discreteDurations ? (
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label="视频时长控制">
+            {discreteDurations.map((duration) => (
+              <button
+                aria-label={`${duration} 秒`}
+                aria-pressed={value.durationSeconds === duration}
+                className={`h-[38px] rounded-[10px] border px-3 text-xs font-bold ${value.durationSeconds === duration ? "border-white bg-white/10" : "border-white/10"}`}
+                key={duration}
+                onClick={() => applyDurationChange(duration)}
+                type="button"
+              >
+                {duration} 秒
+              </button>
+            ))}
+          </div>
+        ) : <div aria-label="视频时长控制" className="flex items-center gap-2">
           <input
             aria-label="视频时长滑杆"
             aria-valuemax={effectiveCapabilities.maxDurationSeconds}
@@ -142,13 +166,16 @@ export function VideoParameterPanel({ capabilities, onChange, value }: VideoPara
             />
             <span className="text-[11px] text-white/55">秒</span>
           </div>
-        </div>
+        </div>}
         {durationCorrectionMessage ? (
           <p aria-live="polite" className="mt-2 text-xs text-white/70" role="status">{durationCorrectionMessage}</p>
         ) : null}
       </ParameterSection>
 
       <ParameterSection label="生成音频">
+        {fixedAudio ? (
+          <button aria-label="生成音频：开启" className="h-[38px] rounded-[10px] border border-white/10 px-3 text-xs font-bold text-white/60" disabled type="button">生成音频：开启</button>
+        ) : (
         <div className="flex items-start gap-2">
           <div className="min-w-0 flex-1">
             <VideoSegmentedControl
@@ -185,6 +212,7 @@ export function VideoParameterPanel({ capabilities, onChange, value }: VideoPara
             </div>
           ) : null}
         </div>
+        )}
       </ParameterSection>
 
       <ParameterSection label="生成数量">
@@ -195,8 +223,13 @@ export function VideoParameterPanel({ capabilities, onChange, value }: VideoPara
           value={value.count}
         />
       </ParameterSection>
+      {pricing && estimatedCredits !== null ? <p className="text-xs font-semibold text-sky-200">预计 {formatCredits(estimatedCredits)} 金币 · {formatCredits(pricing.unitCredits)} 金币/秒</p> : null}
     </div>
   );
+}
+
+function formatCredits(value: number): string {
+  return Number.isInteger(value) ? String(value) : String(Math.round(value * 100) / 100);
 }
 
 function ParameterSection({ children, label }: { children: React.ReactNode; label: string }) {

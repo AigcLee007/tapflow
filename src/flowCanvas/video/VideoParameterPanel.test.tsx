@@ -4,8 +4,34 @@ import { describe, expect, test, vi } from "vitest";
 import { createSafeDefaultVideoCapabilities } from "./videoGenerationCapabilities";
 import { createDefaultVideoGenerationParams } from "./videoGenerationParams";
 import { VideoParameterPanel } from "./VideoParameterPanel";
+import { mergeVideoCapabilities } from "./videoGenerationCapabilities";
 
 describe("VideoParameterPanel", () => {
+  test("renders Veo exact duration and fixed generated-audio controls", () => {
+    const onChange = vi.fn();
+    const capabilities = mergeVideoCapabilities({
+      aspectRatios: ["16:9", "9:16"],
+      audioControlMode: "always_on_implicit",
+      confirmedByRoute: true,
+      defaults: { durationSeconds: 4, resolution: "1080P" },
+      resolutions: ["720P", "1080P"],
+      supportedDurations: [4, 6, 8],
+    });
+    render(
+      <VideoParameterPanel
+        capabilities={capabilities}
+        onChange={onChange}
+        pricing={{ billingBasis: "duration_second", exact: true, minChargeCredits: 2, unit: "video_generation", unitCredits: 0.5 }}
+        value={{ ...createDefaultVideoGenerationParams(), resolution: "1080P" }}
+      />,
+    );
+
+    expect(screen.getAllByRole("button", { name: /秒/ }).map((button) => button.textContent)).toEqual(["4 秒", "6 秒", "8 秒"]);
+    expect(screen.getByRole("button", { name: "生成音频：开启" }).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "8 秒" }));
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ durationSeconds: 8, generateAudio: true, count: 1 }));
+    expect(screen.getByText("预计 2 金币 · 0.5 金币/秒")).toBeTruthy();
+  });
   test("uses Chinese visual ratio cards and segmented parameter controls instead of select menus", () => {
     render(
       <VideoParameterPanel
@@ -101,7 +127,7 @@ describe("VideoParameterPanel", () => {
     }));
 
     fireEvent.click(screen.getByRole("radio", { name: "2 个" }));
-    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ count: 2 }));
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ count: 1 }));
   });
 
   test("coerces duration to the selected model limits and step on blur and Enter", () => {
