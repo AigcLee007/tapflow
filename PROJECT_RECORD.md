@@ -6103,3 +6103,11 @@ Validation completed:
 ## 2026-08-02 - Password Reset Flow
 
 Added email-code password recovery: request/resend/confirm APIs, hashed one-time challenges, password update with session and refresh-token revocation, Resend delivery, and the public `/forgot-password` recovery page linked from login. Validation: `npm run build`, API build, and focused Resend tests pass in the isolated `codex/password-reset` worktree. Database-backed auth tests require `DATABASE_URL`.
+
+## 2026-08-03 - PixelHub Video Models Integration Design
+
+- approved the detailed v2 integration design for `gemini-omni-flash`, `sora-v3-pro`, and `veo31-fast` through one CredentialVault-backed PixelHub provider connection, three stable product routes, and a dedicated asynchronous `pixelhub-video` adapter.
+- defined catalog-driven differences for ratios, resolutions, exact durations, generated-audio controls, per-kind reference limits, input-mode availability, automatic mode transitions, and safe model-switch correction.
+- separated the five video modes by input semantics: Gemini and Sora support text, single-image, multi-image, and all-reference input; Veo supports text, single first-frame, and ordered first/last-frame input.
+- fixed the approved base pricing at 1 credit/second for Gemini, 10 credits/second for Sora, and 0.5 credit/second for Veo, with exact route pricing and fail-closed billing requirements.
+- recorded the design in `docs/superpowers/specs/2026-08-03-pixelhub-video-models-design.md`; no runtime integration or staging change was made in this design-only task.
