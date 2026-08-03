@@ -1,25 +1,27 @@
 import React, { useEffect, useMemo, useRef } from 'react';
-import { ChevronRight, Image as ImageIcon, Upload, X } from 'lucide-react';
+import { AudioLines, ChevronRight, Image as ImageIcon, Upload, Video, X } from 'lucide-react';
 
 import { useAssetLibrary } from '../../assets/useAssetLibrary';
 import { MenuSurface } from '../../components/menu/MenuSurface';
 import { MENU_ITEM_CLASS, MENU_ITEM_PRIMARY_CLASS, MENU_ITEM_SECONDARY_CLASS } from '../../components/menu/menuStyles';
 import { useDismissibleLayer } from '../../components/menu/useDismissibleLayer';
 import { useFlowCanvasStore } from '../store/flowCanvasStore';
-import { buildCanvasImageReferenceSources } from '../utils/referenceSourceResolver';
+import { buildCanvasMediaReferenceSources, type ReferenceMediaKind } from '../utils/referenceSourceResolver';
 
 type ReferenceSourcePickerProps = {
+  allowedKinds: ReferenceMediaKind[];
   currentNodeId: string;
   open: boolean;
   query?: string;
   roleLabel?: string;
   onClose: () => void;
-  onPickAsset: (assetId: string) => void;
-  onPickCanvasNode: (nodeId: string) => void;
-  onUploadReference: () => void;
+  onPickAsset: (assetId: string, mediaKind: ReferenceMediaKind) => void;
+  onPickCanvasNode: (nodeId: string, mediaKind: ReferenceMediaKind) => void;
+  onUploadReference: (mediaKind: ReferenceMediaKind) => void;
 };
 
 export function ReferenceSourcePicker({
+  allowedKinds,
   currentNodeId,
   open,
   query = '',
@@ -51,21 +53,21 @@ export function ReferenceSourcePicker({
 
   const normalizedQuery = query.trim().toLowerCase();
   const canvasSources = useMemo(() => {
-    const sources = buildCanvasImageReferenceSources({ currentNodeId, nodes });
+    const sources = buildCanvasMediaReferenceSources({ allowedKinds, currentNodeId, nodes });
     if (!normalizedQuery) return sources;
     return sources.filter((item) => item.title.toLowerCase().includes(normalizedQuery));
-  }, [currentNodeId, nodes, normalizedQuery]);
+  }, [allowedKinds, currentNodeId, nodes, normalizedQuery]);
 
   const recentAssets = useMemo(() => {
     return [...assetLibrary.assets]
-      .filter((asset) => asset.kind === 'image' && Boolean(asset.previewUrl))
+      .filter((asset) => allowedKinds.includes(asset.kind as ReferenceMediaKind))
       .sort((a, b) => Number(new Date(b.updatedAt)) - Number(new Date(a.updatedAt)))
       .filter((asset) => {
         if (!normalizedQuery) return true;
         return `${asset.title || ''} ${asset.originalFilename || ''}`.toLowerCase().includes(normalizedQuery);
       })
       .slice(0, 6);
-  }, [assetLibrary.assets, normalizedQuery]);
+  }, [allowedKinds, assetLibrary.assets, normalizedQuery]);
 
   if (!open) return null;
 
@@ -102,20 +104,16 @@ export function ReferenceSourcePicker({
                 type="button"
                 className={`${MENU_ITEM_CLASS} h-[38px]`.trim()}
                 onClick={() => {
-                  onPickCanvasNode(source.nodeId);
+                  onPickCanvasNode(source.nodeId, source.mediaKind);
                   onClose();
                 }}
               >
                 <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center overflow-hidden rounded-[9px] border border-white/10 bg-white/[0.04]">
-                  <img
-                    src={source.imageUrl}
-                    alt=""
-                    className="h-full w-full object-cover"
-                  />
+                  <MediaKindIcon mediaKind={source.mediaKind} previewUrl={source.previewUrl} />
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className={MENU_ITEM_PRIMARY_CLASS}>{source.title || '图片'}</span>
-                  <span className={MENU_ITEM_SECONDARY_CLASS}>画布图片</span>
+                  <span className={MENU_ITEM_PRIMARY_CLASS}>{source.title || mediaKindLabel(source.mediaKind)}</span>
+                  <span className={MENU_ITEM_SECONDARY_CLASS}>{`画布${mediaKindLabel(source.mediaKind)}`}</span>
                 </span>
                 <ChevronRight size={14} className="shrink-0 text-white/35" />
               </button>
@@ -136,22 +134,18 @@ export function ReferenceSourcePicker({
                 type="button"
                 className={`${MENU_ITEM_CLASS} h-[38px]`.trim()}
                 onClick={() => {
-                  onPickAsset(asset.id);
+                  onPickAsset(asset.id, asset.kind as ReferenceMediaKind);
                   onClose();
                 }}
               >
                 <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center overflow-hidden rounded-[9px] border border-white/10 bg-white/[0.04]">
-                  <img
-                    src={asset.previewUrl}
-                    alt=""
-                    className="h-full w-full object-cover"
-                  />
+                  <MediaKindIcon mediaKind={asset.kind as ReferenceMediaKind} previewUrl={asset.previewUrl} />
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className={MENU_ITEM_PRIMARY_CLASS}>{asset.title || asset.originalFilename || '素材'}</span>
-                  <span className={MENU_ITEM_SECONDARY_CLASS}>最近素材</span>
+                  <span className={MENU_ITEM_SECONDARY_CLASS}>{`最近${mediaKindLabel(asset.kind as ReferenceMediaKind)}`}</span>
                 </span>
-                <ImageIcon size={14} className="shrink-0 text-white/35" />
+                <MediaKindIcon mediaKind={asset.kind as ReferenceMediaKind} />
               </button>
             )) : (
               <div className="px-1.5 py-2 text-[10px] font-medium leading-tight text-white/35">没有可用的最近素材</div>
@@ -164,7 +158,7 @@ export function ReferenceSourcePicker({
             type="button"
             className={`${MENU_ITEM_CLASS} h-[38px]`.trim()}
             onClick={() => {
-              onUploadReference();
+              onUploadReference(allowedKinds[0] ?? 'image');
               onClose();
             }}
           >
@@ -180,4 +174,16 @@ export function ReferenceSourcePicker({
       </div>
     </MenuSurface>
   );
+}
+
+function mediaKindLabel(mediaKind: ReferenceMediaKind): string {
+  if (mediaKind === 'video') return '视频';
+  if (mediaKind === 'audio') return '音频';
+  return '图片';
+}
+
+function MediaKindIcon({ mediaKind, previewUrl }: { mediaKind: ReferenceMediaKind; previewUrl?: string }) {
+  if (previewUrl && mediaKind !== 'audio') return <img src={previewUrl} alt="" className="h-full w-full object-cover" />;
+  const Icon = mediaKind === 'video' ? Video : mediaKind === 'audio' ? AudioLines : ImageIcon;
+  return <Icon aria-hidden="true" size={14} className="shrink-0 text-white/35" />;
 }

@@ -17,6 +17,8 @@ import { canConnectFlowNodes, canCreateNodeFromSource } from '../rules/connectio
 import { buildAssetBackedNodeData } from '../utils/assetNodeData';
 import { FLOW_NODE_DEFAULT_SIZES, fitMediaNodeToShortSide, getMediaNodeSizeFromRatioString, parseAspectRatio } from '../utils/nodeSizing';
 import { buildImageGenerationModeParamPatch } from '../utils/imageGenerationModes';
+import { normalizeVideoGenerationParams } from '../video/videoGenerationParams';
+import type { VideoReferenceInputV2 } from '../video/videoTypes';
 import { PANORAMA_GENERATION_MODE, type PanoramaGenerateSettings } from '../panorama/panoramaTypes';
 import { buildPanoramaGenerationPrompt } from '../panorama/panoramaUtils';
 import type {
@@ -52,15 +54,21 @@ interface HistoryEntry {
   edges: FlowEdge[];
 }
 
-export interface FlowUpstreamImageRef {
+export interface FlowUpstreamMediaRef {
   key: string;
   id: string;
   assetId?: string;
   edgeId: string;
-  imageUrl: string;
-  referenceUploadId?: string;
+  mediaKind: 'image' | 'video' | 'audio';
+  previewUrl?: string;
   title: string;
   source: 'upstream';
+}
+
+export interface FlowUpstreamImageRef extends FlowUpstreamMediaRef {
+  mediaKind: 'image';
+  imageUrl: string;
+  referenceUploadId?: string;
 }
 
 export interface FlowDerivedEditCounts {
@@ -71,6 +79,7 @@ export interface FlowDerivedEditCounts {
 }
 
 export interface FlowGraphIndex {
+  upstreamMediaRefsByNodeId: Record<string, FlowUpstreamMediaRef[]>;
   upstreamImageRefsByNodeId: Record<string, FlowUpstreamImageRef[]>;
   hasIncomingEdgesByNodeId: Record<string, boolean>;
   childEditCountsByNodeId: Record<string, FlowDerivedEditCounts>;
@@ -127,6 +136,13 @@ interface FlowCanvasState {
   onNodesChange: OnNodesChange<FlowNode>;
   onEdgesChange: OnEdgesChange<FlowEdge>;
   onConnect: OnConnect;
+  connectVideoReference: (input: {
+    mediaKind: VideoReferenceInputV2['mediaKind'];
+    referenceKey: string;
+    role: VideoReferenceInputV2['role'];
+    sourceNodeId: string;
+    targetNodeId: string;
+  }) => void;
 
   addNode: (
     kind: FlowNodeKind,
@@ -234,6 +250,7 @@ const resetStaleTextGenerationNodes = (nodes: FlowNode[]) =>
   });
 
 const EMPTY_GRAPH_INDEX: FlowGraphIndex = {
+  upstreamMediaRefsByNodeId: {},
   upstreamImageRefsByNodeId: {},
   hasIncomingEdgesByNodeId: {},
   childEditCountsByNodeId: {},
@@ -250,6 +267,26 @@ const createEditCounts = (): FlowDerivedEditCounts => ({
 
 const isImageNode = (node: FlowNode | undefined | null) =>
   !!node && (node.type === 'image' || node.data.kind === 'image');
+
+const isVideoNode = (node: FlowNode | undefined | null) =>
+  !!node && (node.type === 'video' || node.data.kind === 'video');
+
+const getNodeReferenceMediaKind = (
+  node: FlowNode | undefined,
+  runtimeNodeOutput?: FlowRuntimeNodeOutput,
+): FlowUpstreamMediaRef['mediaKind'] | null => {
+  const nodeKind = String(node?.data.kind || node?.type || '').trim().toLowerCase();
+  if (nodeKind === 'image' || nodeKind === 'video' || nodeKind === 'audio') return nodeKind;
+  const runtimeAssetKind = Array.isArray(runtimeNodeOutput?.assets)
+    ? runtimeNodeOutput.assets.map((asset) => String(asset.kind || '').toLowerCase()).find((kind) => kind === 'image' || kind === 'video' || kind === 'audio')
+    : '';
+  if (runtimeAssetKind === 'image' || runtimeAssetKind === 'video' || runtimeAssetKind === 'audio') return runtimeAssetKind;
+  const mimeType = String(node?.data.mimeType || '').trim().toLowerCase();
+  if (mimeType.startsWith('image/')) return 'image';
+  if (mimeType.startsWith('video/')) return 'video';
+  if (mimeType.startsWith('audio/')) return 'audio';
+  return null;
+};
 
 const getNodeReferenceImageUrl = (
   node: FlowNode | undefined,
@@ -279,11 +316,30 @@ const getNodeReferenceImageUrl = (
   return String(runtimeAssetUrl || '').trim();
 };
 
+const getNodeReferencePreviewUrl = (
+  node: FlowNode | undefined,
+  runtimeNodeOutput: FlowRuntimeNodeOutput | undefined,
+  mediaKind: FlowUpstreamMediaRef['mediaKind'],
+) => {
+  if (!node) return '';
+  if (mediaKind === 'image') return getNodeReferenceImageUrl(node, runtimeNodeOutput);
+  const candidates = mediaKind === 'video'
+    ? [node.data.posterUrl, node.data.thumbnailUrl, node.data.previewUrl, node.data.videoUrl, node.data.originalVideoUrl]
+    : [node.data.previewUrl, node.data.thumbnailUrl, node.data.audioUrl, node.data.originalAudioUrl];
+  const nodeUrl = candidates.map((candidate) => String(candidate || '').trim()).find(Boolean);
+  if (nodeUrl) return nodeUrl;
+  const runtimeAssetUrl = Array.isArray(runtimeNodeOutput?.assets)
+    ? runtimeNodeOutput.assets.find((asset) => asset.kind === mediaKind && asset.downloadUrl)?.downloadUrl || ''
+    : '';
+  return String(runtimeAssetUrl || '').trim();
+};
+
 const getNodeReferenceAssetId = (
   node: FlowNode | undefined,
   runtimeNodeOutput?: FlowRuntimeNodeOutput,
+  mediaKind?: FlowUpstreamMediaRef['mediaKind'],
 ) => {
-  if (!node || !isImageNode(node)) return '';
+  if (!node) return '';
   const nodeAssetId = String(node.data.assetId || '').trim();
   if (nodeAssetId) return nodeAssetId;
   const nodeAssetIds = Array.isArray(node.data.assetIds)
@@ -291,7 +347,7 @@ const getNodeReferenceAssetId = (
     : [];
   if (nodeAssetIds[0]) return nodeAssetIds[0];
   const runtimeAssetId = Array.isArray(runtimeNodeOutput?.assets)
-    ? runtimeNodeOutput.assets.find((asset) => asset.kind === 'image' && asset.assetId)?.assetId || ''
+    ? runtimeNodeOutput.assets.find((asset) => asset.kind === (mediaKind || 'image') && asset.assetId)?.assetId || ''
     : '';
   return String(runtimeAssetId || '').trim();
 };
@@ -301,6 +357,70 @@ const appendReferenceOrderKey = (referenceOrder: unknown, key: string) => {
     ? referenceOrder.map((item) => String(item || '')).filter(Boolean)
     : [];
   return current.includes(key) ? current : [...current, key];
+};
+
+const upsertUpstreamVideoReference = (
+  node: FlowNode,
+  input: {
+    mediaKind: VideoReferenceInputV2['mediaKind'];
+    referenceKey: string;
+    role: VideoReferenceInputV2['role'];
+    sourceNodeId: string;
+  },
+): FlowNode => {
+  const normalized = normalizeVideoGenerationParams(node.data).params;
+  const referenceInputs = [
+    ...normalized.referenceInputs.filter((reference) => reference.referenceKey !== input.referenceKey),
+    {
+      mediaKind: input.mediaKind,
+      order: normalized.referenceInputs.length,
+      referenceKey: input.referenceKey,
+      role: input.role,
+      source: { kind: 'upstream' as const, id: input.sourceNodeId },
+    },
+  ].map((reference, order) => ({ ...reference, order }));
+
+  return {
+    ...node,
+    data: {
+      ...node.data,
+      params: {
+        ...(node.data.params ?? {}),
+        videoGeneration: { ...normalized, referenceInputs },
+      },
+      updatedAt: Date.now(),
+    },
+  };
+};
+
+const removeDisconnectedUpstreamVideoReferences = (nodes: FlowNode[], edges: FlowEdge[]): FlowNode[] => {
+  const connectedSourceIdsByTarget = new Map<string, Set<string>>();
+  edges.forEach((edge) => {
+    const sources = connectedSourceIdsByTarget.get(edge.target) ?? new Set<string>();
+    sources.add(edge.source);
+    connectedSourceIdsByTarget.set(edge.target, sources);
+  });
+
+  return nodes.map((node) => {
+    const params = normalizeVideoGenerationParams(node.data).params;
+    if (params.referenceInputs.length === 0) return node;
+    const connectedSourceIds = connectedSourceIdsByTarget.get(node.id) ?? new Set<string>();
+    const referenceInputs = params.referenceInputs.filter((reference) => (
+      reference.source.kind !== 'upstream' || connectedSourceIds.has(reference.source.id)
+    ));
+    if (referenceInputs.length === params.referenceInputs.length) return node;
+    return {
+      ...node,
+      data: {
+        ...node.data,
+        params: {
+          ...(node.data.params ?? {}),
+          videoGeneration: { ...params, referenceInputs: referenceInputs.map((reference, order) => ({ ...reference, order })) },
+        },
+        updatedAt: Date.now(),
+      },
+    };
+  });
 };
 
 const isPanoramaViewerNode = (node: FlowNode | undefined | null) =>
@@ -368,6 +488,7 @@ const buildGraphIndex = (
   if (nodes.length === 0 && edges.length === 0) return EMPTY_GRAPH_INDEX;
 
   const nodesById = new Map(nodes.map((node) => [node.id, node]));
+  const upstreamMediaRefsByNodeId: FlowGraphIndex['upstreamMediaRefsByNodeId'] = {};
   const upstreamImageRefsByNodeId: FlowGraphIndex['upstreamImageRefsByNodeId'] = {};
   const hasIncomingEdgesByNodeId: FlowGraphIndex['hasIncomingEdgesByNodeId'] = {};
   const childEditCountsByNodeId: FlowGraphIndex['childEditCountsByNodeId'] = {};
@@ -377,22 +498,40 @@ const buildGraphIndex = (
 
     const sourceNode = nodesById.get(edge.source);
     const sourceRuntimeOutput = nodeOutputByNodeId[edge.source];
-    const sourceImageUrl = getNodeReferenceImageUrl(sourceNode, sourceRuntimeOutput);
-    if (sourceNode && isImageNode(sourceNode) && sourceImageUrl) {
+    const sourceMediaKind = getNodeReferenceMediaKind(sourceNode, sourceRuntimeOutput);
+    if (sourceNode && sourceMediaKind) {
       const sourceReferenceUploadId = String(sourceNode.data.referenceUploadId || '').trim();
-      const sourceAssetId = getNodeReferenceAssetId(sourceNode, sourceRuntimeOutput);
-      const refs = upstreamImageRefsByNodeId[edge.target] || [];
-      refs.push({
+      const sourceAssetId = getNodeReferenceAssetId(sourceNode, sourceRuntimeOutput, sourceMediaKind);
+      const sourcePreviewUrl = getNodeReferencePreviewUrl(sourceNode, sourceRuntimeOutput, sourceMediaKind);
+      const mediaRefs = upstreamMediaRefsByNodeId[edge.target] || [];
+      mediaRefs.push({
         key: `upstream:${sourceNode.id}`,
         id: sourceNode.id,
         ...(sourceAssetId ? { assetId: sourceAssetId } : {}),
         edgeId: edge.id,
-        imageUrl: sourceImageUrl,
-        ...(sourceReferenceUploadId ? { referenceUploadId: sourceReferenceUploadId } : {}),
-        title: String(sourceNode.data.title || '参考图'),
+        mediaKind: sourceMediaKind,
+        ...(sourcePreviewUrl ? { previewUrl: sourcePreviewUrl } : {}),
+        title: String(sourceNode.data.title || (sourceMediaKind === 'video' ? '参考视频' : sourceMediaKind === 'audio' ? '参考音频' : '参考图')),
         source: 'upstream',
       });
-      upstreamImageRefsByNodeId[edge.target] = refs;
+      upstreamMediaRefsByNodeId[edge.target] = mediaRefs;
+
+      if (sourceMediaKind === 'image' && sourcePreviewUrl) {
+        const imageRefs = upstreamImageRefsByNodeId[edge.target] || [];
+        imageRefs.push({
+          key: `upstream:${sourceNode.id}`,
+          id: sourceNode.id,
+          ...(sourceAssetId ? { assetId: sourceAssetId } : {}),
+          edgeId: edge.id,
+          imageUrl: sourcePreviewUrl,
+          mediaKind: 'image',
+          previewUrl: sourcePreviewUrl,
+          ...(sourceReferenceUploadId ? { referenceUploadId: sourceReferenceUploadId } : {}),
+          title: String(sourceNode.data.title || '参考图'),
+          source: 'upstream',
+        });
+        upstreamImageRefsByNodeId[edge.target] = imageRefs;
+      }
     }
 
     const targetNode = nodesById.get(edge.target);
@@ -408,6 +547,7 @@ const buildGraphIndex = (
   }
 
   return {
+    upstreamMediaRefsByNodeId,
     upstreamImageRefsByNodeId,
     hasIncomingEdgesByNodeId,
     childEditCountsByNodeId,
@@ -481,10 +621,12 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
     const dirty = changes.some((change) => change.type !== 'select');
     set((state) => {
       const edges = applyEdgeChanges(changes, state.edges);
+      const nodes = dirty ? removeDisconnectedUpstreamVideoReferences(state.nodes, edges) : state.nodes;
       return {
         edges,
-        graphIndex: dirty ? buildGraphIndex(state.nodes, edges, state.nodeOutputByNodeId) : state.graphIndex,
+        graphIndex: dirty ? buildGraphIndex(nodes, edges, state.nodeOutputByNodeId) : state.graphIndex,
         isDirty: dirty ? true : state.isDirty,
+        nodes,
       };
     });
   },
@@ -514,29 +656,73 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
         },
         state.edges,
       );
-      const shouldAutoReference = isImageNode(sourceNode) && isImageNode(targetNode);
-      const nodes = shouldAutoReference
-        ? state.nodes.map((node) =>
+      const sourceMediaKind = getNodeReferenceMediaKind(sourceNode, state.nodeOutputByNodeId[connection.source]);
+      const shouldAutoVideoReference = isVideoNode(targetNode) && sourceNode && sourceMediaKind;
+      const shouldAutoImageReference = isImageNode(sourceNode) && isImageNode(targetNode);
+      const nodes = shouldAutoVideoReference
+        ? state.nodes.map((node) => (
             node.id === connection.target
-              ? {
-                  ...node,
-                  data: {
-                    ...node.data,
-                    referenceOrder: appendReferenceOrderKey(
-                      node.data.referenceOrder,
-                      `upstream:${sourceNode!.id}`,
-                    ),
-                    updatedAt: Date.now(),
-                  },
-                }
-              : node,
-          )
-        : state.nodes;
+              ? upsertUpstreamVideoReference(node, {
+                mediaKind: sourceMediaKind!,
+                referenceKey: `upstream:${sourceNode!.id}`,
+                role: sourceMediaKind === 'video' ? 'reference_video' : sourceMediaKind === 'audio' ? 'reference_audio' : 'reference_image',
+                sourceNodeId: sourceNode!.id,
+              })
+              : node
+          ))
+        : shouldAutoImageReference
+          ? state.nodes.map((node) =>
+              node.id === connection.target
+                ? {
+                    ...node,
+                    data: {
+                      ...node.data,
+                      referenceOrder: appendReferenceOrderKey(
+                        node.data.referenceOrder,
+                        `upstream:${sourceNode!.id}`,
+                      ),
+                      updatedAt: Date.now(),
+                    },
+                  }
+                : node,
+            )
+          : state.nodes;
       return {
         nodes,
         edges,
         graphIndex: buildGraphIndex(nodes, edges, state.nodeOutputByNodeId),
         isDirty: true,
+      };
+    });
+  },
+
+  connectVideoReference: (input) => {
+    if (!input.sourceNodeId || !input.targetNodeId || input.sourceNodeId === input.targetNodeId) return;
+    get().pushHistory();
+    set((state) => {
+      const edgeExists = state.edges.some((edge) => edge.source === input.sourceNodeId && edge.target === input.targetNodeId);
+      const edges = edgeExists
+        ? state.edges
+        : addEdge(
+          {
+            id: nanoid(12),
+            source: input.sourceNodeId,
+            sourceHandle: 'out',
+            target: input.targetNodeId,
+            targetHandle: 'in',
+            type: 'smart',
+            data: { dataType: 'any' as const } satisfies FlowEdgeData,
+          },
+          state.edges,
+        );
+      const nodes = state.nodes.map((node) => (
+        node.id === input.targetNodeId ? upsertUpstreamVideoReference(node, input) : node
+      ));
+      return {
+        edges,
+        graphIndex: buildGraphIndex(nodes, edges, state.nodeOutputByNodeId),
+        isDirty: true,
+        nodes,
       };
     });
   },
@@ -1264,13 +1450,14 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
     set((state) => {
       const nodes = state.nodes.filter((node) => !idSet.has(node.id));
       const edges = state.edges.filter((edge) => !idSet.has(edge.source) && !idSet.has(edge.target));
+      const indexedNodes = removeDisconnectedUpstreamVideoReferences(nodes, edges);
       return {
         activeImageTool: state.activeImageTool && idSet.has(state.activeImageTool.nodeId) ? null : state.activeImageTool,
         edges,
-        graphIndex: buildGraphIndex(nodes, edges, state.nodeOutputByNodeId),
+        graphIndex: buildGraphIndex(indexedNodes, edges, state.nodeOutputByNodeId),
         isDirty: true,
-        nodes,
-        selectedNodeCount: countSelectedNodes(nodes),
+        nodes: indexedNodes,
+        selectedNodeCount: countSelectedNodes(indexedNodes),
       };
     });
   },
@@ -1281,10 +1468,12 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
     get().pushHistory();
     set((state) => {
       const edges = state.edges.filter((edge) => !idSet.has(edge.id));
+      const nodes = removeDisconnectedUpstreamVideoReferences(state.nodes, edges);
       return {
         edges,
-        graphIndex: buildGraphIndex(state.nodes, edges, state.nodeOutputByNodeId),
+        graphIndex: buildGraphIndex(nodes, edges, state.nodeOutputByNodeId),
         isDirty: true,
+        nodes,
       };
     });
   },
@@ -1307,10 +1496,12 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
     get().pushHistory();
     set((state) => {
       const edges = state.edges.filter((edge) => !edge.selected);
+      const nodes = removeDisconnectedUpstreamVideoReferences(state.nodes, edges);
       return {
         edges,
-        graphIndex: buildGraphIndex(state.nodes, edges, state.nodeOutputByNodeId),
+        graphIndex: buildGraphIndex(nodes, edges, state.nodeOutputByNodeId),
         isDirty: true,
+        nodes,
       };
     });
   },

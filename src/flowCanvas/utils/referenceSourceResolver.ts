@@ -24,12 +24,30 @@ type BuildCanvasImageReferenceSourcesInput = {
   nodes?: readonly CanvasReferenceNode[];
 };
 
+export type ReferenceMediaKind = 'image' | 'video' | 'audio';
+
+type BuildCanvasMediaReferenceSourcesInput = BuildCanvasImageReferenceSourcesInput & {
+  allowedKinds: readonly ReferenceMediaKind[];
+};
+
 export type CanvasImageReferenceSource = {
   assetId?: string;
   id: string;
   imageUrl: string;
   key: string;
   nodeId: string;
+  referenceUploadId?: string;
+  source: 'canvas';
+  title: string;
+};
+
+export type CanvasMediaReferenceSource = {
+  assetId?: string;
+  id: string;
+  key: string;
+  mediaKind: ReferenceMediaKind;
+  nodeId: string;
+  previewUrl?: string;
   referenceUploadId?: string;
   source: 'canvas';
   title: string;
@@ -112,32 +130,82 @@ function getNodeSortValue(node: CanvasReferenceNode | undefined | null, index: n
   return index;
 }
 
-export function buildCanvasImageReferenceSources(
-  input: BuildCanvasImageReferenceSourcesInput,
-): CanvasImageReferenceSource[] {
+function getNodeReferenceMediaKind(node: CanvasReferenceNode | undefined | null): ReferenceMediaKind | null {
+  if (!node) return null;
+  const nodeKind = readCleanString(node.data?.kind || node.type).toLowerCase();
+  if (nodeKind === 'image' || nodeKind === 'video' || nodeKind === 'audio') return nodeKind;
+  const mimeType = readCleanString(node.data?.mimeType).toLowerCase();
+  if (mimeType.startsWith('image/')) return 'image';
+  if (mimeType.startsWith('video/')) return 'video';
+  if (mimeType.startsWith('audio/')) return 'audio';
+  return null;
+}
+
+function getNodeReferencePreviewUrl(node: CanvasReferenceNode | undefined | null, mediaKind: ReferenceMediaKind): string {
+  if (!node) return '';
+  if (mediaKind === 'image') return getNodeReferenceImageUrl(node);
+  const data = node.data || {};
+  const candidates = mediaKind === 'video'
+    ? [data.posterUrl, data.thumbnailUrl, data.previewUrl, data.videoUrl, data.originalVideoUrl]
+    : [data.previewUrl, data.thumbnailUrl, data.audioUrl, data.originalAudioUrl];
+  return candidates.map(readCleanString).find(Boolean) || '';
+}
+
+function getNodeMediaReferenceTitle(node: CanvasReferenceNode | undefined | null, mediaKind: ReferenceMediaKind): string {
+  const title = readCleanString(node?.data?.title);
+  if (title) return title;
+  if (mediaKind === 'video') return '视频';
+  if (mediaKind === 'audio') return '音频';
+  return '图片';
+}
+
+export function buildCanvasMediaReferenceSources(
+  input: BuildCanvasMediaReferenceSourcesInput,
+): CanvasMediaReferenceSource[] {
   const currentNodeId = readCleanString(input.currentNodeId);
+  const allowedKinds = new Set(input.allowedKinds);
   const nodes = Array.isArray(input.nodes) ? [...input.nodes] : [];
 
   return nodes
-    .filter((node) => isImageNode(node) && readCleanString(node.id) && readCleanString(node.id) !== currentNodeId)
     .map((node, index) => {
-      const imageUrl = getNodeReferenceImageUrl(node);
-      if (!imageUrl) return null;
+      const nodeId = readCleanString(node.id);
+      const mediaKind = getNodeReferenceMediaKind(node);
+      if (!nodeId || nodeId === currentNodeId || !mediaKind || !allowedKinds.has(mediaKind)) return null;
+      const previewUrl = getNodeReferencePreviewUrl(node, mediaKind);
+      const assetId = readCleanString(node.data?.assetId) || undefined;
+      const referenceUploadId = readCleanString(node.data?.referenceUploadId) || undefined;
       return {
-        assetId: readCleanString(node.data?.assetId) || undefined,
-        id: readCleanString(node.id),
-        imageUrl,
-        key: `canvas:${readCleanString(node.id)}`,
-        nodeId: readCleanString(node.id),
-        referenceUploadId: readCleanString(node.data?.referenceUploadId) || undefined,
+        ...(assetId ? { assetId } : {}),
+        id: nodeId,
+        key: `canvas:${nodeId}`,
+        mediaKind,
+        nodeId,
+        ...(previewUrl ? { previewUrl } : {}),
+        ...(referenceUploadId ? { referenceUploadId } : {}),
         source: 'canvas' as const,
-        title: getNodeReferenceTitle(node),
         sortValue: getNodeSortValue(node, index),
+        title: getNodeMediaReferenceTitle(node, mediaKind),
       };
     })
-    .filter((item): item is CanvasImageReferenceSource & { sortValue: number } => Boolean(item))
+    .filter((item): item is CanvasMediaReferenceSource & { sortValue: number } => Boolean(item))
     .sort((a, b) => b.sortValue - a.sortValue || a.title.localeCompare(b.title))
     .map(({ sortValue, ...item }) => item);
+}
+
+export function buildCanvasImageReferenceSources(
+  input: BuildCanvasImageReferenceSourcesInput,
+): CanvasImageReferenceSource[] {
+  return buildCanvasMediaReferenceSources({ ...input, allowedKinds: ['image'] })
+    .flatMap((source) => source.previewUrl ? [{
+      ...(source.assetId ? { assetId: source.assetId } : {}),
+      id: source.id,
+      imageUrl: source.previewUrl,
+      key: source.key,
+      nodeId: source.nodeId,
+      ...(source.referenceUploadId ? { referenceUploadId: source.referenceUploadId } : {}),
+      source: source.source,
+      title: source.title,
+    }] : []);
 }
 
 export function resolveReferenceSourceSelectionByNodeId(

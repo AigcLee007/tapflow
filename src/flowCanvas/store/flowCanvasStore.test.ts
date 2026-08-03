@@ -2,10 +2,85 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { useFlowCanvasStore } from './flowCanvasStore';
 import { buildAssetBackedNodeData } from '../utils/assetNodeData';
+import { normalizeVideoGenerationParams } from '../video/videoGenerationParams';
 
 describe('flowCanvasStore upstream image references', () => {
   beforeEach(() => {
     useFlowCanvasStore.getState().newProject();
+  });
+
+  it('connects a selected upstream video as a typed dependency', () => {
+    const source = useFlowCanvasStore.getState().addNode('video', { x: 0, y: 0 }, {
+      assetId: 'asset-video-source',
+      kind: 'video',
+      title: 'Video source',
+    });
+    const target = useFlowCanvasStore.getState().addNode('video', { x: 320, y: 0 }, { title: 'Video target' });
+
+    useFlowCanvasStore.getState().connectVideoReference({
+      mediaKind: 'video',
+      referenceKey: `upstream:${source.id}:0`,
+      role: 'reference_video',
+      sourceNodeId: source.id,
+      targetNodeId: target.id,
+    });
+
+    const state = useFlowCanvasStore.getState();
+    expect(state.edges).toHaveLength(1);
+    expect(state.edges[0]).toMatchObject({ source: source.id, target: target.id });
+    expect(normalizeVideoGenerationParams(state.nodes.find((node) => node.id === target.id)?.data).params.referenceInputs).toEqual([
+      expect.objectContaining({ mediaKind: 'video', role: 'reference_video', source: { kind: 'upstream', id: source.id } }),
+    ]);
+  });
+
+  it('indexes upstream video and audio references with their authoritative media kinds', () => {
+    const video = useFlowCanvasStore.getState().addNode('video', { x: 0, y: 0 }, { assetId: 'asset-video', kind: 'video', title: 'Video source' });
+    const audio = useFlowCanvasStore.getState().addNode('audio', { x: 0, y: 240 }, { assetId: 'asset-audio', kind: 'audio', title: 'Audio source' });
+    const target = useFlowCanvasStore.getState().addNode('video', { x: 320, y: 0 }, { title: 'Video target' });
+
+    useFlowCanvasStore.getState().onConnect({ source: video.id, sourceHandle: 'out', target: target.id, targetHandle: 'in' });
+    useFlowCanvasStore.getState().onConnect({ source: audio.id, sourceHandle: 'out', target: target.id, targetHandle: 'in' });
+
+    expect(useFlowCanvasStore.getState().graphIndex.upstreamMediaRefsByNodeId[target.id]).toEqual(expect.arrayContaining([
+      expect.objectContaining({ assetId: 'asset-video', id: video.id, mediaKind: 'video', title: 'Video source' }),
+      expect.objectContaining({ assetId: 'asset-audio', id: audio.id, mediaKind: 'audio', title: 'Audio source' }),
+    ]));
+    expect(normalizeVideoGenerationParams(useFlowCanvasStore.getState().nodes.find((node) => node.id === target.id)?.data).params.referenceInputs).toEqual(expect.arrayContaining([
+      expect.objectContaining({ mediaKind: 'video', source: { kind: 'upstream', id: video.id } }),
+      expect.objectContaining({ mediaKind: 'audio', source: { kind: 'upstream', id: audio.id } }),
+    ]));
+  });
+
+  it('removes only the matching upstream reference when its dependency edge is removed', () => {
+    const source = useFlowCanvasStore.getState().addNode('video', { x: 0, y: 0 }, { kind: 'video', title: 'Video source' });
+    const target = useFlowCanvasStore.getState().addNode('video', { x: 320, y: 0 }, { title: 'Video target' });
+    useFlowCanvasStore.getState().connectVideoReference({
+      mediaKind: 'video',
+      referenceKey: `upstream:${source.id}:0`,
+      role: 'reference_video',
+      sourceNodeId: source.id,
+      targetNodeId: target.id,
+    });
+    const currentTarget = useFlowCanvasStore.getState().nodes.find((node) => node.id === target.id)!;
+    const currentParams = normalizeVideoGenerationParams(currentTarget.data).params;
+    useFlowCanvasStore.getState().updateNodeData(target.id, {
+      params: {
+        ...(currentTarget.data.params ?? {}),
+        videoGeneration: {
+          ...currentParams,
+          referenceInputs: [
+            ...currentParams.referenceInputs,
+            { mediaKind: 'image', order: 1, referenceKey: 'asset:asset-image:0', role: 'reference_image', source: { kind: 'asset', id: 'asset-image' } },
+          ],
+        },
+      },
+    });
+
+    useFlowCanvasStore.getState().removeEdgesByIds([useFlowCanvasStore.getState().edges[0]!.id]);
+
+    expect(normalizeVideoGenerationParams(useFlowCanvasStore.getState().nodes.find((node) => node.id === target.id)?.data).params.referenceInputs).toEqual([
+      expect.objectContaining({ referenceKey: 'asset:asset-image:0', source: { kind: 'asset', id: 'asset-image' } }),
+    ]);
   });
 
   it('keeps asset-backed image node data and selection when inserted from asset library', () => {

@@ -7446,6 +7446,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
 
           {assetMenuOpen && (
             <ReferenceSourcePicker
+              allowedKinds={['image']}
               currentNodeId={id}
               open={assetMenuOpen}
               query={mentionQuery}

@@ -2,7 +2,7 @@ import type { Node } from '@xyflow/react';
 import type { FlowNodeData, FlowNodeKind } from '../types';
 
 export type FlowConnectionAction = {
-  kind: Extract<FlowNodeKind, 'text' | 'image' | 'video' | 'panorama_viewer'>;
+  kind: Extract<FlowNodeKind, 'text' | 'image' | 'video' | 'audio' | 'panorama_viewer'>;
   label: string;
   desc?: string;
   promptSeed?: string;
@@ -45,7 +45,11 @@ const ALLOWED_TARGETS_BY_SOURCE: Record<string, FlowConnectionAction[]> = {
     { kind: 'panorama_viewer', label: '360 全景查看', desc: '在全景查看器中查看这张图片' },
   ],
   video: [
+    { kind: 'video', label: "\u89c6\u9891\u53c2\u8003", desc: "\u5c06\u52a8\u4f5c\u6216\u8fd0\u955c\u4f5c\u4e3a\u89c6\u9891\u751f\u6210\u53c2\u8003" },
     { kind: 'text', label: '视频分析', desc: '理解视频内容并提炼脚本', promptSeed: '分析这个视频，提炼画面内容、镜头信息和可复用提示词。' },
+  ],
+  audio: [
+    { kind: 'video', label: "\u97f3\u9891\u53c2\u8003", desc: "\u5c06\u97f3\u9891\u4f5c\u4e3a\u89c6\u9891\u751f\u6210\u53c2\u8003" },
   ],
 };
 
@@ -53,7 +57,7 @@ const ALLOWED_SOURCES_BY_TARGET: Record<string, string[]> = {
   text: ['text', 'image', 'video'],
   image: ['text', 'image'],
   panorama_viewer: ['image'],
-  video: ['text', 'image'],
+  video: ['text', 'image', 'video', 'audio'],
 };
 
 export const getConnectionActionsForSource = (source?: FlowNodeLike | null): FlowConnectionAction[] => {

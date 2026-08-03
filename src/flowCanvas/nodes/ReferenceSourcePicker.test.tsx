@@ -82,6 +82,7 @@ describe('ReferenceSourcePicker', () => {
 
     render(
       <ReferenceSourcePicker
+        allowedKinds={['image']}
         currentNodeId="current-node"
         open
         onClose={vi.fn()}
@@ -96,12 +97,48 @@ describe('ReferenceSourcePicker', () => {
     expect(screen.getAllByRole('button').some((button) => button.textContent?.includes('上传参考图'))).toBe(true);
 
     fireEvent.click(screen.getByRole('button', { name: /Canvas Source/ }));
-    expect(onPickCanvasNode).toHaveBeenCalledWith(canvasSource.id);
+    expect(onPickCanvasNode).toHaveBeenCalledWith(canvasSource.id, 'image');
 
     fireEvent.click(screen.getByRole('button', { name: /picker-reference\.png/ }));
-    expect(onPickAsset).toHaveBeenCalledWith('asset-1');
+    expect(onPickAsset).toHaveBeenCalledWith('asset-1', 'image');
 
     fireEvent.click(screen.getByText('上传参考图').closest('button')!);
-    expect(onUploadReference).toHaveBeenCalledTimes(1);
+    expect(onUploadReference).toHaveBeenCalledWith('image');
+  });
+
+  it('filters canvas and library choices by allowed media kinds and returns the selected kind', () => {
+    useAssetLibraryMock.mockReturnValue({
+      ...useAssetLibraryMock(),
+      assets: [
+        createAsset({ id: 'asset-image', kind: 'image', title: 'Image asset' }),
+        createAsset({ id: 'asset-video', kind: 'video', mimeType: 'video/mp4', previewUrl: 'https://cdn.test/video.jpg', title: 'Video asset' }),
+        createAsset({ id: 'asset-audio', kind: 'audio', mimeType: 'audio/mpeg', previewUrl: 'https://cdn.test/audio.mp3', title: 'Audio asset' }),
+      ],
+    });
+    const canvasVideo = useFlowCanvasStore.getState().addNode('video', { x: 0, y: 0 }, { kind: 'video', posterUrl: 'https://cdn.test/canvas-video.jpg', title: 'Canvas video' });
+    useFlowCanvasStore.getState().addNode('image', { x: 0, y: 240 }, { kind: 'image', thumbnailUrl: 'https://cdn.test/canvas-image.jpg', title: 'Canvas image' });
+    const onPickAsset = vi.fn();
+    const onPickCanvasNode = vi.fn();
+    const onUploadReference = vi.fn();
+
+    render(
+      <ReferenceSourcePicker
+        allowedKinds={['video', 'audio']}
+        currentNodeId="current-node"
+        open
+        onClose={vi.fn()}
+        onPickAsset={onPickAsset}
+        onPickCanvasNode={onPickCanvasNode}
+        onUploadReference={onUploadReference}
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: /Image asset/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /Canvas video/ }));
+    expect(onPickCanvasNode).toHaveBeenCalledWith(canvasVideo.id, 'video');
+    fireEvent.click(screen.getByRole('button', { name: /Audio asset/ }));
+    expect(onPickAsset).toHaveBeenCalledWith('asset-audio', 'audio');
+    fireEvent.click(screen.getByText('上传参考图').closest('button')!);
+    expect(onUploadReference).toHaveBeenCalledWith('video');
   });
 });

@@ -1,12 +1,31 @@
 ﻿import { describe, expect, it } from 'vitest';
 
 import {
+  buildCanvasMediaReferenceSources,
   buildCanvasImageReferenceSources,
   resolveReferenceChips,
   resolveReferenceSourceSelectionByNodeId,
 } from './referenceSourceResolver';
 
 describe('referenceSourceResolver', () => {
+  it('filters canvas sources by allowed media kinds while retaining source metadata', () => {
+    const sources = buildCanvasMediaReferenceSources({
+      allowedKinds: ['video', 'audio'],
+      currentNodeId: 'current-node',
+      nodes: [
+        { data: { assetId: 'asset-image', kind: 'image', thumbnailUrl: 'https://cdn.test/image.png', title: 'Image' }, id: 'image-node', type: 'image' },
+        { data: { assetId: 'asset-video', kind: 'video', posterUrl: 'https://cdn.test/video.jpg', title: 'Video' }, id: 'video-node', type: 'video' },
+        { data: { assetId: 'asset-audio', kind: 'audio', previewUrl: 'https://cdn.test/audio.mp3', title: 'Audio' }, id: 'audio-node', type: 'audio' },
+      ],
+    });
+
+    expect(sources).toEqual(expect.arrayContaining([
+      expect.objectContaining({ assetId: 'asset-video', mediaKind: 'video', nodeId: 'video-node', previewUrl: 'https://cdn.test/video.jpg', title: 'Video' }),
+      expect.objectContaining({ assetId: 'asset-audio', mediaKind: 'audio', nodeId: 'audio-node', previewUrl: 'https://cdn.test/audio.mp3', title: 'Audio' }),
+    ]));
+    expect(sources.some((source) => source.mediaKind === 'image')).toBe(false);
+  });
+
   it('orders resolved reference chips by referenceOrder and keeps asset previews intact', () => {
     const chips = resolveReferenceChips({
       assetItemsById: {

@@ -126,6 +126,7 @@ export function VideoReferenceStrip({ currentNodeId, onChange, onUploadReference
         );
       })}
       <ReferenceSourcePicker
+        allowedKinds={["image"]}
         currentNodeId={currentNodeId}
         onClose={() => setActiveRole(null)}
         onPickAsset={(assetId) => {
