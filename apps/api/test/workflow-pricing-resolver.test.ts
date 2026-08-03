@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { builtinAiPluginRegistry, type VideoGenerationCapabilities } from "@aigc-flow/ai-gateway-core";
 
 import {
   assertNodeRouteSupportsRuntimeRequest,
@@ -41,7 +42,147 @@ const pricingRows = [
   },
 ] as const;
 
+function pixelHubCapabilitiesFor(modelKey: string) {
+  const model = builtinAiPluginRegistry.require("pixelhub.video").models.find((entry) => entry.modelKey === modelKey);
+  if (!model) throw new Error(`Missing PixelHub model ${modelKey}`);
+  return {
+    ...(model.capabilities as VideoGenerationCapabilities),
+    supportedGenerationModes: ["standard"],
+    supportedVideoWorkflows: ["video_generation"],
+  };
+}
+
+function pixelHubPricingInput(input: {
+  durationSeconds: number;
+  minChargeCredits: number;
+  model: string;
+  route: string;
+  unitCredits: number;
+}) {
+  return {
+    configuredRouteKey: input.route,
+    nodeConfig: {
+      params: {
+        videoGeneration: { durationSeconds: input.durationSeconds },
+      },
+    },
+    nodeType: "video.generate",
+    pricingRows: [{
+      metadata: { billingBasis: "duration_second" },
+      min_charge_credits: String(input.minChargeCredits),
+      model: input.model,
+      provider: "pixelhub",
+      route: input.route,
+      unit: "video_generation",
+      unit_credits: String(input.unitCredits),
+    }],
+    routeContext: {
+      capabilities: pixelHubCapabilitiesFor(input.model),
+      modelKey: input.model,
+      providerKey: "pixelhub",
+      requireExactPricing: true,
+      routeKey: input.route,
+    },
+  };
+}
+
 describe("workflow pricing resolver", () => {
+  it.each([
+    ["gemini-omni-flash", "video.pixelhub.gemini-omni-flash", 1, 4, 4, 4],
+    ["gemini-omni-flash", "video.pixelhub.gemini-omni-flash", 1, 4, 10, 10],
+    ["sora-v3-pro", "video.pixelhub.sora-v3-pro", 10, 40, 4, 40],
+    ["sora-v3-pro", "video.pixelhub.sora-v3-pro", 10, 40, 15, 150],
+    ["veo31-fast", "video.pixelhub.veo31-fast", 0.5, 2, 4, 2],
+    ["veo31-fast", "video.pixelhub.veo31-fast", 0.5, 2, 6, 3],
+    ["veo31-fast", "video.pixelhub.veo31-fast", 0.5, 2, 8, 4],
+  ])("charges %s for %s seconds", (model, route, unitCredits, minChargeCredits, durationSeconds, expected) => {
+    const resolved = resolveNodePricing(pixelHubPricingInput({
+      durationSeconds,
+      minChargeCredits,
+      model,
+      route,
+      unitCredits,
+    }));
+    expect(resolved.amountCents).toBe(expected);
+    expect(resolved.quantity).toBe(durationSeconds);
+    expect(resolved.fallbackLevel).toBe(1);
+  });
+
+  it("rejects generic pricing for an exact-priced PixelHub route", () => {
+    const input = pixelHubPricingInput({
+      durationSeconds: 4,
+      minChargeCredits: 4,
+      model: "gemini-omni-flash",
+      route: "video.pixelhub.gemini-omni-flash",
+      unitCredits: 1,
+    });
+    input.pricingRows[0]!.route = "default";
+    const resolved = resolveNodePricing(input);
+    expect(resolved.pricingMatch).toBeNull();
+    expect(resolved.amountCents).toBe(0);
+  });
+
+  it("does not apply video duration to a non-duration editor price", () => {
+    const resolved = resolveNodePricing({
+      configuredRouteKey: "video.editor",
+      nodeConfig: {
+        params: { videoGeneration: { durationSeconds: 10 } },
+      },
+      nodeType: "video.generate",
+      pricingRows: [{
+        min_charge_credits: "3",
+        model: "editor",
+        provider: "internal",
+        route: "video.editor",
+        unit: "video_generation",
+        unit_credits: "3",
+      }],
+      routeContext: {
+        capabilities: {
+          supportedGenerationModes: ["standard"],
+          supportedVideoWorkflows: ["video_editor_export"],
+        },
+        modelKey: "editor",
+        providerKey: "internal",
+        routeKey: "video.editor",
+      },
+    });
+    expect(resolved.quantity).toBe(1);
+    expect(resolved.amountCents).toBe(3);
+  });
+
+  it("rejects an invalid structured video request before reserve", () => {
+    expect(() => assertNodeRouteSupportsRuntimeRequest({
+      node: {
+        config: {
+          generationPrompt: "animate the subject",
+          params: {
+            videoGeneration: {
+              schemaVersion: 2,
+              mode: "text_to_video",
+              aspectRatio: "16:9",
+              resolution: "720P",
+              durationSeconds: 5,
+              generateAudio: true,
+              count: 1,
+              referenceInputs: [],
+            },
+          },
+          routeKey: "video.pixelhub.gemini-omni-flash",
+        },
+        id: "invalid-video",
+        type: "video.generate",
+      },
+      routeContext: {
+        capabilities: pixelHubCapabilitiesFor("gemini-omni-flash"),
+        modelKey: "gemini-omni-flash",
+        providerKey: "pixelhub",
+        requireExactPricing: true,
+        routeKey: "video.pixelhub.gemini-omni-flash",
+      },
+    })).toThrow(/UNSUPPORTED_DURATION|This duration is not supported/);
+  });
+
   it("resolves nested image edit route keys when the top-level routeKey is missing", () => {
     expect(resolveConfiguredRouteKey({
       config: {

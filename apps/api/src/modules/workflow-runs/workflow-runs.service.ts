@@ -25,6 +25,14 @@ import {
   validateGraph,
   WorkflowGraphValidationError,
 } from "@aigc-flow/workflow-core";
+import {
+  readVideoCapabilities,
+  validateVideoGenerationRequest,
+  type AssetReferenceInput,
+  type VideoGenerationCapabilities,
+  type VideoGenerationParams,
+  type VideoGenerationRequest,
+} from "@aigc-flow/ai-gateway-core";
 import type { Pool, PoolClient } from "pg";
 import { assertDraftGraphSafe, normalizeDraftGraph } from "../flows/flows.service.js";
 
@@ -114,12 +122,13 @@ export type ResolvedNodePricing = {
 };
 
 type RouteRuntimeContext = {
-  capabilities: {
+  capabilities: Partial<VideoGenerationCapabilities> & {
     supportedGenerationModes: string[];
     supportedVideoWorkflows: string[];
   };
   modelKey: string;
   providerKey: string;
+  requireExactPricing?: boolean;
   routeKey: string;
 };
 
@@ -297,8 +306,10 @@ export function resolveNodePricing(input: {
       dedupedCandidates.set(key, candidate);
     }
   }
-  const candidates = Array.from(dedupedCandidates.values())
-    .sort((left, right) => left.fallbackLevel - right.fallbackLevel);
+  const candidates = input.routeContext?.requireExactPricing
+    ? rawCandidates.filter((candidate) => candidate.fallbackLevel === 1)
+    : Array.from(dedupedCandidates.values())
+      .sort((left, right) => left.fallbackLevel - right.fallbackLevel);
 
   const matched = candidates
     .map((candidate) => ({
@@ -321,7 +332,21 @@ export function resolveNodePricing(input: {
     };
   }
 
-  const quantity = Math.max(1, Math.floor(input.quantity ?? 1));
+  const durationSeconds = readVideoDurationSeconds(input.nodeConfig);
+  const isDurationSecondBilling = input.nodeType === "video.generate"
+    && matched.row.metadata?.billingBasis === "duration_second";
+  if (isDurationSecondBilling && durationSeconds === null) {
+    return {
+      amountCents: 0,
+      fallbackLevel: null,
+      pricingMatch: null,
+      quantity: 1,
+      unit,
+    };
+  }
+  const quantity = isDurationSecondBilling
+    ? durationSeconds!
+    : Math.max(1, Math.floor(input.quantity ?? 1));
   const tierCredits = resolvePricingTierCredits(matched.row.metadata, input.nodeConfig);
   const unitCredits = tierCredits ?? readPositivePricingNumber(matched.row.unit_credits);
   const minChargeCredits = tierCredits ?? readPositivePricingNumber(matched.row.min_charge_credits);
@@ -338,6 +363,16 @@ export function resolveNodePricing(input: {
     quantity,
     unit,
   };
+}
+
+function readVideoDurationSeconds(nodeConfig: Record<string, unknown> | null | undefined): number | null {
+  const config = isRecord(nodeConfig) ? nodeConfig : {};
+  const params = isRecord(config.params) ? config.params : {};
+  const videoGeneration = isRecord(params.videoGeneration) ? params.videoGeneration : {};
+  const durationSeconds = videoGeneration.durationSeconds;
+  return typeof durationSeconds === "number" && Number.isInteger(durationSeconds) && durationSeconds > 0
+    ? durationSeconds
+    : null;
 }
 
 function normalizePricingSizeTier(value: unknown): string | null {
@@ -412,7 +447,10 @@ function mergeRouteRuntimeCapabilities(input: {
     ...readSupportedGenerationModes(input.modelCapabilities),
     ...readSupportedGenerationModes(routeCapabilities),
   ]));
+  const videoCapabilities = readVideoCapabilities(input.modelCapabilities)
+    ?? readVideoCapabilities(routeCapabilities);
   return {
+    ...(videoCapabilities ?? {}),
     supportedGenerationModes: supportedGenerationModes.length > 0 ? supportedGenerationModes : ["standard"],
     supportedVideoWorkflows: Array.from(new Set([
       ...readSupportedVideoWorkflows(input.modelCapabilities),
@@ -460,6 +498,60 @@ function readImageGenerationMode(node: Pick<CompiledWorkflow["nodes"][number], "
   return rawMode && KNOWN_IMAGE_GENERATION_MODES.has(rawMode) ? rawMode : "standard";
 }
 
+function readStructuredVideoGenerationRequest(
+  node: Pick<CompiledWorkflow["nodes"][number], "config" | "type">,
+): VideoGenerationRequest | null {
+  if (node.type !== "video.generate") return null;
+  const config = isRecord(node.config) ? node.config : {};
+  const params = isRecord(config.params) ? config.params : {};
+  const videoGeneration = isRecord(params.videoGeneration) ? params.videoGeneration : null;
+  if (!videoGeneration || videoGeneration.schemaVersion !== 2) return null;
+  const references = Array.isArray(videoGeneration.referenceInputs) ? videoGeneration.referenceInputs : [];
+  const inputAssets: AssetReferenceInput[] = references.flatMap((reference) => {
+    if (!isRecord(reference) || !isRecord(reference.source)) return [];
+    const sourceKind = reference.source.kind;
+    const sourceId = readTrimmedString(reference.source.id);
+    const mediaKind = readTrimmedString(reference.mediaKind);
+    const referenceKey = readTrimmedString(reference.referenceKey);
+    const role = readTrimmedString(reference.role);
+    const order = reference.order;
+    if (
+      !sourceId || !mediaKind || !referenceKey || !role || !Number.isInteger(order)
+      || (sourceKind !== "asset" && sourceKind !== "upstream")
+    ) return [];
+    return [{
+      assetId: sourceId,
+      kind: mediaKind,
+      metadata: {
+        videoReference: {
+          mediaKind,
+          order,
+          referenceKey,
+          role,
+          sourceKind,
+          sourceNodeId: sourceKind === "upstream" ? sourceId : null,
+        },
+      },
+      mimeType: null,
+    }];
+  });
+  return {
+    inputAssets,
+    metadata: null,
+    model: null,
+    params: {
+      aspectRatio: videoGeneration.aspectRatio,
+      count: videoGeneration.count,
+      durationSeconds: videoGeneration.durationSeconds,
+      generateAudio: videoGeneration.generateAudio,
+      mode: videoGeneration.mode,
+      resolution: videoGeneration.resolution,
+    } as VideoGenerationParams,
+    prompt: readTrimmedString(config.generationPrompt) ?? readTrimmedString(config.prompt) ?? "",
+    routeKey: resolveConfiguredRouteKey(node),
+  };
+}
+
 export function assertNodeRouteSupportsRuntimeRequest(input: {
   node: Pick<CompiledWorkflow["nodes"][number], "config" | "id" | "type">;
   routeContext: RouteRuntimeContext | null;
@@ -477,6 +569,20 @@ export function assertNodeRouteSupportsRuntimeRequest(input: {
   }
 
   if (!hasVideoEditorExportMetadata(input.node)) {
+    const request = readStructuredVideoGenerationRequest(input.node);
+    if (!request) return;
+    const capabilities = readVideoCapabilities(input.routeContext?.capabilities);
+    if (!capabilities || !input.routeContext?.capabilities.supportedVideoWorkflows.includes("video_generation")) {
+      throw new WorkflowRunsApiError(
+        422,
+        "UNSUPPORTED_VIDEO_MODE",
+        `UNSUPPORTED_VIDEO_MODE: Route ${input.routeContext?.routeKey ?? resolveEffectiveRouteKey(input.node)} does not support structured video generation for node ${input.node.id}.`,
+      );
+    }
+    const [issue] = validateVideoGenerationRequest(request, capabilities);
+    if (issue) {
+      throw new WorkflowRunsApiError(422, issue.code, issue.message);
+    }
     return;
   }
   const supportedVideoWorkflows = input.routeContext?.capabilities.supportedVideoWorkflows ?? [];
@@ -1598,6 +1704,7 @@ export class WorkflowRunsService {
         }),
         modelKey: row.model_key || "default",
         providerKey: row.provider_key || "default",
+        requireExactPricing: row.request_config?.requireExactPricing === true,
         routeKey: row.route_key,
       });
     }
