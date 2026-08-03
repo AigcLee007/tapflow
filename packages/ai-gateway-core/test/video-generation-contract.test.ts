@@ -135,7 +135,7 @@ describe("video generation contract", () => {
         params: { ...request().params!, mode: "image_reference" },
       }),
       request({
-        inputAssets: [asset("image", "main_image"), asset("video", "source_video", 1)],
+        inputAssets: [asset("image", "reference_image"), asset("video", "source_video", 1)],
         params: { ...request().params!, mode: "all_reference" },
       }),
     ];
@@ -174,13 +174,19 @@ describe("video generation contract", () => {
 
     const valid = request({
       inputAssets: [
-        asset("image", "main_image"),
+        asset("image", "reference_image"),
         asset("image", "reference_image", 1),
         asset("video", "source_video", 2),
       ],
       params: { ...request().params!, mode: "all_reference" },
     });
     expect(validateVideoGenerationRequest(valid, geminiCapabilities)).toEqual([]);
+
+    const mainImageStyle = request({
+      inputAssets: [asset("image", "main_image"), asset("video", "source_video", 1)],
+      params: { ...request().params!, mode: "all_reference" },
+    });
+    expect(validateVideoGenerationRequest(mainImageStyle, geminiCapabilities).map((item) => item.code)).toContain("VIDEO_MODE_INPUT_REQUIRED");
   });
 
   test("rejects malformed mode constraint limits", () => {
