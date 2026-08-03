@@ -150,6 +150,7 @@ export function createWorkerRuntime(options?: {
 
   const registration = registerWorkerQueues({
     concurrency: {
+      assetImageVariant: env.assetImageVariantConcurrency,
       default: env.workerConcurrency,
       nodeExecuteDefault: env.defaultNodeConcurrency,
       nodeExecuteImage: env.imageNodeConcurrency,
@@ -223,6 +224,7 @@ async function main() {
       nodeExecuteConcurrency: env.nodeExecuteConcurrency,
       defaultNodeConcurrency: env.defaultNodeConcurrency,
       imageNodeConcurrency: env.imageNodeConcurrency,
+      assetImageVariantConcurrency: env.assetImageVariantConcurrency,
       imageVariantsMode: env.imageVariantsMode,
       providerPollConcurrency: env.providerPollConcurrency,
       s3Bucket: env.s3Bucket,

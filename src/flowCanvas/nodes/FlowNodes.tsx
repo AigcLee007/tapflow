@@ -143,7 +143,7 @@ import { dispatchOpenAgentSession } from '../agent/agentSessionEvents';
 import { normalizeBackendAssetUrl } from '../../utils/generatedImageStorage';
 import { canNodeReceiveIncoming } from '../rules/connectionRules';
 import { getAsset, getAssetDownloadUrl, getAssetVariantUrl, uploadAssetFile, type AssetItem } from '../../assets/assetApi';
-import { invalidateAssetPreviewUrl, refreshAssetPreviewUrl, resolveAssetPreviewUrl } from '../../assets/assetPreviewResolver';
+import { useLayeredImageAssetUrls } from './useLayeredImageAssetUrls';
 import { getImageResultAssetId, selectImageResultPreviewUrl } from '../utils/imageResultPreview';
 import { listAiModelCatalog, listAiModelRoutes, type AiModelCatalogItem } from '../../services/v2AiModelCatalogApi';
 import { buildAssetBackedNodeData } from '../utils/assetNodeData';
@@ -1226,6 +1226,7 @@ interface ImageFullscreenOverlayProps {
   comparisonSource?: FlowImageReferenceComparisonSource | null;
   onClose: () => void;
   onDownload: () => void;
+  onImageLoad?: () => void;
   prompt?: string;
   modelLabel?: string;
   size?: string;
@@ -1244,6 +1245,7 @@ const ImageFullscreenOverlay: React.FC<ImageFullscreenOverlayProps> = ({
   comparisonSource,
   onClose,
   onDownload,
+  onImageLoad,
   prompt,
   modelLabel,
   size,
@@ -1520,6 +1522,7 @@ const ImageFullscreenOverlay: React.FC<ImageFullscreenOverlayProps> = ({
                           width: image.naturalWidth,
                         });
                       }
+                      onImageLoad?.();
                     }}
                     style={{
                       position: 'absolute',
@@ -1586,6 +1589,7 @@ const ImageFullscreenOverlay: React.FC<ImageFullscreenOverlayProps> = ({
                     width: image.naturalWidth,
                   });
                 }
+                onImageLoad?.();
               }}
               style={{
                 position: 'relative',
@@ -4071,7 +4075,7 @@ const ImageNodeLite = memo(function ImageNodeLite({
             alt=""
             draggable={false}
             decoding="async"
-            loading="eager"
+            loading="lazy"
             style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', pointerEvents: 'none', background: '#0b0b0f' }}
           />
         ) : (
@@ -4153,7 +4157,8 @@ const ImageNodeCard = memo(function ImageNodeCard({
             alt=""
             draggable={false}
             decoding="async"
-            loading="eager"
+            fetchPriority={selected ? 'high' : 'auto'}
+            loading="lazy"
             onLoad={onImageLoad}
             onError={onImageError}
             style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', background: '#0b0b0f' }}
@@ -4454,7 +4459,6 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     : [];
   const runtimeThumbnailUrl = runtimeImageAssets[0]?.downloadUrl || '';
   const [assetPreviewUrl, setAssetPreviewUrl] = useState('');
-  const [resolvedPreviewUrlsByAssetId, setResolvedPreviewUrlsByAssetId] = useState<Record<string, string>>({});
   const [imageLoadState, setImageLoadState] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle');
   const previewRefreshAttemptsRef = useRef<Set<string>>(new Set());
   const [referencePreviewUrlsByKey, setReferencePreviewUrlsByKey] = useState<Record<string, string>>({});
@@ -4471,6 +4475,28 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       .map((item, index) => getImageResultAssetId(item as { assetId?: unknown; id?: unknown }, index, assetIds))
       .filter(Boolean);
   }, [d.assetIds, d.generatedResults]);
+  const fullscreenPreviewAssetId = useMemo(() => {
+    const persistedAssetIds = Array.isArray(d.assetIds) ? d.assetIds : [];
+    const persistedResults = Array.isArray(d.generatedResults)
+      ? d.generatedResults.map((item, index) => ({
+        assetId: getImageResultAssetId(item as { assetId?: unknown; id?: unknown }, index, persistedAssetIds),
+        id: String((item as { id?: unknown })?.id || `result-fallback-${index}`),
+      }))
+      : [];
+    const runtimeResults = runtimeImageAssets.map((asset, index) => ({
+      assetId: String(asset.assetId || '').trim(),
+      id: `runtime-asset-${asset.assetId}-${index}`,
+    }));
+    const results = runtimeResults.length > 0 ? runtimeResults : persistedResults;
+    const activeIndex = Math.min(
+      Math.max(Number(d.activeResultIndex || 0), 0),
+      Math.max(results.length - 1, 0),
+    );
+    const coverResultId = String(d.coverResultId || '');
+    return results.find((result) => result.id === coverResultId)?.assetId
+      || results[activeIndex]?.assetId
+      || assetId;
+  }, [assetId, d.assetIds, d.activeResultIndex, d.coverResultId, d.generatedResults, runtimeImageAssets]);
   const previewAssetIds = useMemo(
     () => Array.from(new Set([
       assetId,
@@ -4479,31 +4505,17 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     ].filter(Boolean))),
     [assetId, persistedResultAssetIds, runtimeImageAssets],
   );
-  const previewAssetIdsKey = previewAssetIds.join('|');
-  useEffect(() => {
-    if (previewAssetIds.length === 0) {
-      setResolvedPreviewUrlsByAssetId((current) => Object.keys(current).length === 0 ? current : {});
-      return;
-    }
-    let cancelled = false;
-    void Promise.allSettled(previewAssetIds.map(async (previewAssetId) => ({
-      assetId: previewAssetId,
-      url: await resolveAssetPreviewUrl(previewAssetId),
-    }))).then((results) => {
-      if (cancelled) return;
-      const resolvedEntries = results.flatMap((result) => result.status === 'fulfilled' && result.value.url
-        ? [[result.value.assetId, result.value.url] as const]
-        : []);
-      if (resolvedEntries.length === 0) return;
-      setResolvedPreviewUrlsByAssetId((current) => ({
-        ...current,
-        ...Object.fromEntries(resolvedEntries),
-      }));
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [previewAssetIdsKey]);
+  const {
+    markPreviewVisible,
+    markThumbnailVisible,
+    previewUrl: fullscreenPreviewUrl,
+    refreshThumbnail,
+    thumbnailUrlsByAssetId: resolvedPreviewUrlsByAssetId,
+  } = useLayeredImageAssetUrls({
+    assetIds: previewAssetIds,
+    loadPreview: fullscreenOpen,
+    previewAssetId: fullscreenPreviewAssetId,
+  });
   useEffect(() => {
     if (!referenceUploadId || assetId || runtimeThumbnailUrl || persistedThumbnailUrl) return;
     let cancelled = false;
@@ -4528,9 +4540,11 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const resolvedPrimaryPreviewUrl = resolvedPreviewUrlsByAssetId[assetId]
     || (runtimePrimaryAssetId ? resolvedPreviewUrlsByAssetId[runtimePrimaryAssetId] : '')
     || '';
+  const hasAssetBackedThumbnail = Boolean(assetId || runtimePrimaryAssetId);
   const effectiveThumbnailUrl = resolvedPrimaryPreviewUrl
-    || runtimeThumbnailUrl
-    || (persistedThumbnailNeedsRefresh ? '' : persistedThumbnailUrl)
+    || (!hasAssetBackedThumbnail
+      ? runtimeThumbnailUrl || (persistedThumbnailNeedsRefresh ? '' : persistedThumbnailUrl)
+      : '')
     || assetPreviewUrl;
   const editableImageSource = useMemo(
     () => resolveEditableImageSource({
@@ -4919,6 +4933,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
             assetId: resultAssetId || undefined,
             id: String(item?.id || `result-fallback-${index}`),
             url: selectImageResultPreviewUrl({
+              assetId: resultAssetId,
               fallbackUrl: effectiveThumbnailUrl,
               persistedUrl: item?.url,
               resolvedUrl: resultAssetId ? resolvedPreviewUrlsByAssetId[resultAssetId] : undefined,
@@ -4932,7 +4947,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     .map((asset, index) => ({
       assetId: String(asset.assetId || '').trim() || undefined,
       id: `runtime-asset-${asset.assetId}-${index}`,
-      url: resolvedPreviewUrlsByAssetId[String(asset.assetId || '').trim()] || String(asset.downloadUrl || ''),
+      url: resolvedPreviewUrlsByAssetId[String(asset.assetId || '').trim()] || '',
       createdAt: Date.now(),
     }))
     .filter((item) => item.url);
@@ -4972,18 +4987,17 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       return;
     }
     previewRefreshAttemptsRef.current.add(failedUrlKey);
-    invalidateAssetPreviewUrl(failedAssetId);
-    void refreshAssetPreviewUrl(failedAssetId)
-      .then((freshUrl) => {
+    void refreshThumbnail(failedAssetId)
+      .then((fresh) => {
+        const freshUrl = fresh.url;
         if (!freshUrl || freshUrl === displayThumbnailUrl) {
           setImageLoadState('error');
           return;
         }
-        setResolvedPreviewUrlsByAssetId((current) => ({ ...current, [failedAssetId]: freshUrl }));
         setImageLoadState('loading');
       })
       .catch(() => setImageLoadState('error'));
-  }, [assetId, coverResult?.assetId, displayThumbnailUrl]);
+  }, [assetId, coverResult?.assetId, displayThumbnailUrl, refreshThumbnail]);
   const resultCount = isGeneratedImageNode ? visibleResultItems.length : 0;
   const canExpandResults = resultCount > 1;
   const favoriteResultIds = useMemo(
@@ -6886,7 +6900,10 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
           coverResult={coverResult}
           favoriteResultIds={favoriteResultIds}
           isGenerating={isGenerating}
-          onImageLoad={() => setImageLoadState('loaded')}
+          onImageLoad={() => {
+            setImageLoadState('loaded');
+            markThumbnailVisible(String(coverResult?.assetId || assetId || '').trim());
+          }}
           onImageError={handleImagePreviewError}
           onToggleResultStrip={toggleResultStrip}
           onToggleFavoriteResult={handleToggleFavoriteResult}
@@ -7145,7 +7162,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
 
         {fullscreenOpen && effectiveThumbnailUrl && (
           <ImageFullscreenOverlay
-            imageUrl={String(effectiveThumbnailUrl)}
+            imageUrl={String(fullscreenPreviewUrl || effectiveThumbnailUrl)}
             assetId={getPreferredImageDownloadAssetId({
               fallbackUrl: String(effectiveThumbnailUrl),
               nodeAssetId: assetId,
@@ -7157,6 +7174,9 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
             comparisonSource={imageViewerComparisonSource}
             onClose={() => setFullscreenOpen(false)}
             onDownload={handleDownload}
+            onImageLoad={() => {
+              if (fullscreenPreviewUrl) markPreviewVisible(fullscreenPreviewAssetId);
+            }}
             prompt={isGeneratedImageNode ? String(generationSnapshot?.prompt || d.generationPrompt || '') : ''}
             modelLabel={modelOptions.find((model) => model.id === String(generationSnapshot?.modelId || currentModelId))?.label || String(generationSnapshot?.modelId || currentModelId)}
             size={String(generationSnapshot?.size || currentSize)}

@@ -1247,6 +1247,7 @@ describe("worker skeleton", () => {
         s3Region: "us-east-1",
         s3SecretAccessKey: "test-secret",
         defaultNodeConcurrency: 4,
+        assetImageVariantConcurrency: 2,
         imageNodeConcurrency: 2,
         imageVariantsMode: "sync",
         nodeExecuteConcurrency: 16,
@@ -1305,6 +1306,7 @@ describe("worker skeleton", () => {
         s3Region: "us-east-1",
         s3SecretAccessKey: "test-secret",
         defaultNodeConcurrency: 5,
+        assetImageVariantConcurrency: 2,
         imageNodeConcurrency: 3,
         imageVariantsMode: "sync",
         nodeExecuteConcurrency: 32,
@@ -1337,7 +1339,7 @@ describe("worker skeleton", () => {
     expect(workerOptions.get(QUEUE_NAMES.nodeExecuteVideo)?.concurrency).toBe(1);
     expect(workerOptions.get(QUEUE_NAMES.providerPoll)?.concurrency).toBe(24);
     expect(workerOptions.get(QUEUE_NAMES.workflowStart)?.concurrency).toBe(8);
-    expect(workerOptions.get(QUEUE_NAMES.assetImageVariant)?.concurrency).toBe(8);
+    expect(workerOptions.get(QUEUE_NAMES.assetImageVariant)?.concurrency).toBe(2);
     expect(workerOptions.get(QUEUE_NAMES.assetIngest)?.concurrency).toBe(8);
     expect(workerOptions.get(QUEUE_NAMES.billingSettle)?.concurrency).toBe(8);
     expect(workerOptions.get(QUEUE_NAMES.walletExpiry)?.concurrency).toBe(8);
@@ -1347,6 +1349,7 @@ describe("worker skeleton", () => {
     const previous = {
       credential: process.env.CREDENTIAL_MASTER_KEY,
       defaultConcurrency: process.env.WORKER_DEFAULT_CONCURRENCY,
+      assetImageVariantConcurrency: process.env.ASSET_IMAGE_VARIANT_CONCURRENCY,
       imageConcurrency: process.env.WORKER_IMAGE_CONCURRENCY,
       imageVariantsMode: process.env.WORKER_IMAGE_VARIANTS_MODE,
       nodeExecuteConcurrency: process.env.NODE_EXECUTE_CONCURRENCY,
@@ -1366,6 +1369,7 @@ describe("worker skeleton", () => {
       process.env.NODE_ENV = "test";
       delete process.env.WORKER_CONCURRENCY;
       delete process.env.WORKER_DEFAULT_CONCURRENCY;
+      delete process.env.ASSET_IMAGE_VARIANT_CONCURRENCY;
       delete process.env.WORKER_IMAGE_CONCURRENCY;
       delete process.env.WORKER_IMAGE_VARIANTS_MODE;
       delete process.env.WORKER_VIDEO_CONCURRENCY;
@@ -1377,6 +1381,7 @@ describe("worker skeleton", () => {
       expect(defaultEnv.imageNodeConcurrency).toBe(4);
       expect(defaultEnv.videoNodeConcurrency).toBe(1);
       expect(defaultEnv.defaultNodeConcurrency).toBe(4);
+      expect(defaultEnv.assetImageVariantConcurrency).toBe(2);
       expect(defaultEnv.imageVariantsMode).toBe("sync");
 
       process.env.NODE_EXECUTE_CONCURRENCY = "37";
@@ -1384,6 +1389,7 @@ describe("worker skeleton", () => {
       process.env.WORKER_IMAGE_CONCURRENCY = "6";
       process.env.WORKER_VIDEO_CONCURRENCY = "2";
       process.env.WORKER_DEFAULT_CONCURRENCY = "7";
+      process.env.ASSET_IMAGE_VARIANT_CONCURRENCY = "5";
       process.env.WORKER_IMAGE_VARIANTS_MODE = "async";
       const overriddenEnv = getWorkerEnv();
       expect(overriddenEnv.nodeExecuteConcurrency).toBe(37);
@@ -1391,12 +1397,15 @@ describe("worker skeleton", () => {
       expect(overriddenEnv.imageNodeConcurrency).toBe(6);
       expect(overriddenEnv.videoNodeConcurrency).toBe(2);
       expect(overriddenEnv.defaultNodeConcurrency).toBe(7);
+      expect(overriddenEnv.assetImageVariantConcurrency).toBe(5);
       expect(overriddenEnv.imageVariantsMode).toBe("async");
     } finally {
       if (previous.credential === undefined) delete process.env.CREDENTIAL_MASTER_KEY;
       else process.env.CREDENTIAL_MASTER_KEY = previous.credential;
       if (previous.defaultConcurrency === undefined) delete process.env.WORKER_DEFAULT_CONCURRENCY;
       else process.env.WORKER_DEFAULT_CONCURRENCY = previous.defaultConcurrency;
+      if (previous.assetImageVariantConcurrency === undefined) delete process.env.ASSET_IMAGE_VARIANT_CONCURRENCY;
+      else process.env.ASSET_IMAGE_VARIANT_CONCURRENCY = previous.assetImageVariantConcurrency;
       if (previous.imageConcurrency === undefined) delete process.env.WORKER_IMAGE_CONCURRENCY;
       else process.env.WORKER_IMAGE_CONCURRENCY = previous.imageConcurrency;
       if (previous.imageVariantsMode === undefined) delete process.env.WORKER_IMAGE_VARIANTS_MODE;
@@ -1523,6 +1532,7 @@ describe("worker skeleton", () => {
         s3Region: "us-east-1",
         s3SecretAccessKey: "test-secret",
         defaultNodeConcurrency: 4,
+        assetImageVariantConcurrency: 2,
         imageNodeConcurrency: 2,
         imageVariantsMode: "sync",
         nodeExecuteConcurrency: 16,
