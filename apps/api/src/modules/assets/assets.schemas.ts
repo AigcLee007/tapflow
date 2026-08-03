@@ -105,8 +105,9 @@ export const signedAssetUrlRequestSchema = z.object({
   requests: z
     .array(
       z.object({
+        allowVariantFallback: z.boolean().optional().default(false),
         assetId: z.string().uuid(),
-        variantKey: z.string().trim().min(1).max(64).optional(),
+        variantKey: z.enum(["thumb", "preview"]).optional(),
       }),
     )
     .min(1)
