@@ -58,6 +58,11 @@ export const VIDEO_UI_COPY = {
 } as const;
 
 export const VIDEO_UI_REFERENCE_ROLE_COPY = {
+  main_image: "\u4e3b\u53c2\u8003\u56fe",
+  reference_image: "\u53c2\u8003\u56fe",
+  source_video: "\u6e90\u89c6\u9891",
+  reference_video: "\u53c2\u8003\u89c6\u9891",
+  reference_audio: "\u53c2\u8003\u97f3\u9891",
   subject: "人物",
   scene: "场景",
   prop: "道具",
@@ -84,6 +89,14 @@ export const VIDEO_UI_BLOCKER_COPY = {
   UNSUPPORTED_COUNT: "当前设置不受支持",
   UNSUPPORTED_MODE: "当前设置不受支持",
   UNSUPPORTED_RESOLUTION: "当前设置不受支持",
+  AUDIO_REFERENCE_REQUIRES_VISUAL: "\u97f3\u9891\u53c2\u8003\u9700\u8981\u540c\u65f6\u63a5\u5165\u56fe\u7247\u6216\u89c6\u9891",
+  AUDIO_SETTING_FIXED: "\u5f53\u524d\u6a21\u578b\u7684\u97f3\u9891\u751f\u6210\u8bbe\u7f6e\u4e0d\u53ef\u8c03\u6574",
+  UNSUPPORTED_DURATION: "\u5f53\u524d\u6a21\u578b\u4e0d\u652f\u6301\u8be5\u89c6\u9891\u65f6\u957f",
+  UNSUPPORTED_VIDEO_MODE: "\u5f53\u524d\u6a21\u578b\u4e0d\u652f\u6301\u8be5\u751f\u6210\u6a21\u5f0f",
+  VIDEO_MODE_INPUT_REQUIRED: "\u5f53\u524d\u751f\u6210\u6a21\u5f0f\u9700\u8981\u8865\u5145\u53c2\u8003\u7d20\u6750",
+  UNSUPPORTED_REFERENCE_KIND: "\u5f53\u524d\u6a21\u578b\u4e0d\u652f\u6301\u8be5\u53c2\u8003\u7d20\u6750\u7c7b\u578b",
+  REFERENCE_LIMIT_EXCEEDED: "\u53c2\u8003\u7d20\u6750\u6570\u91cf\u8d85\u8fc7\u5f53\u524d\u6a21\u578b\u9650\u5236",
+  REFERENCE_MEDIA_TOTAL_EXCEEDED: "\u53c2\u8003\u7d20\u6750\u603b\u6570\u8d85\u8fc7\u5f53\u524d\u6a21\u578b\u9650\u5236",
 } as const;
 
 const CHINESE_TEXT_PATTERN = /[\u3400-\u9FFF]/u;

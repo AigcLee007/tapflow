@@ -3,6 +3,13 @@
 Last updated: 2026-08-03
 Maintainers: project team + Codex sessions
 
+## 2026-08-03 - PixelHub Video Role-Boundary Fix
+
+- enforced model-specific reference roles in the gateway contract: Veo image-to-video accepts exactly one `first_frame`, while Gemini all-reference requires exactly one `source_video` and rejects other video roles;
+- added creator-facing labels for canonical image/video/audio reference roles and all new model-capability blockers, so the node can explain unsupported duration, fixed audio, reference limits, and missing required inputs;
+- focused gateway contract validation passed 20 tests; frontend capability, reference-rule, and UI-copy validation passed 19 tests; `npm run build` passed. Existing Browserslist, mixed dynamic-import, and chunk-size warnings remain unchanged;
+- the broader PixelHub three-model plan remains in progress. No provider credential was added and no staging deployment or live provider call was performed.
+
 ## 2026-08-03 - Canvas Signed-URL Preview Recovery
 
 - fixed expired generated-image previews by carrying `assetId` on generated result metadata and resolving fresh preview URLs before stale persisted `generatedResults[].url` values;

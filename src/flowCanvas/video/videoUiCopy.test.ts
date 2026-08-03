@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import {
   formatVideoModelEstimatedDuration,
   getVideoModelDescription,
+  VIDEO_UI_BLOCKER_COPY,
   VIDEO_UI_COPY,
   VIDEO_UI_MODE_COPY,
   VIDEO_UI_REFERENCE_ROLE_COPY,
@@ -20,6 +21,13 @@ describe("VIDEO_UI_COPY", () => {
   test("keeps ratio-control Chinese copy centralized", () => {
     expect(VIDEO_UI_COPY.auto).toBe("自动");
     expect(VIDEO_UI_COPY.unsupportedByCurrentModel).toBe("当前模型不支持");
+  });
+
+  test("labels canonical reference roles and model capability blockers", () => {
+    expect(VIDEO_UI_REFERENCE_ROLE_COPY.main_image).toBe("\u4e3b\u53c2\u8003\u56fe");
+    expect(VIDEO_UI_REFERENCE_ROLE_COPY.source_video).toBe("\u6e90\u89c6\u9891");
+    expect(VIDEO_UI_BLOCKER_COPY.VIDEO_MODE_INPUT_REQUIRED).toBe("\u5f53\u524d\u751f\u6210\u6a21\u5f0f\u9700\u8981\u8865\u5145\u53c2\u8003\u7d20\u6750");
+    expect(VIDEO_UI_BLOCKER_COPY.UNSUPPORTED_DURATION).toBe("\u5f53\u524d\u6a21\u578b\u4e0d\u652f\u6301\u8be5\u89c6\u9891\u65f6\u957f");
   });
 
   test("provides non-empty Chinese creator copy without replacement characters or mojibake", () => {
