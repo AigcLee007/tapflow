@@ -29,15 +29,17 @@ type VideoPalettePopoverProps = {
 
 export function VideoPalettePopover({ onChange, sourceDisplayByRole, value }: VideoPalettePopoverProps) {
   const layer = useDismissibleLayer("video-palette-popover");
-  const assignments = Object.values(value.referenceRolesByKey).filter(isRoleAssignment);
+  const referenceRolesByKey = value.referenceRolesByKey ?? {};
+  const existingContextPaletteRefs = value.contextPaletteRefs ?? [];
+  const assignments = Object.values(referenceRolesByKey).filter(isRoleAssignment);
   const emptyReferenceRolesCopy = VIDEO_UI_COPY.noReferenceRolesForContextPalette.replace(/[。.]$/, "");
 
   const updateContextPalette = (assignment: VideoReferenceRoleAssignment, colorToken: string) => {
     const contextPaletteRefs: VideoContextPaletteRef[] = [
-      ...value.contextPaletteRefs.filter((entry) => !sameSourceAndRole(entry, assignment)),
+      ...existingContextPaletteRefs.filter((entry) => !sameSourceAndRole(entry, assignment)),
       { role: assignment.role, source: assignment.source, colorToken },
     ];
-    onChange({ ...value, contextPaletteRefs });
+    onChange({ ...value, contextPaletteRefs, referenceRolesByKey });
   };
 
   return (
@@ -86,7 +88,7 @@ export function VideoPalettePopover({ onChange, sourceDisplayByRole, value }: Vi
                       </div>
                       <div className="grid grid-cols-6 gap-1.5">
                         {VIDEO_CONTEXT_COLOR_PRESETS.map((color) => {
-                          const selected = value.contextPaletteRefs.some((entry) => sameSourceAndRole(entry, assignment)
+                          const selected = existingContextPaletteRefs.some((entry) => sameSourceAndRole(entry, assignment)
                             && entry.colorToken === color.token);
                           return (
                             <button

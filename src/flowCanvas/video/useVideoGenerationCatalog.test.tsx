@@ -31,13 +31,14 @@ const model = {
 };
 
 const generationRoute = {
-  capabilities: { supportedVideoWorkflows: ["video_generation"] },
+  capabilities: { confirmedByRoute: true, supportedVideoWorkflows: ["video_generation"] },
   estimatedCredits: 5,
   minChargeCredits: 5,
   modality: "video",
   modelFamily: "private-family",
   modelKey: "video.catalog-video",
   pricingUnit: "video_generation",
+  pricing: { billingBasis: "duration_second", exact: true, minChargeCredits: 5, unit: "video_generation", unitCredits: 5 },
   providerKey: "private-provider",
   providerName: "Private provider",
   routeId: "route-id",

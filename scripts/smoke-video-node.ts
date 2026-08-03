@@ -66,12 +66,13 @@ export function buildVideoNodeSmokeHtml(): string {
         }
         if (requestUrl.includes('/api/v2/ai/model-catalog/video-smoke/routes')) {
           return new Response(JSON.stringify([{
-            capabilities: { aspectRatios: ['auto', '16:9', '4:3', '1:1', '3:4', '9:16', '21:9'], durationStepSeconds: 1,
-              maxCount: 4, maxDurationSeconds: 12, minDurationSeconds: 2, resolutions: ['480P', '720P', '1080P', '4K'],
-              supportedModes: ['text_to_video', 'all_reference', 'image_to_video', 'first_last_frame', 'image_reference'],
-              supportedVideoWorkflows: ['video_generation'], supportsAudio: true, supportsHumanReview: false },
-            estimatedCredits: 12, minChargeCredits: 12, modality: 'video', modelFamily: 'smoke', modelKey: 'video-smoke',
-            pricingUnit: 'generation', providerKey: 'smoke', providerName: 'Smoke provider', routeId: 'route-smoke',
+            capabilities: { aspectRatios: ['auto', '16:9', '4:3', '1:1', '3:4', '9:16', '21:9'], audioControlMode: 'toggle', confirmedByRoute: true,
+              durationStepSeconds: 1, maxAudios: 3, maxCount: 1, maxDurationSeconds: 15, maxImages: 9, maxTotal: 12, maxVideos: 3, minDurationSeconds: 4,
+              modeConstraints: { all_reference: { maxAudios: 3, maxImages: 9, maxTotal: 12, maxVideos: 3, requiresVideoOrAudio: true, requiresVisualWithAudio: true }, text_to_video: { maxTotal: 0 } },
+              referenceSemantics: 'mixed_reference_media', resolutions: ['480P', '720P', '1080P', '4K'], supportedDurations: [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+              supportedModes: ['text_to_video', 'all_reference', 'image_to_video', 'first_last_frame', 'image_reference'], supportedVideoWorkflows: ['video_generation'], supportsAudio: true, supportsHumanReview: false },
+            estimatedCredits: 12, minChargeCredits: 1, modality: 'video', modelFamily: 'smoke', modelKey: 'video-smoke',
+            pricing: { billingBasis: 'duration_second', exact: true, minChargeCredits: 1, unit: 'video_generation', unitCredits: 1 }, pricingUnit: 'video_generation', providerKey: 'smoke', providerName: 'Smoke provider', routeId: 'route-smoke',
             routeKey: 'video.smoke', routeLabel: 'Line one',
           }]), { status: 200, headers: { 'Content-Type': 'application/json' } });
         }
@@ -211,7 +212,7 @@ const modelMenuNoSearch = await desktopPage.locator('[aria-label="视频模型"]
 const modelOption = desktopPage.getByRole('option', { name: /视频模型 1/ });
 await modelOption.hover();
 const hoverDescriptionVisible = await desktopPage.getByText('电影感运动与光线模型').isVisible();
-await desktopPage.locator('button[aria-label="选择视频模型"]').click();
+await modelOption.click();
 
 await desktopPage.evaluate(() => document.querySelector('button[aria-label="运镜库"]')?.click());
 await desktopPage.waitForSelector('section[role="dialog"][aria-label="运镜库"]', { timeout: 15000 });
@@ -223,14 +224,16 @@ const cameraGridColumns = await desktopPage.locator('[data-camera-motion-id]').f
 await desktopPage.screenshot({ path: ${JSON.stringify(options.desktopScreenshotPath.replaceAll("\\", "/"))}, fullPage: true });
 await desktopPage.locator('button[aria-label="关闭运镜库"]').click();
 
-await desktopPage.locator('button[aria-label="视频参数"]').click();
+await desktopPage.locator('button[aria-label="视频参数摘要"]').click();
 await desktopPage.waitForSelector('[role="dialog"][aria-label="视频参数"]', { timeout: 15000 });
 const parameterDialog = desktopPage.locator('[role="dialog"][aria-label="视频参数"]');
 const parameterDialogIsTopLayer = await parameterDialog.evaluate((dialog) => dialog.parentElement === document.body
   && getComputedStyle(dialog).position === 'fixed'
   && Number(getComputedStyle(dialog).zIndex) >= 10020);
 const resolutionOptions = await desktopPage.locator('[role="dialog"][aria-label="视频参数"] [role="radio"]').allTextContents();
-const countOptions = await desktopPage.locator('[role="radiogroup"][aria-label="生成数量"] [role="radio"]').allTextContents();
+const countControls = desktopPage.locator('[role="radiogroup"][aria-label="生成数量"] [role="radio"]');
+const countOptions = await countControls.allTextContents();
+const countDisabledStates = await countControls.evaluateAll((controls) => controls.map((control) => control.getAttribute('aria-disabled')));
 const durationRange = await desktopPage.locator('input[aria-label="视频时长滑杆"]').evaluate((slider) => ({
   max: slider.getAttribute('max'), min: slider.getAttribute('min'), step: slider.getAttribute('step'),
 }));
@@ -239,7 +242,8 @@ const durationControlCount = await desktopPage.locator('input[aria-label="视频
 const audioGroupCount = await desktopPage.getByRole('radiogroup', { name: '生成音频' }).count();
 const hasDurationAudioAndCounts = durationControlCount === 2
   && audioGroupCount === 1
-  && ['1 个', '2 个', '4 个'].every((count) => countOptions.includes(count));
+  && countOptions.length === 3
+  && countDisabledStates.join('|') === 'false|true|true';
 await desktopPage.keyboard.press('Escape');
 await desktopPage.waitForSelector('[role="dialog"][aria-label="视频参数"]', { state: 'hidden', timeout: 15000 });
 
@@ -268,7 +272,7 @@ const blockedGenerationDidNotCreateRun = await mobilePage.evaluate(() => window.
 
 const result = { blockedGenerationDidNotCreateRun, cameraGridColumns, cameraPresetCount, composerVisible, durationRangeIsDefault, modelMenuNoSearch, parameterDialogIsTopLayer, resolutionOptions };
 if (!composerVisible || !modelMenuNoSearch || !hoverDescriptionVisible || !hasDurationAudioAndCounts || !durationRangeIsDefault || !parameterDialogIsTopLayer || !resolutionOptions.includes('4K') || cameraGridColumns !== 4 || cameraPresetCount !== 23 || !reducedMotionVideoIsPaused || !blockedGenerationDidNotCreateRun) {
-  throw new Error(JSON.stringify({ ...result, hasDurationAudioAndCounts, durationControlCount, durationRange, audioGroupCount, countOptions, hoverDescriptionVisible, reducedMotionVideoIsPaused }));
+  throw new Error(JSON.stringify({ ...result, hasDurationAudioAndCounts, durationControlCount, durationRange, audioGroupCount, countDisabledStates, countOptions, hoverDescriptionVisible, reducedMotionVideoIsPaused }));
 }
 return JSON.stringify({ ...result, status: 'ok' });
 } finally {

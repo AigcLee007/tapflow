@@ -692,3 +692,13 @@ New production docs added:
 - `docs/PRODUCTION_READINESS.md`
 - `docs/PRODUCTION_DEPLOYMENT.md`
 - `docs/PRODUCTION_RUNBOOK.md`
+
+## 2026-08-03 - PixelHub Video Models Implementation And Local QA
+
+- added the three catalog products and stable routes: `video.pixelhub.gemini-omni-flash`, `video.pixelhub.sora-v3-pro`, and `video.pixelhub.veo31-fast`. They use the `pixelhub-video` adapter, exact `duration_second` billing, 12-second polling, and a 30-minute provider task deadline.
+- declared the approved prices: Gemini 1 credit/second, Sora 10 credits/second, Veo 0.5 credits/second. Creator catalog filtering rejects unconfirmed, non-video-generation, and non-exact-priced routes.
+- enforced reference semantics at both canvas and gateway boundaries: Gemini all-reference is `reference_image` assets plus exactly one `source_video`; Veo image-to-video is one `first_frame`; Veo first/last mode is two ordered images.
+- fixed the remaining Veo transition bug in `VideoReferenceStrip`: removing a first/last-frame reference now re-resolves the mode and roles, so a single remaining image is retained as the valid `first_frame` image-to-video input.
+- refreshed the browser smoke fixture for the exact-priced route contract. It now selects a route, verifies one output is enabled while 2/4 are disabled, uses the current parameter-summary trigger, and passed desktop, narrow, and mobile visual checks.
+- local evidence: PixelHub focused tests 58 passed; `npm run smoke:video-node` passed; `npm run build` passed. The root `npm test` rerun still fails in known unrelated legacy migration, asset presigning, Canvas Agent, and multipart test groups.
+- no live PixelHub API call or staging action was performed. The plugin is not installed in staging and inactive/active route smokes remain pending; follow `docs/PIXELHUB_VIDEO_MODELS_RUNBOOK.md`.

@@ -6125,3 +6125,13 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - confirmed Veo image-to-video remains limited to exactly one `first_frame`; ordered first/last-frame behavior remains unchanged.
 - added focused contract and canvas regression coverage; frontend build and both focused suites passed in the isolated `codex/pixelhub-video-models` worktree.
 - the broader PixelHub integration plan remains in progress; this record covers only the reference-role correction.
+
+## 2026-08-03 - PixelHub Video Models Implementation And Local QA
+
+- implemented catalog-driven PixelHub video products with stable routes `video.pixelhub.gemini-omni-flash`, `video.pixelhub.sora-v3-pro`, and `video.pixelhub.veo31-fast`, one `pixelhub-video` adapter, exact duration-second pricing, and asynchronous task polling.
+- route capabilities enforce Gemini at 1 credit/second, Sora at 10 credits/second, and Veo at 0.5 credits/second. The creator receives only route-confirmed controls and exact pricing; credentials and signed media URLs remain server-side.
+- Gemini all-reference accepts only `reference_image` assets plus exactly one `source_video`. Veo image-to-video accepts exactly one `first_frame`; first/last-frame input is two ordered images.
+- corrected the canvas deletion path: removing either Veo first/last frame now reruns automatic mode and role normalization. A remaining image becomes `image_to_video` with `first_frame`, rather than leaving an invalid `last_frame` reference.
+- local focused validation passed: 58 PixelHub contract/canvas/smoke assertions, `npm run smoke:video-node` across desktop/narrow/mobile viewports, and `npm run build`.
+- the full root `npm test` was rerun and remains red due to existing unrelated legacy migration, asset presigning, Canvas Agent, and AI Gateway multipart tests. The PixelHub focused suites passed in that worktree.
+- no live Provider Connection, credential, PixelHub API, staging installation, inactive-route test, or active-route test was performed. Staging remains pending the runbook in `docs/PIXELHUB_VIDEO_MODELS_RUNBOOK.md`.

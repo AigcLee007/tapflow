@@ -46,6 +46,9 @@ describe("video node browser smoke contract", () => {
     expect(code).toContain("1024");
     expect(code).toContain("390");
     expect(code).toContain("4K");
+    expect(code).toContain('button[aria-label="视频参数摘要"]');
+    expect(code).toContain("countDisabledStates");
+    expect(code).toContain("await modelOption.click()");
     expect(code).toContain("prefers-reduced-motion");
     expect(code).toContain("runBackendWorkflow");
     expect(code).toContain("运镜库");

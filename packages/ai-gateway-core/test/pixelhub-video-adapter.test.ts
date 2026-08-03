@@ -10,7 +10,7 @@ const context = (model: string): ProviderCallContext => ({
 });
 
 const request: VideoGenerationRequest = { prompt: "Preserve the motion and replace the subject", params: { aspectRatio: "16:9", count: 1, durationSeconds: 8, generateAudio: true, mode: "all_reference", resolution: "1080P" }, inputAssets: [
-  { assetId: "image", kind: "image", metadata: { signedUrl: "https://signed.test/image", videoReference: { mediaKind: "image", order: 0, referenceKey: "image", role: "main_image", sourceKind: "asset", sourceNodeId: null } } },
+  { assetId: "image", kind: "image", metadata: { signedUrl: "https://signed.test/image", videoReference: { mediaKind: "image", order: 0, referenceKey: "image", role: "reference_image", sourceKind: "asset", sourceNodeId: null } } },
   { assetId: "video", kind: "video", metadata: { signedUrl: "https://signed.test/video", videoReference: { mediaKind: "video", order: 1, referenceKey: "video", role: "source_video", sourceKind: "asset", sourceNodeId: null } } },
 ] };
 

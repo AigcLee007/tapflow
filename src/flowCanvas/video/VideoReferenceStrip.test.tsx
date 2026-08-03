@@ -87,6 +87,48 @@ describe("VideoReferenceStrip", () => {
       referenceInputs: [expect.objectContaining({ mediaKind: "audio", source: { kind: "asset", id: "asset-audio" } })],
     }));
   });
+
+  test("downgrades Veo first-last frames to a single first frame after the first frame is removed", () => {
+    const onChange = vi.fn();
+    const capabilities = mergeVideoCapabilities({
+      confirmedByRoute: true,
+      maxImages: 2,
+      maxTotal: 2,
+      modeConstraints: {
+        first_last_frame: { maxImages: 2, maxTotal: 2, minImages: 2 },
+        image_to_video: { maxImages: 1, maxTotal: 1, minImages: 1 },
+      },
+      referenceSemantics: "ordered_first_last_frames",
+      supportedModes: ["text_to_video", "image_to_video", "first_last_frame"],
+    });
+    const value = {
+      ...createDefaultVideoGenerationParams(),
+      mode: "first_last_frame" as const,
+      referenceInputs: [
+        { mediaKind: "image" as const, order: 0, referenceKey: "asset:first", role: "first_frame" as const, source: { kind: "asset" as const, id: "first" } },
+        { mediaKind: "image" as const, order: 1, referenceKey: "asset:last", role: "last_frame" as const, source: { kind: "asset" as const, id: "last" } },
+      ],
+    };
+
+    render(
+      <VideoReferenceStrip
+        capabilities={capabilities}
+        currentNodeId="video-node"
+        onChange={onChange}
+        onConnectCanvasReference={vi.fn()}
+        onUploadReference={vi.fn()}
+        value={value}
+      />,
+    );
+
+    fireEvent.click(screen.getAllByRole("button")[0]!);
+
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      mode: "image_to_video",
+      referenceInputs: [expect.objectContaining({ order: 0, role: "first_frame", source: { kind: "asset", id: "last" } })],
+    }));
+  });
+
   test("maps a selected role without changing existing asset order", () => {
     const onChange = vi.fn();
     const value = createValue();

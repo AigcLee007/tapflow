@@ -28,7 +28,7 @@ describe('connectionRules', () => {
       'video',
       'panorama_viewer',
     ]);
-    expect(getConnectionActionsForSource(node('video')).map((action) => action.kind)).toEqual(['text']);
+    expect(getConnectionActionsForSource(node('video')).map((action) => action.kind)).toEqual(['video', 'text']);
   });
 
   it('enforces the allowed upstream/downstream matrix for existing nodes', () => {
@@ -49,7 +49,7 @@ describe('connectionRules', () => {
 
     expect(canConnectFlowNodes(videoSource, textTarget).ok).toBe(true);
     expect(canConnectFlowNodes(videoSource, imageTarget).ok).toBe(false);
-    expect(canConnectFlowNodes(videoSource, videoTarget).ok).toBe(false);
+    expect(canConnectFlowNodes(videoSource, videoTarget).ok).toBe(true);
     expect(canConnectFlowNodes(textSource, textSource).ok).toBe(false);
   });
 

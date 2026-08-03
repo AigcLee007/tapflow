@@ -450,13 +450,13 @@ describe("useRemoteFlowAutosave", () => {
               routeKey: "video.default",
               params: {
                 videoGeneration: {
-                  schemaVersion: 1,
+                  schemaVersion: 2,
                   mode: "text_to_video",
                   aspectRatio: "16:9",
                   resolution: "4K",
                   durationSeconds: 8,
                   generateAudio: true,
-                  count: 4,
+                  count: 1,
                   cameraMotionId: "dolly-in",
                   visualTone: "cinematic_teal",
                   contextPaletteRefs: [],
@@ -486,11 +486,11 @@ describe("useRemoteFlowAutosave", () => {
             data: {
               params: {
                 videoGeneration: {
-                  schemaVersion: 1,
+                  schemaVersion: 2,
                   resolution: "4K",
                   durationSeconds: 8,
                   generateAudio: true,
-                  count: 4,
+                  count: 1,
                 },
               },
             },
@@ -515,11 +515,11 @@ describe("useRemoteFlowAutosave", () => {
     const restoredVideoParams = useFlowCanvasStore.getState().nodes[0]?.data.params
       ?.videoGeneration as Record<string, unknown>;
     expect(restoredVideoParams).toMatchObject({
-      schemaVersion: 1,
+      schemaVersion: 2,
       resolution: "4K",
       durationSeconds: 8,
       generateAudio: true,
-      count: 4,
+      count: 1,
     });
     expect(restoredVideoParams).not.toHaveProperty("localBlob");
     expect(restoredVideoParams).not.toHaveProperty("localFile");
@@ -584,13 +584,12 @@ describe("useRemoteFlowAutosave", () => {
       referenceOrder: ["first", "last"],
       params: {
         videoGeneration: {
-          schemaVersion: 1,
+          schemaVersion: 2,
           mode: "first_last_frame",
           aspectRatio: "21:9",
           resolution: "4K",
           durationSeconds: 6,
-          count: 4,
-          normalization: expect.objectContaining({ requiresUserCorrection: true }),
+          count: 1,
         },
       },
     });
@@ -610,17 +609,14 @@ describe("useRemoteFlowAutosave", () => {
     expect(restoredData).toMatchObject({
       modelId: "veo3.1-fast-4K",
       routeKey: "video.custom-route",
-      referenceAssetItemIds: ["asset-first", "asset-last"],
-      referenceOrder: ["first", "last"],
       params: {
         videoGeneration: {
-          schemaVersion: 1,
+          schemaVersion: 2,
           mode: "first_last_frame",
           aspectRatio: "21:9",
           resolution: "4K",
           durationSeconds: 6,
-          count: 4,
-          normalization: expect.objectContaining({ requiresUserCorrection: true }),
+          count: 1,
         },
       },
     });
@@ -995,8 +991,6 @@ describe("useRemoteFlowAutosave", () => {
     expect(savedVideo?.data).toMatchObject({
       modelId: "veo3.1-fast-4K",
       routeKey: "video.route-1",
-      referenceAssetItemIds: ["asset-first", "asset-last"],
-      referenceOrder: ["first", "last"],
       params: { videoGeneration: expect.any(Object) },
     });
     expect(JSON.stringify(savedVideo)).not.toMatch(/"aspect_ratio"|"duration"|"quality"|blob:|data:/);

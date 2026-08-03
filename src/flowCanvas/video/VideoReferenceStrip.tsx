@@ -175,12 +175,13 @@ function VideoReferenceStripV2({ capabilities, currentNodeId, onChange, onConnec
   const maxImages = Number(constraint.maxImages ?? capabilities.maxImages ?? 0);
   const maxVideos = Number(constraint.maxVideos ?? capabilities.maxVideos ?? 0);
   const maxAudios = Number(constraint.maxAudios ?? capabilities.maxAudios ?? 0);
-  const remove = (referenceKey: string) => onChange({
-    ...value,
-    referenceInputs: value.referenceInputs
+  const remove = (referenceKey: string) => {
+    const nextReferences = value.referenceInputs
       .filter((reference) => reference.referenceKey !== referenceKey)
-      .map((reference, order) => ({ ...reference, order })),
-  });
+      .map((reference, order) => ({ ...reference, order }));
+    const resolved = resolveAutomaticVideoMode(capabilities, nextReferences, value.mode);
+    onChange({ ...value, mode: resolved.mode, referenceInputs: resolved.references });
+  };
   const appendReference = (
     mediaKind: VideoReferenceInputV2["mediaKind"],
     source: VideoReferenceInputV2["source"],
