@@ -2596,7 +2596,9 @@ describeWithDatabase("workflow node execution", () => {
                 providerKey: "mock-provider",
                 providerRequest: { prompt: "animate a river" },
                 providerResponse: { accepted: true },
+                pollIntervalMs: 12_000,
                 providerTaskId: "task-video-1",
+                providerTaskTimeoutMs: 1_800_000,
                 status: "waiting_provider",
                 usage: {
                   inputTokens: 6,
@@ -2644,30 +2646,40 @@ describeWithDatabase("workflow node execution", () => {
 
         expect(nodeRun.status).toBe("waiting_provider");
         expect(nodeRun.provider_task_id).toBe("task-video-1");
-        expect(nodeRun.output_json).toEqual({
-          providerTask: {
+        expect(nodeRun.output_json).toEqual(expect.objectContaining({
+          providerTask: expect.objectContaining({
+            acceptedAt: expect.any(String),
+            deadlineAt: expect.any(String),
             modelId: null,
             modelKey: "video-model",
+            pollIntervalMs: 12_000,
             providerId: null,
             providerKey: "mock-provider",
             providerTaskId: "task-video-1",
             routeId: null,
             routeKey: "default-media",
             status: "waiting_provider",
-          },
-        });
+          }),
+        }));
+        const providerTask = nodeRun.output_json.providerTask as Record<string, unknown>;
+        expect(Date.parse(String(providerTask.deadlineAt)) - Date.parse(String(providerTask.acceptedAt))).toBe(1_800_000);
         expect(pollQueue.jobs).toHaveLength(1);
         expect(pollQueue.jobs[0]).toMatchObject({
           data: {
+            deadlineAt: expect.any(String),
             nodeRunId: seeded.middleNodeRunId,
+            pollIntervalMs: 12_000,
             providerTaskId: "task-video-1",
             tenantId: seeded.tenantId,
             traceId: "trace-video",
             workflowRunId: seeded.workflowRunId,
           },
         });
+        expect(pollQueue.jobs[0].delay).toBe(12_000);
         expect(Object.keys(pollQueue.jobs[0].data).sort()).toEqual([
+          "deadlineAt",
           "nodeRunId",
+          "pollIntervalMs",
           "providerTaskId",
           "tenantId",
           "traceId",
@@ -3204,7 +3216,9 @@ describeWithDatabase("workflow node execution", () => {
         await processProviderPollJob(
           {
             data: {
+              deadlineAt: "2099-08-03T12:30:00.000Z",
               nodeRunId: seeded.middleNodeRunId,
+              pollIntervalMs: 12_000,
               providerTaskId: "task-pending",
               tenantId: seeded.tenantId,
               traceId: "trace-pending",
@@ -3237,7 +3251,13 @@ describeWithDatabase("workflow node execution", () => {
         });
         expect(JSON.stringify(nodeRun.output_json)).not.toContain("base64");
         expect(pollQueue.jobs).toHaveLength(1);
-        expect(pollQueue.jobs[0].delay).toBeGreaterThan(0);
+        expect(pollQueue.jobs[0]).toMatchObject({
+          data: {
+            deadlineAt: "2099-08-03T12:30:00.000Z",
+            pollIntervalMs: 12_000,
+          },
+          delay: 12_000,
+        });
         expect(billing).toEqual({
           ledgerEntries: 0,
           usageEvents: 0,

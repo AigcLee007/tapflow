@@ -9,6 +9,8 @@ import {
   createRedisConnection,
   resolveQueuePrefix,
   resolveRedisUrl,
+  assertLightweightJobPayload,
+  type ProviderPollJobPayload,
 } from "../src/index.js";
 
 const originalNodeEnv = process.env.NODE_ENV;
@@ -30,6 +32,18 @@ afterAll(() => {
 });
 
 describe("@aigc-flow/redis config", () => {
+  test("permits provider poll timing fields in lightweight payloads", () => {
+    const payload: ProviderPollJobPayload = {
+      deadlineAt: "2026-08-03T12:30:00.000Z",
+      nodeRunId: "node-run-1",
+      pollIntervalMs: 12_000,
+      providerTaskId: "task-1",
+      tenantId: "tenant-1",
+      workflowRunId: "run-1",
+    };
+    expect(() => assertLightweightJobPayload(payload)).not.toThrow();
+  });
+
   test("resolveRedisUrl reads REDIS_URL", () => {
     process.env.REDIS_URL = "redis://example.com:6380/1";
     process.env.NODE_ENV = "test";

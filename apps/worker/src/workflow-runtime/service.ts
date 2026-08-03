@@ -180,12 +180,15 @@ type NodeExecutionOutcome =
     };
 
 type WaitingProviderTaskState = {
+  acceptedAt: string;
+  deadlineAt: string;
   modelId: string | null;
   modelKey: string | null;
   outputs?: MediaOutput[] | null;
   providerId: string | null;
   providerKey: string | null;
   providerTaskId: string;
+  pollIntervalMs: number;
   routeId: string | null;
   routeKey: string | null;
   status: "pending" | "running" | "succeeded" | "waiting_provider";
@@ -1918,7 +1921,7 @@ export class WorkflowNodeExecutionService {
           deferredVariantJobs: [],
           nodeEnqueuePayloads: [],
           pollEnqueuePayloads: resolvedOutcome.pollPayloads.map((payload) => ({
-            delayMs: this.pollDelayMs,
+            delayMs: payload.pollIntervalMs ?? this.pollDelayMs,
             payload,
           })),
           processorResult: prepared.processorResult,
@@ -2068,6 +2071,27 @@ export class WorkflowNodeExecutionService {
         throw new Error(`Compiled node not found: ${currentNodeRun.node_id}`);
       }
 
+      const deadlineMs = input.deadlineAt ? Date.parse(input.deadlineAt) : Number.NaN;
+      if (Number.isFinite(deadlineMs) && Date.now() >= deadlineMs) {
+        await this.failNodeAndWorkflow(client, workflowRun.id, currentNodeRun.id, input.tenantId, {
+          code: "PIXELHUB_TASK_TIMEOUT",
+          message: "PixelHub video task exceeded the 30-minute deadline.",
+        });
+        return {
+          auditLogs: [],
+          deferredVariantJobs: [],
+          nodeEnqueuePayloads: [],
+          pollEnqueuePayloads: [],
+          processorResult: {
+            jobId: null,
+            queueName: QUEUE_NAMES.providerPoll,
+            status: "ok",
+            tenantId: input.tenantId,
+            traceId: input.traceId ?? null,
+          },
+        };
+      }
+
       if (input.providerTaskId.startsWith(UNKNOWN_PROVIDER_RECONCILE_PREFIX)) {
         const providerState = isPlainObject(currentNodeRun.output_json?.providerTask)
           ? currentNodeRun.output_json?.providerTask
@@ -2084,9 +2108,11 @@ export class WorkflowNodeExecutionService {
             nodeEnqueuePayloads: [],
             pollEnqueuePayloads: [
               {
-                delayMs: this.pollDelayMs,
+                delayMs: input.pollIntervalMs ?? this.pollDelayMs,
                 payload: {
+                  deadlineAt: input.deadlineAt,
                   nodeRunId: input.nodeRunId,
+                  pollIntervalMs: input.pollIntervalMs,
                   providerTaskId: input.providerTaskId,
                   tenantId: input.tenantId,
                   traceId: input.traceId ?? undefined,
@@ -2184,9 +2210,11 @@ export class WorkflowNodeExecutionService {
             nodeEnqueuePayloads: [],
             pollEnqueuePayloads: [
               {
-                delayMs: this.pollDelayMs,
+                delayMs: input.pollIntervalMs ?? this.pollDelayMs,
                 payload: {
+                  deadlineAt: input.deadlineAt,
                   nodeRunId: input.nodeRunId,
+                  pollIntervalMs: input.pollIntervalMs,
                   providerTaskId: input.providerTaskId,
                   tenantId: input.tenantId,
                   traceId: input.traceId ?? undefined,
@@ -2349,6 +2377,25 @@ export class WorkflowNodeExecutionService {
       } catch (error) {
         await rollbackToRecoverableSavepoint(client, "provider_poll_attempt");
         const normalized = normalizeError(error);
+        const retryable = ["PROVIDER_RATE_LIMITED", "PROVIDER_UNAVAILABLE", "PROVIDER_TIMEOUT"].includes(normalized.code);
+        if (retryable && (!Number.isFinite(deadlineMs) || Date.now() < deadlineMs)) {
+          return {
+            auditLogs: [],
+            deferredVariantJobs: [],
+            nodeEnqueuePayloads: [],
+            pollEnqueuePayloads: [{
+              delayMs: input.pollIntervalMs ?? this.pollDelayMs,
+              payload: input,
+            }],
+            processorResult: {
+              jobId: null,
+              queueName: QUEUE_NAMES.providerPoll,
+              status: "ok",
+              tenantId: input.tenantId,
+              traceId: input.traceId ?? null,
+            },
+          };
+        }
         await this.failNodeAndWorkflow(client, workflowRun.id, currentNodeRun.id, input.tenantId, normalized);
         return {
           auditLogs: [],
@@ -2686,11 +2733,14 @@ export class WorkflowNodeExecutionService {
       }
 
       const providerTasks = providerTaskIds.map<WaitingProviderTaskState>((providerTaskId: string) => ({
+        acceptedAt: new Date().toISOString(),
+        deadlineAt: new Date(Date.now() + (readPositiveInteger(result.providerTaskTimeoutMs) ?? 1_800_000)).toISOString(),
         modelId: result.modelId ?? null,
         modelKey: result.modelKey,
         providerId: result.providerId ?? null,
         providerKey: result.providerKey,
         providerTaskId,
+        pollIntervalMs: readPositiveInteger(result.pollIntervalMs) ?? this.pollDelayMs,
         routeId: result.routeId ?? null,
         routeKey,
         status: "waiting_provider",
@@ -2698,9 +2748,11 @@ export class WorkflowNodeExecutionService {
 
       return {
         outputJson: this.buildWaitingProviderOutput(providerTasks),
-        pollPayloads: providerTaskIds.map((providerTaskId: string) => ({
+        pollPayloads: providerTasks.map((providerTask) => ({
+          deadlineAt: providerTask.deadlineAt,
           nodeRunId: nodeRun.id,
-          providerTaskId,
+          pollIntervalMs: providerTask.pollIntervalMs,
+          providerTaskId: providerTask.providerTaskId,
           tenantId: context.tenantId,
           traceId: context.traceId ?? undefined,
           workflowRunId: workflowRun.id,
@@ -2794,11 +2846,14 @@ export class WorkflowNodeExecutionService {
 
     return {
       providerTask: {
+        acceptedAt: primary.acceptedAt,
+        deadlineAt: primary.deadlineAt,
         modelId: primary.modelId,
         modelKey: primary.modelKey,
         providerId: primary.providerId,
         providerKey: primary.providerKey,
         providerTaskId: primary.providerTaskId,
+        pollIntervalMs: primary.pollIntervalMs,
         routeId: primary.routeId,
         routeKey: primary.routeKey,
         status: primary.status,

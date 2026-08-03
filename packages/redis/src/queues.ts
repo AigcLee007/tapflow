@@ -47,7 +47,9 @@ export type NodeExecuteJobPayload = BaseJobPayload & {
 };
 
 export type ProviderPollJobPayload = BaseJobPayload & {
+  deadlineAt?: string;
   nodeRunId: string;
+  pollIntervalMs?: number;
   providerTaskId: string;
   workflowRunId: string;
 };
