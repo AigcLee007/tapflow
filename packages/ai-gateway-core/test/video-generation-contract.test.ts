@@ -165,6 +165,24 @@ describe("video generation contract", () => {
     expect(validateVideoGenerationRequest(referenceVideo, geminiCapabilities).map((item) => item.code)).toContain("VIDEO_MODE_INPUT_REQUIRED");
   });
 
+  test("requires one Gemini source video and permits supported visual styles", () => {
+    const imageOnly = request({
+      inputAssets: [asset("image", "main_image"), asset("image", "reference_image", 1)],
+      params: { ...request().params!, mode: "all_reference" },
+    });
+    expect(validateVideoGenerationRequest(imageOnly, geminiCapabilities).map((item) => item.code)).toContain("VIDEO_MODE_INPUT_REQUIRED");
+
+    const valid = request({
+      inputAssets: [
+        asset("image", "main_image"),
+        asset("image", "reference_image", 1),
+        asset("video", "source_video", 2),
+      ],
+      params: { ...request().params!, mode: "all_reference" },
+    });
+    expect(validateVideoGenerationRequest(valid, geminiCapabilities)).toEqual([]);
+  });
+
   test("rejects malformed mode constraint limits", () => {
     const negativeLimit = {
       ...geminiCapabilities,
@@ -270,6 +288,12 @@ describe("video generation contract", () => {
       params: { ...request().params!, mode: "image_to_video" },
     });
     expect(validateVideoGenerationRequest(firstFrameOnly, veo)).toEqual([]);
+
+    const mainImage = request({
+      inputAssets: [asset("image", "main_image", 0)],
+      params: { ...request().params!, mode: "image_to_video" },
+    });
+    expect(validateVideoGenerationRequest(mainImage, veo).map((issue) => issue.code)).toContain("VIDEO_MODE_INPUT_REQUIRED");
 
     const valid = request({
       inputAssets: [asset("image", "first_frame", 0), asset("image", "last_frame", 1)],
