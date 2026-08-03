@@ -349,14 +349,18 @@ export function validateVideoGenerationRequest(
     issues.push(issue("AUDIO_REFERENCE_REQUIRES_VISUAL", "inputAssets", "Audio references require an image or video reference."));
   }
   if (params.mode === "image_to_video") {
-    const mainImages = references.filter((reference) => reference.mediaKind === "image" && reference.role === "main_image");
-    if (references.length !== 1 || counts.image !== 1 || mainImages.length !== 1) {
-      issues.push(issue("VIDEO_MODE_INPUT_REQUIRED", "inputAssets", "Image-to-video requires exactly one main image."));
+    const requiredRole = capabilities.referenceSemantics === "ordered_first_last_frames"
+      ? "first_frame"
+      : "main_image";
+    const matchingImages = references.filter((reference) => reference.mediaKind === "image" && reference.role === requiredRole);
+    if (references.length !== 1 || counts.image !== 1 || matchingImages.length !== 1) {
+      issues.push(issue("VIDEO_MODE_INPUT_REQUIRED", "inputAssets", `Image-to-video requires exactly one ${requiredRole}.`));
     }
   }
   if (params.mode === "all_reference" && capabilities.referenceSemantics === "style_images_and_source_video") {
-    if (references.some((reference) => reference.mediaKind === "video" && reference.role !== "source_video")) {
-      issues.push(issue("VIDEO_MODE_INPUT_REQUIRED", "inputAssets", "Video references must be marked as source videos."));
+    const sourceVideos = references.filter((reference) => reference.mediaKind === "video" && reference.role === "source_video");
+    if (sourceVideos.length !== 1 || references.some((reference) => reference.mediaKind === "video" && reference.role !== "source_video")) {
+      issues.push(issue("VIDEO_MODE_INPUT_REQUIRED", "inputAssets", "All-reference requires exactly one source video."));
     }
   }
   if (params.mode === "first_last_frame" && capabilities.referenceSemantics === "ordered_first_last_frames") {

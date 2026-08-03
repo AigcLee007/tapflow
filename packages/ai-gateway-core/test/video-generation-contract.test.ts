@@ -37,7 +37,7 @@ const geminiCapabilities: VideoGenerationCapabilities = {
   minDurationSeconds: 4,
   modeConstraints: {
     all_reference: { maxImages: 5, maxTotal: 5, maxVideos: 1, minImages: 1 },
-    image_reference: { maxImages: 1, maxTotal: 1, minImages: 1 },
+    image_reference: { maxImages: 5, maxTotal: 5, minImages: 2 },
     image_to_video: { maxImages: 1, maxTotal: 1, minImages: 1 },
     text_to_video: { maxTotal: 0 },
   },
@@ -132,7 +132,7 @@ describe("video generation contract", () => {
       }),
       request({
         inputAssets: [asset("image", "main_image"), asset("image", "reference_image", 1)],
-        params: { ...request().params!, mode: "all_reference" },
+        params: { ...request().params!, mode: "image_reference" },
       }),
       request({
         inputAssets: [asset("image", "main_image"), asset("video", "source_video", 1)],
@@ -258,12 +258,19 @@ describe("video generation contract", () => {
     const veo: VideoGenerationCapabilities = {
       ...geminiCapabilities,
       modeConstraints: {
+        image_to_video: { maxImages: 1, maxTotal: 1, minImages: 1 },
         first_last_frame: { maxImages: 2, maxTotal: 2, minImages: 2 },
         text_to_video: { maxTotal: 0 },
       },
       referenceSemantics: "ordered_first_last_frames",
-      supportedModes: ["text_to_video", "first_last_frame"],
+      supportedModes: ["text_to_video", "image_to_video", "first_last_frame"],
     };
+    const firstFrameOnly = request({
+      inputAssets: [asset("image", "first_frame", 0)],
+      params: { ...request().params!, mode: "image_to_video" },
+    });
+    expect(validateVideoGenerationRequest(firstFrameOnly, veo)).toEqual([]);
+
     const valid = request({
       inputAssets: [asset("image", "first_frame", 0), asset("image", "last_frame", 1)],
       params: { ...request().params!, mode: "first_last_frame" },
@@ -287,6 +294,14 @@ describe("video generation contract", () => {
       params: { ...request().params!, mode: "first_last_frame" },
     });
     expect(validateVideoGenerationRequest(sameOrder, veo).map((issue) => issue.code)).toContain("VIDEO_MODE_INPUT_REQUIRED");
+  });
+
+  test("requires exactly one Gemini source video in all-reference mode", () => {
+    const missingSourceVideo = request({
+      inputAssets: [asset("image", "main_image", 0)],
+      params: { ...request().params!, mode: "all_reference" },
+    });
+    expect(validateVideoGenerationRequest(missingSourceVideo, geminiCapabilities).map((issue) => issue.code)).toContain("VIDEO_MODE_INPUT_REQUIRED");
   });
 
   test("propagates provider task polling hints from video generation", async () => {
