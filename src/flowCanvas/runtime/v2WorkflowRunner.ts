@@ -575,6 +575,7 @@ function buildGeneratedResults(assetRefs: FlowRuntimeAssetRef[], generatedAt: nu
   return assetRefs
     .filter((asset) => asset.assetId && asset.downloadUrl)
     .map((asset) => ({
+      assetId: asset.assetId,
       createdAt: generatedAt,
       id: `asset:${asset.assetId}`,
       url: String(asset.downloadUrl),

@@ -200,6 +200,7 @@ export interface FlowWorkbenchNodeMetadata {
 }
 
 export interface FlowImageResultItem {
+  assetId?: string;
   id: string;
   url: string;
   createdAt: number;

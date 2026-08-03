@@ -1,7 +1,15 @@
 ﻿# Project Record
 
-Last updated: 2026-08-02
+Last updated: 2026-08-03
 Maintainers: project team + Codex sessions
+
+## 2026-08-03 - Canvas Signed-URL Preview Recovery
+
+- fixed expired generated-image previews by carrying `assetId` on generated result metadata and resolving fresh preview URLs before stale persisted `generatedResults[].url` values;
+- added a shared runtime asset-preview resolver with expiry-aware cache reads, same-asset in-flight coalescing, batches of up to 100 signed-url requests, preview-to-original fallback, and one controlled refresh per failed URL after an image load error;
+- kept signed URLs out of authoritative graph persistence and removed per-node graph updates during URL refresh, reducing autosave churn and duplicate signing traffic while preserving visible-node lazy loading;
+- added resolver, URL-precedence, runtime asset metadata, and React image-node regression coverage. Focused validation passed: 5 files, 66 tests; `npm run build` passed with the existing Browserslist, CSS-property, dynamic-import, and chunk-size warnings;
+- the full root test run excluding generated directories remains red with 24 unrelated historical failures (AI Gateway multipart, Three.js/ResizeObserver canvas fixtures, legacy migration/asset fixtures, and Canvas Agent expectations). The unfiltered root run timed out while scanning repository worktrees. No staging deployment or live object-storage smoke test was performed.
 
 ## 2026-08-02 - Post-Merge Migration Version Collision Fix
 

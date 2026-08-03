@@ -1367,10 +1367,12 @@ describe('v2WorkflowRunner', () => {
       coverResultId: 'asset:asset-1',
       generatedResults: [
         expect.objectContaining({
+          assetId: 'asset-1',
           id: 'asset:asset-1',
           url: 'https://cdn.test/asset-1-preview.png?X-Amz-Signature=signed',
         }),
         expect.objectContaining({
+          assetId: 'asset-2',
           id: 'asset:asset-2',
           url: 'https://cdn.test/asset-2-preview.png?X-Amz-Signature=signed',
         }),

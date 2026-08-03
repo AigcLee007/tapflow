@@ -32,6 +32,10 @@ export function setCachedAssetUrl(item: CachedAssetUrl): void {
   cache.set(keyFor(item.assetId, item.variantKey), item);
 }
 
+export function invalidateCachedAssetUrl(assetId: string, variantKey?: string | null): void {
+  cache.delete(keyFor(assetId, variantKey));
+}
+
 export function clearAssetUrlCache(): void {
   cache.clear();
 }

@@ -152,4 +152,31 @@ describe("canonicalizeGraph", () => {
       params: { aspect_ratio: "21:9", quality: "4k cinematic" },
     });
   });
+
+  it("keeps generated result asset ids while removing their signed URLs", () => {
+    const graph = canonicalizeGraph({
+      edges: [],
+      nodes: [{
+        id: "image-1",
+        position: { x: 0, y: 0 },
+        type: "image",
+        data: {
+          assetId: "asset-first",
+          generatedResults: [{
+            assetId: "asset-first",
+            createdAt: 1,
+            id: "asset:asset-first",
+            url: "https://cdn.test/first.png?X-Amz-Signature=temporary",
+          }],
+        },
+      }],
+      viewport: { x: 0, y: 0, zoom: 1 },
+    });
+
+    expect(graph.nodes[0]?.data.generatedResults).toEqual([{
+      assetId: "asset-first",
+      createdAt: 1,
+      id: "asset:asset-first",
+    }]);
+  });
 });

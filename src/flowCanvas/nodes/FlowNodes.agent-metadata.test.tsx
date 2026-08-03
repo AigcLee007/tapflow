@@ -8,6 +8,7 @@ import { useFlowCanvasStore } from "../store/flowCanvasStore";
 const assetApiMocks = vi.hoisted(() => ({
   getAsset: vi.fn(),
   getAssetDownloadUrl: vi.fn(),
+  getAssetSignedUrls: vi.fn(),
   getAssetVariantUrl: vi.fn(),
   uploadAssetFile: vi.fn(),
 }));
@@ -25,6 +26,7 @@ const useAssetLibraryMock = vi.hoisted(() => vi.fn());
 vi.mock("../../assets/assetApi", () => ({
   getAsset: (...args: unknown[]) => assetApiMocks.getAsset(...args),
   getAssetDownloadUrl: (...args: unknown[]) => assetApiMocks.getAssetDownloadUrl(...args),
+  getAssetSignedUrls: (...args: unknown[]) => assetApiMocks.getAssetSignedUrls(...args),
   getAssetVariantUrl: (...args: unknown[]) => assetApiMocks.getAssetVariantUrl(...args),
   uploadAssetFile: (...args: unknown[]) => assetApiMocks.uploadAssetFile(...args),
 }));
@@ -63,6 +65,7 @@ describe("FlowNodes agent metadata", () => {
     useFlowCanvasStore.getState().newProject();
     assetApiMocks.getAsset.mockReset();
     assetApiMocks.getAssetDownloadUrl.mockReset();
+    assetApiMocks.getAssetSignedUrls.mockReset();
     assetApiMocks.getAssetVariantUrl.mockReset();
     assetApiMocks.uploadAssetFile.mockReset();
     workflowRunnerMocks.runBackendWorkflow.mockReset();
@@ -376,6 +379,111 @@ describe("FlowNodes agent metadata", () => {
       expect(assetApiMocks.getAssetDownloadUrl).toHaveBeenCalledWith("video-two");
       expect(container.querySelector("video")?.getAttribute("src")).toBe("https://cdn.test/video-two.mp4?X-Amz-Signature=fresh");
     });
+  });
+
+  it("replaces an expired generated image result URL with the fresh signed URL", async () => {
+    assetApiMocks.getAssetSignedUrls.mockResolvedValue({
+      items: [{
+        assetId: "asset-expired-image",
+        expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+        method: "GET",
+        url: "https://cdn.test/fresh-image.png?X-Amz-Signature=fresh",
+        variantKey: "preview",
+      }],
+    });
+
+    const { container } = render(
+      <ImageNodeComponent
+        id="image-expired-1"
+        selected={false}
+        data={{
+          assetId: "asset-expired-image",
+          coverResultId: "asset:asset-expired-image",
+          generatedResults: [{
+            assetId: "asset-expired-image",
+            createdAt: 1,
+            id: "asset:asset-expired-image",
+            url: "https://cdn.test/expired-image.png?X-Amz-Signature=stale",
+          }],
+          generationStatus: "done",
+          height: 220,
+          kind: "image",
+          lastGenerationSnapshot: { modelId: "test-model" },
+          status: "success",
+          title: "Expired image",
+          width: 220,
+        } as any}
+        dragging={false}
+        zIndex={1}
+        isConnectable
+        type="image"
+        xPos={0}
+        yPos={0}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector("img")?.getAttribute("src")).toBe(
+        "https://cdn.test/fresh-image.png?X-Amz-Signature=fresh",
+      );
+    });
+    expect(assetApiMocks.getAssetSignedUrls).toHaveBeenCalledWith([
+      { assetId: "asset-expired-image", variantKey: "preview" },
+    ]);
+  });
+
+  it("limits repeated image-load failures to one refresh per failed URL", async () => {
+    assetApiMocks.getAssetSignedUrls.mockResolvedValue({
+      items: [{
+        assetId: "asset-retry-once",
+        expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+        method: "GET",
+        url: "https://cdn.test/retry-once-fresh.png?X-Amz-Signature=fresh",
+        variantKey: "preview",
+      }],
+    });
+
+    const { container } = render(
+      <ImageNodeComponent
+        id="image-retry-once"
+        selected={false}
+        data={{
+          assetId: "asset-retry-once",
+          generatedResults: [{
+            assetId: "asset-retry-once",
+            createdAt: 1,
+            id: "asset:asset-retry-once",
+            url: "https://cdn.test/retry-once-stale.png?X-Amz-Signature=stale",
+          }],
+          generationStatus: "done",
+          height: 220,
+          kind: "image",
+          status: "success",
+          title: "Retry once",
+          width: 220,
+        } as any}
+        dragging={false}
+        zIndex={1}
+        isConnectable
+        type="image"
+        xPos={0}
+        yPos={0}
+      />,
+    );
+
+    const image = await waitFor(() => {
+      const element = container.querySelector("img");
+      expect(element?.getAttribute("src")).toBe(
+        "https://cdn.test/retry-once-fresh.png?X-Amz-Signature=fresh",
+      );
+      return element;
+    });
+
+    fireEvent.error(image!);
+    await waitFor(() => expect(assetApiMocks.getAssetSignedUrls).toHaveBeenCalledTimes(2));
+    fireEvent.error(image!);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(assetApiMocks.getAssetSignedUrls).toHaveBeenCalledTimes(2);
   });
 
   it("blocks unconfigured video generation before it reaches the workflow runner", () => {

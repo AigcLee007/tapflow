@@ -143,6 +143,8 @@ import { dispatchOpenAgentSession } from '../agent/agentSessionEvents';
 import { normalizeBackendAssetUrl } from '../../utils/generatedImageStorage';
 import { canNodeReceiveIncoming } from '../rules/connectionRules';
 import { getAsset, getAssetDownloadUrl, getAssetVariantUrl, uploadAssetFile, type AssetItem } from '../../assets/assetApi';
+import { invalidateAssetPreviewUrl, refreshAssetPreviewUrl, resolveAssetPreviewUrl } from '../../assets/assetPreviewResolver';
+import { getImageResultAssetId, selectImageResultPreviewUrl } from '../utils/imageResultPreview';
 import { listAiModelCatalog, listAiModelRoutes, type AiModelCatalogItem } from '../../services/v2AiModelCatalogApi';
 import { buildAssetBackedNodeData } from '../utils/assetNodeData';
 import {
@@ -4450,7 +4452,9 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     : [];
   const runtimeThumbnailUrl = runtimeImageAssets[0]?.downloadUrl || '';
   const [assetPreviewUrl, setAssetPreviewUrl] = useState('');
+  const [resolvedPreviewUrlsByAssetId, setResolvedPreviewUrlsByAssetId] = useState<Record<string, string>>({});
   const [imageLoadState, setImageLoadState] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle');
+  const previewRefreshAttemptsRef = useRef<Set<string>>(new Set());
   const [referencePreviewUrlsByKey, setReferencePreviewUrlsByKey] = useState<Record<string, string>>({});
   const [referenceAssetItemsById, setReferenceAssetItemsById] = useState<Record<string, AssetItem>>({});
   const [pendingReferenceAssetItemsById, setPendingReferenceAssetItemsById] = useState<Record<string, AssetItem>>({});
@@ -4458,31 +4462,46 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const referenceUploadId = typeof d.referenceUploadId === 'string' ? d.referenceUploadId : '';
   const persistedThumbnailUrl = String(d.thumbnailUrl || '');
   const persistedThumbnailNeedsRefresh = isAuthenticatedAssetBytesUrl(persistedThumbnailUrl);
+  const persistedResultAssetIds = useMemo(() => {
+    const rawResults = Array.isArray(d.generatedResults) ? d.generatedResults : [];
+    const assetIds = Array.isArray(d.assetIds) ? d.assetIds : [];
+    return rawResults
+      .map((item, index) => getImageResultAssetId(item as { assetId?: unknown; id?: unknown }, index, assetIds))
+      .filter(Boolean);
+  }, [d.assetIds, d.generatedResults]);
+  const previewAssetIds = useMemo(
+    () => Array.from(new Set([
+      assetId,
+      ...persistedResultAssetIds,
+      ...runtimeImageAssets.map((asset) => String(asset.assetId || '').trim()),
+    ].filter(Boolean))),
+    [assetId, persistedResultAssetIds, runtimeImageAssets],
+  );
+  const previewAssetIdsKey = previewAssetIds.join('|');
   useEffect(() => {
-    if (!assetId || runtimeThumbnailUrl || (persistedThumbnailUrl && !persistedThumbnailNeedsRefresh)) return;
+    if (previewAssetIds.length === 0) {
+      setResolvedPreviewUrlsByAssetId((current) => Object.keys(current).length === 0 ? current : {});
+      return;
+    }
     let cancelled = false;
-    void getAssetVariantUrl(assetId, 'preview')
-      .catch(() => getAssetDownloadUrl(assetId))
-      .then((download) => {
-        if (cancelled) return;
-        const previewUrl = String(download.url || '').trim();
-        setAssetPreviewUrl(previewUrl);
-        if (previewUrl) {
-          updateNodeData(id, {
-            originalImageUrl: previewUrl,
-            thumbnailUrl: previewUrl,
-          });
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setAssetPreviewUrl('');
-        }
-      });
+    void Promise.allSettled(previewAssetIds.map(async (previewAssetId) => ({
+      assetId: previewAssetId,
+      url: await resolveAssetPreviewUrl(previewAssetId),
+    }))).then((results) => {
+      if (cancelled) return;
+      const resolvedEntries = results.flatMap((result) => result.status === 'fulfilled' && result.value.url
+        ? [[result.value.assetId, result.value.url] as const]
+        : []);
+      if (resolvedEntries.length === 0) return;
+      setResolvedPreviewUrlsByAssetId((current) => ({
+        ...current,
+        ...Object.fromEntries(resolvedEntries),
+      }));
+    });
     return () => {
       cancelled = true;
     };
-  }, [assetId, id, persistedThumbnailNeedsRefresh, persistedThumbnailUrl, runtimeThumbnailUrl, updateNodeData]);
+  }, [previewAssetIdsKey]);
   useEffect(() => {
     if (!referenceUploadId || assetId || runtimeThumbnailUrl || persistedThumbnailUrl) return;
     let cancelled = false;
@@ -4503,7 +4522,12 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [assetId, id, referenceUploadId, runtimeThumbnailUrl, updateNodeData]);
-  const effectiveThumbnailUrl = runtimeThumbnailUrl
+  const runtimePrimaryAssetId = String(runtimeImageAssets[0]?.assetId || '').trim();
+  const resolvedPrimaryPreviewUrl = resolvedPreviewUrlsByAssetId[assetId]
+    || (runtimePrimaryAssetId ? resolvedPreviewUrlsByAssetId[runtimePrimaryAssetId] : '')
+    || '';
+  const effectiveThumbnailUrl = resolvedPrimaryPreviewUrl
+    || runtimeThumbnailUrl
     || (persistedThumbnailNeedsRefresh ? '' : persistedThumbnailUrl)
     || assetPreviewUrl;
   const editableImageSource = useMemo(
@@ -4533,28 +4557,6 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     (tool: string) => activeImageTool?.nodeId === id && activeImageTool.tool === tool,
     [activeImageTool, id],
   );
-  const handleImagePreviewError = useCallback(() => {
-    if (!assetId) {
-      setImageLoadState('error');
-      return;
-    }
-    void getAssetDownloadUrl(assetId)
-      .then((download) => {
-        const fallbackUrl = String(download.url || '').trim();
-        if (!fallbackUrl || fallbackUrl === effectiveThumbnailUrl) {
-          setImageLoadState('error');
-          return;
-        }
-        setAssetPreviewUrl(fallbackUrl);
-        setImageLoadState('loading');
-        updateNodeData(id, {
-          originalImageUrl: fallbackUrl,
-          thumbnailUrl: fallbackUrl,
-        });
-      })
-      .catch(() => setImageLoadState('error'));
-  }, [assetId, effectiveThumbnailUrl, id, updateNodeData]);
-  
   const isTargeting = !!connectionNodeId && connectionNodeId !== id && hovered;
 
   useEffect(() => () => {
@@ -4906,19 +4908,29 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     flushText();
     return parts;
   }, [d.generationPrompt, referenceChips]);
+  const persistedResultAssetIdList = Array.isArray(d.assetIds) ? d.assetIds : [];
   const generatedResults = Array.isArray(d.generatedResults)
-    ? (d.generatedResults as Array<{ id?: string; url?: string; createdAt?: number }>)
-        .map((item, index) => ({
-          id: String(item?.id || `result-fallback-${index}`),
-          url: String(item?.url || '').trim(),
-          createdAt: Number(item?.createdAt || Date.now()),
-        }))
+    ? (d.generatedResults as Array<{ assetId?: string; id?: string; url?: string; createdAt?: number }>)
+        .map((item, index) => {
+          const resultAssetId = getImageResultAssetId(item, index, persistedResultAssetIdList);
+          return {
+            assetId: resultAssetId || undefined,
+            id: String(item?.id || `result-fallback-${index}`),
+            url: selectImageResultPreviewUrl({
+              fallbackUrl: effectiveThumbnailUrl,
+              persistedUrl: item?.url,
+              resolvedUrl: resultAssetId ? resolvedPreviewUrlsByAssetId[resultAssetId] : undefined,
+            }),
+            createdAt: Number(item?.createdAt || Date.now()),
+          };
+        })
         .filter((item) => item.url)
     : [];
   const runtimeResultItems = runtimeImageAssets
     .map((asset, index) => ({
+      assetId: String(asset.assetId || '').trim() || undefined,
       id: `runtime-asset-${asset.assetId}-${index}`,
-      url: String(asset.downloadUrl || ''),
+      url: resolvedPreviewUrlsByAssetId[String(asset.assetId || '').trim()] || String(asset.downloadUrl || ''),
       createdAt: Date.now(),
     }))
     .filter((item) => item.url);
@@ -4927,7 +4939,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     : generatedResults.length > 0
       ? generatedResults
       : (effectiveThumbnailUrl
-        ? [{ id: 'result-single', url: effectiveThumbnailUrl, createdAt: Date.now() }]
+        ? [{ assetId: assetId || undefined, id: 'result-single', url: effectiveThumbnailUrl, createdAt: Date.now() }]
         : []);
   const multiImageDisplayMode = d.multiImageDisplayMode === 'split_nodes' ? 'split_nodes' : 'combined';
   const effectiveBatchCount = pendingBatchCount ?? (d.batchCount || 1);
@@ -4946,6 +4958,30 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const coverResultId = String(d.coverResultId || '');
   const coverResult = visibleResultItems.find((item) => item.id === coverResultId) || visibleResultItems[activeResultIndex];
   const displayThumbnailUrl = normalizeBackendAssetUrl(coverResult?.url || effectiveThumbnailUrl);
+  const handleImagePreviewError = useCallback(() => {
+    const failedAssetId = String(coverResult?.assetId || assetId || '').trim();
+    if (!failedAssetId) {
+      setImageLoadState('error');
+      return;
+    }
+    const failedUrlKey = `${failedAssetId}:${displayThumbnailUrl}`;
+    if (previewRefreshAttemptsRef.current.has(failedUrlKey)) {
+      setImageLoadState('error');
+      return;
+    }
+    previewRefreshAttemptsRef.current.add(failedUrlKey);
+    invalidateAssetPreviewUrl(failedAssetId);
+    void refreshAssetPreviewUrl(failedAssetId)
+      .then((freshUrl) => {
+        if (!freshUrl || freshUrl === displayThumbnailUrl) {
+          setImageLoadState('error');
+          return;
+        }
+        setResolvedPreviewUrlsByAssetId((current) => ({ ...current, [failedAssetId]: freshUrl }));
+        setImageLoadState('loading');
+      })
+      .catch(() => setImageLoadState('error'));
+  }, [assetId, coverResult?.assetId, displayThumbnailUrl]);
   const resultCount = isGeneratedImageNode ? visibleResultItems.length : 0;
   const canExpandResults = resultCount > 1;
   const favoriteResultIds = useMemo(
