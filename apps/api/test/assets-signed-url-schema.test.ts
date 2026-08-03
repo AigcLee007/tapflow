@@ -28,6 +28,18 @@ describe("signedAssetUrlRequestSchema", () => {
     });
   });
 
+  it("accepts preview variants when fallback is enabled", () => {
+    const parsed = signedAssetUrlRequestSchema.parse({
+      requests: [{ allowVariantFallback: true, assetId, variantKey: "preview" }],
+    });
+
+    expect(parsed.requests[0]).toEqual({
+      allowVariantFallback: true,
+      assetId,
+      variantKey: "preview",
+    });
+  });
+
   it("rejects unknown variants", () => {
     const result = signedAssetUrlRequestSchema.safeParse({
       requests: [{ assetId, variantKey: "full-resolution" }],
