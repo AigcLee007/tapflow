@@ -8,6 +8,8 @@ import {
 } from "./videoPresentationSanitizers";
 
 const isGenerationRoute = (route: AiModelCatalogRoute) =>
+  route.capabilities?.confirmedByRoute === true
+  &&
   Array.isArray(route.capabilities?.supportedVideoWorkflows)
   && route.capabilities.supportedVideoWorkflows.includes("video_generation");
 
@@ -32,17 +34,25 @@ export function toVideoModelOptions(
         ...(estimatedDurationLabel ? { estimatedDurationLabel } : {}),
       };
       if (!estimatedDurationLabel) delete capabilities.estimatedDurationLabel;
-      const estimatedCredits = positiveNumber(route.estimatedCredits) ?? positiveNumber(route.minChargeCredits);
-      const minChargeCredits = positiveNumber(route.minChargeCredits) ?? positiveNumber(route.estimatedCredits);
+      const pricing = route.pricing?.exact === true
+        && route.pricing.billingBasis === "duration_second"
+        && route.pricing.unit === "video_generation"
+        ? route.pricing as { billingBasis: "duration_second"; exact: true; minChargeCredits: number; unit: "video_generation"; unitCredits: number }
+        : null;
+      const estimatedCredits = pricing?.unitCredits ?? positiveNumber(route.estimatedCredits);
+      const minChargeCredits = pricing?.minChargeCredits ?? positiveNumber(route.minChargeCredits);
       return {
-        blocker: estimatedCredits == null && minChargeCredits == null ? "PRICING_NOT_FOUND" : null,
+        blocker: pricing ? null : "PRICING_NOT_FOUND",
         capabilities,
         description,
         estimatedCredits,
         ...(estimatedDurationLabel ? { estimatedDurationLabel } : {}),
         id: model.id,
         label: getCreatorModelLabel(model, index + 1),
+        modelKey: model.modelKey,
         minChargeCredits,
+        pricing,
+        routeKey: route.routeKey,
       };
     });
 }

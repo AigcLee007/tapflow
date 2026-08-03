@@ -18,24 +18,32 @@ const videoModel = (overrides: Partial<AiModelCatalogItem> = {}): AiModelCatalog
   ...overrides,
 });
 
-const route = (overrides: Partial<AiModelCatalogRoute> = {}): AiModelCatalogRoute => ({
-  capabilities: {
-    estimatedDurationLabel: "About 1 minute",
-    supportedVideoWorkflows: ["video_generation"],
-  },
+const route = (overrides: Partial<AiModelCatalogRoute> = {}): AiModelCatalogRoute => {
+  const { capabilities: capabilityOverrides, ...rest } = overrides;
+  return {
   estimatedCredits: 15,
   minChargeCredits: 12,
   modality: "video",
   modelFamily: "provider-private-video-family",
   modelKey: "video.private-model-key",
   pricingUnit: "video_generation",
+  pricing: overrides.estimatedCredits === null || overrides.minChargeCredits === null
+    ? null
+    : { billingBasis: "duration_second", exact: true, minChargeCredits: 12, unit: "video_generation", unitCredits: 15 },
   providerKey: "private-provider-key",
   providerName: "Private Provider Name",
   routeId: "private-route-id",
   routeKey: "video.private-route-key",
   routeLabel: "Private route label",
-  ...overrides,
-});
+  ...rest,
+  capabilities: {
+    confirmedByRoute: true,
+    estimatedDurationLabel: "About 1 minute",
+    supportedVideoWorkflows: ["video_generation"],
+    ...capabilityOverrides,
+  },
+  };
+};
 
 describe("toVideoModelOptions", () => {
   test("includes only active models with a video generation route and exposes safe creator fields", () => {
@@ -66,9 +74,9 @@ describe("toVideoModelOptions", () => {
     const creatorRenderable = JSON.stringify(options);
     expect(creatorRenderable).not.toContain("private-provider-key");
     expect(creatorRenderable).not.toContain("Private Provider Name");
-    expect(creatorRenderable).not.toContain("video.private-route-key");
     expect(creatorRenderable).not.toContain("upstream-private-model");
-    expect(Object.keys(options[0])).not.toEqual(expect.arrayContaining(["providerKey", "routeKey"]));
+    expect(options[0]?.routeKey).toBe("video.private-route-key");
+    expect(options[0]?.modelKey).toBe("video.private-model-key");
   });
 
   test("uses only safe Chinese capability description when ui schema has no description", () => {

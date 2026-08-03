@@ -16,12 +16,22 @@ export type AiModelCatalogItem = {
 
 export type AiModelCatalogRouteCapabilities = Record<string, unknown> & {
     aspectRatios?: string[];
+    confirmedByRoute?: boolean;
     description?: string;
     durationStepSeconds?: number;
     estimatedDurationLabel?: string;
     maxCount?: number;
+    maxAudios?: number;
     maxDurationSeconds?: number;
+    maxImages?: number;
+    maxPromptLength?: number | null;
+    maxTotal?: number;
+    maxVideos?: number;
     minDurationSeconds?: number;
+    modeConstraints?: Record<string, Record<string, number | boolean>>;
+    audioControlMode?: "toggle" | "always_on_implicit" | "unsupported";
+    defaults?: Record<string, unknown>;
+    referenceSemantics?: "style_images_and_source_video" | "mixed_reference_media" | "ordered_first_last_frames";
     resolutions?: string[];
     supportedGenerationModes?: string[];
     supportedModes?: string[];
@@ -38,6 +48,7 @@ export type AiModelCatalogRoute = {
   modelFamily: string | null;
   modelKey: string | null;
   pricingUnit: string | null;
+  pricing: { billingBasis: "duration_second" | null; exact: boolean; minChargeCredits: number; unit: string; unitCredits: number } | null;
   providerKey: string;
   providerName: string;
   routeId: string;

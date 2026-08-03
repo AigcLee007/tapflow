@@ -62,6 +62,8 @@ type ModelRouteRecord = {
   model_family: string | null;
   model_key: string | null;
   pricing_unit: string | null;
+  pricing_metadata: Record<string, unknown> | null;
+  pricing_fallback_level: number | null;
   provider_key: string;
   provider_name: string;
   request_config: Record<string, unknown>;
@@ -87,12 +89,22 @@ export type ModelCatalogItemView = {
 export type ModelCatalogRouteView = {
   capabilities: {
     aspectRatios?: string[];
+    confirmedByRoute?: boolean;
     description?: string;
     durationStepSeconds?: number;
     estimatedDurationLabel?: string;
     maxCount?: number;
+    maxAudios?: number;
     maxDurationSeconds?: number;
+    maxImages?: number;
+    maxPromptLength?: number | null;
+    maxTotal?: number;
+    maxVideos?: number;
     minDurationSeconds?: number;
+    modeConstraints?: Record<string, Record<string, number | boolean>>;
+    audioControlMode?: "toggle" | "always_on_implicit" | "unsupported";
+    defaults?: Record<string, unknown>;
+    referenceSemantics?: "style_images_and_source_video" | "mixed_reference_media" | "ordered_first_last_frames";
     resolutions?: string[];
     supportedGenerationModes: string[];
     supportedModes?: string[];
@@ -106,6 +118,7 @@ export type ModelCatalogRouteView = {
   modelFamily: string | null;
   modelKey: string | null;
   pricingUnit: string | null;
+  pricing: { billingBasis: "duration_second" | null; exact: boolean; minChargeCredits: number; unit: string; unitCredits: number } | null;
   providerKey: string;
   providerName: string;
   routeId: string;
@@ -249,14 +262,22 @@ export class AiModelCatalogService {
             COALESCE(route.request_config, '{}'::jsonb) AS request_config,
             pricing.min_charge_credits::text AS min_charge_credits,
             pricing.unit_credits::text AS estimated_credits,
-            pricing.unit AS pricing_unit
+            pricing.unit AS pricing_unit,
+            pricing.metadata AS pricing_metadata,
+            pricing.pricing_fallback_level
           FROM ai_routes AS route
           JOIN ai_providers AS provider
             ON provider.id = route.provider_id
           LEFT JOIN ai_models AS model
             ON model.id = route.model_id
           LEFT JOIN LATERAL (
-            SELECT mp.min_charge_credits, mp.unit_credits, mp.unit
+            SELECT mp.min_charge_credits, mp.unit_credits, mp.unit, mp.metadata,
+              CASE
+                WHEN mp.provider = provider.key AND mp.model = COALESCE(model.model_key, $2::text) AND mp.route = route.route_key THEN 1
+                WHEN mp.provider = provider.key AND mp.model = COALESCE(model.model_key, $2::text) AND mp.route = 'default' THEN 2
+                WHEN mp.provider = provider.key AND mp.model = 'default' AND mp.route = 'default' THEN 3
+                ELSE 4
+              END AS pricing_fallback_level
             FROM model_pricing AS mp
             WHERE mp.active = true
               AND mp.unit = CASE route.modality
@@ -355,12 +376,21 @@ function mapModelCatalogRoute(row: ModelRouteRecord): ModelCatalogRouteView {
     modelFamily: row.model_family,
     modelKey: row.model_key,
     pricingUnit: row.pricing_unit,
+    pricing: projectPricing(row),
     providerKey: row.provider_key,
     providerName: row.provider_name,
     routeId: row.route_id,
     routeKey: row.route_key,
     routeLabel: row.route_label,
   };
+}
+
+function projectPricing(row: ModelRouteRecord): ModelCatalogRouteView["pricing"] {
+  const unitCredits = row.estimated_credits === null ? null : Number(row.estimated_credits);
+  const minChargeCredits = row.min_charge_credits === null ? null : Number(row.min_charge_credits);
+  if (!row.pricing_unit || !Number.isFinite(unitCredits) || !Number.isFinite(minChargeCredits)) return null;
+  const billingBasis = row.pricing_metadata?.billingBasis === "duration_second" ? "duration_second" : null;
+  return { billingBasis, exact: row.pricing_fallback_level === 1, minChargeCredits: minChargeCredits!, unit: row.pricing_unit, unitCredits: unitCredits! };
 }
 
 function readSupportedGenerationModes(source: unknown): string[] {
@@ -470,6 +500,8 @@ function mergeSafeVideoCapabilities(...sources: Array<Record<string, unknown> | 
   const aspectRatios = mergeKnownStringCapability(sources, "aspectRatios", KNOWN_VIDEO_ASPECT_RATIOS);
   const resolutions = mergeKnownStringCapability(sources, "resolutions", KNOWN_VIDEO_RESOLUTIONS);
   const result: Omit<ModelCatalogRouteView["capabilities"], "supportedGenerationModes" | "supportedVideoWorkflows"> = {};
+  const confirmedByRoute = [...sources].reverse().some((source) => source?.confirmedByRoute === true);
+  if (confirmedByRoute) result.confirmedByRoute = true;
   if (supportedModes.length) result.supportedModes = supportedModes;
   if (aspectRatios.length) result.aspectRatios = aspectRatios;
   if (resolutions.length) result.resolutions = resolutions;
@@ -477,6 +509,23 @@ function mergeSafeVideoCapabilities(...sources: Array<Record<string, unknown> | 
     const value = [...sources].reverse().map((source) => readPositiveNumber(source, key)).find((candidate) => candidate !== undefined);
     if (value !== undefined) result[key] = value;
   }
+  for (const key of ["maxImages", "maxVideos", "maxAudios", "maxTotal"] as const) {
+    const value = [...sources].reverse().map((source) => readPositiveNumber(source, key)).find((candidate) => candidate !== undefined);
+    if (value !== undefined) result[key] = value;
+  }
+  const maxPromptLength = [...sources].reverse().map((source) => {
+    const value = source?.maxPromptLength;
+    return value === null || (typeof value === "number" && Number.isFinite(value) && value > 0) ? value : undefined;
+  }).find((candidate) => candidate !== undefined);
+  if (maxPromptLength !== undefined) result.maxPromptLength = maxPromptLength;
+  const audioControlMode = [...sources].reverse().map((source) => source?.audioControlMode).find((value) => value === "toggle" || value === "always_on_implicit" || value === "unsupported");
+  if (audioControlMode) result.audioControlMode = audioControlMode;
+  const referenceSemantics = [...sources].reverse().map((source) => source?.referenceSemantics).find((value) => value === "style_images_and_source_video" || value === "mixed_reference_media" || value === "ordered_first_last_frames");
+  if (referenceSemantics) result.referenceSemantics = referenceSemantics;
+  const defaults = [...sources].reverse().map((source) => source?.defaults).find((value) => value && typeof value === "object" && !Array.isArray(value));
+  if (defaults) result.defaults = defaults as Record<string, unknown>;
+  const modeConstraints = [...sources].reverse().map((source) => source?.modeConstraints).find((value) => value && typeof value === "object" && !Array.isArray(value));
+  if (modeConstraints) result.modeConstraints = modeConstraints as Record<string, Record<string, number | boolean>>;
   for (const key of ["supportsAudio", "supportsHumanReview"] as const) {
     const value = [...sources].reverse().map((source) => readBoolean(source, key)).find((candidate) => candidate !== undefined);
     if (value !== undefined) result[key] = value;

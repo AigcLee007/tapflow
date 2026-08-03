@@ -121,5 +121,8 @@ export type VideoModelOption = {
   estimatedDurationLabel?: string;
   id: string;
   label: string;
+  modelKey: string;
   minChargeCredits: number | null;
+  pricing: { billingBasis: "duration_second"; exact: true; minChargeCredits: number; unit: "video_generation"; unitCredits: number } | null;
+  routeKey: string;
 };
