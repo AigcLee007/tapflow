@@ -5,6 +5,7 @@ import { AittcoTextRelayAdapter } from "../src/aittco-text-relay-adapter.js";
 import { MockProviderAdapter } from "../src/mock-provider-adapter.js";
 import { OpenAiCompatibleTextAdapter } from "../src/openai-compatible-text-adapter.js";
 import { PixelleLabsGeminiImageAdapter } from "../src/pixellelabs-gemini-image-adapter.js";
+import { PixelHubVideoAdapter } from "../src/pixelhub-video-adapter.js";
 import {
   ProviderAdapterRegistry,
   createDefaultAiGateway,
@@ -26,6 +27,7 @@ describe("ProviderAdapterRegistry", () => {
       "mock",
       "openai",
       "openai-compatible",
+      "pixelhub-video",
       "pixellelabs-gemini-image",
       "visionary-nano-banana",
     ]);
@@ -33,6 +35,7 @@ describe("ProviderAdapterRegistry", () => {
     expect(registry.create("mock")).toBeInstanceOf(MockProviderAdapter);
     expect(registry.create("openai")).toBeInstanceOf(OpenAiCompatibleTextAdapter);
     expect(registry.create("openai-compatible")).toBeInstanceOf(OpenAiCompatibleTextAdapter);
+    expect(registry.create("pixelhub-video")).toBeInstanceOf(PixelHubVideoAdapter);
     expect(registry.create("pixellelabs-gemini-image")).toBeInstanceOf(PixelleLabsGeminiImageAdapter);
     expect(registry.create("visionary-nano-banana")).toBeInstanceOf(VisionaryNanoBananaAdapter);
   });

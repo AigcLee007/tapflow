@@ -17,6 +17,7 @@ export {
 } from "./credential-vault.js";
 export { OpenAiCompatibleTextAdapter } from "./openai-compatible-text-adapter.js";
 export { PixelleLabsGeminiImageAdapter } from "./pixellelabs-gemini-image-adapter.js";
+export { PixelHubVideoAdapter } from "./pixelhub-video-adapter.js";
 export { VisionaryNanoBananaAdapter } from "./visionary-nano-banana-adapter.js";
 export { MockProviderAdapter } from "./mock-provider-adapter.js";
 export type { ProviderAdapter } from "./provider-adapter.js";
