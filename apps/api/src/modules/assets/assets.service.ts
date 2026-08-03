@@ -131,6 +131,109 @@ type AssetStorageTarget = {
   variantKey: string | null;
 };
 
+type BulkAssetStorageRow = {
+  asset_bucket: string;
+  asset_id: string;
+  asset_mime_type: string;
+  asset_object_key: string;
+  deleted_at: string | null;
+  original_filename: string | null;
+  status: string;
+  variant_bucket: string | null;
+  variant_key: "thumb" | "preview" | null;
+  variant_mime_type: string | null;
+  variant_object_key: string | null;
+};
+
+type SignedAssetCandidate = {
+  asset: AssetStorageTarget;
+  available: boolean;
+  variants: Map<"thumb" | "preview", AssetStorageTarget>;
+};
+
+type SignedVariantKey = "thumb" | "preview";
+type SignedUrlRequestItem = {
+  allowVariantFallback: boolean;
+  assetId: string;
+  variantKey?: SignedVariantKey;
+};
+
+type SignedUrlSuccess = {
+  assetId: string;
+  expiresAt: string;
+  method: "GET";
+  requestedVariantKey: SignedVariantKey | null;
+  servedVariantKey: SignedVariantKey | null;
+  status: "ok" | "fallback";
+  url: string;
+  variantKey: SignedVariantKey | null;
+};
+
+function groupSignedAssetCandidates(rows: BulkAssetStorageRow[]): Map<string, SignedAssetCandidate> {
+  const candidates = new Map<string, SignedAssetCandidate>();
+  for (const row of rows) {
+    let candidate = candidates.get(row.asset_id);
+    if (!candidate) {
+      candidate = {
+        asset: {
+          assetId: row.asset_id,
+          bucket: row.asset_bucket,
+          key: row.asset_object_key,
+          mimeType: row.asset_mime_type,
+          originalFilename: row.original_filename,
+          variantKey: null,
+        },
+        available: row.status === "available" && !row.deleted_at,
+        variants: new Map(),
+      };
+      candidates.set(row.asset_id, candidate);
+    }
+    if (row.variant_key && row.variant_bucket && row.variant_object_key && row.variant_mime_type) {
+      candidate.variants.set(row.variant_key, {
+        assetId: row.asset_id,
+        bucket: row.variant_bucket,
+        key: row.variant_object_key,
+        mimeType: row.variant_mime_type,
+        originalFilename: row.original_filename,
+        variantKey: row.variant_key,
+      });
+    }
+  }
+  return candidates;
+}
+
+async function loadSignedAssetCandidates(
+  client: PoolClient,
+  tenantId: string,
+  assetIds: string[],
+): Promise<Map<string, SignedAssetCandidate>> {
+  const uniqueAssetIds = Array.from(new Set(assetIds));
+  if (uniqueAssetIds.length === 0) return new Map();
+  const result = await client.query<BulkAssetStorageRow>(`
+    SELECT
+      a.id::text AS asset_id,
+      a.bucket AS asset_bucket,
+      a.object_key AS asset_object_key,
+      a.mime_type AS asset_mime_type,
+      a.original_filename,
+      a.status,
+      a.deleted_at,
+      av.variant_key,
+      av.bucket AS variant_bucket,
+      av.object_key AS variant_object_key,
+      av.mime_type AS variant_mime_type
+    FROM assets a
+    LEFT JOIN asset_variants av
+      ON av.tenant_id = a.tenant_id
+     AND av.asset_id = a.id
+     AND av.variant_key IN ('thumb', 'preview')
+    WHERE a.tenant_id = $1::uuid
+      AND a.id = ANY($2::uuid[])
+    ORDER BY a.id, av.variant_key
+  `, [tenantId, uniqueAssetIds]);
+  return groupSignedAssetCandidates(result.rows);
+}
+
 type AssetObjectForBytesResponse = {
   body: Buffer;
   contentLength: number | null;
@@ -350,6 +453,7 @@ function shouldFallbackEmptyVariantBytes(input: {
 }
 
 export const __assetsServiceTestUtils = {
+  loadSignedAssetCandidates,
   normalizeAssetObjectForBytesResponse,
   shouldFallbackEmptyVariantBytes,
 };
@@ -1208,27 +1312,38 @@ export class AssetsService {
 
   async createSignedUrls(
     context: AssetContext,
-    requests: Array<{ assetId: string; variantKey?: string }>,
+    requests: SignedUrlRequestItem[],
   ): Promise<{
-    items: Array<{
-      assetId: string;
-      expiresAt: string;
-      method: "GET";
-      url: string;
-      variantKey: string | null;
-    }>;
+    errors: Array<{ assetId: string; code: "ASSET_UNAVAILABLE" }>;
+    items: SignedUrlSuccess[];
+    metrics: {
+      assetLookupMs: number;
+      originalFallbackCount: number;
+      previewFallbackCount: number;
+      requestedCount: number;
+      signingMs: number;
+      thumbHitCount: number;
+      unavailableCount: number;
+      uniqueAssetCount: number;
+    };
   }> {
     return withTenantTransaction(context, async (client) => {
-      const items = [];
+      const lookupStartedAt = Date.now();
+      const candidates = await loadSignedAssetCandidates(client, context.tenantId, requests.map((item) => item.assetId));
+      const assetLookupMs = Date.now() - lookupStartedAt;
+      const signingStartedAt = Date.now();
+      const signedByTarget = new Map<string, Promise<{ expiresAt: string; url: string }>>();
+      const items: SignedUrlSuccess[] = [];
+      const errors: Array<{ assetId: string; code: "ASSET_UNAVAILABLE" }> = [];
+      let thumbHitCount = 0;
+      let previewFallbackCount = 0;
+      let originalFallbackCount = 0;
 
-      for (const request of requests) {
-        const target = await this.getAssetStorageTarget(
-          client,
-          context.tenantId,
-          request.assetId,
-          request.variantKey,
-        );
-        const signed = await this.storageProvider.createPresignedGetUrl({
+      const sign = (target: AssetStorageTarget) => {
+        const key = `${target.bucket}:${target.key}:${target.mimeType}`;
+        const existing = signedByTarget.get(key);
+        if (existing) return existing;
+        const promise = this.storageProvider.createPresignedGetUrl({
           bucket: target.bucket,
           expiresInSeconds: 900,
           key: target.key,
@@ -1241,18 +1356,51 @@ export class AssetsService {
             status: "available",
           })}"`,
           responseContentType: target.mimeType,
-        });
+        }).then(({ expiresAt, url }) => ({ expiresAt, url }));
+        signedByTarget.set(key, promise);
+        return promise;
+      };
 
-        items.push({
-          assetId: target.assetId,
+      const resolved = await Promise.all(requests.map(async (request) => {
+        const candidate = candidates.get(request.assetId);
+        if (!candidate?.available) return { error: { assetId: request.assetId, code: "ASSET_UNAVAILABLE" as const } };
+        const requestedVariantKey = request.variantKey ?? null;
+        const choices: Array<SignedVariantKey | null> = request.allowVariantFallback
+          ? request.variantKey === "thumb" ? ["thumb", "preview", null] : request.variantKey === "preview" ? ["preview", null] : [null]
+          : [requestedVariantKey];
+        const servedVariantKey = choices.find((key) => key === null || candidate.variants.has(key));
+        if (servedVariantKey === undefined) return { error: { assetId: request.assetId, code: "ASSET_UNAVAILABLE" as const } };
+        const target = servedVariantKey === null ? candidate.asset : candidate.variants.get(servedVariantKey)!;
+        const signed = await sign(target);
+        if (servedVariantKey === "thumb") thumbHitCount += 1;
+        if (requestedVariantKey === "thumb" && servedVariantKey === "preview") previewFallbackCount += 1;
+        if (requestedVariantKey && servedVariantKey === null) originalFallbackCount += 1;
+        return { item: {
+          assetId: request.assetId,
           expiresAt: signed.expiresAt,
           method: "GET" as const,
+          requestedVariantKey,
+          servedVariantKey,
+          status: servedVariantKey === requestedVariantKey ? "ok" as const : "fallback" as const,
           url: signed.url,
-          variantKey: target.variantKey,
-        });
-      }
-
-      return { items };
+          variantKey: servedVariantKey,
+        } };
+      }));
+      resolved.forEach((result) => result.item ? items.push(result.item) : errors.push(result.error));
+      return {
+        errors,
+        items,
+        metrics: {
+          assetLookupMs,
+          originalFallbackCount,
+          previewFallbackCount,
+          requestedCount: requests.length,
+          signingMs: Date.now() - signingStartedAt,
+          thumbHitCount,
+          unavailableCount: errors.length,
+          uniqueAssetCount: candidates.size,
+        },
+      };
     }, this.pool);
   }
 

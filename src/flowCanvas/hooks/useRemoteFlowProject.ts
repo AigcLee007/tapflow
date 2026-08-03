@@ -13,6 +13,7 @@ import { recoverFlowTargetNodeRuns } from "../runtime/v2WorkflowRunner";
 import type { WorkspaceFlow, WorkspaceProject } from "../../workspace/workspaceApi";
 import { canonicalizeGraph } from "../utils/canonicalGraph";
 import { normalizeViewportForCanvasDensity } from "../utils/viewportDensity";
+import { canvasThumbnailPerformance } from "../performance/canvasThumbnailPerformance";
 
 type RemoteFlowProjectState = {
   draft: FlowDraft | null;
@@ -100,6 +101,7 @@ export function useRemoteFlowProject(projectId: string): RemoteFlowProjectState 
     setError(null);
     try {
       const nextProject = await getProject(projectId);
+      canvasThumbnailPerformance.reset(nextProject.id);
       const nextFlow = await getOrCreateDefaultFlow(nextProject);
       const nextDraft = await getFlowDraft(nextFlow.id);
       const canvasDraft = resolveDraftForCanvas(nextDraft);
@@ -117,6 +119,7 @@ export function useRemoteFlowProject(projectId: string): RemoteFlowProjectState 
         version: canvasDraft.revision,
         viewport: canvasDraft.graph.viewport,
       });
+      canvasThumbnailPerformance.markDraftReady();
 
       setProject(nextProject);
       setFlow(nextFlow);
@@ -149,6 +152,7 @@ export function useRemoteFlowProject(projectId: string): RemoteFlowProjectState 
     void (async () => {
       try {
         const nextProject = await getProject(projectId);
+        canvasThumbnailPerformance.reset(nextProject.id);
         const nextFlow = await getOrCreateDefaultFlow(nextProject);
         const nextDraft = await getFlowDraft(nextFlow.id);
         const canvasDraft = resolveDraftForCanvas(nextDraft);
@@ -167,6 +171,7 @@ export function useRemoteFlowProject(projectId: string): RemoteFlowProjectState 
           version: canvasDraft.revision,
           viewport: canvasDraft.graph.viewport,
         });
+        canvasThumbnailPerformance.markDraftReady();
         setProject(nextProject);
         setFlow(nextFlow);
         setDraft(canvasDraft);

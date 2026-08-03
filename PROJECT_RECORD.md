@@ -10,6 +10,15 @@ Maintainers: project team + Codex sessions
 - focused gateway contract validation passed 20 tests; frontend capability, reference-rule, and UI-copy validation passed 19 tests; `npm run build` passed. Existing Browserslist, mixed dynamic-import, and chunk-size warnings remain unchanged;
 - the broader PixelHub three-model plan remains in progress. No provider credential was added and no staging deployment or live provider call was performed.
 
+## 2026-08-03 - Canvas Thumbnail Loading Performance Rollout
+
+- added tenant-scoped bulk signed-URL resolution with ordered, per-item `thumb -> preview -> original` fallback and compatibility-preserved `variantKey` responses; request metrics omit signed URLs.
+- canvas image nodes now resolve lightweight thumbs first, use a bounded tenant/user session cache, request preview only for fullscreen, retry one transient signing failure, and refresh the exact failed thumbnail instead of upgrading it to a larger resource.
+- introduced anonymous canvas performance marks for draft readiness, signing, first/90-percent thumbnail visibility, and preview upgrade; signed URLs remain UI-only and are never persisted into graph drafts.
+- replaced direct S3/Sharp historical repair with audit-first queue enqueueing, and isolated `ASSET_IMAGE_VARIANT_CONCURRENCY` at `2` so repair jobs do not consume general Worker capacity.
+- focused source validation passed for signed-URL schema/bulk resolution, resolver/cache/auth boundaries, layered canvas loading/performance marks, Worker image variants, and queue-based backfill; the complete root test command still has unrelated historical failures.
+- deployment and mainland-China/Ningbo live metrics have not been collected: this workspace has no `DATABASE_URL` or `REDIS_URL`, and the local Docker Desktop Linux engine is unavailable. Do not treat the rollout as accepted until the documented browser and queue checks pass in staging.
+
 ## 2026-08-03 - Canvas Signed-URL Preview Recovery
 
 - fixed expired generated-image previews by carrying `assetId` on generated result metadata and resolving fresh preview URLs before stale persisted `generatedResults[].url` values;

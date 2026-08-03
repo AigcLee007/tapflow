@@ -24,7 +24,10 @@ export function selectImageResultPreviewUrl(input: {
   persistedUrl?: string;
   resolvedUrl?: string;
 }): string {
-  return [input.resolvedUrl, input.persistedUrl, input.fallbackUrl]
+  const resolvedUrl = String(input.resolvedUrl || '').trim();
+  if (String(input.assetId || '').trim()) return resolvedUrl;
+
+  return [resolvedUrl, input.persistedUrl, input.fallbackUrl]
     .map((value) => String(value || '').trim())
     .find(Boolean) || '';
 }

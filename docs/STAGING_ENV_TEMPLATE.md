@@ -45,10 +45,13 @@ Keep both database URLs only in `/opt/aittco/env/tapflow.staging.env`. The runti
 - `REDIS_URL = <secret: Upstash Redis TCP connection string>`
 - `QUEUE_PREFIX = aigc-flow:staging`
 - `WORKER_CONCURRENCY = 1`
-- `WORKER_IMAGE_VARIANTS_MODE = async`
+- `ASSET_IMAGE_VARIANT_CONCURRENCY = 2`
+- `WORKER_IMAGE_VARIANTS_MODE = sync`
 - `Redis provider = Upstash Redis`
 - `Password/TLS enabled = Yes`
 - `Isolated from prod = Yes`
+
+Keep image-variant work at concurrency `2` during the thumbnail rollout. The worker generates a 640px WebP `thumb` and a 1024px WebP `preview`; do not increase this setting until queue failures, CPU, and storage writes have been reviewed.
 ---
 
 ## 4. Object Storage / S3

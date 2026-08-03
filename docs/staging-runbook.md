@@ -109,6 +109,8 @@ Use these defaults unless intentionally load testing:
 WORKER_CONCURRENCY=16
 NODE_EXECUTE_CONCURRENCY=16
 PROVIDER_POLL_CONCURRENCY=16
+ASSET_IMAGE_VARIANT_CONCURRENCY=2
+WORKER_IMAGE_VARIANTS_MODE=sync
 ```
 
 Confirm in worker logs after deploy.
@@ -159,6 +161,14 @@ Perform these checks after a performance-related deployment:
 5. **Check summary counts:** In browser Network, confirm `/api/v2/assets/summary` is called once for counts.
 6. **Verify grid virtualization:** Open `/assets` with at least 100 images; scroll and confirm rendering remains responsive without a long blank grid.
 7. **Diagnostic marks:** Check browser Console/Performance for `asset-library-refresh` and `workspace-projects-refresh` measures.
+
+### Canvas thumbnail acceptance
+
+1. Use a QA project with 12 image nodes and one deliberately unavailable asset. With cache disabled, open the canvas at desktop `1440x900` and mobile `390x844`; confirm no blank/overlapping nodes.
+2. In Network, confirm one `/api/v2/assets/signed-urls` POST for up to 100 unique mounted IDs, `thumb` requests with per-item fallback, lazy image loading, and no original object request.
+3. Open a fullscreen image and confirm the separate `preview` request upgrades only that image. Download must still use original bytes.
+4. Re-enable cache and refresh the same tab. Confirm the first image uses the bounded session cache and no unavailable image delays the other eleven.
+5. Capture `canvas-draft-ready`, `canvas-thumb-signing-start`, `canvas-thumb-signing-end`, `canvas-first-thumb-visible`, `canvas-visible-thumbs-90pct`, and `canvas-preview-upgrade-visible` from the Performance API. Record cold and same-tab timing/transfer measurements before accepting the rollout.
 
 ## TapFlow Agent Smoke
 

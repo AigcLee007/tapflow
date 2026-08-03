@@ -86,13 +86,26 @@ export type AssetDownloadUrlResponse = {
   url: string;
 };
 
+export type AssetSignedVariantKey = 'thumb' | 'preview';
+
+export type AssetSignedUrlRequest = {
+  allowVariantFallback?: boolean;
+  assetId: string;
+  variantKey?: AssetSignedVariantKey;
+};
+
 export type AssetSignedUrl = {
   assetId: string;
   expiresAt: string;
   method: 'GET';
+  requestedVariantKey: AssetSignedVariantKey | null;
+  servedVariantKey: AssetSignedVariantKey | null;
+  status: 'ok' | 'fallback';
   url: string;
-  variantKey: string | null;
+  variantKey: AssetSignedVariantKey | null;
 };
+
+export type AssetSignedUrlError = { assetId: string; code: 'ASSET_UNAVAILABLE' };
 
 export type PresignedUploadResponse = {
   asset: AssetItem;
@@ -153,9 +166,9 @@ export async function getAssetVariantUrl(
 }
 
 export async function getAssetSignedUrls(
-  requests: Array<{ assetId: string; variantKey?: string }>,
-): Promise<{ items: AssetSignedUrl[] }> {
-  return apiPost<{ items: AssetSignedUrl[] }>('/assets/signed-urls', { requests });
+  requests: AssetSignedUrlRequest[],
+): Promise<{ errors: AssetSignedUrlError[]; items: AssetSignedUrl[] }> {
+  return apiPost<{ errors: AssetSignedUrlError[]; items: AssetSignedUrl[] }>('/assets/signed-urls', { requests });
 }
 
 export async function updateAssetMetadata(

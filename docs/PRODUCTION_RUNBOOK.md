@@ -260,10 +260,62 @@ Only allow production cutover after staging smoke passes.
 
 ## Backfill Asset Variants
 
-Run after deploying the media pipeline:
+The historical repair is audit-first. It never reads original objects or writes variants directly: explicit apply mode only enqueues the existing `asset.image-variant` Worker job. Keep `WORKER_IMAGE_VARIANTS_MODE=sync` and `ASSET_IMAGE_VARIANT_CONCURRENCY=2` for the first rollout.
+
+First audit the missing `thumb`/`preview` coverage without connecting to Redis or changing data:
 
 ```bash
 cd /opt/aittco/tapflow
-docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-worker npm run assets:backfill-variants -- --dry-run --limit=20
-docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-worker npm run assets:backfill-variants -- --limit=50
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-worker npm run assets:backfill-variants -- --limit=500 --batch-size=25 --missing=any
 ```
+
+List active tenants in the approved read-only database session, then enqueue a first small, scoped batch:
+
+```sql
+SELECT id::text, name, slug
+FROM tenants
+WHERE status = 'active'
+ORDER BY name, id;
+```
+
+```bash
+read -r -p "Approved tenant UUID: " TAPFLOW_VARIANT_TENANT_ID
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-worker npm run assets:backfill-variants -- --apply --tenant-id="${TAPFLOW_VARIANT_TENANT_ID}" --limit=20 --batch-size=5 --missing=any
+```
+
+In production, an unscoped `--apply` is refused unless `ASSET_VARIANT_BACKFILL_PRODUCTION_ACK=enqueue-all-tenants` is supplied explicitly. Do not use it until the scoped batch has succeeded.
+
+Use this read-only query to measure completed coverage after each controlled batch:
+
+```sql
+SELECT
+  count(*) AS supported_assets,
+  count(*) FILTER (
+    WHERE EXISTS (
+      SELECT 1 FROM asset_variants v
+      WHERE v.tenant_id = a.tenant_id AND v.asset_id = a.id AND v.variant_key = 'thumb'
+    )
+    AND EXISTS (
+      SELECT 1 FROM asset_variants v
+      WHERE v.tenant_id = a.tenant_id AND v.asset_id = a.id AND v.variant_key = 'preview'
+    )
+  ) AS fully_covered_assets,
+  round(100.0 * count(*) FILTER (
+    WHERE EXISTS (
+      SELECT 1 FROM asset_variants v
+      WHERE v.tenant_id = a.tenant_id AND v.asset_id = a.id AND v.variant_key = 'thumb'
+    )
+    AND EXISTS (
+      SELECT 1 FROM asset_variants v
+      WHERE v.tenant_id = a.tenant_id AND v.asset_id = a.id AND v.variant_key = 'preview'
+    )
+  ) / NULLIF(count(*), 0), 2) AS coverage_percent
+FROM assets a
+WHERE a.kind = 'image'
+  AND a.status = 'available'
+  AND a.deleted_at IS NULL;
+```
+
+Acceptance gates: variant coverage above 99%; signing P95 below 100ms excluding public RTT; first canvas thumb P75 below 1s/P95 below 2s; 90% of 12 visible thumbs P75 below 1.5s/P95 below 3s; same-tab refresh first image below 500ms; thumb P95 below 300KB; twelve thumbs below 2.5MB; and no original image requests after repair.
+
+Roll out in this order: capture baseline, deploy backward-compatible API, deploy Worker/script, audit, enqueue 20 scoped assets, inspect queue failures/CPU/storage/`asset_variants`, complete controlled batches, deploy frontend, then run mainland-China browser checks. To roll back, stop further enqueueing, roll the frontend back to preview-first behavior first, reduce image-variant concurrency or stop the Worker before changing queue behavior, and roll API back last. Never delete generated variants, originals, drafts, workflow history, or billing records.

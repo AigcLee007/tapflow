@@ -43,6 +43,7 @@ export const WORKER_QUEUE_NAMES = [
 ] as const;
 
 export type WorkerQueueConcurrency = {
+  assetImageVariant: number;
   default: number;
   nodeExecuteDefault: number;
   nodeExecuteImage: number;
@@ -66,6 +67,9 @@ function resolveQueueConcurrency(queueName: QueueName, concurrency: WorkerQueueC
   }
   if (queueName === QUEUE_NAMES.providerPoll) {
     return concurrency.providerPoll;
+  }
+  if (queueName === QUEUE_NAMES.assetImageVariant) {
+    return concurrency.assetImageVariant;
   }
   return concurrency.default;
 }
