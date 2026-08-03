@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
 
 import { createDefaultVideoGenerationParams } from "./videoGenerationParams";
+import { mergeVideoCapabilities } from "./videoGenerationCapabilities";
 import { VideoReferenceStrip } from "./VideoReferenceStrip";
 
 const pickerProps = vi.hoisted(() => ({ current: null as null | Record<string, unknown> }));
@@ -29,6 +30,63 @@ function createValue() {
 }
 
 describe("VideoReferenceStrip", () => {
+  test("renders Gemini all-reference inputs without an audio slot", () => {
+    const capabilities = mergeVideoCapabilities({
+      confirmedByRoute: true,
+      maxAudios: 0,
+      maxImages: 5,
+      maxTotal: 6,
+      maxVideos: 1,
+      modeConstraints: { all_reference: { maxAudios: 0, maxImages: 5, maxTotal: 6, maxVideos: 1, minVideos: 1 } },
+      referenceSemantics: "style_images_and_source_video",
+      supportedModes: ["text_to_video", "image_to_video", "image_reference", "all_reference"],
+    });
+    render(
+      <VideoReferenceStrip
+        capabilities={capabilities}
+        currentNodeId="video-node"
+        onChange={vi.fn()}
+        onConnectCanvasReference={vi.fn()}
+        onUploadReference={vi.fn()}
+        value={{ ...createDefaultVideoGenerationParams(), mode: "all_reference" }}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "添加参考图" }).disabled).toBe(false);
+    expect(screen.getByRole("button", { name: "添加源视频" }).disabled).toBe(false);
+    expect(screen.queryByRole("button", { name: "添加参考音频" })).toBeNull();
+  });
+
+  test("persists only the uploaded asset identity and media kind", async () => {
+    const onChange = vi.fn();
+    const capabilities = mergeVideoCapabilities({
+      confirmedByRoute: true,
+      maxAudios: 1,
+      maxTotal: 1,
+      modeConstraints: { all_reference: { maxAudios: 1, maxTotal: 1 } },
+      supportedModes: ["text_to_video", "all_reference"],
+    });
+    const { container } = render(
+      <VideoReferenceStrip
+        capabilities={capabilities}
+        currentNodeId="video-node"
+        onChange={onChange}
+        onConnectCanvasReference={vi.fn()}
+        onUploadReference={vi.fn(async () => ({ id: "asset-audio", kind: "audio" }))}
+        value={{ ...createDefaultVideoGenerationParams(), mode: "all_reference" }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "添加参考音频" }));
+    const input = container.querySelector('input[type="file"]')!;
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [new File(["audio"], "reference.mp3", { type: "audio/mpeg" })] } });
+    });
+
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
+      referenceInputs: [expect.objectContaining({ mediaKind: "audio", source: { kind: "asset", id: "asset-audio" } })],
+    }));
+  });
   test("maps a selected role without changing existing asset order", () => {
     const onChange = vi.fn();
     const value = createValue();

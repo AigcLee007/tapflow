@@ -3212,6 +3212,8 @@ export const TextNodeComponent = memo(function TextNode({
   selected,
 }: NodeProps<FlowNode>) {
   const d = data;
+  const backendProjectId = useFlowCanvasStore((s) => s.backendProjectId);
+  const connectVideoReference = useFlowCanvasStore((s) => s.connectVideoReference);
   const updateNodeData = useFlowCanvasStore((s) => s.updateNodeData);
   const runtimeNodeOutput = useFlowCanvasStore((s) => s.nodeOutputByNodeId[id]);
   const runtimeNodeStatus = useFlowCanvasStore((s) => s.nodeRunStatusByNodeId[id]);
@@ -7691,9 +7693,12 @@ export const VideoNodeComponent = memo(function VideoNode({
   const videoCatalog = useVideoGenerationCatalog();
   const videoParams = useMemo(() => normalizeVideoGenerationParams(d).params, [d]);
   const videoReferenceAssetIds = useMemo(
-    () => Array.from(new Set(Object.values(videoParams.referenceRolesByKey)
-      .flatMap((assignment) => assignment?.source.kind === 'asset' ? [assignment.source.id] : []))),
-    [videoParams.referenceRolesByKey],
+    () => Array.from(new Set([
+      ...videoParams.referenceInputs.flatMap((reference) => reference.source.kind === 'asset' ? [reference.source.id] : []),
+      ...Object.values(videoParams.referenceRolesByKey)
+        .flatMap((assignment) => assignment?.source.kind === 'asset' ? [assignment.source.id] : []),
+    ])),
+    [videoParams.referenceInputs, videoParams.referenceRolesByKey],
   );
   const videoReferenceAssetIdsKey = videoReferenceAssetIds.join('|');
   const [videoReferencePreviewUrlsBySource, setVideoReferencePreviewUrlsBySource] = useState<Record<string, string>>({});
@@ -7849,7 +7854,22 @@ export const VideoNodeComponent = memo(function VideoNode({
       )}
 
       {showNodeEditor && (VIDEO_COMPOSER_V2_ENABLED
-        ? <VideoNodeComposer catalog={videoCatalog} data={d} generating={isGenerating} nodeId={id} onGenerate={handleGenerate} onUpdate={(patch) => updateNodeData(id, patch)} referencePreviewUrlsBySource={videoReferencePreviewUrlsBySource} selected={showNodeEditor} />
+        ? <VideoNodeComposer
+            catalog={videoCatalog}
+            data={d}
+            generating={isGenerating}
+            nodeId={id}
+            onConnectCanvasReference={(input) => connectVideoReference({ ...input, targetNodeId: id })}
+            onGenerate={handleGenerate}
+            onUpdate={(patch) => updateNodeData(id, patch)}
+            onUploadReference={async (file, mediaKind) => {
+              if (!backendProjectId) throw new Error('REFERENCE_UPLOAD_UNAVAILABLE');
+              const asset = await uploadAssetFile({ file, kind: mediaKind, projectId: backendProjectId });
+              return { id: asset.id, kind: asset.kind };
+            }}
+            referencePreviewUrlsBySource={videoReferencePreviewUrlsBySource}
+            selected={showNodeEditor}
+          />
         : <VideoNodeLegacyComposer data={d} effectivePosterUrl={effectivePosterUrl} generating={isGenerating} nodeId={id} onGenerate={handleGenerate} onUpdate={(patch) => updateNodeData(id, patch)} runtimeVideoAssets={runtimeVideoAssets} />
       )}
 

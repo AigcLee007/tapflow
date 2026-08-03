@@ -13,9 +13,9 @@ import { VideoParameterPanel } from "./VideoParameterPanel";
 import { VideoParameterPopover } from "./VideoParameterPopover";
 import { VideoReferenceStrip } from "./VideoReferenceStrip";
 import { useVideoGenerationCatalog } from "./useVideoGenerationCatalog";
-import { correctVideoGenerationParams } from "./videoGenerationCapabilities";
+import { correctVideoGenerationParams, createSafeDefaultVideoCapabilities } from "./videoGenerationCapabilities";
 import { emitVideoComposerDiagnostic } from "./videoComposerDiagnostics";
-import type { VideoGenerationParamsV1, VideoReferenceRole } from "./videoTypes";
+import type { VideoGenerationParamsV1, VideoReferenceInputV2, VideoReferenceRole } from "./videoTypes";
 import type { VideoPaletteSourceDisplay } from "./VideoPalettePopover";
 import { VIDEO_UI_COPY, VIDEO_UI_REFERENCE_ROLE_COPY } from "./videoUiCopy";
 import { useDismissibleLayer } from "../../components/menu/useDismissibleLayer";
@@ -26,12 +26,14 @@ type Props = {
   generating: boolean;
   nodeId: string;
   onGenerate: () => void;
+  onConnectCanvasReference?: (input: Pick<VideoReferenceInputV2, "mediaKind" | "referenceKey" | "role"> & { sourceNodeId: string }) => void;
   onUpdate: (patch: Partial<FlowNodeData>) => void;
+  onUploadReference?: (file: File, mediaKind: VideoReferenceInputV2["mediaKind"]) => Promise<{ id: string; kind: string }>;
   referencePreviewUrlsBySource?: Record<string, string | undefined>;
   selected: boolean;
 };
 
-export function VideoNodeComposer({ catalog: catalogOverride, data, generating, nodeId, onGenerate, onUpdate, referencePreviewUrlsBySource, selected }: Props) {
+export function VideoNodeComposer({ catalog: catalogOverride, data, generating, nodeId, onConnectCanvasReference = () => undefined, onGenerate, onUpdate, onUploadReference = async () => { throw new Error("REFERENCE_UPLOAD_UNAVAILABLE"); }, referencePreviewUrlsBySource, selected }: Props) {
   const loadedCatalog = useVideoGenerationCatalog();
   const catalog = catalogOverride ?? loadedCatalog;
   const [modelOpen, setModelOpen] = useState(false);
@@ -107,7 +109,14 @@ export function VideoNodeComposer({ catalog: catalogOverride, data, generating, 
 
   return <div aria-label={VIDEO_UI_COPY.videoComposer} className="absolute left-1/2 top-[calc(100%+14px)] z-40 flex w-[calc(100vw-32px)] max-w-[980px] -translate-x-1/2 flex-col rounded-[18px] border border-white/10 bg-[#17171b] p-3 text-white shadow-[0_18px_42px_rgba(0,0,0,0.45)] md:w-[clamp(640px,52vw,980px)] max-md:left-0 max-md:translate-x-0 max-md:flex-col">
     <div className="flex flex-wrap items-center gap-2 max-md:flex-col max-md:items-stretch">
-      <VideoReferenceStrip currentNodeId={nodeId} onChange={updateReference} onUploadReference={() => undefined} value={{ referenceAssetItemIds: data.referenceAssetItemIds ?? [], referenceOrder: data.referenceOrder ?? [], videoGeneration: params }} />
+      <VideoReferenceStrip
+        capabilities={capabilities ?? createSafeDefaultVideoCapabilities()}
+        currentNodeId={nodeId}
+        onChange={(next) => setParams({ ...params, ...next })}
+        onConnectCanvasReference={onConnectCanvasReference}
+        onUploadReference={onUploadReference}
+        value={params}
+      />
       <button aria-label={VIDEO_UI_COPY.cameraLibrary} className="inline-flex h-[38px] items-center gap-[7px] rounded-[10px] border border-white/10 bg-[#17171b] px-2 text-xs font-bold" onClick={() => setCameraOpen(true)} ref={cameraButtonRef} type="button"><Camera size={16} />{selectedMotionLabel ?? "运镜"}</button>
     </div>
     <textarea aria-label={VIDEO_UI_COPY.videoPrompt} className="mt-2 min-h-[72px] w-full resize-y bg-transparent text-sm outline-none placeholder:text-white/35" onChange={(event) => onUpdate({ generationPrompt: event.target.value })} placeholder={VIDEO_UI_COPY.promptPlaceholder} value={data.generationPrompt || ""} />
