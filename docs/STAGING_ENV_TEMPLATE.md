@@ -395,3 +395,7 @@ Launch posture declarations:
 - Private beta must operate as internal/manual-credit beta.
 - Public production launch remains NO.
 - Provider credentials are server-side only.
+# PixelHub video credentials are server-side only. Use placeholders, never real keys.
+PIXELHUB_GEMINI_OMNI_FLASH_API_KEY=
+PIXELHUB_SORA_V3_PRO_API_KEY=
+PIXELHUB_VEO31_FAST_API_KEY=

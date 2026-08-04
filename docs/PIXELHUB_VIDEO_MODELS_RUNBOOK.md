@@ -1,58 +1,59 @@
 # PixelHub Video Models Runbook
 
+## Staging Update
+
+```bash
+cd /opt/aittco/tapflow
+git fetch --all --prune
+git pull --ff-only origin main
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml build
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml stop tapflow-worker
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-api node packages/db/dist/cli.js
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml up -d tapflow-redis tapflow-api tapflow-worker tapflow-frontend
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml ps
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml logs --tail=100 tapflow-api tapflow-worker
+```
+
+Set provider keys only through the protected admin install flow or server-side vault. Optional environment names are `PIXELHUB_GEMINI_OMNI_FLASH_API_KEY`, `PIXELHUB_SORA_V3_PRO_API_KEY`, and `PIXELHUB_VEO31_FAST_API_KEY`.
+
 ## Install Prerequisites
 
 - Install built-in package `pixelhub.video` from Model Center.
 - Supply the real HTTPS API base URL through `baseUrlOverride`.
-- Supply the Bearer secret through the credential input so CredentialVault stores it.
+- Supply three route-scoped Bearer secrets so CredentialVault stores one credential per model route.
 - Do not add a PixelHub secret to frontend configuration, node data, Compose, repository files, logs, or screenshots.
-- Confirm the resulting Provider Connection uses adapter kind `pixelhub-video` and is scoped to the intended tenant.
-
-## Inactive Route Verification
-
-- Install or publish the three routes as `inactive` first:
-  - `video.pixelhub.gemini-omni-flash` -> upstream model `gemini-omni-flash`
-  - `video.pixelhub.sora-v3-pro` -> upstream model `sora-v3-pro`
-  - `video.pixelhub.veo31-fast` -> upstream model `veo31-fast`
-- Confirm every route has request path `/v1/videos`, poll path `/v1/videos/{task_id}`, 12-second poll interval, and a 30-minute provider-task timeout.
-- Confirm each route has one exact active `video_generation` pricing row with `billingBasis: duration_second`:
-  - Gemini Omni Flash: 1 credit/second
-  - Sora V3 Pro: 10 credits/second
-  - Veo 3.1 Fast: 0.5 credit/second
-- Confirm `upstream_model` is the exact listed upstream model, not an AI model or catalog UUID.
-- Run one inactive admin route test per model. Confirm the sanitized request and response summaries do not disclose credentials, authorization headers, signed asset URLs, provider response bodies, or prompts.
 
 ## Canvas Smoke Matrix
 
-Use a disposable project and tenant-owned assets. Start a fresh run for every matrix row. Confirm the reserve, settle or refund, and asset behavior for each run.
+Use a disposable project and tenant-owned assets. Confirm reserve, settle/refund, asset persistence, and the absence of signed URLs or media bytes in drafts for each model.
 
 | Product model | Supported smoke inputs |
 | --- | --- |
-| Gemini Omni Flash | text; one main image; 2-5 image references; one source video with optional reference images |
-| Sora V3 Pro | text; one main image; 2-9 image references; mixed references with at least one visual input when audio is present |
+| Gemini Omni Flash | text; one image; 2-5 image references; one source video with optional reference images |
+| Sora V3 Pro | text; one image; 2-9 image references; mixed references with visual input when audio is present |
 | Veo 3.1 Fast | text; one first frame; ordered first and last frame |
 
-For every run, verify:
+Activate a route only after its controlled success and failure runs pass billing, asset, and secret-boundary checks.
 
-- the saved node contains the stable route key, schema-v2 parameters, ordered reference metadata, asset IDs, and upstream source node IDs only;
-- the submitted request uses the selected upstream model, requested duration, aspect ratio, and only provider-approved reference fields;
-- credits are reserved once, settled once after success, or refunded once after provider failure or the deadline;
-- a completed remote video is copied into object storage, recorded in `assets` as video media, appears in `/assets`, and is referenced by asset ID from the canvas output;
-- drafts, queue jobs, diagnostics, AI call summaries, and screenshots contain no signed reference URL, remote output URL, media bytes, `File`, `Blob`, `data:` URI, or credential.
+## Route Verification
 
-## Activation
+Verify route, connection, credential fingerprint, status, and pricing without selecting encrypted secret fields:
 
-- Activate one route only after every smoke for that product passes.
-- Verify the active creator catalog exposes only Gemini Omni Flash, Sora V3 Pro, and Veo 3.1 Fast as PixelHub video-generation products; do not expose mock, editor-only, inactive, unconfirmed, or non-exact-price routes.
-- Recheck model controls after activation:
-  - Gemini: `16:9`/`9:16`, `720P`/`1080P`, `4/6/8/10` seconds, fixed generated audio.
-  - Sora: supported ratios, fixed `720P`, integer `4..15` seconds, generated-audio toggle.
-  - Veo: `16:9`/`9:16`, fixed `1080P`, `4/6/8` seconds, fixed generated audio.
-- Observe one completed task and one controlled failed task per activated route before treating the route as production-ready.
+```sql
+SELECT route.route_key, connection.name AS connection_name,
+  connection.id::text AS connection_id, credential.id::text AS credential_id,
+  credential.secret_fingerprint, route.status, pricing.unit_credits,
+  pricing.min_charge_credits
+FROM ai_routes route
+LEFT JOIN ai_provider_connections connection ON connection.id = route.connection_id
+LEFT JOIN api_credentials credential ON credential.id = COALESCE(route.credential_id, connection.credential_id)
+LEFT JOIN model_pricing pricing ON pricing.route = route.route_key
+WHERE route.route_key IN ('video.pixelhub.gemini-omni-flash', 'video.pixelhub.sora-v3-pro', 'video.pixelhub.veo31-fast')
+ORDER BY route.route_key;
+```
+
+The three route rows must have distinct connection IDs and credential fingerprints, with pricing of 1, 10, and 0.5 credits per second. Never select `encrypted_secret`, `nonce`, or `auth_tag`.
 
 ## Rollback
 
-- Set the affected route status to `inactive`; do not delete it.
-- Do not delete pricing history, AI call logs, usage events, assets, workflow records, or billing ledger rows.
-- Stop the worker before deploying a code rollback that changes workflow behavior, then use the v2 Compose deployment order in `AGENTS.md`.
-- Keep remaining routes active only if their own smoke matrix and billing checks remain valid.
+Stop `tapflow-worker`, rebind affected routes to the retained previous connection, restart the normal Compose services, and verify the route query again. Do not delete routes, credentials, call logs, or billing ledger records.

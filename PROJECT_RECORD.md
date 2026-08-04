@@ -1,7 +1,24 @@
 ﻿# Project Record
 
-Last updated: 2026-08-03
+Last updated: 2026-08-04
 Maintainers: project team + Codex sessions
+
+## 2026-08-04 - PixelHub Route-Scoped Credential Bindings
+
+- added manifest-declared bindings for Gemini Omni Flash, Sora V3 Pro, and Veo 3.1 Fast; PixelHub installs now fail closed unless all three bindings provide distinct credentials;
+- the plugin installer now creates or reuses one encrypted CredentialVault credential and one provider connection per stable PixelHub route inside its existing transaction, while legacy single-credential plugin installs retain their path;
+- added service and database-backed API coverage for incomplete binding rejection, route-specific connection/credential IDs, secret-response isolation, and legacy install compatibility. Database-backed cases require `DATABASE_URL`.
+
+## 2026-08-04 - PixelHub Video Node and Credential Isolation Design
+
+- approved the detailed design for ratio-driven video node sizing, asset-backed upload, a unified uploaded/generated ready state without upload or replace controls, and download/full-screen actions;
+- approved curated creator labels `Gemini Omni Flash`, `Sora V3 Pro`, and `Veo 3.1 Fast`, plus one PixelHub provider with three model-specific CredentialVault credentials and provider connections bound to the existing stable route keys;
+- recorded the design, migration sequence, staging verification, rollback, and acceptance criteria in `docs/superpowers/specs/2026-08-04-pixelhub-video-node-and-credentials-design.md`; implementation and staging credential rebind remain pending.
+
+## 2026-08-04 - PixelHub Video Node and Credential Isolation Implementation Plan
+
+- wrote the task-by-task implementation plan in `docs/superpowers/plans/2026-08-04-pixelhub-video-node-and-credentials.md`, covering ratio sizing, asset-backed upload, unified ready state, creator labels, route-scoped credentials, tests, rollout, and rollback;
+- no runtime code, database migration, credential, route binding, or staging deployment has been changed in this planning step.
 
 ## 2026-08-03 - PixelHub Video Role-Boundary Fix
 
@@ -6154,3 +6171,18 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - added `video_generation` to the runtime whitelist and a regression test that loads a PixelHub route context from the same nested `request_config.capabilities` shape used by production.
 - validation passed: focused workflow-pricing resolver test (24 passed), complete API test suite (284 passed, 126 database-backed tests skipped), and API build.
 - server rollout is required: rebuild and restart `tapflow-api` and `tapflow-worker`, then retry a Gemini text-to-video run before enabling the remaining production route smoke matrix.
+
+## 2026-08-04 - PixelHub Video Node And Credential Isolation Follow-up
+
+- video nodes now size empty and uploaded/generated portrait media from requested and natural dimensions, use contain previews, retain a durable ready state when preview signing is unavailable, and expose download/fullscreen without upload replacement controls.
+- formal creator labels and route-confirmed PixelHub capability assertions cover Gemini Omni Flash, Sora V3 Pro, and Veo 3.1 Fast. Route-scoped install inputs now require complete distinct credentials and connections for PixelHub while preserving legacy single-credential plugins.
+- validated with 25 FlowNodes metadata tests, 10 model catalog tests, 15 plugin registry tests, 13 PixelHub adapter tests, 16 API service tests, frontend build, API build, and 4 database-backed API integration tests skipped because staging infrastructure is unavailable.
+- staging install, live provider generation, and billing smoke remain pending; do not mark the old shared connection inactive until the documented route query and controlled generation matrix pass.
+
+## 2026-08-04 - PixelHub Video Node And Credential Isolation Verification
+
+- removed the last generated-video `posterUrl` persistence path so signed asset URLs never enter `flow_drafts.graph_json`; video previews continue to obtain fresh URLs only at runtime.
+- added complete browser-side form gating for PixelHub installation: the protected Template Library now enables installation only after Gemini, Sora, and Veo route secrets are all present; service-side completeness validation remains the authoritative fail-closed check.
+- validation passed: frontend build; API `294` passed with `129` database-backed skips without `DATABASE_URL`; Worker `70` passed with `17` skips; AI Gateway Core `142` passed; DB `45` passed with `36` database-backed skips; video smoke unit suites `6` passed; `npm run smoke:video-node` passed across desktop, narrow, and mobile screenshots.
+- `npm test` did not complete within 120 seconds and ended with the command timeout/EPIPE after unrelated existing Three.js and React test warnings; it is not counted as passing. `npm run smoke:video-node-visual` also timed out after 124 seconds with no result, so visual smoke remains unverified.
+- no local database, Redis, Docker Linux engine, staging credential installation, live PixelHub provider generation, or billing settlement/refund smoke was performed. Keep any old shared route connection intact until the runbook's route/fingerprint and controlled generation checks pass.

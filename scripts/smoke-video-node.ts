@@ -59,8 +59,9 @@ export function buildVideoNodeSmokeHtml(): string {
         const requestUrl = typeof input === 'string' ? input : input.url;
         if (requestUrl.includes('/api/v2/ai/model-catalog?modality=video')) {
           return new Response(JSON.stringify([{
-            capabilities: {}, defaultRouteKey: 'video.smoke', displayName: 'CineMotion Pro', id: 'video-smoke-model',
-            modality: 'video', modelFamily: 'smoke', modelId: 'cine-motion-pro', modelKey: 'video-smoke', sortOrder: 1,
+            capabilities: {}, defaultRouteKey: 'video.smoke', displayName: 'Gemini Omni Flash', id: 'video-smoke-model',
+            modality: 'video', modelFamily: 'smoke', modelId: 'gemini-omni-flash', modelKey: 'video-smoke', sortOrder: 1,
+            uiSchema: { creatorLabel: 'Gemini Omni Flash' },
             status: 'active', uiSchema: { description: '电影感运动与光线模型' },
           }]), { status: 200, headers: { 'Content-Type': 'application/json' } });
         }
@@ -209,7 +210,7 @@ const composerVisible = await desktopPage.locator('[aria-label="视频创作面�
 await desktopPage.locator('button[aria-label="选择视频模型"]').click();
 await desktopPage.waitForSelector('[aria-label="视频模型"]', { timeout: 15000 });
 const modelMenuNoSearch = await desktopPage.locator('[aria-label="视频模型"] input[type="search"], [aria-label="视频模型"] input').count() === 0;
-const modelOption = desktopPage.getByRole('option', { name: /视频模型 1/ });
+const modelOption = desktopPage.getByRole('option', { name: /Gemini Omni Flash/ });
 await modelOption.hover();
 const hoverDescriptionVisible = await desktopPage.getByText('电影感运动与光线模型').isVisible();
 await modelOption.click();
