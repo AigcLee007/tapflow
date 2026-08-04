@@ -21,6 +21,8 @@ describe("video node browser smoke contract", () => {
     expect(html).toContain("ReactFlow");
     expect(html).toContain("useFlowCanvasStore");
     expect(html).toContain("video-smoke-node");
+    expect(html).toContain("creatorLabel: 'Gemini Omni Flash'");
+    expect(html.match(/uiSchema:/g)).toHaveLength(1);
   });
 
   test("checks the LibTV composer and the blocked-run boundary at all target viewports", () => {
@@ -39,18 +41,27 @@ describe("video node browser smoke contract", () => {
       "blockedGenerationDidNotCreateRun",
       "durationRangeIsDefault",
       "parameterDialogIsTopLayer",
+      "portraitEmptyNodeIsSized",
+      "emptyUploadInputPresent",
+      "readyControls",
+      "readyPreviewUsesContain",
     ]) {
       expect(code).toContain(field);
     }
     expect(code).toContain("1440");
     expect(code).toContain("1024");
     expect(code).toContain("390");
-    expect(code).toContain("4K");
+    expect(code).toContain("1080P");
     expect(code).toContain('button[aria-label="视频参数摘要"]');
     expect(code).toContain("countDisabledStates");
     expect(code).toContain("await modelOption.click()");
     expect(code).toContain("prefers-reduced-motion");
     expect(code).toContain("runBackendWorkflow");
+    expect(code).toContain("setVideoSmokeNodeData");
+    expect(code).toContain('input[accept="video/*"]');
+    expect(code).toContain("objectFit === 'contain'");
+    expect(code).toContain("下载视频");
+    expect(code).toContain("全屏预览");
     expect(code).toContain("运镜库");
     expect(code).toContain("reducedMotionVideoIsPaused");
     expect(code).toContain("throw new Error");

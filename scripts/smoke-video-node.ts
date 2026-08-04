@@ -61,21 +61,23 @@ export function buildVideoNodeSmokeHtml(): string {
           return new Response(JSON.stringify([{
             capabilities: {}, defaultRouteKey: 'video.smoke', displayName: 'Gemini Omni Flash', id: 'video-smoke-model',
             modality: 'video', modelFamily: 'smoke', modelId: 'gemini-omni-flash', modelKey: 'video-smoke', sortOrder: 1,
-            uiSchema: { creatorLabel: 'Gemini Omni Flash' },
-            status: 'active', uiSchema: { description: '电影感运动与光线模型' },
+            status: 'active', uiSchema: { creatorLabel: 'Gemini Omni Flash', description: '电影感运动与光线模型' },
           }]), { status: 200, headers: { 'Content-Type': 'application/json' } });
         }
         if (requestUrl.includes('/api/v2/ai/model-catalog/video-smoke/routes')) {
           return new Response(JSON.stringify([{
-            capabilities: { aspectRatios: ['auto', '16:9', '4:3', '1:1', '3:4', '9:16', '21:9'], audioControlMode: 'toggle', confirmedByRoute: true,
-              durationStepSeconds: 1, maxAudios: 3, maxCount: 1, maxDurationSeconds: 15, maxImages: 9, maxTotal: 12, maxVideos: 3, minDurationSeconds: 4,
-              modeConstraints: { all_reference: { maxAudios: 3, maxImages: 9, maxTotal: 12, maxVideos: 3, requiresVideoOrAudio: true, requiresVisualWithAudio: true }, text_to_video: { maxTotal: 0 } },
-              referenceSemantics: 'mixed_reference_media', resolutions: ['480P', '720P', '1080P', '4K'], supportedDurations: [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
-              supportedModes: ['text_to_video', 'all_reference', 'image_to_video', 'first_last_frame', 'image_reference'], supportedVideoWorkflows: ['video_generation'], supportsAudio: true, supportsHumanReview: false },
+            capabilities: { aspectRatios: ['16:9', '9:16'], audioControlMode: 'always_on_implicit', confirmedByRoute: true,
+              durationStepSeconds: 2, maxAudios: 0, maxCount: 1, maxDurationSeconds: 10, maxImages: 5, maxTotal: 6, maxVideos: 1, minDurationSeconds: 4,
+              modeConstraints: { all_reference: { maxAudios: 0, maxImages: 5, maxTotal: 6, maxVideos: 1, minVideos: 1 }, image_reference: { maxAudios: 0, maxImages: 5, maxTotal: 5, maxVideos: 0, minImages: 2 }, image_to_video: { maxAudios: 0, maxImages: 1, maxTotal: 1, maxVideos: 0, minImages: 1 }, text_to_video: { maxAudios: 0, maxImages: 0, maxTotal: 0, maxVideos: 0 } },
+              referenceSemantics: 'style_images_and_source_video', resolutions: ['720P', '1080P'], supportedDurations: [4, 6, 8, 10],
+              supportedModes: ['text_to_video', 'image_to_video', 'image_reference', 'all_reference'], supportedVideoWorkflows: ['video_generation'], supportsAudio: true, supportsHumanReview: false },
             estimatedCredits: 12, minChargeCredits: 1, modality: 'video', modelFamily: 'smoke', modelKey: 'video-smoke',
             pricing: { billingBasis: 'duration_second', exact: true, minChargeCredits: 1, unit: 'video_generation', unitCredits: 1 }, pricingUnit: 'video_generation', providerKey: 'smoke', providerName: 'Smoke provider', routeId: 'route-smoke',
             routeKey: 'video.smoke', routeLabel: 'Line one',
           }]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        if (requestUrl.includes('/assets/asset-ready-smoke/download-url')) {
+          return new Response(JSON.stringify({ url: '/smoke-ready-video.mp4' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
         }
         if (requestUrl.includes('/workflow-runs')) window.videoNodeSmokeState.workflowRequestCount += 1;
         return nativeFetch(input, init);
@@ -88,18 +90,17 @@ export function buildVideoNodeSmokeHtml(): string {
         id: 'video-smoke-node', type: 'video', position: { x: Math.max(5, (window.innerWidth - 380) / 2), y: 40 }, selected: true,
         data: { kind: 'video', title: '视频', width: 380, height: 220, status: 'idle', generationStatus: 'idle',
           modelId: 'unconfigured-video', routeKey: 'video.unconfigured', generationPrompt: '在阳光充足的摄影棚中缓慢推进镜头。',
-          params: { videoGeneration: { ...createDefaultVideoGenerationParams(), mode: 'all_reference', referenceRolesByKey: {
-            subject: { role: 'subject', source: { kind: 'asset', id: 'asset-subject-smoke' } },
-            scene: { role: 'scene', source: { kind: 'asset', id: 'asset-scene-smoke' } },
-            prop: null, style: null, first_frame: null, last_frame: null, reference: null,
-          } } }, createdAt: 1, updatedAt: 1 },
+          params: { videoGeneration: { ...createDefaultVideoGenerationParams(), aspectRatio: '9:16', mode: 'text_to_video' } }, createdAt: 1, updatedAt: 1 },
       };
       useFlowCanvasStore.setState({ edges: [], nodes: [initialNode], selectedNodeCount: 1, nodeOutputByNodeId: {}, nodeRunStatusByNodeId: {} });
       window.getVideoSmokeNode = () => useFlowCanvasStore.getState().nodes.find((node) => node.id === 'video-smoke-node');
+      window.setVideoSmokeNodeData = (patch) => useFlowCanvasStore.setState((state) => ({ nodes: state.nodes.map((node) => node.id === 'video-smoke-node' ? {
+        ...node, data: { ...node.data, ...patch }, selected: true,
+      } : node), selectedNodeCount: 1 }));
       window.resetVideoSmokeBlockedNode = () => {
         window.videoNodeSmokeState.workflowRequestCount = 0;
         useFlowCanvasStore.setState((state) => ({ nodes: state.nodes.map((node) => node.id === 'video-smoke-node' ? {
-          ...node, data: { ...node.data, modelId: 'unconfigured-video', status: 'idle', generationStatus: 'idle', errorCode: undefined, errorMessage: undefined }, selected: true,
+          ...node, data: { ...node.data, assetId: undefined, assetIds: undefined, durationMs: undefined, modelId: 'unconfigured-video', naturalHeight: undefined, naturalWidth: undefined, source: undefined, status: 'idle', generationStatus: 'idle', errorCode: undefined, errorMessage: undefined }, selected: true,
         } : node), selectedNodeCount: 1 }));
       };
       window.positionVideoSmokeNode = (x) => useFlowCanvasStore.setState((state) => ({ nodes: state.nodes.map((node) => node.id === 'video-smoke-node' ? {
@@ -207,6 +208,19 @@ let mobileHarness;
 try {
 await assertComposerVisible(desktopPage, 'desktop');
 const composerVisible = await desktopPage.locator('[aria-label="视频创作面板"]').isVisible();
+await desktopPage.waitForFunction(() => {
+  const node = window.getVideoSmokeNode?.();
+  return node?.data?.width === 170 && node?.data?.height === 302 && node?.data?.aspectRatio === 9 / 16;
+});
+const portraitEmptyNodeIsSized = await desktopPage.evaluate(() => {
+  const node = window.getVideoSmokeNode?.();
+  const card = [...document.querySelectorAll('[data-id="video-smoke-node"] div')].find((element) => {
+    const rect = element.getBoundingClientRect();
+    return Math.round(rect.width) === 170 && Math.round(rect.height) === 302;
+  });
+  return node?.data?.width === 170 && node?.data?.height === 302 && Boolean(card);
+});
+const emptyUploadInputPresent = await desktopPage.locator('input[accept="video/*"]').count() === 1;
 await desktopPage.locator('button[aria-label="选择视频模型"]').click();
 await desktopPage.waitForSelector('[aria-label="视频模型"]', { timeout: 15000 });
 const modelMenuNoSearch = await desktopPage.locator('[aria-label="视频模型"] input[type="search"], [aria-label="视频模型"] input').count() === 0;
@@ -235,14 +249,12 @@ const resolutionOptions = await desktopPage.locator('[role="dialog"][aria-label=
 const countControls = desktopPage.locator('[role="radiogroup"][aria-label="生成数量"] [role="radio"]');
 const countOptions = await countControls.allTextContents();
 const countDisabledStates = await countControls.evaluateAll((controls) => controls.map((control) => control.getAttribute('aria-disabled')));
-const durationRange = await desktopPage.locator('input[aria-label="视频时长滑杆"]').evaluate((slider) => ({
-  max: slider.getAttribute('max'), min: slider.getAttribute('min'), step: slider.getAttribute('step'),
-}));
-const durationRangeIsDefault = durationRange.min === '4' && durationRange.max === '15' && durationRange.step === '1';
-const durationControlCount = await desktopPage.locator('input[aria-label="视频时长滑杆"], input[aria-label="视频时长输入"]').count();
+const durationOptions = await desktopPage.locator('[role="group"][aria-label="视频时长控制"] button').allTextContents();
+const durationRangeIsDefault = durationOptions.map((value) => value.replace(/\\s/g, '')).join('|') === '4秒|6秒|8秒|10秒';
+const durationControlCount = durationOptions.length;
 const audioGroupCount = await desktopPage.getByRole('radiogroup', { name: '生成音频' }).count();
-const hasDurationAudioAndCounts = durationControlCount === 2
-  && audioGroupCount === 1
+const hasDurationAudioAndCounts = durationControlCount === 4
+  && audioGroupCount === 0
   && countOptions.length === 3
   && countDisabledStates.join('|') === 'false|true|true';
 await desktopPage.keyboard.press('Escape');
@@ -261,6 +273,18 @@ await mobilePage.evaluate(() => document.querySelector('button[aria-label="运�
 await mobilePage.waitForSelector('section[role="dialog"][aria-label="运镜库"] video', { timeout: 15000 });
 const reducedMotionVideoIsPaused = await mobilePage.locator('section[role="dialog"][aria-label="运镜库"] video').evaluateAll((videos) => videos.length === 23 && videos.every((video) => video.paused));
 await mobilePage.locator('button[aria-label="关闭运镜库"]').click();
+await mobilePage.evaluate(() => window.setVideoSmokeNodeData?.({
+  assetId: 'asset-ready-smoke', assetIds: ['asset-ready-smoke'], durationMs: 8000,
+  generationStatus: 'done', height: 302, mimeType: 'video/mp4', naturalHeight: 1920,
+  naturalWidth: 1080, source: 'generated', status: 'success', width: 170,
+}));
+await mobilePage.waitForSelector('video[aria-label="视频预览"]', { timeout: 15000 });
+const readyControls = await mobilePage.evaluate(() => ({
+  download: document.querySelectorAll('button[aria-label="下载视频"]').length === 1,
+  fullscreen: document.querySelectorAll('button[aria-label="全屏预览"]').length === 1,
+  upload: document.querySelectorAll('input[accept="video/*"]').length === 0,
+}));
+const readyPreviewUsesContain = await mobilePage.locator('video[aria-label="视频预览"]').evaluate((video) => getComputedStyle(video).objectFit === 'contain');
 await assertNoVisualOverflow(mobilePage);
 await mobilePage.screenshot({ path: ${JSON.stringify(options.mobileScreenshotPath.replaceAll("\\", "/"))}, fullPage: true });
 
@@ -271,9 +295,9 @@ await mobilePage.locator('button[aria-label="生成视频"]').click();
 await mobilePage.waitForFunction(() => window.videoNodeSmokeState.workflowRequestCount === 0 && Boolean(document.querySelector('[aria-label="视频创作面板"]')));
 const blockedGenerationDidNotCreateRun = await mobilePage.evaluate(() => window.videoNodeSmokeState.workflowRequestCount === 0);
 
-const result = { blockedGenerationDidNotCreateRun, cameraGridColumns, cameraPresetCount, composerVisible, durationRangeIsDefault, modelMenuNoSearch, parameterDialogIsTopLayer, resolutionOptions };
-if (!composerVisible || !modelMenuNoSearch || !hoverDescriptionVisible || !hasDurationAudioAndCounts || !durationRangeIsDefault || !parameterDialogIsTopLayer || !resolutionOptions.includes('4K') || cameraGridColumns !== 4 || cameraPresetCount !== 23 || !reducedMotionVideoIsPaused || !blockedGenerationDidNotCreateRun) {
-  throw new Error(JSON.stringify({ ...result, hasDurationAudioAndCounts, durationControlCount, durationRange, audioGroupCount, countDisabledStates, countOptions, hoverDescriptionVisible, reducedMotionVideoIsPaused }));
+const result = { blockedGenerationDidNotCreateRun, cameraGridColumns, cameraPresetCount, composerVisible, durationRangeIsDefault, emptyUploadInputPresent, modelMenuNoSearch, parameterDialogIsTopLayer, portraitEmptyNodeIsSized, readyControls, readyPreviewUsesContain, resolutionOptions };
+if (!composerVisible || !modelMenuNoSearch || !hoverDescriptionVisible || !hasDurationAudioAndCounts || !durationRangeIsDefault || !parameterDialogIsTopLayer || !resolutionOptions.includes('1080P') || cameraGridColumns !== 4 || cameraPresetCount !== 23 || !reducedMotionVideoIsPaused || !blockedGenerationDidNotCreateRun || !portraitEmptyNodeIsSized || !emptyUploadInputPresent || !readyControls.download || !readyControls.fullscreen || !readyControls.upload || !readyPreviewUsesContain) {
+  throw new Error(JSON.stringify({ ...result, hasDurationAudioAndCounts, durationControlCount, durationOptions, audioGroupCount, countDisabledStates, countOptions, hoverDescriptionVisible, reducedMotionVideoIsPaused }));
 }
 return JSON.stringify({ ...result, status: 'ok' });
 } finally {
