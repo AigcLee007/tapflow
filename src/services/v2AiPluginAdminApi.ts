@@ -57,6 +57,11 @@ export type InstallPluginInput = {
     name?: string;
     secret?: string;
   };
+  credentials?: Record<string, {
+    existingCredentialId?: string;
+    name?: string;
+    secret?: string;
+  }>;
   pricingOverrides?: Array<{
     minChargeCredits: number;
     modelKey: string;

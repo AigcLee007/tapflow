@@ -427,6 +427,132 @@ describeWithDatabase("ai plugin admin API", () => {
     });
   });
 
+  test("installs PixelHub routes with isolated credentials and provider connections", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({ connectionString: await createAppDatabaseUrl() });
+        const api = buildTestApp(appPool);
+        const owner = await registerOwner(api, "pixelhub-plugin-owner@example.com", "PixelHub Plugin Owner");
+
+        const install = await api.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` },
+          method: "POST",
+          payload: {
+            baseUrlOverride: "https://pixelhub.example.test/",
+            credentials: {
+              "gemini-omni-flash": { name: "PixelHub Gemini", secret: "pixelhub-gemini-test-secret" },
+              "sora-v3-pro": { name: "PixelHub Sora", secret: "pixelhub-sora-test-secret" },
+              "veo31-fast": { name: "PixelHub Veo", secret: "pixelhub-veo-test-secret" },
+            },
+            publishImmediately: true,
+          },
+          url: "/api/v2/admin/ai/plugins/pixelhub.video/install",
+        });
+
+        expect(install.statusCode).toBe(201);
+        expect(install.json()).toMatchObject({
+          credentialId: null,
+          packageKey: "pixelhub.video",
+          routeKeys: [
+            "video.pixelhub.gemini-omni-flash",
+            "video.pixelhub.sora-v3-pro",
+            "video.pixelhub.veo31-fast",
+          ],
+          status: "published",
+        });
+        expect(JSON.stringify(install.json())).not.toMatch(/pixelhub-(gemini|sora|veo)-test-secret/);
+
+        const routes = await adminPool.query<{
+          connection_credential_id: string | null;
+          connection_id: string | null;
+          connection_name: string | null;
+          credential_id: string | null;
+          secret_fingerprint: string | null;
+          status: string;
+        }>(
+          `
+            SELECT
+              route.connection_id::text AS connection_id,
+              connection.name AS connection_name,
+              route.credential_id::text AS credential_id,
+              connection.credential_id::text AS connection_credential_id,
+              credential.secret_fingerprint,
+              route.status
+            FROM ai_routes AS route
+            JOIN ai_provider_connections AS connection ON connection.id = route.connection_id
+            JOIN api_credentials AS credential ON credential.id = route.credential_id
+            WHERE route.plugin_install_id = $1::uuid
+            ORDER BY route.route_key ASC
+          `,
+          [install.json().id],
+        );
+
+        expect(routes.rows).toHaveLength(3);
+        expect(routes.rows.map((row) => row.connection_name)).toEqual([
+          "PixelHub 路 Gemini Omni Flash",
+          "PixelHub 路 Sora V3 Pro",
+          "PixelHub 路 Veo 3.1 Fast",
+        ]);
+        expect(new Set(routes.rows.map((row) => row.connection_id)).size).toBe(3);
+        expect(new Set(routes.rows.map((row) => row.credential_id)).size).toBe(3);
+        expect(new Set(routes.rows.map((row) => row.secret_fingerprint)).size).toBe(3);
+        expect(routes.rows).toEqual(expect.arrayContaining([
+          expect.objectContaining({ connection_credential_id: expect.any(String), status: "active" }),
+        ]));
+        expect(routes.rows.every((row) => row.credential_id === row.connection_credential_id)).toBe(true);
+
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("rejects incomplete PixelHub credential bindings without creating an install", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({ connectionString: await createAppDatabaseUrl() });
+        const api = buildTestApp(appPool);
+        const owner = await registerOwner(api, "pixelhub-incomplete-owner@example.com", "PixelHub Incomplete Owner");
+
+        const install = await api.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` },
+          method: "POST",
+          payload: {
+            baseUrlOverride: "https://pixelhub.example.test/",
+            credentials: {
+              "gemini-omni-flash": { secret: "pixelhub-only-secret" },
+            },
+          },
+          url: "/api/v2/admin/ai/plugins/pixelhub.video/install",
+        });
+
+        expect(install.statusCode).toBe(422);
+        expect(install.json()).toMatchObject({ error: { code: "PLUGIN_CREDENTIAL_BINDINGS_INCOMPLETE" } });
+        const installs = await adminPool.query<{ count: string }>(
+          "SELECT COUNT(*)::text AS count FROM tenant_ai_plugin_installs WHERE package_id = (SELECT id FROM ai_plugin_packages WHERE package_key = 'pixelhub.video')",
+        );
+        expect(installs.rows[0]?.count).toBe("0");
+
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
   test("installs the internal video editor FFmpeg export plugin", async () => {
     await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
       process.env.DATABASE_URL = databaseUrl;

@@ -14,6 +14,13 @@ export type AiPluginCredentialManifest = {
   type: "bearer";
 };
 
+export type AiPluginCredentialBindingManifest = {
+  bindingKey: string;
+  label: string;
+  modelKey: string;
+  routeKey: string;
+};
+
 export type AiPluginUiField = {
   defaultValue?: unknown;
   key: string;
@@ -105,6 +112,7 @@ export type AiPluginTestManifest = {
 };
 
 export type AiPluginManifest = {
+  credentialBindings?: AiPluginCredentialBindingManifest[];
   credentials: AiPluginCredentialManifest;
   description: string;
   displayName: string;
@@ -166,6 +174,38 @@ export function validateAiPluginManifest(
       });
     }
     modelKeys.add(model.modelKey);
+  }
+
+  const credentialBindingKeys = new Set<string>();
+  for (const binding of manifest.credentialBindings ?? []) {
+    if (!binding.bindingKey.trim()) {
+      issues.push({ code: "CREDENTIAL_BINDING_KEY_REQUIRED", message: "Credential binding key is required" });
+    }
+    if (credentialBindingKeys.has(binding.bindingKey)) {
+      issues.push({
+        code: "DUPLICATE_CREDENTIAL_BINDING_KEY",
+        message: `Duplicate credential binding key: ${binding.bindingKey}`,
+      });
+    }
+    credentialBindingKeys.add(binding.bindingKey);
+    if (!modelKeys.has(binding.modelKey)) {
+      issues.push({
+        code: "CREDENTIAL_BINDING_MODEL_NOT_FOUND",
+        message: `Credential binding ${binding.bindingKey} references missing model ${binding.modelKey}`,
+      });
+    }
+    const route = manifest.routes.find((item) => item.routeKey === binding.routeKey);
+    if (!route) {
+      issues.push({
+        code: "CREDENTIAL_BINDING_ROUTE_NOT_FOUND",
+        message: `Credential binding ${binding.bindingKey} references missing route ${binding.routeKey}`,
+      });
+    } else if (route.modelKey !== binding.modelKey) {
+      issues.push({
+        code: "CREDENTIAL_BINDING_ROUTE_MODEL_MISMATCH",
+        message: `Credential binding ${binding.bindingKey} must reference a route for model ${binding.modelKey}`,
+      });
+    }
   }
 
   for (const route of manifest.routes) {

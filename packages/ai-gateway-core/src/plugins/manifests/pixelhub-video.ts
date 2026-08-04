@@ -43,6 +43,11 @@ const model = (modelKey: string, displayName: string, modelFamily: string, capab
 const price = (modelKey: string, unitCredits: number, minChargeCredits: number): AiPluginManifest["pricing"][number] => ({ metadata: { billingBasis: "duration_second", source: "pixelhub.video" }, minChargeCredits, model: modelKey, provider: "pixelhub", route: `video.pixelhub.${modelKey}`, unit: "video_generation", unitCredits });
 
 export const pixelHubVideoManifest: AiPluginManifest = {
+  credentialBindings: [
+    { bindingKey: "gemini-omni-flash", label: "Gemini Omni Flash", modelKey: "gemini-omni-flash", routeKey: "video.pixelhub.gemini-omni-flash" },
+    { bindingKey: "sora-v3-pro", label: "Sora V3 Pro", modelKey: "sora-v3-pro", routeKey: "video.pixelhub.sora-v3-pro" },
+    { bindingKey: "veo31-fast", label: "Veo 3.1 Fast", modelKey: "veo31-fast", routeKey: "video.pixelhub.veo31-fast" },
+  ],
   credentials: { fields: [{ key: "apiKey", label: "Bearer API Key", required: true, secret: true }], type: "bearer" },
   description: "PixelHub asynchronous video generation.", displayName: "PixelHub Video", modality: "video", packageKey: "pixelhub.video", version: "1.0.0",
   provider: { capabilities: { requiresBaseUrlOverride: true, supportedVideoWorkflows: ["video_generation"] }, defaultBaseUrl: "", key: "pixelhub", kind: "pixelhub-video", name: "PixelHub" },

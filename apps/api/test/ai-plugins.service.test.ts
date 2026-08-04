@@ -6,6 +6,7 @@ import { mouxiHubNanoBananaProT3Manifest } from "../../../packages/ai-gateway-co
 import { openAiGptImage2Manifest } from "../../../packages/ai-gateway-core/src/plugins/manifests/openai-gpt-image-2.js";
 import { siphonLabGpt55TextManifest } from "../../../packages/ai-gateway-core/src/plugins/manifests/siphonlab-gpt-5-5-text.js";
 import { aittcoTextRelayManifest } from "../../../packages/ai-gateway-core/src/plugins/manifests/aittco-text-relay.js";
+import { pixelHubVideoManifest } from "../../../packages/ai-gateway-core/src/plugins/manifests/pixelhub-video.js";
 import { tapflowVideoEditorFfmpegManifest } from "../../../packages/ai-gateway-core/src/plugins/manifests/tapflow-video-editor-ffmpeg.js";
 import { AiPluginService } from "../src/modules/ai-plugins/ai-plugins.service.js";
 
@@ -17,6 +18,54 @@ describe("AiPluginService route install statements", () => {
       "pixelhub.video",
       {},
     )).rejects.toMatchObject({ code: "PLUGIN_BASE_URL_REQUIRED", statusCode: 422 });
+  });
+
+  test("fails closed when a route-scoped credential binding is missing", () => {
+    const service = new AiPluginService({ credentialVault: {} as never, pool: {} as never });
+
+    const resolve = () => (
+      service as unknown as {
+        resolveCredentialBindingInputs: (
+          manifest: typeof pixelHubVideoManifest,
+          input: { credentials?: Record<string, { secret?: string }> },
+        ) => unknown;
+      }
+    ).resolveCredentialBindingInputs(pixelHubVideoManifest, {
+      credentials: {
+        "gemini-omni-flash": { secret: "gemini-test-secret" },
+        "sora-v3-pro": { secret: "sora-test-secret" },
+      },
+    });
+
+    try {
+      resolve();
+      throw new Error("Expected missing PixelHub credentials to be rejected");
+    } catch (error) {
+      expect(error).toMatchObject({ code: "PLUGIN_CREDENTIAL_BINDINGS_INCOMPLETE", statusCode: 422 });
+    }
+  });
+
+  test("declares one stable PixelHub credential binding per route", () => {
+    expect(pixelHubVideoManifest.credentialBindings).toEqual([
+      expect.objectContaining({ bindingKey: "gemini-omni-flash", modelKey: "gemini-omni-flash", routeKey: "video.pixelhub.gemini-omni-flash" }),
+      expect.objectContaining({ bindingKey: "sora-v3-pro", modelKey: "sora-v3-pro", routeKey: "video.pixelhub.sora-v3-pro" }),
+      expect.objectContaining({ bindingKey: "veo31-fast", modelKey: "veo31-fast", routeKey: "video.pixelhub.veo31-fast" }),
+    ]);
+  });
+
+  test("keeps the legacy single credential install input", () => {
+    const service = new AiPluginService({ credentialVault: {} as never, pool: {} as never });
+
+    expect((
+      service as unknown as {
+        resolveCredentialBindingInputs: (
+          manifest: typeof openAiGptImage2Manifest,
+          input: { credential?: { secret?: string } },
+        ) => unknown;
+      }
+    ).resolveCredentialBindingInputs(openAiGptImage2Manifest, {
+      credential: { secret: "legacy-test-secret" },
+    })).toEqual({ kind: "legacy", input: { secret: "legacy-test-secret" } });
   });
 
   test("locks and validates an existing platform credential before plugin reuse", async () => {

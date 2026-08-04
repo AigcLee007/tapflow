@@ -46,6 +46,19 @@ type AiRouteInsertStatement = {
   values: unknown[];
 };
 
+type CredentialInput = NonNullable<InstallPluginInput["credential"]> & {
+  existingCredentialId?: string;
+};
+
+type CredentialBindingInputs =
+  | { input: CredentialInput; kind: "legacy" }
+  | { inputs: Map<string, CredentialInput>; kind: "route-scoped" };
+
+type RouteCredentialBinding = {
+  connectionId: string | null;
+  credentialId: string | null;
+};
+
 export type AiPluginSummaryView = {
   credentials: {
     fields: Array<{
@@ -148,37 +161,89 @@ export class AiPluginService {
         `${manifest.displayName} requires a Provider Connection base URL`,
       );
     }
+    const credentialBindings = this.resolveCredentialBindingInputs(manifest, input);
     return withTenantTransaction(context, async (client) => {
       const packageId = await this.upsertPluginPackage(client, manifest);
       const providerId = await this.upsertProvider(client, manifest, input.baseUrlOverride ?? undefined);
       const modelIdsByKey = await this.upsertModels(client, manifest, providerId);
       const existingInstall = await this.getInstallByPackageId(client, PLATFORM_TENANT_ID, packageId);
-      const credentialId = await this.resolveCredentialId(
-        client,
-        context,
-        manifest,
-        providerId,
-        existingInstall?.credential_id ?? null,
-        input,
-      );
+      const credentialId = credentialBindings.kind === "legacy"
+        ? await this.resolveCredentialId(
+          client,
+          context,
+          manifest,
+          providerId,
+          existingInstall?.credential_id ?? null,
+          credentialBindings.input,
+        )
+        : null;
       const status = input.publishImmediately ? "published" : "draft";
       const install = await this.upsertInstall(client, {
         context,
         credentialId,
+        credentialBindingKeys: credentialBindings.kind === "route-scoped"
+          ? [...credentialBindings.inputs.keys()]
+          : [],
         input,
         packageId,
         providerId,
+        preserveCredentialId: credentialBindings.kind === "legacy",
         status,
         version: manifest.version,
       });
-      const connectionId = await this.upsertProviderConnection(client, {
-        context,
-        credentialId,
-        input,
-        installId: install.id,
-        manifest,
-        providerId,
-      });
+
+      const routeCredentialBindings = new Map<string, RouteCredentialBinding>();
+      let connectionId: string | null = null;
+      if (credentialBindings.kind === "legacy") {
+        connectionId = await this.upsertProviderConnection(client, {
+          context,
+          credentialId,
+          input,
+          installId: install.id,
+          manifest,
+          providerId,
+        });
+      } else {
+        const credentialIds = new Set<string>();
+        for (const binding of manifest.credentialBindings ?? []) {
+          const bindingInput = credentialBindings.inputs.get(binding.bindingKey);
+          if (!bindingInput) {
+            throw new AiPluginApiError(422, "PLUGIN_CREDENTIAL_BINDINGS_INCOMPLETE", "Plugin credential bindings are incomplete");
+          }
+          const bindingCredentialId = await this.resolveCredentialId(
+            client,
+            context,
+            manifest,
+            providerId,
+            bindingInput.existingCredentialId ?? null,
+            bindingInput,
+            `${manifest.provider.name} ${binding.label} API Key`,
+          );
+          if (!bindingCredentialId || credentialIds.has(bindingCredentialId)) {
+            throw new AiPluginApiError(422, "PLUGIN_CREDENTIAL_BINDINGS_INCOMPLETE", "Plugin credential bindings must use distinct credentials");
+          }
+          credentialIds.add(bindingCredentialId);
+          const route = manifest.routes.find((item) => item.routeKey === binding.routeKey);
+          if (!route) {
+            throw new AiPluginApiError(422, "PLUGIN_CREDENTIAL_BINDINGS_INCOMPLETE", "Plugin credential bindings are incomplete");
+          }
+          const bindingConnectionId = await this.upsertProviderConnection(client, {
+            bindingKey: binding.bindingKey,
+            connectionName: `${manifest.provider.name} 路 ${binding.label}`,
+            context,
+            credentialId: bindingCredentialId,
+            input,
+            installId: install.id,
+            manifest,
+            providerId,
+            route,
+          });
+          routeCredentialBindings.set(binding.routeKey, {
+            connectionId: bindingConnectionId,
+            credentialId: bindingCredentialId,
+          });
+        }
+      }
 
       const routeKeys = await this.upsertRoutes(client, {
         connectionId,
@@ -188,6 +253,7 @@ export class AiPluginService {
         manifest,
         modelIdsByKey,
         providerId,
+        routeCredentialBindings,
         status: status === "published" ? "active" : "inactive",
         tenantId: PLATFORM_TENANT_ID,
       });
@@ -209,6 +275,9 @@ export class AiPluginService {
           metadata: {
             packageKey: manifest.packageKey,
             published: status === "published",
+            credentialBindingKeys: credentialBindings.kind === "route-scoped"
+              ? [...credentialBindings.inputs.keys()]
+              : [],
             routeKeys,
             version: manifest.version,
           },
@@ -513,15 +582,48 @@ export class AiPluginService {
     return modelIdsByKey;
   }
 
+  private resolveCredentialBindingInputs(
+    manifest: AiPluginManifest,
+    input: InstallPluginInput,
+  ): CredentialBindingInputs {
+    const declaredBindings = manifest.credentialBindings ?? [];
+    if (!declaredBindings.length) {
+      return { input: input.credential ?? {}, kind: "legacy" };
+    }
+
+    const providedBindings = input.credentials ?? {};
+    const expectedKeys = new Set(declaredBindings.map((binding) => binding.bindingKey));
+    const providedKeys = Object.keys(providedBindings);
+    const isComplete = providedKeys.length === expectedKeys.size
+      && providedKeys.every((bindingKey) => expectedKeys.has(bindingKey))
+      && declaredBindings.every((binding) => {
+        const credential = providedBindings[binding.bindingKey];
+        return Boolean(credential?.secret?.trim() || credential?.existingCredentialId?.trim());
+      });
+    if (!isComplete) {
+      throw new AiPluginApiError(
+        422,
+        "PLUGIN_CREDENTIAL_BINDINGS_INCOMPLETE",
+        "Every required plugin credential binding must provide a secret or an existing credential",
+      );
+    }
+
+    return {
+      inputs: new Map(declaredBindings.map((binding) => [binding.bindingKey, providedBindings[binding.bindingKey]!])),
+      kind: "route-scoped",
+    };
+  }
+
   private async resolveCredentialId(
     client: PoolClient,
     context: TenantContext,
     manifest: AiPluginManifest,
     providerId: string,
     existingCredentialId: string | null,
-    input: InstallPluginInput,
+    input: CredentialInput,
+    defaultCredentialName = `${manifest.displayName} API Key`,
   ): Promise<string | null> {
-    const secret = input.credential?.secret?.trim();
+    const secret = input.secret?.trim();
     if (!secret) {
       if (!existingCredentialId) return null;
       const existing = await client.query<{ id: string }>(
@@ -537,7 +639,7 @@ export class AiPluginService {
     }
 
     const encrypted = this.credentialVault.createCredential(secret);
-    const name = input.credential?.name?.trim() || `${manifest.displayName} API Key`;
+    const name = input.name?.trim() || defaultCredentialName;
     const result = await client.query<{ id: string }>(
       `
         INSERT INTO api_credentials (
@@ -597,16 +699,19 @@ export class AiPluginService {
     client: PoolClient,
     options: {
       context: TenantContext;
+      credentialBindingKeys: string[];
       credentialId: string | null;
       input: InstallPluginInput;
       packageId: string;
       providerId: string;
+      preserveCredentialId: boolean;
       status: string;
       version: string;
     },
   ): Promise<PluginInstallView> {
     const metadata = {
       baseUrlOverride: options.input.baseUrlOverride ?? null,
+      credentialBindingKeys: options.credentialBindingKeys,
       pricingOverrides: options.input.pricingOverrides ?? [],
     };
     const result = await client.query<PluginInstallRecord>(
@@ -642,7 +747,10 @@ export class AiPluginService {
           installed_version = EXCLUDED.installed_version,
           status = EXCLUDED.status,
           provider_id = EXCLUDED.provider_id,
-          credential_id = COALESCE(EXCLUDED.credential_id, tenant_ai_plugin_installs.credential_id),
+          credential_id = CASE
+            WHEN $9 THEN COALESCE(EXCLUDED.credential_id, tenant_ai_plugin_installs.credential_id)
+            ELSE EXCLUDED.credential_id
+          END,
           metadata = EXCLUDED.metadata,
           installed_by = EXCLUDED.installed_by,
           published_at = CASE
@@ -672,6 +780,7 @@ export class AiPluginService {
         options.credentialId,
         JSON.stringify(metadata),
         options.context.userId,
+        options.preserveCredentialId,
       ],
     );
     return this.mapInstall(result.rows[0]);
@@ -687,6 +796,7 @@ export class AiPluginService {
       manifest: AiPluginManifest;
       modelIdsByKey: Map<string, string>;
       providerId: string;
+      routeCredentialBindings?: Map<string, RouteCredentialBinding>;
       status: string;
       tenantId: string | null;
     },
@@ -705,8 +815,8 @@ export class AiPluginService {
       };
       const statement = this.buildRouteInsertStatement({
         baseUrlOverride: options.input.baseUrlOverride ?? route.baseUrl ?? null,
-        connectionId: options.connectionId,
-        credentialId: options.credentialId,
+        connectionId: options.routeCredentialBindings?.get(route.routeKey)?.connectionId ?? options.connectionId,
+        credentialId: options.routeCredentialBindings?.get(route.routeKey)?.credentialId ?? options.credentialId,
         installId: options.installId,
         modelId,
         providerId: options.providerId,
@@ -831,23 +941,26 @@ export class AiPluginService {
     client: PoolClient,
     options: {
       context: TenantContext;
+      bindingKey?: string;
+      connectionName?: string;
       credentialId: string | null;
       input: InstallPluginInput;
       installId: string;
       manifest: AiPluginManifest;
       providerId: string;
+      route?: AiPluginManifest["routes"][number];
     },
   ): Promise<string | null> {
-    const firstRoute = options.manifest.routes[0];
-    if (!firstRoute) {
+    const route = options.route ?? options.manifest.routes[0];
+    if (!route) {
       return null;
     }
 
     const adapterKind = options.manifest.provider.kind;
-    const environment = this.readRouteRequestConfigString(firstRoute.requestConfig, "environment") ?? "production";
+    const environment = this.readRouteRequestConfigString(route.requestConfig, "environment") ?? "production";
     const baseUrl =
       options.input.baseUrlOverride?.trim() ||
-      firstRoute.baseUrl?.trim() ||
+      route.baseUrl?.trim() ||
       options.manifest.provider.defaultBaseUrl ||
       null;
 
@@ -895,7 +1008,7 @@ export class AiPluginService {
           PLATFORM_TENANT_ID,
           options.providerId,
           options.credentialId,
-          `${options.manifest.displayName} (${options.manifest.packageKey}) Connection`,
+          options.connectionName ?? `${options.manifest.displayName} (${options.manifest.packageKey}) Connection`,
           adapterKind,
           baseUrl,
           environment,
@@ -904,6 +1017,7 @@ export class AiPluginService {
           generatedBy: "template-install",
           installId: options.installId,
           packageKey: options.manifest.packageKey,
+          ...(options.bindingKey ? { credentialBindingKey: options.bindingKey, routeKey: route.routeKey } : {}),
         }),
         options.context.userId,
       ],

@@ -44,6 +44,14 @@ export const installPluginSchema = z.object({
       secret: z.string().trim().min(1).max(4000).optional(),
     })
     .optional(),
+  credentials: z.record(
+    z.string().trim().min(1).max(255),
+    z.object({
+      existingCredentialId: z.string().uuid().optional(),
+      name: z.string().trim().min(1).max(255).optional(),
+      secret: z.string().trim().min(1).max(4000).optional(),
+    }),
+  ).optional(),
   pricingOverrides: z
     .array(
       z.object({
