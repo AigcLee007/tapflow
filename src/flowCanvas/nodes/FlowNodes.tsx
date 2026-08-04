@@ -77,7 +77,7 @@ import {
   getSafePersistedVideoPosterUrl,
   getSelectedRuntimeVideoPreviewUrl,
 } from '../video/videoResultPreview';
-import { resolveVideoPreviewObjectFit } from '../video/videoNodeSizing';
+import { VideoReadyState } from '../video/VideoReadyState';
 import {
   getImageModelById,
   getImageModelCatalogSnapshot,
@@ -7704,10 +7704,13 @@ export const VideoNodeComponent = memo(function VideoNode({
   selected,
 }: NodeProps<FlowNode>) {
   const d = data;
+  const backendProjectId = useFlowCanvasStore((s) => s.backendProjectId);
   const updateNodeData = useFlowCanvasStore((s) => s.updateNodeData);
   const runtimeNodeOutput = useFlowCanvasStore((s) => s.nodeOutputByNodeId[id]);
   const runtimeNodeStatus = useFlowCanvasStore((s) => s.nodeRunStatusByNodeId[id]);
   const [hovered, setHovered] = useState(false);
+  const videoInputRef = useRef<HTMLInputElement>(null);
+  const [uploadedPreview, setUploadedPreview] = useState<{ assetId: string; filename: string; url: string } | null>(null);
   const { connectionNodeId } = useConnection();
   const { showSingleNodeControls } = useNodeSelectionState(id, selected);
   const showNodeEditor = showSingleNodeControls;
@@ -7754,6 +7757,18 @@ export const VideoNodeComponent = memo(function VideoNode({
     () => getPersistedVideoResultAssetId(d),
     [d.activeResultIndex, d.generatedResults],
   );
+  const selectedRuntimeVideoAsset = runtimeVideoAssets[Math.min(
+    Math.max(0, Math.floor(Number(d.activeResultIndex) || 0)),
+    Math.max(0, runtimeVideoAssets.length - 1),
+  )] || runtimeVideoAssets[0];
+  const assetIdFromNode = typeof d.assetId === 'string' && d.assetId.trim() && !isTransientDraftUrl(d.assetId)
+    ? d.assetId.trim()
+    : null;
+  const readyAssetId = uploadedPreview?.assetId
+    || persistedResultAssetId
+    || assetIdFromNode
+    || selectedRuntimeVideoAsset?.assetId
+    || null;
   const [persistedResultPreview, setPersistedResultPreview] = useState<{
     assetId: string | null;
     url: string | null;
@@ -7761,25 +7776,28 @@ export const VideoNodeComponent = memo(function VideoNode({
 
   useEffect(() => {
     let cancelled = false;
-    setPersistedResultPreview({ assetId: persistedResultAssetId, url: null });
-    if (!persistedResultAssetId) return () => { cancelled = true; };
+    setPersistedResultPreview({ assetId: readyAssetId, url: null });
+    if (!readyAssetId || uploadedPreview?.assetId === readyAssetId) return () => { cancelled = true; };
 
-    void getAssetDownloadUrl(persistedResultAssetId)
+    void getAssetDownloadUrl(readyAssetId)
       .then((response) => {
         const url = String(response.url || '').trim();
-        if (!cancelled && url) setPersistedResultPreview({ assetId: persistedResultAssetId, url });
+        if (!cancelled && url) setPersistedResultPreview({ assetId: readyAssetId, url });
       })
       .catch(() => undefined);
 
     return () => { cancelled = true; };
-  }, [persistedResultAssetId]);
+  }, [readyAssetId, uploadedPreview?.assetId]);
 
-  const effectivePosterUrl = (persistedResultPreview.assetId === persistedResultAssetId
+  const effectivePosterUrl = uploadedPreview?.assetId === readyAssetId
+    ? uploadedPreview.url
+    : (persistedResultPreview.assetId === readyAssetId
     ? persistedResultPreview.url
     : null)
     || getSelectedRuntimeVideoPreviewUrl(runtimeVideoAssets, d.activeResultIndex)
     || getSafePersistedVideoPosterUrl(d.posterUrl)
     || '';
+  const hasReadyVideo = Boolean(readyAssetId);
   const isGenerating = runtimeNodeStatus === 'pending'
     || runtimeNodeStatus === 'runnable'
     || runtimeNodeStatus === 'running'
@@ -7826,6 +7844,86 @@ export const VideoNodeComponent = memo(function VideoNode({
     void runBackendWorkflow({ runMode: 'target_node', targetNodeId: id }).catch(() => undefined);
   };
 
+  const handleVideoUpload = useCallback(async (file: File) => {
+    if (!file.type.startsWith('video/')) {
+      updateNodeData(id, { errorMessage: 'VIDEO_FILE_REQUIRED', generationStatus: 'error', status: 'error' });
+      return;
+    }
+    if (!backendProjectId) {
+      updateNodeData(id, { errorMessage: 'VIDEO_UPLOAD_UNAVAILABLE', generationStatus: 'error', status: 'error' });
+      return;
+    }
+
+    let objectUrl: string | null = null;
+    try {
+      const metadata = await new Promise<{ durationMs: number; height: number; width: number }>((resolve, reject) => {
+        objectUrl = URL.createObjectURL(file);
+        const video = document.createElement('video');
+        const cleanup = () => {
+          video.removeAttribute('src');
+        };
+        video.onloadedmetadata = () => {
+          const width = Number(video.videoWidth);
+          const height = Number(video.videoHeight);
+          const durationMs = Math.round(Number(video.duration) * 1000);
+          cleanup();
+          if (width > 0 && height > 0 && Number.isFinite(durationMs) && durationMs >= 0) {
+            resolve({ durationMs, height, width });
+            return;
+          }
+          reject(new Error('VIDEO_METADATA_UNAVAILABLE'));
+        };
+        video.onerror = () => {
+          cleanup();
+          reject(new Error('VIDEO_METADATA_UNAVAILABLE'));
+        };
+        video.src = objectUrl;
+      });
+      const asset = await uploadAssetFile({
+        durationMs: metadata.durationMs,
+        file,
+        height: metadata.height,
+        kind: 'video',
+        projectId: backendProjectId,
+        width: metadata.width,
+      });
+      const naturalWidth = Number(asset.width) > 0 ? Number(asset.width) : metadata.width;
+      const naturalHeight = Number(asset.height) > 0 ? Number(asset.height) : metadata.height;
+      const durationMs = Number(asset.durationMs) >= 0 ? Number(asset.durationMs) : metadata.durationMs;
+      updateNodeData(id, {
+        aspectRatio: naturalWidth / naturalHeight,
+        assetId: asset.id,
+        assetIds: [asset.id],
+        durationMs,
+        errorMessage: undefined,
+        generationStatus: 'done',
+        mimeType: asset.mimeType || file.type,
+        naturalHeight,
+        naturalWidth,
+        source: 'upload',
+        status: 'success',
+      });
+      const preview = await getAssetDownloadUrl(asset.id);
+      const url = String(preview.url || '').trim();
+      if (!url) throw new Error('VIDEO_PREVIEW_UNAVAILABLE');
+      setUploadedPreview({ assetId: asset.id, filename: asset.originalFilename || file.name || 'video.mp4', url });
+    } catch {
+      updateNodeData(id, {
+        errorMessage: 'VIDEO_UPLOAD_FAILED',
+        generationStatus: 'error',
+        status: 'error',
+      });
+    } finally {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    }
+  }, [backendProjectId, id, updateNodeData]);
+
+  const handleVideoInputChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (file) void handleVideoUpload(file);
+  }, [handleVideoUpload]);
+
   return (
     <div 
       style={nodeWrapper}
@@ -7853,17 +7951,30 @@ export const VideoNodeComponent = memo(function VideoNode({
       </Handle>
 
       <div style={card(d.width || FLOW_NODE_DEFAULT_SIZES.video.width, d.height || FLOW_NODE_DEFAULT_SIZES.video.height, selected, isTargeting)}>
-        {effectivePosterUrl ? (
+        {hasReadyVideo && effectivePosterUrl && readyAssetId ? (
           <div style={{ ...contentArea, height: '100%' }}>
-            <video
+            <VideoReadyState
+              assetId={readyAssetId}
+              filename={uploadedPreview?.assetId === readyAssetId ? uploadedPreview.filename : `${String(d.title || 'video')}.mp4`}
               src={effectivePosterUrl}
-              controls
-              style={{ width: '100%', height: '100%', objectFit: resolveVideoPreviewObjectFit(), display: 'block', background: '#000' }}
             />
           </div>
         ) : (
-          <div style={placeholderArea(d.height || FLOW_NODE_DEFAULT_SIZES.video.height)}><Video size={48} strokeWidth={1} color="rgba(255,255,255,0.2)" /></div>
+          <div
+            onClick={() => videoInputRef.current?.click()}
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={(event) => {
+              event.preventDefault();
+              const file = event.dataTransfer.files?.[0];
+              if (file) void handleVideoUpload(file);
+            }}
+            style={{ ...placeholderArea(d.height || FLOW_NODE_DEFAULT_SIZES.video.height), cursor: 'pointer' }}
+          >
+            <Video size={48} strokeWidth={1} color="rgba(255,255,255,0.2)" />
+          </div>
         )}
+
+        {!hasReadyVideo && <input ref={videoInputRef} type="file" accept="video/*" style={{ display: 'none' }} onChange={handleVideoInputChange} />}
 
         {isGenerating && <div style={progressBar(d.progress || 0)} />}
       </div>
@@ -7879,9 +7990,9 @@ export const VideoNodeComponent = memo(function VideoNode({
         </div>
       </Handle>
 
-      {showNodeEditor && (
+      {showNodeEditor && !hasReadyVideo && (
         <FloatingToolbar>
-          <button style={uploadBtn}>
+          <button type="button" style={uploadBtn} onClick={() => videoInputRef.current?.click()}>
             <span style={{ fontSize: 16 }}>↑</span> 上传
           </button>
         </FloatingToolbar>

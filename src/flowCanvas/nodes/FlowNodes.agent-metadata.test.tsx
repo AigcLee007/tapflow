@@ -385,6 +385,91 @@ describe("FlowNodes agent metadata", () => {
     });
   });
 
+  it('uploads an empty video node as an asset-backed ready video without retaining a local URL', async () => {
+    useFlowCanvasStore.getState().setBackendFlowBinding({ backendProjectId: 'project-video-upload' });
+    assetApiMocks.uploadAssetFile.mockResolvedValue({
+      durationMs: 8250,
+      height: 1920,
+      id: 'asset-uploaded-video',
+      kind: 'video',
+      mimeType: 'video/mp4',
+      width: 1080,
+    });
+    assetApiMocks.getAssetDownloadUrl.mockResolvedValue({
+      expiresAt: '2026-08-04T12:00:00.000Z',
+      method: 'GET',
+      url: 'https://cdn.test/uploaded.mp4?X-Amz-Signature=fresh',
+    });
+    const previousCreateObjectURL = URL.createObjectURL;
+    const previousRevokeObjectURL = URL.revokeObjectURL;
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn(() => 'blob:local-video') });
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() });
+    const originalCreateElement = document.createElement.bind(document);
+    vi.spyOn(document, 'createElement').mockImplementation(((tagName: string) => {
+      const element = originalCreateElement(tagName);
+      if (tagName === 'video') {
+        Object.defineProperties(element, {
+          duration: { configurable: true, value: 8.25 },
+          videoHeight: { configurable: true, value: 1920 },
+          videoWidth: { configurable: true, value: 1080 },
+        });
+        queueMicrotask(() => element.dispatchEvent(new Event('loadedmetadata')));
+      }
+      return element;
+    }) as typeof document.createElement);
+
+    try {
+      const node = useFlowCanvasStore.getState().addNode('video', { x: 0, y: 0 }, {
+        createdAt: 1,
+        generationStatus: 'idle',
+        height: 170,
+        kind: 'video',
+        status: 'idle',
+        title: 'Upload video',
+        updatedAt: 1,
+        width: 302,
+      } as any, { selected: true });
+      const { container } = render(<VideoNodeComponent id={node.id} selected data={node.data as any} dragging={false} zIndex={1} isConnectable type="video" xPos={0} yPos={0} />);
+      const input = container.querySelector('input[type="file"][accept="video/*"]') as HTMLInputElement | null;
+      expect(input).toBeTruthy();
+
+      fireEvent.change(input!, { target: { files: [new File(['video'], 'portrait.mp4', { type: 'video/mp4' })] } });
+
+      await waitFor(() => {
+        expect(assetApiMocks.uploadAssetFile).toHaveBeenCalledWith({
+          durationMs: 8250,
+          file: expect.any(File),
+          height: 1920,
+          kind: 'video',
+          projectId: 'project-video-upload',
+          width: 1080,
+        });
+        expect(useFlowCanvasStore.getState().nodes.find((item) => item.id === node.id)?.data).toMatchObject({
+          aspectRatio: 1080 / 1920,
+          assetId: 'asset-uploaded-video',
+          assetIds: ['asset-uploaded-video'],
+          durationMs: 8250,
+          generationStatus: 'done',
+          mimeType: 'video/mp4',
+          naturalHeight: 1920,
+          naturalWidth: 1080,
+          source: 'upload',
+          status: 'success',
+        });
+      });
+      const persisted = useFlowCanvasStore.getState().nodes.find((item) => item.id === node.id)?.data as Record<string, unknown>;
+      expect(Object.values(persisted).some((value) => typeof value === 'string' && /^(blob:|data:|https?:\/\/.*signature)/i.test(value))).toBe(false);
+      expect(container.querySelector('input[type="file"]')).toBeNull();
+      expect(screen.getByRole('button', { name: '下载视频' })).toBeTruthy();
+      expect(screen.queryByRole('button', { name: /上传|替换/ })).toBeNull();
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:local-video');
+    } finally {
+      vi.restoreAllMocks();
+      Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: previousCreateObjectURL });
+      Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: previousRevokeObjectURL });
+    }
+  });
+
   it("replaces an expired generated image result URL with the fresh signed URL", async () => {
     assetApiMocks.getAssetSignedUrls.mockResolvedValue({
       items: [{
