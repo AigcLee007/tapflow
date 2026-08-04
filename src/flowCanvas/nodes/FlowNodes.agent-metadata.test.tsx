@@ -470,6 +470,77 @@ describe("FlowNodes agent metadata", () => {
     }
   });
 
+  it('keeps a successfully uploaded video ready when its temporary preview URL cannot be signed', async () => {
+    useFlowCanvasStore.getState().setBackendFlowBinding({ backendProjectId: 'project-video-upload' });
+    assetApiMocks.uploadAssetFile.mockResolvedValue({
+      durationMs: 4000,
+      height: 720,
+      id: 'asset-uploaded-video-no-preview',
+      kind: 'video',
+      mimeType: 'video/mp4',
+      width: 1280,
+    });
+    assetApiMocks.getAssetDownloadUrl.mockRejectedValue(new Error('preview signing failed'));
+    const previousCreateObjectURL = URL.createObjectURL;
+    const previousRevokeObjectURL = URL.revokeObjectURL;
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn(() => 'blob:local-video') });
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() });
+    const originalCreateElement = document.createElement.bind(document);
+    vi.spyOn(document, 'createElement').mockImplementation(((tagName: string) => {
+      const element = originalCreateElement(tagName);
+      if (tagName === 'video') {
+        Object.defineProperties(element, {
+          duration: { configurable: true, value: 4 },
+          videoHeight: { configurable: true, value: 720 },
+          videoWidth: { configurable: true, value: 1280 },
+        });
+        queueMicrotask(() => element.dispatchEvent(new Event('loadedmetadata')));
+      }
+      return element;
+    }) as typeof document.createElement);
+
+    function StoredVideoNode({ nodeId }: { nodeId: string }) {
+      const node = useFlowCanvasStore((state) => state.nodes.find((item) => item.id === nodeId));
+      if (!node) return null;
+      return <VideoNodeComponent id={node.id} selected data={node.data as any} dragging={false} zIndex={1} isConnectable type="video" xPos={0} yPos={0} />;
+    }
+
+    try {
+      const node = useFlowCanvasStore.getState().addNode('video', { x: 0, y: 0 }, {
+        createdAt: 1,
+        generationStatus: 'idle',
+        height: 170,
+        kind: 'video',
+        status: 'idle',
+        title: 'Upload video',
+        updatedAt: 1,
+        width: 302,
+      } as any, { selected: true });
+      const { container } = render(<StoredVideoNode nodeId={node.id} />);
+      const input = container.querySelector('input[type="file"][accept="video/*"]') as HTMLInputElement;
+      fireEvent.change(input, { target: { files: [new File(['video'], 'landscape.mp4', { type: 'video/mp4' })] } });
+
+      await waitFor(() => expect(assetApiMocks.getAssetDownloadUrl).toHaveBeenCalledWith('asset-uploaded-video-no-preview'));
+      await waitFor(() => expect(useFlowCanvasStore.getState().nodes.find((item) => item.id === node.id)?.data).toMatchObject({
+        aspectRatio: 1280 / 720,
+        assetId: 'asset-uploaded-video-no-preview',
+        assetIds: ['asset-uploaded-video-no-preview'],
+        durationMs: 4000,
+        generationStatus: 'done',
+        naturalHeight: 720,
+        naturalWidth: 1280,
+        source: 'upload',
+        status: 'success',
+      }));
+      expect(container.querySelector('input[type="file"]')).toBeNull();
+      expect(screen.queryByRole('button', { name: /上传|替换/ })).toBeNull();
+    } finally {
+      vi.restoreAllMocks();
+      Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: previousCreateObjectURL });
+      Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: previousRevokeObjectURL });
+    }
+  });
+
   it("replaces an expired generated image result URL with the fresh signed URL", async () => {
     assetApiMocks.getAssetSignedUrls.mockResolvedValue({
       items: [{

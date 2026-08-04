@@ -7903,10 +7903,15 @@ export const VideoNodeComponent = memo(function VideoNode({
         source: 'upload',
         status: 'success',
       });
-      const preview = await getAssetDownloadUrl(asset.id);
-      const url = String(preview.url || '').trim();
-      if (!url) throw new Error('VIDEO_PREVIEW_UNAVAILABLE');
-      setUploadedPreview({ assetId: asset.id, filename: asset.originalFilename || file.name || 'video.mp4', url });
+      try {
+        const preview = await getAssetDownloadUrl(asset.id);
+        const url = String(preview.url || '').trim();
+        if (url) {
+          setUploadedPreview({ assetId: asset.id, filename: asset.originalFilename || file.name || 'video.mp4', url });
+        }
+      } catch {
+        // The asset is durable even when its temporary preview URL cannot be signed.
+      }
     } catch {
       updateNodeData(id, {
         errorMessage: 'VIDEO_UPLOAD_FAILED',
