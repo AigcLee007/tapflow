@@ -198,15 +198,28 @@ export async function deleteAsset(assetId: string): Promise<{ ok: true }> {
 }
 
 export async function uploadAssetFile(input: {
+  durationMs?: number;
   file: File;
+  height?: number;
   kind?: AssetKind;
   projectId?: string | null;
+  width?: number;
 }): Promise<AssetItem> {
   const file = input.file;
   const kind = input.kind ?? kindFromMimeType(file.type);
   const dimensions = kind === 'image' ? await readImageDimensions(file).catch(() => null) : null;
+  const metadata =
+    kind === 'video'
+      ? {
+          ...(input.durationMs !== undefined ? { durationMs: input.durationMs } : {}),
+          ...(input.height !== undefined ? { height: input.height } : {}),
+          ...(input.width !== undefined ? { width: input.width } : {}),
+        }
+      : dimensions
+        ? { height: dimensions.height, width: dimensions.width }
+        : {};
   const presigned = await apiPost<PresignedUploadResponse>('/assets/presigned-upload', {
-    ...(dimensions ? { height: dimensions.height, width: dimensions.width } : {}),
+    ...metadata,
     kind,
     mimeType: file.type || 'application/octet-stream',
     originalFilename: file.name,
@@ -227,7 +240,7 @@ export async function uploadAssetFile(input: {
   }
 
   const completed = await apiPost<AssetItem>(`/assets/${presigned.asset.id}/complete-upload`, {
-    ...(dimensions ? { height: dimensions.height, width: dimensions.width } : {}),
+    ...metadata,
     sizeBytes: file.size,
   });
   try {

@@ -206,6 +206,47 @@ describe("uploadAssetFile", () => {
     });
     expect(apiPatchMock).toHaveBeenCalledTimes(1);
   });
+
+  it('forwards caller-provided video metadata to upload reservation and completion', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    apiPostMock
+      .mockResolvedValueOnce({
+        asset: { id: 'asset-video-1' },
+        upload: {
+          expiresAt: '2026-06-11T12:00:00.000Z',
+          headers: { 'content-type': 'video/mp4' },
+          method: 'PUT',
+          url: 'https://storage.test/direct-upload',
+        },
+      })
+      .mockResolvedValueOnce({ id: 'asset-video-1', title: 'clip.mp4' });
+    apiPatchMock.mockResolvedValue({ id: 'asset-video-1', title: 'clip.mp4' });
+
+    const { uploadAssetFile } = await import('./assetApi');
+    const file = new File(['video'], 'clip.mp4', { type: 'video/mp4' });
+    await uploadAssetFile({
+      durationMs: 4_500,
+      file,
+      height: 1920,
+      kind: 'video',
+      projectId: 'project-1',
+      width: 1080,
+    });
+
+    expect(apiPostMock).toHaveBeenNthCalledWith(
+      1,
+      '/assets/presigned-upload',
+      expect.objectContaining({ durationMs: 4_500, height: 1920, width: 1080 }),
+    );
+    expect(apiPostMock).toHaveBeenNthCalledWith(2, '/assets/asset-video-1/complete-upload', {
+      durationMs: 4_500,
+      height: 1920,
+      sizeBytes: file.size,
+      width: 1080,
+    });
+  });
 });
 
 describe("readImageDimensions", () => {

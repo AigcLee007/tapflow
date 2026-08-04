@@ -6,6 +6,7 @@ import type { Node } from '@xyflow/react';
 import type { FlowNodeData, FlowNodeKind } from '../types';
 import { FLOW_NODE_DEFAULT_SIZES } from './nodeSizing';
 import { createDefaultVideoGenerationParams } from '../video/videoGenerationParams';
+import { getVideoNodeSizeForRequestedRatio } from '../video/videoNodeSizing';
 
 const NODE_DEFAULTS: Record<
   FlowNodeKind,
@@ -13,7 +14,7 @@ const NODE_DEFAULTS: Record<
 > = {
   text: { label: '文本', ...FLOW_NODE_DEFAULT_SIZES.text, color: '#94a3b8' },
   image: { label: '图片', ...FLOW_NODE_DEFAULT_SIZES.image, color: '#94a3b8' },
-  video: { label: '视频', ...FLOW_NODE_DEFAULT_SIZES.video, color: '#94a3b8' },
+  video: { label: '视频', ...getVideoNodeSizeForRequestedRatio('16:9'), color: '#94a3b8' },
   audio: { label: '音频', ...FLOW_NODE_DEFAULT_SIZES.audio, color: '#94a3b8' },
   upload: { label: '上传', ...FLOW_NODE_DEFAULT_SIZES.upload, color: '#94a3b8' },
   image_editor: { label: '图片编辑器', ...FLOW_NODE_DEFAULT_SIZES.imageEditor, color: '#94a3b8' },

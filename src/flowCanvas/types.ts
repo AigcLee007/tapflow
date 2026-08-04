@@ -209,6 +209,7 @@ export interface FlowImageResultItem {
 export interface FlowRuntimeAssetRef {
   assetId: string;
   downloadUrl?: string;
+  durationMs?: number | null;
   expiresAt?: string | null;
   height?: number | null;
   kind: string;

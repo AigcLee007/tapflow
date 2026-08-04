@@ -13,6 +13,12 @@ describe('nodeFactory route defaults', () => {
     expect(node.data.routeKey).toBeUndefined();
   });
 
+  it('creates video nodes at the canonical 16:9 dimensions', () => {
+    const node = createFlowNode('video', { x: 20, y: 20 });
+    expect(node.data.width).toBe(302);
+    expect(node.data.height).toBe(170);
+  });
+
   it('seeds video nodes with the canonical generation params', () => {
     const node = createFlowNode('video', { x: 20, y: 20 });
     expect(node.data.params).toEqual({
