@@ -7979,7 +7979,7 @@ export const VideoNodeComponent = memo(function VideoNode({
         selected,
         isTargeting,
       )}>
-        {hasReadyVideo && effectivePosterUrl && readyAssetId ? (
+        {hasReadyVideo && readyAssetId ? (
           <div style={{ ...contentArea, height: '100%' }}>
             <VideoReadyState
               assetId={readyAssetId}

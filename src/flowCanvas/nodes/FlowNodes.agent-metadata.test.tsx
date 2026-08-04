@@ -533,6 +533,8 @@ describe("FlowNodes agent metadata", () => {
         status: 'success',
       }));
       expect(container.querySelector('input[type="file"]')).toBeNull();
+      expect(screen.getByRole('button', { name: '下载视频' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: '全屏预览' })).toBeTruthy();
       expect(screen.queryByRole('button', { name: /上传|替换/ })).toBeNull();
     } finally {
       vi.restoreAllMocks();

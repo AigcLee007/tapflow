@@ -7,7 +7,7 @@ import { downloadVideoAsset } from './videoDownload';
 export function VideoReadyState({ assetId, filename, src }: {
   assetId: string;
   filename: string;
-  src: string;
+  src?: string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [fallbackFullscreenOpen, setFallbackFullscreenOpen] = useState(false);
@@ -38,7 +38,7 @@ export function VideoReadyState({ assetId, filename, src }: {
         <video
           aria-label="视频预览"
           controls
-          src={src}
+          src={src || undefined}
           style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000', display: 'block' }}
         />
         <div
@@ -70,7 +70,7 @@ export function VideoReadyState({ assetId, filename, src }: {
           <video
             aria-label="视频全屏内容"
             controls
-            src={src}
+            src={src || undefined}
             style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000', display: 'block' }}
           />
         </div>,
