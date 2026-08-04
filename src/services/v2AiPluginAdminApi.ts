@@ -16,6 +16,12 @@ export type AiPluginInstall = {
 };
 
 export type AiPluginSummary = {
+  credentialBindings?: Array<{
+    bindingKey: string;
+    label: string;
+    modelKey: string;
+    routeKey: string;
+  }>;
   credentials: {
     fields: Array<{
       key: string;

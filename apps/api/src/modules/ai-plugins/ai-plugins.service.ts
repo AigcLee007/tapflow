@@ -60,6 +60,12 @@ type RouteCredentialBinding = {
 };
 
 export type AiPluginSummaryView = {
+  credentialBindings: Array<{
+    bindingKey: string;
+    label: string;
+    modelKey: string;
+    routeKey: string;
+  }>;
   credentials: {
     fields: Array<{
       key: string;
@@ -417,6 +423,12 @@ export class AiPluginService {
     install: PluginInstallView | null,
   ): AiPluginSummaryView {
     return {
+      credentialBindings: (manifest.credentialBindings ?? []).map((binding) => ({
+        bindingKey: binding.bindingKey,
+        label: binding.label,
+        modelKey: binding.modelKey,
+        routeKey: binding.routeKey,
+      })),
       credentials: {
         fields: manifest.credentials.fields.map((field) => ({
           key: field.key,
@@ -589,6 +601,18 @@ export class AiPluginService {
     const declaredBindings = manifest.credentialBindings ?? [];
     if (!declaredBindings.length) {
       return { input: input.credential ?? {}, kind: "legacy" };
+    }
+
+    const declaredRouteKeys = new Set(manifest.routes.map((route) => route.routeKey));
+    const boundRouteKeys = new Set(declaredBindings.map((binding) => binding.routeKey));
+    if (declaredBindings.length !== manifest.routes.length
+      || declaredRouteKeys.size !== boundRouteKeys.size
+      || [...declaredRouteKeys].some((routeKey) => !boundRouteKeys.has(routeKey))) {
+      throw new AiPluginApiError(
+        422,
+        "PLUGIN_CREDENTIAL_BINDINGS_INCOMPLETE",
+        "Every plugin route must have exactly one credential binding",
+      );
     }
 
     const providedBindings = input.credentials ?? {};
@@ -803,6 +827,14 @@ export class AiPluginService {
   ): Promise<string[]> {
     const routeKeys: string[] = [];
     for (const route of options.manifest.routes) {
+      const routeCredentialBinding = options.routeCredentialBindings?.get(route.routeKey);
+      if (options.routeCredentialBindings && !routeCredentialBinding) {
+        throw new AiPluginApiError(
+          422,
+          "PLUGIN_CREDENTIAL_BINDINGS_INCOMPLETE",
+          `Route ${route.routeKey} has no credential binding`,
+        );
+      }
       const modelId = options.modelIdsByKey.get(route.modelKey);
       if (!modelId) {
         throw new AiPluginApiError(400, "PLUGIN_MODEL_NOT_FOUND", `Route ${route.routeKey} references missing model`);
@@ -815,8 +847,8 @@ export class AiPluginService {
       };
       const statement = this.buildRouteInsertStatement({
         baseUrlOverride: options.input.baseUrlOverride ?? route.baseUrl ?? null,
-        connectionId: options.routeCredentialBindings?.get(route.routeKey)?.connectionId ?? options.connectionId,
-        credentialId: options.routeCredentialBindings?.get(route.routeKey)?.credentialId ?? options.credentialId,
+        connectionId: routeCredentialBinding?.connectionId ?? options.connectionId,
+        credentialId: routeCredentialBinding?.credentialId ?? options.credentialId,
         installId: options.installId,
         modelId,
         providerId: options.providerId,

@@ -78,6 +78,22 @@ describe("TemplateLibraryPage", () => {
             },
             version: "1.0.0",
           },
+          {
+            credentialBindings: [
+              { bindingKey: "gemini-omni-flash", label: "Gemini Omni Flash", modelKey: "gemini-omni-flash", routeKey: "video.pixelhub.gemini-omni-flash" },
+              { bindingKey: "sora-v3-pro", label: "Sora V3 Pro", modelKey: "sora-v3-pro", routeKey: "video.pixelhub.sora-v3-pro" },
+              { bindingKey: "veo31-fast", label: "Veo 3.1 Fast", modelKey: "veo31-fast", routeKey: "video.pixelhub.veo31-fast" },
+            ],
+            credentials: { fields: [], required: true, type: "bearer" },
+            description: "PixelHub video generation.",
+            displayName: "PixelHub Video",
+            install: null,
+            modality: "video",
+            models: [],
+            packageKey: "pixelhub.video",
+            provider: { key: "pixelhub", kind: "pixelhub-video", name: "PixelHub" },
+            version: "1.0.0",
+          },
         ];
       }
 
@@ -157,5 +173,49 @@ describe("TemplateLibraryPage", () => {
       });
     });
     expect(installAiPluginMock.mock.calls[0]?.[1]).not.toHaveProperty("credential");
+  });
+
+  test("submits one secret per PixelHub route binding", async () => {
+    render(
+      <AuthContext.Provider value={createAuthState()}>
+        <TemplateLibraryPage />
+      </AuthContext.Provider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "template modality video" }));
+    fireEvent.click(await screen.findByRole("button", { name: "template plugin pixelhub.video" }));
+    fireEvent.change(screen.getByLabelText("template credential secret gemini-omni-flash"), { target: { value: "gemini-secret" } });
+    fireEvent.change(screen.getByLabelText("template credential secret sora-v3-pro"), { target: { value: "sora-secret" } });
+    fireEvent.change(screen.getByLabelText("template credential secret veo31-fast"), { target: { value: "veo-secret" } });
+    fireEvent.click(screen.getByRole("button", { name: "install selected template" }));
+
+    await waitFor(() => expect(installAiPluginMock).toHaveBeenCalledWith("pixelhub.video", {
+      baseUrlOverride: undefined,
+      credentials: {
+        "gemini-omni-flash": { name: "PixelHub Gemini Omni Flash Key", secret: "gemini-secret" },
+        "sora-v3-pro": { name: "PixelHub Sora V3 Pro Key", secret: "sora-secret" },
+        "veo31-fast": { name: "PixelHub Veo 3.1 Fast Key", secret: "veo-secret" },
+      },
+      publishImmediately: true,
+    }));
+  });
+
+  test("keeps PixelHub install disabled until every route secret is filled", async () => {
+    render(
+      <AuthContext.Provider value={createAuthState()}>
+        <TemplateLibraryPage />
+      </AuthContext.Provider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "template modality video" }));
+    fireEvent.click(await screen.findByRole("button", { name: "template plugin pixelhub.video" }));
+    const installButton = screen.getByRole("button", { name: "install selected template" });
+
+    expect((installButton as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText("template credential secret gemini-omni-flash"), { target: { value: "gemini-secret" } });
+    fireEvent.change(screen.getByLabelText("template credential secret sora-v3-pro"), { target: { value: "sora-secret" } });
+    expect((installButton as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText("template credential secret veo31-fast"), { target: { value: "veo-secret" } });
+    expect((installButton as HTMLButtonElement).disabled).toBe(false);
   });
 });

@@ -60,6 +60,7 @@ export type AiPluginModelManifest = {
   publishToCatalog?: boolean;
   sortOrder?: number;
   uiSchema: {
+    creatorLabel?: string;
     fields: AiPluginUiField[];
     logoKey?: string;
     manufacturer?: string;
@@ -177,6 +178,8 @@ export function validateAiPluginManifest(
   }
 
   const credentialBindingKeys = new Set<string>();
+  const credentialBindingLabels = new Set<string>();
+  const credentialBindingRoutes = new Set<string>();
   for (const binding of manifest.credentialBindings ?? []) {
     if (!binding.bindingKey.trim()) {
       issues.push({ code: "CREDENTIAL_BINDING_KEY_REQUIRED", message: "Credential binding key is required" });
@@ -188,6 +191,17 @@ export function validateAiPluginManifest(
       });
     }
     credentialBindingKeys.add(binding.bindingKey);
+    if (!binding.label.trim()) {
+      issues.push({ code: "CREDENTIAL_BINDING_LABEL_REQUIRED", message: `Credential binding ${binding.bindingKey} label is required` });
+    }
+    if (credentialBindingLabels.has(binding.label.trim())) {
+      issues.push({ code: "DUPLICATE_CREDENTIAL_BINDING_LABEL", message: `Duplicate credential binding label: ${binding.label}` });
+    }
+    credentialBindingLabels.add(binding.label.trim());
+    if (credentialBindingRoutes.has(binding.routeKey)) {
+      issues.push({ code: "DUPLICATE_CREDENTIAL_BINDING_ROUTE", message: `Duplicate credential binding route: ${binding.routeKey}` });
+    }
+    credentialBindingRoutes.add(binding.routeKey);
     if (!modelKeys.has(binding.modelKey)) {
       issues.push({
         code: "CREDENTIAL_BINDING_MODEL_NOT_FOUND",
@@ -228,6 +242,23 @@ export function validateAiPluginManifest(
       });
     }
     routeKeys.add(route.routeKey);
+  }
+
+  if (manifest.credentialBindings?.length) {
+    for (const route of manifest.routes) {
+      if (!credentialBindingRoutes.has(route.routeKey)) {
+        issues.push({
+          code: "CREDENTIAL_BINDING_ROUTE_COVERAGE_INCOMPLETE",
+          message: `Route ${route.routeKey} has no credential binding`,
+        });
+      }
+    }
+    if (credentialBindingRoutes.size !== manifest.routes.length) {
+      issues.push({
+        code: "CREDENTIAL_BINDING_ROUTE_COVERAGE_INCOMPLETE",
+        message: "Every route must have exactly one credential binding",
+      });
+    }
   }
 
   for (const model of manifest.models) {

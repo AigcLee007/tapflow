@@ -22,6 +22,7 @@ type InstallFormState = {
   baseUrlOverride: string;
   credentialName: string;
   credentialSecret: string;
+  credentialBindings: Record<string, { name: string; secret: string }>;
   publishImmediately: boolean;
 };
 
@@ -53,6 +54,10 @@ function buildInstallForm(plugin: AiPluginSummary | null): InstallFormState {
     baseUrlOverride: "",
     credentialName: `${providerName} Key`,
     credentialSecret: "",
+    credentialBindings: Object.fromEntries((plugin?.credentialBindings ?? []).map((binding) => [
+      binding.bindingKey,
+      { name: `${plugin?.provider.name || "Provider"} ${binding.label} Key`, secret: "" },
+    ])),
     publishImmediately: true,
   };
 }
@@ -87,6 +92,8 @@ export function TemplateLibraryPage() {
   const showCredentialFields = Boolean(
     selectedPlugin?.credentials.required || selectedPlugin?.credentials.fields.length,
   );
+  const credentialBindings = Object.entries(installForm.credentialBindings);
+  const hasCompleteCredentialBindings = credentialBindings.every(([, binding]) => binding.secret.trim().length > 0);
 
   const refresh = useCallback(async () => {
     if (!canRead) {
@@ -127,7 +134,14 @@ export function TemplateLibraryPage() {
     try {
       const installInput = {
         baseUrlOverride: installForm.baseUrlOverride.trim() || undefined,
-        ...(showCredentialFields && installForm.credentialSecret.trim()
+        ...(credentialBindings.length
+          ? {
+              credentials: Object.fromEntries(credentialBindings.map(([key, value]) => [key, {
+                name: value.name.trim() || undefined,
+                secret: value.secret.trim(),
+              }])),
+            }
+          : showCredentialFields && installForm.credentialSecret.trim()
           ? {
               credential: {
                 name: installForm.credentialName.trim() || undefined,
@@ -355,7 +369,24 @@ export function TemplateLibraryPage() {
                         value={installForm.baseUrlOverride}
                       />
                     </label>
-                    {showCredentialFields ? (
+                    {credentialBindings.length ? credentialBindings.map(([bindingKey, binding]) => (
+                      <label className="block md:col-span-2" key={bindingKey}>
+                        <span className="mb-1.5 block text-xs font-medium text-slate-400">{binding.name}</span>
+                        <input
+                          aria-label={`template credential secret ${bindingKey}`}
+                          className={inputClass}
+                          onChange={(event) => setInstallForm((current) => ({
+                            ...current,
+                            credentialBindings: {
+                              ...current.credentialBindings,
+                              [bindingKey]: { ...binding, secret: event.target.value },
+                            },
+                          }))}
+                          type="password"
+                          value={binding.secret}
+                        />
+                      </label>
+                    )) : showCredentialFields ? (
                       <>
                         <label className="block">
                           <span className="mb-1.5 block text-xs font-medium text-slate-400">凭证名称</span>
@@ -404,7 +435,7 @@ export function TemplateLibraryPage() {
                     <button
                       aria-label="install selected template"
                       className="inline-flex h-10 items-center justify-center gap-2 rounded bg-sky-400 px-4 text-sm font-semibold text-slate-950 hover:bg-sky-300 disabled:cursor-not-allowed disabled:opacity-50"
-                      disabled={!canManage || busyPackageKey === selectedPlugin.packageKey}
+                      disabled={!canManage || !hasCompleteCredentialBindings || busyPackageKey === selectedPlugin.packageKey}
                       onClick={() => void handleInstall()}
                       type="button"
                     >

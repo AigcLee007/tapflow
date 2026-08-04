@@ -45,6 +45,22 @@ describe("AiPluginService route install statements", () => {
     }
   });
 
+  test("fails closed when a route-scoped manifest leaves a route unbound", () => {
+    const service = new AiPluginService({ credentialVault: {} as never, pool: {} as never });
+    const malformed = {
+      ...pixelHubVideoManifest,
+      credentialBindings: [pixelHubVideoManifest.credentialBindings![0]],
+    };
+
+    expect(() => (
+      service as unknown as {
+        resolveCredentialBindingInputs: (manifest: typeof malformed, input: { credentials: Record<string, { secret: string }> }) => unknown;
+      }
+    ).resolveCredentialBindingInputs(malformed, {
+      credentials: { "gemini-omni-flash": { secret: "gemini-test-secret" } },
+    })).toThrow(expect.objectContaining({ code: "PLUGIN_CREDENTIAL_BINDINGS_INCOMPLETE" }));
+  });
+
   test("declares one stable PixelHub credential binding per route", () => {
     expect(pixelHubVideoManifest.credentialBindings).toEqual([
       expect.objectContaining({ bindingKey: "gemini-omni-flash", modelKey: "gemini-omni-flash", routeKey: "video.pixelhub.gemini-omni-flash" }),
