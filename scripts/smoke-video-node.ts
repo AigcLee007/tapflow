@@ -12,9 +12,16 @@ export type VideoNodeSmokeResult = {
   cameraPresetCount: number;
   composerVisible: boolean;
   durationRangeIsDefault: boolean;
+  editorGeometryByZoom: Array<{ height: number; width: number; zoom: number }>;
+  editorRemainsNodeAnchored: boolean;
+  editorSizeStableAcrossZoom: boolean;
+  emptyPreviewDoesNotOpenUpload: boolean;
   modelMenuNoSearch: boolean;
   parameterDialogIsTopLayer: boolean;
+  placeholderDropDoesNotUpload: boolean;
   resolutionOptions: string[];
+  topUploadButtonOpensUpload: boolean;
+  videoNodeHasNoResizeControls: boolean;
 };
 
 export type VideoNodeSmokeCheckOptions = {
@@ -54,7 +61,7 @@ export function buildVideoNodeSmokeHtml(): string {
       import { createDefaultVideoGenerationParams } from '/src/flowCanvas/video/videoGenerationParams.ts';
 
       const nativeFetch = window.fetch.bind(window);
-      window.videoNodeSmokeState = { workflowRequestCount: 0 };
+      window.videoNodeSmokeState = { assetUploadRequestCount: 0, workflowRequestCount: 0 };
       window.fetch = async (input, init) => {
         const requestUrl = typeof input === 'string' ? input : input.url;
         if (requestUrl.includes('/api/v2/ai/model-catalog?modality=video')) {
@@ -79,6 +86,7 @@ export function buildVideoNodeSmokeHtml(): string {
         if (requestUrl.includes('/assets/asset-ready-smoke/download-url')) {
           return new Response(JSON.stringify({ url: '/smoke-ready-video.mp4' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
         }
+        if (requestUrl.includes('/api/v2/assets/presigned-upload') || requestUrl.includes('/complete-upload') || requestUrl.includes('/upload-bytes')) window.videoNodeSmokeState.assetUploadRequestCount += 1;
         if (requestUrl.includes('/workflow-runs')) window.videoNodeSmokeState.workflowRequestCount += 1;
         return nativeFetch(input, init);
       };
@@ -106,8 +114,12 @@ export function buildVideoNodeSmokeHtml(): string {
       window.positionVideoSmokeNode = (x) => useFlowCanvasStore.setState((state) => ({ nodes: state.nodes.map((node) => node.id === 'video-smoke-node' ? {
         ...node, position: { ...node.position, x },
       } : node) }));
-      function SmokeViewportCoordinator() {
-        const reactFlow = useReactFlow();
+       function SmokeViewportCoordinator() {
+         const reactFlow = useReactFlow();
+         window.setVideoSmokeZoom = async (zoom) => {
+           await reactFlow.setViewport({ x: 0, y: 0, zoom }, { duration: 0 });
+           await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+         };
         useEffect(() => {
           let firstFrame = 0;
           let secondFrame = 0;
@@ -143,7 +155,7 @@ export function buildVideoNodeSmokeHtml(): string {
         const onNodesChange = useFlowCanvasStore((state) => state.onNodesChange);
         useEffect(() => () => useFlowCanvasStore.getState().newProject(), []);
         return React.createElement('div', { style: { width: '100%', height: '100%' } },
-          React.createElement(ReactFlow, { defaultViewport: { x: 0, y: 0, zoom: 1 }, minZoom: 0.2, nodes, nodeTypes: { video: VideoNodeComponent }, onNodesChange, viewport: { x: 0, y: 0, zoom: 1 } }, React.createElement(SmokeViewportCoordinator)));
+          React.createElement(ReactFlow, { defaultViewport: { x: 0, y: 0, zoom: 1 }, minZoom: 0.2, nodes, nodeTypes: { video: VideoNodeComponent }, onNodesChange }, React.createElement(SmokeViewportCoordinator)));
       }
       createRoot(document.getElementById('root')).render(
         React.createElement(AuthContext.Provider, { value: auth }, React.createElement(ReactFlowProvider, null, React.createElement(Harness))),
@@ -200,6 +212,18 @@ async function assertNoVisualOverflow(viewportPage) {
     throw new Error('Interactive controls overflow viewport: ' + JSON.stringify({ ...geometry, violations }));
   }
 }
+async function readVideoEditorGeometry(viewportPage) {
+  return await viewportPage.locator('[data-node-editor-variant="video"]').evaluate((editor) => {
+    const rect = editor.getBoundingClientRect();
+    const nodeRect = editor.closest('.react-flow__node')?.getBoundingClientRect();
+    return {
+      height: rect.height,
+      nodeBottom: nodeRect?.bottom ?? null,
+      top: rect.top,
+      width: rect.width,
+    };
+  });
+}
 
 const desktopHarness = await openViewport(desktop, false);
 const desktopPage = desktopHarness.page;
@@ -221,6 +245,44 @@ const portraitEmptyNodeIsSized = await desktopPage.evaluate(() => {
   return node?.data?.width === 170 && node?.data?.height === 302 && Boolean(card);
 });
 const emptyUploadInputPresent = await desktopPage.locator('input[accept="video/*"]').count() === 1;
+let emptyPreviewFileChooserCount = 0;
+const onEmptyPreviewFileChooser = () => { emptyPreviewFileChooserCount += 1; };
+desktopPage.on('filechooser', onEmptyPreviewFileChooser);
+await desktopPage.getByTestId('video-empty-placeholder').click();
+await desktopPage.waitForTimeout(100);
+desktopPage.off('filechooser', onEmptyPreviewFileChooser);
+const emptyPreviewDoesNotOpenUpload = emptyPreviewFileChooserCount === 0;
+
+const topUploadChooser = desktopPage.waitForEvent('filechooser');
+await desktopPage.getByRole('button', { name: /上传/ }).click();
+await topUploadChooser;
+const topUploadButtonOpensUpload = true;
+
+const uploadsBeforeDrop = await desktopPage.evaluate(() => window.videoNodeSmokeState.assetUploadRequestCount);
+await desktopPage.getByTestId('video-empty-placeholder').evaluate((placeholder) => {
+  const transfer = new DataTransfer();
+  transfer.items.add(new File(['video'], 'dropped.mp4', { type: 'video/mp4' }));
+  placeholder.dispatchEvent(new DragEvent('drop', { bubbles: true, dataTransfer: transfer }));
+});
+await desktopPage.waitForTimeout(100);
+const uploadsAfterDrop = await desktopPage.evaluate(() => window.videoNodeSmokeState.assetUploadRequestCount);
+const placeholderDropDoesNotUpload = uploadsAfterDrop === uploadsBeforeDrop;
+const videoNodeHasNoResizeControls = await desktopPage.locator('.react-flow__node[data-id="video-smoke-node"] .react-flow__resize-control').count() === 0;
+
+const editorGeometryByZoom = [];
+for (const zoom of [0.25, 0.5, 1, 2]) {
+  await desktopPage.evaluate((nextZoom) => window.setVideoSmokeZoom(nextZoom), zoom);
+  editorGeometryByZoom.push({ zoom, ...(await readVideoEditorGeometry(desktopPage)) });
+}
+const editorBaseline = editorGeometryByZoom.find((entry) => entry.zoom === 1);
+const editorSizeStableAcrossZoom = editorGeometryByZoom.every((entry) =>
+  Math.abs(entry.width - editorBaseline.width) <= 1 && Math.abs(entry.height - editorBaseline.height) <= 1
+);
+const editorRemainsNodeAnchored = editorGeometryByZoom.every((entry) => {
+  const expectedEditorGap = 14 * entry.zoom;
+  return entry.nodeBottom !== null && Math.abs(entry.top - entry.nodeBottom - expectedEditorGap) <= 1;
+});
+await desktopPage.evaluate(() => window.setVideoSmokeZoom(1));
 await desktopPage.locator('button[aria-label="选择视频模型"]').click();
 await desktopPage.waitForSelector('[aria-label="视频模型"]', { timeout: 15000 });
 const modelMenuNoSearch = await desktopPage.locator('[aria-label="视频模型"] input[type="search"], [aria-label="视频模型"] input').count() === 0;
@@ -295,8 +357,8 @@ await mobilePage.locator('button[aria-label="生成视频"]').click();
 await mobilePage.waitForFunction(() => window.videoNodeSmokeState.workflowRequestCount === 0 && Boolean(document.querySelector('[aria-label="视频创作面板"]')));
 const blockedGenerationDidNotCreateRun = await mobilePage.evaluate(() => window.videoNodeSmokeState.workflowRequestCount === 0);
 
-const result = { blockedGenerationDidNotCreateRun, cameraGridColumns, cameraPresetCount, composerVisible, durationRangeIsDefault, emptyUploadInputPresent, modelMenuNoSearch, parameterDialogIsTopLayer, portraitEmptyNodeIsSized, readyControls, readyPreviewUsesContain, resolutionOptions };
-if (!composerVisible || !modelMenuNoSearch || !hoverDescriptionVisible || !hasDurationAudioAndCounts || !durationRangeIsDefault || !parameterDialogIsTopLayer || !resolutionOptions.includes('1080P') || cameraGridColumns !== 4 || cameraPresetCount !== 23 || !reducedMotionVideoIsPaused || !blockedGenerationDidNotCreateRun || !portraitEmptyNodeIsSized || !emptyUploadInputPresent || !readyControls.download || !readyControls.fullscreen || !readyControls.upload || !readyPreviewUsesContain) {
+const result = { blockedGenerationDidNotCreateRun, cameraGridColumns, cameraPresetCount, composerVisible, durationRangeIsDefault, editorGeometryByZoom, editorRemainsNodeAnchored, editorSizeStableAcrossZoom, emptyPreviewDoesNotOpenUpload, emptyUploadInputPresent, modelMenuNoSearch, parameterDialogIsTopLayer, placeholderDropDoesNotUpload, portraitEmptyNodeIsSized, readyControls, readyPreviewUsesContain, resolutionOptions, topUploadButtonOpensUpload, videoNodeHasNoResizeControls };
+if (!composerVisible || !modelMenuNoSearch || !hoverDescriptionVisible || !hasDurationAudioAndCounts || !durationRangeIsDefault || !parameterDialogIsTopLayer || !resolutionOptions.includes('1080P') || cameraGridColumns !== 4 || cameraPresetCount !== 23 || !reducedMotionVideoIsPaused || !blockedGenerationDidNotCreateRun || !portraitEmptyNodeIsSized || !emptyUploadInputPresent || !emptyPreviewDoesNotOpenUpload || !topUploadButtonOpensUpload || !placeholderDropDoesNotUpload || !videoNodeHasNoResizeControls || !editorSizeStableAcrossZoom || !editorRemainsNodeAnchored || !readyControls.download || !readyControls.fullscreen || !readyControls.upload || !readyPreviewUsesContain) {
   throw new Error(JSON.stringify({ ...result, hasDurationAudioAndCounts, durationControlCount, durationOptions, audioGroupCount, countDisabledStates, countOptions, hoverDescriptionVisible, reducedMotionVideoIsPaused }));
 }
 return JSON.stringify({ ...result, status: 'ok' });

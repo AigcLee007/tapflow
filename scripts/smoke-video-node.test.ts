@@ -43,6 +43,13 @@ describe("video node browser smoke contract", () => {
       "parameterDialogIsTopLayer",
       "portraitEmptyNodeIsSized",
       "emptyUploadInputPresent",
+      "emptyPreviewDoesNotOpenUpload",
+      "topUploadButtonOpensUpload",
+      "placeholderDropDoesNotUpload",
+      "videoNodeHasNoResizeControls",
+      "editorGeometryByZoom",
+      "editorSizeStableAcrossZoom",
+      "editorRemainsNodeAnchored",
       "readyControls",
       "readyPreviewUsesContain",
     ]) {
@@ -59,6 +66,11 @@ describe("video node browser smoke contract", () => {
     expect(code).toContain("runBackendWorkflow");
     expect(code).toContain("setVideoSmokeNodeData");
     expect(code).toContain('input[accept="video/*"]');
+    expect(code).toContain("video-empty-placeholder");
+    expect(code).toContain("setVideoSmokeZoom");
+    expect(code).toContain("expectedEditorGap");
+    expect(code).toContain(".react-flow__resize-control");
+    expect(code).toContain('[data-node-editor-variant="video"]');
     expect(code).toContain("objectFit === 'contain'");
     expect(code).toContain("下载视频");
     expect(code).toContain("全屏预览");
