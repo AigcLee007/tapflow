@@ -77,6 +77,7 @@ import {
   getSafePersistedVideoPosterUrl,
   getSelectedRuntimeVideoPreviewUrl,
 } from '../video/videoResultPreview';
+import { resolveVideoPreviewObjectFit } from '../video/videoNodeSizing';
 import {
   getImageModelById,
   getImageModelCatalogSnapshot,
@@ -7857,7 +7858,7 @@ export const VideoNodeComponent = memo(function VideoNode({
             <video
               src={effectivePosterUrl}
               controls
-              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', background: '#000' }}
+              style={{ width: '100%', height: '100%', objectFit: resolveVideoPreviewObjectFit(), display: 'block', background: '#000' }}
             />
           </div>
         ) : (

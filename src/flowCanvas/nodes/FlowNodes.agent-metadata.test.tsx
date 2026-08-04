@@ -381,6 +381,7 @@ describe("FlowNodes agent metadata", () => {
     await waitFor(() => {
       expect(assetApiMocks.getAssetDownloadUrl).toHaveBeenCalledWith("video-two");
       expect(container.querySelector("video")?.getAttribute("src")).toBe("https://cdn.test/video-two.mp4?X-Amz-Signature=fresh");
+      expect(container.querySelector("video")?.style.objectFit).toBe("contain");
     });
   });
 

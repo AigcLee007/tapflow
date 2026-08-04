@@ -13,7 +13,12 @@ export function getVideoNodeSizeForNaturalDimensions(
   width: unknown,
   height: unknown,
 ): VideoNodeSize {
-  return fitMediaNodeToShortSide(Number(width), Number(height));
+  const naturalWidth = Number(width);
+  const naturalHeight = Number(height);
+  if (!Number.isFinite(naturalWidth) || !Number.isFinite(naturalHeight) || naturalWidth <= 0 || naturalHeight <= 0) {
+    return getVideoNodeSizeForRequestedRatio('16:9');
+  }
+  return fitMediaNodeToShortSide(naturalWidth, naturalHeight);
 }
 
 export function resolveVideoPreviewObjectFit(): 'contain' {
