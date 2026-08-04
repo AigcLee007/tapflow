@@ -7905,19 +7905,17 @@ export const VideoNodeComponent = memo(function VideoNode({
     if (file) void handleVideoUpload(file);
   }, [handleVideoUpload]);
 
+  const handleOpenVideoUpload = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    videoInputRef.current?.click();
+  }, []);
+
   return (
     <div 
       style={nodeWrapper}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <NodeResizer 
-        isVisible={showSingleNodeControls} 
-        minWidth={160} 
-        minHeight={160} 
-        lineStyle={{ border: 'none' }}
-      />
-
       <NodeLabel nodeId={id} icon={<Video size={14} />} label={String(d.title || 'Video')} fallbackLabel="Video" />
 
       <Handle 
@@ -7947,14 +7945,8 @@ export const VideoNodeComponent = memo(function VideoNode({
           </div>
         ) : (
           <div
-            onClick={() => videoInputRef.current?.click()}
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={(event) => {
-              event.preventDefault();
-              const file = event.dataTransfer.files?.[0];
-              if (file) void handleVideoUpload(file);
-            }}
-            style={{ ...placeholderArea(hasReadyVideo ? (d.height || FLOW_NODE_DEFAULT_SIZES.video.height) : requestedVideoSize.height), cursor: 'pointer' }}
+            data-testid="video-empty-placeholder"
+            style={placeholderArea(requestedVideoSize.height)}
           >
             <Video size={48} strokeWidth={1} color="rgba(255,255,255,0.2)" />
           </div>
@@ -7978,7 +7970,7 @@ export const VideoNodeComponent = memo(function VideoNode({
 
       {showNodeEditor && !hasReadyVideo && (
         <FloatingToolbar>
-          <button type="button" style={uploadBtn} onClick={() => videoInputRef.current?.click()}>
+          <button type="button" style={uploadBtn} onClick={handleOpenVideoUpload}>
             <span style={{ fontSize: 16 }}>↑</span> 上传
           </button>
         </FloatingToolbar>

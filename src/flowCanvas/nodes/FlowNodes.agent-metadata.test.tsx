@@ -22,6 +22,7 @@ const textCatalogMocks = vi.hoisted(() => ({
   current: { error: null as string | null, loading: false, models: [] as any[], retry: vi.fn() },
 }));
 const useAssetLibraryMock = vi.hoisted(() => vi.fn());
+const nodeResizerMock = vi.hoisted(() => vi.fn(() => null));
 
 vi.mock("../../assets/assetApi", () => ({
   getAsset: (...args: unknown[]) => assetApiMocks.getAsset(...args),
@@ -52,7 +53,7 @@ vi.mock("@xyflow/react", async () => {
   return {
     addEdge: (edge: any, edges: any[]) => [...edges, { id: edge.id || "edge-test", ...edge }],
     Handle: () => null,
-    NodeResizer: () => null,
+    NodeResizer: nodeResizerMock,
     Position: { Left: "left", Right: "right" },
     useConnection: () => ({ connectionNodeId: null }),
     useReactFlow: () => ({
@@ -71,6 +72,7 @@ describe("FlowNodes agent metadata", () => {
     assetApiMocks.getAssetSignedUrls.mockReset();
     assetApiMocks.getAssetVariantUrl.mockReset();
     assetApiMocks.uploadAssetFile.mockReset();
+    nodeResizerMock.mockClear();
     workflowRunnerMocks.runBackendWorkflow.mockReset();
     workflowRunnerMocks.runBackendWorkflow.mockResolvedValue(undefined);
     videoCatalogMocks.current = { error: null, loading: false, models: [], retry: vi.fn() };
@@ -97,6 +99,51 @@ describe("FlowNodes agent metadata", () => {
       total: 0,
       updateAssetOptimistically: vi.fn(),
     });
+  });
+
+  it('keeps the empty video preview passive and opens upload only from the top button', () => {
+    const node = useFlowCanvasStore.getState().addNode('video', { x: 0, y: 0 }, {
+      createdAt: 1,
+      generationStatus: 'idle',
+      height: 170,
+      kind: 'video',
+      status: 'idle',
+      title: 'Upload video',
+      updatedAt: 1,
+      width: 302,
+    } as any, { selected: true });
+    const { container, getByTestId } = render(
+      <VideoNodeComponent id={node.id} selected data={node.data as any} dragging={false} zIndex={1} isConnectable type="video" xPos={0} yPos={0} />,
+    );
+    const input = container.querySelector('input[type="file"][accept="video/*"]') as HTMLInputElement;
+    const clickSpy = vi.spyOn(input, 'click');
+    const placeholder = getByTestId('video-empty-placeholder');
+
+    fireEvent.click(placeholder);
+    fireEvent.drop(placeholder, {
+      dataTransfer: { files: [new File(['video'], 'dropped.mp4', { type: 'video/mp4' })] },
+    });
+
+    expect(clickSpy).not.toHaveBeenCalled();
+    expect(assetApiMocks.uploadAssetFile).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: /上传/ }));
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not render a NodeResizer for any selected video state', () => {
+    const node = useFlowCanvasStore.getState().addNode('video', { x: 0, y: 0 }, {
+      createdAt: 1,
+      generationStatus: 'idle',
+      kind: 'video',
+      status: 'idle',
+      title: 'Video',
+      updatedAt: 1,
+    } as any, { selected: true });
+
+    render(<VideoNodeComponent id={node.id} selected data={node.data as any} dragging={false} zIndex={1} isConnectable type="video" xPos={0} yPos={0} />);
+
+    expect(nodeResizerMock).not.toHaveBeenCalled();
   });
 
   it("renders an Agent badge and opens session detail for text nodes", () => {
