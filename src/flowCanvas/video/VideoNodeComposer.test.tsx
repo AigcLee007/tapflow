@@ -24,6 +24,7 @@ describe("VideoNodeComposer", () => {
     const composer = screen.getByLabelText("视频创作面板");
     expect(composer.className).toContain("flex");
     expect(composer.className).toContain("w-full");
+    expect(composer.className).toContain("text-white");
     expect(composer.className).not.toMatch(/absolute|top-|translate|w-\[|max-w-|md:|max-md:/);
   });
 

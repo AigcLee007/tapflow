@@ -113,7 +113,7 @@ export function VideoNodeComposer({ catalog: catalogOverride, data, generating, 
     closeModel();
   };
 
-  return <div aria-label={VIDEO_UI_COPY.videoComposer} className="flex w-full flex-col">
+  return <div aria-label={VIDEO_UI_COPY.videoComposer} className="flex w-full flex-col text-white">
     <div className="flex flex-wrap items-center gap-2 max-md:flex-col max-md:items-stretch">
       <VideoReferenceStrip
         capabilities={capabilities ?? createSafeDefaultVideoCapabilities()}
