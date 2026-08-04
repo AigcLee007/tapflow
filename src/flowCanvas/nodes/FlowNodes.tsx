@@ -181,7 +181,8 @@ import { resolveActiveImageRuntimeRouteKey } from '../utils/imageRuntimeRouteSel
 import { formatImageCredits, getDisplayImageCredits, getOfficialImageRouteSizeCredits } from '../utils/imageRoutePricing';
 import type { RuntimeRouteOption } from '../utils/runtimeRouteOptions';
 import { getOfficialFallbackImageRuntimeRoutes } from '../utils/runtimeRouteOptions';
-import { getPromptBarDensity, type PromptBarDensityVariant } from '../utils/promptBarDensity';
+import { getPromptBarDensity } from '../utils/promptBarDensity';
+import { NodeEditorSurface } from './NodeEditorSurface';
 import {
   getAspectRatioOptionsFromCatalogModel,
   getCatalogUiFields,
@@ -1096,54 +1097,6 @@ const uploadBtn: React.CSSProperties = {
   fontSize: 13,
   fontWeight: 500,
   color: '#e2e8f0',
-};
-
-// Bottom floating prompt bar
-const bottomFloatingBarBase: React.CSSProperties = {
-  position: 'absolute',
-  top: `calc(100% + ${getPromptBarDensity('image').topGap}px)`,
-  left: '50%',
-  width: getPromptBarDensity('image').width,
-  minHeight: getPromptBarDensity('image').minHeight,
-  background: 'rgba(38,38,38,0.98)', // Uniform color with node
-  border: '1px solid rgba(255,255,255,0.1)',
-  borderRadius: getPromptBarDensity('image').borderRadius,
-  padding: getPromptBarDensity('image').padding,
-  display: 'flex',
-  flexDirection: 'column',
-  justifyContent: 'space-between',
-  gap: getPromptBarDensity('image').gap,
-  boxShadow: '0 12px 48px rgba(0,0,0,0.6)',
-  backdropFilter: 'blur(20px)',
-  zIndex: 30,
-};
-
-const FloatingPromptBar: React.FC<{ children: React.ReactNode; variant?: PromptBarDensityVariant }> = ({
-  children,
-  variant = 'image',
-}) => {
-  const { zoom } = useViewport();
-  const scale = 1 / zoom;
-  const density = getPromptBarDensity(variant);
-  return (
-    <div
-      style={{
-        ...bottomFloatingBarBase,
-        top: `calc(100% + ${density.topGap}px)`,
-        width: density.width,
-        minHeight: density.minHeight,
-        borderRadius: density.borderRadius,
-        padding: density.padding,
-        gap: density.gap,
-        transform: `translateX(-50%) scale(${scale})`,
-        transformOrigin: 'top center',
-        transition: 'transform 0.1s ease-out',
-      }}
-      className="nodrag nopan nowheel"
-    >
-      {children}
-    </div>
-  );
 };
 
 const topFloatingBarBase: React.CSSProperties = {
@@ -3605,7 +3558,7 @@ export const TextNodeComponent = memo(function TextNode({
     )}
 
       {showNodeEditor && !isFullscreen && (
-        <FloatingPromptBar variant="text">
+        <NodeEditorSurface variant="text">
           <div style={{ position: 'relative' }}>
             <textarea
               className="nodrag nopan nowheel"
@@ -3756,7 +3709,7 @@ export const TextNodeComponent = memo(function TextNode({
               </div>
             </div>
           </div>
-        </FloatingPromptBar>
+        </NodeEditorSurface>
       )}
 
       {/* Fullscreen Modal - Using Portal to escape React Flow transformations */}
@@ -7279,7 +7232,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       )}
 
       {shouldShowPromptEditor && (
-        <FloatingPromptBar variant="image">
+        <NodeEditorSurface variant="image">
           <div ref={promptBarRef} style={{ position: 'relative' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, minHeight: 36 }}>
             <button
@@ -7684,7 +7637,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
             />
           </div>
           </div>
-        </FloatingPromptBar>
+        </NodeEditorSurface>
       )}
 
       {(d.errorMessage || d.uploadErrorMessage) && (
@@ -8032,22 +7985,24 @@ export const VideoNodeComponent = memo(function VideoNode({
       )}
 
       {showNodeEditor && (VIDEO_COMPOSER_V2_ENABLED
-        ? <VideoNodeComposer
-            catalog={videoCatalog}
-            data={d}
-            generating={isGenerating}
-            nodeId={id}
-            onConnectCanvasReference={(input) => connectVideoReference({ ...input, targetNodeId: id })}
-            onGenerate={handleGenerate}
-            onUpdate={(patch) => updateNodeData(id, patch)}
-            onUploadReference={async (file, mediaKind) => {
-              if (!backendProjectId) throw new Error('REFERENCE_UPLOAD_UNAVAILABLE');
-              const asset = await uploadAssetFile({ file, kind: mediaKind, projectId: backendProjectId });
-              return { id: asset.id, kind: asset.kind };
-            }}
-            referencePreviewUrlsBySource={videoReferencePreviewUrlsBySource}
-            selected={showNodeEditor}
-          />
+        ? <NodeEditorSurface variant="video">
+            <VideoNodeComposer
+              catalog={videoCatalog}
+              data={d}
+              generating={isGenerating}
+              nodeId={id}
+              onConnectCanvasReference={(input) => connectVideoReference({ ...input, targetNodeId: id })}
+              onGenerate={handleGenerate}
+              onUpdate={(patch) => updateNodeData(id, patch)}
+              onUploadReference={async (file, mediaKind) => {
+                if (!backendProjectId) throw new Error('REFERENCE_UPLOAD_UNAVAILABLE');
+                const asset = await uploadAssetFile({ file, kind: mediaKind, projectId: backendProjectId });
+                return { id: asset.id, kind: asset.kind };
+              }}
+              referencePreviewUrlsBySource={videoReferencePreviewUrlsBySource}
+              selected={showNodeEditor}
+            />
+          </NodeEditorSurface>
         : <VideoNodeLegacyComposer data={d} effectivePosterUrl={effectivePosterUrl} generating={isGenerating} nodeId={id} onGenerate={handleGenerate} onUpdate={(patch) => updateNodeData(id, patch)} runtimeVideoAssets={runtimeVideoAssets} />
       )}
 

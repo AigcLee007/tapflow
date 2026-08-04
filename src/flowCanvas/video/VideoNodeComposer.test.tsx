@@ -16,6 +16,17 @@ vi.mock("../nodes/ReferenceSourcePicker", () => ({
 }));
 
 describe("VideoNodeComposer", () => {
+  test("keeps the composer root content-only for a shared editor surface", () => {
+    const data = { generationPrompt: "", params: { videoGeneration: createDefaultVideoGenerationParams() } } as any;
+
+    render(<VideoNodeComposer data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} selected />);
+
+    const composer = screen.getByLabelText("视频创作面板");
+    expect(composer.className).toContain("flex");
+    expect(composer.className).toContain("w-full");
+    expect(composer.className).not.toMatch(/absolute|top-|translate|w-\[|max-w-|md:|max-md:/);
+  });
+
   test("shows the stable Chinese camera label in its trigger", () => {
     const data = {
       generationPrompt: "",
@@ -182,15 +193,10 @@ describe("VideoNodeComposer", () => {
     expect(document.activeElement).toBe(parameterSummary);
   });
 
-  test("stacks the V2 composer controls at narrow layouts without changing the node itself", () => {
+  test("keeps responsive layout controls on inner content", () => {
     const data = { generationPrompt: "", params: { videoGeneration: createDefaultVideoGenerationParams() } } as any;
     render(<VideoNodeComposer data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} selected />);
 
-    expect(screen.getByLabelText("视频创作面板").className).toContain("w-[calc(100vw-32px)]");
-    expect(screen.getByLabelText("视频创作面板").className).toContain("max-w-[980px]");
-    expect(screen.getByLabelText("视频创作面板").className).toContain("md:w-[clamp(640px,52vw,980px)]");
-    expect(screen.getByLabelText("视频创作面板").className).toContain("max-md:flex-col");
-    expect(screen.getByLabelText("视频创作面板").className).toContain("max-md:left-0");
     expect(screen.getByRole("button", { name: "选择视频模型" }).parentElement?.parentElement?.className).toContain("max-md:flex-col");
   });
 
