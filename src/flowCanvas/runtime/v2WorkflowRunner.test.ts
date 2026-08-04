@@ -1660,8 +1660,10 @@ describe('v2WorkflowRunner', () => {
               {
                 assetId: 'video-asset-1',
                 durationMs: 4000,
+                height: 1920,
                 kind: 'video',
                 mimeType: 'video/mp4',
+                width: 1080,
               },
             ],
           },
@@ -1699,10 +1701,16 @@ describe('v2WorkflowRunner', () => {
     expect(getAssetVariantUrlMock).toHaveBeenCalledWith('video-asset-1');
     const updatedNode = useFlowCanvasStore.getState().nodes.find((node) => node.id === videoNodeId);
     expect(updatedNode?.data).toMatchObject({
+      aspectRatio: 1080 / 1920,
       assetId: 'video-asset-1',
+      durationMs: 4000,
       generationStatus: 'done',
+      height: 302,
       mimeType: 'video/mp4',
+      naturalHeight: 1920,
+      naturalWidth: 1080,
       posterUrl: 'https://cdn.test/video-asset-1-original.mp4?X-Amz-Signature=signed',
+      width: 170,
       workflowLaunchStatus: 'asset_visible',
       workflowLaunchUpdatedAt: expect.any(Number),
     });

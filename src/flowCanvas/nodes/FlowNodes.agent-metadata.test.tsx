@@ -744,6 +744,28 @@ describe("FlowNodes agent metadata", () => {
     expect(String(useFlowCanvasStore.getState().nodes.find((item) => item.id === node.id)?.data.errorMessage)).toMatch(/未配置|未接入/);
   });
 
+  it('synchronizes an empty video node to its requested portrait ratio', async () => {
+    const node = useFlowCanvasStore.getState().addNode('video', { x: 0, y: 0 }, {
+      createdAt: 1,
+      generationStatus: 'idle',
+      height: 170,
+      kind: 'video',
+      params: { videoGeneration: { aspectRatio: '9:16' } },
+      status: 'idle',
+      title: 'Portrait video',
+      updatedAt: 1,
+      width: 302,
+    } as any, { selected: true });
+
+    render(<VideoNodeComponent id={node.id} selected data={node.data as any} dragging={false} zIndex={1} isConnectable type="video" xPos={0} yPos={0} />);
+
+    await waitFor(() => expect(useFlowCanvasStore.getState().nodes.find((item) => item.id === node.id)?.data).toMatchObject({
+      aspectRatio: 9 / 16,
+      height: 302,
+      width: 170,
+    }));
+  });
+
   it("persists the confirmed route and normalized v2 parameters before launching video generation", () => {
     videoCatalogMocks.current = {
       error: null,

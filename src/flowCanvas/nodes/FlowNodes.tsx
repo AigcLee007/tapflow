@@ -78,6 +78,7 @@ import {
   getSelectedRuntimeVideoPreviewUrl,
 } from '../video/videoResultPreview';
 import { VideoReadyState } from '../video/VideoReadyState';
+import { getVideoNodeSizeForRequestedRatio } from '../video/videoNodeSizing';
 import {
   getImageModelById,
   getImageModelCatalogSnapshot,
@@ -7716,6 +7717,10 @@ export const VideoNodeComponent = memo(function VideoNode({
   const showNodeEditor = showSingleNodeControls;
   const videoCatalog = useVideoGenerationCatalog();
   const videoParams = useMemo(() => normalizeVideoGenerationParams(d).params, [d]);
+  const requestedVideoSize = useMemo(
+    () => getVideoNodeSizeForRequestedRatio(videoParams.aspectRatio),
+    [videoParams.aspectRatio],
+  );
   const videoReferenceAssetIds = useMemo(
     () => Array.from(new Set([
       ...videoParams.referenceInputs.flatMap((reference) => reference.source.kind === 'asset' ? [reference.source.id] : []),
@@ -7803,6 +7808,19 @@ export const VideoNodeComponent = memo(function VideoNode({
     || runtimeNodeStatus === 'running'
     || runtimeNodeStatus === 'waiting_provider'
     || d.generationStatus === 'generating';
+
+  useEffect(() => {
+    if (hasReadyVideo) return;
+    const nextAspectRatio = parseAspectRatio(videoParams.aspectRatio) ?? (requestedVideoSize.width / requestedVideoSize.height);
+    if (d.width === requestedVideoSize.width && d.height === requestedVideoSize.height && d.aspectRatio === nextAspectRatio) {
+      return;
+    }
+    updateNodeData(id, {
+      aspectRatio: nextAspectRatio,
+      height: requestedVideoSize.height,
+      width: requestedVideoSize.width,
+    });
+  }, [d.aspectRatio, d.height, d.width, hasReadyVideo, id, requestedVideoSize.height, requestedVideoSize.width, updateNodeData, videoParams.aspectRatio]);
 
 
   const handleGenerate = () => {
@@ -7955,7 +7973,12 @@ export const VideoNodeComponent = memo(function VideoNode({
         </div>
       </Handle>
 
-      <div style={card(d.width || FLOW_NODE_DEFAULT_SIZES.video.width, d.height || FLOW_NODE_DEFAULT_SIZES.video.height, selected, isTargeting)}>
+      <div style={card(
+        hasReadyVideo ? (d.width || FLOW_NODE_DEFAULT_SIZES.video.width) : requestedVideoSize.width,
+        hasReadyVideo ? (d.height || FLOW_NODE_DEFAULT_SIZES.video.height) : requestedVideoSize.height,
+        selected,
+        isTargeting,
+      )}>
         {hasReadyVideo && effectivePosterUrl && readyAssetId ? (
           <div style={{ ...contentArea, height: '100%' }}>
             <VideoReadyState
@@ -7973,7 +7996,7 @@ export const VideoNodeComponent = memo(function VideoNode({
               const file = event.dataTransfer.files?.[0];
               if (file) void handleVideoUpload(file);
             }}
-            style={{ ...placeholderArea(d.height || FLOW_NODE_DEFAULT_SIZES.video.height), cursor: 'pointer' }}
+            style={{ ...placeholderArea(hasReadyVideo ? (d.height || FLOW_NODE_DEFAULT_SIZES.video.height) : requestedVideoSize.height), cursor: 'pointer' }}
           >
             <Video size={48} strokeWidth={1} color="rgba(255,255,255,0.2)" />
           </div>

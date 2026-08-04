@@ -50,6 +50,7 @@ let billingPricingCache: Promise<BillingPricingRow[]> | null = null;
 
 type AssetLike = {
   assetId: string;
+  durationMs?: number | null;
   kind: string;
   metadata?: Record<string, string> | null;
   mimeType: string;
@@ -735,6 +736,9 @@ function buildGeneratedAssetNodePatch(
     ...(isVideoNode && primaryAsset.downloadUrl ? { posterUrl: primaryAsset.downloadUrl } : {}),
     assetId: primaryAsset.assetId,
     assetIds: assetRefs.map((asset) => asset.assetId),
+    ...(typeof primaryAsset.durationMs === 'number' && Number.isFinite(primaryAsset.durationMs) && primaryAsset.durationMs >= 0
+      ? { durationMs: primaryAsset.durationMs }
+      : {}),
     errorMessage: undefined,
     generationStatus: 'done',
     latestNodeRunId: nodeRun.id,
@@ -1026,6 +1030,7 @@ async function resolveAssetRefs(outputJson: Record<string, unknown> | null): Pro
         return {
           assetId: asset.assetId,
           downloadUrl: download.url,
+          durationMs: typeof asset.durationMs === 'number' && Number.isFinite(asset.durationMs) ? asset.durationMs : null,
           expiresAt: download.expiresAt,
           height: asset.height ?? null,
           kind: asset.kind,
@@ -1053,6 +1058,7 @@ function resolveAssetRefsFromEventPayload(payload: Record<string, unknown>): Flo
         ? asset.downloadUrl
         : `/api/v2/assets/${asset.assetId}/bytes?variantKey=preview`,
       expiresAt: null,
+      durationMs: typeof asset.durationMs === 'number' && Number.isFinite(asset.durationMs) ? asset.durationMs : null,
       height: asset.height ?? null,
       kind: asset.kind,
       metadata: readStringRecord(asset.metadata),
