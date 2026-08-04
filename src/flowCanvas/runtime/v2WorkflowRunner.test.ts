@@ -1620,7 +1620,7 @@ describe('v2WorkflowRunner', () => {
     expect(updatedNode?.data.assetId).toBe('asset-original-fallback');
   });
 
-  test('video assets use original signed url as poster when preview variant is unavailable', async () => {
+  test('video assets keep original signed urls in runtime state without persisting them as posters', async () => {
     useFlowCanvasStore.getState().addNode('video', { x: 0, y: 0 }, {
       routeKey: 'video.default',
       title: 'Generated Video',
@@ -1709,11 +1709,12 @@ describe('v2WorkflowRunner', () => {
       mimeType: 'video/mp4',
       naturalHeight: 1920,
       naturalWidth: 1080,
-      posterUrl: 'https://cdn.test/video-asset-1-original.mp4?X-Amz-Signature=signed',
       width: 170,
       workflowLaunchStatus: 'asset_visible',
       workflowLaunchUpdatedAt: expect.any(Number),
     });
+    expect(updatedNode?.data).not.toHaveProperty('posterUrl');
+    expect(JSON.stringify(updatedNode?.data)).not.toMatch(/(?:blob:|data:|X-Amz-Signature)/i);
   });
 
   test('video editor export syncs the generated asset id back to the source editor node', async () => {

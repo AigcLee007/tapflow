@@ -39,7 +39,7 @@ const route = (modelKey: string, modelFamily: string, capabilities: VideoGenerat
   requestConfig: { apiMode: "async", capabilities: { ...capabilities, supportedVideoWorkflows: ["video_generation"] }, environment: "production", pollIntervalMs: 12000, pollPathTemplate: "/v1/videos/{task_id}", providerTaskTimeoutMs: 1800000, requestPath: "/v1/videos", requireExactPricing: true, supportedVideoWorkflows: ["video_generation"], upstreamModel: modelKey },
   routeKey: `video.pixelhub.${modelKey}`, routeLabel: "线路一", timeoutMs: 120000,
 });
-const model = (modelKey: string, displayName: string, modelFamily: string, capabilities: VideoGenerationCapabilities, sortOrder: number): AiPluginManifest["models"][number] => ({ capabilities, defaultRouteKey: `video.pixelhub.${modelKey}`, displayName, modality: "video", modelFamily, modelKey, publishToCatalog: true, sortOrder, uiSchema: { fields: [], panelLayout: "video" } });
+const model = (modelKey: string, displayName: string, modelFamily: string, capabilities: VideoGenerationCapabilities, sortOrder: number): AiPluginManifest["models"][number] => ({ capabilities, defaultRouteKey: `video.pixelhub.${modelKey}`, displayName, modality: "video", modelFamily, modelKey, publishToCatalog: true, sortOrder, uiSchema: { creatorLabel: displayName, fields: [], panelLayout: "video" } });
 const price = (modelKey: string, unitCredits: number, minChargeCredits: number): AiPluginManifest["pricing"][number] => ({ metadata: { billingBasis: "duration_second", source: "pixelhub.video" }, minChargeCredits, model: modelKey, provider: "pixelhub", route: `video.pixelhub.${modelKey}`, unit: "video_generation", unitCredits });
 
 export const pixelHubVideoManifest: AiPluginManifest = {

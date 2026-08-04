@@ -733,7 +733,6 @@ function buildGeneratedAssetNodePatch(
         }
       : {}),
     ...(isImageNode && panoramaMetadata ? { metadata: panoramaMetadata } : {}),
-    ...(isVideoNode && primaryAsset.downloadUrl ? { posterUrl: primaryAsset.downloadUrl } : {}),
     assetId: primaryAsset.assetId,
     assetIds: assetRefs.map((asset) => asset.assetId),
     ...(typeof primaryAsset.durationMs === 'number' && Number.isFinite(primaryAsset.durationMs) && primaryAsset.durationMs >= 0

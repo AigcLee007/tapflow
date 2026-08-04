@@ -41,6 +41,60 @@ describe("AI plugin registry", () => {
       ["sora-v3-pro", 10, 40, "duration_second"],
       ["veo31-fast", 0.5, 2, "duration_second"],
     ]);
+
+    expect(manifest.models.map((model) => [model.modelKey, model.uiSchema.creatorLabel])).toEqual([
+      ["gemini-omni-flash", "Gemini Omni Flash"],
+      ["sora-v3-pro", "Sora V3 Pro"],
+      ["veo31-fast", "Veo 3.1 Fast"],
+    ]);
+    const capabilitiesByRoute = Object.fromEntries(manifest.routes.map((route) => [
+      route.routeKey,
+      route.requestConfig.capabilities,
+    ]));
+
+    expect(capabilitiesByRoute).toMatchObject({
+      "video.pixelhub.gemini-omni-flash": {
+        aspectRatios: ["16:9", "9:16"],
+        audioControlMode: "always_on_implicit",
+        confirmedByRoute: true,
+        modeConstraints: {
+          all_reference: { maxAudios: 0, maxImages: 5, maxTotal: 6, maxVideos: 1, minVideos: 1 },
+          image_reference: { maxAudios: 0, maxImages: 5, maxTotal: 5, maxVideos: 0, minImages: 2 },
+          image_to_video: { maxAudios: 0, maxImages: 1, maxTotal: 1, maxVideos: 0, minImages: 1 },
+          text_to_video: { maxAudios: 0, maxImages: 0, maxTotal: 0, maxVideos: 0 },
+        },
+        resolutions: ["720P", "1080P"],
+        supportedDurations: [4, 6, 8, 10],
+        supportedModes: ["text_to_video", "image_to_video", "image_reference", "all_reference"],
+      },
+      "video.pixelhub.sora-v3-pro": {
+        aspectRatios: ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"],
+        audioControlMode: "toggle",
+        confirmedByRoute: true,
+        modeConstraints: {
+          all_reference: { maxAudios: 3, maxImages: 9, maxTotal: 12, maxVideos: 3, requiresVideoOrAudio: true, requiresVisualWithAudio: true },
+          image_reference: { maxAudios: 0, maxImages: 9, maxTotal: 9, maxVideos: 0, minImages: 2 },
+          image_to_video: { maxAudios: 0, maxImages: 1, maxTotal: 1, maxVideos: 0, minImages: 1 },
+          text_to_video: { maxAudios: 0, maxImages: 0, maxTotal: 0, maxVideos: 0 },
+        },
+        resolutions: ["720P"],
+        supportedDurations: [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+        supportedModes: ["text_to_video", "image_to_video", "image_reference", "all_reference"],
+      },
+      "video.pixelhub.veo31-fast": {
+        aspectRatios: ["16:9", "9:16"],
+        audioControlMode: "always_on_implicit",
+        confirmedByRoute: true,
+        modeConstraints: {
+          first_last_frame: { maxAudios: 0, maxImages: 2, maxTotal: 2, maxVideos: 0, minImages: 2 },
+          image_to_video: { maxAudios: 0, maxImages: 1, maxTotal: 1, maxVideos: 0, minImages: 1 },
+          text_to_video: { maxAudios: 0, maxImages: 0, maxTotal: 0, maxVideos: 0 },
+        },
+        resolutions: ["720P", "1080P"],
+        supportedDurations: [4, 6, 8],
+        supportedModes: ["text_to_video", "image_to_video", "first_last_frame"],
+      },
+    });
   });
 
   test("returns TapFlow video editor FFmpeg export manifest", () => {
@@ -589,5 +643,23 @@ describe("AI plugin registry", () => {
       ]),
     );
     expect(() => new AiPluginRegistry([manifest])).toThrow(AiPluginRegistryError);
+  });
+
+  test("requires route-scoped credential bindings to cover each route exactly once", () => {
+    const source = builtinAiPluginRegistry.require("pixelhub.video");
+    const malformed: AiPluginManifest = {
+      ...source,
+      credentialBindings: [
+        { ...source.credentialBindings![0], label: "" },
+        { ...source.credentialBindings![0], bindingKey: "duplicate-route", label: "" },
+      ],
+    };
+
+    expect(validateAiPluginManifest(malformed).map((issue) => issue.code)).toEqual(expect.arrayContaining([
+      "CREDENTIAL_BINDING_LABEL_REQUIRED",
+      "DUPLICATE_CREDENTIAL_BINDING_LABEL",
+      "DUPLICATE_CREDENTIAL_BINDING_ROUTE",
+      "CREDENTIAL_BINDING_ROUTE_COVERAGE_INCOMPLETE",
+    ]));
   });
 });

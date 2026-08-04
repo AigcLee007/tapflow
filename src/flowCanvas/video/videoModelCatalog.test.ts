@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 
-import { toVideoModelOptions } from "./videoModelCatalog";
 import type { AiModelCatalogItem, AiModelCatalogRoute } from "../../services/v2AiModelCatalogApi";
+import { toVideoModelOptions } from "./videoModelCatalog";
 
 const videoModel = (overrides: Partial<AiModelCatalogItem> = {}): AiModelCatalogItem => ({
   capabilities: {},
@@ -9,190 +9,168 @@ const videoModel = (overrides: Partial<AiModelCatalogItem> = {}): AiModelCatalog
   displayName: "Creator Video",
   id: "catalog-video-1",
   modality: "video",
-  modelFamily: "provider-private-video-family",
-  modelId: "upstream-private-model",
+  modelFamily: "private-video-family",
+  modelId: "private-upstream-model",
   modelKey: "video.private-model-key",
   sortOrder: 10,
   status: "active",
-  uiSchema: { description: "适合叙事短片和动态镜头创作" },
+  uiSchema: {},
   ...overrides,
 });
 
 const route = (overrides: Partial<AiModelCatalogRoute> = {}): AiModelCatalogRoute => {
   const { capabilities: capabilityOverrides, ...rest } = overrides;
   return {
-  estimatedCredits: 15,
-  minChargeCredits: 12,
-  modality: "video",
-  modelFamily: "provider-private-video-family",
-  modelKey: "video.private-model-key",
-  pricingUnit: "video_generation",
-  pricing: overrides.estimatedCredits === null || overrides.minChargeCredits === null
-    ? null
-    : { billingBasis: "duration_second", exact: true, minChargeCredits: 12, unit: "video_generation", unitCredits: 15 },
-  providerKey: "private-provider-key",
-  providerName: "Private Provider Name",
-  routeId: "private-route-id",
-  routeKey: "video.private-route-key",
-  routeLabel: "Private route label",
-  ...rest,
-  capabilities: {
-    confirmedByRoute: true,
-    estimatedDurationLabel: "About 1 minute",
-    supportedVideoWorkflows: ["video_generation"],
-    ...capabilityOverrides,
-  },
+    estimatedCredits: 15,
+    minChargeCredits: 12,
+    modality: "video",
+    modelFamily: "private-video-family",
+    modelKey: "video.private-model-key",
+    pricing: { billingBasis: "duration_second", exact: true, minChargeCredits: 12, unit: "video_generation", unitCredits: 15 },
+    pricingUnit: "video_generation",
+    providerKey: "private-provider-key",
+    providerName: "Private Provider",
+    routeId: "private-route-id",
+    routeKey: "video.private-route-key",
+    routeLabel: "Route one",
+    ...rest,
+    capabilities: {
+      confirmedByRoute: true,
+      supportedVideoWorkflows: ["video_generation"],
+      ...capabilityOverrides,
+    },
   };
 };
 
 describe("toVideoModelOptions", () => {
-  test("includes only active models with a video generation route and exposes safe creator fields", () => {
-    const models = [
-      videoModel(),
-      videoModel({ displayName: "Editor only", id: "catalog-editor", modelKey: "video.editor", sortOrder: 20 }),
-      videoModel({ displayName: "No pricing", id: "catalog-no-price", modelKey: "video.no-price", sortOrder: 30 }),
-      videoModel({ displayName: "Inactive", id: "catalog-inactive", modelKey: "video.inactive", status: "inactive", sortOrder: 40 }),
-    ];
-    const options = toVideoModelOptions(models, {
-      "video.editor": [route({ capabilities: { supportedVideoWorkflows: ["video_editor_export"] } })],
-      "video.no-price": [route({ estimatedCredits: null, minChargeCredits: null })],
+  test("uses formal PixelHub creator labels and omits route-like labels", () => {
+    const options = toVideoModelOptions([
+      videoModel({ displayName: "internal", uiSchema: { creatorLabel: "Gemini Omni Flash" } }),
+      videoModel({ displayName: "internal", id: "sora", modelKey: "video.sora", sortOrder: 20, uiSchema: { creatorLabel: "Sora V3 Pro" } }),
+      videoModel({ displayName: "internal", id: "veo", modelKey: "video.veo", sortOrder: 30, uiSchema: { creatorLabel: "Veo 3.1 Fast" } }),
+      videoModel({ displayName: "video.pixelhub.internal", id: "unsafe", modelKey: "video.unsafe", sortOrder: 40, uiSchema: { creatorLabel: "video.pixelhub.private" } }),
+    ], {
       "video.private-model-key": [route()],
-      "video.inactive": [route()],
+      "video.sora": [route({ modelKey: "video.sora" })],
+      "video.veo": [route({ modelKey: "video.veo" })],
+      "video.unsafe": [route({ modelKey: "video.unsafe" })],
     });
 
-    expect(options.map((option) => option.label)).toEqual(["视频模型 1", "视频模型 2"]);
-    expect(options[0]).toMatchObject({
-      description: "适合叙事短片和动态镜头创作",
-      estimatedCredits: 15,
-      estimatedDurationLabel: "预计 1 分钟",
-      id: "catalog-video-1",
-      minChargeCredits: 12,
-    });
-    expect(options[1].blocker).toBe("PRICING_NOT_FOUND");
-    expect(options[0].capabilities.confirmedByRoute).toBe(true);
-
-    const creatorRenderable = JSON.stringify(options);
-    expect(creatorRenderable).not.toContain("private-provider-key");
-    expect(creatorRenderable).not.toContain("Private Provider Name");
-    expect(creatorRenderable).not.toContain("upstream-private-model");
-    expect(options[0]?.routeKey).toBe("video.private-route-key");
-    expect(options[0]?.modelKey).toBe("video.private-model-key");
+    expect(options.map((option) => option.label)).toEqual(["Gemini Omni Flash", "Sora V3 Pro", "Veo 3.1 Fast"]);
+    expect(JSON.stringify(options)).not.toContain("video.pixelhub.private");
   });
 
-  test("uses only safe Chinese capability description when ui schema has no description", () => {
-    const options = toVideoModelOptions([videoModel({ uiSchema: {} })], {
-      "video.private-model-key": [route({ capabilities: { description: "适合连续镜头创作", supportedVideoWorkflows: ["video_generation"] } })],
+  test("falls back to a safe display name and accepts a safe Chinese creator label", () => {
+    const options = toVideoModelOptions([
+      videoModel({ displayName: "Seedance 1.0" }),
+      videoModel({ id: "chinese", modelKey: "video.chinese", sortOrder: 20, displayName: "internal", uiSchema: { creatorLabel: "\u7075\u611f\u89c6\u9891" } }),
+    ], {
+      "video.private-model-key": [route()],
+      "video.chinese": [route({ modelKey: "video.chinese" })],
     });
 
-    expect(options[0]?.description).toBe("适合连续镜头创作");
+    expect(options.map((option) => option.label)).toEqual(["Seedance 1.0", "\u7075\u611f\u89c6\u9891"]);
   });
 
-  test("rejects a non-video route even when it advertises video generation capabilities", () => {
-    const options = toVideoModelOptions([videoModel()], {
-      "video.private-model-key": [route({ modality: "image" })],
+  test("uses only creatorLabel before falling back to displayName", () => {
+    const options = toVideoModelOptions([
+      videoModel({
+        displayName: "Public Model",
+        uiSchema: { creatorLabelZh: "\u65e7\u6807\u7b7e" },
+      }),
+    ], {
+      "video.private-model-key": [route()],
+    });
+
+    expect(options.map((option) => option.label)).toEqual(["Public Model"]);
+  });
+
+  test("rejects unsafe Chinese creator labels before using a safe display name", () => {
+    const options = toVideoModelOptions([
+      videoModel({ displayName: "Fallback Video", uiSchema: { creatorLabel: "\u4e2d/\u6587" } }),
+      videoModel({ id: "control", modelKey: "video.control", sortOrder: 20, displayName: "Control Fallback", uiSchema: { creatorLabel: "\u4e2d\n\u6587" } }),
+    ], {
+      "video.private-model-key": [route()],
+      "video.control": [route({ modelKey: "video.control" })],
+    });
+
+    expect(options.map((option) => option.label)).toEqual(["Fallback Video", "Control Fallback"]);
+  });
+
+  test("omits models without a safe creator label or display name", () => {
+    const options = toVideoModelOptions([
+      videoModel({ displayName: "", uiSchema: {} }),
+      videoModel({ id: "url", modelKey: "video.url", sortOrder: 20, displayName: "https://provider.example/model", uiSchema: {} }),
+    ], {
+      "video.private-model-key": [route()],
+      "video.url": [route({ modelKey: "video.url" })],
     });
 
     expect(options).toEqual([]);
   });
 
-  test("sanitizes description and ETA at the catalog boundary", () => {
+  test("filters inactive or non-generation routes and keeps route-authoritative pricing", () => {
     const options = toVideoModelOptions([
-      videoModel({
-        uiSchema: { description: "Fast cinematic shots" },
-      }),
-      videoModel({
-        id: "mixed-description",
-        modelKey: "video.mixed-description",
-        sortOrder: 20,
-        uiSchema: { description: "电影 fast 镜头" },
-      }),
+      videoModel({ uiSchema: { creatorLabel: "Valid Video" } }),
+      videoModel({ id: "editor", modelKey: "video.editor", sortOrder: 20, uiSchema: { creatorLabel: "Editor" } }),
+      videoModel({ id: "inactive", modelKey: "video.inactive", sortOrder: 30, status: "inactive", uiSchema: { creatorLabel: "Inactive" } }),
+    ], {
+      "video.private-model-key": [route({ pricing: { billingBasis: "duration_second", exact: true, minChargeCredits: 4, unit: "video_generation", unitCredits: 1 } })],
+      "video.editor": [route({ modelKey: "video.editor", capabilities: { supportedVideoWorkflows: ["video_editor_export"] } })],
+      "video.inactive": [route({ modelKey: "video.inactive" })],
+    });
+
+    expect(options).toHaveLength(1);
+    expect(options[0]).toMatchObject({ label: "Valid Video", pricing: { minChargeCredits: 4, unitCredits: 1 } });
+  });
+
+  test("keeps a missing-pricing video visible but blocked", () => {
+    const options = toVideoModelOptions([
+      videoModel({ uiSchema: { creatorLabel: "No Pricing" } }),
+    ], {
+      "video.private-model-key": [route({ estimatedCredits: null, minChargeCredits: null, pricing: null })],
+    });
+
+    expect(options).toHaveLength(1);
+    expect(options[0]).toMatchObject({ blocker: "PRICING_NOT_FOUND", label: "No Pricing" });
+  });
+
+  test("sanitizes model descriptions and estimated durations at the catalog boundary", () => {
+    const unsafeDescription = "Fast cinematic shots";
+    const options = toVideoModelOptions([
+      videoModel({ uiSchema: { creatorLabel: "Catalog Video", description: unsafeDescription } }),
+      videoModel({ id: "safe", modelKey: "video.safe", sortOrder: 20, uiSchema: { creatorLabel: "Safe Video" } }),
     ], {
       "video.private-model-key": [route({ capabilities: { estimatedDurationLabel: "About 8 seconds", supportedVideoWorkflows: ["video_generation"] } })],
-      "video.mixed-description": [route({
-        capabilities: { estimatedDurationLabel: "8 seconds / fast", supportedVideoWorkflows: ["video_generation"] },
-        modelKey: "video.mixed-description",
-      })],
+      "video.safe": [route({ modelKey: "video.safe", capabilities: { description: "\u9002\u5408\u8fde\u7eed\u955c\u5934\u521b\u4f5c", estimatedDurationLabel: "8 seconds / fast", supportedVideoWorkflows: ["video_generation"] } })],
     });
 
     expect(options[0]).toMatchObject({
-      description: "暂无中文模型说明",
-      estimatedDurationLabel: "预计 8 秒",
+      description: "\u6682\u65e0\u4e2d\u6587\u6a21\u578b\u8bf4\u660e",
+      estimatedDurationLabel: "\u9884\u8ba1 8 \u79d2",
     });
-    expect(options[1]).toMatchObject({
-      description: "暂无中文模型说明",
-    });
+    expect(options[1]).toMatchObject({ description: "\u9002\u5408\u8fde\u7eed\u955c\u5934\u521b\u4f5c" });
     expect(options[1]).not.toHaveProperty("estimatedDurationLabel");
-    expect(JSON.stringify(options)).not.toContain("Fast cinematic shots");
-    expect(JSON.stringify(options)).not.toContain("电影 fast 镜头");
-    expect(JSON.stringify(options)).not.toContain("8 seconds / fast");
+    expect(JSON.stringify(options)).not.toContain(unsafeDescription);
   });
 
-  test("preserves safe Chinese timing labels and omits unsafe mixed timing labels", () => {
-    const safe = toVideoModelOptions([videoModel()], {
-      "video.private-model-key": [route({ capabilities: { estimatedDurationLabel: "预计 12 秒", supportedVideoWorkflows: ["video_generation"] } })],
+  test("preserves a safe Chinese estimated-duration label and rejects mixed timing labels", () => {
+    const safe = toVideoModelOptions([videoModel({ uiSchema: { creatorLabel: "Timed Video" } })], {
+      "video.private-model-key": [route({ capabilities: { estimatedDurationLabel: "\u9884\u8ba1 12 \u79d2", supportedVideoWorkflows: ["video_generation"] } })],
     });
-    const unsafe = toVideoModelOptions([videoModel()], {
-      "video.private-model-key": [route({ capabilities: { estimatedDurationLabel: "预计 12 秒 fast", supportedVideoWorkflows: ["video_generation"] } })],
+    const unsafe = toVideoModelOptions([videoModel({ uiSchema: { creatorLabel: "Timed Video" } })], {
+      "video.private-model-key": [route({ capabilities: { estimatedDurationLabel: "\u9884\u8ba1 12 \u79d2 fast", supportedVideoWorkflows: ["video_generation"] } })],
     });
 
-    expect(safe[0]?.estimatedDurationLabel).toBe("预计 12 秒");
+    expect(safe[0]?.estimatedDurationLabel).toBe("\u9884\u8ba1 12 \u79d2");
     expect(unsafe[0]).not.toHaveProperty("estimatedDurationLabel");
   });
 
-  test("uses a Chinese creator-safe fallback when the catalog omits a display name", () => {
-    const options = toVideoModelOptions([videoModel({ displayName: "" })], {
-      "video.private-model-key": [route()],
+  test("rejects a non-video route that advertises video generation", () => {
+    const options = toVideoModelOptions([videoModel({ uiSchema: { creatorLabel: "Wrong Route" } })], {
+      "video.private-model-key": [route({ modality: "image" })],
     });
 
-    expect(options[0]?.label).toBe("视频模型 1");
-    expect(options[0]?.label).not.toBe("Video model");
-  });
-
-  test("does not expose English or mixed server display names to creators", () => {
-    const options = toVideoModelOptions([
-      videoModel({ displayName: "Seedance 1.0", id: "seedance", sortOrder: 10 }),
-      videoModel({ displayName: "模型 fast", id: "mixed", modelKey: "video.mixed", sortOrder: 20 }),
-    ], {
-      "video.private-model-key": [route()],
-      "video.mixed": [route({ modelKey: "video.mixed" })],
-    });
-
-    expect(options.map((option) => option.label)).toEqual(["视频模型 1", "视频模型 2"]);
-    expect(JSON.stringify(options)).not.toContain("Seedance 1.0");
-    expect(JSON.stringify(options)).not.toContain("模型 fast");
-  });
-
-  test("uses a fully Chinese catalog display name or explicit Chinese ui schema presentation label", () => {
-    const options = toVideoModelOptions([
-      videoModel({ displayName: "灵感视频", id: "catalog-zh", sortOrder: 10 }),
-      videoModel({
-        displayName: "Creator Video",
-        id: "catalog-schema-zh",
-        modelKey: "video.schema-zh",
-        sortOrder: 20,
-        uiSchema: { creatorLabelZh: "电影创作" },
-      }),
-      videoModel({
-        displayName: "Creator Video",
-        id: "catalog-schema-invalid",
-        modelKey: "video.schema-invalid",
-        sortOrder: 30,
-        uiSchema: { labelZh: "电影 fast" },
-      }),
-      videoModel({
-        displayName: "Creator Video",
-        id: "catalog-schema-display-zh",
-        modelKey: "video.schema-display-zh",
-        sortOrder: 40,
-        uiSchema: { displayNameZh: "叙事影像" },
-      }),
-    ], {
-      "video.private-model-key": [route()],
-      "video.schema-zh": [route({ modelKey: "video.schema-zh" })],
-      "video.schema-invalid": [route({ modelKey: "video.schema-invalid" })],
-      "video.schema-display-zh": [route({ modelKey: "video.schema-display-zh" })],
-    });
-
-    expect(options.map((option) => option.label)).toEqual(["灵感视频", "电影创作", "视频模型 3", "叙事影像"]);
+    expect(options).toEqual([]);
   });
 });

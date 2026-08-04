@@ -1,5 +1,5 @@
 ﻿import React from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ImageNodeComponent, TextNodeComponent, VideoNodeComponent } from "./FlowNodes";
@@ -388,18 +388,18 @@ describe("FlowNodes agent metadata", () => {
   it('uploads an empty video node as an asset-backed ready video without retaining a local URL', async () => {
     useFlowCanvasStore.getState().setBackendFlowBinding({ backendProjectId: 'project-video-upload' });
     assetApiMocks.uploadAssetFile.mockResolvedValue({
-      durationMs: 8250,
+      durationMs: null,
       height: 1920,
       id: 'asset-uploaded-video',
       kind: 'video',
       mimeType: 'video/mp4',
       width: 1080,
     });
-    assetApiMocks.getAssetDownloadUrl.mockResolvedValue({
+    assetApiMocks.getAssetDownloadUrl.mockImplementation(async (assetId: string) => ({
       expiresAt: '2026-08-04T12:00:00.000Z',
       method: 'GET',
-      url: 'https://cdn.test/uploaded.mp4?X-Amz-Signature=fresh',
-    });
+      url: `https://cdn.test/${assetId}.mp4?X-Amz-Signature=fresh`,
+    }));
     const previousCreateObjectURL = URL.createObjectURL;
     const previousRevokeObjectURL = URL.revokeObjectURL;
     Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn(() => 'blob:local-video') });
@@ -429,7 +429,7 @@ describe("FlowNodes agent metadata", () => {
         updatedAt: 1,
         width: 302,
       } as any, { selected: true });
-      const { container } = render(<VideoNodeComponent id={node.id} selected data={node.data as any} dragging={false} zIndex={1} isConnectable type="video" xPos={0} yPos={0} />);
+      const { container, rerender } = render(<VideoNodeComponent id={node.id} selected data={node.data as any} dragging={false} zIndex={1} isConnectable type="video" xPos={0} yPos={0} />);
       const input = container.querySelector('input[type="file"][accept="video/*"]') as HTMLInputElement | null;
       expect(input).toBeTruthy();
 
@@ -455,6 +455,8 @@ describe("FlowNodes agent metadata", () => {
           naturalWidth: 1080,
           source: 'upload',
           status: 'success',
+          height: 302,
+          width: 170,
         });
       });
       const persisted = useFlowCanvasStore.getState().nodes.find((item) => item.id === node.id)?.data as Record<string, unknown>;
@@ -462,6 +464,19 @@ describe("FlowNodes agent metadata", () => {
       expect(container.querySelector('input[type="file"]')).toBeNull();
       expect(screen.getByRole('button', { name: '下载视频' })).toBeTruthy();
       expect(screen.queryByRole('button', { name: /上传|替换/ })).toBeNull();
+      act(() => {
+        useFlowCanvasStore.getState().updateNodeData(node.id, {
+          assetId: 'asset-generated-video',
+          assetIds: ['asset-generated-video'],
+          source: 'generate',
+        });
+      });
+      const generatedNode = useFlowCanvasStore.getState().nodes.find((item) => item.id === node.id)!;
+      rerender(<VideoNodeComponent id={node.id} selected data={generatedNode.data as any} dragging={false} zIndex={1} isConnectable type="video" xPos={0} yPos={0} />);
+      await waitFor(() => {
+        expect(assetApiMocks.getAssetDownloadUrl).toHaveBeenCalledWith('asset-generated-video');
+        expect(container.querySelector('video')?.getAttribute('src')).toContain('asset-generated-video.mp4');
+      });
       expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:local-video');
     } finally {
       vi.restoreAllMocks();

@@ -78,7 +78,7 @@ import {
   getSelectedRuntimeVideoPreviewUrl,
 } from '../video/videoResultPreview';
 import { VideoReadyState } from '../video/VideoReadyState';
-import { getVideoNodeSizeForRequestedRatio } from '../video/videoNodeSizing';
+import { getVideoNodeSizeForNaturalDimensions, getVideoNodeSizeForRequestedRatio } from '../video/videoNodeSizing';
 import {
   getImageModelById,
   getImageModelCatalogSnapshot,
@@ -7769,10 +7769,10 @@ export const VideoNodeComponent = memo(function VideoNode({
   const assetIdFromNode = typeof d.assetId === 'string' && d.assetId.trim() && !isTransientDraftUrl(d.assetId)
     ? d.assetId.trim()
     : null;
-  const readyAssetId = uploadedPreview?.assetId
-    || persistedResultAssetId
+  const readyAssetId = persistedResultAssetId
     || assetIdFromNode
     || selectedRuntimeVideoAsset?.assetId
+    || uploadedPreview?.assetId
     || null;
   const [persistedResultPreview, setPersistedResultPreview] = useState<{
     assetId: string | null;
@@ -7907,7 +7907,10 @@ export const VideoNodeComponent = memo(function VideoNode({
       });
       const naturalWidth = Number(asset.width) > 0 ? Number(asset.width) : metadata.width;
       const naturalHeight = Number(asset.height) > 0 ? Number(asset.height) : metadata.height;
-      const durationMs = Number(asset.durationMs) >= 0 ? Number(asset.durationMs) : metadata.durationMs;
+      const durationMs = typeof asset.durationMs === 'number' && Number.isFinite(asset.durationMs) && asset.durationMs >= 0
+        ? asset.durationMs
+        : metadata.durationMs;
+      const size = getVideoNodeSizeForNaturalDimensions(naturalWidth, naturalHeight);
       updateNodeData(id, {
         aspectRatio: naturalWidth / naturalHeight,
         assetId: asset.id,
@@ -7920,6 +7923,8 @@ export const VideoNodeComponent = memo(function VideoNode({
         naturalWidth,
         source: 'upload',
         status: 'success',
+        height: size.height,
+        width: size.width,
       });
       try {
         const preview = await getAssetDownloadUrl(asset.id);
