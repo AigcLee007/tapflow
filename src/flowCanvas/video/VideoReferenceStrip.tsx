@@ -2,6 +2,7 @@ import { ImagePlus, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { ReferenceSourcePicker } from "../nodes/ReferenceSourcePicker";
+import { VIDEO_COMPOSER_CAPSULE_CLASS, videoComposerDensity } from "../utils/promptBarDensity";
 import { resolveAutomaticVideoMode } from "./videoReferenceRules";
 import type {
   VideoGenerationMode,
@@ -123,10 +124,10 @@ function LegacyVideoReferenceStrip({ currentNodeId, disabled = false, onChange, 
         const selected = assignment?.source;
         const roleLabel = ROLE_LABELS[role];
         return (
-          <div key={role} className="inline-flex h-[38px] items-center gap-1 rounded-[10px] border border-white/10 bg-[#17171b] p-1">
+          <div key={role} className={`inline-flex items-center gap-1 pl-[9px] pr-1 ${VIDEO_COMPOSER_CAPSULE_CLASS}`} style={{ height: videoComposerDensity.capsuleHeight, borderRadius: videoComposerDensity.capsuleRadius }}>
             <button
               aria-label={`${VIDEO_UI_COPY.selectReference}${roleLabel}`}
-              className="inline-flex h-[30px] items-center gap-[7px] rounded-[9px] px-2 text-xs font-bold text-white/80 transition hover:bg-white/[0.08] focus:bg-white/[0.08] focus:outline-none"
+              className="inline-flex min-w-0 items-center gap-1.5 text-xs font-[650] text-white/90 focus:outline-none"
               disabled={disabled}
               onClick={() => { if (!disabled) setActiveRole(role); }}
               type="button"
@@ -138,7 +139,7 @@ function LegacyVideoReferenceStrip({ currentNodeId, disabled = false, onChange, 
             {selected ? (
               <button
                 aria-label={`${VIDEO_UI_COPY.clearReference}${roleLabel}`}
-                className="inline-flex h-[30px] w-[30px] items-center justify-center rounded-[9px] text-white/45 transition hover:bg-white/[0.08] hover:text-white focus:bg-white/[0.08] focus:outline-none"
+                className="inline-flex h-5 w-5 items-center justify-center rounded-full text-white/45 transition hover:bg-white/[0.10] hover:text-white focus:bg-white/[0.10] focus:outline-none"
                 disabled={disabled}
                 onClick={() => updateRole(role, null)}
                 title={`${VIDEO_UI_COPY.clearReference}${roleLabel}`}
@@ -233,14 +234,14 @@ function VideoReferenceStripV2({ capabilities, currentNodeId, disabled = false, 
   return (
     <div aria-label={VIDEO_UI_COPY.referenceSources} className="relative flex flex-wrap gap-2">
       {value.referenceInputs.map((reference) => (
-        <div key={reference.referenceKey} className="inline-flex h-[38px] items-center gap-1 rounded-[10px] border border-white/10 bg-[#17171b] p-1">
-          <span className="px-2 text-xs font-bold text-white/80">{VIDEO_UI_REFERENCE_ROLE_COPY[reference.role]}</span>
-          <button aria-label={`${VIDEO_UI_COPY.clearReference}${VIDEO_UI_REFERENCE_ROLE_COPY[reference.role]}`} className="inline-flex h-[30px] w-[30px] items-center justify-center rounded-[9px] text-white/45" disabled={disabled} onClick={() => remove(reference.referenceKey)} type="button"><Trash2 aria-hidden="true" size={14} /></button>
+        <div key={reference.referenceKey} className={`inline-flex items-center gap-1 pl-[9px] pr-1 ${VIDEO_COMPOSER_CAPSULE_CLASS}`} style={{ height: videoComposerDensity.capsuleHeight, borderRadius: videoComposerDensity.capsuleRadius }}>
+          <span className="text-xs font-[650] text-white/90">{VIDEO_UI_REFERENCE_ROLE_COPY[reference.role]}</span>
+          <button aria-label={`${VIDEO_UI_COPY.clearReference}${VIDEO_UI_REFERENCE_ROLE_COPY[reference.role]}`} className="inline-flex h-5 w-5 items-center justify-center rounded-full text-white/45 transition hover:bg-white/[0.10] hover:text-white focus:bg-white/[0.10] focus:outline-none" disabled={disabled} onClick={() => remove(reference.referenceKey)} type="button"><Trash2 aria-hidden="true" size={14} /></button>
         </div>
       ))}
-      {imageCount < maxImages ? <button aria-label="添加参考图" className="inline-flex h-[38px] items-center rounded-[10px] border border-white/10 px-2 text-xs font-bold" disabled={disabled} onClick={() => { if (!disabled) setPickerKind("image"); }} type="button"><ImagePlus size={14} />添加参考图</button> : null}
-      {videoCount < maxVideos ? <button aria-label={capabilities.referenceSemantics === "style_images_and_source_video" ? "添加源视频" : "添加参考视频"} className="inline-flex h-[38px] items-center rounded-[10px] border border-white/10 px-2 text-xs font-bold" disabled={disabled} onClick={() => { if (!disabled) setPickerKind("video"); }} type="button"><ImagePlus size={14} />{capabilities.referenceSemantics === "style_images_and_source_video" ? "添加源视频" : "添加参考视频"}</button> : null}
-      {audioCount < maxAudios ? <button aria-label="添加参考音频" className="inline-flex h-[38px] items-center rounded-[10px] border border-white/10 px-2 text-xs font-bold" disabled={disabled} onClick={() => { if (!disabled) setPickerKind("audio"); }} type="button"><ImagePlus size={14} />添加参考音频</button> : null}
+      {imageCount < maxImages ? <button aria-label="添加参考图" className={`inline-flex items-center gap-1.5 px-[9px] ${VIDEO_COMPOSER_CAPSULE_CLASS}`} disabled={disabled} onClick={() => { if (!disabled) setPickerKind("image"); }} style={{ height: videoComposerDensity.capsuleHeight, borderRadius: videoComposerDensity.capsuleRadius }} type="button"><ImagePlus size={14} />添加参考图</button> : null}
+      {videoCount < maxVideos ? <button aria-label={capabilities.referenceSemantics === "style_images_and_source_video" ? "添加源视频" : "添加参考视频"} className={`inline-flex items-center gap-1.5 px-[9px] ${VIDEO_COMPOSER_CAPSULE_CLASS}`} disabled={disabled} onClick={() => { if (!disabled) setPickerKind("video"); }} style={{ height: videoComposerDensity.capsuleHeight, borderRadius: videoComposerDensity.capsuleRadius }} type="button"><ImagePlus size={14} />{capabilities.referenceSemantics === "style_images_and_source_video" ? "添加源视频" : "添加参考视频"}</button> : null}
+      {audioCount < maxAudios ? <button aria-label="添加参考音频" className={`inline-flex items-center gap-1.5 px-[9px] ${VIDEO_COMPOSER_CAPSULE_CLASS}`} disabled={disabled} onClick={() => { if (!disabled) setPickerKind("audio"); }} style={{ height: videoComposerDensity.capsuleHeight, borderRadius: videoComposerDensity.capsuleRadius }} type="button"><ImagePlus size={14} />添加参考音频</button> : null}
       <input accept={pickerKind === "audio" ? "audio/*" : pickerKind === "video" ? "video/*" : "image/*"} className="hidden" onChange={handleUpload} ref={fileInputRef} type="file" />
       {uploadError ? <span className="text-[9px] font-medium text-rose-300">{uploadError}</span> : null}
       <ReferenceSourcePicker

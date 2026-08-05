@@ -30,6 +30,35 @@ function createValue() {
 }
 
 describe("VideoReferenceStrip", () => {
+  test("uses shared compact capsule geometry for reference slots", () => {
+    const capabilities = mergeVideoCapabilities({
+      confirmedByRoute: true,
+      maxAudios: 1,
+      maxImages: 5,
+      maxTotal: 6,
+      maxVideos: 1,
+      modeConstraints: { all_reference: { maxAudios: 1, maxImages: 5, maxTotal: 6, maxVideos: 1 } },
+      supportedModes: ["all_reference"],
+    });
+    render(
+      <VideoReferenceStrip
+        capabilities={capabilities}
+        currentNodeId="video-node"
+        onChange={vi.fn()}
+        onConnectCanvasReference={vi.fn()}
+        onUploadReference={vi.fn()}
+        value={{ ...createDefaultVideoGenerationParams(), mode: "all_reference" }}
+      />,
+    );
+
+    const imageSlot = screen.getByRole("button", { name: "添加参考图" });
+    expect(imageSlot.className).toContain("bg-white/[0.06]");
+    expect(imageSlot.style.height).toBe("28px");
+    expect(imageSlot.style.borderRadius).toBe("9999px");
+    expect(screen.getByRole("button", { name: "添加参考视频" }).style.height).toBe("28px");
+    expect(screen.getByRole("button", { name: "添加参考音频" }).style.height).toBe("28px");
+  });
+
   test("closes its picker and blocks reference mutations when disabled", () => {
     const onChange = vi.fn();
     const capabilities = mergeVideoCapabilities({ confirmedByRoute: true, maxImages: 1, maxTotal: 1, modeConstraints: { image_to_video: { maxImages: 1, maxTotal: 1 } }, supportedModes: ["image_to_video"] });

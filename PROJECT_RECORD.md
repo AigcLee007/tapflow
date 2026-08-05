@@ -6245,3 +6245,9 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - introduced one shared video composer capsule class for mode, camera, palette, model, and parameter triggers, matching the credits pill's translucent background, subtle border, inset highlight, hover, focus, and disabled states.
 - all video composer triggers now use 28px height, pill radius, 14px icons, 9px horizontal padding, and 6px internal spacing; the palette trigger is a 28px circle.
 - focused capsule, mode, palette, composer, and shared generation toolbar tests passed (`42` tests); frontend build passed with existing non-blocking Vite warnings.
+
+## 2026-08-05 - Video Reference Capsule Visual Unification
+
+- reference slot and add-reference controls now reuse the shared video capsule styling, including 28px height, full radius, translucent surface, border, inset highlight, hover, focus, and disabled states.
+- selected reference chips retain their delete action in a compact 20px circular control, preventing the reference row from expanding vertically.
+- focused reference, composer, and density tests passed (`38` tests); frontend build passed with existing non-blocking Vite warnings.
