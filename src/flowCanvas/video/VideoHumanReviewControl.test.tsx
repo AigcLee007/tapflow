@@ -34,4 +34,14 @@ describe("VideoHumanReviewControl", () => {
     fireEvent.click(screen.getByRole("button", { name: "重新验证" }));
     expect(onRequestVerification).toHaveBeenCalledOnce();
   });
+
+  test("keeps compact status visible while disabling verification", () => {
+    const onRequestVerification = vi.fn();
+    render(<VideoHumanReviewControl compact disabled onRequestVerification={onRequestVerification} value={{ status: "required" }} />);
+    const button = screen.getByRole("button", { name: "完成验证" }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(screen.getByLabelText("真人验证")).toBeTruthy();
+    fireEvent.click(button);
+    expect(onRequestVerification).not.toHaveBeenCalled();
+  });
 });

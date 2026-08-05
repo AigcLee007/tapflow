@@ -30,6 +30,18 @@ function createValue() {
 }
 
 describe("VideoReferenceStrip", () => {
+  test("closes its picker and blocks reference mutations when disabled", () => {
+    const onChange = vi.fn();
+    const capabilities = mergeVideoCapabilities({ confirmedByRoute: true, maxImages: 1, maxTotal: 1, modeConstraints: { image_to_video: { maxImages: 1, maxTotal: 1 } }, supportedModes: ["image_to_video"] });
+    const value = { ...createDefaultVideoGenerationParams(), mode: "image_to_video" as const };
+    const { rerender } = render(<VideoReferenceStrip capabilities={capabilities} currentNodeId="video-node" onChange={onChange} onConnectCanvasReference={vi.fn()} onUploadReference={vi.fn()} value={value} />);
+    fireEvent.click(screen.getByRole("button", { name: "添加参考图" }));
+    expect(screen.getByRole("button", { name: "Pick an asset" })).toBeTruthy();
+    rerender(<VideoReferenceStrip capabilities={capabilities} currentNodeId="video-node" disabled onChange={onChange} onConnectCanvasReference={vi.fn()} onUploadReference={vi.fn()} value={value} />);
+    expect(screen.queryByRole("button", { name: "Pick an asset" })).toBeNull();
+    expect((screen.getByRole("button", { name: "添加参考图" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(onChange).not.toHaveBeenCalled();
+  });
   test("renders Gemini all-reference inputs without an audio slot", () => {
     const capabilities = mergeVideoCapabilities({
       confirmedByRoute: true,

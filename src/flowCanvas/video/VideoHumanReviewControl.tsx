@@ -4,12 +4,31 @@ import type { VideoHumanReview } from "./videoTypes";
 import { VIDEO_UI_COPY } from "./videoUiCopy";
 
 type VideoHumanReviewControlProps = {
+  compact?: boolean;
+  disabled?: boolean;
   onRequestVerification?: () => void;
   value: VideoHumanReview;
 };
 
-export function VideoHumanReviewControl({ onRequestVerification, value }: VideoHumanReviewControlProps) {
+export function VideoHumanReviewControl({ compact = false, disabled = false, onRequestVerification, value }: VideoHumanReviewControlProps) {
   if (value.status === "not_required") return null;
+
+  if (compact) {
+    return (
+      <div aria-label={VIDEO_UI_COPY.humanVerification} className="flex h-[38px] max-w-[118px] shrink-0 items-center gap-1.5 text-[10px] font-medium text-amber-50">
+        {value.status === "verified" ? <BadgeCheck aria-hidden="true" size={15} /> : <ShieldAlert aria-hidden="true" size={15} />}
+        <button
+          className="min-w-0 truncate rounded-[8px] px-1.5 py-1 font-bold text-white/80 hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-45"
+          disabled={disabled}
+          onClick={onRequestVerification}
+          title={value.status === "verified" ? VIDEO_UI_COPY.verifyAgain : VIDEO_UI_COPY.verificationBlocked}
+          type="button"
+        >
+          {value.status === "verified" ? VIDEO_UI_COPY.verified : VIDEO_UI_COPY.completeVerification}
+        </button>
+      </div>
+    );
+  }
 
   if (value.status === "verified") {
     return (
@@ -18,6 +37,7 @@ export function VideoHumanReviewControl({ onRequestVerification, value }: VideoH
         <span className="min-w-0 flex-1 truncate">{formatVerifiedAt(value.verifiedAt)}</span>
         <button
           className="h-[30px] rounded-[9px] border border-white/10 px-2 text-[10px] font-bold text-white/80 transition hover:bg-white/[0.08] focus:border-sky-300/50 focus:outline-none"
+          disabled={disabled}
           onClick={onRequestVerification}
           type="button"
         >
@@ -37,6 +57,7 @@ export function VideoHumanReviewControl({ onRequestVerification, value }: VideoH
       <span className="min-w-0 flex-1">{VIDEO_UI_COPY.verificationBlocked}</span>
       <button
         className="h-[30px] shrink-0 rounded-[9px] bg-amber-200 px-2 text-[10px] font-bold text-black transition hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-sky-300/70"
+        disabled={disabled}
         onClick={onRequestVerification}
         type="button"
       >

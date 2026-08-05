@@ -40,4 +40,15 @@ describe("VideoModeMenu", () => {
     fireEvent.keyDown(window, { key: "Escape" });
     expect(screen.queryByRole("menu")).toBeNull();
   });
+
+  test("closes an open menu and blocks changes when disabled", () => {
+    const onChange = vi.fn();
+    const { rerender } = render(<VideoModeMenu capabilities={createSafeDefaultVideoCapabilities()} onChange={onChange} value="text_to_video" />);
+    fireEvent.click(screen.getByRole("button", { name: "生成模式" }));
+    expect(screen.getByRole("menu")).toBeTruthy();
+    rerender(<VideoModeMenu capabilities={createSafeDefaultVideoCapabilities()} disabled onChange={onChange} value="text_to_video" />);
+    expect(screen.queryByRole("menu")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "生成模式" }));
+    expect(onChange).not.toHaveBeenCalled();
+  });
 });

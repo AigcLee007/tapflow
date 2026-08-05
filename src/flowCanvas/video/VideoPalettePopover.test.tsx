@@ -5,6 +5,17 @@ import { createDefaultVideoGenerationParams } from "./videoGenerationParams";
 import { isSafePreviewUrl, VideoPalettePopover } from "./VideoPalettePopover";
 
 describe("VideoPalettePopover", () => {
+  test("closes an open palette and blocks changes when disabled", () => {
+    const onChange = vi.fn();
+    const value = createDefaultVideoGenerationParams();
+    const { rerender } = render(<VideoPalettePopover onChange={onChange} value={value} />);
+    fireEvent.click(screen.getByRole("button", { name: "调色盘" }));
+    expect(screen.getByRole("dialog", { name: "调色盘" })).toBeTruthy();
+    rerender(<VideoPalettePopover disabled onChange={onChange} value={value} />);
+    expect(screen.queryByRole("dialog", { name: "调色盘" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "调色盘" }));
+    expect(onChange).not.toHaveBeenCalled();
+  });
   test("renders only populated semantic Chinese groups without raw source ids", () => {
     const value = {
       ...createDefaultVideoGenerationParams(),

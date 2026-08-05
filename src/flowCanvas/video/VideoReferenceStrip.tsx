@@ -22,6 +22,7 @@ export type VideoReferenceStripValue = {
 
 type VideoReferenceStripProps = {
   currentNodeId: string;
+  disabled?: boolean;
   onChange: (value: VideoReferenceStripValue) => void;
   onUploadReference: () => void;
   value: VideoReferenceStripValue;
@@ -30,6 +31,7 @@ type VideoReferenceStripProps = {
 type VideoReferenceStripV2Props = {
   capabilities: VideoGenerationCapabilities;
   currentNodeId: string;
+  disabled?: boolean;
   onChange: (params: VideoGenerationParamsV2) => void;
   onConnectCanvasReference: (input: Pick<VideoReferenceInputV2, "mediaKind" | "referenceKey" | "role"> & { sourceNodeId: string }) => void;
   onUploadReference: (file: File, mediaKind: VideoReferenceInputV2["mediaKind"]) => Promise<{ id: string; kind: string }>;
@@ -51,7 +53,7 @@ export function VideoReferenceStrip(props: VideoReferenceStripProps | VideoRefer
   return <LegacyVideoReferenceStrip {...props} />;
 }
 
-function LegacyVideoReferenceStrip({ currentNodeId, onChange, onUploadReference, value }: VideoReferenceStripProps) {
+function LegacyVideoReferenceStrip({ currentNodeId, disabled = false, onChange, onUploadReference, value }: VideoReferenceStripProps) {
   const [activeRole, setActiveRole] = useState<VideoReferenceRole | null>(null);
   const roles = ROLES_BY_MODE[value.videoGeneration.mode];
   const allowedRolesRef = useRef<readonly VideoReferenceRole[]>(roles);
@@ -64,10 +66,14 @@ function LegacyVideoReferenceStrip({ currentNodeId, onChange, onUploadReference,
     }
   }, [activeRole, roles]);
 
+  useEffect(() => {
+    if (disabled) setActiveRole(null);
+  }, [disabled]);
+
   const isAllowedRole = (role: VideoReferenceRole) => allowedRolesRef.current.includes(role);
 
   const updateRole = (role: VideoReferenceRole, source: VideoReferenceSource | null) => {
-    if (!isAllowedRole(role)) return;
+    if (disabled || !isAllowedRole(role)) return;
 
     const referenceRolesByKey = {
       ...(value.videoGeneration.referenceRolesByKey ?? {}),
@@ -121,7 +127,8 @@ function LegacyVideoReferenceStrip({ currentNodeId, onChange, onUploadReference,
             <button
               aria-label={`${VIDEO_UI_COPY.selectReference}${roleLabel}`}
               className="inline-flex h-[30px] items-center gap-[7px] rounded-[9px] px-2 text-xs font-bold text-white/80 transition hover:bg-white/[0.08] focus:bg-white/[0.08] focus:outline-none"
-              onClick={() => setActiveRole(role)}
+              disabled={disabled}
+              onClick={() => { if (!disabled) setActiveRole(role); }}
               type="button"
             >
               <ImagePlus aria-hidden="true" size={14} />
@@ -132,6 +139,7 @@ function LegacyVideoReferenceStrip({ currentNodeId, onChange, onUploadReference,
               <button
                 aria-label={`${VIDEO_UI_COPY.clearReference}${roleLabel}`}
                 className="inline-flex h-[30px] w-[30px] items-center justify-center rounded-[9px] text-white/45 transition hover:bg-white/[0.08] hover:text-white focus:bg-white/[0.08] focus:outline-none"
+                disabled={disabled}
                 onClick={() => updateRole(role, null)}
                 title={`${VIDEO_UI_COPY.clearReference}${roleLabel}`}
                 type="button"
@@ -157,14 +165,14 @@ function LegacyVideoReferenceStrip({ currentNodeId, onChange, onUploadReference,
           setActiveRole(null);
         }}
         onUploadReference={onUploadReference}
-        open={pickerRole !== null}
+        open={!disabled && pickerRole !== null}
         roleLabel={pickerRole ? ROLE_LABELS[pickerRole] : undefined}
       />
     </div>
   );
 }
 
-function VideoReferenceStripV2({ capabilities, currentNodeId, onChange, onConnectCanvasReference, onUploadReference, value }: VideoReferenceStripV2Props) {
+function VideoReferenceStripV2({ capabilities, currentNodeId, disabled = false, onChange, onConnectCanvasReference, onUploadReference, value }: VideoReferenceStripV2Props) {
   const [pickerKind, setPickerKind] = useState<VideoReferenceInputV2["mediaKind"] | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -175,7 +183,11 @@ function VideoReferenceStripV2({ capabilities, currentNodeId, onChange, onConnec
   const maxImages = Number(constraint.maxImages ?? capabilities.maxImages ?? 0);
   const maxVideos = Number(constraint.maxVideos ?? capabilities.maxVideos ?? 0);
   const maxAudios = Number(constraint.maxAudios ?? capabilities.maxAudios ?? 0);
+  useEffect(() => {
+    if (disabled) setPickerKind(null);
+  }, [disabled]);
   const remove = (referenceKey: string) => {
+    if (disabled) return;
     const nextReferences = value.referenceInputs
       .filter((reference) => reference.referenceKey !== referenceKey)
       .map((reference, order) => ({ ...reference, order }));
@@ -186,6 +198,7 @@ function VideoReferenceStripV2({ capabilities, currentNodeId, onChange, onConnec
     mediaKind: VideoReferenceInputV2["mediaKind"],
     source: VideoReferenceInputV2["source"],
   ) => {
+    if (disabled) return;
     const role = referenceRoleFor(value, capabilities, mediaKind);
     const nextReferences = [
       ...value.referenceInputs,
@@ -204,7 +217,7 @@ function VideoReferenceStripV2({ capabilities, currentNodeId, onChange, onConnec
     const file = event.target.files?.[0];
     const mediaKind = pickerKind;
     event.target.value = "";
-    if (!file || !mediaKind) return;
+    if (disabled || !file || !mediaKind) return;
     try {
       const asset = await onUploadReference(file, mediaKind);
       if (asset.kind !== mediaKind) throw new Error("REFERENCE_ASSET_KIND_MISMATCH");
@@ -222,12 +235,12 @@ function VideoReferenceStripV2({ capabilities, currentNodeId, onChange, onConnec
       {value.referenceInputs.map((reference) => (
         <div key={reference.referenceKey} className="inline-flex h-[38px] items-center gap-1 rounded-[10px] border border-white/10 bg-[#17171b] p-1">
           <span className="px-2 text-xs font-bold text-white/80">{VIDEO_UI_REFERENCE_ROLE_COPY[reference.role]}</span>
-          <button aria-label={`${VIDEO_UI_COPY.clearReference}${VIDEO_UI_REFERENCE_ROLE_COPY[reference.role]}`} className="inline-flex h-[30px] w-[30px] items-center justify-center rounded-[9px] text-white/45" onClick={() => remove(reference.referenceKey)} type="button"><Trash2 aria-hidden="true" size={14} /></button>
+          <button aria-label={`${VIDEO_UI_COPY.clearReference}${VIDEO_UI_REFERENCE_ROLE_COPY[reference.role]}`} className="inline-flex h-[30px] w-[30px] items-center justify-center rounded-[9px] text-white/45" disabled={disabled} onClick={() => remove(reference.referenceKey)} type="button"><Trash2 aria-hidden="true" size={14} /></button>
         </div>
       ))}
-      {imageCount < maxImages ? <button aria-label="添加参考图" className="inline-flex h-[38px] items-center rounded-[10px] border border-white/10 px-2 text-xs font-bold" onClick={() => setPickerKind("image")} type="button"><ImagePlus size={14} />添加参考图</button> : null}
-      {videoCount < maxVideos ? <button aria-label={capabilities.referenceSemantics === "style_images_and_source_video" ? "添加源视频" : "添加参考视频"} className="inline-flex h-[38px] items-center rounded-[10px] border border-white/10 px-2 text-xs font-bold" onClick={() => setPickerKind("video")} type="button"><ImagePlus size={14} />{capabilities.referenceSemantics === "style_images_and_source_video" ? "添加源视频" : "添加参考视频"}</button> : null}
-      {audioCount < maxAudios ? <button aria-label="添加参考音频" className="inline-flex h-[38px] items-center rounded-[10px] border border-white/10 px-2 text-xs font-bold" onClick={() => setPickerKind("audio")} type="button"><ImagePlus size={14} />添加参考音频</button> : null}
+      {imageCount < maxImages ? <button aria-label="添加参考图" className="inline-flex h-[38px] items-center rounded-[10px] border border-white/10 px-2 text-xs font-bold" disabled={disabled} onClick={() => { if (!disabled) setPickerKind("image"); }} type="button"><ImagePlus size={14} />添加参考图</button> : null}
+      {videoCount < maxVideos ? <button aria-label={capabilities.referenceSemantics === "style_images_and_source_video" ? "添加源视频" : "添加参考视频"} className="inline-flex h-[38px] items-center rounded-[10px] border border-white/10 px-2 text-xs font-bold" disabled={disabled} onClick={() => { if (!disabled) setPickerKind("video"); }} type="button"><ImagePlus size={14} />{capabilities.referenceSemantics === "style_images_and_source_video" ? "添加源视频" : "添加参考视频"}</button> : null}
+      {audioCount < maxAudios ? <button aria-label="添加参考音频" className="inline-flex h-[38px] items-center rounded-[10px] border border-white/10 px-2 text-xs font-bold" disabled={disabled} onClick={() => { if (!disabled) setPickerKind("audio"); }} type="button"><ImagePlus size={14} />添加参考音频</button> : null}
       <input accept={pickerKind === "audio" ? "audio/*" : pickerKind === "video" ? "video/*" : "image/*"} className="hidden" onChange={handleUpload} ref={fileInputRef} type="file" />
       {uploadError ? <span className="text-[9px] font-medium text-rose-300">{uploadError}</span> : null}
       <ReferenceSourcePicker
@@ -235,17 +248,19 @@ function VideoReferenceStripV2({ capabilities, currentNodeId, onChange, onConnec
         currentNodeId={currentNodeId}
         onClose={() => setPickerKind(null)}
         onPickAsset={(assetId, mediaKind) => {
+          if (disabled) return;
           appendReference(mediaKind, { kind: "asset", id: assetId });
           setPickerKind(null);
         }}
         onPickCanvasNode={(nodeId, mediaKind) => {
+          if (disabled) return;
           const role = referenceRoleFor(value, capabilities, mediaKind);
           onConnectCanvasReference({ mediaKind, referenceKey: `upstream:${nodeId}:${value.referenceInputs.length}`, role, sourceNodeId: nodeId });
           appendReference(mediaKind, { kind: "upstream", id: nodeId });
           setPickerKind(null);
         }}
-        onUploadReference={() => fileInputRef.current?.click()}
-        open={pickerKind !== null}
+        onUploadReference={() => { if (!disabled) fileInputRef.current?.click(); }}
+        open={!disabled && pickerKind !== null}
       />
     </div>
   );

@@ -15,6 +15,25 @@ vi.mock("../nodes/ReferenceSourcePicker", () => ({
   ReferenceSourcePicker: () => null,
 }));
 
+function usableVideoOption(overrides: Partial<VideoModelOption> = {}): VideoModelOption {
+  return {
+    blocker: null,
+    capabilities: mergeVideoCapabilities({ confirmedByRoute: true }),
+    estimatedCredits: 1,
+    id: "gemini-id",
+    label: "Gemini Omni Flash",
+    minChargeCredits: 1,
+    modelKey: "gemini-omni-flash",
+    pricing: { billingBasis: "duration_second", exact: true, minChargeCredits: 1, unit: "video_generation", unitCredits: 1 },
+    routeKey: "video.pixelhub.gemini-omni-flash",
+    ...overrides,
+  };
+}
+
+function usableVideoCatalog(models = [usableVideoOption()]) {
+  return { error: null, loading: false, models, retry: vi.fn() };
+}
+
 describe("VideoNodeComposer", () => {
   test("keeps the composer root content-only for a shared editor surface", () => {
     const data = { generationPrompt: "", params: { videoGeneration: createDefaultVideoGenerationParams() } } as any;
@@ -98,24 +117,62 @@ describe("VideoNodeComposer", () => {
   test("writes the prompt and keeps model and parameters layers mutually exclusive", () => {
     const onUpdate = vi.fn();
     const data = { generationPrompt: "", params: { videoGeneration: createDefaultVideoGenerationParams() } } as any;
-    render(<VideoNodeComposer data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={onUpdate} selected />);
+    render(<VideoNodeComposer catalog={usableVideoCatalog()} data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={onUpdate} selected />);
 
     fireEvent.change(screen.getByLabelText("视频提示词"), { target: { value: "A quiet city" } });
     expect(onUpdate).toHaveBeenCalledWith({ generationPrompt: "A quiet city" });
 
     fireEvent.click(screen.getByRole("button", { name: "选择视频模型" }));
-    expect(screen.getByRole("status", { name: "正在加载视频模型" })).toBeTruthy();
+    expect(screen.getByRole("listbox", { name: "视频模型" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "视频参数摘要" }));
-    expect(screen.queryByRole("status", { name: "正在加载视频模型" })).toBeNull();
+    expect(screen.queryByRole("listbox", { name: "视频模型" })).toBeNull();
     expect(screen.getByRole("dialog", { name: "视频参数" })).toBeTruthy();
   });
 
-  test("places the video mode trigger in the bottom creation toolbar", () => {
+  test("separates prompt tools, references, and execution controls", () => {
     const data = { generationPrompt: "", params: { videoGeneration: createDefaultVideoGenerationParams() } } as any;
     render(<VideoNodeComposer data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} selected />);
 
-    const modeTrigger = screen.getByRole("button", { name: "生成模式" });
-    expect(modeTrigger.parentElement?.parentElement?.className).toContain("border-t");
+    const tools = screen.getByTestId("video-composer-tools");
+    const actions = screen.getByTestId("video-composer-actions");
+    expect(tools.contains(screen.getByRole("button", { name: "生成模式" }))).toBe(true);
+    expect(tools.contains(screen.getByRole("button", { name: "运镜库" }))).toBe(true);
+    expect(tools.contains(screen.getByRole("button", { name: "调色盘" }))).toBe(true);
+    expect(actions.contains(screen.getByRole("button", { name: "选择视频模型" }))).toBe(true);
+    expect(actions.contains(screen.getByRole("button", { name: "视频参数摘要" }))).toBe(true);
+    expect(screen.queryByTestId("video-composer-references")).toBeNull();
+  });
+
+  test("renders reference controls in a dedicated row", () => {
+    const data = { generationPrompt: "", params: { videoGeneration: { ...createDefaultVideoGenerationParams(), mode: "image_to_video" } } } as any;
+    render(<VideoNodeComposer data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} selected />);
+    expect(screen.getByTestId("video-composer-references").contains(screen.getByLabelText("视频参考素材"))).toBe(true);
+  });
+
+  test("uses one desktop action row and exactly two mobile groups", () => {
+    const data = { generationPrompt: "", params: { videoGeneration: createDefaultVideoGenerationParams() } } as any;
+    render(<VideoNodeComposer data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} selected />);
+    const actions = screen.getByTestId("video-composer-actions");
+    expect(actions.className).toMatch(/md:flex-row/);
+    expect(actions.className).toMatch(/md:flex-nowrap/);
+    expect(actions.children).toHaveLength(2);
+  });
+
+  test("shows catalog state and disables generation without a usable model", () => {
+    const data = { generationPrompt: "", params: { videoGeneration: createDefaultVideoGenerationParams() } } as any;
+    render(<VideoNodeComposer catalog={{ error: null, loading: true, models: [], retry: vi.fn() }} data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} selected />);
+    expect((screen.getByRole("button", { name: "选择视频模型" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "生成视频" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText("正在加载视频模型")).toBeTruthy();
+  });
+
+  test("locks every request-changing control while generating", () => {
+    const data = { generationPrompt: "scene", modelId: "gemini-id", params: { videoGeneration: createDefaultVideoGenerationParams() } } as any;
+    render(<VideoNodeComposer catalog={usableVideoCatalog()} data={data} generating nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} selected />);
+    for (const control of [screen.getByLabelText("视频提示词"), ...["生成模式", "运镜库", "调色盘", "选择视频模型", "视频参数摘要", "生成视频"].map((name) => screen.getByRole("button", { name }))]) {
+      expect((control as HTMLButtonElement | HTMLTextAreaElement).disabled).toBe(true);
+    }
+    expect(screen.getByRole("button", { name: "生成视频" }).textContent).toContain("生成中");
   });
 
   test("renders the parameter panel as a fixed high-layer body portal", () => {
@@ -174,12 +231,12 @@ describe("VideoNodeComposer", () => {
 
   test("dismisses compact layers with Escape and restores focus to their trigger", () => {
     const data = { generationPrompt: "", params: { videoGeneration: createDefaultVideoGenerationParams() } } as any;
-    render(<VideoNodeComposer data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} selected />);
+    render(<VideoNodeComposer catalog={usableVideoCatalog()} data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} selected />);
 
     const modelButton = screen.getByRole("button", { name: "选择视频模型" });
     fireEvent.click(modelButton);
     fireEvent.keyDown(window, { key: "Escape" });
-    expect(screen.queryByRole("status", { name: "正在加载视频模型" })).toBeNull();
+    expect(screen.queryByRole("listbox", { name: "视频模型" })).toBeNull();
     expect(document.activeElement).toBe(modelButton);
 
     const parameterSummary = screen.getByRole("button", { name: "视频参数摘要" });
@@ -198,7 +255,8 @@ describe("VideoNodeComposer", () => {
     const data = { generationPrompt: "", params: { videoGeneration: createDefaultVideoGenerationParams() } } as any;
     render(<VideoNodeComposer data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} selected />);
 
-    expect(screen.getByRole("button", { name: "选择视频模型" }).parentElement?.parentElement?.className).toContain("max-md:flex-col");
+    expect(screen.getByTestId("video-composer-actions").className).toContain("flex-col");
+    expect(screen.getByTestId("video-composer-actions").className).toContain("md:flex-row");
   });
 
   test("reconciles duration and other params when switching to a narrower model", () => {

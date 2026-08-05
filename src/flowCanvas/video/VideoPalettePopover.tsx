@@ -1,4 +1,5 @@
 import { Box, Check, Frame, Image as ImageIcon, Palette, Sparkles, UserRound } from "lucide-react";
+import { useEffect } from "react";
 
 import { MenuSurface } from "../../components/menu/MenuSurface";
 import { useDismissibleLayer } from "../../components/menu/useDismissibleLayer";
@@ -22,16 +23,20 @@ export type VideoPaletteSourceDisplay = {
 };
 
 type VideoPalettePopoverProps = {
+  disabled?: boolean;
   onChange: (value: VideoGenerationParamsV1) => void;
   sourceDisplayByRole?: Partial<Record<VideoReferenceRole, VideoPaletteSourceDisplay>>;
   value: VideoGenerationParamsV1;
 };
 
-export function VideoPalettePopover({ onChange, sourceDisplayByRole, value }: VideoPalettePopoverProps) {
+export function VideoPalettePopover({ disabled = false, onChange, sourceDisplayByRole, value }: VideoPalettePopoverProps) {
   const layer = useDismissibleLayer("video-palette-popover");
   const referenceRolesByKey = value.referenceRolesByKey ?? {};
   const existingContextPaletteRefs = value.contextPaletteRefs ?? [];
   const assignments = Object.values(referenceRolesByKey).filter(isRoleAssignment);
+  useEffect(() => {
+    if (disabled) layer.closeLayer();
+  }, [disabled, layer.closeLayer]);
   const emptyReferenceRolesCopy = VIDEO_UI_COPY.noReferenceRolesForContextPalette.replace(/[。.]$/, "");
 
   const updateContextPalette = (assignment: VideoReferenceRoleAssignment, colorToken: string) => {
@@ -50,6 +55,7 @@ export function VideoPalettePopover({ onChange, sourceDisplayByRole, value }: Vi
         aria-haspopup="dialog"
         aria-label={VIDEO_UI_COPY.palette}
         className="inline-flex h-[38px] w-[38px] items-center justify-center rounded-[10px] border border-white/10 bg-[#17171b] text-white/75 transition hover:bg-white/[0.08] focus:border-sky-300/50 focus:outline-none"
+        disabled={disabled}
         onClick={layer.toggle}
         title={VIDEO_UI_COPY.palette}
         type="button"
@@ -98,7 +104,8 @@ export function VideoPalettePopover({ onChange, sourceDisplayByRole, value }: Vi
                               className={`relative inline-flex h-8 w-8 items-center justify-center rounded-full border transition focus:outline-none ${selected
                                 ? "border-white ring-2 ring-sky-300/80 ring-offset-2 ring-offset-[#1c1c20]"
                                 : "border-white/25 hover:border-white/70"}`}
-                              onClick={() => updateContextPalette(assignment, color.token)}
+                              disabled={disabled}
+                              onClick={() => { if (!disabled) updateContextPalette(assignment, color.token); }}
                               style={{ backgroundColor: color.hex }}
                               type="button"
                             >
@@ -128,7 +135,8 @@ export function VideoPalettePopover({ onChange, sourceDisplayByRole, value }: Vi
                       ? "border-sky-300 bg-sky-300/10"
                       : "border-white/15 bg-white/[0.025] hover:border-white/40 hover:bg-white/[0.06]"}`}
                     data-tone={tone.value}
-                    onClick={() => onChange({ ...value, visualTone: tone.value })}
+                    disabled={disabled}
+                    onClick={() => { if (!disabled) onChange({ ...value, visualTone: tone.value }); }}
                     role="radio"
                     type="button"
                   >

@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { ChevronDown, ChevronUp, Film, Image, Images, Type, Video, type LucideIcon } from "lucide-react";
 
 import { MenuSurface } from "../../components/menu/MenuSurface";
@@ -8,6 +9,7 @@ import { VIDEO_UI_COPY, VIDEO_UI_MODE_COPY } from "./videoUiCopy";
 
 type VideoModeMenuProps = {
   capabilities?: VideoGenerationCapabilities | null;
+  disabled?: boolean;
   onChange: (mode: VideoGenerationMode) => void;
   value: VideoGenerationMode;
 };
@@ -23,10 +25,14 @@ const MODE_ICONS: Record<VideoGenerationMode, LucideIcon> = {
   text_to_video: Type,
 };
 
-export function VideoModeMenu({ capabilities, onChange, value }: VideoModeMenuProps) {
+export function VideoModeMenu({ capabilities, disabled = false, onChange, value }: VideoModeMenuProps) {
   const layer = useDismissibleLayer("video-mode-menu");
   const safeCapabilities = capabilities ?? createSafeDefaultVideoCapabilities();
   const selected = MODE_OPTIONS.find((option) => option.value === value) ?? MODE_OPTIONS[0];
+
+  useEffect(() => {
+    if (disabled) layer.closeLayer();
+  }, [disabled, layer.closeLayer]);
 
   return (
     <div className="relative min-w-0">
@@ -36,6 +42,7 @@ export function VideoModeMenu({ capabilities, onChange, value }: VideoModeMenuPr
         aria-haspopup="menu"
         aria-label={VIDEO_UI_COPY.mode}
         className="inline-flex h-[38px] max-w-full items-center gap-2 rounded-[10px] border border-white/10 bg-[#303036] px-3 text-xs font-bold text-white/90 outline-none transition hover:border-white/25 hover:bg-[#383840] focus:border-sky-300/50"
+        disabled={disabled}
         onClick={layer.toggle}
         type="button"
       >
@@ -60,7 +67,7 @@ export function VideoModeMenu({ capabilities, onChange, value }: VideoModeMenuPr
                 key={option.value}
                 aria-checked={selectedOption}
                 className={`flex h-[48px] w-full items-center gap-3 rounded-[12px] px-3 text-left text-sm font-bold text-white transition hover:bg-white/[0.09] ${selectedOption ? "bg-white/[0.14]" : ""} disabled:cursor-not-allowed disabled:opacity-35`.trim()}
-                disabled={!supported}
+                disabled={disabled || !supported}
                 onClick={() => {
                   onChange(option.value);
                   layer.closeLayer();
