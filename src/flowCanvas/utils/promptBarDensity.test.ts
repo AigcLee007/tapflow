@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 
-import { getPromptBarDensity, promptBarBaseDensity } from './promptBarDensity';
+import { getPromptBarDensity, promptBarBaseDensity, videoComposerDensity } from './promptBarDensity';
 
 describe('promptBarDensity', () => {
   test('keeps prompt bars within TapNow-like viewport proportions', () => {
@@ -28,6 +28,17 @@ describe('promptBarDensity', () => {
       editorLineHeight: 1.32,
       controlHeight: 28,
       actionButtonSize: 24,
+    });
+  });
+
+  test('defines content-sized video capsule and action tokens', () => {
+    expect(videoComposerDensity).toMatchObject({
+      capsuleHeight: 40,
+      capsuleRadius: 9999,
+      modelMaxWidth: 230,
+      parameterMaxWidth: 320,
+      mobileParameterMaxWidth: 180,
+      actionSize: 40,
     });
   });
 });

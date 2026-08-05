@@ -37,6 +37,15 @@ export const promptBarBaseDensity = {
   actionButtonSize: 24,
 } as const;
 
+export const videoComposerDensity = {
+  actionSize: 40,
+  capsuleHeight: 40,
+  capsuleRadius: 9999,
+  mobileParameterMaxWidth: 180,
+  modelMaxWidth: 230,
+  parameterMaxWidth: 320,
+} as const;
+
 export const getPromptBarDensity = (variant: PromptBarDensityVariant) => ({
   ...promptBarBaseDensity,
   ...promptBarDensity[variant],
