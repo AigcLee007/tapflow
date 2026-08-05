@@ -3,6 +3,13 @@
 Last updated: 2026-08-05
 Maintainers: project team + Codex sessions
 
+## 2026-08-05 - Video Composer Default And Generation Feedback
+
+- unconfigured video nodes now prefer usable `gemini-omni-flash` and otherwise fall back to the first sorted fully usable model without overwriting saved selections;
+- input mode, camera movement, and palette share the upper tool row, reference inputs have a conditional row, and execution controls stay in one row on desktop/tablet with two deliberate groups on mobile;
+- video previews show submitting, provider-generation, failure, and retry states without fake percentages, while request-changing controls lock during generation and feedback remains visible when the node is unselected;
+- validation evidence: focused frontend regression `121/121` passed; `npm run test:smoke-video-node` passed (`4/4`); `npm run smoke:video-node` returned `status: ok` with all new layout, default-model, feedback, lock, and reduced-motion booleans true; `npm run build` exited `0` with existing Vite warnings; the full `npm test` was attempted and timed out after `184` seconds without attributable failure output, so it is not counted as passing.
+
 ## 2026-08-05 - Video Composer Default And Feedback Implementation Plan
 
 - approved and planned a catalog-driven default for unconfigured video nodes: prefer usable Gemini Omni Flash, fall back to the first sorted fully usable video model, and never overwrite a saved or user-selected model;

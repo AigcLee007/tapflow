@@ -26,10 +26,12 @@ describe("video node browser smoke contract", () => {
   });
 
   test("checks the LibTV composer and the blocked-run boundary at all target viewports", () => {
+    const html = buildVideoNodeSmokeHtml();
     const code = buildVideoNodeCheckCode({
       desktopScreenshotPath: "output/playwright/video-node/desktop.png",
       mobileScreenshotPath: "output/playwright/video-node/mobile.png",
       narrowScreenshotPath: "output/playwright/video-node/narrow.png",
+      tabletScreenshotPath: "output/playwright/video-node/tablet.png",
     });
 
     for (const field of [
@@ -52,12 +54,20 @@ describe("video node browser smoke contract", () => {
       "editorRemainsNodeAnchored",
       "readyControls",
       "readyPreviewUsesContain",
+      "defaultGeminiSelected",
+      "desktopActionsSingleRow",
+      "tabletActionsSingleRow",
+      "mobileActionsTwoGroups",
+      "generationFeedbackVisibleUnselected",
+      "generationControlsLocked",
+      "reducedMotionFeedbackSafe",
     ]) {
       expect(code).toContain(field);
     }
     expect(code).toContain("1440");
     expect(code).toContain("1024");
     expect(code).toContain("390");
+    expect(code).toContain("768");
     expect(code).toContain("1080P");
     expect(code).toContain('button[aria-label="视频参数摘要"]');
     expect(code).toContain("countDisabledStates");
@@ -68,6 +78,8 @@ describe("video node browser smoke contract", () => {
     expect(code).toContain('input[accept="video/*"]');
     expect(code).toContain("video-empty-placeholder");
     expect(code).toContain("setVideoSmokeZoom");
+    expect(code).toContain('data-testid="video-composer-tools"');
+    expect(code).toContain('data-testid="video-composer-actions"');
     expect(code).toContain("expectedEditorGap");
     expect(code).toContain(".react-flow__resize-control");
     expect(code).toContain('[data-node-editor-variant="video"]');
@@ -80,6 +92,7 @@ describe("video node browser smoke contract", () => {
     expect(code).toContain("browser.newContext");
     expect(code).toContain("newPage");
     expect(code).not.toContain("page.reload()");
+    expect(html).toContain("modelKey: 'gemini-omni-flash'");
   });
 
   test("parses Playwright CLI JSON and keeps its markdown failures visible", () => {
