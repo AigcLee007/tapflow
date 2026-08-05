@@ -68,6 +68,8 @@ import { VideoNodeLegacyComposer } from '../video/VideoNodeLegacyComposer';
 import { VIDEO_COMPOSER_V2_ENABLED } from '../video/videoComposerFeature';
 import { correctVideoGenerationParams, getVideoGenerationBlocker } from '../video/videoGenerationCapabilities';
 import { normalizeVideoGenerationParams } from '../video/videoGenerationParams';
+import { resolveDefaultVideoModel } from '../video/videoModelCatalog';
+import { createVideoModelSelectionPatch } from '../video/videoModelSelection';
 import { emitVideoComposerDiagnostic } from '../video/videoComposerDiagnostics';
 import { useVideoGenerationCatalog } from '../video/useVideoGenerationCatalog';
 import { useTextGenerationCatalog } from '../text/useTextGenerationCatalog';
@@ -7670,6 +7672,17 @@ export const VideoNodeComponent = memo(function VideoNode({
   const showNodeEditor = showSingleNodeControls;
   const videoCatalog = useVideoGenerationCatalog();
   const videoParams = useMemo(() => normalizeVideoGenerationParams(d).params, [d]);
+  const hasHydratedDefaultVideoModel = useRef(false);
+
+  useEffect(() => {
+    if (d.modelId || hasHydratedDefaultVideoModel.current || videoCatalog.loading || videoCatalog.error) return;
+    const defaultModel = resolveDefaultVideoModel(videoCatalog.models);
+    if (!defaultModel) return;
+    const patch = createVideoModelSelectionPatch(videoCatalog.models, defaultModel.id, d.params || {}, videoParams);
+    if (!patch) return;
+    hasHydratedDefaultVideoModel.current = true;
+    updateNodeData(id, patch);
+  }, [d.modelId, d.params, id, updateNodeData, videoCatalog.error, videoCatalog.loading, videoCatalog.models, videoParams]);
   const requestedVideoSize = useMemo(
     () => getVideoNodeSizeForRequestedRatio(videoParams.aspectRatio),
     [videoParams.aspectRatio],

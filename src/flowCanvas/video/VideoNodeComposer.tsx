@@ -15,7 +15,7 @@ import { VideoReferenceStrip } from "./VideoReferenceStrip";
 import { useVideoGenerationCatalog } from "./useVideoGenerationCatalog";
 import { correctVideoGenerationParams, createSafeDefaultVideoCapabilities } from "./videoGenerationCapabilities";
 import { emitVideoComposerDiagnostic } from "./videoComposerDiagnostics";
-import { resolveAutomaticVideoMode } from "./videoReferenceRules";
+import { createVideoModelSelectionPatch } from "./videoModelSelection";
 import type { VideoGenerationParamsV1, VideoReferenceInputV2, VideoReferenceRole } from "./videoTypes";
 import type { VideoPaletteSourceDisplay } from "./VideoPalettePopover";
 import { VIDEO_UI_COPY, VIDEO_UI_REFERENCE_ROLE_COPY } from "./videoUiCopy";
@@ -99,17 +99,9 @@ export function VideoNodeComposer({ catalog: catalogOverride, data, generating, 
     modelButtonRef.current?.focus();
   };
   const handleModelChange = (modelId: string) => {
-    const nextOption = catalog.models.find((model) => model.id === modelId);
-    if (!nextOption) return;
-    const corrected = nextOption.capabilities.confirmedByRoute
-      ? correctVideoGenerationParams(params, nextOption.capabilities).params
-      : params;
-    const automatic = resolveAutomaticVideoMode(nextOption.capabilities, corrected.referenceInputs, corrected.mode);
-    onUpdate({
-      modelId: nextOption.id,
-      routeKey: nextOption.routeKey,
-      params: { ...(data.params ?? {}), videoGeneration: { ...corrected, mode: automatic.mode, referenceInputs: automatic.references } },
-    });
+    const patch = createVideoModelSelectionPatch(catalog.models, modelId, data.params ?? {}, params);
+    if (!patch) return;
+    onUpdate(patch);
     closeModel();
   };
 

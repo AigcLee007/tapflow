@@ -24,6 +24,42 @@ const textCatalogMocks = vi.hoisted(() => ({
 const useAssetLibraryMock = vi.hoisted(() => vi.fn());
 const nodeResizerMock = vi.hoisted(() => vi.fn(() => null));
 
+const createVideoCatalogModel = (overrides: Record<string, unknown> = {}) => ({
+  blocker: null,
+  capabilities: {
+    aspectRatios: ["16:9"],
+    confirmedByRoute: true,
+    durationStepSeconds: 1,
+    maxCount: 1,
+    maxDurationSeconds: 8,
+    minDurationSeconds: 4,
+    resolutions: ["720P"],
+    supportedModes: ["text_to_video"],
+    supportsAudio: false,
+    supportsHumanReview: false,
+  },
+  estimatedCredits: 1,
+  id: "default-video-model",
+  label: "Default video model",
+  minChargeCredits: 1,
+  modelKey: "default-video-model",
+  pricing: { billingBasis: "duration_second", exact: true, minChargeCredits: 1, unit: "video_generation", unitCredits: 1 },
+  routeKey: "video.default-route",
+  ...overrides,
+});
+
+const createVideoNodeData = (overrides: Record<string, unknown> = {}) => ({
+  createdAt: 1,
+  generationStatus: "idle",
+  height: 170,
+  kind: "video",
+  status: "idle",
+  title: "Video",
+  updatedAt: 1,
+  width: 302,
+  ...overrides,
+});
+
 vi.mock("../../assets/assetApi", () => ({
   getAsset: (...args: unknown[]) => assetApiMocks.getAsset(...args),
   getAssetDownloadUrl: (...args: unknown[]) => assetApiMocks.getAssetDownloadUrl(...args),
@@ -129,6 +165,48 @@ describe("FlowNodes agent metadata", () => {
 
     fireEvent.click(screen.getByRole('button', { name: /上传/ }));
     expect(clickSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("hydrates an unconfigured video node with Gemini in preference to another eligible model without overwriting a saved selection", async () => {
+    const fallbackModel = createVideoCatalogModel({ id: "fallback-video-model", modelKey: "fallback-video-model", routeKey: "video.fallback-route" });
+    const geminiModel = createVideoCatalogModel({ id: "gemini-video-model", modelKey: "gemini-omni-flash", routeKey: "video.gemini-route" });
+    videoCatalogMocks.current = { error: null, loading: true, models: [], retry: vi.fn() };
+    const node = useFlowCanvasStore.getState().addNode("video", { x: 0, y: 0 }, createVideoNodeData({ routeKey: "video.stale-route" }) as any, { selected: false });
+    const props = { id: node.id, selected: false, data: node.data as any, dragging: false, zIndex: 1, isConnectable: true, type: "video", xPos: 0, yPos: 0 };
+    const { rerender } = render(<VideoNodeComponent {...props} />);
+
+    expect(useFlowCanvasStore.getState().nodes.find((item) => item.id === node.id)?.data.modelId).toBeUndefined();
+
+    videoCatalogMocks.current = { error: null, loading: false, models: [fallbackModel, geminiModel], retry: vi.fn() };
+    rerender(<VideoNodeComponent {...props} data={{ ...node.data }} />);
+
+    await waitFor(() => expect(useFlowCanvasStore.getState().nodes.find((item) => item.id === node.id)?.data).toMatchObject({
+      modelId: "gemini-video-model",
+      routeKey: "video.gemini-route",
+    }));
+    rerender(<VideoNodeComponent {...props} data={{ ...node.data }} />);
+    expect(useFlowCanvasStore.getState().nodes.find((item) => item.id === node.id)?.data.modelId).toBe("gemini-video-model");
+
+    const saved = useFlowCanvasStore.getState().addNode("video", { x: 0, y: 0 }, createVideoNodeData({ modelId: "saved-model", routeKey: "video.saved-route" }) as any, { selected: false });
+    render(<VideoNodeComponent {...{ ...props, id: saved.id, data: saved.data }} />);
+    expect(useFlowCanvasStore.getState().nodes.find((item) => item.id === saved.id)?.data).toMatchObject({
+      modelId: "saved-model",
+      routeKey: "video.saved-route",
+    });
+  });
+
+  it("does not hydrate an unconfigured video node when the catalog has failed", () => {
+    videoCatalogMocks.current = {
+      error: "catalog unavailable",
+      loading: false,
+      models: [createVideoCatalogModel()],
+      retry: vi.fn(),
+    };
+    const node = useFlowCanvasStore.getState().addNode("video", { x: 0, y: 0 }, createVideoNodeData() as any, { selected: false });
+
+    render(<VideoNodeComponent id={node.id} selected={false} data={node.data as any} dragging={false} zIndex={1} isConnectable type="video" xPos={0} yPos={0} />);
+
+    expect(useFlowCanvasStore.getState().nodes.find((item) => item.id === node.id)?.data.modelId).toBeUndefined();
   });
 
   it('does not render a NodeResizer for any selected video state', () => {
