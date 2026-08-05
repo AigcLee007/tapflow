@@ -8,6 +8,7 @@ type Viewport = { height: number; width: number };
 
 export type VideoNodeSmokeResult = {
   blockedGenerationDidNotCreateRun: boolean;
+  capsuleWidthMatchesContent: boolean;
   cameraGridColumns: number;
   cameraPresetCount: number;
   composerVisible: boolean;
@@ -21,6 +22,7 @@ export type VideoNodeSmokeResult = {
   generationControlsLocked: boolean;
   generationFeedbackVisibleUnselected: boolean;
   modelMenuNoSearch: boolean;
+  noParameterFlexExpansion: boolean;
   mobileActionsTwoGroups: boolean;
   parameterDialogIsTopLayer: boolean;
   placeholderDropDoesNotUpload: boolean;
@@ -244,9 +246,29 @@ async function readVideoEditorGeometry(viewportPage) {
 async function actionLayout(viewportPage) {
   return await viewportPage.locator('[data-testid="video-composer-actions"]').evaluate((actions) => {
     const groups = [...actions.children].map((child) => child.getBoundingClientRect());
+    const settingsGroup = actions.querySelector('[data-testid="video-composer-settings-group"]');
+    const submitGroup = actions.querySelector('[data-testid="video-composer-submit-group"]');
     return {
       groupCount: groups.length,
-      sameRow: groups.length === 2 && Math.abs(groups[0].top - groups[1].top) <= 1,
+      sameRow: Boolean(settingsGroup && submitGroup) && groups.length === 2 && Math.abs(groups[0].top - groups[1].top) <= 1,
+    };
+  });
+}
+async function readCapsuleGeometry(viewportPage) {
+  return await viewportPage.locator('[aria-label="视频创作面板"]').evaluate((composer) => {
+    const readCapsule = (testId) => {
+      const capsule = composer.querySelector('[data-testid="' + testId + '"]');
+      const trigger = capsule?.querySelector('button');
+      const rect = trigger?.getBoundingClientRect();
+      return {
+        scrollWidth: trigger?.scrollWidth ?? 0,
+        width: rect?.width ?? 0,
+      };
+    };
+    return {
+      composerWidth: composer.getBoundingClientRect().width,
+      model: readCapsule('video-capsule-model'),
+      parameters: readCapsule('video-capsule-parameters'),
     };
   });
 }
@@ -269,6 +291,7 @@ const defaultGeminiSelected = await desktopPage.evaluate(() => {
 });
 const desktopActionLayout = await actionLayout(desktopPage);
 const desktopActionsSingleRow = desktopActionLayout.groupCount === 2 && desktopActionLayout.sameRow;
+const desktopCapsuleGeometry = await readCapsuleGeometry(desktopPage);
 await desktopPage.waitForFunction(() => {
   const node = window.getVideoSmokeNode?.();
   return node?.data?.width === 170 && node?.data?.height === 302 && node?.data?.aspectRatio === 9 / 16;
@@ -364,6 +387,7 @@ await assertComposerVisible(narrowHarness.page, 'narrow');
 await assertNoVisualOverflow(narrowHarness.page);
 const narrowActionLayout = await actionLayout(narrowHarness.page);
 const narrowActionsSingleRow = narrowActionLayout.groupCount === 2 && narrowActionLayout.sameRow;
+const narrowCapsuleGeometry = await readCapsuleGeometry(narrowHarness.page);
 await narrowHarness.page.screenshot({ path: ${JSON.stringify(options.narrowScreenshotPath.replaceAll("\\", "/"))}, fullPage: true });
 
 tabletHarness = await openViewport(tablet, false);
@@ -371,6 +395,7 @@ await assertComposerVisible(tabletHarness.page, 'tablet');
 await assertNoVisualOverflow(tabletHarness.page);
 const tabletActionLayout = await actionLayout(tabletHarness.page);
 const tabletActionsSingleRow = tabletActionLayout.groupCount === 2 && tabletActionLayout.sameRow;
+const tabletCapsuleGeometry = await readCapsuleGeometry(tabletHarness.page);
 await tabletHarness.page.screenshot({ path: ${JSON.stringify(options.tabletScreenshotPath.replaceAll("\\", "/"))}, fullPage: true });
 
 // The mobile page is a separate prefers-reduced-motion context, not a reload of the desktop canvas.
@@ -379,6 +404,7 @@ const mobilePage = mobileHarness.page;
 await assertComposerVisible(mobilePage, 'mobile');
 const mobileActionLayout = await actionLayout(mobilePage);
 const mobileActionsTwoGroups = mobileActionLayout.groupCount === 2 && !mobileActionLayout.sameRow;
+const mobileCapsuleGeometry = await readCapsuleGeometry(mobilePage);
 await mobilePage.evaluate(() => document.querySelector('button[aria-label="运镜库"]')?.click());
 await mobilePage.waitForSelector('section[role="dialog"][aria-label="运镜库"] video', { timeout: 15000 });
 const reducedMotionVideoIsPaused = await mobilePage.locator('section[role="dialog"][aria-label="运镜库"] video').evaluateAll((videos) => videos.length === 23 && videos.every((video) => video.paused));
@@ -425,10 +451,19 @@ await mobilePage.screenshot({ path: ${JSON.stringify(options.mobileScreenshotPat
 await mobilePage.evaluate(() => window.resetVideoSmokeBlockedNode());
 const blockedGenerationDidNotCreateRun = await mobilePage.locator('button[aria-label="生成视频"]').evaluate((button) => button.disabled)
   && await mobilePage.evaluate(() => window.videoNodeSmokeState.workflowRequestCount === 0);
+const capsuleGeometryByViewport = [desktopCapsuleGeometry, narrowCapsuleGeometry, tabletCapsuleGeometry, mobileCapsuleGeometry];
+const capsuleWidthMatchesContent = capsuleGeometryByViewport.every(({ model, parameters }) =>
+  model.width > 0 && parameters.width > 0
+  && model.width <= model.scrollWidth + 24
+  && parameters.width <= parameters.scrollWidth + 24,
+);
+const noParameterFlexExpansion = capsuleGeometryByViewport.every(({ composerWidth, parameters }) =>
+  parameters.width < composerWidth * 0.75,
+);
 
-const result = { blockedGenerationDidNotCreateRun, cameraGridColumns, cameraPresetCount, composerVisible, defaultGeminiSelected, desktopActionsSingleRow, durationRangeIsDefault, editorGeometryByZoom, editorRemainsNodeAnchored, editorSizeStableAcrossZoom, emptyPreviewDoesNotOpenUpload, emptyUploadInputPresent, generationControlsLocked, generationFeedbackVisibleUnselected, mobileActionsTwoGroups, modelMenuNoSearch, parameterDialogIsTopLayer, placeholderDropDoesNotUpload, portraitEmptyNodeIsSized, readyControls, readyPreviewUsesContain, reducedMotionFeedbackSafe, resolutionOptions, tabletActionsSingleRow, topUploadButtonOpensUpload, videoNodeHasNoResizeControls };
-if (!composerVisible || !defaultGeminiSelected || !desktopActionsSingleRow || !narrowActionsSingleRow || !tabletActionsSingleRow || !mobileActionsTwoGroups || !generationFeedbackVisibleUnselected || !generationControlsLocked || !reducedMotionFeedbackSafe || !generationFeedbackHasNoPercent || !modelMenuNoSearch || !hoverDescriptionVisible || !hasDurationAudioAndCounts || !durationRangeIsDefault || !parameterDialogIsTopLayer || !resolutionOptions.includes('1080P') || cameraGridColumns !== 4 || cameraPresetCount !== 23 || !reducedMotionVideoIsPaused || !blockedGenerationDidNotCreateRun || !portraitEmptyNodeIsSized || !emptyUploadInputPresent || !emptyPreviewDoesNotOpenUpload || !topUploadButtonOpensUpload || !placeholderDropDoesNotUpload || !videoNodeHasNoResizeControls || !editorSizeStableAcrossZoom || !editorRemainsNodeAnchored || !readyControls.download || !readyControls.fullscreen || !readyControls.upload || !readyPreviewUsesContain) {
-  throw new Error(JSON.stringify({ ...result, generationFeedbackHasNoPercent, hasDurationAudioAndCounts, durationControlCount, durationOptions, audioGroupCount, countDisabledStates, countOptions, hoverDescriptionVisible, narrowActionsSingleRow, reducedMotionVideoIsPaused }));
+const result = { blockedGenerationDidNotCreateRun, capsuleWidthMatchesContent, cameraGridColumns, cameraPresetCount, composerVisible, defaultGeminiSelected, desktopActionsSingleRow, durationRangeIsDefault, editorGeometryByZoom, editorRemainsNodeAnchored, editorSizeStableAcrossZoom, emptyPreviewDoesNotOpenUpload, emptyUploadInputPresent, generationControlsLocked, generationFeedbackVisibleUnselected, mobileActionsTwoGroups, modelMenuNoSearch, noParameterFlexExpansion, parameterDialogIsTopLayer, placeholderDropDoesNotUpload, portraitEmptyNodeIsSized, readyControls, readyPreviewUsesContain, reducedMotionFeedbackSafe, resolutionOptions, tabletActionsSingleRow, topUploadButtonOpensUpload, videoNodeHasNoResizeControls };
+if (!composerVisible || !defaultGeminiSelected || !desktopActionsSingleRow || !narrowActionsSingleRow || !tabletActionsSingleRow || !mobileActionsTwoGroups || !generationFeedbackVisibleUnselected || !generationControlsLocked || !reducedMotionFeedbackSafe || !generationFeedbackHasNoPercent || !modelMenuNoSearch || !hoverDescriptionVisible || !hasDurationAudioAndCounts || !durationRangeIsDefault || !parameterDialogIsTopLayer || !resolutionOptions.includes('1080P') || cameraGridColumns !== 4 || cameraPresetCount !== 23 || !reducedMotionVideoIsPaused || !blockedGenerationDidNotCreateRun || !capsuleWidthMatchesContent || !noParameterFlexExpansion || !portraitEmptyNodeIsSized || !emptyUploadInputPresent || !emptyPreviewDoesNotOpenUpload || !topUploadButtonOpensUpload || !placeholderDropDoesNotUpload || !videoNodeHasNoResizeControls || !editorSizeStableAcrossZoom || !editorRemainsNodeAnchored || !readyControls.download || !readyControls.fullscreen || !readyControls.upload || !readyPreviewUsesContain) {
+  throw new Error(JSON.stringify({ ...result, capsuleGeometryByViewport, generationFeedbackHasNoPercent, hasDurationAudioAndCounts, durationControlCount, durationOptions, audioGroupCount, countDisabledStates, countOptions, hoverDescriptionVisible, narrowActionsSingleRow, reducedMotionVideoIsPaused }));
 }
 return JSON.stringify({ ...result, status: 'ok' });
 } finally {

@@ -52,6 +52,8 @@ describe("video node browser smoke contract", () => {
       "editorGeometryByZoom",
       "editorSizeStableAcrossZoom",
       "editorRemainsNodeAnchored",
+      "capsuleWidthMatchesContent",
+      "noParameterFlexExpansion",
       "readyControls",
       "readyPreviewUsesContain",
       "defaultGeminiSelected",
@@ -80,6 +82,12 @@ describe("video node browser smoke contract", () => {
     expect(code).toContain("setVideoSmokeZoom");
     expect(code).toContain('data-testid="video-composer-tools"');
     expect(code).toContain('data-testid="video-composer-actions"');
+    expect(code).toContain('data-testid="video-composer-settings-group"');
+    expect(code).toContain('data-testid="video-composer-submit-group"');
+    expect(code).toContain("video-capsule-model");
+    expect(code).toContain("video-capsule-parameters");
+    expect(code).toContain("scrollWidth");
+    expect(code).toContain("noParameterFlexExpansion");
     expect(code).toContain("expectedEditorGap");
     expect(code).toContain(".react-flow__resize-control");
     expect(code).toContain('[data-node-editor-variant="video"]');
