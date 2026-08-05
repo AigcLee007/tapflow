@@ -6,6 +6,7 @@ import { useDismissibleLayer } from "../../components/menu/useDismissibleLayer";
 import { createSafeDefaultVideoCapabilities } from "./videoGenerationCapabilities";
 import type { VideoGenerationCapabilities, VideoGenerationMode } from "./videoTypes";
 import { VIDEO_UI_COPY, VIDEO_UI_MODE_COPY } from "./videoUiCopy";
+import { VIDEO_COMPOSER_CAPSULE_CLASS, videoComposerDensity } from "../utils/promptBarDensity";
 
 type VideoModeMenuProps = {
   capabilities?: VideoGenerationCapabilities | null;
@@ -41,14 +42,15 @@ export function VideoModeMenu({ capabilities, disabled = false, onChange, value 
         aria-expanded={layer.open}
         aria-haspopup="menu"
         aria-label={VIDEO_UI_COPY.mode}
-        className="inline-flex h-[38px] max-w-full items-center gap-2 rounded-[10px] border border-white/10 bg-[#303036] px-3 text-xs font-bold text-white/90 outline-none transition hover:border-white/25 hover:bg-[#383840] focus:border-sky-300/50"
+        className={`inline-flex max-w-full items-center gap-1.5 px-[9px] ${VIDEO_COMPOSER_CAPSULE_CLASS}`}
         disabled={disabled}
         onClick={layer.toggle}
+        style={{ height: videoComposerDensity.capsuleHeight, borderRadius: videoComposerDensity.capsuleRadius }}
         type="button"
       >
-        <Video aria-hidden="true" className="shrink-0" size={16} />
+        <Video aria-hidden="true" className="shrink-0" size={14} />
         <span className="truncate">{selected.label}</span>
-        {layer.open ? <ChevronUp aria-hidden="true" className="shrink-0 text-white/55" size={15} /> : <ChevronDown aria-hidden="true" className="shrink-0 text-white/55" size={15} />}
+        {layer.open ? <ChevronUp aria-hidden="true" className="shrink-0 text-white/55" size={14} /> : <ChevronDown aria-hidden="true" className="shrink-0 text-white/55" size={14} />}
       </button>
       {layer.open ? (
         <MenuSurface

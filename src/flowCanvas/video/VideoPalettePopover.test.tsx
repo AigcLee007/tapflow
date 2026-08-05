@@ -5,6 +5,14 @@ import { createDefaultVideoGenerationParams } from "./videoGenerationParams";
 import { isSafePreviewUrl, VideoPalettePopover } from "./VideoPalettePopover";
 
 describe("VideoPalettePopover", () => {
+  test("uses the shared compact video capsule trigger", () => {
+    render(<VideoPalettePopover onChange={vi.fn()} value={createDefaultVideoGenerationParams()} />);
+    const trigger = screen.getByRole("button", { name: "调色盘" });
+    expect(trigger.className).toContain("bg-white/[0.06]");
+    expect(trigger.style.height).toBe("28px");
+    expect(trigger.style.borderRadius).toBe("9999px");
+  });
+
   test("closes an open palette and blocks changes when disabled", () => {
     const onChange = vi.fn();
     const value = createDefaultVideoGenerationParams();

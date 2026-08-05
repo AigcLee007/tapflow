@@ -20,7 +20,7 @@ import type { VideoGenerationParamsV1, VideoReferenceInputV2, VideoReferenceRole
 import type { VideoPaletteSourceDisplay } from "./VideoPalettePopover";
 import { VIDEO_UI_COPY, VIDEO_UI_REFERENCE_ROLE_COPY } from "./videoUiCopy";
 import { useDismissibleLayer } from "../../components/menu/useDismissibleLayer";
-import { videoComposerDensity } from "../utils/promptBarDensity";
+import { VIDEO_COMPOSER_CAPSULE_CLASS, videoComposerDensity } from "../utils/promptBarDensity";
 import { ImageGenerateToolbar } from "../nodes/ImageGenerateToolbar";
 
 type Props = {
@@ -136,7 +136,7 @@ export function VideoNodeComposer({ catalog: catalogOverride, data, generating, 
   return <div aria-busy={generating} aria-label={VIDEO_UI_COPY.videoComposer} className="flex w-full flex-col text-white">
     <div className="flex flex-nowrap items-center gap-2" data-testid="video-composer-tools">
       <VideoModeMenu capabilities={capabilities} disabled={generating} onChange={(mode) => setParams({ ...params, mode })} value={params.mode} />
-      <button aria-label={VIDEO_UI_COPY.cameraLibrary} className="inline-flex h-[38px] min-w-0 items-center gap-[7px] rounded-[10px] border border-white/10 bg-[#17171b] px-2 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-45" disabled={generating} onClick={() => setCameraOpen(true)} ref={cameraButtonRef} type="button"><Camera className="shrink-0" size={16} /><span className="truncate">{selectedMotionLabel ?? "运镜"}</span></button>
+      <button aria-label={VIDEO_UI_COPY.cameraLibrary} className={`inline-flex min-w-0 items-center gap-1.5 px-[9px] ${VIDEO_COMPOSER_CAPSULE_CLASS}`} disabled={generating} onClick={() => setCameraOpen(true)} ref={cameraButtonRef} style={capsuleStyle} type="button"><Camera className="shrink-0" size={14} /><span className="truncate">{selectedMotionLabel ?? "运镜"}</span></button>
       <VideoPalettePopover disabled={generating} onChange={setParams} sourceDisplayByRole={sourceDisplayByRole} value={params} />
     </div>
 
@@ -148,7 +148,7 @@ export function VideoNodeComposer({ catalog: catalogOverride, data, generating, 
     <div className="mt-2 flex flex-col gap-2 border-t border-white/10 pt-2 md:flex-row md:flex-nowrap md:items-center" data-testid="video-composer-actions">
       <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-2" data-testid="video-composer-settings-group">
         <div className="relative min-w-0" data-testid="video-capsule-model" style={{ maxWidth: videoComposerDensity.modelMaxWidth }}>
-          <button ref={modelButtonRef} aria-expanded={modelOpen} aria-label={VIDEO_UI_COPY.chooseVideoModel} className="inline-flex max-w-full min-w-0 items-center gap-[7px] border border-white/10 bg-[#111216] px-3 text-xs font-bold transition hover:border-white/25 hover:bg-[#1d1f24] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-300/70 disabled:cursor-not-allowed disabled:opacity-45" disabled={generating || catalog.loading} onClick={() => { if (modelOpen) closeModel(); else { parameterLayer.dismissLayer(); setModelOpen(true); } }} style={capsuleStyle} type="button"><Sparkles className="shrink-0" size={16} /><span className="min-w-0 truncate" title={modelButtonLabel}>{modelButtonLabel}</span></button>
+          <button ref={modelButtonRef} aria-expanded={modelOpen} aria-label={VIDEO_UI_COPY.chooseVideoModel} className={`inline-flex max-w-full min-w-0 items-center gap-1.5 px-[9px] ${VIDEO_COMPOSER_CAPSULE_CLASS}`} disabled={generating || catalog.loading} onClick={() => { if (modelOpen) closeModel(); else { parameterLayer.dismissLayer(); setModelOpen(true); } }} style={capsuleStyle} type="button"><Sparkles className="shrink-0" size={14} /><span className="min-w-0 truncate" title={modelButtonLabel}>{modelButtonLabel}</span></button>
           {modelOpen ? <div className="absolute bottom-[calc(100%+8px)] left-0 z-[1300]"><VideoModelMenu error={catalog.error} loading={catalog.loading} onChange={handleModelChange} onClose={closeModel} onRetry={catalog.retry} options={catalog.models} value={data.modelId ?? null} /></div> : null}
         </div>
         <div className="relative min-w-0" data-testid="video-capsule-parameters" style={{ maxWidth: videoComposerDensity.parameterMaxWidth }}>
@@ -159,7 +159,7 @@ export function VideoNodeComposer({ catalog: catalogOverride, data, generating, 
           }}
           aria-expanded={parameterLayer.open}
           aria-label="视频参数摘要"
-          className="inline-flex w-max max-w-full min-w-0 items-center gap-2 border border-white/10 bg-[#303036] px-3 text-xs font-bold text-white/90 transition hover:border-white/25 hover:bg-[#383840] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-300/70 disabled:cursor-not-allowed disabled:opacity-45 max-md:max-w-[var(--video-composer-mobile-parameter-max-width)]"
+          className={`inline-flex w-max max-w-full min-w-0 items-center gap-1.5 px-[9px] max-md:max-w-[var(--video-composer-mobile-parameter-max-width)] ${VIDEO_COMPOSER_CAPSULE_CLASS}`}
           disabled={generating}
           onClick={() => {
             setModelOpen(false);
@@ -169,10 +169,10 @@ export function VideoNodeComposer({ catalog: catalogOverride, data, generating, 
           style={parameterCapsuleStyle}
           type="button"
         >
-          <RectangleHorizontal aria-hidden="true" className="shrink-0" size={16} />
+          <RectangleHorizontal aria-hidden="true" className="shrink-0" size={14} />
           <span className="min-w-0 truncate">{parameterSummary}</span>
-          {showAudioIndicator ? <Volume2 aria-label={audioStatusLabel} className="shrink-0" size={16} title={audioStatusLabel} /> : null}
-          {parameterLayer.open ? <ChevronUp aria-hidden="true" className="shrink-0 text-white/55" size={15} /> : <ChevronDown aria-hidden="true" className="shrink-0 text-white/55" size={15} />}
+          {showAudioIndicator ? <Volume2 aria-label={audioStatusLabel} className="shrink-0" size={14} title={audioStatusLabel} /> : null}
+          {parameterLayer.open ? <ChevronUp aria-hidden="true" className="shrink-0 text-white/55" size={14} /> : <ChevronDown aria-hidden="true" className="shrink-0 text-white/55" size={14} />}
         </button>
           {parameterLayer.open ? <VideoParameterPopover anchorRef={parameterTriggerRef} layerRef={parameterLayer.ref}><VideoParameterPanel capabilities={capabilities} onChange={setParams} pricing={option?.pricing ?? null} value={params} /></VideoParameterPopover> : null}
         </div>

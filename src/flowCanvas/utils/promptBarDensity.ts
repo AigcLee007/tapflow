@@ -46,6 +46,8 @@ export const videoComposerDensity = {
   parameterMaxWidth: 320,
 } as const;
 
+export const VIDEO_COMPOSER_CAPSULE_CLASS = "border border-white/[0.08] bg-white/[0.06] text-xs font-[650] text-white/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] transition hover:border-white/[0.14] hover:bg-white/[0.10] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-300/70 disabled:cursor-not-allowed disabled:opacity-45";
+
 export const getPromptBarDensity = (variant: PromptBarDensityVariant) => ({
   ...promptBarBaseDensity,
   ...promptBarDensity[variant],

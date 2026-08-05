@@ -138,6 +138,10 @@ describe("VideoNodeComposer", () => {
     expect(tools.contains(screen.getByRole("button", { name: "生成模式" }))).toBe(true);
     expect(tools.contains(screen.getByRole("button", { name: "运镜库" }))).toBe(true);
     expect(tools.contains(screen.getByRole("button", { name: "调色盘" }))).toBe(true);
+    const camera = screen.getByRole("button", { name: "运镜库" });
+    expect(camera.className).toContain("bg-white/[0.06]");
+    expect(camera.style.height).toBe("28px");
+    expect(camera.style.borderRadius).toBe("9999px");
     expect(actions.contains(screen.getByRole("button", { name: "选择视频模型" }))).toBe(true);
     expect(actions.contains(screen.getByRole("button", { name: "视频参数摘要" }))).toBe(true);
     expect(screen.queryByTestId("video-composer-references")).toBeNull();
@@ -168,14 +172,15 @@ describe("VideoNodeComposer", () => {
     expect(model.textContent).not.toContain("线路一");
     expect(model.className).toMatch(/max-w/);
     expect(model.className).toMatch(/min-w-0/);
-    expect(model.className).toContain("bg-[#111216]");
-    expect(model.className).toContain("hover:bg-[#1d1f24]");
+    expect(model.className).toContain("bg-white/[0.06]");
+    expect(model.className).toContain("hover:bg-white/[0.10]");
     expect(model.className).toContain("focus-visible:outline-offset-2");
     expect(model.style.height).toBe("28px");
     expect(model.style.borderRadius).toBe("9999px");
     expect(parameter.className).toMatch(/w-max/);
     expect(parameter.className).toMatch(/max-w/);
     expect(parameter.className).toContain("focus-visible:outline-offset-2");
+    expect(parameter.className).toContain("bg-white/[0.06]");
     expect(parameter.className).not.toMatch(/(^|\s)w-full(\s|$)/);
     expect(parameter.className).not.toContain("flex-1");
     expect(parameter.style.height).toBe("28px");

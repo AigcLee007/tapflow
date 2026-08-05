@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 
-import { getPromptBarDensity, promptBarBaseDensity, videoComposerDensity } from './promptBarDensity';
+import { getPromptBarDensity, promptBarBaseDensity, VIDEO_COMPOSER_CAPSULE_CLASS, videoComposerDensity } from './promptBarDensity';
 
 describe('promptBarDensity', () => {
   test('keeps prompt bars within TapNow-like viewport proportions', () => {
@@ -40,5 +40,8 @@ describe('promptBarDensity', () => {
       mobileParameterMaxWidth: 180,
       actionSize: 24,
     });
+    expect(VIDEO_COMPOSER_CAPSULE_CLASS).toContain('bg-white/[0.06]');
+    expect(VIDEO_COMPOSER_CAPSULE_CLASS).toContain('hover:bg-white/[0.10]');
+    expect(VIDEO_COMPOSER_CAPSULE_CLASS).toContain('shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]');
   });
 });

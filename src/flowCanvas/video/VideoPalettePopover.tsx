@@ -16,6 +16,7 @@ import type {
   VideoReferenceRoleAssignment,
 } from "./videoTypes";
 import { VIDEO_UI_REFERENCE_ROLE_COPY } from "./videoUiCopy";
+import { VIDEO_COMPOSER_CAPSULE_CLASS, videoComposerDensity } from "../utils/promptBarDensity";
 
 export type VideoPaletteSourceDisplay = {
   label: string;
@@ -54,13 +55,14 @@ export function VideoPalettePopover({ disabled = false, onChange, sourceDisplayB
         aria-expanded={layer.open}
         aria-haspopup="dialog"
         aria-label={VIDEO_UI_COPY.palette}
-        className="inline-flex h-[38px] w-[38px] items-center justify-center rounded-[10px] border border-white/10 bg-[#17171b] text-white/75 transition hover:bg-white/[0.08] focus:border-sky-300/50 focus:outline-none"
+        className={`inline-flex w-7 items-center justify-center p-0 ${VIDEO_COMPOSER_CAPSULE_CLASS}`}
         disabled={disabled}
         onClick={layer.toggle}
+        style={{ height: videoComposerDensity.capsuleHeight, borderRadius: videoComposerDensity.capsuleRadius }}
         title={VIDEO_UI_COPY.palette}
         type="button"
       >
-        <Palette aria-hidden="true" size={16} />
+        <Palette aria-hidden="true" size={14} />
       </button>
       {layer.open ? (
         <MenuSurface

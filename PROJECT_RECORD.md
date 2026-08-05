@@ -6239,3 +6239,9 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - aligned video model and parameter capsules with the image node bottom row: 28px capsule height and 24px action token; top video tool buttons remain unchanged.
 - aligned the video editor surface background with the image editor surface (`rgba(38,38,38,0.98)`) while preserving video-only inverse-zoom and positioning behavior.
 - focused density, surface, composer, and shared toolbar tests passed (`39` tests); frontend build passed with existing non-blocking Vite warnings.
+
+## 2026-08-05 - Video Capsule Visual Unification
+
+- introduced one shared video composer capsule class for mode, camera, palette, model, and parameter triggers, matching the credits pill's translucent background, subtle border, inset highlight, hover, focus, and disabled states.
+- all video composer triggers now use 28px height, pill radius, 14px icons, 9px horizontal padding, and 6px internal spacing; the palette trigger is a 28px circle.
+- focused capsule, mode, palette, composer, and shared generation toolbar tests passed (`42` tests); frontend build passed with existing non-blocking Vite warnings.

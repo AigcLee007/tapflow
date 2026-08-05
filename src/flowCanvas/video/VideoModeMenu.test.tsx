@@ -10,7 +10,9 @@ describe("VideoModeMenu", () => {
     render(<VideoModeMenu capabilities={createSafeDefaultVideoCapabilities()} onChange={onChange} value="text_to_video" />);
 
     const trigger = screen.getByRole("button", { name: "生成模式" });
-    expect(trigger.className).toContain("bg-[#303036]");
+    expect(trigger.className).toContain("bg-white/[0.06]");
+    expect(trigger.style.height).toBe("28px");
+    expect(trigger.style.borderRadius).toBe("9999px");
     expect(trigger.querySelector(".lucide-chevron-down")).toBeTruthy();
     fireEvent.click(trigger);
     expect(screen.getByText("视频生成模式")).toBeTruthy();
