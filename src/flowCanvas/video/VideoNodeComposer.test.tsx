@@ -167,10 +167,19 @@ describe("VideoNodeComposer", () => {
     expect(model.textContent).toContain("线路一");
     expect(model.className).toMatch(/max-w/);
     expect(model.className).toMatch(/min-w-0/);
+    expect(model.className).toContain("bg-[#111216]");
+    expect(model.className).toContain("hover:bg-[#1d1f24]");
+    expect(model.className).toContain("focus-visible:outline-offset-2");
+    expect(model.style.height).toBe("40px");
+    expect(model.style.borderRadius).toBe("9999px");
     expect(parameter.className).toMatch(/w-max/);
     expect(parameter.className).toMatch(/max-w/);
+    expect(parameter.className).toContain("focus-visible:outline-offset-2");
     expect(parameter.className).not.toMatch(/(^|\s)w-full(\s|$)/);
     expect(parameter.className).not.toContain("flex-1");
+    expect(parameter.style.height).toBe("40px");
+    expect(parameter.style.borderRadius).toBe("9999px");
+    expect(parameter.style.getPropertyValue("--video-composer-mobile-parameter-max-width")).toBe("180px");
     expect(parameter.textContent).not.toContain("1 个");
   });
 
@@ -179,9 +188,9 @@ describe("VideoNodeComposer", () => {
     render(<VideoNodeComposer catalog={usableVideoCatalog()} data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} selected />);
 
     const generate = screen.getByRole("button", { name: "生成视频" });
-    expect(generate.className).toMatch(/rounded-full/);
-    expect(generate.className).toMatch(/h-10/);
-    expect(generate.className).toMatch(/w-10/);
+    expect(generate.style.height).toBe("40px");
+    expect(generate.style.width).toBe("40px");
+    expect(generate.style.borderRadius).toBe("9999px");
     expect(generate.querySelector(".sr-only")?.textContent).toBe("生成");
   });
 
@@ -218,7 +227,7 @@ describe("VideoNodeComposer", () => {
     const data = { generationPrompt: "", modelId: "gemini-id", params: { videoGeneration: createDefaultVideoGenerationParams() } } as any;
     const catalog = usableVideoCatalog([
       usableVideoOption({
-        capabilities: mergeVideoCapabilities({ audioControlMode: "always_on_implicit", confirmedByRoute: true }),
+        capabilities: mergeVideoCapabilities({ audioControlMode: "always_on_implicit", confirmedByRoute: true, maxCount: 1 }),
       }),
     ]);
     const { rerender } = render(<VideoNodeComposer catalog={catalog} data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} selected />);

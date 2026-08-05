@@ -4,6 +4,8 @@ import net from "node:net";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { videoComposerDensity } from "../src/flowCanvas/utils/promptBarDensity";
+
 type Viewport = { height: number; width: number };
 
 export type VideoNodeSmokeResult = {
@@ -189,6 +191,11 @@ const desktop = { width: 1440, height: 900 };
 const narrow = { width: 1024, height: 768 };
 const tablet = { width: 768, height: 900 };
 const mobile = { width: 390, height: 844 };
+const capsuleLimits = ${JSON.stringify({
+  mobileParameterMaxWidth: videoComposerDensity.mobileParameterMaxWidth,
+  modelMaxWidth: videoComposerDensity.modelMaxWidth,
+  parameterMaxWidth: videoComposerDensity.parameterMaxWidth,
+})};
 const browser = page.context().browser();
 if (!browser) throw new Error('Smoke browser is unavailable');
 const smokeUrl = page.url();
@@ -255,12 +262,32 @@ async function actionLayout(viewportPage) {
   });
 }
 async function readCapsuleGeometry(viewportPage) {
-  return await viewportPage.locator('[aria-label="视频创作面板"]').evaluate((composer) => {
+  return await viewportPage.locator('[aria-label="视频创作面板"]').evaluate((composer, limits) => {
     const readCapsule = (testId) => {
       const capsule = composer.querySelector('[data-testid="' + testId + '"]');
       const trigger = capsule?.querySelector('button');
       const rect = trigger?.getBoundingClientRect();
+      const probe = trigger?.cloneNode(true);
+      let contentWidth = 0;
+      if (probe instanceof HTMLElement) {
+        probe.style.left = '-10000px';
+        probe.style.maxWidth = 'none';
+        probe.style.position = 'fixed';
+        probe.style.visibility = 'hidden';
+        probe.style.width = 'max-content';
+        document.body.append(probe);
+        contentWidth = probe.getBoundingClientRect().width;
+        probe.remove();
+      }
+      const maximumWidth = testId === 'video-capsule-model'
+        ? limits.modelMaxWidth
+        : window.matchMedia('(max-width: 767px)').matches
+          ? limits.mobileParameterMaxWidth
+          : limits.parameterMaxWidth;
       return {
+        contentWidth,
+        flexGrow: trigger ? getComputedStyle(trigger).flexGrow : '',
+        maximumWidth,
         scrollWidth: trigger?.scrollWidth ?? 0,
         width: rect?.width ?? 0,
       };
@@ -270,7 +297,7 @@ async function readCapsuleGeometry(viewportPage) {
       model: readCapsule('video-capsule-model'),
       parameters: readCapsule('video-capsule-parameters'),
     };
-  });
+  }, capsuleLimits);
 }
 
 const desktopHarness = await openViewport(desktop, false);
@@ -454,11 +481,14 @@ const blockedGenerationDidNotCreateRun = await mobilePage.locator('button[aria-l
 const capsuleGeometryByViewport = [desktopCapsuleGeometry, narrowCapsuleGeometry, tabletCapsuleGeometry, mobileCapsuleGeometry];
 const capsuleWidthMatchesContent = capsuleGeometryByViewport.every(({ model, parameters }) =>
   model.width > 0 && parameters.width > 0
-  && model.width <= model.scrollWidth + 24
-  && parameters.width <= parameters.scrollWidth + 24,
+  && model.width <= Math.min(model.maximumWidth, model.contentWidth) + 1
+  && parameters.width <= Math.min(parameters.maximumWidth, parameters.contentWidth) + 1,
 );
 const noParameterFlexExpansion = capsuleGeometryByViewport.every(({ composerWidth, parameters }) =>
-  parameters.width < composerWidth * 0.75,
+  parameters.flexGrow === '0'
+  && parameters.width <= parameters.contentWidth + 1
+  && parameters.width <= parameters.maximumWidth + 1
+  && parameters.width < composerWidth * 0.75,
 );
 
 const result = { blockedGenerationDidNotCreateRun, capsuleWidthMatchesContent, cameraGridColumns, cameraPresetCount, composerVisible, defaultGeminiSelected, desktopActionsSingleRow, durationRangeIsDefault, editorGeometryByZoom, editorRemainsNodeAnchored, editorSizeStableAcrossZoom, emptyPreviewDoesNotOpenUpload, emptyUploadInputPresent, generationControlsLocked, generationFeedbackVisibleUnselected, mobileActionsTwoGroups, modelMenuNoSearch, noParameterFlexExpansion, parameterDialogIsTopLayer, placeholderDropDoesNotUpload, portraitEmptyNodeIsSized, readyControls, readyPreviewUsesContain, reducedMotionFeedbackSafe, resolutionOptions, tabletActionsSingleRow, topUploadButtonOpensUpload, videoNodeHasNoResizeControls };
