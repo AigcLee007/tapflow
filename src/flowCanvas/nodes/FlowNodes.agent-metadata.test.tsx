@@ -60,6 +60,11 @@ const createVideoNodeData = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+function StoreBackedVideoNode({ nodeId, selected = true }: { nodeId: string; selected?: boolean }) {
+  const node = useFlowCanvasStore((state) => state.nodes.find((item) => item.id === nodeId));
+  return node ? <VideoNodeComponent id={node.id} selected={selected} data={node.data as any} dragging={false} zIndex={1} isConnectable type="video" xPos={0} yPos={0} /> : null;
+}
+
 vi.mock("../../assets/assetApi", () => ({
   getAsset: (...args: unknown[]) => assetApiMocks.getAsset(...args),
   getAssetDownloadUrl: (...args: unknown[]) => assetApiMocks.getAssetDownloadUrl(...args),
@@ -888,12 +893,8 @@ describe("FlowNodes agent metadata", () => {
     fireEvent.click(screen.getByRole("button", { name: "生成视频" }));
 
     expect(workflowRunnerMocks.runBackendWorkflow).not.toHaveBeenCalled();
-    expect(useFlowCanvasStore.getState().nodes.find((item) => item.id === node.id)?.data).toMatchObject({
-      errorCode: "NO_VIDEO_GENERATION_ROUTE",
-      generationStatus: "error",
-      status: "error",
-    });
-    expect(String(useFlowCanvasStore.getState().nodes.find((item) => item.id === node.id)?.data.errorMessage)).toMatch(/未配置|未接入/);
+    expect((screen.getByRole("button", { name: "生成视频" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(useFlowCanvasStore.getState().nodes.find((item) => item.id === node.id)?.data).toMatchObject({ generationStatus: "idle", status: "idle" });
   });
 
   it('synchronizes an empty video node to its requested portrait ratio', async () => {
@@ -984,6 +985,40 @@ describe("FlowNodes agent metadata", () => {
         },
       },
     });
+  });
+
+  it("shows submitting feedback immediately and locks the composer after Generate", () => {
+    const model = createVideoCatalogModel({ id: "gemini-id", modelKey: "gemini-omni-flash", routeKey: "video.pixelhub.gemini-omni-flash" });
+    videoCatalogMocks.current = { error: null, loading: false, models: [model], retry: vi.fn() };
+    const node = useFlowCanvasStore.getState().addNode("video", { x: 0, y: 0 }, createVideoNodeData({ generationPrompt: "A moving train", modelId: "gemini-id", routeKey: model.routeKey }) as any, { selected: true });
+
+    render(<StoreBackedVideoNode nodeId={node.id} />);
+    fireEvent.click(screen.getByRole("button", { name: "生成视频" }));
+
+    expect(screen.getByRole("status").textContent).toContain("正在提交任务");
+    expect((screen.getByRole("button", { name: "生成视频" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(workflowRunnerMocks.runBackendWorkflow).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps provider-wait feedback visible when the node is unselected", () => {
+    const node = useFlowCanvasStore.getState().addNode("video", { x: 0, y: 0 }, createVideoNodeData({ generationStatus: "generating", modelId: "gemini-id" }) as any, { selected: false });
+    useFlowCanvasStore.setState((state) => ({ nodeRunStatusByNodeId: { ...state.nodeRunStatusByNodeId, [node.id]: "waiting_provider" } }));
+
+    render(<StoreBackedVideoNode nodeId={node.id} selected={false} />);
+
+    expect(screen.getByRole("status").textContent).toContain("正在生成视频");
+    expect(screen.queryByLabelText("视频创作面板")).toBeNull();
+  });
+
+  it("retries a failed video through the normal generation handler", () => {
+    const model = createVideoCatalogModel({ id: "gemini-id", modelKey: "gemini-omni-flash", routeKey: "video.pixelhub.gemini-omni-flash" });
+    videoCatalogMocks.current = { error: null, loading: false, models: [model], retry: vi.fn() };
+    const node = useFlowCanvasStore.getState().addNode("video", { x: 0, y: 0 }, createVideoNodeData({ errorMessage: "生成失败", generationPrompt: "A moving train", generationStatus: "error", modelId: "gemini-id", routeKey: model.routeKey, status: "error" }) as any, { selected: true });
+
+    render(<StoreBackedVideoNode nodeId={node.id} />);
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+
+    expect(workflowRunnerMocks.runBackendWorkflow).toHaveBeenCalledWith({ runMode: "target_node", targetNodeId: node.id });
   });
 
   it("renders the Agent badge for image nodes without leaking provider info", () => {

@@ -80,6 +80,7 @@ import {
   getSelectedRuntimeVideoPreviewUrl,
 } from '../video/videoResultPreview';
 import { VideoReadyState } from '../video/VideoReadyState';
+import { VideoGenerationFeedback } from '../video/VideoGenerationFeedback';
 import { getVideoNodeSizeForNaturalDimensions, getVideoNodeSizeForRequestedRatio } from '../video/videoNodeSizing';
 import {
   getImageModelById,
@@ -7819,12 +7820,14 @@ export const VideoNodeComponent = memo(function VideoNode({
       });
       return;
     }
-    updateNodeData(id, {
-      errorCode: undefined,
-      errorMessage: undefined,
-      params: { ...(d.params || {}), videoGeneration: corrected.params },
-      routeKey: option.routeKey,
-    });
+      updateNodeData(id, {
+        errorCode: undefined,
+        errorMessage: undefined,
+        generationStatus: 'generating',
+        params: { ...(d.params || {}), videoGeneration: corrected.params },
+        routeKey: option.routeKey,
+        status: 'pending',
+      });
     void runBackendWorkflow({ runMode: 'target_node', targetNodeId: id }).catch(() => undefined);
   };
 
@@ -7967,7 +7970,12 @@ export const VideoNodeComponent = memo(function VideoNode({
 
         {!hasReadyVideo && <input ref={videoInputRef} type="file" accept="video/*" style={{ display: 'none' }} onChange={handleVideoInputChange} />}
 
-        {isGenerating && <div style={progressBar(d.progress || 0)} />}
+        <VideoGenerationFeedback
+          errorMessage={d.errorMessage}
+          generationStatus={d.generationStatus}
+          onRetry={handleGenerate}
+          runtimeStatus={runtimeNodeStatus ?? d.status}
+        />
       </div>
 
       <Handle 
@@ -8011,7 +8019,6 @@ export const VideoNodeComponent = memo(function VideoNode({
         : <VideoNodeLegacyComposer data={d} effectivePosterUrl={effectivePosterUrl} generating={isGenerating} nodeId={id} onGenerate={handleGenerate} onUpdate={(patch) => updateNodeData(id, patch)} runtimeVideoAssets={runtimeVideoAssets} />
       )}
 
-      {d.errorMessage && <div style={errorBar}>⚠{d.errorMessage}</div>}
     </div>
   );
 });
