@@ -52,7 +52,7 @@ describe("NodeEditorSurface", () => {
   test("keeps video sizing independent from text and image", () => {
     expect(getNodeEditorSurfaceStyle("video", 1)).toMatchObject({
       background: "#17171b",
-      minHeight: 136,
+      minHeight: 120,
       width: "clamp(640px, 52vw, 980px)",
       zIndex: 40,
     });

@@ -7,6 +7,9 @@ export const IMAGE_GENERATE_TOOLBAR_CREDITS_MIN_WIDTH = 54;
 type ImageGenerateToolbarProps = {
   creditsLabel: string;
   creditsValue: string;
+  disabled?: boolean;
+  generateLabel?: string;
+  generatingLabel?: string;
   isGenerating: boolean;
   onGenerate: () => void;
 };
@@ -14,10 +17,13 @@ type ImageGenerateToolbarProps = {
 export function ImageGenerateToolbar({
   creditsLabel,
   creditsValue,
+  disabled = false,
+  generateLabel = '开始生成',
+  generatingLabel = '生成中',
   isGenerating,
   onGenerate,
 }: ImageGenerateToolbarProps) {
-  const buttonLabel = isGenerating ? '生成中' : '开始生成';
+  const buttonLabel = isGenerating ? generatingLabel : generateLabel;
 
   return (
     <div
@@ -62,7 +68,7 @@ export function ImageGenerateToolbar({
         type="button"
         aria-label={buttonLabel}
         title={buttonLabel}
-        disabled={isGenerating}
+        disabled={disabled || isGenerating}
         onClick={onGenerate}
         style={{
           width: IMAGE_GENERATE_TOOLBAR_SEND_BUTTON_SIZE,

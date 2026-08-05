@@ -164,7 +164,8 @@ describe("VideoNodeComposer", () => {
 
     const model = screen.getByRole("button", { name: "选择视频模型" });
     const parameter = screen.getByRole("button", { name: "视频参数摘要" });
-    expect(model.textContent).toContain("线路一");
+    expect(model.textContent).toContain("Gemini Omni Flash");
+    expect(model.textContent).not.toContain("线路一");
     expect(model.className).toMatch(/max-w/);
     expect(model.className).toMatch(/min-w-0/);
     expect(model.className).toContain("bg-[#111216]");
@@ -183,15 +184,17 @@ describe("VideoNodeComposer", () => {
     expect(parameter.textContent).not.toContain("1 个");
   });
 
-  test("uses a circular generate action with the video capsule size", () => {
+  test("uses the same compact generate toolbar as the image node", () => {
     const data = { generationPrompt: "", modelId: "gemini-id", params: { videoGeneration: createDefaultVideoGenerationParams() } } as any;
     render(<VideoNodeComposer catalog={usableVideoCatalog()} data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} selected />);
 
+    const toolbar = screen.getByTestId("image-generate-toolbar");
     const generate = screen.getByRole("button", { name: "生成视频" });
-    expect(generate.style.height).toBe("40px");
-    expect(generate.style.width).toBe("40px");
-    expect(generate.style.borderRadius).toBe("9999px");
-    expect(generate.querySelector(".sr-only")?.textContent).toBe("生成");
+    expect(toolbar.style.height).toBe("28px");
+    expect(generate.style.height).toBe("24px");
+    expect(generate.style.width).toBe("24px");
+    expect(generate.style.borderRadius).toBe("50%");
+    expect(generate.textContent).toBe("→");
   });
 
   test("shows catalog state and disables generation without a usable model", () => {
@@ -205,10 +208,10 @@ describe("VideoNodeComposer", () => {
   test("locks every request-changing control while generating", () => {
     const data = { generationPrompt: "scene", modelId: "gemini-id", params: { videoGeneration: createDefaultVideoGenerationParams() } } as any;
     render(<VideoNodeComposer catalog={usableVideoCatalog()} data={data} generating nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} selected />);
-    for (const control of [screen.getByLabelText("视频提示词"), ...["生成模式", "运镜库", "调色盘", "选择视频模型", "视频参数摘要", "生成视频"].map((name) => screen.getByRole("button", { name }))]) {
+    for (const control of [screen.getByLabelText("视频提示词"), ...["生成模式", "运镜库", "调色盘", "选择视频模型", "视频参数摘要", "生成中"].map((name) => screen.getByRole("button", { name }))]) {
       expect((control as HTMLButtonElement | HTMLTextAreaElement).disabled).toBe(true);
     }
-    expect(screen.getByRole("button", { name: "生成视频" }).textContent).toContain("生成中");
+    expect(screen.getByRole("button", { name: "生成中" }).textContent).toContain("...");
   });
 
   test("renders the parameter panel as a fixed high-layer body portal", () => {

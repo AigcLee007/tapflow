@@ -1,6 +1,6 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Download, Maximize2, X } from 'lucide-react';
+import { Download, Maximize2, Minimize2, X } from 'lucide-react';
 
 import { downloadVideoAsset } from './videoDownload';
 
@@ -11,12 +11,25 @@ export function VideoReadyState({ assetId, filename, src }: {
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [fallbackFullscreenOpen, setFallbackFullscreenOpen] = useState(false);
+  const [nativeFullscreen, setNativeFullscreen] = useState(false);
+
+  useEffect(() => {
+    const syncFullscreen = () => setNativeFullscreen(document.fullscreenElement === containerRef.current);
+    document.addEventListener('fullscreenchange', syncFullscreen);
+    syncFullscreen();
+    return () => document.removeEventListener('fullscreenchange', syncFullscreen);
+  }, []);
 
   const handleDownload = useCallback(() => {
     void downloadVideoAsset({ assetId, filename }).catch(() => undefined);
   }, [assetId, filename]);
 
   const handleFullscreen = useCallback(() => {
+    if (nativeFullscreen) {
+      const exitFullscreen = document.exitFullscreen;
+      if (exitFullscreen) void exitFullscreen.call(document).catch(() => undefined);
+      return;
+    }
     const requestFullscreen = containerRef.current?.requestFullscreen;
     if (!requestFullscreen) {
       setFallbackFullscreenOpen(true);
@@ -30,7 +43,9 @@ export function VideoReadyState({ assetId, filename, src }: {
     } catch {
       setFallbackFullscreenOpen(true);
     }
-  }, []);
+  }, [nativeFullscreen]);
+
+  const fullscreenLabel = nativeFullscreen || fallbackFullscreenOpen ? '退出全屏预览' : '全屏预览';
 
   return (
     <>
@@ -48,8 +63,8 @@ export function VideoReadyState({ assetId, filename, src }: {
           <button aria-label="下载视频" title="下载视频" type="button" onClick={handleDownload} style={toolbarButtonStyle}>
             <Download size={16} />
           </button>
-          <button aria-label="全屏预览" title="全屏预览" type="button" onClick={handleFullscreen} style={toolbarButtonStyle}>
-            <Maximize2 size={16} />
+          <button aria-label={fullscreenLabel} title={fullscreenLabel} type="button" onClick={handleFullscreen} style={toolbarButtonStyle}>
+            {nativeFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
           </button>
         </div>
       </div>

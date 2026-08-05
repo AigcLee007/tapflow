@@ -6219,3 +6219,17 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - expanded the real XYFlow/Playwright smoke harness to measure model and parameter capsule widths at 1440, 1024, 768, and 390 viewport widths. It asserts capsules match content, the parameter capsule cannot flex-expand, and preserves prior feedback, upload-boundary, no-resize, inverse-zoom, and ready-video checks.
 - validation passed: focused editor/video/smoke contract suite `40` passed; extended video catalog/menu suite `52` passed; `npm run test:smoke-video-node` `4` passed; `npm run smoke:video-node` returned `status: ok` across all four target viewports; and `npm run build` passed with existing Browserslist age, mixed import, and chunk-size warnings only.
 - the full root `npm test` was attempted with a 180-second limit and timed out after 183 seconds. Its output contained existing unavailable-Redis, Three.js, and React `act(...)` warnings, followed by reporter `EPIPE` on timeout; it is not counted as passing.
+
+## 2026-08-05 - Video Generate Toolbar Consistency
+
+- video generation now reuses the image node's compact `ImageGenerateToolbar`: 28px pill, 24px circular arrow action, matching credits treatment, hover/disabled styling, and generating feedback.
+- the shared toolbar accepts an external disabled state and caller-specific accessible labels so video model/catalog blockers remain fail-closed while retaining the video action semantics.
+- focused toolbar and video composer tests passed (`26` tests); frontend build passed with the existing Browserslist, mixed-import, chunk-size, and CSS warnings.
+
+## 2026-08-05 - Video Composer And Fullscreen Follow-up
+
+- compressed only the video editor surface and prompt control to a 120px surface minimum, 52px prompt minimum, and 120px prompt maximum; text and image density values remain unchanged.
+- creator-facing video model capsules now show only the product model name and retain route metadata exclusively for runtime/admin use.
+- native video fullscreen now toggles from the same top-right button, synchronizes on `fullscreenchange`, updates icon/label, and keeps the existing portal fallback behavior.
+- validation passed: focused video/fullscreen/density/editor tests (`40` tests), frontend build, and `git diff --check`.
+- `npm run smoke:video-node` was attempted but its internal `npx.cmd` process timed out after 60 seconds without a visual result, so browser smoke is not counted as passing.

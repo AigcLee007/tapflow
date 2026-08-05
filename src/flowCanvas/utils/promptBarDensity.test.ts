@@ -16,8 +16,8 @@ describe('promptBarDensity', () => {
     });
     expect(getPromptBarDensity('video')).toMatchObject({
       width: 'clamp(640px, 52vw, 980px)',
-      minHeight: 136,
-      editorMinHeight: 72,
+      minHeight: 120,
+      editorMinHeight: 52,
     });
   });
 

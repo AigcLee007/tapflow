@@ -50,4 +50,33 @@ describe('VideoReadyState', () => {
     fireEvent.click(screen.getByRole('button', { name: '关闭全屏预览' }));
     expect(screen.queryByRole('dialog', { name: '视频全屏预览' })).toBeNull();
   });
+
+  it('toggles native fullscreen from the same top-right button', async () => {
+    let fullscreenElement: Element | null = null;
+    Object.defineProperty(document, 'fullscreenElement', {
+      configurable: true,
+      get: () => fullscreenElement,
+    });
+    const requestFullscreen = vi.fn().mockImplementation(function (this: HTMLElement) {
+      fullscreenElement = this;
+      document.dispatchEvent(new Event('fullscreenchange'));
+      return Promise.resolve();
+    });
+    const exitFullscreen = vi.fn().mockImplementation(() => {
+      fullscreenElement = null;
+      document.dispatchEvent(new Event('fullscreenchange'));
+      return Promise.resolve();
+    });
+    Object.defineProperty(HTMLElement.prototype, 'requestFullscreen', { configurable: true, value: requestFullscreen });
+    Object.defineProperty(document, 'exitFullscreen', { configurable: true, value: exitFullscreen });
+
+    render(<VideoReadyState assetId="asset-video" filename="shot.mp4" src="/preview.mp4" />);
+    const toggle = screen.getByRole('button', { name: '全屏预览' });
+    fireEvent.click(toggle);
+    await waitFor(() => expect(screen.getByRole('button', { name: '退出全屏预览' })).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: '退出全屏预览' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: '全屏预览' })).toBeTruthy());
+    expect(requestFullscreen).toHaveBeenCalledTimes(1);
+    expect(exitFullscreen).toHaveBeenCalledTimes(1);
+  });
 });
