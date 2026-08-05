@@ -172,23 +172,33 @@ describe("FlowNodes agent metadata", () => {
     const geminiModel = createVideoCatalogModel({ id: "gemini-video-model", modelKey: "gemini-omni-flash", routeKey: "video.gemini-route" });
     videoCatalogMocks.current = { error: null, loading: true, models: [], retry: vi.fn() };
     const node = useFlowCanvasStore.getState().addNode("video", { x: 0, y: 0 }, createVideoNodeData({ routeKey: "video.stale-route" }) as any, { selected: false });
-    const props = { id: node.id, selected: false, data: node.data as any, dragging: false, zIndex: 1, isConnectable: true, type: "video", xPos: 0, yPos: 0 };
-    const { rerender } = render(<VideoNodeComponent {...props} />);
+    const updateNodeDataSpy = vi.spyOn(useFlowCanvasStore.getState(), "updateNodeData");
+    const StoreBackedVideoNode = ({ refresh }: { refresh: number }) => {
+      const currentNode = useFlowCanvasStore((state) => state.nodes.find((item) => item.id === node.id));
+      return currentNode ? <VideoNodeComponent id={currentNode.id} selected={false} data={currentNode.data as any} dragging={false} zIndex={1} isConnectable type="video" xPos={refresh} yPos={0} /> : null;
+    };
+    const { rerender } = render(<StoreBackedVideoNode refresh={0} />);
 
     expect(useFlowCanvasStore.getState().nodes.find((item) => item.id === node.id)?.data.modelId).toBeUndefined();
 
     videoCatalogMocks.current = { error: null, loading: false, models: [fallbackModel, geminiModel], retry: vi.fn() };
-    rerender(<VideoNodeComponent {...props} data={{ ...node.data }} />);
+    rerender(<StoreBackedVideoNode refresh={1} />);
 
     await waitFor(() => expect(useFlowCanvasStore.getState().nodes.find((item) => item.id === node.id)?.data).toMatchObject({
       modelId: "gemini-video-model",
       routeKey: "video.gemini-route",
     }));
-    rerender(<VideoNodeComponent {...props} data={{ ...node.data }} />);
+    rerender(<StoreBackedVideoNode refresh={2} />);
     expect(useFlowCanvasStore.getState().nodes.find((item) => item.id === node.id)?.data.modelId).toBe("gemini-video-model");
+    const modelSelectionWrites = () => updateNodeDataSpy.mock.calls.filter(([, patch]) => patch.modelId === "gemini-video-model");
+    expect(modelSelectionWrites()).toHaveLength(1);
+
+    videoCatalogMocks.current = { error: null, loading: false, models: [fallbackModel, geminiModel], retry: vi.fn() };
+    rerender(<StoreBackedVideoNode refresh={3} />);
+    expect(modelSelectionWrites()).toHaveLength(1);
 
     const saved = useFlowCanvasStore.getState().addNode("video", { x: 0, y: 0 }, createVideoNodeData({ modelId: "saved-model", routeKey: "video.saved-route" }) as any, { selected: false });
-    render(<VideoNodeComponent {...{ ...props, id: saved.id, data: saved.data }} />);
+    render(<VideoNodeComponent id={saved.id} selected={false} data={saved.data as any} dragging={false} zIndex={1} isConnectable type="video" xPos={0} yPos={0} />);
     expect(useFlowCanvasStore.getState().nodes.find((item) => item.id === saved.id)?.data).toMatchObject({
       modelId: "saved-model",
       routeKey: "video.saved-route",

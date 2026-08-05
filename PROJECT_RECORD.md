@@ -6203,9 +6203,3 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - video nodes no longer render manual resize controls. Requested aspect ratio remains authoritative before output, while the natural media ratio remains authoritative after upload or generation.
 - validation passed: `npx vitest --run src/flowCanvas/nodes/NodeEditorSurface.test.tsx src/flowCanvas/utils/promptBarDensity.test.ts src/flowCanvas/video/VideoNodeComposer.test.tsx src/flowCanvas/nodes/FlowNodes.agent-metadata.test.tsx src/flowCanvas/video/videoNodeSizing.test.ts src/flowCanvas/video/VideoReadyState.test.tsx scripts/smoke-video-node.test.ts` (72 passed); `npm run smoke:video-node` returned `status: ok` across desktop, narrow, and mobile; and `npm run build` passed with only the existing non-blocking Vite warnings.
 - the full `npm test` was attempted after the focused verification and timed out after 154 seconds without an attributable failure output. It is not counted as passing, so this branch is preserved for explicit integration approval rather than being merged automatically.
-
-## 2026-08-05 - Video Default Model Hydration
-
-- unconfigured video nodes now hydrate once after a successful model-catalog load, including unselected nodes, with eligible `gemini-omni-flash` preferred over other routes.
-- saved `modelId` values remain authoritative. A node with no `modelId` can safely replace a stale route key with the selected catalog route, while catalog loading and error states never mutate draft data.
-- explicit composer model changes and automatic hydration share one canonical patch builder, keeping corrected generation parameters, route keys, and unrelated node parameters consistent.

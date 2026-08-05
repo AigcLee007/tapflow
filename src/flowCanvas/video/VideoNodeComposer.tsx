@@ -99,7 +99,8 @@ export function VideoNodeComposer({ catalog: catalogOverride, data, generating, 
     modelButtonRef.current?.focus();
   };
   const handleModelChange = (modelId: string) => {
-    const patch = createVideoModelSelectionPatch(catalog.models, modelId, data.params ?? {}, params);
+    const option = catalog.models.find((model) => model.id === modelId);
+    const patch = createVideoModelSelectionPatch(data, option);
     if (!patch) return;
     onUpdate(patch);
     closeModel();

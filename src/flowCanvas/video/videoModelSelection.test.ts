@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import { createDefaultVideoGenerationParams } from "./videoGenerationParams";
 import { mergeVideoCapabilities } from "./videoGenerationCapabilities";
 import { createVideoModelSelectionPatch } from "./videoModelSelection";
+import type { FlowNodeData } from "../types";
 import type { VideoModelOption } from "./videoTypes";
 
 const createModel = (overrides: Partial<VideoModelOption> = {}): VideoModelOption => ({
@@ -38,7 +39,9 @@ describe("createVideoModelSelectionPatch", () => {
       referenceInputs: [{ mediaKind: "image" as const, order: 0, referenceKey: "reference-1", role: "reference_image" as const, source: { id: "asset-1", kind: "asset" as const } }],
     };
 
-    expect(createVideoModelSelectionPatch([model], "canonical-model-id", { unrelated: "preserved", videoGeneration: params }, params)).toMatchObject({
+    const data = { kind: "video", params: { unrelated: "preserved", videoGeneration: params } } as FlowNodeData;
+
+    expect(createVideoModelSelectionPatch(data, model)).toMatchObject({
       modelId: "canonical-model-id",
       routeKey: "video.canonical-route",
       params: {
@@ -53,7 +56,12 @@ describe("createVideoModelSelectionPatch", () => {
   });
 
   test("returns null when the requested model is unavailable", () => {
-    const params = createDefaultVideoGenerationParams();
-    expect(createVideoModelSelectionPatch([], "missing", { videoGeneration: params }, params)).toBeNull();
+    expect(createVideoModelSelectionPatch({ kind: "video" } as FlowNodeData, null)).toBeNull();
+  });
+
+  test("returns null for a blocked model", () => {
+    const blockedModel = createModel({ blocker: "PRICING_NOT_FOUND" });
+
+    expect(createVideoModelSelectionPatch({ kind: "video" } as FlowNodeData, blockedModel)).toBeNull();
   });
 });

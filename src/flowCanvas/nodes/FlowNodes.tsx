@@ -7678,7 +7678,7 @@ export const VideoNodeComponent = memo(function VideoNode({
     if (d.modelId || hasHydratedDefaultVideoModel.current || videoCatalog.loading || videoCatalog.error) return;
     const defaultModel = resolveDefaultVideoModel(videoCatalog.models);
     if (!defaultModel) return;
-    const patch = createVideoModelSelectionPatch(videoCatalog.models, defaultModel.id, d.params || {}, videoParams);
+    const patch = createVideoModelSelectionPatch(d, defaultModel);
     if (!patch) return;
     hasHydratedDefaultVideoModel.current = true;
     updateNodeData(id, patch);
