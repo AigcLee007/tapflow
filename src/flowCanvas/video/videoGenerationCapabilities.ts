@@ -9,7 +9,7 @@ import type {
   VideoModelOption,
   VideoResolution,
 } from "./videoTypes";
-import { validateVideoReferenceInputs } from "./videoReferenceRules";
+import { normalizeReferenceRolesForMode, validateVideoReferenceInputs } from "./videoReferenceRules";
 
 const MODES: VideoGenerationMode[] = ["text_to_video", "all_reference", "image_to_video", "first_last_frame", "image_reference"];
 const RATIOS: VideoAspectRatio[] = ["auto", "16:9", "4:3", "1:1", "3:4", "9:16", "21:9"];
@@ -112,6 +112,11 @@ export function correctVideoGenerationParams<T extends VideoGenerationParamsV2>(
   if (audioMode === "always_on_implicit") replace("generateAudio", true as T[K]);
   if (audioMode === "unsupported") replace("generateAudio", false as T[K]);
   if (next.count !== 1) replace("count", 1 as T[K]);
+  const normalizedReferences = normalizeReferenceRolesForMode(next.referenceInputs, next.mode, capabilities.referenceSemantics);
+  if (JSON.stringify(normalizedReferences) !== JSON.stringify(next.referenceInputs)) {
+    diagnostics.push({ code: "CAPABILITY_CORRECTED", field: "referenceInputs", value: next.referenceInputs, message: "Reference roles were corrected to match the selected video model" });
+    next.referenceInputs = normalizedReferences;
+  }
   return { params: next, diagnostics };
 }
 

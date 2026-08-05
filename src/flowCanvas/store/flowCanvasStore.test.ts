@@ -51,6 +51,26 @@ describe('flowCanvasStore upstream image references', () => {
     ]));
   });
 
+  it('assigns the image-to-video role when an image node is connected to a video node', () => {
+    const image = useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, { kind: 'image', title: 'Image source' });
+    const target = useFlowCanvasStore.getState().addNode('video', { x: 320, y: 0 }, {
+      kind: 'video',
+      title: 'Video target',
+      params: {
+        videoGeneration: {
+          ...normalizeVideoGenerationParams({}).params,
+          mode: 'image_to_video',
+        },
+      },
+    });
+
+    useFlowCanvasStore.getState().onConnect({ source: image.id, sourceHandle: 'out', target: target.id, targetHandle: 'in' });
+
+    expect(normalizeVideoGenerationParams(useFlowCanvasStore.getState().nodes.find((node) => node.id === target.id)?.data).params.referenceInputs).toEqual([
+      expect.objectContaining({ mediaKind: 'image', role: 'main_image', source: { kind: 'upstream', id: image.id } }),
+    ]);
+  });
+
   it('removes only the matching upstream reference when its dependency edge is removed', () => {
     const source = useFlowCanvasStore.getState().addNode('video', { x: 0, y: 0 }, { kind: 'video', title: 'Video source' });
     const target = useFlowCanvasStore.getState().addNode('video', { x: 320, y: 0 }, { title: 'Video target' });

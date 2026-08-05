@@ -6251,3 +6251,10 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - reference slot and add-reference controls now reuse the shared video capsule styling, including 28px height, full radius, translucent surface, border, inset highlight, hover, focus, and disabled states.
 - selected reference chips retain their delete action in a compact 20px circular control, preventing the reference row from expanding vertically.
 - focused reference, composer, and density tests passed (`38` tests); frontend build passed with existing non-blocking Vite warnings.
+
+## 2026-08-05 - Video Reference Edge Recovery
+
+- existing image-to-video edges are now reconciled into `videoGeneration.referenceInputs` when the video node renders, including drafts created before typed video references were persisted.
+- automatic image reference roles now use `main_image` for normal image-to-video and ordered frame roles for first/last-frame semantics; capability correction also normalizes legacy roles before preflight.
+- reference recovery no longer stops merely because a stale/generated video preview exists, so retrying after replacing an upstream image can resolve the current image asset.
+- focused store, capability, reference-rule, composer, and node metadata tests were run; 88 passed and one pre-existing submitting-feedback assertion failed because the button label changes to `生成中` immediately. Frontend `npm run build` passed with existing Vite warnings.

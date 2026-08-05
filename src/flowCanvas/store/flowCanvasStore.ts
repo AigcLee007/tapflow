@@ -359,6 +359,24 @@ const appendReferenceOrderKey = (referenceOrder: unknown, key: string) => {
   return current.includes(key) ? current : [...current, key];
 };
 
+const getAutomaticVideoReferenceRole = (
+  node: FlowNode,
+  mediaKind: VideoReferenceInputV2["mediaKind"],
+  sourceNodeId: string,
+): VideoReferenceInputV2["role"] => {
+  if (mediaKind === "video") return "reference_video";
+  if (mediaKind === "audio") return "reference_audio";
+  const mode = normalizeVideoGenerationParams(node.data).params.mode;
+  if (mode === "image_to_video") return "main_image";
+  if (mode === "first_last_frame") {
+    const hasFirstFrame = normalizeVideoGenerationParams(node.data).params.referenceInputs.some(
+      (reference) => reference.role === "first_frame" && reference.source.id !== sourceNodeId,
+    );
+    return hasFirstFrame ? "last_frame" : "first_frame";
+  }
+  return "reference_image";
+};
+
 const upsertUpstreamVideoReference = (
   node: FlowNode,
   input: {
@@ -665,7 +683,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
               ? upsertUpstreamVideoReference(node, {
                 mediaKind: sourceMediaKind!,
                 referenceKey: `upstream:${sourceNode!.id}`,
-                role: sourceMediaKind === 'video' ? 'reference_video' : sourceMediaKind === 'audio' ? 'reference_audio' : 'reference_image',
+                role: getAutomaticVideoReferenceRole(node, sourceMediaKind!, sourceNode!.id),
                 sourceNodeId: sourceNode!.id,
               })
               : node

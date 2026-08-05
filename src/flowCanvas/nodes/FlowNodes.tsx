@@ -3175,7 +3175,6 @@ export const TextNodeComponent = memo(function TextNode({
 }: NodeProps<FlowNode>) {
   const d = data;
   const backendProjectId = useFlowCanvasStore((s) => s.backendProjectId);
-  const connectVideoReference = useFlowCanvasStore((s) => s.connectVideoReference);
   const updateNodeData = useFlowCanvasStore((s) => s.updateNodeData);
   const runtimeNodeOutput = useFlowCanvasStore((s) => s.nodeOutputByNodeId[id]);
   const runtimeNodeStatus = useFlowCanvasStore((s) => s.nodeRunStatusByNodeId[id]);
@@ -7662,9 +7661,12 @@ export const VideoNodeComponent = memo(function VideoNode({
 }: NodeProps<FlowNode>) {
   const d = data;
   const backendProjectId = useFlowCanvasStore((s) => s.backendProjectId);
+  const connectVideoReference = useFlowCanvasStore((s) => s.connectVideoReference);
   const updateNodeData = useFlowCanvasStore((s) => s.updateNodeData);
   const runtimeNodeOutput = useFlowCanvasStore((s) => s.nodeOutputByNodeId[id]);
   const runtimeNodeStatus = useFlowCanvasStore((s) => s.nodeRunStatusByNodeId[id]);
+  const allFlowNodes = useFlowCanvasStore((s) => s.nodes);
+  const allFlowEdges = useFlowCanvasStore((s) => s.edges);
   const [hovered, setHovered] = useState(false);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const [uploadedPreview, setUploadedPreview] = useState<{ assetId: string; filename: string; url: string } | null>(null);
@@ -7775,6 +7777,31 @@ export const VideoNodeComponent = memo(function VideoNode({
     || runtimeNodeStatus === 'running'
     || runtimeNodeStatus === 'waiting_provider'
     || d.generationStatus === 'generating';
+
+  useEffect(() => {
+    const connectedImageSourceIds = allFlowEdges
+      .filter((edge) => edge.target === id)
+      .map((edge) => edge.source)
+      .filter((sourceId) => allFlowNodes.some((node) => node.id === sourceId && (node.type === 'image' || node.data.kind === 'image')));
+    if (connectedImageSourceIds.length === 0) return;
+    const currentUpstreamIds = new Set(videoParams.referenceInputs
+      .filter((reference) => reference.source.kind === 'upstream')
+      .map((reference) => reference.source.id));
+    const missingSourceId = connectedImageSourceIds.find((sourceId) => !currentUpstreamIds.has(sourceId));
+    if (!missingSourceId) return;
+    const role = videoParams.mode === 'image_to_video'
+      ? 'main_image'
+      : videoParams.mode === 'first_last_frame'
+        ? (videoParams.referenceInputs.some((reference) => reference.role === 'first_frame') ? 'last_frame' : 'first_frame')
+        : 'reference_image';
+    connectVideoReference({
+      mediaKind: 'image',
+      referenceKey: `upstream:${missingSourceId}`,
+      role,
+      sourceNodeId: missingSourceId,
+      targetNodeId: id,
+    });
+  }, [allFlowEdges, allFlowNodes, connectVideoReference, id, videoParams.mode, videoParams.referenceInputs]);
 
   useEffect(() => {
     if (hasReadyVideo) return;
