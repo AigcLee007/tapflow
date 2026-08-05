@@ -1,7 +1,14 @@
 ﻿# Project Record
 
-Last updated: 2026-08-04
+Last updated: 2026-08-05
 Maintainers: project team + Codex sessions
+
+## 2026-08-05 - Video Composer Default And Feedback Implementation Plan
+
+- approved and planned a catalog-driven default for unconfigured video nodes: prefer usable Gemini Omni Flash, fall back to the first sorted fully usable video model, and never overwrite a saved or user-selected model;
+- planned the composer layout as an upper input-mode/camera/palette row, a conditional reference row, and a stable execution row with an explicit two-group mobile layout;
+- planned preview-area submitting, generating, failure, and retry feedback with request-control locking, no fake percentage, reduced-motion handling, focused tests, and four-viewport browser acceptance;
+- recorded the task-by-task TDD and verification sequence in `docs/superpowers/plans/2026-08-05-video-composer-layout-default-and-feedback.md`; no production code, route, price, credential, database, or deployment state changed in this planning step.
 
 ## 2026-08-04 - PixelHub Route-Scoped Credential Bindings
 
