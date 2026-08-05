@@ -158,6 +158,33 @@ describe("VideoNodeComposer", () => {
     expect(actions.children).toHaveLength(2);
   });
 
+  test("keeps model and parameter capsules content-sized", () => {
+    const data = { generationPrompt: "", modelId: "gemini-id", params: { videoGeneration: createDefaultVideoGenerationParams() } } as any;
+    render(<VideoNodeComposer catalog={usableVideoCatalog([usableVideoOption({ label: "Gemini Omni Flash", routeLabel: "线路一" } as any)])} data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} selected />);
+
+    const model = screen.getByRole("button", { name: "选择视频模型" });
+    const parameter = screen.getByRole("button", { name: "视频参数摘要" });
+    expect(model.textContent).toContain("线路一");
+    expect(model.className).toMatch(/max-w/);
+    expect(model.className).toMatch(/min-w-0/);
+    expect(parameter.className).toMatch(/w-max/);
+    expect(parameter.className).toMatch(/max-w/);
+    expect(parameter.className).not.toMatch(/(^|\s)w-full(\s|$)/);
+    expect(parameter.className).not.toContain("flex-1");
+    expect(parameter.textContent).not.toContain("1 个");
+  });
+
+  test("uses a circular generate action with the video capsule size", () => {
+    const data = { generationPrompt: "", modelId: "gemini-id", params: { videoGeneration: createDefaultVideoGenerationParams() } } as any;
+    render(<VideoNodeComposer catalog={usableVideoCatalog()} data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} selected />);
+
+    const generate = screen.getByRole("button", { name: "生成视频" });
+    expect(generate.className).toMatch(/rounded-full/);
+    expect(generate.className).toMatch(/h-10/);
+    expect(generate.className).toMatch(/w-10/);
+    expect(generate.querySelector(".sr-only")?.textContent).toBe("生成");
+  });
+
   test("shows catalog state and disables generation without a usable model", () => {
     const data = { generationPrompt: "", params: { videoGeneration: createDefaultVideoGenerationParams() } } as any;
     render(<VideoNodeComposer catalog={{ error: null, loading: true, models: [], retry: vi.fn() }} data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} selected />);
@@ -188,11 +215,17 @@ describe("VideoNodeComposer", () => {
   });
 
   test("keeps the inline parameter summary synchronized with the current video params", () => {
-    const data = { generationPrompt: "", params: { videoGeneration: createDefaultVideoGenerationParams() } } as any;
-    const { rerender } = render(<VideoNodeComposer data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} selected />);
+    const data = { generationPrompt: "", modelId: "gemini-id", params: { videoGeneration: createDefaultVideoGenerationParams() } } as any;
+    const catalog = usableVideoCatalog([
+      usableVideoOption({
+        capabilities: mergeVideoCapabilities({ audioControlMode: "always_on_implicit", confirmedByRoute: true }),
+      }),
+    ]);
+    const { rerender } = render(<VideoNodeComposer catalog={catalog} data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} selected />);
 
     const summary = screen.getByRole("button", { name: "视频参数摘要" });
-    expect(summary.textContent).toContain("16:9 · 720P · 4 秒 · 1 个");
+    expect(summary.textContent).toContain("16:9 · 720P · 4 秒");
+    expect(summary.textContent).not.toContain("· 1 个");
     expect(summary.textContent).not.toContain("音频关闭");
     expect(summary.querySelector(".lucide-volume-x")).toBeNull();
     expect(summary.parentElement?.parentElement?.className).toContain("flex");
@@ -211,10 +244,11 @@ describe("VideoNodeComposer", () => {
         },
       },
     };
-    rerender(<VideoNodeComposer data={updatedData} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} selected />);
+    rerender(<VideoNodeComposer catalog={catalog} data={updatedData} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} selected />);
 
     const updatedSummary = screen.getByRole("button", { name: "视频参数摘要" });
-    expect(updatedSummary.textContent).toContain("16:9 · 1080P · 9 秒 · 1 个");
+    expect(updatedSummary.textContent).toContain("16:9 · 1080P · 9 秒");
+    expect(updatedSummary.textContent).not.toContain("· 1 个");
     expect(updatedSummary.textContent).not.toContain("音频开启");
     expect(updatedSummary.querySelector(".lucide-volume-2")).toBeTruthy();
   });

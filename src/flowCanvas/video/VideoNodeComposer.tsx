@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Camera, CheckCircle2, ChevronDown, ChevronUp, Coins, RectangleHorizontal, Sparkles, Volume2, VolumeX } from "lucide-react";
+import { Camera, CheckCircle2, ChevronDown, ChevronUp, Coins, RectangleHorizontal, Sparkles, Volume2 } from "lucide-react";
 
 import type { FlowNodeData } from "../types";
 import { normalizeVideoGenerationParams } from "./videoGenerationParams";
@@ -20,6 +20,7 @@ import type { VideoGenerationParamsV1, VideoReferenceInputV2, VideoReferenceRole
 import type { VideoPaletteSourceDisplay } from "./VideoPalettePopover";
 import { VIDEO_UI_COPY, VIDEO_UI_REFERENCE_ROLE_COPY } from "./videoUiCopy";
 import { useDismissibleLayer } from "../../components/menu/useDismissibleLayer";
+import { videoComposerDensity } from "../utils/promptBarDensity";
 
 type Props = {
   catalog?: ReturnType<typeof useVideoGenerationCatalog>;
@@ -99,8 +100,9 @@ export function VideoNodeComposer({ catalog: catalogOverride, data, generating, 
   const setParams = (next: VideoGenerationParamsV1) => onUpdate({ params: { ...(data.params ?? {}), videoGeneration: next } });
   const selectedMotionLabel = getCameraMotionLabel(params.cameraMotionId);
   const cost = option?.pricing ? Math.max(option.pricing.minChargeCredits, option.pricing.unitCredits * params.durationSeconds) : null;
-  const parameterSummary = `${params.aspectRatio === "auto" ? "自动" : params.aspectRatio} · ${params.resolution} · ${params.durationSeconds} 秒 · ${params.count} 个`;
-  const audioStatusLabel = params.generateAudio ? "音频开启" : "音频关闭";
+  const parameterSummary = `${params.aspectRatio === "auto" ? "自动" : params.aspectRatio} · ${params.resolution} · ${params.durationSeconds} 秒`;
+  const audioStatusLabel = "音频自动生成";
+  const showAudioIndicator = option?.capabilities.audioControlMode === "always_on_implicit" && params.generateAudio;
   const closeModel = () => {
     setModelOpen(false);
     modelButtonRef.current?.focus();
@@ -135,11 +137,11 @@ export function VideoNodeComposer({ catalog: catalogOverride, data, generating, 
     <textarea aria-label={VIDEO_UI_COPY.videoPrompt} className="mt-2 min-h-[72px] w-full resize-y bg-transparent text-sm outline-none placeholder:text-white/35 disabled:cursor-not-allowed disabled:opacity-55" disabled={generating} onChange={(event) => onUpdate({ generationPrompt: event.target.value })} placeholder={VIDEO_UI_COPY.promptPlaceholder} value={data.generationPrompt || ""} />
     <div className="mt-2 flex flex-col gap-2 border-t border-white/10 pt-2 md:flex-row md:flex-nowrap md:items-center" data-testid="video-composer-actions">
       <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-2" data-testid="video-composer-settings-group">
-        <div className="relative max-w-[150px] min-w-0">
-          <button ref={modelButtonRef} aria-expanded={modelOpen} aria-label={VIDEO_UI_COPY.chooseVideoModel} className="inline-flex h-[38px] max-w-full min-w-0 items-center gap-[7px] rounded-[10px] border border-white/10 bg-black/20 px-2 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-45" disabled={generating || catalog.loading} onClick={() => { if (modelOpen) closeModel(); else { parameterLayer.dismissLayer(); setModelOpen(true); } }} type="button"><Sparkles className="shrink-0" size={16} /><span className="min-w-0 truncate" title={option?.label}>{modelButtonLabel}</span></button>
+        <div className="relative min-w-0" data-testid="video-capsule-model" style={{ maxWidth: videoComposerDensity.modelMaxWidth }}>
+          <button ref={modelButtonRef} aria-expanded={modelOpen} aria-label={VIDEO_UI_COPY.chooseVideoModel} className="inline-flex h-10 max-w-full min-w-0 items-center gap-[7px] rounded-full border border-white/10 bg-black/20 px-3 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-45" disabled={generating || catalog.loading} onClick={() => { if (modelOpen) closeModel(); else { parameterLayer.dismissLayer(); setModelOpen(true); } }} type="button"><Sparkles className="shrink-0" size={16} /><span className="min-w-0 truncate" title={`${modelButtonLabel}${option?.routeLabel ? ` · ${option.routeLabel}` : ""}`}>{modelButtonLabel}{option?.routeLabel ? <span className="ml-1 font-medium text-white/50">· {option.routeLabel}</span> : null}</span></button>
           {modelOpen ? <div className="absolute bottom-[calc(100%+8px)] left-0 z-[1300]"><VideoModelMenu error={catalog.error} loading={catalog.loading} onChange={handleModelChange} onClose={closeModel} onRetry={catalog.retry} options={catalog.models} value={data.modelId ?? null} /></div> : null}
         </div>
-        <div className="relative min-w-0 flex-1">
+        <div className="relative min-w-0" data-testid="video-capsule-parameters" style={{ maxWidth: videoComposerDensity.parameterMaxWidth }}>
         <button
           ref={(element) => {
             parameterTriggerRef.current = element;
@@ -147,7 +149,7 @@ export function VideoNodeComposer({ catalog: catalogOverride, data, generating, 
           }}
           aria-expanded={parameterLayer.open}
           aria-label="视频参数摘要"
-          className="inline-flex h-[38px] w-full max-w-full min-w-0 items-center gap-2 rounded-[10px] border border-white/10 bg-[#303036] px-3 text-xs font-bold text-white/90 transition hover:border-white/25 hover:bg-[#383840] focus:border-sky-300/50 focus:outline-none disabled:cursor-not-allowed disabled:opacity-45"
+          className="inline-flex h-10 w-max max-w-full min-w-0 items-center gap-2 rounded-full border border-white/10 bg-[#303036] px-3 text-xs font-bold text-white/90 transition hover:border-white/25 hover:bg-[#383840] focus:border-sky-300/50 focus:outline-none disabled:cursor-not-allowed disabled:opacity-45 max-md:max-w-[180px]"
           disabled={generating}
           onClick={() => {
             setModelOpen(false);
@@ -158,7 +160,7 @@ export function VideoNodeComposer({ catalog: catalogOverride, data, generating, 
         >
           <RectangleHorizontal aria-hidden="true" className="shrink-0" size={16} />
           <span className="min-w-0 truncate">{parameterSummary}</span>
-          {params.generateAudio ? <Volume2 aria-label={audioStatusLabel} className="shrink-0" size={16} title={audioStatusLabel} /> : <VolumeX aria-label={audioStatusLabel} className="shrink-0" size={16} title={audioStatusLabel} />}
+          {showAudioIndicator ? <Volume2 aria-label={audioStatusLabel} className="shrink-0" size={16} title={audioStatusLabel} /> : null}
           {parameterLayer.open ? <ChevronUp aria-hidden="true" className="shrink-0 text-white/55" size={15} /> : <ChevronDown aria-hidden="true" className="shrink-0 text-white/55" size={15} />}
         </button>
           {parameterLayer.open ? <VideoParameterPopover anchorRef={parameterTriggerRef} layerRef={parameterLayer.ref}><VideoParameterPanel capabilities={capabilities} onChange={setParams} pricing={option?.pricing ?? null} value={params} /></VideoParameterPopover> : null}
@@ -167,7 +169,7 @@ export function VideoNodeComposer({ catalog: catalogOverride, data, generating, 
       <div className="flex shrink-0 items-center justify-between gap-2 md:justify-end" data-testid="video-composer-submit-group">
         <VideoHumanReviewControl compact disabled={generating} onRequestVerification={() => setParams({ ...params, humanReview: { ...params.humanReview, status: "verified", verifiedAt: new Date().toISOString() } })} value={params.humanReview} />
         <span className="inline-flex h-[38px] items-center gap-1 whitespace-nowrap text-xs font-bold text-white/55"><Coins size={15} />{cost !== null ? `预计 ${formatCredits(cost)} 金币` : "未配置"}</span>
-        <button aria-label={VIDEO_UI_COPY.generateVideo} className="inline-flex h-[38px] items-center gap-1 rounded-[10px] bg-sky-300 px-3 text-xs font-bold text-slate-950 disabled:cursor-not-allowed disabled:opacity-50" disabled={generationDisabled} onClick={onGenerate} type="button"><CheckCircle2 size={16} />{generating ? VIDEO_UI_COPY.generating : VIDEO_UI_COPY.generate}</button>
+        <button aria-label={VIDEO_UI_COPY.generateVideo} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sky-300 text-slate-950 disabled:cursor-not-allowed disabled:opacity-50" disabled={generationDisabled} onClick={onGenerate} title={VIDEO_UI_COPY.generateVideo} type="button"><CheckCircle2 aria-hidden="true" size={17} /><span className="sr-only">{generating ? VIDEO_UI_COPY.generating : VIDEO_UI_COPY.generate}</span></button>
       </div>
     </div>
     {cameraOpen ? <VideoCameraLibrary manifest={manifest} onChange={(cameraMotionId) => setParams({ ...params, cameraMotionId })} onClose={() => setCameraOpen(false)} triggerRef={cameraButtonRef} value={params.cameraMotionId} /> : null}

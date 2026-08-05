@@ -176,5 +176,6 @@ export type VideoModelOption = {
   modelKey: string;
   minChargeCredits: number | null;
   pricing: { billingBasis: "duration_second"; exact: true; minChargeCredits: number; unit: "video_generation"; unitCredits: number } | null;
+  routeLabel?: string | null;
   routeKey: string;
 };

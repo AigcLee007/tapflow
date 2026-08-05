@@ -62,6 +62,7 @@ export function toVideoModelOptions(
         modelKey: model.modelKey,
         minChargeCredits,
         pricing,
+        routeLabel: route.routeLabel,
         routeKey: route.routeKey,
       }];
     });
