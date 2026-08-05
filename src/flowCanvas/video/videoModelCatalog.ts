@@ -13,6 +13,13 @@ const isGenerationRoute = (route: AiModelCatalogRoute) =>
   && Array.isArray(route.capabilities?.supportedVideoWorkflows)
   && route.capabilities.supportedVideoWorkflows.includes("video_generation");
 
+export function resolveDefaultVideoModel(models: VideoModelOption[]): VideoModelOption | null {
+  const eligible = (option: VideoModelOption) => option.blocker === null;
+  return models.find((option) => option.modelKey === "gemini-omni-flash" && eligible(option))
+    ?? models.find(eligible)
+    ?? null;
+}
+
 export function toVideoModelOptions(
   catalog: AiModelCatalogItem[],
   routesByModelKey: Record<string, AiModelCatalogRoute[]>,

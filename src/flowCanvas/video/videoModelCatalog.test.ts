@@ -1,7 +1,8 @@
 import { describe, expect, test } from "vitest";
 
 import type { AiModelCatalogItem, AiModelCatalogRoute } from "../../services/v2AiModelCatalogApi";
-import { toVideoModelOptions } from "./videoModelCatalog";
+import { resolveDefaultVideoModel, toVideoModelOptions } from "./videoModelCatalog";
+import type { VideoModelOption } from "./videoTypes";
 
 const videoModel = (overrides: Partial<AiModelCatalogItem> = {}): AiModelCatalogItem => ({
   capabilities: {},
@@ -41,6 +42,11 @@ const route = (overrides: Partial<AiModelCatalogRoute> = {}): AiModelCatalogRout
     },
   };
 };
+
+const videoOption = (modelKey: string, blocker: VideoModelOption["blocker"] = null): VideoModelOption => ({
+  blocker,
+  modelKey,
+} as VideoModelOption);
 
 describe("toVideoModelOptions", () => {
   test("uses formal PixelHub creator labels and omits route-like labels", () => {
@@ -172,5 +178,30 @@ describe("toVideoModelOptions", () => {
     });
 
     expect(options).toEqual([]);
+  });
+});
+
+describe("resolveDefaultVideoModel", () => {
+  test("prefers an eligible Gemini Omni Flash option regardless of input position", () => {
+    const firstEligible = videoOption("video.sora");
+    const gemini = videoOption("gemini-omni-flash");
+
+    expect(resolveDefaultVideoModel([firstEligible, gemini])).toBe(gemini);
+  });
+
+  test("falls back to the first eligible option when Gemini Omni Flash is blocked", () => {
+    const firstEligible = videoOption("video.sora");
+    const blockedGemini = videoOption("gemini-omni-flash", "PRICING_NOT_FOUND");
+    const secondEligible = videoOption("video.veo");
+
+    expect(resolveDefaultVideoModel([blockedGemini, firstEligible, secondEligible])).toBe(firstEligible);
+  });
+
+  test("returns null when no eligible option exists or the input is empty", () => {
+    expect(resolveDefaultVideoModel([
+      videoOption("gemini-omni-flash", "PRICING_NOT_FOUND"),
+      videoOption("video.sora", "PRICING_NOT_FOUND"),
+    ])).toBeNull();
+    expect(resolveDefaultVideoModel([])).toBeNull();
   });
 });
