@@ -43,7 +43,7 @@ export function getNodeEditorSurfaceStyle(
     borderRadius: density.borderRadius,
     padding: density.padding,
     gap: density.gap,
-    background: isVideo ? "#17171b" : baseSurfaceStyle.background,
+    background: baseSurfaceStyle.background,
     boxShadow: isVideo
       ? "0 18px 42px rgba(0,0,0,0.45)"
       : baseSurfaceStyle.boxShadow,

@@ -6233,3 +6233,9 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - native video fullscreen now toggles from the same top-right button, synchronizes on `fullscreenchange`, updates icon/label, and keeps the existing portal fallback behavior.
 - validation passed: focused video/fullscreen/density/editor tests (`40` tests), frontend build, and `git diff --check`.
 - `npm run smoke:video-node` was attempted but its internal `npx.cmd` process timed out after 60 seconds without a visual result, so browser smoke is not counted as passing.
+
+## 2026-08-05 - Video Bottom Controls Density And Surface Color
+
+- aligned video model and parameter capsules with the image node bottom row: 28px capsule height and 24px action token; top video tool buttons remain unchanged.
+- aligned the video editor surface background with the image editor surface (`rgba(38,38,38,0.98)`) while preserving video-only inverse-zoom and positioning behavior.
+- focused density, surface, composer, and shared toolbar tests passed (`39` tests); frontend build passed with existing non-blocking Vite warnings.

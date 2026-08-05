@@ -38,8 +38,8 @@ export const promptBarBaseDensity = {
 } as const;
 
 export const videoComposerDensity = {
-  actionSize: 40,
-  capsuleHeight: 40,
+  actionSize: 24,
+  capsuleHeight: 28,
   capsuleRadius: 9999,
   mobileParameterMaxWidth: 180,
   modelMaxWidth: 230,

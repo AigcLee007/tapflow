@@ -33,12 +33,12 @@ describe('promptBarDensity', () => {
 
   test('defines content-sized video capsule and action tokens', () => {
     expect(videoComposerDensity).toMatchObject({
-      capsuleHeight: 40,
+      capsuleHeight: 28,
       capsuleRadius: 9999,
       modelMaxWidth: 230,
       parameterMaxWidth: 320,
       mobileParameterMaxWidth: 180,
-      actionSize: 40,
+      actionSize: 24,
     });
   });
 });

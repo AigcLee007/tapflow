@@ -171,14 +171,14 @@ describe("VideoNodeComposer", () => {
     expect(model.className).toContain("bg-[#111216]");
     expect(model.className).toContain("hover:bg-[#1d1f24]");
     expect(model.className).toContain("focus-visible:outline-offset-2");
-    expect(model.style.height).toBe("40px");
+    expect(model.style.height).toBe("28px");
     expect(model.style.borderRadius).toBe("9999px");
     expect(parameter.className).toMatch(/w-max/);
     expect(parameter.className).toMatch(/max-w/);
     expect(parameter.className).toContain("focus-visible:outline-offset-2");
     expect(parameter.className).not.toMatch(/(^|\s)w-full(\s|$)/);
     expect(parameter.className).not.toContain("flex-1");
-    expect(parameter.style.height).toBe("40px");
+    expect(parameter.style.height).toBe("28px");
     expect(parameter.style.borderRadius).toBe("9999px");
     expect(parameter.style.getPropertyValue("--video-composer-mobile-parameter-max-width")).toBe("180px");
     expect(parameter.textContent).not.toContain("1 个");
