@@ -35,6 +35,7 @@ type VideoReferenceStripV2Props = {
   disabled?: boolean;
   onChange: (params: VideoGenerationParamsV2) => void;
   onConnectCanvasReference: (input: Pick<VideoReferenceInputV2, "mediaKind" | "referenceKey" | "role"> & { sourceNodeId: string }) => void;
+  onDisconnectCanvasReference?: (sourceNodeId: string) => void;
   onUploadReference: (file: File, mediaKind: VideoReferenceInputV2["mediaKind"]) => Promise<{ id: string; kind: string }>;
   value: VideoGenerationParamsV2;
 };
@@ -173,7 +174,7 @@ function LegacyVideoReferenceStrip({ currentNodeId, disabled = false, onChange, 
   );
 }
 
-function VideoReferenceStripV2({ capabilities, currentNodeId, disabled = false, onChange, onConnectCanvasReference, onUploadReference, value }: VideoReferenceStripV2Props) {
+function VideoReferenceStripV2({ capabilities, currentNodeId, disabled = false, onChange, onConnectCanvasReference, onDisconnectCanvasReference = () => undefined, onUploadReference, value }: VideoReferenceStripV2Props) {
   const [pickerKind, setPickerKind] = useState<VideoReferenceInputV2["mediaKind"] | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -189,6 +190,8 @@ function VideoReferenceStripV2({ capabilities, currentNodeId, disabled = false, 
   }, [disabled]);
   const remove = (referenceKey: string) => {
     if (disabled) return;
+    const removedReference = value.referenceInputs.find((reference) => reference.referenceKey === referenceKey);
+    if (removedReference?.source.kind === "upstream") onDisconnectCanvasReference(removedReference.source.id);
     const nextReferences = value.referenceInputs
       .filter((reference) => reference.referenceKey !== referenceKey)
       .map((reference, order) => ({ ...reference, order }));

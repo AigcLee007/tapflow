@@ -6264,3 +6264,10 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - connecting an image node to an image-to-video node now replaces stale image asset references for the same main-image role instead of sending both the deleted asset ID and the current upstream image.
 - this prevents `REFERENCE_ASSET_NOT_FOUND` failures after an image node is replaced while its video connection remains.
 - focused video/store/worker tests passed (`76` passed, `17` skipped); frontend build and `git diff --check` passed with existing Vite warnings.
+
+## 2026-08-06 - Gemini Main Image And Veo Frame Removal
+
+- Gemini Omni Flash image-to-video now sends its single main image through PixelHub's singular `image_url` field, while multi-image/style-reference workflows retain `reference_image_urls`.
+- removing an upstream Veo first/last frame now disconnects the corresponding canvas edge before mode resolution, preventing the deleted frame from being automatically restored.
+- image-to-video reference reconciliation now keeps one already-active upstream image when legacy drafts contain multiple incoming image edges, preventing the React maximum-update-depth loop that blacked out the canvas.
+- focused video reference and adapter tests passed (`63` assertions across the focused suites), the complete AI Gateway core suite passed (`143` tests), and frontend build plus `git diff --check` passed with existing Vite warnings.

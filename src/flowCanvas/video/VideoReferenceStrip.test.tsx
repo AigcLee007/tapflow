@@ -170,6 +170,50 @@ describe("VideoReferenceStrip", () => {
     }));
   });
 
+  test("disconnects the removed Veo canvas frame before downgrading the mode", () => {
+    const onChange = vi.fn();
+    const onDisconnectCanvasReference = vi.fn();
+    const capabilities = mergeVideoCapabilities({
+      confirmedByRoute: true,
+      maxImages: 2,
+      maxTotal: 2,
+      modeConstraints: {
+        first_last_frame: { maxImages: 2, maxTotal: 2, minImages: 2 },
+        image_to_video: { maxImages: 1, maxTotal: 1, minImages: 1 },
+      },
+      referenceSemantics: "ordered_first_last_frames",
+      supportedModes: ["text_to_video", "image_to_video", "first_last_frame"],
+    });
+    const value = {
+      ...createDefaultVideoGenerationParams(),
+      mode: "first_last_frame" as const,
+      referenceInputs: [
+        { mediaKind: "image" as const, order: 0, referenceKey: "upstream:first", role: "first_frame" as const, source: { kind: "upstream" as const, id: "first" } },
+        { mediaKind: "image" as const, order: 1, referenceKey: "upstream:last", role: "last_frame" as const, source: { kind: "upstream" as const, id: "last" } },
+      ],
+    };
+
+    render(
+      <VideoReferenceStrip
+        capabilities={capabilities}
+        currentNodeId="video-node"
+        onChange={onChange}
+        onConnectCanvasReference={vi.fn()}
+        onDisconnectCanvasReference={onDisconnectCanvasReference}
+        onUploadReference={vi.fn()}
+        value={value}
+      />,
+    );
+
+    fireEvent.click(screen.getAllByRole("button")[1]!);
+
+    expect(onDisconnectCanvasReference).toHaveBeenCalledWith("last");
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      mode: "image_to_video",
+      referenceInputs: [expect.objectContaining({ role: "first_frame", source: { kind: "upstream", id: "first" } })],
+    }));
+  });
+
   test("maps a selected role without changing existing asset order", () => {
     const onChange = vi.fn();
     const value = createValue();

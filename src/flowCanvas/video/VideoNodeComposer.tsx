@@ -30,13 +30,14 @@ type Props = {
   nodeId: string;
   onGenerate: () => void;
   onConnectCanvasReference?: (input: Pick<VideoReferenceInputV2, "mediaKind" | "referenceKey" | "role"> & { sourceNodeId: string }) => void;
+  onDisconnectCanvasReference?: (sourceNodeId: string) => void;
   onUpdate: (patch: Partial<FlowNodeData>) => void;
   onUploadReference?: (file: File, mediaKind: VideoReferenceInputV2["mediaKind"]) => Promise<{ id: string; kind: string }>;
   referencePreviewUrlsBySource?: Record<string, string | undefined>;
   selected: boolean;
 };
 
-export function VideoNodeComposer({ catalog: catalogOverride, data, generating, nodeId, onConnectCanvasReference = () => undefined, onGenerate, onUpdate, onUploadReference = async () => { throw new Error("REFERENCE_UPLOAD_UNAVAILABLE"); }, referencePreviewUrlsBySource, selected }: Props) {
+export function VideoNodeComposer({ catalog: catalogOverride, data, generating, nodeId, onConnectCanvasReference = () => undefined, onDisconnectCanvasReference = () => undefined, onGenerate, onUpdate, onUploadReference = async () => { throw new Error("REFERENCE_UPLOAD_UNAVAILABLE"); }, referencePreviewUrlsBySource, selected }: Props) {
   const loadedCatalog = useVideoGenerationCatalog();
   const catalog = catalogOverride ?? loadedCatalog;
   const [modelOpen, setModelOpen] = useState(false);
@@ -141,7 +142,7 @@ export function VideoNodeComposer({ catalog: catalogOverride, data, generating, 
     </div>
 
     {params.mode !== "text_to_video" ? <div className="mt-2 flex min-w-0 flex-wrap gap-2" data-testid="video-composer-references">
-      <VideoReferenceStrip capabilities={capabilities ?? createSafeDefaultVideoCapabilities()} currentNodeId={nodeId} disabled={generating} onChange={(next) => setParams({ ...params, ...next })} onConnectCanvasReference={onConnectCanvasReference} onUploadReference={onUploadReference} value={params} />
+      <VideoReferenceStrip capabilities={capabilities ?? createSafeDefaultVideoCapabilities()} currentNodeId={nodeId} disabled={generating} onChange={(next) => setParams({ ...params, ...next })} onConnectCanvasReference={onConnectCanvasReference} onDisconnectCanvasReference={onDisconnectCanvasReference} onUploadReference={onUploadReference} value={params} />
     </div> : null}
 
       <textarea aria-label={VIDEO_UI_COPY.videoPrompt} className="mt-2 min-h-[52px] max-h-[120px] w-full resize-y bg-transparent text-sm outline-none placeholder:text-white/35 disabled:cursor-not-allowed disabled:opacity-55" disabled={generating} onChange={(event) => onUpdate({ generationPrompt: event.target.value })} placeholder={VIDEO_UI_COPY.promptPlaceholder} value={data.generationPrompt || ""} />

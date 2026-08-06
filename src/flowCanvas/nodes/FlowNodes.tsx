@@ -7662,6 +7662,7 @@ export const VideoNodeComponent = memo(function VideoNode({
   const d = data;
   const backendProjectId = useFlowCanvasStore((s) => s.backendProjectId);
   const connectVideoReference = useFlowCanvasStore((s) => s.connectVideoReference);
+  const removeEdgesByIds = useFlowCanvasStore((s) => s.removeEdgesByIds);
   const updateNodeData = useFlowCanvasStore((s) => s.updateNodeData);
   const runtimeNodeOutput = useFlowCanvasStore((s) => s.nodeOutputByNodeId[id]);
   const runtimeNodeStatus = useFlowCanvasStore((s) => s.nodeRunStatusByNodeId[id]);
@@ -7787,7 +7788,10 @@ export const VideoNodeComponent = memo(function VideoNode({
     const currentUpstreamIds = new Set(videoParams.referenceInputs
       .filter((reference) => reference.source.kind === 'upstream')
       .map((reference) => reference.source.id));
-    const missingSourceId = connectedImageSourceIds.find((sourceId) => !currentUpstreamIds.has(sourceId));
+    const reconciledSourceIds = videoParams.mode === 'image_to_video'
+      ? [connectedImageSourceIds.find((sourceId) => currentUpstreamIds.has(sourceId)) ?? connectedImageSourceIds[0]!]
+      : connectedImageSourceIds;
+    const missingSourceId = reconciledSourceIds.find((sourceId) => !currentUpstreamIds.has(sourceId));
     if (!missingSourceId) return;
     const role = videoParams.mode === 'image_to_video'
       ? 'main_image'
@@ -8032,6 +8036,9 @@ export const VideoNodeComponent = memo(function VideoNode({
               generating={isGenerating}
               nodeId={id}
               onConnectCanvasReference={(input) => connectVideoReference({ ...input, targetNodeId: id })}
+              onDisconnectCanvasReference={(sourceNodeId) => removeEdgesByIds(allFlowEdges
+                .filter((edge) => edge.source === sourceNodeId && edge.target === id)
+                .map((edge) => edge.id))}
               onGenerate={handleGenerate}
               onUpdate={(patch) => updateNodeData(id, patch)}
               onUploadReference={async (file, mediaKind) => {

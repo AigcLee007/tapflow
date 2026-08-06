@@ -45,7 +45,14 @@ export class PixelHubVideoAdapter implements ProviderAdapter {
     if (!model) throw new AiGatewayError({ code: "MODEL_REQUIRED", message: "PixelHub upstream model is required", statusCode: 422 });
     const urls = inputs(request); const body: Record<string, unknown> = { aspect_ratio: params.aspectRatio, duration: params.durationSeconds, model, prompt: request.prompt.trim(), resolution: params.resolution.toLowerCase() };
     if (model === "veo31-fast") { if (urls.image.length) body.image_urls = urls.image; }
-    else { if (urls.image.length) body.reference_image_urls = urls.image; if (urls.video.length) body.reference_videos = urls.video; if (model === "sora-v3-pro") { body.generate_audio = params.generateAudio; if (urls.audio.length) body.audio_urls = urls.audio; } }
+    else {
+      if (urls.image.length) {
+        if (model === "gemini-omni-flash" && params.mode === "image_to_video") body.image_url = urls.image[0];
+        else body.reference_image_urls = urls.image;
+      }
+      if (urls.video.length) body.reference_videos = urls.video;
+      if (model === "sora-v3-pro") { body.generate_audio = params.generateAudio; if (urls.audio.length) body.audio_urls = urls.audio; }
+    }
     const providerRequest = { aspectRatio: body.aspect_ratio, duration: body.duration, generateAudio: body.generate_audio ?? "implicit", model, referenceCounts: { audios: urls.audio.length, images: urls.image.length, videos: urls.video.length }, resolution: body.resolution };
     const response = await this.request(context, "POST", typeof context.requestConfig.requestPath === "string" ? context.requestConfig.requestPath : "/v1/videos", body, providerRequest);
     const task = parseTask(response.body);

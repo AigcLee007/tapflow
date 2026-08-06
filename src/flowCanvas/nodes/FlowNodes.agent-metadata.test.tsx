@@ -239,6 +239,63 @@ describe("FlowNodes agent metadata", () => {
     expect(nodeResizerMock).not.toHaveBeenCalled();
   });
 
+  it("keeps one stable image-to-video reference when a legacy draft has multiple image edges", async () => {
+    const model = createVideoCatalogModel({
+      capabilities: {
+        aspectRatios: ["16:9"],
+        audioControlMode: "unsupported",
+        confirmedByRoute: true,
+        durationStepSeconds: 2,
+        maxCount: 1,
+        maxDurationSeconds: 8,
+        maxImages: 2,
+        maxTotal: 2,
+        maxVideos: 0,
+        minDurationSeconds: 4,
+        modeConstraints: { image_to_video: { maxImages: 1, maxTotal: 1, minImages: 1 } },
+        referenceSemantics: "ordered_first_last_frames",
+        resolutions: ["720P"],
+        supportedDurations: [4, 6, 8],
+        supportedModes: ["image_to_video"],
+        supportsAudio: false,
+        supportsHumanReview: false,
+      },
+      id: "veo-id",
+      modelKey: "veo31-fast",
+      routeKey: "video.pixelhub.veo31-fast",
+    });
+    videoCatalogMocks.current = { error: null, loading: false, models: [model], retry: vi.fn() };
+    const first = useFlowCanvasStore.getState().addNode("image", { x: 0, y: 0 }, { assetId: "asset-first", kind: "image", title: "First" });
+    const second = useFlowCanvasStore.getState().addNode("image", { x: 0, y: 240 }, { assetId: "asset-second", kind: "image", title: "Second" });
+    const target = useFlowCanvasStore.getState().addNode("video", { x: 320, y: 0 }, createVideoNodeData({
+      modelId: model.id,
+      params: {
+        videoGeneration: {
+          aspectRatio: "16:9",
+          count: 1,
+          durationSeconds: 4,
+          generateAudio: false,
+          mode: "image_to_video",
+          referenceInputs: [],
+          resolution: "720P",
+          schemaVersion: 2,
+        },
+      },
+      routeKey: model.routeKey,
+    }) as any, { selected: true });
+    useFlowCanvasStore.getState().onConnect({ source: first.id, sourceHandle: "out", target: target.id, targetHandle: "in" });
+    useFlowCanvasStore.getState().onConnect({ source: second.id, sourceHandle: "out", target: target.id, targetHandle: "in" });
+
+    render(<StoreBackedVideoNode nodeId={target.id} />);
+
+    await waitFor(() => {
+      const current = useFlowCanvasStore.getState().nodes.find((node) => node.id === target.id);
+      const references = (current?.data.params as any)?.videoGeneration?.referenceInputs ?? [];
+      expect(references).toHaveLength(1);
+      expect(references[0]?.source).toEqual({ kind: "upstream", id: second.id });
+    });
+  });
+
   it("renders an Agent badge and opens session detail for text nodes", () => {
     const listener = vi.fn();
     window.addEventListener("tapflow:open-agent-session", listener as EventListener);

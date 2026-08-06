@@ -57,6 +57,22 @@ const veoContext = (): ProviderCallContext => ({
   },
 });
 
+const geminiImageToVideoContext = (): ProviderCallContext => ({
+  ...context("gemini-omni-flash"),
+  requestConfig: {
+    ...context("gemini-omni-flash").requestConfig,
+    capabilities: {
+      ...context("gemini-omni-flash").requestConfig.capabilities as Record<string, unknown>,
+      defaults: { aspectRatio: "16:9", count: 1, durationSeconds: 8, generateAudio: true, mode: "image_to_video", resolution: "1080P" },
+      maxImages: 1,
+      maxTotal: 1,
+      maxVideos: 0,
+      modeConstraints: { image_to_video: { maxImages: 1, maxTotal: 1, maxVideos: 0, minImages: 1 } },
+      supportedModes: ["image_to_video"],
+    },
+  },
+});
+
 describe("PixelHubVideoAdapter", () => {
   test("maps Gemini input to canonical PixelHub fields without leaking URLs in summaries", async () => {
     const fetchImplementation = vi.fn().mockResolvedValue(new Response(JSON.stringify({ task_id: "task-1", status: "queued" }), { status: 200 }));
@@ -64,6 +80,22 @@ describe("PixelHubVideoAdapter", () => {
     expect(JSON.parse(String(fetchImplementation.mock.calls[0]?.[1]?.body))).toEqual({ aspect_ratio: "16:9", duration: 8, model: "gemini-omni-flash", prompt: request.prompt, reference_image_urls: ["https://signed.test/image"], reference_videos: ["https://signed.test/video"], resolution: "1080p" });
     expect(result).toMatchObject({ pollIntervalMs: 12000, providerTaskId: "task-1", providerTaskTimeoutMs: 1800000, status: "waiting_provider" });
     expect(JSON.stringify(result.providerRequest)).not.toMatch(/signed\.test|secret-key/i);
+  });
+
+  test("maps Gemini image-to-video main image to the singular image_url field", async () => {
+    const fetchImplementation = vi.fn().mockResolvedValue(new Response(JSON.stringify({ task_id: "task-gemini-image", status: "queued" }), { status: 200 }));
+    const imageRequest: VideoGenerationRequest = {
+      ...request,
+      params: { ...request.params!, mode: "image_to_video" },
+      inputAssets: [media("image", "main_image", 0)],
+    };
+
+    await new PixelHubVideoAdapter({ fetchImplementation }).generateVideo(geminiImageToVideoContext(), imageRequest);
+
+    expect(JSON.parse(String(fetchImplementation.mock.calls[0]?.[1]?.body))).toEqual({
+      aspect_ratio: "16:9", duration: 8, image_url: "https://signed.test/image-0",
+      model: "gemini-omni-flash", prompt: request.prompt, resolution: "1080p",
+    });
   });
 
   test("maps Sora visual and audio references with its explicit audio toggle", async () => {
