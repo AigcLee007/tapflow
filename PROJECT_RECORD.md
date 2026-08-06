@@ -6258,3 +6258,9 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - automatic image reference roles now use `main_image` for normal image-to-video and ordered frame roles for first/last-frame semantics; capability correction also normalizes legacy roles before preflight.
 - reference recovery no longer stops merely because a stale/generated video preview exists, so retrying after replacing an upstream image can resolve the current image asset.
 - focused store, capability, reference-rule, composer, and node metadata tests were run; 88 passed and one pre-existing submitting-feedback assertion failed because the button label changes to `生成中` immediately. Frontend `npm run build` passed with existing Vite warnings.
+
+## 2026-08-06 - Video Stale Reference Asset Recovery
+
+- connecting an image node to an image-to-video node now replaces stale image asset references for the same main-image role instead of sending both the deleted asset ID and the current upstream image.
+- this prevents `REFERENCE_ASSET_NOT_FOUND` failures after an image node is replaced while its video connection remains.
+- focused video/store/worker tests passed (`76` passed, `17` skipped); frontend build and `git diff --check` passed with existing Vite warnings.

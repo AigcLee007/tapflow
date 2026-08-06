@@ -387,8 +387,15 @@ const upsertUpstreamVideoReference = (
   },
 ): FlowNode => {
   const normalized = normalizeVideoGenerationParams(node.data).params;
+  const shouldReplaceExistingImage = (reference: VideoReferenceInputV2) => {
+    if (input.mediaKind !== 'image' || reference.mediaKind !== 'image') return false;
+    if (normalized.mode === 'image_to_video') return true;
+    return normalized.mode === 'first_last_frame' && reference.role === input.role;
+  };
   const referenceInputs = [
-    ...normalized.referenceInputs.filter((reference) => reference.referenceKey !== input.referenceKey),
+    ...normalized.referenceInputs.filter((reference) => (
+      reference.referenceKey !== input.referenceKey && !shouldReplaceExistingImage(reference)
+    )),
     {
       mediaKind: input.mediaKind,
       order: normalized.referenceInputs.length,

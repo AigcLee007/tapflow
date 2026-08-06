@@ -71,6 +71,33 @@ describe('flowCanvasStore upstream image references', () => {
     ]);
   });
 
+  it('replaces a stale asset main image when an image-to-video canvas edge is connected', () => {
+    const image = useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, { kind: 'image', title: 'Image source' });
+    const target = useFlowCanvasStore.getState().addNode('video', { x: 320, y: 0 }, {
+      kind: 'video',
+      title: 'Video target',
+      params: {
+        videoGeneration: {
+          ...normalizeVideoGenerationParams({}).params,
+          mode: 'image_to_video',
+          referenceInputs: [{
+            mediaKind: 'image',
+            order: 0,
+            referenceKey: 'asset:stale-image',
+            role: 'main_image',
+            source: { kind: 'asset', id: 'stale-image' },
+          }],
+        },
+      },
+    });
+
+    useFlowCanvasStore.getState().onConnect({ source: image.id, sourceHandle: 'out', target: target.id, targetHandle: 'in' });
+
+    expect(normalizeVideoGenerationParams(useFlowCanvasStore.getState().nodes.find((node) => node.id === target.id)?.data).params.referenceInputs).toEqual([
+      expect.objectContaining({ mediaKind: 'image', role: 'main_image', source: { kind: 'upstream', id: image.id } }),
+    ]);
+  });
+
   it('removes only the matching upstream reference when its dependency edge is removed', () => {
     const source = useFlowCanvasStore.getState().addNode('video', { x: 0, y: 0 }, { kind: 'video', title: 'Video source' });
     const target = useFlowCanvasStore.getState().addNode('video', { x: 320, y: 0 }, { title: 'Video target' });
