@@ -1,14 +1,17 @@
 import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { Connection, Node, NodeProps } from "@xyflow/react";
 
 import { ImageNodeComponent } from "./FlowNodes";
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
+import type { FlowNodeData } from "../types";
 
 const assetApiMocks = vi.hoisted(() => ({
   getAsset: vi.fn(),
   getAssetDownloadUrl: vi.fn(),
   getAssetVariantUrl: vi.fn(),
+  deleteAsset: vi.fn(),
   uploadAssetFile: vi.fn(),
 }));
 
@@ -16,6 +19,7 @@ vi.mock("../../assets/assetApi", () => ({
   getAsset: (...args: unknown[]) => assetApiMocks.getAsset(...args),
   getAssetDownloadUrl: (...args: unknown[]) => assetApiMocks.getAssetDownloadUrl(...args),
   getAssetVariantUrl: (...args: unknown[]) => assetApiMocks.getAssetVariantUrl(...args),
+  deleteAsset: (...args: unknown[]) => assetApiMocks.deleteAsset(...args),
   uploadAssetFile: (...args: unknown[]) => assetApiMocks.uploadAssetFile(...args),
 }));
 vi.mock("../runtime/v2WorkflowRunner", () => ({ markBackendRunLaunchFailed: vi.fn(), runBackendWorkflow: vi.fn() }));
@@ -37,7 +41,25 @@ vi.mock("@xyflow/react", async () => {
 
 function StoreBackedImageNode({ nodeId }: { nodeId: string }) {
   const node = useFlowCanvasStore((state) => state.nodes.find((item) => item.id === nodeId));
-  return node ? <ImageNodeComponent id={node.id} selected data={node.data as any} dragging={false} zIndex={1} isConnectable type="image" xPos={0} yPos={0} /> : null;
+  const props: NodeProps<Node<FlowNodeData>> | null = node ? {
+    data: node.data,
+    deletable: true,
+    draggable: true,
+    dragging: false,
+    id: node.id,
+    isConnectable: true,
+    positionAbsoluteX: 0,
+    positionAbsoluteY: 0,
+    selectable: true,
+    selected: true,
+    type: "image",
+    zIndex: 1,
+  } : null;
+  return props ? <ImageNodeComponent {...props} /> : null;
+}
+
+function connect(source: string, target: string) {
+  useFlowCanvasStore.getState().onConnect({ source, sourceHandle: "out", target, targetHandle: "in" } satisfies Connection);
 }
 
 function addImageTarget() {
@@ -52,6 +74,7 @@ describe("ImageNodeComponent unified inputs", () => {
     assetApiMocks.getAsset.mockReset();
     assetApiMocks.getAssetDownloadUrl.mockReset();
     assetApiMocks.getAssetVariantUrl.mockReset();
+    assetApiMocks.deleteAsset.mockReset();
     assetApiMocks.uploadAssetFile.mockReset();
     assetApiMocks.getAsset.mockRejectedValue(new Error("offline"));
   });
@@ -61,9 +84,9 @@ describe("ImageNodeComponent unified inputs", () => {
     const image = useFlowCanvasStore.getState().addNode("image", { x: 0, y: 180 }, { assetId: "asset-ready", thumbnailUrl: "https://cdn.test/ready.png", title: "Ready image" } as any);
     const previewless = useFlowCanvasStore.getState().addNode("image", { x: 0, y: 360 }, { assetId: "asset-previewless", title: "Previewless image" } as any);
     const target = addImageTarget();
-    useFlowCanvasStore.getState().onConnect({ source: text.id, target: target.id });
-    useFlowCanvasStore.getState().onConnect({ source: image.id, target: target.id });
-    useFlowCanvasStore.getState().onConnect({ source: previewless.id, target: target.id });
+    connect(text.id, target.id);
+    connect(image.id, target.id);
+    connect(previewless.id, target.id);
     assetApiMocks.getAsset.mockRejectedValue(new Error("offline"));
 
     render(<StoreBackedImageNode nodeId={target.id} />);
@@ -80,8 +103,8 @@ describe("ImageNodeComponent unified inputs", () => {
     const text = useFlowCanvasStore.getState().addNode("text", { x: 0, y: 0 }, { generationPrompt: "Connected text", title: "Text source" } as any);
     const image = useFlowCanvasStore.getState().addNode("image", { x: 0, y: 180 }, { assetId: "asset-ready", thumbnailUrl: "https://cdn.test/ready.png", title: "Image source" } as any);
     const target = addImageTarget();
-    useFlowCanvasStore.getState().onConnect({ source: text.id, target: target.id });
-    useFlowCanvasStore.getState().onConnect({ source: image.id, target: target.id });
+    connect(text.id, target.id);
+    connect(image.id, target.id);
     render(<StoreBackedImageNode nodeId={target.id} />);
 
     const tray = await screen.findByLabelText("节点输入");
@@ -99,8 +122,8 @@ describe("ImageNodeComponent unified inputs", () => {
     const text = useFlowCanvasStore.getState().addNode("text", { x: 0, y: 0 }, { generationPrompt: "Connected text", title: "Text source" } as any);
     const image = useFlowCanvasStore.getState().addNode("image", { x: 0, y: 180 }, { assetId: "asset-ready", thumbnailUrl: "https://cdn.test/ready.png", title: "Image source" } as any);
     const target = addImageTarget();
-    useFlowCanvasStore.getState().onConnect({ source: text.id, target: target.id });
-    useFlowCanvasStore.getState().onConnect({ source: image.id, target: target.id });
+    connect(text.id, target.id);
+    connect(image.id, target.id);
     render(<StoreBackedImageNode nodeId={target.id} />);
 
     const tray = await screen.findByLabelText("节点输入");
@@ -113,5 +136,28 @@ describe("ImageNodeComponent unified inputs", () => {
       inputOrder: [`upstream:${image.id}`, `upstream:${text.id}`],
       referenceOrder: [`upstream:${image.id}`],
     }));
+  });
+
+  it("removes a direct reference from the image node without deleting its asset record", async () => {
+    const target = useFlowCanvasStore.getState().addNode("image", { x: 480, y: 0 }, {
+      createdAt: 1,
+      generationPrompt: "local prompt",
+      generationStatus: "idle",
+      height: 220,
+      kind: "image",
+      referenceAssetItemIds: ["asset-direct-reference"],
+      referenceOrder: ["asset:asset-direct-reference"],
+      status: "idle",
+      title: "Image target",
+      updatedAt: 1,
+      width: 320,
+    } as FlowNodeData, { selected: true });
+    render(<StoreBackedImageNode nodeId={target.id} />);
+
+    await screen.findByLabelText("节点输入");
+    fireEvent.click(screen.getByLabelText(/^移除输入 1：参考图片$/));
+
+    await waitFor(() => expect(useFlowCanvasStore.getState().nodes.find((node) => node.id === target.id)?.data.referenceAssetItemIds).toEqual([]));
+    expect(assetApiMocks.deleteAsset).not.toHaveBeenCalled();
   });
 });
