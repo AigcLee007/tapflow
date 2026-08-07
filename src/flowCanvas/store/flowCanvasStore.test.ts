@@ -306,6 +306,79 @@ describe('flowCanvasStore upstream image references', () => {
     });
   });
 
+  it('retains a direct video asset reference and role when an upstream image connects', () => {
+    const image = useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, { title: 'Upstream image' });
+    const target = useFlowCanvasStore.getState().addNode('video', { x: 400, y: 0 }, {
+      params: {
+        videoGeneration: {
+          ...normalizeVideoGenerationParams({}).params,
+          mode: 'image_to_video',
+          referenceInputs: [{
+            mediaKind: 'image', order: 0, referenceKey: 'asset:hero-image:0', role: 'main_image',
+            source: { kind: 'asset', id: 'hero-image' },
+          }],
+        },
+      },
+    });
+
+    useFlowCanvasStore.getState().onConnect({ source: image.id, sourceHandle: 'out', target: target.id, targetHandle: 'in' });
+
+    const references = normalizeVideoGenerationParams(useFlowCanvasStore.getState().nodes.find((node) => node.id === target.id)?.data).params.referenceInputs;
+    expect(references).toEqual(expect.arrayContaining([
+      expect.objectContaining({ referenceKey: 'asset:hero-image:0', role: 'main_image', source: { kind: 'asset', id: 'hero-image' } }),
+      expect.objectContaining({ referenceKey: `upstream:${image.id}`, source: { kind: 'upstream', id: image.id } }),
+    ]));
+  });
+
+  it('deletes selected source nodes through input reconciliation', () => {
+    const source = useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, { title: 'Selected source' }, { selected: true });
+    const target = useFlowCanvasStore.getState().addNode('video', { x: 400, y: 0 }, { title: 'Video target' });
+    useFlowCanvasStore.getState().onConnect({ source: source.id, sourceHandle: 'out', target: target.id, targetHandle: 'in' });
+    useFlowCanvasStore.getState().selectNodesByIds([source.id]);
+
+    useFlowCanvasStore.getState().deleteSelectedNodes();
+
+    const nextTarget = useFlowCanvasStore.getState().nodes.find((node) => node.id === target.id)!;
+    expect(nextTarget.data.inputOrder).toEqual([]);
+    expect(nextTarget.data.referenceOrder).toEqual([]);
+    expect(normalizeVideoGenerationParams(nextTarget.data).params.referenceInputs).toEqual([]);
+  });
+
+  it('removes and reorders video inputs without affecting unrelated assets or media roles', () => {
+    const text = useFlowCanvasStore.getState().addNode('text', { x: 0, y: 0 }, { title: 'Prompt source' });
+    const image = useFlowCanvasStore.getState().addNode('image', { x: 0, y: 160 }, { title: 'Image source' });
+    const audio = useFlowCanvasStore.getState().addNode('audio', { x: 0, y: 320 }, { title: 'Audio source' });
+    const target = useFlowCanvasStore.getState().addNode('video', { x: 480, y: 0 }, {
+      params: {
+        videoGeneration: {
+          ...normalizeVideoGenerationParams({}).params,
+          referenceInputs: [{
+            mediaKind: 'image', order: 0, referenceKey: 'asset:direct-image:0', role: 'reference_image',
+            source: { kind: 'asset', id: 'direct-image' },
+          }],
+        },
+      },
+    });
+    [text, image, audio].forEach((source) => useFlowCanvasStore.getState().onConnect({
+      source: source.id, sourceHandle: 'out', target: target.id, targetHandle: 'in',
+    }));
+
+    const actions = useFlowCanvasStore.getState() as unknown as {
+      removeNodeInput: (targetNodeId: string, inputKey: string) => void;
+      reorderNodeInputs: (targetNodeId: string, inputKeys: string[]) => void;
+    };
+    actions.removeNodeInput(target.id, `upstream:${text.id}`);
+    actions.reorderNodeInputs(target.id, [`upstream:${audio.id}`, 'asset:direct-image', `upstream:${image.id}`]);
+
+    const nextTarget = useFlowCanvasStore.getState().nodes.find((node) => node.id === target.id)!;
+    expect(nextTarget.data.inputOrder).toEqual([`upstream:${audio.id}`, 'asset:direct-image', `upstream:${image.id}`]);
+    expect(normalizeVideoGenerationParams(nextTarget.data).params.referenceInputs).toEqual([
+      expect.objectContaining({ order: 0, role: 'reference_audio', source: { kind: 'upstream', id: audio.id } }),
+      expect.objectContaining({ order: 1, role: 'reference_image', source: { kind: 'asset', id: 'direct-image' } }),
+      expect.objectContaining({ order: 2, source: { kind: 'upstream', id: image.id } }),
+    ]);
+  });
+
   it('connects a selected upstream video as a typed dependency', () => {
     const source = useFlowCanvasStore.getState().addNode('video', { x: 0, y: 0 }, {
       assetId: 'asset-video-source',
@@ -368,7 +441,7 @@ describe('flowCanvasStore upstream image references', () => {
     ]);
   });
 
-  it('replaces a stale asset main image when an image-to-video canvas edge is connected', () => {
+  it('retains a direct main image when an image-to-video canvas edge is connected', () => {
     const image = useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, { kind: 'image', title: 'Image source' });
     const target = useFlowCanvasStore.getState().addNode('video', { x: 320, y: 0 }, {
       kind: 'video',
@@ -390,9 +463,10 @@ describe('flowCanvasStore upstream image references', () => {
 
     useFlowCanvasStore.getState().onConnect({ source: image.id, sourceHandle: 'out', target: target.id, targetHandle: 'in' });
 
-    expect(normalizeVideoGenerationParams(useFlowCanvasStore.getState().nodes.find((node) => node.id === target.id)?.data).params.referenceInputs).toEqual([
+    expect(normalizeVideoGenerationParams(useFlowCanvasStore.getState().nodes.find((node) => node.id === target.id)?.data).params.referenceInputs).toEqual(expect.arrayContaining([
       expect.objectContaining({ mediaKind: 'image', role: 'main_image', source: { kind: 'upstream', id: image.id } }),
-    ]);
+      expect.objectContaining({ mediaKind: 'image', role: 'main_image', source: { kind: 'asset', id: 'stale-image' } }),
+    ]));
   });
 
   it('removes only the matching upstream reference when its dependency edge is removed', () => {
@@ -700,6 +774,7 @@ describe('flowCanvasStore upstream image references', () => {
     expect(String(created.data.generationPrompt)).toContain('360-degree equirectangular panorama');
     expect(String(created.data.generationPrompt)).toContain('left edge and right edge must connect');
     expect(String(created.data.generationPrompt)).not.toBe('moonlit forest');
+    expect(useFlowCanvasStore.getState().nodes.find((node) => node.id === created.id)?.data.inputOrder).toEqual([`upstream:${source.id}`]);
     expect(useFlowCanvasStore.getState().edges).toEqual(expect.arrayContaining([
       expect.objectContaining({
         source: source.id,
@@ -773,6 +848,7 @@ describe('flowCanvasStore upstream image references', () => {
 
     expect(existingNode?.selected).toBe(false);
     expect(selectedTemplateNodes).toHaveLength(2);
+    expect(state.nodes.find((node) => node.id === 'template-node-2')?.data.inputOrder).toEqual(['upstream:template-node-1']);
     expect(state.edges).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -835,10 +911,10 @@ describe('flowCanvasStore upstream image references', () => {
         } as any,
         {
           id: 'restored-text-1',
-          type: 'text',
+          type: 'video',
           position: { x: 460, y: 140 },
           data: {
-            kind: 'text',
+            kind: 'video',
             title: 'Restored Prompt',
           },
         } as any,
@@ -858,6 +934,7 @@ describe('flowCanvasStore upstream image references', () => {
     expect(restored.activeImageTool).toBeNull();
     expect(restored.contextMenu).toBeNull();
     expect(restored.selectedNodeCount).toBe(1);
+    expect(restored.nodes.find((node) => node.id === 'restored-text-1')?.data.inputOrder).toEqual(['upstream:restored-image-1']);
     expect(restored.graphIndex.upstreamImageRefsByNodeId['restored-text-1']).toEqual([
       expect.objectContaining({
         id: 'restored-image-1',
@@ -911,12 +988,14 @@ describe('flowCanvasStore upstream image references', () => {
     expect(childNodes[0]?.data).toEqual(expect.objectContaining({
       assetId: 'asset-child-1',
       assetIds: ['asset-child-1'],
+      inputOrder: [`upstream:${parent.id}`],
       thumbnailUrl: 'https://cdn.test/child-1.png',
       title: '生成结果1',
     }));
     expect(childNodes[1]?.data).toEqual(expect.objectContaining({
       assetId: 'asset-child-2',
       assetIds: ['asset-child-2'],
+      inputOrder: [`upstream:${parent.id}`],
       thumbnailUrl: 'https://cdn.test/child-2.png',
       title: '生成结果2',
     }));

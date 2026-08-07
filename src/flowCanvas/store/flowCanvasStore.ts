@@ -430,15 +430,8 @@ const upsertUpstreamVideoReference = (
   },
 ): FlowNode => {
   const normalized = normalizeVideoGenerationParams(node.data).params;
-  const shouldReplaceExistingImage = (reference: VideoReferenceInputV2) => {
-    if (input.mediaKind !== 'image' || reference.mediaKind !== 'image') return false;
-    if (normalized.mode === 'image_to_video') return true;
-    return normalized.mode === 'first_last_frame' && reference.role === input.role;
-  };
   const referenceInputs = [
-    ...normalized.referenceInputs.filter((reference) => (
-      reference.referenceKey !== input.referenceKey && !shouldReplaceExistingImage(reference)
-    )),
+    ...normalized.referenceInputs.filter((reference) => reference.referenceKey !== input.referenceKey),
     {
       mediaKind: input.mediaKind,
       order: normalized.referenceInputs.length,
@@ -534,10 +527,9 @@ const reconcileNodeInputs = (
         .map((source) => [source.key, source]),
     );
     const connectedMediaKeys = new Set(connectedMediaByKey.keys());
-    const hasConnectedImage = [...connectedMediaByKey.values()].some((source) => source.mediaKind === 'image');
     const retainedReferences = normalized!.referenceInputs.filter((reference) => {
       if (reference.source.kind === 'upstream') return connectedMediaKeys.has(toUpstreamInputKey(reference.source.id));
-      return !(normalized!.mode === 'image_to_video' && hasConnectedImage && reference.mediaKind === 'image' && reference.role === 'main_image');
+      return true;
     });
     const referencesByKey = new Map<string, VideoReferenceInputV2>();
     retainedReferences.forEach((reference) => {
@@ -1044,10 +1036,11 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
         nextEdges.push(edge);
       });
 
+      const nodes = reconcileNodeInputs(nextNodes, nextEdges, state.nodeOutputByNodeId);
       return {
-        nodes: nextNodes,
+        nodes,
         edges: nextEdges,
-        graphIndex: buildGraphIndex(nextNodes, nextEdges, state.nodeOutputByNodeId),
+        graphIndex: buildGraphIndex(nodes, nextEdges, state.nodeOutputByNodeId),
         isDirty: true,
       };
     });
@@ -1129,12 +1122,13 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
         created,
       ];
       const edges = [...state.edges, buildPanoramaViewerEdge(sourceNodeId, created.id)];
+      const reconciledNodes = reconcileNodeInputs(nodes, edges, state.nodeOutputByNodeId);
       return {
         edges,
-        graphIndex: buildGraphIndex(nodes, edges, state.nodeOutputByNodeId),
+        graphIndex: buildGraphIndex(reconciledNodes, edges, state.nodeOutputByNodeId),
         isDirty: true,
-        nodes,
-        selectedNodeCount: countSelectedNodes(nodes),
+        nodes: reconciledNodes,
+        selectedNodeCount: countSelectedNodes(reconciledNodes),
       };
     });
 
@@ -1220,10 +1214,11 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
         );
       }
 
+      const nodes = reconcileNodeInputs(nextNodes, nextEdges, state.nodeOutputByNodeId);
       return {
-        nodes: nextNodes,
+        nodes,
         edges: nextEdges,
-        graphIndex: buildGraphIndex(nextNodes, nextEdges, state.nodeOutputByNodeId),
+        graphIndex: buildGraphIndex(nodes, nextEdges, state.nodeOutputByNodeId),
         isDirty: true,
       };
     });
@@ -1459,11 +1454,12 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
     set((state) => {
       const nodes = state.nodes.filter((node) => !selectedIds.has(node.id));
       const edges = state.edges.filter((edge) => !selectedIds.has(edge.source) && !selectedIds.has(edge.target));
+      const reconciledNodes = reconcileNodeInputs(nodes, edges, state.nodeOutputByNodeId);
       return {
-        nodes,
+        nodes: reconciledNodes,
         edges,
-        graphIndex: buildGraphIndex(nodes, edges, state.nodeOutputByNodeId),
-        selectedNodeCount: countSelectedNodes(nodes),
+        graphIndex: buildGraphIndex(reconciledNodes, edges, state.nodeOutputByNodeId),
+        selectedNodeCount: countSelectedNodes(reconciledNodes),
         activeImageTool: state.activeImageTool && selectedIds.has(state.activeImageTool.nodeId) ? null : state.activeImageTool,
         isDirty: true,
       };
@@ -1501,11 +1497,12 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
         ...state.edges.map((edge) => (edge.selected ? { ...edge, selected: false } : edge)),
         ...graph.edges.map((edge) => ({ ...edge, selected: false })),
       ];
+      const reconciledNodes = reconcileNodeInputs(nodes, edges, state.nodeOutputByNodeId);
       return {
-        nodes,
+        nodes: reconciledNodes,
         edges,
-        graphIndex: buildGraphIndex(nodes, edges, state.nodeOutputByNodeId),
-        selectedNodeCount: countSelectedNodes(nodes),
+        graphIndex: buildGraphIndex(reconciledNodes, edges, state.nodeOutputByNodeId),
+        selectedNodeCount: countSelectedNodes(reconciledNodes),
         isDirty: true,
       };
     });
@@ -1522,11 +1519,12 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
         ...edge,
         selected: false,
       }));
+      const reconciledNodes = reconcileNodeInputs(nodes, edges, state.nodeOutputByNodeId);
       return {
-        nodes,
+        nodes: reconciledNodes,
         edges,
-        graphIndex: buildGraphIndex(nodes, edges, state.nodeOutputByNodeId),
-        selectedNodeCount: countSelectedNodes(nodes),
+        graphIndex: buildGraphIndex(reconciledNodes, edges, state.nodeOutputByNodeId),
+        selectedNodeCount: countSelectedNodes(reconciledNodes),
         viewport,
         contextMenu: null,
         activeImageTool: null,
