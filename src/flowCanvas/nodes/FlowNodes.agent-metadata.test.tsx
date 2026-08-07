@@ -239,6 +239,48 @@ describe("FlowNodes agent metadata", () => {
     expect(nodeResizerMock).not.toHaveBeenCalled();
   });
 
+  it('resolves direct video reference variants even when the asset has a legacy preview URL', async () => {
+    assetApiMocks.getAsset.mockResolvedValue({
+      durationMs: 4_000,
+      id: 'asset-direct-video',
+      kind: 'video',
+      previewUrl: 'https://cdn.test/legacy-video-preview.mp4',
+      title: 'Direct clip',
+    });
+    assetApiMocks.getAssetVariantUrl.mockImplementation(async (_assetId: string, variant: string) => ({
+      url: variant === 'thumb' ? 'https://cdn.test/direct-video-thumb.webp' : 'https://cdn.test/direct-video-preview.mp4',
+    }));
+    const node = useFlowCanvasStore.getState().addNode('video', { x: 0, y: 0 }, createVideoNodeData({
+      params: {
+        videoGeneration: {
+          aspectRatio: '16:9',
+          count: 1,
+          durationSeconds: 4,
+          generateAudio: false,
+          mode: 'video_to_video',
+          referenceInputs: [{
+            mediaKind: 'video',
+            order: 0,
+            referenceKey: 'asset:asset-direct-video',
+            role: 'reference_video',
+            source: { id: 'asset-direct-video', kind: 'asset' },
+          }],
+          resolution: '720P',
+          schemaVersion: 2,
+        },
+      },
+    }) as any, { selected: true });
+
+    render(<StoreBackedVideoNode nodeId={node.id} />);
+
+    await waitFor(() => {
+      expect(assetApiMocks.getAssetVariantUrl).toHaveBeenCalledWith('asset-direct-video', 'thumb');
+      expect(assetApiMocks.getAssetVariantUrl).toHaveBeenCalledWith('asset-direct-video', 'preview');
+    });
+    const preview = document.querySelector('[aria-label="节点输入"] img');
+    expect(preview?.getAttribute('src')).toBe('https://cdn.test/direct-video-thumb.webp');
+  });
+
   it("keeps one stable image-to-video reference when a legacy draft has multiple image edges", async () => {
     const model = createVideoCatalogModel({
       capabilities: {

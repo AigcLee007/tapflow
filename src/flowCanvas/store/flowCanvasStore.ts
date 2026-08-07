@@ -350,7 +350,7 @@ const getNodeReferenceThumbnailUrl = (
   if (!node) return '';
   if (mediaKind === 'image') return getNodeReferenceImageUrl(node, runtimeNodeOutput);
   const candidates = mediaKind === 'video'
-    ? [node.data.posterUrl, node.data.thumbnailUrl, node.data.previewUrl]
+    ? [node.data.posterUrl, node.data.thumbnailUrl]
     : [node.data.previewUrl, node.data.thumbnailUrl, node.data.audioUrl, node.data.originalAudioUrl];
   const nodeUrl = candidates.map((candidate) => String(candidate || '').trim()).find(Boolean);
   if (nodeUrl) return nodeUrl;

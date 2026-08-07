@@ -157,6 +157,24 @@ describe('flowCanvasStore upstream image references', () => {
     ]);
   });
 
+  it('does not treat a video preview URL as a thumbnail when no poster exists', () => {
+    const video = useFlowCanvasStore.getState().addNode('video', { x: 0, y: 0 }, {
+      assetId: 'asset-video-preview-only',
+      previewUrl: 'https://cdn.test/preview-only.mp4',
+      title: 'Preview-only clip',
+    });
+    const target = useFlowCanvasStore.getState().addNode('video', { x: 420, y: 0 }, { title: 'Video target' });
+
+    useFlowCanvasStore.getState().onConnect({ source: video.id, sourceHandle: 'out', target: target.id, targetHandle: 'in' });
+
+    const input = useFlowCanvasStore.getState().graphIndex.upstreamInputRefsByNodeId[target.id]?.[0];
+    expect(input).toEqual(expect.objectContaining({
+      hoverPreviewUrl: 'https://cdn.test/preview-only.mp4',
+      inputKey: `upstream:${video.id}`,
+    }));
+    expect(input).not.toHaveProperty('thumbnailUrl');
+  });
+
   it('rebuilds unified input refs when a connected source runtime output changes', () => {
     const text = useFlowCanvasStore.getState().addNode('text', { x: 0, y: 0 }, {
       generationPrompt: 'stale prompt',

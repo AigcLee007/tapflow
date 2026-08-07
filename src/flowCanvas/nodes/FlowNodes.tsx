@@ -7647,16 +7647,6 @@ export const VideoNodeComponent = memo(function VideoNode({
     () => getVideoNodeSizeForRequestedRatio(videoParams.aspectRatio),
     [videoParams.aspectRatio],
   );
-  const videoReferenceAssetIds = useMemo(
-    () => Array.from(new Set([
-      ...videoParams.referenceInputs.flatMap((reference) => reference.source.kind === 'asset' ? [reference.source.id] : []),
-      ...Object.values(videoParams.referenceRolesByKey)
-        .flatMap((assignment) => assignment?.source.kind === 'asset' ? [assignment.source.id] : []),
-    ])),
-    [videoParams.referenceInputs, videoParams.referenceRolesByKey],
-  );
-  const videoReferenceAssetIdsKey = videoReferenceAssetIds.join('|');
-  const [videoReferencePreviewUrlsBySource, setVideoReferencePreviewUrlsBySource] = useState<Record<string, string>>({});
   const videoInputItems = useMemo(() => {
     const seeds: CanvasInputSeed[] = [
       ...upstreamInputRefs,
@@ -7665,47 +7655,25 @@ export const VideoNodeComponent = memo(function VideoNode({
         durationMs: undefined,
         inputKey: `asset:${reference.source.id}`,
         kind: reference.mediaKind,
-        previewState: videoReferencePreviewUrlsBySource[`asset:${reference.source.id}`] ? 'ready' as const : 'loading' as const,
-        previewUrl: videoReferencePreviewUrlsBySource[`asset:${reference.source.id}`],
+        previewState: 'loading' as const,
         role: reference.role,
         source: 'asset' as const,
         title: reference.mediaKind === 'image' ? '参考图片' : reference.mediaKind === 'video' ? '参考视频' : '参考音频',
       }] : []),
     ];
     return resolveCanvasInputItems({ inputOrder: d.inputOrder, seeds });
-  }, [d.inputOrder, upstreamInputRefs, videoParams.referenceInputs, videoReferencePreviewUrlsBySource]);
-  const videoInputsNeedingAssetResolution = useMemo(
-    () => videoInputItems.filter((item) => !item.previewUrl),
-    [videoInputItems],
-  );
-  const { items: resolvedMissingVideoInputItems, retry: retryVideoInputAsset } = useCanvasInputAssets(videoInputsNeedingAssetResolution);
-  const resolvedVideoInputItems = useMemo(() => {
-    const resolvedByKey = new Map(resolvedMissingVideoInputItems.map((item) => [item.inputKey, item]));
-    return videoInputItems.map((item) => resolvedByKey.get(item.inputKey) || item);
-  }, [resolvedMissingVideoInputItems, videoInputItems]);
+  }, [d.inputOrder, upstreamInputRefs, videoParams.referenceInputs]);
+  const { items: resolvedVideoInputItems, retry: retryVideoInputAsset } = useCanvasInputAssets(videoInputItems);
+  const videoReferencePreviewUrlsBySource = useMemo<Record<string, string | undefined>>(() => {
+    const previews: Record<string, string | undefined> = {};
+    for (const item of resolvedVideoInputItems) {
+      if (item.source !== 'asset' || !item.assetId) continue;
+      previews[`asset:${item.assetId}`] = item.thumbnailUrl || item.previewUrl;
+    }
+    return previews;
+  }, [resolvedVideoInputItems]);
   
   const isTargeting = !!connectionNodeId && connectionNodeId !== id && hovered;
-
-  useEffect(() => {
-    if (videoReferenceAssetIds.length === 0) {
-      setVideoReferencePreviewUrlsBySource((current) => Object.keys(current).length === 0 ? current : {});
-      return;
-    }
-    let cancelled = false;
-    void Promise.all(videoReferenceAssetIds.map(async (assetId) => {
-      const asset = await getAsset(assetId).catch(() => null);
-      const previewUrl = asset && typeof asset.previewUrl === 'string' ? asset.previewUrl : '';
-      return previewUrl ? [`asset:${assetId}`, previewUrl] as const : null;
-    })).then((entries) => {
-      if (cancelled) return;
-      const previews: Record<string, string> = {};
-      entries.forEach((entry) => {
-        if (entry) previews[entry[0]] = entry[1];
-      });
-      setVideoReferencePreviewUrlsBySource(previews);
-    });
-    return () => { cancelled = true; };
-  }, [videoReferenceAssetIdsKey]);
 
   const runtimeVideoAssets = Array.isArray(runtimeNodeOutput?.assets)
     ? runtimeNodeOutput.assets.filter((asset) => asset.kind === 'video' && asset.downloadUrl)
