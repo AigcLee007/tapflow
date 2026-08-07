@@ -144,7 +144,8 @@ describe("VideoNodeComposer", () => {
     expect(camera.style.borderRadius).toBe("9999px");
     expect(actions.contains(screen.getByRole("button", { name: "选择视频模型" }))).toBe(true);
     expect(actions.contains(screen.getByRole("button", { name: "视频参数摘要" }))).toBe(true);
-    expect(screen.queryByTestId("video-composer-references")).toBeNull();
+    expect(screen.getByTestId("video-composer-references")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /添加.*参考/ })).toBeNull();
   });
 
   test("renders reference controls in a dedicated row", () => {

@@ -141,9 +141,9 @@ export function VideoNodeComposer({ catalog: catalogOverride, data, generating, 
       <VideoPalettePopover disabled={generating} onChange={setParams} sourceDisplayByRole={sourceDisplayByRole} value={params} />
     </div>
 
-    {params.mode !== "text_to_video" ? <div className="mt-2 flex min-w-0 flex-wrap gap-2" data-testid="video-composer-references">
+    <div className="mt-2 flex min-w-0 flex-wrap gap-2" data-testid="video-composer-references">
       <VideoReferenceStrip capabilities={capabilities ?? createSafeDefaultVideoCapabilities()} currentNodeId={nodeId} disabled={generating} onChange={(next) => setParams({ ...params, ...next })} onConnectCanvasReference={onConnectCanvasReference} onDisconnectCanvasReference={onDisconnectCanvasReference} onUploadReference={onUploadReference} value={params} />
-    </div> : null}
+    </div>
 
       <textarea aria-label={VIDEO_UI_COPY.videoPrompt} className="mt-2 min-h-[52px] max-h-[120px] w-full resize-y bg-transparent text-sm outline-none placeholder:text-white/35 disabled:cursor-not-allowed disabled:opacity-55" disabled={generating} onChange={(event) => onUpdate({ generationPrompt: event.target.value })} placeholder={VIDEO_UI_COPY.promptPlaceholder} value={data.generationPrompt || ""} />
     <div className="mt-2 flex flex-col gap-2 border-t border-white/10 pt-2 md:flex-row md:flex-nowrap md:items-center" data-testid="video-composer-actions">
