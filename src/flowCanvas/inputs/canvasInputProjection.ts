@@ -71,7 +71,7 @@ export function buildCanvasInputSignature({
   localPrompt,
   targetNodeId,
 }: {
-  items: CanvasInputItem[];
+  items: Array<CanvasInputItem | CanvasInputSeed>;
   localPrompt: string;
   targetNodeId: string;
 }): string {
@@ -79,11 +79,12 @@ export function buildCanvasInputSignature({
   const safePayload = JSON.stringify({
     targetNodeId,
     promptHash,
-    items: items.map((item) => ({
+    items: items.map((item, index) => ({
       inputKey: item.inputKey,
       kind: item.kind,
       assetId: item.assetId ?? null,
       role: item.role ?? null,
+      order: "order" in item ? item.order : index,
       sourceRevision: item.kind === "text" ? item.sourceRevision ?? null : null,
     })),
   });

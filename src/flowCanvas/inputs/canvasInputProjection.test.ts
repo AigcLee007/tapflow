@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { FlowNodeData } from "../types";
 import {
   buildCanvasInputSignature,
   resolveCanvasInputItems,
@@ -70,6 +71,22 @@ describe("canvas input projection", () => {
     expect(item.sourceNodeId).toBeUndefined();
   });
 
+  it("keeps volatile previews in runtime items but persists only stable input fields", () => {
+    const [item] = resolveCanvasInputItems({ inputOrder: [], seeds: [upstreamImage] });
+    const persistedInputFields: Pick<FlowNodeData, "inputOrder" | "lastGenerationInputSignature"> = {
+      inputOrder: [item.inputKey],
+      lastGenerationInputSignature: "input-v1:12345678",
+    };
+
+    expect(item.previewUrl).toBe("https://example.test/signed-image");
+    expect(Object.keys(persistedInputFields)).toEqual([
+      "inputOrder",
+      "lastGenerationInputSignature",
+    ]);
+    expect(persistedInputFields).not.toHaveProperty("previewUrl");
+    expect(persistedInputFields).not.toHaveProperty("textExcerpt");
+  });
+
   it("makes a deterministic trim-insensitive safe signature", () => {
     const items = resolveCanvasInputItems({ inputOrder: [], seeds: [upstreamText, upstreamImage] });
     const signature = buildCanvasInputSignature({
@@ -113,5 +130,45 @@ describe("canvas input projection", () => {
     expect(changedPrompt).not.toBe(baseline);
     expect(changedText).not.toBe(baseline);
     expect(changedMedia).toBe(baseline);
+  });
+
+  it("detects explicit input order while raw seed arrays use their array order", () => {
+    const baseItems = resolveCanvasInputItems({ inputOrder: [], seeds: [upstreamText, upstreamImage] });
+    const explicitOrderChanged = [{ ...baseItems[0], order: 1 }, { ...baseItems[1], order: 0 }];
+    const baseline = buildCanvasInputSignature({ items: baseItems, localPrompt: "prompt", targetNodeId: "target-node" });
+
+    expect(buildCanvasInputSignature({
+      items: explicitOrderChanged,
+      localPrompt: "prompt",
+      targetNodeId: "target-node",
+    })).not.toBe(baseline);
+    expect(buildCanvasInputSignature({
+      items: [upstreamText, upstreamImage],
+      localPrompt: "prompt",
+      targetNodeId: "target-node",
+    })).not.toBe(buildCanvasInputSignature({
+      items: [upstreamImage, upstreamText],
+      localPrompt: "prompt",
+      targetNodeId: "target-node",
+    }));
+  });
+
+  it("detects stable input identity fields but ignores volatile display fields", () => {
+    const items = resolveCanvasInputItems({ inputOrder: [], seeds: [upstreamImage] });
+    const baseline = buildCanvasInputSignature({ items, localPrompt: "prompt", targetNodeId: "target-node" });
+    const signatureFor = (seed: CanvasInputSeed) => buildCanvasInputSignature({
+      items: resolveCanvasInputItems({ inputOrder: [], seeds: [seed] }),
+      localPrompt: "prompt",
+      targetNodeId: "target-node",
+    });
+
+    expect(signatureFor({ ...upstreamImage, inputKey: "upstream:another-image" })).not.toBe(baseline);
+    expect(signatureFor({ ...upstreamImage, assetId: "asset-image-2" })).not.toBe(baseline);
+    expect(signatureFor({ ...upstreamImage, role: "first_frame" })).not.toBe(baseline);
+    expect(signatureFor({
+      ...upstreamImage,
+      previewUrl: "https://example.test/refreshed-signed-image",
+      textExcerpt: "Transient preview text",
+    })).toBe(baseline);
   });
 });
