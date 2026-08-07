@@ -226,6 +226,86 @@ describe('flowCanvasStore upstream image references', () => {
     expect(inputs?.[0]).toEqual(expect.objectContaining({ edgeId: firstEdgeId, inputKey: `upstream:${source.id}` }));
   });
 
+  it('removes only the selected text input edge from an image target', () => {
+    const text = useFlowCanvasStore.getState().addNode('text', { x: 0, y: 0 }, { title: 'Prompt source' });
+    const image = useFlowCanvasStore.getState().addNode('image', { x: 0, y: 180 }, { title: 'Image source' });
+    const target = useFlowCanvasStore.getState().addNode('image', { x: 400, y: 0 }, { title: 'Image target' });
+
+    useFlowCanvasStore.getState().onConnect({ source: text.id, sourceHandle: 'out', target: target.id, targetHandle: 'in' });
+    useFlowCanvasStore.getState().onConnect({ source: image.id, sourceHandle: 'out', target: target.id, targetHandle: 'in' });
+    (useFlowCanvasStore.getState() as unknown as { removeNodeInput: (targetNodeId: string, inputKey: string) => void })
+      .removeNodeInput(target.id, `upstream:${text.id}`);
+
+    const state = useFlowCanvasStore.getState();
+    const nextTarget = state.nodes.find((node) => node.id === target.id)!;
+    expect(state.edges).toEqual([expect.objectContaining({ source: image.id, target: target.id })]);
+    expect(nextTarget.data.inputOrder).toEqual([`upstream:${image.id}`]);
+    expect(nextTarget.data.referenceOrder).toEqual([`upstream:${image.id}`]);
+  });
+
+  it('reorders mixed image inputs without placing non-images in image reference order', () => {
+    const text = useFlowCanvasStore.getState().addNode('text', { x: 0, y: 0 }, { title: 'Prompt source' });
+    const image = useFlowCanvasStore.getState().addNode('image', { x: 0, y: 180 }, { title: 'Image source' });
+    const target = useFlowCanvasStore.getState().addNode('image', { x: 400, y: 0 }, { title: 'Image target' });
+
+    [text, image].forEach((source) => useFlowCanvasStore.getState().onConnect({
+      source: source.id, sourceHandle: 'out', target: target.id, targetHandle: 'in',
+    }));
+    (useFlowCanvasStore.getState() as unknown as { reorderNodeInputs: (targetNodeId: string, inputKeys: string[]) => void })
+      .reorderNodeInputs(target.id, [`upstream:${image.id}`]);
+
+    const nextTarget = useFlowCanvasStore.getState().nodes.find((node) => node.id === target.id)!;
+    expect(nextTarget.data.inputOrder).toEqual([`upstream:${image.id}`, `upstream:${text.id}`]);
+    expect(nextTarget.data.referenceOrder).toEqual([`upstream:${image.id}`]);
+  });
+
+  it('restores typed upstream media references from a legacy video project without treating text as media', () => {
+    useFlowCanvasStore.getState().loadProject({
+      id: 'legacy-inputs', title: 'Legacy inputs', version: 1, updatedAt: Date.now(), viewport: { x: 0, y: 0, zoom: 1 },
+      nodes: [
+        { id: 'text-source', type: 'text', position: { x: 0, y: 0 }, data: { kind: 'text', title: 'Text' } },
+        { id: 'image-source', type: 'image', position: { x: 0, y: 120 }, data: { kind: 'image', title: 'Image' } },
+        { id: 'video-source', type: 'video', position: { x: 0, y: 240 }, data: { kind: 'video', title: 'Video' } },
+        { id: 'audio-source', type: 'audio', position: { x: 0, y: 360 }, data: { kind: 'audio', title: 'Audio' } },
+        { id: 'video-target', type: 'video', position: { x: 400, y: 0 }, data: { kind: 'video', title: 'Target' } },
+      ] as any,
+      edges: ['text-source', 'image-source', 'video-source', 'audio-source'].map((source, index) => ({
+        id: `legacy-edge-${index}`, source, target: 'video-target', type: 'smart', data: { dataType: 'any' },
+      })) as any,
+    });
+
+    const state = useFlowCanvasStore.getState();
+    const target = state.nodes.find((node) => node.id === 'video-target')!;
+    expect(target.data.inputOrder).toEqual(['upstream:text-source', 'upstream:image-source', 'upstream:video-source', 'upstream:audio-source']);
+    expect(normalizeVideoGenerationParams(target.data).params.referenceInputs).toEqual([
+      expect.objectContaining({ mediaKind: 'image', source: { kind: 'upstream', id: 'image-source' } }),
+      expect.objectContaining({ mediaKind: 'video', source: { kind: 'upstream', id: 'video-source' } }),
+      expect.objectContaining({ mediaKind: 'audio', source: { kind: 'upstream', id: 'audio-source' } }),
+    ]);
+  });
+
+  it('removes a direct asset input only from its owning target', () => {
+    const first = useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, {
+      referenceAssetItemIds: ['asset-one', 'asset-two'],
+      referenceOrder: ['asset:asset-one', 'asset:asset-two'],
+      inputOrder: ['asset:asset-one', 'asset:asset-two'],
+    });
+    const second = useFlowCanvasStore.getState().addNode('image', { x: 400, y: 0 }, {
+      referenceAssetItemIds: ['asset-one'], referenceOrder: ['asset:asset-one'], inputOrder: ['asset:asset-one'],
+    });
+
+    (useFlowCanvasStore.getState() as unknown as { removeNodeInput: (targetNodeId: string, inputKey: string) => void })
+      .removeNodeInput(first.id, 'asset:asset-one');
+
+    const state = useFlowCanvasStore.getState();
+    expect(state.nodes.find((node) => node.id === first.id)?.data).toMatchObject({
+      referenceAssetItemIds: ['asset-two'], referenceOrder: ['asset:asset-two'], inputOrder: ['asset:asset-two'],
+    });
+    expect(state.nodes.find((node) => node.id === second.id)?.data).toMatchObject({
+      referenceAssetItemIds: ['asset-one'], referenceOrder: ['asset:asset-one'], inputOrder: ['asset:asset-one'],
+    });
+  });
+
   it('connects a selected upstream video as a typed dependency', () => {
     const source = useFlowCanvasStore.getState().addNode('video', { x: 0, y: 0 }, {
       assetId: 'asset-video-source',

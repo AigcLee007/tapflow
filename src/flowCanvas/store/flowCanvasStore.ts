@@ -195,6 +195,8 @@ interface FlowCanvasState {
   connectNodes: (source: string, target: string, sourceHandle?: string, targetHandle?: string) => void;
   removeNodesByIds: (nodeIds: string[]) => void;
   removeEdgesByIds: (edgeIds: string[]) => void;
+  removeNodeInput: (targetNodeId: string, inputKey: string) => void;
+  reorderNodeInputs: (targetNodeId: string, inputKeys: string[]) => void;
   selectNodesByIds: (nodeIds: string[]) => void;
 
   deleteSelectedEdges: () => void;
@@ -380,6 +382,26 @@ const appendReferenceOrderKey = (referenceOrder: unknown, key: string) => {
   return current.includes(key) ? current : [...current, key];
 };
 
+const getUniqueInputKeys = (value: unknown) => {
+  const keys = Array.isArray(value) ? value : [];
+  const seen = new Set<string>();
+  return keys.map((key) => String(key || '').trim()).filter((key) => {
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
+
+const appendInputOrderKey = (inputOrder: unknown, key: string) => {
+  const current = getUniqueInputKeys(inputOrder);
+  return current.includes(key) ? current : [...current, key];
+};
+
+const toAssetInputKey = (assetId: string) => `asset:${assetId}`;
+
+const hasSameItems = (left: readonly string[], right: readonly string[]) =>
+  left.length === right.length && left.every((item, index) => item === right[index]);
+
 const getAutomaticVideoReferenceRole = (
   node: FlowNode,
   mediaKind: VideoReferenceInputV2["mediaKind"],
@@ -439,29 +461,142 @@ const upsertUpstreamVideoReference = (
   };
 };
 
-const removeDisconnectedUpstreamVideoReferences = (nodes: FlowNode[], edges: FlowEdge[]): FlowNode[] => {
-  const connectedSourceIdsByTarget = new Map<string, Set<string>>();
+const getDirectAssetInputKeys = (node: FlowNode, referenceInputs?: VideoReferenceInputV2[]) => {
+  const assetIds = Array.isArray(node.data.referenceAssetItemIds)
+    ? node.data.referenceAssetItemIds.map((assetId) => String(assetId || '').trim()).filter(Boolean)
+    : [];
+  const referenceAssetIds = referenceInputs
+    ? referenceInputs
+      .filter((reference) => reference.source.kind === 'asset')
+      .map((reference) => reference.source.id)
+    : [];
+  return getUniqueInputKeys([...assetIds, ...referenceAssetIds].map(toAssetInputKey));
+};
+
+const orderedKeysForNode = (node: FlowNode, candidateKeys: string[]) => {
+  const validKeys = new Set(candidateKeys);
+  const ordered = getUniqueInputKeys(node.data.inputOrder).filter((key) => validKeys.has(key));
+  return candidateKeys.reduce(appendInputOrderKey, ordered);
+};
+
+const reconcileNodeInputs = (
+  nodes: FlowNode[],
+  edges: FlowEdge[],
+  runtimeOutputs: Record<string, FlowRuntimeNodeOutput> = {},
+): FlowNode[] => {
+  const nodesById = new Map(nodes.map((node) => [node.id, node]));
+  const edgesByTarget = new Map<string, FlowEdge[]>();
   edges.forEach((edge) => {
-    const sources = connectedSourceIdsByTarget.get(edge.target) ?? new Set<string>();
-    sources.add(edge.source);
-    connectedSourceIdsByTarget.set(edge.target, sources);
+    if (!nodesById.has(edge.source)) return;
+    const targetEdges = edgesByTarget.get(edge.target) ?? [];
+    targetEdges.push(edge);
+    edgesByTarget.set(edge.target, targetEdges);
   });
 
   return nodes.map((node) => {
-    const params = normalizeVideoGenerationParams(node.data).params;
-    if (params.referenceInputs.length === 0) return node;
-    const connectedSourceIds = connectedSourceIdsByTarget.get(node.id) ?? new Set<string>();
-    const referenceInputs = params.referenceInputs.filter((reference) => (
-      reference.source.kind !== 'upstream' || connectedSourceIds.has(reference.source.id)
-    ));
-    if (referenceInputs.length === params.referenceInputs.length) return node;
+    if (!isImageNode(node) && !isVideoNode(node)) return node;
+    const incomingEdges = edgesByTarget.get(node.id) ?? [];
+    const upstreamSources = incomingEdges.reduce<Array<{ node: FlowNode; key: string; mediaKind: FlowUpstreamMediaRef['mediaKind'] | null }>>((sources, edge) => {
+      const source = nodesById.get(edge.source);
+      const key = toUpstreamInputKey(edge.source);
+      if (!source || sources.some((candidate) => candidate.key === key)) return sources;
+      sources.push({
+        node: source,
+        key,
+        mediaKind: getNodeReferenceMediaKind(source, runtimeOutputs[source.id]),
+      });
+      return sources;
+    }, []);
+
+    const normalized = isVideoNode(node) ? normalizeVideoGenerationParams(node.data).params : null;
+    const directAssetKeys = getDirectAssetInputKeys(node, normalized?.referenceInputs);
+    const inputOrder = orderedKeysForNode(node, [...upstreamSources.map((source) => source.key), ...directAssetKeys]);
+    const imageReferenceOrder = inputOrder.filter((key) => {
+      if (key.startsWith('asset:')) return true;
+      const source = upstreamSources.find((candidate) => candidate.key === key);
+      return source?.mediaKind === 'image';
+    });
+
+    if (isImageNode(node)) {
+      const nextData = {
+        ...node.data,
+        inputOrder,
+        referenceOrder: imageReferenceOrder,
+      };
+      if (hasSameItems(getUniqueInputKeys(node.data.inputOrder), inputOrder)
+        && hasSameItems(getUniqueInputKeys(node.data.referenceOrder), imageReferenceOrder)) return node;
+      return { ...node, data: { ...nextData, updatedAt: Date.now() } };
+    }
+
+    const connectedMediaByKey = new Map(
+      upstreamSources
+        .filter((source): source is typeof source & { mediaKind: FlowUpstreamMediaRef['mediaKind'] } => Boolean(source.mediaKind))
+        .map((source) => [source.key, source]),
+    );
+    const connectedMediaKeys = new Set(connectedMediaByKey.keys());
+    const hasConnectedImage = [...connectedMediaByKey.values()].some((source) => source.mediaKind === 'image');
+    const retainedReferences = normalized!.referenceInputs.filter((reference) => {
+      if (reference.source.kind === 'upstream') return connectedMediaKeys.has(toUpstreamInputKey(reference.source.id));
+      return !(normalized!.mode === 'image_to_video' && hasConnectedImage && reference.mediaKind === 'image' && reference.role === 'main_image');
+    });
+    const referencesByKey = new Map<string, VideoReferenceInputV2>();
+    retainedReferences.forEach((reference) => {
+      const key = reference.source.kind === 'upstream'
+        ? toUpstreamInputKey(reference.source.id)
+        : toAssetInputKey(reference.source.id);
+      if (!referencesByKey.has(key)) referencesByKey.set(key, reference);
+    });
+    connectedMediaByKey.forEach((source, key) => {
+      if (referencesByKey.has(key)) return;
+      const roleNode: FlowNode = {
+        ...node,
+        data: {
+          ...node.data,
+          params: {
+            ...(node.data.params ?? {}),
+            videoGeneration: { ...normalized!, referenceInputs: [...referencesByKey.values()] },
+          },
+        },
+      };
+      referencesByKey.set(key, {
+        mediaKind: source.mediaKind,
+        order: referencesByKey.size,
+        referenceKey: key,
+        role: getAutomaticVideoReferenceRole(roleNode, source.mediaKind, source.node.id),
+        source: { kind: 'upstream', id: source.node.id },
+      });
+    });
+    const mediaInputOrder = inputOrder.filter((key) => referencesByKey.has(key));
+    const referenceInputs = mediaInputOrder
+      .map((key) => referencesByKey.get(key)!)
+      .map((reference, order) => ({ ...reference, referenceKey: reference.source.kind === 'upstream'
+        ? toUpstreamInputKey(reference.source.id)
+        : reference.referenceKey, order }));
+    const referenceOrder = referenceInputs.map((reference) => reference.source.kind === 'upstream'
+      ? toUpstreamInputKey(reference.source.id)
+      : toAssetInputKey(reference.source.id));
+    const referenceAssetItemIds = referenceInputs
+      .filter((reference) => reference.source.kind === 'asset')
+      .map((reference) => reference.source.id);
+    const existingReferenceInputs = normalized!.referenceInputs.map((reference) => ({
+      ...reference,
+      referenceKey: reference.source.kind === 'upstream' ? toUpstreamInputKey(reference.source.id) : reference.referenceKey,
+    }));
+    const referencesChanged = JSON.stringify(existingReferenceInputs) !== JSON.stringify(referenceInputs);
+    if (!referencesChanged
+      && hasSameItems(getUniqueInputKeys(node.data.inputOrder), inputOrder)
+      && hasSameItems(getUniqueInputKeys(node.data.referenceOrder), referenceOrder)
+      && hasSameItems(getUniqueInputKeys(node.data.referenceAssetItemIds), referenceAssetItemIds)) return node;
     return {
       ...node,
       data: {
         ...node.data,
+        inputOrder,
+        referenceAssetItemIds,
+        referenceOrder,
         params: {
           ...(node.data.params ?? {}),
-          videoGeneration: { ...params, referenceInputs: referenceInputs.map((reference, order) => ({ ...reference, order })) },
+          videoGeneration: { ...normalized!, referenceInputs },
         },
         updatedAt: Date.now(),
       },
@@ -705,10 +840,10 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
     const dirty = changes.some((change) => change.type !== 'select');
     set((state) => {
       const edges = applyEdgeChanges(changes, state.edges);
-      const nodes = dirty ? removeDisconnectedUpstreamVideoReferences(state.nodes, edges) : state.nodes;
+      const nodes = reconcileNodeInputs(state.nodes, edges, state.nodeOutputByNodeId);
       return {
         edges,
-        graphIndex: dirty ? buildGraphIndex(nodes, edges, state.nodeOutputByNodeId) : state.graphIndex,
+        graphIndex: buildGraphIndex(nodes, edges, state.nodeOutputByNodeId),
         isDirty: dirty ? true : state.isDirty,
         nodes,
       };
@@ -740,37 +875,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
         },
         state.edges,
       );
-      const sourceMediaKind = getNodeReferenceMediaKind(sourceNode, state.nodeOutputByNodeId[connection.source]);
-      const shouldAutoVideoReference = isVideoNode(targetNode) && sourceNode && sourceMediaKind;
-      const shouldAutoImageReference = isImageNode(sourceNode) && isImageNode(targetNode);
-      const nodes = shouldAutoVideoReference
-        ? state.nodes.map((node) => (
-            node.id === connection.target
-              ? upsertUpstreamVideoReference(node, {
-                mediaKind: sourceMediaKind!,
-                referenceKey: `upstream:${sourceNode!.id}`,
-                role: getAutomaticVideoReferenceRole(node, sourceMediaKind!, sourceNode!.id),
-                sourceNodeId: sourceNode!.id,
-              })
-              : node
-          ))
-        : shouldAutoImageReference
-          ? state.nodes.map((node) =>
-              node.id === connection.target
-                ? {
-                    ...node,
-                    data: {
-                      ...node.data,
-                      referenceOrder: appendReferenceOrderKey(
-                        node.data.referenceOrder,
-                        `upstream:${sourceNode!.id}`,
-                      ),
-                      updatedAt: Date.now(),
-                    },
-                  }
-                : node,
-            )
-          : state.nodes;
+      const nodes = reconcileNodeInputs(state.nodes, edges, state.nodeOutputByNodeId);
       return {
         nodes,
         edges,
@@ -802,11 +907,12 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
       const nodes = state.nodes.map((node) => (
         node.id === input.targetNodeId ? upsertUpstreamVideoReference(node, input) : node
       ));
+      const reconciledNodes = reconcileNodeInputs(nodes, edges, state.nodeOutputByNodeId);
       return {
         edges,
-        graphIndex: buildGraphIndex(nodes, edges, state.nodeOutputByNodeId),
+        graphIndex: buildGraphIndex(reconciledNodes, edges, state.nodeOutputByNodeId),
         isDirty: true,
-        nodes,
+        nodes: reconciledNodes,
       };
     });
   },
@@ -858,8 +964,8 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
       data: { dataType: 'any' as const } satisfies FlowEdgeData,
     };
     set((state) => {
-      const nodes = [...state.nodes, node];
       const edges = [...state.edges, edge];
+      const nodes = reconcileNodeInputs([...state.nodes, node], edges, state.nodeOutputByNodeId);
       return {
         nodes,
         edges,
@@ -1439,9 +1545,11 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
           delete nodeOutputByNodeId[nodeId];
         }
       }
+      const nodes = reconcileNodeInputs(state.nodes, state.edges, nodeOutputByNodeId);
       return {
         nodeOutputByNodeId,
-        graphIndex: buildGraphIndex(state.nodes, state.edges, nodeOutputByNodeId),
+        nodes,
+        graphIndex: buildGraphIndex(nodes, state.edges, nodeOutputByNodeId),
       };
     });
   },
@@ -1555,7 +1663,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
     set((state) => {
       const nodes = state.nodes.filter((node) => !idSet.has(node.id));
       const edges = state.edges.filter((edge) => !idSet.has(edge.source) && !idSet.has(edge.target));
-      const indexedNodes = removeDisconnectedUpstreamVideoReferences(nodes, edges);
+      const indexedNodes = reconcileNodeInputs(nodes, edges, state.nodeOutputByNodeId);
       return {
         activeImageTool: state.activeImageTool && idSet.has(state.activeImageTool.nodeId) ? null : state.activeImageTool,
         edges,
@@ -1573,12 +1681,80 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
     get().pushHistory();
     set((state) => {
       const edges = state.edges.filter((edge) => !idSet.has(edge.id));
-      const nodes = removeDisconnectedUpstreamVideoReferences(state.nodes, edges);
+      const nodes = reconcileNodeInputs(state.nodes, edges, state.nodeOutputByNodeId);
       return {
         edges,
         graphIndex: buildGraphIndex(nodes, edges, state.nodeOutputByNodeId),
         isDirty: true,
         nodes,
+      };
+    });
+  },
+
+  removeNodeInput: (targetNodeId, inputKey) => {
+    const key = String(inputKey || '').trim();
+    const target = get().nodes.find((node) => node.id === targetNodeId);
+    if (!key || !target || (!isImageNode(target) && !isVideoNode(target))) return;
+    get().pushHistory();
+    set((state) => {
+      const sourceNodeId = key.startsWith('upstream:') ? key.slice('upstream:'.length) : '';
+      const assetId = key.startsWith('asset:') ? key.slice('asset:'.length) : '';
+      const edges = sourceNodeId
+        ? state.edges.filter((edge) => !(edge.source === sourceNodeId && edge.target === targetNodeId))
+        : state.edges;
+      const nodes = state.nodes.map((node) => {
+        if (node.id !== targetNodeId) return node;
+        const inputOrder = getUniqueInputKeys(node.data.inputOrder).filter((item) => item !== key);
+        const referenceOrder = getUniqueInputKeys(node.data.referenceOrder).filter((item) => item !== key);
+        const referenceAssetItemIds = Array.isArray(node.data.referenceAssetItemIds)
+          ? node.data.referenceAssetItemIds.filter((id) => String(id) !== assetId)
+          : node.data.referenceAssetItemIds;
+        if (!isVideoNode(node)) {
+          return { ...node, data: { ...node.data, inputOrder, referenceOrder, referenceAssetItemIds, updatedAt: Date.now() } };
+        }
+        const params = normalizeVideoGenerationParams(node.data).params;
+        const referenceInputs = params.referenceInputs.filter((reference) => (
+          sourceNodeId
+            ? !(reference.source.kind === 'upstream' && reference.source.id === sourceNodeId)
+            : !(reference.source.kind === 'asset' && reference.source.id === assetId)
+        )).map((reference, order) => ({ ...reference, order }));
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            inputOrder,
+            referenceOrder,
+            referenceAssetItemIds,
+            params: { ...(node.data.params ?? {}), videoGeneration: { ...params, referenceInputs } },
+            updatedAt: Date.now(),
+          },
+        };
+      });
+      const reconciledNodes = reconcileNodeInputs(nodes, edges, state.nodeOutputByNodeId);
+      return {
+        edges,
+        graphIndex: buildGraphIndex(reconciledNodes, edges, state.nodeOutputByNodeId),
+        isDirty: true,
+        nodes: reconciledNodes,
+      };
+    });
+  },
+
+  reorderNodeInputs: (targetNodeId, inputKeys) => {
+    const target = get().nodes.find((node) => node.id === targetNodeId);
+    if (!target || (!isImageNode(target) && !isVideoNode(target))) return;
+    get().pushHistory();
+    set((state) => {
+      const nodes = state.nodes.map((node) => (
+        node.id === targetNodeId
+          ? { ...node, data: { ...node.data, inputOrder: getUniqueInputKeys(inputKeys), updatedAt: Date.now() } }
+          : node
+      ));
+      const reconciledNodes = reconcileNodeInputs(nodes, state.edges, state.nodeOutputByNodeId);
+      return {
+        graphIndex: buildGraphIndex(reconciledNodes, state.edges, state.nodeOutputByNodeId),
+        isDirty: true,
+        nodes: reconciledNodes,
       };
     });
   },
@@ -1601,7 +1777,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
     get().pushHistory();
     set((state) => {
       const edges = state.edges.filter((edge) => !edge.selected);
-      const nodes = removeDisconnectedUpstreamVideoReferences(state.nodes, edges);
+      const nodes = reconcileNodeInputs(state.nodes, edges, state.nodeOutputByNodeId);
       return {
         edges,
         graphIndex: buildGraphIndex(nodes, edges, state.nodeOutputByNodeId),
@@ -1689,7 +1865,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
     })),
 
   loadProject: (project) => {
-    const nodes = resetStaleTextGenerationNodes(project.nodes || []);
+    const nodes = reconcileNodeInputs(resetStaleTextGenerationNodes(project.nodes || []), project.edges || []);
     const edges = project.edges || [];
     set({
       backendCurrentVersionId: project.backendCurrentVersionId ?? null,
