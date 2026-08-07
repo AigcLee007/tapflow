@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useId, useRef } from "react";
 import { AudioLines, FileText, Image, Play, RotateCcw, Video, X } from "lucide-react";
 
 import { MenuSurface } from "../../components/menu/MenuSurface";
@@ -114,7 +114,8 @@ function InputCard({
 
 export function NodeInputTray({ disabled = false, items, onFocusSource, onRemove, onReorder, onRetryPreview }: NodeInputTrayProps) {
   const draggedKey = useRef<string | null>(null);
-  const overflowLayer = useDismissibleLayer("node-input-tray-overflow");
+  const overflowLayerId = useId().replace(/[^a-zA-Z0-9_-]/g, "");
+  const overflowLayer = useDismissibleLayer(`node-input-tray-overflow-${overflowLayerId}`);
   const visibleItems = items.slice(0, MAX_VISIBLE_ITEMS);
   const overflowItems = items.slice(MAX_VISIBLE_ITEMS);
 

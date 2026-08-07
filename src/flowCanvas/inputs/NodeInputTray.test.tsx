@@ -101,4 +101,32 @@ describe("NodeInputTray", () => {
     fireEvent.keyDown(window, { key: "Escape" });
     expect(screen.queryByRole("menu", { name: "更多输入" })).toBeNull();
   });
+
+  it("assigns each overflow menu a unique dismissible-layer identity", () => {
+    const firstItems = Array.from({ length: 9 }, (_, index) => ({
+      inputKey: `upstream:first-${index}`,
+      kind: "text" as const,
+      order: index,
+      previewState: "ready" as const,
+      source: "upstream" as const,
+      title: `First ${index}`,
+    }));
+    const secondItems = Array.from({ length: 9 }, (_, index) => ({
+      inputKey: `upstream:second-${index}`,
+      kind: "text" as const,
+      order: index,
+      previewState: "ready" as const,
+      source: "upstream" as const,
+      title: `Second ${index}`,
+    }));
+    render(<><NodeInputTray items={firstItems} onFocusSource={vi.fn()} /><NodeInputTray items={secondItems} onFocusSource={vi.fn()} /></>);
+
+    const triggers = screen.getAllByRole("button", { name: "显示另外 1 个输入" });
+    fireEvent.click(triggers[0]);
+    expect(screen.getByRole("menuitem", { name: "聚焦输入 9：First 8" })).not.toBeNull();
+
+    fireEvent.click(triggers[1]);
+    expect(screen.queryByRole("menuitem", { name: "聚焦输入 9：First 8" })).toBeNull();
+    expect(screen.getByRole("menuitem", { name: "聚焦输入 9：Second 8" })).not.toBeNull();
+  });
 });
