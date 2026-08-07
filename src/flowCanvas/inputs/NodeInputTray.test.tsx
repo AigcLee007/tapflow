@@ -169,4 +169,22 @@ describe("NodeInputTray", () => {
     expect(menu.className).toContain("overflow-y-auto");
     expect(menu.className).toContain("overflow-x-hidden");
   });
+
+  it("flips the overflow flyout above a bottom-positioned trigger and clamps it to the viewport", () => {
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 768 });
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 1024 });
+    const overflow = Array.from({ length: 9 }, (_, index) => ({ inputKey: `upstream:${index}`, kind: "text" as const, order: index, previewState: "ready" as const, source: "upstream" as const, title: `Input ${index}` }));
+    render(<NodeInputTray items={overflow} onFocusSource={vi.fn()} />);
+
+    const trigger = screen.getByRole("button", { name: "显示另外 1 个输入" });
+    vi.spyOn(trigger, "getBoundingClientRect").mockReturnValue({ bottom: 760, height: 52, left: 900, right: 952, top: 708, width: 52, x: 900, y: 708, toJSON: () => ({}) });
+    fireEvent.click(trigger);
+    const menu = screen.getByRole("menu", { name: "更多输入" });
+    vi.spyOn(menu, "getBoundingClientRect").mockReturnValue({ bottom: 0, height: 300, left: 0, right: 208, top: 0, width: 208, x: 0, y: 0, toJSON: () => ({}) });
+    fireEvent(window, new Event("resize"));
+
+    expect(menu.style.position).toBe("fixed");
+    expect(menu.style.top).toBe("402px");
+    expect(menu.style.left).toBe("744px");
+  });
 });

@@ -1,4 +1,4 @@
-import { useId, useRef } from "react";
+import { useId, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { AudioLines, ChevronDown, ChevronUp, FileText, Image, Play, RotateCcw, Video, X } from "lucide-react";
 
 import { MenuSurface } from "../../components/menu/MenuSurface";
@@ -108,8 +108,38 @@ export function NodeInputTray({ disabled = false, items, onFocusSource, onRemove
   const draggedKey = useRef<string | null>(null);
   const overflowLayerId = useId().replace(/[^a-zA-Z0-9_-]/g, "");
   const overflowLayer = useDismissibleLayer(`node-input-tray-overflow-${overflowLayerId}`);
+  const [overflowFlyoutStyle, setOverflowFlyoutStyle] = useState<CSSProperties>({ position: "fixed", visibility: "hidden" });
   const visibleItems = items.slice(0, MAX_VISIBLE_ITEMS);
   const overflowItems = items.slice(MAX_VISIBLE_ITEMS);
+
+  useLayoutEffect(() => {
+    if (!overflowLayer.open) return;
+
+    const positionFlyout = () => {
+      const trigger = overflowLayer.triggerRef.current;
+      const menu = overflowLayer.ref.current;
+      if (!trigger || !menu) return;
+      const triggerRect = trigger.getBoundingClientRect();
+      const menuRect = menu.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const gap = 6;
+      const inset = 8;
+      const menuWidth = Math.max(menuRect.width, 208);
+      const menuHeight = menuRect.height;
+      const belowTop = triggerRect.bottom + gap;
+      const belowSpace = viewportHeight - belowTop - inset;
+      const aboveTop = triggerRect.top - gap - menuHeight;
+      const shouldFlipAbove = belowSpace < menuHeight && triggerRect.top - gap - inset > belowSpace;
+      const top = Math.max(inset, Math.min(shouldFlipAbove ? aboveTop : belowTop, viewportHeight - menuHeight - inset));
+      const left = Math.max(inset, Math.min(triggerRect.right - menuWidth, viewportWidth - menuWidth - inset));
+      setOverflowFlyoutStyle({ left, position: "fixed", top, visibility: "visible" });
+    };
+
+    positionFlyout();
+    window.addEventListener("resize", positionFlyout);
+    return () => window.removeEventListener("resize", positionFlyout);
+  }, [overflowLayer.open, overflowLayer.ref, overflowLayer.triggerRef]);
 
   const handleDragStart = (event: React.DragEvent<HTMLDivElement>, inputKey: string) => {
     if (disabled || !onReorder) { event.preventDefault(); return; }
@@ -138,7 +168,7 @@ export function NodeInputTray({ disabled = false, items, onFocusSource, onRemove
     <div aria-label="节点输入" className="flex items-center gap-1.5">
       {visibleItems.map((item) => <InputCard disabled={disabled} item={item} key={item.inputKey} onDragEnd={() => { draggedKey.current = null; }} onDragStart={handleDragStart} onDrop={handleDrop} onFocusSource={onFocusSource} onRemove={onRemove} onRetryPreview={onRetryPreview} />)}
       {overflowItems.length ? <div className="relative"><button aria-expanded={overflowLayer.open} aria-haspopup="menu" aria-label={`显示另外 ${overflowItems.length} 个输入`} className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-[8px] border border-white/15 bg-white/[0.06] text-xs font-bold text-white hover:bg-white/[0.12]" onClick={overflowLayer.toggle} ref={overflowLayer.triggerRef as React.RefObject<HTMLButtonElement>} type="button">+{overflowItems.length}</button>
-        {overflowLayer.open ? <MenuSurface aria-label="更多输入" className="absolute right-0 top-[58px] z-50 w-[208px] max-h-[calc(100vh-96px)] overflow-x-hidden overflow-y-auto p-1" ref={overflowLayer.ref as React.RefObject<HTMLDivElement>} role="menu">
+        {overflowLayer.open ? <MenuSurface aria-label="更多输入" className="z-50 w-[208px] max-h-[calc(100vh-96px)] overflow-x-hidden overflow-y-auto p-1" ref={overflowLayer.ref as React.RefObject<HTMLDivElement>} role="menu" style={overflowFlyoutStyle}>
           {overflowItems.map((item) => {
             const number = item.order + 1;
             const canFocus = item.source === "upstream" && Boolean(onFocusSource);
