@@ -497,7 +497,22 @@ const getDirectAssetInputKeys = (node: FlowNode, referenceInputs?: VideoReferenc
       .filter((reference) => reference.source.kind === 'asset')
       .map((reference) => reference.source.id)
     : [];
-  return getUniqueInputKeys([...assetIds, ...referenceAssetIds].map(toAssetInputKey));
+  const orderedAssetKeys = getUniqueInputKeys(node.data.referenceOrder)
+    .filter((key) => key.startsWith('asset:'));
+  return getUniqueInputKeys([...assetIds, ...referenceAssetIds].map(toAssetInputKey).concat(orderedAssetKeys));
+};
+
+const getNodeCandidateInputKeys = (
+  target: FlowNode,
+  nodes: FlowNode[],
+  edges: FlowEdge[],
+) => {
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  const upstreamKeys = getUniqueInputKeys(edges
+    .filter((edge) => edge.target === target.id && nodeIds.has(edge.source))
+    .map((edge) => toUpstreamInputKey(edge.source)));
+  const params = isVideoNode(target) ? normalizeVideoGenerationParams(target.data).params : undefined;
+  return [...upstreamKeys, ...getDirectAssetInputKeys(target, params?.referenceInputs)];
 };
 
 const orderedKeysForNode = (node: FlowNode, candidateKeys: string[]) => {
@@ -1754,10 +1769,20 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
     const key = String(inputKey || '').trim();
     const target = get().nodes.find((node) => node.id === targetNodeId);
     if (!key || !target || (!isImageNode(target) && !isVideoNode(target))) return;
+    const sourceNodeId = key.startsWith('upstream:') ? key.slice('upstream:'.length) : '';
+    const assetId = key.startsWith('asset:') ? key.slice('asset:'.length) : '';
+    if (!sourceNodeId && !assetId) return;
+    const currentParams = isVideoNode(target) ? normalizeVideoGenerationParams(target.data).params : null;
+    const inputExists = getUniqueInputKeys(target.data.inputOrder).includes(key)
+      || getUniqueInputKeys(target.data.referenceOrder).includes(key)
+      || (sourceNodeId
+        ? get().edges.some((edge) => edge.source === sourceNodeId && edge.target === targetNodeId)
+          || Boolean(currentParams?.referenceInputs.some((reference) => reference.source.kind === 'upstream' && reference.source.id === sourceNodeId))
+        : Array.isArray(target.data.referenceAssetItemIds) && target.data.referenceAssetItemIds.some((id) => String(id) === assetId)
+          || Boolean(currentParams?.referenceInputs.some((reference) => reference.source.kind === 'asset' && reference.source.id === assetId)));
+    if (!inputExists) return;
     get().pushHistory();
     set((state) => {
-      const sourceNodeId = key.startsWith('upstream:') ? key.slice('upstream:'.length) : '';
-      const assetId = key.startsWith('asset:') ? key.slice('asset:'.length) : '';
       const edges = sourceNodeId
         ? state.edges.filter((edge) => !(edge.source === sourceNodeId && edge.target === targetNodeId))
         : state.edges;
@@ -1802,11 +1827,21 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
   reorderNodeInputs: (targetNodeId, inputKeys) => {
     const target = get().nodes.find((node) => node.id === targetNodeId);
     if (!target || (!isImageNode(target) && !isVideoNode(target))) return;
+    const candidateKeys = getNodeCandidateInputKeys(target, get().nodes, get().edges);
+    const candidateKeySet = new Set(candidateKeys);
+    const requestedKeys = getUniqueInputKeys(inputKeys).filter((key) => candidateKeySet.has(key));
+    const inputOrder = [...requestedKeys, ...candidateKeys.filter((key) => !requestedKeys.includes(key))];
+    const projectedNodes = get().nodes.map((node) => (
+      node.id === targetNodeId ? { ...node, data: { ...node.data, inputOrder } } : node
+    ));
+    const projectedTarget = reconcileNodeInputs(projectedNodes, get().edges, get().nodeOutputByNodeId)
+      .find((node) => node.id === targetNodeId);
+    if (!projectedTarget || JSON.stringify(projectedTarget.data) === JSON.stringify(target.data)) return;
     get().pushHistory();
     set((state) => {
       const nodes = state.nodes.map((node) => (
         node.id === targetNodeId
-          ? { ...node, data: { ...node.data, inputOrder: getUniqueInputKeys(inputKeys), updatedAt: Date.now() } }
+          ? { ...node, data: { ...node.data, inputOrder, updatedAt: Date.now() } }
           : node
       ));
       const reconciledNodes = reconcileNodeInputs(nodes, state.edges, state.nodeOutputByNodeId);

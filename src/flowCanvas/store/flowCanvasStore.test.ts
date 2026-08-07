@@ -243,6 +243,23 @@ describe('flowCanvasStore upstream image references', () => {
     expect(nextTarget.data.referenceOrder).toEqual([`upstream:${image.id}`]);
   });
 
+  it('does not mutate canvas state when removing an input key absent from its target', () => {
+    const target = useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, { title: 'Image target' });
+    useFlowCanvasStore.getState().markClean();
+    const before = useFlowCanvasStore.getState();
+    const node = before.nodes.find((candidate) => candidate.id === target.id)!;
+
+    (before as unknown as { removeNodeInput: (targetNodeId: string, inputKey: string) => void })
+      .removeNodeInput(target.id, 'asset:missing');
+
+    const after = useFlowCanvasStore.getState();
+    expect(after.history).toHaveLength(before.history.length);
+    expect(after.isDirty).toBe(false);
+    expect(after.nodes).toBe(before.nodes);
+    expect(after.nodes.find((candidate) => candidate.id === target.id)).toBe(node);
+    expect(after.graphIndex).toBe(before.graphIndex);
+  });
+
   it('reorders mixed image inputs without placing non-images in image reference order', () => {
     const text = useFlowCanvasStore.getState().addNode('text', { x: 0, y: 0 }, { title: 'Prompt source' });
     const image = useFlowCanvasStore.getState().addNode('image', { x: 0, y: 180 }, { title: 'Image source' });
@@ -257,6 +274,29 @@ describe('flowCanvasStore upstream image references', () => {
     const nextTarget = useFlowCanvasStore.getState().nodes.find((node) => node.id === target.id)!;
     expect(nextTarget.data.inputOrder).toEqual([`upstream:${image.id}`, `upstream:${text.id}`]);
     expect(nextTarget.data.referenceOrder).toEqual([`upstream:${image.id}`]);
+  });
+
+  it('does not mutate canvas state when a reorder already matches effective input order', () => {
+    const text = useFlowCanvasStore.getState().addNode('text', { x: 0, y: 0 }, { title: 'Prompt source' });
+    const image = useFlowCanvasStore.getState().addNode('image', { x: 0, y: 180 }, { title: 'Image source' });
+    const target = useFlowCanvasStore.getState().addNode('image', { x: 400, y: 0 }, { title: 'Image target' });
+    [text, image].forEach((source) => useFlowCanvasStore.getState().onConnect({
+      source: source.id, sourceHandle: 'out', target: target.id, targetHandle: 'in',
+    }));
+    useFlowCanvasStore.getState().markClean();
+    const before = useFlowCanvasStore.getState();
+    const targetNode = before.nodes.find((candidate) => candidate.id === target.id)!;
+
+    (before as unknown as { reorderNodeInputs: (targetNodeId: string, inputKeys: string[]) => void })
+      .reorderNodeInputs(target.id, [`upstream:${text.id}`, `upstream:${image.id}`, `upstream:${text.id}`, 'stale']);
+
+    const after = useFlowCanvasStore.getState();
+    expect(after.history).toHaveLength(before.history.length);
+    expect(after.isDirty).toBe(false);
+    expect(after.nodes).toBe(before.nodes);
+    expect(after.nodes.find((candidate) => candidate.id === target.id)).toBe(targetNode);
+    expect(after.nodes.find((candidate) => candidate.id === target.id)?.data.updatedAt).toBe(targetNode.data.updatedAt);
+    expect(after.graphIndex).toBe(before.graphIndex);
   });
 
   it('restores typed upstream media references from a legacy video project without treating text as media', () => {
