@@ -215,6 +215,7 @@ type PreparedNodeExecution = {
   input: NodeExecuteJobPayload;
   processorResult: ProcessorResult;
   runtimeFlow: RuntimeFlowRecord;
+  upstreamOutputsByNodeId: ReadonlyMap<string, Record<string, unknown> | null>;
   upstreamOutputs: Array<Record<string, unknown> | null>;
   workflowRun: WorkflowRunRecord;
 };
@@ -500,26 +501,37 @@ function buildOutputFromNodeConfig(node: CompiledWorkflowNode | undefined): Reco
   };
 }
 
-function getDependencyOutputsFromRuntimeGraph(
-  node: Pick<CompiledWorkflowNode, "config" | "dependencies">,
-  nodeRuns: Array<Pick<NodeRunRecord, "node_id" | "output_json">>,
-  runtimeFlow: Pick<RuntimeFlowRecord, "compiled_graph_json">,
-): Array<Record<string, unknown> | null> {
+function getOrderedDependencyIds(node: Pick<CompiledWorkflowNode, "config" | "dependencies">): string[] {
   const requestedOrder = Array.isArray(node.config?.inputOrder)
     ? node.config.inputOrder
         .filter((value): value is string => typeof value === "string")
         .map((value) => value.startsWith("upstream:") ? value.slice("upstream:".length) : "")
         .filter((dependencyId) => node.dependencies.includes(dependencyId))
     : [];
-  const dependencyIds = Array.from(new Set([...requestedOrder, ...node.dependencies]));
-  return dependencyIds.map((dependencyId) => {
+  return Array.from(new Set([...requestedOrder, ...node.dependencies]));
+}
+
+function getDependencyOutputsByNodeIdFromRuntimeGraph(
+  node: Pick<CompiledWorkflowNode, "config" | "dependencies">,
+  nodeRuns: Array<Pick<NodeRunRecord, "node_id" | "output_json">>,
+  runtimeFlow: Pick<RuntimeFlowRecord, "compiled_graph_json">,
+): ReadonlyMap<string, Record<string, unknown> | null> {
+  return new Map(getOrderedDependencyIds(node).map((dependencyId) => {
     const dependencyRun = nodeRuns.find((row) => row.node_id === dependencyId);
     if (dependencyRun?.output_json) {
-      return dependencyRun.output_json;
+      return [dependencyId, dependencyRun.output_json];
     }
     const dependencyNode = runtimeFlow.compiled_graph_json.nodes.find((candidate) => candidate.id === dependencyId);
-    return buildOutputFromNodeConfig(dependencyNode);
-  });
+    return [dependencyId, buildOutputFromNodeConfig(dependencyNode)];
+  }));
+}
+
+function getDependencyOutputsFromRuntimeGraph(
+  node: Pick<CompiledWorkflowNode, "config" | "dependencies">,
+  nodeRuns: Array<Pick<NodeRunRecord, "node_id" | "output_json">>,
+  runtimeFlow: Pick<RuntimeFlowRecord, "compiled_graph_json">,
+): Array<Record<string, unknown> | null> {
+  return Array.from(getDependencyOutputsByNodeIdFromRuntimeGraph(node, nodeRuns, runtimeFlow).values());
 }
 
 function extractPromptFromUpstreamOutputs(
@@ -545,9 +557,6 @@ function extractTextPromptFromUpstreamOutputs(
   const fragments = upstreamOutputs
     .flatMap((output) => {
       if (!output) {
-        return [];
-      }
-      if (Array.isArray(output.assets) && output.assets.length > 0) {
         return [];
       }
 
@@ -986,6 +995,7 @@ export const __workerTestUtils = {
   buildMediaUsageMetadata,
   buildVideoRequest,
   getDependencyOutputs: getDependencyOutputsFromRuntimeGraph,
+  getDependencyOutputsByNodeId: getDependencyOutputsByNodeIdFromRuntimeGraph,
   localOutputDirFromRenderResult,
   normalizeMediaOutputs,
   readVideoEditorRenderEngine,
@@ -1790,7 +1800,8 @@ export class WorkflowNodeExecutionService {
         "node.execute marked node running",
       );
 
-      const upstreamOutputs = this.getDependencyOutputs(currentNode, nodeRuns, runtimeFlow);
+      const upstreamOutputsByNodeId = getDependencyOutputsByNodeIdFromRuntimeGraph(currentNode, nodeRuns, runtimeFlow);
+      const upstreamOutputs = Array.from(upstreamOutputsByNodeId.values());
 
       return {
         prepared: {
@@ -1805,6 +1816,7 @@ export class WorkflowNodeExecutionService {
             traceId: input.traceId ?? null,
           },
           runtimeFlow,
+          upstreamOutputsByNodeId,
           upstreamOutputs,
           workflowRun,
         },
@@ -1822,6 +1834,7 @@ export class WorkflowNodeExecutionService {
       const outcome = await this.executeNodeByType(
         prepared.currentNode,
         prepared.upstreamOutputs,
+        prepared.upstreamOutputsByNodeId,
         prepared.workflowRun,
         prepared.runtimeFlow,
         prepared.currentNodeRun,
@@ -2500,6 +2513,7 @@ export class WorkflowNodeExecutionService {
   private async executeNodeByType(
     node: CompiledWorkflowNode,
     upstreamOutputs: Array<Record<string, unknown> | null>,
+    upstreamOutputsByNodeId: ReadonlyMap<string, Record<string, unknown> | null>,
     workflowRun: WorkflowRunRecord,
     runtimeFlow: RuntimeFlowRecord,
     nodeRun: NodeRunRecord,
@@ -2633,9 +2647,6 @@ export class WorkflowNodeExecutionService {
     }
 
     if (node.type === "video.generate") {
-      const upstreamOutputsByNodeId = new Map(
-        node.dependencies.map((dependencyId, index) => [dependencyId, upstreamOutputs[index] ?? null]),
-      );
       const request = buildVideoRequest(upstreamOutputsByNodeId, node.config ?? {});
       const localRenderOutcome = await this.maybeRenderVideoEditorExportLocally(request, node, workflowRun, context, logger);
       if (localRenderOutcome) {
@@ -3207,14 +3218,6 @@ export class WorkflowNodeExecutionService {
         }),
       ],
     );
-  }
-
-  private getDependencyOutputs(
-    node: CompiledWorkflowNode,
-    nodeRuns: NodeRunRecord[],
-    runtimeFlow: RuntimeFlowRecord,
-  ): Array<Record<string, unknown> | null> {
-    return getDependencyOutputsFromRuntimeGraph(node, nodeRuns, runtimeFlow);
   }
 
   private async hydrateInputAssetUrls(

@@ -583,6 +583,170 @@ describe("worker skeleton", () => {
     expect(JSON.stringify(outputs)).not.toContain("base64");
   });
 
+  test("orders upstream text by inputOrder and appends unspecified dependencies in compiled order", () => {
+    const getDependencyOutputs = (__workerTestUtils as {
+      getDependencyOutputs: (node: {
+        config: Record<string, unknown>;
+        dependencies: string[];
+      }, nodeRuns: Array<{ node_id: string; output_json: Record<string, unknown> | null }>, runtimeFlow: {
+        compiled_graph_json: { nodes: Array<{ config: Record<string, unknown>; id: string }> };
+      }) => Array<Record<string, unknown> | null>;
+    }).getDependencyOutputs;
+
+    const outputs = getDependencyOutputs({
+      config: { inputOrder: ["asset:direct-reference", "upstream:second", "upstream:first"] },
+      dependencies: ["first", "second", "third"],
+    }, [
+      { node_id: "first", output_json: { text: "first text" } },
+      { node_id: "second", output_json: { text: "second text" } },
+      { node_id: "third", output_json: { text: "third text" } },
+    ], {
+      compiled_graph_json: { nodes: [] },
+    });
+
+    expect(outputs).toEqual([
+      { text: "second text" },
+      { text: "first text" },
+      { text: "third text" },
+    ]);
+  });
+
+  test("keeps compiled dependency order for upstream inputs absent from inputOrder", () => {
+    const getDependencyOutputs = (__workerTestUtils as {
+      getDependencyOutputs: (node: {
+        config: Record<string, unknown>;
+        dependencies: string[];
+      }, nodeRuns: Array<{ node_id: string; output_json: Record<string, unknown> | null }>, runtimeFlow: {
+        compiled_graph_json: { nodes: Array<{ config: Record<string, unknown>; id: string }> };
+      }) => Array<Record<string, unknown> | null>;
+    }).getDependencyOutputs;
+
+    const outputs = getDependencyOutputs({
+      config: { inputOrder: ["upstream:explicit"] },
+      dependencies: ["compiled-first", "explicit", "compiled-last"],
+    }, [], {
+      compiled_graph_json: {
+        nodes: [
+          { config: { text: "compiled first" }, id: "compiled-first" },
+          { config: { text: "explicit text" }, id: "explicit" },
+          { config: { text: "compiled last" }, id: "compiled-last" },
+        ],
+      },
+    });
+
+    expect(outputs).toEqual([
+      { text: "explicit text" },
+      { text: "compiled first" },
+      { text: "compiled last" },
+    ]);
+  });
+
+  test("preserves ordered dependency source identity for video references", () => {
+    const getDependencyOutputsByNodeId = (__workerTestUtils as {
+      getDependencyOutputsByNodeId?: (node: {
+        config: Record<string, unknown>;
+        dependencies: string[];
+      }, nodeRuns: Array<{ node_id: string; output_json: Record<string, unknown> | null }>, runtimeFlow: {
+        compiled_graph_json: { nodes: Array<{ config: Record<string, unknown>; id: string }> };
+      }) => ReadonlyMap<string, Record<string, unknown> | null>;
+    }).getDependencyOutputsByNodeId;
+
+    expect(typeof getDependencyOutputsByNodeId).toBe("function");
+    const outputsByNodeId = getDependencyOutputsByNodeId?.({
+      config: { inputOrder: ["upstream:motion", "upstream:portrait"] },
+      dependencies: ["portrait", "motion"],
+    }, [
+      { node_id: "portrait", output_json: { assets: [{ assetId: "asset-portrait", kind: "image" }] } },
+      { node_id: "motion", output_json: { assets: [{ assetId: "asset-motion", kind: "video" }] } },
+    ], {
+      compiled_graph_json: { nodes: [] },
+    });
+
+    expect([...outputsByNodeId?.entries() ?? []]).toEqual([
+      ["motion", { assets: [{ assetId: "asset-motion", kind: "video" }] }],
+      ["portrait", { assets: [{ assetId: "asset-portrait", kind: "image" }] }],
+    ]);
+  });
+
+  test("image.generate request keeps ordered upstream text, local prompt, and reference asset order", () => {
+    const request = (__workerTestUtils as {
+      buildImageRequest: (
+        upstreamOutputs: Array<Record<string, unknown> | null>,
+        config: Record<string, unknown>,
+      ) => { inputAssets: Array<Record<string, unknown>>; prompt: string };
+    }).buildImageRequest([
+      { text: "upstream direction", assets: [{ assetId: "asset-upstream", kind: "image" }] },
+    ], {
+      generationPrompt: "local direction",
+      referenceAssetItemIds: ["asset-direct"],
+      referenceOrder: ["asset:asset-direct", "upstream:source-image"],
+    });
+
+    expect(request.prompt).toBe("upstream direction\nlocal direction");
+    expect(request.inputAssets.map((asset) => asset.assetId)).toEqual([
+      "asset-direct",
+      "asset-upstream",
+    ]);
+  });
+
+  test("video.generate request merges local prompt with upstream text and preserves direct and upstream roles", () => {
+    const request = (__workerTestUtils as {
+      buildVideoRequest: (
+        upstreamOutputs: ReadonlyMap<string, Record<string, unknown> | null>,
+        config: Record<string, unknown>,
+      ) => { inputAssets: Array<Record<string, unknown>>; prompt: string };
+    }).buildVideoRequest(new Map([
+      ["copy", { text: "upstream direction" }],
+      ["motion", { assets: [{ assetId: "asset-motion", kind: "video" }] }],
+    ]), {
+      generationPrompt: "local direction",
+      params: {
+        videoGeneration: {
+          schemaVersion: 2,
+          mode: "all_reference",
+          aspectRatio: "16:9",
+          resolution: "720P",
+          durationSeconds: 4,
+          generateAudio: true,
+          count: 1,
+          referenceInputs: [
+            {
+              referenceKey: "ref-main",
+              source: { kind: "asset", id: "asset-main" },
+              mediaKind: "image",
+              role: "main_image",
+              order: 0,
+            },
+            {
+              referenceKey: "ref-first-frame",
+              source: { kind: "asset", id: "asset-main" },
+              mediaKind: "image",
+              role: "first_frame",
+              order: 1,
+            },
+            {
+              referenceKey: "ref-motion",
+              source: { kind: "upstream", id: "motion" },
+              mediaKind: "video",
+              role: "reference_video",
+              order: 2,
+            },
+          ],
+        },
+      },
+    });
+
+    expect(request.prompt).toBe("upstream direction\nlocal direction");
+    expect(request.inputAssets.map((asset) => ({
+      assetId: asset.assetId,
+      role: (asset.metadata as { videoReference: { role: string } }).videoReference.role,
+    }))).toEqual([
+      { assetId: "asset-main", role: "main_image" },
+      { assetId: "asset-main", role: "first_frame" },
+      { assetId: "asset-motion", role: "reference_video" },
+    ]);
+  });
+
   test("video.generate request uses exported video editor prompt and timeline asset ids", () => {
     const request = (__workerTestUtils as {
       buildVideoRequest: (
