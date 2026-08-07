@@ -260,7 +260,7 @@ describe('flowCanvasStore upstream image references', () => {
     expect(after.graphIndex).toBe(before.graphIndex);
   });
 
-  it('reorders mixed image inputs without placing non-images in image reference order', () => {
+  it('reorders media without moving it ahead of text inputs', () => {
     const text = useFlowCanvasStore.getState().addNode('text', { x: 0, y: 0 }, { title: 'Prompt source' });
     const image = useFlowCanvasStore.getState().addNode('image', { x: 0, y: 180 }, { title: 'Image source' });
     const target = useFlowCanvasStore.getState().addNode('image', { x: 400, y: 0 }, { title: 'Image target' });
@@ -272,8 +272,54 @@ describe('flowCanvasStore upstream image references', () => {
       .reorderNodeInputs(target.id, [`upstream:${image.id}`]);
 
     const nextTarget = useFlowCanvasStore.getState().nodes.find((node) => node.id === target.id)!;
-    expect(nextTarget.data.inputOrder).toEqual([`upstream:${image.id}`, `upstream:${text.id}`]);
+    expect(nextTarget.data.inputOrder).toEqual([`upstream:${text.id}`, `upstream:${image.id}`]);
     expect(nextTarget.data.referenceOrder).toEqual([`upstream:${image.id}`]);
+  });
+
+  it('canonicalizes restored input order as incoming text edges followed by user-ordered media', () => {
+    useFlowCanvasStore.getState().restoreGraphSnapshot({
+      nodes: [
+        { id: 'text-a', type: 'text', position: { x: 0, y: 0 }, data: { kind: 'text', title: 'Text A' } },
+        { id: 'image-a', type: 'image', position: { x: 0, y: 100 }, data: { kind: 'image', title: 'Image A' } },
+        { id: 'text-b', type: 'text', position: { x: 0, y: 200 }, data: { kind: 'text', title: 'Text B' } },
+        {
+          id: 'target', type: 'video', position: { x: 400, y: 0 }, data: {
+            kind: 'video',
+            inputOrder: ['upstream:image-a', 'upstream:text-b', 'upstream:text-a'],
+            title: 'Target',
+          },
+        },
+      ] as any,
+      edges: [
+        { id: 'edge-text-a', source: 'text-a', target: 'target', type: 'smart', data: { dataType: 'any' } },
+        { id: 'edge-image-a', source: 'image-a', target: 'target', type: 'smart', data: { dataType: 'any' } },
+        { id: 'edge-text-b', source: 'text-b', target: 'target', type: 'smart', data: { dataType: 'any' } },
+      ] as any,
+    });
+
+    expect(useFlowCanvasStore.getState().nodes.find((node) => node.id === 'target')?.data.inputOrder).toEqual([
+      'upstream:text-a', 'upstream:text-b', 'upstream:image-a',
+    ]);
+  });
+
+  it('removes all upstream text edges atomically and preserves media inputs', () => {
+    const firstText = useFlowCanvasStore.getState().addNode('text', { x: 0, y: 0 }, { title: 'First text' });
+    const image = useFlowCanvasStore.getState().addNode('image', { x: 0, y: 120 }, { title: 'Image' });
+    const secondText = useFlowCanvasStore.getState().addNode('text', { x: 0, y: 240 }, { title: 'Second text' });
+    const target = useFlowCanvasStore.getState().addNode('video', { x: 400, y: 0 }, { title: 'Target' });
+    [firstText, image, secondText].forEach((source) => useFlowCanvasStore.getState().onConnect({
+      source: source.id, sourceHandle: 'out', target: target.id, targetHandle: 'in',
+    }));
+    useFlowCanvasStore.getState().markClean();
+    const before = useFlowCanvasStore.getState();
+
+    (before as unknown as { removeTextNodeInputs: (targetNodeId: string) => void }).removeTextNodeInputs(target.id);
+
+    const after = useFlowCanvasStore.getState();
+    expect(after.edges).toEqual([expect.objectContaining({ source: image.id, target: target.id })]);
+    expect(after.nodes.find((node) => node.id === target.id)?.data.inputOrder).toEqual([`upstream:${image.id}`]);
+    expect(after.history).toHaveLength(before.history.length + 1);
+    expect(after.isDirty).toBe(true);
   });
 
   it('does not mutate canvas state when a reorder already matches effective input order', () => {
