@@ -63,8 +63,11 @@ export function useCanvasInputAssets(items: CanvasInputItem[]) {
     }
   }, []);
 
-  useEffect(() => () => {
-    mounted.current = false;
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
   }, []);
 
   useEffect(() => {

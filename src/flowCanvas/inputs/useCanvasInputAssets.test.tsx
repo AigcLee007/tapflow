@@ -1,3 +1,4 @@
+import { StrictMode } from "react";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -192,5 +193,17 @@ describe("useCanvasInputAssets", () => {
     await act(async () => resolvers.get("asset-a")?.[0](makeAsset({ id: "asset-a", title: "Old A" })));
     await act(async () => resolvers.get("asset-a")?.[1](makeAsset({ id: "asset-a", title: "New A" })));
     await waitFor(() => expect(result.current.items[0]).toMatchObject({ previewState: "ready", title: "New A" }));
+  });
+
+  it("resolves the current asset after React StrictMode runs effect cleanup and setup", async () => {
+    getAsset.mockResolvedValue(makeAsset({ title: "Strict ready" }));
+    getAssetVariantUrl.mockResolvedValue({ expiresAt: "2026-08-08T00:00:00.000Z", method: "GET", url: "https://cdn.test/strict.png" });
+
+    const { result } = renderHook(() => useCanvasInputAssets([imageInput]), {
+      wrapper: StrictMode,
+    });
+
+    await waitFor(() => expect(result.current.items[0]).toMatchObject({ previewState: "ready", previewUrl: "https://cdn.test/strict.png", title: "Strict ready" }));
+    expect(getAsset).toHaveBeenCalled();
   });
 });
