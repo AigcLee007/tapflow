@@ -76,6 +76,15 @@ describe("NodeInputTray", () => {
     expect(screen.getByLabelText("视频预览 Clip")).not.toBeNull();
   });
 
+  it("dismisses a pointer-open asset preview with global Escape", async () => {
+    render(<NodeInputTray items={[imageA]} />);
+
+    fireEvent.mouseEnter(screen.getByTitle("Reference image"));
+    await waitFor(() => expect(screen.getByRole("dialog", { name: "预览 Reference image" })).not.toBeNull());
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "预览 Reference image" })).toBeNull());
+  });
+
   it("anchors text and overflow portals to their triggers within the viewport", () => {
     Object.defineProperty(window, "innerHeight", { configurable: true, value: 768 });
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 1024 });

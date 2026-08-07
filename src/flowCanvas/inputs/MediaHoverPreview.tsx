@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { IMAGE_MENU_SURFACE_Z_INDEX } from "../nodes/imageMenuStyles";
@@ -7,6 +7,7 @@ import type { CanvasInputItem } from "./canvasInputProjection";
 export type MediaHoverPreviewProps = {
   item: CanvasInputItem;
   open: boolean;
+  onDismiss?: () => void;
   trigger: HTMLElement | null;
 };
 
@@ -38,7 +39,7 @@ function positionPreview(trigger: HTMLElement, preview: HTMLElement): PreviewPos
   };
 }
 
-export function MediaHoverPreview({ item, open, trigger }: MediaHoverPreviewProps) {
+export function MediaHoverPreview({ item, open, onDismiss, trigger }: MediaHoverPreviewProps) {
   const previewRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [position, setPosition] = useState<PreviewPosition | null>(null);
@@ -76,6 +77,19 @@ export function MediaHoverPreview({ item, open, trigger }: MediaHoverPreviewProp
       }
     };
   }, [open, item.inputKey]);
+
+  useEffect(() => {
+    if (!open || !onDismiss) return;
+    const shouldRestoreFocus = trigger instanceof HTMLElement && document.activeElement === trigger;
+    const dismiss = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      onDismiss();
+      if (shouldRestoreFocus) requestAnimationFrame(() => trigger.focus());
+    };
+    window.addEventListener("keydown", dismiss);
+    return () => window.removeEventListener("keydown", dismiss);
+  }, [onDismiss, open, trigger]);
 
   if (!open || !trigger || !previewUrl || (item.kind !== "image" && item.kind !== "video") || typeof document === "undefined") {
     return null;

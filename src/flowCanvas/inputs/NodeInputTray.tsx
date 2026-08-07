@@ -249,6 +249,6 @@ export function NodeInputTray({ disabled = false, items, onFocusSource, onRemove
     </div>
     {textMenu}
     {overflowMenu}
-    {hovered ? <MediaHoverPreview item={hovered.item} open trigger={hovered.trigger} /> : null}
+    {hovered ? <MediaHoverPreview item={hovered.item} onDismiss={() => setHovered(null)} open trigger={hovered.trigger} /> : null}
   </>;
 }
