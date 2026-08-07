@@ -1422,7 +1422,7 @@ function buildVideoRequest(
       metadata: null,
       model: null,
       params: readVideoGenerationParams(videoGeneration),
-      prompt: extractPromptFromUpstreamOutputs(upstreamOutputs, fallbackPrompt),
+      prompt: mergeImageGenerationPrompt(upstreamOutputs, readTrimmedString(config.generationPrompt), fallbackPrompt),
       routeKey: typeof config.routeKey === "string" ? config.routeKey : null,
     };
   }
