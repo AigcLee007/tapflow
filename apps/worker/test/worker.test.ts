@@ -675,7 +675,8 @@ describe("worker skeleton", () => {
         config: Record<string, unknown>,
       ) => { inputAssets: Array<Record<string, unknown>>; prompt: string };
     }).buildImageRequest([
-      { text: "upstream direction", assets: [{ assetId: "asset-upstream", kind: "image" }] },
+      { text: "upstream direction" },
+      { assets: [{ assetId: "asset-upstream", kind: "image" }] },
     ], {
       generationPrompt: "local direction",
       referenceAssetItemIds: ["asset-direct"],
@@ -686,6 +687,29 @@ describe("worker skeleton", () => {
     expect(request.inputAssets.map((asset) => asset.assetId)).toEqual([
       "asset-direct",
       "asset-upstream",
+    ]);
+  });
+
+  test("image.generate request keeps source-specific upstream assets interleaved with direct references", () => {
+    const buildImageRequest = (__workerTestUtils as {
+      buildImageRequest: (
+        upstreamOutputsByNodeId: ReadonlyMap<string, Record<string, unknown> | null>,
+        config: Record<string, unknown>,
+      ) => { inputAssets: Array<Record<string, unknown>> };
+    }).buildImageRequest;
+
+    const request = buildImageRequest(new Map([
+      ["upstream-a", { assets: [{ assetId: "asset-upstream-a", kind: "image" }] }],
+      ["upstream-b", { assets: [{ assetId: "asset-upstream-b", kind: "image" }] }],
+    ]), {
+      referenceAssetItemIds: ["asset-direct"],
+      referenceOrder: ["upstream:upstream-a", "asset:asset-direct", "upstream:upstream-b"],
+    });
+
+    expect(request.inputAssets.map((asset) => asset.assetId)).toEqual([
+      "asset-upstream-a",
+      "asset-direct",
+      "asset-upstream-b",
     ]);
   });
 
@@ -745,6 +769,22 @@ describe("worker skeleton", () => {
       { assetId: "asset-main", role: "first_frame" },
       { assetId: "asset-motion", role: "reference_video" },
     ]);
+  });
+
+  test("legacy video.generate request merges ordered upstream text with its local prompt", () => {
+    const request = (__workerTestUtils as {
+      buildVideoRequest: (
+        upstreamOutputs: ReadonlyMap<string, Record<string, unknown> | null>,
+        config: Record<string, unknown>,
+      ) => { prompt: string };
+    }).buildVideoRequest(new Map([
+      ["second", { text: "second upstream" }],
+      ["first", { text: "first upstream" }],
+    ]), {
+      generationPrompt: "local direction",
+    });
+
+    expect(request.prompt).toBe("second upstream\nfirst upstream\nlocal direction");
   });
 
   test("video.generate request uses exported video editor prompt and timeline asset ids", () => {

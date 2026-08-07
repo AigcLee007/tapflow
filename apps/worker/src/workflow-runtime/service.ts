@@ -534,29 +534,15 @@ function getDependencyOutputsFromRuntimeGraph(
   return Array.from(getDependencyOutputsByNodeIdFromRuntimeGraph(node, nodeRuns, runtimeFlow).values());
 }
 
-function extractPromptFromUpstreamOutputs(
-  upstreamOutputs: Array<Record<string, unknown> | null>,
-  fallbackPrompt: string,
-): string {
-  const upstreamText = extractTextPromptFromUpstreamOutputs(upstreamOutputs);
-
-  if (upstreamText) {
-    return upstreamText;
-  }
-
-  if (fallbackPrompt.trim()) {
-    return fallbackPrompt.trim();
-  }
-
-  return JSON.stringify(upstreamOutputs);
-}
-
 function extractTextPromptFromUpstreamOutputs(
   upstreamOutputs: Array<Record<string, unknown> | null>,
 ): string {
   const fragments = upstreamOutputs
     .flatMap((output) => {
       if (!output) {
+        return [];
+      }
+      if (Array.isArray(output.assets) && output.assets.length > 0) {
         return [];
       }
 
@@ -654,6 +640,7 @@ function mergeImageReferenceInputAssets(input: {
   config: Record<string, unknown>;
   nodeAssets: AssetReferenceInput[];
   upstreamAssets: AssetReferenceInput[];
+  upstreamAssetsByNodeId?: ReadonlyMap<string, AssetReferenceInput[]>;
 }): AssetReferenceInput[] {
   const referenceOrder = Array.isArray(input.config.referenceOrder)
     ? input.config.referenceOrder.map((item) => String(item || "").trim()).filter(Boolean)
@@ -665,6 +652,7 @@ function mergeImageReferenceInputAssets(input: {
   const nodeAssetsById = new Map(input.nodeAssets.map((asset) => [asset.assetId, asset]));
   const ordered: AssetReferenceInput[] = [];
   let upstreamInserted = false;
+  const includedUpstreamNodeIds = new Set<string>();
 
   for (const key of referenceOrder) {
     if (key.startsWith("asset:")) {
@@ -676,15 +664,28 @@ function mergeImageReferenceInputAssets(input: {
       continue;
     }
 
-    if (key.startsWith("upstream:") && !upstreamInserted) {
-      upstreamInserted = true;
-      ordered.push(...input.upstreamAssets);
+    if (key.startsWith("upstream:")) {
+      const nodeId = key.slice("upstream:".length).trim();
+      const sourceAssets = input.upstreamAssetsByNodeId?.get(nodeId);
+      if (sourceAssets) {
+        includedUpstreamNodeIds.add(nodeId);
+        ordered.push(...sourceAssets);
+      } else if (!input.upstreamAssetsByNodeId && !upstreamInserted) {
+        upstreamInserted = true;
+        ordered.push(...input.upstreamAssets);
+      }
     }
   }
 
+  const remainingUpstreamAssets = input.upstreamAssetsByNodeId
+    ? Array.from(input.upstreamAssetsByNodeId.entries())
+        .filter(([nodeId]) => !includedUpstreamNodeIds.has(nodeId))
+        .flatMap(([, assets]) => assets)
+    : upstreamInserted ? [] : input.upstreamAssets;
+
   return mergeAssetInputs(
     ordered,
-    upstreamInserted ? [] : input.upstreamAssets,
+    remainingUpstreamAssets,
     input.nodeAssets,
     input.agentAssets,
   );
@@ -790,9 +791,18 @@ function localOutputDirFromRenderResult(result: VideoEditorLocalRenderResult): s
 }
 
 function buildImageRequest(
-  upstreamOutputs: Array<Record<string, unknown> | null>,
+  upstreamOutputs: Array<Record<string, unknown> | null> | ReadonlyMap<string, Record<string, unknown> | null>,
   config: Record<string, unknown>,
 ): ImageGenerationRequest {
+  const orderedUpstreamOutputs = Array.isArray(upstreamOutputs)
+    ? upstreamOutputs
+    : Array.from(upstreamOutputs.values());
+  const upstreamAssetsByNodeId = Array.isArray(upstreamOutputs)
+    ? undefined
+    : new Map(Array.from(upstreamOutputs.entries()).map(([nodeId, output]) => [
+      nodeId,
+      extractAssetInputs(output ? [output] : []),
+    ]));
   const params = isPlainObject(config.params) ? config.params : {};
   const agentTool = readAgentToolConfig(config);
   const agentParams = buildAgentImageParams(params, agentTool);
@@ -832,7 +842,8 @@ function buildImageRequest(
     agentAssets: buildAgentToolInputAssets(agentTool),
     config,
     nodeAssets: buildNodeReferenceInputAssets(config),
-    upstreamAssets: extractAssetInputs(upstreamOutputs),
+    upstreamAssets: extractAssetInputs(orderedUpstreamOutputs),
+    upstreamAssetsByNodeId,
   });
 
   return {
@@ -854,7 +865,7 @@ function buildImageRequest(
             ? "nano-banana-pro"
             : config.modelId
           : null,
-    prompt: mergeImageGenerationPrompt(upstreamOutputs, generationPrompt, fallbackPrompt),
+    prompt: mergeImageGenerationPrompt(orderedUpstreamOutputs, generationPrompt, fallbackPrompt),
     routeKey,
   };
 }
@@ -1468,7 +1479,7 @@ function buildVideoRequest(
       : typeof config.modelId === "string"
         ? config.modelId
         : null,
-    prompt: extractPromptFromUpstreamOutputs(upstreamOutputs, fallbackPrompt),
+    prompt: mergeImageGenerationPrompt(upstreamOutputs, readTrimmedString(config.generationPrompt), fallbackPrompt),
     routeKey: typeof config.routeKey === "string" ? config.routeKey : null,
   };
 }
@@ -2571,7 +2582,7 @@ export class WorkflowNodeExecutionService {
         workflowRun.input_json ?? {},
         node.id,
       );
-      const request = buildImageRequest(upstreamOutputs, nodeConfig);
+      const request = buildImageRequest(upstreamOutputsByNodeId, nodeConfig);
       await this.hydrateInputAssetUrls(workflowRun.tenant_id, request.inputAssets ?? []);
       if (request.routeKey === "image.mouxihub.nano-banana-pro.t3") {
         const metadata = isPlainObject(request.metadata) ? request.metadata : {};
