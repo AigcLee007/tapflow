@@ -15,6 +15,8 @@ export type CanvasInputSeed = {
   role?: CanvasInputRole;
   textExcerpt?: string;
   previewUrl?: string;
+  thumbnailUrl?: string;
+  hoverPreviewUrl?: string;
   durationMs?: number;
   sourceRevision?: string;
   previewState: CanvasInputPreviewState;
@@ -22,6 +24,12 @@ export type CanvasInputSeed = {
 
 export type CanvasInputItem = CanvasInputSeed & {
   order: number;
+};
+
+export type CanvasInputProjection = {
+  items: CanvasInputItem[];
+  textItems: CanvasInputItem[];
+  mediaItems: CanvasInputItem[];
 };
 
 export function toUpstreamInputKey(sourceNodeId: string): string {
@@ -32,13 +40,13 @@ export function toAssetInputKey(assetId: string): string {
   return `asset:${assetId}`;
 }
 
-export function resolveCanvasInputItems({
+export function resolveCanvasInputProjection({
   inputOrder,
   seeds,
 }: {
   inputOrder?: string[];
   seeds: CanvasInputSeed[];
-}): CanvasInputItem[] {
+}): CanvasInputProjection {
   const seedsByKey = new Map<string, CanvasInputSeed>();
   for (const seed of seeds) {
     if (!seedsByKey.has(seed.inputKey)) {
@@ -46,24 +54,43 @@ export function resolveCanvasInputItems({
     }
   }
 
-  const orderedSeeds: CanvasInputSeed[] = [];
+  const uniqueSeeds = [...seedsByKey.values()];
+  const textSeeds = uniqueSeeds.filter((seed) => seed.kind === "text");
+  const mediaSeedsByKey = new Map(
+    uniqueSeeds
+      .filter((seed) => seed.kind !== "text")
+      .map((seed) => [seed.inputKey, seed]),
+  );
+  const mediaSeeds: CanvasInputSeed[] = [];
   const includedKeys = new Set<string>();
   for (const inputKey of inputOrder ?? []) {
-    const seed = seedsByKey.get(inputKey);
+    const seed = mediaSeedsByKey.get(inputKey);
     if (seed && !includedKeys.has(inputKey)) {
-      orderedSeeds.push(seed);
+      mediaSeeds.push(seed);
       includedKeys.add(inputKey);
     }
   }
 
-  for (const seed of seeds) {
+  for (const seed of mediaSeedsByKey.values()) {
     if (!includedKeys.has(seed.inputKey)) {
-      orderedSeeds.push(seed);
+      mediaSeeds.push(seed);
       includedKeys.add(seed.inputKey);
     }
   }
 
-  return orderedSeeds.map((seed, order) => ({ ...seed, order }));
+  const items = [...textSeeds, ...mediaSeeds].map((seed, order) => ({ ...seed, order }));
+  return {
+    items,
+    textItems: items.filter((item) => item.kind === "text"),
+    mediaItems: items.filter((item) => item.kind !== "text"),
+  };
+}
+
+export function resolveCanvasInputItems(args: {
+  inputOrder?: string[];
+  seeds: CanvasInputSeed[];
+}): CanvasInputItem[] {
+  return resolveCanvasInputProjection(args).items;
 }
 
 export function buildCanvasInputSignature({

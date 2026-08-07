@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildCanvasInputSignature,
+  resolveCanvasInputProjection,
   resolveCanvasInputItems,
   toAssetInputKey,
   toUpstreamInputKey,
@@ -42,18 +43,49 @@ const directAsset: CanvasInputSeed = {
 };
 
 describe("canvas input projection", () => {
-  it("honors known input order and appends unique remaining mixed inputs", () => {
-    const items = resolveCanvasInputItems({
-      inputOrder: [directAsset.inputKey, upstreamText.inputKey, "stale", directAsset.inputKey],
-      seeds: [upstreamImage, directAsset, upstreamText, upstreamImage],
+  it("projects one stable text partition before ordered media", () => {
+    const secondText: CanvasInputSeed = {
+      ...upstreamText,
+      inputKey: toUpstreamInputKey("text-node-2"),
+      sourceNodeId: "text-node-2",
+      title: "Second script",
+    };
+    const projection = resolveCanvasInputProjection({
+      inputOrder: [directAsset.inputKey, secondText.inputKey, upstreamImage.inputKey, upstreamText.inputKey],
+      seeds: [upstreamText, upstreamImage, secondText, directAsset, upstreamImage],
     });
 
-    expect(items.map((item) => item.inputKey)).toEqual([
-      directAsset.inputKey,
+    expect(projection.textItems.map((item) => item.inputKey)).toEqual([
       upstreamText.inputKey,
+      secondText.inputKey,
+    ]);
+    expect(projection.mediaItems.map((item) => item.inputKey)).toEqual([
+      directAsset.inputKey,
       upstreamImage.inputKey,
     ]);
-    expect(items.map((item) => item.order)).toEqual([0, 1, 2]);
+    expect(projection.items.map((item) => item.inputKey)).toEqual([
+      upstreamText.inputKey,
+      secondText.inputKey,
+      directAsset.inputKey,
+      upstreamImage.inputKey,
+    ]);
+    expect(projection.items.map((item) => item.order)).toEqual([0, 1, 2, 3]);
+  });
+
+  it("keeps thumbnail and hover preview URLs out of the safe signature", () => {
+    const item: CanvasInputSeed = {
+      ...upstreamImage,
+      thumbnailUrl: "https://cdn.test/thumb",
+      hoverPreviewUrl: "https://cdn.test/preview",
+    };
+    const changed: CanvasInputSeed = {
+      ...item,
+      thumbnailUrl: "https://cdn.test/new-thumb",
+      hoverPreviewUrl: "https://cdn.test/new-preview",
+    };
+
+    expect(buildCanvasInputSignature({ items: [item], localPrompt: "x", targetNodeId: "n" }))
+      .toBe(buildCanvasInputSignature({ items: [changed], localPrompt: "x", targetNodeId: "n" }));
   });
 
   it("keeps previewless direct media inputs without upstream identifiers", () => {
