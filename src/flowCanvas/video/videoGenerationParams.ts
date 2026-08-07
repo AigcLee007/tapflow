@@ -441,7 +441,7 @@ function normalizeReferenceInputs(
   return candidates
     .sort((left, right) => left.order - right.order || left.sourceIndex - right.sourceIndex)
     .filter((candidate) => {
-      const identity = `${candidate.source.kind}:${candidate.source.id}:${candidate.role}`;
+      const identity = candidate.referenceKey || `${candidate.source.kind}:${candidate.source.id}:${candidate.role}`;
       if (seen.has(identity)) return false;
       seen.add(identity);
       return true;

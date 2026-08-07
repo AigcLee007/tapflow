@@ -375,6 +375,40 @@ const getNodeReferenceAssetId = (
   return String(runtimeAssetId || '').trim();
 };
 
+const getNodeRuntimeInputIdentity = (
+  node: FlowNode | undefined,
+  runtimeNodeOutput?: FlowRuntimeNodeOutput,
+) => {
+  const mediaKind = getNodeReferenceMediaKind(node, runtimeNodeOutput);
+  if (!mediaKind) return '';
+  return `${mediaKind}:${getNodeReferenceAssetId(node, runtimeNodeOutput, mediaKind)}`;
+};
+
+const getRuntimeReconciliationTargetIds = (
+  nodes: FlowNode[],
+  edges: FlowEdge[],
+  previousOutputs: Record<string, FlowRuntimeNodeOutput>,
+  nextOutputs: Record<string, FlowRuntimeNodeOutput>,
+  changedSourceIds: Set<string>,
+) => {
+  const nodesById = new Map(nodes.map((node) => [node.id, node]));
+  const structuralSourceIds = new Set<string>();
+  changedSourceIds.forEach((sourceId) => {
+    const node = nodesById.get(sourceId);
+    if (getNodeRuntimeInputIdentity(node, previousOutputs[sourceId]) !== getNodeRuntimeInputIdentity(node, nextOutputs[sourceId])) {
+      structuralSourceIds.add(sourceId);
+    }
+  });
+  if (structuralSourceIds.size === 0) return new Set<string>();
+  const targetIds = new Set<string>();
+  edges.forEach((edge) => {
+    if (!structuralSourceIds.has(edge.source)) return;
+    const target = nodesById.get(edge.target);
+    if (isImageNode(target) || isVideoNode(target)) targetIds.add(edge.target);
+  });
+  return targetIds;
+};
+
 const appendReferenceOrderKey = (referenceOrder: unknown, key: string) => {
   const current = Array.isArray(referenceOrder)
     ? referenceOrder.map((item) => String(item || '')).filter(Boolean)
@@ -476,6 +510,7 @@ const reconcileNodeInputs = (
   nodes: FlowNode[],
   edges: FlowEdge[],
   runtimeOutputs: Record<string, FlowRuntimeNodeOutput> = {},
+  targetNodeIds?: ReadonlySet<string>,
 ): FlowNode[] => {
   const nodesById = new Map(nodes.map((node) => [node.id, node]));
   const edgesByTarget = new Map<string, FlowEdge[]>();
@@ -487,6 +522,7 @@ const reconcileNodeInputs = (
   });
 
   return nodes.map((node) => {
+    if (targetNodeIds && !targetNodeIds.has(node.id)) return node;
     if (!isImageNode(node) && !isVideoNode(node)) return node;
     const incomingEdges = edgesByTarget.get(node.id) ?? [];
     const upstreamSources = incomingEdges.reduce<Array<{ node: FlowNode; key: string; mediaKind: FlowUpstreamMediaRef['mediaKind'] | null }>>((sources, edge) => {
@@ -531,45 +567,56 @@ const reconcileNodeInputs = (
       if (reference.source.kind === 'upstream') return connectedMediaKeys.has(toUpstreamInputKey(reference.source.id));
       return true;
     });
-    const referencesByKey = new Map<string, VideoReferenceInputV2>();
-    retainedReferences.forEach((reference) => {
-      const key = reference.source.kind === 'upstream'
+    const referencesByInputKey = new Map<string, VideoReferenceInputV2[]>();
+    const referenceIdentities = new Set<string>();
+    const addReference = (reference: VideoReferenceInputV2) => {
+      const inputKey = reference.source.kind === 'upstream'
         ? toUpstreamInputKey(reference.source.id)
         : toAssetInputKey(reference.source.id);
-      if (!referencesByKey.has(key)) referencesByKey.set(key, reference);
+      const identity = reference.source.kind === 'upstream'
+        ? inputKey
+        : String(reference.referenceKey || `${reference.source.kind}:${reference.source.id}:${reference.role}`);
+      if (referenceIdentities.has(identity)) return;
+      referenceIdentities.add(identity);
+      const bucket = referencesByInputKey.get(inputKey) ?? [];
+      bucket.push(reference);
+      referencesByInputKey.set(inputKey, bucket);
+    };
+    retainedReferences.forEach((reference) => {
+      addReference(reference);
     });
     connectedMediaByKey.forEach((source, key) => {
-      if (referencesByKey.has(key)) return;
+      if (referencesByInputKey.has(key)) return;
       const roleNode: FlowNode = {
         ...node,
         data: {
           ...node.data,
           params: {
             ...(node.data.params ?? {}),
-            videoGeneration: { ...normalized!, referenceInputs: [...referencesByKey.values()] },
+            videoGeneration: { ...normalized!, referenceInputs: [...referencesByInputKey.values()].flat() },
           },
         },
       };
-      referencesByKey.set(key, {
+      addReference({
         mediaKind: source.mediaKind,
-        order: referencesByKey.size,
+        order: referenceIdentities.size,
         referenceKey: key,
         role: getAutomaticVideoReferenceRole(roleNode, source.mediaKind, source.node.id),
         source: { kind: 'upstream', id: source.node.id },
       });
     });
-    const mediaInputOrder = inputOrder.filter((key) => referencesByKey.has(key));
+    const mediaInputOrder = inputOrder.filter((key) => referencesByInputKey.has(key));
     const referenceInputs = mediaInputOrder
-      .map((key) => referencesByKey.get(key)!)
+      .flatMap((key) => referencesByInputKey.get(key)!)
       .map((reference, order) => ({ ...reference, referenceKey: reference.source.kind === 'upstream'
         ? toUpstreamInputKey(reference.source.id)
         : reference.referenceKey, order }));
-    const referenceOrder = referenceInputs.map((reference) => reference.source.kind === 'upstream'
+    const referenceOrder = getUniqueInputKeys(referenceInputs.map((reference) => reference.source.kind === 'upstream'
       ? toUpstreamInputKey(reference.source.id)
-      : toAssetInputKey(reference.source.id));
-    const referenceAssetItemIds = referenceInputs
+      : toAssetInputKey(reference.source.id)));
+    const referenceAssetItemIds = getUniqueInputKeys(referenceInputs
       .filter((reference) => reference.source.kind === 'asset')
-      .map((reference) => reference.source.id);
+      .map((reference) => reference.source.id));
     const existingReferenceInputs = normalized!.referenceInputs.map((reference) => ({
       ...reference,
       referenceKey: reference.source.kind === 'upstream' ? toUpstreamInputKey(reference.source.id) : reference.referenceKey,
@@ -1536,18 +1583,32 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
   setNodeRuntimeOutputs: (outputs) => {
     set((state) => {
       const nodeOutputByNodeId = { ...state.nodeOutputByNodeId };
+      const changedSourceIds = new Set<string>();
       for (const [nodeId, output] of Object.entries(outputs)) {
+        changedSourceIds.add(nodeId);
         if (output) {
           nodeOutputByNodeId[nodeId] = output;
         } else {
           delete nodeOutputByNodeId[nodeId];
         }
       }
-      const nodes = reconcileNodeInputs(state.nodes, state.edges, nodeOutputByNodeId);
+      const targetNodeIds = getRuntimeReconciliationTargetIds(
+        state.nodes,
+        state.edges,
+        state.nodeOutputByNodeId,
+        nodeOutputByNodeId,
+        changedSourceIds,
+      );
+      const reconciledNodes = targetNodeIds.size > 0
+        ? reconcileNodeInputs(state.nodes, state.edges, nodeOutputByNodeId, targetNodeIds)
+        : state.nodes;
+      const nodesChanged = reconciledNodes.some((node, index) => node !== state.nodes[index]);
+      const nodes = nodesChanged ? reconciledNodes : state.nodes;
       return {
         nodeOutputByNodeId,
         nodes,
         graphIndex: buildGraphIndex(nodes, state.edges, nodeOutputByNodeId),
+        isDirty: nodesChanged ? true : state.isDirty,
       };
     });
   },

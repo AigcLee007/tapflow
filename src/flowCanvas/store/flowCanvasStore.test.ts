@@ -379,6 +379,71 @@ describe('flowCanvasStore upstream image references', () => {
     ]);
   });
 
+  it('retains distinct direct roles for one asset while removing exact duplicate references', () => {
+    const firstFrame = {
+      mediaKind: 'image' as const, order: 0, referenceKey: 'asset:shared-frame:first', role: 'first_frame' as const,
+      source: { kind: 'asset' as const, id: 'shared-frame' },
+    };
+    const lastFrame = {
+      mediaKind: 'image' as const, order: 1, referenceKey: 'asset:shared-frame:last', role: 'last_frame' as const,
+      source: { kind: 'asset' as const, id: 'shared-frame' },
+    };
+    useFlowCanvasStore.getState().loadProject({
+      id: 'direct-role-dedup', title: 'Direct role dedup', version: 1, updatedAt: Date.now(), viewport: { x: 0, y: 0, zoom: 1 },
+      nodes: [{
+        id: 'video-target', type: 'video', position: { x: 0, y: 0 }, data: {
+          kind: 'video',
+          params: { videoGeneration: { ...normalizeVideoGenerationParams({}).params, mode: 'first_last_frame', referenceInputs: [firstFrame, lastFrame, { ...lastFrame }] } },
+        },
+      }] as any,
+      edges: [],
+    });
+
+    useFlowCanvasStore.getState().setNodeRuntimeOutput('video-target', { text: 'runtime refresh' });
+
+    const target = useFlowCanvasStore.getState().nodes.find((node) => node.id === 'video-target')!;
+    expect(target.data.inputOrder).toEqual(['asset:shared-frame']);
+    expect(normalizeVideoGenerationParams(target.data).params.referenceInputs).toEqual([
+      expect.objectContaining({ order: 0, referenceKey: 'asset:shared-frame:first', role: 'first_frame', source: { kind: 'asset', id: 'shared-frame' } }),
+      expect.objectContaining({ order: 1, referenceKey: 'asset:shared-frame:last', role: 'last_frame', source: { kind: 'asset', id: 'shared-frame' } }),
+    ]);
+  });
+
+  it('keeps persisted nodes and dirty state unchanged for runtime-only output refreshes', () => {
+    const source = useFlowCanvasStore.getState().addNode('text', { x: 0, y: 0 }, { title: 'Text source' });
+    const target = useFlowCanvasStore.getState().addNode('video', { x: 400, y: 0 }, { title: 'Video target' });
+    useFlowCanvasStore.getState().onConnect({ source: source.id, sourceHandle: 'out', target: target.id, targetHandle: 'in' });
+    useFlowCanvasStore.getState().markClean();
+    const nodesBefore = useFlowCanvasStore.getState().nodes;
+
+    useFlowCanvasStore.getState().setNodeRuntimeOutput(source.id, { text: 'runtime-only prompt' });
+
+    expect(useFlowCanvasStore.getState().nodes).toBe(nodesBefore);
+    expect(useFlowCanvasStore.getState().isDirty).toBe(false);
+  });
+
+  it('persists and marks dirty only when runtime output creates a missing media reference', () => {
+    useFlowCanvasStore.getState().loadProject({
+      id: 'runtime-media-kind', title: 'Runtime media kind', version: 1, updatedAt: Date.now(), viewport: { x: 0, y: 0, zoom: 1 },
+      nodes: [
+        { id: 'runtime-source', type: 'group', position: { x: 0, y: 0 }, data: { kind: 'group', title: 'Runtime source' } },
+        { id: 'video-target', type: 'video', position: { x: 400, y: 0 }, data: { kind: 'video', title: 'Video target' } },
+      ] as any,
+      edges: [{ id: 'runtime-media-edge', source: 'runtime-source', target: 'video-target', type: 'smart', data: { dataType: 'any' } }] as any,
+    });
+    expect(useFlowCanvasStore.getState().isDirty).toBe(false);
+
+    useFlowCanvasStore.getState().setNodeRuntimeOutput('runtime-source', {
+      assets: [{ assetId: 'runtime-image', downloadUrl: 'https://cdn.test/runtime-image.png', kind: 'image', mimeType: 'image/png' }],
+    });
+
+    const state = useFlowCanvasStore.getState();
+    expect(state.isDirty).toBe(true);
+    expect(normalizeVideoGenerationParams(state.nodes.find((node) => node.id === 'video-target')?.data).params.referenceInputs).toEqual([
+      expect.objectContaining({ mediaKind: 'image', source: { kind: 'upstream', id: 'runtime-source' } }),
+    ]);
+  });
+
   it('connects a selected upstream video as a typed dependency', () => {
     const source = useFlowCanvasStore.getState().addNode('video', { x: 0, y: 0 }, {
       assetId: 'asset-video-source',

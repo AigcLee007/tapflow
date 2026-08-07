@@ -40,7 +40,7 @@ describe("video generation params", () => {
     ]);
   });
 
-  it("keeps v2 references idempotent and deduplicates only identical source-role pairs", () => {
+  it("keeps v2 references idempotent and deduplicates only exact reference identities", () => {
     const input = {
       schemaVersion: 2,
       mode: "all_reference",
@@ -48,7 +48,8 @@ describe("video generation params", () => {
         { referenceKey: "style", source: { kind: "asset", id: "asset-1" }, mediaKind: "image", role: "reference_image", order: 2 },
         { referenceKey: "motion", source: { kind: "asset", id: "asset-2" }, mediaKind: "video", role: "source_video", order: 1 },
         { referenceKey: "sound", source: { kind: "asset", id: "asset-3" }, mediaKind: "audio", role: "reference_audio", order: 3 },
-        { referenceKey: "style-duplicate", source: { kind: "asset", id: "asset-1" }, mediaKind: "image", role: "reference_image", order: 4 },
+        { referenceKey: "style-variant", source: { kind: "asset", id: "asset-1" }, mediaKind: "image", role: "reference_image", order: 4 },
+        { referenceKey: "style", source: { kind: "asset", id: "asset-1" }, mediaKind: "image", role: "reference_image", order: 5 },
       ],
     };
     const first = normalizeVideoGenerationParams(input);
@@ -58,6 +59,7 @@ describe("video generation params", () => {
       expect.objectContaining({ source: { kind: "asset", id: "asset-2" }, role: "source_video", order: 0 }),
       expect.objectContaining({ source: { kind: "asset", id: "asset-1" }, role: "reference_image", order: 1 }),
       expect.objectContaining({ source: { kind: "asset", id: "asset-3" }, role: "reference_audio", order: 2 }),
+      expect.objectContaining({ referenceKey: "style-variant", source: { kind: "asset", id: "asset-1" }, role: "reference_image", order: 3 }),
     ]);
     expect(second.params).toEqual(first.params);
   });
