@@ -107,12 +107,13 @@ export function useCanvasInputAssets(items: CanvasInputItem[]) {
       if (!assetId) return item;
       const resolved = resolvedAssets[assetId];
       if (!resolved) return item;
+      const suppliedPreviewUrl = item.previewUrl ?? item.thumbnailUrl ?? item.hoverPreviewUrl;
       return {
         ...item,
         durationMs: item.durationMs ?? resolved.durationMs,
         hoverPreviewUrl: item.hoverPreviewUrl ?? resolved.hoverPreviewUrl,
-        previewState: resolved.previewState,
-        previewUrl: item.previewUrl ?? resolved.previewUrl,
+        previewState: suppliedPreviewUrl ? "ready" : resolved.previewState,
+        previewUrl: suppliedPreviewUrl ?? resolved.previewUrl,
         thumbnailUrl: item.thumbnailUrl ?? resolved.thumbnailUrl,
         title: item.title || resolved.title || item.title,
       };

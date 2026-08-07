@@ -216,6 +216,23 @@ describe("useCanvasInputAssets", () => {
     expect(getAsset).toHaveBeenCalledTimes(3);
   });
 
+  it("prefers a supplied preview when the cached resolution for the same asset failed", async () => {
+    getAsset.mockRejectedValue(new Error("offline"));
+    getAssetVariantUrl.mockRejectedValue(new Error("variant unavailable"));
+
+    const { rerender, result } = renderHook(({ item }) => useCanvasInputAssets([item]), {
+      initialProps: { item: imageInput },
+    });
+    await waitFor(() => expect(result.current.items[0].previewState).toBe("error"));
+
+    rerender({ item: { ...imageInput, thumbnailUrl: "https://cdn.test/supplied-thumb.webp" } });
+
+    expect(result.current.items[0]).toMatchObject({
+      previewState: "ready",
+      thumbnailUrl: "https://cdn.test/supplied-thumb.webp",
+    });
+  });
+
   it("keeps resolved asset cache when item order changes", async () => {
     getAsset.mockImplementation((assetId: string) => Promise.resolve(makeAsset({ id: assetId })));
     getAssetVariantUrl.mockImplementation((assetId: string) => Promise.resolve({ expiresAt: "2026-08-08T00:00:00.000Z", method: "GET", url: `https://cdn.test/${assetId}.png` }));
