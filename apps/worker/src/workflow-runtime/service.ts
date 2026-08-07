@@ -501,11 +501,18 @@ function buildOutputFromNodeConfig(node: CompiledWorkflowNode | undefined): Reco
 }
 
 function getDependencyOutputsFromRuntimeGraph(
-  node: Pick<CompiledWorkflowNode, "dependencies">,
+  node: Pick<CompiledWorkflowNode, "config" | "dependencies">,
   nodeRuns: Array<Pick<NodeRunRecord, "node_id" | "output_json">>,
   runtimeFlow: Pick<RuntimeFlowRecord, "compiled_graph_json">,
 ): Array<Record<string, unknown> | null> {
-  return node.dependencies.map((dependencyId) => {
+  const requestedOrder = Array.isArray(node.config?.inputOrder)
+    ? node.config.inputOrder
+        .filter((value): value is string => typeof value === "string")
+        .map((value) => value.startsWith("upstream:") ? value.slice("upstream:".length) : "")
+        .filter((dependencyId) => node.dependencies.includes(dependencyId))
+    : [];
+  const dependencyIds = Array.from(new Set([...requestedOrder, ...node.dependencies]));
+  return dependencyIds.map((dependencyId) => {
     const dependencyRun = nodeRuns.find((row) => row.node_id === dependencyId);
     if (dependencyRun?.output_json) {
       return dependencyRun.output_json;
