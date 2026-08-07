@@ -542,9 +542,6 @@ function extractTextPromptFromUpstreamOutputs(
       if (!output) {
         return [];
       }
-      if (Array.isArray(output.assets) && output.assets.length > 0) {
-        return [];
-      }
 
       const values: string[] = [];
       if (typeof output.prompt === "string" && output.prompt.trim()) {
