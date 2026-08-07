@@ -58,6 +58,82 @@ describe('flowCanvasStore upstream image references', () => {
     ]);
   });
 
+  it('prefers runtime text, then node text, then generation prompt for ordered text inputs', () => {
+    const runtime = useFlowCanvasStore.getState().addNode('text', { x: 0, y: 0 }, {
+      generationPrompt: 'runtime generation prompt',
+      text: 'runtime node text',
+      title: 'Runtime source',
+    });
+    const nodeText = useFlowCanvasStore.getState().addNode('text', { x: 0, y: 180 }, {
+      generationPrompt: 'node text generation prompt',
+      text: 'node text fallback',
+      title: 'Node text source',
+    });
+    const prompt = useFlowCanvasStore.getState().addNode('text', { x: 0, y: 360 }, {
+      generationPrompt: 'generation prompt fallback',
+      text: '   ',
+      title: 'Prompt source',
+    });
+    const target = useFlowCanvasStore.getState().addNode('video', { x: 420, y: 0 }, { title: 'Video target' });
+
+    useFlowCanvasStore.setState({
+      nodeOutputByNodeId: {
+        [runtime.id]: { text: 'r'.repeat(80) },
+        [nodeText.id]: { text: '   ' },
+        [prompt.id]: { text: '' },
+      },
+    });
+    useFlowCanvasStore.getState().onConnect({ source: runtime.id, sourceHandle: 'out', target: target.id, targetHandle: 'in' });
+    useFlowCanvasStore.getState().onConnect({ source: nodeText.id, sourceHandle: 'out', target: target.id, targetHandle: 'in' });
+    useFlowCanvasStore.getState().onConnect({ source: prompt.id, sourceHandle: 'out', target: target.id, targetHandle: 'in' });
+
+    expect(useFlowCanvasStore.getState().graphIndex.upstreamInputRefsByNodeId[target.id]).toEqual([
+      expect.objectContaining({ inputKey: `upstream:${runtime.id}`, textExcerpt: `${'r'.repeat(77)}...` }),
+      expect.objectContaining({ inputKey: `upstream:${nodeText.id}`, textExcerpt: 'node text fallback' }),
+      expect.objectContaining({ inputKey: `upstream:${prompt.id}`, textExcerpt: 'generation prompt fallback' }),
+    ]);
+  });
+
+  it('indexes ready upstream video and audio with duration and source revisions', () => {
+    const video = useFlowCanvasStore.getState().addNode('video', { x: 0, y: 0 }, {
+      assetId: 'asset-ready-video',
+      durationMs: 4_000,
+      posterUrl: 'https://cdn.test/ready-video-poster.jpg',
+      title: 'Ready video',
+    });
+    const audio = useFlowCanvasStore.getState().addNode('audio', { x: 0, y: 240 }, {
+      assetId: 'asset-ready-audio',
+      durationMs: 1_500,
+      previewUrl: 'https://cdn.test/ready-audio.mp3',
+      title: 'Ready audio',
+    });
+    const target = useFlowCanvasStore.getState().addNode('video', { x: 420, y: 0 }, { title: 'Video target' });
+
+    useFlowCanvasStore.getState().onConnect({ source: video.id, sourceHandle: 'out', target: target.id, targetHandle: 'in' });
+    useFlowCanvasStore.getState().onConnect({ source: audio.id, sourceHandle: 'out', target: target.id, targetHandle: 'in' });
+
+    expect(useFlowCanvasStore.getState().graphIndex.upstreamInputRefsByNodeId[target.id]).toEqual([
+      expect.objectContaining({
+        assetId: 'asset-ready-video',
+        durationMs: 4_000,
+        inputKey: `upstream:${video.id}`,
+        kind: 'video',
+        previewState: 'ready',
+        previewUrl: 'https://cdn.test/ready-video-poster.jpg',
+        sourceRevision: String(video.data.updatedAt),
+      }),
+      expect.objectContaining({
+        assetId: 'asset-ready-audio',
+        durationMs: 1_500,
+        inputKey: `upstream:${audio.id}`,
+        kind: 'audio',
+        previewState: 'ready',
+        previewUrl: 'https://cdn.test/ready-audio.mp3',
+        sourceRevision: String(audio.data.updatedAt),
+      }),
+    ]);
+  });
+
   it('connects a selected upstream video as a typed dependency', () => {
     const source = useFlowCanvasStore.getState().addNode('video', { x: 0, y: 0 }, {
       assetId: 'asset-video-source',
