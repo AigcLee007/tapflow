@@ -134,6 +134,62 @@ describe('flowCanvasStore upstream image references', () => {
     ]);
   });
 
+  it('rebuilds unified input refs when a connected source runtime output changes', () => {
+    const text = useFlowCanvasStore.getState().addNode('text', { x: 0, y: 0 }, {
+      generationPrompt: 'stale prompt',
+      title: 'Text source',
+    });
+    const image = useFlowCanvasStore.getState().addNode('image', { x: 0, y: 240 }, { title: 'Image source' });
+    const target = useFlowCanvasStore.getState().addNode('video', { x: 420, y: 0 }, { title: 'Video target' });
+
+    useFlowCanvasStore.getState().onConnect({ source: text.id, sourceHandle: 'out', target: target.id, targetHandle: 'in' });
+    useFlowCanvasStore.getState().onConnect({ source: image.id, sourceHandle: 'out', target: target.id, targetHandle: 'in' });
+    useFlowCanvasStore.getState().setNodeRuntimeOutput(text.id, { text: 'latest runtime text' });
+    useFlowCanvasStore.getState().setNodeRuntimeOutput(image.id, {
+      assets: [{
+        assetId: 'runtime-image-asset',
+        downloadUrl: 'https://cdn.test/runtime-image.png',
+        kind: 'image',
+        mimeType: 'image/png',
+      }],
+    });
+
+    expect(useFlowCanvasStore.getState().nodeOutputByNodeId).toMatchObject({
+      [text.id]: { text: 'latest runtime text' },
+      [image.id]: { assets: [expect.objectContaining({ assetId: 'runtime-image-asset' })] },
+    });
+    expect(useFlowCanvasStore.getState().graphIndex.upstreamInputRefsByNodeId[target.id]).toEqual([
+      expect.objectContaining({ inputKey: `upstream:${text.id}`, textExcerpt: 'latest runtime text' }),
+      expect.objectContaining({
+        assetId: 'runtime-image-asset',
+        inputKey: `upstream:${image.id}`,
+        previewState: 'ready',
+        previewUrl: 'https://cdn.test/runtime-image.png',
+      }),
+    ]);
+
+    useFlowCanvasStore.getState().setNodeRuntimeOutput(image.id, null);
+
+    expect(useFlowCanvasStore.getState().nodeOutputByNodeId[image.id]).toBeUndefined();
+    expect(useFlowCanvasStore.getState().graphIndex.upstreamInputRefsByNodeId[target.id]?.[1]).toEqual(expect.objectContaining({
+      inputKey: `upstream:${image.id}`,
+      previewState: 'unavailable',
+    }));
+  });
+
+  it('keeps only the first unified input seed for duplicate source edges', () => {
+    const source = useFlowCanvasStore.getState().addNode('text', { x: 0, y: 0 }, { title: 'Text source' });
+    const target = useFlowCanvasStore.getState().addNode('video', { x: 420, y: 0 }, { title: 'Video target' });
+
+    useFlowCanvasStore.getState().onConnect({ source: source.id, sourceHandle: 'out-a', target: target.id, targetHandle: 'in-a' });
+    const firstEdgeId = useFlowCanvasStore.getState().edges[0]?.id;
+    useFlowCanvasStore.getState().onConnect({ source: source.id, sourceHandle: 'out-b', target: target.id, targetHandle: 'in-b' });
+
+    const inputs = useFlowCanvasStore.getState().graphIndex.upstreamInputRefsByNodeId[target.id];
+    expect(inputs).toHaveLength(1);
+    expect(inputs?.[0]).toEqual(expect.objectContaining({ edgeId: firstEdgeId, inputKey: `upstream:${source.id}` }));
+  });
+
   it('connects a selected upstream video as a typed dependency', () => {
     const source = useFlowCanvasStore.getState().addNode('video', { x: 0, y: 0 }, {
       assetId: 'asset-video-source',

@@ -185,6 +185,7 @@ interface FlowCanvasState {
   duplicateSelectedNodes: () => void;
   mergeTemplateGraph: (graph: { nodes: FlowNode[]; edges: FlowEdge[] }) => void;
   restoreGraphSnapshot: (graph: { nodes: FlowNode[]; edges: FlowEdge[]; viewport?: Viewport }) => void;
+  setNodeRuntimeOutput: (nodeId: string, output: FlowRuntimeNodeOutput | null) => void;
   updateNodeData: (nodeId: string, patch: Partial<FlowNodeData>) => void;
   updateProjectDirector3d: (director3d: FlowDirector3dData) => void;
   replaceNode: (nodeId: string, input: { data?: Partial<FlowNodeData>; type?: FlowNodeKind }) => void;
@@ -559,21 +560,24 @@ const buildGraphIndex = (
           : sourceInputKind === 'video'
             ? '视频'
             : '音频';
+      const inputKey = toUpstreamInputKey(sourceNode.id);
       const inputRefs = upstreamInputRefsByNodeId[edge.target] || [];
-      inputRefs.push({
-        inputKey: toUpstreamInputKey(sourceNode.id),
-        source: 'upstream',
-        kind: sourceInputKind,
-        title: String(sourceNode.data.title || '').trim() || fallbackTitle,
-        edgeId: edge.id,
-        sourceNodeId: sourceNode.id,
-        ...(sourceAssetId ? { assetId: sourceAssetId } : {}),
-        ...(sourceInputKind === 'text' ? { textExcerpt: getNodeTextExcerpt(sourceNode, sourceRuntimeOutput) } : {}),
-        ...(sourcePreviewUrl ? { previewUrl: sourcePreviewUrl } : {}),
-        ...(Number.isFinite(durationMs) ? { durationMs } : {}),
-        sourceRevision: String(sourceNode.data.updatedAt),
-        previewState: sourcePreviewUrl ? 'ready' : 'unavailable',
-      });
+      if (!inputRefs.some((input) => input.inputKey === inputKey)) {
+        inputRefs.push({
+          inputKey,
+          source: 'upstream',
+          kind: sourceInputKind,
+          title: String(sourceNode.data.title || '').trim() || fallbackTitle,
+          edgeId: edge.id,
+          sourceNodeId: sourceNode.id,
+          ...(sourceAssetId ? { assetId: sourceAssetId } : {}),
+          ...(sourceInputKind === 'text' ? { textExcerpt: getNodeTextExcerpt(sourceNode, sourceRuntimeOutput) } : {}),
+          ...(sourcePreviewUrl ? { previewUrl: sourcePreviewUrl } : {}),
+          ...(Number.isFinite(durationMs) ? { durationMs } : {}),
+          sourceRevision: String(sourceNode.data.updatedAt),
+          previewState: sourcePreviewUrl ? 'ready' : 'unavailable',
+        });
+      }
       upstreamInputRefsByNodeId[edge.target] = inputRefs;
     }
     const sourceMediaKind = getNodeReferenceMediaKind(sourceNode, sourceRuntimeOutput);
@@ -1424,6 +1428,21 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
     });
   },
 
+  setNodeRuntimeOutput: (nodeId, output) => {
+    set((state) => {
+      const nodeOutputByNodeId = { ...state.nodeOutputByNodeId };
+      if (output) {
+        nodeOutputByNodeId[nodeId] = output;
+      } else {
+        delete nodeOutputByNodeId[nodeId];
+      }
+      return {
+        nodeOutputByNodeId,
+        graphIndex: buildGraphIndex(state.nodes, state.edges, nodeOutputByNodeId),
+      };
+    });
+  },
+
   updateNodeData: (nodeId, patch) => {
     set((state) => {
       const nodes = state.nodes.map((node) =>
@@ -1674,7 +1693,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
       nodes,
       edges,
       projectStudios: project.projectStudios ?? {},
-      graphIndex: buildGraphIndex(nodes, edges, get().nodeOutputByNodeId),
+      graphIndex: buildGraphIndex(nodes, edges, {}),
       selectedNodeCount: countSelectedNodes(nodes),
       viewport: project.viewport || INITIAL_VIEWPORT,
       version: project.version || 1,
@@ -1770,7 +1789,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
   openImageTool: (nodeId, tool) => set({ activeImageTool: { nodeId, tool }, contextMenu: null }),
   closeImageTool: () => set({ activeImageTool: null }),
   resetBackendRunState: () =>
-    set({
+    set((state) => ({
       currentRunId: null,
       isRunningBackendWorkflow: false,
       nodeOutputByNodeId: {},
@@ -1778,8 +1797,9 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
       nodeRunStatusByNodeId: {},
       workflowRunIdByNodeId: {},
       nodeIdByNodeRunId: {},
+      graphIndex: buildGraphIndex(state.nodes, state.edges, {}),
       runError: null,
       runEvents: [],
       runStatus: null,
-    }),
+    })),
 }));

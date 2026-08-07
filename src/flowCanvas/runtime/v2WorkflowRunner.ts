@@ -131,6 +131,14 @@ function setRunError(message: string): void {
   });
 }
 
+function mergeNodeRuntimeOutput(nodeId: string, patch: Partial<FlowRuntimeNodeOutput>): void {
+  const state = useFlowCanvasStore.getState();
+  state.setNodeRuntimeOutput(nodeId, {
+    ...state.nodeOutputByNodeId[nodeId],
+    ...patch,
+  });
+}
+
 function updateTargetNodeLaunchState(
   nodeId: string,
   status: string,
@@ -288,17 +296,11 @@ function markNodeBlockedByPreflight(
     generationStatus: 'error',
     status: 'failed',
   } as Partial<FlowNodeData>);
+  mergeNodeRuntimeOutput(nodeId, { errorMessage: message });
   useFlowCanvasStore.setState((currentState) => ({
     nodeRunStatusByNodeId: {
       ...currentState.nodeRunStatusByNodeId,
       [nodeId]: 'failed',
-    },
-    nodeOutputByNodeId: {
-      ...currentState.nodeOutputByNodeId,
-      [nodeId]: {
-        ...currentState.nodeOutputByNodeId[nodeId],
-        errorMessage: message,
-      },
     },
     runError: message,
     runStatus: 'failed',
@@ -351,17 +353,11 @@ function markNodeBlockedByCredits(nodeId: string, message: string): void {
     generationStatus: 'error',
     status: 'failed',
   } as Partial<FlowNodeData>);
+  mergeNodeRuntimeOutput(nodeId, { errorMessage: message });
   useFlowCanvasStore.setState((currentState) => ({
     nodeRunStatusByNodeId: {
       ...currentState.nodeRunStatusByNodeId,
       [nodeId]: 'failed',
-    },
-    nodeOutputByNodeId: {
-      ...currentState.nodeOutputByNodeId,
-      [nodeId]: {
-        ...currentState.nodeOutputByNodeId[nodeId],
-        errorMessage: message,
-      },
     },
     runError: message,
   }));
@@ -1103,10 +1099,6 @@ async function applyWorkflowRunSnapshot(snapshot: GetWorkflowRunResponse): Promi
       ...state.nodeIdByNodeRunId,
       ...nodeIdByNodeRunId,
     },
-    nodeOutputByNodeId: {
-      ...state.nodeOutputByNodeId,
-      ...nodeOutputByNodeId,
-    },
     nodeRunIdByNodeId: {
       ...state.nodeRunIdByNodeId,
       ...nodeRunIdByNodeId,
@@ -1125,6 +1117,10 @@ async function applyWorkflowRunSnapshot(snapshot: GetWorkflowRunResponse): Promi
         : state.runError,
     runStatus: snapshot.workflowRun.status,
   }));
+
+  for (const [nodeId, output] of Object.entries(nodeOutputByNodeId)) {
+    useFlowCanvasStore.getState().setNodeRuntimeOutput(nodeId, output);
+  }
 
   persistNodeOutputsFromRun(scopedNodeRuns, assetRefsByNodeId);
 }
@@ -1184,17 +1180,9 @@ function applyRunEvent(event: V2WorkflowRunEventView): void {
 
   if (event.eventType === 'node.run.failed') {
     const message = `${buildNodeFailureMessageFromErrorJson(event.payload)}${nodeId ? buildTargetNodeFailureContext(nodeId) : ''}`;
-    useFlowCanvasStore.setState((state) => ({
-      nodeOutputByNodeId: nodeId
-        ? {
-            ...state.nodeOutputByNodeId,
-            [nodeId]: {
-              ...state.nodeOutputByNodeId[nodeId],
-              errorMessage: message,
-            },
-          }
-        : state.nodeOutputByNodeId,
-    }));
+    if (nodeId) {
+      mergeNodeRuntimeOutput(nodeId, { errorMessage: message });
+    }
     if (nodeId) {
       useFlowCanvasStore.getState().updateNodeData(nodeId, {
         errorMessage: message,
@@ -1340,18 +1328,12 @@ export function markBackendRunLaunchFailed(nodeId: string, error: unknown): void
     workflowLaunchStatus: 'failed',
     workflowLaunchUpdatedAt: Date.now(),
   } as Partial<FlowNodeData>);
+  mergeNodeRuntimeOutput(nodeId, { errorMessage: message });
   useFlowCanvasStore.setState((currentState) => ({
     isRunningBackendWorkflow: false,
     nodeRunStatusByNodeId: {
       ...currentState.nodeRunStatusByNodeId,
       [nodeId]: 'failed',
-    },
-    nodeOutputByNodeId: {
-      ...currentState.nodeOutputByNodeId,
-      [nodeId]: {
-        ...currentState.nodeOutputByNodeId[nodeId],
-        errorMessage: message,
-      },
     },
     runError: message,
     runStatus: 'failed',
@@ -1448,19 +1430,13 @@ export async function runBackendWorkflow(options?: {
         workflowLaunchStatus: 'credit_reserved',
         workflowLaunchUpdatedAt: Date.now(),
       } as Partial<FlowNodeData>);
+      mergeNodeRuntimeOutput(options.targetNodeId as string, { errorMessage: null });
       useFlowCanvasStore.setState((currentState) => ({
         currentRunId: null,
         isRunningBackendWorkflow: true,
         nodeRunStatusByNodeId: {
           ...currentState.nodeRunStatusByNodeId,
           [options.targetNodeId as string]: 'pending',
-        },
-        nodeOutputByNodeId: {
-          ...currentState.nodeOutputByNodeId,
-          [options.targetNodeId as string]: {
-            ...currentState.nodeOutputByNodeId[options.targetNodeId as string],
-            errorMessage: null,
-          },
         },
         runError: null,
         runStatus: 'pending',
