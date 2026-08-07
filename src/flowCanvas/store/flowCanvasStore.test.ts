@@ -134,6 +134,29 @@ describe('flowCanvasStore upstream image references', () => {
     ]);
   });
 
+  it('keeps an upstream video thumbnail separate from its playable hover preview', () => {
+    const video = useFlowCanvasStore.getState().addNode('video', { x: 0, y: 0 }, {
+      assetId: 'asset-video-preview',
+      originalVideoUrl: 'https://cdn.test/clip-original.mp4',
+      posterUrl: 'https://cdn.test/clip-poster.webp',
+      previewUrl: 'https://cdn.test/clip-preview.mp4',
+      title: 'Clip source',
+      videoUrl: 'https://cdn.test/clip-video.mp4',
+    });
+    const target = useFlowCanvasStore.getState().addNode('video', { x: 420, y: 0 }, { title: 'Video target' });
+
+    useFlowCanvasStore.getState().onConnect({ source: video.id, sourceHandle: 'out', target: target.id, targetHandle: 'in' });
+
+    expect(useFlowCanvasStore.getState().graphIndex.upstreamInputRefsByNodeId[target.id]).toEqual([
+      expect.objectContaining({
+        hoverPreviewUrl: 'https://cdn.test/clip-preview.mp4',
+        inputKey: `upstream:${video.id}`,
+        previewUrl: 'https://cdn.test/clip-poster.webp',
+        thumbnailUrl: 'https://cdn.test/clip-poster.webp',
+      }),
+    ]);
+  });
+
   it('rebuilds unified input refs when a connected source runtime output changes', () => {
     const text = useFlowCanvasStore.getState().addNode('text', { x: 0, y: 0 }, {
       generationPrompt: 'stale prompt',

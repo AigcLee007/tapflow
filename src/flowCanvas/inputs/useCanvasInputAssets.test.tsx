@@ -36,6 +36,16 @@ const audioInput: CanvasInputItem = {
   title: "Audio input",
 };
 
+const videoInput: CanvasInputItem = {
+  assetId: "asset-video",
+  inputKey: "asset:asset-video",
+  kind: "video",
+  order: 0,
+  previewState: "loading",
+  source: "asset",
+  title: "",
+};
+
 function makeAsset(overrides: Partial<AssetItem> = {}): AssetItem {
   return {
     bucket: "assets",
@@ -74,7 +84,7 @@ describe("useCanvasInputAssets", () => {
     getAssetVariantUrl.mockReset();
   });
 
-  it("deduplicates asset resolution, fills missing display metadata, and only requests visual thumbnails", async () => {
+  it("deduplicates asset resolution, fills missing display metadata, and requests both visual variants", async () => {
     getAsset.mockImplementation((assetId: string) => Promise.resolve(makeAsset({
       id: assetId,
       kind: assetId === "asset-audio" ? "audio" : "image",
@@ -92,12 +102,56 @@ describe("useCanvasInputAssets", () => {
     await waitFor(() => expect(result.current.items[0].previewState).toBe("ready"));
 
     expect(getAsset).toHaveBeenCalledTimes(2);
-    expect(getAssetVariantUrl).toHaveBeenCalledTimes(1);
+    expect(getAssetVariantUrl).toHaveBeenCalledTimes(2);
     expect(getAssetVariantUrl).toHaveBeenCalledWith("asset-image", "thumb");
+    expect(getAssetVariantUrl).toHaveBeenCalledWith("asset-image", "preview");
     expect(result.current.items[0]).toMatchObject({ previewUrl: "https://cdn.test/thumb.png", title: "Resolved title" });
     expect(result.current.items[1].previewUrl).toBe("https://cdn.test/thumb.png");
     expect(result.current.items[2]).toMatchObject({ durationMs: 1234, previewState: "ready", title: "Audio input" });
     expect(result.current.items[3]).toMatchObject({ textExcerpt: "kept", previewState: "ready" });
+  });
+
+  it("resolves a video thumbnail separately from its playable hover preview", async () => {
+    getAsset.mockResolvedValue(makeAsset({
+      id: "asset-video",
+      kind: "video",
+      title: "Clip",
+    }));
+    getAssetVariantUrl.mockImplementation(async (_assetId: string, variant: string) => ({
+      expiresAt: "2026-08-08T00:00:00.000Z",
+      method: "GET",
+      url: variant === "thumb" ? "https://cdn.test/clip.webp" : "https://cdn.test/clip.mp4",
+    }));
+
+    const { result } = renderHook(() => useCanvasInputAssets([videoInput]));
+
+    await waitFor(() => expect(result.current.items[0]).toMatchObject({
+      hoverPreviewUrl: "https://cdn.test/clip.mp4",
+      previewState: "ready",
+      thumbnailUrl: "https://cdn.test/clip.webp",
+    }));
+    expect(getAssetVariantUrl).toHaveBeenCalledWith("asset-video", "thumb");
+    expect(getAssetVariantUrl).toHaveBeenCalledWith("asset-video", "preview");
+  });
+
+  it("keeps a ready thumbnail when the hover variant is unavailable", async () => {
+    getAsset.mockResolvedValue(makeAsset());
+    getAssetVariantUrl.mockImplementation(async (_assetId: string, variant: string) => {
+      if (variant === "preview") throw new Error("preview pending");
+      return {
+        expiresAt: "2026-08-08T00:00:00.000Z",
+        method: "GET",
+        url: "https://cdn.test/image-thumb.webp",
+      };
+    });
+
+    const { result } = renderHook(() => useCanvasInputAssets([imageInput]));
+
+    await waitFor(() => expect(result.current.items[0]).toMatchObject({
+      previewState: "ready",
+      thumbnailUrl: "https://cdn.test/image-thumb.webp",
+    }));
+    expect(result.current.items[0].hoverPreviewUrl).toBeUndefined();
   });
 
   it("retains failed cards without exposing the error and retries only the requested asset", async () => {
@@ -135,7 +189,7 @@ describe("useCanvasInputAssets", () => {
     rerender({ items: [{ ...audioInput, order: 0 }, { ...imageInput, order: 1 }] });
 
     expect(getAsset).toHaveBeenCalledTimes(2);
-    expect(getAssetVariantUrl).toHaveBeenCalledTimes(1);
+    expect(getAssetVariantUrl).toHaveBeenCalledTimes(2);
     expect(result.current.items[1]).toMatchObject({ previewState: "ready", previewUrl: "https://cdn.test/asset-image.png" });
   });
 

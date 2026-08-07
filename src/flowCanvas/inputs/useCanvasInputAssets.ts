@@ -5,8 +5,10 @@ import type { CanvasInputItem, CanvasInputPreviewState } from "./canvasInputProj
 
 type ResolvedAsset = {
   durationMs?: number;
+  hoverPreviewUrl?: string;
   previewState: CanvasInputPreviewState;
   previewUrl?: string;
+  thumbnailUrl?: string;
   title?: string;
 };
 
@@ -39,27 +41,51 @@ export function useCanvasInputAssets(items: CanvasInputItem[]) {
     const generation = (assetGenerations.current[assetId] ?? 0) + 1;
     assetGenerations.current[assetId] = generation;
     const relevantItems = itemsRef.current.filter((item) => assetRequestKey(item) === assetId);
-    const immediatePreview = relevantItems.find((item) => item.previewUrl)?.previewUrl;
     const kind = relevantItems[0]?.kind;
+    const immediateThumbnailUrl = relevantItems
+      .map((item) => item.thumbnailUrl || item.previewUrl)
+      .find(Boolean);
+    const immediateHoverPreviewUrl = relevantItems
+      .map((item) => item.hoverPreviewUrl || item.previewUrl)
+      .find(Boolean);
     try {
       const asset = await getAsset(assetId);
-      let previewUrl = immediatePreview || asset.previewUrl;
-      if (!previewUrl && (kind === "image" || kind === "video")) {
-        previewUrl = (await getAssetVariantUrl(assetId, "thumb")).url;
-      }
+      const isVisualAsset = kind === "image" || kind === "video";
+      const [thumbResult, previewResult] = isVisualAsset
+        ? await Promise.allSettled([
+          getAssetVariantUrl(assetId, "thumb"),
+          getAssetVariantUrl(assetId, "preview"),
+        ])
+        : [undefined, undefined];
+      const thumbUrl = thumbResult?.status === "fulfilled" ? thumbResult.value.url : undefined;
+      const previewUrl = previewResult?.status === "fulfilled" ? previewResult.value.url : undefined;
+      const thumbnailUrl = immediateThumbnailUrl || thumbUrl || asset.previewUrl;
+      const hoverPreviewUrl = immediateHoverPreviewUrl || previewUrl || asset.previewUrl;
+      const hasPreview = Boolean(thumbnailUrl || hoverPreviewUrl || kind === "audio");
       if (!mounted.current || !activeAssetIds.current.has(assetId) || assetGenerations.current[assetId] !== generation) return;
       setResolvedAssets((current) => ({
         ...current,
         [assetId]: {
           durationMs: asset.durationMs ?? undefined,
-          previewState: previewUrl || kind === "audio" ? "ready" : "unavailable",
-          previewUrl,
+          hoverPreviewUrl,
+          previewState: hasPreview ? "ready" : "unavailable",
+          previewUrl: thumbnailUrl || hoverPreviewUrl,
+          thumbnailUrl,
           title: getDisplayTitle(asset),
         },
       }));
     } catch {
       if (!mounted.current || !activeAssetIds.current.has(assetId) || assetGenerations.current[assetId] !== generation) return;
-      setResolvedAssets((current) => ({ ...current, [assetId]: { previewState: "error" } }));
+      const hasImmediatePreview = Boolean(immediateThumbnailUrl || immediateHoverPreviewUrl || kind === "audio");
+      setResolvedAssets((current) => ({
+        ...current,
+        [assetId]: {
+          hoverPreviewUrl: immediateHoverPreviewUrl,
+          previewState: hasImmediatePreview ? "ready" : "error",
+          previewUrl: immediateThumbnailUrl || immediateHoverPreviewUrl,
+          thumbnailUrl: immediateThumbnailUrl,
+        },
+      }));
     }
   }, []);
 
@@ -91,8 +117,10 @@ export function useCanvasInputAssets(items: CanvasInputItem[]) {
       return {
         ...item,
         durationMs: item.durationMs ?? resolved.durationMs,
+        hoverPreviewUrl: item.hoverPreviewUrl ?? resolved.hoverPreviewUrl,
         previewState: resolved.previewState,
         previewUrl: item.previewUrl ?? resolved.previewUrl,
+        thumbnailUrl: item.thumbnailUrl ?? resolved.thumbnailUrl,
         title: item.title || resolved.title || item.title,
       };
     }),

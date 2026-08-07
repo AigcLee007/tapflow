@@ -61,7 +61,9 @@ export interface FlowUpstreamMediaRef {
   assetId?: string;
   edgeId: string;
   mediaKind: 'image' | 'video' | 'audio';
+  hoverPreviewUrl?: string;
   previewUrl?: string;
+  thumbnailUrl?: string;
   title: string;
   source: 'upstream';
 }
@@ -340,7 +342,7 @@ const getNodeReferenceImageUrl = (
   return String(runtimeAssetUrl || '').trim();
 };
 
-const getNodeReferencePreviewUrl = (
+const getNodeReferenceThumbnailUrl = (
   node: FlowNode | undefined,
   runtimeNodeOutput: FlowRuntimeNodeOutput | undefined,
   mediaKind: FlowUpstreamMediaRef['mediaKind'],
@@ -348,8 +350,27 @@ const getNodeReferencePreviewUrl = (
   if (!node) return '';
   if (mediaKind === 'image') return getNodeReferenceImageUrl(node, runtimeNodeOutput);
   const candidates = mediaKind === 'video'
-    ? [node.data.posterUrl, node.data.thumbnailUrl, node.data.previewUrl, node.data.videoUrl, node.data.originalVideoUrl]
+    ? [node.data.posterUrl, node.data.thumbnailUrl, node.data.previewUrl]
     : [node.data.previewUrl, node.data.thumbnailUrl, node.data.audioUrl, node.data.originalAudioUrl];
+  const nodeUrl = candidates.map((candidate) => String(candidate || '').trim()).find(Boolean);
+  if (nodeUrl) return nodeUrl;
+  if (mediaKind === 'video') return '';
+  const runtimeAssetUrl = Array.isArray(runtimeNodeOutput?.assets)
+    ? runtimeNodeOutput.assets.find((asset) => asset.kind === mediaKind && asset.downloadUrl)?.downloadUrl || ''
+    : '';
+  return String(runtimeAssetUrl || '').trim();
+};
+
+const getNodeReferenceHoverPreviewUrl = (
+  node: FlowNode | undefined,
+  runtimeNodeOutput: FlowRuntimeNodeOutput | undefined,
+  mediaKind: FlowUpstreamMediaRef['mediaKind'],
+) => {
+  if (!node) return '';
+  if (mediaKind === 'image') return getNodeReferenceImageUrl(node, runtimeNodeOutput);
+  const candidates = mediaKind === 'video'
+    ? [node.data.previewUrl, node.data.videoUrl, node.data.originalVideoUrl]
+    : [node.data.previewUrl, node.data.audioUrl, node.data.originalAudioUrl];
   const nodeUrl = candidates.map((candidate) => String(candidate || '').trim()).find(Boolean);
   if (nodeUrl) return nodeUrl;
   const runtimeAssetUrl = Array.isArray(runtimeNodeOutput?.assets)
@@ -781,9 +802,12 @@ const buildGraphIndex = (
       const sourceAssetId = sourceInputKind === 'text'
         ? ''
         : getNodeReferenceAssetId(sourceNode, sourceRuntimeOutput, sourceInputKind);
-      const sourcePreviewUrl = sourceInputKind === 'text'
+      const sourceThumbnailUrl = sourceInputKind === 'text'
         ? ''
-        : getNodeReferencePreviewUrl(sourceNode, sourceRuntimeOutput, sourceInputKind);
+        : getNodeReferenceThumbnailUrl(sourceNode, sourceRuntimeOutput, sourceInputKind);
+      const sourceHoverPreviewUrl = sourceInputKind === 'text'
+        ? ''
+        : getNodeReferenceHoverPreviewUrl(sourceNode, sourceRuntimeOutput, sourceInputKind);
       const durationMs = Number(sourceNode.data.durationMs);
       const fallbackTitle = sourceInputKind === 'text'
         ? '文本'
@@ -804,10 +828,11 @@ const buildGraphIndex = (
           sourceNodeId: sourceNode.id,
           ...(sourceAssetId ? { assetId: sourceAssetId } : {}),
           ...(sourceInputKind === 'text' ? { textExcerpt: getNodeTextExcerpt(sourceNode, sourceRuntimeOutput) } : {}),
-          ...(sourcePreviewUrl ? { previewUrl: sourcePreviewUrl } : {}),
+          ...(sourceThumbnailUrl ? { thumbnailUrl: sourceThumbnailUrl, previewUrl: sourceThumbnailUrl } : {}),
+          ...(sourceHoverPreviewUrl ? { hoverPreviewUrl: sourceHoverPreviewUrl } : {}),
           ...(Number.isFinite(durationMs) ? { durationMs } : {}),
           sourceRevision: String(sourceNode.data.updatedAt),
-          previewState: sourcePreviewUrl ? 'ready' : 'unavailable',
+          previewState: sourceThumbnailUrl || sourceHoverPreviewUrl ? 'ready' : 'unavailable',
         });
       }
       upstreamInputRefsByNodeId[edge.target] = inputRefs;
@@ -816,7 +841,8 @@ const buildGraphIndex = (
     if (sourceNode && sourceMediaKind) {
       const sourceReferenceUploadId = String(sourceNode.data.referenceUploadId || '').trim();
       const sourceAssetId = getNodeReferenceAssetId(sourceNode, sourceRuntimeOutput, sourceMediaKind);
-      const sourcePreviewUrl = getNodeReferencePreviewUrl(sourceNode, sourceRuntimeOutput, sourceMediaKind);
+      const sourceThumbnailUrl = getNodeReferenceThumbnailUrl(sourceNode, sourceRuntimeOutput, sourceMediaKind);
+      const sourceHoverPreviewUrl = getNodeReferenceHoverPreviewUrl(sourceNode, sourceRuntimeOutput, sourceMediaKind);
       const mediaRefs = upstreamMediaRefsByNodeId[edge.target] || [];
       mediaRefs.push({
         key: `upstream:${sourceNode.id}`,
@@ -824,22 +850,23 @@ const buildGraphIndex = (
         ...(sourceAssetId ? { assetId: sourceAssetId } : {}),
         edgeId: edge.id,
         mediaKind: sourceMediaKind,
-        ...(sourcePreviewUrl ? { previewUrl: sourcePreviewUrl } : {}),
+        ...(sourceThumbnailUrl ? { thumbnailUrl: sourceThumbnailUrl, previewUrl: sourceThumbnailUrl } : {}),
+        ...(sourceHoverPreviewUrl ? { hoverPreviewUrl: sourceHoverPreviewUrl } : {}),
         title: String(sourceNode.data.title || (sourceMediaKind === 'video' ? '参考视频' : sourceMediaKind === 'audio' ? '参考音频' : '参考图')),
         source: 'upstream',
       });
       upstreamMediaRefsByNodeId[edge.target] = mediaRefs;
 
-      if (sourceMediaKind === 'image' && sourcePreviewUrl) {
+      if (sourceMediaKind === 'image' && sourceThumbnailUrl) {
         const imageRefs = upstreamImageRefsByNodeId[edge.target] || [];
         imageRefs.push({
           key: `upstream:${sourceNode.id}`,
           id: sourceNode.id,
           ...(sourceAssetId ? { assetId: sourceAssetId } : {}),
           edgeId: edge.id,
-          imageUrl: sourcePreviewUrl,
+          imageUrl: sourceThumbnailUrl,
           mediaKind: 'image',
-          previewUrl: sourcePreviewUrl,
+          previewUrl: sourceThumbnailUrl,
           ...(sourceReferenceUploadId ? { referenceUploadId: sourceReferenceUploadId } : {}),
           title: String(sourceNode.data.title || '参考图'),
           source: 'upstream',
