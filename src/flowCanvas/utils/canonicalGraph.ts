@@ -97,6 +97,9 @@ function canonicalizeNode(node: Record<string, unknown>): Record<string, unknown
     if (TRANSIENT_NODE_KEYS.has(key)) continue;
     if (key === "data" && isRecord(node.data)) {
       const durableData = stripTransientValue(node.data, "node-data") as Record<string, unknown>;
+      if (usesUnifiedInputProtocol(durableData)) {
+        delete durableData.textExcerpt;
+      }
       next.data = canonicalizeNodeData(durableData, node.type);
       continue;
     }
@@ -204,4 +207,8 @@ function sortRecord(record: Record<string, unknown>): Record<string, unknown> {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function usesUnifiedInputProtocol(data: Record<string, unknown>): boolean {
+  return Object.hasOwn(data, "inputOrder") || Object.hasOwn(data, "lastGenerationInputSignature");
 }

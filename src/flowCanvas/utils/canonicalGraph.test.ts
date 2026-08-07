@@ -14,6 +14,7 @@ describe("canonicalizeGraph", () => {
           inputOrder: ["upstream:script", "asset:reference-image"],
           lastGenerationInputSignature: "input-v2:1234567812345678123456781234567812345678123456781234567812345678",
           previewUrl: "https://cdn.test/preview.webp?X-Amz-Signature=temporary",
+          textExcerpt: "Runtime-only text snippet",
           imagePreview: "blob:http://localhost/preview",
           encodedPreview: "data:image/webp;base64,preview",
           signedPreview: "https://cdn.test/image.webp?signature=temporary",
@@ -28,8 +29,23 @@ describe("canonicalizeGraph", () => {
       lastGenerationInputSignature: "input-v2:1234567812345678123456781234567812345678123456781234567812345678",
     });
     expect(persisted).not.toMatch(
-      /previewUrl|blob:|data:|X-Amz-Signature|signature=temporary/,
+      /previewUrl|textExcerpt|blob:|data:|X-Amz-Signature|signature=temporary|Runtime-only text snippet/,
     );
+  });
+
+  it("keeps durable excerpts on legacy nodes outside the unified-input protocol", () => {
+    const graph = canonicalizeGraph({
+      edges: [],
+      nodes: [{
+        id: "legacy-text-1",
+        position: { x: 0, y: 0 },
+        type: "text",
+        data: { textExcerpt: "Durable legacy excerpt" },
+      }],
+      viewport: { x: 0, y: 0, zoom: 1 },
+    });
+
+    expect(graph.nodes[0]?.data).toEqual({ textExcerpt: "Durable legacy excerpt" });
   });
 
   it("preserves durable video generation selections while removing transient media URLs", () => {
