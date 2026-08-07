@@ -187,4 +187,16 @@ describe("NodeInputTray", () => {
     expect(menu.style.top).toBe("402px");
     expect(menu.style.left).toBe("744px");
   });
+
+  it("portals the overflow flyout outside transformed canvas ancestors", () => {
+    const overflow = Array.from({ length: 9 }, (_, index) => ({ inputKey: `upstream:${index}`, kind: "text" as const, order: index, previewState: "ready" as const, source: "upstream" as const, title: `Input ${index}` }));
+    const { container } = render(<div data-testid="transformed-canvas" style={{ transform: "translate(20px, 20px)" }}><NodeInputTray items={overflow} onFocusSource={vi.fn()} /></div>);
+
+    fireEvent.click(screen.getByRole("button", { name: "显示另外 1 个输入" }));
+    const menu = screen.getByRole("menu", { name: "更多输入" });
+    const transformedCanvas = container.querySelector('[data-testid="transformed-canvas"]');
+
+    expect(menu.parentElement).toBe(document.body);
+    expect(transformedCanvas?.contains(menu)).toBe(false);
+  });
 });
