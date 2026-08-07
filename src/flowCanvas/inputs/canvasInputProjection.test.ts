@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import type { FlowNodeData } from "../types";
 import {
   buildCanvasInputSignature,
   resolveCanvasInputItems,
@@ -69,22 +68,6 @@ describe("canvas input projection", () => {
     });
     expect(item.edgeId).toBeUndefined();
     expect(item.sourceNodeId).toBeUndefined();
-  });
-
-  it("keeps volatile previews in runtime items but persists only stable input fields", () => {
-    const [item] = resolveCanvasInputItems({ inputOrder: [], seeds: [upstreamImage] });
-    const persistedInputFields: Pick<FlowNodeData, "inputOrder" | "lastGenerationInputSignature"> = {
-      inputOrder: [item.inputKey],
-      lastGenerationInputSignature: "input-v1:12345678",
-    };
-
-    expect(item.previewUrl).toBe("https://example.test/signed-image");
-    expect(Object.keys(persistedInputFields)).toEqual([
-      "inputOrder",
-      "lastGenerationInputSignature",
-    ]);
-    expect(persistedInputFields).not.toHaveProperty("previewUrl");
-    expect(persistedInputFields).not.toHaveProperty("textExcerpt");
   });
 
   it("makes a deterministic trim-insensitive safe signature", () => {

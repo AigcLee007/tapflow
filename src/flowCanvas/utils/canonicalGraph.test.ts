@@ -3,6 +3,36 @@ import { describe, expect, it } from "vitest";
 import { canonicalizeGraph } from "./canonicalGraph";
 
 describe("canonicalizeGraph", () => {
+  it("persists stable unified input fields without runtime previews or excerpts", () => {
+    const graph = canonicalizeGraph({
+      edges: [],
+      nodes: [{
+        id: "image-1",
+        position: { x: 0, y: 0 },
+        type: "image",
+        data: {
+          inputOrder: ["upstream:script", "asset:reference-image"],
+          lastGenerationInputSignature: "input-v1:12345678",
+          previewUrl: "https://cdn.test/preview.webp?X-Amz-Signature=temporary",
+          textExcerpt: "Runtime-only text snippet",
+          imagePreview: "blob:http://localhost/preview",
+          encodedPreview: "data:image/webp;base64,preview",
+          signedPreview: "https://cdn.test/image.webp?signature=temporary",
+        },
+      }],
+      viewport: { x: 0, y: 0, zoom: 1 },
+    });
+    const persisted = JSON.stringify(graph);
+
+    expect(graph.nodes[0]?.data).toMatchObject({
+      inputOrder: ["upstream:script", "asset:reference-image"],
+      lastGenerationInputSignature: "input-v1:12345678",
+    });
+    expect(persisted).not.toMatch(
+      /previewUrl|textExcerpt|blob:|data:|X-Amz-Signature|signature=temporary|Runtime-only text snippet/,
+    );
+  });
+
   it("preserves durable video generation selections while removing transient media URLs", () => {
     const graph = canonicalizeGraph({
       edges: [],
