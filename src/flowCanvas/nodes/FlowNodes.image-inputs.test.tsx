@@ -118,23 +118,25 @@ describe("ImageNodeComponent unified inputs", () => {
     ]));
   });
 
-  it("persists a unified input order and an image-only reference order after drag reorder", async () => {
+  it("keeps text ahead of image inputs when media is drag-reordered", async () => {
     const text = useFlowCanvasStore.getState().addNode("text", { x: 0, y: 0 }, { generationPrompt: "Connected text", title: "Text source" } as any);
-    const image = useFlowCanvasStore.getState().addNode("image", { x: 0, y: 180 }, { assetId: "asset-ready", thumbnailUrl: "https://cdn.test/ready.png", title: "Image source" } as any);
+    const firstImage = useFlowCanvasStore.getState().addNode("image", { x: 0, y: 180 }, { assetId: "asset-ready", thumbnailUrl: "https://cdn.test/ready.png", title: "First image" } as any);
+    const secondImage = useFlowCanvasStore.getState().addNode("image", { x: 0, y: 360 }, { assetId: "asset-next", thumbnailUrl: "https://cdn.test/next.png", title: "Second image" } as any);
     const target = addImageTarget();
     connect(text.id, target.id);
-    connect(image.id, target.id);
+    connect(firstImage.id, target.id);
+    connect(secondImage.id, target.id);
     render(<StoreBackedImageNode nodeId={target.id} />);
 
     const tray = await screen.findByLabelText("节点输入");
-    const textCard = tray.querySelector('[aria-label^="输入 1：Text source"]') as HTMLElement;
-    const imageCard = tray.querySelector('[aria-label^="输入 2：Image source"]') as HTMLElement;
-    fireEvent.dragStart(textCard, { dataTransfer: { effectAllowed: "move", setData: vi.fn() } });
-    fireEvent.drop(imageCard, { dataTransfer: { effectAllowed: "move", setData: vi.fn() } });
+    const firstImageCard = tray.querySelector('[aria-label^="输入 2：First image"]') as HTMLElement;
+    const secondImageCard = tray.querySelector('[aria-label^="输入 3：Second image"]') as HTMLElement;
+    fireEvent.dragStart(firstImageCard, { dataTransfer: { effectAllowed: "move", setData: vi.fn() } });
+    fireEvent.drop(secondImageCard, { dataTransfer: { effectAllowed: "move", setData: vi.fn() } });
 
     await waitFor(() => expect(useFlowCanvasStore.getState().nodes.find((node) => node.id === target.id)?.data).toMatchObject({
-      inputOrder: [`upstream:${image.id}`, `upstream:${text.id}`],
-      referenceOrder: [`upstream:${image.id}`],
+      inputOrder: [`upstream:${text.id}`, `upstream:${secondImage.id}`, `upstream:${firstImage.id}`],
+      referenceOrder: [`upstream:${secondImage.id}`, `upstream:${firstImage.id}`],
     }));
   });
 
