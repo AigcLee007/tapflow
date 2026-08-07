@@ -1,4 +1,4 @@
-﻿import React from "react";
+import React from "react";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -1053,7 +1053,7 @@ describe("FlowNodes agent metadata", () => {
     fireEvent.click(screen.getByRole("button", { name: "生成视频" }));
 
     expect(screen.getByRole("status").textContent).toContain("正在提交任务");
-    expect((screen.getByRole("button", { name: "生成视频" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "生成中" }) as HTMLButtonElement).disabled).toBe(true);
     expect(workflowRunnerMocks.runBackendWorkflow).toHaveBeenCalledTimes(1);
   });
 

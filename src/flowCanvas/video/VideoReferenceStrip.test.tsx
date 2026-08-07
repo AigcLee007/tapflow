@@ -71,6 +71,44 @@ describe("VideoReferenceStrip", () => {
     expect((screen.getByRole("button", { name: "添加参考图" }) as HTMLButtonElement).disabled).toBe(true);
     expect(onChange).not.toHaveBeenCalled();
   });
+
+  test("keeps unified upstream inputs visible in text-to-video mode without media add controls", () => {
+    const onRemoveInput = vi.fn();
+    const onReorderInputs = vi.fn();
+    const capabilities = mergeVideoCapabilities({
+      confirmedByRoute: true,
+      maxImages: 1,
+      maxTotal: 1,
+      modeConstraints: { text_to_video: { maxImages: 0, maxTotal: 0 } },
+      supportedModes: ["text_to_video"],
+    });
+
+    render(
+      <VideoReferenceStrip
+        capabilities={capabilities}
+        currentNodeId="video-node"
+        inputItems={[{
+          inputKey: "upstream:script",
+          kind: "text",
+          order: 0,
+          previewState: "ready",
+          source: "upstream",
+          sourceNodeId: "script",
+          textExcerpt: "A sunrise over a city",
+          title: "Script",
+        }]}
+        onChange={vi.fn()}
+        onConnectCanvasReference={vi.fn()}
+        onRemoveInput={onRemoveInput}
+        onReorderInputs={onReorderInputs}
+        onUploadReference={vi.fn()}
+        value={{ ...createDefaultVideoGenerationParams(), mode: "text_to_video" }}
+      />,
+    );
+
+    expect(screen.getByLabelText(/节点输入/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /添加参考/ })).toBeNull();
+  });
   test("renders Gemini all-reference inputs without an audio slot", () => {
     const capabilities = mergeVideoCapabilities({
       confirmedByRoute: true,
@@ -129,8 +167,8 @@ describe("VideoReferenceStrip", () => {
     }));
   });
 
-  test("downgrades Veo first-last frames to a single first frame after the first frame is removed", () => {
-    const onChange = vi.fn();
+  test("delegates removal of a direct Veo frame to the unified input action", () => {
+    const onRemoveInput = vi.fn();
     const capabilities = mergeVideoCapabilities({
       confirmedByRoute: true,
       maxImages: 2,
@@ -155,24 +193,24 @@ describe("VideoReferenceStrip", () => {
       <VideoReferenceStrip
         capabilities={capabilities}
         currentNodeId="video-node"
-        onChange={onChange}
+        inputItems={[
+          { inputKey: "asset:first", kind: "image", order: 0, previewState: "unavailable", role: "first_frame", source: "asset", assetId: "first", title: "First" },
+          { inputKey: "asset:last", kind: "image", order: 1, previewState: "unavailable", role: "last_frame", source: "asset", assetId: "last", title: "Last" },
+        ]}
+        onChange={vi.fn()}
         onConnectCanvasReference={vi.fn()}
+        onRemoveInput={onRemoveInput}
         onUploadReference={vi.fn()}
         value={value}
       />,
     );
 
-    fireEvent.click(screen.getAllByRole("button")[0]!);
-
-    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({
-      mode: "image_to_video",
-      referenceInputs: [expect.objectContaining({ order: 0, role: "first_frame", source: { kind: "asset", id: "last" } })],
-    }));
+    fireEvent.click(screen.getByRole("button", { name: /移除输入 1/ }));
+    expect(onRemoveInput).toHaveBeenCalledWith("asset:first");
   });
 
-  test("disconnects the removed Veo canvas frame before downgrading the mode", () => {
-    const onChange = vi.fn();
-    const onDisconnectCanvasReference = vi.fn();
+  test("delegates removal of an upstream Veo frame to the unified input action", () => {
+    const onRemoveInput = vi.fn();
     const capabilities = mergeVideoCapabilities({
       confirmedByRoute: true,
       maxImages: 2,
@@ -197,21 +235,20 @@ describe("VideoReferenceStrip", () => {
       <VideoReferenceStrip
         capabilities={capabilities}
         currentNodeId="video-node"
-        onChange={onChange}
+        inputItems={[
+          { inputKey: "upstream:first", kind: "image", order: 0, previewState: "unavailable", role: "first_frame", source: "upstream", sourceNodeId: "first", title: "First" },
+          { inputKey: "upstream:last", kind: "image", order: 1, previewState: "unavailable", role: "last_frame", source: "upstream", sourceNodeId: "last", title: "Last" },
+        ]}
+        onChange={vi.fn()}
         onConnectCanvasReference={vi.fn()}
-        onDisconnectCanvasReference={onDisconnectCanvasReference}
+        onRemoveInput={onRemoveInput}
         onUploadReference={vi.fn()}
         value={value}
       />,
     );
 
-    fireEvent.click(screen.getAllByRole("button")[1]!);
-
-    expect(onDisconnectCanvasReference).toHaveBeenCalledWith("last");
-    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({
-      mode: "image_to_video",
-      referenceInputs: [expect.objectContaining({ role: "first_frame", source: { kind: "upstream", id: "first" } })],
-    }));
+    fireEvent.click(screen.getByRole("button", { name: /移除输入 2/ }));
+    expect(onRemoveInput).toHaveBeenCalledWith("upstream:last");
   });
 
   test("maps a selected role without changing existing asset order", () => {

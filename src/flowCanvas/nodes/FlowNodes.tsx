@@ -7607,12 +7607,13 @@ export const VideoNodeComponent = memo(function VideoNode({
   const d = data;
   const backendProjectId = useFlowCanvasStore((s) => s.backendProjectId);
   const connectVideoReference = useFlowCanvasStore((s) => s.connectVideoReference);
-  const removeEdgesByIds = useFlowCanvasStore((s) => s.removeEdgesByIds);
+  const removeNodeInput = useFlowCanvasStore((s) => s.removeNodeInput);
+  const reorderNodeInputs = useFlowCanvasStore((s) => s.reorderNodeInputs);
+  const selectNodesByIds = useFlowCanvasStore((s) => s.selectNodesByIds);
   const updateNodeData = useFlowCanvasStore((s) => s.updateNodeData);
   const runtimeNodeOutput = useFlowCanvasStore((s) => s.nodeOutputByNodeId[id]);
   const runtimeNodeStatus = useFlowCanvasStore((s) => s.nodeRunStatusByNodeId[id]);
-  const allFlowNodes = useFlowCanvasStore((s) => s.nodes);
-  const allFlowEdges = useFlowCanvasStore((s) => s.edges);
+  const upstreamInputRefs = useFlowCanvasStore((s) => s.graphIndex.upstreamInputRefsByNodeId[id] || EMPTY_UPSTREAM_IMAGE_REFS);
   const [hovered, setHovered] = useState(false);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const [uploadedPreview, setUploadedPreview] = useState<{ assetId: string; filename: string; url: string } | null>(null);
@@ -7646,6 +7647,32 @@ export const VideoNodeComponent = memo(function VideoNode({
   );
   const videoReferenceAssetIdsKey = videoReferenceAssetIds.join('|');
   const [videoReferencePreviewUrlsBySource, setVideoReferencePreviewUrlsBySource] = useState<Record<string, string>>({});
+  const videoInputItems = useMemo(() => {
+    const seeds: CanvasInputSeed[] = [
+      ...upstreamInputRefs,
+      ...videoParams.referenceInputs.flatMap((reference) => reference.source.kind === 'asset' ? [{
+        assetId: reference.source.id,
+        durationMs: undefined,
+        inputKey: `asset:${reference.source.id}`,
+        kind: reference.mediaKind,
+        previewState: videoReferencePreviewUrlsBySource[`asset:${reference.source.id}`] ? 'ready' as const : 'loading' as const,
+        previewUrl: videoReferencePreviewUrlsBySource[`asset:${reference.source.id}`],
+        role: reference.role,
+        source: 'asset' as const,
+        title: reference.mediaKind === 'image' ? '参考图片' : reference.mediaKind === 'video' ? '参考视频' : '参考音频',
+      }] : []),
+    ];
+    return resolveCanvasInputItems({ inputOrder: d.inputOrder, seeds });
+  }, [d.inputOrder, upstreamInputRefs, videoParams.referenceInputs, videoReferencePreviewUrlsBySource]);
+  const videoInputsNeedingAssetResolution = useMemo(
+    () => videoInputItems.filter((item) => !item.previewUrl),
+    [videoInputItems],
+  );
+  const { items: resolvedMissingVideoInputItems, retry: retryVideoInputAsset } = useCanvasInputAssets(videoInputsNeedingAssetResolution);
+  const resolvedVideoInputItems = useMemo(() => {
+    const resolvedByKey = new Map(resolvedMissingVideoInputItems.map((item) => [item.inputKey, item]));
+    return videoInputItems.map((item) => resolvedByKey.get(item.inputKey) || item);
+  }, [resolvedMissingVideoInputItems, videoInputItems]);
   
   const isTargeting = !!connectionNodeId && connectionNodeId !== id && hovered;
 
@@ -7723,34 +7750,6 @@ export const VideoNodeComponent = memo(function VideoNode({
     || runtimeNodeStatus === 'running'
     || runtimeNodeStatus === 'waiting_provider'
     || d.generationStatus === 'generating';
-
-  useEffect(() => {
-    const connectedImageSourceIds = allFlowEdges
-      .filter((edge) => edge.target === id)
-      .map((edge) => edge.source)
-      .filter((sourceId) => allFlowNodes.some((node) => node.id === sourceId && (node.type === 'image' || node.data.kind === 'image')));
-    if (connectedImageSourceIds.length === 0) return;
-    const currentUpstreamIds = new Set(videoParams.referenceInputs
-      .filter((reference) => reference.source.kind === 'upstream')
-      .map((reference) => reference.source.id));
-    const reconciledSourceIds = videoParams.mode === 'image_to_video'
-      ? [connectedImageSourceIds.find((sourceId) => currentUpstreamIds.has(sourceId)) ?? connectedImageSourceIds[0]!]
-      : connectedImageSourceIds;
-    const missingSourceId = reconciledSourceIds.find((sourceId) => !currentUpstreamIds.has(sourceId));
-    if (!missingSourceId) return;
-    const role = videoParams.mode === 'image_to_video'
-      ? 'main_image'
-      : videoParams.mode === 'first_last_frame'
-        ? (videoParams.referenceInputs.some((reference) => reference.role === 'first_frame') ? 'last_frame' : 'first_frame')
-        : 'reference_image';
-    connectVideoReference({
-      mediaKind: 'image',
-      referenceKey: `upstream:${missingSourceId}`,
-      role,
-      sourceNodeId: missingSourceId,
-      targetNodeId: id,
-    });
-  }, [allFlowEdges, allFlowNodes, connectVideoReference, id, videoParams.mode, videoParams.referenceInputs]);
 
   useEffect(() => {
     if (hasReadyVideo) return;
@@ -7901,6 +7900,14 @@ export const VideoNodeComponent = memo(function VideoNode({
     event.stopPropagation();
     videoInputRef.current?.click();
   }, []);
+  const handleFocusVideoInput = useCallback((inputKey: string) => {
+    const sourceNodeId = resolvedVideoInputItems.find((item) => item.inputKey === inputKey)?.sourceNodeId;
+    if (sourceNodeId) selectNodesByIds([sourceNodeId]);
+  }, [resolvedVideoInputItems, selectNodesByIds]);
+  const handleRetryVideoInputPreview = useCallback((inputKey: string) => {
+    const assetId = resolvedVideoInputItems.find((item) => item.inputKey === inputKey)?.assetId;
+    if (assetId) retryVideoInputAsset(assetId);
+  }, [resolvedVideoInputItems, retryVideoInputAsset]);
 
   return (
     <div 
@@ -7976,15 +7983,18 @@ export const VideoNodeComponent = memo(function VideoNode({
       {showNodeEditor && (VIDEO_COMPOSER_V2_ENABLED
         ? <NodeEditorSurface variant="video">
             <VideoNodeComposer
+              allowMediaAdd={!hasReadyVideo}
               catalog={videoCatalog}
               data={d}
               generating={isGenerating}
+              inputItems={resolvedVideoInputItems}
               nodeId={id}
               onConnectCanvasReference={(input) => connectVideoReference({ ...input, targetNodeId: id })}
-              onDisconnectCanvasReference={(sourceNodeId) => removeEdgesByIds(allFlowEdges
-                .filter((edge) => edge.source === sourceNodeId && edge.target === id)
-                .map((edge) => edge.id))}
+              onFocusInput={handleFocusVideoInput}
               onGenerate={handleGenerate}
+              onRemoveInput={(inputKey) => removeNodeInput(id, inputKey)}
+              onReorderInputs={(inputKeys) => reorderNodeInputs(id, inputKeys)}
+              onRetryInputPreview={handleRetryVideoInputPreview}
               onUpdate={(patch) => updateNodeData(id, patch)}
               onUploadReference={async (file, mediaKind) => {
                 if (!backendProjectId) throw new Error('REFERENCE_UPLOAD_UNAVAILABLE');

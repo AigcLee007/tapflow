@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { Camera, ChevronDown, ChevronUp, RectangleHorizontal, Sparkles, Volume2 } from "lucide-react";
 
 import type { FlowNodeData } from "../types";
+import type { CanvasInputItem } from "../inputs/canvasInputProjection";
 import { normalizeVideoGenerationParams } from "./videoGenerationParams";
 import { getCameraMotionLabel, loadVideoCameraManifest, type VideoCameraManifest } from "./videoCameraManifest";
 import { VideoCameraLibrary } from "./VideoCameraLibrary";
@@ -27,17 +28,22 @@ type Props = {
   catalog?: ReturnType<typeof useVideoGenerationCatalog>;
   data: FlowNodeData;
   generating: boolean;
+  inputItems?: CanvasInputItem[];
+  allowMediaAdd?: boolean;
   nodeId: string;
   onGenerate: () => void;
   onConnectCanvasReference?: (input: Pick<VideoReferenceInputV2, "mediaKind" | "referenceKey" | "role"> & { sourceNodeId: string }) => void;
-  onDisconnectCanvasReference?: (sourceNodeId: string) => void;
+  onFocusInput?: (inputKey: string) => void;
+  onRemoveInput?: (inputKey: string) => void;
+  onReorderInputs?: (inputKeys: string[]) => void;
+  onRetryInputPreview?: (inputKey: string) => void;
   onUpdate: (patch: Partial<FlowNodeData>) => void;
   onUploadReference?: (file: File, mediaKind: VideoReferenceInputV2["mediaKind"]) => Promise<{ id: string; kind: string }>;
   referencePreviewUrlsBySource?: Record<string, string | undefined>;
   selected: boolean;
 };
 
-export function VideoNodeComposer({ catalog: catalogOverride, data, generating, nodeId, onConnectCanvasReference = () => undefined, onDisconnectCanvasReference = () => undefined, onGenerate, onUpdate, onUploadReference = async () => { throw new Error("REFERENCE_UPLOAD_UNAVAILABLE"); }, referencePreviewUrlsBySource, selected }: Props) {
+export function VideoNodeComposer({ allowMediaAdd = true, catalog: catalogOverride, data, generating, inputItems, nodeId, onConnectCanvasReference = () => undefined, onFocusInput, onGenerate, onRemoveInput, onReorderInputs, onRetryInputPreview, onUpdate, onUploadReference = async () => { throw new Error("REFERENCE_UPLOAD_UNAVAILABLE"); }, referencePreviewUrlsBySource, selected }: Props) {
   const loadedCatalog = useVideoGenerationCatalog();
   const catalog = catalogOverride ?? loadedCatalog;
   const [modelOpen, setModelOpen] = useState(false);
@@ -142,7 +148,7 @@ export function VideoNodeComposer({ catalog: catalogOverride, data, generating, 
     </div>
 
     <div className="mt-2 flex min-w-0 flex-wrap gap-2" data-testid="video-composer-references">
-      <VideoReferenceStrip capabilities={capabilities ?? createSafeDefaultVideoCapabilities()} currentNodeId={nodeId} disabled={generating} onChange={(next) => setParams({ ...params, ...next })} onConnectCanvasReference={onConnectCanvasReference} onDisconnectCanvasReference={onDisconnectCanvasReference} onUploadReference={onUploadReference} value={params} />
+      <VideoReferenceStrip allowMediaAdd={allowMediaAdd} capabilities={capabilities ?? createSafeDefaultVideoCapabilities()} currentNodeId={nodeId} disabled={generating} inputItems={inputItems} onChange={(next) => setParams({ ...params, ...next })} onConnectCanvasReference={onConnectCanvasReference} onFocusInput={onFocusInput} onRemoveInput={onRemoveInput} onReorderInputs={onReorderInputs} onRetryInputPreview={onRetryInputPreview} onUploadReference={onUploadReference} value={params} />
     </div>
 
       <textarea aria-label={VIDEO_UI_COPY.videoPrompt} className="mt-2 min-h-[52px] max-h-[120px] w-full resize-y bg-transparent text-sm outline-none placeholder:text-white/35 disabled:cursor-not-allowed disabled:opacity-55" disabled={generating} onChange={(event) => onUpdate({ generationPrompt: event.target.value })} placeholder={VIDEO_UI_COPY.promptPlaceholder} value={data.generationPrompt || ""} />

@@ -35,6 +35,34 @@ function usableVideoCatalog(models = [usableVideoOption()]) {
 }
 
 describe("VideoNodeComposer", () => {
+  test("passes unified text inputs into the reference area for text-to-video", () => {
+    render(
+      <VideoNodeComposer
+        data={{ generationPrompt: "", params: { videoGeneration: { ...createDefaultVideoGenerationParams(), mode: "text_to_video" } } } as any}
+        generating={false}
+        inputItems={[{
+          inputKey: "upstream:script",
+          kind: "text",
+          order: 0,
+          previewState: "ready",
+          source: "upstream",
+          sourceNodeId: "script",
+          textExcerpt: "A quiet forest",
+          title: "Script",
+        }]}
+        nodeId="video-1"
+        onGenerate={vi.fn()}
+        onRemoveInput={vi.fn()}
+        onReorderInputs={vi.fn()}
+        onUpdate={vi.fn()}
+        selected
+      />,
+    );
+
+    expect(screen.getByLabelText(/节点输入/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /添加参考/ })).toBeNull();
+  });
+
   test("keeps the composer root content-only for a shared editor surface", () => {
     const data = { generationPrompt: "", params: { videoGeneration: createDefaultVideoGenerationParams() } } as any;
 

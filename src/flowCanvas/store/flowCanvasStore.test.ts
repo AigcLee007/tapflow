@@ -324,6 +324,37 @@ describe('flowCanvasStore upstream image references', () => {
     ]);
   });
 
+  it('keeps the most recent upstream image as the image-to-video reference while restoring every input edge', () => {
+    useFlowCanvasStore.getState().loadProject({
+      id: 'legacy-image-to-video', title: 'Legacy image to video', version: 1, updatedAt: Date.now(), viewport: { x: 0, y: 0, zoom: 1 },
+      nodes: [
+        { id: 'first-image', type: 'image', position: { x: 0, y: 0 }, data: { kind: 'image', title: 'First image' } },
+        { id: 'second-image', type: 'image', position: { x: 0, y: 160 }, data: { kind: 'image', title: 'Second image' } },
+        {
+          id: 'video-target', type: 'video', position: { x: 400, y: 0 }, data: {
+            kind: 'video',
+            params: { videoGeneration: { ...normalizeVideoGenerationParams({}).params, mode: 'image_to_video', referenceInputs: [] } },
+            title: 'Video target',
+          },
+        },
+      ] as any,
+      edges: [
+        { id: 'first-edge', source: 'first-image', target: 'video-target', type: 'smart', data: { dataType: 'any' } },
+        { id: 'second-edge', source: 'second-image', target: 'video-target', type: 'smart', data: { dataType: 'any' } },
+      ] as any,
+    });
+
+    const target = useFlowCanvasStore.getState().nodes.find((node) => node.id === 'video-target')!;
+    expect(target.data.inputOrder).toEqual(['upstream:first-image', 'upstream:second-image']);
+    expect(normalizeVideoGenerationParams(target.data).params.referenceInputs).toEqual([
+      expect.objectContaining({
+        mediaKind: 'image',
+        role: 'main_image',
+        source: { kind: 'upstream', id: 'second-image' },
+      }),
+    ]);
+  });
+
   it('removes a direct asset input only from its owning target', () => {
     const first = useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, {
       referenceAssetItemIds: ['asset-one', 'asset-two'],

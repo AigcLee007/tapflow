@@ -626,17 +626,29 @@ const reconcileNodeInputs = (
       .map((reference, order) => ({ ...reference, referenceKey: reference.source.kind === 'upstream'
         ? toUpstreamInputKey(reference.source.id)
         : reference.referenceKey, order }));
-    const referenceOrder = getUniqueInputKeys(referenceInputs.map((reference) => reference.source.kind === 'upstream'
+    // A legacy draft can contain several untyped image edges into an
+    // image-to-video node. Keep all edges in the unified input order, but only
+    // the newest upstream image can be its single typed main-image reference.
+    const normalizedReferenceInputs = normalized!.mode === 'image_to_video'
+      ? referenceInputs.filter((reference, index) => (
+        reference.source.kind !== 'upstream'
+        || reference.mediaKind !== 'image'
+        || !referenceInputs.slice(index + 1).some((candidate) => (
+          candidate.source.kind === 'upstream' && candidate.mediaKind === 'image'
+        ))
+      )).map((reference, order) => ({ ...reference, order }))
+      : referenceInputs;
+    const referenceOrder = getUniqueInputKeys(normalizedReferenceInputs.map((reference) => reference.source.kind === 'upstream'
       ? toUpstreamInputKey(reference.source.id)
       : toAssetInputKey(reference.source.id)));
-    const referenceAssetItemIds = getUniqueInputKeys(referenceInputs
+    const referenceAssetItemIds = getUniqueInputKeys(normalizedReferenceInputs
       .filter((reference) => reference.source.kind === 'asset')
       .map((reference) => reference.source.id));
     const existingReferenceInputs = normalized!.referenceInputs.map((reference) => ({
       ...reference,
       referenceKey: reference.source.kind === 'upstream' ? toUpstreamInputKey(reference.source.id) : reference.referenceKey,
     }));
-    const referencesChanged = JSON.stringify(existingReferenceInputs) !== JSON.stringify(referenceInputs);
+    const referencesChanged = JSON.stringify(existingReferenceInputs) !== JSON.stringify(normalizedReferenceInputs);
     if (!referencesChanged
       && hasSameItems(getUniqueInputKeys(node.data.inputOrder), inputOrder)
       && hasSameItems(getUniqueInputKeys(node.data.referenceOrder), referenceOrder)
@@ -650,7 +662,7 @@ const reconcileNodeInputs = (
         referenceOrder,
         params: {
           ...(node.data.params ?? {}),
-          videoGeneration: { ...normalized!, referenceInputs },
+          videoGeneration: { ...normalized!, referenceInputs: normalizedReferenceInputs },
         },
         updatedAt: Date.now(),
       },
