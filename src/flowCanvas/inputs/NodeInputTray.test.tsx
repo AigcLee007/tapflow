@@ -30,7 +30,7 @@ describe("NodeInputTray", () => {
 
     fireEvent.mouseEnter(textGroup);
     expect(screen.getByRole("menu", { name: "文本输入节点" })).not.toBeNull();
-    fireEvent.doubleClick(screen.getByRole("menuitem", { name: /Script A/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Script A/ }));
     expect(onFocusSource).toHaveBeenCalledWith("upstream:text-a");
     fireEvent.click(screen.getByRole("button", { name: "移除输入 Script B" }));
     expect(onRemove).toHaveBeenCalledWith("upstream:text-b");
@@ -69,7 +69,7 @@ describe("NodeInputTray", () => {
     fireEvent.mouseEnter(screen.getByTitle("Reference image"));
     expect(screen.getByRole("img", { name: "Reference image" })).not.toBeNull();
     fireEvent.mouseLeave(screen.getByTitle("Reference image"));
-    expect(screen.queryByRole("dialog", { name: "预览 Reference image" })).toBeNull();
+    expect(screen.queryByRole("tooltip", { name: "预览 Reference image" })).toBeNull();
 
     rerender(<NodeInputTray items={[videoA]} />);
     fireEvent.mouseEnter(screen.getByTitle("Clip"));
@@ -80,9 +80,9 @@ describe("NodeInputTray", () => {
     render(<NodeInputTray items={[imageA]} />);
 
     fireEvent.mouseEnter(screen.getByTitle("Reference image"));
-    await waitFor(() => expect(screen.getByRole("dialog", { name: "预览 Reference image" })).not.toBeNull());
+    await waitFor(() => expect(screen.getByRole("tooltip", { name: "预览 Reference image" })).not.toBeNull());
     fireEvent.keyDown(window, { key: "Escape" });
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "预览 Reference image" })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("tooltip", { name: "预览 Reference image" })).toBeNull());
   });
 
   it("anchors text and overflow portals to their triggers within the viewport", () => {
@@ -114,7 +114,7 @@ describe("NodeInputTray", () => {
     expect(overflowMenu.style.top).toBe("402px");
   });
 
-  it("focuses upstream media and dismisses keyboard-open previews with Escape", async () => {
+  it("activates upstream media once per single click and dismisses keyboard-open previews with Escape", async () => {
     const onFocusSource = vi.fn();
     const upstreamImage = { ...imageA, inputKey: "upstream:image-a", source: "upstream" as const, sourceNodeId: "image-a" };
     render(<NodeInputTray items={[upstreamImage]} onFocusSource={onFocusSource} />);
@@ -123,14 +123,53 @@ describe("NodeInputTray", () => {
     fireEvent.click(card);
     fireEvent.doubleClick(card);
     fireEvent.keyDown(card, { key: "Enter" });
-    expect(onFocusSource).toHaveBeenCalledTimes(3);
+    expect(onFocusSource).toHaveBeenCalledTimes(2);
     expect(onFocusSource).toHaveBeenLastCalledWith("upstream:image-a");
 
     fireEvent.focus(card);
-    await waitFor(() => expect(screen.getByRole("dialog", { name: "预览 Reference image" })).not.toBeNull());
+    await waitFor(() => expect(screen.getByRole("tooltip", { name: "预览 Reference image" })).not.toBeNull());
     fireEvent.keyDown(card, { key: "Escape" });
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "预览 Reference image" })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("tooltip", { name: "预览 Reference image" })).toBeNull());
     expect(document.activeElement).toBe(card);
+  });
+
+  it("closes text and overflow menus when their corresponding inputs are removed", () => {
+    const { rerender } = render(<NodeInputTray items={[textA, imageA]} />);
+    fireEvent.mouseEnter(screen.getByRole("button", { name: /文本输入/ }));
+    expect(screen.getByRole("menu", { name: "文本输入节点" })).not.toBeNull();
+
+    rerender(<NodeInputTray items={[imageA]} />);
+    rerender(<NodeInputTray items={[textA, imageA]} />);
+    expect(screen.queryByRole("menu", { name: "文本输入节点" })).toBeNull();
+
+    const media = Array.from({ length: 9 }, (_, index) => ({ ...imageA, assetId: `image-${index}`, inputKey: `asset:image-${index}`, order: index, title: `Image ${index}` }));
+    rerender(<NodeInputTray items={media} />);
+    fireEvent.click(screen.getByRole("button", { name: /显示另外 1 个输入/ }));
+    expect(screen.getByRole("menu", { name: "更多输入" })).not.toBeNull();
+
+    rerender(<NodeInputTray items={media.slice(0, 8)} />);
+    rerender(<NodeInputTray items={media} />);
+    expect(screen.queryByRole("menu", { name: "更多输入" })).toBeNull();
+  });
+
+  it("renders first and last frame role badges", () => {
+    render(<NodeInputTray items={[
+      { ...imageA, inputKey: "asset:first", order: 0, role: "first_frame", title: "First" },
+      { ...imageA, inputKey: "asset:last", order: 1, role: "last_frame", title: "Last" },
+    ]} />);
+
+    expect(screen.getByLabelText("输入角色：首帧")).not.toBeNull();
+    expect(screen.getByLabelText("输入角色：尾帧")).not.toBeNull();
+  });
+
+  it("opens an asset preview from keyboard focus and associates it as a tooltip", async () => {
+    render(<NodeInputTray items={[imageA]} />);
+
+    const card = screen.getByRole("button", { name: "输入 3：Reference image" });
+    fireEvent.focus(card);
+    await waitFor(() => expect(screen.getByRole("tooltip", { name: "预览 Reference image" })).not.toBeNull());
+    const preview = screen.getByRole("tooltip", { name: "预览 Reference image" });
+    expect(card.getAttribute("aria-describedby")).toBe(preview.id);
   });
 
   it("keeps upstream media focusable in the overflow menu", () => {

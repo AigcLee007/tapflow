@@ -99,7 +99,7 @@ describe("ImageNodeComponent unified inputs", () => {
     expect(screen.queryByText(/@Image 1/)).toBeNull();
   });
 
-  it("removes only the selected text edge and focuses an upstream source on double click", async () => {
+  it("removes only the selected text edge and focuses an upstream source on click", async () => {
     const text = useFlowCanvasStore.getState().addNode("text", { x: 0, y: 0 }, { generationPrompt: "Connected text", title: "Text source" } as any);
     const image = useFlowCanvasStore.getState().addNode("image", { x: 0, y: 180 }, { assetId: "asset-ready", thumbnailUrl: "https://cdn.test/ready.png", title: "Image source" } as any);
     const target = addImageTarget();
@@ -110,7 +110,7 @@ describe("ImageNodeComponent unified inputs", () => {
     const tray = await screen.findByLabelText("节点输入");
     const textGroup = screen.getByRole("button", { name: "文本输入，共 1 个节点" });
     fireEvent.mouseEnter(textGroup);
-    fireEvent.doubleClick(screen.getByRole("menuitem", { name: "聚焦文本输入 Text source" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "聚焦文本输入 Text source" }));
     expect(useFlowCanvasStore.getState().nodes.find((node) => node.id === text.id)?.selected).toBe(true);
 
     fireEvent.click(screen.getByRole("button", { name: "移除输入 Text source" }));

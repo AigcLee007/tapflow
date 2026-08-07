@@ -5,6 +5,7 @@ import { AudioLines, ChevronDown, ChevronUp, FileText, Image, Play, RotateCcw, V
 import { MenuSurface } from "../../components/menu/MenuSurface";
 import { useDismissibleLayer } from "../../components/menu/useDismissibleLayer";
 import { IMAGE_MENU_SURFACE_Z_INDEX } from "../nodes/imageMenuStyles";
+import { VIDEO_UI_REFERENCE_ROLE_COPY } from "../video/videoUiCopy";
 import type { CanvasInputItem } from "./canvasInputProjection";
 import { MediaHoverPreview } from "./MediaHoverPreview";
 
@@ -64,6 +65,11 @@ function formatDuration(durationMs?: number) {
   return durationMs === undefined ? null : `${(durationMs / 1000).toFixed(1)}s`;
 }
 
+function roleBadge(role?: CanvasInputItem["role"]) {
+  if (role === "first_frame" || role === "last_frame") return VIDEO_UI_REFERENCE_ROLE_COPY[role];
+  return null;
+}
+
 function InputIcon({ kind }: Pick<CanvasInputItem, "kind">) {
   const className = "h-4 w-4";
   if (kind === "image") return <Image aria-hidden className={className} />;
@@ -113,9 +119,12 @@ function MediaInputCard({
   const suppressFocusPreviewRef = useRef(false);
   const number = item.order + 1;
   const duration = item.kind === "video" || item.kind === "audio" ? formatDuration(item.durationMs) : null;
+  const badge = roleBadge(item.role);
   const visualUrl = item.thumbnailUrl || item.previewUrl;
   const hoverable = item.kind === "image" || item.kind === "video";
   const canFocus = item.source === "upstream" && Boolean(onFocusSource) && !disabled;
+  const canPreview = hoverable && !disabled;
+  const previewId = `media-preview-${item.inputKey}`;
   return (
     <div className="group relative h-[52px] w-[52px] shrink-0" data-testid="media-input-card">
       <div
@@ -126,8 +135,11 @@ function MediaInputCard({
         onDragOver={(event) => { if (!disabled) event.preventDefault(); }}
         onDragStart={(event) => onDragStart(event, item.inputKey)}
         onDrop={(event) => onDrop(event, item.inputKey)}
-        onClick={() => { if (canFocus) onFocusSource?.(item.inputKey); }}
-        onDoubleClick={() => { if (canFocus) onFocusSource?.(item.inputKey); }}
+        aria-describedby={canPreview ? previewId : undefined}
+        onClick={(event) => {
+          if (canFocus) onFocusSource?.(item.inputKey);
+          else if (canPreview) onHoverChange(item, event.currentTarget);
+        }}
         onFocus={(event) => {
           if (suppressFocusPreviewRef.current) {
             suppressFocusPreviewRef.current = false;
@@ -147,16 +159,20 @@ function MediaInputCard({
           if ((event.key === "Enter" || event.key === " ") && canFocus) {
             event.preventDefault();
             onFocusSource?.(item.inputKey);
+          } else if ((event.key === "Enter" || event.key === " ") && canPreview) {
+            event.preventDefault();
+            onHoverChange(item, event.currentTarget);
           }
         }}
         onMouseEnter={(event) => { if (hoverable) onHoverChange(item, event.currentTarget); }}
         onMouseLeave={() => onHoverChange(null, null)}
-        role={canFocus ? "button" : "group"}
-        tabIndex={canFocus ? 0 : -1}
+        role={canFocus || canPreview ? "button" : "group"}
+        tabIndex={canFocus || canPreview ? 0 : -1}
         title={item.title}
       >
         {visualUrl && item.kind !== "audio" ? <img alt="" className="h-full w-full object-cover" src={visualUrl} /> : <span className="flex h-full w-full items-center justify-center text-white/70"><InputIcon kind={item.kind} /></span>}
         {item.kind === "video" ? <Play aria-hidden className="absolute left-1/2 top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 fill-white text-white drop-shadow" /> : null}
+        {badge ? <span aria-label={`输入角色：${badge}`} className="absolute left-0 top-0 bg-cyan-400/90 px-1 text-[9px] font-bold leading-4 text-black">{badge}</span> : null}
         <span className="absolute bottom-0 left-0 max-w-full truncate bg-black/65 px-1 text-[9px] font-bold leading-4 text-white">{number}</span>
         {duration ? <span className="absolute bottom-0 right-0 bg-black/65 px-1 text-[9px] leading-4 text-white">{duration}</span> : null}
         {item.previewState === "loading" ? <span aria-label={`加载预览 ${number}`} className="absolute inset-0 animate-pulse bg-white/10" /> : null}
@@ -182,6 +198,14 @@ export function NodeInputTray({ disabled = false, items, onFocusSource, onRemove
   const visibleMediaCount = MAX_VISIBLE_CELLS - (textItems.length ? 1 : 0);
   const visibleMediaItems = mediaItems.slice(0, visibleMediaCount);
   const overflowItems = mediaItems.slice(visibleMediaCount);
+
+  useEffect(() => {
+    if (!textItems.length) textLayer.closeLayer();
+  }, [textItems.length, textLayer.closeLayer]);
+
+  useEffect(() => {
+    if (!overflowItems.length) overflowLayer.closeLayer();
+  }, [overflowItems.length, overflowLayer.closeLayer]);
 
   useEffect(() => () => {
     if (closeTextMenuTimer.current) clearTimeout(closeTextMenuTimer.current);
@@ -220,7 +244,7 @@ export function NodeInputTray({ disabled = false, items, onFocusSource, onRemove
     <MenuSurface aria-label="文本输入节点" className="w-[260px] max-h-[calc(100vh-96px)] overflow-x-hidden overflow-y-auto p-1" onMouseEnter={openTextMenu} onMouseLeave={closeTextMenuLater} ref={textLayer.ref as React.RefObject<HTMLDivElement>} role="menu" style={textMenuStyle}>
       {textItems.map((item) => (
         <div className="flex h-[38px] items-center gap-1 px-1" key={item.inputKey} role="none">
-          <button aria-label={`聚焦文本输入 ${item.title}`} className="min-w-0 flex-1 truncate rounded-[8px] px-2 text-left text-[12px] font-bold leading-[38px] text-white hover:bg-white/10" disabled={disabled || !onFocusSource} onDoubleClick={() => { if (!disabled) onFocusSource?.(item.inputKey); }} onClick={() => { if (!disabled) onFocusSource?.(item.inputKey); }} role="menuitem" type="button" title={item.textExcerpt || item.title}>{item.title}</button>
+          <button aria-label={`聚焦文本输入 ${item.title}`} className="min-w-0 flex-1 truncate rounded-[8px] px-2 text-left text-[12px] font-bold leading-[38px] text-white hover:bg-white/10" disabled={disabled || !onFocusSource} onClick={() => { if (!disabled) onFocusSource?.(item.inputKey); }} role="menuitem" type="button" title={item.textExcerpt || item.title}>{item.title}</button>
           {onRemove ? <button aria-label={`移除输入 ${item.title}`} className={menuButtonClass} disabled={disabled} onClick={() => { if (!disabled) onRemove(item.inputKey); }} type="button"><X aria-hidden className="h-4 w-4" /></button> : null}
         </div>
       ))}
@@ -235,7 +259,7 @@ export function NodeInputTray({ disabled = false, items, onFocusSource, onRemove
         const number = item.order + 1;
         const index = mediaItems.findIndex((candidate) => candidate.inputKey === item.inputKey);
         const canFocus = item.source === "upstream" && Boolean(onFocusSource) && !disabled;
-        return <div className="flex h-[38px] items-center gap-1 px-1" key={item.inputKey} role="none">{canFocus ? <button aria-label={`聚焦输入 ${number}：${item.title}`} className="min-w-0 flex-1 truncate rounded-[8px] px-2 text-left text-[12px] font-bold leading-[38px] text-white hover:bg-white/10" onClick={() => onFocusSource?.(item.inputKey)} onDoubleClick={() => onFocusSource?.(item.inputKey)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onFocusSource?.(item.inputKey); } }} role="menuitem" type="button">输入 {number}：{item.title}</button> : <span className="min-w-0 flex-1 truncate px-2 text-[12px] font-bold text-white/70">输入 {number}：{item.title}</span>}{onReorder ? <><button aria-label={`上移输入 ${number}：${item.title}`} className={menuButtonClass} disabled={disabled || index === 0} onClick={() => move(item.inputKey, -1)} type="button"><ChevronUp aria-hidden className="h-4 w-4" /></button><button aria-label={`下移输入 ${number}：${item.title}`} className={menuButtonClass} disabled={disabled || index === mediaItems.length - 1} onClick={() => move(item.inputKey, 1)} type="button"><ChevronDown aria-hidden className="h-4 w-4" /></button></> : null}{onRemove ? <button aria-label={`移除输入 ${number}：${item.title}`} className={menuButtonClass} disabled={disabled} onClick={() => { if (!disabled) onRemove(item.inputKey); }} type="button"><X aria-hidden className="h-4 w-4" /></button> : null}</div>;
+        return <div className="flex h-[38px] items-center gap-1 px-1" key={item.inputKey} role="none">{canFocus ? <button aria-label={`聚焦输入 ${number}：${item.title}`} className="min-w-0 flex-1 truncate rounded-[8px] px-2 text-left text-[12px] font-bold leading-[38px] text-white hover:bg-white/10" onClick={() => onFocusSource?.(item.inputKey)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onFocusSource?.(item.inputKey); } }} role="menuitem" type="button">输入 {number}：{item.title}</button> : <span className="min-w-0 flex-1 truncate px-2 text-[12px] font-bold text-white/70">输入 {number}：{item.title}</span>}{onReorder ? <><button aria-label={`上移输入 ${number}：${item.title}`} className={menuButtonClass} disabled={disabled || index === 0} onClick={() => move(item.inputKey, -1)} type="button"><ChevronUp aria-hidden className="h-4 w-4" /></button><button aria-label={`下移输入 ${number}：${item.title}`} className={menuButtonClass} disabled={disabled || index === mediaItems.length - 1} onClick={() => move(item.inputKey, 1)} type="button"><ChevronDown aria-hidden className="h-4 w-4" /></button></> : null}{onRemove ? <button aria-label={`移除输入 ${number}：${item.title}`} className={menuButtonClass} disabled={disabled} onClick={() => { if (!disabled) onRemove(item.inputKey); }} type="button"><X aria-hidden className="h-4 w-4" /></button> : null}</div>;
       })}
     </MenuSurface>,
     document.body,
@@ -249,6 +273,6 @@ export function NodeInputTray({ disabled = false, items, onFocusSource, onRemove
     </div>
     {textMenu}
     {overflowMenu}
-    {hovered ? <MediaHoverPreview item={hovered.item} onDismiss={() => setHovered(null)} open trigger={hovered.trigger} /> : null}
+    {hovered ? <MediaHoverPreview id={`media-preview-${hovered.item.inputKey}`} item={hovered.item} onDismiss={() => setHovered(null)} open trigger={hovered.trigger} /> : null}
   </>;
 }

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { IMAGE_MENU_SURFACE_Z_INDEX } from "../nodes/imageMenuStyles";
@@ -6,6 +6,7 @@ import type { CanvasInputItem } from "./canvasInputProjection";
 
 export type MediaHoverPreviewProps = {
   item: CanvasInputItem;
+  id?: string;
   open: boolean;
   onDismiss?: () => void;
   trigger: HTMLElement | null;
@@ -39,7 +40,8 @@ function positionPreview(trigger: HTMLElement, preview: HTMLElement): PreviewPos
   };
 }
 
-export function MediaHoverPreview({ item, open, onDismiss, trigger }: MediaHoverPreviewProps) {
+export function MediaHoverPreview({ id, item, open, onDismiss, trigger }: MediaHoverPreviewProps) {
+  const generatedId = useId();
   const previewRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [position, setPosition] = useState<PreviewPosition | null>(null);
@@ -99,8 +101,9 @@ export function MediaHoverPreview({ item, open, onDismiss, trigger }: MediaHover
     <div
       aria-label={`预览 ${item.title}`}
       className="overflow-hidden rounded-[8px] border border-white/20 bg-[#161616] shadow-2xl"
+      id={id ?? generatedId}
       ref={previewRef}
-      role="dialog"
+      role="tooltip"
       style={{
         left: position?.left ?? INSET,
         maxWidth: "min(420px, calc(100vw - 16px))",

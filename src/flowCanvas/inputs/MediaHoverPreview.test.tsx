@@ -48,7 +48,7 @@ describe("MediaHoverPreview", () => {
 
     render(<MediaHoverPreview item={imageItem} open trigger={trigger} />);
 
-    const preview = screen.getByRole("dialog", { name: "预览 Reference image" });
+    const preview = screen.getByRole("tooltip", { name: "预览 Reference image" });
     expect(preview.parentElement).toBe(document.body);
     expect(Number.parseFloat(preview.style.left)).toBeLessThanOrEqual(382);
     expect(screen.getByRole("img", { name: "Reference image" }).getAttribute("src")).toBe(imageItem.hoverPreviewUrl);
