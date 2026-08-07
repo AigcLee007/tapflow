@@ -221,6 +221,9 @@ import {
   isPanoramaNodeData,
   resolvePanoramaAspectRatio,
 } from '../panorama/panoramaUtils';
+import { NodeInputTray } from '../inputs/NodeInputTray';
+import { resolveCanvasInputItems, type CanvasInputSeed } from '../inputs/canvasInputProjection';
+import { useCanvasInputAssets } from '../inputs/useCanvasInputAssets';
 
 type FlowNode = Node<FlowNodeData>;
 
@@ -4343,6 +4346,11 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const pushHistory = useFlowCanvasStore((s) => s.pushHistory);
   const leftPanelOpen = useFlowCanvasStore((s) => s.leftPanelOpen);
   const selectNodesByIds = useFlowCanvasStore((s) => s.selectNodesByIds);
+  const removeNodeInput = useFlowCanvasStore((s) => s.removeNodeInput);
+  const reorderNodeInputs = useFlowCanvasStore((s) => s.reorderNodeInputs);
+  const upstreamInputRefs = useFlowCanvasStore(
+    (s) => s.graphIndex.upstreamInputRefsByNodeId[id] || EMPTY_UPSTREAM_IMAGE_REFS,
+  );
   const upstreamImageRefs = useFlowCanvasStore(
     (s) => s.graphIndex.upstreamImageRefsByNodeId[id] || EMPTY_UPSTREAM_IMAGE_REFS,
   );
@@ -4700,7 +4708,39 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     ],
     [pendingReferenceAssetItemIds, referenceOrder],
   );
-  const referenceChips = useMemo(
+  const imageInputItems = useMemo(() => {
+    const directAssetItemsById = {
+      ...referenceAssetItemsById,
+      ...pendingReferenceAssetItemsById,
+    };
+    const seeds: CanvasInputSeed[] = [
+      ...upstreamInputRefs.filter((item) => item.kind === 'text' || item.kind === 'image'),
+      ...displayedReferenceAssetItemIds.map((assetId) => {
+        const asset = directAssetItemsById[assetId];
+        const previewUrl = referenceAssetPreviewUrlsById[assetId] || asset?.previewUrl;
+        return {
+          assetId,
+          inputKey: `asset:${assetId}`,
+          kind: 'image' as const,
+          previewState: previewUrl ? 'ready' as const : 'loading' as const,
+          previewUrl,
+          source: 'asset' as const,
+          title: asset?.title || asset?.originalFilename || '参考图片',
+        };
+      }),
+    ];
+    return resolveCanvasInputItems({ inputOrder: d.inputOrder ?? d.referenceOrder, seeds });
+  }, [d.inputOrder, d.referenceOrder, displayedReferenceAssetItemIds, pendingReferenceAssetItemsById, referenceAssetItemsById, referenceAssetPreviewUrlsById, upstreamInputRefs]);
+  const imageInputsNeedingAssetResolution = useMemo(
+    () => imageInputItems.filter((item) => !item.previewUrl),
+    [imageInputItems],
+  );
+  const { items: resolvedMissingImageInputItems, retry: retryImageInputAsset } = useCanvasInputAssets(imageInputsNeedingAssetResolution);
+  const resolvedImageInputItems = useMemo(() => {
+    const resolvedByKey = new Map(resolvedMissingImageInputItems.map((item) => [item.inputKey, item]));
+    return imageInputItems.map((item) => resolvedByKey.get(item.inputKey) || item);
+  }, [imageInputItems, resolvedMissingImageInputItems]);
+  const resolvedReferenceChips = useMemo(
     () =>
       resolveReferenceChips({
         assetItemsById: {
@@ -4721,6 +4761,13 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       upstreamImageRefs,
     ],
   );
+  const referenceChips = useMemo(() => {
+    const chipsByKey = new Map(resolvedReferenceChips.map((item) => [item.key, item]));
+    return resolvedImageInputItems
+      .filter((item) => item.kind === 'image')
+      .map((item) => chipsByKey.get(item.inputKey))
+      .filter((item): item is (typeof resolvedReferenceChips)[number] => Boolean(item));
+  }, [resolvedImageInputItems, resolvedReferenceChips]);
   useEffect(() => {
     if (referencedAssetItemIds.length === 0) {
       setReferenceAssetPreviewUrlsById((current) => (Object.keys(current).length === 0 ? current : {}));
@@ -5806,6 +5853,16 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     },
     [draggingReferenceKey, id, referenceChips, updateNodeData],
   );
+
+  const handleFocusNodeInput = useCallback((inputKey: string) => {
+    const sourceNodeId = resolvedImageInputItems.find((item) => item.inputKey === inputKey)?.sourceNodeId;
+    if (sourceNodeId) selectNodesByIds([sourceNodeId]);
+  }, [resolvedImageInputItems, selectNodesByIds]);
+
+  const handleRetryNodeInputPreview = useCallback((inputKey: string) => {
+    const assetId = resolvedImageInputItems.find((item) => item.inputKey === inputKey)?.assetId;
+    if (assetId) retryImageInputAsset(assetId);
+  }, [resolvedImageInputItems, retryImageInputAsset]);
 
   const handleInsertSlashCommand = useCallback(
     (commandId: string) => {
@@ -7246,120 +7303,13 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
             >
               <Upload size={16} />
             </button>
-            {referenceChips.slice(0, 8).map((refItem) => {
-              const displayImageUrl = getReferenceDisplayImageUrl(refItem);
-              return (
-                <div
-                  key={refItem.key}
-                  draggable
-                  onClick={() => {
-                    if (suppressReferenceClickRef.current) return;
-                    if (promptLexicalEditorRef.current) {
-                      promptLexicalEditorRef.current.insertReference(refItem.mentionLabel);
-                    } else {
-                      insertReferenceMention(refItem.mentionLabel);
-                    }
-                  }}
-                  onDragStart={(event) => {
-                    event.stopPropagation();
-                    suppressReferenceClickRef.current = true;
-                    setDraggingReferenceKey(refItem.key);
-                    event.dataTransfer.setData('application/x-flow-reference-chip', refItem.key);
-                    event.dataTransfer.setData('text/plain', refItem.key);
-                    event.dataTransfer.effectAllowed = 'move';
-                  }}
-                  onDragOver={(event) => {
-                    event.preventDefault();
-                    event.dataTransfer.dropEffect = 'move';
-                  }}
-                  onDrop={(event) => {
-                    event.preventDefault();
-                    handleReferenceDrop(refItem.key);
-                  }}
-                  onDragEnd={() => {
-                    setDraggingReferenceKey(null);
-                    window.setTimeout(() => {
-                      suppressReferenceClickRef.current = false;
-                    }, 0);
-                  }}
-                  onMouseEnter={() => setHoveredReferenceKey(refItem.key)}
-                  onMouseLeave={() => setHoveredReferenceKey(null)}
-                  style={{
-                    position: 'relative',
-                    width: 36,
-                    height: 36,
-                    borderRadius: 10,
-                    cursor: draggingReferenceKey === refItem.key ? 'grabbing' : 'pointer',
-                    opacity: draggingReferenceKey === refItem.key ? 0.55 : 1,
-                    transition: 'opacity 140ms ease, transform 140ms ease',
-                    transform: hoveredReferenceKey === refItem.key ? 'translateY(-1px)' : 'translateY(0)',
-                  }}
-                >
-                  <img
-                    src={displayImageUrl}
-                    alt={refItem.title}
-                    style={{ width: 36, height: 36, borderRadius: 10, objectFit: 'cover', border: '1px solid rgba(255,255,255,0.2)', boxShadow: '0 8px 20px rgba(0,0,0,0.3)' }}
-                  />
-                  {hoveredReferenceKey === refItem.key && (
-                    <>
-                      <div
-                        style={{
-                          position: 'absolute',
-                          left: '50%',
-                          bottom: 'calc(100% + 10px)',
-                          transform: 'translateX(-50%)',
-                          width: 112,
-                          padding: 4,
-                          borderRadius: 15,
-                          background: 'rgba(35,35,35,0.82)',
-                          border: '1px solid rgba(255,255,255,0.12)',
-                          boxShadow: '0 14px 34px rgba(0,0,0,0.44)',
-                          backdropFilter: 'blur(12px)',
-                          zIndex: 1200,
-                          pointerEvents: 'none',
-                        }}
-                      >
-                        <img src={displayImageUrl} alt="" style={{ width: '100%', height: 96, borderRadius: 12, objectFit: 'cover', display: 'block' }} />
-                        <div style={{ marginTop: 4, color: '#fff', fontSize: 13, fontWeight: 800, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          @{refItem.mentionLabel}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        className="nodrag nopan"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          handleRemoveReference(refItem);
-                        }}
-                        style={{
-                          position: 'absolute',
-                          top: -6,
-                          right: -6,
-                          width: 20,
-                          height: 20,
-                          borderRadius: '50%',
-                          border: '1px solid rgba(255,255,255,0.24)',
-                          background: 'rgba(12,12,14,0.92)',
-                          color: '#f8fafc',
-                          display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: 16,
-                        lineHeight: 1,
-                        cursor: 'pointer',
-                        padding: 0,
-                        zIndex: 1201,
-                        boxShadow: '0 6px 14px rgba(0,0,0,0.38)',
-                      }}
-                      title={refItem.source === 'upstream' ? '删除引用并切断连线' : '删除素材引用'}
-                    >
-                      ×
-                    </button>
-                  </>
-                )}
-                </div>
-              );
-            })}
+            <NodeInputTray
+              items={resolvedImageInputItems}
+              onFocusSource={handleFocusNodeInput}
+              onRemove={(inputKey) => removeNodeInput(id, inputKey)}
+              onReorder={(inputKeys) => reorderNodeInputs(id, inputKeys)}
+              onRetryPreview={handleRetryNodeInputPreview}
+            />
             <button
               type="button"
               className="nodrag nopan"
@@ -7374,8 +7324,8 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
             >
               <Plus size={16} />
             </button>
-            {referenceChips.length === 0 && (
-              <span style={{ fontSize: 12, color: '#94a3b8' }}>暂无引用，输入 @ 添加素材</span>
+            {resolvedImageInputItems.length === 0 && (
+              <span style={{ fontSize: 12, color: '#94a3b8' }}>暂无输入，输入 @ 添加素材</span>
             )}
           </div>
 
