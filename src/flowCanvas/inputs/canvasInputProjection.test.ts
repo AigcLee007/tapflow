@@ -78,7 +78,7 @@ describe("canvas input projection", () => {
       targetNodeId: "target-node",
     });
 
-    expect(signature).toMatch(/^input-v1:[0-9a-f]{8}$/);
+    expect(signature).toMatch(/^input-v2:[0-9a-f]{64}$/);
     expect(signature).toBe(buildCanvasInputSignature({
       items,
       localPrompt: "local prompt with private details",
@@ -113,6 +113,20 @@ describe("canvas input projection", () => {
     expect(changedPrompt).not.toBe(baseline);
     expect(changedText).not.toBe(baseline);
     expect(changedMedia).toBe(baseline);
+  });
+
+  it("distinguishes the known FNV prompt collision pair", () => {
+    const items = resolveCanvasInputItems({ inputOrder: [], seeds: [upstreamText, upstreamImage] });
+
+    expect(buildCanvasInputSignature({
+      items,
+      localPrompt: "prompt-c9t7a5iwegr",
+      targetNodeId: "target-node",
+    })).not.toBe(buildCanvasInputSignature({
+      items,
+      localPrompt: "prompt-wxvucnp9ndc",
+      targetNodeId: "target-node",
+    }));
   });
 
   it("detects explicit input order while raw seed arrays use their array order", () => {

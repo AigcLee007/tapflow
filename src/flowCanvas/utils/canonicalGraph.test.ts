@@ -12,9 +12,8 @@ describe("canonicalizeGraph", () => {
         type: "image",
         data: {
           inputOrder: ["upstream:script", "asset:reference-image"],
-          lastGenerationInputSignature: "input-v1:12345678",
+          lastGenerationInputSignature: "input-v2:1234567812345678123456781234567812345678123456781234567812345678",
           previewUrl: "https://cdn.test/preview.webp?X-Amz-Signature=temporary",
-          textExcerpt: "Runtime-only text snippet",
           imagePreview: "blob:http://localhost/preview",
           encodedPreview: "data:image/webp;base64,preview",
           signedPreview: "https://cdn.test/image.webp?signature=temporary",
@@ -26,10 +25,10 @@ describe("canonicalizeGraph", () => {
 
     expect(graph.nodes[0]?.data).toMatchObject({
       inputOrder: ["upstream:script", "asset:reference-image"],
-      lastGenerationInputSignature: "input-v1:12345678",
+      lastGenerationInputSignature: "input-v2:1234567812345678123456781234567812345678123456781234567812345678",
     });
     expect(persisted).not.toMatch(
-      /previewUrl|textExcerpt|blob:|data:|X-Amz-Signature|signature=temporary|Runtime-only text snippet/,
+      /previewUrl|blob:|data:|X-Amz-Signature|signature=temporary/,
     );
   });
 

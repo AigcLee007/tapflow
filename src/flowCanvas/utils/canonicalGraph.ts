@@ -28,7 +28,6 @@ const TRANSIENT_NODE_DATA_KEYS = new Set([
   "signedUrl",
   "src",
   "status",
-  "textExcerpt",
   "thumbnailUrl",
   "updatedAt",
   "uploadErrorMessage",
