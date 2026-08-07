@@ -63,7 +63,7 @@ export function reconcileLegacyMediaMentionBindings({
     activeByKind.set(input.kind, inputs);
   }
 
-  nextPrompt = nextPrompt.replace(/@(?:Image|Video|Audio)\s+(\d+)(?=$|\s|[,.!?;:，。！？；：])/gi, (token, number: string) => {
+  nextPrompt = nextPrompt.replace(/@(?:Image|Video|Audio)\s+(\d+)(?=$|\s|[,.!?;:，。！？；：)\]}'"”’])/gi, (token, number: string) => {
     const kindName = token.match(/^@([a-z]+)\s+/i)?.[1]?.toLowerCase();
     const kind = kindName ? legacyKindByLabel[kindName] : undefined;
     if (!kind) return token;

@@ -47,6 +47,19 @@ describe('media mention bindings', () => {
     });
   });
 
+  it('reconciles a legacy token followed by a closing delimiter or quote', () => {
+    const result = reconcileLegacyMediaMentionBindings({
+      activeInputs: [imageA],
+      bindings: [],
+      prompt: 'Use (@Image 1) and "@Image 1" as references.',
+    });
+
+    expect(result).toEqual({
+      bindings: [{ inputKey: imageA.inputKey, kind: 'image', label: '图片1' }],
+      prompt: 'Use (@图片1) and "@图片1" as references.',
+    });
+  });
+
   it('does not reconcile an ambiguous legacy @Image number', () => {
     const result = reconcileLegacyMediaMentionBindings({
       activeInputs: [imageA, imageB],
