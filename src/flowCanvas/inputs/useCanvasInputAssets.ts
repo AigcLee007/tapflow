@@ -26,7 +26,7 @@ export function useCanvasInputAssets(items: CanvasInputItem[]) {
   const [retryRequest, setRetryRequest] = useState<{ assetId: string; nonce: number } | null>(null);
   const lastAssetIdsKey = useRef<string | null>(null);
   const assetIds = useMemo(
-    () => [...new Set(items.map(assetRequestKey).filter((assetId): assetId is string => Boolean(assetId)))],
+    () => [...new Set(items.map(assetRequestKey).filter((assetId): assetId is string => Boolean(assetId)))].sort(),
     [items],
   );
   const assetIdsKey = assetIds.join("|");

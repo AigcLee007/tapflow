@@ -100,8 +100,13 @@ describe("useCanvasInputAssets", () => {
   });
 
   it("retains failed cards without exposing the error and retries only the requested asset", async () => {
-    getAsset.mockRejectedValueOnce(new Error("Bearer secret-token must not render"));
-    getAsset.mockResolvedValue(makeAsset());
+    let imageAttempts = 0;
+    getAsset.mockImplementation((assetId: string) => {
+      if (assetId === "asset-image" && imageAttempts++ === 0) {
+        return Promise.reject(new Error("Bearer secret-token must not render"));
+      }
+      return Promise.resolve(makeAsset({ id: assetId }));
+    });
     getAssetVariantUrl.mockResolvedValue({ expiresAt: "2026-08-08T00:00:00.000Z", method: "GET", url: "https://cdn.test/retry.png" });
 
     const { result } = renderHook(() => useCanvasInputAssets([imageInput, audioInput]));
@@ -115,5 +120,54 @@ describe("useCanvasInputAssets", () => {
     await waitFor(() => expect(result.current.items[0]).toMatchObject({ previewState: "ready", previewUrl: "https://cdn.test/retry.png" }));
     expect(getAsset).toHaveBeenCalledWith("asset-image");
     expect(getAsset).toHaveBeenCalledTimes(3);
+  });
+
+  it("keeps resolved asset cache when item order changes", async () => {
+    getAsset.mockImplementation((assetId: string) => Promise.resolve(makeAsset({ id: assetId })));
+    getAssetVariantUrl.mockImplementation((assetId: string) => Promise.resolve({ expiresAt: "2026-08-08T00:00:00.000Z", method: "GET", url: `https://cdn.test/${assetId}.png` }));
+
+    const { rerender, result } = renderHook(({ items }) => useCanvasInputAssets(items), {
+      initialProps: { items: [imageInput, audioInput] },
+    });
+    await waitFor(() => expect(result.current.items[0].previewState).toBe("ready"));
+
+    rerender({ items: [{ ...audioInput, order: 0 }, { ...imageInput, order: 1 }] });
+
+    expect(getAsset).toHaveBeenCalledTimes(2);
+    expect(getAssetVariantUrl).toHaveBeenCalledTimes(1);
+    expect(result.current.items[1]).toMatchObject({ previewState: "ready", previewUrl: "https://cdn.test/asset-image.png" });
+  });
+
+  it("does not update hook state after unmount while an asset request is pending", async () => {
+    let resolveAsset: ((asset: AssetItem) => void) | undefined;
+    getAsset.mockImplementation(() => new Promise<AssetItem>((resolve) => { resolveAsset = resolve; }));
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { unmount } = renderHook(() => useCanvasInputAssets([imageInput]));
+
+    unmount();
+    await act(async () => resolveAsset?.(makeAsset()));
+
+    expect(consoleError).not.toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
+
+  it("ignores stale asset responses after the input set changes", async () => {
+    let resolveFirst: ((asset: AssetItem) => void) | undefined;
+    getAsset.mockImplementation((assetId: string) => {
+      if (assetId === "asset-image") {
+        return new Promise<AssetItem>((resolve) => { resolveFirst = resolve; });
+      }
+      return Promise.resolve(makeAsset({ id: assetId, title: "Fresh asset" }));
+    });
+
+    const { rerender, result } = renderHook(({ items }) => useCanvasInputAssets(items), {
+      initialProps: { items: [imageInput] },
+    });
+    rerender({ items: [audioInput] });
+    await waitFor(() => expect(result.current.items[0]).toMatchObject({ title: "Audio input", previewState: "ready" }));
+
+    await act(async () => resolveFirst?.(makeAsset({ id: "asset-image", title: "Stale image" })));
+
+    expect(result.current.items[0]).toMatchObject({ assetId: "asset-audio", title: "Audio input", previewState: "ready" });
   });
 });

@@ -50,7 +50,6 @@ function InputCard({
   const roleLabel = item.role === "first_frame" ? "首帧" : item.role === "last_frame" ? "尾帧" : String(number);
   const duration = (item.kind === "video" || item.kind === "audio") ? formatDuration(item.durationMs) : null;
   const canFocusSource = item.source === "upstream" && Boolean(onFocusSource);
-  const canRetry = item.previewState === "error" && Boolean(onRetryPreview);
 
   return (
     <div
@@ -58,7 +57,7 @@ function InputCard({
       className="group relative h-[52px] w-[52px] shrink-0 overflow-hidden rounded-[8px] border border-white/15 bg-white/[0.06] text-white outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/80"
       draggable={!disabled}
       onDoubleClick={() => {
-        if (canFocusSource) onFocusSource?.(item.inputKey);
+        if (!disabled && canFocusSource) onFocusSource?.(item.inputKey);
       }}
       onDragOver={(event) => {
         if (!disabled) event.preventDefault();
@@ -66,10 +65,13 @@ function InputCard({
       onDragStart={(event) => onDragStart(event, item.inputKey)}
       onDrop={(event) => onDrop(event, item.inputKey)}
       onKeyDown={(event) => {
-        if (event.key === "Enter" && canFocusSource) onFocusSource?.(item.inputKey);
+        if ((event.key === "Enter" || event.key === " ") && !disabled && canFocusSource) {
+          event.preventDefault();
+          onFocusSource?.(item.inputKey);
+        }
       }}
-      role="button"
-      tabIndex={0}
+      role="group"
+      tabIndex={canFocusSource && !disabled ? 0 : -1}
       title={title}
     >
       {item.previewUrl && item.kind !== "audio" ? (
@@ -82,13 +84,14 @@ function InputCard({
       {duration ? <span className="absolute bottom-0 right-0 bg-black/65 px-1 text-[9px] leading-4 text-white">{duration}</span> : null}
       {item.previewState === "loading" ? <span aria-label={`加载预览 ${number}`} className="absolute inset-0 animate-pulse bg-white/10" /> : null}
       {item.previewState === "unavailable" ? <span aria-label={`预览不可用 ${number}`} className="absolute inset-0 flex items-center justify-center bg-black/35"><InputIcon kind={item.kind} /></span> : null}
-      {canRetry ? (
+      {item.previewState === "error" && onRetryPreview ? (
         <button
           aria-label={`重试预览 ${number}：${item.title}`}
           className="absolute inset-0 flex items-center justify-center bg-black/60 text-white"
+          disabled={disabled}
           onClick={(event) => {
             event.stopPropagation();
-            onRetryPreview?.(item.inputKey);
+            if (!disabled) onRetryPreview(item.inputKey);
           }}
           type="button"
         ><RotateCcw aria-hidden className="h-4 w-4" /></button>
@@ -154,7 +157,32 @@ export function NodeInputTray({ disabled = false, items, onFocusSource, onRemove
           >+{overflowItems.length}</button>
           {overflowLayer.open ? (
             <MenuSurface aria-label="更多输入" className="absolute right-0 top-[58px] z-50 w-[208px] p-1" ref={overflowLayer.ref as React.RefObject<HTMLDivElement>} role="menu">
-              {overflowItems.map((item) => <div className="h-[38px] truncate px-2 text-[12px] font-bold leading-[38px] text-white" key={item.inputKey} role="menuitem">输入 {item.order + 1}：{item.title}</div>)}
+              {overflowItems.map((item) => {
+                const number = item.order + 1;
+                const canFocus = item.source === "upstream" && Boolean(onFocusSource);
+                return (
+                  <div className="flex h-[38px] items-center gap-1 px-1" key={item.inputKey} role="none">
+                    {canFocus ? (
+                      <button
+                        aria-label={`聚焦输入 ${number}：${item.title}`}
+                        className="min-w-0 flex-1 truncate rounded-[8px] px-2 text-left text-[12px] font-bold leading-[38px] text-white hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300"
+                        disabled={disabled}
+                        onClick={() => {
+                          if (!disabled) onFocusSource?.(item.inputKey);
+                        }}
+                        role="menuitem"
+                        type="button"
+                      >输入 {number}：{item.title}</button>
+                    ) : <span className="min-w-0 flex-1 truncate px-2 text-[12px] font-bold text-white/70">输入 {number}：{item.title}</span>}
+                    {item.previewState === "error" && onRetryPreview ? (
+                      <button aria-label={`重试预览 ${number}：${item.title}`} className="flex h-[30px] w-[30px] items-center justify-center rounded-[8px] text-white hover:bg-white/10 disabled:cursor-not-allowed" disabled={disabled} onClick={() => { if (!disabled) onRetryPreview(item.inputKey); }} role="menuitem" type="button"><RotateCcw aria-hidden className="h-4 w-4" /></button>
+                    ) : null}
+                    {onRemove ? (
+                      <button aria-label={`移除输入 ${number}：${item.title}`} className="flex h-[30px] w-[30px] items-center justify-center rounded-[8px] text-white hover:bg-white/10 disabled:cursor-not-allowed" disabled={disabled} onClick={() => { if (!disabled) onRemove(item.inputKey); }} role="menuitem" type="button"><X aria-hidden className="h-4 w-4" /></button>
+                    ) : null}
+                  </div>
+                );
+              })}
             </MenuSurface>
           ) : null}
         </div>

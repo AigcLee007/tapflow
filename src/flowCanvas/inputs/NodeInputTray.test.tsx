@@ -56,4 +56,49 @@ describe("NodeInputTray", () => {
     fireEvent.drop(screen.getByLabelText("输入 2：Reference image"), { dataTransfer: { getData: () => "upstream:text" } });
     expect(onReorder).toHaveBeenCalledTimes(1);
   });
+
+  it("blocks every input action when disabled", () => {
+    const onFocusSource = vi.fn();
+    const onRetryPreview = vi.fn();
+    const onRemove = vi.fn();
+    render(<NodeInputTray disabled items={[{ ...items[0], previewState: "error" }]} onFocusSource={onFocusSource} onRemove={onRemove} onRetryPreview={onRetryPreview} />);
+
+    const card = screen.getByLabelText("输入 1：Prompt upstream");
+    fireEvent.doubleClick(card);
+    fireEvent.keyDown(card, { key: "Enter" });
+    fireEvent.click(screen.getByRole("button", { name: "重试预览 1：Prompt upstream" }));
+    expect(onFocusSource).not.toHaveBeenCalled();
+    expect(onRetryPreview).not.toHaveBeenCalled();
+    expect(onRemove).not.toHaveBeenCalled();
+  });
+
+  it("uses non-nested card controls and exposes actionable overflow entries that dismiss on outside click and Escape", () => {
+    const onFocusSource = vi.fn();
+    const overflow = Array.from({ length: 9 }, (_, index) => ({
+      inputKey: `upstream:${index}`,
+      kind: "text" as const,
+      order: index,
+      previewState: "ready" as const,
+      source: "upstream" as const,
+      title: `Overflow ${index}`,
+    }));
+    const { container } = render(<NodeInputTray items={overflow} onFocusSource={onFocusSource} />);
+
+    const card = screen.getByLabelText("输入 1：Overflow 0");
+    expect(card.querySelector("button")).toBeNull();
+    fireEvent.keyDown(card, { key: " " });
+    expect(onFocusSource).toHaveBeenCalledWith("upstream:0");
+
+    fireEvent.click(screen.getByRole("button", { name: "显示另外 1 个输入" }));
+    const overflowFocus = screen.getByRole("menuitem", { name: "聚焦输入 9：Overflow 8" });
+    fireEvent.click(overflowFocus);
+    expect(onFocusSource).toHaveBeenCalledWith("upstream:8");
+    expect(screen.getByRole("menu", { name: "更多输入" })).not.toBeNull();
+    fireEvent.pointerDown(container.ownerDocument.body);
+    expect(screen.queryByRole("menu", { name: "更多输入" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "显示另外 1 个输入" }));
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("menu", { name: "更多输入" })).toBeNull();
+  });
 });
