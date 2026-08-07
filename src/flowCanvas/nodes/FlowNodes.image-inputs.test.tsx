@@ -93,7 +93,7 @@ describe("ImageNodeComponent unified inputs", () => {
 
     const tray = await screen.findByLabelText("节点输入");
     expect(tray).toBeTruthy();
-    expect(tray.querySelector('[aria-label^="输入 1：Scene brief"]')).toBeTruthy();
+    expect(screen.getByRole("button", { name: "文本输入，共 1 个节点" })).toBeTruthy();
     expect(tray.querySelector('[aria-label^="输入 2：Ready image"]')).toBeTruthy();
     expect(tray.querySelector('[aria-label^="输入 3：Previewless image"]')).toBeTruthy();
     expect(screen.queryByText(/@Image 1/)).toBeNull();
@@ -108,11 +108,31 @@ describe("ImageNodeComponent unified inputs", () => {
     render(<StoreBackedImageNode nodeId={target.id} />);
 
     const tray = await screen.findByLabelText("节点输入");
-    const textCard = tray.querySelector('[aria-label^="输入 1：Text source"]') as HTMLElement;
-    fireEvent.doubleClick(textCard);
+    const textGroup = screen.getByRole("button", { name: "文本输入，共 1 个节点" });
+    fireEvent.mouseEnter(textGroup);
+    fireEvent.doubleClick(screen.getByRole("menuitem", { name: "聚焦文本输入 Text source" }));
     expect(useFlowCanvasStore.getState().nodes.find((node) => node.id === text.id)?.selected).toBe(true);
 
-    fireEvent.click(screen.getByLabelText(new RegExp(`移除输入 1.*Text source`)));
+    fireEvent.click(screen.getByRole("button", { name: "移除输入 Text source" }));
+    await waitFor(() => expect(useFlowCanvasStore.getState().edges).toEqual([
+      expect.objectContaining({ source: image.id, target: target.id }),
+    ]));
+  });
+
+  it("removes every upstream text edge from the aggregate text input action", async () => {
+    const firstText = useFlowCanvasStore.getState().addNode("text", { x: 0, y: 0 }, { generationPrompt: "One", title: "First text" } as any);
+    const secondText = useFlowCanvasStore.getState().addNode("text", { x: 0, y: 80 }, { generationPrompt: "Two", title: "Second text" } as any);
+    const image = useFlowCanvasStore.getState().addNode("image", { x: 0, y: 180 }, { assetId: "asset-ready", thumbnailUrl: "https://cdn.test/ready.png", title: "Image source" } as any);
+    const target = addImageTarget();
+    connect(firstText.id, target.id);
+    connect(secondText.id, target.id);
+    connect(image.id, target.id);
+    render(<StoreBackedImageNode nodeId={target.id} />);
+
+    const textGroup = await screen.findByRole("button", { name: "文本输入，共 2 个节点" });
+    fireEvent.mouseEnter(textGroup);
+    fireEvent.click(screen.getByRole("menuitem", { name: "移除全部文本输入" }));
+
     await waitFor(() => expect(useFlowCanvasStore.getState().edges).toEqual([
       expect.objectContaining({ source: image.id, target: target.id }),
     ]));

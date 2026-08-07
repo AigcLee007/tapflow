@@ -71,6 +71,26 @@ describe("VideoNodeComposer", () => {
     expect(screen.queryByRole("button", { name: /添加参考/ })).toBeNull();
   });
 
+  test("forwards aggregate text removal to the shared reference tray", () => {
+    const onRemoveAllText = vi.fn();
+    render(
+      <VideoNodeComposer
+        data={{ generationPrompt: "", params: { videoGeneration: createDefaultVideoGenerationParams() } } as any}
+        generating={false}
+        inputItems={[{ inputKey: "upstream:script", kind: "text", order: 0, previewState: "ready", source: "upstream", sourceNodeId: "script", title: "Script" }]}
+        nodeId="video-1"
+        onGenerate={vi.fn()}
+        onRemoveAllText={onRemoveAllText}
+        onUpdate={vi.fn()}
+        selected
+      />,
+    );
+
+    fireEvent.mouseEnter(screen.getByRole("button", { name: "文本输入，共 1 个节点" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "移除全部文本输入" }));
+    expect(onRemoveAllText).toHaveBeenCalledTimes(1);
+  });
+
   test("keeps the composer root content-only for a shared editor surface", () => {
     const data = { generationPrompt: "", params: { videoGeneration: createDefaultVideoGenerationParams() } } as any;
 

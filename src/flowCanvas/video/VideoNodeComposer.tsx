@@ -36,6 +36,7 @@ type Props = {
   onConnectCanvasReference?: (input: Pick<VideoReferenceInputV2, "mediaKind" | "referenceKey" | "role"> & { sourceNodeId: string }) => void;
   onFocusInput?: (inputKey: string) => void;
   onRemoveInput?: (inputKey: string) => void;
+  onRemoveAllText?: () => void;
   onReorderInputs?: (inputKeys: string[]) => void;
   onRetryInputPreview?: (inputKey: string) => void;
   onUpdate: (patch: Partial<FlowNodeData>) => void;
@@ -44,7 +45,7 @@ type Props = {
   selected: boolean;
 };
 
-export function VideoNodeComposer({ allowMediaAdd = true, catalog: catalogOverride, data, generating, inputItems, inputsUpdated = false, nodeId, onConnectCanvasReference = () => undefined, onFocusInput, onGenerate, onRemoveInput, onReorderInputs, onRetryInputPreview, onUpdate, onUploadReference = async () => { throw new Error("REFERENCE_UPLOAD_UNAVAILABLE"); }, referencePreviewUrlsBySource, selected }: Props) {
+export function VideoNodeComposer({ allowMediaAdd = true, catalog: catalogOverride, data, generating, inputItems, inputsUpdated = false, nodeId, onConnectCanvasReference = () => undefined, onFocusInput, onGenerate, onRemoveInput, onRemoveAllText, onReorderInputs, onRetryInputPreview, onUpdate, onUploadReference = async () => { throw new Error("REFERENCE_UPLOAD_UNAVAILABLE"); }, referencePreviewUrlsBySource, selected }: Props) {
   const loadedCatalog = useVideoGenerationCatalog();
   const catalog = catalogOverride ?? loadedCatalog;
   const [modelOpen, setModelOpen] = useState(false);
@@ -149,7 +150,7 @@ export function VideoNodeComposer({ allowMediaAdd = true, catalog: catalogOverri
     </div>
 
     <div className="mt-2 flex min-w-0 flex-wrap gap-2" data-testid="video-composer-references">
-      <VideoReferenceStrip allowMediaAdd={allowMediaAdd} capabilities={capabilities ?? createSafeDefaultVideoCapabilities()} currentNodeId={nodeId} disabled={generating} inputItems={inputItems} onChange={(next) => setParams({ ...params, ...next })} onConnectCanvasReference={onConnectCanvasReference} onFocusInput={onFocusInput} onRemoveInput={onRemoveInput} onReorderInputs={onReorderInputs} onRetryInputPreview={onRetryInputPreview} onUploadReference={onUploadReference} value={params} />
+      <VideoReferenceStrip allowMediaAdd={allowMediaAdd} capabilities={capabilities ?? createSafeDefaultVideoCapabilities()} currentNodeId={nodeId} disabled={generating} inputItems={inputItems} onChange={(next) => setParams({ ...params, ...next })} onConnectCanvasReference={onConnectCanvasReference} onFocusInput={onFocusInput} onRemoveInput={onRemoveInput} onRemoveAllText={onRemoveAllText} onReorderInputs={onReorderInputs} onRetryInputPreview={onRetryInputPreview} onUploadReference={onUploadReference} value={params} />
     </div>
 
     {inputsUpdated ? <div className="mt-2 text-xs font-bold text-amber-300" role="status">输入已更新</div> : null}

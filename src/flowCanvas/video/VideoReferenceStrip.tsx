@@ -41,6 +41,7 @@ type VideoReferenceStripV2Props = {
   onConnectCanvasReference: (input: Pick<VideoReferenceInputV2, "mediaKind" | "referenceKey" | "role"> & { sourceNodeId: string }) => void;
   onFocusInput?: (inputKey: string) => void;
   onRemoveInput?: (inputKey: string) => void;
+  onRemoveAllText?: () => void;
   onReorderInputs?: (inputKeys: string[]) => void;
   onRetryInputPreview?: (inputKey: string) => void;
   onUploadReference: (file: File, mediaKind: VideoReferenceInputV2["mediaKind"]) => Promise<{ id: string; kind: string }>;
@@ -181,7 +182,7 @@ function LegacyVideoReferenceStrip({ currentNodeId, disabled = false, onChange, 
   );
 }
 
-function VideoReferenceStripV2({ allowMediaAdd = true, capabilities, currentNodeId, disabled = false, inputItems = [], onChange, onConnectCanvasReference, onFocusInput, onRemoveInput, onReorderInputs, onRetryInputPreview, onUploadReference, value }: VideoReferenceStripV2Props) {
+function VideoReferenceStripV2({ allowMediaAdd = true, capabilities, currentNodeId, disabled = false, inputItems = [], onChange, onConnectCanvasReference, onFocusInput, onRemoveInput, onRemoveAllText, onReorderInputs, onRetryInputPreview, onUploadReference, value }: VideoReferenceStripV2Props) {
   const [pickerKind, setPickerKind] = useState<VideoReferenceInputV2["mediaKind"] | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -234,7 +235,7 @@ function VideoReferenceStripV2({ allowMediaAdd = true, capabilities, currentNode
 
   return (
     <div aria-label={VIDEO_UI_COPY.referenceSources} className="relative flex flex-wrap gap-2">
-      {inputItems.length ? <NodeInputTray disabled={disabled} items={inputItems} onFocusSource={onFocusInput} onRemove={onRemoveInput} onReorder={onReorderInputs} onRetryPreview={onRetryInputPreview} /> : null}
+      {inputItems.length ? <NodeInputTray disabled={disabled} items={inputItems} onFocusSource={onFocusInput} onRemove={onRemoveInput} onRemoveAllText={onRemoveAllText} onReorder={onReorderInputs} onRetryPreview={onRetryInputPreview} /> : null}
       {canAddMedia && imageCount < maxImages ? <button aria-label="添加参考图" className={`inline-flex items-center gap-1.5 px-[9px] ${VIDEO_COMPOSER_CAPSULE_CLASS}`} disabled={disabled} onClick={() => { if (!disabled) setPickerKind("image"); }} style={{ height: videoComposerDensity.capsuleHeight, borderRadius: videoComposerDensity.capsuleRadius }} type="button"><ImagePlus size={14} />添加参考图</button> : null}
       {canAddMedia && videoCount < maxVideos ? <button aria-label={capabilities.referenceSemantics === "style_images_and_source_video" ? "添加源视频" : "添加参考视频"} className={`inline-flex items-center gap-1.5 px-[9px] ${VIDEO_COMPOSER_CAPSULE_CLASS}`} disabled={disabled} onClick={() => { if (!disabled) setPickerKind("video"); }} style={{ height: videoComposerDensity.capsuleHeight, borderRadius: videoComposerDensity.capsuleRadius }} type="button"><ImagePlus size={14} />{capabilities.referenceSemantics === "style_images_and_source_video" ? "添加源视频" : "添加参考视频"}</button> : null}
       {canAddMedia && audioCount < maxAudios ? <button aria-label="添加参考音频" className={`inline-flex items-center gap-1.5 px-[9px] ${VIDEO_COMPOSER_CAPSULE_CLASS}`} disabled={disabled} onClick={() => { if (!disabled) setPickerKind("audio"); }} style={{ height: videoComposerDensity.capsuleHeight, borderRadius: videoComposerDensity.capsuleRadius }} type="button"><ImagePlus size={14} />添加参考音频</button> : null}

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { CanvasInputItem } from "./canvasInputProjection";
@@ -74,6 +74,67 @@ describe("NodeInputTray", () => {
     rerender(<NodeInputTray items={[videoA]} />);
     fireEvent.mouseEnter(screen.getByTitle("Clip"));
     expect(screen.getByLabelText("视频预览 Clip")).not.toBeNull();
+  });
+
+  it("anchors text and overflow portals to their triggers within the viewport", () => {
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 768 });
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 1024 });
+    const media = Array.from({ length: 8 }, (_, index) => ({ ...imageA, assetId: `image-${index}`, inputKey: `asset:image-${index}`, order: index + 1, title: `Image ${index}` }));
+    render(<NodeInputTray items={[textA, ...media]} />);
+
+    const textTrigger = screen.getByRole("button", { name: "文本输入，共 1 个节点" });
+    vi.spyOn(textTrigger, "getBoundingClientRect").mockReturnValue({ bottom: 760, height: 52, left: 900, right: 952, top: 708, width: 52, x: 900, y: 708, toJSON: () => ({}) });
+    fireEvent.mouseEnter(textTrigger);
+    const textMenu = screen.getByRole("menu", { name: "文本输入节点" });
+    vi.spyOn(textMenu, "getBoundingClientRect").mockReturnValue({ bottom: 0, height: 300, left: 0, right: 260, top: 0, width: 260, x: 0, y: 0, toJSON: () => ({}) });
+    fireEvent(window, new Event("resize"));
+    expect(textMenu.style.position).toBe("fixed");
+    expect(textMenu.style.visibility).toBe("visible");
+    expect(textMenu.style.left).toBe("692px");
+    expect(textMenu.style.top).toBe("402px");
+
+    const overflowTrigger = screen.getByRole("button", { name: "显示另外 1 个输入" });
+    vi.spyOn(overflowTrigger, "getBoundingClientRect").mockReturnValue({ bottom: 760, height: 52, left: 900, right: 952, top: 708, width: 52, x: 900, y: 708, toJSON: () => ({}) });
+    fireEvent.click(overflowTrigger);
+    const overflowMenu = screen.getByRole("menu", { name: "更多输入" });
+    vi.spyOn(overflowMenu, "getBoundingClientRect").mockReturnValue({ bottom: 0, height: 300, left: 0, right: 208, top: 0, width: 208, x: 0, y: 0, toJSON: () => ({}) });
+    fireEvent(window, new Event("resize"));
+    expect(overflowMenu.style.position).toBe("fixed");
+    expect(overflowMenu.style.visibility).toBe("visible");
+    expect(overflowMenu.style.left).toBe("744px");
+    expect(overflowMenu.style.top).toBe("402px");
+  });
+
+  it("focuses upstream media and dismisses keyboard-open previews with Escape", async () => {
+    const onFocusSource = vi.fn();
+    const upstreamImage = { ...imageA, inputKey: "upstream:image-a", source: "upstream" as const, sourceNodeId: "image-a" };
+    render(<NodeInputTray items={[upstreamImage]} onFocusSource={onFocusSource} />);
+
+    const card = screen.getByTitle("Reference image");
+    fireEvent.click(card);
+    fireEvent.doubleClick(card);
+    fireEvent.keyDown(card, { key: "Enter" });
+    expect(onFocusSource).toHaveBeenCalledTimes(3);
+    expect(onFocusSource).toHaveBeenLastCalledWith("upstream:image-a");
+
+    fireEvent.focus(card);
+    await waitFor(() => expect(screen.getByRole("dialog", { name: "预览 Reference image" })).not.toBeNull());
+    fireEvent.keyDown(card, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "预览 Reference image" })).toBeNull());
+    expect(document.activeElement).toBe(card);
+  });
+
+  it("keeps upstream media focusable in the overflow menu", () => {
+    const onFocusSource = vi.fn();
+    const media = Array.from({ length: 9 }, (_, index) => ({ ...imageA, inputKey: `upstream:image-${index}`, order: index, source: "upstream" as const, sourceNodeId: `image-${index}`, title: `Image ${index}` }));
+    render(<NodeInputTray items={media} onFocusSource={onFocusSource} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "显示另外 1 个输入" }));
+    const focusRow = screen.getByRole("menuitem", { name: "聚焦输入 9：Image 8" });
+    fireEvent.click(focusRow);
+    fireEvent.keyDown(focusRow, { key: "Enter" });
+    expect(onFocusSource).toHaveBeenCalledTimes(2);
+    expect(onFocusSource).toHaveBeenLastCalledWith("upstream:image-8");
   });
 
   it("preserves disabled retry and remove controls", () => {

@@ -4347,6 +4347,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const leftPanelOpen = useFlowCanvasStore((s) => s.leftPanelOpen);
   const selectNodesByIds = useFlowCanvasStore((s) => s.selectNodesByIds);
   const removeNodeInput = useFlowCanvasStore((s) => s.removeNodeInput);
+  const removeTextNodeInputs = useFlowCanvasStore((s) => s.removeTextNodeInputs);
   const reorderNodeInputs = useFlowCanvasStore((s) => s.reorderNodeInputs);
   const upstreamInputRefs = useFlowCanvasStore(
     (s) => s.graphIndex.upstreamInputRefsByNodeId[id] || EMPTY_UPSTREAM_IMAGE_REFS,
@@ -7309,6 +7310,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
               items={resolvedImageInputItems}
               onFocusSource={handleFocusNodeInput}
               onRemove={(inputKey) => removeNodeInput(id, inputKey)}
+              onRemoveAllText={() => removeTextNodeInputs(id)}
               onReorder={(inputKeys) => reorderNodeInputs(id, inputKeys)}
               onRetryPreview={handleRetryNodeInputPreview}
             />
@@ -7618,6 +7620,7 @@ export const VideoNodeComponent = memo(function VideoNode({
   const backendProjectId = useFlowCanvasStore((s) => s.backendProjectId);
   const connectVideoReference = useFlowCanvasStore((s) => s.connectVideoReference);
   const removeNodeInput = useFlowCanvasStore((s) => s.removeNodeInput);
+  const removeTextNodeInputs = useFlowCanvasStore((s) => s.removeTextNodeInputs);
   const reorderNodeInputs = useFlowCanvasStore((s) => s.reorderNodeInputs);
   const selectNodesByIds = useFlowCanvasStore((s) => s.selectNodesByIds);
   const updateNodeData = useFlowCanvasStore((s) => s.updateNodeData);
@@ -7979,6 +7982,7 @@ export const VideoNodeComponent = memo(function VideoNode({
               onFocusInput={handleFocusVideoInput}
               onGenerate={handleGenerate}
               onRemoveInput={(inputKey) => removeNodeInput(id, inputKey)}
+              onRemoveAllText={() => removeTextNodeInputs(id)}
               onReorderInputs={(inputKeys) => reorderNodeInputs(id, inputKeys)}
               onRetryInputPreview={handleRetryVideoInputPreview}
               onUpdate={(patch) => updateNodeData(id, patch)}
