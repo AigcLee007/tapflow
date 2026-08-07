@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Flow Canvas Node Components - TapNow Style
  *
  * Content nodes with embedded generation prompt bars.
@@ -5726,7 +5726,12 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       const next = Array.from(new Set([...referencedAssetItemIds, itemId]));
       const nextRecent = [itemId, ...recentAssetItemIds.filter((idValue) => idValue !== itemId)].slice(0, 8);
       const nextOrder = Array.from(new Set([...referenceOrder, itemKey]));
+      const nextInputOrder = Array.from(new Set([
+        ...resolvedImageInputItems.map((input) => input.inputKey),
+        itemKey,
+      ]));
       updateNodeData(id, {
+        inputOrder: nextInputOrder,
         referenceAssetItemIds: next,
         referenceOrder: nextOrder,
         params: {
@@ -5741,7 +5746,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       setMentionQuery('');
       setAssetMenuIndex(0);
     },
-    [id, insertReferenceMention, p, recentAssetItemIds, referenceOrder, referencedAssetItemIds, updateNodeData],
+    [id, insertReferenceMention, p, recentAssetItemIds, referenceOrder, referencedAssetItemIds, resolvedImageInputItems, updateNodeData],
   );
 
   const handlePickConnectedRef = useCallback(
@@ -5775,13 +5780,9 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
 
   const handleRemoveAssetRef = useCallback(
     (itemId: string) => {
-      const itemKey = `asset:${itemId}`;
-      updateNodeData(id, {
-        referenceAssetItemIds: referencedAssetItemIds.filter((idValue) => idValue !== itemId),
-        referenceOrder: referenceOrder.filter((key) => key !== itemKey),
-      });
+      removeNodeInput(id, `asset:${itemId}`);
     },
-    [id, referenceOrder, referencedAssetItemIds, updateNodeData],
+    [id, removeNodeInput],
   );
 
   const handleRemoveReference = useCallback(
@@ -5790,12 +5791,9 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
         handleRemoveAssetRef(refItem.id);
         return;
       }
-      removeEdgesByIds(refItem.edgeId ? [refItem.edgeId] : []);
-      updateNodeData(id, {
-        referenceOrder: referenceOrder.filter((key) => key !== refItem.key),
-      });
+      removeNodeInput(id, refItem.key);
     },
-    [handleRemoveAssetRef, referenceOrder, removeEdgesByIds, updateNodeData],
+    [handleRemoveAssetRef, id, removeNodeInput],
   );
 
   const handleRemovePromptReference = useCallback(
@@ -5809,22 +5807,19 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       promptValueRef.current = nextPrompt;
 
       if (refItem.source === 'asset') {
-        const itemKey = `asset:${refItem.id}`;
         updateNodeData(id, {
           generationPrompt: nextPrompt,
-          referenceAssetItemIds: referencedAssetItemIds.filter((idValue) => idValue !== refItem.id),
-          referenceOrder: referenceOrder.filter((key) => key !== itemKey),
         });
+        removeNodeInput(id, `asset:${refItem.id}`);
         return;
       }
 
-      removeEdgesByIds(refItem.edgeId ? [refItem.edgeId] : []);
       updateNodeData(id, {
         generationPrompt: nextPrompt,
-        referenceOrder: referenceOrder.filter((key) => key !== refItem.key),
       });
+      removeNodeInput(id, refItem.key);
     },
-    [id, referenceOrder, referencedAssetItemIds, removeEdgesByIds, updateNodeData],
+    [id, removeNodeInput, updateNodeData],
   );
 
   const deferRemovePromptReference = useCallback(
