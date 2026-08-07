@@ -318,6 +318,9 @@ describe('flowCanvasStore upstream image references', () => {
     const after = useFlowCanvasStore.getState();
     expect(after.edges).toEqual([expect.objectContaining({ source: image.id, target: target.id })]);
     expect(after.nodes.find((node) => node.id === target.id)?.data.inputOrder).toEqual([`upstream:${image.id}`]);
+    expect(after.graphIndex.upstreamInputRefsByNodeId[target.id]).toEqual([
+      expect.objectContaining({ inputKey: `upstream:${image.id}`, sourceNodeId: image.id }),
+    ]);
     expect(after.history).toHaveLength(before.history.length + 1);
     expect(after.isDirty).toBe(true);
   });
