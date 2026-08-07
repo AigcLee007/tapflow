@@ -35,6 +35,18 @@ export type FlowNodeStatus =
 
 // ─── Generation Status (embedded in content nodes) ───────────
 export type FlowGenerationStatus = 'idle' | 'generating' | 'done' | 'error';
+export type FlowMediaMentionKind = 'image' | 'video' | 'audio';
+
+/**
+ * Durable identity for a media mention in a generation prompt.
+ * Preview URLs and other transient asset metadata must stay out of this type.
+ */
+export interface FlowMediaMentionBinding {
+  inputKey: string;
+  kind: FlowMediaMentionKind;
+  label: string;
+}
+
 export type FlowMultiImageDisplayMode = 'combined' | 'split_nodes';
 export type FlowImageGenerationMode =
   | 'standard'
@@ -320,6 +332,7 @@ export interface FlowNodeData {
   referenceAssetItemIds?: string[];
   referenceOrder?: string[];
   inputOrder?: string[];
+  mediaMentionBindings?: FlowMediaMentionBinding[];
   lastGenerationInputSignature?: string;
   generationReferenceComparison?: FlowImageReferenceComparisonSource | null;
   generationMode?: FlowImageGenerationMode;
