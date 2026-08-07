@@ -28,6 +28,7 @@ type Props = {
   catalog?: ReturnType<typeof useVideoGenerationCatalog>;
   data: FlowNodeData;
   generating: boolean;
+  inputsUpdated?: boolean;
   inputItems?: CanvasInputItem[];
   allowMediaAdd?: boolean;
   nodeId: string;
@@ -43,7 +44,7 @@ type Props = {
   selected: boolean;
 };
 
-export function VideoNodeComposer({ allowMediaAdd = true, catalog: catalogOverride, data, generating, inputItems, nodeId, onConnectCanvasReference = () => undefined, onFocusInput, onGenerate, onRemoveInput, onReorderInputs, onRetryInputPreview, onUpdate, onUploadReference = async () => { throw new Error("REFERENCE_UPLOAD_UNAVAILABLE"); }, referencePreviewUrlsBySource, selected }: Props) {
+export function VideoNodeComposer({ allowMediaAdd = true, catalog: catalogOverride, data, generating, inputItems, inputsUpdated = false, nodeId, onConnectCanvasReference = () => undefined, onFocusInput, onGenerate, onRemoveInput, onReorderInputs, onRetryInputPreview, onUpdate, onUploadReference = async () => { throw new Error("REFERENCE_UPLOAD_UNAVAILABLE"); }, referencePreviewUrlsBySource, selected }: Props) {
   const loadedCatalog = useVideoGenerationCatalog();
   const catalog = catalogOverride ?? loadedCatalog;
   const [modelOpen, setModelOpen] = useState(false);
@@ -150,6 +151,8 @@ export function VideoNodeComposer({ allowMediaAdd = true, catalog: catalogOverri
     <div className="mt-2 flex min-w-0 flex-wrap gap-2" data-testid="video-composer-references">
       <VideoReferenceStrip allowMediaAdd={allowMediaAdd} capabilities={capabilities ?? createSafeDefaultVideoCapabilities()} currentNodeId={nodeId} disabled={generating} inputItems={inputItems} onChange={(next) => setParams({ ...params, ...next })} onConnectCanvasReference={onConnectCanvasReference} onFocusInput={onFocusInput} onRemoveInput={onRemoveInput} onReorderInputs={onReorderInputs} onRetryInputPreview={onRetryInputPreview} onUploadReference={onUploadReference} value={params} />
     </div>
+
+    {inputsUpdated ? <div className="mt-2 text-xs font-bold text-amber-300" role="status">输入已更新</div> : null}
 
       <textarea aria-label={VIDEO_UI_COPY.videoPrompt} className="mt-2 min-h-[52px] max-h-[120px] w-full resize-y bg-transparent text-sm outline-none placeholder:text-white/35 disabled:cursor-not-allowed disabled:opacity-55" disabled={generating} onChange={(event) => onUpdate({ generationPrompt: event.target.value })} placeholder={VIDEO_UI_COPY.promptPlaceholder} value={data.generationPrompt || ""} />
     <div className="mt-2 flex flex-col gap-2 border-t border-white/10 pt-2 md:flex-row md:flex-nowrap md:items-center" data-testid="video-composer-actions">

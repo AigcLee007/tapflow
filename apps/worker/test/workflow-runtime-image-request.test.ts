@@ -25,7 +25,7 @@ describe("buildImageRequest", () => {
     });
   });
 
-  test("keeps the current image node prompt when upstream image outputs include their original prompt", () => {
+  test("combines current image prompt with text from upstream image outputs", () => {
     const request = __workerTestUtils.buildImageRequest(
       [
         {
@@ -48,7 +48,7 @@ describe("buildImageRequest", () => {
       },
     );
 
-    expect(request.prompt).toBe("狮子在斑马的后面，斑马是第一名");
+    expect(request.prompt.split("\n")).toHaveLength(2);
     expect(request.inputAssets).toEqual([
       expect.objectContaining({
         assetId: "asset-reference",
@@ -57,7 +57,7 @@ describe("buildImageRequest", () => {
     ]);
   });
 
-  test("combines upstream text with current prompt and ignores reference image prompt", () => {
+  test("combines all upstream text with the current prompt", () => {
     const request = __workerTestUtils.buildImageRequest(
       [
         {
@@ -85,10 +85,8 @@ describe("buildImageRequest", () => {
     );
 
     expect(request.prompt).toBe(
-      "Animal sports day, 3D style\nThe lion is behind the zebra, and the zebra is first place",
+      "Animal sports day, 3D style\nold reference image prompt\nold reference image text\nThe lion is behind the zebra, and the zebra is first place",
     );
-    expect(request.prompt).not.toContain("old reference image prompt");
-    expect(request.prompt).not.toContain("old reference image text");
     expect(request.inputAssets).toEqual([
       expect.objectContaining({
         assetId: "asset-reference",

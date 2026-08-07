@@ -222,7 +222,7 @@ import {
   resolvePanoramaAspectRatio,
 } from '../panorama/panoramaUtils';
 import { NodeInputTray } from '../inputs/NodeInputTray';
-import { resolveCanvasInputItems, type CanvasInputSeed } from '../inputs/canvasInputProjection';
+import { buildCanvasInputSignature, resolveCanvasInputItems, type CanvasInputSeed } from '../inputs/canvasInputProjection';
 import { useCanvasInputAssets } from '../inputs/useCanvasInputAssets';
 
 type FlowNode = Node<FlowNodeData>;
@@ -5271,6 +5271,12 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [closeResultStrip, resultStripOpen]);
 
+  const currentImageInputSignature = useMemo(() => buildCanvasInputSignature({
+    items: resolvedImageInputItems,
+    localPrompt: String(d.generationPrompt || ''),
+    targetNodeId: id,
+  }), [d.generationPrompt, id, resolvedImageInputItems]);
+  const imageInputsUpdated = Boolean(d.lastGenerationInputSignature && d.lastGenerationInputSignature !== currentImageInputSignature);
   const handleGenerate = () => {
     if (isGenerating) return;
     if (!selectedRuntimeRoute?.routeKey) {
@@ -5294,6 +5300,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       .filter((url) => !String(url || '').trim().toLowerCase().startsWith('blob:'));
     updateNodeData(id, {
       generationReferenceComparison: buildImageViewerComparisonSource(referenceChips),
+      lastGenerationInputSignature: currentImageInputSignature,
       referenceImages,
       routeKey: selectedRuntimeRoute.routeKey,
     });
@@ -7305,6 +7312,9 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
               onReorder={(inputKeys) => reorderNodeInputs(id, inputKeys)}
               onRetryPreview={handleRetryNodeInputPreview}
             />
+            {imageInputsUpdated && (
+              <span role="status" style={{ color: '#fbbf24', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>输入已更新</span>
+            )}
             <button
               type="button"
               className="nodrag nopan"
@@ -7751,6 +7761,12 @@ export const VideoNodeComponent = memo(function VideoNode({
     || runtimeNodeStatus === 'waiting_provider'
     || d.generationStatus === 'generating';
 
+  const currentVideoInputSignature = useMemo(() => buildCanvasInputSignature({
+    items: resolvedVideoInputItems,
+    localPrompt: String(d.generationPrompt || ''),
+    targetNodeId: id,
+  }), [d.generationPrompt, id, resolvedVideoInputItems]);
+  const videoInputsUpdated = Boolean(d.lastGenerationInputSignature && d.lastGenerationInputSignature !== currentVideoInputSignature);
   useEffect(() => {
     if (hasReadyVideo) return;
     const nextAspectRatio = parseAspectRatio(videoParams.aspectRatio) ?? (requestedVideoSize.width / requestedVideoSize.height);
@@ -7801,6 +7817,7 @@ export const VideoNodeComponent = memo(function VideoNode({
         generationStatus: 'generating',
         params: { ...(d.params || {}), videoGeneration: corrected.params },
         routeKey: option.routeKey,
+        lastGenerationInputSignature: currentVideoInputSignature,
         status: 'pending',
       });
     void runBackendWorkflow({ runMode: 'target_node', targetNodeId: id }).catch(() => undefined);
@@ -7987,6 +8004,7 @@ export const VideoNodeComponent = memo(function VideoNode({
               catalog={videoCatalog}
               data={d}
               generating={isGenerating}
+              inputsUpdated={videoInputsUpdated}
               inputItems={resolvedVideoInputItems}
               nodeId={id}
               onConnectCanvasReference={(input) => connectVideoReference({ ...input, targetNodeId: id })}

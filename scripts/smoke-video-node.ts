@@ -443,7 +443,7 @@ const generationControlsLocked = await mobilePage.evaluate(() => {
     'textarea[aria-label="视频提示词"]',
     '[data-testid="video-composer-tools"] button',
     '[data-testid="video-composer-settings-group"] button',
-    'button[aria-label="生成视频"]',
+    '[data-testid="video-composer-submit-group"] button',
   ];
   const controls = selectors.flatMap((selector) => [...document.querySelectorAll(selector)]);
   return controls.length >= 7 && controls.every((control) => control.disabled);

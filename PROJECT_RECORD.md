@@ -1,7 +1,14 @@
 ﻿# Project Record
 
-Last updated: 2026-08-05
+Last updated: 2026-08-07
 Maintainers: project team + Codex sessions
+
+## 2026-08-07 - Unified Canvas Node Inputs (Scheme B)
+
+- image and video nodes now project connected upstream text, image, video, and audio inputs through one ordered `inputOrder` model; local prompts are merged with upstream text in the worker without persisting preview URLs or media payloads in the canvas draft;
+- successful image and video generation records a privacy-safe input signature. When the local prompt, ordered input, text revision, asset, or reference role changes, the composer shows `输入已更新` until the next generation;
+- added a focused node-input-tray browser smoke command and captured desktop, tablet, and mobile artifacts locally. The smoke exercises the real XYFlow video node across `1440x900`, `1024x768`, and `390x844`, including viewport-boundary, generation-lock, and reference-input behavior;
+- verification: unified frontend regression suite `121/121` passed; Worker suite `77` passed with `17` existing infrastructure-dependent skips; frontend and Worker builds exited `0`; `npm run smoke:node-input-tray` returned `status: ok`. The complete root `npm test` exceeded the 240-second command limit and ended with the existing Three.js/React warnings and reporter `EPIPE`, so it is not counted as passing. Local Redis was unavailable, so Worker tests emitted non-fatal ioredis connection stderr.
 
 ## 2026-08-05 - Video Composer Default And Generation Feedback
 

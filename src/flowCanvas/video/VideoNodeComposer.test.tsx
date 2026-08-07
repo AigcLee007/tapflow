@@ -35,6 +35,14 @@ function usableVideoCatalog(models = [usableVideoOption()]) {
 }
 
 describe("VideoNodeComposer", () => {
+  test("announces when inputs have changed since the last generation", () => {
+    const data = { generationPrompt: "", params: { videoGeneration: createDefaultVideoGenerationParams() } } as any;
+
+    render(<VideoNodeComposer data={data} generating={false} inputsUpdated nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} selected />);
+
+    expect(screen.getByRole("status").textContent).toContain("输入已更新");
+  });
+
   test("passes unified text inputs into the reference area for text-to-video", () => {
     render(
       <VideoNodeComposer
