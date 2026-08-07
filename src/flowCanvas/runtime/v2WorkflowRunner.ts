@@ -1118,9 +1118,7 @@ async function applyWorkflowRunSnapshot(snapshot: GetWorkflowRunResponse): Promi
     runStatus: snapshot.workflowRun.status,
   }));
 
-  for (const [nodeId, output] of Object.entries(nodeOutputByNodeId)) {
-    useFlowCanvasStore.getState().setNodeRuntimeOutput(nodeId, output);
-  }
+  useFlowCanvasStore.getState().setNodeRuntimeOutputs(nodeOutputByNodeId);
 
   persistNodeOutputsFromRun(scopedNodeRuns, assetRefsByNodeId);
 }

@@ -177,6 +177,42 @@ describe('flowCanvasStore upstream image references', () => {
     }));
   });
 
+  it('updates multiple runtime outputs and graph index in one store transition', () => {
+    const text = useFlowCanvasStore.getState().addNode('text', { x: 0, y: 0 }, { title: 'Text source' });
+    const image = useFlowCanvasStore.getState().addNode('image', { x: 0, y: 240 }, { title: 'Image source' });
+    const target = useFlowCanvasStore.getState().addNode('video', { x: 420, y: 0 }, { title: 'Video target' });
+
+    useFlowCanvasStore.getState().onConnect({ source: text.id, sourceHandle: 'out', target: target.id, targetHandle: 'in' });
+    useFlowCanvasStore.getState().onConnect({ source: image.id, sourceHandle: 'out', target: target.id, targetHandle: 'in' });
+
+    let notifications = 0;
+    const unsubscribe = useFlowCanvasStore.subscribe(() => {
+      notifications += 1;
+    });
+    useFlowCanvasStore.getState().setNodeRuntimeOutputs({
+      [text.id]: { text: 'batched runtime text' },
+      [image.id]: {
+        assets: [{
+          assetId: 'batched-runtime-image',
+          downloadUrl: 'https://cdn.test/batched-runtime-image.png',
+          kind: 'image',
+          mimeType: 'image/png',
+        }],
+      },
+    });
+    unsubscribe();
+
+    expect(notifications).toBe(1);
+    expect(useFlowCanvasStore.getState().graphIndex.upstreamInputRefsByNodeId[target.id]).toEqual([
+      expect.objectContaining({ inputKey: `upstream:${text.id}`, textExcerpt: 'batched runtime text' }),
+      expect.objectContaining({
+        assetId: 'batched-runtime-image',
+        inputKey: `upstream:${image.id}`,
+        previewUrl: 'https://cdn.test/batched-runtime-image.png',
+      }),
+    ]);
+  });
+
   it('keeps only the first unified input seed for duplicate source edges', () => {
     const source = useFlowCanvasStore.getState().addNode('text', { x: 0, y: 0 }, { title: 'Text source' });
     const target = useFlowCanvasStore.getState().addNode('video', { x: 420, y: 0 }, { title: 'Video target' });

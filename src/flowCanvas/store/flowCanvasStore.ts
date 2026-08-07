@@ -185,6 +185,7 @@ interface FlowCanvasState {
   duplicateSelectedNodes: () => void;
   mergeTemplateGraph: (graph: { nodes: FlowNode[]; edges: FlowEdge[] }) => void;
   restoreGraphSnapshot: (graph: { nodes: FlowNode[]; edges: FlowEdge[]; viewport?: Viewport }) => void;
+  setNodeRuntimeOutputs: (outputs: Record<string, FlowRuntimeNodeOutput | null | undefined>) => void;
   setNodeRuntimeOutput: (nodeId: string, output: FlowRuntimeNodeOutput | null) => void;
   updateNodeData: (nodeId: string, patch: Partial<FlowNodeData>) => void;
   updateProjectDirector3d: (director3d: FlowDirector3dData) => void;
@@ -1428,19 +1429,25 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
     });
   },
 
-  setNodeRuntimeOutput: (nodeId, output) => {
+  setNodeRuntimeOutputs: (outputs) => {
     set((state) => {
       const nodeOutputByNodeId = { ...state.nodeOutputByNodeId };
-      if (output) {
-        nodeOutputByNodeId[nodeId] = output;
-      } else {
-        delete nodeOutputByNodeId[nodeId];
+      for (const [nodeId, output] of Object.entries(outputs)) {
+        if (output) {
+          nodeOutputByNodeId[nodeId] = output;
+        } else {
+          delete nodeOutputByNodeId[nodeId];
+        }
       }
       return {
         nodeOutputByNodeId,
         graphIndex: buildGraphIndex(state.nodes, state.edges, nodeOutputByNodeId),
       };
     });
+  },
+
+  setNodeRuntimeOutput: (nodeId, output) => {
+    get().setNodeRuntimeOutputs({ [nodeId]: output });
   },
 
   updateNodeData: (nodeId, patch) => {
