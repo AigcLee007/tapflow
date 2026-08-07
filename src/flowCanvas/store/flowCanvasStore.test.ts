@@ -9,6 +9,55 @@ describe('flowCanvasStore upstream image references', () => {
     useFlowCanvasStore.getState().newProject();
   });
 
+  it('indexes text and previewless asset-backed image inputs in incoming edge order', () => {
+    const text = useFlowCanvasStore.getState().addNode('text', { x: 0, y: 0 }, {
+      generationPrompt: 'fallback prompt',
+      text: 'stale node text',
+      title: 'Scene brief',
+    });
+    const image = useFlowCanvasStore.getState().addNode('image', { x: 0, y: 240 }, {
+      assetId: 'asset-previewless-image',
+      durationMs: 1_200,
+      title: 'Reference still',
+    });
+    const target = useFlowCanvasStore.getState().addNode('video', { x: 420, y: 0 }, { title: 'Video target' });
+    const runtimeText = 'r'.repeat(80);
+
+    useFlowCanvasStore.setState({
+      nodeOutputByNodeId: {
+        [text.id]: { text: runtimeText },
+      },
+    });
+    useFlowCanvasStore.getState().onConnect({ source: text.id, sourceHandle: 'out', target: target.id, targetHandle: 'in' });
+    useFlowCanvasStore.getState().onConnect({ source: image.id, sourceHandle: 'out', target: target.id, targetHandle: 'in' });
+
+    expect(useFlowCanvasStore.getState().graphIndex.upstreamInputRefsByNodeId[target.id]).toEqual([
+      expect.objectContaining({
+        edgeId: expect.any(String),
+        inputKey: `upstream:${text.id}`,
+        kind: 'text',
+        previewState: 'unavailable',
+        source: 'upstream',
+        sourceNodeId: text.id,
+        sourceRevision: expect.any(String),
+        textExcerpt: `${'r'.repeat(77)}...`,
+        title: 'Scene brief',
+      }),
+      expect.objectContaining({
+        assetId: 'asset-previewless-image',
+        durationMs: 1_200,
+        edgeId: expect.any(String),
+        inputKey: `upstream:${image.id}`,
+        kind: 'image',
+        previewState: 'unavailable',
+        source: 'upstream',
+        sourceNodeId: image.id,
+        sourceRevision: expect.any(String),
+        title: 'Reference still',
+      }),
+    ]);
+  });
+
   it('connects a selected upstream video as a typed dependency', () => {
     const source = useFlowCanvasStore.getState().addNode('video', { x: 0, y: 0 }, {
       assetId: 'asset-video-source',

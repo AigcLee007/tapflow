@@ -21,6 +21,7 @@ import { normalizeVideoGenerationParams } from '../video/videoGenerationParams';
 import type { VideoReferenceInputV2 } from '../video/videoTypes';
 import { PANORAMA_GENERATION_MODE, type PanoramaGenerateSettings } from '../panorama/panoramaTypes';
 import { buildPanoramaGenerationPrompt } from '../panorama/panoramaUtils';
+import { toUpstreamInputKey, type CanvasInputSeed } from '../inputs/canvasInputProjection';
 import type {
   FlowRuntimeNodeOutput,
 } from '../types';
@@ -79,6 +80,7 @@ export interface FlowDerivedEditCounts {
 }
 
 export interface FlowGraphIndex {
+  upstreamInputRefsByNodeId: Record<string, CanvasInputSeed[]>;
   upstreamMediaRefsByNodeId: Record<string, FlowUpstreamMediaRef[]>;
   upstreamImageRefsByNodeId: Record<string, FlowUpstreamImageRef[]>;
   hasIncomingEdgesByNodeId: Record<string, boolean>;
@@ -250,6 +252,7 @@ const resetStaleTextGenerationNodes = (nodes: FlowNode[]) =>
   });
 
 const EMPTY_GRAPH_INDEX: FlowGraphIndex = {
+  upstreamInputRefsByNodeId: {},
   upstreamMediaRefsByNodeId: {},
   upstreamImageRefsByNodeId: {},
   hasIncomingEdgesByNodeId: {},
@@ -286,6 +289,22 @@ const getNodeReferenceMediaKind = (
   if (mimeType.startsWith('video/')) return 'video';
   if (mimeType.startsWith('audio/')) return 'audio';
   return null;
+};
+
+const getNodeReferenceInputKind = (
+  node: FlowNode | undefined,
+  runtimeNodeOutput?: FlowRuntimeNodeOutput,
+): CanvasInputSeed['kind'] | null => {
+  if (!node) return null;
+  if (String(node.data.kind || '').trim().toLowerCase() === 'text' || node.type === 'text') return 'text';
+  return getNodeReferenceMediaKind(node, runtimeNodeOutput);
+};
+
+const getNodeTextExcerpt = (node: FlowNode, runtimeNodeOutput?: FlowRuntimeNodeOutput) => {
+  const text = [runtimeNodeOutput?.text, node.data.text, node.data.generationPrompt]
+    .map((candidate) => String(candidate || '').trim())
+    .find(Boolean) || '';
+  return text.length > 77 ? `${text.slice(0, 77)}...` : text;
 };
 
 const getNodeReferenceImageUrl = (
@@ -513,6 +532,7 @@ const buildGraphIndex = (
   if (nodes.length === 0 && edges.length === 0) return EMPTY_GRAPH_INDEX;
 
   const nodesById = new Map(nodes.map((node) => [node.id, node]));
+  const upstreamInputRefsByNodeId: FlowGraphIndex['upstreamInputRefsByNodeId'] = {};
   const upstreamMediaRefsByNodeId: FlowGraphIndex['upstreamMediaRefsByNodeId'] = {};
   const upstreamImageRefsByNodeId: FlowGraphIndex['upstreamImageRefsByNodeId'] = {};
   const hasIncomingEdgesByNodeId: FlowGraphIndex['hasIncomingEdgesByNodeId'] = {};
@@ -523,6 +543,39 @@ const buildGraphIndex = (
 
     const sourceNode = nodesById.get(edge.source);
     const sourceRuntimeOutput = nodeOutputByNodeId[edge.source];
+    const sourceInputKind = getNodeReferenceInputKind(sourceNode, sourceRuntimeOutput);
+    if (sourceNode && sourceInputKind) {
+      const sourceAssetId = sourceInputKind === 'text'
+        ? ''
+        : getNodeReferenceAssetId(sourceNode, sourceRuntimeOutput, sourceInputKind);
+      const sourcePreviewUrl = sourceInputKind === 'text'
+        ? ''
+        : getNodeReferencePreviewUrl(sourceNode, sourceRuntimeOutput, sourceInputKind);
+      const durationMs = Number(sourceNode.data.durationMs);
+      const fallbackTitle = sourceInputKind === 'text'
+        ? '文本'
+        : sourceInputKind === 'image'
+          ? '图片'
+          : sourceInputKind === 'video'
+            ? '视频'
+            : '音频';
+      const inputRefs = upstreamInputRefsByNodeId[edge.target] || [];
+      inputRefs.push({
+        inputKey: toUpstreamInputKey(sourceNode.id),
+        source: 'upstream',
+        kind: sourceInputKind,
+        title: String(sourceNode.data.title || '').trim() || fallbackTitle,
+        edgeId: edge.id,
+        sourceNodeId: sourceNode.id,
+        ...(sourceAssetId ? { assetId: sourceAssetId } : {}),
+        ...(sourceInputKind === 'text' ? { textExcerpt: getNodeTextExcerpt(sourceNode, sourceRuntimeOutput) } : {}),
+        ...(sourcePreviewUrl ? { previewUrl: sourcePreviewUrl } : {}),
+        ...(Number.isFinite(durationMs) ? { durationMs } : {}),
+        sourceRevision: String(sourceNode.data.updatedAt),
+        previewState: sourcePreviewUrl ? 'ready' : 'unavailable',
+      });
+      upstreamInputRefsByNodeId[edge.target] = inputRefs;
+    }
     const sourceMediaKind = getNodeReferenceMediaKind(sourceNode, sourceRuntimeOutput);
     if (sourceNode && sourceMediaKind) {
       const sourceReferenceUploadId = String(sourceNode.data.referenceUploadId || '').trim();
@@ -572,6 +625,7 @@ const buildGraphIndex = (
   }
 
   return {
+    upstreamInputRefsByNodeId,
     upstreamMediaRefsByNodeId,
     upstreamImageRefsByNodeId,
     hasIncomingEdgesByNodeId,
