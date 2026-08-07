@@ -48,45 +48,38 @@ export function useCanvasInputAssets(items: CanvasInputItem[]) {
     const immediateHoverPreviewUrl = relevantItems
       .map((item) => item.hoverPreviewUrl || item.previewUrl)
       .find(Boolean);
-    try {
-      const asset = await getAsset(assetId);
-      const isVisualAsset = kind === "image" || kind === "video";
-      const [thumbResult, previewResult] = isVisualAsset
-        ? await Promise.allSettled([
-          getAssetVariantUrl(assetId, "thumb"),
-          getAssetVariantUrl(assetId, "preview"),
-        ])
-        : [undefined, undefined];
-      const thumbUrl = thumbResult?.status === "fulfilled" ? thumbResult.value.url : undefined;
-      const previewUrl = previewResult?.status === "fulfilled" ? previewResult.value.url : undefined;
-      const thumbnailUrl = immediateThumbnailUrl || thumbUrl || asset.previewUrl;
-      const hoverPreviewUrl = immediateHoverPreviewUrl || previewUrl || asset.previewUrl;
-      const hasPreview = Boolean(thumbnailUrl || hoverPreviewUrl || kind === "audio");
-      if (!mounted.current || !activeAssetIds.current.has(assetId) || assetGenerations.current[assetId] !== generation) return;
-      setResolvedAssets((current) => ({
-        ...current,
-        [assetId]: {
-          durationMs: asset.durationMs ?? undefined,
-          hoverPreviewUrl,
-          previewState: hasPreview ? "ready" : "unavailable",
-          previewUrl: thumbnailUrl || hoverPreviewUrl,
-          thumbnailUrl,
-          title: getDisplayTitle(asset),
-        },
-      }));
-    } catch {
-      if (!mounted.current || !activeAssetIds.current.has(assetId) || assetGenerations.current[assetId] !== generation) return;
-      const hasImmediatePreview = Boolean(immediateThumbnailUrl || immediateHoverPreviewUrl || kind === "audio");
-      setResolvedAssets((current) => ({
-        ...current,
-        [assetId]: {
-          hoverPreviewUrl: immediateHoverPreviewUrl,
-          previewState: hasImmediatePreview ? "ready" : "error",
-          previewUrl: immediateThumbnailUrl || immediateHoverPreviewUrl,
-          thumbnailUrl: immediateThumbnailUrl,
-        },
-      }));
-    }
+    const isVisualAsset = kind === "image" || kind === "video";
+    const metadataPromise = Promise.resolve()
+      .then(() => getAsset(assetId))
+      .then((asset) => ({ asset, resolved: true as const }), () => ({ asset: undefined, resolved: false as const }));
+    const variantsPromise = isVisualAsset
+      ? Promise.allSettled([
+        Promise.resolve().then(() => getAssetVariantUrl(assetId, "thumb")),
+        Promise.resolve().then(() => getAssetVariantUrl(assetId, "preview")),
+      ])
+      : Promise.resolve([]);
+    const [metadata, variants] = await Promise.all([metadataPromise, variantsPromise]);
+    const thumbResult = variants[0];
+    const previewResult = variants[1];
+    const thumbUrl = thumbResult?.status === "fulfilled" ? thumbResult.value?.url : undefined;
+    const previewUrl = previewResult?.status === "fulfilled" ? previewResult.value?.url : undefined;
+    const legacyPreviewUrl = metadata.asset?.previewUrl;
+    const thumbnailUrl = immediateThumbnailUrl || thumbUrl || (kind === "image" ? legacyPreviewUrl : undefined);
+    const hoverPreviewUrl = immediateHoverPreviewUrl || previewUrl || legacyPreviewUrl;
+    const hasPreview = Boolean(thumbnailUrl || hoverPreviewUrl || (kind === "audio" && metadata.resolved));
+    const variantsFailed = isVisualAsset && thumbResult?.status === "rejected" && previewResult?.status === "rejected";
+    if (!mounted.current || !activeAssetIds.current.has(assetId) || assetGenerations.current[assetId] !== generation) return;
+    setResolvedAssets((current) => ({
+      ...current,
+      [assetId]: {
+        durationMs: metadata.asset?.durationMs ?? undefined,
+        hoverPreviewUrl,
+        previewState: hasPreview ? "ready" : !metadata.resolved && (!isVisualAsset || variantsFailed) ? "error" : "unavailable",
+        previewUrl: thumbnailUrl || hoverPreviewUrl,
+        thumbnailUrl,
+        title: metadata.asset ? getDisplayTitle(metadata.asset) : undefined,
+      },
+    }));
   }, []);
 
   useEffect(() => {

@@ -134,6 +134,40 @@ describe("useCanvasInputAssets", () => {
     expect(getAssetVariantUrl).toHaveBeenCalledWith("asset-video", "preview");
   });
 
+  it("uses a legacy video preview URL only as a hover fallback", async () => {
+    getAsset.mockResolvedValue(makeAsset({
+      id: "asset-video",
+      kind: "video",
+      previewUrl: "https://cdn.test/legacy-video.mp4",
+    }));
+    getAssetVariantUrl.mockRejectedValue(new Error("variant unavailable"));
+
+    const { result } = renderHook(() => useCanvasInputAssets([videoInput]));
+
+    await waitFor(() => expect(result.current.items[0]).toMatchObject({
+      hoverPreviewUrl: "https://cdn.test/legacy-video.mp4",
+      previewState: "ready",
+    }));
+    expect(result.current.items[0].thumbnailUrl).toBeUndefined();
+  });
+
+  it("keeps a preview ready when metadata fails but one media variant resolves", async () => {
+    getAsset.mockRejectedValue(new Error("metadata unavailable"));
+    getAssetVariantUrl.mockImplementation(async (_assetId: string, variant: string) => {
+      if (variant === "thumb") throw new Error("thumb unavailable");
+      return { expiresAt: "2026-08-08T00:00:00.000Z", method: "GET", url: "https://cdn.test/metadata-independent-preview.mp4" };
+    });
+
+    const { result } = renderHook(() => useCanvasInputAssets([videoInput]));
+
+    await waitFor(() => expect(result.current.items[0]).toMatchObject({
+      hoverPreviewUrl: "https://cdn.test/metadata-independent-preview.mp4",
+      previewState: "ready",
+    }));
+    expect(getAssetVariantUrl).toHaveBeenCalledWith("asset-video", "thumb");
+    expect(getAssetVariantUrl).toHaveBeenCalledWith("asset-video", "preview");
+  });
+
   it("keeps a ready thumbnail when the hover variant is unavailable", async () => {
     getAsset.mockResolvedValue(makeAsset());
     getAssetVariantUrl.mockImplementation(async (_assetId: string, variant: string) => {
@@ -162,7 +196,12 @@ describe("useCanvasInputAssets", () => {
       }
       return Promise.resolve(makeAsset({ id: assetId }));
     });
-    getAssetVariantUrl.mockResolvedValue({ expiresAt: "2026-08-08T00:00:00.000Z", method: "GET", url: "https://cdn.test/retry.png" });
+    getAssetVariantUrl.mockImplementation((assetId: string) => {
+      if (assetId === "asset-image" && imageAttempts === 1) {
+        return Promise.reject(new Error("variant unavailable"));
+      }
+      return Promise.resolve({ expiresAt: "2026-08-08T00:00:00.000Z", method: "GET", url: "https://cdn.test/retry.png" });
+    });
 
     const { result } = renderHook(() => useCanvasInputAssets([imageInput, audioInput]));
 
