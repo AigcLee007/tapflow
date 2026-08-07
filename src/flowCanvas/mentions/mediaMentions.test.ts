@@ -34,6 +34,15 @@ describe('media mention bindings', () => {
     expect(result.binding).toEqual(existing[0]);
   });
 
+  it('tolerates malformed persisted bindings as an empty collection', () => {
+    const result = allocateMediaMentionBinding({ bindings: {} as unknown as [], input: imageA });
+
+    expect(result).toEqual({
+      binding: { inputKey: imageA.inputKey, kind: 'image', label: '图片1' },
+      bindings: [{ inputKey: imageA.inputKey, kind: 'image', label: '图片1' }],
+    });
+  });
+
   it('reconciles a legacy @Image number only when exactly one active image can own it', () => {
     const result = reconcileLegacyMediaMentionBindings({
       activeInputs: [imageA],
@@ -68,6 +77,19 @@ describe('media mention bindings', () => {
     });
 
     expect(result).toEqual({ bindings: [], prompt: 'Use @Image 1 as the reference.' });
+  });
+
+  it('does not map a legacy video token through a same-key binding of another kind', () => {
+    const result = reconcileLegacyMediaMentionBindings({
+      activeInputs: [videoA],
+      bindings: [{ inputKey: videoA.inputKey, kind: 'image', label: '图片1' }],
+      prompt: 'Use @Video 1 as the motion reference.',
+    });
+
+    expect(result).toEqual({
+      bindings: [{ inputKey: videoA.inputKey, kind: 'image', label: '图片1' }],
+      prompt: 'Use @Video 1 as the motion reference.',
+    });
   });
 
   it('does not create a binding when a legacy number cannot belong to the only active input', () => {

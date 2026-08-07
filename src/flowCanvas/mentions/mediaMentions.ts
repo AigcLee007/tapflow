@@ -26,7 +26,7 @@ export function allocateMediaMentionBinding({
   bindings,
   input,
 }: {
-  bindings?: FlowMediaMentionBinding[];
+  bindings?: unknown;
   input: MediaMentionInput;
 }): { bindings: FlowMediaMentionBinding[]; binding: FlowMediaMentionBinding } {
   const normalizedBindings = normalizeBindings(bindings);
@@ -51,7 +51,7 @@ export function reconcileLegacyMediaMentionBindings({
   prompt,
 }: {
   activeInputs: MediaMentionInput[];
-  bindings?: FlowMediaMentionBinding[];
+  bindings?: unknown;
   prompt: string;
 }): { bindings: FlowMediaMentionBinding[]; prompt: string } {
   let nextBindings = normalizeBindings(bindings);
@@ -72,7 +72,11 @@ export function reconcileLegacyMediaMentionBindings({
     if (candidates.length !== 1) return token;
 
     const candidate = candidates[0];
-    const existing = nextBindings.find((binding) => binding.inputKey === candidate.inputKey);
+    const sameKeyBinding = nextBindings.find((binding) => binding.inputKey === candidate.inputKey);
+    // A persisted key can only be reused when its media type still agrees with the active input.
+    // Keeping an incompatible binding untouched is safer than rewriting a legacy token to it.
+    if (sameKeyBinding && sameKeyBinding.kind !== kind) return token;
+    const existing = sameKeyBinding?.kind === kind ? sameKeyBinding : undefined;
     const expectedLegacyNumber = existing
       ? existing.label.slice(localizedKindLabels[kind].length)
       : String(nextLabelNumber(nextBindings, kind));
@@ -97,9 +101,12 @@ export function resolveMediaMentionToken({
   return { binding, status: activeKeys.has(binding.inputKey) ? 'valid' : 'invalid' };
 }
 
-function normalizeBindings(bindings?: FlowMediaMentionBinding[]): FlowMediaMentionBinding[] {
+function normalizeBindings(bindings?: unknown): FlowMediaMentionBinding[] {
   const unique = new Map<string, FlowMediaMentionBinding>();
-  for (const binding of bindings ?? []) {
+  const candidates = Array.isArray(bindings) ? bindings : [];
+  for (const candidate of candidates) {
+    if (!candidate || typeof candidate !== 'object') continue;
+    const binding = candidate as Partial<FlowMediaMentionBinding>;
     const inputKey = typeof binding?.inputKey === 'string' ? binding.inputKey.trim() : '';
     const label = typeof binding?.label === 'string' ? binding.label.trim() : '';
     if (!inputKey || !label || !isMediaMentionKind(binding?.kind) || unique.has(inputKey)) continue;
