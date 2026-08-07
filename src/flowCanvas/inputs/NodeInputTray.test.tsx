@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { CanvasInputItem } from "./canvasInputProjection";
 import { NodeInputTray } from "./NodeInputTray";
+import { IMAGE_MENU_SURFACE_Z_INDEX } from "../nodes/imageMenuStyles";
 
 const items: CanvasInputItem[] = [
   { inputKey: "upstream:text", kind: "text", order: 0, previewState: "ready", source: "upstream", textExcerpt: "A very useful prompt", title: "Prompt upstream" },
@@ -198,5 +199,6 @@ describe("NodeInputTray", () => {
 
     expect(menu.parentElement).toBe(document.body);
     expect(transformedCanvas?.contains(menu)).toBe(false);
+    expect(menu.style.zIndex).toBe(String(IMAGE_MENU_SURFACE_Z_INDEX));
   });
 });
