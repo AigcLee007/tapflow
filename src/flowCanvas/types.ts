@@ -319,6 +319,8 @@ export interface FlowNodeData {
   routeId?: string;
   referenceAssetItemIds?: string[];
   referenceOrder?: string[];
+  inputOrder?: string[];
+  lastGenerationInputSignature?: string;
   generationReferenceComparison?: FlowImageReferenceComparisonSource | null;
   generationMode?: FlowImageGenerationMode;
   activeCommandId?: string;
