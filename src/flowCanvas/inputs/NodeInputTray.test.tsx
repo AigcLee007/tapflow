@@ -129,4 +129,44 @@ describe("NodeInputTray", () => {
     expect(screen.queryByRole("menuitem", { name: "聚焦输入 9：First 8" })).toBeNull();
     expect(screen.getByRole("menuitem", { name: "聚焦输入 9：Second 8" })).not.toBeNull();
   });
+
+  it("reorders an overflow input with its complete input-key order", () => {
+    const onReorder = vi.fn();
+    const overflow = Array.from({ length: 9 }, (_, index) => ({ inputKey: `upstream:${index}`, kind: "text" as const, order: index, previewState: "ready" as const, source: "upstream" as const, title: `Input ${index}` }));
+    render(<NodeInputTray items={overflow} onFocusSource={vi.fn()} onReorder={onReorder} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "显示另外 1 个输入" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "上移输入 9：Input 8" }));
+
+    expect(onReorder).toHaveBeenCalledWith([
+      "upstream:0", "upstream:1", "upstream:2", "upstream:3", "upstream:4", "upstream:5", "upstream:6", "upstream:8", "upstream:7",
+    ]);
+  });
+
+  it("clears drag state on dragend so cancelled or external drops cannot reorder", () => {
+    const onReorder = vi.fn();
+    render(<NodeInputTray items={items.slice(0, 3)} onReorder={onReorder} />);
+    const first = screen.getByLabelText("输入 1：Prompt upstream");
+    const third = screen.getByLabelText("输入 3：Clip");
+
+    fireEvent.dragStart(first, { dataTransfer: { setData: vi.fn() } });
+    fireEvent.dragEnd(first);
+    fireEvent.drop(third, { dataTransfer: { getData: () => "upstream:text" } });
+
+    expect(onReorder).not.toHaveBeenCalled();
+  });
+
+  it("announces upstream cards as buttons without nesting mutation buttons and constrains the overflow surface", () => {
+    const overflow = Array.from({ length: 9 }, (_, index) => ({ inputKey: `upstream:${index}`, kind: "text" as const, order: index, previewState: "ready" as const, source: "upstream" as const, title: `Input ${index}` }));
+    render(<NodeInputTray items={overflow} onFocusSource={vi.fn()} onRemove={vi.fn()} />);
+
+    const card = screen.getByRole("button", { name: "输入 1：Input 0" });
+    expect(card.getAttribute("tabindex")).toBe("0");
+    expect(card.querySelector("button")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "显示另外 1 个输入" }));
+    const menu = screen.getByRole("menu", { name: "更多输入" });
+    expect(menu.className).toContain("max-h-");
+    expect(menu.className).toContain("overflow-y-auto");
+    expect(menu.className).toContain("overflow-x-hidden");
+  });
 });

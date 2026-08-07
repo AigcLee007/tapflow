@@ -11,9 +11,7 @@ type ResolvedAsset = {
 };
 
 function assetRequestKey(item: CanvasInputItem): string | null {
-  if (!item.assetId || (item.kind !== "image" && item.kind !== "video" && item.kind !== "audio")) {
-    return null;
-  }
+  if (!item.assetId || (item.kind !== "image" && item.kind !== "video" && item.kind !== "audio")) return null;
   return item.assetId;
 }
 
@@ -23,65 +21,63 @@ function getDisplayTitle(asset: AssetItem): string | undefined {
 
 export function useCanvasInputAssets(items: CanvasInputItem[]) {
   const [resolvedAssets, setResolvedAssets] = useState<Record<string, ResolvedAsset>>({});
-  const [retryRequest, setRetryRequest] = useState<{ assetId: string; nonce: number } | null>(null);
-  const lastAssetIdsKey = useRef<string | null>(null);
+  const activeAssetIds = useRef(new Set<string>());
+  const assetGenerations = useRef<Record<string, number>>({});
+  const itemsRef = useRef(items);
+  const mounted = useRef(true);
+  const previousAssetIds = useRef<Set<string> | null>(null);
+  itemsRef.current = items;
+
   const assetIds = useMemo(
     () => [...new Set(items.map(assetRequestKey).filter((assetId): assetId is string => Boolean(assetId)))].sort(),
     [items],
   );
   const assetIdsKey = assetIds.join("|");
+  activeAssetIds.current = new Set(assetIds);
+
+  const resolveAsset = useCallback(async (assetId: string) => {
+    const generation = (assetGenerations.current[assetId] ?? 0) + 1;
+    assetGenerations.current[assetId] = generation;
+    const relevantItems = itemsRef.current.filter((item) => assetRequestKey(item) === assetId);
+    const immediatePreview = relevantItems.find((item) => item.previewUrl)?.previewUrl;
+    const kind = relevantItems[0]?.kind;
+    try {
+      const asset = await getAsset(assetId);
+      let previewUrl = immediatePreview || asset.previewUrl;
+      if (!previewUrl && (kind === "image" || kind === "video")) {
+        previewUrl = (await getAssetVariantUrl(assetId, "thumb")).url;
+      }
+      if (!mounted.current || !activeAssetIds.current.has(assetId) || assetGenerations.current[assetId] !== generation) return;
+      setResolvedAssets((current) => ({
+        ...current,
+        [assetId]: {
+          durationMs: asset.durationMs ?? undefined,
+          previewState: previewUrl || kind === "audio" ? "ready" : "unavailable",
+          previewUrl,
+          title: getDisplayTitle(asset),
+        },
+      }));
+    } catch {
+      if (!mounted.current || !activeAssetIds.current.has(assetId) || assetGenerations.current[assetId] !== generation) return;
+      setResolvedAssets((current) => ({ ...current, [assetId]: { previewState: "error" } }));
+    }
+  }, []);
+
+  useEffect(() => () => {
+    mounted.current = false;
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function resolveAsset(assetId: string) {
-      const relevantItems = items.filter((item) => assetRequestKey(item) === assetId);
-      const immediatePreview = relevantItems.find((item) => item.previewUrl)?.previewUrl;
-      const kind = relevantItems[0]?.kind;
-      try {
-        const asset = await getAsset(assetId);
-        let previewUrl = immediatePreview || asset.previewUrl;
-        if (!previewUrl && (kind === "image" || kind === "video")) {
-          previewUrl = (await getAssetVariantUrl(assetId, "thumb")).url;
-        }
-        if (cancelled) return;
-        setResolvedAssets((current) => ({
-          ...current,
-          [assetId]: {
-            durationMs: asset.durationMs ?? undefined,
-            previewState: previewUrl || kind === "audio" ? "ready" : "unavailable",
-            previewUrl,
-            title: getDisplayTitle(asset),
-          },
-        }));
-      } catch {
-        if (cancelled) return;
-        setResolvedAssets((current) => ({
-          ...current,
-          [assetId]: { previewState: "error" },
-        }));
-      }
-    }
-
-    const assetIdsToResolve = lastAssetIdsKey.current !== assetIdsKey
-      ? assetIds
-      : retryRequest ? [retryRequest.assetId] : [];
-    lastAssetIdsKey.current = assetIdsKey;
-    assetIdsToResolve.forEach((assetId) => {
-      void resolveAsset(assetId);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  // Asset IDs initialize resolution; a retry targets exactly one known asset.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [assetIdsKey, retryRequest]);
+    const previousIds = previousAssetIds.current;
+    const addedAssetIds = previousIds ? assetIds.filter((assetId) => !previousIds.has(assetId)) : assetIds;
+    previousAssetIds.current = new Set(assetIds);
+    addedAssetIds.forEach((assetId) => { void resolveAsset(assetId); });
+  }, [assetIds, assetIdsKey, resolveAsset]);
 
   const retry = useCallback((assetId: string) => {
-    if (!assetIds.includes(assetId)) return;
-    setRetryRequest((current) => ({ assetId, nonce: (current?.nonce ?? 0) + 1 }));
-  }, [assetIds]);
+    if (!activeAssetIds.current.has(assetId)) return;
+    void resolveAsset(assetId);
+  }, [resolveAsset]);
 
   return {
     items: items.map((item) => {

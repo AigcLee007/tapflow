@@ -170,4 +170,27 @@ describe("useCanvasInputAssets", () => {
 
     expect(result.current.items[0]).toMatchObject({ assetId: "asset-audio", title: "Audio input", previewState: "ready" });
   });
+
+  it("keeps another pending asset active when retrying a different asset", async () => {
+    const resolvers = new Map<string, Array<(asset: AssetItem) => void>>();
+    getAsset.mockImplementation((assetId: string) => new Promise<AssetItem>((resolve) => {
+      const pending = resolvers.get(assetId) ?? [];
+      pending.push(resolve);
+      resolvers.set(assetId, pending);
+    }));
+    getAssetVariantUrl.mockImplementation((assetId: string) => Promise.resolve({ expiresAt: "2026-08-08T00:00:00.000Z", method: "GET", url: `https://cdn.test/${assetId}.png` }));
+    const assetA = { ...imageInput, assetId: "asset-a", inputKey: "asset:asset-a" };
+    const assetB = { ...imageInput, assetId: "asset-b", inputKey: "asset:asset-b", order: 1 };
+    const { result } = renderHook(() => useCanvasInputAssets([assetA, assetB]));
+
+    await waitFor(() => expect(resolvers.get("asset-a")?.length).toBe(1));
+    await act(async () => result.current.retry("asset-a"));
+    await waitFor(() => expect(resolvers.get("asset-a")?.length).toBe(2));
+    await act(async () => resolvers.get("asset-b")?.[0](makeAsset({ id: "asset-b", title: "B" })));
+
+    await waitFor(() => expect(result.current.items[1]).toMatchObject({ previewState: "ready", title: "B" }));
+    await act(async () => resolvers.get("asset-a")?.[0](makeAsset({ id: "asset-a", title: "Old A" })));
+    await act(async () => resolvers.get("asset-a")?.[1](makeAsset({ id: "asset-a", title: "New A" })));
+    await waitFor(() => expect(result.current.items[0]).toMatchObject({ previewState: "ready", title: "New A" }));
+  });
 });
