@@ -102,6 +102,7 @@ export function MediaMentionCandidateMenu({
               id={getMediaMentionOptionId(menuId, candidate.candidateKey)}
               aria-disabled={candidate.disabledReason ? 'true' : undefined}
               disabled={Boolean(candidate.disabledReason)}
+              title={candidate.disabledReason ?? undefined}
               onClick={() => { if (!candidate.disabledReason) onSelect(candidate); }}
               onMouseDown={(event) => event.preventDefault()}
               onMouseEnter={() => setSelectedIndex(index)}
@@ -111,7 +112,7 @@ export function MediaMentionCandidateMenu({
               <CandidateThumbnail candidate={candidate} />
               <span className="min-w-0 flex-1">
                 <span className={`${MENU_ITEM_PRIMARY_CLASS} block truncate`}>{candidate.title}</span>
-                <span className={`${MENU_ITEM_SECONDARY_CLASS} block`}>{kindLabel(candidate.mediaKind)}</span>
+                <span className={`${MENU_ITEM_SECONDARY_CLASS} block`}>{candidate.disabledReason ?? kindLabel(candidate.mediaKind)}</span>
                 {candidate.disabledReason ? <span className={`${MENU_ITEM_SECONDARY_CLASS} block text-amber-200/70`}>{candidate.disabledReason}</span> : null}
               </span>
             </button>
