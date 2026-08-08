@@ -6308,3 +6308,9 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - Canvas Backspace/Delete shortcuts are isolated from native and Lexical editors. Media `@` menus trigger on the first keystroke, support element selections, and anchor to the real caret rectangle.
 - Video mention candidates now fail closed while the catalog is loading or unavailable and are filtered by route-confirmed per-mode media limits. The LibTV-style candidate menu adds search, source grouping, media grouping, and disabled-candidate handling.
 - Focused validation passed for TextNode/input projection (40 tests), mention/caret (25 tests), capability/candidate/menu suites (30 tests), and the combined regression set (144 tests). Frontend `npm run build` passed; worker tests passed (`79` passed, `17` skipped). Worker build remains blocked by existing AI Gateway type drift in `apps/worker/src/workflow-runtime/service.ts`; browser smoke timed out waiting for the generated tray page and is not counted as passing.
+
+## 2026-08-08 - Media Mention Caret Recovery And Smoke Regression
+
+- Media mention activation now preserves the saved `@query` validation but falls back to the current trailing text node when Lexical restores an element/root selection during asynchronous candidate activation. This fixes the first-keystroke `@` flow without allowing stale candidates to insert into unrelated text.
+- The node-input-tray browser smoke now exercises real keyboard selection (`@`, ArrowDown, Enter), asserts stable independent labels (`@视频1`, `@图片2`), and verifies image hover preview with a representative thumbnail fixture.
+- Validation passed: focused media mention/input suites (`61` tests), `npm run smoke:node-input-tray`, and the frontend build. Existing Lexical `flushSync`, Browserslist, mixed-import, chunk-size, and CSS warnings remain non-blocking.

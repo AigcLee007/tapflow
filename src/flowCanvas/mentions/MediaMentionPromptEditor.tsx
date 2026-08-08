@@ -20,6 +20,7 @@ import {
   KEY_ENTER_COMMAND,
   type EditorConfig,
   type LexicalEditor,
+  type LexicalNode,
   type NodeKey,
   type SerializedLexicalNode,
   type Spread,
@@ -164,22 +165,38 @@ function serializeEditor(): string { return $getRoot().getChildren().map((child)
 
 function $getMentionQuery(version: number): MentionQuerySnapshot | null {
   const selection = $getSelection();
-  if (!selection || !selection.isCollapsed()) return null;
+  if (!selection || !selection.isCollapsed()) return $getTrailingMentionQuery(version);
   const anchor = (selection as { anchor: { key: NodeKey; offset: number; type: string } }).anchor;
   let node = $getNodeByKey(anchor.key);
   let offset = anchor.offset;
   if (!$isRangeSelection(selection) && anchor.type === 'element' && $isElementNode(node)) {
-    const child = node.getChildren()[Math.max(0, anchor.offset - 1)];
-    if ($isTextNode(child)) {
-      node = child;
-      offset = child.getTextContentSize();
+    const rootChildren = node.getChildren();
+    let child: LexicalNode | null = rootChildren[Math.max(0, anchor.offset > 0 ? anchor.offset - 1 : rootChildren.length - 1)] ?? null;
+    while (child && $isElementNode(child)) {
+      const children = child.getChildren();
+      child = children[children.length - 1] ?? null;
     }
+    if ($isTextNode(child)) { node = child; offset = child.getTextContentSize(); }
   }
-  if (!$isTextNode(node) || (anchor.type !== 'text' && anchor.type !== 'element')) return null;
+  if (!$isTextNode(node) || (anchor.type !== 'text' && anchor.type !== 'element')) return $getTrailingMentionQuery(version);
   const prefix = node.getTextContent().slice(0, offset);
   const match = prefix.match(/@([^\s@/]*)$/);
   if (!match) return null;
   return { nodeKey: node.getKey(), startOffset: offset - match[0].length, endOffset: offset, query: match[1], version };
+}
+
+function $getTrailingMentionQuery(version: number): MentionQuerySnapshot | null {
+  let current: LexicalNode | null = $getRoot();
+  while (current && $isElementNode(current)) {
+    const children = current.getChildren();
+    current = children[children.length - 1] ?? null;
+  }
+  if (!$isTextNode(current)) return null;
+  const text = current.getTextContent();
+  const match = text.match(/@([^\s@/]*)$/);
+  return match
+    ? { nodeKey: current.getKey(), startOffset: text.length - match[0].length, endOffset: text.length, query: match[1], version }
+    : null;
 }
 
 function EditorBridge({ activeInputKeys, ariaLabel = '生成提示词', bindings, candidates, disabled = false, onActivateCandidate, onChange, onEditorReady, placeholder, previewUrlsByInputKey = EMPTY_PREVIEW_URLS, value, setMenu, registerActions, selectedIndex, moveSelection, contentStyle, editorElementRef, menuId, menuOpen, onActivationError }: MediaMentionPromptEditorProps & {
@@ -263,15 +280,20 @@ function EditorBridge({ activeInputKeys, ariaLabel = '生成提示词', bindings
     editor.update(() => {
       if (versionRef.current !== snapshot.version) return;
       const selection = $getSelection();
-      if (!selection || !selection.isCollapsed()) return;
-      if ($isRangeSelection(selection) && (selection.anchor.key !== snapshot.nodeKey || selection.anchor.offset !== snapshot.endOffset)) return;
-      const node = $getNodeByKey(snapshot.nodeKey);
-      if (!$isTextNode(node) || node.getTextContent().slice(snapshot.startOffset, snapshot.endOffset) !== `@${snapshot.query}`) return;
+      if ($isRangeSelection(selection) && !selection.isCollapsed()) return;
+      const savedNode = $getNodeByKey(snapshot.nodeKey);
+      const savedValid = $isTextNode(savedNode)
+        && savedNode.getTextContent().slice(snapshot.startOffset, snapshot.endOffset) === `@${snapshot.query}`
+        && (!$isRangeSelection(selection) || (selection.anchor.key === snapshot.nodeKey && selection.anchor.offset === snapshot.endOffset));
+      const target = savedValid ? snapshot : $getTrailingMentionQuery(snapshot.version);
+      if (!target) return;
+      const node = $getNodeByKey(target.nodeKey);
+      if (!$isTextNode(node) || node.getTextContent().slice(target.startOffset, target.endOffset) !== `@${target.query}`) return;
       const allocation = allocateMediaMentionBinding({ bindings: bindingsRef.current, input: activated, label: activated.label });
       bindingsRef.current = allocation.bindings;
       const sourceText = node.getTextContent();
-      const before = sourceText.slice(0, snapshot.startOffset);
-      const after = sourceText.slice(snapshot.endOffset);
+      const before = sourceText.slice(0, target.startOffset);
+      const after = sourceText.slice(target.endOffset);
       const mention = $createMediaMentionNode({ binding: allocation.binding, kind: allocation.binding.kind, label: allocation.binding.label, valid: true });
       const spacer = $createTextNode(' ');
       if (before) {
@@ -354,7 +376,7 @@ function EditorBridge({ activeInputKeys, ariaLabel = '生成提示词', bindings
 
   return <>
     <PlainTextPlugin
-      contentEditable={<ContentEditable aria-activedescendant={menuOpen && selectedCandidate ? getMediaMentionOptionId(menuId, selectedCandidate.candidateKey) : undefined} aria-autocomplete="list" aria-controls={menuOpen ? menuId : undefined} aria-expanded={menuOpen} aria-label={ariaLabel} className="nodrag nopan nowheel sleek-scroll-y flow-rich-prompt-editor" disabled={disabled} onCompositionEnd={() => { composingRef.current = false; }} onCompositionStart={() => { composingRef.current = true; queryRef.current = null; setMenu(null); }} onInput={onInput} onKeyDown={onKeyDown} role="combobox" style={contentStyle} />}
+      contentEditable={<ContentEditable aria-activedescendant={menuOpen && selectedCandidate ? getMediaMentionOptionId(menuId, selectedCandidate.candidateKey) : undefined} aria-autocomplete="list" aria-controls={menuOpen ? menuId : undefined} aria-expanded={menuOpen} aria-label={ariaLabel} className="nodrag nopan nowheel sleek-scroll-y flow-rich-prompt-editor" disabled={disabled} onBeforeInput={(event) => { if ((event.nativeEvent as InputEvent).data === '@') onInput(); }} onCompositionEnd={() => { composingRef.current = false; }} onCompositionStart={() => { composingRef.current = true; queryRef.current = null; setMenu(null); }} onInput={onInput} onKeyDown={onKeyDown} role="combobox" style={contentStyle} />}
       ErrorBoundary={LexicalErrorBoundary}
       placeholder={<div style={placeholderStyle}>{placeholder}</div>}
     />
