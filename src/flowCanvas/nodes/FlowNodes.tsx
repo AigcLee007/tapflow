@@ -5870,11 +5870,11 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     if (candidate.activation.type === 'connected') return { inputKey: candidate.activation.inputKey, kind: candidate.mediaKind, label: candidate.mentionLabel };
     if (candidate.activation.type === 'canvas') {
       handlePickConnectedRef(candidate.activation.nodeId);
-      return { inputKey: `upstream:${candidate.activation.nodeId}`, kind: candidate.mediaKind, label: candidate.mentionLabel };
+      return { inputKey: `upstream:${candidate.activation.nodeId}`, kind: candidate.mediaKind, label: candidate.mentionLabel || getMediaMentionLabel('image', referenceChips.length + 1) };
     }
     handlePickAssetRef(candidate.activation.assetId);
-    return { inputKey: `asset:${candidate.activation.assetId}`, kind: candidate.mediaKind, label: candidate.mentionLabel };
-  }, [handlePickAssetRef, handlePickConnectedRef]);
+    return { inputKey: `asset:${candidate.activation.assetId}`, kind: candidate.mediaKind, label: candidate.mentionLabel || getMediaMentionLabel('image', referenceChips.length + 1) };
+  }, [handlePickAssetRef, handlePickConnectedRef, referenceChips.length]);
 
   const handleRemoveAssetRef = useCallback(
     (itemId: string) => {
@@ -7494,6 +7494,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
               ariaLabel="图片提示词"
               bindings={d.mediaMentionBindings ?? []}
               candidates={imageMentionCandidates}
+              previewUrlsByInputKey={Object.fromEntries(referenceChips.map((item) => [item.key, item.imageUrl]))}
               densityVariant="image"
               disabled={isGenerating}
               onActivateCandidate={activateImageMention}
@@ -7870,15 +7871,17 @@ export const VideoNodeComponent = memo(function VideoNode({
     if (candidate.activation.type === "canvas") {
       const role = referenceRoleFor(videoParams, capabilities, candidate.mediaKind);
       connectVideoReference({ mediaKind: candidate.mediaKind, referenceKey: `upstream:${candidate.activation.nodeId}`, role, sourceNodeId: candidate.activation.nodeId, targetNodeId: id });
-      return { inputKey: `upstream:${candidate.activation.nodeId}`, kind: candidate.mediaKind, label: candidate.mentionLabel };
+      const nextIndex = resolvedVideoInputItems.filter((item) => item.kind === candidate.mediaKind).length + 1;
+      return { inputKey: `upstream:${candidate.activation.nodeId}`, kind: candidate.mediaKind, label: candidate.mentionLabel || getMediaMentionLabel(candidate.mediaKind, nextIndex) };
     }
     const nextParams = appendVideoReferenceInput({ capabilities, mediaKind: candidate.mediaKind, params: videoParams, source: { kind: "asset", id: candidate.activation.assetId } });
     const nextAssetIds = Array.from(new Set([...(Array.isArray(d.referenceAssetItemIds) ? d.referenceAssetItemIds : []), candidate.activation.assetId]));
     const nextOrder = Array.from(new Set([...(Array.isArray(d.referenceOrder) ? d.referenceOrder : []), `asset:${candidate.activation.assetId}`]));
     const nextInputOrder = Array.from(new Set([...(d.inputOrder ?? []), `asset:${candidate.activation.assetId}`]));
     updateNodeData(id, { inputOrder: nextInputOrder, referenceAssetItemIds: nextAssetIds, referenceOrder: nextOrder, params: { ...(d.params ?? {}), videoGeneration: nextParams } });
-    return { inputKey: `asset:${candidate.activation.assetId}`, kind: candidate.mediaKind, label: candidate.mentionLabel };
-  }, [connectVideoReference, d, id, updateNodeData, videoCatalog.models, videoParams]);
+    const nextIndex = resolvedVideoInputItems.filter((item) => item.kind === candidate.mediaKind).length + 1;
+    return { inputKey: `asset:${candidate.activation.assetId}`, kind: candidate.mediaKind, label: candidate.mentionLabel || getMediaMentionLabel(candidate.mediaKind, nextIndex) };
+  }, [connectVideoReference, d, id, resolvedVideoInputItems, updateNodeData, videoCatalog.models, videoParams]);
   useEffect(() => {
     if (hasReadyVideo) return;
     const nextAspectRatio = parseAspectRatio(videoParams.aspectRatio) ?? (requestedVideoSize.width / requestedVideoSize.height);

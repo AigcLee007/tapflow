@@ -39,6 +39,7 @@ export type MediaMentionPromptEditorProps = {
   activeInputKeys: ReadonlySet<string>;
   bindings: FlowMediaMentionBinding[];
   candidates: MediaMentionCandidate[];
+  previewUrlsByInputKey?: Readonly<Record<string, string | undefined>>;
   disabled?: boolean;
   densityVariant: 'image' | 'video';
   onActivateCandidate: (candidate: MediaMentionCandidate) => Promise<ActivatedMediaMention> | ActivatedMediaMention;
@@ -63,8 +64,9 @@ type MentionQuerySnapshot = { endOffset: number; nodeKey: NodeKey; query: string
 type EditorActions = { activate: (candidate: MediaMentionCandidate) => void; focus: () => void };
 
 const mediaKindIcon: Record<FlowMediaMentionKind, typeof Image> = { image: Image, video: Video, audio: Music2 };
+const EMPTY_PREVIEW_URLS: Readonly<Record<string, string | undefined>> = {};
 
-function MentionPill({ disabled, label, kind, nodeKey, valid }: { disabled: boolean; label: string; kind: FlowMediaMentionKind; nodeKey: NodeKey; valid: boolean }) {
+function MentionPill({ disabled, label, kind, nodeKey, previewUrl, valid }: { disabled: boolean; label: string; kind: FlowMediaMentionKind; nodeKey: NodeKey; previewUrl?: string; valid: boolean }) {
   const [editor] = useLexicalComposerContext();
   const Icon = valid ? mediaKindIcon[kind] : TriangleAlert;
   const remove = useCallback(() => {
@@ -80,7 +82,7 @@ function MentionPill({ disabled, label, kind, nodeKey, valid }: { disabled: bool
   }, [disabled, editor, nodeKey]);
 
   return <span contentEditable={false} data-invalid={valid ? undefined : 'true'} style={pillStyle(valid)}>
-    <Icon aria-hidden size={15} />
+    {previewUrl ? <img alt={label} src={previewUrl} style={{ width: 16, height: 16, objectFit: 'cover', borderRadius: 4 }} /> : <Icon aria-hidden size={15} />}
     <span>{`@${label}`}</span>
     {valid ? <button aria-label={`${'\u5220\u9664\u5f15\u7528'} ${label}`} disabled={disabled} onClick={(event) => { event.preventDefault(); event.stopPropagation(); remove(); }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); remove(); } }} onMouseDown={(event) => event.preventDefault()} style={removeButtonStyle} type="button"><X size={11} /></button> : null}
   </span>;
@@ -92,13 +94,14 @@ class MediaMentionNode extends DecoratorNode<React.ReactNode> {
   __label: string;
   __valid: boolean;
   __disabled: boolean;
+  __previewUrl?: string;
 
   static getType() { return 'media-mention'; }
-  static clone(node: MediaMentionNode) { return new MediaMentionNode(node.__inputKey, node.__kind, node.__label, node.__valid, node.__key, node.__disabled); }
+  static clone(node: MediaMentionNode) { return new MediaMentionNode(node.__inputKey, node.__kind, node.__label, node.__valid, node.__key, node.__disabled, node.__previewUrl); }
   static importJSON(serialized: SerializedMediaMentionNode) { return new MediaMentionNode(serialized.inputKey, serialized.kind, serialized.label, serialized.valid); }
 
-  constructor(inputKey: string | undefined, kind: FlowMediaMentionKind, label: string, valid: boolean, key?: NodeKey, disabled = false) {
-    super(key); this.__inputKey = inputKey; this.__kind = kind; this.__label = label; this.__valid = valid; this.__disabled = disabled;
+  constructor(inputKey: string | undefined, kind: FlowMediaMentionKind, label: string, valid: boolean, key?: NodeKey, disabled = false, previewUrl?: string) {
+    super(key); this.__inputKey = inputKey; this.__kind = kind; this.__label = label; this.__valid = valid; this.__disabled = disabled; this.__previewUrl = previewUrl;
   }
 
   createDOM(_config: EditorConfig) { const element = document.createElement('span'); element.style.display = 'inline-flex'; element.style.verticalAlign = 'baseline'; return element; }
@@ -107,8 +110,9 @@ class MediaMentionNode extends DecoratorNode<React.ReactNode> {
   getTextContent() { return `@${this.__label}`; }
   exportJSON(): SerializedMediaMentionNode { return { type: 'media-mention', version: 1, inputKey: this.__inputKey, kind: this.__kind, label: this.__label, valid: this.__valid }; }
   setValidity(valid: boolean) { const self = this.getWritable(); self.__valid = valid; }
+  setPreviewUrl(previewUrl?: string) { const self = this.getWritable(); self.__previewUrl = previewUrl; }
   setDisabled(disabled: boolean) { const self = this.getWritable(); self.__disabled = disabled; }
-  decorate() { return <MentionPill disabled={this.__disabled} kind={this.__kind} label={this.__label} nodeKey={this.__key} valid={this.__valid} />; }
+  decorate() { return <MentionPill disabled={this.__disabled} kind={this.__kind} label={this.__label} nodeKey={this.__key} previewUrl={this.__previewUrl} valid={this.__valid} />; }
 }
 
 function $createMediaMentionNode(part: NonNullable<ParsedPart['mention']>) {
@@ -178,7 +182,7 @@ function $getMentionQuery(version: number): MentionQuerySnapshot | null {
   return { nodeKey: node.getKey(), startOffset: offset - match[0].length, endOffset: offset, query: match[1], version };
 }
 
-function EditorBridge({ activeInputKeys, ariaLabel = '生成提示词', bindings, candidates, disabled = false, onActivateCandidate, onChange, onEditorReady, placeholder, value, setMenu, registerActions, selectedIndex, moveSelection, contentStyle, editorElementRef, menuId, menuOpen, onActivationError }: MediaMentionPromptEditorProps & {
+function EditorBridge({ activeInputKeys, ariaLabel = '生成提示词', bindings, candidates, disabled = false, onActivateCandidate, onChange, onEditorReady, placeholder, previewUrlsByInputKey = EMPTY_PREVIEW_URLS, value, setMenu, registerActions, selectedIndex, moveSelection, contentStyle, editorElementRef, menuId, menuOpen, onActivationError }: MediaMentionPromptEditorProps & {
   contentStyle: React.CSSProperties;
   editorElementRef: React.MutableRefObject<HTMLElement | null>;
   menuId: string;
@@ -192,6 +196,7 @@ function EditorBridge({ activeInputKeys, ariaLabel = '生成提示词', bindings
   const [editor] = useLexicalComposerContext();
   const bindingsRef = useRef(bindings);
   const activeKeysRef = useRef(activeInputKeys);
+  const previewSignature = Object.entries(previewUrlsByInputKey).sort(([a], [b]) => a.localeCompare(b)).map(([key, url]) => `${key}:${url ?? ''}`).join('|');
   const composingRef = useRef(false);
   const queryRef = useRef<MentionQuerySnapshot | null>(null);
   const versionRef = useRef(0);
@@ -223,7 +228,7 @@ function EditorBridge({ activeInputKeys, ariaLabel = '生成提示词', bindings
   useEffect(() => {
     bindingsRef.current = bindings;
     activeKeysRef.current = activeInputKeys;
-    const nextBindingState = `${bindingSignature(bindings)}\u0000${[...activeInputKeys].sort().join('|')}`;
+    const nextBindingState = `${bindingSignature(bindings)}\u0000${[...activeInputKeys].sort().join('|')}\u0000${previewSignature}`;
     if (value !== lastSerializedValueRef.current) {
       lastSerializedValueRef.current = value;
       bindingStateRef.current = nextBindingState;
@@ -239,9 +244,10 @@ function EditorBridge({ activeInputKeys, ariaLabel = '生成提示词', bindings
         const matching = node.__inputKey ? bindings.find((binding) => binding.inputKey === node.__inputKey) : undefined;
         node.setValidity(Boolean(matching && multiplicity.get(matching.label) === 1 && activeInputKeys.has(matching.inputKey)));
         node.setDisabled(disabled);
+        node.setPreviewUrl(node.__inputKey ? previewUrlsByInputKey[node.__inputKey] : undefined);
       }
     }, { discrete: true });
-  }, [activeInputKeys, bindings, disabled, editor, value]);
+  }, [activeInputKeys, bindings, disabled, editor, previewSignature, value]);
 
   const activate = useCallback(async (candidate: MediaMentionCandidate) => {
     const snapshot = queryRef.current;

@@ -59,6 +59,17 @@ async function renderEditorWithLexicalPrompt(prompt: string, caretOffset: number
 }
 
 describe('MediaMentionPromptEditor', () => {
+  it('renders the runtime thumbnail for a media mention capsule', async () => {
+    renderEditor({
+      activeInputKeys: new Set(['asset:image']),
+      bindings: [{ inputKey: 'asset:image', kind: 'image', label: '图片1' }],
+      previewUrlsByInputKey: { 'asset:image': '/thumb-image.webp' },
+      value: '@图片1',
+    });
+
+    const thumbnail = await screen.findByRole('img', { name: '图片1' });
+    expect(thumbnail.getAttribute('src')).toBe('/thumb-image.webp');
+  });
   beforeAll(() => {
     if (typeof Selection !== 'undefined' && typeof Selection.prototype.modify !== 'function') {
       Object.defineProperty(Selection.prototype, 'modify', { configurable: true, value: () => undefined });

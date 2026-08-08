@@ -174,6 +174,7 @@ export function VideoNodeComposer({ allowMediaAdd = true, catalog: catalogOverri
         ariaLabel={VIDEO_UI_COPY.videoPrompt}
         bindings={data.mediaMentionBindings ?? []}
         candidates={mentionCandidates}
+        previewUrlsByInputKey={Object.fromEntries((inputItems ?? []).map((item) => [item.inputKey, item.thumbnailUrl]))}
         densityVariant="video"
         disabled={generating}
         onActivateCandidate={activateMention}
