@@ -114,6 +114,9 @@ describe("canvas input projection", () => {
       { group: "video", kindIndex: 2, order: 5 },
       { group: "audio", kindIndex: 1, order: 6 },
     ]);
+    expect(projection.items.map(({ mentionLabel }) => mentionLabel)).toEqual([
+      "", "", "图片1", "图片2", "视频1", "视频2", "音频1",
+    ]);
   });
 
   it("keeps thumbnail and hover preview URLs out of the safe signature", () => {

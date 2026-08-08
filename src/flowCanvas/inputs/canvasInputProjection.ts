@@ -1,4 +1,5 @@
 import type { VideoReferenceInputV2 } from "../video/videoTypes";
+import { getMediaMentionLabel } from "../mentions/mediaReferenceIdentity";
 
 export type CanvasInputKind = "text" | "image" | "video" | "audio";
 export type CanvasInputRole = VideoReferenceInputV2["role"];
@@ -26,6 +27,7 @@ export type CanvasInputItem = CanvasInputSeed & {
   order: number;
   group: CanvasInputKind;
   kindIndex: number;
+  mentionLabel: string;
 };
 
 export type CanvasInputProjection = {
@@ -66,7 +68,13 @@ export function resolveCanvasInputProjection({
     .filter((seed) => seed.kind === kind)
     .sort((left, right) => kind === "text" ? 0 : (orderByKey.get(left.inputKey) ?? Number.MAX_SAFE_INTEGER)
       - (orderByKey.get(right.inputKey) ?? Number.MAX_SAFE_INTEGER))
-    .map((seed, kindIndex) => ({ ...seed, group: kind, kindIndex: kindIndex + 1, order: 0 })))
+    .map((seed, kindIndex) => ({
+      ...seed,
+      group: kind,
+      kindIndex: kindIndex + 1,
+      mentionLabel: getMediaMentionLabel(kind, kindIndex + 1),
+      order: 0,
+    })))
     .map((item, order) => ({ ...item, order }));
   return {
     items,
