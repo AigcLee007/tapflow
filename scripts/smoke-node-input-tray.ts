@@ -63,7 +63,7 @@ export function buildNodeInputTraySmokeCheckCode(options: CheckOptions): string 
       const p = await context.newPage();
       await p.goto(url, { waitUntil: "networkidle" });
       const tray = p.locator('[aria-label="节点输入"]');
-      await tray.waitFor({ state: "visible", timeout: 15000 });
+      try { await tray.waitFor({ state: "visible", timeout: 15000 }); } catch (error) { throw new Error(name + ": tray did not render " + JSON.stringify(await p.evaluate(() => window.traySmokeErrors))); }
       if (await tray.locator('[aria-label="文本输入，共 2 个节点"]').count() !== 1) throw new Error(name + ": expected aggregate text group");
       const titles = await tray.locator('[draggable="true"]').evaluateAll((xs) => xs.map((x) => x.getAttribute("title")));
       if (!titles.includes("Reference image")) throw new Error(name + ": connected image missing");

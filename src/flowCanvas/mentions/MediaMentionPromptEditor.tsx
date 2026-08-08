@@ -308,13 +308,23 @@ function EditorBridge({ activeInputKeys, ariaLabel = '生成提示词', bindings
   const onKeyDown = useCallback((event: React.KeyboardEvent<HTMLElement>) => {
     event.stopPropagation();
     if (event.defaultPrevented) return;
+    if (event.key === '@' && !disabled && !composingRef.current) {
+      const sync = () => editor.getEditorState().read(() => {
+        versionRef.current += 1;
+        const query = $getMentionQuery(versionRef.current);
+        queryRef.current = query;
+        setMenu(query && filterCandidates(candidates, query.query).length ? { query: query.query } : null);
+      });
+      queueMicrotask(sync);
+      setTimeout(sync, 0);
+    }
     const snapshot = queryRef.current;
     const filtered = snapshot ? filterCandidates(candidates, snapshot.query) : [];
     if (disabled || composingRef.current || !filtered.length) return;
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); moveSelection(event.key === 'ArrowDown' ? 1 : -1, filtered.length); return; }
     if (event.key === 'Escape') { event.preventDefault(); queryRef.current = null; setMenu(null); return; }
     if (event.key === 'Enter') event.preventDefault();
-  }, [activate, candidates, disabled, moveSelection, selectedIndex, setMenu]);
+  }, [activate, candidates, disabled, editor, moveSelection, selectedIndex, setMenu]);
 
   useEffect(() => editor.registerCommand(KEY_ENTER_COMMAND, (event: KeyboardEvent | null) => {
     const snapshot = queryRef.current;
