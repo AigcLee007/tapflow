@@ -325,6 +325,18 @@ function EditorBridge({ activeInputKeys, ariaLabel = '生成提示词', bindings
     return true;
   }, COMMAND_PRIORITY_HIGH), [activate, candidates, disabled, editor, selectedIndex]);
 
+  const onInput = useCallback(() => {
+    if (disabled || composingRef.current) return;
+    queueMicrotask(() => {
+      editor.getEditorState().read(() => {
+        versionRef.current += 1;
+        const query = $getMentionQuery(versionRef.current);
+        queryRef.current = query;
+        setMenu(query && filterCandidates(candidates, query.query).length ? { query: query.query } : null);
+      });
+    });
+  }, [candidates, disabled, editor, setMenu]);
+
   useEffect(() => { registerActions({ activate: (candidate) => { void activate(candidate); }, focus: () => editor.focus() }); }, [activate, editor, registerActions]);
 
   const snapshot = queryRef.current;
@@ -332,7 +344,7 @@ function EditorBridge({ activeInputKeys, ariaLabel = '生成提示词', bindings
 
   return <>
     <PlainTextPlugin
-      contentEditable={<ContentEditable aria-activedescendant={menuOpen && selectedCandidate ? getMediaMentionOptionId(menuId, selectedCandidate.candidateKey) : undefined} aria-autocomplete="list" aria-controls={menuOpen ? menuId : undefined} aria-expanded={menuOpen} aria-label={ariaLabel} className="nodrag nopan nowheel sleek-scroll-y flow-rich-prompt-editor" disabled={disabled} onCompositionEnd={() => { composingRef.current = false; }} onCompositionStart={() => { composingRef.current = true; queryRef.current = null; setMenu(null); }} onKeyDown={onKeyDown} role="combobox" style={contentStyle} />}
+      contentEditable={<ContentEditable aria-activedescendant={menuOpen && selectedCandidate ? getMediaMentionOptionId(menuId, selectedCandidate.candidateKey) : undefined} aria-autocomplete="list" aria-controls={menuOpen ? menuId : undefined} aria-expanded={menuOpen} aria-label={ariaLabel} className="nodrag nopan nowheel sleek-scroll-y flow-rich-prompt-editor" disabled={disabled} onCompositionEnd={() => { composingRef.current = false; }} onCompositionStart={() => { composingRef.current = true; queryRef.current = null; setMenu(null); }} onInput={onInput} onKeyDown={onKeyDown} role="combobox" style={contentStyle} />}
       ErrorBoundary={LexicalErrorBoundary}
       placeholder={<div style={placeholderStyle}>{placeholder}</div>}
     />
