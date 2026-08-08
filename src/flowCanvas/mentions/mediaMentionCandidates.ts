@@ -32,6 +32,7 @@ export type MediaMentionCandidate = {
   mediaKind: FlowMediaMentionKind;
   thumbnailUrl?: string;
   title: string;
+  disabledReason?: string;
 };
 
 type CandidateInput = {

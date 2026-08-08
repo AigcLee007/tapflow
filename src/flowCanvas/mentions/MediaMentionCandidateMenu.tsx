@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Image, Music2, Video } from 'lucide-react';
 import { MenuSurface } from '../../components/menu/MenuSurface';
@@ -40,7 +40,8 @@ export function MediaMentionCandidateMenu({
   setSelectedIndex,
 }: MediaMentionCandidateMenuProps) {
   const layer = useDismissibleLayer(layerKey, { onDismiss });
-  const filteredCandidates = useMemo(() => filterCandidates(candidates, query), [candidates, query]);
+  const [search, setSearch] = useState('');
+  const filteredCandidates = useMemo(() => filterCandidates(filterCandidates(candidates, query), search), [candidates, query, search]);
 
   useEffect(() => {
     layer.openLayer();
@@ -59,7 +60,7 @@ export function MediaMentionCandidateMenu({
     if (selectedIndex >= filteredCandidates.length) setSelectedIndex(Math.max(0, filteredCandidates.length - 1));
   }, [filteredCandidates.length, selectedIndex, setSelectedIndex]);
 
-  if (typeof document === 'undefined' || !anchorRect || !filteredCandidates.length) return null;
+  if (typeof document === 'undefined' || !anchorRect) return null;
 
   const left = clamp(anchorRect.left, 8, Math.max(8, window.innerWidth - 292));
   const spaceBelow = window.innerHeight - anchorRect.bottom;
@@ -77,7 +78,17 @@ export function MediaMentionCandidateMenu({
       role="listbox"
       style={{ position: 'fixed', zIndex: 1200, left, top }}
     >
-      {filteredCandidates.map((candidate, index) => {
+      <div className="px-1 pb-1">
+        <input
+          aria-label="搜索引用媒体"
+          className="h-[30px] w-full rounded-[9px] border border-white/10 bg-white/[0.06] px-2 text-[12px] text-white outline-none placeholder:text-white/35 focus:border-cyan-300/60"
+          onChange={(event) => { setSearch(event.target.value); setSelectedIndex(0); }}
+          placeholder="搜索媒体"
+          role="searchbox"
+          value={search}
+        />
+      </div>
+      {!filteredCandidates.length ? <div className="px-2 py-3 text-[11px] text-white/45">没有匹配的媒体</div> : filteredCandidates.map((candidate, index) => {
         const group = candidate.candidateKey.split(':', 1)[0] as keyof typeof GROUP_LABELS;
         const groupLabel = group !== lastGroup ? GROUP_LABELS[group] : undefined;
         lastGroup = group;
@@ -89,7 +100,9 @@ export function MediaMentionCandidateMenu({
               aria-selected={active}
               className={`${MENU_ITEM_CLASS} h-[38px] ${active ? 'bg-white/[0.088]' : ''}`.trim()}
               id={getMediaMentionOptionId(menuId, candidate.candidateKey)}
-              onClick={() => onSelect(candidate)}
+              aria-disabled={candidate.disabledReason ? 'true' : undefined}
+              disabled={Boolean(candidate.disabledReason)}
+              onClick={() => { if (!candidate.disabledReason) onSelect(candidate); }}
               onMouseDown={(event) => event.preventDefault()}
               onMouseEnter={() => setSelectedIndex(index)}
               role="option"
