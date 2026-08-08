@@ -3,6 +3,14 @@
 Last updated: 2026-08-07
 Maintainers: project team + Codex sessions
 
+## 2026-08-08 - Media Mention Caret And Numbering Follow-up
+
+- media inputs now use a unified `inputKey` projection with independent `图片N`、`视频N`、`音频N` labels; text inputs remain outside media mention candidates.
+- image reference chips, media candidates, and mention pills reuse projected labels; mention pills can render runtime-only 16px thumbnails without persisting preview URLs.
+- Lexical first-`@` caret and element-selection handling is covered by focused tests; Backspace/Delete isolation and invalid binding recovery remain covered by the existing mention suite.
+- focused validation passed: frontend build; 84 media/input tests plus the updated FlowNodes image-input suite; canonical graph, NodeInputTray, and smoke contract unit tests passed.
+- browser smoke was attempted with real keyboard `press("@")` and three viewport checks, but the harness timed out waiting for the first runtime listbox. This remains unresolved and must not be reported as an end-to-end pass.
+
 ## 2026-08-07 - Unified Canvas Node Inputs (Scheme B)
 
 - image and video nodes now project connected upstream text, image, video, and audio inputs through one ordered `inputOrder` model; local prompts are merged with upstream text in the worker without persisting preview URLs or media payloads in the canvas draft;
