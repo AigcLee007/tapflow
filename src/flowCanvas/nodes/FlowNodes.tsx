@@ -64,6 +64,7 @@ import { useFlowCanvasStore, type FlowDerivedEditCounts, type FlowUpstreamImageR
 import { prepareImageTemplateEdit, runImageEdit, type ImageEditType } from '../runtime/graphExecutor';
 import { markBackendRunLaunchFailed, runBackendWorkflow } from '../runtime/v2WorkflowRunner';
 import { VideoNodeComposer } from '../video/VideoNodeComposer';
+import { resolveVideoMentionAllowedKinds } from '../mentions/videoMentionCapabilities';
 import { VideoNodeLegacyComposer } from '../video/VideoNodeLegacyComposer';
 import { VIDEO_COMPOSER_V2_ENABLED } from '../video/videoComposerFeature';
 import { correctVideoGenerationParams, createSafeDefaultVideoCapabilities, getVideoGenerationBlocker } from '../video/videoGenerationCapabilities';
@@ -7832,15 +7833,12 @@ export const VideoNodeComponent = memo(function VideoNode({
   const videoInputsUpdated = Boolean(d.lastGenerationInputSignature && d.lastGenerationInputSignature !== currentVideoInputSignature);
   const videoMentionCandidates = useMemo(() => {
     const option = videoCatalog.models.find((model) => model.id === d.modelId);
-    const capabilities = option?.capabilities;
-    const constraint = capabilities?.modeConstraints?.[videoParams.mode];
-    const allowedKinds = new Set<"image" | "video" | "audio">();
-    const maxImages = constraint?.maxImages ?? capabilities?.maxImages;
-    const maxVideos = constraint?.maxVideos ?? capabilities?.maxVideos;
-    const maxAudios = constraint?.maxAudios ?? capabilities?.maxAudios;
-    if (typeof maxImages === "number" && maxImages > 0) allowedKinds.add("image");
-    if (typeof maxVideos === "number" && maxVideos > 0) allowedKinds.add("video");
-    if (typeof maxAudios === "number" && maxAudios > 0) allowedKinds.add("audio");
+    const capabilityResult = resolveVideoMentionAllowedKinds({
+      capabilities: option?.capabilities,
+      mode: videoParams.mode,
+      catalogState: videoCatalog.loading ? "loading" : videoCatalog.error ? "error" : "ready",
+    });
+    const allowedKinds = capabilityResult.allowedKinds;
     const connected = resolvedVideoInputItems.map((item) => ({
       assetId: item.assetId,
       inputKey: item.inputKey,
@@ -7862,7 +7860,7 @@ export const VideoNodeComponent = memo(function VideoNode({
       return kind ? [{ assetId: asset.id, kind, thumbnailUrl: asset.previewUrl, title: asset.title || asset.originalFilename || "Media" }] : [];
     });
     return buildMediaMentionCandidates({ allowedKinds, assets, canvas, connected, currentNodeId: id, recentAssetIds: [] });
-  }, [canvasNodes, d.modelId, id, resolvedVideoInputItems, videoAssetLibrary.assets, videoCatalog.models, videoParams.mode]);
+  }, [canvasNodes, d.modelId, id, resolvedVideoInputItems, videoAssetLibrary.assets, videoCatalog.error, videoCatalog.loading, videoCatalog.models, videoParams.mode]);
   const activateVideoMention = useCallback((candidate: MediaMentionCandidate) => {
     const option = videoCatalog.models.find((model) => model.id === d.modelId);
     const capabilities = option?.capabilities ?? createSafeDefaultVideoCapabilities();
