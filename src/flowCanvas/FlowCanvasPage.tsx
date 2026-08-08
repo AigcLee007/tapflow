@@ -9,6 +9,7 @@ import { FlowTopToolbar } from './canvas/FlowTopToolbar';
 import { useFlowCanvasStore } from './store/flowCanvasStore';
 import type { FlowNodeKind } from './types';
 import { disposeBackendWorkflowRunStream } from './runtime/v2WorkflowRunner';
+import { isEditableElement } from './utils/isEditableElement';
 
 const useFlowShortcuts = () => {
   const undo = useFlowCanvasStore((s) => s.undo);
@@ -22,8 +23,7 @@ const useFlowShortcuts = () => {
 
   useEffect(() => {
     const handle = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (isEditableElement(e.target)) return;
 
       const ctrl = e.ctrlKey || e.metaKey;
       if (ctrl && e.key === 'z' && !e.shiftKey) {

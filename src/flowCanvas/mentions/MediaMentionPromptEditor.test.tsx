@@ -238,6 +238,19 @@ describe('MediaMentionPromptEditor', () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
+  it.each(['image', 'video'] as const)('stops %s editor Backspace/Delete propagation when the mention menu is closed', (densityVariant) => {
+    renderEditor({ densityVariant, candidates: [] });
+    const editor = screen.getByRole('combobox');
+    const windowKeydown = vi.fn();
+    window.addEventListener('keydown', windowKeydown);
+
+    fireEvent.keyDown(editor, { key: 'Backspace' });
+    fireEvent.keyDown(editor, { key: 'Delete' });
+
+    expect(windowKeydown).not.toHaveBeenCalled();
+    window.removeEventListener('keydown', windowKeydown);
+  });
+
   it('keeps the query usable and announces a recoverable activation failure', async () => {
     const activation = vi.fn(async () => { throw new Error('素材暂不可用'); });
     await renderEditorWithLexicalPrompt('@', 1, { onActivateCandidate: activation });

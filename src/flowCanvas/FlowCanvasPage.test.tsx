@@ -58,4 +58,55 @@ describe("FlowCanvasPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "关闭 Agent" }));
     expect(screen.getByTestId("flow-top-toolbar").getAttribute("data-hide-utility-actions")).toBe("no");
   });
+
+  test.each([
+    ['contenteditable', () => {
+      const element = document.createElement('div');
+      element.setAttribute('contenteditable', 'true');
+      return element;
+    }],
+    ['combobox descendant', () => {
+      const element = document.createElement('div');
+      element.setAttribute('role', 'combobox');
+      const child = document.createElement('span');
+      element.appendChild(child);
+      return child;
+    }],
+  ])('does not delete selected nodes when Backspace targets an %s editor', (_label, createTarget) => {
+    const deleteSelectedNodes = vi.fn();
+    const deleteSelectedEdges = vi.fn();
+    useFlowCanvasStore.setState({
+      deleteSelectedNodes,
+      deleteSelectedEdges,
+      nodes: [{ id: 'selected', type: 'text', position: { x: 0, y: 0 }, data: {}, selected: true }],
+      edges: [],
+    });
+    render(<FlowCanvasPage />);
+    const target = createTarget();
+    const mount = target.parentElement ?? target;
+    document.body.appendChild(mount);
+
+    fireEvent.keyDown(target, { key: 'Backspace' });
+
+    expect(deleteSelectedNodes).not.toHaveBeenCalled();
+    expect(deleteSelectedEdges).not.toHaveBeenCalled();
+    mount.remove();
+  });
+
+  test('still deletes selected nodes from the unfocused canvas', () => {
+    const deleteSelectedNodes = vi.fn();
+    const deleteSelectedEdges = vi.fn();
+    useFlowCanvasStore.setState({
+      deleteSelectedNodes,
+      deleteSelectedEdges,
+      nodes: [{ id: 'selected', type: 'text', position: { x: 0, y: 0 }, data: {}, selected: true }],
+      edges: [],
+    });
+    render(<FlowCanvasPage />);
+
+    fireEvent.keyDown(window, { key: 'Delete' });
+
+    expect(deleteSelectedNodes).toHaveBeenCalledTimes(1);
+    expect(deleteSelectedEdges).toHaveBeenCalledTimes(1);
+  });
 });

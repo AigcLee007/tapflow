@@ -289,6 +289,7 @@ function EditorBridge({ activeInputKeys, ariaLabel = '生成提示词', bindings
   }, [candidates, onChange, setMenu]);
 
   const onKeyDown = useCallback((event: React.KeyboardEvent<HTMLElement>) => {
+    event.stopPropagation();
     if (event.defaultPrevented) return;
     const snapshot = queryRef.current;
     const filtered = snapshot ? filterCandidates(candidates, snapshot.query) : [];
@@ -314,7 +315,7 @@ function EditorBridge({ activeInputKeys, ariaLabel = '生成提示词', bindings
 
   return <>
     <PlainTextPlugin
-      contentEditable={<ContentEditable aria-activedescendant={menuOpen && selectedCandidate ? getMediaMentionOptionId(menuId, selectedCandidate.candidateKey) : undefined} aria-autocomplete="list" aria-controls={menuOpen ? menuId : undefined} aria-expanded={menuOpen} aria-label={ariaLabel} className="nodrag nopan nowheel sleek-scroll-y flow-rich-prompt-editor" disabled={disabled} onCompositionEnd={() => { composingRef.current = false; }} onCompositionStart={() => { composingRef.current = true; queryRef.current = null; setMenu(null); }} onKeyDown={onKeyDown} onKeyDownCapture={onKeyDown} role="combobox" style={contentStyle} />}
+      contentEditable={<ContentEditable aria-activedescendant={menuOpen && selectedCandidate ? getMediaMentionOptionId(menuId, selectedCandidate.candidateKey) : undefined} aria-autocomplete="list" aria-controls={menuOpen ? menuId : undefined} aria-expanded={menuOpen} aria-label={ariaLabel} className="nodrag nopan nowheel sleek-scroll-y flow-rich-prompt-editor" disabled={disabled} onCompositionEnd={() => { composingRef.current = false; }} onCompositionStart={() => { composingRef.current = true; queryRef.current = null; setMenu(null); }} onKeyDown={onKeyDown} role="combobox" style={contentStyle} />}
       ErrorBoundary={LexicalErrorBoundary}
       placeholder={<div style={placeholderStyle}>{placeholder}</div>}
     />

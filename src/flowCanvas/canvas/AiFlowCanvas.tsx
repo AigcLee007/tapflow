@@ -47,6 +47,7 @@ import {
 } from '../studios/productionStudioEvents';
 import { SmartEdgeComponent } from '../edges/SmartEdge';
 import { useFlowCanvasStore } from '../store/flowCanvasStore';
+import { isEditableElement } from '../utils/isEditableElement';
 import { CanvasAssetPanel, CanvasCommentPanel, CanvasDockDrawer, CanvasDockEmptyState, CanvasHistoryPanel, CanvasPromptPanel, CanvasTemplatePanel } from '../panels';
 import { ConnectionMenu } from './ConnectionMenu';
 import { FlowContextMenu } from './FlowContextMenu';
@@ -180,14 +181,6 @@ const INTERNAL_REFERENCE_DRAG_TYPE = 'application/x-flow-reference-chip';
 const ASSET_LIBRARY_DRAG_TYPE = 'application/x-tapflow-asset-id';
 
 const isImageFile = (file: File) => file.type.startsWith('image/') || IMAGE_FILE_RE.test(file.name);
-
-const isEditableElement = (target: EventTarget | null) => {
-  const element = target as HTMLElement | null;
-  if (!element) return false;
-  const tagName = element.tagName;
-  if (tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT' || element.isContentEditable) return true;
-  return !!element.closest('input, textarea, select, [contenteditable="true"]');
-};
 
 const hasImageTransfer = (dataTransfer: DataTransfer | null) => {
   if (!dataTransfer) return false;
