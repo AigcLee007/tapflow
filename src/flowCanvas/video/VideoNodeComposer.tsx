@@ -18,11 +18,14 @@ import { correctVideoGenerationParams, createSafeDefaultVideoCapabilities } from
 import { emitVideoComposerDiagnostic } from "./videoComposerDiagnostics";
 import { createVideoModelSelectionPatch } from "./videoModelSelection";
 import type { VideoGenerationParamsV1, VideoReferenceInputV2, VideoReferenceRole } from "./videoTypes";
+import type { LexicalEditor } from "lexical";
 import type { VideoPaletteSourceDisplay } from "./VideoPalettePopover";
 import { VIDEO_UI_COPY, VIDEO_UI_REFERENCE_ROLE_COPY } from "./videoUiCopy";
 import { useDismissibleLayer } from "../../components/menu/useDismissibleLayer";
 import { VIDEO_COMPOSER_CAPSULE_CLASS, videoComposerDensity } from "../utils/promptBarDensity";
 import { ImageGenerateToolbar } from "../nodes/ImageGenerateToolbar";
+import { MediaMentionPromptEditor, type ActivatedMediaMention } from "../mentions/MediaMentionPromptEditor";
+import type { MediaMentionCandidate } from "../mentions/mediaMentionCandidates";
 
 type Props = {
   catalog?: ReturnType<typeof useVideoGenerationCatalog>;
@@ -30,9 +33,13 @@ type Props = {
   generating: boolean;
   inputsUpdated?: boolean;
   inputItems?: CanvasInputItem[];
+  mentionCandidates?: MediaMentionCandidate[];
+  /** Integration-test bridge for the shared prompt editor. */
+  onMentionEditorReady?: (editor: LexicalEditor) => void;
   allowMediaAdd?: boolean;
   nodeId: string;
   onGenerate: () => void;
+  onActivateMentionCandidate?: (candidate: MediaMentionCandidate) => Promise<ActivatedMediaMention> | ActivatedMediaMention;
   onConnectCanvasReference?: (input: Pick<VideoReferenceInputV2, "mediaKind" | "referenceKey" | "role"> & { sourceNodeId: string }) => void;
   onFocusInput?: (inputKey: string) => void;
   onRemoveInput?: (inputKey: string) => void;
@@ -45,7 +52,7 @@ type Props = {
   selected: boolean;
 };
 
-export function VideoNodeComposer({ allowMediaAdd = true, catalog: catalogOverride, data, generating, inputItems, inputsUpdated = false, nodeId, onConnectCanvasReference = () => undefined, onFocusInput, onGenerate, onRemoveInput, onRemoveAllText, onReorderInputs, onRetryInputPreview, onUpdate, onUploadReference = async () => { throw new Error("REFERENCE_UPLOAD_UNAVAILABLE"); }, referencePreviewUrlsBySource, selected }: Props) {
+export function VideoNodeComposer({ allowMediaAdd = true, catalog: catalogOverride, data, generating, inputItems, inputsUpdated = false, mentionCandidates = [], nodeId, onActivateMentionCandidate, onMentionEditorReady, onConnectCanvasReference = () => undefined, onFocusInput, onGenerate, onRemoveInput, onRemoveAllText, onReorderInputs, onRetryInputPreview, onUpdate, onUploadReference = async () => { throw new Error("REFERENCE_UPLOAD_UNAVAILABLE"); }, referencePreviewUrlsBySource, selected }: Props) {
   const loadedCatalog = useVideoGenerationCatalog();
   const catalog = catalogOverride ?? loadedCatalog;
   const [modelOpen, setModelOpen] = useState(false);
@@ -106,6 +113,12 @@ export function VideoNodeComposer({ allowMediaAdd = true, catalog: catalogOverri
     parameterLayer.dismissLayer();
   }, [generating, parameterLayer.dismissLayer]);
 
+  const activeMentionInputKeys = useMemo(
+    () => new Set((inputItems ?? []).filter((item) => item.kind !== "text").map((item) => item.inputKey)),
+    [inputItems],
+  );
+  const activateMention = onActivateMentionCandidate ?? (() => { throw new Error("MEDIA_MENTION_UNAVAILABLE"); });
+
   if (!selected) return null;
   const setParams = (next: VideoGenerationParamsV1) => onUpdate({ params: { ...(data.params ?? {}), videoGeneration: next } });
   const selectedMotionLabel = getCameraMotionLabel(params.cameraMotionId);
@@ -155,7 +168,21 @@ export function VideoNodeComposer({ allowMediaAdd = true, catalog: catalogOverri
 
     {inputsUpdated ? <div className="mt-2 text-xs font-bold text-amber-300" role="status">输入已更新</div> : null}
 
-      <textarea aria-label={VIDEO_UI_COPY.videoPrompt} className="mt-2 min-h-[52px] max-h-[120px] w-full resize-y bg-transparent text-sm outline-none placeholder:text-white/35 disabled:cursor-not-allowed disabled:opacity-55" disabled={generating} onChange={(event) => onUpdate({ generationPrompt: event.target.value })} placeholder={VIDEO_UI_COPY.promptPlaceholder} value={data.generationPrompt || ""} />
+    <div className="mt-2">
+      <MediaMentionPromptEditor
+        activeInputKeys={activeMentionInputKeys}
+        ariaLabel={VIDEO_UI_COPY.videoPrompt}
+        bindings={data.mediaMentionBindings ?? []}
+        candidates={mentionCandidates}
+        densityVariant="video"
+        disabled={generating}
+        onActivateCandidate={activateMention}
+        onChange={({ bindings, value }) => onUpdate({ generationPrompt: value, mediaMentionBindings: bindings })}
+        onEditorReady={onMentionEditorReady}
+        placeholder={VIDEO_UI_COPY.promptPlaceholder}
+        value={data.generationPrompt || ""}
+      />
+    </div>
     <div className="mt-2 flex flex-col gap-2 border-t border-white/10 pt-2 md:flex-row md:flex-nowrap md:items-center" data-testid="video-composer-actions">
       <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-2" data-testid="video-composer-settings-group">
         <div className="relative min-w-0" data-testid="video-capsule-model" style={{ maxWidth: videoComposerDensity.modelMaxWidth }}>

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
 
 import { createDefaultVideoGenerationParams } from "./videoGenerationParams";
@@ -6,6 +6,8 @@ import { VideoNodeComposer } from "./VideoNodeComposer";
 import { VideoNodeLegacyComposer } from "./VideoNodeLegacyComposer";
 import { mergeVideoCapabilities } from "./videoGenerationCapabilities";
 import type { VideoModelOption } from "./videoTypes";
+import type { MediaMentionCandidate } from "../mentions/mediaMentionCandidates";
+import { $createParagraphNode, $createTextNode, $getRoot, type LexicalEditor } from "lexical";
 
 vi.mock("./useVideoGenerationCatalog", () => ({
   useVideoGenerationCatalog: () => ({ error: null, loading: true, models: [], retry: vi.fn() }),
@@ -35,6 +37,46 @@ function usableVideoCatalog(models = [usableVideoOption()]) {
 }
 
 describe("VideoNodeComposer", () => {
+  test("inserts a stable media mention through the shared prompt editor", async () => {
+    const onUpdate = vi.fn();
+    let editor: LexicalEditor | undefined;
+    const candidate: MediaMentionCandidate = {
+      activation: { type: "connected", inputKey: "upstream:clip" },
+      candidateKey: "connected:upstream:clip",
+      mediaKind: "video",
+      title: "Clip",
+    };
+    render(<VideoNodeComposer
+      data={{ generationPrompt: "", params: { videoGeneration: createDefaultVideoGenerationParams() } } as any}
+      generating={false}
+      mentionCandidates={[candidate]}
+      nodeId="video-1"
+      onActivateMentionCandidate={() => ({ inputKey: "upstream:clip", kind: "video" })}
+      onMentionEditorReady={(next) => { editor = next; }}
+      onGenerate={vi.fn()}
+      onUpdate={onUpdate}
+      selected
+    />);
+
+    await waitFor(() => expect(editor).toBeTruthy());
+    act(() => {
+      editor!.update(() => {
+        const root = $getRoot();
+        root.clear();
+        const paragraph = $createParagraphNode();
+        const text = $createTextNode("@");
+        paragraph.append(text);
+        root.append(paragraph);
+        text.select(1, 1);
+      }, { discrete: true });
+    });
+    fireEvent.keyDown(screen.getByLabelText("视频提示词"), { key: "Enter" });
+    await waitFor(() => expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      generationPrompt: "@视频1 ",
+      mediaMentionBindings: [{ inputKey: "upstream:clip", kind: "video", label: "视频1" }],
+    })));
+  });
+
   test("announces when inputs have changed since the last generation", () => {
     const data = { generationPrompt: "", params: { videoGeneration: createDefaultVideoGenerationParams() } } as any;
 
@@ -170,13 +212,21 @@ describe("VideoNodeComposer", () => {
     expect(screen.getByRole("button", { name: "生成视频" })).toBeTruthy();
   });
 
-  test("writes the prompt and keeps model and parameters layers mutually exclusive", () => {
+  test("writes the prompt and keeps model and parameters layers mutually exclusive", async () => {
     const onUpdate = vi.fn();
+    let editor: LexicalEditor | undefined;
     const data = { generationPrompt: "", params: { videoGeneration: createDefaultVideoGenerationParams() } } as any;
-    render(<VideoNodeComposer catalog={usableVideoCatalog()} data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={onUpdate} selected />);
+    render(<VideoNodeComposer catalog={usableVideoCatalog()} data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onMentionEditorReady={(next) => { editor = next; }} onUpdate={onUpdate} selected />);
 
-    fireEvent.change(screen.getByLabelText("视频提示词"), { target: { value: "A quiet city" } });
-    expect(onUpdate).toHaveBeenCalledWith({ generationPrompt: "A quiet city" });
+    await waitFor(() => expect(editor).toBeTruthy());
+    act(() => {
+      editor!.update(() => {
+        const root = $getRoot();
+        root.clear();
+        root.append($createParagraphNode().append($createTextNode("A quiet city")));
+      }, { discrete: true });
+    });
+    await waitFor(() => expect(onUpdate).toHaveBeenCalledWith({ generationPrompt: "A quiet city", mediaMentionBindings: [] }));
 
     fireEvent.click(screen.getByRole("button", { name: "选择视频模型" }));
     expect(screen.getByRole("listbox", { name: "视频模型" })).toBeTruthy();
@@ -270,7 +320,8 @@ describe("VideoNodeComposer", () => {
   test("locks every request-changing control while generating", () => {
     const data = { generationPrompt: "scene", modelId: "gemini-id", params: { videoGeneration: createDefaultVideoGenerationParams() } } as any;
     render(<VideoNodeComposer catalog={usableVideoCatalog()} data={data} generating nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} selected />);
-    for (const control of [screen.getByLabelText("视频提示词"), ...["生成模式", "运镜库", "调色盘", "选择视频模型", "视频参数摘要", "生成中"].map((name) => screen.getByRole("button", { name }))]) {
+    expect(screen.getByLabelText("视频提示词").getAttribute("contenteditable")).toBe("false");
+    for (const control of [...["生成模式", "运镜库", "调色盘", "选择视频模型", "视频参数摘要", "生成中"].map((name) => screen.getByRole("button", { name }))]) {
       expect((control as HTMLButtonElement | HTMLTextAreaElement).disabled).toBe(true);
     }
     expect(screen.getByRole("button", { name: "生成中" }).textContent).toContain("...");

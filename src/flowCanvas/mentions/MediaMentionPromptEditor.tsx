@@ -33,6 +33,7 @@ import type { MediaMentionCandidate } from './mediaMentionCandidates';
 export type ActivatedMediaMention = { inputKey: string; kind: FlowMediaMentionKind };
 
 export type MediaMentionPromptEditorProps = {
+  ariaLabel?: string;
   activeInputKeys: ReadonlySet<string>;
   bindings: FlowMediaMentionBinding[];
   candidates: MediaMentionCandidate[];
@@ -167,7 +168,7 @@ function $getMentionQuery(version: number): MentionQuerySnapshot | null {
   return { nodeKey: node.getKey(), startOffset: anchor.offset - match[0].length, endOffset: anchor.offset, query: match[1], version };
 }
 
-function EditorBridge({ activeInputKeys, bindings, candidates, disabled = false, onActivateCandidate, onChange, onEditorReady, placeholder, value, setMenu, registerActions, selectedIndex, moveSelection, contentStyle, editorElementRef, menuId, menuOpen, onActivationError }: MediaMentionPromptEditorProps & {
+function EditorBridge({ activeInputKeys, ariaLabel = '生成提示词', bindings, candidates, disabled = false, onActivateCandidate, onChange, onEditorReady, placeholder, value, setMenu, registerActions, selectedIndex, moveSelection, contentStyle, editorElementRef, menuId, menuOpen, onActivationError }: MediaMentionPromptEditorProps & {
   contentStyle: React.CSSProperties;
   editorElementRef: React.MutableRefObject<HTMLElement | null>;
   menuId: string;
@@ -313,7 +314,7 @@ function EditorBridge({ activeInputKeys, bindings, candidates, disabled = false,
 
   return <>
     <PlainTextPlugin
-      contentEditable={<ContentEditable aria-activedescendant={menuOpen && selectedCandidate ? getMediaMentionOptionId(menuId, selectedCandidate.candidateKey) : undefined} aria-autocomplete="list" aria-controls={menuOpen ? menuId : undefined} aria-expanded={menuOpen} aria-label="生成提示词" className="nodrag nopan nowheel sleek-scroll-y flow-rich-prompt-editor" disabled={disabled} onCompositionEnd={() => { composingRef.current = false; }} onCompositionStart={() => { composingRef.current = true; queryRef.current = null; setMenu(null); }} onKeyDown={onKeyDown} onKeyDownCapture={onKeyDown} role="combobox" style={contentStyle} />}
+      contentEditable={<ContentEditable aria-activedescendant={menuOpen && selectedCandidate ? getMediaMentionOptionId(menuId, selectedCandidate.candidateKey) : undefined} aria-autocomplete="list" aria-controls={menuOpen ? menuId : undefined} aria-expanded={menuOpen} aria-label={ariaLabel} className="nodrag nopan nowheel sleek-scroll-y flow-rich-prompt-editor" disabled={disabled} onCompositionEnd={() => { composingRef.current = false; }} onCompositionStart={() => { composingRef.current = true; queryRef.current = null; setMenu(null); }} onKeyDown={onKeyDown} onKeyDownCapture={onKeyDown} role="combobox" style={contentStyle} />}
       ErrorBoundary={LexicalErrorBoundary}
       placeholder={<div style={placeholderStyle}>{placeholder}</div>}
     />

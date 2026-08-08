@@ -66,7 +66,7 @@ import { markBackendRunLaunchFailed, runBackendWorkflow } from '../runtime/v2Wor
 import { VideoNodeComposer } from '../video/VideoNodeComposer';
 import { VideoNodeLegacyComposer } from '../video/VideoNodeLegacyComposer';
 import { VIDEO_COMPOSER_V2_ENABLED } from '../video/videoComposerFeature';
-import { correctVideoGenerationParams, getVideoGenerationBlocker } from '../video/videoGenerationCapabilities';
+import { correctVideoGenerationParams, createSafeDefaultVideoCapabilities, getVideoGenerationBlocker } from '../video/videoGenerationCapabilities';
 import { normalizeVideoGenerationParams } from '../video/videoGenerationParams';
 import { resolveDefaultVideoModel } from '../video/videoModelCatalog';
 import { createVideoModelSelectionPatch } from '../video/videoModelSelection';
@@ -127,6 +127,10 @@ import {
   IMAGE_MODEL_MENU_WIDTH,
 } from './imageMenuStyles';
 import { PromptLexicalEditor, type PromptLexicalEditorHandle, type PromptReference } from './PromptLexicalEditor';
+import { buildMediaMentionCandidates, type MediaMentionCandidate } from '../mentions/mediaMentionCandidates';
+import { MediaMentionPromptEditor } from '../mentions/MediaMentionPromptEditor';
+import { appendVideoReferenceInput, referenceRoleFor } from '../video/videoReferenceRules';
+import { useAssetLibrary } from '../../assets/useAssetLibrary';
 import {
   applySlashCommandToPrompt,
   extractMentionQuery,
@@ -3181,6 +3185,7 @@ export const TextNodeComponent = memo(function TextNode({
   const updateNodeData = useFlowCanvasStore((s) => s.updateNodeData);
   const runtimeNodeOutput = useFlowCanvasStore((s) => s.nodeOutputByNodeId[id]);
   const runtimeNodeStatus = useFlowCanvasStore((s) => s.nodeRunStatusByNodeId[id]);
+  const canvasNodes = useFlowCanvasStore((s) => s.nodes);
   const resolvedText = typeof runtimeNodeOutput?.text === 'string' ? runtimeNodeOutput.text : (d.text || '');
   const isGenerating = runtimeNodeStatus === 'pending'
     || runtimeNodeStatus === 'runnable'
@@ -4867,7 +4872,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const filteredLibraryMentionItems = filteredMentionItems.filter(
     (item) => !filteredRecentMentionItems.some((recent) => recent.id === item.id),
   );
-  const mentionCandidates = [
+  const legacyMentionCandidates = [
     ...connectedMentionItems.map((item) => ({ kind: 'upstream' as const, id: item.id })),
     ...filteredRecentMentionItems.map((item) => ({ kind: 'asset' as const, id: item.id })),
     ...filteredLibraryMentionItems.map((item) => ({ kind: 'asset' as const, id: item.id })),
@@ -5373,8 +5378,8 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
         setAssetMenuMode('mention');
         setAssetMenuOpen(true);
         setAssetMenuIndex((index) => {
-          if (mentionCandidates.length === 0) return 0;
-          return Math.min(Math.max(index, 0), mentionCandidates.length - 1);
+          if (legacyMentionCandidates.length === 0) return 0;
+          return Math.min(Math.max(index, 0), legacyMentionCandidates.length - 1);
         });
       } else {
         setMentionQuery('');
@@ -5395,7 +5400,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
         setSlashMenuOpen(false);
       }
     },
-    [filteredSlashCommands.length, mentionCandidates.length],
+    [filteredSlashCommands.length, legacyMentionCandidates.length],
   );
 
   const applyPromptTextChange = useCallback(
@@ -5786,6 +5791,51 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     [connectNodes, id, insertReferenceMention, nodes, referenceOrder, upstreamImageRefs],
   );
 
+  const imageMentionCandidates = useMemo<MediaMentionCandidate[]>(() => {
+    const connected = referenceChips.map((item) => ({
+      assetId: item.source === 'asset' ? item.id : undefined,
+      inputKey: item.key,
+      kind: 'image' as const,
+      sourceNodeId: item.source === 'upstream' ? item.nodeId : undefined,
+      thumbnailUrl: item.imageUrl,
+      title: item.title || item.mentionLabel,
+    }));
+    const canvas = nodes
+      .filter((node) => node.id !== id && node.type === 'image')
+      .map((node) => ({
+        kind: 'image' as const,
+        nodeId: node.id,
+        thumbnailUrl: String(node.data.thumbnailUrl || node.data.originalImageUrl || ''),
+        title: String(node.data.title || 'Image'),
+      }));
+    const assets = folderItems
+      .filter((item) => item.kind === 'image' || !item.kind)
+      .map((item) => ({
+        assetId: item.id,
+        kind: 'image' as const,
+        thumbnailUrl: item.previewUrl,
+        title: item.title || item.originalFilename || 'Image',
+      }));
+    return buildMediaMentionCandidates({
+      allowedKinds: new Set(['image']),
+      assets,
+      canvas,
+      connected,
+      currentNodeId: id,
+      recentAssetIds: recentAssetItemIds,
+    });
+  }, [folderItems, id, nodes, recentAssetItemIds, referenceChips]);
+
+  const activateImageMention = useCallback((candidate: MediaMentionCandidate) => {
+    if (candidate.activation.type === 'connected') return { inputKey: candidate.activation.inputKey, kind: candidate.mediaKind };
+    if (candidate.activation.type === 'canvas') {
+      handlePickConnectedRef(candidate.activation.nodeId);
+      return { inputKey: `upstream:${candidate.activation.nodeId}`, kind: candidate.mediaKind };
+    }
+    handlePickAssetRef(candidate.activation.assetId);
+    return { inputKey: `asset:${candidate.activation.assetId}`, kind: candidate.mediaKind };
+  }, [handlePickAssetRef, handlePickConnectedRef]);
+
   const handleRemoveAssetRef = useCallback(
     (itemId: string) => {
       removeNodeInput(id, `asset:${itemId}`);
@@ -5942,20 +5992,20 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
         }
       }
 
-      if (assetMenuOpen && mentionCandidates.length > 0) {
+      if (assetMenuOpen && legacyMentionCandidates.length > 0) {
         if (event.key === 'ArrowDown') {
           event.preventDefault();
-          setAssetMenuIndex((index) => (index + 1) % mentionCandidates.length);
+          setAssetMenuIndex((index) => (index + 1) % legacyMentionCandidates.length);
           return;
         }
         if (event.key === 'ArrowUp') {
           event.preventDefault();
-          setAssetMenuIndex((index) => (index - 1 + mentionCandidates.length) % mentionCandidates.length);
+          setAssetMenuIndex((index) => (index - 1 + legacyMentionCandidates.length) % legacyMentionCandidates.length);
           return;
         }
         if (event.key === 'Enter') {
           event.preventDefault();
-          const target = mentionCandidates[assetMenuIndex] || mentionCandidates[0];
+          const target = legacyMentionCandidates[assetMenuIndex] || legacyMentionCandidates[0];
           if (target?.kind === 'upstream') handlePickConnectedRef(target.id, { insertMention: true });
           if (target?.kind === 'asset') handlePickAssetRef(target.id, { insertMention: true });
         }
@@ -5965,7 +6015,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       assetMenuIndex,
       assetMenuOpen,
       connectNodes,
-      mentionCandidates,
+      legacyMentionCandidates,
       filteredSlashCommands,
       handleInsertSlashCommand,
       handlePickAssetRef,
@@ -7399,14 +7449,17 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
           )}
 
           <div style={richPromptShell}>
-            <PromptLexicalEditor
-              ref={promptLexicalEditorRef}
-              value={String(d.generationPrompt || '')}
-              references={promptReferences}
-              onChange={handlePromptLexicalChange}
-              onKeyDown={handlePromptTextareaKeyDown}
-              placeholder="描述任何你想要生成的内容，按 @ 引用素材"
+            <MediaMentionPromptEditor
+              activeInputKeys={new Set(referenceChips.map((item) => item.key))}
+              ariaLabel="图片提示词"
+              bindings={d.mediaMentionBindings ?? []}
+              candidates={imageMentionCandidates}
               densityVariant="image"
+              disabled={isGenerating}
+              onActivateCandidate={activateImageMention}
+              onChange={({ bindings, value }) => updateNodeData(id, { generationPrompt: value, mediaMentionBindings: bindings })}
+              placeholder="描述任何你想要生成的内容，按 @ 引用素材"
+              value={String(d.generationPrompt || '')}
             />
           </div>
 
@@ -7634,6 +7687,7 @@ export const VideoNodeComponent = memo(function VideoNode({
   const { showSingleNodeControls } = useNodeSelectionState(id, selected);
   const showNodeEditor = showSingleNodeControls;
   const videoCatalog = useVideoGenerationCatalog();
+  const videoAssetLibrary = useAssetLibrary();
   const videoParams = useMemo(() => normalizeVideoGenerationParams(d).params, [d]);
   const hasHydratedDefaultVideoModel = useRef(false);
 
@@ -7738,6 +7792,55 @@ export const VideoNodeComponent = memo(function VideoNode({
     targetNodeId: id,
   }), [d.generationPrompt, id, resolvedVideoInputItems]);
   const videoInputsUpdated = Boolean(d.lastGenerationInputSignature && d.lastGenerationInputSignature !== currentVideoInputSignature);
+  const videoMentionCandidates = useMemo(() => {
+    const option = videoCatalog.models.find((model) => model.id === d.modelId);
+    const capabilities = option?.capabilities;
+    const constraint = capabilities?.modeConstraints?.[videoParams.mode];
+    const allowedKinds = new Set<"image" | "video" | "audio">();
+    if ((constraint?.maxImages ?? capabilities?.maxImages ?? 0) > 0) allowedKinds.add("image");
+    if ((constraint?.maxVideos ?? capabilities?.maxVideos ?? 0) > 0) allowedKinds.add("video");
+    if ((constraint?.maxAudios ?? capabilities?.maxAudios ?? 0) > 0) allowedKinds.add("audio");
+    if (!allowedKinds.size) allowedKinds.add("image");
+    const connected = resolvedVideoInputItems.map((item) => ({
+      assetId: item.assetId,
+      inputKey: item.inputKey,
+      kind: item.kind,
+      sourceNodeId: item.sourceNodeId,
+      thumbnailUrl: item.thumbnailUrl,
+      title: item.title,
+    }));
+    const canvas = canvasNodes
+      .filter((node) => node.id !== id && (node.type === "image" || node.type === "video" || node.type === "audio"))
+      .map((node) => ({
+        kind: node.type === "image" ? "image" as const : node.type === "video" ? "video" as const : "audio" as const,
+        nodeId: node.id,
+        thumbnailUrl: String(node.data.thumbnailUrl || node.data.posterUrl || ""),
+        title: String(node.data.title || node.type || "Media"),
+      }));
+    const assets = (videoAssetLibrary.assets ?? []).map((asset) => ({
+      assetId: asset.id,
+      kind: asset.kind === "image" || asset.kind === "video" || asset.kind === "audio" ? asset.kind : "other" as const,
+      thumbnailUrl: asset.previewUrl,
+      title: asset.title || asset.originalFilename || "Media",
+    }));
+    return buildMediaMentionCandidates({ allowedKinds, assets, canvas, connected, currentNodeId: id, recentAssetIds: [] });
+  }, [canvasNodes, d.modelId, id, resolvedVideoInputItems, videoAssetLibrary.assets, videoCatalog.models, videoParams.mode]);
+  const activateVideoMention = useCallback((candidate: MediaMentionCandidate) => {
+    const option = videoCatalog.models.find((model) => model.id === d.modelId);
+    const capabilities = option?.capabilities ?? createSafeDefaultVideoCapabilities();
+    if (candidate.activation.type === "connected") return { inputKey: candidate.activation.inputKey, kind: candidate.mediaKind };
+    if (candidate.activation.type === "canvas") {
+      const role = referenceRoleFor(videoParams, capabilities, candidate.mediaKind);
+      connectVideoReference({ mediaKind: candidate.mediaKind, referenceKey: `upstream:${candidate.activation.nodeId}`, role, sourceNodeId: candidate.activation.nodeId, targetNodeId: id });
+      return { inputKey: `upstream:${candidate.activation.nodeId}`, kind: candidate.mediaKind };
+    }
+    const nextParams = appendVideoReferenceInput({ capabilities, mediaKind: candidate.mediaKind, params: videoParams, source: { kind: "asset", id: candidate.activation.assetId } });
+    const nextAssetIds = Array.from(new Set([...(Array.isArray(d.referenceAssetItemIds) ? d.referenceAssetItemIds : []), candidate.activation.assetId]));
+    const nextOrder = Array.from(new Set([...(Array.isArray(d.referenceOrder) ? d.referenceOrder : []), `asset:${candidate.activation.assetId}`]));
+    const nextInputOrder = Array.from(new Set([...(d.inputOrder ?? []), `asset:${candidate.activation.assetId}`]));
+    updateNodeData(id, { inputOrder: nextInputOrder, referenceAssetItemIds: nextAssetIds, referenceOrder: nextOrder, params: { ...(d.params ?? {}), videoGeneration: nextParams } });
+    return { inputKey: `asset:${candidate.activation.assetId}`, kind: candidate.mediaKind };
+  }, [connectVideoReference, d, id, updateNodeData, videoCatalog.models, videoParams]);
   useEffect(() => {
     if (hasReadyVideo) return;
     const nextAspectRatio = parseAspectRatio(videoParams.aspectRatio) ?? (requestedVideoSize.width / requestedVideoSize.height);
@@ -7977,7 +8080,9 @@ export const VideoNodeComponent = memo(function VideoNode({
               generating={isGenerating}
               inputsUpdated={videoInputsUpdated}
               inputItems={resolvedVideoInputItems}
+              mentionCandidates={videoMentionCandidates}
               nodeId={id}
+              onActivateMentionCandidate={activateVideoMention}
               onConnectCanvasReference={(input) => connectVideoReference({ ...input, targetNodeId: id })}
               onFocusInput={handleFocusVideoInput}
               onGenerate={handleGenerate}

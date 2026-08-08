@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import { mergeVideoCapabilities } from "./videoGenerationCapabilities";
-import { resolveAutomaticVideoMode, normalizeReferenceRolesForMode, validateVideoReferenceInputs } from "./videoReferenceRules";
+import { appendVideoReferenceInput, resolveAutomaticVideoMode, normalizeReferenceRolesForMode, validateVideoReferenceInputs } from "./videoReferenceRules";
 import type { VideoGenerationParamsV2, VideoReferenceInputV2 } from "./videoTypes";
 
 const geminiCapabilities = mergeVideoCapabilities({
@@ -49,6 +49,26 @@ const params = (overrides: Partial<VideoGenerationParamsV2> = {}): VideoGenerati
 });
 
 describe("video reference rules", () => {
+  test("appends a source video with the capability-selected role without duplicates", () => {
+    const once = appendVideoReferenceInput({
+      capabilities: geminiCapabilities,
+      mediaKind: "video",
+      params: params(),
+      source: { kind: "asset", id: "asset-video" },
+    });
+    expect(once.referenceInputs).toContainEqual(expect.objectContaining({
+      mediaKind: "video",
+      role: "source_video",
+      source: { kind: "asset", id: "asset-video" },
+    }));
+    expect(appendVideoReferenceInput({
+      capabilities: geminiCapabilities,
+      mediaKind: "video",
+      params: once,
+      source: { kind: "asset", id: "asset-video" },
+    }).referenceInputs).toHaveLength(1);
+  });
+
   test.each([
     [[], "text_to_video"],
     [[reference("image", 0)], "image_to_video"],

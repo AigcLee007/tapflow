@@ -5,7 +5,7 @@ import { ReferenceSourcePicker } from "../nodes/ReferenceSourcePicker";
 import { NodeInputTray } from "../inputs/NodeInputTray";
 import type { CanvasInputItem } from "../inputs/canvasInputProjection";
 import { VIDEO_COMPOSER_CAPSULE_CLASS, videoComposerDensity } from "../utils/promptBarDensity";
-import { resolveAutomaticVideoMode } from "./videoReferenceRules";
+import { appendVideoReferenceInput, referenceRoleFor } from "./videoReferenceRules";
 import type {
   VideoGenerationMode,
   VideoGenerationCapabilities,
@@ -201,19 +201,7 @@ function VideoReferenceStripV2({ allowMediaAdd = true, capabilities, currentNode
     source: VideoReferenceInputV2["source"],
   ) => {
     if (disabled) return;
-    const role = referenceRoleFor(value, capabilities, mediaKind);
-    const nextReferences = [
-      ...value.referenceInputs,
-      {
-        mediaKind,
-        order: value.referenceInputs.length,
-        referenceKey: `${source.kind}:${source.id}:${value.referenceInputs.length}`,
-        role,
-        source,
-      },
-    ];
-    const resolved = resolveAutomaticVideoMode(capabilities, nextReferences, value.mode);
-    onChange({ ...value, mode: resolved.mode, referenceInputs: resolved.references });
+    onChange(appendVideoReferenceInput({ capabilities, mediaKind, params: value, source }));
   };
   const handleUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -261,18 +249,6 @@ function VideoReferenceStripV2({ allowMediaAdd = true, capabilities, currentNode
       /> : null}
     </div>
   );
-}
-
-function referenceRoleFor(
-  value: VideoGenerationParamsV2,
-  capabilities: VideoGenerationCapabilities,
-  mediaKind: VideoReferenceInputV2["mediaKind"],
-): VideoReferenceInputV2["role"] {
-  if (mediaKind === "audio") return "reference_audio";
-  if (mediaKind === "video") return capabilities.referenceSemantics === "style_images_and_source_video" ? "source_video" : "reference_video";
-  if (value.mode === "first_last_frame") return value.referenceInputs.some((reference) => reference.role === "first_frame") ? "last_frame" : "first_frame";
-  if (value.mode === "image_to_video") return capabilities.referenceSemantics === "ordered_first_last_frames" ? "first_frame" : "main_image";
-  return "reference_image";
 }
 
 function canonicalReferenceRole(role: VideoReferenceRole, mode: VideoGenerationMode): VideoReferenceInputV2["role"] {

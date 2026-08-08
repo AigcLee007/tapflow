@@ -35,6 +35,43 @@ export function resolveAutomaticVideoMode(
   return result(currentMode, true, references, capabilities);
 }
 
+/**
+ * Adds one durable media reference using the same mode/role normalization as
+ * the picker. Repeating a source activation is deliberately idempotent.
+ */
+export function appendVideoReferenceInput(input: {
+  capabilities: VideoGenerationCapabilities;
+  mediaKind: VideoReferenceInputV2["mediaKind"];
+  params: VideoGenerationParamsV2;
+  source: VideoReferenceInputV2["source"];
+}): VideoGenerationParamsV2 {
+  const existing = input.params.referenceInputs ?? [];
+  if (existing.some((reference) => reference.source.kind === input.source.kind && reference.source.id === input.source.id)) {
+    return input.params;
+  }
+  const reference: VideoReferenceInputV2 = {
+    mediaKind: input.mediaKind,
+    order: existing.length,
+    referenceKey: `${input.source.kind}:${input.source.id}:${existing.length}`,
+    role: referenceRoleFor(input.params, input.capabilities, input.mediaKind),
+    source: input.source,
+  };
+  const resolved = resolveAutomaticVideoMode(input.capabilities, [...existing, reference], input.params.mode);
+  return { ...input.params, mode: resolved.mode, referenceInputs: resolved.references };
+}
+
+export function referenceRoleFor(
+  params: VideoGenerationParamsV2,
+  capabilities: VideoGenerationCapabilities,
+  mediaKind: VideoReferenceInputV2["mediaKind"],
+): VideoReferenceInputV2["role"] {
+  if (mediaKind === "audio") return "reference_audio";
+  if (mediaKind === "video") return capabilities.referenceSemantics === "style_images_and_source_video" ? "source_video" : "reference_video";
+  if (params.mode === "first_last_frame") return params.referenceInputs.some((reference) => reference.role === "first_frame") ? "last_frame" : "first_frame";
+  if (params.mode === "image_to_video") return capabilities.referenceSemantics === "ordered_first_last_frames" ? "first_frame" : "main_image";
+  return "reference_image";
+}
+
 export function normalizeReferenceRolesForMode(
   references: VideoReferenceInputV2[],
   mode: VideoGenerationMode,
