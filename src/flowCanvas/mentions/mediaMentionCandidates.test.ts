@@ -83,4 +83,20 @@ describe('buildMediaMentionCandidates', () => {
       'asset:asset-b',
     ]);
   });
+
+  it('does not offer a connected self source', () => {
+    const result = buildMediaMentionCandidates({
+      allowedKinds: new Set(['image']),
+      connected: [
+        { inputKey: 'upstream:self', kind: 'image', sourceNodeId: 'target', title: 'Self output' },
+        { inputKey: 'upstream:other', kind: 'image', sourceNodeId: 'other', title: 'Other output' },
+      ],
+      canvas: [],
+      assets: [],
+      currentNodeId: 'target',
+      recentAssetIds: [],
+    });
+
+    expect(result.map((candidate) => candidate.candidateKey)).toEqual(['connected:upstream:other']);
+  });
 });

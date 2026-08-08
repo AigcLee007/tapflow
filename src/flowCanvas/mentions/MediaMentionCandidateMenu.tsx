@@ -35,7 +35,7 @@ export function MediaMentionCandidateMenu({
   const filteredCandidates = useMemo(() => filterCandidates(candidates, query), [candidates, query]);
 
   useEffect(() => {
-    queueMicrotask(layer.openLayer);
+    layer.openLayer();
     return () => layer.closeLayer();
   }, [layer.closeLayer, layer.openLayer]);
 

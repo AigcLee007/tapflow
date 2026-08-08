@@ -68,6 +68,7 @@ export function buildMediaMentionCandidates(input: CandidateInput): MediaMention
     if (!inputKey || !isAllowed(source.kind)) continue;
     const sourceNodeId = safeId(source.sourceNodeId);
     const assetId = safeId(source.assetId);
+    if (sourceNodeId === input.currentNodeId) continue;
     if (sourceNodeId) connectedSourceNodeIds.add(sourceNodeId);
     if (assetId) connectedAssetIds.add(assetId);
     add({
