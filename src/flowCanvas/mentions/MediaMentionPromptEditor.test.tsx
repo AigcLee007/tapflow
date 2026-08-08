@@ -152,4 +152,67 @@ describe('MediaMentionPromptEditor', () => {
     });
     expect((await screen.findByText('@图片1')).parentElement?.getAttribute('data-invalid')).toBe('true');
   });
+
+  it('parses an externally controlled prompt with its current bindings and active keys', async () => {
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <MediaMentionPromptEditor
+        activeInputKeys={new Set(['asset:old'])}
+        bindings={[{ inputKey: 'asset:old', kind: 'image', label: '图片1' }]}
+        candidates={[imageCandidate]}
+        densityVariant="image"
+        onActivateCandidate={vi.fn()}
+        onChange={onChange}
+        placeholder="生成提示词"
+        value="draft"
+      />,
+    );
+    rerender(
+      <MediaMentionPromptEditor
+        activeInputKeys={new Set(['asset:new'])}
+        bindings={[{ inputKey: 'asset:new', kind: 'image', label: '图片1' }]}
+        candidates={[imageCandidate]}
+        densityVariant="image"
+        onActivateCandidate={vi.fn()}
+        onChange={onChange}
+        placeholder="生成提示词"
+        value="external @图片1"
+      />,
+    );
+
+    const mention = await screen.findByText('@图片1');
+    expect(mention.parentElement?.getAttribute('data-invalid')).toBeNull();
+    fireEvent.mouseEnter(mention);
+    expect(await screen.findByRole('button', { name: '删除引用 图片1' })).toBeTruthy();
+  });
+
+  it('anchors the active menu to its owning editor and dismisses it without affecting another editor', async () => {
+    const editors: LexicalEditor[] = [];
+    render(
+      <>
+        <MediaMentionPromptEditor activeInputKeys={new Set(['asset:image'])} bindings={[]} candidates={[imageCandidate]} densityVariant="image" onActivateCandidate={vi.fn()} onChange={vi.fn()} onEditorReady={(editor) => editors.push(editor)} placeholder="第一个提示词" value="" />
+        <MediaMentionPromptEditor activeInputKeys={new Set(['asset:image'])} bindings={[]} candidates={[imageCandidate]} densityVariant="image" onActivateCandidate={vi.fn()} onChange={vi.fn()} onEditorReady={(editor) => editors.push(editor)} placeholder="第二个提示词" value="" />
+      </>,
+    );
+    await waitFor(() => expect(editors).toHaveLength(2));
+    const editorElements = screen.getAllByRole('textbox');
+    Object.defineProperty(editorElements[0], 'getBoundingClientRect', { value: () => new DOMRect(20, 40, 220, 32) });
+    Object.defineProperty(editorElements[1], 'getBoundingClientRect', { value: () => new DOMRect(480, 240, 220, 32) });
+    await act(async () => {
+      editors[1].update(() => {
+        const root = $getRoot();
+        const paragraph = $createParagraphNode();
+        const text = $createTextNode('@');
+        paragraph.append(text);
+        root.clear();
+        root.append(paragraph);
+        text.selectEnd();
+      }, { discrete: true });
+    });
+    const menu = await screen.findByRole('listbox', { name: '引用媒体' });
+    expect(menu.style.left).toBe('480px');
+    fireEvent.pointerDown(document.body);
+    await waitFor(() => expect(screen.queryByRole('listbox', { name: '引用媒体' })).toBeNull());
+    expect(screen.getAllByRole('textbox')).toHaveLength(2);
+  });
 });

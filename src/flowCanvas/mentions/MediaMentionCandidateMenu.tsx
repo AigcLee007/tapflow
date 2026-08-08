@@ -9,6 +9,7 @@ import type { MediaMentionCandidate } from './mediaMentionCandidates';
 export type MediaMentionCandidateMenuProps = {
   anchorRect: DOMRect | null;
   candidates: MediaMentionCandidate[];
+  layerKey: string;
   onDismiss: () => void;
   onSelect: (candidate: MediaMentionCandidate) => void;
   query: string;
@@ -25,13 +26,14 @@ const GROUP_LABELS = {
 export function MediaMentionCandidateMenu({
   anchorRect,
   candidates,
+  layerKey,
   onDismiss,
   onSelect,
   query,
   selectedIndex,
   setSelectedIndex,
 }: MediaMentionCandidateMenuProps) {
-  const layer = useDismissibleLayer('media-mention-candidates', { onDismiss });
+  const layer = useDismissibleLayer(layerKey, { onDismiss });
   const filteredCandidates = useMemo(() => filterCandidates(candidates, query), [candidates, query]);
 
   useEffect(() => {

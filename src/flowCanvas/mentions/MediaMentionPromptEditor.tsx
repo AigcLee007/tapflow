@@ -1,4 +1,4 @@
-import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import React, { forwardRef, useCallback, useEffect, useId, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { LexicalComposer } from '@lexical/react/LexicalComposer';
 import { ContentEditable } from '@lexical/react/LexicalContentEditable';
 import { LexicalErrorBoundary } from '@lexical/react/LexicalErrorBoundary';
@@ -150,7 +150,7 @@ function initializePrompt(editor: LexicalEditor, value: string, bindings: FlowMe
       }
       root.append(paragraph);
     }
-  }, { discrete: true });
+  });
 }
 
 function serializeEditor(): string { return $getRoot().getChildren().map((child) => child.getTextContent()).join('\n'); }
@@ -167,8 +167,9 @@ function $getMentionQuery(version: number): MentionQuerySnapshot | null {
   return { nodeKey: node.getKey(), startOffset: anchor.offset - match[0].length, endOffset: anchor.offset, query: match[1], version };
 }
 
-function EditorBridge({ activeInputKeys, bindings, candidates, disabled = false, onActivateCandidate, onChange, onEditorReady, placeholder, value, setMenu, registerActions, selectedIndex, moveSelection, contentStyle }: MediaMentionPromptEditorProps & {
+function EditorBridge({ activeInputKeys, bindings, candidates, disabled = false, onActivateCandidate, onChange, onEditorReady, placeholder, value, setMenu, registerActions, selectedIndex, moveSelection, contentStyle, editorElementRef }: MediaMentionPromptEditorProps & {
   contentStyle: React.CSSProperties;
+  editorElementRef: React.MutableRefObject<HTMLElement | null>;
   moveSelection: (delta: number, count: number) => void;
   registerActions: (actions: EditorActions) => void;
   selectedIndex: number;
@@ -183,16 +184,20 @@ function EditorBridge({ activeInputKeys, bindings, candidates, disabled = false,
   const lastSerializedValueRef = useRef(value);
   const bindingStateRef = useRef(`${bindingSignature(bindings)}\u0000${[...activeInputKeys].sort().join('|')}`);
 
-  useEffect(() => { onEditorReady?.(editor); }, [editor, onEditorReady]);
   useEffect(() => {
-    if (value === lastSerializedValueRef.current) return;
-    lastSerializedValueRef.current = value;
-    initializePrompt(editor, value, bindingsRef.current, activeKeysRef.current);
-  }, [editor, value]);
+    editorElementRef.current = editor.getRootElement();
+    onEditorReady?.(editor);
+  }, [editor, editorElementRef, onEditorReady]);
   useEffect(() => {
     bindingsRef.current = bindings;
     activeKeysRef.current = activeInputKeys;
     const nextBindingState = `${bindingSignature(bindings)}\u0000${[...activeInputKeys].sort().join('|')}`;
+    if (value !== lastSerializedValueRef.current) {
+      lastSerializedValueRef.current = value;
+      bindingStateRef.current = nextBindingState;
+      initializePrompt(editor, value, bindings, activeInputKeys);
+      return;
+    }
     if (nextBindingState === bindingStateRef.current) return;
     bindingStateRef.current = nextBindingState;
     const multiplicity = new Map<string, number>();
@@ -203,7 +208,7 @@ function EditorBridge({ activeInputKeys, bindings, candidates, disabled = false,
         node.setValidity(Boolean(matching && multiplicity.get(matching.label) === 1 && activeInputKeys.has(matching.inputKey)));
       }
     }, { discrete: true });
-  }, [activeInputKeys, bindings, editor]);
+  }, [activeInputKeys, bindings, editor, value]);
 
   const activate = useCallback(async (candidate: MediaMentionCandidate) => {
     const snapshot = queryRef.current;
@@ -288,6 +293,8 @@ export const MediaMentionPromptEditor = forwardRef<MediaMentionPromptEditorHandl
   const [menu, setMenu] = useState<{ query: string } | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const actionsRef = useRef<EditorActions | null>(null);
+  const editorElementRef = useRef<HTMLElement | null>(null);
+  const editorLayerId = useId();
   const density = getPromptBarDensity(props.densityVariant as PromptBarDensityVariant);
   const contentStyle = useMemo(() => ({ ...editorStyle, minHeight: density.editorMinHeight, maxHeight: density.editorMaxHeight, fontSize: density.editorFontSize, lineHeight: density.editorLineHeight }), [density]);
   const setMentionMenu = useCallback((nextMenu: { query: string } | null) => { setSelectedIndex(0); setMenu(nextMenu); }, []);
@@ -299,8 +306,8 @@ export const MediaMentionPromptEditor = forwardRef<MediaMentionPromptEditorHandl
 
   return <LexicalComposer initialConfig={initialConfig}>
     <div style={{ position: 'relative', minHeight: density.editorMinHeight, maxHeight: density.editorMaxHeight }}>
-      <EditorBridge {...props} contentStyle={contentStyle} moveSelection={moveSelection} registerActions={(actions) => { actionsRef.current = actions; }} selectedIndex={selectedIndex} setMenu={setMentionMenu} />
-      {menu ? <MediaMentionCandidateMenu anchorRect={document.querySelector<HTMLElement>('.flow-rich-prompt-editor')?.getBoundingClientRect() ?? null} candidates={props.candidates} onDismiss={() => setMenu(null)} onSelect={(candidate) => actionsRef.current?.activate(candidate)} query={menu.query} selectedIndex={selectedIndex} setSelectedIndex={setSelectedIndex} /> : null}
+      <EditorBridge {...props} contentStyle={contentStyle} editorElementRef={editorElementRef} moveSelection={moveSelection} registerActions={(actions) => { actionsRef.current = actions; }} selectedIndex={selectedIndex} setMenu={setMentionMenu} />
+      {menu ? <MediaMentionCandidateMenu anchorRect={editorElementRef.current?.getBoundingClientRect() ?? null} candidates={props.candidates} layerKey={`media-mention-candidates:${editorLayerId}`} onDismiss={() => setMenu(null)} onSelect={(candidate) => actionsRef.current?.activate(candidate)} query={menu.query} selectedIndex={selectedIndex} setSelectedIndex={setSelectedIndex} /> : null}
     </div>
   </LexicalComposer>;
 });
