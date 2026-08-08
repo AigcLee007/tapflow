@@ -51,6 +51,42 @@ kindIndex 只在同一种媒体内编号；胶囊删除只修改 prompt；输入
 
 ---
 
+### Task 0: 执行前置检查与隔离分支
+
+**Files:** 不修改生产文件；只检查 Git 状态和计划基线。
+
+- [ ] **Step 1: 确认当前基线和工作区边界。**
+  ```bash
+  git status --short
+  git log -1 --oneline
+  git branch --show-current
+  ```
+  记录当前未提交文件；不得清理、回滚或 stage 这些与本任务无关的改动。
+
+- [ ] **Step 2: 创建执行分支和隔离 worktree。**
+  ```bash
+  git fetch --all --prune
+  git worktree add .worktrees/media-mention-caret-numbering -b codex/media-mention-caret-numbering main
+  git -C .worktrees/media-mention-caret-numbering status --short
+  ```
+  预期：新 worktree 基于当前 `main`，工作区干净；后续 Task 1-10 均在该 worktree 执行。
+
+- [ ] **Step 3: 在新 worktree 运行受影响测试，建立改动前基线。**
+  ```bash
+  cd .worktrees/media-mention-caret-numbering
+  npx vitest run src/flowCanvas/inputs/canvasInputProjection.test.ts src/flowCanvas/mentions/mediaMentions.test.ts src/flowCanvas/mentions/mentionCaret.test.ts
+  ```
+  记录现有失败及其错误信息；只有新增失败属于本任务时才继续修改，历史失败必须在最终记录中区分。
+
+- [ ] **Step 4: 后续每个任务完成后只提交该任务列出的文件。**
+  ```bash
+  git status --short
+  git diff --cached --name-only
+  ```
+  预期：暂存区只包含当前 Task 的 `Files` 列表；不得提交 `.codex*`、mockup、环境文件或其他用户改动。
+
+---
+
 ### Task 1: 建立统一媒体身份模型
 
 **Files:** Create mediaReferenceIdentity.ts and its test; modify canvasInputProjection.ts and its test.
