@@ -78,6 +78,23 @@ describe('MediaMentionPromptEditor', () => {
     })));
   });
 
+  it('opens the menu when the first @ leaves Lexical on an element selection', async () => {
+    let lexicalEditor: LexicalEditor | undefined;
+    const onChange = vi.fn();
+    renderEditor({ onChange, onEditorReady: (editor) => { lexicalEditor = editor; } });
+    await waitFor(() => expect(lexicalEditor).toBeTruthy());
+    act(() => {
+      lexicalEditor!.update(() => {
+        const root = $getRoot();
+        root.clear();
+        const paragraph = $createParagraphNode();
+        paragraph.append($createTextNode('@'));
+        root.append(paragraph);
+        paragraph.selectEnd();
+      }, { discrete: true });
+    });
+    expect(await screen.findByRole('listbox', { name: '引用媒体' })).toBeTruthy();
+  });
   it('does not open or accept candidates during IME composition', () => {
     renderEditor();
     const editor = screen.getByRole('combobox', { name: '生成提示词' });

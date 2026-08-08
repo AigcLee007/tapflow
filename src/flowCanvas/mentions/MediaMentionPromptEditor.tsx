@@ -11,6 +11,7 @@ import {
   $getNodeByKey,
   $getRoot,
   $getSelection,
+  $isElementNode,
   $isRangeSelection,
   $isTextNode,
   $nodesOfType,
@@ -29,6 +30,7 @@ import { getPromptBarDensity, type PromptBarDensityVariant } from '../utils/prom
 import { allocateMediaMentionBinding, resolveMediaMentionToken } from './mediaMentions';
 import { filterCandidates, getMediaMentionOptionId, MediaMentionCandidateMenu } from './MediaMentionCandidateMenu';
 import type { MediaMentionCandidate } from './mediaMentionCandidates';
+import { getMentionCaretRect } from './mentionCaret';
 
 export type ActivatedMediaMention = { inputKey: string; kind: FlowMediaMentionKind };
 
@@ -158,14 +160,22 @@ function serializeEditor(): string { return $getRoot().getChildren().map((child)
 
 function $getMentionQuery(version: number): MentionQuerySnapshot | null {
   const selection = $getSelection();
-  if (!$isRangeSelection(selection) || !selection.isCollapsed()) return null;
+  if (!selection || !selection.isCollapsed()) return null;
   const anchor = selection.anchor;
-  const node = $getNodeByKey(anchor.key);
-  if (!$isTextNode(node) || anchor.type !== 'text') return null;
-  const prefix = node.getTextContent().slice(0, anchor.offset);
+  let node = $getNodeByKey(anchor.key);
+  let offset = anchor.offset;
+  if (!$isRangeSelection(selection) && anchor.type === 'element' && $isElementNode(node)) {
+    const child = node.getChildren()[Math.max(0, anchor.offset - 1)];
+    if ($isTextNode(child)) {
+      node = child;
+      offset = child.getTextContentSize();
+    }
+  }
+  if (!$isTextNode(node) || (anchor.type !== 'text' && anchor.type !== 'element')) return null;
+  const prefix = node.getTextContent().slice(0, offset);
   const match = prefix.match(/@([^\s@/]*)$/);
   if (!match) return null;
-  return { nodeKey: node.getKey(), startOffset: anchor.offset - match[0].length, endOffset: anchor.offset, query: match[1], version };
+  return { nodeKey: node.getKey(), startOffset: offset - match[0].length, endOffset: offset, query: match[1], version };
 }
 
 function EditorBridge({ activeInputKeys, ariaLabel = '生成提示词', bindings, candidates, disabled = false, onActivateCandidate, onChange, onEditorReady, placeholder, value, setMenu, registerActions, selectedIndex, moveSelection, contentStyle, editorElementRef, menuId, menuOpen, onActivationError }: MediaMentionPromptEditorProps & {
@@ -343,7 +353,7 @@ export const MediaMentionPromptEditor = forwardRef<MediaMentionPromptEditorHandl
   return <LexicalComposer initialConfig={initialConfig}>
     <div style={{ position: 'relative', minHeight: density.editorMinHeight, maxHeight: density.editorMaxHeight }}>
       <EditorBridge {...props} contentStyle={contentStyle} editorElementRef={editorElementRef} menuId={menuId} menuOpen={Boolean(menu)} moveSelection={moveSelection} onActivationError={setActivationError} registerActions={(actions) => { actionsRef.current = actions; }} selectedIndex={selectedIndex} setMenu={setMentionMenu} />
-      {menu ? <MediaMentionCandidateMenu anchorRect={editorElementRef.current?.getBoundingClientRect() ?? null} candidates={props.candidates} layerKey={`media-mention-candidates:${editorLayerId}`} menuId={menuId} onDismiss={() => setMenu(null)} onSelect={(candidate) => actionsRef.current?.activate(candidate)} query={menu.query} selectedIndex={selectedIndex} setSelectedIndex={setSelectedIndex} /> : null}
+      {menu ? <MediaMentionCandidateMenu anchorRect={getMentionCaretRect(editorElementRef.current) ?? editorElementRef.current?.getBoundingClientRect() ?? null} candidates={props.candidates} layerKey={`media-mention-candidates:${editorLayerId}`} menuId={menuId} onDismiss={() => setMenu(null)} onSelect={(candidate) => actionsRef.current?.activate(candidate)} query={menu.query} selectedIndex={selectedIndex} setSelectedIndex={setSelectedIndex} /> : null}
       {activationError ? <div aria-live="assertive" role="alert">{activationError}</div> : null}
     </div>
   </LexicalComposer>;
