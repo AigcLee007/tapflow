@@ -1,5 +1,5 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { act, createEvent, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { $createParagraphNode, $createTextNode, $getRoot, type LexicalEditor, type TextNode } from 'lexical';
 import type { FlowMediaMentionBinding } from '../types';
 import type { MediaMentionCandidate } from './mediaMentionCandidates';
@@ -59,6 +59,12 @@ async function renderEditorWithLexicalPrompt(prompt: string, caretOffset: number
 }
 
 describe('MediaMentionPromptEditor', () => {
+  beforeAll(() => {
+    if (typeof Selection !== 'undefined' && typeof Selection.prototype.modify !== 'function') {
+      Object.defineProperty(Selection.prototype, 'modify', { configurable: true, value: () => undefined });
+    }
+  });
+
   it('opens media-only candidates for @ and activates the keyboard selection', async () => {
     const { onActivateCandidate, onChange } = await renderEditorWithLexicalPrompt('@', 1);
     const editor = screen.getByRole('combobox', { name: '生成提示词' });
@@ -249,6 +255,30 @@ describe('MediaMentionPromptEditor', () => {
 
     expect(windowKeydown).not.toHaveBeenCalled();
     window.removeEventListener('keydown', windowKeydown);
+  });
+
+  it.each(['image', 'video'] as const)('delegates %s editor Backspace to Lexical instead of the canvas shortcut', async (densityVariant) => {
+    const { editor } = await renderEditorWithLexicalPrompt('go', 2, { densityVariant, candidates: [] });
+    const editorElement = screen.getByRole('combobox');
+
+    const event = createEvent.keyDown(editorElement, { key: 'Backspace' });
+    fireEvent(editorElement, event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(editor.getEditorState().read(() => $getRoot().getTextContent())).toBe('go');
+  });
+
+  it.each(['image', 'video'] as const)('inserts a media mention with Enter in the %s editor', async (densityVariant) => {
+    const { onActivateCandidate, onChange } = await renderEditorWithLexicalPrompt('@', 1, { densityVariant });
+    const editor = screen.getByRole('combobox');
+
+    fireEvent.keyDown(editor, { key: 'Enter' });
+
+    await waitFor(() => expect(onActivateCandidate).toHaveBeenCalledWith(imageCandidate));
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
+      value: '@图片1 ',
+      bindings: [imageBinding],
+    })));
   });
 
   it('keeps the query usable and announces a recoverable activation failure', async () => {
