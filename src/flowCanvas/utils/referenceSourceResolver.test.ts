@@ -53,13 +53,13 @@ describe('referenceSourceResolver', () => {
     expect(chips.map((item) => item.key)).toEqual(['asset:asset-1', 'upstream:node-1']);
     expect(chips[0]).toMatchObject({
       imageUrl: 'https://cdn.test/asset-1.png',
-      mentionLabel: 'Image 1',
+      mentionLabel: '图片1',
       source: 'asset',
       title: 'Asset One',
     });
     expect(chips[1]).toMatchObject({
       imageUrl: 'https://cdn.test/node-1.png',
-      mentionLabel: 'Image 2',
+      mentionLabel: '图片2',
       source: 'upstream',
       title: 'Canvas source',
     });
@@ -73,6 +73,21 @@ describe('referenceSourceResolver', () => {
     });
 
     expect(chips).toEqual([]);
+  });
+
+  it('numbers upstream and asset images with one image-only sequence', () => {
+    const chips = resolveReferenceChips({
+      assetItemsById: {
+        'asset-2': { id: 'asset-2', title: 'Asset Two', previewUrl: 'https://cdn.test/asset-2.png' },
+      },
+      referenceAssetItemIds: ['asset-2'],
+      upstreamImageRefs: [
+        { id: 'node-1', key: 'upstream:node-1', imageUrl: 'https://cdn.test/node-1.png', title: 'One' },
+        { id: 'node-2', key: 'upstream:node-2', imageUrl: 'https://cdn.test/node-2.png', title: 'Two' },
+      ],
+    });
+
+    expect(chips.map((chip) => chip.mentionLabel)).toEqual(['图片1', '图片2', '图片3']);
   });
 
   it('builds compact canvas image sources for the picker and excludes the active node', () => {

@@ -179,6 +179,7 @@ import {
   readImageViewerComparisonSource,
 } from '../utils/imageViewerComparison';
 import { resolveReferenceChips, resolveReferenceSourceSelectionByNodeId } from '../utils/referenceSourceResolver';
+import { getMediaMentionLabel } from '../mentions/mediaReferenceIdentity';
 import {
   buildFailedDerivedImagePatch,
   buildOptimisticDerivedImageNodeData,
@@ -5820,7 +5821,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
         }));
       }
       if (options?.insertMention) {
-        insertReferenceMention(`Image ${nextOrder.indexOf(item.key) + 1}`);
+        insertReferenceMention(getMediaMentionLabel('image', nextOrder.filter((key) => key.startsWith('upstream:') || key.startsWith('asset:')).indexOf(item.key) + 1));
       }
       setAssetMenuOpen(false);
       setMentionQuery('');
@@ -5837,6 +5838,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       sourceNodeId: item.source === 'upstream' ? item.nodeId : undefined,
       thumbnailUrl: item.imageUrl,
       title: item.title || item.mentionLabel,
+      mentionLabel: item.mentionLabel,
     }));
     const canvas = nodes
       .filter((node) => node.id !== id && node.type === 'image')
@@ -5865,13 +5867,13 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   }, [folderItems, id, nodes, recentAssetItemIds, referenceChips]);
 
   const activateImageMention = useCallback((candidate: MediaMentionCandidate) => {
-    if (candidate.activation.type === 'connected') return { inputKey: candidate.activation.inputKey, kind: candidate.mediaKind };
+    if (candidate.activation.type === 'connected') return { inputKey: candidate.activation.inputKey, kind: candidate.mediaKind, label: candidate.mentionLabel };
     if (candidate.activation.type === 'canvas') {
       handlePickConnectedRef(candidate.activation.nodeId);
-      return { inputKey: `upstream:${candidate.activation.nodeId}`, kind: candidate.mediaKind };
+      return { inputKey: `upstream:${candidate.activation.nodeId}`, kind: candidate.mediaKind, label: candidate.mentionLabel };
     }
     handlePickAssetRef(candidate.activation.assetId);
-    return { inputKey: `asset:${candidate.activation.assetId}`, kind: candidate.mediaKind };
+    return { inputKey: `asset:${candidate.activation.assetId}`, kind: candidate.mediaKind, label: candidate.mentionLabel };
   }, [handlePickAssetRef, handlePickConnectedRef]);
 
   const handleRemoveAssetRef = useCallback(
@@ -7864,18 +7866,18 @@ export const VideoNodeComponent = memo(function VideoNode({
   const activateVideoMention = useCallback((candidate: MediaMentionCandidate) => {
     const option = videoCatalog.models.find((model) => model.id === d.modelId);
     const capabilities = option?.capabilities ?? createSafeDefaultVideoCapabilities();
-    if (candidate.activation.type === "connected") return { inputKey: candidate.activation.inputKey, kind: candidate.mediaKind };
+    if (candidate.activation.type === "connected") return { inputKey: candidate.activation.inputKey, kind: candidate.mediaKind, label: candidate.mentionLabel };
     if (candidate.activation.type === "canvas") {
       const role = referenceRoleFor(videoParams, capabilities, candidate.mediaKind);
       connectVideoReference({ mediaKind: candidate.mediaKind, referenceKey: `upstream:${candidate.activation.nodeId}`, role, sourceNodeId: candidate.activation.nodeId, targetNodeId: id });
-      return { inputKey: `upstream:${candidate.activation.nodeId}`, kind: candidate.mediaKind };
+      return { inputKey: `upstream:${candidate.activation.nodeId}`, kind: candidate.mediaKind, label: candidate.mentionLabel };
     }
     const nextParams = appendVideoReferenceInput({ capabilities, mediaKind: candidate.mediaKind, params: videoParams, source: { kind: "asset", id: candidate.activation.assetId } });
     const nextAssetIds = Array.from(new Set([...(Array.isArray(d.referenceAssetItemIds) ? d.referenceAssetItemIds : []), candidate.activation.assetId]));
     const nextOrder = Array.from(new Set([...(Array.isArray(d.referenceOrder) ? d.referenceOrder : []), `asset:${candidate.activation.assetId}`]));
     const nextInputOrder = Array.from(new Set([...(d.inputOrder ?? []), `asset:${candidate.activation.assetId}`]));
     updateNodeData(id, { inputOrder: nextInputOrder, referenceAssetItemIds: nextAssetIds, referenceOrder: nextOrder, params: { ...(d.params ?? {}), videoGeneration: nextParams } });
-    return { inputKey: `asset:${candidate.activation.assetId}`, kind: candidate.mediaKind };
+    return { inputKey: `asset:${candidate.activation.assetId}`, kind: candidate.mediaKind, label: candidate.mentionLabel };
   }, [connectVideoReference, d, id, updateNodeData, videoCatalog.models, videoParams]);
   useEffect(() => {
     if (hasReadyVideo) return;

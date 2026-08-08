@@ -32,7 +32,7 @@ import { filterCandidates, getMediaMentionOptionId, MediaMentionCandidateMenu } 
 import type { MediaMentionCandidate } from './mediaMentionCandidates';
 import { getMentionCaretRect } from './mentionCaret';
 
-export type ActivatedMediaMention = { inputKey: string; kind: FlowMediaMentionKind };
+export type ActivatedMediaMention = { inputKey: string; kind: FlowMediaMentionKind; label?: string };
 
 export type MediaMentionPromptEditorProps = {
   ariaLabel?: string;
@@ -261,7 +261,7 @@ function EditorBridge({ activeInputKeys, ariaLabel = '生成提示词', bindings
       if ($isRangeSelection(selection) && (selection.anchor.key !== snapshot.nodeKey || selection.anchor.offset !== snapshot.endOffset)) return;
       const node = $getNodeByKey(snapshot.nodeKey);
       if (!$isTextNode(node) || node.getTextContent().slice(snapshot.startOffset, snapshot.endOffset) !== `@${snapshot.query}`) return;
-      const allocation = allocateMediaMentionBinding({ bindings: bindingsRef.current, input: activated });
+      const allocation = allocateMediaMentionBinding({ bindings: bindingsRef.current, input: activated, label: activated.label });
       bindingsRef.current = allocation.bindings;
       const sourceText = node.getTextContent();
       const before = sourceText.slice(0, snapshot.startOffset);

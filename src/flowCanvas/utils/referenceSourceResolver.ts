@@ -1,5 +1,6 @@
 ﻿import type { AssetItem } from '../../assets/assetApi';
 import type { FlowUpstreamImageRef } from '../store/flowCanvasStore';
+import { getMediaMentionLabel } from '../mentions/mediaReferenceIdentity';
 
 type ReferenceOrderItem = string;
 
@@ -315,7 +316,7 @@ export function resolveReferenceChips(
       id: item.id,
       imageUrl: item.imageUrl,
       key: item.key,
-      mentionLabel: `Image ${index + 1}`,
+      mentionLabel: getMediaMentionLabel('image', index + 1),
       nodeId: item.nodeId,
       referenceUploadId: item.referenceUploadId,
       source: item.source,

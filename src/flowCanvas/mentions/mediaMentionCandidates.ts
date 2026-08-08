@@ -6,6 +6,7 @@ export type MediaMentionConnectedSeed = {
   kind: 'text' | FlowMediaMentionKind;
   sourceNodeId?: string;
   thumbnailUrl?: string;
+  mentionLabel?: string;
   title: string;
 };
 
@@ -30,6 +31,7 @@ export type MediaMentionCandidate = {
     | { type: 'asset'; assetId: string };
   candidateKey: string;
   mediaKind: FlowMediaMentionKind;
+  mentionLabel?: string;
   thumbnailUrl?: string;
   title: string;
   disabledReason?: string;
@@ -76,6 +78,7 @@ export function buildMediaMentionCandidates(input: CandidateInput): MediaMention
       activation: { type: 'connected', inputKey },
       candidateKey: `connected:${inputKey}`,
       mediaKind: source.kind,
+      mentionLabel: source.mentionLabel,
       thumbnailUrl: safeOptionalUrl(source.thumbnailUrl),
       title: safeTitle(source.title),
     });

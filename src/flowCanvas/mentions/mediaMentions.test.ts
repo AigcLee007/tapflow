@@ -34,6 +34,14 @@ describe('media mention bindings', () => {
     expect(result.binding).toEqual(existing[0]);
   });
 
+  it('uses the projected label and updates it after input reorder', () => {
+    const first = allocateMediaMentionBinding({ bindings: [], input: imageA, label: '图片2' });
+    const reordered = allocateMediaMentionBinding({ bindings: first.bindings, input: imageA, label: '图片1' });
+    expect(first.binding.label).toBe('图片2');
+    expect(reordered.binding.label).toBe('图片1');
+    expect(reordered.bindings).toHaveLength(1);
+  });
+
   it('tolerates malformed persisted bindings as an empty collection', () => {
     const result = allocateMediaMentionBinding({ bindings: {} as unknown as [], input: imageA });
 

@@ -25,18 +25,26 @@ const legacyKindByLabel: Record<string, FlowMediaMentionKind> = {
 export function allocateMediaMentionBinding({
   bindings,
   input,
+  label,
 }: {
   bindings?: unknown;
   input: MediaMentionInput;
+  label?: string;
 }): { bindings: FlowMediaMentionBinding[]; binding: FlowMediaMentionBinding } {
   const normalizedBindings = normalizeBindings(bindings);
   const existing = normalizedBindings.find((binding) => binding.inputKey === input.inputKey);
-  if (existing) return { bindings: normalizedBindings, binding: existing };
+  if (existing) {
+    if (existing.kind === input.kind && label && existing.label !== label) {
+      const binding = { ...existing, label };
+      return { bindings: normalizedBindings.map((item) => item.inputKey === input.inputKey ? binding : item), binding };
+    }
+    return { bindings: normalizedBindings, binding: existing };
+  }
 
   const binding: FlowMediaMentionBinding = {
     inputKey: input.inputKey,
     kind: input.kind,
-    label: `${localizedKindLabels[input.kind]}${nextLabelNumber(normalizedBindings, input.kind)}`,
+    label: label || `${localizedKindLabels[input.kind]}${nextLabelNumber(normalizedBindings, input.kind)}`,
   };
   return { bindings: [...normalizedBindings, binding], binding };
 }
