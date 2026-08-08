@@ -1,6 +1,6 @@
 import { act, createEvent, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
-import { $createParagraphNode, $createTextNode, $getRoot, type LexicalEditor, type TextNode } from 'lexical';
+import { $createParagraphNode, $createTextNode, $getNodeByKey, $getRoot, $getSelection, $isRangeSelection, type LexicalEditor, type TextNode } from 'lexical';
 import type { FlowMediaMentionBinding } from '../types';
 import type { MediaMentionCandidate } from './mediaMentionCandidates';
 import { MediaMentionPromptEditor } from './MediaMentionPromptEditor';
@@ -58,6 +58,60 @@ async function renderEditorWithLexicalPrompt(prompt: string, caretOffset: number
   return { ...result, editor: lexicalEditor! };
 }
 
+function readLexicalCaret(editor: LexicalEditor) {
+  let caret: { text: string; offset: number } | null = null;
+  editor.getEditorState().read(() => {
+    const selection = $getSelection();
+    if (!$isRangeSelection(selection) || !selection.isCollapsed()) return;
+    const node = $getNodeByKey(selection.anchor.key);
+    if (!node) return;
+    caret = { text: node.getTextContent(), offset: selection.anchor.offset };
+  });
+  return caret;
+}
+
+function renderControlledEditor() {
+  let value = '@';
+  let bindings: FlowMediaMentionBinding[] = [];
+  let editor: LexicalEditor | undefined;
+  let view: ReturnType<typeof render>;
+  const renderCurrent = () => view.rerender(
+    <MediaMentionPromptEditor
+      activeInputKeys={new Set(['asset:image'])}
+      bindings={bindings}
+      candidates={[imageCandidate]}
+      densityVariant="image"
+      onActivateCandidate={vi.fn(async () => ({ inputKey: 'asset:image', kind: 'image' as const }))}
+      onChange={({ bindings: nextBindings, value: nextValue }) => {
+        bindings = nextBindings;
+        value = nextValue;
+        renderCurrent();
+      }}
+      onEditorReady={(nextEditor) => { editor = nextEditor; }}
+      placeholder="生成提示词"
+      value={value}
+    />,
+  );
+  view = render(
+    <MediaMentionPromptEditor
+      activeInputKeys={new Set(['asset:image'])}
+      bindings={bindings}
+      candidates={[imageCandidate]}
+      densityVariant="image"
+      onActivateCandidate={vi.fn(async () => ({ inputKey: 'asset:image', kind: 'image' as const }))}
+      onChange={({ bindings: nextBindings, value: nextValue }) => {
+        bindings = nextBindings;
+        value = nextValue;
+        renderCurrent();
+      }}
+      onEditorReady={(nextEditor) => { editor = nextEditor; }}
+      placeholder="生成提示词"
+      value={value}
+    />,
+  );
+  return { view, getEditor: () => editor };
+}
+
 describe('MediaMentionPromptEditor', () => {
   it('renders the runtime thumbnail for a media mention capsule', async () => {
     renderEditor({
@@ -95,6 +149,15 @@ describe('MediaMentionPromptEditor', () => {
     })));
   });
 
+  it('does not activate a disabled candidate through Enter', async () => {
+    const blockedCandidate = { ...imageCandidate, disabledReason: '模型能力加载中' };
+    const onActivateCandidate = vi.fn(async () => ({ inputKey: 'asset:image', kind: 'image' as const }));
+    await renderEditorWithLexicalPrompt('@', 1, { candidates: [blockedCandidate], onActivateCandidate });
+    fireEvent.keyDown(screen.getByRole('combobox', { name: '生成提示词' }), { key: 'Enter' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(onActivateCandidate).not.toHaveBeenCalled();
+  });
+
   it('renders an inserted capsule thumbnail from the selected candidate immediately', async () => {
     const thumbnailCandidate = { ...imageCandidate, thumbnailUrl: '/candidate-thumb.webp' };
     const { onChange } = await renderEditorWithLexicalPrompt('@', 1, {
@@ -104,6 +167,37 @@ describe('MediaMentionPromptEditor', () => {
     fireEvent.keyDown(screen.getByRole('combobox', { name: '生成提示词' }), { key: 'Enter' });
     await waitFor(() => expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ value: '@图片1 ' })));
     expect((await screen.findByRole('img', { name: '图片1' })).getAttribute('src')).toBe('/candidate-thumb.webp');
+  });
+
+  it('uses the candidate thumbnail when activation only returns the stable input identity', async () => {
+    const thumbnailCandidate = { ...imageCandidate, thumbnailUrl: '/candidate-only-thumb.webp' };
+    const { onActivateCandidate } = await renderEditorWithLexicalPrompt('@', 1, {
+      candidates: [thumbnailCandidate],
+      onActivateCandidate: vi.fn(async () => ({ inputKey: 'asset:image', kind: 'image' as const })),
+    });
+    fireEvent.keyDown(screen.getByRole('combobox', { name: '生成提示词' }), { key: 'Enter' });
+    await waitFor(() => expect(onActivateCandidate).toHaveBeenCalledWith(thumbnailCandidate));
+    expect((await screen.findByRole('img', { name: '图片1' })).getAttribute('src')).toBe('/candidate-only-thumb.webp');
+  });
+
+  it('keeps the caret after the inserted capsule when the parent immediately controls the new value', async () => {
+    const { getEditor } = renderControlledEditor();
+    await waitFor(() => expect(getEditor()).toBeTruthy());
+    const editor = getEditor()!;
+    act(() => {
+      editor.update(() => {
+        const root = $getRoot();
+        root.clear();
+        const paragraph = $createParagraphNode();
+        const text = $createTextNode('@');
+        paragraph.append(text);
+        root.append(paragraph);
+        text.selectEnd();
+      }, { discrete: true });
+    });
+    fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Enter' });
+    await waitFor(() => expect(screen.getByText('@图片1')).toBeTruthy());
+    await waitFor(() => expect(readLexicalCaret(editor)).toEqual({ text: ' ', offset: 1 }));
   });
 
   it('opens the menu when the first @ leaves Lexical on an element selection', async () => {

@@ -60,9 +60,10 @@ type SerializedMediaMentionNode = Spread<{
   valid: boolean;
 }, SerializedLexicalNode>;
 
-type ParsedPart = { text?: string; mention?: { binding?: FlowMediaMentionBinding; kind: FlowMediaMentionKind; label: string; valid: boolean } };
+type ParsedPart = { text?: string; mention?: { binding?: FlowMediaMentionBinding; kind: FlowMediaMentionKind; label: string; valid: boolean; previewUrl?: string } };
 type MentionQuerySnapshot = { endOffset: number; nodeKey: NodeKey; query: string; startOffset: number; version: number };
 type EditorActions = { activate: (candidate: MediaMentionCandidate) => void; focus: () => void };
+type PendingMentionCaret = { inputKey: string; expectedValue: string };
 
 const mediaKindIcon: Record<FlowMediaMentionKind, typeof Image> = { image: Image, video: Video, audio: Music2 };
 const EMPTY_PREVIEW_URLS: Readonly<Record<string, string | undefined>> = {};
@@ -117,10 +118,10 @@ class MediaMentionNode extends DecoratorNode<React.ReactNode> {
 }
 
 function $createMediaMentionNode(part: NonNullable<ParsedPart['mention']>) {
-  return new MediaMentionNode(part.binding?.inputKey, part.kind, part.label, part.valid);
+  return new MediaMentionNode(part.binding?.inputKey, part.kind, part.label, part.valid, undefined, false, part.previewUrl);
 }
 
-function parseMediaMentions(value: string, bindings: FlowMediaMentionBinding[], activeInputKeys: ReadonlySet<string>): ParsedPart[] {
+function parseMediaMentions(value: string, bindings: FlowMediaMentionBinding[], activeInputKeys: ReadonlySet<string>, previewUrlsByInputKey: Readonly<Record<string, string | undefined>>, runtimePreviewUrls: Readonly<Record<string, string | undefined>>): ParsedPart[] {
   const bindingsByLabel = new Map<string, FlowMediaMentionBinding[]>();
   for (const binding of bindings) bindingsByLabel.set(binding.label, [...(bindingsByLabel.get(binding.label) ?? []), binding]);
   const labels = [...bindingsByLabel.keys()].sort((a, b) => b.length - a.length).map(escapeRegExp);
@@ -139,6 +140,7 @@ function parseMediaMentions(value: string, bindings: FlowMediaMentionBinding[], 
       kind: binding?.kind ?? sameLabelBindings[0]?.kind ?? 'image',
       label,
       valid: Boolean(binding && resolveMediaMentionToken({ activeInputKeys, binding }).status === 'valid'),
+      previewUrl: binding ? previewUrlsByInputKey[binding.inputKey] || runtimePreviewUrls[binding.inputKey] : undefined,
     } });
     cursor = start + match[0].length;
   }
@@ -146,19 +148,60 @@ function parseMediaMentions(value: string, bindings: FlowMediaMentionBinding[], 
   return parts;
 }
 
-function initializePrompt(editor: LexicalEditor, value: string, bindings: FlowMediaMentionBinding[], activeInputKeys: ReadonlySet<string>) {
+function initializePrompt(editor: LexicalEditor, value: string, bindings: FlowMediaMentionBinding[], activeInputKeys: ReadonlySet<string>, previewUrlsByInputKey: Readonly<Record<string, string | undefined>> = EMPTY_PREVIEW_URLS, runtimePreviewUrls: Readonly<Record<string, string | undefined>> = EMPTY_PREVIEW_URLS, restoreInputKey?: string) {
+  let restored = false;
   editor.update(() => {
     const root = $getRoot();
     root.clear();
     for (const line of String(value ?? '').split('\n')) {
       const paragraph = $createParagraphNode();
-      for (const part of parseMediaMentions(line, bindings, activeInputKeys)) {
+      for (const part of parseMediaMentions(line, bindings, activeInputKeys, previewUrlsByInputKey, runtimePreviewUrls)) {
         if (part.mention) paragraph.append($createMediaMentionNode(part.mention));
         else if (part.text) paragraph.append($createTextNode(part.text));
       }
       root.append(paragraph);
     }
+    if (restoreInputKey) {
+      const mention = $nodesOfType(MediaMentionNode).find((node) => node.__inputKey === restoreInputKey);
+      const spacer = mention?.getNextSibling();
+      if (spacer && $isTextNode(spacer)) {
+        spacer.selectEnd();
+        restored = true;
+      }
+    }
   });
+  return restored;
+}
+
+function restoreCaretAfterMention(editor: LexicalEditor, inputKey: string) {
+  let restored = false;
+  editor.update(() => {
+    const mention = $nodesOfType(MediaMentionNode).find((node) => node.__inputKey === inputKey);
+    const spacer = mention?.getNextSibling();
+    if (spacer && $isTextNode(spacer)) {
+      spacer.selectEnd();
+      restored = true;
+    }
+  }, { discrete: true });
+  return restored;
+}
+
+function scheduleCaretRestore(editor: LexicalEditor, pendingCaretRef: React.MutableRefObject<PendingMentionCaret | null>, expected: PendingMentionCaret) {
+  const restore = () => {
+    const pending = pendingCaretRef.current;
+    if (pending !== expected) return;
+    let currentValue = '';
+    editor.getEditorState().read(() => { currentValue = serializeEditor(); });
+    if (currentValue !== expected.expectedValue) return;
+    try {
+      editor.focus();
+      restoreCaretAfterMention(editor, expected.inputKey);
+    } catch {
+      // The editor may have unmounted before the deferred DOM selection commit.
+    }
+  };
+  queueMicrotask(restore);
+  setTimeout(restore, 0);
 }
 
 function serializeEditor(): string { return $getRoot().getChildren().map((child) => child.getTextContent()).join('\n'); }
@@ -222,6 +265,8 @@ function EditorBridge({ activeInputKeys, ariaLabel = '生成提示词', bindings
   const [editor] = useLexicalComposerContext();
   const bindingsRef = useRef(bindings);
   const activeKeysRef = useRef(activeInputKeys);
+  const runtimePreviewUrlsRef = useRef<Record<string, string | undefined>>({});
+  const pendingCaretRef = useRef<PendingMentionCaret | null>(null);
   const previewSignature = Object.entries(previewUrlsByInputKey).sort(([a], [b]) => a.localeCompare(b)).map(([key, url]) => `${key}:${url ?? ''}`).join('|');
   const composingRef = useRef(false);
   const queryRef = useRef<MentionQuerySnapshot | null>(null);
@@ -257,10 +302,22 @@ function EditorBridge({ activeInputKeys, ariaLabel = '生成提示词', bindings
     bindingsRef.current = bindings;
     activeKeysRef.current = activeInputKeys;
     const nextBindingState = `${bindingSignature(bindings)}\u0000${[...activeInputKeys].sort().join('|')}\u0000${previewSignature}`;
-    if (value !== lastSerializedValueRef.current) {
+    let currentValue = '';
+    editor.getEditorState().read(() => { currentValue = serializeEditor(); });
+    if (value !== lastSerializedValueRef.current || currentValue !== value) {
       lastSerializedValueRef.current = value;
       bindingStateRef.current = nextBindingState;
-      initializePrompt(editor, value, bindings, activeInputKeys);
+      const pending = pendingCaretRef.current;
+      const restored = currentValue !== value && initializePrompt(
+        editor,
+        value,
+        bindings,
+        activeInputKeys,
+        previewUrlsByInputKey,
+        runtimePreviewUrlsRef.current,
+        pending?.expectedValue === value ? pending.inputKey : undefined,
+      );
+      if (pending && (pending.expectedValue !== value || restored)) pendingCaretRef.current = null;
       return;
     }
     if (nextBindingState === bindingStateRef.current) return;
@@ -272,14 +329,31 @@ function EditorBridge({ activeInputKeys, ariaLabel = '生成提示词', bindings
         const matching = node.__inputKey ? bindings.find((binding) => binding.inputKey === node.__inputKey) : undefined;
         node.setValidity(Boolean(matching && multiplicity.get(matching.label) === 1 && activeInputKeys.has(matching.inputKey)));
         node.setDisabled(disabled);
-        node.setPreviewUrl(node.__inputKey ? previewUrlsByInputKey[node.__inputKey] : undefined);
+        const previewUrl = node.__inputKey ? previewUrlsByInputKey[node.__inputKey] || runtimePreviewUrlsRef.current[node.__inputKey] : undefined;
+        if (previewUrl) {
+          node.setPreviewUrl(previewUrl);
+          if (node.__inputKey) runtimePreviewUrlsRef.current[node.__inputKey] = previewUrl;
+        }
       }
     }, { discrete: true });
+    const pending = pendingCaretRef.current;
+    if (pending && pending.expectedValue === lastSerializedValueRef.current && initializePrompt(editor, value, bindings, activeInputKeys, previewUrlsByInputKey, runtimePreviewUrlsRef.current, pending.inputKey)) {
+      pendingCaretRef.current = null;
+    }
   }, [activeInputKeys, bindings, disabled, editor, previewSignature, value]);
+
+  useEffect(() => {
+    const pending = pendingCaretRef.current;
+    if (!pending || pending.expectedValue !== value) return;
+    scheduleCaretRestore(editor, pendingCaretRef, pending);
+    setTimeout(() => {
+      if (pendingCaretRef.current === pending) pendingCaretRef.current = null;
+    }, 0);
+  }, [bindings, editor, value]);
 
   const activate = useCallback(async (candidate: MediaMentionCandidate) => {
     const snapshot = queryRef.current;
-    if (disabled || composingRef.current || !snapshot) return;
+    if (disabled || composingRef.current || !snapshot || candidate.disabledReason) return;
     let activated: ActivatedMediaMention;
     try {
       activated = await onActivateCandidate(candidate);
@@ -305,7 +379,9 @@ function EditorBridge({ activeInputKeys, ariaLabel = '生成提示词', bindings
       const sourceText = node.getTextContent();
       const before = sourceText.slice(0, target.startOffset);
       const after = sourceText.slice(target.endOffset);
-      const mention = new MediaMentionNode(allocation.binding.inputKey, allocation.binding.kind, allocation.binding.label, true, undefined, false, activated.previewUrl ?? previewUrlsByInputKey[allocation.binding.inputKey]);
+      const previewUrl = activated.previewUrl || candidate.thumbnailUrl || previewUrlsByInputKey[allocation.binding.inputKey] || runtimePreviewUrlsRef.current[allocation.binding.inputKey];
+      if (previewUrl) runtimePreviewUrlsRef.current[allocation.binding.inputKey] = previewUrl;
+      const mention = new MediaMentionNode(allocation.binding.inputKey, allocation.binding.kind, allocation.binding.label, true, undefined, false, previewUrl);
       const spacer = $createTextNode(' ');
       if (before) {
         node.setTextContent(before);
@@ -316,6 +392,7 @@ function EditorBridge({ activeInputKeys, ariaLabel = '生成提示词', bindings
       mention.insertAfter(spacer);
       if (after) spacer.insertAfter($createTextNode(after));
       spacer.selectEnd();
+      pendingCaretRef.current = { inputKey: allocation.binding.inputKey, expectedValue: serializeEditor() };
       inserted = true;
     }, { discrete: true });
     if (inserted) {
@@ -323,7 +400,8 @@ function EditorBridge({ activeInputKeys, ariaLabel = '生成提示词', bindings
       setMentionAnchor(null);
       setMenu(null);
       onActivationError(null);
-      queueMicrotask(() => editor.focus());
+      const pending = pendingCaretRef.current;
+      if (pending) scheduleCaretRestore(editor, pendingCaretRef, pending);
     }
   }, [disabled, editor, onActivateCandidate, onActivationError, previewUrlsByInputKey, setMenu, setMentionAnchor]);
 
@@ -434,12 +512,17 @@ export const MediaMentionPromptEditor = forwardRef<MediaMentionPromptEditorHandl
     let frame = 0;
     const schedule = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(measureAnchor); };
     const observer = typeof ResizeObserver !== 'undefined' && editorElementRef.current ? new ResizeObserver(schedule) : null;
+    const viewport = editorElementRef.current?.closest('.react-flow__viewport');
+    const viewportObserver = typeof MutationObserver !== 'undefined' && viewport
+      ? new MutationObserver(schedule)
+      : null;
     if (editorElementRef.current) observer?.observe(editorElementRef.current);
+    viewportObserver?.observe(viewport, { attributes: true, attributeFilter: ['style', 'class'] });
     window.addEventListener('resize', schedule);
     window.addEventListener('scroll', schedule, true);
     window.visualViewport?.addEventListener('resize', schedule);
     window.visualViewport?.addEventListener('scroll', schedule);
-    return () => { cancelAnimationFrame(frame); observer?.disconnect(); window.removeEventListener('resize', schedule); window.removeEventListener('scroll', schedule, true); window.visualViewport?.removeEventListener('resize', schedule); window.visualViewport?.removeEventListener('scroll', schedule); };
+    return () => { cancelAnimationFrame(frame); observer?.disconnect(); viewportObserver?.disconnect(); window.removeEventListener('resize', schedule); window.removeEventListener('scroll', schedule, true); window.visualViewport?.removeEventListener('resize', schedule); window.visualViewport?.removeEventListener('scroll', schedule); };
   }, [menu, measureAnchor]);
 
   return <LexicalComposer initialConfig={initialConfig}>

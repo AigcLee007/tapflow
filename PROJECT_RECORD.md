@@ -6319,3 +6319,10 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - Media mention activation now preserves the saved `@query` validation but falls back to the current trailing text node when Lexical restores an element/root selection during asynchronous candidate activation. This fixes the first-keystroke `@` flow without allowing stale candidates to insert into unrelated text.
 - The node-input-tray browser smoke now exercises real keyboard selection (`@`, ArrowDown, Enter), asserts stable independent labels (`@视频1`, `@图片2`), and verifies image hover preview with a representative thumbnail fixture.
 - Validation passed: focused media mention/input suites (`61` tests), `npm run smoke:node-input-tray`, and the frontend build. Existing Lexical `flushSync`, Browserslist, mixed-import, chunk-size, and CSS warnings remain non-blocking.
+
+## 2026-08-08 - Media Mention Preview And Controlled Caret Follow-up
+
+- Media mention capsules retain runtime thumbnails through controlled prompt re-renders, and candidate thumbnails are used when activation returns only stable input identity.
+- Controlled Lexical updates compare the actual serialized editor value before rebuilding the root, preserving the insertion caret after an immediate parent value write-back.
+- Deferred caret restoration is retried after focus and guarded against editor unmounts; disabled candidates cannot be activated through keyboard paths.
+- Focused media mention, candidate menu, image input, and video composer suites passed (`61` tests). Existing React/Lexical harness warnings remain non-blocking.
