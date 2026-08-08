@@ -6293,3 +6293,10 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - image and video inputs resolve separate thumbnail and hover-preview URLs. Hover previews use image or muted video portals and remain runtime-only; canonical graph persistence keeps stable `mediaMentionBindings` but strips transient preview fields.
 - image and video nodes now use the shared media-only `@` editor. Text candidates are excluded; connected media inserts directly, canvas media auto-connects before insertion, and library assets are added to ordered inputs before insertion. Mention deletion only edits prompt text.
 - focused frontend suites passed (`14` files, `195` tests); Worker suite passed (`79` tests, `17` skipped); `npm run build` passed with existing Browserslist, mixed-import, and chunk-size warnings. The smoke contract passed (`2` tests); full `npm run smoke:node-input-tray` needs a follow-up fix for its generated check-code execution context before it can be counted as an end-to-end pass.
+
+## 2026-08-08 - Unified Input Groups And Mention Fixes
+
+- Text nodes now show upstream text, image, video, and audio inputs in the shared tray. Groups render in text/image/video/audio order with independent numbering, while `audio -> text` connections are accepted.
+- Canvas Backspace/Delete shortcuts are isolated from native and Lexical editors. Media `@` menus trigger on the first keystroke, support element selections, and anchor to the real caret rectangle.
+- Video mention candidates now fail closed while the catalog is loading or unavailable and are filtered by route-confirmed per-mode media limits. The LibTV-style candidate menu adds search, source grouping, media grouping, and disabled-candidate handling.
+- Focused validation passed for TextNode/input projection (40 tests), mention/caret (25 tests), capability/candidate/menu suites (30 tests). Full build and smoke validation remain the final gate for this branch.
