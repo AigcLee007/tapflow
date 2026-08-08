@@ -94,8 +94,8 @@ describe("ImageNodeComponent unified inputs", () => {
     const tray = await screen.findByLabelText("节点输入");
     expect(tray).toBeTruthy();
     expect(screen.getByRole("button", { name: "文本输入，共 1 个节点" })).toBeTruthy();
-    expect(tray.querySelector('[aria-label^="输入 2：Ready image"]')).toBeTruthy();
-    expect(tray.querySelector('[aria-label^="输入 3：Previewless image"]')).toBeTruthy();
+    expect(tray.querySelector('[aria-label^="输入 1：Ready image"]')).toBeTruthy();
+    expect(tray.querySelector('[aria-label^="输入 2：Previewless image"]')).toBeTruthy();
     expect(screen.queryByText(/@Image 1/)).toBeNull();
   });
 
@@ -149,8 +149,8 @@ describe("ImageNodeComponent unified inputs", () => {
     render(<StoreBackedImageNode nodeId={target.id} />);
 
     const tray = await screen.findByLabelText("节点输入");
-    const firstImageCard = tray.querySelector('[aria-label^="输入 2：First image"]') as HTMLElement;
-    const secondImageCard = tray.querySelector('[aria-label^="输入 3：Second image"]') as HTMLElement;
+    const firstImageCard = tray.querySelector('[aria-label^="输入 1：First image"]') as HTMLElement;
+    const secondImageCard = tray.querySelector('[aria-label^="输入 2：Second image"]') as HTMLElement;
     fireEvent.dragStart(firstImageCard, { dataTransfer: { effectAllowed: "move", setData: vi.fn() } });
     fireEvent.drop(secondImageCard, { dataTransfer: { effectAllowed: "move", setData: vi.fn() } });
 
