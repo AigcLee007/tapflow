@@ -3183,6 +3183,18 @@ export const TextNodeComponent = memo(function TextNode({
   const d = data;
   const backendProjectId = useFlowCanvasStore((s) => s.backendProjectId);
   const updateNodeData = useFlowCanvasStore((s) => s.updateNodeData);
+  const selectNodesByIds = useFlowCanvasStore((s) => s.selectNodesByIds);
+  const removeNodeInput = useFlowCanvasStore((s) => s.removeNodeInput);
+  const removeTextNodeInputs = useFlowCanvasStore((s) => s.removeTextNodeInputs);
+  const reorderNodeInputs = useFlowCanvasStore((s) => s.reorderNodeInputs);
+  const upstreamInputRefs = useFlowCanvasStore(
+    (s) => s.graphIndex.upstreamInputRefsByNodeId[id] || EMPTY_UPSTREAM_IMAGE_REFS,
+  );
+  const textInputItems = useMemo(
+    () => resolveCanvasInputItems({ inputOrder: d.inputOrder, seeds: upstreamInputRefs }),
+    [d.inputOrder, upstreamInputRefs],
+  );
+  const { items: resolvedTextInputItems, retry: retryTextInputAsset } = useCanvasInputAssets(textInputItems);
   const runtimeNodeOutput = useFlowCanvasStore((s) => s.nodeOutputByNodeId[id]);
   const runtimeNodeStatus = useFlowCanvasStore((s) => s.nodeRunStatusByNodeId[id]);
   const resolvedText = typeof runtimeNodeOutput?.text === 'string' ? runtimeNodeOutput.text : (d.text || '');
@@ -3568,6 +3580,18 @@ export const TextNodeComponent = memo(function TextNode({
 
       {showNodeEditor && !isFullscreen && (
         <NodeEditorSurface variant="text">
+          {resolvedTextInputItems.length ? (
+            <NodeInputTray
+              items={resolvedTextInputItems}
+              onFocusSource={(inputKey) => {
+                if (inputKey.startsWith('upstream:')) selectNodesByIds([inputKey.slice('upstream:'.length)]);
+              }}
+              onRemove={(inputKey) => removeNodeInput(id, inputKey)}
+              onRemoveAllText={() => removeTextNodeInputs(id)}
+              onReorder={(inputKeys) => reorderNodeInputs(id, inputKeys)}
+              onRetryPreview={retryTextInputAsset}
+            />
+          ) : null}
           <div style={{ position: 'relative' }}>
             <textarea
               className="nodrag nopan nowheel"

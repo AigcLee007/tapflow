@@ -237,6 +237,8 @@ interface FlowCanvasState {
 const MAX_HISTORY = 50;
 const INITIAL_VIEWPORT: Viewport = { x: 0, y: 0, zoom: 1 };
 
+const isTextNode = (node: FlowNode) => node.type === 'text' || node.data?.kind === 'text';
+
 const cloneHistoryEntry = (nodes: FlowNode[], edges: FlowEdge[]): HistoryEntry => ({
   nodes: structuredClone(nodes),
   edges: structuredClone(edges),
@@ -598,7 +600,7 @@ const reconcileNodeInputs = (
 
   return nodes.map((node) => {
     if (targetNodeIds && !targetNodeIds.has(node.id)) return node;
-    if (!isImageNode(node) && !isVideoNode(node)) return node;
+    if (!isTextNode(node) && !isImageNode(node) && !isVideoNode(node)) return node;
     const incomingEdges = edgesByTarget.get(node.id) ?? [];
     const upstreamSources = incomingEdges.reduce<Array<{
       inputKind: CanvasInputSeed['kind'];
@@ -634,7 +636,7 @@ const reconcileNodeInputs = (
       return source?.mediaKind === 'image';
     });
 
-    if (isImageNode(node)) {
+    if (isTextNode(node) || isImageNode(node)) {
       const nextData = {
         ...node.data,
         inputOrder,
@@ -1859,7 +1861,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
   removeNodeInput: (targetNodeId, inputKey) => {
     const key = String(inputKey || '').trim();
     const target = get().nodes.find((node) => node.id === targetNodeId);
-    if (!key || !target || (!isImageNode(target) && !isVideoNode(target))) return;
+    if (!key || !target || (!isTextNode(target) && !isImageNode(target) && !isVideoNode(target))) return;
     const sourceNodeId = key.startsWith('upstream:') ? key.slice('upstream:'.length) : '';
     const assetId = key.startsWith('asset:') ? key.slice('asset:'.length) : '';
     if (!sourceNodeId && !assetId) return;
@@ -1917,7 +1919,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
 
   removeTextNodeInputs: (targetNodeId) => {
     const target = get().nodes.find((node) => node.id === targetNodeId);
-    if (!target || (!isImageNode(target) && !isVideoNode(target))) return;
+    if (!target || (!isTextNode(target) && !isImageNode(target) && !isVideoNode(target))) return;
     const nodesById = new Map(get().nodes.map((node) => [node.id, node]));
     const hasTextInput = get().edges.some((edge) => (
       edge.target === targetNodeId
@@ -1943,7 +1945,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
 
   reorderNodeInputs: (targetNodeId, inputKeys) => {
     const target = get().nodes.find((node) => node.id === targetNodeId);
-    if (!target || (!isImageNode(target) && !isVideoNode(target))) return;
+    if (!target || (!isTextNode(target) && !isImageNode(target) && !isVideoNode(target))) return;
     const { textKeys, mediaKeys } = getNodeInputKeyPartitions(target, get().nodes, get().edges, get().nodeOutputByNodeId);
     const mediaKeySet = new Set(mediaKeys);
     const currentMediaKeys = getUniqueInputKeys(target.data.inputOrder).filter((key) => mediaKeySet.has(key));

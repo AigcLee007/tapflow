@@ -65,6 +65,11 @@ function StoreBackedVideoNode({ nodeId, selected = true }: { nodeId: string; sel
   return node ? <VideoNodeComponent id={node.id} selected={selected} data={node.data as any} dragging={false} zIndex={1} isConnectable type="video" xPos={0} yPos={0} /> : null;
 }
 
+function StoreBackedTextNode({ nodeId, selected = true }: { nodeId: string; selected?: boolean }) {
+  const node = useFlowCanvasStore((state) => state.nodes.find((item) => item.id === nodeId));
+  return node ? <TextNodeComponent id={node.id} selected={selected} data={node.data as any} dragging={false} zIndex={1} isConnectable type="text" xPos={0} yPos={0} /> : null;
+}
+
 vi.mock("../../assets/assetApi", () => ({
   getAsset: (...args: unknown[]) => assetApiMocks.getAsset(...args),
   getAssetDownloadUrl: (...args: unknown[]) => assetApiMocks.getAssetDownloadUrl(...args),
@@ -139,6 +144,55 @@ describe("FlowNodes agent metadata", () => {
       setSelectedMediaTab: vi.fn(),
       total: 0,
       updateAssetOptimistically: vi.fn(),
+    });
+  });
+
+  it("renders all upstream input kinds in the TextNode input tray", async () => {
+    const textSource = useFlowCanvasStore.getState().addNode("text", { x: 0, y: 0 }, { text: "Brief", title: "Text source" } as any);
+    const imageSource = useFlowCanvasStore.getState().addNode("image", { x: 0, y: 180 }, { assetId: "asset-image", thumbnailUrl: "https://cdn.test/image.png", title: "Image source" } as any);
+    const videoSource = useFlowCanvasStore.getState().addNode("video", { x: 0, y: 360 }, { assetId: "asset-video", posterUrl: "https://cdn.test/video.png", title: "Video source" } as any);
+    const audioSource = useFlowCanvasStore.getState().addNode("audio", { x: 0, y: 540 }, { title: "Audio source" } as any);
+    const target = useFlowCanvasStore.getState().addNode("text", { x: 420, y: 0 }, { generationPrompt: "Generate", title: "Text target" } as any, { selected: true });
+    for (const source of [textSource, imageSource, videoSource, audioSource]) {
+      useFlowCanvasStore.getState().onConnect({ source: source.id, sourceHandle: "out", target: target.id, targetHandle: "in" });
+    }
+
+    render(<StoreBackedTextNode nodeId={target.id} />);
+
+    const tray = await screen.findByLabelText("节点输入");
+    expect(tray.querySelector('[data-input-kind="text"]')).toBeTruthy();
+    expect(tray.querySelector('[data-input-kind="image"]')).toBeTruthy();
+    expect(tray.querySelector('[data-input-kind="video"]')).toBeTruthy();
+    expect(tray.querySelector('[data-input-kind="audio"]')).toBeTruthy();
+    expect(screen.getByRole("button", { name: "文本输入，共 1 个节点" })).toBeTruthy();
+    expect(tray.querySelector('[aria-label^="输入 1：Image source"]')).toBeTruthy();
+    expect(tray.querySelector('[aria-label^="输入 1：Video source"]')).toBeTruthy();
+    expect(screen.queryByRole("listbox", { name: "引用媒体" })).toBeNull();
+  });
+
+  it("focuses, previews, and removes media inputs from the TextNode tray", async () => {
+    const imageSource = useFlowCanvasStore.getState().addNode("image", { x: 0, y: 180 }, {
+      assetId: "asset-image",
+      thumbnailUrl: "https://cdn.test/image.png",
+      title: "Image source",
+    } as any);
+    const target = useFlowCanvasStore.getState().addNode("text", { x: 420, y: 0 }, { generationPrompt: "Generate", title: "Text target" } as any, { selected: true });
+    useFlowCanvasStore.getState().onConnect({ source: imageSource.id, sourceHandle: "out", target: target.id, targetHandle: "in" });
+
+    render(<StoreBackedTextNode nodeId={target.id} />);
+
+    const card = await screen.findByTestId("media-input-card");
+    const trigger = card.querySelector('[role="button"]') as HTMLElement;
+    fireEvent.mouseEnter(trigger);
+    expect(await screen.findByRole("tooltip")).toBeTruthy();
+
+    fireEvent.click(trigger);
+    expect(useFlowCanvasStore.getState().nodes.find((node) => node.id === imageSource.id)?.selected).toBe(true);
+
+    const removeButton = card.querySelector('button') as HTMLButtonElement;
+    fireEvent.click(removeButton);
+    await waitFor(() => {
+      expect(useFlowCanvasStore.getState().edges.some((edge) => edge.source === imageSource.id && edge.target === target.id)).toBe(false);
     });
   });
 

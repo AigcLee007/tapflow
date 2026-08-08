@@ -29,6 +29,7 @@ describe('connectionRules', () => {
       'panorama_viewer',
     ]);
     expect(getConnectionActionsForSource(node('video')).map((action) => action.kind)).toEqual(['video', 'text']);
+    expect(getConnectionActionsForSource(node('audio')).map((action) => action.kind)).toEqual(['video', 'text']);
   });
 
   it('enforces the allowed upstream/downstream matrix for existing nodes', () => {
@@ -38,6 +39,7 @@ describe('connectionRules', () => {
     const imageTarget = node('image');
     const videoSource = node('video');
     const videoTarget = node('video');
+    const audioSource = node('audio');
 
     expect(canConnectFlowNodes(textSource, textTarget).ok).toBe(true);
     expect(canConnectFlowNodes(textSource, imageTarget).ok).toBe(true);
@@ -48,6 +50,7 @@ describe('connectionRules', () => {
     expect(canConnectFlowNodes(imageSource, videoTarget).ok).toBe(true);
 
     expect(canConnectFlowNodes(videoSource, textTarget).ok).toBe(true);
+    expect(canConnectFlowNodes(audioSource, textTarget).ok).toBe(true);
     expect(canConnectFlowNodes(videoSource, imageTarget).ok).toBe(false);
     expect(canConnectFlowNodes(videoSource, videoTarget).ok).toBe(true);
     expect(canConnectFlowNodes(textSource, textSource).ok).toBe(false);

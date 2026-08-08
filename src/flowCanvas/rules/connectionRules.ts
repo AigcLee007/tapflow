@@ -50,11 +50,12 @@ const ALLOWED_TARGETS_BY_SOURCE: Record<string, FlowConnectionAction[]> = {
   ],
   audio: [
     { kind: 'video', label: "\u97f3\u9891\u53c2\u8003", desc: "\u5c06\u97f3\u9891\u4f5c\u4e3a\u89c6\u9891\u751f\u6210\u53c2\u8003" },
+    { kind: 'text', label: '\u97f3\u9891\u5206\u6790', desc: '\u8bc6\u522b\u97f3\u9891\u5185\u5bb9\u5e76\u751f\u6210\u6587\u672c' },
   ],
 };
 
 const ALLOWED_SOURCES_BY_TARGET: Record<string, string[]> = {
-  text: ['text', 'image', 'video'],
+  text: ['text', 'image', 'video', 'audio'],
   image: ['text', 'image'],
   panorama_viewer: ['image'],
   video: ['text', 'image', 'video', 'audio'],
