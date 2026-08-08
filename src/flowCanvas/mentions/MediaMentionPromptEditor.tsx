@@ -161,7 +161,7 @@ function serializeEditor(): string { return $getRoot().getChildren().map((child)
 function $getMentionQuery(version: number): MentionQuerySnapshot | null {
   const selection = $getSelection();
   if (!selection || !selection.isCollapsed()) return null;
-  const anchor = (selection as { anchor: { key: NodeKey; offset: number; type: string } }).anchor;
+  const anchor = selection.anchor;
   let node = $getNodeByKey(anchor.key);
   let offset = anchor.offset;
   if (!$isRangeSelection(selection) && anchor.type === 'element' && $isElementNode(node)) {
@@ -257,8 +257,7 @@ function EditorBridge({ activeInputKeys, ariaLabel = '生成提示词', bindings
     editor.update(() => {
       if (versionRef.current !== snapshot.version) return;
       const selection = $getSelection();
-      if (!selection || !selection.isCollapsed()) return;
-      if ($isRangeSelection(selection) && (selection.anchor.key !== snapshot.nodeKey || selection.anchor.offset !== snapshot.endOffset)) return;
+      if (!$isRangeSelection(selection) || !selection.isCollapsed() || selection.anchor.key !== snapshot.nodeKey || selection.anchor.offset !== snapshot.endOffset) return;
       const node = $getNodeByKey(snapshot.nodeKey);
       if (!$isTextNode(node) || node.getTextContent().slice(snapshot.startOffset, snapshot.endOffset) !== `@${snapshot.query}`) return;
       const allocation = allocateMediaMentionBinding({ bindings: bindingsRef.current, input: activated });
