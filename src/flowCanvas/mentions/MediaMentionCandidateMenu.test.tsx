@@ -18,7 +18,7 @@ describe('MediaMentionCandidateMenu', () => {
       />,
     );
 
-    expect(screen.getByRole('option', { name: /Canvas image.*图片.*模型能力加载中/ }).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByRole('option', { name: /Canvas image.*模型能力加载中/ }).hasAttribute('disabled')).toBe(true);
     expect(screen.getByText('模型能力加载中')).toBeTruthy();
   });
 });
