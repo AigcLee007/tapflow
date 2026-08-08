@@ -209,7 +209,7 @@ export function NodeInputTray({ disabled = false, items, onFocusSource, onRemove
   }, [overflowItems.length, overflowLayer.closeLayer]);
 
   useEffect(() => {
-    if (hovered && !hoveredItem) setHovered(null);
+    if (hovered && (!hoveredItem || !hovered.trigger.isConnected)) setHovered(null);
   }, [hovered, hoveredItem]);
 
   useEffect(() => () => {
