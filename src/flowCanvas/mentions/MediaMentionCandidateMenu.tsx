@@ -112,6 +112,7 @@ export function MediaMentionCandidateMenu({
               <span className="min-w-0 flex-1">
                 <span className={`${MENU_ITEM_PRIMARY_CLASS} block truncate`}>{candidate.title}</span>
                 <span className={`${MENU_ITEM_SECONDARY_CLASS} block`}>{kindLabel(candidate.mediaKind)}</span>
+                {candidate.disabledReason ? <span className={`${MENU_ITEM_SECONDARY_CLASS} block text-amber-200/70`}>{candidate.disabledReason}</span> : null}
               </span>
             </button>
           </div>

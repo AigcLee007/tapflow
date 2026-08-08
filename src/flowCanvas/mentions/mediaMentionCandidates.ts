@@ -68,7 +68,7 @@ export function buildMediaMentionCandidates(input: CandidateInput): MediaMention
       : input.disabledReasons[kind];
   };
   const shouldIncludeNewSource = (kind: MediaMentionConnectedSeed['kind']): kind is FlowMediaMentionKind =>
-    isMediaKind(kind) && (input.allowedKinds.has(kind) || Boolean(input.disabledReasons));
+    isMediaKind(kind) && (input.allowedKinds.has(kind) || Boolean(disabledReasonFor(kind)));
   const connectedSourceNodeIds = new Set<string>();
   const connectedAssetIds = new Set<string>();
   const candidateKeys = new Set<string>();

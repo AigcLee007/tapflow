@@ -101,6 +101,22 @@ describe('buildMediaMentionCandidates', () => {
     ]);
   });
 
+  it('does not expose an unallowed kind when its disabled reason is missing', () => {
+    const result = buildMediaMentionCandidates({
+      allowedKinds: new Set(['video']),
+      disabledReasons: { image: '当前模式不支持图片输入' },
+      connected: [],
+      canvas: [
+        { kind: 'audio', nodeId: 'canvas-audio', title: 'Canvas audio' },
+        { kind: 'video', nodeId: 'canvas-video', title: 'Canvas video' },
+      ],
+      assets: [],
+      currentNodeId: 'target',
+      recentAssetIds: [],
+    });
+    expect(result.map((candidate) => candidate.candidateKey)).toEqual(['canvas:canvas-video']);
+  });
+
   it('removes duplicate node and asset sources and never returns self or malformed ids', () => {
     const result = buildMediaMentionCandidates({
       allowedKinds: new Set(['image', 'video', 'audio']),

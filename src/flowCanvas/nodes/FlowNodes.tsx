@@ -7862,7 +7862,7 @@ export const VideoNodeComponent = memo(function VideoNode({
       const kind = asset.kind === "image" || asset.kind === "video" || asset.kind === "audio" ? asset.kind : null;
       return kind ? [{ assetId: asset.id, kind, thumbnailUrl: asset.previewUrl, title: asset.title || asset.originalFilename || "Media" }] : [];
     });
-    return buildMediaMentionCandidates({ allowedKinds, assets, canvas, connected, currentNodeId: id, recentAssetIds: [] });
+    return buildMediaMentionCandidates({ allowedKinds, disabledReasons: capabilityResult.disabledReasons, assets, canvas, connected, currentNodeId: id, recentAssetIds: [] });
   }, [canvasNodes, d.modelId, id, resolvedVideoInputItems, videoAssetLibrary.assets, videoCatalog.error, videoCatalog.loading, videoCatalog.models, videoParams.mode]);
   const activateVideoMention = useCallback((candidate: MediaMentionCandidate) => {
     const option = videoCatalog.models.find((model) => model.id === d.modelId);
