@@ -6278,3 +6278,11 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - removing an upstream Veo first/last frame now disconnects the corresponding canvas edge before mode resolution, preventing the deleted frame from being automatically restored.
 - image-to-video reference reconciliation now keeps one already-active upstream image when legacy drafts contain multiple incoming image edges, preventing the React maximum-update-depth loop that blacked out the canvas.
 - focused video reference and adapter tests passed (`63` assertions across the focused suites), the complete AI Gateway core suite passed (`143` tests), and frontend build plus `git diff --check` passed with existing Vite warnings.
+
+## 2026-08-08 - Media Mention Input Accessibility And Recovery
+
+- disabled media mention editors now call Lexical `setEditable(false)` and disable mention removal controls, preventing edits while a node is unavailable or generating.
+- media candidate activation failures are caught, announced through an accessible alert, and retain the query/menu so the creator can retry without retyping.
+- the prompt combobox now exposes active mention candidates through list autocomplete ARIA relationships, and each portal option has a unique stable ID.
+- valid mention removal controls are always keyboard reachable and support Enter or Space.
+- focused mention regression suites passed (`28` assertions) and the frontend production build passed; existing Lexical test-harness `flushSync`, Browserslist age, mixed-import, and chunk-size warnings remain non-blocking.

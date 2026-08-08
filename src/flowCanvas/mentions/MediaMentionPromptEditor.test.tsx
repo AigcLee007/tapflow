@@ -61,7 +61,7 @@ async function renderEditorWithLexicalPrompt(prompt: string, caretOffset: number
 describe('MediaMentionPromptEditor', () => {
   it('opens media-only candidates for @ and activates the keyboard selection', async () => {
     const { onActivateCandidate, onChange } = await renderEditorWithLexicalPrompt('@', 1);
-    const editor = screen.getByRole('textbox', { name: '生成提示词' });
+    const editor = screen.getByRole('combobox', { name: '生成提示词' });
     expect(await screen.findByRole('listbox', { name: '引用媒体' })).toBeTruthy();
 
     fireEvent.keyDown(editor, { key: 'Enter' });
@@ -74,7 +74,7 @@ describe('MediaMentionPromptEditor', () => {
 
   it('does not open or accept candidates during IME composition', () => {
     renderEditor();
-    const editor = screen.getByRole('textbox', { name: '生成提示词' });
+    const editor = screen.getByRole('combobox', { name: '生成提示词' });
     fireEvent.compositionStart(editor);
     editor.textContent = '@';
     fireEvent.input(editor, { data: '@', inputType: 'insertCompositionText', isComposing: true });
@@ -100,7 +100,7 @@ describe('MediaMentionPromptEditor', () => {
 
   it('filters candidates, cycles selection, and dismisses on escape and outside pointer down', async () => {
     await renderEditorWithLexicalPrompt('@road', 5);
-    const editor = screen.getByRole('textbox', { name: '生成提示词' });
+    const editor = screen.getByRole('combobox', { name: '生成提示词' });
     expect(await screen.findByRole('option', { name: /Road video/i })).toBeTruthy();
     expect(screen.queryByRole('option', { name: /Mountain image/i })).toBeNull();
 
@@ -116,7 +116,7 @@ describe('MediaMentionPromptEditor', () => {
 
   it('opens and inserts at the current Lexical caret inside a prompt instead of trailing text', async () => {
     const { onChange } = await renderEditorWithLexicalPrompt('before @mo after', 10);
-    const editor = screen.getByRole('textbox', { name: '生成提示词' });
+    const editor = screen.getByRole('combobox', { name: '生成提示词' });
     expect(await screen.findByRole('listbox', { name: '引用媒体' })).toBeTruthy();
 
     fireEvent.keyDown(editor, { key: 'Enter' });
@@ -127,7 +127,7 @@ describe('MediaMentionPromptEditor', () => {
     let resolveActivation: ((value: { inputKey: string; kind: 'image' }) => void) | undefined;
     const activation = vi.fn(() => new Promise<{ inputKey: string; kind: 'image' }>((resolve) => { resolveActivation = resolve; }));
     const { editor, onChange } = await renderEditorWithLexicalPrompt('before @mo after', 10, { onActivateCandidate: activation });
-    const editorElement = screen.getByRole('textbox', { name: '生成提示词' });
+    const editorElement = screen.getByRole('combobox', { name: '生成提示词' });
     expect(await screen.findByRole('listbox', { name: '引用媒体' })).toBeTruthy();
     fireEvent.keyDown(editorElement, { key: 'Enter' });
     await waitFor(() => expect(activation).toHaveBeenCalled());
@@ -195,7 +195,7 @@ describe('MediaMentionPromptEditor', () => {
       </>,
     );
     await waitFor(() => expect(editors).toHaveLength(2));
-    const editorElements = screen.getAllByRole('textbox');
+    const editorElements = screen.getAllByRole('combobox');
     Object.defineProperty(editorElements[0], 'getBoundingClientRect', { value: () => new DOMRect(20, 40, 220, 32) });
     Object.defineProperty(editorElements[1], 'getBoundingClientRect', { value: () => new DOMRect(480, 240, 220, 32) });
     await act(async () => {
@@ -213,6 +213,61 @@ describe('MediaMentionPromptEditor', () => {
     expect(menu.style.left).toBe('480px');
     fireEvent.pointerDown(document.body);
     await waitFor(() => expect(screen.queryByRole('listbox', { name: '引用媒体' })).toBeNull());
-    expect(screen.getAllByRole('textbox')).toHaveLength(2);
+    expect(screen.getAllByRole('combobox')).toHaveLength(2);
+  });
+
+  it('makes a disabled editor non-editable and prevents keyboard or pill removal changes', async () => {
+    const onChange = vi.fn();
+    let lexicalEditor: LexicalEditor | undefined;
+    renderEditor({
+      disabled: true,
+      value: 'scene @图片1',
+      bindings: [imageBinding],
+      onChange,
+      onEditorReady: (editor) => { lexicalEditor = editor; },
+    });
+    await waitFor(() => expect(lexicalEditor).toBeTruthy());
+    onChange.mockClear();
+    expect(lexicalEditor!.isEditable()).toBe(false);
+    const editorElement = screen.getByRole('combobox', { name: '生成提示词' });
+    expect(editorElement.getAttribute('contenteditable')).toBe('false');
+    const removeButton = await screen.findByRole('button', { name: '删除引用 图片1' });
+    expect((removeButton as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.keyDown(removeButton, { key: 'Enter' });
+    fireEvent.click(removeButton);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('keeps the query usable and announces a recoverable activation failure', async () => {
+    const activation = vi.fn(async () => { throw new Error('素材暂不可用'); });
+    await renderEditorWithLexicalPrompt('@', 1, { onActivateCandidate: activation });
+    const editor = screen.getByRole('combobox', { name: '生成提示词' });
+    expect(await screen.findByRole('listbox', { name: '引用媒体' })).toBeTruthy();
+    fireEvent.keyDown(editor, { key: 'Enter' });
+    expect((await screen.findByRole('alert')).textContent).toContain('素材暂不可用');
+    expect(screen.getByRole('listbox', { name: '引用媒体' })).toBeTruthy();
+    fireEvent.keyDown(editor, { key: 'Enter' });
+    await waitFor(() => expect(activation).toHaveBeenCalledTimes(2));
+  });
+
+  it('publishes combobox and active option relationships while the mention menu is open', async () => {
+    await renderEditorWithLexicalPrompt('@', 1);
+    const editor = screen.getByRole('combobox', { name: '生成提示词' });
+    const menu = await screen.findByRole('listbox', { name: '引用媒体' });
+    expect(editor.getAttribute('aria-autocomplete')).toBe('list');
+    expect(editor.getAttribute('aria-expanded')).toBe('true');
+    expect(editor.getAttribute('aria-controls')).toBe(menu.id);
+    expect(editor.getAttribute('aria-activedescendant')).toBe(screen.getAllByRole('option')[0].id);
+    fireEvent.keyDown(editor, { key: 'ArrowDown' });
+    await waitFor(() => expect(editor.getAttribute('aria-activedescendant')).toBe(screen.getAllByRole('option')[1].id));
+  });
+
+  it('keeps a valid mention delete control keyboard reachable', async () => {
+    const onChange = vi.fn();
+    renderEditor({ value: 'scene @图片1 ', bindings: [imageBinding], onChange });
+    const removeButton = await screen.findByRole('button', { name: '删除引用 图片1' });
+    removeButton.focus();
+    fireEvent.keyDown(removeButton, { key: 'Enter' });
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith({ value: 'scene ', bindings: [imageBinding] }));
   });
 });

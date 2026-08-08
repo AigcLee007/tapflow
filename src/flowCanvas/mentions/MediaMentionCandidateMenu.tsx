@@ -10,12 +10,17 @@ export type MediaMentionCandidateMenuProps = {
   anchorRect: DOMRect | null;
   candidates: MediaMentionCandidate[];
   layerKey: string;
+  menuId: string;
   onDismiss: () => void;
   onSelect: (candidate: MediaMentionCandidate) => void;
   query: string;
   selectedIndex: number;
   setSelectedIndex: (index: number) => void;
 };
+
+export function getMediaMentionOptionId(menuId: string, candidateKey: string): string {
+  return `${menuId}-option-${encodeURIComponent(candidateKey)}`;
+}
 
 const GROUP_LABELS = {
   connected: '已连接媒体',
@@ -27,6 +32,7 @@ export function MediaMentionCandidateMenu({
   anchorRect,
   candidates,
   layerKey,
+  menuId,
   onDismiss,
   onSelect,
   query,
@@ -66,6 +72,7 @@ export function MediaMentionCandidateMenu({
     <MenuSurface
       aria-label="引用媒体"
       className="nodrag nopan nowheel max-h-[280px] w-[284px] overflow-x-hidden overflow-y-auto p-1"
+      id={menuId}
       ref={layer.ref as React.RefObject<HTMLDivElement>}
       role="listbox"
       style={{ position: 'fixed', zIndex: 1200, left, top }}
@@ -81,7 +88,9 @@ export function MediaMentionCandidateMenu({
             <button
               aria-selected={active}
               className={`${MENU_ITEM_CLASS} h-[38px] ${active ? 'bg-white/[0.088]' : ''}`.trim()}
+              id={getMediaMentionOptionId(menuId, candidate.candidateKey)}
               onClick={() => onSelect(candidate)}
+              onMouseDown={(event) => event.preventDefault()}
               onMouseEnter={() => setSelectedIndex(index)}
               role="option"
               type="button"

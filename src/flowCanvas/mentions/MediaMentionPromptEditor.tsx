@@ -27,7 +27,7 @@ import { Image, Music2, TriangleAlert, Video, X } from 'lucide-react';
 import type { FlowMediaMentionBinding, FlowMediaMentionKind } from '../types';
 import { getPromptBarDensity, type PromptBarDensityVariant } from '../utils/promptBarDensity';
 import { allocateMediaMentionBinding, resolveMediaMentionToken } from './mediaMentions';
-import { filterCandidates, MediaMentionCandidateMenu } from './MediaMentionCandidateMenu';
+import { filterCandidates, getMediaMentionOptionId, MediaMentionCandidateMenu } from './MediaMentionCandidateMenu';
 import type { MediaMentionCandidate } from './mediaMentionCandidates';
 
 export type ActivatedMediaMention = { inputKey: string; kind: FlowMediaMentionKind };
@@ -61,13 +61,11 @@ type EditorActions = { activate: (candidate: MediaMentionCandidate) => void; foc
 
 const mediaKindIcon: Record<FlowMediaMentionKind, typeof Image> = { image: Image, video: Video, audio: Music2 };
 
-function MentionPill({ label, kind, nodeKey, valid }: { label: string; kind: FlowMediaMentionKind; nodeKey: NodeKey; valid: boolean }) {
+function MentionPill({ disabled, label, kind, nodeKey, valid }: { disabled: boolean; label: string; kind: FlowMediaMentionKind; nodeKey: NodeKey; valid: boolean }) {
   const [editor] = useLexicalComposerContext();
-  const [hovered, setHovered] = useState(false);
   const Icon = valid ? mediaKindIcon[kind] : TriangleAlert;
-  const remove = useCallback((event: React.MouseEvent) => {
-    event.preventDefault();
-    event.stopPropagation();
+  const remove = useCallback(() => {
+    if (disabled) return;
     editor.update(() => {
       const node = $getNodeByKey(nodeKey);
       const nextSibling = node?.getNextSibling();
@@ -76,12 +74,12 @@ function MentionPill({ label, kind, nodeKey, valid }: { label: string; kind: Flo
       }
       node?.remove();
     }, { discrete: true });
-  }, [editor, nodeKey]);
+  }, [disabled, editor, nodeKey]);
 
-  return <span contentEditable={false} data-invalid={valid ? undefined : 'true'} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} style={pillStyle(valid, hovered)}>
+  return <span contentEditable={false} data-invalid={valid ? undefined : 'true'} style={pillStyle(valid)}>
     <Icon aria-hidden size={15} />
     <span>{`@${label}`}</span>
-    {valid && hovered ? <button aria-label={`删除引用 ${label}`} onClick={remove} onMouseDown={(event) => event.preventDefault()} style={removeButtonStyle} tabIndex={-1} type="button"><X size={11} /></button> : null}
+    {valid ? <button aria-label={`${'\u5220\u9664\u5f15\u7528'} ${label}`} disabled={disabled} onClick={(event) => { event.preventDefault(); event.stopPropagation(); remove(); }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); remove(); } }} onMouseDown={(event) => event.preventDefault()} style={removeButtonStyle} type="button"><X size={11} /></button> : null}
   </span>;
 }
 
@@ -90,13 +88,14 @@ class MediaMentionNode extends DecoratorNode<React.ReactNode> {
   __kind: FlowMediaMentionKind;
   __label: string;
   __valid: boolean;
+  __disabled: boolean;
 
   static getType() { return 'media-mention'; }
-  static clone(node: MediaMentionNode) { return new MediaMentionNode(node.__inputKey, node.__kind, node.__label, node.__valid, node.__key); }
+  static clone(node: MediaMentionNode) { return new MediaMentionNode(node.__inputKey, node.__kind, node.__label, node.__valid, node.__key, node.__disabled); }
   static importJSON(serialized: SerializedMediaMentionNode) { return new MediaMentionNode(serialized.inputKey, serialized.kind, serialized.label, serialized.valid); }
 
-  constructor(inputKey: string | undefined, kind: FlowMediaMentionKind, label: string, valid: boolean, key?: NodeKey) {
-    super(key); this.__inputKey = inputKey; this.__kind = kind; this.__label = label; this.__valid = valid;
+  constructor(inputKey: string | undefined, kind: FlowMediaMentionKind, label: string, valid: boolean, key?: NodeKey, disabled = false) {
+    super(key); this.__inputKey = inputKey; this.__kind = kind; this.__label = label; this.__valid = valid; this.__disabled = disabled;
   }
 
   createDOM(_config: EditorConfig) { const element = document.createElement('span'); element.style.display = 'inline-flex'; element.style.verticalAlign = 'baseline'; return element; }
@@ -105,7 +104,8 @@ class MediaMentionNode extends DecoratorNode<React.ReactNode> {
   getTextContent() { return `@${this.__label}`; }
   exportJSON(): SerializedMediaMentionNode { return { type: 'media-mention', version: 1, inputKey: this.__inputKey, kind: this.__kind, label: this.__label, valid: this.__valid }; }
   setValidity(valid: boolean) { const self = this.getWritable(); self.__valid = valid; }
-  decorate() { return <MentionPill kind={this.__kind} label={this.__label} nodeKey={this.__key} valid={this.__valid} />; }
+  setDisabled(disabled: boolean) { const self = this.getWritable(); self.__disabled = disabled; }
+  decorate() { return <MentionPill disabled={this.__disabled} kind={this.__kind} label={this.__label} nodeKey={this.__key} valid={this.__valid} />; }
 }
 
 function $createMediaMentionNode(part: NonNullable<ParsedPart['mention']>) {
@@ -167,10 +167,13 @@ function $getMentionQuery(version: number): MentionQuerySnapshot | null {
   return { nodeKey: node.getKey(), startOffset: anchor.offset - match[0].length, endOffset: anchor.offset, query: match[1], version };
 }
 
-function EditorBridge({ activeInputKeys, bindings, candidates, disabled = false, onActivateCandidate, onChange, onEditorReady, placeholder, value, setMenu, registerActions, selectedIndex, moveSelection, contentStyle, editorElementRef }: MediaMentionPromptEditorProps & {
+function EditorBridge({ activeInputKeys, bindings, candidates, disabled = false, onActivateCandidate, onChange, onEditorReady, placeholder, value, setMenu, registerActions, selectedIndex, moveSelection, contentStyle, editorElementRef, menuId, menuOpen, onActivationError }: MediaMentionPromptEditorProps & {
   contentStyle: React.CSSProperties;
   editorElementRef: React.MutableRefObject<HTMLElement | null>;
+  menuId: string;
+  menuOpen: boolean;
   moveSelection: (delta: number, count: number) => void;
+  onActivationError: (message: string | null) => void;
   registerActions: (actions: EditorActions) => void;
   selectedIndex: number;
   setMenu: (menu: { query: string } | null) => void;
@@ -189,6 +192,12 @@ function EditorBridge({ activeInputKeys, bindings, candidates, disabled = false,
     onEditorReady?.(editor);
   }, [editor, editorElementRef, onEditorReady]);
   useEffect(() => {
+    editor.setEditable(!disabled);
+    editor.update(() => {
+      for (const node of $nodesOfType(MediaMentionNode)) node.setDisabled(disabled);
+    }, { discrete: true });
+  }, [disabled, editor]);
+  useEffect(() => {
     bindingsRef.current = bindings;
     activeKeysRef.current = activeInputKeys;
     const nextBindingState = `${bindingSignature(bindings)}\u0000${[...activeInputKeys].sort().join('|')}`;
@@ -206,14 +215,21 @@ function EditorBridge({ activeInputKeys, bindings, candidates, disabled = false,
       for (const node of $nodesOfType(MediaMentionNode)) {
         const matching = node.__inputKey ? bindings.find((binding) => binding.inputKey === node.__inputKey) : undefined;
         node.setValidity(Boolean(matching && multiplicity.get(matching.label) === 1 && activeInputKeys.has(matching.inputKey)));
+        node.setDisabled(disabled);
       }
     }, { discrete: true });
-  }, [activeInputKeys, bindings, editor, value]);
+  }, [activeInputKeys, bindings, disabled, editor, value]);
 
   const activate = useCallback(async (candidate: MediaMentionCandidate) => {
     const snapshot = queryRef.current;
     if (disabled || composingRef.current || !snapshot) return;
-    const activated = await onActivateCandidate(candidate);
+    let activated: ActivatedMediaMention;
+    try {
+      activated = await onActivateCandidate(candidate);
+    } catch (error) {
+      onActivationError(error instanceof Error ? error.message : 'Media mention is temporarily unavailable');
+      return;
+    }
     let inserted = false;
     editor.update(() => {
       if (versionRef.current !== snapshot.version) return;
@@ -242,9 +258,10 @@ function EditorBridge({ activeInputKeys, bindings, candidates, disabled = false,
     if (inserted) {
       queryRef.current = null;
       setMenu(null);
+      onActivationError(null);
       queueMicrotask(() => editor.focus());
     }
-  }, [disabled, editor, onActivateCandidate, setMenu]);
+  }, [disabled, editor, onActivateCandidate, onActivationError, setMenu]);
 
   const onEditorChange = useCallback((editorState: Parameters<React.ComponentProps<typeof OnChangePlugin>['onChange']>[0]) => {
     editorState.read(() => {
@@ -279,9 +296,12 @@ function EditorBridge({ activeInputKeys, bindings, candidates, disabled = false,
 
   useEffect(() => { registerActions({ activate: (candidate) => { void activate(candidate); }, focus: () => editor.focus() }); }, [activate, editor, registerActions]);
 
+  const snapshot = queryRef.current;
+  const selectedCandidate = snapshot ? filterCandidates(candidates, snapshot.query)[selectedIndex] : undefined;
+
   return <>
     <PlainTextPlugin
-      contentEditable={<ContentEditable aria-label="生成提示词" className="nodrag nopan nowheel sleek-scroll-y flow-rich-prompt-editor" disabled={disabled} onCompositionEnd={() => { composingRef.current = false; }} onCompositionStart={() => { composingRef.current = true; queryRef.current = null; setMenu(null); }} onKeyDown={onKeyDown} onKeyDownCapture={onKeyDown} style={contentStyle} />}
+      contentEditable={<ContentEditable aria-activedescendant={menuOpen && selectedCandidate ? getMediaMentionOptionId(menuId, selectedCandidate.candidateKey) : undefined} aria-autocomplete="list" aria-controls={menuOpen ? menuId : undefined} aria-expanded={menuOpen} aria-label="生成提示词" className="nodrag nopan nowheel sleek-scroll-y flow-rich-prompt-editor" disabled={disabled} onCompositionEnd={() => { composingRef.current = false; }} onCompositionStart={() => { composingRef.current = true; queryRef.current = null; setMenu(null); }} onKeyDown={onKeyDown} onKeyDownCapture={onKeyDown} role="combobox" style={contentStyle} />}
       ErrorBoundary={LexicalErrorBoundary}
       placeholder={<div style={placeholderStyle}>{placeholder}</div>}
     />
@@ -291,10 +311,12 @@ function EditorBridge({ activeInputKeys, bindings, candidates, disabled = false,
 
 export const MediaMentionPromptEditor = forwardRef<MediaMentionPromptEditorHandle, MediaMentionPromptEditorProps>(function MediaMentionPromptEditor(props, ref) {
   const [menu, setMenu] = useState<{ query: string } | null>(null);
+  const [activationError, setActivationError] = useState<string | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const actionsRef = useRef<EditorActions | null>(null);
   const editorElementRef = useRef<HTMLElement | null>(null);
   const editorLayerId = useId();
+  const menuId = useId();
   const density = getPromptBarDensity(props.densityVariant as PromptBarDensityVariant);
   const contentStyle = useMemo(() => ({ ...editorStyle, minHeight: density.editorMinHeight, maxHeight: density.editorMaxHeight, fontSize: density.editorFontSize, lineHeight: density.editorLineHeight }), [density]);
   const setMentionMenu = useCallback((nextMenu: { query: string } | null) => { setSelectedIndex(0); setMenu(nextMenu); }, []);
@@ -306,8 +328,9 @@ export const MediaMentionPromptEditor = forwardRef<MediaMentionPromptEditorHandl
 
   return <LexicalComposer initialConfig={initialConfig}>
     <div style={{ position: 'relative', minHeight: density.editorMinHeight, maxHeight: density.editorMaxHeight }}>
-      <EditorBridge {...props} contentStyle={contentStyle} editorElementRef={editorElementRef} moveSelection={moveSelection} registerActions={(actions) => { actionsRef.current = actions; }} selectedIndex={selectedIndex} setMenu={setMentionMenu} />
-      {menu ? <MediaMentionCandidateMenu anchorRect={editorElementRef.current?.getBoundingClientRect() ?? null} candidates={props.candidates} layerKey={`media-mention-candidates:${editorLayerId}`} onDismiss={() => setMenu(null)} onSelect={(candidate) => actionsRef.current?.activate(candidate)} query={menu.query} selectedIndex={selectedIndex} setSelectedIndex={setSelectedIndex} /> : null}
+      <EditorBridge {...props} contentStyle={contentStyle} editorElementRef={editorElementRef} menuId={menuId} menuOpen={Boolean(menu)} moveSelection={moveSelection} onActivationError={setActivationError} registerActions={(actions) => { actionsRef.current = actions; }} selectedIndex={selectedIndex} setMenu={setMentionMenu} />
+      {menu ? <MediaMentionCandidateMenu anchorRect={editorElementRef.current?.getBoundingClientRect() ?? null} candidates={props.candidates} layerKey={`media-mention-candidates:${editorLayerId}`} menuId={menuId} onDismiss={() => setMenu(null)} onSelect={(candidate) => actionsRef.current?.activate(candidate)} query={menu.query} selectedIndex={selectedIndex} setSelectedIndex={setSelectedIndex} /> : null}
+      {activationError ? <div aria-live="assertive" role="alert">{activationError}</div> : null}
     </div>
   </LexicalComposer>;
 });
@@ -316,6 +339,6 @@ const removeButtonStyle: React.CSSProperties = { width: 14, height: 14, padding:
 const editorStyle: React.CSSProperties = { width: '100%', overflowY: 'auto', background: 'transparent', border: 'none', outline: 'none', color: '#f8fafc', fontWeight: 400, fontFamily: '"Microsoft YaHei", Arial, sans-serif', whiteSpace: 'pre-wrap', wordBreak: 'break-word', caretColor: '#fff' };
 const placeholderStyle: React.CSSProperties = { position: 'absolute', left: 0, top: 0, pointerEvents: 'none', color: 'rgba(255,255,255,0.28)', fontSize: 13, lineHeight: 1.5, fontFamily: '"Microsoft YaHei", Arial, sans-serif' };
 
-function pillStyle(valid: boolean, hovered: boolean): React.CSSProperties { return { display: 'inline-flex', alignItems: 'center', gap: 4, height: 24, margin: '0 2px', padding: hovered && valid ? '2px 5px 2px 4px' : '2px 7px 2px 4px', borderRadius: 6, border: `1px solid ${valid ? 'rgba(255,255,255,0.12)' : 'rgba(251,191,36,0.55)'}`, background: valid ? 'rgba(255,255,255,0.08)' : 'rgba(251,191,36,0.11)', color: valid ? '#f8fafc' : '#fde68a', fontSize: 13, fontWeight: 700, lineHeight: 1, verticalAlign: '-3px', userSelect: 'none' }; }
+function pillStyle(valid: boolean): React.CSSProperties { return { display: 'inline-flex', alignItems: 'center', gap: 4, height: 24, margin: '0 2px', padding: '2px 5px 2px 4px', borderRadius: 6, border: `1px solid ${valid ? 'rgba(255,255,255,0.12)' : 'rgba(251,191,36,0.55)'}`, background: valid ? 'rgba(255,255,255,0.08)' : 'rgba(251,191,36,0.11)', color: valid ? '#f8fafc' : '#fde68a', fontSize: 13, fontWeight: 700, lineHeight: 1, verticalAlign: '-3px', userSelect: 'none' }; }
 function escapeRegExp(value: string) { return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 function bindingSignature(bindings: FlowMediaMentionBinding[]) { return bindings.map((binding) => `${binding.inputKey}:${binding.kind}:${binding.label}`).join('|'); }
