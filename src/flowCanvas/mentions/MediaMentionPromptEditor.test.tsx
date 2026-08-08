@@ -95,6 +95,17 @@ describe('MediaMentionPromptEditor', () => {
     })));
   });
 
+  it('renders an inserted capsule thumbnail from the selected candidate immediately', async () => {
+    const thumbnailCandidate = { ...imageCandidate, thumbnailUrl: '/candidate-thumb.webp' };
+    const { onChange } = await renderEditorWithLexicalPrompt('@', 1, {
+      candidates: [thumbnailCandidate],
+      onActivateCandidate: vi.fn(async () => ({ inputKey: 'asset:image', kind: 'image' as const, previewUrl: thumbnailCandidate.thumbnailUrl })),
+    });
+    fireEvent.keyDown(screen.getByRole('combobox', { name: '生成提示词' }), { key: 'Enter' });
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ value: '@图片1 ' })));
+    expect((await screen.findByRole('img', { name: '图片1' })).getAttribute('src')).toBe('/candidate-thumb.webp');
+  });
+
   it('opens the menu when the first @ leaves Lexical on an element selection', async () => {
     let lexicalEditor: LexicalEditor | undefined;
     const onChange = vi.fn();
