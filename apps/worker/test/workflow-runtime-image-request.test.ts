@@ -25,6 +25,27 @@ describe("buildImageRequest", () => {
     });
   });
 
+  test("keeps local image mention prompt after upstream text and ordered media inputs", () => {
+    const request = __workerTestUtils.buildImageRequest(
+      [
+        { text: "upstream scene description" },
+        { assets: [{ assetId: "asset-upstream", kind: "image", mimeType: "image/png" }] },
+      ],
+      {
+        generationPrompt: "use @图片1 with the described scene",
+        referenceAssetItemIds: ["asset-direct"],
+        referenceOrder: ["upstream:source-image", "asset:asset-direct"],
+        routeKey: "image.default",
+      },
+    );
+
+    expect(request.prompt).toBe("upstream scene description\nuse @图片1 with the described scene");
+    expect(request.inputAssets.map((asset) => asset.assetId)).toEqual([
+      "asset-upstream",
+      "asset-direct",
+    ]);
+  });
+
   test("combines current image prompt with text from upstream image outputs", () => {
     const request = __workerTestUtils.buildImageRequest(
       [

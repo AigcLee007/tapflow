@@ -33,6 +33,35 @@ describe("canonicalizeGraph", () => {
     );
   });
 
+  it("persists stable mention bindings but strips all runtime mention previews", () => {
+    const graph = canonicalizeGraph({
+      edges: [],
+      nodes: [{
+        id: "image-mention",
+        position: { x: 0, y: 0 },
+        type: "image",
+        data: {
+          generationPrompt: "use @图片1",
+          hoverPreviewUrl: "https://cdn.test/ref.png",
+          inputOrder: ["asset:ref"],
+          mediaMentionBindings: [{
+            inputKey: "asset:ref",
+            kind: "image",
+            label: "图片1",
+            thumbnailUrl: "blob:http://localhost/ref-preview",
+          }],
+        },
+      }],
+      viewport: { x: 0, y: 0, zoom: 1 },
+    });
+
+    expect(graph.nodes[0]?.data).toMatchObject({
+      generationPrompt: "use @图片1",
+      mediaMentionBindings: [{ inputKey: "asset:ref", kind: "image", label: "图片1" }],
+    });
+    expect(JSON.stringify(graph)).not.toMatch(/blob:|hoverPreviewUrl|thumbnailUrl/);
+  });
+
   it("keeps durable excerpts on legacy nodes outside the unified-input protocol", () => {
     const graph = canonicalizeGraph({
       edges: [],

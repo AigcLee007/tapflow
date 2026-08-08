@@ -771,6 +771,51 @@ describe("worker skeleton", () => {
     ]);
   });
 
+  test("video.generate keeps local image and video mentions with upstream text and media order", () => {
+    const request = (__workerTestUtils as {
+      buildVideoRequest: (
+        upstreamOutputs: ReadonlyMap<string, Record<string, unknown> | null>,
+        config: Record<string, unknown>,
+      ) => { inputAssets: Array<Record<string, unknown>>; prompt: string };
+    }).buildVideoRequest(new Map([
+      ["copy", { text: "upstream scene description" }],
+      ["motion", { assets: [{ assetId: "asset-motion", kind: "video" }] }],
+    ]), {
+      generationPrompt: "use @图片1 and @视频1",
+      params: {
+        videoGeneration: {
+          schemaVersion: 2,
+          mode: "all_reference",
+          aspectRatio: "16:9",
+          resolution: "720P",
+          durationSeconds: 4,
+          generateAudio: true,
+          count: 1,
+          referenceInputs: [
+            {
+              referenceKey: "ref-image",
+              source: { kind: "asset", id: "asset-image" },
+              mediaKind: "image",
+              role: "main_image",
+              order: 0,
+            },
+            {
+              referenceKey: "ref-video",
+              source: { kind: "upstream", id: "motion" },
+              mediaKind: "video",
+              role: "reference_video",
+              order: 1,
+            },
+          ],
+        },
+      },
+    });
+
+    expect(request.prompt).toBe("upstream scene description\nuse @图片1 and @视频1");
+    expect(request.inputAssets.map((asset) => asset.kind)).toEqual(["image", "video"]);
+    expect(request.inputAssets.map((asset) => asset.assetId)).toEqual(["asset-image", "asset-motion"]);
+  });
+
   test("legacy video.generate request merges ordered upstream text with its local prompt", () => {
     const request = (__workerTestUtils as {
       buildVideoRequest: (

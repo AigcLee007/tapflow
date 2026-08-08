@@ -4415,8 +4415,19 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const shouldLoadEditorResources = showNodeEditor || activeImageTool?.nodeId === id || fullscreenOpen || assetMenuOpen || slashMenuOpen;
   const imageCatalogState = useImageModelCatalogWhenNeeded(shouldLoadEditorResources);
   const models = imageCatalogState.models;
+  const imageAssetLibrary = useAssetLibrary();
   const folders = EMPTY_IMAGE_FOLDERS;
-  const folderItems = EMPTY_IMAGE_FOLDER_ITEMS;
+  const folderItems = useMemo(
+    () => imageAssetLibrary.assets
+      .filter((asset) => asset.kind === 'image')
+      .map((asset) => ({
+        id: asset.id,
+        imageUrl: asset.previewUrl || '',
+        notes: asset.description || undefined,
+        title: asset.title || asset.originalFilename || asset.id,
+      })),
+    [imageAssetLibrary.assets],
+  );
 
   const [splitInitialGridSize, setSplitInitialGridSize] = useState(2);
 
@@ -7688,6 +7699,7 @@ export const VideoNodeComponent = memo(function VideoNode({
   const showNodeEditor = showSingleNodeControls;
   const videoCatalog = useVideoGenerationCatalog();
   const videoAssetLibrary = useAssetLibrary();
+  const canvasNodes = useFlowCanvasStore((s) => s.nodes);
   const videoParams = useMemo(() => normalizeVideoGenerationParams(d).params, [d]);
   const hasHydratedDefaultVideoModel = useRef(false);
 

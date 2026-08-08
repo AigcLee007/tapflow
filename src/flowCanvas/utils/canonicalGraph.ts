@@ -11,6 +11,7 @@ const TRANSIENT_NODE_DATA_KEYS = new Set([
   "expiresAt",
   "generationStatus",
   "generating",
+  "hoverPreviewUrl",
   "hovered",
   "imageUrl",
   "isGenerating",

@@ -6286,3 +6286,10 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - the prompt combobox now exposes active mention candidates through list autocomplete ARIA relationships, and each portal option has a unique stable ID.
 - valid mention removal controls are always keyboard reachable and support Enter or Space.
 - focused mention regression suites passed (`28` assertions) and the frontend production build passed; existing Lexical test-harness `flushSync`, Browserslist age, mixed-import, and chunk-size warnings remain non-blocking.
+
+## 2026-08-08 - Unified Media Mentions And Input Previews
+
+- connected text inputs now render as one aggregate first-position group; media inputs remain reorderable only after that group, and remove-all text is one Store transaction.
+- image and video inputs resolve separate thumbnail and hover-preview URLs. Hover previews use image or muted video portals and remain runtime-only; canonical graph persistence keeps stable `mediaMentionBindings` but strips transient preview fields.
+- image and video nodes now use the shared media-only `@` editor. Text candidates are excluded; connected media inserts directly, canvas media auto-connects before insertion, and library assets are added to ordered inputs before insertion. Mention deletion only edits prompt text.
+- focused frontend suites passed (`14` files, `195` tests); Worker suite passed (`79` tests, `17` skipped); `npm run build` passed with existing Browserslist, mixed-import, and chunk-size warnings. The smoke contract passed (`2` tests); full `npm run smoke:node-input-tray` needs a follow-up fix for its generated check-code execution context before it can be counted as an end-to-end pass.
