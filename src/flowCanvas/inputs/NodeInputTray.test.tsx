@@ -5,16 +5,19 @@ import type { CanvasInputItem } from "./canvasInputProjection";
 import { NodeInputTray } from "./NodeInputTray";
 
 const textA: CanvasInputItem = {
-  inputKey: "upstream:text-a", kind: "text", order: 0, previewState: "ready", source: "upstream", textExcerpt: "A useful script", title: "Script A",
+  group: "text", inputKey: "upstream:text-a", kind: "text", kindIndex: 1, order: 0, previewState: "ready", source: "upstream", textExcerpt: "A useful script", title: "Script A",
 };
 const textB: CanvasInputItem = {
-  inputKey: "upstream:text-b", kind: "text", order: 1, previewState: "ready", source: "upstream", textExcerpt: "Another script", title: "Script B",
+  group: "text", inputKey: "upstream:text-b", kind: "text", kindIndex: 2, order: 1, previewState: "ready", source: "upstream", textExcerpt: "Another script", title: "Script B",
 };
 const imageA: CanvasInputItem = {
-  assetId: "image-a", hoverPreviewUrl: "https://cdn.test/image-full.png", inputKey: "asset:image-a", kind: "image", order: 2, previewState: "ready", previewUrl: "https://cdn.test/image-thumb.webp", source: "asset", thumbnailUrl: "https://cdn.test/image-thumb.webp", title: "Reference image",
+  assetId: "image-a", group: "image", hoverPreviewUrl: "https://cdn.test/image-full.png", inputKey: "asset:image-a", kind: "image", kindIndex: 1, order: 2, previewState: "ready", previewUrl: "https://cdn.test/image-thumb.webp", source: "asset", thumbnailUrl: "https://cdn.test/image-thumb.webp", title: "Reference image",
 };
 const videoA: CanvasInputItem = {
-  assetId: "video-a", hoverPreviewUrl: "https://cdn.test/clip.mp4", inputKey: "asset:video-a", kind: "video", order: 3, previewState: "ready", previewUrl: "https://cdn.test/clip.webp", source: "asset", thumbnailUrl: "https://cdn.test/clip.webp", title: "Clip",
+  assetId: "video-a", group: "video", hoverPreviewUrl: "https://cdn.test/clip.mp4", inputKey: "asset:video-a", kind: "video", kindIndex: 1, order: 3, previewState: "ready", previewUrl: "https://cdn.test/clip.webp", source: "asset", thumbnailUrl: "https://cdn.test/clip.webp", title: "Clip",
+};
+const audioA: CanvasInputItem = {
+  assetId: "audio-a", durationMs: 2_000, group: "audio", inputKey: "asset:audio-a", kind: "audio", kindIndex: 1, order: 4, previewState: "ready", source: "asset", title: "Soundtrack",
 };
 
 describe("NodeInputTray", () => {
@@ -38,9 +41,10 @@ describe("NodeInputTray", () => {
     expect(onRemoveAllText).toHaveBeenCalledTimes(1);
   });
 
-  it("emits media keys only and ignores drag attempts from the text group", () => {
+  it("only reorders media within the same type and ignores drag attempts from the text group", () => {
     const onReorder = vi.fn();
-    render(<NodeInputTray items={[textA, imageA, videoA]} onReorder={onReorder} />);
+    const imageB = { ...imageA, assetId: "image-b", inputKey: "asset:image-b", kindIndex: 2, title: "Second image" };
+    render(<NodeInputTray items={[textA, imageA, imageB, videoA]} onReorder={onReorder} />);
 
     const textGroup = screen.getByRole("button", { name: /文本输入/ });
     fireEvent.dragStart(textGroup, { dataTransfer: { setData: vi.fn() } });
@@ -49,7 +53,25 @@ describe("NodeInputTray", () => {
 
     fireEvent.dragStart(screen.getByTitle("Clip"), { dataTransfer: { setData: vi.fn() } });
     fireEvent.drop(screen.getByTitle("Reference image"), { dataTransfer: { getData: () => "asset:video-a" } });
-    expect(onReorder).toHaveBeenCalledWith(["asset:image-a", "asset:video-a"]);
+    expect(onReorder).not.toHaveBeenCalled();
+
+    fireEvent.dragStart(screen.getByTitle("Second image"), { dataTransfer: { setData: vi.fn() } });
+    fireEvent.drop(screen.getByTitle("Reference image"), { dataTransfer: { getData: () => "asset:image-b" } });
+    expect(onReorder).toHaveBeenCalledWith(["asset:image-a", "asset:image-b", "asset:video-a"]);
+  });
+
+  it("renders fixed media type sections and labels cards with per-type ordinals", () => {
+    const { container } = render(<NodeInputTray items={[audioA, videoA, imageA, textA]} />);
+
+    expect(Array.from(container.querySelectorAll("[data-input-kind]"), (node) => node.getAttribute("data-input-kind"))).toEqual([
+      "text",
+      "image",
+      "video",
+      "audio",
+    ]);
+    expect(screen.getByTitle("Reference image").getAttribute("aria-label")).toContain("1");
+    expect(screen.getByTitle("Clip").getAttribute("aria-label")).toContain("1");
+    expect(screen.getByTitle("Soundtrack").getAttribute("aria-label")).toContain("1");
   });
 
   it("limits the tray to eight cells and sends only media to overflow", () => {
@@ -202,7 +224,7 @@ describe("NodeInputTray", () => {
   it("opens an asset preview from keyboard focus and associates it as a tooltip", async () => {
     render(<NodeInputTray items={[imageA]} />);
 
-    const card = screen.getByRole("button", { name: "输入 3：Reference image" });
+    const card = screen.getByRole("button", { name: "输入 1：Reference image" });
     fireEvent.focus(card);
     await waitFor(() => expect(screen.getByRole("tooltip", { name: "预览 Reference image" })).not.toBeNull());
     const preview = screen.getByRole("tooltip", { name: "预览 Reference image" });
@@ -215,7 +237,7 @@ describe("NodeInputTray", () => {
     render(<NodeInputTray items={media} onFocusSource={onFocusSource} />);
 
     fireEvent.click(screen.getByRole("button", { name: "显示另外 1 个输入" }));
-    const focusRow = screen.getByRole("menuitem", { name: "聚焦输入 9：Image 8" });
+    const focusRow = screen.getByRole("menuitem", { name: "聚焦输入 1：Image 8" });
     fireEvent.click(focusRow);
     fireEvent.keyDown(focusRow, { key: "Enter" });
     expect(onFocusSource).toHaveBeenCalledTimes(2);
@@ -227,8 +249,8 @@ describe("NodeInputTray", () => {
     const onRemove = vi.fn();
     render(<NodeInputTray disabled items={[{ ...imageA, previewState: "error" }]} onRemove={onRemove} onRetryPreview={onRetryPreview} />);
 
-    const retry = screen.getByRole("button", { name: "重试预览 3：Reference image" }) as HTMLButtonElement;
-    const remove = screen.getByRole("button", { name: "移除输入 3：Reference image" }) as HTMLButtonElement;
+    const retry = screen.getByRole("button", { name: "重试预览 1：Reference image" }) as HTMLButtonElement;
+    const remove = screen.getByRole("button", { name: "移除输入 1：Reference image" }) as HTMLButtonElement;
     expect(retry.disabled).toBe(true);
     expect(remove.disabled).toBe(true);
     fireEvent.click(retry);

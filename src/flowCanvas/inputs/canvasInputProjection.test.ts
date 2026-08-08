@@ -43,33 +43,77 @@ const directAsset: CanvasInputSeed = {
 };
 
 describe("canvas input projection", () => {
-  it("projects one stable text partition before ordered media", () => {
+  it("projects inputs into fixed type groups with independent ordinals", () => {
     const secondText: CanvasInputSeed = {
       ...upstreamText,
       inputKey: toUpstreamInputKey("text-node-2"),
       sourceNodeId: "text-node-2",
       title: "Second script",
     };
+    const secondImage: CanvasInputSeed = {
+      ...upstreamImage,
+      inputKey: toUpstreamInputKey("image-node-2"),
+      sourceNodeId: "image-node-2",
+      title: "Second image",
+    };
+    const secondVideo: CanvasInputSeed = {
+      ...directAsset,
+      inputKey: toAssetInputKey("asset-video-2"),
+      assetId: "asset-video-2",
+      title: "Second video",
+    };
+    const audio: CanvasInputSeed = {
+      ...directAsset,
+      inputKey: toAssetInputKey("asset-audio"),
+      assetId: "asset-audio",
+      kind: "audio",
+      title: "Audio",
+    };
     const projection = resolveCanvasInputProjection({
-      inputOrder: [directAsset.inputKey, secondText.inputKey, upstreamImage.inputKey, upstreamText.inputKey],
-      seeds: [upstreamText, upstreamImage, secondText, directAsset, upstreamImage],
+      inputOrder: [secondVideo.inputKey, audio.inputKey, secondText.inputKey, secondImage.inputKey, directAsset.inputKey, upstreamImage.inputKey, upstreamText.inputKey],
+      seeds: [upstreamText, upstreamImage, secondText, directAsset, secondImage, secondVideo, audio, upstreamImage],
     });
 
     expect(projection.textItems.map((item) => item.inputKey)).toEqual([
       upstreamText.inputKey,
       secondText.inputKey,
     ]);
-    expect(projection.mediaItems.map((item) => item.inputKey)).toEqual([
-      directAsset.inputKey,
+    expect(projection.imageItems.map((item) => item.inputKey)).toEqual([
+      secondImage.inputKey,
       upstreamImage.inputKey,
+    ]);
+    expect(projection.videoItems.map((item) => item.inputKey)).toEqual([
+      secondVideo.inputKey,
+      directAsset.inputKey,
+    ]);
+    expect(projection.audioItems.map((item) => item.inputKey)).toEqual([
+      audio.inputKey,
+    ]);
+    expect(projection.mediaItems.map((item) => item.inputKey)).toEqual([
+      secondImage.inputKey,
+      upstreamImage.inputKey,
+      secondVideo.inputKey,
+      directAsset.inputKey,
+      audio.inputKey,
     ]);
     expect(projection.items.map((item) => item.inputKey)).toEqual([
       upstreamText.inputKey,
       secondText.inputKey,
-      directAsset.inputKey,
+      secondImage.inputKey,
       upstreamImage.inputKey,
+      secondVideo.inputKey,
+      directAsset.inputKey,
+      audio.inputKey,
     ]);
-    expect(projection.items.map((item) => item.order)).toEqual([0, 1, 2, 3]);
+    expect(projection.items.map(({ group, kindIndex, order }) => ({ group, kindIndex, order }))).toEqual([
+      { group: "text", kindIndex: 1, order: 0 },
+      { group: "text", kindIndex: 2, order: 1 },
+      { group: "image", kindIndex: 1, order: 2 },
+      { group: "image", kindIndex: 2, order: 3 },
+      { group: "video", kindIndex: 1, order: 4 },
+      { group: "video", kindIndex: 2, order: 5 },
+      { group: "audio", kindIndex: 1, order: 6 },
+    ]);
   });
 
   it("keeps thumbnail and hover preview URLs out of the safe signature", () => {

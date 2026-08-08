@@ -317,6 +317,27 @@ describe('flowCanvasStore upstream image references', () => {
     expect(nextTarget.data.referenceOrder).toEqual([`upstream:${image.id}`]);
   });
 
+  it('only reorders inputs within their own media kind', () => {
+    const firstImage = useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, { title: 'First image' });
+    const video = useFlowCanvasStore.getState().addNode('video', { x: 0, y: 120 }, { title: 'Video' });
+    const secondImage = useFlowCanvasStore.getState().addNode('image', { x: 0, y: 240 }, { title: 'Second image' });
+    const target = useFlowCanvasStore.getState().addNode('video', { x: 400, y: 0 }, { title: 'Target' });
+    [firstImage, video, secondImage].forEach((source) => useFlowCanvasStore.getState().onConnect({
+      source: source.id, sourceHandle: 'out', target: target.id, targetHandle: 'in',
+    }));
+    const edgesBefore = useFlowCanvasStore.getState().edges;
+
+    (useFlowCanvasStore.getState() as unknown as { reorderNodeInputs: (targetNodeId: string, inputKeys: string[]) => void })
+      .reorderNodeInputs(target.id, [`upstream:${video.id}`, `upstream:${secondImage.id}`, `upstream:${firstImage.id}`]);
+
+    expect(useFlowCanvasStore.getState().nodes.find((node) => node.id === target.id)?.data.inputOrder).toEqual([
+      `upstream:${secondImage.id}`,
+      `upstream:${video.id}`,
+      `upstream:${firstImage.id}`,
+    ]);
+    expect(useFlowCanvasStore.getState().edges).toEqual(edgesBefore);
+  });
+
   it('canonicalizes restored input order as incoming text edges followed by user-ordered media', () => {
     useFlowCanvasStore.getState().restoreGraphSnapshot({
       nodes: [
@@ -505,10 +526,10 @@ describe('flowCanvasStore upstream image references', () => {
     expect(normalizeVideoGenerationParams(nextTarget.data).params.referenceInputs).toEqual([]);
   });
 
-  it('removes and reorders video inputs without affecting unrelated assets or media roles', () => {
+  it('removes text and reorders video inputs without affecting the direct image reference', () => {
     const text = useFlowCanvasStore.getState().addNode('text', { x: 0, y: 0 }, { title: 'Prompt source' });
-    const image = useFlowCanvasStore.getState().addNode('image', { x: 0, y: 160 }, { title: 'Image source' });
-    const audio = useFlowCanvasStore.getState().addNode('audio', { x: 0, y: 320 }, { title: 'Audio source' });
+    const firstVideo = useFlowCanvasStore.getState().addNode('video', { x: 0, y: 160 }, { title: 'First video source' });
+    const secondVideo = useFlowCanvasStore.getState().addNode('video', { x: 0, y: 320 }, { title: 'Second video source' });
     const target = useFlowCanvasStore.getState().addNode('video', { x: 480, y: 0 }, {
       params: {
         videoGeneration: {
@@ -520,7 +541,7 @@ describe('flowCanvasStore upstream image references', () => {
         },
       },
     });
-    [text, image, audio].forEach((source) => useFlowCanvasStore.getState().onConnect({
+    [text, firstVideo, secondVideo].forEach((source) => useFlowCanvasStore.getState().onConnect({
       source: source.id, sourceHandle: 'out', target: target.id, targetHandle: 'in',
     }));
 
@@ -529,14 +550,14 @@ describe('flowCanvasStore upstream image references', () => {
       reorderNodeInputs: (targetNodeId: string, inputKeys: string[]) => void;
     };
     actions.removeNodeInput(target.id, `upstream:${text.id}`);
-    actions.reorderNodeInputs(target.id, [`upstream:${audio.id}`, 'asset:direct-image', `upstream:${image.id}`]);
+    actions.reorderNodeInputs(target.id, [`upstream:${secondVideo.id}`, 'asset:direct-image', `upstream:${firstVideo.id}`]);
 
     const nextTarget = useFlowCanvasStore.getState().nodes.find((node) => node.id === target.id)!;
-    expect(nextTarget.data.inputOrder).toEqual([`upstream:${audio.id}`, 'asset:direct-image', `upstream:${image.id}`]);
+    expect(nextTarget.data.inputOrder).toEqual(['asset:direct-image', `upstream:${secondVideo.id}`, `upstream:${firstVideo.id}`]);
     expect(normalizeVideoGenerationParams(nextTarget.data).params.referenceInputs).toEqual([
-      expect.objectContaining({ order: 0, role: 'reference_audio', source: { kind: 'upstream', id: audio.id } }),
-      expect.objectContaining({ order: 1, role: 'reference_image', source: { kind: 'asset', id: 'direct-image' } }),
-      expect.objectContaining({ order: 2, source: { kind: 'upstream', id: image.id } }),
+      expect.objectContaining({ order: 0, role: 'reference_image', source: { kind: 'asset', id: 'direct-image' } }),
+      expect.objectContaining({ order: 1, source: { kind: 'upstream', id: secondVideo.id } }),
+      expect.objectContaining({ order: 2, source: { kind: 'upstream', id: firstVideo.id } }),
     ]);
   });
 

@@ -548,6 +548,28 @@ const getNodeInputKeyPartitions = (
   };
 };
 
+const getNodeInputKeyKinds = (
+  target: FlowNode,
+  nodes: FlowNode[],
+  edges: FlowEdge[],
+  runtimeOutputs: Record<string, FlowRuntimeNodeOutput> = {},
+) => {
+  const nodesById = new Map(nodes.map((node) => [node.id, node]));
+  const kinds = new Map<string, CanvasInputSeed['kind']>();
+  edges.forEach((edge) => {
+    if (edge.target !== target.id) return;
+    const kind = getNodeReferenceInputKind(nodesById.get(edge.source), runtimeOutputs[edge.source]);
+    if (kind) kinds.set(toUpstreamInputKey(edge.source), kind);
+  });
+  const params = isVideoNode(target) ? normalizeVideoGenerationParams(target.data).params : undefined;
+  getDirectAssetInputKeys(target, params?.referenceInputs).forEach((key) => {
+    const assetId = key.slice('asset:'.length);
+    const reference = params?.referenceInputs.find((item) => item.source.kind === 'asset' && item.source.id === assetId);
+    kinds.set(key, reference?.mediaKind ?? 'image');
+  });
+  return kinds;
+};
+
 const normalizeNodeInputOrder = (
   storedOrder: unknown,
   textKeys: string[],
@@ -1924,10 +1946,37 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
     if (!target || (!isImageNode(target) && !isVideoNode(target))) return;
     const { textKeys, mediaKeys } = getNodeInputKeyPartitions(target, get().nodes, get().edges, get().nodeOutputByNodeId);
     const mediaKeySet = new Set(mediaKeys);
-    const requestedMediaKeys = getUniqueInputKeys(inputKeys).filter((key) => mediaKeySet.has(key));
     const currentMediaKeys = getUniqueInputKeys(target.data.inputOrder).filter((key) => mediaKeySet.has(key));
+    const mediaKinds = getNodeInputKeyKinds(target, get().nodes, get().edges, get().nodeOutputByNodeId);
+    const requestedMediaKeys = getUniqueInputKeys(inputKeys).filter((key) => mediaKeySet.has(key));
+    const requestedByKind = new Map<CanvasInputSeed['kind'], string[]>();
+    requestedMediaKeys.forEach((key) => {
+      const kind = mediaKinds.get(key);
+      if (!kind) return;
+      const keys = requestedByKind.get(kind) ?? [];
+      keys.push(key);
+      requestedByKind.set(kind, keys);
+    });
+    const currentByKind = new Map<CanvasInputSeed['kind'], string[]>();
+    currentMediaKeys.forEach((key) => {
+      const kind = mediaKinds.get(key);
+      if (!kind) return;
+      const keys = currentByKind.get(kind) ?? [];
+      keys.push(key);
+      currentByKind.set(kind, keys);
+    });
+    const queues = new Map<CanvasInputSeed['kind'], string[]>();
+    currentByKind.forEach((keys, kind) => queues.set(kind, [
+      ...(requestedByKind.get(kind) ?? []),
+      ...keys.filter((key) => !(requestedByKind.get(kind) ?? []).includes(key)),
+    ]));
+    const reorderedMediaKeys = currentMediaKeys.map((key) => {
+      const kind = mediaKinds.get(key);
+      const queue = kind ? queues.get(kind) : undefined;
+      return queue?.shift() ?? key;
+    });
     const inputOrder = normalizeNodeInputOrder(
-      [...requestedMediaKeys, ...currentMediaKeys.filter((key) => !requestedMediaKeys.includes(key))],
+      reorderedMediaKeys,
       textKeys,
       mediaKeys,
     );

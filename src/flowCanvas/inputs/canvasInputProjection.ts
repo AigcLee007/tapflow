@@ -24,11 +24,16 @@ export type CanvasInputSeed = {
 
 export type CanvasInputItem = CanvasInputSeed & {
   order: number;
+  group: CanvasInputKind;
+  kindIndex: number;
 };
 
 export type CanvasInputProjection = {
   items: CanvasInputItem[];
   textItems: CanvasInputItem[];
+  imageItems: CanvasInputItem[];
+  videoItems: CanvasInputItem[];
+  audioItems: CanvasInputItem[];
   mediaItems: CanvasInputItem[];
 };
 
@@ -55,33 +60,20 @@ export function resolveCanvasInputProjection({
   }
 
   const uniqueSeeds = [...seedsByKey.values()];
-  const textSeeds = uniqueSeeds.filter((seed) => seed.kind === "text");
-  const mediaSeedsByKey = new Map(
-    uniqueSeeds
-      .filter((seed) => seed.kind !== "text")
-      .map((seed) => [seed.inputKey, seed]),
-  );
-  const mediaSeeds: CanvasInputSeed[] = [];
-  const includedKeys = new Set<string>();
-  for (const inputKey of inputOrder ?? []) {
-    const seed = mediaSeedsByKey.get(inputKey);
-    if (seed && !includedKeys.has(inputKey)) {
-      mediaSeeds.push(seed);
-      includedKeys.add(inputKey);
-    }
-  }
-
-  for (const seed of mediaSeedsByKey.values()) {
-    if (!includedKeys.has(seed.inputKey)) {
-      mediaSeeds.push(seed);
-      includedKeys.add(seed.inputKey);
-    }
-  }
-
-  const items = [...textSeeds, ...mediaSeeds].map((seed, order) => ({ ...seed, order }));
+  const orderByKey = new Map((inputOrder ?? []).map((key, index) => [key, index]));
+  const kindOrder: CanvasInputKind[] = ["text", "image", "video", "audio"];
+  const items = kindOrder.flatMap((kind) => uniqueSeeds
+    .filter((seed) => seed.kind === kind)
+    .sort((left, right) => kind === "text" ? 0 : (orderByKey.get(left.inputKey) ?? Number.MAX_SAFE_INTEGER)
+      - (orderByKey.get(right.inputKey) ?? Number.MAX_SAFE_INTEGER))
+    .map((seed, kindIndex) => ({ ...seed, group: kind, kindIndex: kindIndex + 1, order: 0 })))
+    .map((item, order) => ({ ...item, order }));
   return {
     items,
     textItems: items.filter((item) => item.kind === "text"),
+    imageItems: items.filter((item) => item.kind === "image"),
+    videoItems: items.filter((item) => item.kind === "video"),
+    audioItems: items.filter((item) => item.kind === "audio"),
     mediaItems: items.filter((item) => item.kind !== "text"),
   };
 }
